@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Edytor } from '$lib/hooks/useEdytor.svelte.js';
+import type { Edytor } from '../edytor.svelte.js';
 import { getId } from '$lib/utils/getId.js';
 import { yBlockFromJson, type YBlock, blockToJson } from '$lib/utils/json.js';
 import { setCursorAtPosition } from '$lib/utils/setCursor.js';
@@ -47,6 +47,7 @@ export const nest = (y: Text, edytor: Edytor) => {
 const mergeTexts = (target: Text, text: Text) => {
 	const delta = text.toDelta();
 	let offset = target.length;
+
 	for (const op of delta) {
 		if (typeof op.insert === 'string') {
 			target.insert(offset, op.insert, { ...op.attributes });
@@ -58,7 +59,6 @@ const mergeTexts = (target: Text, text: Text) => {
 };
 
 export const unNest = (y: YBlock | Text, edytor: Edytor) => {
-	const doc = y.doc;
 	const block = y instanceof Text ? (y.parent as YBlock) : y;
 	const blockArray = block.parent as Array<YBlock>;
 	const index = blockArray.toArray().indexOf(block);
@@ -75,39 +75,52 @@ export const unNest = (y: YBlock | Text, edytor: Edytor) => {
 	const hasChildren = children.length > 0;
 	const childrenClones = children.toArray().map((child: any) => yBlockFromJson(blockToJson(child)));
 
-	doc?.transact(() => {
+	if ((isLast || isSolo) && !hasChildren) {
+		blockArray.delete(index, 1);
+		parentArray.insert(parentIndex + 1, [clone]);
+		hasChildren && blockArray.insert(index, childrenClones);
+		return;
+		// const id = getId(clone.get('content') as Text);
+
+		// setCursorAtPosition(id, edytor.selection.yStartIndex);
+	}
+
+	edytor?.transact(() => {
 		if (!parent) {
 			// The parent is the document just merge the current block with the left one
 			const { offset, id } = mergeTexts(previousContent(block), block.get('content') as Text);
 			blockArray.delete(index, 1);
-			setCursorAtPosition(id, offset);
+			// setCursorAtPosition(id, offset);
 		} else {
 			if ((isLast || isSolo) && !hasChildren) {
 				blockArray.delete(index, 1);
 				parentArray.insert(parentIndex + 1, [clone]);
-				const id = getId(clone.get('content') as Text);
-				setCursorAtPosition(id, edytor.selection.yStartIndex);
+				hasChildren && blockArray.insert(index, childrenClones);
+
+				// const id = getId(clone.get('content') as Text);
+
+				// setCursorAtPosition(id, edytor.selection.yStartIndex);
 			} else if (isFirst) {
 				const { offset, id } = mergeTexts(
 					parent.get('content') as Text,
 					block.get('content') as Text
 				);
 				blockArray.delete(index, 1);
-				setCursorAtPosition(id, offset);
+				// setCursorAtPosition(id, offset);
 			} else if (!isLast && !isSolo) {
 				const { offset, id } = mergeTexts(previousContent(block), block.get('content') as Text);
 				blockArray.delete(index, 1);
-				setCursorAtPosition(id, offset);
+				// setCursorAtPosition(id, offset);
 			} else if (!hasChildren) {
 				const { offset, id } = mergeTexts(
 					parent.get('content') as Text,
 					block.get('content') as Text
 				);
 				blockArray.delete(index, 1);
-				setCursorAtPosition(id, offset);
+				// setCursorAtPosition(id, offset);
 			}
 		}
 
-		hasChildren && blockArray.insert(index, childrenClones);
+		// hasChildren && blockArray.insert(index, childrenClones);
 	});
 };

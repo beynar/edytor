@@ -1,111 +1,114 @@
-<script lang="ts">
-	import { useEdytor } from '$lib/hooks/useEdytor.svelte.js';
+<script lang="ts" module>
+	import { Edytor, useEdytor, type Snippets } from '../edytor.svelte.js';
+	import { Awareness } from 'y-protocols/awareness';
 
-	import type { Snippet } from 'svelte';
-	let { renderMarks, renderBlocks } = $props<{
-		renderMarks: Snippet<[Record<string, any>, Snippet]>;
-		renderBlocks: Snippet<[Record<string, any>, Snippet, Snippet]>;
-	}>();
-	import Block from './Block.svelte';
-	import { setCursorAtPosition } from '$lib/utils/setCursor.js';
-	const edytor = useEdytor({
-		endpoint: '/',
-		renderMarks,
-		renderBlocks,
-		id: 'id',
-		readonly: false,
-		value: {
-			children: [
-				{
-					type: 'paragraph',
-					content: [
-						{ text: 'H', marks: [{ bold: true }] },
-						{ text: 'ello world', marks: [{ italic: true }] }
-					],
-					children: [
-						{
-							type: 'paragraph',
-							content: [{ text: 'Hello', marks: [{ bold: true }, { italic: true }] }]
-						},
-						{
-							type: 'paragraph',
-							content: [{ text: 'world', marks: [{ bold: true }, { italic: true }] }]
-						}
-					]
-				},
-				{
-					type: 'paragraph',
-					content: [{ text: 'Hello world', marks: [{ bold: true }, { italic: true }] }]
-				},
-				{
-					type: 'paragraph',
-					content: [{ text: 'Hello world' }],
-					children: [
-						{
-							type: 'paragraph',
-							content: [{ text: 'Hello', marks: [{ bold: true }, { italic: true }] }]
-						},
-						{
-							type: 'paragraph',
-							content: [{ text: 'world', marks: [{ bold: true }, { italic: true }] }]
-						}
-					]
-				},
-				{
-					type: 'paragraph',
-					content: [{ text: 'Hello world', marks: [{ bold: true }, { italic: true }] }]
-				}
+	export { Edytor as EdytorContext, useEdytor };
+
+	const defaultValue: JSONDoc = {
+		children: Array.from({ length: 2 }, () => ({
+			type: 'paragraph',
+			content: [
+				{ text: 'Hello', marks: { bold: true, italic: true } },
+				{ text: 'World', marks: { bold: true } }
 			]
-		}
+		}))
+	};
+
+	console.log({ defaultValue });
+</script>
+
+<script lang="ts">
+	import Block from './Block.svelte';
+	import * as Y from 'yjs';
+	import type { JSONDoc } from '../utils/json.js';
+	import { type HotKeys } from '../events/onKeyDown.js';
+	import { onMount, setContext } from 'svelte';
+
+	let {
+		edytor = $bindable(),
+		doc,
+		readonly = false,
+		value = defaultValue,
+		hotKeys = {
+			'mod+b': { toggleMark: 'bold' },
+			'mod+i': { toggleMark: 'italic' },
+			'mod+u': { toggleMark: 'underline' },
+			'mod+`': { toggleMark: 'code' },
+			'mod+k': { toggleMark: 'link' }
+		},
+		sync,
+		awareness,
+		...snippets
+	}: Snippets & {
+		edytor: Edytor;
+		doc?: Y.Doc;
+		awareness?: Awareness;
+		readonly?: boolean;
+		hotKeys?: HotKeys;
+		value?: JSONDoc;
+		sync?: ({
+			doc,
+			awareness,
+			synced
+		}: {
+			doc: Y.Doc;
+			awareness: Awareness;
+			synced: (provider?: any) => void;
+		}) => void;
+	} = $props();
+
+	edytor = new Edytor({
+		snippets,
+		readonly,
+		doc,
+		awareness,
+		hotKeys,
+		sync: !sync,
+		value
 	});
+
+	onMount(() => {
+		sync?.({
+			doc: edytor.doc,
+			awareness: edytor.awareness,
+			synced: () => {
+				edytor.sync(value);
+			}
+		});
+	});
+
+	setContext('edytor', edytor);
 </script>
 
 <button
-	on:click={() => {
-		console.log(edytor.doc.getArray('children').toJSON());
+	onclick={(e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		edytor.selection.state.startText?.mark({
+			type: 'bold',
+			value: true,
+			toggleIfExists: true
+		});
 	}}
 >
-	hello
+	format
 </button>
 
 <button
-	on:click={async () => {
-		const firstElement = edytor.container?.querySelector('span[data-edytor-id]');
-		setCursorAtPosition(firstElement?.getAttribute('data-edytor-id'), 0);
-		const wait = (t:number) =>
-			new Promise((res) => {
-				setTimeout(res, t);
-			});
-		let offset = 0;
-		await wait(10);
-
-		for (let i = 0; i < 100; i++) {
-			if(i===1){
-				await wait(1000)
-			}
-			if(i %2 ){
-				await wait(100)
-			}
-			edytor.onBeforeInput({ inputType: 'insertText', data: `${offset}-` });
-			offset += 1;
-		}
+	onclick={(e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		// edytor.children[0].content.setChildren();
+		edytor.children[0].content.yText.applyDelta([{ delete: 1 }]);
 	}}
 >
-	insert bunch of text
+	set first text
 </button>
 
-<button
-	on:click={() => {
-		const type = edytor.children[0].get('type') === 'blockquote' ? 'paragraph' : 'blockquote';
-		console.log({ type });
-		edytor.children[0].set('type', type);
-	}}
->
-	set block
-</button>
-
-<div data-edytor use:edytor.attach>
-	{#each edytor.children || [] as yBlock (`${yBlock._item?.id.client}-${yBlock._item?.id.clock}`)}
-		<Block {yBlock} />
-	{/each}
-</div>
+{#if edytor.synced}
+	<div use:edytor.attach data-edytor>
+		{#each edytor.children || [] as block (block.id)}
+			<Block {block} />
+		{/each}
+	</div>
+{/if}

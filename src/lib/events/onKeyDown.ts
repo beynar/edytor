@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Edytor } from '$lib/hooks/useEdytor.svelte.js';
+import type { Edytor } from '$lib/classes/useEdytor.svelte.js';
 import { hasMarkAtSelection } from '$lib/operations/hasMark.js';
 import { nest } from '$lib/operations/nest.js';
 import { getId } from '$lib/utils/getId.js';
 import { setCursorAtRange } from '$lib/utils/setCursor.js';
-import isHotkey from 'is-hotkey';
+import { isHotkey } from 'is-hotkey';
 
 export type HotKeys =
 	| {
@@ -21,6 +21,7 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 	const isUndo = e.key === 'z' && (e.ctrlKey || e.metaKey);
 	const isRedo = e.key === 'Z' && (e.ctrlKey || e.metaKey) && e.shiftKey;
 	if (isUndo) {
+		console.log('undo');
 		e.preventDefault();
 		this.undoManager.undo();
 	}

@@ -4,6 +4,7 @@ import { setCursorAtPosition } from '$lib/utils/setCursor.js';
 import { Text, type Array } from 'yjs';
 
 export const split = (yText: Text, index: number) => {
+	console.log('split', yText, index);
 	// If block is empty, duplicate block
 	// If block is only text, split it into two blocks of the same type
 	// If block has children, split the text at the index and create a new block with the rest of the text of the type of the first child block

@@ -9,7 +9,6 @@ export const hasMarkAtSelection = (selection: EdytorSelection, mark: string) => 
 	let offset = 0;
 	const deltasInRangeHasMark: boolean[] = [];
 	texts.forEach((yText) => {
-		console.log('deltas', yText.toDelta());
 		return yText.toDelta().forEach(({ insert, attributes }: TextDelta) => {
 			const isDeltaInRange = offset + insert.length > start && offset < end;
 			offset += insert.length;

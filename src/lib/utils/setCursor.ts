@@ -1,7 +1,7 @@
-import type { Edytor } from '$lib/hooks/useEdytor.svelte.js';
+import type { Edytor } from '../edytor.svelte.js';
 import { tick } from 'svelte';
 
-function findTextNode(node: Node, index: number): { textNode: Node | null; offset: number } {
+export function findTextNode(node: Node, index: number): { textNode: Node | null; offset: number } {
 	let textNode = null;
 	let offset = index;
 
@@ -20,26 +20,42 @@ function findTextNode(node: Node, index: number): { textNode: Node | null; offse
 	return { textNode, offset };
 }
 
-export const setCursorAtPosition = (dataEdytorId: string, index: number) => {
-	tick().then(() => {
-		// Find the element by the data-edytor-id attribute
-		const element = document.querySelector(`[data-edytor-id="${dataEdytorId}"]`);
+export function getTextNodeAtPosition(
+	root: Node,
+	index: number
+): { node: Text; offset: number } | null {
+	const treeWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, null);
+	let currentNode;
+	let currentIndex = 0;
 
-		// Function to find the text node and offset within the element
-		if (element) {
-			const { textNode, offset } = findTextNode(element, index);
-
-			if (textNode) {
-				const selection = window.getSelection();
-				selection?.removeAllRanges();
-				const range = document.createRange();
-				range.setStart(textNode, offset);
-				range.setEnd(textNode, offset);
-				selection?.addRange(range);
-				return element.getBoundingClientRect();
-			}
+	while ((currentNode = treeWalker.nextNode())) {
+		const textLength = currentNode.textContent?.length || 0;
+		if (currentIndex + textLength >= index) {
+			return {
+				node: currentNode as Text,
+				offset: index - currentIndex
+			};
 		}
-	});
+		currentIndex += textLength;
+	}
+	return null;
+}
+
+export const setCursorAtPosition = (dataEdytorId: string, index: number) => {
+	const element = document.querySelector(`[data-edytor-id="${dataEdytorId}"]`);
+	if (element) {
+		const position = getTextNodeAtPosition(element, index);
+		if (position) {
+			const { node, offset } = position;
+			const selection = window.getSelection();
+			const range = document.createRange();
+			range.setStart(node, offset);
+			range.collapse(true);
+			selection?.removeAllRanges();
+			selection?.addRange(range);
+			(element as HTMLElement).focus();
+		}
+	}
 };
 
 export const setCursorAtRange = (dataEdytorId: string, start: number, end: number) => {

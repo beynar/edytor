@@ -7,11 +7,8 @@ export const recursivelyDeleteBlock = (yBlock: YBlock) => {
 	const index = parentArray.toArray().indexOf(yBlock);
 	parentArray.delete(index);
 	if (parentArray.length === 0) {
-		console.log(parentArray);
 		if (!parentBlock?.parent) {
-			console.log('here');
 			if (yBlock.doc?.getArray('children').length === 0) {
-				console.log('empty doc');
 				yBlock.doc
 					?.getArray('children')
 					.insert(0, [

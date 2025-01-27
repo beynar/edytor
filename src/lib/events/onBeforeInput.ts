@@ -1,9 +1,9 @@
-import type { Edytor } from '../edytor.svelte.js';
-import { unNest } from '$lib/operations/nest.js';
 import { tick } from 'svelte';
-import type { Block } from '$lib/block/block.svelte.js';
+import type { Edytor } from '../edytor.svelte.js';
 
 export async function onBeforeInput(this: Edytor, e: InputEvent) {
+	if (this.readonly) return;
+	e.preventDefault();
 	const {
 		start,
 		yStart,
@@ -16,49 +16,98 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 		isAtEnd
 	} = this.selection.state;
 	const { inputType, dataTransfer, data } = e;
-	console.log({ inputType });
+	const isContentEmpty = startText?.isEmpty;
+	const hasChildren = (startText?.parent.children.length || 0) > 0;
+	const isEmpty = isContentEmpty && !hasChildren;
+	const isNested = startText?.parent.parent !== this.edytor;
+	const hasSiblings = (startText?.parent.parent.children.length || 0) > 1;
+	const isFirstChild = startText?.parent.parent.children.at(0) === startText?.parent;
+	const isLastChild = startText?.parent.parent.children.at(-1) === startText?.parent;
+
 	switch (inputType) {
 		case 'insertText': {
 			if (data === '. ') {
-				startText?.insertText(data!, 'AUTO_DOT');
+				startText?.yText.applyDelta([
+					{
+						retain: yStart - 1
+					},
+					{
+						delete: 1
+					},
+					{
+						insert: '. '
+					}
+				]);
+				this.selection.setAtTextOffset(startText!, yStart + 1);
 			} else {
-				startText?.insertText(data!);
+				startText?.yText.insert(yStart, data!);
+				this.edytor.selection.shift(data!.length);
+				this.selection.setAtTextOffset(startText!, yStart + data!.length);
 			}
 			break;
 		}
 
 		case 'deleteContentForward': {
 			if (isTextSpanning) {
-				e.preventDefault();
+				// TODO: implement this later, it's complicated i think.
 			} else {
-				startText?.deleteText('FORWARD', length);
+				if (isCollapsed && isAtEnd) {
+					startText?.parent.mergeBlockForward();
+					this.edytor.selection.setAtTextOffset(startText!, yStart);
+				} else {
+					startText?.deleteText('FORWARD', length);
+					this.selection.setAtTextOffset(startText!, yStart - length);
+				}
 			}
 			break;
 		}
 		case 'deleteContentBackward': {
 			if (isTextSpanning) {
-				e.preventDefault();
+				// TODO: implement this later, it's complicated i think.
 			} else {
-				console.log({ isCollapsed, isAtStart });
 				if (isCollapsed && isAtStart) {
-					e.preventDefault();
-					const isEmpty = startText?.yText.length === 0 && startText?.parent.children.length === 0;
-					console.log(
-						{ isEmpty, text: startText?.yText.toJSON() },
-						startText?.yText.length,
-						startText?.parent.children.length
-					);
 					if (isEmpty) {
-						const text = this.edytor.transact(() => {
-							return startText?.parent.remove();
-						});
-
-						this.edytor.selection.setAtTextOffset(text, text.yText.length);
+						console.log('here');
+						const { previousBlock } = startText?.parent;
+						const offset = previousBlock?.content.yText.length;
+						startText?.parent.remove();
+						this.edytor.selection.setAtTextOffset(previousBlock, offset);
+					} else if (isContentEmpty) {
+						console.log('here');
+						const { previousBlock } = startText?.parent;
+						const offset = previousBlock?.content.yText.length;
+						startText?.parent.removeAndUnnestChildren();
+						this.edytor.selection.setAtTextOffset(previousBlock, offset);
 					} else {
-						startText?.parent.unNest();
+						if (isNested) {
+							if (isLastChild) {
+								console.log('here');
+								const newBlock = startText?.parent.unNest();
+								newBlock && this.edytor.selection.setAtTextOffset(newBlock.content, 0);
+							} else {
+								console.log('here');
+								const previousBlock = startText?.parent.closestPreviousBlock;
+								const offset = previousBlock?.content.yText.length;
+								startText?.parent.mergeBlockBackward();
+								previousBlock &&
+									this.edytor.selection.setAtTextOffset(previousBlock.content, offset);
+							}
+						} else {
+							if (hasChildren) {
+								console.log('here');
+								const newBlock = startText?.parent.unNest();
+								newBlock && this.edytor.selection.setAtTextOffset(newBlock.content, 0);
+							} else {
+								console.log('here');
+								const newBlock = startText?.parent.mergeBlockBackward();
+								const anchorOffset = newBlock?.content.yText.length;
+								newBlock && this.edytor.selection.setAtTextOffset(newBlock.content, anchorOffset);
+							}
+						}
 					}
 				} else {
-					startText?.deleteText('BACKWARD', length);
+					startText?.deleteText('BACKWARD', length || 1);
+					this.selection.setAtTextOffset(startText!, yStart - (length || 1));
 				}
 			}
 			break;
@@ -66,8 +115,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 		case 'insertLineBreak': {
 			e.preventDefault?.();
 			startText?.insertText('\n', 'INSERT_LINE_BREAK');
-			this.selection.setAtNodeOffset(startNode!, start + 1);
-
+			this.selection.setAtTextOffset(startText!, start + 1);
 			break;
 		}
 		case 'insertFromPaste': {
@@ -79,36 +127,40 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 		}
 		case 'insertParagraph': {
 			e.preventDefault?.();
-
 			if (!startText) {
 				return;
 			}
 
 			if (isCollapsed) {
 				if (isAtEnd || isAtStart) {
-					let index = startText.parent?.parent?.children.indexOf(startText.parent);
+					let index = startText.parent?.index;
 					if (isAtEnd) {
-						index++;
-					}
-					// Just happen a new block after the current one
-					const newBlock = this.edytor.transact(() => {
-						return startText.parent?.parent?.addChild(
+						if (hasChildren) {
+							const newBlock = startText.parent.addChildWithCurrentChildren({
+								type: 'paragraph'
+							});
+							this.selection.setAtTextOffset(newBlock.content.id, newBlock.content.yText.length);
+						} else {
+							const newBlock = startText.parent.parent.addChild(
+								{
+									type: 'paragraph'
+								},
+								index + 1
+							);
+							this.selection.setAtTextOffset(newBlock.content.id, newBlock.content.yText.length);
+						}
+					} else {
+						startText.parent?.parent?.addChild(
 							{
 								type: 'paragraph'
 							},
 							index
 						);
-					});
-
-					if (isAtEnd) {
-						this.selection.setAtTextOffset(newBlock.content, newBlock.content.yText.length);
-					} else {
 						this.selection.setAtTextOffset(startText, 0);
 					}
 				} else {
 					const newBlock = startText.parent?.split(yStart);
-
-					this.selection.setAtTextOffset(newBlock.content, 0);
+					newBlock && this.selection.setAtTextOffset(newBlock.content, 0);
 				}
 			}
 

@@ -1,20 +1,48 @@
 <script lang="ts" module>
 	import { Edytor, useEdytor, type Snippets } from '../edytor.svelte.js';
 	import { Awareness } from 'y-protocols/awareness';
-
 	export { Edytor as EdytorContext, useEdytor };
 
 	const defaultValue: JSONDoc = {
-		children: Array.from({ length: 2 }, () => ({
-			type: 'paragraph',
-			content: [
-				{ text: 'Hello', marks: { bold: true, italic: true } },
-				{ text: 'World', marks: { bold: true } }
-			]
-		}))
+		children: [
+			{
+				type: 'paragraph',
+				content: [{ text: 'Prout', marks: { bold: true } }]
+			},
+			{
+				type: 'paragraph',
+				content: [{ text: 'Prout', marks: { bold: true } }]
+			},
+			{
+				type: 'paragraph',
+				content: [{ text: `OO OO`, marks: { bold: true, italic: true } }],
+				children: [
+					{
+						type: 'paragraph',
+						content: [{ text: `ONE `, marks: { bold: true, italic: true } }],
+						children: [
+							{
+								type: 'paragraph',
+								content: [{ text: 'TWO', marks: { bold: true } }]
+							}
+						]
+					},
+					{
+						type: 'paragraph',
+						content: [{ text: 'THREE', marks: { bold: true } }]
+					},
+					{
+						type: 'paragraph',
+						content: [{ text: 'FOUR', marks: { bold: true } }]
+					}
+				]
+			},
+			{
+				type: 'paragraph',
+				content: [{ text: 'FIVE', marks: { bold: true } }]
+			}
+		]
 	};
-
-	console.log({ defaultValue });
 </script>
 
 <script lang="ts">
@@ -25,6 +53,7 @@
 	import { onMount, setContext } from 'svelte';
 
 	let {
+		class: className,
 		edytor = $bindable(),
 		doc,
 		readonly = false,
@@ -40,7 +69,8 @@
 		awareness,
 		...snippets
 	}: Snippets & {
-		edytor: Edytor;
+		class?: string;
+		edytor?: Edytor;
 		doc?: Y.Doc;
 		awareness?: Awareness;
 		readonly?: boolean;
@@ -63,50 +93,27 @@
 		doc,
 		awareness,
 		hotKeys,
-		sync: !sync,
+		sync: !!sync,
 		value
 	});
 
 	onMount(() => {
-		sync?.({
-			doc: edytor.doc,
-			awareness: edytor.awareness,
-			synced: () => {
-				edytor.sync(value);
-			}
-		});
+		if (!readonly && sync) {
+			sync({
+				doc: edytor.doc,
+				awareness: edytor.awareness,
+				synced: () => {
+					edytor.sync(value);
+				}
+			});
+		}
 	});
 
 	setContext('edytor', edytor);
 </script>
 
-<button
-	onclick={(e) => {
-		e.preventDefault();
-		e.stopPropagation();
-		edytor.selection.state.startText?.mark({
-			type: 'bold',
-			value: true,
-			toggleIfExists: true
-		});
-	}}
->
-	format
-</button>
-
-<button
-	onclick={(e) => {
-		e.preventDefault();
-		e.stopPropagation();
-		// edytor.children[0].content.setChildren();
-		edytor.children[0].content.yText.applyDelta([{ delete: 1 }]);
-	}}
->
-	set first text
-</button>
-
-{#if edytor.synced}
-	<div use:edytor.attach data-edytor>
+{#if edytor.synced || readonly}
+	<div class={className} use:edytor.attach data-edytor>
 		{#each edytor.children || [] as block (block.id)}
 			<Block {block} />
 		{/each}

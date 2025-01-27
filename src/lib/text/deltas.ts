@@ -24,7 +24,6 @@ const createDelta = (text: string, attributes: Map<string, SerializableContent>)
 };
 
 export const toDeltas = (text: Y.Text) => {
-	text.toDelta();
 	const result: JSONDelta[] = [];
 	if (!text) {
 		return [result, true] as const;
@@ -41,7 +40,7 @@ export const toDeltas = (text: Y.Text) => {
 		}
 	};
 
-	while (n !== null) {
+	while (n) {
 		if (!n.deleted) {
 			const content = n.content;
 			const contentType = content.constructor;

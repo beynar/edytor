@@ -1,6 +1,4 @@
-import { createAbsolutePositionFromRelativePosition, type RelativePosition } from 'yjs';
-import { setCursorAtPosition } from '../utils/setCursor.js';
-import { getId } from '../utils/getId.js';
+import { type RelativePosition } from 'yjs';
 import * as Y from 'yjs';
 import type { Edytor } from '../edytor.svelte.js';
 import { Text } from '../text/text.svelte.js';
@@ -34,6 +32,8 @@ type SelectionState = {
 	startNode: Node | null;
 	endNode: Node | null;
 	isTextSpanning: boolean;
+	// TOREMOVE
+	yTextContent: string;
 };
 
 type SavedPosition = {
@@ -62,7 +62,9 @@ export class EdytorSelection {
 		startText: null,
 		endText: null,
 		isAtEnd: false,
-		isTextSpanning: false
+		isTextSpanning: false,
+		// TOREMOVE
+		yTextContent: ''
 	});
 	constructor(edytor: Edytor) {
 		this.edytor = edytor;
@@ -73,41 +75,36 @@ export class EdytorSelection {
 	getTextOfNode = getTextOfNode.bind(this);
 	getTextsInSelection = getTextsInSelection.bind(this);
 
-	private getRelativeCursorLocation = () => {
-		return {
-			yStart: this.state.yStart,
-			yStartElement: this.state.startText?.node,
-			length: this.state.length
-		};
-	};
-
 	init = () => {
 		this.edytor.undoManager.on('stack-item-added', (event: any) => {
-			console.log('stack-item-added', event);
-			// event.stackItem.meta.set('cursor-location', this.getRelativeCursorLocation());
+			event.stackItem.meta.set('cursor-location', {
+				id: this.state.startText?.id,
+				offset: this.state.yEnd
+			});
 		});
 		this.edytor.undoManager.on('stack-item-popped', (event: any) => {
-			console.log('stack-item-popped', event);
-			// this.restoreCursorLocation(event.stackItem.meta.get('cursor-location'));
+			const cursorLocation = event.stackItem.meta.get('cursor-location');
+			const text = this.edytor.getTextByIdOrParent(cursorLocation.id);
+			text && this.setAtTextOffset(text, cursorLocation.offset);
 		});
 
 		document?.addEventListener('selectionchange', this.onSelectionChange);
 	};
 
-	private restoreCursorLocation = (cursorLocation: {
-		yStart: RelativePosition | null;
-		yStartElement: Y.Text;
-		length: number;
-	}) => {
-		// if (!cursorLocation.yStart) return;
-		// const pos = createAbsolutePositionFromRelativePosition(cursorLocation.yStart, this.edytor.doc);
-		// if (!pos || !cursorLocation.yStartElement) return;
-		// setCursorAtPosition(
-		// 	`${getId(cursorLocation.yStartElement)}`,
-		// 	pos.index + cursorLocation.length
-		// );
+	handleTripleClick = async (e: MouseEvent) => {
+		if (e.detail < 3) return;
+		await tick();
+		const { startText } = this.state;
+		if (!startText) return;
+		this.setSelectionAtTextRange(startText, 0, startText.yText.length);
 	};
 
+	shift = (length: number) => {
+		this.state.yStart += length;
+		this.state.yEnd += length;
+		this.state.start += length;
+		this.state.end += length;
+	};
 	private onSelectionChange = () => {
 		const selection = window.getSelection();
 
@@ -125,6 +122,7 @@ export class EdytorSelection {
 		const end = isReversed ? anchorOffset : focusOffset;
 
 		const { startText, endText, texts } = this.getTextsInSelection(startNode, endNode, ranges);
+
 		const focusedBlocks = new Set(texts.map((text) => text.parent));
 		const difference = this.focusedBlocks.difference(focusedBlocks);
 		difference.forEach((block) => {
@@ -134,6 +132,7 @@ export class EdytorSelection {
 		focusedBlocks.forEach((block) => this.focusedBlocks.add(block));
 
 		let yStart = getYIndex(startText, startNode, start);
+
 		let yEnd = isCollapsed ? yStart : getYIndex(endText, endNode, end);
 
 		this.state = {
@@ -151,16 +150,21 @@ export class EdytorSelection {
 			endText,
 			isAtEnd: yEnd === endText?.yText.length,
 			isAtStart: yStart === 0,
-			isTextSpanning: startText !== endText,
+			isTextSpanning: startText !== endText && texts.length > 1,
 			startNode,
-			endNode
+			endNode,
+			// TOREMOVE
+			yTextContent: startText?.yText.toJSON()!
 		};
 	};
 
-	setAtTextOffset = async (text: Text, textOffset: number) => {
-		await tick();
+	setAtTextOffset = async (
+		textOrBlockOrId: Text | Block | string,
+		textOffset: number = this.state.yStart
+	) => {
+		const node = await this.edytor.getTextNode(textOrBlockOrId);
 		let nodeOffset = 0;
-		const treeWalker = document.createTreeWalker(text.node!, NodeFilter.SHOW_TEXT, (node) => {
+		const treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, (node) => {
 			if (node.nodeType === Node.TEXT_NODE) {
 				return NodeFilter.FILTER_ACCEPT;
 			}

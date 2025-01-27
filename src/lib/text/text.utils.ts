@@ -1,14 +1,11 @@
-import type { Delta, JSONText, Mark, SerializableContent } from '$lib/utils/json.js';
-import { tick } from 'svelte';
+import type { Delta, JSONDoc, JSONText, SerializableContent } from '$lib/utils/json.js';
 import type { Text } from './text.svelte.js';
-import * as Y from 'yjs';
 
 export function insertText(
 	this: Text,
 	value: string,
 	specialCase: 'AUTO_DOT' | 'PASTE' | 'INSERT_LINE_BREAK' | null = null
 ) {
-	this.startComposing();
 	const { yStart, yEnd, isCollapsed, startNode, start, ranges } = this.edytor.selection.state;
 	const attributes = this.getAttributesAtPosition(yStart);
 	const deltas: Delta[] = [
@@ -25,15 +22,14 @@ export function insertText(
 	if (!isCollapsed) {
 		deltas.splice(1, 0, { delete: yEnd - yStart });
 	}
-	if (isCollapsed) {
-		// virtually move the selection to the new position
-		// this is to ensure that the selection is at the right place after the text is inserted
-		// in case of rapid editing this can avoid swapped letter
-		this.edytor.selection.state.yStart += value.length;
-	}
-	this.edytor.transact(
+
+	this.edytor.transactRemote(
 		() => {
-			this.yText.applyDelta(deltas);
+			if (specialCase === 'AUTO_DOT' || !isCollapsed) {
+				this.yText.applyDelta(deltas);
+			} else {
+				this.yText.insert(yStart, value);
+			}
 		},
 		!['INSERT_LINE_BREAK', 'PASTE'].includes(specialCase as any)
 	);
@@ -83,16 +79,14 @@ export function getAttributesAtRange(
 }
 
 export function deleteText(this: Text, direction: 'BACKWARD' | 'FORWARD', length: number = 1) {
-	const { yStart, yEnd, isCollapsed, startNode, start, ranges } = this.edytor.selection.state;
+	const { yStart, yEnd, isCollapsed } = this.edytor.selection.state;
 
 	const deltas: Delta[] =
 		direction === 'BACKWARD'
 			? [{ retain: isCollapsed ? yStart - 1 : yStart }, { delete: isCollapsed ? 1 : length }]
 			: [{ retain: isCollapsed ? yStart : yStart }, { delete: isCollapsed ? 1 : length }];
-	console.log({ deltas });
-	this.edytor.transact(() => {
-		this.yText.applyDelta(deltas);
-	});
+
+	this.yText.applyDelta(deltas);
 }
 
 export function mark(
@@ -110,24 +104,44 @@ export function mark(
 	const { yStart, yEnd, length, end, ranges } = this.edytor.selection.state;
 	const attributesAtRange = getAttributesAtRange.bind(this)(yStart, yEnd);
 	const exists = type in attributesAtRange;
-	console.log({ exists, attributesAtRange });
-	this.edytor.transact(() => {
-		this.yText.format(yStart, length, {
-			[type]: true
-		});
+
+	this.yText.format(yStart, length, {
+		[type]: true
 	});
-	this.setChildren();
-	tick().then(() => {
-		this.edytor.selection.setSelectionAtTextRange(this, yStart, yEnd);
-	});
+
+	this.edytor.selection.setSelectionAtTextRange(this, yStart, yEnd);
 }
 
-export const createTextFromJson = (yText: Y.Text, parts: JSONText[]): Y.Text => {
+// This function split a Y.Text at an index, delete what is after the index and returns the deleted content as a JSONText[]
+export function split(this: Text, index: number = this.edytor.selection.state.yStart) {
 	let offset = 0;
-	parts.forEach((part) => {
-		const { text, marks } = part;
-		yText.insert(offset, text, marks);
-		offset += text.length;
-	});
-	return yText;
-};
+	let content: JSONText[] = [];
+
+	for (const child of this.value) {
+		const textLength = child.text.length;
+		const nextOffset = offset + textLength;
+
+		if (offset < index) {
+			content.push({
+				text: child.text.slice(index - offset),
+				marks: child.marks
+			});
+		} else {
+			// Text fully after split point
+			content.push({
+				text: child.text,
+				marks: child.marks
+			});
+		}
+		offset = nextOffset;
+	}
+	this.yText.delete(index, this.yText.length - index);
+	return content;
+}
+
+export function set(this: Text, value: JSONText[]) {
+	this.yText.applyDelta([
+		{ delete: this.yText.length },
+		...value.map((part) => ({ insert: part.text, attributes: part.marks }))
+	]);
+}

@@ -22,4 +22,13 @@
 	{/each}
 {/snippet}
 
-{@render snippet({ block, content, children })}
+{#if snippet}
+	{@render snippet({ block, content, children: block.children.length ? children : null })}
+{:else}
+	<div use:block.attach>
+		<p>{@render content()}</p>
+		<div>
+			{@render children()}
+		</div>
+	</div>
+{/if}

@@ -27,9 +27,9 @@ export class Buffer {
 			// @ts-ignore
 			deltas.splice(1, 0, { delete: this.deletedLength });
 		}
-		// this.edytor.transact(() => {
+
 		this.text!.yText.applyDelta(deltas);
-		// });
+
 		console.log({ deltas });
 		console.log(this.text!.yText.toDelta());
 

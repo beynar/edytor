@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Text } from '$lib/text/text.svelte.js';
-	import Marks from './Marks.svelte';
+	import Mark from './Mark.svelte';
 	import type { JSONDelta } from '$lib/text/deltas.js';
 
 	let {
@@ -15,12 +15,11 @@
 
 	const mark = $derived(delta.marks[index]);
 	const snippet = $derived(text.edytor.snippets[`${mark?.[0]}Mark`]);
-	console.log('render marks');
 </script>
 
 {#snippet content()}
 	{#if delta.marks[index + 1]}
-		<Marks index={index + 1} {delta} {text} />
+		<Mark index={index + 1} {delta} {text} />
 	{:else}
 		{delta.text}
 	{/if}

@@ -1,9 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Edytor } from '$lib/classes/useEdytor.svelte.js';
+import type { Edytor } from '$lib/edytor.svelte.js';
 import { hasMarkAtSelection } from '$lib/operations/hasMark.js';
-import { nest } from '$lib/operations/nest.js';
-import { getId } from '$lib/utils/getId.js';
-import { setCursorAtRange } from '$lib/utils/setCursor.js';
 import { isHotkey } from 'is-hotkey';
 
 export type HotKeys =
@@ -18,10 +15,10 @@ export type HotKeys =
 	  };
 
 export function onKeyDown(this: Edytor, e: KeyboardEvent) {
+	if (this.readonly) return;
 	const isUndo = e.key === 'z' && (e.ctrlKey || e.metaKey);
 	const isRedo = e.key === 'Z' && (e.ctrlKey || e.metaKey) && e.shiftKey;
 	if (isUndo) {
-		console.log('undo');
 		e.preventDefault();
 		this.undoManager.undo();
 	}
@@ -31,7 +28,8 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 	}
 	if (e.key === 'Tab') {
 		e.preventDefault();
-		this.selection.yStartElement && nest(this.selection.yStartElement, this);
+		e.stopPropagation();
+		this.selection.state.startText?.parent.nest();
 	}
 
 	const isModifier = e.ctrlKey || e.metaKey;
@@ -56,11 +54,7 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 								yText.format(this.selection.yStartIndex, this.selection.length, {
 									[mark]: !hasMark
 								});
-								setCursorAtRange(
-									getId(yText),
-									this.selection.yStartIndex,
-									this.selection.yEndIndex
-								);
+
 								// this.onSelectionChange();
 							}
 							// if(isFirst) {

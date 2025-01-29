@@ -4,7 +4,6 @@ import { type YBlock, type JSONBlock } from '$lib/utils/json.js';
 import * as Y from 'yjs';
 import {
 	addChild,
-	addChildBehind,
 	addChildWithCurrentChildren,
 	batch,
 	mergeBlockBackward,
@@ -104,7 +103,6 @@ export class Block {
 	private observeChildren = observeChildren.bind(this);
 	private batch = batch.bind(this);
 	addChild = this.batch(addChild.bind(this));
-	addChildBehind = this.batch(addChildBehind.bind(this));
 	addChildWithCurrentChildren = this.batch(addChildWithCurrentChildren.bind(this));
 	split = this.batch(split.bind(this));
 	remove = this.batch(remove.bind(this));
@@ -179,7 +177,6 @@ export class Block {
 
 export function observeChildren(this: Block, event: Y.YArrayEvent<YBlock>) {
 	if (event.transaction.origin !== this.edytor.transaction) {
-		console.log('observeChildren', event);
 		let start = 0;
 		event.delta.forEach(({ retain, delete: _delete, insert }) => {
 			if (retain) {
@@ -198,12 +195,11 @@ export function observeChildren(this: Block, event: Y.YArrayEvent<YBlock>) {
 							parent: this,
 							yBlock
 						});
-					console.log({ start }, block.yBlock.toJSON());
+
 					this.children.splice(start, 0, block);
 					start += 1;
 				}
 			}
 		});
 	}
-	console.log(this.yChildren.toJSON());
 }

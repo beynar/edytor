@@ -1,5 +1,4 @@
 import { Block } from '$lib/block/block.svelte.js';
-import { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 
@@ -22,14 +21,6 @@ export function addChild(
 	return newBlock;
 }
 
-export function addChildBehind(this: Block, block: JSONBlock): Block | null {
-	const nextBlock = this.closestNextBlock;
-	if (!nextBlock) return null;
-	const newBlock = new Block({ parent: this, block });
-	this.yChildren.insert(this.index, [newBlock.yBlock]);
-	return newBlock as Block;
-}
-
 export function addChildWithCurrentChildren(this: Block, block: JSONBlock): Block {
 	const newBlock = new Block({
 		parent: this.parent,
@@ -46,7 +37,7 @@ export function addChildWithCurrentChildren(this: Block, block: JSONBlock): Bloc
 export function split(this: Block, index: number = this.edytor.selection.state.yStart) {
 	const content = this.content.split(index);
 
-	const hasChildren = this.children.length > 1;
+	const hasChildren = this.children.length >= 1;
 
 	// Add the current children to the new block if any
 	const newBlock = this.parent.addChild(
@@ -54,8 +45,8 @@ export function split(this: Block, index: number = this.edytor.selection.state.y
 		this.parent.children.indexOf(this) + 1
 	);
 
+	// If the block has children, we need to remove its children and insert them into the new block
 	if (hasChildren) {
-		// If the block has children, we need to remove its children and insert them into the new block
 		this.yChildren.delete(0, this.children.length);
 	}
 
@@ -98,9 +89,10 @@ export function mergeBlockBackward(this: Block): Block | null {
 		...this.content.yText.toDelta()
 	]);
 
+	// If the current block has children, we need to unnest them and insert them into the current parent
 	if (children.length > 0) {
 		// Unnest children if any
-		previousBlock.yChildren.insert(
+		this.parent.yChildren.insert(
 			this.index,
 			children.map((child) => {
 				const newBlock = new Block({

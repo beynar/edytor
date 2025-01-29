@@ -53,17 +53,11 @@ export class Edytor {
 	snippets: Snippets;
 	lastInsert: string | null = null;
 	container = $state<HTMLDivElement>();
-
-	nodesToYElements = $state(new Map<Node, Y.Text | YBlock>());
-	idToBlock = $state(new Map<string, Block>());
-	idToText = $state(new Map<string, Text>());
+	idToBlock = new SvelteMap<string, Block>();
+	idToText = new SvelteMap<string, Text>();
+	nodeToText = new SvelteMap<Node, Text>();
 	hotKeys: HotKeys;
 	initialized = $state(false);
-	YElementsToNodes = $state(new Map<Y.Text | YBlock, Node>());
-	textToNode = new SvelteMap<Text, Node>();
-	blockToNode = new SvelteMap<Block, Node>();
-	nodeToBlock = new SvelteMap<Node, Block>();
-	nodeToText = new SvelteMap<Node, Text>();
 	readonly = $state(false);
 	children = $state<Block[]>([]);
 	synced = $state(false);

@@ -15,11 +15,11 @@ export class Text {
 	delta: Delta[] = [];
 	isEmpty = $state(false);
 	id: string;
+
 	get value(): JSONText[] {
-		const [deltas] = toDeltas(this.yText);
-		return deltas.map((delta) => ({
-			text: delta.text,
-			marks: Object.fromEntries(delta.marks)
+		return this.children.map((child) => ({
+			text: child.text,
+			marks: Object.fromEntries(child.marks)
 		}));
 	}
 
@@ -80,13 +80,9 @@ export class Text {
 	set = set.bind(this);
 	attach = (node: HTMLElement) => {
 		this.node = node;
-		this.edytor.textToNode.set(this, node);
 		this.edytor.nodeToText.set(node, this);
-		this.edytor.YElementsToNodes.set(this.yText, node);
-		this.edytor.nodesToYElements.set(node, this.yText);
 		node.setAttribute('data-edytor-id', `${this.id}`);
 		node.setAttribute('data-edytor-text', `true`);
-
 		return {
 			destroy: () => {
 				this.yText?.unobserve(this.observeText);

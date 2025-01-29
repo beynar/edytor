@@ -20,8 +20,6 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 	const hasChildren = (startText?.parent.children.length || 0) > 0;
 	const isEmpty = isContentEmpty && !hasChildren;
 	const isNested = startText?.parent.parent !== this.edytor;
-	const hasSiblings = (startText?.parent.parent.children.length || 0) > 1;
-	const isFirstChild = startText?.parent.parent.children.at(0) === startText?.parent;
 	const isLastChild = startText?.parent.parent.children.at(-1) === startText?.parent;
 
 	switch (inputType) {
@@ -56,7 +54,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 					this.edytor.selection.setAtTextOffset(startText!, yStart);
 				} else {
 					startText?.deleteText('FORWARD', length);
-					this.selection.setAtTextOffset(startText!, yStart - length);
+					this.selection.setAtTextOffset(startText!, yStart);
 				}
 			}
 			break;
@@ -67,13 +65,11 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 			} else {
 				if (isCollapsed && isAtStart) {
 					if (isEmpty) {
-						console.log('here');
 						const { previousBlock } = startText?.parent;
 						const offset = previousBlock?.content.yText.length;
 						startText?.parent.remove();
 						this.edytor.selection.setAtTextOffset(previousBlock, offset);
 					} else if (isContentEmpty) {
-						console.log('here');
 						const { previousBlock } = startText?.parent;
 						const offset = previousBlock?.content.yText.length;
 						startText?.parent.removeAndUnnestChildren();
@@ -93,21 +89,16 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 									this.edytor.selection.setAtTextOffset(previousBlock.content, offset);
 							}
 						} else {
-							if (hasChildren) {
-								console.log('here');
-								const newBlock = startText?.parent.unNest();
-								newBlock && this.edytor.selection.setAtTextOffset(newBlock.content, 0);
-							} else {
-								console.log('here');
-								const newBlock = startText?.parent.mergeBlockBackward();
-								const anchorOffset = newBlock?.content.yText.length;
-								newBlock && this.edytor.selection.setAtTextOffset(newBlock.content, anchorOffset);
-							}
+							const previousBlock = startText?.parent.closestPreviousBlock;
+							const offset = previousBlock?.content.yText.length;
+							startText?.parent.mergeBlockBackward();
+							previousBlock && this.edytor.selection.setAtTextOffset(previousBlock.content, offset);
 						}
 					}
 				} else {
 					startText?.deleteText('BACKWARD', length || 1);
-					this.selection.setAtTextOffset(startText!, yStart - (length || 1));
+
+					this.selection.setAtTextOffset(startText!, yStart);
 				}
 			}
 			break;

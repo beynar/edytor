@@ -35,83 +35,88 @@
 	clear
 </button>
 <div class="grid grid-cols-3 p-10">
-	<div class="col-span-2 card rounded bg-neutral-800 p-2">
-		<button
-			onclick={(e) => {
-				e.preventDefault();
-				edytor?.selection.state.startText?.set([{ text: 'WAZA', marks: { bold: true } }]);
-			}}
-		>
-			set text
-		</button>
-		<button
-			onclick={(e) => {
-				e.preventDefault();
-				edytor?.selection.state.startText?.parent?.set({
-					type: 'quote',
-					content: [{ text: 'quote', marks: { bold: true, italic: true } }],
-					children: []
-				});
-			}}
-		>
-			set block
-		</button>
-		<button
-			onclick={(e) => {
-				e.preventDefault();
-				console.log({
-					doc: edytor?.doc.toJSON(),
-					value: edytor?.value
-				});
-			}}
-		>
-			get value
-		</button>
-		<Edytor
-			sync={({ doc, synced }) => {
-				// provider = new IndexeddbPersistence('haha-2', doc);
-				provider = new IndexeddbPersistence(crypto.randomUUID(), doc);
-				provider.on('synced', () => {
-					synced(provider);
-				});
-			}}
-			readonly={false}
-			class="outline-none"
-			bind:edytor
-		>
-			{#snippet boldMark({ content, mark, text })}
-				<b>{@render content()}</b>
-			{/snippet}
+	<div class="col-span-2">
+		<div class="card rounded bg-neutral-800 p-2">
+			<button
+				onclick={(e) => {
+					e.preventDefault();
+					edytor?.selection.state.startText?.set([{ text: 'WAZA', marks: { bold: true } }]);
+				}}
+			>
+				set text
+			</button>
+			<button
+				onclick={(e) => {
+					e.preventDefault();
+					edytor?.selection.state.startText?.parent?.set({
+						type: 'quote',
+						content: [{ text: 'quote', marks: { bold: true, italic: true } }],
+						children: []
+					});
+				}}
+			>
+				set block
+			</button>
+			<button
+				onclick={(e) => {
+					e.preventDefault();
+					console.log({
+						doc: edytor?.doc.toJSON(),
+						value: edytor?.value
+					});
+				}}
+			>
+				get value
+			</button>
+			<Edytor
+				sync={({ doc, synced }) => {
+					// provider = new IndexeddbPersistence('haha-2', doc);
+					provider = new IndexeddbPersistence(crypto.randomUUID(), doc);
+					provider.on('synced', () => {
+						synced(provider);
+					});
+				}}
+				readonly={false}
+				class="outline-none"
+				bind:edytor
+			>
+				{#snippet boldMark({ content, mark, text })}
+					<b>{@render content()}</b>
+				{/snippet}
 
-			{#snippet italicMark({ content, mark, text })}
-				<i>{@render content()}</i>
-			{/snippet}
+				{#snippet italicMark({ content, mark, text })}
+					<i>{@render content()}</i>
+				{/snippet}
 
-			{#snippet paragraphBlock({ block, content, children })}
-				<div use:block.attach>
-					<p>
-						{@render content()}
-					</p>
-					{#if children}
-						<div style="padding-left: 20px">
-							{@render children()}
-						</div>
-					{/if}
-				</div>
-			{/snippet}
-			{#snippet quoteBlock({ block, content, children })}
-				<div use:block.attach>
-					<p>
-						{@render content()}
-					</p>
-					{#if children}
-						<div style="padding-left: 20px">
-							{@render children()}
-						</div>
-					{/if}
-				</div>
-			{/snippet}
-		</Edytor>
+				{#snippet paragraphBlock({ block, content, children })}
+					<div use:block.attach>
+						<p>
+							{@render content()}
+						</p>
+						{#if children}
+							<div style="padding-left: 20px">
+								{@render children()}
+							</div>
+						{/if}
+					</div>
+				{/snippet}
+				{#snippet quoteBlock({ block, content, children })}
+					<div use:block.attach>
+						<p>
+							{@render content()}
+						</p>
+						{#if children}
+							<div style="padding-left: 20px">
+								{@render children()}
+							</div>
+						{/if}
+					</div>
+				{/snippet}
+			</Edytor>
+		</div>
+		<div class="card rounded bg-neutral-800 p-2 mt-2">
+			{JSON.stringify(edytor?.value)}
+		</div>
 	</div>
 	<div>
 		{#key edytor?.selection.state}

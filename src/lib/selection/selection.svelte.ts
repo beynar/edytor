@@ -47,6 +47,7 @@ export class EdytorSelection {
 	edytor: Edytor;
 	focusedBlocks = new SvelteSet<Block>();
 	selectedBlocks = new SvelteSet<Block>();
+
 	state = $state<SelectionState>({
 		selection: null,
 		start: 0,
@@ -70,7 +71,10 @@ export class EdytorSelection {
 		// TOREMOVE
 		yTextContent: ''
 	});
-	constructor(edytor: Edytor) {
+	constructor(
+		edytor: Edytor,
+		private edytorOnSelectionChange?: (selection: EdytorSelection) => void
+	) {
 		this.edytor = edytor;
 	}
 	destroy = () => {
@@ -168,6 +172,9 @@ export class EdytorSelection {
 			// TOREMOVE
 			yTextContent: startText?.yText.toJSON()!
 		};
+
+		this.edytorOnSelectionChange?.(this);
+		this.edytor.plugins.forEach((plugin) => plugin.onSelectionChange?.(this));
 	};
 
 	restoreRelativePosition = (text: Text) => {
@@ -182,6 +189,7 @@ export class EdytorSelection {
 		if (!absolutePosition) {
 			return;
 		}
+
 		this.setAtTextOffset(text, absolutePosition?.index);
 	};
 
@@ -218,13 +226,13 @@ export class EdytorSelection {
 	};
 
 	setSelectionAtTextRange = async (text: Text, start: number, end: number) => {
-		await tick();
+		const node = await this.edytor.getTextNode(text);
 		let startNode: Node | null = null;
 		let startOffset = 0;
 		let endNode: Node | null = null;
 		let endOffset = 0;
 
-		const treeWalker = document.createTreeWalker(text.node!, NodeFilter.SHOW_TEXT, (node) => {
+		const treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, (node) => {
 			if (node.nodeType === Node.TEXT_NODE) {
 				return NodeFilter.FILTER_ACCEPT;
 			}

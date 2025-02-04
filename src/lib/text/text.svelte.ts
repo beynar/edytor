@@ -115,10 +115,19 @@ export class Text {
 				};
 			}
 		});
+		let pluginDestroy = this.edytor.plugins.reduce(
+			(acc, plugin) => {
+				const action = plugin.onTextAttached?.({ node, text: this });
+				action && acc.push(action);
+				return acc;
+			},
+			[] as (() => void)[]
+		);
 		return {
 			destroy: () => {
 				this.yText?.unobserve(this.observeText);
 				this.edytor.idToText.delete(this.id);
+				pluginDestroy.forEach((destroy) => destroy());
 			}
 		};
 	};

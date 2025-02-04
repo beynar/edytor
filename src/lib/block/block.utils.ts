@@ -38,19 +38,25 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 	func: T
 ): T {
 	return function (this: Block, payload: BlockOperations[O]): ReturnType<T> {
-		this.edytor.plugins.forEach((plugin) => {
+		let finalPayload = payload;
+
+		for (const plugin of this.edytor.plugins) {
 			// @ts-expect-error
-			plugin.onBeforeChange?.({
+			const normalizedPayload = plugin.onBeforeChange?.({
 				operation: ops,
 				payload,
 				block: this,
 				text: this.content,
 				edytor: this.edytor,
 				prevent
-			});
-		});
+			}) as BlockOperations[O] | undefined;
+			if (normalizedPayload) {
+				finalPayload = normalizedPayload;
+				break;
+			}
+		}
 
-		return this.edytor.transact(() => func.bind(this)(payload));
+		return this.edytor.transact(() => func.bind(this)(finalPayload));
 	} as T;
 }
 

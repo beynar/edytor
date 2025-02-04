@@ -6,6 +6,7 @@ import type { SerializableContent } from './utils/json.js';
 import type { HotKey, HotKeyCombination } from './hotkeys.js';
 import type { TextOperations } from './text/text.utils.js';
 import type { BlockOperations } from './block/block.utils.js';
+import type { EdytorSelection } from './selection/selection.svelte.js';
 
 export type MarkSnippetPayload<D extends SerializableContent = SerializableContent> = {
 	content: Snippet;
@@ -45,10 +46,13 @@ export type Plugin = (editor: Edytor) => {
 	marks?: Record<string, Snippet<[MarkSnippetPayload<any>]>>;
 	blocks?: Record<string, Snippet<[BlockSnippetPayload<any>]>>;
 	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
-	onBeforeChange?: (payload: ChangePayload) => void;
+	onBeforeChange?: <C extends ChangePayload>(payload: C) => C['payload'] | void;
+	onSelectionChange?: (selection: EdytorSelection) => void;
 	placeholder?: Snippet<[{ block: Block; text: Text }]>;
 	onEnter?: (paylaod: { prevent: Prevent; e: InputEvent }) => void;
 	onTab?: (paylaod: { prevent: Prevent; e: KeyboardEvent }) => void;
+	onBlockAttached?: (payload: { node: HTMLElement; block: Block }) => () => void;
+	onTextAttached?: (payload: { node: HTMLElement; text: Text }) => () => void;
 };
 
 export type InitializedPlugin = ReturnType<Plugin>;

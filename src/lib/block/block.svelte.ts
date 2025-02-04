@@ -170,8 +170,10 @@ export class Block {
 		this.id = (yBlock?.doc && (yBlock?.get('id') as string)) || id('block');
 		if (block !== undefined) {
 			// If block is provided we need to initialize the block with the value;
-			this.children = (block.children || []).map((child) => {
-				return new Block({ parent: this, block: child });
+			this.children = (block.children || []).map((child, index) => {
+				const block = new Block({ parent: this, block: child });
+				block.index = index;
+				return block;
 			});
 			this.yChildren = Y.Array.from(this.children.map((child) => child.yBlock));
 
@@ -197,8 +199,10 @@ export class Block {
 				yText: getSetText(this.yBlock)
 			});
 			this.#type = this.yBlock.get('type') || 'paragraph';
-			this.children = this.yChildren.map((child) => {
-				return new Block({ parent: this, yBlock: child });
+			this.children = this.yChildren.map((child, index) => {
+				const block = new Block({ parent: this, yBlock: child });
+				block.index = index;
+				return block;
 			});
 		}
 
@@ -212,16 +216,29 @@ export class Block {
 		this.node = node;
 		node.setAttribute('data-edytor-id', `${this.id}`);
 		node.setAttribute('data-edytor-block', `true`);
+
 		if (isVoid) {
 			this.isVoid = true;
 			node.setAttribute('data-edytor-void', `true`);
 			node.contentEditable = 'false';
 		}
 
+		let pluginDestroy = this.edytor.plugins.reduce(
+			(acc, plugin) => {
+				const action = plugin.onBlockAttached?.({ node, block: this });
+
+				action && acc.push(action);
+
+				return acc;
+			},
+			[] as (() => void)[]
+		);
+
 		return {
 			destroy: () => {
 				this.yChildren.unobserve(this.observeChildren);
 				this.edytor.idToBlock.delete(this.id);
+				pluginDestroy.forEach((destroy) => destroy());
 			}
 		};
 	};

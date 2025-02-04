@@ -31,6 +31,7 @@
 	import type { JSONDoc } from '../utils/json.js';
 	import { onMount, setContext } from 'svelte';
 	import type { HotKey } from '$lib/hotkeys.js';
+	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 
 	let {
 		plugins,
@@ -42,6 +43,7 @@
 		hotKeys,
 		sync,
 		awareness,
+		onSelectionChange,
 		...snippets
 	}: Snippets & {
 		plugins?: Plugin[];
@@ -51,6 +53,7 @@
 		awareness?: Awareness;
 		readonly?: boolean;
 		hotKeys?: Record<string, HotKey>;
+		onSelectionChange?: (selection: EdytorSelection) => void;
 		value?: JSONDoc;
 		sync?: ({
 			doc,
@@ -70,6 +73,7 @@
 		doc,
 		awareness,
 		hotKeys,
+		onSelectionChange,
 		sync: !!sync,
 		value
 	});

@@ -56,6 +56,7 @@ export type EdytorOptions = {
 	awareness?: Awareness;
 	sync?: boolean;
 	value?: JSONDoc;
+	onSelectionChange?: (selection: EdytorSelection) => void;
 };
 export class Edytor {
 	node?: HTMLElement;
@@ -104,15 +105,14 @@ export class Edytor {
 		doc = this.doc,
 		awareness = new Awareness(doc),
 		sync,
-		value
+		value,
+		onSelectionChange
 	}: EdytorOptions) {
 		this.readonly = readonly || false;
 		this.doc = doc;
 		this.yBlock = this.doc.getMap('content') as YBlock;
 		this.yChildren = getSetChildren(this.yBlock);
 		this.awareness = awareness;
-
-		this.selection = new EdytorSelection(this);
 
 		if (readonly || !sync) {
 			this.sync(value || { children: [] });
@@ -144,7 +144,7 @@ export class Edytor {
 				this.blocks.set(key, snippet as Snippet<[BlockSnippetPayload]>);
 			}
 		});
-
+		this.selection = new EdytorSelection(this, onSelectionChange);
 		this.hotKeys = new HotKeys(this, hotKeys, this.plugins);
 	}
 
@@ -190,7 +190,7 @@ export class Edytor {
 		this.synced = true;
 		this.yChildren.observe(this.observeChilren);
 		this.undoManager = new Y.UndoManager(this.yChildren, {
-			trackedOrigins: new Set([null])
+			trackedOrigins: new Set([this.transaction, null])
 		});
 	};
 

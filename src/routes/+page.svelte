@@ -5,6 +5,9 @@
 	import javascript from 'highlight.js/lib/languages/json';
 	import { IndexeddbPersistence } from '../lib/localProvider.js';
 	import { onMount } from 'svelte';
+	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+
 	hljs.registerLanguage('javascript', javascript);
 	const highlight = (node: HTMLElement, json: string) => {
 		const highlighted = hljs.highlight(json, { language: 'json' }).value;
@@ -19,6 +22,16 @@
 		return () => {
 			provider.destroy();
 		};
+	});
+
+	let value = $state<{ children: any[] }>({
+		children: [
+			{
+				type: 'paragraph',
+				content: 'hello',
+				children: []
+			}
+		]
 	});
 </script>
 
@@ -69,6 +82,7 @@
 				get value
 			</button>
 			<Edytor
+				plugins={[mentionPlugin, richTextPlugin]}
 				sync={({ doc, synced }) => {
 					// provider = new IndexeddbPersistence('haha-2', doc);
 					provider = new IndexeddbPersistence(crypto.randomUUID(), doc);
@@ -82,6 +96,10 @@
 			>
 				{#snippet boldMark({ content, mark, text })}
 					<b>{@render content()}</b>
+				{/snippet}
+
+				{#snippet voidMark({ content, mark, text })}
+					<span>VOIIIID</span>
 				{/snippet}
 
 				{#snippet italicMark({ content, mark, text })}
@@ -111,6 +129,20 @@
 							</div>
 						{/if}
 					</div>
+				{/snippet}
+				{#snippet imageBlock({ block, content, children })}
+					<figure class="!grid gap-2" use:block.attach={true}>
+						<div contenteditable="false">
+							<img
+								class="w-full aspect-square"
+								src="https://images.unsplash.com/photo-1737978697863-5d65495b28ef?q=80&w=3087&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
+								alt=""
+							/>
+						</div>
+						<figcaption class="w-full p-2 text-slate-200">
+							{@render content()}
+						</figcaption>
+					</figure>
 				{/snippet}
 			</Edytor>
 		</div>

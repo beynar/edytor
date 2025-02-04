@@ -14,7 +14,7 @@
 	} = $props();
 
 	const mark = $derived(delta.marks[index]);
-	const snippet = $derived(text.edytor.snippets[`${mark?.[0]}Mark`]);
+	const snippet = $derived(text.edytor.marks.get(mark?.[0]));
 </script>
 
 {#snippet content()}

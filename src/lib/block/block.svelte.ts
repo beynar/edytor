@@ -3,17 +3,18 @@ import { Edytor } from '../edytor.svelte.js';
 import { type YBlock, type JSONBlock } from '$lib/utils/json.js';
 import * as Y from 'yjs';
 import {
-	addChild,
-	addChildWithCurrentChildren,
 	batch,
+	addBlock,
+	insertBlockAfter,
+	insertBlockBefore,
 	mergeBlockBackward,
 	mergeBlockForward,
-	nest,
-	remove,
-	removeAndUnnestChildren,
-	set,
-	split,
-	unNest
+	nestBlock,
+	removeBlock,
+	setBlock,
+	splitBlock,
+	addBlocks,
+	unNestBlock
 } from './block.utils.js';
 import { id } from '$lib/utils.js';
 
@@ -44,22 +45,39 @@ export class Block {
 	children = $state<Block[]>([]);
 	id: string;
 	node?: HTMLElement;
+	isVoid = $state(false);
+	#index = $state<number | null>(null);
+
+	get index(): number {
+		if (this.#index === null) {
+			return this.parent.children.indexOf(this);
+		}
+		return this.#index;
+	}
+
+	set index(value: number) {
+		this.#index = value;
+	}
 
 	#type = $state<string>('paragraph');
-
 	get type() {
 		return this.#type;
 	}
-
 	set type(value: string) {
 		// Do something here to update the document
 		this.yBlock.set('type', value);
 		this.#type = value;
 	}
 
-	get index() {
-		return this.parent.children.indexOf(this);
+	#depth = $state<number | null>(null);
+
+	get depth(): number {
+		if (this.#depth === null) {
+			return this.parent instanceof Block ? this.parent.depth + 1 : 0;
+		}
+		return this.#depth;
 	}
+
 	get nextBlock() {
 		const index = this.index;
 		return this.parent.children[index + 1];
@@ -81,14 +99,39 @@ export class Block {
 			}
 		}
 	}
-	get closestNextBlock(): Block {
-		return this.children.at(0) || this.nextBlock;
+
+	get closestNextBlock(): Block | undefined {
+		if (this.nextBlock) {
+			return this.nextBlock;
+		} else {
+			if (this.hasChildren) {
+				return this.children.at(-1);
+			} else {
+				if (this.parent instanceof Block) {
+					return this.parent.parent.children.at(-1);
+				} else {
+					return undefined;
+				}
+			}
+		}
 	}
 	get deepestChild(): Block {
 		if (this.children.length) {
 			return this.children.at(-1)!.deepestChild;
 		}
 		return this;
+	}
+
+	get hasChildren(): boolean {
+		return this.children.length > 0;
+	}
+
+	get hasContent(): boolean {
+		return this.content.isEmpty;
+	}
+
+	get isEmpty(): boolean {
+		return this.hasContent && !this.hasChildren;
 	}
 
 	get value(): JSONBlock {
@@ -102,16 +145,17 @@ export class Block {
 
 	private observeChildren = observeChildren.bind(this);
 	private batch = batch.bind(this);
-	addChild = this.batch(addChild.bind(this));
-	addChildWithCurrentChildren = this.batch(addChildWithCurrentChildren.bind(this));
-	split = this.batch(split.bind(this));
-	remove = this.batch(remove.bind(this));
-	removeAndUnnestChildren = this.batch(removeAndUnnestChildren.bind(this));
-	unNest = this.batch(unNest.bind(this));
-	mergeBlockBackward = this.batch(mergeBlockBackward.bind(this));
-	mergeBlockForward = this.batch(mergeBlockForward.bind(this));
-	nest = this.batch(nest.bind(this));
-	set = this.batch(set.bind(this));
+	addBlock = this.batch('addBlock', addBlock.bind(this));
+	addBlocks = this.batch('addBlocks', addBlocks.bind(this));
+	insertBlockAfter = this.batch('insertBlockAfter', insertBlockAfter.bind(this));
+	insertBlockBefore = this.batch('insertBlockBefore', insertBlockBefore.bind(this));
+	splitBlock = this.batch('splitBlock', splitBlock.bind(this));
+	removeBlock = this.batch('removeBlock', removeBlock.bind(this));
+	unNestBlock = this.batch('unNestBlock', unNestBlock.bind(this));
+	mergeBlockBackward = this.batch('mergeBlockBackward', mergeBlockBackward.bind(this));
+	mergeBlockForward = this.batch('mergeBlockForward', mergeBlockForward.bind(this));
+	nestBlock = this.batch('nestBlock', nestBlock.bind(this));
+	setBlock = this.batch('setBlock', setBlock.bind(this));
 
 	constructor({
 		parent,
@@ -122,10 +166,11 @@ export class Block {
 	} & ({ yBlock?: undefined; block: JSONBlock } | { yBlock: YBlock; block?: undefined })) {
 		this.parent = parent;
 		this.edytor = parent.edytor;
+
 		this.id = (yBlock?.doc && (yBlock?.get('id') as string)) || id('block');
 		if (block !== undefined) {
 			// If block is provided we need to initialize the block with the value;
-			this.children = (block.children || []).map((child, index) => {
+			this.children = (block.children || []).map((child) => {
 				return new Block({ parent: this, block: child });
 			});
 			this.yChildren = Y.Array.from(this.children.map((child) => child.yBlock));
@@ -143,6 +188,7 @@ export class Block {
 					content: this.content.yText
 				})
 			);
+			this.#type = block.type;
 		} else {
 			this.yBlock = yBlock;
 			this.yChildren = getSetChildren(this.yBlock);
@@ -150,6 +196,7 @@ export class Block {
 				parent: this,
 				yText: getSetText(this.yBlock)
 			});
+			this.#type = this.yBlock.get('type') || 'paragraph';
 			this.children = this.yChildren.map((child) => {
 				return new Block({ parent: this, yBlock: child });
 			});
@@ -161,10 +208,15 @@ export class Block {
 		}
 	}
 
-	attach = (node: HTMLElement) => {
+	attach = (node: HTMLElement, isVoid: boolean = false) => {
 		this.node = node;
 		node.setAttribute('data-edytor-id', `${this.id}`);
 		node.setAttribute('data-edytor-block', `true`);
+		if (isVoid) {
+			this.isVoid = true;
+			node.setAttribute('data-edytor-void', `true`);
+			node.contentEditable = 'false';
+		}
 
 		return {
 			destroy: () => {
@@ -176,30 +228,30 @@ export class Block {
 }
 
 export function observeChildren(this: Block, event: Y.YArrayEvent<YBlock>) {
-	if (event.transaction.origin !== this.edytor.transaction) {
-		let start = 0;
-		event.delta.forEach(({ retain, delete: _delete, insert }) => {
-			if (retain) {
-				start += retain;
-			}
-			if (_delete) {
-				this.children.splice(start, _delete);
-				// start -= _delete;
-			}
-			if (Array.isArray(insert)) {
-				for (let i = 0; i < insert.length; i++) {
-					const yBlock = insert[i] as YBlock;
-					const block =
-						this.edytor.idToBlock.get(yBlock.get('id') as string) ||
-						new Block({
-							parent: this,
-							yBlock
-						});
+	let start = 0;
+	event.delta.forEach(({ retain, delete: _delete, insert }) => {
+		if (retain) {
+			start += retain;
+		}
+		if (_delete) {
+			this.children.splice(start, _delete);
+		}
+		if (Array.isArray(insert)) {
+			for (let i = 0; i < insert.length; i++) {
+				const yBlock = insert[i] as YBlock;
+				const block =
+					this.edytor.idToBlock.get(yBlock.get('id') as string) ||
+					new Block({
+						parent: this,
+						yBlock
+					});
 
-					this.children.splice(start, 0, block);
-					start += 1;
-				}
+				this.children.splice(start, 0, block);
+				start += 1;
 			}
-		});
-	}
+		}
+	});
+	this.children.forEach((child, index) => {
+		child.index = index;
+	});
 }

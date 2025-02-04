@@ -2,7 +2,7 @@
 	import { Edytor, useEdytor, type Snippets } from '../edytor.svelte.js';
 	import { Awareness } from 'y-protocols/awareness';
 	export { Edytor as EdytorContext, useEdytor };
-
+	import type { Plugin } from '$lib/plugins.js';
 	const defaultValue: JSONDoc = {
 		children: [
 			{
@@ -11,36 +11,16 @@
 			},
 			{
 				type: 'paragraph',
-				content: [{ text: 'Prout', marks: { bold: true } }]
-			},
-			{
-				type: 'paragraph',
-				content: [{ text: `OO OO`, marks: { bold: true, italic: true } }],
-				children: [
-					{
-						type: 'paragraph',
-						content: [{ text: `ONE `, marks: { bold: true, italic: true } }],
-						children: [
-							{
-								type: 'paragraph',
-								content: [{ text: 'TWO', marks: { bold: true } }]
-							}
-						]
-					},
-					{
-						type: 'paragraph',
-						content: [{ text: 'THREE', marks: { bold: true } }]
-					},
-					{
-						type: 'paragraph',
-						content: [{ text: 'FOUR', marks: { bold: true } }]
-					}
+				content: [
+					{ text: 'Hello', marks: { bold: true } },
+					{ text: '', marks: { void: true } },
+					{ text: ' World', marks: { bold: true } }
 				]
-			},
-			{
-				type: 'paragraph',
-				content: [{ text: 'FIVE', marks: { bold: true } }]
 			}
+			// {
+			// 	type: 'image',
+			// 	content: [{ text: 'img', marks: { bold: true } }]
+			// },
 		]
 	};
 </script>
@@ -49,32 +29,28 @@
 	import Block from './Block.svelte';
 	import * as Y from 'yjs';
 	import type { JSONDoc } from '../utils/json.js';
-	import { type HotKeys } from '../events/onKeyDown.js';
 	import { onMount, setContext } from 'svelte';
+	import type { HotKey } from '$lib/hotkeys.js';
 
 	let {
+		plugins,
 		class: className,
 		edytor = $bindable(),
 		doc,
 		readonly = false,
-		value = defaultValue,
-		hotKeys = {
-			'mod+b': { toggleMark: 'bold' },
-			'mod+i': { toggleMark: 'italic' },
-			'mod+u': { toggleMark: 'underline' },
-			'mod+`': { toggleMark: 'code' },
-			'mod+k': { toggleMark: 'link' }
-		},
+		value = $bindable(defaultValue),
+		hotKeys,
 		sync,
 		awareness,
 		...snippets
 	}: Snippets & {
+		plugins?: Plugin[];
 		class?: string;
 		edytor?: Edytor;
 		doc?: Y.Doc;
 		awareness?: Awareness;
 		readonly?: boolean;
-		hotKeys?: HotKeys;
+		hotKeys?: Record<string, HotKey>;
 		value?: JSONDoc;
 		sync?: ({
 			doc,
@@ -90,6 +66,7 @@
 	edytor = new Edytor({
 		snippets,
 		readonly,
+		plugins,
 		doc,
 		awareness,
 		hotKeys,

@@ -1,27 +1,84 @@
 import { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { prevent } from '$lib/utils.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 
-export function batch<T extends (...args: any[]) => any>(func: T): T {
-	return function (this: Edytor, ...args: Parameters<T>): ReturnType<T> {
-		return this.edytor.doc.transact(() => {
-			const result = func.bind(this)(...args);
-			return result;
+export type BlockOperations = {
+	addBlock: {
+		block: JSONBlock;
+		index: number;
+	};
+	addBlocks: {
+		blocks: JSONBlock[];
+		index: number;
+	};
+	insertBlockAfter: {
+		block: JSONBlock;
+	};
+	insertBlockBefore: {
+		block: JSONBlock;
+	};
+	splitBlock: {
+		index: number;
+	};
+	removeBlock: {
+		keepChildren: boolean;
+	};
+	unNestBlock: {};
+	mergeBlockBackward: {};
+	mergeBlockForward: {};
+	nestBlock: {};
+	setBlock: {
+		value: JSONBlock;
+	};
+};
+
+export function batch<T extends (...args: any[]) => any, O extends keyof BlockOperations>(
+	ops: O,
+	func: T
+): T {
+	return function (this: Block, payload: BlockOperations[O]): ReturnType<T> {
+		this.edytor.plugins.forEach((plugin) => {
+			// @ts-expect-error
+			plugin.onBeforeChange?.({
+				operation: ops,
+				payload,
+				block: this,
+				text: this.content,
+				edytor: this.edytor,
+				prevent
+			});
 		});
+
+		return this.edytor.transact(() => func.bind(this)(payload));
 	} as T;
 }
 
-export function addChild(
+export function addBlock(
 	this: Block | Edytor,
-	block: JSONBlock,
-	index: number = this.yChildren.length
+	{ block, index = this.yChildren.length }: BlockOperations['addBlock']
 ) {
 	const newBlock = new Block({ parent: this, block });
 	this.yChildren.insert(index, [newBlock.yBlock]);
 	return newBlock;
 }
 
-export function addChildWithCurrentChildren(this: Block, block: JSONBlock): Block {
+export function addBlocks(
+	this: Block | Edytor,
+	{ blocks, index = this.yChildren.length }: BlockOperations['addBlocks']
+) {
+	const newBlocks = blocks.map((block) => new Block({ parent: this, block }));
+	this.yChildren.insert(
+		index,
+		newBlocks.map((block) => block.yBlock)
+	);
+	return newBlocks;
+}
+
+export function insertBlockAfter(
+	this: Block,
+	{ block }: BlockOperations['insertBlockAfter']
+): Block {
 	const newBlock = new Block({
 		parent: this.parent,
 		block: {
@@ -34,16 +91,31 @@ export function addChildWithCurrentChildren(this: Block, block: JSONBlock): Bloc
 	return newBlock;
 }
 
-export function split(this: Block, index: number = this.edytor.selection.state.yStart) {
-	const content = this.content.split(index);
+export function insertBlockBefore(
+	this: Block,
+	{ block }: BlockOperations['insertBlockBefore']
+): Block {
+	const newBlock = new Block({
+		parent: this.parent,
+		block
+	});
+	this.parent.yChildren.insert(this.index, [newBlock.yBlock]);
+	return newBlock;
+}
+
+export function splitBlock(
+	this: Block,
+	{ index = this.edytor.selection.state.yStart }: BlockOperations['splitBlock']
+) {
+	const content = this.content.splitText({ index });
 
 	const hasChildren = this.children.length >= 1;
 
 	// Add the current children to the new block if any
-	const newBlock = this.parent.addChild(
-		{ type: this.type, content, children: this.value.children },
-		this.parent.children.indexOf(this) + 1
-	);
+	const newBlock = this.parent.addBlock({
+		block: { type: this.edytor.defaultType, content, children: this.value.children },
+		index: this.parent.children.indexOf(this) + 1
+	});
 
 	// If the block has children, we need to remove its children and insert them into the new block
 	if (hasChildren) {
@@ -53,48 +125,12 @@ export function split(this: Block, index: number = this.edytor.selection.state.y
 	return newBlock;
 }
 
-export function remove(this: Block) {
+export function removeBlock(this: Block, { keepChildren = false }: BlockOperations['removeBlock']) {
 	this.parent.yChildren.delete(this.index, 1);
-}
-export function removeAndUnnestChildren(this: Block) {
-	const {
-		index,
-		value: { children = [] }
-	} = this;
-	// Remove the current block from its position
-	this.parent.yChildren.delete(index, 1);
-	if (children.length) {
-		// Insert the children of the current block at the current block's position
-		this.parent.yChildren.insert(
-			index,
-			children.map((child) => {
-				const newBlock = new Block({
-					parent: this.parent,
-					block: child
-				});
-				return newBlock.yBlock;
-			})
-		);
-	}
-}
-
-export function mergeBlockBackward(this: Block): Block | null {
-	const previousBlock = this.closestPreviousBlock;
-	const { children = [] } = this.value;
-	if (!previousBlock) return null;
-
-	// Add the current content to the previous block content
-	previousBlock.content.yText.applyDelta([
-		{ retain: previousBlock.content.yText.length },
-		...this.content.yText.toDelta()
-	]);
-
-	// If the current block has children, we need to unnest them and insert them into the current parent
-	if (children.length > 0) {
-		// Unnest children if any
+	if (keepChildren && this.hasChildren) {
 		this.parent.yChildren.insert(
 			this.index,
-			children.map((child) => {
+			this.value.children!.map((child) => {
 				const newBlock = new Block({
 					parent: this.parent,
 					block: child
@@ -103,15 +139,46 @@ export function mergeBlockBackward(this: Block): Block | null {
 			})
 		);
 	}
+}
 
+export function mergeBlockBackward(this: Block): Block | undefined {
+	const { closestPreviousBlock, isEmpty, hasChildren, hasContent } = this;
+
+	const { children = [] } = this.value;
+	if (!closestPreviousBlock) {
+		return this.isEmpty ? this.mergeBlockForward() : undefined;
+	}
+	if (!isEmpty) {
+		// Add the current content to the previous block content
+		closestPreviousBlock.content.yText.applyDelta([
+			{ retain: closestPreviousBlock.content.yText.length },
+			...this.content.yText.toDelta()
+		]);
+
+		// If the current block has children, we need to unnest them and insert them into the current parent
+		if (children.length > 0) {
+			// Unnest children if any
+			this.parent.yChildren.insert(
+				this.index,
+				children.map((child) => {
+					const newBlock = new Block({
+						parent: this.parent,
+						block: child
+					});
+					return newBlock.yBlock;
+				})
+			);
+		}
+	}
 	// Remove the current block from its position
 	this.parent.yChildren.delete(this.index + this.children.length, 1);
 
-	return previousBlock;
+	return closestPreviousBlock;
 }
-export function mergeBlockForward(this: Block) {
+export function mergeBlockForward(this: Block): Block | undefined {
 	const nextBlock = this.closestNextBlock;
-	if (!nextBlock) return;
+
+	if (!nextBlock) return undefined;
 
 	this.content.yText.applyDelta([
 		{ retain: this.content.yText.length },
@@ -131,9 +198,10 @@ export function mergeBlockForward(this: Block) {
 		);
 	}
 	nextBlock.parent.yChildren.delete(nextBlock.index, 1);
+	return nextBlock;
 }
 
-export function unNest(this: Block): Block | null {
+export function unNestBlock(this: Block): Block | null {
 	const { parent, index } = this;
 	if (parent instanceof Block) {
 		const grandParent = parent.parent as Block;
@@ -148,7 +216,7 @@ export function unNest(this: Block): Block | null {
 	return null;
 }
 
-export function nest(this: Block) {
+export function nestBlock(this: Block) {
 	const previousBlock = this.previousBlock;
 	if (!previousBlock) return;
 
@@ -173,14 +241,13 @@ export function nest(this: Block) {
 	this.edytor.selection.setAtTextOffset(newBlock.content);
 }
 
-export function set(this: Block, value: JSONBlock) {
-	console.log(this.yBlock.toJSON());
+export function setBlock(this: Block, { value }: BlockOperations['setBlock']) {
 	this.edytor.doc.transact(() => {
 		if (value.type) {
 			this.type = value.type;
 		}
 		if (value.content) {
-			this.content.set(value.content);
+			this.content.setText({ value: value.content });
 		}
 		if (value.children) {
 			let newChildrenCount = value.children.length;
@@ -189,15 +256,14 @@ export function set(this: Block, value: JSONBlock) {
 			this.children = value.children.map((child, i) => {
 				const existingChild = this.children[i];
 				if (existingChild) {
-					existingChild.set(child);
+					existingChild.setBlock({ value: child });
 					return existingChild;
 				} else {
-					return this.addChild(child, i);
+					return this.addBlock({ block: child, index: i });
 				}
 			});
 
 			childrenToRemove && this.yChildren.delete(newChildrenCount, childrenToRemove);
 		}
 	});
-	console.log(this.yBlock.toJSON());
 }

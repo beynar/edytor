@@ -1,119 +1,211 @@
-import type { Delta, JSONDoc, JSONText, SerializableContent } from '$lib/utils/json.js';
+import { prevent } from '$lib/utils.js';
+import type { Delta, JSONText, SerializableContent } from '$lib/utils/json.js';
 import type { Text } from './text.svelte.js';
+
+export type TextOperations = {
+	insertText: {
+		value: string;
+		isAutoDot?: boolean;
+		start?: number;
+		end?: number;
+		marks?: Record<string, SerializableContent | null>;
+	};
+	deleteText: {
+		direction: 'BACKWARD' | 'FORWARD';
+		length: number;
+	};
+	splitText: {
+		index?: number;
+	};
+	setText: {
+		value: JSONText[];
+	};
+	markText: {
+		mark: string;
+		start?: number;
+		end?: number;
+		value?: SerializableContent | null;
+		toggle?: boolean;
+	};
+	removeMarksFromText: {
+		start?: number;
+		end?: number;
+	};
+};
+
+export function batch<T extends (...args: any[]) => any, O extends keyof TextOperations>(
+	ops: O,
+	func: T
+): T {
+	return function (this: Text, payload: TextOperations[O]): ReturnType<T> {
+		this.edytor.plugins.forEach((plugin) => {
+			// @ts-expect-error
+			plugin.onBeforeChange?.({
+				text: this,
+				block: this.parent,
+				operation: ops,
+				payload,
+				edytor: this.edytor,
+				prevent
+			});
+		});
+		return this.edytor.transact(() => func.bind(this)(payload));
+	} as T;
+}
 
 export function insertText(
 	this: Text,
-	value: string,
-	specialCase: 'AUTO_DOT' | 'PASTE' | 'INSERT_LINE_BREAK' | null = null
+	{
+		value,
+		isAutoDot,
+		start = this.edytor.selection.state.yStart,
+		end = this.edytor.selection.state.yEnd,
+		marks = this.markOnNextInsert
+	}: TextOperations['insertText']
 ) {
-	const { yStart, yEnd, isCollapsed, startNode, start, ranges } = this.edytor.selection.state;
-	const attributes = this.getAttributesAtPosition(yStart);
-	const deltas: Delta[] = [
-		{ retain: yStart },
-		// delete the selection length
-		{ insert: value, attributes }
-	];
+	const isCollapsed = start === end || !end;
+	// const attributes = this.getAttributesAtPosition(yStart);
+	const deltas: Delta[] = [{ retain: start }, { insert: value, attributes: marks }];
 
-	if (specialCase === 'AUTO_DOT') {
-		deltas[0].retain = yStart - 1;
+	if (isAutoDot) {
+		deltas[0].retain = start - 1;
 		deltas.splice(1, 0, { delete: 1 });
 	}
 
 	if (!isCollapsed) {
-		deltas.splice(1, 0, { delete: yEnd - yStart });
+		deltas.splice(1, 0, { delete: end - start });
 	}
-
-	this.edytor.transactRemote(
-		() => {
-			if (specialCase === 'AUTO_DOT' || !isCollapsed) {
-				this.yText.applyDelta(deltas);
-			} else {
-				this.yText.insert(yStart, value);
-			}
-		},
-		!['INSERT_LINE_BREAK', 'PASTE'].includes(specialCase as any)
-	);
-}
-
-export function getAttributesAtPosition(
-	this: Text,
-	yStart: number = this.edytor.selection.state.yStart
-) {
-	let attributes = {};
-	let textIndex = 0;
-	for (let i = 0; i < this.children.length; i++) {
-		const { text, marks } = this.children[i];
-		const length = text.length;
-		if (yStart >= textIndex && yStart <= textIndex + length) {
-			attributes = Object.fromEntries(marks);
-			break;
+	this.edytor.doc.transact(() => {
+		if (isAutoDot || !isCollapsed) {
+			this.yText.applyDelta(deltas);
+		} else {
+			this.yText.insert(start, value, marks);
 		}
-		textIndex += length;
+	});
+	if (this.markOnNextInsert) {
+		this.markOnNextInsert = undefined;
 	}
-	return attributes;
 }
 
-export function getAttributesAtRange(
-	this: Text,
-	yStart: number = this.edytor.selection.state.yStart,
-	yEnd: number = this.edytor.selection.state.yEnd
-) {
-	let attributes = {};
-	let index = 0;
+export function getMarksAtRange(this: Text, yStart: number, yEnd: number) {
+	const result: JSONText[] = [];
+	let offset = 0;
 	let entered = false;
+
 	for (let i = 0; i < this.children.length; i++) {
 		const { text, marks } = this.children[i];
 		const length = text.length;
-		const end = index + length;
-		if (index <= yStart) {
+		const end = offset + length;
+
+		if (yStart >= offset && yStart < end) {
+			// Found start of range
 			entered = true;
-			Object.assign(attributes, Object.fromEntries(marks));
-		}
-		if (end >= yEnd && entered) {
-			Object.assign(attributes, Object.fromEntries(marks));
+			const startOffset = yStart - offset;
+			const endOffset = Math.min(length, yEnd - offset);
+			result.push({
+				text: text.slice(startOffset, endOffset),
+				marks: Object.fromEntries(marks)
+			});
+		} else if (entered && end <= yEnd) {
+			// Middle of range
+			result.push({
+				text,
+				marks: Object.fromEntries(marks)
+			});
+		} else if (entered && offset < yEnd && yEnd <= end) {
+			// End of range
+			const endOffset = yEnd - offset;
+			result.push({
+				text: text.slice(0, endOffset),
+				marks: Object.fromEntries(marks)
+			});
 			break;
 		}
-		index += length;
+
+		offset += length;
 	}
-	return attributes;
+
+	return result;
 }
 
-export function deleteText(this: Text, direction: 'BACKWARD' | 'FORWARD', length: number = 1) {
-	const { yStart, yEnd, isCollapsed } = this.edytor.selection.state;
+export function deleteText(this: Text, { direction, length = 1 }: TextOperations['deleteText']) {
+	const { yStart, isCollapsed } = this.edytor.selection.state;
 
 	const deltas: Delta[] =
 		direction === 'BACKWARD'
 			? [{ retain: isCollapsed ? yStart - 1 : yStart }, { delete: isCollapsed ? 1 : length }]
 			: [{ retain: isCollapsed ? yStart : yStart }, { delete: isCollapsed ? 1 : length }];
-
+	console.log({ deltas });
 	this.yText.applyDelta(deltas);
 }
 
-export function mark(
+export function removeMarksFromText(
 	this: Text,
 	{
-		type,
-		value,
-		toggleIfExists = false
-	}: {
-		type: string;
-		value: SerializableContent;
-		toggleIfExists?: boolean;
-	}
+		start = this.edytor.selection.state.yStart || 0,
+		end = this.edytor.selection.state.yEnd || this.yText.length
+	}: TextOperations['markText']
 ) {
-	const { yStart, yEnd, length, end, ranges } = this.edytor.selection.state;
-	const attributesAtRange = getAttributesAtRange.bind(this)(yStart, yEnd);
-	const exists = type in attributesAtRange;
+	const marksAtRange = this.getMarksAtRange(start, end);
+	const attributes = marksAtRange.reduce((acc, { marks }) => {
+		Object.entries(marks || {}).forEach(([key, value]) => {
+			if (value === null) {
+				Object.assign({ key: null });
+			}
+		});
+		return acc;
+	}, {});
+	this.yText.format(start, end, attributes);
+}
 
-	this.yText.format(yStart, length, {
-		[type]: true
-	});
+export function markText(
+	this: Text,
+	{
+		mark,
+		value = true,
+		toggle = false,
+		start = this.edytor.selection.state.yStart,
+		end = this.edytor.selection.state.yEnd
+	}: TextOperations['markText']
+) {
+	const length = end - start;
+	const isCollasped = end - start === 0;
+	const marksAtRange = this.getMarksAtRange(isCollasped ? start - 1 : start, end);
+	const isNextActiveMark = isCollasped && this.markOnNextInsert && mark in this.markOnNextInsert;
+	const spreadOnAllRange = marksAtRange.every(({ marks }) => marks && mark in marks);
+	const markValue = (spreadOnAllRange || isNextActiveMark) && toggle ? null : value;
 
-	this.edytor.selection.setSelectionAtTextRange(this, yStart, yEnd);
+	if (isCollasped) {
+		const activeMarks = marksAtRange.reduce((acc, { marks }) => {
+			Object.entries(marks || {}).forEach(([key, value]) => {
+				if (value === true) {
+					Object.assign(acc, { [key]: true });
+				}
+			});
+			return acc;
+		}, {});
+
+		if (isNextActiveMark && markValue === null) {
+			delete this.markOnNextInsert![mark];
+		} else {
+			this.markOnNextInsert = {
+				...(this.markOnNextInsert || {}),
+				...activeMarks,
+				[mark]: markValue
+			};
+		}
+	} else {
+		this.yText.format(start, length, {
+			[mark]: markValue
+		});
+	}
 }
 
 // This function split a Y.Text at an index, delete what is after the index and returns the deleted content as a JSONText[]
-export function split(this: Text, index: number = this.edytor.selection.state.yStart) {
+export function splitText(
+	this: Text,
+	{ index = this.edytor.selection.state.yStart }: TextOperations['splitText']
+) {
 	let offset = 0;
 	let content: JSONText[] = [];
 
@@ -139,7 +231,7 @@ export function split(this: Text, index: number = this.edytor.selection.state.yS
 	return content;
 }
 
-export function set(this: Text, value: JSONText[]) {
+export function setText(this: Text, { value }: TextOperations['setText']) {
 	this.yText.applyDelta([
 		{ delete: this.yText.length },
 		...value.map((part) => ({ insert: part.text, attributes: part.marks }))

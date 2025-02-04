@@ -32,6 +32,8 @@ type SelectionState = {
 	startNode: Node | null;
 	endNode: Node | null;
 	isTextSpanning: boolean;
+	isVoid: boolean;
+	relativePosition: RelativePosition | null;
 	// TOREMOVE
 	yTextContent: string;
 };
@@ -63,6 +65,8 @@ export class EdytorSelection {
 		endText: null,
 		isAtEnd: false,
 		isTextSpanning: false,
+		isVoid: false,
+		relativePosition: null,
 		// TOREMOVE
 		yTextContent: ''
 	});
@@ -99,13 +103,14 @@ export class EdytorSelection {
 		this.setSelectionAtTextRange(startText, 0, startText.yText.length);
 	};
 
-	shift = (length: number) => {
+	shift = async (length: number) => {
 		this.state.yStart += length;
 		this.state.yEnd += length;
 		this.state.start += length;
 		this.state.end += length;
+		this.state.yTextContent = this.state.startText?.yText.toJSON()!;
 	};
-	private onSelectionChange = () => {
+	onSelectionChange = () => {
 		const selection = window.getSelection();
 
 		if (!selection?.anchorNode || !this.edytor.container?.contains(selection.anchorNode as Node)) {
@@ -132,8 +137,11 @@ export class EdytorSelection {
 		focusedBlocks.forEach((block) => this.focusedBlocks.add(block));
 
 		let yStart = getYIndex(startText, startNode, start);
-
 		let yEnd = isCollapsed ? yStart : getYIndex(endText, endNode, end);
+
+		if (yStart > yEnd) {
+			[yStart, yEnd] = [yEnd, yStart];
+		}
 
 		this.state = {
 			selection,
@@ -153,9 +161,28 @@ export class EdytorSelection {
 			isTextSpanning: startText !== endText && texts.length > 1,
 			startNode,
 			endNode,
+			isVoid: startText?.parent ? this.edytor.voidBlocks.has(startText.parent) : false,
+			relativePosition: startText
+				? Y.createRelativePositionFromTypeIndex(startText.yText, yStart, -1)
+				: null,
 			// TOREMOVE
 			yTextContent: startText?.yText.toJSON()!
 		};
+	};
+
+	restoreRelativePosition = (text: Text) => {
+		if (text !== this.state.startText || !this.state.relativePosition) {
+			return;
+		}
+
+		const absolutePosition = Y.createAbsolutePositionFromRelativePosition(
+			this.state.relativePosition,
+			this.edytor.doc
+		);
+		if (!absolutePosition) {
+			return;
+		}
+		this.setAtTextOffset(text, absolutePosition?.index);
 	};
 
 	setAtTextOffset = async (
@@ -173,6 +200,7 @@ export class EdytorSelection {
 		let currentNode = treeWalker.nextNode();
 		let textNode: Node | null = null;
 		let currentOffset = 0;
+
 		while (currentNode) {
 			const endOffset = currentOffset + (currentNode as any).length;
 			if (textOffset >= currentOffset && textOffset <= endOffset) {
@@ -183,6 +211,7 @@ export class EdytorSelection {
 			currentOffset = endOffset;
 			currentNode = treeWalker.nextNode();
 		}
+
 		if (textNode) {
 			this.setAtNodeOffset(textNode, nodeOffset);
 		}
@@ -241,13 +270,11 @@ export class EdytorSelection {
 	};
 
 	setAtNodeOffset = async (node: Node, offset: number) => {
-		await tick();
 		const selection = window.getSelection();
 		const range = document.createRange();
 		range.setStart(node, offset);
 		range.collapse(true);
 		selection?.removeAllRanges();
 		selection?.addRange(range);
-		this.edytor.node!.focus();
 	};
 }

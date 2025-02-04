@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Block } from '../block/block.svelte.js';
 	import Text from './Text.svelte';
-	import RenderBlock from './Block.svelte';
+	import Child from './Block.svelte';
 
 	let {
 		block
@@ -9,7 +9,7 @@
 		block: Block;
 	} = $props();
 
-	const snippet = $derived(block.edytor.snippets[`${block.type}Block`]);
+	const snippet = $derived(block.edytor.blocks.get(block.type));
 </script>
 
 {#snippet content()}
@@ -18,7 +18,7 @@
 
 {#snippet children()}
 	{#each block.children as child (child.id)}
-		<RenderBlock block={child} />
+		<Child block={child} />
 	{/each}
 {/snippet}
 

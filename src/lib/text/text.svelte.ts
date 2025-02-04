@@ -1,10 +1,20 @@
 import { Edytor } from '../edytor.svelte.js';
 import * as Y from 'yjs';
-import { type Delta, type JSONText } from '$lib/utils/json.js';
+import { type Delta, type JSONText, type SerializableContent } from '$lib/utils/json.js';
 import type { Block } from '../block/block.svelte.js';
-import { deleteText, getAttributesAtPosition, insertText, mark, set, split } from './text.utils.js';
+import {
+	batch,
+	deleteText,
+	removeMarksFromText,
+	getMarksAtRange,
+	insertText,
+	markText,
+	setText,
+	splitText
+} from './text.utils.js';
 import { toDeltas, type JSONDelta } from './deltas.js';
 import { id } from '$lib/utils.js';
+import { tick } from 'svelte';
 
 export class Text {
 	parent: Block;
@@ -14,6 +24,7 @@ export class Text {
 	node: HTMLElement | undefined;
 	delta: Delta[] = [];
 	isEmpty = $state(false);
+	markOnNextInsert: undefined | Record<string, SerializableContent | null> = undefined;
 	id: string;
 
 	get value(): JSONText[] {
@@ -23,14 +34,17 @@ export class Text {
 		}));
 	}
 
-	setChildren = (text?: Y.Text) => {
+	private setChildren = (text?: Y.Text) => {
 		[this.children, this.isEmpty] = toDeltas(text || this.yText);
 	};
 
 	private observeText = (event: Y.YTextEvent, transaction: Y.Transaction): void => {
 		if (transaction.origin !== this.edytor.transaction) {
-			this.setChildren(event.target);
+			// If the transaction is not from the edytor, we need to restore the selection
+			// If the current text is not focused, this action will be ignored
+			this.edytor.selection.restoreRelativePosition(this);
 		}
+		this.setChildren(event.target);
 	};
 
 	constructor({
@@ -53,6 +67,7 @@ export class Text {
 				if (typeof content === 'string') {
 					this.yText.insert(0, content);
 				} else {
+					console.log({ content });
 					this.yText.applyDelta(
 						content.map((part) => ({
 							insert: part.text,
@@ -71,18 +86,35 @@ export class Text {
 			this.yText.observe(this.observeText);
 		}
 	}
+	private batch = batch.bind(this);
+	getMarksAtRange = getMarksAtRange.bind(this);
+	insertText = this.batch('insertText', insertText.bind(this));
+	deleteText = this.batch('deleteText', deleteText.bind(this));
+	splitText = this.batch('splitText', splitText.bind(this));
+	setText = this.batch('setText', setText.bind(this));
+	markText = this.batch('markText', markText.bind(this));
+	removeMarksFromText = this.batch('removeMarksFromText', removeMarksFromText.bind(this));
 
-	getAttributesAtPosition = getAttributesAtPosition.bind(this);
-	insertText = insertText.bind(this);
-	deleteText = deleteText.bind(this);
-	mark = mark.bind(this);
-	split = split.bind(this);
-	set = set.bind(this);
 	attach = (node: HTMLElement) => {
 		this.node = node;
 		this.edytor.nodeToText.set(node, this);
 		node.setAttribute('data-edytor-id', `${this.id}`);
 		node.setAttribute('data-edytor-text', `true`);
+
+		tick().then(() => {
+			if (this.parent.isVoid) {
+				node.setAttribute('contenteditable', 'true');
+				node.style.outline = 'none';
+				node.style.border = 'none';
+				node.style.minWidth = '100%';
+				console.log(this.parent.type, this.parent.isVoid);
+				node.onbeforeinput = (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					this.edytor.onBeforeInput(e);
+				};
+			}
+		});
 		return {
 			destroy: () => {
 				this.yText?.unobserve(this.observeText);

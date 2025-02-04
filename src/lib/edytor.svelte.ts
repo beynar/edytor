@@ -8,14 +8,22 @@ import {
 	type YBlock,
 	type SerializableContent
 } from '$lib/utils/json.js';
-import { onKeyDown, type HotKeys } from '$lib/events/onKeyDown.js';
+import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
-import { TRANSACTION } from './constants.js';
 import { Block, getSetChildren, observeChildren } from './block/block.svelte.js';
 import { Text } from './text/text.svelte.js';
-import { SvelteMap } from 'svelte/reactivity';
+import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { Awareness } from 'y-protocols/awareness.js';
-import { addChild } from './block/block.utils.js';
+import { addBlock, batch } from './block/block.utils.js';
+import type {
+	Plugin,
+	BlockSnippetPayload,
+	InitializedPlugin,
+	MarkSnippetPayload
+} from './plugins.js';
+import { on } from 'svelte/events';
+import { HotKeys, type HotKey } from './hotkeys.js';
+import { TRANSACTION } from './constants.js';
 
 export type Snippets = {
 	[K in `${string}Block` | `${string}Mark`]: K extends `${string}Block`
@@ -39,10 +47,11 @@ export type Snippets = {
 			>;
 };
 
-type EdytorOptions = {
-	readonly: boolean;
-	snippets: Snippets;
-	hotKeys: HotKeys;
+export type EdytorOptions = {
+	readonly?: boolean;
+	snippets?: Snippets;
+	hotKeys?: Record<string, HotKey>;
+	plugins?: Plugin[];
 	doc?: Y.Doc;
 	awareness?: Awareness;
 	sync?: boolean;
@@ -50,21 +59,24 @@ type EdytorOptions = {
 };
 export class Edytor {
 	node?: HTMLElement;
-	snippets: Snippets;
-	lastInsert: string | null = null;
+	marks = new Map<string, Snippet<[MarkSnippetPayload]>>();
+	blocks = new Map<string, Snippet<[BlockSnippetPayload]>>();
+	plugins: InitializedPlugin[];
 	container = $state<HTMLDivElement>();
 	idToBlock = new SvelteMap<string, Block>();
 	idToText = new SvelteMap<string, Text>();
 	nodeToText = new SvelteMap<Node, Text>();
+	transaction = new TRANSACTION();
 	hotKeys: HotKeys;
 	initialized = $state(false);
 	readonly = $state(false);
 	children = $state<Block[]>([]);
 	synced = $state(false);
-
 	edytor = this;
 	selection: EdytorSelection;
-	transaction = new TRANSACTION();
+	voidBlocks = new SvelteSet<Block>();
+	defaultType = 'paragraph';
+	private off: (() => void)[] = [];
 
 	// @ts-expect-error
 	observeChilren = observeChildren.bind(this);
@@ -77,27 +89,63 @@ export class Edytor {
 
 	awareness: Awareness;
 
+	transact = <T>(cb: () => T): T => {
+		return this.doc.transact(() => {
+			const result = cb();
+			return result;
+		}, this.transaction);
+	};
+
 	constructor({
 		snippets,
 		readonly,
 		hotKeys,
+		plugins,
 		doc = this.doc,
 		awareness = new Awareness(doc),
 		sync,
 		value
 	}: EdytorOptions) {
-		this.readonly = readonly;
+		this.readonly = readonly || false;
 		this.doc = doc;
 		this.yBlock = this.doc.getMap('content') as YBlock;
 		this.yChildren = getSetChildren(this.yBlock);
 		this.awareness = awareness;
-		this.snippets = snippets;
-		this.hotKeys = hotKeys;
+
 		this.selection = new EdytorSelection(this);
 
 		if (readonly || !sync) {
 			this.sync(value || { children: [] });
 		}
+
+		// Initialize plugins
+		this.plugins = (plugins || []).map((plugin) => {
+			const initializedPlugin = plugin(this);
+
+			initializedPlugin.marks &&
+				Object.entries(initializedPlugin.marks).forEach(([key, snippet]) => {
+					this.marks.set(key, snippet);
+				});
+			initializedPlugin.blocks &&
+				Object.entries(initializedPlugin.blocks).forEach(([key, snippet]) => {
+					this.blocks.set(key, snippet);
+				});
+
+			return initializedPlugin;
+		});
+
+		// We set the custom snippets after plugins are initialized in order to be able to override the plugins snippets
+		Object.entries(snippets || {}).forEach(([key, snippet]) => {
+			const isMark = key.endsWith('Mark');
+			const isBlock = key.endsWith('Block');
+			if (isMark) {
+				this.marks.set(key, snippet as Snippet<[MarkSnippetPayload]>);
+			} else if (isBlock) {
+				this.blocks.set(key, snippet as Snippet<[BlockSnippetPayload]>);
+			}
+		});
+
+		this.hotKeys = new HotKeys(this, hotKeys, this.plugins);
 	}
 
 	get value(): JSONBlock {
@@ -108,7 +156,6 @@ export class Edytor {
 	}
 
 	sync = ({ children = [] }: JSONDoc = { children: [] }) => {
-		console.log('sync');
 		if (this.synced) {
 			return;
 		}
@@ -143,28 +190,13 @@ export class Edytor {
 		this.synced = true;
 		this.yChildren.observe(this.observeChilren);
 		this.undoManager = new Y.UndoManager(this.yChildren, {
-			trackedOrigins: new Set([this.transaction, null])
-		});
-	};
-
-	transactRemote = <T>(fn: () => T, transact: boolean = true): T => {
-		if (transact) {
-			return this.doc.transact(() => {
-				return fn();
-			}, this.transaction);
-		} else {
-			return fn();
-		}
-	};
-
-	batch = <T>(fn: () => T) => {
-		return this.doc.transact(() => {
-			return fn();
+			trackedOrigins: new Set([null])
 		});
 	};
 
 	onBeforeInput = onBeforeInput.bind(this);
-	addChild = addChild.bind(this);
+	batch = batch.bind(this);
+	addBlock = this.batch('addBlock', addBlock.bind(this));
 
 	getTextByIdOrParent = (idOrParent: string | Block) => {
 		if (typeof idOrParent === 'string') {
@@ -222,17 +254,19 @@ export class Edytor {
 
 		// this.container.contentEditable = 'true';
 		this.selection.init();
-		document.addEventListener('keydown', onKeyDown.bind(this));
-		node.addEventListener('click', this.selection.handleTripleClick);
-		node.addEventListener('beforeinput', this.onBeforeInput);
+		this.hotKeys.init();
+		this.off.push(
+			on(document, 'keydown', onKeyDown.bind(this)),
+			on(node, 'click', this.selection.handleTripleClick),
+			on(node, 'beforeinput', this.onBeforeInput)
+		);
+
 		node.setAttribute('contenteditable', !this.readonly ? 'true' : 'false');
 
 		return {
 			destroy: () => {
 				this.selection.destroy();
-				document.removeEventListener('keydown', onKeyDown.bind(this));
-				node.removeEventListener('click', this.selection.handleTripleClick);
-				node.removeEventListener('beforeinput', this.onBeforeInput);
+				this.off.forEach((off) => off());
 			}
 		};
 	};

@@ -17,6 +17,12 @@
   </p>
 </div>
 
+## ⚠️ Work in progress
+
+Edytor is currently in the early stages of development. It is not yet ready for production use.
+I welcome early contributors to help us build a better editor for Svelte.
+Just run it, see what you can do with it, and open issues or PRs.
+
 ## ✨ Features
 
 - 📑 **Customizable with snippets**: Use snippets to render your own blocks and marks

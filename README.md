@@ -14,26 +14,19 @@
   <p>
     <a href="#features">Features</a> •
     <a href="#quick-start">Quick Start</a> •
-    <a href="#documentation">Docs</a> •
-    <a href="#examples">Examples</a> •
-    <a href="#contributing">Contributing</a>
   </p>
 </div>
 
 ## ✨ Features
 
-- 🎨 **Rich Text Formatting**: Full support for text styling including bold, italic, underline, strikethrough, and more
-- 📑 **Block Elements**: Paragraphs, headings, lists, and custom blocks
-- 🤝 **Real-time Collaboration**: Built-in support for collaborative editing using Y.js
+- 📑 **Customizable with snippets**: Use snippets to render your own blocks and marks
+- 🎨 **Rich Text Formatting**: Full support for text styling
+- 🤝 **Real-time Collaboration**: Uses Y.js as data store, collaborative editing is built-in
 - 🔌 **Plugin System**: Extensible architecture for custom features
 - ⚡ **High Performance**: Optimized for large documents
-- 📱 **Responsive**: Works great on both desktop and mobile
-- ♿ **Accessible**: Built with accessibility in mind
-- 🎯 **Framework Agnostic**: Core can be used with any framework
 - 🔄 **Undo/Redo**: Built-in history management
 - 🎯 **TypeScript**: Full type safety and IntelliSense support
-- 🔒 **Secure**: No dangerous HTML injection
-- 📦 **Lightweight**: Small bundle size with tree-shaking support
+- 📦 **Lightweight**: Relatively small bundle size
 
 ## 🚀 Quick Start
 
@@ -163,161 +156,13 @@ Edytor supports real-time collaboration out of the box using Y.js:
 	{doc}
 	sync={({ doc, awareness, synced }) => {
 		provider = new WebsocketProvider('ws://localhost:1234', 'my-document', doc);
-		provider.on('sync', synced);
+		provider.on('sync', () => {
+			synced({ provider });
+		});
 	}}
 	plugins={[CollaborationPlugin]}
 />
 ```
-
-## 🎯 Examples
-
-### Basic Examples
-
-- [Simple Editor](examples/simple.md)
-- [With Plugins](examples/plugins.md)
-- [Custom Styling](examples/styling.md)
-- [Read-only Mode](examples/readonly.md)
-
-### Advanced Examples
-
-- [Collaborative Editing](examples/collaboration.md)
-- [Custom Plugins](examples/custom-plugin.md)
-- [Image Upload](examples/image-upload.md)
-- [Table Support](examples/tables.md)
-- [Mobile Support](examples/mobile.md)
-
-## 🔧 Internal Architecture
-
-### Core Components
-
-The editor is built on three main components that work together:
-
-1. **Document Structure**
-
-   ```typescript
-   class Edytor {
-   	doc: Y.Doc; // Y.js document for collaboration
-   	children: Block[]; // Root blocks
-   	selection: EdytorSelection; // Selection management
-   	plugins: InitializedPlugin[]; // Active plugins
-   	marks: Map<string, Snippet>; // Available mark renderers
-   	blocks: Map<string, Snippet>; // Available block renderers
-   }
-   ```
-
-2. **Block Management**
-
-   ```typescript
-   class Block {
-   	yBlock: YBlock; // Y.js block data
-   	content: Text; // Block's text content
-   	children: Block[]; // Nested blocks
-   	parent: Block | Edytor; // Parent reference
-   	type: string; // Block type (paragraph, heading, etc)
-   }
-   ```
-
-3. **Text Operations**
-   ```typescript
-   class Text {
-   	yText: Y.Text; // Y.js text content
-   	parent: Block; // Parent block
-   	children: JSONDelta[]; // Text fragments with marks
-   	markOnNextInsert?: Record<string, any>; // Pending marks
-   }
-   ```
-
-### Key Features
-
-1. **Selection Engine**
-
-   - Tracks cursor and selection state
-   - Handles block and text selection
-   - Manages selection restoration during collaboration
-   - Supports triple-click text selection
-
-2. **Input Handling**
-
-   - Manages text insertion and deletion
-   - Handles block splitting and merging
-   - Processes keyboard shortcuts
-   - Supports paste operations
-
-3. **Plugin System**
-   - Provides hooks for text and block operations
-   - Allows custom mark and block renderers
-   - Supports keyboard shortcut customization
-   - Enables feature extension
-
-### Data Flow
-
-1. **Text Operations**
-
-   ```typescript
-   // Example: Inserting text
-   text.insertText({
-     value: string,
-     start?: number,
-     end?: number,
-     marks?: Record<string, any>
-   });
-
-   // Example: Marking text
-   text.markText({
-     mark: string,
-     value?: any,
-     toggle?: boolean,
-     start?: number,
-     end?: number
-   });
-   ```
-
-2. **Block Operations**
-
-   ```typescript
-   // Example: Splitting blocks
-   block.splitBlock({ index: number });
-
-   // Example: Merging blocks
-   block.mergeBlockForward();
-   block.mergeBlockBackward();
-   ```
-
-3. **Event Handling**
-   ```typescript
-   // Input events
-   onBeforeInput(event: InputEvent) {
-     switch (event.inputType) {
-       case 'insertText':
-       case 'deleteContentForward':
-       case 'deleteContentBackward':
-       case 'insertParagraph':
-       // ... handle each case
-     }
-   }
-   ```
-
-### Collaborative Features
-
-The editor uses Y.js for real-time collaboration:
-
-- Document changes are synchronized using CRDT
-- Selection state is preserved during updates
-- Undo/redo history is maintained
-- Changes are batched in transactions
-
-### Performance
-
-1. **Reactivity**
-
-   - Uses Svelte's fine-grained reactivity
-   - Updates only changed components
-   - Batches related operations
-
-2. **Memory Management**
-   - Cleans up text observers
-   - Manages block references
-   - Handles DOM node cleanup
 
 ### Current Limitations
 
@@ -326,14 +171,17 @@ The editor uses Y.js for real-time collaboration:
    - Complex text spanning operations are not fully implemented
    - Some multi-block operations need improvement
 
-2. **Block Operations**
+2. **Void Elements**
 
-   - Nested block operations could be enhanced
-   - Some edge cases in block merging need attention
+   - Void elements are not fully implemented
 
-3. **Selection**
-   - Complex selection across blocks needs improvement
-   - Some selection restoration cases need handling
+3. **Inline void elements**
+
+   - No inline void elements support for now
+
+4. **Decorations**
+
+   - We need to implement decorations as Slate.js does.
 
 ## 🛠️ Development
 

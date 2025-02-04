@@ -6,7 +6,8 @@ import {
 	type JSONBlock,
 	type JSONDoc,
 	type YBlock,
-	type SerializableContent
+	type SerializableContent,
+	type JSONText
 } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
@@ -19,11 +20,13 @@ import type {
 	Plugin,
 	BlockSnippetPayload,
 	InitializedPlugin,
-	MarkSnippetPayload
+	MarkSnippetPayload,
+	ContentTransformer
 } from './plugins.js';
 import { on } from 'svelte/events';
 import { HotKeys, type HotKey } from './hotkeys.js';
 import { TRANSACTION } from './constants.js';
+import type { JSONDelta } from './text/deltas.js';
 
 export type Snippets = {
 	[K in `${string}Block` | `${string}Mark`]: K extends `${string}Block`
@@ -56,6 +59,7 @@ export type EdytorOptions = {
 	awareness?: Awareness;
 	sync?: boolean;
 	value?: JSONDoc;
+	onChange?: (value: JSONBlock) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 };
 export class Edytor {
@@ -68,6 +72,7 @@ export class Edytor {
 	idToText = new SvelteMap<string, Text>();
 	nodeToText = new SvelteMap<Node, Text>();
 	transaction = new TRANSACTION();
+
 	hotKeys: HotKeys;
 	initialized = $state(false);
 	readonly = $state(false);
@@ -77,7 +82,9 @@ export class Edytor {
 	selection: EdytorSelection;
 	voidBlocks = new SvelteSet<Block>();
 	defaultType = 'paragraph';
+	contentTransformers = new Map<string, ContentTransformer>();
 	private off: (() => void)[] = [];
+	private onChange?: (value: JSONBlock) => void;
 
 	// @ts-expect-error
 	observeChilren = observeChildren.bind(this);
@@ -106,14 +113,15 @@ export class Edytor {
 		awareness = new Awareness(doc),
 		sync,
 		value,
-		onSelectionChange
+		onSelectionChange,
+		onChange
 	}: EdytorOptions) {
 		this.readonly = readonly || false;
 		this.doc = doc;
 		this.yBlock = this.doc.getMap('content') as YBlock;
 		this.yChildren = getSetChildren(this.yBlock);
 		this.awareness = awareness;
-
+		this.onChange = onChange;
 		if (readonly || !sync) {
 			this.sync(value || { children: [] });
 		}
@@ -126,11 +134,16 @@ export class Edytor {
 				Object.entries(initializedPlugin.marks).forEach(([key, snippet]) => {
 					this.marks.set(key, snippet);
 				});
+
 			initializedPlugin.blocks &&
 				Object.entries(initializedPlugin.blocks).forEach(([key, snippet]) => {
 					this.blocks.set(key, snippet);
 				});
 
+			initializedPlugin.transformContent &&
+				Object.entries(initializedPlugin.transformContent).forEach(([key, transformer]) => {
+					this.contentTransformers.set(key, transformer);
+				});
 			return initializedPlugin;
 		});
 
@@ -149,10 +162,11 @@ export class Edytor {
 	}
 
 	get value(): JSONBlock {
-		return {
+		const value: JSONBlock = {
 			type: 'root',
 			children: this.children.map((child) => child.value)
 		};
+		return value;
 	}
 
 	sync = ({ children = [] }: JSONDoc = { children: [] }) => {
@@ -191,6 +205,13 @@ export class Edytor {
 		this.yChildren.observe(this.observeChilren);
 		this.undoManager = new Y.UndoManager(this.yChildren, {
 			trackedOrigins: new Set([this.transaction, null])
+		});
+		this.doc.on('update', () => {
+			const value = this.value;
+			this.onChange?.(value);
+			this.plugins.forEach((plugin) => {
+				plugin.onChange?.(value);
+			});
 		});
 	};
 
@@ -232,7 +253,7 @@ export class Edytor {
 	};
 
 	getTextNode = async (idOrTextOrBlock: string | Text | Block): Promise<HTMLElement> => {
-		console.log({ idOrTextOrBlock });
+		await tick();
 		const text =
 			idOrTextOrBlock instanceof Text ? idOrTextOrBlock : this.getTextByIdOrParent(idOrTextOrBlock);
 		let node = text?.node;

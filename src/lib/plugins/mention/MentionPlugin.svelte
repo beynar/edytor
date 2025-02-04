@@ -2,7 +2,7 @@
 	import type { Plugin, MarkSnippetPayload } from '$lib/plugins.js';
 	export const mentionPlugin: Plugin = (edytor) => {
 		return {
-			onBeforeChange: ({ operation, payload, text, prevent }) => {
+			onBeforeOperation: ({ operation, payload, text, prevent }) => {
 				if (operation === 'insertText' && payload.value === '@' && !payload.marks?.mention) {
 					prevent(() => {
 						const { yStart } = edytor.selection.state;

@@ -12,7 +12,7 @@ import {
 	setText,
 	splitText
 } from './text.utils.js';
-import { toDeltas, type JSONDelta } from './deltas.js';
+import { deltaToJson, jsonToDelta, toDeltas, type JSONDelta } from './deltas.js';
 import { id } from '$lib/utils.js';
 import { tick } from 'svelte';
 
@@ -21,21 +21,37 @@ export class Text {
 	yText: Y.Text;
 	edytor: Edytor;
 	children = $state<JSONDelta[]>([]);
+	stringContent = $state('');
 	node: HTMLElement | undefined;
 	delta: Delta[] = [];
 	isEmpty = $state(false);
+	endsWithNewline = $state(false);
 	markOnNextInsert: undefined | Record<string, SerializableContent | null> = undefined;
 	id: string;
 
 	get value(): JSONText[] {
-		return this.children.map((child) => ({
-			text: child.text,
-			marks: Object.fromEntries(child.marks)
-		}));
+		return this.children.map((child) => {
+			const marks = Object.fromEntries(child.marks);
+			const value: JSONText = {
+				text: child.text,
+				marks
+			};
+			if (!marks.length) {
+				delete value.marks;
+			}
+			return value;
+		});
 	}
 
 	private setChildren = (text?: Y.Text) => {
-		[this.children, this.isEmpty] = toDeltas(text || this.yText);
+		const transformer = this.edytor.contentTransformers.get(this.parent.type);
+		this.stringContent = this.yText.toJSON();
+		const [children, isEmpty] = toDeltas(text || this.yText);
+		this.children = transformer
+			? jsonToDelta(transformer({ text: this, block: this.parent, content: deltaToJson(children) }))
+			: children;
+		this.isEmpty = isEmpty;
+		this.endsWithNewline = this.stringContent.endsWith('\n');
 	};
 
 	private observeText = (event: Y.YTextEvent, transaction: Y.Transaction): void => {
@@ -67,7 +83,6 @@ export class Text {
 				if (typeof content === 'string') {
 					this.yText.insert(0, content);
 				} else {
-					console.log({ content });
 					this.yText.applyDelta(
 						content.map((part) => ({
 							insert: part.text,

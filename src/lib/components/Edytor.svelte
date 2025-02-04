@@ -16,11 +16,11 @@
 					{ text: '', marks: { void: true } },
 					{ text: ' World', marks: { bold: true } }
 				]
+			},
+			{
+				type: 'code',
+				content: [{ text: 'console.log("hello")' }]
 			}
-			// {
-			// 	type: 'image',
-			// 	content: [{ text: 'img', marks: { bold: true } }]
-			// },
 		]
 	};
 </script>
@@ -28,7 +28,7 @@
 <script lang="ts">
 	import Block from './Block.svelte';
 	import * as Y from 'yjs';
-	import type { JSONDoc } from '../utils/json.js';
+	import type { JSONBlock, JSONDoc } from '../utils/json.js';
 	import { onMount, setContext } from 'svelte';
 	import type { HotKey } from '$lib/hotkeys.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
@@ -43,6 +43,7 @@
 		hotKeys,
 		sync,
 		awareness,
+		onChange,
 		onSelectionChange,
 		...snippets
 	}: Snippets & {
@@ -53,6 +54,7 @@
 		awareness?: Awareness;
 		readonly?: boolean;
 		hotKeys?: Record<string, HotKey>;
+		onChange?: (value: JSONBlock) => void;
 		onSelectionChange?: (selection: EdytorSelection) => void;
 		value?: JSONDoc;
 		sync?: ({
@@ -74,6 +76,7 @@
 		awareness,
 		hotKeys,
 		onSelectionChange,
+		onChange,
 		sync: !!sync,
 		value
 	});

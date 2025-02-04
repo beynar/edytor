@@ -1,12 +1,27 @@
 // This is an adaptation of the toDeltas function of the yjs library that better suits our needs
 import * as Y from 'yjs';
-import type { SerializableContent } from '../utils/json.ts';
+import type { JSONText, SerializableContent } from '../utils/json.ts';
 
 export type Mark = [string, SerializableContent];
 export type JSONDelta = {
 	text: string;
 	marks: Mark[];
 	id: string;
+};
+
+export const jsonToDelta = (text: JSONText[]): JSONDelta[] => {
+	return text.map((t) => ({
+		text: t.text,
+		marks: Object.entries(t.marks || {}),
+		id: crypto.randomUUID()
+	}));
+};
+
+export const deltaToJson = (delta: JSONDelta[]): JSONText[] => {
+	return delta.map((d) => ({
+		text: d.text,
+		marks: Object.fromEntries(d.marks)
+	}));
 };
 
 const createDelta = (text: string, attributes: Map<string, SerializableContent>): JSONDelta => {

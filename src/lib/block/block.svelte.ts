@@ -135,12 +135,17 @@ export class Block {
 	}
 
 	get value(): JSONBlock {
-		return {
+		const children = this.children.map((child) => child.value);
+		const value: JSONBlock = {
 			type: this.type,
 			id: this.id,
-			children: this.children.map((child) => child.value),
+			children,
 			content: this.content.value
 		};
+		if (!children.length) {
+			delete value.children;
+		}
+		return value;
 	}
 
 	private observeChildren = observeChildren.bind(this);

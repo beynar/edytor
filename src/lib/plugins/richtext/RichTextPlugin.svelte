@@ -39,7 +39,7 @@
 					setMarkAndSelect(edytor, 'color', 'red');
 				}
 			},
-			onBeforeChange: ({ operation, payload, text, prevent }) => {
+			onBeforeOperation: ({ operation, payload, text, prevent }) => {
 				if (operation === 'insertText' && payload.value === 'a') {
 					prevent(() => {
 						const { yStart } = edytor.selection.state;

@@ -7,6 +7,9 @@
 	import { onMount } from 'svelte';
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+	import Prism from 'prismjs';
+	import 'prismjs/components/prism-jsx';
+	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 
 	hljs.registerLanguage('javascript', javascript);
 	const highlight = (node: HTMLElement, json: string) => {
@@ -82,7 +85,10 @@
 				get value
 			</button>
 			<Edytor
-				plugins={[mentionPlugin, richTextPlugin]}
+				onChange={(value) => {
+					console.log('onChange', value);
+				}}
+				plugins={[codePlugin, mentionPlugin, richTextPlugin]}
 				sync={({ doc, synced }) => {
 					// provider = new IndexeddbPersistence('haha-2', doc);
 					provider = new IndexeddbPersistence(crypto.randomUUID(), doc);
@@ -146,9 +152,9 @@
 				{/snippet}
 			</Edytor>
 		</div>
-		<div class="card rounded bg-neutral-800 p-2 mt-2">
+		<!-- <div class="card rounded bg-neutral-800 p-2 mt-2">
 			{JSON.stringify(edytor?.value)}
-		</div>
+		</div> -->
 	</div>
 	<div>
 		{#key edytor?.selection.state}

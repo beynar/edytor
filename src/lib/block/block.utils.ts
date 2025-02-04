@@ -42,7 +42,7 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 
 		for (const plugin of this.edytor.plugins) {
 			// @ts-expect-error
-			const normalizedPayload = plugin.onBeforeChange?.({
+			const normalizedPayload = plugin.onBeforeOperation?.({
 				operation: ops,
 				payload,
 				block: this,
@@ -56,7 +56,19 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 			}
 		}
 
-		return this.edytor.transact(() => func.bind(this)(finalPayload));
+		const result = this.edytor.transact(() => func.bind(this)(finalPayload));
+
+		for (const plugin of this.edytor.plugins) {
+			// @ts-expect-error
+			plugin.onAfterOperation?.({
+				operation: ops,
+				payload,
+				block: this,
+				edytor: this.edytor
+			}) as BlockOperations[O] | undefined;
+		}
+
+		return result;
 	} as T;
 }
 

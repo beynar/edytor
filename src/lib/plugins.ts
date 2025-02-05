@@ -64,6 +64,21 @@ export type Plugin = (editor: Edytor) => {
 	onBlockAttached?: (payload: { node: HTMLElement; block: Block }) => () => void;
 	onTextAttached?: (payload: { node: HTMLElement; text: Text }) => () => void;
 	transformContent?: Record<string, (payload: { text: Text; block: Block }) => JSONText[]>;
+	defaultBlock?: string | ((parent: Block) => string | void);
+	onSoftBreak?: (payload: { prevent: Prevent; e: InputEvent }) => void;
+};
+
+type BlockDefinition = {
+	snippet: Snippet<[BlockSnippetPayload<any>]>;
+	defaultChildType?: string | ((parent: Block) => string | void);
+	allowedBlockTypes?: string[];
+	minBlocks?: number;
+	maxBlocks?: number;
+	maxLength?: number;
+	void?: boolean;
+	isolated?: boolean;
+	transformContent?: (payload: { text: Text; block: Block }) => JSONText[];
+	transformChildren?: (payload: { children: JSONBlock[]; block: Block }) => JSONText[];
 };
 
 export type InitializedPlugin = ReturnType<Plugin>;

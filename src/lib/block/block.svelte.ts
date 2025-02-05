@@ -46,6 +46,7 @@ export class Block {
 	id: string;
 	node?: HTMLElement;
 	isVoid = $state(false);
+	isIsolate = $state(false);
 	#index = $state<number | null>(null);
 
 	get index(): number {
@@ -174,6 +175,7 @@ export class Block {
 
 		this.id = (yBlock?.doc && (yBlock?.get('id') as string)) || id('block');
 		if (block !== undefined) {
+			this.#type = block.type;
 			// If block is provided we need to initialize the block with the value;
 			this.children = (block.children || []).map((child, index) => {
 				const block = new Block({ parent: this, block: child });
@@ -195,15 +197,14 @@ export class Block {
 					content: this.content.yText
 				})
 			);
-			this.#type = block.type;
 		} else {
 			this.yBlock = yBlock;
+			this.#type = this.yBlock.get('type') || this.edytor.getDefaultBlock(parent);
 			this.yChildren = getSetChildren(this.yBlock);
 			this.content = new Text({
 				parent: this,
 				yText: getSetText(this.yBlock)
 			});
-			this.#type = this.yBlock.get('type') || 'paragraph';
 			this.children = this.yChildren.map((child, index) => {
 				const block = new Block({ parent: this, yBlock: child });
 				block.index = index;
@@ -217,7 +218,16 @@ export class Block {
 		}
 	}
 
-	attach = (node: HTMLElement, isVoid: boolean = false) => {
+	attach = (
+		node: HTMLElement,
+		{
+			isIsolate,
+			isVoid
+		}: {
+			isIsolate?: boolean;
+			isVoid?: boolean;
+		} = {}
+	) => {
 		this.node = node;
 		node.setAttribute('data-edytor-id', `${this.id}`);
 		node.setAttribute('data-edytor-block', `true`);
@@ -226,6 +236,10 @@ export class Block {
 			this.isVoid = true;
 			node.setAttribute('data-edytor-void', `true`);
 			node.contentEditable = 'false';
+		}
+		if (isIsolate) {
+			this.isIsolate = true;
+			node.setAttribute('data-edytor-isolated', `true`);
 		}
 
 		let pluginDestroy = this.edytor.plugins.reduce(

@@ -4,10 +4,12 @@ import { prevent, PreventionError } from '$lib/utils.js';
 export async function onBeforeInput(this: Edytor, e: InputEvent) {
 	if (this.readonly) return;
 	e.preventDefault();
+	console.log('onBeforeInput', e);
 	const { start, yStart, isCollapsed, isTextSpanning, isAtStart, length, startText, isAtEnd } =
 		this.selection.state;
 	const { inputType, dataTransfer, data } = e;
 	const isNested = startText?.parent.parent !== this.edytor;
+	const isIsolate = startText?.parent.isIsolate;
 	const isLastChild = startText?.parent.parent.children.at(-1) === startText?.parent;
 	try {
 		switch (inputType) {
@@ -60,7 +62,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 					if (isCollapsed && isAtStart) {
 						// Last nested block need to be unNest
 						// Otherwise we just merge the block backward and eventually remove the block or unnest the children
-						if (isNested && isLastChild) {
+						if (isNested && isLastChild && !isIsolate) {
 							// Before:
 							// [Block]
 							//   [Block]
@@ -70,6 +72,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 							// [Block]
 							// [Block]
 							//   [Text] "|Hello"
+
 							const newBlock = startText?.parent.unNestBlock();
 							newBlock && this.edytor.selection.setAtTextOffset(newBlock.content, 0);
 						} else {
@@ -121,6 +124,9 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 				break;
 			}
 			case 'insertLineBreak': {
+				this.edytor.plugins.forEach((plugin) => {
+					plugin.onSoftBreak?.({ prevent, e });
+				});
 				startText?.insertText({ value: '\n' });
 				this.selection.setAtTextOffset(startText!, start + 1);
 				break;
@@ -132,24 +138,26 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 				break;
 			}
 			case 'insertParagraph': {
+				console.log('insertParagraph');
 				this.edytor.plugins.forEach((plugin) => {
 					plugin.onEnter?.({ prevent, e });
 				});
 				if (!startText) {
 					return;
 				}
+				const defaultBlock = this.getDefaultBlock();
 				if (isCollapsed) {
 					if (isAtEnd) {
 						const newBlock = startText.parent.insertBlockAfter({
 							block: {
-								type: 'paragraph'
+								type: defaultBlock
 							}
 						});
 						this.selection.setAtTextOffset(newBlock.content.id, newBlock.content.yText.length);
 					} else if (isAtStart) {
 						startText.parent?.insertBlockBefore({
 							block: {
-								type: 'paragraph'
+								type: defaultBlock
 							}
 						});
 						this.selection.setAtTextOffset(startText, 0);

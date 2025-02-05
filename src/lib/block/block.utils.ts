@@ -97,28 +97,27 @@ export function insertBlockAfter(
 	this: Block,
 	{ block }: BlockOperations['insertBlockAfter']
 ): Block {
-	const newBlock = new Block({
-		parent: this.parent,
+	this.yChildren.delete(0, this.children.length);
+	return this.parent.addBlock({
 		block: {
 			...block,
 			children: this.value.children
-		}
+		},
+		index: this.index + 1
 	});
-	this.yChildren.delete(0, this.children.length);
-	this.parent.yChildren.insert(this.index + 1, [newBlock.yBlock]);
-	return newBlock;
 }
 
 export function insertBlockBefore(
 	this: Block,
 	{ block }: BlockOperations['insertBlockBefore']
 ): Block {
-	const newBlock = new Block({
-		parent: this.parent,
-		block
+	return this.parent.addBlock({
+		block: {
+			...block,
+			children: this.value.children
+		},
+		index: this.index
 	});
-	this.parent.yChildren.insert(this.index, [newBlock.yBlock]);
-	return newBlock;
 }
 
 export function splitBlock(
@@ -131,7 +130,11 @@ export function splitBlock(
 
 	// Add the current children to the new block if any
 	const newBlock = this.parent.addBlock({
-		block: { type: this.edytor.defaultType, content, children: this.value.children },
+		block: {
+			type: this.edytor.getDefaultBlock(this.parent),
+			content,
+			children: this.value.children
+		},
 		index: this.parent.children.indexOf(this) + 1
 	});
 
@@ -160,7 +163,7 @@ export function removeBlock(this: Block, { keepChildren = false }: BlockOperatio
 }
 
 export function mergeBlockBackward(this: Block): Block | undefined {
-	const { closestPreviousBlock, isEmpty, hasChildren, hasContent } = this;
+	const { closestPreviousBlock, isEmpty } = this;
 
 	const { children = [] } = this.value;
 	if (!closestPreviousBlock) {

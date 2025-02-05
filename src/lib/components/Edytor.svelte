@@ -19,7 +19,8 @@
 			},
 			{
 				type: 'code',
-				content: [{ text: 'console.log("hello")' }]
+				content: [{ text: 'caption' }],
+				children: [{ type: 'codeLine', content: [{ text: '\t\tconsole.log("hello")' }] }]
 			}
 		]
 	};

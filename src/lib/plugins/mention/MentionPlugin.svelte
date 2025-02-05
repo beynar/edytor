@@ -1,5 +1,6 @@
 <script module lang="ts">
-	import type { Plugin, MarkSnippetPayload } from '$lib/plugins.js';
+	import { type Plugin, type MarkSnippetPayload } from '$lib/plugins.js';
+
 	export const mentionPlugin: Plugin = (edytor) => {
 		return {
 			onBeforeOperation: ({ operation, payload, text, prevent }) => {

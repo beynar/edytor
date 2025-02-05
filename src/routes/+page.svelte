@@ -7,8 +7,6 @@
 	import { onMount } from 'svelte';
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
-	import Prism from 'prismjs';
-	import 'prismjs/components/prism-jsx';
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 
 	hljs.registerLanguage('javascript', javascript);

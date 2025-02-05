@@ -81,8 +81,9 @@ export class Edytor {
 	edytor = this;
 	selection: EdytorSelection;
 	voidBlocks = new SvelteSet<Block>();
+	voidElements = new SvelteSet<HTMLElement>();
 	defaultType = 'paragraph';
-	contentTransformers = new Map<string, ContentTransformer>();
+	contentTransformers = new SvelteMap<string, ContentTransformer>();
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
 
@@ -122,9 +123,6 @@ export class Edytor {
 		this.yChildren = getSetChildren(this.yBlock);
 		this.awareness = awareness;
 		this.onChange = onChange;
-		if (readonly || !sync) {
-			this.sync(value || { children: [] });
-		}
 
 		// Initialize plugins
 		this.plugins = (plugins || []).map((plugin) => {
@@ -157,6 +155,11 @@ export class Edytor {
 				this.blocks.set(key, snippet as Snippet<[BlockSnippetPayload]>);
 			}
 		});
+
+		if (readonly || !sync) {
+			this.sync(value || { children: [] });
+		}
+
 		this.selection = new EdytorSelection(this, onSelectionChange);
 		this.hotKeys = new HotKeys(this, hotKeys, this.plugins);
 	}
@@ -169,6 +172,30 @@ export class Edytor {
 		return value;
 	}
 
+	selectAll = () => {
+		const { startText } = this.selection.state;
+		const block = startText?.parent;
+	};
+
+	getDefaultBlock = (
+		parent: Block | Edytor | undefined = this.selection.state.startText?.parent
+	) => {
+		if (!parent || parent instanceof Edytor) {
+			return 'paragraph';
+		}
+		for (const plugin of this.plugins) {
+			if (plugin.defaultBlock) {
+				const defaultBlock =
+					typeof plugin.defaultBlock === 'function'
+						? plugin.defaultBlock(parent)
+						: plugin.defaultBlock;
+				if (defaultBlock) {
+					return defaultBlock;
+				}
+			}
+		}
+		return 'paragraph';
+	};
 	sync = ({ children = [] }: JSONDoc = { children: [] }) => {
 		if (this.synced) {
 			return;
@@ -213,6 +240,11 @@ export class Edytor {
 				plugin.onChange?.(value);
 			});
 		});
+	};
+
+	void = (node: HTMLElement) => {
+		node.contentEditable = 'false';
+		this.voidElements.add(node);
 	};
 
 	onBeforeInput = onBeforeInput.bind(this);

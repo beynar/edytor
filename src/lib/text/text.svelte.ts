@@ -15,6 +15,7 @@ import {
 import { deltaToJson, jsonToDelta, toDeltas, type JSONDelta } from './deltas.js';
 import { id } from '$lib/utils.js';
 import { tick } from 'svelte';
+import type { ContentTransformer } from '$lib/plugins.js';
 
 export class Text {
 	parent: Block;
@@ -26,6 +27,7 @@ export class Text {
 	delta: Delta[] = [];
 	isEmpty = $state(false);
 	endsWithNewline = $state(false);
+	transformer: ContentTransformer | undefined;
 	markOnNextInsert: undefined | Record<string, SerializableContent | null> = undefined;
 	id: string;
 
@@ -44,11 +46,12 @@ export class Text {
 	}
 
 	private setChildren = (text?: Y.Text) => {
-		const transformer = this.edytor.contentTransformers.get(this.parent.type);
 		this.stringContent = this.yText.toJSON();
 		const [children, isEmpty] = toDeltas(text || this.yText);
-		this.children = transformer
-			? jsonToDelta(transformer({ text: this, block: this.parent, content: deltaToJson(children) }))
+		this.children = this.transformer
+			? jsonToDelta(
+					this.transformer({ text: this, block: this.parent, content: deltaToJson(children) })
+				)
 			: children;
 		this.isEmpty = isEmpty;
 		this.endsWithNewline = this.stringContent.endsWith('\n');
@@ -75,6 +78,8 @@ export class Text {
 		this.edytor = parent.edytor;
 		this.yText = yText || new Y.Text();
 		this.id = this.yText.doc ? this.yText.getAttribute('id') : id('text');
+		this.transformer = this.edytor.contentTransformers.get(this.parent.type);
+		console.log(this.transformer, this.parent.type);
 
 		if (content !== undefined) {
 			// If content is provided we need to initialize the text with the content

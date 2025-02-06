@@ -20,7 +20,6 @@ export class Text {
 	parent: Block;
 	yText: Y.Text;
 	edytor: Edytor;
-	children = $state<JSONDelta[]>([]);
 	stringContent = $state('');
 	node: HTMLElement | undefined;
 	delta: Delta[] = [];
@@ -28,29 +27,24 @@ export class Text {
 	endsWithNewline = $state(false);
 	markOnNextInsert: undefined | Record<string, SerializableContent | null> = undefined;
 	id: string;
-
+	#children = $state<JSONDelta[]>([]);
 	get value(): JSONText[] {
-		return this.children.map((child) => {
-			const marks = Object.fromEntries(child.marks);
-			const value: JSONText = {
-				text: child.text,
-				marks
-			};
-			if (!marks.length) {
-				delete value.marks;
-			}
-			return value;
-		});
+		return deltaToJson(this.#children);
+	}
+
+	get children() {
+		const transformer = this.parent.definition.transformContent;
+		return transformer
+			? jsonToDelta(transformer({ text: this, block: this.parent, content: this.value }))
+			: this.#children;
+	}
+	set children(value: JSONDelta[]) {
+		this.#children = value;
 	}
 
 	private setChildren = (text?: Y.Text) => {
 		this.stringContent = this.yText.toJSON();
-		const [children, isEmpty] = toDeltas(text || this.yText);
-		const transformer = this.parent.definition.transformContent;
-		this.children = transformer
-			? jsonToDelta(transformer({ text: this, block: this.parent, content: deltaToJson(children) }))
-			: children;
-		this.isEmpty = isEmpty;
+		[this.children, this.isEmpty] = toDeltas(text || this.yText);
 		this.endsWithNewline = this.stringContent.endsWith('\n');
 	};
 

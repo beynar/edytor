@@ -148,7 +148,10 @@ export function removeBlock(
 	this: Block,
 	{ keepChildren = false }: BlockOperations['removeBlock'] = { keepChildren: false }
 ) {
-	this.parent.yChildren.delete(this.index, 1);
+	// Get the current index from yChildren array since this.index may be stale when removing multiple blocks at once
+	const index = this.parent.yChildren.toArray().indexOf(this.yBlock);
+	this.parent.yChildren.delete(index, 1);
+
 	if (keepChildren && this.hasChildren) {
 		this.parent.yChildren.insert(
 			this.index,

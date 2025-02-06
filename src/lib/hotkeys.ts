@@ -51,15 +51,25 @@ const historyHotKeys = {
 		edytor.undoManager.redo();
 	},
 	'mod+a': ({ edytor }) => {
-		const { startText } = edytor.selection.state;
+		const { startText, islandRoot } = edytor.selection.state;
 		if (startText) {
-			if (startText.parent.selected) {
+			if (edytor.selection.selectedBlocks.size) {
 				edytor.selection.selectBlocks(...edytor.children);
 			} else if (edytor.selection.state.isAtStart && edytor.selection.state.isAtEnd) {
 				window.getSelection()?.removeAllRanges();
-				edytor.selection.selectBlocks(startText.parent);
+				edytor.selection.selectBlocks(
+					edytor.selection.state.isIsland ? islandRoot! : startText.parent
+				);
 			} else {
-				edytor.selection.setSelectionAtTextRange(startText, 0, startText.yText.length);
+				if (edytor.selection.state.isIsland) {
+					const firstText = islandRoot?.children[0]?.content;
+					let lastText = islandRoot?.children.at(-1)?.content;
+					if (firstText && lastText) {
+						edytor.selection.setSelectionAtTextsRange(firstText, lastText);
+					}
+				} else {
+					edytor.selection.setSelectionAtTextRange(startText, 0, startText.yText.length);
+				}
 			}
 		}
 	}

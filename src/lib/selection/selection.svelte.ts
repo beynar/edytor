@@ -9,7 +9,7 @@ import {
 	getTextsInSelection,
 	getYIndex
 } from './selection.utils.js';
-import type { Block } from '../block/block.svelte.js';
+import { Block } from '../block/block.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
 import { tick } from 'svelte';
 
@@ -35,6 +35,8 @@ type SelectionState = {
 	isTextSpanning: boolean;
 	isVoid: boolean;
 	isIsland: boolean;
+	islandRoot: Block | null;
+	voidRoot: Block | null;
 	relativePosition: RelativePosition | null;
 	// TOREMOVE
 	yTextContent: string;
@@ -66,6 +68,8 @@ export class EdytorSelection {
 		isTextSpanning: false,
 		isVoid: false,
 		isIsland: false,
+		islandRoot: null,
+		voidRoot: null,
 		relativePosition: null,
 		// TOREMOVE
 		yTextContent: ''
@@ -144,17 +148,21 @@ export class EdytorSelection {
 		}
 
 		let isIsland = false;
+		let islandRoot: Block | null = null;
 		climb(startText?.parent, (block) => {
-			if (block.definition.island) {
+			if (block instanceof Block && block.definition.island) {
 				isIsland = true;
+				islandRoot = block;
 				return true;
 			}
 		});
 
 		let isVoid = false;
+		let voidRoot: Block | null = null;
 		climb(startText?.parent, (block) => {
-			if (block.definition.void) {
+			if (block instanceof Block && block.definition.void) {
 				isVoid = true;
+				voidRoot = block;
 				return true;
 			}
 		});
@@ -179,6 +187,8 @@ export class EdytorSelection {
 			endNode,
 			isVoid,
 			isIsland,
+			islandRoot,
+			voidRoot,
 			relativePosition: startText
 				? Y.createRelativePositionFromTypeIndex(startText.yText, yStart, -1)
 				: null,
@@ -237,6 +247,31 @@ export class EdytorSelection {
 		});
 	};
 
+	private findTextNode = (node: HTMLElement, offset: number = 0) => {
+		let nodeOffset = 0;
+		const treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, (node) => {
+			if (node.nodeType === Node.TEXT_NODE) {
+				return NodeFilter.FILTER_ACCEPT;
+			}
+			return NodeFilter.FILTER_SKIP;
+		});
+		let currentNode = treeWalker.nextNode();
+		let textNode: Node | null = null;
+		let currentOffset = 0;
+
+		while (currentNode) {
+			const endOffset = currentOffset + (currentNode as any).length;
+			if (offset >= currentOffset && offset <= endOffset) {
+				textNode = currentNode;
+				nodeOffset = offset - currentOffset;
+				break;
+			}
+			currentOffset = endOffset;
+			currentNode = treeWalker.nextNode();
+		}
+
+		return [textNode, nodeOffset] as const;
+	};
 	setAtTextOffset = async (
 		textOrBlockOrId: Text | Block | string | undefined | null,
 		textOffset: number | null | undefined = this.state.yStart
@@ -246,32 +281,28 @@ export class EdytorSelection {
 		}
 
 		const node = await this.edytor.getTextNode(textOrBlockOrId);
-		let nodeOffset = 0;
-		const treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, (node) => {
-			if (node.nodeType === Node.TEXT_NODE) {
-				return NodeFilter.FILTER_ACCEPT;
-			}
-			return NodeFilter.FILTER_SKIP;
-		});
-
-		console.log({ node });
-		let currentNode = treeWalker.nextNode();
-		let textNode: Node | null = null;
-		let currentOffset = 0;
-
-		while (currentNode) {
-			const endOffset = currentOffset + (currentNode as any).length;
-			if (textOffset >= currentOffset && textOffset <= endOffset) {
-				textNode = currentNode;
-				nodeOffset = textOffset - currentOffset;
-				break;
-			}
-			currentOffset = endOffset;
-			currentNode = treeWalker.nextNode();
-		}
+		const [textNode, nodeOffset] = this.findTextNode(node, textOffset);
 
 		if (textNode) {
 			this.setAtNodeOffset(textNode, nodeOffset);
+		}
+	};
+
+	setSelectionAtTextsRange = async (startText: Text, endText: Text) => {
+		if (!startText.node || !endText.node) {
+			return;
+		}
+		const [startTextNode, startNodeOffset] = this.findTextNode(startText.node, 0);
+		const [endTextNode, endNodeOffset] = this.findTextNode(endText.node, endText.yText.length);
+
+		if (startTextNode && endTextNode) {
+			const selection = window.getSelection();
+			const range = document.createRange();
+			range.setStart(startTextNode, startNodeOffset);
+			range.setEnd(endTextNode, endNodeOffset);
+			selection?.removeAllRanges();
+			selection?.addRange(range);
+			this.edytor.node!.focus();
 		}
 	};
 

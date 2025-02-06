@@ -55,6 +55,7 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 				if (e.key === 'ArrowUp') {
 					let prevBlock = selectedBlock.closestPreviousBlock;
 
+					// If the block is inside an island, we will select the island root
 					while (prevBlock?.insideIsland) {
 						if (prevBlock.parent instanceof Block) {
 							prevBlock = prevBlock.parent;
@@ -66,6 +67,7 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 					}
 				}
 				if (e.key === 'ArrowDown') {
+					// if the current block is an island, we won't move the selection down to its children but to the next block
 					let nextBlock = selectedBlock.definition.island
 						? selectedBlock.nextBlock
 						: selectedBlock.closestNextBlock;

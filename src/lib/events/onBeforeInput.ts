@@ -14,7 +14,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 		length,
 		startText,
 		isAtEnd,
-		isIsland
+		islandRoot
 	} = this.selection.state;
 	const { inputType, dataTransfer, data } = e;
 	const isNested = startText?.parent.parent !== this.edytor;
@@ -70,7 +70,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 					if (isCollapsed && isAtStart) {
 						// Last nested block need to be unNest
 						// Otherwise we just merge the block backward and eventually remove the block or unnest the children
-						if (isNested && isLastChild && !isIsland) {
+						if (isNested && isLastChild && !islandRoot) {
 							// Before:
 							// [Block]
 							//   [Block]
@@ -80,7 +80,6 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 							// [Block]
 							// [Block]
 							//   [Text] "|Hello"
-
 							const newBlock = startText?.parent.unNestBlock();
 							newBlock && this.edytor.selection.setAtTextOffset(newBlock.content, 0);
 						} else {
@@ -119,10 +118,20 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 							//   [Text] "Hello|World"
 							// [Block]
 							//   [Text] "|!"
-							const previousBlock = startText?.parent.closestPreviousBlock;
-							const offset = previousBlock?.content.yText.length;
-							startText?.parent.mergeBlockBackward();
-							previousBlock && this.edytor.selection.setAtTextOffset(previousBlock.content, offset);
+
+							if (islandRoot && islandRoot.children.length === 1) {
+								this.edytor.selection.selectBlocks(islandRoot);
+							} else {
+								if (islandRoot && islandRoot.children.length > 1 && startText?.parent.index === 0) {
+									return;
+								} else {
+									const previousBlock = startText?.parent.closestPreviousBlock;
+									const offset = previousBlock?.content.yText.length;
+									startText?.parent.mergeBlockBackward();
+									previousBlock &&
+										this.edytor.selection.setAtTextOffset(previousBlock.content, offset);
+								}
+							}
 						}
 					} else {
 						startText?.deleteText({ direction: 'BACKWARD', length: length || 1 });

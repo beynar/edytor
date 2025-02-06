@@ -2,17 +2,12 @@
 	import Prism from 'prismjs';
 	import './prism.css';
 	import 'prismjs/components/prism-jsx';
+	import 'prismjs/components/prism-css';
 	import type { Plugin, MarkSnippetPayload, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { JSONText } from '$lib/utils/json.js';
 	import { prevent } from '$lib/utils.js';
 
-	class Test {
-		state = $state(0);
-	}
-
 	export const codePlugin: Plugin = (edytor) => {
-		const test = new Test();
-
 		return {
 			defaultBlock: (parent) => {
 				if (parent.type === 'code' || parent.type === 'codeLine') {
@@ -97,7 +92,6 @@
 						const tabsToInsert = Array.from({ length: text.stringContent.split('\t').length - 1 })
 							.fill('\t')
 							.join('');
-						console.log({ tabsToInsert });
 						payload.block.content = [{ text: tabsToInsert }, ...(payload.block.content || [])];
 					}
 				}
@@ -133,13 +127,14 @@
 	};
 </script>
 
-{#snippet code({ content, block, children }: BlockSnippetPayload)}
+{#snippet code({ block, children }: BlockSnippetPayload)}
 	<div use:block.attach class="card rounded grid gap-2 bg-neutral-600 p-1">
 		<div use:block.void class="text-xs flex justify-between">
 			<code>html</code>
 			<div>
 				<button
 					onclick={(e) => {
+						test.state++;
 						e.preventDefault();
 						e.stopPropagation();
 						navigator.clipboard.writeText(block.content.stringContent);

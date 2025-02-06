@@ -106,8 +106,7 @@ export class EdytorSelection {
 		if (e.detail < 3) return;
 		await tick();
 		const { startText } = this.state;
-		if (!startText) return;
-		this.setSelectionAtTextRange(startText, 0, startText.yText.length);
+		startText && this.setAtTextRange(startText, 0, startText.yText.length);
 	};
 
 	shift = async (length: number) => {
@@ -136,8 +135,6 @@ export class EdytorSelection {
 		const { startText, endText, texts } = this.getTextsInSelection(startNode, endNode, ranges);
 
 		this.selectBlocks();
-
-		console.log(this.selectedBlocks.size);
 		this.focusBlocks(...texts.map((text) => text.parent));
 
 		let yStart = getYIndex(startText, startNode, start);
@@ -288,10 +285,11 @@ export class EdytorSelection {
 		}
 	};
 
-	setSelectionAtTextsRange = async (startText: Text, endText: Text) => {
+	setAtTextsRange = async (startText: Text, endText: Text) => {
 		if (!startText.node || !endText.node) {
 			return;
 		}
+
 		const [startTextNode, startNodeOffset] = this.findTextNode(startText.node, 0);
 		const [endTextNode, endNodeOffset] = this.findTextNode(endText.node, endText.yText.length);
 
@@ -306,7 +304,7 @@ export class EdytorSelection {
 		}
 	};
 
-	setSelectionAtTextRange = async (
+	setAtTextRange = async (
 		text: Text | undefined | null,
 		start: number | undefined | null,
 		end: number | undefined | null

@@ -83,9 +83,6 @@
 				get value
 			</button>
 			<Edytor
-				onChange={(value) => {
-					console.log('onChange', value);
-				}}
 				plugins={[codePlugin, mentionPlugin, richTextPlugin]}
 				sync={({ doc, synced }) => {
 					// provider = new IndexeddbPersistence('haha-2', doc);

@@ -48,23 +48,27 @@ export type ContentTransformer = (payload: {
 	content: JSONText[];
 }) => JSONText[];
 
-export type Plugin = (editor: Edytor) => {
+export type PluginDefinitions = {
 	marks?: Record<string, Snippet<[MarkSnippetPayload<any>]>>;
 	blocks?: Record<string, BlockDefinition | Snippet<[BlockSnippetPayload<any>]>>;
 	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
+};
+export type Plugin = (editor: Edytor) => PluginDefinitions & PluginOperations;
+
+export type PluginOperations = {
 	onBeforeOperation?: <C extends ChangePayload>(payload: C) => C['payload'] | void;
 	onAfterOperation?: <C extends Omit<ChangePayload, 'prevent'>>(payload: C) => void;
 	onChange?: (value: JSONBlock) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	placeholder?: Snippet<[{ block: Block; text: Text }]>;
-	onEnter?: (paylaod: {
+	onEnter?: (payload: {
 		prevent: Prevent;
 		e: InputEvent | KeyboardEvent;
 		meta?: boolean;
 		shift?: boolean;
 	}) => void;
-	onTab?: (paylaod: { prevent: Prevent; e: KeyboardEvent }) => void;
-	onEscape?: (paylaod: { prevent: Prevent; e: KeyboardEvent }) => void;
+	onTab?: (payload: { prevent: Prevent; e: KeyboardEvent }) => void;
+	onEscape?: (payload: { prevent: Prevent; e: KeyboardEvent }) => void;
 	onBlockAttached?: (payload: { node: HTMLElement; block: Block }) => () => void;
 	onTextAttached?: (payload: { node: HTMLElement; text: Text }) => () => void;
 	defaultBlock?: string | ((parent: Block) => string | void);
@@ -78,8 +82,8 @@ export type Plugin = (editor: Edytor) => {
 		e: KeyboardEvent;
 		selectedBlocks: Block[];
 	}) => void;
+	onBeforeInput?: (payload: { prevent: Prevent; e: InputEvent }) => void;
 };
-
 export type BlockDefinition = {
 	snippet: Snippet<[BlockSnippetPayload<any>]>;
 	void?: boolean;

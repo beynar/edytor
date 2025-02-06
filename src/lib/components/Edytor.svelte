@@ -11,17 +11,15 @@
 			},
 			{
 				type: 'paragraph',
-				content: [
-					{ text: 'Hello', marks: { bold: true } },
-					{ text: '', marks: { void: true } },
-					{ text: ' World', marks: { bold: true } }
-				],
-				children: [
-					{
-						type: 'paragraph',
-						content: [{ text: 'Prout', marks: { bold: true } }]
-					}
-				]
+				content: [{ text: 'One', marks: { bold: true } }]
+			},
+			{
+				type: 'paragraph',
+				content: [{ text: 'Two', marks: { bold: true } }]
+			},
+			{
+				type: 'paragraph',
+				content: [{ text: 'Three', marks: { bold: true } }]
 			},
 			{
 				type: 'code',

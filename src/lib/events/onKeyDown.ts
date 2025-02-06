@@ -16,7 +16,11 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 			if (!this.selection.state.isIsland) {
 				e.preventDefault();
 				e.stopPropagation();
-				this.selection.state.startText?.parent.nestBlock();
+				const { yStart } = this.selection.state;
+				const newBlock = this.selection.state.startText?.parent.nestBlock();
+				if (newBlock) {
+					this.selection.setAtTextOffset(newBlock.content, yStart);
+				}
 			}
 		}
 
@@ -41,39 +45,79 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 		}
 
 		if (arrowKeys.includes(e.key)) {
-			this.edytor.plugins.forEach((plugin) => {
-				plugin.onArrow?.({
-					prevent,
-					e,
-					direction: e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right'
-				});
-			});
-
-			// Manage block selection on arrow keys if there is only one block selected
-			if (this.selection.selectedBlocks.size === 1) {
+			if (e.metaKey) {
 				const selectedBlock = this.selection.selectedBlocks.values().next().value as Block;
 				if (e.key === 'ArrowUp') {
-					let prevBlock = selectedBlock.closestPreviousBlock;
-
-					// If the block is inside an island, we will select the island root
-					while (prevBlock?.insideIsland) {
-						if (prevBlock.parent instanceof Block) {
-							prevBlock = prevBlock.parent;
-						}
+					const path = selectedBlock.path;
+					if (path?.at(-1) === 0) {
+						// we need to unest the block i.e pop the last path index
+						path.pop();
+					} else {
+						// Other wise just decrement the last index
+						path[path.length - 1]--;
 					}
-					if (prevBlock && prevBlock instanceof Block) {
-						this.selection.selectBlocks(prevBlock);
-						this.selection.focusBlocks();
+					const newBlock = selectedBlock.moveBlock({ path: path });
+					if (newBlock) {
+						tick().then(() => {
+							this.selection.selectBlocks(newBlock);
+						});
 					}
 				}
 				if (e.key === 'ArrowDown') {
-					// if the current block is an island, we won't move the selection down to its children but to the next block
-					let nextBlock = selectedBlock.definition.island
-						? selectedBlock.nextBlock
-						: selectedBlock.closestNextBlock;
-					if (nextBlock && nextBlock instanceof Block) {
-						this.selection.selectBlocks(nextBlock);
-						this.selection.focusBlocks();
+					const path = selectedBlock.path;
+					if (path?.at(-1) === selectedBlock.parent.children.length - 1) {
+						// we need to unest the block i.e pop the last path index
+						path.pop();
+						path[path.length - 1]++;
+					}
+					// Then we just increment the last index
+					const lastIndex = path.pop();
+					path.splice(path.length, 0, lastIndex! + 1);
+					if (path.some((p) => isNaN(p))) {
+						return;
+					}
+					const newBlock = selectedBlock.moveBlock({ path: path });
+					if (newBlock) {
+						tick().then(() => {
+							this.selection.selectBlocks(newBlock);
+						});
+					}
+				}
+			} else {
+				this.edytor.plugins.forEach((plugin) => {
+					plugin.onArrow?.({
+						prevent,
+						e,
+						direction: e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right'
+					});
+				});
+
+				// Manage block selection on arrow keys if there is only one block selected
+				if (this.selection.selectedBlocks.size === 1) {
+					const selectedBlock = this.selection.selectedBlocks.values().next().value as Block;
+					if (e.key === 'ArrowUp') {
+						let prevBlock = selectedBlock.closestPreviousBlock;
+
+						// If the block is inside an island, we will select the island root
+						while (prevBlock?.insideIsland) {
+							if (prevBlock.parent instanceof Block) {
+								prevBlock = prevBlock.parent;
+							}
+						}
+						if (prevBlock && prevBlock instanceof Block) {
+							this.selection.selectBlocks(prevBlock);
+							this.selection.focusBlocks();
+						}
+					}
+					if (e.key === 'ArrowDown') {
+						// if the current block is an island, we won't move the selection down to its children but to the next block
+						let nextBlock = selectedBlock.definition.island
+							? selectedBlock.nextBlock
+							: selectedBlock.closestNextBlock;
+						if (nextBlock && nextBlock instanceof Block) {
+							this.selection.selectBlocks(nextBlock);
+							this.selection.focusBlocks();
+						}
 					}
 				}
 			}

@@ -102,6 +102,7 @@ export class Text {
 	splitText = this.batch('splitText', splitText.bind(this));
 	setText = this.batch('setText', setText.bind(this));
 	markText = this.batch('markText', markText.bind(this));
+
 	removeMarksFromText = this.batch('removeMarksFromText', removeMarksFromText.bind(this));
 
 	attach = (node: HTMLElement) => {

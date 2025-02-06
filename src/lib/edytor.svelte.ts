@@ -21,7 +21,8 @@ import type {
 	BlockSnippetPayload,
 	InitializedPlugin,
 	MarkSnippetPayload,
-	BlockDefinition
+	BlockDefinition,
+	PluginOperations
 } from './plugins.js';
 import { on } from 'svelte/events';
 import { HotKeys, type HotKey } from './hotkeys.js';

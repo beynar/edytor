@@ -31,6 +31,9 @@ export type BlockOperations = {
 	setBlock: {
 		value: JSONBlock;
 	};
+	moveBlock: {
+		path: number[];
+	};
 };
 
 export function batch<T extends (...args: any[]) => any, O extends keyof BlockOperations>(
@@ -226,6 +229,26 @@ export function mergeBlockForward(this: Block): Block | undefined {
 	return nextBlock;
 }
 
+export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): Block | undefined {
+	const firstIndex = path.shift();
+	let targetBlock = this.edytor.children.at(firstIndex!);
+	while (path.length > 0) {
+		const index = path.shift();
+		if (!index) return;
+		targetBlock = targetBlock?.children.at(index!);
+	}
+
+	if (!targetBlock) return;
+	this.edytor.idToBlock.delete(this.id);
+	this.parent.yChildren.delete(this.index, 1);
+	const newBlock = new Block({
+		parent: targetBlock.parent,
+		block: this.value
+	});
+	targetBlock.parent.yChildren.insert(targetBlock.index, [newBlock.yBlock]);
+	return newBlock;
+}
+
 export function unNestBlock(this: Block): Block | null {
 	const { parent, index } = this;
 	if (parent instanceof Block) {
@@ -241,9 +264,9 @@ export function unNestBlock(this: Block): Block | null {
 	return null;
 }
 
-export function nestBlock(this: Block) {
+export function nestBlock(this: Block): Block | null {
 	const previousBlock = this.previousBlock;
-	if (!previousBlock) return;
+	if (!previousBlock) return null;
 
 	const newBlock = new Block({
 		parent: previousBlock,
@@ -263,7 +286,7 @@ export function nestBlock(this: Block) {
 		);
 	}
 	this.parent.yChildren.delete(this.index, 1);
-	this.edytor.selection.setAtTextOffset(newBlock.content);
+	return newBlock;
 }
 
 export function setBlock(this: Block, { value }: BlockOperations['setBlock']) {

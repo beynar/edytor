@@ -77,10 +77,10 @@ const historyHotKeys = {
 					const firstText = islandRoot?.children[0]?.content;
 					let lastText = islandRoot?.children.at(-1)?.content;
 					if (firstText && lastText) {
-						edytor.selection.setSelectionAtTextsRange(firstText, lastText);
+						edytor.selection.setAtTextsRange(firstText, lastText);
 					}
 				} else {
-					edytor.selection.setSelectionAtTextRange(startText, 0, startText.yText.length);
+					edytor.selection.setAtTextRange(startText, 0, startText.yText.length);
 				}
 			}
 		}

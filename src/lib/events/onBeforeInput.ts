@@ -3,8 +3,13 @@ import { prevent, PreventionError } from '$lib/utils.js';
 
 export async function onBeforeInput(this: Edytor, e: InputEvent) {
 	if (this.readonly) return;
+
 	e.preventDefault();
-	console.log('onBeforeInput', e);
+
+	this.plugins.forEach((plugin) => {
+		plugin.onBeforeInput?.({ prevent, e });
+	});
+
 	const {
 		start,
 		yStart,
@@ -19,6 +24,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 	const { inputType, dataTransfer, data } = e;
 	const isNested = startText?.parent.parent !== this.edytor;
 	const isLastChild = startText?.parent.parent.children.at(-1) === startText?.parent;
+
 	try {
 		switch (inputType) {
 			case 'insertText': {

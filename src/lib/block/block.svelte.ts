@@ -14,7 +14,8 @@ import {
 	setBlock,
 	splitBlock,
 	addBlocks,
-	unNestBlock
+	unNestBlock,
+	moveBlock
 } from './block.utils.js';
 import { id } from '$lib/utils.js';
 import type { BlockDefinition } from '$lib/plugins.js';
@@ -45,7 +46,7 @@ export class Block {
 	parent: Block | Edytor;
 	yChildren: Y.Array<YBlock>;
 	children = $state<Block[]>([]);
-	id: string;
+	id = $state<string>(id('block'));
 	node?: HTMLElement;
 	definition = $state<BlockDefinition>({} as BlockDefinition);
 
@@ -104,6 +105,16 @@ export class Block {
 			return this.parent instanceof Block ? this.parent.depth + 1 : 0;
 		}
 		return this.#depth;
+	}
+
+	get path(): number[] {
+		const start = [this.index];
+		let current = this.parent;
+		while (current instanceof Block) {
+			start.push(current.index);
+			current = current.parent;
+		}
+		return start.toReversed();
 	}
 
 	get nextBlock() {
@@ -195,6 +206,7 @@ export class Block {
 	mergeBlockForward = this.batch('mergeBlockForward', mergeBlockForward.bind(this));
 	nestBlock = this.batch('nestBlock', nestBlock.bind(this));
 	setBlock = this.batch('setBlock', setBlock.bind(this));
+	moveBlock = this.batch('moveBlock', moveBlock.bind(this));
 
 	void = (node: HTMLElement) => {
 		node.setAttribute('data-edytor-void', `true`);
@@ -211,8 +223,9 @@ export class Block {
 	} & ({ yBlock?: undefined; block: JSONBlock } | { yBlock: YBlock; block?: undefined })) {
 		this.parent = parent;
 		this.edytor = parent.edytor;
-
 		this.id = (yBlock?.doc && (yBlock?.get('id') as string)) || id('block');
+
+		console.log('this.id', this.id);
 		if (block !== undefined) {
 			this.#type = block.type;
 			// If block is provided we need to initialize the block with the value;

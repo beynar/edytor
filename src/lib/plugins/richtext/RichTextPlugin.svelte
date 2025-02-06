@@ -14,7 +14,7 @@
 				end: yEnd
 			});
 
-			edytor.selection.setSelectionAtTextRange(startText, yStart, yEnd);
+			edytor.selection.setAtTextRange(startText, yStart, yEnd);
 		}
 	};
 	export const richTextPlugin: Plugin = (edytor) => {

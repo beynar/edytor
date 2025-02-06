@@ -142,7 +142,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 			}
 			case 'insertLineBreak': {
 				this.edytor.plugins.forEach((plugin) => {
-					plugin.onSoftBreak?.({ prevent, e });
+					plugin.onEnter?.({ prevent, e, shift: true });
 				});
 				startText?.insertText({ value: '\n' });
 				this.selection.setAtTextOffset(startText!, start + 1);
@@ -155,7 +155,6 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 				break;
 			}
 			case 'insertParagraph': {
-				console.log('insertParagraph');
 				this.edytor.plugins.forEach((plugin) => {
 					plugin.onEnter?.({ prevent, e });
 				});

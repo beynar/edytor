@@ -57,13 +57,17 @@ export type Plugin = (editor: Edytor) => {
 	onChange?: (value: JSONBlock) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	placeholder?: Snippet<[{ block: Block; text: Text }]>;
-	onEnter?: (paylaod: { prevent: Prevent; e: InputEvent }) => void;
+	onEnter?: (paylaod: {
+		prevent: Prevent;
+		e: InputEvent | KeyboardEvent;
+		meta?: boolean;
+		shift?: boolean;
+	}) => void;
 	onTab?: (paylaod: { prevent: Prevent; e: KeyboardEvent }) => void;
 	onEscape?: (paylaod: { prevent: Prevent; e: KeyboardEvent }) => void;
 	onBlockAttached?: (payload: { node: HTMLElement; block: Block }) => () => void;
 	onTextAttached?: (payload: { node: HTMLElement; text: Text }) => () => void;
 	defaultBlock?: string | ((parent: Block) => string | void);
-	onSoftBreak?: (payload: { prevent: Prevent; e: InputEvent }) => void;
 	onArrow?: (payload: {
 		prevent: Prevent;
 		e: KeyboardEvent;

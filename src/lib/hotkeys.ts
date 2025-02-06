@@ -1,5 +1,6 @@
 import type { Edytor, EdytorOptions } from './edytor.svelte.js';
 import type { InitializedPlugin } from './plugins.js';
+import { prevent } from './utils.js';
 
 export type HotKey = (payload: { event: KeyboardEvent; edytor: Edytor }) => void;
 export type HotKeyModifier = 'mod' | 'alt' | 'ctrl' | 'shift';
@@ -29,7 +30,8 @@ type Letter =
 	| 'w'
 	| 'x'
 	| 'y'
-	| 'z';
+	| 'z'
+	| 'enter';
 export type SingleModifierCombination = `${HotKeyModifier}+${Letter}`;
 export type DoubleModifierCombination =
 	| `mod+alt+${Letter}`
@@ -49,6 +51,16 @@ const historyHotKeys = {
 	},
 	'mod+shift+z': ({ edytor }) => {
 		edytor.undoManager.redo();
+	},
+	'mod+enter': ({ edytor, event }) => {
+		edytor.plugins.forEach((plugin) => {
+			plugin.onEnter?.({ prevent, e: event, meta: true });
+		});
+
+		const newBlock = edytor.selection.state.startText?.parent.splitBlock({
+			index: edytor.selection.state.startText?.yText.length
+		});
+		newBlock && edytor.selection.setAtTextOffset(newBlock.content, 0);
 	},
 	'mod+a': ({ edytor }) => {
 		const { startText, islandRoot } = edytor.selection.state;

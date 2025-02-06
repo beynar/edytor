@@ -32,15 +32,17 @@
 					});
 				}
 			},
-			onSoftBreak: ({ prevent }) => {
-				const { startText } = edytor.selection.state;
-				if (startText?.parent.type === 'codeLine') {
-					prevent(() => {
-						const event = new InputEvent('', {
-							inputType: 'insertParagraph'
+			onEnter: ({ prevent, shift }) => {
+				if (shift) {
+					const { startText } = edytor.selection.state;
+					if (startText?.parent.type === 'codeLine') {
+						prevent(() => {
+							const event = new InputEvent('', {
+								inputType: 'insertParagraph'
+							});
+							edytor.onBeforeInput(event);
 						});
-						edytor.onBeforeInput(event);
-					});
+					}
 				}
 			},
 			onBeforeOperation: ({ operation, payload, block }) => {

@@ -20,22 +20,22 @@
 	export const richTextPlugin: Plugin = (edytor) => {
 		return {
 			hotkeys: {
-				'mod+b': ({ edytor }) => {
+				'mod+b': () => {
 					setMarkAndSelect(edytor, 'bold');
 				},
-				'mod+i': ({ edytor }) => {
+				'mod+i': () => {
 					setMarkAndSelect(edytor, 'italic');
 				},
-				'mod+u': ({ edytor }) => {
+				'mod+u': () => {
 					setMarkAndSelect(edytor, 'underline');
 				},
-				'mod+e': ({ edytor }) => {
+				'mod+e': () => {
 					setMarkAndSelect(edytor, 'code');
 				},
-				'mod+shift+x': ({ edytor }) => {
+				'mod+shift+x': () => {
 					setMarkAndSelect(edytor, 'strike');
 				},
-				'mod+shift+h': ({ edytor }) => {
+				'mod+shift+h': () => {
 					setMarkAndSelect(edytor, 'color', 'red');
 				}
 			},
@@ -140,7 +140,7 @@
 {/snippet}
 
 {#snippet paragraph({ block, content, children }: BlockSnippetPayload)}
-	<div use:block.attach>
+	<div class="rounded bg-opacity-25 p-1 my-1" use:block.attach>
 		<p>
 			{@render content()}
 		</p>
@@ -205,6 +205,6 @@
 	</li>
 {/snippet}
 
-{#snippet horizontalRule({ block, content, children }: BlockSnippetPayload)}
-	<hr use:block.attach={true} />
+{#snippet horizontalRule({ block }: BlockSnippetPayload)}
+	<hr use:block.attach use:block.void />
 {/snippet}

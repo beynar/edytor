@@ -32,18 +32,27 @@
 					});
 				}
 			},
-			onSoftBreak: ({ prevent, e }) => {
+			onSoftBreak: ({ prevent }) => {
 				const { startText } = edytor.selection.state;
 				if (startText?.parent.type === 'codeLine') {
 					prevent(() => {
-						const event = new InputEvent('insertParagraph', {
+						const event = new InputEvent('', {
 							inputType: 'insertParagraph'
 						});
 						edytor.onBeforeInput(event);
 					});
 				}
 			},
-			onBeforeOperation: ({ operation, payload, edytor, block }) => {
+			onBeforeOperation: ({ operation, payload, block }) => {
+				if (block.closestNextBlock?.type === 'code' && operation === 'mergeBlockForward') {
+					if (block.isEmpty) {
+						prevent(() => {
+							block.mergeBlockBackward();
+						});
+					} else {
+						prevent();
+					}
+				}
 				if (block.type === 'codeLine') {
 					const selection = edytor.selection.state;
 					const isCollapsed = selection.isCollapsed;
@@ -68,8 +77,6 @@
 					}
 
 					if (operation === 'mergeBlockBackward' && block.parent.children.length === 1) {
-						test.state++;
-						console.log('mergeBlockBackward', test.state);
 						prevent();
 					}
 					if (
@@ -93,26 +100,29 @@
 					}
 				}
 			},
-			transformContent: {
-				codeLine: ({ text }) => {
-					console.log('here', test.state);
-					const tokens = Prism.tokenize(text.stringContent, Prism.languages['jsx']);
-					return tokens.map((token) => {
-						if (typeof token === 'string') {
-							return {
-								text: token
-							};
-						}
-						return {
-							marks: { codeToken: token.type },
-							text: token.content
-						};
-					}) as JSONText[];
-				}
-			},
+
 			blocks: {
-				code,
-				codeLine
+				code: {
+					snippet: code,
+					island: true
+				},
+				codeLine: {
+					snippet: codeLine,
+					transformContent: ({ text }) => {
+						const tokens = Prism.tokenize(text.stringContent, Prism.languages['jsx']);
+						return tokens.map((token) => {
+							if (typeof token === 'string') {
+								return {
+									text: token
+								};
+							}
+							return {
+								marks: { codeToken: token.type },
+								text: token.content
+							};
+						}) as JSONText[];
+					}
+				}
 			},
 			marks: {
 				codeToken
@@ -123,7 +133,7 @@
 
 {#snippet code({ content, block, children }: BlockSnippetPayload)}
 	<div use:block.attach class="card rounded grid gap-2 bg-neutral-600 p-1">
-		<div use:block.edytor.void class="text-xs flex justify-between">
+		<div use:block.void class="text-xs flex justify-between">
 			<code>html</code>
 			<div>
 				<button
@@ -144,7 +154,7 @@
 {/snippet}
 
 {#snippet codeLine({ content, block }: BlockSnippetPayload)}
-	<div class="hover:bg-neutral-700" style:tab-size="7px" use:block.attach={{ isIsolate: true }}>
+	<div class="hover:bg-neutral-700" style:tab-size="7px" use:block.attach>
 		{@render content()}
 	</div>
 {/snippet}

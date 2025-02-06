@@ -15,7 +15,6 @@ import {
 import { deltaToJson, jsonToDelta, toDeltas, type JSONDelta } from './deltas.js';
 import { id } from '$lib/utils.js';
 import { tick } from 'svelte';
-import type { ContentTransformer } from '$lib/plugins.js';
 
 export class Text {
 	parent: Block;
@@ -27,7 +26,6 @@ export class Text {
 	delta: Delta[] = [];
 	isEmpty = $state(false);
 	endsWithNewline = $state(false);
-	transformer: ContentTransformer | undefined;
 	markOnNextInsert: undefined | Record<string, SerializableContent | null> = undefined;
 	id: string;
 
@@ -48,10 +46,9 @@ export class Text {
 	private setChildren = (text?: Y.Text) => {
 		this.stringContent = this.yText.toJSON();
 		const [children, isEmpty] = toDeltas(text || this.yText);
-		this.children = this.transformer
-			? jsonToDelta(
-					this.transformer({ text: this, block: this.parent, content: deltaToJson(children) })
-				)
+		const transformer = this.parent.definition.transformContent;
+		this.children = transformer
+			? jsonToDelta(transformer({ text: this, block: this.parent, content: deltaToJson(children) }))
 			: children;
 		this.isEmpty = isEmpty;
 		this.endsWithNewline = this.stringContent.endsWith('\n');
@@ -78,8 +75,6 @@ export class Text {
 		this.edytor = parent.edytor;
 		this.yText = yText || new Y.Text();
 		this.id = this.yText.doc ? this.yText.getAttribute('id') : id('text');
-		this.transformer = this.edytor.contentTransformers.get(this.parent.type);
-		console.log(this.transformer, this.parent.type);
 
 		if (content !== undefined) {
 			// If content is provided we need to initialize the text with the content
@@ -122,12 +117,11 @@ export class Text {
 		node.setAttribute('data-edytor-text', `true`);
 
 		tick().then(() => {
-			if (this.parent.isVoid) {
+			if (this.parent.definition.void) {
 				node.setAttribute('contenteditable', 'true');
 				node.style.outline = 'none';
 				node.style.border = 'none';
 				node.style.minWidth = '100%';
-				console.log(this.parent.type, this.parent.isVoid);
 				node.onbeforeinput = (e) => {
 					e.preventDefault();
 					e.stopPropagation();
@@ -135,6 +129,7 @@ export class Text {
 				};
 			}
 		});
+
 		let pluginDestroy = this.edytor.plugins.reduce(
 			(acc, plugin) => {
 				const action = plugin.onTextAttached?.({ node, text: this });

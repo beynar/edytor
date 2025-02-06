@@ -29,10 +29,9 @@ Just run it, see what you can do with it, and open issues or PRs.
 - 🎨 **Rich Text Formatting**: Full support for text styling
 - 🤝 **Real-time Collaboration**: Uses Y.js as data store, collaborative editing is built-in
 - 🔌 **Plugin System**: Extensible architecture for custom features
-- ⚡ **High Performance**: Optimized for large documents
+- ⚡ **High Performance**: Optimized for large documents, fine grained update at the block/content level thanks to Y.js and Svelte's reactivity
 - 🔄 **Undo/Redo**: Built-in history management
-- 🎯 **TypeScript**: Full type safety and IntelliSense support
-- 📦 **Lightweight**: Relatively small bundle size
+- 📦 **Lightweight**: Relatively small bundle size compared to other rich text editors
 
 ## 🚀 Quick Start
 

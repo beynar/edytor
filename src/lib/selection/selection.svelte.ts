@@ -3,6 +3,7 @@ import * as Y from 'yjs';
 import type { Edytor } from '../edytor.svelte.js';
 import { Text } from '../text/text.svelte.js';
 import {
+	climb,
 	getRangesFromSelection,
 	getTextOfNode,
 	getTextsInSelection,
@@ -33,20 +34,17 @@ type SelectionState = {
 	endNode: Node | null;
 	isTextSpanning: boolean;
 	isVoid: boolean;
+	isIsland: boolean;
 	relativePosition: RelativePosition | null;
 	// TOREMOVE
 	yTextContent: string;
 };
 
-type SavedPosition = {
-	offset: number;
-	range: Range;
-	textNode: Text;
-};
 export class EdytorSelection {
 	edytor: Edytor;
 	focusedBlocks = new SvelteSet<Block>();
 	selectedBlocks = new SvelteSet<Block>();
+	hasSelectedAll = $state(false);
 
 	state = $state<SelectionState>({
 		selection: null,
@@ -67,6 +65,7 @@ export class EdytorSelection {
 		isAtEnd: false,
 		isTextSpanning: false,
 		isVoid: false,
+		isIsland: false,
 		relativePosition: null,
 		// TOREMOVE
 		yTextContent: ''
@@ -132,13 +131,10 @@ export class EdytorSelection {
 
 		const { startText, endText, texts } = this.getTextsInSelection(startNode, endNode, ranges);
 
-		const focusedBlocks = new Set(texts.map((text) => text.parent));
-		const difference = this.focusedBlocks.difference(focusedBlocks);
-		difference.forEach((block) => {
-			this.focusedBlocks.delete(block);
-			// block.content.setChildren();
-		});
-		focusedBlocks.forEach((block) => this.focusedBlocks.add(block));
+		this.selectBlocks();
+
+		console.log(this.selectedBlocks.size);
+		this.focusBlocks(...texts.map((text) => text.parent));
 
 		let yStart = getYIndex(startText, startNode, start);
 		let yEnd = isCollapsed ? yStart : getYIndex(endText, endNode, end);
@@ -146,6 +142,22 @@ export class EdytorSelection {
 		if (yStart > yEnd) {
 			[yStart, yEnd] = [yEnd, yStart];
 		}
+
+		let isIsland = false;
+		climb(startText?.parent, (block) => {
+			if (block.definition.island) {
+				isIsland = true;
+				return true;
+			}
+		});
+
+		let isVoid = false;
+		climb(startText?.parent, (block) => {
+			if (block.definition.void) {
+				isVoid = true;
+				return true;
+			}
+		});
 
 		this.state = {
 			selection,
@@ -165,14 +177,14 @@ export class EdytorSelection {
 			isTextSpanning: startText !== endText && texts.length > 1,
 			startNode,
 			endNode,
-			isVoid: startText?.parent ? this.edytor.voidBlocks.has(startText.parent) : false,
+			isVoid,
+			isIsland,
 			relativePosition: startText
 				? Y.createRelativePositionFromTypeIndex(startText.yText, yStart, -1)
 				: null,
 			// TOREMOVE
 			yTextContent: startText?.yText.toJSON()!
 		};
-
 		this.edytorOnSelectionChange?.(this);
 		this.edytor.plugins.forEach((plugin) => plugin.onSelectionChange?.(this));
 	};
@@ -186,6 +198,7 @@ export class EdytorSelection {
 			this.state.relativePosition,
 			this.edytor.doc
 		);
+
 		if (!absolutePosition) {
 			return;
 		}
@@ -193,10 +206,45 @@ export class EdytorSelection {
 		this.setAtTextOffset(text, absolutePosition?.index);
 	};
 
+	selectBlocks = (...blocks: Block[]) => {
+		const difference = this.selectedBlocks.difference(new Set(blocks));
+		difference.forEach((block) => {
+			this.selectedBlocks.delete(block);
+			block.definition.onBlur?.({ block });
+			block.node?.removeAttribute('data-edytor-selected');
+		});
+		blocks.forEach((block) => {
+			this.selectedBlocks.add(block);
+			block.definition.onSelect?.({ block });
+			block.node?.setAttribute('data-edytor-selected', 'true');
+		});
+		if (blocks.length === 1) {
+			this.focusBlocks();
+		}
+	};
+
+	focusBlocks = (...blocks: Block[]) => {
+		const difference = this.focusedBlocks.difference(new Set(blocks));
+		difference.forEach((block) => {
+			this.focusedBlocks.delete(block);
+			block.definition.onBlur?.({ block });
+			block.node?.removeAttribute('data-edytor-focused');
+		});
+		blocks.forEach((block) => {
+			this.focusedBlocks.add(block);
+			block.definition.onFocus?.({ block });
+			block.node?.setAttribute('data-edytor-focused', 'true');
+		});
+	};
+
 	setAtTextOffset = async (
-		textOrBlockOrId: Text | Block | string,
-		textOffset: number = this.state.yStart
+		textOrBlockOrId: Text | Block | string | undefined | null,
+		textOffset: number | null | undefined = this.state.yStart
 	) => {
+		if (!textOrBlockOrId || typeof textOffset !== 'number') {
+			return;
+		}
+
 		const node = await this.edytor.getTextNode(textOrBlockOrId);
 		let nodeOffset = 0;
 		const treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, (node) => {
@@ -205,6 +253,8 @@ export class EdytorSelection {
 			}
 			return NodeFilter.FILTER_SKIP;
 		});
+
+		console.log({ node });
 		let currentNode = treeWalker.nextNode();
 		let textNode: Node | null = null;
 		let currentOffset = 0;
@@ -225,7 +275,14 @@ export class EdytorSelection {
 		}
 	};
 
-	setSelectionAtTextRange = async (text: Text, start: number, end: number) => {
+	setSelectionAtTextRange = async (
+		text: Text | undefined | null,
+		start: number | undefined | null,
+		end: number | undefined | null
+	) => {
+		if (!text || typeof start !== 'number' || typeof end !== 'number') {
+			return;
+		}
 		const node = await this.edytor.getTextNode(text);
 		let startNode: Node | null = null;
 		let startOffset = 0;
@@ -277,7 +334,7 @@ export class EdytorSelection {
 		}
 	};
 
-	setAtNodeOffset = async (node: Node, offset: number) => {
+	setAtNodeOffset = (node: Node, offset: number) => {
 		const selection = window.getSelection();
 		const range = document.createRange();
 		range.setStart(node, offset);

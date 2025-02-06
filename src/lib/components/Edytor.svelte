@@ -15,12 +15,26 @@
 					{ text: 'Hello', marks: { bold: true } },
 					{ text: '', marks: { void: true } },
 					{ text: ' World', marks: { bold: true } }
+				],
+				children: [
+					{
+						type: 'paragraph',
+						content: [{ text: 'Prout', marks: { bold: true } }]
+					}
 				]
 			},
 			{
 				type: 'code',
 				content: [{ text: 'caption' }],
 				children: [{ type: 'codeLine', content: [{ text: '\t\tconsole.log("hello")' }] }]
+			},
+			{
+				type: 'paragraph',
+				content: [
+					{ text: 'Hello', marks: { bold: true } },
+					{ text: '', marks: { void: true } },
+					{ text: ' World', marks: { bold: true } }
+				]
 			}
 		]
 	};

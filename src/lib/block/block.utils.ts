@@ -34,7 +34,7 @@ export type BlockOperations = {
 };
 
 export function batch<T extends (...args: any[]) => any, O extends keyof BlockOperations>(
-	ops: O,
+	operation: O,
 	func: T
 ): T {
 	return function (this: Block, payload: BlockOperations[O]): ReturnType<T> {
@@ -43,11 +43,10 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 		for (const plugin of this.edytor.plugins) {
 			// @ts-expect-error
 			const normalizedPayload = plugin.onBeforeOperation?.({
-				operation: ops,
+				operation,
 				payload,
 				block: this,
 				text: this.content,
-				edytor: this.edytor,
 				prevent
 			}) as BlockOperations[O] | undefined;
 			if (normalizedPayload) {
@@ -61,10 +60,9 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 		for (const plugin of this.edytor.plugins) {
 			// @ts-expect-error
 			plugin.onAfterOperation?.({
-				operation: ops,
+				operation,
 				payload,
-				block: this,
-				edytor: this.edytor
+				block: this
 			}) as BlockOperations[O] | undefined;
 		}
 
@@ -146,7 +144,10 @@ export function splitBlock(
 	return newBlock;
 }
 
-export function removeBlock(this: Block, { keepChildren = false }: BlockOperations['removeBlock']) {
+export function removeBlock(
+	this: Block,
+	{ keepChildren = false }: BlockOperations['removeBlock'] = { keepChildren: false }
+) {
 	this.parent.yChildren.delete(this.index, 1);
 	if (keepChildren && this.hasChildren) {
 		this.parent.yChildren.insert(

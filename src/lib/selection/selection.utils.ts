@@ -1,5 +1,7 @@
 import { EdytorSelection } from './selection.svelte.js';
 import { Text } from '../text/text.svelte.js';
+import { Block } from '$lib/block/block.svelte.js';
+import { Edytor } from '$lib/edytor.svelte.js';
 
 export function getTextOfNode(this: EdytorSelection, node: Node | null) {
 	if (!node) return null;
@@ -131,4 +133,19 @@ export const getYIndex = (text: Text | null, node: Node | null, _start: number) 
 
 export const getRangesFromSelection = (selection: Selection): Range[] => {
 	return Array.from({ length: selection.rangeCount }, (_, i) => selection.getRangeAt(i));
+};
+
+export const climb = (
+	block: Block | Edytor | undefined,
+	cb: (block: Block | Edytor) => void | true
+) => {
+	if (!block) return;
+	let parent = block;
+	while (parent) {
+		if (cb(parent)) break;
+		if (parent instanceof Edytor || parent.parent instanceof Edytor) {
+			break;
+		}
+		parent = parent.parent;
+	}
 };

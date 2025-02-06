@@ -17,6 +17,8 @@ import {
 	unNestBlock
 } from './block.utils.js';
 import { id } from '$lib/utils.js';
+import type { BlockDefinition } from '$lib/plugins.js';
+import { climb } from '$lib/selection/selection.utils.js';
 
 export const getSetChildren = (yBlock: YBlock): Y.Array<YBlock> => {
 	let yChildren = yBlock.get('children') as Y.Array<YBlock>;
@@ -45,10 +47,34 @@ export class Block {
 	children = $state<Block[]>([]);
 	id: string;
 	node?: HTMLElement;
-	isVoid = $state(false);
-	isIsolate = $state(false);
-	#index = $state<number | null>(null);
+	definition = $state<BlockDefinition>({} as BlockDefinition);
 
+	get selected() {
+		return this.edytor.selection.selectedBlocks.has(this) || this.edytor.selection.hasSelectedAll;
+	}
+	get focused() {
+		return this.edytor.selection.focusedBlocks.has(this) && !this.selected;
+	}
+
+	get insideIsland(): boolean {
+		let insideIslands = false;
+		climb(this.parent, (block) => {
+			if (block instanceof Block && block.definition?.island) {
+				insideIslands = true;
+				return true;
+			}
+		});
+		return insideIslands;
+	}
+
+	get firstEditableText(): Text | undefined {
+		if (this.content.node) {
+			return this.content;
+		}
+		return this.children.at(0)?.firstEditableText;
+	}
+
+	#index = $state<number | null>(null);
 	get index(): number {
 		if (this.#index === null) {
 			return this.parent.children.indexOf(this);
@@ -68,6 +94,7 @@ export class Block {
 		// Do something here to update the document
 		this.yBlock.set('type', value);
 		this.#type = value;
+		this.definition = this.getDefinition();
 	}
 
 	#depth = $state<number | null>(null);
@@ -80,8 +107,7 @@ export class Block {
 	}
 
 	get nextBlock() {
-		const index = this.index;
-		return this.parent.children[index + 1];
+		return this.parent.children[this.index + 1];
 	}
 
 	get previousBlock() {
@@ -101,18 +127,17 @@ export class Block {
 		}
 	}
 
-	get closestNextBlock(): Block | undefined {
+	get closestNextBlock(): Block | null {
+		if (this.hasChildren) {
+			return this.children.at(0) || null;
+		}
 		if (this.nextBlock) {
 			return this.nextBlock;
 		} else {
-			if (this.hasChildren) {
-				return this.children.at(-1);
+			if (this.parent instanceof Block) {
+				return this.parent.parent.children.at(this.parent.index + 1) || null;
 			} else {
-				if (this.parent instanceof Block) {
-					return this.parent.parent.children.at(-1);
-				} else {
-					return undefined;
-				}
+				return null;
 			}
 		}
 	}
@@ -149,6 +174,14 @@ export class Block {
 		return value;
 	}
 
+	private getDefinition() {
+		const definition = this.edytor.blocks.get(this.#type);
+		if (!definition) {
+			throw new Error(`Block type ${this.#type} is not defined`);
+		}
+		return definition;
+	}
+
 	private observeChildren = observeChildren.bind(this);
 	private batch = batch.bind(this);
 	addBlock = this.batch('addBlock', addBlock.bind(this));
@@ -162,6 +195,12 @@ export class Block {
 	mergeBlockForward = this.batch('mergeBlockForward', mergeBlockForward.bind(this));
 	nestBlock = this.batch('nestBlock', nestBlock.bind(this));
 	setBlock = this.batch('setBlock', setBlock.bind(this));
+
+	void = (node: HTMLElement) => {
+		node.setAttribute('data-edytor-void', `true`);
+		node.style.userSelect = 'none';
+		node.contentEditable = 'false';
+	};
 
 	constructor({
 		parent,
@@ -211,43 +250,23 @@ export class Block {
 				return block;
 			});
 		}
-
+		this.definition = this.getDefinition();
 		this.edytor.idToBlock.set(this.id, this);
 		if (!this.edytor.readonly) {
 			this.yChildren.observe(this.observeChildren);
 		}
 	}
 
-	attach = (
-		node: HTMLElement,
-		{
-			isIsolate,
-			isVoid
-		}: {
-			isIsolate?: boolean;
-			isVoid?: boolean;
-		} = {}
-	) => {
+	attach = (node: HTMLElement) => {
 		this.node = node;
 		node.setAttribute('data-edytor-id', `${this.id}`);
 		node.setAttribute('data-edytor-block', `true`);
-
-		if (isVoid) {
-			this.isVoid = true;
-			node.setAttribute('data-edytor-void', `true`);
-			node.contentEditable = 'false';
-		}
-		if (isIsolate) {
-			this.isIsolate = true;
-			node.setAttribute('data-edytor-isolated', `true`);
-		}
+		node.setAttribute('data-edytor-type', `${this.#type}`);
 
 		let pluginDestroy = this.edytor.plugins.reduce(
 			(acc, plugin) => {
 				const action = plugin.onBlockAttached?.({ node, block: this });
-
 				action && acc.push(action);
-
 				return acc;
 			},
 			[] as (() => void)[]

@@ -5,11 +5,19 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 	if (this.readonly) return;
 	e.preventDefault();
 	console.log('onBeforeInput', e);
-	const { start, yStart, isCollapsed, isTextSpanning, isAtStart, length, startText, isAtEnd } =
-		this.selection.state;
+	const {
+		start,
+		yStart,
+		isCollapsed,
+		isTextSpanning,
+		isAtStart,
+		length,
+		startText,
+		isAtEnd,
+		isIsland
+	} = this.selection.state;
 	const { inputType, dataTransfer, data } = e;
 	const isNested = startText?.parent.parent !== this.edytor;
-	const isIsolate = startText?.parent.isIsolate;
 	const isLastChild = startText?.parent.parent.children.at(-1) === startText?.parent;
 	try {
 		switch (inputType) {
@@ -62,7 +70,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 					if (isCollapsed && isAtStart) {
 						// Last nested block need to be unNest
 						// Otherwise we just merge the block backward and eventually remove the block or unnest the children
-						if (isNested && isLastChild && !isIsolate) {
+						if (isNested && isLastChild && !isIsland) {
 							// Before:
 							// [Block]
 							//   [Block]

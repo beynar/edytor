@@ -175,3 +175,14 @@
 		{/key}
 	</div>
 </div>
+
+<style lang="postcss">
+	:global {
+		[data-edytor-focused] {
+			@apply bg-blue-100/10;
+		}
+		[data-edytor-selected] {
+			@apply bg-red-100/50;
+		}
+	}
+</style>

@@ -21,12 +21,11 @@ import type {
 	BlockSnippetPayload,
 	InitializedPlugin,
 	MarkSnippetPayload,
-	ContentTransformer
+	BlockDefinition
 } from './plugins.js';
 import { on } from 'svelte/events';
 import { HotKeys, type HotKey } from './hotkeys.js';
 import { TRANSACTION } from './constants.js';
-import type { JSONDelta } from './text/deltas.js';
 
 export type Snippets = {
 	[K in `${string}Block` | `${string}Mark`]: K extends `${string}Block`
@@ -65,14 +64,13 @@ export type EdytorOptions = {
 export class Edytor {
 	node?: HTMLElement;
 	marks = new Map<string, Snippet<[MarkSnippetPayload]>>();
-	blocks = new Map<string, Snippet<[BlockSnippetPayload]>>();
+	blocks = new Map<string, BlockDefinition>();
 	plugins: InitializedPlugin[];
 	container = $state<HTMLDivElement>();
 	idToBlock = new SvelteMap<string, Block>();
 	idToText = new SvelteMap<string, Text>();
 	nodeToText = new SvelteMap<Node, Text>();
 	transaction = new TRANSACTION();
-
 	hotKeys: HotKeys;
 	initialized = $state(false);
 	readonly = $state(false);
@@ -83,7 +81,6 @@ export class Edytor {
 	voidBlocks = new SvelteSet<Block>();
 	voidElements = new SvelteSet<HTMLElement>();
 	defaultType = 'paragraph';
-	contentTransformers = new SvelteMap<string, ContentTransformer>();
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
 
@@ -134,13 +131,12 @@ export class Edytor {
 				});
 
 			initializedPlugin.blocks &&
-				Object.entries(initializedPlugin.blocks).forEach(([key, snippet]) => {
-					this.blocks.set(key, snippet);
-				});
-
-			initializedPlugin.transformContent &&
-				Object.entries(initializedPlugin.transformContent).forEach(([key, transformer]) => {
-					this.contentTransformers.set(key, transformer);
+				Object.entries(initializedPlugin.blocks).forEach(([key, definition]) => {
+					if (typeof definition === 'object') {
+						this.blocks.set(key, definition);
+					} else {
+						this.blocks.set(key, { snippet: definition });
+					}
 				});
 			return initializedPlugin;
 		});
@@ -152,7 +148,7 @@ export class Edytor {
 			if (isMark) {
 				this.marks.set(key, snippet as Snippet<[MarkSnippetPayload]>);
 			} else if (isBlock) {
-				this.blocks.set(key, snippet as Snippet<[BlockSnippetPayload]>);
+				this.blocks.set(key, { snippet: snippet as Snippet<[BlockSnippetPayload]> });
 			}
 		});
 
@@ -173,6 +169,7 @@ export class Edytor {
 	}
 
 	selectAll = () => {
+		// TODO: Implement this in EdytorSelection;
 		const { startText } = this.selection.state;
 		const block = startText?.parent;
 	};
@@ -242,11 +239,6 @@ export class Edytor {
 		});
 	};
 
-	void = (node: HTMLElement) => {
-		node.contentEditable = 'false';
-		this.voidElements.add(node);
-	};
-
 	onBeforeInput = onBeforeInput.bind(this);
 	batch = batch.bind(this);
 	addBlock = this.batch('addBlock', addBlock.bind(this));
@@ -304,8 +296,6 @@ export class Edytor {
 	attach = (node: HTMLDivElement) => {
 		this.node = node;
 		this.container = node;
-
-		// this.container.contentEditable = 'true';
 		this.selection.init();
 		this.hotKeys.init();
 		this.off.push(

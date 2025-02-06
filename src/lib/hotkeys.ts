@@ -49,6 +49,19 @@ const historyHotKeys = {
 	},
 	'mod+shift+z': ({ edytor }) => {
 		edytor.undoManager.redo();
+	},
+	'mod+a': ({ edytor }) => {
+		const { startText } = edytor.selection.state;
+		if (startText) {
+			if (startText.parent.selected) {
+				edytor.selection.selectBlocks(...edytor.children);
+			} else if (edytor.selection.state.isAtStart && edytor.selection.state.isAtEnd) {
+				window.getSelection()?.removeAllRanges();
+				edytor.selection.selectBlocks(startText.parent);
+			} else {
+				edytor.selection.setSelectionAtTextRange(startText, 0, startText.yText.length);
+			}
+		}
 	}
 } satisfies Record<string, HotKey>;
 

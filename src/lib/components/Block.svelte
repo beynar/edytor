@@ -9,7 +9,7 @@
 		block: Block;
 	} = $props();
 
-	const snippet = $derived(block.edytor.blocks.get(block.type));
+	const snippet = $derived(block.definition.snippet);
 </script>
 
 {#snippet content()}

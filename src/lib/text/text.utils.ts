@@ -34,7 +34,7 @@ export type TextOperations = {
 };
 
 export function batch<T extends (...args: any[]) => any, O extends keyof TextOperations>(
-	ops: O,
+	operation: O,
 	func: T
 ): T {
 	return function (this: Text, payload: TextOperations[O]): ReturnType<T> {
@@ -42,11 +42,10 @@ export function batch<T extends (...args: any[]) => any, O extends keyof TextOpe
 		for (const plugin of this.edytor.plugins) {
 			// @ts-expect-error
 			const normalizedPayload = plugin.onBeforeOperation?.({
-				operation: ops,
+				operation,
 				payload,
 				text: this,
 				block: this.parent,
-				edytor: this.edytor,
 				prevent
 			}) as TextOperations[O] | undefined;
 			if (normalizedPayload) {
@@ -59,11 +58,10 @@ export function batch<T extends (...args: any[]) => any, O extends keyof TextOpe
 
 		for (const plugin of this.edytor.plugins) {
 			plugin.onAfterOperation?.({
-				operation: ops,
+				operation,
 				payload,
 				text: this,
-				block: this.parent,
-				edytor: this.edytor
+				block: this.parent
 			}) as TextOperations[O] | undefined;
 		}
 

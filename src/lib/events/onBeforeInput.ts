@@ -3,29 +3,36 @@ import { prevent, PreventionError } from '$lib/utils.js';
 
 export async function onBeforeInput(this: Edytor, e: InputEvent) {
 	if (this.readonly) return;
-
-	e.preventDefault();
-
-	this.plugins.forEach((plugin) => {
-		plugin.onBeforeInput?.({ prevent, e });
-	});
-
-	const {
-		start,
-		yStart,
-		isCollapsed,
-		isTextSpanning,
-		isAtStart,
-		length,
-		startText,
-		isAtEnd,
-		islandRoot
-	} = this.selection.state;
 	const { inputType, dataTransfer, data } = e;
-	const isNested = startText?.parent.parent !== this.edytor;
-	const isLastChild = startText?.parent.parent.children.at(-1) === startText?.parent;
-
 	try {
+		const customKeyDownEvent = new KeyboardEvent('keydown', {
+			key: 'Enter',
+			code: 'Enter',
+			shiftKey: e.inputType === 'insertLineBreak'
+		});
+
+		this.hotKeys.isHotkey(customKeyDownEvent);
+
+		e.preventDefault();
+		this.plugins.forEach((plugin) => {
+			plugin.onBeforeInput?.({ prevent, e });
+		});
+
+		const {
+			start,
+			yStart,
+			isCollapsed,
+			isTextSpanning,
+			isAtStart,
+			length,
+			startText,
+			isAtEnd,
+			islandRoot
+		} = this.selection.state;
+
+		const isNested = startText?.parent.parent !== this.edytor;
+		const isLastChild = startText?.parent.parent.children.at(-1) === startText?.parent;
+
 		switch (inputType) {
 			case 'insertText': {
 				if (data === '. ') {
@@ -147,9 +154,6 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 				break;
 			}
 			case 'insertLineBreak': {
-				this.edytor.plugins.forEach((plugin) => {
-					plugin.onEnter?.({ prevent, e, shift: true });
-				});
 				startText?.insertText({ value: '\n' });
 				this.selection.setAtTextOffset(startText!, start + 1);
 				break;
@@ -161,9 +165,6 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 				break;
 			}
 			case 'insertParagraph': {
-				this.edytor.plugins.forEach((plugin) => {
-					plugin.onEnter?.({ prevent, e });
-				});
 				if (!startText) {
 					return;
 				}

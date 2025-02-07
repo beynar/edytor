@@ -61,22 +61,9 @@ export type PluginOperations = {
 	onChange?: (value: JSONBlock) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	placeholder?: Snippet<[{ block: Block; text: Text }]>;
-	onEnter?: (payload: {
-		prevent: Prevent;
-		e: InputEvent | KeyboardEvent;
-		meta?: boolean;
-		shift?: boolean;
-	}) => void;
-	onTab?: (payload: { prevent: Prevent; e: KeyboardEvent }) => void;
-	onEscape?: (payload: { prevent: Prevent; e: KeyboardEvent }) => void;
 	onBlockAttached?: (payload: { node: HTMLElement; block: Block }) => () => void;
 	onTextAttached?: (payload: { node: HTMLElement; text: Text }) => () => void;
 	defaultBlock?: string | ((parent: Block) => string | void);
-	onArrow?: (payload: {
-		prevent: Prevent;
-		e: KeyboardEvent;
-		direction: 'up' | 'down' | 'left' | 'right';
-	}) => void;
 	onDeleteSelectedBlocks?: (payload: {
 		prevent: Prevent;
 		e: KeyboardEvent;

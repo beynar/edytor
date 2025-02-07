@@ -8,6 +8,7 @@
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
+	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 
 	hljs.registerLanguage('javascript', javascript);
 	const highlight = (node: HTMLElement, json: string) => {
@@ -83,7 +84,7 @@
 				get value
 			</button>
 			<Edytor
-				plugins={[codePlugin, mentionPlugin, richTextPlugin]}
+				plugins={[arrowMovePlugin, codePlugin, mentionPlugin, richTextPlugin]}
 				sync={({ doc, synced }) => {
 					// provider = new IndexeddbPersistence('haha-2', doc);
 					provider = new IndexeddbPersistence(crypto.randomUUID(), doc);

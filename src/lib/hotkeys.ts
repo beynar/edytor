@@ -1,10 +1,14 @@
 import type { Edytor, EdytorOptions } from './edytor.svelte.js';
 import type { InitializedPlugin } from './plugins.js';
-import { prevent } from './utils.js';
+import { prevent, PreventionError } from './utils.js';
 
-export type HotKey = (payload: { event: KeyboardEvent; edytor: Edytor }) => void;
+export type HotKey = (payload: {
+	event: KeyboardEvent;
+	edytor: Edytor;
+	prevent: (cb: () => void) => void;
+}) => void;
 export type HotKeyModifier = 'mod' | 'alt' | 'ctrl' | 'shift';
-type Letter =
+type Key =
 	| 'a'
 	| 'b'
 	| 'c'
@@ -31,17 +35,25 @@ type Letter =
 	| 'x'
 	| 'y'
 	| 'z'
-	| 'enter';
-export type SingleModifierCombination = `${HotKeyModifier}+${Letter}`;
-export type DoubleModifierCombination =
-	| `mod+alt+${Letter}`
-	| `mod+ctrl+${Letter}`
-	| `mod+shift+${Letter}`
-	| `alt+ctrl+${Letter}`
-	| `alt+shift+${Letter}`
-	| `ctrl+shift+${Letter}`;
+	| 'tab'
+	| 'enter'
+	| 'space'
+	| 'escape'
+	| 'arrowup'
+	| 'arrowdown'
+	| 'arrowleft'
+	| 'arrowright';
 
-export type HotKeyCombination = SingleModifierCombination | DoubleModifierCombination;
+export type SingleModifierCombination = `${HotKeyModifier}+${Key}`;
+export type DoubleModifierCombination =
+	| `mod+alt+${Key}`
+	| `mod+ctrl+${Key}`
+	| `mod+shift+${Key}`
+	| `alt+ctrl+${Key}`
+	| `alt+shift+${Key}`
+	| `ctrl+shift+${Key}`;
+
+export type HotKeyCombination = Key | SingleModifierCombination | DoubleModifierCombination;
 
 const escapedKeys = new Set(['shift']);
 
@@ -60,30 +72,32 @@ const historyHotKeys = {
 		const newBlock = edytor.selection.state.startText?.parent.splitBlock({
 			index: edytor.selection.state.startText?.yText.length
 		});
-		newBlock && edytor.selection.setAtTextOffset(newBlock.content, 0);
+		newBlock && edytor.selection.setAtTextOffset(newBlock.content, newBlock.content.length);
 	},
 	'mod+a': ({ edytor }) => {
-		const { startText, islandRoot } = edytor.selection.state;
-		if (startText) {
-			if (edytor.selection.selectedBlocks.size) {
-				edytor.selection.selectBlocks(...edytor.children);
-			} else if (edytor.selection.state.isAtStart && edytor.selection.state.isAtEnd) {
-				window.getSelection()?.removeAllRanges();
-				edytor.selection.selectBlocks(
-					edytor.selection.state.isIsland ? islandRoot! : startText.parent
-				);
-			} else {
-				if (edytor.selection.state.isIsland) {
-					const firstText = islandRoot?.children[0]?.content;
-					let lastText = islandRoot?.children.at(-1)?.content;
-					if (firstText && lastText) {
-						edytor.selection.setAtTextsRange(firstText, lastText);
-					}
+		prevent(() => {
+			const { startText, islandRoot } = edytor.selection.state;
+			if (startText) {
+				if (edytor.selection.selectedBlocks.size) {
+					edytor.selection.selectBlocks(...edytor.children);
+				} else if (edytor.selection.state.isAtStart && edytor.selection.state.isAtEnd) {
+					window.getSelection()?.removeAllRanges();
+					edytor.selection.selectBlocks(
+						edytor.selection.state.isIsland ? islandRoot! : startText.parent
+					);
 				} else {
-					edytor.selection.setAtTextRange(startText, 0, startText.yText.length);
+					if (edytor.selection.state.isIsland) {
+						const firstText = islandRoot?.children[0]?.content;
+						let lastText = islandRoot?.children.at(-1)?.content;
+						if (firstText && lastText) {
+							edytor.selection.setAtTextsRange(firstText, lastText);
+						}
+					} else {
+						edytor.selection.setAtTextRange(startText, 0, startText.yText.length);
+					}
 				}
 			}
-		}
+		});
 	}
 } satisfies Record<string, HotKey>;
 
@@ -94,32 +108,34 @@ const historyHotKeys = {
 // Hotkeys can be overridden by hotkeys object
 // Mod to match modifier cmd on mac or ctrl on windows
 export class HotKeys {
-	private hotkeys = new Map<string, HotKey>();
-	// isMac = !(
-	//     typeof window != 'undefined' && /Mac|iPod|iPhone|iPad/.test(window.navigator.platform)
-	// );
+	private hotkeys = new Map<string, HotKey[]>();
+	get isMac() {
+		return typeof window != 'undefined' && /Mac|iPod|iPhone|iPad/.test(window.navigator.platform);
+	}
 	constructor(
 		private edytor: Edytor,
-		private hotKeys?: EdytorOptions['hotKeys'],
-		private plugins?: InitializedPlugin[]
+		private userHotKeys: EdytorOptions['hotKeys'] = {},
+		private plugins: InitializedPlugin[] = []
 	) {}
 
 	init = () => {
 		// Only init when window is available.
 		if (typeof window === 'undefined') return;
-		const pluginHotKeys = this.plugins?.reduce(
-			(acc, plugin) => {
-				return Object.assign(acc, plugin.hotkeys || {});
-			},
-			{} as Record<string, HotKey>
-		);
-		// Iterate over hotkeys after plugins are initialized
-		// in order to be able to override the plugins hotkeys
-		Object.entries(Object.assign({}, historyHotKeys, pluginHotKeys, this.hotKeys || {})).forEach(
-			([key, value]) => {
-				this.hotkeys.set(this.normalizeKey(key), value);
-			}
-		);
+
+		const entries = this.plugins
+			.map((plugin) => plugin.hotkeys || {})
+			.concat([historyHotKeys, this.userHotKeys || {}]);
+
+		entries.forEach((hotKeys) => {
+			Object.entries(hotKeys).forEach(([key, func]) => {
+				const normalizedKey = this.normalizeKey(key);
+				if (this.hotkeys.has(normalizedKey)) {
+					this.hotkeys.get(normalizedKey)!.push(func);
+				} else {
+					this.hotkeys.set(this.normalizeKey(key), [func]);
+				}
+			});
+		});
 	};
 
 	private normalizeKey = (key: string): string => {
@@ -167,19 +183,30 @@ export class HotKeys {
 		if (!escapedKeys.has(key)) {
 			combination += key;
 		}
-		combination = combination.replace(/\+$/, '');
 
 		// Remove trailing plus if it exists
+		combination = combination.replace(/\+$/, '');
+
 		return combination;
 	};
 
 	isHotkey = (e: KeyboardEvent) => {
 		const combination = this.combination(e);
-		const hotKey = this.hotkeys.get(combination);
-		if (!hotKey) return false;
-		e.preventDefault();
-		e.stopPropagation();
-		hotKey({ event: e, edytor: this.edytor });
-		return true;
+		const hotKeys = this.hotkeys.get(combination);
+		if (!hotKeys?.length) return false;
+		try {
+			console.log('hotKeys', hotKeys);
+			hotKeys.forEach((hotKey) => {
+				hotKey({ event: e, edytor: this.edytor, prevent });
+			});
+			return false;
+		} catch (error) {
+			if (error instanceof PreventionError) {
+				e.preventDefault();
+				e.stopPropagation();
+				error.cb?.();
+			}
+			return true;
+		}
 	};
 }

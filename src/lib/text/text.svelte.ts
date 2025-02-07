@@ -32,6 +32,10 @@ export class Text {
 		return deltaToJson(this.#children);
 	}
 
+	get length() {
+		return this.yText.length;
+	}
+
 	get children() {
 		const transformer = this.parent.definition.transformContent;
 		return transformer

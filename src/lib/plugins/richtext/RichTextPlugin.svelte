@@ -1,55 +1,34 @@
 <script module lang="ts">
-	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { Plugin, MarkSnippetPayload, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { SerializableContent } from '$lib/utils/json.js';
+	import type { HotKey } from '$lib/hotkeys.js';
 
-	const setMarkAndSelect = (edytor: Edytor, mark: string, value?: SerializableContent) => {
-		const { yStart, yEnd, startText } = edytor.selection.state;
-		if (startText) {
-			edytor.selection.state.startText?.markText({
-				mark: mark,
-				value,
-				toggle: true,
-				start: yStart,
-				end: yEnd
-			});
-
-			edytor.selection.setAtTextRange(startText, yStart, yEnd);
-		}
-	};
 	export const richTextPlugin: Plugin = (edytor) => {
+		const setMarkAndSelect =
+			(mark: string, value?: SerializableContent): HotKey =>
+			({ prevent }) => {
+				prevent(() => {
+					const { yStart, yEnd, startText } = edytor.selection.state;
+					if (startText) {
+						edytor.selection.state.startText?.markText({
+							mark: mark,
+							value,
+							toggle: true,
+							start: yStart,
+							end: yEnd
+						});
+						edytor.selection.setAtTextRange(startText, yStart, yEnd);
+					}
+				});
+			};
 		return {
 			hotkeys: {
-				'mod+b': () => {
-					setMarkAndSelect(edytor, 'bold');
-				},
-				'mod+i': () => {
-					setMarkAndSelect(edytor, 'italic');
-				},
-				'mod+u': () => {
-					setMarkAndSelect(edytor, 'underline');
-				},
-				'mod+e': () => {
-					setMarkAndSelect(edytor, 'code');
-				},
-				'mod+shift+x': () => {
-					setMarkAndSelect(edytor, 'strike');
-				},
-				'mod+shift+h': () => {
-					setMarkAndSelect(edytor, 'color', 'red');
-				}
-			},
-			onBeforeOperation: ({ operation, payload, text, prevent }) => {
-				if (operation === 'insertText' && payload.value === 'a') {
-					prevent(() => {
-						const { yStart } = edytor.selection.state;
-						edytor.doc.transact(() => {
-							text.insertText({ value: 'b' });
-						});
-						edytor.selection.shift(1);
-						edytor.selection.setAtTextOffset(text, yStart + 1);
-					});
-				}
+				'mod+b': setMarkAndSelect('italic'),
+				'mod+i': setMarkAndSelect('italic'),
+				'mod+u': setMarkAndSelect('underline'),
+				'mod+e': setMarkAndSelect('code'),
+				'mod+shift+x': setMarkAndSelect('strike'),
+				'mod+shift+h': setMarkAndSelect('color', 'red')
 			},
 			marks: {
 				bold,
@@ -74,9 +53,6 @@
 			}
 		};
 	};
-</script>
-
-<script>
 </script>
 
 {#snippet bold({ content }: MarkSnippetPayload)}

@@ -9,26 +9,22 @@
 
 	export const codePlugin: Plugin = (edytor) => {
 		return {
-			defaultBlock: (parent) => {
-				if (parent.type === 'code' || parent.type === 'codeLine') {
-					return 'codeLine';
-				}
-			},
-			onTab({ prevent, e }) {
-				const { startText, yStart } = edytor.selection.state;
-				if (startText?.parent.type === 'codeLine') {
-					e.preventDefault();
-					e.stopPropagation();
-					prevent(() => {
-						if (startText) {
-							startText.insertText({ value: '\t' });
-							edytor.selection.setAtTextOffset(startText, yStart + 1);
-						}
-					});
-				}
-			},
-			onEnter: ({ prevent, shift }) => {
-				if (shift) {
+			hotkeys: {
+				enter: () => {
+					console.log(1);
+				},
+				tab: ({ prevent }) => {
+					const { startText, yStart } = edytor.selection.state;
+					if (startText?.parent.type === 'codeLine') {
+						prevent(() => {
+							if (startText) {
+								startText.insertText({ value: '\t' });
+								edytor.selection.setAtTextOffset(startText, yStart + 1);
+							}
+						});
+					}
+				},
+				'shift+enter': () => {
 					const { startText } = edytor.selection.state;
 					if (startText?.parent.type === 'codeLine') {
 						prevent(() => {
@@ -38,6 +34,11 @@
 							edytor.onBeforeInput(event);
 						});
 					}
+				}
+			},
+			defaultBlock: (parent) => {
+				if (parent.type === 'code' || parent.type === 'codeLine') {
+					return 'codeLine';
 				}
 			},
 			onBeforeOperation: ({ operation, payload, block }) => {
@@ -84,17 +85,21 @@
 					}
 				}
 
-				if (block.type === 'code' && operation === 'addBlock') {
-					const selection = edytor.selection.state;
-					const text = selection.startText!;
-					const startWithTab = text.stringContent.startsWith('\t');
-					if (startWithTab && selection.isCollapsed && selection.isAtEnd) {
-						const tabsToInsert = Array.from({ length: text.stringContent.split('\t').length - 1 })
-							.fill('\t')
-							.join('');
-						payload.block.content = [{ text: tabsToInsert }, ...(payload.block.content || [])];
-					}
+				if (operation === 'addBlock') {
+					console.log(block.type);
 				}
+				// if (block.type === 'code' && operation === 'addBlock') {
+				// 	const selection = edytor.selection.state;
+				// 	const text = selection.startText!;
+				// 	const startWithTab = text.stringContent.startsWith('\t');
+				// 	console.log({ startWithTab, text });
+				// 	if (startWithTab && selection.isCollapsed) {
+				// 		const tabsToInsert = Array.from({ length: text.stringContent.split('\t').length - 1 })
+				// 			.fill('\t')
+				// 			.join('');
+				// 		payload.block.content = [{ text: tabsToInsert }, ...(payload.block.content || [])];
+				// 	}
+				// }
 			},
 
 			blocks: {
@@ -134,7 +139,6 @@
 			<div>
 				<button
 					onclick={(e) => {
-						test.state++;
 						e.preventDefault();
 						e.stopPropagation();
 						navigator.clipboard.writeText(block.content.stringContent);

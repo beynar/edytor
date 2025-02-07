@@ -57,7 +57,7 @@ export type HotKeyCombination = Key | SingleModifierCombination | DoubleModifier
 
 const escapedKeys = new Set(['shift']);
 
-const historyHotKeys = {
+const defaultHotKeys = {
 	'mod+z': ({ edytor }) => {
 		edytor.undoManager.undo();
 	},
@@ -65,10 +65,6 @@ const historyHotKeys = {
 		edytor.undoManager.redo();
 	},
 	'mod+enter': ({ edytor, event }) => {
-		edytor.plugins.forEach((plugin) => {
-			plugin.onEnter?.({ prevent, e: event, meta: true });
-		});
-
 		const newBlock = edytor.selection.state.startText?.parent.splitBlock({
 			index: edytor.selection.state.startText?.yText.length
 		});
@@ -122,9 +118,12 @@ export class HotKeys {
 		// Only init when window is available.
 		if (typeof window === 'undefined') return;
 
-		const entries = this.plugins
-			.map((plugin) => plugin.hotkeys || {})
-			.concat([historyHotKeys, this.userHotKeys || {}]);
+		// User hotkeys > plugins hotkeys > default hotkeys
+		const entries = [
+			this.userHotKeys || {},
+			...this.plugins.map((plugin) => plugin.hotkeys || {}),
+			defaultHotKeys
+		];
 
 		entries.forEach((hotKeys) => {
 			Object.entries(hotKeys).forEach(([key, func]) => {

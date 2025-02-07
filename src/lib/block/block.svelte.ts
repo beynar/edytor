@@ -277,7 +277,7 @@ export class Block {
 		node.setAttribute('data-edytor-block', `true`);
 		node.setAttribute('data-edytor-type', `${this.#type}`);
 
-		let pluginDestroy = this.edytor.plugins.reduce(
+		const pluginDestroy = this.edytor.plugins.reduce(
 			(acc, plugin) => {
 				const action = plugin.onBlockAttached?.({ node, block: this });
 				action && acc.push(action);

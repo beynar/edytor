@@ -61,6 +61,7 @@ export type PluginOperations = {
 	onChange?: (value: JSONBlock) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	placeholder?: Snippet<[{ block: Block; text: Text }]>;
+	onEdytorAttached?: (payload: { node: HTMLElement }) => () => void;
 	onBlockAttached?: (payload: { node: HTMLElement; block: Block }) => () => void;
 	onTextAttached?: (payload: { node: HTMLElement; text: Text }) => () => void;
 	defaultBlock?: string | ((parent: Block) => string | void);

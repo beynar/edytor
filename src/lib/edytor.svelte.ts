@@ -305,6 +305,11 @@ export class Edytor {
 			on(node, 'beforeinput', this.onBeforeInput)
 		);
 
+		this.plugins.forEach((plugin) => {
+			const action = plugin.onEdytorAttached?.({ node });
+			action && this.off.push(action);
+		});
+
 		node.setAttribute('contenteditable', !this.readonly ? 'true' : 'false');
 
 		return {

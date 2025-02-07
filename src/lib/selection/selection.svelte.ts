@@ -193,7 +193,9 @@ export class EdytorSelection {
 			yTextContent: startText?.yText.toJSON()!
 		};
 		this.edytorOnSelectionChange?.(this);
-		this.edytor.plugins.forEach((plugin) => plugin.onSelectionChange?.(this));
+		this.edytor.plugins.forEach((plugin) => {
+			plugin.onSelectionChange?.(this);
+		});
 	};
 
 	restoreRelativePosition = (text: Text) => {

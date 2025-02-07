@@ -4,7 +4,7 @@ import { type YBlock, type JSONBlock } from '$lib/utils/json.js';
 import * as Y from 'yjs';
 import {
 	batch,
-	addBlock,
+	addChildBlock,
 	insertBlockAfter,
 	insertBlockBefore,
 	mergeBlockBackward,
@@ -13,7 +13,7 @@ import {
 	removeBlock,
 	setBlock,
 	splitBlock,
-	addBlocks,
+	addChildBlocks,
 	unNestBlock,
 	moveBlock
 } from './block.utils.js';
@@ -196,8 +196,8 @@ export class Block {
 
 	private observeChildren = observeChildren.bind(this);
 	private batch = batch.bind(this);
-	addBlock = this.batch('addBlock', addBlock.bind(this));
-	addBlocks = this.batch('addBlocks', addBlocks.bind(this));
+	addChildBlock = this.batch('addChildBlock', addChildBlock.bind(this));
+	addChildBlocks = this.batch('addChildBlocks', addChildBlocks.bind(this));
 	insertBlockAfter = this.batch('insertBlockAfter', insertBlockAfter.bind(this));
 	insertBlockBefore = this.batch('insertBlockBefore', insertBlockBefore.bind(this));
 	splitBlock = this.batch('splitBlock', splitBlock.bind(this));

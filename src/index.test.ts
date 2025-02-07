@@ -1,34 +1,29 @@
 import { describe, it, expect, should } from 'vitest';
-import * as Y from 'yjs';
-import { Edytor } from '$lib/edytor.svelte.js';
 
-describe('sum test', () => {
-	it('should work', () => {
-		const doc = new Y.Doc();
-		const block = doc.getMap('root');
-		const text = new Y.Text();
-		block.set('content', text);
-		block.set('date', undefined);
-		console.log(block.get('date'));
-		text._pending?.push(() => {
-			text.insert(0, 'Hello', { bold: true });
-			text.insert(5, 'World', { italic: true });
-		});
-		console.log(text.getAttributes());
-		text.observe(() => {
-			console.log('observed', text.getAttributes());
-		});
-		const cursor = Y.createRelativePositionFromTypeIndex(text, 0);
+// describe('sum test', () => {
+// 	it('should work', () => {
+// 		const doc = new Y.Doc();
+// 		const root = doc.getMap('root');
+// 		const object = { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10 };
 
-		text.insert(0, 'Hello', { bold: true });
-		const absolute = Y.createAbsolutePositionFromRelativePosition(cursor, doc);
-		console.log({ cursor, absolute });
-		text.setAttribute('id', '1');
-		console.log(text.getAttributes());
-		// text.insert(0, 'Hello', { bold: true });
-		console.log(doc.getMap('root').get('content').toDelta());
-	});
-});
+// 		for (let i = 0; i < 20000; i++) {
+// 			const map = new Y.Map();
+// 			root.set(i.toString(), map);
+// 			const assignProperties = (object: Record<string, any>) => {
+// 				for (const key in object) {
+// 					const randomString = Math.random().toString(36).substring(2, 15);
+// 					const randomString2 = Math.random().toString(36).substring(2, 15);
+// 					map.set(randomString2, randomString);
+// 				}
+// 			};
+// 			assignProperties(object);
+// 		}
+
+// 		console.log(Y.encodeStateAsUpdateV2(doc).byteLength);
+// 		const megabytes = Y.encodeStateAsUpdateV2(doc).byteLength / 1024 / 1024;
+// 		console.log({ megabytes });
+// 	});
+// });
 
 function getAttributesAtRange(
 	children: { text: string; marks: Map<string, boolean> }[],

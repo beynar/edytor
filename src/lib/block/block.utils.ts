@@ -4,11 +4,11 @@ import { prevent } from '$lib/utils.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 
 export type BlockOperations = {
-	addBlock: {
+	addChildBlock: {
 		block: JSONBlock;
 		index: number;
 	};
-	addBlocks: {
+	addChildBlocks: {
 		blocks: JSONBlock[];
 		index: number;
 	};
@@ -73,18 +73,18 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 	} as T;
 }
 
-export function addBlock(
+export function addChildBlock(
 	this: Block | Edytor,
-	{ block, index = this.yChildren.length }: BlockOperations['addBlock']
+	{ block, index = this.yChildren.length }: BlockOperations['addChildBlock']
 ) {
 	const newBlock = new Block({ parent: this, block });
 	this.yChildren.insert(index, [newBlock.yBlock]);
 	return newBlock;
 }
 
-export function addBlocks(
+export function addChildBlocks(
 	this: Block | Edytor,
-	{ blocks, index = this.yChildren.length }: BlockOperations['addBlocks']
+	{ blocks, index = this.yChildren.length }: BlockOperations['addChildBlocks']
 ) {
 	const newBlocks = blocks.map((block) => new Block({ parent: this, block }));
 	this.yChildren.insert(
@@ -99,7 +99,7 @@ export function insertBlockAfter(
 	{ block }: BlockOperations['insertBlockAfter']
 ): Block {
 	this.yChildren.delete(0, this.children.length);
-	return this.parent.addBlock({
+	return this.parent.addChildBlock({
 		block: {
 			...block,
 			children: this.value.children
@@ -112,7 +112,7 @@ export function insertBlockBefore(
 	this: Block,
 	{ block }: BlockOperations['insertBlockBefore']
 ): Block {
-	return this.parent.addBlock({
+	return this.parent.addChildBlock({
 		block: {
 			...block,
 			children: this.value.children
@@ -130,7 +130,7 @@ export function splitBlock(
 	const hasChildren = this.children.length >= 1;
 
 	// Add the current children to the new block if any
-	const newBlock = this.parent.addBlock({
+	const newBlock = this.parent.addChildBlock({
 		block: {
 			type: this.edytor.getDefaultBlock(this.parent),
 			content,
@@ -312,7 +312,7 @@ export function setBlock(this: Block, { value }: BlockOperations['setBlock']) {
 					existingChild.setBlock({ value: child });
 					return existingChild;
 				} else {
-					return this.addBlock({ block: child, index: i });
+					return this.addChildBlock({ block: child, index: i });
 				}
 			});
 

@@ -14,7 +14,7 @@
 	} = $props();
 
 	const mark = $derived(delta.marks[index]);
-	const snippet = $derived(text.edytor.marks.get(mark?.[0]));
+	const definition = $derived(text.edytor.marks.get(mark?.[0]));
 </script>
 
 {#snippet content()}
@@ -25,8 +25,14 @@
 	{/if}
 {/snippet}
 
-{#if snippet}
-	{@render snippet({ content, mark: mark?.[1], text })}
+{#if definition?.snippet}
+	{#if definition.void}
+		<span data-edytor-mark-void contenteditable="false">
+			{@render definition.snippet({ content, mark: mark?.[1], text })}
+		</span>
+	{:else}
+		{@render definition.snippet({ content, mark: mark?.[1], text })}
+	{/if}
 {:else}
 	{@render content()}
 {/if}

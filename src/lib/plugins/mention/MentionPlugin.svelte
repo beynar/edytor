@@ -14,7 +14,10 @@
 				}
 			},
 			marks: {
-				mention
+				mention: {
+					snippet: mention,
+					void: true
+				}
 			}
 		};
 	};

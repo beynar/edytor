@@ -85,10 +85,10 @@
 					}
 				}
 
-				if (operation === 'addBlock') {
+				if (operation === 'addChildBlock') {
 					console.log(block.type);
 				}
-				// if (block.type === 'code' && operation === 'addBlock') {
+				// if (block.type === 'code' && operation === 'addChildBlock') {
 				// 	const selection = edytor.selection.state;
 				// 	const text = selection.startText!;
 				// 	const startWithTab = text.stringContent.startsWith('\t');

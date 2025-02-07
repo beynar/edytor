@@ -8,35 +8,41 @@ export type HotKey = (payload: {
 	prevent: (cb: () => void) => void;
 }) => void;
 export type HotKeyModifier = 'mod' | 'alt' | 'ctrl' | 'shift';
+
+const letter = new Set([
+	'a',
+	'b',
+	'c',
+	'd',
+	'e',
+	'f',
+	'g',
+	'h',
+	'i',
+	'j',
+	'k',
+	'l',
+	'm',
+	'n',
+	'o',
+	'p',
+	'q',
+	'r',
+	's',
+	't',
+	'u',
+	'v',
+	'w',
+	'x',
+	'y',
+	'z'
+] as const);
+type Letter = typeof letter extends Set<infer T> ? T : never;
 type Key =
-	| 'a'
-	| 'b'
-	| 'c'
-	| 'd'
-	| 'e'
-	| 'f'
-	| 'g'
-	| 'h'
-	| 'i'
-	| 'j'
-	| 'k'
-	| 'l'
-	| 'm'
-	| 'n'
-	| 'o'
-	| 'p'
-	| 'q'
-	| 'r'
-	| 's'
-	| 't'
-	| 'u'
-	| 'v'
-	| 'w'
-	| 'x'
-	| 'y'
-	| 'z'
+	| Letter
 	| 'tab'
 	| 'enter'
+	| 'backspace'
 	| 'space'
 	| 'escape'
 	| 'arrowup'

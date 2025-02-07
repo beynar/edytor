@@ -5,14 +5,25 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 	if (this.readonly) return;
 	const { inputType, dataTransfer, data } = e;
 	try {
-		const customKeyDownEvent = new KeyboardEvent('keydown', {
-			key: 'Enter',
-			code: 'Enter',
-			shiftKey: e.inputType === 'insertLineBreak'
-		});
+		// Build virtual keyboard events for plugins hotkeys to listen to before handling the input event
+		if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') {
+			const customKeyDownEvent = new KeyboardEvent('keydown', {
+				key: 'Enter',
+				code: 'Enter',
+				shiftKey: e.inputType === 'insertLineBreak'
+			});
 
-		this.hotKeys.isHotkey(customKeyDownEvent);
+			this.hotKeys.isHotkey(customKeyDownEvent);
+		}
+		if (e.inputType === 'deleteContentForward' || e.inputType === 'deleteContentBackward') {
+			const customKeyDownEvent = new KeyboardEvent('keydown', {
+				key: 'Backspace',
+				code: 'Backspace',
+				shiftKey: e.inputType === 'deleteContentBackward'
+			});
 
+			this.hotKeys.isHotkey(customKeyDownEvent);
+		}
 		e.preventDefault();
 		this.plugins.forEach((plugin) => {
 			plugin.onBeforeInput?.({ prevent, e });

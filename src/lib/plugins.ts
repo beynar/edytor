@@ -49,7 +49,7 @@ export type ContentTransformer = (payload: {
 }) => JSONText[];
 
 export type PluginDefinitions = {
-	marks?: Record<string, Snippet<[MarkSnippetPayload<any>]>>;
+	marks?: Record<string, MarkDefinition | Snippet<[MarkSnippetPayload<any>]>>;
 	blocks?: Record<string, BlockDefinition | Snippet<[BlockSnippetPayload<any>]>>;
 	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
 };
@@ -81,12 +81,20 @@ export type BlockDefinition = {
 	onBlur?: (payload: { block: Block }) => void;
 	onSelect?: (payload: { block: Block }) => void;
 	onDeselect?: (payload: { block: Block }) => void;
+	// SyncroStateSchema
+	schema?: any;
 	// defaultChildType?: string | ((parent: Block) => string | void);
 	// allowedBlockTypes?: string[];
 	// minBlocks?: number;
 	// maxBlocks?: number;
 	// maxLength?: number;
 	// transformChildren?: (payload: { children: JSONBlock[]; block: Block }) => JSONText[];
+};
+
+export type MarkDefinition = {
+	snippet: Snippet<[MarkSnippetPayload<any>]>;
+	void?: boolean;
+	schema?: any;
 };
 
 export type InitializedPlugin = ReturnType<Plugin>;

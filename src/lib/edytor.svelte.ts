@@ -15,14 +15,15 @@ import { Block, getSetChildren, observeChildren } from './block/block.svelte.js'
 import { Text } from './text/text.svelte.js';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { Awareness } from 'y-protocols/awareness.js';
-import { addBlock, batch } from './block/block.utils.js';
+import { addChildBlock, addChildBlocks, batch } from './block/block.utils.js';
 import type {
 	Plugin,
 	BlockSnippetPayload,
 	InitializedPlugin,
 	MarkSnippetPayload,
 	BlockDefinition,
-	PluginOperations
+	PluginOperations,
+	MarkDefinition
 } from './plugins.js';
 import { on } from 'svelte/events';
 import { HotKeys, type HotKey } from './hotkeys.js';
@@ -64,7 +65,7 @@ export type EdytorOptions = {
 };
 export class Edytor {
 	node?: HTMLElement;
-	marks = new Map<string, Snippet<[MarkSnippetPayload]>>();
+	marks = new Map<string, MarkDefinition>();
 	blocks = new Map<string, BlockDefinition>();
 	plugins: InitializedPlugin[];
 	container = $state<HTMLDivElement>();
@@ -128,7 +129,11 @@ export class Edytor {
 
 			initializedPlugin.marks &&
 				Object.entries(initializedPlugin.marks).forEach(([key, snippet]) => {
-					this.marks.set(key, snippet);
+					if (typeof snippet === 'object') {
+						this.marks.set(key, snippet);
+					} else {
+						this.marks.set(key, { snippet });
+					}
 				});
 
 			initializedPlugin.blocks &&
@@ -147,7 +152,7 @@ export class Edytor {
 			const isMark = key.endsWith('Mark');
 			const isBlock = key.endsWith('Block');
 			if (isMark) {
-				this.marks.set(key, snippet as Snippet<[MarkSnippetPayload]>);
+				this.marks.set(key, { snippet: snippet as Snippet<[MarkSnippetPayload]> });
 			} else if (isBlock) {
 				this.blocks.set(key, { snippet: snippet as Snippet<[BlockSnippetPayload]> });
 			}
@@ -242,7 +247,8 @@ export class Edytor {
 
 	onBeforeInput = onBeforeInput.bind(this);
 	batch = batch.bind(this);
-	addBlock = this.batch('addBlock', addBlock.bind(this));
+	addChildBlock = this.batch('addChildBlock', addChildBlock.bind(this));
+	addChildBlocks = this.batch('addChildBlocks', addChildBlocks.bind(this));
 
 	getTextByIdOrParent = (idOrParent: string | Block) => {
 		if (typeof idOrParent === 'string') {

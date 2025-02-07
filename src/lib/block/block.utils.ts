@@ -230,22 +230,27 @@ export function mergeBlockForward(this: Block): Block | undefined {
 }
 
 export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): Block | undefined {
-	const firstIndex = path.shift();
-	let targetBlock = this.edytor.children.at(firstIndex!);
+	console.log([...path]);
+	if (!path.length || path.some((p) => isNaN(p) || p < 0)) {
+		return;
+	}
+	const lastIndex = path.pop();
+	let currentBlock: Edytor | Block = this.edytor;
+
 	while (path.length > 0) {
 		const index = path.shift();
-		if (!index) return;
-		targetBlock = targetBlock?.children.at(index!);
+		if (typeof index !== 'number' || isNaN(index)) break;
+		currentBlock = currentBlock.children[index!];
 	}
 
-	if (!targetBlock) return;
+	if (!currentBlock) return;
 	this.edytor.idToBlock.delete(this.id);
 	this.parent.yChildren.delete(this.index, 1);
 	const newBlock = new Block({
-		parent: targetBlock.parent,
+		parent: currentBlock,
 		block: this.value
 	});
-	targetBlock.parent.yChildren.insert(targetBlock.index, [newBlock.yBlock]);
+	currentBlock.yChildren.insert(lastIndex!, [newBlock.yBlock]);
 	return newBlock;
 }
 

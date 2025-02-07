@@ -45,18 +45,33 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 		}
 
 		if (arrowKeys.includes(e.key)) {
+			this.edytor.plugins.forEach((plugin) => {
+				plugin.onArrow?.({
+					prevent,
+					e,
+					direction: e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right'
+				});
+			});
 			if (e.metaKey) {
 				const selectedBlock = this.selection.selectedBlocks.values().next().value as Block;
 				if (e.key === 'ArrowUp') {
 					const path = selectedBlock.path;
 					if (path?.at(-1) === 0) {
-						// we need to unest the block i.e pop the last path index
+						// If the block is nested and is the first child, we need to unest the block i.e pop the last path index
 						path.pop();
 					} else {
 						// Other wise just decrement the last index
 						path[path.length - 1]--;
 					}
-					const newBlock = selectedBlock.moveBlock({ path: path });
+					if (
+						selectedBlock?.previousBlock?.hasChildren &&
+						!selectedBlock?.previousBlock?.definition.island
+					) {
+						path.push(selectedBlock.previousBlock.children.length);
+					}
+
+					const newBlock = selectedBlock.moveBlock({ path });
+
 					if (newBlock) {
 						tick().then(() => {
 							this.selection.selectBlocks(newBlock);
@@ -65,18 +80,22 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 				}
 				if (e.key === 'ArrowDown') {
 					const path = selectedBlock.path;
+
 					if (path?.at(-1) === selectedBlock.parent.children.length - 1) {
-						// we need to unest the block i.e pop the last path index
+						// If the block is nested and is the last child, we need to unest the block i.e pop the last path index
 						path.pop();
-						path[path.length - 1]++;
 					}
 					// Then we just increment the last index
-					const lastIndex = path.pop();
-					path.splice(path.length, 0, lastIndex! + 1);
-					if (path.some((p) => isNaN(p))) {
-						return;
+					path[path.length - 1]++;
+
+					if (
+						selectedBlock?.nextBlock?.hasChildren &&
+						!selectedBlock?.nextBlock?.definition.island
+					) {
+						path.push(0);
 					}
-					const newBlock = selectedBlock.moveBlock({ path: path });
+
+					const newBlock = selectedBlock.moveBlock({ path });
 					if (newBlock) {
 						tick().then(() => {
 							this.selection.selectBlocks(newBlock);
@@ -84,14 +103,6 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 					}
 				}
 			} else {
-				this.edytor.plugins.forEach((plugin) => {
-					plugin.onArrow?.({
-						prevent,
-						e,
-						direction: e.key.replace('Arrow', '').toLowerCase() as 'up' | 'down' | 'left' | 'right'
-					});
-				});
-
 				// Manage block selection on arrow keys if there is only one block selected
 				if (this.selection.selectedBlocks.size === 1) {
 					const selectedBlock = this.selection.selectedBlocks.values().next().value as Block;

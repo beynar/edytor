@@ -109,6 +109,7 @@ export class Block {
 
 	get path(): number[] {
 		const start = [this.index];
+		console.log({ start });
 		let current = this.parent;
 		while (current instanceof Block) {
 			start.push(current.index);

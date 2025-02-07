@@ -7,20 +7,24 @@
 		children: [
 			{
 				type: 'paragraph',
-				content: [{ text: 'Prout', marks: { bold: true } }]
+				content: [{ text: 'Prout', marks: { bold: true } }],
+
+				children: [
+					{
+						type: 'paragraph',
+						content: [{ text: 'One', marks: { bold: true } }]
+					},
+					{
+						type: 'paragraph',
+						content: [{ text: 'Two', marks: { bold: true } }]
+					},
+					{
+						type: 'paragraph',
+						content: [{ text: 'Three', marks: { bold: true } }]
+					}
+				]
 			},
-			{
-				type: 'paragraph',
-				content: [{ text: 'One', marks: { bold: true } }]
-			},
-			{
-				type: 'paragraph',
-				content: [{ text: 'Two', marks: { bold: true } }]
-			},
-			{
-				type: 'paragraph',
-				content: [{ text: 'Three', marks: { bold: true } }]
-			},
+
 			{
 				type: 'code',
 				content: [{ text: 'caption' }],

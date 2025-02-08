@@ -33,6 +33,74 @@ Just run it, see what you can do with it, and open issues or PRs.
 - 🔄 **Undo/Redo**: Built-in history management
 - 📦 **Lightweight**: Relatively small bundle size compared to other rich text editors
 
+## 🧠 Concepts
+
+Edytor structure is built around fours main concepts:
+
+- **Blocks**: Container elements like paragraphs, headings, and lists
+- **Content**: The content of a block is an array of inlines blocks or text and marks.
+- **Children**: Children are the blocks that are directly inside a block. They allow an infinite nesting.
+- **Marks**: Texts are simply text with marks that define the formatting.
+
+Example of a document:
+
+```jsx
+<document>
+	<block>
+		<content>
+			<text mark="bold">Hello</text>
+			<text>World</text>
+			<block inline type="footnote">
+				<!-- Inline block are rendered by the user code -->
+			</block>
+		</content>
+		<children>
+			<block>
+				<content>
+					<text>World</text>
+				</content>
+			</block>
+			<block>
+				<content>
+					<text>World</text>
+				</content>
+				<children>
+					<block>
+						<content>
+							<text>World</text>
+						</content>
+					</block>
+				</children>
+			</block>
+		</children>
+	</block>
+</document>
+```
+
+### Blocks
+
+Blocks are the container elements like paragraphs, headings, and lists.
+They have a content that is an array of inlines blocks or text.
+They have children that is an array of blocks.
+Blocks can be nested unless they are void or inside an island
+
+An island is a block that is editable but is structuraly stable and and isolated from the rest of the document.
+It is impossible to merge an island with another block. Beside the island children it is also impossible to move another block inside an island.
+You may think of an island as a block that is editable but is not completely part of the document structure and isolated from the rest of the document.
+
+A void block is a block which does not have children or whose children are not editable and rendered outside of the edytor core logic.
+Void blocks can render and edit their content anyway. That is usefull to render caption.
+You may think of a void block as a block that is completely independent from the rest of the document.
+Void blocks acts also like an island but are even less editables.
+
+###
+
+### Inlines
+
+Inlines are the inline elements like bold, italic, and links.
+They have a content property that is an array of text.
+They have a type property that is a string that identifies the inline type.
+
 ## 🚀 Quick Start
 
 ### Installation

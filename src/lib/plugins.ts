@@ -8,6 +8,7 @@ import type { HotKey, HotKeyCombination } from './hotkeys.js';
 import type { TextOperations } from './text/text.utils.js';
 import type { BlockOperations } from './block/block.utils.js';
 import type { EdytorSelection } from './selection/selection.svelte.js';
+import type { InlineBlock } from './block/inlineBlock.svelte.js';
 
 export type MarkSnippetPayload<D extends SerializableContent = SerializableContent> = {
 	content: Snippet;
@@ -25,12 +26,13 @@ export type BlockSnippetPayload<D extends SerializableContent = SerializableCont
 
 type ChangePayload = {
 	block: Block;
-	text: Text;
+
 	prevent: Prevent;
 } & (
 	| {
 			[K in keyof TextOperations]: {
 				operation: K;
+				text: Text;
 				payload: TextOperations[K];
 			};
 	  }[keyof TextOperations]
@@ -51,6 +53,7 @@ export type ContentTransformer = (payload: {
 export type PluginDefinitions = {
 	marks?: Record<string, MarkDefinition | Snippet<[MarkSnippetPayload<any>]>>;
 	blocks?: Record<string, BlockDefinition | Snippet<[BlockSnippetPayload<any>]>>;
+	inlineBlocks?: Record<string, InlineBlockDefinition | Snippet<[InlineBlockSnippetPayload<any>]>>;
 	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
 };
 export type Plugin = (editor: Edytor) => PluginDefinitions & PluginOperations;
@@ -89,6 +92,13 @@ export type BlockDefinition = {
 	// maxBlocks?: number;
 	// maxLength?: number;
 	// transformChildren?: (payload: { children: JSONBlock[]; block: Block }) => JSONText[];
+};
+
+export type InlineBlockSnippetPayload<D extends SerializableContent = SerializableContent> = {
+	block: InlineBlock;
+};
+export type InlineBlockDefinition = {
+	snippet: Snippet<[InlineBlockSnippetPayload<any>]>;
 };
 
 export type MarkDefinition = {

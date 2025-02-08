@@ -23,7 +23,7 @@
 			};
 		return {
 			hotkeys: {
-				'mod+b': setMarkAndSelect('italic'),
+				'mod+b': setMarkAndSelect('bold'),
 				'mod+i': setMarkAndSelect('italic'),
 				'mod+u': setMarkAndSelect('underline'),
 				'mod+e': setMarkAndSelect('code'),

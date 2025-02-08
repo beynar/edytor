@@ -1,6 +1,6 @@
 import type { Edytor } from '../edytor.svelte.js';
 import { prevent, PreventionError } from '$lib/utils.js';
-
+import { Text } from '$lib/text/text.svelte.js';
 export async function onBeforeInput(this: Edytor, e: InputEvent) {
 	if (this.readonly) return;
 	const { inputType, dataTransfer, data } = e;
@@ -34,10 +34,12 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 			yStart,
 			isCollapsed,
 			isTextSpanning,
-			isAtStart,
+			isAtStartOfBlock,
+			isAtStartOfText,
+			isAtEndOfText,
 			length,
 			startText,
-			isAtEnd,
+			isAtEndOfBlock,
 			islandRoot
 		} = this.selection.state;
 
@@ -60,10 +62,13 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 			}
 
 			case 'deleteContentForward': {
+				if (!startText) {
+					return;
+				}
 				if (isTextSpanning) {
 					// TODO: implement this later, it's complicated i think.
 				} else {
-					if (isCollapsed && isAtEnd) {
+					if (isCollapsed && isAtEndOfBlock) {
 						// Before:
 						// [Block]
 						//   [Text] "Hello|"
@@ -73,16 +78,26 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 						// After:
 						// [Block]
 						//   [Text] "Hello|World"
-						startText?.parent.mergeBlockForward();
-						this.edytor.selection.setAtTextOffset(startText!, yStart);
+						startText.parent.mergeBlockForward();
+						this.edytor.selection.setAtTextOffset(startText, yStart);
+					} else if (isCollapsed && isAtEndOfText) {
+						// Before:
+						//   [Text] [InlineBlock] [Text]
+						//
+						// After:
+						//   [Text]
+
+						const index = startText.parent.content.indexOf(startText) + 1;
+						startText.parent.removeInlineBlock({ index });
+						this.selection.setAtTextOffset(startText, yStart);
 					} else {
 						// Before:
 						//   [Text] "Hello| World"
 						//
 						// After:
 						//   [Text] "Hello|World"
-						startText?.deleteText({ direction: 'FORWARD', length: length || 1 });
-						this.selection.setAtTextOffset(startText!, yStart);
+						startText.deleteText({ direction: 'FORWARD', length: length || 1 });
+						this.selection.setAtTextOffset(startText, yStart);
 					}
 				}
 				break;
@@ -91,7 +106,10 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 				if (isTextSpanning) {
 					// TODO: implement this later, it's complicated i think.
 				} else {
-					if (isCollapsed && isAtStart) {
+					if (!startText) {
+						return;
+					}
+					if (isCollapsed && isAtStartOfBlock) {
 						// Last nested block need to be unNest
 						// Otherwise we just merge the block backward and eventually remove the block or unnest the children
 						if (isNested && isLastChild && !islandRoot) {
@@ -105,7 +123,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 							// [Block]
 							//   [Text] "|Hello"
 							const newBlock = startText?.parent.unNestBlock();
-							newBlock && this.edytor.selection.setAtTextOffset(newBlock.content, 0);
+							newBlock && this.edytor.selection.setAtTextOffset(newBlock.firstText, 0);
 						} else {
 							// Before:
 							// [Block]
@@ -150,16 +168,34 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 									return;
 								} else {
 									const previousBlock = startText?.parent.closestPreviousBlock;
-									const offset = previousBlock?.content.yText.length;
+									const previousText = previousBlock?.lastText;
+									const offset = previousText?.length;
 									startText?.parent.mergeBlockBackward();
-									previousBlock &&
-										this.edytor.selection.setAtTextOffset(previousBlock.content, offset);
+									previousText &&
+										this.edytor.selection.setAtTextOffset(previousBlock.lastText, offset);
 								}
 							}
 						}
 					} else {
-						startText?.deleteText({ direction: 'BACKWARD', length: length || 1 });
-						this.selection.setAtTextOffset(startText!, isCollapsed ? yStart - 1 : yStart);
+						if (isCollapsed && isAtStartOfText) {
+							// Before:
+							//   [Text] [InlineBlock] [Text]
+							//
+							// After:
+							//   [Text]
+							const index = startText.parent.content.indexOf(startText) - 1;
+							const previousText = startText.parent.content.at(index - 1);
+							const hasPreviousText = previousText && previousText instanceof Text;
+							const offset = hasPreviousText ? previousText.yText.length : 0;
+							console.log({ hasPreviousText, offset, previousText });
+							startText.parent.removeInlineBlock({ index });
+							if (hasPreviousText) {
+								this.selection.setAtTextOffset(previousText, offset);
+							}
+						} else {
+							startText?.deleteText({ direction: 'BACKWARD', length: length || 1 });
+							this.selection.setAtTextOffset(startText!, isCollapsed ? yStart - 1 : yStart);
+						}
 					}
 				}
 				break;
@@ -181,14 +217,14 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 				}
 				const defaultBlock = this.getDefaultBlock();
 				if (isCollapsed) {
-					if (isAtEnd) {
+					if (isAtEndOfBlock) {
 						const newBlock = startText.parent.insertBlockAfter({
 							block: {
 								type: defaultBlock
 							}
 						});
-						this.selection.setAtTextOffset(newBlock.content.id, newBlock.content.yText.length);
-					} else if (isAtStart) {
+						this.selection.setAtTextOffset(newBlock.firstText, newBlock?.firstText?.length);
+					} else if (isAtStartOfBlock) {
 						startText.parent?.insertBlockBefore({
 							block: {
 								type: defaultBlock
@@ -196,8 +232,9 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 						});
 						this.selection.setAtTextOffset(startText, 0);
 					} else {
-						const newBlock = startText.parent?.splitBlock({ index: yStart });
-						newBlock && this.selection.setAtTextOffset(newBlock.content, 0);
+						const newBlock = startText.parent?.splitBlock({ index: yStart, text: startText });
+
+						newBlock && this.selection.setAtTextOffset(newBlock.firstText, 0);
 					}
 				}
 

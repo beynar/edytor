@@ -1,9 +1,14 @@
 import { Block } from '$lib/block/block.svelte.js';
+import { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { prevent } from '$lib/utils.js';
-import type { JSONBlock } from '$lib/utils/json.js';
+import type { JSONBlock, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
+import { InlineBlock } from './inlineBlock.svelte.js';
 
 export type BlockOperations = {
+	removeInlineBlock: {
+		index: number;
+	};
 	addChildBlock: {
 		block: JSONBlock;
 		index: number;
@@ -20,6 +25,7 @@ export type BlockOperations = {
 	};
 	splitBlock: {
 		index: number;
+		text: Text;
 	};
 	removeBlock: {
 		keepChildren: boolean;
@@ -31,8 +37,19 @@ export type BlockOperations = {
 	setBlock: {
 		value: JSONBlock;
 	};
+	addInlineBlock: {
+		index: number;
+		block: JSONInlineBlock;
+		text: Text;
+	};
 	moveBlock: {
 		path: number[];
+	};
+	pushContentIntoBlock: {
+		value: (Text | InlineBlock)[];
+	};
+	deleteContentForward: {
+		text: Text;
 	};
 };
 
@@ -49,7 +66,6 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 				operation,
 				payload,
 				block: this,
-				text: this.content,
 				prevent
 			}) as BlockOperations[O] | undefined;
 			if (normalizedPayload) {
@@ -61,7 +77,6 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 		const result = this.edytor.transact(() => func.bind(this)(finalPayload));
 
 		for (const plugin of this.edytor.plugins) {
-			// @ts-expect-error
 			plugin.onAfterOperation?.({
 				operation,
 				payload,
@@ -123,13 +138,19 @@ export function insertBlockBefore(
 
 export function splitBlock(
 	this: Block,
-	{ index = this.edytor.selection.state.yStart }: BlockOperations['splitBlock']
-) {
-	const content = this.content.splitText({ index });
-
+	{ index, text }: BlockOperations['splitBlock']
+): Block | null {
+	if (!text) {
+		return null;
+	}
+	const splittedContent = text.splitText({ index });
+	const indexOfContent = this.content.indexOf(text);
+	const remainingContent = this.content.slice(indexOfContent + 1).map((part) => part.value);
+	const content: (JSONText | JSONInlineBlock)[] = [splittedContent, ...remainingContent].flat();
 	const hasChildren = this.children.length >= 1;
 
 	// Add the current children to the new block if any
+	this.yContent.delete(indexOfContent + 1, this.content.length - indexOfContent - 1);
 	const newBlock = this.parent.addChildBlock({
 		block: {
 			type: this.edytor.getDefaultBlock(this.parent),
@@ -171,18 +192,15 @@ export function removeBlock(
 
 export function mergeBlockBackward(this: Block): Block | undefined {
 	const { closestPreviousBlock, isEmpty } = this;
-
 	const { children = [] } = this.value;
+
 	if (!closestPreviousBlock) {
 		return this.isEmpty ? this.mergeBlockForward() : undefined;
 	}
-	if (!isEmpty) {
-		// Add the current content to the previous block content
-		closestPreviousBlock.content.yText.applyDelta([
-			{ retain: closestPreviousBlock.content.yText.length },
-			...this.content.yText.toDelta()
-		]);
 
+	// Add the current content to the previous block content
+	closestPreviousBlock.pushContentIntoBlock({ value: this.content });
+	if (!isEmpty) {
 		// If the current block has children, we need to unnest them and insert them into the current parent
 		if (children.length > 0) {
 			// Unnest children if any
@@ -207,11 +225,7 @@ export function mergeBlockForward(this: Block): Block | undefined {
 	const nextBlock = this.closestNextBlock;
 
 	if (!nextBlock) return undefined;
-
-	this.content.yText.applyDelta([
-		{ retain: this.content.yText.length },
-		...nextBlock.content.yText.toDelta()
-	]);
+	this.pushContentIntoBlock({ value: nextBlock.content });
 
 	if (nextBlock.children.length > 0) {
 		nextBlock.parent.yChildren.insert(
@@ -256,6 +270,7 @@ export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): 
 
 export function unNestBlock(this: Block): Block | null {
 	const { parent, index } = this;
+
 	if (parent instanceof Block) {
 		const grandParent = parent.parent as Block;
 		const newBlock = new Block({
@@ -300,7 +315,31 @@ export function setBlock(this: Block, { value }: BlockOperations['setBlock']) {
 			this.type = value.type;
 		}
 		if (value.content) {
-			this.content.setText({ value: value.content });
+			let newContentCount = value.content.length;
+			let oldContentCount = this.content.length;
+			const contentToRemove = oldContentCount - newContentCount;
+			contentToRemove && this.yContent.delete(newContentCount, contentToRemove);
+			const groupedContent = groupContent(value.content);
+			this.yContent.insert(
+				0,
+				groupedContent.map((part) => {
+					if ('type' in part) {
+						const newInlineBlock = new InlineBlock({
+							parent: this,
+							block: part
+						});
+						return newInlineBlock.yBlock;
+					} else {
+						const newText = new Text({
+							parent: this,
+							content: part
+						});
+						return newText.yText;
+					}
+				})
+			);
+		} else {
+			this.yContent.delete(0, this.content.length);
 		}
 		if (value.children) {
 			let newChildrenCount = value.children.length;
@@ -317,6 +356,169 @@ export function setBlock(this: Block, { value }: BlockOperations['setBlock']) {
 			});
 
 			childrenToRemove && this.yChildren.delete(newChildrenCount, childrenToRemove);
+		} else {
+			this.yChildren.delete(0, this.children.length);
 		}
 	});
+}
+
+export function pushContentIntoBlock(
+	this: Block,
+	{ value }: BlockOperations['pushContentIntoBlock']
+) {
+	const content = this.content.filter((part) =>
+		part instanceof Text ? !part.yText._item?.deleted : !part.yBlock._item?.deleted
+	);
+	let index = content.length;
+	for (const part of value) {
+		if (part instanceof InlineBlock) {
+			// is an inline block needed to be added
+			const newInlineBlock = new InlineBlock({
+				parent: this,
+				block: part
+			});
+			this.yContent.insert(index, [newInlineBlock.yBlock]);
+			index++;
+		} else {
+			const lastPart = content[index - 1];
+			console.log({ lastPart });
+			if (lastPart instanceof Text) {
+				const delta = part.yText.toDelta();
+				lastPart.yText.applyDelta([{ retain: lastPart.yText.length }, ...delta]);
+			} else {
+				const newText = new Text({
+					parent: this,
+					content: part.value
+				});
+				this.yContent.insert(index, [newText.yText]);
+				index++;
+			}
+		}
+	}
+	console.log(this.yContent.toArray());
+}
+
+export function removeInlineBlock(
+	this: Block,
+	{ index }: BlockOperations['removeInlineBlock']
+): void {
+	const part = this.content.at(index);
+	if (part && part instanceof InlineBlock) {
+		this.yContent.delete(index, 1);
+		this.normalizeContent();
+	}
+}
+
+export const groupContent = (
+	content?: (JSONText | JSONInlineBlock)[]
+): (JSONText[] | JSONInlineBlock)[] => {
+	// this function group JSONBlock.content texts together in order to avoid having successive inline Y.Text as it would be ineficient.
+	if (!content) return [[{ text: '' }]];
+	const groupedContent = content.reduce(
+		(acc, part) => {
+			const isInlineBlock = 'type' in part;
+			if (isInlineBlock) {
+				acc.push(part);
+			} else {
+				const lastPart = acc.at(-1);
+				if (acc.length && lastPart && Array.isArray(lastPart)) {
+					lastPart.push(part);
+				} else {
+					acc.push([part]);
+				}
+			}
+			return acc;
+		},
+		[] as (JSONText[] | JSONInlineBlock)[]
+	);
+
+	console.log({ groupedContent });
+	return groupedContent;
+};
+
+export function addInlineBlock(
+	this: Block,
+	{ index, block, text }: BlockOperations['addInlineBlock']
+): void {
+	// TODO
+	const newInlineBlock = new InlineBlock({
+		parent: this,
+		block
+	});
+	const newText = new Text({
+		parent: this,
+		content: text.splitText({ index })
+	});
+
+	this.yContent.insert(index, [newInlineBlock.yBlock, newText.yText]);
+	this.normalizeContent();
+}
+
+export function normalizeContent(this: Block): void {
+	const content = this.content.filter((part) =>
+		part instanceof Text ? !part.yText._item?.deleted : !part.yBlock._item?.deleted
+	);
+
+	// Ensure content starts with Text
+	if (content.length === 0 || !(content[0] instanceof Text)) {
+		const emptyText = new Text({
+			parent: this,
+			content: [{ text: '' }]
+		});
+		this.yContent.insert(0, [emptyText.yText]);
+		return this.normalizeContent();
+	}
+
+	// Ensure content ends with Text
+	if (!(content[content.length - 1] instanceof Text)) {
+		const emptyText = new Text({
+			parent: this,
+			content: [{ text: '' }]
+		});
+		this.yContent.insert(content.length, [emptyText.yText]);
+		return this.normalizeContent();
+	}
+
+	// First handle consecutive text blocks
+	const consecutiveTexts = content.reduce(
+		(acc, part, index) => {
+			const nextPart = content[index + 1];
+			if (part instanceof Text && nextPart instanceof Text) {
+				acc.push([part, nextPart]);
+			}
+			return acc;
+		},
+		[] as [Text, Text][]
+	);
+
+	if (consecutiveTexts.length > 0) {
+		const [first, second] = consecutiveTexts[0];
+		const delta = second.yText.toDelta();
+		first.yText.applyDelta([{ retain: first.yText.length }, ...delta]);
+		this.yContent.delete(content.indexOf(second), 1);
+		return this.normalizeContent();
+	}
+
+	// Then handle consecutive inline blocks
+	const consecutiveInlineBlocks = content.reduce(
+		(acc, part, index) => {
+			const nextPart = content[index + 1];
+			if (part instanceof InlineBlock && nextPart instanceof InlineBlock) {
+				acc.push([part, nextPart]);
+			}
+			return acc;
+		},
+		[] as [InlineBlock, InlineBlock][]
+	);
+
+	if (consecutiveInlineBlocks.length > 0) {
+		const [first, second] = consecutiveInlineBlocks[0];
+		const emptyText = new Text({
+			parent: this,
+			content: [{ text: '' }]
+		});
+		const index = content.indexOf(second);
+		this.yContent.insert(index, [emptyText.yText]);
+		return this.normalizeContent();
+	}
 }

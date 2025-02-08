@@ -1,12 +1,19 @@
 import { Text } from '../text/text.svelte.js';
 import { Edytor } from '../edytor.svelte.js';
-import { type YBlock, type JSONBlock } from '$lib/utils/json.js';
+import {
+	type YBlock,
+	type JSONBlock,
+	type JSONText,
+	type JSONInlineBlock
+} from '$lib/utils/json.js';
 import * as Y from 'yjs';
 import {
 	batch,
+	removeInlineBlock,
 	addChildBlock,
 	insertBlockAfter,
 	insertBlockBefore,
+	pushContentIntoBlock,
 	mergeBlockBackward,
 	mergeBlockForward,
 	nestBlock,
@@ -15,17 +22,24 @@ import {
 	splitBlock,
 	addChildBlocks,
 	unNestBlock,
-	moveBlock
+	moveBlock,
+	normalizeContent,
+	groupContent,
+	addInlineBlock
 } from './block.utils.js';
 import { id } from '$lib/utils.js';
 import type { BlockDefinition } from '$lib/plugins.js';
 import { climb } from '$lib/selection/selection.utils.js';
+import { InlineBlock } from './inlineBlock.svelte.js';
 
-export const getSetChildren = (yBlock: YBlock): Y.Array<YBlock> => {
-	let yChildren = yBlock.get('children') as Y.Array<YBlock>;
+export const getSetArray = <T = YBlock>(
+	yBlock: YBlock,
+	key: 'children' | 'content' = 'children'
+): Y.Array<T> => {
+	let yChildren = yBlock.get(key) as Y.Array<T>;
 	if (!yChildren) {
 		yChildren = new Y.Array();
-		yBlock.set('children', yChildren);
+		yBlock.set(key, yChildren);
 	}
 	return yChildren;
 };
@@ -42,15 +56,17 @@ export const getSetText = (yBlock: YBlock): Y.Text => {
 export class Block {
 	edytor: Edytor;
 	yBlock: YBlock;
-	content: Text;
 	parent: Block | Edytor;
 	yChildren: Y.Array<YBlock>;
 	children = $state<Block[]>([]);
-	id = $state<string>(id('block'));
+	yContent: Y.Array<YBlock | Y.Text>;
+	content = $state<(Text | InlineBlock)[]>([]);
+	id = $state<string>(id('b'));
 	node?: HTMLElement;
 	definition = $state<BlockDefinition>({} as BlockDefinition);
 
 	get selected() {
+		this.yBlock._item?.id;
 		return this.edytor.selection.selectedBlocks.has(this) || this.edytor.selection.hasSelectedAll;
 	}
 	get focused() {
@@ -69,8 +85,8 @@ export class Block {
 	}
 
 	get firstEditableText(): Text | undefined {
-		if (this.content.node) {
-			return this.content;
+		if (this.content.length) {
+			return this.content.find((part) => part instanceof Text) as Text;
 		}
 		return this.children.at(0)?.firstEditableText;
 	}
@@ -165,11 +181,13 @@ export class Block {
 	}
 
 	get hasContent(): boolean {
-		return this.content.isEmpty;
+		return (
+			this.content.length > 0 && this.content.some((part) => part instanceof Text && !part.isEmpty)
+		);
 	}
 
 	get isEmpty(): boolean {
-		return this.hasContent && !this.hasChildren;
+		return !this.hasContent && !this.hasChildren;
 	}
 
 	get value(): JSONBlock {
@@ -178,12 +196,26 @@ export class Block {
 			type: this.type,
 			id: this.id,
 			children,
-			content: this.content.value
+			content: this.content.map((part) => part.value).flat()
 		};
 		if (!children.length) {
 			delete value.children;
 		}
 		return value;
+	}
+
+	get firstText(): Text | undefined {
+		if (this.content.length) {
+			return this.content.find((part) => part instanceof Text);
+		}
+		return this.children.at(0)?.firstText;
+	}
+
+	get lastText(): Text | undefined {
+		if (this.content.length) {
+			return this.content.findLast((part) => part instanceof Text);
+		}
+		return this.children.at(0)?.lastText;
 	}
 
 	private getDefinition() {
@@ -194,6 +226,7 @@ export class Block {
 		return definition;
 	}
 
+	private observeContent = observeContent.bind(this);
 	private observeChildren = observeChildren.bind(this);
 	private batch = batch.bind(this);
 	addChildBlock = this.batch('addChildBlock', addChildBlock.bind(this));
@@ -208,6 +241,10 @@ export class Block {
 	nestBlock = this.batch('nestBlock', nestBlock.bind(this));
 	setBlock = this.batch('setBlock', setBlock.bind(this));
 	moveBlock = this.batch('moveBlock', moveBlock.bind(this));
+	pushContentIntoBlock = this.batch('pushContentIntoBlock', pushContentIntoBlock.bind(this));
+	removeInlineBlock = this.batch('removeInlineBlock', removeInlineBlock.bind(this));
+	addInlineBlock = this.batch('addInlineBlock', addInlineBlock.bind(this));
+	normalizeContent = normalizeContent.bind(this);
 
 	void = (node: HTMLElement) => {
 		node.setAttribute('data-edytor-void', `true`);
@@ -224,9 +261,8 @@ export class Block {
 	} & ({ yBlock?: undefined; block: JSONBlock } | { yBlock: YBlock; block?: undefined })) {
 		this.parent = parent;
 		this.edytor = parent.edytor;
-		this.id = (yBlock?.doc && (yBlock?.get('id') as string)) || id('block');
+		this.id = (yBlock?.doc && (yBlock?.get('id') as string)) || id('b');
 
-		console.log('this.id', this.id);
 		if (block !== undefined) {
 			this.#type = block.type;
 			// If block is provided we need to initialize the block with the value;
@@ -235,39 +271,56 @@ export class Block {
 				block.index = index;
 				return block;
 			});
-			this.yChildren = Y.Array.from(this.children.map((child) => child.yBlock));
+			const groupedContent = groupContent(block.content);
 
-			this.content = new Text({
-				parent: this,
-				content: block.content || ''
+			this.content = groupedContent.map((part) => {
+				const isInlineBlock = 'type' in part;
+				if (isInlineBlock) {
+					return new InlineBlock({ parent: this, block: part });
+				} else {
+					return new Text({ parent: this, content: part });
+				}
 			});
+			const t = $state.raw(this.content);
+			console.log({ content: t });
+			this.yChildren = Y.Array.from(this.children.map((child) => child.yBlock));
+			// this.yContent = Y.Array.from(this.content.map((child) => child.parent));
+			this.yContent = Y.Array.from(
+				this.content.map((part) => (part instanceof Text ? part.yText : part.yBlock))
+			);
 
 			this.yBlock = new Y.Map(
 				Object.entries({
 					type: block.type,
 					id: this.id,
 					children: this.yChildren,
-					content: this.content.yText
+					content: this.yContent
 				})
 			);
 		} else {
 			this.yBlock = yBlock;
 			this.#type = this.yBlock.get('type') || this.edytor.getDefaultBlock(parent);
-			this.yChildren = getSetChildren(this.yBlock);
-			this.content = new Text({
-				parent: this,
-				yText: getSetText(this.yBlock)
-			});
+			this.yChildren = getSetArray(this.yBlock);
+			this.yContent = getSetArray(this.yBlock, 'content');
 			this.children = this.yChildren.map((child, index) => {
 				const block = new Block({ parent: this, yBlock: child });
 				block.index = index;
 				return block;
+			});
+
+			this.content = this.yContent.map((part) => {
+				if (part instanceof Y.Text) {
+					return new Text({ parent: this, yText: part });
+				} else {
+					return new InlineBlock({ parent: this, yBlock: part });
+				}
 			});
 		}
 		this.definition = this.getDefinition();
 		this.edytor.idToBlock.set(this.id, this);
 		if (!this.edytor.readonly) {
 			this.yChildren.observe(this.observeChildren);
+			this.yContent.observe(this.observeContent);
 		}
 	}
 
@@ -289,6 +342,7 @@ export class Block {
 		return {
 			destroy: () => {
 				this.yChildren.unobserve(this.observeChildren);
+				this.yContent.unobserve(this.observeContent);
 				this.edytor.idToBlock.delete(this.id);
 				pluginDestroy.forEach((destroy) => destroy());
 			}
@@ -316,6 +370,33 @@ export function observeChildren(this: Block, event: Y.YArrayEvent<YBlock>) {
 					});
 
 				this.children.splice(start, 0, block);
+				start += 1;
+			}
+		}
+	});
+	this.children.forEach((child, index) => {
+		child.index = index;
+	});
+}
+export function observeContent(this: Block, event: Y.YArrayEvent<YBlock | Y.Text>) {
+	let start = 0;
+	event.delta.forEach(({ retain, delete: _delete, insert }) => {
+		if (retain) {
+			start += retain;
+		}
+		if (_delete) {
+			this.content.splice(start, _delete);
+		}
+		if (Array.isArray(insert)) {
+			for (let i = 0; i < insert.length; i++) {
+				const yElement = insert[i] as YBlock | Y.Text;
+				if (yElement instanceof Y.Text) {
+					const text = new Text({ parent: this, yText: yElement });
+					this.content.splice(start, 0, text);
+				} else {
+					const inlineBlock = new InlineBlock({ parent: this, yBlock: yElement });
+					this.content.splice(start, 0, inlineBlock);
+				}
 				start += 1;
 			}
 		}

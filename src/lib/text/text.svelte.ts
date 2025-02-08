@@ -72,7 +72,7 @@ export class Text {
 		this.parent = parent;
 		this.edytor = parent.edytor;
 		this.yText = yText || new Y.Text();
-		this.id = this.yText.doc ? this.yText.getAttribute('id') : id('text');
+		this.id = this.yText.doc ? this.yText.getAttribute('id') : id('t');
 
 		if (content !== undefined) {
 			// If content is provided we need to initialize the text with the content
@@ -114,20 +114,6 @@ export class Text {
 		this.edytor.nodeToText.set(node, this);
 		node.setAttribute('data-edytor-id', `${this.id}`);
 		node.setAttribute('data-edytor-text', `true`);
-
-		tick().then(() => {
-			if (this.parent.definition.void) {
-				node.setAttribute('contenteditable', 'true');
-				node.style.outline = 'none';
-				node.style.border = 'none';
-				node.style.minWidth = '100%';
-				node.onbeforeinput = (e) => {
-					e.preventDefault();
-					e.stopPropagation();
-					this.edytor.onBeforeInput(e);
-				};
-			}
-		});
 
 		let pluginDestroy = this.edytor.plugins.reduce(
 			(acc, plugin) => {

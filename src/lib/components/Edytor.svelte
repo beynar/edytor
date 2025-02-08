@@ -5,39 +5,50 @@
 	import type { Plugin } from '$lib/plugins.js';
 	const defaultValue: JSONDoc = {
 		children: [
-			{
-				type: 'paragraph',
-				content: [{ text: 'Prout', marks: { bold: true } }],
-
-				children: [
-					{
-						type: 'paragraph',
-						content: [{ text: 'One', marks: { bold: true } }]
-					},
-					{
-						type: 'paragraph',
-						content: [{ text: 'Two', marks: { bold: true } }]
-					},
-					{
-						type: 'paragraph',
-						content: [{ text: 'Three', marks: { bold: true } }]
-					}
-				]
-			},
-
-			{
-				type: 'code',
-				content: [{ text: 'caption' }],
-				children: [{ type: 'codeLine', content: [{ text: '\t\tconsole.log("hello")' }] }]
-			},
+			// {
+			// 	type: 'paragraph',
+			// 	content: [{ text: 'One', marks: { bold: true } }]
+			// },
 			{
 				type: 'paragraph',
 				content: [
-					{ text: 'Hello', marks: { bold: true } },
-					{ text: '', marks: { void: true } },
-					{ text: ' World', marks: { bold: true } }
+					{ text: 'Prout', marks: { bold: true } },
+					{ text: 'Prout', marks: { bold: true } },
+					{
+						type: 'mention'
+					},
+					{ text: 'Prout', marks: { bold: true } }
 				]
+
+				// children: [
+				// 	{
+				// 		type: 'paragraph',
+				// 		content: [{ text: 'One', marks: { bold: true } }]
+				// 	},
+				// 	{
+				// 		type: 'paragraph',
+				// 		content: [{ text: 'Two', marks: { bold: true } }]
+				// 	},
+				// 	{
+				// 		type: 'paragraph',
+				// 		content: [{ text: 'Three', marks: { bold: true } }]
+				// 	}
+				// ]
 			}
+
+			// {
+			// 	type: 'code',
+			// 	content: [{ text: 'caption yo' }],
+			// 	children: [{ type: 'codeLine', content: [{ text: '\t\tconsole.log("hello")' }] }]
+			// },
+			// {
+			// 	type: 'paragraph',
+			// 	content: [
+			// 		{ text: 'Hello', marks: { bold: true } },
+			// 		{ text: '', marks: { void: true } },
+			// 		{ text: ' World', marks: { bold: true } }
+			// 	]
+			// }
 		]
 	};
 </script>

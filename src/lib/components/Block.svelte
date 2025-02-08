@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Block } from '../block/block.svelte.js';
-	import Text from './Text.svelte';
 	import Child from './Block.svelte';
+	import Content from './Content.svelte';
 
 	let {
 		block
@@ -13,7 +13,7 @@
 </script>
 
 {#snippet content()}
-	<Text text={block.content} />
+	<Content {block} />
 {/snippet}
 
 {#snippet children()}
@@ -24,11 +24,4 @@
 
 {#if snippet}
 	{@render snippet({ block, content, children: block.children.length ? children : null })}
-{:else}
-	<div use:block.attach>
-		<p>{@render content()}</p>
-		<div>
-			{@render children()}
-		</div>
-	</div>
 {/if}

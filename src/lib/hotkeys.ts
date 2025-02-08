@@ -1,4 +1,5 @@
 import type { Edytor, EdytorOptions } from './edytor.svelte.js';
+import { Text } from './text/text.svelte.js';
 import type { InitializedPlugin } from './plugins.js';
 import { prevent, PreventionError } from './utils.js';
 
@@ -65,24 +66,36 @@ const escapedKeys = new Set(['shift']);
 
 const defaultHotKeys = {
 	'mod+z': ({ edytor }) => {
-		edytor.undoManager.undo();
-	},
-	'mod+shift+z': ({ edytor }) => {
-		edytor.undoManager.redo();
-	},
-	'mod+enter': ({ edytor, event }) => {
-		const newBlock = edytor.selection.state.startText?.parent.splitBlock({
-			index: edytor.selection.state.startText?.yText.length
+		prevent(() => {
+			edytor.undoManager.undo();
 		});
-		newBlock && edytor.selection.setAtTextOffset(newBlock.content, newBlock.content.length);
 	},
-	'mod+a': ({ edytor }) => {
+	'mod+shift+z': ({ edytor, prevent }) => {
+		prevent(() => {
+			edytor.undoManager.redo();
+		});
+	},
+	'mod+enter': ({ edytor, prevent }) => {
+		prevent(() => {
+			const newBlock = edytor.selection.state.startText?.parent.splitBlock({
+				index: edytor.selection.state.startText?.yText.length,
+				text: edytor.selection.state.startText
+			});
+			if (newBlock && newBlock.content[0] instanceof Text) {
+				newBlock && edytor.selection.setAtTextOffset(newBlock.content[0], newBlock.content.length);
+			}
+		});
+	},
+	'mod+a': ({ edytor, prevent }) => {
 		prevent(() => {
 			const { startText, islandRoot } = edytor.selection.state;
 			if (startText) {
 				if (edytor.selection.selectedBlocks.size) {
 					edytor.selection.selectBlocks(...edytor.children);
-				} else if (edytor.selection.state.isAtStart && edytor.selection.state.isAtEnd) {
+				} else if (
+					edytor.selection.state.isAtStartOfBlock &&
+					edytor.selection.state.isAtEndOfBlock
+				) {
 					window.getSelection()?.removeAllRanges();
 					edytor.selection.selectBlocks(
 						edytor.selection.state.isIsland ? islandRoot! : startText.parent
@@ -106,8 +119,7 @@ const defaultHotKeys = {
 // Features:
 // Case insensitive hotkeys
 // Modifier keys in any order
-// Hotkeys can be overridden by plugins
-// Hotkeys can be overridden by hotkeys object
+// Hotkeys can prevent execution of subsequent hotkeys and therefore allow for overriding default hotkeys
 // Mod to match modifier cmd on mac or ctrl on windows
 export class HotKeys {
 	private hotkeys = new Map<string, HotKey[]>();

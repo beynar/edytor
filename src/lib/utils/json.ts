@@ -19,11 +19,16 @@ export type JSONText = {
 	marks?: Record<string, SerializableContent>;
 };
 
+export type JSONInlineBlock = {
+	data?: any;
+	type: string;
+};
+
 export type JSONBlock = {
 	type: string;
 	id?: string;
 	children?: JSONBlock[];
-	content?: JSONText[];
+	content?: (JSONText | JSONInlineBlock)[];
 } & Record<string, unknown>;
 export type PartialJSONBlock = Omit<JSONBlock, 'children' | 'content'>;
 

@@ -10,9 +10,6 @@
 	export const codePlugin: Plugin = (edytor) => {
 		return {
 			hotkeys: {
-				enter: () => {
-					console.log(1);
-				},
 				tab: ({ prevent }) => {
 					const { startText, yStart } = edytor.selection.state;
 					if (startText?.parent.type === 'codeLine') {
@@ -85,9 +82,6 @@
 					}
 				}
 
-				if (operation === 'addChildBlock') {
-					console.log(block.type);
-				}
 				// if (block.type === 'code' && operation === 'addChildBlock') {
 				// 	const selection = edytor.selection.state;
 				// 	const text = selection.startText!;
@@ -141,7 +135,7 @@
 					onclick={(e) => {
 						e.preventDefault();
 						e.stopPropagation();
-						navigator.clipboard.writeText(block.content.stringContent);
+						// navigator.clipboard.writeText(block.content.stringContent);
 					}}
 				>
 					Copy

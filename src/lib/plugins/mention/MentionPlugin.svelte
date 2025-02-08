@@ -1,5 +1,5 @@
 <script module lang="ts">
-	import { type Plugin, type MarkSnippetPayload } from '$lib/plugins.js';
+	import { type Plugin, type InlineBlockSnippetPayload } from '$lib/plugins.js';
 
 	export const mentionPlugin: Plugin = (edytor) => {
 		return {
@@ -13,10 +13,9 @@
 					});
 				}
 			},
-			marks: {
+			inlineBlocks: {
 				mention: {
-					snippet: mention,
-					void: true
+					snippet: mention
 				}
 			}
 		};
@@ -26,8 +25,6 @@
 <script>
 </script>
 
-{#snippet mention({ content }: MarkSnippetPayload)}
-	<kbd style="background-color: #f0f0f0; color: var(--color-primary-contrast);">
-		{@render content()}
-	</kbd>
+{#snippet mention({ block }: InlineBlockSnippetPayload)}
+	<kbd style="background-color: #f0f0f0; color: var(--color-primary-contrast);"> @mention </kbd>
 {/snippet}

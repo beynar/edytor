@@ -162,8 +162,8 @@
 						yStart: edytor?.selection?.state?.yStart,
 						yEnd: edytor?.selection?.state?.yEnd,
 						length: edytor?.selection?.state?.length,
-						isAtStart: edytor?.selection?.state?.isAtStart,
-						isAtEnd: edytor?.selection?.state?.isAtEnd,
+						isAtStartOfBlock: edytor?.selection?.state?.isAtStartOfBlock,
+						isAtEndOfBlock: edytor?.selection?.state?.isAtEndOfBlock,
 						text: edytor?.selection?.state?.content,
 						yTextContent: edytor?.selection?.state?.yTextContent
 					},

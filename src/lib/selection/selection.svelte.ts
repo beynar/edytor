@@ -23,10 +23,14 @@ type SelectionState = {
 	content: string;
 	isCollapsed: boolean;
 	ranges: Range[];
-	// If the selection is at the start of the yText
-	isAtStart?: boolean;
-	// If the selection is at the end of the yText
-	isAtEnd?: boolean;
+	// If the selection is at the start of the block
+	isAtStartOfBlock?: boolean;
+	// If the selection is at the end of the block
+	isAtEndOfBlock?: boolean;
+	// If the selection is at the start of the text
+	isAtStartOfText?: boolean;
+	// If the selection is at the end of the text
+	isAtEndOfText?: boolean;
 	startText: Text | null;
 	endText: Text | null;
 	texts: Text[];
@@ -59,12 +63,14 @@ export class EdytorSelection {
 		isCollapsed: true,
 		ranges: [],
 		texts: [],
-		isAtStart: false,
+		isAtStartOfBlock: false,
+		isAtEndOfBlock: false,
+		isAtStartOfText: false,
+		isAtEndOfText: false,
 		startNode: null,
 		endNode: null,
 		startText: null,
 		endText: null,
-		isAtEnd: false,
 		isTextSpanning: false,
 		isVoid: false,
 		isIsland: false,
@@ -95,7 +101,7 @@ export class EdytorSelection {
 		});
 		this.edytor.undoManager.on('stack-item-popped', (event: any) => {
 			const cursorLocation = event.stackItem.meta.get('cursor-location');
-			const text = this.edytor.getTextByIdOrParent(cursorLocation.id);
+			const text = this.edytor.getTextById(cursorLocation.id);
 			text && this.setAtTextOffset(text, cursorLocation.offset);
 		});
 
@@ -164,6 +170,13 @@ export class EdytorSelection {
 			}
 		});
 
+		const isAtStartOfText = yStart === 0;
+		const isAtEndOfText = yEnd === endText?.yText.length;
+		const isAtStartOfBlock =
+			(startText && startText === startText.parent.firstText && isAtStartOfText) || false;
+		const isAtEndOfBlock =
+			(endText && endText === endText.parent.lastText && isAtEndOfText) || false;
+
 		this.state = {
 			selection,
 			start,
@@ -177,8 +190,10 @@ export class EdytorSelection {
 			texts,
 			startText,
 			endText,
-			isAtEnd: yEnd === endText?.yText.length,
-			isAtStart: yStart === 0,
+			isAtStartOfText,
+			isAtEndOfText,
+			isAtEndOfBlock,
+			isAtStartOfBlock,
 			isTextSpanning: startText !== endText && texts.length > 1,
 			startNode,
 			endNode,
@@ -272,14 +287,14 @@ export class EdytorSelection {
 		return [textNode, nodeOffset] as const;
 	};
 	setAtTextOffset = async (
-		textOrBlockOrId: Text | Block | string | undefined | null,
+		textOrId: Text | string | undefined | null,
 		textOffset: number | null | undefined = this.state.yStart
 	) => {
-		if (!textOrBlockOrId || typeof textOffset !== 'number') {
+		if (!textOrId || typeof textOffset !== 'number') {
 			return;
 		}
 
-		const node = await this.edytor.getTextNode(textOrBlockOrId);
+		const node = await this.edytor.getTextNode(textOrId);
 		const [textNode, nodeOffset] = this.findTextNode(node, textOffset);
 
 		if (textNode) {

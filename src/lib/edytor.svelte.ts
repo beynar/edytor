@@ -11,7 +11,7 @@ import {
 } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
-import { Block, getSetChildren, observeChildren } from './block/block.svelte.js';
+import { Block, getSetArray, observeChildren } from './block/block.svelte.js';
 import { Text } from './text/text.svelte.js';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { Awareness } from 'y-protocols/awareness.js';
@@ -23,11 +23,13 @@ import type {
 	MarkSnippetPayload,
 	BlockDefinition,
 	PluginOperations,
-	MarkDefinition
+	MarkDefinition,
+	InlineBlockDefinition
 } from './plugins.js';
 import { on } from 'svelte/events';
 import { HotKeys, type HotKey } from './hotkeys.js';
 import { TRANSACTION } from './constants.js';
+import type { InlineBlock } from './block/inlineBlock.svelte.js';
 
 export type Snippets = {
 	[K in `${string}Block` | `${string}Mark`]: K extends `${string}Block`
@@ -67,9 +69,11 @@ export class Edytor {
 	node?: HTMLElement;
 	marks = new Map<string, MarkDefinition>();
 	blocks = new Map<string, BlockDefinition>();
+	inlineBlocks = new Map<string, InlineBlockDefinition>();
 	plugins: InitializedPlugin[];
 	container = $state<HTMLDivElement>();
 	idToBlock = new SvelteMap<string, Block>();
+	idToInlineBlock = new SvelteMap<string, InlineBlock>();
 	idToText = new SvelteMap<string, Text>();
 	nodeToText = new SvelteMap<Node, Text>();
 	transaction = new TRANSACTION();
@@ -80,8 +84,6 @@ export class Edytor {
 	synced = $state(false);
 	edytor = this;
 	selection: EdytorSelection;
-	voidBlocks = new SvelteSet<Block>();
-	voidElements = new SvelteSet<HTMLElement>();
 	defaultType = 'paragraph';
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
@@ -119,7 +121,7 @@ export class Edytor {
 		this.readonly = readonly || false;
 		this.doc = doc;
 		this.yBlock = this.doc.getMap('content') as YBlock;
-		this.yChildren = getSetChildren(this.yBlock);
+		this.yChildren = getSetArray(this.yBlock);
 		this.awareness = awareness;
 		this.onChange = onChange;
 
@@ -142,6 +144,14 @@ export class Edytor {
 						this.blocks.set(key, definition);
 					} else {
 						this.blocks.set(key, { snippet: definition });
+					}
+				});
+			initializedPlugin.inlineBlocks &&
+				Object.entries(initializedPlugin.inlineBlocks).forEach(([key, definition]) => {
+					if (typeof definition === 'object') {
+						this.inlineBlocks.set(key, definition);
+					} else {
+						this.inlineBlocks.set(key, { snippet: definition });
 					}
 				});
 			return initializedPlugin;
@@ -214,12 +224,12 @@ export class Edytor {
 			const initializedText = this.doc.getText(INITIALIZED);
 			this.initialized = initializedText?.toJSON() === INITIALIZED;
 			if (this.initialized) {
-				this.yChildren = getSetChildren(this.yBlock);
+				this.yChildren = getSetArray(this.yBlock);
 				this.children = this.yChildren.map((yBlock) => {
 					return new Block({ parent: this, yBlock });
 				});
 			} else {
-				this.yChildren = getSetChildren(this.yBlock);
+				this.yChildren = getSetArray(this.yBlock);
 				this.children = children.map((child) => {
 					const block = new Block({ parent: this, block: child });
 					this.yChildren.push([block.yBlock]);
@@ -250,27 +260,19 @@ export class Edytor {
 	addChildBlock = this.batch('addChildBlock', addChildBlock.bind(this));
 	addChildBlocks = this.batch('addChildBlocks', addChildBlocks.bind(this));
 
-	getTextByIdOrParent = (idOrParent: string | Block) => {
-		if (typeof idOrParent === 'string') {
-			const isText = idOrParent.startsWith('text');
-			const isBlock = idOrParent.startsWith('block');
-			if (isText) {
-				return this.idToText.get(idOrParent);
-			} else if (isBlock) {
-				const block = this.idToBlock.get(idOrParent);
-				return block?.content;
-			}
-			return undefined;
-		} else if (idOrParent instanceof Block) {
-			return idOrParent.content;
+	getTextById = (id: string) => {
+		const isText = id.startsWith('t');
+		if (!isText) {
+			throw new Error('Invalid id, expected text id');
 		}
-		return undefined;
+
+		return this.idToText.get(id);
 	};
 
 	getBlockByIdOrContent = (idOrContent: string | Text): Block | undefined => {
 		if (typeof idOrContent === 'string') {
-			const isText = idOrContent.startsWith('text');
-			const isBlock = idOrContent.startsWith('block');
+			const isText = idOrContent.startsWith('t');
+			const isBlock = idOrContent.startsWith('b');
 			if (isBlock) {
 				return this.idToBlock.get(idOrContent);
 			} else if (isText) {
@@ -283,10 +285,9 @@ export class Edytor {
 		return undefined;
 	};
 
-	getTextNode = async (idOrTextOrBlock: string | Text | Block): Promise<HTMLElement> => {
+	getTextNode = async (idOrText: string | Text): Promise<HTMLElement> => {
 		await tick();
-		const text =
-			idOrTextOrBlock instanceof Text ? idOrTextOrBlock : this.getTextByIdOrParent(idOrTextOrBlock);
+		const text = idOrText instanceof Text ? idOrText : this.getTextById(idOrText);
 		let node = text?.node;
 		let breakCount = 0;
 		while (!node) {

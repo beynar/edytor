@@ -204,18 +204,18 @@ export class Block {
 		return value;
 	}
 
-	get firstText(): Text | undefined {
+	get firstText(): Text {
 		if (this.content.length) {
-			return this.content.find((part) => part instanceof Text);
+			return this.content.find((part) => part instanceof Text)!;
 		}
-		return this.children.at(0)?.firstText;
+		return this.children.at(0)?.firstText!;
 	}
 
-	get lastText(): Text | undefined {
+	get lastText(): Text {
 		if (this.content.length) {
-			return this.content.findLast((part) => part instanceof Text);
+			return this.content.findLast((part) => part instanceof Text)!;
 		}
-		return this.children.at(0)?.lastText;
+		return this.children.at(0)!.lastText!;
 	}
 
 	private getDefinition() {
@@ -273,18 +273,19 @@ export class Block {
 			});
 			const groupedContent = groupContent(block.content);
 
-			this.content = groupedContent.map((part) => {
+			this.content = groupedContent.map((part, index) => {
 				const isInlineBlock = 'type' in part;
 				if (isInlineBlock) {
-					return new InlineBlock({ parent: this, block: part });
+					const block = new InlineBlock({ parent: this, block: part });
+					block.index = index;
+					return block;
 				} else {
-					return new Text({ parent: this, content: part });
+					const text = new Text({ parent: this, content: part });
+					text.index = index;
+					return text;
 				}
 			});
-			const t = $state.raw(this.content);
-			console.log({ content: t });
 			this.yChildren = Y.Array.from(this.children.map((child) => child.yBlock));
-			// this.yContent = Y.Array.from(this.content.map((child) => child.parent));
 			this.yContent = Y.Array.from(
 				this.content.map((part) => (part instanceof Text ? part.yText : part.yBlock))
 			);
@@ -307,12 +308,15 @@ export class Block {
 				block.index = index;
 				return block;
 			});
-
-			this.content = this.yContent.map((part) => {
-				if (part instanceof Y.Text) {
-					return new Text({ parent: this, yText: part });
+			this.content = this.yContent.map((part, index) => {
+				if (part instanceof Y.Map) {
+					const block = new InlineBlock({ parent: this, yBlock: part });
+					block.index = index;
+					return block;
 				} else {
-					return new InlineBlock({ parent: this, yBlock: part });
+					const text = new Text({ parent: this, yText: part });
+					text.index = index;
+					return text;
 				}
 			});
 		}
@@ -401,7 +405,8 @@ export function observeContent(this: Block, event: Y.YArrayEvent<YBlock | Y.Text
 			}
 		}
 	});
-	this.children.forEach((child, index) => {
-		child.index = index;
+
+	this.content.forEach((part, index) => {
+		part.index = index;
 	});
 }

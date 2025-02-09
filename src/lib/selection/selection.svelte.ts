@@ -33,6 +33,8 @@ type SelectionState = {
 	isAtEndOfText?: boolean;
 	startText: Text | null;
 	endText: Text | null;
+	startBlock: Block | null;
+	endBlock: Block | null;
 	texts: Text[];
 	startNode: Node | null;
 	endNode: Node | null;
@@ -71,6 +73,8 @@ export class EdytorSelection {
 		endNode: null,
 		startText: null,
 		endText: null,
+		startBlock: null,
+		endBlock: null,
 		isTextSpanning: false,
 		isVoid: false,
 		isIsland: false,
@@ -197,6 +201,8 @@ export class EdytorSelection {
 			isTextSpanning: startText !== endText && texts.length > 1,
 			startNode,
 			endNode,
+			startBlock: startText?.parent || null,
+			endBlock: endText?.parent || null,
 			isVoid,
 			isIsland,
 			islandRoot,
@@ -309,6 +315,33 @@ export class EdytorSelection {
 
 		const [startTextNode, startNodeOffset] = this.findTextNode(startText.node, 0);
 		const [endTextNode, endNodeOffset] = this.findTextNode(endText.node, endText.yText.length);
+
+		if (startTextNode && endTextNode) {
+			const selection = window.getSelection();
+			const range = document.createRange();
+			range.setStart(startTextNode, startNodeOffset);
+			range.setEnd(endTextNode, endNodeOffset);
+			selection?.removeAllRanges();
+			selection?.addRange(range);
+			this.edytor.node!.focus();
+		}
+	};
+
+	setAtBlockRange = async (block?: Block | null, startOffset?: number, endOffset?: number) => {
+		if (!block) {
+			return;
+		}
+		if (!startOffset) {
+			startOffset = 0;
+		}
+		if (!endOffset) {
+			endOffset = block.lastText.length;
+		}
+
+		const startNode = await this.edytor.getTextNode(block.firstText);
+		const [startTextNode, startNodeOffset] = this.findTextNode(startNode, startOffset);
+		const endNode = await this.edytor.getTextNode(block.lastText);
+		const [endTextNode, endNodeOffset] = this.findTextNode(endNode, endOffset);
 
 		if (startTextNode && endTextNode) {
 			const selection = window.getSelection();

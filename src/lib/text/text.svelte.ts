@@ -21,6 +21,7 @@ export class Text {
 	yText: Y.Text;
 	edytor: Edytor;
 	stringContent = $state('');
+	index = $state(0);
 	node: HTMLElement | undefined;
 	delta: Delta[] = [];
 	isEmpty = $state(false);
@@ -42,6 +43,7 @@ export class Text {
 			? jsonToDelta(transformer({ text: this, block: this.parent, content: this.value }))
 			: this.#children;
 	}
+
 	set children(value: JSONDelta[]) {
 		this.#children = value;
 	}

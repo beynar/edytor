@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Block } from '$lib/block/block.svelte.js';
+import { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { prevent, PreventionError } from '$lib/utils.js';
 const arrowKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
@@ -15,10 +16,12 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 			if (!this.selection.state.isIsland) {
 				e.preventDefault();
 				e.stopPropagation();
-				const { yStart } = this.selection.state;
+				const { yStart, startText } = this.selection.state;
 				const newBlock = this.selection.state.startText?.parent.nestBlock();
-				if (newBlock) {
-					this.selection.setAtTextOffset(newBlock.content, yStart);
+				const index = startText?.index;
+				if (newBlock && index !== undefined) {
+					const textToFocus = newBlock.content[index] as Text;
+					this.selection.setAtTextOffset(textToFocus, yStart);
 				}
 			}
 		}

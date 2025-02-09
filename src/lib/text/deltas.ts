@@ -38,6 +38,17 @@ const createDelta = (text: string, attributes: Map<string, SerializableContent>)
 	return { text, marks, id: crypto.randomUUID() };
 };
 
+const areMarksEqual = (
+	marks1: Map<string, SerializableContent>,
+	marks2: Map<string, SerializableContent>
+): boolean => {
+	if (marks1.size !== marks2.size) return false;
+	for (const [key, value] of marks1) {
+		if (!marks2.has(key) || marks2.get(key) !== value) return false;
+	}
+	return true;
+};
+
 export const toDeltas = (text: Y.Text) => {
 	const result: JSONDelta[] = [];
 	if (!text) {
@@ -49,7 +60,24 @@ export const toDeltas = (text: Y.Text) => {
 	let isEmpty = true;
 	const flushString = () => {
 		if (currentString) {
-			result.push(createDelta(currentString, currentAttributes));
+			const newDelta = createDelta(currentString, currentAttributes);
+
+			// Check if we can merge with the previous delta
+			const lastDelta = result[result.length - 1];
+			if (lastDelta && lastDelta.marks.length === newDelta.marks.length) {
+				const lastDeltaMarks = new Map(lastDelta.marks);
+				const newDeltaMarks = new Map(newDelta.marks);
+
+				if (areMarksEqual(lastDeltaMarks, newDeltaMarks)) {
+					// Merge the text with the previous delta
+					lastDelta.text += currentString;
+				} else {
+					result.push(newDelta);
+				}
+			} else {
+				result.push(newDelta);
+			}
+
 			currentString = '';
 			isEmpty = false;
 		}

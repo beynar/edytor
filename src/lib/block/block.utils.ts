@@ -432,7 +432,6 @@ export const groupContent = (
 		[] as (JSONText[] | JSONInlineBlock)[]
 	);
 
-	console.log({ groupedContent });
 	return groupedContent;
 };
 

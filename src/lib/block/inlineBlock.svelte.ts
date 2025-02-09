@@ -11,6 +11,7 @@ export class InlineBlock {
 	id: string;
 	yBlock: YBlock;
 	#type = $state<string>('inline');
+	index = $state(0);
 	definition = $state<InlineBlockDefinition>({} as InlineBlockDefinition);
 	edytor: Edytor;
 	get type() {

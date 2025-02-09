@@ -88,7 +88,7 @@ const defaultHotKeys = {
 	},
 	'mod+a': ({ edytor, prevent }) => {
 		prevent(() => {
-			const { startText, islandRoot } = edytor.selection.state;
+			const { startText, startBlock, islandRoot } = edytor.selection.state;
 			if (startText) {
 				if (edytor.selection.selectedBlocks.size) {
 					edytor.selection.selectBlocks(...edytor.children);
@@ -104,11 +104,11 @@ const defaultHotKeys = {
 					if (edytor.selection.state.isIsland) {
 						const firstText = islandRoot?.children[0]?.content;
 						let lastText = islandRoot?.children.at(-1)?.content;
-						if (firstText && lastText) {
+						if (firstText && lastText && firstText instanceof Text && lastText instanceof Text) {
 							edytor.selection.setAtTextsRange(firstText, lastText);
 						}
 					} else {
-						edytor.selection.setAtTextRange(startText, 0, startText.yText.length);
+						edytor.selection.setAtBlockRange(startBlock);
 					}
 				}
 			}

@@ -92,6 +92,9 @@
 						synced(provider);
 					});
 				}}
+				onChange={(e) => {
+					console.log('change', edytor?.doc.toJSON());
+				}}
 				readonly={false}
 				class="outline-none"
 				bind:edytor
@@ -148,9 +151,11 @@
 				{/snippet}
 			</Edytor>
 		</div>
-		<!-- <div class="card rounded bg-neutral-800 p-2 mt-2">
-			{JSON.stringify(edytor?.value)}
-		</div> -->
+		<div class="card rounded bg-neutral-800 p-2 mt-2">
+			<pre>
+{JSON.stringify(edytor?.value, null, 2)}
+		</pre>
+		</div>
 	</div>
 	<div>
 		{#key edytor?.selection.state}

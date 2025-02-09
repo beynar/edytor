@@ -412,12 +412,21 @@ export function removeInlineBlock(
 export const groupContent = (
 	content?: (JSONText | JSONInlineBlock)[]
 ): (JSONText[] | JSONInlineBlock)[] => {
+	const isInlineJSONBlock = (
+		part?: JSONText | JSONInlineBlock | JSONText[]
+	): part is JSONInlineBlock => {
+		return part ? 'type' in part : false;
+	};
 	// this function group JSONBlock.content texts together in order to avoid having successive inline Y.Text as it would be ineficient.
 	if (!content) return [[{ text: '' }]];
 	const groupedContent = content.reduce(
 		(acc, part) => {
 			const isInlineBlock = 'type' in part;
 			if (isInlineBlock) {
+				if (isInlineJSONBlock(acc.at(-1))) {
+					// Make sure that two consecutive inline blocks are separated by a text block
+					acc.push([{ text: '' }]);
+				}
 				acc.push(part);
 			} else {
 				const lastPart = acc.at(-1);
@@ -431,6 +440,16 @@ export const groupContent = (
 		},
 		[] as (JSONText[] | JSONInlineBlock)[]
 	);
+
+	if (isInlineJSONBlock(groupedContent.at(0))) {
+		// Make sure that the first part is an inline block
+		groupedContent.unshift([{ text: '' }]);
+	}
+
+	if (isInlineJSONBlock(groupedContent.at(-1))) {
+		// Make sure that the last part is a text block
+		groupedContent.push([{ text: '' }]);
+	}
 
 	return groupedContent;
 };

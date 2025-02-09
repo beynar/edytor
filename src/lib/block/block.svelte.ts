@@ -148,7 +148,12 @@ export class Block {
 			return this.parent instanceof Block ? this.parent : null;
 		} else {
 			if (previousBlock?.children.length > 0) {
-				return previousBlock.children.at(-1) || null;
+				console.log('here');
+				let closestPreviousBlock = previousBlock.children.at(-1) || null;
+				while (closestPreviousBlock && closestPreviousBlock?.children.length > 0) {
+					closestPreviousBlock = closestPreviousBlock.children.at(-1) || null;
+				}
+				return closestPreviousBlock || null;
 			} else {
 				return this.previousBlock;
 			}

@@ -16,6 +16,7 @@
 						prevent(() => {
 							if (startBlock?.suggestions) {
 								startBlock.acceptSuggestedText();
+								edytor.selection.setAtTextOffset(startText, startText.yText.length);
 							} else {
 								if (startText) {
 									startText.insertText({ value: '\t' });
@@ -158,7 +159,7 @@
 			if (block.suggestions) {
 				block.suggestions = null;
 			} else {
-				block.suggestText({ value: 'hello' });
+				block.suggestText({ value: "I'm a code suggestion" });
 			}
 		}}
 		class="hover:bg-neutral-700"

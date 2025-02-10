@@ -4,7 +4,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { prevent } from '$lib/utils.js';
 import type { JSONBlock, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
-
+import * as Y from 'yjs';
 export type BlockOperations = {
 	removeInlineBlock: {
 		index: number;
@@ -51,9 +51,11 @@ export type BlockOperations = {
 	deleteContentForward: {
 		text: Text;
 	};
+	normalizeContent: {};
 	suggestText: {
 		value: (JSONText | JSONInlineBlock)[] | string | null;
 	};
+	acceptSuggestedText: {};
 };
 
 export function batch<T extends (...args: any[]) => any, O extends keyof BlockOperations>(
@@ -476,12 +478,10 @@ export function addInlineBlock(
 }
 
 export function normalizeContent(this: Block): void {
-	const content = this.content.filter((part) =>
-		part instanceof Text ? !part.yText._item?.deleted : !part.yBlock._item?.deleted
-	);
+	const content = this.yContent.toArray().filter((part) => !part._item?.deleted);
 
 	// Ensure content starts with Text
-	if (content.length === 0 || !(content[0] instanceof Text)) {
+	if (content.length === 0 || !(content[0] instanceof Y.Text)) {
 		const emptyText = new Text({
 			parent: this,
 			content: [{ text: '' }]
@@ -491,7 +491,7 @@ export function normalizeContent(this: Block): void {
 	}
 
 	// Ensure content ends with Text
-	if (!(content[content.length - 1] instanceof Text)) {
+	if (!(content[content.length - 1] instanceof Y.Text)) {
 		const emptyText = new Text({
 			parent: this,
 			content: [{ text: '' }]
@@ -504,18 +504,18 @@ export function normalizeContent(this: Block): void {
 	const consecutiveTexts = content.reduce(
 		(acc, part, index) => {
 			const nextPart = content[index + 1];
-			if (part instanceof Text && nextPart instanceof Text) {
+			if (part instanceof Y.Text && nextPart instanceof Y.Text) {
 				acc.push([part, nextPart]);
 			}
 			return acc;
 		},
-		[] as [Text, Text][]
+		[] as [Y.Text, Y.Text][]
 	);
 
 	if (consecutiveTexts.length > 0) {
 		const [first, second] = consecutiveTexts[0];
-		const delta = second.yText.toDelta();
-		first.yText.applyDelta([{ retain: first.yText.length }, ...delta]);
+		const delta = second.toDelta();
+		first.applyDelta([{ retain: first.length }, ...delta]);
 		this.yContent.delete(content.indexOf(second), 1);
 		return this.normalizeContent();
 	}
@@ -524,12 +524,12 @@ export function normalizeContent(this: Block): void {
 	const consecutiveInlineBlocks = content.reduce(
 		(acc, part, index) => {
 			const nextPart = content[index + 1];
-			if (part instanceof InlineBlock && nextPart instanceof InlineBlock) {
+			if (part instanceof Y.Map && nextPart instanceof Y.Map) {
 				acc.push([part, nextPart]);
 			}
 			return acc;
 		},
-		[] as [InlineBlock, InlineBlock][]
+		[] as [Y.Map<any>, Y.Map<any>][]
 	);
 
 	if (consecutiveInlineBlocks.length > 0) {
@@ -552,4 +552,32 @@ export function suggestText(this: Block, { value }: BlockOperations['suggestText
 	} else {
 		this.suggestions = null;
 	}
+}
+
+export function acceptSuggestedText(this: Block) {
+	if (!this.suggestions) {
+		return;
+	}
+	const editableSuggestions = this.suggestions.map((part) => {
+		if ('type' in part) {
+			return new InlineBlock({
+				parent: this,
+				block: part.value
+			});
+		} else {
+			return new Text({
+				parent: this,
+				content: part.value
+			});
+		}
+	});
+	this.yContent.insert(
+		this.content.length,
+		editableSuggestions.map((suggestion) =>
+			'yBlock' in suggestion ? suggestion.yBlock : suggestion.yText
+		)
+	);
+
+	this.suggestions = null;
+	this.normalizeContent();
 }

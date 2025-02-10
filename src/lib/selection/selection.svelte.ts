@@ -156,6 +156,7 @@ export class EdytorSelection {
 
 		let isIsland = false;
 		let islandRoot: Block | null = null;
+
 		climb(startText?.parent, (block) => {
 			if (block instanceof Block && block.definition.island) {
 				isIsland = true;
@@ -181,6 +182,20 @@ export class EdytorSelection {
 		const isAtEndOfBlock =
 			(endText && endText === endText.parent.lastText && isAtEndOfText) || false;
 
+		const startBlock = startText?.parent || null;
+		const endBlock = endText?.parent || null;
+		const { startBlock: previousStartBlock, endBlock: previousEndBlock } = this.state;
+		if (
+			(previousStartBlock !== startBlock || previousEndBlock !== endBlock) &&
+			[previousStartBlock, previousEndBlock].some((block) => block?.suggestions)
+		) {
+			[previousStartBlock, previousEndBlock].forEach((block) => {
+				if (block?.suggestions) {
+					block.suggestions = null;
+				}
+			});
+		}
+
 		this.state = {
 			selection,
 			start,
@@ -201,8 +216,8 @@ export class EdytorSelection {
 			isTextSpanning: startText !== endText && texts.length > 1,
 			startNode,
 			endNode,
-			startBlock: startText?.parent || null,
-			endBlock: endText?.parent || null,
+			startBlock,
+			endBlock,
 			isVoid,
 			isIsland,
 			islandRoot,

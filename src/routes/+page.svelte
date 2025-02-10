@@ -144,5 +144,8 @@
 		[data-edytor-selected] {
 			@apply bg-red-100/50;
 		}
+		[data-edytor-text-suggestion] {
+			@apply opacity-65 italic;
+		}
 	}
 </style>

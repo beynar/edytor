@@ -150,6 +150,10 @@ export class ReadonlyText {
 	id: string;
 	length: number;
 
+	get value(): JSONText[] {
+		return deltaToJson(this.#children);
+	}
+
 	get children() {
 		const transformer = this.parent.definition?.transformText;
 		return transformer

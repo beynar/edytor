@@ -26,6 +26,7 @@ import {
 	normalizeContent,
 	groupContent,
 	addInlineBlock,
+	acceptSuggestedText,
 	suggestText
 } from './block.utils.js';
 import { id } from '$lib/utils.js';
@@ -271,8 +272,9 @@ export class Block {
 	pushContentIntoBlock = this.batch('pushContentIntoBlock', pushContentIntoBlock.bind(this));
 	removeInlineBlock = this.batch('removeInlineBlock', removeInlineBlock.bind(this));
 	addInlineBlock = this.batch('addInlineBlock', addInlineBlock.bind(this));
-	normalizeContent = normalizeContent.bind(this);
+	normalizeContent = this.batch('normalizeContent', normalizeContent.bind(this));
 	suggestText = this.batch('suggestText', suggestText.bind(this));
+	acceptSuggestedText = this.batch('acceptSuggestedText', acceptSuggestedText.bind(this));
 
 	void = (node: HTMLElement) => {
 		node.setAttribute('data-edytor-void', `true`);

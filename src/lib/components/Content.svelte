@@ -21,10 +21,13 @@
 		{/if}
 	{/each}
 {/snippet}
-
-{@render renderContent(block.content)}
-{#if block?.suggestions}
-	<span data-edytor-suggestions contentEditable="false" style="user-select: none">
+{@render renderContent(block.content)}<!--
+-->{#if block?.suggestions}
+	<span
+		data-edytor-text-suggestion
+		contentEditable="false"
+		style="user-select: none; pointer-events: none"
+	>
 		{@render renderContent(block.suggestions)}
 	</span>
 {/if}

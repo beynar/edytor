@@ -39,7 +39,7 @@
 	});
 </script>
 
-<div class={className} use:edytor.attach data-edytor contenteditable="false">
+<div class={className} data-edytor contenteditable="false">
 	{#each children || [] as block (block.id)}
 		<Block {block} />
 	{/each}

@@ -23,24 +23,28 @@ Edytor is currently in the early stages of development. It is not yet ready for 
 I welcome early contributors to help us build a better editor for Svelte.
 Just run it, see what you can do with it, and open issues or PRs.
 
+If you want to submit an issue please share the json value of the document. It will help understand and fix the issue.
+
 ## ✨ Features
 
 - 📑 **Customizable with snippets**: Use snippets to render your own blocks and marks
-- 🎨 **Rich Text Formatting**: Full support for text styling
+- 🎨 **Rich Text Formatting**: Full support for marks, blocks and inline blocks.
 - 🤝 **Real-time Collaboration**: Uses Y.js as data store, collaborative editing is built-in
-- 🔌 **Plugin System**: Extensible architecture for custom features
-- ⚡ **High Performance**: Optimized for large documents, fine grained update at the block/content level thanks to Y.js and Svelte's reactivity
+- 🔌 **Plugin System**: Extensible architecture for custom features. I try to make every action performed by the editor hackable and preventable to let you build your own features.
+- ⚡ **High Performance**: Optimized for large documents, fine grained update at the leaf level thanks to Y.js and Svelte's reactivity
 - 🔄 **Undo/Redo**: Built-in history management
 - 📦 **Lightweight**: Relatively small bundle size compared to other rich text editors
+- 📦 **AI copilot ready**: Support inline text suggestions for ai completions.
 
 ## 🧠 Concepts
 
-Edytor structure is built around fours main concepts:
+Edytor structure is built around this key concepts:
 
 - **Blocks**: Container elements like paragraphs, headings, and lists
 - **Content**: The content of a block is an array of inlines blocks or text and marks.
 - **Children**: Children are the blocks that are directly inside a block. They allow an infinite nesting.
 - **Marks**: Texts are simply text with marks that define the formatting.
+- **Inline blocks**: Inline blocks are inline elements that are no editable and render custom components like footnotes, equations, etc.
 
 Example of a document:
 
@@ -50,9 +54,9 @@ Example of a document:
 		<content>
 			<text mark="bold">Hello</text>
 			<text>World</text>
-			<block inline type="footnote">
+			<inline-block  type="footnote">
 				<!-- Inline block are rendered by the user code -->
-			</block>
+			</inline-block>
 		</content>
 		<children>
 			<block>

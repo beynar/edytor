@@ -11,12 +11,16 @@
 		return {
 			hotkeys: {
 				tab: ({ prevent }) => {
-					const { startText, yStart } = edytor.selection.state;
+					const { startText, yStart, startBlock } = edytor.selection.state;
 					if (startText?.parent.type === 'codeLine') {
 						prevent(() => {
-							if (startText) {
-								startText.insertText({ value: '\t' });
-								edytor.selection.setAtTextOffset(startText, yStart + 1);
+							if (startBlock?.suggestions) {
+								startBlock.acceptSuggestedText();
+							} else {
+								if (startText) {
+									startText.insertText({ value: '\t' });
+									edytor.selection.setAtTextOffset(startText, yStart + 1);
+								}
 							}
 						});
 					}
@@ -151,7 +155,11 @@
 {#snippet codeLine({ content, block }: BlockSnippetPayload)}
 	<div
 		onclick={() => {
-			block.suggestText({ value: 'hello' });
+			if (block.suggestions) {
+				block.suggestions = null;
+			} else {
+				block.suggestText({ value: 'hello' });
+			}
 		}}
 		class="hover:bg-neutral-700"
 		style:tab-size="7px"

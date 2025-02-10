@@ -14,21 +14,24 @@ import {
 } from './text.utils.js';
 import { deltaToJson, jsonToDelta, toDeltas, type JSONDelta } from './deltas.js';
 import { id } from '$lib/utils.js';
-import { tick } from 'svelte';
 
 export class Text {
+	readonly = false;
 	parent: Block;
 	yText: Y.Text;
 	edytor: Edytor;
 	stringContent = $state('');
 	index = $state(0);
 	node: HTMLElement | undefined;
-	delta: Delta[] = [];
+	// Used to add en empty string in the DOM if the text is empty in order to be abble to focus on it.
 	isEmpty = $state(false);
+	// Used to add en empty string at the end of the text if it ends with a newline in order to visually render the newline.
 	endsWithNewline = $state(false);
+	// Used when user toggles mark without selection range.
 	markOnNextInsert: undefined | Record<string, SerializableContent | null> = undefined;
 	id: string;
 	#children = $state<JSONDelta[]>([]);
+
 	get value(): JSONText[] {
 		return deltaToJson(this.#children);
 	}
@@ -38,7 +41,7 @@ export class Text {
 	}
 
 	get children() {
-		const transformer = this.parent.definition.transformContent;
+		const transformer = this.parent.definition.transformText;
 		return transformer
 			? jsonToDelta(transformer({ text: this, block: this.parent, content: this.value }))
 			: this.#children;
@@ -108,7 +111,6 @@ export class Text {
 	splitText = this.batch('splitText', splitText.bind(this));
 	setText = this.batch('setText', setText.bind(this));
 	markText = this.batch('markText', markText.bind(this));
-
 	removeMarksFromText = this.batch('removeMarksFromText', removeMarksFromText.bind(this));
 
 	attach = (node: HTMLElement) => {

@@ -3,6 +3,7 @@
 	import { Text } from '$lib/text/text.svelte.js';
 	import RenderText from './Text.svelte';
 	import RenderInlineBlock from './InlineBlock.svelte';
+	import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 
 	let {
 		block
@@ -11,10 +12,19 @@
 	} = $props();
 </script>
 
-{#each block.content as blockOrText (blockOrText.id)}
-	{#if blockOrText instanceof Text}
-		<RenderText text={blockOrText} />
-	{:else}
-		<RenderInlineBlock block={blockOrText} />
-	{/if}
-{/each}
+{#snippet renderContent(content: (Text | InlineBlock)[])}
+	{#each content as blockOrText (blockOrText.id)}
+		{#if 'children' in blockOrText}
+			<RenderText text={blockOrText} />
+		{:else}
+			<RenderInlineBlock block={blockOrText} />
+		{/if}
+	{/each}
+{/snippet}
+
+{@render renderContent(block.content)}
+{#if block?.suggestions}
+	<span data-edytor-suggestions contentEditable="false" style="user-select: none">
+		{@render renderContent(block.suggestions)}
+	</span>
+{/if}

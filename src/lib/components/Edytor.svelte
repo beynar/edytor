@@ -50,30 +50,8 @@
 			}
 		]
 	};
-</script>
 
-<script lang="ts">
-	import Block from './Block.svelte';
-	import * as Y from 'yjs';
-	import type { JSONBlock, JSONDoc } from '../utils/json.js';
-	import { onMount, setContext } from 'svelte';
-	import type { HotKey } from '$lib/hotkeys.js';
-	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
-
-	let {
-		plugins,
-		class: className,
-		edytor = $bindable(),
-		doc,
-		readonly = false,
-		value = $bindable(defaultValue),
-		hotKeys,
-		sync,
-		awareness,
-		onChange,
-		onSelectionChange,
-		...snippets
-	}: Snippets & {
+	export type EdytorProps = Snippets & {
 		plugins?: Plugin[];
 		class?: string;
 		edytor?: Edytor;
@@ -93,7 +71,32 @@
 			awareness: Awareness;
 			synced: (provider?: any) => void;
 		}) => void;
-	} = $props();
+	};
+</script>
+
+<script lang="ts">
+	import * as Y from 'yjs';
+	import type { JSONBlock, JSONDoc } from '../utils/json.js';
+	import { onMount, setContext } from 'svelte';
+	import type { HotKey } from '$lib/hotkeys.js';
+	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
+	import ReadonlyEditor from './ReadonlyEditor.svelte';
+	import Block from './Block.svelte';
+
+	let {
+		plugins,
+		class: className,
+		edytor = $bindable(),
+		doc,
+		readonly = false,
+		value = $bindable(defaultValue),
+		hotKeys,
+		sync,
+		awareness,
+		onChange,
+		onSelectionChange,
+		...snippets
+	}: EdytorProps = $props();
 
 	edytor = new Edytor({
 		snippets,
@@ -124,7 +127,7 @@
 </script>
 
 {#if edytor.synced || readonly}
-	<div class={className} use:edytor.attach data-edytor>
+	<div class={className} use:edytor.attach data-edytor contenteditable={!readonly}>
 		{#each edytor.children || [] as block (block.id)}
 			<Block {block} />
 		{/each}

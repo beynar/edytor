@@ -6,6 +6,7 @@ import type { Block } from './block.svelte.js';
 import { id } from '$lib/utils.js';
 
 export class InlineBlock {
+	readonly = false;
 	parent: Block;
 	data = $state<any>({});
 	id: string;
@@ -25,17 +26,10 @@ export class InlineBlock {
 
 	get value(): JSONInlineBlock {
 		return {
+			id: this.id,
 			type: this.#type,
 			data: this.data
 		};
-	}
-
-	private getDefinition() {
-		const definition = this.edytor.inlineBlocks.get(this.#type);
-		if (!definition) {
-			throw new Error(`Block type ${this.#type} is not defined`);
-		}
-		return definition;
 	}
 
 	constructor({
@@ -56,14 +50,13 @@ export class InlineBlock {
 					type: this.#type
 				})
 			);
-			// this.yBlock = new Y.Map(block);
 		} else {
 			this.yBlock = yBlock;
 			this.#type = yBlock.get('type') as string;
 			this.data = {};
 		}
 
-		this.definition = this.getDefinition();
+		this.definition = this.edytor.getBlockDefinition('inline', this.#type);
 	}
 
 	attach = (node: HTMLElement) => {

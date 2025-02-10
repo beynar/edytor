@@ -9,6 +9,7 @@
 	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+	import ReadonlyEditor from '$lib/components/ReadonlyEditor.svelte';
 
 	hljs.registerLanguage('javascript', javascript);
 	const highlight = (node: HTMLElement, json: string) => {
@@ -98,58 +99,14 @@
 				readonly={false}
 				class="outline-none"
 				bind:edytor
-			>
-				{#snippet boldMark({ content, mark, text })}
-					<b>{@render content()}</b>
-				{/snippet}
-
-				{#snippet voidMark({ content, mark, text })}
-					<span>VOIIIID</span>
-				{/snippet}
-
-				{#snippet italicMark({ content, mark, text })}
-					<i>{@render content()}</i>
-				{/snippet}
-
-				{#snippet paragraphBlock({ block, content, children })}
-					<div use:block.attach>
-						<p>
-							{@render content()}
-						</p>
-						{#if children}
-							<div style="padding-left: 20px">
-								{@render children()}
-							</div>
-						{/if}
-					</div>
-				{/snippet}
-				{#snippet quoteBlock({ block, content, children })}
-					<div use:block.attach>
-						<p>
-							{@render content()}
-						</p>
-						{#if children}
-							<div style="padding-left: 20px">
-								{@render children()}
-							</div>
-						{/if}
-					</div>
-				{/snippet}
-				{#snippet imageBlock({ block, content, children })}
-					<figure class="!grid gap-2" use:block.attach={true}>
-						<div contenteditable="false">
-							<img
-								class="w-full aspect-square"
-								src="https://images.unsplash.com/photo-1737978697863-5d65495b28ef?q=80&w=3087&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
-								alt=""
-							/>
-						</div>
-						<figcaption class="w-full p-2 text-slate-200">
-							{@render content()}
-						</figcaption>
-					</figure>
-				{/snippet}
-			</Edytor>
+			/>
+			{#if edytor && edytor.value}
+				<ReadonlyEditor
+					plugins={[codePlugin, mentionPlugin, richTextPlugin]}
+					value={{ children: edytor.value.children }}
+					class="outline-none"
+				/>
+			{/if}
 		</div>
 		<div class="card rounded bg-neutral-800 p-2 mt-2">
 			<pre>

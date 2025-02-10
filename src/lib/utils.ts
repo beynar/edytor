@@ -2,11 +2,11 @@ let alphabet = 'useandom26T198340PX75pxJACKVERYMINDBUSHWOLFGQZbfghjklqvwyzrict';
 import * as Y from 'yjs';
 
 export const id = (prefix: 't' | 'b' | 'i') => {
-	const e = 21;
+	const e = 10;
 	let t = '',
 		r = crypto.getRandomValues(new Uint8Array(e));
 	for (let n = 0; n < e; n++) t += alphabet[61 & r[n]];
-	return `${prefix}#${t}`;
+	return `${prefix}_${t}`;
 };
 
 export class PreventionError extends Error {

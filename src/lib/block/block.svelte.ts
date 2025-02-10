@@ -25,12 +25,15 @@ import {
 	moveBlock,
 	normalizeContent,
 	groupContent,
-	addInlineBlock
+	addInlineBlock,
+	suggestText
 } from './block.utils.js';
 import { id } from '$lib/utils.js';
 import type { BlockDefinition } from '$lib/plugins.js';
 import { climb } from '$lib/selection/selection.utils.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
+import { createReadonlyText } from '$lib/components/readonlyElements.svelte.js';
+import { createReadonlyInlineBlock } from '$lib/components/readonlyElements.svelte.js';
 
 export const getSetArray = <T = YBlock>(
 	yBlock: YBlock,
@@ -54,6 +57,7 @@ export const getSetText = (yBlock: YBlock): Y.Text => {
 };
 
 export class Block {
+	readonly = false;
 	edytor: Edytor;
 	yBlock: YBlock;
 	parent: Block | Edytor;
@@ -111,11 +115,10 @@ export class Block {
 		// Do something here to update the document
 		this.yBlock.set('type', value);
 		this.#type = value;
-		this.definition = this.getDefinition();
+		this.definition = this.edytor.getBlockDefinition('block', value);
 	}
 
 	#depth = $state<number | null>(null);
-
 	get depth(): number {
 		if (this.#depth === null) {
 			return this.parent instanceof Block ? this.parent.depth + 1 : 0;
@@ -134,6 +137,33 @@ export class Block {
 		return start.toReversed();
 	}
 
+	#suggestions = $state<(JSONText[] | JSONInlineBlock)[] | null>(null);
+
+	get suggestions(): (Text | InlineBlock)[] | null {
+		if (!this.#suggestions) {
+			return null;
+		}
+		return this.#suggestions.map((suggestion) => {
+			if ('type' in suggestion) {
+				return createReadonlyInlineBlock({
+					block: suggestion,
+					edytor: this.edytor,
+					parent: this
+				});
+			} else {
+				return createReadonlyText({
+					value: suggestion,
+					parent: this,
+					edytor: this.edytor
+				}) as Text;
+			}
+		});
+	}
+
+	set suggestions(value: (JSONText[] | JSONInlineBlock)[] | null) {
+		this.#suggestions = value;
+	}
+
 	get nextBlock() {
 		return this.parent.children[this.index + 1];
 	}
@@ -148,7 +178,6 @@ export class Block {
 			return this.parent instanceof Block ? this.parent : null;
 		} else {
 			if (previousBlock?.children.length > 0) {
-				console.log('here');
 				let closestPreviousBlock = previousBlock.children.at(-1) || null;
 				while (closestPreviousBlock && closestPreviousBlock?.children.length > 0) {
 					closestPreviousBlock = closestPreviousBlock.children.at(-1) || null;
@@ -174,6 +203,7 @@ export class Block {
 			}
 		}
 	}
+
 	get deepestChild(): Block {
 		if (this.children.length) {
 			return this.children.at(-1)!.deepestChild;
@@ -223,14 +253,6 @@ export class Block {
 		return this.children.at(0)!.lastText!;
 	}
 
-	private getDefinition() {
-		const definition = this.edytor.blocks.get(this.#type);
-		if (!definition) {
-			throw new Error(`Block type ${this.#type} is not defined`);
-		}
-		return definition;
-	}
-
 	private observeContent = observeContent.bind(this);
 	private observeChildren = observeChildren.bind(this);
 	private batch = batch.bind(this);
@@ -250,6 +272,7 @@ export class Block {
 	removeInlineBlock = this.batch('removeInlineBlock', removeInlineBlock.bind(this));
 	addInlineBlock = this.batch('addInlineBlock', addInlineBlock.bind(this));
 	normalizeContent = normalizeContent.bind(this);
+	suggestText = this.batch('suggestText', suggestText.bind(this));
 
 	void = (node: HTMLElement) => {
 		node.setAttribute('data-edytor-void', `true`);
@@ -271,6 +294,7 @@ export class Block {
 		if (block !== undefined) {
 			this.#type = block.type;
 			// If block is provided we need to initialize the block with the value;
+			// It's mean that we want to create a new block from a JSONBlock that does not exist yet in the document
 			this.children = (block.children || []).map((child, index) => {
 				const block = new Block({ parent: this, block: child });
 				block.index = index;
@@ -325,7 +349,7 @@ export class Block {
 				}
 			});
 		}
-		this.definition = this.getDefinition();
+		this.definition = this.edytor.getBlockDefinition('block', this.#type);
 		this.edytor.idToBlock.set(this.id, this);
 		if (!this.edytor.readonly) {
 			this.yChildren.observe(this.observeChildren);

@@ -20,6 +20,7 @@ export type JSONText = {
 };
 
 export type JSONInlineBlock = {
+	id?: string;
 	data?: any;
 	type: string;
 };

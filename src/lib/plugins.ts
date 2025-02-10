@@ -1,7 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { Edytor } from './edytor.svelte.js';
 import type { Block } from './block/block.svelte.js';
-import type { JSONBlock, JSONText } from './utils/json.js';
+import type { JSONBlock, JSONInlineBlock, JSONText } from './utils/json.js';
 import type { Text } from './text/text.svelte.js';
 import type { SerializableContent } from './utils/json.js';
 import type { HotKey, HotKeyCombination } from './hotkeys.js';
@@ -79,7 +79,7 @@ export type BlockDefinition = {
 	snippet: Snippet<[BlockSnippetPayload<any>]>;
 	void?: boolean;
 	island?: boolean;
-	transformContent?: (payload: { text: Text; block: Block; content: JSONText[] }) => JSONText[];
+	transformText?: (payload: { text: Text; block: Block; content: JSONText[] }) => JSONText[];
 	onFocus?: (payload: { block: Block }) => void;
 	onBlur?: (payload: { block: Block }) => void;
 	onSelect?: (payload: { block: Block }) => void;

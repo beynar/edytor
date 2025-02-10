@@ -1,19 +1,17 @@
 import { getContext, hasContext, setContext, tick, type Snippet, onMount } from 'svelte';
 import * as Y from 'yjs';
 import { onBeforeInput } from './events/onBeforeInput.js';
-
 import {
 	type JSONBlock,
 	type JSONDoc,
 	type YBlock,
-	type SerializableContent,
-	type JSONText
+	type SerializableContent
 } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
 import { Block, getSetArray, observeChildren } from './block/block.svelte.js';
 import { Text } from './text/text.svelte.js';
-import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+import { SvelteMap } from 'svelte/reactivity';
 import { Awareness } from 'y-protocols/awareness.js';
 import { addChildBlock, addChildBlocks, batch } from './block/block.utils.js';
 import type {
@@ -22,7 +20,6 @@ import type {
 	InitializedPlugin,
 	MarkSnippetPayload,
 	BlockDefinition,
-	PluginOperations,
 	MarkDefinition,
 	InlineBlockDefinition
 } from './plugins.js';
@@ -176,6 +173,16 @@ export class Edytor {
 		this.hotKeys = new HotKeys(this, hotKeys, this.plugins);
 	}
 
+	getBlockDefinition = <M extends 'inline' | 'block'>(
+		mode: M,
+		type: string
+	): M extends 'block' ? BlockDefinition : InlineBlockDefinition => {
+		const definition = mode === 'block' ? this.blocks.get(type) : this.inlineBlocks.get(type);
+		if (!definition) {
+			throw new Error(`Block type ${type} is not defined`);
+		}
+		return definition as M extends 'block' ? BlockDefinition : InlineBlockDefinition;
+	};
 	get value(): JSONBlock {
 		const value: JSONBlock = {
 			type: 'root',
@@ -317,8 +324,6 @@ export class Edytor {
 			action && this.off.push(action);
 		});
 
-		node.setAttribute('contenteditable', !this.readonly ? 'true' : 'false');
-
 		return {
 			destroy: () => {
 				this.selection.destroy();
@@ -334,5 +339,5 @@ export const useEdytor = () => {
 	if (hasEdytorContext) {
 		return getContext<Edytor>('edytor');
 	}
-	return null;
+	throw new Error('No Edytor found');
 };

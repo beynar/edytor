@@ -103,7 +103,7 @@
 				},
 				codeLine: {
 					snippet: codeLine,
-					transformContent: ({ text }) => {
+					transformText: ({ text }) => {
 						const tokens = Prism.tokenize(text.stringContent, Prism.languages['jsx']);
 						return tokens.map((token) => {
 							if (typeof token === 'string') {
@@ -149,7 +149,14 @@
 {/snippet}
 
 {#snippet codeLine({ content, block }: BlockSnippetPayload)}
-	<div class="hover:bg-neutral-700" style:tab-size="7px" use:block.attach>
+	<div
+		onclick={() => {
+			block.suggestText({ value: 'hello' });
+		}}
+		class="hover:bg-neutral-700"
+		style:tab-size="7px"
+		use:block.attach
+	>
 		{@render content()}
 	</div>
 {/snippet}

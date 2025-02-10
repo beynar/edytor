@@ -51,6 +51,9 @@ export type BlockOperations = {
 	deleteContentForward: {
 		text: Text;
 	};
+	suggestText: {
+		value: (JSONText | JSONInlineBlock)[] | string | null;
+	};
 };
 
 export function batch<T extends (...args: any[]) => any, O extends keyof BlockOperations>(
@@ -538,5 +541,15 @@ export function normalizeContent(this: Block): void {
 		const index = content.indexOf(second);
 		this.yContent.insert(index, [emptyText.yText]);
 		return this.normalizeContent();
+	}
+}
+
+export function suggestText(this: Block, { value }: BlockOperations['suggestText']) {
+	if (typeof value === 'string') {
+		this.suggestions = [[{ text: value }]];
+	} else if (value) {
+		this.suggestions = groupContent(value);
+	} else {
+		this.suggestions = null;
 	}
 }

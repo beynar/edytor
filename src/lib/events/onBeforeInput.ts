@@ -2,7 +2,23 @@ import type { Edytor } from '../edytor.svelte.js';
 import { prevent, PreventionError } from '$lib/utils.js';
 import { Text } from '$lib/text/text.svelte.js';
 export async function onBeforeInput(this: Edytor, e: InputEvent) {
+	const {
+		start,
+		yStart,
+		isCollapsed,
+		isTextSpanning,
+		isAtStartOfBlock,
+		isAtStartOfText,
+		isVoid,
+		isAtEndOfText,
+		length,
+		startText,
+		isAtEndOfBlock,
+		islandRoot
+	} = this.selection.state;
+
 	if (this.readonly) return;
+
 	const { inputType, dataTransfer, data } = e;
 	try {
 		// Build virtual keyboard events for plugins hotkeys to listen to before handling the input event
@@ -28,20 +44,6 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 		this.plugins.forEach((plugin) => {
 			plugin.onBeforeInput?.({ prevent, e });
 		});
-
-		const {
-			start,
-			yStart,
-			isCollapsed,
-			isTextSpanning,
-			isAtStartOfBlock,
-			isAtStartOfText,
-			isAtEndOfText,
-			length,
-			startText,
-			isAtEndOfBlock,
-			islandRoot
-		} = this.selection.state;
 
 		const isNested = startText?.parent.parent !== this.edytor;
 		const isLastChild = startText?.parent.parent.children.at(-1) === startText?.parent;

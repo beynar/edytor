@@ -6,11 +6,12 @@ import { prevent, PreventionError } from '$lib/utils.js';
 const arrowKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
 
 export function onKeyDown(this: Edytor, e: KeyboardEvent) {
+	if (this.readonly) return;
+
 	try {
 		if (this.hotKeys.isHotkey(e)) {
 			return;
 		}
-		if (this.readonly) return;
 
 		if (e.key === 'Tab') {
 			if (!this.selection.state.isIsland) {

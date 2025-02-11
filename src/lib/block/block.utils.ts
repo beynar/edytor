@@ -291,7 +291,9 @@ export function unNestBlock(this: Block): Block | null {
 
 export function nestBlock(this: Block): Block | null {
 	const previousBlock = this.previousBlock;
-	if (!previousBlock) return null;
+	if (!previousBlock || previousBlock?.definition?.void || previousBlock?.definition?.island) {
+		return null;
+	}
 
 	const newBlock = new Block({
 		parent: previousBlock,
@@ -541,6 +543,11 @@ export function normalizeContent(this: Block): void {
 		const index = content.indexOf(second);
 		this.yContent.insert(index, [emptyText.yText]);
 		return this.normalizeContent();
+	}
+	const pluginNormalization = this.definition?.normalizeContent?.({ block: this });
+	if (pluginNormalization) {
+		pluginNormalization();
+		this.normalizeContent();
 	}
 }
 

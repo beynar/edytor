@@ -32,6 +32,10 @@
 				]
 			},
 			{
+				type: 'image',
+				content: [{ text: 'Caption' }]
+			},
+			{
 				type: 'paragraph',
 				content: [{ text: 'Three', marks: { bold: true } }]
 			},

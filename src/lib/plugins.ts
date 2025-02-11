@@ -84,6 +84,7 @@ export type BlockDefinition = {
 	onBlur?: (payload: { block: Block }) => void;
 	onSelect?: (payload: { block: Block }) => void;
 	onDeselect?: (payload: { block: Block }) => void;
+	normalizeContent?: (payload: { block: Block }) => (() => void) | void;
 	// SyncroStateSchema
 	schema?: any;
 	// defaultChildType?: string | ((parent: Block) => string | void);

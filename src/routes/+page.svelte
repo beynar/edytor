@@ -10,6 +10,7 @@
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import ReadonlyEditor from '$lib/components/ReadonlyEditor.svelte';
+	import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 
 	hljs.registerLanguage('javascript', javascript);
 	const highlight = (node: HTMLElement, json: string) => {
@@ -85,7 +86,7 @@
 				get value
 			</button>
 			<Edytor
-				plugins={[arrowMovePlugin, codePlugin, mentionPlugin, richTextPlugin]}
+				plugins={[arrowMovePlugin, imagePlugin, codePlugin, mentionPlugin, richTextPlugin]}
 				sync={({ doc, synced }) => {
 					// provider = new IndexeddbPersistence('haha-2', doc);
 					provider = new IndexeddbPersistence(crypto.randomUUID(), doc);
@@ -100,13 +101,13 @@
 				class="outline-none"
 				bind:edytor
 			/>
-			{#if edytor && edytor.value}
+			<!-- {#if edytor && edytor.value}
 				<ReadonlyEditor
-					plugins={[codePlugin, mentionPlugin, richTextPlugin]}
+					plugins={[codePlugin, imagePlugin, mentionPlugin, richTextPlugin]}
 					value={{ children: edytor.value.children }}
 					class="outline-none"
 				/>
-			{/if}
+			{/if} -->
 		</div>
 		<div class="card rounded bg-neutral-800 p-2 mt-2">
 			<pre>
@@ -142,7 +143,7 @@
 			@apply bg-blue-100/10;
 		}
 		[data-edytor-selected] {
-			@apply bg-red-100/50;
+			@apply bg-blue-500/50 ring-2 ring-blue-500 rounded;
 		}
 		[data-edytor-text-suggestion] {
 			@apply opacity-65 italic;

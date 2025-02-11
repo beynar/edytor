@@ -149,3 +149,11 @@ export const climb = (
 		parent = parent.parent;
 	}
 };
+export const climbDom = (node: Node | undefined | null, cb: (node: Node) => void | true) => {
+	if (!node) return;
+	let parent: Node | HTMLElement | null = node;
+	while (parent) {
+		if (cb(parent)) break;
+		parent = parent.parentElement;
+	}
+};

@@ -1,7 +1,7 @@
 import { Edytor } from '../edytor.svelte.js';
 import * as Y from 'yjs';
-import { type Delta, type JSONText, type SerializableContent } from '$lib/utils/json.js';
-import type { Block } from '../block/block.svelte.js';
+import { type JSONText, type SerializableContent } from '$lib/utils/json.js';
+import { Block } from '../block/block.svelte.js';
 import {
 	batch,
 	deleteText,
@@ -14,6 +14,7 @@ import {
 } from './text.utils.js';
 import { deltaToJson, jsonToDelta, toDeltas, type JSONDelta } from './deltas.js';
 import { id } from '$lib/utils.js';
+import { climb } from '$lib/selection/selection.utils.js';
 
 export class Text {
 	readonly = false;
@@ -127,6 +128,19 @@ export class Text {
 			},
 			[] as (() => void)[]
 		);
+		let insideVoid = this.parent.definition.void;
+		climb(this.parent, (block) => {
+			if (block instanceof Block && block.definition.void) {
+				insideVoid = true;
+				return true;
+			}
+		});
+
+		if (insideVoid) {
+			node.contentEditable = 'true';
+			node.style.outline = 'none';
+		}
+
 		return {
 			destroy: () => {
 				this.yText?.unobserve(this.observeText);

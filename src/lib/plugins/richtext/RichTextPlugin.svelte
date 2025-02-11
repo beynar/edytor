@@ -9,10 +9,9 @@
 			({ prevent }) => {
 				prevent(() => {
 					const { yStart, yEnd, startText } = edytor.selection.state;
-					console.log({ startText, ...edytor.selection.state });
 					if (startText) {
 						edytor.selection.state.startText?.markText({
-							mark: mark,
+							mark,
 							value,
 							toggle: true,
 							start: yStart,

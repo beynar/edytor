@@ -5,11 +5,38 @@
 	import 'prismjs/components/prism-css';
 	import type { Plugin, MarkSnippetPayload, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { JSONText } from '$lib/utils/json.js';
-	import { prevent } from '$lib/utils.js';
+	import { id, prevent } from '$lib/utils.js';
+	import { Text } from '$lib/text/text.svelte.js';
+	import { Block } from '$lib/block/block.svelte.js';
+
+	import * as Y from 'yjs';
 
 	export const codePlugin: Plugin = (edytor) => {
 		return {
 			hotkeys: {
+				'mod+a': ({ prevent }) => {
+					const { islandRoot, startBlock, isAtEndOfBlock, isAtStartOfBlock } =
+						edytor.selection.state;
+					if (
+						startBlock?.type === 'codeLine' &&
+						!edytor.selection.selectedBlocks.size &&
+						!(isAtEndOfBlock && isAtStartOfBlock)
+					) {
+						prevent(() => {
+							const firstText = islandRoot?.firstEditableText;
+							let lastText = islandRoot?.lastEditableText;
+							if (firstText && lastText && firstText instanceof Text && lastText instanceof Text) {
+								edytor.selection.setAtTextsRange(firstText, lastText);
+							}
+						});
+					}
+				},
+				escape: () => {
+					const { startBlock } = edytor.selection.state;
+					if (startBlock?.type === 'codeLine' && startBlock?.suggestions) {
+						startBlock.suggestions = null;
+					}
+				},
 				tab: ({ prevent }) => {
 					const { startText, yStart, startBlock } = edytor.selection.state;
 					if (startText?.parent.type === 'codeLine') {
@@ -86,19 +113,6 @@
 						prevent();
 					}
 				}
-
-				// if (block.type === 'code' && operation === 'addChildBlock') {
-				// 	const selection = edytor.selection.state;
-				// 	const text = selection.startText!;
-				// 	const startWithTab = text.stringContent.startsWith('\t');
-				// 	console.log({ startWithTab, text });
-				// 	if (startWithTab && selection.isCollapsed) {
-				// 		const tabsToInsert = Array.from({ length: text.stringContent.split('\t').length - 1 })
-				// 			.fill('\t')
-				// 			.join('');
-				// 		payload.block.content = [{ text: tabsToInsert }, ...(payload.block.content || [])];
-				// 	}
-				// }
 			},
 
 			blocks: {
@@ -121,6 +135,35 @@
 								text: token.content
 							};
 						}) as JSONText[];
+					},
+					normalizeContent: ({ block }) => {
+						// here we need to check if the code line has soft line breaks and if so, we need to insert a new code line after the current one.
+						const firstContent = block.content[0];
+						if (!(firstContent instanceof Text)) return;
+
+						const yText = firstContent.yText;
+						if (!(yText instanceof Y.Text)) return;
+
+						const content = yText.toString();
+						const lines = content.split('\n');
+
+						if (lines.length > 1) {
+							// Remove the current content
+							yText.delete(0, content.length);
+							// Insert the first line back
+							yText.insert(0, lines[0]);
+							// Create new code lines for each remaining line
+							for (let i = 1; i < lines.length; i++) {
+								const newBlock = new Block({
+									block: {
+										type: 'codeLine',
+										content: [{ text: lines[i] }]
+									},
+									parent: block.parent
+								});
+								block.parent.yChildren.insert(block.index + i, [newBlock.yBlock]);
+							}
+						}
 					}
 				}
 			},
@@ -159,7 +202,7 @@
 			if (block.suggestions) {
 				block.suggestions = null;
 			} else {
-				block.suggestText({ value: "I'm a code suggestion" });
+				block.suggestText({ value: "const a = 'hello' \n const b = 'world'" });
 			}
 		}}
 		class="hover:bg-neutral-700"

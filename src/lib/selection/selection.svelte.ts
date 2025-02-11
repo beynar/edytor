@@ -4,6 +4,7 @@ import type { Edytor } from '../edytor.svelte.js';
 import { Text } from '../text/text.svelte.js';
 import {
 	climb,
+	climbDom,
 	getRangesFromSelection,
 	getTextOfNode,
 	getTextsInSelection,
@@ -40,9 +41,9 @@ type SelectionState = {
 	endNode: Node | null;
 	isTextSpanning: boolean;
 	isVoid: boolean;
+	voidRoot: Block | null;
 	isIsland: boolean;
 	islandRoot: Block | null;
-	voidRoot: Block | null;
 	relativePosition: RelativePosition | null;
 	// TOREMOVE
 	yTextContent: string;
@@ -174,6 +175,22 @@ export class EdytorSelection {
 				return true;
 			}
 		});
+
+		if (!isVoid) {
+			climbDom(startNode, (node) => {
+				if (node instanceof HTMLElement && node.dataset.edytorBlock && node.dataset.edytorVoid) {
+					const id = node.dataset.edytorId;
+					const block = id && this.edytor.idToBlock.get(id);
+					if (block) {
+						isVoid = true;
+						voidRoot = block;
+						return true;
+					}
+				}
+			});
+		}
+
+		console.log('voidRoot', voidRoot);
 
 		const isAtStartOfText = yStart === 0;
 		const isAtEndOfText = yEnd === endText?.yText.length;
@@ -338,7 +355,8 @@ export class EdytorSelection {
 			range.setEnd(endTextNode, endNodeOffset);
 			selection?.removeAllRanges();
 			selection?.addRange(range);
-			this.edytor.node!.focus();
+
+			startTextNode.parentElement?.focus();
 		}
 	};
 
@@ -365,7 +383,8 @@ export class EdytorSelection {
 			range.setEnd(endTextNode, endNodeOffset);
 			selection?.removeAllRanges();
 			selection?.addRange(range);
-			this.edytor.node!.focus();
+			// this.edytor.node!.focus();
+			startTextNode.parentElement?.focus();
 		}
 	};
 
@@ -424,7 +443,8 @@ export class EdytorSelection {
 			range.setEnd(endNode, endOffset);
 			selection?.removeAllRanges();
 			selection?.addRange(range);
-			this.edytor.node!.focus();
+			// this.edytor.node!.focus();
+			startNode.parentElement?.focus();
 		}
 	};
 

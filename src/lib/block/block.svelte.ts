@@ -90,10 +90,17 @@ export class Block {
 	}
 
 	get firstEditableText(): Text | undefined {
-		if (this.content.length) {
+		if (this.content.length && this.content.some((part) => part instanceof Text && part.node)) {
 			return this.content.find((part) => part instanceof Text) as Text;
 		}
 		return this.children.at(0)?.firstEditableText;
+	}
+
+	get lastEditableText(): Text | undefined {
+		if (this.content.length && this.content.some((part) => part instanceof Text && part.node)) {
+			return this.content.findLast((part) => part instanceof Text) as Text;
+		}
+		return this.children.at(-1)?.lastEditableText;
 	}
 
 	#index = $state<number | null>(null);
@@ -373,7 +380,9 @@ export class Block {
 			},
 			[] as (() => void)[]
 		);
-
+		if (this.definition.void) {
+			this.void(node);
+		}
 		return {
 			destroy: () => {
 				this.yChildren.unobserve(this.observeChildren);

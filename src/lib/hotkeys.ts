@@ -88,7 +88,8 @@ const defaultHotKeys = {
 	},
 	'mod+a': ({ edytor, prevent }) => {
 		prevent(() => {
-			const { startText, startBlock, islandRoot } = edytor.selection.state;
+			const { startText, startBlock, islandRoot, isVoid, isIsland, voidRoot } =
+				edytor.selection.state;
 			if (startText) {
 				if (edytor.selection.selectedBlocks.size) {
 					edytor.selection.selectBlocks(...edytor.children);
@@ -97,19 +98,12 @@ const defaultHotKeys = {
 					edytor.selection.state.isAtEndOfBlock
 				) {
 					window.getSelection()?.removeAllRanges();
+					console.log('here');
 					edytor.selection.selectBlocks(
 						edytor.selection.state.isIsland ? islandRoot! : startText.parent
 					);
 				} else {
-					if (edytor.selection.state.isIsland) {
-						const firstText = islandRoot?.children[0]?.content;
-						let lastText = islandRoot?.children.at(-1)?.content;
-						if (firstText && lastText && firstText instanceof Text && lastText instanceof Text) {
-							edytor.selection.setAtTextsRange(firstText, lastText);
-						}
-					} else {
-						edytor.selection.setAtBlockRange(startBlock);
-					}
+					edytor.selection.setAtBlockRange(startBlock);
 				}
 			}
 		});

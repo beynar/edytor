@@ -36,6 +36,31 @@ If you want to submit an issue please share the json value of the document. It w
 - 📦 **Lightweight**: Relatively small bundle size compared to other rich text editors
 - 📦 **AI copilot ready**: Support inline text suggestions for ai completions.
 
+## ✨ Things that are ready
+
+- [x] YJS editing
+- [x] Basic block operations and text operations.
+- [x] Stable data structure
+- [x] Undo/Redo
+- [x] Rich text formatting
+- [x] Customizable with snippets
+- [x] Plugin system
+- [x] Text suggestions
+- [x] Inline blocks
+- [x] Nesting
+- [x] Selection + movable blocks
+- [x] Content transformation
+- [x] Content normalization
+- [x] Island blocks
+
+## ✨ Things that are not ready
+
+- [ ] Void elements and editable void elements
+- [ ] Text spanning deletion
+- [ ] DND
+- [ ] Collaborative editing + awareness + providers
+- [ ] Children normalization
+
 ## 🧠 Concepts
 
 Edytor structure is built around this key concepts:

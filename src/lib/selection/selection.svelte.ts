@@ -219,6 +219,7 @@ export class EdytorSelection {
 
 		const isTextSpanning = startText !== endText && texts.length > 1;
 		const blocks = Array.from(new Set([...texts.map((text) => text.parent)]));
+
 		const isBlockSpanning = startBlock !== endBlock && blocks.length > 1;
 
 		this.state = {

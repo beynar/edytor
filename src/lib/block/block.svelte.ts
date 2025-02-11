@@ -137,7 +137,6 @@ export class Block {
 
 	get path(): number[] {
 		const start = [this.index];
-		console.log({ start });
 		let current = this.parent;
 		while (current instanceof Block) {
 			start.push(current.index);
@@ -312,6 +311,9 @@ export class Block {
 				return block;
 			});
 			const groupedContent = groupContent(block.content);
+			if (!groupedContent.length) {
+				groupedContent.push([{ text: '' }]);
+			}
 
 			this.content = groupedContent.map((part, index) => {
 				const isInlineBlock = 'type' in part;
@@ -325,6 +327,7 @@ export class Block {
 					return text;
 				}
 			});
+
 			this.yChildren = Y.Array.from(this.children.map((child) => child.yBlock));
 			this.yContent = Y.Array.from(
 				this.content.map((part) => (part instanceof Text ? part.yText : part.yBlock))
@@ -348,6 +351,7 @@ export class Block {
 				block.index = index;
 				return block;
 			});
+			this.normalizeContent();
 			this.content = this.yContent.map((part, index) => {
 				if (part instanceof Y.Map) {
 					const block = new InlineBlock({ parent: this, yBlock: part });
@@ -385,6 +389,7 @@ export class Block {
 		if (this.definition.void) {
 			this.void(node);
 		}
+
 		return {
 			destroy: () => {
 				this.yChildren.unobserve(this.observeChildren);

@@ -53,13 +53,16 @@ If you want to submit an issue please share the json value of the document. It w
 - [x] Content normalization
 - [x] Island blocks
 - [x] Void elements and editable void elements
+- [x] Text spanning deletion
 
 ## ✨ Things that are not ready
 
-- [ ] Text spanning deletion
 - [ ] DND
 - [ ] Battle tested collaborative editing + awareness + providers
 - [ ] Children normalization
+- [ ] Children transformation
+- [ ] Block suggestions
+- [ ] Reactive data (inline)block properties
 
 ## 🧠 Concepts
 

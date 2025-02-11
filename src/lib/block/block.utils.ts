@@ -298,7 +298,6 @@ export function nestBlock(this: Block): Block | null {
 	if (!previousBlock || previousBlock?.definition?.void || previousBlock?.definition?.island) {
 		return null;
 	}
-
 	const newBlock = new Block({
 		parent: previousBlock,
 		block: { ...this.value, children: [] }

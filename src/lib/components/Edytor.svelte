@@ -43,6 +43,16 @@
 			{
 				type: 'paragraph',
 				content: [{ text: 'Three', marks: { bold: true } }]
+				// children: [
+				// 	{
+				// 		type: 'paragraph',
+				// 		content: [{ text: '' }]
+				// 	}
+				// ]
+			},
+			{
+				type: 'paragraph',
+				content: [{ text: '' }]
 			},
 			{
 				type: 'paragraph',

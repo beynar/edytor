@@ -201,11 +201,21 @@ export class Block {
 		if (this.hasChildren) {
 			return this.children.at(0) || null;
 		}
-		if (this.nextBlock) {
+		if (this.nextBlock || this.definition.island || this.definition.void) {
 			return this.nextBlock;
 		} else {
 			if (this.parent instanceof Block) {
-				return this.parent.parent.children.at(this.parent.index + 1) || null;
+				let parent = this.parent;
+				let nextBlock = parent.nextBlock;
+				while (!nextBlock && parent instanceof Block) {
+					if (parent.parent instanceof Block) {
+						parent = parent.parent;
+						nextBlock = parent.nextBlock;
+					} else {
+						return null;
+					}
+				}
+				return nextBlock;
 			} else {
 				return null;
 			}

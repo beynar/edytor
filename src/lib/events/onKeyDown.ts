@@ -43,36 +43,6 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 			}
 		}
 
-		if (arrowKeys.includes(e.key)) {
-			// Manage block selection on arrow keys if there is only one block selected
-			if (this.selection.selectedBlocks.size === 1) {
-				const selectedBlock = this.selection.selectedBlocks.values().next().value as Block;
-				if (e.key === 'ArrowUp') {
-					let prevBlock = selectedBlock.closestPreviousBlock;
-
-					// If the block is inside an island, we will select the island root
-					while (prevBlock?.insideIsland) {
-						if (prevBlock.parent instanceof Block) {
-							prevBlock = prevBlock.parent;
-						}
-					}
-					if (prevBlock && prevBlock instanceof Block) {
-						this.selection.selectBlocks(prevBlock);
-						this.selection.focusBlocks();
-					}
-				}
-				if (e.key === 'ArrowDown') {
-					// if the current block is an island, we won't move the selection down to its children but to the next block
-					let nextBlock = selectedBlock.definition.island
-						? selectedBlock.nextBlock
-						: selectedBlock.closestNextBlock;
-					if (nextBlock && nextBlock instanceof Block) {
-						this.selection.selectBlocks(nextBlock);
-						this.selection.focusBlocks();
-					}
-				}
-			}
-		}
 		if (this.selection.selectedBlocks.size && e.key === 'Backspace') {
 			const selectedBlocks = Array.from(this.selection.selectedBlocks.values());
 

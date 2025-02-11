@@ -5,7 +5,7 @@ import { tick } from 'svelte';
 export const arrowMovePlugin: Plugin = (edytor) => {
 	return {
 		hotkeys: {
-			'mod+arrowdown': ({ prevent, event }) => {
+			'mod+arrowdown': ({ prevent }) => {
 				const selectedBlocks = edytor.selection.selectedBlocks;
 				if (selectedBlocks.size === 1) {
 					const selectedBlock = selectedBlocks.values().next().value as Block;

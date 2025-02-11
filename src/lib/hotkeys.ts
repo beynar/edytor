@@ -2,6 +2,7 @@ import type { Edytor, EdytorOptions } from './edytor.svelte.js';
 import { Text } from './text/text.svelte.js';
 import type { InitializedPlugin } from './plugins.js';
 import { prevent, PreventionError } from './utils.js';
+import { Block } from './block/block.svelte.js';
 
 export type HotKey = (payload: {
 	event: KeyboardEvent;
@@ -106,6 +107,42 @@ const defaultHotKeys = {
 				}
 			}
 		});
+	},
+	arrowup: ({ edytor, prevent }) => {
+		const selectedBlocks = edytor.selection.selectedBlocks;
+		if (selectedBlocks.size === 1) {
+			prevent(() => {
+				const selectedBlock = selectedBlocks.values().next().value as Block;
+				let prevBlock = selectedBlock.closestPreviousBlock;
+
+				// If the block is inside an island, we will select the island root
+				while (prevBlock?.insideIsland) {
+					if (prevBlock.parent instanceof Block) {
+						prevBlock = prevBlock.parent;
+					}
+				}
+				if (prevBlock && prevBlock instanceof Block) {
+					edytor.selection.selectBlocks(prevBlock);
+					edytor.selection.focusBlocks();
+				}
+			});
+		}
+	},
+	arrowdown: ({ edytor, prevent }) => {
+		const selectedBlocks = edytor.selection.selectedBlocks;
+		if (selectedBlocks.size === 1) {
+			prevent(() => {
+				const selectedBlock = selectedBlocks.values().next().value as Block;
+				let nextBlock = selectedBlock.definition.island
+					? selectedBlock.nextBlock
+					: selectedBlock.closestNextBlock;
+				console.log({ nextBlock });
+				if (nextBlock && nextBlock instanceof Block) {
+					edytor.selection.selectBlocks(nextBlock);
+					edytor.selection.focusBlocks();
+				}
+			});
+		}
 	}
 } satisfies Record<string, HotKey>;
 

@@ -9,6 +9,33 @@
 			// 	type: 'paragraph',
 			// 	content: [{ text: 'One', marks: { bold: true } }]
 			// },
+
+			{
+				type: 'image',
+				content: [{ text: 'Caption' }]
+			},
+			{
+				type: 'paragraph',
+				content: [{ text: 'Three', marks: { bold: true } }]
+				// children: [
+				// 	{
+				// 		type: 'paragraph',
+				// 		content: [{ text: '' }]
+				// 	}
+				// ]
+			},
+			{
+				type: 'paragraph',
+				content: [{ text: '' }]
+			},
+			{
+				type: 'paragraph',
+				content: [
+					{ text: 'Hello', marks: { bold: true } },
+					{ text: '', marks: { void: true } },
+					{ text: ' World', marks: { bold: true } }
+				]
+			},
 			{
 				type: 'paragraph',
 				content: [
@@ -34,32 +61,6 @@
 							}
 						]
 					}
-				]
-			},
-			{
-				type: 'image',
-				content: [{ text: 'Caption' }]
-			},
-			{
-				type: 'paragraph',
-				content: [{ text: 'Three', marks: { bold: true } }]
-				// children: [
-				// 	{
-				// 		type: 'paragraph',
-				// 		content: [{ text: '' }]
-				// 	}
-				// ]
-			},
-			{
-				type: 'paragraph',
-				content: [{ text: '' }]
-			},
-			{
-				type: 'paragraph',
-				content: [
-					{ text: 'Hello', marks: { bold: true } },
-					{ text: '', marks: { void: true } },
-					{ text: ' World', marks: { bold: true } }
 				]
 			},
 			{

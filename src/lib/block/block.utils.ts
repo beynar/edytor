@@ -56,6 +56,10 @@ export type BlockOperations = {
 		value: (JSONText | JSONInlineBlock)[] | string | null;
 	};
 	acceptSuggestedText: {};
+	deleteContentAtRange: {
+		start: [number, number];
+		end: [number, number];
+	};
 };
 
 export function batch<T extends (...args: any[]) => any, O extends keyof BlockOperations>(
@@ -586,5 +590,38 @@ export function acceptSuggestedText(this: Block) {
 	);
 
 	this.suggestions = null;
+	this.normalizeContent();
+}
+
+export function deleteContentAtRange(
+	this: Block,
+	{ start, end }: BlockOperations['deleteContentAtRange']
+) {
+	const [startIndex, startOffset] = start;
+	const [endIndex, endOffset] = end;
+
+	let numberToDelete = 0;
+	this.content.slice(startIndex, endIndex + 1).forEach((part, index) => {
+		const isFirstPart = index === 0;
+		const isLastPart = index === endIndex - startIndex;
+
+		if (part instanceof Text) {
+			if (isFirstPart) {
+				// Delete from offset to end
+				part.yText.delete(startOffset, part.yText.length - startOffset);
+			} else if (isLastPart) {
+				// Delete from start to offset
+				part.yText.delete(0, endOffset);
+			} else {
+				numberToDelete++;
+				// Delete entire text element
+			}
+		} else {
+			// For inline blocks, always delete the entire element
+			numberToDelete++;
+		}
+	});
+	this.yContent.delete(startIndex + 1, numberToDelete);
+
 	this.normalizeContent();
 }

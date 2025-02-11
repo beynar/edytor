@@ -12,10 +12,15 @@
 			{
 				type: 'paragraph',
 				content: [
-					{ text: 'Prout', marks: { bold: true } },
+					{ text: 'hello', marks: { bold: true } },
 					{
 						type: 'mention'
-					}
+					},
+					{ text: 'World', marks: { bold: true } },
+					{
+						type: 'mention'
+					},
+					{ text: 'Prout', marks: { bold: true } }
 				],
 
 				children: [

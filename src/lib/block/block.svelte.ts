@@ -27,7 +27,8 @@ import {
 	groupContent,
 	addInlineBlock,
 	acceptSuggestedText,
-	suggestText
+	suggestText,
+	deleteContentAtRange
 } from './block.utils.js';
 import { id } from '$lib/utils.js';
 import type { BlockDefinition } from '$lib/plugins.js';
@@ -282,6 +283,7 @@ export class Block {
 	normalizeContent = this.batch('normalizeContent', normalizeContent.bind(this));
 	suggestText = this.batch('suggestText', suggestText.bind(this));
 	acceptSuggestedText = this.batch('acceptSuggestedText', acceptSuggestedText.bind(this));
+	deleteContentAtRange = this.batch('deleteContentAtRange', deleteContentAtRange.bind(this));
 
 	void = (node: HTMLElement) => {
 		node.setAttribute('data-edytor-void', `true`);

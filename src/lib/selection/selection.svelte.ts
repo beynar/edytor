@@ -37,9 +37,11 @@ type SelectionState = {
 	startBlock: Block | null;
 	endBlock: Block | null;
 	texts: Text[];
+	blocks: Block[];
 	startNode: Node | null;
 	endNode: Node | null;
 	isTextSpanning: boolean;
+	isBlockSpanning: boolean;
 	isVoid: boolean;
 	voidRoot: Block | null;
 	isIsland: boolean;
@@ -66,6 +68,7 @@ export class EdytorSelection {
 		isCollapsed: true,
 		ranges: [],
 		texts: [],
+		blocks: [],
 		isAtStartOfBlock: false,
 		isAtEndOfBlock: false,
 		isAtStartOfText: false,
@@ -77,6 +80,7 @@ export class EdytorSelection {
 		startBlock: null,
 		endBlock: null,
 		isTextSpanning: false,
+		isBlockSpanning: false,
 		isVoid: false,
 		isIsland: false,
 		islandRoot: null,
@@ -213,6 +217,10 @@ export class EdytorSelection {
 			});
 		}
 
+		const isTextSpanning = startText !== endText && texts.length > 1;
+		const blocks = Array.from(new Set([...texts.map((text) => text.parent)]));
+		const isBlockSpanning = startBlock !== endBlock && blocks.length > 1;
+
 		this.state = {
 			selection,
 			start,
@@ -224,13 +232,15 @@ export class EdytorSelection {
 			isCollapsed,
 			ranges,
 			texts,
+			blocks,
+			isBlockSpanning,
 			startText,
 			endText,
 			isAtStartOfText,
 			isAtEndOfText,
 			isAtEndOfBlock,
 			isAtStartOfBlock,
-			isTextSpanning: startText !== endText && texts.length > 1,
+			isTextSpanning,
 			startNode,
 			endNode,
 			startBlock,

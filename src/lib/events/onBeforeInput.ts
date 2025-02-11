@@ -12,9 +12,12 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 		isVoid,
 		isAtEndOfText,
 		length,
+		isBlockSpanning,
 		startText,
 		isAtEndOfBlock,
-		islandRoot
+		yEnd,
+		islandRoot,
+		texts
 	} = this.selection.state;
 
 	if (this.readonly) return;
@@ -105,7 +108,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 				break;
 			}
 			case 'deleteContentBackward': {
-				if (isTextSpanning) {
+				if (isBlockSpanning) {
 					// TODO: implement this later, it's complicated i think.
 				} else {
 					if (!startText) {
@@ -194,6 +197,17 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 							if (hasPreviousText) {
 								this.selection.setAtTextOffset(previousText, offset);
 							}
+						} else if (isTextSpanning) {
+							const startText = texts[0];
+							const endText = texts[texts.length - 1];
+							if (!startText || !endText) {
+								return;
+							}
+							startText.parent.deleteContentAtRange({
+								start: [startText.index, yStart],
+								end: [endText.index, yEnd]
+							});
+							this.selection.setAtTextOffset(startText, yStart);
 						} else {
 							startText?.deleteText({ direction: 'BACKWARD', length: length || 1 });
 							this.selection.setAtTextOffset(startText!, isCollapsed ? yStart - 1 : yStart);

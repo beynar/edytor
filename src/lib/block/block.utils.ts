@@ -467,7 +467,7 @@ export const groupContent = (
 export function addInlineBlock(
 	this: Block,
 	{ index, block, text }: BlockOperations['addInlineBlock']
-): void {
+): Text {
 	// TODO
 	const newInlineBlock = new InlineBlock({
 		parent: this,
@@ -478,8 +478,9 @@ export function addInlineBlock(
 		content: text.splitText({ index })
 	});
 
-	this.yContent.insert(index, [newInlineBlock.yBlock, newText.yText]);
+	this.yContent.insert(text.index + 1, [newInlineBlock.yBlock, newText.yText]);
 	this.normalizeContent();
+	return newText;
 }
 
 export function normalizeContent(this: Block): void {

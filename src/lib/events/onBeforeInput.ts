@@ -259,8 +259,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 		}
 	} catch (error) {
 		if (error instanceof PreventionError) {
-			error.cb?.();
-			return;
+			return error.cb?.();
 		}
 		throw error;
 	}

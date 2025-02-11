@@ -1,15 +1,27 @@
 <script module lang="ts">
 	import { type Plugin, type InlineBlockSnippetPayload } from '$lib/plugins.js';
-
+	import { Text } from '$lib/text/text.svelte.js';
+	import { tick } from 'svelte';
 	export const mentionPlugin: Plugin = (edytor) => {
 		return {
-			onBeforeOperation: ({ operation, payload, text, prevent }) => {
-				if (operation === 'insertText' && payload.value === '@' && !payload.marks?.mention) {
+			onBeforeOperation: ({ operation, payload, block, prevent }) => {
+				if (operation === 'insertText' && payload.value === '@') {
+					const { yStart, startText } = edytor.selection.state;
+					if (!startText) {
+						return;
+					}
+
 					prevent(() => {
-						const { yStart } = edytor.selection.state;
-						text.yText.insert(yStart, '@', { mention: 'search' });
-						edytor.selection.shift(1);
-						edytor.selection.setAtTextOffset(text, yStart + 1);
+						const newText = block.addInlineBlock({
+							index: yStart,
+							text: startText,
+							block: {
+								type: 'mention',
+								data: {}
+							}
+						});
+
+						edytor.selection.setAtTextOffset(newText.id, 0);
 					});
 				}
 			},

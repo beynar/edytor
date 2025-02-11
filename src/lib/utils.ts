@@ -1,5 +1,4 @@
 let alphabet = 'useandom26T198340PX75pxJACKVERYMINDBUSHWOLFGQZbfghjklqvwyzrict';
-import * as Y from 'yjs';
 
 export const id = (prefix: 't' | 'b' | 'i') => {
 	const e = 10;

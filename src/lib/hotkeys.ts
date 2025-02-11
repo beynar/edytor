@@ -98,7 +98,6 @@ const defaultHotKeys = {
 					edytor.selection.state.isAtEndOfBlock
 				) {
 					window.getSelection()?.removeAllRanges();
-					console.log('here');
 					edytor.selection.selectBlocks(
 						edytor.selection.state.isIsland ? islandRoot! : startText.parent
 					);
@@ -127,7 +126,6 @@ export class HotKeys {
 	) {}
 
 	init = () => {
-		// Only init when window is available.
 		if (typeof window === 'undefined') return;
 
 		// User hotkeys > plugins hotkeys > default hotkeys
@@ -206,7 +204,6 @@ export class HotKeys {
 		const hotKeys = this.hotkeys.get(combination);
 		if (!hotKeys?.length) return false;
 		try {
-			console.log('hotKeys', hotKeys);
 			hotKeys.forEach((hotKey) => {
 				hotKey({ event: e, edytor: this.edytor, prevent });
 			});

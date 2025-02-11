@@ -52,13 +52,13 @@ If you want to submit an issue please share the json value of the document. It w
 - [x] Content transformation
 - [x] Content normalization
 - [x] Island blocks
+- [x] Void elements and editable void elements
 
 ## ✨ Things that are not ready
 
-- [ ] Void elements and editable void elements
 - [ ] Text spanning deletion
 - [ ] DND
-- [ ] Collaborative editing + awareness + providers
+- [ ] Battle tested collaborative editing + awareness + providers
 - [ ] Children normalization
 
 ## 🧠 Concepts
@@ -113,8 +113,8 @@ They have a content that is an array of inlines blocks or text.
 They have children that is an array of blocks.
 Blocks can be nested unless they are void or inside an island
 
-An island is a block that is editable but is structuraly stable and and isolated from the rest of the document.
-It is impossible to merge an island with another block. Beside the island children it is also impossible to move another block inside an island.
+An island is a block that is editable but is structuraly stable and isolated from the rest of the document.
+It is impossible to merge an island with another block. It is also impossible to move another block inside an island.
 You may think of an island as a block that is editable but is not completely part of the document structure and isolated from the rest of the document.
 
 A void block is a block which does not have children or whose children are not editable and rendered outside of the edytor core logic.

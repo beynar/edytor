@@ -5,6 +5,7 @@ import { prevent } from '$lib/utils.js';
 import type { JSONBlock, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
 import * as Y from 'yjs';
+
 export type BlockOperations = {
 	removeInlineBlock: {
 		index: number;

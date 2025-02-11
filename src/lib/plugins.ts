@@ -105,11 +105,7 @@ export type PluginOperations = {
 	/** Defines the default block type */
 	defaultBlock?: string | ((parent: Block) => string | void);
 	/** Called when selected blocks are deleted */
-	onDeleteSelectedBlocks?: (payload: {
-		prevent: Prevent;
-		e: KeyboardEvent;
-		selectedBlocks: Block[];
-	}) => void;
+	onDeleteSelectedBlocks?: (payload: { prevent: Prevent; selectedBlocks: Block[] }) => void;
 	/** Called before input is processed */
 	onBeforeInput?: (payload: { prevent: Prevent; e: InputEvent }) => void;
 };

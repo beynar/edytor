@@ -38,5 +38,11 @@
 </script>
 
 {#snippet mention({ block }: InlineBlockSnippetPayload)}
-	<kbd style="background-color: #f0f0f0; color: var(--color-primary-contrast);"> @mention </kbd>
+	<kbd>@mention</kbd>
 {/snippet}
+
+<style>
+	kbd {
+		@apply px-0.5 py-0.5 rounded-md bg-slate-600/50;
+	}
+</style>

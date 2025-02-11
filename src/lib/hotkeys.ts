@@ -3,11 +3,12 @@ import { Text } from './text/text.svelte.js';
 import type { InitializedPlugin } from './plugins.js';
 import { prevent, PreventionError } from './utils.js';
 import { Block } from './block/block.svelte.js';
+import { tick } from 'svelte';
 
 export type HotKey = (payload: {
 	event: KeyboardEvent;
 	edytor: Edytor;
-	prevent: (cb: () => void) => void;
+	prevent: (cb?: () => void) => void;
 }) => void;
 export type HotKeyModifier = 'mod' | 'alt' | 'ctrl' | 'shift';
 
@@ -142,6 +143,84 @@ const defaultHotKeys = {
 					edytor.selection.focusBlocks();
 				}
 			});
+		}
+	},
+	tab: ({ edytor, prevent }) => {
+		prevent(() => {
+			const selectedBlocks = edytor.selection.selectedBlocks;
+			if (selectedBlocks.size <= 1) {
+				const selectedBlock = selectedBlocks.values().next().value as Block;
+				const { yStart, startText, startBlock } = edytor.selection.state;
+				const blockToNest = selectedBlock || startBlock;
+				const newBlock = blockToNest?.nestBlock();
+				const index = startText?.index;
+				if (selectedBlock) {
+					tick().then(() => {
+						newBlock && edytor.selection.selectBlocks(newBlock);
+					});
+				} else {
+					if (newBlock && index !== undefined) {
+						const textToFocus = newBlock.content[index] as Text;
+						edytor.selection.setAtTextOffset(textToFocus, yStart);
+					}
+				}
+			}
+		});
+	},
+	escape: ({ edytor, prevent }) => {
+		if (edytor.selection.selectedBlocks.size > 0) {
+			prevent(() => {
+				const firstSelectedBlock = edytor.selection.selectedBlocks.values().next().value as Block;
+				edytor.selection.selectBlocks();
+				if (firstSelectedBlock.firstEditableText) {
+					edytor.selection.setAtTextOffset(
+						firstSelectedBlock.firstEditableText,
+						firstSelectedBlock.firstEditableText.yText.length
+					);
+				}
+			});
+		}
+	},
+	backspace: ({ edytor, prevent }) => {
+		if (edytor.selection.selectedBlocks.size) {
+			const selectedBlock = edytor.selection.selectedBlocks.values().next().value as Block;
+			const isNested = selectedBlock.parent !== edytor;
+			const isLastChild = selectedBlock.parent.children.at(-1) === selectedBlock;
+			if (isNested && isLastChild) {
+				const newBlock = selectedBlock.unNestBlock();
+				if (newBlock) {
+					setTimeout(() => {
+						edytor.selection.selectBlocks(newBlock);
+					});
+					return;
+				}
+			}
+
+			const selectedBlocks = Array.from(edytor.selection.selectedBlocks.values());
+
+			edytor.edytor.plugins.forEach((plugin) => {
+				plugin.onDeleteSelectedBlocks?.({ prevent, selectedBlocks });
+			});
+
+			const firstSelectedBlock = selectedBlocks.at(0) as Block;
+			const lastSelectedBlock = selectedBlocks.at(-1) as Block;
+			const blockToFocus =
+				firstSelectedBlock.closestPreviousBlock || lastSelectedBlock.closestNextBlock;
+			edytor.edytor.transact(() => {
+				edytor.selection.selectedBlocks.forEach((block) => {
+					block.removeBlock();
+				});
+			});
+
+			if (blockToFocus) {
+				setTimeout(() => {
+					edytor.edytor.node?.focus();
+					edytor.selection.setAtTextOffset(
+						blockToFocus.firstEditableText,
+						blockToFocus.firstEditableText?.yText.length
+					);
+				});
+			}
 		}
 	}
 } satisfies Record<string, HotKey>;

@@ -13,6 +13,7 @@ import {
 import { Block } from '../block/block.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
 import { tick } from 'svelte';
+import { InlineBlock } from '../block/inlineBlock.svelte.js';
 
 type SelectionState = {
 	selection: Selection | null;
@@ -37,6 +38,7 @@ type SelectionState = {
 	startBlock: Block | null;
 	endBlock: Block | null;
 	texts: Text[];
+	contentParts: (Text | InlineBlock)[];
 	blocks: Block[];
 	startNode: Node | null;
 	endNode: Node | null;
@@ -69,6 +71,7 @@ export class EdytorSelection {
 		ranges: [],
 		texts: [],
 		blocks: [],
+		contentParts: [],
 		isAtStartOfBlock: false,
 		isAtEndOfBlock: false,
 		isAtStartOfText: false,
@@ -138,9 +141,12 @@ export class EdytorSelection {
 			return;
 		}
 
-		const { anchorNode, focusNode, anchorOffset, focusOffset, isCollapsed } = selection;
+		const { anchorNode, focusNode, anchorOffset, focusOffset, isCollapsed, direction, type } =
+			selection;
 		const ranges = getRangesFromSelection(selection);
-		const isReversed = !isCollapsed && anchorOffset > focusOffset;
+		const isReversed = focusNode
+			? anchorNode.compareDocumentPosition(focusNode) === Node.DOCUMENT_POSITION_PRECEDING
+			: false;
 		const content = selection?.toString() || '';
 		const startNode = isReversed ? focusNode : anchorNode;
 		const endNode = isReversed ? anchorNode : focusNode;
@@ -154,10 +160,6 @@ export class EdytorSelection {
 
 		let yStart = getYIndex(startText, startNode, start);
 		let yEnd = isCollapsed ? yStart : getYIndex(endText, endNode, end);
-
-		if (yStart > yEnd) {
-			[yStart, yEnd] = [yEnd, yStart];
-		}
 
 		let isIsland = false;
 		let islandRoot: Block | null = null;
@@ -194,8 +196,6 @@ export class EdytorSelection {
 			});
 		}
 
-		console.log('voidRoot', voidRoot);
-
 		const isAtStartOfText = yStart === 0;
 		const isAtEndOfText = yEnd === endText?.yText.length;
 		const isAtStartOfBlock =
@@ -217,10 +217,23 @@ export class EdytorSelection {
 			});
 		}
 
-		const isTextSpanning = startText !== endText && texts.length > 1;
-		const blocks = Array.from(new Set([...texts.map((text) => text.parent)]));
+		const isTextSpanning = startText !== endText;
+		const isBlockSpanning = startBlock !== endBlock;
 
-		const isBlockSpanning = startBlock !== endBlock && blocks.length > 1;
+		const blocks: Block[] = startBlock ? [startBlock] : [];
+		let currentBlock = startBlock;
+
+		// Collect all blocks between the start and end blocks
+		while (currentBlock && currentBlock !== endBlock) {
+			const nextBlock = currentBlock.closestNextBlock;
+			currentBlock = nextBlock;
+			if (nextBlock) {
+				blocks.push(nextBlock);
+			}
+		}
+
+		// Flatten the blocks into a single array of content parts
+		let contentParts = blocks.flatMap((block) => block.content);
 
 		this.state = {
 			selection,
@@ -233,6 +246,7 @@ export class EdytorSelection {
 			isCollapsed,
 			ranges,
 			texts,
+			contentParts,
 			blocks,
 			isBlockSpanning,
 			startText,

@@ -1,7 +1,5 @@
 <script module lang="ts">
 	import { type Plugin, type InlineBlockSnippetPayload } from '$lib/plugins.js';
-	import { Text } from '$lib/text/text.svelte.js';
-	import { tick } from 'svelte';
 	export const mentionPlugin: Plugin = (edytor) => {
 		return {
 			onBeforeOperation: ({ operation, payload, block, prevent }) => {

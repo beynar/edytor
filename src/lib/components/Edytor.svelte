@@ -16,18 +16,19 @@
 			},
 			{
 				type: 'paragraph',
-				content: [{ text: 'Three', marks: { bold: true } }]
-				// children: [
-				// 	{
-				// 		type: 'paragraph',
-				// 		content: [{ text: '' }]
-				// 	}
-				// ]
+				content: [
+					{ text: 'One', marks: { bold: true } },
+					{ text: ' Two', marks: { italic: true } }
+				]
 			},
 			{
 				type: 'paragraph',
-				content: [{ text: '' }]
+				content: [
+					{ text: 'Three', marks: { italic: true } },
+					{ text: ' Four', marks: { bold: true } }
+				]
 			},
+
 			{
 				type: 'paragraph',
 				content: [

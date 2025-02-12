@@ -264,15 +264,13 @@ export class HotKeys {
 	};
 
 	private normalizeKey = (key: string): string => {
-		let isMod = false;
-		let isCtrl = false;
 		const parts = key.toLowerCase().split('+');
 		const orderedParts: string[] = [];
 
 		// Add modifiers in the correct order
-		if (parts.includes('mod')) orderedParts.push('mod'), (isMod = true);
+		if (parts.includes('mod')) orderedParts.push('mod');
 		if (parts.includes('alt')) orderedParts.push('alt');
-		if (parts.includes('ctrl')) orderedParts.push('ctrl'), (isCtrl = true);
+		if (parts.includes('ctrl')) orderedParts.push('ctrl');
 		if (parts.includes('shift')) orderedParts.push('shift');
 
 		// Add remaining keys that aren't modifiers

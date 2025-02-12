@@ -6,6 +6,7 @@ import type { Block } from './block.svelte.js';
 import { id } from '$lib/utils.js';
 
 export class InlineBlock {
+	_def = 'inline' as const;
 	readonly = false;
 	parent: Block;
 	data = $state<any>({});

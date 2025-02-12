@@ -27,6 +27,7 @@ import { on } from 'svelte/events';
 import { HotKeys, type HotKey } from './hotkeys.js';
 import { TRANSACTION } from './constants.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
+import { deleteContentWithinSelection } from './edytor.utils.js';
 
 export type Snippets = {
 	[K in `${string}Block` | `${string}Mark`]: K extends `${string}Block`
@@ -266,6 +267,10 @@ export class Edytor {
 	batch = batch.bind(this);
 	addChildBlock = this.batch('addChildBlock', addChildBlock.bind(this));
 	addChildBlocks = this.batch('addChildBlocks', addChildBlocks.bind(this));
+	deleteContentWithinSelection = this.batch(
+		'deleteContentWithinSelection',
+		deleteContentWithinSelection.bind(this)
+	);
 
 	getTextById = (id: string) => {
 		const isText = id.startsWith('t');

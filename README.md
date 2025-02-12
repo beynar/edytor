@@ -58,11 +58,12 @@ If you want to submit an issue please share the json value of the document. It w
 ## ✨ Things that are not ready
 
 - [ ] DND
+- [ ] Block spanning deletion.
 - [ ] Battle tested collaborative editing + awareness + providers
 - [ ] Children normalization
 - [ ] Children transformation
 - [ ] Block suggestions
-- [ ] Reactive data (inline)block properties
+- [ ] Reactive data (inline)block properties with syncrostate.
 
 ## 🧠 Concepts
 

@@ -7,9 +7,7 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 	if (this.readonly) return;
 
 	try {
-		if (this.hotKeys.isHotkey(e)) {
-			return;
-		}
+		this.hotKeys.isHotkey(e);
 	} catch (error) {
 		if (error instanceof PreventionError) {
 			error.cb?.();

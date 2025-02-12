@@ -61,6 +61,7 @@ export type BlockOperations = {
 		start: [number, number];
 		end: [number, number];
 	};
+	deleteContentWithinSelection: {};
 };
 
 export function batch<T extends (...args: any[]) => any, O extends keyof BlockOperations>(
@@ -84,7 +85,10 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 			}
 		}
 
-		const result = this.edytor.transact(() => func.bind(this)(finalPayload));
+		const result = this.edytor.transact(() => {
+			console.log('transact');
+			return func.bind(this)(finalPayload);
+		});
 
 		for (const plugin of this.edytor.plugins) {
 			plugin.onAfterOperation?.({
@@ -184,6 +188,9 @@ export function removeBlock(
 ) {
 	// Get the current index from yChildren array since this.index may be stale when removing multiple blocks at once
 	const index = this.parent.yChildren.toArray().indexOf(this.yBlock);
+	if (this.yBlock._item?.deleted) {
+		return;
+	}
 	this.parent.yChildren.delete(index, 1);
 
 	if (keepChildren && this.hasChildren) {

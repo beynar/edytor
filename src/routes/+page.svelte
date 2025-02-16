@@ -95,7 +95,7 @@
 					});
 				}}
 				onChange={(e) => {
-					console.log('change', edytor?.doc.toJSON());
+					// console.log('change', edytor?.doc.toJSON());
 				}}
 				readonly={false}
 				class="outline-none"

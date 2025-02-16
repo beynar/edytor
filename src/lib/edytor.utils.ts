@@ -15,6 +15,7 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 		isAtEndOfBlock,
 		endText
 	} = this.selection.state;
+
 	const blocksToDelete = this.selection.state.blocks.filter((block, index) => {
 		const isFirst = index === 0;
 		const isLast = index === this.selection.state.blocks.length - 1;
@@ -91,4 +92,6 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 		startBlock?.parent.yChildren.insert(startBlock!.index + 1, newBlocks);
 	}
 	endBlock?.removeBlock();
+
+	return [startText, yStart] as const;
 }

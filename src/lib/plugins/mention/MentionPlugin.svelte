@@ -36,7 +36,7 @@
 </script>
 
 {#snippet mention({ block }: InlineBlockSnippetPayload)}
-	<kbd>@mention</kbd>
+	<kbd use:block.attach>@mention</kbd>
 {/snippet}
 
 <style>

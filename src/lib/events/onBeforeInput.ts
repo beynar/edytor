@@ -1,6 +1,7 @@
 import type { Edytor } from '../edytor.svelte.js';
 import { prevent, PreventionError } from '$lib/utils.js';
 import { Text } from '$lib/text/text.svelte.js';
+import { tick } from 'svelte';
 export async function onBeforeInput(this: Edytor, e: InputEvent) {
 	const {
 		start,
@@ -10,6 +11,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 		isAtStartOfBlock,
 		isAtStartOfText,
 		isVoid,
+		endText,
 		isAtEndOfText,
 		length,
 		isBlockSpanning,
@@ -56,6 +58,16 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 				if (data === '. ') {
 					startText?.insertText({ value: data!, isAutoDot: true });
 				} else {
+					if (isBlockSpanning) {
+						const [startText, offset] = this.deleteContentWithinSelection({});
+						startText && (await this.selection.setAtTextOffset(startText, offset));
+					} else if (isTextSpanning) {
+						startText?.parent.deleteContentAtRange({
+							start: [startText.index, yStart],
+							end: [endText!.index, yEnd]
+						});
+						await this.selection.setAtTextOffset(startText, yStart);
+					}
 					startText?.insertText({ value: data! });
 					// We need to immediately shift the selection to the right by the length of the inserted text
 					// This is to prevent selection divergence when the text is rapidly inserted
@@ -71,7 +83,10 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 					return;
 				}
 				if (isBlockSpanning) {
-					// TODO: implement this later, it's complicated i think.
+					const startText = texts[0];
+					const offset = yStart;
+					this.deleteContentWithinSelection({});
+					this.selection.setAtTextOffset(startText, offset);
 				} else {
 					if (isCollapsed && isAtEndOfBlock) {
 						// Before:
@@ -233,30 +248,72 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 				break;
 			}
 			case 'insertLineBreak': {
-				startText?.insertText({ value: '\n' });
-				this.selection.setAtTextOffset(startText!, start + 1);
+				if (!startText) {
+					return;
+				}
+				if (isBlockSpanning) {
+					const [startText, offset] = this.deleteContentWithinSelection({});
+					startText && (await this.selection.setAtTextOffset(startText, offset));
+				} else if (isTextSpanning) {
+					startText?.parent.deleteContentAtRange({
+						start: [startText.index, yStart],
+						end: [endText!.index, yEnd]
+					});
+					await this.selection.setAtTextOffset(startText, yStart);
+				}
+				this.selection.state.startText?.insertText({ value: '\n' });
+				this.selection.setAtTextOffset(
+					this.selection.state.startText!,
+					this.selection.state.yStart + 1
+				);
 				break;
 			}
 			case 'insertFromPaste': {
+				if (!startText) {
+					return;
+				}
+				if (isBlockSpanning) {
+					const [startText, offset] = this.deleteContentWithinSelection({});
+					startText && (await this.selection.setAtTextOffset(startText, offset));
+				} else if (isTextSpanning) {
+					startText?.parent.deleteContentAtRange({
+						start: [startText.index, yStart],
+						end: [endText!.index, yEnd]
+					});
+					await this.selection.setAtTextOffset(startText, yStart);
+				}
 				const value = dataTransfer!.getData('text/plain') as string;
-				startText?.insertText({ value });
-				this.selection.setAtTextOffset(startText!, yStart + value.length);
+				this.selection.state.startText?.insertText({ value });
+				this.selection.setAtTextOffset(
+					this.selection.state.startText!,
+					this.selection.state.yStart + value.length
+				);
 				break;
 			}
 			case 'insertParagraph': {
 				if (!startText) {
 					return;
 				}
+				if (isBlockSpanning) {
+					const [startText, offset] = this.deleteContentWithinSelection({});
+					startText && (await this.selection.setAtTextOffset(startText, offset));
+				} else if (isTextSpanning) {
+					startText?.parent.deleteContentAtRange({
+						start: [startText.index, yStart],
+						end: [endText!.index, yEnd]
+					});
+					await this.selection.setAtTextOffset(startText, yStart);
+				}
 				const defaultBlock = this.getDefaultBlock();
-				if (isCollapsed) {
-					if (isAtEndOfBlock) {
+				if (this.selection.state.isCollapsed) {
+					if (this.selection.state.isAtEndOfBlock) {
 						const newBlock = startText.parent.insertBlockAfter({
 							block: {
 								type: defaultBlock
 							}
 						});
 						this.selection.setAtTextOffset(newBlock.firstText, newBlock?.firstText?.length);
-					} else if (isAtStartOfBlock) {
+					} else if (this.selection.state.isAtStartOfBlock) {
 						startText.parent?.insertBlockBefore({
 							block: {
 								type: defaultBlock
@@ -264,7 +321,10 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 						});
 						this.selection.setAtTextOffset(startText, 0);
 					} else {
-						const newBlock = startText.parent?.splitBlock({ index: yStart, text: startText });
+						const newBlock = this.selection.state.startText?.parent?.splitBlock({
+							index: this.selection.state.yStart,
+							text: this.selection.state.startText
+						});
 
 						newBlock && this.selection.setAtTextOffset(newBlock.firstText, 0);
 					}

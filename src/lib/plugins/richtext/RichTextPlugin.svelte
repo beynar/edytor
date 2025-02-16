@@ -2,23 +2,69 @@
 	import type { Plugin, MarkSnippetPayload, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { SerializableContent } from '$lib/utils/json.js';
 	import type { HotKey } from '$lib/hotkeys.js';
+	import type { Edytor } from '$lib/edytor.svelte.js';
+
+	export const richTextOperations = (edytor: Edytor) => ({
+		removeAllMarksAtRange: () => {
+			const { yStart, yEnd, startText, texts } = edytor.selection.state;
+			texts.forEach((text) => {
+				const marks = text.yText.getAttributes();
+				Object.entries(marks).forEach(([key]) => {
+					text.yText.removeAttribute(key);
+				});
+			});
+			edytor.selection.setAtTextRange(startText, yStart, yEnd);
+		},
+		setMarkAtRange: (
+			mark:
+				| 'bold'
+				| 'italic'
+				| 'underline'
+				| 'code'
+				| 'link'
+				| 'strike'
+				| 'superscript'
+				| 'subscript'
+				| 'color'
+				| 'highlight',
+			value?: SerializableContent
+		) => {
+			const { yStart, yEnd, startText, texts } = edytor.selection.state;
+			console.table(texts.map((text) => ({ text: text.yText.toJSON() })));
+			texts.forEach((text, index) => {
+				const isFirst = index === 0;
+				const isLast = index === texts.length - 1;
+				text.markText({
+					mark,
+					value,
+					toggle: true,
+					start: isFirst ? yStart : 0,
+					end: isLast ? yEnd : text.yText.length
+				});
+			});
+			edytor.selection.setAtTextRange(startText, yStart, yEnd);
+		}
+	});
 
 	export const richTextPlugin: Plugin = (edytor) => {
 		const setMarkAndSelect =
-			(mark: string, value?: SerializableContent): HotKey =>
+			(
+				mark:
+					| 'bold'
+					| 'italic'
+					| 'underline'
+					| 'code'
+					| 'link'
+					| 'strike'
+					| 'superscript'
+					| 'subscript'
+					| 'color'
+					| 'highlight',
+				value?: SerializableContent
+			): HotKey =>
 			({ prevent }) => {
 				prevent(() => {
-					const { yStart, yEnd, startText } = edytor.selection.state;
-					if (startText) {
-						edytor.selection.state.startText?.markText({
-							mark,
-							value,
-							toggle: true,
-							start: yStart,
-							end: yEnd
-						});
-						edytor.selection.setAtTextRange(startText, yStart, yEnd);
-					}
+					richTextOperations(edytor).setMarkAtRange(mark, value);
 				});
 			};
 		return {

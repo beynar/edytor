@@ -144,9 +144,12 @@ export class EdytorSelection {
 		const { anchorNode, focusNode, anchorOffset, focusOffset, isCollapsed, direction, type } =
 			selection;
 		const ranges = getRangesFromSelection(selection);
-		const isReversed = focusNode
-			? anchorNode.compareDocumentPosition(focusNode) === Node.DOCUMENT_POSITION_PRECEDING
-			: false;
+		const isReversed =
+			focusNode === anchorNode
+				? focusOffset < anchorOffset
+				: focusNode
+					? anchorNode.compareDocumentPosition(focusNode) === Node.DOCUMENT_POSITION_PRECEDING
+					: false;
 		const content = selection?.toString() || '';
 		const startNode = isReversed ? focusNode : anchorNode;
 		const endNode = isReversed ? anchorNode : focusNode;
@@ -233,8 +236,21 @@ export class EdytorSelection {
 		}
 
 		// Flatten the blocks into a single array of content parts
-		let contentParts = blocks.flatMap((block) => block.content);
+		let allContentParts = blocks.flatMap((block) => block.content);
 
+		let contentParts: (Text | InlineBlock)[] = [];
+		let currentPart: Text | InlineBlock | null = startText;
+		let i = 0;
+		while (currentPart && currentPart !== endText) {
+			contentParts.push(currentPart);
+			currentPart = allContentParts[i + 1] || null;
+			i++;
+		}
+		if (endText) {
+			contentParts.push(endText!);
+		}
+
+		console.log(contentParts);
 		this.state = {
 			selection,
 			start,
@@ -245,7 +261,7 @@ export class EdytorSelection {
 			content,
 			isCollapsed,
 			ranges,
-			texts,
+			texts: contentParts.filter((part) => part instanceof Text),
 			contentParts,
 			blocks,
 			isBlockSpanning,
@@ -480,5 +496,6 @@ export class EdytorSelection {
 		range.collapse(true);
 		selection?.removeAllRanges();
 		selection?.addRange(range);
+		this.onSelectionChange();
 	};
 }

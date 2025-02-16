@@ -16,6 +16,7 @@ export class InlineBlock {
 	index = $state(0);
 	definition = $state<InlineBlockDefinition>({} as InlineBlockDefinition);
 	edytor: Edytor;
+	node: HTMLElement | undefined;
 	get type() {
 		return this.#type;
 	}
@@ -64,5 +65,6 @@ export class InlineBlock {
 		node.contentEditable = 'false';
 		node.dataset.edytorInlineBlock = this.#type;
 		this.edytor.idToInlineBlock.set(this.id, this);
+		this.node = node;
 	};
 }

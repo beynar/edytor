@@ -54,11 +54,11 @@ If you want to submit an issue please share the json value of the document. It w
 - [x] Island blocks
 - [x] Void elements and editable void elements
 - [x] Text spanning deletion
+- [x] Block spanning deletion.
 
 ## ✨ Things that are not ready
 
 - [ ] DND
-- [ ] Block spanning deletion.
 - [ ] Battle tested collaborative editing + awareness + providers
 - [ ] Children normalization
 - [ ] Children transformation

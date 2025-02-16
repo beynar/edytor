@@ -85,10 +85,7 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 			}
 		}
 
-		const result = this.edytor.transact(() => {
-			console.log('transact');
-			return func.bind(this)(finalPayload);
-		});
+		const result = this.edytor.transact(() => func.bind(this)(finalPayload));
 
 		for (const plugin of this.edytor.plugins) {
 			plugin.onAfterOperation?.({
@@ -399,7 +396,6 @@ export function pushContentIntoBlock(
 			index++;
 		} else {
 			const lastPart = content[index - 1];
-			console.log({ lastPart });
 			if (lastPart instanceof Text) {
 				const delta = part.yText.toDelta();
 				lastPart.yText.applyDelta([{ retain: lastPart.yText.length }, ...delta]);

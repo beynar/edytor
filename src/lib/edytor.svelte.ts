@@ -85,6 +85,7 @@ export class Edytor {
 	defaultType = 'paragraph';
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
+	root: Block;
 
 	// @ts-expect-error
 	observeChilren = observeChildren.bind(this);
@@ -184,19 +185,13 @@ export class Edytor {
 		}
 		return definition as M extends 'block' ? BlockDefinition : InlineBlockDefinition;
 	};
+
 	get value(): JSONBlock {
-		const value: JSONBlock = {
+		return {
 			type: 'root',
 			children: this.children.map((child) => child.value)
 		};
-		return value;
 	}
-
-	selectAll = () => {
-		// TODO: Implement this in EdytorSelection;
-		const { startText } = this.selection.state;
-		const block = startText?.parent;
-	};
 
 	getDefaultBlock = (
 		parent: Block | Edytor | undefined = this.selection.state.startText?.parent

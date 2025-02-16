@@ -65,6 +65,13 @@ export type EdytorOptions = {
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	placeholder?: string | Snippet<[{ block: Block }]>;
 };
+
+export type RootBlock = Block & {
+	readonly type: 'root';
+	readonly id: 'root';
+	readonly depth: 0;
+};
+
 export class Edytor {
 	node?: HTMLElement;
 	marks = new Map<string, MarkDefinition>();
@@ -80,7 +87,7 @@ export class Edytor {
 	hotKeys: HotKeys;
 	initialized = $state(false);
 	readonly = $state(false);
-	children = $state<Block[]>([]);
+	root: RootBlock;
 	synced = $state(false);
 	edytor = this;
 	selection: EdytorSelection;
@@ -88,15 +95,11 @@ export class Edytor {
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
 	placeholder?: string | Snippet<[{ block: Block }]>;
-	// @ts-expect-error
-	observeChilren = observeChildren.bind(this);
 
 	// YJS Stuff
 	doc: Y.Doc = new Y.Doc();
-	yChildren: Y.Array<YBlock> = this.doc.getArray('children') as Y.Array<YBlock>;
 	yBlock: YBlock = new Y.Map<YBlock>();
-	undoManager: Y.UndoManager = new Y.UndoManager(this.yChildren);
-
+	undoManager: Y.UndoManager;
 	awareness: Awareness;
 
 	transact = <T>(cb: () => T): T => {
@@ -122,9 +125,19 @@ export class Edytor {
 		this.readonly = readonly || false;
 		this.doc = doc;
 		this.yBlock = this.doc.getMap('content') as YBlock;
-		this.yChildren = getSetArray(this.yBlock);
 		this.awareness = awareness;
 		this.onChange = onChange;
+
+		// Initialize root block
+		const rootYBlock = new Y.Map(
+			Object.entries({
+				type: 'root' as const,
+				id: 'root' as const,
+				children: new Y.Array()
+			})
+		);
+		this.yBlock.set('root', rootYBlock);
+		this.root = Block.createRoot(this, rootYBlock);
 
 		// Initialize plugins
 		this.plugins = (plugins || []).map((plugin) => {
@@ -181,6 +194,9 @@ export class Edytor {
 
 		this.selection = new EdytorSelection(this, onSelectionChange);
 		this.hotKeys = new HotKeys(this, hotKeys, this.plugins);
+		this.undoManager = new Y.UndoManager(this.root.yChildren, {
+			trackedOrigins: new Set([this.transaction, null])
+		});
 	}
 
 	getBlockDefinition = <M extends 'inline' | 'block'>(
@@ -195,10 +211,7 @@ export class Edytor {
 	};
 
 	get value(): JSONBlock {
-		return {
-			type: 'root',
-			children: this.children.map((child) => child.value)
-		};
+		return this.root.value;
 	}
 
 	getDefaultBlock = (
@@ -225,26 +238,20 @@ export class Edytor {
 			return;
 		}
 		if (this.readonly) {
-			this.children = children.map((child) => {
-				const block = new Block({ parent: this, block: child });
-				this.yChildren.push([block.yBlock]);
-				return block;
+			children.forEach((child) => {
+				const block = new Block({ parent: this.root, block: child });
+				this.root.yChildren.push([block.yBlock]);
 			});
 		} else {
 			const INITIALIZED = 'INITIALIZED';
 			const initializedText = this.doc.getText(INITIALIZED);
 			this.initialized = initializedText?.toJSON() === INITIALIZED;
 			if (this.initialized) {
-				this.yChildren = getSetArray(this.yBlock);
-				this.children = this.yChildren.map((yBlock) => {
-					return new Block({ parent: this, yBlock });
-				});
+				// Root block already exists and has its children
 			} else {
-				this.yChildren = getSetArray(this.yBlock);
-				this.children = children.map((child) => {
-					const block = new Block({ parent: this, block: child });
-					this.yChildren.push([block.yBlock]);
-					return block;
+				children.forEach((child) => {
+					const block = new Block({ parent: this.root, block: child });
+					this.root.yChildren.push([block.yBlock]);
 				});
 
 				initializedText.delete(0, initializedText.length);
@@ -253,10 +260,6 @@ export class Edytor {
 		}
 
 		this.synced = true;
-		this.yChildren.observe(this.observeChilren);
-		this.undoManager = new Y.UndoManager(this.yChildren, {
-			trackedOrigins: new Set([this.transaction, null])
-		});
 		this.doc.on('update', () => {
 			const value = this.value;
 			this.onChange?.(value);

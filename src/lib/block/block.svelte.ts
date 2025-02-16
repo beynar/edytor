@@ -36,6 +36,7 @@ import { climb } from '$lib/selection/selection.utils.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
 import { createReadonlyText } from '$lib/components/readonlyElements.svelte.js';
 import { createReadonlyInlineBlock } from '$lib/components/readonlyElements.svelte.js';
+import type { RootBlock } from '../edytor.svelte.js';
 
 export const getSetArray = <T = YBlock>(
 	yBlock: YBlock,
@@ -58,11 +59,13 @@ export const getSetText = (yBlock: YBlock): Y.Text => {
 	return yText;
 };
 
+export type BlockParent = Block;
+
 export class Block {
 	readonly = false;
 	edytor: Edytor;
 	yBlock: YBlock;
-	parent: Block | Edytor;
+	parent: BlockParent;
 	yChildren: Y.Array<YBlock>;
 	children = $state<Block[]>([]);
 	yContent: Y.Array<YBlock | Y.Text>;
@@ -82,7 +85,7 @@ export class Block {
 	get insideIsland(): boolean {
 		let insideIslands = false;
 		climb(this.parent, (block) => {
-			if (block instanceof Block && block.definition?.island) {
+			if (block.definition?.island) {
 				insideIslands = true;
 				return true;
 			}
@@ -121,7 +124,6 @@ export class Block {
 		return this.#type;
 	}
 	set type(value: string) {
-		// Do something here to update the document
 		this.yBlock.set('type', value);
 		this.#type = value;
 		this.definition = this.edytor.getBlockDefinition('block', value);
@@ -130,7 +132,7 @@ export class Block {
 	#depth = $state<number | null>(null);
 	get depth(): number {
 		if (this.#depth === null) {
-			return this.parent instanceof Block ? this.parent.depth + 1 : 0;
+			return this.parent.depth + 1;
 		}
 		return this.#depth;
 	}
@@ -303,12 +305,14 @@ export class Block {
 	constructor({
 		parent,
 		block,
-		yBlock
+		yBlock,
+		edytor
 	}: {
-		parent: Block | Edytor;
+		parent: BlockParent;
+		edytor?: Edytor;
 	} & ({ yBlock?: undefined; block: JSONBlock } | { yBlock: YBlock; block?: undefined })) {
 		this.parent = parent;
-		this.edytor = parent.edytor;
+		this.edytor = edytor || parent.edytor;
 		this.id = (yBlock?.doc && (yBlock?.get('id') as string)) || id('b');
 
 		if (block !== undefined) {
@@ -409,6 +413,20 @@ export class Block {
 			}
 		};
 	};
+
+	static createRoot(edytor: Edytor, yBlock: YBlock): RootBlock {
+		const block = new Block({
+			parent: null as any, // Root block has no parent
+			yBlock,
+			edytor
+		});
+
+		Object.defineProperty(block, 'depth', {
+			get: () => 0
+		});
+
+		return block as RootBlock;
+	}
 }
 
 export function observeChildren(this: Block, event: Y.YArrayEvent<YBlock>) {

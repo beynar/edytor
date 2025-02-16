@@ -21,7 +21,8 @@ import type {
 	MarkSnippetPayload,
 	BlockDefinition,
 	MarkDefinition,
-	InlineBlockDefinition
+	InlineBlockDefinition,
+	InlineBlockSnippetPayload
 } from './plugins.js';
 import { on } from 'svelte/events';
 import { HotKeys, type HotKey } from './hotkeys.js';
@@ -62,6 +63,7 @@ export type EdytorOptions = {
 	value?: JSONDoc;
 	onChange?: (value: JSONBlock) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
+	placeholder?: string | Snippet<[{ block: Block }]>;
 };
 export class Edytor {
 	node?: HTMLElement;
@@ -85,8 +87,7 @@ export class Edytor {
 	defaultType = 'paragraph';
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
-	root: Block;
-
+	placeholder?: string | Snippet<[{ block: Block }]>;
 	// @ts-expect-error
 	observeChilren = observeChildren.bind(this);
 
@@ -115,6 +116,7 @@ export class Edytor {
 		sync,
 		value,
 		onSelectionChange,
+		placeholder,
 		onChange
 	}: EdytorOptions) {
 		this.readonly = readonly || false;
@@ -159,13 +161,19 @@ export class Edytor {
 		// We set the custom snippets after plugins are initialized in order to be able to override the plugins snippets
 		Object.entries(snippets || {}).forEach(([key, snippet]) => {
 			const isMark = key.endsWith('Mark');
+			const isInlineBlock = key.endsWith('InlineBlock');
 			const isBlock = key.endsWith('Block');
 			if (isMark) {
 				this.marks.set(key, { snippet: snippet as Snippet<[MarkSnippetPayload]> });
+			} else if (isInlineBlock) {
+				// this.inlineBlocks.set(key, { snippet: snippet as Snippet<[InlineBlockSnippetPayload]> });
 			} else if (isBlock) {
 				this.blocks.set(key, { snippet: snippet as Snippet<[BlockSnippetPayload]> });
 			}
 		});
+
+		this.placeholder =
+			placeholder || this.plugins.find((plugin) => plugin.placeholder)?.placeholder;
 
 		if (readonly || !sync) {
 			this.sync(value || { children: [] });

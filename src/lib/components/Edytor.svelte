@@ -3,6 +3,7 @@
 	import { Awareness } from 'y-protocols/awareness';
 	export { Edytor as EdytorContext, useEdytor };
 	import type { Plugin } from '$lib/plugins.js';
+	import type { Block as BlockType } from '$lib/block/block.svelte.js';
 	const defaultValue: JSONDoc = {
 		children: [
 			// {
@@ -88,6 +89,7 @@
 		onChange?: (value: JSONBlock) => void;
 		onSelectionChange?: (selection: EdytorSelection) => void;
 		value?: JSONDoc;
+		placeholder?: string | Snippet<[{ block: BlockType }]>;
 		sync?: ({
 			doc,
 			awareness,
@@ -103,7 +105,7 @@
 <script lang="ts">
 	import * as Y from 'yjs';
 	import type { JSONBlock, JSONDoc } from '../utils/json.js';
-	import { onMount, setContext } from 'svelte';
+	import { onMount, setContext, type Snippet } from 'svelte';
 	import type { HotKey } from '$lib/hotkeys.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 	import ReadonlyEditor from './ReadonlyEditor.svelte';
@@ -121,6 +123,7 @@
 		awareness,
 		onChange,
 		onSelectionChange,
+		placeholder,
 		...snippets
 	}: EdytorProps = $props();
 
@@ -134,7 +137,8 @@
 		onSelectionChange,
 		onChange,
 		sync: !!sync,
-		value
+		value,
+		placeholder
 	});
 
 	onMount(() => {

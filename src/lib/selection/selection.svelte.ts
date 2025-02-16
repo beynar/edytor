@@ -159,13 +159,18 @@ export class EdytorSelection {
 
 		const { startText, endText, texts } = this.getTextsInSelection(startNode, endNode, ranges);
 
-		console.log({ startText, endText });
-
 		this.selectBlocks();
 		this.focusBlocks(...texts.map((text) => text.parent));
 
 		let yStart = getYIndex(startText, startNode, start);
 		let yEnd = isCollapsed ? yStart : getYIndex(endText, endNode, end);
+
+		if (startText?.parent.isEmpty && this.edytor.placeholder) {
+			// In case the placeholder is not absolutely positioned, we need to set the selection to the start of the text because caret may be placed after the placeholder which is deceptive
+			if (yStart > 0) {
+				this.setAtTextOffset(startText, 0);
+			}
+		}
 
 		let isIsland = false;
 		let islandRoot: Block | null = null;

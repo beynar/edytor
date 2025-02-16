@@ -95,7 +95,7 @@ export type PluginOperations = {
 	/** Called when the selection changes */
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	/** Placeholder content for empty blocks */
-	placeholder?: Snippet<[{ block: Block; text: Text }]>;
+	placeholder?: string | Snippet<[{ block: Block }]>;
 	/** Called when the editor is attached to the DOM */
 	onEdytorAttached?: (payload: { node: HTMLElement }) => () => void;
 	/** Called when a block is attached to the DOM */

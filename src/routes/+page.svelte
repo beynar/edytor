@@ -9,7 +9,6 @@
 	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-	import ReadonlyEditor from '$lib/components/ReadonlyEditor.svelte';
 	import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 
 	hljs.registerLanguage('javascript', javascript);
@@ -100,7 +99,13 @@
 				readonly={false}
 				class="outline-none"
 				bind:edytor
-			/>
+			>
+				{#snippet placeholder({ block })}
+					{#if block.focused}
+						<span>Write something here ...</span>
+					{/if}
+				{/snippet}
+			</Edytor>
 			<!-- {#if edytor && edytor.value}
 				<ReadonlyEditor
 					plugins={[codePlugin, imagePlugin, mentionPlugin, richTextPlugin]}
@@ -152,7 +157,7 @@
 			@apply relative;
 		}
 		[data-edytor-text-placeholder] {
-			@apply opacity-65 italic caret-transparent absolute left-0 top-0;
+			@apply opacity-65 italic caret-transparent;
 		}
 	}
 </style>

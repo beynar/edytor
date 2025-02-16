@@ -24,13 +24,17 @@
 {@render renderContent(
 	block.content
 )}<!--
--->{#if block?.content.length === 1 && (block.content[0] as Text)?.isEmpty && block?.focused}
+-->{#if block?.content.length === 1 && (block.content[0] as Text)?.isEmpty && block.edytor.placeholder}
 	<span
 		data-edytor-text-placeholder
 		contentEditable="false"
 		style="user-select: none; pointer-events: none"
 	>
-		caca
+		{#if typeof block.edytor.placeholder === 'string'}
+			{block.edytor.placeholder}
+		{:else}
+			{@render block.edytor.placeholder({ block })}
+		{/if}
 	</span>
 {/if}<!--
 -->{#if block?.suggestions}

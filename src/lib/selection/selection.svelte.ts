@@ -165,11 +165,9 @@ export class EdytorSelection {
 		let yStart = getYIndex(startText, startNode, start);
 		let yEnd = isCollapsed ? yStart : getYIndex(endText, endNode, end);
 
-		if (startText?.parent.isEmpty && this.edytor.placeholder) {
-			// In case the placeholder is not absolutely positioned, we need to set the selection to the start of the text because caret may be placed after the placeholder which is deceptive
-			if (yStart > 0) {
-				this.setAtTextOffset(startText, 0);
-			}
+		if (startText?.parent.isEmpty && yStart > startText.length) {
+			// In case the placeholder or suggestion is not absolutely positioned, we need to set the selection to the start of the text because caret may be placed after the placeholder which is deceptive
+			return this.setAtTextOffset(startText, startText.length);
 		}
 
 		let isIsland = false;

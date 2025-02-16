@@ -25,11 +25,7 @@
 	block.content
 )}<!--
 -->{#if block?.content.length === 1 && (block.content[0] as Text)?.isEmpty && block.edytor.placeholder}
-	<span
-		data-edytor-text-placeholder
-		contentEditable="false"
-		style="user-select: none; pointer-events: none"
-	>
+	<span data-edytor-text-placeholder contentEditable="false" style="user-select: none;">
 		{#if typeof block.edytor.placeholder === 'string'}
 			{block.edytor.placeholder}
 		{:else}

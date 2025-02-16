@@ -102,6 +102,15 @@
 			>
 				{#snippet placeholder({ block })}
 					{#if block.focused}
+						<button
+							onmousedown={(e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								console.log('je');
+							}}
+						>
+							click
+						</button>
 						<span>Write something here ...</span>
 					{/if}
 				{/snippet}

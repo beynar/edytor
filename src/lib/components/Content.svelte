@@ -21,7 +21,18 @@
 		{/if}
 	{/each}
 {/snippet}
-{@render renderContent(block.content)}<!--
+{@render renderContent(
+	block.content
+)}<!--
+-->{#if block?.content.length === 1 && (block.content[0] as Text)?.isEmpty && block?.focused}
+	<span
+		data-edytor-text-placeholder
+		contentEditable="false"
+		style="user-select: none; pointer-events: none"
+	>
+		caca
+	</span>
+{/if}<!--
 -->{#if block?.suggestions}
 	<span
 		data-edytor-text-suggestion

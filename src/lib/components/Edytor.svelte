@@ -23,9 +23,14 @@
 			},
 			{
 				type: 'paragraph',
+				content: [{ text: '' }]
+			},
+			{
+				type: 'paragraph',
 				content: [
 					{ text: 'Three', marks: { italic: true } },
-					{ text: ' Four', marks: { bold: true } }
+					{ text: ' Four', marks: { bold: true } },
+					{ text: '' }
 				]
 			},
 

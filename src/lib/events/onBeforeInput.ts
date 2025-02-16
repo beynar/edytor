@@ -329,7 +329,6 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 						newBlock && this.selection.setAtTextOffset(newBlock.firstText, 0);
 					}
 				}
-
 				break;
 			}
 		}

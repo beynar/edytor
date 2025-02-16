@@ -134,6 +134,7 @@ export class EdytorSelection {
 		this.state.end += length;
 		this.state.yTextContent = this.state.startText?.yText.toJSON()!;
 	};
+
 	onSelectionChange = () => {
 		const selection = window.getSelection();
 
@@ -157,6 +158,8 @@ export class EdytorSelection {
 		const end = isReversed ? anchorOffset : focusOffset;
 
 		const { startText, endText, texts } = this.getTextsInSelection(startNode, endNode, ranges);
+
+		console.log({ startText, endText });
 
 		this.selectBlocks();
 		this.focusBlocks(...texts.map((text) => text.parent));
@@ -238,6 +241,8 @@ export class EdytorSelection {
 		// Flatten the blocks into a single array of content parts
 		let allContentParts = blocks.flatMap((block) => block.content);
 
+		console.log({ allContentParts, blocks, startBlock, endBlock });
+
 		let contentParts: (Text | InlineBlock)[] = [];
 		let currentPart: Text | InlineBlock | null = startText;
 		let i = 0;
@@ -246,8 +251,9 @@ export class EdytorSelection {
 			currentPart = allContentParts[i + 1] || null;
 			i++;
 		}
+
 		if (endText) {
-			contentParts.push(endText!);
+			contentParts.push(endText);
 		}
 
 		console.log(contentParts);

@@ -148,5 +148,11 @@
 		[data-edytor-text-suggestion] {
 			@apply opacity-65 italic;
 		}
+		*:has([data-edytor-text-placeholder]) {
+			@apply relative;
+		}
+		[data-edytor-text-placeholder] {
+			@apply opacity-65 italic caret-transparent absolute left-0 top-0;
+		}
 	}
 </style>

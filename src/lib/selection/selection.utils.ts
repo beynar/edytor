@@ -5,21 +5,40 @@ import { Edytor } from '$lib/edytor.svelte.js';
 
 export function getTextOfNode(this: EdytorSelection, node: Node | null) {
 	if (!node) return null;
-
+	// If the node is not a text node, we need to find the closest text node
 	let text: Text | null = null;
 	let currentNode = node;
-	while (currentNode.parentElement && !text) {
+	if (node.nodeType !== Node.TEXT_NODE) {
+		const treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT, (node) => {
+			if (node instanceof HTMLSpanElement && node.hasAttribute('data-edytor-text')) {
+				return NodeFilter.FILTER_ACCEPT;
+			}
+			return NodeFilter.FILTER_SKIP;
+		});
+
+		currentNode = treeWalker.nextNode() as Node;
 		text = this.edytor.nodeToText.get(currentNode) || null;
-		currentNode = currentNode.parentElement;
-	}
-	if (!text) {
-		currentNode = node;
-		// try with previousSibling
-		while (currentNode.previousSibling && !text) {
+		while (currentNode && !text) {
+			currentNode = treeWalker.nextNode() as Node;
 			text = this.edytor.nodeToText.get(currentNode) || null;
-			currentNode = currentNode.previousSibling;
+		}
+	} else {
+		while (currentNode.parentElement && !text) {
+			text = this.edytor.nodeToText.get(currentNode) || null;
+			currentNode = currentNode.parentElement;
+		}
+		// Maybe a weird behavior in firefox that force us to do that.
+		// Didn't explore much as it seems to work.
+		if (!text) {
+			currentNode = node;
+			// try with previousSibling
+			while (currentNode.previousSibling && !text) {
+				text = this.edytor.nodeToText.get(currentNode) || null;
+				currentNode = currentNode.previousSibling;
+			}
 		}
 	}
+
 	return text;
 }
 export function getTextsInSelection(

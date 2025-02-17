@@ -169,130 +169,46 @@ pnpm add edytor
 <Edytor {value} {onChange} />
 ```
 
-## 📖 Documentation
+## Testing
 
-### Core Concepts
+I've implemented a custom jsx parser to test the editor.
 
-Edytor is built around three main concepts:
+So instead of defining the value as a json object, you can define the value as a jsx element.
 
-1. **Blocks**: Container elements like paragraphs, headings, and lists
-2. **Marks**: Inline formatting like bold, italic, and links
-3. **Plugins**: Extensions that add new functionality
-
-### Available Props
-
-| Prop          | Type                     | Default             | Description                            |
-| ------------- | ------------------------ | ------------------- | -------------------------------------- |
-| `value`       | `JSONDoc`                | `{ children: [] }`  | The initial document content           |
-| `readonly`    | `boolean`                | `false`             | Whether the editor is read-only        |
-| `plugins`     | `Plugin[]`               | `[]`                | Array of plugins to use                |
-| `hotKeys`     | `Record<string, HotKey>` | `{}`                | Custom keyboard shortcuts              |
-| `sync`        | `Function`               | `undefined`         | Custom sync function for collaboration |
-| `class`       | `string`                 | `undefined`         | Custom CSS class                       |
-| `placeholder` | `string`                 | `"Start typing..."` | Placeholder text when empty            |
-
-### Events
-
-| Event    | Detail Type | Description                          |
-| -------- | ----------- | ------------------------------------ |
-| `change` | `JSONDoc`   | Fired when the document changes      |
-| `focus`  | `void`      | Fired when the editor gains focus    |
-| `blur`   | `void`      | Fired when the editor loses focus    |
-| `ready`  | `void`      | Fired when the editor is initialized |
-
-### Plugins
-
-Edytor comes with several built-in plugins:
-
-- `RichTextPlugin`: Basic text formatting
-- `MentionPlugin`: @mentions support
-- `ListPlugin`: Ordered and unordered lists
-- `ImagePlugin`: Image upload and display
-- `TablePlugin`: Table support with cell merging
-- `HistoryPlugin`: Undo/redo functionality
-- And more...
-
-Creating a custom plugin:
-
-```typescript
-import type { Plugin, EdytorInstance } from 'edytor';
-
-interface CustomMarkData {
-	color: string;
-	title?: string;
-}
-
-const myPlugin: Plugin = (edytor: EdytorInstance) => {
-	return {
-		marks: {
-			// Snippet
-		},
-		blocks: {
-			// Snippet
-		},
-		hotkeys: {
-			'mod+k': ({ edytor }) => {
-				// Custom hotkey handler
-			}
-		}
-	};
-};
+```jsx
+<root>
+	<paragraph>Hello, World!</paragraph>
+</root>
 ```
 
-### Collaborative Editing
+I've also implemented the `createTestEdytor` that help with creating an edytor instance from a jsx element in order to test various operations on a virtual edytor.
 
-Edytor supports real-time collaboration out of the box using Y.js:
+You can also add one or two cursors with the `|` character into the jsx in order to simulate the cursor position
 
-```svelte
-<script>
-	import { WebsocketProvider } from 'y-websocket';
-	import * as Y from 'yjs';
-	import { onMount, onDestroy } from 'svelte';
+```jsx
+<root>
+	<paragraph>Hello, |World!|</paragraph>
+</root>
+```
 
-	let provider;
+```jsx
+test('split text', () => {
+	const { edytor, expect } = createTestEdytor(
+		<root>
+			<paragraph>Hello, |World!</paragraph>
+		</root>
+	);
 
-	onMount(() => {
-		return () => {
-			provider?.destroy();
-		};
+	edytor.selection.state.startBlock?.splitBlock({
+		index: edytor.selection.state.yStart,
+		text: edytor.selection.state.startBlock?.firstText
 	});
-</script>
 
-<Edytor
-	{doc}
-	sync={({ doc, awareness, synced }) => {
-		provider = new WebsocketProvider('ws://localhost:1234', 'my-document', doc);
-		provider.on('sync', () => {
-			synced({ provider });
-		});
-	}}
-	plugins={[CollaborationPlugin]}
-/>
-```
-
-### Current Limitations
-
-1. **Text Spanning**
-
-   - Complex text spanning operations are not fully implemented
-   - Some multi-block operations need improvement
-
-2. **Void Elements**
-
-   - Void elements are not fully implemented
-
-3. **Inline void elements**
-
-   - No inline void elements support for now
-
-4. **Decorations**
-
-   - We need to implement decorations as Slate.js does.
-
-## 🛠️ Development
-
-### Setup
-
-```
-
+	expect(
+		<root>
+			<paragraph>Hello, </paragraph>
+			<paragraph>World!</paragraph>
+		</root>
+	);
+});
 ```

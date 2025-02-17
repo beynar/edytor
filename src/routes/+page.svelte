@@ -1,8 +1,5 @@
 <script lang="ts">
 	import Edytor, { EdytorContext } from '$lib/components/Edytor.svelte';
-	import hljs from 'highlight.js';
-	import 'highlight.js/styles/github-dark.css';
-	import javascript from 'highlight.js/lib/languages/json';
 	import { IndexeddbPersistence } from '../lib/localProvider.js';
 	import { onMount } from 'svelte';
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
@@ -11,12 +8,7 @@
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 	import ReadonlyEditor from '$lib/components/ReadonlyEditor.svelte';
-
-	hljs.registerLanguage('javascript', javascript);
-	const highlight = (node: HTMLElement, json: string) => {
-		const highlighted = hljs.highlight(json, { language: 'json' }).value;
-		node.innerHTML = highlighted;
-	};
+	import { Inspect } from 'svelte-inspect-value';
 
 	let edytor = $state<EdytorContext>();
 
@@ -51,7 +43,7 @@
 >
 	clear
 </button>
-<div class="grid grid-cols-3 p-10">
+<div class="grid grid-cols-4 gap-2 p-10">
 	<div class="col-span-2">
 		<div class="card rounded bg-neutral-800 p-2">
 			<button
@@ -115,31 +107,24 @@
 				/>
 			{/if} -->
 		</div>
-		<div class="card rounded bg-neutral-800 p-2 mt-2">
-			<pre>
-{JSON.stringify(edytor?.root?.value, null, 2)}
-		</pre>
-		</div>
 	</div>
-	<div>
-		{#key edytor?.selection.state}
-			<pre
-				use:highlight={JSON.stringify(
-					{
-						start: edytor?.selection?.state?.start,
-						end: edytor?.selection?.state?.end,
-						yStart: edytor?.selection?.state?.yStart,
-						yEnd: edytor?.selection?.state?.yEnd,
-						length: edytor?.selection?.state?.length,
-						isAtStartOfBlock: edytor?.selection?.state?.isAtStartOfBlock,
-						isAtEndOfBlock: edytor?.selection?.state?.isAtEndOfBlock,
-						text: edytor?.selection?.state?.content,
-						yTextContent: edytor?.selection?.state?.yTextContent
-					},
-					null,
-					2
-				)}></pre>
-		{/key}
+	<div class="col-span-2">
+		<Inspect expandLevel={2} value={edytor?.root?.value} />
+
+		<hr class="my-2" />
+		<Inspect
+			value={{
+				start: edytor?.selection?.state?.start,
+				end: edytor?.selection?.state?.end,
+				yStart: edytor?.selection?.state?.yStart,
+				yEnd: edytor?.selection?.state?.yEnd,
+				length: edytor?.selection?.state?.length,
+				isAtStartOfBlock: edytor?.selection?.state?.isAtStartOfBlock,
+				isAtEndOfBlock: edytor?.selection?.state?.isAtEndOfBlock,
+				text: edytor?.selection?.state?.content,
+				yTextContent: edytor?.selection?.state?.yTextContent
+			}}
+		/>
 	</div>
 </div>
 

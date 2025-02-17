@@ -107,17 +107,17 @@
 					{/if}
 				{/snippet}
 			</Edytor>
-			{#if edytor && edytor.value}
+			<!-- {#if edytor && edytor.value}
 				<ReadonlyEditor
 					plugins={[codePlugin, imagePlugin, mentionPlugin, richTextPlugin]}
-					value={{ children: edytor.value?.children || [] }}
+					value={{ children: edytor?.root?.value.children || [] }}
 					class="outline-none"
 				/>
-			{/if}
+			{/if} -->
 		</div>
 		<div class="card rounded bg-neutral-800 p-2 mt-2">
 			<pre>
-{JSON.stringify(edytor?.value, null, 2)}
+{JSON.stringify(edytor?.root?.value, null, 2)}
 		</pre>
 		</div>
 	</div>

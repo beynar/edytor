@@ -271,6 +271,7 @@ export class Block {
 			children,
 			content
 		};
+		console.log('here', this.content[0].yText.toJSON());
 		if (Object.keys(this.data).length > 0) {
 			value.data = this.data;
 		}

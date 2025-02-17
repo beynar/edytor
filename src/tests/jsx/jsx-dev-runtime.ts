@@ -7,7 +7,7 @@ namespace JSX {
 	export type HTMLAttributes = Record<string, JSXNode | undefined> & JSXChildren;
 
 	// Allow any html tag
-	export type IntrinsicElements = Record<string, HTMLAttributes>;
+	export type IntrinsicElements = Record<string, HTMLAttributes> | undefined;
 
 	// Declare the shape of JSX rendering result
 	// This is required so the return types of components can be inferred

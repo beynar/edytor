@@ -6,6 +6,14 @@ function isMarkOrText(tag: string): boolean {
 	return tag === 'text' || ['bold', 'italic', 'underline', 'strike', 'code'].includes(tag);
 }
 
+function isInlineBlock(tag: string): boolean {
+	return tag === 'mention';
+}
+
+function isSpan(tag: string): boolean {
+	return tag === 'span';
+}
+
 type HTMLAttributes = Record<string, JSXNode | undefined> & JSXChildren;
 
 function renderAttributes(attributes: HTMLAttributes): Record<string, any> {
@@ -44,12 +52,31 @@ function _renderJSX(
 		}
 		return textNode;
 	}
+	if (isSpan(tag)) {
+		const { children, content } = _renderChildren(props, accumulatedMarks);
+		return {
+			type: 'text',
+			content: content
+		};
+	}
 	if (isMarkOrText(tag)) {
 		const newMarks = { ...accumulatedMarks, [tag]: true };
 		const { children, content } = _renderChildren(props, newMarks);
 		return {
 			type: 'text',
 			content: content
+		};
+	}
+	if (isInlineBlock(tag)) {
+		const attributes = renderAttributes(props);
+		return {
+			type: 'text',
+			content: [
+				{
+					type: tag,
+					data: Object.keys(attributes).length > 0 ? attributes : undefined
+				}
+			]
 		};
 	}
 	// Treat as block element
@@ -66,14 +93,28 @@ function _renderJSX(
 	return block;
 }
 
-function mergeAdjacentTextNodes(nodes: JSONText[]): JSONText[] {
+function mergeAdjacentTextNodes(
+	nodes: (JSONText | JSONInlineBlock)[]
+): (JSONText | JSONInlineBlock)[] {
 	// First filter out empty text nodes that have no marks
-	const nonEmptyNodes = nodes.filter((node) => node.text !== '' || node.marks);
+	const nonEmptyNodes = nodes.filter((node) => {
+		if ('text' in node) {
+			return node.text !== '' || node.marks;
+		}
+		return true; // Keep all inline blocks
+	});
 
-	return nonEmptyNodes.reduce((acc: JSONText[], node) => {
+	return nonEmptyNodes.reduce((acc: (JSONText | JSONInlineBlock)[], node) => {
+		if (!('text' in node)) {
+			// If it's an inline block, just add it
+			acc.push(node);
+			return acc;
+		}
+
 		const prev = acc[acc.length - 1];
 		if (
 			prev &&
+			'text' in prev &&
 			((!prev.marks && !node.marks) || // both have no marks
 				(prev.marks &&
 					node.marks &&
@@ -92,9 +133,9 @@ function mergeAdjacentTextNodes(nodes: JSONText[]): JSONText[] {
 function _renderChildren(
 	props: HTMLAttributes,
 	accumulatedMarks: Record<string, any>
-): { children: JSONBlock[]; content: JSONText[] } {
+): { children: JSONBlock[]; content: (JSONText | JSONInlineBlock)[] } {
 	const children: JSONBlock[] = [];
-	const content: JSONText[] = [];
+	const content: (JSONText | JSONInlineBlock)[] = [];
 	const childrenProp = props.children;
 	if (!childrenProp) return { children, content };
 
@@ -133,6 +174,9 @@ function _renderChildren(
 							textNode.marks = { ...accumulatedMarks, ...(node.marks || {}) };
 						}
 						content.push(textNode);
+					} else if ('type' in node) {
+						// This is an inline block
+						content.push(node);
 					}
 				});
 			} else {
@@ -164,6 +208,9 @@ function _renderChildren(
 							textNode.marks = { ...accumulatedMarks, ...(node.marks || {}) };
 						}
 						content.push(textNode);
+					} else if ('type' in node) {
+						// This is an inline block
+						content.push(node);
 					}
 				});
 			} else {
@@ -193,6 +240,9 @@ function _renderChildren(
 								textNode.marks = { ...accumulatedMarks, ...(node.marks || {}) };
 							}
 							content.push(textNode);
+						} else if ('type' in node) {
+							// This is an inline block
+							content.push(node);
 						}
 					});
 				} else {

@@ -18,10 +18,16 @@ export const jsonToDelta = (text: JSONText[]): JSONDelta[] => {
 };
 
 export const deltaToJson = (delta: JSONDelta[]): JSONText[] => {
-	return delta.map((d) => ({
-		text: d.text,
-		marks: Object.fromEntries(d.marks)
-	}));
+	return delta.map((d) => {
+		const result: JSONText = {
+			text: d.text,
+			marks: Object.fromEntries(d.marks)
+		};
+		if (d.marks.length === 0) {
+			delete result.marks;
+		}
+		return result;
+	});
 };
 
 const createDelta = (text: string, attributes: Map<string, SerializableContent>): JSONDelta => {

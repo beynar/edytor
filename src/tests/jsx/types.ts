@@ -28,14 +28,17 @@ export class RenderedNode {
 }
 
 export interface IntrinsicElements {
-	doc: {};
-	bold: {};
-	italic: {};
-	underline: {};
-	strike: {};
-	code: {};
-	link: {};
-	mention: {};
-	quote: {};
-	paragraph: {};
+	span: any;
+	color: any;
+	root: any;
+	bold: any;
+	italic: any;
+	underline: any;
+	strike: any;
+	code: any;
+	link: any;
+	mention: any;
+	quote: any;
+	paragraph: any;
+	fragment: any;
 }

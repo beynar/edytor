@@ -88,7 +88,7 @@ export class Edytor {
 	initialized = $state(false);
 	readonly = $state(false);
 	yRootBlock: YBlock;
-	root?: Block;
+	root = $state<Block>();
 	synced = $state(false);
 	edytor = this;
 	selection: EdytorSelection;

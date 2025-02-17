@@ -3,8 +3,8 @@ import { describe, it, expect, should } from 'vitest';
 
 describe('converts document with natural text and marks', () => {
 	it('should convert document with natural text and marks', () => {
-		const Value = () => (
-			<doc>
+		const { value } = (
+			<root>
 				<paragraph>
 					Hello <bold>world</bold>!
 				</paragraph>
@@ -15,11 +15,11 @@ describe('converts document with natural text and marks', () => {
 					</bold>
 					.
 				</paragraph>
-			</doc>
+			</root>
 		);
 
 		const expected = {
-			type: 'doc',
+			type: 'root',
 			children: [
 				{
 					type: 'paragraph',
@@ -69,13 +69,12 @@ describe('converts document with natural text and marks', () => {
 			]
 		};
 
-		const result = Value().value;
-		expect(result).toMatchObject(expected);
+		expect(value).toMatchObject(expected);
 	});
 
 	it('should convert document with nested paragraphs', () => {
-		const Value = () => (
-			<doc>
+		const { value } = (
+			<root>
 				<paragraph>
 					First level
 					<paragraph>
@@ -83,11 +82,11 @@ describe('converts document with natural text and marks', () => {
 						<paragraph>Third level</paragraph>
 					</paragraph>
 				</paragraph>
-			</doc>
+			</root>
 		);
 
 		const expected = {
-			type: 'doc',
+			type: 'root',
 			children: [
 				{
 					type: 'paragraph',
@@ -108,13 +107,12 @@ describe('converts document with natural text and marks', () => {
 			]
 		};
 
-		const result = Value().value;
-		expect(result).toMatchObject(expected);
+		expect(value).toMatchObject(expected);
 	});
 
 	it('should convert document with complex nested marks and paragraphs', () => {
-		const Value = () => (
-			<doc>
+		const { value } = (
+			<root>
 				<paragraph>
 					Start with{' '}
 					<bold>
@@ -148,11 +146,11 @@ describe('converts document with natural text and marks', () => {
 						</bold>
 					</paragraph>
 				</paragraph>
-			</doc>
+			</root>
 		);
 
 		const expected = {
-			type: 'doc',
+			type: 'root',
 			children: [
 				{
 					type: 'paragraph',
@@ -197,26 +195,25 @@ describe('converts document with natural text and marks', () => {
 			]
 		};
 
-		const result = Value().value;
-		expect(result).toMatchObject(expected);
+		expect(value).toMatchObject(expected);
 	});
 });
 
 describe('handles special cases and attributes', () => {
 	it('should handle custom attributes on elements', () => {
-		const Value = () => (
-			<doc>
+		const { value } = (
+			<root>
 				<paragraph id="p1" className="intro">
 					Paragraph with attributes
 				</paragraph>
 				<paragraph data-custom="value" align="center">
 					<bold>Custom attributes</bold>
 				</paragraph>
-			</doc>
+			</root>
 		);
 
 		const expected = {
-			type: 'doc',
+			type: 'root',
 			children: [
 				{
 					type: 'paragraph',
@@ -242,32 +239,30 @@ describe('handles special cases and attributes', () => {
 			]
 		};
 
-		console.log(Value().value);
-		const result = Value().value;
-		expect(result).toMatchObject(expected);
+		expect(value).toMatchObject(expected);
 	});
 
 	it('should handle mixed content with arrays and fragments', () => {
 		const items = ['First', 'Second', 'Third'];
-		const Value = () => (
-			<doc>
+		const { value } = (
+			<root>
 				<paragraph>
 					{items.map((item, index) => (
-						<>
+						<span>
 							<bold>{item}</bold>
 							{index < items.length - 1 ? ', ' : ''}
-						</>
+						</span>
 					))}
 				</paragraph>
 				<paragraph>
 					Mixed content:
 					<bold>One</bold> and <italic>Two</italic>
 				</paragraph>
-			</doc>
+			</root>
 		);
 
 		const expected = {
-			type: 'doc',
+			type: 'root',
 			children: [
 				{
 					type: 'paragraph',
@@ -291,14 +286,12 @@ describe('handles special cases and attributes', () => {
 			]
 		};
 
-		const result = Value().value;
-		console.dir(result, { depth: null });
-		expect(result).toMatchObject(expected);
+		expect(value).toMatchObject(expected);
 	});
 
 	it('should handle deeply nested marks with whitespace', () => {
-		const Value = () => (
-			<doc>
+		const { value } = (
+			<root>
 				<paragraph>
 					<bold>
 						Bold
@@ -311,11 +304,11 @@ describe('handles special cases and attributes', () => {
 						Bold
 					</bold>
 				</paragraph>
-			</doc>
+			</root>
 		);
 
 		const expected = {
-			type: 'doc',
+			type: 'root',
 			children: [
 				{
 					type: 'paragraph',
@@ -330,7 +323,39 @@ describe('handles special cases and attributes', () => {
 			]
 		};
 
-		const result = Value().value;
-		expect(result).toMatchObject(expected);
+		expect(value).toMatchObject(expected);
+	});
+
+	it('should handle inline blocks like mentions alongside text with marks', () => {
+		const { value } = (
+			<root>
+				<paragraph>
+					Hello <mention data-id="123">@john</mention> and <bold>welcome</bold> to the team! Let's
+					also mention <italic>our friend</italic> <mention data-id="456">@jane</mention> here.
+				</paragraph>
+			</root>
+		);
+
+		const expected = {
+			type: 'root',
+			children: [
+				{
+					type: 'paragraph',
+					content: [
+						{ text: 'Hello ' },
+						{ type: 'mention', data: { 'data-id': '123' } },
+						{ text: ' and ' },
+						{ text: 'welcome', marks: { bold: true } },
+						{ text: " to the team! Let's also mention " },
+						{ text: 'our friend', marks: { italic: true } },
+						{ text: ' ' },
+						{ type: 'mention', data: { 'data-id': '456' } },
+						{ text: ' here.' }
+					]
+				}
+			]
+		};
+
+		expect(value).toMatchObject(expected);
 	});
 });

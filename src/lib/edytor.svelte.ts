@@ -9,11 +9,11 @@ import {
 } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
-import { Block, getSetArray, observeChildren } from './block/block.svelte.js';
+import { Block } from './block/block.svelte.js';
 import { Text } from './text/text.svelte.js';
 import { SvelteMap } from 'svelte/reactivity';
 import { Awareness } from 'y-protocols/awareness.js';
-import { addChildBlock, addChildBlocks, batch } from './block/block.utils.js';
+import { batch } from './block/block.utils.js';
 import type {
 	Plugin,
 	BlockSnippetPayload,
@@ -87,7 +87,8 @@ export class Edytor {
 	hotKeys: HotKeys;
 	initialized = $state(false);
 	readonly = $state(false);
-	root: RootBlock;
+	yRootBlock: YBlock;
+	root?: Block;
 	synced = $state(false);
 	edytor = this;
 	selection: EdytorSelection;
@@ -98,7 +99,6 @@ export class Edytor {
 
 	// YJS Stuff
 	doc: Y.Doc = new Y.Doc();
-	yBlock: YBlock = new Y.Map<YBlock>();
 	undoManager: Y.UndoManager;
 	awareness: Awareness;
 
@@ -124,20 +124,9 @@ export class Edytor {
 	}: EdytorOptions) {
 		this.readonly = readonly || false;
 		this.doc = doc;
-		this.yBlock = this.doc.getMap('content') as YBlock;
+		this.yRootBlock = this.doc.getMap('content') as YBlock;
 		this.awareness = awareness;
 		this.onChange = onChange;
-
-		// Initialize root block
-		const rootYBlock = new Y.Map(
-			Object.entries({
-				type: 'root' as const,
-				id: 'root' as const,
-				children: new Y.Array()
-			})
-		);
-		this.yBlock.set('root', rootYBlock);
-		this.root = Block.createRoot(this, rootYBlock);
 
 		// Initialize plugins
 		this.plugins = (plugins || []).map((plugin) => {
@@ -194,7 +183,7 @@ export class Edytor {
 
 		this.selection = new EdytorSelection(this, onSelectionChange);
 		this.hotKeys = new HotKeys(this, hotKeys, this.plugins);
-		this.undoManager = new Y.UndoManager(this.root.yChildren, {
+		this.undoManager = new Y.UndoManager(this.yRootBlock, {
 			trackedOrigins: new Set([this.transaction, null])
 		});
 	}
@@ -204,6 +193,9 @@ export class Edytor {
 		type: string
 	): M extends 'block' ? BlockDefinition : InlineBlockDefinition => {
 		const definition = mode === 'block' ? this.blocks.get(type) : this.inlineBlocks.get(type);
+		if (type === 'root') {
+			return {} as any;
+		}
 		if (!definition) {
 			throw new Error(`Block type ${type} is not defined`);
 		}
@@ -211,7 +203,10 @@ export class Edytor {
 	};
 
 	get value(): JSONBlock {
-		return this.root.value;
+		return {
+			type: 'root',
+			children: this.root?.value.children || []
+		};
 	}
 
 	getDefaultBlock = (
@@ -238,25 +233,39 @@ export class Edytor {
 			return;
 		}
 		if (this.readonly) {
-			children.forEach((child) => {
-				const block = new Block({ parent: this.root, block: child });
-				this.root.yChildren.push([block.yBlock]);
-			});
+			// children.forEach((child) => {
+			// 	const block = new Block({ parent: this.root, block: child });
+			// 	this.root.yChildren.push([block.yBlock]);
+			// });
 		} else {
 			const INITIALIZED = 'INITIALIZED';
 			const initializedText = this.doc.getText(INITIALIZED);
 			this.initialized = initializedText?.toJSON() === INITIALIZED;
 			if (this.initialized) {
+				// this.yRootBlock =
 				// Root block already exists and has its children
-			} else {
-				children.forEach((child) => {
-					const block = new Block({ parent: this.root, block: child });
-					this.root.yChildren.push([block.yBlock]);
+				this.root = new Block({
+					edytor: this,
+					yBlock: this.yRootBlock,
+					block: {
+						type: 'root',
+						id: 'root',
+						children
+					}
 				});
-
-				initializedText.delete(0, initializedText.length);
-				initializedText.insert(0, INITIALIZED);
+			} else {
+				this.root = new Block({
+					edytor: this,
+					yBlock: this.yRootBlock,
+					block: {
+						type: 'root',
+						id: 'root',
+						children
+					}
+				});
 			}
+			initializedText.delete(0, initializedText.length);
+			initializedText.insert(0, INITIALIZED);
 		}
 
 		this.synced = true;
@@ -271,8 +280,7 @@ export class Edytor {
 
 	onBeforeInput = onBeforeInput.bind(this);
 	batch = batch.bind(this);
-	addChildBlock = this.batch('addChildBlock', addChildBlock.bind(this));
-	addChildBlocks = this.batch('addChildBlocks', addChildBlocks.bind(this));
+
 	deleteContentWithinSelection = this.batch(
 		'deleteContentWithinSelection',
 		deleteContentWithinSelection.bind(this)

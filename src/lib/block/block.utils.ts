@@ -100,19 +100,19 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 }
 
 export function addChildBlock(
-	this: Block | Edytor,
+	this: Block,
 	{ block, index = this.yChildren.length }: BlockOperations['addChildBlock']
 ) {
-	const newBlock = new Block({ parent: this, block });
+	const newBlock = new Block({ parent: this, edytor: this.edytor, block });
 	this.yChildren.insert(index, [newBlock.yBlock]);
 	return newBlock;
 }
 
 export function addChildBlocks(
-	this: Block | Edytor,
+	this: Block,
 	{ blocks, index = this.yChildren.length }: BlockOperations['addChildBlocks']
 ) {
-	const newBlocks = blocks.map((block) => new Block({ parent: this, block }));
+	const newBlocks = blocks.map((block) => new Block({ parent: this, edytor: this.edytor, block }));
 	this.yChildren.insert(
 		index,
 		newBlocks.map((block) => block.yBlock)
@@ -123,7 +123,10 @@ export function addChildBlocks(
 export function insertBlockAfter(
 	this: Block,
 	{ block }: BlockOperations['insertBlockAfter']
-): Block {
+): Block | null {
+	if (!this.parent) {
+		return null;
+	}
 	this.yChildren.delete(0, this.children.length);
 	return this.parent.addChildBlock({
 		block: {
@@ -137,7 +140,10 @@ export function insertBlockAfter(
 export function insertBlockBefore(
 	this: Block,
 	{ block }: BlockOperations['insertBlockBefore']
-): Block {
+): Block | null {
+	if (!this.parent) {
+		return null;
+	}
 	return this.parent.addChildBlock({
 		block: {
 			...block,
@@ -151,7 +157,7 @@ export function splitBlock(
 	this: Block,
 	{ index, text }: BlockOperations['splitBlock']
 ): Block | null {
-	if (!text) {
+	if (!text || !this.parent) {
 		return null;
 	}
 	const splittedContent = text.splitText({ index });
@@ -183,6 +189,9 @@ export function removeBlock(
 	this: Block,
 	{ keepChildren = false }: BlockOperations['removeBlock'] = { keepChildren: false }
 ) {
+	if (!this.parent) {
+		return;
+	}
 	// Get the current index from yChildren array since this.index may be stale when removing multiple blocks at once
 	const index = this.parent.yChildren.toArray().indexOf(this.yBlock);
 	if (this.yBlock._item?.deleted) {
@@ -196,6 +205,7 @@ export function removeBlock(
 			this.value.children!.map((child) => {
 				const newBlock = new Block({
 					parent: this.parent,
+					edytor: this.edytor,
 					block: child
 				});
 				return newBlock.yBlock;
@@ -204,12 +214,15 @@ export function removeBlock(
 	}
 }
 
-export function mergeBlockBackward(this: Block): Block | undefined {
+export function mergeBlockBackward(this: Block): Block | null {
+	if (!this.parent) {
+		return null;
+	}
 	const { closestPreviousBlock, isEmpty } = this;
 	const { children = [] } = this.value;
 
 	if (!closestPreviousBlock) {
-		return this.isEmpty ? this.mergeBlockForward() : undefined;
+		return this.isEmpty ? this.mergeBlockForward() : null;
 	}
 
 	// Add the current content to the previous block content
@@ -223,6 +236,7 @@ export function mergeBlockBackward(this: Block): Block | undefined {
 				children.map((child) => {
 					const newBlock = new Block({
 						parent: this.parent,
+						edytor: this.edytor,
 						block: child
 					});
 					return newBlock.yBlock;
@@ -235,35 +249,40 @@ export function mergeBlockBackward(this: Block): Block | undefined {
 
 	return closestPreviousBlock;
 }
-export function mergeBlockForward(this: Block): Block | undefined {
+export function mergeBlockForward(this: Block): Block | null {
+	if (!this.parent) {
+		return null;
+	}
 	const nextBlock = this.closestNextBlock;
 
-	if (!nextBlock) return undefined;
+	if (!nextBlock) {
+		return null;
+	}
 	this.pushContentIntoBlock({ value: nextBlock.content });
 
-	if (nextBlock.children.length > 0) {
+	if (nextBlock.children.length > 0 && nextBlock.parent) {
 		nextBlock.parent.yChildren.insert(
 			nextBlock.index + 1,
 			nextBlock.children.map((child) => {
 				const newBlock = new Block({
 					parent: nextBlock.parent,
+					edytor: this.edytor,
 					block: child.value
 				});
 				return newBlock.yBlock;
 			})
 		);
 	}
-	nextBlock.parent.yChildren.delete(nextBlock.index, 1);
+	nextBlock.parent?.yChildren.delete(nextBlock.index, 1);
 	return nextBlock;
 }
 
-export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): Block | undefined {
-	console.log([...path]);
-	if (!path.length || path.some((p) => isNaN(p) || p < 0)) {
-		return;
+export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): Block | null {
+	if (!path.length || path.some((p) => isNaN(p) || p < 0) || !this.parent) {
+		return null;
 	}
 	const lastIndex = path.pop();
-	let currentBlock: Edytor | Block = this.edytor;
+	let currentBlock: Block = this.edytor.root!;
 
 	while (path.length > 0) {
 		const index = path.shift();
@@ -271,11 +290,14 @@ export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): 
 		currentBlock = currentBlock.children[index!];
 	}
 
-	if (!currentBlock) return;
+	if (!currentBlock) {
+		return null;
+	}
 	this.edytor.idToBlock.delete(this.id);
 	this.parent.yChildren.delete(this.index, 1);
 	const newBlock = new Block({
 		parent: currentBlock,
+		edytor: this.edytor,
 		block: this.value
 	});
 	currentBlock.yChildren.insert(lastIndex!, [newBlock.yBlock]);
@@ -284,27 +306,40 @@ export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): 
 
 export function unNestBlock(this: Block): Block | null {
 	const { parent, index } = this;
-
-	if (parent instanceof Block) {
-		const grandParent = parent.parent as Block;
-		const newBlock = new Block({
-			parent: grandParent,
-			block: this.value
-		});
-		grandParent.yChildren.insert(parent.index + 1, [newBlock.yBlock]);
-		this.parent.yChildren.delete(index, 1);
-		return newBlock;
+	if (!parent) {
+		return null;
 	}
-	return null;
+
+	const grandParent = parent.parent;
+
+	if (!grandParent) {
+		return null;
+	}
+
+	const newBlock = new Block({
+		parent: grandParent,
+		edytor: this.edytor,
+		block: this.value
+	});
+
+	grandParent.yChildren.insert(parent.index + 1, [newBlock.yBlock]);
+	parent.yChildren.delete(index, 1);
+	return newBlock;
 }
 
 export function nestBlock(this: Block): Block | null {
 	const previousBlock = this.previousBlock;
-	if (!previousBlock || previousBlock?.definition?.void || previousBlock?.definition?.island) {
+	if (
+		!previousBlock ||
+		previousBlock?.definition?.void ||
+		previousBlock?.definition?.island ||
+		!this.parent
+	) {
 		return null;
 	}
 	const newBlock = new Block({
 		parent: previousBlock,
+		edytor: this.edytor,
 		block: { ...this.value, children: [] }
 	});
 	previousBlock.yChildren.insert(previousBlock.children.length, [newBlock.yBlock]);
@@ -314,6 +349,7 @@ export function nestBlock(this: Block): Block | null {
 			this.value.children.map((child) => {
 				const newBlock = new Block({
 					parent: previousBlock,
+					edytor: this.edytor,
 					block: child
 				});
 				return newBlock.yBlock;
@@ -328,6 +364,9 @@ export function setBlock(this: Block, { value }: BlockOperations['setBlock']) {
 	this.edytor.doc.transact(() => {
 		if (value.type) {
 			this.type = value.type;
+		}
+		if (value.data) {
+			this.yBlock.set('data', value.data);
 		}
 		if (value.content) {
 			let newContentCount = value.content.length;

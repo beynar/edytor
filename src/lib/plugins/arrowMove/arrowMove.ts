@@ -13,8 +13,12 @@ export const arrowMovePlugin: Plugin = (edytor) => {
 
 					prevent(() => {
 						const path = selectedBlock.path;
+						console.log({ path: [...path] });
 
-						if (path?.at(-1) === selectedBlock.parent.children.length - 1) {
+						if (
+							selectedBlock.parent &&
+							path?.at(-1) === selectedBlock.parent?.children.length - 1
+						) {
 							// If the block is nested and is the last child, we need to unest the block i.e pop the last path index
 							path.pop();
 						}

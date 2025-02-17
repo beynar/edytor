@@ -244,8 +244,6 @@ export class EdytorSelection {
 		// Flatten the blocks into a single array of content parts
 		let allContentParts = blocks.flatMap((block) => block.content);
 
-		console.log({ allContentParts, blocks, startBlock, endBlock });
-
 		let contentParts: (Text | InlineBlock)[] = [];
 		let currentPart: Text | InlineBlock | null = startText;
 		let i = 0;
@@ -259,7 +257,6 @@ export class EdytorSelection {
 			contentParts.push(endText);
 		}
 
-		console.log(contentParts);
 		this.state = {
 			selection,
 			start,

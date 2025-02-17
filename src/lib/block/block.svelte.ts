@@ -36,7 +36,6 @@ import { climb } from '$lib/selection/selection.utils.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
 import { createReadonlyText } from '$lib/components/readonlyElements.svelte.js';
 import { createReadonlyInlineBlock } from '$lib/components/readonlyElements.svelte.js';
-import type { RootBlock } from '../edytor.svelte.js';
 
 export const getSetArray = <T = YBlock>(
 	yBlock: YBlock,
@@ -59,18 +58,17 @@ export const getSetText = (yBlock: YBlock): Y.Text => {
 	return yText;
 };
 
-export type BlockParent = Block;
-
 export class Block {
 	readonly = false;
 	edytor: Edytor;
 	yBlock: YBlock;
-	parent: BlockParent;
+	parent?: Block;
 	yChildren: Y.Array<YBlock>;
-	children = $state<Block[]>([]);
 	yContent: Y.Array<YBlock | Y.Text>;
+	children = $state<Block[]>([]);
 	content = $state<(Text | InlineBlock)[]>([]);
 	id = $state<string>(id('b'));
+	data = $state<Record<string, any>>({});
 	node?: HTMLElement;
 	definition = $state<BlockDefinition>({} as BlockDefinition);
 
@@ -108,7 +106,11 @@ export class Block {
 	}
 
 	#index = $state<number | null>(null);
+
 	get index(): number {
+		if (!this.parent) {
+			return 0;
+		}
 		if (this.#index === null) {
 			return this.parent.children.indexOf(this);
 		}
@@ -131,6 +133,9 @@ export class Block {
 
 	#depth = $state<number | null>(null);
 	get depth(): number {
+		if (!this.parent) {
+			return 0;
+		}
 		if (this.#depth === null) {
 			return this.parent.depth + 1;
 		}
@@ -140,11 +145,16 @@ export class Block {
 	get path(): number[] {
 		const start = [this.index];
 		let current = this.parent;
-		while (current instanceof Block) {
+		while (current instanceof Block && current.parent) {
 			start.push(current.index);
 			current = current.parent;
 		}
+
 		return start.toReversed();
+	}
+
+	get isRoot(): boolean {
+		return this === this.edytor.root;
 	}
 
 	#suggestions = $state<(JSONText[] | JSONInlineBlock)[] | null>(null);
@@ -174,11 +184,17 @@ export class Block {
 		this.#suggestions = value;
 	}
 
-	get nextBlock() {
+	get nextBlock(): Block | null {
+		if (!this.parent) {
+			return null;
+		}
 		return this.parent.children[this.index + 1];
 	}
 
-	get previousBlock() {
+	get previousBlock(): Block | null {
+		if (!this.parent) {
+			return null;
+		}
 		return this.parent.children[this.index - 1];
 	}
 
@@ -186,7 +202,7 @@ export class Block {
 		const previousBlock = this.previousBlock;
 		if (this.index === 0) {
 			return this.parent instanceof Block ? this.parent : null;
-		} else {
+		} else if (previousBlock) {
 			if (previousBlock?.children.length > 0) {
 				let closestPreviousBlock = previousBlock.children.at(-1) || null;
 				while (closestPreviousBlock && closestPreviousBlock?.children.length > 0) {
@@ -197,6 +213,7 @@ export class Block {
 				return this.previousBlock;
 			}
 		}
+		return null;
 	}
 
 	get closestNextBlock(): Block | null {
@@ -247,14 +264,21 @@ export class Block {
 
 	get value(): JSONBlock {
 		const children = this.children.map((child) => child.value);
+		const content = this.content.map((part) => part.value).flat();
 		const value: JSONBlock = {
 			type: this.type,
 			id: this.id,
 			children,
-			content: this.content.map((part) => part.value).flat()
+			content
 		};
+		if (Object.keys(this.data).length > 0) {
+			value.data = this.data;
+		}
 		if (!children.length) {
 			delete value.children;
+		}
+		if (!content.length) {
+			delete value.content;
 		}
 		return value;
 	}
@@ -308,22 +332,28 @@ export class Block {
 		yBlock,
 		edytor
 	}: {
-		parent: BlockParent;
-		edytor?: Edytor;
-	} & ({ yBlock?: undefined; block: JSONBlock } | { yBlock: YBlock; block?: undefined })) {
+		parent?: Block;
+		edytor: Edytor;
+	} & (
+		| { yBlock?: undefined; block: JSONBlock }
+		| { yBlock: YBlock; block?: undefined }
+		| { yBlock: YBlock; block: JSONBlock & { type: 'root' } }
+	)) {
 		this.parent = parent;
-		this.edytor = edytor || parent.edytor;
+		this.edytor = edytor;
 		this.id = (yBlock?.doc && (yBlock?.get('id') as string)) || id('b');
 
 		if (block !== undefined) {
 			this.#type = block.type;
-			// If block is provided we need to initialize the block with the value;
-			// It's mean that we want to create a new block from a JSONBlock that does not exist yet in the document
+			this.data = block.data || {};
+
+			// Initialize children
 			this.children = (block.children || []).map((child, index) => {
-				const block = new Block({ parent: this, block: child });
+				const block = new Block({ parent: this, edytor, block: child });
 				block.index = index;
 				return block;
 			});
+
 			const groupedContent = groupContent(block.content);
 			if (!groupedContent.length) {
 				groupedContent.push([{ text: '' }]);
@@ -347,21 +377,33 @@ export class Block {
 				this.content.map((part) => (part instanceof Text ? part.yText : part.yBlock))
 			);
 
-			this.yBlock = new Y.Map(
-				Object.entries({
-					type: block.type,
-					id: this.id,
-					children: this.yChildren,
-					content: this.yContent
-				})
-			);
+			// If the block is a root block we need to set the yBlock to the yRootBlock
+			if (block.type === 'root') {
+				this.yBlock = yBlock!;
+				this.yBlock.set('id', this.id);
+				this.yBlock.set('type', block.type);
+				this.yBlock.set('data', this.data);
+				this.yBlock.set('children', this.yChildren);
+				this.yBlock.set('content', this.yContent);
+			} else {
+				this.yBlock = new Y.Map(
+					Object.entries({
+						type: block.type,
+						id: this.id,
+						data: this.data,
+						children: this.yChildren,
+						content: this.yContent
+					})
+				);
+			}
 		} else {
 			this.yBlock = yBlock;
 			this.#type = this.yBlock.get('type') || this.edytor.getDefaultBlock(parent);
+			this.data = this.yBlock.get('data') || {};
 			this.yChildren = getSetArray(this.yBlock);
 			this.yContent = getSetArray(this.yBlock, 'content');
 			this.children = this.yChildren.map((child, index) => {
-				const block = new Block({ parent: this, yBlock: child });
+				const block = new Block({ parent: this, edytor, yBlock: child });
 				block.index = index;
 				return block;
 			});
@@ -413,20 +455,6 @@ export class Block {
 			}
 		};
 	};
-
-	static createRoot(edytor: Edytor, yBlock: YBlock): RootBlock {
-		const block = new Block({
-			parent: null as any, // Root block has no parent
-			yBlock,
-			edytor
-		});
-
-		Object.defineProperty(block, 'depth', {
-			get: () => 0
-		});
-
-		return block as RootBlock;
-	}
 }
 
 export function observeChildren(this: Block, event: Y.YArrayEvent<YBlock>) {
@@ -445,6 +473,7 @@ export function observeChildren(this: Block, event: Y.YArrayEvent<YBlock>) {
 					this.edytor.idToBlock.get(yBlock.get('id') as string) ||
 					new Block({
 						parent: this,
+						edytor: this.edytor,
 						yBlock
 					});
 

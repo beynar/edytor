@@ -94,7 +94,7 @@ const defaultHotKeys = {
 				edytor.selection.state;
 			if (startText) {
 				if (edytor.selection.selectedBlocks.size) {
-					edytor.selection.selectBlocks(...edytor.children);
+					edytor.selection.selectBlocks(...edytor.root!.children);
 				} else if (
 					edytor.selection.state.isAtStartOfBlock &&
 					edytor.selection.state.isAtEndOfBlock
@@ -184,8 +184,8 @@ const defaultHotKeys = {
 	backspace: ({ edytor, prevent }) => {
 		if (edytor.selection.selectedBlocks.size) {
 			const selectedBlock = edytor.selection.selectedBlocks.values().next().value as Block;
-			const isNested = selectedBlock.parent !== edytor;
-			const isLastChild = selectedBlock.parent.children.at(-1) === selectedBlock;
+			const isNested = selectedBlock.parent !== edytor.root;
+			const isLastChild = selectedBlock.parent?.children.at(-1) === selectedBlock;
 			if (isNested && isLastChild) {
 				const newBlock = selectedBlock.unNestBlock();
 				if (newBlock) {

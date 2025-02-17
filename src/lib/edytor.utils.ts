@@ -1,7 +1,6 @@
 import { Block } from './block/block.svelte.js';
 import { Text } from './text/text.svelte.js';
 import type { Edytor } from './edytor.svelte.js';
-import * as Y from 'yjs';
 import { deltaToJson, toDeltas } from './text/deltas.js';
 import { InlineBlock } from './block/inlineBlock.svelte.js';
 export function deleteContentWithinSelection(this: Edytor, {}) {
@@ -42,7 +41,6 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 	}
 	// We need to find the content that will be merged into the first block
 	if (endBlock && endText && endBlock !== blocksToDelete[blocksToDelete.length - 1]) {
-		console.log(endBlock.content.slice(endText.index, endBlock?.content.length));
 		const contentToMerge = endBlock.content
 			.slice(endText.index, endBlock?.content.length)
 			.map((part, index) => {
@@ -60,14 +58,14 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 		const value = contentToMerge.map((part) => {
 			if ('type' in part) {
 				const block = new InlineBlock({
-					parent: startBlock,
+					parent: startBlock!,
 					block: part
 				});
 				return block.yBlock;
 			} else {
 				console.log({ part });
 				const text = new Text({
-					parent: startBlock,
+					parent: startBlock!,
 					content: part
 				});
 				return text.yText;
@@ -84,12 +82,13 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 		const newBlocks = endBlock.children.map((child) => {
 			const newBlock = new Block({
 				parent: startBlock!.parent,
+				edytor: this,
 				block: child.value
 			});
 			return newBlock.yBlock;
 		});
 
-		startBlock?.parent.yChildren.insert(startBlock!.index + 1, newBlocks);
+		startBlock?.parent?.yChildren.insert(startBlock!.index + 1, newBlocks);
 	}
 	endBlock?.removeBlock();
 

@@ -1,7 +1,7 @@
 import type { Edytor } from '../edytor.svelte.js';
 import { prevent, PreventionError } from '$lib/utils.js';
 import { Text } from '$lib/text/text.svelte.js';
-import { tick } from 'svelte';
+
 export async function onBeforeInput(this: Edytor, e: InputEvent) {
 	const {
 		start,
@@ -50,8 +50,9 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 			plugin.onBeforeInput?.({ prevent, e });
 		});
 
-		const isNested = startText?.parent.parent !== this.edytor;
-		const isLastChild = startText?.parent.parent.children.at(-1) === startText?.parent;
+		const isFirstChildOfDocument = startText?.parent === this.root?.children.at(0);
+		const isNested = startText?.parent.parent !== this.root;
+		const isLastChild = startText?.parent.parent?.children.at(-1) === startText?.parent;
 
 		switch (inputType) {
 			case 'insertText': {
@@ -134,6 +135,14 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 				break;
 			}
 			case 'deleteContentBackward': {
+				if (
+					isCollapsed &&
+					isAtStartOfBlock &&
+					isFirstChildOfDocument &&
+					!startText?.parent.isEmpty
+				) {
+					return;
+				}
 				if (isBlockSpanning) {
 					const startText = texts[0];
 					const offset = yStart;
@@ -149,6 +158,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 						// Last nested block need to be unNest
 						// Otherwise we just merge the block backward and eventually remove the block or unnest the children
 						if (isNested && isLastChild && !islandRoot) {
+							console.log('unNest');
 							// Before:
 							// [Block]
 							//   [Block]
@@ -196,7 +206,6 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 							//   [Text] "Hello|World"
 							// [Block]
 							//   [Text] "|!"
-
 							if (islandRoot && islandRoot.children.length === 1) {
 								this.edytor.selection.selectBlocks(islandRoot);
 							} else {
@@ -303,8 +312,12 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 						end: [endText!.index, yEnd]
 					});
 					await this.selection.setAtTextOffset(startText, yStart);
+				} else if (!isCollapsed) {
+					startText.deleteText({ direction: 'FORWARD', length: yEnd - yStart });
+					await this.selection.setAtTextOffset(startText, yStart);
 				}
 				const defaultBlock = this.getDefaultBlock();
+
 				if (this.selection.state.isCollapsed) {
 					if (this.selection.state.isAtEndOfBlock) {
 						const newBlock = startText.parent.insertBlockAfter({
@@ -312,7 +325,8 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 								type: defaultBlock
 							}
 						});
-						this.selection.setAtTextOffset(newBlock.firstText, newBlock?.firstText?.length);
+						newBlock &&
+							this.selection.setAtTextOffset(newBlock.firstText, newBlock?.firstText?.length);
 					} else if (this.selection.state.isAtStartOfBlock) {
 						startText.parent?.insertBlockBefore({
 							block: {

@@ -154,17 +154,11 @@ export const getRangesFromSelection = (selection: Selection): Range[] => {
 	return Array.from({ length: selection.rangeCount }, (_, i) => selection.getRangeAt(i));
 };
 
-export const climb = (
-	block: Block | Edytor | undefined,
-	cb: (block: Block | Edytor) => void | true
-) => {
+export const climb = (block: Block | Edytor | undefined, cb: (block: Block) => void | true) => {
 	if (!block) return;
 	let parent = block;
-	while (parent) {
+	while (parent && parent instanceof Block) {
 		if (cb(parent)) break;
-		if (parent instanceof Edytor || parent.parent instanceof Edytor) {
-			break;
-		}
 		parent = parent.parent;
 	}
 };

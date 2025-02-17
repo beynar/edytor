@@ -10,6 +10,7 @@
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
+	import ReadonlyEditor from '$lib/components/ReadonlyEditor.svelte';
 
 	hljs.registerLanguage('javascript', javascript);
 	const highlight = (node: HTMLElement, json: string) => {
@@ -102,26 +103,17 @@
 			>
 				{#snippet placeholder({ block })}
 					{#if block.focused}
-						<button
-							onmousedown={(e) => {
-								e.preventDefault();
-								e.stopPropagation();
-								console.log('je');
-							}}
-						>
-							click
-						</button>
 						<span>Write something here ...</span>
 					{/if}
 				{/snippet}
 			</Edytor>
-			<!-- {#if edytor && edytor.value}
+			{#if edytor && edytor.value}
 				<ReadonlyEditor
 					plugins={[codePlugin, imagePlugin, mentionPlugin, richTextPlugin]}
-					value={{ children: edytor.value.children }}
+					value={{ children: edytor.value?.children || [] }}
 					class="outline-none"
 				/>
-			{/if} -->
+			{/if}
 		</div>
 		<div class="card rounded bg-neutral-800 p-2 mt-2">
 			<pre>

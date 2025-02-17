@@ -1,6 +1,8 @@
 {
 	"extends": "./.svelte-kit/tsconfig.json",
 	"compilerOptions": {
+		"jsx": "react-jsx",
+		"jsxImportSource": "src/jsx",
 		"allowJs": true,
 		"checkJs": true,
 		"esModuleInterop": true,
@@ -9,7 +11,19 @@
 		"skipLibCheck": true,
 		"sourceMap": true,
 		"strict": true,
+		"paths": {
+			"$lib": ["./src/lib"],
+			"$lib/*": ["./src/lib/*"]
+		},
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext"
-	}
+	},
+	"include": [
+		"src/**/*.ts",
+		"src/**/*.js",
+		"src/**/*.svelte",
+		"src/tests/**/*.ts",
+		"tests/edytor.test.tsx",
+		"tests/edytor.test.tsx"
+	]
 }

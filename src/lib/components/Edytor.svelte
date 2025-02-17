@@ -6,10 +6,10 @@
 	import type { Block as BlockType } from '$lib/block/block.svelte.js';
 	const defaultValue: JSONDoc = {
 		children: [
-			// {
-			// 	type: 'paragraph',
-			// 	content: [{ text: 'One', marks: { bold: true } }]
-			// },
+			{
+				type: 'paragraph',
+				content: [{ text: 'One', marks: { bold: true } }]
+			},
 
 			{
 				type: 'image',
@@ -158,7 +158,7 @@
 
 {#if edytor.synced || readonly}
 	<div class={className} use:edytor.attach data-edytor contenteditable={!readonly}>
-		{#each edytor.children || [] as block (block.id)}
+		{#each edytor.root?.children || [] as block (block.id)}
 			<Block {block} />
 		{/each}
 	</div>

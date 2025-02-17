@@ -8,7 +8,7 @@
 	} = $props();
 </script>
 
-<!-- ATTENTION: The comment blocks are needed to prevent unwanted text nodes with whitespace. -->
+<!-- The comment blocks are needed to prevent unwanted text nodes with whitespace. -->
 <!-- thanks for the tip: https://github.com/michael/svedit/blob/main/src/lib/Text.svelte -->
 
 <span use:text.attach style:white-space="break-spaces"

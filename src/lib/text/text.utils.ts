@@ -151,7 +151,7 @@ export function deleteText(this: Text, { direction, length = 1 }: TextOperations
 		direction === 'BACKWARD'
 			? [{ retain: isCollapsed ? yStart - 1 : yStart }, { delete: isCollapsed ? 1 : length }]
 			: [{ retain: isCollapsed ? yStart : yStart }, { delete: isCollapsed ? 1 : length }];
-	console.log({ deltas });
+
 	this.yText.applyDelta(deltas);
 }
 

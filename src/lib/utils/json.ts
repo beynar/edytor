@@ -28,9 +28,11 @@ export type JSONInlineBlock = {
 export type JSONBlock = {
 	type: string;
 	id?: string;
+	data?: Record<string, SerializableContent>;
 	children?: JSONBlock[];
 	content?: (JSONText | JSONInlineBlock)[];
-} & Record<string, unknown>;
+};
+
 export type PartialJSONBlock = Omit<JSONBlock, 'children' | 'content'>;
 
 export type JSONDoc = {

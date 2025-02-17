@@ -108,7 +108,7 @@ export const createTestEdytor = (
 	const { value } = jsx;
 
 	// Find and remove the cursor character, getting its position
-	const cursorPosition = findCursorPosition(value);
+	const { start, end } = findCursorPosition(value);
 
 	const edytor = new Edytor({
 		value,
@@ -116,20 +116,22 @@ export const createTestEdytor = (
 	});
 
 	const getBlockAndTextAtPath = findBlockAndTextAtPath(edytor);
-	if (cursorPosition.start) {
-		const { path, offset } = cursorPosition.start;
-		const { text: startText, block: startBlock } = getBlockAndTextAtPath(path);
-		console.log(startText);
-		console.log(startBlock);
+	if (start) {
+		const { path: startPath, offset: startOffset } = start;
+		const { path: endPath, offset: endOffset } = end || { path: startPath, offset: startOffset };
+		const { text: startText, block: startBlock } = getBlockAndTextAtPath(startPath);
+		const { text: endText, block: endBlock } = getBlockAndTextAtPath(endPath);
 
 		edytor.selection.state = {
 			...edytor.selection.state,
 			startBlock,
-			start: offset,
-			end: offset,
-			endBlock: startBlock,
-			yStart: offset,
-			yEnd: offset,
+			endBlock,
+			startText,
+			endText,
+			start: startOffset,
+			end: endOffset,
+			yStart: startOffset,
+			yEnd: endOffset,
 			isCollapsed: true,
 			yTextContent: startText?.yText.toJSON() || ''
 		};
@@ -162,7 +164,8 @@ export const expectEydorValue = (edytor: Edytor) => (jsx: RenderedNode) => {
 
 export const findBlockAndTextAtPath =
 	(edytor: Edytor) =>
-	(path: number[]): { block: Block; text: Text } => {
+	(p: number[]): { block: Block; text: Text } => {
+		const path = [...p];
 		let block = edytor.root;
 		const textIndex = path.pop()!;
 

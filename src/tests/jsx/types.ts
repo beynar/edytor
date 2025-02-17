@@ -41,4 +41,8 @@ export interface IntrinsicElements {
 	quote: any;
 	paragraph: any;
 	fragment: any;
+	blockquote: any;
+	'list-item': any;
+	'ordered-list': any;
+	'unordered-list': any;
 }

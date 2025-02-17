@@ -68,6 +68,15 @@
 				});
 			};
 		return {
+			defaultBlock: (parent) => {
+				if (parent.type === 'ordered-list') {
+					return 'list-item';
+				}
+				if (parent.type === 'unordered-list') {
+					return 'list-item';
+				}
+				return 'paragraph';
+			},
 			hotkeys: {
 				'mod+b': setMarkAndSelect('bold'),
 				'mod+i': setMarkAndSelect('italic'),
@@ -92,9 +101,9 @@
 				paragraph,
 				details,
 				heading,
-				orderedList,
-				unorderedList,
-				listItem,
+				'ordered-list': orderedList,
+				'unordered-list': unorderedList,
+				'list-item': listItem,
 				horizontalRule
 			}
 		};

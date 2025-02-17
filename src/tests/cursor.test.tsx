@@ -41,7 +41,7 @@ describe('Get the cursor position', () => {
 	});
 
 	it('should get both start and end cursor positions with marks and inline blocks', () => {
-		const { value: value2 } = (
+		const { value } = (
 			<root>
 				<paragraph>
 					He|llo <bold>world</bold>! <mention>hello</mention> Hel|lo
@@ -49,7 +49,7 @@ describe('Get the cursor position', () => {
 			</root>
 		);
 
-		const cursor2 = findCursorPosition(value2);
+		const cursor2 = findCursorPosition(value);
 		expect(cursor2).toEqual({
 			start: { path: [0, 0], offset: 2 },
 			end: { path: [0, 2], offset: 4 }
@@ -57,7 +57,7 @@ describe('Get the cursor position', () => {
 	});
 
 	it('should handle only one cursor position', () => {
-		const { value: value3 } = (
+		const { value } = (
 			<root>
 				<paragraph>
 					Hello <bold>world</bold>! <mention>hello</mention> Hel|lo
@@ -66,15 +66,42 @@ describe('Get the cursor position', () => {
 					Hello <bold>world</bold>! <mention>hello</mention> Hello
 				</paragraph>
 				<paragraph>
-					Hello <bold>wo|rld</bold>! <mention>hello</mention> Hel|lo
+					Hello <bold>wo|rld</bold>! <mention>hello</mention> Hello
 				</paragraph>
 			</root>
 		);
 
-		const cursor3 = findCursorPosition(value3);
+		const cursor3 = findCursorPosition(value);
 		expect(cursor3).toEqual({
 			start: { path: [0, 2], offset: 4 },
 			end: { path: [2, 0], offset: 8 }
+		});
+	});
+	it('should handle one cursor position into a nested block', () => {
+		const { value } = (
+			<root>
+				<paragraph>
+					Hello <bold>world</bold>! <mention>hello</mention> Hello
+					<paragraph>
+						Hello <bold>world</bold>! <mention>hello</mention> Hello
+					</paragraph>
+					<paragraph>
+						Hello <bold>world</bold>! <mention>hello</mention> Hel|lo
+					</paragraph>
+				</paragraph>
+				<paragraph>
+					Hello <bold>world</bold>! <mention>hello</mention> Hello
+				</paragraph>
+				<paragraph>
+					Hello <bold>world</bold>! <mention>hello</mention> Hello
+				</paragraph>
+			</root>
+		);
+
+		const cursor3 = findCursorPosition(value);
+		expect(cursor3).toEqual({
+			start: { path: [0, 1, 2], offset: 4 },
+			end: null
 		});
 	});
 });

@@ -179,7 +179,7 @@ pnpm add edytor
 
 Plugins are the primary way to extend Edytor's functionality. They allow you to add custom blocks, marks, inline blocks, hotkeys, and hook into various editor events. Each plugin is a function that receives the editor instance and returns a set of definitions and operations.
 
-Plugins are best written in Svelte files (`.svelte`) to take full advantage of Svelte's snippets system and template syntax when defining block and mark snippets. You can define snippets for blocks, marks, inline blocks, hotkeys, and operations and still be able to use them inside the <script module> </script>tag of your file that will export the whole plugin.
+Plugins are best written in Svelte files (`.svelte`) to take full advantage of Svelte's snippets system and template syntax when defining block and mark snippets. You can define snippets for blocks, marks, inline blocks, hotkeys, and operations and still be able to use them inside the `<script module>` `</script>`tag of your file that will export the whole plugin.
 
 ### Plugin Structure
 
@@ -226,45 +226,45 @@ const MyPlugin = (editor: Edytor) => ({
 
 Blocks are the fundamental building blocks of the editor. They can be paragraphs, headings, lists, or any custom block type.
 
-| Option              | Type       | Description                                                   |
-| ------------------- | ---------- | ------------------------------------------------------------- |
-| `snippet`           | `Snippet`  | Svelte snippet for rendering the block                        |
-| `void`              | `boolean`  | If true, block is not editable but can have editable captions |
-| `island`            | `boolean`  | If true, block is editable but structurally isolated          |
-| `transformText`     | `Function` | Transform text content within the block                       |
-| `onFocus`           | `Function` | Called when block receives focus                              |
-| `onBlur`            | `Function` | Called when block loses focus                                 |
-| `onSelect`          | `Function` | Called when block is selected                                 |
-| `onDeselect`        | `Function` | Called when block is deselected                               |
-| `normalizeContent`  | `Function` | Normalize block content after operations                      |
-| `normalizeChildren` | `Function` | Normalize block children after operations                     |
-| `schema`            | `any`      | Schema for synchronization state data                         |
+| Option              | Type       | Description                                                   | Example Use Case                                           |
+| ------------------- | ---------- | ------------------------------------------------------------- | ---------------------------------------------------------- |
+| `snippet`           | `Snippet`  | Svelte snippet for rendering the block                        | Defining how a code block renders with syntax highlighting |
+| `void`              | `boolean`  | If true, block is not editable but can have editable captions | Image blocks with editable captions                        |
+| `island`            | `boolean`  | If true, block is editable but structurally isolated          | Code blocks that should be merged with other blocks        |
+| `transformText`     | `Function` | Transform text content within the block                       | Adding syntax highlighting to code blocks in real-time     |
+| `onFocus`           | `Function` | Called when block receives focus                              | Showing a toolbar when focusing a heading block            |
+| `onBlur`            | `Function` | Called when block loses focus                                 | Make an indicator disapear                                 |
+| `onSelect`          | `Function` | Called when block is selected                                 | Showing resize handles when selecting an image block       |
+| `onDeselect`        | `Function` | Called when block is deselected                               | Hiding UI controls when deselecting a block                |
+| `normalizeContent`  | `Function` | Normalize block content after operations                      | Ensuring list items always start with a bullet point       |
+| `normalizeChildren` | `Function` | Normalize block children after operations                     | Ensuring table cells are properly structured               |
+| `schema`            | `any`      | Schema for synchronization state data                         | Defining the structure of a table block's metadata         |
 
 ### Mark Definitions
 
 Marks are used for text formatting like bold, italic, or custom formatting.
 
-| Option    | Type      | Description                           |
-| --------- | --------- | ------------------------------------- |
-| `snippet` | `Snippet` | Svelte snippet for rendering the mark |
+| Option    | Type      | Description                           | Example Use Case                                          |
+| --------- | --------- | ------------------------------------- | --------------------------------------------------------- |
+| `snippet` | `Snippet` | Svelte snippet for rendering the mark | Rendering highlighted text with a custom background color |
 
 ### Plugin Operations
 
 Operations allow you to hook into various editor events and modify behavior.
 
-| Operation                | Description                                 |
-| ------------------------ | ------------------------------------------- |
-| `onBeforeOperation`      | Called before any operation is executed     |
-| `onAfterOperation`       | Called after any operation is executed      |
-| `onChange`               | Called when editor value changes            |
-| `onSelectionChange`      | Called when selection changes               |
-| `placeholder`            | Define placeholder content for empty blocks |
-| `onEdytorAttached`       | Called when editor is attached to DOM       |
-| `onBlockAttached`        | Called when a block is attached to DOM      |
-| `onTextAttached`         | Called when text is attached to DOM         |
-| `defaultBlock`           | Define default block type                   |
-| `onDeleteSelectedBlocks` | Called when selected blocks are deleted     |
-| `onBeforeInput`          | Called before input is processed            |
+| Operation                | Description                                          | Example Use Case                                   |
+| ------------------------ | ---------------------------------------------------- | -------------------------------------------------- |
+| `onBeforeOperation`      | Called before any operation is executed              | Validating table cell merges before they happen    |
+| `onAfterOperation`       | Called after any operation is executed               | Updating a table of contents after heading changes |
+| `onChange`               | Called when editor value changes                     | Syncing content with external storage              |
+| `onSelectionChange`      | Called when selection changes                        | Updating a formatting toolbar position             |
+| `placeholder`            | Define placeholder content for empty blocks          | Showing "Type '/' for commands" in empty blocks    |
+| `onEdytorAttached`       | Called when editor is attached to DOM                | Initializing third-party libraries                 |
+| `onBlockAttached`        | Called when a block is attached to DOM               | Running some svelte action on the node             |
+| `onTextAttached`         | Called when text is attached to DOM                  | Running some svelte action on the node             |
+| `defaultBlock`           | Define default block type when a new one is inserted | Using different default blocks based on context    |
+| `onDeleteSelectedBlocks` | Called when selected blocks are deleted              | Cleaning up resources when deleting media blocks   |
+| `onBeforeInput`          | Called before input is processed                     | Converting markdown shortcuts as you type          |
 
 ### Prevention in Plugin Operations
 

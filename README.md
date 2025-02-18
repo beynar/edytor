@@ -8,7 +8,7 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 [![Svelte v5](https://img.shields.io/badge/Svelte-v5-FF3E00.svg)](https://svelte.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
-[![Bundle size](https://deno.bundlejs.com/badge?q=edytor@latest&treeshake=%5B*%5D)](https://deno.bundlejs.com/badge?q=edytor@latest&treeshake=%5B*%5D)
+[![Bundle size](https://deno.bundlejs.com/badge?q=edytor@latest&treeshake=%5B*%5D&config=%7B%22esbuild%22:%7B%22external%22:%5B%22svelte%22,%22clx%22%5D%7D%7D)](https://deno.bundlejs.com/badge?q=edytor@latest&treeshake=%5B*%5D&config=%7B%22esbuild%22:%7B%22external%22:%5B%22svelte%22,%22clx%22%5D%7D%7D)
 
 <p>
     <a href="#features">Features</a> •
@@ -175,6 +175,188 @@ pnpm add edytor
 <Edytor {value} {onChange} />
 ```
 
+## 📦 Plugins
+
+Plugins are the primary way to extend Edytor's functionality. They allow you to add custom blocks, marks, inline blocks, hotkeys, and hook into various editor events. Each plugin is a function that receives the editor instance and returns a set of definitions and operations.
+
+Plugins are best written in Svelte files (`.svelte`) to take full advantage of Svelte's snippets system and template syntax when defining block and mark snippets. You can define snippets for blocks, marks, inline blocks, hotkeys, and operations and still be able to use them inside the <script module> </script>tag of your file that will export the whole plugin.
+
+### Plugin Structure
+
+A basic plugin structure looks like this:
+
+```typescript
+const MyPlugin = (editor: Edytor) => ({
+  // Define custom blocks
+  blocks: {
+    myBlock: {
+      snippet: /* Svelte snippet */,
+      // ... block options
+    }
+  },
+  // Define custom marks
+  marks: {
+    myMark: {
+      snippet: /* Svelte snippet */,
+      // ... mark options
+    }
+  },
+  // Define custom inline blocks
+  inlineBlocks: {
+    myInline: {
+      snippet: /* Svelte snippet */,
+      // ... inline block options
+    }
+  },
+  // Define custom hotkeys
+  hotkeys: {
+    'mod+b': (e) => {
+      // Handle hotkey
+    }
+  },
+  // Define plugin operations
+  onBeforeOperation: (payload) => {
+    // Handle before operation
+  },
+  // ... other operations
+});
+```
+
+### Block Definitions
+
+Blocks are the fundamental building blocks of the editor. They can be paragraphs, headings, lists, or any custom block type.
+
+| Option              | Type       | Description                                                   |
+| ------------------- | ---------- | ------------------------------------------------------------- |
+| `snippet`           | `Snippet`  | Svelte snippet for rendering the block                        |
+| `void`              | `boolean`  | If true, block is not editable but can have editable captions |
+| `island`            | `boolean`  | If true, block is editable but structurally isolated          |
+| `transformText`     | `Function` | Transform text content within the block                       |
+| `onFocus`           | `Function` | Called when block receives focus                              |
+| `onBlur`            | `Function` | Called when block loses focus                                 |
+| `onSelect`          | `Function` | Called when block is selected                                 |
+| `onDeselect`        | `Function` | Called when block is deselected                               |
+| `normalizeContent`  | `Function` | Normalize block content after operations                      |
+| `normalizeChildren` | `Function` | Normalize block children after operations                     |
+| `schema`            | `any`      | Schema for synchronization state data                         |
+
+### Mark Definitions
+
+Marks are used for text formatting like bold, italic, or custom formatting.
+
+| Option    | Type      | Description                           |
+| --------- | --------- | ------------------------------------- |
+| `snippet` | `Snippet` | Svelte snippet for rendering the mark |
+
+### Plugin Operations
+
+Operations allow you to hook into various editor events and modify behavior.
+
+| Operation                | Description                                 |
+| ------------------------ | ------------------------------------------- |
+| `onBeforeOperation`      | Called before any operation is executed     |
+| `onAfterOperation`       | Called after any operation is executed      |
+| `onChange`               | Called when editor value changes            |
+| `onSelectionChange`      | Called when selection changes               |
+| `placeholder`            | Define placeholder content for empty blocks |
+| `onEdytorAttached`       | Called when editor is attached to DOM       |
+| `onBlockAttached`        | Called when a block is attached to DOM      |
+| `onTextAttached`         | Called when text is attached to DOM         |
+| `defaultBlock`           | Define default block type                   |
+| `onDeleteSelectedBlocks` | Called when selected blocks are deleted     |
+| `onBeforeInput`          | Called before input is processed            |
+
+### Prevention in Plugin Operations
+
+Many plugin operations and hotkeys receive a `prevent` function as part of their payload. This function is a crucial part of Edytor's plugin system that allows you to:
+
+1. Stop the default behavior of an operation
+2. Register a callback to be executed after the default operation is aborted
+3. Control the flow of operations across multiple plugins
+
+Here's how it works:
+
+```typescript
+// In a hotkey handler precent will also doest a preventDefault on the keyboard event.
+hotkeys: {
+  'mod+b': ({ prevent }) => {
+    // Prevent default and do nothing
+    prevent();
+
+    // Or register a callback to be executed after the operation is aborted
+    prevent(() => {
+      // This code runs after the default operation is aborted
+      // Use this to implement your custom behavior
+    });
+  }
+}
+
+// In an operation handler
+onBeforeOperation: ({ prevent, operation, payload }) => {
+  if (operation === 'splitBlock') {
+    prevent(() => {
+      // This callback will be executed after the default split operation is aborted
+      // Implement your custom split logic here
+    });
+  }
+}
+```
+
+When using multiple plugins, prevention follows these rules:
+
+- If a plugin prevents an operation without providing a callback, the operation is completely stopped
+- If a plugin prevents an operation with a callback, the default operation is aborted and then the callback is executed
+- If multiple plugins try to prevent the same operation, only the first prevention (in plugin order) takes effect
+- If a plugin doesn't call prevent(), the operation continues to the next plugin or executes the default behavior
+
+This system allows plugins to:
+
+- Completely stop operations when needed
+- Replace default behavior with custom logic
+- Ensure their custom logic runs only after the default behavior is properly aborted
+- Build complex features while maintaining predictable behavior
+
+### Example: Simple Bold Mark Plugin
+
+```svelte
+
+<script module>
+	export const boldPlugin = (editor: Edytor) => ({
+		marks: {
+			bold: {
+			snippet: bold
+		}
+	},
+	hotkeys: {
+		'mod+b': ({prevent}) => {
+			prevent(()=>{
+				// Do something
+			});
+		}
+	}
+});
+</script>
+
+{#snippet bold({content}: MarkSnippetPayload)}
+	<strong>{@render content()}</strong>
+{/snippet}
+```
+
+### Using Plugins
+
+To use plugins, pass them to the Edytor component. The order of the plugins is important because the plugins are executed in the order they are passed. So if two plugins are trying to render the same block, the first plugin will win. If two pluggins defined the same hotkey and prevent it, the second plugin will not be executed.
+
+```svelte
+<script>
+	import { Edytor } from 'edytor';
+	import { BoldPlugin, HeadingPlugin } from './plugins';
+
+	const plugins = [BoldPlugin, HeadingPlugin];
+</script>
+
+<Edytor {plugins} />
+```
+
 ## Testing
 
 I'm welcome to any contribution to improve the testing.
@@ -229,3 +411,5 @@ test('split text', () => {
 	);
 });
 ```
+
+### Writing plugins

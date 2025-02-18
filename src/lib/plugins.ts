@@ -186,8 +186,6 @@ export type InlineBlockDefinition = {
 
 export type MarkDefinition = {
 	snippet: Snippet<[MarkSnippetPayload<any>]>;
-	void?: boolean;
-	schema?: any;
 };
 
 export type InitializedPlugin = ReturnType<Plugin>;

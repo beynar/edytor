@@ -54,10 +54,12 @@ If you want to submit an issue please share the json value of the document. It w
 - [x] Content transformation
 - [x] Content normalization
 - [x] Island blocks
+- [x] Customizable hotkeys
 - [x] Void elements and editable void elements
 - [x] Text spanning deletion
 - [x] Block spanning deletion.
-- [x] Every basic block operation
+- [x] Readable JSON data structure
+- [x] Readonly edytor to lightweightly render static content without the Y.js extra works.
 
 ## ✨ Things that are not ready
 
@@ -78,10 +80,11 @@ Edytor structure is built around this key concepts:
 - **Marks**: Texts are simply text with marks that define the formatting.
 - **Inline blocks**: Inline blocks are inline elements that are no editable and render custom components like footnotes, equations, etc.
 
-Example of a document:
+Schematic example of a document:
+(content and children are not dom element, i put them here to help you understand the structure)
 
 ```jsx
-<document>
+<root>
 	<block>
 		<content>
 			<text mark="bold">Hello</text>
@@ -91,33 +94,33 @@ Example of a document:
 			</inline-block>
 		</content>
 		<children>
-			<block>
+			<nested-block>
 				<content>
 					<text>World</text>
 				</content>
-			</block>
-			<block>
+			</nested-block>
+			<nested-block>
 				<content>
 					<text>World</text>
 				</content>
 				<children>
-					<block>
+					<nested-block>
 						<content>
 							<text>World</text>
 						</content>
 					</block>
 				</children>
-			</block>
+			</nested-block>
 		</children>
 	</block>
-</document>
+</root>
 ```
 
 ### Blocks
 
 Blocks are the container elements like paragraphs, headings, and lists.
 They have a content that is an array of inlines blocks or text.
-They have children that is an array of blocks.
+They may have children that is an array of nested-blocks.
 Blocks can be nested unless they are void or inside an island
 
 An island is a block that is editable but is structuraly stable and isolated from the rest of the document.
@@ -129,17 +132,19 @@ Void blocks can render and edit their content anyway. That is usefull to render 
 You may think of a void block as a block that is completely independent from the rest of the document.
 Void blocks acts also like an island but are even less editables.
 
-###
+### Text
 
-### Inlines
+Text is the basic text element that is rendered by the editor. At is core it is a Y.js text with any formatting attributes you want.
 
-Inlines are the inline elements like bold, italic, and links.
-They have a content property that is an array of text.
-They have a type property that is a string that identifies the inline type.
+### Inlines Block
+
+Inlines are inline blocks, useful to render custom components like footnotes, equations, etc.
+They are rendered by the user code and are not editable nor focusable.
+They have a data property
 
 ## 🚀 Quick Start
 
-### Installation
+### Installation (not published yet)
 
 ```bash
 npm install edytor
@@ -174,7 +179,9 @@ pnpm add edytor
 
 ## Testing
 
-I've implemented a custom jsx parser to test the editor.
+I'm welcome to any contribution to improve the testing.
+In the end, every block operation should be tested.
+I've implemented a custom jsx parser to simplify testing the editor.
 
 So instead of defining the value as a json object, you can define the value as a jsx element.
 
@@ -193,8 +200,6 @@ is the same as
 }
 ```
 
-I've also implemented the `createTestEdytor` that help with creating an edytor instance from a jsx element in order to test various operations on a virtual edytor.
-
 You can also add one or two cursors with the `|` character into the jsx in order to simulate the cursor position
 
 ```jsx
@@ -202,6 +207,8 @@ You can also add one or two cursors with the `|` character into the jsx in order
 	<paragraph>Hello, |World!|</paragraph>
 </root>
 ```
+
+I've also implemented the `createTestEdytor` that help with creating an edytor instance from a jsx element in order to test various operations on a virtual edytor and test the expected output.
 
 ```jsx
 test('split text', () => {
@@ -213,7 +220,7 @@ test('split text', () => {
 
 	edytor.selection.state.startBlock?.splitBlock({
 		index: edytor.selection.state.yStart,
-		text: edytor.selection.state.startBlock?.firstText
+		text: edytor.selection.state.startText
 	});
 
 	expect(

@@ -1,15 +1,16 @@
 <div align="center">
   <img src="cover.jpg" alt="Edytor Logo" width="60%"/>
 
-  <p>A powerful, extensible rich text editor built with Svelte and Y.js</p>
+<p>A powerful, extensible rich text editor built with Svelte and Y.js</p>
 
 [![npm version](https://badge.fury.io/js/edytor.svg)](https://badge.fury.io/js/edytor)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 [![Svelte v5](https://img.shields.io/badge/Svelte-v5-FF3E00.svg)](https://svelte.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+[![Bundle size](https://deno.bundlejs.com/badge?q=edytor@latest&treeshake=%5B*%5D)](https://deno.bundlejs.com/badge?q=edytor@latest&treeshake=%5B*%5D)
 
-  <p>
+<p>
     <a href="#features">Features</a> •
     <a href="#quick-start">Quick Start</a> •
   </p>

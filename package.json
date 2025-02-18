@@ -1,6 +1,6 @@
 {
-	"name": "edytor-v2",
-	"version": "0.0.1",
+	"name": "edytor",
+	"version": "0.0.11",
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build && npm run package",
@@ -29,6 +29,7 @@
 	"peerDependencies": {
 		"svelte": "^5.0.0"
 	},
+	"main": "./dist/index.js",
 	"devDependencies": {
 		"@playwright/test": "^1.49.1",
 		"@sveltejs/adapter-auto": "^3.3.1",

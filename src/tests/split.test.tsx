@@ -522,4 +522,35 @@ describe('split text operations', () => {
 			</root>
 		);
 	});
+	it('should split a nested paragraph with nested paragraphs', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<paragraph>
+					Start of text with nested paragraph
+					<paragraph>
+						Nested paragraph |content
+						<paragraph>Another Nested paragraph content</paragraph>
+					</paragraph>
+				</paragraph>
+			</root>
+		);
+
+		edytor.selection.state.startBlock?.splitBlock({
+			index: edytor.selection.state.yStart,
+			text: edytor.selection.state.startText
+		});
+
+		expect(
+			<root>
+				<paragraph>
+					Start of text with nested paragraph
+					<paragraph>Nested paragraph </paragraph>
+					<paragraph>
+						content
+						<paragraph>Another Nested paragraph content</paragraph>
+					</paragraph>
+				</paragraph>
+			</root>
+		);
+	});
 });

@@ -8,7 +8,7 @@
 [![npm version](https://badge.fury.io/js/edytor.svg)](https://badge.fury.io/js/edytor)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
-[![Svelte v4](https://img.shields.io/badge/Svelte-v4-FF3E00.svg)](https://svelte.dev)
+[![Svelte v5](https://img.shields.io/badge/Svelte-v5-FF3E00.svg)](https://svelte.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
 
   <p>
@@ -16,6 +16,8 @@
     <a href="#quick-start">Quick Start</a> •
   </p>
 </div>
+
+Edytor aims to be the premier rich text editor for Svelte, providing the same level of power, flexibility and extensibility that Slate.js offers for React. Like Slate.js, Edytor strives to be heavily customizable and provide a powerful API to build any kind of collaborative rich text editor.
 
 ## ⚠️ Work in progress
 
@@ -38,7 +40,7 @@ If you want to submit an issue please share the json value of the document. It w
 
 ## ✨ Things that are ready
 
-- [x] YJS editing
+- [x] YJS backed editing
 - [x] Basic block operations and text operations.
 - [x] Stable data structure
 - [x] Undo/Redo
@@ -55,6 +57,7 @@ If you want to submit an issue please share the json value of the document. It w
 - [x] Void elements and editable void elements
 - [x] Text spanning deletion
 - [x] Block spanning deletion.
+- [x] Every basic block operation
 
 ## ✨ Things that are not ready
 

@@ -196,7 +196,7 @@ is the same as
 ```json
 {
 	"type": "root",
-	"content": [{ "type": "paragraph", "content": [{ "text": "Hello, World!" }] }]
+	"children": [{ "type": "paragraph", "content": [{ "text": "Hello, World!" }] }]
 }
 ```
 

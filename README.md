@@ -89,7 +89,7 @@ Schematic example of a document:
 		<content>
 			<text mark="bold">Hello</text>
 			<text>World</text>
-			<inline-block  type="footnote">
+			<inline-block type="footnote">
 				<!-- Inline block are rendered by the user code -->
 			</inline-block>
 		</content>
@@ -108,7 +108,7 @@ Schematic example of a document:
 						<content>
 							<text>World</text>
 						</content>
-					</block>
+					</nested-block>
 				</children>
 			</nested-block>
 		</children>

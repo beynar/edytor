@@ -46,6 +46,7 @@ type SelectionState = {
 	isBlockSpanning: boolean;
 	isVoid: boolean;
 	voidRoot: Block | null;
+	isVoidEditableElement: boolean;
 	isIsland: boolean;
 	islandRoot: Block | null;
 	relativePosition: RelativePosition | null;
@@ -87,6 +88,7 @@ export class EdytorSelection {
 		isVoid: false,
 		isIsland: false,
 		islandRoot: null,
+		isVoidEditableElement: false,
 		voidRoot: null,
 		relativePosition: null,
 		// TOREMOVE
@@ -166,6 +168,7 @@ export class EdytorSelection {
 		let yEnd = isCollapsed ? yStart : getYIndex(endText, endNode, end);
 
 		if (startText?.parent.isEmpty && yStart > startText.length) {
+			console.log('startText', startText);
 			// In case the placeholder or suggestion is not absolutely positioned, we need to set the selection to the start of the text because caret may be placed after the placeholder which is deceptive
 			return this.setAtTextOffset(startText, startText.length);
 		}
@@ -257,6 +260,8 @@ export class EdytorSelection {
 			contentParts.push(endText);
 		}
 
+		const isVoidEditableElement =
+			isVoid && ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName.toUpperCase() || '');
 		this.state = {
 			selection,
 			start,
@@ -282,6 +287,7 @@ export class EdytorSelection {
 			endNode,
 			startBlock,
 			endBlock,
+			isVoidEditableElement,
 			isVoid,
 			isIsland,
 			islandRoot,

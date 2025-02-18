@@ -59,13 +59,12 @@ If you want to submit an issue please share the json value of the document. It w
 - [x] Block spanning deletion.
 - [x] Readable JSON data structure
 - [x] Readonly edytor to lightweightly render static content without the Y.js extra works.
+- [x] Children normalization
 
 ## ✨ Things that are not ready
 
 - [ ] DND
 - [ ] Battle tested collaborative editing + awareness + providers
-- [ ] Children normalization
-- [ ] Children transformation
 - [ ] Block suggestions
 - [ ] Reactive data (inline)block properties with syncrostate.
 

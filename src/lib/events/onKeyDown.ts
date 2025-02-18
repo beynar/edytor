@@ -4,7 +4,9 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { prevent, PreventionError } from '$lib/utils.js';
 
 export function onKeyDown(this: Edytor, e: KeyboardEvent) {
-	if (this.readonly) return;
+	if (this.readonly || this.selection.state.isVoidEditableElement) {
+		return;
+	}
 
 	try {
 		this.hotKeys.isHotkey(e);

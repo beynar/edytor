@@ -14,6 +14,14 @@
 
 {#snippet image({ block, content }: BlockSnippetPayload)}
 	<figure class="flex flex-col gap-1" use:block.attach>
+		<button
+			onclick={() => {
+				console.log('hello');
+			}}
+		>
+			click me
+		</button>
+		<input type="text" />
 		<img src={'https://placehold.co/600x400'} />
 		<figcaption class="text-sm block">
 			{@render content()}

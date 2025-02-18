@@ -7,7 +7,6 @@
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-	import ReadonlyEditor from '$lib/components/ReadonlyEditor.svelte';
 	import { Inspect } from 'svelte-inspect-value';
 
 	let edytor = $state<EdytorContext>();

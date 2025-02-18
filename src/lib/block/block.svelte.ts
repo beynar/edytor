@@ -28,7 +28,8 @@ import {
 	addInlineBlock,
 	acceptSuggestedText,
 	suggestText,
-	deleteContentAtRange
+	deleteContentAtRange,
+	normalizeChildren
 } from './block.utils.js';
 import { id } from '$lib/utils.js';
 import type { BlockDefinition } from '$lib/plugins.js';
@@ -64,8 +65,8 @@ export class Block {
 	yBlock: YBlock;
 	parent?: Block;
 	yChildren: Y.Array<YBlock>;
-	yContent: Y.Array<YBlock | Y.Text>;
 	children = $state<Block[]>([]);
+	yContent: Y.Array<YBlock | Y.Text>;
 	content = $state<(Text | InlineBlock)[]>([]);
 	id = $state<string>(id('b'));
 	data = $state<Record<string, any>>({});
@@ -316,6 +317,8 @@ export class Block {
 	removeInlineBlock = this.batch('removeInlineBlock', removeInlineBlock.bind(this));
 	addInlineBlock = this.batch('addInlineBlock', addInlineBlock.bind(this));
 	normalizeContent = this.batch('normalizeContent', normalizeContent.bind(this));
+	normalizeChildren = this.batch('normalizeChildren', normalizeChildren.bind(this));
+
 	suggestText = this.batch('suggestText', suggestText.bind(this));
 	acceptSuggestedText = this.batch('acceptSuggestedText', acceptSuggestedText.bind(this));
 	deleteContentAtRange = this.batch('deleteContentAtRange', deleteContentAtRange.bind(this));
@@ -434,7 +437,7 @@ export class Block {
 		node.setAttribute('data-edytor-block', `true`);
 		node.setAttribute('data-edytor-type', `${this.#type}`);
 
-		const pluginDestroy = this.edytor.plugins.reduce(
+		const onDestroy = this.edytor.plugins.reduce(
 			(acc, plugin) => {
 				const action = plugin.onBlockAttached?.({ node, block: this });
 				action && acc.push(action);
@@ -451,7 +454,7 @@ export class Block {
 				this.yChildren.unobserve(this.observeChildren);
 				this.yContent.unobserve(this.observeContent);
 				this.edytor.idToBlock.delete(this.id);
-				pluginDestroy.forEach((destroy) => destroy());
+				onDestroy.forEach((destroy) => destroy());
 			}
 		};
 	};

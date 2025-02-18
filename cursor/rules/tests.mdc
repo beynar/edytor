@@ -56,7 +56,5 @@ The goal of tests are to test every blocks operations defined in [block.utils.ts
 We want to test every edge cases possible i order to make the edytor ultrarobust.
 
 
-
-
 When you write titles for your tests be consise because otherwise I have not enough room to read it. 
 

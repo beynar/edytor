@@ -53,6 +53,7 @@ export type BlockOperations = {
 		text: Text;
 	};
 	normalizeContent: {};
+	normalizeChildren: {};
 	suggestText: {
 		value: (JSONText | JSONInlineBlock)[] | string | null;
 	};
@@ -105,6 +106,7 @@ export function addChildBlock(
 ) {
 	const newBlock = new Block({ parent: this, edytor: this.edytor, block });
 	this.yChildren.insert(index, [newBlock.yBlock]);
+	this.normalizeChildren();
 	return newBlock;
 }
 
@@ -117,6 +119,7 @@ export function addChildBlocks(
 		index,
 		newBlocks.map((block) => block.yBlock)
 	);
+	this.normalizeChildren();
 	return newBlocks;
 }
 
@@ -128,13 +131,16 @@ export function insertBlockAfter(
 		return null;
 	}
 	this.yChildren.delete(0, this.children.length);
-	return this.parent.addChildBlock({
+	const result = this.parent.addChildBlock({
 		block: {
 			...block,
 			children: this.value.children
 		},
 		index: this.index + 1
 	});
+	this.parent?.normalizeChildren();
+
+	return result;
 }
 
 export function insertBlockBefore(
@@ -144,13 +150,13 @@ export function insertBlockBefore(
 	if (!this.parent) {
 		return null;
 	}
-	return this.parent.addChildBlock({
-		block: {
-			...block,
-			children: this.value.children
-		},
+	const result = this.parent.addChildBlock({
+		block,
 		index: this.index
 	});
+	this.parent?.normalizeChildren();
+
+	return result;
 }
 
 export function splitBlock(
@@ -181,7 +187,7 @@ export function splitBlock(
 	if (hasChildren) {
 		this.yChildren.delete(0, this.children.length);
 	}
-
+	this.parent?.normalizeChildren();
 	return newBlock;
 }
 
@@ -212,6 +218,7 @@ export function removeBlock(
 			})
 		);
 	}
+	this.parent?.normalizeChildren();
 }
 
 export function mergeBlockBackward(this: Block): Block | null {
@@ -246,6 +253,7 @@ export function mergeBlockBackward(this: Block): Block | null {
 	}
 	// Remove the current block from its position
 	this.parent.yChildren.delete(this.index + this.children.length, 1);
+	this.parent?.normalizeChildren();
 
 	return closestPreviousBlock;
 }
@@ -274,6 +282,8 @@ export function mergeBlockForward(this: Block): Block | null {
 		);
 	}
 	nextBlock.parent?.yChildren.delete(nextBlock.index, 1);
+	this.normalizeContent();
+	this.normalizeChildren();
 	return nextBlock;
 }
 
@@ -301,6 +311,7 @@ export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): 
 		block: this.value
 	});
 	currentBlock.yChildren.insert(lastIndex!, [newBlock.yBlock]);
+	currentBlock.parent?.normalizeChildren();
 	return newBlock;
 }
 
@@ -324,6 +335,8 @@ export function unNestBlock(this: Block): Block | null {
 
 	grandParent.yChildren.insert(parent.index + 1, [newBlock.yBlock]);
 	parent.yChildren.delete(index, 1);
+	parent.normalizeChildren();
+	grandParent.normalizeChildren();
 	return newBlock;
 }
 
@@ -357,6 +370,8 @@ export function nestBlock(this: Block): Block | null {
 		);
 	}
 	this.parent.yChildren.delete(this.index, 1);
+	this.parent?.normalizeChildren();
+	previousBlock.normalizeChildren();
 	return newBlock;
 }
 
@@ -414,6 +429,9 @@ export function setBlock(this: Block, { value }: BlockOperations['setBlock']) {
 			this.yChildren.delete(0, this.children.length);
 		}
 	});
+
+	this.normalizeChildren();
+	this.normalizeContent();
 }
 
 export function pushContentIntoBlock(
@@ -448,7 +466,7 @@ export function pushContentIntoBlock(
 			}
 		}
 	}
-	console.log(this.yContent.toArray());
+	this.normalizeContent();
 }
 
 export function removeInlineBlock(
@@ -598,6 +616,24 @@ export function normalizeContent(this: Block): void {
 	}
 }
 
+export function normalizeChildren(this: Block): void {
+	if (this.type === 'root' && this.yChildren.length === 0) {
+		const newBlock = new Block({
+			parent: this,
+			edytor: this.edytor,
+			block: { type: this.edytor.getDefaultBlock(this), children: [] }
+		});
+		this.yChildren.insert(0, [newBlock.yBlock]);
+		return this.normalizeChildren();
+	}
+	const pluginNormalization = this.definition?.normalizeChildren?.({ block: this });
+
+	if (pluginNormalization) {
+		pluginNormalization();
+		this.normalizeChildren();
+	}
+}
+
 export function suggestText(this: Block, { value }: BlockOperations['suggestText']) {
 	if (typeof value === 'string') {
 		this.suggestions = [[{ text: value }]];
@@ -665,6 +701,5 @@ export function deleteContentAtRange(
 		}
 	});
 	this.yContent.delete(startIndex + 1, numberToDelete);
-
 	this.normalizeContent();
 }

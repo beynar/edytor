@@ -19,12 +19,14 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 		isAtEndOfBlock,
 		yEnd,
 		islandRoot,
-		texts
+		texts,
+		isVoidEditableElement
 	} = this.selection.state;
 
-	if (this.readonly) return;
+	if (this.readonly || isVoidEditableElement) return;
 
 	const { inputType, dataTransfer, data } = e;
+
 	try {
 		// Build virtual keyboard events for plugins hotkeys to listen to before handling the input event
 		if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') {
@@ -333,7 +335,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 								type: defaultBlock
 							}
 						});
-						this.selection.setAtTextOffset(startText, 0);
+						return this.selection.setAtTextOffset(startText, 0);
 					} else {
 						const newBlock = this.selection.state.startText?.parent?.splitBlock({
 							index: this.selection.state.yStart,

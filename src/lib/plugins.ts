@@ -162,6 +162,12 @@ export type BlockDefinition = {
 	 * If you return a function, it will be executed otherwise it will be ignored.
 	 */
 	normalizeContent?: (payload: { block: Block }) => (() => void) | void;
+	/** Normalize block children
+	 * This is called after each operation on the block.
+	 * You may want to work with the yjs types directly because the operation has not been synced in to the state yet.
+	 * If you return a function, it will be executed otherwise it will be ignored.
+	 */
+	normalizeChildren?: (payload: { block: Block }) => (() => void) | void;
 	/** Schema for synchronization state data. It uses syncroState
 	 *
 	 * See https://github.com/beynar/syncrostate

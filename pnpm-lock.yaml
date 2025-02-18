@@ -20,36 +20,21 @@ importers:
       '@atlaskit/pragmatic-drag-and-drop-live-region':
         specifier: ^1.3.0
         version: 1.3.0
-      '@types/is-hotkey':
-        specifier: ^0.1.10
-        version: 0.1.10
       '@vitest/ui':
         specifier: ^3.0.2
         version: 3.0.2(vitest@3.0.2)
       esm-env:
         specifier: ^1.2.2
         version: 1.2.2
-      highlight.js:
-        specifier: ^11.11.1
-        version: 11.11.1
-      is-hotkey:
-        specifier: ^0.2.0
-        version: 0.2.0
       lib0:
         specifier: ^0.2.99
         version: 0.2.99
-      loro-crdt:
-        specifier: ^0.16.12
-        version: 0.16.12
       prismjs:
         specifier: ^1.29.0
         version: 1.29.0
       slate:
         specifier: ^0.112.0
         version: 0.112.0
-      svelte-inspect-value:
-        specifier: ^0.1.3
-        version: 0.1.3(svelte@5.19.0)
       y-indexeddb:
         specifier: ^9.0.12
         version: 9.0.12(yjs@13.6.23)
@@ -123,6 +108,9 @@ importers:
       svelte-check:
         specifier: ^3.8.6
         version: 3.8.6(postcss-load-config@4.0.2(postcss@8.5.1))(postcss@8.5.1)(svelte@5.19.0)
+      svelte-inspect-value:
+        specifier: ^0.1.3
+        version: 0.1.3(svelte@5.19.0)
       tailwindcss:
         specifier: ^3.4.17
         version: 3.4.17
@@ -770,9 +758,6 @@ packages:
 
   '@types/estree@1.0.6':
     resolution: {integrity: sha512-AYnb1nQyY49te+VRAVgmzfcgjYS91mY5P0TKUDCLEM+gNnA+3T6rWITXRLYCpahpqSQbN5cE+gHpnPyXjHWxcw==}
-
-  '@types/is-hotkey@0.1.10':
-    resolution: {integrity: sha512-RvC8KMw5BCac1NvRRyaHgMMEtBaZ6wh0pyPTBu7izn4Sj/AX9Y4aXU5c7rX8PnM/knsuUpC1IeoBkANtxBypsQ==}
 
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
@@ -1446,9 +1431,6 @@ packages:
     resolution: {integrity: sha512-xelSayHH36ZgE7ZWhli7pW34hNbNl8Ojv5KVmkJD4hBdD3th8Tfk9vYasLM+mXWOZhFkgZfxhLSnrwRr4elSSg==}
     engines: {node: '>=0.10.0'}
 
-  is-hotkey@0.2.0:
-    resolution: {integrity: sha512-UknnZK4RakDmTgz4PI1wIph5yxSs/mvChWs9ifnlXsKuXgWmOkY/hAE0H/k2MIqH0RlRye0i1oC07MCRSD28Mw==}
-
   is-number@7.0.0:
     resolution: {integrity: sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==}
     engines: {node: '>=0.12.0'}
@@ -1593,12 +1575,6 @@ packages:
   loose-envify@1.4.0:
     resolution: {integrity: sha512-lyuxPGr/Wfhrlem2CL/UcnUc1zcqKAImBDzukY7Y5F/yQiNdko6+fRLevlw1HgMySw7f611UIY408EtxRSoK3Q==}
     hasBin: true
-
-  loro-crdt@0.16.12:
-    resolution: {integrity: sha512-wJWTj2xSTW/YKR34AD9ly8ynHoEBE3zlAUIcSkuzTKDfo99q5sMLB/42FUHPqpH9Zb68QMcHtu6EFmpiWhXC5A==}
-
-  loro-wasm@0.16.12:
-    resolution: {integrity: sha512-ZKfc+En/LDZKO+4FG3nDRQzxecNEEDOTYjR7cwhSAZAP/TvzSHfcZwfCmatcvqQM57J+lO+/XtDI7wFPYqPnow==}
 
   loupe@3.1.2:
     resolution: {integrity: sha512-23I4pFZHmAemUnz8WZXbYRSKYj801VDaNv9ETuMh7IrMc7VuVVSo+Z9iLE3ni30+U48iDWfi30d3twAXBYmnCg==}
@@ -2964,8 +2940,6 @@ snapshots:
 
   '@types/estree@1.0.6': {}
 
-  '@types/is-hotkey@0.1.10': {}
-
   '@types/json-schema@7.0.15': {}
 
   '@types/parse-json@4.0.2': {}
@@ -3732,8 +3706,6 @@ snapshots:
     dependencies:
       is-extglob: 2.1.1
 
-  is-hotkey@0.2.0: {}
-
   is-number@7.0.0: {}
 
   is-path-inside@3.0.3: {}
@@ -3870,12 +3842,6 @@ snapshots:
   loose-envify@1.4.0:
     dependencies:
       js-tokens: 4.0.0
-
-  loro-crdt@0.16.12:
-    dependencies:
-      loro-wasm: 0.16.12
-
-  loro-wasm@0.16.12: {}
 
   loupe@3.1.2: {}
 

@@ -8,7 +8,19 @@
 		children: [
 			{
 				type: 'paragraph',
-				content: [{ text: 'One', marks: { bold: true } }]
+				content: [{ text: 'One', marks: { bold: true } }],
+				children: [
+					{
+						type: 'paragraph',
+						content: [{ text: 'Two', marks: { bold: true } }],
+						children: [
+							{
+								type: 'paragraph',
+								content: [{ text: 'Three', marks: { bold: true } }]
+							}
+						]
+					}
+				]
 			},
 
 			{

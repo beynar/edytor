@@ -1,0 +1,62 @@
+---
+description: This rules is to use when writting tests for the edytor.
+globs: 'src/**/*.{test,spec}.{js,ts,tsx}'
+---
+When writting test for the edytor i want you to use the createTestEdytor() to initialize an edytor. 
+This function accept a jsx document and return {edytor, expect}. 
+The expect function accept a jsx element that is the expected output of the edytor value after we applied some operation to it.
+
+
+A jsx document always start with a root element and looks like this in its siple form.
+
+<root>
+    <paragraph>Hello world!</paragraph>
+</root>
+
+You can place a start and end cursor using the pipe character "|". 
+
+For example if i told you to place the cursor at the end of a block you will do something like this. 
+<root>
+    <paragraph>Hello world!|</paragraph>
+</root>
+
+If I told you to create a range you will add another "|" and do something like this.
+
+<root>
+    <paragraph>|Hello| world!</paragraph>
+</root>
+
+If I told you to test a document with nested element only use ordered-list and nested list-item, like this: 
+
+<root>
+    <ordered-list>
+    	<list-item>First item</list-item>
+    	<list-item>Second item with </list-item>
+    	<list-item>nested content</list-item>
+    	<list-item>Third item</list-item>
+    </ordered-list>
+</root>
+
+If i told you to add inline block use mention with no text inside like this.
+I may forget to tell you to add inline block. Add them in order to write tests on more complex datastructure.
+Cursor can no be placed inside inline block
+
+<root>
+    <paragraph>Hello <mention>@ia </mention>  world!|</paragraph>
+</root>
+
+
+In this example the list item is nested inside an ordered list. 
+
+Do not use any other element than root, paragraph, ordered-list or list-item or mention.
+
+
+
+The goal of tests are to test every blocks operations defined in [block.utils.ts](mdc:src/lib/block/block.utils.ts). Every operation should in a dedidcated test file. 
+We want to test every edge cases possible i order to make the edytor ultrarobust.
+
+
+
+
+When you write titles for your tests be consise because otherwise I have not enough room to read it. 
+

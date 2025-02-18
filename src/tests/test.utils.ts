@@ -6,6 +6,7 @@ import type { JSONBlock, JSONDoc, JSONText } from '$lib/utils/json.js';
 import { expect } from 'vitest';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
+import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 
 export const findCursorPosition = (doc: JSONDoc) => {
 	const value = doc.children;
@@ -112,7 +113,7 @@ export const createTestEdytor = (
 
 	const edytor = new Edytor({
 		value,
-		plugins: [richTextPlugin]
+		plugins: [richTextPlugin, mentionPlugin]
 	});
 
 	const getBlockAndTextAtPath = findBlockAndTextAtPath(edytor);
@@ -148,6 +149,14 @@ export const removeIds = (value: JSONBlock[]) => {
 		if (block.children) {
 			block.children = removeIds(block.children);
 		}
+		if (block.content) {
+			block.content = block.content.map((content) => {
+				if ('id' in content) {
+					delete content.id;
+				}
+				return content;
+			});
+		}
 		return block;
 	});
 };
@@ -157,8 +166,6 @@ export const expectEydorValue = (edytor: Edytor) => (jsx: RenderedNode) => {
 
 	const value = removeIds(edytor.root?.value.children || []);
 
-	console.dir(value, { depth: null });
-	console.dir(children, { depth: null });
 	expect(value).toEqual(children);
 };
 

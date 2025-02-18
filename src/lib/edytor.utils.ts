@@ -63,7 +63,6 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 				});
 				return block.yBlock;
 			} else {
-				console.log({ part });
 				const text = new Text({
 					parent: startBlock!,
 					content: part

@@ -12,7 +12,7 @@ describe('split text operations', () => {
 
 		edytor.selection.state.startBlock?.splitBlock({
 			index: edytor.selection.state.yStart,
-			text: edytor.selection.state.startBlock?.firstText
+			text: edytor.selection.state.startText
 		});
 
 		expect(
@@ -34,7 +34,7 @@ describe('split text operations', () => {
 
 		edytor.selection.state.startBlock?.splitBlock({
 			index: edytor.selection.state.yStart,
-			text: edytor.selection.state.startBlock?.firstText
+			text: edytor.selection.state.startText
 		});
 
 		expect(
@@ -58,7 +58,7 @@ describe('split text operations', () => {
 
 		edytor.selection.state.startBlock?.splitBlock({
 			index: edytor.selection.state.yStart,
-			text: edytor.selection.state.startBlock?.firstText
+			text: edytor.selection.state.startText
 		});
 
 		expect(
@@ -78,7 +78,7 @@ describe('split text operations', () => {
 
 		edytor.selection.state.startBlock?.splitBlock({
 			index: edytor.selection.state.yStart,
-			text: edytor.selection.state.startBlock?.firstText
+			text: edytor.selection.state.startText
 		});
 
 		expect(
@@ -104,7 +104,7 @@ describe('split text operations', () => {
 
 		edytor.selection.state.startBlock?.splitBlock({
 			index: edytor.selection.state.yStart,
-			text: edytor.selection.state.startBlock?.firstText
+			text: edytor.selection.state.startText
 		});
 
 		expect(
@@ -134,7 +134,7 @@ describe('split text operations', () => {
 
 		edytor.selection.state.startBlock?.splitBlock({
 			index: edytor.selection.state.yStart,
-			text: edytor.selection.state.startBlock?.firstText
+			text: edytor.selection.state.startText
 		});
 
 		expect(
@@ -158,7 +158,7 @@ describe('split text operations', () => {
 
 		edytor.selection.state.startBlock?.splitBlock({
 			index: edytor.selection.state.yStart,
-			text: edytor.selection.state.startBlock?.firstText
+			text: edytor.selection.state.startText
 		});
 
 		expect(
@@ -186,7 +186,7 @@ describe('split text operations', () => {
 
 		edytor.selection.state.startBlock?.splitBlock({
 			index: edytor.selection.state.yStart,
-			text: edytor.selection.state.startBlock?.firstText
+			text: edytor.selection.state.startText
 		});
 
 		expect(
@@ -216,7 +216,7 @@ describe('split text operations', () => {
 
 		edytor.selection.state.startBlock?.splitBlock({
 			index: edytor.selection.state.yStart,
-			text: edytor.selection.state.startBlock?.firstText
+			text: edytor.selection.state.startText
 		});
 
 		expect(
@@ -244,7 +244,7 @@ describe('split text operations', () => {
 
 		edytor.selection.state.startBlock?.splitBlock({
 			index: edytor.selection.state.yStart,
-			text: edytor.selection.state.startBlock?.firstText
+			text: edytor.selection.state.startText
 		});
 
 		expect(
@@ -257,6 +257,242 @@ describe('split text operations', () => {
 						<italic>ly formatted</italic> nested structure
 					</list-item>
 				</ordered-list>
+			</root>
+		);
+	});
+	it('should split text when cursor is at the end of a nested block', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<ordered-list>
+					<list-item>
+						<bold>End of block|</bold>
+					</list-item>
+				</ordered-list>
+			</root>
+		);
+
+		edytor.selection.state.startBlock?.splitBlock({
+			index: edytor.selection.state.yStart,
+			text: edytor.selection.state.startText
+		});
+
+		expect(
+			<root>
+				<ordered-list>
+					<list-item>
+						<bold>End of block</bold>
+					</list-item>
+					<list-item></list-item>
+				</ordered-list>
+			</root>
+		);
+	});
+	it('should split text when cursor is at the start of a nested block', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<ordered-list>
+					<list-item>
+						<bold>|Start of block</bold>
+					</list-item>
+				</ordered-list>
+			</root>
+		);
+
+		edytor.selection.state.startBlock?.splitBlock({
+			index: edytor.selection.state.yStart,
+			text: edytor.selection.state.startText
+		});
+
+		expect(
+			<root>
+				<ordered-list>
+					<list-item></list-item>
+					<list-item>
+						<bold>Start of block</bold>
+					</list-item>
+				</ordered-list>
+			</root>
+		);
+	});
+
+	it('should handle splitting text with special characters and emojis', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<paragraph>Hello 👋 wo|rld 🌍!</paragraph>
+			</root>
+		);
+
+		edytor.selection.state.startBlock?.splitBlock({
+			index: edytor.selection.state.yStart,
+			text: edytor.selection.state.startText
+		});
+
+		expect(
+			<root>
+				<paragraph>Hello 👋 wo</paragraph>
+				<paragraph>rld 🌍!</paragraph>
+			</root>
+		);
+	});
+
+	it('should handle splitting with empty text nodes between formatted text', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<paragraph>
+					<bold>Hello</bold>
+					{''}
+					<italic>wo|rld</italic>
+				</paragraph>
+			</root>
+		);
+
+		edytor.selection.state.startBlock?.splitBlock({
+			index: edytor.selection.state.yStart,
+			text: edytor.selection.state.startText
+		});
+
+		expect(
+			<root>
+				<paragraph>
+					<bold>Hello</bold>
+					<italic>wo</italic>
+				</paragraph>
+				<paragraph>
+					<italic>rld</italic>
+				</paragraph>
+			</root>
+		);
+	});
+
+	it('should handle splitting text with multiple consecutive spaces', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<paragraph>Hello wo|rld !</paragraph>
+			</root>
+		);
+
+		edytor.selection.state.startBlock?.splitBlock({
+			index: edytor.selection.state.yStart,
+			text: edytor.selection.state.startText
+		});
+
+		expect(
+			<root>
+				<paragraph>Hello wo</paragraph>
+				<paragraph>rld !</paragraph>
+			</root>
+		);
+	});
+
+	it('should handle splitting in multi-level nested lists', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<ordered-list>
+					<list-item>
+						First level
+						<ordered-list>
+							<list-item>Second level with |split</list-item>
+						</ordered-list>
+					</list-item>
+				</ordered-list>
+			</root>
+		);
+
+		edytor.selection.state.startBlock?.splitBlock({
+			index: edytor.selection.state.yStart,
+			text: edytor.selection.state.startText
+		});
+
+		expect(
+			<root>
+				<ordered-list>
+					<list-item>
+						First level
+						<ordered-list>
+							<list-item>Second level with </list-item>
+							<list-item>split</list-item>
+						</ordered-list>
+					</list-item>
+				</ordered-list>
+			</root>
+		);
+	});
+
+	it('should split text with mention before cursor', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<paragraph>
+					Hello <mention data-id="123">@John</mention> wo|rld!
+				</paragraph>
+			</root>
+		);
+
+		edytor.selection.state.startBlock?.splitBlock({
+			index: edytor.selection.state.yStart,
+			text: edytor.selection.state.startText
+		});
+
+		console.log(edytor.selection.state.yStart);
+		console.log(edytor.selection.state.startText?.stringContent);
+		console.dir(edytor.root.value, { depth: null });
+
+		expect(
+			<root>
+				<paragraph>
+					Hello <mention data-id="123">@John</mention> wo
+				</paragraph>
+				<paragraph>rld!</paragraph>
+			</root>
+		);
+	});
+
+	it('should split text with mention after cursor', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<paragraph>
+					Hello wo|rld <mention data-id="123">@John</mention>!
+				</paragraph>
+			</root>
+		);
+
+		edytor.selection.state.startBlock?.splitBlock({
+			index: edytor.selection.state.yStart,
+			text: edytor.selection.state.startText
+		});
+
+		expect(
+			<root>
+				<paragraph>Hello wo</paragraph>
+				<paragraph>
+					rld <mention data-id="123">@John</mention>!
+				</paragraph>
+			</root>
+		);
+	});
+
+	it('should split text with multiple mentions and formatting', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<paragraph>
+					<bold>Hello</bold> <mention id="123">@John</mention> and <italic>wo|rld</italic>{' '}
+					<mention id="456">@Jane</mention>
+				</paragraph>
+			</root>
+		);
+
+		edytor.selection.state.startBlock?.splitBlock({
+			index: edytor.selection.state.yStart,
+			text: edytor.selection.state.startText
+		});
+
+		expect(
+			<root>
+				<paragraph>
+					<bold>Hello</bold> <mention id="123">@John</mention> and <italic>wo</italic>
+				</paragraph>
+				<paragraph>
+					<italic>rld</italic> <mention id="456">@Jane</mention>
+				</paragraph>
 			</root>
 		);
 	});

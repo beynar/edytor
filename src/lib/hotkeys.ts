@@ -137,7 +137,7 @@ const defaultHotKeys = {
 				let nextBlock = selectedBlock.definition.island
 					? selectedBlock.nextBlock
 					: selectedBlock.closestNextBlock;
-				console.log({ nextBlock });
+
 				if (nextBlock && nextBlock instanceof Block) {
 					edytor.selection.selectBlocks(nextBlock);
 					edytor.selection.focusBlocks();

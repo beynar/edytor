@@ -109,10 +109,23 @@
 		</div>
 	</div>
 	<div class="col-span-2">
-		<Inspect expandLevel={2} value={edytor?.root?.value} />
+		<Inspect
+			name="Edytor"
+			noanimate
+			showTypes={false}
+			showLength={false}
+			theme="stereo"
+			expandLevel={2}
+			value={edytor?.root?.value}
+		/>
 
 		<hr class="my-2" />
 		<Inspect
+			name="Selection"
+			noanimate
+			showTypes={false}
+			showLength={false}
+			theme="stereo"
 			value={{
 				start: edytor?.selection?.state?.start,
 				end: edytor?.selection?.state?.end,

@@ -181,6 +181,15 @@ So instead of defining the value as a json object, you can define the value as a
 </root>
 ```
 
+is the same as
+
+```json
+{
+	"type": "root",
+	"content": [{ "type": "paragraph", "content": [{ "text": "Hello, World!" }] }]
+}
+```
+
 I've also implemented the `createTestEdytor` that help with creating an edytor instance from a jsx element in order to test various operations on a virtual edytor.
 
 You can also add one or two cursors with the `|` character into the jsx in order to simulate the cursor position

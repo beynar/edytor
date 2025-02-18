@@ -36,11 +36,5 @@
 </script>
 
 {#snippet mention({ block }: InlineBlockSnippetPayload)}
-	<kbd use:block.attach>@mention</kbd>
+	<kbd data-edytor-mention use:block.attach>@mention</kbd>
 {/snippet}
-
-<style>
-	kbd {
-		@apply px-0.5 py-0.5 rounded-md bg-slate-600/50;
-	}
-</style>

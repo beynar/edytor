@@ -1,7 +1,7 @@
 # Edytor 📝
 
 <div align="center">
-  <img src="assets/edytor-logo.png" alt="Edytor Logo" width="200"/>
+  <img src="cover.jpg" alt="Edytor Logo" width="200"/>
 
   <p>A powerful, extensible rich text editor built with Svelte and Y.js</p>
 

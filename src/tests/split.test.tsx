@@ -496,4 +496,30 @@ describe('split text operations', () => {
 			</root>
 		);
 	});
+
+	it('should split a paragraph with nested paragraphs', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<paragraph>
+					Start of text |with nested paragraph
+					<paragraph>Nested paragraph content</paragraph>
+				</paragraph>
+			</root>
+		);
+
+		edytor.selection.state.startBlock?.splitBlock({
+			index: edytor.selection.state.yStart,
+			text: edytor.selection.state.startText
+		});
+
+		expect(
+			<root>
+				<paragraph>Start of text </paragraph>
+				<paragraph>
+					with nested paragraph
+					<paragraph>Nested paragraph content</paragraph>
+				</paragraph>
+			</root>
+		);
+	});
 });

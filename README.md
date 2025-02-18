@@ -83,7 +83,7 @@ Edytor structure is built around this key concepts:
 Schematic example of a document:
 (content and children are not dom element, i put them here to help you understand the structure)
 
-```jsx
+```html
 <root>
 	<block>
 		<content>
@@ -185,7 +185,7 @@ I've implemented a custom jsx parser to simplify testing the editor.
 
 So instead of defining the value as a json object, you can define the value as a jsx element.
 
-```jsx
+```html
 <root>
 	<paragraph>Hello, World!</paragraph>
 </root>

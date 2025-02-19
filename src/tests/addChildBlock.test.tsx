@@ -1,6 +1,6 @@
 /** @jsxImportSource ./jsx */
 import { describe, it } from 'vitest';
-import { createTestEdytor } from './test.utils.js';
+import { createTestEdytor, findBlockAndTextAtPath } from './test.utils';
 
 describe('add block after operations', () => {
 	it('should add a child block to an empty paragraph', () => {
@@ -128,6 +128,31 @@ describe('add block after operations', () => {
 					<paragraph></paragraph>
 					<paragraph>Child 1</paragraph>
 					<paragraph>Child 2</paragraph>
+				</paragraph>
+			</root>
+		);
+	});
+});
+
+describe('addChildBlock', () => {
+	it('should add a child block at the specified index', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<paragraph>Hello|</paragraph>
+			</root>
+		);
+
+		const { block } = findBlockAndTextAtPath(edytor)([0, 0]);
+		block?.addChildBlock({
+			block: { type: 'paragraph' },
+			index: 0
+		});
+
+		expect(
+			<root>
+				<paragraph>
+					Hello
+					<paragraph></paragraph>
 				</paragraph>
 			</root>
 		);

@@ -301,7 +301,7 @@ export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): 
 		return null;
 	}
 
-	if (this.path.some((p, i) => path[i] === p)) {
+	if (this.path.some((p, i) => path[i] === p) && this.path.length < path.length) {
 		// this prevent a block from being moved into itself
 		return null;
 	}

@@ -13,7 +13,8 @@
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"test:integration": "playwright test",
-		"test:unit": "vitest --ui"
+		"test:unit": "vitest --ui",
+		"tests": "vitest"
 	},
 	"exports": {
 		".": {

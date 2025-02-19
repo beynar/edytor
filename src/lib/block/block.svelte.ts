@@ -278,6 +278,8 @@ export class Block {
 		};
 		if (Object.keys(this.data).length > 0) {
 			value.data = this.data;
+		} else {
+			value.data = {};
 		}
 		if (!children.length) {
 			delete value.children;

@@ -74,7 +74,7 @@ function _renderJSX(
 			content: [
 				{
 					type: tag,
-					data: Object.keys(attributes).length > 0 ? attributes : undefined
+					data: Object.keys(attributes).length > 0 ? attributes : {}
 				}
 			]
 		};
@@ -85,11 +85,11 @@ function _renderJSX(
 
 	const block: JSONBlock = {
 		type: tag,
-		data: Object.keys(attributes).length > 0 ? attributes : undefined
+		data: Object.keys(attributes).length > 0 ? attributes : {}
 	};
 	if (children.length) block.children = children;
 	if (content.length) block.content = content;
-	if (!block.data) delete block.data;
+	if (!block.data) block.data = {};
 	return block;
 }
 

@@ -1,6 +1,6 @@
 /** @jsxImportSource ./jsx */
 import { describe, it } from 'vitest';
-import { createTestEdytor } from './test.utils.js';
+import { createTestEdytor, findBlockAndTextAtPath } from './test.utils';
 
 describe('split text operations', () => {
 	it('should split text in the middle of a word', () => {
@@ -546,6 +546,26 @@ describe('split text operations', () => {
 						<paragraph>Another Nested paragraph content</paragraph>
 					</paragraph>
 				</paragraph>
+			</root>
+		);
+	});
+});
+
+describe('splitBlock', () => {
+	it('should split a block at cursor position', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<paragraph>Hello| world!</paragraph>
+			</root>
+		);
+
+		const { block, text } = findBlockAndTextAtPath(edytor)([0, 0]);
+		block?.splitBlock({ index: 5, text });
+
+		expect(
+			<root>
+				<paragraph>Hello</paragraph>
+				<paragraph> world!</paragraph>
 			</root>
 		);
 	});

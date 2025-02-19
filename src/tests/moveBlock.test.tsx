@@ -1,6 +1,6 @@
 /** @jsxImportSource ./jsx */
 import { describe, it } from 'vitest';
-import { createTestEdytor } from './test.utils.js';
+import { createTestEdytor, findBlockAndTextAtPath } from './test.utils';
 
 describe('move block operations', () => {
 	it('should move a block to a new position at the same level', () => {
@@ -265,6 +265,29 @@ describe('move block operations', () => {
 					<paragraph>Nested</paragraph>
 					<italic>Content</italic>
 				</paragraph>
+			</root>
+		);
+	});
+
+	it('should move a block to the specified path', () => {
+		const { edytor, expect } = createTestEdytor(
+			<root>
+				<ordered-list>
+					<list-item>First|</list-item>
+					<list-item>Second</list-item>
+				</ordered-list>
+			</root>
+		);
+
+		console.log(edytor.selection.state.startBlock?.path);
+		edytor.selection.state.startBlock?.moveBlock({ path: [0, 1] });
+
+		expect(
+			<root>
+				<ordered-list>
+					<list-item>Second</list-item>
+					<list-item>First</list-item>
+				</ordered-list>
 			</root>
 		);
 	});

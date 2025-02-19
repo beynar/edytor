@@ -2,6 +2,7 @@ import { EdytorSelection } from './selection.svelte.js';
 import { Text } from '../text/text.svelte.js';
 import { Block } from '$lib/block/block.svelte.js';
 import { Edytor } from '$lib/edytor.svelte.js';
+import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 
 export function getTextOfNode(this: EdytorSelection, node: Node | null) {
 	if (!node) return null;
@@ -38,26 +39,54 @@ export function getTextOfNode(this: EdytorSelection, node: Node | null) {
 			}
 		}
 	}
-
 	return text;
 }
+
+export function getInlineBlockOfNode(this: EdytorSelection, node: Node | null) {
+	if (!node) return null;
+	let inlineBlock: InlineBlock | null = null;
+	if (node.nodeType !== Node.TEXT_NODE) {
+		const treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT, (node) => {
+			if (node instanceof HTMLElement && node.hasAttribute('data-edytor-inline-block')) {
+				return NodeFilter.FILTER_ACCEPT;
+			}
+			return NodeFilter.FILTER_SKIP;
+		});
+
+		const inlineBlock = treeWalker.nextNode() as InlineBlock | null;
+		return inlineBlock;
+	} else {
+		console.log('here');
+		let currentNode = node;
+		while (currentNode.parentElement && !inlineBlock) {
+			inlineBlock = this.edytor.nodeToInlineBlock.get(currentNode) || null;
+			currentNode = currentNode.parentElement;
+			console.log({ currentNode });
+		}
+	}
+	return inlineBlock;
+}
+
 export function getTextsInSelection(
 	this: EdytorSelection,
 	startNode: Node | null,
 	endNode: Node | null,
+
 	ranges: Range[]
 ): {
 	startText: Text | null;
 	endText: Text | null;
+	inlineBlock: InlineBlock | null;
 	texts: Text[];
 } {
 	const startText = this.getTextOfNode(startNode);
 	const endText = this.getTextOfNode(endNode);
-
+	const inlineBlock = this.getInlineBlockOfNode(startNode);
 	if (!startText) {
 		return {
 			startText: null,
 			endText: null,
+			inlineBlock,
 			texts: []
 		};
 	}
@@ -121,6 +150,7 @@ export function getTextsInSelection(
 	return {
 		startText,
 		endText,
+		inlineBlock,
 		texts: Array.from(texts)
 	};
 }

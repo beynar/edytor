@@ -5,6 +5,7 @@ import { Text } from '../text/text.svelte.js';
 import {
 	climb,
 	climbDom,
+	getInlineBlockOfNode,
 	getRangesFromSelection,
 	getTextOfNode,
 	getTextsInSelection,
@@ -58,6 +59,7 @@ export class EdytorSelection {
 	edytor: Edytor;
 	focusedBlocks = new SvelteSet<Block>();
 	selectedBlocks = new SvelteSet<Block>();
+	selectedInlineBlock = new SvelteSet<InlineBlock>();
 	hasSelectedAll = $state(false);
 
 	state = $state<SelectionState>({
@@ -105,6 +107,7 @@ export class EdytorSelection {
 	};
 	getTextOfNode = getTextOfNode.bind(this);
 	getTextsInSelection = getTextsInSelection.bind(this);
+	getInlineBlockOfNode = getInlineBlockOfNode.bind(this);
 
 	init = () => {
 		this.edytor.undoManager.on('stack-item-added', (event: any) => {
@@ -137,7 +140,12 @@ export class EdytorSelection {
 		this.state.yTextContent = this.state.startText?.yText.toJSON()!;
 	};
 
+	onSelectStart = () => {
+		console.log('select start');
+	};
+
 	onSelectionChange = () => {
+		console.log('selection change');
 		const selection = window.getSelection();
 
 		if (!selection?.anchorNode || !this.edytor.container?.contains(selection.anchorNode as Node)) {
@@ -159,10 +167,26 @@ export class EdytorSelection {
 		const start = isReversed ? focusOffset : anchorOffset;
 		const end = isReversed ? anchorOffset : focusOffset;
 
-		const { startText, endText, texts } = this.getTextsInSelection(startNode, endNode, ranges);
+		const { startText, endText, texts, inlineBlock } = this.getTextsInSelection(
+			startNode,
+			endNode,
+			ranges
+		);
 
 		this.selectBlocks();
 		this.focusBlocks(...texts.map((text) => text.parent));
+		this.selectedInlineBlock.clear();
+		console.log({ inlineBlock });
+		if (!startText) {
+			// If the user is focusind on a white space node.
+			if (this.state.startText && !inlineBlock) {
+				this.setAtTextOffset(this.state.startText, this.state.yStart);
+			} else {
+				window.getSelection()?.removeAllRanges();
+				inlineBlock && this.selectedInlineBlock.add(inlineBlock);
+				return;
+			}
+		}
 
 		let yStart = getYIndex(startText, startNode, start);
 		let yEnd = isCollapsed ? yStart : getYIndex(endText, endNode, end);

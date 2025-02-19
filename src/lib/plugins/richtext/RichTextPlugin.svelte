@@ -175,11 +175,7 @@
 		<p>
 			{@render content()}
 		</p>
-		{#if children}
-			<div style:padding-left="10px">
-				{@render children()}
-			</div>
-		{/if}
+		{@render children?.()}
 	</div>
 {/snippet}
 {#snippet details({ block, content, children }: BlockSnippetPayload)}

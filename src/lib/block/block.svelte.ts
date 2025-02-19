@@ -466,6 +466,32 @@ export class Block {
 			this.void(node);
 		}
 
+		const observeEmptyTextNodes = () => {
+			const treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, {
+				acceptNode: (node) => {
+					if (
+						node.parentElement === node &&
+						node.textContent &&
+						node.textContent.match(/^[\s\u200B-\u200D\uFEFF]*$/)
+					) {
+						return NodeFilter.FILTER_ACCEPT;
+					}
+					return NodeFilter.FILTER_REJECT;
+				}
+			});
+
+			while (treeWalker.nextNode()) {
+				node.removeChild(treeWalker.currentNode);
+			}
+		};
+
+		if (!this.definition.void) {
+			const observer = new MutationObserver(observeEmptyTextNodes);
+			observer.observe(node, { childList: true });
+			onDestroy.push(() => observer.disconnect());
+		}
+
+		observeEmptyTextNodes();
 		return {
 			destroy: () => {
 				this.yChildren.unobserve(this.observeChildren);

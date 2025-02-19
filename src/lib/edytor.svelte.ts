@@ -81,6 +81,7 @@ export class Edytor {
 	container = $state<HTMLDivElement>();
 	idToBlock = new SvelteMap<string, Block>();
 	idToInlineBlock = new SvelteMap<string, InlineBlock>();
+	nodeToInlineBlock = new SvelteMap<Node, InlineBlock>();
 	idToText = new SvelteMap<string, Text>();
 	nodeToText = new SvelteMap<Node, Text>();
 	transaction = new TRANSACTION();

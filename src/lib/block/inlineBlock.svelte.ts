@@ -17,6 +17,11 @@ export class InlineBlock {
 	definition = $state<InlineBlockDefinition>({} as InlineBlockDefinition);
 	edytor: Edytor;
 	node: HTMLElement | undefined;
+
+	get selected() {
+		return this.edytor.selection.selectedInlineBlock.has(this);
+	}
+
 	get type() {
 		return this.#type;
 	}
@@ -65,6 +70,7 @@ export class InlineBlock {
 		node.contentEditable = 'false';
 		node.dataset.edytorInlineBlock = this.#type;
 		this.edytor.idToInlineBlock.set(this.id, this);
+		this.edytor.nodeToInlineBlock.set(node, this);
 		this.node = node;
 	};
 }

@@ -10,8 +10,6 @@
 	const snippet = $derived(block.definition.snippet);
 </script>
 
-{#if snippet}
-	<span data-edytor-inline-block use:block.attach>
-		{@render snippet({ block })}
-	</span>
-{/if}
+<span data-edytor-inline-block use:block.attach>
+	{@render snippet({ block })}
+</span>

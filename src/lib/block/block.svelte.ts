@@ -263,6 +263,10 @@ export class Block {
 		return !this.hasContent && !this.hasChildren;
 	}
 
+	get isNested(): boolean {
+		return (this.parent && this.parent.type !== 'root') || false;
+	}
+
 	get value(): JSONBlock {
 		const children = this.children.map((child) => child.value);
 		const content = this.content.map((part) => part.value).flat();
@@ -282,6 +286,17 @@ export class Block {
 			delete value.content;
 		}
 		return value;
+	}
+
+	isChildOf(block: Block): boolean {
+		let parent = this.parent;
+		while (parent) {
+			if (parent === block) {
+				return true;
+			}
+			parent = parent.parent;
+		}
+		return false;
 	}
 
 	get firstText(): Text {

@@ -109,6 +109,53 @@ const defaultHotKeys = {
 			}
 		});
 	},
+	'shift+arrowup': ({ edytor, prevent }) => {
+		const selectedBlocks = Array.from(edytor.selection.selectedBlocks.values());
+		if (selectedBlocks.length >= 1) {
+			prevent(() => {
+				const selectedBlock = selectedBlocks
+					.toSorted((a, b) => a.path[0] - b.path[0])
+					.at(0) as Block;
+				let prevBlock = selectedBlock.closestPreviousBlock;
+
+				// If the block is inside an island, we will select the island root
+				while (prevBlock?.insideIsland) {
+					if (prevBlock.parent instanceof Block) {
+						prevBlock = prevBlock.parent;
+					}
+				}
+
+				if (prevBlock && prevBlock instanceof Block) {
+					if (selectedBlock.isNested && selectedBlock.parent === prevBlock) {
+						edytor.selection.removeBlockFromSelection(selectedBlock);
+					}
+					edytor.selection.addBlockToSelection(prevBlock);
+				}
+			});
+		}
+	},
+	'shift+arrowdown': ({ edytor, prevent }) => {
+		const selectedBlocks = Array.from(edytor.selection.selectedBlocks.values());
+		if (selectedBlocks.length >= 1) {
+			prevent(() => {
+				const selectedBlock = selectedBlocks
+					.toSorted((a, b) => a.path[0] - b.path[0])
+					.at(-1) as Block;
+
+				let nextBlock = selectedBlock.definition.island
+					? selectedBlock.nextBlock
+					: selectedBlock.closestNextBlock;
+
+				while (nextBlock?.isChildOf(selectedBlock)) {
+					nextBlock = nextBlock.closestNextBlock;
+				}
+
+				if (nextBlock && nextBlock instanceof Block) {
+					edytor.selection.addBlockToSelection(nextBlock);
+				}
+			});
+		}
+	},
 	arrowup: ({ edytor, prevent }) => {
 		const selectedBlocks = edytor.selection.selectedBlocks;
 		if (selectedBlocks.size === 1) {
@@ -223,7 +270,7 @@ const defaultHotKeys = {
 			}
 		}
 	}
-} satisfies Record<string, HotKey>;
+} satisfies Partial<Record<HotKeyCombination, HotKey>>;
 
 // Features:
 // Case insensitive hotkeys

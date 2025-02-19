@@ -432,10 +432,6 @@ describe('split text operations', () => {
 			text: edytor.selection.state.startText
 		});
 
-		console.log(edytor.selection.state.yStart);
-		console.log(edytor.selection.state.startText?.stringContent);
-		console.dir(edytor.root.value, { depth: null });
-
 		expect(
 			<root>
 				<paragraph>

@@ -125,17 +125,7 @@
 			showTypes={false}
 			showLength={false}
 			theme="stereo"
-			value={{
-				start: edytor?.selection?.state?.start,
-				end: edytor?.selection?.state?.end,
-				yStart: edytor?.selection?.state?.yStart,
-				yEnd: edytor?.selection?.state?.yEnd,
-				length: edytor?.selection?.state?.length,
-				isAtStartOfBlock: edytor?.selection?.state?.isAtStartOfBlock,
-				isAtEndOfBlock: edytor?.selection?.state?.isAtEndOfBlock,
-				text: edytor?.selection?.state?.content,
-				yTextContent: edytor?.selection?.state?.yTextContent
-			}}
+			value={edytor?.selection.state}
 		/>
 	</div>
 </div>

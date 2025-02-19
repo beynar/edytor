@@ -104,7 +104,16 @@ export function addChildBlock(
 	this: Block,
 	{ block, index = this.yChildren.length }: BlockOperations['addChildBlock']
 ) {
-	const newBlock = new Block({ parent: this, edytor: this.edytor, block });
+	if (index > this.yChildren.length || index < 0) {
+		index = 0;
+	}
+	const newBlock = new Block({
+		parent: this,
+		edytor: this.edytor,
+		block: block || {
+			type: this.edytor.getDefaultBlock()
+		}
+	});
 	this.yChildren.insert(index, [newBlock.yBlock]);
 	this.normalizeChildren();
 	return newBlock;
@@ -291,10 +300,16 @@ export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): 
 	if (!path.length || path.some((p) => isNaN(p) || p < 0) || !this.parent) {
 		return null;
 	}
+
+	if (this.path.some((p, i) => path[i] === p)) {
+		// this prevent a block from being moved into itself
+		return null;
+	}
+
 	const lastIndex = path.pop();
 	let currentBlock: Block = this.edytor.root!;
 
-	while (path.length > 0) {
+	while (path.length > 0 && currentBlock) {
 		const index = path.shift();
 		if (typeof index !== 'number' || isNaN(index)) break;
 		currentBlock = currentBlock.children[index!];

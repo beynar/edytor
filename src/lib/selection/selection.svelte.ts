@@ -338,6 +338,18 @@ export class EdytorSelection {
 		}
 	};
 
+	addBlockToSelection = (block: Block) => {
+		this.selectedBlocks.add(block);
+		block.definition.onSelect?.({ block });
+		block.node?.setAttribute('data-edytor-selected', 'true');
+	};
+
+	removeBlockFromSelection = (block: Block) => {
+		this.selectedBlocks.delete(block);
+		block.definition.onBlur?.({ block });
+		block.node?.removeAttribute('data-edytor-selected');
+	};
+
 	focusBlocks = (...blocks: Block[]) => {
 		const difference = this.focusedBlocks.difference(new Set(blocks));
 		difference.forEach((block) => {

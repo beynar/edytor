@@ -39,6 +39,14 @@ export const arrowMovePlugin: Plugin = (edytor) => {
 							});
 						}
 					});
+				} else {
+					const selectedBlocks = Array.from(edytor.selection.selectedBlocks.values());
+					const firstSelectedBlock = selectedBlocks.at(0) as Block;
+					const nextBlock = selectedBlocks.at(-1)?.nextBlock;
+					if (nextBlock) {
+						const path = firstSelectedBlock.path;
+						const newBlock = nextBlock?.moveBlock({ path });
+					}
 				}
 			},
 

@@ -202,11 +202,11 @@
 	};
 </script>
 
-<!-- prettier-ignore -->
 <!-- prettier-ignore
 -->{#if edytor.synced || readonly}<!-- prettier-ignore
 	-->
-	<div class={className} use:edytor.attach data-edytor contenteditable={!readonly}><!-- prettier-ignore
+	<div
+	class={className} use:edytor.attach data-edytor contenteditable={!readonly}><!-- prettier-ignore
 		-->{#each edytor.root?.children || [] as block (block.id)}<!-- prettier-ignore
 			--><Block
 				{block}

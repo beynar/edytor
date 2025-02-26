@@ -1,4 +1,5 @@
 <script lang="ts">
+	import {} from 'svelte';
 	import Edytor, { EdytorContext } from '$lib/components/Edytor.svelte';
 	import { IndexeddbPersistence } from '../lib/localProvider.js';
 	import { onMount } from 'svelte';

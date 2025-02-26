@@ -81,6 +81,9 @@ importers:
       daisyui:
         specifier: ^4.12.23
         version: 4.12.23(postcss@8.5.1)
+      dom-parser-mini:
+        specifier: ^2.0.2
+        version: 2.0.2
       eslint:
         specifier: ^8.57.1
         version: 8.57.1
@@ -1126,6 +1129,9 @@ packages:
   doctrine@3.0.0:
     resolution: {integrity: sha512-yS+Q5i3hBf7GBkd4KG8a7eBNNWNGLTaEwwYWUijIYM7zrlYDM0BFXHjjPWlWZ1Rg7UaddZeIDmi9jF3HmqiQ2w==}
     engines: {node: '>=6.0.0'}
+
+  dom-parser-mini@2.0.2:
+    resolution: {integrity: sha512-k53wis6sYyTd7IM7SnRHB1ODXXOCc0uOT8UmFryfVj70ZBin4KW5tiCcpZkAjSMRH/xNKN/7rjbQC5OALwjfFA==}
 
   eastasianwidth@0.2.0:
     resolution: {integrity: sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==}
@@ -3331,6 +3337,8 @@ snapshots:
   doctrine@3.0.0:
     dependencies:
       esutils: 2.0.3
+
+  dom-parser-mini@2.0.2: {}
 
   eastasianwidth@0.2.0: {}
 

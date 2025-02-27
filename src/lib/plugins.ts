@@ -108,6 +108,8 @@ export type PluginOperations = {
 	onDeleteSelectedBlocks?: (payload: { prevent: Prevent; selectedBlocks: Block[] }) => void;
 	/** Called before input is processed */
 	onBeforeInput?: (payload: { prevent: Prevent; e: InputEvent }) => void;
+	/** Called when a paste event is detected */
+	onPaste?: (payload: { prevent: Prevent; e: ClipboardEvent }) => void;
 };
 
 /**

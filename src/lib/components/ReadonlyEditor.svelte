@@ -4,6 +4,7 @@
 	import { createReadonlyBlock } from './readonlyElements.svelte.js';
 	import Block from './Block.svelte';
 	import { Edytor } from '$lib/edytor.svelte.js';
+
 	let {
 		value,
 		class: className,

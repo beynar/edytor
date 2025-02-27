@@ -1,43 +1,58 @@
-import type { Edytor } from '../edytor.svelte.js';
-import type { JSONBlock, JSONInlineBlock, JSONText, SerializableContent } from '../utils/json.js';
+import type { Edytor } from '../../edytor.svelte.js';
+import type {
+	JSONBlock,
+	JSONInlineBlock,
+	JSONText,
+	SerializableContent
+} from '../../utils/json.js';
 import HTMLNode, { type HTMLNodeInterface, type ElementSets } from './parser.js';
 
+export type ElementDefinition = {
+	[tagName: string]: (node: HTMLNodeInterface) => { type: string; [key: string]: any };
+};
 // Element type definitions for creating the output JSON structure
 export interface ElementDefinitions {
-	blocks: { [tagName: string]: (node: HTMLNodeInterface) => { type: string; [key: string]: any } };
-	marks: { [tagName: string]: (node: HTMLNodeInterface) => { type: string; [key: string]: any } };
-	inlineBlocks: {
-		[tagName: string]: (node: HTMLNodeInterface) => { type: string; [key: string]: any };
-	};
+	blocks: ElementDefinition;
+	marks: ElementDefinition;
+	inlineBlocks: ElementDefinition;
 }
 
 // Default element type mappings
 const blocks = {
-	p: (node: HTMLNodeInterface) => ({
+	p: () => ({
 		type: 'paragraph'
 	}),
-	blockquote: (node: HTMLNodeInterface) => ({
-		type: 'block-quote'
+	blockquote: () => ({
+		type: 'blockquote'
 	}),
-	code: (node: HTMLNodeInterface) => ({
+	ul: () => ({
+		type: 'unordered-list'
+	}),
+	ol: () => ({
+		type: 'ordered-list'
+	}),
+	li: () => ({
+		type: 'list-item'
+	}),
+	code: () => ({
 		type: 'code'
 	})
 };
 
 const marks = {
-	strong: (node: HTMLNodeInterface) => ({
+	strong: () => ({
 		type: 'bold'
 	}),
-	em: (node: HTMLNodeInterface) => ({
+	em: () => ({
 		type: 'italic'
 	}),
-	u: (node: HTMLNodeInterface) => ({
+	u: () => ({
 		type: 'underline'
 	})
 };
 
 const inlineBlocks = {
-	cite: (node: HTMLNodeInterface) => ({
+	cite: () => ({
 		type: 'citation'
 	})
 };
@@ -52,7 +67,10 @@ const defaultDefinitions: ElementDefinitions = {
 /**
  * Traverses the HTML node structure and converts it to a JSONBlock array
  */
-const deserialize = (nodes: HTMLNodeInterface[], definitions: ElementDefinitions): JSONBlock[] => {
+const deserialize = (
+	nodes: HTMLNodeInterface[],
+	definitions: Partial<ElementDefinitions>
+): JSONBlock[] => {
 	if (nodes.length === 0) {
 		// Return default empty paragraph
 		return [
@@ -71,7 +89,77 @@ const deserialize = (nodes: HTMLNodeInterface[], definitions: ElementDefinitions
 		blocks.push(...deserializedBlocks);
 	}
 
-	return blocks;
+	// Post-process to merge trailing marks into previous blocks
+	const mergedBlocks = mergeTrailingMarks(blocks);
+
+	return mergedBlocks;
+
+	// Function to merge trailing marks into the previous block
+	function mergeTrailingMarks(blocks: JSONBlock[]): JSONBlock[] {
+		if (blocks.length < 2) return blocks;
+
+		const result: JSONBlock[] = [];
+
+		// Keep track of trailing fragments to potentially merge
+		let pendingMerge: JSONBlock | null = null;
+
+		for (let i = 0; i < blocks.length; i++) {
+			const currentBlock = blocks[i];
+			const nextBlock = i < blocks.length - 1 ? blocks[i + 1] : null;
+
+			// Check if the next block is a fragment with marked content
+			const isNextBlockMarkFragment =
+				nextBlock &&
+				nextBlock.type === '$fragment' &&
+				nextBlock.content?.some(
+					(item) => 'text' in item && item.marks && Object.keys(item.marks).length > 0
+				);
+
+			// Check if this is the last regular block before trailing marks
+			const isLastRegularBlock =
+				isNextBlockMarkFragment &&
+				(i === blocks.length - 2 ||
+					blocks
+						.slice(i + 2)
+						.every(
+							(b) =>
+								b.type === '$fragment' &&
+								b.content?.some(
+									(item) => 'text' in item && item.marks && Object.keys(item.marks).length > 0
+								)
+						));
+
+			// If this is a fragment with marks that needs to be merged with the previous block
+			if (
+				pendingMerge &&
+				currentBlock.type === '$fragment' &&
+				currentBlock.content?.some(
+					(item) => 'text' in item && item.marks && Object.keys(item.marks).length > 0
+				)
+			) {
+				// Skip this block as it will be merged
+				continue;
+			}
+
+			// If this is the last regular block and the next is a fragment with marks
+			if (isLastRegularBlock && currentBlock.content && !nextBlock.children) {
+				// Create a copy of the current block
+				const mergedBlock = { ...currentBlock };
+
+				// Merge the content from the next block into this one
+				mergedBlock.content = [...(mergedBlock.content || []), ...(nextBlock.content || [])];
+
+				result.push(mergedBlock);
+				pendingMerge = nextBlock;
+				i++; // Skip the next block since we merged it
+			} else {
+				// Just add the current block as is
+				result.push(currentBlock);
+			}
+		}
+
+		return result;
+	}
 
 	// Inner function to deserialize a single node to JSONBlock(s)
 	function deserializeNode(node: HTMLNodeInterface): JSONBlock[] {
@@ -87,10 +175,11 @@ const deserialize = (nodes: HTMLNodeInterface[], definitions: ElementDefinitions
 			// Get the mark type from our definitions
 			const markType = getElementType(node, 'marks');
 
-			// Create a paragraph with the marked content
+			// Create a fragment with the marked content (for consistency with plain text nodes)
+			// This ensures both plain text and marked text at the beginning of HTML are treated consistently
 			const content: (JSONText | JSONInlineBlock)[] = [];
 			const result: JSONBlock = {
-				type: 'paragraph',
+				type: '$fragment',
 				content
 			};
 
@@ -132,7 +221,7 @@ const deserialize = (nodes: HTMLNodeInterface[], definitions: ElementDefinitions
 		if (!node.tagName && node.textContent) {
 			return [
 				{
-					type: 'paragraph',
+					type: '$fragment',
 					content: [{ text: node.textContent }]
 				}
 			];
@@ -165,7 +254,7 @@ const deserialize = (nodes: HTMLNodeInterface[], definitions: ElementDefinitions
 		category: 'blocks' | 'marks' | 'inlineBlocks'
 	): string {
 		const tagName = node.tagName.toLowerCase();
-		if (tagName in definitions[category]) {
+		if (definitions?.[category] && tagName in definitions?.[category]) {
 			// Call the definition function with the node
 			const result = definitions[category][tagName](node);
 			return result.type;
@@ -305,25 +394,22 @@ const deserialize = (nodes: HTMLNodeInterface[], definitions: ElementDefinitions
 export function parseHtml(
 	this: Edytor,
 	html: string,
-	options: Partial<ElementDefinitions> = {}
+	{
+		blocks = defaultDefinitions.blocks,
+		marks = defaultDefinitions.marks,
+		inlineBlocks = defaultDefinitions.inlineBlocks
+	}: Partial<ElementDefinitions> = {}
 ): JSONBlock[] {
-	// Merge provided options with defaults
-	const definitions: ElementDefinitions = {
-		blocks: { ...blocks, ...options.blocks },
-		marks: { ...marks, ...options.marks },
-		inlineBlocks: { ...inlineBlocks, ...options.inlineBlocks }
-	};
-
 	// Create sets of element tags for the parser to use for classification
 	const elementSets: ElementSets = {
-		blocks: new Set(Object.keys(definitions.blocks)),
-		marks: new Set(Object.keys(definitions.marks)),
-		inlineBlocks: new Set(Object.keys(definitions.inlineBlocks))
+		blocks: new Set(Object.keys(blocks)),
+		marks: new Set(Object.keys(marks)),
+		inlineBlocks: new Set(Object.keys(inlineBlocks))
 	};
 
 	// Parse HTML with element classification sets
 	const nodes = HTMLNode.create(html, elementSets);
 
 	// Deserialize using full element definitions for type mapping
-	return deserialize(nodes, definitions);
+	return deserialize(nodes, { blocks, marks, inlineBlocks });
 }

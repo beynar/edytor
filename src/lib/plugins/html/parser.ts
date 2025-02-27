@@ -1,3 +1,6 @@
+// This was heavily inspired by https://github.com/brideo/dom-parser-mini/blob/main/src/parser.test.ts
+// And heavily modified by me and the Claude to fit our edytor use case
+
 enum TokenType {
 	TEXT,
 	TAG_OPEN,
@@ -238,14 +241,19 @@ class HTMLNode implements HTMLNodeInterface {
 
 			switch (token.type) {
 				case TokenType.TAG_OPEN:
+					// Process any pending text content if we have a current node
+					if (currentNode) {
+						processTextContent(currentNode);
+					} else if (currentTextContent) {
+						// Handle text at beginning of HTML by creating a root text node
+						const rootTextNode = new HTMLNode('', {}, currentTextContent);
+						rootNodes.push(rootTextNode);
+						currentTextContent = '';
+					}
+
 					// Create a new node
 					const tagName = token.value.toLowerCase();
 					const newNode = new HTMLNode(tagName, {});
-
-					// Process any pending text content in current node
-					if (currentNode) {
-						processTextContent(currentNode);
-					}
 
 					// Determine if this is a block, mark, or inline block based on tag name
 					if (elementSets) {
@@ -349,6 +357,21 @@ class HTMLNode implements HTMLNodeInterface {
 			}
 		}
 
+		// Handle any text that might be left after processing all tokens
+		if (currentTextContent && !currentNode) {
+			if (rootNodes.length > 0) {
+				// Append trailing text to the last node's content
+				const lastNode = rootNodes[rootNodes.length - 1];
+				const trailingTextNode = new HTMLNode('', {}, currentTextContent);
+				trailingTextNode.parent = lastNode;
+				lastNode.content.push(trailingTextNode);
+			} else {
+				// If there are no nodes yet, create a new text node
+				const rootTextNode = new HTMLNode('', {}, currentTextContent);
+				rootNodes.push(rootTextNode);
+			}
+		}
+
 		return rootNodes;
 	}
 
@@ -393,6 +416,28 @@ class HTMLNode implements HTMLNodeInterface {
 					if (styleEnd !== -1) {
 						i = styleEnd + 8; // Length of </style>
 						continue;
+					}
+				} else if (input.slice(i, i + 6).toLowerCase() === '<head>') {
+					// Skip head tags and their contents completely
+					const headEnd = input.toLowerCase().indexOf('</head>', i);
+					if (headEnd !== -1) {
+						i = headEnd + 7; // Length of </head>
+						continue;
+					}
+				} else if (input.slice(i, i + 5).toLowerCase() === '<head') {
+					// Also catch head with attributes
+					const endBracket = input.indexOf('>', i);
+					if (endBracket !== -1) {
+						const headEnd = input.toLowerCase().indexOf('</head>', endBracket);
+						if (headEnd !== -1) {
+							i = headEnd + 7; // Length of </head>
+							continue;
+						} else {
+							// If no closing head tag is found, skip to the end of the opening tag
+							// This helps with malformed HTML
+							i = endBracket + 1;
+							continue;
+						}
 					}
 				}
 

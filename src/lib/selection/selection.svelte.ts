@@ -154,7 +154,7 @@ export class EdytorSelection {
 			return;
 		}
 
-		const { anchorNode, focusNode, anchorOffset, focusOffset, isCollapsed, direction, type } =
+		const { anchorNode, focusNode, anchorOffset, focusOffset, isCollapsed, type } =
 			selection;
 		const ranges = getRangesFromSelection(selection);
 		const isReversed =

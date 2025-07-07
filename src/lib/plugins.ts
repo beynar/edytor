@@ -80,7 +80,9 @@ export type PluginDefinitions = {
 /**
  * Plugin factory function type that creates plugin definitions and operations.
  */
-export type Plugin = (editor: Edytor) => PluginDefinitions & PluginOperations;
+export type Plugin = (editor: Edytor) => PluginDefinitions & PluginOperations & {
+	name?: string;
+};
 
 /**
  * Defines the available operations and hooks for plugins.

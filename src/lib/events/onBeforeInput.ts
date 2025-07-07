@@ -49,7 +49,14 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 		}
 		e.preventDefault();
 		this.plugins.forEach((plugin) => {
-			plugin.onBeforeInput?.({ prevent, e });
+			try {
+				plugin.onBeforeInput?.({ prevent, e });
+			} catch (error) {
+				if (error instanceof PreventionError) {
+					throw error;
+				}
+				console.error(`Plugin onBeforeInput error:`, error);
+			}
 		});
 
 		const isFirstChildOfDocument = startText?.parent === this.root?.children.at(0);

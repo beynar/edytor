@@ -246,7 +246,14 @@ const defaultHotKeys = {
 			const selectedBlocks = Array.from(edytor.selection.selectedBlocks.values());
 
 			edytor.edytor.plugins.forEach((plugin) => {
-				plugin.onDeleteSelectedBlocks?.({ prevent, selectedBlocks });
+				try {
+					plugin.onDeleteSelectedBlocks?.({ prevent, selectedBlocks });
+				} catch (error) {
+					if (error instanceof PreventionError) {
+						throw error;
+					}
+					console.error(`Plugin onDeleteSelectedBlocks error:`, error);
+				}
 			});
 
 			const firstSelectedBlock = selectedBlocks.at(0) as Block;
@@ -366,7 +373,14 @@ export class HotKeys {
 		if (!hotKeys?.length) return false;
 		try {
 			hotKeys.forEach((hotKey) => {
-				hotKey({ event: e, edytor: this.edytor, prevent });
+				try {
+					hotKey({ event: e, edytor: this.edytor, prevent });
+				} catch (error) {
+					if (error instanceof PreventionError) {
+						throw error;
+					}
+					console.error(`Plugin hotkey error:`, error);
+				}
 			});
 			return false;
 		} catch (error) {

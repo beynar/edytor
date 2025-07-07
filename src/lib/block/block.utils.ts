@@ -544,7 +544,6 @@ export function addInlineBlock(
 	this: Block,
 	{ index, block, text }: BlockOperations['addInlineBlock']
 ): Text {
-	// TODO
 	const newInlineBlock = new InlineBlock({
 		parent: this,
 		block

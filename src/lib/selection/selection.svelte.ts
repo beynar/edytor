@@ -61,6 +61,7 @@ export class EdytorSelection {
 	selectedBlocks = new SvelteSet<Block>();
 	selectedInlineBlock = new SvelteSet<InlineBlock>();
 	hasSelectedAll = $state(false);
+	private treeWalkerCache = new WeakMap<HTMLElement, TreeWalker>();
 
 	state = $state<SelectionState>({
 		selection: null,
@@ -104,6 +105,7 @@ export class EdytorSelection {
 	}
 	destroy = () => {
 		document?.removeEventListener('selectionchange', this.onSelectionChange);
+		this.treeWalkerCache = new WeakMap();
 	};
 	getTextOfNode = getTextOfNode.bind(this);
 	getTextsInSelection = getTextsInSelection.bind(this);
@@ -152,7 +154,7 @@ export class EdytorSelection {
 			return;
 		}
 
-		const { anchorNode, focusNode, anchorOffset, focusOffset, isCollapsed, direction, type } =
+		const { anchorNode, focusNode, anchorOffset, focusOffset, isCollapsed, type } =
 			selection;
 		const ranges = getRangesFromSelection(selection);
 		const isReversed =
@@ -388,14 +390,24 @@ export class EdytorSelection {
 		});
 	};
 
+	private getOrCreateTreeWalker = (node: HTMLElement): TreeWalker => {
+		let treeWalker = this.treeWalkerCache.get(node);
+		if (!treeWalker) {
+			treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, (node) => {
+				if (node.nodeType === Node.TEXT_NODE) {
+					return NodeFilter.FILTER_ACCEPT;
+				}
+				return NodeFilter.FILTER_SKIP;
+			});
+			this.treeWalkerCache.set(node, treeWalker);
+		}
+		return treeWalker;
+	};
+
 	private findTextNode = (node: HTMLElement, offset: number = 0) => {
 		let nodeOffset = 0;
-		const treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, (node) => {
-			if (node.nodeType === Node.TEXT_NODE) {
-				return NodeFilter.FILTER_ACCEPT;
-			}
-			return NodeFilter.FILTER_SKIP;
-		});
+		const treeWalker = this.getOrCreateTreeWalker(node);
+		treeWalker.currentNode = node;
 		let currentNode = treeWalker.nextNode();
 		let textNode: Node | null = null;
 		let currentOffset = 0;
@@ -491,12 +503,8 @@ export class EdytorSelection {
 		let endNode: Node | null = null;
 		let endOffset = 0;
 
-		const treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, (node) => {
-			if (node.nodeType === Node.TEXT_NODE) {
-				return NodeFilter.FILTER_ACCEPT;
-			}
-			return NodeFilter.FILTER_SKIP;
-		});
+		const treeWalker = this.getOrCreateTreeWalker(node);
+		treeWalker.currentNode = node;
 
 		let currentNode = treeWalker.nextNode();
 		let currentOffset = 0;

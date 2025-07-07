@@ -148,10 +148,30 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 				if (isBlockSpanning) {
 					const startText = texts[0];
 					const offset = yStart;
-					this.deleteContentWithinSelection({});
-					this.selection.setAtTextOffset(startText, offset);
-
-					// TODO: implement this later, it's complicated i think.
+					const [resultText, resultOffset] = this.deleteContentWithinSelection({});
+					
+					if (resultText) {
+						this.selection.setAtTextOffset(resultText, resultOffset);
+						
+						if (isNested && isLastChild && !islandRoot) {
+							const newBlock = resultText.parent.unNestBlock();
+							if (newBlock) {
+								this.selection.setAtTextOffset(newBlock.firstText, resultOffset);
+							}
+						} else if (resultText.parent.isEmpty && resultText.parent.parent) {
+							const previousBlock = resultText.parent.closestPreviousBlock;
+							if (previousBlock) {
+								const previousText = previousBlock.lastText;
+								const mergeOffset = previousText?.length || 0;
+								resultText.parent.mergeBlockBackward();
+								if (previousText) {
+									this.selection.setAtTextOffset(previousBlock.lastText, mergeOffset);
+								}
+							}
+						}
+					} else {
+						this.selection.setAtTextOffset(startText, offset);
+					}
 				} else {
 					if (!startText) {
 						return;

@@ -192,11 +192,6 @@ export type MarkDefinition = {
 
 export type InitializedPlugin = ReturnType<Plugin>;
 
-// TODO: add arrow events
-// TODO: add onBeforeInput event
-// TODO: add block focus and selection events
-// TODO: add a cmd+a selection all event
-//
 
 // ISLAND BLOCKS
 // Island blocks are blocks that are independent of the document.

@@ -1,6 +1,12 @@
 import type { Edytor } from '../edytor.svelte.js';
 import { prevent, PreventionError } from '$lib/utils.js';
 import { Text } from '$lib/text/text.svelte.js';
+import { tick } from 'svelte';
+import { ultraFastDiffText } from '$lib/utils/diffText.js';
+
+function getBaseChar(char: string) {
+	return char.normalize('NFD')[0];
+}
 
 export async function onBeforeInput(this: Edytor, e: InputEvent) {
 	const {
@@ -20,7 +26,8 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 		yEnd,
 		islandRoot,
 		texts,
-		isVoidEditableElement
+		isVoidEditableElement,
+		startNode
 	} = this.selection.state;
 
 	if (this.readonly || isVoidEditableElement) return;
@@ -47,7 +54,14 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 
 			this.hotKeys.isHotkey(customKeyDownEvent);
 		}
-		e.preventDefault();
+		const letTheBrowserDoItsThing =
+			(inputType === 'insertCompositionText' || inputType === 'insertText') && isCollapsed;
+		if (letTheBrowserDoItsThing) {
+			// Do not prevent default and let the browser do its thing
+			// e.preventDefault();
+		} else {
+			e.preventDefault();
+		}
 		this.plugins.forEach((plugin) => {
 			plugin.onBeforeInput?.({ prevent, e });
 		});
@@ -56,6 +70,7 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 		const isNested = startText?.parent.parent !== this.root;
 		const isLastChild = startText?.parent.parent?.children.at(-1) === startText?.parent;
 
+		console.log('inputType', inputType, data);
 		switch (inputType) {
 			case 'insertText': {
 				if (data === '. ') {
@@ -71,12 +86,37 @@ export async function onBeforeInput(this: Edytor, e: InputEvent) {
 						});
 						await this.selection.setAtTextOffset(startText, yStart);
 					}
-					startText?.insertText({ value: data! });
-					// We need to immediately shift the selection to the right by the length of the inserted text
-					// This is to prevent selection divergence when the text is rapidly inserted
-					this.edytor.selection.shift(data!.length);
-					// Then we set the caret to the right position of the inserted text
-					this.selection.setAtTextOffset(startText!, yStart + data!.length);
+					if (!letTheBrowserDoItsThing) {
+						startText?.insertText({ value: data! });
+						// We need to immediately shift the selection to the right by the length of the inserted text
+						// This is to prevent selection divergence when the text is rapidly inserted
+						this.edytor.selection.shift(data!.length);
+						// Then we set the caret to the right position of the inserted text
+						this.selection.setAtTextOffset(startText!, yStart + data!.length);
+					} else {
+						setTimeout(() => {
+							console.log('startNode', { startNode, selection: this.selection });
+							const nodeText = startNode?.textContent;
+							const diffText = ultraFastDiffText(
+								startText?.stringContent || '',
+								startText?.node?.textContent || ''
+							);
+							const lastDelta = diffText[diffText.length - 1];
+							if (lastDelta.insert) {
+								console.log('lastDelta', { lastDelta });
+								Object.assign(diffText[diffText.length - 1], {
+									attributes: this.selection.state.currentMarks
+								});
+							}
+							// e.preventDefault();
+
+							startText?.yText.applyDelta(diffText);
+
+							console.log('diffText', { diffText });
+
+							// this.selection.setAtTextOffset(startText!, yStart + diffText.length);
+						});
+					}
 				}
 				break;
 			}

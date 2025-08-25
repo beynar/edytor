@@ -56,12 +56,10 @@ export function getInlineBlockOfNode(this: EdytorSelection, node: Node | null) {
 		const inlineBlock = treeWalker.nextNode() as InlineBlock | null;
 		return inlineBlock;
 	} else {
-		console.log('here');
 		let currentNode = node;
 		while (currentNode.parentElement && !inlineBlock) {
 			inlineBlock = this.edytor.nodeToInlineBlock.get(currentNode) || null;
 			currentNode = currentNode.parentElement;
-			console.log({ currentNode });
 		}
 	}
 	return inlineBlock;

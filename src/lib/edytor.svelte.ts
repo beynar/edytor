@@ -26,7 +26,7 @@ import type {
 } from './plugins.js';
 import { on } from 'svelte/events';
 import { HotKeys, type HotKey } from './hotkeys.js';
-import { TRANSACTION } from './constants.js';
+import { REMOTE_ONLY_TRANSACTION, TRANSACTION } from './constants.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import { deleteContentWithinSelection } from './edytor.utils.js';
 
@@ -85,6 +85,7 @@ export class Edytor {
 	idToText = new SvelteMap<string, Text>();
 	nodeToText = new SvelteMap<Node, Text>();
 	transaction = new TRANSACTION();
+	remoteOnlyTransaction = new REMOTE_ONLY_TRANSACTION();
 	hotKeys: HotKeys;
 	initialized = $state(false);
 	readonly = $state(false);
@@ -326,6 +327,42 @@ export class Edytor {
 			}
 		}
 		return node;
+	};
+
+	clear = () => {
+		// this.root = new Block({
+		// 	edytor: this,
+		// 	yBlock: this.yRootBlock,
+		// 	block: {
+		// 		type: 'root',
+		// 		id: 'root',
+		// 		children: [
+		// 			{
+		// 				type: 'paragraph',
+		// 				content: [{ text: '' }],
+		// 				children: []
+		// 			}
+		// 		]
+		// 	}
+		// });
+		const root = this.root!;
+		root.yChildren.delete(0, root.yChildren.length);
+		root.yChildren.push([
+			new Block({
+				edytor: this,
+				yBlock: this.yRootBlock,
+				parent: this.root,
+				block: {
+					type: 'paragraph'
+				}
+			}).yBlock
+		]);
+		// root
+		// Focus the root block
+
+		tick().then(() => {
+			(this.edytor.node as HTMLElement).focus();
+		});
 	};
 
 	attach = (node: HTMLDivElement) => {

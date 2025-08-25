@@ -33,16 +33,13 @@
 
 <button
 	onclick={() => {
-		const indexedDB = window.indexedDB;
-		indexedDB.databases().then((databases) => {
-			databases.forEach((database) => {
-				indexedDB.deleteDatabase(database.name);
-			});
-		});
+		edytor?.clear();
 	}}
+	class="rounded bg-blue-800 p-2"
 >
 	clear
 </button>
+
 <div class="grid grid-cols-4 gap-2 p-10">
 	<div class="col-span-2">
 		<div class="card rounded bg-neutral-800 p-2">
@@ -115,8 +112,8 @@
 			showTypes={false}
 			showLength={false}
 			theme="stereo"
-			expandLevel={2}
-			value={edytor?.root?.value}
+			expandLevel={1}
+			value={edytor?.root?.value.children[0].children[0].content}
 		/>
 
 		<hr class="my-2" />
@@ -132,6 +129,7 @@
 </div>
 
 <style lang="postcss">
+	@reference "tailwindcss";
 	:global {
 		[data-edytor-focused] {
 			@apply bg-blue-100/10;

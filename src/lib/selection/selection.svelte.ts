@@ -15,6 +15,7 @@ import { Block } from '../block/block.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
 import { tick } from 'svelte';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
+import type { JSONText } from '$lib/utils/json.js';
 
 type SelectionState = {
 	selection: Selection | null;
@@ -51,6 +52,7 @@ type SelectionState = {
 	isIsland: boolean;
 	islandRoot: Block | null;
 	relativePosition: RelativePosition | null;
+	currentMarks: JSONText['marks'];
 	// TOREMOVE
 	yTextContent: string;
 };
@@ -93,6 +95,7 @@ export class EdytorSelection {
 		isVoidEditableElement: false,
 		voidRoot: null,
 		relativePosition: null,
+		currentMarks: {},
 		// TOREMOVE
 		yTextContent: ''
 	});
@@ -140,12 +143,9 @@ export class EdytorSelection {
 		this.state.yTextContent = this.state.startText?.yText.toJSON()!;
 	};
 
-	onSelectStart = () => {
-		console.log('select start');
-	};
+	onSelectStart = () => {};
 
 	onSelectionChange = () => {
-		console.log('selection change');
 		const selection = window.getSelection();
 
 		if (!selection?.anchorNode || !this.edytor.container?.contains(selection.anchorNode as Node)) {
@@ -176,7 +176,7 @@ export class EdytorSelection {
 		this.selectBlocks();
 		this.focusBlocks(...texts.map((text) => text.parent));
 		this.selectedInlineBlock.clear();
-		console.log({ inlineBlock });
+
 		if (!startText) {
 			// If the user is focusind on a white space node.
 			if (this.state.startText && !inlineBlock) {
@@ -192,7 +192,6 @@ export class EdytorSelection {
 		let yEnd = isCollapsed ? yStart : getYIndex(endText, endNode, end);
 
 		if (startText?.parent.isEmpty && yStart > startText.length) {
-			console.log('startText', startText);
 			// In case the placeholder or suggestion is not absolutely positioned, we need to set the selection to the start of the text because caret may be placed after the placeholder which is deceptive
 			return this.setAtTextOffset(startText, startText.length);
 		}
@@ -320,7 +319,14 @@ export class EdytorSelection {
 				? Y.createRelativePositionFromTypeIndex(startText.yText, yStart, -1)
 				: null,
 			// TOREMOVE
-			yTextContent: startText?.yText.toJSON()!
+			yTextContent: startText?.yText.toJSON()!,
+			currentMarks: (startText?.getMarksAtRange(Math.min(yStart, 0), yEnd) || []).reduce(
+				(acc, mark) => {
+					mark.marks && Object.assign(acc!, mark.marks);
+					return acc;
+				},
+				{} as JSONText['marks']
+			)
 		};
 		this.edytorOnSelectionChange?.(this);
 		this.edytor.plugins.forEach((plugin) => {

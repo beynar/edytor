@@ -456,8 +456,12 @@ export class Block {
 
 		const onDestroy = this.edytor.plugins.reduce(
 			(acc, plugin) => {
-				const action = plugin.onBlockAttached?.({ node, block: this });
-				action && acc.push(action);
+				try {
+					const action = plugin.onBlockAttached?.({ node, block: this });
+					action && acc.push(action);
+				} catch (error) {
+					console.error(`Plugin onBlockAttached error:`, error);
+				}
 				return acc;
 			},
 			[] as (() => void)[]

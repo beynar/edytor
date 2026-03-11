@@ -330,7 +330,11 @@ export class EdytorSelection {
 		};
 		this.edytorOnSelectionChange?.(this);
 		this.edytor.plugins.forEach((plugin) => {
-			plugin.onSelectionChange?.(this);
+			try {
+				plugin.onSelectionChange?.(this);
+			} catch (error) {
+				console.error(`Plugin onSelectionChange error:`, error);
+			}
 		});
 	};
 

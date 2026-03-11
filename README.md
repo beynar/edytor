@@ -412,4 +412,125 @@ test('split text', () => {
 });
 ```
 
+### Plugin Error Handling and Validation
+
+Edytor provides comprehensive error boundaries and validation for plugins to ensure that plugin failures don't crash the entire editor.
+
+#### Plugin Validation
+
+When plugins are initialized, Edytor automatically validates:
+- Plugin returns a valid object
+- All marks, blocks, and inlineBlocks are properly defined
+- All hotkey handlers are functions
+- Plugin definitions follow the correct structure
+
+```typescript
+// ✅ Valid plugin
+const myPlugin: Plugin = (editor) => ({
+  name: 'my-plugin', // Optional but recommended
+  blocks: {
+    myBlock: {
+      snippet: myBlockSnippet,
+      void: false
+    }
+  },
+  hotkeys: {
+    'mod+k': ({ prevent }) => {
+      prevent(() => {
+        // Custom logic here
+      });
+    }
+  }
+});
+
+// ❌ Invalid plugin - will be caught and logged
+const badPlugin: Plugin = (editor) => ({
+  blocks: {
+    '': null, // Invalid: empty name and null definition
+  },
+  hotkeys: {
+    'mod+k': 'not a function' // Invalid: must be a function
+  }
+});
+```
+
+#### Error Boundaries
+
+Plugin errors are automatically caught and logged without crashing the editor:
+
+- **Initialization errors**: Plugins that fail to initialize are marked as failed and excluded from operation
+- **Runtime errors**: Errors in plugin hooks (onBeforeOperation, onChange, etc.) are caught and logged
+- **Hotkey errors**: Errors in hotkey handlers are caught while preserving prevention behavior
+
+#### Plugin Status Monitoring
+
+You can monitor plugin status using the built-in methods:
+
+```typescript
+// Check if a plugin is active
+const status = editor.getPluginStatus('my-plugin'); // 'active' | 'failed' | 'disabled'
+
+// Get plugin error details
+const error = editor.getPluginError('my-plugin');
+
+// Get all active plugins
+const activePlugins = editor.getActivePlugins();
+
+// Get all failed plugins
+const failedPlugins = editor.getFailedPlugins();
+```
+
+#### Best Practices for Plugin Development
+
+1. **Always provide a plugin name** for easier debugging:
+   ```typescript
+   export const myPlugin: Plugin = (editor) => ({
+     name: 'my-plugin',
+     // ... plugin definitions
+   });
+   ```
+
+2. **Handle errors gracefully** in your plugin operations:
+   ```typescript
+   onBeforeOperation: ({ operation, payload, prevent }) => {
+     try {
+       // Your logic here
+       if (shouldPrevent) {
+         prevent(() => {
+           // Custom behavior
+         });
+       }
+     } catch (error) {
+       console.error('Plugin operation failed:', error);
+       // Don't re-throw unless you want to prevent the operation
+     }
+   }
+   ```
+
+3. **Use TypeScript** for better type safety and validation
+
+4. **Test your plugins** with both valid and invalid inputs
+
+#### Troubleshooting Plugin Issues
+
+**Plugin not loading:**
+- Check browser console for initialization errors
+- Verify plugin structure matches the Plugin type
+- Ensure all required properties are properly defined
+
+**Plugin operations not working:**
+- Check if plugin status is 'active' using `getPluginStatus()`
+- Look for runtime errors in browser console
+- Verify operation hooks are properly implemented
+
+**Hotkeys not responding:**
+- Check for hotkey conflicts between plugins
+- Verify hotkey syntax follows the HotKeyCombination type
+- Ensure hotkey handlers don't throw unhandled errors
+
+**Performance issues:**
+- Avoid heavy computations in frequently called hooks like `onChange`
+- Use debouncing for expensive operations
+- Profile plugin performance using browser dev tools
+
 ### Writing plugins

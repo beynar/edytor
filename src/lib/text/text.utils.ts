@@ -1,4 +1,4 @@
-import { prevent } from '$lib/utils.js';
+import { prevent, PreventionError } from '$lib/utils.js';
 import type { Delta, JSONText, SerializableContent } from '$lib/utils/json.js';
 import type { Text } from './text.svelte.js';
 
@@ -40,29 +40,41 @@ export function batch<T extends (...args: any[]) => any, O extends keyof TextOpe
 	return function (this: Text, payload: TextOperations[O]): ReturnType<T> {
 		let finalPayload = payload;
 		for (const plugin of this.edytor.plugins) {
-			// @ts-expect-error
-			const normalizedPayload = plugin.onBeforeOperation?.({
-				operation,
-				payload,
-				text: this,
-				block: this.parent,
-				prevent
-			}) as TextOperations[O] | undefined;
-			if (normalizedPayload) {
-				finalPayload = normalizedPayload;
-				break;
+			try {
+				// @ts-expect-error
+				const normalizedPayload = plugin.onBeforeOperation?.({
+					operation,
+					payload,
+					text: this,
+					block: this.parent,
+					prevent
+				}) as TextOperations[O] | undefined;
+				if (normalizedPayload) {
+					finalPayload = normalizedPayload;
+					break;
+				}
+			} catch (error) {
+				if (error instanceof PreventionError) {
+					error.cb?.();
+					return func.bind(this)(finalPayload) as ReturnType<T>;
+				}
+				console.error(`Plugin onBeforeOperation error:`, error);
 			}
 		}
 
 		const result = this.edytor.transact(() => func.bind(this)(finalPayload));
 
 		for (const plugin of this.edytor.plugins) {
-			plugin.onAfterOperation?.({
-				operation,
-				payload,
-				text: this,
-				block: this.parent
-			}) as TextOperations[O] | undefined;
+			try {
+				plugin.onAfterOperation?.({
+					operation,
+					payload,
+					text: this,
+					block: this.parent
+				}) as TextOperations[O] | undefined;
+			} catch (error) {
+				console.error(`Plugin onAfterOperation error:`, error);
+			}
 		}
 
 		return result;

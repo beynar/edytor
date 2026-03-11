@@ -1,7 +1,7 @@
 import { Block } from '$lib/block/block.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { prevent } from '$lib/utils.js';
+import { prevent, PreventionError } from '$lib/utils.js';
 import type { JSONBlock, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
 import * as Y from 'yjs';
@@ -73,27 +73,39 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 		let finalPayload = payload;
 
 		for (const plugin of this.edytor.plugins) {
-			// @ts-expect-error
-			const normalizedPayload = plugin.onBeforeOperation?.({
-				operation,
-				payload,
-				block: this,
-				prevent
-			}) as BlockOperations[O] | undefined;
-			if (normalizedPayload) {
-				finalPayload = normalizedPayload;
-				break;
+			try {
+				// @ts-expect-error
+				const normalizedPayload = plugin.onBeforeOperation?.({
+					operation,
+					payload,
+					block: this,
+					prevent
+				}) as BlockOperations[O] | undefined;
+				if (normalizedPayload) {
+					finalPayload = normalizedPayload;
+					break;
+				}
+			} catch (error) {
+				if (error instanceof PreventionError) {
+					error.cb?.();
+					return func.bind(this)(finalPayload) as ReturnType<T>;
+				}
+				console.error(`Plugin onBeforeOperation error:`, error);
 			}
 		}
 
 		const result = this.edytor.transact(() => func.bind(this)(finalPayload));
 
 		for (const plugin of this.edytor.plugins) {
-			plugin.onAfterOperation?.({
-				operation,
-				payload,
-				block: this
-			}) as BlockOperations[O] | undefined;
+			try {
+				plugin.onAfterOperation?.({
+					operation,
+					payload,
+					block: this
+				}) as BlockOperations[O] | undefined;
+			} catch (error) {
+				console.error(`Plugin onAfterOperation error:`, error);
+			}
 		}
 
 		return result;

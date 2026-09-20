@@ -1,7 +1,6 @@
 import { renderJSX } from './rendering.js';
 import { type JSXChildren, type JSXNode, RenderedNode } from './types.js';
 
-// eslint-disable-next-line @typescript-eslint/no-namespace
 namespace JSX {
 	// Set the attributes to allow any keys and very permissive values
 	export type HTMLAttributes = Record<string, JSXNode | undefined> & JSXChildren;

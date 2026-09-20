@@ -1,6 +1,9 @@
-// This is an adaptation of the toDeltas function of the yjs library that better suits our needs
-import * as Y from 'yjs';
+// Delta helpers shared by the live Text wrapper and serialisation paths.
+// `runsToDeltas` is the v14 replacement for the old `toDeltas(Y.Text)`: the
+// maintained runs view already merges adjacent same-mark text, so a segment's
+// text items map one-to-one onto JSON deltas without touching engine internals.
 import type { JSONText, SerializableContent } from '../utils/json.ts';
+import type { ContentRun } from '$lib/crdt/index.js';
 
 export type Mark = [string, SerializableContent];
 export type JSONDelta = {
@@ -30,96 +33,48 @@ export const deltaToJson = (delta: JSONDelta[]): JSONText[] => {
 	});
 };
 
-const createDelta = (text: string, attributes: Map<string, SerializableContent>): JSONDelta => {
-	const size = attributes.size;
-	if (size === 0) {
-		return { text, marks: [], id: crypto.randomUUID() };
-	}
-
-	const marks: [string, SerializableContent][] = new Array(size);
-	let i = 0;
-	attributes.forEach((value, key) => {
-		marks[i++] = [key, value];
-	});
-	return { text, marks, id: crypto.randomUUID() };
-};
-
-const areMarksEqual = (
-	marks1: Map<string, SerializableContent>,
-	marks2: Map<string, SerializableContent>
-): boolean => {
-	if (marks1.size !== marks2.size) return false;
-	for (const [key, value] of marks1) {
-		if (!marks2.has(key) || marks2.get(key) !== value) return false;
-	}
-	return true;
-};
-
-export const toDeltas = (text: Y.Text) => {
+/**
+ * Convert a text segment's run items into render deltas.
+ * `items` are the `{kind:'text'}` entries of one logical text segment (the
+ * runs between two inline atoms — or the whole content when no inline is
+ * present). Adjacent same-mark items are already merged by the runs view;
+ * the guard below keeps the contract total for unmerged item lists
+ * (detached spec buffers, `project()` raw items).
+ *
+ * Returns `[deltas, isEmpty]` mirroring the historical `toDeltas` signature.
+ */
+export const runsToDeltas = (
+	items: readonly { text: string; marks?: Record<string, unknown> }[]
+) => {
 	const result: JSONDelta[] = [];
-	if (!text) {
-		return [result, true] as const;
-	}
-	const currentAttributes = new Map<string, SerializableContent>();
-	let currentString = '';
-	let n = text._start;
 	let isEmpty = true;
-	const flushString = () => {
-		if (currentString) {
-			const newDelta = createDelta(currentString, currentAttributes);
 
-			// Check if we can merge with the previous delta
-			const lastDelta = result[result.length - 1];
-			if (lastDelta && lastDelta.marks.length === newDelta.marks.length) {
-				const lastDeltaMarks = new Map(lastDelta.marks);
-				const newDeltaMarks = new Map(newDelta.marks);
-
-				if (areMarksEqual(lastDeltaMarks, newDeltaMarks)) {
-					// Merge the text with the previous delta
-					lastDelta.text += currentString;
-				} else {
-					result.push(newDelta);
-				}
-			} else {
-				result.push(newDelta);
-			}
-
-			currentString = '';
-			isEmpty = false;
+	for (const item of items) {
+		if (!item.text) continue;
+		const marks = Object.entries(item.marks ?? {}) as Mark[];
+		const last = result[result.length - 1];
+		if (
+			last &&
+			last.marks.length === marks.length &&
+			last.marks.every(([k, v]) => (item.marks as Record<string, unknown> | undefined)?.[k] === v)
+		) {
+			last.text += item.text;
+		} else {
+			result.push({ text: item.text, marks, id: crypto.randomUUID() });
 		}
-	};
-
-	while (n) {
-		if (!n.deleted) {
-			const content = n.content;
-			const contentType = content.constructor;
-
-			if (contentType === Y.ContentString) {
-				// Check ychange first to minimize map lookups
-				if (currentAttributes.has('ychange')) {
-					flushString();
-					currentAttributes.delete('ychange');
-				}
-				currentString += (content as Y.ContentString).str;
-			} else if (contentType === Y.ContentType || contentType === Y.ContentEmbed) {
-				flushString();
-				result.push(createDelta(String(content.getContent()[0]), currentAttributes));
-			} else if (contentType === Y.ContentFormat) {
-				if (!n.deleted) {
-					flushString();
-					const format = content as Y.ContentFormat;
-					const { key, value } = format;
-					if (value === null) {
-						currentAttributes.delete(key);
-					} else {
-						currentAttributes.set(key, value as SerializableContent);
-					}
-				}
-			}
-		}
-		n = n.right;
+		isEmpty = false;
 	}
 
-	flushString();
 	return [result, isEmpty] as const;
+};
+
+/** Convenience overload for whole-run lists (filters to text runs). */
+export const toDeltas = (
+	runs: readonly (ContentRun | { text: string; marks?: Record<string, unknown> })[]
+) => {
+	const items = runs.filter(
+		(run) =>
+			(run as { kind?: string }).kind === undefined || (run as { kind?: string }).kind === 'text'
+	) as { text: string; marks?: Record<string, unknown> }[];
+	return runsToDeltas(items);
 };

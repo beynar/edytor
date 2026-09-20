@@ -5,77 +5,52 @@ import type {
 	JSONText,
 	SerializableContent
 } from '../../utils/json.js';
-import HTMLNode, { type HTMLNodeInterface, type ElementSets } from './parser.js';
+import {
+	defaultDefinitions,
+	getElementDefinitionResolver,
+	mergeElementDefinitions,
+	resolveElementDefinition,
+	validateElementDefinitions,
+	validateRegisteredType,
+	type ElementCategory,
+	type ElementDefinitions,
+	type ResolvedElementDefinition
+} from './elementDefinitions.js';
+import HTMLNode, { type ElementSets, type HTMLNodeInterface } from './parser.js';
 
-export type ElementDefinition = {
-	[tagName: string]: (node: HTMLNodeInterface) => { type: string; [key: string]: any };
-};
-// Element type definitions for creating the output JSON structure
-export interface ElementDefinitions {
-	blocks: ElementDefinition;
-	marks: ElementDefinition;
-	inlineBlocks: ElementDefinition;
-}
+export type {
+	ElementDefinition,
+	ElementDefinitions,
+	ElementDefinitionResult
+} from './elementDefinitions.js';
 
-// Default element type mappings
-const blocks = {
-	p: () => ({
-		type: 'paragraph'
-	}),
-	blockquote: () => ({
-		type: 'blockquote'
-	}),
-	ul: () => ({
-		type: 'unordered-list'
-	}),
-	ol: () => ({
-		type: 'ordered-list'
-	}),
-	li: () => ({
-		type: 'list-item'
-	}),
-	code: () => ({
-		type: 'code'
-	})
-};
+const isWhitespaceText = (part: JSONText | JSONInlineBlock) =>
+	'text' in part && part.text.trim() === '';
 
-const marks = {
-	strong: () => ({
-		type: 'bold'
-	}),
-	em: () => ({
-		type: 'italic'
-	}),
-	u: () => ({
-		type: 'underline'
-	})
-};
+const hasMeaningfulInlineContent = (content: (JSONText | JSONInlineBlock)[]) =>
+	content.some((part) => !isWhitespaceText(part));
 
-const inlineBlocks = {
-	cite: () => ({
-		type: 'citation'
-	})
-};
+const usesDefaultListMappings = (definitions: ElementDefinitions) =>
+	definitions.blocks.ul === defaultDefinitions.blocks.ul &&
+	definitions.blocks.ol === defaultDefinitions.blocks.ol &&
+	definitions.blocks.li === defaultDefinitions.blocks.li;
 
-// Default element type mappings
-const defaultDefinitions: ElementDefinitions = {
-	blocks,
-	marks,
-	inlineBlocks
-};
+const isDefaultListContainer = (definitions: ElementDefinitions, node: HTMLNodeInterface) =>
+	usesDefaultListMappings(definitions) && (node.tagName === 'ul' || node.tagName === 'ol');
 
 /**
  * Traverses the HTML node structure and converts it to a JSONBlock array
  */
 const deserialize = (
 	nodes: HTMLNodeInterface[],
-	definitions: Partial<ElementDefinitions>
+	definitions: ElementDefinitions,
+	edytor: Edytor
 ): JSONBlock[] => {
 	if (nodes.length === 0) {
 		// Return default empty paragraph
 		return [
 			{
-				type: 'paragraph',
+				type: validateRegisteredType(edytor, 'blocks', 'p', 'paragraph'),
 				content: [{ text: '' }]
 			}
 		];
@@ -165,15 +140,26 @@ const deserialize = (
 	function deserializeNode(node: HTMLNodeInterface): JSONBlock[] {
 		// If this is a block element (marked as such by the parser)
 		if (node.isBlock) {
+			if (isDefaultListContainer(definitions, node)) {
+				return createDefaultListBlocks(node);
+			}
+
 			// Get the block type from our definitions
-			const blockType = getElementType(node, 'blocks');
-			return [createBlock(node, blockType)];
+			const blockDefinition = getElementDefinition(node, 'blocks');
+			return [createBlock(node, blockDefinition)];
+		}
+
+		if (node.isInlineBlock) {
+			const content = processInlineNode(node);
+			return content.length > 0 ? [{ type: '$fragment', content }] : [];
 		}
 
 		// Handle marks at the top level
 		if (node.isMark) {
 			// Get the mark type from our definitions
-			const markType = getElementType(node, 'marks');
+			const markDefinition = getElementDefinition(node, 'marks');
+			const markValue = getMarkValue(markDefinition);
+			const markType = markDefinition.type;
 
 			// Create a fragment with the marked content (for consistency with plain text nodes)
 			// This ensures both plain text and marked text at the beginning of HTML are treated consistently
@@ -185,7 +171,7 @@ const deserialize = (
 
 			// Process the node with the mark applied
 			const marksObj: Record<string, SerializableContent> = {};
-			marksObj[markType] = true;
+			marksObj[markType] = markValue;
 
 			// Add text content with the mark
 			if (node.textContent) {
@@ -202,7 +188,7 @@ const deserialize = (
 					if ('text' in item) {
 						// Apply the mark to text nodes
 						const itemMarks = { ...(item.marks || {}) };
-						itemMarks[markType] = true;
+						itemMarks[markType] = markValue;
 						content.push({
 							text: item.text,
 							marks: itemMarks
@@ -239,7 +225,7 @@ const deserialize = (
 		if (childBlocks.length === 0 && (node.textContent || node.content.length > 0)) {
 			return [
 				{
-					type: 'paragraph',
+					type: validateRegisteredType(edytor, 'blocks', 'p', 'paragraph'),
 					content: processInlineContent(node)
 				}
 			];
@@ -249,25 +235,37 @@ const deserialize = (
 	}
 
 	// Helper function to get element type from definitions by calling the appropriate definition function
-	function getElementType(
+	function getElementDefinition(
 		node: HTMLNodeInterface,
-		category: 'blocks' | 'marks' | 'inlineBlocks'
-	): string {
+		category: ElementCategory
+	): ResolvedElementDefinition {
 		const tagName = node.tagName.toLowerCase();
-		if (definitions?.[category] && tagName in definitions?.[category]) {
-			// Call the definition function with the node
-			const result = definitions[category][tagName](node);
-			return result.type;
+		const categoryDefinitions = definitions[category];
+		if (
+			!categoryDefinitions ||
+			!Object.prototype.hasOwnProperty.call(categoryDefinitions, tagName)
+		) {
+			throw new Error(`No HTML <${tagName}> ${category} mapping is defined`);
 		}
-		// Default fallbacks based on category
-		if (category === 'blocks') return 'paragraph';
-		if (category === 'marks') return 'bold';
-		return 'citation'; // Default for inlineBlocks
+
+		const resolve = getElementDefinitionResolver(definitions, category, tagName);
+		return resolveElementDefinitionForNode(category, tagName, resolve(node));
+	}
+
+	function resolveElementDefinitionForNode(
+		category: ElementCategory,
+		tagName: string,
+		result: unknown
+	): ResolvedElementDefinition {
+		return resolveElementDefinition(edytor, category, tagName, result);
 	}
 
 	// Create a JSON block from an HTML node
-	function createBlock(node: HTMLNodeInterface, blockType: string): JSONBlock {
-		const block: JSONBlock = { type: blockType };
+	function createBlock(node: HTMLNodeInterface, definition: ResolvedElementDefinition): JSONBlock {
+		const block: JSONBlock = { type: definition.type };
+		if (definition.data && typeof definition.data === 'object' && !Array.isArray(definition.data)) {
+			block.data = definition.data as JSONBlock['data'];
+		}
 
 		// Process inline content (text and inline elements)
 		const inlineContent = processInlineContent(node);
@@ -290,6 +288,24 @@ const deserialize = (
 		}
 
 		return block;
+	}
+
+	function createDefaultListBlocks(node: HTMLNodeInterface): JSONBlock[] {
+		const listDefinition = getElementDefinition(node, 'blocks');
+		const blocks: JSONBlock[] = [];
+		const inlineContent = processInlineContent(node);
+
+		if (hasMeaningfulInlineContent(inlineContent)) {
+			blocks.push(createBlock(node, listDefinition));
+		}
+
+		for (const child of node.children) {
+			if (child.isBlock) {
+				blocks.push(...deserializeNode(child));
+			}
+		}
+
+		return blocks.length > 0 ? blocks : [createBlock(node, listDefinition)];
 	}
 
 	// Process node's inline content
@@ -321,20 +337,31 @@ const deserialize = (
 
 		// Handle inline blocks (like citation)
 		if (node.isInlineBlock) {
-			const inlineType = getElementType(node, 'inlineBlocks');
-			const inlineBlock: JSONInlineBlock = { type: inlineType, data: {} };
+			const inlineDefinition = getElementDefinition(node, 'inlineBlocks');
+			const data =
+				inlineDefinition.data &&
+				typeof inlineDefinition.data === 'object' &&
+				!Array.isArray(inlineDefinition.data)
+					? inlineDefinition.data
+					: {};
+			const inlineBlock: JSONInlineBlock = {
+				type: inlineDefinition.type,
+				data
+			};
 			return [inlineBlock];
 		}
 
 		// Handle marks (formatting)
 		if (node.isMark) {
-			const markType = getElementType(node, 'marks');
+			const markDefinition = getElementDefinition(node, 'marks');
+			const markValue = getMarkValue(markDefinition);
+			const markType = markDefinition.type;
 			const result: (JSONText | JSONInlineBlock)[] = [];
 
 			// Apply the mark to the node's content
 			if (node.textContent) {
 				const marksObject: Record<string, SerializableContent> = {};
-				marksObject[markType] = true;
+				marksObject[markType] = markValue;
 
 				const text: JSONText = {
 					text: node.textContent,
@@ -351,7 +378,7 @@ const deserialize = (
 					if ('text' in item) {
 						// Apply the mark to text nodes
 						const marksObject: Record<string, SerializableContent> = { ...(item.marks || {}) };
-						marksObject[markType] = true;
+						marksObject[markType] = markValue;
 
 						const text: JSONText = {
 							text: item.text,
@@ -389,27 +416,38 @@ const deserialize = (
 
 		return result;
 	}
+
+	function getMarkValue(definition: ResolvedElementDefinition): SerializableContent {
+		return definition.data === undefined ? true : (definition.data as SerializableContent);
+	}
 };
 
 export function parseHtml(
 	this: Edytor,
 	html: string,
-	{
-		blocks = defaultDefinitions.blocks,
-		marks = defaultDefinitions.marks,
-		inlineBlocks = defaultDefinitions.inlineBlocks
-	}: Partial<ElementDefinitions> = {}
+	options: Partial<ElementDefinitions> = {}
 ): JSONBlock[] {
+	const definitions = validateHtmlMappings.call(this, options);
+
 	// Create sets of element tags for the parser to use for classification
 	const elementSets: ElementSets = {
-		blocks: new Set(Object.keys(blocks)),
-		marks: new Set(Object.keys(marks)),
-		inlineBlocks: new Set(Object.keys(inlineBlocks))
+		blocks: new Set(Object.keys(definitions.blocks)),
+		marks: new Set(Object.keys(definitions.marks)),
+		inlineBlocks: new Set(Object.keys(definitions.inlineBlocks))
 	};
 
 	// Parse HTML with element classification sets
 	const nodes = HTMLNode.create(html, elementSets);
 
 	// Deserialize using full element definitions for type mapping
-	return deserialize(nodes, { blocks, marks, inlineBlocks });
+	return deserialize(nodes, definitions, this);
+}
+
+export function validateHtmlMappings(
+	this: Edytor,
+	options: Partial<ElementDefinitions> = {}
+): ElementDefinitions {
+	const definitions = mergeElementDefinitions(options);
+	validateElementDefinitions(definitions, this);
+	return definitions;
 }

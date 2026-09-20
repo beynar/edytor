@@ -1,10 +1,11 @@
 import { Block } from '$lib/block/block.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { prevent } from '$lib/utils.js';
-import type { JSONBlock, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
+import { id, prevent } from '$lib/utils.js';
+import { cloneJson, type JSONBlock, type JSONInlineBlock, type JSONText } from '$lib/utils/json.js';
+import type { YTextLike } from '$lib/crdt/compat.js';
+import type { ContentItem } from '$lib/crdt/index.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
-import * as Y from 'yjs';
 
 export type BlockOperations = {
 	removeInlineBlock: {
@@ -36,7 +37,7 @@ export type BlockOperations = {
 	mergeBlockForward: {};
 	nestBlock: {};
 	setBlock: {
-		value: JSONBlock;
+		value: Partial<JSONBlock>;
 	};
 	addInlineBlock: {
 		index: number;
@@ -70,6 +71,10 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 	func: T
 ): T {
 	return function (this: Block, payload: BlockOperations[O]): ReturnType<T> {
+		if (this.edytor.readonly) {
+			return undefined as ReturnType<T>;
+		}
+
 		let finalPayload = payload;
 
 		for (const plugin of this.edytor.plugins) {
@@ -100,12 +105,28 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 	} as T;
 }
 
+const appendJsonTextToYText = (target: YTextLike, value: JSONText[]) => {
+	if (value.length === 0) {
+		return;
+	}
+
+	target.applyDelta([
+		{ retain: target.length },
+		...value.map(({ text, marks }) => ({
+			insert: text,
+			attributes: marks
+		}))
+	]);
+};
+
 export function addChildBlock(
 	this: Block,
 	{ block, index = this.yChildren.length }: BlockOperations['addChildBlock']
 ) {
-	if (index > this.yChildren.length || index < 0) {
+	if (index < 0) {
 		index = 0;
+	} else if (index > this.yChildren.length) {
+		index = this.yChildren.length;
 	}
 	const newBlock = new Block({
 		parent: this,
@@ -123,6 +144,11 @@ export function addChildBlocks(
 	this: Block,
 	{ blocks, index = this.yChildren.length }: BlockOperations['addChildBlocks']
 ) {
+	if (index < 0) {
+		index = 0;
+	} else if (index > this.yChildren.length) {
+		index = this.yChildren.length;
+	}
 	const newBlocks = blocks.map((block) => new Block({ parent: this, edytor: this.edytor, block }));
 	this.yChildren.insert(
 		index,
@@ -139,12 +165,8 @@ export function insertBlockAfter(
 	if (!this.parent) {
 		return null;
 	}
-	this.yChildren.delete(0, this.children.length);
 	const result = this.parent.addChildBlock({
-		block: {
-			...block,
-			children: this.value.children
-		},
+		block,
 		index: this.index + 1
 	});
 	this.parent?.normalizeChildren();
@@ -172,167 +194,108 @@ export function splitBlock(
 	this: Block,
 	{ index, text }: BlockOperations['splitBlock']
 ): Block | null {
-	if (!text || !this.parent) {
+	if (!text || !this.parent || !this._bound || this._blockId == null) {
 		return null;
 	}
-	const splittedContent = text.splitText({ index });
-	const indexOfContent = this.content.indexOf(text);
-	const remainingContent = this.content.slice(indexOfContent + 1).map((part) => part.value);
-	const content: (JSONText | JSONInlineBlock)[] = [splittedContent, ...remainingContent].flat();
-	const hasChildren = this.children.length >= 1;
-
-	// Add the current children to the new block if any
-	this.yContent.delete(indexOfContent + 1, this.content.length - indexOfContent - 1);
-	const newBlock = this.parent.addChildBlock({
-		block: {
-			type: this.edytor.getDefaultBlock(this.parent),
-			content,
-			children: this.value.children
-		},
-		index: this.parent.children.indexOf(this) + 1
-	});
-
-	// If the block has children, we need to remove its children and insert them into the new block
-	if (hasChildren) {
-		this.yChildren.delete(0, this.children.length);
+	const facade = this.edytor.facade!;
+	const newId = id('b');
+	const offset = this.partOffsetOf(text) + index;
+	if (!facade.splitBlock(this._blockId, offset, newId)) {
+		return null;
 	}
+	// Baseline semantics: the sibling takes the default block type (and no
+	// data) — the engine copies type+data, so reset both in the same
+	// transaction.
+	facade.setBlockType(newId, this.edytor.getDefaultBlock(this.parent));
+	facade.setBlockData(newId, {});
+	this.edytor.flushMirror();
 	this.parent?.normalizeChildren();
-	return newBlock;
+	return this.edytor.idToBlock.get(newId) ?? null;
 }
 
 export function removeBlock(
 	this: Block,
 	{ keepChildren = false }: BlockOperations['removeBlock'] = { keepChildren: false }
 ) {
-	if (!this.parent) {
+	if (!this.parent || !this._bound || this._blockId == null || !this._live) {
 		return;
 	}
-	// Get the current index from yChildren array since this.index may be stale when removing multiple blocks at once
-	const index = this.parent.yChildren.toArray().indexOf(this.yBlock);
-	if (this.yBlock._item?.deleted) {
-		return;
-	}
-	this.parent.yChildren.delete(index, 1);
-
-	if (keepChildren && this.hasChildren) {
-		this.parent.yChildren.insert(
-			this.index,
-			this.value.children!.map((child) => {
-				const newBlock = new Block({
-					parent: this.parent,
-					edytor: this.edytor,
-					block: child
-				});
-				return newBlock.yBlock;
-			})
-		);
-	}
+	this.edytor.facade!.deleteBlock(this._blockId, { keepChildren });
+	this.edytor.flushMirror();
 	this.parent?.normalizeChildren();
 }
 
 export function mergeBlockBackward(this: Block): Block | null {
-	if (!this.parent) {
+	if (!this.parent || !this._bound || this._blockId == null) {
 		return null;
 	}
-	const { closestPreviousBlock, isEmpty } = this;
-	const { children = [] } = this.value;
-
-	if (!closestPreviousBlock) {
-		return this.isEmpty ? this.mergeBlockForward() : null;
-	}
-
-	// Add the current content to the previous block content
-	closestPreviousBlock.pushContentIntoBlock({ value: this.content });
-	if (!isEmpty) {
-		// If the current block has children, we need to unnest them and insert them into the current parent
-		if (children.length > 0) {
-			// Unnest children if any
-			this.parent.yChildren.insert(
-				this.index,
-				children.map((child) => {
-					const newBlock = new Block({
-						parent: this.parent,
-						edytor: this.edytor,
-						block: child
-					});
-					return newBlock.yBlock;
-				})
-			);
-		}
-	}
-	// Remove the current block from its position
-	this.parent.yChildren.delete(this.index + this.children.length, 1);
+	const targetId = this.edytor.facade!.mergeBackward(this._blockId);
+	this.edytor.flushMirror();
 	this.parent?.normalizeChildren();
-
-	return closestPreviousBlock;
+	return targetId ? (this.edytor.idToBlock.get(targetId) ?? null) : null;
 }
+
 export function mergeBlockForward(this: Block): Block | null {
-	if (!this.parent) {
+	if (!this.parent || !this._bound || this._blockId == null) {
 		return null;
 	}
-	const nextBlock = this.closestNextBlock;
-
-	if (!nextBlock) {
-		return null;
-	}
-	this.pushContentIntoBlock({ value: nextBlock.content });
-
-	if (nextBlock.children.length > 0 && nextBlock.parent) {
-		nextBlock.parent.yChildren.insert(
-			nextBlock.index + 1,
-			nextBlock.children.map((child) => {
-				const newBlock = new Block({
-					parent: nextBlock.parent,
-					edytor: this.edytor,
-					block: child.value
-				});
-				return newBlock.yBlock;
-			})
-		);
-	}
-	nextBlock.parent?.yChildren.delete(nextBlock.index, 1);
-	this.normalizeContent();
-	this.normalizeChildren();
-	return nextBlock;
+	const targetId = this.edytor.facade!.mergeForward(this._blockId);
+	this.edytor.flushMirror();
+	this.parent?.normalizeChildren();
+	return targetId ? (this.edytor.idToBlock.get(targetId) ?? null) : null;
 }
 
 export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): Block | null {
-	if (!path.length || path.some((p) => isNaN(p) || p < 0) || !this.parent) {
+	const targetPath = [...path];
+	if (!targetPath.length || targetPath.some((p) => isNaN(p) || p < 0) || !this.parent) {
 		return null;
 	}
 
-	if (this.path.some((p, i) => path[i] === p) && this.path.length < path.length) {
+	if (this.path.some((p, i) => targetPath[i] === p) && this.path.length < targetPath.length) {
 		// this prevent a block from being moved into itself
 		return null;
 	}
 
-	const lastIndex = path.pop();
+	const lastIndex = targetPath.pop();
 	let currentBlock: Block = this.edytor.root!;
 
-	while (path.length > 0 && currentBlock) {
-		const index = path.shift();
+	while (targetPath.length > 0 && currentBlock) {
+		const index = targetPath.shift();
 		if (typeof index !== 'number' || isNaN(index)) break;
 		currentBlock = currentBlock.children[index!];
 	}
 
-	if (!currentBlock) {
+	if (
+		!currentBlock ||
+		this.insideIsland ||
+		currentBlock.definition.void ||
+		currentBlock.definition.island ||
+		currentBlock.insideIsland ||
+		!this._bound ||
+		this._blockId == null
+	) {
 		return null;
 	}
-	this.edytor.idToBlock.delete(this.id);
-	this.parent.yChildren.delete(this.index, 1);
-	const newBlock = new Block({
-		parent: currentBlock,
-		edytor: this.edytor,
-		block: this.value
-	});
-	currentBlock.yChildren.insert(lastIndex!, [newBlock.yBlock]);
-	currentBlock.parent?.normalizeChildren();
-	return newBlock;
+	// The facade move preserves block identity — the baseline rebuilt the
+	// block from JSON, but `crdtId`/wrapper stability is the intended v14
+	// improvement and reconcile keeps the same wrapper registered.
+	if (
+		!this.edytor.facade!.moveBlock(this._blockId, {
+			parent: currentBlock._blockId ?? null,
+			index: lastIndex!
+		})
+	) {
+		return null;
+	}
+	this.edytor.flushMirror();
+	this.parent.normalizeChildren();
+	currentBlock.normalizeChildren();
+	return this;
 }
 
 export function unNestBlock(this: Block): Block | null {
-	const { parent, index } = this;
-	if (!parent) {
+	const { parent } = this;
+	if (!parent || !this._bound || this._blockId == null) {
 		return null;
 	}
 
@@ -342,17 +305,13 @@ export function unNestBlock(this: Block): Block | null {
 		return null;
 	}
 
-	const newBlock = new Block({
-		parent: grandParent,
-		edytor: this.edytor,
-		block: this.value
-	});
-
-	grandParent.yChildren.insert(parent.index + 1, [newBlock.yBlock]);
-	parent.yChildren.delete(index, 1);
+	if (!this.edytor.facade!.unNestBlock(this._blockId)) {
+		return null;
+	}
+	this.edytor.flushMirror();
 	parent.normalizeChildren();
 	grandParent.normalizeChildren();
-	return newBlock;
+	return this;
 }
 
 export function nestBlock(this: Block): Block | null {
@@ -361,89 +320,54 @@ export function nestBlock(this: Block): Block | null {
 		!previousBlock ||
 		previousBlock?.definition?.void ||
 		previousBlock?.definition?.island ||
-		!this.parent
+		!this.parent ||
+		!this._bound ||
+		this._blockId == null ||
+		previousBlock._blockId == null
 	) {
 		return null;
 	}
-	const newBlock = new Block({
-		parent: previousBlock,
-		edytor: this.edytor,
-		block: { ...this.value, children: [] }
-	});
-	previousBlock.yChildren.insert(previousBlock.children.length, [newBlock.yBlock]);
-	if (this.value.children && this.value.children.length) {
-		previousBlock.yChildren.insert(
-			previousBlock.children.length + 1,
-			this.value.children.map((child) => {
-				const newBlock = new Block({
-					parent: previousBlock,
-					edytor: this.edytor,
-					block: child
-				});
-				return newBlock.yBlock;
-			})
-		);
+	if (!this.edytor.facade!.nestBlock(this._blockId, previousBlock._blockId)) {
+		return null;
 	}
-	this.parent.yChildren.delete(this.index, 1);
+	this.edytor.flushMirror();
 	this.parent?.normalizeChildren();
 	previousBlock.normalizeChildren();
-	return newBlock;
+	return this;
 }
 
 export function setBlock(this: Block, { value }: BlockOperations['setBlock']) {
-	this.edytor.doc.transact(() => {
-		if (value.type) {
-			this.type = value.type;
+	if (!this._bound || this._blockId == null) {
+		return;
+	}
+	const content: ContentItem[] | undefined = value.content?.map((part): ContentItem => {
+		if ('type' in part) {
+			return {
+				kind: 'inline',
+				id: part.id ?? id('i'),
+				type: part.type,
+				...(part.data ? { data: cloneJson(part.data) } : {})
+			};
 		}
-		if (value.data) {
-			this.yBlock.set('data', value.data);
-		}
-		if (value.content) {
-			let newContentCount = value.content.length;
-			let oldContentCount = this.content.length;
-			const contentToRemove = oldContentCount - newContentCount;
-			contentToRemove && this.yContent.delete(newContentCount, contentToRemove);
-			const groupedContent = groupContent(value.content);
-			this.yContent.insert(
-				0,
-				groupedContent.map((part) => {
-					if ('type' in part) {
-						const newInlineBlock = new InlineBlock({
-							parent: this,
-							block: part
-						});
-						return newInlineBlock.yBlock;
-					} else {
-						const newText = new Text({
-							parent: this,
-							content: part
-						});
-						return newText.yText;
-					}
-				})
-			);
-		} else {
-			this.yContent.delete(0, this.content.length);
-		}
-		if (value.children) {
-			let newChildrenCount = value.children.length;
-			let oldChildrenCount = this.children.length;
-			const childrenToRemove = oldChildrenCount - newChildrenCount;
-			this.children = value.children.map((child, i) => {
-				const existingChild = this.children[i];
-				if (existingChild) {
-					existingChild.setBlock({ value: child });
-					return existingChild;
-				} else {
-					return this.addChildBlock({ block: child, index: i });
-				}
-			});
-
-			childrenToRemove && this.yChildren.delete(newChildrenCount, childrenToRemove);
-		} else {
-			this.yChildren.delete(0, this.children.length);
-		}
+		return {
+			kind: 'text',
+			text: part.text,
+			...(part.marks ? { marks: cloneJson(part.marks) } : {})
+		};
 	});
+	this.edytor.facade!.setBlock(this._blockId, {
+		...(value.type !== undefined ? { type: value.type } : {}),
+		...(value.data !== undefined ? { data: cloneJson(value.data) } : {}),
+		...(content !== undefined ? { content } : {}),
+		...(value.children !== undefined
+			? {
+					children: value.children.map((child) =>
+						new Block({ parent: this, edytor: this.edytor, block: child })._toSpec()
+					)
+				}
+			: {})
+	});
+	this.edytor.flushMirror();
 
 	this.normalizeChildren();
 	this.normalizeContent();
@@ -453,34 +377,36 @@ export function pushContentIntoBlock(
 	this: Block,
 	{ value }: BlockOperations['pushContentIntoBlock']
 ) {
-	const content = this.content.filter((part) =>
-		part instanceof Text ? !part.yText._item?.deleted : !part.yBlock._item?.deleted
-	);
-	let index = content.length;
+	if (!this._bound || this._blockId == null) {
+		return;
+	}
+	const facade = this.edytor.facade!;
+	const blockId = this._blockId;
+	// Live display length — the maintained runs view is commit-synced, so
+	// `facade.displayLength` would return stale offsets mid-transaction.
+	const liveDisplayLength = () =>
+		(this.edytor.projectedBlock(blockId)?.content ?? []).reduce(
+			(n, item) => n + (item.kind === 'text' ? item.text.length : 1),
+			0
+		);
 	for (const part of value) {
+		const offset = liveDisplayLength();
 		if (part instanceof InlineBlock) {
-			// is an inline block needed to be added
-			const newInlineBlock = new InlineBlock({
-				parent: this,
-				block: part
+			facade.insertInline(blockId, offset, {
+				id: part.id,
+				type: part.type,
+				...(part.data ? { data: cloneJson(part.data) } : {})
 			});
-			this.yContent.insert(index, [newInlineBlock.yBlock]);
-			index++;
 		} else {
-			const lastPart = content[index - 1];
-			if (lastPart instanceof Text) {
-				const delta = part.yText.toDelta();
-				lastPart.yText.applyDelta([{ retain: lastPart.yText.length }, ...delta]);
-			} else {
-				const newText = new Text({
-					parent: this,
-					content: part.value
-				});
-				this.yContent.insert(index, [newText.yText]);
-				index++;
+			for (const item of part.value) {
+				const at = liveDisplayLength();
+				if (item.text.length) {
+					facade.insertText(blockId, at, item.text, item.marks as Record<string, unknown>);
+				}
 			}
 		}
 	}
+	this.edytor.flushMirror();
 	this.normalizeContent();
 }
 
@@ -544,86 +470,50 @@ export function addInlineBlock(
 	this: Block,
 	{ index, block, text }: BlockOperations['addInlineBlock']
 ): Text {
-	// TODO
 	const newInlineBlock = new InlineBlock({
 		parent: this,
 		block
 	});
+	const pendingMarks =
+		text.markOnNextInsert === undefined ? undefined : { ...text.markOnNextInsert };
+	// The tail of the split text keeps its atoms in the engine — the new text
+	// wrapper is adopted onto the segment after the inserted inline.
 	const newText = new Text({
 		parent: this,
-		content: text.splitText({ index })
+		content: text._sliceFrom(index)
 	});
+	if (pendingMarks !== undefined) {
+		text.markOnNextInsert = undefined;
+		newText.markOnNextInsert = pendingMarks;
+	}
 
-	this.yContent.insert(text.index + 1, [newInlineBlock.yBlock, newText.yText]);
+	if (this._bound && this._blockId != null) {
+		const offset = this.partOffsetOf(text) + index;
+		this.edytor.facade!.insertInline(this._blockId, offset, {
+			id: newInlineBlock.id,
+			type: newInlineBlock.type,
+			...(newInlineBlock.data ? { data: cloneJson(newInlineBlock.data) } : {})
+		});
+		this._pendingParts.set(text.index + 1, newInlineBlock);
+		this._pendingParts.set(text.index + 2, newText);
+		this.edytor.flushMirror();
+	} else {
+		this.yContent.insert(text.index + 1, [newInlineBlock.yBlock, newText.yText]);
+	}
 	this.normalizeContent();
+	if (pendingMarks !== undefined) {
+		queueMicrotask(() => {
+			const insertedText = this.edytor.getTextById(newText.id) ?? newText;
+			insertedText.markOnNextInsert = pendingMarks;
+		});
+	}
 	return newText;
 }
 
 export function normalizeContent(this: Block): void {
-	const content = this.yContent.toArray().filter((part) => !part._item?.deleted);
-
-	// Ensure content starts with Text
-	if (content.length === 0 || !(content[0] instanceof Y.Text)) {
-		const emptyText = new Text({
-			parent: this,
-			content: [{ text: '' }]
-		});
-		this.yContent.insert(0, [emptyText.yText]);
-		return this.normalizeContent();
-	}
-
-	// Ensure content ends with Text
-	if (!(content[content.length - 1] instanceof Y.Text)) {
-		const emptyText = new Text({
-			parent: this,
-			content: [{ text: '' }]
-		});
-		this.yContent.insert(content.length, [emptyText.yText]);
-		return this.normalizeContent();
-	}
-
-	// First handle consecutive text blocks
-	const consecutiveTexts = content.reduce(
-		(acc, part, index) => {
-			const nextPart = content[index + 1];
-			if (part instanceof Y.Text && nextPart instanceof Y.Text) {
-				acc.push([part, nextPart]);
-			}
-			return acc;
-		},
-		[] as [Y.Text, Y.Text][]
-	);
-
-	if (consecutiveTexts.length > 0) {
-		const [first, second] = consecutiveTexts[0];
-		const delta = second.toDelta();
-		first.applyDelta([{ retain: first.length }, ...delta]);
-		this.yContent.delete(content.indexOf(second), 1);
-		return this.normalizeContent();
-	}
-
-	// Then handle consecutive inline blocks
-	const consecutiveInlineBlocks = content.reduce(
-		(acc, part, index) => {
-			const nextPart = content[index + 1];
-			if (part instanceof Y.Map && nextPart instanceof Y.Map) {
-				acc.push([part, nextPart]);
-			}
-			return acc;
-		},
-		[] as [Y.Map<any>, Y.Map<any>][]
-	);
-
-	if (consecutiveInlineBlocks.length > 0) {
-		const [first, second] = consecutiveInlineBlocks[0];
-		const emptyText = new Text({
-			parent: this,
-			content: [{ text: '' }]
-		});
-		const index = content.indexOf(second);
-		this.yContent.insert(index, [emptyText.yText]);
-		return this.normalizeContent();
-	}
+	// The v14 content model maintains the part invariants by construction —
+	// projected content always derives to text-first/text-last/non-adjacent
+	// parts — so the only remaining normalization is the plugin hook.
 	const pluginNormalization = this.definition?.normalizeContent?.({ block: this });
 	if (pluginNormalization) {
 		pluginNormalization();
@@ -660,19 +550,20 @@ export function suggestText(this: Block, { value }: BlockOperations['suggestText
 }
 
 export function acceptSuggestedText(this: Block) {
-	if (!this.suggestions) {
+	const suggestions = this.rawSuggestions;
+	if (!suggestions) {
 		return;
 	}
-	const editableSuggestions = this.suggestions.map((part) => {
+	const editableSuggestions = suggestions.map((part) => {
 		if ('type' in part) {
 			return new InlineBlock({
 				parent: this,
-				block: part.value
+				block: part
 			});
 		} else {
 			return new Text({
 				parent: this,
-				content: part.value
+				content: part
 			});
 		}
 	});
@@ -694,27 +585,16 @@ export function deleteContentAtRange(
 	const [startIndex, startOffset] = start;
 	const [endIndex, endOffset] = end;
 
-	let numberToDelete = 0;
-	this.content.slice(startIndex, endIndex + 1).forEach((part, index) => {
-		const isFirstPart = index === 0;
-		const isLastPart = index === endIndex - startIndex;
-
-		if (part instanceof Text) {
-			if (isFirstPart) {
-				// Delete from offset to end
-				part.yText.delete(startOffset, part.yText.length - startOffset);
-			} else if (isLastPart) {
-				// Delete from start to offset
-				part.yText.delete(0, endOffset);
-			} else {
-				numberToDelete++;
-				// Delete entire text element
-			}
-		} else {
-			// For inline blocks, always delete the entire element
-			numberToDelete++;
-		}
-	});
-	this.yContent.delete(startIndex + 1, numberToDelete);
+	const startPart = this.content.at(startIndex);
+	const endPart = this.content.at(endIndex);
+	if (!startPart || !endPart || !this._bound || this._blockId == null) {
+		return;
+	}
+	const startAtom = this.partOffsetOf(startPart) + startOffset;
+	const endAtom = this.partOffsetOf(endPart) + endOffset;
+	if (endAtom > startAtom) {
+		this.edytor.facade!.deleteText(this._blockId, startAtom, endAtom - startAtom);
+	}
+	this.edytor.flushMirror();
 	this.normalizeContent();
 }

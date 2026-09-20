@@ -13,7 +13,6 @@ export const arrowMovePlugin: Plugin = (edytor) => {
 
 					prevent(() => {
 						const path = selectedBlock.path;
-						console.log({ path: [...path] });
 
 						if (
 							selectedBlock.parent &&

@@ -28,6 +28,7 @@ export class RenderedNode {
 }
 
 export interface IntrinsicElements {
+	[elementName: string]: any;
 	span: any;
 	color: any;
 	root: any;

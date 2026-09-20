@@ -1,8 +1,21 @@
 import { Block } from './block/block.svelte.js';
 import { Text } from './text/text.svelte.js';
 import type { Edytor } from './edytor.svelte.js';
-import { deltaToJson, toDeltas } from './text/deltas.js';
+
 import { InlineBlock } from './block/inlineBlock.svelte.js';
+
+const getClosestRemainingBlock = (
+	block: Block | undefined,
+	blocksToDelete: Set<Block>,
+	direction: 'previous' | 'next'
+) => {
+	let current = direction === 'previous' ? block?.closestPreviousBlock : block?.closestNextBlock;
+	while (current && blocksToDelete.has(current)) {
+		current = direction === 'previous' ? current.closestPreviousBlock : current.closestNextBlock;
+	}
+	return current && !current.isRoot ? current : null;
+};
+
 export function deleteContentWithinSelection(this: Edytor, {}) {
 	const {
 		startBlock,
@@ -15,6 +28,14 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 		endText
 	} = this.selection.state;
 
+	if (startBlock && endBlock && startBlock === endBlock && startText && endText) {
+		startBlock.deleteContentAtRange({
+			start: [startText.index, yStart],
+			end: [endText.index, yEnd]
+		});
+		return [startText, yStart] as const;
+	}
+
 	const blocksToDelete = this.selection.state.blocks.filter((block, index) => {
 		const isFirst = index === 0;
 		const isLast = index === this.selection.state.blocks.length - 1;
@@ -26,6 +47,25 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 			return true;
 		}
 	});
+	const deletedBlockSet = new Set(blocksToDelete);
+	const firstDeletedBlock = blocksToDelete[0];
+	const lastDeletedBlock = blocksToDelete.at(-1);
+	const fallbackPreviousBlock = getClosestRemainingBlock(
+		firstDeletedBlock,
+		deletedBlockSet,
+		'previous'
+	);
+	const fallbackNextBlock = getClosestRemainingBlock(lastDeletedBlock, deletedBlockSet, 'next');
+	const fallbackText =
+		startBlock && !deletedBlockSet.has(startBlock) && startText
+			? startText
+			: (fallbackPreviousBlock?.lastText ?? fallbackNextBlock?.firstText ?? null);
+	const fallbackOffset =
+		startBlock && !deletedBlockSet.has(startBlock) && startText
+			? yStart
+			: fallbackPreviousBlock
+				? (fallbackText?.length ?? 0)
+				: 0;
 
 	const firstRange =
 		startText && startBlock
@@ -47,10 +87,11 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 				const isFirstPart = index === 0;
 
 				if (part instanceof Text && isFirstPart) {
-					// Delete from offset to end
+					// Delete from offset to end — the merge tail is the JSON slice
+					// after `yEnd` of the ORIGINAL items.
+					const tail = part._sliceFrom(yEnd);
 					part.yText.delete(0, yEnd);
-					const deltas = deltaToJson(toDeltas(part.yText)[0]);
-					return deltas;
+					return tail;
 				}
 
 				return part.value;
@@ -72,24 +113,21 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 		});
 
 		startBlock?.yContent.push(value);
+		startBlock?.normalizeContent();
 	}
 	blocksToDelete.forEach((block, index) => {
 		block.removeBlock();
 	});
 
 	if (endBlock?.hasChildren) {
-		const newBlocks = endBlock.children.map((child) => {
-			const newBlock = new Block({
-				parent: startBlock!.parent,
-				edytor: this,
-				block: child.value
-			});
-			return newBlock.yBlock;
-		});
-
-		startBlock?.parent?.yChildren.insert(startBlock!.index + 1, newBlocks);
+		// Relocate the end block's surviving children under the start block's
+		// parent (move, not copy — `insertBlock` rejects specs with existing
+		// ids, and moving preserves block identity for undo/collab).
+		const moving = endBlock.children.map((child) => child.yBlock);
+		startBlock?.parent?.yChildren.insert(startBlock!.index + 1, moving);
 	}
 	endBlock?.removeBlock();
+	startBlock?.parent?.normalizeChildren();
 
-	return [startText, yStart] as const;
+	return [fallbackText, fallbackOffset] as const;
 }

@@ -1,0 +1,12 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "node16",
+		"moduleResolution": "nodenext",
+		"strict": true,
+		"noEmit": true,
+		"skipLibCheck": false,
+		"types": []
+	},
+	"include": ["smoke-types.node.ts"]
+}

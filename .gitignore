@@ -1,4 +1,6 @@
 .DS_Store
+.codex/
+.playwright-mcp/
 node_modules
 /build
 /dist

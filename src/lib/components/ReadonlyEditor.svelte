@@ -4,6 +4,7 @@
 	import { createReadonlyBlock } from './readonlyElements.svelte.js';
 	import Block from './Block.svelte';
 	import { Edytor } from '$lib/edytor.svelte.js';
+	import { untrack } from 'svelte';
 
 	let {
 		value,
@@ -32,15 +33,24 @@
 
 	const children = $derived(value!.children.map(generateReadonlyBlock));
 
-	const edytor = new Edytor({
+	const initialReadonlyOptions = untrack(() => ({
 		snippets,
 		readonly: true,
 		plugins,
 		value
-	});
+	}));
+
+	const edytor = new Edytor(initialReadonlyOptions);
 </script>
 
-<div class={className} data-edytor contenteditable="false">
+<div
+	class={className}
+	data-edytor
+	contenteditable="false"
+	role="textbox"
+	aria-multiline="true"
+	aria-readonly="true"
+>
 	{#each children || [] as block (block.id)}
 		<Block {block} />
 	{/each}

@@ -1,0 +1,26 @@
+
+> edytor@0.0.11 test /Users/arnaud/code/edytor
+> vitest -- --run
+
+
+[1m[46m RUN [49m[22m [36mv4.1.2 [39m[90m/Users/arnaud/code/edytor[39m
+
+ [32m✓[39m src/tests/fixtures/model/utilities.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/tests/fixtures/model/jsx.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m src/tests/fixtures/model/cursor.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 2[2mms[22m[39m
+ [32m✓[39m src/tests/fixtures/model/collaboration/collaboration.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m src/tests/crdt/legacy-v13.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m src/tests/fixtures/model/phase10-operation-sequence.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 19[2mms[22m[39m
+ [32m✓[39m src/tests/fixtures/model/normalization.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32m✓[39m src/tests/fixtures/model/history.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 46[2mms[22m[39m
+ [32m✓[39m src/tests/fixtures/model/parser.test.ts [2m([22m[2m73 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m src/tests/fixtures/model/transforms.test.ts [2m([22m[2m106 tests[22m[2m)[22m[32m 66[2mms[22m[39m
+ [32m✓[39m src/tests/fixtures/model/operations.test.ts [2m([22m[2m89 tests[22m[2m)[22m[32m 131[2mms[22m[39m
+ [32m✓[39m src/tests/fixtures/model/phase10-scale.test.ts [2m([22m[2m5 tests[22m[2m)[22m[33m 354[2mms[22m[39m
+ [32m✓[39m src/tests/attachmentLifecycle.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m13 passed[39m[22m[90m (13)[39m
+[2m      Tests [22m [1m[32m315 passed[39m[22m[90m (315)[39m
+[2m   Start at [22m 17:40:39
+[2m   Duration [22m 1.48s[2m (transform 6.34s, setup 0ms, import 8.20s, tests 683ms, environment 553ms)[22m
+

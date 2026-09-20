@@ -1,28 +1,117 @@
 /** @jsxImportSource ./jsx */
+/**
+ * JSX DSL fixtures are a model-layer harness only.
+ *
+ * Limits to keep explicit:
+ * - `|` is reserved fixture syntax and cannot represent literal pipe text.
+ * - Fixture-derived selections are text-anchored. They model block/text ranges, not full DOM behavior.
+ * - These helpers do not prove browser selection mapping, `beforeinput`, or attachment hooks.
+ */
 import type { RenderedNode } from './jsx/types.js';
 import { Edytor } from '../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import type { JSONBlock, JSONDoc, JSONText } from '$lib/utils/json.js';
+import type { JSONBlock, JSONDoc, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
 import { expect } from 'vitest';
-import type { Block } from '$lib/block/block.svelte.js';
-import type { Text } from '$lib/text/text.svelte.js';
+import { Block } from '$lib/block/block.svelte.js';
+import { Text } from '$lib/text/text.svelte.js';
+import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import type { Plugin } from '$lib/plugins.js';
+import type { SerializableContent } from '$lib/utils/json.js';
+import { onKeyDown } from '$lib/events/onKeyDown.js';
+import type { Awareness, YDoc } from '$lib/crdt/index.js';
+
+type CursorPosition = {
+	path: number[];
+	offset: number;
+};
+
+export type ContentPart = Text | InlineBlock;
+
+export type SelectionExpectation = {
+	startBlockPath?: number[];
+	endBlockPath?: number[];
+	startTextPath?: number[];
+	endTextPath?: number[];
+	blockPaths?: number[][];
+	textPaths?: number[][];
+	selectedBlockPaths?: number[][];
+	focusedBlockPaths?: number[][];
+	start?: number;
+	end?: number;
+	yStart?: number;
+	yEnd?: number;
+	length?: number;
+	content?: string;
+	isCollapsed?: boolean;
+	isTextSpanning?: boolean;
+	isBlockSpanning?: boolean;
+};
+
+export type OperationResultExpectation =
+	| { kind: 'void' }
+	| { kind: 'null' }
+	| { kind: 'block'; path: number[]; type?: string }
+	| { kind: 'text'; path: number[]; content?: string }
+	| { kind: 'inline-block'; path: number[]; type?: string }
+	| { kind: 'blocks'; paths: number[][] }
+	| { kind: 'cursor'; path: number[]; offset: number };
+
+export type TestEdytorOptions = {
+	plugins?: Plugin[];
+	readonly?: boolean;
+	value?: JSONDoc;
+	doc?: YDoc;
+	awareness?: Awareness;
+	sync?: boolean;
+};
+
+export type BeforeInputOptions = {
+	inputType: InputEvent['inputType'];
+	data?: string;
+	text?: string;
+};
+
+export type MarkStateExpectation = {
+	pending?: Record<string, SerializableContent | null> | undefined;
+	range?: {
+		start: number;
+		end: number;
+		value: JSONText[];
+	};
+};
+
+const defaultPlugins = [richTextPlugin, mentionPlugin];
+
+const getAncestorBlockByDefinition = (
+	block: Block | null,
+	key: 'island' | 'void'
+): Block | null => {
+	let current = block;
+	while (current) {
+		if (current.definition?.[key]) {
+			return current;
+		}
+		current = current.parent ?? null;
+	}
+
+	return null;
+};
 
 export const findCursorPosition = (doc: JSONDoc) => {
 	const value = doc.children;
-	type CursorPosition = {
-		path: number[];
-		offset: number;
-	};
+	const cursorCount = JSON.stringify(value).split('|').length - 1;
 
-	type CursorPositions = {
-		start: CursorPosition | null;
-		end: CursorPosition | null;
-	};
+	if (cursorCount > 2) {
+		throw new Error('JSX DSL fixtures support at most two "|" cursor markers');
+	}
 
 	const findInText = (text: string): { newText: string; offset: number } | null => {
 		const index = text.indexOf('|');
-		if (index === -1) return null;
+		if (index === -1) {
+			return null;
+		}
+
 		return {
 			newText: text.slice(0, index) + text.slice(index + 1),
 			offset: index
@@ -30,21 +119,18 @@ export const findCursorPosition = (doc: JSONDoc) => {
 	};
 
 	const findInBlock = (block: JSONBlock, currentPath: number[]): CursorPosition | null => {
-		// Check content (text and inline blocks)
 		if (block.content) {
 			let accumulatedOffset = 0;
 			let contentIndex = -1;
 			let lastWasText = false;
 
-			for (let i = 0; i < block.content.length; i++) {
-				const item = block.content[i];
-
+			for (const item of block.content) {
 				if ('text' in item) {
-					// Only increment content index if this is the start of a new text unit
 					if (!lastWasText) {
 						contentIndex++;
-						accumulatedOffset = 0; // Reset offset for new content part
+						accumulatedOffset = 0;
 					}
+
 					const result = findInText(item.text);
 					if (result) {
 						item.text = result.newText;
@@ -53,43 +139,43 @@ export const findCursorPosition = (doc: JSONDoc) => {
 							offset: accumulatedOffset + result.offset
 						};
 					}
+
 					accumulatedOffset += item.text.length;
 					lastWasText = true;
-				} else {
-					// This is an inline block
-					contentIndex++;
-					accumulatedOffset = 0; // Reset offset for new content part
-					lastWasText = false;
+					continue;
 				}
+
+				contentIndex++;
+				accumulatedOffset = 0;
+				lastWasText = false;
 			}
 		}
 
-		// Check children recursively
 		if (block.children) {
-			for (let i = 0; i < block.children.length; i++) {
-				const result = findInBlock(block.children[i], [...currentPath, i]);
-				if (result) return result;
+			for (const [index, child] of block.children.entries()) {
+				const result = findInBlock(child, [...currentPath, index]);
+				if (result) {
+					return result;
+				}
 			}
 		}
 
 		return null;
 	};
 
-	// First find the start cursor
 	let startPosition: CursorPosition | null = null;
-	for (let i = 0; i < value.length; i++) {
-		const result = findInBlock(value[i], [i]);
+	for (const [index, block] of value.entries()) {
+		const result = findInBlock(block, [index]);
 		if (result) {
 			startPosition = result;
 			break;
 		}
 	}
 
-	// Then find the end cursor
 	let endPosition: CursorPosition | null = null;
 	if (startPosition) {
-		for (let i = 0; i < value.length; i++) {
-			const result = findInBlock(value[i], [i]);
+		for (const [index, block] of value.entries()) {
+			const result = findInBlock(block, [index]);
 			if (result) {
 				endPosition = result;
 				break;
@@ -103,25 +189,225 @@ export const findCursorPosition = (doc: JSONDoc) => {
 	};
 };
 
+const findBlockAtPath = (edytor: Edytor, p: number[]) => {
+	let block = edytor.root;
+	for (const index of p) {
+		block = block?.children[index];
+	}
+
+	if (!block) {
+		throw new Error(`Block not found at path ${p.join('.')}`);
+	}
+
+	return block;
+};
+
+const findJSONBlockAtPath = (doc: JSONDoc, p: number[]) => {
+	let block: JSONBlock | undefined = doc.children[p[0]];
+	for (const index of p.slice(1)) {
+		block = block?.children?.[index];
+	}
+
+	if (!block) {
+		throw new Error(`Fixture block not found at path ${p.join('.')}`);
+	}
+
+	return block;
+};
+
+const getGroupedContentIndexMap = (content: (JSONText | JSONInlineBlock)[] = []) => {
+	if (content.length === 0) {
+		return [0];
+	}
+
+	const grouped: ('text' | 'inline')[] = [];
+	const logicalToGroupedIndex: number[] = [];
+	let logicalIndex = -1;
+	let lastWasText = false;
+
+	for (const part of content) {
+		const isInlineBlock = 'type' in part;
+		const lastGroupedPart = grouped.at(-1);
+
+		if (isInlineBlock) {
+			logicalIndex++;
+			if (lastGroupedPart === 'inline') {
+				grouped.push('text');
+			}
+			logicalToGroupedIndex[logicalIndex] = grouped.length;
+			grouped.push('inline');
+			lastWasText = false;
+			continue;
+		}
+
+		if (!lastWasText) {
+			logicalIndex++;
+			if (lastGroupedPart !== 'text') {
+				grouped.push('text');
+			}
+			logicalToGroupedIndex[logicalIndex] = grouped.length - 1;
+		}
+
+		lastWasText = true;
+	}
+
+	if (grouped[0] === 'inline') {
+		return logicalToGroupedIndex.map((index) => index + 1);
+	}
+
+	return logicalToGroupedIndex;
+};
+
+export const findBlockAndTextAtFixturePath = (edytor: Edytor, doc: JSONDoc, path: number[]) => {
+	if (path.length < 2) {
+		throw new Error(`Expected a block content path, received "${path.join('.')}"`);
+	}
+
+	const blockPath = path.slice(0, -1);
+	const logicalPartIndex = path.at(-1)!;
+	const block = findBlockAtPath(edytor, blockPath);
+	const fixtureBlock = findJSONBlockAtPath(doc, blockPath);
+	const groupedIndex = getGroupedContentIndexMap(fixtureBlock.content)[logicalPartIndex];
+
+	if (groupedIndex === undefined) {
+		throw new Error(`Fixture content part not found at path ${path.join('.')}`);
+	}
+
+	const part = block.content.at(groupedIndex);
+	if (!(part instanceof Text)) {
+		throw new Error(`Fixture path ${path.join('.')} did not resolve to a text part`);
+	}
+
+	return { block, text: part };
+};
+
+const getPartPath = (part: ContentPart) => {
+	const actualIndex = part.parent.content.findIndex((candidate) => {
+		if (candidate === part) {
+			return true;
+		}
+
+		return 'id' in candidate && 'id' in part && candidate.id === part.id;
+	});
+	return [...part.parent.path, actualIndex === -1 ? part.index : actualIndex];
+};
+
+const getSelectedContent = (
+	texts: Text[],
+	startText: Text,
+	endText: Text,
+	startOffset: number,
+	endOffset: number
+) => {
+	if (texts.length === 0) {
+		return '';
+	}
+
+	if (texts.length === 1) {
+		return startText.stringContent.slice(startOffset, endOffset);
+	}
+
+	return texts
+		.map((text, index) => {
+			if (index === 0) {
+				return text.stringContent.slice(startOffset);
+			}
+			if (text === endText) {
+				return text.stringContent.slice(0, endOffset);
+			}
+			return text.stringContent;
+		})
+		.join('');
+};
+
+const getBlocksInSelection = (startBlock: Block, endBlock: Block) => {
+	const blocks = [startBlock];
+	let currentBlock = startBlock;
+
+	while (currentBlock !== endBlock) {
+		const nextBlock = currentBlock.closestNextBlock;
+		if (!nextBlock) {
+			throw new Error('Failed to resolve block range from JSX DSL fixture');
+		}
+
+		blocks.push(nextBlock);
+		currentBlock = nextBlock;
+	}
+
+	return blocks;
+};
+
+const getContentPartsInSelection = (blocks: Block[], startText: Text, endText: Text) => {
+	const contentParts = blocks.flatMap((block) => block.content);
+	const startIndex = contentParts.indexOf(startText);
+	const endIndex = contentParts.indexOf(endText);
+
+	if (startIndex === -1 || endIndex === -1 || startIndex > endIndex) {
+		throw new Error('Failed to resolve content parts from JSX DSL fixture');
+	}
+
+	return contentParts.slice(startIndex, endIndex + 1);
+};
+
+const assertBlockInvariants = (block: Block) => {
+	expect(block.content.length).toBeGreaterThan(0);
+	expect(block.content[0]).toBeInstanceOf(Text);
+	expect(block.content.at(-1)).toBeInstanceOf(Text);
+
+	for (const [index, part] of block.content.entries()) {
+		const nextPart = block.content[index + 1];
+		if (!nextPart) {
+			continue;
+		}
+
+		expect(part instanceof Text && nextPart instanceof Text).toBe(false);
+		expect(part instanceof InlineBlock && nextPart instanceof InlineBlock).toBe(false);
+	}
+
+	for (const child of block.children) {
+		assertBlockInvariants(child);
+	}
+};
+
 export const createTestEdytor = (
-	jsx: RenderedNode
+	jsx: RenderedNode,
+	options: TestEdytorOptions = {}
 ): { edytor: Edytor; expect: (jsx: RenderedNode) => void } => {
-	const { value } = jsx;
-
-	// Find and remove the cursor character, getting its position
+	const value = structuredClone(options.value ?? jsx.value) as JSONDoc;
 	const { start, end } = findCursorPosition(value);
-
 	const edytor = new Edytor({
 		value,
-		plugins: [richTextPlugin, mentionPlugin]
+		plugins: options.plugins ?? defaultPlugins,
+		readonly: options.readonly,
+		doc: options.doc,
+		awareness: options.awareness,
+		sync: options.sync
 	});
 
-	const getBlockAndTextAtPath = findBlockAndTextAtPath(edytor);
 	if (start) {
 		const { path: startPath, offset: startOffset } = start;
-		const { path: endPath, offset: endOffset } = end || { path: startPath, offset: startOffset };
-		const { text: startText, block: startBlock } = getBlockAndTextAtPath(startPath);
-		const { text: endText, block: endBlock } = getBlockAndTextAtPath(endPath);
+		const { path: endPath, offset: endOffset } = end ?? { path: startPath, offset: startOffset };
+		const { text: startText, block: startBlock } = findBlockAndTextAtFixturePath(
+			edytor,
+			value,
+			startPath
+		);
+		const { text: endText, block: endBlock } = findBlockAndTextAtFixturePath(
+			edytor,
+			value,
+			endPath
+		);
+		const isCollapsed =
+			!end ||
+			(startPath.length === endPath.length &&
+				startPath.every((segment, index) => segment === endPath[index]) &&
+				startOffset === endOffset);
+		const blocks = getBlocksInSelection(startBlock, endBlock);
+		const contentParts = getContentPartsInSelection(blocks, startText, endText);
+		const texts = contentParts.filter((part): part is Text => part instanceof Text);
+		const content = isCollapsed
+			? ''
+			: getSelectedContent(texts, startText, endText, startOffset, endOffset);
 
 		edytor.selection.state = {
 			...edytor.selection.state,
@@ -133,12 +419,160 @@ export const createTestEdytor = (
 			end: endOffset,
 			yStart: startOffset,
 			yEnd: endOffset,
-			isCollapsed: true,
-			yTextContent: startText?.yText.toJSON() || ''
+			isCollapsed,
+			length: content.length,
+			content,
+			texts,
+			contentParts,
+			blocks,
+			isTextSpanning: startText !== endText,
+			isBlockSpanning: startBlock !== endBlock,
+			isAtStartOfText: startOffset === 0,
+			isAtEndOfText: endOffset === endText.length,
+			isAtStartOfBlock: startOffset === 0 && startText === startBlock.firstText,
+			isAtEndOfBlock: endOffset === endText.length && endText === endBlock.lastText,
+			yTextContent: startText.yText.toJSON()
 		};
 	}
 
-	return { edytor, expect: expectEydorValue(edytor) };
+	return { edytor, expect: expectEdytorValue(edytor) };
+};
+
+const setSelectionState = (
+	edytor: Edytor,
+	startText: Text,
+	startOffset: number,
+	endText: Text = startText,
+	endOffset: number = startOffset
+) => {
+	const startBlock = startText.parent;
+	const endBlock = endText.parent;
+	const isCollapsed = startText === endText && startOffset === endOffset;
+	const blocks = getBlocksInSelection(startBlock, endBlock);
+	const contentParts = getContentPartsInSelection(blocks, startText, endText);
+	const texts = contentParts.filter((part): part is Text => part instanceof Text);
+	const islandRoot = getAncestorBlockByDefinition(startBlock, 'island');
+	const voidRoot = getAncestorBlockByDefinition(startBlock, 'void');
+	const marksRange =
+		startOffset === endOffset
+			? startOffset > 0
+				? startText.getMarksAtRange(startOffset - 1, startOffset)
+				: []
+			: startText.getMarksAtRange(startOffset, endOffset);
+
+	edytor.selection.state = {
+		...edytor.selection.state,
+		startText,
+		endText,
+		startBlock,
+		endBlock,
+		start: startOffset,
+		end: endOffset,
+		yStart: startOffset,
+		yEnd: endOffset,
+		length: isCollapsed
+			? 0
+			: getSelectedContent(texts, startText, endText, startOffset, endOffset).length,
+		content: isCollapsed
+			? ''
+			: getSelectedContent(texts, startText, endText, startOffset, endOffset),
+		texts,
+		contentParts,
+		blocks,
+		isCollapsed,
+		isTextSpanning: startText !== endText,
+		isBlockSpanning: startBlock !== endBlock,
+		isAtStartOfText: startOffset === 0,
+		isAtEndOfText: endOffset === endText.length,
+		isAtStartOfBlock: startOffset === 0 && startText === startBlock.firstText,
+		isAtEndOfBlock: endOffset === endText.length && endText === endBlock.lastText,
+		isIsland: Boolean(islandRoot),
+		islandRoot,
+		isVoid: Boolean(voidRoot),
+		voidRoot,
+		isVoidEditableElement: false,
+		startNode: startText.node ?? null,
+		endNode: endText.node ?? null,
+		relativePosition: edytor.selection.createTextAnchor(startText, startOffset),
+		currentMarks: marksRange.reduce<Record<string, SerializableContent>>((acc, mark) => {
+			if (mark.marks) {
+				Object.assign(acc, mark.marks);
+			}
+			return acc;
+		}, {}),
+		yTextContent: startText.yText.toJSON()
+	};
+
+	edytor.selection.selectBlocks();
+	edytor.selection.selectedInlineBlock.clear();
+	edytor.selection.focusBlocks(...new Set(texts.map((text) => text.parent)));
+};
+
+const patchOperationSelectionApis = (edytor: Edytor) => {
+	edytor.selection.setAtTextOffset = async (
+		textOrId,
+		textOffset = edytor.selection.state.yStart
+	) => {
+		if (!textOrId || typeof textOffset !== 'number') {
+			return;
+		}
+
+		const text = textOrId instanceof Text ? textOrId : edytor.getTextById(textOrId);
+		if (!text) {
+			return;
+		}
+
+		setSelectionState(edytor, text, Math.max(0, Math.min(textOffset, text.length)));
+	};
+
+	edytor.selection.setAtTextsRange = async (startText, endText) => {
+		setSelectionState(edytor, startText, 0, endText, endText.length);
+	};
+
+	edytor.selection.setAtBlockRange = async (
+		block,
+		startOffset = 0,
+		endOffset = block?.lastText.length
+	) => {
+		if (!block) {
+			return;
+		}
+
+		setSelectionState(edytor, block.firstText, startOffset, block.lastText, endOffset);
+	};
+
+	edytor.selection.setAtTextRange = async (text, start, end) => {
+		if (!text || typeof start !== 'number' || typeof end !== 'number') {
+			return;
+		}
+
+		setSelectionState(edytor, text, start, text, end);
+	};
+
+	edytor.selection.setAtRange = async (startText, startOffset, endText, endOffset) => {
+		if (
+			!startText ||
+			!endText ||
+			typeof startOffset !== 'number' ||
+			typeof endOffset !== 'number'
+		) {
+			return;
+		}
+
+		setSelectionState(edytor, startText, startOffset, endText, endOffset);
+	};
+
+	edytor.selection.setAtNodeOffset = () => {};
+};
+
+export const createOperationEdytor = (jsx: RenderedNode, options: TestEdytorOptions = {}) => {
+	const testEdytor = createTestEdytor(jsx, options);
+
+	patchOperationSelectionApis(testEdytor.edytor);
+	testEdytor.edytor.selection.init();
+	testEdytor.edytor.hotKeys.init();
+
+	return testEdytor;
 };
 
 export const removeIds = (value: JSONBlock[]) => {
@@ -161,32 +595,311 @@ export const removeIds = (value: JSONBlock[]) => {
 	});
 };
 
-export const expectEydorValue = (edytor: Edytor) => (jsx: RenderedNode) => {
+export const expectBlockInvariantSnapshot = (subject: Block | Edytor) => {
+	const block = subject instanceof Edytor ? subject.root : subject;
+	if (!block) {
+		throw new Error('Expected an initialized editor root before asserting invariants');
+	}
+
+	assertBlockInvariants(block);
+};
+
+export const expectTextValue = (text: Text, expected: JSONText[]) => {
+	expect(structuredClone(text.value)).toEqual(expected);
+};
+
+export const expectMarksState = (text: Text, expected: MarkStateExpectation) => {
+	if ('pending' in expected) {
+		expect(text.markOnNextInsert).toEqual(expected.pending);
+	}
+
+	if (expected.range) {
+		expect(text.getMarksAtRange(expected.range.start, expected.range.end)).toEqual(
+			expected.range.value
+		);
+	}
+};
+
+export const expectEdytorValue = (edytor: Edytor) => (jsx: RenderedNode) => {
 	const { children } = jsx.value as { children: JSONBlock[] };
 
-	const value = removeIds(edytor.root?.value.children || []);
+	expectBlockInvariantSnapshot(edytor);
+	const value = removeIds(
+		JSON.parse(JSON.stringify(edytor.root?.value.children ?? [])) as JSONBlock[]
+	);
+	const expected = removeIds(JSON.parse(JSON.stringify(children)) as JSONBlock[]);
 
-	expect(value).toEqual(children);
+	expect(value).toEqual(expected);
 };
+
+export const expectEydorValue = expectEdytorValue;
+
+export const findBlockAndPartAtPath =
+	(edytor: Edytor) =>
+	(path: number[]): { block: Block; part: ContentPart } => {
+		if (path.length < 2) {
+			throw new Error(`Expected a block content path, received "${path.join('.')}"`);
+		}
+
+		const block = findBlockAtPath(edytor, path.slice(0, -1));
+		const partIndex = path.at(-1)!;
+		const part = block.content.at(partIndex);
+
+		if (!part) {
+			throw new Error(`Content part not found at path ${path.join('.')}`);
+		}
+
+		return { block, part };
+	};
 
 export const findBlockAndTextAtPath =
 	(edytor: Edytor) =>
-	(p: number[]): { block: Block; text: Text } => {
-		const path = [...p];
-		let block = edytor.root;
-		const textIndex = path.pop()!;
+	(path: number[]): { block: Block; text: Text } => {
+		const { block, part } = findBlockAndPartAtPath(edytor)(path);
 
-		path.forEach((index) => {
-			block = block?.children[index];
-		});
+		if (!(part instanceof Text)) {
+			throw new Error(
+				`Path ${path.join('.')} resolves to an inline block; use findBlockAndPartAtPath instead`
+			);
+		}
 
-		if (!block) {
-			throw new Error('Block not found');
-		}
-		const content = block.content;
-		const text = content.at(textIndex) as Text;
-		if (!text) {
-			throw new Error('Text not found');
-		}
-		return { block, text };
+		return { block, text: part };
 	};
+
+export const expectSelection = (edytor: Edytor, expected: SelectionExpectation) => {
+	const { state } = edytor.selection;
+
+	if (expected.startBlockPath) {
+		expect(state.startBlock?.path).toEqual(expected.startBlockPath);
+	}
+	if (expected.endBlockPath) {
+		expect(state.endBlock?.path).toEqual(expected.endBlockPath);
+	}
+	if (expected.startTextPath) {
+		expect(state.startText ? getPartPath(state.startText) : null).toEqual(expected.startTextPath);
+	}
+	if (expected.endTextPath) {
+		expect(state.endText ? getPartPath(state.endText) : null).toEqual(expected.endTextPath);
+	}
+	if (expected.blockPaths) {
+		expect(state.blocks.map((block) => block.path)).toEqual(expected.blockPaths);
+	}
+	if (expected.textPaths) {
+		expect(state.texts.map((text) => getPartPath(text))).toEqual(expected.textPaths);
+	}
+	if (expected.selectedBlockPaths) {
+		expect(Array.from(edytor.selection.selectedBlocks).map((block) => block.path)).toEqual(
+			expected.selectedBlockPaths
+		);
+	}
+	if (expected.focusedBlockPaths) {
+		expect(Array.from(edytor.selection.focusedBlocks).map((block) => block.path)).toEqual(
+			expected.focusedBlockPaths
+		);
+	}
+	if (expected.start !== undefined) {
+		expect(state.start).toBe(expected.start);
+	}
+	if (expected.end !== undefined) {
+		expect(state.end).toBe(expected.end);
+	}
+	if (expected.yStart !== undefined) {
+		expect(state.yStart).toBe(expected.yStart);
+	}
+	if (expected.yEnd !== undefined) {
+		expect(state.yEnd).toBe(expected.yEnd);
+	}
+	if (expected.length !== undefined) {
+		expect(state.length).toBe(expected.length);
+	}
+	if (expected.content !== undefined) {
+		expect(state.content).toBe(expected.content);
+	}
+	if (expected.isCollapsed !== undefined) {
+		expect(state.isCollapsed).toBe(expected.isCollapsed);
+	}
+	if (expected.isTextSpanning !== undefined) {
+		expect(state.isTextSpanning).toBe(expected.isTextSpanning);
+	}
+	if (expected.isBlockSpanning !== undefined) {
+		expect(state.isBlockSpanning).toBe(expected.isBlockSpanning);
+	}
+};
+
+export const expectOperationResult = (
+	result: Block | Text | InlineBlock | Block[] | readonly [Text | null, number] | null | void,
+	expected: OperationResultExpectation
+) => {
+	switch (expected.kind) {
+		case 'void':
+			expect(result).toBeUndefined();
+			return;
+		case 'null':
+			expect(result).toBeNull();
+			return;
+		default:
+			break;
+	}
+
+	if (expected.kind === 'block') {
+		expect(result).toBeInstanceOf(Block);
+		if (!(result instanceof Block)) {
+			throw new Error('Expected a block result');
+		}
+		expect(result.path).toEqual(expected.path);
+		if (expected.type) {
+			expect(result.type).toBe(expected.type);
+		}
+		return;
+	}
+
+	if (expected.kind === 'text') {
+		expect(result).toBeInstanceOf(Text);
+		if (!(result instanceof Text)) {
+			throw new Error('Expected a text result');
+		}
+		expect(getPartPath(result)).toEqual(expected.path);
+		if (expected.content !== undefined) {
+			expect(result.stringContent).toBe(expected.content);
+		}
+		return;
+	}
+
+	if (expected.kind === 'inline-block') {
+		expect(result).toBeInstanceOf(InlineBlock);
+		if (!(result instanceof InlineBlock)) {
+			throw new Error('Expected an inline block result');
+		}
+		expect(getPartPath(result)).toEqual(expected.path);
+		if (expected.type) {
+			expect(result.type).toBe(expected.type);
+		}
+		return;
+	}
+
+	if (expected.kind === 'blocks') {
+		expect(Array.isArray(result)).toBe(true);
+		if (!Array.isArray(result)) {
+			throw new Error('Expected a block array result');
+		}
+		expect(result.every((block) => block instanceof Block)).toBe(true);
+		expect(result.map((block) => block.path)).toEqual(expected.paths);
+		return;
+	}
+
+	if (expected.kind === 'cursor') {
+		expect(Array.isArray(result)).toBe(true);
+		if (!Array.isArray(result)) {
+			throw new Error('Expected a cursor tuple result');
+		}
+		const [text, offset] = result as unknown as readonly [Text | null, number];
+		if (!text) {
+			throw new Error('Expected a text cursor target');
+		}
+		expect(text).toBeInstanceOf(Text);
+		expect(getPartPath(text)).toEqual(expected.path);
+		expect(offset).toBe(expected.offset);
+	}
+};
+
+const flushOperations = async () => {
+	await Promise.resolve();
+	await new Promise((resolve) => setTimeout(resolve, 0));
+};
+
+export const runBeforeInput = async (
+	edytor: Edytor,
+	{ inputType, data, text }: BeforeInputOptions
+) => {
+	const event = new Event('beforeinput', {
+		bubbles: true,
+		cancelable: true
+	}) as InputEvent;
+
+	Object.defineProperties(event, {
+		inputType: {
+			value: inputType
+		},
+		data: {
+			value: data ?? null
+		},
+		dataTransfer: {
+			value: text
+				? {
+						getData: (type: string) => (type === 'text/plain' ? text : '')
+					}
+				: null
+		}
+	});
+
+	await edytor.onBeforeInput(event);
+	await flushOperations();
+
+	return {
+		event,
+		defaultPrevented: event.defaultPrevented
+	};
+};
+
+const keyboardEventInitFromCombo = (combo: string): KeyboardEventInit => {
+	const parts = combo.toLowerCase().split('+');
+	const key = parts.at(-1) ?? '';
+
+	return {
+		key:
+			key === 'space'
+				? ' '
+				: key === 'arrowup'
+					? 'ArrowUp'
+					: key === 'arrowdown'
+						? 'ArrowDown'
+						: key === 'arrowleft'
+							? 'ArrowLeft'
+							: key === 'arrowright'
+								? 'ArrowRight'
+								: key === 'enter'
+									? 'Enter'
+									: key === 'backspace'
+										? 'Backspace'
+										: key === 'delete'
+											? 'Delete'
+											: key === 'escape'
+												? 'Escape'
+												: key === 'tab'
+													? 'Tab'
+													: key,
+		ctrlKey: parts.includes('mod') || parts.includes('ctrl'),
+		metaKey: false,
+		altKey: parts.includes('alt'),
+		shiftKey: parts.includes('shift'),
+		bubbles: true,
+		cancelable: true
+	};
+};
+
+export const runHotkey = async (edytor: Edytor, combo: string) => {
+	const init = keyboardEventInitFromCombo(combo);
+	const event =
+		typeof KeyboardEvent !== 'undefined'
+			? new KeyboardEvent('keydown', init)
+			: (() => {
+					const fallbackEvent = {
+						...init,
+						defaultPrevented: false,
+						preventDefault() {
+							this.defaultPrevented = true;
+						},
+						stopPropagation() {}
+					};
+
+					return fallbackEvent as KeyboardEvent;
+				})();
+
+	onKeyDown.call(edytor, event);
+	await flushOperations();
+
+	return {
+		event,
+		defaultPrevented: event.defaultPrevented
+	};
+};

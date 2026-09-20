@@ -1,0 +1,237 @@
+{
+  "meta": {
+    "date": "2026-09-20T16:54:30.175Z",
+    "node": "v24.21.0",
+    "platform": "darwin arm64",
+    "cpu": "Apple M4 Pro",
+    "engines": {
+      "v14": "vendored unmodified @y/y@14.0.0-rc.26 (upstream 96c96e1fcb1ef6ce866d5264b3f97f7f77b11f64)",
+      "v13": "npm yjs@13.6.30"
+    },
+    "caveats": [
+      "v13 copy-move re-encodes the moved payload and loses concurrent edits to it — it is not a correctness-equivalent competitor to placement-attribute movement.",
+      "Timings are wall-clock on a single machine; use for comparisons within this report, not as hardware-independent budgets.",
+      "v14 \"placement-attribute move\" measures an attribute-only relocation (the primitive the plan §4 movement design targets); the real model adapter lands in U03+."
+    ],
+    "durationMs": 191.6
+  },
+  "workloads": {
+    "typing": {
+      "v14": {
+        "local": {
+          "samples": 40,
+          "warmup": 3,
+          "mean": 0.0487,
+          "p50": 0.0141,
+          "p95": 0.0482,
+          "min": 0.0091,
+          "max": 1.1983
+        },
+        "remote": {
+          "samples": 40,
+          "warmup": 3,
+          "mean": 0.0132,
+          "p50": 0.0096,
+          "p95": 0.0312,
+          "min": 0.0063,
+          "max": 0.0417
+        }
+      },
+      "v13": {
+        "local": {
+          "samples": 40,
+          "warmup": 3,
+          "mean": 0.0141,
+          "p50": 0.0114,
+          "p95": 0.0277,
+          "min": 0.008,
+          "max": 0.0308
+        },
+        "remote": {
+          "samples": 40,
+          "warmup": 3,
+          "mean": 0.0095,
+          "p50": 0.0078,
+          "p95": 0.0166,
+          "min": 0.0062,
+          "max": 0.0262
+        }
+      },
+      "unit": "ms per single-char insert; `remote` = applyUpdate on a synced replica"
+    },
+    "move": {
+      "100k-payload": {
+        "v14": {
+          "updateBytes": 54
+        },
+        "v14model": {
+          "updateBytes": 60
+        },
+        "v13": {
+          "updateBytes": 100127
+        },
+        "note": "v13 copy-move re-encodes the moved payload and loses concurrent edits to it — NOT correctness-equivalent. v14model = real U03 placement record (one {p,r} attr write + top-2 compaction)."
+      },
+      "small-payload": {
+        "v14model": {
+          "updateBytes": 57
+        },
+        "v13": {
+          "updateBytes": 129
+        }
+      },
+      "amortized-500-sequential-moves": {
+        "moves": 500,
+        "totalBytes": 35743,
+        "bytesPerMove": 71
+      },
+      "timed-500-char-op": {
+        "v14": {
+          "samples": 20,
+          "warmup": 1,
+          "mean": 0.3278,
+          "p50": 0.2898,
+          "p95": 0.5305,
+          "min": 0.2169,
+          "max": 0.5956,
+          "remote": {
+            "samples": 20,
+            "warmup": 0,
+            "mean": 52.9,
+            "p50": 53,
+            "p95": 53,
+            "min": 51,
+            "max": 53
+          }
+        },
+        "v13": {
+          "samples": 20,
+          "warmup": 1,
+          "mean": 0.2075,
+          "p50": 0.1488,
+          "p95": 0.3353,
+          "min": 0.0999,
+          "max": 0.8762,
+          "remote": {
+            "samples": 20,
+            "warmup": 0,
+            "mean": 624.65,
+            "p50": 626,
+            "p95": 626,
+            "min": 617,
+            "max": 626
+          }
+        },
+        "unit": "ms per move (rebuild + op), 20-block doc"
+      }
+    },
+    "load": {
+      "blocks": 1000,
+      "updateBytes": {
+        "v14": 188867,
+        "v13": 147867
+      },
+      "loadMs": {
+        "v14": {
+          "samples": 15,
+          "warmup": 2,
+          "mean": 2.7542,
+          "p50": 2.6723,
+          "p95": 4.0309,
+          "min": 2.0063,
+          "max": 4.0309
+        },
+        "v13": {
+          "samples": 15,
+          "warmup": 2,
+          "mean": 2.1737,
+          "p50": 2.0144,
+          "p95": 4.0106,
+          "min": 1.654,
+          "max": 4.0106
+        }
+      },
+      "materializeMs": {
+        "v14": {
+          "samples": 25,
+          "warmup": 2,
+          "mean": 0.6848,
+          "p50": 0.5938,
+          "p95": 1.1522,
+          "min": 0.4558,
+          "max": 1.2532
+        },
+        "v13": {
+          "samples": 25,
+          "warmup": 2,
+          "mean": 0.1853,
+          "p50": 0.1438,
+          "p95": 0.2329,
+          "min": 0.1258,
+          "max": 0.8315
+        }
+      },
+      "note": "load = applyUpdate into a fresh doc; materialize = walk the node tree (v14) vs Y.Array.toJSON() (v13)"
+    },
+    "delta": {
+      "runs": 128,
+      "v14": {
+        "samples": 40,
+        "warmup": 3,
+        "mean": 0.0583,
+        "p50": 0.0499,
+        "p95": 0.106,
+        "min": 0.0416,
+        "max": 0.1172
+      },
+      "v13": {
+        "samples": 40,
+        "warmup": 3,
+        "mean": 0.0138,
+        "p50": 0.0089,
+        "p95": 0.0299,
+        "min": 0.0084,
+        "max": 0.0321
+      },
+      "unit": "ms per toDelta() of a 128-format-run paragraph"
+    },
+    "textOwnership": {
+      "split-100k": {
+        "v14model": {
+          "updateBytes": 346
+        },
+        "v13copy": {
+          "updateBytes": 50136
+        },
+        "note": "v13 copy-split re-encodes the moved tail and loses concurrent edits to it — NOT correctness-equivalent."
+      },
+      "merge-100k": {
+        "v14model": {
+          "updateBytes": 35
+        },
+        "v13copy": {
+          "updateBytes": 100035
+        },
+        "note": "v14 merge = one {m} claim item; v13 copy-merge re-encodes the moved text."
+      },
+      "split-scaling": [
+        {
+          "payloadChars": 1000,
+          "v14model": 334,
+          "v13copy": 626
+        },
+        {
+          "payloadChars": 10000,
+          "v14model": 341,
+          "v13copy": 5132
+        },
+        {
+          "payloadChars": 100000,
+          "v14model": 346,
+          "v13copy": 50136
+        }
+      ],
+      "unit": "bytes emitted on the update channel for one split/merge op"
+    }
+  }
+}

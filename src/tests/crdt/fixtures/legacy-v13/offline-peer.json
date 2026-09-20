@@ -1,0 +1,79 @@
+{
+	"name": "offline-peer",
+	"description": "Base document plus a pending update from an offline peer that synced the base state, then inserted text and added a mark before reconnecting.",
+	"engine": {
+		"yjs": "13.6.30",
+		"lib0": "0.2.117"
+	},
+	"format": "yjs-update-v1",
+	"sourceClientId": 2585500253,
+	"files": {
+		"update": "offline-peer.update.bin",
+		"stateVector": "offline-peer.state-vector.bin",
+		"pendingUpdate": "offline-peer.pending.update.bin"
+	},
+	"expected": {
+		"children": [
+			{
+				"type": "paragraph",
+				"id": "b_y0ZCP5utIC",
+				"content": [
+					{
+						"text": "shared base"
+					}
+				],
+				"data": {}
+			},
+			{
+				"type": "paragraph",
+				"id": "b_yZsZqp5p0p",
+				"content": [
+					{
+						"text": "second block",
+						"marks": {
+							"italic": true
+						}
+					}
+				],
+				"data": {}
+			}
+		]
+	},
+	"pending": {
+		"expectedAfterPending": {
+			"children": [
+				{
+					"type": "paragraph",
+					"id": "b_y0ZCP5utIC",
+					"content": [
+						{
+							"text": "shared base + offline"
+						}
+					],
+					"data": {}
+				},
+				{
+					"type": "paragraph",
+					"id": "b_yZsZqp5p0p",
+					"content": [
+						{
+							"text": "second",
+							"marks": {
+								"bold": true,
+								"italic": true
+							}
+						},
+						{
+							"text": " block",
+							"marks": {
+								"italic": true
+							}
+						}
+					],
+					"data": {}
+				}
+			]
+		},
+		"description": "Y.encodeStateAsUpdate(docB, stateVectorA): the offline peer delta only. Applying it without the base update leaves dangling dependencies; applying it after the base update must converge to expectedAfterPending."
+	}
+}

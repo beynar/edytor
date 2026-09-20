@@ -1,150 +1,151 @@
 <script lang="ts">
-	import {} from 'svelte';
-	import Edytor, { EdytorContext } from '$lib/components/Edytor.svelte';
-	import { IndexeddbPersistence } from '../lib/localProvider.js';
-	import { onMount } from 'svelte';
+	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
-	import { Inspect } from 'svelte-inspect-value';
+	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+	import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
+	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
+	import type { JSONDoc } from '$lib/utils/json.js';
 
 	let edytor = $state<EdytorContext>();
-
-	let provider = $state<any>();
-
-	onMount(() => {
-		return () => {
-			provider.destroy();
-		};
-	});
-
-	let value = $state<{ children: any[] }>({
+	const plugins = [
+		arrowMovePlugin,
+		imagePlugin,
+		codePlugin,
+		markdownShortcutsPlugin,
+		mentionPlugin,
+		slashMenuPlugin,
+		toolbarPlugin,
+		richTextPlugin
+	];
+	const demoValue = {
 		children: [
 			{
 				type: 'paragraph',
-				content: 'hello',
-				children: []
+				content: [
+					{ text: 'hello', marks: { bold: true } },
+					{ type: 'mention' },
+					{ text: 'World', marks: { bold: true } },
+					{ type: 'mention' },
+					{ text: 'Prout', marks: { bold: true } }
+				],
+				children: [
+					{
+						type: 'paragraph',
+						content: [{ text: 'One', marks: { bold: true } }],
+						children: [
+							{
+								type: 'paragraph',
+								content: [{ text: 'Two', marks: { bold: true } }]
+							}
+						]
+					}
+				]
+			},
+			{
+				type: 'code',
+				content: [{ text: 'caption yo' }],
+				children: [{ type: 'codeLine', content: [{ text: '\t\tconsole.log("hello")' }] }]
 			}
 		]
-	});
+	} satisfies JSONDoc;
 </script>
 
-<button
-	onclick={() => {
-		edytor?.clear();
-	}}
-	class="rounded bg-blue-800 p-2"
->
-	clear
-</button>
+<main class="min-h-screen bg-stone-950 px-5 py-8 text-stone-100 sm:px-8 lg:px-12">
+	<div class="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
+		<aside class="space-y-5">
+			<div>
+				<p class="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300/80">
+					Edytor Lab
+				</p>
+				<h1 class="mt-3 text-3xl font-semibold tracking-tight text-stone-50">
+					Clean editing surface
+				</h1>
+				<p class="mt-3 text-sm leading-6 text-stone-400">
+					A local playground for typing, splitting, marks, slash commands, and browser behavior.
+				</p>
+			</div>
 
-<div class="grid grid-cols-4 gap-2 p-10">
-	<div class="col-span-2">
-		<div class="card rounded bg-neutral-800 p-2">
-			<button
-				onclick={(e) => {
-					e.preventDefault();
-					edytor?.selection.state.startText?.set([{ text: 'WAZA', marks: { bold: true } }]);
-				}}
-			>
-				set text
-			</button>
-			<button
-				onclick={(e) => {
-					e.preventDefault();
-					edytor?.selection.state.startText?.parent?.set({
-						type: 'quote',
-						content: [{ text: 'quote', marks: { bold: true, italic: true } }],
-						children: []
-					});
-				}}
-			>
-				set block
-			</button>
-			<button
-				onclick={(e) => {
-					e.preventDefault();
-					console.log({
-						doc: edytor?.doc.toJSON(),
-						value: edytor?.value
-					});
-				}}
-			>
-				get value
-			</button>
-			<Edytor
-				plugins={[arrowMovePlugin, imagePlugin, codePlugin, mentionPlugin, richTextPlugin]}
-				sync={({ doc, synced }) => {
-					// provider = new IndexeddbPersistence('haha-2', doc);
-					provider = new IndexeddbPersistence(crypto.randomUUID(), doc);
-					provider.on('synced', () => {
-						synced(provider);
-					});
-				}}
-				onChange={(e) => {
-					// console.log('change', edytor?.doc.toJSON());
-				}}
-				readonly={false}
-				class="outline-none"
-				bind:edytor
-			>
-				{#snippet placeholder({ block })}
-					{#if block.focused}
-						<span>Write something here ...</span>
-					{/if}
-				{/snippet}
-			</Edytor>
-			<!-- {#if edytor && edytor.value}
-				<ReadonlyEditor
-					plugins={[codePlugin, imagePlugin, mentionPlugin, richTextPlugin]}
-					value={{ children: edytor?.root?.value.children || [] }}
-					class="outline-none"
-				/>
-			{/if} -->
-		</div>
-	</div>
-	<div class="col-span-2">
-		<Inspect
-			name="Edytor"
-			noanimate
-			showTypes={false}
-			showLength={false}
-			theme="stereo"
-			expandLevel={1}
-			value={edytor?.root?.value.children[0].children[0].content}
-		/>
+			<div class="flex flex-wrap gap-2">
+				<button
+					type="button"
+					onclick={() => {
+						edytor?.clear();
+					}}
+					class="rounded-full bg-amber-300 px-4 py-2 text-sm font-semibold text-stone-950 transition hover:bg-amber-200"
+				>
+					Clear
+				</button>
+				<button
+					type="button"
+					onclick={(e) => {
+						e.preventDefault();
+						edytor?.selection.state.startText?.setText({
+							value: [{ text: 'WAZA', marks: { bold: true } }]
+						});
+					}}
+					class="rounded-full border border-stone-700 px-4 py-2 text-sm text-stone-200 transition hover:border-stone-500 hover:bg-stone-900"
+				>
+					Set text
+				</button>
+				<button
+					type="button"
+					onclick={(e) => {
+						e.preventDefault();
+						edytor?.selection.state.startText?.parent?.setBlock({
+							value: {
+								type: 'heading',
+								data: { level: 'h2' },
+								content: [{ text: 'heading', marks: { bold: true, italic: true } }],
+								children: []
+							}
+						});
+					}}
+					class="rounded-full border border-stone-700 px-4 py-2 text-sm text-stone-200 transition hover:border-stone-500 hover:bg-stone-900"
+				>
+					Set block
+				</button>
+			</div>
+		</aside>
 
-		<hr class="my-2" />
-		<Inspect
-			name="Selection"
-			noanimate
-			showTypes={false}
-			showLength={false}
-			theme="stereo"
-			value={edytor?.selection.state}
-		/>
+		<section
+			class="rounded-[2rem] border border-stone-800 bg-stone-100 p-4 text-stone-950 shadow-2xl shadow-black/30 sm:p-6"
+		>
+			<div
+				class="min-h-[32rem] rounded-[1.5rem] bg-white px-5 py-6 shadow-inner shadow-stone-300/60 sm:px-8"
+			>
+				<Edytor {plugins} value={demoValue} readonly={false} class="outline-none" bind:edytor>
+					{#snippet placeholder({ block })}
+						{#if block.focused}
+							<span>Write something here ...</span>
+						{/if}
+					{/snippet}
+				</Edytor>
+			</div>
+		</section>
 	</div>
-</div>
+</main>
 
 <style lang="postcss">
 	@reference "tailwindcss";
 	:global {
 		[data-edytor-focused] {
-			@apply bg-blue-100/10;
+			@apply bg-amber-100/70;
 		}
 		[data-edytor-selected] {
-			@apply bg-blue-500/50 ring-2 ring-blue-500 rounded;
+			@apply rounded bg-amber-300/55 ring-2 ring-amber-400;
 		}
 		[data-edytor-text-suggestion] {
-			@apply opacity-65 italic;
+			@apply opacity-60 italic;
 		}
 		*:has([data-edytor-text-placeholder]) {
 			@apply relative;
 		}
 		[data-edytor-text-placeholder] {
-			@apply opacity-65 italic caret-transparent;
+			@apply text-stone-400 italic caret-transparent;
 		}
 	}
 </style>

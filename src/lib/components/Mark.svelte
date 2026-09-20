@@ -27,11 +27,13 @@
 
 {#if definition?.snippet}
 	{#if definition.void}
-		<span data-edytor-mark-void contenteditable="false">
+		<span data-edytor-mark={mark?.[0]} data-edytor-mark-void contenteditable="false">
 			{@render definition.snippet({ content, mark: mark?.[1], text })}
 		</span>
 	{:else}
-		{@render definition.snippet({ content, mark: mark?.[1], text })}
+		<span data-edytor-mark={mark?.[0]}>
+			{@render definition.snippet({ content, mark: mark?.[1], text })}
+		</span>
 	{/if}
 {:else}
 	{@render content()}

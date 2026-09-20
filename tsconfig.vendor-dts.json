@@ -1,0 +1,19 @@
+{
+	"_comment": "Emit TypeScript declarations for the vendored Yjs v14 JS source, mirroring upstream's own `npm run dist` (tsc emitDeclarationOnly over JSDoc-annotated JS). Regenerate with: pnpm exec tsc -p tsconfig.vendor-dts.json — see src/lib/crdt/vendor/yjs/UPSTREAM.md.",
+	"compilerOptions": {
+		"target": "ES2021",
+		"lib": ["ES2021", "dom"],
+		"module": "node16",
+		"moduleResolution": "nodenext",
+		"allowJs": true,
+		"checkJs": true,
+		"strict": true,
+		"declaration": true,
+		"emitDeclarationOnly": true,
+		"declarationMap": false,
+		"skipLibCheck": true,
+		"rootDir": "./src/lib/crdt/vendor/yjs/src",
+		"outDir": "./src/lib/crdt/vendor/yjs/dts"
+	},
+	"include": ["./src/lib/crdt/vendor/yjs/src/**/*.js", "./src/lib/crdt/vendor/yjs/global.d.ts"]
+}

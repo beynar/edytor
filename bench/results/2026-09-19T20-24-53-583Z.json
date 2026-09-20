@@ -1,0 +1,199 @@
+{
+  "meta": {
+    "date": "2026-09-19T20:24:53.583Z",
+    "node": "v24.21.0",
+    "platform": "darwin arm64",
+    "cpu": "Apple M4 Pro",
+    "engines": {
+      "v14": "vendored unmodified @y/y@14.0.0-rc.26 (upstream 96c96e1fcb1ef6ce866d5264b3f97f7f77b11f64)",
+      "v13": "npm yjs@13.6.30"
+    },
+    "caveats": [
+      "v13 copy-move re-encodes the moved payload and loses concurrent edits to it — it is not a correctness-equivalent competitor to placement-attribute movement.",
+      "Timings are wall-clock on a single machine; use for comparisons within this report, not as hardware-independent budgets.",
+      "v14 \"placement-attribute move\" measures an attribute-only relocation (the primitive the plan §4 movement design targets); the real model adapter lands in U03+."
+    ],
+    "durationMs": 216.2
+  },
+  "workloads": {
+    "typing": {
+      "v14": {
+        "local": {
+          "samples": 40,
+          "warmup": 3,
+          "mean": 0.1433,
+          "p50": 0.0183,
+          "p95": 0.0542,
+          "min": 0.0101,
+          "max": 4.9107
+        },
+        "remote": {
+          "samples": 40,
+          "warmup": 3,
+          "mean": 0.0152,
+          "p50": 0.0103,
+          "p95": 0.0267,
+          "min": 0.007,
+          "max": 0.1007
+        }
+      },
+      "v13": {
+        "local": {
+          "samples": 40,
+          "warmup": 3,
+          "mean": 0.0131,
+          "p50": 0.0108,
+          "p95": 0.0277,
+          "min": 0.0075,
+          "max": 0.0301
+        },
+        "remote": {
+          "samples": 40,
+          "warmup": 3,
+          "mean": 0.0093,
+          "p50": 0.0077,
+          "p95": 0.0162,
+          "min": 0.006,
+          "max": 0.0252
+        }
+      },
+      "unit": "ms per single-char insert; `remote` = applyUpdate on a synced replica"
+    },
+    "move": {
+      "100k-payload": {
+        "v14": {
+          "updateBytes": 54
+        },
+        "v14model": {
+          "updateBytes": 60
+        },
+        "v13": {
+          "updateBytes": 100136
+        },
+        "note": "v13 copy-move re-encodes the moved payload and loses concurrent edits to it — NOT correctness-equivalent. v14model = real U03 placement record (one {p,r} attr write + top-2 compaction)."
+      },
+      "small-payload": {
+        "v14model": {
+          "updateBytes": 57
+        },
+        "v13": {
+          "updateBytes": 129
+        }
+      },
+      "amortized-500-sequential-moves": {
+        "moves": 500,
+        "totalBytes": 35723,
+        "bytesPerMove": 71
+      },
+      "timed-500-char-op": {
+        "v14": {
+          "samples": 20,
+          "warmup": 1,
+          "mean": 0.3709,
+          "p50": 0.3412,
+          "p95": 0.5792,
+          "min": 0.2308,
+          "max": 0.6217,
+          "remote": {
+            "samples": 20,
+            "warmup": 0,
+            "mean": 52.9,
+            "p50": 53,
+            "p95": 53,
+            "min": 51,
+            "max": 53
+          }
+        },
+        "v13": {
+          "samples": 20,
+          "warmup": 1,
+          "mean": 0.272,
+          "p50": 0.1885,
+          "p95": 0.3614,
+          "min": 0.1172,
+          "max": 1.688,
+          "remote": {
+            "samples": 20,
+            "warmup": 0,
+            "mean": 625.55,
+            "p50": 626,
+            "p95": 626,
+            "min": 617,
+            "max": 626
+          }
+        },
+        "unit": "ms per move (rebuild + op), 20-block doc"
+      }
+    },
+    "load": {
+      "blocks": 1000,
+      "updateBytes": {
+        "v14": 188867,
+        "v13": 141867
+      },
+      "loadMs": {
+        "v14": {
+          "samples": 15,
+          "warmup": 2,
+          "mean": 2.9629,
+          "p50": 2.6419,
+          "p95": 4.7643,
+          "min": 2.0895,
+          "max": 4.7643
+        },
+        "v13": {
+          "samples": 15,
+          "warmup": 2,
+          "mean": 2.8762,
+          "p50": 1.9911,
+          "p95": 10.4987,
+          "min": 1.577,
+          "max": 10.4987
+        }
+      },
+      "materializeMs": {
+        "v14": {
+          "samples": 25,
+          "warmup": 2,
+          "mean": 0.7308,
+          "p50": 0.6724,
+          "p95": 1.2217,
+          "min": 0.5072,
+          "max": 1.2306
+        },
+        "v13": {
+          "samples": 25,
+          "warmup": 2,
+          "mean": 0.1784,
+          "p50": 0.1539,
+          "p95": 0.245,
+          "min": 0.1133,
+          "max": 0.6519
+        }
+      },
+      "note": "load = applyUpdate into a fresh doc; materialize = walk the node tree (v14) vs Y.Array.toJSON() (v13)"
+    },
+    "delta": {
+      "runs": 128,
+      "v14": {
+        "samples": 40,
+        "warmup": 3,
+        "mean": 0.0585,
+        "p50": 0.0485,
+        "p95": 0.1111,
+        "min": 0.0418,
+        "max": 0.1205
+      },
+      "v13": {
+        "samples": 40,
+        "warmup": 3,
+        "mean": 0.0131,
+        "p50": 0.0083,
+        "p95": 0.0293,
+        "min": 0.0077,
+        "max": 0.0324
+      },
+      "unit": "ms per toDelta() of a 128-format-run paragraph"
+    }
+  }
+}

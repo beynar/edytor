@@ -1,0 +1,9 @@
+
+> edytor@0.0.11 lint /Users/arnaud/code/edytor
+> prettier --check . && eslint .
+
+Checking formatting...
+[warn] docs/crdt-architecture-evaluation.md
+[warn] docs/crdt-v14-execution-ledger.md
+[warn] Code style issues found in 2 files. Run Prettier with --write to fix.
+ ELIFECYCLE  Command failed with exit code 1.

@@ -1,0 +1,92 @@
+/**
+ * Shared seed documents for scenarios. A seed is a function that writes ONE
+ * document; `createPeerSet` serializes it once and replicates by update.
+ */
+// @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
+import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
+import { bindModel } from '../../../lib/crdt/index.js';
+import type { SeedUpdate } from '../harness/peer-set.js';
+import { buildBlock } from '../harness/ops/raw-node-ops.js';
+import type { BlockSpec } from '../harness/ops/crdt-ops.js';
+
+const M = bindModel(Y);
+
+/** Seed builder: top-level blocks appended to the root in order. */
+export const specSeed = (blocks: BlockSpec[]): SeedUpdate => {
+	return (doc) => {
+		const root = doc.get('content');
+		for (const spec of blocks) {
+			root.insert(root.length, [buildBlock(spec)]);
+		}
+	};
+};
+
+/**
+ * Same as {@link specSeed} but against the U03 placement schema: every block
+ * is a registry entry with an atomic placement record. Used for all
+ * `ModelOps` scenarios and the model corpus.
+ */
+export const modelSpecSeed = (blocks: BlockSpec[]): SeedUpdate => {
+	return (doc) => {
+		doc.transact(() => {
+			for (const spec of blocks) {
+				M.insertBlock(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, spec);
+			}
+		});
+	};
+};
+
+/** Canonical three-block document used by most scenarios. */
+export const BASE_SEED: SeedUpdate = specSeed([
+	{
+		id: 'b1',
+		type: 'paragraph',
+		content: [{ kind: 'text', text: 'hello world' }]
+	},
+	{
+		id: 'b2',
+		type: 'paragraph',
+		content: [
+			{ kind: 'text', text: 'second', marks: { bold: true } },
+			{ kind: 'text', text: ' block' }
+		]
+	},
+	{
+		id: 'b3',
+		type: 'list',
+		content: [{ kind: 'text', text: 'parent' }],
+		children: [
+			{ id: 'b3a', type: 'paragraph', content: [{ kind: 'text', text: 'child a' }] },
+			{ id: 'b3b', type: 'paragraph', content: [{ kind: 'text', text: 'child b' }] }
+		]
+	}
+]);
+
+/** {@link BASE_SEED} in placement-model schema. */
+export const MODEL_BASE_SEED: SeedUpdate = modelSpecSeed([
+	{
+		id: 'b1',
+		type: 'paragraph',
+		content: [{ kind: 'text', text: 'hello world' }]
+	},
+	{
+		id: 'b2',
+		type: 'paragraph',
+		content: [
+			{ kind: 'text', text: 'second', marks: { bold: true } },
+			{ kind: 'text', text: ' block' }
+		]
+	},
+	{
+		id: 'b3',
+		type: 'list',
+		content: [{ kind: 'text', text: 'parent' }],
+		children: [
+			{ id: 'b3a', type: 'paragraph', content: [{ kind: 'text', text: 'child a' }] },
+			{ id: 'b3b', type: 'paragraph', content: [{ kind: 'text', text: 'child b' }] }
+		]
+	}
+]);
+
+/** Empty document seed (concurrent-bootstrap scenarios). */
+export const EMPTY_SEED: SeedUpdate = () => {};

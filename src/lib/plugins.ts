@@ -75,6 +75,7 @@ export type PluginDefinitions = {
 	blocks?: Record<string, BlockDefinition | Snippet<[BlockSnippetPayload<any>]>>;
 	inlineBlocks?: Record<string, InlineBlockDefinition | Snippet<[InlineBlockSnippetPayload<any>]>>;
 	hotkeys?: Partial<Record<HotKeyCombination, HotKey>>;
+	commands?: EditorCommand[];
 };
 
 /**
@@ -108,6 +109,10 @@ export type PluginOperations = {
 	onDeleteSelectedBlocks?: (payload: { prevent: Prevent; selectedBlocks: Block[] }) => void;
 	/** Called before input is processed */
 	onBeforeInput?: (payload: { prevent: Prevent; e: InputEvent }) => void;
+	/** Called when a copy event is detected */
+	onCopy?: (payload: { prevent: Prevent; e: ClipboardEvent }) => void;
+	/** Called when a cut event is detected */
+	onCut?: (payload: { prevent: Prevent; e: ClipboardEvent }) => void;
 	/** Called when a paste event is detected */
 	onPaste?: (payload: { prevent: Prevent; e: ClipboardEvent }) => void;
 };
@@ -188,6 +193,16 @@ export type InlineBlockDefinition = {
 
 export type MarkDefinition = {
 	snippet: Snippet<[MarkSnippetPayload<any>]>;
+	void?: boolean;
+};
+
+export type EditorCommand = {
+	id: string;
+	label: string;
+	keywords?: string[];
+	group?: string;
+	isEnabled?: (edytor: Edytor) => boolean;
+	run: (edytor: Edytor) => unknown | Promise<unknown>;
 };
 
 export type InitializedPlugin = ReturnType<Plugin>;

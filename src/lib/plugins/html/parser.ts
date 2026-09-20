@@ -103,6 +103,8 @@ export interface HTMLNodeInterface {
 	text(): string;
 }
 
+const isWhitespace = (value: string) => /\s/.test(value);
+
 class HTMLNode implements HTMLNodeInterface {
 	tagName: string;
 	attributes: { [key: string]: string };
@@ -186,6 +188,20 @@ class HTMLNode implements HTMLNodeInterface {
 		let currentNode: HTMLNode | null = null;
 		let stack: HTMLNode[] = [];
 		let currentTextContent = '';
+		let pendingAttributeName: string | null = null;
+
+		const setCurrentAttribute = (name: string, value: string) => {
+			if (currentNode && !Object.prototype.hasOwnProperty.call(currentNode.attributes, name)) {
+				currentNode.attributes[name] = value;
+			}
+		};
+
+		const flushPendingAttribute = () => {
+			if (currentNode && pendingAttributeName !== null) {
+				setCurrentAttribute(pendingAttributeName, '');
+			}
+			pendingAttributeName = null;
+		};
 
 		const processTextContent = (node: HTMLNode) => {
 			if (currentTextContent) {
@@ -241,6 +257,7 @@ class HTMLNode implements HTMLNodeInterface {
 
 			switch (token.type) {
 				case TokenType.TAG_OPEN:
+					flushPendingAttribute();
 					// Process any pending text content if we have a current node
 					if (currentNode) {
 						processTextContent(currentNode);
@@ -257,8 +274,10 @@ class HTMLNode implements HTMLNodeInterface {
 
 					// Determine if this is a block, mark, or inline block based on tag name
 					if (elementSets) {
-						newNode.isBlock = elementSets.blocks.has(tagName);
-						newNode.isMark = elementSets.marks.has(tagName);
+						const isMark = elementSets.marks.has(tagName);
+						const isBlock = elementSets.blocks.has(tagName);
+						newNode.isMark = isMark;
+						newNode.isBlock = isBlock && !(isMark && currentNode);
 						newNode.isInlineBlock = elementSets.inlineBlocks.has(tagName) || tagName === 'br';
 					}
 
@@ -292,12 +311,14 @@ class HTMLNode implements HTMLNodeInterface {
 					break;
 
 				case TokenType.TEXT:
+					flushPendingAttribute();
 					// Accumulate text content
 					currentTextContent += token.value;
 					break;
 
 				case TokenType.TAG_CLOSE:
 				case TokenType.SELF_CLOSING_TAG:
+					flushPendingAttribute();
 					if (!currentNode) break;
 
 					currentNode.isSelfClosing = token.type === TokenType.SELF_CLOSING_TAG;
@@ -331,8 +352,17 @@ class HTMLNode implements HTMLNodeInterface {
 					break;
 
 				case TokenType.ATTRIBUTE_NAME:
+					if (currentNode) {
+						flushPendingAttribute();
+						pendingAttributeName = token.value;
+					}
+					break;
+
 				case TokenType.ATTRIBUTE_VALUE:
-					// Skip attributes as per requirement
+					if (currentNode && pendingAttributeName !== null) {
+						setCurrentAttribute(pendingAttributeName, decodeHTMLEntities(token.value));
+						pendingAttributeName = null;
+					}
 					break;
 			}
 		}
@@ -448,7 +478,13 @@ class HTMLNode implements HTMLNodeInterface {
 					i = j + 1;
 				} else {
 					let j = i + 1;
-					while (j < input.length && input[j] !== ' ' && input[j] !== '>' && input[j] !== '/') j++;
+					while (
+						j < input.length &&
+						!isWhitespace(input[j]) &&
+						input[j] !== '>' &&
+						input[j] !== '/'
+					)
+						j++;
 					const tagName = input.slice(i + 1, j).trim();
 
 					// Skip script and style tags
@@ -464,13 +500,13 @@ class HTMLNode implements HTMLNodeInterface {
 					tokens.push({ type: TokenType.TAG_OPEN, value: input.slice(i + 1, j).trim() });
 
 					while (j < input.length && input[j] !== '>') {
-						if (input[j] === ' ') {
+						if (isWhitespace(input[j])) {
 							j++;
 							let attrName = '';
 							while (
 								j < input.length &&
 								input[j] !== '=' &&
-								input[j] !== ' ' &&
+								!isWhitespace(input[j]) &&
 								input[j] !== '>' &&
 								input[j] !== '/'
 							) {
@@ -487,15 +523,31 @@ class HTMLNode implements HTMLNodeInterface {
 
 							if (input[j] === '=') {
 								j++;
-								const quoteType = input[j];
-								j++;
 								let attrValue = '';
-								while (j < input.length && input[j] !== quoteType) {
-									attrValue += input[j];
+								while (j < input.length && isWhitespace(input[j])) {
 									j++;
 								}
+
+								const quoteType = input[j];
+								if (quoteType === '"' || quoteType === "'") {
+									j++;
+									while (j < input.length && input[j] !== quoteType) {
+										attrValue += input[j];
+										j++;
+									}
+									j++;
+								} else {
+									while (
+										j < input.length &&
+										!isWhitespace(input[j]) &&
+										input[j] !== '>' &&
+										input[j] !== '/'
+									) {
+										attrValue += input[j];
+										j++;
+									}
+								}
 								tokens.push({ type: TokenType.ATTRIBUTE_VALUE, value: attrValue });
-								j++;
 							}
 						} else {
 							j++;

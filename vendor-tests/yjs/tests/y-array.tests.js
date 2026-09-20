@@ -1,0 +1,666 @@
+import { init, compare, applyRandomTests, Doc } from './testHelper.js' // eslint-disable-line
+import * as Y from '../../../src/lib/crdt/vendor/yjs/src/index.js'
+import * as t from 'lib0-v14/testing'
+import * as prng from 'lib0-v14/prng'
+import * as math from 'lib0-v14/math'
+import * as env from 'lib0-v14/environment'
+import * as delta from 'lib0-v14/delta'
+
+const isDevMode = env.getVariable('node_env') === 'development'
+
+/**
+ * @param {t.TestCase} _tc
+ */
+export const testBasicUpdate = _tc => {
+  const doc1 = new Y.Doc()
+  const doc2 = new Y.Doc()
+  doc1.get('array').insert(0, ['hi'])
+  const update = Y.encodeStateAsUpdate(doc1)
+  Y.applyUpdate(doc2, update)
+  t.compare(doc2.get('array').toArray(), ['hi'])
+}
+
+/**
+ * @param {t.TestCase} _tc
+ */
+export const testFailsObjectManipulationInDevMode = _tc => {
+  if (isDevMode) {
+    t.info('running in dev mode')
+    const doc = new Y.Doc()
+    const a = [1, 2, 3]
+    const b = { o: 1 }
+    doc.get('test').insert(0, [a])
+    doc.get('map').setAttr('k', b)
+    t.fails(() => {
+      a[0] = 42
+    })
+    t.fails(() => {
+      b.o = 42
+    })
+  } else {
+    t.info('not in dev mode')
+  }
+}
+
+/**
+ * @param {t.TestCase} _tc
+ */
+export const testSlice = _tc => {
+  const doc1 = new Y.Doc()
+  const arr = doc1.get('array')
+  arr.insert(0, [1, 2, 3])
+  t.compareArrays(arr.slice(0), [1, 2, 3])
+  t.compareArrays(arr.slice(1), [2, 3])
+  t.compareArrays(arr.slice(0, -1), [1, 2])
+  arr.insert(0, [0])
+  t.compareArrays(arr.slice(0), [0, 1, 2, 3])
+  t.compareArrays(arr.slice(0, 2), [0, 1])
+}
+
+/**
+ * @param {t.TestCase} _tc
+ */
+export const testArrayFrom = _tc => {
+  const doc1 = new Y.Doc()
+  const db1 = doc1.get('root')
+  const nestedArray1 = Y.Node.from(delta.create().insert([0, 1, 2]))
+  db1.setAttr('array', nestedArray1)
+  t.compare(nestedArray1.toArray(), [0, 1, 2])
+}
+
+/**
+ * Debugging yjs#297 - a critical bug connected to the search-marker approach
+ *
+ * @param {t.TestCase} _tc
+ */
+export const testLengthIssue = _tc => {
+  const doc1 = new Y.Doc()
+  const arr = doc1.get('array')
+  arr.push([0, 1, 2, 3])
+  arr.delete(0)
+  arr.insert(0, [0])
+  t.assert(arr.length === arr.toArray().length)
+  doc1.transact(() => {
+    arr.delete(1)
+    t.assert(arr.length === arr.toArray().length)
+    arr.insert(1, [1])
+    t.assert(arr.length === arr.toArray().length)
+    arr.delete(2)
+    t.assert(arr.length === arr.toArray().length)
+    arr.insert(2, [2])
+    t.assert(arr.length === arr.toArray().length)
+  })
+  t.assert(arr.length === arr.toArray().length)
+  arr.delete(1)
+  t.assert(arr.length === arr.toArray().length)
+  arr.insert(1, [1])
+  t.assert(arr.length === arr.toArray().length)
+}
+
+/**
+ * Debugging yjs#314
+ *
+ * @param {t.TestCase} _tc
+ */
+export const testLengthIssue2 = _tc => {
+  const doc = new Y.Doc()
+  const next = doc.get()
+  doc.transact(() => {
+    next.insert(0, ['group2'])
+  })
+  doc.transact(() => {
+    next.insert(1, ['rectangle3'])
+  })
+  doc.transact(() => {
+    next.delete(0)
+    next.insert(0, ['rectangle3'])
+  })
+  next.delete(1)
+  doc.transact(() => {
+    next.insert(1, ['ellipse4'])
+  })
+  doc.transact(() => {
+    next.insert(2, ['ellipse3'])
+  })
+  doc.transact(() => {
+    next.insert(3, ['ellipse2'])
+  })
+  doc.transact(() => {
+    doc.transact(() => {
+      t.fails(() => {
+        next.insert(5, ['rectangle2'])
+      })
+      next.insert(4, ['rectangle2'])
+    })
+    doc.transact(() => {
+      // this should not throw an error message
+      next.delete(4)
+    })
+  })
+  console.log(next.toArray())
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testDeleteInsert = tc => {
+  const { users, array0 } = init(tc, { users: 2 })
+  array0.delete(0, 0)
+  t.describe('Does not throw when deleting zero elements with position 0')
+  t.fails(() => {
+    array0.delete(1, 1)
+  })
+  array0.insert(0, ['A'])
+  array0.delete(1, 0)
+  t.describe('Does not throw when deleting zero elements with valid position 1')
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testInsertThreeElementsTryRegetProperty = tc => {
+  const { testConnector, users, array0, array1 } = init(tc, { users: 2 })
+  array0.insert(0, [1, true, false])
+  t.compare(array0.toDelta(), delta.create().insert([1, true, false]).done(), 'content works')
+  testConnector.flushAllMessages()
+  t.compare(array1.toDelta(), delta.create().insert([1, true, false]).done(), 'comparison works after sync')
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testConcurrentInsertWithThreeConflicts = tc => {
+  const { users, array0, array1, array2 } = init(tc, { users: 3 })
+  array0.insert(0, [0])
+  array1.insert(0, [1])
+  array2.insert(0, [2])
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testConcurrentInsertDeleteWithThreeConflicts = tc => {
+  const { testConnector, users, array0, array1, array2 } = init(tc, { users: 3 })
+  array0.insert(0, ['x', 'y', 'z'])
+  testConnector.flushAllMessages()
+  array0.insert(1, [0])
+  array1.delete(0)
+  array1.delete(1, 1)
+  array2.insert(1, [2])
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testInsertionsInLateSync = tc => {
+  const { testConnector, users, array0, array1, array2 } = init(tc, { users: 3 })
+  array0.insert(0, ['x', 'y'])
+  testConnector.flushAllMessages()
+  users[1].disconnect()
+  users[2].disconnect()
+  array0.insert(1, ['user0'])
+  array1.insert(1, ['user1'])
+  array2.insert(1, ['user2'])
+  users[1].connect()
+  users[2].connect()
+  testConnector.flushAllMessages()
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testDisconnectReallyPreventsSendingMessages = tc => {
+  const { testConnector, users, array0, array1 } = init(tc, { users: 3 })
+  array0.insert(0, ['x', 'y'])
+  testConnector.flushAllMessages()
+  users[1].disconnect()
+  users[2].disconnect()
+  array0.insert(1, ['user0'])
+  array1.insert(1, ['user1'])
+  t.compare(array0.toJSON().children, ['x', 'user0', 'y'])
+  t.compare(array1.toJSON().children, ['x', 'user1', 'y'])
+  users[1].connect()
+  users[2].connect()
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testDeletionsInLateSync = tc => {
+  const { testConnector, users, array0, array1 } = init(tc, { users: 2 })
+  array0.insert(0, ['x', 'y'])
+  testConnector.flushAllMessages()
+  users[1].disconnect()
+  array1.delete(1, 1)
+  array0.delete(0, 2)
+  users[1].connect()
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testInsertThenMergeDeleteOnSync = tc => {
+  const { testConnector, users, array0, array1 } = init(tc, { users: 2 })
+  array0.insert(0, ['x', 'y', 'z'])
+  testConnector.flushAllMessages()
+  users[0].disconnect()
+  array1.delete(0, 3)
+  users[0].connect()
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testInsertAndDeleteEvents = tc => {
+  const { array0, users } = init(tc, { users: 2 })
+  /**
+   * @type {Object<string,any>?}
+   */
+  let event = null
+  array0.observe(e => {
+    event = e
+  })
+  array0.insert(0, [0, 1, 2])
+  t.assert(event !== null)
+  event = null
+  array0.delete(0)
+  t.assert(event !== null)
+  event = null
+  array0.delete(0, 2)
+  t.assert(event !== null)
+  event = null
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testNestedObserverEvents = tc => {
+  const { array0, users } = init(tc, { users: 2 })
+  /**
+   * @type {Array<number>}
+   */
+  const vals = []
+  array0.observe(() => {
+    if (array0.length === 1) {
+      // inserting, will call this observer again
+      // we expect that this observer is called after this event handler finishedn
+      array0.insert(1, [1])
+      vals.push(0)
+    } else {
+      // this should be called the second time an element is inserted (above case)
+      vals.push(1)
+    }
+  })
+  array0.insert(0, [0])
+  t.compareArrays(vals, [0, 1])
+  t.compareArrays(array0.toArray(), [0, 1])
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testInsertAndDeleteEventsForTypes = tc => {
+  const { array0, users } = init(tc, { users: 2 })
+  /**
+   * @type {Object<string,any>|null}
+   */
+  let event = null
+  array0.observe(e => {
+    event = e
+  })
+  array0.insert(0, [new Y.Node()])
+  t.assert(event !== null)
+  event = null
+  array0.delete(0)
+  t.assert(event !== null)
+  event = null
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testChangeEvent = tc => {
+  const { array0, users } = init(tc, { users: 2 })
+  /**
+   * @type {delta.Delta<any>}
+   */
+  let d = delta.create()
+  array0.observe(e => {
+    d = e.delta
+  })
+  const newArr = new Y.Node()
+  array0.insert(0, [newArr, 4, 'dtrn'])
+  t.assert(d !== null && d.children.len === 1)
+  t.compare(d, delta.create().insert([newArr, 4, 'dtrn']).done())
+  array0.delete(0, 2)
+  t.assert(d !== null && d.children.len === 1)
+  t.compare(d.toJSON().children, [{ delete: 2 }])
+  array0.insert(1, [0.1])
+  t.assert(d !== null && d.children.len === 2)
+  t.compare(d, delta.create().retain(1).insert([0.1]).done())
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testInsertAndDeleteEventsForTypes2 = tc => {
+  const { array0, users } = init(tc, { users: 2 })
+  /**
+   * @type {Array<Object<string,any>>}
+   */
+  const events = []
+  array0.observe(e => {
+    events.push(e)
+  })
+  array0.insert(0, ['hi', new Y.Node()])
+  t.assert(events.length === 1, 'Event is triggered exactly once for insertion of two elements')
+  array0.delete(1)
+  t.assert(events.length === 2, 'Event is triggered exactly once for deletion')
+  compare(users)
+}
+
+/**
+ * This issue has been reported here https://github.com/yjs/yjs/issues/155
+ * @param {t.TestCase} tc
+ */
+export const testNewChildDoesNotEmitEventInTransaction = tc => {
+  const { array0, users } = init(tc, { users: 2 })
+  let fired = false
+  users[0].transact(() => {
+    const newMap = new Y.Node()
+    newMap.observe(() => {
+      fired = true
+    })
+    array0.insert(0, [newMap])
+    newMap.setAttr('tst', 42)
+  })
+  t.assert(!fired, 'Event does not trigger')
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testGarbageCollector = tc => {
+  const { testConnector, users, array0 } = init(tc, { users: 3 })
+  array0.insert(0, ['x', 'y', 'z'])
+  testConnector.flushAllMessages()
+  users[0].disconnect()
+  array0.delete(0, 3)
+  users[0].connect()
+  testConnector.flushAllMessages()
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testEventTargetIsSetCorrectlyOnLocal = tc => {
+  const { array0, users } = init(tc, { users: 3 })
+  /**
+   * @type {any}
+   */
+  let event
+  array0.observe(e => {
+    event = e
+  })
+  array0.insert(0, ['stuff'])
+  t.assert(event.target === array0, '"target" property is set correctly')
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testEventTargetIsSetCorrectlyOnRemote = tc => {
+  const { testConnector, array0, array1, users } = init(tc, { users: 3 })
+  /**
+   * @type {any}
+   */
+  let event
+  array0.observe(e => {
+    event = e
+  })
+  array1.insert(0, ['stuff'])
+  testConnector.flushAllMessages()
+  t.assert(event.target === array0, '"target" property is set correctly')
+  compare(users)
+}
+
+/**
+ * @param {t.TestCase} _tc
+ */
+export const testIteratingArrayContainingTypes = _tc => {
+  const y = new Y.Doc()
+  const arr = y.get('arr')
+  const numItems = 10
+  for (let i = 0; i < numItems; i++) {
+    const map = new Y.Node()
+    map.setAttr('value', i)
+    arr.push([map])
+  }
+  let cnt = 0
+  for (const item of arr.toArray()) {
+    t.assert(item.getAttr('value') === cnt++, 'value is correct')
+  }
+  y.destroy()
+}
+
+/**
+ * @param {t.TestCase} _tc
+ */
+export const testAttributedContent = _tc => {
+  const ydoc = new Y.Doc({ gc: false })
+  /**
+   * @type {Y.Node<{ children: number }>}
+   */
+  const yarray = ydoc.get()
+  yarray.insert(0, [1, 2])
+  let renderer = /** @type {AbstractRenderer?} */ (null)
+
+  ydoc.on('afterTransaction', tr => {
+    // renderer = new AttributionsRenderer(createIdMapFromIdSet(tr.insertSet, [new Y.Attribution('insertAt', 42), new Y.Attribution('insert', 'kevin')]), createIdMapFromIdSet(tr.deleteSet, [new Y.Attribution('delete', 'kevin')]))
+    renderer = new Y.AttributionsRenderer(Y.createContentMap(Y.createIdMapFromIdSet(tr.insertSet, []), Y.createIdMapFromIdSet(tr.deleteSet, [])))
+  })
+  t.group('insert / delete', () => {
+    ydoc.transact(() => {
+      yarray.delete(0, 1)
+      yarray.insert(1, [42])
+    })
+    const expectedContent = delta.create().insert([1], null, { delete: [] }).insert([2]).insert([42], null, { insert: [] })
+    const attributedContent = yarray.toDelta({ renderer })
+    console.log(attributedContent.toJSON())
+    t.assert(attributedContent.equals(expectedContent))
+  })
+}
+
+let _uniqueNumber = 0
+const getUniqueNumber = () => _uniqueNumber++
+
+/**
+ * @type {Array<function(Doc,prng.PRNG,any):void>}
+ */
+const arrayTransactions = [
+  function insert (user, gen) {
+    const yarray = user.get('array')
+    const uniqueNumber = getUniqueNumber()
+    const content = []
+    const len = prng.int32(gen, 1, 4)
+    for (let i = 0; i < len; i++) {
+      content.push(uniqueNumber)
+    }
+    const pos = prng.int32(gen, 0, yarray.length)
+    const oldContent = yarray.toArray()
+    yarray.insert(pos, content)
+    oldContent.splice(pos, 0, ...content)
+    t.compareArrays(yarray.toArray(), oldContent) // we want to make sure that fastSearch markers insert at the correct position
+  },
+  function insertTypeArray (user, gen) {
+    const yarray = user.get('array')
+    const pos = prng.int32(gen, 0, yarray.length)
+    yarray.insert(pos, [new Y.Node()])
+    const array2 = yarray.get(pos)
+    array2.insert(0, [1, 2, 3, 4])
+  },
+  function insertTypeMap (user, gen) {
+    const yarray = user.get('array')
+    const pos = prng.int32(gen, 0, yarray.length)
+    yarray.insert(pos, [new Y.Node()])
+    const map = yarray.get(pos)
+    map.setAttr('someprop', 42)
+    map.setAttr('someprop', 43)
+    map.setAttr('someprop', 44)
+  },
+  function insertTypeNull (user, gen) {
+    const yarray = user.get('array')
+    const pos = prng.int32(gen, 0, yarray.length)
+    yarray.insert(pos, [null])
+  },
+  function _delete (user, gen) {
+    const yarray = user.get('array')
+    const length = yarray.length
+    if (length > 0) {
+      let somePos = prng.int32(gen, 0, length - 1)
+      let delLength = prng.int32(gen, 1, math.min(2, length - somePos))
+      if (prng.bool(gen)) {
+        const type = yarray.get(somePos)
+        if (type instanceof Y.Node && type.length > 0) {
+          somePos = prng.int32(gen, 0, type.length - 1)
+          delLength = prng.int32(gen, 0, math.min(2, type.length - somePos))
+          type.delete(somePos, delLength)
+        }
+      } else {
+        const oldContent = yarray.toArray()
+        yarray.delete(somePos, delLength)
+        oldContent.splice(somePos, delLength)
+        t.compareArrays(yarray.toArray(), oldContent)
+      }
+    }
+  }
+]
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests6 = tc => {
+  applyRandomTests(tc, arrayTransactions, 6)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests40 = tc => {
+  applyRandomTests(tc, arrayTransactions, 40)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests42 = tc => {
+  applyRandomTests(tc, arrayTransactions, 42)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests43 = tc => {
+  applyRandomTests(tc, arrayTransactions, 43)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests44 = tc => {
+  applyRandomTests(tc, arrayTransactions, 44)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests45 = tc => {
+  applyRandomTests(tc, arrayTransactions, 45)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests46 = tc => {
+  applyRandomTests(tc, arrayTransactions, 46)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests300 = tc => {
+  applyRandomTests(tc, arrayTransactions, 300)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests400 = tc => {
+  applyRandomTests(tc, arrayTransactions, 400)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests500 = tc => {
+  applyRandomTests(tc, arrayTransactions, 500)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests600 = tc => {
+  applyRandomTests(tc, arrayTransactions, 600)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests1000 = tc => {
+  applyRandomTests(tc, arrayTransactions, 1000)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests1800 = tc => {
+  applyRandomTests(tc, arrayTransactions, 1800)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests3000 = tc => {
+  t.skip(!t.production)
+  applyRandomTests(tc, arrayTransactions, 3000)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests5000 = tc => {
+  t.skip(!t.production)
+  applyRandomTests(tc, arrayTransactions, 5000)
+}
+
+/**
+ * @param {t.TestCase} tc
+ */
+export const testRepeatGeneratingYarrayTests30000 = tc => {
+  t.skip(!t.production)
+  applyRandomTests(tc, arrayTransactions, 30000)
+}

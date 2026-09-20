@@ -1,0 +1,101 @@
+{
+	"name": "nested-marks",
+	"description": "Nested block tree (paragraph > paragraph > quote) with boolean marks, an object-valued link mark and block data.",
+	"engine": {
+		"yjs": "13.6.30",
+		"lib0": "0.2.117"
+	},
+	"format": "yjs-update-v1",
+	"sourceClientId": 97606470,
+	"files": {
+		"update": "nested-marks.update.bin",
+		"stateVector": "nested-marks.state-vector.bin"
+	},
+	"expected": {
+		"children": [
+			{
+				"type": "heading",
+				"id": "b_Qs9z29q9tO",
+				"content": [
+					{
+						"text": "Release notes",
+						"marks": {
+							"bold": true
+						}
+					}
+				],
+				"data": {
+					"level": 1
+				}
+			},
+			{
+				"type": "paragraph",
+				"id": "b_NIq2lE62ps",
+				"children": [
+					{
+						"type": "paragraph",
+						"id": "b_z0UIzQd6UL",
+						"children": [
+							{
+								"type": "quote",
+								"id": "b_EO9q9yh2A6",
+								"content": [
+									{
+										"text": "deep quote",
+										"marks": {
+											"code": true
+										}
+									}
+								],
+								"data": {}
+							}
+						],
+						"content": [
+							{
+								"text": "nested child",
+								"marks": {
+									"italic": true
+								}
+							}
+						],
+						"data": {}
+					}
+				],
+				"content": [
+					{
+						"text": "plain "
+					},
+					{
+						"text": "bold",
+						"marks": {
+							"bold": true
+						}
+					},
+					{
+						"text": " and "
+					},
+					{
+						"text": "a link",
+						"marks": {
+							"link": {
+								"href": "https://example.com",
+								"target": "_blank"
+							}
+						}
+					}
+				],
+				"data": {}
+			},
+			{
+				"type": "paragraph",
+				"id": "b_OcAL5sCI6I",
+				"content": [
+					{
+						"text": "tail"
+					}
+				],
+				"data": {}
+			}
+		]
+	}
+}

@@ -30,9 +30,9 @@ If you want to submit an issue please share the json value of the document. It w
 
 - 📑 **Customizable with snippets**: Use snippets to render your own blocks and marks
 - 🎨 **Rich Text Formatting**: Full support for marks, blocks and inline blocks.
-- 🤝 **Real-time Collaboration**: Uses Y.js as data store, collaborative editing is built-in
+- 🤝 **CRDT collaboration**: built on a vendored Yjs v14 engine — IndexedDB + websocket providers, awareness cursors, identity-preserving moves/splits/merges. Engine + bindings ship as `edytor/crdt` and `edytor/crdt/edytor` subpaths
 - 🔌 **Plugin System**: Extensible architecture for custom features. I try to make every action performed by the editor hackable and preventable to let you build your own features.
-- ⚡ **High Performance**: Optimized for large documents, fine grained update at the leaf level thanks to Y.js and Svelte's reactivity
+- ⚡ **High Performance**: Optimized for large documents, fine grained update at the leaf level thanks to the CRDT substrate and Svelte's reactivity
 - 🔄 **Undo/Redo**: Built-in history management
 - 📦 **Lightweight**: Relatively small bundle size compared to other rich text editors
 - 📦 **AI copilot ready**: Support inline text suggestions for ai completions.
@@ -60,11 +60,11 @@ If you want to submit an issue please share the json value of the document. It w
 - [x] Readable JSON data structure
 - [x] Readonly edytor to lightweightly render static content without the Y.js extra works.
 - [x] Children normalization
+- [x] Collaborative editing — awareness, IndexedDB persistence, websocket provider, cross-tab sync (vendored Yjs v14; proven in the test suites — no production telemetry yet)
 
 ## ✨ Things that are not ready
 
 - [ ] DND
-- [ ] Battle tested collaborative editing + awareness + providers
 - [ ] Block suggestions
 - [ ] Reactive data (inline)block properties with syncrostate.
 
@@ -175,6 +175,70 @@ pnpm add edytor
 <Edytor {value} {onChange} />
 ```
 
+### Collaboration and persistence
+
+Edytor is CRDT-backed by a vendored **Yjs v14** engine (`@y/y@14.0.0-rc.26`, pinned — not the `yjs` npm package). You can pass a shared doc directly, or use the exported sync helpers to wire providers through the `sync` prop.
+
+The engine and the bindings are also importable on their own — for node/SSR code paths where the Svelte component can't load:
+
+```ts
+import * as Y from 'edytor/crdt'; // the vendored v14 engine
+import { bindCrdt } from 'edytor/crdt/edytor'; // doc facade, awareness, providers, migration
+
+const crdt = bindCrdt(Y);
+const doc = crdt.createDoc();
+const awareness = new crdt.Awareness(doc);
+const provider = new crdt.providers.IndexeddbPersistence('document-id', doc, { awareness });
+await provider.whenSynced;
+```
+
+Upgrading a deployment that has v13 (`yjs`) persisted documents? Read [`docs/crdt-v14-migration.md`](docs/crdt-v14-migration.md) — it's a one-way, non-destructive import with an explicit operator recipe and rollback.
+
+Local IndexedDB persistence:
+
+```svelte
+<script lang="ts">
+	import { Edytor, createIndexeddbSync } from 'edytor';
+
+	const sync = createIndexeddbSync('document-id');
+</script>
+
+<Edytor {sync} />
+```
+
+Websocket provider setup:
+
+```svelte
+<script lang="ts">
+	import { Edytor, createWebsocketSync } from 'edytor';
+
+	const sync = createWebsocketSync({
+		serverUrl: 'wss://collaboration.example.com',
+		roomName: 'document-id'
+	});
+</script>
+
+<Edytor {sync} />
+```
+
+The sync helpers pass Edytor's `awareness` instance into the provider. Set local user metadata on the editor awareness state:
+
+```ts
+edytor.awareness.setLocalStateField('user', {
+	name: 'Ada',
+	color: '#dc2626'
+});
+```
+
+Remote cursor and expanded selection overlays render from awareness `selection` state. Edytor publishes its own local selection into awareness when the selection changes.
+
+Unsupported collaboration surfaces:
+
+- Edytor does not provide authentication.
+- Edytor does not provide document permissions or authorization rules.
+- Edytor does not provide hosted websocket infrastructure.
+- Edytor does not guarantee hosted persistence durability; IndexedDB persistence is local browser storage.
+
 ## 📦 Plugins
 
 Plugins are the primary way to extend Edytor's functionality. They allow you to add custom blocks, marks, inline blocks, hotkeys, and hook into various editor events. Each plugin is a function that receives the editor instance and returns a set of definitions and operations.
@@ -252,19 +316,34 @@ Marks are used for text formatting like bold, italic, or custom formatting.
 
 Operations allow you to hook into various editor events and modify behavior.
 
-| Operation                | Description                                          | Example Use Case                                   |
-| ------------------------ | ---------------------------------------------------- | -------------------------------------------------- |
-| `onBeforeOperation`      | Called before any operation is executed              | Validating table cell merges before they happen    |
-| `onAfterOperation`       | Called after any operation is executed               | Updating a table of contents after heading changes |
-| `onChange`               | Called when editor value changes                     | Syncing content with external storage              |
-| `onSelectionChange`      | Called when selection changes                        | Updating a formatting toolbar position             |
-| `placeholder`            | Define placeholder content for empty blocks          | Showing "Type '/' for commands" in empty blocks    |
-| `onEdytorAttached`       | Called when editor is attached to DOM                | Initializing third-party libraries                 |
-| `onBlockAttached`        | Called when a block is attached to DOM               | Running some svelte action on the node             |
-| `onTextAttached`         | Called when text is attached to DOM                  | Running some svelte action on the node             |
-| `defaultBlock`           | Define default block type when a new one is inserted | Using different default blocks based on context    |
-| `onDeleteSelectedBlocks` | Called when selected blocks are deleted              | Cleaning up resources when deleting media blocks   |
-| `onBeforeInput`          | Called before input is processed                     | Converting markdown shortcuts as you type          |
+| Operation                | Description                                            | Example Use Case                                   |
+| ------------------------ | ------------------------------------------------------ | -------------------------------------------------- |
+| `onBeforeOperation`      | Called before any operation is executed                | Validating table cell merges before they happen    |
+| `onAfterOperation`       | Called after any operation is executed                 | Updating a table of contents after heading changes |
+| `onChange`               | Called when editor value changes                       | Syncing content with external storage              |
+| `onSelectionChange`      | Called when selection changes                          | Updating a formatting toolbar position             |
+| `placeholder`            | Define placeholder content for empty blocks            | Showing "Type '/' for commands" in empty blocks    |
+| `onEdytorAttached`       | Called when editor is attached to DOM                  | Initializing third-party libraries                 |
+| `onBlockAttached`        | Called when a block is attached to DOM                 | Running some svelte action on the node             |
+| `onTextAttached`         | Called when text is attached to DOM                    | Running some svelte action on the node             |
+| `defaultBlock`           | Define default block type when a new one is inserted   | Using different default blocks based on context    |
+| `onDeleteSelectedBlocks` | Called when selected blocks are deleted                | Cleaning up resources when deleting media blocks   |
+| `onBeforeInput`          | Called before input is processed                       | Converting markdown shortcuts as you type          |
+| `onCopy`                 | Called before Edytor writes clipboard data             | Custom copy guards for protected blocks            |
+| `onCut`                  | Called before Edytor writes and deletes clipboard data | Blocking cuts inside protected content             |
+| `onPaste`                | Called before Edytor handles external paste data       | Deserializing custom HTML into editor blocks       |
+
+### Clipboard Contract
+
+Edytor handles clipboard operations from the model, not by cloning rendered DOM.
+
+- Copy and cut write `application/x-edytor-fragment`, `text/html`, and `text/plain`.
+- The internal fragment is also mirrored into HTML as `data-edytor-fragment` so same-editor round trips survive clipboard implementations that strip custom MIME types.
+- Paste precedence is internal MIME, embedded internal HTML fragment, external `text/html`, then `text/plain`.
+- Pasted internal fragments never preserve copied block or inline-block IDs; IDs are regenerated while marks, data, children, and relative order are preserved.
+- Copy is allowed in readonly mode. Cut and paste are ignored in readonly mode.
+- Copy does not create a history entry. Cut and paste each create one undoable mutation.
+- Clipboard serialization is currently core-owned. Plugin-specific serializers are intentionally deferred until there is a second concrete plugin need.
 
 ### Prevention in Plugin Operations
 

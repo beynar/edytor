@@ -1,0 +1,42 @@
+{
+	"extends": "./.svelte-kit/tsconfig.json",
+	"compilerOptions": {
+		"jsx": "react-jsx",
+		"jsxImportSource": "src/tests/jsx",
+		"allowJs": true,
+		"checkJs": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"sourceMap": true,
+		"strict": true,
+		"paths": {
+			"$lib": ["./src/lib"],
+			"$lib/*": ["./src/lib/*"]
+		},
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"noEmit": true,
+		"types": ["vite/client"]
+	},
+	"include": [
+		"src/app.d.ts",
+		"src/tests/test.utils.ts",
+		"src/tests/fixtures/**/*.ts",
+		"src/tests/fixtures/**/*.tsx",
+		"src/tests/jsx/**/*.ts",
+		"src/tests/jsx/**/*.tsx",
+		"src/lib/block/**/*.ts",
+		"src/lib/edytor.svelte.ts",
+		"src/lib/edytor.utils.ts",
+		"src/lib/events/**/*.ts",
+		"src/lib/hotkeys.ts",
+		"src/lib/plugins.ts",
+		"src/lib/plugins/**/*.d.ts",
+		"src/lib/plugins/**/*.svelte",
+		"src/lib/selection/**/*.ts",
+		"src/lib/text/**/*.ts",
+		"src/lib/utils/**/*.ts"
+	]
+}

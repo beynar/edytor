@@ -1,0 +1,18 @@
+{
+	"name": "edytor-packed-consumer",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"description": "Packed-consumer smoke for `edytor/crdt` — see README.md / run.sh",
+	"scripts": {
+		"smoke": "node smoke.js",
+		"typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.bundler.json"
+	},
+	"dependencies": {
+		"edytor": "file:./edytor.tgz"
+	},
+	"devDependencies": {
+		"svelte": "^5.0.0",
+		"typescript": "^5.9.3"
+	}
+}

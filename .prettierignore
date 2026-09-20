@@ -2,3 +2,14 @@
 pnpm-lock.yaml
 package-lock.json
 yarn.lock
+.codex
+.playwright-mcp
+build
+dist
+test-results
+# vendored upstream source + tests are not held to repo formatting
+src/lib/crdt/vendor
+vendor-tests
+# generated bench output + persisted corpus repro artifacts
+bench/results
+src/tests/crdt/random/failures

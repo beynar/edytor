@@ -1,0 +1,2144 @@
+{
+  "seed": 86,
+  "peers": 3,
+  "adapter": "raw-node",
+  "failure": "step 167 threw: Cannot read properties of undefined (reading 'constructor')\n    at /Users/arnaud/code/edytor/src/lib/crdt/vendor/yjs/src/utils/Transaction.js:369:59\n    at iterateStructs (/Users/arnaud/code/edytor/src/lib/crdt/vendor/yjs/src/utils/transaction-helpers.js:141:5)\n    at /Users/arnaud/code/edytor/src/lib/crdt/vendor/yjs/src/utils/ids.js:467:23\n    at Map.forEach (<anonymous>)\n    at iterateStructsByIdSet (/Users/arnaud/code/edytor/src/lib/crdt/vendor/yjs/src/utils/ids.js:461:14)",
+  "violations": [
+    "upstream-engine-crash"
+  ],
+  "lostEdits": [],
+  "lostIdentities": [],
+  "stepsExecuted": 167,
+  "schedule": [
+    {
+      "peer": 0,
+      "op": {
+        "kind": "moveBlock",
+        "idIndex": 6,
+        "parentIndex": 3,
+        "destIndex": 0
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "moveBlock",
+        "idIndex": 5,
+        "parentIndex": 0,
+        "destIndex": 1
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "setMark",
+        "idIndex": 1,
+        "offset": 9,
+        "length": 6,
+        "name": "bold"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "drop",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 6,
+        "offset": 4,
+        "text": "µ86x4",
+        "tag": "µ86x4"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertInline",
+        "idIndex": 3,
+        "offset": 8,
+        "atomId": "in86-5"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 1,
+        "offset": 11,
+        "text": "µ86x6",
+        "tag": "µ86x6"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "persist",
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "healPeer",
+        "a": 1,
+        "b": 0
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "duplicate",
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "split",
+        "idIndex": 4,
+        "offset": 3,
+        "newId": "sp86-10"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertBlock",
+        "id": "s86-11",
+        "type": "quote"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "merge",
+        "fromIndex": 6,
+        "intoIndex": 0
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 6,
+        "offset": 19,
+        "text": "µ86x13",
+        "tag": "µ86x13"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "removeInline",
+        "idIndex": 3,
+        "inlineIndex": 0
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "deliverAll",
+        "a": 1,
+        "b": 0
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "split",
+        "idIndex": 7,
+        "offset": 9,
+        "newId": "sp86-16"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertBlock",
+        "id": "s86-17",
+        "type": "list"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "heal",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertInline",
+        "idIndex": 2,
+        "offset": 1,
+        "atomId": "in86-19"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 7,
+        "offset": 1,
+        "text": "µ86x20",
+        "tag": "µ86x20"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 1,
+        "offset": 16,
+        "length": 4
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 4,
+        "offset": 20,
+        "length": 4
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "unNest",
+        "idIndex": 4
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "batch",
+        "a": 0,
+        "b": 1
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 1,
+        "offset": 10,
+        "length": 5
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "removeInline",
+        "idIndex": 3,
+        "inlineIndex": 4
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "persist",
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "merge",
+        "fromIndex": 5,
+        "intoIndex": 2
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 6,
+        "offset": 3,
+        "text": "µ86x29",
+        "tag": "µ86x29"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "batch",
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 7,
+        "offset": 2,
+        "text": "µ86x31",
+        "tag": "µ86x31"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "syncSV",
+        "a": 1,
+        "b": 0
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "removeInline",
+        "idIndex": 6,
+        "inlineIndex": 0
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 5,
+        "offset": 16,
+        "text": "µ86x34",
+        "tag": "µ86x34"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 7,
+        "offset": 8,
+        "length": 3
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "unsetMark",
+        "idIndex": 2,
+        "offset": 12,
+        "length": 5,
+        "name": "italic"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "setMark",
+        "idIndex": 5,
+        "offset": 11,
+        "length": 7,
+        "name": "italic"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "split",
+        "idIndex": 3,
+        "offset": 15,
+        "newId": "sp86-38"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "deleteBlock",
+        "idIndex": 4
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 3,
+        "offset": 20,
+        "text": "µ86x40",
+        "tag": "µ86x40"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "healPeer",
+        "a": 0,
+        "b": 1
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "batch",
+        "a": 0,
+        "b": 2
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "split",
+        "idIndex": 5,
+        "offset": 8,
+        "newId": "sp86-43"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 6,
+        "offset": 3,
+        "text": "µ86x44",
+        "tag": "µ86x44"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 4,
+        "offset": 11,
+        "text": "µ86x45",
+        "tag": "µ86x45"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "split",
+        "idIndex": 5,
+        "offset": 7,
+        "newId": "sp86-46"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "setMark",
+        "idIndex": 7,
+        "offset": 8,
+        "length": 7,
+        "name": "code"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "merge",
+        "fromIndex": 6,
+        "intoIndex": 0
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 2,
+        "offset": 4,
+        "text": "µ86x49",
+        "tag": "µ86x49"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 0,
+        "offset": 14,
+        "length": 5
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "syncSV",
+        "a": 0,
+        "b": 1
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 4,
+        "offset": 5,
+        "text": "µ86x52",
+        "tag": "µ86x52"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 3,
+        "offset": 5,
+        "text": "µ86x53",
+        "tag": "µ86x53"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertInline",
+        "idIndex": 5,
+        "offset": 1,
+        "atomId": "in86-54"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "syncFull",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 4,
+        "offset": 4,
+        "text": "µ86x56",
+        "tag": "µ86x56"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "partition",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "moveBlock",
+        "idIndex": 2,
+        "parentIndex": 5,
+        "destIndex": 6
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 7,
+        "offset": 13,
+        "text": "µ86x59",
+        "tag": "µ86x59"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "deliverReverse",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 7,
+        "offset": 8,
+        "length": 1
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "unsetMark",
+        "idIndex": 5,
+        "offset": 10,
+        "length": 8,
+        "name": "bold"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "deleteBlock",
+        "idIndex": 3
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 6,
+        "offset": 20,
+        "text": "µ86x64",
+        "tag": "µ86x64"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "unsetMark",
+        "idIndex": 6,
+        "offset": 11,
+        "length": 8,
+        "name": "code"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 4,
+        "offset": 17,
+        "text": "µ86x66",
+        "tag": "µ86x66"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "merge",
+        "fromIndex": 3,
+        "intoIndex": 0
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 5,
+        "offset": 16,
+        "length": 3
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 5,
+        "offset": 19,
+        "text": "µ86x69",
+        "tag": "µ86x69"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 7,
+        "offset": 9,
+        "text": "µ86x70",
+        "tag": "µ86x70"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "merge",
+        "fromIndex": 5,
+        "intoIndex": 2
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "moveBlock",
+        "idIndex": 1,
+        "parentIndex": 0,
+        "destIndex": 6
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertBlock",
+        "id": "s86-73",
+        "type": "list"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "duplicate",
+        "a": 1,
+        "b": 0
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertBlock",
+        "id": "s86-75",
+        "type": "paragraph"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 1,
+        "offset": 15,
+        "length": 4
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "moveBlock",
+        "idIndex": 1,
+        "parentIndex": 1,
+        "destIndex": 2
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "moveBlock",
+        "idIndex": 7,
+        "parentIndex": 0,
+        "destIndex": 6
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "reloadSnap",
+        "a": 2,
+        "b": 1
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "nest",
+        "idIndex": 3,
+        "parentIndex": 6
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "isolate",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "heal",
+        "a": 1,
+        "b": 0
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 4,
+        "offset": 6,
+        "text": "µ86x83",
+        "tag": "µ86x83"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "setMark",
+        "idIndex": 5,
+        "offset": 1,
+        "length": 7,
+        "name": "underline"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "split",
+        "idIndex": 1,
+        "offset": 5,
+        "newId": "sp86-85"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 0,
+        "offset": 1,
+        "text": "µ86x86",
+        "tag": "µ86x86"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "syncSV",
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertBlock",
+        "id": "s86-88",
+        "type": "list"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 2,
+        "offset": 18,
+        "length": 2
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "deliverAll",
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 6,
+        "offset": 17,
+        "text": "µ86x91",
+        "tag": "µ86x91"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "heal",
+        "a": 2,
+        "b": 1
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "moveBlock",
+        "idIndex": 1,
+        "parentIndex": 2,
+        "destIndex": 0
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertBlock",
+        "id": "s86-94",
+        "type": "paragraph"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "deliver",
+        "a": 0,
+        "b": 1
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "merge",
+        "fromIndex": 2,
+        "intoIndex": 4
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "nest",
+        "idIndex": 7,
+        "parentIndex": 5
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 5,
+        "offset": 3,
+        "text": "µ86x98",
+        "tag": "µ86x98"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "deleteBlock",
+        "idIndex": 1
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "unsetMark",
+        "idIndex": 6,
+        "offset": 8,
+        "length": 4,
+        "name": "underline"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "deleteBlock",
+        "idIndex": 1
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 1,
+        "offset": 12,
+        "text": "µ86x102",
+        "tag": "µ86x102"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "isolate",
+        "a": 2,
+        "b": 1
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "deliverAll",
+        "a": 2,
+        "b": 1
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "isolate",
+        "a": 0,
+        "b": 2
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "split",
+        "idIndex": 5,
+        "offset": 13,
+        "newId": "sp86-106"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "deleteBlock",
+        "idIndex": 7
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertBlock",
+        "id": "s86-108",
+        "type": "quote"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "deleteBlock",
+        "idIndex": 4
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "deliverAll",
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "syncFull",
+        "a": 0,
+        "b": 1
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertInline",
+        "idIndex": 7,
+        "offset": 9,
+        "atomId": "in86-112"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 5,
+        "offset": 15,
+        "text": "µ86x113",
+        "tag": "µ86x113"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "merge",
+        "fromIndex": 0,
+        "intoIndex": 6
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 3,
+        "offset": 4,
+        "text": "µ86x115",
+        "tag": "µ86x115"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 6,
+        "offset": 18,
+        "length": 3
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "nest",
+        "idIndex": 7,
+        "parentIndex": 7
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "deliverReverse",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "moveBlock",
+        "idIndex": 6,
+        "parentIndex": 5,
+        "destIndex": 0
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 1,
+        "offset": 7,
+        "length": 1
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "split",
+        "idIndex": 3,
+        "offset": 14,
+        "newId": "sp86-121"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "healPeer",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "deliverAll",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertBlock",
+        "id": "s86-124",
+        "type": "paragraph"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "reloadSnap",
+        "a": 0,
+        "b": 1
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "deliver",
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "batch",
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "deliverReverse",
+        "a": 0,
+        "b": 1
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "isolate",
+        "a": 0,
+        "b": 1
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "unsetMark",
+        "idIndex": 5,
+        "offset": 3,
+        "length": 8,
+        "name": "underline"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 2,
+        "offset": 9,
+        "text": "µ86x131",
+        "tag": "µ86x131"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "deliverReverse",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "persist",
+        "a": 0,
+        "b": 2
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "setMark",
+        "idIndex": 6,
+        "offset": 13,
+        "length": 7,
+        "name": "underline"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertInline",
+        "idIndex": 6,
+        "offset": 9,
+        "atomId": "in86-135"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "duplicate",
+        "a": 0,
+        "b": 1
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "nest",
+        "idIndex": 1,
+        "parentIndex": 7
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 5,
+        "offset": 15,
+        "length": 5
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "persist",
+        "a": 2,
+        "b": 1
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "split",
+        "idIndex": 0,
+        "offset": 13,
+        "newId": "sp86-140"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "moveBlock",
+        "idIndex": 7,
+        "parentIndex": 5,
+        "destIndex": 3
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "syncFull",
+        "a": 0,
+        "b": 2
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "batch",
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 2,
+        "offset": 9,
+        "text": "µ86x144",
+        "tag": "µ86x144"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "duplicate",
+        "a": 1,
+        "b": 0
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "deleteBlock",
+        "idIndex": 5
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 4,
+        "offset": 11,
+        "text": "µ86x147",
+        "tag": "µ86x147"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertInline",
+        "idIndex": 6,
+        "offset": 8,
+        "atomId": "in86-148"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "syncFull",
+        "a": 0,
+        "b": 1
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "merge",
+        "fromIndex": 3,
+        "intoIndex": 5
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "moveBlock",
+        "idIndex": 2,
+        "parentIndex": 2,
+        "destIndex": 3
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "isolate",
+        "a": 2,
+        "b": 1
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 4,
+        "offset": 17,
+        "text": "µ86x153",
+        "tag": "µ86x153"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "nest",
+        "idIndex": 0,
+        "parentIndex": 3
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 4,
+        "offset": 6,
+        "text": "µ86x155",
+        "tag": "µ86x155"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 5,
+        "offset": 15,
+        "text": "µ86x156",
+        "tag": "µ86x156"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 7,
+        "offset": 17,
+        "text": "µ86x157",
+        "tag": "µ86x157"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "reloadSnap",
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "drop",
+        "a": 0,
+        "b": 1
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "removeInline",
+        "idIndex": 7,
+        "inlineIndex": 4
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 1,
+        "offset": 5,
+        "text": "µ86x161",
+        "tag": "µ86x161"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "isolate",
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 0,
+        "offset": 0,
+        "length": 5
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 2,
+        "offset": 14,
+        "text": "µ86x164",
+        "tag": "µ86x164"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "split",
+        "idIndex": 0,
+        "offset": 12,
+        "newId": "sp86-165"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 0,
+        "offset": 8,
+        "text": "µ86x166",
+        "tag": "µ86x166"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "syncSV",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 4,
+        "offset": 18,
+        "text": "µ86x168",
+        "tag": "µ86x168"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "moveBlock",
+        "idIndex": 4,
+        "parentIndex": 1,
+        "destIndex": 2
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "nest",
+        "idIndex": 5,
+        "parentIndex": 6
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "split",
+        "idIndex": 2,
+        "offset": 12,
+        "newId": "sp86-171"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "deleteText",
+        "idIndex": 5,
+        "offset": 13,
+        "length": 5
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "unsetMark",
+        "idIndex": 6,
+        "offset": 5,
+        "length": 4,
+        "name": "code"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "deliverAll",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 6,
+        "offset": 5,
+        "text": "µ86x175",
+        "tag": "µ86x175"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "moveBlock",
+        "idIndex": 0,
+        "parentIndex": 4,
+        "destIndex": 2
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "duplicate",
+        "a": 0,
+        "b": 1
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 0,
+        "offset": 1,
+        "text": "µ86x178",
+        "tag": "µ86x178"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 4,
+        "offset": 13,
+        "text": "µ86x179",
+        "tag": "µ86x179"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "deliverAll",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 6,
+        "offset": 10,
+        "text": "µ86x181",
+        "tag": "µ86x181"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertBlock",
+        "id": "s86-182",
+        "type": "list"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertInline",
+        "idIndex": 4,
+        "offset": 3,
+        "atomId": "in86-183"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "moveBlock",
+        "idIndex": 1,
+        "parentIndex": 3,
+        "destIndex": 0
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "net",
+        "action": "heal",
+        "a": 1,
+        "b": 0
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertInline",
+        "idIndex": 3,
+        "offset": 6,
+        "atomId": "in86-186"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "deleteBlock",
+        "idIndex": 2
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "deleteBlock",
+        "idIndex": 6
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "split",
+        "idIndex": 3,
+        "offset": 7,
+        "newId": "sp86-189"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "deleteBlock",
+        "idIndex": 1
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "net",
+        "action": "healPeer",
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "unNest",
+        "idIndex": 1
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertInline",
+        "idIndex": 3,
+        "offset": 10,
+        "atomId": "in86-193"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "removeInline",
+        "idIndex": 7,
+        "inlineIndex": 2
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 7,
+        "offset": 5,
+        "text": "µ86x195",
+        "tag": "µ86x195"
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertText",
+        "idIndex": 5,
+        "offset": 7,
+        "text": "µ86x196",
+        "tag": "µ86x196"
+      }
+    },
+    {
+      "peer": 2,
+      "op": {
+        "kind": "net",
+        "action": "syncSV",
+        "a": 2,
+        "b": 0
+      }
+    },
+    {
+      "peer": 1,
+      "op": {
+        "kind": "insertInline",
+        "idIndex": 4,
+        "offset": 2,
+        "atomId": "in86-198"
+      }
+    },
+    {
+      "peer": 0,
+      "op": {
+        "kind": "insertBlock",
+        "id": "s86-199",
+        "type": "paragraph"
+      }
+    }
+  ],
+  "minimized": {
+    "stepCount": 36,
+    "transcript": "seed 86 — 36 steps\n  0. peer 0: {\"kind\":\"moveBlock\",\"idIndex\":6,\"parentIndex\":3,\"destIndex\":0}\n  1. peer 1: {\"kind\":\"moveBlock\",\"idIndex\":5,\"parentIndex\":0,\"destIndex\":1}\n  2. peer 1: {\"kind\":\"setMark\",\"idIndex\":1,\"offset\":9,\"length\":6,\"name\":\"bold\"}\n  3. peer 2: {\"kind\":\"net\",\"action\":\"drop\",\"a\":2,\"b\":0}\n  4. peer 1: {\"kind\":\"insertText\",\"idIndex\":6,\"offset\":4,\"text\":\"µ86x4\",\"tag\":\"µ86x4\"}\n  5. peer 0: {\"kind\":\"insertBlock\",\"id\":\"s86-17\",\"type\":\"list\"}\n  6. peer 2: {\"kind\":\"split\",\"idIndex\":5,\"offset\":7,\"newId\":\"sp86-46\"}\n  7. peer 2: {\"kind\":\"net\",\"action\":\"syncSV\",\"a\":0,\"b\":1}\n  8. peer 2: {\"kind\":\"net\",\"action\":\"syncFull\",\"a\":2,\"b\":0}\n  9. peer 0: {\"kind\":\"insertText\",\"idIndex\":4,\"offset\":4,\"text\":\"µ86x56\",\"tag\":\"µ86x56\"}\n  10. peer 2: {\"kind\":\"net\",\"action\":\"partition\",\"a\":2,\"b\":0}\n  11. peer 2: {\"kind\":\"moveBlock\",\"idIndex\":2,\"parentIndex\":5,\"destIndex\":6}\n  12. peer 1: {\"kind\":\"unsetMark\",\"idIndex\":6,\"offset\":11,\"length\":8,\"name\":\"code\"}\n  13. peer 1: {\"kind\":\"insertText\",\"idIndex\":4,\"offset\":17,\"text\":\"µ86x66\",\"tag\":\"µ86x66\"}\n  14. peer 0: {\"kind\":\"merge\",\"fromIndex\":3,\"intoIndex\":0}\n  15. peer 1: {\"kind\":\"deleteText\",\"idIndex\":5,\"offset\":16,\"length\":3}\n  16. peer 0: {\"kind\":\"insertText\",\"idIndex\":5,\"offset\":19,\"text\":\"µ86x69\",\"tag\":\"µ86x69\"}\n  17. peer 0: {\"kind\":\"insertText\",\"idIndex\":7,\"offset\":9,\"text\":\"µ86x70\",\"tag\":\"µ86x70\"}\n  18. peer 0: {\"kind\":\"merge\",\"fromIndex\":5,\"intoIndex\":2}\n  19. peer 1: {\"kind\":\"moveBlock\",\"idIndex\":1,\"parentIndex\":0,\"destIndex\":6}\n  20. peer 2: {\"kind\":\"insertBlock\",\"id\":\"s86-73\",\"type\":\"list\"}\n  21. peer 2: {\"kind\":\"net\",\"action\":\"duplicate\",\"a\":1,\"b\":0}\n  22. peer 2: {\"kind\":\"moveBlock\",\"idIndex\":1,\"parentIndex\":1,\"destIndex\":2}\n  23. peer 0: {\"kind\":\"moveBlock\",\"idIndex\":7,\"parentIndex\":0,\"destIndex\":6}\n  24. peer 2: {\"kind\":\"net\",\"action\":\"reloadSnap\",\"a\":2,\"b\":1}\n  25. peer 0: {\"kind\":\"nest\",\"idIndex\":3,\"parentIndex\":6}\n  26. peer 0: {\"kind\":\"net\",\"action\":\"isolate\",\"a\":2,\"b\":0}\n  27. peer 0: {\"kind\":\"split\",\"idIndex\":1,\"offset\":5,\"newId\":\"sp86-85\"}\n  28. peer 1: {\"kind\":\"insertText\",\"idIndex\":0,\"offset\":1,\"text\":\"µ86x86\",\"tag\":\"µ86x86\"}\n  29. peer 0: {\"kind\":\"net\",\"action\":\"syncSV\",\"a\":1,\"b\":2}\n  30. peer 2: {\"kind\":\"insertBlock\",\"id\":\"s86-94\",\"type\":\"paragraph\"}\n  31. peer 2: {\"kind\":\"deleteBlock\",\"idIndex\":1}\n  32. peer 1: {\"kind\":\"net\",\"action\":\"deliverAll\",\"a\":2,\"b\":0}\n  33. peer 0: {\"kind\":\"insertBlock\",\"id\":\"s86-124\",\"type\":\"paragraph\"}\n  34. peer 2: {\"kind\":\"net\",\"action\":\"reloadSnap\",\"a\":0,\"b\":1}\n  35. peer 1: {\"kind\":\"net\",\"action\":\"drop\",\"a\":0,\"b\":1}",
+    "steps": [
+      {
+        "peer": 0,
+        "op": {
+          "kind": "moveBlock",
+          "idIndex": 6,
+          "parentIndex": 3,
+          "destIndex": 0
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "moveBlock",
+          "idIndex": 5,
+          "parentIndex": 0,
+          "destIndex": 1
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "setMark",
+          "idIndex": 1,
+          "offset": 9,
+          "length": 6,
+          "name": "bold"
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "net",
+          "action": "drop",
+          "a": 2,
+          "b": 0
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "insertText",
+          "idIndex": 6,
+          "offset": 4,
+          "text": "µ86x4",
+          "tag": "µ86x4"
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "insertBlock",
+          "id": "s86-17",
+          "type": "list"
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "split",
+          "idIndex": 5,
+          "offset": 7,
+          "newId": "sp86-46"
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "net",
+          "action": "syncSV",
+          "a": 0,
+          "b": 1
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "net",
+          "action": "syncFull",
+          "a": 2,
+          "b": 0
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "insertText",
+          "idIndex": 4,
+          "offset": 4,
+          "text": "µ86x56",
+          "tag": "µ86x56"
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "net",
+          "action": "partition",
+          "a": 2,
+          "b": 0
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "moveBlock",
+          "idIndex": 2,
+          "parentIndex": 5,
+          "destIndex": 6
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "unsetMark",
+          "idIndex": 6,
+          "offset": 11,
+          "length": 8,
+          "name": "code"
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "insertText",
+          "idIndex": 4,
+          "offset": 17,
+          "text": "µ86x66",
+          "tag": "µ86x66"
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "merge",
+          "fromIndex": 3,
+          "intoIndex": 0
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "deleteText",
+          "idIndex": 5,
+          "offset": 16,
+          "length": 3
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "insertText",
+          "idIndex": 5,
+          "offset": 19,
+          "text": "µ86x69",
+          "tag": "µ86x69"
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "insertText",
+          "idIndex": 7,
+          "offset": 9,
+          "text": "µ86x70",
+          "tag": "µ86x70"
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "merge",
+          "fromIndex": 5,
+          "intoIndex": 2
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "moveBlock",
+          "idIndex": 1,
+          "parentIndex": 0,
+          "destIndex": 6
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "insertBlock",
+          "id": "s86-73",
+          "type": "list"
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "net",
+          "action": "duplicate",
+          "a": 1,
+          "b": 0
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "moveBlock",
+          "idIndex": 1,
+          "parentIndex": 1,
+          "destIndex": 2
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "moveBlock",
+          "idIndex": 7,
+          "parentIndex": 0,
+          "destIndex": 6
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "net",
+          "action": "reloadSnap",
+          "a": 2,
+          "b": 1
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "nest",
+          "idIndex": 3,
+          "parentIndex": 6
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "net",
+          "action": "isolate",
+          "a": 2,
+          "b": 0
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "split",
+          "idIndex": 1,
+          "offset": 5,
+          "newId": "sp86-85"
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "insertText",
+          "idIndex": 0,
+          "offset": 1,
+          "text": "µ86x86",
+          "tag": "µ86x86"
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "net",
+          "action": "syncSV",
+          "a": 1,
+          "b": 2
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "insertBlock",
+          "id": "s86-94",
+          "type": "paragraph"
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "deleteBlock",
+          "idIndex": 1
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "net",
+          "action": "deliverAll",
+          "a": 2,
+          "b": 0
+        }
+      },
+      {
+        "peer": 0,
+        "op": {
+          "kind": "insertBlock",
+          "id": "s86-124",
+          "type": "paragraph"
+        }
+      },
+      {
+        "peer": 2,
+        "op": {
+          "kind": "net",
+          "action": "reloadSnap",
+          "a": 0,
+          "b": 1
+        }
+      },
+      {
+        "peer": 1,
+        "op": {
+          "kind": "net",
+          "action": "drop",
+          "a": 0,
+          "b": 1
+        }
+      }
+    ]
+  }
+}

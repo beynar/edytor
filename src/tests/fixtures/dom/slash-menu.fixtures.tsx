@@ -1,0 +1,113 @@
+/** @jsxImportSource ../../jsx */
+import { expect } from 'vitest';
+
+import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
+import { defineDomFixture, defineFixtures } from '../types.js';
+import {
+	dispatchDomBeforeInput,
+	dispatchDomKeyDown,
+	flushDomUpdates
+} from '../../dom/test.utils.js';
+
+const slashMenuPlugins = [richTextPlugin, mentionPlugin, slashMenuPlugin];
+
+const typeText = async (editor: HTMLElement, value: string) => {
+	for (const character of value) {
+		await dispatchDomBeforeInput(editor, {
+			inputType: 'insertText',
+			data: character
+		});
+	}
+};
+
+export const fixtures = defineFixtures([
+	defineDomFixture({
+		description: 'opens and filters registered commands from a slash query',
+		plugins: slashMenuPlugins,
+		input: (
+			<root>
+				<paragraph>|</paragraph>
+			</root>
+		),
+		run: ({ editor }) => typeText(editor, '/quo'),
+		assert: async ({ getByTestId, getAllByTestId }) => {
+			expect(getByTestId('slash-menu-query').textContent).toBe('/quo');
+			expect(getAllByTestId('slash-menu-item').map((item) => item.textContent)).toEqual(['Quote']);
+		}
+	}),
+	defineDomFixture({
+		description: 'runs the selected slash command with arrow navigation and enter',
+		plugins: slashMenuPlugins,
+		input: (
+			<root>
+				<paragraph>|</paragraph>
+			</root>
+		),
+		run: async ({ editor }) => {
+			await typeText(editor, '/');
+			await dispatchDomKeyDown(document, { key: 'ArrowDown', code: 'ArrowDown' });
+			await dispatchDomKeyDown(document, { key: 'ArrowDown', code: 'ArrowDown' });
+			await dispatchDomKeyDown(document, { key: 'ArrowUp', code: 'ArrowUp' });
+			return dispatchDomKeyDown(document, { key: 'Enter', code: 'Enter' });
+		},
+		output: (
+			<root>
+				<heading level="h1"></heading>
+			</root>
+		),
+		expectSelection: { startBlockPath: [0], yStart: 0, yEnd: 0, isCollapsed: true },
+		assert: async ({ queryByTestId, result }) => {
+			expect((result as { defaultPrevented?: boolean }).defaultPrevented).toBe(true);
+			expect(queryByTestId('slash-menu')).toBeNull();
+		}
+	}),
+	defineDomFixture({
+		description: 'closes the slash menu on escape without removing typed text',
+		plugins: slashMenuPlugins,
+		input: (
+			<root>
+				<paragraph>|</paragraph>
+			</root>
+		),
+		run: async ({ editor }) => {
+			await typeText(editor, '/');
+			return dispatchDomKeyDown(document, { key: 'Escape', code: 'Escape' });
+		},
+		output: (
+			<root>
+				<paragraph>/</paragraph>
+			</root>
+		),
+		assert: async ({ queryByTestId, result }) => {
+			expect((result as { defaultPrevented?: boolean }).defaultPrevented).toBe(true);
+			expect(queryByTestId('slash-menu')).toBeNull();
+		}
+	}),
+	defineDomFixture({
+		description: 'runs a slash command from mouse selection',
+		plugins: slashMenuPlugins,
+		input: (
+			<root>
+				<paragraph>|</paragraph>
+			</root>
+		),
+		run: async ({ editor, getByTestId }) => {
+			await typeText(editor, '/quo');
+			const item = getByTestId('slash-menu-item');
+			item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+			item.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+			await flushDomUpdates();
+		},
+		output: (
+			<root>
+				<quote></quote>
+			</root>
+		),
+		expectSelection: { startBlockPath: [0], yStart: 0, yEnd: 0, isCollapsed: true },
+		assert: async ({ queryByTestId }) => {
+			expect(queryByTestId('slash-menu')).toBeNull();
+		}
+	})
+]);

@@ -91,7 +91,7 @@ export function insertText(
 	if (!isCollapsed) {
 		deltas.splice(1, 0, { delete: end - start });
 	}
-	this.edytor.doc.transact(() => {
+	this.edytor.transact(() => {
 		if (isAutoDot || !isCollapsed) {
 			this.yText.applyDelta(deltas);
 		} else {
@@ -108,8 +108,14 @@ export function getMarksAtRange(this: Text, yStart: number, yEnd: number) {
 	let offset = 0;
 	let entered = false;
 
-	for (let i = 0; i < this.children.length; i++) {
-		const { text, marks } = this.children[i];
+	// Iterate the MODEL runs (`this.value`), never `this.children` — the
+	// children getter applies the block's `transformText` (e.g. Prism code
+	// tokens), whose marks are local decorations. Reading them here leaked
+	// `codeToken` into persisted marks: typed/composed text inside a code
+	// line inherited the decoration, splitting the serialized content.
+	const parts = this.value;
+	for (let i = 0; i < parts.length; i++) {
+		const { text, marks } = parts[i];
 		const length = text.length;
 		const end = offset + length;
 
@@ -120,20 +126,20 @@ export function getMarksAtRange(this: Text, yStart: number, yEnd: number) {
 			const endOffset = Math.min(length, yEnd - offset);
 			result.push({
 				text: text.slice(startOffset, endOffset),
-				marks: Object.fromEntries(marks)
+				marks: { ...(marks ?? {}) }
 			});
 		} else if (entered && end <= yEnd) {
 			// Middle of range
 			result.push({
 				text,
-				marks: Object.fromEntries(marks)
+				marks: { ...(marks ?? {}) }
 			});
 		} else if (entered && offset < yEnd && yEnd <= end) {
 			// End of range
 			const endOffset = yEnd - offset;
 			result.push({
 				text: text.slice(0, endOffset),
-				marks: Object.fromEntries(marks)
+				marks: { ...(marks ?? {}) }
 			});
 			break;
 		}
@@ -144,15 +150,98 @@ export function getMarksAtRange(this: Text, yStart: number, yEnd: number) {
 	return result;
 }
 
+type GraphemeSegment = {
+	index: number;
+	segment: string;
+};
+
+type GraphemeSegmenter = {
+	segment(value: string): Iterable<GraphemeSegment>;
+};
+
+type GraphemeSegmenterConstructor = new (
+	locale?: string | string[],
+	options?: { granularity: 'grapheme' }
+) => GraphemeSegmenter;
+
+const getGraphemeBoundaries = (value: string) => {
+	const Segmenter = (Intl as typeof Intl & { Segmenter?: GraphemeSegmenterConstructor }).Segmenter;
+	if (Segmenter) {
+		return Array.from(new Segmenter(undefined, { granularity: 'grapheme' }).segment(value)).map(
+			({ index, segment }) => ({
+				start: index,
+				end: index + segment.length
+			})
+		);
+	}
+
+	let index = 0;
+	return Array.from(value).map((segment) => {
+		const start = index;
+		index += segment.length;
+		return {
+			start,
+			end: index
+		};
+	});
+};
+
+const getPreviousGraphemeStart = (value: string, offset: number) => {
+	const clampedOffset = Math.min(Math.max(offset, 0), value.length);
+	let previousStart = 0;
+
+	for (const boundary of getGraphemeBoundaries(value)) {
+		if (boundary.end >= clampedOffset) {
+			return boundary.start < clampedOffset ? boundary.start : previousStart;
+		}
+		previousStart = boundary.start;
+	}
+
+	return previousStart;
+};
+
+const getNextGraphemeEnd = (value: string, offset: number) => {
+	const clampedOffset = Math.min(Math.max(offset, 0), value.length);
+
+	for (const boundary of getGraphemeBoundaries(value)) {
+		if (boundary.end > clampedOffset) {
+			return boundary.end;
+		}
+	}
+
+	return clampedOffset;
+};
+
 export function deleteText(this: Text, { direction, length = 1 }: TextOperations['deleteText']) {
 	const { yStart, isCollapsed } = this.edytor.selection.state;
+	const requestedLength = Math.max(0, length);
+	const textLength = this.yText.length;
 
-	const deltas: Delta[] =
-		direction === 'BACKWARD'
-			? [{ retain: isCollapsed ? yStart - 1 : yStart }, { delete: isCollapsed ? 1 : length }]
-			: [{ retain: isCollapsed ? yStart : yStart }, { delete: isCollapsed ? 1 : length }];
+	if (requestedLength === 0 || textLength === 0) {
+		return;
+	}
 
-	this.yText.applyDelta(deltas);
+	const shouldDeleteSingleGrapheme = isCollapsed && requestedLength === 1;
+	const start =
+		shouldDeleteSingleGrapheme && direction === 'BACKWARD'
+			? getPreviousGraphemeStart(this.stringContent, yStart)
+			: direction === 'BACKWARD' && isCollapsed
+				? Math.max(0, yStart - requestedLength)
+				: Math.max(0, yStart);
+	const end =
+		shouldDeleteSingleGrapheme && direction === 'FORWARD'
+			? getNextGraphemeEnd(this.stringContent, yStart)
+			: direction === 'BACKWARD' && isCollapsed
+				? Math.min(textLength, yStart)
+				: Math.min(textLength, start + requestedLength);
+	const deleteLength = end - start;
+
+	if (deleteLength <= 0) {
+		return;
+	}
+
+	this.yText.delete(start, deleteLength);
+	return { start, end };
 }
 
 export function removeMarksFromText(
@@ -160,18 +249,20 @@ export function removeMarksFromText(
 	{
 		start = this.edytor.selection.state.yStart || 0,
 		end = this.edytor.selection.state.yEnd || this.yText.length
-	}: TextOperations['markText']
+	}: TextOperations['removeMarksFromText']
 ) {
 	const marksAtRange = this.getMarksAtRange(start, end);
-	const attributes = marksAtRange.reduce((acc, { marks }) => {
-		Object.entries(marks || {}).forEach(([key, value]) => {
-			if (value === null) {
-				Object.assign({ key: null });
-			}
-		});
-		return acc;
-	}, {});
-	this.yText.format(start, end, attributes);
+	const attributes = marksAtRange.reduce(
+		(acc, { marks }) => {
+			Object.keys(marks || {}).forEach((key) => {
+				Object.assign(acc, { [key]: null });
+			});
+			return acc;
+		},
+		{} as Record<string, null>
+	);
+	this.yText.format(start, end - start, attributes);
+	this.refreshFromModel();
 }
 
 export function markText(
@@ -188,7 +279,8 @@ export function markText(
 	const isCollasped = end - start === 0;
 	const marksAtRange = this.getMarksAtRange(isCollasped ? start - 1 : start, end);
 	const isNextActiveMark = isCollasped && this.markOnNextInsert && mark in this.markOnNextInsert;
-	const spreadOnAllRange = marksAtRange.every(({ marks }) => marks && mark in marks);
+	const spreadOnAllRange =
+		marksAtRange.length > 0 && marksAtRange.every(({ marks }) => marks && mark in marks);
 	const markValue = (spreadOnAllRange || isNextActiveMark) && toggle ? null : value;
 
 	if (isCollasped) {
@@ -214,6 +306,7 @@ export function markText(
 		this.yText.format(start, length, {
 			[mark]: markValue
 		});
+		this.refreshFromModel();
 	}
 }
 

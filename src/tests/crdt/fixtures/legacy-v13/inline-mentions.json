@@ -1,0 +1,68 @@
+{
+	"name": "inline-mentions",
+	"description": "Inline atoms (mention Y.Map entries) embedded in Y.Array content between Y.Text parts, including leading/trailing separator texts and a block whose only content is an atom.",
+	"engine": {
+		"yjs": "13.6.30",
+		"lib0": "0.2.117"
+	},
+	"format": "yjs-update-v1",
+	"sourceClientId": 102169586,
+	"files": {
+		"update": "inline-mentions.update.bin",
+		"stateVector": "inline-mentions.state-vector.bin"
+	},
+	"expected": {
+		"children": [
+			{
+				"type": "paragraph",
+				"id": "b_50gpth9tl9",
+				"content": [
+					{
+						"text": "Hello "
+					},
+					{
+						"id": "i_2nu9UpZ9pR",
+						"type": "mention",
+						"data": {
+							"id": "u-ada",
+							"label": "Ada"
+						}
+					},
+					{
+						"text": " and "
+					},
+					{
+						"id": "i_0hR02tlPtq",
+						"type": "mention",
+						"data": {
+							"id": "u-grace",
+							"label": "Grace"
+						}
+					},
+					{
+						"text": "bye",
+						"marks": {
+							"bold": true
+						}
+					}
+				],
+				"data": {}
+			},
+			{
+				"type": "paragraph",
+				"id": "b_nn9zQRR8Al",
+				"content": [
+					{
+						"id": "i_SSARS8Qg6c",
+						"type": "mention",
+						"data": {
+							"id": "u-ed",
+							"label": "Ed"
+						}
+					}
+				],
+				"data": {}
+			}
+		]
+	}
+}

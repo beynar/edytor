@@ -10,20 +10,17 @@
 		"resolveJsonModule": true,
 		"skipLibCheck": true,
 		"sourceMap": true,
-		"strict": true,
-		"paths": {
-			"$lib": ["./src/lib"],
-			"$lib/*": ["./src/lib/*"]
-		},
-		"module": "NodeNext",
-		"moduleResolution": "NodeNext"
+		"strict": true
 	},
-	"include": [
-		"src/**/*.ts",
-		"src/**/*.js",
-		"src/**/*.svelte",
-		"src/tests/**/*.ts",
-		"tests/edytor.test.tsx",
-		"tests/edytor.test.tsx"
+	"include": ["src/app.d.ts", "src/**/*.ts", "src/**/*.js", "src/**/*.svelte"],
+	"exclude": [
+		"src/tests/**",
+		"src/lib/crdt/vendor/**",
+		// `engine.js` is the runtime-only shim that pulls the vendored v14
+		// sources into the bundle. Its type surface is declared by the adjacent
+		// `engine.d.ts` (`Y: EngineApi`); keeping the .js out of the program
+		// stops vendored JS from being checked here (it is checked by
+		// tsconfig.vendor-dts.json instead).
+		"src/lib/crdt/engine.js"
 	]
 }

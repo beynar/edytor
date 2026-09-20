@@ -1,0 +1,41 @@
+{
+	"name": "tombstones",
+	"description": "Inserted-then-deleted characters, applied-then-removed formatting, and a removed subtree. The update retains tombstoned items a decoder must skip.",
+	"engine": {
+		"yjs": "13.6.30",
+		"lib0": "0.2.117"
+	},
+	"format": "yjs-update-v1",
+	"sourceClientId": 3351127958,
+	"files": {
+		"update": "tombstones.update.bin",
+		"stateVector": "tombstones.state-vector.bin"
+	},
+	"expected": {
+		"children": [
+			{
+				"type": "paragraph",
+				"id": "b_2ZcP6S9pIg",
+				"content": [
+					{
+						"text": "keep me"
+					}
+				],
+				"data": {}
+			},
+			{
+				"type": "paragraph",
+				"id": "b_QLZdu6ANdq",
+				"content": [
+					{
+						"text": "Hello",
+						"marks": {
+							"bold": true
+						}
+					}
+				],
+				"data": {}
+			}
+		]
+	}
+}

@@ -1,7 +1,11 @@
 <script lang="ts" module>
-	import { Edytor, useEdytor, type Snippets } from '../edytor.svelte.js';
-	import { Awareness } from 'y-protocols/awareness';
-	export { Edytor as EdytorContext, useEdytor };
+	// `EdytorClass` alias: the emitted `.svelte.d.ts` also declares `Edytor`
+	// (the component + its bindable instance type) — an unaliased import
+	// collides there (TS2440 for bundler-resolution consumers).
+	import { Edytor as EdytorClass, useEdytor, type Snippets } from '../edytor.svelte.js';
+	import type { Awareness, YDoc } from '../crdt/index.js';
+	import type { EdytorSync } from '$lib/collaboration/index.js';
+	export { EdytorClass as EdytorContext, useEdytor };
 	import type { Plugin } from '$lib/plugins.js';
 	import type { Block as BlockType } from '$lib/block/block.svelte.js';
 	const defaultValue: JSONDoc = {
@@ -93,8 +97,8 @@
 	export type EdytorProps = Snippets & {
 		plugins?: Plugin[];
 		class?: string;
-		edytor?: Edytor;
-		doc?: Y.Doc;
+		edytor?: EdytorClass;
+		doc?: YDoc;
 		awareness?: Awareness;
 		readonly?: boolean;
 		hotKeys?: Record<string, HotKey>;
@@ -102,26 +106,23 @@
 		onSelectionChange?: (selection: EdytorSelection) => void;
 		value?: JSONDoc;
 		placeholder?: string | Snippet<[{ block: BlockType }]>;
-		sync?: ({
-			doc,
-			awareness,
-			synced
-		}: {
-			doc: Y.Doc;
-			awareness: Awareness;
-			synced: (provider?: any) => void;
-		}) => void;
+		translate?: 'yes' | 'no';
+		spellcheck?: boolean;
+		autocorrect?: 'on' | 'off';
+		autocomplete?: 'on' | 'off';
+		autocapitalize?: 'off' | 'none' | 'on' | 'sentences' | 'words' | 'characters';
+		sync?: EdytorSync;
 	};
 </script>
 
 <script lang="ts">
-	import * as Y from 'yjs';
 	import type { JSONBlock, JSONDoc } from '../utils/json.js';
-	import { onMount, setContext, type Snippet } from 'svelte';
+	import { onMount, setContext, type Snippet, untrack } from 'svelte';
 	import type { HotKey } from '$lib/hotkeys.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 	import ReadonlyEditor from './ReadonlyEditor.svelte';
 	import Block from './Block.svelte';
+	import RemoteSelections from '$lib/collaboration/RemoteSelections.svelte';
 
 	let {
 		plugins,
@@ -136,10 +137,15 @@
 		onChange,
 		onSelectionChange,
 		placeholder,
+		translate = 'no',
+		spellcheck = true,
+		autocorrect = 'off',
+		autocomplete = 'off',
+		autocapitalize = 'none',
 		...snippets
 	}: EdytorProps = $props();
 
-	edytor = new Edytor({
+	const initialEdytorOptions = untrack(() => ({
 		snippets,
 		readonly,
 		plugins,
@@ -151,18 +157,48 @@
 		sync: !!sync,
 		value,
 		placeholder
-	});
+	}));
+
+	edytor = new EdytorClass(initialEdytorOptions);
+
+	const rethrowAsyncCleanupError = (error: unknown) => {
+		setTimeout(() => {
+			throw error;
+		});
+	};
 
 	onMount(() => {
-		if (!readonly && sync) {
-			sync({
+		let destroySync: ReturnType<NonNullable<EdytorProps['sync']>> | undefined;
+		if (!initialEdytorOptions.readonly && sync) {
+			destroySync = sync({
 				doc: edytor.doc,
 				awareness: edytor.awareness,
 				synced: () => {
-					edytor.sync(value);
+					edytor.sync(initialEdytorOptions.value);
 				}
 			});
 		}
+
+		return () => {
+			if (typeof destroySync === 'function') {
+				try {
+					const cleanupResult = destroySync();
+					if (cleanupResult && typeof cleanupResult === 'object' && 'catch' in cleanupResult) {
+						void cleanupResult.catch(rethrowAsyncCleanupError);
+					}
+				} catch (error) {
+					rethrowAsyncCleanupError(error);
+				}
+			}
+
+			// The component owns the Edytor — release its doc/awareness/facade/
+			// undo-manager listeners so a shared doc doesn't retain dead mounts.
+			edytor.destroy();
+		};
+	});
+
+	$effect(() => {
+		edytor.readonly = readonly;
 	});
 
 	setContext('edytor', edytor);
@@ -200,26 +236,79 @@
 		observer.observe(node, { childList: true, subtree: true });
 		observe();
 	};
+
+	type EditableRootBrowserAttributes = {
+		spellcheck: boolean;
+		autocorrect: 'on' | 'off';
+		autocomplete: 'on' | 'off';
+		autocapitalize: 'off' | 'none' | 'on' | 'sentences' | 'words' | 'characters';
+	};
+
+	const browserMutationGuardAttributes = $derived({
+		spellcheck,
+		autocorrect,
+		autocomplete,
+		autocapitalize
+	});
+
+	const editableRootBrowserAttributes = (
+		node: HTMLElement,
+		attributes: EditableRootBrowserAttributes
+	) => {
+		const apply = (nextAttributes: EditableRootBrowserAttributes) => {
+			node.setAttribute('spellcheck', String(nextAttributes.spellcheck));
+			node.setAttribute('autocorrect', nextAttributes.autocorrect);
+			node.setAttribute('autocomplete', nextAttributes.autocomplete);
+			node.setAttribute('autocapitalize', nextAttributes.autocapitalize);
+		};
+
+		apply(attributes);
+
+		return {
+			update: apply
+		};
+	};
+
+	const nonNativeEditableBlockChromeSelection = (node: HTMLElement) => {
+		const handlePointerDown = (event: PointerEvent) => {
+			edytor.selection.handleNonNativeEditableBlockChromePointerDown(event);
+		};
+
+		node.addEventListener('pointerdown', handlePointerDown, true);
+
+		return {
+			destroy: () => {
+				node.removeEventListener('pointerdown', handlePointerDown, true);
+			}
+		};
+	};
+
+	const getBlockRenderKey = (block: BlockType) => block.id;
 </script>
 
-<!-- prettier-ignore
--->{#if edytor.synced || readonly}<!-- prettier-ignore
-	-->
-	<div
-	class={className} use:edytor.attach data-edytor contenteditable={!readonly}><!-- prettier-ignore
-		-->{#each edytor.root?.children || [] as block (block.id)}<!-- prettier-ignore
-			--><Block
-				{block}
-			/><!-- prettier-ignore
-		-->{/each}<!-- prettier-ignore
-	-->	</div>
-	<!-- prettier-ignore -->
-	<!---->{/if}
-
-<style lang="postcss">
-	/* :global {
-		[data-edytor] {
-			white-space: break-spaces;
-		}
-	} */
-</style>
+{#if edytor.synced || readonly}
+	{#key edytor.editorDomRevision}
+		<div
+			class={className}
+			use:edytor.attach
+			use:editableRootBrowserAttributes={browserMutationGuardAttributes}
+			use:nonNativeEditableBlockChromeSelection
+			data-edytor
+			contenteditable={!readonly}
+			role="textbox"
+			aria-multiline="true"
+			aria-readonly={readonly ? 'true' : 'false'}
+			{translate}
+		>
+			{#each edytor.root?.children || [] as block (getBlockRenderKey(block))}<Block
+					{block}
+				/>{/each}<span
+				data-edytor-render-anchor
+				contenteditable="false"
+				aria-hidden="true"
+				style="display: none"
+			></span>
+		</div>
+	{/key}
+	<RemoteSelections {edytor} />
+{/if}

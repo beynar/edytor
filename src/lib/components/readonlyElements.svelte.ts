@@ -75,10 +75,7 @@ const createProxy = (target: any): any => {
 	return new Proxy(target, {
 		get(target, prop) {
 			if (typeof prop === 'string' && prop in target) {
-				const value = (target as any)[prop];
-				console.log({ value });
-				// Handle functions by binding them to the target
-				return value;
+				return (target as any)[prop];
 			}
 			if (DEV) {
 				console.warn(
@@ -143,6 +140,7 @@ export class ReadonlyText {
 	edytor: Edytor;
 	parent: ReadonlyBlock | Block;
 	#children;
+	domVersion = 0;
 	stringContent: string;
 	node: HTMLElement | undefined;
 	isEmpty: boolean;
@@ -193,8 +191,10 @@ class ReadonlyInlineBlock {
 	edytor: Edytor;
 	parent: ReadonlyBlock | Block | Edytor;
 	type: string;
-	data = {};
+	id: string;
+	data: JSONInlineBlock['data'];
 	definition: InlineBlockDefinition;
+	node: HTMLElement | undefined;
 
 	constructor({
 		parent,
@@ -207,9 +207,15 @@ class ReadonlyInlineBlock {
 
 		edytor: Edytor;
 	}) {
+		this.id = block.id || id('i');
 		this.type = block.type;
+		this.data = block.data ?? {};
 		this.definition = edytor.getBlockDefinition('inline', this.type);
 		this.parent = parent;
 		this.edytor = parent.edytor;
+	}
+
+	attach(node: HTMLElement) {
+		this.node = node;
 	}
 }

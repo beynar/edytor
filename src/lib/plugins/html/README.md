@@ -66,19 +66,67 @@ The deserializer converts the HTMLNode tree into the editor's internal block and
 3. **Text Processing**: Processes text nodes and applies appropriate marks
 4. **Block Formation**: Creates block-level structures with nested content when needed
 
+### Element mappings
+
+`parseHtml.call(edytor, html, options)` converts known HTML tags through explicit mapping
+functions. Unknown tags are unwrapped and their text/children are preserved.
+
+Default block mappings:
+
+| HTML tag               | Edytor block                     |
+| ---------------------- | -------------------------------- |
+| `p`, `pre`             | `paragraph`                      |
+| `h1`                   | `heading` with `{ level: "h1" }` |
+| `h2`                   | `heading` with `{ level: "h2" }` |
+| `h3`, `h4`, `h5`, `h6` | `heading` with `{ level: "h3" }` |
+| `blockquote`           | `quote`                          |
+| `ul`, `li` inside `ul` | `bulleted-list-item`             |
+| `ol`, `li` inside `ol` | `numbered-list-item`             |
+| `hr`                   | `divider`                        |
+
+Default mark mappings:
+
+| HTML tag             | Edytor mark                                   |
+| -------------------- | --------------------------------------------- |
+| `strong`, `b`        | `bold`                                        |
+| `em`, `i`            | `italic`                                      |
+| `u`                  | `underline`                                   |
+| `s`, `strike`, `del` | `strike`                                      |
+| `sup`                | `superscript`                                 |
+| `sub`                | `subscript`                                   |
+| `mark`               | `highlight` with `yellow` data                |
+| `code`               | `code`                                        |
+| `a`                  | `link` with `href` and optional `target` data |
+
+There are no default inline-block mappings. Inline blocks must be supplied explicitly.
+Mapped inline blocks pasted at the top level become `$fragment` content, so they are
+inserted at the current caret instead of being wrapped as standalone blocks.
+
 ### Customization
 
 The deserializer supports customization through mapping options:
 
 ```typescript
 interface HTMLDeserializeOptions {
-	blocks?: { [tagName: string]: (node: HTMLNodeInterface) => BlockOptions };
-	marks?: { [tagName: string]: (node: HTMLNodeInterface) => MarkOptions };
-	inlineBlocks?: { [tagName: string]: (node: HTMLNodeInterface) => InlineBlockOptions };
+	blocks?: { [tagName: string]: (node: HTMLNodeInterface) => { type: string; data?: unknown } };
+	marks?: { [tagName: string]: (node: HTMLNodeInterface) => { type: string; data?: unknown } };
+	inlineBlocks?: {
+		[tagName: string]: (node: HTMLNodeInterface) => { type: string; data?: unknown };
+	};
 }
 ```
 
-These mapping functions allow for custom handling of specific HTML elements.
+User mappings are merged with the default mappings. Tag names are normalized to lowercase.
+
+Every default and user mapping is validated against the live editor registry before the
+HTML is accepted. A block mapping must resolve to `edytor.blocks`, a mark mapping to
+`edytor.marks`, and an inline-block mapping to `edytor.inlineBlocks`. Dynamic mapping
+results are checked again against the actual parsed node, so attribute-driven mappings
+cannot return missing editor types silently.
+
+Parent-sensitive list mappings are validated with `li` under `ul`, `li` under `ol`,
+and orphan `li` samples, so custom list-container mappings cannot hide an unsupported
+list-item target until paste time.
 
 ### Edge Case Handling
 
@@ -95,22 +143,16 @@ The deserializer handles several edge cases:
 ## Usage Example
 
 ```typescript
-import HTMLNode, { ElementSets } from '../lib/html/parser';
-import { parseHtml } from '../lib/html/deserialize';
+import { parseHtml } from '$lib/plugins/html/deserialize';
 
-// Define element sets
-const elementSets: ElementSets = {
-	blocks: new Set(['p', 'div', 'h1', 'h2', 'h3', 'blockquote']),
-	marks: new Set(['strong', 'em', 'u', 'code']),
-	inlineBlocks: new Set(['a', 'img'])
-};
-
-// Parse HTML
-const html = '<p>This is <strong>bold</strong> text</p>';
-const nodes = HTMLNode.create(html, elementSets);
-
-// Convert to editor blocks
-const blocks = parseHtml(nodes);
+const blocks = parseHtml.call(edytor, '<p>This is <strong>bold</strong> text</p>', {
+	inlineBlocks: {
+		abbr: (node) => ({
+			type: 'mention',
+			data: { name: node.attributes['data-name'] }
+		})
+	}
+});
 ```
 
 ## Design Decisions and Limitations
@@ -130,9 +172,9 @@ const blocks = parseHtml(nodes);
 
 ## Testing
 
-The parser and deserializer are extensively tested in:
+The parser and deserializer are fixture-tested in:
 
-- `src/tests/htmlParser.test.tsx`
-- `src/tests/htmlDeserialize.test.tsx`
+- `src/tests/fixtures/model/parser/html-parser.fixtures.ts`
+- `src/tests/fixtures/model/parser/html-deserialize.fixtures.ts`
 
 These tests cover core functionality, edge cases, and various special scenarios.

@@ -24,8 +24,8 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/index.js';
-import { BOOTSTRAP_BLOCK_ID as BOOTSTRAP_BLOCK } from '../../../lib/crdt/edytor-doc.js';
 import { decorateRuns } from '../../../lib/crdt/text/runs.js';
+import { DEFAULT_SEED_ID as BOOTSTRAP_BLOCK } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 500_000;

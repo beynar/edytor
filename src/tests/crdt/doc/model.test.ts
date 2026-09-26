@@ -10,13 +10,8 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import {
-	bindEdytorDoc,
-	BOOTSTRAP_BLOCK_ID,
-	SCHEMA_VERSION,
-	SCHEMA_NAME,
-	META_KEY
-} from '../../../lib/crdt/index.js';
+import { bindEdytorDoc, SCHEMA_VERSION, SCHEMA_NAME, META_KEY } from '../../../lib/crdt/index.js';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -78,7 +73,7 @@ describe('bootstrap + schema record', () => {
 		const ed = E.create(doc);
 		expect(ed.isInitialized()).toBe(true);
 		expect(ed.schemaVersion()).toBe(SCHEMA_VERSION);
-		expect(topIds(ed)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(topIds(ed)).toEqual([DEFAULT_SEED_ID]);
 		expect(ed.project().children[0].type).toBe('paragraph');
 		// The replicated record is on the meta root — readable by any replica.
 		expect(doc.get(META_KEY).getAttr('v')).toBe(SCHEMA_VERSION);
@@ -90,8 +85,8 @@ describe('bootstrap + schema record', () => {
 		E.init(doc);
 		E.init(doc);
 		const ed = E.create(doc);
-		expect(topIds(ed)).toEqual([BOOTSTRAP_BLOCK_ID]);
-		expect(ed.listBlockIds()).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(topIds(ed)).toEqual([DEFAULT_SEED_ID]);
+		expect(ed.listBlockIds()).toEqual([DEFAULT_SEED_ID]);
 	});
 
 	it('init with content inserts the given spec (ids preserved)', () => {
@@ -122,7 +117,7 @@ describe('bootstrap + schema record', () => {
 		// And the replica projects the bootstrap block without writing.
 		const count = updateCount(replica);
 		const ed = E.create(replica);
-		expect(topIds(ed)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(topIds(ed)).toEqual([DEFAULT_SEED_ID]);
 		expect(count()).toBe(0);
 	});
 
@@ -503,7 +498,7 @@ describe('toJSON', () => {
 		E.init(doc);
 		const ed = E.create(doc);
 		expect(ed.toJSON()).toEqual({
-			children: [{ type: 'paragraph', id: BOOTSTRAP_BLOCK_ID, data: {} }]
+			children: [{ type: 'paragraph', id: DEFAULT_SEED_ID, data: {} }]
 		});
 	});
 });

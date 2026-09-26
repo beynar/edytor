@@ -10,7 +10,6 @@ import { Y } from '../../../lib/crdt/engine.js';
 import {
 	attachDocument,
 	bindEdytorDoc,
-	BOOTSTRAP_BLOCK_ID,
 	createDocument,
 	DocumentNotReadyError,
 	loadDocument,
@@ -19,6 +18,7 @@ import {
 import { DocumentDestroyedError } from '../../../lib/crdt/document.js';
 import { Awareness } from '../../../lib/crdt/protocols/awareness.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -53,7 +53,7 @@ describe('createDocument', () => {
 		document.sync();
 		expect(document.ready).toBe(true);
 		expect(document.readiness).toBe('local');
-		expect(document.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(document.facade.project().children.map((b) => b.id)).toEqual([DEFAULT_SEED_ID]);
 		expect(document.history.undoStack).toHaveLength(0);
 		document.destroy();
 	});
@@ -109,7 +109,7 @@ describe('encode → loadDocument', () => {
 	it('restores an empty update as a ready bootstrap document', () => {
 		const restored = loadDocument(Y.encodeStateAsUpdate(new Y.Doc()));
 		expect(restored.ready).toBe(true);
-		expect(restored.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(restored.facade.project().children.map((b) => b.id)).toEqual([DEFAULT_SEED_ID]);
 		restored.destroy();
 	});
 });
@@ -205,7 +205,7 @@ describe('provider hydration deferral', () => {
 			return () => {};
 		});
 		expect(document.ready).toBe(true);
-		expect(document.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(document.facade.project().children.map((b) => b.id)).toEqual([DEFAULT_SEED_ID]);
 		document.destroy();
 	});
 });

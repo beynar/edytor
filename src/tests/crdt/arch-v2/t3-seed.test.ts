@@ -21,6 +21,7 @@ import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import {
 	attachDocument,
+	bindEdytorDoc,
 	bindProviders,
 	createDocument,
 	loadDocument,
@@ -28,43 +29,6 @@ import {
 } from '../../../lib/crdt/index.js';
 
 const providers = bindProviders(Y);
-
-/**
- * Rows red on the reference (tag `arch-v2/ref-t3`), measured, expected-fail
- * until T3 lands. Each case name is listed exactly.
- */
-const RED = new Set([
-	'value passed: local equals the room, nothing duplicated (A=11, B=22)',
-	'no value, the room edited its default paragraph: nothing erased (A=11, B=22)',
-	'value passed: local equals the room, nothing duplicated (A=22, B=11)',
-	'value passed: local equals the room, nothing duplicated (A=3, B=2147483643)',
-	'no value, the room edited its default paragraph: nothing erased (A=3, B=2147483643)',
-	'the lone first client is ready after the bound with one paragraph; a joiner converges',
-	'one copy (no ids, A=11, B=22, {"reverse":false,"dup":1})',
-	'one copy (no ids, A=11, B=22, {"reverse":true,"dup":2})',
-	'one copy (no ids, A=22, B=11, {"reverse":false,"dup":1})',
-	'one copy (no ids, A=22, B=11, {"reverse":true,"dup":2})',
-	'one copy (no ids, A=3, B=2147483643, {"reverse":false,"dup":1})',
-	'one copy (no ids, A=3, B=2147483643, {"reverse":true,"dup":2})',
-	'seeding the same template twice on one replica is a no-op',
-	'the edit is kept (caller ids, A=11, B=22, {"reverse":false,"dup":1})',
-	'the edit is kept (caller ids, A=11, B=22, {"reverse":true,"dup":2})',
-	'the edit is kept (caller ids, A=3, B=2147483643, {"reverse":false,"dup":1})',
-	'the edit is kept (caller ids, A=3, B=2147483643, {"reverse":true,"dup":2})',
-	'the edit is kept (no ids, A=11, B=22, {"reverse":false,"dup":1})',
-	'the edit is kept (no ids, A=11, B=22, {"reverse":true,"dup":2})',
-	'the edit is kept (no ids, A=22, B=11, {"reverse":false,"dup":1})',
-	'the edit is kept (no ids, A=22, B=11, {"reverse":true,"dup":2})',
-	'the edit is kept (no ids, A=3, B=2147483643, {"reverse":false,"dup":1})',
-	'the edit is kept (no ids, A=3, B=2147483643, {"reverse":true,"dup":2})',
-	'the seed is never an undo step and carries no attribution stamp',
-	'(T1) a document refused at admission decides once it becomes writable again',
-	'(T2) a fresh joiner that claims synced off a concurrent handshake seeds harmlessly (A=5)',
-	'(T2) a client alone in a new room is resolved by the readiness bound (P6)',
-	'a provider that cannot report "settled" gets the default bound',
-	'(T2) a throwing sync factory never seeds a document it never observed'
-]);
-const row = (name, fn) => (RED.has(name) ? it.fails : it)(name, fn);
 
 /**
  * Opaque relay fake (as in the T2 rows): sockets on one URL form a room;
@@ -190,7 +154,7 @@ const template = (withIds) => ({
 
 describe('F-T4 — new device: empty IndexedDB, the room already holds content (G9)', () => {
 	for (const [a, b] of ASSIGNMENTS) {
-		row(`value passed: local equals the room, nothing duplicated (A=${a}, B=${b})`, async () => {
+		it(`value passed: local equals the room, nothing duplicated (A=${a}, B=${b})`, async () => {
 			const url = uniqueUrl();
 			const room = documentOn(a);
 			room.sync({
@@ -216,72 +180,63 @@ describe('F-T4 — new device: empty IndexedDB, the room already holds content (
 			room.destroy();
 		});
 
-		row(
-			`no value, the room edited its default paragraph: nothing erased (A=${a}, B=${b})`,
-			async () => {
-				const url = uniqueUrl();
-				const room = documentOn(a);
-				room.sync();
-				const [first] = topIds(room);
-				room.transact(() => room.facade.insertText(first, 0, 'room content'));
-				room.attachSync(wsSync(url));
+		it(`no value, the room edited its default paragraph: nothing erased (A=${a}, B=${b})`, async () => {
+			const url = uniqueUrl();
+			const room = documentOn(a);
+			room.sync();
+			const [first] = topIds(room);
+			room.transact(() => room.facade.insertText(first, 0, 'room content'));
+			room.attachSync(wsSync(url));
 
-				const device = documentOn(b);
-				device.attachSync(providers.createIndexeddbSync(uniqueName('f-t4b')));
-				device.attachSync(wsSync(url));
+			const device = documentOn(b);
+			device.attachSync(providers.createIndexeddbSync(uniqueName('f-t4b')));
+			device.attachSync(wsSync(url));
 
-				await until(() => device.ready);
-				await until(() => JSON.stringify(json(device)) === JSON.stringify(json(room)));
-				await wait(100);
-				expect(json(room)).toEqual(json(device));
-				expect(topIds(room)).toHaveLength(1);
-				expect(room.facade.blockText(topIds(room)[0])).toBe('room content');
-				device.destroy();
-				room.destroy();
-			}
-		);
+			await until(() => device.ready);
+			await until(() => JSON.stringify(json(device)) === JSON.stringify(json(room)));
+			await wait(100);
+			expect(json(room)).toEqual(json(device));
+			expect(topIds(room)).toHaveLength(1);
+			expect(room.facade.blockText(topIds(room)[0])).toBe('room content');
+			device.destroy();
+			room.destroy();
+		});
 	}
 });
 
 describe('F-T6 — first client of a new room, default options (P6/P6b)', () => {
-	row(
-		'the lone first client is ready after the bound with one paragraph; a joiner converges',
-		async () => {
-			const url = uniqueUrl();
-			const first = documentOn(101);
-			first.attachSync(wsSync(url));
-			expect(first.ready).toBe(false);
-			await until(() => first.ready);
-			expect(first.readiness).toBe('local');
-			expect(topIds(first)).toHaveLength(1);
+	it('the lone first client is ready after the bound with one paragraph; a joiner converges', async () => {
+		const url = uniqueUrl();
+		const first = documentOn(101);
+		first.attachSync(wsSync(url));
+		expect(first.ready).toBe(false);
+		await until(() => first.ready);
+		expect(first.readiness).toBe('local');
+		expect(topIds(first)).toHaveLength(1);
 
-			const second = documentOn(202);
-			second.attachSync(wsSync(url));
-			await until(() => second.ready && topIds(second).length > 0);
-			expect(second.readiness).toBe('hydrated');
-			expect(json(second)).toEqual(json(first));
-			expect(topIds(second)).toHaveLength(1);
-			second.destroy();
-			first.destroy();
-		}
-	);
+		const second = documentOn(202);
+		second.attachSync(wsSync(url));
+		await until(() => second.ready && topIds(second).length > 0);
+		expect(second.readiness).toBe('hydrated');
+		expect(json(second)).toEqual(json(first));
+		expect(topIds(second)).toHaveLength(1);
+		second.destroy();
+		first.destroy();
+	});
 
 	for (const [a, b] of ASSIGNMENTS) {
 		for (const delivery of DELIVERIES) {
-			row(
-				`two concurrent default seeds produce ONE paragraph (A=${a}, B=${b}, ${JSON.stringify(delivery)})`,
-				() => {
-					const A = documentOn(a);
-					const B = documentOn(b);
-					A.sync();
-					B.sync();
-					exchange([A, B], delivery);
-					expect(topIds(A)).toHaveLength(1);
-					expect(json(A)).toEqual(json(B));
-					A.destroy();
-					B.destroy();
-				}
-			);
+			it(`two concurrent default seeds produce ONE paragraph (A=${a}, B=${b}, ${JSON.stringify(delivery)})`, () => {
+				const A = documentOn(a);
+				const B = documentOn(b);
+				A.sync();
+				B.sync();
+				exchange([A, B], delivery);
+				expect(topIds(A)).toHaveLength(1);
+				expect(json(A)).toEqual(json(B));
+				A.destroy();
+				B.destroy();
+			});
 		}
 	}
 });
@@ -290,37 +245,34 @@ describe('F-T11 — two clients seed the same template (F5)', () => {
 	for (const withIds of [true, false]) {
 		for (const [a, b] of ASSIGNMENTS) {
 			for (const delivery of DELIVERIES) {
-				row(
-					`one copy (${withIds ? 'caller ids' : 'no ids'}, A=${a}, B=${b}, ${JSON.stringify(delivery)})`,
-					() => {
-						// The room reply lands after the bound: each client decided alone.
-						const A = documentOn(a);
-						const B = documentOn(b);
-						A.sync(template(withIds));
-						B.sync(template(withIds));
-						exchange([A, B], delivery);
-						expect(topIds(A)).toHaveLength(2);
-						expect(json(A)).toEqual(json(B));
-						expect(topIds(A).map((id) => A.facade.blockText(id))).toEqual(['Title', 'Body']);
-						if (withIds) expect(topIds(A)).toEqual(['title', 'body']);
-						A.destroy();
-						B.destroy();
-					}
-				);
+				it(`one copy (${withIds ? 'caller ids' : 'no ids'}, A=${a}, B=${b}, ${JSON.stringify(delivery)})`, () => {
+					// The room reply lands after the bound: each client decided alone.
+					const A = documentOn(a);
+					const B = documentOn(b);
+					A.sync(template(withIds));
+					B.sync(template(withIds));
+					exchange([A, B], delivery);
+					expect(topIds(A)).toHaveLength(2);
+					expect(json(A)).toEqual(json(B));
+					expect(topIds(A).map((id) => A.facade.blockText(id))).toEqual(['Title', 'Body']);
+					if (withIds) expect(topIds(A)).toEqual(['title', 'body']);
+					A.destroy();
+					B.destroy();
+				});
 			}
 		}
 	}
 
-	row('seeding the same template twice on one replica is a no-op', () => {
-		const A = documentOn(7);
-		A.sync(template(false));
-		const before = Y.encodeStateVector(A.doc);
-		const B = documentOn(8);
-		B.sync(template(false));
-		Y.applyUpdate(A.doc, Y.encodeStateAsUpdate(B.doc), 'remote');
-		expect(Y.encodeStateVector(A.doc)).toEqual(before);
-		A.destroy();
-		B.destroy();
+	it('an identical seed update is a no-op on a replica that holds it', () => {
+		const E = bindEdytorDoc(Y);
+		const first = new Y.Doc();
+		const late = new Y.Doc();
+		E.seed(first, template(false).children);
+		E.seed(late, template(false).children);
+		const before = Y.encodeStateVector(first);
+		Y.applyUpdate(first, Y.encodeStateAsUpdate(late), 'remote');
+		expect(Y.encodeStateVector(first)).toEqual(before);
+		expect(Y.encodeStateAsUpdate(late)).toEqual(Y.encodeStateAsUpdate(first));
 	});
 });
 
@@ -328,23 +280,20 @@ describe('F-T12 — a late identical seed after another client edited the seed (
 	for (const withIds of [true, false]) {
 		for (const [a, b] of ASSIGNMENTS) {
 			for (const delivery of DELIVERIES) {
-				row(
-					`the edit is kept (${withIds ? 'caller ids' : 'no ids'}, A=${a}, B=${b}, ${JSON.stringify(delivery)})`,
-					() => {
-						const A = documentOn(a);
-						A.sync(template(withIds));
-						const [title] = topIds(A);
-						A.transact(() => A.facade.insertText(title, 5, ' edited'));
-						const B = documentOn(b);
-						B.sync(template(withIds)); // late: B never heard A
-						exchange([A, B], delivery);
-						expect(json(A)).toEqual(json(B));
-						expect(topIds(B)).toHaveLength(2);
-						expect(B.facade.blockText(topIds(B)[0])).toBe('Title edited');
-						A.destroy();
-						B.destroy();
-					}
-				);
+				it(`the edit is kept (${withIds ? 'caller ids' : 'no ids'}, A=${a}, B=${b}, ${JSON.stringify(delivery)})`, () => {
+					const A = documentOn(a);
+					A.sync(template(withIds));
+					const [title] = topIds(A);
+					A.transact(() => A.facade.insertText(title, 5, ' edited'));
+					const B = documentOn(b);
+					B.sync(template(withIds)); // late: B never heard A
+					exchange([A, B], delivery);
+					expect(json(A)).toEqual(json(B));
+					expect(topIds(B)).toHaveLength(2);
+					expect(B.facade.blockText(topIds(B)[0])).toBe('Title edited');
+					A.destroy();
+					B.destroy();
+				});
 			}
 		}
 	}
@@ -366,7 +315,7 @@ describe('F-T13 — caller ids survive (FP-1)', () => {
 	};
 	const ids = ['page-title', 'page-intro', 'page-toggle', 'page-toggle-child', 'page-end'];
 
-	row('createDocument({value}), encode/load, and onChange JSON re-mounted as value', () => {
+	it('createDocument({value}), encode/load, and onChange JSON re-mounted as value', () => {
 		const created = createDocument({ value: demo });
 		expect(allIds(created)).toEqual(ids);
 		const loaded = loadDocument(created.encode());
@@ -377,7 +326,7 @@ describe('F-T13 — caller ids survive (FP-1)', () => {
 		for (const d of [created, loaded, remounted]) d.destroy();
 	});
 
-	row('ids survive a reload from IndexedDB', async () => {
+	it('ids survive a reload from IndexedDB', async () => {
 		const name = uniqueName('f-t13');
 		const first = attachDocument(new Y.Doc());
 		first.attachSync(providers.createIndexeddbSync(name), { value: demo });
@@ -398,7 +347,7 @@ describe('F-T13 — caller ids survive (FP-1)', () => {
 describe('F-T17 — two different templates seeded concurrently', () => {
 	for (const [a, b] of ASSIGNMENTS) {
 		for (const delivery of DELIVERIES) {
-			row(`disjoint ids union and converge (A=${a}, B=${b}, ${JSON.stringify(delivery)})`, () => {
+			it(`disjoint ids union and converge (A=${a}, B=${b}, ${JSON.stringify(delivery)})`, () => {
 				const A = documentOn(a);
 				const B = documentOn(b);
 				A.sync({ children: [{ type: 'paragraph', id: 'a1', content: [{ text: 'one' }] }] });
@@ -410,42 +359,36 @@ describe('F-T17 — two different templates seeded concurrently', () => {
 				B.destroy();
 			});
 
-			row(
-				`same ids, different text: one version per id, converged (A=${a}, B=${b}, ${JSON.stringify(delivery)})`,
-				() => {
-					const A = documentOn(a);
-					const B = documentOn(b);
-					A.sync({ children: [{ type: 'paragraph', id: 'x', content: [{ text: 'one' }] }] });
-					B.sync({ children: [{ type: 'paragraph', id: 'x', content: [{ text: 'two' }] }] });
-					exchange([A, B], delivery);
-					expect(json(A)).toEqual(json(B));
-					expect(topIds(A)).toEqual(['x']);
-					expect(['one', 'two']).toContain(A.facade.blockText('x'));
-					A.destroy();
-					B.destroy();
-				}
-			);
+			it(`same ids, different text: one version per id, converged (A=${a}, B=${b}, ${JSON.stringify(delivery)})`, () => {
+				const A = documentOn(a);
+				const B = documentOn(b);
+				A.sync({ children: [{ type: 'paragraph', id: 'x', content: [{ text: 'one' }] }] });
+				B.sync({ children: [{ type: 'paragraph', id: 'x', content: [{ text: 'two' }] }] });
+				exchange([A, B], delivery);
+				expect(json(A)).toEqual(json(B));
+				expect(topIds(A)).toEqual(['x']);
+				expect(['one', 'two']).toContain(A.facade.blockText('x'));
+				A.destroy();
+				B.destroy();
+			});
 
-			row(
-				`different templates without ids union and converge (A=${a}, B=${b}, ${JSON.stringify(delivery)})`,
-				() => {
-					const A = documentOn(a);
-					const B = documentOn(b);
-					A.sync({ children: [{ type: 'paragraph', content: [{ text: 'one' }] }] });
-					B.sync({ children: [{ type: 'paragraph', content: [{ text: 'two' }] }] });
-					exchange([A, B], delivery);
-					expect(json(A)).toEqual(json(B));
-					expect(topIds(A)).toHaveLength(2);
-					A.destroy();
-					B.destroy();
-				}
-			);
+			it(`different templates without ids union and converge (A=${a}, B=${b}, ${JSON.stringify(delivery)})`, () => {
+				const A = documentOn(a);
+				const B = documentOn(b);
+				A.sync({ children: [{ type: 'paragraph', content: [{ text: 'one' }] }] });
+				B.sync({ children: [{ type: 'paragraph', content: [{ text: 'two' }] }] });
+				exchange([A, B], delivery);
+				expect(json(A)).toEqual(json(B));
+				expect(topIds(A)).toHaveLength(2);
+				A.destroy();
+				B.destroy();
+			});
 		}
 	}
 });
 
 describe('§2.1 Seeds — applied with a non-local origin', () => {
-	row('the seed is never an undo step and carries no attribution stamp', () => {
+	it('the seed is never an undo step and carries no attribution stamp', () => {
 		const document = createDocument({
 			value: template(true),
 			actor: { id: 'alice', name: 'Alice' }
@@ -459,7 +402,7 @@ describe('§2.1 Seeds — applied with a non-local origin', () => {
 });
 
 describe('T3 carry-overs', () => {
-	row('(T1) a document refused at admission decides once it becomes writable again', () => {
+	it('(T1) a document refused at admission decides once it becomes writable again', () => {
 		// Hydration delivers a same-generation state whose stamp this build
 		// cannot own; admission refuses and the document stays pending.
 		const source = createDocument({ value: template(true) });
@@ -495,39 +438,36 @@ describe('T3 carry-overs', () => {
 		[5, 900],
 		[900, 5]
 	]) {
-		row(
-			`(T2) a fresh joiner that claims synced off a concurrent handshake seeds harmlessly (A=${a})`,
-			async () => {
-				const url = uniqueUrl();
-				// A already typed into its default paragraph, offline.
-				const A = documentOn(a);
-				A.sync();
-				A.transact(() => A.facade.insertText(topIds(A)[0], 0, 'hello'));
+		it(`(T2) a fresh joiner that claims synced off a concurrent handshake seeds harmlessly (A=${a})`, async () => {
+			const url = uniqueUrl();
+			// A already typed into its default paragraph, offline.
+			const A = documentOn(a);
+			A.sync();
+			A.transact(() => A.facade.insertText(topIds(A)[0], 0, 'hello'));
 
-				// B and C are fresh; each hears the other's empty handshake,
-				// claims synced on an empty document and seeds.
-				const B = documentOn(c + 1);
-				const C = documentOn(c + 2);
-				B.attachSync(wsSync(url));
-				C.attachSync(wsSync(url));
-				await until(() => B.ready && C.ready);
+			// B and C are fresh; each hears the other's empty handshake,
+			// claims synced on an empty document and seeds.
+			const B = documentOn(c + 1);
+			const C = documentOn(c + 2);
+			B.attachSync(wsSync(url));
+			C.attachSync(wsSync(url));
+			await until(() => B.ready && C.ready);
 
-				A.attachSync(wsSync(url));
-				await until(
-					() =>
-						JSON.stringify(json(A)) === JSON.stringify(json(B)) &&
-						JSON.stringify(json(B)) === JSON.stringify(json(C))
-				);
-				await wait(100);
-				expect(json(A)).toEqual(json(B));
-				expect(topIds(A)).toHaveLength(1);
-				expect(A.facade.blockText(topIds(A)[0])).toBe('hello');
-				for (const d of [A, B, C]) d.destroy();
-			}
-		);
+			A.attachSync(wsSync(url));
+			await until(
+				() =>
+					JSON.stringify(json(A)) === JSON.stringify(json(B)) &&
+					JSON.stringify(json(B)) === JSON.stringify(json(C))
+			);
+			await wait(100);
+			expect(json(A)).toEqual(json(B));
+			expect(topIds(A)).toHaveLength(1);
+			expect(A.facade.blockText(topIds(A)[0])).toBe('hello');
+			for (const d of [A, B, C]) d.destroy();
+		});
 	}
 
-	row('(T2) a client alone in a new room is resolved by the readiness bound (P6)', async () => {
+	it('(T2) a client alone in a new room is resolved by the readiness bound (P6)', async () => {
 		const document = documentOn(77);
 		document.attachSync(wsSync(uniqueUrl()), {
 			value: { children: [{ type: 'paragraph', id: 'only', content: [{ text: 'solo' }] }] }
@@ -540,7 +480,7 @@ describe('T3 carry-overs', () => {
 		document.destroy();
 	});
 
-	row('a provider that cannot report "settled" gets the default bound', async () => {
+	it('a provider that cannot report "settled" gets the default bound', async () => {
 		const document = createDocument();
 		document.attachSync(() => () => {}); // never synced, never failed
 		expect(document.ready).toBe(false);
@@ -549,7 +489,7 @@ describe('T3 carry-overs', () => {
 		document.destroy();
 	});
 
-	row('(T2) a throwing sync factory never seeds a document it never observed', () => {
+	it('(T2) a throwing sync factory never seeds a document it never observed', () => {
 		// R13: seeding needs every ATTACHED provider settled; a factory that
 		// throws never attached, so its failure is not an observation.
 		const document = createDocument();

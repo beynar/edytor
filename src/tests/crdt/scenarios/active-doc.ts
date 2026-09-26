@@ -14,9 +14,10 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { createPeerTriple, createPeerPair } from '../harness/peer-set.js';
 import { createDocOps } from '../harness/ops/doc-ops.js';
 import { assertConverged, assertAllStructurallyValid } from '../harness/assert/convergence.js';
-import { bindEdytorDoc, BOOTSTRAP_BLOCK_ID, SCHEMA_VERSION } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc, SCHEMA_VERSION } from '../../../lib/crdt/index.js';
 import { MODEL_BASE_SEED } from './seeds.js';
 import type { Scenario } from './registry.js';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
 const ops = createDocOps();
@@ -41,7 +42,7 @@ export const docScenarios: Scenario[] = [
 			E.init(C.doc);
 			// Before any sync each peer already sees exactly one block.
 			for (const p of set.peers) {
-				expect(topIds(p)).toEqual([BOOTSTRAP_BLOCK_ID]);
+				expect(topIds(p)).toEqual([DEFAULT_SEED_ID]);
 			}
 			set.deliverAll();
 			set.syncAll();
@@ -50,8 +51,8 @@ export const docScenarios: Scenario[] = [
 			// Converged: ONE canonical bootstrap block on every replica — never
 			// three fallback paragraphs.
 			for (const p of set.peers) {
-				expect(topIds(p)).toEqual([BOOTSTRAP_BLOCK_ID]);
-				expect(ops.listBlockIds(p)).toEqual([BOOTSTRAP_BLOCK_ID]);
+				expect(topIds(p)).toEqual([DEFAULT_SEED_ID]);
+				expect(ops.listBlockIds(p)).toEqual([DEFAULT_SEED_ID]);
 			}
 		}
 	},
@@ -74,7 +75,7 @@ export const docScenarios: Scenario[] = [
 			const ids = topIds(A);
 			// Bootstrap writes under the reserved key collapse to ≤1 survivor;
 			// C's real content joins deterministically.
-			expect(ids.filter((i) => i === BOOTSTRAP_BLOCK_ID)).toHaveLength(1);
+			expect(ids.filter((i) => i === DEFAULT_SEED_ID)).toHaveLength(1);
 			expect(ids).toContain('c-first');
 			expect(ids).toHaveLength(2);
 			// The schema record converged too — every replica can read it.
@@ -99,8 +100,8 @@ export const docScenarios: Scenario[] = [
 			set.deliverAll();
 			set.syncAll();
 			assertConverged(set, ops);
-			expect(topIds(A)).toEqual([BOOTSTRAP_BLOCK_ID]);
-			expect(topIds(B)).toEqual([BOOTSTRAP_BLOCK_ID]);
+			expect(topIds(A)).toEqual([DEFAULT_SEED_ID]);
+			expect(topIds(B)).toEqual([DEFAULT_SEED_ID]);
 			expect(E.isInitialized(B.doc)).toBe(true);
 		}
 	},
@@ -117,18 +118,18 @@ export const docScenarios: Scenario[] = [
 			// Concurrent first real inserts racing the bootstrap dedupe.
 			ops.insertBlock(A, { parent: null, index: 0 }, { id: 'a1', type: 'paragraph' });
 			ops.insertBlock(B, { parent: null, index: 1 }, { id: 'b1', type: 'paragraph' });
-			ops.insertText(C, BOOTSTRAP_BLOCK_ID, 0, 'typed into bootstrap');
+			ops.insertText(C, DEFAULT_SEED_ID, 0, 'typed into bootstrap');
 			set.deliverAll();
 			set.syncAll();
 			assertConverged(set, ops);
 			assertAllStructurallyValid(set, ops);
 			// Exactly one bootstrap block, deterministic order everywhere.
 			const a = topIds(A);
-			expect(a.filter((i) => i === BOOTSTRAP_BLOCK_ID)).toHaveLength(1);
+			expect(a.filter((i) => i === DEFAULT_SEED_ID)).toHaveLength(1);
 			expect(new Set(a).size).toBe(3);
 			expect(topIds(B)).toEqual(a);
 			expect(topIds(C)).toEqual(a);
-			expect(ops.blockText(A, BOOTSTRAP_BLOCK_ID)).toBe('typed into bootstrap');
+			expect(ops.blockText(A, DEFAULT_SEED_ID)).toBe('typed into bootstrap');
 		}
 	},
 

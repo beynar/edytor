@@ -108,9 +108,11 @@ transport files import the gate vocabulary through `admission.ts`):
   that entered a problem state through raw `applyUpdate` writes (which
   bypass the transport gate) refuses there instead of being seeded over —
   it stays `pending` and preserves its content;
-- a `pending` document never writes or broadcasts a bootstrap block —
-  provider `SyncStep2` publishes only the pre-existing state, and the
-  seed commits exactly when the `synced` callback runs `sync()`.
+- a `pending` document never writes or broadcasts a seed — provider
+  `SyncStep2` publishes only the pre-existing state. An empty document
+  seeds only once every attached provider settled or reached its bound
+  (arch-v2 T3, settle-or-bound); a non-empty one is `hydrated` as soon as
+  a provider settles.
 
 A doc carrying foreign/unrelated ROOTS but no schema claim still admits
 `pending` — `sync()` then seeds the schema next to them; the transport
@@ -178,8 +180,11 @@ or a SyncStep1 whose state vector it covers. It resets with the socket;
 `hasSynced` is the lifetime fact, and the terminal `failed` reads it (a
 provider that synced and then lost its socket never fails). The two-round
 settle window (`syncSettleMs`) is deleted: `synced` is a readiness
-signal, and the seed it could race becomes idempotent with the
-deterministic seed (T3).
+signal, and the seed it could race is idempotent: seeds are one
+deterministic update from a writer hashed from the seed (T3), so a client
+that claims `synced` off another member's empty handshake and seeds
+converges with the room. A client alone in a new room is resolved by the
+readiness bound (`DEFAULT_READINESS_BOUND`, or the factory's `bound`).
 
 **Merge semantics worth knowing:** the staged verdict follows CRDT LWW on
 `meta.v` — resolved by clientID for same-key writes. A v99 peer's state
@@ -300,8 +305,8 @@ on the `bindEdytorDoc` facade — never by constructing the engine's
 - It scopes the manager to the **`blocks` registry** — `meta.v` writes and
   schema-version transitions are outside the scope, so undo can never strip
   the version stamp or resurrect a stale version.
-- It runs `init` first (no-op when already initialized) — the deterministic
-  bootstrap insert always predates capture, so no undo step can remove it.
+- It runs `init` first (no-op when already initialized) — the seed is
+  applied as an update with a non-local origin, so no undo step captures it.
 - Remote/provider writes never enter the stack (foreign origins + non-local
   transactions fail the `trackedOrigins`/`local` filter).
 

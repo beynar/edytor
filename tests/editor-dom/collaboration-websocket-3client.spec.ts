@@ -644,8 +644,11 @@ test.describe('three-client collaboration over a real websocket relay', () => {
 			);
 
 			// No false synced: a full second of refused handshakes (≥4 resync
-			// cycles) leaves provider.synced AND edytor.synced false, renders
-			// zero blocks, and never admits the marker block.
+			// cycles) leaves provider.synced false and never admits the marker
+			// block. The document is not held hostage by a member it cannot
+			// hear: R13 (arch-v2 T3) — an empty document decides once every
+			// provider settled OR its readiness bound elapsed, so A is ready
+			// with its own deterministic seed of the fixture.
 			await pageA.waitForTimeout(1000);
 			expect(await getCollabProvider(pageA)).toMatchObject({ wsconnected: true, synced: false });
 			await expect
@@ -654,8 +657,7 @@ test.describe('three-client collaboration over a real websocket relay', () => {
 						Boolean((window as Window & { __EDYTOR__?: any }).__EDYTOR__?.synced)
 					)
 				)
-				.toBe(false);
-			await expect(pageA.locator('[data-edytor-block="true"]')).toHaveCount(0);
+				.toBe(true);
 			expect(JSON.stringify(await readValue(pageA))).not.toContain('evil-v99');
 
 			// Recovery: clean peers join the same room — their SyncStep2 replies

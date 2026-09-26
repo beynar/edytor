@@ -27,7 +27,14 @@ export type EdytorSyncPayload = {
 };
 
 export type EdytorSyncCleanup = () => void | Promise<void>;
-export type EdytorSync = (payload: EdytorSyncPayload) => void | EdytorSyncCleanup;
+export type EdytorSync = ((payload: EdytorSyncPayload) => void | EdytorSyncCleanup) & {
+	/**
+	 * ms an empty document waits for this provider to settle before it
+	 * decides without it (R13); `Infinity` for a provider that always
+	 * reports `synced` or `failed`. Default: `DEFAULT_READINESS_BOUND`.
+	 */
+	bound?: number;
+};
 
 export type IndexeddbSyncOptions = {
 	awareness?: Awareness;
@@ -51,14 +58,17 @@ export const bindProviders = (Y: EngineApi) => {
 	const idb = bindIndexeddbProvider(Y);
 	const ws = bindWebsocketProvider(Y);
 
-	const createIndexeddbSync =
-		(name: string): EdytorSync =>
-		({ doc, awareness, synced, failed }) => {
-			const provider = new idb.IndexeddbPersistence(name, doc, { awareness });
-			provider.on('synced', () => synced(provider));
-			if (failed) provider.on('failed', failed);
-			return () => provider.destroy();
-		};
+	// Local hydration always ends in `synced` or `failed`: no bound.
+	const createIndexeddbSync = (name: string): EdytorSync =>
+		Object.assign(
+			({ doc, awareness, synced, failed }: EdytorSyncPayload) => {
+				const provider = new idb.IndexeddbPersistence(name, doc, { awareness });
+				provider.on('synced', () => synced(provider));
+				if (failed) provider.on('failed', failed);
+				return () => provider.destroy();
+			},
+			{ bound: Infinity }
+		);
 
 	const createWebsocketSync =
 		(options: WebsocketSyncOptions): EdytorSync =>

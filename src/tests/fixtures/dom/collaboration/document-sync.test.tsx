@@ -16,8 +16,10 @@ import { render, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 
 import EdytorHarness from '../../../dom/EdytorHarness.svelte';
+import SiblingEdytors from '../../../dom/SiblingEdytors.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../../dom/test.utils.js';
 import { createDocument } from '$lib/crdt/index.js';
+import { Y } from '$lib/crdt/engine.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EdytorSync } from '$lib/collaboration/index.js';
@@ -226,4 +228,42 @@ describe('document-lifetime sync for injected documents', () => {
 		document.destroy();
 		expect(counts.cleanup).toBe(1);
 	});
+
+	for (const syncFirst of [true, false]) {
+		it(`a sibling without sync never seeds before the provider decides (sync view ${syncFirst ? 'first' : 'second'})`, async () => {
+			// arch-v2 T3 (L56): no one-task deferral. Providers attach while the
+			// tree initializes and a sync-less view decides only at mount, so
+			// tree order cannot let it seed ahead of hydration (P1).
+			const document = createDocument();
+			let hydrate!: () => void;
+			const sync: EdytorSync = ({ doc, synced }) => {
+				hydrate = () => {
+					const remote = createDocument({
+						value: { children: [{ type: 'paragraph', id: 'room', content: [{ text: 'room' }] }] }
+					});
+					Y.applyUpdate(doc, remote.encode(), 'remote');
+					remote.destroy();
+					synced();
+				};
+				return () => {};
+			};
+			const views: { carrier?: Edytor; sibling?: Edytor } = {};
+			const rendered = render(SiblingEdytors, {
+				props: { value, plugins: [richTextPlugin], document, sync, syncFirst, views }
+			});
+			await flushDomUpdates();
+			expect(document.readiness).toBe('pending');
+			expect(views.sibling!.synced).toBe(false);
+
+			hydrate();
+			await waitFor(() => {
+				expect(views.carrier!.synced).toBe(true);
+				expect(views.sibling!.synced).toBe(true);
+			});
+			expect(document.readiness).toBe('hydrated');
+			expect(document.facade.project().children.map((b) => b.id)).toEqual(['room']);
+			rendered.unmount();
+			document.destroy();
+		});
+	}
 });

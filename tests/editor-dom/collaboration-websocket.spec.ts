@@ -154,6 +154,39 @@ const openClients = async (
 const WS_RECONNECT_NOISE = [/ws:\/\/127\.0\.0\.1:\d+\//];
 
 test.describe('multi-client collaboration over a real websocket relay', () => {
+	test('the first client of a new room is ready after the readiness bound; a joiner converges (F-T6)', async ({
+		browser
+	}, testInfo) => {
+		// arch-v2 T3, R13: alone behind an opaque relay the provider never
+		// syncs (P6); with the library defaults the document decides once the
+		// readiness bound elapses and seeds its value deterministically.
+		const relay = await startOpaqueRelay();
+		const room = roomName();
+		const baseURL = testInfo.project.use.baseURL;
+		const contextA = await browser.newContext({ baseURL });
+		const contextB = await browser.newContext({ baseURL });
+		try {
+			const pageA = await contextA.newPage();
+			await openSocketPage(pageA, room, relay);
+			await expectProviderState(pageA, { wsconnected: true, synced: false });
+			expect(await readBlockIds(pageA)).toEqual(['collab-b1', 'collab-b2', 'collab-b3']);
+
+			const pageB = await contextB.newPage();
+			await openSocketPage(pageB, room, relay);
+			await expectProviderState(pageB, { wsconnected: true, synced: true });
+			const converged = await expectConverged(pageA, pageB);
+			expect(converged.children.map((block) => block.id)).toEqual([
+				'collab-b1',
+				'collab-b2',
+				'collab-b3'
+			]);
+		} finally {
+			await contextA.close();
+			await contextB.close();
+			await relay.close();
+		}
+	});
+
 	test('converges two independent browser contexts over the socket transport', async ({
 		browser
 	}, testInfo) => {

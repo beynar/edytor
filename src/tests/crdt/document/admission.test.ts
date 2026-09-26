@@ -27,7 +27,6 @@ import {
 	attachDocument,
 	bindEdytorDoc,
 	bindProviders,
-	BOOTSTRAP_BLOCK_ID,
 	createDocument,
 	inspectAdmission,
 	loadDocument,
@@ -45,6 +44,7 @@ import {
 } from '../../../lib/crdt/protocols/envelope.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
 import type { YDoc } from '../../../lib/crdt/engine-api.js';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
 const providers = bindProviders(Y);
@@ -163,7 +163,7 @@ describe('loadDocument admission', () => {
 	it('admits an empty update → local bootstrap', () => {
 		const restored = loadDocument(encoded(new Y.Doc()));
 		expect(restored.readiness).toBe('local');
-		expect(restored.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(restored.facade.project().children.map((b) => b.id)).toEqual([DEFAULT_SEED_ID]);
 		restored.destroy();
 	});
 
@@ -200,7 +200,7 @@ describe('attachDocument admission', () => {
 		expect(document.facade.isInitialized()).toBe(false);
 		document.sync();
 		expect(document.readiness).toBe('local');
-		expect(document.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(document.facade.project().children.map((b) => b.id)).toEqual([DEFAULT_SEED_ID]);
 		document.destroy();
 	});
 
@@ -266,7 +266,7 @@ describe('attachDocument admission', () => {
 		expect(document.readiness).toBe('local');
 		// Foreign content coexists next to the seeded schema.
 		expect(doc.get('todos').getAttr('t1')).toEqual({ text: 'milk' });
-		expect(document.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(document.facade.project().children.map((b) => b.id)).toEqual([DEFAULT_SEED_ID]);
 		document.destroy();
 		doc.destroy();
 	});
@@ -376,7 +376,7 @@ describe('pending doc — no bootstrap before sync', () => {
 		expect(step1).toBeDefined();
 		expect(step1).toEqual(preSeed);
 		expect(document.readiness).toBe('local');
-		expect(document.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(document.facade.project().children.map((b) => b.id)).toEqual([DEFAULT_SEED_ID]);
 		document.destroy();
 		doc.destroy();
 	});

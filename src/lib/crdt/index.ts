@@ -61,6 +61,7 @@ export {
 	SemanticConflictError,
 	DocumentNotReadyError,
 	DocumentDestroyedError,
+	DEFAULT_READINESS_BOUND,
 	type DocumentActor,
 	type DocumentOptions,
 	type DocumentReadiness,
@@ -301,9 +302,7 @@ export {
 	SCHEMA_VERSION,
 	SCHEMA_NAME,
 	META_KEY,
-	BOOTSTRAP_BLOCK_ID,
 	EdytorDocDisposedError,
-	EdytorDocSyncPendingError,
 	type EdytorDocBinding,
 	type EdytorDocConfig
 } from './edytor-doc.js';

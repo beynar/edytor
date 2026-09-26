@@ -14,12 +14,8 @@
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import {
-	bindEdytorDoc,
-	BOOTSTRAP_BLOCK_ID,
-	SCHEMA_VERSION,
-	META_KEY
-} from '../../../lib/crdt/index.js';
+import { bindEdytorDoc, SCHEMA_VERSION, META_KEY } from '../../../lib/crdt/index.js';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -31,7 +27,7 @@ const seeded = () => {
 	doc.clientID = clientSeq++;
 	const ed = E.create(doc);
 	ed.init();
-	ed.insertText(BOOTSTRAP_BLOCK_ID, 0, 'hello');
+	ed.insertText(DEFAULT_SEED_ID, 0, 'hello');
 	return { doc, ed };
 };
 
@@ -41,14 +37,14 @@ describe('ed.createUndoManager — the supported undo seam', () => {
 	it('undoes local content ops, never the bootstrap or version stamp', () => {
 		const { doc, ed } = seeded();
 		const um = ed.createUndoManager(undoOps);
-		ed.insertText(BOOTSTRAP_BLOCK_ID, 5, ' world');
-		expect(ed.runs(BOOTSTRAP_BLOCK_ID)[0].text).toBe('hello world');
+		ed.insertText(DEFAULT_SEED_ID, 5, ' world');
+		expect(ed.runs(DEFAULT_SEED_ID)[0].text).toBe('hello world');
 		um.undo();
-		expect(ed.runs(BOOTSTRAP_BLOCK_ID)[0].text).toBe('hello');
+		expect(ed.runs(DEFAULT_SEED_ID)[0].text).toBe('hello');
 		// Drain the stack: nothing before attach can be captured — the doc
 		// keeps its bootstrap block and its meta.v version record.
 		while (um.undoStack.length > 0) um.undo();
-		expect(ed.childrenIds(null)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(ed.childrenIds(null)).toEqual([DEFAULT_SEED_ID]);
 		expect(doc.get(META_KEY).getAttr('v')).toBe(SCHEMA_VERSION);
 		expect(E.isInitialized(doc)).toBe(true);
 	});
@@ -75,29 +71,26 @@ describe('ed.createUndoManager — the supported undo seam', () => {
 		remote.clientID = clientSeq++;
 		const edR = E.create(remote);
 		Y.applyUpdate(remote, Y.encodeStateAsUpdate(doc));
-		edR.insertText(BOOTSTRAP_BLOCK_ID, 0, 'REMOTE-');
+		edR.insertText(DEFAULT_SEED_ID, 0, 'REMOTE-');
 		Y.applyUpdate(doc, Y.encodeStateAsUpdate(remote), 'fake-provider');
-		expect(ed.runs(BOOTSTRAP_BLOCK_ID)[0].text).toBe('REMOTE-hello');
+		expect(ed.runs(DEFAULT_SEED_ID)[0].text).toBe('REMOTE-hello');
 		// The remote write must not be undoable locally.
 		expect(um.undoStack.length).toBe(0);
 		um.undo(); // no-op
-		expect(ed.runs(BOOTSTRAP_BLOCK_ID)[0].text).toBe('REMOTE-hello');
+		expect(ed.runs(DEFAULT_SEED_ID)[0].text).toBe('REMOTE-hello');
 	});
 
-	it('a doc-scoped manager attached before init CAN undo the stamp — that is why the factory exists', () => {
-		// Documents the failure mode the factory prevents: doc scope +
-		// attach-before-init captures the bootstrap insert, so undo leaves a
-		// versioned-but-empty document. createUndoManager runs init first and
-		// scopes to the registry, so neither is reachable.
+	it('a doc-scoped manager attached before init cannot undo the seed', () => {
+		// R13 §2.1 / D-3: the seed is applied as an update with a non-local
+		// origin, so even a doc-scoped manager attached first never captures
+		// it (it used to leave a versioned-but-empty document).
 		const doc = new Y.Doc();
 		const rawUm = new Y.UndoManager(doc, undoOps);
 		const ed = E.create(doc);
 		ed.init();
-		expect(rawUm.undoStack.length).toBeGreaterThan(0);
+		expect(rawUm.undoStack.length).toBe(0);
 		rawUm.undo();
-		// The doc-scoped manager undid init's registry change — the doc is
-		// now "versioned but empty" (bootstrap gone, meta.v may persist).
-		expect(ed.childrenIds(null)).not.toContain(BOOTSTRAP_BLOCK_ID);
+		expect(ed.childrenIds(null)).toEqual([DEFAULT_SEED_ID]);
 	});
 
 	it('createUndoManager on an uninitialized doc initializes first, then attaches', () => {
@@ -108,6 +101,6 @@ describe('ed.createUndoManager — the supported undo seam', () => {
 		// Nothing captured — bootstrap + stamp both predate attach.
 		expect(um.undoStack.length).toBe(0);
 		um.undo();
-		expect(ed.childrenIds(null)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(ed.childrenIds(null)).toEqual([DEFAULT_SEED_ID]);
 	});
 });

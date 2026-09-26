@@ -120,19 +120,23 @@
 
 	edytor = new EdytorClass(initialEdytorOptions);
 
+	// ONE attach path for owned and injected documents (U5/F3): `attachSync`
+	// tracks the provider on the DOCUMENT's lifetime (dedupe by factory
+	// identity, settle-or-bound readiness, R13). It attaches while the tree
+	// initializes (client only), so every sibling view's provider is in
+	// flight before any view decides on mount. A view-owned document still
+	// dies with the component: `edytor.destroy()` runs `document.destroy()`,
+	// which runs the tracked cleanup.
+	const initialSync = untrack(() => sync);
+	if (typeof window !== 'undefined' && !initialEdytorOptions.readonly && initialSync) {
+		attachDocumentSync(edytor.document, initialSync, initialEdytorOptions.value);
+	}
+
 	onMount(() => {
-		if (!initialEdytorOptions.readonly && sync) {
-			// ONE attach path for owned and injected documents (U5/F3 +
-			// the owned-path failure channel): `attachSync` tracks the
-			// provider on the DOCUMENT's lifetime — dedupe by factory
-			// identity, pending accounting (`syncPending`), and the
-			// terminal-`failed` settle after which the document decides
-			// (its readiness event wakes `whenDocumentReady`). For a
-			// view-owned document the lifetime is still the component's:
-			// `edytor.destroy()` below runs `document.destroy()`, which
-			// runs the tracked cleanup — with the same async-error rethrow
-			// semantics the old inline `destroySync` wrapper had.
-			attachDocumentSync(edytor.document, sync, initialEdytorOptions.value);
+		// An editable view without a provider decides an injected pending
+		// document only when no sibling's provider is in flight.
+		if (!initialEdytorOptions.readonly && !initialSync && !edytor.document.syncPending) {
+			edytor.document.sync(initialEdytorOptions.value);
 		}
 
 		return () => {

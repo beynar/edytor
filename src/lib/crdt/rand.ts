@@ -16,3 +16,10 @@ export const setDocRand = (doc: EngineDoc, rand: () => number): void => {
 
 /** `doc`'s rank-rand stream — `Math.random` when none was seeded. */
 export const randOf = (doc: EngineDoc): (() => number) => streams.get(doc) ?? Math.random;
+
+/** 32-bit FNV-1a — the seed writer id is this hash of the canonical seed (R13, D53). */
+export const hash32 = (text: string): number => {
+	let h = 0x811c9dc5;
+	for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+	return h >>> 0;
+};

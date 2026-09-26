@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
-import { applyUpdate, docValue, firstBlock, wireDocs } from './helpers.js';
+import { applyUpdate, docValue, firstBlock, wireDocs, authoredDocument } from './helpers.js';
 import {
 	attachDocument,
 	createDocument,
@@ -96,8 +96,16 @@ const commitsDuring = (
 };
 
 describe('block attribution — creation and identity', () => {
-	it('user-supplied createDocument({value}) content is authored by the document actor', () => {
+	// D-3 / R13 §2.1: `createDocument({value})` applies the deterministic
+	// seed update — identical on every replica, so it carries no actor.
+	it('createDocument({value}) seeds without an attribution stamp', () => {
 		const d = createDocument({ value: docValue('hi'), actor: alice });
+		expect(d.attribution.block(firstBlock(d).id)).toBeUndefined();
+		d.destroy();
+	});
+
+	it('authored initial content is attributed to its author', () => {
+		const d = authoredDocument(docValue('hi'), alice);
 		const block = firstBlock(d);
 		expect(d.attribution.block(block.id)).toEqual({
 			createdBy: 'alice',
@@ -142,7 +150,7 @@ describe('block attribution — creation and identity', () => {
 
 describe('block attribution — content and metadata edits', () => {
 	it('a second actor editing content joins contributors and takes lastChangedBy', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
@@ -161,7 +169,7 @@ describe('block attribution — content and metadata edits', () => {
 	});
 
 	it('inline insert/remove and setInlineData stamp the block', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
@@ -185,7 +193,7 @@ describe('block attribution — content and metadata edits', () => {
 	});
 
 	it('mark writes stamp the block; same-value and no-mark writes are suppressed', () => {
-		const d = createDocument({ value: docValue('hello'), actor: alice });
+		const d = authoredDocument(docValue('hello'), alice);
 		const blockId = firstBlock(d).id;
 		d.transact(() => d.facade.setMark(blockId, 0, 3, 'bold', true));
 		expect(d.attribution.block(blockId)?.lastChangedBy).toBe('alice');
@@ -228,7 +236,7 @@ describe('block attribution — content and metadata edits', () => {
 	});
 
 	it('setBlockType / setBlockData stamp on change and suppress same-value writes', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
@@ -260,7 +268,7 @@ describe('block attribution — content and metadata edits', () => {
 	});
 
 	it('setBlock content replacement stamps; DocBlock handle delegates the same', () => {
-		const d = createDocument({ value: docValue('hi'), actor: alice });
+		const d = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(d).id;
 		d.transact(() => d.facade.setBlock(blockId, { content: [{ kind: 'text', text: 'new' }] }));
 		expect(d.attribution.block(blockId)?.lastChangedBy).toBe('alice');
@@ -272,15 +280,15 @@ describe('block attribution — content and metadata edits', () => {
 
 describe('block attribution — structure', () => {
 	it('pure moves write no attribution (no `b/` or `l` writes in the commit)', () => {
-		const a = createDocument({
-			value: {
+		const a = authoredDocument(
+			{
 				children: [
 					{ type: 'paragraph', id: 'one', content: [{ text: 'one' }] },
 					{ type: 'paragraph', id: 'two', content: [{ text: 'two' }] }
 				]
 			},
-			actor: alice
-		});
+			alice
+		);
 		const before = a.attribution.block('two');
 		const commits = commitsDuring(a, () => {
 			a.transact(() => a.facade.moveBlock('two', { parent: null, index: 0 }));
@@ -291,15 +299,15 @@ describe('block attribution — structure', () => {
 	});
 
 	it('nest/unnest write no attribution on the moved block or its parents', () => {
-		const a = createDocument({
-			value: {
+		const a = authoredDocument(
+			{
 				children: [
 					{ type: 'paragraph', id: 'p', content: [{ text: 'p' }] },
 					{ type: 'paragraph', id: 'c', content: [{ text: 'c' }] }
 				]
 			},
-			actor: alice
-		});
+			alice
+		);
 		const commits = commitsDuring(a, () => {
 			a.transact(() => a.facade.nestBlock('c', 'p'));
 		});
@@ -310,7 +318,7 @@ describe('block attribution — structure', () => {
 	});
 
 	it('split: tail authored by splitter, inherits source contributors; source records the split', () => {
-		const a = createDocument({ value: docValue('onetwo'), actor: alice });
+		const a = authoredDocument(docValue('onetwo'), alice);
 		const src = firstBlock(a).id;
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
@@ -333,15 +341,15 @@ describe('block attribution — structure', () => {
 	});
 
 	it('merge: survivor keeps createdBy, unions contributors, records merger', () => {
-		const a = createDocument({
-			value: {
+		const a = authoredDocument(
+			{
 				children: [
 					{ type: 'paragraph', id: 'A', content: [{ text: 'aa' }] },
 					{ type: 'paragraph', id: 'B', content: [{ text: 'bb' }] }
 				]
 			},
-			actor: alice
-		});
+			alice
+		);
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
 		const unwire = wireDocs(a, b);
@@ -358,7 +366,7 @@ describe('block attribution — structure', () => {
 	});
 
 	it('duplicateBlock authors the copy under the duplicator', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const src = firstBlock(a).id;
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
@@ -375,7 +383,7 @@ describe('block attribution — structure', () => {
 	});
 
 	it('deleteBlock writes nothing; the record persists by block id', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
 		const before = a.attribution.block(blockId);
 		const commits = commitsDuring(a, () => {
@@ -439,7 +447,7 @@ describe('block attribution — commit boundaries', () => {
 
 describe('block attribution — remote, load, unknown authors', () => {
 	it("remote application never relabels: receivers read the author's stamp", () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
@@ -454,7 +462,7 @@ describe('block attribution — remote, load, unknown authors', () => {
 	});
 
 	it('loadDocument preserves block attribution verbatim', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
 		a.transact(() => a.facade.setMark(blockId, 0, 1, 'bold', true));
 		const restored = loadDocument(a.encode(), { actor: bob });

@@ -35,13 +35,14 @@ import 'fake-indexeddb/auto';
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
-import { bindEdytorDoc, BOOTSTRAP_BLOCK_ID, checkSchema } from '../../../lib/crdt/edytor-doc.js';
+import { bindEdytorDoc, checkSchema } from '../../../lib/crdt/edytor-doc.js';
 import * as idb from 'lib0-v14/indexeddb';
 import {
 	generationDbName,
 	GENERATION_KEY,
 	GENERATION_RECORD
 } from '../../../lib/crdt/protocols/envelope.js';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const providers = bindIndexeddbProvider(Y);
 const E = bindEdytorDoc(Y);
@@ -101,7 +102,7 @@ const validUpdate = (clientID: number, text: string) => {
 	d.clientID = clientID;
 	const ed = E.create(d);
 	ed.init();
-	ed.insertText(BOOTSTRAP_BLOCK_ID, 0, text);
+	ed.insertText(DEFAULT_SEED_ID, 0, text);
 	return Y.encodeStateAsUpdate(d);
 };
 
@@ -159,7 +160,7 @@ describe('gateH-R2 — fetch-transaction interleaved-commit window', () => {
 		const wSurvives = hasRow(after, rowW);
 		const docHasW = doc
 			.get('blocks')
-			.getAttr(BOOTSTRAP_BLOCK_ID)
+			.getAttr(DEFAULT_SEED_ID)
 			?.getAttr('content')
 			?.toString()
 			?.includes('row-W-content');

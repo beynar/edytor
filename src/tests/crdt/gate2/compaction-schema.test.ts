@@ -16,9 +16,10 @@ import {
 	bindIndexeddbProvider,
 	PREFERRED_TRIM_SIZE
 } from '../../../lib/crdt/providers/indexeddb.js';
-import { bindEdytorDoc, SCHEMA_VERSION, BOOTSTRAP_BLOCK_ID } from '../../../lib/crdt/edytor-doc.js';
+import { bindEdytorDoc, SCHEMA_VERSION } from '../../../lib/crdt/edytor-doc.js';
 import { generationDbName } from '../../../lib/crdt/protocols/envelope.js';
 import * as idb from 'lib0-v14/indexeddb';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const providers = bindIndexeddbProvider(Y);
 const E = bindEdytorDoc(Y);
@@ -171,7 +172,7 @@ describe('attack 8: schema manifest coexistence', () => {
 		const before = Y.encodeStateAsUpdate(doc);
 		ed.init();
 		const after = Y.encodeStateAsUpdate(doc);
-		expect(ed.childrenIds(null)).toEqual(['b1', BOOTSTRAP_BLOCK_ID].sort());
+		expect(ed.childrenIds(null)).toEqual(['b1', DEFAULT_SEED_ID].sort());
 		void before;
 		void after;
 		ed.dispose();
@@ -188,8 +189,8 @@ describe('attack 8: schema manifest coexistence', () => {
 		Y.applyUpdate(b, Y.encodeStateAsUpdate(a));
 		const idsA = E.create(a).childrenIds(null);
 		const idsB = E.create(b).childrenIds(null);
-		expect(idsA).toEqual([BOOTSTRAP_BLOCK_ID]);
-		expect(idsB).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(idsA).toEqual([DEFAULT_SEED_ID]);
+		expect(idsB).toEqual([DEFAULT_SEED_ID]);
 		expect(E.registryEmpty(a)).toBe(false);
 		// Concurrent inits with DIFFERENT caller content union instead.
 		const c = new Y.Doc();

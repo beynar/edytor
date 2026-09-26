@@ -32,17 +32,17 @@
  *   └ schema : 'edytor-doc'               SCHEMA_NAME
  * ```
  *
- * ── Deterministic bootstrap ────────────────────────────────────────────
+ * ── Deterministic seed (R13, D-3) ───────────────────────────────────────
  *
- * `init(doc)` stamps the version record and, iff the registry holds NO
- * entries at all, inserts the bootstrap block under the RESERVED id
- * {@link BOOTSTRAP_BLOCK_ID}. Concurrent initialization by N peers therefore
- * writes N registry attrs under the SAME key; the engine's map-attr LWW
- * keeps exactly one winner (and tombstones the losers' whole subtrees), so
- * replicas converge to one canonical empty root — never N fallback
- * paragraphs. Initial content may be supplied as spec blocks; concurrent
- * inits with identical ids dedupe the same way, different ids union.
- * Init is explicit: reads never create or normalize state.
+ * `seed(doc, value)` applies ONE update built in a scratch doc whose writer
+ * id is a 32-bit hash of (generation, canonical seed JSON): caller ids are
+ * kept, missing ids are derived from the hash and position, ranks come from
+ * the rand seam seeded by the hash. Peers seeding the same value therefore
+ * write the SAME items — a late identical seed is a no-op and never erases
+ * an edit — while different values union (shared ids resolve by registry
+ * LWW). An empty value seeds one `defaultType` block. The update is applied
+ * with a non-local origin: never an undo step, no attribution stamp.
+ * Seeding is explicit: reads never create or normalize state.
  *
  * ── Identity discipline ────────────────────────────────────────────────
  *
@@ -90,7 +90,8 @@
  * the document. Updates that produce no semantic diff (e.g. a losing
  * placement candidate or a meta-only write) are suppressed.
  */
-import type { EngineApi, EngineDoc, EngineNode, YNode, YUndoManager } from './engine-api.js';
+import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode, YUndoManager } from './engine-api.js';
+import { hash32, setDocRand } from './rand.js';
 import { bindUndoRepair } from './undo-repair.js';
 import {
 	AT,
@@ -149,6 +150,7 @@ import { isLegacyDoc } from './migration/legacy-schema.js';
 import {
 	cloneJson,
 	cloneJsonSafe,
+	jsonBlockToSpec,
 	sanitizeWireJson,
 	sanitizeWireString,
 	type JSONBlock,
@@ -234,13 +236,8 @@ export const SCHEMA_VERSION = SCHEMA.version;
 export const SCHEMA_NAME = SCHEMA.name;
 export const META_KEY = SCHEMA.roots.meta;
 
-/**
- * Reserved block id for the deterministic bootstrap block. Caller-assigned
- * ids are arbitrary strings, so a namespaced constant removes any practical
- * collision; concurrent inits all write under this one key and the registry
- * LWW dedupes them to a single survivor.
- */
-export const BOOTSTRAP_BLOCK_ID = 'edytor:bootstrap';
+/** Origin of the seed update's apply — non-local, like any integrated update. */
+export const SEED_ORIGIN = Symbol('edytor:seed');
 
 // ── schema gate (module-level: pure doc reads, no engine binding) ──────
 
@@ -402,23 +399,6 @@ export class EdytorDocDisposedError extends Error {
 	constructor(service?: string) {
 		super(`EdytorDoc${service ? `.${service}` : ''}: facade is disposed.`);
 		this.name = 'EdytorDocDisposedError';
-	}
-}
-
-/**
- * Raised when a bootstrap-owning facade call (`init`, `createUndoManager`)
- * runs while a sync provider still owns the document's content decision —
- * marking the schema/bootstrap early would make the later `sync()` verdict
- * read `initialized` and mislabel a local seed as `hydrated` (D15). Retry
- * after the provider settles, or let `document.sync()` perform the seed.
- */
-export class EdytorDocSyncPendingError extends Error {
-	constructor(service: string) {
-		super(
-			`EdytorDoc.${service}: a sync provider still owns this document's bootstrap — ` +
-				`wait for it to settle (or call document.sync()).`
-		);
-		this.name = 'EdytorDocSyncPendingError';
 	}
 }
 
@@ -689,27 +669,20 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 	};
 
 	/**
-	 * Deterministic bootstrap — see the module header. Idempotent: a second
-	 * call (or a call on a synced non-empty doc) only ensures the version
-	 * record. Never writes on read paths; callers invoke it explicitly
-	 * (U08's `sync()`, seeders, tests).
-	 *
-	 * `content` — optional spec blocks for initial JSON load (ids
-	 * caller-assigned; concurrent same-id inits dedupe). Absent → one
-	 * canonical empty bootstrap block.
-	 *
-	 * `author` — U1: the document actor whose user-supplied `content` gets
-	 * attribution (createdBy/contributors/lastChangedBy on every inserted
-	 * block). Restoration/import/hydration pass NO author — records then
-	 * stay absent (or arrive via update) rather than being relabeled
-	 * locally. The auto-created bootstrap block is system-made: it gets
-	 * an EMPTY `b/` record (no authorship) purely so later contributor
-	 * adds land on a stable shared node — reads treat it as unattributed.
+	 * Stamp the version record (absent only) and, into an EMPTY registry,
+	 * bulk-insert `content` — the local materializer: the seed's scratch
+	 * doc, migration's rebuild and fixtures. Without `content` it seeds an
+	 * unstamped empty doc (see {@link seed}). Idempotent otherwise. It
+	 * writes no attribution (authored content goes through the ops).
 	 */
 	const init = (
 		doc: EngineDoc,
-		opts: { content?: BlockSpec[]; defaultType?: string; author?: AttributionActor } = {}
+		opts: { content?: BlockSpec[]; defaultType?: string } = {}
 	): void => {
+		const specs = opts.content ?? [];
+		if (specs.length === 0 && registryEmpty(doc) && !isInitialized(doc)) {
+			return seed(doc, [], opts.defaultType);
+		}
 		doc.transact(() => {
 			const meta = doc.get(META_KEY);
 			if (meta.getAttr(SCHEMA.metaAttrs.version) === undefined) {
@@ -718,54 +691,50 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				meta.setAttr(SCHEMA.metaAttrs.version, SCHEMA_VERSION);
 				meta.setAttr(SCHEMA.metaAttrs.schema, SCHEMA_NAME);
 			}
-			if (!registryEmpty(doc)) return;
-			const hasUserContent = opts.content !== undefined && opts.content.length > 0;
-			const specs = hasUserContent
-				? opts.content!
-				: [
-						{
-							id: BOOTSTRAP_BLOCK_ID,
-							type: opts.defaultType ?? 'paragraph'
-						} satisfies BlockSpec
-					];
+			if (specs.length === 0 || !registryEmpty(doc)) return;
 			// Bulk path (U7): one sibling read + a local rank chain for the
-			// whole batch instead of N per-spec insertBlock calls, each of
-			// which re-folded the accumulating transaction — O(N²) registry
-			// lookups on flat inits. All-or-nothing now: a dup spec id
-			// refuses the whole batch (previously that spec was skipped and
-			// the rest still inserted).
-			const inserted = M.insertBlocks(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, specs);
-			if (!inserted) {
-				// Malformed initial content (e.g. a duplicated id) refuses the
-				// whole bulk batch — fall back to per-spec insertion so valid
-				// blocks still load (pre-bulk semantics) instead of leaving a
-				// permanently empty document. Stamps follow the per-spec
-				// verdict so a skipped id never earns a record.
+			// whole batch. All-or-nothing: a dup spec id refuses the batch.
+			if (!M.insertBlocks(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, specs)) {
+				// Malformed initial content (e.g. a duplicated id) — fall back
+				// to per-spec insertion so valid blocks still load.
 				console.error(
 					'[edytor-doc] initial content refused by bulk insert; retrying per-spec (duplicate block ids are skipped)'
 				);
 				for (const spec of specs) {
-					if (
-						M.insertBlock(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, spec) &&
-						hasUserContent &&
-						opts.author !== undefined
-					) {
-						stampSpecTree(doc, spec, opts.author.id);
-					}
+					M.insertBlock(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, spec);
 				}
-			} else if (hasUserContent && opts.author !== undefined) {
-				for (const spec of specs) stampSpecTree(doc, spec, opts.author.id);
-			}
-			if (!hasUserContent) {
-				// Bootstrap block: an empty `b/` record (no authorship —
-				// `blockAttributionOf` treats it as absent). Pre-creating
-				// the shared node keeps the first edits on this block
-				// union-safe (concurrent record creation is map-attr LWW —
-				// a loser node's subtree tombstones with it).
-				BA.ensureRecord(doc, BOOTSTRAP_BLOCK_ID);
 			}
 		});
 	};
+
+	/**
+	 * The deterministic seed update (R13, D-3) — see the module header.
+	 * Every seeded block also gets an EMPTY `b/` record (no authorship) so
+	 * later contributor adds land on one shared node.
+	 */
+	const seedUpdate = (value: JSONBlock[], defaultType = 'paragraph'): Uint8Array => {
+		const blocks = value.length > 0 ? value : [{ type: defaultType }];
+		const writer = hash32(`yjs-v14/${SCHEMA_NAME}@${SCHEMA_VERSION}:${JSON.stringify(blocks)}`);
+		let n = 0;
+		const mint = (prefix: string) => `${prefix}${writer.toString(36)}.${n++}`;
+		const specs = blocks.map((block) => jsonBlockToSpec(block, false, mint));
+		const raw = new Y.Doc();
+		raw.clientID = writer;
+		const scratch = raw as unknown as EngineDoc;
+		let rank = writer; // ranks from the rand seam, seeded by the hash (LCG)
+		setDocRand(scratch, () => (rank = (Math.imul(rank, 1664525) + 1013904223) >>> 0) / 2 ** 32);
+		init(scratch, { content: specs });
+		const records = (spec: BlockSpec): void => {
+			BA.ensureRecord(scratch, sanitizeWireString(spec.id));
+			spec.children?.forEach(records);
+		};
+		scratch.transact(() => specs.forEach(records));
+		return Y.encodeStateAsUpdate(raw);
+	};
+
+	/** Apply the deterministic seed of `value` with the non-local {@link SEED_ORIGIN}. */
+	const seed = (doc: EngineDoc, value: JSONBlock[] = [], defaultType?: string): void =>
+		Y.applyUpdate(doc as unknown as YDoc, seedUpdate(value, defaultType), SEED_ORIGIN);
 
 	// ── per-doc facade ──────────────────────────────────────────────────
 
@@ -814,16 +783,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * facade — e.g. the document teardown order). D14.
 		 */
 		let disposed = false;
-		/**
-		 * D15 pending-sync marker — set by `EdytorDocument.attachSync`
-		 * while a provider may still hydrate this doc. `init` and
-		 * `createUndoManager` refuse in that window: stamping the schema
-		 * or attaching capture before the provider settles would make the
-		 * later `sync()` verdict read `initialized` and mislabel a local
-		 * seed `hydrated` (its `author` stamp skipped). Cleared when the
-		 * last pending provider settles or `document.sync()` decides.
-		 */
-		let syncPending = false;
 
 		// R3 — doc-level undo-resurrection ownership repair (extracted to
 		// `undo-repair.ts`). Attached once per doc for the doc's lifetime —
@@ -1513,17 +1472,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const createUndoManager = (
 			opts: ConstructorParameters<EngineApi['UndoManager']>[1] = {}
 		): YUndoManager => {
-			// D14 precedence: a disposed facade reports disposed (terminal),
-			// not pending — the pending gate only matters while writes live.
 			if (disposed) {
 				throw new EdytorDocDisposedError('createUndoManager');
-			}
-			// D15: attaching capture on a pending doc breaks the
-			// bootstrap-before-capture invariant — the provider owns the
-			// seed, and a manager attached now would capture the later
-			// `sync()` bootstrap as an undoable local commit.
-			if (syncPending) {
-				throw new EdytorDocSyncPendingError('createUndoManager');
 			}
 			write(() => {
 				if (!isInitialized(doc)) init(doc);
@@ -2574,15 +2524,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 
 		const facade = {
 			// lifecycle
-			init: (opts?: Parameters<typeof init>[1]) =>
-				write(() => {
-					// D15: while a provider may still hydrate, stamping the
-					// schema/bootstrap here would make the later `sync()`
-					// verdict `initialized` — a local seed mislabeled
-					// `hydrated` (its `author` stamp never lands).
-					if (syncPending) throw new EdytorDocSyncPendingError('init');
-					init(doc, opts);
-				}),
+			init: (opts?: Parameters<typeof init>[1]) => write(() => init(doc, opts)),
+			/** Apply the deterministic seed of `value` (R13) — the document's seed decision. */
+			seed: (value: JSONBlock[]) => write(() => seed(doc, value, defaultType)),
 			isInitialized: () => isInitialized(doc),
 			/** Replicated `meta.v` schema version (the module-level read, bound). */
 			schemaVersion: () => schemaVersion(doc),
@@ -2596,20 +2540,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			assertSchema: () => assertSchema(doc),
 			dispose,
 			createUndoManager,
-			/**
-			 * D15 internal — `EdytorDocument.attachSync` marks the pending
-			 * window before invoking the provider factory; `settle` (every
-			 * settle path) and an explicit `document.sync()` clear it. Not
-			 * public surface.
-			 * @internal
-			 */
-			_markSyncPending: (): void => {
-				syncPending = true;
-			},
-			/** @internal */
-			_clearSyncPending: (): void => {
-				syncPending = false;
-			},
 			// reads
 			project: () => M.project(doc),
 			toJSON,
@@ -2714,9 +2644,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		SCHEMA_VERSION,
 		SCHEMA_NAME,
 		META_KEY,
-		BOOTSTRAP_BLOCK_ID,
 		/** Doc-level API (no facade needed). */
 		init,
+		seed,
 		isInitialized,
 		schemaVersion,
 		registryEmpty,

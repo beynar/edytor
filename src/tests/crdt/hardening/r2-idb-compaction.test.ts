@@ -37,13 +37,14 @@ import 'fake-indexeddb/auto';
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
-import { bindEdytorDoc, BOOTSTRAP_BLOCK_ID, checkSchema } from '../../../lib/crdt/edytor-doc.js';
+import { bindEdytorDoc, checkSchema } from '../../../lib/crdt/edytor-doc.js';
 import * as idb from 'lib0-v14/indexeddb';
 import {
 	generationDbName,
 	GENERATION_KEY,
 	GENERATION_RECORD
 } from '../../../lib/crdt/protocols/envelope.js';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const providers = bindIndexeddbProvider(Y);
 const E = bindEdytorDoc(Y);
@@ -153,7 +154,7 @@ describe('R2 — compaction must not delete a forged row', () => {
 		validDoc.clientID = 7777;
 		const ev = E.create(validDoc);
 		ev.init();
-		ev.insertText(BOOTSTRAP_BLOCK_ID, 0, 'kept');
+		ev.insertText(DEFAULT_SEED_ID, 0, 'kept');
 		const validUpdate = Y.encodeStateAsUpdate(validDoc);
 		const v99 = makeV99Update();
 		await seedGenerationDb(name, [validUpdate, v99]);
@@ -224,7 +225,7 @@ describe('R2 — read-only ↔ compaction contract', () => {
 		remote.on('update', (u: Uint8Array) => (captured = u));
 		remote.transact(() => {
 			remote.get('meta').setAttr('v', 99);
-			remote.get('blocks').getAttr(BOOTSTRAP_BLOCK_ID).getAttr('content').insert(0, 'DEP');
+			remote.get('blocks').getAttr(DEFAULT_SEED_ID).getAttr('content').insert(0, 'DEP');
 		});
 		return captured as Uint8Array;
 	};
@@ -233,7 +234,7 @@ describe('R2 — read-only ↔ compaction contract', () => {
 		const base = new Y.Doc();
 		const eb = E.create(base);
 		eb.init();
-		eb.insertText(BOOTSTRAP_BLOCK_ID, 0, 'base');
+		eb.insertText(DEFAULT_SEED_ID, 0, 'base');
 		return Y.encodeStateAsUpdate(base);
 	};
 
@@ -305,7 +306,7 @@ describe('R2 — read-only ↔ compaction contract', () => {
 		const p2 = new providers.IndexeddbPersistence(name, doc2);
 		await p2.whenSynced;
 		for (let i = 0; i < 5; i++) expect(doc2.get('scratch').getAttr(`k${i}`)).toBe(i);
-		expect(E.create(doc2).blockText(BOOTSTRAP_BLOCK_ID)).toBeDefined();
+		expect(E.create(doc2).blockText(DEFAULT_SEED_ID)).toBeDefined();
 		await p.destroy();
 		await p2.destroy();
 	});

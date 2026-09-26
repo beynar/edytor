@@ -535,9 +535,7 @@ export const bindMigration = (Y: EngineApi) => {
 			const specs = json.children.map((b, i) => blockToSpec(b, `${i}`));
 			if (specs.length === 0) {
 				// Meta-only snapshot: a content-free migration stamps the
-				// version record WITHOUT the deterministic bootstrap block, so
-				// merging into a live generation can never LWW-race a
-				// provider's own `edytor:bootstrap` node (gate-2 live probe).
+				// version record WITHOUT seeding a default block.
 				(doc as unknown as EngineDoc).transact(() => {
 					const meta = (doc as unknown as EngineDoc).get(edytorDoc.META_KEY);
 					meta.setAttr(edytorDoc.SCHEMA.metaAttrs.version, edytorDoc.SCHEMA_VERSION);

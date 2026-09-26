@@ -5,7 +5,14 @@
  * run splitting. `blockattr` (U1) is the durable attribution that remains.
  */
 import { describe, expect, it } from 'vitest';
-import { applyUpdate, docValue, firstBlock, recordKeys, wireDocs } from './helpers.js';
+import {
+	applyUpdate,
+	docValue,
+	firstBlock,
+	recordKeys,
+	wireDocs,
+	authoredDocument
+} from './helpers.js';
 import {
 	createDocument,
 	loadDocument,
@@ -41,7 +48,7 @@ const hasAttributionKey = (value: unknown): boolean => {
 
 describe('U2 — ordinary editing writes no attribution', () => {
 	it('ten+ consecutive keystrokes → exactly 1 update each and zero a/ records', () => {
-		const d = createDocument({ value: docValue(''), actor: alice });
+		const d = authoredDocument(docValue(''), alice);
 		const block = firstBlock(d);
 		expect(recordKeys(d)).toHaveLength(0);
 
@@ -61,7 +68,7 @@ describe('U2 — ordinary editing writes no attribution', () => {
 	});
 
 	it('bare facade ops (no document.transact wrapper) are also one update each', () => {
-		const d = createDocument({ value: docValue(''), actor: alice });
+		const d = authoredDocument(docValue(''), alice);
 		const block = firstBlock(d);
 		const updates = countUpdates(d, () => {
 			d.facade.insertText(block.id, 0, 'a');
@@ -74,7 +81,7 @@ describe('U2 — ordinary editing writes no attribution', () => {
 	});
 
 	it('two actors typing into one block — runs stay merged, no attribution field anywhere', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const block = firstBlock(a);
 		const b = createDocument({ actor: bob });
 		applyJoin(a, b);
@@ -106,7 +113,7 @@ describe('U2 — ordinary editing writes no attribution', () => {
 	});
 
 	it('undo/redo across typed edits stays one update per step', () => {
-		const d = createDocument({ value: docValue('hi'), actor: alice });
+		const d = authoredDocument(docValue('hi'), alice);
 		const block = firstBlock(d);
 		d.transact(() => d.facade.insertText(block.id, 2, '!'));
 		expect(d.facade.blockText(block.id)).toBe('hi!');
@@ -122,7 +129,7 @@ describe('U2 — ordinary editing writes no attribution', () => {
 	});
 
 	it('document.attribution exposes the dictionary + block reads without a capture pipeline', () => {
-		const d = createDocument({ value: docValue('hi'), actor: alice });
+		const d = authoredDocument(docValue('hi'), alice);
 		const block = firstBlock(d);
 		expect(d.attribution.actorOf(d.clientID)).toBe('alice');
 		expect(d.attribution.actors.get('alice')).toEqual({ name: 'Alice', color: '#a11' });
@@ -135,7 +142,7 @@ describe('U2 — ordinary editing writes no attribution', () => {
 	});
 
 	it('encode → load keeps a document with no a/ state clean of it', () => {
-		const d = createDocument({ value: docValue('hi'), actor: alice });
+		const d = authoredDocument(docValue('hi'), alice);
 		const block = firstBlock(d);
 		d.transact(() => d.facade.insertText(block.id, 2, '!'));
 		const restored = loadDocument(d.encode(), { actor: bob });

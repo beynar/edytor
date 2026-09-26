@@ -20,12 +20,8 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import {
-	bindDocument,
-	bindEdytorDoc,
-	bindModel,
-	BOOTSTRAP_BLOCK_ID
-} from '../../../lib/crdt/index.js';
+import { bindDocument, bindEdytorDoc, bindModel } from '../../../lib/crdt/index.js';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
 const M = bindModel(Y);
@@ -217,7 +213,7 @@ describe('U7 — init quadratic removal', () => {
 		const doc = newDoc();
 		E.init(doc, { content: [] });
 		const ed = E.create(doc);
-		expect(topIds(ed)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(topIds(ed)).toEqual([DEFAULT_SEED_ID]);
 	});
 
 	it('init on a non-empty doc is a no-op (seed-if-empty)', () => {

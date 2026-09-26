@@ -199,12 +199,7 @@ export {
 // records + the block-node `l` attr — see `attribution/block.ts`).
 // `document.attribution.block(id)` / `facade.blockAttribution(id)` /
 // `DocBlock.attribution` are the read entry points.
-export {
-	type ActorId,
-	type BlockAttribution,
-	blockRecordsOf,
-	type BlockRecord
-} from './attribution/index.js';
+export { type ActorId, type BlockAttribution } from './attribution/index.js';
 
 // ── 6 · Migration ──────────────────────────────────────────────────────
 //

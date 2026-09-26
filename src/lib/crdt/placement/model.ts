@@ -588,11 +588,6 @@ export const bindModel = (
 
 	// ── content (rich-text sequence) helpers ────────────────────────────
 
-	const contentOf = (node: EngineNode): EngineNode | undefined => {
-		const c = node.getAttr(CONTENT);
-		return isNodeLike(c) ? c : undefined;
-	};
-
 	const buildInline = (atom: InlineSpec): EngineNode => {
 		const node = newNode(INLINE_NODE);
 		// Every caller-supplied string normalizes to well-formed UTF-16 at
@@ -609,19 +604,6 @@ export const bindModel = (
 	};
 
 	/**
-	 * `slices` write handle for a block — created by `insertBlock`/`splitBlock`;
-	 * legacy rows (pre-U04 schema) may lack it and get one lazily in the
-	 * writing transaction.
-	 */
-	const slicesNodeOf = (node: EngineNode): EngineNode => {
-		const existing = node.getAttr(SLICES);
-		if (isNodeLike(existing)) return existing;
-		const created = newNode(SLICES_NODE);
-		node.setAttr(SLICES, created);
-		return created;
-	};
-
-	/**
 	 * Serialize one backing-text node's sequence into ContentItem runs —
 	 * the full-range case of the direct sequence walk (WU8), mid-transaction
 	 * safe the same way `toDelta()` was. Live inline nodes come back as
@@ -629,29 +611,6 @@ export const bindModel = (
 	 */
 	const contentItemsOf = (content: EngineNode): ContentItem[] =>
 		content.doc === null ? [] : (T.itemsOfRange(content, 0, content.length) as ContentItem[]);
-
-	/**
-	 * Append content items to a content node (mark-preserving). The offset is
-	 * tracked locally rather than read back — `length` is an invalid read on
-	 * not-yet-integrated nodes (the engine warns and returns garbage), so this
-	 * works on detached subtrees too.
-	 */
-	const appendItems = (content: EngineNode, items: ContentItem[]): void => {
-		let off = content.doc === null ? 0 : content.length;
-		for (const item of items) {
-			if (item.kind === 'text') {
-				content.insert(
-					off,
-					sanitizeWireString(item.text),
-					item.marks === undefined ? undefined : sanitizeWireJson(item.marks)
-				);
-				off += item.text.length;
-			} else {
-				content.insert(off, [buildInline(item)]);
-				off += 1;
-			}
-		}
-	};
 
 	// ── structural predicates ───────────────────────────────────────────
 

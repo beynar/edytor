@@ -19,11 +19,9 @@ export {
 export {
 	bindBlockAttribution,
 	blockAttributionOf,
-	blockRecordsOf,
 	BLOCK_ATTR_ROOT,
 	LAST_CHANGED_ATTR,
 	type ActorId,
 	type BlockAttribution,
-	type BlockAttributionApi,
-	type BlockRecord
+	type BlockAttributionApi
 } from './block.js';

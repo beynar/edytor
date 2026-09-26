@@ -32,7 +32,6 @@ test.describe('collaboration presence and persistence', () => {
 			});
 			edytor.awareness.emit('change', [{ added: [9001], updated: [], removed: [] }, 'test']);
 			edytor.awareness.emit('update', [{ added: [9001], updated: [], removed: [] }, 'test']);
-			edytor.refreshRemotePresence();
 		});
 
 		const cursor = page.locator('[data-edytor-remote-cursor][data-client-id="9001"]');

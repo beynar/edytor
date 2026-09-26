@@ -236,11 +236,6 @@ const runEquals = (a: ContentRun, b: ContentRun): boolean => {
 	return false;
 };
 
-const sameMarks = (
-	a: Record<string, unknown> | undefined,
-	b: Record<string, unknown> | undefined
-): boolean => a === b || (a !== undefined && b !== undefined && canonKey(a) === canonKey(b));
-
 /** Shared empty snapshot — returned for absent/hidden blocks. */
 const EMPTY_RUNS = Object.freeze([]) as readonly ContentRun[];
 
@@ -254,35 +249,6 @@ const sameRuns = (a: readonly ContentRun[] | undefined, b: readonly ContentRun[]
 	if (a === undefined || a.length !== b.length) return false;
 	for (let i = 0; i < a.length; i++) if (!runEquals(a[i], b[i])) return false;
 	return true;
-};
-
-/**
- * Canonicalize raw content items into runs: adjacent text items whose mark
- * sets are deep-equal merge into a single run (segment boundaries are not
- * observable at the run layer); inline atoms always stand alone. Shared by
- * the maintained view and the `computeAllRuns` baseline so "fresh" and
- * "maintained" agree on the SAME canonical shape.
- */
-const mergeRuns = (items: readonly (ContentItem | ContentRun)[]): ContentRun[] => {
-	const out: ContentRun[] = [];
-	for (const item of items) {
-		if (item.kind === 'text') {
-			const last = out[out.length - 1];
-			if (last && last.kind === 'text' && sameMarks(last.marks, item.marks)) {
-				(last as { text: string }).text += item.text;
-			} else {
-				// JSON-payload contract: absent marks, not `marks: undefined`.
-				out.push({
-					kind: 'text',
-					text: item.text,
-					...(item.marks === undefined ? {} : { marks: item.marks })
-				});
-			}
-		} else {
-			out.push(item as ContentRun);
-		}
-	}
-	return out;
 };
 
 type Deps = { texts: Set<string>; lists: Set<string> };
@@ -1755,53 +1721,7 @@ export const bindRuns = (Y: EngineApi) => {
 		return view;
 	};
 
-	/**
-	 * From-scratch baseline: recompute every visible block's runs with no
-	 * caches — the honest "full recomputation" comparator for benchmarks and
-	 * the fresh-projection oracle for equivalence tests.
-	 */
-	const computeAllRuns = (doc: EngineDoc): Map<BlockId, readonly ContentRun[]> => {
-		// Detached canonical payloads for the oracle — `contentItemsOf`
-		// borrows live marks/data refs, so the baseline applies the same
-		// R4 freeze a public read would (no shared interner here).
-		const freezeClone = <T>(v: T): T => deepFreeze(cloneJsonSafe(v));
-		const registry = doc.get(REGISTRY_KEY);
-		const blocks = new Map<BlockId, TextBlockRec>();
-		registry.forEachAttr((v: unknown, id: string) => {
-			if (!isNodeLike(v)) return;
-			const slices = v.getAttr(SLICES);
-			const slicesNode = isNodeLike(slices) ? slices : undefined;
-			const content = v.getAttr(CONTENT);
-			blocks.set(id, {
-				id,
-				deleted: v.getAttr(DEL) !== undefined,
-				content: isNodeLike(content) ? content : undefined,
-				slicesNode,
-				entries: slicesNode
-					? readSliceEntries(slicesNode)
-					: [
-							{
-								payload: { t: id, s: { i: null, a: -1 }, e: { i: null, a: 0 } },
-								stamp: { c: -1, k: -1 },
-								seqIndex: 0
-							}
-						]
-			});
-		});
-		const own = T.computeOwnership(doc, blocks);
-		const out = new Map<BlockId, readonly ContentRun[]>();
-		for (const [id, rec] of blocks) {
-			if (rec.deleted || own.hidden(id)) {
-				out.set(id, Object.freeze([]));
-				continue;
-			}
-			const items = T.contentItemsOf(id, blocks, own) as ContentItem[];
-			out.set(id, Object.freeze(mergeRuns(protectItems(items, freezeClone))));
-		}
-		return out;
-	};
-
-	return { attach, computeAllRuns, modelState };
+	return { attach, modelState };
 };
 
 /**

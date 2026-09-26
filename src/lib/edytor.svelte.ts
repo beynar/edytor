@@ -51,7 +51,7 @@ import type {
 } from './plugins.js';
 import { on } from 'svelte/events';
 import { HotKeys, type HotKey } from './hotkeys.js';
-import { REMOTE_ONLY_TRANSACTION, TRANSACTION } from './constants.js';
+import { TRANSACTION } from './constants.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import { deleteContentWithinSelection } from './edytor.utils.js';
 import {
@@ -178,13 +178,10 @@ export class Edytor {
 	idToText = new SvelteMap<string, Text>();
 	nodeToText = new SvelteMap<Node, Text>();
 	transaction = new TRANSACTION();
-	remoteOnlyTransaction = new REMOTE_ONLY_TRANSACTION();
 	hotKeys: HotKeys;
-	initialized = $state(false);
 	readonly = $state(false);
 	root = $state<Block>();
 	editorDomRevision = $state(0);
-	remotePresenceRevision = $state(0);
 	synced = $state(false);
 	edytor = this;
 	selection: EdytorSelection;
@@ -484,10 +481,6 @@ export class Edytor {
 		this.editorDomRevision += 1;
 	};
 
-	refreshRemotePresence = () => {
-		this.remotePresenceRevision += 1;
-	};
-
 	constructor({
 		snippets,
 		readonly,
@@ -624,14 +617,6 @@ export class Edytor {
 			// this document's undo manager captures THIS view's edits.
 			this.document.trackOrigin(this.transaction);
 
-			// View-lifetime awareness subscriptions — bound only after semantics
-			// adopted cleanly, so a conflicting view cannot strand listeners on
-			// the shared awareness. U8a — 'change' only: 'update' also fires on
-			// clock-only heartbeat refreshes (no renderable diff) and locally on
-			// every setLocalState; every content change emits 'change' too, so
-			// 'update' only duplicated the bump.
-			this.awareness.on('change', this.refreshRemotePresence);
-
 			// Readiness ownership (adversarial P1-1): a `sync` prop on an
 			// editable view means a PROVIDER owns the content decision —
 			// for owned documents too. The view binds the readiness wait so
@@ -654,14 +639,12 @@ export class Edytor {
 			this.hotKeys = new HotKeys(this, hotKeys, this.plugins);
 		} catch (error) {
 			// Constructor failure — release what the partial view claimed:
-			// the awareness listeners (a failed semantic adoption bound
-			// none; off() is a no-op then), the history origin (untracked
-			// live — already-captured commits stay undoable), and the
-			// document attach reference when this view owns it. Semantic
+			// the history origin (untracked live — already-captured commits
+			// stay undoable) and the document attach reference when this
+			// view owns it. Semantic
 			// contributions already adopted stay — they are
 			// document-lifetime additive declarations, and an injected
 			// document's are left for the views that legitimately share it.
-			this.awareness.off('change', this.refreshRemotePresence);
 			this.document.untrackOrigin(this.transaction);
 			if (this.ownsDocument) {
 				this.document.destroy();
@@ -823,7 +806,6 @@ export class Edytor {
 			return;
 		}
 
-		this.initialized = this.facade.isInitialized();
 		// The document owns the content decision: `assertSchema` on an
 		// already-initialized (hydrated) doc, `init` on a still-fresh one,
 		// then history attaches — the same deferral this method enforced
@@ -898,7 +880,6 @@ export class Edytor {
 				this.suppressCaretScrollDepth--;
 				this._mirrorChange = null;
 			}
-			this.refreshRemotePresence();
 			// `this.value` is a full-document export (O(doc) — ~17ms at 5k
 			// blocks) — compute it only when a consumer actually exists. The
 			// version-keyed memo keeps repeated reads inside one commit cheap.
@@ -1873,22 +1854,6 @@ export class Edytor {
 		return this.idToText.get(id);
 	};
 
-	getBlockByIdOrContent = (idOrContent: string | Text): Block | undefined => {
-		if (typeof idOrContent === 'string') {
-			const isText = idOrContent.startsWith('t');
-			const isBlock = idOrContent.startsWith('b');
-			if (isBlock) {
-				return this.idToBlock.get(idOrContent);
-			} else if (isText) {
-				const text = this.idToText.get(idOrContent);
-				return text?.parent;
-			}
-		} else if (idOrContent instanceof Text) {
-			return idOrContent.parent || undefined;
-		}
-		return undefined;
-	};
-
 	getTextNode = async (idOrText: string | Text): Promise<HTMLElement> => {
 		await tick();
 		const text = idOrText instanceof Text ? idOrText : this.getTextById(idOrText);
@@ -2225,9 +2190,8 @@ export class Edytor {
 	 *
 	 * Releases every listener the editor holds on potentially-SHARED objects
 	 * — an injected doc/awareness outlives a single editor, so an
-	 * undestroyed mount leaks a facade `update` listener, two awareness
-	 * listeners and the undo manager's doc observers forever, and every dead
-	 * editor still runs `refreshRemotePresence` on each presence tick.
+	 * undestroyed mount leaks a facade `update` listener and the undo
+	 * manager's doc observers forever.
 	 *
 	 * Idempotent, and safe on an editor that was never attached or synced
 	 * (the undo manager exists only after first `sync()`).
@@ -2247,10 +2211,6 @@ export class Edytor {
 			clearTimeout(this._readinessTimer);
 			this._readinessTimer = undefined;
 		}
-
-		// View-owned awareness subscriptions bound in the constructor — the
-		// awareness itself is document-shared and survives this view.
-		this.awareness.off('change', this.refreshRemotePresence);
 
 		// Runs the whole attach-lifetime batch — DOM listeners, the mutation
 		// observer, plugin actions, and the facade-change release (which

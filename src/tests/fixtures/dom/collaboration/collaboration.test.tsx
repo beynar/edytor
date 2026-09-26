@@ -28,7 +28,6 @@ const publishRemoteSelectionFromLocalSelection = async (
 	});
 	edytor.awareness.emit('change', [{ added: [remoteClientId], updated: [], removed: [] }, 'test']);
 	edytor.awareness.emit('update', [{ added: [remoteClientId], updated: [], removed: [] }, 'test']);
-	edytor.refreshRemotePresence();
 	await flushDomUpdates();
 };
 
@@ -72,7 +71,6 @@ describe('collaboration remote presence rendering', () => {
 			{ added: [], updated: [], removed: [remoteClientId] },
 			'test'
 		]);
-		edytor.refreshRemotePresence();
 		await flushDomUpdates();
 
 		await waitFor(() => {
@@ -169,7 +167,6 @@ describe('collaboration remote presence rendering', () => {
 			{ added: [remoteClientId], updated: [], removed: [] },
 			'test'
 		]);
-		edytor.refreshRemotePresence();
 		await flushDomUpdates();
 
 		await waitFor(() => {
@@ -206,7 +203,6 @@ describe('collaboration remote presence rendering', () => {
 			{ added: [remoteClientId], updated: [], removed: [] },
 			'test'
 		]);
-		edytor.refreshRemotePresence();
 		await flushDomUpdates();
 
 		expect(container.querySelector('[data-edytor-remote-cursor]')).toBeNull();

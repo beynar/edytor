@@ -248,42 +248,6 @@ export const lineageOf = (doc: EngineDoc, id: BlockId): LineageEntry[] | undefin
 	return rec === null ? undefined : (rec.toArray() as LineageEntry[]);
 };
 
-/** One enumerated `b/<id>` record — including records whose block is deleted. */
-export type BlockRecord = {
-	id: BlockId;
-	attribution: BlockAttribution | undefined;
-	/** The RAW stored ring (`history()`'s source), not the capped read view. */
-	lineage: LineageEntry[] | undefined;
-	/** `client:clock` incarnation stamp — distinguishes recycled ids' records. */
-	incarnation: string | null;
-};
-
-/**
- * Enumerate every `b/<id>` attribution record on the doc — O(records),
- * projection/test helper. Records intentionally SURVIVE their block's
- * deletion (a deleted block's recovery ring stays readable), so this is
- * the only way to compare deleted blocks' attribution and lineage
- * across replicas — live-tree walks structurally cannot reach them.
- */
-export const blockRecordsOf = (doc: EngineDoc): BlockRecord[] => {
-	const root = doc.get(BLOCK_ATTR_ROOT);
-	const out: BlockRecord[] = [];
-	for (const key of root.attrKeys()) {
-		if (!key.startsWith(REC_PREFIX)) continue;
-		const rec = root.getAttr(key);
-		if (!isNodeLike(rec) || rec.name !== REC_NODE) continue;
-		const id = key.slice(REC_PREFIX.length) as BlockId;
-		const i = rec.getAttr(INCARNATION_KEY);
-		out.push({
-			id,
-			attribution: blockAttributionOf(doc, id),
-			lineage: rec.toArray() as LineageEntry[],
-			incarnation: typeof i === 'string' ? i : null
-		});
-	}
-	return out;
-};
-
 /**
  * Bound write helpers. `stampChange`/`stampCreated`/`unionContributors`
  * must be called INSIDE the operation's `doc.transact` — they perform

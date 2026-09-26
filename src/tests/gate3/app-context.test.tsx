@@ -234,16 +234,15 @@ describe('gate3: lifecycle — listener retention on external doc/awareness', ()
 		// U4b/F2: `{doc}` goes through `attachDocument`'s raw-doc dedupe —
 		// all five editors compose ONE EdytorDocument, so the doc-level
 		// listeners (facade updateHandler, undo-manager observers) are
-		// registered ONCE, while each view still adds its own awareness
-		// listener. `destroy()` must release all of them.
-		// U8a — one 'change' subscription per view (the 'update' duplicate
-		// was dropped: 'change' covers every renderable presence diff, so
-		// 'update' only re-bumped on clock-only heartbeats).
+		// registered ONCE. arch-v2 G0 (L61) deleted the view's dead
+		// `refreshRemotePresence` awareness subscription (it bumped a
+		// revision nothing read), so a view holds no awareness listener;
+		// `destroy()` must still release everything it did register.
 		expect(editors[1].document).toBe(editors[0].document);
 		expect(observerCount(doc, 'update') - updatesBefore).toBeGreaterThanOrEqual(1);
 		expect(
 			observerCount(awareness, 'change') + observerCount(awareness, 'update') - awarenessBefore
-		).toBe(5);
+		).toBe(0);
 		expect(typeof editors[0].destroy).toBe('function');
 
 		for (const editor of editors) {

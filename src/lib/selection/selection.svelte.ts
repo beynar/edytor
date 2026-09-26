@@ -1602,9 +1602,6 @@ export class EdytorSelection {
 		) {
 			return false;
 		}
-		((globalThis as { __EDYTOR_SEL_LOG__?: string[] }).__EDYTOR_SEL_LOG__ ??= []).push(
-			`drift-revert ${state.startText?.id}@${state.yStart} -> ${resolved.text.id}@${resolved.offset}`
-		);
 		if (resolved.text === resolvedEnd.text && resolved.offset === resolvedEnd.offset) {
 			void this.setAtTextOffset(resolved.text, resolved.offset);
 			return true;

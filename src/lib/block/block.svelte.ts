@@ -86,7 +86,6 @@ export class Block {
 	children = $state<Block[]>([]);
 	content = $state<(Text | InlineBlock)[]>([]);
 	id = $state<string>(id('b'));
-	renderVersion = $state(0);
 	data = $state<Record<string, any>>({});
 	node?: HTMLElement;
 	definition = $state<BlockDefinition>({} as BlockDefinition);
@@ -201,7 +200,6 @@ export class Block {
 		this.model?.setType(value);
 		this.#type = value;
 		this.definition = this.edytor.getBlockDefinition('block', value);
-		this.renderVersion += 1;
 	}
 
 	/**
@@ -214,15 +212,8 @@ export class Block {
 		this.model?.setData(cloneJson(data));
 	};
 
-	#depth = $state<number | null>(null);
 	get depth(): number {
-		if (!this.parent) {
-			return 0;
-		}
-		if (this.#depth === null) {
-			return this.parent.depth + 1;
-		}
-		return this.#depth;
+		return this.parent ? this.parent.depth + 1 : 0;
 	}
 
 	get path(): number[] {
@@ -535,7 +526,6 @@ export class Block {
 		if (this.#type !== type) {
 			this.#type = type;
 			this.definition = this.edytor.getBlockDefinition('block', type);
-			this.renderVersion += 1;
 		}
 		const nextData = data ?? {};
 		if (JSON.stringify(this.data) !== JSON.stringify(nextData)) {

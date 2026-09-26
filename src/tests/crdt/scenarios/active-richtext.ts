@@ -17,6 +17,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { expect } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
+import { bindRunsOracle } from '../../oracles/runs.js';
 import { bindRuns, decorateRuns } from '../../../lib/crdt/index.js';
 import { createPeerPair, type PeerSet } from '../harness/peer-set.js';
 import { createModelOps } from '../harness/ops/model-ops.js';
@@ -27,6 +28,7 @@ import { bindModel } from '../../../lib/crdt/index.js';
 
 const ops = createModelOps();
 const R = bindRuns(Y);
+const O = bindRunsOracle(Y);
 // Model-level ops not part of the CrdtOps adapter contract (setInlineData).
 const opsModel = bindModel(Y);
 
@@ -213,13 +215,13 @@ export const richtextScenarios: Scenario[] = [
 			// Local edit on A — maintained view, fresh recompute, and the raw
 			// live delta cache all describe the same content.
 			set.A.transact(() => ops.setMark(set.A, 'a', 0, 5, 'bold', true));
-			expect(vA.runs('a')).toEqual([...R.computeAllRuns(set.A.doc).get('a')!]);
+			expect(vA.runs('a')).toEqual([...O.computeAllRuns(set.A.doc).get('a')!]);
 			const liveDelta = set.A.doc.get('blocks').getAttr('a').getAttr('content').delta.toJSON();
 			// The live cache agrees with the export (bold on 'hello').
 			expect(JSON.stringify(liveDelta)).toContain('bold');
 			settled(set, 'AN04');
 			// After remote application the maintained view still equals fresh.
-			expect(vB.runs('a')).toEqual([...R.computeAllRuns(set.B.doc).get('a')!]);
+			expect(vB.runs('a')).toEqual([...O.computeAllRuns(set.B.doc).get('a')!]);
 			expect(vB.runs('a')).toEqual(vA.runs('a'));
 			// Readonly export is the public shape and is immutable in time.
 			const exported = vB.contentJSON('a');

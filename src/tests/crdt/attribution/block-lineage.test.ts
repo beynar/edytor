@@ -18,7 +18,8 @@
 import { describe, expect, it } from 'vitest';
 import { applyUpdate, docValue, firstBlock, wireDocs } from './helpers.js';
 import { Y } from '../../../lib/crdt/engine.js';
-import { blockRecordsOf, lineageOf } from '../../../lib/crdt/attribution/block.js';
+import { lineageOf } from '../../../lib/crdt/attribution/block.js';
+import { blockRecordsOf } from '../../oracles/block-records.js';
 import type { EngineDoc } from '../../../lib/crdt/engine-api.js';
 import {
 	attachDocument,

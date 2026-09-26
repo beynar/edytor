@@ -25,6 +25,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
+import { bindRunsOracle } from '../../oracles/runs.js';
 import { bindModel, bindRuns } from '../../../lib/crdt/index.js';
 import { bindText, readRange } from '../../../lib/crdt/text/model.js';
 import { decorateRuns } from '../../../lib/crdt/text/runs.js';
@@ -34,6 +35,7 @@ import { modelSpecSeed, MODEL_BASE_SEED } from '../scenarios/seeds.js';
 
 const M = bindModel(Y);
 const R = bindRuns(Y);
+const O = bindRunsOracle(Y);
 const T = bindText(Y);
 
 /**
@@ -288,15 +290,15 @@ describe('range reads — read-your-writes inside transactions', () => {
 			// cursor walks the live item list; the engine keeps its markers'
 			// positions valid through `updateMarkerChanges`.
 			M.insertText(doc, 'a', 0, '>>', { bold: true });
-			expect(view.runs('a')).toEqual([...R.computeAllRuns(doc).get('a')]);
+			expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
 			M.setMark(doc, 'a', 10, 8, 'strike', true);
-			expect(view.runs('a')).toEqual([...R.computeAllRuns(doc).get('a')]);
+			expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
 			M.insertInline(doc, 'a', 5, { id: 'mx', type: 'mention', data: { live: 1 } });
-			expect(view.runs('a')).toEqual([...R.computeAllRuns(doc).get('a')]);
+			expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
 			M.deleteText(doc, 'a', 0, 2);
-			expect(view.runs('a')).toEqual([...R.computeAllRuns(doc).get('a')]);
+			expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
 		});
-		expect(view.runs('a')).toEqual([...R.computeAllRuns(doc).get('a')]);
+		expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
 	});
 
 	it('an insert before a checkpoint shifts reads correctly (markers maintained, not stale)', () => {
@@ -310,7 +312,7 @@ describe('range reads — read-your-writes inside transactions', () => {
 		expect(after.map((r) => (r.kind === 'text' ? r.text : '�')).join('')).toBe(
 			'PRE' + before.map((r) => (r.kind === 'text' ? r.text : '�')).join('')
 		);
-		expect(after).toEqual([...R.computeAllRuns(doc).get('a')]);
+		expect(after).toEqual([...O.computeAllRuns(doc).get('a')]);
 	});
 });
 
@@ -357,7 +359,7 @@ describe('range reads — maintained work bounds', () => {
 		const text = contentOf(doc, 'b0');
 		expect(text._searchMarker.length).toBeGreaterThan(0);
 		// Correctness: every block equals the fresh oracle.
-		const fresh = R.computeAllRuns(doc);
+		const fresh = O.computeAllRuns(doc);
 		for (const id of M.listBlockIds(doc)) {
 			expect(view.runs(id)).toEqual([...fresh.get(id)]);
 		}
@@ -384,7 +386,7 @@ describe('range reads — maintained work bounds', () => {
 		set.A.transact(() => M.mergeBlocks(doc, 'b', 'a'));
 		const view = R.attach(doc);
 		view.debug.reset();
-		expect(view.runs('a')).toEqual([...R.computeAllRuns(doc).get('a')]);
+		expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
 		// Two segs, one text — total walk stays bounded well under 2× items.
 		expect(view.debug.itemsWalked).toBeLessThan(1200);
 	});
@@ -397,7 +399,7 @@ describe('range reads — remote, undo, marks identity, decorations', () => {
 		viewB.runs('a');
 		set.A.transact(() => M.setMark(set.A.doc, 'a', 6, 10, 'code', true));
 		set.deliver('A', 'B');
-		expect(viewB.runs('a')).toEqual([...R.computeAllRuns(set.B.doc).get('a')]);
+		expect(viewB.runs('a')).toEqual([...O.computeAllRuns(set.B.doc).get('a')]);
 		expect(viewB.runs('a')[1].marks).toEqual({ bold: true, code: true });
 	});
 
@@ -410,7 +412,7 @@ describe('range reads — remote, undo, marks identity, decorations', () => {
 		set.A.transact(() => M.setMark(doc, 'a', 0, 10, 'code', true));
 		expect(view.runs('a')).not.toEqual(before);
 		um.undo();
-		expect(view.runs('a')).toEqual([...R.computeAllRuns(doc).get('a')]);
+		expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
 		expect(view.runs('a')).toEqual(before);
 	});
 
@@ -448,7 +450,7 @@ describe('range reads — remote, undo, marks identity, decorations', () => {
 		set.A.transact(() => M.unsetMark(doc, 'a', 8, 4, 'bold'));
 		expect(Object.isFrozen(snap)).toBe(true);
 		expect(snap.map((r) => (r.kind === 'text' ? r.text : '�')).join('')).toBe(flatBefore);
-		expect(view.runs('a')).toEqual([...R.computeAllRuns(doc).get('a')]);
+		expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
 	});
 
 	it('local decorations overlay correctly on top of the new read path', () => {
@@ -490,7 +492,7 @@ describe('range reads — remote, undo, marks identity, decorations', () => {
 		);
 		set.A.transact(() => M.mergeBlocks(doc, 'd', 'a'));
 		const view = R.attach(doc);
-		expect(view.runs('a')).toEqual([...R.computeAllRuns(doc).get('a')]);
+		expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
 		const flat = view
 			.runs('a')
 			.map((r) => (r.kind === 'text' ? r.text : '�'))

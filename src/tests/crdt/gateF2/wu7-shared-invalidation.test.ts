@@ -23,12 +23,14 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
+import { bindRunsOracle } from '../../oracles/runs.js';
 import { bindEdytorDoc, bindModel, bindRuns } from '../../../lib/crdt/index.js';
 import { createPeerPair } from '../harness/peer-set.js';
 import { modelSpecSeed } from '../scenarios/seeds.js';
 
 const E = bindEdytorDoc(Y);
 const R = bindRuns(Y);
+const O = bindRunsOracle(Y);
 const M = bindModel(Y);
 
 const SEED = modelSpecSeed([
@@ -54,7 +56,7 @@ describe('gateF2/WU7 — shared backing + merge-chain invalidation', () => {
 		// a consulted text b during flatten — the write into text b must have
 		// invalidated a's cache through textConsumers['b'].
 		expect(flat(view.runs('a'))).toBe('alpha>>beta');
-		expect(view.runs('a')).toEqual([...R.computeAllRuns(doc).get('a')]);
+		expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
 		// The commit must report a as content-touched (the fanout), not just b.
 		expect(view.commitInfo().content.has('a')).toBe(true);
 		view.dispose();
@@ -76,7 +78,7 @@ describe('gateF2/WU7 — shared backing + merge-chain invalidation', () => {
 		// Edit at the BOTTOM (text c): offset 12 inside 'gamma' (9..14).
 		set.A.transact(() => M.insertText(doc, 'a', 12, '<<'));
 		expect(flat(view.runs('a'))).toBe('alphabe!taga<<mma');
-		expect(view.runs('a')).toEqual([...R.computeAllRuns(doc).get('a')]);
+		expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
 		view.dispose();
 	});
 
@@ -92,7 +94,7 @@ describe('gateF2/WU7 — shared backing + merge-chain invalidation', () => {
 		set.deliver('B', 'A');
 		// The remote write to hidden-b's text must invalidate a on A.
 		expect(flat(view.runs('a'))).toBe('alphaREMOTE-beta');
-		expect(view.runs('a')).toEqual([...R.computeAllRuns(docA).get('a')]);
+		expect(view.runs('a')).toEqual([...O.computeAllRuns(docA).get('a')]);
 		expect(view.commitInfo().content.has('a')).toBe(true);
 		view.dispose();
 	});
@@ -109,7 +111,7 @@ describe('gateF2/WU7 — shared backing + merge-chain invalidation', () => {
 		set.B.transact(() => M.mergeBlocks(set.B.doc, 'd', 'b'));
 		set.deliver('B', 'A');
 		expect(flat(view.runs('a'))).toBe('alphabetaparent');
-		expect(view.runs('a')).toEqual([...R.computeAllRuns(docA).get('a')]);
+		expect(view.runs('a')).toEqual([...O.computeAllRuns(docA).get('a')]);
 		// The slices-list write is structural: not a fast commit.
 		expect(view.commitInfo().fast).toBe(false);
 		view.dispose();
@@ -202,7 +204,7 @@ describe('gateF2/WU7 — lifecycle: detach/reattach/destroy/subscriptions', () =
 		// Reattach — fresh state, correct reads (no stale view after remount).
 		const v2 = R.attach(doc);
 		expect(flat(v2.runs('a'))).toBe('yxalpha');
-		expect(v2.runs('a')).toEqual([...R.computeAllRuns(doc).get('a')]);
+		expect(v2.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
 		set.A.transact(() => M.insertText(doc, 'a', 0, 'z'));
 		expect(fired).toBe(1); // still dead — v1's sub is gone
 		expect(flat(v2.runs('a'))).toBe('zyxalpha');

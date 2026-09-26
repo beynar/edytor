@@ -23,6 +23,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
+import { bindRunsOracle } from '../../oracles/runs.js';
 import { bindModel, bindRuns } from '../../../lib/crdt/index.js';
 import { bindText, readRange } from '../../../lib/crdt/text/model.js';
 import { createPeerPair } from '../harness/peer-set.js';
@@ -30,6 +31,7 @@ import { modelSpecSeed } from '../scenarios/seeds.js';
 
 const M = bindModel(Y);
 const R = bindRuns(Y);
+const O = bindRunsOracle(Y);
 const T = bindText(Y);
 
 const contentOf = (doc, id) => M.collectBlocks(doc).get(id)?.content;
@@ -130,7 +132,7 @@ describe('gateF2/U3 — marks aliasing contract boundary', () => {
 			marked.marks.bold = 'MUTATED';
 		}).toThrow();
 		// And subsequent reads are unaffected (the index never saw a write).
-		expect(view.runs('a')).toEqual([...R.computeAllRuns(doc).get('a')]);
+		expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
 		view.dispose();
 	});
 });

@@ -24,6 +24,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as os from 'node:os';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
+import { bindRunsOracle } from '../../oracles/runs.js';
 import { bindModel, bindRuns } from '../../../lib/crdt/index.js';
 import { createPeerPair } from '../harness/peer-set.js';
 import { modelSpecSeed } from '../scenarios/seeds.js';
@@ -31,6 +32,7 @@ import { modelSpecSeed } from '../scenarios/seeds.js';
 const ENABLED = process.env.BENCH_RUNS === '1';
 const M = bindModel(Y);
 const R = bindRuns(Y);
+const O = bindRunsOracle(Y);
 
 const statsOf = (arr, warmup = 0) => {
 	const s = [...arr].sort((a, b) => a - b);
@@ -127,7 +129,7 @@ describe('U05 run-view invalidation benchmarks', () => {
 			timed(() => view.contentJSON('b500'), { samples: 200 })
 		);
 		bench('full recompute baseline computeAllRuns (1000 blocks)', () =>
-			timed(() => R.computeAllRuns(doc), { warmup: 1, samples: 7 })
+			timed(() => O.computeAllRuns(doc), { warmup: 1, samples: 7 })
 		);
 
 		// ── single-run local invalidation ────────────────────────────────

@@ -19,7 +19,6 @@
 	} from '$lib/collaboration/index.js';
 	import { Y } from '$lib/crdt/engine.js';
 	import {
-		blockRecordsOf,
 		checkSchema,
 		createDocument,
 		GENERATION_KEY,
@@ -27,6 +26,7 @@
 		generationDbName
 	} from '$lib/crdt/index.js';
 	import type { EdytorDocument, JSONBlock as CrdtJSONBlock, YDoc } from '$lib/crdt/index.js';
+	import { blockRecordsOf } from '../../../tests/oracles/block-records.js';
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import type { Text } from '$lib/text/text.svelte.js';
 	import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';

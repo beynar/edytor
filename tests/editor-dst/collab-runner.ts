@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
 import * as Y from '../../src/lib/crdt/vendor/yjs/src/index.js';
-import { attachDocument, blockRecordsOf, type EdytorDocument } from '../../src/lib/crdt/index.js';
+import { attachDocument, type EdytorDocument } from '../../src/lib/crdt/index.js';
+import { blockRecordsOf } from '../../src/tests/oracles/block-records.js';
 import type { JSONBlock } from '../../src/lib/utils/json.js';
 import { waitForEditorReady } from '../editor-dom/helpers.js';
 import { startOpaqueRelay, type OpaqueRelay } from '../editor-dom/ws-relay.js';

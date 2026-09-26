@@ -29,15 +29,17 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
+import { bindRunsOracle } from '../../oracles/runs.js';
 import { bindModel, bindRuns, decorateRuns } from '../../../lib/crdt/index.js';
 import { createPeerPair } from '../harness/peer-set.js';
 import { modelSpecSeed } from '../scenarios/seeds.js';
 
 const M = bindModel(Y);
 const R = bindRuns(Y);
+const O = bindRunsOracle(Y);
 
 const seed = (blocks) => modelSpecSeed(blocks);
-const runs = (peer, id) => R.computeAllRuns(peer.doc).get(id) ?? [];
+const runs = (peer, id) => O.computeAllRuns(peer.doc).get(id) ?? [];
 const view = (peer) => R.attach(peer.doc);
 
 const updateCount = (doc) => {

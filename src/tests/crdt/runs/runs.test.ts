@@ -25,6 +25,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
+import { bindRunsOracle } from '../../oracles/runs.js';
 import { bindModel, bindRuns } from '../../../lib/crdt/index.js';
 import { createPeerPair, createPeerSet } from '../harness/peer-set.js';
 import { createModelOps } from '../harness/ops/model-ops.js';
@@ -33,6 +34,7 @@ import { modelSpecSeed, MODEL_BASE_SEED } from '../scenarios/seeds.js';
 
 const M = bindModel(Y);
 const R = bindRuns(Y);
+const O = bindRunsOracle(Y);
 const ops = createModelOps();
 
 const RICH_SEED = modelSpecSeed([
@@ -64,13 +66,13 @@ const RICH_SEED = modelSpecSeed([
 
 /** Deep-equality of maintained runs vs the fresh from-scratch baseline. */
 const expectRunsFresh = (view, doc, id) => {
-	const fresh = R.computeAllRuns(doc).get(id) ?? Object.freeze([]);
+	const fresh = O.computeAllRuns(doc).get(id) ?? Object.freeze([]);
 	expect(view.runs(id), `runs(${id}) vs fresh`).toEqual([...fresh]);
 };
 
 /** Every visible block's runs equal the fresh baseline. */
 const expectAllFresh = (view, doc) => {
-	const fresh = R.computeAllRuns(doc);
+	const fresh = O.computeAllRuns(doc);
 	for (const [id, runs] of fresh) {
 		expect(view.runs(id), `runs(${id})`).toEqual([...runs]);
 	}
@@ -140,7 +142,7 @@ describe('run view — invalidation granularity & identity', () => {
 		expect(view.runs('c')).toBe(cRuns);
 		expect(view.blockVersion('b')).toBe(bVersion);
 		expect(view.debug.recomputed.has('a')).toBe(false); // lazy: not yet re-read
-		const fresh = R.computeAllRuns(doc).get('a');
+		const fresh = O.computeAllRuns(doc).get('a');
 		expect(view.runs('a')).toEqual([...fresh]);
 		expect(view.debug.recomputes).toBe(1); // only A recomputed
 	});

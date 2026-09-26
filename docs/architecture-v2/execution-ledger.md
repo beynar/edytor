@@ -9,8 +9,8 @@ The plan is `docs/architecture-v2/plan.md`; its §9 defines the checkpoints and 
 | Lane | Result |
 |---|---|
 | `pnpm exec vitest --run` | 123 files, 1949 passed, 3 skipped, 11 todo |
-| `pnpm test:dom` | 100 files, 1864 passed, 9 skipped |
-| `pnpm test:crdt` | 21 files, 346 passed, 33 skipped |
+| `pnpm test:dom` | 21 files, 346 passed, 33 skipped |
+| `pnpm test:crdt` | 100 files, 1864 passed, 9 skipped |
 | `pnpm check` | 0 errors, 0 warnings |
 | `pnpm lint` | clean (after ignoring generated `docs/architecture-v2/` for prettier) |
 | chromium integration | 483 passed, 1 skipped, **9 failed deterministically** (known-red baseline, listed below) |

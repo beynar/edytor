@@ -20,8 +20,8 @@
  *   row already in a same-generation container) is read-only: it neither
  *   persists, compacts, nor broadcasts, and document admission refuses it.
  * - UNVERSIONED CONTENT (registry writes with no stamp at all) is not a
- *   stamp write; its pinned transport refusal is a maintainer question
- *   (see the section at the end).
+ *   stamp write: it integrates, and the doc is read-only and quarantined
+ *   until a versioned state makes it admissible again.
  */
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import 'fake-indexeddb/auto';
@@ -608,53 +608,63 @@ describe('same-generation forged stamp — already in a same-generation containe
 	});
 });
 
-describe('unversioned content (no stamp at all) — MAINTAINER question (T1 limit)', () => {
-	// Pinned before T1 by the per-update staging. Under D-2 unversioned
-	// content is not a stamp write: it integrates, the doc is then read-only
-	// (quarantined outbound; `document.sync()` admission refuses it) and the
-	// provider syncs. Whether the transport must also refuse it is for the
-	// maintainer — kept red rather than re-pinned (T1 limit).
-	test.fails(
-		'a doc in unversioned state refuses schema-less writes, heals on versioned state',
-		async () => {
-			const name = uniqueName('wu3-bc-rogue');
-			const docA = new Y.Doc();
-			docA.get('blocks').setAttr(
-				'rogue',
-				(() => {
-					const n = new Y.Node('block');
-					n.setAttr('id', 'rogue');
-					n.setAttr('type', 'paragraph');
-					return n;
-				})()
-			);
-			const mismatches = [];
-			const pA = new providers.IndexeddbPersistence(name, docA);
-			pA.on('schema-mismatch', (d) => mismatches.push(d));
-			await expect(pA.whenSynced).rejects.toThrow(/no meta\.v schema version/);
-			expect(pA.synced).toBe(false);
-			expect(pA.bcconnected).toBe(true);
-			expect(mismatches.some((m) => m.problem?.kind === 'unversioned')).toBe(true);
+describe('unversioned content (no stamp at all) — D-2 / R13', () => {
+	// The frame proves the generation; only foreign stamps are refused at
+	// ingress. An unversioned doc is read-only and quarantined until a
+	// versioned state makes it admissible again.
+	test('an unversioned doc accepts schema-less writes but spreads nothing; a versioned state heals it', async () => {
+		const name = uniqueName('wu3-bc-rogue');
+		const docA = new Y.Doc();
+		docA.get('blocks').setAttr(
+			'rogue',
+			(() => {
+				const n = new Y.Node('block');
+				n.setAttr('id', 'rogue');
+				n.setAttr('type', 'paragraph');
+				return n;
+			})()
+		);
+		const mismatches = [];
+		const pA = new providers.IndexeddbPersistence(name, docA);
+		pA.on('schema-mismatch', (d) => mismatches.push(d));
+		await pA.whenSynced;
+		expect(pA.bcconnected).toBe(true);
+		expect(checkSchema(docA)?.kind).toBe('unversioned');
 
-			const marker = makeUnversionedUpdate('rogue-peer');
-			bc.publish(
-				generationDbName(name),
-				encodeV14(0, (e) => sync.writeUpdate(e, marker)).slice().buffer,
-				'rogue-peer-2'
-			);
-			await nextTick();
-			expect(docA.get('blocks').getAttr('rogue-peer')).toBeUndefined();
-			expect(E.schemaVersion(docA)).toBeUndefined();
+		// A schema-less write is not a stamp: it integrates, unreported.
+		bc.publish(
+			generationDbName(name),
+			encodeV14(0, (e) => sync.writeUpdate(e, makeUnversionedUpdate('rogue-peer'))).slice().buffer,
+			'rogue-peer-2'
+		);
+		await nextTick();
+		expect(docA.get('blocks').getAttr('rogue-peer')).toBeDefined();
+		expect(mismatches.length).toBe(0);
 
-			const good = new Y.Doc();
-			E.create(good).init();
-			bc.publish(
-				generationDbName(name),
-				encodeV14(0, (e) => sync.writeUpdate(e, Y.encodeStateAsUpdate(good))).slice().buffer,
-				'v1-peer'
-			);
-			await until(() => E.schemaVersion(docA) === 1, 3000);
-			await pA.destroy();
-		}
-	);
+		// Quarantined: a local write while unversioned is never persisted.
+		docA.transact(() => docA.get('scratch').setAttr('before', 1));
+		await providers.storeState(pA);
+		const stored = () =>
+			readRows(name).then((rows) => {
+				const d = new Y.Doc();
+				for (const r of rows) Y.applyUpdate(d, new Uint8Array(r));
+				return d;
+			});
+		expect((await stored()).get('scratch').getAttr('before')).toBeUndefined();
+
+		// A versioned state heals it: writable again, and it persists again.
+		const good = new Y.Doc();
+		E.create(good).init();
+		bc.publish(
+			generationDbName(name),
+			encodeV14(0, (e) => sync.writeUpdate(e, Y.encodeStateAsUpdate(good))).slice().buffer,
+			'v1-peer'
+		);
+		await until(() => E.schemaVersion(docA) === 1, 3000);
+		expect(checkSchema(docA)).toBeNull();
+		docA.transact(() => docA.get('scratch').setAttr('after', 1));
+		await nextTick();
+		expect((await stored()).get('scratch').getAttr('after')).toBe(1);
+		await pA.destroy();
+	});
 });

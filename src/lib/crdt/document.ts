@@ -940,18 +940,15 @@ export class EdytorDocument {
 			const payload: EdytorSyncPayload = {
 				doc: this.doc,
 				awareness: this.awareness,
+				// A provider whose hydrated state fails admission (a foreign
+				// stamp got in) did decide: the document stays `pending`,
+				// read-only and quarantined until admission accepts it, and
+				// the typed refusal propagates to the reporting provider. The
+				// views are NOT handed the decision — theirs would be refused
+				// the same way.
 				synced: () => {
 					settle();
-					try {
-						this.sync(opts.value);
-					} catch (error) {
-						// Admission refused what the provider brought (a foreign
-						// stamp got in): the decision returns to the views, as
-						// on `failed`.
-						this._syncFailed = true;
-						this._emitSyncSettled();
-						throw error;
-					}
+					this.sync(opts.value);
 				},
 				failed: (_reason?: unknown) => {
 					settle(true);

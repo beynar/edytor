@@ -23,6 +23,7 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import {
 	bindEdytorDoc,
 	bindSync,
+	checkSchema,
 	createDocument,
 	SchemaMismatchError
 } from '../../../lib/crdt/index.js';
@@ -153,10 +154,10 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 		expect(Y.encodeStateAsUpdate(live)).toEqual(before);
 	});
 
-	// MAINTAINER (T1 limit): pinned by staging's registry-flip rule. Under
-	// D-2 a registry write carries no stamp, so it is not refused inbound;
-	// the doc becomes unversioned → read-only, and admission refuses it.
-	it.fails('a blocks-root write on a clean-but-unversioned doc is refused (registry flip)', () => {
+	// D-2 / R13: a registry write carries no stamp, so it is not refused at
+	// ingress; the doc becomes unversioned — read-only — and a versioned
+	// state arriving later makes it writable again.
+	it('a blocks-root write on a clean doc applies; the doc is read-only until a stamp arrives', () => {
 		const live = new Y.Doc({ guid: 'staging-bench' });
 		const rogue = new Y.Doc({ guid: 'other' });
 		rogue.get('blocks').setAttr(
@@ -168,9 +169,15 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 				return n;
 			})()
 		);
-		const res = S.applyRemote(live, Y.encodeStateAsUpdate(rogue), 'bench');
-		expect(res.applied).toBe(false);
-		expect(res.problem?.kind).toBe('unversioned');
+		expect(S.applyRemote(live, Y.encodeStateAsUpdate(rogue), 'bench')).toEqual({
+			applied: true,
+			problem: null
+		});
+		expect(checkSchema(live)?.kind).toBe('unversioned');
+		const stamped = new Y.Doc();
+		E.init(stamped);
+		expect(S.applyRemote(live, Y.encodeStateAsUpdate(stamped), 'bench').applied).toBe(true);
+		expect(checkSchema(live)).toBeNull();
 	});
 
 	it('a pending forged rewrite is refused when its own stamp write is forged', () => {

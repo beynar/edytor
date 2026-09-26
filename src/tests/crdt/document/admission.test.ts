@@ -442,10 +442,12 @@ describe('IndexedDB hydration → document admission', () => {
 		document.onSyncSettled(() => settled.push(true));
 		document.attachSync(providers.createIndexeddbSync(name));
 		await new Promise((r) => setTimeout(r, 200));
-		// Admission refused readiness; the decision went back to the views.
+		// Admission refused readiness; the document stays pending and the
+		// views are not handed a decision that would be refused the same way.
 		expect(document.readiness).toBe('pending');
-		expect(document.syncFailed).toBe(true);
-		expect(settled).toEqual([true]);
+		expect(document.syncFailed).toBe(false);
+		expect(document.syncPending).toBe(false);
+		expect(settled).toEqual([]);
 		// Read-only: no write lands, nothing is persisted or compacted.
 		expect(document.writable).toBe(false);
 		const rows = await generationRows(name);

@@ -6,7 +6,8 @@
  *   persistence load failure (including a container of another schema
  *   generation, D-2). Never on a synced provider, never twice.
  * - The hydration-refusal latch (D10) is deleted with per-row staging
- *   (L55); its unversioned-row case is a maintainer question (T1).
+ *   (L55): under D-2 an unversioned row hydrates into a read-only,
+ *   quarantined doc.
  * - `whenSynced` settles on destroy-before-open — rejects, never hangs,
  *   and `destroy()` itself still resolves (D22).
  * - A refused inbound payload (a forged stamp) produces exactly one
@@ -21,7 +22,7 @@ import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
-import { SchemaMismatchError } from '../../../lib/crdt/admission.js';
+import { checkSchema, SchemaMismatchError } from '../../../lib/crdt/admission.js';
 import * as encoding from 'lib0-v14/encoding';
 import * as bc from 'lib0-v14/broadcastchannel';
 import * as idb from 'lib0-v14/indexeddb';
@@ -71,6 +72,16 @@ const makeV99Update = () => {
 	rogue.clientID = Number.MAX_SAFE_INTEGER;
 	rogue.transact(() => rogue.get('meta').setAttr('v', 99));
 	return Y.encodeStateAsUpdate(rogue);
+};
+
+const readRows = async (name) => {
+	const db = await idb.openDB(generationDbName(name), () => {});
+	try {
+		const [updates] = idb.transact(db, ['updates'], 'readonly');
+		return await idb.getAll(updates);
+	} finally {
+		db.close();
+	}
 };
 
 /** Seed the v14 generation DB directly: generation record + update rows. */
@@ -168,14 +179,15 @@ describe('failure channel (D4) — IndexeddbPersistence', () => {
 		expect(failed.length).toBe(1);
 	});
 
-	// MAINTAINER (T1 limit): unversioned rows are not a stamp write, so under
-	// D-2 they hydrate (the doc is then read-only and quarantined, and
-	// document admission refuses it) instead of refusing hydration here.
-	test.fails('refused hydration emits failed once and latches sync suppression (D10)', async () => {
+	// D-2 / R13: the container record proves the generation, so an
+	// unversioned row (registry content, no stamp) is not refused — it
+	// hydrates, the provider syncs, and the document is read-only and
+	// quarantined until admission accepts it. Nothing fails, nothing is
+	// reported, nothing is compacted away.
+	test('an unversioned row hydrates into a read-only, quarantined doc (D-2)', async () => {
 		const name = uniqueName('fail-refused');
-		// Valid generation record + a poisoned row (registry write, no
-		// meta.v) → hydration refuses the row.
-		await seedGenerationDb(name, [makeUnversionedUpdate()]);
+		const row = makeUnversionedUpdate();
+		await seedGenerationDb(name, [row]);
 		const doc = new Y.Doc();
 		const p = new providers.IndexeddbPersistence(name, doc);
 		const failed = [];
@@ -183,28 +195,24 @@ describe('failure channel (D4) — IndexeddbPersistence', () => {
 		p.on('failed', (e) => failed.push(e));
 		p.on('schema-mismatch', (d) => mismatches.push(d));
 
-		await expect(p.whenSynced).rejects.toThrow();
-		expect(p.synced).toBe(false);
-		expect(p._hydrationRefused).not.toBeNull();
-		expect(failed.length).toBe(1);
-		expect(mismatches.length).toBe(1);
-		expect(mismatches[0].problem.kind).toBe('unversioned');
-		// The refused row never reached the live doc.
-		expect(doc.get('blocks').getAttr('rogue')).toBeUndefined();
+		await p.whenSynced;
+		expect(p.synced).toBe(true);
+		expect(failed.length).toBe(0);
+		expect(mismatches.length).toBe(0);
+		expect(checkSchema(doc)?.kind).toBe('unversioned');
+		expect(doc.get('blocks').getAttr('rogue')).toBeDefined();
 
-		// D10 — the latch is enforced INSIDE connectBc: a manual
-		// disconnect/reconnect cycle cannot launder the refusal back into
-		// a synced claim.
-		p.disconnectBc();
-		expect(p.bcconnected).toBe(false);
-		p.connectBc();
-		expect(p.bcconnected).toBe(true);
-		expect(p.synced).toBe(false);
-		await expect(p.whenSynced).rejects.toThrow();
-
-		// Destroying after refusal emits no second failure.
+		// Quarantine: a local write is not persisted, and nothing compacts.
+		doc.transact(() => doc.get('scratch').setAttr('local', 1));
+		await providers.storeState(p);
+		const stored = new Y.Doc();
+		for (const r of await readRows(name)) Y.applyUpdate(stored, new Uint8Array(r));
+		expect(stored.get('scratch').getAttr('local')).toBeUndefined();
+		expect(
+			(await readRows(name)).some((r) => new Uint8Array(r).every((b, i) => b === row[i]))
+		).toBe(true);
 		await p.destroy();
-		expect(failed.length).toBe(1);
+		expect(failed.length).toBe(0);
 	});
 
 	test('a read-only (forged-stamp) provider still receives valid peer updates', async () => {

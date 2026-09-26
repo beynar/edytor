@@ -34,7 +34,7 @@ const listShape = (edytor: Edytor) =>
 	]);
 
 describe('F-D4 — same definition, different position (dom)', () => {
-	test.fails('Enter at the end of a list item creates a list item', async () => {
+	test('Enter at the end of a list item creates a list item', async () => {
 		const { edytor, editor } = await renderDomEdytor(
 			<root>
 				<ordered-list>
@@ -64,7 +64,7 @@ describe('F-D4 — same definition, different position (dom)', () => {
 		]);
 	});
 
-	test.fails('Enter at the start of a list item creates a list item', async () => {
+	test('Enter at the start of a list item creates a list item', async () => {
 		const { edytor, editor } = await renderDomEdytor(
 			<root>
 				<ordered-list>
@@ -79,7 +79,7 @@ describe('F-D4 — same definition, different position (dom)', () => {
 		]);
 	});
 
-	test.fails('an island merged out of a list leaves its child as a list item', async () => {
+	test('an island merged out of a list leaves its child as a list item', async () => {
 		const { edytor } = await renderDomEdytor(
 			<root>
 				<ordered-list>
@@ -109,7 +109,7 @@ describe('F-S14 — dev check of declared rendersContent', () => {
 	const phantomReports = (spy: ReturnType<typeof vi.spyOn>) =>
 		spy.mock.calls.filter((args) => String(args[0]).includes('rendersContent'));
 
-	test.fails('an undeclared phantom content slot is reported', async () => {
+	test('an undeclared phantom content slot is reported', async () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		await renderDomEdytor(
 			<root>

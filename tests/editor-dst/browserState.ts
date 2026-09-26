@@ -102,12 +102,14 @@ export type DstBrowserSnapshot = {
 			renderedTextCount: number;
 		}>;
 		/**
-		 * `edytor.defaultType` — the semantic default used for island-merge
-		 * type resets — and the root-sensitive default a repopulated empty
-		 * root receives (`getDefaultBlock(root)`).
+		 * The document's adopted `defaultType`, the default a repopulated
+		 * empty root receives (`edytor.defaultChild(root)`), and the adopted
+		 * default child per parent type — island-merge resets apply it
+		 * against the children's new parent (arch-v2 D3).
 		 */
 		defaultType: string | null;
 		rootDefaultType: string | null;
+		defaultChild?: Record<string, string>;
 		texts: string[];
 		textIds: string[];
 		renderedTexts: string[];
@@ -450,8 +452,8 @@ export const captureBrowserSnapshot = (page: Page): Promise<DstBrowserSnapshot> 
 		};
 		type BrowserEdytor = {
 			value: unknown;
-			defaultType?: string;
-			getDefaultBlock?: (parent?: unknown) => string;
+			document?: { semantics: { defaultType: string; defaultChild: Map<string, string> } };
+			defaultChild?: (parent?: unknown) => string;
 			idToText: Map<string, BrowserPart>;
 			nodeToText: Map<Node, BrowserPart>;
 			root?: { children: BrowserBlock[] };
@@ -659,8 +661,9 @@ export const captureBrowserSnapshot = (page: Page): Promise<DstBrowserSnapshot> 
 				island: boolean;
 				renderedTextCount: number;
 			}>,
-			defaultType: edytor.defaultType ?? null,
-			rootDefaultType: edytor.getDefaultBlock?.(edytor.root) ?? null,
+			defaultType: edytor.document?.semantics.defaultType ?? null,
+			rootDefaultType: edytor.defaultChild?.(edytor.root) ?? null,
+			defaultChild: Object.fromEntries(edytor.document?.semantics.defaultChild ?? []),
 			texts: [] as string[],
 			textIds: [] as string[],
 			renderedTexts: [] as string[],
@@ -1666,7 +1669,7 @@ const isInsideIsland = (snapshot: DstBrowserSnapshot, blockIndex: number): boole
  * `model.nestUnder(previousSibling)` admits the move iff a previous sibling
  * exists, the source block is not island-sealed, and the target sibling is
  * neither void nor island nor inside an island
- * (edytor-doc.ts `canAcceptMove`/`insideIsland`).
+ * (edytor-doc.ts `canPlace`).
  */
 const canProvablyNest = (snapshot: DstBrowserSnapshot, blockIndex: number): boolean => {
 	const path = snapshot.model.blocks[blockIndex]?.path ?? [];
@@ -2070,7 +2073,7 @@ export const assertActionEffect = (
 		// Nest requires a non-void/non-island previous sibling and an
 		// unsealed source; unnest requires a nested unsealed block. Only
 		// assert in the provable case — the structural rules live in
-		// edytor-doc.ts (`canAcceptMove`/`insideIsland`).
+		// edytor-doc.ts (`canPlace`).
 		const anchor = actionAnchorBlockIndex(before);
 		const provable =
 			anchor >= 0 &&

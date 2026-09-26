@@ -114,16 +114,9 @@ describe('F-D4 — same definition, different position', () => {
 		expect(edytor.value.children?.[0]?.type).toBe('ordered-list');
 		expect(listShape(edytor)).toEqual(expected);
 	};
-	test.fails.each(ENTER.filter(([at]) => at !== 'middle'))(
-		'Enter at the %s of a list item creates a list item',
-		enter
-	);
-	test.each(ENTER.filter(([at]) => at === 'middle'))(
-		'Enter at the %s of a list item creates a list item',
-		enter
-	);
+	test.each(ENTER)('Enter at the %s of a list item creates a list item', enter);
 
-	test.fails('document: an island merged out of a list leaves its child as a list item', () => {
+	test('document: an island merged out of a list leaves its child as a list item', () => {
 		const document = createDocument({
 			value: { children: ISLAND_IN_LIST },
 			semantics: {
@@ -139,7 +132,7 @@ describe('F-D4 — same definition, different position', () => {
 		]);
 	});
 
-	test.fails('view: an island merged out of a list leaves its child as a list item', () => {
+	test('view: an island merged out of a list leaves its child as a list item', () => {
 		const document = createDocument({ value: { children: ISLAND_IN_LIST } });
 		const edytor = new Edytor({ document, plugins: [richTextPlugin, boxPlugin] });
 		edytor.idToBlock.get('box')!.mergeBlockBackward();
@@ -150,7 +143,7 @@ describe('F-D4 — same definition, different position', () => {
 		]);
 	});
 
-	test.fails('the default child is answered against the actual parent type', () => {
+	test('the default child is answered against the actual parent type', () => {
 		const document = createDocument({
 			semantics: { defaultChild: { 'ordered-list': 'list-item' } }
 		});
@@ -164,7 +157,7 @@ describe('F-D4 — same definition, different position', () => {
 // ── adoption (§2.2 L1, D-13) ──────────────────────────────────────────────
 
 describe('adopted capability: data, conflict-checked atomically', () => {
-	test.fails('a view adopts its kinds: roles, rendersContent and defaultChild', () => {
+	test('a view adopts its kinds: roles, rendersContent and defaultChild', () => {
 		const document = createDocument();
 		new Edytor({ document, plugins: [richTextPlugin] });
 		expect(document.defaultChild('ordered-list')).toBe('list-item');
@@ -174,7 +167,7 @@ describe('adopted capability: data, conflict-checked atomically', () => {
 		expect(document.semantics.roles.get('divider')).toMatchObject({ void: true });
 	});
 
-	test.fails('a conflicting defaultChild or rendersContent is refused, atomically', () => {
+	test('a conflicting defaultChild or rendersContent is refused, atomically', () => {
 		const document = createDocument({
 			semantics: {
 				defaultChild: { 'ordered-list': 'list-item' },
@@ -206,7 +199,7 @@ describe('adopted capability: data, conflict-checked atomically', () => {
 		});
 	});
 
-	test.fails('a second view declaring a different default child is refused', () => {
+	test('a second view declaring a different default child is refused', () => {
 		const document = createDocument();
 		new Edytor({ document, plugins: [richTextPlugin] });
 		const otherList = () => ({
@@ -218,22 +211,19 @@ describe('adopted capability: data, conflict-checked atomically', () => {
 		expect(document.defaultChild('ordered-list')).toBe('list-item');
 	});
 
-	test.fails(
-		'two extensions of one view declaring different default children is an error (D-13)',
-		() => {
-			const a = () => ({ blocks: { stack: { snippet: noopSnippet, defaultChild: 'paragraph' } } });
-			const b = () => ({ blocks: { stack: { snippet: noopSnippet, defaultChild: 'heading' } } });
-			const document = createDocument();
-			expect(() => new Edytor({ document, plugins: [a, b] })).toThrowError(SemanticConflictError);
-			expect(document.semantics.defaultChild.has('stack')).toBe(false);
-		}
-	);
+	test('two extensions of one view declaring different default children is an error (D-13)', () => {
+		const a = () => ({ blocks: { stack: { snippet: noopSnippet, defaultChild: 'paragraph' } } });
+		const b = () => ({ blocks: { stack: { snippet: noopSnippet, defaultChild: 'heading' } } });
+		const document = createDocument();
+		expect(() => new Edytor({ document, plugins: [a, b] })).toThrowError(SemanticConflictError);
+		expect(document.semantics.defaultChild.has('stack')).toBe(false);
+	});
 });
 
 // ── L13: phantom slots ────────────────────────────────────────────────────
 
 describe('firstText/lastText never answer with a slot the kind does not render', () => {
-	test.fails('a list container answers with its items; a divider has no text', () => {
+	test('a list container and a divider answer with no text; an item with its own', () => {
 		const document = createDocument({
 			value: {
 				children: [
@@ -250,11 +240,15 @@ describe('firstText/lastText never answer with a slot the kind does not render',
 			}
 		});
 		const edytor = new Edytor({ document, plugins: [richTextPlugin] });
-		const ol = edytor.idToBlock.get('ol')!;
-		expect(ol.firstText).toBe(edytor.idToBlock.get('a')!.content[0]);
-		expect(ol.lastText).toBe(edytor.idToBlock.get('b')!.content[0]);
-		expect(edytor.idToBlock.get('hr')!.firstText).toBeUndefined();
-		expect(edytor.idToBlock.get('hr')!.lastText).toBeUndefined();
+		for (const id of ['ol', 'hr']) {
+			const block = edytor.idToBlock.get(id)!;
+			expect(block.content.length).toBeGreaterThan(0); // the unrendered slot exists
+			expect(block.firstText).toBeUndefined();
+			expect(block.lastText).toBeUndefined();
+		}
+		const a = edytor.idToBlock.get('a')!;
+		expect(a.firstText).toBe(a.content[0]);
+		expect(a.lastText).toBe(a.content[0]);
 	});
 });
 
@@ -303,37 +297,34 @@ describe('F-O6 — canMoveBlocks(r) ⇔ moveBlocks(r) is not refused', () => {
 		return document;
 	};
 
-	test.fails.each([1, 2, 3])(
-		'document: canPlace answers what the move ops do (seed %i)',
-		(seed) => {
-			const r = rng(seed);
-			const ed = corpusDocument().facade;
-			let accepted = 0;
-			let refused = 0;
-			for (let step = 0; step < 300; step++) {
-				const count = 1 + Math.floor(r() * 3);
-				const ids = Array.from({ length: count }, () => pick(r, CANDIDATES));
-				const parent = r() < 0.25 ? null : pick(r, CANDIDATES);
-				const index = Math.floor(r() * 4);
-				const expected = ed.canPlace(ids, parent);
-				const kind = r();
-				let actual: boolean;
-				if (ids.length === 1 && kind < 0.3) {
-					actual = ed.moveBlock(ids[0], { parent, index });
-				} else if (ids.length === 1 && kind < 0.45 && parent !== null) {
-					actual = ed.nestBlock(ids[0], parent);
-				} else {
-					actual = ed.moveBlocks(ids, { parent, index });
-				}
-				expect({ step, ids, parent, actual }).toEqual({ step, ids, parent, actual: expected });
-				if (actual) accepted++;
-				else refused++;
+	test.each([1, 2, 3])('document: canPlace answers what the move ops do (seed %i)', (seed) => {
+		const r = rng(seed);
+		const ed = corpusDocument().facade;
+		let accepted = 0;
+		let refused = 0;
+		for (let step = 0; step < 300; step++) {
+			const count = 1 + Math.floor(r() * 3);
+			const ids = Array.from({ length: count }, () => pick(r, CANDIDATES));
+			const parent = r() < 0.25 ? null : pick(r, CANDIDATES);
+			const index = Math.floor(r() * 4);
+			const expected = ed.canPlace(ids, parent);
+			const kind = r();
+			let actual: boolean;
+			if (ids.length === 1 && kind < 0.3) {
+				actual = ed.moveBlock(ids[0], { parent, index });
+			} else if (ids.length === 1 && kind < 0.45 && parent !== null) {
+				actual = ed.nestBlock(ids[0], parent);
+			} else {
+				actual = ed.moveBlocks(ids, { parent, index });
 			}
-			// The corpus exercises both answers.
-			expect(accepted).toBeGreaterThan(20);
-			expect(refused).toBeGreaterThan(20);
+			expect({ step, ids, parent, actual }).toEqual({ step, ids, parent, actual: expected });
+			if (actual) accepted++;
+			else refused++;
 		}
-	);
+		// The corpus exercises both answers.
+		expect(accepted).toBeGreaterThan(20);
+		expect(refused).toBeGreaterThan(20);
+	});
 
 	test.each([1, 2, 3])('view: the relative-move API agrees with itself (seed %i)', (seed) => {
 		const r = rng(seed);
@@ -365,7 +356,7 @@ describe('F-O6 — canMoveBlocks(r) ⇔ moveBlocks(r) is not refused', () => {
 		expect(refused).toBeGreaterThan(10);
 	});
 
-	test.fails('document: canMerge answers what the merges do', () => {
+	test('document: canMerge answers what the merges do', () => {
 		const r = rng(7);
 		const ed = corpusDocument().facade;
 		for (let step = 0; step < 60; step++) {
@@ -381,7 +372,7 @@ describe('F-O6 — canMoveBlocks(r) ⇔ moveBlocks(r) is not refused', () => {
 		}
 	});
 
-	test.fails('the island seal and the void role are the structural rules', () => {
+	test('the island seal and the void role are the structural rules', () => {
 		const ed = corpusDocument().facade;
 		// An island interior is sealed: it cannot leave, and nothing enters it.
 		expect(ed.canPlace(['L1'], null)).toBe(false);

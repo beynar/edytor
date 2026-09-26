@@ -137,8 +137,18 @@ export class Block {
 		return this.edytor.selection.focusedBlocks.has(this) && !this.selected;
 	}
 
-	get insideIsland(): boolean {
-		return this.edytor.facade.insideIsland(this.id);
+	/** May this block move at all — R5 `canPlace` without a destination (drag handles). */
+	get movable(): boolean {
+		return this.edytor.facade.canPlace([this.id]);
+	}
+
+	/**
+	 * May text-level structural commands (convert, markdown shortcut, slash
+	 * menu) apply: the block is movable and has no role of its own.
+	 */
+	get convertible(): boolean {
+		const { facade } = this.edytor;
+		return this.movable && !facade.isVoid(this.id) && !facade.isIsland(this.id);
 	}
 
 	get firstEditableText(): Text | undefined {
@@ -321,18 +331,26 @@ export class Block {
 		return false;
 	}
 
-	get firstText(): Text {
-		if (this.content.length) {
-			return this.content.find((part) => part instanceof Text)!;
-		}
-		return this.children.at(0)?.firstText!;
+	/** Whether this kind renders its own content slot — the adopted capability (R5, O22). */
+	get rendersContent(): boolean {
+		return this.edytor.document.rendersContent(this.type);
 	}
 
-	get lastText(): Text {
-		if (this.content.length) {
-			return this.content.findLast((part) => part instanceof Text)!;
-		}
-		return this.children.at(0)!.lastText!;
+	/**
+	 * The first text of this block's own content — none for a kind that
+	 * does not render its content (a list container, a divider): its slot
+	 * is never displayed, so no caret or endpoint may land there. A block
+	 * without a content slot (the root) answers with its first child's.
+	 */
+	get firstText(): Text | undefined {
+		if (!this.content.length) return this.children.at(0)?.firstText;
+		return this.rendersContent ? this.content.find((p) => p instanceof Text) : undefined;
+	}
+
+	/** The last text of this block's own content (see {@link firstText}). */
+	get lastText(): Text | undefined {
+		if (!this.content.length) return this.children.at(-1)?.lastText;
+		return this.rendersContent ? this.content.findLast((p) => p instanceof Text) : undefined;
 	}
 
 	private batch = batch.bind(this);

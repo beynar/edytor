@@ -41,39 +41,30 @@ const getDropTarget = (target: Block, position: BlockMovePosition) => {
 		: null;
 };
 
-const canMoveBlockTo = (source: Block, target: Block, position: BlockMovePosition) => {
-	if (source.isRoot || !source.parent || source.insideIsland) {
-		return false;
-	}
-	if (target.isRoot || source === target || target.isChildOf(source) || target.insideIsland) {
-		return false;
-	}
-	const destinationParent = position === 'inside' ? target : target.parent;
-	if (!destinationParent) {
-		return false;
-	}
-	return (
-		destinationParent.isRoot ||
-		(!destinationParent.definition.void &&
-			!destinationParent.definition.island &&
-			!destinationParent.insideIsland)
-	);
-};
-
-/** Structural eligibility for the relative move; plugins can still prevent the command. */
+/**
+ * Whether the relative move is allowed: a well-formed request whose target
+ * is not one of the moved blocks, then the document's one structural answer
+ * (`canPlace`, R5) — the same predicate the move op applies at execution.
+ * Plugins can still prevent the command.
+ */
 export const canMoveBlocks = (edytor: Edytor, { blocks, target, position }: BlockMoveRequest) => {
 	if (
 		edytor.readonly ||
 		(position !== 'before' && position !== 'after' && position !== 'inside') ||
-		!blocks.length ||
-		(blocks.length > 1 && new Set(blocks).size !== blocks.length) ||
 		target.edytor !== edytor ||
-		!target.isInTree
+		!target.isInTree ||
+		target.isRoot ||
+		blocks.some((block) => block.edytor !== edytor || block === target)
 	) {
 		return false;
 	}
-	return blocks.every(
-		(block) => block.edytor === edytor && block.isInTree && canMoveBlockTo(block, target, position)
+	const parent = position === 'inside' ? target : target.parent;
+	if (!parent) {
+		return false;
+	}
+	return edytor.facade.canPlace(
+		blocks.map((block) => block.id),
+		parent.isRoot ? null : parent.id
 	);
 };
 

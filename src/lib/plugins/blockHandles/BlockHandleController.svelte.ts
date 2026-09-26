@@ -76,7 +76,7 @@ export class BlockHandleController {
 	}
 
 	selectBlock(block: Block) {
-		if (this.edytor.readonly || !this.canUseHandle(block)) {
+		if (this.edytor.readonly || !block.movable) {
 			return;
 		}
 
@@ -84,7 +84,7 @@ export class BlockHandleController {
 	}
 
 	activateBlock(block: Block, anchor: HTMLElement) {
-		if (this.edytor.readonly || !this.canUseHandle(block)) {
+		if (this.edytor.readonly || !block.movable) {
 			return;
 		}
 		this.selectBlock(block);
@@ -97,7 +97,7 @@ export class BlockHandleController {
 		}
 		return draggable({
 			element,
-			canDrag: () => !this.edytor.readonly && this.canUseHandle(block),
+			canDrag: () => !this.edytor.readonly && block.movable,
 			getInitialData: () => ({ owner: this.owner, blockId: block.id }),
 			getInitialDataForExternal: () => ({ [blockDragMimeType]: block.id }),
 			onDragStart: () => {
@@ -207,10 +207,6 @@ export class BlockHandleController {
 			event.stopPropagation();
 			block.unNestBlock();
 		}
-	}
-
-	private canUseHandle(block: Block) {
-		return block.isInTree && !block.isRoot && Boolean(block.parent) && !block.insideIsland;
 	}
 
 	private moveAndSelect(request: BlockMoveRequest) {

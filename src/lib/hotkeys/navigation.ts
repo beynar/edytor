@@ -23,8 +23,8 @@ export const moveToCurrentBlockBoundary = (
 
 	const boundaryText =
 		boundary === 'start'
-			? (startBlock.firstEditableText ?? startBlock.firstText)
-			: (startBlock.lastEditableText ?? startBlock.lastText);
+			? (startBlock.firstEditableText ?? startBlock.firstText ?? startText)
+			: (startBlock.lastEditableText ?? startBlock.lastText ?? startText);
 	const boundaryOffset = boundary === 'start' ? 0 : boundaryText.length;
 
 	if (!extendSelection) {

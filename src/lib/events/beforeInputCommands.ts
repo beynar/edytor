@@ -385,7 +385,7 @@ const insertLineBreak = async (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
 		sourceParent &&
 		sourceParent.children.length > sourceSiblingCount &&
 		normalizedNextBlock?.type === sourceBlock.type
-			? normalizedNextBlock.firstText
+			? normalizedNextBlock.firstText!
 			: target.text;
 	const selectionOffset = selectionText === target.text ? target.offset + 1 : 0;
 	setSuppressedInputRepairSelectionTarget(edytor, selectionText, selectionOffset);
@@ -513,13 +513,14 @@ const insertParagraph = async (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
 		return;
 	}
 
-	const defaultBlock = edytor.getDefaultBlock();
 	const { startText, isCollapsed, isAtEndOfBlock, isAtStartOfBlock, yStart } =
 		edytor.selection.state;
 
-	if (!isCollapsed || !startText) {
+	if (!isCollapsed || !startText?.parent.parent) {
 		return;
 	}
+	// The new sibling's actual parent decides its type (G5, O9).
+	const defaultBlock = edytor.defaultChild(startText.parent.parent);
 
 	try {
 		if (isAtEndOfBlock) {
@@ -551,13 +552,10 @@ const insertParagraph = async (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
 					type: defaultBlock
 				}
 			});
-			if (newBlock) {
-				setSuppressedInputRepairSelectionTarget(
-					edytor,
-					newBlock.firstText,
-					newBlock.firstText.length
-				);
-				await edytor.selection.setAtTextOffset(newBlock.firstText, newBlock.firstText.length);
+			const text = newBlock?.firstText;
+			if (text) {
+				setSuppressedInputRepairSelectionTarget(edytor, text, text.length);
+				await edytor.selection.setAtTextOffset(text, text.length);
 			}
 			return;
 		}
@@ -577,9 +575,10 @@ const insertParagraph = async (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
 			index: yStart,
 			text: startText
 		});
-		if (newBlock) {
-			setSuppressedInputRepairSelectionTarget(edytor, newBlock.firstText, 0);
-			await edytor.selection.setAtTextOffset(newBlock.firstText, 0);
+		const text = newBlock?.firstText;
+		if (text) {
+			setSuppressedInputRepairSelectionTarget(edytor, text, 0);
+			await edytor.selection.setAtTextOffset(text, 0);
 		}
 	} finally {
 		edytor.undoManager.stopCapturing();

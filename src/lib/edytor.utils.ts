@@ -89,7 +89,7 @@ export function deleteContentWithinSelection(
 		}
 
 		endBlock.deleteContentAtRange({
-			start: [endBlock.firstText.index, 0],
+			start: [endBlock.firstText!.index, 0],
 			end: [endText.index, yEnd]
 		});
 		destinationParent.insertChildren(destinationIndex, survivingBlocks);
@@ -106,18 +106,18 @@ export function deleteContentWithinSelection(
 			if (!insideDoomedSubtree) block.removeBlock();
 		}
 		destinationParent.normalizeChildren();
-		return [endBlock.firstText, 0] as const;
+		return [endBlock.firstText!, 0] as const;
 	}
 	if (deletesStartBlock && keepsPartialEndBlock && !deletedEndAncestor && endBlock && endText) {
 		endBlock.deleteContentAtRange({
-			start: [endBlock.firstText.index, 0],
+			start: [endBlock.firstText!.index, 0],
 			end: [endText.index, yEnd]
 		});
 		for (const block of blocksToDelete.toReversed()) {
 			block.removeBlock();
 		}
 		endBlock.parent?.normalizeChildren();
-		return [endBlock.firstText, 0] as const;
+		return [endBlock.firstText!, 0] as const;
 	}
 	const firstDeletedBlock = blocksToDelete[0];
 	const lastDeletedBlock = blocksToDelete.at(-1);
@@ -142,7 +142,7 @@ export function deleteContentWithinSelection(
 		startText && startBlock
 			? {
 					start: [startText.index, yStart] as [number, number],
-					end: [startBlock.lastText.index, startBlock.lastText.length] as [number, number]
+					end: [startBlock.lastText!.index, startBlock.lastText!.length] as [number, number]
 				}
 			: null;
 

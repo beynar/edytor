@@ -123,7 +123,7 @@ const replaceSelectedInlineBlockWithText = (edytor: Edytor, value: string) => {
 			? previousPart
 			: nextPart instanceof Text
 				? nextPart
-				: parent.firstText;
+				: parent.firstText!;
 	const insertionOffset = previousPart instanceof Text ? previousPart.length : 0;
 
 	edytor.undoManager.stopCapturing();

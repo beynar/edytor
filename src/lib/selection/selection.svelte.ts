@@ -311,6 +311,15 @@ const restoreBackwardDomRange = (
 	return false;
 };
 
+/**
+ * A block's text endpoint for block-level selection state. A kind that
+ * displays no text (a divider) has none; its own content slot stands in as
+ * the model endpoint of the block selection (selection state holds texts
+ * until block sets are stored by id).
+ */
+const edgeText = (block: Block, edge: 'first' | 'last'): Text =>
+	(edge === 'first' ? block.firstText : block.lastText) ?? (block.content[0] as Text);
+
 export class EdytorSelection {
 	edytor: Edytor;
 	focusedBlocks = new SvelteSet<Block>();
@@ -2706,8 +2715,8 @@ export class EdytorSelection {
 			return;
 		}
 
-		const startText = firstBlock.firstText;
-		const endText = lastBlock.lastText;
+		const startText = edgeText(firstBlock, 'first');
+		const endText = edgeText(lastBlock, 'last');
 		this.state = {
 			...this.buildSelectionState({
 				startText,
@@ -2726,8 +2735,8 @@ export class EdytorSelection {
 	};
 
 	private setStateFromBlockContentRange = (block: Block) => {
-		const startText = block.firstText;
-		const endText = block.lastText;
+		const startText = edgeText(block, 'first');
+		const endText = edgeText(block, 'last');
 		const state = this.buildSelectionState({
 			startText,
 			yStart: 0,
@@ -3679,10 +3688,12 @@ export class EdytorSelection {
 			startOffset = 0;
 		}
 		if (!endOffset) {
-			endOffset = block.lastText.length;
+			endOffset = edgeText(block, 'last').length;
 		}
 		const syncModelState =
-			options.syncModelState !== false && startOffset === 0 && endOffset === block.lastText.length;
+			options.syncModelState !== false &&
+			startOffset === 0 &&
+			endOffset === edgeText(block, 'last').length;
 		// Same staleness contract as `setAtRange`, captured BEFORE the
 		// sync-model write below so a mid-await derive to a position that
 		// matches neither the write target nor the call-time state aborts
@@ -3705,9 +3716,9 @@ export class EdytorSelection {
 				this.setStateFromBlockContentRange(targetBlock);
 			} else {
 				this.setRangeStateAtTextOffsets(
-					targetBlock.firstText,
+					edgeText(targetBlock, 'first'),
 					resolvedStartOffset,
-					targetBlock.lastText,
+					edgeText(targetBlock, 'last'),
 					resolvedEndOffset
 				);
 			}
@@ -3723,8 +3734,8 @@ export class EdytorSelection {
 		const blockStale = () => {
 			if (this.edytor.gestureSerial !== gestureSerialAtCall) return true;
 			const s = this.state;
-			const startText = block.firstText;
-			const endText = block.lastText;
+			const startText = edgeText(block, 'first');
+			const endText = edgeText(block, 'last');
 			return (
 				s !== stateAtCall &&
 				!this.stateMatchesSelectionTarget(s, {
@@ -3748,8 +3759,8 @@ export class EdytorSelection {
 			let endNode: HTMLElement;
 			try {
 				[startNode, endNode] = await Promise.all([
-					this.edytor.getTextNode(block.firstText),
-					this.edytor.getTextNode(block.lastText)
+					this.edytor.getTextNode(edgeText(block, 'first')),
+					this.edytor.getTextNode(edgeText(block, 'last'))
 				]);
 			} catch {
 				// Unresolvable endpoint — mirror the model write like every
@@ -3761,8 +3772,8 @@ export class EdytorSelection {
 				}
 				return;
 			}
-			const startText = block.firstText;
-			const endText = block.lastText;
+			const startText = edgeText(block, 'first');
+			const endText = edgeText(block, 'last');
 			const [startTextNode, startNodeOffset] = this.findTextNode(startNode, startOffset);
 			const [endTextNode, endNodeOffset] = this.findTextNode(endNode, endOffset);
 

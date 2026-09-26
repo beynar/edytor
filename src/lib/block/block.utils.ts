@@ -12,9 +12,8 @@
  * `block.model.*` (the facade through `DocBlock`) and treats `false`/`null`
  * as "refused" — no view-side re-checks of the rules the document already
  * enforces (island sealing, void/island destinations, own-subtree moves,
- * merges across island boundaries; see `edytor-doc.ts` `canAcceptMove`,
- * `insideIsland`, `mergeUnnesting` and `placement/model.ts`
- * `isSelfOrDescendant`). Removing a view-side semantic guard must never
+ * merges across island boundaries; see `edytor-doc.ts` `canPlace` and
+ * `canMerge`, R5). Removing a view-side semantic guard must never
  * change document behavior — if a rule matters here it belongs in the
  * facade, not in this file.
  *
@@ -202,7 +201,7 @@ export function addChildBlock(
 		parent: this,
 		edytor: this.edytor,
 		block: block || {
-			type: this.edytor.getDefaultBlock()
+			type: this.edytor.defaultChild(this)
 		}
 	});
 	this.insertChildren(index, [newBlock]);
@@ -267,8 +266,8 @@ export function splitBlock(
 	}
 	const newId = id('b');
 	const offset = this.partOffsetOf(text) + index;
-	// Baseline semantics: the sibling takes the default block type and no data.
-	const tail = { type: this.edytor.getDefaultBlock(this.parent), data: {} };
+	// G5: the sibling takes its parent's default child type and no data.
+	const tail = { type: this.edytor.defaultChild(this.parent), data: {} };
 	if (!model.split(offset, newId, tail)) {
 		return null;
 	}
@@ -422,7 +421,7 @@ export function unNestBlock(this: Block): Block | null {
 export function nestBlock(this: Block): Block | null {
 	// Admission resolves the nest target — the previous sibling — and the
 	// facade owns permission: `nestBlock` refuses void/island/inside-island
-	// targets and island-sealed sources (`canAcceptMove`/`insideIsland`).
+	// targets and island-sealed sources (`canPlace`).
 	const previousBlock = this.previousBlock;
 	const model = this.model;
 	if (!previousBlock || !this.parent || !model || previousBlock._blockId == null) {
@@ -630,7 +629,7 @@ export function normalizeChildren(this: Block): void {
 		const newBlock = new Block({
 			parent: this,
 			edytor: this.edytor,
-			block: { type: this.edytor.getDefaultBlock(this), children: [] }
+			block: { type: this.edytor.defaultChild(this), children: [] }
 		});
 		this.insertChildren(0, [newBlock]);
 		return this.normalizeChildren();

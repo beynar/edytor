@@ -57,12 +57,12 @@ const extractBlockRange = (edytor: Edytor) => {
 				block,
 				startText,
 				yStart,
-				block.lastText,
-				block.lastText.length
+				block.lastText!,
+				block.lastText!.length
 			);
 		}
 		if (block === endBlock) {
-			value.content = extractContentRange(block, block.firstText, 0, endText, yEnd);
+			value.content = extractContentRange(block, block.firstText!, 0, endText, yEnd);
 		}
 		if (startBlock === endBlock) {
 			value.content = extractContentRange(block, startText, yStart, endText, yEnd);

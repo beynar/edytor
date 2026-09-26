@@ -21,6 +21,7 @@ import { Y } from '$lib/crdt/engine.js';
 import {
 	attachDocument,
 	bindCrdt,
+	SemanticConflictError,
 	type Awareness,
 	type Crdt,
 	type DocChange,
@@ -186,7 +187,6 @@ export class Edytor {
 	synced = $state(false);
 	edytor = this;
 	selection: EdytorSelection;
-	defaultType = 'paragraph';
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
 	placeholder?: string | Snippet<[{ block: Block }]>;
@@ -522,16 +522,10 @@ export class Edytor {
 				);
 			}
 			this.document = document;
-			// The document is the semantic authority — an injected document's
-			// defaultType is inherited (a view cannot reshape it).
-			this.defaultType = document.semantics.defaultType;
 		} else {
 			// Legacy path — the view internally owns a document composed
 			// around the injected (or a fresh) doc/awareness.
-			this.document = attachDocument(doc ?? new Y.Doc(), {
-				awareness,
-				semantics: { defaultType: this.defaultType }
-			});
+			this.document = attachDocument(doc ?? new Y.Doc(), { awareness });
 			this.ownsDocument = true;
 		}
 		this.readonly = readonly || false;
@@ -543,9 +537,18 @@ export class Edytor {
 		// the document's attach reference itself. A borrowed/injected
 		// document is never destroyed by a failed view.
 		try {
-			// Initialize plugins
+			// Initialize plugins. Default children are merged across extensions
+			// before definition precedence applies: two extensions declaring
+			// different default children for one parent type is an error (D-13).
+			const defaultChild: Record<string, string> = {};
 			this.plugins = (plugins || []).map((plugin) => {
 				const initializedPlugin = plugin(this);
+				for (const [type, definition] of Object.entries(initializedPlugin.blocks ?? {})) {
+					const child = typeof definition === 'object' ? definition.defaultChild : undefined;
+					if (child !== undefined && (defaultChild[type] ??= child) !== child) {
+						throw new SemanticConflictError(`defaultChild "${type}"`, defaultChild[type], child);
+					}
+				}
 
 				initializedPlugin.marks &&
 					Object.entries(initializedPlugin.marks).forEach(([key, snippet]) => {
@@ -614,20 +617,21 @@ export class Edytor {
 			this.placeholder =
 				placeholder || this.plugins.find((plugin) => plugin.placeholder)?.placeholder;
 
-			// Contribute this view's plugin-implied structural roles to the
-			// document — document-level semantics outlive any single view. The
-			// first declaration for a type is adopted; a conflicting one is an
-			// error (views cannot silently impose incompatible structural rules
-			// on a shared document). Atomic: a conflict validates before ANY
-			// role is applied, so a failed view cannot half-seed semantics.
+			// Contribute this view's capability (R5) to the document — roles,
+			// `rendersContent` and default children outlive any single view.
+			// The first declaration for a type is adopted; a conflicting one is
+			// an error (views cannot silently impose incompatible structural
+			// rules on a shared document). Atomic: a conflict validates before
+			// ANYTHING is applied, so a failed view cannot half-seed semantics.
+			const blocks = Array.from(this.blocks);
 			this.document.adoptSemantics({
 				roles: Object.fromEntries(
-					Array.from(this.blocks, ([type, definition]) => [
-						type,
-						{ void: definition.void, island: definition.island }
-					])
+					blocks.map(([type, { void: v, island }]) => [type, { void: v, island }])
 				),
-				defaultType: this.defaultType
+				rendersContent: Object.fromEntries(
+					blocks.map(([type, definition]) => [type, definition.rendersContent !== false])
+				),
+				defaultChild
 			});
 
 			// Enroll this view's local-edit origin in the document's history —
@@ -758,28 +762,9 @@ export class Edytor {
 		return true;
 	};
 
-	getDefaultBlock = (
-		parent: Block | Edytor | undefined = this.selection.state.startText?.parent
-	) => {
-		// The document is the semantic authority — `defaultType` mirrors
-		// `document.semantics.defaultType` (adopted in the constructor) and
-		// is the fallback when no parent-sensitive plugin override applies.
-		if (!parent || parent instanceof Edytor) {
-			return this.defaultType;
-		}
-		for (const plugin of this.plugins) {
-			if (plugin.defaultBlock) {
-				const defaultBlock =
-					typeof plugin.defaultBlock === 'function'
-						? plugin.defaultBlock(parent)
-						: plugin.defaultBlock;
-				if (defaultBlock) {
-					return defaultBlock;
-				}
-			}
-		}
-		return this.defaultType;
-	};
+	/** The adopted default type for a new child of `parent` — its actual parent (R5, O9). */
+	defaultChild = (parent: Block): string =>
+		this.document.defaultChild(parent.isRoot ? null : parent.type);
 
 	/**
 	 * Readiness binding for an injected PENDING document — installed in the
@@ -1889,7 +1874,7 @@ export class Edytor {
 				edytor: this,
 				parent: this.root,
 				block: {
-					type: this.getDefaultBlock(this.root)
+					type: this.defaultChild(root)
 				}
 			});
 			root.insertChildren(root.children.length, [newBlock]);

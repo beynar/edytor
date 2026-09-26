@@ -71,10 +71,11 @@
  *   a block inside an island (`insideIsland`) cannot be moved, nested,
  *   unnested, or merged across the island boundary. Merges INSIDE one
  *   island are allowed; merging an island child into the island itself is
- *   allowed. Moving INTO an island subtree is rejected.
+ *   allowed. Moving INTO an island subtree is rejected. `canPlace` and
+ *   `canMerge` are the one answer, asked in advance or by the ops (R5).
  * - Island merge: when an island block itself is merged (backward or
  *   forward), its children are unnested to the vacated sibling slot and
- *   reset to the default block type — the documented baseline behavior.
+ *   reset to the default child of that slot's parent (`defaultChild`).
  * - Baseline merges NEVER adopt the merged block's children — they unnest
  *   to the vacated slot. The facade exposes both: `mergeBlocks` is the
  *   engine primitive (children adopt into the target — TX09c contract),
@@ -445,10 +446,16 @@ export type EdytorDocConfig = {
 	 */
 	roleOf?: (type: string) => BlockRole | undefined;
 	/**
-	 * Default block type — used for the bootstrap block and for island-merge
-	 * child reset. Defaults to `'paragraph'`.
+	 * Default block type — the bootstrap block and the default child of the
+	 * root and of any parent type `defaultChildOf` does not answer.
+	 * Defaults to `'paragraph'`.
 	 */
 	defaultType?: string;
+	/**
+	 * The adopted default child type per parent type (R5, O9) — the island
+	 * merge-out reset applies it against the children's actual new parent.
+	 */
+	defaultChildOf?: (parentType: string) => string | undefined;
 	/**
 	 * U1 — the local actor getter for compact per-block attribution
 	 * (`attribution/block.ts`). Read lazily per op so the document can
@@ -773,6 +780,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		assertUsableDoc(doc);
 		const roleOf = config.roleOf ?? (() => undefined);
 		const defaultType = config.defaultType ?? 'paragraph';
+		const defaultChildOf = config.defaultChildOf ?? (() => undefined);
 		const runsView: RunView = R.attach(doc);
 
 		// ── model-state version + read invalidation (WU2) ───────────────
@@ -1076,16 +1084,43 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/** True iff `id` sits strictly inside an island subtree. */
 		const insideIsland = (id: BlockId, v?: View): boolean => islandOf(id, v) !== null;
 
+		// ── structural capability (R5, O8): one answer in advance and at execution ──
+
 		/**
-		 * Can `parent` accept children as a MOVE/NEST destination? Baseline
-		 * `moveBlock` rejects void / island / insideIsland targets — the
-		 * island subtree is sealed from outside structure. (`insertBlock`
-		 * is looser — baseline `addChildBlock` builds island interiors.)
+		 * May `ids` be placed under `parent` (`null` = the root)? Every id is
+		 * live, distinct and outside any island interior (island subtrees are
+		 * sealed); the destination is live, neither void nor an island nor
+		 * inside one, and not inside any moved block's own subtree. Without a
+		 * `parent`: may these blocks move at all (the drag affordance). The
+		 * move ops refuse exactly when this answers `false`. (`insertBlock` is
+		 * looser — island interiors are built by inserting into them.)
 		 */
-		const canAcceptMove = (parent: BlockId | null): boolean => {
-			if (parent === null) return true;
+		const canPlace = (ids: readonly BlockId[], parent?: BlockId | null): boolean => {
 			const v = view();
-			return !isVoid(parent) && !isIsland(parent) && !insideIsland(parent, v);
+			if (ids.length === 0 || new Set(ids).size !== ids.length) return false;
+			if (ids.some((id) => !isLiveIn(v, id) || insideIsland(id, v))) return false;
+			if (parent === undefined || parent === null) return true;
+			if (!isLiveIn(v, parent) || isVoid(parent)) return false;
+			return ![parent, ...ancestorsOf(parent, v)].some((a) => isIsland(a) || ids.includes(a));
+		};
+
+		/**
+		 * May `fromId`'s content merge into `intoId`? Both live and distinct,
+		 * neither void, and the merge stays on one side of an island boundary
+		 * (a block may merge into its own island root — that stays inside).
+		 */
+		const canMerge = (fromId: BlockId, intoId: BlockId): boolean => {
+			const v = view();
+			if (fromId === intoId || !isLiveIn(v, fromId) || !isLiveIn(v, intoId)) return false;
+			if (isVoid(fromId) || isVoid(intoId)) return false;
+			const islandFrom = islandOf(fromId, v);
+			return islandFrom === islandOf(intoId, v) || intoId === islandFrom;
+		};
+
+		/** The adopted default child type under `parent` (`null` = the root). */
+		const defaultChild = (parent: BlockId | null): string => {
+			const t = parent === null ? undefined : blockTypeOf(parent);
+			return (t !== undefined ? defaultChildOf(t) : undefined) ?? defaultType;
 		};
 
 		// ── document order (O7): one pre-order over visible blocks ────────
@@ -1578,35 +1613,21 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				})
 			);
 
-		/** Relocate `id` — identity preserved; island/void rules enforced. */
+		/** Relocate `id` — identity preserved; refused exactly when `canPlace` refuses. */
 		const moveBlock = (id: BlockId, dest: Destination): boolean =>
-			write(() => {
-				if (insideIsland(id)) return false; // island subtrees are sealed
-				if (!canAcceptMove(dest.parent)) return false;
-				return M.moveBlock(doc, id, dest);
-			});
+			write(() => canPlace([id], dest.parent) && M.moveBlock(doc, id, dest));
 
 		/**
 		 * Grouped move — ONE transaction (one undo step), per-member conflict
-		 * resolution, all-or-nothing locally. Same island/void rules as
-		 * `moveBlock`, evaluated for every member before any write.
+		 * resolution, all-or-nothing locally; refused exactly when `canPlace`
+		 * refuses the group.
 		 */
 		const moveBlocks = (ids: BlockId[], dest: Destination): boolean =>
-			write(() => {
-				for (const id of ids) {
-					if (insideIsland(id)) return false;
-				}
-				if (!canAcceptMove(dest.parent)) return false;
-				return M.moveBlocks(doc, ids, dest);
-			});
+			write(() => canPlace(ids, dest.parent) && M.moveBlocks(doc, ids, dest));
 
 		/** Move `id` to the last position under `newParentId`. */
 		const nestBlock = (id: BlockId, newParentId: BlockId): boolean =>
-			write(() => {
-				if (insideIsland(id)) return false;
-				if (!canAcceptMove(newParentId)) return false;
-				return M.nestBlock(doc, id, newParentId);
-			});
+			write(() => canPlace([id], newParentId) && M.nestBlock(doc, id, newParentId));
 
 		/**
 		 * Move `id` beside its parent (index = parent index + 1). Refused for
@@ -1616,12 +1637,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 */
 		const unNestBlock = (id: BlockId): boolean =>
 			write(() => {
-				if (insideIsland(id)) return false;
 				const pos = M.positionOf(doc, id);
 				if (!pos || pos.parent === null) return false;
 				const ppos = M.positionOf(doc, pos.parent);
-				if (!ppos) return false;
-				if (!canAcceptMove(ppos.parent)) return false;
+				if (!ppos || !canPlace([id], ppos.parent)) return false;
 				return M.unNestBlock(doc, id);
 			});
 
@@ -1660,18 +1679,12 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/**
 		 * Engine merge primitive: `from`'s content is claimed by `into`, its
 		 * children ADOPTED into `into`'s child list, and `from` is hidden via
-		 * the claim (undo restores it). Role rules: `void` blocks cannot
-		 * merge either direction; a merge may not cross an island boundary
-		 * (except a child merging into its own island — that stays inside).
+		 * the claim (undo restores it). Role rules are `canMerge`'s.
 		 */
 		const mergeBlocks = (fromId: BlockId, intoId: BlockId): boolean =>
 			write(() =>
 				doc.transact(() => {
-					if (fromId === intoId) return false;
-					if (isVoid(fromId) || isVoid(intoId)) return false;
-					const islandFrom = islandOf(fromId);
-					const islandInto = islandOf(intoId);
-					if (islandFrom !== islandInto && intoId !== islandFrom) return false;
+					if (!canMerge(fromId, intoId)) return false;
 					const lin = lineagePending(intoId);
 					// `from` is destroyed by the merge like a delete — force-
 					// capture its final state onto its own (soon-orphaned) ring.
@@ -1691,20 +1704,18 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * Baseline-shaped merge (both `mergeBlockBackward` and
 		 * `mergeBlockForward` share this form): `from`'s children are unnested
 		 * to `from`'s vacated sibling slot — NOT adopted into `into` — and,
-		 * when `from` is an island, reset to the default type; then `from`'s
-		 * content claims into `into`. One transaction.
+		 * when `from` is an island, reset to the default child of that slot's
+		 * parent; then `from`'s content claims into `into`. One transaction.
 		 */
 		const mergeUnnesting = (fromId: BlockId, intoId: BlockId): boolean =>
 			write(() => {
-				if (fromId === intoId) return false;
-				if (isVoid(fromId) || isVoid(intoId)) return false;
-				const islandFrom = islandOf(fromId);
-				if (islandFrom !== islandOf(intoId) && intoId !== islandFrom) return false;
+				if (!canMerge(fromId, intoId)) return false;
 				const pos = M.positionOf(doc, fromId);
 				if (!pos) return false;
 				return doc.transact(() => {
 					const kids = childrenIds(fromId);
 					const reset = isIsland(fromId);
+					const resetType = sanitizeWireString(defaultChild(pos.parent));
 					const resetKids: BlockId[] = [];
 					const kidPend = new Map<BlockId, PendingLineage | undefined>();
 					for (let i = 0; i < kids.length; i++) {
@@ -1713,15 +1724,14 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 							write(() => {
 								const kn = M.blockNodeOf(doc, kids[i]);
 								if (kn !== null) {
-									const nt = sanitizeWireString(defaultType);
 									// U1: the reset is a real type change → the
 									// merger touched that child. A same-value reset
 									// is a semantic no-op — not stamped.
-									if (kn.getAttr(SCHEMA.blockAttrs.type) !== nt) {
+									if (kn.getAttr(SCHEMA.blockAttrs.type) !== resetType) {
 										resetKids.push(kids[i]);
 										kidPend.set(kids[i], lineagePending(kids[i]));
 									}
-									kn.setAttr(SCHEMA.blockAttrs.type, nt);
+									kn.setAttr(SCHEMA.blockAttrs.type, resetType);
 								}
 							});
 					}
@@ -2594,6 +2604,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			isIsland,
 			islandOf,
 			insideIsland,
+			// structural capability (R5)
+			canPlace,
+			canMerge,
+			defaultChild,
 			// maintained runs (U05 surface, bound to this doc)
 			runs: runsView.runs,
 			snapshot: runsView.snapshot,

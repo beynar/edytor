@@ -630,8 +630,10 @@ export const fixtures = defineFixtures([
 							data: {},
 							content: [{ text: 'const' }]
 						},
+						// D-13 / G5: the tail takes the code kind's declared default
+						// child (was 'paragraph': richText's first-truthy hook won).
 						{
-							type: 'paragraph',
+							type: 'codeLine',
 							data: {},
 							content: [{ text: ' a = 1;' }]
 						}

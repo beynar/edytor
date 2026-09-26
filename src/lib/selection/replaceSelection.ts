@@ -152,7 +152,7 @@ export const removeSelectedBlocksForReplacement = (
 
 export const replaceSelectedBlocksWithEmptyBlockTargetSync = (
 	edytor: Edytor,
-	blockType = edytor.getDefaultBlock()
+	blockType?: string
 ): SelectionInsertionTarget | null => {
 	const removed = removeSelectedBlocksForReplacement(edytor);
 	if (!removed) {
@@ -160,7 +160,7 @@ export const replaceSelectedBlocksWithEmptyBlockTargetSync = (
 	}
 
 	const [insertedBlock] = removed.parent.addChildBlocks({
-		blocks: [{ type: blockType }],
+		blocks: [{ type: blockType ?? edytor.defaultChild(removed.parent) }],
 		index: removed.index
 	});
 	const text = insertedBlock?.firstText;
@@ -173,7 +173,7 @@ export const replaceSelectedBlocksWithEmptyBlockTargetSync = (
 
 export const replaceSelectedBlocksWithEmptyBlockTarget = async (
 	edytor: Edytor,
-	blockType = edytor.getDefaultBlock()
+	blockType?: string
 ): Promise<SelectionInsertionTarget | null> => {
 	const target = replaceSelectedBlocksWithEmptyBlockTargetSync(edytor, blockType);
 	if (target) {

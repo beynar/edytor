@@ -86,12 +86,15 @@
  *
  * ── Semantic configuration ─────────────────────────────────────────────
  *
- * Structural roles (`void`/`island`) and `defaultType` are document-level
- * state — they must outlive any single view. Views contribute the roles
- * implied by their plugin block definitions via {@link adoptSemantics}:
- * the first declaration for a type is adopted, a later CONFLICTING one is
- * an error (views cannot silently impose incompatible structural rules on
- * a shared document). Snippets and DOM hooks stay view-side.
+ * The adopted capability (rule R5) is document-level state that outlives
+ * any single view: structural roles (`void`/`island`), whether a kind
+ * renders its own content (`rendersContent`), the default child type per
+ * parent type (`defaultChild`) and `defaultType`. Views contribute what
+ * their plugin block definitions declare via {@link adoptSemantics}: the
+ * first declaration for a type is adopted, a later CONFLICTING one is an
+ * error, and a refused contribution adopts nothing (views cannot silently
+ * impose incompatible structural rules on a shared document). Snippets
+ * and DOM hooks stay view-side.
  *
  * ── History ────────────────────────────────────────────────────────────
  *
@@ -172,14 +175,18 @@ export type DocumentActor = {
 
 /**
  * Document-level semantic configuration — the structural subset of what
- * plugin `BlockDefinition`s carry (`void`/`island` roles + the default
- * block type). Snippets/DOM hooks are deliberately NOT part of this: they
- * are view-side rendering policy.
+ * plugin `BlockDefinition`s carry (roles, `rendersContent`, `defaultChild`)
+ * plus the default block type. Snippets/DOM hooks are deliberately NOT
+ * part of this: they are view-side rendering policy.
  */
 export type DocumentSemanticsConfig = {
 	/** Structural role per block type (`{void?, island?}` — absent flags mean false). */
 	roles?: Record<string, BlockRole>;
-	/** Default block type — bootstrap block + island-merge child reset. */
+	/** Whether a kind renders its own content slot (undeclared kinds do). */
+	rendersContent?: Record<string, boolean>;
+	/** Default child type per parent type (undeclared parents take `defaultType`). */
+	defaultChild?: Record<string, string>;
+	/** Default block type — the root's default child and the bootstrap block. */
 	defaultType?: string;
 };
 
@@ -423,7 +430,12 @@ export class EdytorDocument {
 	 * callers/views).
 	 */
 	private _refs = 1;
-	private readonly _roles = new Map<string, NormalizedRole>();
+	/** The adopted capability tables (R5): per kind, the first declaration. */
+	private readonly _capability = {
+		roles: new Map<string, NormalizedRole>(),
+		rendersContent: new Map<string, boolean>(),
+		defaultChild: new Map<string, string>()
+	};
 	private _defaultType: string;
 	private readonly _historyOptions: { captureTimeout?: number } | undefined;
 	private readonly _lineageDepth: number | undefined;
@@ -447,8 +459,9 @@ export class EdytorDocument {
 		this._ownsDoc = init.ownsDoc;
 		this._defaultType = init.semantics?.defaultType ?? 'paragraph';
 		this.facade = init.binding.create(this.doc as unknown as EngineDoc, {
-			roleOf: (type) => this._roles.get(type),
+			roleOf: (type) => this._capability.roles.get(type),
 			defaultType: this._defaultType,
+			defaultChildOf: (type) => this._capability.defaultChild.get(type),
 			// U1: the facade's block-attribution ops read the actor lazily —
 			// `this.actor` is assigned below, after facade construction.
 			actor: () => this.actor,
@@ -477,8 +490,8 @@ export class EdytorDocument {
 		this._attributionCtl = init.attribution.attach(this.doc as unknown as EngineDoc, {
 			actor: this.actor
 		});
-		if (init.semantics?.roles) {
-			this.adoptSemantics({ roles: init.semantics.roles });
+		if (init.semantics) {
+			this.adoptSemantics({ ...init.semantics, defaultType: undefined });
 		}
 	}
 
@@ -546,12 +559,30 @@ export class EdytorDocument {
 	};
 
 	/**
-	 * The document-level semantic configuration (snapshot). `roles` is a
-	 * copy — mutation is not supported; contribute via {@link adoptSemantics}.
+	 * The document-level semantic configuration (snapshot). The maps are
+	 * copies — mutation is not supported; contribute via {@link adoptSemantics}.
 	 */
-	get semantics(): { defaultType: string; roles: ReadonlyMap<string, BlockRole> } {
-		return { defaultType: this._defaultType, roles: new Map(this._roles) };
+	get semantics() {
+		const { roles, rendersContent, defaultChild } = this._capability;
+		return {
+			defaultType: this._defaultType,
+			roles: new Map<string, BlockRole>(roles),
+			rendersContent: new Map(rendersContent),
+			defaultChild: new Map(defaultChild)
+		};
 	}
+
+	/**
+	 * The default child type under a parent of `parentType` (`null` = the
+	 * root) — the one answer split, paragraph insert, merge-unnest, clear
+	 * and root normalization apply against the new block's actual parent.
+	 */
+	defaultChild = (parentType: string | null): string =>
+		(parentType !== null ? this._capability.defaultChild.get(parentType) : undefined) ??
+		this._defaultType;
+
+	/** Whether kind `type` renders its own content slot (undeclared kinds do). */
+	rendersContent = (type: string): boolean => this._capability.rendersContent.get(type) ?? true;
 
 	/**
 	 * Contribute document-level semantics — the seam views use to seed the
@@ -561,7 +592,10 @@ export class EdytorDocument {
 	 * - a type with no adopted role yet ADOPTS the incoming role;
 	 * - an already-adopted role must equal the incoming one — otherwise
 	 *   {@link SemanticConflictError} (incompatible rules on one document);
+	 * - `rendersContent` and `defaultChild` entries follow the same rule;
 	 * - `defaultType` must match the document's when supplied.
+	 *
+	 * Atomic: everything validates before anything is adopted.
 	 *
 	 * Contributions are document-lifetime: they survive the contributing
 	 * view's teardown, so sibling views keep the same structural rules.
@@ -570,27 +604,28 @@ export class EdytorDocument {
 		if (this._destroyed) {
 			throw new DocumentDestroyedError('adoptSemantics');
 		}
-		const roles = Object.entries(config.roles ?? {});
-		// Pass 1 — validate EVERYTHING before mutating: a conflicting role
-		// late in the map must not leave earlier roles half-adopted.
 		if (config.defaultType !== undefined && config.defaultType !== this._defaultType) {
 			throw new SemanticConflictError('defaultType', this._defaultType, config.defaultType);
 		}
-		for (const [type, role] of roles) {
-			const normalized = normalizeRole(role);
-			const existing = this._roles.get(type);
-			if (
-				existing !== undefined &&
-				(existing.void !== normalized.void || existing.island !== normalized.island)
-			) {
-				throw new SemanticConflictError(`block role "${type}"`, existing, normalized);
+		const incoming = [
+			['roles', Object.entries(config.roles ?? {}).map(([t, r]) => [t, normalizeRole(r)] as const)],
+			['rendersContent', Object.entries(config.rendersContent ?? {})],
+			['defaultChild', Object.entries(config.defaultChild ?? {})]
+		] as const;
+		// Pass 1 — validate EVERYTHING before mutating: a conflicting entry
+		// late in a table must not leave earlier entries half-adopted.
+		for (const [table, entries] of incoming) {
+			for (const [type, value] of entries) {
+				const existing = this._capability[table].get(type);
+				if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(value)) {
+					throw new SemanticConflictError(`${table} "${type}"`, existing, value);
+				}
 			}
 		}
 		// Pass 2 — apply: every incoming entry proved compatible.
-		for (const [type, role] of roles) {
-			if (!this._roles.has(type)) {
-				this._roles.set(type, normalizeRole(role));
-			}
+		for (const [table, entries] of incoming) {
+			const adopted = this._capability[table] as Map<string, unknown>;
+			for (const [type, value] of entries) adopted.set(type, value);
 		}
 	};
 

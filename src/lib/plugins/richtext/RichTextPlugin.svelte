@@ -79,18 +79,6 @@
 				});
 			};
 		return {
-			defaultBlock: (parent) => {
-				if (parent.type === 'ordered-list') {
-					return 'list-item';
-				}
-				if (parent.type === 'unordered-list') {
-					return 'list-item';
-				}
-				// Document semantic authority — an injected document may carry
-				// a non-paragraph `defaultType`; the parent-sensitive list
-				// overrides above still take precedence.
-				return edytor.defaultType;
-			},
 			hotkeys: {
 				'mod+b': setMarkAndSelect('bold'),
 				'mod+i': setMarkAndSelect('italic'),
@@ -212,16 +200,26 @@
 				'todo-item': todoItem,
 				'bulleted-list-item': bulletedListItem,
 				'numbered-list-item': numberedListItem,
-				'ordered-list': orderedList,
-				'unordered-list': unorderedList,
+				'ordered-list': {
+					snippet: orderedList,
+					rendersContent: false,
+					defaultChild: 'list-item'
+				},
+				'unordered-list': {
+					snippet: unorderedList,
+					rendersContent: false,
+					defaultChild: 'list-item'
+				},
 				'list-item': listItem,
 				divider: {
 					snippet: divider,
-					void: true
+					void: true,
+					rendersContent: false
 				},
 				horizontalRule: {
 					snippet: horizontalRule,
-					void: true
+					void: true,
+					rendersContent: false
 				}
 			}
 		};

@@ -26,6 +26,7 @@ import {
 	type DocChange,
 	type EdytorDoc,
 	type EdytorDocument,
+	type OrderPolicy,
 	type ProjectedBlock,
 	type ProjectedDoc,
 	type YDoc,
@@ -360,6 +361,24 @@ export class Edytor {
 	get facade(): EdytorDoc {
 		return this.document.facade;
 	}
+
+	// Document order (O7): the view's walkers and block-selection keys read
+	// the document's one pre-order; `policy` is its island-sealing policy.
+	blockAfter = (block: Block, policy?: OrderPolicy): Block | null =>
+		this.idToBlock.get(this.facade.next(block.id, policy) ?? '') ?? null;
+	blockBefore = (block: Block, policy?: OrderPolicy): Block | null =>
+		this.idToBlock.get(this.facade.previous(block.id, policy) ?? '') ?? null;
+	compareBlocks = (a: Block, b: Block): number => this.facade.compare(a.id, b.id);
+	/** `start`, `end` and every block between them in document order (no `end`: to the last). */
+	blocksBetween = (start: Block, end: Block | null): Block[] => {
+		const ids = this.facade.order();
+		const from = ids.indexOf(start.id);
+		if (from < 0) return [start];
+		const to = end ? ids.indexOf(end.id, from) : -1;
+		return ids
+			.slice(from, to < 0 ? undefined : to + 1)
+			.flatMap((id) => this.idToBlock.get(id) ?? []);
+	};
 	get awareness(): Awareness {
 		return this.document.awareness;
 	}
@@ -1071,7 +1090,7 @@ export class Edytor {
 			const used = new Set<Block>();
 			let degraded = false;
 			const next: Block[] = [];
-			ids.forEach((id, index) => {
+			ids.forEach((id) => {
 				let child = this.idToBlock.get(id);
 				const pending = this._pendingBlocks.get(id);
 				this._pendingBlocks.delete(id);
@@ -1088,7 +1107,6 @@ export class Edytor {
 				}
 				child._bind(id, parent);
 				child.parent = parent;
-				child.index = index;
 				used.add(child);
 				if (addedNode) {
 					// `added` roots carry the full projected subtree — the same

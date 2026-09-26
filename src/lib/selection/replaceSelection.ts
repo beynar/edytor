@@ -1,5 +1,4 @@
 import type { Block } from '$lib/block/block.svelte.js';
-import { sortBlocksByPath } from '$lib/block/blockPath.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 
@@ -41,17 +40,18 @@ export const getSelectionReplacementState = (edytor: Edytor): SelectionReplaceme
 };
 
 export const getSelectedBlocksInDocumentOrder = (edytor: Edytor) =>
-	sortBlocksByPath(Array.from(edytor.selection.selectedBlocks));
+	Array.from(edytor.selection.selectedBlocks).sort(edytor.compareBlocks);
 
-const getClosestUnselectedBlock = (
-	block: Block,
-	selectedBlocks: Set<Block>,
+/** The nearest block before/after `block` in document order that is not in `excluded`. */
+export const getClosestUnselectedBlock = (
+	block: Block | undefined,
+	excluded: Set<Block>,
 	direction: 'previous' | 'next'
-) => {
-	let current = direction === 'previous' ? block.closestPreviousBlock : block.closestNextBlock;
-	while (current && selectedBlocks.has(current)) {
-		current = direction === 'previous' ? current.closestPreviousBlock : current.closestNextBlock;
-	}
+): Block | null => {
+	const step = (b: Block) =>
+		direction === 'previous' ? b.edytor.blockBefore(b) : b.edytor.blockAfter(b);
+	let current = block ? step(block) : null;
+	while (current && excluded.has(current)) current = step(current);
 	return current;
 };
 

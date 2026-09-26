@@ -343,6 +343,7 @@ const hasContent = (block: OBlock) =>
 
 const isEmptyBlock = (block: OBlock) => !hasContent(block) && block.children.length === 0;
 
+/** Document order (O7): the block before `block` in the one pre-order over visible blocks. */
 const closestPreviousBlock = (block: OBlock): OBlock | null => {
 	const index = indexOf(block);
 	if (index === 0) {
@@ -355,16 +356,13 @@ const closestPreviousBlock = (block: OBlock): OBlock | null => {
 	return current;
 };
 
-/** `block.closestNextBlock` — island/void blocks do not climb past their sibling list. */
+/** Document order (O7): the block after `block` — no island/void seal (merges apply their own rule). */
 const closestNextBlock = (block: OBlock): OBlock | null => {
 	if (block.children.length > 0) return block.children[0];
-	const next = block.parent?.children[indexOf(block) + 1];
-	if (next || block.island || block.void) return next ?? null;
-	let parent = block.parent;
-	while (parent && !parent.isRoot) {
-		const parentNext = parent.parent?.children[indexOf(parent) + 1];
-		if (parentNext) return parentNext;
-		parent = parent.parent;
+	for (let current = block; current.parent; current = current.parent) {
+		const next = current.parent.children[indexOf(current) + 1];
+		if (next) return next;
+		if (current.parent.isRoot) return null;
 	}
 	return null;
 };
@@ -527,19 +525,7 @@ const mergeUnnesting = (from: OBlock, into: OBlock, defaultType: string | null):
 /** Facade `mergeBackward` — merge `block` into the previous doc-order block. */
 const mergeBackward = (block: OBlock, defaultType: string | null): boolean => {
 	if (block.void) return false;
-	const index = indexOf(block);
-	const previous =
-		index === 0
-			? block.parent && !block.parent.isRoot
-				? block.parent
-				: null
-			: (() => {
-					const sibling = block.parent?.children[index - 1];
-					if (!sibling) return null;
-					let current = sibling;
-					while (current.children.length > 0) current = current.children.at(-1)!;
-					return current;
-				})();
+	const previous = closestPreviousBlock(block);
 	if (previous === null) {
 		if (block.children.length === 0 && blockAtomLength(block) === 0) {
 			return mergeForward(block, defaultType);
@@ -552,19 +538,7 @@ const mergeBackward = (block: OBlock, defaultType: string | null): boolean => {
 /** Facade `mergeForward` — pull the next doc-order block into `block`. */
 const mergeForward = (block: OBlock, defaultType: string | null): boolean => {
 	if (block.void) return false;
-	const next = (() => {
-		if (block.children.length > 0) return block.children[0];
-		let current = block;
-		for (;;) {
-			const parent = current.parent;
-			if (!parent) return null;
-			const sibling = parent.children[indexOf(current) + 1];
-			if (sibling) return sibling;
-			if (current.island || current.void) return null;
-			if (parent.isRoot) return null;
-			current = parent;
-		}
-	})();
+	const next = closestNextBlock(block);
 	if (next === null) return false;
 	return mergeUnnesting(next, block, defaultType);
 };

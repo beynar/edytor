@@ -215,6 +215,8 @@ export type ModelView = {
 	own: Ownership;
 	placements: Map<BlockId, ResolvedPlacement>;
 	kids: Map<BlockId | null, { id: BlockId; rank: string }[]>;
+	/** Document order over `kids` — lazy, like `kids`. */
+	order: DocOrder;
 	/**
 	 * Canonicalize a JSON payload into its shared immutable instance —
 	 * deep-frozen, and interned by canonical key when the doc has an
@@ -415,7 +417,6 @@ export const displayParentOf = (own: Ownership, pl: ResolvedPlacement): Owner | 
  * list is needed (one pass total instead of one pass per parent).
  */
 export const childrenOf = (
-	blocks: Map<BlockId, BlockRec>,
 	placements: Map<BlockId, ResolvedPlacement>,
 	own: Ownership,
 	parent: BlockId | null
@@ -438,7 +439,6 @@ export const childrenOf = (
  * at 1,000 blocks). Ordering is identical to `childrenOf`.
  */
 export const childrenIndex = (
-	blocks: Map<BlockId, BlockRec>,
 	placements: Map<BlockId, ResolvedPlacement>,
 	own: Ownership
 ): Map<BlockId | null, { id: BlockId; rank: string }[]> => {
@@ -459,6 +459,27 @@ export const childrenIndex = (
 		);
 	}
 	return index;
+};
+
+/**
+ * Document order (O7): ONE pre-order over the visible blocks of a children
+ * index — `ids` in reading order, `at` the position of each id. Every
+ * consumer (ops, view walkers, block selection, clipboard, drag groups)
+ * reads this; island sealing is a policy the caller applies on top.
+ */
+export type DocOrder = { ids: readonly BlockId[]; at: ReadonlyMap<BlockId, number> };
+
+export const documentOrder = (kids: ModelView['kids']): DocOrder => {
+	const ids: BlockId[] = [];
+	const at = new Map<BlockId, number>();
+	const stack = [...(kids.get(null) ?? [])].reverse();
+	for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+		at.set(next.id, ids.length);
+		ids.push(next.id);
+		const own = kids.get(next.id) ?? [];
+		for (let i = own.length - 1; i >= 0; i--) stack.push(own[i]);
+	}
+	return { ids, at };
 };
 
 /**
@@ -583,12 +604,16 @@ export const bindModel = (
 		const own = T.computeOwnership(doc, blocks);
 		const placements = resolvePlacements(blocks, own.ownerOf);
 		let kidsCache: ModelView['kids'] | null = null;
+		let orderCache: DocOrder | null = null;
 		return {
 			blocks,
 			own,
 			placements,
 			get kids() {
-				return (kidsCache ??= childrenIndex(blocks, placements, own));
+				return (kidsCache ??= childrenIndex(placements, own));
+			},
+			get order() {
+				return (orderCache ??= documentOrder(this.kids));
 			},
 			// No shared interner without an attached state owner — a
 			// detached frozen clone satisfies the same boundary contract.
@@ -995,7 +1020,7 @@ export const bindModel = (
 			const split = T.splitSlices(doc, blocks, own, id, offset);
 			if (!split) return false;
 			// New sibling immediately after `id` under the same parent.
-			const sibs = childrenOf(blocks, placements, own, pos.parent);
+			const sibs = childrenOf(placements, own, pos.parent);
 			const myIdx = sibs.findIndex((s) => s.id === id);
 			const rank = rankAt(sibs, myIdx + 1, doc.clientID, randOf(doc));
 			const sibling = newNode(BLOCK_NODE);
@@ -1014,7 +1039,7 @@ export const bindModel = (
 			registryOf(doc).setAttr(newId, sibling);
 			// Children follow the split — reparent each onto `newId` in order.
 			let left: string | undefined;
-			for (const k of childrenOf(blocks, placements, own, id)) {
+			for (const k of childrenOf(placements, own, id)) {
 				const r = rankBetween(left, undefined, doc.clientID, randOf(doc));
 				writePlacement(doc, blocks.get(k.id)!.node, newId, r);
 				left = r;
@@ -1050,8 +1075,8 @@ export const bindModel = (
 			// `from`'s children append at the end of `into`'s child list — read
 			// BEFORE the claim hides `from` (its children stay visible either
 			// way, but the sibling order is read from the pre-claim state).
-			const intoKids = childrenOf(blocks, placements, own, intoId);
-			const fromKids = childrenOf(blocks, placements, own, fromId);
+			const intoKids = childrenOf(placements, own, intoId);
+			const fromKids = childrenOf(placements, own, fromId);
 			T.claimInto(blocks, fromId, intoId);
 			let left = intoKids[intoKids.length - 1]?.rank;
 			for (const k of fromKids) {
@@ -1242,14 +1267,13 @@ export const bindModel = (
 	 * were O(depth × collect) — ~1.2ms × depth at 1,000 blocks).
 	 */
 	const positionInView = (
-		blocks: Map<BlockId, BlockRec>,
 		placements: Map<BlockId, ResolvedPlacement>,
 		own: Ownership,
 		id: BlockId
 	): Destination | null => {
 		if (!isLiveIn({ placements, own }, id)) return null;
 		const dp = displayParentOf(own, placements.get(id)!) as BlockId | null;
-		const sibs = childrenOf(blocks, placements, own, dp);
+		const sibs = childrenOf(placements, own, dp);
 		const index = sibs.findIndex((s) => s.id === id);
 		return index < 0 ? null : { parent: dp, index };
 	};
@@ -1260,22 +1284,12 @@ export const bindModel = (
 	 * owner — see `displayParentOf`).
 	 */
 	const positionOf = (doc: EngineDoc, id: BlockId): Destination | null => {
-		const { blocks, placements, own } = view(doc);
-		return positionInView(blocks, placements, own, id);
+		const { placements, own } = view(doc);
+		return positionInView(placements, own, id);
 	};
 
-	/** Pre-order ids of the visible tree. */
-	const listBlockIds = (doc: EngineDoc): BlockId[] => {
-		const out: BlockId[] = [];
-		const walk = (bs: ProjectedBlock[]) => {
-			for (const b of bs) {
-				out.push(b.id);
-				walk(b.children);
-			}
-		};
-		walk(project(doc).children);
-		return out;
-	};
+	/** Pre-order ids of the visible tree — the document order (O7). */
+	const listBlockIds = (doc: EngineDoc): BlockId[] => [...view(doc).order.ids];
 
 	/** Flat text of a block's OWNED content (atoms render as ''). */
 	const blockText = (doc: EngineDoc, id: BlockId): string | null => {

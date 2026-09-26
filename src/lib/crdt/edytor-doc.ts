@@ -113,6 +113,7 @@ import {
 } from './schema.js';
 import {
 	bindModel,
+	displayParentOf,
 	isLiveIn,
 	type BlockId,
 	type BlockSpec,
@@ -431,6 +432,9 @@ export type BlockRole = {
 	/** Editable, but its subtree is structurally sealed from outside blocks. */
 	island?: boolean;
 };
+
+/** Island-sealing policy for a walk in document order (R5; see `next`). */
+export type OrderPolicy = { sealed?: boolean };
 
 /** Configuration for an attached {@link EdytorDoc}. */
 export type EdytorDocConfig = {
@@ -1039,7 +1043,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const path: number[] = [];
 			let cur: BlockId | null = id;
 			while (cur !== null) {
-				const pos = M.positionInView(v.blocks, v.placements, v.own, cur);
+				const pos = M.positionInView(v.placements, v.own, cur);
 				if (!pos) return null;
 				path.unshift(pos.index);
 				cur = pos.parent;
@@ -1050,10 +1054,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/** Display ancestors of `id`, nearest first (`null` parent = root → stop). */
 		const ancestorsOf = (id: BlockId, v: View = view()): BlockId[] => {
 			const out: BlockId[] = [];
-			let cur: Destination | null = M.positionInView(v.blocks, v.placements, v.own, id);
-			while (cur !== null && cur.parent !== null) {
-				out.push(cur.parent);
-				cur = M.positionInView(v.blocks, v.placements, v.own, cur.parent);
+			for (let cur = id; isLiveIn(v, cur); ) {
+				const parent = displayParentOf(v.own, v.placements.get(cur)!);
+				if (parent === null || parent === DEAD) break;
+				out.push((cur = parent));
 			}
 			return out;
 		};
@@ -1084,55 +1088,42 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return !isVoid(parent) && !isIsland(parent) && !insideIsland(parent, v);
 		};
 
-		// ── navigation helpers (baseline closestPrevious/NextBlock) ───────
+		// ── document order (O7): one pre-order over visible blocks ────────
 
-		const deepestLast = (id: BlockId, v: View): BlockId => {
-			let cur = id;
-			for (;;) {
-				const kids = childrenIdsIn(v, cur);
-				if (kids.length === 0) return cur;
-				cur = kids[kids.length - 1];
-			}
+		/** The document order — `view().order`, shared by every consumer. */
+		const order = (): readonly BlockId[] => view().order.ids;
+
+		/**
+		 * Compare two blocks in document order (negative: `a` first). A block
+		 * that is not visible sorts after every visible one.
+		 */
+		const compare = (a: BlockId, b: BlockId): number => {
+			const { at } = view().order;
+			return (at.get(a) ?? Infinity) - (at.get(b) ?? Infinity) || 0;
 		};
 
 		/**
-		 * Previous block in flattened document order: the previous sibling's
-		 * deepest last descendant, or the parent when `id` is a first child —
-		 * mirrors baseline `closestPreviousBlock`.
+		 * The neighbour of `id` in document order (`dir` 1: next, -1: previous).
+		 * `sealed` is the island-sealing policy (R5): the walk never enters an
+		 * island it did not start in — from outside, an island is one unit
+		 * (its root is visited, its interior skipped); from inside, the walk
+		 * may leave. Operations that need the seal pass it; the order itself
+		 * is never re-derived.
 		 */
-		const previousInDocOrder = (id: BlockId): BlockId | null => {
+		const step = (id: BlockId, dir: 1 | -1, policy?: OrderPolicy): BlockId | null => {
 			const v = view();
-			const pos = M.positionInView(v.blocks, v.placements, v.own, id);
-			if (!pos) return null;
-			if (pos.index === 0) return pos.parent;
-			const sibs = childrenIdsIn(v, pos.parent);
-			return deepestLast(sibs[pos.index - 1], v);
-		};
-
-		/**
-		 * Next block in document order: first child; else next sibling; else
-		 * climb to the nearest ancestor's next sibling — mirrors baseline
-		 * `closestNextBlock` (island/void blocks do not climb: their "next"
-		 * stops at their own sibling list).
-		 */
-		const nextInDocOrder = (id: BlockId): BlockId | null => {
-			const v = view();
-			const kids = childrenIdsIn(v, id);
-			if (kids.length > 0) return kids[0];
-			let cur = id;
-			for (;;) {
-				const pos = M.positionInView(v.blocks, v.placements, v.own, cur);
-				if (!pos) return null;
-				const sibs = childrenIdsIn(v, pos.parent);
-				const next = sibs[pos.index + 1];
-				if (next !== undefined) return next;
-				// Island/void blocks do not merge outward — stop at their
-				// sibling list instead of climbing past the boundary.
-				if (isIsland(cur) || isVoid(cur)) return null;
-				if (pos.parent === null) return null;
-				cur = pos.parent;
+			const { ids, at } = v.order;
+			const i = at.get(id);
+			if (i === undefined) return null;
+			const open = policy?.sealed ? new Set(ancestorsOf(id, v)) : null;
+			for (let j = i + dir; j >= 0 && j < ids.length; j += dir) {
+				const island = open && islandOf(ids[j], v);
+				if (!island || open!.has(island)) return ids[j];
 			}
+			return null;
 		};
+		const next = (id: BlockId, policy?: OrderPolicy) => step(id, 1, policy);
+		const previous = (id: BlockId, policy?: OrderPolicy) => step(id, -1, policy);
 
 		// ── change events ─────────────────────────────────────────────────
 
@@ -1755,7 +1746,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const mergeBackward = (id: BlockId): BlockId | null =>
 			write(() => {
 				if (isVoid(id)) return null;
-				const prev = previousInDocOrder(id);
+				const prev = previous(id);
 				if (prev === null) {
 					// Baseline: no previous block → empty blocks merge forward.
 					const kids = childrenIds(id);
@@ -1773,9 +1764,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const mergeForward = (id: BlockId): BlockId | null =>
 			write(() => {
 				if (isVoid(id)) return null;
-				const next = nextInDocOrder(id);
-				if (next === null) return null;
-				return mergeUnnesting(next, id) ? id : null;
+				const after = next(id);
+				if (after === null) return null;
+				return mergeUnnesting(after, id) ? id : null;
 			});
 
 		/**
@@ -2591,8 +2582,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			contentItems,
 			hasBlock,
 			isVisibleBlock,
-			previousInDocOrder,
-			nextInDocOrder,
+			order,
+			compare,
+			next,
+			previous,
 			// caret anchors (U09) — backing-text-bound selection endpoints
 			anchorAt,
 			resolveAnchor,

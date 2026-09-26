@@ -2,7 +2,6 @@ import type { Edytor } from '../edytor.svelte.js';
 import type { HotKey, HotKeyCombination } from '../hotkeys.js';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import { Text } from '../text/text.svelte.js';
-import { compareBlockPath } from '../block/blockPath.js';
 import { clearDomSelection } from '../selection/domSelection.js';
 import { getNextGraphemeEnd, getPreviousGraphemeStart } from '../text/text.utils.js';
 import { getNextWordEndOffset, getPreviousWordStartOffset } from '../events/wordBoundary.js';
@@ -480,7 +479,7 @@ const compareTextPositions = (aText: Text, aOffset: number, bText: Text, bOffset
 		? aOffset - bOffset
 		: aText.parent === bText.parent
 			? aText.index - bText.index
-			: compareBlockPath(aText.parent, bText.parent);
+			: aText.edytor.compareBlocks(aText.parent, bText.parent);
 
 /**
  * Deterministic Shift+ArrowLeft/ArrowRight extension for node-bound

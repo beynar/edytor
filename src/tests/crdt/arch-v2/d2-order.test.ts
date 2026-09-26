@@ -7,8 +7,7 @@
  * O7). Expected values come from the plan row, never from the engine.
  *
  * Red on the reference (P1: the facade's walk stops at the island, the
- * view's does not; there is no `order`/`compare`): marked `test.fails` until
- * the D2 implementation lands.
+ * view's does not; there is no `order`/`compare`); green since D2.
  *
  * Consumers covered:
  * - the document: `order()`, `compare(a, b)`, `next(id)`, `previous(id)`;
@@ -67,7 +66,7 @@ const view = () => {
 };
 
 describe('F-D2 — order is one answer', () => {
-	test.fails('document: the pre-order over visible blocks puts Y right after A', () => {
+	test('document: the pre-order over visible blocks puts Y right after A', () => {
 		const ed = facade();
 		expect(ed.order()).toEqual(['X', 'box', 'A', 'Y']);
 		expect(ed.next('A')).toBe('Y');
@@ -78,17 +77,14 @@ describe('F-D2 — order is one answer', () => {
 		expect(ed.compare('X', 'A')).toBeLessThan(0);
 	});
 
-	test.fails(
-		'document, island-sealed walk (block selection): leaving the island still reaches Y',
-		() => {
-			const ed = facade();
-			expect(ed.next('A', { sealed: true })).toBe('Y');
-			// From outside, an island is one unit: its interior is never entered.
-			expect(ed.next('X', { sealed: true })).toBe('box');
-			expect(ed.next('box', { sealed: true })).toBe('Y');
-			expect(ed.previous('Y', { sealed: true })).toBe('box');
-		}
-	);
+	test('document, island-sealed walk (block selection): leaving the island still reaches Y', () => {
+		const ed = facade();
+		expect(ed.next('A', { sealed: true })).toBe('Y');
+		// From outside, an island is one unit: its interior is never entered.
+		expect(ed.next('X', { sealed: true })).toBe('box');
+		expect(ed.next('box', { sealed: true })).toBe('Y');
+		expect(ed.previous('Y', { sealed: true })).toBe('box');
+	});
 
 	test('document: the island seal of the merge is the merge rule, not the order (G6)', () => {
 		const ed = facade();
@@ -97,7 +93,7 @@ describe('F-D2 — order is one answer', () => {
 		expect(ed.blockText('Y')).toBe('yy');
 	});
 
-	test.fails('view: handles and walkers read the same order', () => {
+	test('view: handles and walkers read the same order', () => {
 		const edytor = view();
 		const A = edytor.idToBlock.get('A');
 		const Yb = edytor.idToBlock.get('Y');

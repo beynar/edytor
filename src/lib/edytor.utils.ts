@@ -3,18 +3,7 @@ import { Text } from './text/text.svelte.js';
 import type { Edytor } from './edytor.svelte.js';
 
 import { InlineBlock } from './block/inlineBlock.svelte.js';
-
-const getClosestRemainingBlock = (
-	block: Block | undefined,
-	blocksToDelete: Set<Block>,
-	direction: 'previous' | 'next'
-) => {
-	let current = direction === 'previous' ? block?.closestPreviousBlock : block?.closestNextBlock;
-	while (current && blocksToDelete.has(current)) {
-		current = direction === 'previous' ? current.closestPreviousBlock : current.closestNextBlock;
-	}
-	return current && !current.isRoot ? current : null;
-};
+import { getClosestUnselectedBlock } from './selection/replaceSelection.js';
 
 export function deleteContentWithinSelection(
 	this: Edytor,
@@ -47,19 +36,7 @@ export function deleteContentWithinSelection(
 		if (!selectionOverride) {
 			return this.selection.state.blocks;
 		}
-		if (!startBlock) {
-			return [];
-		}
-
-		const blocks = [startBlock];
-		let current: Block | null = startBlock;
-		while (current && current !== endBlock) {
-			current = current.closestNextBlock;
-			if (current) {
-				blocks.push(current);
-			}
-		}
-		return blocks;
+		return startBlock ? this.blocksBetween(startBlock, endBlock) : [];
 	})();
 
 	if (startBlock && endBlock && startBlock === endBlock && startText && endText) {
@@ -144,12 +121,12 @@ export function deleteContentWithinSelection(
 	}
 	const firstDeletedBlock = blocksToDelete[0];
 	const lastDeletedBlock = blocksToDelete.at(-1);
-	const fallbackPreviousBlock = getClosestRemainingBlock(
+	const fallbackPreviousBlock = getClosestUnselectedBlock(
 		firstDeletedBlock,
 		deletedBlockSet,
 		'previous'
 	);
-	const fallbackNextBlock = getClosestRemainingBlock(lastDeletedBlock, deletedBlockSet, 'next');
+	const fallbackNextBlock = getClosestUnselectedBlock(lastDeletedBlock, deletedBlockSet, 'next');
 	const fallbackText =
 		startBlock && !deletedBlockSet.has(startBlock) && startText
 			? startText

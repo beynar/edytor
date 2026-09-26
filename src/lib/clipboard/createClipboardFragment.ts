@@ -4,10 +4,10 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONContentPart } from './types.js';
 import type { EdytorClipboardFragment } from './types.js';
-import { sortBlocksByPath } from '$lib/block/blockPath.js';
 import { sliceTextValue } from '$lib/block/contentRange.js';
 import { cloneJson } from '$lib/utils/json.js';
 import { stripIdsFromBlock } from './jsonClipboard.js';
+import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
 
 const extractContentRange = (
 	block: Block,
@@ -92,7 +92,7 @@ const extractBlockRange = (edytor: Edytor) => {
 };
 
 export const createEdytorClipboardFragment = (edytor: Edytor): EdytorClipboardFragment | null => {
-	const selectedBlocks = sortBlocksByPath(Array.from(edytor.selection.selectedBlocks));
+	const selectedBlocks = getSelectedBlocksInDocumentOrder(edytor);
 	if (selectedBlocks.length > 0) {
 		return {
 			version: 1,

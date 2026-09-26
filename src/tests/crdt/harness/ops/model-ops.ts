@@ -645,7 +645,7 @@ export const opTarget = (peer: Peer, id: BlockId): OpTarget | null => {
 	const holders = new Set<BlockId>();
 	for (const hid of blocks.keys()) if (own.ownerOf(hid) === id) holders.add(hid);
 	const children = new Set<BlockId>(
-		M.childrenOf(blocks, placements, own, id).map((k: { id: BlockId }) => k.id)
+		M.childrenOf(placements, own, id).map((k: { id: BlockId }) => k.id)
 	);
 	return { atoms, texts, holders, children };
 };

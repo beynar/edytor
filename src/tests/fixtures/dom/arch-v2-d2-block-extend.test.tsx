@@ -6,7 +6,8 @@
  * `A{A1, A2, A3}, B`; select A3; Shift+Up twice; Shift+Down →
  * `{A2,A3}` → `{A1,A2,A3}` → `{A2,A3}` (plan §8.5 F-P1; K7 "Shift+ArrowUp/Down
  * extend it in document order"). Expected values come from the plan row.
- * Red on the reference (root-index-only order stalls the second Shift+Up).
+ * Red on the reference (root-index-only order stalls the second Shift+Up);
+ * green since D2.
  */
 import { describe, expect, test } from 'vitest';
 import { dispatchDomKeyDown, renderDomEdytor } from '../../dom/test.utils.js';
@@ -20,7 +21,7 @@ const selectedTexts = (edytor: Edytor) =>
 		.map((entry) => entry.text);
 
 describe('F-P1 — block-selection extension in a nested list', () => {
-	test.fails('select A3; Shift+Up twice; Shift+Down', async () => {
+	test('select A3; Shift+Up twice; Shift+Down', async () => {
 		const { edytor } = await renderDomEdytor(
 			<root>
 				<paragraph>

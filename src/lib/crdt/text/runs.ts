@@ -57,12 +57,14 @@ import type {
 	BlockId,
 	BlockRec,
 	ContentItem,
+	DocOrder,
 	ModelView,
 	ResolvedPlacement
 } from '../placement/model.js';
 import {
 	candidatesOf,
 	childrenIndex,
+	documentOrder,
 	REGISTRY_KEY,
 	resolvePlacements
 } from '../placement/model.js';
@@ -805,13 +807,15 @@ export const bindRuns = (Y: EngineApi) => {
 		// previous resolved placements AND children index verbatim.
 		let placementsMap: Map<BlockId, ResolvedPlacement> | null = null;
 		let kidsMap: Map<BlockId | null, { id: BlockId; rank: string }[]> | null = null;
+		let orderCache: DocOrder | null = null;
 		let placementsBuiltAt = -1;
 		let placementVersion = 0;
 		const ensurePlacements = (): void => {
 			if (placementsBuiltAt >= placementVersion) return;
 			ensureOwners();
 			placementsMap = resolvePlacements(blocks, ownerOf);
-			kidsMap = childrenIndex(blocks, placementsMap, ownShim);
+			kidsMap = childrenIndex(placementsMap, ownShim);
+			orderCache = null;
 			placementsBuiltAt = placementVersion;
 		};
 
@@ -862,6 +866,10 @@ export const bindRuns = (Y: EngineApi) => {
 			get kids() {
 				ensurePlacements();
 				return kidsMap!;
+			},
+			get order() {
+				ensurePlacements();
+				return (orderCache ??= documentOrder(kidsMap!));
 			},
 			// R4: publication boundary shares THIS interner, so a payload
 			// emitted by `project()`/`contentItems()` is `===` the one the

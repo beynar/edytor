@@ -138,14 +138,7 @@ export class Block {
 	}
 
 	get insideIsland(): boolean {
-		let insideIslands = false;
-		climb(this.parent, (block) => {
-			if (block.definition?.island) {
-				insideIslands = true;
-				return true;
-			}
-		});
-		return insideIslands;
+		return this.edytor.facade.insideIsland(this.id);
 	}
 
 	get firstEditableText(): Text | undefined {
@@ -176,20 +169,8 @@ export class Block {
 		return undefined;
 	}
 
-	#index = $state<number | null>(null);
-
 	get index(): number {
-		if (!this.parent) {
-			return 0;
-		}
-		if (this.#index === null) {
-			return this.parent.children.indexOf(this);
-		}
-		return this.#index;
-	}
-
-	set index(value: number) {
-		this.#index = value;
+		return this.parent ? this.parent.children.indexOf(this) : 0;
 	}
 
 	#type = $state<string>('paragraph');
@@ -281,53 +262,11 @@ export class Block {
 	}
 
 	get closestPreviousBlock(): Block | null {
-		const previousBlock = this.previousBlock;
-		if (this.index === 0) {
-			return this.parent instanceof Block && !this.parent.isRoot ? this.parent : null;
-		} else if (previousBlock) {
-			if (previousBlock?.children.length > 0) {
-				let closestPreviousBlock = previousBlock.children.at(-1) || null;
-				while (closestPreviousBlock && closestPreviousBlock?.children.length > 0) {
-					closestPreviousBlock = closestPreviousBlock.children.at(-1) || null;
-				}
-				return closestPreviousBlock || null;
-			} else {
-				return this.previousBlock;
-			}
-		}
-		return null;
+		return this.edytor.blockBefore(this);
 	}
 
 	get closestNextBlock(): Block | null {
-		if (this.hasChildren) {
-			return this.children.at(0) || null;
-		}
-		if (this.nextBlock || this.definition.island || this.definition.void) {
-			return this.nextBlock;
-		} else {
-			if (this.parent instanceof Block) {
-				let parent = this.parent;
-				let nextBlock = parent.nextBlock;
-				while (!nextBlock && parent instanceof Block) {
-					if (parent.parent instanceof Block) {
-						parent = parent.parent;
-						nextBlock = parent.nextBlock;
-					} else {
-						return null;
-					}
-				}
-				return nextBlock;
-			} else {
-				return null;
-			}
-		}
-	}
-
-	get deepestChild(): Block {
-		if (this.children.length) {
-			return this.children.at(-1)!.deepestChild;
-		}
-		return this;
+		return this.edytor.blockAfter(this);
 	}
 
 	get hasChildren(): boolean {
@@ -450,11 +389,9 @@ export class Block {
 				this.id = 'root';
 				this.#type = 'root';
 				this.data = block.data || {};
-				this.children = (block.children || []).map((child, index) => {
-					const childBlock = new Block({ parent: this, edytor, block: child });
-					childBlock.index = index;
-					return childBlock;
-				});
+				this.children = (block.children || []).map(
+					(child) => new Block({ parent: this, edytor, block: child })
+				);
 			} else {
 				// Detached spec mode — fields populate the pending spec used by
 				// `insertChildren`/`insertBlock`; no facade calls until bound.
@@ -463,11 +400,9 @@ export class Block {
 				this.id = block.id ?? id('b');
 				this.#type = block.type;
 				this.data = block.data || {};
-				this.children = (block.children || []).map((child, index) => {
-					const childBlock = new Block({ parent: this, edytor, block: child });
-					childBlock.index = index;
-					return childBlock;
-				});
+				this.children = (block.children || []).map(
+					(child) => new Block({ parent: this, edytor, block: child })
+				);
 				const groupedContent = groupContent(block.content);
 				if (!groupedContent.length) {
 					groupedContent.push([{ text: '' }]);
@@ -537,7 +472,7 @@ export class Block {
 	reconcileChildren = (projectedChildren: ProjectedBlock[]) => {
 		const prev = this.children;
 		const used = new Set<Block>();
-		const next = projectedChildren.map((node, index) => {
+		const next = projectedChildren.map((node) => {
 			let child = this.edytor.idToBlock.get(node.id);
 			const pending = this.edytor._pendingBlocks.get(node.id);
 			this.edytor._pendingBlocks.delete(node.id);
@@ -550,7 +485,6 @@ export class Block {
 			}
 			child._bind(node.id, this);
 			child.parent = this;
-			child.index = index;
 			used.add(child);
 			child._reconcile(node);
 			return child;
@@ -894,7 +828,6 @@ export class Block {
 				w.parent = this;
 				this.children.splice(index + k, 0, w);
 			});
-			this.children.forEach((c, k) => (c.index = k));
 			return;
 		}
 		const model = this.model;
@@ -925,7 +858,6 @@ export class Block {
 	deleteChildren = (index: number, length = 1): void => {
 		if (!this._bound) {
 			this.children.splice(index, length);
-			this.children.forEach((c, k) => (c.index = k));
 			return;
 		}
 		const ids = this.model ? this.model.childIds() : this.edytor.facade.childrenIds(null);

@@ -41,7 +41,6 @@ import {
 	isNestedForeignEditableTarget
 } from '$lib/events/nativeInteractiveControl.js';
 import type { Anchor } from '$lib/crdt/text/model.js';
-import { compareBlockPath } from '$lib/block/blockPath.js';
 
 /**
  * CRDT-stable anchor for a text position — `{b}` is the home block id of
@@ -800,7 +799,7 @@ export class EdytorSelection {
 				? clampedStart - clampedEnd
 				: startText.parent === endText.parent
 					? startText.index - endText.index
-					: compareBlockPath(startText.parent, endText.parent);
+					: this.edytor.compareBlocks(startText.parent, endText.parent);
 
 		if (order <= 0) {
 			return {
@@ -1955,17 +1954,7 @@ export class EdytorSelection {
 				? startText.stringContent.slice(yStart, yEnd)
 				: content;
 
-		const blocks: Block[] = startBlock ? [startBlock] : [];
-		let currentBlock: Block | null = startBlock;
-
-		// Collect all blocks between the start and end blocks
-		while (currentBlock && currentBlock !== endBlock) {
-			const nextBlock: Block | null = currentBlock.closestNextBlock;
-			currentBlock = nextBlock;
-			if (nextBlock) {
-				blocks.push(nextBlock);
-			}
-		}
+		const blocks = startBlock ? this.edytor.blocksBetween(startBlock, endBlock) : [];
 
 		// Flatten the blocks into a single array of content parts
 		const allContentParts = blocks.flatMap((block) => block.content);
@@ -2862,15 +2851,7 @@ export class EdytorSelection {
 		const isReversed = isCollapsed ? false : (target.isReversed ?? false);
 		const startBlock = startText.parent;
 		const endBlock = endText.parent;
-		const blocks: Block[] = [startBlock];
-		let currentBlock: Block | null = startBlock;
-
-		while (currentBlock && currentBlock !== endBlock) {
-			currentBlock = currentBlock.closestNextBlock;
-			if (currentBlock) {
-				blocks.push(currentBlock);
-			}
-		}
+		const blocks = this.edytor.blocksBetween(startBlock, endBlock);
 
 		const allContentParts = blocks.flatMap((block) => block.content);
 		const startIndex = allContentParts.indexOf(startText);

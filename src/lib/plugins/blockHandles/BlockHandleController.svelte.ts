@@ -18,18 +18,6 @@ type BlockHandleControllerOptions = {
 	onActivate?: (payload: { block: Block; anchor: HTMLElement }) => void;
 };
 
-const comparePath = (a: Block, b: Block) => {
-	const length = Math.max(a.path.length, b.path.length);
-	for (let index = 0; index < length; index++) {
-		const left = a.path[index] ?? -1;
-		const right = b.path[index] ?? -1;
-		if (left !== right) {
-			return left - right;
-		}
-	}
-	return 0;
-};
-
 const getOwnRowBottom = (node: HTMLElement) => {
 	const rect = node.getBoundingClientRect();
 	// Block nodes wrap their children in the DOM; the parent's placement
@@ -255,7 +243,7 @@ export class BlockHandleController {
 		}
 		const parent = selected[0]?.parent;
 		return parent && selected.every((block) => block.parent === parent)
-			? selected.toSorted(comparePath)
+			? selected.toSorted(this.edytor.compareBlocks)
 			: [source];
 	}
 

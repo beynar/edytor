@@ -52,11 +52,17 @@ type ContentPart = { text?: string; marks?: Record<string, unknown>; type?: stri
 
 const roomName = () => `ws3-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-const openSocketPage = async (page: Page, room: string, relay: OpaqueRelay) => {
+/**
+ * Mount a socket client with the library's default options. `resync` opts
+ * into the periodic resync handshake — only the specs that inject harness
+ * LOSS (dropped frames, which TCP cannot produce) need it; everything else
+ * converges through the join rule alone (arch-v2 T2).
+ */
+const openSocketPage = async (page: Page, room: string, relay: OpaqueRelay, resync = false) => {
 	await gotoEditorRoute(
 		page,
 		`/test/dom?scenario=collab&collabws=${room}&wsserver=${encodeURIComponent(relay.url)}` +
-			`&wsresync=200&wsbackoff=400`,
+			`${resync ? '&wsresync=200' : ''}&wsbackoff=400`,
 		{ requireRuntime: true }
 	);
 };
@@ -156,7 +162,8 @@ const openClients3 = async (
 	browser: Browser,
 	relay: OpaqueRelay,
 	room: string,
-	testInfo: { project: { use: { baseURL?: string } } }
+	testInfo: { project: { use: { baseURL?: string } } },
+	resync = false
 ): Promise<Required<SocketClients3>> => {
 	const baseURL = testInfo.project.use.baseURL;
 	const contextA = await browser.newContext({ baseURL });
@@ -166,9 +173,9 @@ const openClients3 = async (
 	const pageB = await contextB.newPage();
 	const pageC = await contextC.newPage();
 	await Promise.all([
-		openSocketPage(pageA, room, relay),
-		openSocketPage(pageB, room, relay),
-		openSocketPage(pageC, room, relay)
+		openSocketPage(pageA, room, relay, resync),
+		openSocketPage(pageB, room, relay, resync),
+		openSocketPage(pageC, room, relay, resync)
 	]);
 	return { contextA, contextB, contextC, pageA, pageB, pageC };
 };
@@ -423,7 +430,7 @@ test.describe('three-client collaboration over a real websocket relay', () => {
 		const room = roomName();
 		let clients: SocketClients3 | undefined;
 		try {
-			clients = await openClients3(browser, relay, room, testInfo);
+			clients = await openClients3(browser, relay, room, testInfo, true);
 			const { pageA, pageB, pageC } = clients;
 			const issuesA = trackPageIssues(pageA);
 			const issuesB = trackPageIssues(pageB);

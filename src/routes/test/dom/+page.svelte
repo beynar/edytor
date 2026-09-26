@@ -725,10 +725,10 @@
 				// provider against the spec-driven local opaque relay
 				// (tests/editor-dom/ws-relay.ts). `disableBc` is forced so
 				// BroadcastChannel can never mask a socket failure — the only
-				// transport is the socket. `resyncInterval` re-runs the
-				// state-vector handshake so the first room member (whose initial
-				// SyncStep1 had no peer to answer) still reaches `synced`, and so
-				// deliberate harness faults (dropped/held frames) heal.
+				// transport is the socket. `resyncInterval` is off unless a spec
+				// passes `wsresync`: the join rule makes every member hear the
+				// room, and the periodic resync only heals deliberate harness
+				// loss (dropped frames).
 				const provider =
 					data.collabws && data.wsserver
 						? new WebsocketProvider(data.wsserver, data.collabws, doc, {

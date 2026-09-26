@@ -11,7 +11,7 @@ import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONDoc } from '$lib/utils/json.js';
 import { Text as ModelText } from '$lib/text/text.svelte.js';
 import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
-import type { Awareness, YDoc } from '$lib/crdt/index.js';
+import type { Awareness, EdytorDocument, YDoc } from '$lib/crdt/index.js';
 import type { EdytorSync } from '$lib/collaboration/index.js';
 import type { RenderedNode } from '../jsx/types.js';
 import {
@@ -30,8 +30,11 @@ export type RenderDomEdytorOptions = {
 	autocorrect?: 'on' | 'off';
 	autocomplete?: 'on' | 'off';
 	autocapitalize?: 'off' | 'none' | 'on' | 'sentences' | 'words' | 'characters';
+	inputmode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url';
+	enterkeyhint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
 	doc?: YDoc;
 	awareness?: Awareness;
+	document?: EdytorDocument;
 	sync?: EdytorSync;
 	value?: JSONDoc;
 	autoSelectFixture?: boolean;
@@ -190,17 +193,108 @@ const setElementSelection = async (
 	await flushDomUpdates();
 };
 
+/**
+ * Canonical block JSON for oracle assertions: full descendant structure —
+ * type, data, content parts (text + marks, or inline type + data), and
+ * recursive children. `canonicalBlock(block, true)` also carries block and
+ * inline ids; `assertCanonicalTree` compares an expected tree against the
+ * id-carrying actual tree, stripping an actual id only where the expected
+ * node does not pin one — so fixtures may assert exact identity at any
+ * node they choose while staying concise elsewhere.
+ */
+export type CanonicalBlock = {
+	type: string;
+	id?: string;
+	data?: Record<string, unknown>;
+	content?: (
+		| { text: string; marks?: Record<string, unknown> }
+		| { type: string; id?: string; data?: Record<string, unknown> }
+	)[];
+	children?: CanonicalBlock[];
+};
+
+export const canonicalBlock = (block: JSONBlock, withIds = false): CanonicalBlock => ({
+	type: block.type,
+	...(withIds && block.id ? { id: block.id } : {}),
+	...(block.data && Object.keys(block.data).length ? { data: block.data } : {}),
+	...(block.content?.length
+		? {
+				content: block.content.map((part) =>
+					'text' in part
+						? { text: part.text, ...(part.marks ? { marks: part.marks } : {}) }
+						: {
+								type: part.type,
+								...(withIds && part.id ? { id: part.id } : {}),
+								...(part.data ? { data: part.data } : {})
+							}
+				)
+			}
+		: {}),
+	...(block.children?.length
+		? { children: block.children.map((child) => canonicalBlock(child, withIds)) }
+		: {})
+});
+
+export const canonicalTree = (edytor: Edytor, withIds = false): CanonicalBlock[] =>
+	edytor.value.children?.map((block) => canonicalBlock(block, withIds)) ?? [];
+
+/** Strip actual-side ids the expected tree does not pin, recursively. */
+const scrubUnpinnedIds = (
+	actual: CanonicalBlock,
+	expected: CanonicalBlock | undefined
+): CanonicalBlock => {
+	const node: CanonicalBlock = { ...actual };
+	if (expected?.id === undefined) delete node.id;
+	node.content = actual.content?.map((part, index) => {
+		const expectedPart = expected?.content?.[index] as { id?: string } | undefined;
+		const copy = { ...part } as { id?: string };
+		if (expectedPart?.id === undefined) delete copy.id;
+		return copy;
+	}) as CanonicalBlock['content'];
+	node.children = actual.children?.map((child, index) =>
+		scrubUnpinnedIds(child, expected?.children?.[index])
+	);
+	return node;
+};
+
+/** The single assertion golden programs and defect canaries share.
+ * Expected nodes pin `id` wherever identity must match; unpinned nodes
+ * compare structure only. */
+export const assertCanonicalTree = (edytor: Edytor, expected: CanonicalBlock[]) =>
+	expect(
+		canonicalTree(edytor, true).map((block, index) => scrubUnpinnedIds(block, expected[index]))
+	).toEqual(expected);
+
+/** path-joined id map (`"0"`→id, `"1.2"`→id) for survivor-identity checks. */
+export const blockIdMap = (edytor: Edytor): Map<string, string> => {
+	const map = new Map<string, string>();
+	const walk = (blocks: JSONBlock[] | undefined, prefix: string) => {
+		blocks?.forEach((block, index) => {
+			const path = prefix === '' ? `${index}` : `${prefix}.${index}`;
+			if (block.id) map.set(path, block.id);
+			walk(block.children, path);
+		});
+	};
+	walk(edytor.value.children, '');
+	return map;
+};
+
 export const setNativeSelection = async (
 	edytor: Edytor,
 	startText: ModelText | null | undefined,
 	startOffset: number,
 	endText = startText,
-	endOffset = startOffset
+	endOffset = startOffset,
+	options: { reversed?: boolean } = {}
 ) => {
 	if (!startText || !endText) {
 		throw new Error('Cannot set a native selection without mounted start and end texts');
 	}
 
+	// A fixture placement IS a user decision — mark the gesture so the
+	// echo at the new serial is admitted instead of gated as render-churn
+	// drift (`restoreDriftedEchoCaret`).
+	edytor.markUserGesture();
 	const startNode = await edytor.getTextNode(startText);
 	const endNode = await edytor.getTextNode(endText);
 	const startLeaf = findDomTextNode(startNode, startOffset);
@@ -211,11 +305,18 @@ export const setNativeSelection = async (
 		throw new Error('window.getSelection() is not available in the DOM test environment');
 	}
 
-	const range = document.createRange();
-	range.setStart(startLeaf.node, startLeaf.offset);
-	range.setEnd(endLeaf.node, endLeaf.offset);
-	selection.removeAllRanges();
-	selection.addRange(range);
+	if (options.reversed) {
+		// A Range can only hold the forward document order — a reversed
+		// selection needs the anchor at the logical END and the focus at
+		// the logical START, which only `setBaseAndExtent` expresses.
+		selection.setBaseAndExtent(endLeaf.node, endLeaf.offset, startLeaf.node, startLeaf.offset);
+	} else {
+		const range = document.createRange();
+		range.setStart(startLeaf.node, startLeaf.offset);
+		range.setEnd(endLeaf.node, endLeaf.offset);
+		selection.removeAllRanges();
+		selection.addRange(range);
+	}
 	(startLeaf.node.parentElement ?? endLeaf.node.parentElement ?? edytor.node)?.focus();
 	document.dispatchEvent(new Event('selectionchange'));
 	await flushDomUpdates();
@@ -247,8 +348,11 @@ export const renderDomEdytor = async (
 			autocorrect: options.autocorrect,
 			autocomplete: options.autocomplete,
 			autocapitalize: options.autocapitalize,
+			inputmode: options.inputmode,
+			enterkeyhint: options.enterkeyhint,
 			doc: options.doc,
 			awareness: options.awareness,
+			document: options.document,
 			sync: options.sync,
 			onChange: options.onChange,
 			onSelectionChange: options.onSelectionChange,

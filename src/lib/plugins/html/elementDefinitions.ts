@@ -1,5 +1,6 @@
 import type { Edytor } from '../../edytor.svelte.js';
 import type { HTMLNodeInterface } from './parser.js';
+import { sanitizeLinkHref } from '../richtext/richTextOperations.js';
 
 export type ElementDefinitionResult = { type: string; data?: unknown } & Record<string, unknown>;
 
@@ -202,13 +203,18 @@ const blocks = {
 };
 
 const marks = {
-	a: (node: HTMLNodeInterface) => ({
-		type: 'link',
-		data: {
-			href: node.attributes.href ?? '',
-			...(node.attributes.target ? { target: node.attributes.target } : {})
-		}
-	}),
+	a: (node: HTMLNodeInterface) => {
+		// Pasted HTML can carry scriptable hrefs (`javascript:`) — sanitize
+		// so a poisoned scheme never reaches the model (and synced peers).
+		const href = sanitizeLinkHref(node.attributes.href ?? '');
+		return {
+			type: 'link',
+			data: {
+				...(href !== null ? { href } : {}),
+				...(node.attributes.target ? { target: node.attributes.target } : {})
+			}
+		};
+	},
 	strong: () => ({
 		type: 'bold'
 	}),

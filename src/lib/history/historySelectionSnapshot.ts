@@ -16,6 +16,22 @@ type StackItemWithSelectionMeta = {
 	};
 };
 
+/**
+ * Stack-item `meta` carries selection snapshots PER VIEW — a
+ * `Map<view transaction origin, snapshot>` under each meta key (one
+ * shared document history, independent view selections — see
+ * `selection.svelte.ts` `init`). Resolve the calling view's entry via
+ * its `edytor.transaction` key.
+ */
+const viewSnapshot = (
+	stackItem: StackItemWithSelectionMeta | null | undefined,
+	edytor: Edytor,
+	key: string
+): unknown => {
+	const map = stackItem?.meta?.get?.(key);
+	return map instanceof Map ? map.get(edytor.transaction) : undefined;
+};
+
 const historyCommandVersions = new WeakMap<Edytor, number>();
 const historyCommandDocVersions = new WeakMap<Edytor, number>();
 const CURSOR_LOCATION_META = 'cursor-location';
@@ -47,12 +63,14 @@ const cloneHistorySelectionSnapshot = (
 });
 
 export const getHistorySelectionSnapshot = (
+	edytor: Edytor,
 	stackItem: StackItemWithSelectionMeta | null | undefined,
 	options: { preferRestore?: boolean } = {}
 ): HistorySelectionSnapshot | null => {
 	const snapshot =
-		(options.preferRestore ? stackItem?.meta?.get?.(RESTORE_CURSOR_LOCATION_META) : null) ??
-		stackItem?.meta?.get?.(CURSOR_LOCATION_META);
+		(options.preferRestore
+			? viewSnapshot(stackItem, edytor, RESTORE_CURSOR_LOCATION_META)
+			: undefined) ?? viewSnapshot(stackItem, edytor, CURSOR_LOCATION_META);
 	return isHistorySelectionSnapshot(snapshot) ? cloneHistorySelectionSnapshot(snapshot) : null;
 };
 
@@ -102,8 +120,7 @@ const getTextByPath = (edytor: Edytor, path: number[] | null) => {
 	return part instanceof Text ? part : null;
 };
 
-const isCurrentText = (text: Text | null | undefined) =>
-	Boolean(text && text.parent.content.includes(text) && text.yText.doc === text.edytor.doc);
+const isCurrentText = (text: Text | null | undefined) => Boolean(text && text.isInDocument);
 
 const getCollapsedHistorySelectionText = (
 	edytor: Edytor,

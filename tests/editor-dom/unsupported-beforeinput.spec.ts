@@ -9,21 +9,19 @@ import {
 	trackPageIssues
 } from './helpers';
 
+// Commands the editor intentionally prevents without routing into the
+// model. `insertOrderedList`/`insertUnorderedList`/`insertHorizontalRule`/
+// `insertLink`/`formatFontColor`/`formatBackColor` were promoted to routed
+// commands — see format-beforeinput.spec.ts.
 const unsupportedNativeCommands = [
-	'insertOrderedList',
-	'insertUnorderedList',
 	'indent',
 	'outdent',
 	'formatBlock',
 	'formatJustifyCenter',
 	'formatForeColor',
-	'formatBackColor',
-	'formatFontColor',
 	'formatFontName',
-	'insertLink',
 	'formatSetBlockTextDirection',
-	'formatSetInlineTextDirection',
-	'insertHorizontalRule'
+	'formatSetInlineTextDirection'
 ] as const;
 
 const getUnsupportedCommandData = (inputType: (typeof unsupportedNativeCommands)[number]) => {

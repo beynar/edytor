@@ -6,12 +6,19 @@ import {
 } from '$lib/selection/replaceSelection.js';
 import { Text } from '$lib/text/text.svelte.js';
 import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
+import {
+	insertEdytorClipboardFragment,
+	readEdytorClipboardFragment
+} from '$lib/clipboard/clipboard.js';
 import { cloneJson, type JSONText, type SerializableContent } from '$lib/utils/json.js';
+import { prevent } from '$lib/utils.js';
+import { getYIndex } from '$lib/selection/selection.utils.js';
 import { tick } from 'svelte';
 import { runBeforeInputDeleteCommand } from './beforeInputDeleteCommands.js';
 import type { BeforeInputSnapshot } from './beforeInputSnapshot.js';
 import { isTabTextInput } from './beforeInputSnapshot.js';
 import { setSuppressedInputRepairSelectionTarget } from './beforeInputRepairTarget.js';
+import { firstUriListEntry } from './dataTransferPayload.js';
 
 const createSyntheticKeyDown = (
 	init: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey'>
@@ -185,7 +192,7 @@ const insertCompositionText = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 	}
 
 	if (edytor.compositionState.value.length > 0) {
-		compositionText.yText.delete(
+		compositionText.deleteAt(
 			edytor.compositionState.startOffset,
 			edytor.compositionState.value.length
 		);
@@ -242,7 +249,7 @@ const insertFromComposition = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 	}
 
 	if (edytor.compositionState.value.length > 0) {
-		compositionText.yText.delete(
+		compositionText.deleteAt(
 			edytor.compositionState.startOffset,
 			edytor.compositionState.value.length
 		);
@@ -277,7 +284,7 @@ const commitCompositionFromInsertText = async (edytor: Edytor, snapshot: BeforeI
 
 	if (finalValue !== state.value) {
 		if (state.value.length > 0) {
-			compositionText.yText.delete(state.startOffset, state.value.length);
+			compositionText.deleteAt(state.startOffset, state.value.length);
 		}
 
 		if (finalValue.length > 0) {
@@ -359,16 +366,18 @@ const insertText = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
 };
 
 const insertLineBreak = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+	const replacementMarks = getInsertionMarksForSelectionReplacement(snapshot);
 	const target = replaceSelectionBeforeTextInsertion(edytor, snapshot);
 	if (!target) {
 		return;
 	}
 
+	const marks = replacementMarks ?? getMarksForTypedInsertion(target.text, target.offset);
 	const sourceBlock = target.text.parent;
 	const sourceParent = sourceBlock.parent;
 	const sourceIndex = sourceBlock.index;
 	const sourceSiblingCount = sourceParent?.children.length ?? 0;
-	target.text.insertText({ value: '\n', start: target.offset, end: target.offset });
+	target.text.insertText({ value: '\n', start: target.offset, end: target.offset, marks });
 	sourceBlock.normalizeContent();
 
 	const normalizedNextBlock = sourceParent?.children[sourceIndex + 1];
@@ -383,14 +392,117 @@ const insertLineBreak = async (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
 	await edytor.selection.setAtTextOffset(selectionText, selectionOffset);
 };
 
+const getLinkMarksForUri = (edytor: Edytor, uri: string) =>
+	edytor.marks.has('link') ? { link: { href: uri } } : undefined;
+
 const insertFromPaste = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+	const uri = firstUriListEntry(snapshot.dataTransfer?.getData('text/uri-list'));
+	const plain = snapshot.dataTransfer?.getData('text/plain') || '';
+	const value = plain || uri || '';
+	if (!value) {
+		return;
+	}
+
 	const target = replaceSelectionBeforeTextInsertion(edytor, snapshot);
 	if (!target) {
 		return;
 	}
 
-	const value = snapshot.dataTransfer?.getData('text/plain') ?? '';
-	target.text.insertText({ value, start: target.offset, end: target.offset });
+	target.text.insertText({
+		value,
+		start: target.offset,
+		end: target.offset,
+		marks: !plain && uri ? getLinkMarksForUri(edytor, uri) : undefined
+	});
+	setSuppressedInputRepairSelectionTarget(edytor, target.text, target.offset + value.length);
+	await edytor.selection.setAtTextOffset(target.text, target.offset + value.length);
+};
+
+const runDataTransferPastePlugins = (edytor: Edytor, dataTransfer: DataTransfer) => {
+	const event = { clipboardData: dataTransfer } as unknown as ClipboardEvent;
+	for (const plugin of edytor.plugins) {
+		plugin.onPaste?.({ prevent, e: event });
+	}
+};
+
+// A drop reported while whole blocks are selected must insert at the drop
+// point — not replace the block selection. The earlier target-range sync is
+// skipped for block selections (the DOM caret sits inside a selected block),
+// so resolve the reported range directly.
+const resolveDataTransferInsertionTarget = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+	if (edytor.selection.selectedBlocks.size > 0 || edytor.selection.selectedInlineBlock.size > 0) {
+		const targetRange =
+			typeof snapshot.event.getTargetRanges === 'function'
+				? snapshot.event.getTargetRanges()[0]
+				: null;
+		const node = edytor.node;
+		if (!targetRange || !node?.contains(targetRange.startContainer)) {
+			return null;
+		}
+		const text = edytor.selection.getTextOfNode(
+			targetRange.startContainer,
+			targetRange.startOffset
+		);
+		if (!text) {
+			return null;
+		}
+		const offset = Math.max(
+			0,
+			Math.min(getYIndex(text, targetRange.startContainer, targetRange.startOffset), text.length)
+		);
+		edytor.selection.setCollapsedStateAtTextOffset(text, offset);
+		return { text, offset };
+	}
+
+	return replaceSelectionBeforeTextInsertion(edytor, snapshot);
+};
+
+/**
+ * Drop/as-quotation payloads replay the paste pipeline: an embedded Edytor
+ * fragment round-trips (cross-editor drags), files and html route through the
+ * plugin `onPaste` hook (claimed via `prevent`, which throws out of this
+ * function and is caught by the beforeinput caller), `text/uri-list` becomes
+ * a link when a `link` mark is registered, and `text/plain` inserts as text.
+ * Unclaimed files insert nothing rather than degrading to file-name text.
+ */
+const insertFromDataTransfer = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+	const dataTransfer = snapshot.dataTransfer ?? null;
+
+	if (dataTransfer) {
+		const fragment = readEdytorClipboardFragment(dataTransfer);
+		if (fragment) {
+			await insertEdytorClipboardFragment(edytor, fragment);
+			return;
+		}
+
+		if ((dataTransfer.files?.length ?? 0) > 0) {
+			runDataTransferPastePlugins(edytor, dataTransfer);
+			return;
+		}
+
+		if (dataTransfer.getData('text/html')) {
+			runDataTransferPastePlugins(edytor, dataTransfer);
+		}
+	}
+
+	const uri = firstUriListEntry(dataTransfer?.getData('text/uri-list'));
+	const plain = dataTransfer?.getData('text/plain') || '';
+	const value = plain || uri || snapshot.data || '';
+	if (!value) {
+		return;
+	}
+
+	const target = resolveDataTransferInsertionTarget(edytor, snapshot);
+	if (!target) {
+		return;
+	}
+
+	target.text.insertText({
+		value,
+		start: target.offset,
+		end: target.offset,
+		marks: !plain && uri ? getLinkMarksForUri(edytor, uri) : undefined
+	});
 	setSuppressedInputRepairSelectionTarget(edytor, target.text, target.offset + value.length);
 	await edytor.selection.setAtTextOffset(target.text, target.offset + value.length);
 };
@@ -425,8 +537,8 @@ const insertParagraph = async (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
 					parent: currentBlock,
 					content: [{ text: '' }]
 				});
-				currentBlock.yContent.delete(0, currentBlock.content.length);
-				currentBlock.yContent.insert(0, [emptyText.yText]);
+				currentBlock.deleteParts(0, currentBlock.content.length);
+				currentBlock.insertParts(0, [emptyText]);
 				currentBlock.normalizeContent();
 				const currentText = edytor.getTextById(emptyText.id) || emptyText;
 				setSuppressedInputRepairSelectionTarget(edytor, currentText, 0);
@@ -485,7 +597,9 @@ export const shouldRefreshDomAfterModelCommand = (snapshot: BeforeInputSnapshot)
 		snapshot.inputType === 'insertReplacementText' ||
 		snapshot.inputType === 'insertFromYank' ||
 		snapshot.inputType === 'insertTranspose' ||
-		snapshot.inputType === 'insertFromPaste');
+		snapshot.inputType === 'insertFromPaste' ||
+		snapshot.inputType === 'insertFromPasteAsQuotation' ||
+		snapshot.inputType === 'insertFromDrop');
 
 export const runBeforeInputCommand = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
 	switch (snapshot.inputType) {
@@ -516,6 +630,9 @@ export const runBeforeInputCommand = (edytor: Edytor, snapshot: BeforeInputSnaps
 			return insertLineBreak(edytor, snapshot);
 		case 'insertFromPaste':
 			return insertFromPaste(edytor, snapshot);
+		case 'insertFromPasteAsQuotation':
+		case 'insertFromDrop':
+			return insertFromDataTransfer(edytor, snapshot);
 		case 'insertParagraph':
 			return insertParagraph(edytor, snapshot);
 	}

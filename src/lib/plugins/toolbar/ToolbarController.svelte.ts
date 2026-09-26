@@ -103,7 +103,7 @@ export class ToolbarController {
 			const isFirst = index === 0;
 			const isLast = index === texts.length - 1;
 			const start = isFirst ? yStart : 0;
-			const end = isLast ? yEnd : text.yText.length;
+			const end = isLast ? yEnd : text.length;
 
 			for (const segment of text.getMarksAtRange(start, end)) {
 				const href = getLinkHref(segment.marks?.link);

@@ -29,9 +29,9 @@ export const specSeed = (blocks: BlockSpec[]): SeedUpdate => {
 export const modelSpecSeed = (blocks: BlockSpec[]): SeedUpdate => {
 	return (doc) => {
 		doc.transact(() => {
-			for (const spec of blocks) {
-				M.insertBlock(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, spec);
-			}
+			// Bulk insert (U7): identical rank chain to N sequential
+			// insertBlock calls, one sibling read for the batch.
+			M.insertBlocks(doc, { parent: null, index: Number.MAX_SAFE_INTEGER }, blocks);
 		});
 	};
 };

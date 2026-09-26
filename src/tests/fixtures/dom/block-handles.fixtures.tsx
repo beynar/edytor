@@ -1,14 +1,21 @@
 /** @jsxImportSource ../../jsx */
 import { expect } from 'vitest';
 
-import { getDragBlocks, moveBlocksTo } from '$lib/plugins/blockHandles/blockHandleOperations.js';
 import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
+import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { dispatchDomKeyDown, flushDomUpdates } from '../../dom/test.utils.js';
 import { defineDomFixture, defineFixtures } from '../types.js';
 
 const blockHandlePlugins = [richTextPlugin, mentionPlugin, blockHandlesPlugin];
+const preventMovePlugin: Plugin = () => ({
+	onBeforeOperation: ({ operation, prevent }) => {
+		if (operation === 'moveBlock') {
+			prevent();
+		}
+	}
+});
 
 export const fixtures = defineFixtures([
 	defineDomFixture({
@@ -49,6 +56,29 @@ export const fixtures = defineFixtures([
 		expectSelection: {
 			selectedBlockPaths: [[0]]
 		}
+	}),
+	defineDomFixture({
+		description: 'treats a plugin-prevented handle move as a canceled keyboard action',
+		plugins: [...blockHandlePlugins, preventMovePlugin],
+		input: (
+			<root>
+				<paragraph>First</paragraph>
+				<paragraph>Second</paragraph>
+			</root>
+		),
+		run: async ({ getAllByTestId }) => {
+			await dispatchDomKeyDown(getAllByTestId('block-handle')[1], {
+				key: 'ArrowUp',
+				code: 'ArrowUp',
+				altKey: true
+			});
+		},
+		output: (
+			<root>
+				<paragraph>First</paragraph>
+				<paragraph>Second</paragraph>
+			</root>
+		)
 	}),
 	defineDomFixture({
 		description: 'moves a block inside its previous sibling with the keyboard fallback',
@@ -100,7 +130,7 @@ export const fixtures = defineFixtures([
 			const leadCrdtId = edytor.facade!.crdtId(lead.id);
 			const noteCrdtId = edytor.facade!.crdtId(note.id);
 			edytor.selection.selectBlocks(lead, note);
-			const moved = moveBlocksTo(edytor, getDragBlocks(edytor, lead), tail, 'after');
+			const moved = edytor.moveBlocks({ blocks: [lead, note], target: tail, position: 'after' });
 			await flushDomUpdates();
 			return { moved, lead, note, leadCrdtId, noteCrdtId };
 		},
@@ -138,7 +168,7 @@ export const fixtures = defineFixtures([
 		run: async ({ edytor }) => {
 			const [parent, lead, note] = edytor.root!.children;
 			edytor.selection.selectBlocks(lead, note);
-			moveBlocksTo(edytor, getDragBlocks(edytor, lead), parent, 'inside');
+			edytor.moveBlocks({ blocks: [lead, note], target: parent, position: 'inside' });
 			await flushDomUpdates();
 		},
 		output: (

@@ -4,8 +4,10 @@ package-lock.json
 yarn.lock
 .codex
 .playwright-mcp
+.playwright-cli
 build
 dist
+dist-ssr
 test-results
 # vendored upstream source + tests are not held to repo formatting
 src/lib/crdt/vendor

@@ -9,6 +9,9 @@ import * as Y from 'edytor/crdt';
 import {
 	Edytor,
 	bindCrdt,
+	createDocument,
+	loadDocument,
+	attachDocument,
 	createIndexeddbSync,
 	createWebsocketSync,
 	clearDocument,
@@ -16,8 +19,16 @@ import {
 	IndexeddbPersistence,
 	WebsocketProvider,
 	richTextPlugin,
+	type ContentRun,
+	type DocumentActor,
+	type DocumentAttribution,
+	type DocumentReadiness,
+	type EdytorDocument,
 	type EdytorSync,
-	type Plugin
+	type JSONDoc,
+	type ModelView,
+	type Plugin,
+	type ProjectedDoc
 } from 'edytor';
 import * as bindings from 'edytor/crdt/edytor';
 
@@ -99,3 +110,42 @@ void clearDoc;
 void store;
 void plugins;
 void Edytor;
+
+// ── the integrated document API — the headline surface, fully typed ────
+// `createDocument`/`loadDocument`/`attachDocument` + the canonical JSON
+// reach Svelte consumers straight from the package root (the same names
+// the node-safe `edytor/crdt/edytor` surface exports).
+const docSeed: JSONDoc = {
+	children: [{ type: 'paragraph', id: 'root-p1', content: [{ text: 'typed' }] }]
+};
+const rootDoc: EdytorDocument = createDocument({
+	value: docSeed,
+	actor: { id: 'root-actor' } satisfies DocumentActor
+});
+const rootReadiness: DocumentReadiness = rootDoc.readiness;
+const rootProjected: ProjectedDoc = rootDoc.facade.project();
+rootDoc.transact(() => rootDoc.facade.insertText(rootProjected.children[0]!.id, 0, '!'));
+rootDoc.history.undo();
+const rootAttribution: DocumentAttribution = rootDoc.attribution;
+const rootUpdate: Uint8Array = rootDoc.encode();
+const rootLoaded: EdytorDocument = loadDocument(rootUpdate);
+const rootAttached: EdytorDocument = attachDocument(doc);
+
+// U2: the run vocabulary carries no per-item attribution — `ContentRun`
+// stays nameable; `document.attribution` exposes block records + the
+// actor dictionary + the `legacy()` read over pre-existing `a/` records.
+const rootContentRun: ContentRun = { kind: 'text', text: 'x' };
+const rootRunsApi = bindings.bindRuns(Y as bindings.EngineApi);
+const rootModelView: ModelView | undefined = rootRunsApi.modelState(
+	storyDoc as unknown as bindings.EngineDoc
+);
+const rootLegacy = rootAttribution.legacy();
+const rootBlockAttr = rootAttribution.block(rootProjected.children[0]!.id);
+void rootContentRun;
+void rootLegacy;
+void rootBlockAttr;
+void rootModelView;
+void rootReadiness;
+void rootAttribution;
+void rootLoaded;
+void rootAttached;

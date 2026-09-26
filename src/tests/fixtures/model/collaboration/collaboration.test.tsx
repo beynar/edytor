@@ -60,8 +60,15 @@ describe('collaboration provider lifecycle model contracts', () => {
 		second.expect(output('Say Hello!'));
 	});
 
-	it('keeps undo local by default when editors share one Y.Doc', () => {
+	it('composes ONE document — and one shared history — when editors share a raw Y.Doc', () => {
+		// U4b/F2: the legacy `{doc}` path goes through `attachDocument`'s
+		// raw-doc dedupe — two `Edytor`s on one raw doc can no longer hold
+		// two `EdytorDocument`s (two facades/two histories on one doc was
+		// the bug). They now share the document AND its undo stack; undo
+		// locality is a per-DOCUMENT contract, not per view.
 		const { first, second } = createSharedDocEditors();
+		expect(first.edytor.document).toBe(second.edytor.document);
+		expect(first.edytor.undoManager).toBe(second.edytor.undoManager);
 
 		first.edytor.root?.children[0]?.firstText.insertText({
 			value: '!',
@@ -71,15 +78,26 @@ describe('collaboration provider lifecycle model contracts', () => {
 		first.expect(output('Hello!'));
 		second.expect(output('Hello!'));
 
+		// One shared stack — the sibling's undo manager sees it too.
 		expect(first.edytor.undoManager.canUndo()).toBe(true);
-		expect(second.edytor.undoManager.canUndo()).toBe(false);
+		expect(second.edytor.undoManager.canUndo()).toBe(true);
 
 		second.edytor.undoManager.undo();
-		first.expect(output('Hello!'));
-		second.expect(output('Hello!'));
-
-		first.edytor.undoManager.undo();
 		first.expect(input);
 		second.expect(input);
+	});
+
+	it('keeps undo local between editors on DIFFERENT raw docs', () => {
+		const first = createOperationEdytor(input);
+		const second = createOperationEdytor(input);
+
+		first.edytor.root?.children[0]?.firstText.insertText({
+			value: '!',
+			start: 5,
+			end: 5
+		});
+
+		expect(first.edytor.undoManager.canUndo()).toBe(true);
+		expect(second.edytor.undoManager.canUndo()).toBe(false);
 	});
 });

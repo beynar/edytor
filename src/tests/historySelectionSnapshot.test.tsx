@@ -35,7 +35,9 @@ describe('history selection restore invalidation', () => {
 
 	const redoWithSnapshot = (edytor: ReturnType<typeof setupUndoneInsert>['edytor']) => {
 		const stackItem = edytor.undoManager.redoStack.at(-1);
-		const selectionSnapshot = getHistorySelectionSnapshot(stackItem, { preferRestore: true });
+		const selectionSnapshot = getHistorySelectionSnapshot(edytor, stackItem, {
+			preferRestore: true
+		});
 		const shouldRestore = beginHistoryCommandRestore(edytor);
 		edytor.undoManager.redo();
 		restoreCollapsedHistorySelectionState(edytor, selectionSnapshot, shouldRestore);

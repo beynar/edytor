@@ -525,4 +525,33 @@ describe('onChange', () => {
 		doc.get(META_KEY).setAttr('unrelated', 1);
 		expect(seen.every((c) => c.version <= v)).toBe(true);
 	});
+
+	it('emits DocChange for a claim-only merge commit even after a mid-transaction read', () => {
+		// Regression: `syncTransaction`'s read-your-writes fold advances the
+		// block recs mid-transaction — the browser delete path does exactly
+		// this when the batch's post-merge selection write reads model state.
+		// The commit-time claim refinement must compare against the COMMITTED
+		// fingerprint, not the already-advanced rec, or a pure order change
+		// (merge, move) is misclassified as record churn, keeps `fast` set,
+		// and `diffFast` — which never diffs order — drops the commit: every
+		// `onChange` subscriber (mirror, `edytor.value`, plugin hooks) misses it.
+		const doc = newDoc();
+		const ed = E.create(doc);
+		ed.init({
+			content: [
+				{ id: 'a', type: 'paragraph', content: [{ kind: 'text', text: 'x' }] },
+				{ id: 'b', type: 'paragraph', content: [{ kind: 'text', text: '' }] },
+				{ id: 'c', type: 'paragraph', content: [{ kind: 'text', text: 'y' }] }
+			]
+		});
+		const seen = [];
+		ed.onChange((c) => seen.push(c));
+		ed.transact(() => {
+			expect(ed.mergeBackward('b')).toBe('a');
+			ed.project(); // modelCtx read — folds the in-flight claim write
+		});
+		expect(seen).toHaveLength(1);
+		expect(seen[0].removed.has('b')).toBe(true);
+		expect(seen[0].order.get(null)).toEqual(['a', 'c']);
+	});
 });

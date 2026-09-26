@@ -2,6 +2,8 @@ import * as s from 'lib0-v14/schema'
 import * as error from 'lib0-v14/error'
 import { ObservableV2 } from 'lib0-v14/observable'
 
+import { ContentFormat } from '../structs/Item.js'
+
 import { createIdSet } from './ids.js'
 
 export const attributionJsonSchema = s.$object({
@@ -121,3 +123,64 @@ export const rendererContentLength = (renderer, item) =>
   renderer !== null && renderer.hasItem(item)
     ? renderer.contentLength(item)
     : ((item.deleted || !item.content.isCountable()) ? 0 : item.length)
+
+/**
+ * The `AttributedContent` pieces `item` contributes to a *current-state*
+ * render — the single physical-sequence interpretation shared by
+ * `YNode#toDelta` (full render, `itemsToRender == null && !retainInserts`)
+ * and `RangeCursor`'s bounded reads (UPSTREAM.md P5):
+ *
+ * - a renderer-claimed item expands through `renderer.readContent` in mode
+ *   `1` — the renderer's own attribution/restore/hide semantics;
+ * - a `ContentFormat` marker contributes one piece carrying its `{key,
+ *   value}` — consumers fold it into format state (by the piece's effective
+ *   `deleted` flag) and it occupies no rendered length;
+ * - a tombstoned item contributes nothing — invisible in the current state;
+ * - any other item contributes itself whole.
+ *
+ * The pieces' `render`/`fresh` flags follow mode-`1` semantics
+ * (`render = !deleted || attrs != null`).
+ *
+ * `scratch` is an optional caller-owned `AttributedContent` reused for the
+ * single trivial piece — both consumers drain `out` before the next call,
+ * so reusing it keeps the common live-content path allocation-free
+ * (renderer-claimed items always allocate their own pieces).
+ *
+ * @param {Array<AttributedContent<any>>} out
+ * @param {AbstractRenderer?} renderer
+ * @param {import('../structs/Item.js').Item} item
+ * @param {AttributedContent<any>?} [scratch]
+ */
+export const readItemPieces = (out, renderer, item, scratch = null) => {
+  const content = item.content
+  if (renderer !== null && renderer.hasItem(item)) {
+    renderer.readContent(out, item.id.client, item.id.clock, item.deleted, content, 1)
+    return
+  }
+  let piece = scratch
+  if (content.constructor === ContentFormat) {
+    if (piece === null) {
+      piece = new AttributedContent(content, item.id.clock, item.deleted, null, 1)
+    } else {
+      piece.content = content
+      piece.clock = item.id.clock
+      piece.deleted = item.deleted
+      piece.attrs = null
+      piece.render = !item.deleted
+      piece.fresh = false
+    }
+    out.push(piece)
+  } else if (!item.deleted) {
+    if (piece === null) {
+      piece = new AttributedContent(content, item.id.clock, false, null, 1)
+    } else {
+      piece.content = content
+      piece.clock = item.id.clock
+      piece.deleted = false
+      piece.attrs = null
+      piece.render = true
+      piece.fresh = false
+    }
+    out.push(piece)
+  }
+}

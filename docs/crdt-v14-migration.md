@@ -302,9 +302,14 @@ forged/confused peers, and stuck migrations.
 `bindCrdt(Y).migration` → `{ migrate, rollback, status, waitForSettled }`.
 
 - `migrate(name, opts?)` → `MigrateResult` (`active|busy|failed|rolledback`;
-  `alreadyActive`, `empty`, `doc`, `json`, `sourceRows`, `error`).
-  `MigrateOptions`: `sourceName`, `leaseMs` (30 s), `waitMs` (30 s),
-  `pollMs` (150 ms), `owner`, `force`, `wait`, `onPhase` (testing hook).
+  `alreadyActive`, `empty`, `doc`, `update`, `json`, `sourceRows`, `error`).
+  `update` is the persisted v14 snapshot itself — feed it through the
+  document admission path: `loadDocument(result.update)` restores the
+  migrated state as a `hydrated` document through the same staged gate
+  every load crosses (U8; `attachDocument(result.doc)` + `sync()` is the
+  equivalent in-place path). `MigrateOptions`: `sourceName`, `leaseMs`
+  (30 s), `waitMs` (30 s), `pollMs` (150 ms), `owner`, `force`, `wait`,
+  `onPhase` (testing hook).
 - `status(name)` → `MigrationRecord` (`{v, status, owner?, leaseUntil?,
 migratedAt?, rolledbackAt?, sourceRows?, sourceBytes?, error?}`).
 - `waitForSettled(name, {waitMs, pollMs})` → resolves on first non-`pending`

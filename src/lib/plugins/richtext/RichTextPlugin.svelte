@@ -4,7 +4,13 @@
 	import type { HotKey } from '$lib/hotkeys.js';
 	import type { Text } from '$lib/text/text.svelte.js';
 	import { createRichTextCommands } from './richTextCommands.js';
-	import { richTextOperations, type RichTextMark } from './richTextOperations.js';
+	import {
+		richTextOperations,
+		sanitizeLinkHref,
+		sanitizeCssColorValue,
+		type RichTextMark
+	} from './richTextOperations.js';
+	import { firstUriListEntry } from '$lib/events/dataTransferPayload.js';
 
 	export { richTextOperations };
 
@@ -80,7 +86,10 @@
 				if (parent.type === 'unordered-list') {
 					return 'list-item';
 				}
-				return 'paragraph';
+				// Document semantic authority — an injected document may carry
+				// a non-paragraph `defaultType`; the parent-sensitive list
+				// overrides above still take precedence.
+				return edytor.defaultType;
 			},
 			hotkeys: {
 				'mod+b': setMarkAndSelect('bold'),
@@ -136,6 +145,48 @@
 				if (e.inputType === 'formatRemove') {
 					prevent(() => {
 						richTextOperations(edytor).removeAllMarksAtRange();
+					});
+					return;
+				}
+
+				if (e.inputType === 'formatFontColor' || e.inputType === 'formatBackColor') {
+					// Native color commands carry the CSS color in `data` and
+					// are set-semantics — they map onto the color/highlight
+					// marks through the non-toggle op.
+					const mark = e.inputType === 'formatFontColor' ? 'color' : 'highlight';
+					if (e.data) {
+						prevent(() => {
+							richTextOperations(edytor).setMarkValueAtRange(mark, e.data!);
+						});
+					}
+					return;
+				}
+
+				if (e.inputType === 'insertLink') {
+					const href =
+						e.data ??
+						firstUriListEntry(e.dataTransfer?.getData('text/uri-list')) ??
+						e.dataTransfer?.getData('text/plain');
+					if (href) {
+						prevent(() => {
+							richTextOperations(edytor).setLinkAtRange({ href });
+						});
+					}
+					return;
+				}
+
+				if (e.inputType === 'insertOrderedList' || e.inputType === 'insertUnorderedList') {
+					const type =
+						e.inputType === 'insertOrderedList' ? 'numbered-list-item' : 'bulleted-list-item';
+					prevent(() => {
+						richTextOperations(edytor).convertCurrentBlock({ type });
+					});
+					return;
+				}
+
+				if (e.inputType === 'insertHorizontalRule') {
+					prevent(() => {
+						richTextOperations(edytor).insertDividerAtSelection();
 					});
 				}
 			},
@@ -202,7 +253,10 @@
 {/snippet}
 
 {#snippet link({ mark, content }: MarkSnippetPayload<{ href: string; target?: string }>)}
-	<a href={mark.href} target={mark.target}>
+	{@const href = sanitizeLinkHref(mark.href)}
+	<!-- href omitted when the scheme is unsafe — an inert anchor still
+	     carries the text; a poisoned mark never reaches the DOM. -->
+	<a href={href ?? undefined} target={href ? mark.target : undefined}>
 		{@render content()}
 	</a>
 {/snippet}
@@ -226,13 +280,17 @@
 {/snippet}
 
 {#snippet color({ mark, content }: MarkSnippetPayload<{ color: string }>)}
-	<span style="color: {mark}">
+	{@const safe = sanitizeCssColorValue(mark)}
+	<!-- style omitted on hostile values — a `;` payload would inject
+	     arbitrary declarations. The mark still wraps content harmlessly. -->
+	<span style={safe ? `color: ${safe}` : undefined}>
 		{@render content()}
 	</span>
 {/snippet}
 
 {#snippet highlight({ mark, content }: MarkSnippetPayload<string>)}
-	<span style="background-color: {mark}">
+	{@const safe = sanitizeCssColorValue(mark)}
+	<span style={safe ? `background-color: ${safe}` : undefined}>
 		{@render content()}
 	</span>
 {/snippet}

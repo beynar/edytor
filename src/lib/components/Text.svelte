@@ -10,6 +10,25 @@
 
 	let hasDomText = $state(false);
 
+	const attachText = (node: HTMLElement, initialText: Text) => {
+		let attachedText = initialText;
+		// `ReadonlyText.attach` returns undefined — only the live Text
+		// adapter hands back a `{destroy}` handle.
+		let attachment = attachedText.attach(node);
+
+		return {
+			update(nextText: Text) {
+				if (nextText === attachedText) return;
+				attachment?.destroy();
+				attachedText = nextText;
+				attachment = attachedText.attach(node);
+			},
+			destroy() {
+				attachment?.destroy();
+			}
+		};
+	};
+
 	const getDeltaKey = (delta: Text['children'][number], index: number) =>
 		`${index}:${JSON.stringify(delta.marks)}`;
 
@@ -87,8 +106,12 @@
 		};
 
 		const removeDuplicateSiblings = () => {
-			const placeholders = Array.from(
-				node.parentElement?.querySelectorAll('[data-edytor-text-placeholder]') ?? []
+			// Direct children only — nested block children can render their
+			// own placeholders inside the same parent element (heading/
+			// quote), and a descendant query would miscount them as
+			// duplicates of the parent's own placeholder.
+			const placeholders = Array.from(node.parentElement?.children ?? []).filter((child) =>
+				child.matches('[data-edytor-text-placeholder]')
 			);
 			const currentPlaceholder = placeholders.at(-1);
 			if (currentPlaceholder && node !== currentPlaceholder) {
@@ -135,9 +158,15 @@
 		queueMicrotask(removeIfStale);
 		setTimeout(removeIfStale);
 		queueMicrotask(removeDuplicateSiblings);
-		setTimeout(removeDuplicateSiblings, 50);
-		setTimeout(removeDuplicateSiblings, 250);
-		setTimeout(removeDuplicateSiblings, 1000);
+		// The deferred duplicate-cleanup chain (50/250/1000ms) is folded
+		// into the editor-wide coalesced repair queue — one pending entry
+		// for this placeholder's parent instead of three dedicated timers
+		// per mounted placeholder, all cancelled with the view. The
+		// observer above stays: it covers the NON-commit-driven staleness
+		// the commit-scoped queue can't see (a placeholder mounted while
+		// `shouldShowPlaceholder` still holds that gains sibling DOM text
+		// through a browser/mutation path that produced no facade commit).
+		text.edytor.placeholderRepair.addKeyed(node, () => node.parentElement);
 
 		return {
 			destroy: () => observer?.disconnect()
@@ -146,7 +175,11 @@
 
 	const trackTextDomContent = (node: HTMLElement) => {
 		const updateDomTextState = () => {
-			hasDomText = Boolean(node.textContent?.replaceAll('\u200B', '').length);
+			hasDomText = Boolean(node.textContent?.replaceAll('​', '').length);
+			// Any observed mutation under a text span can re-park a live DOM
+			// caret — mark it so the trailing selectionchange echo is
+			// reverted, not derived as a user move.
+			text.edytor.markDomSelectionChurn();
 			scheduleRemoveStalePlaceholders(text);
 		};
 
@@ -191,7 +224,7 @@
 <!-- thanks for the tip: https://github.com/michael/svedit/blob/main/src/lib/Text.svelte -->
 
 <span
-	use:text.attach
+	use:attachText={text}
 	use:trackTextDomContent
 	use:restoreTextSelectionFromClick
 	data-edytor-text-empty={text.isEmpty ? 'true' : 'false'}
@@ -200,7 +233,7 @@
 -->{#if text.isEmpty}<!--
 -->&#8203;<!--
 -->{:else}<!--
-	-->{#each text.children as delta, index (getDeltaKey(delta, index))}<!--
+	-->{#each text.renderChildren as delta, index (getDeltaKey(delta, index))}<!--
 -->{#if delta.marks.length}<!--
 --><Mark
 					{delta}

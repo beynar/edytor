@@ -816,6 +816,53 @@ test.describe('browser selection behavior', () => {
 		issues.assertClean();
 	});
 
+	test('collapses a native range over empty block contents to the model caret', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await gotoSelectionFixture(page, '/test/dom?scenario=basic&empty=first');
+		await page.evaluate(() => {
+			const block = document.querySelector<HTMLElement>('[data-edytor-block="true"]');
+			if (!block) throw new Error('Missing empty block');
+
+			const range = document.createRange();
+			range.selectNodeContents(block);
+			const selection = window.getSelection();
+			selection?.removeAllRanges();
+			selection?.addRange(range);
+			block.focus({ preventScroll: true });
+			document.dispatchEvent(new Event('selectionchange'));
+		});
+
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 0,
+			yEnd: 0,
+			isCollapsed: true
+		});
+		await expect
+			.poll(() =>
+				page.evaluate(() => {
+					const selection = window.getSelection();
+					const anchorElement =
+						selection?.anchorNode instanceof Element
+							? selection.anchorNode
+							: selection?.anchorNode?.parentElement;
+					return {
+						isCollapsed: selection?.isCollapsed ?? false,
+						insideEmptyText: Boolean(
+							anchorElement?.closest('[data-edytor-text="true"][data-edytor-text-empty="true"]')
+						)
+					};
+				})
+			)
+			.toEqual({ isCollapsed: true, insideEmptyText: true });
+
+		issues.assertClean();
+	});
+
 	test('clears a native empty-placeholder selection before the next click and edit', async ({
 		page
 	}) => {
@@ -2094,6 +2141,42 @@ test.describe('browser selection behavior', () => {
 			yEnd: 1,
 			isCollapsed: true
 		});
+
+		issues.assertClean();
+	});
+
+	test('scrolls the caret into view when typing lands below the fold', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await gotoSelectionFixture(page, '/test/dom?scenario=basic&empty=last');
+		await setSelectionByTextIndex(page, 0, 0);
+
+		// Push the editor below the fold — the caret element sits ~2000px
+		// down while focus stays on the text host.
+		await page.evaluate(() => {
+			document.querySelector('[data-testid="type-scroll-spacer"]')?.remove();
+			const spacer = document.createElement('div');
+			spacer.setAttribute('data-testid', 'type-scroll-spacer');
+			spacer.style.height = '2000px';
+			document.querySelector('[data-testid="editor-shell"]')?.before(spacer);
+			window.scrollTo(0, 0);
+		});
+		await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+
+		await page.keyboard.type('X');
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ text: string }> }>;
+				}>(page, 'value');
+				return value.children[0]?.content?.[0]?.text ?? '';
+			})
+			.toContain('X');
+
+		// The input-driven caret write scrolled the caret back into view —
+		// the page must move. (Inverse of the `clear()` case above:
+		// programmatic writes never scroll.)
+		await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 
 		issues.assertClean();
 	});

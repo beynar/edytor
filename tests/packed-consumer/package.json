@@ -6,13 +6,17 @@
 	"description": "Packed-consumer smoke for `edytor/crdt` — see README.md / run.sh",
 	"scripts": {
 		"smoke": "node smoke.js",
+		"smoke:svelte": "node smoke-svelte.mjs",
 		"typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.bundler.json"
 	},
 	"dependencies": {
 		"edytor": "file:./edytor.tgz"
 	},
 	"devDependencies": {
+		"@sveltejs/vite-plugin-svelte": "^7.0.0",
+		"@typescript-eslint/types": "^8.0.0",
 		"svelte": "^5.0.0",
-		"typescript": "^5.9.3"
+		"typescript": "^5.9.3",
+		"vite": "^8.0.3"
 	}
 }

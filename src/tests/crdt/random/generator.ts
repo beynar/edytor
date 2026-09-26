@@ -26,7 +26,11 @@ export type DocOp =
 	| { kind: 'setMark'; idIndex: number; offset: number; length: number; name: string }
 	| { kind: 'unsetMark'; idIndex: number; offset: number; length: number; name: string }
 	| { kind: 'insertInline'; idIndex: number; offset: number; atomId: string }
-	| { kind: 'removeInline'; idIndex: number; inlineIndex: number };
+	| { kind: 'removeInline'; idIndex: number; inlineIndex: number }
+	// History ops (U5): pop the executing peer's own local-origin undo/redo
+	// stacks — registry-scoped, `captureTimeout: 0` (one item per op).
+	| { kind: 'undo' }
+	| { kind: 'redo' };
 
 export type NetOp = {
 	kind: 'net';
@@ -65,7 +69,11 @@ const INLINE_TYPES = ['mention', 'chip'];
 
 /** Weighted pick of a document op. */
 const genDocOp = (rng: Rng, seed: number, seq: number): DocOp => {
-	const roll = int(rng, 0, 99);
+	// 0–99 keep their historical thresholds; 100–103 add bounded history ops
+	// (undo ~3%, redo ~1% — redo is usually an empty-stack no-op).
+	const roll = int(rng, 0, 103);
+	if (roll >= 103) return { kind: 'redo' };
+	if (roll >= 100) return { kind: 'undo' };
 	if (roll < 24) {
 		// 24% insert text (unique tag lets the runner detect lost edits)
 		return {

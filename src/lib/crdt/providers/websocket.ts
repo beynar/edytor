@@ -18,31 +18,40 @@
  * classification: only an OPAQUE v1-update relay stays compatible; a server
  * that participates in sync (like upstream `y-websocket-server`) must itself
  * run the vendored v14 engine + v14 protocol modules.
+ *
+ * The room half — enveloped dispatch, the gated sync handler, awareness
+ * publish/query, the BroadcastChannel subscriber + connect/disconnect
+ * sequences, and the schema-gate reporting — is shared with the IndexedDB
+ * provider in `room.ts` (S1). This file keeps the transport edges: the
+ * socket lifecycle, reconnect backoff, the auth reply, and the
+ * SyncStep2-handshake `synced` verdict (+ the `syncSettleMs` ambiguity
+ * window).
  */
 import * as bc from 'lib0-v14/broadcastchannel';
 import * as time from 'lib0-v14/time';
 import * as encoding from 'lib0-v14/encoding';
-import * as decoding from 'lib0-v14/decoding';
 import { ObservableV2 } from 'lib0-v14/observable';
 import * as math from 'lib0-v14/math';
 import * as url from 'lib0-v14/url';
 import * as env from 'lib0-v14/environment';
-import {
-	Awareness,
-	applyAwarenessUpdate,
-	encodeAwarenessUpdate,
-	removeAwarenessStates
-} from '../protocols/awareness.js';
-import { readAuthMessage } from '../protocols/auth.js';
+import { Awareness, encodeAwarenessUpdate, removeAwarenessStates } from '../protocols/awareness.js';
+import { messagePermissionDenied, readAuthMessage } from '../protocols/auth.js';
 import { bindSync, type SyncProtocol } from '../protocols/sync.js';
+import { writeProtocolVersion } from '../protocols/envelope.js';
 import {
-	PROTOCOL_VERSION,
-	readProtocolVersion,
-	writeProtocolVersion
-} from '../protocols/envelope.js';
-import { checkSchema, SchemaMismatchError, type SchemaProblem } from '../edytor-doc.js';
-import type { EngineApi, EngineDoc, YDoc } from '../engine-api.js';
-import type { ProtocolMismatch, SchemaMismatchDetail } from './indexeddb.js';
+	bindRoomProtocol,
+	emitFailed,
+	messageAuth,
+	messageAwareness,
+	messageQueryAwareness,
+	messageSync,
+	type ProtocolMismatch,
+	type RoomMessageHandler,
+	type SchemaMismatchDetail
+} from './room.js';
+import type { EngineApi, YDoc } from '../engine-api.js';
+
+export { messageSync, messageAwareness, messageAuth, messageQueryAwareness };
 
 type NodeProcess = {
 	on(event: string, f: () => void): void;
@@ -50,11 +59,6 @@ type NodeProcess = {
 };
 const nodeProcess = (): NodeProcess | undefined =>
 	(globalThis as { process?: NodeProcess }).process;
-
-export const messageSync = 0;
-export const messageQueryAwareness = 3;
-export const messageAwareness = 1;
-export const messageAuth = 2;
 
 // @todo - this should depend on awareness.outdatedTime
 const messageReconnectTimeout = 30000;
@@ -75,13 +79,20 @@ export type WebsocketProviderEvents = {
 	'message-error': (error: unknown, provider: unknown) => void;
 	/**
 	 * The document's replicated state violates the application-schema gate
-	 * (`meta.v` absent with content present = quarantined from broadcast;
-	 * `meta.v` unsupported = synced but flagged). See the indexeddb provider
-	 * for the same contract.
+	 * (`meta.v` absent with content present = quarantined; `meta.v`
+	 * unsupported = remote update refused at the staging boundary). See the
+	 * indexeddb provider for the same contract.
 	 */
 	'schema-mismatch': (detail: SchemaMismatchDetail, provider: unknown) => void;
 	/** Server refused access — the auth reply carried a denial reason. */
 	'permission-denied': (reason: string, provider: unknown) => void;
+	/**
+	 * Terminal sync failure (the D4 contract): the provider can never
+	 * reach `synced` — destroyed before the handshake completed, or the
+	 * server denied permission. Emitted at most once; never after
+	 * `synced === true`, never on a transient (reconnectable) disconnect.
+	 */
+	failed: (error: unknown, provider: unknown) => void;
 };
 
 export type WebsocketPolyfill = {
@@ -102,6 +113,26 @@ export type WebsocketProviderOptions = {
 	maxBackoffTime?: number;
 	/** Disable cross-tab BroadcastChannel communication. */
 	disableBc?: boolean;
+	/**
+	 * Settle window for an ambiguous empty SyncStep2. An opaque relay
+	 * broadcasts every SyncStep2 reply to ALL room members, so replies
+	 * computed against ANOTHER member's state vector land here too — and
+	 * for an already-synced pair that diff is EMPTY. An applied empty
+	 * SyncStep2 on a still-empty doc therefore cannot prove OUR handshake
+	 * completed; `synced` is deferred by `syncSettleMs` so a real answer
+	 * carrying room state can land first.
+	 *
+	 * The verdict is a TWO-ROUND handshake: at the first expiry with a
+	 * still-empty doc the provider re-broadcasts a fresh SyncStep1 (an
+	 * "are you sure" probe) and grants the room a SECOND window. A
+	 * hydration reply delayed past the first window — a slow peer, a
+	 * relay stall, a congested network — still lands before `synced`.
+	 * Only a doc still empty after the probe's window decides `synced`
+	 * (the room verifiably has nothing for us — what lets a fresh doc
+	 * seed an empty room). Worst case the empty-room decision costs
+	 * `2 × syncSettleMs`.
+	 */
+	syncSettleMs?: number;
 };
 
 export type WebsocketProviderApi = InstanceType<
@@ -116,103 +147,115 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 
 	type Provider = WebsocketProvider;
 
-	/** Schema gate — see the indexeddb provider for the full contract. */
-	const gateSchema = (provider: Provider): SchemaProblem | null => {
-		const problem = checkSchema(provider.doc as unknown as EngineDoc);
-		const key = problem === null ? null : `${problem.kind}:${problem.version ?? '?'}`;
-		if (key !== provider._schemaGateKey) {
-			provider._schemaGateKey = key;
-			if (problem !== null) {
-				provider.emit('schema-mismatch', [
-					{ docName: provider.roomname, problem } satisfies SchemaMismatchDetail,
-					provider
-				]);
-				provider.emit('message-error', [
-					new SchemaMismatchError(provider.roomname, problem),
-					provider
-				]);
+	/** True iff the doc holds any replicated state (an empty sv is `[0]`). */
+	const hasDocState = (doc: YDoc) => Y.encodeStateVector(doc).length > 1;
+
+	/**
+	 * Defer `synced` for an empty SyncStep2 on an empty doc — see the
+	 * `syncSettleMs` option for why an applied empty reply is ambiguous.
+	 * Armed once per handshake; replies landing mid-window keep the
+	 * original deadline (room chatter must not starve the decision).
+	 *
+	 * First expiry re-requests instead of deciding: a fresh SyncStep1
+	 * probe goes out and the room gets a second window to answer. Only
+	 * the SECOND quiet expiry claims `synced` — a hydration answer
+	 * delayed past one window (slow peer, relay stall) still lands
+	 * before the verdict, so a client cannot seed over state it simply
+	 * hadn't heard yet.
+	 */
+	const armSyncSettle = (provider: Provider) => {
+		if (provider._syncSettleTimer !== 0) return;
+		provider._syncSettleTimer = setTimeout(() => {
+			provider._syncSettleTimer = 0;
+			if (provider.synced || hasDocState(provider.doc)) {
+				// A doc that gained state meanwhile waits for the applied
+				// SyncStep2 that delivered it to claim `synced` — the
+				// settle only resolves the verifiably-empty room.
+				provider._syncSettleProbed = false;
+				return;
 			}
-		}
-		return problem;
+			if (!provider.wsconnected && !provider.bcconnected) {
+				// No transport can deliver a room answer — silence it
+				// cannot hear proves nothing. The next connect's
+				// SyncStep1 re-derives the handshake.
+				provider._syncSettleProbed = false;
+				return;
+			}
+			if (!provider._syncSettleProbed) {
+				provider._syncSettleProbed = true;
+				const encoder = encoding.createEncoder();
+				writeProtocolVersion(encoder);
+				encoding.writeVarUint(encoder, messageSync);
+				syncProtocol.writeSyncStep1(encoder, provider.doc);
+				broadcastMessage(provider, encoding.toUint8Array(encoder));
+				armSyncSettle(provider);
+				return;
+			}
+			provider._syncSettleProbed = false;
+			provider.synced = true;
+		}, provider.syncSettleMs);
 	};
 
 	const permissionDeniedHandler = (provider: Provider, reason: string) => {
 		// Observable event instead of console.warn — a denied peer must be
 		// visible to consumers (auth failures are indistinguishable from a
-		// silent disconnect otherwise).
+		// silent disconnect otherwise). A denied handshake is also a
+		// terminal sync failure (D4): on a server that refuses it, the
+		// provider can never reach `synced` — reported at most once.
 		provider.emit('permission-denied', [reason, provider]);
+		emitFailed(provider, new Error(`permission denied: ${reason}`));
 	};
 
-	const messageHandlers: Record<
-		number,
-		(
-			encoder: encoding.Encoder,
-			decoder: decoding.Decoder,
-			provider: Provider,
-			emitSynced: boolean,
-			messageType: number
-		) => void
-	> = {
-		[messageSync]: (encoder, decoder, provider, emitSynced) => {
-			encoding.writeVarUint(encoder, messageSync);
-			// Corrupt payloads inside a valid v14 envelope surface through
-			// 'message-error' — never swallowed by the sync layer alone.
-			const syncMessageType = syncProtocol.readSyncMessage(
-				decoder,
-				encoder,
-				provider.doc,
-				provider,
-				(error) => provider.emit('message-error', [error, provider])
-			);
-			// Post-apply schema check — remote updates can move the doc into
-			// an unsupported-version state.
-			gateSchema(provider);
-			if (emitSynced && syncMessageType === syncProtocol.messageYjsSyncStep2 && !provider.synced) {
-				provider.synced = true;
+	/**
+	 * The shared room protocol (S1) — dispatch, gated sync handling,
+	 * awareness flow, the BC subscriber + connect/disconnect sequences.
+	 * The transport edges stay here: `messageAuth` exists only on a server
+	 * socket (a BC room has no authority to deny), and `synced` is the
+	 * SyncStep2-handshake verdict (+ the `syncSettleMs` ambiguity window),
+	 * not the local-hydration claim the IndexedDB provider makes.
+	 */
+	const room = bindRoomProtocol<Provider>(syncProtocol, {
+		docName: (provider) => provider.roomname,
+		roomChannel: (provider) => provider.bcChannel,
+		broadcast: (provider, buf) => broadcastMessage(provider, buf),
+		handlers: {
+			[messageAuth]: (_encoder, decoder, provider) => {
+				const authType = readAuthMessage(decoder, provider.doc, (_ydoc, reason) =>
+					permissionDeniedHandler(provider, reason)
+				);
+				if (authType !== messagePermissionDenied) {
+					// Same contract as unknown sync subtypes — a valid v14
+					// envelope carrying an auth type we do not speak is protocol
+					// skew; report it rather than dropping silently.
+					provider.emit('message-error', [
+						new Error(`Unknown auth message type ${authType}`),
+						provider
+					]);
+				}
 			}
 		},
-		[messageQueryAwareness]: (encoder, _decoder, provider) => {
-			encoding.writeVarUint(encoder, messageAwareness);
-			encoding.writeVarUint8Array(
-				encoder,
-				encodeAwarenessUpdate(provider.awareness, Array.from(provider.awareness.getStates().keys()))
-			);
-		},
-		[messageAwareness]: (_encoder, decoder, provider) => {
-			applyAwarenessUpdate(provider.awareness, decoding.readVarUint8Array(decoder), provider);
-		},
-		[messageAuth]: (_encoder, decoder, provider) => {
-			readAuthMessage(decoder, provider.doc, (_ydoc, reason) =>
-				permissionDeniedHandler(provider, reason)
-			);
+		onSyncApplied: (provider, syncMessageType, applied, emitSynced) => {
+			// `synced` only fires when the SyncStep2 handshake payload was
+			// actually accepted — a refused SyncStep2 must not produce a
+			// false synced (the doc does not reflect the peer's state).
+			// Acceptance alone is not enough though: the reply must leave
+			// the doc holding state (an applied empty payload on an empty
+			// doc may be a foreign broadcast reply — it defers `synced`
+			// to the settle window instead of claiming it).
+			if (
+				emitSynced &&
+				syncMessageType === syncProtocol.messageYjsSyncStep2 &&
+				applied &&
+				!provider.synced
+			) {
+				if (hasDocState(provider.doc)) {
+					provider.synced = true;
+				} else {
+					armSyncSettle(provider);
+				}
+			}
 		}
-	};
-
-	const readMessage = (provider: Provider, buf: Uint8Array, emitSynced: boolean) => {
-		const decoder = decoding.createDecoder(buf);
-		const encoder = encoding.createEncoder();
-		if (!readProtocolVersion(decoder)) {
-			provider.emit('protocol-mismatch', [
-				{ expected: PROTOCOL_VERSION, found: buf.length > 0 ? buf[0] : null },
-				provider
-			]);
-			return encoder;
-		}
-		writeProtocolVersion(encoder);
-		const messageType = decoding.readVarUint(decoder);
-		const messageHandler = provider.messageHandlers[messageType];
-		if (messageHandler) {
-			messageHandler(encoder, decoder, provider, emitSynced, messageType);
-		} else {
-			// Fail closed + observable — a valid v14 envelope with an unknown
-			// message type is surfaced, not silently dropped.
-			provider.emit('message-error', [
-				new Error(`Unknown v14 message type ${messageType}`),
-				provider
-			]);
-		}
-		return encoder;
-	};
+	});
 
 	/**
 	 * Outsource so a new websocket connection is created immediately —
@@ -228,6 +271,14 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			provider.ws = null;
 			ws.close();
 			provider.wsconnecting = false;
+			// A pending handshake-settle belongs to the closed socket — a
+			// fresh connection re-derives `synced` from its own handshake
+			// (and gets its own probe round).
+			if (provider._syncSettleTimer !== 0) {
+				clearTimeout(provider._syncSettleTimer);
+				provider._syncSettleTimer = 0;
+				provider._syncSettleProbed = false;
+			}
 			if (provider.wsconnected) {
 				provider.wsconnected = false;
 				provider.synced = false;
@@ -265,7 +316,11 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			websocket.onmessage = (event) => {
 				provider.wsLastMessageReceived = time.getUnixTime();
 				try {
-					const encoder = readMessage(provider, new Uint8Array(event.data as ArrayBuffer), true);
+					const encoder = room.readMessage(
+						provider,
+						new Uint8Array(event.data as ArrayBuffer),
+						true
+					);
 					// `> 2`: the version envelope makes an empty reply 2 bytes
 					// (version word + mirrored message type), not 1 as upstream.
 					if (encoding.length(encoder) > 2) {
@@ -334,15 +389,21 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		bcconnected: boolean;
 		disableBc: boolean;
 		wsUnsuccessfulReconnects: number;
-		messageHandlers: typeof messageHandlers;
+		messageHandlers: Record<number, RoomMessageHandler<WebsocketProvider>>;
 		_synced: boolean;
 		ws: WebSocket | null;
 		wsLastMessageReceived: number;
 		shouldConnect: boolean;
 		/** Last signaled schema-gate state key — dedupes 'schema-mismatch'. */
 		_schemaGateKey: string | null;
+		/** Latch — 'failed' emits at most once (see `emitFailed` in room.ts). */
+		_failedEmitted?: boolean;
 		_resyncInterval: ReturnType<typeof setInterval> | 0;
 		_checkInterval: ReturnType<typeof setInterval>;
+		_syncSettleTimer: ReturnType<typeof setTimeout> | 0;
+		/** Set when the settle's first expiry already re-probed — the next expiry decides. */
+		_syncSettleProbed: boolean;
+		syncSettleMs: number;
 		_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
 		_updateHandler: (update: Uint8Array, origin: unknown) => void;
 		_awarenessUpdateHandler: (
@@ -363,7 +424,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				WebSocketPolyfill = WebSocket as unknown as WebsocketPolyfill,
 				resyncInterval = -1,
 				maxBackoffTime = 2500,
-				disableBc = false
+				disableBc = false,
+				syncSettleMs = 300
 			}: WebsocketProviderOptions = {}
 		) {
 			super();
@@ -385,13 +447,16 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			this.bcconnected = false;
 			this.disableBc = disableBc;
 			this.wsUnsuccessfulReconnects = 0;
-			this.messageHandlers = messageHandlers;
+			this.messageHandlers = room.messageHandlers;
 			this._synced = false;
 			this.ws = null;
 			this.wsLastMessageReceived = 0;
 			this.shouldConnect = connect;
 			this._schemaGateKey = null;
 			this._resyncInterval = 0;
+			this._syncSettleTimer = 0;
+			this._syncSettleProbed = false;
+			this.syncSettleMs = syncSettleMs;
 			if (resyncInterval > 0) {
 				this._resyncInterval = setInterval(() => {
 					if (this.ws && this.ws.readyState === this._WS.OPEN) {
@@ -405,43 +470,18 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				}, resyncInterval);
 			}
 
-			this._bcSubscriber = (data, origin) => {
-				if (origin !== this) {
-					try {
-						const encoder = readMessage(this, new Uint8Array(data), false);
-						// `> 2` — see the onmessage handler / indexeddb provider.
-						if (encoding.length(encoder) > 2) {
-							bc.publish(this.bcChannel, encoding.toUint8Array(encoder), this);
-						}
-					} catch (error) {
-						// Same-tab lib0 delivery is synchronous: never let a
-						// malformed frame propagate into the publisher's stack.
-						this.emit('message-error', [error, this]);
-					}
-				}
-			};
+			this._bcSubscriber = room.bcSubscriber(this);
 			// Listens to doc updates and sends them to remote peers (ws and bc)
 			this._updateHandler = (update, origin) => {
-				// Schema gate: updates leaving the doc with replicated registry
-				// content but no meta.v are quarantined — never broadcast
-				// (gate-2 attack 1a). 'unsupported' meta.v signals but flows.
-				if (origin !== this && gateSchema(this)?.kind !== 'unversioned') {
-					const encoder = encoding.createEncoder();
-					writeProtocolVersion(encoder);
-					encoding.writeVarUint(encoder, messageSync);
-					syncProtocol.writeUpdate(encoder, update);
-					broadcastMessage(this, encoding.toUint8Array(encoder));
+				// Schema boundary: updates leaving the doc in ANY
+				// schema-problem state (unversioned OR unsupported) are
+				// quarantined — never broadcast to ws or BC.
+				if (origin !== this && room.gateSchema(this) === null) {
+					room.broadcastUpdate(this, update);
 				}
 			};
 			this.doc.on('update', this._updateHandler);
-			this._awarenessUpdateHandler = ({ added, updated, removed }, _origin) => {
-				const changedClients = added.concat(updated).concat(removed);
-				const encoder = encoding.createEncoder();
-				writeProtocolVersion(encoder);
-				encoding.writeVarUint(encoder, messageAwareness);
-				encoding.writeVarUint8Array(encoder, encodeAwarenessUpdate(awareness, changedClients));
-				broadcastMessage(this, encoding.toUint8Array(encoder));
-			};
+			this._awarenessUpdateHandler = room.awarenessUpdateHandler(this);
 			this._exitHandler = () => {
 				removeAwarenessStates(this.awareness, [doc.clientID], 'app closed');
 			};
@@ -486,8 +526,23 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		}
 
 		destroy(): void {
+			// A provider destroyed before its handshake completed can never
+			// reach `synced` (D4) — checked BEFORE disconnect(): tearing a
+			// synced socket down resets `synced`, which must not masquerade
+			// as a failure. Emitted at most once (emitFailed latches).
+			if (!this.synced) {
+				emitFailed(
+					this,
+					new Error(`WebsocketProvider "${this.roomname}" was destroyed before it synced`)
+				);
+			}
 			if (this._resyncInterval !== 0) {
 				clearInterval(this._resyncInterval);
+			}
+			if (this._syncSettleTimer !== 0) {
+				clearTimeout(this._syncSettleTimer);
+				this._syncSettleTimer = 0;
+				this._syncSettleProbed = false;
 			}
 			clearInterval(this._checkInterval);
 			this.disconnect();
@@ -502,53 +557,11 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			if (this.disableBc) {
 				return;
 			}
-			if (!this.bcconnected) {
-				bc.subscribe(this.bcChannel, this._bcSubscriber);
-				this.bcconnected = true;
-			}
-			// send sync step1 to bc
-			const encoderSync = encoding.createEncoder();
-			writeProtocolVersion(encoderSync);
-			encoding.writeVarUint(encoderSync, messageSync);
-			syncProtocol.writeSyncStep1(encoderSync, this.doc);
-			bc.publish(this.bcChannel, encoding.toUint8Array(encoderSync), this);
-			// broadcast local state
-			const encoderState = encoding.createEncoder();
-			writeProtocolVersion(encoderState);
-			encoding.writeVarUint(encoderState, messageSync);
-			syncProtocol.writeSyncStep2(encoderState, this.doc);
-			bc.publish(this.bcChannel, encoding.toUint8Array(encoderState), this);
-			// write queryAwareness
-			const encoderAwarenessQuery = encoding.createEncoder();
-			writeProtocolVersion(encoderAwarenessQuery);
-			encoding.writeVarUint(encoderAwarenessQuery, messageQueryAwareness);
-			bc.publish(this.bcChannel, encoding.toUint8Array(encoderAwarenessQuery), this);
-			// broadcast local awareness state
-			const encoderAwarenessState = encoding.createEncoder();
-			writeProtocolVersion(encoderAwarenessState);
-			encoding.writeVarUint(encoderAwarenessState, messageAwareness);
-			encoding.writeVarUint8Array(
-				encoderAwarenessState,
-				encodeAwarenessUpdate(this.awareness, [this.doc.clientID])
-			);
-			bc.publish(this.bcChannel, encoding.toUint8Array(encoderAwarenessState), this);
+			room.connectBc(this);
 		}
 
 		disconnectBc(): void {
-			// broadcast message with local awareness state set to null
-			// (indicating disconnect)
-			const encoder = encoding.createEncoder();
-			writeProtocolVersion(encoder);
-			encoding.writeVarUint(encoder, messageAwareness);
-			encoding.writeVarUint8Array(
-				encoder,
-				encodeAwarenessUpdate(this.awareness, [this.doc.clientID], new Map())
-			);
-			broadcastMessage(this, encoding.toUint8Array(encoder));
-			if (this.bcconnected) {
-				bc.unsubscribe(this.bcChannel, this._bcSubscriber);
-				this.bcconnected = false;
-			}
+			room.disconnectBc(this);
 		}
 
 		disconnect(): void {

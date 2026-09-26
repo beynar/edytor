@@ -207,6 +207,105 @@ test.describe('native format beforeinput behavior', () => {
 		issues.assertClean();
 	});
 
+	test('routes native insertLink to the link mark with the URL payload', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=last');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0, 0, 4);
+
+		const prevented = await dispatchBeforeInput(page, {
+			inputType: 'insertLink',
+			data: 'https://example.com'
+		});
+
+		expect(prevented).toBe(true);
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ marks?: Record<string, unknown> }> }>;
+				}>(page, 'value');
+				return value.children[0]?.content?.[0]?.marks;
+			})
+			.toEqual({ link: { href: 'https://example.com' } });
+
+		issues.assertClean();
+	});
+
+	test('routes native list commands to list-item block conversion', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=last');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 2);
+
+		for (const [inputType, type] of [
+			['insertOrderedList', 'numbered-list-item'],
+			['insertUnorderedList', 'bulleted-list-item']
+		] as const) {
+			const prevented = await dispatchBeforeInput(page, { inputType });
+			expect(prevented).toBe(true);
+			await expect
+				.poll(async () => {
+					const value = await readJsonByTestId<{ children: Array<{ type: string }> }>(
+						page,
+						'value'
+					);
+					return value.children[0]?.type;
+				})
+				.toBe(type);
+		}
+
+		issues.assertClean();
+	});
+
+	test('routes native insertHorizontalRule to a divider block', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=last');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 2);
+
+		const prevented = await dispatchBeforeInput(page, { inputType: 'insertHorizontalRule' });
+		expect(prevented).toBe(true);
+		// Divider insertion is non-destructive: the current paragraph is
+		// split around a new divider and its content is preserved.
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{ children: Array<{ type: string }> }>(page, 'value');
+				return value.children.slice(0, 3).map((block) => block.type);
+			})
+			.toEqual(['paragraph', 'divider', 'paragraph']);
+
+		issues.assertClean();
+	});
+
+	test('routes native color commands to valued marks', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=last');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0, 0, 4);
+
+		for (const [inputType, mark, value] of [
+			['formatFontColor', 'color', 'rgb(255, 0, 0)'],
+			['formatBackColor', 'highlight', 'rgb(0, 255, 0)']
+		] as const) {
+			const prevented = await dispatchBeforeInput(page, { inputType, data: value });
+			expect(prevented).toBe(true);
+			await expect
+				.poll(async () => {
+					const doc = await readJsonByTestId<{
+						children: Array<{ content?: Array<{ marks?: Record<string, unknown> }> }>;
+					}>(page, 'value');
+					return doc.children[0]?.content?.[0]?.marks?.[mark];
+				})
+				.toBe(value);
+		}
+
+		issues.assertClean();
+	});
+
 	test('does not leave stale DOM clones when native format removes an existing mark', async ({
 		page
 	}) => {

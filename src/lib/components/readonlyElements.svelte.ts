@@ -1,75 +1,18 @@
 import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
-import type { BlockDefinition, InlineBlockDefinition } from '$lib/plugins.js';
-import { deltaToJson, jsonToDelta, toDeltas, type JSONDelta } from '$lib/text/deltas.js';
+import type { InlineBlockDefinition } from '$lib/plugins.js';
+import {
+	deltaToJson,
+	jsonToDelta,
+	mergeRenderDeltas,
+	toDeltas,
+	type JSONDelta
+} from '$lib/text/deltas.js';
 import { id } from '$lib/utils.js';
-import type { JSONBlock, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
+import type { JSONInlineBlock, JSONText } from '$lib/utils/json.js';
 import type { Block } from '../block/block.svelte.js';
 import type { Edytor } from '../edytor.svelte.js';
 import { DEV } from 'esm-env';
 import type { Text } from '$lib/text/text.svelte.js';
-
-class ReadonlyBlock {
-	readonly = true;
-	edytor: Edytor;
-	parent: ReadonlyBlock | Block | Edytor;
-	type: string;
-	value: JSONBlock;
-	children: ReadonlyBlock[];
-	content: (ReadonlyText | ReadonlyInlineBlock)[];
-	id: string;
-	definition: BlockDefinition;
-	selected = false;
-	focused = false;
-	insideIsland = false;
-	isEmpty: boolean;
-	hasChildren: boolean;
-	hasContent: boolean;
-	node: HTMLElement | undefined;
-	suggestions = undefined;
-	constructor({
-		block,
-		edytor,
-		parent
-	}: {
-		edytor: Edytor;
-		parent: ReadonlyBlock | Block | Edytor;
-		block: JSONBlock;
-	}) {
-		this.definition = edytor.getBlockDefinition('block', block.type);
-		this.id = block.id || id('b');
-		this.type = block.type;
-		this.edytor = edytor;
-		this.parent = parent;
-		this.value = block;
-		this.children =
-			block.children?.map((block) => new ReadonlyBlock({ block, edytor, parent })) || [];
-		this.content =
-			block.content?.map((child) => {
-				if ('type' in child) {
-					return new ReadonlyInlineBlock({
-						block: child,
-						parent,
-						edytor
-					});
-				} else {
-					return new ReadonlyText({ value: [child], parent: this, edytor });
-				}
-			}) || [];
-		this.hasChildren = this.children.length > 0;
-		this.hasContent =
-			this.content.length > 0 &&
-			this.content.some((part) => part instanceof ReadonlyText && !part.isEmpty);
-		this.isEmpty = !this.hasChildren && !this.hasContent;
-	}
-
-	attach(node: HTMLElement) {
-		node.contentEditable = 'false';
-		this.node = node;
-	}
-	void = (node: HTMLElement) => {
-		// node.contentEditable = 'false';
-	};
-}
 
 const createProxy = (target: any): any => {
 	return new Proxy(target, {
@@ -99,25 +42,13 @@ const createProxy = (target: any): any => {
 	});
 };
 
-export const createReadonlyBlock = ({
-	edytor,
-	parent,
-	block
-}: {
-	edytor: Edytor;
-	parent: ReadonlyBlock | Block | Edytor;
-	block: JSONBlock;
-}) => {
-	return createProxy(new ReadonlyBlock({ block, edytor, parent })) as Block;
-};
-
 export const createReadonlyInlineBlock = ({
 	edytor,
 	parent,
 	block
 }: {
 	edytor: Edytor;
-	parent: ReadonlyBlock | Block | Edytor;
+	parent: Block;
 	block: JSONInlineBlock;
 }) => {
 	return createProxy(new ReadonlyInlineBlock({ block, edytor, parent })) as InlineBlock;
@@ -129,7 +60,7 @@ export const createReadonlyText = ({
 	value
 }: {
 	edytor: Edytor;
-	parent: ReadonlyBlock | Block;
+	parent: Block;
 	value: JSONText[];
 }) => {
 	return createProxy(new ReadonlyText({ value, parent, edytor })) as Text;
@@ -138,7 +69,7 @@ export const createReadonlyText = ({
 export class ReadonlyText {
 	readonly = true;
 	edytor: Edytor;
-	parent: ReadonlyBlock | Block;
+	parent: Block;
 	#children;
 	domVersion = 0;
 	stringContent: string;
@@ -162,15 +93,13 @@ export class ReadonlyText {
 			: this.#children;
 	}
 
-	constructor({
-		value,
-		parent,
-		edytor
-	}: {
-		value: JSONText[];
-		parent: ReadonlyBlock | Block;
-		edytor: Edytor;
-	}) {
+	/** Mirrors `Text.renderChildren` — the render each-block consumes this
+	 *  surface on readonly proxies too (suggestion text, readonly editor). */
+	get renderChildren() {
+		return mergeRenderDeltas(this.children);
+	}
+
+	constructor({ value, parent, edytor }: { value: JSONText[]; parent: Block; edytor: Edytor }) {
 		this.#children = jsonToDelta(value);
 		this.stringContent = value.map((child) => child.text).join('');
 		this.isEmpty = this.stringContent.length === 0;
@@ -189,7 +118,7 @@ export class ReadonlyText {
 class ReadonlyInlineBlock {
 	readonly = true;
 	edytor: Edytor;
-	parent: ReadonlyBlock | Block | Edytor;
+	parent: Block;
 	type: string;
 	id: string;
 	data: JSONInlineBlock['data'];
@@ -201,7 +130,7 @@ class ReadonlyInlineBlock {
 		block,
 		edytor
 	}: {
-		parent: ReadonlyBlock | Block | Edytor;
+		parent: Block;
 
 		block: JSONInlineBlock;
 

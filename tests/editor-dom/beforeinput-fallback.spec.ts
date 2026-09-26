@@ -668,7 +668,10 @@ test.describe('browser beforeinput fallback behavior', () => {
 	}
 
 	for (const inputType of ['deleteSoftLineForward', 'deleteHardLineForward'] as const) {
-		test(`reconciles browser-native ${inputType} when beforeinput is missing`, async ({ page }) => {
+		test(`reconciles browser-native ${inputType} when beforeinput is missing`, async ({
+			page,
+			browserName
+		}) => {
 			const issues = trackPageIssues(page);
 
 			await page.goto('/test/dom?scenario=selection');
@@ -676,6 +679,24 @@ test.describe('browser beforeinput fallback behavior', () => {
 			await setSelectionByTextIndex(page, 0, 5);
 
 			const wasPrevented = await dispatchModifierLineDelete(page, 'forward');
+			if (browserName === 'webkit') {
+				// On Apple platforms `ctrl+k` is a real macOS emacs binding —
+				// `macEmacsHotKeys` owns kill-line model-side, so the chord is
+				// prevented and the browser never produces a native mutation
+				// to reconcile. `navigator.platform` is not Mac-matched on
+				// Chromium/Firefox, where the chord stays browser-owned.
+				expect(wasPrevented).toBe(true);
+				await expect.poll(() => readFirstText(page)).toBe('First');
+				await expectSelection(page, {
+					startBlockPath: [0],
+					endBlockPath: [0],
+					yStart: 5,
+					yEnd: 5,
+					isCollapsed: true
+				});
+				issues.assertClean();
+				return;
+			}
 			expect(wasPrevented).toBe(false);
 			await expect.poll(() => readFirstText(page)).toBe('First block');
 

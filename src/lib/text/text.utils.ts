@@ -1,5 +1,5 @@
-import { prevent } from '$lib/utils.js';
-import type { Delta, JSONText, SerializableContent } from '$lib/utils/json.js';
+import { runOperation } from '$lib/block/block.utils.js';
+import type { JSONText, SerializableContent } from '$lib/utils/json.js';
 import type { Text } from './text.svelte.js';
 
 export type TextOperations = {
@@ -38,34 +38,19 @@ export function batch<T extends (...args: any[]) => any, O extends keyof TextOpe
 	func: T
 ): T {
 	return function (this: Text, payload: TextOperations[O]): ReturnType<T> {
-		let finalPayload = payload;
-		for (const plugin of this.edytor.plugins) {
-			// @ts-expect-error
-			const normalizedPayload = plugin.onBeforeOperation?.({
-				operation,
-				payload,
-				text: this,
-				block: this.parent,
-				prevent
-			}) as TextOperations[O] | undefined;
-			if (normalizedPayload) {
-				finalPayload = normalizedPayload;
-				break;
-			}
-		}
-
-		const result = this.edytor.transact(() => func.bind(this)(finalPayload));
-
-		for (const plugin of this.edytor.plugins) {
-			plugin.onAfterOperation?.({
-				operation,
-				payload,
-				text: this,
-				block: this.parent
-			}) as TextOperations[O] | undefined;
-		}
-
-		return result;
+		// Shares the block-side pipeline (`runOperation` in block.utils) —
+		// plugins see `block: this.parent` + `text: this`, matching the
+		// text-arm of `ChangePayload`. `readonlyGate` stays off here: text
+		// ops were historically ungated at this layer (the input pipeline
+		// gates before reaching them) — the asymmetry is preserved rather
+		// than silently flipped.
+		return runOperation(
+			this.edytor,
+			operation,
+			payload,
+			{ block: this.parent, text: this },
+			(finalPayload) => func.bind(this)(finalPayload)
+		) as ReturnType<T>;
 	} as T;
 }
 
@@ -80,22 +65,16 @@ export function insertText(
 	}: TextOperations['insertText']
 ) {
 	const isCollapsed = start === end || !end;
-	// const attributes = this.getAttributesAtPosition(yStart);
-	const deltas: Delta[] = [{ retain: start }, { insert: value, attributes: marks }];
-
-	if (isAutoDot) {
-		deltas[0].retain = start - 1;
-		deltas.splice(1, 0, { delete: 1 });
-	}
-
-	if (!isCollapsed) {
-		deltas.splice(1, 0, { delete: end - start });
-	}
 	this.edytor.transact(() => {
-		if (isAutoDot || !isCollapsed) {
-			this.yText.applyDelta(deltas);
+		if (isAutoDot) {
+			// Replace the previous char with the inserted value (autocorrect).
+			this.deleteAt(start - 1, 1);
+			this.insertAt(start - 1, value, marks);
+		} else if (!isCollapsed) {
+			this.deleteAt(start, end - start);
+			this.insertAt(start, value, marks);
 		} else {
-			this.yText.insert(start, value, marks);
+			this.insertAt(start, value, marks);
 		}
 	});
 	if (this.markOnNextInsert) {
@@ -186,7 +165,7 @@ const getGraphemeBoundaries = (value: string) => {
 	});
 };
 
-const getPreviousGraphemeStart = (value: string, offset: number) => {
+export const getPreviousGraphemeStart = (value: string, offset: number) => {
 	const clampedOffset = Math.min(Math.max(offset, 0), value.length);
 	let previousStart = 0;
 
@@ -200,7 +179,7 @@ const getPreviousGraphemeStart = (value: string, offset: number) => {
 	return previousStart;
 };
 
-const getNextGraphemeEnd = (value: string, offset: number) => {
+export const getNextGraphemeEnd = (value: string, offset: number) => {
 	const clampedOffset = Math.min(Math.max(offset, 0), value.length);
 
 	for (const boundary of getGraphemeBoundaries(value)) {
@@ -215,7 +194,7 @@ const getNextGraphemeEnd = (value: string, offset: number) => {
 export function deleteText(this: Text, { direction, length = 1 }: TextOperations['deleteText']) {
 	const { yStart, isCollapsed } = this.edytor.selection.state;
 	const requestedLength = Math.max(0, length);
-	const textLength = this.yText.length;
+	const textLength = this.length;
 
 	if (requestedLength === 0 || textLength === 0) {
 		return;
@@ -240,7 +219,7 @@ export function deleteText(this: Text, { direction, length = 1 }: TextOperations
 		return;
 	}
 
-	this.yText.delete(start, deleteLength);
+	this.deleteAt(start, deleteLength);
 	return { start, end };
 }
 
@@ -248,9 +227,23 @@ export function removeMarksFromText(
 	this: Text,
 	{
 		start = this.edytor.selection.state.yStart || 0,
-		end = this.edytor.selection.state.yEnd || this.yText.length
+		end = this.edytor.selection.state.yEnd || this.length
 	}: TextOperations['removeMarksFromText']
 ) {
+	// Persisted mark changes delegate to the document: `clearMarks`
+	// discovers every mark name present in the range from the maintained
+	// runs view and unsets them via `formatRange` — the same collect+clear
+	// this used to re-derive locally. `segStart` maps the segment-local
+	// range into the block's display offsets. (Toggle/range READS above stay
+	// view-side: they decide WHAT to write, the document owns the write.)
+	const model = this.parent.model;
+	if (this._live && model) {
+		model.clearMarks(this.segStart + start, end - start);
+		this.refreshFromModel();
+		return;
+	}
+	// Detached spec buffer (`new Text` pre-admission): no document node —
+	// collect the names locally and unset through the spec-buffer `formatAt`.
 	const marksAtRange = this.getMarksAtRange(start, end);
 	const attributes = marksAtRange.reduce(
 		(acc, { marks }) => {
@@ -261,7 +254,7 @@ export function removeMarksFromText(
 		},
 		{} as Record<string, null>
 	);
-	this.yText.format(start, end - start, attributes);
+	this.formatAt(start, end - start, attributes);
 	this.refreshFromModel();
 }
 
@@ -303,7 +296,7 @@ export function markText(
 			};
 		}
 	} else {
-		this.yText.format(start, length, {
+		this.formatAt(start, length, {
 			[mark]: markValue
 		});
 		this.refreshFromModel();
@@ -336,13 +329,17 @@ export function splitText(
 		}
 		offset = nextOffset;
 	}
-	this.yText.delete(index, this.yText.length - index);
+	this.deleteAt(index, this.length - index);
 	return content;
 }
 
 export function setText(this: Text, { value }: TextOperations['setText']) {
-	this.yText.applyDelta([
-		{ delete: this.yText.length },
-		...value.map((part) => ({ insert: part.text, attributes: part.marks }))
-	]);
+	this.deleteAt(0, this.length);
+	let offset = 0;
+	for (const part of value) {
+		if (part.text.length) {
+			this.insertAt(offset, part.text, part.marks as Record<string, unknown> | undefined);
+			offset += part.text.length;
+		}
+	}
 }

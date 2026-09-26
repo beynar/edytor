@@ -64,6 +64,7 @@ import {
 import type { BlockSpec, ContentItem } from '../placement/model.js';
 import {
 	cloneJson,
+	sanitizeWireJson,
 	type JSONBlock,
 	type JSONDoc,
 	type JSONInlineBlock,
@@ -120,6 +121,14 @@ export type MigrateResult = {
 	empty?: boolean;
 	/** The rebuilt v14 doc (present when this call ran the import). */
 	doc?: YDoc;
+	/**
+	 * The compacted v14 snapshot persisted into the new generation
+	 * (present when this call ran the import) — byte-identical to the
+	 * stored row. Feed it through the document admission path:
+	 * `loadDocument(result.update)` restores the migrated state as a
+	 * `hydrated` document through the same gate every load crosses (U8).
+	 */
+	update?: Uint8Array;
 	/** The materialized logical JSON (present when this call ran the import). */
 	json?: JSONDoc;
 	sourceRows?: number;
@@ -160,15 +169,16 @@ const openGenerationDB = (dbName: string): Promise<IDBDatabase> =>
 	);
 
 /**
- * Open the legacy DB read-only WITHOUT creating it. `idb.openDB(name,
- * () => {})` on a never-existing name leaves a v1 database with no object
- * stores behind — poison for a later v13 provider open, whose store
- * creation only runs inside `onupgradeneeded` (gate-2 legacy-DB probe).
- * Opening with no explicit version and ABORTING the upgrade transaction
- * rolls creation back entirely: existing DBs open normally, absent ones
- * yield `null`.
+ * Open a database read-only WITHOUT creating it — used for the legacy
+ * source AND the generation `status()` probe. `idb.openDB(name, () => {})`
+ * on a never-existing name leaves a v1 database with no object stores
+ * behind — poison for a later provider open, whose store creation only
+ * runs inside `onupgradeneeded` (gate-2 legacy-DB probe; D23 generation
+ * probe). Opening with no explicit version and ABORTING the upgrade
+ * transaction rolls creation back entirely: existing DBs open normally,
+ * absent ones yield `null`.
  */
-const openLegacyDb = (dbName: string): Promise<IDBDatabase | null> => {
+const openDbIfExists = (dbName: string): Promise<IDBDatabase | null> => {
 	const idbFactory = (globalThis as { indexedDB?: IDBFactory }).indexedDB;
 	if (!idbFactory) return Promise.resolve(null);
 	return new Promise((resolve, reject) => {
@@ -263,14 +273,33 @@ export const bindMigration = (Y: EngineApi) => {
 	};
 
 	/**
-	 * Read the migration record of a generation DB. `status:'none'` covers a
-	 * missing record AND a missing DB (nothing has ever been migrated).
+	 * Read the migration record of a generation DB — NON-CREATING (D23):
+	 * `status('fresh-name')` must not leave a phantom `edytor-v14:<name>`
+	 * database behind (a store-less shell is poison for a later provider
+	 * open). `indexedDB.databases()` — where the factory exposes it —
+	 * short-circuits a missing name without touching a handle; otherwise
+	 * `openDbIfExists` opens with an aborted upgrade so creation rolls
+	 * back. `status:'none'` covers a missing record AND a missing DB
+	 * (nothing has ever been migrated).
 	 */
 	const status = async (name: string): Promise<MigrationRecord> => {
 		const dbName = generationDbName(name);
-		const db = await openGenerationDB(dbName);
+		const none: MigrationRecord = { v: 1, status: 'none' };
+		const factory = (globalThis as { indexedDB?: IDBFactory }).indexedDB;
+		if (typeof factory?.databases === 'function') {
+			try {
+				const infos = await factory.databases();
+				if (!infos.some((info) => info.name === dbName)) return none;
+			} catch {
+				// Existence probe failed — fall through to the open below,
+				// which still never creates.
+			}
+		}
+		const db = await openDbIfExists(dbName);
+		if (db === null) return none;
 		try {
-			return (await readMigrationRecord(db)) ?? { v: 1, status: 'none' };
+			if (!db.objectStoreNames.contains(customStoreName)) return none;
+			return (await readMigrationRecord(db)) ?? none;
 		} finally {
 			db.close();
 		}
@@ -318,13 +347,25 @@ export const bindMigration = (Y: EngineApi) => {
 					if (Date.now() > deadline) finish({ v: 1, status: 'failed', error: 'poll failed' });
 				}
 			};
-			openGenerationDB(dbName).then((opened) => {
-				db = opened;
-				bc.subscribe(room, sub);
-				interval = setInterval(() => void check(), pollMs);
-				timer = setTimeout(() => void check(), Math.min(pollMs, 50));
-				void check();
-			});
+			openGenerationDB(dbName).then(
+				(opened) => {
+					db = opened;
+					bc.subscribe(room, sub);
+					interval = setInterval(() => void check(), pollMs);
+					timer = setTimeout(() => void check(), Math.min(pollMs, 50));
+					void check();
+				},
+				// The OPEN itself can fail (D23) — without a rejection
+				// branch the promise hung forever and the caller waited out
+				// nothing. Settle as `failed` so `migrate`'s loop re-reads
+				// and can reclaim rather than deadlocking.
+				(error) =>
+					finish({
+						v: 1,
+						status: 'failed',
+						error: `open failed: ${error instanceof Error ? error.message : String(error)}`
+					})
+			);
 		});
 	};
 
@@ -356,7 +397,6 @@ export const bindMigration = (Y: EngineApi) => {
 		// ── claim ──────────────────────────────────────────────────────────
 		await phase('claim');
 		const db = await openGenerationDB(dbName);
-		let claimed = false;
 		try {
 			for (;;) {
 				// One readwrite transaction: read + conditional write is atomic —
@@ -385,7 +425,6 @@ export const bindMigration = (Y: EngineApi) => {
 				});
 
 				if (outcome === 'claimed') {
-					claimed = true;
 					break;
 				}
 				if (outcome === 'active' && !force) {
@@ -417,12 +456,19 @@ export const bindMigration = (Y: EngineApi) => {
 			// ── read legacy rows ─────────────────────────────────────────────
 			await phase('read');
 			const legacyRows = await (async (): Promise<Uint8Array[]> => {
-				// openLegacyDb never CREATES the legacy database — an absent
-				// one resolves to null (no store-less shell left behind).
-				const dbLegacy = await openLegacyDb(sourceName);
+				// openDbIfExists never CREATES the legacy database — an
+				// absent one resolves to null (no store-less shell behind).
+				const dbLegacy = await openDbIfExists(sourceName);
 				if (dbLegacy === null) return [];
 				try {
 					if (!dbLegacy.objectStoreNames.contains(updatesStoreName)) return [];
+					// ONE readonly transaction over the only store the import
+					// reads — that IS the fence (D23): IDB gives a readonly tx a
+					// consistent point-in-time view, so a live v13 writer
+					// appending rows mid-migration lands entirely before or
+					// after this snapshot, never torn inside it. (Rows appended
+					// after it are covered by the documented `force` re-run
+					// path — they are not live-mapped.)
 					const [updatesStore] = idb.transact(dbLegacy, [updatesStoreName], 'readonly');
 					const rows = await idb.getAll(updatesStore);
 					return (rows as unknown[]).map(decodeStoredUpdate);
@@ -475,6 +521,13 @@ export const bindMigration = (Y: EngineApi) => {
 			} catch (error) {
 				return markFailed(`legacy decode failed: ${(error as Error).message}`);
 			}
+			// Boundary normalization (F2-M1): every string in the materialized
+			// tree — text, marks, data, ids, types — becomes well-formed UTF-16
+			// (unpaired surrogates → U+FFFD), matching what the wire encode
+			// would deliver anyway. The migrated doc then carries only
+			// wire-idempotent content, and the verify step below compares
+			// normalized-vs-normalized JSON.
+			json = sanitizeWireJson(json);
 
 			// ── rebuild through the document-level init/insert path ──────────
 			await phase('rebuild');
@@ -545,6 +598,7 @@ export const bindMigration = (Y: EngineApi) => {
 			return {
 				status: 'active',
 				doc,
+				update: snapshot,
 				json: expected,
 				sourceRows: legacyRows.length
 			};

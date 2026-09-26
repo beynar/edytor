@@ -18,13 +18,21 @@ export const writePermissionDenied = (encoder: encoding.Encoder, reason: string)
 
 export type PermissionDeniedHandler = (ydoc: unknown, reason: string) => void;
 
+/**
+ * Decode one auth payload. Returns the auth message subtype so the caller
+ * can surface unknown subtypes — a valid envelope carrying an auth type we
+ * do not speak is protocol skew, and this stack's contract is that skew is
+ * reported, not silently dropped (same rule as unknown sync subtypes).
+ */
 export const readAuthMessage = (
 	decoder: decoding.Decoder,
 	y: unknown,
 	permissionDeniedHandler: PermissionDeniedHandler
-): void => {
-	switch (decoding.readVarUint(decoder)) {
+): number => {
+	const authMessageType = decoding.readVarUint(decoder);
+	switch (authMessageType) {
 		case messagePermissionDenied:
 			permissionDeniedHandler(y, decoding.readVarString(decoder));
 	}
+	return authMessageType;
 };

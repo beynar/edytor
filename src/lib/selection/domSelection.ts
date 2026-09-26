@@ -61,6 +61,54 @@ export const createDomRange = (node: Node): Range => {
 	return ownerDocument.createRange();
 };
 
+/**
+ * U8a — true when the live selection is already collapsed at
+ * `(node, offset)`. The keystroke path re-asserts the caret through
+ * `setAtNodeOffset` on every commit; skipping the redundant
+ * `removeAllRanges()`/`addRange()` pair avoids a forced synchronous
+ * layout per write (the dominant selection-restore cost at scale).
+ */
+export const domSelectionIsCollapsedAt = (
+	selection: Selection | null,
+	node: Node,
+	offset: number
+): boolean =>
+	selection !== null &&
+	// Multi-range selections (Firefox) can satisfy the endpoint match
+	// while carrying extra ranges — they are never "already there".
+	selection.rangeCount <= 1 &&
+	selection.anchorNode === node &&
+	selection.focusNode === node &&
+	selection.anchorOffset === offset &&
+	selection.focusOffset === offset;
+
+/**
+ * U8a — true when the live selection already covers
+ * `(startNode, startOffset) → (endNode, endOffset)` INCLUDING direction:
+ * a backward selection carries anchor=end/focus=start, so an
+ * `isReversed` target must compare against the swapped endpoints — a
+ * plain boundary match would silently flip a backward range to forward.
+ */
+export const domSelectionCoversRange = (
+	selection: Selection | null,
+	startNode: Node,
+	startOffset: number,
+	endNode: Node,
+	endOffset: number,
+	isReversed = false
+): boolean =>
+	selection !== null &&
+	selection.rangeCount <= 1 &&
+	(isReversed
+		? selection.anchorNode === endNode &&
+			selection.anchorOffset === endOffset &&
+			selection.focusNode === startNode &&
+			selection.focusOffset === startOffset
+		: selection.anchorNode === startNode &&
+			selection.anchorOffset === startOffset &&
+			selection.focusNode === endNode &&
+			selection.focusOffset === endOffset);
+
 const isSelectionCollapsed = (selection: Selection) =>
 	selection.anchorNode === selection.focusNode && selection.anchorOffset === selection.focusOffset;
 
@@ -159,6 +207,9 @@ const createDomSelectionSnapshotFromMultiRange = (
 	const combinedRange = createDomRange(firstRange.startContainer);
 	combinedRange.setStart(firstRange.startContainer, firstRange.startOffset);
 	combinedRange.setEnd(lastRange.endContainer, lastRange.endOffset);
+	// Not just a read: a multi-range selection is canonicalized to its
+	// bounding range in the DOM too, so what the user sees matches the
+	// snapshot the model derives (the editor has no multi-range model).
 	selection.removeAllRanges();
 	selection.addRange(combinedRange);
 	return createDomSelectionSnapshotFromRange(combinedRange, selection);
@@ -183,6 +234,101 @@ const getComposedRangeSnapshot = (
 
 	const range = createRangeFromStaticRange(staticRange);
 	return createDomSelectionSnapshotFromRange(range, selection);
+};
+
+/**
+ * Scroll the caret into view after a programmatic selection write.
+ *
+ * Browsers scroll on NATIVE input — but on the event-first path every
+ * keystroke is `preventDefault`ed and the caret is re-written through
+ * `selection.addRange`/`setBaseAndExtent`, which never scrolls. Without
+ * this, typing past the bottom of the scrollport walks the caret
+ * offscreen (PM `scrollRectIntoView` / Lexical `scrollIntoViewIfNeeded`
+ * do this on every selection-affecting transaction).
+ *
+ * Gates:
+ * - only when the editor root holds focus — a selection write from a
+ *   non-issuing view (remote sync, programmatic API on an unfocused
+ *   editor) must never move the page under the user;
+ * - only when the caret rect is actually clipped — `scrollIntoView` with
+ *   `block:'nearest'` otherwise still nudges scroll containers.
+ */
+export const scrollCaretIntoView = (root: Element | null | undefined) => {
+	if (!root) {
+		return;
+	}
+	const selection = getDomSelection(root);
+	const focusNode = selection?.focusNode;
+	if (!selection || !focusNode || selection.rangeCount === 0 || !root.contains(focusNode)) {
+		return;
+	}
+	const activeElement = getActiveElement(root);
+	if (activeElement !== root && !(activeElement && root.contains(activeElement))) {
+		return;
+	}
+
+	// Collapse a scratch range at the FOCUS endpoint so a backward range
+	// scrolls to the moving edge, and collapsed carets get the exact
+	// caret box rather than the element box. The offset is clamped — a
+	// foreign DOM mutation can leave the selection pointing past a
+	// shrunken node, and `setStart` throws on out-of-bounds offsets.
+	const caretRange = createDomRange(focusNode);
+	const maxOffset =
+		focusNode instanceof Element ? focusNode.childNodes.length : (focusNode.nodeValue?.length ?? 0);
+	caretRange.setStart(focusNode, Math.min(selection.focusOffset, maxOffset));
+	caretRange.collapse(true);
+	const element = focusNode instanceof Element ? focusNode : focusNode.parentElement;
+	if (!element) {
+		return;
+	}
+	// Optional-chained: non-layout environments (jsdom) don't implement
+	// range rects — the element box is the fallback in real browsers too
+	// when the caret rect comes back empty.
+	const caretRect = caretRange.getBoundingClientRect?.() ?? null;
+	const box =
+		caretRect && (caretRect.top !== 0 || caretRect.bottom !== 0)
+			? caretRect
+			: element.getBoundingClientRect();
+
+	const view = element.ownerDocument.defaultView;
+	const viewportHeight = view?.innerHeight ?? element.ownerDocument.documentElement.clientHeight;
+	const viewportWidth = view?.innerWidth ?? element.ownerDocument.documentElement.clientWidth;
+	const insideViewport =
+		box.top >= 0 && box.bottom <= viewportHeight && box.left >= 0 && box.right <= viewportWidth;
+
+	// The viewport check alone is not enough — an `overflow:auto/scroll/
+	// hidden` ancestor clips the caret while it stays inside the window
+	// viewport (the common "editor inside a scrollable pane" case). Walk
+	// the ancestor chain; any scrollable clip counts as out-of-view.
+	let clippedByScroller = false;
+	if (insideViewport && view?.getComputedStyle) {
+		for (
+			let ancestor = element.parentElement;
+			ancestor && ancestor !== element.ownerDocument.documentElement;
+			ancestor = ancestor.parentElement
+		) {
+			const style = view.getComputedStyle(ancestor);
+			const overflow = `${style.overflow} ${style.overflowX} ${style.overflowY}`;
+			if (!/(auto|scroll|hidden)/.test(overflow)) {
+				continue;
+			}
+			const rect = ancestor.getBoundingClientRect();
+			if (
+				box.top < rect.top ||
+				box.bottom > rect.bottom ||
+				box.left < rect.left ||
+				box.right > rect.right
+			) {
+				clippedByScroller = true;
+				break;
+			}
+		}
+	}
+
+	if (insideViewport && !clippedByScroller) {
+		return;
+	}
+	element.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
 };
 
 export const getDomSelectionSnapshot = (node?: Node | null): DomSelectionSnapshot | null => {

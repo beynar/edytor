@@ -1,11 +1,7 @@
 import { tick } from 'svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
-import {
-	removeStalePlaceholdersIn,
-	scheduleRemoveStalePlaceholdersIn,
-	scheduleRemoveStalePlaceholders
-} from '$lib/text/removeStalePlaceholders.js';
+import { removeStalePlaceholdersIn } from '$lib/text/removeStalePlaceholders.js';
 import { captureHistoryCommandDocVersion } from '$lib/history/historySelectionSnapshot.js';
 
 const getNearestBlockAncestor = (node: HTMLElement, root: HTMLElement) => {
@@ -72,14 +68,16 @@ export const refreshDomAfterHistoryChange = async (
 
 	connectedTexts.forEach((text) => {
 		text.syncFromModel();
-		scheduleRemoveStalePlaceholders(text);
 	});
+	// History changes are wholesale — the undo/redo diff can touch any
+	// block — so the deferred repair is scoped to the editor root, once,
+	// through the coalesced queue (the facade commit handler already queued
+	// the affected block roots; this covers the remount/refresh cases).
 	removeStalePlaceholdersIn(edytor.node);
-	scheduleRemoveStalePlaceholdersIn(edytor.node);
+	edytor.placeholderRepair.addKeyed('edytor:root', () => edytor.node);
 	await tick();
-	connectedTexts.forEach((text) => scheduleRemoveStalePlaceholders(text));
 	removeStalePlaceholdersIn(edytor.node);
-	scheduleRemoveStalePlaceholdersIn(edytor.node);
+	edytor.placeholderRepair.addKeyed('edytor:root', () => edytor.node);
 
 	if (options.restoreSelection === false) {
 		return;

@@ -8,23 +8,24 @@ const config: PlaywrightTestConfig = {
 		port: 4173,
 		reuseExistingServer: !process.env.CI
 	},
+	testIgnore: /editor-dst/,
 	use: {
 		baseURL: 'http://127.0.0.1:4173'
 	},
 	projects: [
 		{
 			name: 'chromium',
-			testIgnore: /mobile-.+\.(test|spec)\.[jt]s/,
+			testIgnore: [/mobile-.+\.(test|spec)\.[jt]s/, /editor-dst/],
 			use: { ...devices['Desktop Chrome'] }
 		},
 		{
 			name: 'firefox',
-			testIgnore: /mobile-.+\.(test|spec)\.[jt]s/,
+			testIgnore: [/mobile-.+\.(test|spec)\.[jt]s/, /editor-dst/],
 			use: { ...devices['Desktop Firefox'] }
 		},
 		{
 			name: 'webkit',
-			testIgnore: /mobile-.+\.(test|spec)\.[jt]s/,
+			testIgnore: [/mobile-.+\.(test|spec)\.[jt]s/, /editor-dst/],
 			retries: 1,
 			use: { ...devices['Desktop Safari'] }
 		},

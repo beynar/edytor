@@ -45,8 +45,10 @@ const pushAttributedPiece = (contents, c, clock, deleted, inRC, attrs, shouldRen
  * Renders content with attributions, given a single `attributions` {@link ContentMap} of how to
  * attribute content and an optional `renderedContent` {@link IdSet} of what renders.
  *
- * - `attributions` (inserts ∪ deletes) is merged into a single `renderAs` map; content it covers
- *   always renders, carrying its attribution.
+ * - Current-state rendering reads `attributions.inserts` for live items and
+ *   `attributions.deletes` for tombstones. A custom `renderedContent` projection merges both maps
+ *   into `renderAs`, because restoring content from another point in time may need metadata from
+ *   the item's opposite current-state side.
  * - `renderedContent` defines the content that renders *normally* — even if the item is marked
  *   deleted in the doc (a "restore"). It defaults to the doc's alive content (`inserts − deletes`),
  *   applied implicitly (a piece is in the default set ⟺ its item is not `deleted`), so the common
@@ -69,6 +71,17 @@ export class AttributionsRenderer extends ObservableV2 {
    */
   constructor (attributions, { renderedContent = null } = {}) {
     super()
+    /**
+     * Side-specific attribution maps. Current-state rendering must not let an item's historical
+     * insert metadata make a later, unattributed tombstone render as an anonymous deletion (or
+     * vice versa). Custom `renderedContent` projections retain the upstream merged-map behavior:
+     * restoring an item from another point in time may intentionally need its opposite-side
+     * metadata.
+     * @type {IdMap<any>}
+     */
+    this.inserts = attributions.inserts
+    /** @type {IdMap<any>} */
+    this.deletes = attributions.deletes
     /**
      * The two attribution maps merged into one — `readContent` consults this for how to attribute
      * a piece.
@@ -104,8 +117,11 @@ export class AttributionsRenderer extends ObservableV2 {
    */
   hasItem (item) {
     const { client, clock } = item.id
+    if (this.renderedContent === null) {
+      const side = item.deleted ? this.deletes : this.inserts
+      return side.coveredLength(client, clock, item.length) > 0
+    }
     if (this.attributed.intersects(client, clock, item.length)) return true
-    if (this.renderedContent === null) return false
     // Custom renderedContent differs from the generic fast path for: deleted content that must be
     // restored, and alive content that must be hidden (not fully covered).
     return item.deleted
@@ -139,8 +155,13 @@ export class AttributionsRenderer extends ObservableV2 {
       }
     }
     if (outer === null) {
-      // Uniform `inRC` — a single `renderAs` slice fixes the attribution boundaries.
-      const slice = this.renderAs.slice(client, clock, total)
+      // Uniform `inRC` — a single map slice fixes the attribution boundaries. The ordinary
+      // current-state projection is side-specific; a custom point-in-time projection keeps the
+      // merged map because it may restore a deleted item's insertion attribution.
+      const source = this.renderedContent === null
+        ? (deleted ? this.deletes : this.inserts)
+        : this.renderAs
+      const slice = source.slice(client, clock, total)
       let rest = slice.length === 1 ? content : content.copy()
       for (let i = 0; i < slice.length; i++) {
         const s = slice[i]
@@ -178,7 +199,7 @@ export class AttributionsRenderer extends ObservableV2 {
     const { client, clock } = item.id
     if (this.renderedContent === null) {
       // Default: alive content renders in full; deleted content only where attributed.
-      return item.deleted ? this.renderAs.coveredLength(client, clock, item.length) : item.length
+      return item.deleted ? this.deletes.coveredLength(client, clock, item.length) : item.length
     }
     // Custom: rendered length is |item ∩ rendered| (renderedContent ∪ attributed).
     return /** @type {IdSet} */ (this.rendered).coveredLength(client, clock, item.length)

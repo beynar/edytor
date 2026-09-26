@@ -62,7 +62,7 @@ const canApplyShortcut = (block: Block, prefixLength: number) => {
 const clearShortcutText = (block: Block, length: number) => {
 	const text = block.firstText;
 	if (length > 0) {
-		text.yText.delete(0, length);
+		text.deleteAt(0, length);
 	}
 };
 
@@ -175,7 +175,7 @@ export const markdownShortcutsPlugin: Plugin = (edytor) => ({
 			return;
 		}
 
-		const prefix = startText.yText.toString().slice(0, edytor.selection.state.yStart);
+		const prefix = startText.stringContent.slice(0, edytor.selection.state.yStart);
 		const shortcut = getShortcut(prefix, payload.value);
 		if (!shortcut || !canApplyShortcut(block, prefix.length)) {
 			return;

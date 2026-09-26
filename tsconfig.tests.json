@@ -4,7 +4,7 @@
 		"jsx": "react-jsx",
 		"jsxImportSource": "src/tests/jsx",
 		"allowJs": true,
-		"checkJs": true,
+		"checkJs": false,
 		"esModuleInterop": true,
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
@@ -38,5 +38,10 @@
 		"src/lib/selection/**/*.ts",
 		"src/lib/text/**/*.ts",
 		"src/lib/utils/**/*.ts"
+	],
+	"exclude": [
+		// Vendored upstream JS is checked by tsconfig.vendor-dts.json —
+		// the same exclusion tsconfig.json already declares.
+		"src/lib/crdt/vendor/**"
 	]
 }

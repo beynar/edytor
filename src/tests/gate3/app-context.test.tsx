@@ -60,7 +60,7 @@ describe('gate3: cloneJson boundary loss', () => {
 			const date = new Date('2024-01-01T00:00:00Z');
 			const map = new Map([['k', 'v']]);
 
-			block.yBlock.set('data', {
+			block.setData({
 				when: date,
 				lookup: map,
 				undef: undefined,
@@ -231,12 +231,19 @@ describe('gate3: lifecycle — listener retention on external doc/awareness', ()
 			editors.push(createTestEdytor(fixture, { doc, awareness }).edytor);
 		}
 
-		// Each Edytor adds a facade updateHandler + two awareness listeners to
-		// the SHARED objects — `destroy()` must release all of them.
-		expect(observerCount(doc, 'update') - updatesBefore).toBeGreaterThanOrEqual(5);
+		// U4b/F2: `{doc}` goes through `attachDocument`'s raw-doc dedupe —
+		// all five editors compose ONE EdytorDocument, so the doc-level
+		// listeners (facade updateHandler, undo-manager observers) are
+		// registered ONCE, while each view still adds its own awareness
+		// listener. `destroy()` must release all of them.
+		// U8a — one 'change' subscription per view (the 'update' duplicate
+		// was dropped: 'change' covers every renderable presence diff, so
+		// 'update' only re-bumped on clock-only heartbeats).
+		expect(editors[1].document).toBe(editors[0].document);
+		expect(observerCount(doc, 'update') - updatesBefore).toBeGreaterThanOrEqual(1);
 		expect(
 			observerCount(awareness, 'change') + observerCount(awareness, 'update') - awarenessBefore
-		).toBeGreaterThanOrEqual(5);
+		).toBe(5);
 		expect(typeof editors[0].destroy).toBe('function');
 
 		for (const editor of editors) {

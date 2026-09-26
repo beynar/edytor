@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "date": "2026-09-24T07:49:34.958Z",
+    "node": "v24.21.0",
+    "platform": "darwin arm64 25.5.0",
+    "cpu": "Apple M4 Pro",
+    "cpuCores": 14,
+    "memoryGiB": 48,
+    "git": {
+      "revision": "d9b7de09e7110fc7a4c2fb1eec36f8267aede086",
+      "branch": "feat/crdt-v14-engine",
+      "dirty": true
+    },
+    "sources": {
+      "srcLibContents": {
+        "sha256": "f3de776afbd96f504ac324ec4567efb39d9519961f9e1d27f56767e64951bf7b",
+        "files": 194
+      },
+      "vendorYjsSrcContents": {
+        "sha256": "96dae66287b45d048e4fd017b4f2e2e30c66f3c6209910c8540ba3b5943e01c1",
+        "files": 33
+      },
+      "packedTarball": {
+        "sha256": "2d5cb386205bbc2127c5c463254f0e202d78a4a627d609973b6eac5a17ec642b",
+        "bytes": 645384
+      },
+      "benchDriver": {
+        "sha256": "3b6c1ef43fab0d9d44eb316275fbb64781a8d516d33c27d0ecc25078f5f99934",
+        "bytes": 54450
+      },
+      "benchHooks": {
+        "sha256": "f00c301eb37d0f9fcb07626bb016c4bab12c0148c8a9e5aedf8aacc21b571c63",
+        "bytes": 35889
+      },
+      "benchAppFiles": {
+        "sha256": "65bb0e7dacbe9298c72a62576fe7815afae3f256ca34645247940ecd4500eddc",
+        "files": 10
+      },
+      "benchApp": "bench/browser-app — edytor resolved from tests/packed-consumer/node_modules (the tarball above)",
+      "packedVsSrc": {
+        "tgzMtimeIso": "2026-09-24T07:45:18.997Z",
+        "newestSrcLibMtimeIso": "2026-09-24T07:49:21.780Z",
+        "stampedSrcLibSha256": "f0d295f2ec06e975c05fe4127cca4e1e6bf8ba87b98419b2abbc59c0f96c1468",
+        "currentSrcLibSha256": "f3de776afbd96f504ac324ec4567efb39d9519961f9e1d27f56767e64951bf7b",
+        "contentMismatch": true,
+        "stale": true
+      }
+    },
+    "variant": {
+      "id": "C",
+      "scheme": "A = retired per-edit text-level attribution (pre-U2 artifacts); B = compact block attribution — the post-U2 model; C = block + editor fixes (adversarial-review-2026-09-23: readiness/onReady, attribution incarnation records, selection ownership + stale-write guards). Variant is an artifact-level dimension — lanes keep their names."
+    },
+    "engine": "vendored @y/y@14.0.0-rc.26 (upstream 96c96e1fcb1ef6ce866d5264b3f97f7f77b11f64) + recorded local patches — P1 lib0-v14 specifier rewrite, P4 format-aware search-marker checkpoints; NOT unmodified upstream (see src/lib/crdt/vendor/yjs/UPSTREAM.md)",
+    "runtime": "chromium via playwright (version recorded below); launch args --js-flags=--expose-gc (post-GC heap reads) + --enable-precise-memory-info (unrounded performance.memory — NOT comparable to bucketed-heap numbers from earlier artifacts)",
+    "instrumentation": "bench/lib/browser-hooks.js — consumer-side only, product untouched: doc.emit/doc.transact instance wraps (per-transaction records), document event listeners, MutationObserver, facade.onChange, method-call counters; diag-* lanes additionally run DIAG_INIT prototype wraps + DIAG_WRAP_WRAPPERS + CDP Profiler sampling.",
+    "note": "ms = wall-clock milliseconds in-page (performance.now, shared per record); bytes = byteLength of emitted updates / bundle files; counts = deterministic work counters. Spans are inclusive where nested — containment documented per stage field."
+  },
+  "lanes": {},
+  "skipped": "edytor.tgz predates src/lib sources (mtime or stamped content hash) — the packed build cannot contain current code. Repack via tests/packed-consumer/run.sh first (or pass --allow-stale to record a known-stale measurement)."
+}

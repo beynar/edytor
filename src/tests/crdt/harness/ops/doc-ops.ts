@@ -20,7 +20,15 @@ import * as Y from '../../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../../lib/crdt/index.js';
 import type { Peer } from '../peer-set.js';
 import type { CrdtOps } from './crdt-ops.js';
-import { expectedProjectedIds } from './model-ops.js';
+import {
+	expectedProjectedIds,
+	locateTagAtoms,
+	classifyTagAtoms,
+	tagAtomDeps,
+	captureOpState,
+	opTarget,
+	deadCause
+} from './model-ops.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -34,6 +42,24 @@ export const createDocOps = (): CrdtOps => {
 			facades.set(peer.doc, f);
 		}
 		return f;
+	};
+	// One UndoManager per doc, built through the facade's public surface
+	// (registry scope, captureTimeout 0 = one stack item per op transaction,
+	// local origin only — remote applies must not be undoable here).
+	const undoManagers = new WeakMap<
+		InstanceType<typeof Y.Doc>,
+		ReturnType<ReturnType<typeof E.create>['createUndoManager']>
+	>();
+	const history = (peer: Peer) => {
+		let m = undoManagers.get(peer.doc);
+		if (!m) {
+			m = ed(peer).createUndoManager({
+				captureTimeout: 0,
+				trackedOrigins: new Set([peer.localOrigin])
+			});
+			undoManagers.set(peer.doc, m);
+		}
+		return m;
 	};
 
 	return {
@@ -70,6 +96,25 @@ export const createDocOps = (): CrdtOps => {
 		blockText: (peer, id) => ed(peer).blockText(id),
 		listBlockIds: (peer) => ed(peer).listBlockIds(),
 		positionOf: (peer, id) => ed(peer).positionOf(id),
-		expectedProjectedIds
+		expectedProjectedIds,
+		// The tag oracle reads engine state straight off peer.doc (the facade
+		// shares the same doc), so the model-ops implementation applies
+		// unchanged — same for the U5 mutation-surface snapshot and the
+		// dead-owner explainer.
+		locateTagAtoms,
+		classifyTagAtoms,
+		tagAtomDeps,
+		captureOpState,
+		opTarget,
+		deadCause,
+		trackHistory: (peer) => {
+			history(peer);
+		},
+		undo: (peer) => {
+			history(peer).undo();
+		},
+		redo: (peer) => {
+			history(peer).redo();
+		}
 	};
 };

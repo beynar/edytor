@@ -27,7 +27,7 @@ import {
   ContentDoc,
   createContentDocFromDoc
 } from './structs/Item.js'
-import { AttributedContent, rendererContentLength } from './utils/renderer-helpers.js'
+import { AttributedContent, rendererContentLength, readItemPieces } from './utils/renderer-helpers.js'
 import { removeEventHandlerListener, callEventHandlerListeners, addEventHandlerListener, createEventHandler } from './utils/EventHandler.js'
 import { createID } from './utils/ID.js'
 import { createIdSet, iterateStructsByIdSetWithoutSplits } from './utils/ids.js'
@@ -255,6 +255,7 @@ const insertNegatedFormats = (transaction, parent, currPos, negatedFormats) => {
     nextFormat.integrate(transaction, 0)
     currPos.right = nextFormat
     currPos.forward()
+    updateMarkerFormats(parent, currPos, /** @type {ContentFormat} */ (nextFormat.content))
   })
 }
 
@@ -320,6 +321,7 @@ const insertFormats = (transaction, parent, currPos, formats) => {
       currPos.right = new Item(createID(ownClientId, doc.store.getClock(ownClientId)), left, left && left.lastId, right, right && right.id, parent, null, new ContentFormat(key, val))
       currPos.right.integrate(transaction, 0)
       currPos.forward()
+      updateMarkerFormats(parent, currPos, /** @type {ContentFormat} */ ((/** @type {Item} */ (currPos.left)).content))
     }
   }
   return negatedFormats
@@ -471,6 +473,32 @@ export class ArraySearchMarker {
     p.marker = true
     this.p = p
     this.index = index
+    /**
+     * Snapshot of an `ItemTextListPosition` cursor's `currentFormats` map at
+     * this marker's position (the left edge of `p`), or `null` when unknown.
+     * Written only at *quiescent* points — the end of `YNode#applyDelta`
+     * (post-op cursor state) and `findMarker`'s read walks — never mid-
+     * mutation: `formatText`'s in-flight `currentFormats` is transient and
+     * proved able to capture state invalidated later in the same operation.
+     * Consumed by `YNode#applyDelta` to seed a formatting-aware cursor
+     * without re-walking the list from `_start`.
+     *
+     * Validity: the snapshot is the format state at a fixed list position, so
+     * it stays correct across content inserts/deletes anywhere (they never
+     * change format state; `updateMarkerChanges` keeps `index` aligned).
+     * Every mutation that could change it is covered: format-item inserts
+     * fold into it via `updateMarkerFormats` (list-order aware AND bounded by
+     * the next live same-key format item — a marker beyond that boundary still
+     * draws the key from the intervening item, so folding would corrupt it;
+     * unreachable anchors get `formats = null` instead), format-item
+     * tombstones clear all snapshots in `Item#delete`, and re-anchored or
+     * overwritten markers clear it in `overwriteMarker`/`updateMarkerChanges`/
+     * `Item#mergeWith`. Wholesale clears (`_searchMarker.length = 0`) cover
+     * remote integration and undo.
+     *
+     * @type {Map<string,any>?}
+     */
+    this.formats = null
     this.timestamp = globalSearchMarkerTimestamp++
   }
 }
@@ -479,6 +507,101 @@ export class ArraySearchMarker {
  * @param {ArraySearchMarker} marker
  */
 const refreshMarkerTimestamp = marker => { marker.timestamp = globalSearchMarkerTimestamp++ }
+
+/**
+ * After a format marker item is integrated at `currPos` (it is `currPos.left`;
+ * `currPos.right` is the item right of it), fold it into the format snapshot of
+ * every search marker positioned at-or-right of the insertion — exactly what a
+ * cursor passing the marker would do.
+ *
+ * Positions compare in *list order*, not just index space: markers anchored
+ * at items sharing `currPos.index` but sitting left of the insertion (a
+ * same-index run of non-countable/deleted items ending at `currPos.left`)
+ * must NOT observe the new format — index equality alone is ambiguous there.
+ *
+ * Same-key boundary (R1 repair): a marker's `formats` snapshot is the fold of
+ * the live format items left of its anchor. The new item changes that fold
+ * only while it is the LAST live item setting its key before the anchor — a
+ * later live format item that sets the same key again shadows it, so the
+ * snapshot's value for that key still comes from that later marker and must
+ * not be overwritten. The fold therefore walks right from the insertion and
+ * stops at the first live same-key `ContentFormat`: markers anchored
+ * at-or-before it are updated, everything past it keeps its (still valid)
+ * snapshot.
+ *
+ * Candidates whose anchor the walk never reaches (stale record — anchor
+ * unlinked/merged, or index lying about the real position) are invalidated
+ * (`formats = null`) instead of trusting a position that can't be verified.
+ *
+ * @param {YNode<any>} parent
+ * @param {ItemTextListPosition} currPos
+ * @param {ContentFormat} format
+ */
+const updateMarkerFormats = (parent, currPos, format) => {
+  const ms = parent._searchMarker
+  if (ms === null) return
+  /**
+   * Anchors of the same-index run ending at `currPos.left`: deleted or
+   * non-countable items sharing `currPos.index` but sitting left of the
+   * insertion (the run always starts with the new format item itself, which
+   * is non-countable). Built lazily — only needed when a marker shares the
+   * insertion index.
+   *
+   * @type {Set<Item>?}
+   */
+  let leftRun = null
+  /**
+   * Snapshots at-or-right of the insertion — candidates for the fold.
+   *
+   * @type {Array<ArraySearchMarker>?}
+   */
+  let cands = null
+  let maxIndex = -1
+  for (let i = 0; i < ms.length; i++) {
+    const m = ms[i]
+    if (m.formats === null || m.index < currPos.index) continue
+    if (m.index === currPos.index) {
+      if (leftRun === null) {
+        leftRun = new Set()
+        for (let p = currPos.left; p !== null && (p.deleted || !p.countable); p = p.left) {
+          leftRun.add(p)
+        }
+      }
+      // fold only if m.p is at-or-right of currPos.right — i.e. not part of
+      // the same-index run terminating at currPos.left
+      if (leftRun.has(m.p)) continue
+    }
+    ;(cands ?? (cands = [])).push(m)
+    if (m.index > maxIndex) maxIndex = m.index
+  }
+  if (cands === null) return
+  let pindex = currPos.index
+  for (let p = currPos.right; p !== null; p = p.right) {
+    if (p.marker) {
+      for (let i = cands.length - 1; i >= 0; i--) {
+        if (cands[i].p === p) {
+          updateCurrentFormats(/** @type {Map<string,any>} */ (cands[i].formats), format)
+          cands.splice(i, 1)
+        }
+      }
+      if (cands.length === 0) return
+    }
+    if (!p.deleted && p.content.constructor === ContentFormat && /** @type {ContentFormat} */ (p.content).key === format.key) {
+      // Same-key boundary: snapshots past this item still draw this key from
+      // it — the new marker's reach ends here. (Markers anchored ON it were
+      // already updated: their snapshot is the state at their left edge,
+      // which precedes the item's own effect.)
+      return
+    }
+    if (!p.deleted && p.countable) {
+      pindex += p.length
+      if (pindex > maxIndex) break // every remaining anchor lies behind us — stale records
+    }
+  }
+  // Candidates never reached by the walk can't be verified at-or-right of the
+  // insertion — drop their snapshots rather than risk a stale read.
+  for (let i = 0; i < cands.length; i++) cands[i].formats = null
+}
 
 /**
  * This is rather complex so this function is the only thing that should overwrite a marker
@@ -492,6 +615,8 @@ const overwriteMarker = (marker, p, index) => {
   marker.p = p
   p.marker = true
   marker.index = index
+  // the position changed — a previous format snapshot no longer applies
+  marker.formats = null
   marker.timestamp = globalSearchMarkerTimestamp++
 }
 
@@ -515,6 +640,78 @@ const markPosition = (searchMarker, p, index) => {
 }
 
 /**
+ * Plant a format-aware marker at the cursor's current position, reusing an
+ * existing record at the same index when present (avoids duplicates). Only
+ * call at quiescent points of an applyDelta walk — after an op completes —
+ * where `currPos.currentFormats` is the authoritative state at the left edge
+ * of `currPos.right`. Never mid-mutation: in-flight `currentFormats` is
+ * transient.
+ *
+ * @param {YNode<any>} parent
+ * @param {ItemTextListPosition} currPos
+ */
+const plantMarker = (parent, currPos) => {
+  const ms = parent._searchMarker
+  if (ms === null) return
+  let p = currPos.right
+  let index = currPos.index
+  if (p === null) {
+    // Tail position — the sequential-append case, where every quiescent
+    // point sits at the end of the list. Anchor on the last item instead:
+    // a marker's index is the left edge of `p`, and a countable non-deleted
+    // item doesn't change format state, so `currentFormats` at the tail is
+    // also the state at that item's left edge. Format/deleted anchors are
+    // rejected (state at their left edge isn't derivable from here).
+    p = currPos.left
+    if (p === null || p.deleted || !p.countable) return
+    index -= p.length
+  }
+  let m = null
+  for (let i = 0; i < ms.length; i++) {
+    if (ms[i].index === index) { m = ms[i]; break }
+  }
+  if (m === null) {
+    m = markPosition(ms, p, index)
+  } else {
+    overwriteMarker(m, p, index)
+  }
+  m.formats = map.copy(currPos.currentFormats)
+}
+
+/**
+ * Plant a format-aware marker at an exact list position — the read-side
+ * counterpart of {@link plantMarker} (UPSTREAM.md P5), used by
+ * `RangeCursor`'s bounded reads to leave sparse checkpoints behind cold
+ * walks. Unlike `plantMarker` this takes the position directly (no
+ * `ItemTextListPosition` — a read cursor carries `{p, index,
+ * currentFormats}` instead), dedupes same-index records the same way, and
+ * copies the caller's format map.
+ *
+ * The marker's `index` is `p`'s left edge in the raw countable space — the
+ * same space every marker consumer records — so callers must only plant
+ * while walking the generic (`renderer === null`) interpretation.
+ *
+ * @param {YNode<any>} parent
+ * @param {Item} p - item the marker anchors on (the marker's `index` is its left edge)
+ * @param {number} index
+ * @param {Map<string,any>} formats - format state at `p`'s left edge (copied)
+ */
+export const plantSearchMarker = (parent, p, index, formats) => {
+  const ms = parent._searchMarker
+  if (ms === null) return
+  let m = null
+  for (let i = 0; i < ms.length; i++) {
+    if (ms[i].index === index) { m = ms[i]; break }
+  }
+  if (m === null) {
+    m = markPosition(ms, p, index)
+  } else {
+    overwriteMarker(m, p, index)
+  }
+  m.formats = map.copy(formats)
+}
+
+/**
  * Search marker help us to find positions in the associative array faster.
  *
  * They speed up the process of finding a position without much bookkeeping.
@@ -533,6 +730,16 @@ export const findMarker = (yarray, index) => {
   const marker = yarray._searchMarker.length === 0 ? null : yarray._searchMarker.reduce((a, b) => math.abs(index - a.index) < math.abs(index - b.index) ? a : b)
   let p = yarray._start
   let pindex = 0
+  /**
+   * Format state folded forward while walking right from a marker carrying a
+   * snapshot — lets the returned marker record the format state at its new
+   * position (consumed by `applyDelta`'s cursor seeding). `null` when the
+   * start marker has no snapshot or the walk went left: format state is not
+   * reconstructable walking backwards.
+   *
+   * @type {Map<string,any>?}
+   */
+  let walkFormats = marker === null ? map.create() : (marker.formats === null ? null : map.copy(marker.formats))
   if (marker !== null) {
     p = marker.p
     pindex = marker.index
@@ -546,11 +753,15 @@ export const findMarker = (yarray, index) => {
       }
       pindex += p.length
     }
+    if (walkFormats !== null && !p.deleted && p.content.constructor === ContentFormat) {
+      updateCurrentFormats(walkFormats, /** @type {ContentFormat} */ (p.content))
+    }
     p = p.right
   }
   // iterate to left if necessary (might be that pindex > index)
   while (p.left !== null && pindex > index) {
     p = p.left
+    walkFormats = null // position moved left — snapshot no longer derivable
     if (!p.deleted && p.countable) {
       pindex -= p.length
     }
@@ -560,6 +771,7 @@ export const findMarker = (yarray, index) => {
   // iterate to left until p can't be merged with left
   while (p.left !== null && p.left.id.client === p.id.client && p.left.id.clock + p.left.length === p.id.clock) {
     p = p.left
+    walkFormats = null // position moved left — snapshot no longer derivable
     if (!p.deleted && p.countable) {
       pindex -= p.length
     }
@@ -567,10 +779,13 @@ export const findMarker = (yarray, index) => {
   if (marker !== null && math.abs(marker.index - pindex) < /** @type {any} */ (p.parent).length / maxSearchMarker) {
     // adjust existing marker
     overwriteMarker(marker, p, pindex)
+    marker.formats = walkFormats
     return marker
   } else {
     // create new marker
-    return markPosition(yarray._searchMarker, p, pindex)
+    const m = markPosition(yarray._searchMarker, p, pindex)
+    m.formats = walkFormats
+    return m
   }
 }
 
@@ -606,6 +821,10 @@ export const updateMarkerChanges = (searchMarker, index, len) => {
         // remove search marker if updated position is null or if position is already marked
         searchMarker.splice(i, 1)
         continue
+      }
+      if (p !== m.p) {
+        // the anchor moved to a different position — its format snapshot is stale
+        m.formats = null
       }
       m.p = p
       p.marker = true
@@ -1105,6 +1324,13 @@ export class YNode extends ObservableV2 {
        */
       const cs = []
       /**
+       * Reusable trivial piece for the `readItemPieces` current-state walk —
+       * `cs` is drained per item, so a single allocation (captured lazily
+       * from the first emitted piece) serves the whole render.
+       * @type {AttributedContent<any>?}
+       */
+      let csScratch = null
+      /**
        * Process one piece of (possibly attributed) content — the shared op-emission and format
        * state machine. The renderer path feeds it every piece produced by `readContent`; the
        * generic path feeds it `ContentFormat` markers only (the state machine must see every
@@ -1408,6 +1634,22 @@ export class YNode extends ObservableV2 {
       }
       for (let item = this._start; item !== null; item = item.right) {
         const content = item.content
+        if (itemsToRender === null && !retainInserts) {
+          // Current-state render — the same physical-sequence interpretation
+          // `RangeCursor`'s bounded reads consume (UPSTREAM.md P5):
+          // `readItemPieces` produces the item's AttributedContent pieces
+          // (renderer-claimed → readContent mode 1; ContentFormat → one
+          // marker piece; tombstoned → nothing; live → whole item) and the
+          // shared state machine folds formats + emits ops for them —
+          // op-identical to the inlined fast-path dispatch it replaces.
+          cs.length = 0
+          readItemPieces(cs, renderer, item, csScratch)
+          if (csScratch === null) csScratch = cs[0] ?? null
+          for (let i = 0; i < cs.length; i++) {
+            processContent(cs[i])
+          }
+          continue
+        }
         if (renderer === null || !renderer.hasItem(item)) {
           // generic fast path: content the renderer doesn't claim renders as-is — no attribution
           // lookups, no AttributedContent wrappers and, in the common full-coverage case, no
@@ -1626,6 +1868,72 @@ export class YNode extends ObservableV2 {
         fixLen = expectedIndex + 1
       }
       const currPos = new ItemTextListPosition(null, this._start, 0, new Map(), renderer)
+      /**
+       * Seed the cursor from a format-aware search marker when the first op
+       * retains a distant position. When a marker at-or-left of the target
+       * carries a formats snapshot the cursor can start there directly, and
+       * the leading retain is shortened by the seeded index — the only op
+       * needing adjustment, since every later op is position-relative anyway.
+       * Seeding is restricted to `renderer === null`, where
+       * `rendererContentLength` counts countable/non-deleted length — exactly
+       * the space `marker.index` records.
+       */
+      let firstRetainAdjust = 0
+      const op0 = d.children[Symbol.iterator]().next().value
+      if (
+        // `op0.format == null && op0.attribution == null`: only a *pure*
+        // positioning retain may be shortened (lib0's `_isPlainRetain`
+        // convention) — a retain carrying formats/attribution applies them
+        // across its whole traversed range, so skipping its head would
+        // silently drop that work for `[0, seededIndex)`.
+        renderer === null && op0 !== undefined && delta.$retainOp.check(op0) && op0.retain > 0 &&
+        op0.format == null && op0.attribution == null && this._searchMarker !== null
+      ) {
+        // Best format-aware checkpoint at-or-left of the retained position.
+        // A marker anchored *right* of the target can still seed if the gap is
+        // crossed by stepping left over countable/non-deleted items only —
+        // format state doesn't change across pure content (a format marker or
+        // tombstone in the gap stops the walk and rejects the marker). Anchor
+        // linkage is verified because records can outlive their items.
+        let best = null
+        let bestP = null
+        let bestIndex = 0
+        for (let i = 0; i < this._searchMarker.length; i++) {
+          const m = this._searchMarker[i]
+          if (m.formats === null || m.index <= 0) continue
+          // step left over pure content until at-or-below the target
+          let p = m.p
+          let idx = m.index
+          let steps = 0
+          while (idx > op0.retain && p.left !== null && !p.left.deleted && p.left.countable && steps < 64) {
+            p = p.left
+            idx -= p.length
+            steps++
+          }
+          if (
+            idx <= op0.retain && (best === null || idx > bestIndex) &&
+            (p.left === null ? this._start === p : p.left.right === p) &&
+            (p.right === null || p.right.left === p) &&
+            // `p` must be the *first* item at its index: upstream's walk
+            // stops on the first unprocessed item at the target — including
+            // format markers and deleted items sharing the index — so an
+            // anchor after same-index non-countable/deleted items would seed
+            // a different list position (correct state, wrong item order).
+            (p.left === null || (!p.left.deleted && p.left.countable))
+          ) {
+            best = m
+            bestP = p
+            bestIndex = idx
+          }
+        }
+        if (best !== null) {
+          currPos.left = (/** @type {Item} */ (bestP)).left
+          currPos.right = bestP
+          currPos.index = bestIndex
+          currPos.currentFormats = map.copy(/** @type {Map<string,any>} */ (best.formats))
+          firstRetainAdjust = bestIndex
+        }
+      }
       for (const op of d.children) {
         if (delta.$textOp.check(op)) {
           insertContent(transaction, /** @type {any} */ (this), currPos, new ContentString(op.insert), op.format || {})
@@ -1634,8 +1942,12 @@ export class YNode extends ObservableV2 {
           insertContentHelper(transaction, this, currPos, op.insert, op.format || {})
           expectedIndex += op.length
         } else if (delta.$retainOp.check(op)) {
-          currPos.formatText(transaction, /** @type {any} */ (this), op.retain, op.format || {})
+          currPos.formatText(transaction, /** @type {any} */ (this), op.retain - firstRetainAdjust, op.format || {})
+          firstRetainAdjust = 0
           expectedIndex += op.length
+          // quiescent point at a positioning boundary — plant a marker so a
+          // subsequent delta targeting this position can seed its cursor
+          if (renderer === null) plantMarker(/** @type {any} */ (this), currPos)
         } else if (delta.$deleteOp.check(op)) {
           deleteText(transaction, currPos, op.delete)
         } else if (delta.$modifyOp.check(op)) {
@@ -1668,6 +1980,10 @@ export class YNode extends ObservableV2 {
           error.unexpectedCase()
         }
       }
+      // Leave a format-aware marker at the deepest position this delta
+      // reached — subsequent deltas targeting nearby positions seed their
+      // cursor from it.
+      if (renderer === null) plantMarker(/** @type {any} */ (this), currPos)
       for (const op of d.attrs) {
         if (delta.$setAttrOp.check(op)) {
           nodeMapSet(transaction, /** @type {any} */ (this), /** @type {any} */ (op.key), op.value)

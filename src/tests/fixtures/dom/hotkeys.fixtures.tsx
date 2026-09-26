@@ -1,9 +1,25 @@
 /** @jsxImportSource ../../jsx */
+import { expect, vi } from 'vitest';
+
+import type { Edytor } from '$lib/edytor.svelte.js';
+import type { Plugin } from '$lib/plugins.js';
 import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { defineDomFixture, defineFixtures } from '../types.js';
 import { dispatchDomKeyDown } from '../../dom/test.utils.js';
+
+const mockApplePlatform = (edytor: Edytor) => {
+	Object.defineProperty(edytor.hotKeys, 'isMac', {
+		configurable: true,
+		get: () => true
+	});
+};
+
+const altGrProbe = vi.fn();
+const altGrProbePlugin: Plugin = () => ({
+	hotkeys: { 'mod+alt+q': altGrProbe }
+});
 
 export const fixtures = defineFixtures([
 	defineDomFixture({
@@ -171,6 +187,249 @@ export const fixtures = defineFixtures([
 		assert: async ({ result }) => {
 			if (!(result as { defaultPrevented?: boolean }).defaultPrevented) {
 				throw new Error('Expected mod+enter to prevent native keyboard behavior');
+			}
+		}
+	}),
+	// ——— Non-Latin layout fallback (G5) ————————————————————————————————
+	defineDomFixture({
+		description: 'applies mod+b when a Cyrillic layout reports a non-ASCII key',
+		input: (
+			<root>
+				<paragraph>He|ll|o</paragraph>
+			</root>
+		),
+		run: () => dispatchDomKeyDown(document, { key: 'в', code: 'KeyB', metaKey: true }),
+		output: (
+			<root>
+				<paragraph>
+					He<bold>ll</bold>o
+				</paragraph>
+			</root>
+		),
+		assert: async ({ result }) => {
+			if (!(result as { defaultPrevented?: boolean }).defaultPrevented) {
+				throw new Error('Expected the Cyrillic mod chord to prevent the native event');
+			}
+		}
+	}),
+	defineDomFixture({
+		description: 'does not reinterpret a bare Cyrillic keypress through event.code',
+		input: (
+			<root>
+				<paragraph>He|ll|o</paragraph>
+			</root>
+		),
+		run: () => dispatchDomKeyDown(document, { key: 'б', code: 'KeyB' }),
+		output: (
+			<root>
+				<paragraph>Hello</paragraph>
+			</root>
+		),
+		assert: async ({ result }) => {
+			if ((result as { defaultPrevented?: boolean }).defaultPrevented) {
+				throw new Error('Expected a bare non-ASCII keypress to stay native');
+			}
+		}
+	}),
+	defineDomFixture({
+		description: 'does not apply the layout fallback to AltGr keydowns',
+		plugins: [richTextPlugin, mentionPlugin, altGrProbePlugin],
+		input: (
+			<root>
+				<paragraph>He|ll|o</paragraph>
+			</root>
+		),
+		run: async () => {
+			altGrProbe.mockClear();
+			return dispatchDomKeyDown(document, {
+				key: '@',
+				code: 'KeyQ',
+				ctrlKey: true,
+				altKey: true
+			});
+		},
+		output: (
+			<root>
+				<paragraph>Hello</paragraph>
+			</root>
+		),
+		assert: async ({ result }) => {
+			expect(altGrProbe).not.toHaveBeenCalled();
+			if ((result as { defaultPrevented?: boolean }).defaultPrevented) {
+				throw new Error('Expected the AltGr keydown to stay native');
+			}
+		}
+	}),
+	// ——— macOS Emacs bindings (G6) —————————————————————————————————————
+	defineDomFixture({
+		description: 'deletes the character before the caret with ctrl+h on Apple platforms',
+		input: (
+			<root>
+				<paragraph>Hel|lo</paragraph>
+			</root>
+		),
+		run: async ({ edytor }) => {
+			mockApplePlatform(edytor);
+			return dispatchDomKeyDown(document, { key: 'h', code: 'KeyH', ctrlKey: true });
+		},
+		output: (
+			<root>
+				<paragraph>Helo</paragraph>
+			</root>
+		),
+		expectSelection: { startBlockPath: [0], yStart: 2, yEnd: 2, isCollapsed: true },
+		assert: async ({ result }) => {
+			if (!(result as { defaultPrevented?: boolean }).defaultPrevented) {
+				throw new Error('Expected ctrl+h to prevent the native event');
+			}
+		}
+	}),
+	defineDomFixture({
+		description: 'deletes the character after the caret with ctrl+d on Apple platforms',
+		input: (
+			<root>
+				<paragraph>Hel|lo</paragraph>
+			</root>
+		),
+		run: async ({ edytor }) => {
+			mockApplePlatform(edytor);
+			return dispatchDomKeyDown(document, { key: 'd', code: 'KeyD', ctrlKey: true });
+		},
+		output: (
+			<root>
+				<paragraph>Helo</paragraph>
+			</root>
+		),
+		expectSelection: { startBlockPath: [0], yStart: 3, yEnd: 3, isCollapsed: true },
+		assert: async ({ result }) => {
+			if (!(result as { defaultPrevented?: boolean }).defaultPrevented) {
+				throw new Error('Expected ctrl+d to prevent the native event');
+			}
+		}
+	}),
+	defineDomFixture({
+		description: 'kills to the end of the block with ctrl+k on Apple platforms',
+		input: (
+			<root>
+				<paragraph>Hel|lo</paragraph>
+			</root>
+		),
+		run: async ({ edytor }) => {
+			mockApplePlatform(edytor);
+			return dispatchDomKeyDown(document, { key: 'k', code: 'KeyK', ctrlKey: true });
+		},
+		output: (
+			<root>
+				<paragraph>Hel</paragraph>
+			</root>
+		),
+		expectSelection: { startBlockPath: [0], yStart: 3, yEnd: 3, isCollapsed: true },
+		assert: async ({ result }) => {
+			if (!(result as { defaultPrevented?: boolean }).defaultPrevented) {
+				throw new Error('Expected ctrl+k to prevent the native event');
+			}
+		}
+	}),
+	defineDomFixture({
+		description: 'inserts a line break and keeps the caret before it with ctrl+o',
+		input: (
+			<root>
+				<paragraph>ab|cd</paragraph>
+			</root>
+		),
+		run: async ({ edytor }) => {
+			mockApplePlatform(edytor);
+			return dispatchDomKeyDown(document, { key: 'o', code: 'KeyO', ctrlKey: true });
+		},
+		output: (
+			<root>
+				<paragraph>{'ab\ncd'}</paragraph>
+			</root>
+		),
+		expectSelection: { startBlockPath: [0], yStart: 2, yEnd: 2, isCollapsed: true },
+		assert: async ({ result }) => {
+			if (!(result as { defaultPrevented?: boolean }).defaultPrevented) {
+				throw new Error('Expected ctrl+o to prevent the native event');
+			}
+		}
+	}),
+	defineDomFixture({
+		description: 'moves the caret to the block boundaries with ctrl+a and ctrl+e',
+		input: (
+			<root>
+				<paragraph>Hel|lo</paragraph>
+			</root>
+		),
+		run: async ({ edytor }) => {
+			mockApplePlatform(edytor);
+			await dispatchDomKeyDown(document, { key: 'a', code: 'KeyA', ctrlKey: true });
+			return dispatchDomKeyDown(document, { key: 'e', code: 'KeyE', ctrlKey: true });
+		},
+		expectSelection: { startBlockPath: [0], yStart: 5, yEnd: 5, isCollapsed: true },
+		assert: async ({ result }) => {
+			if (!(result as { defaultPrevented?: boolean }).defaultPrevented) {
+				throw new Error('Expected ctrl+a/ctrl+e to prevent the native event');
+			}
+		}
+	}),
+	defineDomFixture({
+		description: 'collapses the caret into the previous block with ctrl+b at a block start',
+		input: (
+			<root>
+				<paragraph>First</paragraph>
+				<paragraph>|Second</paragraph>
+			</root>
+		),
+		run: async ({ edytor }) => {
+			mockApplePlatform(edytor);
+			return dispatchDomKeyDown(document, { key: 'b', code: 'KeyB', ctrlKey: true });
+		},
+		expectSelection: { startBlockPath: [0], yStart: 5, yEnd: 5, isCollapsed: true },
+		assert: async ({ result }) => {
+			if (!(result as { defaultPrevented?: boolean }).defaultPrevented) {
+				throw new Error('Expected ctrl+b to prevent the native event');
+			}
+		}
+	}),
+	defineDomFixture({
+		description: 'collapses the caret into the next block with ctrl+f at a block end',
+		input: (
+			<root>
+				<paragraph>First|</paragraph>
+				<paragraph>Second</paragraph>
+			</root>
+		),
+		run: async ({ edytor }) => {
+			mockApplePlatform(edytor);
+			return dispatchDomKeyDown(document, { key: 'f', code: 'KeyF', ctrlKey: true });
+		},
+		expectSelection: { startBlockPath: [1], yStart: 0, yEnd: 0, isCollapsed: true },
+		assert: async ({ result }) => {
+			if (!(result as { defaultPrevented?: boolean }).defaultPrevented) {
+				throw new Error('Expected ctrl+f to prevent the native event');
+			}
+		}
+	}),
+	defineDomFixture({
+		description: 'prevents but does not run Emacs mutations in readonly mode',
+		readonly: true,
+		input: (
+			<root>
+				<paragraph>Hel|lo</paragraph>
+			</root>
+		),
+		run: async ({ edytor }) => {
+			mockApplePlatform(edytor);
+			return dispatchDomKeyDown(document, { key: 'k', code: 'KeyK', ctrlKey: true });
+		},
+		output: (
+			<root>
+				<paragraph>Hello</paragraph>
+			</root>
+		),
+		assert: async ({ result }) => {
+			if (!(result as { defaultPrevented?: boolean }).defaultPrevented) {
+				throw new Error('Expected readonly ctrl+k to be prevented without mutating');
 			}
 		}
 	})

@@ -4,6 +4,7 @@ export { $doc } from "./utils/schemas.js";
 export { isParentOf } from "./utils/isParentOf.js";
 export { logNode } from "./utils/logging.js";
 export { diffDocsToDelta } from "./utils/delta-helpers.js";
+export { RangeCursor } from "./utils/RangeCursor.js";
 export { AbstractStruct } from "./structs/AbstractStruct.js";
 export { GC } from "./structs/GC.js";
 export { Skip } from "./structs/Skip.js";

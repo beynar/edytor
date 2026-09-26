@@ -5,16 +5,15 @@ import type { SerializableContent } from '$lib/utils/json.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
 import { isInsideTrailingNewlineMarker } from '$lib/selection/selection.utils.js';
-import { removeStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
+import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
 import { replaceSelectionWithCollapsedTarget } from '$lib/selection/replaceSelection.js';
-import { isNativeInteractiveEvent } from './nativeInteractiveControl.js';
-import { refreshDomAfterHistoryChange } from '$lib/history/refreshDomAfterHistoryChange.js';
 import {
-	beginHistoryCommandRestore,
-	getHistorySelectionSnapshot,
-	restoreCollapsedHistorySelectionState,
-	restoreCollapsedHistorySelection
-} from '$lib/history/historySelectionSnapshot.js';
+	isNativeInteractiveEvent,
+	isNestedForeignEditableTarget
+} from './nativeInteractiveControl.js';
+import { runHistoryCommand } from './undoRestore.js';
+import { getTextContentOffsetAtPoint } from './domTextOffset.js';
+import { getTextPath } from './events.utils.js';
 
 const ZERO_WIDTH_SPACE = '\u200B';
 
@@ -26,12 +25,6 @@ type PlannedDiffOperation =
 			value: string;
 			marks?: Record<string, SerializableContent>;
 	  };
-
-type YTextWithItem = Text['yText'] & {
-	_item?: {
-		deleted?: boolean;
-	} | null;
-};
 
 const isComposingInputEvent = (event: Event) =>
 	typeof InputEvent !== 'undefined' && event instanceof InputEvent && event.isComposing;
@@ -63,28 +56,8 @@ const isNativeHistoryInput = (event: Event): event is InputEvent =>
 	event instanceof InputEvent &&
 	(event.inputType === 'historyUndo' || event.inputType === 'historyRedo');
 
-const runInputHistoryCommand = async (edytor: Edytor, event: InputEvent) => {
-	const stack =
-		event.inputType === 'historyUndo' ? edytor.undoManager.undoStack : edytor.undoManager.redoStack;
-	const stackItem = stack.at(-1);
-	const selectionSnapshot = getHistorySelectionSnapshot(stackItem, {
-		preferRestore: event.inputType === 'historyRedo'
-	});
-	const shouldRestoreSelection = beginHistoryCommandRestore(edytor);
-
-	if (event.inputType === 'historyUndo') {
-		edytor.undoManager.undo();
-	} else {
-		edytor.undoManager.redo();
-	}
-	restoreCollapsedHistorySelectionState(edytor, selectionSnapshot, shouldRestoreSelection);
-
-	await refreshDomAfterHistoryChange(edytor, {
-		restoreSelection: false,
-		shouldRestoreSelection
-	});
-	await restoreCollapsedHistorySelection(edytor, selectionSnapshot, shouldRestoreSelection);
-};
+const runInputHistoryCommand = (edytor: Edytor, event: InputEvent) =>
+	runHistoryCommand(edytor, event.inputType === 'historyUndo' ? 'undo' : 'redo');
 
 const getNormalizedDomText = (text: Text) => {
 	let value = text.node?.textContent ?? '';
@@ -100,21 +73,7 @@ const getNormalizedDomText = (text: Text) => {
 	return value;
 };
 
-export const isLiveText = (text: Text) => {
-	const index = text.parent.content.indexOf(text);
-	const item = (text.yText as YTextWithItem)._item;
-
-	if (index === -1 || item?.deleted) {
-		return false;
-	}
-
-	return text.parent.yContent.get(index) === text.yText && text.yText.doc === text.edytor.doc;
-};
-
-const getTextPath = (text: Text) => {
-	const index = text.parent.content.findIndex((part) => part === text);
-	return [...text.parent.path, index === -1 ? text.index : index];
-};
+export const isLiveText = (text: Text) => text.isInDocument;
 
 const queueBrowserOwnedInputSelectionSnapshot = (
 	edytor: Edytor,
@@ -144,18 +103,11 @@ const getDomOffsetWithinText = (text: Text, node: Node, offset: number) => {
 		return text.length;
 	}
 
-	let currentOffset = offset;
-	const treeWalker = document.createTreeWalker(text.node, NodeFilter.SHOW_TEXT, (child) => {
-		return child.compareDocumentPosition(node) === Node.DOCUMENT_POSITION_FOLLOWING
-			? NodeFilter.FILTER_ACCEPT
-			: NodeFilter.FILTER_SKIP;
-	});
-
-	while (treeWalker.nextNode()) {
-		currentOffset += treeWalker.currentNode.textContent?.length ?? 0;
-	}
-
-	return currentOffset;
+	// No model-length clamp here — the DOM caret is read BEFORE the
+	// reconcile writes the model, so a native insertion legitimately sits
+	// past the current `text.length` (the trailing-newline marker case is
+	// handled above; `setAtTextOffset` clamps the final write).
+	return getTextContentOffsetAtPoint(text.node, node, offset);
 };
 
 export const getCollapsedDomTextSelection = (edytor: Edytor) => {
@@ -486,15 +438,15 @@ const applyDomTextDiff = (text: Text, domText: string) => {
 	text.edytor.transact(() => {
 		for (const operation of operations) {
 			if (operation.type === 'delete') {
-				const length = Math.min(operation.length, text.yText.length - operation.index);
+				const length = Math.min(operation.length, text.length - operation.index);
 				if (length > 0) {
-					text.yText.delete(operation.index, length);
+					text.deleteAt(operation.index, length);
 				}
 				continue;
 			}
 
 			if (operation.value.length > 0) {
-				text.yText.insert(operation.index, operation.value, operation.marks);
+				text.insertAt(operation.index, operation.value, operation.marks);
 			}
 		}
 	});
@@ -533,7 +485,7 @@ const insertNativeMentionTrigger = async (edytor: Edytor, text: Text, value: str
 		text
 	});
 	await tick();
-	removeStalePlaceholders(text);
+	scheduleRemoveStalePlaceholders(text);
 	const liveTrailingText = edytor.getTextById(trailingText.id) ?? trailingText;
 	await edytor.selection.setAtTextOffset(liveTrailingText, 0);
 	return true;
@@ -556,13 +508,13 @@ export const reconcileTextValue = async (
 	const caretOffset =
 		typeof selectionOffset === 'number' ? Math.min(selectionOffset, value.length) : undefined;
 	if (!applyDomTextDiff(text, value)) {
-		removeStalePlaceholders(text);
+		scheduleRemoveStalePlaceholders(text);
 		return false;
 	}
 
 	text.syncFromModel();
 	await tick();
-	removeStalePlaceholders(text);
+	scheduleRemoveStalePlaceholders(text);
 
 	if (typeof caretOffset === 'number') {
 		await edytor.selection.setAtTextOffset(text, caretOffset);
@@ -578,7 +530,10 @@ export const reconcileFocusedDomText = async (edytor: Edytor, event?: Event) => 
 	if (
 		edytor.readonly ||
 		edytor.isComposing ||
-		(event && (isComposingInputEvent(event) || isNativeInteractiveEvent(event)))
+		(event &&
+			(isComposingInputEvent(event) ||
+				isNativeInteractiveEvent(event) ||
+				isNestedForeignEditableTarget(edytor.node, event.target)))
 	) {
 		return false;
 	}
@@ -631,7 +586,7 @@ const replaceExpandedSelectionFromInputOnlyText = async (edytor: Edytor, value: 
 	});
 	target.text.refreshFromModel();
 	await tick();
-	removeStalePlaceholders(target.text);
+	scheduleRemoveStalePlaceholders(target.text);
 	await edytor.selection.setAtTextOffset(target.text, target.offset + value.length);
 	return true;
 };
@@ -757,13 +712,23 @@ export async function onInput(this: Edytor, event: Event) {
 		return;
 	}
 
-	if (isNativeInteractiveEvent(event)) {
+	if (
+		isNativeInteractiveEvent(event) ||
+		(event && isNestedForeignEditableTarget(this.node, event.target))
+	) {
 		this.browserOwnedInputTarget = null;
 		return;
 	}
 
 	if (isNativeHistoryInput(event)) {
 		this.browserOwnedInputTarget = null;
+		// Same guard as the beforeinput channel — a history command
+		// mid-composition consumes capture groups while the IME still
+		// owns the DOM node (engines that deliver history via `input`
+		// only would otherwise bypass the beforeinput swallow).
+		if (this.isComposing) {
+			return;
+		}
 		await runInputHistoryCommand(this, event);
 		return;
 	}

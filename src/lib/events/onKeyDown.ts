@@ -4,7 +4,9 @@ import { PreventionError } from '$lib/utils.js';
 import {
 	isNativeInteractiveEvent,
 	isNativeTextControl,
-	isNativeTextControlEvent
+	isNativeTextControlEvent,
+	isNestedForeignEditableTarget,
+	isNestedForeignEditableEvent
 } from './nativeInteractiveControl.js';
 import { Text } from '$lib/text/text.svelte.js';
 
@@ -327,9 +329,26 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 		return;
 	}
 
+	// Keys inside a nested `contenteditable` island belong to that island —
+	// hotkeys and structural fallbacks operate on the MODEL selection,
+	// which still points wherever the editor last left it.
+	// Composed-path check — the document-level listener sees `e.target`
+	// retargeted to the shadow host, which would let island keys through.
+	if (
+		isNestedForeignEditableTarget(this.node, e.target) ||
+		isNestedForeignEditableEvent(this.node, e)
+	) {
+		return;
+	}
+
 	if (this.shouldIgnoreCompositionKeyDown(e)) {
 		return;
 	}
+
+	// A real key past the swallow/island guards is a user gesture —
+	// disarm pending deferred restores (phantom composition keys never
+	// reach this line).
+	this.markUserGesture();
 
 	if (shouldRefreshSelectionBeforeKeyDown(this, e)) {
 		this.selection.onSelectionChange();

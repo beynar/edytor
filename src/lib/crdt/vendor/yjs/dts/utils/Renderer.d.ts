@@ -2,8 +2,10 @@
  * Renders content with attributions, given a single `attributions` {@link ContentMap} of how to
  * attribute content and an optional `renderedContent` {@link IdSet} of what renders.
  *
- * - `attributions` (inserts ∪ deletes) is merged into a single `renderAs` map; content it covers
- *   always renders, carrying its attribution.
+ * - Current-state rendering reads `attributions.inserts` for live items and
+ *   `attributions.deletes` for tombstones. A custom `renderedContent` projection merges both maps
+ *   into `renderAs`, because restoring content from another point in time may need metadata from
+ *   the item's opposite current-state side.
  * - `renderedContent` defines the content that renders *normally* — even if the item is marked
  *   deleted in the doc (a "restore"). It defaults to the doc's alive content (`inserts − deletes`),
  *   applied implicitly (a piece is in the default set ⟺ its item is not `deleted`), so the common
@@ -29,6 +31,17 @@ export class AttributionsRenderer extends ObservableV2<{
     constructor(attributions: ContentMap, { renderedContent }?: {
         renderedContent?: import("./ids.js").IdSet | null | undefined;
     });
+    /**
+     * Side-specific attribution maps. Current-state rendering must not let an item's historical
+     * insert metadata make a later, unattributed tombstone render as an anonymous deletion (or
+     * vice versa). Custom `renderedContent` projections retain the upstream merged-map behavior:
+     * restoring an item from another point in time may intentionally need its opposite-side
+     * metadata.
+     * @type {IdMap<any>}
+     */
+    inserts: IdMap<any>;
+    /** @type {IdMap<any>} */
+    deletes: IdMap<any>;
     /**
      * The two attribution maps merged into one — `readContent` consults this for how to attribute
      * a piece.

@@ -65,7 +65,10 @@ export const replaceSelectionWithCollapsedTargetSync = (
 	}
 
 	if (state.isBlockSpanning) {
-		const [nextStartText, offset] = edytor.deleteContentWithinSelection({});
+		const [nextStartText, offset] = edytor.deleteContentWithinSelection({
+			preserveStartBlock: true,
+			selection: state
+		});
 		if (!nextStartText) {
 			return null;
 		}

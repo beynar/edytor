@@ -30,10 +30,11 @@ If you want to submit an issue please share the json value of the document. It w
 
 - 📑 **Customizable with snippets**: Use snippets to render your own blocks and marks
 - 🎨 **Rich Text Formatting**: Full support for marks, blocks and inline blocks.
-- 🤝 **CRDT collaboration**: built on a vendored Yjs v14 engine — IndexedDB + websocket providers, awareness cursors, identity-preserving moves/splits/merges. Engine + bindings ship as `edytor/crdt` and `edytor/crdt/edytor` subpaths
+- 🤝 **CRDT collaboration**: built on a vendored Yjs v14 engine — one `EdytorDocument` shared by any number of views (or none — it works headlessly), IndexedDB + websocket providers, awareness cursors, identity-preserving moves/splits/merges. Engine + bindings ship as `edytor/crdt` and `edytor/crdt/edytor` subpaths
 - 🔌 **Plugin System**: Extensible architecture for custom features. I try to make every action performed by the editor hackable and preventable to let you build your own features.
 - ⚡ **High Performance**: Optimized for large documents, fine grained update at the leaf level thanks to the CRDT substrate and Svelte's reactivity
 - 🔄 **Undo/Redo**: Built-in history management
+- 🖱️ **Block drag and drop**: Reorder, nest, and unnest blocks with built-in handles
 - 📦 **Lightweight**: Relatively small bundle size compared to other rich text editors
 - 📦 **AI copilot ready**: Support inline text suggestions for ai completions.
 
@@ -49,6 +50,7 @@ If you want to submit an issue please share the json value of the document. It w
 - [x] Text suggestions
 - [x] Inline blocks
 - [x] Nesting
+- [x] Block drag and drop (move, nest, and unnest)
 - [x] Selection + movable blocks
 - [x] Content transformation
 - [x] Content normalization
@@ -64,7 +66,6 @@ If you want to submit an issue please share the json value of the document. It w
 
 ## ✨ Things that are not ready
 
-- [ ] DND
 - [ ] Block suggestions
 - [ ] Reactive data (inline)block properties with syncrostate.
 
@@ -175,11 +176,58 @@ pnpm add edytor
 <Edytor {value} {onChange} />
 ```
 
+Block handles and drag targets are enabled by default. Drop near a block's top or bottom to reorder, in its middle to nest, or at a nested block's left gutter to outdent. Focus a handle and use `Alt+↑/↓` to reorder or `Alt+→/←` to nest or outdent. Use `blockHandles={false}` to omit the handles. Use `blockHandles={{ draggable: false, onActivate: ({ block, anchor }) => openMenu(block, anchor) }}` to keep the handle and its keyboard actions while disabling pointer drag. The typed callback receives the live block and handle element. `blockDnd={false}` remains a deprecated alias for hiding the handles; `blockHandles` takes precedence when both are set. Handle configuration is read when the editor mounts.
+
+Relative movement is also available without the handle UI through the editor instance:
+
+```ts
+const request = { blocks: [source], target, position: 'before' as const };
+if (edytor.canMoveBlocks(request)) {
+	edytor.moveBlocks(request);
+}
+```
+
+`position` is `before`, `after`, or `inside`. `moveBlocks` returns the blocks actually moved; grouped moves keep the supplied block order and run as one history step. `canMoveBlocks` checks structural eligibility, while plugins may still prevent the operation.
+
+### The document — headless or shared by views
+
+`createDocument` builds an `EdytorDocument`: one shared facade, one local
+history, one awareness, the local actor and compact per-block attribution
+on the v14 CRDT substrate. Use it headlessly (plain node/SSR via
+`edytor/crdt/edytor` — no Svelte in the graph) or hand it to any number of
+`<Edytor>` views:
+
+```ts
+import { createDocument, loadDocument } from 'edytor';
+
+const document = createDocument({
+	value: { children: [{ type: 'paragraph', content: [{ text: 'hello' }] }] },
+	actor: { id: 'user-42', name: 'Ada' }
+});
+
+const [block] = document.facade.project().children;
+document.transact(() => document.facade.insertText(block.id, 5, ' world'));
+document.history.undo();
+
+const saved = document.encode(); // Uint8Array — persist or transport it
+const restored = loadDocument(saved); // restores as a fresh replica
+```
+
+```svelte
+<Edytor {document} {plugins} />
+<Edytor {document} {plugins} />
+<!-- two views, ONE document: shared facade/history/awareness -->
+```
+
+Readiness (`pending`/`local`/`hydrated`), borrowed vs owned docs,
+`attachSync` provider attach, attribution reads and the admission gate:
+[`docs/crdt-v14-document.md`](docs/crdt-v14-document.md).
+
 ### Collaboration and persistence
 
-Edytor is CRDT-backed by a vendored **Yjs v14** engine (`@y/y@14.0.0-rc.26`, pinned — not the `yjs` npm package). You can pass a shared doc directly, or use the exported sync helpers to wire providers through the `sync` prop.
+Edytor is CRDT-backed by a vendored **Yjs v14** engine (`@y/y@14.0.0-rc.26`, pinned — not the `yjs` npm package). You can pass a shared `document` directly, or use the exported sync helpers to wire providers through the `sync` prop.
 
-The engine and the bindings are also importable on their own — for node/SSR code paths where the Svelte component can't load:
+The engine and the bindings are also importable on their own — for node/SSR code paths where the Svelte component can't load. The document factories above work there unchanged; `bindCrdt(Y)` is the entry when you need the raw provider/migration stacks on a doc you own:
 
 ```ts
 import * as Y from 'edytor/crdt'; // the vendored v14 engine

@@ -1,6 +1,5 @@
 /** @jsxImportSource ../../../jsx */
-import { expect } from 'vitest';
-import type { YBlockLike, YTextLike } from '$lib/crdt/compat.js';
+import { expect, vi } from 'vitest';
 
 import { Block } from '$lib/block/block.svelte.js';
 import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
@@ -26,9 +25,9 @@ const expectSecondPassStable = (block: Block) => {
 	expectBlockInvariantSnapshot(block.edytor);
 };
 
-const replaceContent = (block: Block, content: Array<YTextLike | YBlockLike>) => {
-	block.yContent.delete(0, block.yContent.length);
-	block.yContent.insert(0, content);
+const replaceContent = (block: Block, content: Array<Text | InlineBlock>) => {
+	block.deleteParts(0, block.content.length);
+	block.insertParts(0, content);
 };
 
 const normalizationPlugin = (kind: 'content' | 'children'): Plugin => {
@@ -45,7 +44,7 @@ const normalizationPlugin = (kind: 'content' | 'children'): Plugin => {
 						kind === 'content'
 							? ({ block }) => {
 									const lastText = block.lastText;
-									if (lastText.yText.toJSON().endsWith('!')) {
+									if (lastText.stringContent.endsWith('!')) {
 										return;
 									}
 
@@ -61,7 +60,7 @@ const normalizationPlugin = (kind: 'content' | 'children'): Plugin => {
 					normalizeChildren:
 						kind === 'children'
 							? ({ block }) => {
-									if (block.yChildren.length > 0) {
+									if (block.children.length > 0) {
 										return;
 									}
 
@@ -98,7 +97,7 @@ export const fixtures = defineFixtures([
 			const first = new InlineBlock({ parent: block, block: { type: 'mention' } });
 			const second = new InlineBlock({ parent: block, block: { type: 'mention' } });
 
-			replaceContent(block, [first.yBlock, second.yBlock]);
+			replaceContent(block, [first, second]);
 			block.normalizeContent();
 
 			expect(block.content[0]).toBeInstanceOf(Text);
@@ -134,7 +133,7 @@ export const fixtures = defineFixtures([
 				content: [{ text: ' world', marks: { bold: true } }]
 			});
 
-			replaceContent(block, [first.yText, second.yText]);
+			replaceContent(block, [first, second]);
 			block.normalizeContent();
 
 			expect(snapshotChildren(block)).toEqual([
@@ -158,7 +157,7 @@ export const fixtures = defineFixtures([
 				</root>
 			);
 
-			edytor.root!.yChildren.delete(0, edytor.root!.children.length);
+			edytor.root!.deleteChildren(0, edytor.root!.children.length);
 			edytor.root!.normalizeChildren();
 
 			expect(snapshotChildren(edytor.root!)).toEqual([
@@ -304,6 +303,78 @@ export const fixtures = defineFixtures([
 			];
 
 			scenarios.forEach((runScenario) => runScenario());
+		}
+	}),
+	defineModelTransformFixture({
+		description:
+			'bounds a non-converging normalizeContent hook (D25) — recursion stops at the shared cap and the depth counter unwinds',
+		input: emptyFixture,
+		run: () => null,
+		assert: () => {
+			// A hook that ALWAYS defers more work would recurse forever —
+			// the per-block depth cap converts that into a bounded pass
+			// count plus a warning.
+			const normalizeContent = vi.fn(() => () => {});
+			const loopPlugin: Plugin = (editor) => ({
+				blocks: {
+					paragraph: { ...editor.blocks.get('paragraph')!, normalizeContent }
+				}
+			});
+			const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+			try {
+				const { edytor } = createTestEdytor(emptyFixture, {
+					plugins: [richTextPlugin, loopPlugin],
+					value: { children: [{ type: 'paragraph', content: [{ text: 'seed' }] }] }
+				});
+				const block = edytor.root!.children[0];
+
+				normalizeContent.mockClear();
+				warnSpy.mockClear();
+				block.normalizeContent();
+
+				// MAX_NORMALIZATION_DEPTH (50) re-entries + the initial pass.
+				expect(normalizeContent).toHaveBeenCalledTimes(51);
+				expect(warnSpy).toHaveBeenCalled();
+				// The `finally` unwinds the shared depth — the next pass is not
+				// silently suppressed by a leaked counter.
+				expect(block._normalizationDepth).toBe(0);
+				expectBlockInvariantSnapshot(edytor);
+			} finally {
+				warnSpy.mockRestore();
+			}
+		}
+	}),
+	defineModelTransformFixture({
+		description:
+			'bounds a non-converging normalizeChildren hook (D25) — content→children share one depth counter',
+		input: emptyFixture,
+		run: () => null,
+		assert: () => {
+			const normalizeChildren = vi.fn(() => () => {});
+			const loopPlugin: Plugin = (editor) => ({
+				blocks: {
+					paragraph: { ...editor.blocks.get('paragraph')!, normalizeChildren }
+				}
+			});
+			const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+			try {
+				const { edytor } = createTestEdytor(emptyFixture, {
+					plugins: [richTextPlugin, loopPlugin],
+					value: { children: [{ type: 'paragraph', content: [{ text: 'seed' }] }] }
+				});
+				const block = edytor.root!.children[0];
+
+				normalizeChildren.mockClear();
+				warnSpy.mockClear();
+				block.normalizeChildren();
+
+				expect(normalizeChildren).toHaveBeenCalledTimes(51);
+				expect(warnSpy).toHaveBeenCalled();
+				expect(block._normalizationDepth).toBe(0);
+				expectBlockInvariantSnapshot(edytor);
+			} finally {
+				warnSpy.mockRestore();
+			}
 		}
 	})
 ]);

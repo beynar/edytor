@@ -114,7 +114,7 @@ describe('attack 6: compaction', () => {
 });
 
 describe('attack 8: schema manifest coexistence', () => {
-	test('two schema versions coexist in one room; neither clobbers the other', async () => {
+	test('an unsupported-schema peer is refused at the boundary; the v1 doc is never corrupted', async () => {
 		const name = uniqueName('schema-coexist');
 		// Doc A: this build's schema (v1).
 		const docA = new Y.Doc();
@@ -126,7 +126,7 @@ describe('attack 8: schema manifest coexistence', () => {
 		// Doc B: a "future" schema (v2) written by a different engine build —
 		// same wire protocol, different meta.v.
 		const docB = new Y.Doc();
-		const edB = E.create(docB);
+		E.create(docB);
 		docB.transact(() => {
 			docB.get('meta').setAttr('v', 2);
 			docB.get('meta').setAttr('schema', 'edytor-doc-next');
@@ -140,16 +140,24 @@ describe('attack 8: schema manifest coexistence', () => {
 				return n;
 			})()
 		);
+		const mismatches = [];
 		const pB = new providers.IndexeddbPersistence(name, docB);
-		await pB.whenSynced;
+		pB.on('schema-mismatch', (d) => mismatches.push(d));
+		// Doc B's own hydration may merge A's v1 state — the LWW outcome is
+		// clientID-dependent, so tolerate either verdict; the B-side signal
+		// fires regardless (its own doc is unsupported).
+		await pB.whenSynced.catch(() => {});
+		await nextTick(80);
 
-		await until(() => edA.childrenIds(null).includes('bx'), 4000);
-		// Both version attrs coexist under the shared 'meta' root — LWW on
-		// the `v` key picks one winner (last writer), `schema` too. The point:
-		// NEITHER doc rejected the other, and NO component compared meta.v.
-		console.log(`[gate2] coexist: A.v=${E.schemaVersion(docA)} B.v=${E.schemaVersion(docB)}`);
-		// The two metas converged to a single LWW winner — deterministic.
-		expect(E.schemaVersion(docA)).toBe(E.schemaVersion(docB));
+		// The offending peer's own provider detected + signaled the skew…
+		expect(
+			mismatches.some((m) => m.problem?.kind === 'unsupported' && m.problem?.version === 2)
+		).toBe(true);
+		// …and the v1 doc NEVER enters an unsupported state. Whether 'bx'
+		// arrives is LWW-dependent: if A's v1 wins docB's merge, docB heals to
+		// v1 and ships its (now supported) state; if v2 wins, docB is refused
+		// and ships nothing. Either way docA stays on the supported schema.
+		expect(E.schemaVersion(docA)).toBe(SCHEMA_VERSION);
 		await pA.destroy();
 		await pB.destroy();
 	});

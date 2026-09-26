@@ -167,6 +167,167 @@ pending §8 row. `unrecoverable-loss` = convergent data loss under lossy
 reloads (correct semantics). `upstream-engine-crash` = vendored rc.26 DS
 iteration over destroyed ranges (U07 evidence; repros committed).
 
+## Strict lost-edit oracle + corpus lanes (WU3)
+
+The baseline above predates the strict gate: the corpus used to report model
+adapter `lost-edit×129` + `unrecoverable-loss×5` as "evidence" — outcome
+counts, not correctness verdicts. WU3 replaced that with an atom-level
+oracle and a strict/diagnostic lane split.
+
+### Lanes
+
+| Adapter                     | Lane           | Gate                                                                                                                                                                                         |
+| --------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `model` (`placement-model`) | **strict**     | Any hard violation fails the seed: `lost-edit`, `unreachable-block`, `crash`, `divergence`, `upstream-engine-crash` — an engine stack frame does not excuse a crash on production semantics. |
+| `doc` (`edytor-doc`)        | **strict**     | Same — the public facade must preserve the model's semantics.                                                                                                                                |
+| `raw` (`raw-node`)          | **diagnostic** | Expected copy-semantics evidence (`lost-edit`, `duplicate-placement`, `resurrected-delete`, `cycle`, `lost-identity`, `duplicate-inline`, `upstream-engine-crash`) is reported, never gated. |
+
+The partition lives in `runSchedule`: `RunResult.violations` is always the
+hard list, `RunResult.evidence` the legit report — a legit class can never
+be promoted nor a real one downgraded by the caller. The legit set is
+adapter-derived (`expectedViolations(ops)`): oracle adapters legitimize
+only `moved-edit`, `deleted-legit`, `convergent-loss`. `stolen-edit` is a
+hard violation on every strict lane (gate-F1 F3).
+
+### Atom-fate oracle (`classifyTagAtoms`)
+
+At each successful `insertText` the runner records the written atoms'
+engine ids (`{client, clock}` via `locateTagAtoms`). At the barrier each
+atom is classified on every replica (`AtomFate`):
+
+- `present` — displayed by the block the insert targeted.
+- `moved:owner` — displayed by a _different_ visible block (split/merge
+  moved through contested-range claims). The edit survived, relocated.
+- `stolen:owner` — like `moved`, but the owner has no causal explanation
+  (gate-F1 F3). With a `TagClassifyContext` the oracle distinguishes a
+  legitimate owner-move from an ownership steal: `insertOwners` records
+  owners that already claimed the atoms at insert time (the at-birth
+  steal signature — the insert itself was misrouted) and `legitOwners`
+  carries every block a recorded split/merge produced, PLUS the atoms'
+  home block (its backing text's natural owner — it reclaims the atoms
+  whenever a claim holding them dissolves, e.g. the claiming block is
+  concurrently deleted) and the insert target. A visible owner outside
+  that set is an unexplained transfer → `stolen` → `stolen-edit`, a hard
+  failure — never evidence. Without context the verdict stays `moved`
+  (pre-F3 semantics for context-free callers).
+- `tombstoned` — the item itself is deleted (explicit `deleteText`/
+  `removeInline` covered it). **Legit deletion.**
+- `dead-owner` — live atom, but every covering claim belongs to a
+  deleted/legitimately-hidden holder — content died with its owner.
+  **Legit deletion** (block-delete contract).
+- `unreachable` — owned by a live block that should be projected but is
+  not → `unreachable-block` violation.
+- `uncovered` — live atom covered by NO claim record at all (coverage
+  hole).
+- `gone` — absent from the struct store entirely (safe lookup: clock
+  beyond the client's stored range, or a non-Item/non-GC struct; `findIndexSS`
+  is only called once presence is established — it throws on absent clocks).
+
+Tag verdicts (worst-first): `present` › `moved-edit` › `deleted-legit` ›
+`convergent-loss` › `lost-edit` › `stolen-edit` › `unreachable-block`.
+
+### What counts as real loss vs environment loss
+
+An atom reported `uncovered`/`gone`/`unreachable` on peer A is **not**
+automatically lost. Yjs applies an update's deleteSet on receipt while each
+struct integrates only once its deps arrive — under a lossy schedule
+(reloadSnap/reloadLog/drop/partition) a coverage record can be:
+
+- **stranded in `pendingStructs`** on some replicas and integrated on
+  others → the cross-replica check finds a soft fate on another peer →
+  `convergent-loss`;
+- **destroyed at origin** (written, then regressed by a snapshot reload
+  before any delivery) → hard on every replica — excused only when the
+  atom's OWN ids are correlated with the observed loss (gate-F1 F4, see
+  below) → `convergent-loss`;
+- **a genuine hole** — hard on every replica and not loss-correlated →
+  `lost-edit`, a hard failure.
+
+Same logic for `gone` and `unreachable`: legit only under correlated
+environment loss; otherwise both are violations.
+
+### Correlated loss (gate-F1 F4)
+
+The excuse used to be run-global: any `sawLoss` event anywhere in the
+schedule excused every hard atom fate. The runner now records **which**
+item-id ranges each lossy reload actually destroyed — pending-struct and
+pending-deleteSet ranges captured pre-reload plus regressed state-vector
+tails — into `lostRanges`, and snapshots the post-barrier stranded-pending
+residue as `strandedRanges`. A hard-on-every-replica atom classifies
+`convergent-loss` only when its own id or one of its coverage deps
+(`tagAtomDeps` — the claim stamps of every record covering the atom on
+any replica, live or dead holder) intersects either set. An unrelated
+lossy reload elsewhere in the run excuses nothing; the WU3a injection
+probe pins this (one tag's real destroyed-by-reload loss stays
+`convergent-loss` while injected `uncovered` fates on untouched tags stay
+`lost-edit`).
+
+### Injection proof (permanent tests)
+
+`corpus.test.ts` self-tests prove the strict gate cannot silently pass:
+
+- a `classifyTagAtoms` stub returning `uncovered` on a lossless schedule →
+  `ok:false`, violations `lost-edit`;
+- an adapter `insertText` that throws → `ok:false`, violations `crash`;
+- a `locateTagAtoms` returning `null` (success with no findable atoms) →
+  `ok:false`, violations `lost-edit`.
+
+Gate-F1 adds two more permanent proofs in `gateF1/wu3a-oracle.test.ts`:
+
+- a stub returning `uncovered` everywhere on a schedule containing a real
+  lossy reload → the atom-correlated tag stays `convergent-loss`, the
+  unrelated injected fates stay `lost-edit` (F4 correlation, not the
+  run-global excuse);
+- a deliberately misbehaving adapter whose typed atoms are immediately
+  owned by a rival → `stolen-edit`, a hard failure (F3 — a steal can
+  never launder through `moved-edit`).
+
+### WU3 classification of the 134 residual cases
+
+Full per-seed detail prints in the corpus run
+(`per-seed verdicts [adapter] seed N: tag:verdict`). Verdict totals across
+150 seeds × ~200 inserts (identical on `model` and `doc`):
+
+`present×1972, deleted-legit×2000, moved-edit×1176, convergent-loss×84` —
+**zero `lost-edit`, zero `unreachable-block`**.
+
+Mapping of the old classes:
+
+- `lost-edit×129` (seed-level) → all resolved to `moved-edit`
+  (owner-move, the majority), `deleted-legit`, or `convergent-loss`.
+  The five tags that still surfaced as `lost-edit` mid-triage
+  (`µ24x39`, `µ24x58`, `µ135x42`, `µ135x86`, `µ135x97`) were traced to
+  coverage records stranded in `pendingStructs` — proven by inspecting
+  per-replica stores (the records are integrated on one replica, pending
+  on the others; all peers carry pending residue under the schedule's
+  lossy net ops). **No real model loss was found — no model fix needed.**
+- `unrecoverable-loss×5` → renamed `convergent-loss` (correct CRDT
+  semantics under the harness's deliberate environment loss).
+
+Seeds carrying `convergent-loss` tags: 1, 9, 12, 15, 21, 24, 26, 33, 38,
+63, 64, 68, 148, 150 — all consistent with those schedules' lossy net ops.
+
+**Post-gate-F1 update (2026-09-21):** with the F1 ownership fix in
+`text/model.ts` (inserts claim their atoms for the typed-into block on
+every boundary — empty display, left edge, display-end append), the strict
+oracle with `stolen` active reports **zero `stolen-edit` and zero
+`lost-edit`** across all 150 seeds on both strict adapters. Per-seed
+evidence classes observed: `moved-edit` (141 seeds), `deleted-legit` (150),
+`convergent-loss` (15) — identical on `model` and `doc`. The corpus run
+before the fix showed real `stolen-edit` violations (e.g. seed-20/seed-46
+inserts whose atoms were born inside a rival's claim at the display-end
+seam); the engine fix removed them — nothing was reclassified to force
+green.
+
+### Upstream crash repros stay diagnostic
+
+`failures/seed-86.json` / `seed-140.json` (vendored rc.26
+`iterateStructsByIdSet`/`findIndexSS` crashes over destroyed ranges) are
+replayed by a permanent test: they must classify as
+`upstream-engine-crash` _evidence_ on the raw adapter — never a gate
+failure, never silently green. Artifacts now also persist `evidence` and
+`tagVerdicts` for provenance.
+
 ### Replaying a failing seed
 
 ```

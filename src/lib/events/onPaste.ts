@@ -7,10 +7,44 @@ import {
 import { Block } from '$lib/block/block.svelte.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
+import { observeInternalDragSources } from './onDrop.js';
+import { firstUriListEntry } from './dataTransferPayload.js';
+import { isNestedForeignEditableTarget } from './nativeInteractiveControl.js';
+
+/**
+ * Shift-paste requests a plain-text paste (PM input.ts:620-630 —
+ * `mod-shift-v` and `Shift+Insert` keyCode 45 both take the plain branch).
+ * `ClipboardEvent` carries no modifier state, so the Shift state is tracked
+ * on keydown/keyup capture at the owning root (document or shadow root).
+ */
+let shiftPasteModifierHeld = false;
+const observedShiftRoots = new WeakSet<Node>();
+
+export const observeShiftPasteModifier = (rootNode: Node | null | undefined) => {
+	if (!rootNode || observedShiftRoots.has(rootNode)) {
+		return;
+	}
+	observedShiftRoots.add(rootNode);
+	const track = (event: Event) => {
+		shiftPasteModifierHeld = (event as KeyboardEvent).shiftKey === true;
+	};
+	rootNode.addEventListener('keydown', track, true);
+	rootNode.addEventListener('keyup', track, true);
+	const view =
+		rootNode instanceof Document ? rootNode.defaultView : rootNode.ownerDocument?.defaultView;
+	view?.addEventListener('blur', () => {
+		shiftPasteModifierHeld = false;
+	});
+};
+
+if (typeof document !== 'undefined') {
+	observeShiftPasteModifier(document);
+}
 
 const createSyntheticPasteInput = (e: ClipboardEvent): InputEvent => {
 	const text = e.clipboardData?.getData('text/plain') ?? '';
 	const html = e.clipboardData?.getData('text/html') ?? '';
+	const uriList = e.clipboardData?.getData('text/uri-list') ?? '';
 	const event = new Event('beforeinput', {
 		bubbles: true,
 		cancelable: true
@@ -33,6 +67,9 @@ const createSyntheticPasteInput = (e: ClipboardEvent): InputEvent => {
 					}
 					if (type === 'text/plain') {
 						return text;
+					}
+					if (type === 'text/uri-list') {
+						return uriList;
 					}
 					return '';
 				}
@@ -93,28 +130,60 @@ export async function onPaste(this: Edytor, e: ClipboardEvent) {
 		return;
 	}
 
+	// A paste inside a nested `contenteditable` island belongs to the
+	// island — inserting the clipboard fragment at the stale model
+	// selection would corrupt the document AND preventDefault the
+	// island's own paste.
+	if (isNestedForeignEditableTarget(this.node, e.target)) {
+		return;
+	}
+
+	if (this.isComposing) {
+		// The composition preview owns the write path — the browser performs
+		// the paste and the deferred observer reconciles it after
+		// compositionend (PM input.ts:656-660 does the same).
+		return;
+	}
+
+	observeInternalDragSources(this.node?.getRootNode());
+	observeShiftPasteModifier(this.node?.getRootNode());
 	syncCollapsedDomCaretForPaste(this);
 
-	const fragment = readEdytorClipboardFragment(e.clipboardData);
-	if (fragment) {
-		e.preventDefault();
-		this.undoManager.stopCapturing();
-		return insertEdytorClipboardFragment(this, fragment);
-	}
+	const preferPlainText = shiftPasteModifierHeld && Boolean(e.clipboardData?.getData('text/plain'));
 
-	try {
-		for (const plugin of this.plugins) {
-			plugin.onPaste?.({ prevent, e });
-		}
-	} catch (error) {
-		if (error instanceof PreventionError) {
+	if (!preferPlainText) {
+		const fragment = readEdytorClipboardFragment(e.clipboardData);
+		if (fragment) {
 			e.preventDefault();
-			return error.cb?.();
+			this.undoManager.stopCapturing();
+			return insertEdytorClipboardFragment(this, fragment);
 		}
-		throw error;
+
+		try {
+			for (const plugin of this.plugins) {
+				plugin.onPaste?.({ prevent, e });
+			}
+		} catch (error) {
+			if (error instanceof PreventionError) {
+				e.preventDefault();
+				return error.cb?.();
+			}
+			throw error;
+		}
+
+		// File payloads route only through the plugin `onPaste` hook (the
+		// Files → image seam — no bundled consumer yet). An unclaimed file
+		// paste inserts nothing rather than silent file-name text.
+		if ((e.clipboardData?.files?.length ?? 0) > 0) {
+			e.preventDefault();
+			return;
+		}
 	}
 
-	if (!e.clipboardData?.getData('text/plain')) {
+	if (
+		!e.clipboardData?.getData('text/plain') &&
+		!firstUriListEntry(e.clipboardData?.getData('text/uri-list'))
+	) {
 		return;
 	}
 

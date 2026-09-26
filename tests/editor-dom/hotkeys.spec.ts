@@ -178,6 +178,44 @@ test.describe('browser hotkey behavior', () => {
 		issues.assertClean();
 	});
 
+	test('does not format text before a cross-block range that starts after an inline atom', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=inline');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 1, 2, 3, 2);
+		await page.keyboard.press(`${modKey}+B`);
+
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{
+						content?: Array<{ marks?: Record<string, unknown>; text?: string; type?: string }>;
+					}>;
+				}>(page, 'value');
+				return value.children.map((block) =>
+					block.content?.map((part) => [part.text ?? part.type, part.marks] as const)
+				);
+			})
+			.toEqual([
+				[
+					['mention', undefined],
+					['ta', undefined],
+					['il', { bold: true }]
+				],
+				[
+					['lead ', { bold: true }],
+					['mention', undefined],
+					[' e', { bold: true }],
+					['nd', undefined]
+				]
+			]);
+
+		issues.assertClean();
+	});
+
 	test('treats AltGraph printable keydown as text input, not a mod+alt hotkey', async ({
 		page
 	}) => {
@@ -1156,6 +1194,38 @@ test.describe('browser hotkey behavior', () => {
 		issues.assertClean();
 	});
 
+	test('undoes a soft break with the replaced reverse selection restored', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=last');
+		await waitForEditorReady(page);
+		await setReverseSelectionByTextIndex(page, 0, 1, 0, 4);
+		await page.keyboard.press('Shift+Enter');
+
+		await expectVisibleOrderToMatchSerializedOrder(page, ['l\n', 'note', '']);
+		await setSelectionByTextIndex(page, 1, 0);
+		await page.keyboard.press(`${modKey}+Z`);
+
+		await expectVisibleOrderToMatchSerializedOrder(page, ['lead', 'note', '']);
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 1,
+			yEnd: 4,
+			isCollapsed: false,
+			isReversed: true
+		});
+		await expect
+			.poll(() => readNativeSelectionDirection(page))
+			.toMatchObject({
+				isBackward: true,
+				isCollapsed: false,
+				text: 'ead'
+			});
+
+		issues.assertClean();
+	});
+
 	test('undoes and redoes a paragraph split with selection restoration', async ({ page }) => {
 		const issues = trackPageIssues(page);
 
@@ -1219,6 +1289,63 @@ test.describe('browser hotkey behavior', () => {
 		await page.keyboard.press('Enter');
 
 		await expectVisibleOrderToMatchSerializedOrder(page, ['xy', '', 'note', 'tail']);
+
+		issues.assertClean();
+	});
+
+	test('restores a native cross-block range through an empty paragraph after undo', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0, 1, 3);
+		await page.keyboard.type('Z');
+
+		await expectVisibleOrderToMatchSerializedOrder(page, ['Ze', 'tail']);
+		await page.keyboard.press(`${modKey}+Z`);
+
+		await expectVisibleOrderToMatchSerializedOrder(page, ['', 'note', 'tail']);
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [1],
+			yStart: 0,
+			yEnd: 3,
+			isCollapsed: false,
+			isReversed: false
+		});
+		await expect
+			.poll(async () => {
+				const selection = await readNativeSelectionDirection(page);
+				const endpointTextIndexes = await page.evaluate(() => {
+					const texts = Array.from(
+						document.querySelectorAll<HTMLElement>('[data-edytor-text="true"]')
+					);
+					const nativeSelection = window.getSelection();
+					const indexOfEndpoint = (node: Node | null) =>
+						texts.findIndex((text) => node === text || Boolean(node && text.contains(node)));
+					return {
+						anchorTextIndex: indexOfEndpoint(nativeSelection?.anchorNode ?? null),
+						focusTextIndex: indexOfEndpoint(nativeSelection?.focusNode ?? null)
+					};
+				});
+				return {
+					...endpointTextIndexes,
+					anchorOffset: selection.anchorOffset,
+					focusOffset: selection.focusOffset,
+					isBackward: selection.isBackward,
+					isCollapsed: selection.isCollapsed
+				};
+			})
+			.toEqual({
+				anchorTextIndex: 0,
+				focusTextIndex: 1,
+				anchorOffset: 0,
+				focusOffset: 3,
+				isBackward: false,
+				isCollapsed: false
+			});
 
 		issues.assertClean();
 	});
@@ -1585,6 +1712,405 @@ test.describe('browser hotkey behavior', () => {
 				})
 			)
 			.toBe(true);
+
+		issues.assertClean();
+	});
+
+	test('matches mod+b through event.code when a Cyrillic layout reports a non-ASCII key', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=last');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0, 0, 4);
+
+		const keydownPrevented = await page.evaluate(() => {
+			const target = document.querySelector<HTMLElement>('[data-edytor-text="true"]');
+			if (!target) {
+				throw new Error('Missing editable text node');
+			}
+
+			const event = new KeyboardEvent('keydown', {
+				bubbles: true,
+				cancelable: true,
+				key: 'в',
+				code: 'KeyB',
+				metaKey: true
+			});
+			target.dispatchEvent(event);
+			return event.defaultPrevented;
+		});
+
+		expect(keydownPrevented).toBe(true);
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ text: string; marks?: Record<string, unknown> }> }>;
+				}>(page, 'value');
+				return value.children[0]?.content?.[0]?.marks;
+			})
+			.toEqual({ bold: true });
+
+		issues.assertClean();
+	});
+
+	test('does not resolve the layout fallback for AltGr-modified keydowns', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first&altGraphHotkey=true');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0);
+
+		// German-style AltGr: Ctrl+Alt on the physical KeyB position reports a
+		// remapped non-ASCII character — never a `mod+alt+b` command.
+		const keydownPrevented = await page.evaluate(() => {
+			const target = document.querySelector<HTMLElement>('[data-edytor-text="true"]');
+			if (!target) {
+				throw new Error('Missing editable text node');
+			}
+
+			const event = new KeyboardEvent('keydown', {
+				bubbles: true,
+				cancelable: true,
+				key: '∫',
+				code: 'KeyB',
+				ctrlKey: true,
+				altKey: true
+			});
+			target.dispatchEvent(event);
+			return event.defaultPrevented;
+		});
+
+		expect(keydownPrevented).toBe(false);
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ text: string }> }>;
+				}>(page, 'value');
+				return value.children[0]?.content?.[0]?.text ?? '';
+			})
+			.toBe('');
+
+		issues.assertClean();
+	});
+
+	test('does not reinterpret ASCII keys through event.code (Dvorak safety)', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=last');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0, 0, 4);
+
+		// On a Dvorak layout the physical KeyN position produces `b` — the
+		// produced letter wins, so this is mod+b (bold), never a `mod+n`
+		// lookup.
+		const keydownPrevented = await page.evaluate(() => {
+			const target = document.querySelector<HTMLElement>('[data-edytor-text="true"]');
+			if (!target) {
+				throw new Error('Missing editable text node');
+			}
+
+			const event = new KeyboardEvent('keydown', {
+				bubbles: true,
+				cancelable: true,
+				key: 'b',
+				code: 'KeyN',
+				metaKey: true
+			});
+			target.dispatchEvent(event);
+			return event.defaultPrevented;
+		});
+
+		expect(keydownPrevented).toBe(true);
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ text: string; marks?: Record<string, unknown> }> }>;
+				}>(page, 'value');
+				return value.children[0]?.content?.[0]?.marks;
+			})
+			.toEqual({ bold: true });
+
+		issues.assertClean();
+	});
+
+	test('redoes with ctrl+y on non-Apple platforms', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first');
+		await waitForEditorReady(page);
+		await getPlaceholderLocators(page).first().click();
+		await page.keyboard.type('a');
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ text: string }> }>;
+				}>(page, 'value');
+				return value.children[0]?.content?.[0]?.text;
+			})
+			.toBe('a');
+
+		await page.evaluate(() => {
+			Object.defineProperty(window.navigator, 'platform', {
+				value: 'Linux x86_64',
+				configurable: true
+			});
+		});
+
+		const dispatchCtrlKey = (key: string, code: string) =>
+			page.evaluate(
+				({ key, code }) => {
+					const target = document.querySelector<HTMLElement>('[data-edytor]');
+					const event = new KeyboardEvent('keydown', {
+						bubbles: true,
+						cancelable: true,
+						key,
+						code,
+						ctrlKey: true
+					});
+					target?.dispatchEvent(event);
+					return event.defaultPrevented;
+				},
+				{ key, code }
+			);
+
+		expect(await dispatchCtrlKey('z', 'KeyZ')).toBe(true);
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ text: string }> }>;
+				}>(page, 'value');
+				return value.children[0]?.content?.[0]?.text ?? '';
+			})
+			.toBe('');
+
+		expect(await dispatchCtrlKey('y', 'KeyY')).toBe(true);
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ text: string }> }>;
+				}>(page, 'value');
+				return value.children[0]?.content?.[0]?.text;
+			})
+			.toBe('a');
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 1,
+			yEnd: 1,
+			isCollapsed: true
+		});
+
+		issues.assertClean();
+	});
+
+	test('supports the macOS Emacs editing bindings', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=last');
+		await waitForEditorReady(page);
+		await page.evaluate(() => {
+			Object.defineProperty(window.navigator, 'platform', {
+				value: 'MacIntel',
+				configurable: true
+			});
+		});
+		await setSelectionByTextIndex(page, 0, 2);
+
+		const dispatchCtrlKey = (key: string, code: string) =>
+			page.evaluate(
+				({ key, code }) => {
+					const target = document.querySelector<HTMLElement>('[data-edytor]');
+					const event = new KeyboardEvent('keydown', {
+						bubbles: true,
+						cancelable: true,
+						key,
+						code,
+						ctrlKey: true
+					});
+					target?.dispatchEvent(event);
+					return event.defaultPrevented;
+				},
+				{ key, code }
+			);
+
+		const readFirstText = async () => {
+			const value = await readJsonByTestId<{
+				children: Array<{ content?: Array<{ text: string }> }>;
+			}>(page, 'value');
+			return value.children[0]?.content?.map((part) => part.text).join('') ?? '';
+		};
+
+		// ctrl+k — kill to the block end: 'le|ad' → 'le'
+		expect(await dispatchCtrlKey('k', 'KeyK')).toBe(true);
+		await expect.poll(readFirstText).toBe('le');
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 2,
+			yEnd: 2,
+			isCollapsed: true
+		});
+
+		// ctrl+o — open line: break after the caret, caret stays before it
+		expect(await dispatchCtrlKey('o', 'KeyO')).toBe(true);
+		await expect.poll(readFirstText).toBe('le\n');
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 2,
+			yEnd: 2,
+			isCollapsed: true
+		});
+
+		// ctrl+a / ctrl+e — block boundaries
+		expect(await dispatchCtrlKey('a', 'KeyA')).toBe(true);
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 0,
+			yEnd: 0,
+			isCollapsed: true
+		});
+		expect(await dispatchCtrlKey('e', 'KeyE')).toBe(true);
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 'le\n'.length,
+			yEnd: 'le\n'.length,
+			isCollapsed: true
+		});
+
+		// ctrl+d at the block end pulls the next block up — 'le\n' + 'note'
+		expect(await dispatchCtrlKey('d', 'KeyD')).toBe(true);
+		await expect.poll(readFirstText).toBe('le\nnote');
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 3,
+			yEnd: 3,
+			isCollapsed: true
+		});
+
+		// ctrl+h — backward char delete (removes the soft break: 'le\n|note' → 'le|note')
+		expect(await dispatchCtrlKey('h', 'KeyH')).toBe(true);
+		await expect.poll(readFirstText).toBe('lenote');
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 2,
+			yEnd: 2,
+			isCollapsed: true
+		});
+
+		issues.assertClean();
+	});
+
+	test('moves the caret across block boundaries with ctrl+b and ctrl+f on Apple platforms', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=last');
+		await waitForEditorReady(page);
+		await page.evaluate(() => {
+			Object.defineProperty(window.navigator, 'platform', {
+				value: 'MacIntel',
+				configurable: true
+			});
+		});
+		await setSelectionByTextIndex(page, 1, 0);
+
+		const dispatchCtrlKey = (key: string, code: string) =>
+			page.evaluate(
+				({ key, code }) => {
+					const target = document.querySelector<HTMLElement>('[data-edytor]');
+					const event = new KeyboardEvent('keydown', {
+						bubbles: true,
+						cancelable: true,
+						key,
+						code,
+						ctrlKey: true
+					});
+					target?.dispatchEvent(event);
+					return event.defaultPrevented;
+				},
+				{ key, code }
+			);
+
+		expect(await dispatchCtrlKey('b', 'KeyB')).toBe(true);
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 'lead'.length,
+			yEnd: 'lead'.length,
+			isCollapsed: true
+		});
+
+		expect(await dispatchCtrlKey('f', 'KeyF')).toBe(true);
+		await expectSelection(page, {
+			startBlockPath: [1],
+			endBlockPath: [1],
+			yStart: 0,
+			yEnd: 0,
+			isCollapsed: true
+		});
+
+		issues.assertClean();
+	});
+
+	test('does not treat bare ctrl chords as mod bindings on Apple platforms', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=last');
+		await waitForEditorReady(page);
+		await page.evaluate(() => {
+			Object.defineProperty(window.navigator, 'platform', {
+				value: 'MacIntel',
+				configurable: true
+			});
+		});
+		await setSelectionByTextIndex(page, 0, 0, 0, 4);
+
+		// ctrl+b on macOS is Emacs char-back, not bold — a non-collapsed
+		// selection stays native and untouched.
+		const keydownPrevented = await page.evaluate(() => {
+			const target = document.querySelector<HTMLElement>('[data-edytor]');
+			const event = new KeyboardEvent('keydown', {
+				bubbles: true,
+				cancelable: true,
+				key: 'b',
+				code: 'KeyB',
+				ctrlKey: true
+			});
+			target?.dispatchEvent(event);
+			return event.defaultPrevented;
+		});
+		expect(keydownPrevented).toBe(false);
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ text: string; marks?: Record<string, unknown> }> }>;
+				}>(page, 'value');
+				return value.children[0]?.content?.[0]?.marks;
+			})
+			.toBeUndefined();
+
+		// Cmd+Y is not the Apple redo convention either.
+		const cmdYPrevented = await page.evaluate(() => {
+			const target = document.querySelector<HTMLElement>('[data-edytor]');
+			const event = new KeyboardEvent('keydown', {
+				bubbles: true,
+				cancelable: true,
+				key: 'y',
+				code: 'KeyY',
+				metaKey: true
+			});
+			target?.dispatchEvent(event);
+			return event.defaultPrevented;
+		});
+		expect(cmdYPrevented).toBe(false);
 
 		issues.assertClean();
 	});

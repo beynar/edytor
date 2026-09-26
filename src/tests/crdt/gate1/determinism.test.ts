@@ -12,7 +12,8 @@
  * Pinned contract (see `peer-set.ts`):
  * - seed doc clientID = {@link SEED_DOC_CLIENT_ID} (fixed);
  * - peer i clientID = `firstClientId + i`, `firstClientId = 1+(seed mod 2^20)`;
- * - `doc.rand` = mulberry32 keyed by `(seed, peerIndex, generation)`.
+ * - the doc's rank-rand stream (`setDocRand`) = mulberry32 keyed by
+ *   `(seed, peerIndex, generation)`.
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';

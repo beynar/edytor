@@ -67,21 +67,213 @@ Providers enforce the gate and surface it:
   write): the update is **quarantined** — never persisted, never broadcast,
   and never applied to a hydrating doc. Hydration pre-merges stored rows
   into a scratch doc seeded with current state; a merged result that would
-  be unversioned quarantines the whole batch. `storeState` likewise refuses
-  to snapshot unversioned content.
+  be unversioned quarantines the batch (see the surgical rule below).
+  `storeState` likewise refuses to snapshot unversioned content.
 - **`unsupported`** (`meta.v` names a version this build doesn't speak):
-  content still syncs — a replica cannot refuse structs it shares a
-  protocol with — but the signal makes peer skew observable.
+  remote updates whose merge would move the doc to that version are
+  **refused at the staging boundary** — never applied to the live doc,
+  never persisted, never rebroadcast (see _Application-schema boundary_
+  below). Outbound writes from a doc already in this state are equally
+  quarantined.
 
 Both regimes emit **`'schema-mismatch'`** with `SchemaMismatchDetail`
-(`{ docName, problem }`) once per problem-state transition, mirrored
-through `'message-error'` carrying the `SchemaMismatchError` so the generic
-error channel sees every failure mode.
+(`{ docName, problem }`), mirrored through `'message-error'` carrying the
+`SchemaMismatchError` so the generic error channel sees every failure
+mode. Doc-state transitions emit once per problem-state transition; each
+refused update or hydration batch emits once per refusal.
 
 **Schema-version coexistence is LWW, not coexistence**: two replicas
 writing different `meta.v` values converge to one winner (CRDT
-attr-last-writer-wins). The manifest cannot hold two versions — detect
-mixed-version rooms via the `unsupported` signal, not by storing both.
+attr-last-writer-wins — resolved by clientID for same-key writes). The
+manifest cannot hold two versions — detect mixed-version rooms via the
+`unsupported` signal, not by storing both.
+
+### Document admission boundary (U8)
+
+The transport staging below is one half of the boundary; the document
+layer (`crdt/admission.ts`) is the other, and both run the same
+`checkSchema`/`assertUsableDoc` reads on the same definitions (the
+transport files import the gate vocabulary through `admission.ts`):
+
+- `loadDocument(update)` decodes+integrates the payload onto a scratch
+  doc first — `UndecodableUpdateError` for undecodable bytes, then the
+  usual typed refusals — so a refused restore never mutates anything and
+  the caller's bytes are untouched;
+- `attachDocument(doc)` gates the borrowed doc before composing —
+  `UnsupportedDocError` for a foreign engine object or applied-but-
+  unmigrated v13 layout, `SchemaMismatchError` for
+  unversioned/unsupported/foreign schema claims — leaving the doc
+  byte-identical (reattachable once its state heals);
+- `document.sync()` re-runs the gate at the readiness decision: a doc
+  that entered a problem state through raw `applyUpdate` writes (which
+  bypass the transport gate) refuses there instead of being seeded over —
+  it stays `pending` and preserves its content;
+- a `pending` document never writes or broadcasts a bootstrap block —
+  provider `SyncStep2` publishes only the pre-existing state, and the
+  seed commits exactly when the `synced` callback runs `sync()`.
+
+A doc carrying foreign/unrelated ROOTS but no schema claim still admits
+`pending` — `sync()` then seeds the schema next to them; the transport
+boundary is what keeps schema claims honest, and raw-root content was
+never a claim.
+
+## Application-schema boundary — validated staging (work unit 3)
+
+The gate-2 review found `unsupported` versions applied or persisted
+_before_ the mismatch was reported. Transport generation 14 proves a peer
+speaks the v14 wire protocol, not that its payload is a supported
+application schema; and replicated `meta.v` cannot negotiate capabilities
+(a v99 peer's `meta.v` can win the merge). The boundary is now enforced
+by **validated staging** (`sync.ts` → `applyUpdateStaged`), chosen over
+the alternatives:
+
+- _Session/handshake schema word_ — impossible on BroadcastChannel: BC is
+  connectionless, there is no handshake, so every message must be
+  self-validating anyway. Rejected as the primary mechanism.
+- _Per-message schema metadata_ — would refuse exactly the updates the
+  contract says must pass (a same-schema peer's incremental writes carry
+  no schema word) and adds wire surface for no extra correctness.
+- _Storage-generation tagging_ — already exists (`generation` record) and
+  stays; it bounds engines, not application schema.
+
+Staging is also the only option that gets LWW right for free: the verdict
+is computed on the **merged** result, not the claimed version — an
+incremental update carrying no `meta.v` write keeps the staged doc at the
+live version and applies, while an update whose merge resolves to an
+unsupported or unversioned record is refused **before** it mutates the
+live document.
+
+### Inbound path (BroadcastChannel + websocket — identical mechanics)
+
+`messageHandlers[messageSync]` decodes the sync subtype itself:
+
+- **SyncStep1** → replies SyncStep2 with our state — but only when our
+  own doc passes `checkSchema`; a doc already in a schema-problem state
+  does not ship its state to the room.
+- **SyncStep2 / Update** → the payload is merged into a throwaway staging
+  doc seeded with the live doc's full state (`new Y.Doc()` +
+  `encodeStateAsUpdate(doc)` + `applyUpdate`). `checkSchema(staging)`:
+  - `null` → `Y.applyUpdate(doc, update, provider)` — the normal path;
+  - problem → **refused**: `'schema-mismatch'` + `'message-error'`
+    (`SchemaMismatchError`) emitted; the update never enters the doc —
+    so it is never persisted and never rebroadcast (both are
+    `doc.on('update')`-driven).
+- Unknown sync subtypes inside a valid envelope → `'message-error'`.
+- Corrupt payloads → `'message-error'` via the same `errorHandler`
+  contract (staging applies are wrapped, `console.error` parity kept).
+
+**`synced` honesty (websocket):** `provider.synced` is set only when the
+SyncStep2 handshake payload was actually _applied_. A refused SyncStep2
+yields no sync claim — the doc does not reflect the peer's state.
+
+**Empty-room readiness (two-round settle):** an applied SyncStep2 that
+leaves the doc empty is ambiguous over an opaque relay — it may be the
+room's true empty state or a reply raced ahead of a delayed hydration.
+A single quiet window is not sufficient evidence. On the first settle
+expiry (`syncSettleMs`, default 300 ms, plumbed through
+`WebsocketSyncOptions`) the provider re-sends a SyncStep1 probe and arms
+a second window; `synced` is claimed only after two consecutive quiet
+windows while the transport is connected. A state-bearing SyncStep2 at
+any point claims `synced` immediately; disconnect/destroy clears the
+settle state so a reconnect re-derives readiness from its own handshake.
+Residual bound: a hydration reply delayed past _both_ windows can still
+race the seed — the honest limit of request/reply without a server-side
+room epoch.
+
+**Merge semantics worth knowing:** the staged verdict follows CRDT LWW on
+`meta.v` — resolved by clientID for same-key writes. A v99 peer's state
+staged onto a v1 doc can therefore resolve either way: if v1 wins, the
+update applies as ordinary v1 content (compatible — the future schema
+lost the merge); if v99 wins, the update is refused. Either outcome
+satisfies the contract "reject incompatible data before it mutates the
+live document" — the live doc never enters an unsupported state.
+
+### Outbound path (both providers)
+
+Every place local replicated state could leave the doc is gated on
+`checkSchema(doc) === null` (previously `unversioned`-only):
+
+- `doc.on('update')` handlers (`_storeUpdate` / `_updateHandler`) — a doc
+  in a schema-problem state persists nothing and broadcasts nothing.
+- `connectBc` SyncStep2 publish — a problem-state doc never publishes its
+  state on the room.
+- `beforeApplyUpdatesCallback` / `storeState` — problem state is never
+  written into the generation DB.
+
+### IndexedDB hydration (`fetchUpdates`)
+
+Two phases:
+
+1. **Fast path** — all stored rows are merged onto a scratch doc seeded
+   with live state; a clean merged result applies the whole batch
+   (unchanged behavior for healthy stores).
+2. **Surgical path** — a problem merged result re-stages row by row:
+   each row is applied to an "accepted" scratch; a row that moves it into
+   a problem state is **refused** (never applied to the live doc) and the
+   scratch is rebuilt from the accepted prefix so later rows are judged
+   against clean state. Clean rows still hydrate; refused rows **stay in
+   the store untouched** — the boundary is non-destructive, original
+   bytes are never rewritten or deleted.
+
+Hydration refusal signals `'schema-mismatch'` + `'message-error'`,
+suppresses `synced`, and rejects `whenSynced` with the
+`SchemaMismatchError` — claiming sync over refused stored state would be
+a false signal. The provider **still joins the BC room**, so subsequent
+VALID peer updates apply (recoverability — refused data does not poison
+the connection). A doc already in a schema-problem state at attach time
+takes the same path: `whenSynced` rejects, `synced` never fires.
+
+### Refusal ↔ compaction (R2 hardening)
+
+A refusal leaves the live document **not representing** every stored row —
+which is exactly the invariant compaction relies on. `storeState` writes
+`encodeStateAsUpdate(doc)` and then deletes every row `< _dbref`; a clean
+live schema is **not** proof that the snapshot subsumes the stored rows it
+replaces (a refused row's bytes are absent from the doc by definition).
+The pre-hardening bug: `_dbref` advanced past refused rows, so the delete
+range covered them — durable bytes the doc never accepted were destroyed.
+
+The contract now:
+
+- `_hydrationRefused` is set by `fetchUpdates` whenever ANY stored row is
+  refused — during hydration **or** during a later `storeState` fetch
+  (e.g. a future-schema tab appends to the shared generation while this
+  provider is live; the refusal check runs after the fetch, so such rows
+  are blocked from the same call that discovers them).
+- While `_hydrationRefused` is set, `storeState` still runs the fetch
+  (valid peer rows keep hydrating) but **skips snapshot+delete entirely**.
+  Blocking was chosen over selective preservation: a selective scheme
+  would have to prove each excluded row plus its dependency closure
+  survives — an update's deps may sit in rows before _or after_ it —
+  while deleting nothing needs no such proof. Refused rows, their deps,
+  and everything else remain byte-for-byte durable.
+- `_dbref` still advances past refused rows (fetch cursor: refused rows
+  are not re-staged on every fetch); `_dbsize` keeps counting real rows.
+  `_dbref` is no longer used as a delete boundary for refused instances —
+  compaction simply never runs.
+- The block is per-instance and sticky: this build can never admit v99
+  content, so the snapshot can never subsume the refused bytes. Reopening
+  re-establishes it (fresh hydration re-fetches from `_dbref = 0` and
+  re-refuses).
+- `storeState`'s returned promise settles only after the storage
+  transaction **commits** (snapshot add + delete + recount chained, then
+  the transaction's `complete`/`abort` observed) — the upstream port
+  dropped the inner chain, so completion and failure were unobservable.
+  Failures reject; the timed path forwards rejections to `'message-error'`
+  and `_storeUpdate`'s row write surfaces there too.
+- Normal compaction efficiency is unaffected for fully-admitted state:
+  a clean store still compacts to a single snapshot row.
+
+### Recoverability
+
+Refused data is quarantined per-message/per-row — nothing is torn down:
+
+- BC/ws: after a refusal, subsequent valid updates stage clean and apply
+  normally (tested).
+- IDB: a clean peer's updates arriving after a refused hydration apply
+  normally (tested); a clean prefix in a mixed store hydrates (tested).
+- An unversioned doc _heals_: a full versioned state update supplies
+  `meta.v=1` on merge, stages clean, and applies (tested).
 
 ## Error and signal events (provider observability)
 
@@ -195,7 +387,12 @@ cross-tab BC), keeping:
   fresh `ArrayBuffer`; `custom` store for metadata (`get`/`set`/`del`).
 - `PREFERRED_TRIM_SIZE = 500`: past it, a debounced `storeState` appends a
   compacted `encodeStateAsUpdate` snapshot and deletes the rows it
-  subsumes. Snapshot + later rows reconstruct the full document (tested).
+  subsumes — **unless hydration refused any stored row**: then the
+  instance never compacts, so refused bytes and their deps survive
+  byte-for-byte (see _Refusal ↔ compaction_ above). `storeState` resolves
+  after the transaction commits and rejects on storage failure (the timed
+  path forwards failures to `'message-error'`). Snapshot + later rows
+  reconstruct the full document (tested).
 - BC room = the generation DB name; on connect it publishes
   SyncStep1 + SyncStep2 + QueryAwareness + local awareness state.
 - `doc.on('update')` stores every non-provider-origin update and
@@ -209,15 +406,61 @@ Port of `y-websocket@3.0.0` keeping `connect()`/`disconnect()`,
 and BC cross-tab fan-out on `serverUrl + '/' + roomname`. Auth messages
 (`protocols/auth.ts`) are handled.
 
-**Server compatibility classification:** the websocket path was tested
-against an _opaque relay_ — a server that only forwards frames between
-room members. That kind of server remains reusable unchanged, because the
-envelope makes v14 frames opaque-but-distinguishable and the payload is
-never interpreted. A server that _participates_ in sync — loads, merges,
-compacts, validates or inspects documents (e.g. upstream
-`y-websocket-server` persistence hooks) — must run the vendored v14 engine
-and these protocol modules; a v13 engine in that role cannot parse v14
-state and will be dropped at the version gate anyway.
+**Server compatibility classification — the verified topology (work
+unit 3, corrected post-review R8).** The websocket path was tested
+against _opaque byte relays_ only: `websocket.test.ts`'s in-memory room
+(sockets on one URL, `send` forwarded verbatim to the other members) and
+`tests/editor-dom/ws-relay.ts`, the dependency-free RFC6455 relay the
+browser specs run against. That class of server is reusable unchanged
+because the envelope makes v14 frames opaque-but-distinguishable and the
+payload is never interpreted.
+
+**What qualifies as an opaque relay:** a websocket server that only
+groups connections into rooms and forwards binary frames without decoding
+them. That is the entire contract — the relay must not read the first
+varuint, must not keep server-side document state, and must not answer
+sync itself. The only server implementations actually exercised are our
+two test relays; no other server is proven compatible.
+
+**What does NOT qualify — including upstream `y-websocket`:** any server
+that interprets the y-protocols sync format — decodes
+`varuint messageType`, applies updates to a server-side doc, persists
+state, answers SyncStep1 itself, or validates payloads (hosted
+"yjs-aware" collaboration services, custom gateways that rewrite sync
+messages). **This includes upstream `y-websocket`'s `setupWSConnection`
+(`bin/utils.js`), even with NO persistence hook** — verified against
+v1.5.4 and v2.1.0, which share the same shape: on connect it calls
+`getYDoc(docName)` which always creates a server-side `WSSharedDoc` (plus
+a server-side `Awareness`), `messageListener` decodes
+`varuint messageType` and switch-handles only `messageSync` (0) and
+`messageAwareness` (1), updates reach other members only by integrating
+into the server doc and re-broadcasting from `doc.on('update')`, and the
+server itself sends an un-enveloped `messageSync`/SyncStep1 on every new
+connection. Two failures follow:
+
+- A v14 frame's leading word is the protocol version `14`, which
+  `messageListener` reads as _message type_ 14 — no case handles it, so
+  the frame is dropped **and never relayed** to room members. v14 peers
+  behind upstream's server cannot see each other's updates at all.
+- The server's own frames carry no version word, so every message it
+  sends (its SyncStep1, its re-broadcast sync/awareness traffic) decodes
+  here as `version = 0|1`, is dropped pre-decode, and fires
+  `'protocol-mismatch'` — the gate is fail-closed in that direction too.
+
+The earlier revision of this section claimed default upstream
+`setupWSConnection` "forwards `message` payloads byte-for-byte" and
+qualified as an opaque relay. That was wrong: upstream is a
+_participating_ server, not a relay. An opaque-relay test does NOT prove
+compatibility with a server in this class; a participating server must
+run the vendored v14 engine plus these protocol modules (none exists
+today — implementing one is future work, not a deployment option).
+
+Bottom line: the supported websocket topology today is **opaque relay
+only**, and the only proven relay is the local test implementation
+(`tests/editor-dom/ws-relay.ts`) plus `websocket.test.ts`'s in-memory
+room. The boundary's own defense still applies: even if a participating
+v13 server somehow pushed data through, it would be refused at the
+envelope or the staging boundary — never applied.
 
 ### Awareness (`protocols/awareness.ts`)
 
@@ -374,8 +617,8 @@ Rules that make this safe:
 
 ## Test evidence
 
-`src/tests/crdt/providers/` and `src/tests/crdt/migration/` (29 tests,
-`pnpm test:crdt`):
+`src/tests/crdt/providers/` and `src/tests/crdt/migration/` (`pnpm
+test:crdt`):
 
 - **SY01** `sync.test.ts` — real two-provider BC sync, offline
   convergence, reordered/duplicated delivery, state-vector delta sync,
@@ -383,8 +626,22 @@ Rules that make this safe:
 - **SY01-WS** `websocket.test.ts` — actual websocket path over an opaque
   in-memory relay: convergence, live updates, awareness, envelope on every
   frame, no bare headers, v13 frame dropped at the gate.
+- **WU3** `schema-boundary.test.ts` — the application-schema boundary on
+  every path: v99/unversioned updates refused on BC and websocket (live
+  doc untouched, signaled, not persisted, not rebroadcast, `synced` never
+  fires falsely), recoverability via subsequent valid updates, valid
+  schema-less incremental updates still apply, a poisoned doc's own
+  provider never ships its state, stored v99/mixed-schema generations
+  hydrate correctly (poisoned rows skipped, bytes intact, `whenSynced`
+  rejects, room still joined).
 - **SY02** `persistence.test.ts` — hydration from stored rows; compaction
   snapshot + later rows reconstruct the complete document.
+- **R2** `hardening/r2-idb-compaction.test.ts` — refused rows survive every
+  maintenance path byte-for-byte: explicit and timed compaction, mixed
+  valid+refused stores, close/reopen, repeated attempts, dependent rows in
+  both seed orders, post-sync refusals discovered inside `storeState`'s
+  own fetch, commit-settled promises, surfaced failures, and preserved
+  compaction for fully-admitted stores.
 - **SY03** `persistence.test.ts` — generation separation (legacy DB never
   opened), populated-without-record and foreign-record fail closed,
   idempotent destroy, owned/injected awareness lifecycle.

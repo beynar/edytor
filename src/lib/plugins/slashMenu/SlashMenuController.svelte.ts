@@ -87,7 +87,7 @@ export class SlashMenuController {
 			!isCollapsed ||
 			startText !== this.activeRange.text ||
 			yStart <= this.activeRange.triggerStart ||
-			this.activeRange.text.yText.toString().at(this.activeRange.triggerStart) !== '/'
+			this.activeRange.text.stringContent.at(this.activeRange.triggerStart) !== '/'
 		) {
 			this.close();
 			return;
@@ -129,14 +129,21 @@ export class SlashMenuController {
 		}
 
 		this.isExecutingCommand = true;
-		const { text, triggerStart, queryEnd } = this.activeRange;
-		this.removeTriggerText(text, triggerStart, queryEnd);
-		this.close();
-		this.edytor.selection.setCollapsedStateAtTextOffset(text, triggerStart);
-		const didRun = await this.edytor.runCommand(command.id);
-		await this.edytor.selection.setAtTextOffset(text, triggerStart);
-		this.isExecutingCommand = false;
-		return didRun;
+		try {
+			const { text, triggerStart, queryEnd } = this.activeRange;
+			this.removeTriggerText(text, triggerStart, queryEnd);
+			this.close();
+			this.edytor.selection.setCollapsedStateAtTextOffset(text, triggerStart);
+			const didRun = await this.edytor.runCommand(command.id);
+			// Commands that replace the block (for example, Code) choose their own
+			// caret. Only restore the slash caret when it still owns the selection.
+			if (this.edytor.selection.state.startText === text) {
+				await this.edytor.selection.setAtTextOffset(text, triggerStart);
+			}
+			return didRun;
+		} finally {
+			this.isExecutingCommand = false;
+		}
 	}
 
 	private open(text: Text, triggerStart: number, queryEnd: number) {
@@ -151,7 +158,7 @@ export class SlashMenuController {
 		}
 
 		const { text, triggerStart, queryEnd } = this.activeRange;
-		this.query = text.yText.toString().slice(triggerStart + 1, queryEnd);
+		this.query = text.stringContent.slice(triggerStart + 1, queryEnd);
 		const commandCount = this.commands.length;
 		this.selectedIndex = commandCount === 0 ? 0 : Math.min(this.selectedIndex, commandCount - 1);
 	}

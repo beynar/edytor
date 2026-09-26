@@ -129,7 +129,7 @@ describe('collaboration remote presence rendering', () => {
 
 		// A local edit in front of the remote caret shifts its anchor —
 		// the remote cursor must keep rendering at the shifted position.
-		text.yText.insert(0, 'XX');
+		text.insertAt(0, 'XX');
 		await flushDomUpdates();
 
 		const resolved = edytor.selection.resolveTextAnchor(remoteSel.start);
@@ -213,14 +213,25 @@ describe('collaboration remote presence rendering', () => {
 		expect(container.querySelector('[data-edytor-remote-selection]')).toBeNull();
 	});
 
-	it('clears the published local selection when the selection layer is destroyed', async () => {
+	it('clears the published local selection when the editor is destroyed', async () => {
 		const { edytor } = await renderDomEdytor(input, { autoSelectFixture: false });
 		const text = edytor.root!.children[0]!.firstText;
 
 		await setNativeSelection(edytor, text, 3);
 		expect(edytor.awareness.getLocalState()?.selection).toBeTruthy();
+		// U5 — presence is per-view: the entry lives under `selections` and
+		// `selection` mirrors the freshest entry for legacy readers.
+		expect(Object.keys(edytor.awareness.getLocalState()?.selections ?? {})).toHaveLength(1);
 
+		// A live view's selection-layer teardown (the {#key} remount path)
+		// keeps its presence — the view still owns the slot.
 		edytor.selection.destroy();
+		expect(edytor.awareness.getLocalState()?.selection).toBeTruthy();
+
+		// Real editor teardown drops the dead view's caret (edytor.destroyed
+		// is set before selection.destroy() runs).
+		edytor.destroy();
 		expect(edytor.awareness.getLocalState()?.selection).toBeUndefined();
+		expect(edytor.awareness.getLocalState()?.selections).toBeUndefined();
 	});
 });

@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../../lib/crdt/index.js';
-import { bindText } from '../../../lib/crdt/text/model.js';
+import { bindText, DEAD } from '../../../lib/crdt/text/model.js';
 import { createPeerSet } from '../harness/peer-set.js';
 import { createModelOps } from '../harness/ops/model-ops.js';
 import { generateSchedule } from '../random/generator.js';
@@ -57,7 +57,7 @@ export const vanishedIds = (doc) => {
 			seen.add(cur);
 			const pl = placements.get(cur);
 			const dp = pl.parent === null ? null : own.ownerOf(pl.parent);
-			if (dp === 'dead') {
+			if (dp === DEAD) {
 				why = 'dead-ancestor';
 				break;
 			}

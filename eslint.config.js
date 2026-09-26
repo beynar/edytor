@@ -14,6 +14,9 @@ export default [
 			'.svelte-kit/**',
 			'build/**',
 			'dist/**',
+			// generated consumer build output (tests/packed-consumer/svelte-app)
+			'**/dist/**',
+			'**/dist-ssr/**',
 			'node_modules/**',
 			'package/**',
 			'package-lock.json',
@@ -22,12 +25,15 @@ export default [
 			'yarn.lock',
 			// vendored upstream source + its test suite are not held to repo lint rules
 			'src/lib/crdt/vendor/**',
-			'vendor-tests/**'
+			'vendor-tests/**',
+			// generated pristine-vendor copy materialized by bench/lib/mk-baseline.sh
+			// for differential/interop lanes (gitignored, recreated on demand)
+			'bench/vendor-baseline/**'
 		]
 	},
 	js.configs.recommended,
 	{
-		files: ['**/*.{js,ts,tsx}'],
+		files: ['**/*.{js,mjs,cjs,ts,tsx}'],
 		languageOptions: {
 			ecmaVersion: 2022,
 			globals: {

@@ -184,7 +184,7 @@ describe('IDB lifecycle', () => {
 		injected.destroy();
 	});
 
-	test('whenSynced never settles when the provider is destroyed before opening', async () => {
+	test('whenSynced rejects when the provider is destroyed before opening', async () => {
 		const p = new providers.IndexeddbPersistence(uniqueName('lc-early'), new Y.Doc());
 		void p.destroy();
 		const settled = await Promise.race([
@@ -194,9 +194,9 @@ describe('IDB lifecycle', () => {
 			),
 			nextTick(150).then(() => 'pending')
 		]);
-		// A consumer awaiting whenSynced on a torn-down provider hangs forever —
-		// no rejection, no resolution. Contract note for U08 teardown paths.
-		expect(settled).toBe('pending');
+		// Post-D22 contract: destroying before hydration settles whenSynced as a
+		// rejection (previously it hung forever — see U08/D22 teardown notes).
+		expect(settled).toBe('rejected');
 	});
 
 	test('BC disconnect broadcasts an awareness-removal (peer sees null state)', async () => {

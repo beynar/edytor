@@ -189,4 +189,316 @@ export interface CrdtOps {
 	 * nodes: projection IS the store) omit it and the check is skipped.
 	 */
 	expectedProjectedIds?(peer: Peer): Set<BlockId> | null;
+
+	// ── strict lost-edit oracle (WU3) ────────────────────────────────────
+
+	/**
+	 * Locate the atoms a successful {@link insertText} just wrote, searching
+	 * every backing text on `peer` for the unique tag. Returns the home text
+	 * id plus the per-atom engine ids, or null when the tag is nowhere — an
+	 * insert that reports success but writes no findable atoms is itself the
+	 * real-loss signature the strict gate exists to catch. Optional: adapters
+	 * without an ownership layer (raw nodes) omit it and the runner falls
+	 * back to the legacy block-text check.
+	 *
+	 * `onlyNew` (U5): when supplied — the op's `diff.atomsNew` stamp keys —
+	 * only an occurrence composed ENTIRELY of atoms the op just wrote
+	 * qualifies; coincidental same-substring assemblies built from stale
+	 * fragments of other inserts are skipped, and `null` is returned when
+	 * the op's own atoms never spell the tag (the real-loss signature).
+	 * Without it the first substring match wins (legacy semantics).
+	 */
+	locateTagAtoms?(
+		peer: Peer,
+		tag: string,
+		onlyNew?: ReadonlySet<StampKey>
+	): { textId: string; atoms: TagAtom[] } | null;
+
+	/**
+	 * Post-barrier per-atom fates for one tracked tag: where each atom ended
+	 * up in the converged state. The runner aggregates these into the oracle
+	 * verdicts — explicit deletion, movement to another owner, or actual
+	 * loss — see {@link AtomFate}.
+	 *
+	 * `context` carries the schedule-side causal expectations the oracle
+	 * cannot see from state alone (gate-F1 F3): without it, an atom under a
+	 * foreign visible owner reports `moved` unconditionally. With it, an
+	 * owner that no recorded split/merge produced — or that already owned
+	 * the atoms at insert time — reports `stolen` instead.
+	 */
+	classifyTagAtoms?(
+		peer: Peer,
+		target: BlockId,
+		atoms: TagAtom[],
+		context?: TagClassifyContext
+	): AtomFate[];
+
+	/**
+	 * Loss-correlation oracle (gate-F1 F4): for each tracked atom, the
+	 * engine ids of the items its display DEPENDS on — the atom itself plus
+	 * the claim stamps of every slice record covering it on this replica
+	 * (any holder, live or dead). The runner intersects this set with the
+	 * ids a lossy reload actually destroyed (or left stranded in pending
+	 * state) to decide whether a hard fate is explained convergent-loss or
+	 * a real defect. Optional — adapters without it fall back to checking
+	 * the atom's own id only.
+	 */
+	tagAtomDeps?(peer: Peer, textId: BlockId, atoms: TagAtom[]): TagAtom[][];
+
+	// ── operation-intent oracle (hardening U5) ─────────────────────────
+	//
+	// The strict oracle must check OPERATION INTENT, not just post-hoc
+	// consistency (review §R6): a tombstone proves deletion occurred, not
+	// that deletion was requested; a destination produced by an unrelated
+	// split proves nothing about a particular atom's transfer. The runner
+	// snapshots the mutation surface around EVERY scheduled doc op and
+	// rejects effects the op was never allowed to produce — per-op causal
+	// evidence replaces run-global `legitOwners`/deletion permissions.
+
+	/**
+	 * Snapshot everything a mutation can lawfully touch on `peer`'s
+	 * current doc — see {@link OpState}. Called immediately before and
+	 * after each executed doc op; the runner diffs the pair and rejects
+	 * out-of-envelope effects. Optional: adapters without an ownership
+	 * layer (raw nodes) omit it and the runner skips intent checking for
+	 * them (the strict lanes both implement it).
+	 */
+	captureOpState?(peer: Peer): OpState;
+
+	/**
+	 * The addressable surface of an op targeting block `id`, resolved on
+	 * THIS peer's current view — see {@link OpTarget}. `null` means `id`
+	 * is unresolvable/invisible: the op must then produce an empty diff.
+	 */
+	opTarget?(peer: Peer, id: BlockId): OpTarget | null;
+
+	/**
+	 * Why a block is dead/hidden — per-holder explanation the runner
+	 * evaluates for `dead-owner` fates: `del` = it carries a del flag,
+	 * `ancestor` = hidden under a dead display ancestor (`root`),
+	 * `claim` = its owner chain routes to a dead block (`end`) through
+	 * merge-claim stamps `chain`, `absent` = not in the registry,
+	 * `live` = nothing explains it (always suspicious in context).
+	 */
+	deadCause?(peer: Peer, id: BlockId): DeadCause;
+
+	/**
+	 * Attach per-peer history tracking (a registry-scoped UndoManager,
+	 * `captureTimeout: 0`, tracking only the peer's local origin).
+	 * Idempotent; called by the runner before schedules that contain
+	 * undo/redo ops. History does not survive reload (a reloaded doc is a
+	 * new writer — the manager re-derives on the new doc).
+	 */
+	trackHistory?(peer: Peer): void;
+	/** Pop the peer's local undo stack. No-op when empty/unsupported. */
+	undo?(peer: Peer): void;
+	/** Pop the peer's local redo stack. No-op when empty/unsupported. */
+	redo?(peer: Peer): void;
 }
+
+/**
+ * `StampKey` — `'client:clock'` string form of an engine item id, the
+ * stable identity the intent oracle correlates across ops and replicas.
+ */
+export type StampKey = string;
+
+/** One atom slot in a block's display (see {@link CrdtOps.opTarget}). */
+export type OpTargetAtom = {
+	/** Engine identity `client:clock` of the atom's item position. */
+	key: StampKey;
+	/** Present iff the atom is an inline node — its logical id. */
+	inlineId?: InlineId;
+};
+
+/** Everything a positional op on `id` may lawfully touch. */
+export type OpTarget = {
+	/** Displayed atoms in order — deleteText/setMark ranges index this. */
+	atoms: OpTargetAtom[];
+	/**
+	 * Backing texts the display draws from, PLUS `id` itself (its own
+	 * backing text is always reachable — revive coverage/inserts write
+	 * into it even when the display is empty).
+	 */
+	texts: ReadonlySet<BlockId>;
+	/**
+	 * Blocks whose `slices` lists may physically hold claims routing to
+	 * `id` — `h` with `owner(h) === id` (`id` itself plus merged-away
+	 * holders whose content routes here). Claim writes/removals during
+	 * content ops on `id` are only legal on these lists.
+	 */
+	holders: ReadonlySet<BlockId>;
+	/** Display children of `id` (split/merge reparent them). */
+	children: ReadonlySet<BlockId>;
+};
+
+/** Per-block replicated-state surface captured for the op diff. */
+export type OpStateBlock = {
+	/** `del` flag currently set. */
+	deleted: boolean;
+	/** Stamp of the item carrying the `del` flag (loss correlation). */
+	delStamp: StampKey | null;
+	/** Canonical fingerprint of the block's live placement candidates. */
+	placements: string;
+};
+
+/**
+ * The mutation surface an executed op may lawfully change — captured
+ * twice per op (pre/post) and diffed by the runner:
+ *
+ * - `atoms`: every backing-text atom (live AND tombstoned) keyed by
+ *   `client:clock`, with its home text and canonical fingerprints of its
+ *   marks map / inline payload (`canonKey` strings — `''` when absent).
+ * - `claims`: every `slices`-sequence item (live AND tombstoned) keyed by
+ *   its stamp, classified as `slice` (target text `t`), `merge` (claimed
+ *   block `m`) or `other` (unrecognized payload — still tracked so an op
+ *   cannot touch it unnoticed).
+ * - `blocks`: every registry entry with del flag, del-item stamp and a
+ *   canonical fingerprint of its placement candidates.
+ */
+export type OpState = {
+	atoms: Map<
+		StampKey,
+		{
+			text: BlockId;
+			live: boolean;
+			marks: string;
+			/** The shared mark map itself — kept for key-level diffs (read-only). */
+			marksObj?: Record<string, unknown>;
+			payload: string;
+		}
+	>;
+	claims: Map<
+		StampKey,
+		{ holder: BlockId; kind: 'slice' | 'merge' | 'other'; t?: BlockId; m?: BlockId; live: boolean }
+	>;
+	blocks: Map<BlockId, OpStateBlock>;
+};
+
+/** Why a block is dead/hidden — see {@link CrdtOps.deadCause}. */
+export type DeadCause =
+	| { kind: 'del' }
+	| { kind: 'ancestor'; root: BlockId }
+	| { kind: 'claim'; chain: StampKey[]; end: BlockId }
+	| { kind: 'absent' }
+	| { kind: 'live' };
+
+/** Engine identity of one atom: `{client, clock}` of its item position. */
+export type TagAtom = { c: number; k: number };
+
+/**
+ * Fate of one tracked insert atom in the converged state — the strict
+ * lost-edit oracle's vocabulary (docs/crdt-v14-harness.md):
+ *
+ * - `present` — displayed by the block the insert targeted.
+ * - `moved` — displayed by a DIFFERENT visible block (`owner`): a legal
+ *   owner-move through contested-range claims (concurrent split/merge won
+ *   the seam). Evidence, not loss — the edit survived, relocated.
+ * - `stolen` — displayed by a different visible block (`owner`) whose
+ *   claim is NOT explained by the schedule's causal operations (gate-F1
+ *   F3): either the owner already claimed the atoms at insert time (an
+ *   ownership steal — the confirmed WU1 `alreadyCovered` defect shape) or
+ *   the owner is not among the `legitOwners` the recorded split/merge ops
+ *   produced. Hard failure — the strict lane reports it as `stolen-edit`.
+ * - `tombstoned` — the item itself is deleted: an explicit `deleteText`/
+ *   `removeInline` covered it. Legit deletion.
+ * - `dead-owner` — the atom is live but every covering claim belongs to a
+ *   deleted/legitimately-hidden holder (`holders`): the content died with
+ *   its owner, same contract as deleting the block. Legit deletion.
+ * - `unreachable` — displayed by a live block that should be projected but
+ *   is not: the `unreachable-block` invariant, a hard failure on its own.
+ * - `uncovered` — the atom is live and NO claim record covers it at all:
+ *   a coverage hole. This is actual loss — hard failure.
+ * - `gone` — the atom is absent from the store entirely (GC'd tombstone or
+ *   a reload that dropped it). Legit only under observed environment loss.
+ *
+ * U5 detail fields: `via` = stamp (`client:clock`) of the winning slice
+ * record covering the atom on this replica; `route` = merge-claim stamps
+ * traversed from the record's holder to the displayed owner — the
+ * physical ownership path the runner cross-checks against the claims the
+ * schedule actually wrote. `marks`/`payload` = canonical fingerprints of
+ * the atom's mark map / inline payload, compared against the atom's birth
+ * snapshot (unrequested payload mutation is `mutated-edit`, hard).
+ */
+export type AtomFate =
+	| {
+			kind: 'present';
+			via?: StampKey;
+			route?: StampKey[];
+			marks?: string;
+			marksObj?: Record<string, unknown>;
+			payload?: string;
+	  }
+	| {
+			kind: 'moved';
+			owner: BlockId;
+			via?: StampKey;
+			route?: StampKey[];
+			marks?: string;
+			marksObj?: Record<string, unknown>;
+			payload?: string;
+	  }
+	| {
+			kind: 'stolen';
+			owner: BlockId;
+			via?: StampKey;
+			route?: StampKey[];
+			marks?: string;
+			marksObj?: Record<string, unknown>;
+			payload?: string;
+	  }
+	| { kind: 'tombstoned' }
+	| {
+			kind: 'dead-owner';
+			holders: BlockId[];
+			marks?: string;
+			marksObj?: Record<string, unknown>;
+			payload?: string;
+	  }
+	| {
+			kind: 'unreachable';
+			owner: BlockId;
+			via?: StampKey;
+			route?: StampKey[];
+			marks?: string;
+			marksObj?: Record<string, unknown>;
+			payload?: string;
+	  }
+	| { kind: 'uncovered' }
+	| { kind: 'gone' };
+
+/**
+ * Schedule-side causal context for {@link CrdtOps.classifyTagAtoms}
+ * (gate-F1 F3 + hardening U5) — the part of the `moved` vs `stolen`
+ * distinction that engine state alone cannot express:
+ *
+ * - `legitOwners` — every block id a recorded split (`newId`) or merge
+ *   (`intoId`) produced over the whole schedule, PLUS the atoms' home
+ *   block (the backing text's natural owner — it reclaims them whenever
+ *   a claim holding them dissolves, e.g. when the claiming block is
+ *   concurrently deleted) and the insert target itself. Ownership
+ *   transfers to these blocks are explainable by causal operations;
+ *   anything else is not. **Pre-U5 semantics** — run-global: a
+ *   destination produced anywhere in the run excuses ANY transfer into
+ *   it (the R6 acceptance hole). Kept for context-free/direct callers;
+ *   the runner no longer relies on it once `authorizedClaims` is set.
+ * - `insertOwners` — owners that already claimed the tag's atoms on the
+ *   INSERTING peer immediately after `insertText` returned. A correct
+ *   insert always owns its atoms locally (the display position it typed
+ *   into is target-owned); finding them under a foreign owner at birth is
+ *   the ownership-steal signature — persisted under the same owner it is
+ *   still a steal, not a move.
+ * - `authorizedClaims` (U5) — the exact set of claim stamps
+ *   (`client:clock` item ids) the executed schedule wrote: seed claims
+ *   plus every claim write that passed the per-op intent envelope —
+ *   NEVER the pseudo stamp `-1:-1`. When present it replaces
+ *   `legitOwners` entirely: an atom is `stolen` iff its `via` record or
+ *   any `route` merge-claim carries a real stamp outside this set. An
+ *   injected move into a recorded split destination is caught because
+ *   the claim that performed it was never written by the schedule —
+ *   destination existence is no longer evidence.
+ */
+export type TagClassifyContext = {
+	legitOwners?: ReadonlySet<BlockId>;
+	insertOwners?: ReadonlySet<BlockId>;
+	authorizedClaims?: ReadonlySet<StampKey>;
+};

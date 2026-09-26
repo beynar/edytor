@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "date": "2026-09-21T00:10:19.971Z",
+    "node": "v24.21.0"
+  },
+  "mountMs": 71,
+  "keystrokeMs": {
+    "samples": 30,
+    "p50": 4.1,
+    "p95": 9.1,
+    "note": "trusted beforeinput → model write → DOM mutation → rAF paint, real chromium on the packed consumer app."
+  },
+  "facadeToDomMs": {
+    "samples": 30,
+    "p50": 0.3,
+    "p95": 0.6,
+    "note": "facade.insertText → first DOM mutation flush — the model→Svelte→DOM segment of a keystroke."
+  },
+  "serializeMs": {
+    "ms": 0.1,
+    "valueBytes": 275,
+    "note": "edytor.value JSON export in the mounted app (small fixture)."
+  },
+  "url": "http://127.0.0.1:56002/",
+  "note": "real chromium on the packed consumer build — Svelte/DOM costs are real here (node lanes cannot see them)."
+}

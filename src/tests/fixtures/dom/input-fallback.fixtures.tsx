@@ -1,6 +1,11 @@
 /** @jsxImportSource ../../jsx */
 import { defineDomFixture, defineFixtures } from '../types.js';
-import { dispatchComposition, dispatchDomInput, flushDomUpdates } from '../../dom/test.utils.js';
+import {
+	dispatchComposition,
+	dispatchDomBeforeInput,
+	dispatchDomInput,
+	flushDomUpdates
+} from '../../dom/test.utils.js';
 import type { Text } from '$lib/text/text.svelte.js';
 
 const setCollapsedDomSelection = (text: Text, offset: number) => {
@@ -426,6 +431,37 @@ export const fixtures = defineFixtures([
 		),
 		expectSelection: {
 			startBlockPath: [0],
+			yStart: 1,
+			yEnd: 1,
+			isCollapsed: true
+		}
+	}),
+	defineDomFixture({
+		description:
+			'replaces intermediate composition text at a fresh split block start (shared-backing seam)',
+		input: (
+			<root>
+				<paragraph>alpha|Hello</paragraph>
+			</root>
+		),
+		run: async ({ editor }) => {
+			await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
+			await dispatchComposition(editor, [
+				{ type: 'compositionstart', data: '' },
+				{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'n' },
+				{ type: 'beforeinput', inputType: 'insertFromComposition', data: 'に' },
+				{ type: 'compositionend', data: 'に' }
+			]);
+			await waitForCompositionSelectionStabilization();
+		},
+		output: (
+			<root>
+				<paragraph>alpha</paragraph>
+				<paragraph>にHello</paragraph>
+			</root>
+		),
+		expectSelection: {
+			startBlockPath: [1],
 			yStart: 1,
 			yEnd: 1,
 			isCollapsed: true

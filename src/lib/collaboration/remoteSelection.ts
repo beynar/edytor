@@ -1,7 +1,12 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { TextAnchor } from '$lib/selection/selection.svelte.js';
-import type { EdytorAwarenessSelection, EdytorAwarenessUser } from './awarenessSelection.js';
+import {
+	freshestPublishedSelection,
+	normalizeAwarenessSelection,
+	type EdytorAwarenessSelection,
+	type EdytorAwarenessUser
+} from './awarenessSelection.js';
 
 export type RemoteSelectionRect = {
 	left: number;
@@ -45,26 +50,25 @@ const getUser = (state: unknown): EdytorAwarenessUser => {
 };
 
 const getSelection = (state: unknown): EdytorAwarenessSelection | null => {
-	if (!isRecord(state) || !isRecord(state.selection)) {
+	if (!isRecord(state)) {
 		return null;
 	}
 
-	const { start, end, isCollapsed, isReversed } = state.selection;
-	const { startTextId, endTextId, yStart, yEnd } = state.selection;
-	if (start === undefined || end === undefined) {
-		return null;
+	// U5 — per-view presence: `selections` maps viewId → {…selection, t}.
+	// One caret is rendered per remote client — the freshest VALID entry,
+	// the same winner the publish side mirrored into `selection` (D17:
+	// both sides share `freshestPublishedSelection`, so a malformed entry
+	// can no longer be mirrored while being skipped here).
+	if (isRecord(state.selections)) {
+		const freshest = freshestPublishedSelection(state.selections);
+		if (freshest !== null) {
+			return freshest;
+		}
 	}
 
-	return {
-		start,
-		end,
-		startTextId: typeof startTextId === 'string' ? startTextId : '',
-		endTextId: typeof endTextId === 'string' ? endTextId : '',
-		yStart: typeof yStart === 'number' ? yStart : 0,
-		yEnd: typeof yEnd === 'number' ? yEnd : 0,
-		isCollapsed: isCollapsed === true,
-		isReversed: isReversed === true
-	};
+	// Legacy single-selection field — pre-U5 peers and the mirror U5
+	// writers keep publishing for compatibility.
+	return normalizeAwarenessSelection(state.selection);
 };
 
 /**
@@ -82,7 +86,10 @@ const isEngineAnchor = (value: unknown): value is TextAnchor['a'] =>
 		(isRecord(value.i) && typeof value.i.c === 'number' && typeof value.i.k === 'number'));
 
 const isTextAnchor = (value: unknown): value is TextAnchor =>
-	isRecord(value) && typeof value.b === 'string' && isEngineAnchor(value.a);
+	isRecord(value) &&
+	typeof value.b === 'string' &&
+	isEngineAnchor(value.a) &&
+	(value.o === undefined || typeof value.o === 'string');
 
 const resolveRelativePosition = (
 	edytor: Edytor,
@@ -226,9 +233,18 @@ const getSelectionRects = (
 
 	const clientRects =
 		typeof range.getClientRects === 'function' ? Array.from(range.getClientRects()) : [];
+	const seen = new Set<string>();
 	const rects = clientRects
 		.filter((rect) => rect.width || rect.height)
-		.map((rect) => toRemoteRect(rect, editorRect, editor));
+		.map((rect) => toRemoteRect(rect, editorRect, editor))
+		.filter((rect) => {
+			const key = `${rect.left}:${rect.top}:${rect.width}:${rect.height}`;
+			if (seen.has(key)) {
+				return false;
+			}
+			seen.add(key);
+			return true;
+		});
 
 	return rects.length ? rects : [getFallbackRect(start, editorRect, editor)];
 };
@@ -239,8 +255,19 @@ export const getRenderedRemoteSelections = (edytor: Edytor): RenderedRemoteSelec
 		return [];
 	}
 
-	const editorRect = editor.getBoundingClientRect();
-	const renderedSelections: RenderedRemoteSelection[] = [];
+	// U8a — phase split: resolve/validate every remote selection first,
+	// touch layout APIs only when at least one candidate survives.
+	// `editor.getBoundingClientRect()` used to run unconditionally at the
+	// top — a synchronous layout read on EVERY awareness/doc invalidation
+	// even with zero remote peers (the common solo-editing case).
+	type ResolvedCandidate = {
+		clientId: number;
+		selection: EdytorAwarenessSelection;
+		startPoint: DomPoint;
+		endPoint: DomPoint;
+		user: EdytorAwarenessUser;
+	};
+	const candidates: ResolvedCandidate[] = [];
 
 	for (const [clientId, state] of edytor.awareness.getStates()) {
 		if (clientId === edytor.doc.clientID) {
@@ -268,19 +295,30 @@ export const getRenderedRemoteSelections = (edytor: Edytor): RenderedRemoteSelec
 			continue;
 		}
 
-		const user = getUser(state);
-		const color = normalizeColor(user.color);
-		const cursorPoint = selection.isReversed ? startPoint : endPoint;
-		renderedSelections.push({
+		candidates.push({
 			clientId,
-			color,
+			selection,
+			startPoint,
+			endPoint,
+			user: getUser(state)
+		});
+	}
+
+	if (candidates.length === 0) {
+		return [];
+	}
+
+	const editorRect = editor.getBoundingClientRect();
+	return candidates.map(({ clientId, selection, startPoint, endPoint, user }) => {
+		const cursorPoint = selection.isReversed ? startPoint : endPoint;
+		return {
+			clientId,
+			color: normalizeColor(user.color),
 			label: user.name ?? null,
 			cursor: getCaretRect(cursorPoint, editorRect, editor),
 			rects: selection.isCollapsed
 				? []
 				: getSelectionRects(startPoint, endPoint, editorRect, editor)
-		});
-	}
-
-	return renderedSelections;
+		};
+	});
 };

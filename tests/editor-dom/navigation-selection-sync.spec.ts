@@ -3,6 +3,7 @@ import { expect, test, type Page } from './editorTest';
 import {
 	expectSelection,
 	modKey,
+	readNativeSelectionDirection,
 	readJsonByTestId,
 	setSelectionByTextIndex,
 	trackPageIssues,
@@ -74,6 +75,91 @@ test.describe('browser navigation selection sync', () => {
 
 		await page.keyboard.press('ArrowRight');
 		await expectSelection(page, { yStart: 3, yEnd: 3, isCollapsed: true });
+
+		issues.assertClean();
+	});
+
+	test('moves and extends horizontally across sibling block boundaries', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first');
+		await waitForEditorReady(page);
+
+		await setSelectionByTextIndex(page, 0, 0);
+		await page.keyboard.press('ArrowRight');
+		await expectSelection(page, {
+			startBlockPath: [1],
+			endBlockPath: [1],
+			yStart: 0,
+			yEnd: 0,
+			isCollapsed: true
+		});
+
+		await setSelectionByTextIndex(page, 1, 'note'.length);
+		await page.keyboard.press('Shift+ArrowRight');
+		await expectSelection(page, {
+			startBlockPath: [1],
+			endBlockPath: [2],
+			yStart: 'note'.length,
+			yEnd: 0,
+			isCollapsed: false,
+			isReversed: false
+		});
+
+		await setSelectionByTextIndex(page, 2, 0);
+		await page.keyboard.press('Shift+ArrowLeft');
+		await expectSelection(page, {
+			startBlockPath: [1],
+			endBlockPath: [2],
+			yStart: 'note'.length,
+			yEnd: 0,
+			isCollapsed: false,
+			isReversed: true
+		});
+		await expect
+			.poll(() => readNativeSelectionDirection(page))
+			.toMatchObject({ isBackward: true, isCollapsed: false });
+
+		issues.assertClean();
+	});
+
+	test('extends horizontally from parent text into its nested child', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=navigation');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 1, 'Parent'.length);
+		await page.keyboard.press('Shift+ArrowRight');
+
+		await expectSelection(page, {
+			startBlockPath: [1],
+			endBlockPath: [1, 0],
+			yStart: 'Parent'.length,
+			yEnd: 0,
+			isCollapsed: false,
+			isReversed: false
+		});
+
+		issues.assertClean();
+	});
+
+	test('deletes a selected block seam without deleting adjacent text', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 1, 'note'.length);
+		await page.keyboard.press('Shift+ArrowRight');
+		await page.keyboard.press('Backspace');
+
+		await expect.poll(() => readBlockTexts(page)).toEqual(['', 'notetail']);
+		await expectSelection(page, {
+			startBlockPath: [1],
+			endBlockPath: [1],
+			yStart: 'note'.length,
+			yEnd: 'note'.length,
+			isCollapsed: true
+		});
 
 		issues.assertClean();
 	});

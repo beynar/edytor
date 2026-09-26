@@ -24,12 +24,25 @@ cd "$HERE"
 mv -f "$HERE/$(basename "$TGZ")" "$HERE/edytor.tgz" 2>/dev/null || mv -f "$TGZ" "$HERE/edytor.tgz" 2>/dev/null || true
 ls -la edytor.tgz
 
+# Provenance stamp (P2-8): record which src/lib content hash this tarball
+# was packed from — bench/browser.js refuses to measure a tarball whose
+# stamp disagrees with the current tree.
+node --input-type=module -e "
+import { hashTree } from '$ROOT/bench/lib/source-id.js';
+import { writeFileSync } from 'node:fs';
+writeFileSync('$HERE/edytor.src-sha256', hashTree('$ROOT/src/lib').sha256 + '\n');
+"
+cat edytor.src-sha256
+
 echo "==> installing consumer"
 rm -rf node_modules pnpm-lock.yaml package-lock.json
 pnpm install --ignore-workspace 2>/dev/null || npm install --no-audit --no-fund
 
 echo "==> runtime smoke (node)"
 node smoke.js
+
+echo "==> svelte consumer smoke (vite build + SSR + browser mount)"
+node smoke-svelte.mjs
 
 echo "==> typecheck node surface (tsc nodenext, skipLibCheck=false)"
 pnpm exec tsc -p tsconfig.json || npx --yes typescript@5.9 tsc -p tsconfig.json

@@ -145,6 +145,86 @@ docB.destroy();
 assert.equal(awarenessA.getLocalState(), null);
 assert.equal(awarenessB.getLocalState(), null);
 
+// ── the integrated document API (U9 — the headline surface) ────────────
+// `createDocument`/`loadDocument`/`attachDocument` are bound to the
+// vendored engine at module level — no `bindCrdt` call, no engine
+// injection, no component import. This is the surface the docs headline.
+const document = bindings.createDocument({
+	value: {
+		children: [{ type: 'paragraph', id: 'doc-p1', content: [{ text: 'packed doc' }] }]
+	},
+	actor: { id: 'smoke-actor', name: 'Smoke', color: '#123456' }
+});
+assert.equal(document.ready, true);
+assert.equal(document.readiness, 'local');
+assert.equal(document.actor.id, 'smoke-actor');
+// The actor is published into awareness as the durable identity + the
+// display profile remote carets read.
+assert.equal(document.awareness.getLocalState()?.actor?.id, 'smoke-actor');
+assert.equal(document.awareness.getLocalState()?.user?.name, 'Smoke');
+
+const [docBlock] = document.facade.project().children;
+assert.equal(docBlock.id, 'doc-p1');
+// Headless edit → history.undo/redo — the document's own transaction
+// origin makes the edit one captured undo step.
+document.transact(() => document.facade.insertText('doc-p1', 0, 'DOC>'));
+assert.ok(document.facade.blockText('doc-p1').startsWith('DOC>'));
+document.history.undo();
+assert.equal(document.facade.blockText('doc-p1'), 'packed doc');
+document.history.redo();
+assert.ok(document.facade.blockText('doc-p1').startsWith('DOC>'));
+
+// Attribution read — the actor dictionary resolves replica → actor, and
+// committed edits stamp the compact per-block record (U1/U2).
+assert.equal(document.attribution.actorOf(document.clientID), 'smoke-actor');
+assert.equal(document.attribution.actors.get('smoke-actor')?.name, 'Smoke');
+assert.equal(document.attribution.block('doc-p1')?.lastChangedBy, 'smoke-actor');
+
+// encode → loadDocument restores the replicated state on a FRESH replica
+// identity (clientID is never restored — only the state).
+const saved = document.encode();
+const restored = bindings.loadDocument(saved);
+assert.equal(restored.ready, true);
+assert.equal(restored.readiness, 'hydrated');
+assert.notEqual(restored.doc.clientID, document.doc.clientID);
+assert.deepEqual(restored.facade.toJSON(), document.facade.toJSON());
+// Actor dictionary + block records travel inside the update — the
+// restored replica resolves the original actor and block authorship.
+assert.equal(restored.attribution.actors.get('smoke-actor')?.name, 'Smoke');
+assert.equal(restored.attribution.block('doc-p1')?.lastChangedBy, 'smoke-actor');
+restored.destroy();
+
+// attachDocument composes the same services around a doc the CALLER owns
+// — destroy() releases the document services but never doc.destroy()s the
+// borrowed doc.
+const borrowed = new Y.Doc();
+const attached = bindings.attachDocument(borrowed);
+assert.equal(attached.doc, borrowed);
+assert.equal(attached.readiness, 'pending'); // attach never auto-seeds
+attached.sync(); // fresh doc → seeds the canonical bootstrap block
+assert.equal(attached.readiness, 'local');
+assert.equal(attached.facade.project().children.length, 1);
+attached.destroy();
+assert.equal(attached.destroyed, true);
+borrowed.destroy(); // the borrowed doc outlives its document by contract
+
+// attachSync — an EdytorSync-shaped factory attaches to the document and
+// drives its readiness transition via `synced`; the returned cleanup is
+// tracked and run by document.destroy() (document-lifetime providers).
+let syncCleaned = false;
+const syncCleanup = document.attachSync(({ doc, awareness, synced }) => {
+	assert.equal(doc, document.doc);
+	assert.equal(awareness, document.awareness);
+	synced(); // already-ready document → sync() is an idempotent no-op
+	return () => {
+		syncCleaned = true;
+	};
+});
+assert.equal(typeof syncCleanup, 'function');
+document.destroy();
+assert.equal(syncCleaned, true, 'document.destroy() must run tracked sync cleanups');
+assert.equal(document.destroyed, true);
+
 // ── package encapsulation: consumers never need (and cannot take) deep ───
 // paths. The exports map lists exactly '.', './crdt', './crdt/edytor'.
 for (const deep of [

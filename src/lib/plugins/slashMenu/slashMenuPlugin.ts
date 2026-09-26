@@ -8,6 +8,40 @@ import { SlashMenuController } from './SlashMenuController.svelte.js';
 
 export const slashMenuPlugin: Plugin = (edytor) => {
 	const controller = new SlashMenuController(edytor);
+	let menuHost: HTMLDivElement | null = null;
+	let positionFrame = 0;
+
+	const positionMenu = () => {
+		const host = menuHost;
+		const editor = edytor.node;
+		if (!host || !editor || !controller.isOpen) return;
+		const view = editor.ownerDocument.defaultView;
+		if (!view) return;
+		const selection = editor.ownerDocument.getSelection();
+		let rect: DOMRect | undefined;
+		if (selection?.rangeCount && editor.contains(selection.anchorNode)) {
+			const range = selection.getRangeAt(0).cloneRange();
+			range.collapse(false);
+			if (typeof range.getBoundingClientRect === 'function') {
+				rect = range.getBoundingClientRect();
+			}
+		}
+		if (!rect || (!rect.width && !rect.height)) {
+			rect = edytor.selection.state.startText?.node?.getBoundingClientRect();
+		}
+		if (!rect) rect = editor.getBoundingClientRect();
+		const width = host.firstElementChild?.getBoundingClientRect().width || 310;
+		const height = host.firstElementChild?.getBoundingClientRect().height || 350;
+		host.style.left = `${Math.max(8, Math.min(rect.left, view.innerWidth - width - 8))}px`;
+		host.style.top = `${Math.max(8, rect.bottom + height + 8 < view.innerHeight ? rect.bottom + 8 : rect.top - height - 8)}px`;
+	};
+
+	const schedulePosition = () => {
+		const view = edytor.node?.ownerDocument.defaultView;
+		if (!view || !menuHost) return;
+		view.cancelAnimationFrame(positionFrame);
+		positionFrame = view.requestAnimationFrame(positionMenu);
+	};
 
 	return {
 		hotkeys: {
@@ -46,23 +80,34 @@ export const slashMenuPlugin: Plugin = (edytor) => {
 				change.block as Block,
 				change.payload as { value: string; start?: number; end?: number }
 			);
+			schedulePosition();
 		},
 		onSelectionChange: () => {
 			controller.reconcileSelection();
+			schedulePosition();
 		},
 		onEdytorAttached: ({ node }) => {
 			const host = node.ownerDocument.createElement('div');
 			host.dataset.edytorSlashMenuHost = 'true';
-			host.style.position = 'relative';
-			host.style.zIndex = '20';
+			host.style.position = 'fixed';
+			host.style.zIndex = '50';
 			node.after(host);
+			menuHost = host;
 
 			const component = mount(SlashMenu, {
 				target: host,
 				props: { controller }
 			});
+			const onViewportChange = () => schedulePosition();
+			node.ownerDocument.addEventListener('scroll', onViewportChange, true);
+			node.ownerDocument.defaultView?.addEventListener('resize', onViewportChange);
+			schedulePosition();
 
 			return () => {
+				node.ownerDocument.defaultView?.cancelAnimationFrame(positionFrame);
+				node.ownerDocument.removeEventListener('scroll', onViewportChange, true);
+				node.ownerDocument.defaultView?.removeEventListener('resize', onViewportChange);
+				menuHost = null;
 				unmount(component);
 				host.remove();
 			};

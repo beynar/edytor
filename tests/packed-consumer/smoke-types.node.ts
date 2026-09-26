@@ -70,3 +70,74 @@ const IdbProvider: bindings.ProviderStack['IndexeddbPersistence'] =
 void idbSync;
 void wsSync;
 void IdbProvider;
+
+// ── the integrated document API (U9 headline) — fully typed, no casts ──
+// The factories are pre-bound to the vendored engine; the canonical JSON
+// and every document member are nameable through this subpath.
+const jsonSeed: bindings.JSONDoc = {
+	children: [{ type: 'paragraph', id: 'n1', content: [{ text: 'typed doc' }] }]
+};
+const edDoc: bindings.EdytorDocument = bindings.createDocument({
+	value: jsonSeed,
+	actor: { id: 'typed-actor', name: 'Typed', color: '#123456' }
+});
+const readiness: bindings.DocumentReadiness = edDoc.readiness;
+const actor: bindings.DocumentActor = edDoc.actor;
+const facade: bindings.EdytorDoc = edDoc.facade;
+const exported: bindings.JSONDoc = facade.toJSON();
+const projected: bindings.ProjectedDoc = facade.project();
+const firstProjected: bindings.ProjectedBlock | undefined = projected.children[0];
+edDoc.transact(() => facade.insertText(firstProjected!.id, 0, '!'));
+const history: bindings.YUndoManager = edDoc.history;
+history.undo();
+const attribution: bindings.DocumentAttribution = edDoc.attribution;
+const who: string | undefined = attribution.actorOf(edDoc.clientID);
+const encoded: Uint8Array = edDoc.encode();
+const loaded: bindings.EdytorDocument = bindings.loadDocument(encoded);
+const borrowedRaw = new Y.Doc();
+const attachedDoc: bindings.EdytorDocument = bindings.attachDocument(borrowedRaw);
+const syncCleanup = attachedDoc.attachSync(
+	({ doc: d, awareness: a, synced }: bindings.EdytorSyncPayload) => {
+		void d;
+		void a;
+		synced();
+	},
+	{ value: jsonSeed }
+);
+const docErrors: (
+	| typeof bindings.DocumentNotReadyError
+	| typeof bindings.DocumentDestroyedError
+	| typeof bindings.SemanticConflictError
+)[] = [
+	bindings.DocumentNotReadyError,
+	bindings.DocumentDestroyedError,
+	bindings.SemanticConflictError
+];
+// ── U2 attribution surface — compact per-block records + actor
+// dictionary + the `legacy()` read over pre-existing `a/` records;
+// `ContentRun` carries no per-item authorship.
+const contentRun: bindings.ContentRun = { kind: 'text', text: 'x' };
+const legacyMap: ReturnType<bindings.DocumentAttribution['legacy']> = attribution.legacy();
+const blockAttr: bindings.BlockAttribution | undefined = attribution.block(firstProjected!.id);
+const actorsMap: ReadonlyMap<string, bindings.ActorProfile> = attribution.actors;
+const runsApi: bindings.RunsApi = bindings.bindRuns(Y as bindings.EngineApi);
+const modelView: bindings.ModelView | undefined = runsApi.modelState(
+	crdtDoc as unknown as bindings.EngineDoc
+);
+type _commitInfo = bindings.CommitInfo;
+type _engineTx = bindings.EngineTransaction;
+void contentRun;
+void legacyMap;
+void blockAttr;
+void actorsMap;
+void modelView;
+
+void readiness;
+void actor;
+void exported;
+void firstProjected;
+void who;
+void loaded;
+void borrowedRaw;
+void syncCleanup;
+void docErrors;

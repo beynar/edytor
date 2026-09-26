@@ -24,10 +24,12 @@
  *     tiebreaks and item ids inside the seed update);
  *   - peer `i` gets `firstClientId + i`, where `firstClientId` defaults to
  *     `1 + (rngSeed mod 2^20)`; reloads draw from the same counter;
- *   - every doc's `rand` stream (in-gap rank randomness, `EngineDoc.rand`)
- *     is `mulberry32` keyed by `(rngSeed, peerIndex, generation)` — the seed
- *     doc uses peerIndex −1 / generation 0, and a reload bumps the
- *     generation, so a committed corpus seed replays byte-identically.
+ *   - every doc's rank-rand stream (in-gap rank randomness — the
+ *     `setDocRand`/`randOf` WeakMap side-channel in `crdt/rand.ts`, not a
+ *     `Doc` field) is `mulberry32` keyed by `(rngSeed, peerIndex,
+ *     generation)` — the seed doc uses peerIndex −1 / generation 0, and a
+ *     reload bumps the generation, so a committed corpus seed replays
+ *     byte-identically.
  * - Transaction origins distinguish local vs remote application: local ops run
  *   inside `peer.transact(fn, origin)` (default `peer.localOrigin`); remote
  *   update application uses `applyUpdate(doc, update, remoteOrigin(from))`
@@ -41,7 +43,10 @@
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
+import { setDocRand } from '../../../lib/crdt/rand.js';
 import { mulberry32 } from './rng.js';
+import { updateHash } from './trace.js';
+import type { TraceEvent } from './trace.js';
 
 /**
  * Fixed clientID of the ephemeral seed document. Well above the peer range
@@ -114,10 +119,24 @@ export class Peer {
 	/**
 	 * Run a local transaction tagged with an origin (default `localOrigin`) so
 	 * tests can distinguish local vs remote-applied transactions and scope
-	 * UndoManager tracking.
+	 * UndoManager tracking. Traced with the count, byte size and ordered
+	 * content hashes of the updates the transaction authored — a no-op
+	 * command records `updates: 0`, and same-length different payloads
+	 * cannot alias, so scheduled actions can never masquerade as (or
+	 * confuse) mutations in the event record.
 	 */
 	transact<T>(fn: () => T, origin: unknown = this.localOrigin): T {
-		return this.doc.transact(fn, origin);
+		const before = this.updateLog.length;
+		const result = this.doc.transact(fn, origin);
+		const authored = this.updateLog.slice(before);
+		this.set.record({
+			kind: 'transact',
+			a: this.name,
+			n: authored.length,
+			n2: authored.reduce((sum, u) => sum + u.byteLength, 0),
+			h: authored.length ? authored.map(updateHash).join(',') : undefined
+		});
+		return result;
 	}
 
 	/** Current encoded state vector (what this peer has seen). */
@@ -128,6 +147,12 @@ export class Peer {
 	/** Persist the current state (e.g. an IndexedDB snapshot). */
 	persist(): void {
 		this.persisted = Y.encodeStateAsUpdate(this.doc);
+		this.set.record({
+			kind: 'persist',
+			a: this.name,
+			n: this.persisted.byteLength,
+			h: updateHash(this.persisted)
+		});
 	}
 
 	/**
@@ -157,7 +182,18 @@ export class Peer {
 		doc.clientID = this.set.nextClientId();
 		// A reloaded doc is a new writer — fresh deterministic rand stream too
 		// (same contract as construction: keyed by (rngSeed, index, generation)).
-		doc.rand = this.set.randFor(this.index, ++this.randGen);
+		const generation = ++this.randGen;
+		setDocRand(doc, this.set.randFor(this.index, generation));
+		this.set.record({
+			kind: 'reload',
+			a: this.name,
+			n: generation,
+			d: mode,
+			h:
+				mode === 'snapshot'
+					? updateHash(snapshot)
+					: sourceLog.map(updateHash).join(',') || undefined
+		});
 	}
 
 	/**
@@ -186,6 +222,19 @@ export class PeerSet {
 	private clientIdCounter: number;
 	/** Keys every deterministic rand stream vended by {@link randFor}. */
 	readonly rngSeed: number;
+	/**
+	 * Scheduler-visible event record (U3) — see `harness/trace.ts`. `clock`
+	 * stamps each event: `() => 0` by default; install the virtual clock with
+	 * `set.clock = () => vclock.now`. The digest (`traceDigest(set.trace)`)
+	 * is the run's semantic fingerprint.
+	 */
+	readonly trace: TraceEvent[] = [];
+	clock: () => number = () => 0;
+
+	/** Append one scheduler decision to the deterministic event record. */
+	record(e: Omit<TraceEvent, 'seq' | 't'>): void {
+		this.trace.push({ ...e, seq: this.trace.length, t: this.clock() });
+	}
 
 	private constructor(guid: string, firstClientId: number, rngSeed: number) {
 		this.guid = guid;
@@ -235,6 +284,7 @@ export class PeerSet {
 	 */
 	enqueue(from: PeerName, to: PeerName, update: Uint8Array): void {
 		this.edge(from, to).queue.push(update);
+		this.record({ kind: 'enqueue', a: from, b: to, n: update.byteLength, h: updateHash(update) });
 	}
 
 	private edge(from: PeerName, to: PeerName): Edge {
@@ -263,12 +313,14 @@ export class PeerSet {
 	partition(a: PeerName, b: PeerName): void {
 		this.edge(a, b).up = false;
 		this.edge(b, a).up = false;
+		this.record({ kind: 'partition', a, b });
 	}
 
 	/** Restore both directions of a link; queued messages become deliverable. */
 	heal(a: PeerName, b: PeerName): void {
 		this.edge(a, b).up = true;
 		this.edge(b, a).up = true;
+		this.record({ kind: 'heal', a, b });
 	}
 
 	/** Cut all of a peer's links (offline). `healPeer` reverses it. */
@@ -288,7 +340,11 @@ export class PeerSet {
 	dropQueued(from: PeerName, to: PeerName): number {
 		const e = this.edge(from, to);
 		const n = e.queue.length;
+		// Hash the discarded payloads too — *which* messages were lost is
+		// part of the evidence, not just how many.
+		const h = e.queue.map(updateHash).join(',');
 		e.queue = [];
+		this.record({ kind: 'drop', a: from, b: to, n, h: n ? h : undefined });
 		return n;
 	}
 
@@ -297,7 +353,12 @@ export class PeerSet {
 	 * `reverse` delivers newest-first; `times` re-applies each update
 	 * (duplicate delivery must be idempotent); `batch` merges the queue into a
 	 * single update via `mergeUpdates` before applying.
-	 * Returns the number of queue entries applied (0 when the link is down).
+	 * Returns the number of queue entries consumed (0 when the link is down).
+	 *
+	 * The trace records the full choice: `d` packs `r<0|1>t<n>b<0|1>`
+	 * (reverse / times / batch) and `h` lists the content hash of every
+	 * application in execution order — so same-queue deliveries with
+	 * different order, repetition or merging cannot produce equal traces.
 	 */
 	deliver(
 		from: PeerName,
@@ -305,24 +366,55 @@ export class PeerSet {
 		opts: { reverse?: boolean; times?: number; batch?: boolean } = {}
 	): number {
 		const e = this.edge(from, to);
-		if (!e.up || e.queue.length === 0) return 0;
+		const spec = `r${opts.reverse ? 1 : 0}t${opts.times ?? 1}b${opts.batch ? 1 : 0}`;
+		if (!e.up || e.queue.length === 0) {
+			// A withheld delivery is a scheduler decision too — trace it (with
+			// the flush parameters attempted) so a held message visibly did
+			// not bypass the queue.
+			this.record({ kind: 'deliver', a: from, b: to, n: 0, d: spec });
+			return 0;
+		}
 		const queued = e.queue;
 		e.queue = [];
 		const target = this.peer(to);
 		const origin = remoteOrigin(from);
+		const times = opts.times ?? 1;
+		const applied: string[] = [];
 		if (opts.batch) {
+			// Hash the merged update per application — the repeat count is
+			// part of what was executed.
 			const merged = Y.mergeUpdates(queued);
-			for (let i = 0; i < (opts.times ?? 1); i++) {
+			const mh = updateHash(merged);
+			for (let i = 0; i < times; i++) {
 				Y.applyUpdate(target.doc, merged, origin);
+				applied.push(mh);
 			}
+			this.record({
+				kind: 'deliver',
+				a: from,
+				b: to,
+				n: queued.length,
+				h: applied.join(',') || undefined,
+				d: spec
+			});
 			return queued.length;
 		}
 		const ordered = opts.reverse ? queued.slice().reverse() : queued;
 		for (const update of ordered) {
-			for (let i = 0; i < (opts.times ?? 1); i++) {
+			const uh = updateHash(update);
+			for (let i = 0; i < times; i++) {
 				Y.applyUpdate(target.doc, update, origin);
+				applied.push(uh);
 			}
 		}
+		this.record({
+			kind: 'deliver',
+			a: from,
+			b: to,
+			n: ordered.length,
+			h: applied.join(',') || undefined,
+			d: spec
+		});
 		return ordered.length;
 	}
 
@@ -341,28 +433,42 @@ export class PeerSet {
 	 * Incremental sync between two peers: exchange state vectors and ship only
 	 * what the other side is missing (sync step 1/2 without a protocol). Does
 	 * not touch queued outbox messages — they remain deliverable.
+	 * `h` records both exchanged diffs in wire order (a→b then b→a).
 	 */
 	syncPeer(a: PeerName, b: PeerName): void {
 		const pa = this.peer(a);
 		const pb = this.peer(b);
-		Y.applyUpdate(
-			pb.doc,
-			Y.encodeStateAsUpdate(pa.doc, Y.encodeStateVector(pb.doc)),
-			remoteOrigin(a)
-		);
-		Y.applyUpdate(
-			pa.doc,
-			Y.encodeStateAsUpdate(pb.doc, Y.encodeStateVector(pa.doc)),
-			remoteOrigin(b)
-		);
+		const toB = Y.encodeStateAsUpdate(pa.doc, Y.encodeStateVector(pb.doc));
+		Y.applyUpdate(pb.doc, toB, remoteOrigin(a));
+		const toA = Y.encodeStateAsUpdate(pb.doc, Y.encodeStateVector(pa.doc));
+		Y.applyUpdate(pa.doc, toA, remoteOrigin(b));
+		this.record({
+			kind: 'sync',
+			a,
+			b,
+			d: 'inc',
+			h: `${updateHash(toB)},${updateHash(toA)}`
+		});
 	}
 
-	/** Complete-state sync: both peers exchange their entire encoded state. */
+	/**
+	 * Complete-state sync: both peers exchange their entire encoded state.
+	 * `h` records both exchanged states in wire order (a→b then b→a).
+	 */
 	syncPeerFull(a: PeerName, b: PeerName): void {
 		const pa = this.peer(a);
 		const pb = this.peer(b);
-		Y.applyUpdate(pb.doc, Y.encodeStateAsUpdate(pa.doc), remoteOrigin(a));
-		Y.applyUpdate(pa.doc, Y.encodeStateAsUpdate(pb.doc), remoteOrigin(b));
+		const toB = Y.encodeStateAsUpdate(pa.doc);
+		Y.applyUpdate(pb.doc, toB, remoteOrigin(a));
+		const toA = Y.encodeStateAsUpdate(pb.doc);
+		Y.applyUpdate(pa.doc, toA, remoteOrigin(b));
+		this.record({
+			kind: 'sync',
+			a,
+			b,
+			d: 'full',
+			h: `${updateHash(toB)},${updateHash(toA)}`
+		});
 	}
 
 	/** Sync every ordered pair (`'incremental'` default, or `'full'`). */
@@ -387,10 +493,10 @@ export type PeerSetOpts = {
 	 */
 	firstClientId?: number;
 	/**
-	 * Seed for the per-doc rand streams (`EngineDoc.rand` — rank in-gap
-	 * picks) and the default `firstClientId` base. `0` when unset.
-	 * Determinism contract: `(rngSeed, peerIndex[, generation])` fixes every
-	 * identity a run can mint.
+	 * Seed for the per-doc rand streams (`setDocRand` — rank in-gap picks)
+	 * and the default `firstClientId` base. `0` when unset. Determinism
+	 * contract: `(rngSeed, peerIndex[, generation])` fixes every identity a
+	 * run can mint.
 	 */
 	rngSeed?: number;
 	/** peer names, defaults to A,B,C,… */
@@ -418,7 +524,7 @@ export const createPeerSet = (n: number, seed?: SeedUpdate, opts: PeerSetOpts = 
 		// insertBlock) — pin its identity or the seed bytes, hence every
 		// peer's initial state, would differ run to run.
 		seedDoc.clientID = SEED_DOC_CLIENT_ID;
-		seedDoc.rand = set.randFor(-1, 0);
+		setDocRand(seedDoc, set.randFor(-1, 0));
 		seed?.(seedDoc);
 		seedUpdate = Y.encodeStateAsUpdate(seedDoc);
 	}
@@ -427,7 +533,7 @@ export const createPeerSet = (n: number, seed?: SeedUpdate, opts: PeerSetOpts = 
 		const doc = new Y.Doc({ guid });
 		Y.applyUpdate(doc, seedUpdate, remoteOrigin('seed'));
 		doc.clientID = set.nextClientId();
-		doc.rand = set.randFor(i, 0);
+		setDocRand(doc, set.randFor(i, 0));
 		const peer = new Peer(set, names[i], doc, i);
 		// The seed was applied before the listener attached; record it so the
 		// update log is a complete history (entry 0 = seed) for 'log' reloads.

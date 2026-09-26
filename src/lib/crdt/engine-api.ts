@@ -28,7 +28,27 @@ export type YItem = Y.Item;
 export type EngineItemRef = {
 	id?: { client: number; clock: number };
 	deleted?: boolean;
+	/**
+	 * Parentage of the item — the containing shared type and the attr key it
+	 * sits under (`null` for sequence children). Read by the shared model
+	 * state (WU7) to map `Transaction.changed` entries back to
+	 * block/facet coordinates mid-transaction.
+	 */
+	parent?: unknown;
+	parentSub?: string | null;
 } | null;
+
+/**
+ * Structural minimum of the in-flight engine `Transaction` — exposed on the
+ * doc as `doc._transaction` while a transaction is open. `changed` maps each
+ * touched shared type to the set of `parentSub` keys whose items changed
+ * (attr names for map-like children, `null` for sequence edits). The shared
+ * model state folds this into its incremental invalidation so reads issued
+ * mid-transaction observe their own writes (WU7 read-your-writes).
+ */
+export interface EngineTransaction {
+	changed?: Map<unknown, Set<string | null>>;
+}
 
 /**
  * The deep-observer event surface (v14 `YEvent`, observed through
@@ -125,8 +145,9 @@ export interface EngineDoc {
 		pendingDs: null | Uint8Array;
 	};
 	/**
-	 * Optional in-gap rank randomness source (injected by the harness for
-	 * determinism — production docs leave it unset and get `Math.random`).
+	 * The engine's CURRENT transaction (`null` outside one) — vendored
+	 * `Doc._transaction`. Used by the shared model state to discover
+	 * uncommitted changes for read-your-writes invalidation (WU7).
 	 */
-	rand?: () => number;
+	readonly _transaction?: EngineTransaction | null;
 }

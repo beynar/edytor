@@ -1,10 +1,13 @@
 export {
 	createAwarenessSelection,
+	freshestPublishedSelection,
 	publishAwarenessSelection,
 	type EdytorAwarenessSelection,
 	type EdytorAwarenessState,
-	type EdytorAwarenessUser
+	type EdytorAwarenessUser,
+	type EdytorAwarenessViewSelection
 } from './awarenessSelection.js';
+export { attachDocumentSync, whenDocumentReady } from './documentSync.js';
 export {
 	createIndexeddbSync,
 	createWebsocketSync,

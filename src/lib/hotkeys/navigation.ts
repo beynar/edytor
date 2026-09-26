@@ -2,14 +2,17 @@ import type { Edytor } from '../edytor.svelte.js';
 import type { HotKey, HotKeyCombination } from '../hotkeys.js';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import { Text } from '../text/text.svelte.js';
+import { compareBlockPath } from '../block/blockPath.js';
 import { clearDomSelection } from '../selection/domSelection.js';
+import { getNextGraphemeEnd, getPreviousGraphemeStart } from '../text/text.utils.js';
+import { getNextWordEndOffset, getPreviousWordStartOffset } from '../events/wordBoundary.js';
 
 type TextPosition = {
 	text: Text;
 	offset: number;
 };
 
-const moveToCurrentBlockBoundary = (
+export const moveToCurrentBlockBoundary = (
 	edytor: Edytor,
 	boundary: 'start' | 'end',
 	extendSelection: boolean
@@ -70,57 +73,6 @@ const moveToDocumentBoundary = (
 	}
 
 	void edytor.selection.setAtRange(startText, yStart, boundaryText, boundaryOffset);
-};
-
-const getCharacters = (value: string) => {
-	let index = 0;
-	return Array.from(value).map((character) => {
-		const start = index;
-		index += character.length;
-		return {
-			character,
-			start,
-			end: index
-		};
-	});
-};
-
-const isWordCharacter = (character: string) => /[\p{L}\p{N}_]/u.test(character);
-
-const getPreviousWordStartOffset = (value: string, offset: number) => {
-	const characters = getCharacters(value).filter((character) => character.end <= offset);
-	let index = characters.length - 1;
-
-	while (index >= 0 && !isWordCharacter(characters[index].character)) {
-		index--;
-	}
-	if (index < 0) {
-		return offset;
-	}
-
-	while (index > 0 && isWordCharacter(characters[index - 1].character)) {
-		index--;
-	}
-
-	return characters[index].start;
-};
-
-const getNextWordEndOffset = (value: string, offset: number) => {
-	const characters = getCharacters(value).filter((character) => character.start >= offset);
-	let index = 0;
-
-	while (index < characters.length && !isWordCharacter(characters[index].character)) {
-		index++;
-	}
-	if (index >= characters.length) {
-		return offset;
-	}
-
-	while (index + 1 < characters.length && isWordCharacter(characters[index + 1].character)) {
-		index++;
-	}
-
-	return characters[index].end;
 };
 
 const getPreviousWordPosition = (text: Text, offset: number): TextPosition | null => {
@@ -211,9 +163,7 @@ const getInlineBlockBetweenBoundaryPositions = (
 };
 
 const selectInlineBlock = (edytor: Edytor, inlineBlock: InlineBlock) => {
-	edytor.selection.selectedInlineBlock.clear();
-	edytor.selection.selectedInlineBlock.add(inlineBlock);
-	edytor.selection.inlineBlockDeletionTarget = inlineBlock;
+	edytor.selection.selectInlineBlock(inlineBlock);
 	edytor.selection.ignoreNextSelectionChange = true;
 	clearDomSelection(edytor.node);
 };
@@ -222,6 +172,48 @@ const collapseToTextPosition = (edytor: Edytor, text: Text, offset: number) => {
 	edytor.selection.clearInlineBlockSelection();
 	edytor.selection.setCollapsedStateAtTextOffset(text, offset);
 	void edytor.selection.setAtTextOffset(text, offset);
+};
+
+const extendToTextPosition = (
+	edytor: Edytor,
+	anchorText: Text,
+	anchorOffset: number,
+	focusText: Text,
+	focusOffset: number,
+	direction: 'backward' | 'forward'
+) => {
+	if (direction === 'backward') {
+		edytor.selection.setRangeStateAtTextOffsets(focusText, focusOffset, anchorText, anchorOffset, {
+			isReversed: true
+		});
+		void edytor.selection.setAtRange(focusText, focusOffset, anchorText, anchorOffset, {
+			isReversed: true
+		});
+		return;
+	}
+
+	edytor.selection.setRangeStateAtTextOffsets(anchorText, anchorOffset, focusText, focusOffset, {
+		isReversed: false
+	});
+	void edytor.selection.setAtRange(anchorText, anchorOffset, focusText, focusOffset, {
+		isReversed: false
+	});
+};
+
+const getAdjacentEditableText = (text: Text, direction: 'backward' | 'forward') => {
+	let block =
+		direction === 'backward' ? text.parent.closestPreviousBlock : text.parent.closestNextBlock;
+
+	while (block) {
+		const editableText =
+			direction === 'backward' ? block.lastEditableText : block.firstEditableText;
+		if (editableText && editableText !== text) {
+			return editableText;
+		}
+		block = direction === 'backward' ? block.closestPreviousBlock : block.closestNextBlock;
+	}
+
+	return null;
 };
 
 const getTextDirection = (text: Text) => {
@@ -244,9 +236,9 @@ const getVisualHorizontalDirection = (
 	return isRtl ? 'backward' : 'forward';
 };
 
-const moveAcrossInlineBoundary = (
+const moveAcrossHorizontalBoundary = (
 	edytor: Edytor,
-	key: 'ArrowLeft' | 'ArrowRight',
+	resolveDirection: (text: Text) => 'backward' | 'forward',
 	extendSelection: boolean
 ) => {
 	const selectedInlineBlock =
@@ -269,7 +261,7 @@ const moveAcrossInlineBoundary = (
 			return true;
 		}
 
-		const direction = getVisualHorizontalDirection(directionText, key);
+		const direction = resolveDirection(directionText);
 		if (direction === 'backward' && previousText instanceof Text) {
 			collapseToTextPosition(edytor, previousText, previousText.length);
 			return true;
@@ -286,7 +278,7 @@ const moveAcrossInlineBoundary = (
 		return false;
 	}
 
-	const direction = getVisualHorizontalDirection(startText, key);
+	const direction = resolveDirection(startText);
 	const content = startText.parent.content;
 	const index = content.indexOf(startText);
 	if (index === -1) {
@@ -296,38 +288,74 @@ const moveAcrossInlineBoundary = (
 	if (direction === 'forward') {
 		const inlineBlock = content[index + 1];
 		const nextText = content[index + 2];
-		if (yStart !== startText.length || !(inlineBlock instanceof InlineBlock)) {
+		if (yStart !== startText.length) {
 			return false;
 		}
 
+		if (inlineBlock instanceof InlineBlock) {
+			if (extendSelection) {
+				selectInlineBlock(edytor, inlineBlock);
+				return true;
+			}
+
+			if (nextText instanceof Text) {
+				collapseToTextPosition(edytor, nextText, 0);
+				return true;
+			}
+			return false;
+		}
+
+		if (index !== content.length - 1) {
+			return false;
+		}
+
+		const adjacentText = getAdjacentEditableText(startText, direction);
+		if (!adjacentText) {
+			return false;
+		}
+
+		if (extendSelection) {
+			extendToTextPosition(edytor, startText, yStart, adjacentText, 0, direction);
+		} else {
+			collapseToTextPosition(edytor, adjacentText, 0);
+		}
+		return true;
+	}
+
+	const inlineBlock = content[index - 1];
+	const previousText = content[index - 2];
+	if (yStart !== 0) {
+		return false;
+	}
+
+	if (inlineBlock instanceof InlineBlock) {
 		if (extendSelection) {
 			selectInlineBlock(edytor, inlineBlock);
 			return true;
 		}
 
-		if (nextText instanceof Text) {
-			collapseToTextPosition(edytor, nextText, 0);
+		if (previousText instanceof Text) {
+			collapseToTextPosition(edytor, previousText, previousText.length);
 			return true;
 		}
 		return false;
 	}
 
-	const inlineBlock = content[index - 1];
-	const previousText = content[index - 2];
-	if (yStart !== 0 || !(inlineBlock instanceof InlineBlock)) {
+	if (index !== 0) {
+		return false;
+	}
+
+	const adjacentText = getAdjacentEditableText(startText, direction);
+	if (!adjacentText) {
 		return false;
 	}
 
 	if (extendSelection) {
-		selectInlineBlock(edytor, inlineBlock);
-		return true;
+		extendToTextPosition(edytor, startText, yStart, adjacentText, adjacentText.length, direction);
+	} else {
+		collapseToTextPosition(edytor, adjacentText, adjacentText.length);
 	}
-
-	if (previousText instanceof Text) {
-		collapseToTextPosition(edytor, previousText, previousText.length);
-		return true;
-	}
-	return false;
+	return true;
 };
 
 const moveByWord = (
@@ -335,22 +363,34 @@ const moveByWord = (
 	direction: 'backward' | 'forward',
 	extendSelection: boolean
 ) => {
-	const { startText, endText, yStart, yEnd, isCollapsed } = edytor.selection.state;
-	const activeText = direction === 'backward' ? startText : (endText ?? startText);
-	const activeOffset = direction === 'backward' ? yStart : yEnd;
-	if (!activeText) {
+	const { startText, endText, yStart, yEnd, isCollapsed, isReversed } = edytor.selection.state;
+	// The moving edge is the selection's focus — the start for a reversed
+	// (right-to-left) selection, the end otherwise — the same rule
+	// `moveNodeSelectionHorizontally` applies below.
+	const focusText = isReversed ? startText : (endText ?? startText);
+	const focusOffset = isReversed ? yStart : yEnd;
+	const anchorText = isReversed ? (endText ?? startText) : startText;
+	const anchorOffset = isReversed ? yEnd : yStart;
+	if (!focusText || !anchorText) {
 		return;
 	}
 
 	if (!extendSelection && !isCollapsed) {
-		void edytor.selection.setAtTextOffset(activeText, activeOffset);
+		// A non-extending word jump off a range collapses onto the
+		// document-order edge the direction points at.
+		const edgeText = direction === 'backward' ? startText : (endText ?? startText);
+		const edgeOffset = direction === 'backward' ? yStart : yEnd;
+		if (!edgeText) {
+			return;
+		}
+		void edytor.selection.setAtTextOffset(edgeText, edgeOffset);
 		return;
 	}
 
 	const nextPosition =
 		direction === 'backward'
-			? getPreviousWordPosition(activeText, activeOffset)
-			: getNextWordPosition(activeText, activeOffset);
+			? getPreviousWordPosition(focusText, focusOffset)
+			: getNextWordPosition(focusText, focusOffset);
 	if (!nextPosition) {
 		return;
 	}
@@ -361,8 +401,8 @@ const moveByWord = (
 	}
 
 	const inlineBlock = getInlineBlockBetweenBoundaryPositions(
-		activeText,
-		activeOffset,
+		focusText,
+		focusOffset,
 		nextPosition.text,
 		nextPosition.offset
 	);
@@ -371,45 +411,189 @@ const moveByWord = (
 		return;
 	}
 
-	if (direction === 'backward') {
-		void edytor.selection.setAtRange(
-			nextPosition.text,
-			nextPosition.offset,
-			activeText,
-			activeOffset
-		);
-		return;
+	// Pass the endpoints in document order so `isReversed` reports the
+	// selection's final direction regardless of which side the anchor is on.
+	const nextReversed =
+		compareTextPositions(anchorText, anchorOffset, nextPosition.text, nextPosition.offset) > 0;
+	const [rangeStartText, rangeStartOffset, rangeEndText, rangeEndOffset]: [
+		Text,
+		number,
+		Text,
+		number
+	] = nextReversed
+		? [nextPosition.text, nextPosition.offset, anchorText, anchorOffset]
+		: [anchorText, anchorOffset, nextPosition.text, nextPosition.offset];
+	edytor.selection.setRangeStateAtTextOffsets(
+		rangeStartText,
+		rangeStartOffset,
+		rangeEndText,
+		rangeEndOffset,
+		{ isReversed: nextReversed }
+	);
+	void edytor.selection.setAtRange(rangeStartText, rangeStartOffset, rangeEndText, rangeEndOffset, {
+		isReversed: nextReversed
+	});
+};
+
+/**
+ * One horizontal step from `(text, offset)` in the logical direction:
+ * a grapheme boundary inside the text when there is room, otherwise the
+ * neighbouring text's edge — crossing inline atoms in the block's
+ * content and falling back to the adjacent block's editable text.
+ */
+const getHorizontalExtendDestination = (
+	text: Text,
+	offset: number,
+	direction: 'backward' | 'forward'
+): TextPosition | null => {
+	if (direction === 'backward' ? offset > 0 : offset < text.length) {
+		const value = text.stringContent;
+		return {
+			text,
+			offset:
+				direction === 'backward'
+					? getPreviousGraphemeStart(value, offset)
+					: getNextGraphemeEnd(value, offset)
+		};
 	}
 
-	void edytor.selection.setAtRange(
-		activeText,
-		activeOffset,
-		nextPosition.text,
-		nextPosition.offset
+	const content = text.parent.content;
+	const step = direction === 'backward' ? -1 : 1;
+	const startIndex = content.indexOf(text);
+	if (startIndex !== -1) {
+		for (let index = startIndex + step; index >= 0 && index < content.length; index += step) {
+			const part = content[index];
+			if (part instanceof Text) {
+				return { text: part, offset: direction === 'backward' ? part.length : 0 };
+			}
+		}
+	}
+
+	const adjacent = getAdjacentEditableText(text, direction);
+	return adjacent
+		? { text: adjacent, offset: direction === 'backward' ? adjacent.length : 0 }
+		: null;
+};
+
+const compareTextPositions = (aText: Text, aOffset: number, bText: Text, bOffset: number) =>
+	aText === bText
+		? aOffset - bOffset
+		: aText.parent === bText.parent
+			? aText.index - bText.index
+			: compareBlockPath(aText.parent, bText.parent);
+
+/**
+ * Deterministic Shift+ArrowLeft/ArrowRight extension for node-bound
+ * selections — ranges whose native endpoints sit outside text elements
+ * (a block node selection, a stray boundary node). Native horizontal
+ * extension of those is engine-defined: Blink can no-op, WebKit flips
+ * the range direction, Gecko may land the focus on a stray position.
+ * The editor owns that case only — plain text-point ranges keep native
+ * char-wise behavior — and applies the standard rule: the focus edge
+ * moves one grapheme step in the arrow's logical direction while the
+ * anchor stays put. When the focus edge cannot move further the
+ * selection collapses onto it.
+ */
+const moveNodeSelectionHorizontally = (edytor: Edytor, key: 'ArrowLeft' | 'ArrowRight') => {
+	const { startText, endText, yStart, yEnd, isReversed } = edytor.selection.state;
+	if (
+		!startText ||
+		!endText ||
+		edytor.selection.selectedBlocks.size > 0 ||
+		edytor.selection.selectedInlineBlock.size > 0 ||
+		!edytor.selection.hasNativeNodeSelection()
+	) {
+		return false;
+	}
+
+	const focusText = isReversed ? startText : endText;
+	const focusOffset = isReversed ? yStart : yEnd;
+	const anchorText = isReversed ? endText : startText;
+	const anchorOffset = isReversed ? yEnd : yStart;
+	const direction = getVisualHorizontalDirection(focusText, key);
+	let destination = getHorizontalExtendDestination(focusText, focusOffset, direction);
+	// A forward destination at the next block's firstText@0 canonicalizes
+	// straight back onto the current end edge — applySelectionSnapshot
+	// maps an end at a block's first text offset 0 to the previous
+	// block's lastText end — leaving the model selection unchanged. Land
+	// on the first grapheme boundary inside that text instead (walking
+	// past empty boundary texts) so the extension is a real move.
+	while (
+		destination &&
+		destination.offset === 0 &&
+		destination.text === destination.text.parent.firstText &&
+		destination.text.parent !== anchorText.parent &&
+		compareTextPositions(anchorText, anchorOffset, destination.text, destination.offset) < 0
+	) {
+		const graphemeEnd = getNextGraphemeEnd(destination.text.stringContent, 0);
+		if (graphemeEnd > 0) {
+			destination = { text: destination.text, offset: graphemeEnd };
+			break;
+		}
+		destination = getHorizontalExtendDestination(destination.text, 0, 'forward');
+	}
+	if (!destination) {
+		collapseToTextPosition(edytor, focusText, focusOffset);
+		return true;
+	}
+	const nextReversed =
+		compareTextPositions(anchorText, anchorOffset, destination.text, destination.offset) > 0;
+	edytor.selection.setRangeStateAtTextOffsets(
+		anchorText,
+		anchorOffset,
+		destination.text,
+		destination.offset,
+		{ isReversed: nextReversed }
 	);
+	void edytor.selection.setAtRange(anchorText, anchorOffset, destination.text, destination.offset, {
+		isReversed: nextReversed
+	});
+	return true;
 };
 
 const shouldUseAltWordNavigation = (edytor: Edytor) => edytor.hotKeys.isMac;
 const shouldUseModWordNavigation = (edytor: Edytor) => !edytor.hotKeys.isMac;
 
+const arrowKeyDirection = (event: KeyboardEvent) => (text: Text) =>
+	getVisualHorizontalDirection(text, event.key as 'ArrowLeft' | 'ArrowRight');
+
+/**
+ * Logical (non-visual) one-step caret boundary crossing — used by the
+ * macOS Emacs ctrl+b/ctrl+f bindings, which move in document order
+ * regardless of text direction.
+ */
+export const moveCaretAcrossHorizontalBoundary = (
+	edytor: Edytor,
+	direction: 'backward' | 'forward',
+	extendSelection: boolean
+) => moveAcrossHorizontalBoundary(edytor, () => direction, extendSelection);
+
 export const navigationHotKeys = {
 	arrowleft: ({ event, edytor, prevent }) => {
-		if (moveAcrossInlineBoundary(edytor, event.key as 'ArrowLeft', false)) {
+		if (moveAcrossHorizontalBoundary(edytor, arrowKeyDirection(event), false)) {
 			prevent();
 		}
 	},
 	arrowright: ({ event, edytor, prevent }) => {
-		if (moveAcrossInlineBoundary(edytor, event.key as 'ArrowRight', false)) {
+		if (moveAcrossHorizontalBoundary(edytor, arrowKeyDirection(event), false)) {
 			prevent();
 		}
 	},
 	'shift+arrowleft': ({ event, edytor, prevent }) => {
-		if (moveAcrossInlineBoundary(edytor, event.key as 'ArrowLeft', true)) {
+		if (moveAcrossHorizontalBoundary(edytor, arrowKeyDirection(event), true)) {
+			prevent();
+			return;
+		}
+		if (moveNodeSelectionHorizontally(edytor, event.key as 'ArrowLeft')) {
 			prevent();
 		}
 	},
 	'shift+arrowright': ({ event, edytor, prevent }) => {
-		if (moveAcrossInlineBoundary(edytor, event.key as 'ArrowRight', true)) {
+		if (moveAcrossHorizontalBoundary(edytor, arrowKeyDirection(event), true)) {
+			prevent();
+			return;
+		}
+		if (moveNodeSelectionHorizontally(edytor, event.key as 'ArrowRight')) {
 			prevent();
 		}
 	},

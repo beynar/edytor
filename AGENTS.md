@@ -31,9 +31,13 @@ The repo already has several real ideas in place:
 
 The repo also still has visible unfinished surfaces:
 
-- Drag and drop exists as a class but the README still marks DND as not ready.
+- `<Edytor>` enables block handles by default (`blockHandles={false}` opts out; deprecated `blockDnd={false}` still works). `blockHandles={{ draggable: false, onActivate }}` keeps keyboard/menu handles without pointer dragging. The plugin uses Atlassian Pragmatic Drag and Drop's element adapter; the public `edytor.canMoveBlocks`/`edytor.moveBlocks` commands own relative moves for DND, keyboard actions, and consumer menus.
+- Drop placement belongs to `BlockHandleController`: it adapts before/inside/after zones to valid moves, keeps a valid placement across short gaps with PDD stickiness, and draws a separate fixed indicator so rounded block styles cannot bend the insertion line. Between siblings, derive the indicator from the shared insertion slot and center it between both block bounds; hovering after one block or before the next must draw the same line. Keep the shown placement and committed move in sync.
+- `blockHandlesPlugin` aligns each handle to its block's first rendered text row, or to the header row for island blocks. Shared resize and structural observers update offsets after layout changes, block moves, and readonly transitions; keep the handle beside visible content rather than using the block's outer top edge. The demo block menu positions against the live handle and follows scroll and resize.
+- A block-handle click leaves an atomic block selection. The demo menu clears it on open and returns to a text caret after actions so the selected-row background does not linger. Set the collapsed model caret first (`setCollapsedStateAtTextOffset` clears an atomic selection), then write the DOM caret (`setAtTextOffset`) and focus the editor. A DOM range alone cannot replace an atomic selection.
+- Rich-text list-item, callout, and todo snippets render their own content and nested children in separate direct `div` elements. Demo CSS keeps both in the text column of a grid so a nested block starts on a new row; a flex row would place it inline with the parent text.
 - The HTML paste plugin is only partially wired.
-- The demo routes contain stale API calls and debugging code.
+- The root demo route is a document-style playground with working selection, slash, and block menus. Test routes remain separate fixtures, not public API examples.
 
 ## Core Mental Model
 
@@ -202,6 +206,28 @@ The intended flow is:
 
 This is the most fragile part of the repo and also the least tested part.
 
+**Selection contracts that must not regress** (normative spec:
+[docs/editor-delete-contract.md](/Users/arnaud/code/edytor/docs/editor-delete-contract.md),
+"Anchor contract" / "Selection ownership and lifecycle" / "Responsibility
+map" sections):
+
+- A caret anchor is `{b, a, o?}`: `a.i` binds the backing atom (causal
+  identity), `a.a`'s sign carries insert affinity, and `o` carries the
+  intended display block when a `-2` anchor is minted at a mid-backing
+  stream start. `o` is honored only while the block is alive and
+  self-owning (`ownerOf(o) === o`); merges/deletes fall back to generic
+  atom-following. Never let a caret migrate into a surviving neighbor
+  block because that neighbor received text at the shared gap.
+- Logical recovery destination and DOM readiness are separate: a live
+  destination with no mounted node arms `deadEndpointRecoveryPending`
+  and is completed by `Text.attach` — do not "fix" this by treating
+  unmounted text as unrecoverable or by weakening `firstEditableText`'s
+  mounted-node requirement (container phantom slots must stay skipped).
+- Every deferred selection write checks the gesture serial before
+  writing — all argument forms and all exits, including lookup-rejection
+  and final fallbacks. A newer gesture supersedes an older write even
+  when it picks the same numeric offset.
+
 ## Plugin System
 
 Plugin typing lives in [src/lib/plugins.ts](/Users/arnaud/code/edytor/src/lib/plugins.ts).
@@ -230,16 +256,24 @@ Plugin order matters. Prevention is first-win. README says this, and the runtime
 
 ## Readonly Mode
 
-Readonly rendering is not just the editable editor with `contenteditable=false`.
+Readonly rendering IS the editable editor with `contenteditable=false`:
+the `readonly` prop flows to `edytor.readonly`, the same block tree
+renders, and the event pipeline (`onBeforeInput`, hotkeys, the DOM
+mutation observer's flush) gates edits while `readonly` is set. There is
+no separate readonly component — `ReadonlyEditor.svelte` was removed
+(it was imported by `Edytor.svelte` but never rendered).
 
-It uses:
+The proxy-backed readonly wrappers in
+[src/lib/components/readonlyElements.svelte.ts](/Users/arnaud/code/edytor/src/lib/components/readonlyElements.svelte.ts)
+still exist, but they serve a different purpose: `Block.svelte`'s
+`suggestions` getter wraps suggestion content
+(`createReadonlyText`/`createReadonlyInlineBlock`) so suggested text and
+inline atoms render through the normal `<Text>`/`<InlineBlock>`
+components without being editable model nodes.
 
-- [src/lib/components/ReadonlyEditor.svelte](/Users/arnaud/code/edytor/src/lib/components/ReadonlyEditor.svelte)
-- [src/lib/components/readonlyElements.svelte.ts](/Users/arnaud/code/edytor/src/lib/components/readonlyElements.svelte.ts)
-
-The repo creates proxy-backed readonly wrappers that mimic the live API enough for rendering.
-
-This is clever, but it is also an area with no meaningful test coverage and leftover debug logging.
+This area has no meaningful test coverage and the proxies still warn on
+missing properties in DEV — that warning is intentional when a readonly
+wrapper meets a live-only API.
 
 ## Collaboration and Persistence
 
@@ -285,9 +319,8 @@ High-value files:
 Files that signal unfinished work:
 
 - [src/lib/plugins/html/htmlPlugin.ts](/Users/arnaud/code/edytor/src/lib/plugins/html/htmlPlugin.ts): paste flow incomplete
-- [src/lib/dnd.svelte.ts](/Users/arnaud/code/edytor/src/lib/dnd.svelte.ts): DnD infrastructure exists, not fully integrated
 - [src/lib/utils/serialize.ts](/Users/arnaud/code/edytor/src/lib/utils/serialize.ts): empty file
-- [src/routes/+page.svelte](/Users/arnaud/code/edytor/src/routes/+page.svelte): demo page with stale method calls and debugging code
+- [src/routes/+page.svelte](/Users/arnaud/code/edytor/src/routes/+page.svelte): document-style demo and block action menu
 
 ## Testing Deep Dive
 
@@ -468,7 +501,7 @@ When changing this repo:
 
 - change behavior in the operation layer first
 - only patch components when the model is already correct
-- do not trust the demo routes as authoritative examples
+- use the public README and types for contracts; the root demo also exercises the current editing API
 - do not trust the test suite as full coverage
 - run both `pnpm test -- --run` and `pnpm check`
 
@@ -497,12 +530,27 @@ pnpm test -- --run
 pnpm check
 pnpm build
 pnpm test:integration
+pnpm test:dst
+pnpm test:dst:solo
+pnpm test:dst:collab
+pnpm test:dst:extensive
 ```
 
 Reality check (stale claims removed — post-v14 state):
 
 - `pnpm test:integration` runs real Playwright specs under `tests/editor-dom/`
   (chromium green; firefox/webkit binaries may be absent in this environment)
+- `pnpm test:dst` runs the deterministic editor-input corpus in Chromium,
+  Firefox, and WebKit. `test:dst:solo`/`test:dst:collab` select the
+  single-document and multi-context collaboration lanes (env knobs
+  `DST_*` / `COLLAB_DST_*`; `test:dst:extensive` expands both). Failures
+  write replayable artifacts under `.artifacts/editor-dst/`; replay one
+  with `DST_REPLAY=/absolute/path/to/artifact.json pnpm test:dst`.
+- `src/tests/fixtures/dom/command-*.test.tsx` (in `pnpm test:dom`) runs the
+  real `runBeforeInputCommand` dispatch headlessly on mounted jsdom
+  editors — deletion/recovery contracts are named in
+  `docs/editor-delete-contract.md`; expected states are hand-authored,
+  never derived from production deletion code.
 - `pnpm check`, `pnpm test -- --run`, `pnpm test:dom`, `pnpm test:crdt`,
   `pnpm lint` are all green — see `docs/crdt-v14-execution-ledger.md` for
   the current lane counts

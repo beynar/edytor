@@ -16,17 +16,51 @@ const getClosestRemainingBlock = (
 	return current && !current.isRoot ? current : null;
 };
 
-export function deleteContentWithinSelection(this: Edytor, {}) {
-	const {
-		startBlock,
-		startText,
-		endBlock,
-		yStart,
-		yEnd,
-		isAtStartOfBlock,
-		isAtEndOfBlock,
-		endText
-	} = this.selection.state;
+export function deleteContentWithinSelection(
+	this: Edytor,
+	{
+		preserveStartBlock = false,
+		selection: selectionOverride
+	}: {
+		preserveStartBlock?: boolean;
+		selection?: {
+			startText: Text | null;
+			endText: Text | null;
+			yStart: number;
+			yEnd: number;
+		};
+	}
+) {
+	const selection = selectionOverride ?? this.selection.state;
+	const { startText, endText, yStart, yEnd } = selection;
+	const startBlock = selectionOverride
+		? (startText?.parent ?? null)
+		: this.selection.state.startBlock;
+	const endBlock = selectionOverride ? (endText?.parent ?? null) : this.selection.state.endBlock;
+	const isAtStartOfBlock = selectionOverride
+		? Boolean(startText && startBlock && startText === startBlock.firstText && yStart === 0)
+		: this.selection.state.isAtStartOfBlock;
+	const isAtEndOfBlock = selectionOverride
+		? Boolean(endText && endBlock && endText === endBlock.lastText && yEnd === endText.length)
+		: this.selection.state.isAtEndOfBlock;
+	const selectedBlocks = (() => {
+		if (!selectionOverride) {
+			return this.selection.state.blocks;
+		}
+		if (!startBlock) {
+			return [];
+		}
+
+		const blocks = [startBlock];
+		let current: Block | null = startBlock;
+		while (current && current !== endBlock) {
+			current = current.closestNextBlock;
+			if (current) {
+				blocks.push(current);
+			}
+		}
+		return blocks;
+	})();
 
 	if (startBlock && endBlock && startBlock === endBlock && startText && endText) {
 		startBlock.deleteContentAtRange({
@@ -36,11 +70,11 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 		return [startText, yStart] as const;
 	}
 
-	const blocksToDelete = this.selection.state.blocks.filter((block, index) => {
+	const blocksToDelete = selectedBlocks.filter((block, index) => {
 		const isFirst = index === 0;
-		const isLast = index === this.selection.state.blocks.length - 1;
+		const isLast = index === selectedBlocks.length - 1;
 		if (isFirst) {
-			return isAtStartOfBlock;
+			return isAtStartOfBlock && !preserveStartBlock;
 		} else if (isLast) {
 			return isAtEndOfBlock;
 		} else {
@@ -48,6 +82,66 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 		}
 	});
 	const deletedBlockSet = new Set(blocksToDelete);
+	const deletesStartBlock = Boolean(startBlock && deletedBlockSet.has(startBlock));
+	const keepsPartialEndBlock = Boolean(endBlock && endText && !deletedBlockSet.has(endBlock));
+	const deletedEndAncestor = endBlock
+		? blocksToDelete.find(
+				(block) =>
+					block !== endBlock &&
+					block.path.length < endBlock.path.length &&
+					block.path.every((segment, index) => endBlock.path[index] === segment)
+			)
+		: undefined;
+	if (
+		deletesStartBlock &&
+		keepsPartialEndBlock &&
+		deletedEndAncestor &&
+		deletedEndAncestor.parent &&
+		endBlock &&
+		endText
+	) {
+		const destinationParent = deletedEndAncestor.parent;
+		const destinationIndex = deletedEndAncestor.index;
+		const survivingBlocks = [endBlock];
+		let branch = endBlock;
+		while (branch !== deletedEndAncestor) {
+			const parent = branch.parent;
+			if (!parent) break;
+			survivingBlocks.push(...parent.children.slice(branch.index + 1));
+			branch = parent;
+		}
+
+		endBlock.deleteContentAtRange({
+			start: [endBlock.firstText.index, 0],
+			end: [endText.index, yEnd]
+		});
+		destinationParent.insertChildren(destinationIndex, survivingBlocks);
+		deletedEndAncestor.removeBlock();
+		for (const block of blocksToDelete) {
+			if (block === deletedEndAncestor) continue;
+			let insideDoomedSubtree = false;
+			for (let cur: Block | undefined = block.parent; cur instanceof Block; cur = cur.parent) {
+				if (cur === deletedEndAncestor) {
+					insideDoomedSubtree = true;
+					break;
+				}
+			}
+			if (!insideDoomedSubtree) block.removeBlock();
+		}
+		destinationParent.normalizeChildren();
+		return [endBlock.firstText, 0] as const;
+	}
+	if (deletesStartBlock && keepsPartialEndBlock && !deletedEndAncestor && endBlock && endText) {
+		endBlock.deleteContentAtRange({
+			start: [endBlock.firstText.index, 0],
+			end: [endText.index, yEnd]
+		});
+		for (const block of blocksToDelete.toReversed()) {
+			block.removeBlock();
+		}
+		endBlock.parent?.normalizeChildren();
+		return [endBlock.firstText, 0] as const;
+	}
 	const firstDeletedBlock = blocksToDelete[0];
 	const lastDeletedBlock = blocksToDelete.at(-1);
 	const fallbackPreviousBlock = getClosestRemainingBlock(
@@ -90,7 +184,7 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 					// Delete from offset to end — the merge tail is the JSON slice
 					// after `yEnd` of the ORIGINAL items.
 					const tail = part._sliceFrom(yEnd);
-					part.yText.delete(0, yEnd);
+					part.deleteAt(0, yEnd);
 					return tail;
 				}
 
@@ -98,21 +192,19 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 			});
 		const value = contentToMerge.map((part) => {
 			if ('type' in part) {
-				const block = new InlineBlock({
+				return new InlineBlock({
 					parent: startBlock!,
 					block: part
 				});
-				return block.yBlock;
 			} else {
-				const text = new Text({
+				return new Text({
 					parent: startBlock!,
 					content: part
 				});
-				return text.yText;
 			}
 		});
 
-		startBlock?.yContent.push(value);
+		startBlock?.insertParts(startBlock.content.length, value);
 		startBlock?.normalizeContent();
 	}
 	blocksToDelete.forEach((block, index) => {
@@ -123,11 +215,14 @@ export function deleteContentWithinSelection(this: Edytor, {}) {
 		// Relocate the end block's surviving children under the start block's
 		// parent (move, not copy — `insertBlock` rejects specs with existing
 		// ids, and moving preserves block identity for undo/collab).
-		const moving = endBlock.children.map((child) => child.yBlock);
-		startBlock?.parent?.yChildren.insert(startBlock!.index + 1, moving);
+		startBlock?.parent?.insertChildren(startBlock!.index + 1, [...endBlock.children]);
 	}
 	endBlock?.removeBlock();
 	startBlock?.parent?.normalizeChildren();
 
-	return [fallbackText, fallbackOffset] as const;
+	const liveFallbackText =
+		fallbackText && this.isVisibleBlockId(fallbackText.parent.id)
+			? fallbackText
+			: (this.root?.children[0]?.firstText ?? null);
+	return [liveFallbackText, liveFallbackText === fallbackText ? fallbackOffset : 0] as const;
 }

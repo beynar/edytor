@@ -577,6 +577,16 @@ test.describe('browser inline atomic behavior', () => {
 			await page.goto('/test/dom?scenario=inline');
 			await waitForEditorReady(page);
 			await setSelectionByTextIndex(page, textIndex, offset);
+			// Let the model derive settle before the key press — under load a
+			// stray selectionchange can still be in flight and the shift+arrow
+			// would extend from a stale anchor instead of the placed caret.
+			await expectSelection(page, {
+				startBlockPath: [1],
+				endBlockPath: [1],
+				yStart: offset,
+				yEnd: offset,
+				isCollapsed: true
+			});
 
 			await page.keyboard.press(key);
 			await expect
@@ -646,6 +656,13 @@ test.describe('browser inline atomic behavior', () => {
 				selectKey === 'Shift+ArrowRight' ? 2 : 3,
 				selectKey === 'Shift+ArrowRight' ? 'lead '.length : 0
 			);
+			await expectSelection(page, {
+				startBlockPath: [1],
+				endBlockPath: [1],
+				yStart: selectKey === 'Shift+ArrowRight' ? 'lead '.length : 0,
+				yEnd: selectKey === 'Shift+ArrowRight' ? 'lead '.length : 0,
+				isCollapsed: true
+			});
 
 			await page.keyboard.press(selectKey);
 			await expect
@@ -688,6 +705,13 @@ test.describe('browser inline atomic behavior', () => {
 			await page.goto('/test/dom?scenario=rtlInline&dir=rtl');
 			await waitForEditorReady(page);
 			await setSelectionByTextIndex(page, textIndex, offset);
+			await expectSelection(page, {
+				startBlockPath: [0],
+				endBlockPath: [0],
+				yStart: offset,
+				yEnd: offset,
+				isCollapsed: true
+			});
 
 			await page.keyboard.press(key);
 			await expect

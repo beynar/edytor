@@ -17,6 +17,8 @@ await runFixtureEntries(modules, async ({ fixture }) => {
 		autocorrect: fixture.autocorrect,
 		autocomplete: fixture.autocomplete,
 		autocapitalize: fixture.autocapitalize,
+		inputmode: fixture.inputmode,
+		enterkeyhint: fixture.enterkeyhint,
 		doc: fixture.doc,
 		awareness: fixture.awareness,
 		sync: fixture.sync,

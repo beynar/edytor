@@ -157,9 +157,19 @@ export const move = () => {
 		v14model: modelMoveOnce(100_000),
 		v13: moveOnce('v13', 100_000)
 	};
+	// WU5 correction: `measure()` used to route any numeric callback return
+	// into `remote` timing stats — returning `updateBytes` produced a bogus
+	// "remote ms" field that was actually BYTES. Bytes now go into `bytes`
+	// (labeled unit); `local` remains the rebuild+op wall time.
 	const timed = {
-		v14: measure(() => moveOnce('v14', 500).updateBytes, { warmup: 1, samples: 20 }),
-		v13: measure(() => moveOnce('v13', 500).updateBytes, { warmup: 1, samples: 20 })
+		v14: measure(() => ({ bytes: moveOnce('v14', 500).updateBytes }), {
+			warmup: 1,
+			samples: 20
+		}),
+		v13: measure(() => ({ bytes: moveOnce('v13', 500).updateBytes }), {
+			warmup: 1,
+			samples: 20
+		})
 	};
 	return {
 		'100k-payload': {
@@ -174,7 +184,7 @@ export const move = () => {
 		'timed-500-char-op': {
 			v14: timed.v14,
 			v13: timed.v13,
-			unit: 'ms per move (rebuild + op), 20-block doc'
+			unit: 'ms per move (rebuild + op), 20-block doc; `bytes` holds update-byte stats (was mislabeled `remote` in U11 artifacts)'
 		}
 	};
 };

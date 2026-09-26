@@ -92,6 +92,7 @@ export class AbstractRenderer extends ObservableV2<{
 }
 export const $renderer: s.Schema<AbstractRenderer>;
 export function rendererContentLength(renderer: AbstractRenderer | null, item: Item): number;
+export function readItemPieces(out: Array<AttributedContent<any>>, renderer: AbstractRenderer | null, item: import("../structs/Item.js").Item, scratch?: AttributedContent<any> | null): void;
 export type Attribution = s.Unwrap<typeof attributionJsonSchema>;
 import * as s from 'lib0-v14/schema';
 import { ObservableV2 } from 'lib0-v14/observable';

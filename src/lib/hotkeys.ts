@@ -5,17 +5,18 @@ import { prevent, PreventionError } from './utils.js';
 import { Block } from './block/block.svelte.js';
 import { tick } from 'svelte';
 import { clearDomSelection } from './selection/domSelection.js';
-import { navigationHotKeys } from './hotkeys/navigation.js';
-import { refreshDomAfterHistoryChange } from './history/refreshDomAfterHistoryChange.js';
 import {
-	beginHistoryCommandRestore,
-	getHistorySelectionSnapshot,
-	restoreCollapsedHistorySelectionState,
-	restoreCollapsedHistorySelection
-} from './history/historySelectionSnapshot.js';
+	moveCaretAcrossHorizontalBoundary,
+	moveToCurrentBlockBoundary,
+	navigationHotKeys
+} from './hotkeys/navigation.js';
+import { createBeforeInputSnapshot } from './events/beforeInputSnapshot.js';
+import { runBeforeInputDeleteCommand } from './events/beforeInputDeleteCommands.js';
+import { runHistoryCommand } from './events/undoRestore.js';
 import {
 	getSelectedBlocksInDocumentOrder,
-	removeSelectedBlocksForReplacement
+	removeSelectedBlocksForReplacement,
+	replaceSelectionWithCollapsedTargetSync
 } from './selection/replaceSelection.js';
 
 export type HotKey = (payload: {
@@ -128,8 +129,7 @@ const deleteSelectedInlineBlock = (event: KeyboardEvent, edytor: Edytor) => {
 
 	const location = edytor.root ? findInlineBlockLocation(edytor.root, inlineBlock.id) : null;
 	if (!location) {
-		edytor.selection.selectedInlineBlock.clear();
-		edytor.selection.inlineBlockDeletionTarget = null;
+		edytor.selection.clearInlineBlockSelection();
 		return true;
 	}
 
@@ -144,8 +144,7 @@ const deleteSelectedInlineBlock = (event: KeyboardEvent, edytor: Edytor) => {
 				: parent.firstText;
 	const fallbackOffset = previousPart instanceof Text ? previousPart.length : 0;
 
-	edytor.selection.selectedInlineBlock.clear();
-	edytor.selection.inlineBlockDeletionTarget = null;
+	edytor.selection.clearInlineBlockSelection();
 	parent.removeInlineBlock({ index });
 	void tick().then(() => edytor.selection.setAtTextOffset(fallbackText, fallbackOffset));
 
@@ -192,6 +191,21 @@ const restoreStructuralHotkeyCaret = (edytor: Edytor, text: Text, offset: number
 	edytor.selection.setCollapsedStateAtTextOffset(text, offset);
 	edytor.suppressedInputRepairSelectionTarget = { text, offset };
 	const restore = () => {
+		// Deferred re-runs must not clobber a selection the user made
+		// after the hotkey — DOM drift this repairs leaves MODEL state
+		// untouched, so a real caret move / block / inline-atom selection
+		// shows up here and aborts the restore.
+		const state = edytor.selection.state;
+		if (
+			state.startText !== text ||
+			state.yStart !== offset ||
+			!state.isCollapsed ||
+			edytor.selection.selectedBlocks.size > 0 ||
+			edytor.selection.selectedInlineBlock.size > 0 ||
+			edytor.selection.inlineBlockDeletionTarget
+		) {
+			return;
+		}
 		if (edytor.root) {
 			refreshStructuralChildren(edytor.root);
 			edytor.refreshEditorDom();
@@ -206,7 +220,17 @@ const restoreStructuralHotkeyCaret = (edytor: Edytor, text: Text, offset: number
 };
 
 const restoreStructuralHotkeyBlockSelection = (edytor: Edytor, block: Block) => {
-	const restore = () => {
+	const restore = (deferred: boolean) => {
+		// Deferred re-runs only re-apply while the block selection is
+		// still the live one — a text/inline selection made inside the
+		// window wins over this stale repair. The FIRST run installs the
+		// selection, so it is never gated.
+		if (
+			deferred &&
+			(edytor.selection.selectedBlocks.size !== 1 || !edytor.selection.selectedBlocks.has(block))
+		) {
+			return;
+		}
 		if (edytor.root) {
 			refreshStructuralChildren(edytor.root);
 			edytor.refreshEditorDom();
@@ -217,69 +241,262 @@ const restoreStructuralHotkeyBlockSelection = (edytor: Edytor, block: Block) => 
 		edytor.selection.ignoreNextSelectionChange = true;
 	};
 
-	restore();
-	void tick().then(restore);
-	setTimeout(restore, 30);
-	setTimeout(restore, STRUCTURAL_HOTKEY_DOM_REPAIR_WINDOW_MS);
+	restore(false);
+	void tick().then(() => restore(true));
+	setTimeout(() => restore(true), 30);
+	setTimeout(() => restore(true), STRUCTURAL_HOTKEY_DOM_REPAIR_WINDOW_MS);
 };
 
-const defaultHotKeys = {
-	'mod+z': ({ edytor }) => {
+/**
+ * Non-Latin keyboard-layout fallback: when `event.key` reports a
+ * non-ASCII character (Cyrillic, Greek, Arabic, …) the produced string
+ * can never match a registered combination, so we retry with the key
+ * the physical `event.code` position would produce on a US layout —
+ * the ProseMirror/Lexical convention (Mod+Б on a Russian layout is
+ * expected to be Mod+B). Only `Key*`/`Digit*` codes map onto bindable
+ * keys.
+ */
+const layoutFallbackKeys = new Map<string, string>();
+for (let index = 0; index < 26; index++) {
+	layoutFallbackKeys.set(`Key${String.fromCharCode(65 + index)}`, String.fromCharCode(97 + index));
+}
+for (let index = 0; index < 10; index++) {
+	layoutFallbackKeys.set(`Digit${index}`, `${index}`);
+}
+
+/**
+ * Returns the US-layout key for `event.code` when the event is a
+ * command chord whose produced `event.key` is non-ASCII — or null when
+ * the fallback must not apply:
+ *
+ * - ASCII `event.key` already carries the user's intent (Dvorak users
+ *   expect the produced letter, not the physical position).
+ * - Modifier-less keypresses are text input, not commands.
+ * - Ctrl+Alt is AltGr on Windows (and bare Option remaps characters on
+ *   macOS) — both legitimately produce non-ASCII text and must never
+ *   resolve to a command binding.
+ */
+const getLayoutFallbackKey = (event: KeyboardEvent) => {
+	if (event.key.length !== 1 || event.key.charCodeAt(0) < 128) {
+		return null;
+	}
+
+	if (!(event.ctrlKey || event.metaKey) || (event.ctrlKey && event.altKey)) {
+		return null;
+	}
+
+	return layoutFallbackKeys.get(event.code) ?? null;
+};
+
+const hasEditorOwnedDeleteSelection = (edytor: Edytor) =>
+	edytor.selection.selectedBlocks.size > 0 || edytor.selection.selectedInlineBlock.size > 0;
+
+type EmacsDeleteInputType =
+	| 'deleteContentBackward'
+	| 'deleteContentForward'
+	| 'deleteHardLineForward';
+
+/**
+ * Reuses the exact `beforeinput` delete-command semantics for
+ * keydown-level bindings: the command router only reads the snapshot,
+ * so a minimal InputEvent-shaped stub is sufficient.
+ */
+const runDeleteCommandByInputType = (edytor: Edytor, inputType: EmacsDeleteInputType) => {
+	const snapshot = createBeforeInputSnapshot(
+		edytor,
+		{ inputType, data: null, dataTransfer: null } as InputEvent,
+		null
+	);
+	void runBeforeInputDeleteCommand(edytor, snapshot);
+};
+
+const handleUndoHotkey: HotKey = ({ edytor }) => {
+	prevent(() => {
+		suppressHistoryHotkeyDomDrift(edytor);
+		void runHistoryCommand(edytor, 'undo', { queueSelectionSnapshot: true });
+	});
+};
+
+const handleRedoHotkey: HotKey = ({ edytor, prevent }) => {
+	prevent(() => {
+		suppressHistoryHotkeyDomDrift(edytor);
+		void runHistoryCommand(edytor, 'redo', { queueSelectionSnapshot: true });
+	});
+};
+
+const handleArrowUpHotkey: HotKey = ({ edytor, prevent }) => {
+	const selectedBlocks = edytor.selection.selectedBlocks;
+	if (selectedBlocks.size === 1) {
 		prevent(() => {
-			suppressHistoryHotkeyDomDrift(edytor);
-			const stackItem = edytor.undoManager.undoStack.at(-1);
-			const selectionSnapshot = getHistorySelectionSnapshot(stackItem);
-			const shouldRestoreSelection = beginHistoryCommandRestore(edytor);
-			edytor.selection.queueNextUndoSelectionSnapshot();
-			edytor.undoManager.undo();
-			restoreCollapsedHistorySelectionState(edytor, selectionSnapshot, shouldRestoreSelection);
-			void refreshDomAfterHistoryChange(edytor, {
-				restoreSelection: false,
-				shouldRestoreSelection
-			}).then(() =>
-				restoreCollapsedHistorySelection(edytor, selectionSnapshot, shouldRestoreSelection)
+			const selectedBlock = selectedBlocks.values().next().value as Block;
+			let prevBlock = selectedBlock.closestPreviousBlock;
+
+			// If the block is inside an island, we will select the island root
+			while (prevBlock?.insideIsland) {
+				if (prevBlock.parent instanceof Block) {
+					prevBlock = prevBlock.parent;
+				}
+			}
+			if (prevBlock && prevBlock instanceof Block) {
+				edytor.selection.selectBlocks(prevBlock);
+				edytor.selection.focusBlocks();
+			}
+		});
+	}
+};
+
+const handleArrowDownHotkey: HotKey = ({ edytor, prevent }) => {
+	const selectedBlocks = edytor.selection.selectedBlocks;
+	if (selectedBlocks.size === 1) {
+		prevent(() => {
+			const selectedBlock = selectedBlocks.values().next().value as Block;
+			let nextBlock = selectedBlock.definition.island
+				? selectedBlock.nextBlock
+				: selectedBlock.closestNextBlock;
+
+			if (nextBlock && nextBlock instanceof Block) {
+				edytor.selection.selectBlocks(nextBlock);
+				edytor.selection.focusBlocks();
+			}
+		});
+	}
+};
+
+/**
+ * macOS Emacs/Cocoa text bindings. Bare `ctrl+` combinations only ever
+ * resolve on Apple platforms (see `HotKeys.combination`), so this table
+ * is intrinsically platform-gated — on Windows/Linux these physical
+ * chords resolve to `mod+` bindings instead.
+ *
+ * Skipped on purpose:
+ * - `ctrl+t` (transpose-chars): the editor has no transpose operation
+ *   and no browser fires `insertTranspose` reliably enough to mirror.
+ * - `ctrl+y` (yank): requires a kill ring the editor does not maintain.
+ */
+const macEmacsHotKeys = {
+	'ctrl+h': ({ event, edytor, prevent }) => {
+		if (hasEditorOwnedDeleteSelection(edytor)) {
+			defaultHotKeys.backspace({ event, edytor, prevent });
+			return;
+		}
+		if (!edytor.selection.state.startText) {
+			return;
+		}
+		prevent(() => {
+			edytor.undoManager.stopCapturing();
+			runDeleteCommandByInputType(edytor, 'deleteContentBackward');
+		});
+	},
+	'ctrl+d': ({ event, edytor, prevent }) => {
+		if (hasEditorOwnedDeleteSelection(edytor)) {
+			defaultHotKeys.backspace({ event, edytor, prevent });
+			return;
+		}
+		if (!edytor.selection.state.startText) {
+			return;
+		}
+		prevent(() => {
+			edytor.undoManager.stopCapturing();
+			runDeleteCommandByInputType(edytor, 'deleteContentForward');
+		});
+	},
+	'ctrl+k': ({ event, edytor, prevent }) => {
+		if (hasEditorOwnedDeleteSelection(edytor)) {
+			defaultHotKeys.backspace({ event, edytor, prevent });
+			return;
+		}
+		const { startText, isCollapsed, isAtEndOfBlock } = edytor.selection.state;
+		if (!startText) {
+			return;
+		}
+		prevent(() => {
+			edytor.undoManager.stopCapturing();
+			// Cocoa kill-line deletes to the paragraph end — and at the end
+			// kills the paragraph break itself, joining the next block.
+			runDeleteCommandByInputType(
+				edytor,
+				isCollapsed && isAtEndOfBlock ? 'deleteContentForward' : 'deleteHardLineForward'
 			);
 		});
 	},
-	'mod+shift+z': ({ edytor, prevent }) => {
+	'ctrl+o': ({ edytor, prevent }) => {
+		if (hasEditorOwnedDeleteSelection(edytor)) {
+			return;
+		}
+		const { startText, yStart, isCollapsed } = edytor.selection.state;
+		if (!startText) {
+			return;
+		}
 		prevent(() => {
-			suppressHistoryHotkeyDomDrift(edytor);
-			const stackItem = edytor.undoManager.redoStack.at(-1);
-			const selectionSnapshot = getHistorySelectionSnapshot(stackItem, { preferRestore: true });
-			const shouldRestoreSelection = beginHistoryCommandRestore(edytor);
-			const selectedBlocks = getSelectedBlocksInDocumentOrder(edytor);
-			const redoFallbackBlock =
-				selectedBlocks.at(0)?.closestPreviousBlock ?? selectedBlocks.at(-1)?.closestNextBlock;
-			edytor.selection.queueNextUndoSelectionSnapshot();
-			edytor.undoManager.redo();
-			const fallbackText = redoFallbackBlock?.firstEditableText;
-			if (fallbackText) {
-				edytor.selection.setCollapsedStateAtTextOffset(fallbackText, fallbackText.length);
-			} else {
-				restoreCollapsedHistorySelectionState(edytor, selectionSnapshot, shouldRestoreSelection);
+			edytor.undoManager.stopCapturing();
+			const target = isCollapsed
+				? { text: startText, offset: yStart }
+				: replaceSelectionWithCollapsedTargetSync(edytor);
+			if (!target) {
+				return;
 			}
-			void refreshDomAfterHistoryChange(edytor, {
-				restoreSelection: false,
-				shouldRestoreSelection
-			}).then(() => {
-				if (!shouldRestoreSelection()) {
-					return;
-				}
-
-				if (fallbackText) {
-					void edytor.selection.setAtTextOffset(fallbackText, fallbackText.length);
-					return;
-				}
-
-				void restoreCollapsedHistorySelection(edytor, selectionSnapshot, shouldRestoreSelection);
-			});
+			// Emacs open-line: insert a line break at the caret but keep the
+			// caret *before* it. When block normalization splits the block on
+			// the break (code lines), "before the break" is the source block's
+			// trailing edge — the same shape `insertLineBreak` computes.
+			const sourceBlock = target.text.parent;
+			const sourceParent = sourceBlock.parent;
+			const sourceIndex = sourceBlock.index;
+			const sourceSiblingCount = sourceParent?.children.length ?? 0;
+			target.text.insertText({ value: '\n', start: target.offset, end: target.offset });
+			sourceBlock.normalizeContent();
+			const normalizedNextBlock = sourceParent?.children[sourceIndex + 1];
+			const splitOnBreak =
+				sourceParent &&
+				sourceParent.children.length > sourceSiblingCount &&
+				normalizedNextBlock?.type === sourceBlock.type;
+			const caretText = splitOnBreak ? (sourceBlock.lastText ?? target.text) : target.text;
+			const caretOffset = caretText === target.text ? target.offset : caretText.length;
+			void edytor.selection.setAtTextOffset(caretText, caretOffset);
 		});
+	},
+	'ctrl+a': ({ edytor, prevent }) => {
+		if (edytor.selection.state.startText) {
+			prevent(() => moveToCurrentBlockBoundary(edytor, 'start', false));
+		}
+	},
+	'ctrl+e': ({ edytor, prevent }) => {
+		if (edytor.selection.state.startText) {
+			prevent(() => moveToCurrentBlockBoundary(edytor, 'end', false));
+		}
+	},
+	'ctrl+b': ({ edytor, prevent }) => {
+		// Logical document-order motion (Emacs), not visual — so no RTL flip.
+		if (moveCaretAcrossHorizontalBoundary(edytor, 'backward', false)) {
+			prevent();
+		}
+	},
+	'ctrl+f': ({ edytor, prevent }) => {
+		if (moveCaretAcrossHorizontalBoundary(edytor, 'forward', false)) {
+			prevent();
+		}
+	},
+	'ctrl+p': handleArrowUpHotkey,
+	'ctrl+n': handleArrowDownHotkey
+} satisfies Partial<Record<HotKeyCombination, HotKey>>;
+
+const defaultHotKeys = {
+	'mod+z': handleUndoHotkey,
+	'mod+shift+z': handleRedoHotkey,
+	'mod+y': (payload) => {
+		// Windows/Linux Ctrl+Y redo convention. On Apple platforms Cmd+Y is
+		// not the redo convention (and bare Ctrl+Y is Cocoa "yank", which we
+		// intentionally leave unbound) — keep both native.
+		if (payload.edytor.hotKeys.isMac) {
+			return;
+		}
+		handleRedoHotkey(payload);
 	},
 	'mod+enter': ({ edytor, prevent }) => {
 		prevent(() => {
 			edytor.undoManager.stopCapturing();
 			const newBlock = edytor.selection.state.startText?.parent.splitBlock({
-				index: edytor.selection.state.startText?.yText.length,
+				index: edytor.selection.state.startText?.length,
 				text: edytor.selection.state.startText
 			});
 			if (newBlock && newBlock.content[0] instanceof Text) {
@@ -334,6 +551,13 @@ const defaultHotKeys = {
 					edytor.selection.addBlockToSelection(prevBlock);
 				}
 			});
+			return;
+		}
+		// No block selection: native vertical extension is engine-defined
+		// (Firefox can collapse at the anchor or drop the focus on stray
+		// boundary text nodes) — own the semantic deterministically.
+		if (edytor.selection.extendSelectionVertically('up')) {
+			prevent();
 		}
 	},
 	'shift+arrowdown': ({ edytor, prevent }) => {
@@ -361,44 +585,15 @@ const defaultHotKeys = {
 					edytor.selection.addBlockToSelection(nextBlock);
 				}
 			});
+			return;
+		}
+		// See shift+arrowup — deterministic cross-engine extension.
+		if (edytor.selection.extendSelectionVertically('down')) {
+			prevent();
 		}
 	},
-	arrowup: ({ edytor, prevent }) => {
-		const selectedBlocks = edytor.selection.selectedBlocks;
-		if (selectedBlocks.size === 1) {
-			prevent(() => {
-				const selectedBlock = selectedBlocks.values().next().value as Block;
-				let prevBlock = selectedBlock.closestPreviousBlock;
-
-				// If the block is inside an island, we will select the island root
-				while (prevBlock?.insideIsland) {
-					if (prevBlock.parent instanceof Block) {
-						prevBlock = prevBlock.parent;
-					}
-				}
-				if (prevBlock && prevBlock instanceof Block) {
-					edytor.selection.selectBlocks(prevBlock);
-					edytor.selection.focusBlocks();
-				}
-			});
-		}
-	},
-	arrowdown: ({ edytor, prevent }) => {
-		const selectedBlocks = edytor.selection.selectedBlocks;
-		if (selectedBlocks.size === 1) {
-			prevent(() => {
-				const selectedBlock = selectedBlocks.values().next().value as Block;
-				let nextBlock = selectedBlock.definition.island
-					? selectedBlock.nextBlock
-					: selectedBlock.closestNextBlock;
-
-				if (nextBlock && nextBlock instanceof Block) {
-					edytor.selection.selectBlocks(nextBlock);
-					edytor.selection.focusBlocks();
-				}
-			});
-		}
-	},
+	arrowup: handleArrowUpHotkey,
+	arrowdown: handleArrowDownHotkey,
 	tab: ({ edytor, prevent }) => {
 		prevent(() => {
 			suppressStructuralHotkeyDomDrift(edytor);
@@ -454,7 +649,7 @@ const defaultHotKeys = {
 				if (firstSelectedBlock.firstEditableText) {
 					edytor.selection.setAtTextOffset(
 						firstSelectedBlock.firstEditableText,
-						firstSelectedBlock.firstEditableText.yText.length
+						firstSelectedBlock.firstEditableText.length
 					);
 				}
 			});
@@ -491,8 +686,9 @@ const defaultHotKeys = {
 						return;
 					}
 
+					edytor.edytor.expectInternalFocus();
 					edytor.edytor.node?.focus();
-					void edytor.selection.setAtTextOffset(text, text.yText.length);
+					void edytor.selection.setAtTextOffset(text, text.length);
 				};
 
 				void tick().then(focusFallbackBlock);
@@ -502,7 +698,8 @@ const defaultHotKeys = {
 	},
 	delete: ({ event, edytor, prevent }) => {
 		defaultHotKeys.backspace({ event, edytor, prevent });
-	}
+	},
+	...macEmacsHotKeys
 } satisfies Partial<Record<HotKeyCombination, HotKey>>;
 
 // Features:
@@ -560,19 +757,26 @@ export class HotKeys {
 		return orderedParts.join('+');
 	};
 
-	private combination = (e: KeyboardEvent) => {
-		const rawKey = e.key.toLowerCase();
+	private combination = (e: KeyboardEvent, keyOverride?: string) => {
+		const rawKey = keyOverride ?? e.key.toLowerCase();
 		const isReverseTab = reverseTabKeys.has(rawKey);
 		const key = isReverseTab ? 'tab' : rawKey;
 		let combination = '';
 
-		// Is modifier
-		if (e.ctrlKey || e.metaKey) {
+		// `mod` is Cmd on Apple platforms and Ctrl elsewhere. On Apple
+		// platforms bare Ctrl stays distinct (`ctrl+`) so the macOS
+		// Emacs-style chords and explicit Ctrl bindings remain reachable;
+		// `mod+ctrl` still covers Cmd+Ctrl chords there.
+		if (e.metaKey || (e.ctrlKey && !this.isMac)) {
 			combination += 'mod+';
 		}
 		// Is alt
 		if (e.altKey) {
 			combination += 'alt+';
+		}
+		// Is bare ctrl (Apple only — elsewhere Ctrl already folded into `mod`)
+		if (e.ctrlKey && this.isMac) {
+			combination += 'ctrl+';
 		}
 		// Is shift
 		if (e.shiftKey || isReverseTab) {
@@ -594,21 +798,34 @@ export class HotKeys {
 			return false;
 		}
 
-		const combination = this.combination(e);
-		const hotKeys = this.hotkeys.get(combination);
-		if (!hotKeys?.length) return false;
-		try {
-			hotKeys.forEach((hotKey) => {
-				hotKey({ event: e, edytor: this.edytor, prevent });
-			});
-			return false;
-		} catch (error) {
-			if (error instanceof PreventionError) {
-				e.preventDefault();
-				e.stopPropagation();
-				error.cb?.();
-			}
-			return true;
+		const combinations = [this.combination(e)];
+		// Non-Latin layout fallback: a non-ASCII `event.key` can never match
+		// a registered combination — retry via the physical `event.code`
+		// position (Mod+Б → Mod+B). The produced key takes precedence: a
+		// direct binding for the actual character wins over the fallback,
+		// and a direct binding that ran without preventing still lets the
+		// fallback fire.
+		const fallbackKey = getLayoutFallbackKey(e);
+		if (fallbackKey) {
+			combinations.push(this.combination(e, fallbackKey));
 		}
+
+		for (const combination of combinations) {
+			const hotKeys = this.hotkeys.get(combination);
+			if (!hotKeys?.length) continue;
+			try {
+				hotKeys.forEach((hotKey) => {
+					hotKey({ event: e, edytor: this.edytor, prevent });
+				});
+			} catch (error) {
+				if (error instanceof PreventionError) {
+					e.preventDefault();
+					e.stopPropagation();
+					error.cb?.();
+				}
+				return true;
+			}
+		}
+		return false;
 	};
 }

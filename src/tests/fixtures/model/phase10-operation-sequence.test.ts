@@ -7,6 +7,7 @@ import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
 import {
 	createOperationEdytor,
 	expectBlockInvariantSnapshot,
+	expectTextValue,
 	removeIds
 } from '../../test.utils.js';
 import { emptyFixture } from '../helpers/model.js';
@@ -151,17 +152,17 @@ describe('phase 10 deterministic operation sequence checks', () => {
 		movedText.markText({ mark: 'bold', start: 0, end: 3, toggle: true });
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
-		expect(movedText.value).toEqual([{ text: 'Eps', marks: { bold: true } }, { text: 'ilon' }]);
+		expectTextValue(movedText, [{ text: 'Eps', marks: { bold: true } }, { text: 'ilon' }]);
 
 		const undoResult = edytor.undoManager.undo();
 		assertSequenceProperty(edytor);
 		expect(undoResult).not.toBeNull();
-		expect(getText(root.children[0], 'undo mark').value).toEqual([{ text: 'Epsilon' }]);
+		expectTextValue(getText(root.children[0], 'undo mark'), [{ text: 'Epsilon' }]);
 
 		const redoResult = edytor.undoManager.redo();
 		assertSequenceProperty(edytor);
 		expect(redoResult).not.toBeNull();
-		expect(getText(root.children[0], 'redo mark').value).toEqual([
+		expectTextValue(getText(root.children[0], 'redo mark'), [
 			{ text: 'Eps', marks: { bold: true } },
 			{ text: 'ilon' }
 		]);

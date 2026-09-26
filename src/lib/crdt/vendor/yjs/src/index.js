@@ -21,6 +21,7 @@ export { logUpdate, logUpdateV2, decodeUpdate, decodeUpdateV2, encodeStateVector
 export { YEvent, getPathTo } from './utils/YEvent.js'
 export { AttributionsRenderer, createAttributionsRenderer, AbstractRenderer, createDiffRenderer, DiffRenderer, createSnapshotRenderer, SnapshotRenderer, $renderer } from './utils/Renderer.js'
 export { diffDocsToDelta } from './utils/delta-helpers.js'
+export { RangeCursor } from './utils/RangeCursor.js'
 export { createRelativePositionsFromDeltaPositions, createDeltaPositionsFromRelativePositions, createRelativePositionFromDeltaPosition, createDeltaPositionFromRelativePosition } from './utils/position-helpers.js'
 export { YNode as Node, getNodeChildren, nodeMapGetSnapshot, nodeMapGetAllSnapshot, $node, $nodeAny } from './ynode.js'
 export { AbstractStruct } from './structs/AbstractStruct.js'

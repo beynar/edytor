@@ -8,6 +8,13 @@
  * would silently wire a second, wire-incompatible engine into the shipped
  * tree. `import type` is exempt — erased at compile time. The vendored
  * engine itself (`vendor/**`) is excluded: it IS the engine.
+ *
+ * The scan covers `.ts`, `.js` and `.svelte.ts` — `engine.js` is the ONE
+ * legitimate runtime bridge into `vendor/yjs/src` (the injected engine
+ * module every binding receives), so the deep-import assertion exempts
+ * exactly that file; any OTHER file reaching into `vendor/yjs/src` is a
+ * boundary violation (a planted `.js` offender is caught the same way a
+ * `.ts` one is).
  */
 // @ts-nocheck -- tests read package files directly (excluded lane).
 import { describe, expect, test } from 'vitest';
@@ -17,14 +24,17 @@ import { fileURLToPath } from 'node:url';
 
 const CRDT_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../lib/crdt');
 
-const collectTs = (dir) => {
+/** The single sanctioned runtime bridge into the vendored engine source. */
+const ENGINE_BRIDGE = join(CRDT_ROOT, 'engine.js');
+
+const collectSources = (dir) => {
 	const out = [];
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
 		const p = join(dir, entry.name);
 		if (entry.isDirectory()) {
 			if (entry.name === 'vendor') continue; // the engine itself — excluded
-			out.push(...collectTs(p));
-		} else if (/\.ts$/.test(entry.name)) {
+			out.push(...collectSources(p));
+		} else if (/\.(ts|js|svelte\.ts)$/.test(entry.name)) {
 			out.push(p);
 		}
 	}
@@ -47,9 +57,12 @@ const runtimeSpecifiers = (src) => {
 };
 
 describe('engine boundary: no v13 runtime imports under src/lib/crdt', () => {
-	const files = collectTs(CRDT_ROOT);
+	const files = collectSources(CRDT_ROOT);
 	test('the scan actually covers the CRDT subtree', () => {
 		expect(files.length).toBeGreaterThan(10);
+	});
+	test('the scan covers .js sources (the engine bridge is scanned)', () => {
+		expect(files).toContain(ENGINE_BRIDGE);
 	});
 	for (const file of files) {
 		test(relative(CRDT_ROOT, file), () => {
@@ -60,6 +73,9 @@ describe('engine boundary: no v13 runtime imports under src/lib/crdt', () => {
 	}
 	test('nothing outside vendor/ runtime-imports the vendored engine source', () => {
 		for (const file of files) {
+			// `engine.js` IS the bridge — the one file whose whole job is a
+			// deep vendor import. Everything else must go through `bind*(Y)`.
+			if (file === ENGINE_BRIDGE) continue;
 			const specs = runtimeSpecifiers(readFileSync(file, 'utf8'));
 			const bad = specs.filter((s) => s != null && /vendor\/yjs\/src/.test(s));
 			expect(bad, `${file} runtime-imports vendored engine JS: ${bad.join(', ')}`).toEqual([]);

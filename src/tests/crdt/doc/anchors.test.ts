@@ -93,6 +93,24 @@ describe('anchorAt/resolveAnchor — positions, affinity, boundaries', () => {
 		const revived = JSON.parse(JSON.stringify(anchor));
 		expect(ed.resolveAnchor(revived)).toEqual({ blockId: BOOTSTRAP_BLOCK_ID, offset: 3 });
 	});
+
+	it('a split-start anchor keeps its owner facet through JSON round-trip', () => {
+		const { ed } = seeded();
+		ed.insertText(BOOTSTRAP_BLOCK_ID, 0, 'alphaHello');
+		ed.splitBlock(BOOTSTRAP_BLOCK_ID, 5, 'tail');
+		const anchor = ed.anchorAt('tail', 0, 'left');
+		expect(anchor?.o).toBe('tail');
+		const revived = JSON.parse(JSON.stringify(anchor));
+		expect(revived?.o).toBe('tail');
+		// The owner facet must survive serialization — an awareness
+		// round-trip that dropped `o` would re-expose the adjacent-block
+		// migration (the receiver re-resolves into BOOTSTRAP's stream).
+		expect(ed.resolveAnchor(revived)).toEqual({ blockId: 'tail', offset: 0 });
+		// Older anchors have no `o` — they must still resolve (compatible
+		// fallback via generic atom-following).
+		const { o: _dropped, ...legacy } = revived!;
+		expect(ed.resolveAnchor(legacy)).toBeTruthy();
+	});
 });
 
 describe('anchor resolution through structure', () => {
@@ -240,5 +258,181 @@ describe('anchors under concurrency (two replicas)', () => {
 		e2.mergeBackward('b2');
 		push(d2, d1);
 		expect(e1.resolveAnchor(caret)).toEqual({ blockId: BOOTSTRAP_BLOCK_ID, offset: 4 });
+	});
+
+	it('a caret at a split-block start resolves to its own block, not the seam neighbour', () => {
+		const { ed } = seeded();
+		ed.insertText(BOOTSTRAP_BLOCK_ID, 0, 'alphaHello');
+		ed.splitBlock(BOOTSTRAP_BLOCK_ID, 5, 'tail');
+		// tail's stream is a mid-backing slice of the shared text — the
+		// left neighbour atom belongs to BOOTSTRAP. A plain left anchor
+		// would encode the seam's left facet; the minted anchor must carry
+		// tail's own facet (a === -2 marker on a left-sticky binding).
+		const caret = ed.anchorAt('tail', 0, 'left');
+		expect(caret?.a.a).toBe(-2);
+		expect(ed.resolveAnchor(caret)).toEqual({ blockId: 'tail', offset: 0 });
+	});
+
+	it('a split-start caret keeps left insert-affinity — a remote insert stays to its right', () => {
+		const { d1, d2, e1, e2, push } = pair();
+		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'alphaHello');
+		e1.splitBlock(BOOTSTRAP_BLOCK_ID, 5, 'tail');
+		push(d1, d2);
+		const caret = e1.anchorAt('tail', 0, 'left');
+		e2.insertText('tail', 0, 'n'); // remote peer types at the same gap
+		push(d2, d1);
+		// The caret does NOT absorb the insert — stays before 'n' at 0.
+		// (Right-binding here resolved to 1 — the composition corruption.)
+		expect(e1.resolveAnchor(caret)).toEqual({ blockId: 'tail', offset: 0 });
+	});
+
+	it('a split-start caret stays in its block through an adjacent-block append', () => {
+		const { d1, d2, e1, e2, push } = pair();
+		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'alphaHello');
+		e1.splitBlock(BOOTSTRAP_BLOCK_ID, 5, 'tail');
+		push(d1, d2);
+		const caret = e1.anchorAt('tail', 0, 'left');
+		expect(caret?.a.a).toBe(-2);
+		// The LEFT neighbour appends — the atom now occupying the seam gap
+		// is owned by BOOTSTRAP, not tail. The caret must not migrate into
+		// BOOTSTRAP's stream (would land alphaX@5 and type 'Z' there).
+		e2.insertText(BOOTSTRAP_BLOCK_ID, 5, 'X');
+		push(d2, d1);
+		expect(e1.resolveAnchor(caret)).toEqual({ blockId: 'tail', offset: 0 });
+		// Typing at the resolved caret produces alphaX / ZHello — the
+		// document split order, not alphaZX / Hello.
+		const at = e1.resolveAnchor(caret);
+		e1.insertText(at!.blockId, at!.offset, 'Z');
+		expect(textOf(e1, BOOTSTRAP_BLOCK_ID)).toBe('alphaX');
+		expect(textOf(e1, 'tail')).toBe('ZHello');
+	});
+
+	it('a split-start caret follows its facet into a remote merge', () => {
+		const { d1, d2, e1, e2, push } = pair();
+		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'alphaHello');
+		e1.splitBlock(BOOTSTRAP_BLOCK_ID, 5, 'tail');
+		push(d1, d2);
+		const caret = e1.anchorAt('tail', 0, 'left');
+		e2.mergeBackward('tail');
+		push(d2, d1);
+		// 'Hello' now displays inside BOOTSTRAP — the caret's facet atoms
+		// moved, so the position follows into the claiming block at the
+		// same gap (between 'a' and 'H').
+		expect(e1.resolveAnchor(caret)).toEqual({ blockId: BOOTSTRAP_BLOCK_ID, offset: 5 });
+	});
+
+	it('a split-start caret follows its facet through a remote mergeForward', () => {
+		const { d1, d2, e1, e2, push } = pair();
+		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'alphaHello');
+		e1.splitBlock(BOOTSTRAP_BLOCK_ID, 5, 'tail');
+		push(d1, d2);
+		const caret = e1.anchorAt('tail', 0, 'left');
+		// mergeForward(alpha) pulls tail INTO alpha — `o` dies, the caret
+		// follows its atoms into the surviving block at the seam.
+		e2.mergeForward(BOOTSTRAP_BLOCK_ID);
+		push(d2, d1);
+		expect(e1.resolveAnchor(caret)).toEqual({ blockId: BOOTSTRAP_BLOCK_ID, offset: 5 });
+	});
+
+	it('a split-start caret survives deletion of the predecessor’s last atom', () => {
+		const { d1, d2, e1, e2, push } = pair();
+		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'alphaHello');
+		e1.splitBlock(BOOTSTRAP_BLOCK_ID, 5, 'tail');
+		push(d1, d2);
+		const caret = e1.anchorAt('tail', 0, 'left');
+		// The -2 anchor binds alpha's LAST atom — deleting it leaves the
+		// bound atom dead; resolution must still land inside tail's
+		// stream at its start (gap before 'H', now backing index 4).
+		e2.deleteText(BOOTSTRAP_BLOCK_ID, 4, 1);
+		push(d2, d1);
+		expect(e1.resolveAnchor(caret)).toEqual({ blockId: 'tail', offset: 0 });
+		const at = e1.resolveAnchor(caret)!;
+		e1.insertText(at.blockId, at.offset, 'Z');
+		expect(textOf(e1, BOOTSTRAP_BLOCK_ID)).toBe('alph');
+		expect(textOf(e1, 'tail')).toBe('ZHello');
+	});
+
+	it('a split-start caret survives deletion of the whole predecessor block', () => {
+		const { d1, d2, e1, e2, push } = pair();
+		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'alphaHello');
+		e1.splitBlock(BOOTSTRAP_BLOCK_ID, 5, 'tail');
+		push(d1, d2);
+		const caret = e1.anchorAt('tail', 0, 'left');
+		// Every atom the anchor bound is dead; 'Hello' slides to backing
+		// [0,5) and tail still owns it — the caret stays at tail@0.
+		e2.deleteBlock(BOOTSTRAP_BLOCK_ID);
+		push(d2, d1);
+		expect(e1.resolveAnchor(caret)).toEqual({ blockId: 'tail', offset: 0 });
+		const at = e1.resolveAnchor(caret)!;
+		e1.insertText(at.blockId, at.offset, 'Z');
+		expect(textOf(e1, 'tail')).toBe('ZHello');
+	});
+
+	it('a split-start caret stays in its block when the block is moved', () => {
+		const { ed } = seeded();
+		ed.insertText(BOOTSTRAP_BLOCK_ID, 0, 'alphaHello');
+		ed.splitBlock(BOOTSTRAP_BLOCK_ID, 5, 'tail');
+		const caret = ed.anchorAt('tail', 0, 'left');
+		// Moving the OWNED block does not move its atoms' ownership —
+		// display order decouples from backing order; the seam caret is
+		// still the start of tail's stream.
+		expect(ed.moveBlock('tail', { parent: null, index: 0 })).toBe(true);
+		expect(ed.resolveAnchor(caret)).toEqual({ blockId: 'tail', offset: 0 });
+	});
+
+	it('a split-start caret lands in its own block when the destination empties in place', () => {
+		const { d1, d2, e1, e2, push } = pair();
+		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'alphaHello');
+		e1.splitBlock(BOOTSTRAP_BLOCK_ID, 5, 'tail');
+		push(d1, d2);
+		const caret = e1.anchorAt('tail', 0, 'left');
+		// tail's atoms all die but the BLOCK survives (empty paragraph) —
+		// the caret must not migrate into alpha's surviving content
+		// (alpha@5 would type into the previous block).
+		e2.deleteText('tail', 0, 5);
+		push(d2, d1);
+		expect(e1.resolveAnchor(caret)).toEqual({ blockId: 'tail', offset: 0 });
+	});
+});
+
+describe('history independence — direct vs split construction', () => {
+	// Equivalent VISIBLE structures reached through different histories
+	// must behave equivalently under sequential edits: `alpha`/`Hello`
+	// built as two direct siblings versus one paragraph split at the
+	// seam. Identity is matched by an explicit mapping (bootstrap ↔
+	// bootstrap, tail ↔ d2) — not by CRDT internals.
+	it('a seam caret behaves identically whether its block was split or built directly', () => {
+		const direct = seeded();
+		direct.ed.insertBlock({ parent: null, index: 1 }, { id: 'd2', type: 'paragraph' });
+		direct.ed.insertText(BOOTSTRAP_BLOCK_ID, 0, 'alpha');
+		direct.ed.insertText('d2', 0, 'Hello');
+
+		const split = seeded();
+		split.ed.insertText(BOOTSTRAP_BLOCK_ID, 0, 'alphaHello');
+		split.ed.splitBlock(BOOTSTRAP_BLOCK_ID, 5, 'tail');
+
+		const map: Record<string, string> = { tail: 'd2' };
+		// Same intent, different encodings: the direct doc's block starts
+		// its OWN backing (plain left anchor); the split doc's stream
+		// starts mid-backing (-2 facet anchor carrying `o`).
+		const directCaret = direct.ed.anchorAt('d2', 0, 'left');
+		const splitCaret = split.ed.anchorAt('tail', 0, 'left');
+		expect(directCaret?.a.a).toBe(-1);
+		expect(splitCaret?.a.a).toBe(-2);
+
+		// Sequential edit — append into the predecessor's end on both.
+		direct.ed.insertText(BOOTSTRAP_BLOCK_ID, 5, 'X');
+		split.ed.insertText(BOOTSTRAP_BLOCK_ID, 5, 'X');
+		const dPos = direct.ed.resolveAnchor(directCaret)!;
+		const sPos = split.ed.resolveAnchor(splitCaret)!;
+		expect(map[sPos.blockId]).toBe(dPos.blockId);
+		expect(sPos.offset).toBe(dPos.offset);
+
+		// Follow-up input lands at the same semantic destination.
+		direct.ed.insertText(dPos.blockId, dPos.offset, 'Z');
+		split.ed.insertText(sPos.blockId, sPos.offset, 'Z');
+		expect(textOf(direct.ed, 'd2')).toBe('ZHello');
+		expect(textOf(split.ed, 'tail')).toBe(textOf(direct.ed, 'd2'));
+		expect(textOf(split.ed, BOOTSTRAP_BLOCK_ID)).toBe(textOf(direct.ed, BOOTSTRAP_BLOCK_ID));
 	});
 });

@@ -3,101 +3,35 @@
 	// (the component + its bindable instance type) — an unaliased import
 	// collides there (TS2440 for bundler-resolution consumers).
 	import { Edytor as EdytorClass, useEdytor, type Snippets } from '../edytor.svelte.js';
-	import type { Awareness, YDoc } from '../crdt/index.js';
+	import type { Awareness, EdytorDocument, YDoc } from '../crdt/index.js';
 	import type { EdytorSync } from '$lib/collaboration/index.js';
 	export { EdytorClass as EdytorContext, useEdytor };
 	import type { Plugin } from '$lib/plugins.js';
 	import type { Block as BlockType } from '$lib/block/block.svelte.js';
+	import {
+		blockHandlesPlugin,
+		createBlockHandlesPlugin,
+		isBlockHandlesPlugin,
+		type BlockHandlesOptions
+	} from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 	const defaultValue: JSONDoc = {
-		children: [
-			// {
-			// 	type: 'paragraph',
-			// 	content: [{ text: 'One', marks: { bold: true } }],
-			// 	children: [
-			// 		{
-			// 			type: 'paragraph',
-			// 			content: [{ text: 'Two', marks: { bold: true } }],
-			// 			children: [
-			// 				{
-			// 					type: 'paragraph',
-			// 					content: [{ text: 'Three', marks: { bold: true } }]
-			// 				}
-			// 			]
-			// 		}
-			// 	]
-			// },
-
-			// {
-			// 	type: 'image',
-			// 	content: [{ text: 'Caption' }]
-			// },
-			// {
-			// 	type: 'paragraph',
-			// 	content: [
-			// 		{ text: 'One', marks: { bold: true } },
-			// 		{ text: ' Two', marks: { italic: true } }
-			// 	]
-			// },
-			// {
-			// 	type: 'paragraph',
-			// 	content: [{ text: '' }]
-			// },
-			// {
-			// 	type: 'paragraph',
-			// 	content: [
-			// 		{ text: 'Three', marks: { italic: true } },
-			// 		{ text: ' Four', marks: { bold: true } },
-			// 		{ text: '' }
-			// 	]
-			// },
-
-			// {
-			// 	type: 'paragraph',
-			// 	content: [
-			// 		{ text: 'Hello', marks: { bold: true } },
-			// 		{ text: '', marks: { void: true } },
-			// 		{ text: ' World', marks: { bold: true } }
-			// 	]
-			// },
-			{
-				type: 'paragraph',
-				content: [
-					{ text: 'hello', marks: { bold: true } },
-					{
-						type: 'mention'
-					},
-					{ text: 'World', marks: { bold: true } },
-					{
-						type: 'mention'
-					},
-					{ text: 'Prout', marks: { bold: true } }
-				],
-
-				children: [
-					{
-						type: 'paragraph',
-						content: [{ text: 'One', marks: { bold: true } }],
-						children: [
-							{
-								type: 'paragraph',
-								content: [{ text: 'Two', marks: { bold: true } }]
-							}
-						]
-					}
-				]
-			},
-			{
-				type: 'code',
-				content: [{ text: 'caption yo' }],
-				children: [{ type: 'codeLine', content: [{ text: '\t\tconsole.log("hello")' }] }]
-			}
-		]
+		// Empty document — the facade seeds the canonical bootstrap block of
+		// the document's `defaultType` on `sync()` (D1). No block types are
+		// named here, so mounting with a plugin set that lacks the optional
+		// `mention`/`code`/`codeLine` definitions can't crash.
+		children: []
 	};
 
 	export type EdytorProps = Snippets & {
 		plugins?: Plugin[];
+		/** Show built-in block handles, with optional pointer dragging and activation callback. */
+		blockHandles?: boolean | BlockHandlesOptions;
+		/** @deprecated Use `blockHandles`; `false` also hides the built-in handles. */
+		blockDnd?: boolean;
 		class?: string;
 		edytor?: EdytorClass;
+		/** The assembled document this view renders (see `crdt/document.ts`). */
+		document?: EdytorDocument;
 		doc?: YDoc;
 		awareness?: Awareness;
 		readonly?: boolean;
@@ -111,6 +45,12 @@
 		autocorrect?: 'on' | 'off';
 		autocomplete?: 'on' | 'off';
 		autocapitalize?: 'off' | 'none' | 'on' | 'sentences' | 'words' | 'characters';
+		/** Virtual-keyboard hint — forwarded to the root `inputmode`
+		 *  attribute; omitted from the DOM when unset (browser default). */
+		inputmode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url';
+		/** Virtual-keyboard action-key label — forwarded to the root
+		 *  `enterkeyhint` attribute; omitted from the DOM when unset. */
+		enterkeyhint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
 		sync?: EdytorSync;
 	};
 </script>
@@ -120,14 +60,18 @@
 	import { onMount, setContext, type Snippet, untrack } from 'svelte';
 	import type { HotKey } from '$lib/hotkeys.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
-	import ReadonlyEditor from './ReadonlyEditor.svelte';
 	import Block from './Block.svelte';
 	import RemoteSelections from '$lib/collaboration/RemoteSelections.svelte';
+	import { attachDocumentSync } from '$lib/collaboration/index.js';
 
 	let {
 		plugins,
+		blockHandles,
+		blockDnd = true,
 		class: className,
 		edytor = $bindable(),
+		// Aliased so the DOM `document` global keeps working in this scope.
+		document: edytorDocument,
 		doc,
 		readonly = false,
 		value = $bindable(defaultValue),
@@ -142,13 +86,28 @@
 		autocorrect = 'off',
 		autocomplete = 'off',
 		autocapitalize = 'none',
+		inputmode,
+		enterkeyhint,
 		...snippets
 	}: EdytorProps = $props();
 
 	const initialEdytorOptions = untrack(() => ({
 		snippets,
 		readonly,
-		plugins,
+		plugins: (() => {
+			const handles = blockHandles ?? blockDnd;
+			const withoutDefaultHandles = plugins?.filter((plugin) => !isBlockHandlesPlugin(plugin));
+			if (handles === false) {
+				return withoutDefaultHandles;
+			}
+			if (typeof handles === 'object') {
+				return [createBlockHandlesPlugin(handles), ...(withoutDefaultHandles ?? [])];
+			}
+			return plugins?.some(isBlockHandlesPlugin)
+				? plugins
+				: [blockHandlesPlugin, ...(plugins ?? [])];
+		})(),
+		document: edytorDocument,
 		doc,
 		awareness,
 		hotKeys,
@@ -161,36 +120,22 @@
 
 	edytor = new EdytorClass(initialEdytorOptions);
 
-	const rethrowAsyncCleanupError = (error: unknown) => {
-		setTimeout(() => {
-			throw error;
-		});
-	};
-
 	onMount(() => {
-		let destroySync: ReturnType<NonNullable<EdytorProps['sync']>> | undefined;
 		if (!initialEdytorOptions.readonly && sync) {
-			destroySync = sync({
-				doc: edytor.doc,
-				awareness: edytor.awareness,
-				synced: () => {
-					edytor.sync(initialEdytorOptions.value);
-				}
-			});
+			// ONE attach path for owned and injected documents (U5/F3 +
+			// the owned-path failure channel): `attachSync` tracks the
+			// provider on the DOCUMENT's lifetime — dedupe by factory
+			// identity, pending accounting (`syncPending`), and the
+			// terminal-`failed` settle that hands the decision back to
+			// the view (`syncFailed` wakes `whenDocumentReady`). For a
+			// view-owned document the lifetime is still the component's:
+			// `edytor.destroy()` below runs `document.destroy()`, which
+			// runs the tracked cleanup — with the same async-error rethrow
+			// semantics the old inline `destroySync` wrapper had.
+			attachDocumentSync(edytor.document, sync, initialEdytorOptions.value);
 		}
 
 		return () => {
-			if (typeof destroySync === 'function') {
-				try {
-					const cleanupResult = destroySync();
-					if (cleanupResult && typeof cleanupResult === 'object' && 'catch' in cleanupResult) {
-						void cleanupResult.catch(rethrowAsyncCleanupError);
-					}
-				} catch (error) {
-					rethrowAsyncCleanupError(error);
-				}
-			}
-
 			// The component owns the Edytor — release its doc/awareness/facade/
 			// undo-manager listeners so a shared doc doesn't retain dead mounts.
 			edytor.destroy();
@@ -202,53 +147,23 @@
 	});
 
 	setContext('edytor', edytor);
-	const noWhiteSpace = (node: HTMLElement) => {
-		const observe = (mutation?: MutationRecord[]) => {
-			// Create a TreeWalker to find all text nodes
-			const treeWalker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, {
-				acceptNode: (node) => {
-					// Accept empty text nodes and nodes with only whitespace
-					if (!node.textContent || node.textContent.match(/^[\s\u200B-\u200D\uFEFF]*$/)) {
-						return NodeFilter.FILTER_ACCEPT;
-					}
-					return NodeFilter.FILTER_REJECT;
-				}
-			});
-
-			// Process each text node
-			let currentNode;
-			while ((currentNode = treeWalker.nextNode())) {
-				// Only remove if the node is not inside a block
-				const parentElement = currentNode.parentElement;
-				if (parentElement && !parentElement.closest('[data-block]')) {
-					currentNode.parentNode?.removeChild(currentNode);
-				}
-			}
-
-			// Remove comments
-			const commentWalker = document.createTreeWalker(node, NodeFilter.SHOW_COMMENT);
-			while (commentWalker.nextNode()) {
-				const commentNode = commentWalker.currentNode;
-				commentNode.parentNode?.removeChild(commentNode);
-			}
-		};
-		const observer = new MutationObserver(observe);
-		observer.observe(node, { childList: true, subtree: true });
-		observe();
-	};
 
 	type EditableRootBrowserAttributes = {
 		spellcheck: boolean;
 		autocorrect: 'on' | 'off';
 		autocomplete: 'on' | 'off';
 		autocapitalize: 'off' | 'none' | 'on' | 'sentences' | 'words' | 'characters';
+		inputmode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url';
+		enterkeyhint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
 	};
 
 	const browserMutationGuardAttributes = $derived({
 		spellcheck,
 		autocorrect,
 		autocomplete,
-		autocapitalize
+		autocapitalize,
+		inputmode,
+		enterkeyhint
 	});
 
 	const editableRootBrowserAttributes = (
@@ -260,6 +175,18 @@
 			node.setAttribute('autocorrect', nextAttributes.autocorrect);
 			node.setAttribute('autocomplete', nextAttributes.autocomplete);
 			node.setAttribute('autocapitalize', nextAttributes.autocapitalize);
+			// Optional hints stay absent when unset — emitting a guessed
+			// default would override the browser/UA's own choice.
+			if (nextAttributes.inputmode === undefined) {
+				node.removeAttribute('inputmode');
+			} else {
+				node.setAttribute('inputmode', nextAttributes.inputmode);
+			}
+			if (nextAttributes.enterkeyhint === undefined) {
+				node.removeAttribute('enterkeyhint');
+			} else {
+				node.setAttribute('enterkeyhint', nextAttributes.enterkeyhint);
+			}
 		};
 
 		apply(attributes);
@@ -275,10 +202,15 @@
 		};
 
 		node.addEventListener('pointerdown', handlePointerDown, true);
+		// `selectstart` is the only event fired before a drag-selection
+		// begins — the guard keeps one from starting on non-editable
+		// chrome (markers, void/island chrome, plugin UI).
+		node.addEventListener('selectstart', edytor.selection.onSelectStart);
 
 		return {
 			destroy: () => {
 				node.removeEventListener('pointerdown', handlePointerDown, true);
+				node.removeEventListener('selectstart', edytor.selection.onSelectStart);
 			}
 		};
 	};
@@ -286,7 +218,7 @@
 	const getBlockRenderKey = (block: BlockType) => block.id;
 </script>
 
-{#if edytor.synced || readonly}
+{#if edytor.synced}
 	{#key edytor.editorDomRevision}
 		<div
 			class={className}

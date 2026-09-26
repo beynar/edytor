@@ -28,18 +28,18 @@ type ContentRun =
 
 ### API surface
 
-| Method                   | Contract                                                                                                                                                           |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `runs(id)`               | Frozen `readonly ContentRun[]` snapshot; `[]` for absent/hidden (merged-away, deleted) blocks. Lazily recomputes only when invalidated.                            |
-| `snapshot(id)`           | Mutable deep copy of `runs(id)` — for callers that must own the data.                                                                                              |
-| `contentJSON(id)`        | Public export shape `[{text, marks?} \| {id, type, data?}]` — matches `JSONText`/`JSONInlineBlock` in `src/lib/utils/json.ts`. Owned copies, never engine objects. |
-| `version()`              | Monotonic counter bumped once per observed registry event (any change).                                                                                            |
-| `blockVersion(id)`       | Bumps only when `id`'s snapshot actually changed. Ensures lazy recompute first.                                                                                    |
-| `subscribe(cb)`          | `cb(version)` on every observed change.                                                                                                                            |
-| `subscribeBlock(id, cb)` | `cb(runs)` only when `id`'s snapshot diffs. Primes the baseline at subscribe time — listeners never see the initial compute.                                       |
-| `dispose()`              | Removes the registry observer; drops caches.                                                                                                                       |
-| `debug`                  | `{recomputes, recomputed:Set, reset()}` — the instrument used by tests/bench.                                                                                      |
-| `computeAllRuns(doc)`    | From-scratch baseline — the honest "full recompute" comparator and the fresh-projection oracle.                                                                    |
+| Method                   | Contract                                                                                                                                                              |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `runs(id)`               | Frozen `readonly ContentRun[]` snapshot; `[]` for absent/hidden (merged-away, deleted) blocks. Lazily recomputes only when invalidated.                               |
+| `snapshot(id)`           | Mutable deep copy of `runs(id)` — for callers that must own the data.                                                                                                 |
+| `contentJSON(id)`        | Public export shape `[{text, marks?} \| {id, type, data?}]` — matches `JSONText`/`JSONInlineBlock` in `src/lib/utils/json.ts`. Owned copies, never engine objects.    |
+| `version()`              | Monotonic counter bumped once per observed registry event (any change).                                                                                               |
+| `blockVersion(id)`       | Bumps only when `id`'s snapshot actually changed. Ensures lazy recompute first.                                                                                       |
+| `subscribe(cb)`          | `cb(version)` on every observed change.                                                                                                                               |
+| `subscribeBlock(id, cb)` | `cb(runs)` only when `id`'s snapshot diffs. Primes the baseline at subscribe time — listeners never see the initial compute.                                          |
+| `dispose()`              | Removes the registry observer; drops caches.                                                                                                                          |
+| `debug`                  | `{recomputes, recomputed:Set, itemsWalked, markersWalked, readIndexBuilds, reset()}` — the instrument used by tests/bench (WU8 counters show reads scale with range). |
+| `computeAllRuns(doc)`    | From-scratch baseline — the honest "full recompute" comparator and the fresh-projection oracle.                                                                       |
 
 ### Guarantees (tested)
 
@@ -83,14 +83,25 @@ an internal live read path, never as a returned value.**
 
 Rules adopted everywhere:
 
-- `itemsOfRange` reads `.delta` only on integrated nodes; detached nodes go
-  through `toDelta()` (the fresh-rendering path) — guarded in
-  `text/model.ts`.
+- `itemsOfRange` (WU8) no longer touches `.delta` or `toDelta()` at all —
+  it walks the live sequence item list (`_start`/`right`) directly:
+  `ContentFormat` markers fold into mark state, `ContentString.str`
+  slices in place, `ContentType` inline children emit one live
+  `{id, type, data}` item each. A sparse per-text checkpoint index
+  (`readCheckpoints`, seeds every ≤64 walked items) removes the O(text)
+  format-prefix scan; the maintained view drops a text's index on any
+  `content`-facet event and rebuilds lazily on the next read. Detached
+  nodes (`doc === null`) still read as empty — the same guard as before,
+  now also protecting the linked-list walk. Mid-transaction RYW holds
+  because the walk sees the same live links `toDelta()` would.
 - The run view snapshots (clone + freeze) everything that crosses the API
   boundary; `contentJSON` produces plain JSON.
 - Cost context (bench): `.delta.toJSON()` ~0.7µs vs `toDelta().toJSON()`
   ~3µs per content node — the cache is ~4× cheaper as a read path, which
   is why we keep it internally rather than paying fresh renders per read.
+  The WU8 range walk is cheaper than either for partial reads: ~10µs for
+  a 2k slice of a 100k text vs ~0.4ms for the full `toDelta().toJSON()`
+  it replaced (§17 of `docs/crdt-v14-benchmarks.md`).
 
 ---
 

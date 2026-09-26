@@ -4,6 +4,7 @@ import type { Page } from './editorTest';
 import { skipUnlessBrowser } from './browserExpectations';
 import {
 	dispatchClipboardEvent,
+	dispatchComposition,
 	dispatchPaste,
 	expectSelection,
 	modKey,
@@ -11,7 +12,8 @@ import {
 	readJsonByTestId,
 	setSelectionByTextIndex,
 	trackPageIssues,
-	waitForEditorReady
+	waitForEditorReady,
+	dispatchPasteAtCaret
 } from './helpers';
 
 const stripIds = <T>(value: T): T => {
@@ -344,9 +346,38 @@ test.describe('browser clipboard behavior', () => {
 			})
 			.toEqual([{ type: 'mention', data: {} }]);
 
-		await setSelectionByTextIndex(page, 0, 0);
-		await page.keyboard.press('Shift+Enter');
-		await dispatchPaste(page, { text: 'X' });
+		// The model value reaches `[{mention}]` before the DOM re-renders
+		// the leading+trailing separator texts around the inline atom.
+		// `setSelectionByTextIndex` indexes DOM text elements, so placing
+		// the caret before the separators exist can land it AFTER the
+		// mention (observed on slower-rendering engines).
+		await expect
+			.poll(async () =>
+				page.evaluate(() => {
+					const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
+					const blockNode = edytor?.root?.children[0]?.node as HTMLElement | undefined;
+					return blockNode?.querySelectorAll('[data-edytor-text="true"]').length ?? 0;
+				})
+			)
+			.toBeGreaterThanOrEqual(2);
+
+		// Seed the leading separator with a line break via the model —
+		// a native Shift+Enter depends on a caret that resolves through
+		// ZWSP placeholder spans and lands in the wrong separator under
+		// load (observed on Gecko/WebKit). The test's contract is where
+		// the paste lands, not break insertion.
+		await page.evaluate(() => {
+			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
+			const leading = edytor.root.children[0].content[0];
+			edytor.transact(() => leading.insertAt(0, '\n'));
+		});
+		// Pin the model caret and paste in one synchronous task: the paste
+		// pipeline reads `selection.state`, and a queued selectionchange
+		// can revert the model caret to the browser's last native position
+		// between a selection wait and the dispatch (Gecko/WebKit relocate
+		// a caret at the end of a '\n' text into the next text's ZWSP —
+		// across the mention).
+		await dispatchPasteAtCaret(page, { blockIndex: 0, contentIndex: 0, yStart: 1, text: 'X' });
 
 		await expect
 			.poll(async () => {
@@ -366,8 +397,7 @@ test.describe('browser clipboard behavior', () => {
 				renderedInlineCount: 1
 			});
 
-		await setSelectionByTextIndex(page, 1, 0);
-		await dispatchPaste(page, { text: 'Y' });
+		await dispatchPasteAtCaret(page, { blockIndex: 0, contentIndex: 2, yStart: 0, text: 'Y' });
 
 		await expect
 			.poll(async () => {
@@ -386,6 +416,194 @@ test.describe('browser clipboard behavior', () => {
 				content: [{ text: '\nX' }, { type: 'mention', data: {} }, { text: 'Y' }],
 				renderedInlineCount: 1
 			});
+
+		issues.assertClean();
+	});
+});
+
+test.describe('browser paste payload coverage', () => {
+	// `dispatchPaste` only models text/html + text/plain; this dispatch also
+	// carries Files and text/uri-list and reports defaultPrevented.
+	const dispatchRichPaste = async (
+		page: Page,
+		payload: {
+			text?: string;
+			html?: string;
+			uriList?: string;
+			files?: Array<{ name: string; type: string }>;
+		}
+	) =>
+		page.evaluate((paste) => {
+			const target = document.querySelector<HTMLElement>('[data-edytor]');
+			if (!target) {
+				throw new Error('Missing [data-edytor] root');
+			}
+
+			const files = (paste.files ?? []).map(
+				(file) => new File(['file'], file.name, { type: file.type })
+			);
+			const event = new Event('paste', {
+				bubbles: true,
+				cancelable: true
+			}) as ClipboardEvent;
+
+			Object.defineProperty(event, 'clipboardData', {
+				value: {
+					files,
+					getData: (type: string) => {
+						if (type === 'text/plain') return paste.text ?? '';
+						if (type === 'text/html') return paste.html ?? '';
+						if (type === 'text/uri-list') return paste.uriList ?? '';
+						return '';
+					}
+				} satisfies Pick<DataTransfer, 'files' | 'getData'>,
+				configurable: true
+			});
+
+			target.dispatchEvent(event);
+			return event.defaultPrevented;
+		}, payload);
+
+	const readBlockTexts = async (page: Page) => {
+		const value = await readJsonByTestId<{
+			children: Array<{ content?: Array<{ text: string; marks?: unknown }> }>;
+		}>(page, 'value');
+		return value.children.map((child) => child.content?.map((part) => part.text).join('') ?? '');
+	};
+
+	test('routes clipboard files to paste plugins — unclaimed files insert nothing', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0);
+
+		const prevented = await dispatchRichPaste(page, {
+			files: [{ name: 'pasted.png', type: 'image/png' }]
+		});
+
+		expect(prevented).toBe(true);
+		// No bundled plugin claims Files yet — the payload must not degrade into
+		// silent file-name text.
+		await expect.poll(() => readBlockTexts(page)).toEqual(['', 'note', 'tail']);
+
+		issues.assertClean();
+	});
+
+	test('lets a plugin claim clipboard files through the paste hook', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0);
+
+		await page.evaluate(() => {
+			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
+			edytor.plugins.push({
+				onPaste: ({ prevent, e }: { prevent: (cb?: () => void) => void; e: ClipboardEvent }) => {
+					const files = e.clipboardData?.files;
+					if (files?.length) {
+						prevent(() => {
+							(window as any).__PASTED_FILE__ = files[0]?.name;
+						});
+					}
+				}
+			});
+		});
+
+		const prevented = await dispatchRichPaste(page, {
+			files: [{ name: 'claimed.png', type: 'image/png' }]
+		});
+
+		expect(prevented).toBe(true);
+		await expect
+			.poll(() => page.evaluate(() => (window as any).__PASTED_FILE__ ?? null))
+			.toBe('claimed.png');
+		await expect.poll(() => readBlockTexts(page)).toEqual(['', 'note', 'tail']);
+
+		issues.assertClean();
+	});
+
+	test('pastes text/uri-list as a link, stripping comment lines', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0);
+
+		const prevented = await dispatchRichPaste(page, {
+			uriList: '# clipboard comment\nhttps://example.com/'
+		});
+
+		expect(prevented).toBe(true);
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ text: string; marks?: unknown }> }>;
+				}>(page, 'value');
+				return value.children[0]?.content ?? [];
+			})
+			.toEqual([
+				{
+					text: 'https://example.com/',
+					marks: { link: { href: 'https://example.com/' } }
+				}
+			]);
+
+		issues.assertClean();
+	});
+
+	test('prefers plain text over html on shift-paste', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0);
+
+		await page.keyboard.down('Shift');
+		const prevented = await dispatchRichPaste(page, {
+			html: '<p><strong>Bold</strong></p>',
+			text: 'Plain'
+		});
+		await page.keyboard.up('Shift');
+
+		expect(prevented).toBe(true);
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ text: string; marks?: unknown }> }>;
+				}>(page, 'value');
+				return value.children[0]?.content ?? [];
+			})
+			.toEqual([{ text: 'Plain' }]);
+
+		issues.assertClean();
+	});
+
+	test('defers to the native paste while a composition is in progress', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0);
+
+		await dispatchComposition(page, [
+			{ type: 'compositionstart', data: '' },
+			{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'ん' }
+		]);
+		const midCompositionTexts = await readBlockTexts(page);
+
+		const prevented = await dispatchRichPaste(page, { text: 'PASTED' });
+
+		// PM semantics (input.ts:656-660): mid-composition paste is left to the
+		// browser — the composition preview owns the write path and the
+		// deferred observer reconciles after compositionend.
+		expect(prevented).toBe(false);
+		await expect.poll(() => readBlockTexts(page)).toEqual(midCompositionTexts);
+
+		await dispatchComposition(page, [{ type: 'compositionend', data: 'ん' }]);
 
 		issues.assertClean();
 	});

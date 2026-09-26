@@ -45,8 +45,35 @@ export class ArraySearchMarker {
     constructor(p: Item, index: number);
     p: Item;
     index: number;
+    /**
+     * Snapshot of an `ItemTextListPosition` cursor's `currentFormats` map at
+     * this marker's position (the left edge of `p`), or `null` when unknown.
+     * Written only at *quiescent* points — the end of `YNode#applyDelta`
+     * (post-op cursor state) and `findMarker`'s read walks — never mid-
+     * mutation: `formatText`'s in-flight `currentFormats` is transient and
+     * proved able to capture state invalidated later in the same operation.
+     * Consumed by `YNode#applyDelta` to seed a formatting-aware cursor
+     * without re-walking the list from `_start`.
+     *
+     * Validity: the snapshot is the format state at a fixed list position, so
+     * it stays correct across content inserts/deletes anywhere (they never
+     * change format state; `updateMarkerChanges` keeps `index` aligned).
+     * Every mutation that could change it is covered: format-item inserts
+     * fold into it via `updateMarkerFormats` (list-order aware AND bounded by
+     * the next live same-key format item — a marker beyond that boundary still
+     * draws the key from the intervening item, so folding would corrupt it;
+     * unreachable anchors get `formats = null` instead), format-item
+     * tombstones clear all snapshots in `Item#delete`, and re-anchored or
+     * overwritten markers clear it in `overwriteMarker`/`updateMarkerChanges`/
+     * `Item#mergeWith`. Wholesale clears (`_searchMarker.length = 0`) cover
+     * remote integration and undo.
+     *
+     * @type {Map<string,any>?}
+     */
+    formats: Map<string, any> | null;
     timestamp: number;
 }
+export function plantSearchMarker(parent: YNode<any>, p: Item, index: number, formats: Map<string, any>): void;
 export function findMarker(yarray: YNode, index: number): ArraySearchMarker | null;
 export function updateMarkerChanges(searchMarker: Array<ArraySearchMarker>, index: number, len: number): void;
 export function getNodeChildren(t: YNode): Array<Item>;

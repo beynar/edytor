@@ -1,0 +1,533 @@
+/**
+ * U5 — shared awareness presence + document-lifetime sync.
+ *
+ * One awareness instance per document is shared by every view; actor/user
+ * are document-level fields published once; `selections` holds ONE entry
+ * per live view (per-view presence — sibling teardown can no longer
+ * clobber a surviving view's caret) while `selection` stays published as
+ * the freshest-entry mirror for pre-U5 peers/readers.
+ *
+ * `Awareness.destroy()` is idempotent (F6 — the owned-doc + owned-
+ * awareness composition used to double-emit). View-carried `sync`
+ * factories attach through `attachDocumentSync` — one provider per
+ * factory per document, released by `document.destroy()` (F3).
+ */
+import { describe, expect, it, vi } from 'vitest';
+import { Y } from '../../../lib/crdt/engine.js';
+import {
+	applyAwarenessUpdate,
+	attachDocument,
+	Awareness,
+	createDocument,
+	encodeAwarenessUpdate,
+	type EdytorDocument
+} from '../../../lib/crdt/index.js';
+import {
+	attachDocumentSync,
+	publishAwarenessSelection,
+	whenDocumentReady,
+	type EdytorSync
+} from '../../../lib/collaboration/index.js';
+import { clearAwarenessSelection } from '../../../lib/collaboration/awarenessSelection.js';
+import { Edytor } from '../../../lib/edytor.svelte.js';
+import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import type { JSONDoc } from '../../../lib/utils/json.js';
+
+const docValue = (text = 'shared'): JSONDoc => ({
+	children: [{ type: 'paragraph', content: [{ text }] }]
+});
+
+const makeView = (document: EdytorDocument) => new Edytor({ document, plugins: [richTextPlugin] });
+
+type PresenceSelections = Record<string, { t?: number; yStart?: number }>;
+
+const selectionsOf = (document: EdytorDocument): PresenceSelections =>
+	(document.awareness.getLocalState()?.selections ?? {}) as PresenceSelections;
+
+const mirrorOf = (document: EdytorDocument) =>
+	document.awareness.getLocalState()?.selection as { yStart?: number } | undefined;
+
+/** Patch the view's model selection and run the real publish path. */
+const publishSelection = (view: Edytor, offset = 0) => {
+	const text = view.root!.children[0]!.firstText!;
+	Object.assign(view.selection.state, {
+		startText: text,
+		endText: text,
+		yStart: offset,
+		yEnd: offset,
+		isCollapsed: true,
+		isReversed: false
+	});
+	publishAwarenessSelection(view.selection);
+};
+
+describe('shared awareness identity', () => {
+	it('views never create their own awareness on an injected document', () => {
+		const document = createDocument({ value: docValue() });
+		const v1 = makeView(document);
+		const v2 = makeView(document);
+		expect(v1.awareness).toBe(document.awareness);
+		expect(v2.awareness).toBe(document.awareness);
+		expect(v1.awareness).toBe(v2.awareness);
+		v1.destroy();
+		v2.destroy();
+		document.destroy();
+	});
+
+	it('publishes actor/user once at document construction — document-level fields', () => {
+		const document = createDocument({
+			value: docValue(),
+			actor: { id: 'user-7', name: 'Ada', color: '#0ea5e9' }
+		});
+		const state = document.awareness.getLocalState();
+		expect(state?.actor).toEqual({ id: 'user-7', name: 'Ada', color: '#0ea5e9' });
+		expect(state?.user).toEqual({ name: 'Ada', color: '#0ea5e9' });
+		document.destroy();
+	});
+});
+
+describe('per-view selection presence', () => {
+	it('sibling views publish distinct entries — no clobbering', () => {
+		const document = createDocument({ value: docValue() });
+		const v1 = makeView(document);
+		const v2 = makeView(document);
+
+		publishSelection(v1, 1);
+		expect(Object.keys(selectionsOf(document))).toHaveLength(1);
+		expect(mirrorOf(document)?.yStart).toBe(1);
+
+		publishSelection(v2, 3);
+		const selections = selectionsOf(document);
+		expect(Object.keys(selections)).toHaveLength(2);
+		// The mirror is the freshest entry (v2's publish has the higher `t`).
+		expect(mirrorOf(document)?.yStart).toBe(3);
+		expect(Object.values(selections).every((entry) => typeof entry.t === 'number')).toBe(true);
+		expect(new Set(Object.values(selections).map((entry) => entry.t)).size).toBe(2);
+
+		v1.destroy();
+		v2.destroy();
+		document.destroy();
+	});
+
+	it('view teardown drops only its own entry — the sibling caret survives', () => {
+		const document = createDocument({ value: docValue() });
+		const v1 = makeView(document);
+		const v2 = makeView(document);
+
+		publishSelection(v1, 1);
+		publishSelection(v2, 4);
+		expect(Object.keys(selectionsOf(document))).toHaveLength(2);
+
+		v1.destroy(); // edytor.destroyed is set before selection.destroy() runs
+		const survivors = selectionsOf(document);
+		expect(Object.keys(survivors)).toHaveLength(1);
+		expect(mirrorOf(document)?.yStart).toBe(4); // v2's caret is the mirror now
+
+		v2.destroy();
+		// Last live view gone — presence fields drop entirely, document
+		// fields (actor) survive on the still-alive document.
+		expect(document.awareness.getLocalState()?.selections).toBeUndefined();
+		expect(document.awareness.getLocalState()?.selection).toBeUndefined();
+		expect(document.awareness.getLocalState()?.actor).toBeDefined();
+		document.destroy();
+	});
+
+	it('a sibling publish sweeps entries whose owner view died without teardown', () => {
+		const document = createDocument({ value: docValue() });
+		const v1 = makeView(document);
+		const v2 = makeView(document);
+
+		publishSelection(v1, 2);
+		// v1 died without running selection.destroy() — mark it destroyed
+		// the way Edytor.destroy() does before clearing awareness.
+		v1.destroyed = true;
+
+		publishSelection(v2, 6); // sweeps v1's dead entry as it writes its own
+		const survivors = selectionsOf(document);
+		expect(Object.keys(survivors)).toHaveLength(1);
+		expect(mirrorOf(document)?.yStart).toBe(6);
+
+		v2.destroy();
+		document.destroy();
+	});
+
+	it('a cleared (null) selection removes only the publishing view key', () => {
+		const document = createDocument({ value: docValue() });
+		const v1 = makeView(document);
+		const v2 = makeView(document);
+
+		publishSelection(v1, 1);
+		publishSelection(v2, 5);
+
+		// v1's selection goes null (blur) — its key drops, v2's survives.
+		Object.assign(v1.selection.state, { startText: null, endText: null });
+		publishAwarenessSelection(v1.selection);
+		expect(Object.keys(selectionsOf(document))).toHaveLength(1);
+		expect(mirrorOf(document)?.yStart).toBe(5);
+
+		v1.destroy();
+		v2.destroy();
+		document.destroy();
+	});
+
+	it('presence writes never produce doc updates or undo steps', () => {
+		const document = createDocument({ value: docValue() });
+		const v1 = makeView(document);
+		let docUpdates = 0;
+		document.doc.on('update', () => docUpdates++);
+
+		publishSelection(v1, 2);
+		v1.destroy();
+
+		expect(docUpdates).toBe(0); // awareness writes never touch doc state
+		expect(document.history.undoStack).toHaveLength(0);
+		document.destroy();
+	});
+});
+
+describe('awareness destroy idempotence (F6)', () => {
+	it('document.destroy() destroys owned awareness exactly once', () => {
+		const document = createDocument({ value: docValue() });
+		const awareness = document.awareness;
+		let destroyEmits = 0;
+		let removedBroadcasts = 0;
+		awareness.on('destroy', () => destroyEmits++);
+		awareness.on('update', ({ removed }) => {
+			removedBroadcasts += removed.length;
+		});
+
+		document.destroy();
+		// owned doc destroy re-fires the awareness doc-hook — the guard
+		// makes the second invocation a no-op.
+		expect(destroyEmits).toBe(1);
+		expect(removedBroadcasts).toBe(1);
+		expect(awareness.getLocalState()).toBeNull();
+
+		awareness.destroy(); // a direct double-destroy stays a no-op
+		expect(destroyEmits).toBe(1);
+		expect(removedBroadcasts).toBe(1);
+	});
+
+	it('doc.destroy() alone still destroys awareness once', () => {
+		const doc = new Y.Doc();
+		const awareness = new Awareness(doc);
+		let destroyEmits = 0;
+		awareness.on('destroy', () => destroyEmits++);
+		doc.destroy();
+		expect(destroyEmits).toBe(1);
+		expect(awareness.getLocalState()).toBeNull();
+	});
+});
+
+describe('awareness state merge after provider sync', () => {
+	it('applies remote awareness updates carrying per-view selections', () => {
+		const document = createDocument({ value: docValue() });
+		const remoteDoc = new Y.Doc();
+		const remoteAwareness = new Awareness(remoteDoc);
+		const remoteSelection = {
+			start: null,
+			end: null,
+			startTextId: 't1',
+			endTextId: 't1',
+			yStart: 2,
+			yEnd: 2,
+			isCollapsed: true,
+			isReversed: false
+		};
+		remoteAwareness.setLocalState({
+			user: { name: 'Remote', color: '#dc2626' },
+			selections: { 'view-1': { ...remoteSelection, t: 1 } },
+			selection: remoteSelection
+		});
+
+		const update = encodeAwarenessUpdate(remoteAwareness, [remoteAwareness.clientID]);
+		applyAwarenessUpdate(document.awareness, update, 'test-provider');
+
+		const state = document.awareness.getStates().get(remoteAwareness.clientID);
+		expect(state?.user).toEqual({ name: 'Remote', color: '#dc2626' });
+		expect((state?.selections as PresenceSelections)['view-1']?.yStart).toBe(2);
+		expect((state?.selection as { yStart?: number })?.yStart).toBe(2);
+		// Local state untouched by the remote merge.
+		expect(document.awareness.getLocalState()?.actor).toBeDefined();
+
+		remoteAwareness.destroy();
+		document.destroy();
+	});
+});
+
+describe('attachDocumentSync — document-lifetime providers (F3)', () => {
+	it('attaches once per factory per document — second identical attach dedupes', () => {
+		const document = createDocument();
+		let attachCount = 0;
+		let cleanups = 0;
+		const sync: EdytorSync = (payload) => {
+			attachCount++;
+			payload.synced();
+			return () => {
+				cleanups++;
+			};
+		};
+
+		expect(attachDocumentSync(document, sync)).toBe(true);
+		expect(attachDocumentSync(document, sync)).toBe(false); // dedupe no-op
+		expect(attachCount).toBe(1);
+		expect(document.ready).toBe(true); // synced ran document.sync(value)
+
+		document.destroy();
+		expect(cleanups).toBe(1); // released by the document, not a view
+	});
+
+	it('distinct factories attach independently (composition, not dedupe)', () => {
+		const document = createDocument();
+		let attachCount = 0;
+		let cleanups = 0;
+		const makeSync = (): EdytorSync => (payload) => {
+			attachCount++;
+			payload.synced();
+			return () => {
+				cleanups++;
+			};
+		};
+
+		expect(attachDocumentSync(document, makeSync())).toBe(true);
+		expect(attachDocumentSync(document, makeSync())).toBe(true);
+		expect(attachCount).toBe(2);
+		document.destroy();
+		expect(cleanups).toBe(2);
+	});
+
+	it('attaching on a destroyed document is a no-op', () => {
+		const document = createDocument({ value: docValue() });
+		document.destroy();
+		expect(
+			attachDocumentSync(document, () => {
+				throw new Error('must not run');
+			})
+		).toBe(false);
+	});
+});
+
+describe('whenDocumentReady — view readiness wait (F3)', () => {
+	it('notifies synchronously on an already-ready document', () => {
+		const document = createDocument({ value: docValue() });
+		let notified = 0;
+		const release = whenDocumentReady(document, () => notified++);
+		expect(notified).toBe(1);
+		release();
+		document.destroy();
+	});
+
+	it('notifies after an externally-driven document.sync (local seed)', async () => {
+		const document = createDocument(); // pending
+		let notified = 0;
+		const release = whenDocumentReady(document, () => notified++);
+		expect(notified).toBe(0);
+		// The doc 'update' fires DURING the seed commit — before _readiness
+		// flips — so the poll backstop is what lands this notification.
+		document.sync(docValue());
+		await vi.waitFor(() => expect(notified).toBe(1));
+		release();
+		document.destroy();
+	});
+
+	it('externally-driven hydrated sync notifies synchronously via onReady', () => {
+		const remote = createDocument({ value: docValue('remote') });
+		const document = createDocument(); // pending
+		Y.applyUpdate(document.doc, remote.encode()); // hydrated, still pending
+		expect(document.ready).toBe(false);
+
+		let notified = 0;
+		const release = whenDocumentReady(document, () => notified++);
+		// Hydrated path — asserts schema, writes nothing to the doc; the
+		// onReady event inside document.sync() lands the notification
+		// synchronously (no update event, no poll needed).
+		document.sync();
+		expect(notified).toBe(1);
+		release();
+
+		remote.destroy();
+		document.destroy();
+	});
+
+	it('release stops the wait — a destroyed document never notifies', async () => {
+		const document = createDocument();
+		let notified = 0;
+		const release = whenDocumentReady(document, () => notified++);
+		release();
+		document.sync();
+		expect(notified).toBe(0);
+		document.destroy();
+	});
+});
+
+describe('attachSync + view integration', () => {
+	it('a provider attached by one caller wakes every waiting view', () => {
+		const remote = createDocument({ value: docValue('hydrated') });
+		const document = attachDocument(new Y.Doc());
+		let reportSynced: (() => void) | null = null;
+		const sync: EdytorSync = ({ synced }) => {
+			reportSynced = synced;
+			return () => {};
+		};
+
+		let v1Inits = 0;
+		let v2Inits = 0;
+		const release1 = whenDocumentReady(document, () => v1Inits++);
+		const release2 = whenDocumentReady(document, () => v2Inits++);
+
+		attachDocumentSync(document, sync);
+		Y.applyUpdate(document.doc, remote.encode());
+		reportSynced!(); // provider reports synced → document.sync + notify
+
+		expect(v1Inits).toBe(1);
+		expect(v2Inits).toBe(1);
+		expect(document.readiness).toBe('hydrated');
+
+		release1();
+		release2();
+		remote.destroy();
+		document.destroy();
+	});
+
+	it('a throwing readiness waiter does not break sibling waiters or synced (U6b/R5)', () => {
+		const remote = createDocument({ value: docValue('hydrated') });
+		const document = attachDocument(new Y.Doc());
+		let reportSynced: (() => void) | null = null;
+		const sync: EdytorSync = ({ synced }) => {
+			reportSynced = synced;
+			return () => {};
+		};
+		const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		let fired = 0;
+		const r1 = whenDocumentReady(document, () => fired++);
+		const r2 = whenDocumentReady(document, () => {
+			throw new Error('waiter boom');
+		});
+		const r3 = whenDocumentReady(document, () => fired++);
+
+		attachDocumentSync(document, sync);
+		Y.applyUpdate(document.doc, remote.encode());
+		expect(() => reportSynced!()).not.toThrow();
+
+		expect(fired).toBe(2);
+		expect(err).toHaveBeenCalledWith(
+			'[edytor-document] ready listener failed; continuing',
+			expect.any(Error)
+		);
+
+		err.mockRestore();
+		r1();
+		r2();
+		r3();
+		remote.destroy();
+		document.destroy();
+	});
+});
+
+describe('clearAwarenessSelection — remount (U6b/R4)', () => {
+	it('does not rebroadcast an identical presence map when nothing died', () => {
+		const document = createDocument({ value: docValue() });
+		const v1 = makeView(document);
+		publishSelection(v1, 3);
+
+		// A live view's remount fires clearAwarenessSelection while its
+		// owner is still alive — nothing is swept and the recomputed
+		// mirror is identical, so no `setLocalState` may broadcast.
+		const spy = vi.spyOn(document.awareness, 'setLocalState');
+		clearAwarenessSelection(document.awareness);
+		expect(spy).not.toHaveBeenCalled();
+
+		v1.destroy();
+		document.destroy();
+	});
+
+	it('still broadcasts once when a dead entry is actually swept', () => {
+		const document = createDocument({ value: docValue() });
+		const v1 = makeView(document);
+		publishSelection(v1, 3);
+		v1.destroyed = true; // died without running selection.destroy()
+
+		const spy = vi.spyOn(document.awareness, 'setLocalState');
+		clearAwarenessSelection(document.awareness);
+		expect(spy).toHaveBeenCalledTimes(1);
+		expect(document.awareness.getLocalState()?.selections).toBeUndefined();
+
+		document.destroy();
+	});
+});
+
+describe('publishAwarenessSelection — write dedupe (U8a)', () => {
+	it('does not rebroadcast when the published payload is unchanged', () => {
+		const document = createDocument({ value: docValue() });
+		const v1 = makeView(document);
+		publishSelection(v1, 3);
+
+		const t0 = Object.values(selectionsOf(document))[0]?.t;
+		expect(typeof t0).toBe('number');
+
+		const spy = vi.spyOn(document.awareness, 'setLocalState');
+		publishSelection(v1, 3); // identical caret — same texts, same offsets
+		expect(spy).not.toHaveBeenCalled();
+		// The entry keeps its original `t` — an identical republish must
+		// not steal "freshest" recency.
+		expect(Object.values(selectionsOf(document))[0]?.t).toBe(t0);
+
+		v1.destroy();
+		document.destroy();
+	});
+
+	it('still broadcasts (with a bumped `t`) when the payload changes', () => {
+		const document = createDocument({ value: docValue() });
+		const v1 = makeView(document);
+		publishSelection(v1, 3);
+
+		const t0 = Object.values(selectionsOf(document))[0]?.t ?? 0;
+
+		const spy = vi.spyOn(document.awareness, 'setLocalState');
+		publishSelection(v1, 4);
+		expect(spy).toHaveBeenCalledTimes(1);
+		expect(mirrorOf(document)?.yStart).toBe(4);
+		const [entry] = Object.values(selectionsOf(document));
+		expect(entry.t).toBeGreaterThan(t0);
+
+		v1.destroy();
+		document.destroy();
+	});
+
+	it('a deduped republish cannot steal the freshest-mirror slot from a sibling', () => {
+		const document = createDocument({ value: docValue() });
+		const v1 = makeView(document);
+		const v2 = makeView(document);
+		publishSelection(v1, 1);
+		publishSelection(v2, 5); // v2 is freshest
+
+		const spy = vi.spyOn(document.awareness, 'setLocalState');
+		publishSelection(v1, 1); // v1 re-emits an UNCHANGED caret
+		expect(spy).not.toHaveBeenCalled();
+		// v2 stays the freshest — v1's `t` was not re-stamped.
+		expect(mirrorOf(document)?.yStart).toBe(5);
+
+		v1.destroy();
+		v2.destroy();
+		document.destroy();
+	});
+
+	it('a cleared selection still writes once (then dedupes)', () => {
+		const document = createDocument({ value: docValue() });
+		const v1 = makeView(document);
+		publishSelection(v1, 2);
+
+		Object.assign(v1.selection.state, { startText: null, endText: null });
+		const spy = vi.spyOn(document.awareness, 'setLocalState');
+		publishAwarenessSelection(v1.selection);
+		expect(spy).toHaveBeenCalledTimes(1);
+		expect(document.awareness.getLocalState()?.selections).toBeUndefined();
+
+		publishAwarenessSelection(v1.selection); // already cleared — no-op
+		expect(spy).toHaveBeenCalledTimes(1);
+
+		v1.destroy();
+		document.destroy();
+	});
+});

@@ -1,7 +1,9 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
+import { tick } from 'svelte';
 import type { BeforeInputSnapshot } from './beforeInputSnapshot.js';
 import { setSuppressedInputRepairSelectionTarget } from './beforeInputRepairTarget.js';
+import { getNextWordEndOffset, getPreviousWordStartOffset } from './wordBoundary.js';
 
 const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
 	const state = edytor.compositionState;
@@ -21,6 +23,44 @@ const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: Before
 	);
 };
 
+const restoreSelectionAfterBlockRangeDeletion = (
+	edytor: Edytor,
+	targetText: Text | null,
+	targetOffset: number
+) => {
+	const restore = async (attempt: number): Promise<void> => {
+		await tick();
+		if (edytor.destroyed) return;
+		try {
+			const targetIsAttached = Boolean(
+				targetText?.node?.isConnected && edytor.idToText.get(targetText.id) === targetText
+			);
+			// `firstText` yields undefined on a contentless/childless block —
+			// keep retrying rather than letting the fallback reject.
+			const candidate = targetIsAttached
+				? targetText
+				: (edytor.root?.children[0]?.firstText ?? null);
+			if (candidate?.node?.isConnected) {
+				await edytor.selection.setAtTextOffset(
+					candidate,
+					candidate === targetText ? targetOffset : 0
+				);
+				return;
+			}
+		} catch {
+			// A mid-restore throw (detached remount, stale text) is transient
+			// — the retry cadence below covers it.
+		}
+		if (attempt >= 9) {
+			console.error('[edytor] failed to restore selection after deleting a block range');
+			return;
+		}
+		setTimeout(() => void restore(attempt + 1), 10);
+	};
+
+	setTimeout(() => void restore(0));
+};
+
 const deleteContentForward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
 	const { startText, yStart } = snapshot;
 	if (!startText) {
@@ -34,10 +74,7 @@ const deleteContentForward = async (edytor: Edytor, snapshot: BeforeInputSnapsho
 
 	if (snapshot.isBlockSpanning) {
 		const [targetText, targetOffset] = edytor.deleteContentWithinSelection({});
-		if (!targetText) {
-			return;
-		}
-		await edytor.selection.setAtTextOffset(targetText, targetOffset);
+		restoreSelectionAfterBlockRangeDeletion(edytor, targetText, targetOffset);
 		return;
 	}
 
@@ -82,6 +119,7 @@ const deleteContentForward = async (edytor: Edytor, snapshot: BeforeInputSnapsho
 	}
 
 	startText.deleteText({ direction: 'FORWARD', length: snapshot.length || 1 });
+	await tick();
 	await edytor.selection.setAtTextOffset(startText, yStart);
 };
 
@@ -100,10 +138,7 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 
 	if (snapshot.isBlockSpanning) {
 		const [targetText, targetOffset] = edytor.deleteContentWithinSelection({});
-		if (!targetText) {
-			return;
-		}
-		await edytor.selection.setAtTextOffset(targetText, targetOffset);
+		restoreSelectionAfterBlockRangeDeletion(edytor, targetText, targetOffset);
 		return;
 	}
 
@@ -153,7 +188,7 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 		const index = startText.parent.content.indexOf(startText) - 1;
 		const previousText = startText.parent.content.at(index - 1);
 		const hasPreviousText = previousText && previousText instanceof Text;
-		const offset = hasPreviousText ? previousText.yText.length : 0;
+		const offset = hasPreviousText ? previousText.length : 0;
 		startText.parent.removeInlineBlock({ index });
 		if (hasPreviousText) {
 			await edytor.selection.setAtTextOffset(previousText, offset);
@@ -176,22 +211,11 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 	}
 
 	const deletion = startText.deleteText({ direction: 'BACKWARD', length: snapshot.length || 1 });
+	await tick();
 	await edytor.selection.setAtTextOffset(
 		startText,
 		snapshot.isCollapsed ? (deletion?.start ?? yStart - 1) : yStart
 	);
-};
-
-const getPreviousWordStartOffset = (value: string, offset: number) => {
-	const beforeCaret = value.slice(0, offset);
-	const match = beforeCaret.match(/\S+\s*$/u);
-	return match?.index ?? offset;
-};
-
-const getNextWordEndOffset = (value: string, offset: number) => {
-	const afterCaret = value.slice(offset);
-	const match = afterCaret.match(/^\s*\S+/u);
-	return match ? offset + match[0].length : offset;
 };
 
 const deleteCollapsedWordBackward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
@@ -295,6 +319,11 @@ const deleteEntireSoftLine = async (edytor: Edytor, snapshot: BeforeInputSnapsho
 };
 
 export const runBeforeInputDeleteCommand = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+	// Timestamp the delete so the Android post-delete caret snap-back can
+	// arm only on caret writes caused by an actual delete — navigational
+	// jumps with the same "offset-0 → different text" signature must not
+	// qualify (selection.svelte.ts `recordPostDeleteCaretTarget`).
+	edytor.selection.lastDeleteCommandAt = Date.now();
 	switch (snapshot.inputType) {
 		case 'deleteContentForward':
 			return deleteContentForward(edytor, snapshot);

@@ -39,7 +39,7 @@ export type BlockSnippetPayload<D extends SerializableContent = SerializableCont
  * Represents the payload for change operations on blocks and text.
  * Combines both text operations and block operations with prevention capability.
  */
-type ChangePayload = {
+export type ChangePayload = {
 	block: Block;
 	prevent: Prevent;
 } & (
@@ -175,12 +175,6 @@ export type BlockDefinition = {
 	 * If you return a function, it will be executed otherwise it will be ignored.
 	 */
 	normalizeChildren?: (payload: { block: Block }) => (() => void) | void;
-	/** Schema for synchronization state data. It uses syncroState
-	 *
-	 * See https://github.com/beynar/syncrostate
-	 *
-	 */
-	schema?: any;
 };
 
 export type InlineBlockSnippetPayload<D extends SerializableContent = SerializableContent> = {
@@ -207,11 +201,17 @@ export type EditorCommand = {
 
 export type InitializedPlugin = ReturnType<Plugin>;
 
-// TODO: add arrow events
-// TODO: add onBeforeInput event
-// TODO: add block focus and selection events
-// TODO: add a cmd+a selection all event
-//
+// Extension-surface note (replaces stale TODOs): the gaps this used to
+// list are all covered by the contract above —
+//   * `onBeforeInput` is a PluginOperations hook (line ~111).
+//   * Block focus/selection lifecycle is `onFocus`/`onBlur`/`onSelect`/
+//     `onDeselect` on BlockDefinition.
+//   * Arrow-key and select-all behavior are hotkeys, not dedicated
+//     events: `mod+a` select-all lives in hotkeys.ts and arrow handling
+//     ships in the arrowMove plugin — plugins can override either via
+//     the `hotkeys` definition map (prevention is first-win).
+// A dedicated raw-key event hook does not exist; add one only if a real
+// consumer needs more than hotkey overrides.
 
 // ISLAND BLOCKS
 // Island blocks are blocks that are independent of the document.

@@ -4,10 +4,13 @@ import {
 } from '$lib/clipboard/clipboard.js';
 import type { Edytor } from '../edytor.svelte.js';
 import { prevent, PreventionError } from '$lib/utils.js';
+import { observeInternalDragSources } from './onDrop.js';
+import { observeShiftPasteModifier } from './onPaste.js';
 import {
 	removeSelectedBlocksForReplacement,
 	replaceSelectionWithCollapsedTarget
 } from '$lib/selection/replaceSelection.js';
+import { isNestedForeignEditableTarget } from './nativeInteractiveControl.js';
 
 const deleteSelectedContent = async (edytor: Edytor) => {
 	edytor.selection.queueNextUndoSelectionSnapshot();
@@ -28,6 +31,16 @@ export async function onCut(this: Edytor, e: ClipboardEvent) {
 	if (this.readonly || this.selection.state.isVoidEditableElement) {
 		return;
 	}
+
+	// A cut inside a nested `contenteditable` island belongs to the
+	// island — the fragment/delete paths below operate on the model
+	// selection, not the island's.
+	if (isNestedForeignEditableTarget(this.node, e.target)) {
+		return;
+	}
+
+	observeInternalDragSources(this.node?.getRootNode());
+	observeShiftPasteModifier(this.node?.getRootNode());
 
 	try {
 		for (const plugin of this.plugins) {

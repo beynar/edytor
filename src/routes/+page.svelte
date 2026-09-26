@@ -1,16 +1,72 @@
 <script lang="ts">
+	import { onMount, tick } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
+	import type { Block } from '$lib/block/block.svelte.js';
+	import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
+	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 	import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
-	import type { JSONDoc } from '$lib/utils/json.js';
+	import { canConvertBlock } from '$lib/plugins/richtext/richTextOperations.js';
+	import type { BlockHandleActivation } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
+	import type { Plugin } from '$lib/plugins.js';
+	import './demo.css';
 
 	let edytor = $state<EdytorContext>();
+	let isMounted = $state(false);
+	let blockMenuNode = $state<HTMLDivElement>();
+	let blockMenuTrigger: HTMLElement | null = null;
+	let repositionBlockMenu: (() => void) | null = null;
+	let blockMenu = $state<{ blockId: string } | null>(null);
+	let copiedBlockId = $state<string | null>(null);
+	let copyFailed = $state(false);
+
+	const demoPagePlugin: Plugin = () => ({
+		onBlockAttached: ({ node, block }) => {
+			const anchor = `block-${block.id}`;
+			if (!block.isRoot && !node.ownerDocument.getElementById(anchor)) {
+				node.id = anchor;
+				if (location.hash === `#${anchor}`) {
+					node.ownerDocument.defaultView?.requestAnimationFrame(() =>
+						node.scrollIntoView({ block: 'center' })
+					);
+				}
+			}
+			return () => {
+				if (node.id === anchor) node.removeAttribute('id');
+			};
+		},
+		commands: [
+			{
+				id: 'block.code',
+				label: 'Code',
+				group: 'Blocks',
+				keywords: ['code block', 'snippet'],
+				isEnabled: (editor) => canConvertBlock(editor.selection.state.startBlock),
+				run: async (editor) => {
+					const block = editor.selection.state.startBlock;
+					if (!canConvertBlock(block)) return;
+					block.setBlock({
+						value: {
+							type: 'code',
+							content: [{ text: '' }],
+							children: [{ type: 'codeLine', content: [{ text: '' }] }]
+						}
+					});
+					await tick();
+					const line = block.children[0]?.firstText;
+					if (line) {
+						editor.selection.setCollapsedStateAtTextOffset(line, 0);
+						await editor.selection.setAtTextOffset(line, 0);
+					}
+				}
+			}
+		]
+	});
 	const plugins = [
 		arrowMovePlugin,
 		imagePlugin,
@@ -19,133 +75,487 @@
 		mentionPlugin,
 		slashMenuPlugin,
 		toolbarPlugin,
+		demoPagePlugin,
 		richTextPlugin
 	];
-	const demoValue = {
+	const demoValue: JSONDoc = {
 		children: [
 			{
+				id: 'page-title',
+				type: 'heading',
+				data: { level: 'h1' },
+				content: [{ text: 'A calmer place to think' }]
+			},
+			{
+				id: 'page-intro',
 				type: 'paragraph',
 				content: [
-					{ text: 'hello', marks: { bold: true } },
-					{ type: 'mention' },
-					{ text: 'World', marks: { bold: true } },
-					{ type: 'mention' },
-					{ text: 'Prout', marks: { bold: true } }
-				],
+					{ text: 'Edytor is a canvas for notes that grow into something more. ' },
+					{ text: 'Select text', marks: { bold: true } },
+					{ text: ' to format it, or type ' },
+					{ text: '/', marks: { code: true } },
+					{ text: ' on a new line to add a block.' }
+				]
+			},
+			{
+				id: 'page-callout',
+				type: 'callout',
+				data: { icon: '✦' },
+				content: [
+					{ text: 'Everything here is editable. ' },
+					{ text: 'Grab the six-dot handle', marks: { bold: true } },
+					{ text: ' to move a block, nest it, or open its menu.' }
+				]
+			},
+			{
+				id: 'page-section',
+				type: 'heading',
+				data: { level: 'h2' },
+				content: [{ text: 'Make room for ideas' }]
+			},
+			{
+				id: 'page-section-intro',
+				type: 'paragraph',
+				content: [{ text: 'Start with a thought. Give it structure when you need it.' }]
+			},
+			{
+				id: 'page-task-one',
+				type: 'todo-item',
+				data: { checked: false },
+				content: [{ text: 'Write down the first rough version' }]
+			},
+			{
+				id: 'page-task-two',
+				type: 'todo-item',
+				data: { checked: false },
+				content: [{ text: 'Move related thoughts together' }]
+			},
+			{
+				id: 'page-bullet-one',
+				type: 'bulleted-list-item',
+				content: [{ text: 'Blocks are the building pieces.' }]
+			},
+			{
+				id: 'page-bullet-two',
+				type: 'bulleted-list-item',
+				content: [{ text: 'Your words stay yours, even as the page changes.' }]
+			},
+			{
+				id: 'page-quote',
+				type: 'quote',
+				content: [{ text: 'The best ideas rarely arrive in order.' }]
+			},
+			{
+				id: 'page-toggle',
+				type: 'toggle',
+				content: [{ text: 'A few more ways to work' }],
 				children: [
 					{
+						id: 'page-toggle-child',
 						type: 'paragraph',
-						content: [{ text: 'One', marks: { bold: true } }],
-						children: [
-							{
-								type: 'paragraph',
-								content: [{ text: 'Two', marks: { bold: true } }]
-							}
-						]
+						content: [{ text: 'Turn a block into a heading, list, quote, callout, or code.' }]
 					}
 				]
 			},
 			{
+				id: 'page-code',
 				type: 'code',
-				content: [{ text: 'caption yo' }],
-				children: [{ type: 'codeLine', content: [{ text: '\t\tconsole.log("hello")' }] }]
-			}
+				content: [{ text: '' }],
+				children: [
+					{
+						id: 'page-code-line',
+						type: 'codeLine',
+						content: [{ text: 'const idea = "start somewhere";' }]
+					}
+				]
+			},
+			{ id: 'page-end', type: 'paragraph', content: [{ text: '' }] }
 		]
-	} satisfies JSONDoc;
+	};
+
+	const blockChoices = [
+		{ type: 'paragraph', label: 'Text', icon: 'T', data: {} },
+		{ type: 'heading', label: 'Heading 1', icon: 'H₁', data: { level: 'h1' } },
+		{ type: 'heading', label: 'Heading 2', icon: 'H₂', data: { level: 'h2' } },
+		{ type: 'heading', label: 'Heading 3', icon: 'H₃', data: { level: 'h3' } },
+		{ type: 'bulleted-list-item', label: 'Bulleted list', icon: '•', data: {} },
+		{ type: 'numbered-list-item', label: 'Numbered list', icon: '1.', data: {} },
+		{ type: 'todo-item', label: 'To-do list', icon: '☐', data: { checked: false } },
+		{ type: 'quote', label: 'Quote', icon: '❝', data: {} },
+		{ type: 'callout', label: 'Callout', icon: '✦', data: { icon: '✦' } },
+		{ type: 'toggle', label: 'Toggle list', icon: '▸', data: {} }
+	] as const;
+	const activeBlock = $derived(
+		blockMenu && edytor ? edytor.idToBlock.get(blockMenu.blockId) : undefined
+	);
+
+	const copyWithoutIds = (value: JSONBlock): JSONBlock => ({
+		type: value.type,
+		...(value.data ? { data: value.data } : {}),
+		...(value.content
+			? {
+					content: value.content.map((part) =>
+						'text' in part
+							? { text: part.text, ...(part.marks ? { marks: part.marks } : {}) }
+							: { type: part.type, ...(part.data ? { data: part.data } : {}) }
+					)
+				}
+			: {}),
+		...(value.children ? { children: value.children.map(copyWithoutIds) } : {})
+	});
+	const restoreCaret = async (block: Block | null | undefined) => {
+		if (!edytor || !block) return;
+		await tick();
+		const text = block.firstEditableText ?? (block.definition.void ? undefined : block.firstText);
+		if (!text) return;
+		// Clear any atomic block selection before the DOM caret write.
+		edytor.selection.setCollapsedStateAtTextOffset(text, 0);
+		await edytor.selection.setAtTextOffset(text, 0);
+		edytor.node?.focus({ preventScroll: true });
+	};
+	const addBlockBelow = async () => {
+		const added = activeBlock?.insertBlockAfter({ block: { type: 'paragraph' } });
+		blockMenu = null;
+		await restoreCaret(added);
+	};
+	const duplicateBlock = async () => {
+		const duplicate = activeBlock?.insertBlockAfter({ block: copyWithoutIds(activeBlock.value) });
+		blockMenu = null;
+		await restoreCaret(duplicate);
+	};
+	const deleteBlock = () => {
+		const block = activeBlock;
+		if (!block) return;
+		const next = block.nextBlock ?? block.previousBlock;
+		block.removeBlock();
+		blockMenu = null;
+		void restoreCaret(next);
+	};
+	const transformBlock = (choice: (typeof blockChoices)[number]) => {
+		const block = activeBlock;
+		block?.setBlock({ value: { type: choice.type, data: choice.data } });
+		blockMenu = null;
+		void restoreCaret(block);
+	};
+	const moveBlock = (direction: 'up' | 'down' | 'indent' | 'outdent') => {
+		const block = activeBlock;
+		if (!block || !edytor) return;
+		if (direction === 'indent') block.nestBlock();
+		else if (direction === 'outdent') block.unNestBlock();
+		else {
+			const target = direction === 'up' ? block.previousBlock : block.nextBlock;
+			const position = direction === 'up' ? 'before' : 'after';
+			if (target) edytor.moveBlocks({ blocks: [block], target, position });
+		}
+		blockMenu = null;
+		void restoreCaret(block);
+	};
+	const copyBlockLink = async () => {
+		const block = activeBlock;
+		if (!block) return;
+		const anchor = `block-${block.id}`;
+		try {
+			await navigator.clipboard.writeText(`${location.origin}${location.pathname}#${anchor}`);
+			copiedBlockId = block.id;
+			copyFailed = false;
+		} catch {
+			copyFailed = true;
+		}
+	};
+	const closeBlockMenu = (restoreFocus = false) => {
+		blockMenu = null;
+		if (restoreFocus && blockMenuTrigger?.isConnected) {
+			blockMenuTrigger.focus({ preventScroll: true });
+		}
+	};
+	const handleBlockMenuKeyDown = (event: KeyboardEvent) => {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			closeBlockMenu(true);
+			return;
+		}
+		if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+		if (!blockMenuNode) return;
+		const items = Array.from(
+			blockMenuNode.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
+		);
+		if (!items.length) return;
+		event.preventDefault();
+		const current = items.findIndex((item) => item === document.activeElement);
+		const next =
+			event.key === 'Home'
+				? 0
+				: event.key === 'End'
+					? items.length - 1
+					: event.key === 'ArrowDown'
+						? (current + 1) % items.length
+						: (current - 1 + items.length) % items.length;
+		items[next]?.focus({ preventScroll: true });
+		items[next]?.scrollIntoView({ block: 'nearest' });
+	};
+
+	const openBlockMenu = ({ block, anchor }: BlockHandleActivation) => {
+		const text = block.firstEditableText ?? block.firstText;
+		if (text) edytor?.selection.setCollapsedStateAtTextOffset(text, 0);
+		else edytor?.selection.selectBlocks();
+		blockMenuTrigger = anchor;
+		blockMenu = { blockId: block.id };
+		copiedBlockId = null;
+		copyFailed = false;
+		void tick().then(() => {
+			repositionBlockMenu?.();
+			blockMenuNode
+				?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
+				?.focus({ preventScroll: true });
+		});
+	};
+	const positionBlockMenu = (node: HTMLDivElement) => {
+		const gap = 8;
+		const edge = 8;
+		let frame = 0;
+		let placeAbove = false;
+		let hasPlacement = false;
+		let observedAnchor: HTMLElement | null = null;
+		const position = () => {
+			frame = 0;
+			const anchor = blockMenuTrigger;
+			if (!anchor?.isConnected) {
+				blockMenu = null;
+				return;
+			}
+			if (anchor !== observedAnchor) {
+				if (observedAnchor) observer.unobserve(observedAnchor);
+				observer.observe(anchor);
+				observedAnchor = anchor;
+				hasPlacement = false;
+			}
+
+			const anchorRect = anchor.getBoundingClientRect();
+			const menuWidth = node.getBoundingClientRect().width;
+			const viewportWidth = window.innerWidth;
+			const viewportHeight = window.innerHeight;
+			if (
+				anchorRect.bottom < 0 ||
+				anchorRect.top > viewportHeight ||
+				anchorRect.right < 0 ||
+				anchorRect.left > viewportWidth
+			) {
+				blockMenu = null;
+				return;
+			}
+			const right = anchorRect.right + gap;
+			const left = anchorRect.left - gap - menuWidth;
+			const x =
+				right + menuWidth <= viewportWidth - edge
+					? right
+					: left >= edge
+						? left
+						: Math.max(edge, Math.min(right, viewportWidth - edge - menuWidth));
+
+			const contentHeight = Math.min(node.scrollHeight, 520);
+			const below = Math.max(0, viewportHeight - edge - anchorRect.top);
+			const visibleAnchorBottom = Math.min(anchorRect.bottom, viewportHeight - edge);
+			const above = Math.max(0, visibleAnchorBottom - edge);
+			if (!hasPlacement) {
+				placeAbove = below < contentHeight / 2 && above > below;
+				hasPlacement = true;
+			} else if (placeAbove && above < contentHeight / 2 && below > above) {
+				placeAbove = false;
+			} else if (!placeAbove && below < contentHeight / 2 && above > below) {
+				placeAbove = true;
+			}
+			node.style.maxHeight = `${Math.min(contentHeight, placeAbove ? above : below)}px`;
+			const menuHeight = node.getBoundingClientRect().height;
+			const y = placeAbove
+				? Math.max(edge, visibleAnchorBottom - menuHeight)
+				: Math.max(edge, Math.min(anchorRect.top, viewportHeight - edge - menuHeight));
+			node.style.left = `${x}px`;
+			node.style.top = `${y}px`;
+			node.style.visibility = 'visible';
+		};
+		const schedule = () => {
+			if (!frame) frame = window.requestAnimationFrame(position);
+		};
+		const observer = new ResizeObserver(schedule);
+		observer.observe(node);
+		if (edytor?.node) observer.observe(edytor.node);
+		window.addEventListener('scroll', schedule, true);
+		window.addEventListener('resize', schedule);
+		repositionBlockMenu = position;
+		position();
+		return {
+			destroy() {
+				if (repositionBlockMenu === position) repositionBlockMenu = null;
+				window.cancelAnimationFrame(frame);
+				observer.disconnect();
+				window.removeEventListener('scroll', schedule, true);
+				window.removeEventListener('resize', schedule);
+			}
+		};
+	};
+
+	onMount(() => {
+		// The live editor creates per-view DOM state; mount it after the static
+		// workspace shell hydrates so server/client markup stays identical.
+		isMounted = true;
+		const closeOnOutsidePointer = (event: PointerEvent) => {
+			const target = event.target;
+			if (
+				target instanceof Element &&
+				!target.closest('[data-demo-block-menu], [data-testid="block-handle"]')
+			)
+				blockMenu = null;
+		};
+		const closeOnEscape = (event: KeyboardEvent) => {
+			if (event.key === 'Escape' && blockMenu) closeBlockMenu(true);
+		};
+		window.addEventListener('pointerdown', closeOnOutsidePointer, true);
+		window.addEventListener('keydown', closeOnEscape);
+		return () => {
+			window.removeEventListener('pointerdown', closeOnOutsidePointer, true);
+			window.removeEventListener('keydown', closeOnEscape);
+		};
+	});
 </script>
 
-<main class="min-h-screen bg-stone-950 px-5 py-8 text-stone-100 sm:px-8 lg:px-12">
-	<div class="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
-		<aside class="space-y-5">
-			<div>
-				<p class="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300/80">
-					Edytor Lab
-				</p>
-				<h1 class="mt-3 text-3xl font-semibold tracking-tight text-stone-50">
-					Clean editing surface
-				</h1>
-				<p class="mt-3 text-sm leading-6 text-stone-400">
-					A local playground for typing, splitting, marks, slash commands, and browser behavior.
-				</p>
-			</div>
+<svelte:head>
+	<title>Edytor — A calmer place to think</title>
+	<meta
+		name="description"
+		content="A living document playground for the Edytor rich text editor."
+	/>
+</svelte:head>
 
-			<div class="flex flex-wrap gap-2">
-				<button
-					type="button"
-					onclick={() => {
-						edytor?.clear();
-					}}
-					class="rounded-full bg-amber-300 px-4 py-2 text-sm font-semibold text-stone-950 transition hover:bg-amber-200"
-				>
-					Clear
-				</button>
-				<button
-					type="button"
-					onclick={(e) => {
-						e.preventDefault();
-						edytor?.selection.state.startText?.setText({
-							value: [{ text: 'WAZA', marks: { bold: true } }]
-						});
-					}}
-					class="rounded-full border border-stone-700 px-4 py-2 text-sm text-stone-200 transition hover:border-stone-500 hover:bg-stone-900"
-				>
-					Set text
-				</button>
-				<button
-					type="button"
-					onclick={(e) => {
-						e.preventDefault();
-						edytor?.selection.state.startText?.parent?.setBlock({
-							value: {
-								type: 'heading',
-								data: { level: 'h2' },
-								content: [{ text: 'heading', marks: { bold: true, italic: true } }],
-								children: []
-							}
-						});
-					}}
-					class="rounded-full border border-stone-700 px-4 py-2 text-sm text-stone-200 transition hover:border-stone-500 hover:bg-stone-900"
-				>
-					Set block
-				</button>
+<div class="demo-shell">
+	<aside class="demo-sidebar" aria-label="Workspace">
+		<div class="workspace-switcher">
+			<span class="workspace-avatar">e</span><span class="workspace-name">Edytor workspace</span
+			><span class="workspace-chevron">⌄</span>
+		</div>
+		<div class="sidebar-section">
+			<div class="sidebar-heading">Private</div>
+			<div class="sidebar-row sidebar-row-active">
+				<span class="sidebar-icon">✦</span><span>A calmer place to think</span>
 			</div>
-		</aside>
-
-		<section
-			class="rounded-[2rem] border border-stone-800 bg-stone-100 p-4 text-stone-950 shadow-2xl shadow-black/30 sm:p-6"
-		>
-			<div
-				class="min-h-[32rem] rounded-[1.5rem] bg-white px-5 py-6 shadow-inner shadow-stone-300/60 sm:px-8"
-			>
-				<Edytor {plugins} value={demoValue} readonly={false} class="outline-none" bind:edytor>
-					{#snippet placeholder({ block })}
-						{#if block.focused}
-							<span>Write something here ...</span>
-						{/if}
-					{/snippet}
-				</Edytor>
+		</div>
+		<div class="sidebar-section">
+			<div class="sidebar-heading">Quick start</div>
+			<p class="sidebar-note">
+				Select words to format them. Type / on a line for blocks. Grab ⋮⋮ to move, nest, or open the
+				block menu.
+			</p>
+		</div>
+		<div class="sidebar-bottom"><span>Edytor playground</span></div>
+	</aside>
+	<div class="demo-workspace">
+		<header class="demo-topbar">
+			<div class="demo-breadcrumbs">
+				<span class="breadcrumb-icon">✦</span><span>A calmer place to think</span><span
+					class="breadcrumb-chevron">⌄</span
+				>
 			</div>
-		</section>
+			<div class="topbar-actions">
+				<span class="demo-indicator"><span></span> Demo document</span>
+				<button type="button" title="Undo" aria-label="Undo" onclick={() => edytor?.historyUndo()}
+					>↶</button
+				>
+				<button type="button" title="Redo" aria-label="Redo" onclick={() => edytor?.historyRedo()}
+					>↷</button
+				>
+			</div>
+		</header>
+		<main class="demo-main">
+			<div class="document-page">
+				<div class="page-icon" aria-hidden="true">✦</div>
+				<div class="page-kicker">YOUR SPACE TO MAKE SOMETHING</div>
+				<div class="page-editor">
+					{#if isMounted}
+						<Edytor
+							{plugins}
+							value={demoValue}
+							class="demo-edytor"
+							blockHandles={{ onActivate: openBlockMenu }}
+							bind:edytor
+						>
+							{#snippet placeholder({ block })}
+								{#if block.focused}<span>Type '/' for commands</span>{/if}
+							{/snippet}
+						</Edytor>
+					{/if}
+				</div>
+				<div class="page-footer"><span>✦</span> A blank page is an invitation. Keep writing.</div>
+			</div>
+		</main>
 	</div>
-</main>
-
-<style lang="postcss">
-	@reference "tailwindcss";
-	:global {
-		[data-edytor-focused] {
-			@apply bg-amber-100/70;
-		}
-		[data-edytor-selected] {
-			@apply rounded bg-amber-300/55 ring-2 ring-amber-400;
-		}
-		[data-edytor-text-suggestion] {
-			@apply opacity-60 italic;
-		}
-		*:has([data-edytor-text-placeholder]) {
-			@apply relative;
-		}
-		[data-edytor-text-placeholder] {
-			@apply text-stone-400 italic caret-transparent;
-		}
-	}
-</style>
+	{#if blockMenu && activeBlock}
+		<div
+			class="demo-block-menu"
+			data-demo-block-menu
+			role="menu"
+			tabindex="-1"
+			aria-label="Block actions"
+			use:positionBlockMenu
+			bind:this={blockMenuNode}
+			onkeydown={handleBlockMenuKeyDown}
+		>
+			<div class="block-menu-heading">Turn into</div>
+			<div class="block-menu-types">
+				{#each blockChoices as choice (choice.label)}
+					<button type="button" role="menuitem" onclick={() => transformBlock(choice)}
+						><span class="block-menu-icon">{choice.icon}</span><span>{choice.label}</span></button
+					>
+				{/each}
+			</div>
+			<div class="block-menu-divider"></div>
+			<button
+				type="button"
+				role="menuitem"
+				onclick={() => moveBlock('up')}
+				disabled={!activeBlock.previousBlock}
+				><span class="block-menu-icon">↑</span><span>Move up</span></button
+			>
+			<button
+				type="button"
+				role="menuitem"
+				onclick={() => moveBlock('down')}
+				disabled={!activeBlock.nextBlock}
+				><span class="block-menu-icon">↓</span><span>Move down</span></button
+			>
+			<button
+				type="button"
+				role="menuitem"
+				onclick={() => moveBlock('indent')}
+				disabled={!activeBlock.previousBlock}
+				><span class="block-menu-icon">→</span><span>Indent</span></button
+			>
+			<button
+				type="button"
+				role="menuitem"
+				onclick={() => moveBlock('outdent')}
+				disabled={!activeBlock.isNested}
+				><span class="block-menu-icon">←</span><span>Outdent</span></button
+			>
+			<div class="block-menu-divider"></div>
+			<button type="button" role="menuitem" onclick={addBlockBelow}
+				><span class="block-menu-icon">＋</span><span>Add block below</span></button
+			>
+			<button type="button" role="menuitem" onclick={duplicateBlock}
+				><span class="block-menu-icon">⧉</span><span>Duplicate</span></button
+			>
+			<button type="button" role="menuitem" onclick={copyBlockLink}
+				><span class="block-menu-icon">↗</span><span
+					>{copyFailed
+						? 'Copy failed'
+						: copiedBlockId === activeBlock.id
+							? 'Copied link'
+							: 'Copy link to block'}</span
+				></button
+			>
+			<div class="block-menu-divider"></div>
+			<button type="button" role="menuitem" class="block-menu-danger" onclick={deleteBlock}
+				><span class="block-menu-icon">⌫</span><span>Delete</span></button
+			>
+		</div>
+	{/if}
+</div>

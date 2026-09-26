@@ -1,7 +1,6 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { InlineBlockDefinition } from '$lib/plugins.js';
 import { cloneJson, type JSONInlineBlock } from '$lib/utils/json.js';
-import type { YBlockLike } from '$lib/crdt/compat.js';
 import type { Block } from './block.svelte.js';
 import { id } from '$lib/utils.js';
 import { clearDomSelection } from '$lib/selection/domSelection.js';
@@ -18,7 +17,6 @@ export class InlineBlock {
 	parent: Block;
 	data = $state<any>({});
 	id: string;
-	yBlock: YBlockLike;
 	#type = $state<string>('inline');
 	index = $state(0);
 	definition = $state<InlineBlockDefinition>({} as InlineBlockDefinition);
@@ -41,7 +39,26 @@ export class InlineBlock {
 
 	set type(value: string) {
 		this.#type = value;
-		this.yBlock.set('type', value);
+		if (this._spec) this._spec.type = value;
+	}
+
+	/**
+	 * Write the inline atom's `data` payload — routed through the parent's
+	 * typed node (`setInlineData`) when bound, else into the pending `_spec`
+	 * (the detached-wrapper contract the old `yBlock.set('data')` had).
+	 */
+	setData = (data: Record<string, unknown>): void => {
+		this.data = data;
+		if (this._live && this.parent._bound === true && this.parent._blockId != null) {
+			this.parent.model?.setInlineData(this.id, cloneJson(data));
+		} else if (this._spec) {
+			this._spec.data = data;
+		}
+	};
+
+	/** True while this wrapper maps a live inline atom inside its parent's content. */
+	get isInDocument(): boolean {
+		return this._live && this.parent.content.includes(this);
 	}
 
 	get value(): JSONInlineBlock {
@@ -100,55 +117,8 @@ export class InlineBlock {
 			this.data = block.data || {};
 			this._spec = { type: this.#type, ...(block.data ? { data: block.data } : {}) };
 		}
-		this.yBlock = this.createAdapter();
 		this.definition = this.edytor.getBlockDefinition('inline', this.#type);
 	}
-
-	private createAdapter = (): YBlockLike => {
-		// Adapter getters/method shorthand rebind `this` to the adapter
-		// object, so the wrapper instance is captured explicitly.
-		// eslint-disable-next-line @typescript-eslint/no-this-alias
-		const self = this;
-		const bound = () => self._live && self.parent._bound === true;
-		const adapter: YBlockLike & { __compatKind: 'inline'; __owner: InlineBlock } = {
-			__compatKind: 'inline',
-			__owner: self,
-			get: (key: string) => {
-				if (key === 'id') return self.id;
-				if (key === 'type') return self.#type;
-				if (key === 'data') return self.data;
-				return undefined;
-			},
-			set: (key: string, value: unknown) => {
-				if (key === 'data') {
-					self.data = (value ?? {}) as Record<string, unknown>;
-					if (bound()) {
-						self.edytor.facade!.setInlineData(
-							self.parent._blockId as string,
-							self.id,
-							cloneJson(self.data)
-						);
-					} else if (self._spec) {
-						self._spec.data = self.data;
-					}
-				}
-				if (key === 'type') {
-					self.#type = value as string;
-					if (self._spec) self._spec.type = self.#type;
-				}
-				if (key === 'id') {
-					self.id = value as string;
-				}
-			},
-			get _item() {
-				return { id: null, deleted: !bound() };
-			},
-			get doc() {
-				return bound() ? self.edytor.doc : null;
-			}
-		};
-		return adapter;
-	};
 
 	attach = (node: HTMLElement) => {
 		node.contentEditable = 'false';
@@ -166,6 +136,7 @@ export class InlineBlock {
 
 			event.preventDefault();
 			event.stopPropagation();
+			this.edytor.expectInternalFocus();
 			this.edytor.node?.focus();
 			const rect = node.getBoundingClientRect();
 			const contentIndex = this.parent.content.indexOf(this);
@@ -197,9 +168,7 @@ export class InlineBlock {
 			}
 
 			this.edytor.selection.selectBlocks();
-			this.edytor.selection.selectedInlineBlock.clear();
-			this.edytor.selection.selectedInlineBlock.add(this);
-			this.edytor.selection.inlineBlockDeletionTarget = this;
+			this.edytor.selection.selectInlineBlock(this);
 			this.edytor.selection.ignoreNextSelectionChange = true;
 			clearDomSelection(this.edytor.node);
 			this.edytor.selection.focusBlocks(this.parent);

@@ -52,17 +52,41 @@
  * imports vendor `.js` (which `pnpm check` must not traverse).
  */
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
-import { encodeRank, rankBetween, RANK_VMIN } from './rank.js';
+import { decodeRank, encodeRank, rankBetween, RANK_VMIN } from './rank.js';
+import {
+	AT,
+	AT_NODE,
+	BLOCK_NODE,
+	CONTENT,
+	CONTENT_NODE,
+	DATA,
+	DEL,
+	ID,
+	INLINE_NODE,
+	REGISTRY_KEY,
+	SLICES,
+	SLICES_NODE,
+	TYPE
+} from '../schema.js';
+import { randOf } from '../rand.js';
 import {
 	bindText,
 	computeOwners,
+	DEAD,
+	deepFreeze,
+	protectItems,
 	readSliceEntries,
 	type Owner,
 	type Ownership,
 	type SliceRecord,
 	type TextBlockRec
 } from '../text/model.js';
-import { cloneJson } from '../../utils/json.js';
+import {
+	cloneJson,
+	cloneJsonSafe,
+	sanitizeWireJson,
+	sanitizeWireString
+} from '../../utils/json.js';
 
 /** Logical block identifier — caller-assigned, immutable per block. */
 export type BlockId = string;
@@ -99,28 +123,40 @@ export type ProjectedBlock = {
 
 export type ProjectedDoc = { children: ProjectedBlock[] };
 
-export const REGISTRY_KEY = 'blocks';
-const AT = 'at';
-const CONTENT = 'content';
-const SLICES = 'slices';
-const DEL = 'del';
-const TYPE = 'type';
-const DATA = 'data';
-const ID = 'id';
-const BLOCK_NODE = 'block';
-const CONTENT_NODE = 'content';
-const SLICES_NODE = 'slices';
-const AT_NODE = 'at';
-const INLINE_NODE = 'inline';
+export { REGISTRY_KEY };
 
 /**
- * Deterministic bottom rank — the fallback rank for blocks whose candidates
- * were all cycle-rejected AND that carry no rank at all (e.g. every
- * placement write was undone). `''` is NOT a valid rank string and crashes
- * `rankBetween`; the minimal encodable rank sorts before everything, which
- * matches the previous intent (orphans rehome to the front of the root).
+ * Tiebreak for rehome ranks — the placement fallback is PURE replicated
+ * state (identical on every replica), so the minted rank must not depend
+ * on the local `doc.clientID` or `Math.random`: a fixed value keeps the
+ * resolution deterministic everywhere. Ordering between rehomed blocks is
+ * carried by the `v` digit (each successive rehome mints below the last).
  */
-const MIN_RANK = encodeRank([{ v: RANK_VMIN, t: 0 }]);
+const REHOME_TIE = 0;
+
+/**
+ * Deterministic rank strictly below `min` — the candidate-less rehome
+ * fallback (U5 fix). The old floor sentinel `encodeRank([{v: RANK_VMIN,
+ * t: 0}])` sorted first but was un-insertable-above: `rankBetween(
+ * undefined, that)` hits the `rSeg.v <= RANK_VMIN` guard and throws
+ * `RankSpaceExhausted` — reachable with ZERO boundary inserts (corpus
+ * seed 96). Minting `min[0].v - 1` keeps the documented "orphans rehome
+ * to the FRONT of the root" behavior while leaving digit headroom for
+ * legal inserts above the rehomed block.
+ *
+ * `min` = the current minimum rank among placements displaying at the
+ * root, `undefined` when the root list is empty (mint `{v:0}` — the same
+ * canonical first key `rankBetween(undefined, undefined)` emits). At the
+ * absolute floor (`min[0].v` already `RANK_VMIN` — unreachable through
+ * any legal write; nothing sorts below it) join `min`'s tie instead of
+ * minting an unencodable digit.
+ */
+const rehomeRankBelow = (min: string | undefined): string => {
+	if (min === undefined) return encodeRank([{ v: 0, t: REHOME_TIE }]);
+	const v = decodeRank(min)[0].v;
+	if (v <= RANK_VMIN) return min;
+	return encodeRank([{ v: v - 1, t: REHOME_TIE }]);
+};
 
 /** Placement value written atomically as one attr: `{p, r}`. */
 export type PlacementValue = { p: BlockId | null; r: string };
@@ -146,7 +182,7 @@ type OrderedCand = PlacementCand & { blockId: BlockId };
  * candidates sorted by `(seq, client)` descending (index 0 = argmax), plus
  * the U04 slice-claim state (backing text + ordered claim entries).
  */
-type BlockRec = TextBlockRec & {
+export type BlockRec = TextBlockRec & {
 	node: EngineNode;
 	type: string;
 	data: unknown;
@@ -157,12 +193,252 @@ type BlockRec = TextBlockRec & {
 export type ResolvedPlacement = {
 	parent: BlockId | null;
 	rank: string;
-	/** Which candidate index produced this (0 = argmax, >0 = cycle fallback). */
-	via: number;
+};
+
+/**
+ * One consistent replicated-state view — the shared currency of commands,
+ * anchors, projection and `DocChange` (WU7). `blocks`/`own`/`placements`
+ * are always present; `kids` (the `childrenIndex` buckets) is computed
+ * lazily on first access so pure-content ops never pay for it. When the
+ * doc has an attached model-state owner, `view()` returns ITS maintained
+ * indexes instead of rebuilding them per call — see `bindModel`'s
+ * `modelState` parameter.
+ */
+export type ModelView = {
+	blocks: Map<BlockId, BlockRec>;
+	own: Ownership;
+	placements: Map<BlockId, ResolvedPlacement>;
+	kids: Map<BlockId | null, { id: BlockId; rank: string }[]>;
+	/**
+	 * Canonicalize a JSON payload into its shared immutable instance —
+	 * deep-frozen, and interned by canonical key when the doc has an
+	 * attached model-state owner (so equal payloads are `===` across
+	 * `project()`/`contentItems()`/`runs()`). The publication boundary for
+	 * item `marks`/`data` (R4): range-read items carry borrowed references
+	 * into cursor/checkpoint/replicated state, and substituting the
+	 * interned clone is what keeps a caller's mutation out of the engine.
+	 */
+	intern: <T>(value: T) => T;
 };
 
 const isNodeLike = (v: unknown): v is EngineNode =>
 	v != null && typeof (v as { getAttr?: unknown }).getAttr === 'function';
+
+/** Parse the `at` map of a block node into sorted candidates. */
+export const candidatesOf = (node: EngineNode): PlacementCand[] => {
+	const at = node.getAttr(AT);
+	const cands: PlacementCand[] = [];
+	if (isNodeLike(at)) {
+		at.forEachAttr((v: unknown, key: string) => {
+			const dot = key.indexOf('.');
+			const val = v as PlacementValue;
+			if (dot <= 0 || val == null || typeof val !== 'object' || typeof val.r !== 'string') return;
+			cands.push({
+				key,
+				seq: Number(key.slice(0, dot)),
+				client: Number(key.slice(dot + 1)),
+				p: (val.p as BlockId | null) ?? null,
+				r: val.r
+			});
+		});
+	}
+	cands.sort((a, b) => cmpStamp(b.seq, b.client, a.seq, a.client));
+	return cands;
+};
+
+/**
+ * Resolve every block's winning placement, in global candidate order
+ * `(seq, clientId, blockId)` descending. A candidate is accepted iff its
+ * DISPLAY edge cannot reach back to the block through already-accepted
+ * display edges; rejected candidates fall through to the block's next
+ * candidate, then to a deterministic root fallback. Pure — reads only
+ * replicated state, writes nothing.
+ *
+ * The relation kept acyclic is the COMPOSED display-parent relation
+ * `b ↦ owner(parent(b))` (see `displayParentOf`): a placement parent that
+ * was merged away resolves to its claim owner, so the raw `pl.parent`
+ * graph being acyclic is NOT sufficient — a merge claim can redirect a
+ * display edge back into the block's own subtree (e.g. `A` merged into
+ * `B` while `B` sits under `A`, or `del` resurrection re-arming a claim).
+ * Because the claim-owner map is computed independently of placements
+ * (claims live on `slices` records), the acceptance test composes the
+ * two: the candidate's tentative display edge is `ownerOf(p)` — a live
+ * self-owned block, `null` (root), or `DEAD` (deleted parent — a sink
+ * that hides the subtree and can never close a cycle).
+ *
+ * `ownerOf` is injectable so callers can share an ownership context they
+ * already computed; standalone callers get the map derived from the
+ * block records (pure over replicated state — claims are `slices` items).
+ */
+export const resolvePlacements = (
+	blocks: Map<BlockId, BlockRec>,
+	ownerOf?: (b: BlockId) => Owner
+): Map<BlockId, ResolvedPlacement> => {
+	let owner = ownerOf;
+	if (!owner) {
+		const owners = computeOwners(blocks);
+		owner = (b: BlockId): Owner => owners.get(b) ?? DEAD;
+	}
+	/** The display edge an accepted placement installs: `owner(parent)`. */
+	const displayEdge = (pl: ResolvedPlacement): Owner | null =>
+		pl.parent === null ? null : owner!(pl.parent);
+	const ordered: OrderedCand[] = [];
+	for (const [id, rec] of blocks) {
+		for (const c of rec.cands) ordered.push({ ...c, blockId: id });
+	}
+	ordered.sort(
+		(a, b) => cmpStamp(b.seq, b.client, a.seq, a.client) || b.blockId.localeCompare(a.blockId)
+	);
+	const accepted = new Map<BlockId, ResolvedPlacement>();
+	for (const cand of ordered) {
+		if (accepted.has(cand.blockId)) continue;
+		const rec = blocks.get(cand.blockId)!;
+		let p = cand.p;
+		if (p !== null && !blocks.has(p)) p = null; // parent never integrated → root
+		if (p !== null) {
+			const d = owner(p); // the display edge this candidate installs
+			// A DEAD display parent (deleted target) hides the block with
+			// its subtree — a sink, never a cycle member. Otherwise reject
+			// the candidate iff `d` can already reach the block through
+			// accepted display edges — i.e. the block is a display ancestor
+			// of `d`. Because accepted edges are acyclic by induction, the
+			// walk always terminates.
+			if (d !== DEAD) {
+				let cur: BlockId | null = d;
+				let cyclic = false;
+				while (cur !== null) {
+					if (cur === cand.blockId) {
+						cyclic = true;
+						break;
+					}
+					const cp = accepted.get(cur);
+					if (cp === undefined) break; // edge not yet accepted → cannot cycle
+					const e = displayEdge(cp);
+					if (e === DEAD) break;
+					cur = e;
+				}
+				if (cyclic) continue; // try this block's next candidate
+			}
+		}
+		accepted.set(cand.blockId, { parent: p, rank: cand.r });
+	}
+	// Fallback: blocks whose candidates were all cycle-rejected are rehomed
+	// at the root under their argmax rank; a block with NO surviving
+	// candidate mints a deterministic rank strictly below the current root
+	// minimum (rehomeRankBelow — the U5 fix; see its comment). The mint
+	// must stay deterministic across replicas: it depends only on the
+	// accepted map + block ids, never on clientID/Math.random.
+	const rehomed: BlockRec[] = [];
+	for (const [id, rec] of blocks) {
+		if (accepted.has(id)) continue;
+		if (rec.cands.length > 0) {
+			accepted.set(id, { parent: null, rank: rec.cands[0].r });
+		} else {
+			rehomed.push(rec);
+		}
+	}
+	if (rehomed.length > 0) {
+		// Minimum rank among placements that DISPLAY at the root (a `null`
+		// parent edge is the only way a display edge is `null` — `owner()`
+		// never returns null). Superset-of-visible is fine: minting below
+		// even an invisible sibling still sorts the rehome first among the
+		// visible list.
+		let min: string | undefined;
+		for (const pl of accepted.values()) {
+			if (pl.parent === null && (min === undefined || pl.rank < min)) min = pl.rank;
+		}
+		// Descending-id mint order → ascending-id display order, the same
+		// (rank, id)-tie order the old shared MIN_RANK produced. Each mint
+		// goes below the running minimum, so stacked rehomes always get
+		// distinct deterministic ranks.
+		rehomed.sort((a, b) => b.id.localeCompare(a.id));
+		for (const rec of rehomed) {
+			min = rehomeRankBelow(min);
+			accepted.set(rec.id, { parent: null, rank: min });
+		}
+	}
+	return accepted;
+};
+
+/** Visible = not `del`-flagged and owns its own slice list (not merged away). */
+export const isVisible = (blocks: Map<BlockId, BlockRec>, own: Ownership, id: BlockId): boolean => {
+	const rec = blocks.get(id);
+	return rec !== undefined && !rec.deleted && !own.hidden(id);
+};
+
+/**
+ * The parent under which `id` actually DISPLAYS. Normally the resolved
+ * placement parent — but when that parent is merged-away (its slice list
+ * is claimed, `owner(parent) !== parent`), the child follows the claim to
+ * the merge destination: `owner(parent)`. This prevents hidden orphans in
+ * chained/overlapping merges (B+C merged while A+B merged: C's children
+ * land on B, B is claimed by A → children display under A).
+ *
+ * A `del`-flagged (or unreachable) parent resolves to owner `DEAD` → the
+ * child stays hidden with its subtree — explicit deletion does NOT
+ * promote or rehome descendants (MV06 contract preserved).
+ */
+export const displayParentOf = (own: Ownership, pl: ResolvedPlacement): Owner | null => {
+	if (pl.parent === null) return null;
+	// Unclaimed parent → itself; merged-away → the claim owner;
+	// DEAD (deleted/unreachable) → the child is hidden with the subtree.
+	return own.ownerOf(pl.parent);
+};
+
+/**
+ * Ordered `{id, rank}` children of `parent` (null = root): every visible
+ * block whose resolved placement points at `parent`, sorted by
+ * `(rank, id)`. This is the same ordering the projector emits.
+ *
+ * O(#placements) per call — use {@link childrenIndex} when every parent's
+ * list is needed (one pass total instead of one pass per parent).
+ */
+export const childrenOf = (
+	blocks: Map<BlockId, BlockRec>,
+	placements: Map<BlockId, ResolvedPlacement>,
+	own: Ownership,
+	parent: BlockId | null
+): { id: BlockId; rank: string }[] => {
+	const out: { id: BlockId; rank: string }[] = [];
+	for (const [id, pl] of placements) {
+		if (displayParentOf(own, pl) !== parent) continue;
+		if (!isVisible(blocks, own, id)) continue;
+		out.push({ id, rank: pl.rank });
+	}
+	out.sort((a, b) => (a.rank === b.rank ? a.id.localeCompare(b.id) : a.rank < b.rank ? -1 : 1));
+	return out;
+};
+
+/**
+ * All visible children's lists at once: `parent|null → sorted {id, rank}[]`
+ * — ONE pass over `placements` plus one sort per list, so a whole-tree walk
+ * is O(n) instead of the O(n²) of calling {@link childrenOf} per node
+ * (U11 measurement: the per-node scan was ~10ms of an ~11ms projection
+ * at 1,000 blocks). Ordering is identical to `childrenOf`.
+ */
+export const childrenIndex = (
+	blocks: Map<BlockId, BlockRec>,
+	placements: Map<BlockId, ResolvedPlacement>,
+	own: Ownership
+): Map<BlockId | null, { id: BlockId; rank: string }[]> => {
+	const index = new Map<BlockId | null, { id: BlockId; rank: string }[]>();
+	for (const [id, pl] of placements) {
+		if (!isVisible(blocks, own, id)) continue;
+		const dp = displayParentOf(own, pl);
+		// DEAD display parents never match a real parent in `childrenOf`
+		// either — hidden-with-subtree blocks appear in no list.
+		if (dp === DEAD) continue;
+		const bucket = index.get(dp);
+		if (bucket) bucket.push({ id, rank: pl.rank });
+		else index.set(dp, [{ id, rank: pl.rank }]);
+	}
+	for (const bucket of index.values()) {
+		bucket.sort((a, b) =>
+			a.rank === b.rank ? a.id.localeCompare(b.id) : a.rank < b.rank ? -1 : 1
+		);
+	}
+	return index;
+};
 
 /**
  * Bind the placement model to a concrete engine surface.
@@ -171,7 +447,17 @@ const isNodeLike = (v: unknown): v is EngineNode =>
  * 'lib/crdt/vendor/yjs'`). Consumers inject it so this file stays free of
  * runtime vendor imports (see `engine-api.ts`).
  */
-export const bindModel = (Y: EngineApi) => {
+export const bindModel = (
+	Y: EngineApi,
+	/**
+	 * Optional shared-state provider (WU7): returns the doc's MAINTAINED
+	 * `ModelView` when a model-state owner is attached (wired by
+	 * `bindEdytorDoc` to `bindRuns`' doc-shared state), `undefined`
+	 * otherwise. `view()` prefers it over a fresh collect so commands,
+	 * anchors and rendering all read one set of incremental indexes.
+	 */
+	modelState?: (doc: EngineDoc) => ModelView | undefined
+) => {
 	/** Construct a detached v14 node, viewed through the structural interface. */
 	const newNode = (name: string): EngineNode => new Y.Node(name) as unknown as EngineNode;
 
@@ -193,34 +479,10 @@ export const bindModel = (Y: EngineApi) => {
 		return n !== null && n.getAttr(DEL) === undefined ? n : null;
 	};
 
-	const isLive = (doc: EngineDoc, id: BlockId): boolean => liveNodeOf(doc, id) !== null;
-
-	/** Visible in the projected tree = `isLive` AND not merged away. */
+	/** Visible in the projected tree = live (not `del`-flagged) AND not merged away. */
 	const isVisibleId = (doc: EngineDoc, id: BlockId): boolean => {
 		const { blocks, own } = view(doc);
 		return isVisible(blocks, own, id);
-	};
-
-	/** Parse the `at` map of a block node into sorted candidates. */
-	const candidatesOf = (node: EngineNode): PlacementCand[] => {
-		const at = node.getAttr(AT);
-		const cands: PlacementCand[] = [];
-		if (isNodeLike(at)) {
-			at.forEachAttr((v: unknown, key: string) => {
-				const dot = key.indexOf('.');
-				const val = v as PlacementValue;
-				if (dot <= 0 || val == null || typeof val !== 'object' || typeof val.r !== 'string') return;
-				cands.push({
-					key,
-					seq: Number(key.slice(0, dot)),
-					client: Number(key.slice(dot + 1)),
-					p: (val.p as BlockId | null) ?? null,
-					r: val.r
-				});
-			});
-		}
-		cands.sort((a, b) => cmpStamp(b.seq, b.client, a.seq, a.client));
-		return cands;
 	};
 
 	/** Read every registry entry into a record map. */
@@ -248,8 +510,7 @@ export const bindModel = (Y: EngineApi) => {
 							{
 								payload: { t: id, s: { i: null, a: -1 }, e: { i: null, a: 0 } },
 								stamp: { c: -1, k: -1 },
-								seqIndex: 0,
-								item: null
+								seqIndex: 0
 							}
 						],
 				cands: candidatesOf(v)
@@ -278,183 +539,40 @@ export const bindModel = (Y: EngineApi) => {
 	};
 
 	// ── pure projection ──────────────────────────────────────────────────
+	// `candidatesOf`, `resolvePlacements`, `isVisible`, `displayParentOf`,
+	// `childrenOf` and `childrenIndex` are module-level (see above) — shared
+	// with the maintained model state in `text/runs.ts` (WU7).
 
 	/**
-	 * Resolve every block's winning placement, in global candidate order
-	 * `(seq, clientId, blockId)` descending. A candidate is accepted iff its
-	 * DISPLAY edge cannot reach back to the block through already-accepted
-	 * display edges; rejected candidates fall through to the block's next
-	 * candidate, then to a deterministic root fallback. Pure — reads only
-	 * replicated state, writes nothing.
+	 * One consistent replicated-state view (`ModelView`).
 	 *
-	 * The relation kept acyclic is the COMPOSED display-parent relation
-	 * `b ↦ owner(parent(b))` (see `displayParentOf`): a placement parent that
-	 * was merged away resolves to its claim owner, so the raw `pl.parent`
-	 * graph being acyclic is NOT sufficient — a merge claim can redirect a
-	 * display edge back into the block's own subtree (e.g. `A` merged into
-	 * `B` while `B` sits under `A`, or `del` resurrection re-arming a claim).
-	 * Because the claim-owner map is computed independently of placements
-	 * (claims live on `slices` records), the acceptance test composes the
-	 * two: the candidate's tentative display edge is `ownerOf(p)` — a live
-	 * self-owned block, `null` (root), or `'dead'` (deleted parent — a sink
-	 * that hides the subtree and can never close a cycle).
-	 *
-	 * `ownerOf` is injectable so `view()` can share the ownership context it
-	 * already computed; standalone callers get the map derived from the
-	 * block records (pure over replicated state — claims are `slices` items).
+	 * WU7: when the doc carries an attached model-state owner, `modelState`
+	 * (injected by `bindEdytorDoc`, backed by `bindRuns`' doc-shared state)
+	 * returns ITS maintained indexes — block records, ownership, resolved
+	 * placements and the children index are kept current incrementally and
+	 * shared by commands, anchors, runs and rendering. Otherwise we build
+	 * the facets fresh per call, as before. `kids` is lazy either way so
+	 * pure-content ops never pay for the children index.
 	 */
-	const resolvePlacements = (
-		blocks: Map<BlockId, BlockRec>,
-		ownerOf?: (b: BlockId) => Owner
-	): Map<BlockId, ResolvedPlacement> => {
-		let owner = ownerOf;
-		if (!owner) {
-			const owners = computeOwners(blocks);
-			owner = (b: BlockId): Owner => owners.get(b) ?? 'dead';
-		}
-		/** The display edge an accepted placement installs: `owner(parent)`. */
-		const displayEdge = (pl: ResolvedPlacement): BlockId | null | 'dead' =>
-			pl.parent === null ? null : owner!(pl.parent);
-		const ordered: OrderedCand[] = [];
-		for (const [id, rec] of blocks) {
-			for (const c of rec.cands) ordered.push({ ...c, blockId: id });
-		}
-		ordered.sort(
-			(a, b) => cmpStamp(b.seq, b.client, a.seq, a.client) || b.blockId.localeCompare(a.blockId)
-		);
-		const accepted = new Map<BlockId, ResolvedPlacement>();
-		for (const cand of ordered) {
-			if (accepted.has(cand.blockId)) continue;
-			const rec = blocks.get(cand.blockId)!;
-			const via = rec.cands.findIndex((c) => c.key === cand.key);
-			let p = cand.p;
-			if (p !== null && !blocks.has(p)) p = null; // parent never integrated → root
-			if (p !== null) {
-				const d = owner(p); // the display edge this candidate installs
-				// A 'dead' display parent (deleted target) hides the block with
-				// its subtree — a sink, never a cycle member. Otherwise reject
-				// the candidate iff `d` can already reach the block through
-				// accepted display edges — i.e. the block is a display ancestor
-				// of `d`. Because accepted edges are acyclic by induction, the
-				// walk always terminates.
-				if (d !== 'dead') {
-					let cur: BlockId | null = d;
-					let cyclic = false;
-					while (cur !== null) {
-						if (cur === cand.blockId) {
-							cyclic = true;
-							break;
-						}
-						const cp = accepted.get(cur);
-						if (cp === undefined) break; // edge not yet accepted → cannot cycle
-						const e = displayEdge(cp);
-						if (e === 'dead') break;
-						cur = e;
-					}
-					if (cyclic) continue; // try this block's next candidate
-				}
-			}
-			accepted.set(cand.blockId, { parent: p, rank: cand.r, via });
-		}
-		// Fallback: blocks whose candidates were all cycle-rejected (or that
-		// carry none) are rehomed at the root under their argmax rank; a block
-		// with no surviving candidate gets the deterministic bottom rank.
-		for (const [id, rec] of blocks) {
-			if (!accepted.has(id)) {
-				accepted.set(id, { parent: null, rank: rec.cands[0]?.r ?? MIN_RANK, via: -1 });
-			}
-		}
-		return accepted;
-	};
-
-	/** Visible = not `del`-flagged and owns its own slice list (not merged away). */
-	const isVisible = (blocks: Map<BlockId, BlockRec>, own: Ownership, id: BlockId): boolean => {
-		const rec = blocks.get(id);
-		return rec !== undefined && !rec.deleted && !own.hidden(id);
-	};
-
-	/**
-	 * The parent under which `id` actually DISPLAYS. Normally the resolved
-	 * placement parent — but when that parent is merged-away (its slice list
-	 * is claimed, `owner(parent) !== parent`), the child follows the claim to
-	 * the merge destination: `owner(parent)`. This prevents hidden orphans in
-	 * chained/overlapping merges (B+C merged while A+B merged: C's children
-	 * land on B, B is claimed by A → children display under A).
-	 *
-	 * A `del`-flagged (or unreachable) parent resolves to owner `DEAD` → the
-	 * child stays hidden with its subtree — explicit deletion does NOT
-	 * promote or rehome descendants (MV06 contract preserved).
-	 */
-	const displayParentOf = (own: Ownership, pl: ResolvedPlacement): BlockId | null | 'dead' => {
-		if (pl.parent === null) return null;
-		// Unclaimed parent → itself; merged-away → the claim owner;
-		// 'dead' (deleted/unreachable) → the child is hidden with the subtree.
-		return own.ownerOf(pl.parent);
-	};
-
-	/**
-	 * Ordered `{id, rank}` children of `parent` (null = root): every visible
-	 * block whose resolved placement points at `parent`, sorted by
-	 * `(rank, id)`. This is the same ordering the projector emits.
-	 *
-	 * O(#placements) per call — use {@link childrenIndex} when every parent's
-	 * list is needed (one pass total instead of one pass per parent).
-	 */
-	const childrenOf = (
-		blocks: Map<BlockId, BlockRec>,
-		placements: Map<BlockId, ResolvedPlacement>,
-		own: Ownership,
-		parent: BlockId | null
-	): { id: BlockId; rank: string }[] => {
-		const out: { id: BlockId; rank: string }[] = [];
-		for (const [id, pl] of placements) {
-			if (displayParentOf(own, pl) !== parent) continue;
-			if (!isVisible(blocks, own, id)) continue;
-			out.push({ id, rank: pl.rank });
-		}
-		out.sort((a, b) => (a.rank === b.rank ? a.id.localeCompare(b.id) : a.rank < b.rank ? -1 : 1));
-		return out;
-	};
-
-	/**
-	 * All visible children's lists at once: `parent|null → sorted {id, rank}[]`
-	 * — ONE pass over `placements` plus one sort per list, so a whole-tree walk
-	 * is O(n) instead of the O(n²) of calling {@link childrenOf} per node
-	 * (U11 measurement: the per-node scan was ~10ms of an ~11ms projection
-	 * at 1,000 blocks). Ordering is identical to `childrenOf`.
-	 */
-	const childrenIndex = (
-		blocks: Map<BlockId, BlockRec>,
-		placements: Map<BlockId, ResolvedPlacement>,
-		own: Ownership
-	): Map<BlockId | null, { id: BlockId; rank: string }[]> => {
-		const index = new Map<BlockId | null, { id: BlockId; rank: string }[]>();
-		for (const [id, pl] of placements) {
-			if (!isVisible(blocks, own, id)) continue;
-			const dp = displayParentOf(own, pl);
-			// 'dead' display parents never match a real parent in `childrenOf`
-			// either — hidden-with-subtree blocks appear in no list.
-			if (dp === 'dead') continue;
-			const bucket = index.get(dp);
-			if (bucket) bucket.push({ id, rank: pl.rank });
-			else index.set(dp, [{ id, rank: pl.rank }]);
-		}
-		for (const bucket of index.values()) {
-			bucket.sort((a, b) =>
-				a.rank === b.rank ? a.id.localeCompare(b.id) : a.rank < b.rank ? -1 : 1
-			);
-		}
-		return index;
-	};
-
-	/** Convenience: collect + resolve placements + ownership once per call. */
-	const view = (doc: EngineDoc) => {
+	const view = (doc: EngineDoc): ModelView => {
+		const shared = modelState?.(doc);
+		if (shared) return shared;
 		const blocks = collectBlocks(doc);
 		const own = T.computeOwnership(doc, blocks);
+		const placements = resolvePlacements(blocks, own.ownerOf);
+		let kidsCache: ModelView['kids'] | null = null;
 		return {
 			blocks,
-			placements: resolvePlacements(blocks, own.ownerOf),
-			own
+			own,
+			placements,
+			get kids() {
+				return (kidsCache ??= childrenIndex(blocks, placements, own));
+			},
+			// No shared interner without an attached state owner — a
+			// detached frozen clone satisfies the same boundary contract.
+			// `cloneJsonSafe` keeps this total against hostile replicated
+			// payloads (R4 — a remote non-JSON attr must not crash reads).
+			intern: (v) => deepFreeze(cloneJsonSafe(v))
 		};
 	};
 
@@ -464,8 +582,7 @@ export const bindModel = (Y: EngineApi) => {
 		parent: BlockId | null,
 		exclude?: Set<BlockId>
 	): { id: BlockId; rank: string }[] => {
-		const { blocks, placements, own } = view(doc);
-		const kids = childrenOf(blocks, placements, own, parent);
+		const kids = view(doc).kids.get(parent) ?? [];
 		return exclude ? kids.filter((k) => !exclude.has(k.id)) : kids;
 	};
 
@@ -478,13 +595,16 @@ export const bindModel = (Y: EngineApi) => {
 
 	const buildInline = (atom: InlineSpec): EngineNode => {
 		const node = newNode(INLINE_NODE);
-		node.setAttr(ID, atom.id);
-		node.setAttr(TYPE, atom.type);
+		// Every caller-supplied string normalizes to well-formed UTF-16 at
+		// the boundary — the wire's UTF-8 encoder maps lone surrogates to
+		// U+FFFD, so verbatim storage would diverge on delivery (F2-M1).
+		node.setAttr(ID, sanitizeWireString(atom.id));
+		node.setAttr(TYPE, sanitizeWireString(atom.type));
 		// Clone at the replicated boundary: the engine stores payloads by
 		// reference, so a caller-held `data` object would alias into shared
 		// state (mutating the caller's object post-insert would corrupt the
 		// doc and replicate the corruption — gate-2 finding 11).
-		if (atom.data !== undefined) node.setAttr(DATA, cloneJson(atom.data));
+		if (atom.data !== undefined) node.setAttr(DATA, sanitizeWireJson(atom.data));
 		return node;
 	};
 
@@ -501,49 +621,14 @@ export const bindModel = (Y: EngineApi) => {
 		return created;
 	};
 
-	/** Serialize one backing-text node's sequence into ContentItem runs. */
-	const contentItemsOf = (content: EngineNode): ContentItem[] => {
-		const items: ContentItem[] = [];
-		// `toDelta()` re-renders live items — mid-transaction safe, unlike the
-		// commit-synced `.delta` cache. Inline atoms stay live YNode children
-		// in fresh renders; `.delta` serialized them as `{attrs:{k:{value}}}`.
-		const inlineAttrs = (entry: unknown): { id: unknown; type: unknown; data: unknown } => {
-			if (isNodeLike(entry)) {
-				return { id: entry.getAttr(ID), type: entry.getAttr(TYPE), data: entry.getAttr(DATA) };
-			}
-			const attrs = (entry as { attrs?: Record<string, unknown> })?.attrs ?? {};
-			const attrVal = (a: unknown) =>
-				a !== null && typeof a === 'object' && 'value' in (a as object)
-					? (a as { value: unknown }).value
-					: a;
-			return { id: attrVal(attrs.id), type: attrVal(attrs.type), data: attrVal(attrs.data) };
-		};
-		for (const op of (content.toDelta().toJSON() as { children?: unknown[] }).children ?? []) {
-			const o = op as { type?: string; insert?: unknown; format?: Record<string, unknown> };
-			if (o.type !== 'insert') continue;
-			if (typeof o.insert === 'string') {
-				// JSON-payload contract: never emit a `marks` key whose value is
-				// `undefined` — `JSON.stringify` would drop it silently and the
-				// dev-time cloneJson guard flags it.
-				items.push({
-					kind: 'text',
-					text: o.insert,
-					...(o.format === undefined ? {} : { marks: o.format })
-				});
-			} else if (Array.isArray(o.insert)) {
-				for (const entry of o.insert) {
-					const { id, type, data } = inlineAttrs(entry);
-					items.push({
-						kind: 'inline',
-						id: id as string,
-						type: type as string,
-						...(data === undefined ? {} : { data: data as Record<string, unknown> })
-					});
-				}
-			}
-		}
-		return items;
-	};
+	/**
+	 * Serialize one backing-text node's sequence into ContentItem runs —
+	 * the full-range case of the direct sequence walk (WU8), mid-transaction
+	 * safe the same way `toDelta()` was. Live inline nodes come back as
+	 * `{kind:'inline'}` items identical to the old delta-JSON conversion.
+	 */
+	const contentItemsOf = (content: EngineNode): ContentItem[] =>
+		content.doc === null ? [] : (T.itemsOfRange(content, 0, content.length) as ContentItem[]);
 
 	/**
 	 * Append content items to a content node (mark-preserving). The offset is
@@ -557,8 +642,8 @@ export const bindModel = (Y: EngineApi) => {
 			if (item.kind === 'text') {
 				content.insert(
 					off,
-					item.text,
-					item.marks === undefined ? undefined : cloneJson(item.marks)
+					sanitizeWireString(item.text),
+					item.marks === undefined ? undefined : sanitizeWireJson(item.marks)
 				);
 				off += item.text.length;
 			} else {
@@ -566,50 +651,6 @@ export const bindModel = (Y: EngineApi) => {
 				off += 1;
 			}
 		}
-	};
-
-	/** Content items strictly after `offset` positions (marks preserved). */
-	const contentTail = (content: EngineNode, offset: number): ContentItem[] => {
-		const items: ContentItem[] = [];
-		const attrVal = (a: unknown) =>
-			a !== null && typeof a === 'object' && 'value' in (a as object)
-				? (a as { value: unknown }).value
-				: a;
-		const inlineAttrs = (entry: unknown): { id: unknown; type: unknown; data: unknown } => {
-			if (isNodeLike(entry)) {
-				return { id: entry.getAttr(ID), type: entry.getAttr(TYPE), data: entry.getAttr(DATA) };
-			}
-			const attrs = (entry as { attrs?: Record<string, unknown> })?.attrs ?? {};
-			return { id: attrVal(attrs.id), type: attrVal(attrs.type), data: attrVal(attrs.data) };
-		};
-		let pos = 0;
-		for (const op of (content.toDelta().toJSON() as { children?: unknown[] }).children ?? []) {
-			const o = op as { type?: string; insert?: unknown; format?: Record<string, unknown> };
-			if (o.type !== 'insert') continue;
-			if (typeof o.insert === 'string') {
-				const start = pos;
-				pos += o.insert.length;
-				if (pos <= offset) continue;
-				items.push({
-					kind: 'text',
-					text: o.insert.slice(Math.max(0, offset - start)),
-					...(o.format === undefined ? {} : { marks: o.format })
-				});
-			} else if (Array.isArray(o.insert)) {
-				for (const entry of o.insert) {
-					pos += 1;
-					if (pos <= offset) continue;
-					const { id, type, data } = inlineAttrs(entry);
-					items.push({
-						kind: 'inline',
-						id: id as string,
-						type: type as string,
-						...(data === undefined ? {} : { data: data as Record<string, unknown> })
-					});
-				}
-			}
-		}
-		return items;
 	};
 
 	// ── structural predicates ───────────────────────────────────────────
@@ -639,7 +680,7 @@ export const bindModel = (Y: EngineApi) => {
 			const pl = placements.get(cur);
 			if (pl === undefined) break;
 			const dp = displayParentOf(own, pl);
-			if (dp === 'dead') break; // deleted ancestor sink — subtree hidden, not cyclic
+			if (dp === DEAD) break; // deleted ancestor sink — subtree hidden, not cyclic
 			cur = dp;
 		}
 		return false;
@@ -648,30 +689,187 @@ export const bindModel = (Y: EngineApi) => {
 	// ── ops ─────────────────────────────────────────────────────────────
 
 	/**
-	 * Rank for inserting at `index` into the sibling list `siblings`.
-	 * Equal-rank neighbors can occur after cycle-fallback rehoming (two blocks
-	 * may carry the same rank string minted in different sibling lists): no
-	 * string sorts strictly between equal strings, so the new block JOINS the
-	 * tie — the `(rank, id)` sort places it deterministically inside the tie
-	 * group.
+	 * `count` consecutive insertion ranks at `index` into the sibling list
+	 * `siblings` — the multi-member form of the single-insert seam.
+	 *
+	 * Degenerate seams (`left >= right`) are legal replicated states, not
+	 * caller errors: equal-rank neighbours occur after cycle-fallback
+	 * rehoming (two blocks may carry the same rank string minted in
+	 * different sibling lists), and `rankBetween` THROWS on them — so
+	 * callers must guard. No string sorts strictly between equal strings,
+	 * so each new member takes `left` verbatim: it JOINS the tie and the
+	 * `(rank, id)` display sort orders the whole group deterministically.
+	 * On a valid seam the emitted chain is `rankBetween(left, right)` then
+	 * `rankBetween(prev, right)` — identical to `rankAt` when `count` is 1.
 	 */
+	const ranksAt = (
+		siblings: { rank: string }[],
+		index: number,
+		count: number,
+		clientId: number,
+		rand?: () => number
+	): string[] => {
+		let left = siblings[index - 1]?.rank;
+		const right = siblings[index]?.rank;
+		if (left !== undefined && right !== undefined && left >= right) {
+			return new Array<string>(count).fill(left);
+		}
+		const out: string[] = [];
+		for (let i = 0; i < count; i++) {
+			const r = rankBetween(left, right, clientId, rand);
+			out.push(r);
+			left = r;
+		}
+		return out;
+	};
+
+	/** Rank for inserting ONE block at `index` — `ranksAt(.., 1)`. */
 	const rankAt = (
 		siblings: { rank: string }[],
 		index: number,
 		clientId: number,
 		rand?: () => number
-	): string => {
-		const left = siblings[index - 1]?.rank;
-		const right = siblings[index]?.rank;
-		if (left !== undefined && right !== undefined && left >= right) return left;
-		return rankBetween(left, right, clientId, rand);
+	): string => ranksAt(siblings, index, 1, clientId, rand)[0]!;
+
+	/**
+	 * Boundary normalization (F2-M1): every caller-supplied string in a
+	 * `BlockSpec` — ids, types, `data`, content text/marks, inline atom
+	 * fields, recursively through `children` — is rewritten to well-formed
+	 * UTF-16 (unpaired surrogates → U+FFFD) before it enters replicated
+	 * state. The update encoder applies the same USVString mapping on
+	 * delivery, so a verbatim lone surrogate would decode differently on
+	 * every receiving replica (permanent same-item divergence); normalizing
+	 * at ingress makes the local store identical to what the wire carries.
+	 * The caller's spec object is NOT mutated — a normalized copy is built.
+	 * Identifier REFERENCES (`dest.parent`, the `id` args of other ops) stay
+	 * verbatim: they resolve against stored (already-normalized) ids or are
+	 * refused, never silently re-bound.
+	 */
+	const sanitizeSpec = (spec: BlockSpec): BlockSpec => {
+		const out: BlockSpec = {
+			id: sanitizeWireString(spec.id),
+			type: sanitizeWireString(spec.type)
+		};
+		if (spec.data !== undefined) out.data = sanitizeWireJson(spec.data);
+		if (spec.content !== undefined) {
+			out.content = spec.content.map(
+				(item): ContentItem =>
+					item.kind === 'text'
+						? {
+								kind: 'text',
+								text: sanitizeWireString(item.text),
+								...(item.marks !== undefined ? { marks: sanitizeWireJson(item.marks) } : {})
+							}
+						: {
+								kind: 'inline',
+								id: sanitizeWireString(item.id),
+								type: sanitizeWireString(item.type),
+								...(item.data !== undefined ? { data: sanitizeWireJson(item.data) } : {})
+							}
+			);
+		}
+		if (spec.children !== undefined) out.children = spec.children.map(sanitizeSpec);
+		return out;
 	};
 
 	/**
-	 * The doc's in-gap rank randomness source (`EngineDoc.rand` — a test
-	 * harness determinism hook; production docs get `Math.random`).
+	 * Materialize one spec into the registry: the block node with its
+	 * `content`/`slices`/`at` maps, the default whole-text slice record and
+	 * the atomic first placement candidate `{p, r}` stamped `1.clientID`.
+	 * Spec children recurse, each under a fresh sequential rank chain
+	 * (`left = undefined` restart per parent — a new block has no
+	 * pre-existing siblings to interleave with). Shared by
+	 * `insertBlock`/`insertBlocks` so the write shape is identical either
+	 * way. Must run inside a transaction.
 	 */
-	const randOf = (doc: EngineDoc): (() => number) => doc.rand ?? Math.random;
+	const materializeSpec = (
+		doc: EngineDoc,
+		sp: BlockSpec,
+		parent: BlockId | null,
+		rank: string
+	): void => {
+		const node = newNode(BLOCK_NODE);
+		node.setAttr(ID, sp.id);
+		node.setAttr(TYPE, sp.type);
+		if (sp.data !== undefined) node.setAttr(DATA, cloneJson(sp.data));
+		const content = newNode(CONTENT_NODE);
+		node.setAttr(CONTENT, content);
+		const slices = newNode(SLICES_NODE);
+		node.setAttr(SLICES, slices);
+		const at = newNode(AT_NODE);
+		node.setAttr(AT, at);
+		// Pre-integration writes materialize when the subtree integrates.
+		let clen = 0;
+		for (const item of sp.content ?? []) {
+			if (item.kind === 'text') {
+				// Clone caller mark payloads — `insert` keeps the format
+				// object by reference (see buildInline / gate-2 f.11).
+				content.insert(
+					clen,
+					item.text,
+					item.marks === undefined ? undefined : cloneJson(item.marks)
+				);
+				clen += item.text.length;
+			} else {
+				content.insert(clen, [buildInline(item)]);
+				clen += 1;
+			}
+		}
+		// The block owns its whole backing text by default.
+		slices.insert(0, [
+			{ t: sp.id, s: { i: null, a: -1 }, e: { i: null, a: 0 } } satisfies SliceRecord
+		]);
+		at.setAttr(`1.${doc.clientID}`, { p: parent, r: rank });
+		registryOf(doc).setAttr(sp.id, node);
+		// Children get sequential ranks among themselves.
+		let left: string | undefined;
+		for (const child of sp.children ?? []) {
+			const cr = rankBetween(left, undefined, doc.clientID, randOf(doc));
+			materializeSpec(doc, child, sp.id, cr);
+			left = cr;
+		}
+	};
+
+	/**
+	 * Insert `specs` (whole subtrees, in list order) at `dest` in ONE
+	 * transaction — the bulk form of `insertBlock`. All-or-nothing across the
+	 * whole batch: ANY spec id colliding with a live block or with another
+	 * spec id refuses the entire batch without writing; an empty batch is a
+	 * no-op that returns `true` without transacting.
+	 *
+	 * `dest.parent` must resolve to a live id unless `null` (root); `dest.index`
+	 * clamps into the live children. The live-sibling list is resolved ONCE
+	 * and ranks are chained locally (`rankBetween(prevRank, nextRank)` per
+	 * spec) — sequential `insertBlock` calls would recompute the same chain
+	 * one projection per spec, which made initialization quadratic. The
+	 * emitted rank stream is identical either way.
+	 */
+	const insertBlocks = (doc: EngineDoc, dest: Destination, specs: BlockSpec[]): boolean => {
+		const clean = specs.map(sanitizeSpec);
+		if (clean.length === 0) return true;
+		if (dest.parent !== null && !isVisibleId(doc, dest.parent)) return false;
+		{
+			// Batch-wide dup check before ANY write — see insertBlock.
+			const specIds = new Set<BlockId>();
+			const stack: BlockSpec[] = [...clean];
+			while (stack.length > 0) {
+				const sp = stack.pop()!;
+				if (specIds.has(sp.id) || blockNodeOf(doc, sp.id) !== null) return false;
+				specIds.add(sp.id);
+				for (const child of sp.children ?? []) stack.push(child);
+			}
+		}
+		return doc.transact(() => {
+			const sibs = liveChildrenOf(doc, dest.parent);
+			const idx = Math.max(0, Math.min(dest.index, sibs.length));
+			// Degenerate seams join the left tie — see `ranksAt`.
+			const ranks = ranksAt(sibs, idx, clean.length, doc.clientID, randOf(doc));
+			for (let i = 0; i < clean.length; i++) {
+				materializeSpec(doc, clean[i]!, dest.parent, ranks[i]!);
+			}
+			return true;
+		});
+	};
 
 	/**
 	 * Insert a new block (and its spec children, recursively) at `dest`.
@@ -683,69 +881,12 @@ export const bindModel = (Y: EngineApi) => {
 	 * tombstone the victim's registry item (gate-1 finding: `registry.setAttr`
 	 * on an existing id silently replaces content, slices, placements and
 	 * engine identity in place). Ids duplicated WITHIN the spec are rejected
-	 * the same way.
+	 * the same way. The spec is boundary-normalized FIRST (see
+	 * {@link sanitizeSpec}) — validation runs on the stored form, so two
+	 * raw ids colliding only after normalization are refused the same way.
 	 */
-	const insertBlock = (doc: EngineDoc, dest: Destination, spec: BlockSpec): boolean => {
-		if (dest.parent !== null && !isVisibleId(doc, dest.parent)) return false;
-		{
-			const specIds = new Set<BlockId>();
-			const stack: BlockSpec[] = [spec];
-			while (stack.length > 0) {
-				const sp = stack.pop()!;
-				if (specIds.has(sp.id) || blockNodeOf(doc, sp.id) !== null) return false;
-				specIds.add(sp.id);
-				for (const child of sp.children ?? []) stack.push(child);
-			}
-		}
-		return doc.transact(() => {
-			const insertOne = (sp: BlockSpec, parent: BlockId | null, rank: string): void => {
-				const node = newNode(BLOCK_NODE);
-				node.setAttr(ID, sp.id);
-				node.setAttr(TYPE, sp.type);
-				if (sp.data !== undefined) node.setAttr(DATA, cloneJson(sp.data));
-				const content = newNode(CONTENT_NODE);
-				node.setAttr(CONTENT, content);
-				const slices = newNode(SLICES_NODE);
-				node.setAttr(SLICES, slices);
-				const at = newNode(AT_NODE);
-				node.setAttr(AT, at);
-				// Pre-integration writes materialize when the subtree integrates.
-				let clen = 0;
-				for (const item of sp.content ?? []) {
-					if (item.kind === 'text') {
-						// Clone caller mark payloads — `insert` keeps the format
-						// object by reference (see buildInline / gate-2 f.11).
-						content.insert(
-							clen,
-							item.text,
-							item.marks === undefined ? undefined : cloneJson(item.marks)
-						);
-						clen += item.text.length;
-					} else {
-						content.insert(clen, [buildInline(item)]);
-						clen += 1;
-					}
-				}
-				// The block owns its whole backing text by default.
-				slices.insert(0, [
-					{ t: sp.id, s: { i: null, a: -1 }, e: { i: null, a: 0 } } satisfies SliceRecord
-				]);
-				at.setAttr(`1.${doc.clientID}`, { p: parent, r: rank });
-				registryOf(doc).setAttr(sp.id, node);
-				// Children get sequential ranks among themselves.
-				let left: string | undefined;
-				for (const child of sp.children ?? []) {
-					const cr = rankBetween(left, undefined, doc.clientID, randOf(doc));
-					insertOne(child, sp.id, cr);
-					left = cr;
-				}
-			};
-			const sibs = liveChildrenOf(doc, dest.parent);
-			const idx = Math.max(0, Math.min(dest.index, sibs.length));
-			insertOne(spec, dest.parent, rankAt(sibs, idx, doc.clientID, randOf(doc)));
-			return true;
-		});
-	};
+	const insertBlock = (doc: EngineDoc, dest: Destination, spec: BlockSpec): boolean =>
+		insertBlocks(doc, dest, [spec]);
 
 	/** Explicit delete: set the `del` flag. Payload/placements retained. */
 	const deleteBlock = (doc: EngineDoc, id: BlockId): boolean => {
@@ -807,12 +948,13 @@ export const bindModel = (Y: EngineApi) => {
 		return doc.transact(() => {
 			const sibs = liveChildrenOf(doc, dest.parent, members);
 			const idx = Math.max(0, Math.min(dest.index, sibs.length));
-			let left = sibs[idx - 1]?.rank;
-			const right = sibs[idx]?.rank;
+			// D2: a degenerate destination seam (equal/inverted neighbour
+			// ranks — legal after cycle-fallback rehoming) would throw inside
+			// `rankBetween`; `ranksAt` joins the left tie instead, keeping the
+			// move deterministic and convergent.
+			const ranks = ranksAt(sibs, idx, ids.length, doc.clientID, randOf(doc));
 			for (let i = 0; i < ids.length; i++) {
-				const r = rankBetween(left, right, doc.clientID, randOf(doc));
-				writePlacement(doc, nodes[i], dest.parent, r);
-				left = r;
+				writePlacement(doc, nodes[i], dest.parent, ranks[i]!);
 			}
 			return true;
 		});
@@ -848,6 +990,10 @@ export const bindModel = (Y: EngineApi) => {
 	const splitBlock = (doc: EngineDoc, id: BlockId, offset: number, newId: BlockId): boolean => {
 		const node = liveNodeOf(doc, id);
 		if (!node) return false;
+		// Caller-assigned ids normalize at the boundary like spec ids (F2-M1)
+		// — BEFORE the collision probe, so a raw id colliding only after
+		// normalization is refused instead of silently replaced.
+		newId = sanitizeWireString(newId);
 		if (blockNodeOf(doc, newId) !== null) return false;
 		const pos = positionOf(doc, id);
 		if (!pos) return false; // block not visible (ancestor deleted) — no-op
@@ -1055,8 +1201,9 @@ export const bindModel = (Y: EngineApi) => {
 				for (const entry of arr) {
 					const elen = typeof entry === 'string' ? entry.length : 1;
 					if (isNodeLike(entry) && entry.getAttr(ID) === inlineId && p >= seg.i0 && p < seg.i1) {
-						// Clone the caller payload — setAttr stores by reference.
-						entry.setAttr(DATA, cloneJson(data));
+						// Clone the caller payload — setAttr stores by reference;
+						// sanitizeWireJson also normalizes lone surrogates (F2-M1).
+						entry.setAttr(DATA, sanitizeWireJson(data));
 						return true;
 					}
 					p += elen;
@@ -1075,10 +1222,9 @@ export const bindModel = (Y: EngineApi) => {
 	 * policy). Content is the ownership-projected slice list.
 	 */
 	const project = (doc: EngineDoc): ProjectedDoc => {
-		const { blocks, placements, own } = view(doc);
-		// ONE O(n) bucketing pass (U11: per-node `childrenOf` scans made this
-		// O(n²) — ~10ms of an ~11ms projection at 1,000 blocks).
-		const kidsByParent = childrenIndex(blocks, placements, own);
+		// `kids` is the view's children index — lazily built on first access,
+		// maintained incrementally when the doc has shared state (WU7).
+		const { blocks, own, kids: kidsByParent, intern } = view(doc);
 		const emit = (id: BlockId): ProjectedBlock | null => {
 			if (!isVisible(blocks, own, id)) return null;
 			const rec = blocks.get(id)!;
@@ -1089,8 +1235,16 @@ export const bindModel = (Y: EngineApi) => {
 				data:
 					data === undefined || data === null
 						? undefined
-						: (cloneJson(data) as Record<string, unknown>),
-				content: rec.content ? (T.contentItemsOf(id, blocks, own) as ContentItem[]) : [],
+						: (cloneJsonSafe(data) as Record<string, unknown>),
+				// R4: `contentItemsOf` emits borrowed marks/data refs — publish
+				// canonical frozen payloads so callers can never reach live
+				// engine state through the projection.
+				content: rec.content
+					? (protectItems(
+							T.contentItemsOf(id, blocks, own) as ContentItem[],
+							intern
+						) as ContentItem[])
+					: [],
 				children: []
 			};
 			if (!rec.content) projected.malformed = true;
@@ -1125,7 +1279,7 @@ export const bindModel = (Y: EngineApi) => {
 		const pl = placements.get(id);
 		if (!pl) return null;
 		const dp = displayParentOf(own, pl);
-		if (dp === 'dead') return null;
+		if (dp === DEAD) return null;
 		// Walk the ancestry chain of display parents: any dead or invisible
 		// ancestor hides the whole subtree.
 		let cur: BlockId | null = dp;
@@ -1136,7 +1290,7 @@ export const bindModel = (Y: EngineApi) => {
 			const cp = placements.get(cur);
 			if (!cp) return null;
 			const next = displayParentOf(own, cp);
-			if (next === 'dead') return null;
+			if (next === DEAD) return null;
 			cur = next;
 		}
 		const sibs = childrenOf(blocks, placements, own, dp);
@@ -1201,6 +1355,9 @@ export const bindModel = (Y: EngineApi) => {
 		liveNodeOf,
 		candidatesOf,
 		collectBlocks,
+		/** The shared replicated-state view — maintained indexes when the
+		 *  doc carries shared model state (WU7), fresh collect otherwise. */
+		view,
 		resolvePlacements,
 		childrenOf,
 		childrenIndex,
@@ -1208,6 +1365,7 @@ export const bindModel = (Y: EngineApi) => {
 		contentItemsOf,
 		// structural ops
 		insertBlock,
+		insertBlocks,
 		deleteBlock,
 		moveBlock,
 		moveBlocks,

@@ -1,6 +1,11 @@
 /**
  * U11 profiling — where does a per-keystroke edit's cost go at 1000 blocks?
  * Temporary measurement test (not part of the acceptance corpus).
+ *
+ * OPT-IN ONLY — this file asserts nothing and always prints timings, so it
+ * is skipped in the normal lane. Run it explicitly:
+ *
+ *   U11_PROFILE=1 pnpm vitest run src/tests/crdt/u11-profile.test.ts
  */
 // @ts-nocheck
 import { describe, it } from 'vitest';
@@ -42,7 +47,9 @@ const seedDoc = (n, chars = 40) =>
 		}))
 	);
 
-describe('U11 profile', () => {
+// Skipped unless explicitly opted in — a profiling scaffold, not a
+// regression gate (zero assertions, ~1.3s, prints unconditionally).
+describe.skipIf(!process.env.U11_PROFILE)('U11 profile', () => {
 	it('decomposes per-keystroke + load + project costs', () => {
 		const N = 1000;
 		const set = createPeerPair(seedDoc(N));

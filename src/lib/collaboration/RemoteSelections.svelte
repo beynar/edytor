@@ -33,14 +33,18 @@
 			refresh();
 		};
 
+		// U8a — 'change' only: it fires exactly when a presence map entry is
+		// added/removed/deep-changed, while 'update' additionally fires on
+		// clock-only heartbeat refreshes AND (locally) on every setLocalState
+		// — subscribing to both recomputed geometry twice per real change.
+		// 'change' is the minimal sufficient signal; doc 'update' covers
+		// remote edits moving the anchors we resolve.
 		edytor.awareness.on('change', refreshFromCollaborationUpdate);
-		edytor.awareness.on('update', refreshFromCollaborationUpdate);
 		edytor.doc.on('update', refreshFromCollaborationUpdate);
 		refresh();
 
 		return () => {
 			edytor.awareness.off('change', refreshFromCollaborationUpdate);
-			edytor.awareness.off('update', refreshFromCollaborationUpdate);
 			edytor.doc.off('update', refreshFromCollaborationUpdate);
 		};
 	});
@@ -48,7 +52,7 @@
 
 <div data-edytor-remote-presence contenteditable="false" aria-hidden="true">
 	{#each selections as selection (selection.clientId)}
-		{#each selection.rects as rect (rectKey(rect))}
+		{#each selection.rects as rect, rectIndex (`${rectIndex}:${rectKey(rect)}`)}
 			<span
 				data-edytor-remote-selection
 				data-client-id={selection.clientId}

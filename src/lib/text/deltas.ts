@@ -44,7 +44,10 @@ export const deltaToJson = (delta: JSONDelta[]): JSONText[] => {
  * Returns `[deltas, isEmpty]` mirroring the historical `toDeltas` signature.
  */
 export const runsToDeltas = (
-	items: readonly { text: string; marks?: Record<string, unknown> }[]
+	items: readonly {
+		text: string;
+		marks?: Record<string, unknown>;
+	}[]
 ) => {
 	const result: JSONDelta[] = [];
 	let isEmpty = true;
@@ -60,12 +63,50 @@ export const runsToDeltas = (
 		) {
 			last.text += item.text;
 		} else {
-			result.push({ text: item.text, marks, id: crypto.randomUUID() });
+			result.push({
+				text: item.text,
+				marks,
+				id: crypto.randomUUID()
+			});
 		}
 		isEmpty = false;
 	}
 
 	return [result, isEmpty] as const;
+};
+
+/**
+ * Merge adjacent deltas with identical marks for DOM rendering.
+ *
+ * The editing surface must emit ONE mark element per visual run — a
+ * browser mutation inside a mark otherwise leaves adjacent same-mark
+ * elements behind, and Svelte's expression diff skips unchanged
+ * `{delta.text}` writes, duplicating text into the browser-mutated node
+ * (the 'lead!!' reconcile regression).
+ */
+const renderMarksKey = (marks: readonly Mark[]): string =>
+	marks.length === 0
+		? ''
+		: JSON.stringify(
+				marks
+					.filter(([, value]) => value !== undefined)
+					.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+			);
+
+export const mergeRenderDeltas = (deltas: readonly JSONDelta[]): JSONDelta[] => {
+	const result: JSONDelta[] = [];
+	for (const delta of deltas) {
+		const last = result[result.length - 1];
+		// Marks compare by canonical VALUE — a freshly-inserted run's marks
+		// payload may be an equal-but-not-identical object to its neighbour's
+		// interned instance (e.g. typing at a link boundary).
+		if (last && renderMarksKey(last.marks) === renderMarksKey(delta.marks)) {
+			last.text += delta.text;
+			continue;
+		}
+		result.push({ ...delta, marks: [...delta.marks] });
+	}
+	return result;
 };
 
 /** Convenience overload for whole-run lists (filters to text runs). */

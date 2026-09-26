@@ -1,3 +1,10 @@
+/**
+ * Compatibility shim — the provider sync factories now live in ONE place:
+ * `bindProviders(Y)` in `src/lib/crdt/providers/index.ts` (U1 consolidation;
+ * this module used to duplicate them). Re-exported here bound to the
+ * vendored engine so the documented consumer path
+ * (`import { createIndexeddbSync } from 'edytor'`) keeps working.
+ */
 import { Y } from '$lib/crdt/engine.js';
 import {
 	bindProviders,
@@ -21,34 +28,11 @@ export type WebsocketSyncOptions = Omit<CrdtWebsocketSyncOptions, 'WebSocketPoly
 	WebSocketPolyfill?: typeof WebSocket;
 };
 
-export const createIndexeddbSync =
-	(name: string): EdytorSync =>
-	({ doc, awareness, synced }) => {
-		const provider = new providers.IndexeddbPersistence(name, doc, { awareness });
-		provider.on('synced', () => synced(provider));
-		return () => provider.destroy();
-	};
+export const createIndexeddbSync: (name: string) => EdytorSync = providers.createIndexeddbSync;
 
-export const createWebsocketSync =
-	(options: WebsocketSyncOptions): EdytorSync =>
-	({ doc, awareness, synced }) => {
-		const provider = new providers.WebsocketProvider(options.serverUrl, options.roomName, doc, {
-			connect: options.connect,
-			awareness,
-			params: options.params,
-			protocols: options.protocols,
-			WebSocketPolyfill: options.WebSocketPolyfill,
-			resyncInterval: options.resyncInterval,
-			maxBackoffTime: options.maxBackoffTime,
-			disableBc: options.disableBc
-		});
-		provider.on('sync', (isSynced: boolean) => {
-			if (isSynced) {
-				synced(provider);
-			}
-		});
-		return () => provider.destroy();
-	};
+export const createWebsocketSync = providers.createWebsocketSync as (
+	options: WebsocketSyncOptions
+) => EdytorSync;
 
 // `ProviderStack[...]` annotations keep the emitted `.d.ts` referencing the
 // bound types through `../crdt/index.js` — without them the declaration

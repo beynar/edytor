@@ -1241,6 +1241,38 @@ test.describe('browser composition and selection resilience', () => {
 		issues.assertClean();
 	});
 
+	test('keeps a cross-block composition-start range after selection drift', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=last');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 2, 1, 2);
+		await dispatchComposition(page, [{ type: 'compositionstart', data: '' }]);
+		await setSelectionByTextIndex(page, 2, 0);
+		await dispatchComposition(page, [{ type: 'compositionend', data: 'に' }]);
+
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ text: string }> }>;
+				}>(page, 'value');
+				return value.children.map(
+					(child) => child.content?.map((part) => part.text).join('') ?? ''
+				);
+			})
+			.toEqual(['leにte', '']);
+
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 3,
+			yEnd: 3,
+			isCollapsed: true
+		});
+
+		issues.assertClean();
+	});
+
 	test('replaces a mixed-mark selection during composition without inheriting boundary marks', async ({
 		page
 	}) => {
@@ -1528,6 +1560,33 @@ test.describe('browser composition and selection resilience', () => {
 				return value.children.map((child) => child.content?.[0]?.text ?? '');
 			})
 			.toEqual(['に!', 'note', 'tail']);
+
+		issues.assertClean();
+	});
+
+	test('allows Enter after an intervening command following compositionend', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0);
+		await dispatchComposition(page, [
+			{ type: 'compositionstart', data: '' },
+			{ type: 'compositionupdate', data: 'に' },
+			{ type: 'compositionend', data: 'に' }
+		]);
+
+		await page.keyboard.press(`${modKey}+u`);
+		await page.keyboard.press('Enter');
+
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ text: string }> }>;
+				}>(page, 'value');
+				return value.children.map((child) => child.content?.[0]?.text ?? '');
+			})
+			.toEqual(['に', '', 'note', 'tail']);
 
 		issues.assertClean();
 	});

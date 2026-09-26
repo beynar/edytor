@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "date": "2026-09-21T00:09:52.228Z",
+    "node": "v24.21.0"
+  },
+  "skipped": "playwright/chromium unavailable: TypeError: Cannot read properties of undefined (reading 'launch')"
+}

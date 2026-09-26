@@ -78,6 +78,8 @@ export type DomFixture = FixtureBase & {
 	autocorrect?: 'on' | 'off';
 	autocomplete?: 'on' | 'off';
 	autocapitalize?: 'off' | 'none' | 'on' | 'sentences' | 'words' | 'characters';
+	inputmode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url';
+	enterkeyhint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
 	doc?: YDoc;
 	awareness?: Awareness;
 	sync?: EdytorSync;

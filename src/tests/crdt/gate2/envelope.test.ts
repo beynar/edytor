@@ -29,6 +29,7 @@ import { Awareness } from '../../../lib/crdt/protocols/awareness.js';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import * as bc from 'lib0-v14/broadcastchannel';
+import * as idb from 'lib0-v14/indexeddb';
 import {
 	writeProtocolVersion,
 	generationDbName,
@@ -51,6 +52,19 @@ const until = async (cond, timeout = 5000) => {
 
 let counter = 0;
 const uniqueName = (base) => `${base}-${counter++}`;
+
+/** Read every stored update row in a v14-generation DB. */
+const readRows = async (name) => {
+	const db = await idb.openDB(generationDbName(name), (db) =>
+		idb.createStores(db, [['updates', { autoIncrement: true }], ['custom']])
+	);
+	try {
+		const [updatesStore] = idb.transact(db, ['updates'], 'readonly');
+		return await idb.getAll(updatesStore);
+	} finally {
+		db.close();
+	}
+};
 
 /** Encode a v14-enveloped message. */
 const encodeV14 = (type, payloadWriter) => {
@@ -304,7 +318,9 @@ describe('attack 1a: the application-schema version is never enforced', () => {
 		docA.get('blocks').setAttr('x', { rogue: true });
 
 		const pA = new providers.IndexeddbPersistence(name, docA);
-		await pA.whenSynced;
+		// The self-poisoned doc counts as hydration refusal: whenSynced
+		// rejects (no false synced) — the provider still joins the room.
+		await pA.whenSynced.catch(() => {});
 		await pA.destroy();
 
 		// The row was persisted and re-applied — the provider never consulted
@@ -322,36 +338,43 @@ describe('attack 1a: the application-schema version is never enforced', () => {
 		await pB.destroy();
 	});
 
-	test('an unknown meta.v does not stop provider sync or facade mutation', async () => {
+	test('an unknown meta.v is refused at the provider boundary', async () => {
 		const name = uniqueName('gate-unknown-v');
 		const docA = new Y.Doc();
 		const edA = E.create(docA);
 		edA.init();
 		// Forge a future/foreign application-schema version through a
-		// legitimate v14-protocol update.
+		// legitimate v14-protocol write.
 		docA.transact(() => docA.get('meta').setAttr('v', 99));
 
 		const pA = new providers.IndexeddbPersistence(name, docA);
-		await pA.whenSynced;
-		const docB = new Y.Doc();
-		const signals = [];
-		const pB = new providers.IndexeddbPersistence(name, docB);
-		pB.on('protocol-mismatch', (m) => signals.push(m));
-		pB.on('message-error', (e) => signals.push(e));
-		await pB.whenSynced;
-		await until(() => E.schemaVersion(docB) === 99, 3000);
+		const aSignals = [];
+		pA.on('schema-mismatch', (d) => aSignals.push(d));
+		// Self-poisoned doc → hydration refusal → whenSynced rejects.
+		await pA.whenSynced.catch(() => {});
 
-		// CONTRACT (plan §attack-1): updates must not apply to
-		// unknown-version documents — at minimum the provider must surface an
-		// observable schema-mismatch signal. Nothing reads meta.v on any
-		// apply path: the replica silently absorbs v99 and facade ops keep
-		// mutating it.
-		const edB = E.create(docB);
-		const mutates = edB.insertBlock({ parent: null, index: 0 }, { id: 'x1', type: 'paragraph' });
-		console.log(
-			`[gate2] unknown-schema: v=${E.schemaVersion(docB)} signals=${signals.length} mutates=${mutates}`
-		);
-		expect(signals.length).toBeGreaterThan(0); // ← fails: no schema-compat signal exists
+		// CONTRACT (work-unit-3 boundary): the offending peer's own provider
+		// detects + signals the unsupported state — and refuses to persist
+		// it, ship it, or let remote updates merge into it.
+		expect(
+			aSignals.some((s) => s.problem?.kind === 'unsupported' && s.problem?.version === 99)
+		).toBe(true);
+
+		const docB = new Y.Doc();
+		const pB = new providers.IndexeddbPersistence(name, docB);
+		await pB.whenSynced;
+		await nextTick(60);
+
+		// The v99 state was never persisted to the generation DB and never
+		// shipped on the room — docB stays uninitialized, NOT converged to 99.
+		expect(E.schemaVersion(docB)).toBeUndefined();
+		expect(E.isInitialized(docB)).toBe(false);
+		const rows = await readRows(name);
+		for (const row of rows) {
+			const probe = new Y.Doc();
+			Y.applyUpdate(probe, new Uint8Array(row));
+			expect(E.schemaVersion(probe)).not.toBe(99);
+		}
 		await pA.destroy();
 		await pB.destroy();
 	});

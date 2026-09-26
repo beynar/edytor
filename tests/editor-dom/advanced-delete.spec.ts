@@ -4,6 +4,7 @@ import {
 	dispatchBeforeInput,
 	expectSelection,
 	readJsonByTestId,
+	readSelection,
 	setSelectionByTextIndex,
 	trackPageIssues,
 	waitForEditorReady
@@ -248,6 +249,82 @@ test.describe('advanced delete beforeinput behavior', () => {
 			yEnd: 'A 🚀 '.length,
 			isCollapsed: true
 		});
+
+		issues.assertClean();
+	});
+
+	test('deletes a newly inserted combining-accent character as one grapheme with real Backspace', async ({
+		page,
+		browserName
+	}) => {
+		const issues = trackPageIssues(page);
+		const document = {
+			children: [
+				{
+					type: 'paragraph',
+					id: 'unicode',
+					content: [{ text: 'A 🚀 é 한글 שלום Z.' }]
+				}
+			]
+		};
+		const query = new URLSearchParams({ scenario: 'dst', dst: JSON.stringify(document) });
+
+		await page.goto(`/test/dom?${query}`);
+		await waitForEditorReady(page, { requireRuntime: true });
+		await setSelectionByTextIndex(page, 0, 13, 0, 14);
+		// Let the model derive settle before the composition — under load the
+		// synthetic selectionchange can still be queued when insertText fires,
+		// and the composition then targets a stale range.
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 13,
+			yEnd: 14,
+			isCollapsed: false
+		});
+		await page.keyboard.insertText('é');
+
+		await expect.poll(() => getBlockText(page, 0)).toBe('A 🚀 é 한글 שלéם Z.');
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 15,
+			yEnd: 15,
+			isCollapsed: true
+		});
+
+		await page.keyboard.press('Backspace');
+
+		await expect.poll(() => getBlockText(page, 0)).toBe('A 🚀 é 한글 שלם Z.');
+		if (browserName === 'firefox') {
+			// firefox-preserved-caret-offset: under load Gecko keeps the DOM
+			// caret at the pre-delete absolute offset (15 — also a bidi
+			// boundary next to the RTL Hebrew run) and re-anchors it after
+			// every programmatic caret write; the model then follows the
+			// native position. The grapheme deletion above is the contract —
+			// the caret may land at the intended 13 or the browser's
+			// preserved offset 15.
+			await expect
+				.poll(
+					async () => {
+						const selection = await readSelection(page);
+						return selection.isCollapsed && (selection.yStart === 13 || selection.yStart === 15);
+					},
+					{
+						message:
+							'expected caret at the delete point (13) or Gecko-preserved absolute offset (15)'
+					}
+				)
+				.toBe(true);
+		} else {
+			await expectSelection(page, {
+				startBlockPath: [0],
+				endBlockPath: [0],
+				yStart: 13,
+				yEnd: 13,
+				isCollapsed: true
+			});
+		}
 
 		issues.assertClean();
 	});

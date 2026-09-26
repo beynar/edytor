@@ -1,6 +1,8 @@
 /** @jsxImportSource ../../../jsx */
 import { expect } from 'vitest';
 
+import type { Text } from '$lib/text/text.svelte.js';
+
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
 import { deleteBlockRangeAtSelection } from '../../helpers/model.js';
 
@@ -210,5 +212,37 @@ export const fixtures = defineFixtures([
 				<paragraph>End child</paragraph>
 			</root>
 		)
+	}),
+	defineModelTransformFixture({
+		description:
+			'lifts the unselected descendant suffix when deletion starts at its ancestor boundary',
+		input: (
+			<root>
+				<paragraph>
+					|Parent
+					<paragraph>
+						Branch
+						<paragraph>Child|Tail</paragraph>
+						<paragraph>Inner sibling</paragraph>
+					</paragraph>
+					<paragraph>Outer sibling</paragraph>
+				</paragraph>
+				<paragraph>After</paragraph>
+			</root>
+		),
+		run: ({ edytor }) => edytor.deleteContentWithinSelection({}),
+		result: { kind: 'cursor', path: [0, 0], offset: 0 },
+		output: (
+			<root>
+				<paragraph>Tail</paragraph>
+				<paragraph>Inner sibling</paragraph>
+				<paragraph>Outer sibling</paragraph>
+				<paragraph>After</paragraph>
+			</root>
+		),
+		assert: ({ result }) => {
+			const [text] = result as readonly [Text, number];
+			expect(text.isInDocument).toBe(true);
+		}
 	})
 ]);

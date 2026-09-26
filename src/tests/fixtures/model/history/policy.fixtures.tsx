@@ -4,7 +4,7 @@ import { expect } from 'vitest';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import { defineFixtures, defineModelOperationFixture } from '../../types.js';
-import { runBeforeInput, runHotkey } from '../../../test.utils.js';
+import { canonicalValue, runBeforeInput, runHotkey } from '../../../test.utils.js';
 
 const getHistoryState = (edytor: {
 	undoManager: { undoStack: unknown[]; redoStack: unknown[] };
@@ -27,7 +27,7 @@ export const fixtures = defineFixtures([
 			const afterTyping = getHistoryState(edytor);
 			await runHotkey(edytor, 'mod+z');
 			const afterUndo = {
-				value: edytor.value,
+				value: canonicalValue(edytor.value),
 				selection: {
 					start: edytor.selection.state.yStart,
 					end: edytor.selection.state.yEnd,
@@ -107,7 +107,7 @@ export const fixtures = defineFixtures([
 			const afterSplit = getHistoryState(edytor);
 			await runHotkey(edytor, 'mod+z');
 			const afterUndo = {
-				value: edytor.value,
+				value: canonicalValue(edytor.value),
 				selection: {
 					startBlockPath: edytor.selection.state.startBlock?.path ?? null,
 					yStart: edytor.selection.state.yStart
@@ -169,7 +169,7 @@ export const fixtures = defineFixtures([
 			const afterToggle = getHistoryState(edytor);
 			await runHotkey(edytor, 'mod+z');
 			const afterUndo = {
-				value: edytor.value,
+				value: canonicalValue(edytor.value),
 				selection: {
 					startBlockPath: edytor.selection.state.startBlock?.path ?? null,
 					endBlockPath: edytor.selection.state.endBlock?.path ?? null,
@@ -221,7 +221,7 @@ export const fixtures = defineFixtures([
 			return {
 				afterDelete,
 				afterUndo: {
-					value: edytor.value,
+					value: canonicalValue(edytor.value),
 					selectedBlockPaths: Array.from(edytor.selection.selectedBlocks).map((block) => block.path)
 				}
 			};

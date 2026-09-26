@@ -4,7 +4,7 @@
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import type { JSONBlock } from '$lib/utils/json.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
-	import type { Awareness, YDoc } from '$lib/crdt/index.js';
+	import type { Awareness, EdytorDocument, YDoc } from '$lib/crdt/index.js';
 	import type { EdytorSync } from '$lib/collaboration/index.js';
 
 	type Props = {
@@ -17,6 +17,9 @@
 		autocorrect?: 'on' | 'off';
 		autocomplete?: 'on' | 'off';
 		autocapitalize?: 'off' | 'none' | 'on' | 'sentences' | 'words' | 'characters';
+		inputmode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url';
+		enterkeyhint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
+		document?: EdytorDocument;
 		doc?: YDoc;
 		awareness?: Awareness;
 		sync?: EdytorSync;
@@ -35,6 +38,9 @@
 		autocorrect,
 		autocomplete,
 		autocapitalize,
+		inputmode,
+		enterkeyhint,
+		document: edytorDocument,
 		doc,
 		awareness,
 		sync,
@@ -63,6 +69,9 @@
 	{autocorrect}
 	{autocomplete}
 	{autocapitalize}
+	{inputmode}
+	{enterkeyhint}
+	document={edytorDocument}
 	{doc}
 	{awareness}
 	{sync}

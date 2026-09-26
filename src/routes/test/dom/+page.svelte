@@ -2,7 +2,6 @@
 	import { untrack } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
-	import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 	import { htmlPlugin } from '$lib/plugins/html/htmlPlugin.js';
 	import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
@@ -13,10 +12,21 @@
 	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 	import {
 		IndexeddbPersistence,
+		WebsocketProvider,
 		clearDocument,
 		storeState,
 		type EdytorSync
 	} from '$lib/collaboration/index.js';
+	import { Y } from '$lib/crdt/engine.js';
+	import {
+		blockRecordsOf,
+		checkSchema,
+		createDocument,
+		GENERATION_KEY,
+		GENERATION_RECORD,
+		generationDbName
+	} from '$lib/crdt/index.js';
+	import type { EdytorDocument, JSONBlock as CrdtJSONBlock, YDoc } from '$lib/crdt/index.js';
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import type { Text } from '$lib/text/text.svelte.js';
 	import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
@@ -331,7 +341,6 @@
 
 	const plugins = $derived([
 		arrowMovePlugin,
-		...(data.handles ? [blockHandlesPlugin] : []),
 		imagePlugin,
 		codePlugin,
 		htmlPlugin({}),
@@ -344,7 +353,359 @@
 	const collaborationTestRuntime = {
 		IndexeddbPersistence,
 		clearDocument,
-		storeState
+		storeState,
+		/**
+		 * Persist `doc` directly into the room's IndexedDB store — bypasses
+		 * the application-schema boundary (`storeState` refuses to snapshot
+		 * schema-problem docs), so specs can seed documents a CLEAN provider
+		 * is expected to refuse at hydration (e.g. `meta.v = 99`).
+		 */
+		/**
+		 * Collaboration-DST probes: state-vector diffing lets the multi-peer
+		 * runner capture each peer's locally-authored update after an
+		 * action, and `dumpDocument` projects the full convergent state
+		 * (canonical value + attribution + lineage ring) for exact
+		 * cross-peer comparison — no testid serialization shortcuts.
+		 */
+		stateVector: (doc: YDoc) => Y.encodeStateVector(doc),
+		encodeDiff: (doc: YDoc, stateVector: Uint8Array) => Y.encodeStateAsUpdate(doc, stateVector),
+		dumpDocument: (document: EdytorDocument) => {
+			// A captured `TextAnchor` is only evidence the runner can re-resolve
+			// if it currently resolves back to the dumped endpoint — otherwise
+			// the state's stored anchor lagged the absolute selection (paths
+			// that write `{text, offset}` without rebuilding the anchor), and
+			// production recovery would resolve a different anchor than the
+			// one captured.
+			const anchorConsistent = (
+				owner: unknown,
+				anchor: unknown,
+				text: { id?: string; _live?: boolean } | null,
+				offset: number | null
+			): boolean => {
+				if (anchor == null || text?.id == null || offset == null) return false;
+				const resolved = (
+					owner as {
+						selection?: {
+							resolveTextAnchor?: (a: unknown) => {
+								text: { id?: string; _live?: boolean };
+								offset: number;
+							} | null;
+						};
+					}
+				)?.selection?.resolveTextAnchor?.(anchor);
+				return (
+					resolved != null &&
+					resolved.text._live === true &&
+					resolved.text.id === text.id &&
+					resolved.offset === offset
+				);
+			};
+			const value = document.facade.toJSON();
+			const blocks: Record<string, unknown> = {};
+			const lineage: Record<string, unknown> = {};
+			const live = new Set<string>();
+			const walk = (children: CrdtJSONBlock[]) => {
+				for (const child of children) {
+					if (child.id !== undefined) {
+						live.add(child.id);
+						const attribution = document.attribution.block(child.id);
+						blocks[child.id] = attribution
+							? {
+									createdBy: attribution.createdBy,
+									contributors: [...attribution.contributors].sort(),
+									lastChangedBy: attribution.lastChangedBy
+								}
+							: null;
+						lineage[child.id] = document.attribution.history(child.id) ?? null;
+					}
+					if (child.children) walk(child.children);
+				}
+			};
+			walk(value.children);
+			// Attribution records survive their block's deletion — enumerate
+			// them directly so a deleted block's ring and stamps enter the
+			// comparison (live-tree walks can't reach them). Each entry is
+			// tagged `deleted` + its incarnation stamp.
+			for (const rec of blockRecordsOf(
+				document.doc as unknown as Parameters<typeof blockRecordsOf>[0]
+			)) {
+				const deleted = !live.has(rec.id);
+				const attribution = rec.attribution;
+				blocks[rec.id] = {
+					deleted,
+					incarnation: rec.incarnation,
+					createdBy: attribution?.createdBy,
+					contributors: attribution ? [...attribution.contributors].sort() : [],
+					lastChangedBy: attribution?.lastChangedBy
+				};
+				lineage[rec.id] = rec.lineage ?? null;
+			}
+			// The capturing peer's own model-side selection — per-peer by
+			// nature, so the runner excludes it from the convergence
+			// signature but bounds-checks it at barriers: a caret anchored
+			// on a remotely-deleted block must recover onto live content
+			// with in-range offsets. Text lengths ride along so the check
+			// needs no model access.
+			const owner = edytor?.document === document ? edytor : undefined;
+			const selectionState = owner?.selection?.state ?? null;
+			const selectedBlockIds = owner
+				? [...owner.selection.selectedBlocks].map((block) => block.id)
+				: [];
+			const hasSelection =
+				selectionState !== null &&
+				(selectionState.startText !== null ||
+					selectionState.startBlock !== null ||
+					selectedBlockIds.length > 0);
+			// Per-block first/last EDITABLE text identity.
+			// `firstEditableText`/`lastEditableText` descend past noneditable
+			// children and skip container phantom slots — the returned text
+			// can belong to a descendant block, so the dump records the
+			// text's actual OWNING block (`firstOwner`/`lastOwner`)
+			// alongside: a seam endpoint must compare against the
+			// descendant's block id, not the container's. `textContents`
+			// maps every live text part id to its content — the
+			// passive-selection oracle needs it to distinguish an
+			// untouched endpoint text from an edited one.
+			const blockTexts: Record<
+				string,
+				{
+					firstId: string | null;
+					firstOwner: string | null;
+					lastId: string | null;
+					lastOwner: string | null;
+					lastLen: number | null;
+				}
+			> = {};
+			const textContents: Record<string, string> = {};
+			// Live text part id → containing block id, derived from the
+			// TRAVERSAL (which block's `content` array holds the part) —
+			// never from `part.parent`, which is the very pointer a
+			// stale-parent corruption breaks. `textClaims` records each
+			// part's claimed parent separately so the runner can flag a
+			// claim/containment mismatch on ANY live part, selected or not.
+			const textOwners: Record<string, string> = {};
+			const textClaims: Record<string, string | null> = {};
+			// Whether the part held a DOM node AT DUMP TIME — a container's
+			// phantom text never mounts; a temporarily-unmounted editable
+			// text only exists inside a settle window (the F2 recovery
+			// defers until it mounts), so `false` at a barrier is never a
+			// legal settled endpoint.
+			const textMounted: Record<string, boolean> = {};
+			if (owner?.root) {
+				type DumpText = {
+					id: string;
+					length: number;
+					stringContent?: string;
+					parent?: { id: string };
+					node?: unknown;
+				};
+				// `first`/`last` resolve before the descendant's `content` is
+				// walked, so their owners land in `textOwners` only after the
+				// traversal completes — defer via `pendingOwners`.
+				const pendingOwners: {
+					blockId: string;
+					key: 'firstOwner' | 'lastOwner';
+					textId: string;
+				}[] = [];
+				const walkWrapper = (block: {
+					id: string;
+					firstEditableText: DumpText | null;
+					lastEditableText: DumpText | null;
+					content: DumpText[];
+					children: unknown[];
+				}) => {
+					// `firstEditableText`/`lastEditableText` — the same getters
+					// production's dead-endpoint seam walk uses. They skip
+					// container phantom slots and noneditable children, so the
+					// seam expectation lands where recovery actually lands.
+					// Contentless/void hosts throw — a textless sibling is not a
+					// landing spot.
+					const editableTextOf = (pick: (b: typeof block) => DumpText | null): DumpText | null => {
+						try {
+							return pick(block);
+						} catch {
+							return null;
+						}
+					};
+					const first = editableTextOf((b) => b.firstEditableText);
+					const last = editableTextOf((b) => b.lastEditableText);
+					blockTexts[block.id] = {
+						firstId: first?.id ?? null,
+						firstOwner: null,
+						lastId: last?.id ?? null,
+						lastOwner: null,
+						lastLen: last?.length ?? null
+					};
+					if (first) pendingOwners.push({ blockId: block.id, key: 'firstOwner', textId: first.id });
+					if (last) pendingOwners.push({ blockId: block.id, key: 'lastOwner', textId: last.id });
+					for (const part of block.content ?? []) {
+						if (typeof part.stringContent === 'string') {
+							textContents[part.id] = part.stringContent;
+							// Containment wins: the part physically sits in THIS
+							// block's content list. The claimed parent rides along
+							// for the mismatch check.
+							textOwners[part.id] = block.id;
+							textClaims[part.id] = part.parent?.id ?? null;
+							textMounted[part.id] = part.node != null;
+						}
+					}
+					for (const child of block.children) {
+						walkWrapper(
+							child as {
+								id: string;
+								firstEditableText: DumpText | null;
+								lastEditableText: DumpText | null;
+								content: DumpText[];
+								children: unknown[];
+							}
+						);
+					}
+				};
+				for (const child of owner.root.children) {
+					walkWrapper(
+						child as {
+							id: string;
+							firstEditableText: DumpText | null;
+							lastEditableText: DumpText | null;
+							content: DumpText[];
+							children: unknown[];
+						}
+					);
+				}
+				// Resolve editable-text owners from the traversal-derived
+				// map — a container's `firstEditableText` can live inside a
+				// descendant's content, which only lands in `textOwners`
+				// once the walk reaches it.
+				for (const { blockId, key, textId } of pendingOwners) {
+					blockTexts[blockId][key] = textOwners[textId] ?? null;
+				}
+			}
+			return {
+				value,
+				blocks,
+				lineage,
+				blockTexts,
+				textContents,
+				textOwners,
+				textClaims,
+				textMounted,
+				// TEMP DEBUG: selection-echo drift probe (removed before final)
+				selLog: (globalThis as any).__EDYTOR_SEL_LOG__ ?? [],
+				selDrift: (globalThis as any).__selDrift ?? [],
+				actor: document.actor.id,
+				selection: hasSelection
+					? {
+							kind: selectedBlockIds.length > 0 ? ('block' as const) : ('text' as const),
+							startBlockId:
+								selectionState.startText?.parent?.id ?? selectionState.startBlock?.id ?? null,
+							endBlockId: selectionState.endText?.parent?.id ?? selectionState.endBlock?.id ?? null,
+							startTextId: selectionState.startText?.id ?? null,
+							endTextId: selectionState.endText?.id ?? null,
+							// The endpoint's relative anchor — re-resolving it on the
+							// converged document IS production's recovery contract;
+							// the runner's exact check compares the landed position
+							// to this resolution (or to the repair seam when the
+							// anchor is unresolvable).
+							startAnchor: selectionState.relativePosition ?? null,
+							endAnchor: selectionState.endPosition ?? null,
+							// `relativePosition`/`endPosition` are only production's
+							// recovery input when the remote update touched the
+							// endpoint — and can lag the absolute position (the
+							// caret's last write may predate the anchor's). An
+							// anchor is only trustworthy evidence when it resolves
+							// HERE to the dumped endpoint position right now.
+							startAnchorOk: anchorConsistent(
+								owner,
+								selectionState.relativePosition,
+								selectionState.startText,
+								selectionState.yStart
+							),
+							endAnchorOk: anchorConsistent(
+								owner,
+								selectionState.endPosition,
+								selectionState.endText,
+								selectionState.yEnd
+							),
+							yStart: selectionState.yStart,
+							yEnd: selectionState.yEnd,
+							startTextLen: selectionState.startText?.length ?? null,
+							endTextLen: selectionState.endText?.length ?? null,
+							isCollapsed: selectionState.isCollapsed,
+							selectedBlockIds
+						}
+					: null
+			};
+		},
+		/**
+		 * Resolve every live slice record's anchors through the engine's own
+		 * relative-position machinery and report the resolved range + the
+		 * claimed text's live length. Replica-dependent inputs (search
+		 * markers, item splits) make this the divergence oracle: equal
+		 * inputs must resolve equal ranges on every peer.
+		 */
+		probeSliceRanges: (document: EdytorDocument) => {
+			const doc = document.doc as unknown as YDoc;
+			const registry = (doc as any).get('blocks');
+			const resolve = (textNode: any, a: { i: { c: number; k: number } | null; a: number }) => {
+				const textItem = textNode?._item;
+				if (!textItem) return null;
+				const rpos = Y.createRelativePositionFromJSON({
+					type: { client: textItem.id.client, clock: textItem.id.clock },
+					item: a.i === null ? null : { client: a.i.c, clock: a.i.k },
+					assoc: a.a
+				});
+				const abs = Y.createAbsolutePositionFromRelativePosition(rpos as never, doc, false);
+				return abs === null ? null : abs.index;
+			};
+			const out: Record<string, unknown[]> = {};
+			for (const key of registry.attrKeys()) {
+				const node = registry.getAttr(key);
+				const slices = node?.getAttr?.('slices');
+				if (!slices) continue;
+				const rows: unknown[] = [];
+				for (let it = slices._start; it !== null; it = it.right) {
+					const payload = it.content?.getContent?.()?.[0];
+					if (it.deleted || !payload || payload.t === undefined || payload.m !== undefined)
+						continue;
+					const textNode = registry.getAttr(payload.t)?.getAttr?.('content');
+					rows.push({
+						id: `${it.id.client}:${it.id.clock}`,
+						t: payload.t,
+						g: payload.g ?? 0,
+						i0: resolve(textNode, payload.s),
+						i1: resolve(textNode, payload.e),
+						textLen: textNode?.length ?? null
+					});
+				}
+				if (rows.length) out[key] = rows;
+			}
+			return out;
+		},
+		seedDocument: async (name: string, doc: YDoc) => {
+			const update = Y.encodeStateAsUpdate(doc as Parameters<typeof Y.encodeStateAsUpdate>[0]);
+			const db = await new Promise<IDBDatabase>((resolve, reject) => {
+				const request = indexedDB.open(generationDbName(name), 1);
+				request.onupgradeneeded = () => {
+					request.result.createObjectStore('updates', { autoIncrement: true });
+					request.result.createObjectStore('custom');
+				};
+				request.onsuccess = () => resolve(request.result);
+				request.onerror = () => reject(request.error);
+			});
+			try {
+				await new Promise<void>((resolve, reject) => {
+					const transaction = db.transaction(['updates', 'custom'], 'readwrite');
+					transaction.objectStore('custom').put({ ...GENERATION_RECORD }, GENERATION_KEY);
+					const stored = new Uint8Array(update.byteLength);
+					stored.set(update);
+					transaction.objectStore('updates').add(stored.buffer);
+					transaction.oncomplete = () => resolve();
+					transaction.onerror = () => reject(transaction.error);
+				});
+			} finally {
+				db.close();
+			}
+		}
 	};
 
 	/**
@@ -355,22 +716,89 @@
 	 * (`disconnectBc`/`connectBc`) or force a state flush (`storeState`).
 	 */
 	// `data` is a static load() payload for this navigation, so the initial
-	// `data.collab` read is intentionally untracked.
-	const collabSync: EdytorSync | undefined = untrack(() => data.collab)
+	// `data.collab`/`data.collabws` reads are intentionally untracked.
+	const collabSync: EdytorSync | undefined = untrack(
+		() => data.collab || (data.collabws && data.wsserver)
+	)
 		? ({ doc, awareness, synced }) => {
-				const room = data.collab!;
-				const provider = new IndexeddbPersistence(`edytor-collab-${room}`, doc, {
-					awareness
+				// `?collabws=<room>&wsserver=<ws-url>` mounts the REAL websocket
+				// provider against the spec-driven local opaque relay
+				// (tests/editor-dom/ws-relay.ts). `disableBc` is forced so
+				// BroadcastChannel can never mask a socket failure — the only
+				// transport is the socket. `resyncInterval` re-runs the
+				// state-vector handshake so the first room member (whose initial
+				// SyncStep1 had no peer to answer) still reaches `synced`, and so
+				// deliberate harness faults (dropped/held frames) heal.
+				const provider =
+					data.collabws && data.wsserver
+						? new WebsocketProvider(data.wsserver, data.collabws, doc, {
+								awareness,
+								disableBc: true,
+								resyncInterval: data.wsresync,
+								maxBackoffTime: data.wsbackoff
+							})
+						: new IndexeddbPersistence(`edytor-collab-${data.collab!}`, doc, {
+								awareness
+							});
+				// Production stacks BOTH providers: websocket sync alone gives
+				// offline edits nowhere to survive a reload. IndexeddbPersistence
+				// is per-context here (each browser context has isolated storage),
+				// so a reloaded peer rehydrates its own un-synced updates and the
+				// socket re-delivers them to the room.
+				const persistence =
+					data.collabws && data.wsserver
+						? new IndexeddbPersistence(`edytor-collabws-${data.collabws}`, doc)
+						: null;
+				// Debug surface for the collab DST — every doc update with its
+				// origin and the schema-gate verdict at emit time. Lets the
+				// runner distinguish "quarantined while unversioned" from
+				// "never persisted" on lost-update failures.
+				(window as Window & { __EDYTOR_UPDATE_LOG__?: unknown[] }).__EDYTOR_UPDATE_LOG__ = [];
+				// TEMP DEBUG: selection-echo drift probe (removed before final)
+				(globalThis as any).__EDYTOR_SEL_DEBUG__ = true;
+				(globalThis as any).__selDrift = [];
+				doc.on('update', (update: Uint8Array, origin: unknown) => {
+					(window as Window & { __EDYTOR_UPDATE_LOG__?: unknown[] }).__EDYTOR_UPDATE_LOG__?.push({
+						bytes: update.length,
+						origin: String(origin),
+						isProvider: origin === provider,
+						isIdb: origin === persistence,
+						gate: checkSchema(doc as unknown as Parameters<typeof checkSchema>[0])?.kind ?? null,
+						t: Date.now()
+					});
 				});
 				(
 					window as Window & {
-						__EDYTOR_COLLAB__?: { provider: InstanceType<typeof IndexeddbPersistence> };
+						__EDYTOR_COLLAB__?: {
+							provider:
+								| InstanceType<typeof IndexeddbPersistence>
+								| InstanceType<typeof WebsocketProvider>;
+						};
 						__EDYTOR_SYNC_ERROR__?: unknown;
 					}
 				).__EDYTOR_COLLAB__ = { provider };
 				let fired = false;
-				provider.on('synced', () => {
-					if (fired) {
+				// Readiness requires BOTH transports settled: the socket's
+				// 'synced' AND the local store's `whenSynced`. A ws-sync that
+				// beats IndexedDB hydration must not seed the pending doc —
+				// a refused hydration landing a tick later would leave the
+				// fixture mounted over refused data.
+				let persistenceReady = persistence === null;
+				const fireSynced = () => {
+					if (fired || !persistenceReady) {
+						return;
+					}
+					// A failed/refused hydration is terminal: `loadError`
+					// (load threw) or `_hydrationRefused` (schema gate) mean
+					// the stored state was rejected — seeding the pending doc
+					// now would mount the fixture over refused data and report
+					// a refused sync as a successful one.
+					const refusal =
+						persistence == null ? null : (persistence.loadError ?? persistence._hydrationRefused);
+					if (refusal != null) {
+						fired = true;
+						(window as Window & { __EDYTOR_SYNC_ERROR__?: unknown }).__EDYTOR_SYNC_ERROR__ =
+							refusal;
 						return;
 					}
 					fired = true;
@@ -381,8 +809,36 @@
 						// unhandled rejection, so specs can assert it deterministically.
 						(window as Window & { __EDYTOR_SYNC_ERROR__?: unknown }).__EDYTOR_SYNC_ERROR__ = error;
 					}
-				});
+				};
+				// `document.sync(value)` seeds only while pending, so a reload
+				// hydrates from IndexedDB and skips the seed entirely (a
+				// re-seed's fresh items would LWW-win the registry election
+				// and revert room state), while an empty store seeds
+				// immediately. A REJECTED whenSynced is a refused hydration —
+				// it goes to the failure channel, never the readiness path.
+				if (persistence !== null) {
+					void persistence.whenSynced.then(
+						() => {
+							persistenceReady = true;
+							fireSynced();
+						},
+						(error) => {
+							(window as Window & { __EDYTOR_SYNC_ERROR__?: unknown }).__EDYTOR_SYNC_ERROR__ =
+								error;
+						}
+					);
+				}
+				(provider as { on(name: 'synced', listener: () => void): void }).on('synced', fireSynced);
+				// Schema-boundary refusal at hydration suppresses `synced` and
+				// rejects `whenSynced` (docs/crdt-v14-providers.md) — mirror the
+				// refusal into the same channel so specs observe it.
+				if ('whenSynced' in provider) {
+					provider.whenSynced.catch((error) => {
+						(window as Window & { __EDYTOR_SYNC_ERROR__?: unknown }).__EDYTOR_SYNC_ERROR__ = error;
+					});
+				}
 				return () => {
+					void persistence?.destroy();
 					void provider.destroy();
 				};
 			}
@@ -391,8 +847,12 @@
 	let edytor = $state<EdytorContext>();
 	let secondaryEdytor = $state<EdytorContext>();
 
-	const getScenarioValue = (scenario: string, emptyPosition: string | null) => {
-		const value = structuredClone(scenarios[scenario] ?? scenarios.basic);
+	const getScenarioValue = (
+		scenario: string,
+		emptyPosition: string | null,
+		dstDocument: JSONDoc | undefined
+	) => {
+		const value = structuredClone(dstDocument ?? scenarios[scenario] ?? scenarios.basic);
 
 		if (scenario === 'basic') {
 			const paragraphs = value.children;
@@ -450,7 +910,31 @@
 	};
 
 	const scenario = $derived(data.scenario);
-	const value = $derived(getScenarioValue(data.scenario, data.empty));
+	const value = $derived(getScenarioValue(data.scenario, data.empty, data.dstDocument));
+	// Collaboration-DST injection: `?actor=`/`?lineagedepth=` make the page
+	// OWN the document so each browser peer gets a deterministic local actor
+	// and an enabled lineage ring — the props `createDocument` can't reach
+	// through the plain `{value}` mount path. Without either param the view
+	// stays on the internal-document path (`document` prop stays undefined).
+	const injectedDocument = untrack(() =>
+		data.actor === null && data.lineagedepth === undefined
+			? undefined
+			: createDocument({
+					// With a sync factory attached the doc must stay PENDING
+					// — `attachSync` carries `value` and `document.sync(value)`
+					// seeds only when hydration (IndexedDB + room handshake)
+					// found nothing. Eager seeding — even an empty `value`,
+					// which still stamps the bootstrap — would mark the doc
+					// `local` before the provider answers, and re-seeding on
+					// reload lets fresh items' id election revert the room's
+					// converged state.
+					...(collabSync
+						? {}
+						: { value: getScenarioValue(data.scenario, data.empty, data.dstDocument) }),
+					...(data.actor !== null ? { actor: { id: data.actor, name: data.actor } } : {}),
+					...(data.lineagedepth !== undefined ? { lineage: { depth: data.lineagedepth } } : {})
+				})
+	);
 	const secondaryValue = $derived({
 		children: [
 			{
@@ -587,6 +1071,8 @@
 		<Edytor
 			bind:edytor
 			{plugins}
+			blockDnd={data.handles}
+			document={injectedDocument}
 			{value}
 			{readonly}
 			{translate}
@@ -605,6 +1091,7 @@
 			<Edytor
 				bind:edytor={secondaryEdytor}
 				{plugins}
+				blockDnd={data.handles}
 				value={secondaryValue}
 				{translate}
 				{spellcheck}

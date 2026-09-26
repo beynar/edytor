@@ -16,10 +16,21 @@
  *   summary; they do not fail the seed. The pending suite owns the semantic
  *   assertions; weakening them is forbidden (plan §U02 success criteria).
  *
+ * - Lanes (WU3): `model` and `doc` are the STRICT lane — legal production
+ *   schedules fail on any hard violation: actual lost edits
+ *   (`lost-edit`), unreachable blocks, crashes (an engine stack frame does
+ *   not excuse a crash), divergence. `raw` is the DIAGNOSTIC lane — the
+ *   copy adapter's expected evidence (lost edits, duplicate placements,
+ *   resurrected deletes, upstream engine crashes) is reported, never
+ *   gated. The partition itself lives in {@link runSchedule}:
+ *   `result.violations` is always the gate list, `result.evidence` the
+ *   legit report — so a legit class can never be promoted to a failure
+ *   nor a real one downgraded by this file.
+ *
  * - U03: the corpus is adapter-parametric. `CRDT_ADAPTER` selects
- *   `raw` (RawNodeOps copy semantics — evidence classes expected),
- *   `model` (the U03 placement model — those classes are HARD failures),
- *   or `all` (default: both). Each adapter seeds from its own schema
+ *   `raw` (RawNodeOps copy semantics — diagnostic lane),
+ *   `model` / `doc` (production adapters — strict lane),
+ *   or `all` (default). Each adapter seeds from its own schema
  *   (`BASE_SEED` vs `MODEL_BASE_SEED`).
  *
  * - Failing-seed persistence: on failure the seed's full schedule AND a
@@ -35,7 +46,7 @@
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
-import { mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, rmSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { CORPUS_SEEDS, generateSchedule, type Schedule, type Step } from './generator.js';
 import { runSchedule, expectedViolations, type RunResult } from './runner.js';
@@ -112,8 +123,10 @@ const persistFailure = (
 				adapter: ops.name,
 				failure: result.failure,
 				violations: result.violations,
+				evidence: result.evidence,
 				lostEdits: result.lostEdits,
 				lostIdentities: result.lostIdentities,
+				tagVerdicts: result.tagVerdicts,
 				stepsExecuted: result.stepCount,
 				schedule: schedule.steps,
 				minimized: {
@@ -145,46 +158,110 @@ for (const adapterName of SELECTED_ADAPTERS) {
 			expect(generateSchedule(42, 3, 200)).toEqual(generateSchedule(42, 3, 200));
 		});
 
-		// Aggregate violation evidence across the whole corpus — printed once,
-		// asserted never to leave the known missing-semantics classes.
+		// Aggregate evidence across the whole corpus — printed once, asserted
+		// never to leave the legit classes for this adapter. `result.evidence`
+		// holds the classified-legit kinds; `result.violations` the hard ones.
 		const evidence = new Map<string, number>();
+		// Per-seed oracle classification (WU3 report): seed → non-trivial tag
+		// verdicts — printed once at the end so every residual case is on
+		// record, not just the totals.
+		const perSeedVerdicts = new Map<number, string[]>();
+
+		/**
+		 * U5 — pinned REAL model defects found by the corpus (never masked
+		 * as harness noise): seed → the exact failure signature the strict
+		 * lane must keep reporting. A different failure (or a fixed model)
+		 * fails the seed loudly; the minimal repro lives in
+		 * `hardening/u5-min-rank-rehome.test.ts`. The placement model is
+		 * shared by the `model` and `doc` lanes, so the pin applies to both.
+		 *
+		 * Currently EMPTY — the seed-96 `rank space exhausted` pin was fixed
+		 * in the placement model (`rehomeRankBelow` mints below the root
+		 * minimum instead of the un-insertable-above floor sentinel); the
+		 * committed repro artifacts self-cleaned on the first green run.
+		 * Keep the mechanism: a new corpus defect gets pinned here with its
+		 * signature + a hardening repro test.
+		 */
+		const KNOWN_MODEL_BUGS = new Map<number, RegExp>();
+
+		/**
+		 * Committed frozen upstream-crash repros (the diagnostic-lane replay
+		 * suite reads these exact files). They are pinned evidence, NOT live
+		 * corpus state: the generated schedule for the same seed number may
+		 * now pass, which must NOT self-clean the file away.
+		 */
+		const PINNED_DIAGNOSTIC_ARTIFACTS = new Set(['seed-86', 'seed-140']);
 
 		for (const seed of CORPUS.seeds) {
 			it(`seed ${seed}`, () => {
 				const schedule = generateSchedule(seed, CORPUS.peers, CORPUS.ops);
 				const result = runSchedule(schedule, ops, seedUpdate);
-				for (const v of result.violations) evidence.set(v, (evidence.get(v) ?? 0) + 1);
+				for (const v of result.evidence) evidence.set(v, (evidence.get(v) ?? 0) + 1);
+				const nonTrivial = Object.entries(result.tagVerdicts)
+					.filter(([, v]) => !v.startsWith('present') && !v.startsWith('deleted-legit'))
+					.map(([tag, v]) => `${tag}:${v}`);
+				if (nonTrivial.length > 0) perSeedVerdicts.set(seed, nonTrivial);
 				const artifact = `${FAILURE_DIR}/seed-${seed}${suffix}.json`;
-				if (result.ok && existsSync(artifact)) {
+				if (
+					result.ok &&
+					existsSync(artifact) &&
+					!PINNED_DIAGNOSTIC_ARTIFACTS.has(`seed-${seed}${suffix}`)
+				) {
 					// Self-clean: a seed that passes again must not leave a stale
 					// repro behind — committed artifacts always reflect the
-					// current corpus state.
+					// current corpus state. Frozen diagnostic repros are exempt.
 					rmSync(artifact);
+				}
+				const knownBug =
+					adapterName === 'model' || adapterName === 'doc' ? KNOWN_MODEL_BUGS.get(seed) : undefined;
+				if (knownBug !== undefined) {
+					// Pinned defect — persist the fresh repro, then pin the EXACT
+					// crash signature: a different violation is a new bug, and a
+					// fixed model (`result.ok`) is the signal to drop this branch.
+					if (!result.ok) persistFailure(schedule, result, ops, seedUpdate, suffix);
+					expect(
+						result.ok,
+						`seed ${seed}: pinned model defect expected to keep failing (hardening/u5-min-rank-rehome)`
+					).toBe(false);
+					expect(result.violations).toEqual(['crash']);
+					expect(result.failure).toMatch(knownBug);
+					return;
 				}
 				if (!result.ok) {
 					// Persist a reproducible artifact for EVERY abnormal outcome.
 					const file = persistFailure(schedule, result, ops, seedUpdate, suffix);
 					const replay = `replay: CRDT_ADAPTER=${adapterName} CRDT_SEEDS=${seed} pnpm test:crdt`;
-					const hard = result.violations.filter((v) => !expectedViolations(ops).has(v));
-					if (hard.length > 0) {
+					// `violations` is already the hard list (partitioned by the
+					// runner) — any entry fails the seed on every lane.
+					if (result.violations.length > 0) {
 						throw new Error(
-							`corpus seed ${seed} [${adapterName}] failed (${hard.join(',')}): ${result.failure}\n` +
+							`corpus seed ${seed} [${adapterName}] failed (${result.violations.join(',')}): ${result.failure}\n` +
 								`persisted + minimized repro: ${file}\n${replay}`
 						);
 					}
-					// Evidence-class outcome (e.g. upstream-engine-crash): the run
-					// did not complete, but the cause is a classified upstream
-					// finding — the artifact above is the durable repro for
-					// U07/the upstream report. Counted in the evidence summary;
-					// not a gate failure.
+					// Evidence-class abort (e.g. upstream-engine-crash on the raw
+					// diagnostic adapter): the run did not complete, but the
+					// cause is a classified upstream finding — the artifact
+					// above is the durable repro for U07/the upstream report.
+					// Counted in the evidence summary; not a gate failure.
 					console.log(
 						`seed ${seed} [${adapterName}]: evidence-class abort ` +
-							`(${result.violations.join(',')}) — ` +
+							`(${result.evidence.join(',')}) — ` +
 							`${result.failure?.split('\n')[0]} — repro: ${file}`
 					);
 				}
 			});
 		}
+
+		it('prints the per-seed oracle classification', () => {
+			if (perSeedVerdicts.size === 0) {
+				console.log(`per-seed verdicts [${adapterName}]: all present/deleted-legit`);
+				return;
+			}
+			for (const [seed, tags] of perSeedVerdicts) {
+				console.log(`per-seed verdicts [${adapterName}] seed ${seed}: ${tags.join(' | ')}`);
+			}
+		});
 
 		it('records only known evidence classes', () => {
 			console.log(
@@ -207,6 +284,31 @@ for (const adapterName of SELECTED_ADAPTERS) {
 		});
 	});
 }
+
+describe('diagnostic lane: persisted upstream crash repros', () => {
+	// seed-86/140 are committed artifacts of genuine vendored-engine crashes
+	// (lossy reloads + Skip/GC overlap → iterateStructsByIdSet /
+	// findIndexSS). They stay DIAGNOSTIC on the raw adapter forever — a
+	// replay must classify as upstream-engine-crash EVIDENCE, never as a
+	// gate violation, and never silently disappear.
+	for (const name of ['seed-86', 'seed-140']) {
+		it(`${name} replays as upstream-engine-crash evidence`, () => {
+			const artifact = JSON.parse(readFileSync(`${FAILURE_DIR}/${name}.json`, 'utf8')) as {
+				seed: number;
+				peers: number;
+				schedule: Step[];
+			};
+			const res = runSchedule(
+				{ seed: artifact.seed, peers: artifact.peers, steps: artifact.schedule },
+				createRawNodeOps(),
+				BASE_SEED
+			);
+			expect(res.ok).toBe(false);
+			expect(res.violations).toEqual([]);
+			expect(res.evidence).toContain('upstream-engine-crash');
+		});
+	}
+});
 
 describe('shrink + failure-persistence self-tests', () => {
 	const ops = createRawNodeOps();
@@ -236,6 +338,57 @@ describe('shrink + failure-persistence self-tests', () => {
 		expect(minimized.steps.length).toBeLessThan(schedule.steps.length);
 		expect(minimized.steps.every((s) => s.op.kind === 'deleteText')).toBe(true);
 		expect(minimized.steps.length).toBeGreaterThan(0);
+	});
+
+	it('strict lane (WU3): an injected atom loss cannot silently pass', () => {
+		// The strict gate must fail when an adapter drops atoms. Injection is
+		// done on the ADAPTER surface (test-only), not in the model: the stub
+		// reports every tracked atom uncovered — the runner must surface
+		// `lost-edit` as a hard violation, on a schedule with zero lossy net
+		// ops so nothing can excuse it as convergent-loss.
+		const model = createModelOps();
+		const lossless: Schedule = {
+			seed: 9901,
+			peers: 3,
+			steps: [
+				{ peer: 0, op: { kind: 'insertBlock', id: 'ix1', type: 'paragraph' } },
+				{ peer: 0, op: { kind: 'insertText', idIndex: 0, offset: 0, text: 'µINJ1', tag: 'µINJ1' } },
+				{ peer: 1, op: { kind: 'insertText', idIndex: 0, offset: 0, text: 'µINJ2', tag: 'µINJ2' } }
+			]
+		};
+		const dropping: CrdtOps = {
+			...model,
+			classifyTagAtoms: (_peer, _target, atoms) => atoms.map(() => ({ kind: 'uncovered' }) as const)
+		};
+		const res = runSchedule(lossless, dropping, MODEL_BASE_SEED);
+		expect(res.ok).toBe(false);
+		expect(res.violations).toContain('lost-edit');
+		// And the strict corpus gate itself: violations non-empty ⇒ the seed
+		// would throw — the same check the per-seed loop performs.
+		expect(res.violations.length).toBeGreaterThan(0);
+	});
+
+	it('strict lane (WU3): an injected adapter throw fails as crash', () => {
+		const model = createModelOps();
+		let calls = 0;
+		const flaky: CrdtOps = {
+			...model,
+			insertText: (peer, id, offset, text, marks) => {
+				if (++calls === 2) throw new Error('injected strict-lane throw');
+				return model.insertText(peer, id, offset, text, marks);
+			}
+		};
+		const res = runSchedule(generateSchedule(7, 3, 60), flaky, MODEL_BASE_SEED);
+		expect(res.ok).toBe(false);
+		expect(res.violations).toContain('crash');
+	});
+
+	it('strict lane (WU3): an insert reporting success with no findable atoms fails', () => {
+		const model = createModelOps();
+		const blind: CrdtOps = { ...model, locateTagAtoms: () => null };
+		const res = runSchedule(generateSchedule(7, 3, 60), blind, MODEL_BASE_SEED);
+		expect(res.ok).toBe(false);
+		expect(res.violations).toContain('lost-edit');
 	});
 
 	it('end-to-end: a failing schedule shrinks to a still-failing prefix', () => {

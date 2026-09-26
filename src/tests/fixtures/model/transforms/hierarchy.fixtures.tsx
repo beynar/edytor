@@ -500,6 +500,61 @@ export const fixtures = defineFixtures([
 		)
 	}),
 	defineModelTransformFixture({
+		description:
+			'nests a block inside its next sibling via moveBlock (shared-prefix path [0,0]→[0,1,0])',
+		input: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>Source|</paragraph>
+					<paragraph>Target</paragraph>
+				</paragraph>
+			</root>
+		),
+		run: ({ edytor }) => edytor.selection.state.startBlock?.moveBlock({ path: [0, 1, 0] }) ?? null,
+		result: { kind: 'block', path: [0, 0, 0], type: 'paragraph' },
+		output: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>
+						Target
+						<paragraph>Source</paragraph>
+					</paragraph>
+				</paragraph>
+			</root>
+		)
+	}),
+	defineModelTransformFixture({
+		description: 'nests a block inside a next sibling that already has children',
+		input: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>Source|</paragraph>
+					<paragraph>
+						Target
+						<paragraph>Existing child</paragraph>
+					</paragraph>
+				</paragraph>
+			</root>
+		),
+		run: ({ edytor }) => edytor.selection.state.startBlock?.moveBlock({ path: [0, 1, 1] }) ?? null,
+		result: { kind: 'block', path: [0, 0, 1], type: 'paragraph' },
+		output: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>
+						Target
+						<paragraph>Existing child</paragraph>
+						<paragraph>Source</paragraph>
+					</paragraph>
+				</paragraph>
+			</root>
+		)
+	}),
+	defineModelTransformFixture({
 		description: 'moves a block under a deeply nested destination block',
 		input: (
 			<root>

@@ -56,7 +56,8 @@ const getTextInsertionDataTransferPayload = (event: InputEvent) => {
 		event.data !== null ||
 		(event.inputType !== 'insertText' &&
 			event.inputType !== 'insertReplacementText' &&
-			event.inputType !== 'insertTranspose')
+			event.inputType !== 'insertTranspose' &&
+			event.inputType !== 'insertFromYank')
 	) {
 		return null;
 	}

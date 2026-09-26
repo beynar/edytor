@@ -17,7 +17,7 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../../lib/crdt/index.js';
-import { bindText } from '../../../lib/crdt/text/model.js';
+import { bindText, DEAD } from '../../../lib/crdt/text/model.js';
 import { createPeerPair } from '../harness/peer-set.js';
 import { createModelOps } from '../harness/ops/model-ops.js';
 import { MODEL_BASE_SEED } from '../scenarios/seeds.js';
@@ -55,7 +55,7 @@ const unreachableLiveBlocks = (doc) => {
 			seen.add(cur);
 			const pl = placements.get(cur);
 			const dp = pl.parent === null ? null : own.ownerOf(pl.parent);
-			if (dp === 'dead' || dp === null) break;
+			if (dp === DEAD || dp === null) break;
 			cur = dp;
 		}
 		if (cyclic) bugs.push(id);

@@ -1,0 +1,146 @@
+{
+  "meta": {
+    "date": "2026-09-22T00:59:32.958Z",
+    "node": "v24.21.0",
+    "platform": "darwin arm64",
+    "workload": "U05 run-view invalidation (maintained view over U04 ownership)",
+    "caveats": [
+      "Timings are wall-clock on one machine; use for comparisons within this report.",
+      "\"recomputed\" counts come from view.debug — the maintained view recomputes lazily, so an invalidated block is only rebuilt on read.",
+      "v14 `.delta` is a live mutable cache — never held across the API boundary; the fresh `toDelta()` numbers show its cost."
+    ]
+  },
+  "workloads": {
+    "cold-first-read-all-runs (1000 blocks, attach+read)": {
+      "samples": 7,
+      "warmup": 0,
+      "mean": 7.1255,
+      "p50": 5.6776,
+      "p95": 13.2141,
+      "min": 4.3858,
+      "max": 13.2141
+    },
+    "cold-first-read-all-runs (1000 blocks, fresh doc)": {
+      "samples": 5,
+      "warmup": 0,
+      "mean": 4.3483,
+      "p50": 4.239,
+      "p95": 4.9113,
+      "min": 4.078,
+      "max": 4.9113
+    },
+    "warm runs() read per block (1000 blocks)": {
+      "samples": 200,
+      "warmup": 3,
+      "mean": 0.0004,
+      "p50": 0.0003,
+      "p95": 0.0007,
+      "min": 0.0002,
+      "max": 0.0095
+    },
+    "warm contentJSON() per block": {
+      "samples": 200,
+      "warmup": 3,
+      "mean": 0.0005,
+      "p50": 0.0004,
+      "p95": 0.0005,
+      "min": 0.0004,
+      "max": 0.0069
+    },
+    "full recompute baseline computeAllRuns (1000 blocks)": {
+      "samples": 7,
+      "warmup": 1,
+      "mean": 5.5961,
+      "p50": 5.194,
+      "p95": 8.7389,
+      "min": 4.0083,
+      "max": 8.7389
+    },
+    "local 1-char insert: recompute fan-out": {
+      "eventMs": 4.3069,
+      "recomputeMs": 0.1753,
+      "recomputedBlocks": [
+        "b777"
+      ],
+      "recomputed": 1,
+      "otherBlocksReused": "20/20",
+      "beforeRuns": 3
+    },
+    "unrelated edit leaves 999/1000 snapshots reused": {
+      "readAllMs": 0.42,
+      "reused": 999,
+      "recomputed": 1
+    },
+    "remote 1-char insert apply + recompute": {
+      "applyMs": 0.2848,
+      "recomputeMs": 0.0622,
+      "recomputed": 1,
+      "changed": true
+    },
+    "split block: invalidation fan-out": {
+      "recomputed": 0,
+      "head": 1,
+      "sibling": 3,
+      "recomputedAfterReads": 2,
+      "recomputedIds": [
+        "b100",
+        "b100-tail"
+      ]
+    },
+    "merge blocks: invalidation fan-out": {
+      "recomputed": 2,
+      "recomputedIds": [
+        "b100",
+        "b100-tail"
+      ],
+      "mergedAwayRuns": 0
+    },
+    "inline metadata update: recompute fan-out": {
+      "recomputed": 1,
+      "recomputedIds": [
+        "b200"
+      ],
+      "runsReusedWithinBlock": "2/3"
+    },
+    "delta-cache read: .delta.toJSON() vs toDelta().toJSON()": {
+      "liveCache": {
+        "samples": 1000,
+        "warmup": 3,
+        "mean": 0.0012,
+        "p50": 0.0011,
+        "p95": 0.0014,
+        "min": 0.001,
+        "max": 0.0146
+      },
+      "freshToDelta": {
+        "samples": 200,
+        "warmup": 3,
+        "mean": 0.0049,
+        "p50": 0.0044,
+        "p95": 0.0074,
+        "min": 0.0041,
+        "max": 0.0143
+      }
+    },
+    "scaling: cold first-read vs block count": [
+      {
+        "blocks": 100,
+        "coldReadAllMs": 0.91,
+        "rereadAllAfterOneEditMs": 0.05,
+        "reused": 99
+      },
+      {
+        "blocks": 1000,
+        "coldReadAllMs": 5.56,
+        "rereadAllAfterOneEditMs": 0.28,
+        "reused": 999
+      },
+      {
+        "blocks": 4000,
+        "coldReadAllMs": 30.91,
+        "rereadAllAfterOneEditMs": 0.89,
+        "reused": 3999
+      }
+    ]
+  }
+}

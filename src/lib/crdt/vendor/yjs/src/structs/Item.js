@@ -342,6 +342,9 @@ export class Item extends AbstractStruct {
             if (!this.deleted && this.countable) {
               marker.index -= this.length
             }
+            // the anchor moved left — a snapshot taken at the old position is
+            // stale at the new one (WU9 format-aware markers)
+            marker.formats = null
           }
         })
       }
@@ -369,6 +372,15 @@ export class Item extends AbstractStruct {
       // adjust the length of parent
       if (this.countable && this.parentSub === null) {
         parent._length -= this.length
+      }
+      // WU9 format-aware markers: tombstoning a format item changes the format
+      // state at every position at-or-right of it — cached `marker.formats`
+      // snapshots may have folded it. Invalidate all snapshots in this parent;
+      // they repopulate at quiescent points (end of applyDelta, findMarker).
+      if (this.content.constructor === ContentFormat && parent._searchMarker !== null) {
+        for (let i = 0; i < parent._searchMarker.length; i++) {
+          parent._searchMarker[i].formats = null
+        }
       }
       this.markDeleted()
       transaction.deleteSet.add(this.id.client, this.id.clock, this.length)
@@ -1149,9 +1161,18 @@ export class ContentFormat {
    * @param {Item} item
    */
   integrate (_transaction, item) {
-    // @todo searchmarker are currently unsupported for rich text documents
+    // Upstream disabled search markers for rich-text (formatted) documents:
+    // `p._searchMarker = null`. With WU9's format-aware marker snapshots the
+    // marker *index* stays valid across format integrations — ContentFormat
+    // items are non-countable, so no marker position shifts — and the marker
+    // *format snapshots* are kept current by `updateMarkerFormats` at the two
+    // insert sites (`insertFormats`/`insertNegatedFormats`), which fold the
+    // new marker into every snapshot at-or-right of its position — the same
+    // thing a passing cursor would do. Snapshots left of the insertion are
+    // unaffected by construction. Remote applies and undo still clear the
+    // whole pool (`_searchMarker.length = 0`), so no stale snapshot survives
+    // an untracked integration.
     const p = /** @type {import('../ynode.js').YNode<any>} */ (item.parent)
-    p._searchMarker = null
     p._hasFormatting = true
   }
 

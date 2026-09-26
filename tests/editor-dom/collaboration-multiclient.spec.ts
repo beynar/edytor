@@ -280,14 +280,13 @@ test.describe('multi-client collaboration over the real provider stack', () => {
 			await runtime.clearDocument(name);
 			const Doc = edytor.doc.constructor;
 			const bad = new Doc();
-			const provider = new runtime.IndexeddbPersistence(name, bad);
-			await provider.whenSynced;
 			bad.transact(() => {
 				bad.get('meta').setAttr('v', 99);
 				bad.get('meta').setAttr('schema', 'edytor');
 			});
-			await runtime.storeState(provider);
-			await provider.destroy();
+			// The application-schema boundary refuses to snapshot schema-problem
+			// docs via `storeState` — seed the stored update directly instead.
+			await runtime.seedDocument(name, bad);
 		}, dbName);
 
 		await page.goto(`/test/dom?scenario=collab&collab=${room}`, {

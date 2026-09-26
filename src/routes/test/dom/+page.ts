@@ -1,10 +1,48 @@
 import type { PageLoad } from './$types';
+import type { JSONDoc } from '$lib/utils/json.js';
+
+const readDstDocument = (raw: string | null): JSONDoc | undefined => {
+	if (raw === null) {
+		return undefined;
+	}
+
+	const value: unknown = JSON.parse(raw);
+	if (
+		typeof value !== 'object' ||
+		value === null ||
+		!('children' in value) ||
+		!Array.isArray(value.children)
+	) {
+		throw new TypeError('DST document must contain a children array');
+	}
+
+	return value as JSONDoc;
+};
 
 export const load: PageLoad = ({ url }) => {
 	return {
 		scenario: url.searchParams.get('scenario') ?? 'basic',
+		dstDocument: readDstDocument(url.searchParams.get('dst')),
 		empty: url.searchParams.get('empty'),
 		collab: url.searchParams.get('collab'),
+		collabws: url.searchParams.get('collabws'),
+		wsserver: url.searchParams.get('wsserver'),
+		wsresync: Number(url.searchParams.get('wsresync')) || 250,
+		wsbackoff: Number(url.searchParams.get('wsbackoff')) || 500,
+		// Collaboration DST knobs: `actor` pins the document's local actor
+		// identity (deterministic per peer) and `lineagedepth` opts the
+		// document into the attribution history ring — both consumed only
+		// when the page injects its own `document` (see +page.svelte).
+		actor: url.searchParams.get('actor'),
+		lineagedepth: (() => {
+			const raw = url.searchParams.get('lineagedepth');
+			if (raw === null) return undefined;
+			const depth = Number(raw);
+			if (!Number.isInteger(depth) || depth < 0) {
+				throw new TypeError(`lineagedepth must be a non-negative integer, got "${raw}"`);
+			}
+			return depth;
+		})(),
 		readonly: url.searchParams.get('readonly') === 'true',
 		dynamicReadonly: url.searchParams.get('dynamicReadonly') === 'true',
 		placeholder: url.searchParams.get('placeholder') ?? undefined,

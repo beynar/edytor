@@ -14,6 +14,13 @@
 		content: unknown;
 	};
 
+	const getCodeText = (block: Block) =>
+		block.children
+			.map((line) =>
+				line.content.map((part) => (part instanceof Text ? part.stringContent : '')).join('')
+			)
+			.join('\n');
+
 	const isPrismToken = (value: unknown): value is PrismTokenLike =>
 		Boolean(value && typeof value === 'object' && 'type' in value && 'content' in value);
 
@@ -67,7 +74,7 @@
 						prevent(() => {
 							if (startBlock?.suggestions) {
 								startBlock.acceptSuggestedText();
-								edytor.selection.setAtTextOffset(startText, startText.yText.length);
+								edytor.selection.setAtTextOffset(startText, startText.length);
 							} else {
 								if (startText) {
 									startText.insertText({ value: '\t' });
@@ -176,16 +183,15 @@
 						// here we need to check if the code line has soft line breaks and if so, we need to insert a new code line after the current one.
 						const firstText = block.content.at(0);
 						if (!(firstText instanceof Text)) return;
-						const yText = firstText.yText;
 
-						const content = yText.toString();
+						const content = firstText.stringContent;
 						const lines = content.split('\n');
 
 						if (lines.length > 1) {
 							// Remove the current content
-							yText.delete(0, content.length);
+							firstText.deleteAt(0, content.length);
 							// Insert the first line back
-							yText.insert(0, lines[0]);
+							firstText.insertAt(0, lines[0]);
 							// Create new code lines for each remaining line
 							for (let i = 1; i < lines.length; i++) {
 								if (!block.parent) {
@@ -199,7 +205,7 @@
 									},
 									parent: block.parent
 								});
-								block.parent.yChildren.insert(block.index + i, [newBlock.yBlock]);
+								block.parent.insertChildren(block.index + i, [newBlock]);
 							}
 						}
 					}
@@ -215,13 +221,13 @@
 {#snippet code({ block, children }: BlockSnippetPayload)}
 	<div use:block.attach class="grid gap-2 rounded bg-neutral-600 p-1">
 		<div use:block.void class="text-xs flex justify-between">
-			<code>html</code>
+			<code>JavaScript</code>
 			<div>
 				<button
-					onclick={(e) => {
+					onclick={async (e) => {
 						e.preventDefault();
 						e.stopPropagation();
-						// navigator.clipboard.writeText(block.content.stringContent);
+						await navigator.clipboard.writeText(getCodeText(block));
 					}}
 				>
 					Copy
@@ -235,7 +241,7 @@
 {/snippet}
 
 {#snippet codeLine({ content, block }: BlockSnippetPayload)}
-	<div class="hover:bg-neutral-700" style:tab-size="7px" use:block.attach>
+	<div style:tab-size="7px" use:block.attach>
 		{@render content()}
 	</div>
 {/snippet}

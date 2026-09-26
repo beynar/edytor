@@ -159,7 +159,11 @@ export const fixtures = defineFixtures([
 		),
 		autoSelectFixture: false,
 		run: async ({ edytor }) => {
-			await dragSelection(edytor, [0, 2], 1, [1, 0], 2);
+			// Anchor at the mention↔tail boundary (tail@0): the selection starts
+			// exactly where the inline atom ends. Offset 1 previously passed only
+			// because a contentParts re-walk bug duplicated 'tail' into `texts`,
+			// marking the full run regardless of the anchor.
+			await dragSelection(edytor, [0, 2], 0, [1, 0], 2);
 			return dispatchDomKeyDown(document, { key: 'b', code: 'KeyB', metaKey: true });
 		},
 		output: (

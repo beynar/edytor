@@ -6,17 +6,28 @@ type PageIssues = {
 	assertClean: () => void;
 };
 
-export const trackPageIssues = (page: Page): PageIssues => {
+export const trackPageIssues = (
+	page: Page,
+	options: { ignoreConsoleErrors?: RegExp[]; ignorePageErrors?: RegExp[] } = {}
+): PageIssues => {
 	const pageErrors: string[] = [];
 	const consoleErrors: string[] = [];
 
 	page.on('pageerror', (error) => {
-		pageErrors.push(error.stack ?? error.message);
+		const text = error.stack ?? error.message;
+		if (options.ignorePageErrors?.some((pattern) => pattern.test(text))) {
+			return;
+		}
+		pageErrors.push(text);
 	});
 
 	page.on('console', (message) => {
 		if (message.type() === 'error') {
-			consoleErrors.push(message.text());
+			const text = message.text();
+			if (options.ignoreConsoleErrors?.some((pattern) => pattern.test(text))) {
+				return;
+			}
+			consoleErrors.push(text);
 		}
 	});
 
@@ -30,13 +41,73 @@ export const trackPageIssues = (page: Page): PageIssues => {
 	};
 };
 
+/**
+ * Canonicalize `edytor.value` payloads for assertion. Serialized text
+ * values may arrive segmented at CRDT-item or normalization boundaries
+ * even when marks match (see `stripAttribution`/`canonicalValue` in
+ * `src/tests/test.utils.ts`, which apply the same normalization to the
+ * DOM/model fixture harness). Browser specs assert the canonical merged
+ * shape — they verify *which text landed*, not how it is segmented — so
+ * re-merge adjacent same-marks text parts here.
+ * Ids, marks, types, and data are preserved.
+ */
+const partMarksKey = (marks: unknown): string =>
+	marks == null
+		? ''
+		: JSON.stringify(
+				Object.entries(marks as Record<string, unknown>)
+					.filter(([, value]) => value !== undefined)
+					.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+			);
+
+const canonicalizeContentParts = (items: unknown[]): unknown[] => {
+	const out: Record<string, unknown>[] = [];
+	for (const item of items) {
+		const { attribution: _attribution, ...rest } = item as Record<string, unknown>;
+		const prev = out[out.length - 1];
+		if (
+			prev !== undefined &&
+			'text' in rest &&
+			'text' in prev &&
+			partMarksKey(prev.marks) === partMarksKey(rest.marks)
+		) {
+			prev.text = String(prev.text) + String(rest.text);
+			continue;
+		}
+		out.push(rest);
+	}
+	return out;
+};
+
+const canonicalizeBlocks = (blocks: unknown[]): unknown[] =>
+	blocks.map((block) => {
+		const record = block as Record<string, unknown>;
+		return {
+			...record,
+			content: Array.isArray(record.content)
+				? canonicalizeContentParts(record.content)
+				: record.content,
+			children: Array.isArray(record.children)
+				? canonicalizeBlocks(record.children)
+				: record.children
+		};
+	});
+
+const canonicalizeDocPayload = (payload: unknown): unknown => {
+	const record = payload as Record<string, unknown> | null;
+	if (record && typeof record === 'object' && Array.isArray(record.children)) {
+		return { ...record, children: canonicalizeBlocks(record.children) };
+	}
+	return payload;
+};
+
 export const readJsonByTestId = async <T>(page: Page, testId: string): Promise<T> => {
 	const raw = await page.getByTestId(testId).textContent();
 	if (!raw) {
 		throw new Error(`Missing JSON payload for test id "${testId}"`);
 	}
 
-	return JSON.parse(raw) as T;
+	return canonicalizeDocPayload(JSON.parse(raw)) as T;
 };
 
 export const waitForEditorReady = async (
@@ -245,6 +316,9 @@ const setSelectionByTextIndexDirection = async (
 				selection = fakeSelection;
 			}
 
+			// A DOM-first placement is a user decision — mark the gesture so
+			// the drift guard doesn't revert this echo as render churn.
+			(window as { __EDYTOR__?: { markUserGesture?: () => void } }).__EDYTOR__?.markUserGesture?.();
 			selection?.removeAllRanges();
 			if (selectionDirection === 'backward' && selection) {
 				if (typeof selection.setBaseAndExtent === 'function') {
@@ -835,6 +909,71 @@ export const dispatchPaste = async (
 			configurable: true
 		});
 
+		target.dispatchEvent(event);
+	}, payload);
+};
+
+/**
+ * Pin the model caret to a `[data-edytor-text]` element offset and
+ * dispatch the paste SYNCHRONOUSLY in the same task.
+ *
+ * The paste pipeline resolves its insertion point from
+ * `selection.state` — but a `selectionchange` queued behind a selection
+ * wait can still revert the model caret to wherever the browser last
+ * put the native selection before the dispatch runs (Gecko/WebKit
+ * relocate a caret at the end of a '\n' text into a ZWSP placeholder,
+ * which resolves to the NEXT text — across an inline atom). Setting the
+ * model caret and dispatching in one task leaves no event-loop turn for
+ * a stray derive to interleave. Use when the test's contract is "paste
+ * lands at the caret", not native caret placement itself.
+ */
+export const dispatchPasteAtCaret = async (
+	page: Page,
+	payload: {
+		blockIndex: number;
+		contentIndex: number;
+		yStart: number;
+		text?: string;
+		html?: string;
+	}
+) => {
+	await page.evaluate(({ blockIndex, contentIndex, yStart, text, html }) => {
+		const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
+		const target =
+			document.querySelector<HTMLElement>('[data-edytor]') ??
+			document
+				.querySelector<HTMLElement>('[data-testid="shadow-editor-host"]')
+				?.shadowRoot?.querySelector<HTMLElement>('[data-edytor]');
+		if (!edytor || !target) {
+			throw new Error('Missing editor root');
+		}
+
+		const part = edytor.root?.children[blockIndex]?.content?.[contentIndex];
+		if (typeof part?.insertAt !== 'function' || typeof part?.stringContent !== 'string') {
+			throw new Error(
+				`content[${contentIndex}] of block ${blockIndex} is not a Text (got ${part?.constructor?.name})`
+			);
+		}
+		edytor.selection.setCollapsedStateAtTextOffset(part, yStart);
+
+		const event = new Event('paste', {
+			bubbles: true,
+			cancelable: true
+		}) as ClipboardEvent;
+		Object.defineProperty(event, 'clipboardData', {
+			value: {
+				getData: (type: string) => {
+					if (type === 'text/html') {
+						return html ?? '';
+					}
+					if (type === 'text/plain') {
+						return text ?? '';
+					}
+					return '';
+				}
+			} satisfies Pick<DataTransfer, 'getData'>,
+			configurable: true
+		});
 		target.dispatchEvent(event);
 	}, payload);
 };

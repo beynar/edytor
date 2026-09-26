@@ -66,6 +66,15 @@ export class Awareness extends ObservableV2<AwarenessEvents> {
 	states: AwarenessStates;
 	meta: Map<number, MetaClientState>;
 	private _checkInterval: ReturnType<typeof setInterval>;
+	/**
+	 * Idempotence guard — `destroy()` is reachable twice through the
+	 * OWNED-doc + OWNED-awareness composition: `EdytorDocument.destroy()`
+	 * runs `awareness.destroy()` and the subsequent `doc.destroy()` re-fires
+	 * this instance's `doc.on('destroy')` hook. Without the guard the second
+	 * call re-emits 'destroy' + 'change'/'update' (a duplicate
+	 * `removed: [clientID]` broadcast) and re-runs `setLocalState(null)`.
+	 */
+	private _destroyed = false;
 
 	constructor(doc: AwarenessDoc) {
 		super();
@@ -101,6 +110,10 @@ export class Awareness extends ObservableV2<AwarenessEvents> {
 			},
 			math.floor(outdatedTimeout / 10)
 		);
+		// Node returns a `Timeout` (has `unref`), browsers a number — a stale-
+		// state sweep must never be the thing keeping a node/SSR process alive
+		// (a server-rendered component can't run its client teardown path).
+		(this._checkInterval as { unref?: () => void }).unref?.();
 		doc.on('destroy', () => {
 			this.destroy();
 		});
@@ -108,6 +121,10 @@ export class Awareness extends ObservableV2<AwarenessEvents> {
 	}
 
 	override destroy(): void {
+		if (this._destroyed) {
+			return;
+		}
+		this._destroyed = true;
 		this.emit('destroy', [this]);
 		this.setLocalState(null);
 		super.destroy();

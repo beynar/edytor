@@ -37,8 +37,6 @@ export type SelectionExpectation = {
 	textPaths?: number[][];
 	selectedBlockPaths?: number[][];
 	focusedBlockPaths?: number[][];
-	start?: number;
-	end?: number;
 	yStart?: number;
 	yEnd?: number;
 	length?: number;
@@ -415,8 +413,6 @@ export const createTestEdytor = (
 			endBlock,
 			startText,
 			endText,
-			start: startOffset,
-			end: endOffset,
 			yStart: startOffset,
 			yEnd: endOffset,
 			isCollapsed,
@@ -431,7 +427,7 @@ export const createTestEdytor = (
 			isAtEndOfText: endOffset === endText.length,
 			isAtStartOfBlock: startOffset === 0 && startText === startBlock.firstText,
 			isAtEndOfBlock: endOffset === endText.length && endText === endBlock.lastText,
-			yTextContent: startText.yText.toJSON()
+			yTextContent: startText.stringContent
 		};
 	}
 
@@ -466,8 +462,6 @@ const setSelectionState = (
 		endText,
 		startBlock,
 		endBlock,
-		start: startOffset,
-		end: endOffset,
 		yStart: startOffset,
 		yEnd: endOffset,
 		length: isCollapsed
@@ -500,11 +494,11 @@ const setSelectionState = (
 			}
 			return acc;
 		}, {}),
-		yTextContent: startText.yText.toJSON()
+		yTextContent: startText.stringContent
 	};
 
 	edytor.selection.selectBlocks();
-	edytor.selection.selectedInlineBlock.clear();
+	edytor.selection.clearInlineBlockSelection();
 	edytor.selection.focusBlocks(...new Set(texts.map((text) => text.parent)));
 };
 
@@ -541,14 +535,6 @@ const patchOperationSelectionApis = (edytor: Edytor) => {
 		setSelectionState(edytor, block.firstText, startOffset, block.lastText, endOffset);
 	};
 
-	edytor.selection.setAtTextRange = async (text, start, end) => {
-		if (!text || typeof start !== 'number' || typeof end !== 'number') {
-			return;
-		}
-
-		setSelectionState(edytor, text, start, text, end);
-	};
-
 	edytor.selection.setAtRange = async (startText, startOffset, endText, endOffset) => {
 		if (
 			!startText ||
@@ -575,6 +561,41 @@ export const createOperationEdytor = (jsx: RenderedNode, options: TestEdytorOpti
 	return testEdytor;
 };
 
+/**
+ * Canonicalization for value comparisons — serialized text values may
+ * arrive segmented at CRDT-item or normalization boundaries even when the
+ * marks match. Fixtures describe structure, not segmentation, so value
+ * comparisons re-merge adjacent equal-mark text — the same treatment
+ * `removeIds` already gives volatile block ids.
+ */
+const marksKey = (marks: unknown): string =>
+	marks == null
+		? ''
+		: JSON.stringify(
+				Object.entries(marks as Record<string, unknown>)
+					.filter(([, v]) => v !== undefined)
+					.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+			);
+
+export const stripAttribution = <T extends object>(items: readonly T[]): T[] => {
+	const out: Record<string, unknown>[] = [];
+	for (const item of items) {
+		const { attribution: _attribution, ...rest } = item as Record<string, unknown>;
+		const prev = out[out.length - 1];
+		if (
+			prev !== undefined &&
+			'text' in rest &&
+			'text' in prev &&
+			marksKey(prev.marks) === marksKey(rest.marks)
+		) {
+			prev.text = String(prev.text) + String(rest.text);
+			continue;
+		}
+		out.push(rest);
+	}
+	return out as T[];
+};
+
 export const removeIds = (value: JSONBlock[]) => {
 	return value.map((block) => {
 		if (block.id) {
@@ -584,12 +605,14 @@ export const removeIds = (value: JSONBlock[]) => {
 			block.children = removeIds(block.children);
 		}
 		if (block.content) {
-			block.content = block.content.map((content) => {
-				if ('id' in content) {
-					delete content.id;
-				}
-				return content;
-			});
+			block.content = stripAttribution(
+				block.content.map((content) => {
+					if ('id' in content) {
+						delete content.id;
+					}
+					return content;
+				})
+			);
 		}
 		return block;
 	});
@@ -605,7 +628,7 @@ export const expectBlockInvariantSnapshot = (subject: Block | Edytor) => {
 };
 
 export const expectTextValue = (text: Text, expected: JSONText[]) => {
-	expect(structuredClone(text.value)).toEqual(expected);
+	expect(stripAttribution(structuredClone(text.value))).toEqual(stripAttribution(expected));
 };
 
 export const expectMarksState = (text: Text, expected: MarkStateExpectation) => {
@@ -633,6 +656,17 @@ export const expectEdytorValue = (edytor: Edytor) => (jsx: RenderedNode) => {
 };
 
 export const expectEydorValue = expectEdytorValue;
+
+/**
+ * `edytor.value` normalized for fixture comparison — strips volatile ids
+ * and U7 attribution provenance, re-merging authorship-boundary text
+ * splits. Use where a result object embeds `edytor.value` for
+ * `toMatchObject`/`toEqual` assertions (see history policy fixtures).
+ */
+export const canonicalValue = <T extends { children?: JSONBlock[] }>(value: T): T => ({
+	...value,
+	children: value.children ? removeIds(structuredClone(value.children)) : value.children
+});
 
 export const findBlockAndPartAtPath =
 	(edytor: Edytor) =>
@@ -696,12 +730,6 @@ export const expectSelection = (edytor: Edytor, expected: SelectionExpectation) 
 		expect(Array.from(edytor.selection.focusedBlocks).map((block) => block.path)).toEqual(
 			expected.focusedBlockPaths
 		);
-	}
-	if (expected.start !== undefined) {
-		expect(state.start).toBe(expected.start);
-	}
-	if (expected.end !== undefined) {
-		expect(state.end).toBe(expected.end);
 	}
 	if (expected.yStart !== undefined) {
 		expect(state.yStart).toBe(expected.yStart);
@@ -877,8 +905,12 @@ const keyboardEventInitFromCombo = (combo: string): KeyboardEventInit => {
 	};
 };
 
-export const runHotkey = async (edytor: Edytor, combo: string) => {
-	const init = keyboardEventInitFromCombo(combo);
+export const runHotkey = async (
+	edytor: Edytor,
+	combo: string,
+	overrides: KeyboardEventInit = {}
+) => {
+	const init = { ...keyboardEventInitFromCombo(combo), ...overrides };
 	const event =
 		typeof KeyboardEvent !== 'undefined'
 			? new KeyboardEvent('keydown', init)

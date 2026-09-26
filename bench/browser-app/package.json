@@ -1,0 +1,7 @@
+{
+	"name": "edytor-bench-browser-app",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"description": "Browser-bench fixture app for bench/browser.js. Resolves `edytor` from the packed-consumer install (tests/packed-consumer/node_modules — the repacked edytor.tgz), NOT from src/. node_modules here is a symlink to that install, created by bench/browser.js."
+}

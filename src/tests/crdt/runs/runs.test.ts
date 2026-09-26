@@ -254,6 +254,62 @@ describe('run view — fresh equivalence through edits (local, remote, undo)', (
 		expectAllFresh(viewB, set.B.doc);
 	});
 
+	it('a remote delete invalidates the claim loser whose stale interval no longer overlaps the post-delete gap span', () => {
+		// Regression for the collab-DST divergence: 'b' claims the tail of a
+		// shared backing text and caches its runs. A single remote commit then
+		// tombstones the head AND middle atoms — every deleted item resolves to
+		// a post-delete gap near position 0, so the narrowed extent cannot
+		// intersect b's stale ownership interval [4, 11) — without the delete→
+		// opaque fallback, b's cached runs would survive unchanged.
+		const set = createPeerPair(
+			modelSpecSeed([
+				{
+					id: 'a',
+					type: 'paragraph',
+					content: [{ kind: 'text', text: 'tail' }]
+				}
+			])
+		);
+		// Type 'headXYZ' atom-by-atom across BOTH peers — contiguous same-client
+		// inserts would merge into one item whose deleted span [0,7) still
+		// intersects the stale interval. Alternating clients keeps each atom a
+		// separate item, so every tombstone resolves to a distinct ~[0,1)
+		// post-delete gap (exactly the char-typed DST shape).
+		for (const [i, ch] of [...'headXYZ'].entries()) {
+			const side = i % 2 === 0 ? 'A' : 'B';
+			set[side].transact(() => M.insertText(set[side].doc, 'a', i, ch));
+			set.deliver('A', 'B');
+			set.deliver('B', 'A');
+		}
+		set.A.transact(() => M.splitBlock(set.A.doc, 'a', 4, 'b')); // b claims 'XYZtail'
+		set.deliver('A', 'B');
+		const viewB = R.attach(set.B.doc);
+		expect(
+			viewB
+				.runs('b')
+				.map((r) => r.text)
+				.join('')
+		).toBe('XYZtail');
+		// Tombstone ALL of 'headXYZtail' directly on the backing text — exactly
+		// what a remote update carries (item deletes, no slices-record rewrite;
+		// going through `M.deleteText` would re-anchor b's claim records and
+		// mask the bug via the structure facet). Post-delete b's claim resolves
+		// to an empty range — no fresh interval — so only the stale-interval
+		// check could catch it, and every deleted span sits at [0,1).
+		set.A.transact(() => {
+			const content = set.A.doc.get('blocks').getAttr('a').getAttr('content');
+			content.delete(0, content.length);
+		});
+		set.deliver('A', 'B');
+		expect(
+			viewB
+				.runs('b')
+				.map((r) => r.text)
+				.join('')
+		).toBe('');
+		expectRunsFresh(viewB, set.B.doc, 'b');
+	});
+
 	it('stays equal to fresh after undo/redo', () => {
 		const set = createPeerPair(RICH_SEED);
 		const doc = set.A.doc;

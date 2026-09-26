@@ -3,6 +3,17 @@
 Status: **complete** (2026-09-22). Companion to `crdt-v14-execution-ledger.md` and
 `crdt-v14-implementation-plan.md` (U08).
 
+> **Post-cutover update (follow-up work unit 2):** the compat bridge described
+> below is **removed**. `src/lib/crdt/compat.ts` is deleted; wrappers and op
+> utilities now call the typed node surface in `src/lib/crdt/nodes.ts`
+> (`insertChildren`, `deleteChildren`, `insertParts`, `deleteParts`,
+> `insertAt`, `deleteAt`, `formatAt`, `setData`, `isInDocument`, …) directly.
+> `FACADE_MUTATORS`, the fake `yRootBlock`, and `_docVersion` are gone —
+> projection caching keys on the facade-owned `version` token, which preserves
+> same-transaction read-your-writes. Sections marked "compat" below are kept
+> as U08 historical record; the ledger WU2 row is authoritative for the
+> current shape.
+
 ## What changed
 
 The live editor runtime now runs on the vendored v14 engine through the
@@ -33,9 +44,30 @@ used by gate/boundary tests and the legacy-fixture generator.
 ### Cross-cutting semantics established during the port
 
 - **Same-transaction reads.** v14 run views synchronize at commit while v13
-  `Y.*` reads observe same-txn writes. `Edytor` memoizes
-  `facade.project()` on `_docVersion`; every mutating facade call and every
-  committed change bumps it (`edytor.svelte.ts`).
+  `Y.*` reads observe same-txn writes — so the shared model state also
+  walks `doc._transaction.changed` on every mid-transaction read
+  (`runs.ts` `syncTransaction`), giving command sequences read-your-writes
+  inside an open transaction without waiting for the update event.
+  `Edytor` memoizes `facade.project()` on `_docVersion`; every mutating
+  facade call and every committed change bumps it (`edytor.svelte.ts`).
+- **Shared incremental model state (WU7).** One per-document state
+  (`bindRuns` attach, `WeakMap`-keyed, lease/refcounted across facades,
+  torn down on last dispose or doc destroy) maintains `blocks`, lazy
+  ownership, per-text interval rows, and the `placements`/`kids`
+  (`childrenIndex`) facets behind a shared `ModelView`. `bindModel`'s
+  `view()` is provider-injected — command preambles, anchors, projection,
+  `takeSnap`, `childrenIdsIn`, and `DocChange` all read the same indexes
+  instead of re-collecting per call; a bare `bindModel` keeps the
+  fresh-collect fallback. Facet invalidation is classified per event:
+  `content` dirties only the touched blocks' rows (placements/kids
+  identity preserved); `slices`/`del`/registry inserts are structural;
+  `at` is placement-only; `id`/`type`/`data` are metadata; unknown attrs
+  conservatively count as structural. Content/meta-only commits report
+  `commitInfo().fast` and `DocChange` patches just the touched ids
+  (two-pass validate-then-patch, escalating to the full skeleton diff
+  whenever a touched id is unexpectedly visible-but-untracked);
+  structural commits take the full-snapshot path. See
+  `docs/crdt-v14-benchmarks.md` §16 for measurements.
 - **Wrapper identity.** Wrappers are identity-bearing — selection and op
   code hold references across mutations. `reconcileContent` never displaces
   a live `Text` wrapper for a pending carrier; pending ids are aliased in

@@ -1691,6 +1691,169 @@ test.describe('browser input behavior', () => {
 		issues.assertClean();
 	});
 
+	test('lifts the unselected nested suffix when deleting from its ancestor boundary', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=nested');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0, 1, 'Nested '.length);
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0, 0],
+			yStart: 0,
+			yEnd: 7,
+			isCollapsed: false
+		});
+
+		await page.keyboard.press('Backspace');
+
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{
+						content?: Array<{ text?: string }>;
+						children?: unknown[];
+					}>;
+				}>(page, 'value');
+				return value.children.map((block) => ({
+					text: block.content?.map((part) => part.text ?? '').join('') ?? '',
+					childCount: block.children?.length ?? 0
+				}));
+			})
+			.toEqual([
+				{ text: 'child', childCount: 0 },
+				{ text: 'Nested tail', childCount: 0 },
+				{ text: 'After', childCount: 0 }
+			]);
+
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 0,
+			yEnd: 0,
+			isCollapsed: true
+		});
+
+		issues.assertClean();
+	});
+
+	test('replaces a cross-block range that starts in an empty placeholder block', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0, 1, 2);
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [1],
+			yStart: 0,
+			yEnd: 2,
+			isCollapsed: false
+		});
+
+		await page.keyboard.type('X');
+
+		await expect.poll(() => readBlockTexts(page)).toEqual(['Xte', 'tail']);
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 1,
+			yEnd: 1,
+			isCollapsed: true
+		});
+
+		issues.assertClean();
+	});
+
+	test('rebinds retained text wrappers after a cross-block replacement', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		const document = {
+			children: [
+				{ type: 'paragraph', id: 'first', content: [{ text: 'ab' }] },
+				{
+					type: 'paragraph',
+					id: 'second',
+					content: [
+						{ text: 'cd' },
+						{ type: 'mention', id: 'mention', data: { label: 'mention' } },
+						{ text: 'ef' }
+					]
+				}
+			]
+		};
+		const query = new URLSearchParams({ scenario: 'dst', dst: JSON.stringify(document) });
+
+		await page.goto(`/test/dom?${query}`);
+		await waitForEditorReady(page, { requireRuntime: true });
+		await setSelectionByTextIndex(page, 0, 1, 1, 1);
+		await page.keyboard.type('X');
+
+		await expect.poll(() => readBlockTexts(page)).toEqual(['aXdef']);
+		await expect(getTextLocators(page)).toHaveCount(2);
+		await setSelectionByTextIndex(page, 0, 1, 1, 1);
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 1,
+			yEnd: 1,
+			isCollapsed: false
+		});
+
+		issues.assertClean();
+	});
+
+	test('deletes a whole-editor range and restores the caret in the normalized empty block', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		const document = {
+			children: [
+				{ type: 'paragraph', id: 'first', content: [{ text: 'alpha' }] },
+				{ type: 'paragraph', id: 'second', content: [{ text: 'beta' }] }
+			]
+		};
+		const query = new URLSearchParams({ scenario: 'dst', dst: JSON.stringify(document) });
+
+		await page.goto(`/test/dom?${query}`);
+		await waitForEditorReady(page, { requireRuntime: true });
+		await page.evaluate(() => {
+			const editor = document.querySelector<HTMLElement>('[data-edytor]');
+			if (!editor) throw new Error('Missing editor');
+			const range = document.createRange();
+			range.selectNodeContents(editor);
+			const selection = window.getSelection();
+			selection?.removeAllRanges();
+			selection?.addRange(range);
+			editor.focus({ preventScroll: true });
+			document.dispatchEvent(new Event('selectionchange'));
+		});
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [1],
+			yStart: 0,
+			yEnd: 4,
+			isCollapsed: false
+		});
+
+		await page.keyboard.press('Delete');
+
+		await expect.poll(() => readBlockTexts(page)).toEqual(['']);
+		await expect(getTextLocators(page)).toHaveCount(1);
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 0,
+			yEnd: 0,
+			isCollapsed: true
+		});
+
+		issues.assertClean();
+	});
+
 	test('replaces only a native double-click word selection when typing', async ({ page }) => {
 		const issues = trackPageIssues(page);
 
@@ -1774,6 +1937,71 @@ test.describe('browser input behavior', () => {
 				return value.children[0]?.content?.[0]?.text;
 			})
 			.toBe('é🙂');
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 'é🙂'.length,
+			yEnd: 'é🙂'.length,
+			isCollapsed: true
+		});
+
+		issues.assertClean();
+	});
+
+	test('normalizes an expanded range that splits an emoji surrogate pair', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=unicode');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0, 0, 3);
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 0,
+			yEnd: 4,
+			isCollapsed: false
+		});
+
+		await page.keyboard.type('X');
+
+		await expect.poll(() => readBlockTexts(page)).toEqual(['X é Z']);
+		await expectSelection(page, {
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 1,
+			yEnd: 1,
+			isCollapsed: true
+		});
+
+		issues.assertClean();
+	});
+
+	test('deletes a normalized range that splits an emoji surrogate pair', async ({ page }) => {
+		const issues = trackPageIssues(page);
+
+		for (const key of ['Backspace', 'Delete']) {
+			await page.goto('/test/dom?scenario=unicode');
+			await waitForEditorReady(page);
+			await setSelectionByTextIndex(page, 0, 0, 0, 3);
+			await expectSelection(page, {
+				startBlockPath: [0],
+				endBlockPath: [0],
+				yStart: 0,
+				yEnd: 4,
+				isCollapsed: false
+			});
+
+			await page.keyboard.press(key);
+
+			await expect.poll(() => readBlockTexts(page)).toEqual([' é Z']);
+			await expectSelection(page, {
+				startBlockPath: [0],
+				endBlockPath: [0],
+				yStart: 0,
+				yEnd: 0,
+				isCollapsed: true
+			});
+		}
 
 		issues.assertClean();
 	});

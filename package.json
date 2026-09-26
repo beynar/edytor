@@ -31,7 +31,8 @@
 		"test:crdt:pending": "vitest --config ./vitest.crdt-pending.config.ts --run",
 		"bench:crdt": "node --expose-gc bench/run.js",
 		"bench:browser": "node bench/browser.js",
-		"bench:runs": "BENCH_RUNS=1 vitest --config ./vitest.crdt.config.ts --run src/tests/crdt/runs/runs.bench.test.ts"
+		"bench:runs": "BENCH_RUNS=1 vitest --config ./vitest.crdt.config.ts --run src/tests/crdt/runs/runs.bench.test.ts",
+		"census": "node scripts/census.mjs"
 	},
 	"exports": {
 		".": {

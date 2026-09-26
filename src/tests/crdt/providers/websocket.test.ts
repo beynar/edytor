@@ -190,40 +190,7 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 	});
 
 	/**
-	 * The opaque relay broadcasts every SyncStep2 reply to ALL room
-	 * members. A reply computed against ANOTHER member's state vector is
-	 * an empty diff for an already-synced pair — applying it must not
-	 * complete OUR handshake on a still-empty doc. Otherwise a fresh
-	 * client can mark `synced` (and seed initial content) before the real
-	 * hydration answer lands, and deterministic block ids let the seed
-	 * LWW-clobber edited state.
-	 */
-	test('a foreign empty SyncStep2 cannot claim synced on a fresh doc', async () => {
-		const url = `ws://fake/${counter++}`;
-		const docC = new Y.Doc();
-		const pC = new providers.WebsocketProvider(url, 'room', docC, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true,
-			syncSettleMs: 5000
-		});
-		await until(() => pC.wsconnected, 4000);
-		expect(pC.synced).toBe(false);
-
-		// Forge the foreign reply: v14 | messageSync | SyncStep2(empty).
-		const e = encoding.createEncoder();
-		writeProtocolVersion(e);
-		encoding.writeVarUint(e, 0); // messageSync
-		sync.writeSyncStep2(e, new Y.Doc());
-		pC.ws.onmessage({ data: encoding.toUint8Array(e).slice().buffer });
-
-		// Applied cleanly, changed nothing, and must not claim the handshake.
-		expect(pC.synced).toBe(false);
-		pC.destroy();
-	});
-
-	/**
-	 * Count SyncStep1 requests this suite's providers have sent — the
-	 * connect-time request, plus the settle's "are you sure" re-probe.
+	 * Count SyncStep1 requests this suite's providers have sent.
 	 */
 	const countSentStep1 = () =>
 		FakeWebSocket.sentLog.filter((frame) => {
@@ -234,102 +201,75 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 			return decoding.readVarUint(d) === sync.messageYjsSyncStep1;
 		}).length;
 
-	test('an empty room completes the handshake via the settle window', async () => {
-		const url = `ws://fake/${counter++}`;
-		FakeWebSocket.sentLog = [];
-		const docC = new Y.Doc();
-		const pC = new providers.WebsocketProvider(url, 'room', docC, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true,
-			syncSettleMs: 40
-		});
-		await until(() => pC.wsconnected, 4000);
-
+	/** Deliver `v14 | messageSync | <write>` to `p` as a server frame. */
+	const deliverSync = (p, write) => {
 		const e = encoding.createEncoder();
 		writeProtocolVersion(e);
 		encoding.writeVarUint(e, 0); // messageSync
-		sync.writeSyncStep2(e, new Y.Doc());
-		pC.ws.onmessage({ data: encoding.toUint8Array(e).slice().buffer });
-		expect(pC.synced).toBe(false);
+		write(e);
+		p.ws.onmessage({ data: encoding.toUint8Array(e).slice().buffer });
+	};
 
-		// First expiry does NOT decide — it re-probes: a second SyncStep1
-		// goes out and the room gets a second window to answer.
-		await until(() => countSentStep1() === 2, 4000);
-		expect(pC.synced).toBe(false);
-
-		// The doc stays empty past BOTH windows → the room verifiably has
-		// nothing for us → synced resolves so the doc may seed itself.
-		await until(() => pC.synced, 4000);
-		pC.destroy();
-	});
-
-	test('a hydration reply landing inside the second settle window still claims synced', async () => {
+	/**
+	 * arch-v2 T2 (L56; D-3): the two-round settle window is deleted. An
+	 * applied SyncStep2 claims the connection's `synced` at once, empty or
+	 * not — no probe, no second window. `synced` is a readiness signal; the
+	 * seed that an early empty claim could race is made idempotent by D-3's
+	 * deterministic seed (T3), not by waiting.
+	 */
+	test('an applied SyncStep2 claims synced at once, empty or not (no settle window)', async () => {
 		const url = `ws://fake/${counter++}`;
 		FakeWebSocket.sentLog = [];
 		const docC = new Y.Doc();
 		const pC = new providers.WebsocketProvider(url, 'room', docC, {
 			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true,
-			syncSettleMs: 40
+			disableBc: true
 		});
 		await until(() => pC.wsconnected, 4000);
-
-		// Ambiguous empty reply → settle armed, first window runs.
-		const e1 = encoding.createEncoder();
-		writeProtocolVersion(e1);
-		encoding.writeVarUint(e1, 0);
-		sync.writeSyncStep2(e1, new Y.Doc());
-		pC.ws.onmessage({ data: encoding.toUint8Array(e1).slice().buffer });
-
-		// Round 2 begins when the probe (a second SyncStep1) goes out —
-		// the verdict is still open.
-		await until(() => countSentStep1() === 2, 4000);
 		expect(pC.synced).toBe(false);
 
-		// The real answer arrives late — inside the second window. It
-		// carries room state and claims synced before the verdict.
-		const full = new Y.Doc();
-		full.get('content').setAttr('x', 'hydrated');
-		const e2 = encoding.createEncoder();
-		writeProtocolVersion(e2);
-		encoding.writeVarUint(e2, 0);
-		sync.writeSyncStep2(e2, full);
-		pC.ws.onmessage({ data: encoding.toUint8Array(e2).slice().buffer });
-
-		await until(() => pC.synced, 4000);
-		expect(docC.get('content').getAttr('x')).toBe('hydrated');
+		deliverSync(pC, (e) => sync.writeSyncStep2(e, new Y.Doc()));
+		expect(pC.synced).toBe(true);
+		expect(pC.hasSynced).toBe(true);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(countSentStep1()).toBe(1); // the hello only — no probe
 		pC.destroy();
 	});
 
-	test('a SyncStep2 carrying real state completes the handshake immediately', async () => {
+	test('the join rule: a Step1 we cover claims synced; one holding more is asked back', async () => {
 		const url = `ws://fake/${counter++}`;
+		FakeWebSocket.sentLog = [];
 		const docC = new Y.Doc();
+		docC.get('content').setAttr('x', 'c');
 		const pC = new providers.WebsocketProvider(url, 'room', docC, {
 			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true,
-			syncSettleMs: 5000
+			disableBc: true
 		});
 		await until(() => pC.wsconnected, 4000);
+		expect(countSentStep1()).toBe(1);
 
-		// Foreign empty reply lands first — ambiguous, defers synced.
-		const e1 = encoding.createEncoder();
-		writeProtocolVersion(e1);
-		encoding.writeVarUint(e1, 0);
-		sync.writeSyncStep2(e1, new Y.Doc());
-		pC.ws.onmessage({ data: encoding.toUint8Array(e1).slice().buffer });
+		// A member holding more than us: answered with a Step2 AND our Step1.
+		const richer = new Y.Doc();
+		richer.get('content').setAttr('y', 'r');
+		const sent = pC.ws.send.bind(pC.ws);
+		const replies = [];
+		pC.ws.send = (data) => {
+			replies.push(new Uint8Array(data));
+			sent(data);
+		};
+		deliverSync(pC, (e) => sync.writeSyncStep1(e, richer));
 		expect(pC.synced).toBe(false);
+		const types = replies.map((u) => {
+			const d = decoding.createDecoder(u);
+			decoding.readVarUint(d);
+			decoding.readVarUint(d);
+			return decoding.readVarUint(d);
+		});
+		expect(types).toEqual([sync.messageYjsSyncStep2, sync.messageYjsSyncStep1]);
 
-		// The real answer carries room state → synced fires at once, well
-		// inside the settle window.
-		const full = new Y.Doc();
-		full.get('content').setAttr('x', 'a-1');
-		const e2 = encoding.createEncoder();
-		writeProtocolVersion(e2);
-		encoding.writeVarUint(e2, 0);
-		sync.writeSyncStep2(e2, full);
-		pC.ws.onmessage({ data: encoding.toUint8Array(e2).slice().buffer });
+		// A member we cover: we hold its state — the connection has synced.
+		deliverSync(pC, (e) => sync.writeSyncStep1(e, new Y.Doc()));
 		expect(pC.synced).toBe(true);
-		expect(docC.get('content').getAttr('x')).toBe('a-1');
 		pC.destroy();
 	});
 

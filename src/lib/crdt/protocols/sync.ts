@@ -110,6 +110,18 @@ export const bindSync = (Y: EngineApi) => {
 		applyRemote(doc, decoding.readVarUint8Array(decoder), transactionOrigin, errorHandler);
 	};
 
+	/**
+	 * The state-vector coverage test of the join rule: does the encoded
+	 * state vector `sv` hold anything `doc` lacks?
+	 */
+	const lacks = (doc: YDoc, sv: Uint8Array): boolean => {
+		const ours = Y.decodeStateVector(Y.encodeStateVector(doc));
+		for (const [client, clock] of Y.decodeStateVector(sv)) {
+			if ((ours.get(client) ?? 0) < clock) return true;
+		}
+		return false;
+	};
+
 	const writeUpdate = (encoder: encoding.Encoder, update: Uint8Array): void => {
 		encoding.writeVarUint(encoder, messageYjsUpdate);
 		encoding.writeVarUint8Array(encoder, update);
@@ -243,6 +255,7 @@ export const bindSync = (Y: EngineApi) => {
 		writeUpdate,
 		readUpdate,
 		readSyncMessage,
-		applyRemote
+		applyRemote,
+		lacks
 	};
 };

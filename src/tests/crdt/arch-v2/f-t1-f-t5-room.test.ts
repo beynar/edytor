@@ -110,7 +110,7 @@ const ASSIGNMENTS = [
 ];
 
 describe('F-T1 — a provider that synced never reports failed (G11, D37)', () => {
-	it.fails('socket drop after sync, then destroy: no failed event', async () => {
+	it('socket drop after sync, then destroy: no failed event', async () => {
 		const url = uniqueUrl();
 		const docA = docWith(1);
 		docA.get('content').setAttr('x', 'a');
@@ -129,7 +129,7 @@ describe('F-T1 — a provider that synced never reports failed (G11, D37)', () =
 		pA.destroy();
 	});
 
-	it.fails('connected is transient, hasSynced is the lifetime fact', async () => {
+	it('connected is transient, hasSynced is the lifetime fact', async () => {
 		const url = uniqueUrl();
 		const docA = docWith(1);
 		docA.get('content').setAttr('x', 'a');
@@ -162,7 +162,7 @@ describe('F-T1 — a provider that synced never reports failed (G11, D37)', () =
 describe('F-T5 — offline edits reach peers without resyncInterval (G2, O76)', () => {
 	for (const [idA, idB] of ASSIGNMENTS) {
 		for (const dup of [1, 2]) {
-			it.fails(`clients ${idA}/${idB}, delivery ×${dup}: B's offline edit reaches A`, async () => {
+			it(`clients ${idA}/${idB}, delivery ×${dup}: B's offline edit reaches A`, async () => {
 				Relay.dup = dup;
 				try {
 					const url = uniqueUrl();
@@ -191,7 +191,7 @@ describe('F-T5 — offline edits reach peers without resyncInterval (G2, O76)', 
 		}
 	}
 
-	it.fails('the first member of a room hears the room once a second member joins', async () => {
+	it('the first member of a room hears the room once a second member joins', async () => {
 		// P6b: the first client's hello had no one to answer it; the joiner's
 		// Step1 is answered with a Step2 AND the first client's own Step1.
 		const url = uniqueUrl();

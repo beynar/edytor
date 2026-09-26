@@ -89,6 +89,14 @@ export const writeProtocolVersion = (encoder: encoding.Encoder): void => {
 	encoding.writeVarUint(encoder, GENERATION);
 };
 
+/** One provider frame: the generation word, the message type, then `write`'s payload. */
+export const frame = (type: number, write: (encoder: encoding.Encoder) => void): Uint8Array =>
+	encoding.encode((encoder) => {
+		writeProtocolVersion(encoder);
+		encoding.writeVarUint(encoder, type);
+		write(encoder);
+	});
+
 /**
  * Length of a reply that carries nothing: the generation word plus the
  * mirrored message type. Only longer replies are sent — a bare header is a

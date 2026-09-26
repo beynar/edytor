@@ -23,10 +23,10 @@
  *
  * - **Readiness wait** — the view must not `edytor.sync()` while the
  *   document is `pending` (that would seed it locally before the provider
- *   hydrates). {@link whenDocumentReady} fires once the document decides
- *   its content state — `document.sync()` emits the `onReady` event on
- *   every decision path (provider `synced`, local seed, explicit call),
- *   with a poll backstop for any future path that bypasses it.
+ *   hydrates). {@link whenDocumentReady} is one subscription to the
+ *   document's decision: `document.sync()` emits `onReady` on every
+ *   decision path (provider `synced`, every provider settled without
+ *   syncing, an explicit call).
  */
 import type { EdytorDocument, EdytorSync } from '$lib/crdt/index.js';
 import type { JSONDoc } from '$lib/utils/json.js';
@@ -68,57 +68,14 @@ export const attachDocumentSync = (
 
 /**
  * Run `notify` once `document` decides its content state (`ready`), or
- * immediately when it already is — OR once every pending provider has
- * settled WITHOUT deciding (terminal `failed`, teardown before `synced`,
- * throwing factory): `syncPending` then clears while the document stays
- * `pending`, and the decision returns to the view's own readiness path
- * (its `notify` runs `edytor.sync()` → `document.sync()` — D4's
- * terminal-failure half). Returns a release function — always call it on
- * view teardown so a dead view stops waiting (and polling).
- *
- * Signals: `document.onReady` — the synchronous readiness event every
- * `document.sync()` emits (provider `synced`, local seed, explicit
- * decision); `document.onSyncSettled` — fires when a provider releases
- * its pending claim without a decision; plus a 50 ms poll as a backstop
- * in case a future readiness path bypasses both events.
+ * immediately when it already is. Returns a release function — always call
+ * it on view teardown so a dead view stops waiting. A destroyed document
+ * never notifies (it drops its readiness waiters).
  */
 export const whenDocumentReady = (document: EdytorDocument, notify: () => void): (() => void) => {
-	const offReady = document.onReady(() => check());
-	const offSettled = document.onSyncSettled(() => check());
-	const poll = setInterval(() => check(), 50);
-	// A pending readiness wait must never keep a node/SSR process alive.
-	(poll as unknown as { unref?: () => void }).unref?.();
-
-	let released = false;
-	const release = () => {
-		if (released) {
-			return;
-		}
-		released = true;
-		offReady();
-		offSettled();
-		clearInterval(poll);
-	};
-	const check = () => {
-		if (released) {
-			return;
-		}
-		if (document.destroyed) {
-			release();
-			return;
-		}
-		// `ready` — the document decided. `syncFailed && !syncPending` —
-		// a provider gave up and none remains in flight: notify so the
-		// view's sync path makes the decision. Gating on the STICKY
-		// `syncFailed` (not bare `!syncPending`) is what keeps this safe
-		// before any provider attaches — construction-time `syncPending`
-		// is also 0, but nothing has settled yet.
-		if (document.ready || (document.syncFailed && !document.syncPending)) {
-			release();
-			notify();
-		}
-	};
-
-	check(); // already-ready fast path — notifies synchronously
-	return release;
+	if (document.ready && !document.destroyed) {
+		notify();
+		return () => {};
+	}
+	return document.onReady(notify);
 };

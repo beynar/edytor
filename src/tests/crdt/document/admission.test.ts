@@ -347,9 +347,10 @@ describe('pending doc — no bootstrap before sync', () => {
 		});
 		let updates = 0;
 		doc.on('update', () => updates++);
+		const preSeed = Y.encodeStateVector(doc);
 		document.attachSync(providers.createIndexeddbSync(name));
-		// While pending, the doc emits NOTHING — the provider handshake
-		// (SyncStep1/2, awareness) may publish, but the doc itself never
+		// While pending, the doc emits NOTHING — the provider's hello
+		// (SyncStep1, awareness) may publish, but the doc itself never
 		// writes a bootstrap before the synced callback runs sync().
 		const start = Date.now();
 		while (!document.ready) {
@@ -358,26 +359,22 @@ describe('pending doc — no bootstrap before sync', () => {
 			await new Promise((r) => setTimeout(r, 10));
 		}
 		expect(updates).toBeGreaterThan(0); // the seed commits at the synced transition
-		// The provider joined the room and published its handshake — decode
-		// the SyncStep2 state broadcast and prove it carries no bootstrap.
-		const step2 = frames
+		// The provider joined the room and said hello — its SyncStep1 is the
+		// pre-seed state vector (arch-v2 T2 join rule: a joiner publishes no
+		// unsolicited state; a member asks for what it lacks) — the attach
+		// state exactly: no bootstrap was written before the synced
+		// transition.
+		const step1 = frames
 			.map((buf) => {
 				const decoder = decoding.createDecoder(buf);
 				if (!readProtocolVersion(decoder)) return null;
-				const messageType = decoding.readVarUint(decoder);
-				if (messageType !== 0 /* messageSync */) return null;
-				const subtype = decoding.readVarUint(decoder);
-				if (subtype !== syncProtocol.messageYjsSyncStep2) return null;
+				if (decoding.readVarUint(decoder) !== 0 /* messageSync */) return null;
+				if (decoding.readVarUint(decoder) !== syncProtocol.messageYjsSyncStep1) return null;
 				return decoding.readVarUint8Array(decoder);
 			})
 			.find((u) => u !== null);
-		expect(step2).toBeDefined();
-		const published = new Y.Doc();
-		Y.applyUpdate(published, step2!);
-		// The published state is the pre-seed doc — nothing bootstrap-shaped
-		// ever shipped: no meta.v, no registry content.
-		expect(E.isInitialized(published as unknown as EngineDoc)).toBe(false);
-		expect(E.registryEmpty(published as unknown as EngineDoc)).toBe(true);
+		expect(step1).toBeDefined();
+		expect(step1).toEqual(preSeed);
 		expect(document.readiness).toBe('local');
 		expect(document.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
 		document.destroy();
@@ -438,16 +435,15 @@ describe('IndexedDB hydration → document admission', () => {
 
 		const doc = new Y.Doc();
 		const document = attachDocument(doc);
-		const settled = [];
-		document.onSyncSettled(() => settled.push(true));
+		let readyEvents = 0;
+		document.onReady(() => readyEvents++);
 		document.attachSync(providers.createIndexeddbSync(name));
 		await new Promise((r) => setTimeout(r, 200));
-		// Admission refused readiness; the document stays pending and the
-		// views are not handed a decision that would be refused the same way.
+		// Admission refused readiness; the document stays pending and no
+		// readiness event wakes a view into a decision refused the same way.
 		expect(document.readiness).toBe('pending');
-		expect(document.syncFailed).toBe(false);
 		expect(document.syncPending).toBe(false);
-		expect(settled).toEqual([]);
+		expect(readyEvents).toBe(0);
 		// Read-only: no write lands, nothing is persisted or compacted.
 		expect(document.writable).toBe(false);
 		const rows = await generationRows(name);

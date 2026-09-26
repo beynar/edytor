@@ -429,16 +429,7 @@ export class EdytorDocument {
 	private readonly _lineageDepth: number | undefined;
 	private _syncCleanups: { cleanup: EdytorSyncCleanup }[] = [];
 	private _pendingSyncs = 0;
-	/**
-	 * Sticky — `true` once an attached provider released its pending claim
-	 * WITHOUT the document deciding (terminal `failed`, teardown before
-	 * `synced`, or a throwing factory). Views consult it alongside
-	 * {@link syncPending}: still-`pending` + `syncFailed` + no provider in
-	 * flight means the readiness decision has returned to the views (D4).
-	 */
-	private _syncFailed = false;
 	private _readyListeners = new Set<() => void>();
-	private _syncSettledListeners = new Set<() => void>();
 
 	/** @internal Construct through {@link createDocument}/{@link loadDocument}/{@link attachDocument}. */
 	constructor(init: EdytorDocumentInit) {
@@ -841,56 +832,17 @@ export class EdytorDocument {
 	}
 
 	/**
-	 * `true` once a provider released its pending claim without the
-	 * document deciding — see {@link _syncFailed}. Sticky: it reports that
-	 * a failure HAPPENED, not that one is in flight.
-	 */
-	get syncFailed(): boolean {
-		return this._syncFailed;
-	}
-
-	/**
-	 * Subscribe to provider settle-without-decision — fires synchronously
-	 * inside `attachSync`'s settle path when a provider reports `failed`,
-	 * is torn down before `synced`, or its factory throws. The readiness
-	 * transition itself stays on {@link onReady}; this is the internal
-	 * seam `whenDocumentReady` uses to wake views whose provider gave up
-	 * (the decision is theirs once {@link syncPending} clears).
-	 * @internal
-	 */
-	onSyncSettled = (listener: () => void): (() => void) => {
-		if (this._destroyed) {
-			return () => {};
-		}
-		this._syncSettledListeners.add(listener);
-		return () => {
-			this._syncSettledListeners.delete(listener);
-		};
-	};
-
-	/** Listener-isolated emit — same convention as the `onReady` fanout in {@link sync}. */
-	private _emitSyncSettled = (): void => {
-		const listeners = Array.from(this._syncSettledListeners);
-		for (const listener of listeners) {
-			try {
-				listener();
-			} catch (err) {
-				console.error('[edytor-document] sync-settled listener failed; continuing', err);
-			}
-		}
-	};
-
-	/**
 	 * Attach a provider sync factory to this document (headless `EdytorSync`
 	 * path — the same contract views use). On `synced` the document runs
 	 * its readiness transition (`seed-if-empty`, never before hydration).
-	 * On `failed` — the terminal provider-failure callback (D4) — the
-	 * document only releases the pending claim: it must NOT seed or call
-	 * {@link sync}; the decision returns to the views once
-	 * {@link syncPending} clears (`whenDocumentReady` wakes them). The
-	 * returned cleanup is also tracked: {@link destroy} runs it.
-	 * While attached-but-unsynced the document reports
-	 * {@link syncPending} — sibling views must not seed in that window.
+	 * A provider that settles WITHOUT syncing — the terminal `failed` (D4),
+	 * teardown before `synced`, a throwing factory — releases its pending
+	 * claim; when it was the last one in flight the document decides itself
+	 * (R13: every attached provider settled), so every waiting view wakes on
+	 * the one readiness event. The returned cleanup is also tracked:
+	 * {@link destroy} runs it. While attached-but-unsynced the document
+	 * reports {@link syncPending} — sibling views must not seed in that
+	 * window.
 	 */
 	attachSync = (sync: EdytorSync, opts: { value?: JSONDoc } = {}): EdytorSyncCleanup | void => {
 		if (this._destroyed) {
@@ -916,12 +868,16 @@ export class EdytorDocument {
 			if (this._pendingSyncs === 0) {
 				this.facade._clearSyncPending();
 			}
-			// A settle that did not decide the document (failed, torn down
-			// pre-sync, throwing factory) hands the decision back to the
-			// views — record it and wake `whenDocumentReady` waiters.
-			if (failed && this._readiness === 'pending') {
-				this._syncFailed = true;
-				this._emitSyncSettled();
+			// Every attached provider settled and none decided (failed, torn
+			// down pre-sync, throwing factory): the document decides. A
+			// refused admission leaves it pending, read-only and quarantined
+			// (the same state a refused `synced` leaves).
+			if (failed && this._pendingSyncs === 0 && !this._destroyed) {
+				try {
+					this.sync(opts.value);
+				} catch {
+					// Refused: nothing to report to — no provider synced.
+				}
 			}
 		};
 		let cleanup: ReturnType<EdytorSync>;

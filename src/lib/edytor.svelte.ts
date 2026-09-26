@@ -619,14 +619,13 @@ export class Edytor {
 
 			// Readiness ownership (adversarial P1-1): a `sync` prop on an
 			// editable view means a PROVIDER owns the content decision —
-			// for owned documents too. The view binds the readiness wait so
-			// a terminal provider `failed` still hands the decision back
-			// (`syncFailed && !syncPending` wakes `whenDocumentReady`);
-			// without it a failed provider latched the view unsynced
-			// forever. For an injected document the decision is the
-			// document's: an already-decided document binds immediately;
-			// a PENDING one defers — a sibling view must never seed
-			// content a provider is about to hydrate.
+			// for owned documents too. The view binds the readiness wait:
+			// the document decides once (a provider `synced`, or every
+			// provider settled without syncing) and the view mirrors it.
+			// For an injected document the decision is the document's: an
+			// already-decided document binds immediately; a PENDING one
+			// defers — a sibling view must never seed content a provider is
+			// about to hydrate.
 			if (!readonly && sync) {
 				this.bindReadiness(true, value);
 			} else if (this.ownsDocument || this.document.ready) {

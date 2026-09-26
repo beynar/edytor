@@ -13,9 +13,11 @@
  *   row of a proven generation is applied, so the snapshot represents them
  *   all; only a read-only document (outbound quarantine) never compacts.
  * - BC room carries sync (0), awareness (1) and query-awareness (3)
- *   messages; connect publishes SyncStep1+SyncStep2+QueryAwareness+state.
- * - `synced`/`whenSynced`, `bcconnected`, `_ownsAwareness`, idempotent
- *   `destroy()`, `beforeunload` + doc-`destroy` cleanup.
+ *   messages; joining says hello (Step1 + presence) and the room's join
+ *   rule exchanges what each side lacks (`room.ts`).
+ * - `synced`/`whenSynced` (the room lifecycle: `synced` is the lifetime
+ *   hydration claim), `bcconnected`, `_ownsAwareness`, idempotent
+ *   `destroy()`, departure (`beforeunload`) + doc-`destroy` cleanup.
  *
  * The generation gate (R13, D-2 — see `protocols/envelope.ts`):
  *
@@ -47,9 +49,13 @@ import {
 	isGenerationRecord
 } from '../protocols/envelope.js';
 import {
+	beginDestroy,
 	bindRoomProtocol,
 	emitFailed,
+	initLifecycle,
+	markSynced,
 	quarantined,
+	type LifecycleHost,
 	type ProtocolMismatch,
 	type RoomMessageHandler,
 	type SchemaMismatchDetail
@@ -104,11 +110,10 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 	const syncProtocol: SyncProtocol = bindSync(Y);
 
 	/**
-	 * The shared room protocol (S1) — dispatch, sync handling,
-	 * awareness flow, BC subscriber + connect/disconnect sequences. This
-	 * provider keeps only its transport edge: room traffic is BC-only, and
-	 * `synced` is the local-hydration claim made in `connectBc`, not a
-	 * handshake verdict.
+	 * The shared room protocol (S1) — dispatch, the join rule, awareness
+	 * flow, BC subscriber + join/leave, the lifecycle. This provider keeps
+	 * only its transport edge: room traffic is BC-only, and `synced` is the
+	 * local-hydration claim, not a handshake verdict.
 	 */
 	const room = bindRoomProtocol<IndexeddbPersistence>(syncProtocol, {
 		docName: (p) => p.name,
@@ -260,9 +265,9 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		/** A received update wrote a foreign schema stamp and was refused (SchemaMismatchDetail). */
 		'schema-mismatch': (detail: SchemaMismatchDetail, provider: IndexeddbPersistence) => void;
 		/**
-		 * Terminal sync failure (the D4 contract): the provider can never
-		 * reach `synced` — destroyed before syncing or a persistence load
-		 * failure. Emitted at most once; never after `synced === true`.
+		 * Terminal sync failure (the D4 contract): the provider never
+		 * synced — destroyed before hydrating or a persistence load
+		 * failure. Emitted at most once; never once `synced`.
 		 */
 		failed: (error: unknown, provider: IndexeddbPersistence) => void;
 	}> {
@@ -273,16 +278,17 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		dbName: string;
 		_dbref: number;
 		_dbsize: number;
-		_destroyed: boolean;
 		db: IDBDatabase | null;
-		synced: boolean;
 		_db: Promise<IDBDatabase>;
-		whenSynced: Promise<IndexeddbPersistence>;
-		_rejectSynced: ((reason?: unknown) => void) | null = null;
+		// The room lifecycle (O74) — installed by `initLifecycle`.
+		_destroyed!: boolean;
+		hasSynced!: boolean;
+		whenSynced!: Promise<IndexeddbPersistence>;
+		_failedEmitted?: boolean;
+		_settleSynced!: LifecycleHost['_settleSynced'];
+		_leave!: () => void;
 		/** Set when loading persisted state failed (generation mismatch, …). */
 		loadError: unknown = null;
-		/** Latch — 'failed' emits at most once (see `emitFailed` in room.ts). */
-		_failedEmitted?: boolean;
 		_storeTimeout: number;
 		_storeTimeoutId: ReturnType<typeof setTimeout> | null;
 		_storeUpdate: (update: Uint8Array, origin: unknown) => void;
@@ -290,7 +296,6 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		bcconnected = false;
 		_ownsAwareness: boolean;
 		_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
-		_beforeUnloadHandler: () => void;
 		_awarenessUpdateHandler: (
 			updates: { added: number[]; updated: number[]; removed: number[] },
 			origin: unknown
@@ -303,9 +308,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			this.dbName = generationDbName(name);
 			this._dbref = 0;
 			this._dbsize = 0;
-			this._destroyed = false;
 			this.db = null;
-			this.synced = false;
 			this.awareness = options.awareness ?? new Awareness(doc);
 			this._ownsAwareness = !options.awareness;
 
@@ -313,15 +316,8 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 				idb.createStores(db, [['updates', { autoIncrement: true }], ['custom']])
 			);
 
-			this.whenSynced = promise.create((resolve, reject) => {
-				this._rejectSynced = (reason?: unknown) =>
-					reject(reason instanceof Error ? reason : new Error(String(reason)));
-				this.on('synced', () => resolve(this));
-			});
-			// Consumers that never attach a catch still shouldn't crash the
-			// process on a rejected whenSynced — the 'load-error' event is the
-			// diagnostic channel.
-			this.whenSynced.catch(() => {});
+			this.destroy = this.destroy.bind(this);
+			initLifecycle(this, this.destroy);
 
 			this._bcSubscriber = room.bcSubscriber(this);
 			this._awarenessUpdateHandler = room.awarenessUpdateHandler(this);
@@ -331,7 +327,6 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			// synced once loading its persisted state has failed (D4).
 			const onLoadError = (error: unknown) => {
 				this.loadError = error;
-				this._rejectSynced?.(error);
 				this.emit('load-error', [error, this]);
 				emitFailed(this, error);
 			};
@@ -349,8 +344,11 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 							idb.addAutoKey(updatesStore, encodeUpdateForStore(Y.encodeStateAsUpdate(doc)));
 						}
 					};
+					// Hydrated: join the room and claim `synced` (lifetime).
 					const afterApplyUpdatesCallback = () => {
-						if (!this._destroyed) this.connectBc();
+						if (this._destroyed) return;
+						this.connectBc();
+						if (markSynced(this)) this.emit('synced', [this]);
 					};
 					// Deferred call: a synchronous fetchUpdates throw (closed
 					// handle, transact failure) reaches the same .catch — every
@@ -405,13 +403,12 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 
 			doc.on('update', this._storeUpdate);
 			this.awareness.on('update', this._awarenessUpdateHandler);
-			this.destroy = this.destroy.bind(this);
-			this._beforeUnloadHandler = () => this.destroy();
 			doc.on('destroy', this.destroy);
-			(globalThis as { addEventListener?: (t: string, f: () => void) => void }).addEventListener?.(
-				'beforeunload',
-				this._beforeUnloadHandler
-			);
+		}
+
+		/** The lifetime hydration claim. */
+		get synced(): boolean {
+			return this.hasSynced;
 		}
 
 		/**
@@ -435,11 +432,9 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			}
 		}
 
-		/** Join the BC room and claim `synced` (called once hydration applied). */
+		/** Join the BC room (after hydration; again after `disconnectBc`). */
 		connectBc() {
 			room.connectBc(this);
-			this.synced = true;
-			this.emit('synced', [this]);
 		}
 
 		disconnectBc() {
@@ -451,29 +446,17 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		 * close the DB. Does NOT remove stored data — `clearDocument` does.
 		 */
 		destroy(): Promise<void> {
-			if (this._destroyed) {
+			// The destroy guard — a provider that never synced settles its
+			// waiters: `whenSynced` rejects (D22) and 'failed' fires once.
+			if (!beginDestroy(this, `IndexeddbPersistence "${this.name}"`)) {
 				return Promise.resolve();
 			}
 			if (this._storeTimeoutId) {
 				clearTimeout(this._storeTimeoutId);
 			}
-			(
-				globalThis as { removeEventListener?: (t: string, f: () => void) => void }
-			).removeEventListener?.('beforeunload', this._beforeUnloadHandler);
 			this.doc.off('update', this._storeUpdate);
 			this.doc.off('destroy', this.destroy);
 			this.awareness.off('update', this._awarenessUpdateHandler);
-			this._destroyed = true;
-			// A provider destroyed before ever syncing can never reach
-			// synced (D4) — settle the pending waiters: `whenSynced` rejects
-			// (D22) and 'failed' fires (at most once, never once synced).
-			if (!this.synced) {
-				const error = new Error(
-					`IndexeddbPersistence "${this.name}" was destroyed before it synced`
-				);
-				this._rejectSynced?.(error);
-				emitFailed(this, error);
-			}
 			this.disconnectBc();
 			if (this._ownsAwareness) {
 				this.awareness.destroy();

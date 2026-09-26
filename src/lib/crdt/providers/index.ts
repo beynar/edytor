@@ -43,8 +43,6 @@ export type WebsocketSyncOptions = {
 	resyncInterval?: number;
 	maxBackoffTime?: number;
 	disableBc?: boolean;
-	/** See `WebsocketProviderOptions.syncSettleMs` — empty-reply handshake window. */
-	syncSettleMs?: number;
 };
 
 export type ProviderStack = ReturnType<typeof bindProviders>;
@@ -73,8 +71,7 @@ export const bindProviders = (Y: EngineApi) => {
 				WebSocketPolyfill: options.WebSocketPolyfill,
 				resyncInterval: options.resyncInterval,
 				maxBackoffTime: options.maxBackoffTime,
-				disableBc: options.disableBc,
-				syncSettleMs: options.syncSettleMs
+				disableBc: options.disableBc
 			});
 			provider.on('sync', (isSynced: boolean) => {
 				if (isSynced) {

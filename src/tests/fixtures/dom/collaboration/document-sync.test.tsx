@@ -163,8 +163,9 @@ describe('document-lifetime sync for injected documents', () => {
 
 	it('a view-owned document still seeds after the provider reports terminal `failed`', async () => {
 		// The owned path must not skip the `failed` contract: a terminal
-		// provider failure settles the document's pending claim and hands
-		// the decision back to this view — pending must not latch forever.
+		// provider failure settles the document's pending claim; with no
+		// provider left the document decides (R13) and this view mirrors
+		// it — pending must not latch forever.
 		let reportFailed: ((error: unknown, provider: unknown) => void) | null = null;
 		const counts = { attach: 0, cleanup: 0 };
 		const sync: EdytorSync = (payload) => {
@@ -195,11 +196,10 @@ describe('document-lifetime sync for injected documents', () => {
 
 		reportFailed!(new Error('refused'), null);
 		await waitFor(() => {
-			// `syncFailed && !syncPending` → the view's readiness path
-			// decides: the document seeds and the view syncs.
+			// No provider left in flight → the document seeds and the
+			// view syncs on its readiness event.
 			expect(edytor!.synced).toBe(true);
 		});
-		expect(edytor!.document.syncFailed).toBe(true);
 		expect(edytor!.document.syncPending).toBe(false);
 		expect(edytor!.document.ready).toBe(true);
 		expect(rendered.container.querySelector('[data-edytor]')).toBeInstanceOf(HTMLElement);

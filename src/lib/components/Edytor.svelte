@@ -126,8 +126,8 @@
 			// the owned-path failure channel): `attachSync` tracks the
 			// provider on the DOCUMENT's lifetime — dedupe by factory
 			// identity, pending accounting (`syncPending`), and the
-			// terminal-`failed` settle that hands the decision back to
-			// the view (`syncFailed` wakes `whenDocumentReady`). For a
+			// terminal-`failed` settle after which the document decides
+			// (its readiness event wakes `whenDocumentReady`). For a
 			// view-owned document the lifetime is still the component's:
 			// `edytor.destroy()` below runs `document.destroy()`, which
 			// runs the tracked cleanup — with the same async-error rethrow

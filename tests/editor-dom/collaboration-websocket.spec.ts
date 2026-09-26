@@ -255,7 +255,6 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 		// arch-v2 §8.6 F-T9 (C13): the departure announcement is the room's,
 		// so a socket-only peer announces it exactly as an IndexedDB /
 		// BroadcastChannel peer does — well before the 30 s awareness expiry.
-		test.fail(true, 'arch-v2 T2 tests-first: red on the reference (C13)');
 		const relay = await startOpaqueRelay();
 		const room = roomName();
 		let clients: SocketClients | undefined;

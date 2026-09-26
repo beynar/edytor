@@ -11,9 +11,10 @@
  * - D15: while a provider owns the pending window, `facade.init()` and
  *   `facade.createUndoManager()` refuse (`EdytorDocSyncPendingError`) —
  *   an early bootstrap would make `sync()` mislabel the doc `hydrated`.
- * - D4/`failed`: a terminal provider failure releases the pending claim
- *   WITHOUT deciding the document — `whenDocumentReady` wakes so the
- *   view's readiness path can make the decision.
+ * - D4/`failed`: a terminal provider failure releases the pending claim;
+ *   once every attached provider settled without syncing, the document
+ *   decides itself (R13) and `whenDocumentReady` wakes on that one event.
+ *   (arch-v2 T2 deletes the hand-back of the decision to the views, L56.)
  */
 import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
@@ -192,30 +193,25 @@ describe('D15 — pending-sync bootstrap gate', () => {
 });
 
 describe("provider 'failed' contract (D4 document side)", () => {
-	it('failed() settles the pending claim without deciding the document', () => {
+	it('failed() of the last pending provider decides the document (R13)', () => {
 		const document = createDocument();
 		const { sync, provider } = fakeSync();
 		let notified = 0;
 		const release = whenDocumentReady(document, () => {
 			notified++;
 		});
-		document.attachSync(sync);
+		document.attachSync(sync, { value: docValue('seeded') });
 		expect(document.syncPending).toBe(true);
 		expect(notified).toBe(0); // attaching a provider is not a decision
 
+		// Every attached provider settled and none synced: the document
+		// decides once — seed-if-empty with the attach's value — and every
+		// waiter wakes on the one readiness event.
 		provider().failed(new Error('hydration refused'));
-		expect(document.ready).toBe(false); // failure never seeds/syncs
-		expect(document.readiness).toBe('pending');
 		expect(document.syncPending).toBe(false);
-		expect(document.syncFailed).toBe(true);
-		expect(notified).toBe(1); // waiter woken so the view can decide
-		expect(document.facade.isInitialized()).toBe(false); // nothing stamped
-
-		// The view path then decides explicitly — `sync()` owns the seed
-		// (a manual `facade.init` first would have made this 'hydrated').
-		document.sync();
 		expect(document.readiness).toBe('local');
-		expect(document.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(notified).toBe(1);
+		expect(JSON.stringify(document.facade.toJSON())).toContain('"seeded"');
 		expect(() => document.facade.init()).not.toThrow(); // gate released
 		release();
 		document.destroy();
@@ -258,9 +254,21 @@ describe("provider 'failed' contract (D4 document side)", () => {
 		(cleanup as () => void)();
 		expect(toreDown).toBe(true); // the factory's own cleanup ran
 		expect(document.syncPending).toBe(false);
-		expect(document.syncFailed).toBe(true);
+		expect(document.readiness).toBe('local'); // no provider left: decided
+		expect(document.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
 		expect(notified).toBe(1);
 		release();
 		document.destroy();
+	});
+
+	it('document.destroy() tears the providers down without deciding', () => {
+		const document = createDocument();
+		let toreDown = false;
+		document.attachSync(() => () => {
+			toreDown = true;
+		});
+		document.destroy();
+		expect(toreDown).toBe(true);
+		expect(document.readiness).toBe('pending');
 	});
 });

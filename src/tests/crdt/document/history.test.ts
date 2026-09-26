@@ -153,7 +153,7 @@ describe('remote exclusion — no apply path enters local undo', () => {
 			seenOrigin = origin;
 		};
 		document.doc.on('update', off);
-		syncProtocol.applyUpdateStaged(document.doc, update, undefined);
+		syncProtocol.applyRemote(document.doc, update, undefined);
 		document.doc.off('update', off);
 		// No explicit origin → the protocol's per-binding remote marker,
 		// never `null` (the ambiguous untyped-local marker).

@@ -20,7 +20,7 @@ import * as decoding from 'lib0-v14/decoding';
 import {
 	writeProtocolVersion,
 	generationDbName,
-	PROTOCOL_VERSION
+	GENERATION
 } from '../../../lib/crdt/protocols/envelope.js';
 
 const providers = bindIndexeddbProvider(Y);
@@ -166,7 +166,7 @@ describe('SY01: sync protocol over real providers', () => {
 		// B's doc must not have synced with the foreign doc — gate dropped it.
 		expect(docB.get('content').getAttr('poison')).toBeUndefined();
 		expect(mismatches.length).toBeGreaterThan(0);
-		expect(mismatches[0].expected).toBe(PROTOCOL_VERSION);
+		expect(mismatches[0].expected).toBe(GENERATION);
 
 		await pA.destroy();
 		await pB.destroy();

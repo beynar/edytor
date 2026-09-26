@@ -464,6 +464,12 @@ export type EdytorDocConfig = {
 	 * capture.
 	 */
 	lineageDepth?: number;
+	/**
+	 * The document's `writable` guard (O18) — called at the write funnel;
+	 * throws while the document is read-only, so an edit is refused rather
+	 * than accepted and then dropped by the quarantined transport.
+	 */
+	assertWritable?: () => void;
 };
 
 /**
@@ -843,6 +849,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			if (disposed) {
 				throw new EdytorDocDisposedError();
 			}
+			config.assertWritable?.();
 			invalidate();
 			try {
 				return fn();

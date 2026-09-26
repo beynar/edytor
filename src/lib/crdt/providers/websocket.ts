@@ -9,19 +9,19 @@
  * reconnect (`maxBackoffTime`), `disableBc`, and BroadcastChannel cross-tab
  * fan-out on `serverUrl + '/' + roomname`.
  *
- * U07 difference — the version gate (`protocols/envelope.ts`): every
- * websocket frame and every BC message is tagged `varuint 14 |
- * messageType | payload`. Inbound frames without the tag are dropped before
- * `readSyncMessage` and reported via `'protocol-mismatch'`. A v13
+ * The generation gate (`protocols/envelope.ts`, R13): every websocket
+ * frame and every BC message is tagged `varuint GENERATION | messageType |
+ * payload`. Inbound frames of any other generation are dropped before
+ * decode and reported via `'protocol-mismatch'`. A v13
  * y-websocket server in the room therefore cannot feed updates to this
  * provider (and vice versa) — see docs/crdt-v14-providers.md §server
  * classification: only an OPAQUE v1-update relay stays compatible; a server
  * that participates in sync (like upstream `y-websocket-server`) must itself
  * run the vendored v14 engine + v14 protocol modules.
  *
- * The room half — enveloped dispatch, the gated sync handler, awareness
- * publish/query, the BroadcastChannel subscriber + connect/disconnect
- * sequences, and the schema-gate reporting — is shared with the IndexedDB
+ * The room half — enveloped dispatch, the sync handler (inbound refusal),
+ * awareness publish/query, the BroadcastChannel subscriber +
+ * connect/disconnect sequences, and the outbound quarantine — is shared with the IndexedDB
  * provider in `room.ts` (S1). This file keeps the transport edges: the
  * socket lifecycle, reconnect backoff, the auth reply, and the
  * SyncStep2-handshake `synced` verdict (+ the `syncSettleMs` ambiguity
@@ -37,7 +37,7 @@ import * as env from 'lib0-v14/environment';
 import { Awareness, encodeAwarenessUpdate, removeAwarenessStates } from '../protocols/awareness.js';
 import { messagePermissionDenied, readAuthMessage } from '../protocols/auth.js';
 import { bindSync, type SyncProtocol } from '../protocols/sync.js';
-import { writeProtocolVersion } from '../protocols/envelope.js';
+import { BARE_REPLY_LENGTH, writeProtocolVersion } from '../protocols/envelope.js';
 import {
 	bindRoomProtocol,
 	emitFailed,
@@ -73,16 +73,11 @@ export type WebsocketProviderEvents = {
 	/**
 	 * Fired when a v14-tagged frame could not be decoded (truncated/corrupt
 	 * frame or an unknown message type), or when a sync payload failed to
-	 * apply. The frame is dropped, never applied. Also mirrors schema-gate
-	 * violations so the error channel sees every failure mode.
+	 * apply. The frame is dropped, never applied. Also mirrors inbound
+	 * refusals so the error channel sees every failure mode.
 	 */
 	'message-error': (error: unknown, provider: unknown) => void;
-	/**
-	 * The document's replicated state violates the application-schema gate
-	 * (`meta.v` absent with content present = quarantined; `meta.v`
-	 * unsupported = remote update refused at the staging boundary). See the
-	 * indexeddb provider for the same contract.
-	 */
+	/** A received update wrote a foreign schema stamp and was refused (SchemaMismatchDetail). */
 	'schema-mismatch': (detail: SchemaMismatchDetail, provider: unknown) => void;
 	/** Server refused access — the auth reply carried a denial reason. */
 	'permission-denied': (reason: string, provider: unknown) => void;
@@ -207,7 +202,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 	};
 
 	/**
-	 * The shared room protocol (S1) — dispatch, gated sync handling,
+	 * The shared room protocol (S1) — dispatch, sync handling,
 	 * awareness flow, the BC subscriber + connect/disconnect sequences.
 	 * The transport edges stay here: `messageAuth` exists only on a server
 	 * socket (a BC room has no authority to deny), and `synced` is the
@@ -321,9 +316,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 						new Uint8Array(event.data as ArrayBuffer),
 						true
 					);
-					// `> 2`: the version envelope makes an empty reply 2 bytes
-					// (version word + mirrored message type), not 1 as upstream.
-					if (encoding.length(encoder) > 2) {
+					if (encoding.length(encoder) > BARE_REPLY_LENGTH) {
 						websocket.send(encoding.toUint8Array(encoder));
 					}
 				} catch (error) {
@@ -394,8 +387,6 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		ws: WebSocket | null;
 		wsLastMessageReceived: number;
 		shouldConnect: boolean;
-		/** Last signaled schema-gate state key — dedupes 'schema-mismatch'. */
-		_schemaGateKey: string | null;
 		/** Latch — 'failed' emits at most once (see `emitFailed` in room.ts). */
 		_failedEmitted?: boolean;
 		_resyncInterval: ReturnType<typeof setInterval> | 0;
@@ -452,7 +443,6 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			this.ws = null;
 			this.wsLastMessageReceived = 0;
 			this.shouldConnect = connect;
-			this._schemaGateKey = null;
 			this._resyncInterval = 0;
 			this._syncSettleTimer = 0;
 			this._syncSettleProbed = false;
@@ -473,12 +463,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			this._bcSubscriber = room.bcSubscriber(this);
 			// Listens to doc updates and sends them to remote peers (ws and bc)
 			this._updateHandler = (update, origin) => {
-				// Schema boundary: updates leaving the doc in ANY
-				// schema-problem state (unversioned OR unsupported) are
-				// quarantined — never broadcast to ws or BC.
-				if (origin !== this && room.gateSchema(this) === null) {
-					room.broadcastUpdate(this, update);
-				}
+				// `broadcastUpdate` quarantines a read-only document.
+				if (origin !== this) room.broadcastUpdate(this, update);
 			};
 			this.doc.on('update', this._updateHandler);
 			this._awarenessUpdateHandler = room.awarenessUpdateHandler(this);

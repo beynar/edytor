@@ -167,8 +167,7 @@ const v99Session = (from) =>
 	});
 
 describe('F-T2 (a) — a peer of another schema generation integrates zero bytes', () => {
-	// red on the reference (P2/P7) — flips at T1.
-	it.fails('BroadcastChannel: every frame dropped at the envelope, observably', async () => {
+	it('BroadcastChannel: every frame dropped at the envelope, observably', async () => {
 		const name = uniqueName('ft2a-bc');
 		const a = createDocument({ value });
 		const p = new idbProviders.IndexeddbPersistence(name, a.doc);
@@ -191,8 +190,7 @@ describe('F-T2 (a) — a peer of another schema generation integrates zero bytes
 		a.destroy();
 	});
 
-	// red on the reference (P2/P7) — flips at T1.
-	it.fails('websocket: every frame dropped at the envelope, observably', async () => {
+	it('websocket: every frame dropped at the envelope, observably', async () => {
 		const a = createDocument({ value });
 		const p = new wsProviders.WebsocketProvider('ws://ft2a', uniqueName('room'), a.doc, {
 			WebSocketPolyfill: FakeWebSocket,
@@ -214,34 +212,29 @@ describe('F-T2 (a) — a peer of another schema generation integrates zero bytes
 		a.destroy();
 	});
 
-	// red on the reference (P2/P7) — flips at T1.
-	it.fails(
-		'a container stamped by another schema generation never hydrates; bytes intact',
-		async () => {
-			const name = uniqueName('ft2a-container');
-			const source = createDocument({ value });
-			const row = source.encode();
-			await seedContainer(name, { ...envelope.GENERATION_RECORD, schema: 99 }, [row]);
+	it('a container stamped by another schema generation never hydrates; bytes intact', async () => {
+		const name = uniqueName('ft2a-container');
+		const source = createDocument({ value });
+		const row = source.encode();
+		await seedContainer(name, { ...envelope.GENERATION_RECORD, schema: 99 }, [row]);
 
-			const doc = new Y.Doc();
-			const p = new idbProviders.IndexeddbPersistence(name, doc);
-			const loadErrors = [];
-			p.on('load-error', (e) => loadErrors.push(e));
-			await expect(p.whenSynced).rejects.toThrow();
-			expect(loadErrors.length).toBe(1);
-			expect(Y.encodeStateVector(doc)).toEqual(Y.encodeStateVector(new Y.Doc()));
-			const rows = await readRows(name);
-			expect(rows.length).toBe(1);
-			expect(rows[0]).toEqual(row);
-			await p.destroy();
-			source.destroy();
-		}
-	);
+		const doc = new Y.Doc();
+		const p = new idbProviders.IndexeddbPersistence(name, doc);
+		const loadErrors = [];
+		p.on('load-error', (e) => loadErrors.push(e));
+		await expect(p.whenSynced).rejects.toThrow();
+		expect(loadErrors.length).toBe(1);
+		expect(Y.encodeStateVector(doc)).toEqual(Y.encodeStateVector(new Y.Doc()));
+		const rows = await readRows(name);
+		expect(rows.length).toBe(1);
+		expect(rows[0]).toEqual(row);
+		await p.destroy();
+		source.destroy();
+	});
 });
 
 describe('F-T2 (b) — a foreign stamp turns the document read-only once, visibly', () => {
-	// red on the reference (P2/P7) — flips at T1.
-	it.fails('the edit after the stamp is refused, never accepted then dropped', async () => {
+	it('the edit after the stamp is refused, never accepted then dropped', async () => {
 		const name = uniqueName('ft2b');
 		const a = createDocument({ value });
 		const p = new idbProviders.IndexeddbPersistence(name, a.doc);

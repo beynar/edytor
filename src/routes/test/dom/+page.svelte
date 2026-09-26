@@ -788,13 +788,13 @@
 					if (fired || !persistenceReady) {
 						return;
 					}
-					// A failed/refused hydration is terminal: `loadError`
-					// (load threw) or `_hydrationRefused` (schema gate) mean
-					// the stored state was rejected — seeding the pending doc
-					// now would mount the fixture over refused data and report
-					// a refused sync as a successful one.
-					const refusal =
-						persistence == null ? null : (persistence.loadError ?? persistence._hydrationRefused);
+					// A failed hydration is terminal: `loadError` (a container of
+					// another generation, a load failure) means the stored state
+					// was rejected — seeding the pending doc now would mount the
+					// fixture over refused data and report a refused sync as a
+					// successful one. (A forged stamp that hydrated is refused by
+					// `document.sync()` admission below.)
+					const refusal = persistence == null ? null : persistence.loadError;
 					if (refusal != null) {
 						fired = true;
 						(window as Window & { __EDYTOR_SYNC_ERROR__?: unknown }).__EDYTOR_SYNC_ERROR__ =

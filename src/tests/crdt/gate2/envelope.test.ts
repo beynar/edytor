@@ -2,11 +2,10 @@
  * GATE-2 attack probes — the version gate (attack item 1).
  *
  * 1a. Every write path into a doc: provider update handler, fetchUpdates
- *     hydration, websocket message. The providers gate the WIRE protocol
- *     (envelope word = 14) and the STORAGE generation (`edytor-v14:` +
- *     `custom.generation` record) — but nothing anywhere reads the document's
- *     own `meta.v` schema version before applying mutations. These tests pin
- *     the actual behavior.
+ *     hydration, websocket message. The providers gate the generation —
+ *     engine + wire + schema — in the envelope word and the STORAGE record
+ *     (`edytor-v14:` + `custom.generation`), and quarantine a read-only
+ *     document outbound (D-2).
  *
  * 1b. A REAL v13 update (produced by the real `yjs@13` package) is pushed
  *     onto the v14 BroadcastChannel room and the websocket path as a raw
@@ -33,8 +32,16 @@ import * as idb from 'lib0-v14/indexeddb';
 import {
 	writeProtocolVersion,
 	generationDbName,
-	PROTOCOL_VERSION
+	GENERATION
 } from '../../../lib/crdt/protocols/envelope.js';
+
+/** A frame of this generation: the generation word, then `bytes`. */
+const framed = (bytes) => {
+	const e = encoding.createEncoder();
+	writeProtocolVersion(e);
+	for (const b of bytes) encoding.writeUint8(e, b);
+	return encoding.toUint8Array(e);
+};
 
 const providers = bindIndexeddbProvider(Y);
 const wsProviders = bindWebsocketProvider(Y);
@@ -115,7 +122,7 @@ describe('attack 1b: real v13 updates never reach a v14 doc', () => {
 		expect(JSON.stringify(edA.toJSON())).toBe(jsonBefore);
 		expect(docA.get('content').getAttr('poison')).toBeUndefined();
 		expect(mismatches.length).toBeGreaterThan(0);
-		expect(mismatches[0]).toMatchObject({ expected: PROTOCOL_VERSION, found: 0 });
+		expect(mismatches[0]).toMatchObject({ expected: GENERATION, found: 0 });
 		await pA.destroy();
 	});
 
@@ -192,13 +199,13 @@ describe('attack 1b: real v13 updates never reach a v14 doc', () => {
 describe('attack 1c: malformed envelopes fail closed + observable', () => {
 	const cases = [
 		['empty frame', new Uint8Array([])],
-		['version word only', new Uint8Array([PROTOCOL_VERSION])],
-		['bare header [14, 0]', new Uint8Array([PROTOCOL_VERSION, 0])],
+		['generation word only', framed([])],
+		['bare header [GENERATION, 0]', framed([0])],
 		['version 13', new Uint8Array([13, 0, 0])],
 		['version 15', new Uint8Array([15, 0, 0])],
-		['unknown v14 message type 99', new Uint8Array([PROTOCOL_VERSION, 99])],
-		['truncated awareness payload', new Uint8Array([PROTOCOL_VERSION, 1, 200, 1])],
-		['truncated syncstep1 (missing sv bytes)', new Uint8Array([PROTOCOL_VERSION, 0, 50, 1, 2])],
+		['unknown v14 message type 99', framed([99])],
+		['truncated awareness payload', framed([1, 200, 1])],
+		['truncated syncstep1 (missing sv bytes)', framed([0, 50, 1, 2])],
 		[
 			'oversized varint version (never terminates)',
 			new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f])
@@ -287,7 +294,7 @@ describe('attack 1c: malformed envelopes fail closed + observable', () => {
 		// no handler claims. readMessage returns silently — no observability
 		// hook fires, so a future peer sending a newer message type (or a
 		// buggy peer) is indistinguishable from silence.
-		bc.publish(generationDbName(name), new Uint8Array([PROTOCOL_VERSION, 99]).buffer, 'x');
+		bc.publish(generationDbName(name), framed([99]).slice().buffer, 'x');
 		await nextTick();
 
 		// CONTRACT: unknown message types must surface SOME signal so peers
@@ -305,12 +312,12 @@ describe('attack 1c: malformed envelopes fail closed + observable', () => {
 		// readMessage itself does not catch — the safety lives in the
 		// subscriber wrapper. A direct call on a truncated frame throws;
 		// documented so future callers keep the try/catch.
-		expect(() => pA.readMessage(new Uint8Array([PROTOCOL_VERSION]), false)).toThrow();
+		expect(() => pA.readMessage(framed([]), false)).toThrow();
 		await pA.destroy();
 	});
 });
 
-describe('attack 1a: the application-schema version is never enforced', () => {
+describe('attack 1a: a document with a foreign or missing stamp never spreads', () => {
 	test('providers persist + apply updates into a doc with NO meta.v', async () => {
 		const name = uniqueName('gate-no-meta');
 		const docA = new Y.Doc();
@@ -338,7 +345,7 @@ describe('attack 1a: the application-schema version is never enforced', () => {
 		await pB.destroy();
 	});
 
-	test('an unknown meta.v is refused at the provider boundary', async () => {
+	test('a v99-stamped document is quarantined: never persisted, never shipped', async () => {
 		const name = uniqueName('gate-unknown-v');
 		const docA = new Y.Doc();
 		const edA = E.create(docA);
@@ -347,18 +354,11 @@ describe('attack 1a: the application-schema version is never enforced', () => {
 		// legitimate v14-protocol write.
 		docA.transact(() => docA.get('meta').setAttr('v', 99));
 
+		// D-2: the stamp is the document's problem, not the transport's —
+		// the provider no longer reports its own doc's state; it quarantines
+		// it (a read-only document neither persists nor broadcasts).
 		const pA = new providers.IndexeddbPersistence(name, docA);
-		const aSignals = [];
-		pA.on('schema-mismatch', (d) => aSignals.push(d));
-		// Self-poisoned doc → hydration refusal → whenSynced rejects.
-		await pA.whenSynced.catch(() => {});
-
-		// CONTRACT (work-unit-3 boundary): the offending peer's own provider
-		// detects + signals the unsupported state — and refuses to persist
-		// it, ship it, or let remote updates merge into it.
-		expect(
-			aSignals.some((s) => s.problem?.kind === 'unsupported' && s.problem?.version === 99)
-		).toBe(true);
+		await pA.whenSynced;
 
 		const docB = new Y.Doc();
 		const pB = new providers.IndexeddbPersistence(name, docB);

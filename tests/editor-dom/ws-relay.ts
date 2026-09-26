@@ -4,12 +4,12 @@
  *
  * An OPAQUE relay is the supported websocket topology: it groups connections
  * into rooms (URL path) and forwards binary payloads VERBATIM to the other
- * members — it never decodes the v14 envelope (`varuint 14 | type | payload`),
+ * members — it never decodes the envelope (`varuint GENERATION | type | payload`),
  * never merges state, and never answers sync itself. NOTE: upstream
  * `y-websocket`'s `setupWSConnection` is NOT this — even with no persistence
  * hook it creates a server-side doc, decodes `varuint messageType`, and runs
  * the sync handshake, so our enveloped frames arrive there as unhandled
- * message type `14` and are dropped (never relayed). THIS file is the
+ * message type `14001` and are dropped (never relayed). THIS file is the
  * reference implementation of the only proven-compatible server class.
  *
  * This is a dependency-free RFC6455 implementation (~150 lines of wire

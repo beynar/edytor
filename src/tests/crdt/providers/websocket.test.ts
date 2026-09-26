@@ -19,7 +19,7 @@ import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindWebsocketProvider } from '../../../lib/crdt/providers/websocket.js';
 import { Awareness } from '../../../lib/crdt/protocols/awareness.js';
-import { PROTOCOL_VERSION, writeProtocolVersion } from '../../../lib/crdt/protocols/envelope.js';
+import { GENERATION, writeProtocolVersion } from '../../../lib/crdt/protocols/envelope.js';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
@@ -147,13 +147,13 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 		});
 		await until(() => pB.wsconnected && pB.synced, 4000);
 
-		// Every sent frame starts with the protocol-version varuint (14) and
-		// has a real payload — never the bare 2-byte header.
+		// Every sent frame starts with the generation word (D-2: engine +
+		// wire + schema) and has a real payload — never the bare header.
 		expect(FakeWebSocket.sentLog.length).toBeGreaterThan(0);
 		for (const frame of FakeWebSocket.sentLog) {
 			const u = frame instanceof Uint8Array ? frame : new Uint8Array(frame);
-			expect(u[0]).toBe(PROTOCOL_VERSION);
-			expect(u.length).toBeGreaterThan(2);
+			expect(decoding.readVarUint(decoding.createDecoder(u))).toBe(GENERATION);
+			expect(u.length).toBeGreaterThan(3);
 		}
 		pA.destroy();
 		pB.destroy();
@@ -184,7 +184,7 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 
 		expect(docA.get('content').getAttr('poison')).toBeUndefined();
 		expect(mismatches.length).toBe(1);
-		expect(mismatches[0].expected).toBe(PROTOCOL_VERSION);
+		expect(mismatches[0].expected).toBe(GENERATION);
 		expect(mismatches[0].found).toBe(0);
 		pA.destroy();
 	});
@@ -229,7 +229,7 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 		FakeWebSocket.sentLog.filter((frame) => {
 			const u = frame instanceof Uint8Array ? frame : new Uint8Array(frame);
 			const d = decoding.createDecoder(u);
-			if (decoding.readVarUint(d) !== PROTOCOL_VERSION) return false;
+			if (decoding.readVarUint(d) !== GENERATION) return false;
 			if (decoding.readVarUint(d) !== 0) return false; // messageSync
 			return decoding.readVarUint(d) === sync.messageYjsSyncStep1;
 		}).length;

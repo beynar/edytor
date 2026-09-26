@@ -181,15 +181,17 @@ const closeClients3 = async (clients: SocketClients3 | undefined) => {
 
 /**
  * A rogue room member driven from the Playwright worker: a raw Node
- * `WebSocket` that speaks the real v14 envelope (`varuint 14 | type |
- * payload`) but answers every SyncStep1 with a SyncStep2 carrying an
- * unsupported-schema document (`meta.v = 99` plus marker block
+ * `WebSocket` that speaks this generation's envelope (`varuint GENERATION |
+ * type | payload` — a same-generation writer) but answers every SyncStep1
+ * with a SyncStep2 carrying a forged unsupported-schema stamp (`meta.v = 99` plus marker block
  * `evil-v99`). `clientID = MAX_SAFE_INTEGER` makes the rogue's `meta.v`
  * write win the map-attr LWW merge deterministically — the same recipe as
  * `schema-boundary.test.ts`'s `makeV99Update`. Relayed verbatim like any
- * other member's frames — the refusal under test happens at the
- * receiving provider's staging boundary, not in transport.
+ * other member's frames — the refusal under test is the receiving
+ * provider's inbound refusal of a foreign stamp (R13, D-2), not transport.
  */
+/** `envelope.ts` GENERATION: protocol 14 × 1000 + schema 1. */
+const GENERATION = 14_001;
 const startRoguePeer = async (relay: OpaqueRelay, room: string) => {
 	const rogue = new Y.Doc();
 	rogue.clientID = Number.MAX_SAFE_INTEGER;
@@ -201,11 +203,11 @@ const startRoguePeer = async (relay: OpaqueRelay, room: string) => {
 	const rogueState = Y.encodeStateAsUpdate(rogue);
 	rogue.destroy();
 
-	// SyncStep2 frame: envelope(14) | messageSync(0) | subtype SyncStep2(1)
+	// SyncStep2 frame: envelope(GENERATION) | messageSync(0) | subtype SyncStep2(1)
 	// | varuint8array(update) — the wire shape `sync.writeSyncStep2` emits.
 	const syncStep2Frame = (update: Uint8Array) => {
 		const encoder = encoding.createEncoder();
-		encoding.writeVarUint(encoder, 14);
+		encoding.writeVarUint(encoder, GENERATION);
 		encoding.writeVarUint(encoder, 0);
 		encoding.writeVarUint(encoder, 1);
 		encoding.writeVarUint8Array(encoder, update);
@@ -227,7 +229,7 @@ const startRoguePeer = async (relay: OpaqueRelay, room: string) => {
 			const decoder = decoding.createDecoder(buffer);
 			const version = decoding.readVarUint(decoder);
 			const messageType = decoding.readVarUint(decoder);
-			if (version !== 14 || messageType !== 0) return;
+			if (version !== GENERATION || messageType !== 0) return;
 			if (decoding.readVarUint(decoder) !== 0) return; // SyncStep1 only
 			ws.send(syncStep2Frame(rogueState));
 			replies++;

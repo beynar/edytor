@@ -1,6 +1,11 @@
 /**
  * GATE H adversarial probes — R2 (refused-row compaction protection).
  *
+ * T1 (D-2): per-row hydration refusal is gone — a same-generation
+ * container's rows all hydrate. A forged stamp among them leaves the doc
+ * read-only, and a read-only doc neither persists nor compacts, so the
+ * forged row still survives byte-for-byte.
+ *
  * The pinned tests cover: explicit storeState, timed path, mixed rows,
  * reopen, dependency ordering, late-arriving poison, error surfacing.
  *
@@ -30,7 +35,7 @@ import 'fake-indexeddb/auto';
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
-import { bindEdytorDoc, BOOTSTRAP_BLOCK_ID } from '../../../lib/crdt/edytor-doc.js';
+import { bindEdytorDoc, BOOTSTRAP_BLOCK_ID, checkSchema } from '../../../lib/crdt/edytor-doc.js';
 import * as idb from 'lib0-v14/indexeddb';
 import {
 	generationDbName,
@@ -173,7 +178,7 @@ describe('gateH-R2 — fetch-transaction interleaved-commit window', () => {
 		await p.destroy();
 	});
 
-	test('refused doc still persists valid local writes (recoverability) and blocked compaction is not a wedge', async () => {
+	test('a read-only (forged-stamp) doc persists nothing and never compacts', async () => {
 		const name = `h-r2-refused-writes-${Date.now()}`;
 		// poison row first
 		const poison = (() => {
@@ -197,25 +202,29 @@ describe('gateH-R2 — fetch-transaction interleaved-commit window', () => {
 
 		const doc = new Y.Doc();
 		const p = new providers.IndexeddbPersistence(name, doc);
-		await expect(p.whenSynced).rejects.toThrow(/unsupported/i);
+		await p.whenSynced;
+		expect(checkSchema(doc)).toMatchObject({ kind: 'unsupported', version: 99 });
 
-		// Valid local writes still land in the store (recoverability
-		// contract) — and each is broadcast. If a bug suppressed _storeUpdate
-		// on a refused doc, these rows would be missing.
+		// D-2 outbound quarantine: local writes on a read-only doc are not
+		// persisted (the document layer refuses them; raw engine writes that
+		// bypass it are still never stored or broadcast).
 		doc.transact(() => doc.get('scratch').setAttr('a', 1));
 		doc.transact(() => doc.get('scratch').setAttr('b', 2));
 		await sleep(100);
 		const rows = await readRows(name);
-		expect(rows.length).toBeGreaterThanOrEqual(3); // poison + 2 local writes
+		const stored = new Y.Doc();
+		for (const row of rows) Y.applyUpdate(stored, new Uint8Array(row));
+		expect(stored.get('scratch').getAttr('a')).toBeUndefined();
+		expect(stored.get('scratch').getAttr('b')).toBeUndefined();
 		expect(hasRow(rows, poison)).toBe(true);
 
-		// Compaction remains blocked after local writes — poison survives.
+		// No compaction either — the poison row survives.
 		await providers.storeState(p);
 		expect(hasRow(await readRows(name), poison)).toBe(true);
 		await p.destroy();
 	});
 
-	test('second live instance on the same DB independently re-refuses and also never compacts', async () => {
+	test('a second live instance on the same DB is read-only too and never compacts', async () => {
 		const name = `h-r2-two-${Date.now()}`;
 		const poison = (() => {
 			const remote = new Y.Doc();
@@ -229,12 +238,12 @@ describe('gateH-R2 — fetch-transaction interleaved-commit window', () => {
 
 		const docA = new Y.Doc();
 		const pA = new providers.IndexeddbPersistence(name, docA);
-		await expect(pA.whenSynced).rejects.toThrow(/unsupported/i);
+		await pA.whenSynced;
 		const docB = new Y.Doc();
 		const pB = new providers.IndexeddbPersistence(name, docB);
-		await expect(pB.whenSynced).rejects.toThrow(/unsupported/i);
-		expect(pA._hydrationRefused).not.toBeNull();
-		expect(pB._hydrationRefused).not.toBeNull();
+		await pB.whenSynced;
+		expect(checkSchema(docA)?.version).toBe(99);
+		expect(checkSchema(docB)?.version).toBe(99);
 
 		// Both run compaction — neither may delete the poison row.
 		await providers.storeState(pA);

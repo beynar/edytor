@@ -188,10 +188,11 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 			expect(middle).toContain('beta');
 			expect(middle).toContain('<R');
 
-			// Every frame the relay forwarded carries the v14 envelope
-			// (`varuint 14` — the first byte is the protocol-version word).
+			// Every frame the relay forwarded carries this generation's
+			// envelope: the first varuint is GENERATION (14 × 1000 + schema 1
+			// = 14001, varuint bytes 0xb1 0x6d).
 			expect(relay.forwarded.length).toBeGreaterThan(0);
-			expect(relay.forwarded.every((frame) => frame[0] === 14)).toBe(true);
+			expect(relay.forwarded.every((frame) => frame[0] === 0xb1 && frame[1] === 0x6d)).toBe(true);
 
 			issuesA.assertClean();
 			issuesB.assertClean();

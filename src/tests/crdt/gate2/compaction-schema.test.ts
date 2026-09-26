@@ -114,7 +114,7 @@ describe('attack 6: compaction', () => {
 });
 
 describe('attack 8: schema manifest coexistence', () => {
-	test('an unsupported-schema peer is refused at the boundary; the v1 doc is never corrupted', async () => {
+	test('a peer stamped with another schema never moves the v1 doc off its schema', async () => {
 		const name = uniqueName('schema-coexist');
 		// Doc A: this build's schema (v1).
 		const docA = new Y.Doc();
@@ -140,23 +140,16 @@ describe('attack 8: schema manifest coexistence', () => {
 				return n;
 			})()
 		);
-		const mismatches = [];
 		const pB = new providers.IndexeddbPersistence(name, docB);
-		pB.on('schema-mismatch', (d) => mismatches.push(d));
-		// Doc B's own hydration may merge A's v1 state — the LWW outcome is
-		// clientID-dependent, so tolerate either verdict; the B-side signal
-		// fires regardless (its own doc is unsupported).
-		await pB.whenSynced.catch(() => {});
+		await pB.whenSynced;
 		await nextTick(80);
 
-		// The offending peer's own provider detected + signaled the skew…
-		expect(
-			mismatches.some((m) => m.problem?.kind === 'unsupported' && m.problem?.version === 2)
-		).toBe(true);
-		// …and the v1 doc NEVER enters an unsupported state. Whether 'bx'
-		// arrives is LWW-dependent: if A's v1 wins docB's merge, docB heals to
-		// v1 and ships its (now supported) state; if v2 wins, docB is refused
-		// and ships nothing. Either way docA stays on the supported schema.
+		// D-2: docB's stamp is its own document's problem — its provider
+		// quarantines it (no persist, no state publish, no broadcast) rather
+		// than reporting it. Whether 'bx' ever arrives is LWW-dependent: if
+		// A's v1 wins docB's merge, docB heals and ships its (now supported)
+		// state; if v2 wins, docB stays read-only and ships nothing. Either
+		// way docA stays on the supported schema.
 		expect(E.schemaVersion(docA)).toBe(SCHEMA_VERSION);
 		await pA.destroy();
 		await pB.destroy();

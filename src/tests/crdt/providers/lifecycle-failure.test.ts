@@ -3,15 +3,15 @@
  *
  * - `failed` is the terminal half of the sync contract: a provider that can
  *   never reach `synced` reports it exactly once — destroy-before-sync, a
- *   persistence load failure, refused hydration. Never on a synced
- *   provider, never twice.
- * - `_hydrationRefused` is a latch: `disconnectBc(); connectBc()` cannot
- *   re-claim `synced` (D10).
+ *   persistence load failure (including a container of another schema
+ *   generation, D-2). Never on a synced provider, never twice.
+ * - The hydration-refusal latch (D10) is deleted with per-row staging
+ *   (L55); its unversioned-row case is a maintainer question (T1).
  * - `whenSynced` settles on destroy-before-open — rejects, never hangs,
  *   and `destroy()` itself still resolves (D22).
- * - A refused inbound payload produces exactly one schema-mismatch report
- *   (D24) — the dispatch emits for the refusal and does NOT re-gate the
- *   (untouched) live doc afterward.
+ * - A refused inbound payload (a forged stamp) produces exactly one
+ *   schema-mismatch report (D24); the provider never reports its own
+ *   document's state (D-2: that signal is the document's).
  * - BroadcastChannel room lifecycle: `connectBc`/`disconnectBc` drive
  *   membership; a peer that leaves stops receiving and resyncs on rejoin.
  */
@@ -62,6 +62,14 @@ const makeUnversionedUpdate = (key = 'rogue') => {
 			return n;
 		})()
 	);
+	return Y.encodeStateAsUpdate(rogue);
+};
+
+/** A same-generation update carrying a forged `meta.v = 99` stamp. */
+const makeV99Update = () => {
+	const rogue = new Y.Doc();
+	rogue.clientID = Number.MAX_SAFE_INTEGER;
+	rogue.transact(() => rogue.get('meta').setAttr('v', 99));
 	return Y.encodeStateAsUpdate(rogue);
 };
 
@@ -143,7 +151,27 @@ describe('failure channel (D4) — IndexeddbPersistence', () => {
 		expect(failed.length).toBe(1);
 	});
 
-	test('refused hydration emits failed once and latches sync suppression (D10)', async () => {
+	test('a container of another schema generation emits failed once and never joins', async () => {
+		const name = uniqueName('fail-schema-gen');
+		await seedGenerationDb(name, [makeV99Update()], {
+			[GENERATION_KEY]: { ...GENERATION_RECORD, schema: 99 }
+		});
+		const doc = new Y.Doc();
+		const p = new providers.IndexeddbPersistence(name, doc);
+		const failed = [];
+		p.on('failed', (e) => failed.push(e));
+		await expect(p.whenSynced).rejects.toThrow(/not a v14 document generation/);
+		expect(p.synced).toBe(false);
+		expect(p.bcconnected).toBe(false);
+		expect(failed.length).toBe(1);
+		await p.destroy();
+		expect(failed.length).toBe(1);
+	});
+
+	// MAINTAINER (T1 limit): unversioned rows are not a stamp write, so under
+	// D-2 they hydrate (the doc is then read-only and quarantined, and
+	// document admission refuses it) instead of refusing hydration here.
+	test.fails('refused hydration emits failed once and latches sync suppression (D10)', async () => {
 		const name = uniqueName('fail-refused');
 		// Valid generation record + a poisoned row (registry write, no
 		// meta.v) → hydration refuses the row.
@@ -179,31 +207,43 @@ describe('failure channel (D4) — IndexeddbPersistence', () => {
 		expect(failed.length).toBe(1);
 	});
 
-	test('a refused provider still receives valid peer updates (recoverability)', async () => {
+	test('a read-only (forged-stamp) provider still receives valid peer updates', async () => {
 		const name = uniqueName('fail-recover');
-		await seedGenerationDb(name, [makeUnversionedUpdate()]);
+		await seedGenerationDb(name, [makeV99Update()]);
 		const docA = new Y.Doc();
 		const pA = new providers.IndexeddbPersistence(name, docA);
-		await expect(pA.whenSynced).rejects.toThrow();
+		await pA.whenSynced;
 
-		// A peer in the same room keeps feeding it — refusal does not
-		// brick the connection. (pB hydrates the SAME poisoned store, so
-		// its whenSynced rejects too — it still joins the room.)
+		// A peer in the same room keeps feeding it — a read-only document
+		// is quarantined outbound, not deaf inbound.
 		const docB = new Y.Doc();
 		docB.get('content').setAttr('peer', 'live');
-		const pB = new providers.IndexeddbPersistence(name, docB);
-		await expect(pB.whenSynced).rejects.toThrow();
+		const e = encoding.createEncoder();
+		writeProtocolVersion(e);
+		encoding.writeVarUint(e, 0);
+		sync.writeSyncStep2(e, docB);
+		bc.publish(generationDbName(name), encoding.toUint8Array(e).slice().buffer, 'peer');
 		await until(() => docA.get('content').getAttr('peer') === 'live', 4000);
-		expect(docA.get('content').getAttr('peer')).toBe('live');
-		// ...but synced stays suppressed — the stored refusal still stands.
-		expect(pA.synced).toBe(false);
 
 		await pA.destroy();
-		await pB.destroy();
 	});
 });
 
 describe('schema-mismatch reporting (D24)', () => {
+	/** A v14-enveloped SyncStep2 carrying `live`'s state plus a forged v99 stamp. */
+	const forgedStep2 = (live) => {
+		const rogueDoc = new Y.Doc();
+		rogueDoc.clientID = Number.MAX_SAFE_INTEGER;
+		Y.applyUpdate(rogueDoc, Y.encodeStateAsUpdate(live));
+		rogueDoc.transact(() => rogueDoc.get('meta').setAttr('v', 99));
+		rogueDoc.get('blocks').setAttr('rogue', new Y.Node('block'));
+		const e = encoding.createEncoder();
+		writeProtocolVersion(e);
+		encoding.writeVarUint(e, 0); // messageSync
+		sync.writeSyncStep2(e, rogueDoc);
+		return encoding.toUint8Array(e).slice().buffer;
+	};
+
 	test('a refused inbound payload reports schema-mismatch exactly once', async () => {
 		const name = uniqueName('d24');
 		const doc = new Y.Doc();
@@ -214,28 +254,19 @@ describe('schema-mismatch reporting (D24)', () => {
 		p.on('schema-mismatch', (d) => mismatches.push(d));
 		p.on('message-error', (e) => msgErrs.push(e));
 
-		// Forge a v14-enveloped SyncStep2 carrying unversioned content —
-		// refused at the staging boundary.
-		const rogueDoc = new Y.Doc();
-		Y.applyUpdate(rogueDoc, makeUnversionedUpdate());
-		const e = encoding.createEncoder();
-		writeProtocolVersion(e);
-		encoding.writeVarUint(e, 0); // messageSync
-		sync.writeSyncStep2(e, rogueDoc);
-		bc.publish(generationDbName(name), encoding.toUint8Array(e).slice().buffer, 'foreign');
+		bc.publish(generationDbName(name), forgedStep2(doc), 'foreign');
 		await nextTick(60);
 
 		// Exactly one structured report + its SchemaMismatchError mirror on
-		// the error channel — the dispatch must not re-gate the untouched
-		// live doc and emit a second report for the same payload.
+		// the error channel.
 		expect(mismatches.length).toBe(1);
-		expect(mismatches[0].problem.kind).toBe('unversioned');
+		expect(mismatches[0].problem).toMatchObject({ kind: 'unsupported', version: 99 });
 		expect(msgErrs.filter((err) => err instanceof SchemaMismatchError).length).toBe(1);
 		expect(doc.get('blocks').getAttr('rogue')).toBeUndefined();
 		await p.destroy();
 	});
 
-	test('a refused payload on an independently dirty doc adds exactly one report', async () => {
+	test('a refused payload on an independently read-only doc adds exactly one report', async () => {
 		const name = uniqueName('d24-dirty');
 		const doc = new Y.Doc();
 		const p = new providers.IndexeddbPersistence(name, doc);
@@ -243,34 +274,17 @@ describe('schema-mismatch reporting (D24)', () => {
 		const mismatches = [];
 		p.on('schema-mismatch', (d) => mismatches.push(d));
 
-		// Dirty the live doc first — a local write into the registry with
-		// no meta.v trips the gate through the update handler (report #1).
-		doc.get('blocks').setAttr(
-			'local-rogue',
-			(() => {
-				const n = new Y.Node('block');
-				n.setAttr('id', 'local-rogue');
-				n.setAttr('type', 'paragraph');
-				return n;
-			})()
-		);
+		// A local write leaves the doc read-only: the provider quarantines
+		// it silently — the visible signal is the document's (D-2).
+		doc.get('blocks').setAttr('local-rogue', new Y.Node('block'));
 		await nextTick();
-		expect(mismatches.length).toBe(1);
-		expect(mismatches[0].problem.kind).toBe('unversioned');
+		expect(mismatches.length).toBe(0);
 
-		// The refused inbound still reports its own verdict exactly once —
-		// never a re-report of the live doc's state under the same payload.
-		const rogueDoc = new Y.Doc();
-		Y.applyUpdate(rogueDoc, makeUnversionedUpdate('remote-rogue'));
-		const e = encoding.createEncoder();
-		writeProtocolVersion(e);
-		encoding.writeVarUint(e, 0);
-		sync.writeSyncStep2(e, rogueDoc);
-		bc.publish(generationDbName(name), encoding.toUint8Array(e).slice().buffer, 'foreign');
+		// The refused inbound reports its own verdict exactly once.
+		bc.publish(generationDbName(name), forgedStep2(doc), 'foreign');
 		await nextTick(60);
-
-		expect(mismatches.length).toBe(2);
-		expect(doc.get('blocks').getAttr('remote-rogue')).toBeUndefined();
+		expect(mismatches.length).toBe(1);
+		expect(doc.get('blocks').getAttr('rogue')).toBeUndefined();
 		await p.destroy();
 	});
 });

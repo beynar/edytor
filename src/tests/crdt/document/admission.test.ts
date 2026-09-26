@@ -429,26 +429,25 @@ describe('IndexedDB hydration → document admission', () => {
 		doc.destroy();
 	});
 
-	it('refused hydration → document stays pending, doc unchanged, rows preserved', async () => {
+	it('a forged stamp in a same-generation container → pending, read-only, rows preserved', async () => {
+		// D-2: the container record proves the generation, so its rows
+		// hydrate; the document — not the transport — refuses the stamp.
 		const name = uniqueName('admit-idb-refused');
 		const v99 = encoded(makeV99Doc());
 		await seedGeneration(name, v99);
 
 		const doc = new Y.Doc();
 		const document = attachDocument(doc);
-		// Post-attach baseline (attribution records are the designed
-		// pre-readiness write) — refused hydration must add nothing.
-		const before = encoded(doc);
+		const settled = [];
+		document.onSyncSettled(() => settled.push(true));
 		document.attachSync(providers.createIndexeddbSync(name));
-		// Refused hydration suppresses synced — the document never runs its
-		// readiness transition.
 		await new Promise((r) => setTimeout(r, 200));
+		// Admission refused readiness; the decision went back to the views.
 		expect(document.readiness).toBe('pending');
-		// The live doc never absorbed the refused state.
-		expect(encoded(doc)).toEqual(before);
-		// The refused row was never deleted or rewritten — it sits first
-		// (insertion order); the provider's own post-attach state row may
-		// follow, but nothing replaced the refused bytes.
+		expect(document.syncFailed).toBe(true);
+		expect(settled).toEqual([true]);
+		// Read-only: no write lands, nothing is persisted or compacted.
+		expect(document.writable).toBe(false);
 		const rows = await generationRows(name);
 		expect(rows[0]).toEqual(v99);
 		document.destroy();

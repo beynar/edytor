@@ -20,6 +20,7 @@ import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { Awareness } from '../../../lib/crdt/protocols/awareness.js';
 import * as bc from 'lib0-v14/broadcastchannel';
 import * as decoding from 'lib0-v14/decoding';
+import { GENERATION } from '../../../lib/crdt/protocols/envelope.js';
 import * as encoding from 'lib0-v14/encoding';
 import { generationDbName, writeProtocolVersion } from '../../../lib/crdt/protocols/envelope.js';
 
@@ -107,7 +108,8 @@ describe('WS lifecycle', () => {
 		await until(() => p.wsconnected && instances.length === 2, 5000);
 		// The new socket immediately sent SyncStep1 — resync on reconnect.
 		const first = frameType(instances[1].sent[0]);
-		expect(first).toMatchObject({ ver: 14, type: 0, syncType: 0 });
+		// The first varuint is the generation word (D-2: engine + wire + schema).
+		expect(first).toMatchObject({ ver: GENERATION, type: 0, syncType: 0 });
 		p.destroy();
 	});
 

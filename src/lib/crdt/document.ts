@@ -152,7 +152,7 @@ import {
 	type EdytorDoc,
 	type EdytorDocBinding
 } from './edytor-doc.js';
-import { assertAdmission, bindAdmission } from './admission.js';
+import { assertAdmission, assertSchema, bindAdmission, checkSchema } from './admission.js';
 import { Awareness } from './protocols/awareness.js';
 import type { EdytorSync, EdytorSyncCleanup, EdytorSyncPayload } from './providers/index.js';
 import { TRANSACTION } from '../constants.js';
@@ -452,7 +452,10 @@ export class EdytorDocument {
 			// U1: the facade's block-attribution ops read the actor lazily —
 			// `this.actor` is assigned below, after facade construction.
 			actor: () => this.actor,
-			lineageDepth: init.lineage?.depth
+			lineageDepth: init.lineage?.depth,
+			// The `writable` guard: a write on a read-only document refuses
+			// with the `SchemaMismatchError` naming the stamp.
+			assertWritable: () => assertSchema(this.doc as unknown as EngineDoc, 'document')
 		});
 		this.awareness = init.awareness ?? new init.awarenessCtor(this.doc);
 		this._ownsAwareness = init.awareness === undefined;
@@ -509,6 +512,28 @@ export class EdytorDocument {
 	get destroyed(): boolean {
 		return this._destroyed;
 	}
+
+	/**
+	 * `false` while the document carries a schema stamp this build cannot
+	 * own (a foreign stamp got in despite the transport's inbound refusal):
+	 * every write refuses with a `SchemaMismatchError`, and the providers
+	 * neither persist nor broadcast it (O18, D-2).
+	 */
+	get writable(): boolean {
+		return checkSchema(this.doc as unknown as EngineDoc) === null;
+	}
+
+	/**
+	 * Subscribe to {@link writable} transitions — the visible signal that
+	 * the document turned read-only (once per transition, not per refused
+	 * edit). Returns the unsubscribe.
+	 */
+	onWritableChange = (listener: (writable: boolean) => void): (() => void) => {
+		let last = this.writable;
+		const watch = () => this.writable !== last && listener((last = !last));
+		this.doc.on('update', watch);
+		return () => this.doc.off('update', watch);
+	};
 
 	/**
 	 * The capture timeout this document's history was configured with —
@@ -917,7 +942,16 @@ export class EdytorDocument {
 				awareness: this.awareness,
 				synced: () => {
 					settle();
-					this.sync(opts.value);
+					try {
+						this.sync(opts.value);
+					} catch (error) {
+						// Admission refused what the provider brought (a foreign
+						// stamp got in): the decision returns to the views, as
+						// on `failed`.
+						this._syncFailed = true;
+						this._emitSyncSettled();
+						throw error;
+					}
 				},
 				failed: (_reason?: unknown) => {
 					settle(true);

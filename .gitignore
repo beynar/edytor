@@ -18,3 +18,4 @@ bench/vendor-baseline/
 
 # browser bench app build output (built by bench/browser.js)
 bench/browser-app/dist/
+.arch-v2/

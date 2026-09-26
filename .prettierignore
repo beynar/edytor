@@ -15,3 +15,6 @@ vendor-tests
 # generated bench output + persisted corpus repro artifacts
 bench/results
 src/tests/crdt/random/failures
+
+# generated architecture planning artifacts
+docs/architecture-v2/

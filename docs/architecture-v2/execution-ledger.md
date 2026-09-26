@@ -13,8 +13,22 @@ The plan is `docs/architecture-v2/plan.md`; its §9 defines the checkpoints and 
 | `pnpm test:crdt` | 21 files, 346 passed, 33 skipped |
 | `pnpm check` | 0 errors, 0 warnings |
 | `pnpm lint` | clean (after ignoring generated `docs/architecture-v2/` for prettier) |
-| chromium integration | see below |
+| chromium integration | 483 passed, 1 skipped, **9 failed deterministically** (known-red baseline, listed below) |
 | xloc (`node scripts/xloc.mjs src/lib`) | 29,109 |
+
+### Known-red chromium specs at baseline (reproduced on rerun)
+
+- `beforeinput-fallback.spec.ts:422` reconciles full text wrapper replacement when input events are missing
+- `collaboration-websocket-3client.spec.ts:565` refused schema handshake claims no sync, then recovers
+- `composition.spec.ts:565` restores the caret after a delayed browser selection jump following composition
+- `delete-shapes.spec.ts:319` deleteSoftLineBackward removes to the soft-line start
+- `input.spec.ts:1664` replaces a cross-block browser selection when typing a single character
+- `input.spec.ts:1742` replaces a cross-block range that starts in an empty placeholder block
+- `input.spec.ts:2479` handles cross-block replacement beforeinput through the model
+- `input.spec.ts:3099` pastes multiline text over a live browser selection
+- `selection.spec.ts:1362` maps Shift-click range extension across marked text and inline atoms
+
+Gate: a checkpoint may not add a chromium failure outside this list. Fixes to listed specs are recorded.
 
 ## Maintainer decisions (§11.2)
 

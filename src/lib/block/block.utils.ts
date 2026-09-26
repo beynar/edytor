@@ -267,15 +267,11 @@ export function splitBlock(
 	}
 	const newId = id('b');
 	const offset = this.partOffsetOf(text) + index;
-	const sibling = model.split(offset, newId);
-	if (!sibling) {
+	// Baseline semantics: the sibling takes the default block type and no data.
+	const tail = { type: this.edytor.getDefaultBlock(this.parent), data: {} };
+	if (!model.split(offset, newId, tail)) {
 		return null;
 	}
-	// Baseline semantics: the sibling takes the default block type (and no
-	// data) — the engine copies type+data, so reset both in the same
-	// transaction.
-	sibling.setType(this.edytor.getDefaultBlock(this.parent));
-	sibling.setData({});
 	this.edytor.flushMirror();
 	this.parent?.normalizeChildren();
 	return this.edytor.idToBlock.get(newId) ?? null;
@@ -288,13 +284,6 @@ export function removeBlock(
 	const model = this.model;
 	if (!this.parent || !model || !this._live) {
 		return;
-	}
-	// Tombstone the block's displayed content first — `model.delete` only
-	// hides the block; atoms released inside a neighbour's covering slice
-	// claim (split-share backing seam) would otherwise re-surface there.
-	const doomedParts = this.projectedParts()?.length ?? this.content.length;
-	if (doomedParts > 0) {
-		this.deleteParts(0, doomedParts);
 	}
 	model.delete({ keepChildren });
 	this.edytor.flushMirror();

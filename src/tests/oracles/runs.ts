@@ -23,7 +23,7 @@ import {
 	type TextBlockRec
 } from '../../lib/crdt/text/model.js';
 import type { ContentRun } from '../../lib/crdt/text/runs.js';
-import { CONTENT, DEL, SLICES } from '../../lib/crdt/schema.js';
+import { CONTENT, hasDeleteMark, SLICES } from '../../lib/crdt/schema.js';
 import { cloneJsonSafe } from '../../lib/utils/json.js';
 
 const isNodeLike = (v: unknown): v is EngineNode =>
@@ -82,7 +82,7 @@ export const bindRunsOracle = (Y: EngineApi) => {
 			const content = v.getAttr(CONTENT);
 			blocks.set(id, {
 				id,
-				deleted: v.getAttr(DEL) !== undefined,
+				deleted: hasDeleteMark(v),
 				content: isNodeLike(content) ? content : undefined,
 				slicesNode,
 				entries: slicesNode

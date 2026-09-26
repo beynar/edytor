@@ -30,8 +30,13 @@ export const INLINE_NODE = 'inline';
 export const ID = 'id';
 export const TYPE = 'type';
 export const DATA = 'data';
-/** Presence = explicitly deleted (deletion-wins flag). */
-export const DEL = 'del';
+/**
+ * Per-writer delete marks (R3): `del.<writer>: true`. A block is deleted iff
+ * any mark is live, so an undo removes only the undoer's own mark.
+ */
+export const DEL_PREFIX = 'del.';
+export const hasDeleteMark = (node: { attrKeys(): IterableIterator<string> }): boolean =>
+	[...node.attrKeys()].some((key) => key.startsWith(DEL_PREFIX));
 /** U1 `lastChangedBy` LWW attr (`SCHEMA.blockAttrs.lastChanged`). */
 export const LAST_CHANGED_ATTR = 'l';
 export const CONTENT = 'content';

@@ -333,9 +333,9 @@ export type OpTarget = {
 
 /** Per-block replicated-state surface captured for the op diff. */
 export type OpStateBlock = {
-	/** `del` flag currently set. */
+	/** Any live per-writer delete mark. */
 	deleted: boolean;
-	/** Stamp of the item carrying the `del` flag (loss correlation). */
+	/** Comma-joined stamps of the live delete-mark items (loss correlation). */
 	delStamp: StampKey | null;
 	/** Canonical fingerprint of the block's live placement candidates. */
 	placements: string;

@@ -150,7 +150,10 @@ const step = (rng, peer, freshId) => {
 	const pool = [...new Set([...ids, ...ALL_IDS])];
 	const id = pool.length > 0 ? pick(rng, pool) : 'b0';
 	const len = (f.blockText(id) ?? '').length;
-	const roll = int(rng, 0, 99);
+	// D-14: merge-then-delete no longer resurrects the merged block and a
+	// delete of a dead id is refused (it used to count as applied), so the
+	// stream drains the document; refill it to keep exercising claim chains.
+	const roll = ids.length < 3 ? 82 : int(rng, 0, 99);
 	try {
 		if (roll < 22) {
 			// NOTE: no surrogate-pair payloads here — mid-pair deletes produce

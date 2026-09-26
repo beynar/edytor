@@ -556,7 +556,7 @@ export class Block {
 			return child;
 		});
 		for (const old of prev) {
-			if (!used.has(old) && !this.edytor.isVisibleBlockId(old.id)) {
+			if (!used.has(old) && !this.edytor.facade.isVisibleBlock(old.id)) {
 				old._drop();
 			}
 		}
@@ -732,7 +732,7 @@ export class Block {
 	 * caller-held reference).
 	 *
 	 * `keepAlive` defaults to the projected-visibility oracle
-	 * (`isVisibleBlockId`) — the same check `reconcileChildren` applies to
+	 * (`facade.isVisibleBlock`) — the same check `reconcileChildren` applies to
 	 * the drop candidates themselves — so the cascade drops exactly the
 	 * invisible nodes in every path that calls it. The incremental mirror
 	 * apply passes the DocChange's `claimed` set instead: equal on the
@@ -741,7 +741,7 @@ export class Block {
 	 * touching the projected index.
 	 */
 	_drop = (keepAlive?: (id: string) => boolean) => {
-		const keep = keepAlive ?? ((id: string) => this.edytor.isVisibleBlockId(id));
+		const keep = keepAlive ?? ((id: string) => this.edytor.facade.isVisibleBlock(id));
 		this._live = false;
 		// Capture neighbors while `parent.children` is still the
 		// pre-removal ordering — after the array shrinks, the vacated

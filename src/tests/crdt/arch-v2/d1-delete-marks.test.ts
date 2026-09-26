@@ -44,12 +44,6 @@ const p = (id: string, text: string, children?: unknown[]) => ({
 	...(children ? { children } : {})
 });
 
-/**
- * Tests-first marker: rows red on the reference (G0) run as expected-fail
- * until D1 lands; the implementation commit flips them to `test`.
- */
-const row = (red: boolean) => (red ? test.fails : test);
-
 const permutations = <T>(xs: T[]): T[][] =>
 	xs.length <= 1
 		? [xs]
@@ -184,44 +178,41 @@ const splitVia = (r: Replica, path: Path, id: string, offset: number, newId: str
 
 describe('F-D3 — a block hidden under a deleted parent is not a target', () => {
 	for (const via of ['facade', 'handle'] as const) {
-		row(true)(
-			`p > [c]; delete p; insertText/insertBlock/moveBlock/splitBlock on c refused, zero bytes (${via})`,
-			() => {
-				const doc = new Y.Doc();
-				doc.clientID = 10;
-				const ed = E.create(doc);
-				ed.init({ content: [p('p', 'pp', [p('c', 'cc')]), p('z', 'zz')] });
-				expect(ed.deleteBlock('p')).toBe(true);
-				const bytes = Y.encodeStateAsUpdate(doc);
-				const unchanged = () => expect(Y.encodeStateAsUpdate(doc)).toEqual(bytes);
+		test(`p > [c]; delete p; insertText/insertBlock/moveBlock/splitBlock on c refused, zero bytes (${via})`, () => {
+			const doc = new Y.Doc();
+			doc.clientID = 10;
+			const ed = E.create(doc);
+			ed.init({ content: [p('p', 'pp', [p('c', 'cc')]), p('z', 'zz')] });
+			expect(ed.deleteBlock('p')).toBe(true);
+			const bytes = Y.encodeStateAsUpdate(doc);
+			const unchanged = () => expect(Y.encodeStateAsUpdate(doc)).toEqual(bytes);
 
-				if (via === 'facade') {
-					expect(ed.insertText('c', 0, 'x'), 'insertText(c)').toBe(false);
-					unchanged();
-					expect(
-						ed.insertBlock({ parent: 'c', index: 0 }, p('n', 'nn')),
-						'insertBlock(parent: c)'
-					).toBe(false);
-					unchanged();
-					expect(ed.moveBlock('c', { parent: null, index: 0 }), 'moveBlock(c → root)').toBe(false);
-					unchanged();
-					expect(ed.splitBlock('c', 1, 's'), 'splitBlock(c)').toBe(false);
-					unchanged();
-				} else {
-					const c = ed.block('c');
-					expect(c.insertText(0, 'x'), 'insertText(c)').toBe(false);
-					unchanged();
-					expect(c.insertChild(0, p('n', 'nn')), 'insertBlock(parent: c)').toBe(null);
-					unchanged();
-					expect(c.moveTo({ parent: null, index: 0 }), 'moveBlock(c → root)').toBe(false);
-					unchanged();
-					expect(c.split(1, 's'), 'splitBlock(c)').toBe(null);
-					unchanged();
-				}
-				expect(shapeOf(ed)).toEqual([['z', 'zz']]);
-				expect(ed.isVisibleBlock('c')).toBe(false);
+			if (via === 'facade') {
+				expect(ed.insertText('c', 0, 'x'), 'insertText(c)').toBe(false);
+				unchanged();
+				expect(
+					ed.insertBlock({ parent: 'c', index: 0 }, p('n', 'nn')),
+					'insertBlock(parent: c)'
+				).toBe(false);
+				unchanged();
+				expect(ed.moveBlock('c', { parent: null, index: 0 }), 'moveBlock(c → root)').toBe(false);
+				unchanged();
+				expect(ed.splitBlock('c', 1, 's'), 'splitBlock(c)').toBe(false);
+				unchanged();
+			} else {
+				const c = ed.block('c');
+				expect(c.insertText(0, 'x'), 'insertText(c)').toBe(false);
+				unchanged();
+				expect(c.insertChild(0, p('n', 'nn')), 'insertBlock(parent: c)').toBe(null);
+				unchanged();
+				expect(c.moveTo({ parent: null, index: 0 }), 'moveBlock(c → root)').toBe(false);
+				unchanged();
+				expect(c.split(1, 's'), 'splitBlock(c)').toBe(null);
+				unchanged();
 			}
-		);
+			expect(shapeOf(ed)).toEqual([['z', 'zz']]);
+			expect(ed.isVisibleBlock('c')).toBe(false);
+		});
 	}
 });
 
@@ -229,7 +220,7 @@ describe('F-D3 — a block hidden under a deleted parent is not a target', () =>
 
 describe('F-D8 — merge b into a, delete a: the merged block dies with it; undo restores both', () => {
 	for (const path of PATHS) {
-		row(true)(`delete via ${path}`, () => {
+		test(`delete via ${path}`, () => {
 			const seed = seedUpdate(10, [p('a', 'aa'), p('b', 'bb'), p('c', 'cc')]);
 			const r = replica(seed, 20, path === 'view');
 
@@ -299,38 +290,33 @@ describe('F-D10 — abcde split at 3; B types Q at the tail head ‖ A deletes t
 	for (const ids of CLIENT_IDS) {
 		for (const path of PATHS) {
 			for (const aSawQ of [false, true]) {
-				// Red today on every path except the view with Q already seen
-				// (the view tombstones what it displays; P3/P3b).
-				row(!(path === 'view' && aSawQ))(
-					`ids seed=${ids.seed} A=${ids.a} B=${ids.b} · A deletes via ${path} · A ${
-						aSawQ ? 'saw' : 'did not see'
-					} Q`,
-					() => {
-						const seed = seedUpdate(ids.seed, [p('b0', 'abcde')], (ed) => {
-							expect(ed.splitBlock('b0', 3, 't')).toBe(true);
-						});
-						const A = replica(seed, ids.a, path === 'view');
-						const B = replica(seed, ids.b, false);
-						expect(B.ed.insertText('t', 0, 'Q')).toBe(true);
-						expect(shapeOf(B.ed)).toEqual([
-							['b0', 'abc'],
-							['t', 'Qde']
-						]);
-						const q = send(B);
-						if (aSawQ) deliver(A, q);
-						expect(deleteVia(A, path, 't')).toBe(true);
-						const del = send(A);
-						if (!aSawQ) deliver(A, q);
-						deliver(B, del);
+				test(`ids seed=${ids.seed} A=${ids.a} B=${ids.b} · A deletes via ${path} · A ${
+					aSawQ ? 'saw' : 'did not see'
+				} Q`, () => {
+					const seed = seedUpdate(ids.seed, [p('b0', 'abcde')], (ed) => {
+						expect(ed.splitBlock('b0', 3, 't')).toBe(true);
+					});
+					const A = replica(seed, ids.a, path === 'view');
+					const B = replica(seed, ids.b, false);
+					expect(B.ed.insertText('t', 0, 'Q')).toBe(true);
+					expect(shapeOf(B.ed)).toEqual([
+						['b0', 'abc'],
+						['t', 'Qde']
+					]);
+					const q = send(B);
+					if (aSawQ) deliver(A, q);
+					expect(deleteVia(A, path, 't')).toBe(true);
+					const del = send(A);
+					if (!aSawQ) deliver(A, q);
+					deliver(B, del);
 
-						const expected = [['b0', 'abc']];
-						expect(shapeOf(A.ed), 'A').toEqual(expected);
-						expect(shapeOf(B.ed), 'B').toEqual(expected);
-						expect(reloadShape(A.doc, 900), 'A reloaded').toEqual(expected);
-						expect(reloadShape(B.doc, 901), 'B reloaded').toEqual(expected);
-						expectObservers(seed, [q, del], expected);
-					}
-				);
+					const expected = [['b0', 'abc']];
+					expect(shapeOf(A.ed), 'A').toEqual(expected);
+					expect(shapeOf(B.ed), 'B').toEqual(expected);
+					expect(reloadShape(A.doc, 900), 'A reloaded').toEqual(expected);
+					expect(reloadShape(B.doc, 901), 'B reloaded').toEqual(expected);
+					expectObservers(seed, [q, del], expected);
+				});
 			}
 		}
 	}
@@ -343,48 +329,44 @@ describe('F-D17 — A deletes b and undoes; offline P deletes "world" and bolds 
 		items.map((i) => [i.kind === 'text' ? i.text : `<${i.type}>`, i.marks?.bold === true]);
 	for (const ids of CLIENT_IDS) {
 		for (const path of PATHS) {
-			// Red today on the view path (content tombstoning makes undo a copy).
-			row(path === 'view')(
-				`ids seed=${ids.seed} A=${ids.a} P=${ids.b} · A deletes via ${path}`,
-				() => {
-					const seed = seedUpdate(ids.seed, [p('b', 'hello world'), p('c', 'cc')]);
-					const A = replica(seed, ids.a, path === 'view');
-					const P = replica(seed, ids.b, false);
+			test(`ids seed=${ids.seed} A=${ids.a} P=${ids.b} · A deletes via ${path}`, () => {
+				const seed = seedUpdate(ids.seed, [p('b', 'hello world'), p('c', 'cc')]);
+				const A = replica(seed, ids.a, path === 'view');
+				const P = replica(seed, ids.b, false);
 
-					expect(deleteVia(A, path, 'b')).toBe(true);
-					A.stopCapturing();
-					const del = send(A);
-					A.undo();
-					const undo = send(A);
+				expect(deleteVia(A, path, 'b')).toBe(true);
+				A.stopCapturing();
+				const del = send(A);
+				A.undo();
+				const undo = send(A);
 
-					expect(P.ed.deleteText('b', 6, 5)).toBe(true);
-					expect(P.ed.setMark('b', 0, 5, 'bold', true)).toBe(true);
-					const edits = send(P);
+				expect(P.ed.deleteText('b', 6, 5)).toBe(true);
+				expect(P.ed.setMark('b', 0, 5, 'bold', true)).toBe(true);
+				const edits = send(P);
 
-					deliver(A, edits);
-					deliver(P, del);
-					deliver(P, undo);
+				deliver(A, edits);
+				deliver(P, del);
+				deliver(P, undo);
 
-					const expectedShape = [
-						['b', 'hello '],
-						['c', 'cc']
-					];
-					const expectedItems = [
-						['hello', true],
-						[' ', false]
-					];
-					for (const [name, r] of [
-						['A', A],
-						['P', P]
-					] as const) {
-						expect(shapeOf(r.ed), name).toEqual(expectedShape);
-						expect(norm(r.ed.contentItems('b')), `${name} marks`).toEqual(expectedItems);
-					}
-					expect(reloadShape(A.doc, 900), 'A reloaded').toEqual(expectedShape);
-					expect(reloadShape(P.doc, 901), 'P reloaded').toEqual(expectedShape);
-					expectObservers(seed, [del, undo, edits], expectedShape);
+				const expectedShape = [
+					['b', 'hello '],
+					['c', 'cc']
+				];
+				const expectedItems = [
+					['hello', true],
+					[' ', false]
+				];
+				for (const [name, r] of [
+					['A', A],
+					['P', P]
+				] as const) {
+					expect(shapeOf(r.ed), name).toEqual(expectedShape);
+					expect(norm(r.ed.contentItems('b')), `${name} marks`).toEqual(expectedItems);
 				}
-			);
+				expect(reloadShape(A.doc, 900), 'A reloaded').toEqual(expectedShape);
+				expect(reloadShape(P.doc, 901), 'P reloaded').toEqual(expectedShape);
+				expectObservers(seed, [del, undo, edits], expectedShape);
+			});
 		}
 	}
 });
@@ -395,38 +377,34 @@ describe('F-D18 — A and P delete the same block concurrently; A undoes → sti
 	for (const ids of CLIENT_IDS) {
 		for (const path of PATHS) {
 			for (const aOrder of ['p-then-undo', 'undo-then-p'] as const) {
-				// Red today when A's `del` item wins the single-key LWW (A > P).
-				row(ids.a > ids.b)(
-					`ids seed=${ids.seed} A=${ids.a} P=${ids.b} · A deletes via ${path} · A: ${aOrder}`,
-					() => {
-						const seed = seedUpdate(ids.seed, [p('a', 'aa'), p('b', 'bb'), p('c', 'cc')]);
-						const A = replica(seed, ids.a, path === 'view');
-						const P = replica(seed, ids.b, false);
+				test(`ids seed=${ids.seed} A=${ids.a} P=${ids.b} · A deletes via ${path} · A: ${aOrder}`, () => {
+					const seed = seedUpdate(ids.seed, [p('a', 'aa'), p('b', 'bb'), p('c', 'cc')]);
+					const A = replica(seed, ids.a, path === 'view');
+					const P = replica(seed, ids.b, false);
 
-						expect(deleteVia(A, path, 'b')).toBe(true);
-						A.stopCapturing();
-						const aDel = send(A);
-						expect(P.ed.deleteBlock('b')).toBe(true);
-						const pDel = send(P);
+					expect(deleteVia(A, path, 'b')).toBe(true);
+					A.stopCapturing();
+					const aDel = send(A);
+					expect(P.ed.deleteBlock('b')).toBe(true);
+					const pDel = send(P);
 
-						if (aOrder === 'p-then-undo') deliver(A, pDel);
-						A.undo();
-						const aUndo = send(A);
-						if (aOrder === 'undo-then-p') deliver(A, pDel);
-						deliver(P, aDel);
-						deliver(P, aUndo);
+					if (aOrder === 'p-then-undo') deliver(A, pDel);
+					A.undo();
+					const aUndo = send(A);
+					if (aOrder === 'undo-then-p') deliver(A, pDel);
+					deliver(P, aDel);
+					deliver(P, aUndo);
 
-						const expected = [
-							['a', 'aa'],
-							['c', 'cc']
-						];
-						expect(shapeOf(A.ed), 'A').toEqual(expected);
-						expect(shapeOf(P.ed), 'P').toEqual(expected);
-						expect(reloadShape(A.doc, 900), 'A reloaded').toEqual(expected);
-						expect(reloadShape(P.doc, 901), 'P reloaded').toEqual(expected);
-						expectObservers(seed, [aDel, pDel, aUndo], expected);
-					}
-				);
+					const expected = [
+						['a', 'aa'],
+						['c', 'cc']
+					];
+					expect(shapeOf(A.ed), 'A').toEqual(expected);
+					expect(shapeOf(P.ed), 'P').toEqual(expected);
+					expect(reloadShape(A.doc, 900), 'A reloaded').toEqual(expected);
+					expect(reloadShape(P.doc, 901), 'P reloaded').toEqual(expected);
+					expectObservers(seed, [aDel, pDel, aUndo], expected);
+				});
 			}
 		}
 	}
@@ -438,38 +416,34 @@ describe('F-D20 — A deletes b1 ‖ B splits b1 at 6 into s1: s1 keeps "world" 
 	for (const ids of CLIENT_IDS) {
 		for (const delPath of PATHS) {
 			for (const splitPath of PATHS) {
-				// Red today on the view delete path (tombstoning empties the tail).
-				row(delPath === 'view')(
-					`ids seed=${ids.seed} A=${ids.a} B=${ids.b} · A deletes via ${delPath} · B splits via ${splitPath}`,
-					() => {
-						const seed = seedUpdate(ids.seed, [p('b1', 'hello world'), p('z', 'zz')]);
-						const A = replica(seed, ids.a, delPath === 'view');
-						const B = replica(seed, ids.b, splitPath === 'view');
+				test(`ids seed=${ids.seed} A=${ids.a} B=${ids.b} · A deletes via ${delPath} · B splits via ${splitPath}`, () => {
+					const seed = seedUpdate(ids.seed, [p('b1', 'hello world'), p('z', 'zz')]);
+					const A = replica(seed, ids.a, delPath === 'view');
+					const B = replica(seed, ids.b, splitPath === 'view');
 
-						expect(deleteVia(A, delPath, 'b1')).toBe(true);
-						const del = send(A);
-						const s1 = splitVia(B, splitPath, 'b1', 6, 's1');
-						expect(shapeOf(B.ed)).toEqual([
-							['b1', 'hello '],
-							[s1, 'world'],
-							['z', 'zz']
-						]);
-						const split = send(B);
+					expect(deleteVia(A, delPath, 'b1')).toBe(true);
+					const del = send(A);
+					const s1 = splitVia(B, splitPath, 'b1', 6, 's1');
+					expect(shapeOf(B.ed)).toEqual([
+						['b1', 'hello '],
+						[s1, 'world'],
+						['z', 'zz']
+					]);
+					const split = send(B);
 
-						deliver(A, split);
-						deliver(B, del);
-						const expected = [
-							[s1, 'world'],
-							['z', 'zz']
-						];
-						expect(shapeOf(A.ed), 'A').toEqual(expected);
-						expect(shapeOf(B.ed), 'B').toEqual(expected);
-						expect(A.ed.blockText(s1)).toBe('world');
-						expect(reloadShape(A.doc, 900), 'A reloaded').toEqual(expected);
-						expect(reloadShape(B.doc, 901), 'B reloaded').toEqual(expected);
-						expectObservers(seed, [del, split], expected);
-					}
-				);
+					deliver(A, split);
+					deliver(B, del);
+					const expected = [
+						[s1, 'world'],
+						['z', 'zz']
+					];
+					expect(shapeOf(A.ed), 'A').toEqual(expected);
+					expect(shapeOf(B.ed), 'B').toEqual(expected);
+					expect(A.ed.blockText(s1)).toBe('world');
+					expect(reloadShape(A.doc, 900), 'A reloaded').toEqual(expected);
+					expect(reloadShape(B.doc, 901), 'B reloaded').toEqual(expected);
+					expectObservers(seed, [del, split], expected);
+				});
 			}
 		}
 	}

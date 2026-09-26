@@ -15,7 +15,8 @@
  *   3. splitBlock(c, 1, 'thief'): seam inside the claim contribution ->
  *      cutClaim materializes 'bc' onto thief's list as
  *      {t:v, s:item('b'), e:END, g1}. c keeps the claim -> displays 'a'.
- *   4. deleteBlock(c): claim inert -> v unhidden -> v displays 'a'.
+ *   4. c's records released (pre-D1 delete; staged by registry removal
+ *      since D-14): claim inert -> v unhidden -> v displays 'a'.
  *   5. deleteText(v, 0, 1): 'a' tombstoned. thief's record re-anchors to
  *      [0,2) and wins all of T_v (g1 > g0) -> v displays '' (live, empty).
  *   6. insertText(v, 0, 'X'): alreadyCovered sees v's own {B,E,g0} record
@@ -50,6 +51,16 @@ const ed = (peer: Peer) => {
 };
 
 const text = (peer: Peer, id: string) => ed(peer).blockText(id);
+
+/**
+ * D-14 (R3): a delete now hides everything the block displays, including
+ * what it displays through merge claims, so the pre-D1 "a deleted holder
+ * releases its coverage" state these probes start from is staged by
+ * removing the registry entry instead — an absent block's records claim
+ * nothing, exactly what the old delete produced.
+ */
+const dropBlock = (peer: Peer, id: string) =>
+	peer.doc.transact(() => peer.doc.get('blocks').deleteAttr(id));
 const atomOwners = (peer: Peer, t: string): (string | null)[] => {
 	const blocks = ed(peer).model.collectBlocks(peer.doc);
 	const own = ed(peer).text.computeOwnership(peer.doc, blocks);
@@ -79,7 +90,7 @@ const stageEmptiedV = (peer: Peer) => {
 	//    {t:v, s:item(b), e:END, g1}.
 	ops.splitBlock(peer, 'c', 1, 'thief');
 	// 4. claim inert -> v unhidden -> 'a' returns to v.
-	ops.deleteBlock(peer, 'c');
+	dropBlock(peer, 'c');
 	// 5. 'a' deleted -> thief's E-ended record covers all of T_v and wins
 	//    (g1 > g0) -> v is a LIVE block displaying ''.
 	ops.deleteText(peer, 'v', 0, 1);
@@ -254,8 +265,8 @@ describe('gateF1 probe 3 — left-edge insert into a 3-way fragmented record', (
 		// Kill mid2{7,8} and tail{9,E}: those atoms fall back to early's {3,E}
 		// claim -> early = [3,5) ∪ [7,8) ∪ [9,10) — three disjoint segs with
 		// mid1{5,7}='fg' and mid3{8,9}='i' as the holes.
-		ops.deleteBlock(A, 'mid2');
-		ops.deleteBlock(A, 'tail');
+		dropBlock(A, 'mid2');
+		dropBlock(A, 'tail');
 		expect(text(A, 'mid1')).toBe('fg');
 		expect(text(A, 'mid3')).toBe('i');
 		expect(text(A, 'early')).toBe('dehj');
@@ -341,7 +352,7 @@ describe('gateF1 probe 6 — boundary (non-interior) inserts at seg seams', () =
 		assertConverged(set, ops);
 		// Kill mid2{7,8}: 'h' falls back to early -> early = [3,5)∪[7,8) —
 		// 'de' + 'h' = 'deh' with mid1{5,7}='fg' and mid3{8,E}='ij' as holes.
-		ops.deleteBlock(A, 'mid2');
+		dropBlock(A, 'mid2');
 		expect(text(A, 'early')).toBe('deh');
 		expect(text(A, 'mid1')).toBe('fg');
 		expect(text(A, 'mid3')).toBe('ij');

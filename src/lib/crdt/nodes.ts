@@ -22,7 +22,7 @@
  * `childIds`. Richer structure reads (positions, paths, roles, anchors)
  * live on the facade (`positionOf`/`pathOf`/`isVoid`/`anchorAt`/…).
  */
-import type { BlockId, BlockSpec, ContentItem, InlineSpec } from './placement/model.js';
+import type { BlockId, BlockSpec, ContentItem, InlineSpec, SplitTail } from './placement/model.js';
 import type { ContentRun } from './text/runs.js';
 import type { EdytorDoc } from './edytor-doc.js';
 import type { BlockAttribution } from './attribution/block.js';
@@ -109,17 +109,17 @@ export type DocBlock = {
 	/**
 	 * Split content at display `offset` into a new sibling `newId` — the
 	 * tail's slice records move without atom copies, children follow the
-	 * sibling. Returns the new block handle (type/data copied from this
-	 * block — callers applying the baseline split reset type+data).
+	 * sibling. `tail` decides the sibling's type/data (default: copied from
+	 * this block). Returns the new block handle.
 	 */
-	split(offset: number, newId: BlockId): DocBlock | null;
+	split(offset: number, newId: BlockId, tail?: SplitTail): DocBlock | null;
 	/** Baseline merge into the previous block in document order. */
 	mergeBackward(): DocBlock | null;
 	/** Baseline merge pulling the next block in document order into this. */
 	mergeForward(): DocBlock | null;
 	/** Engine merge primitive — `other`'s content+children claim into this. */
 	mergeFrom(other: DocBlock | BlockId): boolean;
-	/** Delete (`del` flag, wins over concurrent moves); `keepChildren` reparents. */
+	/** Delete (per-writer marks on this block and what it displays; R3); `keepChildren` reparents. */
 	delete(opts?: { keepChildren?: boolean }): boolean;
 
 	// ── metadata / replacement ──────────────────────────────────────────
@@ -191,8 +191,8 @@ export const bindNodes = (doc: EdytorDoc) => {
 				return pid !== null && doc.nestBlock(id, pid);
 			},
 			unNest: () => doc.unNestBlock(id),
-			split: (offset, newId) =>
-				doc.splitBlock(id, offset, newId) ? block(sanitizeWireString(newId)) : null,
+			split: (offset, newId, tail) =>
+				doc.splitBlock(id, offset, newId, tail) ? block(sanitizeWireString(newId)) : null,
 			mergeBackward: () => {
 				const t = doc.mergeBackward(id);
 				return t === null ? null : block(t);

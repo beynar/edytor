@@ -955,14 +955,6 @@ export class Edytor {
 	};
 
 	/**
-	 * True while `blockId` is visible in the projected tree — delegates to
-	 * the facade's canonical visibility oracle (`isVisible` + the
-	 * display-ancestor walk) rather than re-deriving it from the memoized
-	 * projected index, so view code has ONE visibility authority (S7).
-	 */
-	isVisibleBlockId = (blockId: string): boolean => this.facade.isVisibleBlock(blockId);
-
-	/**
 	 * Incremental mirror apply — patch the wrapper tree from one committed
 	 * {@link DocChange} instead of re-projecting + re-reconciling the whole
 	 * document (~5ms project + O(doc) reconcile at 5k blocks, per commit).
@@ -1113,7 +1105,7 @@ export class Edytor {
 					!used.has(old) &&
 					old._live &&
 					!claimed.has(old.id) &&
-					this.facade.positionOf(old.id) === null
+					!this.facade.isVisibleBlock(old.id)
 				) {
 					old._drop(keepAlive);
 				}

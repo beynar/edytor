@@ -90,7 +90,16 @@ import {
 	type SliceRecord,
 	type TextBlockRec
 } from './model.js';
-import { AT, CONTENT, DATA, DEL, ID, LAST_CHANGED_ATTR, SLICES, TYPE } from '../schema.js';
+import {
+	AT,
+	CONTENT,
+	DATA,
+	hasDeleteMark,
+	ID,
+	LAST_CHANGED_ATTR,
+	SLICES,
+	TYPE
+} from '../schema.js';
 import { walkIdSetStructs, type IdSetLike, type StoreStruct } from '../structs.js';
 import { cloneJsonSafe } from '../../utils/json.js';
 
@@ -178,7 +187,8 @@ type Facet = 'content' | 'structure' | 'gone' | 'at' | 'meta' | 'ignore';
 
 const facetOf = (attr: string): Facet => {
 	if (attr === CONTENT) return 'content';
-	if (attr === SLICES || attr === DEL) return 'structure';
+	// Per-writer delete marks (`del.<writer>`) fall through to 'structure' below.
+	if (attr === SLICES) return 'structure';
 	// `at` changes placements/display order — never content.
 	if (attr === AT) return 'at';
 	// Payload attrs change only the block's metadata projection — a move or
@@ -722,7 +732,7 @@ export const bindRuns = (Y: EngineApi) => {
 				node,
 				type: typeof type === 'string' ? type : 'unknown',
 				data: node.getAttr(DATA),
-				deleted: node.getAttr(DEL) !== undefined,
+				deleted: hasDeleteMark(node),
 				content: isNodeLike(content) ? content : undefined,
 				slicesNode,
 				entries,

@@ -100,7 +100,7 @@ import {
 	CONTENT,
 	CONTENT_NODE,
 	DATA,
-	DEL,
+	DEL_PREFIX,
 	ID,
 	INLINE_NODE,
 	LAST_CHANGED_ATTR,
@@ -113,14 +113,14 @@ import {
 } from './schema.js';
 import {
 	bindModel,
-	displayParentOf,
-	isVisible,
+	isLiveIn,
 	type BlockId,
 	type BlockSpec,
 	type ContentItem,
 	type Destination,
 	type InlineSpec,
-	type ProjectedBlock
+	type ProjectedBlock,
+	type SplitTail
 } from './placement/model.js';
 import {
 	bindText,
@@ -207,8 +207,8 @@ export const SCHEMA = {
 		id: ID,
 		type: TYPE,
 		data: DATA,
-		/** Presence = explicitly deleted (deletion-wins flag). */
-		del: DEL,
+		/** Per-writer delete-mark key prefix (`del.<writer>: true`; R3). */
+		del: DEL_PREFIX,
 		/**
 		 * U1 `lastChangedBy` — the actor id whose state change currently
 		 * wins LWW on this block. Lives ON the block node so registry-scoped
@@ -1330,12 +1330,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			// unreachable). An id that is visible but untracked can't be
 			// patched → escalate to a full diff BEFORE any `prev` writes —
 			// a half-patched skeleton would swallow the already-applied diffs.
-			const mustEscalate = (id: BlockId): boolean => {
-				if (before.nodes.has(id)) return false;
-				const rec = v.blocks.get(id);
-				if (!rec || rec.deleted || v.own.hidden(id)) return false;
-				return v.placements.has(id); // visible-but-untracked — suspicious
-			};
+			const mustEscalate = (id: BlockId): boolean => !before.nodes.has(id) && isLiveIn(v, id); // live-but-untracked
 			for (const id of content) if (mustEscalate(id)) return fullDiff(origin, local);
 			for (const id of meta) if (mustEscalate(id)) return fullDiff(origin, local);
 			// Pass 2 — diff + patch the skeleton for the tracked ids.
@@ -1644,12 +1639,12 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * new sibling `newId` (no atom copies), children follow the sibling.
 		 * Refused on `void` blocks (no structural flow through voids).
 		 */
-		const splitBlock = (id: BlockId, offset: number, newId: BlockId): boolean =>
+		const splitBlock = (id: BlockId, offset: number, newId: BlockId, tail?: SplitTail): boolean =>
 			write(() =>
 				doc.transact(() => {
 					if (isVoid(id)) return false;
 					const lin = lineagePending(id);
-					const ok = M.splitBlock(doc, id, offset, newId);
+					const ok = M.splitBlock(doc, id, offset, newId, tail);
 					if (ok) {
 						// U1: the tail is authored by the splitter and INHERITS
 						// the source's contributor set — read BEFORE the
@@ -1784,7 +1779,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			});
 
 		/**
-		 * Delete `id` (explicit `del` flag — wins over concurrent moves).
+		 * Delete `id` (R3: this writer's marks on `id` and on what it displays
+		 * through merge claims — wins over concurrent moves).
 		 * `keepChildren` reparents the children to `id`'s vacated slot with
 		 * their identity PRESERVED — an intentional improvement over the
 		 * baseline, which cloned children into fresh `Block`s.
@@ -1821,8 +1817,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const setBlockType = (id: BlockId, type: string): boolean =>
 			write(() =>
 				doc.transact(() => {
-					const node = M.liveNodeOf(doc, id);
-					if (!node) return false;
+					if (!M.isLive(doc, id)) return false;
+					const node = M.blockNodeOf(doc, id)!;
 					// Boundary normalization (F2-M1) — lone surrogates become
 					// U+FFFD, matching what the wire encode would deliver.
 					const clean = sanitizeWireString(type);
@@ -1840,8 +1836,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const setBlockData = (id: BlockId, data: Record<string, unknown>): boolean =>
 			write(() =>
 				doc.transact(() => {
-					const node = M.liveNodeOf(doc, id);
-					if (!node) return false;
+					if (!M.isLive(doc, id)) return false;
+					const node = M.blockNodeOf(doc, id)!;
 					const clean = sanitizeWireJson(data);
 					if (jsonEquals(node.getAttr(SCHEMA.blockAttrs.data), clean)) return true;
 					const lin = lineagePending(id);
@@ -1943,43 +1939,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return runsView.contentItems(id);
 		};
 
-		/** Registry membership — the block exists (may be `del`-flagged or merged away). */
+		/** Registry membership — the block exists (may be delete-marked or merged away). */
 		const hasBlock = (id: BlockId): boolean => M.blockNodeOf(doc, id) !== null;
 
-		/**
-		 * Projected-tree membership — `id` renders in `project()`'s tree (live,
-		 * not merged away, every display ancestor visible). This is
-		 * `positionInView` minus its sibling-index materialization: the
-		 * `childrenOf` scan there can never fail once the ancestor walk passes
-		 * (a visible block always lands in its display parent's child list), so
-		 * the boolean oracle is O(depth) instead of O(#placements) per call.
-		 * Hot paths that only need the null-vs-node verdict of
-		 * `positionOf(id) !== null` (e.g. the text-segment refresh, which
-		 * distinguishes hidden/deleted from empty-content `[]`) use this
-		 * instead of materializing the position.
-		 */
-		const isVisibleBlock = (id: BlockId): boolean => {
-			const { blocks, placements, own } = view();
-			if (!isVisible(blocks, own, id)) return false;
-			const pl = placements.get(id);
-			if (pl === undefined) return false;
-			const first = displayParentOf(own, pl);
-			if (first === DEAD) return false;
-			// Walk the display-ancestor chain: any dead or invisible ancestor
-			// hides the whole subtree (mirrors `positionInView`).
-			let cur: BlockId | null = first;
-			const seen = new Set<BlockId>();
-			while (cur !== null && !seen.has(cur)) {
-				seen.add(cur);
-				if (!isVisible(blocks, own, cur)) return false;
-				const cp = placements.get(cur);
-				if (cp === undefined) return false;
-				const next = displayParentOf(own, cp);
-				if (next === DEAD) return false;
-				cur = next;
-			}
-			return true;
-		};
+		/** The one liveness answer ({@link isLiveIn}): `id` renders in `project()`. O(depth). */
+		const isVisibleBlock = (id: BlockId): boolean => M.isLive(doc, id);
 
 		// ── caret anchors (U09) ──────────────────────────────────────────
 		// Anchors bind selection endpoints to BACKING-text atoms — the
@@ -2276,7 +2240,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			}
 		): boolean =>
 			write(() => {
-				if (!M.liveNodeOf(doc, id)) return false;
+				if (!M.isLive(doc, id)) return false;
 				if (value.children !== undefined && isVoid(id)) return false;
 				return doc.transact(() => {
 					// U1: leaf `setBlockType`/`setBlockData` self-stamp when the
@@ -2450,7 +2414,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			marks: Record<string, unknown>
 		): boolean =>
 			write(() => {
-				if (!M.liveNodeOf(doc, id)) return false;
+				if (!M.isLive(doc, id)) return false;
 				return doc.transact(() => {
 					const { blocks, own } = view();
 					// U1: `formatRangeIn` returns false on empty/clamped-away

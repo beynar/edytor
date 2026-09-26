@@ -37,6 +37,16 @@ const ed = (peer: Peer) => {
 
 const text = (peer: Peer, id: string) => ed(peer).blockText(id);
 
+/**
+ * D-14 (R3): a delete now hides everything the block displays, including
+ * what it displays through merge claims, so the pre-D1 "a deleted holder
+ * releases its coverage" state these probes start from is staged by
+ * removing the registry entry instead — an absent block's records claim
+ * nothing, exactly what the old delete produced.
+ */
+const dropBlock = (peer: Peer, id: string) =>
+	peer.doc.transact(() => peer.doc.get('blocks').deleteAttr(id));
+
 const SEED = (doc) => {
 	E.init(doc, {
 		content: [{ id: 'b', type: 'paragraph', content: [{ kind: 'text', text: 'abcdefghij' }] }]
@@ -57,8 +67,8 @@ const stageFragmented = (set) => {
 	set.deliver('A', 'B');
 	set.deliver('B', 'A');
 	assertConverged(set, ops);
-	ops.deleteBlock(A, 'mid2');
-	ops.deleteBlock(A, 'tail');
+	dropBlock(A, 'mid2');
+	dropBlock(A, 'tail');
 	expect(text(A, 'early')).toBe('dehj');
 	expect(text(A, 'mid1')).toBe('fg');
 	expect(text(A, 'mid3')).toBe('i');

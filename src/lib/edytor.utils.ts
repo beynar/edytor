@@ -221,7 +221,7 @@ export function deleteContentWithinSelection(
 	startBlock?.parent?.normalizeChildren();
 
 	const liveFallbackText =
-		fallbackText && this.isVisibleBlockId(fallbackText.parent.id)
+		fallbackText && this.facade.isVisibleBlock(fallbackText.parent.id)
 			? fallbackText
 			: (this.root?.children[0]?.firstText ?? null);
 	return [liveFallbackText, liveFallbackText === fallbackText ? fallbackOffset : 0] as const;

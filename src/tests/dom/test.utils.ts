@@ -20,6 +20,7 @@ import {
 	findCursorPosition
 } from '../test.utils.js';
 import EdytorHarness from './EdytorHarness.svelte';
+import { compareAllShadows } from './selectionShadow.js';
 
 export type RenderDomEdytorOptions = {
 	plugins?: Plugin[];
@@ -155,6 +156,7 @@ export const flushDomUpdates = async () => {
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	await Promise.resolve();
 	await tick();
+	compareAllShadows('flush');
 };
 
 const setElementSelection = async (

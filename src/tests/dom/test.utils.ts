@@ -20,6 +20,7 @@ import {
 	findCursorPosition
 } from '../test.utils.js';
 import EdytorHarness from './EdytorHarness.svelte';
+import { compareAllCells } from './cellsShadow.js';
 
 export type RenderDomEdytorOptions = {
 	plugins?: Plugin[];
@@ -155,6 +156,7 @@ export const flushDomUpdates = async () => {
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	await Promise.resolve();
 	await tick();
+	compareAllCells('flush');
 };
 
 const setElementSelection = async (

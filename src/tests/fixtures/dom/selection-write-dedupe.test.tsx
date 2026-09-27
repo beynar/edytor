@@ -141,7 +141,7 @@ describe('U8a — native selection write dedupe', () => {
 	// flag only suppresses while an inline-atom selection is live, and
 	// every site that raises it has just cleared that set — these tests
 	// pin the non-swallow invariant.
-	test('a stale ignore flag does not swallow the next real caret selectionchange', async () => {
+	test('after a deduped write, the next real caret selectionchange is adopted', async () => {
 		const rendered = await renderDomEdytor(
 			<root>
 				<paragraph>hello world</paragraph>
@@ -153,17 +153,15 @@ describe('U8a — native selection write dedupe', () => {
 		await edytor.selection.setAtTextOffset(text, 2);
 		await flushDomUpdates();
 
-		// The programmatic write was deduped → no echo arrived → the flag
-		// is still raised when the user's real selectionchange lands.
-		edytor.selection.ignoreNextSelectionChange = true;
+		// The programmatic write was deduped → no echo arrived; the user's
+		// real selectionchange is a gesture, adopted (no ignore flag, V5).
 		await setNativeSelection(edytor, text, 8);
 
-		expect(edytor.selection.ignoreNextSelectionChange).toBe(false);
 		expect(edytor.selection.state.yStart).toBe(8);
 		expect(edytor.selection.state.isCollapsed).toBe(true);
 	});
 
-	test('a stale ignore flag does not swallow a real inline-atom selectionchange', async () => {
+	test('a real inline-atom selectionchange selects the atom', async () => {
 		const rendered = await renderDomEdytor(
 			<root>
 				<paragraph>
@@ -175,12 +173,9 @@ describe('U8a — native selection write dedupe', () => {
 		);
 		const { edytor } = rendered;
 
-		edytor.selection.ignoreNextSelectionChange = true;
-		// A real drag covering exactly the mention atom must still select
-		// it — the flag check runs BEFORE the derive repopulates the set.
+		// A real drag covering exactly the mention atom selects it.
 		await dragSelection(edytor, [0, 0], 0, [0, 2], 0);
 
-		expect(edytor.selection.ignoreNextSelectionChange).toBe(false);
 		expect(edytor.selection.selectedInlineBlock.size).toBe(1);
 	});
 

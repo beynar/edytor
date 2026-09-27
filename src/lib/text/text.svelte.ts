@@ -622,13 +622,9 @@ export class Text {
 		this.refreshFromProject();
 		// `domVersion` is part of the content each-key — bumping it remounts
 		// the span. Never bump while the composition pin holds: the IME owns
-		// that DOM node until `compositionend`. The remount can re-park a
-		// live DOM caret — mark the churn eagerly so a same-task
-		// selectionchange echo is recognized as drift, not user intent.
-		if (!this._compositionLocked) {
-			this.edytor.markDomSelectionChurn();
-			this.domVersion += 1;
-		}
+		// that DOM node until `compositionend`. A remount under the caret is a
+		// render the projector displays after (`mounted`).
+		if (!this._compositionLocked) this.domVersion += 1;
 	};
 
 	syncFromModel = () => {
@@ -711,7 +707,6 @@ export class Text {
 
 	/** Mark the wrapper dead — the segment it mirrored no longer exists. */
 	_kill = () => {
-		this.edytor.markDomSelectionChurn();
 		this._live = false;
 		this._segOrd = -1;
 		this._items = [];
@@ -756,11 +751,6 @@ export class Text {
 		// render (the DOM the IME anchored to). Then track the region so
 		// `compositionState.startOffset`/`regionLength` stay model-true.
 		this._acquireCompositionPin();
-		// This render rewrites the span's DOM — a live DOM caret inside it
-		// can be re-parked by the browser (Gecko clamps into a shortened
-		// node). Mark eagerly: observer timing reports too late for engines
-		// that dispatch `selectionchange` synchronously.
-		this.edytor.markDomSelectionChurn();
 		this._items = items;
 		this._syncCompositionRegion();
 		this.syncDerived();
@@ -934,10 +924,6 @@ export class Text {
 			node.style.outline = 'none';
 		}
 
-		// A span (re)mount under a live selection endpoint re-parks the DOM
-		// caret — mark the churn before the browser's echo can be mistaken
-		// for a user move.
-		this.edytor.markDomSelectionChurn();
 		// A display that waited for a mounted destination runs in the next pass.
 		this.edytor.projector?.mounted(this);
 

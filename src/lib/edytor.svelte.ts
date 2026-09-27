@@ -243,19 +243,6 @@ export class Edytor {
 	 */
 	suppressCaretScrollDepth = 0;
 	/**
-	 * Internal render churn — incremented whenever the engine is about to
-	 * mutate DOM that could re-park a live caret (text span remounts,
-	 * in-place text-node rewrites, endpoint attach/destroy). Read by the
-	 * selection layer, which baselines it per user gesture: a
-	 * `selectionchange` echo arriving at an unchanged gesture serial while
-	 * churn has advanced past the baseline is browser caret re-parking —
-	 * drift to revert — not a user decision to derive.
-	 */
-	domSelectionChurnSeq = 0;
-	markDomSelectionChurn = () => {
-		this.domSelectionChurnSeq++;
-	};
-	/**
 	 * The wrapper currently holding the composition render pin — set by
 	 * `Text._acquireCompositionPin`, cleared by `_releaseCompositionPin`
 	 * (or lazily when the pin drops). Lets commit/cancel paths release the
@@ -322,8 +309,6 @@ export class Edytor {
 	readonly attempts = new Attempts();
 	/** The DOM observer: the only adopter of browser-made text (R8, L31). */
 	observer: ReturnType<typeof observeDomTextMutations> | null = null;
-	private compositionSelectionRestoreFrame: number | null = null;
-	private compositionSelectionRestoreTimers: ReturnType<typeof setTimeout>[] = [];
 	private danglingCompositionBlurTimer: ReturnType<typeof setTimeout> | null = null;
 	private compositionEndedAt = Number.NEGATIVE_INFINITY;
 
@@ -1148,15 +1133,7 @@ export class Edytor {
 	 */
 	markUserGesture = () => {
 		this.intentSerial++;
-		// Baseline churn at gesture-start so churn caused by the gesture's
-		// own effects stays outstanding for later quiet-serial echoes.
-		this.churnBaselineAtGesture = this.domSelectionChurnSeq;
 	};
-	/**
-	 * `domSelectionChurnSeq` snapshotted when the last gesture began —
-	 * see `restoreDriftedEchoCaret` in the selection layer.
-	 */
-	churnBaselineAtGesture = 0;
 	/**
 	 * The next `focusin` was caused by the editor's own `.focus()` call —
 	 * a selection write refocusing its text host is programmatic
@@ -1197,14 +1174,6 @@ export class Edytor {
 	/** Run `body` as part of the user's input (deferred work of an occurrence). */
 	userInput = <T>(body: () => T) =>
 		this.withUserInput(body, { bumpSerial: false })(new Event('input'));
-	clearCompositionSelectionRestore = () => {
-		if (this.compositionSelectionRestoreFrame !== null) {
-			cancelAnimationFrame(this.compositionSelectionRestoreFrame);
-			this.compositionSelectionRestoreFrame = null;
-		}
-		this.compositionSelectionRestoreTimers.forEach((timer) => clearTimeout(timer));
-		this.compositionSelectionRestoreTimers = [];
-	};
 	private clearDanglingCompositionBlurTimer = () => {
 		if (!this.danglingCompositionBlurTimer) {
 			return;
@@ -1219,7 +1188,6 @@ export class Edytor {
 			return;
 		}
 
-		this.clearCompositionSelectionRestore();
 		this.compositionState = null;
 		this.compositionStartReplacementState = null;
 		this.isComposing = false;
@@ -1238,79 +1206,33 @@ export class Edytor {
 			this.resetDanglingComposition();
 		}, 50);
 	};
+	/**
+	 * A commit's caret: select it (the projector displays it once the pin's
+	 * render lands) and arm the IME post-commit jump rule — a move right after
+	 * the commit with no gesture since is displayed back (`surface/projector`).
+	 */
 	stabilizeCompositionSelection = async (textOrId: Text | string, offset: number) => {
 		// Every commit path funnels through here — release the render pin so
 		// the DOM converges to the model (covers paths like
 		// `finishCompositionFromBeforeInput` that never touch Text directly).
 		this._compositionHostText?._releaseCompositionPin();
-		const textId = typeof textOrId === 'string' ? textOrId : textOrId.id;
-		const armedSerial = this.intentSerial;
-		const restore = async (disarmedByUserGesture: boolean) => {
-			if (this.readonly || this.isComposing) {
-				return;
-			}
-
-			const text = this.getTextById(textId);
-			if (!text) {
-				return;
-			}
-			const targetOffset = Math.min(offset, text.length);
-
-			if (disarmedByUserGesture && this.intentSerial !== armedSerial) {
-				// A real user gesture (click/key/paste) landed after this
-				// restore was armed — the user owns the caret now. The
-				// browser's spontaneous post-commit selection jump carries
-				// no gesture, so it still gets repaired.
-				return;
-			}
-
-			const selection = getDomSelection(this.node);
-			const hasSelectionInEditor = Boolean(
-				this.node && selection?.anchorNode && this.node.contains(selection.anchorNode)
-			);
-			const hasModelSelectionInEditor = Boolean(
-				this.node &&
-				this.selection.state.startText?.node &&
-				this.node.contains(this.selection.state.startText.node)
-			);
-			const activeElement = getActiveElement(this.node);
-			if (
-				this.node &&
-				activeElement &&
-				!this.node.contains(activeElement) &&
-				!hasSelectionInEditor &&
-				!hasModelSelectionInEditor
-			) {
-				return;
-			}
-			// Focus moved into a nested editable island (e.g. Tab into a
-			// plugin-owned field) — the island owns its caret; writing the
-			// model selection back would steal focus from it.
-			if (activeElement && isNestedForeignEditableTarget(this.node, activeElement)) {
-				return;
-			}
-
-			await this.selection.setAtTextOffset(text, targetOffset);
-		};
-
-		this.clearCompositionSelectionRestore();
-		await restore(false);
-
-		if (typeof requestAnimationFrame === 'function') {
-			this.compositionSelectionRestoreFrame = requestAnimationFrame(() => {
-				this.compositionSelectionRestoreFrame = null;
-				void restore(true);
-			});
-		}
-
-		this.compositionSelectionRestoreTimers = [
-			setTimeout(() => {
-				void restore(true);
-			}, 0),
-			setTimeout(() => {
-				void restore(true);
-			}, 30)
-		];
+		const text = this.getTextById(typeof textOrId === 'string' ? textOrId : textOrId.id);
+		if (this.readonly || this.isComposing || !text) return;
+		const active = getActiveElement(this.node);
+		const selection = getDomSelection(this.node);
+		const ours = (node?: Node | null) => Boolean(node && this.node?.contains(node));
+		// Focus left for a foreign element with no selection of ours, or moved
+		// into a nested editable island (its own caret): the user owns it.
+		if (
+			(active &&
+				!ours(active) &&
+				!ours(selection?.anchorNode) &&
+				!ours(this.selection.state.startText?.node)) ||
+			(active && isNestedForeignEditableTarget(this.node, active))
+		)
+			return;
+		this.projector.committed();
+		await this.selection.setAtTextOffset(text, Math.min(offset, text.length));
 	};
 	onCompositionStart = (event?: CompositionEvent) => {
 		if (event && isNativeInteractiveEvent(event)) {
@@ -1328,7 +1250,6 @@ export class Edytor {
 		}
 
 		this.clearDanglingCompositionBlurTimer();
-		this.clearCompositionSelectionRestore();
 		this.compositionEndedAt = Number.NEGATIVE_INFINITY;
 		this.compositionState = null;
 		this.selection.applySelectionSnapshot(getDomSelectionSnapshot(this.node));
@@ -1766,6 +1687,7 @@ export class Edytor {
 			on(node.ownerDocument, 'pointercancel', () => {
 				this.selection.clearPointerDragStart();
 			}),
+			on(node, 'mousedown', this.selection.preventNativeTripleClick),
 			on(node, 'click', this.selection.handleTripleClick),
 			// Settle queued mutation repairs before the native menu opens —
 			// spellcheck suggestions are computed against the DOM at this
@@ -1835,7 +1757,6 @@ export class Edytor {
 				clearAttachedNativeState();
 				this.selection.destroy();
 				this.attempts.clear();
-				this.clearCompositionSelectionRestore();
 				this.clearDanglingCompositionBlurTimer();
 				// Drain AND clear: `attach` re-runs on every `{#key
 				// editorDomRevision}` remount — leaving the spent batch in place
@@ -1887,7 +1808,6 @@ export class Edytor {
 		this.selection.destroy();
 
 		this.attempts.clear();
-		this.clearCompositionSelectionRestore();
 		this.clearDanglingCompositionBlurTimer();
 		// Pending placeholder-repair passes (microtask/rAF/timers) must
 		// never act on a destroyed view — release kills them all.

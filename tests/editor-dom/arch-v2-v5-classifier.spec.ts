@@ -108,8 +108,6 @@ test.describe('V5 classifier — F-S10 (after settle the DOM caret is the model 
 	test('(c) a move with no gesture right after typing: DOM and model agree after settle', async ({
 		page
 	}) => {
-		// Red on arch-v2/ref-v5 on all three engines (V5 flips it).
-		test.fail();
 		const issues = trackPageIssues(page);
 		await open(page);
 		await setSelectionByTextIndex(page, 0, 2);

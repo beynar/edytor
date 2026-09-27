@@ -301,8 +301,7 @@ export const setNativeSelection = async (
 	}
 
 	// A fixture placement IS a user decision — mark the gesture so the
-	// echo at the new serial is admitted instead of gated as render-churn
-	// drift (`restoreDriftedEchoCaret`).
+	// projector classifies it as intent, not as render drift.
 	edytor.markUserGesture();
 	const startNode = await textNodeOf(startText);
 	const endNode = await textNodeOf(endText);

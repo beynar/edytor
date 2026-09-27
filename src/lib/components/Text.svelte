@@ -176,10 +176,6 @@
 	const trackTextDomContent = (node: HTMLElement) => {
 		const updateDomTextState = () => {
 			hasDomText = Boolean(node.textContent?.replaceAll('​', '').length);
-			// Any observed mutation under a text span can re-park a live DOM
-			// caret — mark it so the trailing selectionchange echo is
-			// reverted, not derived as a user move.
-			text.edytor.markDomSelectionChurn();
 			scheduleRemoveStalePlaceholders(text);
 		};
 

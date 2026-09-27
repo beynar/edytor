@@ -88,7 +88,6 @@ const shouldRefreshSelectionBeforeKeyDown = (edytor: Edytor, event: KeyboardEven
 	!modifierKeys.has(event.key) &&
 	hasCommandModifier(event) &&
 	edytor.selection.state.isCollapsed &&
-	!edytor.selection.ignoreNextSelectionChange &&
 	edytor.selection.selectedBlocks.size === 0 &&
 	edytor.selection.selectedInlineBlock.size === 0 &&
 	!isNativeInteractiveEvent(event);

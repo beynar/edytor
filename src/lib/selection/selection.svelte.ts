@@ -48,7 +48,7 @@ import {
 	type SelectionValue
 } from '$lib/session/selection.js';
 import { seam } from '$lib/crdt/anchors.js';
-import { getTextPath, isAndroidChromeBrowser } from '$lib/events/events.utils.js';
+import { getTextPath } from '$lib/events/events.utils.js';
 
 /**
  * CRDT-stable anchor for a text position — `{b}` is the home block id of
@@ -289,16 +289,6 @@ type DocumentWithCaretPoint = Document & {
 };
 
 /**
- * Android Chrome mutates the DOM anyway after a canceled
- * `deleteContentBackward`/`deleteContentForward` and then reports a
- * `selectionchange` whose caret sits one position right of the
- * model-computed merge point (Lexical's `postDeleteSelectionToRestore`
- * equivalent). The restore window only needs to cover the post-delete
- * echo, which lands in the same task or the next frame.
- */
-const ANDROID_POST_DELETE_RESTORE_WINDOW_MS = 250;
-
-/**
  * A block's text endpoint for block-level selection state. A kind that
  * displays no text (a divider) has none; its own content slot stands in as
  * the model endpoint of the block selection (selection state holds texts
@@ -320,15 +310,6 @@ export class EdytorSelection {
 	 * value is selected right after.
 	 */
 	expectHistoryRestore = false;
-	ignoreNextSelectionChange = $state(false);
-	ignoreNextSelectedBlockSelectionChange = $state(false);
-	/**
-	 * The collapsed caret target written by a cross-text jump — the
-	 * write a backward merge/delete ends with. An Android-shifted
-	 * `selectionchange` reporting `offset + 1` on that same text gets
-	 * snapped back to this target (the named Android rule, V5).
-	 */
-	private postDeleteCaretTarget: { text: Text; offset: number; at: number } | null = null;
 	private pointerDragStart: PointerTextPoint | null = null;
 	private selectionDocument: Document | null = null;
 	private shouldKeepModelSelectionForNextTextInsertion = false;
@@ -548,11 +529,6 @@ export class EdytorSelection {
 		for (const id of this.#edges) if (!edges.includes(id)) this.suggestions.delete(id);
 		this.#edges = edges;
 		const state = this.state;
-		this.#caret = {
-			startText: state.startText,
-			yStart: state.yStart,
-			isCollapsed: state.isCollapsed
-		};
 		this.edytor.history?.selected(value);
 		if (state.startText) {
 			this.#lastText = state.startText;
@@ -647,18 +623,6 @@ export class EdytorSelection {
 	get dragging() {
 		return this.pointerDragStart !== null;
 	}
-
-	/**
-	 * The caret as the last `select()` left it — the Android snap-back's
-	 * arming evidence ("a write moved a caret that sat at a text start"),
-	 * which a projection that already followed the merge cannot give.
-	 */
-	#caret: { startText: Text | null; yStart: number; isCollapsed: boolean } = {
-		startText: null,
-		yStart: 0,
-		isCollapsed: true
-	};
-	private caretSignature = () => this.#caret;
 
 	private getBlockByPath = (path: number[] | null) => {
 		if (!path?.length) {
@@ -789,12 +753,17 @@ export class EdytorSelection {
 		const targetNode = event.target instanceof Node ? event.target : null;
 		const targetBlock = this.getNonNativeEditableBlockChromeBlock(targetNode);
 		const targetText = targetBlock?.firstText;
-		if (!targetText) {
+		// A native control inside the chrome (a void block's input) owns its press.
+		if (!targetText || isNativeInteractiveEvent(event)) {
 			return;
 		}
 
+		// The model answers this press: the browser's own caret placement on
+		// the chrome is cancelled (a canceled pointerdown moves no selection).
+		event.preventDefault();
+		this.edytor.expectInternalFocus();
+		this.edytor.node?.focus({ preventScroll: true });
 		void this.setAtTextOffset(targetText, 0);
-		this.ignoreNextSelectionChange = true;
 	};
 
 	private normalizeTextRangePoints = (
@@ -843,17 +812,18 @@ export class EdytorSelection {
 		}
 	};
 
-	handleTripleClick = async (e: MouseEvent) => {
+	/**
+	 * A triple click selects the block's content in the model; the browser's
+	 * own multi-click selection is cancelled at its `mousedown`
+	 * (`preventNativeTripleClick`), so no native selection competes with the display.
+	 */
+	handleTripleClick = (e: MouseEvent) => {
 		if (e.detail < 3) return;
 		const targetNode = e.target instanceof Node ? e.target : null;
 		const clickedBlock = this.getBlockOfNode(targetNode);
 		if (clickedBlock?.definition.void && !this.isInsideEditableText(targetNode)) {
 			e.preventDefault();
-			window.requestAnimationFrame(() => {
-				window.setTimeout(() => {
-					this.selectBlocks(clickedBlock);
-				});
-			});
+			this.selectBlocks(clickedBlock);
 			return;
 		}
 
@@ -865,20 +835,11 @@ export class EdytorSelection {
 			this.setStateFromBlockContentRange(targetBlock);
 			this.shouldKeepModelSelectionForNextTextInsertion = true;
 			this.modelSelectionPreservationBlock = targetBlock;
-			this.ignoreNextSelectionChange = true;
 		}
-		window.requestAnimationFrame(() => {
-			window.setTimeout(() => {
-				if (!targetBlock) {
-					return;
-				}
-				if (!this.isStateBlockContentRange(targetBlock)) {
-					return;
-				}
+	};
 
-				void this.setAtBlockRange(targetBlock);
-			});
-		});
+	preventNativeTripleClick = (e: MouseEvent) => {
+		if (e.detail >= 3) e.preventDefault();
 	};
 
 	private getTextPointFromClientPoint = (clientX: number, clientY: number) => {
@@ -1052,254 +1013,24 @@ export class EdytorSelection {
 			boundary = boundary.parentElement;
 		}
 	};
-	private nativeSelectionMatchesCurrentBlockSeam = (selection: DomSelectionSnapshot | null) => {
-		const { startText, endText, yStart, yEnd, isBlockSpanning, isCollapsed, isReversed } =
-			this.state;
-		if (
-			!selection?.anchorNode ||
-			!selection.focusNode ||
-			selection.isCollapsed ||
-			isCollapsed ||
-			!isBlockSpanning ||
-			!startText ||
-			!endText ||
-			yStart !== startText.length ||
-			yEnd !== 0
-		) {
-			return false;
-		}
-
-		const nativeIsReversed = isBackward(selection);
-		const nativeStartNode = nativeIsReversed ? selection.focusNode : selection.anchorNode;
-		const nativeStartOffset = nativeIsReversed ? selection.focusOffset : selection.anchorOffset;
-		const nativeEndNode = nativeIsReversed ? selection.anchorNode : selection.focusNode;
-		const nativeEndOffset = nativeIsReversed ? selection.anchorOffset : selection.focusOffset;
-
-		return (
-			nativeIsReversed === isReversed &&
-			this.getTextOfNode(nativeStartNode) === startText &&
-			this.getTextOfNode(nativeEndNode) === endText &&
-			getYIndex(startText, nativeStartNode, nativeStartOffset) === yStart &&
-			getYIndex(endText, nativeEndNode, nativeEndOffset) === yEnd
-		);
-	};
-
+	/**
+	 * One classifier (R10, the projector): an echo or a DOM state older than a
+	 * display still to land is ignored, drift is displayed again, and a foreign
+	 * write, intent or a composition's move is adopted.
+	 */
 	onSelectionChange = () => {
 		const selection = getDomSelectionSnapshot(this.edytor.node);
-		// The echo of the projector's own display, or a DOM state older than a
-		// display still to land, is not intent (R10).
-		if (this.edytor.projector.isEcho(selection) || this.edytor.projector.awaited) return;
-		if (this.ignoreNextSelectedBlockSelectionChange) {
-			this.ignoreNextSelectedBlockSelectionChange = false;
-			this.ignoreNextSelectionChange = false;
-			return;
-		}
-		if (this.selectedBlocks.size > 0) {
-			this.ignoreNextSelectionChange = false;
-			return;
-		}
-		if (this.nativeSelectionMatchesCurrentBlockSeam(selection)) {
-			return;
-		}
-		if (this.ignoreNextSelectionChange) {
-			this.ignoreNextSelectionChange = false;
-
-			if (this.selectedInlineBlock.size > 0) {
-				return;
-			}
-		}
-
-		if (this.restorePostDeleteShiftedCaret(selection)) {
-			return;
-		}
-
-		if (this.restoreDriftedEchoCaret(selection)) {
-			return;
-		}
-
-		this.lastEchoGestureSerial = this.edytor.intentSerial;
+		const observation = this.edytor.projector.classify(selection);
+		if (observation === 'echo') return;
+		if (observation === 'drift') return this.display();
 		this.applySelectionSnapshot(selection);
-	};
-
-	/**
-	 * The gesture serial observed when the last selectionchange echo was
-	 * admitted — `restoreDriftedEchoCaret`'s user-decision discriminator.
-	 * A serial change between echoes means a real gesture (pointer, key,
-	 * focus) owns the new DOM position; an unchanged serial means the DOM
-	 * caret moved without one — internal render churn re-parked it.
-	 */
-	private lastEchoGestureSerial = -1;
-
-	/**
-	 * Gecko caret-drift guard. When a render mutates the DOM under a live
-	 * caret (a delta re-split shortening the text node, a keyed span
-	 * remount), Firefox re-parks the caret at the surviving boundary —
-	 * one position off — and the echo would re-mint anchors from the
-	 * drifted spot. Detection is deliberately structural: every real user
-	 * caret move is preceded by a gesture event (pointerdown/focusin/
-	 * keydown/beforeinput → `markUserGesture` bumps `intentSerial` and
-	 * baselines `domSelectionChurnSeq`), so an echo at an unchanged serial
-	 * while churn is still outstanding for the gesture window is drift —
-	 * revert DOM to the resolved anchors. A matching echo derives as
-	 * before; a quiet-serial echo with no outstanding churn is an
-	 * ordinary foreign/programmatic write and derives too.
-	 */
-	private restoreDriftedEchoCaret = (selection: DomSelectionSnapshot | null): boolean => {
-		const state = this.state;
-		if (this.edytor.intentSerial !== this.lastEchoGestureSerial) {
-			return false;
-		}
-		// Drift needs a render since the gesture AND since the last observation
-		// (a display or a derive): with none, the move is a foreign write (F-S4).
-		if (
-			this.edytor.domSelectionChurnSeq === this.edytor.churnBaselineAtGesture ||
-			!this.edytor.projector.renderedSinceObservation
-		) {
-			return false;
-		}
-		if (
-			this.edytor.isComposing ||
-			this.edytor.isHandlingUserInput ||
-			this.pointerDragStart !== null ||
-			this.expectHistoryRestore ||
-			this.selectedBlocks.size > 0 ||
-			this.selectedInlineBlock.size > 0 ||
-			!state.relativePosition ||
-			!state.startText ||
-			state.isBlockSpanning ||
-			state.isVoid
-		) {
-			return false;
-		}
-		// The state is the projection of the anchors at this version.
-		const resolved = { text: state.startText, offset: state.yStart };
-		const resolvedEnd = { text: state.endText ?? state.startText, offset: state.yEnd };
-		const container = this.edytor.node;
-		if (!container || !selection?.anchorNode || !selection.focusNode) {
-			return false;
-		}
-		if (!container.contains(selection.anchorNode)) {
-			return false;
-		}
-		const nativeIsReversed = isBackward(selection);
-		const domStartNode = nativeIsReversed ? selection.focusNode : selection.anchorNode;
-		const domStartOffset = nativeIsReversed ? selection.focusOffset : selection.anchorOffset;
-		const domEndNode = nativeIsReversed ? selection.anchorNode : selection.focusNode;
-		const domEndOffset = nativeIsReversed ? selection.anchorOffset : selection.focusOffset;
-		const domStartText = this.getTextOfNode(domStartNode);
-		const domEndText = this.getTextOfNode(domEndNode);
-		if (
-			selection.isCollapsed === state.isCollapsed &&
-			domStartText === resolved.text &&
-			domEndText === resolvedEnd.text &&
-			getYIndex(resolved.text, domStartNode, domStartOffset) === resolved.offset &&
-			getYIndex(resolvedEnd.text, domEndNode, domEndOffset) === resolvedEnd.offset
-		) {
-			return false;
-		}
-		if (resolved.text === resolvedEnd.text && resolved.offset === resolvedEnd.offset) {
-			void this.setAtTextOffset(resolved.text, resolved.offset);
-			return true;
-		}
-		void this.setAtRange(resolved.text, resolved.offset, resolvedEnd.text, resolvedEnd.offset, {
-			isReversed: state.isReversed
-		});
-		return true;
-	};
-
-	/**
-	 * Android Chrome post-delete caret repair (Lexical
-	 * `postDeleteSelectionToRestore` analogue). After a canceled backward
-	 * delete Chrome mutates the DOM regardless and emits a
-	 * `selectionchange` whose collapsed caret lands exactly one position
-	 * right of the merge point the model just wrote. When the incoming
-	 * snapshot is that tell-tale — same text, `target + 1`, while the
-	 * model still sits at `target` — restore the model caret instead of
-	 * deriving from the shifted DOM position.
-	 *
-	 * The `state` equality guard is what makes this safe against real
-	 * caret moves: any legitimate move (hotkey, programmatic write, or an
-	 * earlier real selectionchange) re-derives `state` off the recorded
-	 * target first, so the check can only fire for the immediate
-	 * post-delete echo.
-	 */
-	private restorePostDeleteShiftedCaret = (selection: DomSelectionSnapshot | null) => {
-		const target = this.postDeleteCaretTarget;
-		if (!target || !isAndroidChromeBrowser()) {
-			return false;
-		}
-		const now = Date.now();
-		if (now - target.at > ANDROID_POST_DELETE_RESTORE_WINDOW_MS) {
-			this.postDeleteCaretTarget = null;
-			return false;
-		}
-		if (!selection?.isCollapsed || !selection.anchorNode) {
-			return false;
-		}
-		const { startText, yStart, isCollapsed } = this.state;
-		if (!isCollapsed || startText !== target.text || yStart !== target.offset) {
-			return false;
-		}
-		if (this.getTextOfNode(selection.anchorNode) !== target.text) {
-			return false;
-		}
-		if (
-			getYIndex(target.text, selection.anchorNode, selection.anchorOffset) !==
-			target.offset + 1
-		) {
-			return false;
-		}
-
-		this.postDeleteCaretTarget = null;
-		void this.setAtTextOffset(target.text, target.offset);
-		return true;
-	};
-
-	/**
-	 * Records the collapsed caret just written to the DOM as the target
-	 * Android's post-delete shift gets compared against. Armed by the
-	 * cross-paragraph backward-delete signature: the caret was collapsed
-	 * at the START of one text (where `deleteContentBackward` merges
-	 * into the previous block) and the write lands inside a DIFFERENT
-	 * text — the merge point — AND a delete command ran inside the
-	 * snap-back window (`lastDeleteCommandAt`). Navigational writes with
-	 * the same position signature (ArrowLeft at a text start, placeholder
-	 * focus) never arm, so a real caret move can't be snapped back.
-	 */
-	lastDeleteCommandAt = 0;
-	private recordPostDeleteCaretTarget = (previous: {
-		startText: Text | null;
-		yStart: number;
-		isCollapsed: boolean;
-	}) => {
-		const written = this.state;
-		if (
-			!previous.isCollapsed ||
-			!previous.startText ||
-			previous.yStart !== 0 ||
-			!written.isCollapsed ||
-			!written.startText ||
-			written.startText === previous.startText ||
-			Date.now() - this.lastDeleteCommandAt > ANDROID_POST_DELETE_RESTORE_WINDOW_MS
-		) {
-			return;
-		}
-
-		this.postDeleteCaretTarget = {
-			text: written.startText,
-			offset: written.yStart,
-			at: Date.now()
-		};
 	};
 
 	applySelectionSnapshot = (
 		selection: DomSelectionSnapshot | null,
 		options: { restoreNormalizedDomRange?: boolean } = {}
 	) => {
-		if (this.ignoreNextSelectedBlockSelectionChange || this.selectedBlocks.size > 0) {
-			this.ignoreNextSelectedBlockSelectionChange = false;
-			return;
-		}
+		if (this.selectedBlocks.size > 0) return;
 
 		const container = this.edytor.container;
 		if (
@@ -1697,11 +1428,7 @@ export class EdytorSelection {
 	};
 
 	/** Select a repaired caret (the projector displays it). */
-	#land = (target: SelectionValue) => {
-		const previous = this.caretSignature();
-		this.select(target, 'repair');
-		this.recordPostDeleteCaretTarget(previous);
-	};
+	#land = (target: SelectionValue) => this.select(target, 'repair');
 
 	/** A text range over one block's content (the triple-click shape); the start binds left. */
 	private setStateFromBlockContentRange = (block: Block) => {
@@ -1720,7 +1447,6 @@ export class EdytorSelection {
 			this.select(blockSelection(blocks.map((block) => block.id)));
 			return;
 		}
-		this.ignoreNextSelectedBlockSelectionChange = false;
 		const { value } = this;
 		if (value.kind !== 'blocks') return;
 		const [first, last] = [this.state.blocks[0], this.state.blocks.at(-1)];
@@ -1784,9 +1510,7 @@ export class EdytorSelection {
 	) => {
 		const text = typeof textOrId === 'string' ? this.edytor.idToText.get(textOrId) : textOrId;
 		if (!text || typeof textOffset !== 'number') return;
-		const previous = this.caretSignature();
 		this.#admit(this.#intent(text, Math.min(Math.max(textOffset, 0), text.length)), text);
-		this.recordPostDeleteCaretTarget(previous);
 	};
 
 	/**
@@ -1919,7 +1643,6 @@ export class EdytorSelection {
 					state.yStart === startOffset &&
 					state.yEnd === endOffset)
 		);
-		const previous = this.caretSignature();
 		this.#admit(
 			this.#intent(
 				range.startText,
@@ -1930,9 +1653,6 @@ export class EdytorSelection {
 			),
 			range.startText
 		);
-		if (range.startText === range.endText && range.startOffset === range.endOffset) {
-			this.recordPostDeleteCaretTarget(previous);
-		}
 	};
 
 	/** Select `block`'s content (the whole of it by default); displayed after the flush. */

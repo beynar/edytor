@@ -34,7 +34,7 @@ import {
 } from '../../dom/test.utils.js';
 
 /** Red on the reference; green since V5. */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -234,6 +234,28 @@ describe('F-S10 — the Android post-delete snap-back (named rule)', () => {
 		moveWithoutGesture(text.node!, 6);
 		await flushDomUpdates();
 		expect(range(edytor)).toMatchObject({ start: 6, isCollapsed: true });
+	});
+
+	pin('Android: a navigational cross-text write never arms the rule (no delete ran)', async () => {
+		withUserAgent(ANDROID_CHROME_UA);
+		const { edytor } = await renderDomEdytor(
+			<root>
+				<paragraph>first</paragraph>
+				<paragraph>second</paragraph>
+			</root>,
+			{ autoSelectFixture: false }
+		);
+		const [first, second] = edytor.root!.children;
+		// The merge's position signature: a caret at a text start, then a
+		// write landing in another text — with no delete command.
+		await edytor.selection.setAtTextOffset(second!.firstText!, 0);
+		await flushDomUpdates();
+		await edytor.selection.setAtTextOffset(first!.lastText!, 3);
+		await flushDomUpdates();
+		await settle();
+		moveWithoutGesture(first!.lastText!.node!, 4);
+		await flushDomUpdates();
+		expect(range(edytor)).toMatchObject({ start: 4, isCollapsed: true });
 	});
 
 	row('Android: a gesture after the merge owns the caret — the +1 move is adopted', async () => {

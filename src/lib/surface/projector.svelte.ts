@@ -25,6 +25,12 @@
  * issue, the projector reads the live DOM selection and mints anchors from an
  * unobserved native move; it admits the move through `select()` once that
  * transaction committed, never inside it (BI-3, LH2-5).
+ *
+ * It classifies every `selectionchange` (`classify`) against its last display,
+ * the render epoch and the gesture serial: echo, render drift (displayed
+ * again), composition, foreign write or intent (adopted). Two named, counted,
+ * time-bounded browser rules (plan §9.1 rule 5) are the only signatures:
+ * the Android post-delete snap-back and the IME post-commit jump.
  */
 import { untrack } from 'svelte';
 import type { Edytor } from '../edytor.svelte.js';
@@ -39,8 +45,27 @@ import {
 	scrollCaretIntoView,
 	type DomSelectionSnapshot
 } from '../selection/domSelection.js';
-import { getMarkEdgeSide, getYIndex } from '../selection/selection.utils.js';
+import {
+	getMarkEdgeSide,
+	getYIndex,
+	isTextBoundSelectionPoint
+} from '../selection/selection.utils.js';
 import { project, type SelectionValue } from '../session/selection.js';
+import type { Attempt } from '../session/attempt.js';
+import { isAndroidChromeBrowser } from '../events/events.utils.js';
+import { isNestedForeignEditableTarget } from '../events/nativeInteractiveControl.js';
+
+/** What a `selectionchange` is (R10). Drift is displayed again; foreign writes and intent are adopted. */
+export type Observation = 'echo' | 'drift' | 'composition' | 'foreign' | 'intent';
+
+/**
+ * Named rule (plan §9.1 rule 5): Android Chrome mutates the DOM after a
+ * canceled `deleteContentBackward` and reports the caret one position right
+ * of the model's merge point, in the same task or a few frames later.
+ */
+const ANDROID_SNAP_BACK_MS = 250;
+/** Named rule (plan §9.1 rule 5): engines move the caret once more right after an IME commit. */
+const IME_POST_COMMIT_JUMP_MS = 100;
 
 type Point = [node: Node, offset: number];
 type Points = { anchor: Point; focus: Point };
@@ -63,7 +88,7 @@ export class Projector {
 	/** Render epoch: commits this view did not issue, and cells mounted while a display waits. */
 	render = $state(0);
 	/** What the last display left in the DOM, and the selection epoch it showed. */
-	#displayed: ((Points | { cleared: number }) & { epoch: number; intent: number }) | null = null;
+	#displayed: (Points & { epoch: number }) | null = null;
 	/** The observer holds DOM records it has not reconciled yet (set at attach). */
 	recordsPending: () => boolean = () => false;
 	/** The (request, render, remount) key the last completed pass answered. */
@@ -78,6 +103,11 @@ export class Projector {
 	#flushes = 0;
 	#seen = -1;
 	#minted: { value: SelectionValue; transaction: Transaction } | null = null;
+	/** The gesture serial at the last observation (a display or an adopted `selectionchange`). */
+	#serial = -1;
+	/** The named rules' evidence: the last model-owned delete and the last IME commit. */
+	#deleted: { attempt: Attempt; serial: number; at: number } | null = null;
+	#committed: { serial: number; at: number } | null = null;
 
 	constructor(private edytor: Edytor) {}
 
@@ -150,47 +180,121 @@ export class Projector {
 	};
 
 	/**
-	 * A `selectionchange` that is not intent because the DOM selection is older
-	 * than the value: a requested display has not landed yet (its destination is
-	 * not mounted, or the flush has not run) and no intent gesture came after the
-	 * request; or the value was displayed, no intent gesture came since, and the
-	 * DOM holds foreign damage the observer has not reconciled (its repair
-	 * displays the value again).
+	 * Classify a `selectionchange` (R10) by comparing the DOM selection with the
+	 * last display, the render epoch and the gesture serial:
+	 * - echo: our last display unchanged; a requested display still to land
+	 *   (no gesture since the request); a range that already shows the value;
+	 * - composition: a session owns the host (its end catches up);
+	 * - drift: no gesture since the last observation, and a render since it
+	 *   (a flush the DOM selection was not observed after, or DOM records the
+	 *   observer has not reconciled), or one of the two named signatures;
+	 * - intent: a gesture since the last observation, or a pointer drag;
+	 * - foreign: no gesture and no render (host code, assistive tech, O1).
 	 */
-	get awaited() {
-		const { selection, intentSerial, isComposing } = this.edytor;
-		if (isComposing) return false;
-		if (selection.request !== this.#request) return selection.requestSerial === intentSerial;
-		// Displayed, no intent since, and the DOM diverged from the render (foreign
-		// damage the observer has not reconciled): the move is its consequence.
-		return this.#displayed?.intent === intentSerial && this.recordsPending();
-	}
+	classify = (dom: DomSelectionSnapshot | null): Observation => {
+		const { edytor } = this;
+		const { selection } = edytor;
+		const node = edytor.node;
+		const anchor = dom?.anchorNode;
+		// Not ours to classify: outside the editor, or in a nested editable island.
+		if (!dom || !anchor || !node?.contains(anchor) || isNestedForeignEditableTarget(node, anchor))
+			return 'foreign';
+		if (this.#echoes(dom)) return 'echo';
+		if (edytor.isComposing) return this.#observed('composition');
+		if (selection.request !== this.#request && selection.requestSerial === edytor.intentSerial)
+			return 'echo';
+		if (edytor.intentSerial === this.#serial && (this.#snapBack(dom) || this.#jump()))
+			return 'drift';
+		if (edytor.intentSerial !== this.#serial || selection.dragging) return this.#observed('intent');
+		return this.#seen !== this.#flushes || this.recordsPending()
+			? 'drift'
+			: this.#observed('foreign');
+	};
+
+	/** The DOM selection is observed now (adopted, or ignored by the adopter's own rules). */
+	#observed = (observation: Observation) => {
+		this.#seen = this.#flushes;
+		this.#serial = this.edytor.intentSerial;
+		return observation;
+	};
+
+	/** The DOM selection is our last display unchanged, or a text-bound range that shows the value. */
+	#echoes = (dom: DomSelectionSnapshot) => {
+		const displayed = this.#displayed;
+		const { selection } = this.edytor;
+		if (
+			displayed?.epoch === selection.epoch &&
+			samePoint(displayed.anchor, dom.anchorNode, dom.anchorOffset) &&
+			samePoint(displayed.focus, dom.focusNode, dom.focusOffset)
+		)
+			return true;
+		const { startText, yStart, endText, yEnd, isReversed, isCollapsed } = selection.state;
+		return Boolean(
+			!isCollapsed &&
+			startText &&
+			endText &&
+			isTextBoundSelectionPoint(dom.anchorNode) &&
+			isTextBoundSelectionPoint(dom.focusNode) &&
+			this.#shows(dom, startText, yStart, endText, yEnd, isReversed)
+		);
+	};
+
+	/** Evidence for the Android snap-back: a model-owned delete ran (`events/beforeInputDeleteCommands`). */
+	deleted = (attempt: Attempt) => {
+		this.#deleted = { attempt, serial: this.edytor.intentSerial, at: Date.now() };
+	};
+
+	/** Evidence for the IME post-commit jump: a composition committed its caret. */
+	committed = () => {
+		this.#committed = { serial: this.edytor.intentSerial, at: Date.now() };
+	};
 
 	/**
-	 * The DOM selection is our last display, unchanged since (an echo, not
-	 * intent) — or, after a display that cleared it for a block set or an atom,
-	 * whatever the engine parked there before the next gesture.
+	 * Named rule — the Android post-delete snap-back: after a model-owned
+	 * delete that merged a caret at a text start into another text, with no
+	 * gesture since, a collapsed DOM caret one right of the value in the same
+	 * text is Android's post-delete shift.
 	 */
-	isEcho = (selection: DomSelectionSnapshot | null) => {
-		const displayed = this.#displayed;
-		if (!selection || !displayed || displayed.epoch !== this.edytor.selection.epoch) return false;
-		if ('cleared' in displayed) return displayed.cleared === this.edytor.intentSerial;
-		return (
-			samePoint(displayed.anchor, selection.anchorNode, selection.anchorOffset) &&
-			samePoint(displayed.focus, selection.focusNode, selection.focusOffset)
+	#snapBack = (dom: DomSelectionSnapshot) => {
+		const deleted = this.#deleted;
+		const { edytor } = this;
+		if (
+			!deleted ||
+			deleted.serial !== edytor.intentSerial ||
+			Date.now() - deleted.at > ANDROID_SNAP_BACK_MS ||
+			!isAndroidChromeBrowser() ||
+			!dom.isCollapsed
+		)
+			return false;
+		const { attempt } = deleted;
+		const { startText, yStart, isCollapsed } = edytor.selection.state;
+		return Boolean(
+			attempt.isCollapsed &&
+			attempt.yStart === 0 &&
+			isCollapsed &&
+			startText &&
+			startText !== attempt.startText &&
+			edytor.selection.getTextOfNode(dom.anchorNode) === startText &&
+			getYIndex(startText, dom.anchorNode, dom.anchorOffset) === yStart + 1
+		);
+	};
+
+	/** Named rule — the IME post-commit jump: a move right after a commit, with no gesture since. */
+	#jump = () => {
+		const committed = this.#committed;
+		return Boolean(
+			committed &&
+			committed.serial === this.edytor.intentSerial &&
+			Date.now() - committed.at <= IME_POST_COMMIT_JUMP_MS
 		);
 	};
 
 	/** The DOM selection was observed (derived into the model). */
 	observe = () => {
 		this.#seen = this.#flushes;
+		this.#serial = this.edytor.intentSerial;
 		this.#displayed = null;
 	};
-
-	/** A flush rendered since the DOM selection was last observed (drift is possible). */
-	get renderedSinceObservation() {
-		return this.#seen !== this.#flushes;
-	}
 
 	/** Answers whether the pass completed (false: wait for a later flush). */
 	#display = (requested: boolean): boolean => {
@@ -214,11 +318,8 @@ export class Projector {
 			// A block set or an atom shows as selected elements, not a range.
 			if (dom.anchorNode && node.contains(dom.anchorNode) && this.#ours(requested)) {
 				clearDomSelection(node);
-				this.#displayed = {
-					cleared: edytor.intentSerial,
-					epoch: selection.epoch,
-					intent: edytor.intentSerial
-				};
+				this.#displayed = null;
+				this.#serial = edytor.intentSerial;
 			}
 			return true;
 		}
@@ -246,8 +347,9 @@ export class Projector {
 			if (selection.scrollOnDisplay) scrollCaretIntoView(node);
 		}
 		selection.scrollOnDisplay = false;
-		this.#displayed = { ...points, epoch: selection.epoch, intent: edytor.intentSerial };
+		this.#displayed = { ...points, epoch: selection.epoch };
 		this.#seen = this.#flushes;
+		this.#serial = edytor.intentSerial;
 		selection.observed({
 			startNode: start[0],
 			endNode: end[0],
@@ -258,7 +360,7 @@ export class Projector {
 
 	/** The live DOM selection already shows these endpoints (model coordinates, direction). */
 	#shows = (
-		dom: Selection,
+		dom: DomSelectionSnapshot | Selection,
 		startText: Text,
 		yStart: number,
 		endText: Text,
@@ -342,7 +444,7 @@ export class Projector {
 		if (this.#rendered !== edytor.facade.version || edytor.selection.request !== this.#request)
 			return;
 		const snapshot = getDomSelectionSnapshot(node);
-		if (!snapshot?.anchorNode || this.isEcho(snapshot)) return;
+		if (!snapshot?.anchorNode || this.#echoes(snapshot)) return;
 		const value = edytor.selection.mint(snapshot);
 		if (!value) return;
 		const minted = project(value, edytor.facade);

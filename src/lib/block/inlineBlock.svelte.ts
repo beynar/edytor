@@ -159,13 +159,11 @@ export class InlineBlock {
 
 			if (boundaryText) {
 				this.edytor.selection.setCollapsedStateAtTextOffset(boundaryText, boundaryOffset);
-				this.edytor.selection.ignoreNextSelectionChange = true;
 				void this.edytor.selection.setAtTextOffset(boundaryText, boundaryOffset);
 				return;
 			}
 
 			this.edytor.selection.selectInlineBlock(this);
-			this.edytor.selection.ignoreNextSelectionChange = true;
 			clearDomSelection(this.edytor.node);
 		};
 		node.addEventListener('pointerdown', selectInlineBlock);

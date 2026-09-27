@@ -176,11 +176,9 @@ const deleteCollapsedUnit = async (edytor: Edytor, snapshot: Attempt) => {
 };
 
 export const runBeforeInputDeleteCommand = (edytor: Edytor, snapshot: Attempt) => {
-	// Timestamp the delete so the Android post-delete caret snap-back can
-	// arm only on caret writes caused by an actual delete — navigational
-	// jumps with the same "offset-0 → different text" signature must not
-	// qualify (selection.svelte.ts `recordPostDeleteCaretTarget`).
-	edytor.selection.lastDeleteCommandAt = Date.now();
+	// The Android post-delete snap-back's evidence (a named projector rule):
+	// only an actual delete arms it, never a navigational jump.
+	edytor.projector.deleted(snapshot);
 	const { inputType } = snapshot;
 	const forward = /Forward$|^deleteContent$|^deleteEntireSoftLine$/.test(inputType);
 	// A selection: the document's range deletion (a forward one needs its text).

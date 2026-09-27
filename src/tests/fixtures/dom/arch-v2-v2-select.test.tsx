@@ -115,8 +115,7 @@ describe('V2 — one commit point', () => {
 		}
 	);
 
-	// V2a: the emit half is green; the presence half (the block set on the wire) lands with V2b (D-16).
-	it.fails('F-S3: selectBlocks after a caret emits once and publishes the block set', async () => {
+	row('F-S3: selectBlocks after a caret emits once and publishes the block set', async () => {
 		const { calls, onSelectionChange } = counter();
 		const { edytor } = await renderDomEdytor(
 			<root>

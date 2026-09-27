@@ -11,7 +11,8 @@
  * doc)`, a pure function memoized per (value, index version).
  *
  * V2: the view's `select(value, cause)` is the only writer; its
- * `selection.state` is a compatibility getter over the projection.
+ * `selection.state` is a compatibility getter over the projection, and the
+ * presence payload is `serialize(value)`.
  */
 import type { BlockId, ContentItem } from '$lib/crdt/index.js';
 import type { DocAnchor, EdytorDoc } from '$lib/crdt/edytor-doc.js';
@@ -347,4 +348,32 @@ export const sameValue = (a: SelectionValue, b: SelectionValue): boolean => {
 	if (a.kind === 'atom' && b.kind === 'atom')
 		return a.blockId === b.blockId && a.atomId === b.atomId;
 	return a.kind === b.kind && a.kind === 'none';
+};
+
+/**
+ * The presence payload (L10, D-16): anchors only. A text range publishes its
+ * endpoints in document order with collapsed/reversed; a block set its ids;
+ * an atom its block and id; `none` publishes nothing.
+ */
+export type PresenceSelection =
+	| { start: DocAnchor; end: DocAnchor; collapsed: boolean; reversed: boolean }
+	| { blocks: BlockId[] }
+	| { atom: string; block: BlockId };
+
+export const serialize = (
+	value: SelectionValue,
+	projection: SelectionProjection
+): PresenceSelection | null => {
+	if (value.kind === 'text') {
+		const reversed = projection.isReversed;
+		return {
+			start: reversed ? value.focus : value.anchor,
+			end: reversed ? value.anchor : value.focus,
+			collapsed: projection.isCollapsed,
+			reversed
+		};
+	}
+	if (value.kind === 'blocks') return { blocks: [...value.ids] };
+	if (value.kind === 'atom') return { atom: value.atomId, block: value.blockId };
+	return null;
 };

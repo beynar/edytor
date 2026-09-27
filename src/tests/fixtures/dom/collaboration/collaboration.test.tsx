@@ -16,16 +16,12 @@ const publishRemoteSelectionFromLocalSelection = async (
 	edytor: Awaited<ReturnType<typeof renderDomEdytor>>['edytor'],
 	user = { name: 'Ada', color: '#dc2626' }
 ) => {
-	const localState = edytor.awareness.getLocalState();
-	const selection = localState?.selection;
-	if (!selection) {
+	const selections = edytor.awareness.getLocalState()?.selections;
+	if (!selections) {
 		throw new Error('Expected local awareness selection before publishing remote state');
 	}
 
-	edytor.awareness.states.set(remoteClientId, {
-		user,
-		selection
-	});
+	edytor.awareness.states.set(remoteClientId, { user, selections });
 	edytor.awareness.emit('change', [{ added: [remoteClientId], updated: [], removed: [] }, 'test']);
 	edytor.awareness.emit('update', [{ added: [remoteClientId], updated: [], removed: [] }, 'test']);
 	await flushDomUpdates();
@@ -84,12 +80,16 @@ describe('collaboration remote presence rendering', () => {
 		const text = edytor.root!.children[0]!.firstText;
 
 		await setNativeSelection(edytor, text, 5);
-		const selection = edytor.awareness.getLocalState()?.selection as {
-			start: { b: string; a: { i: { c: number; k: number } | null; a: number } };
-			end: { b: string; a: { i: { c: number; k: number } | null; a: number } };
-			yStart: number;
-			yEnd: number;
-		};
+		const selections = edytor.awareness.getLocalState()?.selections as Record<
+			string,
+			{
+				start: { b: string; a: { i: { c: number; k: number } | null; a: number } };
+				end: { b: string; a: { i: { c: number; k: number } | null; a: number } };
+				collapsed: boolean;
+				reversed: boolean;
+			}
+		>;
+		const [selection] = Object.values(selections);
 
 		// Wire shape: {b: backing-block-id, a: {i: {c,k}|null, a: assoc}}.
 		expect(typeof selection.start.b).toBe('string');
@@ -107,9 +107,14 @@ describe('collaboration remote presence rendering', () => {
 		const resolved = edytor.selection.resolveTextAnchor(revived);
 		expect(resolved?.text.id).toBe(text.id);
 		expect(resolved?.offset).toBe(5);
-		// Numeric compatibility fields remain for older peers.
-		expect(selection.yStart).toBe(5);
-		expect(selection.yEnd).toBe(5);
+		// D-16: anchors only — no numeric/text-id compatibility fields.
+		expect(selection).toEqual({
+			start: selection.start,
+			end: selection.end,
+			collapsed: true,
+			reversed: false,
+			t: expect.any(Number)
+		});
 	});
 
 	it('a remote caret anchor follows a local insert before its position', async () => {
@@ -120,9 +125,12 @@ describe('collaboration remote presence rendering', () => {
 
 		await setNativeSelection(edytor, text, 5);
 		await publishRemoteSelectionFromLocalSelection(edytor);
-		const remoteSel = edytor.awareness.states.get(remoteClientId)?.selection as {
-			start: Parameters<typeof edytor.selection.resolveTextAnchor>[0];
-		};
+		const [remoteSel] = Object.values(
+			edytor.awareness.states.get(remoteClientId)?.selections as Record<
+				string,
+				{ start: Parameters<typeof edytor.selection.resolveTextAnchor>[0] }
+			>
+		);
 		expect(remoteSel?.start).toBeTruthy();
 
 		// A local edit in front of the remote caret shifts its anchor —
@@ -137,7 +145,7 @@ describe('collaboration remote presence rendering', () => {
 		});
 	});
 
-	it('ignores malformed anchor payloads and falls back to ids/offsets', async () => {
+	it('ignores malformed anchor payloads and legacy fields (D-16: no id/offset fallback)', async () => {
 		const { container, edytor } = await renderDomEdytor(input, {
 			autoSelectFixture: false
 		});
@@ -145,19 +153,22 @@ describe('collaboration remote presence rendering', () => {
 
 		await setNativeSelection(edytor, text, 4);
 		// A v13-shaped RelativePosition payload is NOT a TextAnchor —
-		// isTextAnchor rejects it and the id/offset fallback renders.
+		// isTextAnchor rejects it; the retired text-id/offset fields and the
+		// legacy `selection` field are not read.
+		const legacy = {
+			start: { type: { client: 1, clock: 2 }, item: { client: 3, clock: 4 }, assoc: 0 },
+			end: { type: { client: 1, clock: 2 }, item: { client: 3, clock: 4 }, assoc: 0 },
+			startTextId: text.id,
+			endTextId: text.id,
+			yStart: 4,
+			yEnd: 4,
+			isCollapsed: true,
+			isReversed: false
+		};
 		edytor.awareness.states.set(remoteClientId, {
 			user: { name: 'Eve', color: '#0ea5e9' },
-			selection: {
-				start: { type: { client: 1, clock: 2 }, item: { client: 3, clock: 4 }, assoc: 0 },
-				end: { type: { client: 1, clock: 2 }, item: { client: 3, clock: 4 }, assoc: 0 },
-				startTextId: text.id,
-				endTextId: text.id,
-				yStart: 4,
-				yEnd: 4,
-				isCollapsed: true,
-				isReversed: false
-			}
+			selection: legacy,
+			selections: { 'view-1': legacy }
 		});
 		edytor.awareness.emit('change', [
 			{ added: [remoteClientId], updated: [], removed: [] },
@@ -169,9 +180,7 @@ describe('collaboration remote presence rendering', () => {
 		]);
 		await flushDomUpdates();
 
-		await waitFor(() => {
-			expect(container.querySelector('[data-edytor-remote-cursor]')).toBeInstanceOf(HTMLElement);
-		});
+		expect(container.querySelector('[data-edytor-remote-cursor]')).toBeNull();
 	});
 
 	it('drops a remote selection whose payload cannot resolve at all', async () => {
@@ -184,15 +193,13 @@ describe('collaboration remote presence rendering', () => {
 		// Garbage anchors + unknown ids → nothing resolvable → no render.
 		edytor.awareness.states.set(remoteClientId, {
 			user: { name: 'Mallory', color: '#0ea5e9' },
-			selection: {
-				start: { b: 123, a: 'nope' },
-				end: { b: 'nonexistent-block', a: { i: null, a: -1 } },
-				startTextId: 'nonexistent',
-				endTextId: 'nonexistent',
-				yStart: 99,
-				yEnd: 99,
-				isCollapsed: true,
-				isReversed: false
+			selections: {
+				'view-1': {
+					start: { b: 123, a: 'nope' },
+					end: { b: 'nonexistent-block', a: { i: null, a: -1 } },
+					collapsed: true,
+					reversed: false
+				}
 			}
 		});
 		edytor.awareness.emit('change', [
@@ -214,20 +221,19 @@ describe('collaboration remote presence rendering', () => {
 		const text = edytor.root!.children[0]!.firstText;
 
 		await setNativeSelection(edytor, text, 3);
-		expect(edytor.awareness.getLocalState()?.selection).toBeTruthy();
-		// U5 — presence is per-view: the entry lives under `selections` and
-		// `selection` mirrors the freshest entry for legacy readers.
+		// U5 — presence is per-view: the entry lives under `selections`
+		// (D-16: no legacy `selection` mirror).
 		expect(Object.keys(edytor.awareness.getLocalState()?.selections ?? {})).toHaveLength(1);
+		expect(edytor.awareness.getLocalState()?.selection).toBeUndefined();
 
 		// A live view's selection-layer teardown (the {#key} remount path)
 		// keeps its presence — the view still owns the slot.
 		edytor.selection.destroy();
-		expect(edytor.awareness.getLocalState()?.selection).toBeTruthy();
+		expect(Object.keys(edytor.awareness.getLocalState()?.selections ?? {})).toHaveLength(1);
 
 		// Real editor teardown drops the dead view's caret (edytor.destroyed
 		// is set before selection.destroy() runs).
 		edytor.destroy();
-		expect(edytor.awareness.getLocalState()?.selection).toBeUndefined();
 		expect(edytor.awareness.getLocalState()?.selections).toBeUndefined();
 	});
 });

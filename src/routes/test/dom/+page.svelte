@@ -590,9 +590,6 @@
 				textOwners,
 				textClaims,
 				textMounted,
-				// TEMP DEBUG: selection-echo drift probe (removed before final)
-				selLog: (globalThis as any).__EDYTOR_SEL_LOG__ ?? [],
-				selDrift: (globalThis as any).__selDrift ?? [],
 				actor: document.actor.id,
 				selection: hasSelection
 					? {
@@ -755,9 +752,6 @@
 				// runner distinguish "quarantined while unversioned" from
 				// "never persisted" on lost-update failures.
 				(window as Window & { __EDYTOR_UPDATE_LOG__?: unknown[] }).__EDYTOR_UPDATE_LOG__ = [];
-				// TEMP DEBUG: selection-echo drift probe (removed before final)
-				(globalThis as any).__EDYTOR_SEL_DEBUG__ = true;
-				(globalThis as any).__selDrift = [];
 				doc.on('update', (update: Uint8Array, origin: unknown) => {
 					(window as Window & { __EDYTOR_UPDATE_LOG__?: unknown[] }).__EDYTOR_UPDATE_LOG__?.push({
 						bytes: update.length,

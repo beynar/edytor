@@ -55,12 +55,12 @@ describe('gate3 dom: awareness cleanup on unmount', () => {
 		const text = rendered.edytor.root!.children[0]!.firstText;
 		await setNativeSelection(rendered.edytor, text, 2);
 
-		expect(awareness.getLocalState()?.selection).toBeDefined();
+		expect(awareness.getLocalState()?.selections).toBeDefined();
 
 		rendered.unmount();
 		await flushDomUpdates();
 
-		expect(awareness.getLocalState()?.selection).toBeUndefined();
+		expect(awareness.getLocalState()?.selections).toBeUndefined();
 		expect(awareness.getLocalState()?.user).toEqual({ name: 'me' }); // other fields kept
 	});
 });

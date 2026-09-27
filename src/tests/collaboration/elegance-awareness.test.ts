@@ -3,12 +3,9 @@
  * docs/elegance-review-2026-09-23.md:
  *
  *  - D17: publish and consume used two different "freshest selection by
- *    `t`" contests. `freshestPublishedSelection` picked the raw max-`t`
- *    entry (no validation) and wrote it as the legacy `selection`
- *    mirror, while `remoteSelection.getSelection` picked the freshest
- *    entry among VALIDATED candidates — a malformed entry with a high
- *    `t` was mirrored but never rendered. Both sides now share the one
- *    validated-winner helper.
+ *    `t`" contests; a malformed entry with a high `t` was mirrored but
+ *    never rendered. The legacy mirror is gone (D-16); the one
+ *    validated-winner helper is what a peer renders.
  *  - S12: presence dedupe compared `JSON.stringify` snapshots per
  *    publish/clear; the structural `jsonValuesEqual` compare must agree
  *    with stringify semantics on the cases that matter (key order is
@@ -33,20 +30,25 @@ const docValue = (text = 'shared'): JSONDoc => ({
 
 const makeView = (document: EdytorDocument) => new Edytor({ document, plugins: [richTextPlugin] });
 
+/** Write the view's caret (which publishes) and run the publish path once more. */
 const publishSelection = (view: Edytor, offset = 0) => {
 	view.selection.setCollapsedStateAtTextOffset(view.root!.children[0]!.firstText!, offset);
 	publishAwarenessSelection(view.selection);
 };
 
-const selectionPayload = (yStart: number, t: number) => ({
-	start: null,
-	end: null,
-	startTextId: 't1',
-	endTextId: 't1',
-	yStart,
-	yEnd: yStart,
-	isCollapsed: true,
-	isReversed: false,
+/** The caret offset a peer renders for this document's freshest published entry. */
+const renderedOffset = (view: Edytor, document: EdytorDocument) => {
+	const winner = freshestPublishedSelection(
+		(document.awareness.getLocalState()?.selections ?? {}) as Record<string, unknown>
+	);
+	return winner ? view.selection.resolveTextAnchor(winner.start as never)?.offset : undefined;
+};
+
+const selectionPayload = (marker: number, t: number) => ({
+	start: marker,
+	end: marker,
+	collapsed: true,
+	reversed: false,
 	t
 });
 
@@ -61,7 +63,7 @@ describe('D17 — one validated freshest-selection winner', () => {
 			alsoBad: { start: null, t: 8888 } // `end` missing → invalid
 		};
 		const winner = freshestPublishedSelection(selections);
-		expect(winner?.yStart).toBe(2);
+		expect(winner?.start).toBe(2);
 		expect(winner).not.toHaveProperty('t');
 	});
 
@@ -71,17 +73,17 @@ describe('D17 — one validated freshest-selection winner', () => {
 				a: selectionPayload(1, 5),
 				b: selectionPayload(2, 9),
 				c: selectionPayload(3, 4)
-			})?.yStart
+			})?.start
 		).toBe(2);
 		// Missing `t` counts as 0 — a valid entry still wins over nothing.
 		expect(
-			freshestPublishedSelection({ only: { ...selectionPayload(7, 0), t: undefined } })?.yStart
+			freshestPublishedSelection({ only: { ...selectionPayload(7, 0), t: undefined } })?.start
 		).toBe(7);
 		expect(freshestPublishedSelection({ bad: { t: 3 } })).toBeNull();
 		expect(freshestPublishedSelection({})).toBeNull();
 	});
 
-	it('the published legacy mirror is the same winner a remote peer renders', () => {
+	it('a malformed foreign entry never wins the rendered caret', () => {
 		const document = createDocument({ value: docValue() });
 		const v1 = makeView(document);
 		publishSelection(v1, 3);
@@ -98,20 +100,16 @@ describe('D17 — one validated freshest-selection winner', () => {
 			}
 		});
 
-		// The next publish recomputes the mirror through the shared
-		// winner — it must stay the valid entry, not the malformed one.
+		// The rendered winner stays the valid entry, not the malformed one.
 		publishSelection(v1, 4);
-		const mirror = document.awareness.getLocalState()?.selection as
-			| { yStart?: number; startTextId?: string }
-			| undefined;
-		expect(mirror?.yStart).toBe(4);
-		expect(mirror?.startTextId).toBe(v1.root!.children[0]!.firstText!.id);
+		expect(document.awareness.getLocalState()?.selection).toBeUndefined(); // D-16
+		expect(renderedOffset(v1, document)).toBe(4);
 
 		v1.destroy();
 		document.destroy();
 	});
 
-	it('a swept selections map still rebroadcasts when the mirror winner changes', () => {
+	it('a swept selections map rebroadcasts and the surviving entry wins', () => {
 		const document = createDocument({ value: docValue() });
 		const v1 = makeView(document);
 		const v2 = makeView(document);
@@ -123,8 +121,8 @@ describe('D17 — one validated freshest-selection winner', () => {
 		const spy = vi.spyOn(document.awareness, 'setLocalState');
 		clearAwarenessSelection(document.awareness);
 		expect(spy).toHaveBeenCalledTimes(1);
-		// The mirror falls back to the surviving valid entry.
-		expect((document.awareness.getLocalState()?.selection as { yStart?: number })?.yStart).toBe(1);
+		// The surviving valid entry is the rendered winner.
+		expect(renderedOffset(v1, document)).toBe(1);
 
 		v1.destroy();
 		document.destroy();
@@ -142,19 +140,10 @@ describe('normalizeAwarenessSelection — the shared validity gate', () => {
 			start: null,
 			end: null,
 			yStart: 'nope',
-			isCollapsed: true,
-			isReversed: 1
+			collapsed: true,
+			reversed: 1
 		});
-		expect(normalized).toEqual({
-			start: null,
-			end: null,
-			startTextId: '',
-			endTextId: '',
-			yStart: 0,
-			yEnd: 0,
-			isCollapsed: true,
-			isReversed: false
-		});
+		expect(normalized).toEqual({ start: null, end: null, collapsed: true, reversed: false });
 	});
 });
 

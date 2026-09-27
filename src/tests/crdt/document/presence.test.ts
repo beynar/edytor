@@ -4,8 +4,8 @@
  * One awareness instance per document is shared by every view; actor/user
  * are document-level fields published once; `selections` holds ONE entry
  * per live view (per-view presence — sibling teardown can no longer
- * clobber a surviving view's caret) while `selection` stays published as
- * the freshest-entry mirror for pre-U5 peers/readers.
+ * clobber a surviving view's caret). D-16: no legacy `selection` mirror;
+ * a peer renders the freshest valid entry.
  *
  * `Awareness.destroy()` is idempotent (F6 — the owned-doc + owned-
  * awareness composition used to double-emit). View-carried `sync`
@@ -23,6 +23,7 @@ import {
 	type EdytorDocument
 } from '../../../lib/crdt/index.js';
 import {
+	freshestPublishedSelection,
 	publishAwarenessSelection,
 	whenDocumentReady,
 	type EdytorSync
@@ -39,18 +40,20 @@ const docValue = (text = 'shared'): JSONDoc => ({
 
 const makeView = (document: EdytorDocument) => new Edytor({ document, plugins: [richTextPlugin] });
 
-type PresenceSelections = Record<string, { t?: number; yStart?: number }>;
+type PresenceSelections = Record<string, { t?: number; start?: unknown }>;
 
 const selectionsOf = (document: EdytorDocument): PresenceSelections =>
 	(document.awareness.getLocalState()?.selections ?? {}) as PresenceSelections;
 
-const mirrorOf = (document: EdytorDocument) =>
-	document.awareness.getLocalState()?.selection as { yStart?: number } | undefined;
+/** The caret offset a peer renders for the document's freshest entry (resolved by `view`). */
+const freshestOffset = (document: EdytorDocument, view: Edytor) => {
+	const winner = freshestPublishedSelection(selectionsOf(document));
+	return winner ? view.selection.resolveTextAnchor(winner.start as never)?.offset : undefined;
+};
 
-/** Write the view's model selection and run the real publish path. */
+/** Write the view's caret: `select()` publishes it. */
 const publishSelection = (view: Edytor, offset = 0) => {
 	view.selection.setCollapsedStateAtTextOffset(view.root!.children[0]!.firstText!, offset);
-	publishAwarenessSelection(view.selection);
 };
 
 describe('shared awareness identity', () => {
@@ -86,13 +89,13 @@ describe('per-view selection presence', () => {
 
 		publishSelection(v1, 1);
 		expect(Object.keys(selectionsOf(document))).toHaveLength(1);
-		expect(mirrorOf(document)?.yStart).toBe(1);
+		expect(freshestOffset(document, v1)).toBe(1);
 
 		publishSelection(v2, 3);
 		const selections = selectionsOf(document);
 		expect(Object.keys(selections)).toHaveLength(2);
 		// The mirror is the freshest entry (v2's publish has the higher `t`).
-		expect(mirrorOf(document)?.yStart).toBe(3);
+		expect(freshestOffset(document, v1)).toBe(3);
 		expect(Object.values(selections).every((entry) => typeof entry.t === 'number')).toBe(true);
 		expect(new Set(Object.values(selections).map((entry) => entry.t)).size).toBe(2);
 
@@ -113,7 +116,7 @@ describe('per-view selection presence', () => {
 		v1.destroy(); // edytor.destroyed is set before selection.destroy() runs
 		const survivors = selectionsOf(document);
 		expect(Object.keys(survivors)).toHaveLength(1);
-		expect(mirrorOf(document)?.yStart).toBe(4); // v2's caret is the mirror now
+		expect(freshestOffset(document, v2)).toBe(4); // v2's caret is the mirror now
 
 		v2.destroy();
 		// Last live view gone — presence fields drop entirely, document
@@ -137,7 +140,7 @@ describe('per-view selection presence', () => {
 		publishSelection(v2, 6); // sweeps v1's dead entry as it writes its own
 		const survivors = selectionsOf(document);
 		expect(Object.keys(survivors)).toHaveLength(1);
-		expect(mirrorOf(document)?.yStart).toBe(6);
+		expect(freshestOffset(document, v2)).toBe(6);
 
 		v2.destroy();
 		document.destroy();
@@ -155,7 +158,7 @@ describe('per-view selection presence', () => {
 		v1.selection.select(noSelection);
 		publishAwarenessSelection(v1.selection);
 		expect(Object.keys(selectionsOf(document))).toHaveLength(1);
-		expect(mirrorOf(document)?.yStart).toBe(5);
+		expect(freshestOffset(document, v2)).toBe(5);
 
 		v1.destroy();
 		v2.destroy();
@@ -216,20 +219,10 @@ describe('awareness state merge after provider sync', () => {
 		const document = createDocument({ value: docValue() });
 		const remoteDoc = new Y.Doc();
 		const remoteAwareness = new Awareness(remoteDoc);
-		const remoteSelection = {
-			start: null,
-			end: null,
-			startTextId: 't1',
-			endTextId: 't1',
-			yStart: 2,
-			yEnd: 2,
-			isCollapsed: true,
-			isReversed: false
-		};
+		const remoteSelection = { start: 2, end: 2, collapsed: true, reversed: false };
 		remoteAwareness.setLocalState({
 			user: { name: 'Remote', color: '#dc2626' },
-			selections: { 'view-1': { ...remoteSelection, t: 1 } },
-			selection: remoteSelection
+			selections: { 'view-1': { ...remoteSelection, t: 1 } }
 		});
 
 		const update = encodeAwarenessUpdate(remoteAwareness, [remoteAwareness.clientID]);
@@ -237,8 +230,7 @@ describe('awareness state merge after provider sync', () => {
 
 		const state = document.awareness.getStates().get(remoteAwareness.clientID);
 		expect(state?.user).toEqual({ name: 'Remote', color: '#dc2626' });
-		expect((state?.selections as PresenceSelections)['view-1']?.yStart).toBe(2);
-		expect((state?.selection as { yStart?: number })?.yStart).toBe(2);
+		expect((state?.selections as PresenceSelections)['view-1']?.start).toBe(2);
 		// Local state untouched by the remote merge.
 		expect(document.awareness.getLocalState()?.actor).toBeDefined();
 
@@ -479,7 +471,7 @@ describe('publishAwarenessSelection — write dedupe (U8a)', () => {
 		const spy = vi.spyOn(document.awareness, 'setLocalState');
 		publishSelection(v1, 4);
 		expect(spy).toHaveBeenCalledTimes(1);
-		expect(mirrorOf(document)?.yStart).toBe(4);
+		expect(freshestOffset(document, v1)).toBe(4);
 		const [entry] = Object.values(selectionsOf(document));
 		expect(entry.t).toBeGreaterThan(t0);
 
@@ -498,7 +490,7 @@ describe('publishAwarenessSelection — write dedupe (U8a)', () => {
 		publishSelection(v1, 1); // v1 re-emits an UNCHANGED caret
 		expect(spy).not.toHaveBeenCalled();
 		// v2 stays the freshest — v1's `t` was not re-stamped.
-		expect(mirrorOf(document)?.yStart).toBe(5);
+		expect(freshestOffset(document, v1)).toBe(5);
 
 		v1.destroy();
 		v2.destroy();

@@ -238,12 +238,6 @@ export class Edytor {
 	domSelectionChurnSeq = 0;
 	markDomSelectionChurn = () => {
 		this.domSelectionChurnSeq++;
-		(globalThis as { __selDrift?: unknown[] }).__selDrift?.push({
-			n: ((globalThis as { __selN?: number }).__selN =
-				((globalThis as { __selN?: number }).__selN ?? 0) + 1),
-			kind: 'churn',
-			seq: this.domSelectionChurnSeq
-		});
 	};
 	/**
 	 * The wrapper currently holding the composition render pin — set by
@@ -816,13 +810,6 @@ export class Edytor {
 			const remoteSelectionCapture = this.isHandlingUserInput
 				? null
 				: (this.selection?.captureSelectionForRemoteApply() ?? null);
-			(globalThis as { __selDrift?: unknown[] }).__selDrift?.push({
-				n: ((globalThis as { __selN?: number }).__selN =
-					((globalThis as { __selN?: number }).__selN ?? 0) + 1),
-				kind: 'commit',
-				local: change.local,
-				captured: remoteSelectionCapture !== null
-			});
 			// Remote/programmatic mirror writes run under the scroll
 			// suppressor — a remote commit landing inside an in-flight
 			// `isHandlingUserInput` window must not scroll the page.
@@ -1217,20 +1204,6 @@ export class Edytor {
 		// Baseline churn at gesture-start so churn caused by the gesture's
 		// own effects stays outstanding for later quiet-serial echoes.
 		this.churnBaselineAtGesture = this.domSelectionChurnSeq;
-		const driftLog = (globalThis as { __selDrift?: unknown[] }).__selDrift;
-		if (driftLog) {
-			driftLog.push({
-				n: ((globalThis as { __selN?: number }).__selN =
-					((globalThis as { __selN?: number }).__selN ?? 0) + 1),
-				kind: 'gesture',
-				serial: this.userGestureSerial,
-				via: new Error().stack
-					?.split('\n')
-					.slice(2, 7)
-					.map((l) => l.trim().split(' ')[1] ?? l.trim())
-					.join('<')
-			});
-		}
 	};
 	/**
 	 * `domSelectionChurnSeq` snapshotted when the last gesture began —

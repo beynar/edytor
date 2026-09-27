@@ -3,7 +3,6 @@ import type { Text } from '$lib/text/text.svelte.js';
 import type { TextAnchor } from '$lib/selection/selection.svelte.js';
 import {
 	freshestPublishedSelection,
-	normalizeAwarenessSelection,
 	type EdytorAwarenessSelection,
 	type EdytorAwarenessUser
 } from './awarenessSelection.js';
@@ -49,27 +48,11 @@ const getUser = (state: unknown): EdytorAwarenessUser => {
 	};
 };
 
-const getSelection = (state: unknown): EdytorAwarenessSelection | null => {
-	if (!isRecord(state)) {
-		return null;
-	}
-
-	// U5 — per-view presence: `selections` maps viewId → {…selection, t}.
-	// One caret is rendered per remote client — the freshest VALID entry,
-	// the same winner the publish side mirrored into `selection` (D17:
-	// both sides share `freshestPublishedSelection`, so a malformed entry
-	// can no longer be mirrored while being skipped here).
-	if (isRecord(state.selections)) {
-		const freshest = freshestPublishedSelection(state.selections);
-		if (freshest !== null) {
-			return freshest;
-		}
-	}
-
-	// Legacy single-selection field — pre-U5 peers and the mirror U5
-	// writers keep publishing for compatibility.
-	return normalizeAwarenessSelection(state.selection);
-};
+/** Per-view presence: one caret per remote client, its freshest text entry (D-16: no legacy field). */
+const getSelection = (state: unknown): EdytorAwarenessSelection | null =>
+	isRecord(state) && isRecord(state.selections)
+		? freshestPublishedSelection(state.selections)
+		: null;
 
 /**
  * Strict wire-shape guard for serialized selection anchors (U09): `{b}`
@@ -110,29 +93,6 @@ const resolveRelativePosition = (
 	} catch {
 		return null;
 	}
-};
-
-const resolveTextOffset = (edytor: Edytor, textId: string, offset: number) => {
-	if (!textId) {
-		return null;
-	}
-
-	// `getTextById` throws on malformed ids — presence data is untrusted
-	// wire input, so a bad id must degrade to "not rendered", not crash.
-	let text: Text | null;
-	try {
-		text = edytor.getTextById(textId) ?? null;
-	} catch {
-		return null;
-	}
-	if (!text) {
-		return null;
-	}
-
-	return {
-		text,
-		offset: Math.min(Math.max(offset, 0), text.length)
-	};
 };
 
 const findDomPoint = ({ text, offset }: { text: Text; offset: number }): DomPoint | null => {
@@ -279,12 +239,8 @@ export const getRenderedRemoteSelections = (edytor: Edytor): RenderedRemoteSelec
 			continue;
 		}
 
-		const startPosition =
-			resolveRelativePosition(edytor, selection.start) ??
-			resolveTextOffset(edytor, selection.startTextId, selection.yStart);
-		const endPosition =
-			resolveRelativePosition(edytor, selection.end) ??
-			resolveTextOffset(edytor, selection.endTextId, selection.yEnd);
+		const startPosition = resolveRelativePosition(edytor, selection.start);
+		const endPosition = resolveRelativePosition(edytor, selection.end);
 		if (!startPosition || !endPosition) {
 			continue;
 		}
@@ -310,15 +266,13 @@ export const getRenderedRemoteSelections = (edytor: Edytor): RenderedRemoteSelec
 
 	const editorRect = editor.getBoundingClientRect();
 	return candidates.map(({ clientId, selection, startPoint, endPoint, user }) => {
-		const cursorPoint = selection.isReversed ? startPoint : endPoint;
+		const cursorPoint = selection.reversed ? startPoint : endPoint;
 		return {
 			clientId,
 			color: normalizeColor(user.color),
 			label: user.name ?? null,
 			cursor: getCaretRect(cursorPoint, editorRect, editor),
-			rects: selection.isCollapsed
-				? []
-				: getSelectionRects(startPoint, endPoint, editorRect, editor)
+			rects: selection.collapsed ? [] : getSelectionRects(startPoint, endPoint, editorRect, editor)
 		};
 	});
 };

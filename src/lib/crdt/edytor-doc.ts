@@ -94,23 +94,15 @@
 import type { EngineApi, EngineDoc, EngineNode, YNode, YUndoManager } from './engine-api.js';
 import { bindUndoRepair } from './undo-repair.js';
 import {
-	AT,
 	AT_NODE,
-	BLOCK_ATTR_ROOT,
 	BLOCK_NODE,
-	CONTENT,
 	CONTENT_NODE,
 	DATA,
 	DEL_PREFIX,
 	ID,
-	INLINE_NODE,
 	LAST_CHANGED_ATTR,
-	META_ROOT_KEY,
-	REGISTRY_KEY,
-	SLICES,
-	SLICES_NODE,
 	TYPE,
-	ATTRIBUTION_ROOT
+	SCHEMA
 } from './schema.js';
 import {
 	bindModel,
@@ -165,76 +157,7 @@ import {
 
 // ── schema manifest ─────────────────────────────────────────────────────
 
-/**
- * The schema manifest — every semantic `Y.Node` role, root key, and attr
- * name in the assembled model. Unified nodes are role-agnostic, so this
- * constants table is the authoritative record a reader uses to interpret
- * `name`/`attr` labels; the replicated `meta.v`/`meta.schema` attrs tell a
- * replica WHICH schema generation a document was written under.
- */
-export const SCHEMA = {
-	/** Schema generation written by `init` and read by the version gate. */
-	version: 1,
-	/** Manifest name — stored on `meta.schema`. */
-	name: 'edytor-doc',
-	roots: {
-		/** Flat block registry: blockId → node('block'). */
-		registry: REGISTRY_KEY,
-		/** Version/manifest record root (attrs: `v`, `schema`). */
-		meta: META_ROOT_KEY,
-		/**
-		 * Legacy attribution metadata root — `a/` ContentMap records written
-		 * by the retired U6 per-edit capture pipeline, plus the durable
-		 * `c/` replica→actor bindings and `u/` actor profiles still
-		 * published by `attribution/attribution.ts` (U2). Reserved here so
-		 * user content can never collide with it; existing `a/` state is
-		 * preserved verbatim and readable via `attribution.legacy()`.
-		 */
-		attribution: ATTRIBUTION_ROOT,
-		/**
-		 * U1 compact per-BLOCK attribution root — `b/<blockId>` records
-		 * (`c` createdBy + `k/<actorId>` contributor members). Deliberately
-		 * separate from `attribution`: this root stays outside
-		 * `createUndoManager`'s scope so contributor union sets survive
-		 * undo (see `attribution/block.ts`).
-		 */
-		blockAttribution: BLOCK_ATTR_ROOT
-	},
-	/** Named node roles (YNode.name). */
-	nodes: {
-		block: BLOCK_NODE,
-		content: CONTENT_NODE,
-		slices: SLICES_NODE,
-		at: AT_NODE,
-		inline: INLINE_NODE
-	},
-	/** Attr keys on a block node. */
-	blockAttrs: {
-		id: ID,
-		type: TYPE,
-		data: DATA,
-		/** Per-writer delete-mark key prefix (`del.<writer>: true`; R3). */
-		del: DEL_PREFIX,
-		/**
-		 * U1 `lastChangedBy` — the actor id whose state change currently
-		 * wins LWW on this block. Lives ON the block node so registry-scoped
-		 * undo restores it for free; `contributors`/`createdBy` (monotonic,
-		 * undo-immune) live on the `blockAttribution` root instead.
-		 */
-		lastChanged: LAST_CHANGED_ATTR,
-		content: CONTENT,
-		slices: SLICES,
-		at: AT
-	},
-	/** Attr keys on an inline-atom node. */
-	inlineAttrs: { id: ID, type: TYPE, data: DATA },
-	/** Attr keys on the meta root. */
-	metaAttrs: { version: 'v', schema: 'schema' },
-	/** Placement candidate record: `at["<seq>.<clientId>"] → {p, r}`. */
-	placement: { parentKey: 'p', rankKey: 'r' },
-	/** Slice-record payloads: `{t,s,e,g?}` / merge claim `{m}`. */
-	slice: { textKey: 't', startKey: 's', endKey: 'e', genKey: 'g', mergeKey: 'm' }
-} as const;
+export { SCHEMA };
 
 export const SCHEMA_VERSION = SCHEMA.version;
 export const SCHEMA_NAME = SCHEMA.name;
@@ -690,7 +613,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		collectBlocks: M.collectBlocks,
 		computeOwnership: T.computeOwnership,
 		undoRepairClaims: T.undoRepairClaims,
-		contentNodeName: SCHEMA.nodes.content
+		contentNodeName: CONTENT_NODE
 	});
 
 	// ── version record / bootstrap (doc-level, facade-free) ────────────
@@ -1067,12 +990,12 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		// ── reads ────────────────────────────────────────────────────────
 
 		const blockTypeOf = (id: BlockId): string | undefined => {
-			const t = M.blockNodeOf(doc, id)?.getAttr(SCHEMA.blockAttrs.type);
+			const t = M.blockNodeOf(doc, id)?.getAttr(TYPE);
 			return typeof t === 'string' ? t : undefined;
 		};
 
 		const blockDataOf = (id: BlockId): Record<string, unknown> | undefined => {
-			const d = M.blockNodeOf(doc, id)?.getAttr(SCHEMA.blockAttrs.data);
+			const d = M.blockNodeOf(doc, id)?.getAttr(DATA);
 			// `cloneJsonSafe`: the read path stays total even when the stored
 			// attr holds a non-JSON value that bypassed boundary validation
 			// (raw write / remote payload) — never crash a read (R4).

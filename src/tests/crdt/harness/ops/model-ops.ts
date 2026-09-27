@@ -24,7 +24,7 @@
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import * as Y from '../../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindModel } from '../../../../lib/crdt/index.js';
+import { bindModel } from '../../../oracles/model-ops.js';
 import {
 	bindText,
 	DEAD,

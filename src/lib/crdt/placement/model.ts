@@ -873,30 +873,11 @@ export const bindModel = (
 	};
 
 	/**
-	 * Relocate `id` to `dest` (final-index semantics: `dest.index` counts the
-	 * destination's children with `id` already removed). Local invalid moves —
-	 * unknown/deleted block, unknown/deleted parent, or a destination inside
-	 * the block's own subtree — return false without mutating.
-	 */
-	const moveBlock = (doc: EngineDoc, id: BlockId, dest: Destination): boolean => {
-		const { placements, own } = view(doc);
-		if (!isLiveIn({ placements, own }, id)) return false;
-		if (dest.parent !== null && !isLiveIn({ placements, own }, dest.parent)) return false;
-		const node = blockNodeOf(doc, id)!;
-		if (dest.parent !== null && isSelfOrDescendant(placements, own, dest.parent, id)) {
-			return false; // would nest a block under its own display subtree — reject, no mutation
-		}
-		return doc.transact(() => {
-			const sibs = liveChildrenOf(doc, dest.parent, new Set([id]));
-			const idx = Math.max(0, Math.min(dest.index, sibs.length));
-			writePlacement(doc, node, dest.parent, rankAt(sibs, idx, doc.clientID, randOf(doc)));
-			return true;
-		});
-	};
-
-	/**
 	 * Grouped move: relocate `ids` (in given source order) to consecutive
-	 * positions starting at `dest.index` — ONE transaction, so one undo step.
+	 * positions starting at `dest.index` (final-index semantics: the index
+	 * counts the destination's children with the moved blocks removed) —
+	 * ONE transaction, so one undo step. The facade's `moveBlock`,
+	 * `nestBlock` and `unNestBlock` are this op (L15).
 	 * Conflicts resolve per member (each block writes its own candidate); a
 	 * member separately moved later wins or loses by the normal order.
 	 * All-or-nothing locally: any unresolvable member or invalid destination
@@ -930,24 +911,6 @@ export const bindModel = (
 			}
 			return true;
 		});
-	};
-
-	/** Convenience: move `id` to the last position under `newParentId`. */
-	const nestBlock = (doc: EngineDoc, id: BlockId, newParentId: BlockId): boolean => {
-		if (!isLive(doc, newParentId)) return false;
-		return moveBlock(doc, id, {
-			parent: newParentId,
-			index: liveChildrenOf(doc, newParentId).length
-		});
-	};
-
-	/** Convenience: move `id` beside its parent (index = parent index + 1). */
-	const unNestBlock = (doc: EngineDoc, id: BlockId): boolean => {
-		const pos = positionOf(doc, id);
-		if (!pos || pos.parent === null) return false;
-		const ppos = positionOf(doc, pos.parent);
-		if (!ppos) return false;
-		return moveBlock(doc, id, { parent: ppos.parent, index: ppos.index + 1 });
 	};
 
 	/**
@@ -1073,37 +1036,6 @@ export const bindModel = (
 			return T.deleteRange(doc, v.blocks, v.own, id, offset, length);
 		});
 	};
-
-	const formatRange = (
-		doc: EngineDoc,
-		id: BlockId,
-		offset: number,
-		length: number,
-		formats: Record<string, unknown>
-	): boolean => {
-		return doc.transact(() => {
-			const v = ownView(doc, id);
-			if (!v) return false;
-			return T.formatRangeIn(doc, v.blocks, v.own, id, offset, length, formats);
-		});
-	};
-
-	const setMark = (
-		doc: EngineDoc,
-		id: BlockId,
-		offset: number,
-		length: number,
-		name: string,
-		value: unknown
-	): boolean => formatRange(doc, id, offset, length, { [name]: value });
-
-	const unsetMark = (
-		doc: EngineDoc,
-		id: BlockId,
-		offset: number,
-		length: number,
-		name: string
-	): boolean => formatRange(doc, id, offset, length, { [name]: null });
 
 	const insertInline = (doc: EngineDoc, id: BlockId, offset: number, atom: InlineSpec): boolean => {
 		return doc.transact(() => {
@@ -1290,17 +1222,12 @@ export const bindModel = (
 		insertBlock,
 		insertBlocks,
 		deleteBlock,
-		moveBlock,
 		moveBlocks,
-		nestBlock,
-		unNestBlock,
 		splitBlock,
 		mergeBlocks,
 		// content ops
 		insertText,
 		deleteText,
-		setMark,
-		unsetMark,
 		insertInline,
 		removeInline,
 		setInlineData,

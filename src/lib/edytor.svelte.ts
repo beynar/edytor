@@ -122,26 +122,6 @@ export type RootBlock = Block & {
 const getEventTimeStamp = (event: Event | undefined) =>
 	event?.timeStamp || (typeof performance === 'undefined' ? Date.now() : performance.now());
 
-/**
- * Mirror-shape adapter for the canonical `facade.toJSON()` export (S6):
- * the wrapper mirror's `InlineBlock.value` historically emitted `data`
- * even when empty (`{}`), while the canonical export omits absent `data`.
- * Re-adding `data: {}` to data-less inline atoms keeps `edytor.value` /
- * `onChange` payloads byte-identical to the serialization they replaced.
- */
-const withMirrorInlineData = (blocks: JSONBlock[]): JSONBlock[] =>
-	blocks.map((block) => {
-		const content = block.content?.map((part) =>
-			'type' in part && part.data === undefined ? { ...part, data: {} } : part
-		);
-		const children = block.children ? withMirrorInlineData(block.children) : undefined;
-		return {
-			...block,
-			...(content ? { content } : {}),
-			...(children ? { children } : {})
-		};
-	});
-
 const isAppleWebKitBrowser = () => {
 	if (typeof navigator === 'undefined') {
 		return false;
@@ -743,10 +723,9 @@ export class Edytor {
 		}
 		const json: JSONBlock = {
 			type: 'root',
-			// `facade.toJSON()` is the canonical document export — one
-			// serializer instead of a second mirror walk that could drift
-			// (S6). `withMirrorInlineData` preserves the emitted shape.
-			children: root ? withMirrorInlineData(this.facade.toJSON().children) : []
+			// `facade.toJSON()` is the canonical document export — the one
+			// serializer (S6, L14).
+			children: root ? this.facade.toJSON().children : []
 		};
 		this._valueCache = { version, revision, root, json };
 		return json;

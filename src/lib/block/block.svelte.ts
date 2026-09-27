@@ -297,27 +297,22 @@ export class Block {
 		return (this.parent && this.parent.type !== 'root') || false;
 	}
 
+	/**
+	 * This block's JSON — the document's one serializer (`facade.blockJSON`,
+	 * L14). The root reads the document's top level. A detached spec wrapper
+	 * (not yet inserted) has no document value beyond its own fields.
+	 */
 	get value(): JSONBlock {
-		const children = this.children.map((child) => child.value);
-		const content = this.content.map((part) => part.value).flat();
-		const value: JSONBlock = {
-			type: this.type,
+		const { facade } = this.edytor;
+		if (!this._bound) return { type: this.#type, id: this.id, data: this.data };
+		if (this._blockId != null) return facade.blockJSON(this._blockId);
+		const children = facade.toJSON().children;
+		return {
+			type: this.#type,
 			id: this.id,
-			children,
-			content
+			data: this.data,
+			...(children.length > 0 && { children })
 		};
-		if (Object.keys(this.data).length > 0) {
-			value.data = this.data;
-		} else {
-			value.data = {};
-		}
-		if (!children.length) {
-			delete value.children;
-		}
-		if (!content.length) {
-			delete value.content;
-		}
-		return value;
 	}
 
 	isChildOf(block: Block): boolean {

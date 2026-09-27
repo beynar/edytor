@@ -151,6 +151,7 @@ import {
 import {
 	bindEdytorDoc,
 	isInitialized,
+	lineageDepthOf,
 	type BlockRole,
 	type EdytorDoc,
 	type EdytorDocBinding
@@ -418,7 +419,6 @@ export class EdytorDocument {
 	 * an external caller can kill it while the document lives. The getter
 	 * reattaches a fresh manager rather than handing back the corpse.
 	 */
-	private _historyDead = false;
 	private _readiness: DocumentReadiness = 'pending';
 	private _destroyed = false;
 	/**
@@ -544,19 +544,6 @@ export class EdytorDocument {
 	get lineageDepth(): number | undefined {
 		return this._lineageDepth;
 	}
-
-	/**
-	 * Retain one more attach reference — the `attachDocument` dedupe hands
-	 * out this same live document; each reference must see exactly one
-	 * `destroy()` before the document tears down.
-	 * @internal
-	 */
-	_retain = (): void => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('attachDocument');
-		}
-		this._refs += 1;
-	};
 
 	/**
 	 * The document-level semantic configuration (snapshot). The maps are
@@ -712,7 +699,10 @@ export class EdytorDocument {
 			throw new DocumentDestroyedError('history');
 		}
 		let history = this._history;
-		if (history !== undefined && this._historyDead) {
+		// A manager enrolls itself in its tracked origins and leaves them on
+		// `destroy()` — an external teardown (misuse, or the engine's own
+		// `doc.destroy` cascade) shows there.
+		if (history !== undefined && !this._trackedOrigins.has(history)) {
 			// The manager was destroyed externally — it no longer observes
 			// transactions or emits stack events, so returning it would
 			// silently disable capture. Reattach a fresh one (the dead
@@ -781,20 +771,6 @@ export class EdytorDocument {
 			captureTimeout: this._historyOptions?.captureTimeout,
 			captureTransaction: (transaction: { local?: boolean }) => transaction.local !== false
 		});
-		// Guard: nothing but this document owns the manager, yet `destroy()`
-		// is a public engine method — an external caller (or the engine's
-		// own `doc.destroy` cascade) can tear it down while the document
-		// lives. Mark that teardown so `history` never hands the corpse
-		// back (see the getter — it reattaches instead). The vendored
-		// `UndoManager.destroy()` emits no event (`ObservableV2.destroy`
-		// just clears observers), so the monkey-patch is the only signal.
-		const manager = this._history;
-		const engineDestroy = manager.destroy.bind(manager);
-		manager.destroy = () => {
-			this._historyDead = true;
-			engineDestroy();
-		};
-		this._historyDead = false;
 		return this._history;
 	};
 
@@ -1123,26 +1099,10 @@ export const bindDocument = (Y: EngineApi) => {
 	 */
 	const attached = new WeakMap<YDoc, EdytorDocument>();
 
-	/**
-	 * `lineage.depth` must be a finite non-negative integer — NaN,
-	 * Infinity, or fractional values would silently disable the ring's
-	 * trim bound (`len > depth` never fires) and grow unbounded rings.
-	 * Validated at every entry path (`init` covers create/load/attach-new;
-	 * `assertAttachCompatible` covers reattach) so an invalid depth can
-	 * never reach the live facade.
-	 */
-	const assertValidLineageDepth = (depth: number | undefined): void => {
-		if (depth !== undefined && (!Number.isInteger(depth) || depth < 0)) {
-			throw new RangeError(
-				`EdytorDocument lineage.depth must be a non-negative integer, got ${JSON.stringify(depth)}`
-			);
-		}
-	};
-
 	const init = (
 		initOpts: Omit<EdytorDocumentInit, 'binding' | 'attribution' | 'engine' | 'awarenessCtor'>
 	): EdytorDocument => {
-		assertValidLineageDepth(initOpts.lineage?.depth);
+		lineageDepthOf(initOpts.lineage?.depth);
 		return new EdytorDocument({
 			...initOpts,
 			binding,
@@ -1159,7 +1119,7 @@ export const bindDocument = (Y: EngineApi) => {
 	 * actor, awareness instance or merge window is a conflict.
 	 */
 	const assertAttachCompatible = (existing: EdytorDocument, options: DocumentOptions): void => {
-		assertValidLineageDepth(options.lineage?.depth);
+		lineageDepthOf(options.lineage?.depth);
 		if (options.awareness !== undefined && options.awareness !== existing.awareness) {
 			// SemanticConflictError serializes its operands — the awareness
 			// objects themselves are circular; describe them instead.
@@ -1301,7 +1261,7 @@ export const bindDocument = (Y: EngineApi) => {
 			const existing = attached.get(doc);
 			if (existing !== undefined && !existing.destroyed) {
 				assertAttachCompatible(existing, options);
-				existing._retain();
+				existing.retain();
 				return existing;
 			}
 			// Doc-level admission before composition — a refusal is typed

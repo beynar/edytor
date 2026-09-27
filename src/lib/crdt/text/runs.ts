@@ -1684,16 +1684,14 @@ export const bindRuns = (Y: EngineApi) => {
 						}
 						return out;
 					}
+					// Inline atoms always carry `data` (`{}` when absent) — the
+					// public `JSONInlineBlock` shape of `edytor.value`.
 					const inl = r as { id: string; type: string; data?: unknown };
-					const out: {
-						id: string;
-						type: string;
-						data?: unknown;
-					} = { id: inl.id, type: inl.type };
-					if (inl.data !== undefined) {
-						out.data = JSON.parse(JSON.stringify(inl.data)) as unknown;
-					}
-					return out;
+					return {
+						id: inl.id,
+						type: inl.type,
+						data: inl.data === undefined ? {} : (JSON.parse(JSON.stringify(inl.data)) as unknown)
+					};
 				}),
 			subscribe: (cb: (v: number) => void) => {
 				subs.add(cb);

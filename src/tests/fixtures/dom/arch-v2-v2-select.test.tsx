@@ -38,7 +38,7 @@ import {
 } from '../../dom/test.utils.js';
 
 /** Red on the reference; green since V2. */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -115,7 +115,8 @@ describe('V2 — one commit point', () => {
 		}
 	);
 
-	row('F-S3: selectBlocks after a caret emits once and publishes the block set', async () => {
+	// V2a: the emit half is green; the presence half (the block set on the wire) lands with V2b (D-16).
+	it.fails('F-S3: selectBlocks after a caret emits once and publishes the block set', async () => {
 		const { calls, onSelectionChange } = counter();
 		const { edytor } = await renderDomEdytor(
 			<root>
@@ -191,6 +192,12 @@ describe('V2 — one commit point', () => {
 
 		const { startText, yStart } = edytor.selection.state;
 		expect(startText!.segStart + yStart).toBe(12);
+		await flushDomUpdates();
+		expect(edytor.value.children?.[0]?.content).toEqual([
+			{ text: 'hel' },
+			{ type: 'mention', id: 'm1', data: {} },
+			{ text: 'lo world' }
+		]);
 		button.remove();
 	});
 });

@@ -12,8 +12,8 @@
  *   insert exactly at a caret lands after it; a range start (bound right)
  *   and end (bound left) keep boundary inserts outside (anchor contract
  *   rules 2 and 5). One dead endpoint collapses the range to the survivor.
- * - The V1 shadow: a view derives the value from today's state at every
- *   writer (`selection.shadow`), and its projection equals the state.
+ * - Every writer commits a value (`selection.value`, the V1 shadow until
+ *   V2) and the state is its projection.
  *
  * Expected values come from the plan and the anchor contract, never from
  * running the code.
@@ -289,7 +289,7 @@ describe('V1 — anchors survive remote edits (R4)', () => {
 	});
 });
 
-describe('V1 — the shadow value next to today’s state', () => {
+describe('V1/V2 — every writer commits a value; the state is its projection', () => {
 	const view = () => {
 		const document = createDocument({
 			value: { children: [p('a', t('hello')), p('b', t('x'), at('m1'), t('yz'))] }
@@ -302,34 +302,33 @@ describe('V1 — the shadow value next to today’s state', () => {
 		const { textSelection, blockSelection, atomSelection, noSelection } = S();
 		const edytor = view();
 		const sel = edytor.selection;
-		expect(sel.shadow).toEqual(noSelection);
+		expect(sel.value).toEqual(noSelection);
 
 		sel.setCollapsedStateAtTextOffset(text(edytor, 'a'), 3);
 		const caret = edytor.facade.anchorAt('a', 3, 'left');
-		expect(sel.shadow).toEqual(textSelection(caret));
+		expect(sel.value).toEqual(textSelection(caret));
 
 		sel.setRangeStateAtTextOffsets(text(edytor, 'a'), 1, edytor.idToBlock.get('b').lastText, 1, {
 			isReversed: true
 		});
 		// reversed: the anchor is the end (bound left), the focus the start (bound right)
-		expect(sel.shadow).toEqual(
+		expect(sel.value).toEqual(
 			textSelection(edytor.facade.anchorAt('b', 3, 'left'), edytor.facade.anchorAt('a', 1, 'right'))
 		);
 
 		sel.selectBlocks(edytor.idToBlock.get('b'));
-		expect(sel.shadow).toEqual(blockSelection(['b']));
+		expect(sel.value).toEqual(blockSelection(['b']));
 
-		sel.selectBlocks();
 		sel.selectInlineBlock(edytor.idToBlock.get('b').content[1]);
-		expect(sel.shadow).toEqual(atomSelection('b', 'm1'));
+		expect(sel.value).toEqual(atomSelection('b', 'm1'));
 	});
 
-	row('the projection of the shadow equals the state on the shared fields', () => {
+	row('the state is the projection of the value on the shared fields', () => {
 		const { project } = S();
 		const edytor = view();
 		const sel = edytor.selection;
 		sel.setRangeStateAtTextOffsets(text(edytor, 'a'), 1, edytor.idToBlock.get('b').lastText, 1);
-		const v = project(sel.shadow, edytor.facade);
+		const v = project(sel.value, edytor.facade);
 		const s = sel.state;
 		expect(v.start).toEqual({ block: 'a', offset: s.startText.segStart + s.yStart });
 		expect(v.end).toEqual({ block: 'b', offset: s.endText.segStart + s.yEnd });

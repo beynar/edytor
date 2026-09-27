@@ -158,20 +158,15 @@ export class InlineBlock {
 			}
 
 			if (boundaryText) {
-				this.edytor.selection.selectBlocks();
-				this.edytor.selection.clearInlineBlockSelection();
 				this.edytor.selection.setCollapsedStateAtTextOffset(boundaryText, boundaryOffset);
 				this.edytor.selection.ignoreNextSelectionChange = true;
 				void this.edytor.selection.setAtTextOffset(boundaryText, boundaryOffset);
-				this.edytor.selection.focusBlocks(this.parent);
 				return;
 			}
 
-			this.edytor.selection.selectBlocks();
 			this.edytor.selection.selectInlineBlock(this);
 			this.edytor.selection.ignoreNextSelectionChange = true;
 			clearDomSelection(this.edytor.node);
-			this.edytor.selection.focusBlocks(this.parent);
 		};
 		node.addEventListener('pointerdown', selectInlineBlock);
 

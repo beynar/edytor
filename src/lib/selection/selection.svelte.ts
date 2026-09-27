@@ -1,7 +1,6 @@
 import type { Edytor } from '../edytor.svelte.js';
 import { Text } from '../text/text.svelte.js';
 import {
-	climb,
 	climbDom,
 	getInlineBlockOfNode,
 	getInlineBlockInSelectedRange,
@@ -26,13 +25,12 @@ import {
 	type DomSelectionSnapshot
 } from './domSelection.js';
 import { Block } from '../block/block.svelte.js';
-import { SvelteSet } from 'svelte/reactivity';
-import { tick, untrack } from 'svelte';
+import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+import { tick } from 'svelte';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
-import type { JSONText } from '$lib/utils/json.js';
+import type { JSONInlineBlock, JSONText } from '$lib/utils/json.js';
 import {
 	clearAwarenessSelection,
-	jsonValuesEqual,
 	publishAwarenessSelection
 } from '$lib/collaboration/awarenessSelection.js';
 import {
@@ -42,11 +40,19 @@ import {
 } from '$lib/events/nativeInteractiveControl.js';
 import type { Anchor } from '$lib/crdt/text/model.js';
 import {
+	atomSelection,
+	blockSelection,
 	noSelection,
-	selectionShadowHook,
-	selectionValueOf,
+	project,
+	sameValue,
+	segmentsOf,
+	textSelection,
+	type SelectCause,
+	type SelectionProjection,
+	type SelectionSegment,
 	type SelectionValue
 } from '$lib/session/selection.js';
+import { getTextPath, isAndroidChromeBrowser } from '$lib/events/events.utils.js';
 
 /**
  * CRDT-stable anchor for a text position — `{b}` is the home block id of
@@ -101,9 +107,59 @@ type SelectionState = {
 	 */
 	endPosition: TextAnchor | null;
 	currentMarks: JSONText['marks'];
-	// TOREMOVE
-	yTextContent: string;
 };
+
+/** An inline suggestion (L12): content parts shown after a block's text until cleared. */
+export type SuggestionParts = (JSONText[] | JSONInlineBlock)[];
+
+/** The compatibility state of no (or an unresolvable) selection. */
+const EMPTY_STATE: SelectionState = Object.freeze({
+	yStart: 0,
+	yEnd: 0,
+	length: 0,
+	content: '',
+	isCollapsed: true,
+	isReversed: false,
+	texts: [],
+	blocks: [],
+	contentParts: [],
+	isAtStartOfBlock: false,
+	isAtEndOfBlock: false,
+	isAtStartOfText: false,
+	isAtEndOfText: false,
+	startNode: null,
+	endNode: null,
+	startText: null,
+	endText: null,
+	startBlock: null,
+	endBlock: null,
+	isTextSpanning: false,
+	isBlockSpanning: false,
+	isVoid: false,
+	isIsland: false,
+	islandRoot: null,
+	isVoidEditableElement: false,
+	voidRoot: null,
+	relativePosition: null,
+	endPosition: null,
+	currentMarks: {}
+}) as SelectionState;
+
+/** Whether a DOM selection runs backward (focus before anchor in document order). */
+export const isBackward = (selection: {
+	anchorNode: Node | null;
+	anchorOffset: number;
+	focusNode: Node | null;
+	focusOffset: number;
+}) =>
+	selection.focusNode === selection.anchorNode
+		? selection.focusOffset < selection.anchorOffset
+		: Boolean(
+				selection.anchorNode &&
+				selection.focusNode &&
+				selection.anchorNode.compareDocumentPosition(selection.focusNode) &
+					Node.DOCUMENT_POSITION_PRECEDING
+			);
 
 const SYNTHETIC_TEXT_OVERLAY_SELECTOR =
 	'[data-edytor-text-placeholder], [data-edytor-text-suggestion]';
@@ -271,21 +327,6 @@ const ANDROID_POST_DELETE_RESTORE_WINDOW_MS = 250;
  */
 const SELECTION_WRITE_VERIFY_DELAY_MS = 150;
 
-// Same UA test as `onBeforeInput.ts` — kept module-private per the
-// codebase's per-file browser-sniffing convention.
-const isAndroidChromeBrowser = () => {
-	if (typeof navigator === 'undefined') {
-		return false;
-	}
-
-	const userAgent = navigator.userAgent;
-	return (
-		/Android/i.test(userAgent) &&
-		/\bChrome\//i.test(userAgent) &&
-		!/(Edg|OPR|SamsungBrowser)/i.test(userAgent)
-	);
-};
-
 const restoreBackwardDomRange = (
 	selection: Selection,
 	range: Range,
@@ -332,7 +373,6 @@ export class EdytorSelection {
 	selectedBlocks = new SvelteSet<Block>();
 	selectedInlineBlock = new SvelteSet<InlineBlock>();
 	inlineBlockDeletionTarget: InlineBlock | null = null;
-	hasSelectedAll = $state(false);
 	nextUndoSelectionSnapshot = $state<Partial<UndoSelectionSnapshot> | null>(null);
 	isRestoringHistorySelection = $state(false);
 	/**
@@ -392,83 +432,267 @@ export class EdytorSelection {
 	private pendingBlockRangeRequest: symbol | null = null;
 	private historySelectionRestoreVersion = 0;
 
-	state = $state<SelectionState>({
-		yStart: 0,
-		yEnd: 0,
-		length: 0,
-		content: '',
-		isCollapsed: true,
-		isReversed: false,
-		texts: [],
-		blocks: [],
-		contentParts: [],
-		isAtStartOfBlock: false,
-		isAtEndOfBlock: false,
-		isAtStartOfText: false,
-		isAtEndOfText: false,
-		startNode: null,
-		endNode: null,
-		startText: null,
-		endText: null,
-		startBlock: null,
-		endBlock: null,
-		isTextSpanning: false,
-		isBlockSpanning: false,
-		isVoid: false,
-		isIsland: false,
-		islandRoot: null,
-		isVoidEditableElement: false,
-		voidRoot: null,
-		relativePosition: null,
-		endPosition: null,
-		currentMarks: {},
-		// TOREMOVE
-		yTextContent: ''
-	});
 	/**
-	 * V1 shadow (temporary, removed at V2): the selection value derived from
-	 * `state` and the atomic sets by every writer, the state object it was
-	 * derived from, and the index version then. It decides nothing; the dom
-	 * lane compares its projection with `state` (plan §9.1 rule 3).
+	 * The selection (R9, L4): a value — none, a text range of two anchors,
+	 * one inline atom, or a set of block ids. Only `select()` replaces it.
 	 */
-	shadow: SelectionValue = noSelection;
-	shadowState: SelectionState;
-	shadowVersion = -1;
-	private syncShadow = () =>
-		untrack(() => {
-			this.shadow = selectionValueOf(this.state, this.selectedBlocks, this.selectedInlineBlock);
-			this.shadowState = this.state;
-			this.shadowVersion = this.edytor.facade.version;
-			selectionShadowHook()?.turn(this);
-		});
+	value = $state.raw<SelectionValue>(noSelection);
+	/** Advanced by every `select()`. */
+	epoch = 0;
+	/** Why the last `select()` ran. */
+	cause: SelectCause = 'model';
+	/**
+	 * Inline text suggestions (L12), keyed by block id: set by the host or an
+	 * extension, cleared by accept, dismiss, and by `select()` when the
+	 * selection leaves their block.
+	 */
+	suggestions = new SvelteMap<string, SuggestionParts>();
+	/** DOM fields (Surface) observed with the value they describe. */
+	#surface: { value: SelectionValue; startNode: Node | null; endNode: Node | null } | null = null;
+	/** Blocks holding the last selection's endpoints: a suggestion there is cleared when they are left. */
+	#edges: string[] = [];
+	#compat = new WeakMap<
+		SelectionProjection,
+		{ surface: unknown; mirror: number; state: SelectionState }
+	>();
+	/** The state as the last `select()` wrote it. */
+	#written: SelectionState = EMPTY_STATE;
+
 	constructor(
 		edytor: Edytor,
 		private edytorOnSelectionChange?: (selection: EdytorSelection) => void
 	) {
 		this.edytor = edytor;
-		this.shadowState = this.state;
-		selectionShadowHook()?.register(this);
 	}
+
+	/** The projection of the current value at the current document version. */
+	get projection(): SelectionProjection {
+		void this.edytor.valueRevision;
+		return project(this.value, this.edytor.facade);
+	}
+
 	/**
-	 * The last state `emitSelectionChange` actually emitted — U8a dedupe.
-	 * `applySelectionSnapshot` re-derives on every DOM `selectionchange`
-	 * AND on every programmatic `setAtNodeOffset`/`setAtRange` write, so
-	 * one keystroke used to emit (and re-publish awareness) 3× for an
-	 * identical caret. Emitting only when the derived selection differs
-	 * from the last emitted one keeps awareness publishes and
-	 * `onSelectionChange` consumers honest — nothing observable is
-	 * skipped, since the skipped emits carried a state equal to what was
-	 * already broadcast.
-	 *
-	 * The compare deliberately excludes DOM-reference fields
-	 * (`startNode`, `endNode`) — fresh snapshots of the same position are
-	 * not a change — but includes `relativePosition`/`endPosition` (the
-	 * bound anchor atoms): an anchor that re-bound to different atoms IS
-	 * worth republishing even when the display position is unchanged.
-	 * Field-wise + `jsonValuesEqual` on the JSON-shaped members (S12) —
-	 * no per-emit serialization.
+	 * Compatibility view of the projection in today's wrapper vocabulary
+	 * (`startText`/`yStart`/… offsets inside text segments). Every field is a
+	 * projection of (value, document version); the DOM fields come from the
+	 * Surface for the value they were observed with.
 	 */
-	private lastEmittedState: SelectionState | null = null;
+	get state(): SelectionState {
+		const projection = this.projection;
+		const surface = this.#surface?.value === this.value ? this.#surface : null;
+		const mirror = this.edytor.mirrorRevision;
+		const hit = this.#compat.get(projection);
+		if (hit && hit.surface === surface && hit.mirror === mirror) return hit.state;
+		const state = this.#compatState(this.value, projection, surface);
+		this.#compat.set(projection, { surface, mirror, state });
+		return state;
+	}
+
+	#textOf = (block: Block, segment: SelectionSegment | undefined): Text | null => {
+		if (segment?.kind !== 'text') return null;
+		const texts = block.content.filter((part): part is Text => part instanceof Text);
+		return texts.find((text) => text._segOrd === segment.segOrd) ?? texts[segment.segOrd] ?? null;
+	};
+
+	#compatState = (
+		value: SelectionValue,
+		projection: SelectionProjection,
+		surface: { startNode: Node | null; endNode: Node | null } | null
+	): SelectionState => {
+		const { start, end } = projection;
+		const blockOf = (id: string) => this.edytor.idToBlock.get(id) ?? null;
+		const startBlock = start && blockOf(start.block);
+		const endBlock = end && blockOf(end.block);
+		if (!start || !end || !startBlock || !endBlock) return EMPTY_STATE;
+		let parts = projection.segments;
+		if (value.kind === 'atom') {
+			const all = segmentsOf(this.edytor.facade, start.block);
+			const index = all.findIndex((part) => part.kind === 'inline' && part.id === value.atomId);
+			parts = all.slice(index - 1, index + 2);
+		}
+		const texts = parts.filter((part) => part.kind === 'text');
+		const startSegment = texts[0];
+		const endSegment = texts[texts.length - 1];
+		const startText = this.#textOf(startBlock, startSegment);
+		const endText = this.#textOf(endBlock, endSegment);
+		if (!startText || !endText || !startSegment || !endSegment) return EMPTY_STATE;
+		const contentParts = parts.flatMap((part): (Text | InlineBlock)[] => {
+			const block = blockOf(part.block);
+			if (!block) return [];
+			if (part.kind === 'text') return [this.#textOf(block, part) ?? []].flat();
+			const atom = block.content.find((c) => c instanceof InlineBlock && c.id === part.id);
+			return atom instanceof InlineBlock ? [atom] : [];
+		});
+		const blocks =
+			value.kind === 'blocks'
+				? value.ids
+						.filter((id) => this.edytor.facade.isVisibleBlock(id))
+						.sort((a, b) => this.edytor.facade.compare(a, b))
+						.flatMap((id) => blockOf(id) ?? [])
+				: projection.blocks.flatMap((id) => blockOf(id) ?? []);
+		const [anchorStart, anchorEnd] =
+			value.kind === 'text'
+				? projection.isReversed
+					? [value.focus, value.anchor]
+					: [value.anchor, value.focus]
+				: [null, null];
+		const voidRoot = projection.voidRoot ? blockOf(projection.voidRoot) : null;
+		const edytor = this.edytor;
+		return Object.defineProperties(
+			{
+				yStart: start.offset - startSegment.start,
+				yEnd: end.offset - endSegment.start,
+				isCollapsed: projection.isCollapsed,
+				isReversed: projection.isReversed,
+				texts: contentParts.filter((part): part is Text => part instanceof Text),
+				contentParts,
+				blocks,
+				isAtStartOfBlock: projection.isAtStartOfBlock,
+				isAtEndOfBlock: projection.isAtEndOfBlock,
+				isAtStartOfText: projection.isAtStartOfText,
+				isAtEndOfText: projection.isAtEndOfText,
+				startNode: surface?.startNode ?? null,
+				endNode: surface?.endNode ?? null,
+				startText,
+				endText,
+				startBlock,
+				endBlock,
+				isTextSpanning: projection.isTextSpanning,
+				isBlockSpanning: projection.isBlockSpanning,
+				isVoid: voidRoot !== null,
+				voidRoot,
+				isIsland: projection.islandRoot !== null,
+				islandRoot: projection.islandRoot ? blockOf(projection.islandRoot) : null,
+				relativePosition: anchorStart,
+				endPosition: projection.isCollapsed ? null : anchorEnd
+			},
+			{
+				content: { enumerable: true, get: () => projection.content },
+				length: { enumerable: true, get: () => projection.content.length },
+				currentMarks: { enumerable: true, get: () => projection.marks },
+				isVoidEditableElement: {
+					enumerable: true,
+					get: () =>
+						voidRoot !== null &&
+						['INPUT', 'TEXTAREA'].includes(
+							getActiveElement(edytor.node)?.tagName.toUpperCase() ?? ''
+						)
+				}
+			}
+		) as SelectionState;
+	};
+
+	/**
+	 * The one commit point (R9): replaces the value, advances the epoch and
+	 * applies every side effect once — the selected, atom and focused sets
+	 * (hooks and attributes), clearing suggestions whose block the selection
+	 * left, and, when the value changed, presence and `onSelectionChange`.
+	 * `surface` carries the DOM nodes the value was observed from.
+	 */
+	select = (
+		next: SelectionValue,
+		cause: SelectCause = 'model',
+		surface?: { startNode: Node | null; endNode: Node | null }
+	) => {
+		const changed = !sameValue(this.value, next);
+		if (changed) this.value = next;
+		const value = this.value;
+		this.epoch++;
+		this.cause = cause;
+		if (surface) this.#surface = { value, ...surface };
+		const projection = project(value, this.edytor.facade);
+		const blockOf = (id: string) => this.edytor.idToBlock.get(id);
+		const selected =
+			value.kind === 'blocks'
+				? value.ids
+						.filter((id) => this.edytor.facade.isVisibleBlock(id))
+						.flatMap((id) => blockOf(id) ?? [])
+				: [];
+		const atom =
+			value.kind === 'atom'
+				? blockOf(value.blockId)?.content.find(
+						(part): part is InlineBlock => part instanceof InlineBlock && part.id === value.atomId
+					)
+				: undefined;
+		const focused =
+			value.kind === 'text'
+				? projection.blocks.flatMap((id) => blockOf(id) ?? [])
+				: value.kind === 'atom'
+					? [blockOf(value.blockId) ?? []].flat()
+					: [];
+		this.#sync(this.selectedBlocks, selected, 'selected');
+		this.#sync(this.focusedBlocks, focused, 'focused');
+		if (atom !== this.inlineBlockDeletionTarget || (!atom && this.selectedInlineBlock.size)) {
+			this.selectedInlineBlock.clear();
+			if (atom) this.selectedInlineBlock.add(atom);
+			this.inlineBlockDeletionTarget = atom ?? null;
+		}
+		const edges = [projection.start?.block, projection.end?.block].filter(
+			(id): id is string => id !== undefined
+		);
+		for (const id of this.#edges) if (!edges.includes(id)) this.suggestions.delete(id);
+		this.#edges = edges;
+		const state = this.state;
+		this.#written = state;
+		if (state.startText) {
+			this.#lastText = state.startText;
+			this.#lastBlock = state.startBlock;
+		}
+		if (!changed) return;
+		publishAwarenessSelection(this);
+		this.edytorOnSelectionChange?.(this);
+		this.edytor.plugins.forEach((plugin) => {
+			plugin.onSelectionChange?.(this);
+		});
+	};
+
+	/** Diff one block set against its new members: hooks and attributes only for changes. */
+	#sync = (set: SvelteSet<Block>, blocks: Block[], kind: 'selected' | 'focused') => {
+		const next = new Set(blocks);
+		const attribute = `data-edytor-${kind}`;
+		for (const block of set) {
+			if (next.has(block)) continue;
+			set.delete(block);
+			// `onDeselect` pairs with `onSelect`; `onBlur` keeps firing on both
+			// (it has historically doubled as the selection-loss hook).
+			if (kind === 'selected') block.definition.onDeselect?.({ block });
+			block.definition.onBlur?.({ block });
+			block.node?.removeAttribute(attribute);
+		}
+		for (const block of next) {
+			if (set.has(block)) continue;
+			set.add(block);
+			if (kind === 'selected') block.definition.onSelect?.({ block });
+			else block.definition.onFocus?.({ block });
+			block.node?.setAttribute(attribute, 'true');
+		}
+	};
+
+	/**
+	 * A text value from wrapper endpoints (offsets inside text segments):
+	 * the start binds right (boundary inserts stay outside), the end and a
+	 * caret bind left; `none` when the start text is not bound to the document.
+	 */
+	textValue = (
+		startText: Text,
+		yStart: number,
+		endText: Text = startText,
+		yEnd: number = yStart,
+		isReversed = false,
+		startAffinity?: 'left' | 'right'
+	): SelectionValue => {
+		const collapsed = startText === endText && yStart === yEnd;
+		const start = this.createTextAnchor(
+			startText,
+			yStart,
+			startAffinity ?? (collapsed ? 'left' : 'right')
+		);
+		if (!start) return noSelection;
+		if (collapsed) return textSelection(start);
+		const end = this.createTextAnchor(endText, yEnd, 'left') ?? start;
+		return isReversed ? textSelection(end, start) : textSelection(start, end);
+	};
+
 	/**
 	 * A dead-endpoint recovery pass that found no mounted editable
 	 * destination — e.g. a remote whole-document delete whose
@@ -482,37 +706,6 @@ export class EdytorSelection {
 	 * fixed the endpoints makes the replay a no-op.
 	 */
 	private deadEndpointRecoveryPending = false;
-	private emittedStatesMatch = (a: SelectionState, b: SelectionState) =>
-		a.startText?.id === b.startText?.id &&
-		a.endText?.id === b.endText?.id &&
-		a.yStart === b.yStart &&
-		a.yEnd === b.yEnd &&
-		a.isCollapsed === b.isCollapsed &&
-		a.isReversed === b.isReversed &&
-		a.startBlock?.id === b.startBlock?.id &&
-		a.endBlock?.id === b.endBlock?.id &&
-		a.isVoid === b.isVoid &&
-		a.isIsland === b.isIsland &&
-		a.isVoidEditableElement === b.isVoidEditableElement &&
-		a.blocks.length === b.blocks.length &&
-		a.content === b.content &&
-		a.yTextContent === b.yTextContent &&
-		jsonValuesEqual(a.currentMarks ?? {}, b.currentMarks ?? {}) &&
-		jsonValuesEqual(a.relativePosition ?? null, b.relativePosition ?? null) &&
-		jsonValuesEqual(a.endPosition ?? null, b.endPosition ?? null);
-	private emitSelectionChange = () => {
-		const state = this.state;
-		if (this.lastEmittedState && this.emittedStatesMatch(this.lastEmittedState, state)) {
-			return;
-		}
-		this.lastEmittedState = state;
-		publishAwarenessSelection(this);
-		this.edytorOnSelectionChange?.(this);
-		this.edytor.plugins.forEach((plugin) => {
-			plugin.onSelectionChange?.(this);
-		});
-	};
-
 	/**
 	 * "Is `state` still at this caret position?" — the one comparison
 	 * every staleness/echo/foreign-write check shares (previously four
@@ -541,10 +734,11 @@ export class EdytorSelection {
 
 	/**
 	 * The pre-write caret snapshot `recordPostDeleteCaretTarget` compares
-	 * against — every DOM-writing path captures it identically.
+	 * against: the caret as the last `select()` wrote it (a projection
+	 * already follows the edit that moved it).
 	 */
 	private caretSignature = () => {
-		const { startText, yStart, isCollapsed } = this.state;
+		const { startText, yStart, isCollapsed } = this.#written;
 		return { startText, yStart, isCollapsed };
 	};
 
@@ -561,38 +755,6 @@ export class EdytorSelection {
 		}
 	};
 
-	/**
-	 * Marks shown for this selection — the char BEFORE the caret for a
-	 * collapsed caret (what the next typed char inherits; at offset 0
-	 * `getMarksAtRange(0, 0)` yields the first run's marks), the marks
-	 * over the start edge of the range otherwise. Every state writer
-	 * must agree — a wider read (e.g. the whole prefix before the caret)
-	 * reports marks the caret no longer sits on.
-	 */
-	private getMarksAtSelection = (
-		startText: Text,
-		yStart: number,
-		endText: Text,
-		yEnd: number
-	): NonNullable<JSONText['marks']> => {
-		const markEnd = startText === endText ? yEnd : startText.length;
-		const markStart = yStart === markEnd ? Math.max(yStart - 1, 0) : yStart;
-		return startText
-			.getMarksAtRange(markStart, markEnd)
-			.reduce<NonNullable<JSONText['marks']>>((acc, mark) => {
-				mark.marks && Object.assign(acc, mark.marks);
-				return acc;
-			}, {});
-	};
-
-	private getTextPath = (text: Text | null) => {
-		if (!text) {
-			return null;
-		}
-
-		const index = text.parent.content.findIndex((part) => part === text);
-		return [...text.parent.path, index === -1 ? text.index : index];
-	};
 	private getTextByPath = (path: number[] | null) => {
 		if (!path || path.length < 2) {
 			return null;
@@ -618,7 +780,7 @@ export class EdytorSelection {
 		return block ?? null;
 	};
 	private isCurrentText = (text: Text | null | undefined) =>
-		Boolean(text && this.getTextByPath(this.getTextPath(text)) === text);
+		Boolean(text && this.getTextByPath(getTextPath(text)) === text);
 	private getRestorableText = (id: string | null, path: number[] | null) => {
 		// `getTextById` throws on malformed ids — a stale/corrupt snapshot
 		// id must degrade to the path fallback, never crash a restore.
@@ -663,23 +825,23 @@ export class EdytorSelection {
 	private createUndoSelectionSnapshot = (
 		override?: Partial<UndoSelectionSnapshot> | null
 	): UndoSelectionSnapshot => ({
-		isCollapsed: this.state.isCollapsed,
-		isReversed: this.state.isReversed,
-		startTextId: this.state.startText?.id ?? null,
-		endTextId: this.state.endText?.id ?? null,
-		startTextPath: this.getTextPath(this.state.startText),
-		endTextPath: this.getTextPath(this.state.endText),
-		yStart: this.state.yStart,
-		yEnd: this.state.yEnd,
-		startAnchor: this.state.startText
+		isCollapsed: this.#written.isCollapsed,
+		isReversed: this.#written.isReversed,
+		startTextId: this.#written.startText?.id ?? null,
+		endTextId: this.#written.endText?.id ?? null,
+		startTextPath: this.#written.startText && getTextPath(this.#written.startText),
+		endTextPath: this.#written.endText && getTextPath(this.#written.endText),
+		yStart: this.#written.yStart,
+		yEnd: this.#written.yEnd,
+		startAnchor: this.#written.startText
 			? this.createTextAnchor(
-					this.state.startText,
-					this.state.yStart,
-					this.state.isCollapsed ? 'left' : 'right'
+					this.#written.startText,
+					this.#written.yStart,
+					this.#written.isCollapsed ? 'left' : 'right'
 				)
 			: null,
-		endAnchor: this.state.endText
-			? this.createTextAnchor(this.state.endText, this.state.yEnd, 'left')
+		endAnchor: this.#written.endText
+			? this.createTextAnchor(this.#written.endText, this.#written.yEnd, 'left')
 			: null,
 		selectedBlockIds: Array.from(this.selectedBlocks).map((block) => block.id),
 		selectedBlockPaths: Array.from(this.selectedBlocks).map((block) => [...block.path]),
@@ -689,7 +851,6 @@ export class EdytorSelection {
 		this.nextUndoSelectionSnapshot = this.createUndoSelectionSnapshot(override);
 	};
 	destroy = () => {
-		selectionShadowHook()?.unregister(this);
 		// Document-shared undo manager — drop our listeners so the dead
 		// view no longer writes/pops per-view snapshots on it.
 		this._unbindHistoryListeners();
@@ -710,15 +871,17 @@ export class EdytorSelection {
 	 * `restoreSelectionAfterRepair` bail forever).
 	 */
 	clearInlineBlockSelection = () => {
-		this.selectedInlineBlock.clear();
-		this.inlineBlockDeletionTarget = null;
-		this.syncShadow();
+		const value = this.value;
+		if (value.kind !== 'atom') return;
+		// Leaving the atom: a caret at its start (the end of the text before it).
+		const atom = this.edytor.idToBlock
+			.get(value.blockId)
+			?.content.find((part) => part instanceof InlineBlock && part.id === value.atomId);
+		const before = atom?.parent.content[atom.parent.content.indexOf(atom) - 1];
+		this.select(before instanceof Text ? this.textValue(before, before.length) : noSelection);
 	};
 	selectInlineBlock = (inlineBlock: InlineBlock) => {
-		this.clearInlineBlockSelection();
-		this.selectedInlineBlock.add(inlineBlock);
-		this.inlineBlockDeletionTarget = inlineBlock;
-		this.syncShadow();
+		this.select(atomSelection(inlineBlock.parent.id, inlineBlock.id));
 	};
 	clearModelSelectionPreservation = () => {
 		this.shouldKeepModelSelectionForNextTextInsertion = false;
@@ -867,7 +1030,7 @@ export class EdytorSelection {
 		// State this restore last wrote — a foreign selection write inside
 		// the window (a programmatic move carrying no gesture evidence)
 		// replaces `state`; the delayed re-writes must not overwrite it.
-		let ownedState: typeof this.state | null = null;
+		let ownedState: SelectionState | null = null;
 		const abortOnForeignWrite = () => {
 			this.historySelectionRestoreVersion++;
 			this.isRestoringHistorySelection = false;
@@ -913,14 +1076,14 @@ export class EdytorSelection {
 				if (!shouldContinue()) {
 					return;
 				}
-				if (ownedState !== null && this.state !== ownedState) {
+				if (ownedState !== null && this.#written !== ownedState) {
 					// `state` is replaced on EVERY derive — including derives
 					// that re-write this same range (a selectionchange echo, a
 					// reconcile adopting the restored point). Object identity
 					// alone can't tell "foreign caret move" from "equivalent
 					// re-derive" — compare fields: only a DIFFERENT target is
 					// a foreign write whose owner keeps the caret.
-					const sameTarget = this.stateMatchesSelectionTarget(this.state, {
+					const sameTarget = this.stateMatchesSelectionTarget(this.#written, {
 						startText,
 						endText,
 						yStart: startOffset,
@@ -932,13 +1095,13 @@ export class EdytorSelection {
 						abortOnForeignWrite();
 						return;
 					}
-					ownedState = this.state;
+					ownedState = this.#written;
 				}
 
 				this.setRangeStateAtTextOffsets(startText, startOffset, endText, endOffset, {
 					isReversed
 				});
-				ownedState = this.state;
+				ownedState = this.#written;
 				this.ignoreNextSelectionChange = true;
 			};
 
@@ -948,7 +1111,7 @@ export class EdytorSelection {
 			});
 			// The DOM-write's own derive also counts as this restore's
 			// landing — adopt it before the delayed re-writes check ownership.
-			ownedState = this.state;
+			ownedState = this.#written;
 			restoreModelRange();
 			this.scheduleReassert(restoreModelRange, [0, 30]);
 
@@ -959,7 +1122,7 @@ export class EdytorSelection {
 			restoreModelRange();
 
 			if (
-				this.stateMatchesSelectionTarget(this.state, {
+				this.stateMatchesSelectionTarget(this.#written, {
 					startText,
 					endText,
 					yStart: startOffset,
@@ -1461,13 +1624,7 @@ export class EdytorSelection {
 			return false;
 		}
 
-		const nativeIsReversed =
-			selection.focusNode === selection.anchorNode
-				? selection.focusOffset < selection.anchorOffset
-				: Boolean(
-						selection.anchorNode.compareDocumentPosition(selection.focusNode) &
-						Node.DOCUMENT_POSITION_PRECEDING
-					);
+		const nativeIsReversed = isBackward(selection);
 		const nativeStartNode = nativeIsReversed ? selection.focusNode : selection.anchorNode;
 		const nativeStartOffset = nativeIsReversed ? selection.focusOffset : selection.anchorOffset;
 		const nativeEndNode = nativeIsReversed ? selection.anchorNode : selection.focusNode;
@@ -1563,16 +1720,10 @@ export class EdytorSelection {
 	 */
 	private restoreDriftedEchoCaret = (selection: DomSelectionSnapshot | null): boolean => {
 		const state = this.state;
-		const probe = (globalThis as { __selDrift?: unknown[] }).__selDrift;
-		const n = () =>
-			((globalThis as { __selN?: number }).__selN =
-				((globalThis as { __selN?: number }).__selN ?? 0) + 1);
 		if (this.edytor.gestureSerial !== this.lastEchoGestureSerial) {
-			probe?.push({ n: n(), kind: 'echo-skip', why: 'gesture' });
 			return false;
 		}
 		if (this.edytor.domSelectionChurnSeq === this.edytor.churnBaselineAtGesture) {
-			probe?.push({ n: n(), kind: 'echo-pass', churn: 'settled' });
 			return false;
 		}
 		if (
@@ -1588,17 +1739,11 @@ export class EdytorSelection {
 			state.isBlockSpanning ||
 			state.isVoid
 		) {
-			probe?.push({ n: n(), kind: 'echo-skip', why: 'shape' });
 			return false;
 		}
-		const resolved = this.resolveTextAnchor(state.relativePosition);
-		const resolvedEnd =
-			state.isCollapsed || !state.endPosition
-				? resolved
-				: this.resolveTextAnchor(state.endPosition);
-		if (!resolved || !resolvedEnd) {
-			return false;
-		}
+		// The state is the projection of the anchors at this version.
+		const resolved = { text: state.startText, offset: state.yStart };
+		const resolvedEnd = { text: state.endText ?? state.startText, offset: state.yEnd };
 		const container = this.edytor.node;
 		if (!container || !selection?.anchorNode || !selection.focusNode) {
 			return false;
@@ -1606,28 +1751,13 @@ export class EdytorSelection {
 		if (!container.contains(selection.anchorNode)) {
 			return false;
 		}
-		const nativeIsReversed =
-			selection.focusNode === selection.anchorNode
-				? selection.focusOffset < selection.anchorOffset
-				: Boolean(
-						selection.anchorNode.compareDocumentPosition(selection.focusNode) &
-						Node.DOCUMENT_POSITION_PRECEDING
-					);
+		const nativeIsReversed = isBackward(selection);
 		const domStartNode = nativeIsReversed ? selection.focusNode : selection.anchorNode;
 		const domStartOffset = nativeIsReversed ? selection.focusOffset : selection.anchorOffset;
 		const domEndNode = nativeIsReversed ? selection.anchorNode : selection.focusNode;
 		const domEndOffset = nativeIsReversed ? selection.anchorOffset : selection.focusOffset;
 		const domStartText = this.getTextOfNode(domStartNode);
 		const domEndText = this.getTextOfNode(domEndNode);
-		probe?.push({
-			n: n(),
-			kind: 'echo-check',
-			dom: domStartText ? getYIndex(domStartText, domStartNode, domStartOffset) : 'x',
-			res: resolved.offset,
-			state: state.yStart,
-			domT: domStartText?.id,
-			resT: resolved.text.id
-		});
 		if (
 			selection.isCollapsed === state.isCollapsed &&
 			domStartText === resolved.text &&
@@ -1676,7 +1806,7 @@ export class EdytorSelection {
 		if (!selection?.isCollapsed || !selection.anchorNode) {
 			return false;
 		}
-		const { startText, yStart, isCollapsed } = this.state;
+		const { startText, yStart, isCollapsed } = this.#written;
 		if (!isCollapsed || startText !== target.text || yStart !== target.offset) {
 			return false;
 		}
@@ -1716,17 +1846,17 @@ export class EdytorSelection {
 			!previous.isCollapsed ||
 			!previous.startText ||
 			previous.yStart !== 0 ||
-			!this.state.isCollapsed ||
-			!this.state.startText ||
-			this.state.startText === previous.startText ||
+			!this.#written.isCollapsed ||
+			!this.#written.startText ||
+			this.#written.startText === previous.startText ||
 			Date.now() - this.lastDeleteCommandAt > ANDROID_POST_DELETE_RESTORE_WINDOW_MS
 		) {
 			return;
 		}
 
 		this.postDeleteCaretTarget = {
-			text: this.state.startText,
-			offset: this.state.yStart,
+			text: this.#written.startText,
+			offset: this.#written.yStart,
 			at: Date.now()
 		};
 	};
@@ -1771,18 +1901,10 @@ export class EdytorSelection {
 			return;
 		}
 
-		const { anchorNode, focusNode, anchorOffset, focusOffset, direction, type } = selection;
-		let isCollapsed = selection.isCollapsed;
+		const { anchorNode, focusNode, anchorOffset, focusOffset } = selection;
+		const isCollapsed = selection.isCollapsed;
 		const ranges = getRangesFromSelection(selection);
-		const isReversed =
-			focusNode === anchorNode
-				? focusOffset < anchorOffset
-				: focusNode
-					? Boolean(
-							anchorNode.compareDocumentPosition(focusNode) & Node.DOCUMENT_POSITION_PRECEDING
-						)
-					: false;
-		const content = selection?.toString() || '';
+		const isReversed = isBackward(selection);
 		const startNode = isReversed ? focusNode : anchorNode;
 		const endNode = isReversed ? anchorNode : focusNode;
 		const start = isReversed ? focusOffset : anchorOffset;
@@ -1790,8 +1912,8 @@ export class EdytorSelection {
 
 		const selectedInlineBlock = this.getInlineBlockInSelectedRange(ranges[0]);
 		const selectionParts = selectedInlineBlock
-			? { startText: null, endText: null, texts: [], inlineBlock: selectedInlineBlock }
-			: this.getTextsInSelection(startNode, endNode, ranges, start, end);
+			? { startText: null, endText: null, inlineBlock: selectedInlineBlock }
+			: this.getTextsInSelection(startNode, endNode, start, end);
 		let { startText, endText, inlineBlock } = selectionParts;
 
 		const placeholderInRange = getTextPlaceholderInRange(ranges[0]);
@@ -1813,9 +1935,6 @@ export class EdytorSelection {
 				return;
 			}
 		}
-
-		this.selectBlocks();
-		this.focusBlocks();
 
 		if (!startText) {
 			const islandBlock = this.getNonNativeEditableIslandBlock(startNode);
@@ -1853,31 +1972,8 @@ export class EdytorSelection {
 			return this.setAtTextOffset(targetText, targetText.length);
 		}
 
-		this.clearInlineBlockSelection();
-
 		const rawYStart = getYIndex(startText, startNode, start);
 		const rawYEnd = isCollapsed ? rawYStart : getYIndex(endText, endNode, end);
-		if (
-			(globalThis as any).__EDYTOR_SEL_DEBUG__ &&
-			(startText !== this.state.startText ||
-				rawYStart !== this.state.yStart ||
-				rawYEnd !== this.state.yEnd ||
-				isCollapsed !== this.state.isCollapsed)
-		) {
-			const n = ((globalThis as any).__selN = ((globalThis as any).__selN ?? 0) + 1);
-			const caller =
-				new Error().stack
-					?.split('\n')
-					.slice(2, 6)
-					.map((l) => l.trim().split(' ')[1] ?? l.trim())
-					.join('<') ?? '';
-			((globalThis as any).__EDYTOR_SEL_LOG__ ??= []).push(
-				`#${n} echo ${this.state.startText?.id}@${this.state.yStart}..${this.state.yEnd}${this.state.isCollapsed ? '' : 'R'} -> ${startText?.id}@${rawYStart}..${rawYEnd}${isCollapsed ? '' : 'R'} ` +
-					`node=${startNode?.nodeName}@${start} type=${startNode?.nodeType} ` +
-					`parent=${(startNode?.parentNode as Element)?.tagName}.${(startNode?.parentNode as Element)?.getAttribute?.('data-edytor-text') ?? ''} ` +
-					`via=${caller}`
-			);
-		}
 		let yStart = normalizeUtf16Boundary(
 			startText.stringContent,
 			rawYStart,
@@ -1905,7 +2001,7 @@ export class EdytorSelection {
 			}
 		}
 		if (!isCollapsed && startText === endText && yStart === yEnd) {
-			isCollapsed = true;
+			// An empty native range reads as a caret; the DOM is normalized to one.
 			shouldRestoreNormalizedDomRange = true;
 		}
 
@@ -1926,124 +2022,10 @@ export class EdytorSelection {
 			return;
 		}
 
-		let isIsland = false;
-		let islandRoot: Block | null = null;
-
-		climb(startText?.parent, (block) => {
-			if (block instanceof Block && block.definition.island) {
-				isIsland = true;
-				islandRoot = block;
-				return true;
-			}
-		});
-
-		let isVoid = false;
-		let voidRoot: Block | null = null;
-		climb(startText?.parent, (block) => {
-			if (block instanceof Block && block.definition.void) {
-				isVoid = true;
-				voidRoot = block;
-				return true;
-			}
-		});
-
-		if (!isVoid) {
-			climbDom(startNode, (node) => {
-				if (node instanceof HTMLElement && node.dataset.edytorBlock && node.dataset.edytorVoid) {
-					const id = node.dataset.edytorId;
-					const block = id && this.edytor.idToBlock.get(id);
-					if (block) {
-						isVoid = true;
-						voidRoot = block;
-						return true;
-					}
-				}
-			});
-		}
-
-		const isAtStartOfText = yStart === 0;
-		const isAtEndOfText = yEnd === endText?.length;
-		const isAtStartOfBlock =
-			(startText && startText === startText.parent.firstText && isAtStartOfText) || false;
-		const isAtEndOfBlock =
-			(endText && endText === endText.parent.lastText && isAtEndOfText) || false;
-
-		const startBlock = startText?.parent || null;
-		const endBlock = endText?.parent || null;
-		const { startBlock: previousStartBlock, endBlock: previousEndBlock } = this.state;
-		if (
-			(previousStartBlock !== startBlock || previousEndBlock !== endBlock) &&
-			[previousStartBlock, previousEndBlock].some((block) => block?.suggestions)
-		) {
-			[previousStartBlock, previousEndBlock].forEach((block) => {
-				if (block?.suggestions) {
-					block.suggestions = null;
-				}
-			});
-		}
-
-		const isTextSpanning = startText !== endText;
-		const isBlockSpanning = startBlock !== endBlock;
-		const normalizedContent = isCollapsed
-			? ''
-			: startText === endText
-				? startText.stringContent.slice(yStart, yEnd)
-				: content;
-
-		const blocks = startBlock ? this.edytor.blocksBetween(startBlock, endBlock) : [];
-
-		// Flatten the blocks into a single array of content parts
-		const allContentParts = blocks.flatMap((block) => block.content);
-		const startPartIndex = allContentParts.indexOf(startText);
-		const endPartIndex = endText ? allContentParts.indexOf(endText) : -1;
-		const contentParts =
-			startPartIndex !== -1 && endPartIndex >= startPartIndex
-				? allContentParts.slice(startPartIndex, endPartIndex + 1)
-				: [];
-
-		this.focusBlocks(...blocks);
-
-		const isVoidEditableElement =
-			isVoid && ['INPUT', 'TEXTAREA'].includes(activeElement?.tagName.toUpperCase() || '');
-		this.state = {
-			yStart,
-			yEnd,
-			length: normalizedContent.length,
-			content: normalizedContent,
-			isCollapsed,
-			isReversed,
-			texts: contentParts.filter((part) => part instanceof Text),
-			contentParts,
-			blocks,
-			isBlockSpanning,
-			startText,
-			endText,
-			isAtStartOfText,
-			isAtEndOfText,
-			isAtEndOfBlock,
-			isAtStartOfBlock,
-			isTextSpanning,
+		this.select(this.textValue(startText, yStart, endText ?? startText, yEnd, isReversed), 'dom', {
 			startNode,
-			endNode,
-			startBlock,
-			endBlock,
-			isVoidEditableElement,
-			isVoid,
-			isIsland,
-			islandRoot,
-			voidRoot,
-			relativePosition: startText
-				? this.createTextAnchor(startText, yStart, isCollapsed ? 'left' : 'right')
-				: null,
-			endPosition: !isCollapsed && endText ? this.createTextAnchor(endText, yEnd, 'left') : null,
-			// TOREMOVE
-			yTextContent: startText?.stringContent!,
-			currentMarks: startText
-				? this.getMarksAtSelection(startText, yStart, endText ?? startText, yEnd)
-				: {}
-		};
-		this.syncShadow();
-		this.emitSelectionChange();
+			endNode
+		});
 		if (shouldRestoreNormalizedDomRange && options.restoreNormalizedDomRange !== false && endText) {
 			void this.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 		}
@@ -2270,18 +2252,9 @@ export class EdytorSelection {
 				!this.edytor.node.contains(activeElement)
 					? activeElement
 					: null;
-			const target = resolved.text;
-			const endTarget = resolvedEnd ?? resolved;
-			const yStart = resolved.offset;
-			const yEnd = state.isCollapsed ? yStart : endTarget.offset;
-			this.state = this.buildSelectionState({
-				startText: target,
-				yStart,
-				endText: endTarget.text,
-				yEnd,
-				isReversed: state.isReversed
-			});
-			this.syncShadow();
+			// The model position is the projection of the anchors: nothing to
+			// write. Only the native selection left inside the blurred editor
+			// is repaired, and the user's outside focus kept.
 			const repairBlurredNativeSelection = () => {
 				// Ownership may have moved on while this repair waited (tick
 				// + 0/50ms): any focusin or pointerdown back inside the editor
@@ -2347,13 +2320,6 @@ export class EdytorSelection {
 		gestureSerial: number;
 	} | null => {
 		const state = this.state;
-		(globalThis as { __selDrift?: unknown[] }).__selDrift?.push({
-			n: ((globalThis as { __selN?: number }).__selN =
-				((globalThis as { __selN?: number }).__selN ?? 0) + 1),
-			kind: 'capture',
-			yStart: state.yStart,
-			anchor: state.relativePosition?.a ?? null
-		});
 		if (!state.relativePosition || !state.startText) {
 			return null;
 		}
@@ -2376,41 +2342,23 @@ export class EdytorSelection {
 		state: SelectionState;
 		gestureSerial: number;
 	}) => {
-		const probe = (
-			this.edytor.node?.ownerDocument?.defaultView as
-				| (Window & { __selDrift?: unknown[] })
-				| undefined
-		)?.__selDrift;
-		const note = (event: Record<string, unknown>) => {
-			probe?.push({
-				n: ((globalThis as { __selN?: number }).__selN =
-					((globalThis as { __selN?: number }).__selN ?? 0) + 1),
-				...event
-			});
-		};
-		note({ kind: 'reconcile', yStart: capture.state.yStart });
 		if (this.expectHistoryRestore || this.isRestoringHistorySelection) {
-			note({ kind: 'skip', why: 'history' });
 			return;
 		}
 		if (this.selectedBlocks.size > 0 || this.selectedInlineBlock.size > 0) {
-			note({ kind: 'skip', why: 'atomic' });
 			return;
 		}
 		// Mid pointer-drag the live DOM range IS the user's in-progress
 		// choice — remote churn repair would hijack it.
 		if (this.pointerDragStart !== null) {
-			note({ kind: 'skip', why: 'drag' });
 			return;
 		}
 		// A newer user gesture supersedes the captured position — the same
 		// serial contract every other deferred selection write honors.
 		if (this.edytor.gestureSerial !== capture.gestureSerial) {
-			note({ kind: 'skip', why: 'gesture' });
 			return;
 		}
 		if (this.edytor.isComposing) {
-			note({ kind: 'skip', why: 'composing' });
 			return;
 		}
 		// Inside a user-input window the DOM caret is the user's own write
@@ -2419,12 +2367,10 @@ export class EdytorSelection {
 		// anchors (deleting the bound atom drops the anchor to the deletion
 		// seam), so model→DOM re-assertion would revert the user's caret.
 		if (this.edytor.isHandlingUserInput) {
-			note({ kind: 'skip', why: 'user-input' });
 			return;
 		}
 		const pre = capture.state;
 		if (pre.isBlockSpanning || pre.isVoid || !pre.relativePosition) {
-			note({ kind: 'skip', why: 'notext' });
 			return;
 		}
 		const resolved = this.resolveTextAnchor(pre.relativePosition);
@@ -2433,16 +2379,13 @@ export class EdytorSelection {
 		if (!resolved || !resolvedEnd) {
 			// Dead endpoints are restoreDeadSelectionEndpoints' recovery —
 			// it ran during flushMirror and retries on text mount.
-			note({ kind: 'skip', why: 'dead-anchor' });
 			return;
 		}
 		if (!resolved.text.node?.isConnected || !resolvedEnd.text.node?.isConnected) {
-			note({ kind: 'skip', why: 'unmounted' });
 			return;
 		}
 		const container = this.edytor.node;
 		if (!container) {
-			note({ kind: 'skip', why: 'nocontainer' });
 			return;
 		}
 		const selection = getDomSelectionSnapshot(container);
@@ -2450,31 +2393,15 @@ export class EdytorSelection {
 			if (!container.contains(selection.anchorNode)) {
 				// The DOM selection legitimately lives outside this editor —
 				// not drift to repair.
-				note({ kind: 'skip', why: 'outside' });
 				return;
 			}
-			const nativeIsReversed =
-				selection.focusNode === selection.anchorNode
-					? selection.focusOffset < selection.anchorOffset
-					: Boolean(
-							selection.anchorNode.compareDocumentPosition(selection.focusNode) &
-							Node.DOCUMENT_POSITION_PRECEDING
-						);
+			const nativeIsReversed = isBackward(selection);
 			const domStartNode = nativeIsReversed ? selection.focusNode : selection.anchorNode;
 			const domStartOffset = nativeIsReversed ? selection.focusOffset : selection.anchorOffset;
 			const domEndNode = nativeIsReversed ? selection.anchorNode : selection.focusNode;
 			const domEndOffset = nativeIsReversed ? selection.anchorOffset : selection.focusOffset;
 			const domStartText = this.getTextOfNode(domStartNode);
 			const domEndText = this.getTextOfNode(domEndNode);
-			note({
-				kind: 'compare',
-				domStart: domStartText ? getYIndex(domStartText, domStartNode, domStartOffset) : 'x',
-				domEnd: domEndText ? getYIndex(domEndText, domEndNode, domEndOffset) : 'x',
-				resStart: resolved.offset,
-				resEnd: resolvedEnd.offset,
-				domTextId: domStartText?.id,
-				resTextId: resolved.text.id
-			});
 			if (
 				selection.isCollapsed === pre.isCollapsed &&
 				domStartText === resolved.text &&
@@ -2484,10 +2411,7 @@ export class EdytorSelection {
 			) {
 				return;
 			}
-		} else {
-			note({ kind: 'compare', dropped: true });
 		}
-		note({ kind: 'write', to: resolved.offset });
 		if (resolved.text === resolvedEnd.text && resolved.offset === resolvedEnd.offset) {
 			void this.setAtTextOffset(resolved.text, resolved.offset);
 			return;
@@ -2497,128 +2421,105 @@ export class EdytorSelection {
 		});
 	};
 
+	/** The text and block the selection's start last resolved to (the seam origin once they die). */
+	#lastText: Text | null = null;
+	#lastBlock: Block | null = null;
+
+	private isEditorFocused = () => {
+		const activeElement = getActiveElement(this.edytor.node);
+		return (
+			typeof Node !== 'undefined' &&
+			activeElement instanceof Node &&
+			Boolean(this.edytor.node?.contains(activeElement))
+		);
+	};
+
 	/**
-	 * Post-mirror-flush repair — a remote (or programmatic) change can kill
-	 * the wrapper an endpoint was bound to without ever running `_setItems`
-	 * on it: `_drop`/`reconcileContent` `_kill` wrappers silently, so
-	 * `restoreRelativePosition` never fires and the state keeps pointing at
-	 * dead objects until the next stray selectionchange. Re-resolve dead
-	 * endpoints through the maintained anchors (a remote merge claims the
-	 * atoms, so the caret lands exactly where its content went); when the
-	 * anchors are dead too — hard-deleted backing — land at the seam the
-	 * dead block used to occupy: the sibling now at its index (its start),
-	 * or the previous sibling's end when it was last.
+	 * Post-mirror-flush repair, through `select()` (L21 until V3 moves the
+	 * seam to `doc/anchors`). The text endpoints follow their anchors by
+	 * projection; what is repaired here is a value that no longer resolves:
+	 * a block set keeps its live members, an atom that vanished leaves a
+	 * caret at its block's start, and when nothing survives the selection
+	 * lands at the seam the dead block vacated — the start of the next live
+	 * sibling's editable text, else the end of the previous one, else the
+	 * document's first editable text. The model is written at once; a
+	 * focused editor also displays it (also when the text the caret was
+	 * displayed in died while its anchor moved on).
 	 */
 	restoreDeadSelectionEndpoints = () => {
 		if (this.expectHistoryRestore || this.isRestoringHistorySelection) {
-			return;
-		}
-		if (this.selectedBlocks.size > 0 || this.selectedInlineBlock.size > 0) {
 			return;
 		}
 		// Mid pointer-drag the user's in-progress range owns the selection.
 		if (this.pointerDragStart !== null) {
 			return;
 		}
-		const state = this.state;
-		if (!state.startText) {
-			return;
-		}
-		const startDead = !state.startText._live;
-		const endDead = !state.isCollapsed && !!state.endText && !state.endText._live;
-		if (!startDead && !endDead) {
-			this.deadEndpointRecoveryPending = false;
-			return;
-		}
-
-		const resolvedStart = state.relativePosition
-			? this.resolveTextAnchor(state.relativePosition)
-			: null;
-		const resolvedEnd =
-			state.isCollapsed || !state.endPosition ? null : this.resolveTextAnchor(state.endPosition);
-
-		// Unfocused — a DOM caret write would drag selection back into the
-		// editor; update the model side only (same contract as the
-		// `restoreRelativePosition` unfocused branch).
-		const activeElement = getActiveElement(this.edytor.node);
-		const isEditorFocused =
-			typeof Node !== 'undefined' &&
-			activeElement instanceof Node &&
-			Boolean(this.edytor.node?.contains(activeElement));
-		const applyState = (
-			start: { text: Text; offset: number },
-			end: { text: Text; offset: number } | null
-		) => {
-			const endTarget = end ?? start;
-			const yStart = start.offset;
-			const yEnd = state.isCollapsed ? yStart : endTarget.offset;
-			// Same recording the DOM-write paths do — a dead-endpoint landing
-			// at a merge seam is the write the Android snap-back keys on.
-			const previousState = this.caretSignature();
-			this.state = this.buildSelectionState({
-				startText: start.text,
-				yStart,
-				endText: endTarget.text,
-				yEnd,
-				isReversed: state.isReversed
-			});
-			this.syncShadow();
-			this.recordPostDeleteCaretTarget(previousState);
-		};
-
-		const writeResolved = (): boolean => {
-			if (state.isCollapsed) {
-				const t = resolvedStart ?? resolvedEnd;
-				if (!t) return false;
-				if (isEditorFocused) {
-					this.setAtTextOffset(t.text, t.offset);
-				} else {
-					applyState(t, null);
+		const { value } = this;
+		const facade = this.edytor.facade;
+		let dead: Block | null;
+		if (value.kind === 'blocks') {
+			const live = value.ids.filter((id) => facade.isVisibleBlock(id));
+			if (live.length === value.ids.length) return;
+			if (live.length) {
+				this.select(blockSelection(live), 'repair');
+				return;
+			}
+			dead = this.selectedBlocks.values().next().value ?? null;
+		} else if (value.kind === 'atom') {
+			if (this.state.startText) return;
+			const block = this.edytor.idToBlock.get(value.blockId);
+			const text = block?._live ? block.firstEditableText : undefined;
+			if (text) {
+				this.#land({ text, offset: 0 });
+				return;
+			}
+			dead = block ?? null;
+		} else if (value.kind === 'text') {
+			const state = this.state;
+			if (state.startText) {
+				const displayedDied = this.#lastText !== null && !this.#lastText._live;
+				this.#lastText = state.startText;
+				this.#lastBlock = state.startBlock;
+				this.deadEndpointRecoveryPending = false;
+				if (displayedDied && this.isEditorFocused()) {
+					if (state.isCollapsed) void this.setAtTextOffset(state.startText, state.yStart);
+					else
+						void this.setAtRange(state.startText, state.yStart, state.endText, state.yEnd, {
+							isReversed: state.isReversed
+						});
 				}
-				return true;
+				return;
 			}
-			if (resolvedStart && resolvedEnd) {
-				if (isEditorFocused) {
-					void this.setAtRange(
-						resolvedStart.text,
-						resolvedStart.offset,
-						resolvedEnd.text,
-						resolvedEnd.offset,
-						{ isReversed: state.isReversed }
-					);
-				} else {
-					applyState(resolvedStart, resolvedEnd);
-				}
-				return true;
-			}
-			const survivor = resolvedStart ?? resolvedEnd;
-			if (!survivor) return false;
-			if (isEditorFocused) {
-				this.setAtTextOffset(survivor.text, survivor.offset);
-			} else {
-				applyState(survivor, null);
-			}
-			return true;
-		};
-		if (writeResolved()) {
+			dead = this.#lastBlock;
+		} else {
+			return;
+		}
+		// A live origin means the anchors are not integrated yet: they converge.
+		if (dead?._live) return;
+		const target = this.#seamOf(dead);
+		if (target) {
 			this.deadEndpointRecoveryPending = false;
+			this.#land(target);
 			return;
 		}
+		// A live destination can exist in the model without a mounted DOM
+		// node — a whole-document remote delete runs this pass inside
+		// `flushMirror`, BEFORE the normalization-created replacement
+		// paragraph's text element mounts. The next `Text.attach` replays
+		// the recovery instead of leaving the caret on dead content forever.
+		this.deadEndpointRecoveryPending = true;
+	};
 
-		// Seam fallback — walk to the nearest live ancestor of the dead
-		// start block and land where its slot used to be.
-		const deadBlock = state.startBlock;
-		if (!deadBlock) {
-			return;
-		}
-		const liveAncestor = (block: Block | null): Block | null => {
-			let cur: Block | null = block;
-			while (cur && !cur._live) {
-				cur = cur.parent instanceof Block ? cur.parent : null;
-			}
-			return cur && cur._live ? cur : null;
-		};
-		const parent = liveAncestor(deadBlock.parent instanceof Block ? deadBlock.parent : null);
+	/** Select a repaired caret; a focused editor also displays it. */
+	#land = (target: { text: Text; offset: number }) => {
+		const previous = this.caretSignature();
+		this.select(this.textValue(target.text, target.offset), 'repair');
+		this.recordPostDeleteCaretTarget(previous);
+		if (this.isEditorFocused()) void this.setAtTextOffset(target.text, target.offset);
+	};
+
+	/** The seam a dead block vacated (see `restoreDeadSelectionEndpoints`); null when nothing is mounted. */
+	#seamOf = (deadBlock: Block | null): { text: Text; offset: number } | null => {
 		// `firstEditableText`/`lastEditableText` skip a container's
 		// unrendered phantom text (a content slot holding no rendered node)
 		// and descend into children — a caret on phantom text is
@@ -2639,12 +2540,16 @@ export class EdytorSelection {
 				return null;
 			}
 		};
-		if (parent) {
-			// The slot the dead subtree vacated in the live ancestor: climb
-			// to the topmost dead child of `parent` — `deadBlock` itself
-			// when its parent survived, else the doomed subtree root whose
-			// whole chain died. Dead blocks keep their parent link and
-			// recorded index, so the slot stays readable.
+		let parent: Block | null = deadBlock?.parent instanceof Block ? deadBlock.parent : null;
+		while (parent && !parent._live) {
+			parent = parent.parent instanceof Block ? parent.parent : null;
+		}
+		if (deadBlock && parent) {
+			// The slot the dead subtree vacated in the live ancestor: the
+			// topmost dead child of `parent`. Dead blocks keep their parent
+			// link, and the links `_drop` captured while the sibling array was
+			// still whole name its neighbours (skipping dead ones: a batched
+			// remote delete can drop several adjacent slots).
 			let topDead = deadBlock;
 			for (
 				let cur: Block | null = deadBlock.parent instanceof Block ? deadBlock.parent : null;
@@ -2653,12 +2558,6 @@ export class EdytorSelection {
 			) {
 				topDead = cur;
 			}
-			// The dead slot's previous-ordering neighbors survive only on
-			// the links `_drop` captured while the sibling array was still
-			// whole — `parent.children` is already the post-removal array
-			// and the dead index no longer addresses it. Walk the links,
-			// skipping dead neighbors: a batched remote delete can drop
-			// several adjacent slots.
 			let forward: Block | null = topDead._dropNext;
 			while (forward && !forward._live) {
 				forward = forward._dropNext;
@@ -2668,10 +2567,8 @@ export class EdytorSelection {
 				backward = backward._dropPrev;
 			}
 			const siblings = parent.children;
-			// From each live seam neighbor, continue over live siblings
-			// with no editable text (void blocks like dividers) in the same
-			// direction — a live sibling's index in the current array is
-			// exact, not the stale dead index.
+			// From each live seam neighbour, continue over live siblings with
+			// no editable text (void blocks like dividers) in the same direction.
 			const scan = (
 				from: Block | null,
 				dir: 1 | -1,
@@ -2688,40 +2585,12 @@ export class EdytorSelection {
 			};
 			const target =
 				scan(forward, 1, editableFirstTextOf) ?? scan(backward, -1, editableLastTextOf);
-			if (target) {
-				if (isEditorFocused) {
-					this.setAtTextOffset(target.text, target.offset);
-				} else {
-					applyState(target, null);
-				}
-				this.deadEndpointRecoveryPending = false;
-				return;
-			}
+			if (target) return target;
 		}
-		// Every ancestor dead or no live sibling — land on the first
-		// editable text ANYWHERE under the root. Never the root's own
-		// firstText (a container's unrendered phantom slot — a caret there
-		// silently swallows input), and not just `children[0]`: the first
-		// top-level block can itself be textless while a later sibling
-		// holds the real destination.
+		// Every ancestor dead or no live sibling — the first editable text
+		// anywhere under the root (never the root's own phantom slot).
 		const fallback = editableFirstTextOf(this.edytor.root);
-		if (fallback) {
-			const target = { text: fallback, offset: 0 };
-			if (isEditorFocused) {
-				this.setAtTextOffset(target.text, target.offset);
-			} else {
-				applyState(target, null);
-			}
-			this.deadEndpointRecoveryPending = false;
-			return;
-		}
-		// A live destination can exist in the model without a mounted DOM
-		// node — a whole-document remote delete runs this pass inside
-		// `flushMirror`, BEFORE the normalization-created replacement
-		// paragraph's text element mounts. Arm the pending flag so the
-		// next `Text.attach` replays the recovery instead of leaving the
-		// caret on dead content forever.
-		this.deadEndpointRecoveryPending = true;
+		return fallback ? { text: fallback, offset: 0 } : null;
 	};
 
 	/**
@@ -2738,239 +2607,44 @@ export class EdytorSelection {
 		}
 	};
 
-	private setStateFromSelectedBlocks = (blocks: Block[]) => {
-		const firstBlock = blocks[0];
-		const lastBlock = blocks.at(-1);
-		if (!firstBlock || !lastBlock) {
-			return;
-		}
-
-		const startText = edgeText(firstBlock, 'first');
-		const endText = edgeText(lastBlock, 'last');
-		this.state = {
-			...this.buildSelectionState({
-				startText,
-				yStart: 0,
-				endText,
-				yEnd: endText.length,
-				startAffinity: 'left',
-				currentMarks: {}
-			}),
-			// A block selection is never a caret — even an empty block,
-			// whose endpoint math would collapse, stays a range.
-			isCollapsed: false,
-			isReversed: false,
-			endPosition: this.createTextAnchor(endText, endText.length, 'left')
-		};
-		this.syncShadow();
-	};
-
+	/** A text range over one block's content (the triple-click shape); the start binds left. */
 	private setStateFromBlockContentRange = (block: Block) => {
-		const startText = edgeText(block, 'first');
 		const endText = edgeText(block, 'last');
-		const state = this.buildSelectionState({
-			startText,
-			yStart: 0,
-			endText,
-			yEnd: endText.length,
-			startAffinity: 'left',
-			currentMarks: {}
-		});
-
-		this.selectBlocks();
-		this.focusBlocks(block);
-		this.clearInlineBlockSelection();
-		this.state = {
-			...state,
-			// Same atomic-range contract as setStateFromSelectedBlocks.
-			isCollapsed: false,
-			isReversed: false,
-			endPosition: this.createTextAnchor(endText, endText.length, 'left')
-		};
-		this.syncShadow();
-		this.emitSelectionChange();
-	};
-
-	selectBlocks = (...blocks: Block[]) => {
-		this.pendingBlockRangeRequest = null;
-		if (blocks.length === 0) {
-			this.ignoreNextSelectedBlockSelectionChange = false;
-		}
-		const difference = this.selectedBlocks.difference(new Set(blocks));
-		difference.forEach((block) => {
-			this.selectedBlocks.delete(block);
-			// `onDeselect` is the semantic counterpart of the `onSelect` call
-			// below; `onBlur` keeps firing too — it has historically doubled
-			// as the selection-loss hook.
-			block.definition.onDeselect?.({ block });
-			block.definition.onBlur?.({ block });
-			block.node?.removeAttribute('data-edytor-selected');
-		});
-		blocks.forEach((block) => {
-			// Same-value attribute writes still emit mutation records — skip
-			// the DOM write and the plugin hook when membership is unchanged
-			// so a redundant derive cannot feed the mutation observer.
-			if (this.selectedBlocks.has(block)) {
-				return;
-			}
-			this.selectedBlocks.add(block);
-			block.definition.onSelect?.({ block });
-			block.node?.setAttribute('data-edytor-selected', 'true');
-		});
-		if (blocks.length) {
-			this.setStateFromSelectedBlocks(blocks);
-		}
-		if (blocks.length === 1) {
-			this.focusBlocks();
-		}
-		this.syncShadow();
-	};
-
-	addBlockToSelection = (block: Block) => {
-		if (this.selectedBlocks.has(block)) {
-			return;
-		}
-		this.selectedBlocks.add(block);
-		block.definition.onSelect?.({ block });
-		block.node?.setAttribute('data-edytor-selected', 'true');
-		this.syncShadow();
-	};
-
-	removeBlockFromSelection = (block: Block) => {
-		if (!this.selectedBlocks.has(block)) {
-			return;
-		}
-		this.selectedBlocks.delete(block);
-		block.definition.onDeselect?.({ block });
-		block.definition.onBlur?.({ block });
-		block.node?.removeAttribute('data-edytor-selected');
-		this.syncShadow();
-	};
-
-	focusBlocks = (...blocks: Block[]) => {
-		const difference = this.focusedBlocks.difference(new Set(blocks));
-		difference.forEach((block) => {
-			this.focusedBlocks.delete(block);
-			block.definition.onBlur?.({ block });
-			block.node?.removeAttribute('data-edytor-focused');
-		});
-		blocks.forEach((block) => {
-			if (this.focusedBlocks.has(block)) {
-				return;
-			}
-			this.focusedBlocks.add(block);
-			block.definition.onFocus?.({ block });
-			block.node?.setAttribute('data-edytor-focused', 'true');
-		});
+		this.select(
+			this.textValue(edgeText(block, 'first'), 0, endText, endText.length, false, 'left')
+		);
 	};
 
 	/**
-	 * The one complete-state factory — every model-side writer builds its
-	 * SelectionState here so the ~25 derived fields can never describe two
-	 * different positions at once (the spread-and-patch writers this
-	 * replaced left `startBlock`/`texts`/`currentMarks`/… describing the
-	 * OLD position after an endpoint re-resolve). DOM-observation fields
-	 * (`startNode`/`endNode`/`isVoidEditableElement`) are nulled or
-	 * recomputed — only `applySelectionSnapshot`, the DOM-derive
-	 * authority, fills them from a live selection.
+	 * Select a set of whole blocks. With no block, leave block selection:
+	 * the value becomes the text range the set spanned.
 	 */
-	private buildSelectionState = (target: {
-		startText: Text;
-		yStart: number;
-		endText: Text;
-		yEnd: number;
-		isReversed?: boolean;
-		/**
-		 * `'left'` pins the start anchor to the position — block-range
-		 * selections use it so a remote insert at the boundary can't push
-		 * the anchor inside the selection. Default: 'left' when collapsed,
-		 * 'right' otherwise (the caret convention).
-		 */
-		startAffinity?: 'left' | 'right';
-		/** Atomic whole-block selections pass `{}`; default derives marks from the selection start edge. */
-		currentMarks?: JSONText['marks'];
-	}): SelectionState => {
-		const { startText, yStart, endText, yEnd } = target;
-		const isCollapsed = startText === endText && yStart === yEnd;
-		const isReversed = isCollapsed ? false : (target.isReversed ?? false);
-		const startBlock = startText.parent;
-		const endBlock = endText.parent;
-		const blocks = this.edytor.blocksBetween(startBlock, endBlock);
+	selectBlocks = (...blocks: Block[]) => {
+		this.pendingBlockRangeRequest = null;
+		if (blocks.length) {
+			this.select(blockSelection(blocks.map((block) => block.id)));
+			return;
+		}
+		this.ignoreNextSelectedBlockSelectionChange = false;
+		const { value } = this;
+		if (value.kind !== 'blocks') return;
+		const [first, last] = [this.state.blocks[0], this.state.blocks.at(-1)];
+		const endText = last && edgeText(last, 'last');
+		this.select(
+			first && endText
+				? this.textValue(edgeText(first, 'first'), 0, endText, endText.length, false, 'left')
+				: noSelection
+		);
+	};
 
-		const allContentParts = blocks.flatMap((block) => block.content);
-		const startIndex = allContentParts.indexOf(startText);
-		const endIndex = allContentParts.indexOf(endText);
-		const contentParts =
-			startIndex !== -1 && endIndex !== -1 && endIndex >= startIndex
-				? allContentParts.slice(startIndex, endIndex + 1)
-				: [startText, endText].filter(
-						(part, index, parts): part is Text => parts.indexOf(part) === index
-					);
-		const texts = contentParts.filter((part): part is Text => part instanceof Text);
-		const content = isCollapsed
-			? ''
-			: texts
-					.map((text) => {
-						const start = text === startText ? yStart : 0;
-						const end = text === endText ? yEnd : text.length;
-						return text.stringContent.slice(start, end);
-					})
-					.join('');
+	addBlockToSelection = (block: Block) => {
+		const ids = this.value.kind === 'blocks' ? this.value.ids : [];
+		if (!ids.includes(block.id)) this.select(blockSelection([...ids, block.id]));
+	};
 
-		let isIsland = false;
-		let islandRoot: Block | null = null;
-		let isVoid = false;
-		let voidRoot: Block | null = null;
-		climb(startBlock, (block) => {
-			if (block.definition.island) {
-				isIsland = true;
-				islandRoot = block;
-			}
-			if (block.definition.void) {
-				isVoid = true;
-				voidRoot = block;
-			}
-		});
-
-		const activeElement = getActiveElement(this.edytor.node);
-		return {
-			yStart,
-			yEnd,
-			length: content.length,
-			content,
-			isCollapsed,
-			isReversed,
-			texts,
-			contentParts,
-			blocks,
-			isBlockSpanning: startBlock !== endBlock,
-			startText,
-			endText,
-			isAtStartOfText: yStart === 0,
-			isAtEndOfText: yEnd === endText.length,
-			isAtStartOfBlock: startText === startBlock.firstText && yStart === 0,
-			isAtEndOfBlock: endText === endBlock.lastText && yEnd === endText.length,
-			isTextSpanning: startText !== endText,
-			startNode: null,
-			endNode: null,
-			startBlock,
-			endBlock,
-			isVoidEditableElement:
-				isVoid && ['INPUT', 'TEXTAREA'].includes(activeElement?.tagName.toUpperCase() || ''),
-			isVoid,
-			isIsland,
-			islandRoot,
-			voidRoot,
-			relativePosition: this.createTextAnchor(
-				startText,
-				yStart,
-				target.startAffinity ?? (isCollapsed ? 'left' : 'right')
-			),
-			endPosition: isCollapsed ? null : this.createTextAnchor(endText, yEnd, 'left'),
-			yTextContent: startText.stringContent,
-			currentMarks:
-				target.currentMarks ?? this.getMarksAtSelection(startText, yStart, endText, yEnd)
-		};
+	removeBlockFromSelection = (block: Block) => {
+		const ids = this.value.kind === 'blocks' ? this.value.ids : [];
+		if (ids.includes(block.id)) this.select(blockSelection(ids.filter((id) => id !== block.id)));
 	};
 
 	setRangeStateAtTextOffsets = (
@@ -2980,54 +2654,28 @@ export class EdytorSelection {
 		endOffset: number,
 		options: { isReversed?: boolean } = {}
 	) => {
-		const normalizedRange = this.normalizeTextRangePoints(
+		const range = this.normalizeTextRangePoints(
 			startText,
 			startOffset,
 			endText,
 			endOffset,
 			options.isReversed ?? false
 		);
-		const state = this.buildSelectionState({
-			startText: normalizedRange.startText,
-			yStart: normalizedRange.startOffset,
-			endText: normalizedRange.endText,
-			yEnd: normalizedRange.endOffset,
-			isReversed: normalizedRange.isReversed
-		});
-
-		this.selectBlocks();
-		this.focusBlocks(...state.blocks);
-		this.clearInlineBlockSelection();
-		this.state = state;
-		this.syncShadow();
-		this.emitSelectionChange();
+		this.select(
+			this.textValue(
+				range.startText,
+				range.startOffset,
+				range.endText,
+				range.endOffset,
+				range.isReversed
+			)
+		);
 	};
 
 	setCollapsedStateAtTextOffset = (textOrId: Text | string, offset: number) => {
 		this.clearModelSelectionPreservation();
 		const text = textOrId instanceof Text ? textOrId : this.edytor.getTextById(textOrId);
-		if (!text) {
-			return;
-		}
-
-		const yStart = Math.min(Math.max(offset, 0), text.length);
-		const state = this.buildSelectionState({
-			startText: text,
-			yStart,
-			endText: text,
-			yEnd: yStart
-		});
-
-		this.selectBlocks();
-		this.focusBlocks(text.parent);
-		this.clearInlineBlockSelection();
-		this.state = state;
-		this.syncShadow();
-		// Route through `emitSelectionChange` — a direct notify would leave
-		// `lastEmittedSelectionKey` stale, so a later derive back to the
-		// previous position would be swallowed by the dedupe while
-		// consumers still believe the caret is here.
-		this.emitSelectionChange();
+		if (text) this.select(this.textValue(text, Math.min(Math.max(offset, 0), text.length)));
 	};
 
 	private findTextNode = (node: HTMLElement, offset: number = 0) => {
@@ -3095,7 +2743,7 @@ export class EdytorSelection {
 		// reverts the model to exactly this state — the signature the
 		// post-write verification repairs.
 		const verify = options.verify !== false;
-		const preWriteState = verify ? this.state : null;
+		const preWriteState = verify ? this.#written : null;
 		const gestureSerial = this.edytor.gestureSerial;
 		// Every armed verify supersedes older pending ones — otherwise two
 		// verifies fighting over different targets ping-pong the caret (each
@@ -3108,7 +2756,7 @@ export class EdytorSelection {
 		// repair restore, a newer user gesture) can re-target the model
 		// selection. Committing then would stomp the newer state with this
 		// call's captured offset.
-		const stateAtCall = this.state;
+		const stateAtCall = this.#written;
 		const callTarget = {
 			startText: stateAtCall.startText,
 			endText: stateAtCall.endText,
@@ -3127,7 +2775,7 @@ export class EdytorSelection {
 			if (this.edytor.gestureSerial !== gestureSerial) {
 				return true;
 			}
-			const s = this.state;
+			const s = this.#written;
 			if (s === stateAtCall) return false;
 			const text = textOrId instanceof Text ? textOrId : this.edytor.getTextById(textOrId);
 			if (
@@ -3238,13 +2886,8 @@ export class EdytorSelection {
 			this.setCollapsedStateAtTextOffset(textOrId, offset);
 			return;
 		}
-		const resolved = this.resolveDeadCaretTarget(text, offset);
-		if (resolved) {
-			this.setCollapsedStateAtTextOffset(resolved.text, resolved.offset);
-			return;
-		}
-		this.setCollapsedStateAtTextOffset(textOrId, offset);
-		this.restoreDeadSelectionEndpoints();
+		const resolved = this.resolveDeadCaretTarget(text, offset) ?? this.#seamOf(text.parent);
+		if (resolved) this.setCollapsedStateAtTextOffset(resolved.text, resolved.offset);
 	};
 
 	/**
@@ -3278,15 +2921,8 @@ export class EdytorSelection {
 			});
 			return;
 		}
-		const survivor = start ?? end;
-		if (survivor) {
-			this.setCollapsedStateAtTextOffset(survivor.text, survivor.offset);
-			return;
-		}
-		this.setRangeStateAtTextOffsets(startText, startOffset, endText, endOffset, {
-			isReversed
-		});
-		this.restoreDeadSelectionEndpoints();
+		const survivor = start ?? end ?? this.#seamOf(startText.parent);
+		if (survivor) this.setCollapsedStateAtTextOffset(survivor.text, survivor.offset);
 	};
 
 	/**
@@ -3302,7 +2938,7 @@ export class EdytorSelection {
 	private scheduleCaretWriteVerification = (
 		textOrId: Text | string,
 		textOffset: number,
-		preWriteState: typeof this.state,
+		preWriteState: SelectionState,
 		gestureSerial: number,
 		writeEpoch: number,
 		commitVersion: number,
@@ -3331,7 +2967,7 @@ export class EdytorSelection {
 				return;
 			}
 			const text = textOrId instanceof Text ? textOrId : this.edytor.getTextById(textOrId);
-			const s = this.state;
+			const s = this.#written;
 			const atTarget =
 				s.isCollapsed && s.startText === text && s.yStart === textOffset && s.yEnd === textOffset;
 			const backToPreWrite =
@@ -3543,7 +3179,7 @@ export class EdytorSelection {
 		// write from stomping a fresh caret. Direction is part of the
 		// mismatch (P2-6): a newer range on the SAME endpoints with the
 		// opposite direction still supersedes this write.
-		const stateAtCall = this.state;
+		const stateAtCall = this.#written;
 		const gestureSerialAtCall = this.edytor.gestureSerial;
 		const writeIsCollapsed = startText === endText && startOffset === endOffset;
 		const writeTarget = {
@@ -3570,7 +3206,7 @@ export class EdytorSelection {
 		// foreign state differing from both targets is likewise stale.
 		const stale = () => {
 			if (this.edytor.gestureSerial !== gestureSerialAtCall) return true;
-			const s = this.state;
+			const s = this.#written;
 			return (
 				s !== stateAtCall &&
 				!this.stateMatchesSelectionTarget(s, writeTarget) &&
@@ -3735,7 +3371,7 @@ export class EdytorSelection {
 		// sync-model write below so a mid-await derive to a position that
 		// matches neither the write target nor the call-time state aborts
 		// this stale write instead of stomping the newer selection (P2-6).
-		const stateAtCall = this.state;
+		const stateAtCall = this.#written;
 		const gestureSerialAtCall = this.edytor.gestureSerial;
 		const callTarget = {
 			startText: stateAtCall.startText,
@@ -3770,7 +3406,7 @@ export class EdytorSelection {
 		// fallbacks) checks gesture serial + foreign-state drift.
 		const blockStale = () => {
 			if (this.edytor.gestureSerial !== gestureSerialAtCall) return true;
-			const s = this.state;
+			const s = this.#written;
 			const startText = edgeText(block, 'first');
 			const endText = edgeText(block, 'last');
 			return (

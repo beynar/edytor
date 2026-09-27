@@ -10,9 +10,8 @@
  * lazily the marks at the caret and the selected string — is `project(value,
  * doc)`, a pure function memoized per (value, index version).
  *
- * V1 (shadow): the value is computed next to `EdytorSelection.state` at every
- * writer (`selectionValueOf`) and compared with it on every DOM fixture; it
- * decides nothing yet. V2 makes `select(value)` the only writer.
+ * V2: the view's `select(value, cause)` is the only writer; its
+ * `selection.state` is a compatibility getter over the projection.
  */
 import type { BlockId, ContentItem } from '$lib/crdt/index.js';
 import type { DocAnchor, EdytorDoc } from '$lib/crdt/edytor-doc.js';
@@ -321,43 +320,31 @@ export const project = (value: SelectionValue, doc: ProjectionDoc): SelectionPro
 	return projection;
 };
 
-// ── V1 shadow (temporary: removed at V2, when `select()` becomes the only writer) ──
+/** Why a selection was written (the view keeps the last cause; R9 names it with the value). */
+export type SelectCause = 'dom' | 'model' | 'repair' | 'history';
 
-/** The fields of today's selection state the shadow value is derived from. */
-type StateEndpoints = {
-	startText: unknown;
-	isCollapsed: boolean;
-	isReversed: boolean;
-	relativePosition: DocAnchor | null;
-	endPosition: DocAnchor | null;
-};
+const sameAnchor = (a: DocAnchor, b: DocAnchor) =>
+	a === b ||
+	(a.b === b.b &&
+		a.o === b.o &&
+		a.a.a === b.a.a &&
+		(a.a.i === b.a.i || (a.a.i?.c === b.a.i?.c && a.a.i?.k === b.a.i?.k)));
 
-/**
- * Today's selection state as a value — the precedence every consumer re-applies
- * (block set, then inline atom, then text endpoints). A text state whose start
- * could not be anchored (an unbound text) has no value: `none`.
- */
-export const selectionValueOf = (
-	state: StateEndpoints,
-	blocks: Iterable<{ id: BlockId }>,
-	atoms: Iterable<{ id: string; parent: { id: BlockId } }>
-): SelectionValue => {
-	const ids = Array.from(blocks, (block) => block.id);
-	if (ids.length) return blockSelection(ids);
-	const [atom] = atoms;
-	if (atom) return atomSelection(atom.parent.id, atom.id);
-	const start = state.relativePosition;
-	if (!state.startText || !start) return noSelection;
-	const end = state.isCollapsed ? start : (state.endPosition ?? start);
-	return state.isReversed ? textSelection(end, start) : textSelection(start, end);
-};
+const sameMarks = (a: Marks | undefined, b: Marks | undefined) =>
+	a === b || JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-/** The hook a test installs on `globalThis` to compare the shadow with the state (V1 only). */
-export type SelectionShadowHook = {
-	register(view: unknown): void;
-	unregister(view: unknown): void;
-	/** Called once at the end of every synchronous turn in which a writer ran. */
-	turn(view: unknown): void;
+/** Value equality: kind, anchors (item + side + owner facet), ids, pending marks. */
+export const sameValue = (a: SelectionValue, b: SelectionValue): boolean => {
+	if (a === b) return true;
+	if (a.kind === 'text' && b.kind === 'text')
+		return (
+			sameAnchor(a.anchor, b.anchor) &&
+			sameAnchor(a.focus, b.focus) &&
+			sameMarks(a.pending, b.pending)
+		);
+	if (a.kind === 'blocks' && b.kind === 'blocks')
+		return a.ids.length === b.ids.length && a.ids.every((id, i) => id === b.ids[i]);
+	if (a.kind === 'atom' && b.kind === 'atom')
+		return a.blockId === b.blockId && a.atomId === b.atomId;
+	return a.kind === b.kind && a.kind === 'none';
 };
-export const selectionShadowHook = (): SelectionShadowHook | undefined =>
-	(globalThis as { __EDYTOR_SELECTION_SHADOW__?: SelectionShadowHook }).__EDYTOR_SELECTION_SHADOW__;

@@ -34,15 +34,7 @@ const docValue = (text = 'shared'): JSONDoc => ({
 const makeView = (document: EdytorDocument) => new Edytor({ document, plugins: [richTextPlugin] });
 
 const publishSelection = (view: Edytor, offset = 0) => {
-	const text = view.root!.children[0]!.firstText!;
-	Object.assign(view.selection.state, {
-		startText: text,
-		endText: text,
-		yStart: offset,
-		yEnd: offset,
-		isCollapsed: true,
-		isReversed: false
-	});
+	view.selection.setCollapsedStateAtTextOffset(view.root!.children[0]!.firstText!, offset);
 	publishAwarenessSelection(view.selection);
 };
 

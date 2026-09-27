@@ -29,6 +29,7 @@ import {
 } from '../../../lib/collaboration/index.js';
 import { clearAwarenessSelection } from '../../../lib/collaboration/awarenessSelection.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
+import { noSelection } from '../../../lib/session/selection.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONDoc } from '../../../lib/utils/json.js';
 
@@ -46,17 +47,9 @@ const selectionsOf = (document: EdytorDocument): PresenceSelections =>
 const mirrorOf = (document: EdytorDocument) =>
 	document.awareness.getLocalState()?.selection as { yStart?: number } | undefined;
 
-/** Patch the view's model selection and run the real publish path. */
+/** Write the view's model selection and run the real publish path. */
 const publishSelection = (view: Edytor, offset = 0) => {
-	const text = view.root!.children[0]!.firstText!;
-	Object.assign(view.selection.state, {
-		startText: text,
-		endText: text,
-		yStart: offset,
-		yEnd: offset,
-		isCollapsed: true,
-		isReversed: false
-	});
+	view.selection.setCollapsedStateAtTextOffset(view.root!.children[0]!.firstText!, offset);
 	publishAwarenessSelection(view.selection);
 };
 
@@ -159,7 +152,7 @@ describe('per-view selection presence', () => {
 		publishSelection(v2, 5);
 
 		// v1's selection goes null (blur) — its key drops, v2's survives.
-		Object.assign(v1.selection.state, { startText: null, endText: null });
+		v1.selection.select(noSelection);
 		publishAwarenessSelection(v1.selection);
 		expect(Object.keys(selectionsOf(document))).toHaveLength(1);
 		expect(mirrorOf(document)?.yStart).toBe(5);
@@ -517,9 +510,8 @@ describe('publishAwarenessSelection — write dedupe (U8a)', () => {
 		const v1 = makeView(document);
 		publishSelection(v1, 2);
 
-		Object.assign(v1.selection.state, { startText: null, endText: null });
 		const spy = vi.spyOn(document.awareness, 'setLocalState');
-		publishAwarenessSelection(v1.selection);
+		v1.selection.select(noSelection);
 		expect(spy).toHaveBeenCalledTimes(1);
 		expect(document.awareness.getLocalState()?.selections).toBeUndefined();
 

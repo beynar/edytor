@@ -376,50 +376,9 @@ export const createTestEdytor = (
 	if (start) {
 		const { path: startPath, offset: startOffset } = start;
 		const { path: endPath, offset: endOffset } = end ?? { path: startPath, offset: startOffset };
-		const { text: startText, block: startBlock } = findBlockAndTextAtFixturePath(
-			edytor,
-			value,
-			startPath
-		);
-		const { text: endText, block: endBlock } = findBlockAndTextAtFixturePath(
-			edytor,
-			value,
-			endPath
-		);
-		const isCollapsed =
-			!end ||
-			(startPath.length === endPath.length &&
-				startPath.every((segment, index) => segment === endPath[index]) &&
-				startOffset === endOffset);
-		const blocks = getBlocksInSelection(startBlock, endBlock);
-		const contentParts = getContentPartsInSelection(blocks, startText, endText);
-		const texts = contentParts.filter((part): part is Text => part instanceof Text);
-		const content = isCollapsed
-			? ''
-			: getSelectedContent(texts, startText, endText, startOffset, endOffset);
-
-		edytor.selection.state = {
-			...edytor.selection.state,
-			startBlock,
-			endBlock,
-			startText,
-			endText,
-			yStart: startOffset,
-			yEnd: endOffset,
-			isCollapsed,
-			length: content.length,
-			content,
-			texts,
-			contentParts,
-			blocks,
-			isTextSpanning: startText !== endText,
-			isBlockSpanning: startBlock !== endBlock,
-			isAtStartOfText: startOffset === 0,
-			isAtEndOfText: endOffset === endText.length,
-			isAtStartOfBlock: startOffset === 0 && startText === startBlock.firstText,
-			isAtEndOfBlock: endOffset === endText.length && endText === endBlock.lastText,
-			yTextContent: startText.stringContent
-		};
+		const { text: startText } = findBlockAndTextAtFixturePath(edytor, value, startPath);
+		const { text: endText } = findBlockAndTextAtFixturePath(edytor, value, endPath);
+		edytor.selection.setRangeStateAtTextOffsets(startText, startOffset, endText, endOffset);
 	}
 
 	return { edytor, expect: expectEdytorValue(edytor) };
@@ -430,68 +389,12 @@ const setSelectionState = (
 	startText: Text,
 	startOffset: number,
 	endText: Text = startText,
-	endOffset: number = startOffset
-) => {
-	const startBlock = startText.parent;
-	const endBlock = endText.parent;
-	const isCollapsed = startText === endText && startOffset === endOffset;
-	const blocks = getBlocksInSelection(startBlock, endBlock);
-	const contentParts = getContentPartsInSelection(blocks, startText, endText);
-	const texts = contentParts.filter((part): part is Text => part instanceof Text);
-	const islandRoot = getAncestorBlockByDefinition(startBlock, 'island');
-	const voidRoot = getAncestorBlockByDefinition(startBlock, 'void');
-	const marksRange =
-		startOffset === endOffset
-			? startOffset > 0
-				? startText.getMarksAtRange(startOffset - 1, startOffset)
-				: []
-			: startText.getMarksAtRange(startOffset, endOffset);
-
-	edytor.selection.state = {
-		...edytor.selection.state,
-		startText,
-		endText,
-		startBlock,
-		endBlock,
-		yStart: startOffset,
-		yEnd: endOffset,
-		length: isCollapsed
-			? 0
-			: getSelectedContent(texts, startText, endText, startOffset, endOffset).length,
-		content: isCollapsed
-			? ''
-			: getSelectedContent(texts, startText, endText, startOffset, endOffset),
-		texts,
-		contentParts,
-		blocks,
-		isCollapsed,
-		isTextSpanning: startText !== endText,
-		isBlockSpanning: startBlock !== endBlock,
-		isAtStartOfText: startOffset === 0,
-		isAtEndOfText: endOffset === endText.length,
-		isAtStartOfBlock: startOffset === 0 && startText === startBlock.firstText,
-		isAtEndOfBlock: endOffset === endText.length && endText === endBlock.lastText,
-		isIsland: Boolean(islandRoot),
-		islandRoot,
-		isVoid: Boolean(voidRoot),
-		voidRoot,
-		isVoidEditableElement: false,
-		startNode: startText.node ?? null,
-		endNode: endText.node ?? null,
-		relativePosition: edytor.selection.createTextAnchor(startText, startOffset),
-		currentMarks: marksRange.reduce<Record<string, SerializableContent>>((acc, mark) => {
-			if (mark.marks) {
-				Object.assign(acc, mark.marks);
-			}
-			return acc;
-		}, {}),
-		yTextContent: startText.stringContent
-	};
-
-	edytor.selection.selectBlocks();
-	edytor.selection.clearInlineBlockSelection();
-	edytor.selection.focusBlocks(...new Set(texts.map((text) => text.parent)));
-};
+	endOffset: number = startOffset,
+	isReversed = false
+) =>
+	edytor.selection.setRangeStateAtTextOffsets(startText, startOffset, endText, endOffset, {
+		isReversed
+	});
 
 const patchOperationSelectionApis = (edytor: Edytor) => {
 	edytor.selection.setAtTextOffset = async (
@@ -526,7 +429,7 @@ const patchOperationSelectionApis = (edytor: Edytor) => {
 		setSelectionState(edytor, block.firstText, startOffset, block.lastText, endOffset);
 	};
 
-	edytor.selection.setAtRange = async (startText, startOffset, endText, endOffset) => {
+	edytor.selection.setAtRange = async (startText, startOffset, endText, endOffset, options) => {
 		if (
 			!startText ||
 			!endText ||
@@ -536,7 +439,7 @@ const patchOperationSelectionApis = (edytor: Edytor) => {
 			return;
 		}
 
-		setSelectionState(edytor, startText, startOffset, endText, endOffset);
+		setSelectionState(edytor, startText, startOffset, endText, endOffset, options?.isReversed);
 	};
 
 	edytor.selection.setAtNodeOffset = () => {};

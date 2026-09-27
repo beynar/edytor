@@ -337,7 +337,6 @@ const moveBlockSelection =
 				const target = edytor[step](selectedBlocks.values().next().value as Block, SEALED);
 				if (target) {
 					edytor.selection.selectBlocks(target);
-					edytor.selection.focusBlocks();
 				}
 			});
 		}

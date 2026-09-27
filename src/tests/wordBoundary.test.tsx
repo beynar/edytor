@@ -78,7 +78,10 @@ describe('moveByWord reversed selection', () => {
 				<paragraph>|foo bar| baz</paragraph>
 			</root>
 		);
-		edytor.selection.state = { ...edytor.selection.state, isReversed: true };
+		const { startText, yStart, endText, yEnd } = edytor.selection.state;
+		edytor.selection.setRangeStateAtTextOffsets(startText!, yStart, endText!, yEnd, {
+			isReversed: true
+		});
 
 		await runHotkey(edytor, 'mod+shift+arrowright');
 
@@ -93,7 +96,10 @@ describe('moveByWord reversed selection', () => {
 				<paragraph>foo b|ar baz|</paragraph>
 			</root>
 		);
-		edytor.selection.state = { ...edytor.selection.state, isReversed: true };
+		const { startText, yStart, endText, yEnd } = edytor.selection.state;
+		edytor.selection.setRangeStateAtTextOffsets(startText!, yStart, endText!, yEnd, {
+			isReversed: true
+		});
 
 		await runHotkey(edytor, 'mod+shift+arrowleft');
 

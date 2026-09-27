@@ -378,95 +378,14 @@ export function getTextsInSelection(
 	this: EdytorSelection,
 	startNode: Node | null,
 	endNode: Node | null,
-
-	ranges: Range[],
 	startOffset = 0,
 	endOffset = startOffset
-): {
-	startText: Text | null;
-	endText: Text | null;
-	inlineBlock: InlineBlock | null;
-	texts: Text[];
-} {
+): { startText: Text | null; endText: Text | null; inlineBlock: InlineBlock | null } {
 	const startText = this.getTextOfNode(startNode, startOffset);
-	const endText = this.getTextOfNode(endNode, endOffset);
-	const inlineBlock = this.getInlineBlockOfNode(startNode);
-	if (!startText) {
-		return {
-			startText: null,
-			endText: null,
-			inlineBlock,
-			texts: []
-		};
-	}
-	const edytor = this.edytor;
-	const isAfterFirstText = (node: Node) => {
-		return node.compareDocumentPosition(startText.node!) === Node.DOCUMENT_POSITION_FOLLOWING;
-	};
-	const isBeforeLastText = (node: Node) => {
-		return (
-			node.compareDocumentPosition(endText?.node! || startText.node!) ===
-			Node.DOCUMENT_POSITION_PRECEDING
-		);
-	};
-
-	const texts: Set<Text> = new Set();
-	// Create a TreeWalker to traverse nodes within the range
-	const walker = document.createTreeWalker(
-		ranges[0].commonAncestorContainer,
-		NodeFilter.SHOW_ELEMENT, // Only consider element nodes
-		(node) => {
-			return node === startText.node ||
-				node === endText?.node ||
-				(node instanceof HTMLSpanElement &&
-					node.hasAttribute('data-edytor-text') &&
-					isAfterFirstText(node) &&
-					isBeforeLastText(node))
-				? NodeFilter.FILTER_ACCEPT
-				: NodeFilter.FILTER_SKIP;
-		}
-	);
-	ranges.forEach((range) => {
-		const isNodeInRange = (node: Node): boolean => {
-			const ownerDocument =
-				node.ownerDocument ?? (typeof document === 'undefined' ? null : document);
-			if (!ownerDocument) {
-				return false;
-			}
-
-			const nodeRange = ownerDocument.createRange();
-			try {
-				nodeRange.selectNode(node);
-			} catch (e) {
-				// If the node cannot be selected, it's not a valid target
-				return false;
-			}
-			// Check if the start or end of the node range intersects with the original range
-			return (
-				range.compareBoundaryPoints(Range.START_TO_END, nodeRange) > 0 &&
-				range.compareBoundaryPoints(Range.END_TO_START, nodeRange) < 0
-			);
-		};
-		// Start traversing the nodes within the range
-		while (walker.nextNode()) {
-			// If the current node is within the range, add it to the spans array
-			if (isNodeInRange(walker.currentNode)) {
-				texts.add(edytor.nodeToText.get(walker.currentNode as Element) as Text);
-			}
-		}
-	});
-
-	if (!texts.size) {
-		texts.add(startText);
-		if (endText && endText.node !== startText.node) {
-			texts.add(endText);
-		}
-	}
 	return {
 		startText,
-		endText,
-		inlineBlock,
-		texts: Array.from(texts)
+		endText: startText ? this.getTextOfNode(endNode, endOffset) : null,
+		inlineBlock: this.getInlineBlockOfNode(startNode)
 	};
 }
 

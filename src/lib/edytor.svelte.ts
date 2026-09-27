@@ -1125,21 +1125,22 @@ export class Edytor {
 		}
 	};
 
+	/** Bumped by every mirror flush: wrappers are looked up again after it. */
+	mirrorRevision = 0;
 	flushMirror = (): boolean => {
 		if (!this.root) {
 			return true;
 		}
 		const change = this._mirrorChange;
-		if (change && this.applyMirrorChange(change)) {
-			// Remote/programmatic kills (`_drop`/`reconcileContent`) never run
-			// `_setItems` on the caret's wrapper — re-anchor dead endpoints.
-			// (`this.selection` is undefined during the constructor's first
-			// sync — nothing is selected yet anyway.)
-			this.selection?.restoreDeadSelectionEndpoints();
-			return true;
-		}
-		this.root.reconcileChildren(this.projectedChildren(null));
+		const applied = change !== null && this.applyMirrorChange(change);
+		if (!applied) this.root.reconcileChildren(this.projectedChildren(null));
+		this.mirrorRevision++;
+		// Remote/programmatic kills (`_drop`/`reconcileContent`) never run
+		// `_setItems` on the caret's wrapper — repair a selection that no
+		// longer resolves. (`this.selection` is undefined during the
+		// constructor's first sync — nothing is selected yet anyway.)
 		this.selection?.restoreDeadSelectionEndpoints();
+		if (applied) return true;
 		// `change === null` (a mid-transaction flush for read-your-writes)
 		// still ran the incremental-safe path — no DocChange exists, so
 		// nothing needed scoping; report incremental. Only a real change

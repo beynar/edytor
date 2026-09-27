@@ -135,7 +135,7 @@ export class Block {
 	}
 
 	get selected() {
-		return this.edytor.selection.selectedBlocks.has(this) || this.edytor.selection.hasSelectedAll;
+		return this.edytor.selection.selectedBlocks.has(this);
 	}
 	get focused() {
 		return this.edytor.selection.focusedBlocks.has(this) && !this.selected;
@@ -230,13 +230,13 @@ export class Block {
 		return this._live;
 	}
 
-	#suggestions = $state<(JSONText[] | JSONInlineBlock)[] | null>(null);
-
+	/** Inline suggestions are session state (L12), keyed by this block's id. */
 	get suggestions(): (Text | InlineBlock)[] | null {
-		if (!this.#suggestions) {
+		const suggestions = this.rawSuggestions;
+		if (!suggestions) {
 			return null;
 		}
-		return this.#suggestions.map((suggestion) => {
+		return suggestions.map((suggestion) => {
 			if ('type' in suggestion) {
 				return createReadonlyInlineBlock({
 					block: suggestion,
@@ -254,11 +254,13 @@ export class Block {
 	}
 
 	set suggestions(value: (JSONText[] | JSONInlineBlock)[] | null) {
-		this.#suggestions = value;
+		const suggestions = this.edytor.selection.suggestions;
+		if (value) suggestions.set(this.id, value);
+		else suggestions.delete(this.id);
 	}
 
 	get rawSuggestions(): (JSONText[] | JSONInlineBlock)[] | null {
-		return this.#suggestions;
+		return this.edytor.selection?.suggestions.get(this.id) ?? null;
 	}
 
 	get nextBlock(): Block | null {

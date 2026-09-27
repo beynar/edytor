@@ -47,7 +47,10 @@ import {
  *   node survives, the preview renders once at the caret, the composition is
  *   not restarted, no DOM-selection write while it lives) or about undo.
  *   Rows today's code fails are `test.fail` with the row id and the gating
- *   checkpoint, so the checkpoint that fixes them flips them.
+ *   checkpoint, so the checkpoint that fixes them flips them. I3 flipped
+ *   F-I6, F-I16 (a, b, d), F-I17 and the F-S12 session contracts: the
+ *   session writes no DOM selection while it lives and keeps the host's
+ *   render frozen while the browser shows the preview.
  *
  * Updates are sent at a human IME pace (`KEY_PACE_MS`) — back-to-back CDP
  * calls finish before any deferred editor write and hide it (the smoke
@@ -63,7 +66,7 @@ const knownRed = (row: string) =>
 
 /** Delay between two IME updates: a fast human typist on a real IME. */
 const KEY_PACE_MS = 100;
-/** Longer than the engine's 500 ms undo capture window and the 750 ms composition idle. */
+/** Longer than the engine's 500 ms undo capture window (and the 750 ms idle cancel I3 deleted). */
 const IME_GAP_MS = 1000;
 
 type PinnedAfter = Awaited<ReturnType<typeof readPinnedNode>>;
@@ -144,15 +147,6 @@ const composeObserved = async (
  */
 const expectNoSelectionWrite = (observed: SessionObservation) =>
 	expect(observed.selectionWrites, 'no DOM-selection write while the session lives').toEqual([]);
-
-/**
- * The composition-restart half is not V4's: with no selection write left
- * (V4), Chromium still restarts the composition because the host text node is
- * rewritten under the IME after the first update (the render writes the
- * preview — at the host's end mid-word, identical text at the end — and a
- * rewrite resets the caret: §1.1 text-writer fact). The IME-node pin owns it.
- */
-const RESTART = 'F-S12 restart half (I3 pin: the render rewrites the IME node)';
 
 const expectSessionContract = (observed: SessionObservation, liveDom: string) => {
 	expect.soft(observed.liveDom, 'the preview renders once, at the caret').toBe(liveDom);
@@ -261,7 +255,6 @@ test.describe('cdp IME baseline — single editor', () => {
 	});
 
 	test('mid-word: session contract (F-S12, §1.3 IME node)', async ({ page }) => {
-		knownRed(`${RESTART} / §1.3 IME-node row`);
 		const observed = await driveMidWord(page);
 		expectSessionContract(observed, 'noかte');
 	});
@@ -296,7 +289,6 @@ test.describe('cdp IME baseline — single editor', () => {
 	test('cancel after 1 s, then undo: the previous step is undone, no preview resurrects (F-I16d)', async ({
 		page
 	}) => {
-		knownRed('F-I16(d) (I3)');
 		const issues = trackPageIssues(page);
 		await page.goto('/test/dom?scenario=basic&empty=first');
 		await waitForEditorReady(page, { requireRuntime: true });
@@ -315,7 +307,8 @@ test.describe('cdp IME baseline — single editor', () => {
 		// composition-cancellation.spec:360 — undo/redo walk the typed step only.
 		await page.keyboard.press(`${modKey}+Z`);
 		await expect.poll(() => readBlockText(page, 0)).toBe('');
-		await expect.poll(() => readDomText(page, 0)).toBe('');
+		// The empty text's filler is the renderer's, not text.
+		await expect.poll(async () => (await readDomText(page, 0))?.replace(/\u200B/g, '')).toBe('');
 		await expectSelection(page, {
 			startBlockPath: [0],
 			endBlockPath: [0],
@@ -366,7 +359,6 @@ test.describe('cdp IME baseline — single editor', () => {
 	test('undo right after an IME commit removes exactly the composed text (F-I16a, §1.3 COMP-02)', async ({
 		page
 	}) => {
-		knownRed('F-I16(a) (I3)');
 		const issues = trackPageIssues(page);
 		await page.goto('/test/dom?scenario=basic');
 		await waitForEditorReady(page, { requireRuntime: true });
@@ -392,6 +384,56 @@ test.describe('cdp IME baseline — single editor', () => {
 		await page.keyboard.press(`${modKey}+Shift+Z`);
 		await expect.poll(() => readBlockText(page, 1)).toBe('note日本');
 		await expect.poll(() => readDomText(page, 1)).toBe('note日本');
+		issues.assertClean();
+	});
+
+	test('undo right after an equal-text IME commit removes exactly the composed text (F-I16b)', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await page.goto('/test/dom?scenario=basic');
+		await waitForEditorReady(page, { requireRuntime: true });
+		await setSelectionByTextIndex(page, 1, 4); // note|
+
+		const ime = await openIme(page);
+		await ime.composeSteps(['ㅎ', '하', '한'], IME_GAP_MS);
+		await page.waitForTimeout(IME_GAP_MS);
+		await ime.commit('한');
+		await ime.detach();
+		await expect.poll(() => readBlockText(page, 1)).toBe('note한');
+
+		await page.keyboard.press(`${modKey}+Z`);
+		await expect.poll(() => readBlockText(page, 1)).toBe('note');
+		await expect.poll(() => readDomText(page, 1)).toBe('note');
+		await page.keyboard.press(`${modKey}+Shift+Z`);
+		await expect.poll(() => readBlockText(page, 1)).toBe('note한');
+		await expect.poll(() => readDomText(page, 1)).toBe('note한');
+		issues.assertClean();
+	});
+
+	test('a 10 s pause leaves the session live; it commits once (F-I17, BI-4)', async ({ page }) => {
+		test.setTimeout(45_000);
+		const issues = trackPageIssues(page);
+		await page.goto('/test/dom?scenario=basic');
+		await waitForEditorReady(page, { requireRuntime: true });
+		await setSelectionByTextIndex(page, 1, 4); // note|
+
+		const ime = await openIme(page);
+		await ime.compose('に');
+		await pinComposingNode(page, 'preview');
+		await page.waitForTimeout(10_000);
+		expect(await readBlockText(page, 1)).toBe('noteに');
+		expect(await readDomText(page, 1)).toBe('noteに');
+		expect(await readPinnedNode(page, 'preview', 'noteに')).toMatchObject({
+			connected: true,
+			hostIntact: true,
+			holdsText: true
+		});
+
+		await ime.commit('に');
+		await ime.detach();
+		await expect.poll(() => readBlockText(page, 1)).toBe('noteに');
+		await expect.poll(() => readDomText(page, 1)).toBe('noteに');
 		issues.assertClean();
 	});
 
@@ -450,7 +492,6 @@ test.describe('cdp IME baseline — single editor', () => {
 	});
 
 	test('bold mark: session contract (F-S12, §1.3 IME node)', async ({ page }) => {
-		knownRed(`${RESTART} / §1.3 IME-node row`);
 		const observed = await driveBold(page);
 		expectSessionContract(observed, 'Alêpha beta');
 	});
@@ -546,7 +587,6 @@ test.describe('cdp IME baseline — with a peer in a second browser context', ()
 	test('peer insert before the region, SAME block: session contract (F-S12)', async ({
 		browser
 	}, testInfo) => {
-		knownRed(RESTART);
 		await withPair(browser, testInfo, async (pair) => {
 			const observed = await drivePeerSameBlock(pair);
 			// composition-remote-lock: the DOM the IME owns is not rewritten by
@@ -583,7 +623,6 @@ test.describe('cdp IME baseline — with a peer in a second browser context', ()
 	test('peer insert in ANOTHER block: session contract (composition-remote-lock, F-S12)', async ({
 		browser
 	}, testInfo) => {
-		knownRed(RESTART);
 		await withPair(browser, testInfo, async (pair) => {
 			const observed = await drivePeerOtherBlock(pair);
 			expectSessionContract(observed, 'alphaに');
@@ -593,7 +632,6 @@ test.describe('cdp IME baseline — with a peer in a second browser context', ()
 	test('an 850 ms idle composition survives a peer edit in another block (F-I6)', async ({
 		browser
 	}, testInfo) => {
-		knownRed('F-I6 (I3, R7)');
 		await withPair(browser, testInfo, async ({ user, peer }) => {
 			await setSelectionByTextIndex(user, 0, 5); // alpha|
 			const ime = await openIme(user);

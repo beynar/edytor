@@ -46,7 +46,6 @@ const EDITABLE_ISLAND_SELECTOR = [
 	'[data-edytor-mark]',
 	'[data-edytor-mark-void]'
 ].join(',');
-const COMPOSITION_MUTATION_IDLE_MS = 750;
 const WEBKIT_CONVERTED_SPACE_SELECTOR = 'span.Apple-converted-space';
 const NON_BREAKING_SPACE = '\u00A0';
 // cf. Quill's MAX_OPTIMIZE_ITERATIONS — bounded repair so a foreign writer
@@ -1550,9 +1549,7 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 	const queuedTexts = new Set<Text>();
 	const queuedMutations: MutationRecord[] = [];
 	let isFlushScheduled = false;
-	let compositionMutationTimer: ReturnType<typeof setTimeout> | null = null;
 	let suppressedMutationRetryTimer: ReturnType<typeof setTimeout> | null = null;
-	let shouldRestoreCompositionMutationSelection = false;
 	let observer: MutationObserver;
 	// Bounded repair (cf. Quill's MAX_OPTIMIZE_ITERATIONS): a foreign writer
 	// that re-mutates on every repair batch — or a bug where our own heals
@@ -1563,32 +1560,6 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 	let mutationRepairWindowTimer: ReturnType<typeof setTimeout> | null = null;
 	let mutationRepairSuppressed = false;
 	let mutationRepairSuppressedTimer: ReturnType<typeof setTimeout> | null = null;
-
-	const cancelIdleCompositionPreview = async () => {
-		const state = edytor.compositionState;
-		edytor.compositionState = null;
-		edytor.isComposing = false;
-		edytor.hasHandledCompositionInput = false;
-
-		if (!state || state.value.length === 0) {
-			return false;
-		}
-
-		const text = edytor.getTextById(state.textId);
-		if (!text) {
-			return false;
-		}
-
-		const deleteLength = Math.min(state.value.length, text.length - state.startOffset);
-		if (deleteLength <= 0) {
-			return false;
-		}
-
-		text.deleteAt(state.startOffset, deleteLength);
-		text.refreshFromModel();
-		await edytor.selection.setAtTextOffset(text, state.startOffset);
-		return true;
-	};
 
 	const observe = () => {
 		observer.observe(root, {
@@ -1603,20 +1574,6 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 			childList: true,
 			subtree: true
 		});
-	};
-
-	const scheduleCompositionMutationFlush = () => {
-		if (compositionMutationTimer) {
-			clearTimeout(compositionMutationTimer);
-		}
-
-		compositionMutationTimer = setTimeout(() => {
-			compositionMutationTimer = null;
-			void cancelIdleCompositionPreview().then((didCancelPreview) => {
-				shouldRestoreCompositionMutationSelection = !didCancelPreview;
-				queueFlush();
-			});
-		}, COMPOSITION_MUTATION_IDLE_MS);
 	};
 
 	const scheduleSuppressedMutationRetry = () => {
@@ -1707,9 +1664,9 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 			// Mutation records are replay-safe and must not be dropped:
 			// attribute damage (a Grammarly class on a mark span, a stripped
 			// `contenteditable`) does not self-heal via text reconcile —
-			// requeueing it is the only way it gets healed post-commit.
+			// requeueing it is the only way it gets healed post-commit. The
+			// session's end flushes them (no timer ends a session).
 			queuedMutations.unshift(...mutations);
-			scheduleCompositionMutationFlush();
 			return;
 		}
 
@@ -1768,8 +1725,6 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 		const textReplacements = getTextReplacements(edytor, mutations);
 		const replacedTexts = new Set(textReplacements.map((replacement) => replacement.text));
 		const changedTexts = new Set<Text>();
-		const shouldRestoreCompositionSelection = shouldRestoreCompositionMutationSelection;
-		shouldRestoreCompositionMutationSelection = false;
 		const addedManagedRoots = getAddedManagedRoots(edytor, mutations);
 		const refreshedTexts = new Set<Text>();
 		let removedUnmanagedNode: boolean;
@@ -1828,6 +1783,14 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 				}
 
 				if (claimed.includes(text)) continue;
+				// A late composition change on the tail's host: the committed text stands.
+				if (edytor.composition.tail() === text) {
+					if (getNormalizedDomText(text) !== text.stringContent) {
+						refreshManagedSubtreeMutationFromModel(text, { refreshUnchanged: true });
+						refreshedTexts.add(text);
+					}
+					continue;
+				}
 				if (await handleNativeLineBreakTextMutation(edytor, text)) {
 					changedTexts.add(text);
 					continue;
@@ -1849,13 +1812,6 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 
 			for (const text of [...texts, ...replacedTexts]) {
 				scheduleRemoveStalePlaceholders(text);
-			}
-
-			if (shouldRestoreCompositionSelection) {
-				const text = changedTexts.values().next().value;
-				if (text) {
-					await edytor.selection.setAtTextOffset(text, text.length);
-				}
 			}
 
 			// The root sweep is a mutation-driven safety net, not per-flush
@@ -1949,9 +1905,6 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 
 	return {
 		destroy: () => {
-			if (compositionMutationTimer) {
-				clearTimeout(compositionMutationTimer);
-			}
 			if (suppressedMutationRetryTimer) {
 				clearTimeout(suppressedMutationRetryTimer);
 			}

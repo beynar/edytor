@@ -10,10 +10,11 @@ import {
 import { onInput } from './events/onInput.js';
 import { onPaste } from './events/onPaste.js';
 import { preventUnsupportedDrop } from './events/onDrop.js';
-import { Attempts, attemptOf } from './session/attempt.js';
-import { type JSONBlock, type JSONDoc, type SerializableContent } from '$lib/utils/json.js';
+import { Attempts } from './session/attempt.js';
+import { Composition } from './session/composition.svelte.js';
+import { type JSONBlock, type JSONDoc } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
-import { EdytorSelection, type TextAnchor } from './selection/selection.svelte.js';
+import { EdytorSelection } from './selection/selection.svelte.js';
 import { Projector } from './surface/projector.svelte.js';
 import { Block } from './block/block.svelte.js';
 import { Text } from './text/text.svelte.js';
@@ -69,12 +70,6 @@ import { Dispatcher } from './session/commands.js';
 import { History } from './session/history.js';
 import type { SelectionValue } from './session/selection.js';
 import { kindCatalogue, kindCommand, type KindRow } from './kinds.js';
-import {
-	getSelectionReplacementState,
-	replaceSelectedBlocksWithEmptyBlockTarget,
-	replaceSelectionWithCollapsedTarget,
-	type SelectionReplacementState
-} from './selection/replaceSelection.js';
 import {
 	clearDomSelection,
 	getActiveElement,
@@ -135,17 +130,6 @@ export type RootBlock = Block & {
 const getEventTimeStamp = (event: Event | undefined) =>
 	event?.timeStamp || (typeof performance === 'undefined' ? Date.now() : performance.now());
 
-const isAppleWebKitBrowser = () => {
-	if (typeof navigator === 'undefined') {
-		return false;
-	}
-
-	const userAgent = navigator.userAgent;
-	return (
-		/AppleWebKit/i.test(userAgent) && !/(Chrome|Chromium|Edg|OPR|SamsungBrowser)/i.test(userAgent)
-	);
-};
-
 /**
  * One `bindCrdt` binding shared by every `Edytor` — the binding exists for
  * legacy consumers only (peer-facade helpers in tests, migration, provider
@@ -197,36 +181,12 @@ export class Edytor {
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
 	placeholder?: string | Snippet<[{ block: Block }]>;
-	compositionState: {
-		textId: string;
-		startOffset: number;
-		value: string;
-		marks?: Record<string, SerializableContent | null>;
-		/**
-		 * Model atoms the composition region currently occupies — normally
-		 * `value.length`, grown by `_syncCompositionRegion` when a
-		 * remote/programmatic edit lands INSIDE the region. Region deletes
-		 * use this so absorbed remote text is clobbered at commit instead
-		 * of corrupting surrounding content (reads in files that can't take
-		 * the anchor surface fall back to `value.length`).
-		 */
-		regionLength?: number;
-		/**
-		 * CRDT anchors bounding the composition region — resolved through
-		 * remote edits by `resolveCompositionRegion` so commit offsets
-		 * track the atoms the preview occupies while the DOM stays pinned.
-		 * `start` binds right (inserts at the region edge land outside),
-		 * `end` binds left.
-		 */
-		startAnchor?: TextAnchor | null;
-		endAnchor?: TextAnchor | null;
-		restoreSelectionAfterCommit?: {
-			textId: string;
-			offset: number;
-		};
-	} | null = null;
-	compositionStartReplacementState: SelectionReplacementState | null = null;
-	isComposing = $state(false);
+	/** The view's composition session (R8, L7, O34): at most one, live then tail. */
+	readonly composition: Composition = new Composition(this);
+	/** A composition session is live. */
+	get isComposing() {
+		return this.composition.live;
+	}
 	/**
 	 * True for the synchronous duration of a real user-input event
 	 * (beforeinput/input/keydown/paste/cut). Selection writes use it to
@@ -243,74 +203,10 @@ export class Edytor {
 	 */
 	suppressCaretScrollDepth = 0;
 	/**
-	 * The wrapper currently holding the composition render pin — set by
-	 * `Text._acquireCompositionPin`, cleared by `_releaseCompositionPin`
-	 * (or lazily when the pin drops). Lets commit/cancel paths release the
-	 * pinned host even when `compositionState` was already cleared.
-	 */
-	_compositionHostText: Text | null = null;
-	/**
-	 * The wrapper whose DOM node currently hosts the live composition — the
-	 * element the IME owns. Resolved through `idToText` so pending-wrapper
-	 * id aliasing during reconcile keeps tracking the same node; during the
-	 * compositionstart→first-beforeinput window (no `compositionState` yet)
-	 * it falls back to the DOM-anchored selection text.
-	 */
-	get compositionText(): Text | null {
-		const state = this.compositionState;
-		if (state) {
-			// Anchor-first: ids go stale when a remote/programmatic split
-			// rebinds the wrapper (the DOM-key rename is deferred under the
-			// pin), so the tracked region's atoms are the reliable source.
-			return this.resolveCompositionRegion()?.text ?? this.getTextById(state.textId) ?? null;
-		}
-		return this.isComposing ? (this.selection.state.startText ?? null) : null;
-	}
-	/**
-	 * Resolve the live composition region in MODEL space → `{text,
-	 * startOffset, length}` — segment-local on the returned wrapper.
-	 *
-	 * The WRITE TARGET is always the tracked host — the wrapper whose DOM
-	 * node the IME owns (`state.textId` follows `_bind` re-aliases, and the
-	 * pin defers the DOM-key rename so the id keeps resolving). CRDT
-	 * anchors only refine the OFFSETS, and only while they resolve onto
-	 * that same wrapper — atoms migrating to another segment (remote
-	 * split, insertParagraph interruption) keep the commit on the host the
-	 * browser composed into, matching the pre-anchor commit semantics.
-	 */
-	resolveCompositionRegion = (): {
-		text: Text;
-		startOffset: number;
-		length: number;
-	} | null => {
-		const state = this.compositionState;
-		if (!state) {
-			return null;
-		}
-		const tracked = this.getTextById(state.textId) ?? null;
-		if (!tracked) {
-			return null;
-		}
-		// Before the first re-anchor (e.g. a pin held from the
-		// compositionstart window), the caret anchor on the pin still gives
-		// the region start.
-		const startAnchor = state.startAnchor ?? tracked._compositionPin?.caretAnchor ?? null;
-		const start = startAnchor ? this.selection.resolveTextAnchor(startAnchor) : null;
-		const end = state.endAnchor ? this.selection.resolveTextAnchor(state.endAnchor) : null;
-		const startOffset = start && start.text === tracked ? start.offset : state.startOffset;
-		const length =
-			start && end && start.text === tracked && end.text === tracked
-				? Math.max(0, end.offset - start.offset)
-				: (state.regionLength ?? state.value.length);
-		return { text: tracked, startOffset, length };
-	};
-	hasHandledCompositionInput = false;
 	/** The view's input attempts (R8, L6): one per user occurrence. */
 	readonly attempts = new Attempts();
 	/** The DOM observer: the only adopter of browser-made text (R8, L31). */
 	observer: ReturnType<typeof observeDomTextMutations> | null = null;
-	private danglingCompositionBlurTimer: ReturnType<typeof setTimeout> | null = null;
-	private compositionEndedAt = Number.NEGATIVE_INFINITY;
 
 	// CRDT (v14) — the document is the composition owner: it holds the ONE
 	// engine doc, the shared facade (only structural read/write surface),
@@ -427,28 +323,16 @@ export class Edytor {
 	historyUndo = (): void => this.history.undo();
 	historyRedo = (): void => this.history.redo();
 
-	private deferredEditorDomRefresh: ReturnType<typeof setTimeout> | null = null;
+	private deferredEditorDomRefresh = false;
 	refreshEditorDom = () => {
-		if (this.isComposing) {
-			// `{#key editorDomRevision}` remounts the whole subtree — that
-			// would destroy the DOM node the IME owns. Defer the remount to
-			// the first tick after the composition ends (bounded: every exit
-			// path — compositionend, dangling reset, idle-preview cancel —
-			// flips `isComposing`).
-			if (this.deferredEditorDomRefresh === null) {
-				const attempt = () => {
-					if (this.isComposing && this.node?.isConnected) {
-						this.deferredEditorDomRefresh = setTimeout(attempt, 16);
-						return;
-					}
-					this.deferredEditorDomRefresh = null;
-					this.editorDomRevision += 1;
-				};
-				this.deferredEditorDomRefresh = setTimeout(attempt, 16);
-			}
-			return;
-		}
-		this.editorDomRevision += 1;
+		// `{#key editorDomRevision}` remounts the whole subtree — that would
+		// destroy the DOM node the IME owns: the remount waits for the session's end.
+		if (this.deferredEditorDomRefresh) return;
+		this.deferredEditorDomRefresh = true;
+		this.composition.ended(() => {
+			this.deferredEditorDomRefresh = false;
+			if (!this.destroyed) this.editorDomRevision += 1;
+		});
 	};
 
 	constructor({
@@ -1166,56 +1050,15 @@ export class Edytor {
 	 * focusout signal as a user blur but must still be repaired.
 	 */
 	lastUserGestureOutsideEditor = false;
-	/** The post-commit window (I3 replaces it by the session tail): drift after a commit is the model's. */
-	private driftAfterComposition = () => {
-		const attempt = attemptOf(this, { inputType: 'compositionend', cancelable: false });
-		this.attempts.drift(this.attempts.admit(attempt, 'model'), 'restore', 50);
-	};
 	/** Run `body` as part of the user's input (deferred work of an occurrence). */
 	userInput = <T>(body: () => T) =>
 		this.withUserInput(body, { bumpSerial: false })(new Event('input'));
-	private clearDanglingCompositionBlurTimer = () => {
-		if (!this.danglingCompositionBlurTimer) {
-			return;
-		}
-
-		clearTimeout(this.danglingCompositionBlurTimer);
-		this.danglingCompositionBlurTimer = null;
-	};
-	private resetDanglingComposition = () => {
-		this.clearDanglingCompositionBlurTimer();
-		if (!this.isComposing) {
-			return;
-		}
-
-		this.compositionState = null;
-		this.compositionStartReplacementState = null;
-		this.isComposing = false;
-		this.hasHandledCompositionInput = false;
-		this.compositionEndedAt = Number.NEGATIVE_INFINITY;
-		this._compositionHostText?._releaseCompositionPin();
-	};
-	private scheduleDanglingCompositionBlurReset = () => {
-		if (!this.isComposing) {
-			return;
-		}
-
-		this.clearDanglingCompositionBlurTimer();
-		this.danglingCompositionBlurTimer = setTimeout(() => {
-			this.danglingCompositionBlurTimer = null;
-			this.resetDanglingComposition();
-		}, 50);
-	};
 	/**
 	 * A commit's caret: select it (the projector displays it once the pin's
 	 * render lands) and arm the IME post-commit jump rule — a move right after
 	 * the commit with no gesture since is displayed back (`surface/projector`).
 	 */
 	stabilizeCompositionSelection = async (textOrId: Text | string, offset: number) => {
-		// Every commit path funnels through here — release the render pin so
-		// the DOM converges to the model (covers paths like
-		// `finishCompositionFromBeforeInput` that never touch Text directly).
-		this._compositionHostText?._releaseCompositionPin();
 		const text = this.getTextById(typeof textOrId === 'string' ? textOrId : textOrId.id);
 		if (this.readonly || this.isComposing || !text) return;
 		const active = getActiveElement(this.node);
@@ -1234,216 +1077,29 @@ export class Edytor {
 		this.projector.committed();
 		await this.selection.setAtTextOffset(text, Math.min(offset, text.length));
 	};
+	/** An event of this view's own composition (not a native control's, not a nested island's). */
+	private ownComposition = (event?: Event) =>
+		!event ||
+		(!isNativeInteractiveEvent(event) && !isNestedForeignEditableTarget(this.node, event.target));
+
 	onCompositionStart = (event?: CompositionEvent) => {
-		if (event && isNativeInteractiveEvent(event)) {
-			return;
-		}
-		// A composition inside a nested `contenteditable` island belongs to
-		// that island — entering composition mode here would route the
-		// island's input through the model-selection pipeline.
-		if (event && isNestedForeignEditableTarget(this.node, event.target)) {
-			return;
-		}
-
-		if (this.isComposing) {
-			return;
-		}
-
-		this.clearDanglingCompositionBlurTimer();
-		this.compositionEndedAt = Number.NEGATIVE_INFINITY;
-		this.compositionState = null;
+		if (!this.ownComposition(event)) return;
 		this.selection.applySelectionSnapshot(getDomSelectionSnapshot(this.node));
-		this.compositionStartReplacementState = getSelectionReplacementState(this);
-		this.isComposing = true;
-		this.hasHandledCompositionInput = false;
-		// Pin the host's render immediately — remote/model changes landing
-		// before the first composition beforeinput must not rewrite the DOM
-		// node the IME anchored to. The caret anchor captured here is what
-		// lets the first preview write resolve a model-correct offset even
-		// if remote edits already moved the atoms.
-		this.selection.state.startText?._acquireCompositionPin();
-	};
-	onCompositionEnd = async (event?: CompositionEvent) => {
-		if (event && isNativeInteractiveEvent(event)) {
-			return;
-		}
-		// Mirror the start guard — a foreign island's compositionend must
-		// never commit `event.data` into the model at a stale selection.
-		if (event && isNestedForeignEditableTarget(this.node, event.target)) {
-			return;
-		}
-
-		this.clearDanglingCompositionBlurTimer();
-		const state = this.compositionState;
-		const startReplacementState = this.compositionStartReplacementState;
-		const wasComposing = this.isComposing;
-		const hasHandledCompositionInput = this.hasHandledCompositionInput;
-		this.compositionState = null;
-		this.compositionStartReplacementState = null;
-		this.isComposing = false;
-		this.hasHandledCompositionInput = false;
-		this.compositionEndedAt = getEventTimeStamp(event);
-		// The browser relinquished the node — release the render pin so the
-		// DOM converges to the model (the commit below rewrites anyway; the
-		// `finalValue === state.value` fast path would otherwise leave
-		// `isEmpty`/the pinned render frozen).
-		this._compositionHostText?._releaseCompositionPin();
-		const finalValue = event?.data ?? state?.value ?? '';
-		if (!state) {
-			if (
-				!wasComposing ||
-				hasHandledCompositionInput ||
-				this.readonly ||
-				this.selection.state.isVoidEditableElement ||
-				finalValue.length === 0
-			) {
-				return;
-			}
-
-			this.driftAfterComposition();
-			const target =
-				this.selection.selectedBlocks.size > 0
-					? await replaceSelectedBlocksWithEmptyBlockTarget(this)
-					: await replaceSelectionWithCollapsedTarget(this, startReplacementState ?? undefined);
-			if (!target) {
-				return;
-			}
-
-			target.text.insertText({
-				value: finalValue,
-				start: target.offset,
-				end: target.offset
-			});
-			const selectionOffset = target.offset + finalValue.length;
-			this.attempts.caret(target.text, selectionOffset);
-			await this.stabilizeCompositionSelection(target.text, selectionOffset);
-			return;
-		}
-
-		// Anchor-resolve the region in MODEL space — remote/model edits that
-		// landed mid-composition moved the atoms the preview occupies, so the
-		// commit clobbers exactly those atoms (including remote text absorbed
-		// inside the region) instead of duplicating or corrupting neighbours.
-		const region = this.resolveCompositionRegion();
-		const text = region?.text ?? this.getTextById(state.textId);
-		if (!text) {
-			return;
-		}
-		const startOffset = region ? region.startOffset : state.startOffset;
-		const regionLength = region ? region.length : state.value.length;
-
-		const restoreInterruptedSelection = async () => {
-			const restore = state.restoreSelectionAfterCommit;
-			if (!restore) {
-				return false;
-			}
-
-			const restoreText = this.getTextById(restore.textId);
-			if (!restoreText) {
-				return false;
-			}
-
-			await this.stabilizeCompositionSelection(restoreText, restore.offset);
-			return true;
-		};
-
-		this.driftAfterComposition();
-		const interruptedSelection = state.restoreSelectionAfterCommit;
-		const repairText = interruptedSelection ? this.getTextById(interruptedSelection.textId) : text;
-		if (repairText) {
-			this.attempts.caret(
-				repairText,
-				interruptedSelection?.offset ?? startOffset + finalValue.length
-			);
-		}
-		if (finalValue === state.value) {
-			if (await restoreInterruptedSelection()) {
-				return;
-			}
-			await this.stabilizeCompositionSelection(text, startOffset + finalValue.length);
-			return;
-		}
-
-		if (regionLength > 0) {
-			text.deleteAt(startOffset, regionLength);
-		}
-
-		if (finalValue.length > 0) {
-			text.insertText({
-				value: finalValue,
-				start: startOffset,
-				end: startOffset,
-				// Captured when the composition started (O29).
-				marks: state.marks
-			});
-		}
-
-		if (await restoreInterruptedSelection()) {
-			return;
-		}
-
-		await this.stabilizeCompositionSelection(text, startOffset + finalValue.length);
+		this.composition.start();
 	};
 
-	shouldIgnoreCompositionKeyDown = (event: KeyboardEvent) => {
-		if (this.isComposing && !event.isComposing && !this.compositionState) {
-			// A non-composing key while the latch is held but no preview
-			// state exists is EITHER a session the browser abandoned
-			// without compositionend (synthesized IME input that starts
-			// but never ends — Playwright-Firefox `·`/`é`) OR a live
-			// composition sitting in its start→first-input window, where
-			// pass-through keys must stay inert. Swallow THIS key either
-			// way, but arm the deferred reset so a dead session unlatches
-			// instead of swallowing every future structural key.
-			this.postCompositionGuardSwallows++;
-			this.scheduleDanglingCompositionBlurReset();
-		}
-		if (this.isComposing || event.isComposing) {
-			return true;
-		}
-
-		const isBackspaceWithExplicitSelection =
-			event.key === 'Backspace' &&
-			(!this.selection.state.isCollapsed ||
-				this.selection.selectedBlocks.size > 0 ||
-				this.selection.selectedInlineBlock.size > 0);
-		if (isBackspaceWithExplicitSelection) {
-			this.compositionEndedAt = Number.NEGATIVE_INFINITY;
-			return false;
-		}
-
-		const shouldGuardPostCompositionKey =
-			event.key === 'Enter' || (event.key === 'Backspace' && isAppleWebKitBrowser());
-		if (!shouldGuardPostCompositionKey) {
-			// The guard suppresses only the browser's first phantom structural
-			// key immediately after composition. Any real intervening command
-			// proves that the composition sequence is over.
-			this.compositionEndedAt = Number.NEGATIVE_INFINITY;
-			return false;
-		}
-
-		const elapsed = getEventTimeStamp(event) - this.compositionEndedAt;
-		if (elapsed < 0 || elapsed > 500) {
-			this.compositionEndedAt = Number.NEGATIVE_INFINITY;
-			return false;
-		}
-
-		this.compositionEndedAt = Number.NEGATIVE_INFINITY;
-		this.postCompositionGuardSwallows++;
-		event.preventDefault();
-		event.stopPropagation();
-		return true;
+	/** `compositionend`: the live session's commit, or its explicit cancel; the tail swallows a late one. */
+	onCompositionEnd = (event?: CompositionEvent) => {
+		if (!this.ownComposition(event) || this.readonly) return;
+		const value = event?.data ?? this.composition.preview;
+		if (value) this.composition.commit(value);
+		else this.composition.cancel();
 	};
 
-	/**
-	 * Count of composition-adjacent suppressions: structural keys
-	 * swallowed by the post-composition phantom guard (first
-	 * Enter/Backspace after compositionend) AND pass-through keys
-	 * swallowed while a composition latch with no preview state is
-	 * armed for deferred reset. Test oracles diff this across an action
-	 * window to tell a designed suppression from a broken action.
-	 */
-	postCompositionGuardSwallows = 0;
+	/** Phantom structural keys the composition tail swallowed (a test oracle). */
+	get postCompositionGuardSwallows() {
+		return this.composition.swallows;
+	}
 
 	deleteContentWithinSelection = batch(
 		'deleteContentWithinSelection',
@@ -1516,7 +1172,8 @@ export class Edytor {
 			if (event.relatedTarget instanceof Node && node.contains(event.relatedTarget)) {
 				return;
 			}
-			this.scheduleDanglingCompositionBlurReset();
+			// Focus leaving abandons a live composition: the browser committed what it shows.
+			this.composition.abandon();
 			setTimeout(clearNativeSelectionAfterExternalFocus);
 		};
 
@@ -1671,6 +1328,8 @@ export class Edytor {
 			),
 			on(node, 'pointerdown', (event: PointerEvent) => {
 				this.markUserGesture();
+				// A pointer gesture abandons a live composition (D-7).
+				this.composition.abandon();
 				handlePointerDown(event);
 			}),
 			on(node, 'pointerup', (event: PointerEvent) => {
@@ -1757,7 +1416,7 @@ export class Edytor {
 				clearAttachedNativeState();
 				this.selection.destroy();
 				this.attempts.clear();
-				this.clearDanglingCompositionBlurTimer();
+				this.composition.reset();
 				// Drain AND clear: `attach` re-runs on every `{#key
 				// editorDomRevision}` remount — leaving the spent batch in place
 				// would retain ~18 dead closures (+ the detached editor DOM
@@ -1808,7 +1467,7 @@ export class Edytor {
 		this.selection.destroy();
 
 		this.attempts.clear();
-		this.clearDanglingCompositionBlurTimer();
+		this.composition.reset();
 		// Pending placeholder-repair passes (microtask/rAF/timers) must
 		// never act on a destroyed view — release kills them all.
 		this.placeholderRepair.release();

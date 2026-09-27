@@ -818,14 +818,14 @@ export const fixtures = defineFixtures([
 				{ type: 'compositionstart' },
 				{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'é' }
 			]);
-			if (!edytor.isComposing || !edytor.compositionState) {
+			if (!edytor.isComposing || edytor.composition.preview !== 'é') {
 				throw new Error('expected an active composition before focus loss');
 			}
+			// Focus loss abandons the session: what the host shows is adopted (D-7).
 			editor.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
-			// The dangling-composition blur timer fires after 50ms.
 			await new Promise((resolve) => setTimeout(resolve, 80));
 			await flushDomUpdates();
-			if (edytor.isComposing || edytor.compositionState) {
+			if (edytor.isComposing) {
 				throw new Error('expected dangling composition state to be cleared after blur');
 			}
 		},

@@ -86,7 +86,7 @@ const mirrorModel = (edytor: Any): BlockModel[] => {
 
 const cellsModel = (edytor: Any, cells: Any): BlockModel[] => {
 	const { partsOf, segmentDeltas, placeholderOf } = cellsLib!;
-	const composingIn = edytor.isComposing ? (edytor.compositionText?.parent?.id ?? null) : null;
+	const composingIn = edytor.isComposing ? (edytor.composition.host?.parent?.id ?? null) : null;
 	const walk = (id: string): BlockModel => {
 		const cell = cells.get(id);
 		if (!cell) {
@@ -187,7 +187,7 @@ export const CLASSES: Class[] = [
 		matches: (d, edytor) => {
 			if (!d.field.startsWith('part:')) return false;
 			const text = mirrorText(edytor, d.block, Number(d.field.slice(5)));
-			return Boolean(text?._pinnedDeltas && edytor.isComposing && edytor.compositionText === text);
+			return Boolean(text?._pinnedDeltas && edytor.composition.host === text);
 		}
 	},
 	{
@@ -202,7 +202,7 @@ export const CLASSES: Class[] = [
 			d.reference === false &&
 			d.cells === true &&
 			edytor.isComposing &&
-			edytor.compositionText?.parent?.id !== d.block
+			edytor.composition.host?.parent?.id !== d.block
 	}
 ];
 

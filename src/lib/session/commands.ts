@@ -44,7 +44,8 @@ type Change = {
  * The undo policy (O31, FP-2) — today's grouping: deletions, paste, drop and
  * structural commands cut the capture before they write; a paragraph split
  * also cuts after; everything else (insertions) coalesces within
- * `captureTimeout`. A composition session's own deletion stays in its group.
+ * `captureTimeout`. A composition session groups like an insertion and is one
+ * capture group: `session/composition` holds it open between its writes.
  */
 const CUT: Record<string, 'before' | 'both'> = {
 	insertParagraph: 'both',

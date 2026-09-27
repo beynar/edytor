@@ -378,9 +378,7 @@ export const settleEditor = async (page: Page) => {
 			};
 			const edytor = browserWindow.__EDYTOR__;
 			const hasPendingRepair = Boolean(
-				(edytor?.attempts as { busy?: boolean } | undefined)?.busy ||
-				edytor?.danglingCompositionBlurTimer ||
-				edytor?.isComposing
+				(edytor?.attempts as { busy?: boolean } | undefined)?.busy || edytor?.isComposing
 			);
 			const quietFor = performance.now() - (browserWindow.__EDYTOR_DST_LAST_EVENT_AT__ ?? 0);
 			return !hasPendingRepair && quietFor >= 50;

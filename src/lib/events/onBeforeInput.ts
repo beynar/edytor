@@ -362,12 +362,6 @@ const androidNoOpBackspaceDeadline = (edytor: Edytor, attempt: Attempt) => {
 	}, NATIVE_INPUT_REPAIR_WINDOW_MS);
 };
 
-const resetCompositionIfNeeded = (edytor: Edytor, attempt: Attempt) => {
-	if (kindOf(attempt.inputType) !== 'composition' && !edytor.isComposing) {
-		edytor.compositionState = null;
-	}
-};
-
 const deleteTrailingSoftBreakBackward = (edytor: Edytor, attempt: Attempt) => {
 	const { startText, yStart } = attempt;
 	const isModelCollapsed = attempt.isCollapsed || attempt.yStart === attempt.yEnd;
@@ -390,32 +384,6 @@ const deleteTrailingSoftBreakBackward = (edytor: Edytor, attempt: Attempt) => {
 	return true;
 };
 
-// `insert*` command types that never deliver composition text — a native
-// `insertLink`/list/`insertHorizontalRule` landing between
-// `compositionstart` and the first real composition input must NOT mark
-// the composition handled, or `onCompositionEnd` drops the IME's
-// `finalValue` commit.
-const NON_COMPOSITION_INSERT_TYPES = new Set([
-	'insertLink',
-	'insertOrderedList',
-	'insertUnorderedList',
-	'insertHorizontalRule',
-	'insertTranspose',
-	'insertFromYank',
-	'insertFromPaste',
-	'insertFromDrop'
-]);
-
-const markCompositionInputHandledIfNeeded = (edytor: Edytor, attempt: Attempt) => {
-	if (
-		edytor.isComposing &&
-		attempt.inputType.startsWith('insert') &&
-		!NON_COMPOSITION_INSERT_TYPES.has(attempt.inputType)
-	) {
-		edytor.hasHandledCompositionInput = true;
-	}
-};
-
 const refreshSelectionTextFromModel = async (edytor: Edytor, forceDomRefresh = false) => {
 	const text = edytor.selection.state.startText;
 	if (!text?.node?.isConnected) {
@@ -426,24 +394,6 @@ const refreshSelectionTextFromModel = async (edytor: Edytor, forceDomRefresh = f
 	await tick();
 	scheduleRemoveStalePlaceholders(text);
 	await edytor.selection.setAtTextOffset(text, Math.min(offset, text.length));
-};
-
-const rememberInterruptedCompositionSelectionIfNeeded = (edytor: Edytor, attempt: Attempt) => {
-	if (
-		!edytor.isComposing ||
-		!edytor.compositionState ||
-		kindOf(attempt.inputType) === 'composition'
-	) {
-		return;
-	}
-	const { startText, yStart, isCollapsed } = edytor.selection.state;
-	if (!startText || !isCollapsed) {
-		return;
-	}
-	edytor.compositionState.restoreSelectionAfterCommit = {
-		textId: startText.id,
-		offset: yStart
-	};
 };
 
 /** The pre-admission extension hook: an extension may claim a browser `beforeinput`. */
@@ -463,8 +413,6 @@ const perform = (edytor: Edytor, attempt: Attempt, offered: string | null) =>
 		const { event } = attempt;
 		const kind = kindOf(attempt.inputType);
 		attempt.phase = 'applied';
-		resetCompositionIfNeeded(edytor, attempt);
-		markCompositionInputHandledIfNeeded(edytor, attempt);
 		event?.preventDefault();
 		if (kind === 'history') {
 			edytor.attempts.drift(attempt, 'refresh', 0);
@@ -477,7 +425,8 @@ const perform = (edytor: Edytor, attempt: Attempt, offered: string | null) =>
 		if (runBeforeInputHotkeyBridge(edytor, attempt, offered)) return;
 
 		const [mode, window] = driftOf(edytor, attempt);
-		edytor.attempts.drift(attempt, mode, window);
+		// The live composition host is the session's: no drift expectation on it.
+		if (kind !== 'composition') edytor.attempts.drift(attempt, mode, window);
 		try {
 			if (event) runBeforeInputPlugins(edytor, event);
 			await runBeforeInputCommand(edytor, attempt);
@@ -499,7 +448,7 @@ const perform = (edytor: Edytor, attempt: Attempt, offered: string | null) =>
 		if (kind === 'text' || kind === 'payload') {
 			await refreshSelectionTextFromModel(edytor, attempt.inputType === 'insertFromPaste');
 		}
-		rememberInterruptedCompositionSelectionIfNeeded(edytor, attempt);
+		if (kind !== 'composition') edytor.composition.interrupt();
 	});
 
 /**
@@ -517,6 +466,7 @@ const occur = (
 ) => {
 	observeInternalDragSources(edytor.node?.getRootNode());
 	const intent = intentOf(occurrence.inputType, occurrence.data ?? null, key?.inputType);
+	if (kindOf(intent) !== 'composition') edytor.composition.occurred();
 	if (!reuse) syncSelectionFromDeclaredRange(edytor, occurrence, intent);
 	const attempt = reuse ? reproject(edytor, reuse) : attemptOf(edytor, occurrence, key?.inputType);
 	if (

@@ -51,7 +51,8 @@ export class SlashMenuController {
 
 		const start = payload.start ?? this.edytor.selection.state.yStart;
 		const end = payload.end ?? this.edytor.selection.state.yEnd;
-		if (payload.value === '/' && start === end && block.convertible) {
+		// A trigger typed alone, or committed by an IME with its query (`/h`).
+		if (payload.value.startsWith('/') && start === end && block.convertible) {
 			this.open(text, start, start + payload.value.length);
 			return;
 		}

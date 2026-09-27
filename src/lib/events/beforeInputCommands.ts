@@ -46,7 +46,7 @@ const replaceSelectionBeforeTextInsertion = (edytor: Edytor, snapshot: Attempt) 
 };
 
 /** The marks of text inserted at the snapshot's selection (O29), read before it is replaced. */
-const insertionMarks = (edytor: Edytor, snapshot: Attempt) => {
+export const insertionMarks = (edytor: Edytor, snapshot: Attempt) => {
 	const { startText, endText, yStart, yEnd, isCollapsed } = snapshot;
 	if (!startText || edytor.selection.selectedBlocks.size > 0) return {};
 	const replaced = (snapshot.texts.length ? snapshot.texts : [startText]).flatMap((text) =>
@@ -59,163 +59,10 @@ const insertionMarks = (edytor: Edytor, snapshot: Attempt) => {
 	});
 };
 
-const finishCompositionFromBeforeInput = (edytor: Edytor) => {
-	edytor.compositionState = null;
-	edytor.compositionStartReplacementState = null;
-	edytor.isComposing = false;
-	edytor.hasHandledCompositionInput = false;
-};
-
-const insertCompositionText = async (edytor: Edytor, snapshot: Attempt) => {
-	const { data } = snapshot;
-	if (!snapshot.startText || data === undefined) {
-		return;
-	}
-
-	const compositionValue = data ?? '';
-	if (!edytor.compositionState) {
-		const marks = insertionMarks(edytor, snapshot);
-		const target = replaceSelectionBeforeTextInsertion(edytor, snapshot);
-		if (!target) {
-			return;
-		}
-		edytor.compositionState = {
-			textId: target.text.id,
-			startOffset: target.offset,
-			value: '',
-			marks
-		};
-	}
-
-	const compositionText =
-		edytor.getTextById(edytor.compositionState.textId) ?? edytor.selection.state.startText;
-	if (!compositionText) {
-		return;
-	}
-
-	if (edytor.compositionState.value.length > 0) {
-		compositionText.deleteAt(
-			edytor.compositionState.startOffset,
-			edytor.compositionState.value.length
-		);
-	}
-
-	if (compositionValue.length > 0) {
-		compositionText.insertText({
-			value: compositionValue,
-			start: edytor.compositionState.startOffset,
-			end: edytor.compositionState.startOffset,
-			marks: edytor.compositionState.marks
-		});
-	}
-
-	edytor.compositionState.value = compositionValue;
-	await edytor.selection.setAtTextOffset(
-		compositionText,
-		edytor.compositionState.startOffset + compositionValue.length
-	);
-};
-
-const insertFromComposition = async (edytor: Edytor, snapshot: Attempt) => {
-	const compositionValue = snapshot.data ?? '';
-	if (compositionValue.length === 0) {
-		finishCompositionFromBeforeInput(edytor);
-		return;
-	}
-
-	if (!edytor.compositionState) {
-		const marks = insertionMarks(edytor, snapshot);
-		const target = replaceSelectionBeforeTextInsertion(edytor, snapshot);
-		if (!target) {
-			return;
-		}
-
-		target.text.insertText({
-			value: compositionValue,
-			start: target.offset,
-			end: target.offset,
-			marks
-		});
-		finishCompositionFromBeforeInput(edytor);
-		await edytor.stabilizeCompositionSelection(
-			target.text,
-			target.offset + compositionValue.length
-		);
-		return;
-	}
-
-	const compositionText =
-		edytor.getTextById(edytor.compositionState.textId) ?? edytor.selection.state.startText;
-	if (!compositionText) {
-		return;
-	}
-
-	if (edytor.compositionState.value.length > 0) {
-		compositionText.deleteAt(
-			edytor.compositionState.startOffset,
-			edytor.compositionState.value.length
-		);
-	}
-
-	compositionText.insertText({
-		value: compositionValue,
-		start: edytor.compositionState.startOffset,
-		end: edytor.compositionState.startOffset,
-		marks: edytor.compositionState.marks
-	});
-	const selectionOffset = edytor.compositionState.startOffset + compositionValue.length;
-	finishCompositionFromBeforeInput(edytor);
-	await edytor.stabilizeCompositionSelection(compositionText, selectionOffset);
-};
-
-const commitCompositionFromInsertText = async (edytor: Edytor, snapshot: Attempt) => {
-	if (!edytor.isComposing || snapshot.inputType !== 'insertText' || !edytor.compositionState) {
-		return false;
-	}
-
-	const state = edytor.compositionState;
-	const compositionText = edytor.getTextById(state.textId) ?? snapshot.startText;
-	if (!compositionText) {
-		return false;
-	}
-
-	const finalValue = snapshot.data ?? '';
-	edytor.compositionState = null;
-	edytor.isComposing = false;
-	edytor.hasHandledCompositionInput = false;
-
-	if (finalValue !== state.value) {
-		if (state.value.length > 0) {
-			compositionText.deleteAt(state.startOffset, state.value.length);
-		}
-
-		if (finalValue.length > 0) {
-			compositionText.insertText({
-				value: finalValue,
-				start: state.startOffset,
-				end: state.startOffset,
-				marks: state.marks
-			});
-		}
-	}
-
-	await edytor.stabilizeCompositionSelection(
-		compositionText,
-		state.startOffset + finalValue.length
-	);
-	return true;
-};
-
 const insertText = async (edytor: Edytor, snapshot: Attempt) => {
-	if (
-		edytor.isComposing &&
-		snapshot.inputType === 'insertText' &&
-		(await commitCompositionFromInsertText(edytor, snapshot))
-	) {
-		return;
-	}
-
 	const { data } = snapshot;
+	// A text insertion while composing is the session's commit.
+	if (snapshot.inputType === 'insertText' && edytor.composition.commit(data ?? '')) return;
 	if (!snapshot.startText || !data) {
 		return;
 	}
@@ -476,7 +323,8 @@ const beforeInputCommand = (edytor: Edytor, snapshot: Attempt) => {
 				? insertFromPaste(edytor, snapshot)
 				: insertFromDataTransfer(edytor, snapshot);
 		case 'composition':
-			if (type === 'insertCompositionText') return insertCompositionText(edytor, snapshot);
-			if (type === 'insertFromComposition') return insertFromComposition(edytor, snapshot);
+			if (type === 'insertCompositionText')
+				return edytor.composition.update(snapshot.data ?? '', snapshot);
+			if (type === 'insertFromComposition') return edytor.composition.commit(snapshot.data ?? '');
 	}
 };

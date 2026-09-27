@@ -106,7 +106,7 @@ const compareOne = (shadow: Shadow, kind: string) => {
 		const record = {
 			kind,
 			test: expect.getState().currentTestName ?? null,
-			composing: edytor.isComposing ? (edytor.compositionText?.parent?.id ?? '(none)') : null,
+			composing: edytor.isComposing ? (edytor.composition.host?.parent?.id ?? '(none)') : null,
 			differences: verdict.unexplained.slice(0, 6)
 		};
 		testUnexplained.push(record);

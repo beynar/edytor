@@ -1015,13 +1015,14 @@ export class EdytorSelection {
 	};
 	/**
 	 * One classifier (R10, the projector): an echo or a DOM state older than a
-	 * display still to land is ignored, drift is displayed again, and a foreign
-	 * write, intent or a composition's move is adopted.
+	 * display still to land is ignored, and so is a move while a composition
+	 * session is live (the IME's; the session's end displays); drift is
+	 * displayed again; a foreign write or intent is adopted.
 	 */
 	onSelectionChange = () => {
 		const selection = getDomSelectionSnapshot(this.edytor.node);
 		const observation = this.edytor.projector.classify(selection);
-		if (observation === 'echo') return;
+		if (observation === 'echo' || observation === 'composition') return;
 		if (observation === 'drift') return this.display();
 		this.applySelectionSnapshot(selection);
 	};

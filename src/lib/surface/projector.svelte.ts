@@ -10,8 +10,9 @@
  * when the render epoch moved (a commit this view did not issue, a remount, a
  * cell mounted while a display was pending), deduped on those two epochs, and
  * only when:
- * - no composition session owns a host (BI-2): the session's end re-runs the
- *   pass, which catches up;
+ * - no composition session owns a host (BI-2, `edytor.composition`, the
+ *   session's facts): a pass it holds back runs again at the session's end
+ *   (`composition.ended`), which catches up;
  * - no pointer drag is in progress, for a pass the selection did not ask for;
  * - the focus verdict is ours (BI-14): focus inside the editor, or orphaned by
  *   our own render, or nothing focused and the pass was asked for — never a
@@ -108,6 +109,8 @@ export class Projector {
 	/** The named rules' evidence: the last model-owned delete and the last IME commit. */
 	#deleted: { attempt: Attempt; serial: number; at: number } | null = null;
 	#committed: { serial: number; at: number } | null = null;
+	/** A pass waits for the live composition session's end. */
+	#held = false;
 
 	constructor(private edytor: Edytor) {}
 
@@ -130,7 +133,6 @@ export class Projector {
 	#deps = () => {
 		const { edytor } = this;
 		void edytor.valueRevision;
-		void edytor.isComposing;
 		return `${edytor.selection.request}:${this.render}:${edytor.editorDomRevision}`;
 	};
 
@@ -174,6 +176,23 @@ export class Projector {
 		if (this.#pending || dead || text === startText || text === endText) this.render++;
 	};
 
+	/**
+	 * The composition gate (BI-2): a live session owns its host, whose DOM
+	 * selection is the IME's. A pass it holds back runs once the session ended.
+	 */
+	#composing = () => {
+		const { composition } = this.edytor;
+		if (!composition.live) return false;
+		if (!this.#held) {
+			this.#held = true;
+			composition.ended(() => {
+				this.#held = false;
+				this.render++;
+			});
+		}
+		return true;
+	};
+
 	/** The observer processed DOM records (O55): a display that waits gets a pass. */
 	recordsChanged = () => {
 		if (this.#pending) this.render++;
@@ -200,7 +219,8 @@ export class Projector {
 		if (!dom || !anchor || !node?.contains(anchor) || isNestedForeignEditableTarget(node, anchor))
 			return 'foreign';
 		if (this.#echoes(dom)) return 'echo';
-		if (edytor.isComposing) return this.#observed('composition');
+		// The one composition branch: a live session's host is the IME's (I3).
+		if (edytor.composition.live) return this.#observed('composition');
 		if (selection.request !== this.#request && selection.requestSerial === edytor.intentSerial)
 			return 'echo';
 		if (edytor.intentSerial === this.#serial && (this.#snapBack(dom) || this.#jump()))
@@ -302,7 +322,7 @@ export class Projector {
 		const { selection } = edytor;
 		const node = edytor.node;
 		if (!node?.isConnected || edytor.destroyed) return true;
-		if (edytor.isComposing) return false;
+		if (this.#composing()) return false;
 		if (!requested && (selection.dragging || edytor.isHandlingUserInput)) return false;
 		const value = selection.value;
 		if (value.kind === 'none') return true;
@@ -438,7 +458,7 @@ export class Projector {
 		const origin = transaction.origin;
 		if (origin === edytor.transaction || origin === edytor.undoManager || this.#minted) return;
 		const node = edytor.node;
-		if (!node || edytor.isComposing || edytor.isHandlingUserInput) return;
+		if (!node || edytor.composition.live || edytor.isHandlingUserInput) return;
 		// Only after a settled render, and with no display pending: then the DOM
 		// is behind the model, not ahead of it.
 		if (this.#rendered !== edytor.facade.version || edytor.selection.request !== this.#request)

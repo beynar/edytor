@@ -482,7 +482,7 @@ test.describe('browser composition and selection resilience', () => {
 				page.evaluate(() => {
 					const edytor = (
 						window as Window & {
-							__EDYTOR__?: { compositionState: unknown; isComposing: boolean };
+							__EDYTOR__?: { isComposing: boolean };
 						}
 					).__EDYTOR__;
 
@@ -491,14 +491,12 @@ test.describe('browser composition and selection resilience', () => {
 							document.activeElement instanceof HTMLElement
 								? (document.activeElement.dataset.testid ?? null)
 								: null,
-						hasCompositionState: Boolean(edytor?.compositionState),
 						isComposing: edytor?.isComposing ?? null
 					};
 				})
 			)
 			.toEqual({
 				activeTestId: 'outside-composition-target',
-				hasCompositionState: false,
 				isComposing: false
 			});
 
@@ -695,13 +693,11 @@ test.describe('browser composition and selection resilience', () => {
 				page.evaluate(() => {
 					const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 					return {
-						hasCompositionState: Boolean(edytor?.compositionState),
 						isComposing: edytor?.isComposing ?? null
 					};
 				})
 			)
 			.toEqual({
-				hasCompositionState: false,
 				isComposing: false
 			});
 
@@ -743,20 +739,13 @@ test.describe('browser composition and selection resilience', () => {
 			})
 			.toBe('に');
 		await expect.poll(() => readFirstBlockDomText(page)).toBe('に');
-		await expect
-			.poll(() =>
-				page.evaluate(() => {
-					const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-					return {
-						hasCompositionState: Boolean(edytor?.compositionState),
-						isComposing: edytor?.isComposing ?? null
-					};
-				})
-			)
-			.toEqual({
-				hasCompositionState: false,
-				isComposing: false
-			});
+		// The model holds what the IME shows; no timer ends the session (plan
+		// D-7, R8): it stays live until its compositionend.
+		const isComposing = () =>
+			page.evaluate(
+				() => (window as Window & { __EDYTOR__?: any }).__EDYTOR__?.isComposing ?? null
+			);
+		expect(await isComposing()).toBe(true);
 		await expectSelection(page, {
 			startBlockPath: [0],
 			endBlockPath: [0],
@@ -766,6 +755,7 @@ test.describe('browser composition and selection resilience', () => {
 		});
 
 		await dispatchComposition(page, [{ type: 'compositionend', data: 'に' }]);
+		expect(await isComposing()).toBe(false);
 		await expect
 			.poll(async () => {
 				const value = await readJsonByTestId<{

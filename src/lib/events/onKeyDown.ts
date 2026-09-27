@@ -306,7 +306,7 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 		return;
 	}
 
-	if (this.shouldIgnoreCompositionKeyDown(e)) {
+	if (this.composition.keydown(e)) {
 		return;
 	}
 

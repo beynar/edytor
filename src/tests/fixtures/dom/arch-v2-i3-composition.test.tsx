@@ -46,8 +46,8 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 
-/** Red on the reference (flipped to `it` by I3). */
-const row = it.fails;
+/** Red on the reference; green since I3. */
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -81,7 +81,7 @@ const texts = (edytor: Edytor) =>
 const blockText = (edytor: Edytor, index: number) => texts(edytor)[index];
 const hostOf = (edytor: Edytor, index: number) => edytor.root!.children[index]!.firstText!;
 const domText = (edytor: Edytor, index: number) =>
-	(hostOf(edytor, index).node?.textContent ?? '').replace(/​/g, '');
+	(hostOf(edytor, index).node?.textContent ?? '').replace(/\u200B/g, '');
 const textNodes = (element: Node) => {
 	const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
 	const out: globalThis.Text[] = [];

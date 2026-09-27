@@ -1184,6 +1184,8 @@ export class EdytorSelection {
 	};
 
 	onSelectionChange = () => {
+		// Composition noise: a live session owns the caret; its end displays it.
+		if (this.edytor.isComposing) return;
 		const selection = getDomSelectionSnapshot(this.edytor.node);
 		if (this.ignoreNextSelectedBlockSelectionChange) {
 			this.ignoreNextSelectedBlockSelectionChange = false;

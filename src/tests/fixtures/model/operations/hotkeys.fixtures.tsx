@@ -601,8 +601,8 @@ export const fixtures = defineFixtures([
 		),
 		run: async ({ edytor }) => {
 			mockApplePlatform(edytor);
-			edytor.isComposing = true;
-			return runHotkey(edytor, 'ctrl+k');
+			// A key the IME composes (a non-composing key abandons the session, D-7).
+			return runHotkey(edytor, 'ctrl+k', { isComposing: true });
 		},
 		output: (
 			<root>

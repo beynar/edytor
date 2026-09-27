@@ -109,12 +109,6 @@ export const formatTextItems = (
 };
 
 /**
- * `TextAnchor` wire shape — `selection.createTextAnchor`/`resolveTextAnchor`
- * take and return these; kept structural here to avoid a module cycle.
- */
-type CompositionAnchor = ReturnType<Edytor['selection']['createTextAnchor']>;
-
-/**
  * Render pin held while this wrapper's DOM node hosts a live composition
  * (G2/G10 — the "composition node lock"). Svelte's keyed `{#each}` over
  * `renderChildren` would otherwise rewrite — and `domVersion` bumps would
@@ -127,24 +121,17 @@ type CompositionAnchor = ReturnType<Edytor['selection']['createTextAnchor']>;
  * reaches the DOM.
  */
 type CompositionPin = {
+	/** The render when the pin engaged (and its empty filler): kept while the browser itself shows the preview. */
+	frozen: JSONDelta[];
+	empty: boolean;
 	/**
 	 * Merged render deltas captured when the pin engaged — the exact DOM
-	 * the IME anchored to — with the tracked composition region spliced
-	 * OUT so the live preview can be re-injected per keystroke.
+	 * the IME anchored to — with the replaced start target spliced OUT so
+	 * the live preview can be re-injected per keystroke.
 	 */
 	baseDeltas: JSONDelta[];
-	/**
-	 * Offset inside `baseDeltas` where the preview run is spliced — DOM
-	 * space, constant for the session (the model-space start lives on
-	 * `compositionState.startOffset`, tracked by anchors).
-	 */
+	/** Offset inside `baseDeltas` where the preview run is spliced — DOM space, constant for the session. */
 	previewOffset: number;
-	/**
-	 * Caret anchor captured during the compositionstart→first-beforeinput
-	 * window (no `compositionState` yet) so a remote edit landing in that
-	 * window still resolves the real model position for the first write.
-	 */
-	caretAnchor: CompositionAnchor;
 };
 
 const COMPOSITION_PREVIEW_DELTA_ID = 'edytor-composition-preview';
@@ -219,10 +206,8 @@ export class Text {
 	_segOrd = -1;
 
 	/**
-	 * Live composition render pin — see {@link CompositionPin}. Acquired
-	 * lazily by `_acquireCompositionPin` (from `onCompositionStart`, remote
-	 * `_setItems` and local write paths), released lazily the first sync
-	 * after `edytor.compositionText` no longer resolves to this wrapper.
+	 * Live composition render pin — see {@link CompositionPin}. Acquired by
+	 * the composition session at its start, released at its end.
 	 */
 	_compositionPin: CompositionPin | null = null;
 	/** The pinned render output (`renderChildren` while locked), `$state` so the template re-reads it. */
@@ -232,7 +217,7 @@ export class Text {
 	 * Pending-carrier aliases that resolve to this wrapper (D21) — when a
 	 * pending `insertParts` text carrier's atoms merge into this segment,
 	 * `Block.reconcileContent` aliases the carrier's retired id here so
-	 * in-flight references (`compositionState.textId`, deferred selection
+	 * in-flight references (deferred selection
 	 * restores, pending-adoption lookups) still resolve. Purged in `_kill`
 	 * so a dead id can never resolve to a dead wrapper.
 	 */
@@ -305,7 +290,7 @@ export class Text {
 	 * churn in `#children` never reaches the composition's text nodes.
 	 */
 	get renderChildren() {
-		if (this._pinnedDeltas && this.edytor.isComposing && this.edytor.compositionText === this) {
+		if (this._pinnedDeltas && this.edytor.composition.host === this) {
 			return this._pinnedDeltas;
 		}
 		const children = this.children;
@@ -373,188 +358,40 @@ export class Text {
 		return this._live && this.parent.content.includes(this);
 	}
 
-	/**
-	 * True while this wrapper's DOM node hosts the live composition — the
-	 * pin is held AND the session still resolves to this wrapper (a remote
-	 * split can hand the region to a sibling segment, releasing the pin).
-	 */
+	/** True while this wrapper's DOM node hosts the live composition session. */
 	private get _compositionLocked(): boolean {
-		return (
-			this._compositionPin !== null &&
-			this.edytor.isComposing &&
-			this.edytor.compositionText === this
-		);
+		return this._compositionPin !== null && this.edytor.composition.host === this;
 	}
 
 	/**
-	 * Engage the composition render pin on this wrapper. `_items` keep
-	 * tracking model truth (offsets/marks/commit math stay correct); only
-	 * the DOM-facing surface freezes. Called once per session — subsequent
-	 * calls are no-ops.
+	 * Engage the composition render pin: the DOM-facing surface freezes on
+	 * the render the IME anchored to, without `[from, to)` (the start target
+	 * the session replaces); `_items` keep tracking model truth.
 	 */
-	_acquireCompositionPin = () => {
-		const edytor = this.edytor;
-		if (this._compositionPin || !edytor.isComposing || edytor.compositionText !== this) {
-			return;
-		}
-		const state = edytor.compositionState;
-		// `_items`/render still describe the DOM the IME anchored to — that
-		// is the point of the pin. When a region is already tracked, splice
-		// it out so the pinned base stays preview-free and the live preview
-		// can be re-injected per keystroke at `previewOffset`.
-		const regionLength = state ? (state.regionLength ?? state.value.length) : 0;
-		const previewOffset = state
-			? state.startOffset
-			: edytor.selection.state.startText === this
-				? edytor.selection.state.yStart
-				: 0;
-		const baseDeltas = spliceDeltaText(
-			mergeRenderDeltas(this.children),
-			previewOffset,
-			regionLength
-		);
-		const baseLength = baseDeltas.reduce((n, delta) => n + delta.text.length, 0);
-		this._compositionPin = {
-			baseDeltas,
-			previewOffset: Math.min(Math.max(0, previewOffset), baseLength),
-			caretAnchor: null
-		};
-		edytor._compositionHostText = this;
-		this._reanchorCompositionRegion();
+	_acquireCompositionPin = (from: number, to = from) => {
+		if (this._compositionPin) return;
+		const previewOffset = Math.max(0, Math.min(from, this.length));
+		const frozen = mergeRenderDeltas(this.children);
+		const baseDeltas = spliceDeltaText(frozen, previewOffset, Math.max(0, to - previewOffset));
+		this._compositionPin = { frozen, empty: this.isEmpty, baseDeltas, previewOffset };
 	};
 
-	/**
-	 * Release the render pin and resync the DOM-facing surface to the model
-	 * (`isEmpty`/`endsWithNewline` branches, deferred id rename, remote
-	 * edits withheld while composing). Called by every composition exit
-	 * path via `edytor._compositionHostText`; `syncDerived` also releases
-	 * lazily when the session no longer resolves to this wrapper.
-	 */
+	/** Release the pin and resync the render to the model (withheld edits, deferred id rename). */
 	_releaseCompositionPin = () => {
-		if (!this._compositionPin && !this._pinnedDeltas) {
-			return;
-		}
-		// `syncDerived` detects the dropped lock (`isComposing` is already
-		// false on every release path) and clears the pin, applies the
-		// deferred id rename, and resyncs `isEmpty`/render.
-		this.syncDerived();
+		if (this._compositionPin || this._pinnedDeltas) this.syncDerived();
 	};
 
-	/**
-	 * (Re)bind the composition region's CRDT anchors to the tracked
-	 * `startOffset`/`regionLength` — called after every write that moves
-	 * the region so remote edits resolve against the atoms that are
-	 * actually there. `left` affinity on the start anchor + `right` on the
-	 * end keeps OUR OWN preview writes inside the region (deletes shrink
-	 * it, inserts grow it); remote inserts exactly at an edge are absorbed
-	 * and clobbered at commit — a safe failure direction.
-	 */
-	private _reanchorCompositionRegion = () => {
+	/** What the IME shows in the pinned host: its DOM text between the pinned base's two sides. */
+	_imeBuffer = (): string | null => {
 		const pin = this._compositionPin;
-		const edytor = this.edytor;
-		const state = edytor.compositionState;
-		if (!pin || !this._live) {
-			return;
-		}
-		if (state && edytor.compositionText === this) {
-			state.startAnchor = edytor.selection.createTextAnchor(this, state.startOffset, 'left');
-			state.endAnchor = edytor.selection.createTextAnchor(
-				this,
-				state.startOffset + (state.regionLength ?? state.value.length),
-				'right'
-			);
-		} else if (!state && edytor.selection.state.startText === this) {
-			// Prefer the selection's maintained anchor — `relativePosition`
-			// already rides remote edits, so a remote insert landing between
-			// compositionstart and the first beforeinput can't strand the
-			// caret position.
-			pin.caretAnchor =
-				edytor.selection.state.relativePosition ??
-				edytor.selection.createTextAnchor(this, edytor.selection.state.yStart, 'left');
-		}
-	};
-
-	/**
-	 * Remote/programmatic writes landed on the host: re-resolve the region
-	 * anchors and update `compositionState` in place so commit/cancel
-	 * offsets track the atoms the preview actually occupies. When the
-	 * region's atoms migrated to another segment (remote split/merge), the
-	 * session is handed to that wrapper and this pin releases.
-	 */
-	private _syncCompositionRegion = () => {
-		const edytor = this.edytor;
-		const state = edytor.compositionState;
-		if (!state || !this._compositionPin) {
-			return;
-		}
-		const region = edytor.resolveCompositionRegion();
-		if (!region) {
-			return;
-		}
-		if (region.text !== this) {
-			state.textId = region.text.id;
-			state.startOffset = region.startOffset;
-			state.regionLength = region.length;
-			this._compositionPin = null;
-			return;
-		}
-		state.startOffset = region.startOffset;
-		state.regionLength = region.length;
-	};
-
-	/**
-	 * Map an offset the caller derived from the (possibly DOM-frozen)
-	 * selection onto the live model — while pinned, `yStart`-style offsets
-	 * are DOM-space and stale after remote edits; the region anchors carry
-	 * the true positions. Only offsets that target the tracked region
-	 * start are remapped; everything else passes through untouched.
-	 */
-	private _resolveCompositionOffset = (offset: number): number => {
-		const edytor = this.edytor;
-		const state = edytor.compositionState;
-		const pin = this._compositionPin;
-		if (!pin || !edytor.isComposing || edytor.compositionText !== this) {
-			return offset;
-		}
-		const isStateTarget = state !== null && offset === state.startOffset;
-		const isWindowTarget = state === null && offset === pin.previewOffset;
-		if (!isStateTarget && !isWindowTarget) {
-			return offset;
-		}
-		// Region-start anchors first; in the compositionstart→first-input
-		// window (no state) the pin's caret anchor is the only model-true
-		// position left.
-		const anchor = state ? (state.startAnchor ?? pin.caretAnchor) : pin.caretAnchor;
-		const resolved = anchor ? edytor.selection.resolveTextAnchor(anchor) : null;
-		if (resolved && resolved.text === this) {
-			if (state) {
-				state.startOffset = resolved.offset;
-			}
-			return resolved.offset;
-		}
-		if (state) {
-			const region = edytor.resolveCompositionRegion();
-			if (region && region.text === this) {
-				state.startOffset = region.startOffset;
-				return region.startOffset;
-			}
-		}
-		return offset;
-	};
-
-	/**
-	 * Map a model-space offset to the pinned DOM-space offset (identity
-	 * outside the lock). Used for mid-composition caret writes, which must
-	 * address the DOM the IME sees — pinned base + preview — not the
-	 * post-remote model string.
-	 */
-	toCompositionDomOffset = (offset: number): number => {
-		const pin = this._compositionPin;
-		const state = this.edytor.compositionState;
-		if (!this._compositionLocked || !pin || !state) {
-			return offset;
-		}
-		return Math.max(0, pin.previewOffset + (offset - state.startOffset));
+		if (!pin || !this.node) return null;
+		const dom = (this.node.textContent ?? '').replace(/\u200B/g, '');
+		const base = pin.baseDeltas.map((delta) => delta.text).join('');
+		const at = pin.previewOffset;
+		const tail = base.length - at;
+		if (dom.length < base.length || !dom.startsWith(base.slice(0, at))) return null;
+		if (!dom.endsWith(base.slice(at))) return null;
+		return dom.slice(at, dom.length - tail);
 	};
 
 	private syncDerived = () => {
@@ -563,9 +400,6 @@ export class Text {
 		if (!locked && (this._compositionPin || this._pinnedDeltas)) {
 			this._compositionPin = null;
 			this._pinnedDeltas = null;
-			if (this.edytor._compositionHostText === this) {
-				this.edytor._compositionHostText = null;
-			}
 			// Apply the id rename deferred while pinned — the content
 			// each-key may remount the span safely now (composition over).
 			const nextId = `t:${this.parent._blockId ?? 'detached'}:${this._segOrd}`;
@@ -585,28 +419,30 @@ export class Text {
 			// MODEL-TRUE — the preview atoms are in the model, so the
 			// mutation observer sees the browser's preview DOM as in-sync
 			// and caret writes (`setAtTextOffset`) map to real offsets. The
-			// render surface is the pinned base + the live preview
-			// re-spliced at `previewOffset` — remote/model churn outside the
-			// region never reaches the DOM — and `domVersion` is never
-			// bumped, so the content each-key can't remount the span under
-			// the IME.
+			// render surface is frozen while the browser shows the preview
+			// itself (the IME's node is never rewritten), else the pinned
+			// base + the preview re-spliced at `previewOffset` — remote/model
+			// churn outside the region never reaches the DOM — and
+			// `domVersion` is never bumped, so the content each-key can't
+			// remount the span under the IME.
 			const pin = this._compositionPin;
-			const state = this.edytor.compositionState;
-			const previewDelta: JSONDelta | undefined = state?.value
+			const { preview, marks, native } = this.edytor.composition;
+			const previewDelta: JSONDelta | undefined = preview
 				? {
-						text: state.value,
-						marks: compositionMarksToDeltaMarks(state.marks),
+						text: preview,
+						marks: compositionMarksToDeltaMarks(
+							marks as Record<string, SerializableContent | null>
+						),
 						id: COMPOSITION_PREVIEW_DELTA_ID
 					}
 				: undefined;
-			this._pinnedDeltas = mergeRenderDeltas(
-				spliceDeltaText(pin.baseDeltas, pin.previewOffset, 0, previewDelta)
-			);
+			this._pinnedDeltas = native
+				? pin.frozen
+				: mergeRenderDeltas(spliceDeltaText(pin.baseDeltas, pin.previewOffset, 0, previewDelta));
 			this.stringContent = this._items.map((item) => item.text).join('');
-			this.isEmpty = isEmpty;
+			// The empty filler is the node the IME composes into: kept with the frozen render.
+			this.isEmpty = native ? pin.empty : isEmpty;
 			this.endsWithNewline = this.stringContent.endsWith('\n');
-			// Region atoms may have moved (our own rewrite) — rebind anchors.
-			this._reanchorCompositionRegion();
 			return;
 		}
 		this._pinnedDeltas = null;
@@ -650,9 +486,6 @@ export class Text {
 	 * that distinction — it emits `[]` for absent blocks AND for empty content.
 	 */
 	refreshFromProject = () => {
-		// Acquire the pin BEFORE `_items` updates — the pinned base must
-		// capture the pre-write render (the DOM the IME anchored to).
-		this._acquireCompositionPin();
 		if (!this._live || !this.parent._bound || this.parent._blockId == null) {
 			this.syncDerived();
 			return;
@@ -670,9 +503,6 @@ export class Text {
 		if (mine && mine.kind === 'text') {
 			this._items = mine.items;
 		}
-		// `insertAt`/`deleteAt` reach here directly (bypassing `_setItems`) —
-		// keep the tracked region honest after our own writes too.
-		this._syncCompositionRegion();
 		this.syncDerived();
 	};
 
@@ -697,15 +527,6 @@ export class Text {
 			}
 		}
 		this.edytor.idToText.set(this.id, this);
-		// A remote/programmatic split can rebind this wrapper to a new
-		// segment ordinal mid-composition — keep the session's `textId`
-		// pointing at the same node so the pin + commit writes follow.
-		// (When the rename was deferred this is a no-op: `this.id` still
-		// holds `oldId`, which `idToText` keeps resolving to us.)
-		const compositionState = this.edytor.compositionState;
-		if (compositionState && compositionState.textId === oldId) {
-			compositionState.textId = this.id;
-		}
 		this._setItems(items);
 	};
 
@@ -752,17 +573,12 @@ export class Text {
 	};
 
 	private _setItems = (items: TextRunItem[]) => {
-		// Pin BEFORE applying — the pinned base must capture the pre-change
-		// render (the DOM the IME anchored to). Then track the region so
-		// `compositionState.startOffset`/`regionLength` stay model-true.
-		this._acquireCompositionPin();
 		// This render rewrites the span's DOM — a live DOM caret inside it
 		// can be re-parked by the browser (Gecko clamps into a shortened
 		// node). Mark eagerly: observer timing reports too late for engines
 		// that dispatch `selectionchange` synchronously.
 		this.edytor.markDomSelectionChurn();
 		this._items = items;
-		this._syncCompositionRegion();
 		const change = this.edytor._mirrorChange;
 		if (change && change.origin !== this.edytor.transaction && !this._compositionLocked) {
 			// Remote/programmatic changes keep the cached model selection in sync.
@@ -834,7 +650,6 @@ export class Text {
 
 	/** Insert `text` (optionally marked) at segment-local `offset`. */
 	insertAt = (offset: number, text: string, marks?: Record<string, unknown> | null): boolean => {
-		offset = this._resolveCompositionOffset(offset);
 		if (this._writable) {
 			const applied = accepted(
 				this.parent.model?.insertText(this.segStart + offset, text, marks ?? undefined)
@@ -854,25 +669,6 @@ export class Text {
 
 	/** Delete `length` atoms at segment-local `offset`. */
 	deleteAt = (offset: number, length: number): boolean => {
-		const state = this.edytor.compositionState;
-		if (
-			this._compositionLocked &&
-			state &&
-			offset === state.startOffset &&
-			(length === state.value.length || length === (state.regionLength ?? state.value.length))
-		) {
-			// Region delete — resolve the anchor-tracked START so remote
-			// edits that shifted the region don't delete neighbours. The
-			// caller's `length` stands: preview updates delete `value.length`
-			// atoms; the commit passes the full resolved `region.length` so
-			// remote text absorbed inside the region is clobbered too.
-			const region = this.edytor.resolveCompositionRegion();
-			if (region && region.text === this) {
-				offset = region.startOffset;
-				state.startOffset = region.startOffset;
-				state.regionLength = region.length;
-			}
-		}
 		if (this._writable) {
 			const applied = accepted(this.parent.model?.deleteText(this.segStart + offset, length));
 			if (applied) {

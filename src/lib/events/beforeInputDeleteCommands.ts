@@ -4,23 +4,11 @@ import { tick } from 'svelte';
 import type { Attempt } from '$lib/session/attempt.js';
 import { getNextWordEndOffset, getPreviousWordStartOffset } from './wordBoundary.js';
 
-const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: Attempt) => {
-	const state = edytor.compositionState;
-	if (
-		!edytor.isComposing ||
-		!state ||
-		snapshot.inputType !== 'deleteContentForward' ||
-		!snapshot.isCollapsed ||
-		snapshot.startText?.id !== state.textId
-	) {
-		return false;
-	}
-
-	return (
-		snapshot.yStart >= state.startOffset &&
-		snapshot.yStart <= state.startOffset + state.value.length
-	);
-};
+/** A forward delete at a live composition's region keeps the preview (the IME owns it). */
+const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: Attempt) =>
+	snapshot.inputType === 'deleteContentForward' &&
+	snapshot.isCollapsed &&
+	Boolean(snapshot.startText && edytor.composition.covers(snapshot.startText, snapshot.yStart));
 
 /** A non-collapsed selection: the document's range deletion, then its caret (`del.range.*`). */
 const deleteSelectedRange = async (edytor: Edytor, snapshot: Attempt) => {

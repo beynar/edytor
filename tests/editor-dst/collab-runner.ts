@@ -512,7 +512,7 @@ const remoteApplyCount = (page: Page) =>
 /**
  * The post-composition phantom guard swallows the first structural key
  * within 500ms of compositionend (IME commit-key echo protection — see
- * `shouldIgnoreCompositionKeyDown`). A fast generated sequence that types
+ * the composition tail in `session/composition`). A fast generated sequence that types
  * composition characters (`·`, `é`, …) then presses Enter inside the
  * window is a DESIGNED no-op — the counter diff proves it instead of
  * weakening the oracle by timing.

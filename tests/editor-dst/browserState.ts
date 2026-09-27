@@ -380,7 +380,6 @@ export const settleEditor = async (page: Page) => {
 			const hasPendingRepair = Boolean(
 				(edytor?.attempts as { busy?: boolean } | undefined)?.busy ||
 				edytor?.compositionSelectionRestoreFrame ||
-				edytor?.danglingCompositionBlurTimer ||
 				edytor?.isComposing
 			);
 			const quietFor = performance.now() - (browserWindow.__EDYTOR_DST_LAST_EVENT_AT__ ?? 0);

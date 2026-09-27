@@ -333,7 +333,7 @@ test.describe('composition node lock against remote/model edits', () => {
 
 		const blockId = await getBlockId(page, 1);
 		// Remote edit lands BEFORE the first composition beforeinput —
-		// no compositionState exists yet, but the DOM must stay locked.
+		// the session has not written yet, but the DOM must stay locked.
 		await remoteInsertText(page, blockId, 0, 'R');
 		await page.waitForTimeout(30);
 

@@ -22,14 +22,6 @@ import {
 
 const ZERO_WIDTH_SPACE = '\u200B';
 
-const isCompositionCommitInputEvent = (event: Event) =>
-	typeof InputEvent !== 'undefined' &&
-	event instanceof InputEvent &&
-	!event.isComposing &&
-	(event.inputType === 'insertText' ||
-		event.inputType === 'insertCompositionText' ||
-		event.inputType === 'insertFromComposition');
-
 const isNativeLineBreakTextInput = (event: Event) =>
 	typeof InputEvent !== 'undefined' &&
 	event instanceof InputEvent &&
@@ -285,6 +277,8 @@ const claimOf = (edytor: Edytor, event: Event) => {
  * once, through the dispatcher — then closes the attempt it belongs to.
  */
 export async function onInput(this: Edytor, event: Event) {
+	// The live session's own input; a late one of its tail is drift it expects.
+	if (this.composition.input(event as InputEvent) === 'live') return;
 	// The attempt this `input` belongs to: the newest whose expectation it satisfies.
 	let attempt = this.attempts.inputOf(getInputType(event));
 	const expect = attempt?.expect;
@@ -310,11 +304,6 @@ export async function onInput(this: Edytor, event: Event) {
 		}
 
 		attempt ??= claimOf(this, event);
-		if (this.isComposing && isCompositionCommitInputEvent(event)) {
-			this.compositionState = null;
-			this.isComposing = false;
-			this.hasHandledCompositionInput = false;
-		}
 
 		if (await handleNativeLineBreakTextInput(this, event)) {
 			return;

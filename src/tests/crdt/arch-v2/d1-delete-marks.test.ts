@@ -19,7 +19,8 @@
 // @ts-nocheck -- tests drive the vendored engine JS directly (excluded lane).
 import { describe, expect, test } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
-import { attachDocument, bindEdytorDoc } from '../../../lib/crdt/index.js';
+import { attachDocument } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 

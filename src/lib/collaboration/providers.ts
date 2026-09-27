@@ -6,8 +6,8 @@
  * (`import { createIndexeddbSync } from 'edytor'`) keeps working.
  */
 import { Y } from '$lib/crdt/engine.js';
+import { bindProviders } from '$lib/crdt/providers/index.js';
 import {
-	bindProviders,
 	type Awareness,
 	type EdytorSync,
 	type EdytorSyncCleanup,

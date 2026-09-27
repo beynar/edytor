@@ -31,7 +31,7 @@
 // @ts-nocheck -- tests drive the vendored engine JS directly (excluded lane).
 import { describe, expect, test } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
-import { bindEdytorDoc } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { diffSnaps, type DocSnap } from '../../oracles/doc-change.js';
 
 const E = bindEdytorDoc(Y);

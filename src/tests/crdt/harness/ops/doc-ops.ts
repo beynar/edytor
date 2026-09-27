@@ -17,7 +17,7 @@
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import * as Y from '../../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc } from '../../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../../lib/crdt/edytor-doc.js';
 import type { Peer } from '../peer-set.js';
 import type { CrdtOps } from './crdt-ops.js';
 import {

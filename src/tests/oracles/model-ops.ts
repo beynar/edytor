@@ -12,7 +12,7 @@
  * `setMark`/`unsetMark` format a live block's display range.
  */
 // @ts-nocheck -- drives the vendored engine JS directly (excluded lane).
-import { bindModel as bindPlacement } from '../../lib/crdt/index.js';
+import { bindModel as bindPlacement } from '../../lib/crdt/placement/model.js';
 import { isLiveIn } from '../../lib/crdt/placement/model.js';
 import { bindText } from '../../lib/crdt/text/model.js';
 import { randOf } from '../../lib/crdt/rand.js';

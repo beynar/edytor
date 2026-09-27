@@ -60,7 +60,7 @@ describe('scoped text refresh — project() elimination', () => {
 			const counts = instrumentEdytor(edytor);
 			const text = textOf(edytor, 50);
 			const sibling = textOf(edytor, 51);
-			const siblingVersion = edytor.facade.blockVersion(sibling.blockId);
+			const siblingRuns = edytor.facade.runs(sibling.blockId);
 			const before = { ...counts };
 
 			edytor.transact(() => {
@@ -70,7 +70,7 @@ describe('scoped text refresh — project() elimination', () => {
 			expect(counts.project - before.project).toBe(0);
 			expect(text.stringContent).toBe('Xblock 50 content');
 			// The sibling block was not touched.
-			expect(edytor.facade.blockVersion(sibling.blockId)).toBe(siblingVersion);
+			expect(edytor.facade.runs(sibling.blockId)).toBe(siblingRuns);
 			expect(sibling.stringContent).toBe('block 51 content');
 		});
 	}

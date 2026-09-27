@@ -6,7 +6,7 @@
  *
  * Handles are transaction-aware: `childIds()` etc. reflect mutations made
  * earlier in the same transaction.
- * What is COMMIT-BOUND is PUBLICATION (R5): `subscribeBlock` and
+ * What is COMMIT-BOUND is PUBLICATION (R5): the change report and
  * `onChange` fire once per completed transaction with the final coherent
  * state — a mid-transaction read never publishes a partial snapshot, and
  * a change-then-revert transaction publishes nothing.

@@ -128,7 +128,7 @@ describe('attack 9: shared RunView lifecycle', () => {
 		const ed2 = E.create(doc); // second facade on the SAME doc — shares the WeakMap view
 
 		let notified = 0;
-		ed2.subscribeBlock('b1', () => notified++);
+		ed2.onChange(() => notified++);
 
 		ed.dispose(); // ← tears down the shared RunView (unobserveDeep + cache clear)
 
@@ -145,13 +145,13 @@ describe('attack 9: shared RunView lifecycle', () => {
 		console.log(`[gate2] post-dispose block json=${JSON.stringify(bNew)}`);
 		expect(bNew.content?.[0]?.text).toBe('new!'); // ← fails: content silently dropped
 
-		// Symptom 2 — dead subscribers (registry observer unbound).
+		// Symptom 2 — dead change subscribers (registry observer unbound).
 		ed2.insertText('b1', 5, ' W');
 		expect(notified).toBeGreaterThan(0); // ← fails: subscriber never fires
 
 		// Symptom 3 — stale reads on primed blocks (slice-record index frozen
 		// at dispose; observed: 'hello' served after a ' WORLD' insert when a
-		// subscribeBlock prime had cached deps).
+		// block-subscriber prime had cached deps).
 		ed2.dispose();
 	});
 });
@@ -227,7 +227,7 @@ describe('attack 9: projector purity', () => {
 			ed.project();
 			ed.toJSON();
 			ed.runs('b1');
-			ed.snapshot('b1');
+			ed.contentJSON('b1');
 			ed.childrenIds(null);
 			ed.positionOf('b1');
 		}

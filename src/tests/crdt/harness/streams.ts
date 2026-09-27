@@ -6,7 +6,8 @@
  */
 // @ts-nocheck -- drives the vendored engine JS directly (excluded lane).
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc, bindRuns } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { bindRuns } from '../../../lib/crdt/text/runs.js';
 import { isBoundary, scanText } from '../../../lib/crdt/text/model.js';
 
 const R = bindRuns(Y);

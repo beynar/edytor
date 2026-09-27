@@ -22,15 +22,15 @@
  *   the annotation unless they carry the mark themselves; deleting an
  *   endpoint atom shrinks the annotation; split/merge carry marks with
  *   their atoms and merge re-unites adjacent equal runs.
- * - AN05: decorations are a pure overlay — `decorateRuns(runs, decos)`
- *   splits display runs at decoration boundaries and never writes to the
- *   doc (asserted by a zero emitted-update count).
+ * - AN05 (local decorations) is the render layer's: a kind's
+ *   `transformText` overlays tokens on the cells' deltas (`decorateRuns`
+ *   was retired at C1, D-15).
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindRunsOracle } from '../../oracles/runs.js';
-import { bindRuns, decorateRuns } from '../../../lib/crdt/index.js';
+import { bindRuns } from '../../../lib/crdt/text/runs.js';
 import { bindModel } from '../../oracles/model-ops.js';
 import { createPeerPair } from '../harness/peer-set.js';
 import { modelSpecSeed } from '../scenarios/seeds.js';
@@ -42,12 +42,6 @@ const O = bindRunsOracle(Y);
 const seed = (blocks) => modelSpecSeed(blocks);
 const runs = (peer, id) => O.computeAllRuns(peer.doc).get(id) ?? [];
 const view = (peer) => R.attach(peer.doc);
-
-const updateCount = (doc) => {
-	let n = 0;
-	doc.on('update', () => n++);
-	return () => n;
-};
 
 // ── AN01 — independent mark keys split/merge runs by key ────────────────
 
@@ -371,83 +365,6 @@ describe('AN04 — export is the public {text,marks?} shape; snapshots are immut
 			(rs as { text: string }[])[0].text = 'tampered';
 		}).toThrow();
 		expect(v.runs('a')[0].text).toBe('one');
-	});
-});
-
-// ── AN05 — local decorations never touch replicated state ───────────────
-
-describe('AN05 — decorations are a pure local overlay', () => {
-	const CODE_SEED = seed([
-		{ id: 'a', type: 'code', content: [{ kind: 'text', text: 'const x = 1' }] }
-	]);
-
-	it('decorateRuns splits at boundaries, unions values, preserves marks', () => {
-		const set = createPeerPair(CODE_SEED);
-		const v = view(set.A);
-		const rs = v.runs('a');
-		const decorated = decorateRuns(rs, [
-			{ from: 0, to: 5, key: 'syntax', value: 'keyword' }, // 'const'
-			{ from: 6, to: 7, key: 'syntax', value: 'ident' }, // 'x'
-			{ from: 6, to: 7, key: 'lens', value: 'used' }
-		]);
-		expect(decorated).toEqual([
-			{ kind: 'text', text: 'const', decorations: { syntax: 'keyword' } },
-			{ kind: 'text', text: ' ' },
-			{ kind: 'text', text: 'x', decorations: { syntax: 'ident', lens: 'used' } },
-			{ kind: 'text', text: ' = 1' }
-		]);
-	});
-
-	it('decorations emit zero updates and do not alter replicated marks', () => {
-		const set = createPeerPair(CODE_SEED);
-		const v = view(set.A);
-		const count = updateCount(set.A.doc);
-		const marksBefore = v.contentJSON('a');
-		decorateRuns(v.runs('a'), [{ from: 0, to: 5, key: 'syntax', value: 'kw' }]);
-		expect(count()).toBe(0); // no doc writes
-		expect(v.contentJSON('a')).toEqual(marksBefore); // persistent runs intact
-	});
-
-	it('remote persistent marks survive local decoration; decorations never replicate', () => {
-		const set = createPeerPair(CODE_SEED);
-		const vA = view(set.A);
-		const vB = view(set.B);
-		// A decorates locally; B marks persistently; sync only carries B's mark.
-		const decorated = decorateRuns(vA.runs('a'), [
-			{ from: 0, to: 11, key: 'syntax', value: 'line' }
-		]);
-		set.B.transact(() => M.setMark(set.B.doc, 'a', 6, 1, 'bold', true));
-		set.deliverAll();
-		// B's mark arrived; A's decoration exists only in A's local overlay.
-		expect(vA.runs('a')).toEqual([
-			{ kind: 'text', text: 'const ' },
-			{ kind: 'text', text: 'x', marks: { bold: true } },
-			{ kind: 'text', text: ' = 1' }
-		]);
-		expect(vB.runs('a')).toEqual(vA.runs('a'));
-		// Re-decorating the NEW runs composes cleanly with the remote marks.
-		expect(decorateRuns(vA.runs('a'), [{ from: 6, to: 7, key: 'syntax', value: 'ident' }])).toEqual(
-			[
-				{ kind: 'text', text: 'const ' },
-				{ kind: 'text', text: 'x', marks: { bold: true }, decorations: { syntax: 'ident' } },
-				{ kind: 'text', text: ' = 1' }
-			]
-		);
-		// The decorated overlay itself never enters the doc — no 'syntax' key
-		// in the public export.
-		expect(JSON.stringify(vA.contentJSON('a'))).not.toContain('syntax');
-	});
-
-	it('a decoration with value undefined removes the key over its range', () => {
-		const rs = Object.freeze([{ kind: 'text', text: 'ab', marks: { m: 1 } }]);
-		const out = decorateRuns(rs, [
-			{ from: 0, to: 2, key: 'd', value: 'x' },
-			{ from: 1, to: 2, key: 'd', value: undefined }
-		]);
-		expect(out).toEqual([
-			{ kind: 'text', text: 'a', marks: { m: 1 }, decorations: { d: 'x' } },
-			{ kind: 'text', text: 'b', marks: { m: 1 } } // decoration removed here
-		]);
 	});
 });
 

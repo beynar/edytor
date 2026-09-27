@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 import * as os from 'node:os';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindRunsOracle } from '../../oracles/runs.js';
-import { bindRuns } from '../../../lib/crdt/index.js';
+import { bindRuns } from '../../../lib/crdt/text/runs.js';
 import { bindModel } from '../../oracles/model-ops.js';
 import { createPeerPair } from '../harness/peer-set.js';
 import { modelSpecSeed } from '../scenarios/seeds.js';

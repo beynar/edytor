@@ -8,7 +8,7 @@
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { diffSnaps, type DocSnap } from '../../oracles/doc-change.js';
 
 const E = bindEdytorDoc(Y);

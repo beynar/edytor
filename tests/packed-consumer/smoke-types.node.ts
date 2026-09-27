@@ -120,17 +120,16 @@ const contentRun: bindings.ContentRun = { kind: 'text', text: 'x' };
 const legacyMap: ReturnType<bindings.DocumentAttribution['legacy']> = attribution.legacy();
 const blockAttr: bindings.BlockAttribution | undefined = attribution.block(firstProjected!.id);
 const actorsMap: ReadonlyMap<string, bindings.ActorProfile> = attribution.actors;
-const runsApi: bindings.RunsApi = bindings.bindRuns(Y as bindings.EngineApi);
-const modelView: bindings.ModelView = runsApi
-	.attach(crdtDoc as unknown as bindings.EngineDoc)
-	.view();
-type _indexReport = bindings.IndexReport;
+// The server-coordinator frame contract (D-15 keeps it; README "Server coordinator").
+const coordinatorFrame: Uint8Array = bindings.frame(bindings.messageSync, (e: bindings.Encoder) =>
+	bindings.writeVarUint8Array(e, new Uint8Array())
+);
 type _engineTx = bindings.EngineTransaction;
 void contentRun;
 void legacyMap;
 void blockAttr;
 void actorsMap;
-void modelView;
+void coordinatorFrame;
 
 void readiness;
 void actor;

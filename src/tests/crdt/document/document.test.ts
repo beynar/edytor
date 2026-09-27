@@ -9,12 +9,12 @@ import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import {
 	attachDocument,
-	bindEdytorDoc,
 	createDocument,
 	DocumentNotReadyError,
 	loadDocument,
 	SemanticConflictError
 } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { DocumentDestroyedError } from '../../../lib/crdt/document.js';
 import { Awareness } from '../../../lib/crdt/protocols/awareness.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';

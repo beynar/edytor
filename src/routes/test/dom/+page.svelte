@@ -17,14 +17,13 @@
 		type EdytorSync
 	} from '$lib/collaboration/index.js';
 	import { Y } from '$lib/crdt/engine.js';
+	import { checkSchema, createDocument } from '$lib/crdt/index.js';
+	import { bindMigration } from '$lib/crdt/migration/migrate.js';
 	import {
-		bindMigration,
-		checkSchema,
-		createDocument,
 		GENERATION_KEY,
 		GENERATION_RECORD,
 		generationDbName
-	} from '$lib/crdt/index.js';
+	} from '$lib/crdt/protocols/envelope.js';
 	import type { EdytorDocument, JSONBlock as CrdtJSONBlock, YDoc } from '$lib/crdt/index.js';
 	import { blockRecordsOf } from '../../../tests/oracles/block-records.js';
 	import { cellsLib, compareView } from '../../../tests/oracles/cells-render-model.js';

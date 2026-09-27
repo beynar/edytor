@@ -32,9 +32,9 @@
  *   streams it touched (or every reader of the text when it cannot say).
  *
  * Publication is COMMIT-BOUND (R5): a mid-transaction read refreshes the
- * cache for read-your-writes, but `subscribeBlock` listeners and the change
- * report observe committed state only — nested transactions publish once,
- * and a transaction that nets out unchanged publishes nothing.
+ * cache for read-your-writes, but the change report observes committed
+ * state only — nested transactions publish once, and a transaction that
+ * nets out unchanged publishes nothing.
  *
  * The change report `{added, removed, moved, meta, content, order}` is the
  * fold against the last published index: the blocks the commit's folds
@@ -119,44 +119,6 @@ export type ContentRun =
 			data?: Record<string, unknown>;
 	  };
 
-// ── local decorations (AN05) ────────────────────────────────────────────
-
-/**
- * A LOCAL-ONLY decoration over a block's display positions — syntax
- * highlighting, spell-check squiggles, ephemeral suggestions. Decorations
- * are NEVER replicated: they live in a pure overlay computed from run
- * snapshots (`view.runs`/`view.snapshot`), so applying them writes nothing
- * to the document and emits no update.
- *
- * Offsets are display positions: a text character counts 1, an inline atom
- * counts 1 — the same unit as model-level text ops.
- */
-export type LocalDecoration = {
-	/** Inclusive start display offset. */
-	from: number;
-	/** Exclusive end display offset. */
-	to: number;
-	/** Decoration key, e.g. 'syntax.keyword' or 'spell'. */
-	key: string;
-	value: unknown;
-};
-
-/** A run with local decorations overlaid — the readonly render surface. */
-export type DecoratedRun =
-	| {
-			kind: 'text';
-			text: string;
-			marks?: Record<string, unknown>;
-			decorations?: Record<string, unknown>;
-	  }
-	| {
-			kind: 'inline';
-			id: string;
-			type: string;
-			data?: Record<string, unknown>;
-			decorations?: Record<string, unknown>;
-	  };
-
 const isNodeLike = (v: unknown): v is EngineNode =>
 	v != null && typeof (v as { getAttr?: unknown }).getAttr === 'function';
 
@@ -207,18 +169,6 @@ const runEquals = (a: ContentRun, b: ContentRun): boolean => {
 const EMPTY_RUNS = Object.freeze([]) as readonly ContentRun[];
 /** Shared frozen empty child list for a report's emptied-parent `order` entries. */
 const EMPTY_IDS = Object.freeze([]) as readonly BlockId[];
-
-/**
- * Element-wise run equality — what `subscribeBlock` publication compares
- * (R5): `runEquals` matches marks/data by interned REFERENCE, so a
- * recomputed-but-identical snapshot still reads as "no change".
- */
-const sameRuns = (a: readonly ContentRun[] | undefined, b: readonly ContentRun[]): boolean => {
-	if (a === b) return true;
-	if (a === undefined || a.length !== b.length) return false;
-	for (let i = 0; i < a.length; i++) if (!runEquals(a[i], b[i])) return false;
-	return true;
-};
 
 /** What a cached display walked: the homes of the texts it read, the blocks whose claims it followed. */
 type Deps = { texts: Set<BlockId>; lists: Set<BlockId> };
@@ -276,16 +226,8 @@ export type RunView = {
 	 * plan is valid only at the version it was prepared against.
 	 */
 	version: () => number;
-	/**
-	 * Content-changed stamp for `id`: bumps only when the block's snapshot
-	 * actually changed (a dirty marking that reconciles to identical runs
-	 * does NOT bump). Ensures the recompute lazily.
-	 */
-	blockVersion: (id: BlockId) => number;
 	/** Frozen snapshot of `id`'s visible runs (`[]` when absent/hidden). */
 	runs: (id: BlockId) => readonly ContentRun[];
-	/** Mutable deep copy of `runs(id)` — for callers that must own the data. */
-	snapshot: (id: BlockId) => ContentRun[];
 	/**
 	 * Canonical content items of `id` — the same shape `project()` emits.
 	 * Interned payloads: `marks`/`data` are the shared frozen instances —
@@ -303,15 +245,6 @@ export type RunView = {
 		| { text: string; marks?: Record<string, unknown> }
 		| { id?: string; type: string; data?: unknown }
 	)[];
-	/** Subscribe to every committed registry change — `cb(version)`. */
-	subscribe: (cb: (version: number) => void) => () => void;
-	/**
-	 * Subscribe to ONE block's run changes — `cb(runs)` fires once per
-	 * committed transaction, only when the committed snapshot differs from
-	 * what listeners last saw (R5). Blocks with subscribers recompute
-	 * eagerly at commit; others recompute lazily on read.
-	 */
-	subscribeBlock: (id: BlockId, cb: (runs: readonly ContentRun[]) => void) => () => void;
 	/**
 	 * The indexes as a {@link ModelView} (block records, ownership, placements,
 	 * children, order). Folds the pending writes of `transaction` (default:
@@ -522,21 +455,9 @@ export const bindRuns = (Y: EngineApi) => {
 		// ── run cache ────────────────────────────────────────────────────
 		const cache = new Map<BlockId, Cached>();
 		const dirty = new Set<BlockId>();
-		const stamps = new Map<BlockId, number>();
 		const internMap = new Map<string, unknown>();
 
-		// ── subscribers ──────────────────────────────────────────────────
 		let version = 0;
-		const subs = new Set<(v: number) => void>();
-		const blockSubs = new Map<BlockId, Set<(runs: readonly ContentRun[]) => void>>();
-		/**
-		 * R5 commit-bound publication: `publishedRuns` is the last snapshot
-		 * each subscribed block's listeners saw; `pendingNotify` queues blocks
-		 * whose runs changed inside an OPEN transaction (a mid-transaction read
-		 * recomputes for read-your-writes, listeners see committed state only).
-		 */
-		const publishedRuns = new Map<BlockId, readonly ContentRun[]>();
-		const pendingNotify = new Set<BlockId>();
 
 		const debug: RunViewDebug = {
 			recomputes: 0,
@@ -715,7 +636,7 @@ export const bindRuns = (Y: EngineApi) => {
 			return Object.freeze(out);
 		};
 
-		// ── recompute and publication ────────────────────────────────────
+		// ── recompute ────────────────────────────────────────────────────
 
 		/**
 		 * lib0 `callAll` semantics: every listener runs, THEN the first thrown
@@ -737,15 +658,6 @@ export const bindRuns = (Y: EngineApi) => {
 			if (threw) throw firstErr;
 		};
 
-		const publish = (b: BlockId): void => {
-			const listeners = blockSubs.get(b);
-			if (listeners === undefined || listeners.size === 0) return;
-			const cur = cache.get(b)?.runs ?? EMPTY_RUNS;
-			if (sameRuns(publishedRuns.get(b), cur)) return;
-			publishedRuns.set(b, cur);
-			callEach([...listeners], cur);
-		};
-
 		const computeRuns = (b: BlockId): void => {
 			const old = cache.get(b);
 			const { fresh, deps } = computeFresh(b);
@@ -755,36 +667,6 @@ export const bindRuns = (Y: EngineApi) => {
 			dirty.delete(b);
 			debug.recomputes++;
 			debug.recomputed.add(b);
-			if (runs !== old?.runs) {
-				stamps.set(b, (stamps.get(b) ?? 0) + 1);
-				if (blockSubs.has(b)) {
-					// Inside an open transaction the publication waits for the commit.
-					if (doc._transaction != null) pendingNotify.add(b);
-					else publish(b);
-				}
-			}
-		};
-
-		/** Publish every queued block at the commit boundary (listener isolation, R5). */
-		const flushPending = (): void => {
-			let threw = false;
-			let firstErr: unknown;
-			while (pendingNotify.size > 0) {
-				const batch = [...pendingNotify];
-				pendingNotify.clear();
-				for (const b of batch) {
-					try {
-						if (dirty.has(b)) computeRuns(b);
-						else publish(b);
-					} catch (e) {
-						if (!threw) {
-							threw = true;
-							firstErr = e;
-						}
-					}
-				}
-			}
-			if (threw) throw firstErr;
 		};
 
 		const runs = (b: BlockId): readonly ContentRun[] => {
@@ -1008,30 +890,11 @@ export const bindRuns = (Y: EngineApi) => {
 		};
 		const openTx = (): Tx | null | undefined => doc._transaction as Tx | null | undefined;
 
-		/** The commit: fold `transaction.changed` once, then publish to run listeners. */
+		/** The commit: fold `transaction.changed` once (the report publishes from `update`). */
 		const onCommit = (e: EngineDeepEvent): void => {
 			const tr = e.transaction as Tx;
 			if (cursor?.tr === tr) cursor = null;
-			const touched = fold(tr.changed ?? new Map(), makeExtentIndex(tr));
-			let firstErr: unknown;
-			let threw = false;
-			const collect = (f: () => void): void => {
-				try {
-					f();
-				} catch (err) {
-					if (!threw) {
-						threw = true;
-						firstErr = err;
-					}
-				}
-			};
-			// Eager recompute only where a listener is attached.
-			for (const b of [...blockSubs.keys()]) {
-				if (dirty.has(b)) collect(() => computeRuns(b));
-			}
-			collect(flushPending);
-			if (touched.size > 0) collect(() => callEach([...subs], version));
-			if (threw) throw firstErr;
+			fold(tr.changed ?? new Map(), makeExtentIndex(tr));
 		};
 
 		// ── projection ───────────────────────────────────────────────────
@@ -1228,12 +1091,7 @@ export const bindRuns = (Y: EngineApi) => {
 				syncPending(openTx());
 				return version;
 			},
-			blockVersion: (b: BlockId): number => {
-				runs(b);
-				return stamps.get(b) ?? 0;
-			},
 			runs,
-			snapshot: (b: BlockId): ContentRun[] => JSON.parse(JSON.stringify(runs(b))) as ContentRun[],
 			contentItems: (b: BlockId): ContentItem[] => {
 				syncPending(openTx());
 				return blocks.get(b)?.deleted === false ? itemsOf(b) : [];
@@ -1259,32 +1117,6 @@ export const bindRuns = (Y: EngineApi) => {
 						data: inl.data === undefined ? {} : (JSON.parse(JSON.stringify(inl.data)) as unknown)
 					};
 				}),
-			subscribe: (cb: (v: number) => void) => {
-				subs.add(cb);
-				return () => subs.delete(cb);
-			},
-			subscribeBlock: (b: BlockId, cb: (runs: readonly ContentRun[]) => void) => {
-				// Prime the baseline BEFORE registering: the listener only
-				// ever sees genuine diffs, never the initial compute. The
-				// primed array is the published-state watermark `publish`
-				// diffs against.
-				const baseline = runs(b);
-				let set = blockSubs.get(b);
-				if (!set) {
-					set = new Set();
-					blockSubs.set(b, set);
-					publishedRuns.set(b, baseline);
-				}
-				set.add(cb);
-				return () => {
-					set.delete(cb);
-					if (set.size === 0) {
-						blockSubs.delete(b);
-						publishedRuns.delete(b);
-						pendingNotify.delete(b);
-					}
-				};
-			},
 			view: (tr?: unknown): ModelView => {
 				syncPending((tr as Tx | undefined) ?? openTx());
 				return ctx;
@@ -1332,137 +1164,3 @@ export const bindRuns = (Y: EngineApi) => {
 
 	return { attach };
 };
-
-/**
- * Overlay local decorations onto a run snapshot — PURE, no doc writes.
- *
- * Semantics (AN05):
- * - Text runs split at every decoration boundary inside their span; each
- *   resulting piece carries `decorations` = the union of `{key: value}` of
- *   every decoration covering it. Persistent `marks` pass through verbatim
- *   (same interned object — decorations never alias mark objects).
- * - An inline atom is one display position: decorations covering it are
- *   recorded on the run, which is never split.
- * - A decoration `{key, value: undefined}` removes `key` over its range.
- * - Output is frozen. Frozen inputs (the interned `marks`/`data` of a live
- *   `view.runs()` array) are shared verbatim; MUTABLE caller values — a
- *   `snapshot()` clone's payloads, decoration values — are cloned first,
- *   so the freeze never lands on caller-owned data (R4).
- *
- * Typical use: `decorateRuns(view.snapshot(b), prismDecorations)` in a
- * render layer. The returned array is a fresh structure — it shares run
- * sub-objects where unsplit but never mutates the input snapshot.
- */
-export const decorateRuns = (
-	runs: readonly ContentRun[],
-	decorations: readonly LocalDecoration[]
-): readonly DecoratedRun[] => {
-	/**
-	 * Prepare a caller-owned payload for the frozen output (R4): the
-	 * emitted objects are deep-frozen, but freezing must never land on the
-	 * CALLER's data — a mutable object (a `snapshot()` result's `marks`, a
-	 * decoration `value`) is cloned first so the caller's copy stays
-	 * mutable. Already-frozen values (the interned `marks`/`data` of a
-	 * live `view.runs()` array) pass through verbatim — sharing is safe
-	 * and preserves the interned identity. Non-plain values (render
-	 * callbacks, class instances) pass through unfrozen — they cannot be
-	 * field-cloned and `Object.freeze` on them would corrupt the caller's
-	 * live object for no benefit.
-	 */
-	const freezeOverlayValue = (v: unknown, seen: Set<unknown>): unknown => {
-		if (v === null || typeof v !== 'object' || Object.isFrozen(v) || seen.has(v)) return v;
-		const proto = Object.getPrototypeOf(v);
-		if (proto !== Object.prototype && proto !== null && !Array.isArray(v)) return v;
-		seen.add(v);
-		try {
-			if (Array.isArray(v)) {
-				return Object.freeze(v.map((x) => freezeOverlayValue(x, seen)));
-			}
-			const out: Record<string, unknown> = {};
-			for (const [k, item] of Object.entries(v as Record<string, unknown>)) {
-				out[k] = freezeOverlayValue(item, seen);
-			}
-			return Object.freeze(out);
-		} finally {
-			seen.delete(v);
-		}
-	};
-	// Collect split points + per-run decoration hits in display-offset space.
-	const bounds = new Set<number>();
-	for (const d of decorations) {
-		if (d.to > d.from) {
-			bounds.add(d.from);
-			bounds.add(d.to);
-		}
-	}
-	const out: DecoratedRun[] = [];
-	let pos = 0;
-	for (const run of runs) {
-		const len = run.kind === 'text' ? (run as { text: string }).text.length : 1;
-		const r0 = pos;
-		const r1 = pos + len;
-		pos = r1;
-		// Decorations overlapping [r0, r1).
-		const hits = decorations.filter((d) => d.from < r1 && d.to > r0 && d.to > d.from);
-		const decoMap = (lo: number, hi: number): Record<string, unknown> | undefined => {
-			let m: Record<string, unknown> | undefined;
-			// Ordered override: decorations apply in array order per key — a
-			// later `value` replaces, a later `undefined` removes the key.
-			for (const d of hits) {
-				if (d.from < hi && d.to > lo) {
-					if (!m) {
-						if (d.value === undefined) continue;
-						m = {};
-					}
-					if (d.value === undefined) delete m[d.key];
-					else m[d.key] = freezeOverlayValue(d.value, new Set());
-				}
-			}
-			// The map is fresh per run — freeze it too; the run-wrapper
-			// freeze below is shallow.
-			return m && Object.keys(m).length > 0 ? Object.freeze(m) : undefined;
-		};
-		if (run.kind !== 'text') {
-			const inl = run as { id: string; type: string; data?: Record<string, unknown> };
-			const d = decoMap(r0, r1);
-			out.push({
-				kind: 'inline',
-				id: inl.id,
-				type: inl.type,
-				...(inl.data === undefined
-					? {}
-					: {
-							data: freezeOverlayValue(inl.data, new Set()) as Record<string, unknown>
-						}),
-				...(d === undefined ? {} : { decorations: d })
-			});
-			continue;
-		}
-		const text = (run as { text: string }).text;
-		const marks = (run as { marks?: Record<string, unknown> }).marks;
-		const marksOut =
-			marks === undefined
-				? undefined
-				: (freezeOverlayValue(marks, new Set()) as Record<string, unknown>);
-		// Split this run at decoration boundaries inside it.
-		const cuts = [0];
-		for (const b of bounds) if (b > r0 && b < r1) cuts.push(b - r0);
-		cuts.push(len);
-		for (let i = 0; i + 1 < cuts.length; i++) {
-			const lo = r0 + cuts[i];
-			const hi = r0 + cuts[i + 1];
-			const d = decoMap(lo, hi);
-			out.push({
-				kind: 'text',
-				text: text.slice(cuts[i], cuts[i + 1]),
-				...(marksOut === undefined ? {} : { marks: marksOut }),
-				...(d === undefined ? {} : { decorations: d })
-			});
-		}
-	}
-	// The emitted payloads are frozen (or passed-through-frozen) already —
-	// only the fresh run wrappers need the freeze.
-	return Object.freeze(out.map((r) => Object.freeze(r)));
-};
-
-export type RunsApi = ReturnType<typeof bindRuns>;

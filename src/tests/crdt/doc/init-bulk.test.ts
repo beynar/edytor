@@ -20,7 +20,8 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindDocument, bindEdytorDoc } from '../../../lib/crdt/index.js';
+import { bindDocument } from '../../../lib/crdt/document.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { bindModel } from '../../oracles/model-ops.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
 

@@ -25,7 +25,8 @@
 // @ts-nocheck -- tests reach raw engine internals (excluded lane).
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc, createDocument } from '../../../lib/crdt/index.js';
+import { createDocument } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { lineageOf } from '../../../lib/crdt/attribution/block.js';
 
 const E = bindEdytorDoc(Y);

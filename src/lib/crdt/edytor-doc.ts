@@ -9,7 +9,7 @@
  * - `text/model.ts` (`bindText`) — stable backing texts delimited by stream
  *   boundaries + merge claims (R2); split/merge never copy text.
  * - `text/runs.ts` (`bindRuns`) — the maintained run view: immutable run
- *   snapshots, structural sharing, per-block subscriptions (U05).
+ *   snapshots, structural sharing, the change report (U05, D9).
  *
  * ── Schema manifest ────────────────────────────────────────────────────
  *
@@ -1999,10 +1999,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			defaultChild: byRef(defaultChild),
 			// maintained runs (U05 surface, bound to this doc)
 			runs: byRef(runsView.runs),
-			snapshot: runsView.snapshot,
 			contentJSON: byRef(runsView.contentJSON),
-			blockVersion: byRef(runsView.blockVersion),
-			subscribeBlock: byRef(runsView.subscribeBlock),
 			// events
 			onChange,
 			// every op — each returns an {@link OpResult}; `apply(prepare.op(…))`

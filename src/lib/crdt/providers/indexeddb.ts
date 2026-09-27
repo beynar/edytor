@@ -6,8 +6,8 @@
  * Semantics preserved from the v13 provider:
  *
  * - `updates` object store (auto-increment keys) holds raw V1 update rows
- *   wrapped in a fresh ArrayBuffer (`container.ts`); `custom` holds
- *   provider metadata via `get`/`set`/`del`.
+ *   wrapped in a fresh ArrayBuffer (`container.ts`); `custom` holds the
+ *   generation record.
  * - `PREFERRED_TRIM_SIZE = 500`: past it, a debounced `storeState` appends a
  *   compacted `encodeStateAsUpdate` snapshot and deletes prior rows. Every
  *   row of a proven generation is applied, so the snapshot represents them
@@ -428,27 +428,6 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 					// there is no handle to close. destroy() still resolves.
 				}
 			);
-		}
-
-		get(key: IDBValidKey): Promise<unknown> {
-			return this._db.then((db) => {
-				const [custom] = idb.transact(db, [customStoreName], 'readonly');
-				return idb.rtop(custom.get(key));
-			});
-		}
-
-		set(key: IDBValidKey, value: unknown): Promise<IDBValidKey> {
-			return this._db.then((db) => {
-				const [custom] = idb.transact(db, [customStoreName]);
-				return idb.rtop(custom.put(value, key));
-			});
-		}
-
-		del(key: IDBValidKey): Promise<undefined> {
-			return this._db.then((db) => {
-				const [custom] = idb.transact(db, [customStoreName]);
-				return idb.rtop(custom.delete(key));
-			});
 		}
 	}
 

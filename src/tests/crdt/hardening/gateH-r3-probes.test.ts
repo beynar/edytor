@@ -41,7 +41,7 @@
 // @ts-nocheck -- exercises private model/engine internals on purpose.
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 400_000;
@@ -214,27 +214,6 @@ describe('gateH-R3 — torn committed frame (R5-D6 joint finding)', () => {
 	const flat = (runs: readonly { kind: string; text?: string }[]) =>
 		runs.map((r) => (r.kind === 'text' ? r.text : '#')).join('');
 
-	test('subscribeBlock never sees the unrepaired intermediate', () => {
-		const { ed } = seed();
-		ed.block('b').split(6, 'tail');
-		const um = ed.createUndoManager({ captureTimeout: 0 });
-		const seenB: string[] = [];
-		const seenTail: string[] = [];
-		ed.subscribeBlock('b', (runs: any) => seenB.push(flat(runs)));
-		ed.subscribeBlock('tail', (runs: any) => seenTail.push(flat(runs)));
-		ed.block('tail').deleteText(0, 5);
-		seenB.length = 0;
-		seenTail.length = 0;
-		um.undo();
-		// 'b' shows 'hello ' before AND after the repaired undo — the only
-		// correct outcome is ZERO 'b' notifications. Pre-fix the committed
-		// frame carried 'hello world' (resurrected atoms swallowed by the
-		// source record) followed by a second frame 'hello ' — a torn
-		// intermediate published to subscribers.
-		expect(seenB).toEqual([]);
-		expect(seenTail).toEqual(['world']); // exactly one repaired frame
-	});
-
 	test('onChange emits ONE DocChange with repaired content, under the undo origin', () => {
 		const { ed } = seed();
 		ed.block('b').split(6, 'tail');
@@ -259,16 +238,16 @@ describe('gateH-R3 — torn committed frame (R5-D6 joint finding)', () => {
 		const { doc, ed } = seed();
 		ed.block('b').split(6, 'tail');
 		const um = ed.createUndoManager({ captureTimeout: 0 });
-		const seenB: string[] = [];
-		const seenTail: string[] = [];
-		ed.subscribeBlock('b', (runs: any) => seenB.push(flat(runs)));
-		ed.subscribeBlock('tail', (runs: any) => seenTail.push(flat(runs)));
+		const changes: any[] = [];
+		ed.onChange((c: any) => changes.push(c));
 		ed.block('tail').deleteText(0, 5);
-		seenB.length = 0;
-		seenTail.length = 0;
+		changes.length = 0;
 		doc.transact(() => um.undo(), { tag: 'batch' });
-		expect(seenB).toEqual([]);
-		expect(seenTail).toEqual(['world']);
+		// One committed frame: 'b' unchanged (absent), 'tail' repaired once.
+		expect(changes.length).toBe(1);
+		const texts = new Map([...changes[0].content.entries()].map(([k, v]: any) => [k, flat(v)]));
+		expect(texts.has('b')).toBe(false);
+		expect(texts.get('tail')).toBe('world');
 		expect(ed.blockText('tail')).toBe('world');
 	});
 });

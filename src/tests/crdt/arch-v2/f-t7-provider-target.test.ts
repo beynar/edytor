@@ -19,7 +19,8 @@ import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import * as idb from 'lib0-v14/indexeddb';
 import { Y } from '../../../lib/crdt/engine.js';
-import { bindProviders, createDocument } from '../../../lib/crdt/index.js';
+import { createDocument } from '../../../lib/crdt/index.js';
+import { bindProviders } from '../../../lib/crdt/providers/index.js';
 import { generationDbName } from '../../../lib/crdt/protocols/envelope.js';
 
 const providers = bindProviders(Y);

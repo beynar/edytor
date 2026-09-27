@@ -26,10 +26,9 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindRunsOracle } from '../../oracles/runs.js';
-import { bindRuns } from '../../../lib/crdt/index.js';
+import { bindRuns } from '../../../lib/crdt/text/runs.js';
 import { bindModel } from '../../oracles/model-ops.js';
 import { bindText, readRange } from '../../../lib/crdt/text/model.js';
-import { decorateRuns } from '../../../lib/crdt/text/runs.js';
 import { createPeerPair } from '../harness/peer-set.js';
 import { mulberry32, int, pick } from '../harness/rng.js';
 import { modelSpecSeed, MODEL_BASE_SEED } from '../scenarios/seeds.js';
@@ -452,29 +451,6 @@ describe('range reads — remote, undo, marks identity, decorations', () => {
 		expect(Object.isFrozen(snap)).toBe(true);
 		expect(snap.map((r) => (r.kind === 'text' ? r.text : '�')).join('')).toBe(flatBefore);
 		expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
-	});
-
-	it('local decorations overlay correctly on top of the new read path', () => {
-		const set = createPeerPair(FORMAT_SEED);
-		const view = R.attach(set.A.doc);
-		const snap = view.snapshot('a');
-		const decorated = decorateRuns(snap, [
-			{ from: 0, to: 12, key: 'spell', value: 'error' },
-			{ from: 6, to: 11, key: 'syntax', value: 'kw' }
-		]);
-		expect(decorated[0]).toEqual({
-			kind: 'text',
-			text: 'plain ',
-			decorations: { spell: 'error' }
-		});
-		expect(decorated[1].decorations).toEqual({ spell: 'error', syntax: 'kw' });
-		// Persistent marks carry over with equal content — but a snapshot's
-		// marks are caller-owned JSON clones, so decorateRuns clones them
-		// before freezing (R4): the emitted run is frozen while the caller's
-		// snapshot stays mutable.
-		expect(decorated[1].marks).toEqual(snap[1].marks);
-		expect(Object.isFrozen(decorated[1].marks)).toBe(true);
-		expect(Object.isFrozen(snap[1].marks)).toBe(false);
 	});
 
 	it('multi-backing block: merged content reads each text independently', () => {

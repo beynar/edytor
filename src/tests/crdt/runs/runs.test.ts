@@ -16,17 +16,16 @@
  *   object identity (prefix/suffix structural sharing); equal mark objects
  *   are interned (`===`).
  * - ISOLATION: snapshots are frozen (array, run, marks, data) — engine
- *   internals never escape; `snapshot()`/`contentJSON()` return owned
- *   copies.
- * - REACTIVITY: `version()` bumps per observed change; `blockVersion(b)`
- *   bumps only on real content change; `subscribe`/`subscribeBlock` fire
- *   accordingly. Pure reads need no subscription.
+ *   internals never escape; `contentJSON()` returns owned copies.
+ * - REACTIVITY: `version()` bumps per observed change; a block whose
+ *   content did not change keeps its run array (`toBe`). Pure reads need
+ *   no subscription.
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindRunsOracle } from '../../oracles/runs.js';
-import { bindRuns } from '../../../lib/crdt/index.js';
+import { bindRuns } from '../../../lib/crdt/text/runs.js';
 import { bindModel } from '../../oracles/model-ops.js';
 import { createPeerPair, createPeerSet } from '../harness/peer-set.js';
 import { createModelOps } from '../harness/ops/model-ops.js';
@@ -135,13 +134,11 @@ describe('run view — invalidation granularity & identity', () => {
 		const aRuns = view.runs('a');
 		const bRuns = view.runs('b');
 		const cRuns = view.runs('c');
-		const bVersion = view.blockVersion('b');
 		view.debug.reset();
 		set.A.transact(() => M.insertText(doc, 'a', 0, '!'));
 		view.debug.reset(); // count only what re-reads trigger below
 		expect(view.runs('b')).toBe(bRuns); // untouched — same array
 		expect(view.runs('c')).toBe(cRuns);
-		expect(view.blockVersion('b')).toBe(bVersion);
 		expect(view.debug.recomputed.has('a')).toBe(false); // lazy: not yet re-read
 		const fresh = O.computeAllRuns(doc).get('a');
 		expect(view.runs('a')).toEqual([...fresh]);
@@ -411,10 +408,6 @@ describe('run view — snapshot isolation & export', () => {
 		expect(Object.isFrozen(inlineRun.data)).toBe(true);
 		const markedRuns = view.runs('a');
 		expect(Object.isFrozen(markedRuns[0].marks)).toBe(true);
-		// A consumer that mutates its own deep copy cannot affect the view.
-		const copy = view.snapshot('b');
-		copy[1].data.user = 'tampered';
-		expect(view.runs('b')[1].data.user).toBe('sam');
 	});
 
 	it('contentJSON exports the public {text, marks?}/{id,type,data?} shape', () => {
@@ -456,12 +449,10 @@ describe('run view — snapshot isolation & export', () => {
 });
 
 describe('run view — reactivity', () => {
-	it('version() bumps per observed transaction; subscribe fires with it', () => {
+	it('version() bumps per observed transaction', () => {
 		const set = createPeerPair(RICH_SEED);
 		const doc = set.A.doc;
 		const view = R.attach(doc);
-		const seen = [];
-		const unsub = view.subscribe((v) => seen.push(v));
 		const v0 = view.version();
 		set.A.transact(() => M.insertText(doc, 'a', 0, '1'));
 		const v1 = view.version();
@@ -469,26 +460,19 @@ describe('run view — reactivity', () => {
 		set.A.transact(() => M.insertText(doc, 'a', 0, '2'));
 		set.A.transact(() => M.moveBlock(doc, 'a', { parent: null, index: 3 }));
 		expect(view.version()).toBe(v1 + 2); // moves count as observed changes
-		expect(seen.length).toBe(3);
-		unsub();
-		set.A.transact(() => M.insertText(doc, 'a', 0, '3'));
-		expect(seen.length).toBe(3);
 	});
 
-	it('blockVersion bumps only on real content change; subscribeBlock fires only then', () => {
+	it('only a real content change replaces a block run array', () => {
 		const set = createPeerPair(RICH_SEED);
 		const doc = set.A.doc;
 		const view = R.attach(doc);
-		const fired = [];
-		view.subscribeBlock('a', (runs) => fired.push(runs));
-		const va = view.blockVersion('a');
-		const vb = view.blockVersion('b');
+		const a0 = view.runs('a');
+		const b0 = view.runs('b');
 		set.A.transact(() => M.insertText(doc, 'b', 0, '!')); // edit B, not A
-		expect(view.blockVersion('a')).toBe(va); // A untouched
-		expect(view.blockVersion('b')).toBe(vb + 1);
-		expect(fired.length).toBe(0); // A's listener silent
+		expect(view.runs('a')).toBe(a0); // A untouched
+		expect(view.runs('b')).not.toBe(b0);
 		set.A.transact(() => M.insertText(doc, 'a', 0, '!'));
-		expect(fired.length).toBe(1); // now it fires — eagerly, at event time
-		expect(fired[0][0].text).toBe('!'); // unmarked insert is its own run
+		expect(view.runs('a')).not.toBe(a0);
+		expect(view.runs('a')[0].text).toBe('!'); // unmarked insert is its own run
 	});
 });

@@ -25,7 +25,8 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindRunsOracle } from '../../oracles/runs.js';
-import { bindEdytorDoc, bindRuns } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { bindRuns } from '../../../lib/crdt/text/runs.js';
 import { bindModel } from '../../oracles/model-ops.js';
 import { createPeerPair } from '../harness/peer-set.js';
 import { modelSpecSeed } from '../scenarios/seeds.js';
@@ -200,7 +201,7 @@ describe('gateF2/WU7 — lifecycle: detach/reattach/destroy/subscriptions', () =
 		const doc = set.A.doc;
 		const v1 = R.attach(doc);
 		let fired = 0;
-		const unsub = v1.subscribe(() => fired++);
+		const unsub = v1.onReport(() => fired++);
 		set.A.transact(() => M.insertText(doc, 'a', 0, 'x'));
 		expect(fired).toBe(1);
 		unsub();
@@ -222,23 +223,6 @@ describe('gateF2/WU7 — lifecycle: detach/reattach/destroy/subscriptions', () =
 		const v2 = R.attach(doc);
 		expect(v2).not.toBe(v1);
 		expect(flat(v2.runs('a'))).toBe('alpha');
-	});
-
-	it('block-level subscriptions release exactly once and only for the right block', () => {
-		const set = createPeerPair(SEED);
-		const doc = set.A.doc;
-		const v = R.attach(doc);
-		const seen = [];
-		const unsubA = v.subscribeBlock('a', (runs) => seen.push(flat(runs)));
-		v.subscribeBlock('b', (runs) => seen.push('b:' + flat(runs)));
-		set.A.transact(() => M.insertText(doc, 'a', 0, 'x'));
-		expect(seen).toEqual(['xalpha']);
-		unsubA();
-		unsubA(); // idempotent
-		set.A.transact(() => M.insertText(doc, 'a', 0, 'y'));
-		set.A.transact(() => M.insertText(doc, 'b', 0, 'z'));
-		// a's sub is gone (once only), b's still live.
-		expect(seen).toEqual(['xalpha', 'b:zbeta']);
 	});
 });
 

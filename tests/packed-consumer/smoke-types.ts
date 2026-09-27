@@ -26,7 +26,6 @@ import {
 	type EdytorDocument,
 	type EdytorSync,
 	type JSONDoc,
-	type ModelView,
 	type Plugin,
 	type ProjectedDoc
 } from 'edytor';
@@ -135,16 +134,11 @@ const rootAttached: EdytorDocument = attachDocument(doc);
 // stays nameable; `document.attribution` exposes block records + the
 // actor dictionary + the `legacy()` read over pre-existing `a/` records.
 const rootContentRun: ContentRun = { kind: 'text', text: 'x' };
-const rootRunsApi = bindings.bindRuns(Y as bindings.EngineApi);
-const rootModelView: ModelView = rootRunsApi
-	.attach(storyDoc as unknown as bindings.EngineDoc)
-	.view();
 const rootLegacy = rootAttribution.legacy();
 const rootBlockAttr = rootAttribution.block(rootProjected.children[0]!.id);
 void rootContentRun;
 void rootLegacy;
 void rootBlockAttr;
-void rootModelView;
 void rootReadiness;
 void rootAttribution;
 void rootLoaded;

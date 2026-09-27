@@ -63,10 +63,28 @@ await assert.rejects(
 // node/SSR-side CRDT work: Doc, facade, awareness, providers, migration.
 const bindings = await import('edytor/crdt/edytor');
 assert.equal(typeof bindings.bindCrdt, 'function');
-assert.equal(typeof bindings.bindEdytorDoc, 'function');
 assert.equal(typeof bindings.Awareness, 'function');
-assert.equal(typeof bindings.bindMigration, 'function');
-assert.equal(typeof bindings.bindProviders, 'function');
+// D-15 (C1): the `bind*` building blocks are internal — `bindCrdt(Y)` is the
+// one composition entry (`.doc`, `.providers`, `.migration`, `.sync`, …).
+for (const retired of [
+	'bindEdytorDoc',
+	'bindMigration',
+	'bindProviders',
+	'bindRuns',
+	'decorateRuns'
+])
+	assert.equal(bindings[retired], undefined, `${retired} is retired`);
+// The server-coordinator surface (a Durable Object imports only these).
+for (const name of [
+	'frame',
+	'generationWord',
+	'readProtocolVersion',
+	'readAwarenessEntries',
+	'writeAwarenessEntries',
+	'createDecoder'
+])
+	assert.equal(typeof bindings[name], 'function', name);
+assert.equal(bindings.GENERATION, bindings.generationWord(bindings.SCHEMA_VERSION));
 
 // bindCrdt actually assembles: doc + facade + awareness + providers + sync.
 const crdt = bindings.bindCrdt(Y);
@@ -104,7 +122,7 @@ assert.equal(typeof crdt.providers.createIndexeddbSync, 'function');
 assert.equal(typeof crdt.providers.createWebsocketSync, 'function');
 
 // ── the real consumer story (U12/PK01) ───────────────────────────────────
-// Doc + Awareness via public exports → bindEdytorDoc facade → init →
+// Doc + Awareness via public exports → `bindCrdt(Y).doc` facade → init →
 // insert a block + text → two docs converge via update exchange → destroy.
 
 const docA = crdt.createDoc();
@@ -127,7 +145,7 @@ assert.equal(edA.blockText('b-world'), 'world');
 Y.applyUpdate(docB, Y.encodeStateAsUpdate(docA, Y.encodeStateVector(docB)));
 const edB = crdt.doc.create(docB);
 edB.assertSchema(); // the synced replica passes the application-schema gate
-assert.equal(edB.schemaVersion(), 1);
+assert.equal(edB.schemaVersion(), bindings.SCHEMA_VERSION);
 assert.deepEqual(edB.toJSON(), edA.toJSON());
 assert.equal(edB.blockText('b-world'), 'world');
 

@@ -17,14 +17,12 @@
  *
  *  3. Caller-held object mutation AFTER write (write-side clone check).
  *
- *  4. decorateRuns deep-freezes the caller's decoration `value` objects
- *     in place — a mutation side effect on caller-owned data.
+ * (Probe 4, `decorateRuns`, went with the API at C1 — D-15.)
  */
 // @ts-nocheck -- exercises private model/engine internals on purpose.
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc } from '../../../lib/crdt/index.js';
-import { decorateRuns } from '../../../lib/crdt/text/runs.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { DEFAULT_SEED_ID as BOOTSTRAP_BLOCK } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
@@ -238,32 +236,6 @@ describe('gateH-R4 — caller mutation after write', () => {
 	});
 });
 
-describe('gateH-R4 — decorateRuns side effects on caller data', () => {
-	test('decorateRuns clones caller-owned values before freezing (R4 fixed)', () => {
-		const { ed } = seed();
-		const runs = ed.runs('b');
-		const decoValue = { cls: 'hl' };
-		const out = decorateRuns(runs, [{ from: 0, to: 5, key: 'bg', value: decoValue }]);
-		const decorated = out.find((r) => (r as any).decorations?.bg !== undefined) as any;
-		expect(decorated?.decorations?.bg).toEqual({ cls: 'hl' });
-		// FIXED contract: the emitted decorations value is a frozen CLONE —
-		// it never aliases the caller's object, so the caller's copy stays
-		// mutable (no freeze-in-place side effect) and later caller
-		// mutation cannot reach the emitted snapshot.
-		expect(decorated?.decorations?.bg).not.toBe(decoValue);
-		expect(Object.isFrozen(decorated?.decorations?.bg)).toBe(true);
-		let threw = false;
-		try {
-			(decoValue as any).cls = 'MUTATED';
-		} catch {
-			threw = true;
-		}
-		expect(threw, 'caller-owned decoration value was frozen in place').toBe(false);
-		expect(decoValue.cls).toBe('MUTATED'); // caller keeps ownership
-		expect(decorated?.decorations?.bg?.cls).toBe('hl'); // snapshot unaffected
-	});
-});
-
 describe('gateH-R4 — DocChange payload isolation', () => {
 	test('change.order is frozen — it cannot corrupt the retained diff baseline (R4 fixed)', () => {
 		const { ed } = seed();
@@ -310,7 +282,7 @@ describe('gateH-R4 — DocChange payload isolation', () => {
 		console.log(`[r4-content] mutationThrew=${threw} lenAfter=${runs?.length}`);
 	});
 
-	test('snapshot()/contentJSON() throw on a BigInt mark (availability surface)', () => {
+	test('contentJSON() throws on a BigInt mark (availability surface)', () => {
 		const { ed } = seed();
 		// Raw engine write bypasses the facade boundary (same vector as the
 		// pinned BigInt defect) — then exercise the remaining read surface.
@@ -321,21 +293,13 @@ describe('gateH-R4 — DocChange payload isolation', () => {
 			console.log(`[r4-snap] raw insert threw at write: ${String(e).slice(0, 120)}`);
 			return; // engine refused at write — nothing to read
 		}
-		let threwSnap: unknown = null;
 		let threwJson: unknown = null;
-		try {
-			ed.snapshot('b');
-		} catch (e) {
-			threwSnap = e;
-		}
 		try {
 			ed.contentJSON('b');
 		} catch (e) {
 			threwJson = e;
 		}
-		console.log(
-			`[r4-snap] snapshotThrew=${String(threwSnap).slice(0, 100)} contentJSONThrew=${String(threwJson).slice(0, 100)}`
-		);
+		console.log(`[r4-snap] contentJSONThrew=${String(threwJson).slice(0, 100)}`);
 	});
 
 	test('blockDataOf/snapshot surface on cyclic block data', () => {

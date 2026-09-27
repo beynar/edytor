@@ -25,8 +25,6 @@ import { Y } from '../../../lib/crdt/engine.js';
 import {
 	assertAdmission,
 	attachDocument,
-	bindEdytorDoc,
-	bindProviders,
 	createDocument,
 	inspectAdmission,
 	loadDocument,
@@ -36,6 +34,8 @@ import {
 	UnsupportedDocError,
 	type EngineDoc
 } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { bindProviders } from '../../../lib/crdt/providers/index.js';
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
 import {
 	GENERATION_KEY,

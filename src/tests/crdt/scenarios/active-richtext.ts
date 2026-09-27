@@ -18,7 +18,7 @@
 import { expect } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindRunsOracle } from '../../oracles/runs.js';
-import { bindRuns, decorateRuns } from '../../../lib/crdt/index.js';
+import { bindRuns } from '../../../lib/crdt/text/runs.js';
 import { createPeerPair, type PeerSet } from '../harness/peer-set.js';
 import { createModelOps } from '../harness/ops/model-ops.js';
 import { assertConverged, assertAllStructurallyValid } from '../harness/assert/convergence.js';
@@ -250,17 +250,8 @@ export const richtextScenarios: Scenario[] = [
 			const set = createPeerPair(
 				modelSpecSeed([{ id: 'a', type: 'code', content: [{ kind: 'text', text: 'const x = 1' }] }])
 			);
-			const vA = R.attach(set.A.doc);
-			// A applies local Prism-style decorations — pure overlay.
-			const decorated = decorateRuns(vA.runs('a'), [
-				{ from: 0, to: 5, key: 'syntax', value: 'keyword' }
-			]);
-			expect(decorated[0]).toEqual({
-				kind: 'text',
-				text: 'const',
-				decorations: { syntax: 'keyword' }
-			});
-			// B's persistent mark replicates; A's decoration never does.
+			// B's persistent mark replicates; local syntax highlighting is the
+			// code kind's `transformText` render overlay (never replicated).
 			ops.setMark(set.B, 'a', 6, 1, 'bold', true);
 			settled(set, 'AN05');
 			expect(runs(set.A, 'a')).toEqual([
@@ -272,15 +263,6 @@ export const richtextScenarios: Scenario[] = [
 			// No 'syntax' key anywhere in either replica's replicated state.
 			expect(JSON.stringify(ops.project(set.A))).not.toContain('syntax');
 			expect(JSON.stringify(ops.project(set.B))).not.toContain('syntax');
-			// A's overlay composes on top of the converged persistent runs.
-			expect(
-				decorateRuns(vA.runs('a'), [{ from: 6, to: 7, key: 'syntax', value: 'ident' }])[1]
-			).toEqual({
-				kind: 'text',
-				text: 'x',
-				marks: { bold: true },
-				decorations: { syntax: 'ident' }
-			});
 			reloadAndVerify(set, (s) => {
 				expect(runs(s.A, 'a')).toEqual(runs(set.A, 'a'));
 			});

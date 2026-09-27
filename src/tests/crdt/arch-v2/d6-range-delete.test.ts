@@ -27,7 +27,8 @@
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, test } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
-import { bindEdytorDoc, createDocument } from '../../../lib/crdt/index.js';
+import { createDocument } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { prepareApply, rng } from './prepared-oracle.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';

@@ -19,7 +19,7 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import * as delta from 'lib0-v14/delta';
-import { bindEdytorDoc } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 
 const E = bindEdytorDoc(Y);
 let cid = 900_000;

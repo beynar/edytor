@@ -20,13 +20,13 @@ import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import {
 	attachDocument,
-	bindEdytorDoc,
 	createDocument,
 	DocumentDestroyedError,
 	DocumentNotReadyError,
 	EdytorDocDisposedError,
 	type EdytorSync
 } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { whenDocumentReady } from '../../../lib/collaboration/documentSync.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';

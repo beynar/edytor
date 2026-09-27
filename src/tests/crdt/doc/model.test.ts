@@ -10,7 +10,8 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc, SCHEMA_VERSION, SCHEMA_NAME, META_KEY } from '../../../lib/crdt/index.js';
+import { SCHEMA_VERSION, META_KEY } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc, SCHEMA_NAME } from '../../../lib/crdt/edytor-doc.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
@@ -131,7 +132,6 @@ describe('bootstrap + schema record', () => {
 		ed.isInitialized();
 		ed.schemaVersion();
 		ed.onChange(() => {}); // observer attach is read-only
-		ed.subscribeBlock('ghost', () => {});
 		expect(count()).toBe(0);
 		ed.dispose();
 	});

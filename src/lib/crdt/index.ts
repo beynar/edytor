@@ -29,11 +29,12 @@
  *   themselves (node/SSR-side provider stacks, migration tooling,
  *   alternate engine instances) plus the engine typings that contract
  *   needs.
- * - **Advanced internals** — the `bind*` building blocks the tiers above
- *   are composed from, schema/protocol/storage constants, rank/run/
- *   placement plumbing, and wire-protocol helpers. Deliberately exported
- *   — the test suite and engine-injection consumers build on them — but
- *   they are NOT the day-to-day API; prefer the document layer.
+ * - **Server coordinator** — the wire surface a Worker-side coordinator
+ *   (a Cloudflare Durable Object) needs beside `bindCrdt(Y)`: the frame
+ *   contract, message types, the lib0 read/write helpers for frame bodies
+ *   and the instance-free awareness codec. Nothing else is exported: the
+ *   `bind*` building blocks, rank/run/placement plumbing and storage
+ *   constants are internal (0.0.x API retirement, D-15).
  *
  * The raw engine itself is only reachable through
  * `import * as Y from 'edytor/crdt'` — this module never re-exports it,
@@ -282,146 +283,26 @@ export type {
 	YItem
 } from './engine-api.js';
 
-// ── 8 · Advanced internals — deliberately exported, not the headline ────
+// ── 8 · Server coordinator surface (Worker-safe) ────────────────────────
 //
-// Everything below is the composition layer the public surface is built
-// from: `bind*` functions (each binds one domain to an injected engine —
-// the same pattern `bindCrdt` uses), schema/storage constants, rank and
-// run internals, and wire-protocol plumbing for custom transports.
-//
-// These stay exported ON PURPOSE: the repo's own suites bind the vendored
-// source directly, and engine-injection consumers (alternate builds,
-// custom transports, migration tooling) need the same seams. Nothing
-// here is needed for ordinary document work — `createDocument` and
-// `bindCrdt` are the supported entries.
+// What a server coordinator (a Cloudflare Durable Object — README "Server
+// coordinator") imports beside `bindCrdt(Y)` (`.sync` readers/writers and
+// `applyRemote`, `.admission`, `.doc`, `.createDoc`): the frame contract
+// `varuint GENERATION | varuint messageType | payload`, the message types,
+// the lib0 helpers that read and write frame bodies, and the awareness
+// codec that needs no `Awareness` instance (whose sweep timer blocks
+// hibernation). `src/tests/crdt/arch-v2/do-coordinator.test.ts` is the
+// runnable reference; `pnpm check:worker` keeps this graph Worker-safe.
 
-// Facade + document composition internals. (`assertUsableDoc` /
-// `UnsupportedDocError` are NOT re-exported from `edytor-doc.js` here —
-// they reach consumers through the shared admission doorway in §4, one
-// vocabulary for document and transport gates.)
-export {
-	bindEdytorDoc,
-	SCHEMA,
-	SCHEMA_VERSION,
-	SCHEMA_NAME,
-	META_KEY,
-	EdytorDocDisposedError,
-	type EdytorDocBinding,
-	type EdytorDocConfig
-} from './edytor-doc.js';
+export { SCHEMA_VERSION, META_KEY, EdytorDocDisposedError } from './edytor-doc.js';
 
-export { bindDocument, type DocumentBinding, type EdytorDocumentInit } from './document.js';
-
-export { bindNodes, type NodeRef } from './nodes.js';
-
-// Per-doc rank-rand side-channel — the determinism seam a test harness
-// uses instead of extending the vendored `Doc` (`doc.rand`).
-export { setDocRand, randOf } from './rand.js';
-
-export {
-	bindModel,
-	REGISTRY_KEY,
-	type PlacementModel,
-	type ModelView,
-	type PlacementValue,
-	type PlacementCand,
-	type ResolvedPlacement
-} from './placement/model.js';
-
-export {
-	bindRuns,
-	decorateRuns,
-	type RunsApi,
-	type RunView,
-	type RunViewDebug,
-	type IndexReport,
-	type LocalDecoration,
-	type DecoratedRun
-} from './text/runs.js';
-
-export {
-	bindIndexeddbProvider,
-	PREFERRED_TRIM_SIZE,
-	type IndexeddbProvider
-} from './providers/indexeddb.js';
-
-export { bindWebsocketProvider, type WebsocketProviderApi } from './providers/websocket.js';
-
-export { bindProviders } from './providers/index.js';
-
-export { bindSync, type SyncProtocol } from './protocols/sync.js';
-
-export { bindAdmission } from './admission.js';
-
-export {
-	ATTRIBUTION_ORIGIN,
-	ATTRIBUTION_ROOT,
-	BLOCK_ATTR_ROOT,
-	LAST_CHANGED_ATTR,
-	bindAttribution,
-	bindBlockAttribution,
-	blockAttributionOf,
-	type AttributionBinding
-} from './attribution/index.js';
-
-export { bindMigration, migrationBcRoom } from './migration/migrate.js';
-
-export {
-	bindLegacyReader,
-	LEGACY_ROOT_KEY,
-	LEGACY_INITIALIZED_KEY
-} from './migration/legacy-schema.js';
-
-// Placement rank keys — the Logoot-style ordering internals (pure
-// functions; the test suite binds them directly).
-export {
-	RANK_VMIN,
-	RANK_VMAX,
-	RankSpaceExhausted,
-	decodeRank,
-	encodeRank,
-	compareRank,
-	rankBetween,
-	initialRank,
-	type RankSeg
-} from './placement/rank.js';
-
-// Wire-protocol plumbing — for custom transports. The shipped providers
-// already run this machinery; reach for it only when writing a transport
-// this package does not ship.
-export {
-	applyAwarenessUpdate,
-	encodeAwarenessUpdate,
-	modifyAwarenessUpdate,
-	removeAwarenessStates,
-	outdatedTimeout,
-	readAwarenessEntries,
-	writeAwarenessEntries,
-	type AwarenessEntry
-} from './protocols/awareness.js';
-
-export {
-	messagePermissionDenied,
-	writePermissionDenied,
-	readAuthMessage,
-	type PermissionDeniedHandler
-} from './protocols/auth.js';
-
-// The frame contract — `varuint GENERATION | varuint messageType | payload`
-// — for a server coordinator (a Cloudflare Durable Object): build frames
-// with `frame`, read them with the lib0 decoder helpers below, so a
-// coordinator needs only `edytor/crdt` + `edytor/crdt/edytor`.
 export {
 	GENERATION,
 	generationWord,
 	frame,
 	PROTOCOL_VERSION,
-	GENERATION_PREFIX,
-	generationDbName,
-	GENERATION_KEY,
 	GENERATION_RECORD,
 	GenerationMismatchError,
-	writeProtocolVersion,
 	readProtocolVersion,
 	type GenerationRecord
 } from './protocols/envelope.js';
@@ -433,7 +314,23 @@ export {
 	messageQueryAwareness
 } from './providers/room.js';
 
-export { messageYjsSyncStep1, messageYjsSyncStep2, messageYjsUpdate } from './protocols/sync.js';
+export {
+	messageYjsSyncStep1,
+	messageYjsSyncStep2,
+	messageYjsUpdate,
+	type SyncProtocol
+} from './protocols/sync.js';
+
+export { messagePermissionDenied, writePermissionDenied } from './protocols/auth.js';
+
+export {
+	applyAwarenessUpdate,
+	encodeAwarenessUpdate,
+	modifyAwarenessUpdate,
+	readAwarenessEntries,
+	writeAwarenessEntries,
+	type AwarenessEntry
+} from './protocols/awareness.js';
 
 // Minimal wire codec for frame bodies (lib0 — the codec the frames are
 // written with): read the header/subtype/payload, write a payload into a

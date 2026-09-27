@@ -4,7 +4,7 @@
  * reserved bootstrap id in fixtures that type into a fresh document.
  */
 import { Y } from '../../lib/crdt/engine.js';
-import { bindEdytorDoc } from '../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../lib/crdt/edytor-doc.js';
 
 const E = bindEdytorDoc(Y);
 const doc = new Y.Doc();

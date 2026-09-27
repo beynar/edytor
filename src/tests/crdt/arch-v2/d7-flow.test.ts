@@ -19,7 +19,8 @@
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, test } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
-import { bindEdytorDoc, createDocument } from '../../../lib/crdt/index.js';
+import { createDocument } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { observe, prepareApply, rng } from './prepared-oracle.js';
 
 /** Red on the reference (no `prepare.insertFlow`); green since D7. */

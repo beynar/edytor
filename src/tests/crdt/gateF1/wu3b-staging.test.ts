@@ -21,13 +21,13 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import {
-	bindEdytorDoc,
-	bindSync,
 	checkSchema,
 	createDocument,
 	SchemaMismatchError,
 	SCHEMA_VERSION
 } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { bindSync } from '../../../lib/crdt/protocols/sync.js';
 
 const E = bindEdytorDoc(Y);
 const S = bindSync(Y);

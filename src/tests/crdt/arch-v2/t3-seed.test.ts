@@ -21,12 +21,12 @@ import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import {
 	attachDocument,
-	bindEdytorDoc,
-	bindProviders,
 	createDocument,
 	loadDocument,
 	SCHEMA_VERSION
 } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
+import { bindProviders } from '../../../lib/crdt/providers/index.js';
 
 const providers = bindProviders(Y);
 

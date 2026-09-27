@@ -21,7 +21,8 @@
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc, createDocument } from '../../../lib/crdt/index.js';
+import { createDocument } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';

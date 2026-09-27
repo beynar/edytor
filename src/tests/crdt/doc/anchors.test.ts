@@ -19,7 +19,7 @@
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);

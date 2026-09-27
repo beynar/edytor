@@ -29,8 +29,6 @@ import { bindEdytorDoc, createDocument } from '../../../lib/crdt/index.js';
 import { lineageOf } from '../../../lib/crdt/attribution/block.js';
 
 const E = bindEdytorDoc(Y);
-/** Red on the reference (`arch-v2/ref-d10`); flipped to `it` by the implementation. */
-const red = it.fails;
 const REMOTE = { remote: true };
 const alice = { id: 'alice' };
 const bob = { id: 'bob' };
@@ -177,7 +175,7 @@ describe('F-O12 — attribution over undo/redo: no stamp; the last changer is re
 
 describe('F-U9 (lineage half) — one update per undo and per redo with lineage on', () => {
 	for (const ids of CLIENT_IDS) {
-		red(`A=${ids.a} B=${ids.b}`, () => {
+		it(`A=${ids.a} B=${ids.b}`, () => {
 			const base = seeded();
 			const A = replica(base, ids.a, alice, 5);
 			const B = replica(base, ids.b, bob, 5);
@@ -229,7 +227,7 @@ describe('F7 / O23 — the incarnation is the replicated nonce; redo copies carr
 
 	for (const ids of CLIENT_IDS) {
 		for (const firstEditor of ['redoer', 'receiver'] as const) {
-			red(`A=${ids.a} B=${ids.b} · ${firstEditor} edits first after the redo`, () => {
+			it(`A=${ids.a} B=${ids.b} · ${firstEditor} edits first after the redo`, () => {
 				const base = seeded();
 				const A = replica(base, ids.a, alice);
 				const B = replica(base, ids.b, bob);
@@ -280,7 +278,7 @@ describe('F7 / O23 — the incarnation is the replicated nonce; redo copies carr
 		}
 	}
 
-	red('a recycled id is a new incarnation: a fresh nonce and a fresh record', () => {
+	it('a recycled id is a new incarnation: a fresh nonce and a fresh record', () => {
 		const A = replica(seeded(), 7, alice);
 		const um = A.ed.createUndoManager({ captureTimeout: 0 });
 		A.ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' });
@@ -292,7 +290,7 @@ describe('F7 / O23 — the incarnation is the replicated nonce; redo copies carr
 		expect(attr(B.ed, 'x')).toEqual({ createdBy: 'bob', contributors: ['bob'], l: 'bob' });
 	});
 
-	red('seeded nonces derive from the seed: identical seeds agree, different seeds differ', () => {
+	it('seeded nonces derive from the seed: identical seeds agree, different seeds differ', () => {
 		const one = new Y.Doc();
 		const two = new Y.Doc();
 		const other = new Y.Doc();

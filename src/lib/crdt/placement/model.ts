@@ -66,12 +66,13 @@ import {
 	hasDeleteMark,
 	ID,
 	INLINE_NODE,
+	NONCE,
 	REGISTRY_KEY,
 	SLICES,
 	SLICES_NODE,
 	TYPE
 } from '../schema.js';
-import { randOf } from '../rand.js';
+import { nonceOf, randOf } from '../rand.js';
 import { bindRuns } from '../text/runs.js';
 import {
 	bindText,
@@ -616,6 +617,7 @@ export const bindModel = (Y: EngineApi) => {
 	): void => {
 		const node = newNode(BLOCK_NODE);
 		node.setAttr(ID, id);
+		node.setAttr(NONCE, nonceOf(doc));
 		node.setAttr(TYPE, type);
 		if (data !== undefined) node.setAttr(DATA, data);
 		const content = newNode(CONTENT_NODE);
@@ -694,6 +696,7 @@ export const bindModel = (Y: EngineApi) => {
 					if (node === null) {
 						node = newNode(BLOCK_NODE);
 						node.setAttr(ID, sp.id);
+						node.setAttr(NONCE, nonceOf(doc));
 						node.setAttr(AT, newNode(AT_NODE));
 						registryOf(doc).setAttr(sp.id, node);
 					}

@@ -7,7 +7,7 @@
  *
  * ```
  *   varuint GENERATION | varuint messageType | payload
- *   GENERATION = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION   (14002 at schema 2)
+ *   GENERATION = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION   (14003 at schema 3)
  * ```
  *
  * The word names the whole generation — engine and wire (the protocol,

@@ -26,7 +26,8 @@
  *
  * ```
  * doc.get('blocks')                      registry — flat map, blockId → node('block')
- *   └ <blockId>                           id/type/data/del + content/slices/at
+ *   └ <blockId>                           id/n/type/data/del + content/slices/at
+ *                                         (n: incarnation nonce, O23)
  * doc.get('meta')                        version record root
  *   ├ v : number                          SCHEMA_VERSION (LWW attr — concurrent init converges)
  *   └ schema : 'edytor-doc'               SCHEMA_NAME
@@ -36,11 +37,11 @@
  *
  * `seed(doc, value)` applies ONE update built in a scratch doc whose writer
  * id is a 32-bit hash of (generation, canonical seed JSON): caller ids are
- * kept, missing ids are derived from the hash and position, ranks come from
- * the rand seam seeded by the hash. Peers seeding the same value therefore
- * write the SAME items — a late identical seed is a no-op and never erases
- * an edit — while different values union (shared ids resolve by registry
- * LWW). An empty value seeds one `defaultType` block. The update is applied
+ * kept, missing ids are derived from the hash and position, ranks and
+ * incarnation nonces come from the rand seam seeded by the hash. Peers
+ * seeding the same value therefore write the SAME items — a late identical
+ * seed is a no-op and never erases an edit — while different values union
+ * (shared ids resolve by registry LWW). An empty value seeds one `defaultType` block. The update is applied
  * with a non-local origin: never an undo step, no attribution stamp.
  * Seeding is explicit: reads never create or normalize state.
  *
@@ -1224,52 +1225,46 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				if (!isInitialized(doc)) init(doc);
 			});
 			const um = new Y.UndoManager(M.registryOf(doc) as unknown as YNode, opts) as YUndoManager;
-			// Lineage: undo/redo replays displace the state every touched
-			// block currently shows — capture each block's subtree BEFORE
-			// the replay runs (`force`: the state is lost regardless of
-			// who owns `l`, and undo is precisely what the ring exists to
-			// recover from). The captures commit under the default origin
-			// BEFORE popStackItem's transaction — outside undo scope like
-			// every other `b/` write, and never re-captured by the replay.
+			// Lineage for undo/redo (O19, F4): the replay displaces the state
+			// every block the popped stack item touches, so each one's subtree
+			// is captured (`force`: lost whoever owns `l`) from the history
+			// transaction's own `beforeTransaction`, before the replay writes.
+			// The ring writes join that transaction — one update per undo —
+			// and sit outside the manager's scope, so the replay never undoes
+			// or re-captures them. Nothing else is stamped for undo/redo: the
+			// engine's replay restores `l`, and `contributors` are add-only.
+			// An undo run inside an enclosing transaction gets no lineage (it
+			// is a defect of its own: it empties the redo stack, F4).
 			if (lineageDepth > 0) {
-				const captureTouched = (stack: { inserts?: unknown; deletes?: unknown }[]): void => {
-					const item = stack[stack.length - 1];
-					if (item === undefined || actorOf() === undefined) return;
-					const touched = new Set<BlockId>();
-					const collect = (idSet: unknown): void => {
-						if (idSet === null || typeof idSet !== 'object' || !('clients' in idSet)) return;
-						walkIdSetStructs(Y, doc, idSet as IdSetLike, (s) => {
-							let n = s.parent as EngineNode | null;
-							while (n !== null && typeof n === 'object' && typeof n.getAttr === 'function') {
-								if (n.name === BLOCK_NODE) {
-									const bid = n.getAttr(ID);
-									if (typeof bid === 'string') touched.add(bid);
-									break;
+				const onBefore = (tr: { origin: unknown }): void => {
+					const stack = um.undoing ? um.undoStack : um.redoing ? um.redoStack : [];
+					const item = stack[stack.length - 1] as { inserts?: unknown; deletes?: unknown };
+					if (tr.origin !== um || item === undefined || actorOf() === undefined) return;
+					try {
+						const touched = new Set<BlockId>();
+						for (const idSet of [item.inserts, item.deletes]) {
+							walkIdSetStructs(Y, doc, idSet as IdSetLike, (s) => {
+								let n = s.parent as EngineNode | null;
+								while (n !== null && typeof n?.getAttr === 'function') {
+									const bid = n.name === BLOCK_NODE ? n.getAttr(ID) : undefined;
+									if (typeof bid === 'string') return void touched.add(bid);
+									n = (n._item?.parent ?? null) as EngineNode | null;
 								}
-								n = (n._item?.parent ?? null) as EngineNode | null;
-							}
-						});
-					};
-					collect(item.inserts);
-					collect(item.deletes);
-					if (touched.size === 0) return;
-					doc.transact(() => {
+							});
+						}
 						for (const bid of touched) {
 							const pending = lineagePending(bid, true);
 							if (pending !== undefined) BA.appendLineage(doc, bid, pending, lineageDepth);
 						}
-					});
+					} catch (err) {
+						// Throwing here would leave the engine's transaction open.
+						console.error('[edytor-doc] undo lineage capture failed', err);
+					}
 				};
-				const undoInner = um.undo.bind(um);
-				const redoInner = um.redo.bind(um);
-				um.undo = () => {
-					captureTouched(um.undoStack);
-					return undoInner();
-				};
-				um.redo = () => {
-					captureTouched(um.redoStack);
-					return redoInner();
-				};
+				(doc as unknown as { on(e: 'beforeTransaction', f: typeof onBefore): void }).on(
+					'beforeTransaction',
+					onBefore
+				);
 			}
 			return um;
 		};

@@ -689,19 +689,33 @@ export class EdytorSelection {
 		endText: Text = startText,
 		yEnd: number = yStart,
 		isReversed = false,
-		startAffinity?: 'left' | 'right'
+		startAffinity?: 'left' | 'right',
+		mint = this.createTextAnchor
 	): SelectionValue => {
 		const collapsed = startText === endText && yStart === yEnd;
-		const start = this.createTextAnchor(
-			startText,
-			yStart,
-			startAffinity ?? (collapsed ? 'left' : 'right')
-		);
+		const start = mint(startText, yStart, startAffinity ?? (collapsed ? 'left' : 'right'));
 		if (!start) return noSelection;
 		if (collapsed) return textSelection(start);
-		const end = this.createTextAnchor(endText, yEnd, 'left') ?? start;
+		const end = mint(endText, yEnd, 'left') ?? start;
 		return isReversed ? textSelection(end, start) : textSelection(start, end);
 	};
+
+	/**
+	 * A write's intent (R4): `textValue` minted from each text's block record,
+	 * live or not — the atoms of a text that died to a merge live on in the
+	 * block that claimed them, so resolution follows them before any seam.
+	 */
+	#intent = (
+		startText: Text,
+		yStart: number,
+		endText = startText,
+		yEnd = yStart,
+		isReversed = false
+	): SelectionValue =>
+		this.textValue(startText, yStart, endText, yEnd, isReversed, undefined, (text, at, side) => {
+			const block = text.parent?._blockId;
+			return block == null ? null : this.edytor.facade.anchorAt(block, text.segStart + at, side);
+		});
 
 	/**
 	 * A dead-endpoint recovery pass that found no mounted editable
@@ -2706,13 +2720,12 @@ export class EdytorSelection {
 		const lookup = () => (textOrId instanceof Text ? textOrId : this.edytor.getTextById(textOrId));
 		const callText = lookup();
 		const clamp = (text: Text) => Math.min(Math.max(textOffset, 0), text.length);
-		const intended = callText?._live ? this.textValue(callText, clamp(callText)) : null;
-		// The model fallback: the anchors minted now, else (a text created or
-		// already gone at call time) the ones its wrapper answers then.
+		const intended = callText && this.#intent(callText, clamp(callText));
+		// The model fallback: the anchors minted now, else (a text created
+		// after the call) the ones its wrapper answers then.
 		const fallback = () => {
-			const text = lookup();
-			const late = text?._live ? this.textValue(text, clamp(text)) : noSelection;
-			this.#admit(intended ?? late, text ?? callText);
+			const text = lookup() ?? callText;
+			this.#admit(intended ?? (text ? this.#intent(text, clamp(text)) : noSelection), text);
 		};
 
 		// Same staleness contract as `setAtRange`: the `getTextNode` awaits
@@ -3112,7 +3125,7 @@ export class EdytorSelection {
 			isReversed: stateAtCall.isReversed
 		};
 		const previousCaret = this.caretSignature();
-		const intended = this.textValue(
+		const intended = this.#intent(
 			startText,
 			startOffset,
 			endText,

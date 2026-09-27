@@ -9,8 +9,9 @@
  * displayable stop at or after the slot, else the end of the last one before
  * it; with neither, the same question one level up (the parent's own content
  * is then the stop before the slot). A stop descends: forward, a block's own
- * content, then its children in order; backward, its children last first,
- * then its own content.
+ * content, then its children in order; backward, its own content's end
+ * (`sel.seam.next-sibling`: "the previous sibling's end"), else its children
+ * last first.
  *
  * `displayable` is the Surface's fact (§2.4: the cell is mounted and not
  * hidden by view state — a collapsed toggle, a snippet that did not render
@@ -48,8 +49,9 @@ export const seam = (
 	const first = (id: BlockId): SeamPoint | null =>
 		displayable(id) ? { block: id, offset: 0 } : pick(doc.childSlots(id), first);
 	const last = (id: BlockId): SeamPoint | null =>
-		pick([...doc.childSlots(id)].reverse(), last) ??
-		(displayable(id) ? { block: id, offset: doc.displayLength(id) } : null);
+		displayable(id)
+			? { block: id, offset: doc.displayLength(id) }
+			: pick([...doc.childSlots(id)].reverse(), last);
 	const pick = (slots: readonly Slot[], stop: (id: BlockId) => SeamPoint | null) => {
 		for (const slot of slots) {
 			const found = stop(slot.id);

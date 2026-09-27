@@ -130,6 +130,13 @@ describe('V3 — seam of a vanished endpoint (doc/anchors)', () => {
 		}
 	);
 
+	it('V3 fix (collab DST seed 3): the previous sibling end is its own content end, before its children', async () => {
+		const seam = await seamOf();
+		const { ed } = facadeOf([b('prev', 'own!!', [b('kid', 'kid')]), b('gone', 'gg')]);
+		ed.deleteBlock('gone');
+		expect(seam(ed, 'gone', all)).toEqual({ block: 'prev', offset: 5 });
+	});
+
 	row(
 		'F-S14 (doc half): a hidden subtree is skipped; the answer continues in document order',
 		async () => {

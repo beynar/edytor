@@ -431,6 +431,31 @@ describe('writes capture anchors at call time (L21 writeCollapsed…)', () => {
 		}
 	);
 
+	it('V3 fix: a caret write aimed at a text that already died to a merge follows its atoms, not the seam', async () => {
+		const { edytor } = await renderDomEdytor(
+			<root>
+				<paragraph>alpha</paragraph>
+				<paragraph>beta</paragraph>
+				<paragraph>gamma</paragraph>
+			</root>,
+			{ autoSelectFixture: false }
+		);
+		const [alpha, beta] = edytor.root!.children;
+		const dead = beta!.firstText;
+		await setNativeSelection(edytor, dead, 2);
+		const remote = peer(edytor);
+		remote.facade.mergeBackward(beta!.id);
+		await remote.push();
+		expect(dead._live).toBe(false);
+		await edytor.selection.setAtTextOffset(dead, 2);
+		await flushDomUpdates();
+		expect(texts(edytor)).toEqual(['alphabeta', 'gamma']);
+		// The merged-into block (anchor contract: a dead text's atoms are
+		// followed through its record), never the seam's next sibling `gamma`.
+		expect(caret(edytor)).toMatchObject({ block: alpha!.id, isCollapsed: true });
+		expect(edytor.selection.state.startText?._live).toBe(true);
+	});
+
 	pin('a range write whose blocks die while it waits lands at the seam', async () => {
 		const { edytor } = await renderDomEdytor(
 			<root>

@@ -19,6 +19,7 @@
 		"format": "prettier --write .",
 		"test:integration": "env -u FORCE_COLOR -u NO_COLOR playwright test",
 		"test:integration:serial": "env -u FORCE_COLOR -u NO_COLOR playwright test --workers=1",
+		"test:cdp": "env -u FORCE_COLOR -u NO_COLOR playwright test --project=cdp",
 		"test:dst": "env -u FORCE_COLOR -u NO_COLOR playwright test --config=playwright.dst.config.ts",
 		"test:dst:solo": "env -u FORCE_COLOR -u NO_COLOR playwright test --config=playwright.dst.config.ts editor-dst.spec.ts",
 		"test:dst:collab": "env -u FORCE_COLOR -u NO_COLOR playwright test --config=playwright.dst.config.ts editor-collab-dst.spec.ts",

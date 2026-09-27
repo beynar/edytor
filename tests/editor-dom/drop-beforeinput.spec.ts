@@ -151,9 +151,7 @@ test.describe('browser drop behavior', () => {
 		});
 
 		expect(result).toEqual({ dragoverPrevented: true, dropPrevented: true });
-		await expect
-			.poll(() => readBlockContent(page, 1))
-			.toEqual([{ text: 'noBoldte' }]);
+		await expect.poll(() => readBlockContent(page, 1)).toEqual([{ text: 'noBoldte' }]);
 
 		issues.assertClean();
 	});

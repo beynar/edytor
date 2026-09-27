@@ -2,9 +2,6 @@
 import { expect } from 'vitest';
 
 import { EDYTOR_FRAGMENT_MIME, readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
-import { htmlPlugin } from '$lib/plugins/html/htmlPlugin.js';
-import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
-import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
 	clickText,
 	dispatchClipboardPaste,
@@ -230,116 +227,6 @@ export const fixtures = defineFixtures([
 			yStart: 5,
 			yEnd: 5,
 			isCollapsed: true
-		}
-	}),
-	defineDomFixture({
-		description: 'invalid html mappings fail before replacing the current selection',
-		plugins: [
-			htmlPlugin({
-				blocks: {
-					div: () => ({ type: 'missing-block' })
-				}
-			}),
-			mentionPlugin,
-			richTextPlugin
-		],
-		input: (
-			<root>
-				<paragraph>Keep |this| text</paragraph>
-			</root>
-		),
-		run: async ({ edytor }) => {
-			const event = new Event('paste', {
-				bubbles: true,
-				cancelable: true
-			}) as ClipboardEvent;
-
-			Object.defineProperty(event, 'clipboardData', {
-				value: {
-					getData: (type: string) => {
-						if (type === 'text/html') {
-							return '<div>Bad mapping</div>';
-						}
-						if (type === 'text/plain') {
-							return 'Plain fallback';
-						}
-						return '';
-					}
-				} satisfies Pick<DataTransfer, 'getData'>,
-				configurable: true
-			});
-
-			await expect(edytor.onPaste(event)).rejects.toThrow('missing-block');
-
-			return {
-				defaultPrevented: event.defaultPrevented
-			};
-		},
-		output: (
-			<root>
-				<paragraph>Keep this text</paragraph>
-			</root>
-		),
-		expectSelection: {
-			startBlockPath: [0],
-			yStart: 5,
-			yEnd: 9,
-			isCollapsed: false
-		},
-		assert: ({ result }) => {
-			expect((result as { defaultPrevented: boolean }).defaultPrevented).toBe(true);
-		}
-	}),
-	defineDomFixture({
-		description: 'invalid default html mappings fail before replacing the current selection',
-		plugins: [htmlPlugin({}), mentionPlugin, richTextPlugin],
-		input: (
-			<root>
-				<paragraph>Keep |this| text</paragraph>
-			</root>
-		),
-		run: async ({ edytor }) => {
-			edytor.blocks.delete('heading');
-
-			const event = new Event('paste', {
-				bubbles: true,
-				cancelable: true
-			}) as ClipboardEvent;
-
-			Object.defineProperty(event, 'clipboardData', {
-				value: {
-					getData: (type: string) => {
-						if (type === 'text/html') {
-							return '<h1>Bad default mapping</h1>';
-						}
-						if (type === 'text/plain') {
-							return 'Plain fallback';
-						}
-						return '';
-					}
-				} satisfies Pick<DataTransfer, 'getData'>,
-				configurable: true
-			});
-
-			await expect(edytor.onPaste(event)).rejects.toThrow('heading');
-
-			return {
-				defaultPrevented: event.defaultPrevented
-			};
-		},
-		output: (
-			<root>
-				<paragraph>Keep this text</paragraph>
-			</root>
-		),
-		expectSelection: {
-			startBlockPath: [0],
-			yStart: 5,
-			yEnd: 9,
-			isCollapsed: false
-		},
-		assert: ({ result }) => {
-			expect((result as { defaultPrevented: boolean }).defaultPrevented).toBe(true);
 		}
 	})
 ]);

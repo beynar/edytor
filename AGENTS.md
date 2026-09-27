@@ -36,7 +36,7 @@ The repo also still has visible unfinished surfaces:
 - `blockHandlesPlugin` aligns each handle to its block's first rendered text row, or to the header row for island blocks. Shared resize and structural observers update offsets after layout changes, block moves, and readonly transitions; keep the handle beside visible content rather than using the block's outer top edge. The demo block menu positions against the live handle and follows scroll and resize.
 - A block-handle click leaves an atomic block selection. The demo menu clears it on open and returns to a text caret after actions so the selected-row background does not linger. Set the collapsed model caret first (`setCollapsedStateAtTextOffset` clears an atomic selection), then write the DOM caret (`setAtTextOffset`) and focus the editor. A DOM range alone cannot replace an atomic selection.
 - Rich-text list-item, callout, and todo snippets render their own content and nested children in separate direct `div` elements. Demo CSS keeps both in the text column of a grid so a nested block starts on a new row; a flex row would place it inline with the parent text.
-- The HTML paste plugin is only partially wired.
+- HTML import was retired (arch-v2 D8, D-24 G-a): external HTML paste and drop fall back to `text/plain`; a consumer imports HTML through its own `onPaste`.
 - The root demo route is a document-style playground with working selection, slash, and block menus. Test routes remain separate fixtures, not public API examples.
 
 ## Core Mental Model
@@ -249,7 +249,6 @@ Bundled plugins currently include:
 - [src/lib/plugins/mention/MentionPlugin.svelte](/Users/arnaud/code/edytor/src/lib/plugins/mention/MentionPlugin.svelte)
 - [src/lib/plugins/code/CodePlugin.svelte](/Users/arnaud/code/edytor/src/lib/plugins/code/CodePlugin.svelte)
 - [src/lib/plugins/image/ImagePlugin.svelte](/Users/arnaud/code/edytor/src/lib/plugins/image/ImagePlugin.svelte)
-- [src/lib/plugins/html/htmlPlugin.ts](/Users/arnaud/code/edytor/src/lib/plugins/html/htmlPlugin.ts)
 - [src/lib/plugins/arrowMove/arrowMove.ts](/Users/arnaud/code/edytor/src/lib/plugins/arrowMove/arrowMove.ts)
 
 Plugin order matters. Prevention is first-win. README says this, and the runtime agrees.
@@ -318,7 +317,6 @@ High-value files:
 
 Files that signal unfinished work:
 
-- [src/lib/plugins/html/htmlPlugin.ts](/Users/arnaud/code/edytor/src/lib/plugins/html/htmlPlugin.ts): paste flow incomplete
 - [src/lib/utils/serialize.ts](/Users/arnaud/code/edytor/src/lib/utils/serialize.ts): empty file
 - [src/routes/+page.svelte](/Users/arnaud/code/edytor/src/routes/+page.svelte): document-style demo and block action menu
 

@@ -3,7 +3,6 @@
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
-	import { htmlPlugin } from '$lib/plugins/html/htmlPlugin.js';
 	import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
@@ -344,7 +343,6 @@
 		arrowMovePlugin,
 		imagePlugin,
 		codePlugin,
-		htmlPlugin({}),
 		markdownShortcutsPlugin,
 		mentionPlugin,
 		slashMenuPlugin,

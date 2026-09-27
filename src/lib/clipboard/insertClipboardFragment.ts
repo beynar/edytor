@@ -6,12 +6,7 @@ import {
 	type SelectionInsertionTarget,
 	type SelectionReplacementState
 } from '$lib/selection/replaceSelection.js';
-import {
-	jsonBlockToSpec,
-	jsonContentToItems,
-	type JSONBlock,
-	type JSONText
-} from '$lib/utils/json.js';
+import { jsonBlockToSpec, jsonContentToItems, type JSONText } from '$lib/utils/json.js';
 import { id } from '$lib/utils.js';
 import { setSuppressedInputRepairSelectionTarget } from '$lib/events/beforeInputRepairTarget.js';
 import { isValidEdytorClipboardFragment } from './fragmentData.js';
@@ -22,17 +17,16 @@ const run = (content: JSONContentPart[]): FlowLine => ({
 	id: id('b'),
 	content: jsonContentToItems(content, true)
 });
-export const flowOfBlocks = (blocks: JSONBlock[], whole = false): Flow => ({
-	lines: blocks.map((block) => jsonBlockToSpec(block, true)),
-	whole
-});
 export const flowOfText = (text: string, marks?: JSONText['marks']): Flow => ({
 	lines: text.split(/\r\n|\r|\n/).map((line) => run(line ? [{ text: line, marks }] : []))
 });
 export const flowOfFragment = (fragment: EdytorClipboardFragment): Flow =>
 	fragment.kind === 'content'
 		? { lines: [run(fragment.content)] }
-		: flowOfBlocks(fragment.blocks, fragment.whole === true);
+		: {
+				lines: fragment.blocks.map((block) => jsonBlockToSpec(block, true)),
+				whole: fragment.whole === true
+			};
 
 /**
  * Place `flow` (`flow.*`) at `at`, over the selected blocks, or over the

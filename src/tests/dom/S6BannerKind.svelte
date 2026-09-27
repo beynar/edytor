@@ -5,8 +5,7 @@
 	 * `glow`: the slash menu, markdown shortcuts, block menus (`edytor.kinds`)
 	 * and the clipboard's HTML/plain export read these records.
 	 */
-	import type { BlockDefinition, MarkDefinition, Plugin } from '$lib/plugins.js';
-	import type { BlockSnippetPayload, MarkSnippetPayload } from '$lib/plugins.js';
+	import type { BlockSnippetPayload, MarkSnippetPayload, Plugin } from '$lib/plugins.js';
 
 	export const bannerPlugin: Plugin = () => ({
 		blocks: {
@@ -21,17 +20,17 @@
 						markdown: ['!! ']
 					}
 				],
-				html: (block: { data?: Record<string, unknown> }, content: string, children: string) =>
+				html: (block, content, children) =>
 					`<aside data-tone="${block.data?.tone}">${content}</aside>${children}`,
-				plain: (_block: unknown, content: string, children: string) =>
-					[`! ${content}`, children].filter(Boolean).join('\n')
-			} as BlockDefinition
+				plain: (_, content, children) => [`! ${content}`, children].filter(Boolean).join('\n')
+			}
 		},
 		marks: {
 			glow: {
 				snippet: glow,
-				html: 'mark'
-			} as MarkDefinition
+				html: 'mark',
+				toolbar: { label: 'Glow', icon: '✧' }
+			}
 		}
 	});
 </script>

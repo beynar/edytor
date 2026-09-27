@@ -7,7 +7,8 @@ import {
 import {
 	encodeClipboardJson,
 	serializeClipboardFragmentToHtml,
-	serializeClipboardFragmentToPlainText
+	serializeClipboardFragmentToPlainText,
+	type ExportKinds
 } from './serializeClipboardFragment.js';
 
 const decodeJson = <T>(value: string): T => JSON.parse(decodeURIComponent(atob(value))) as T;
@@ -157,13 +158,14 @@ export const readEdytorClipboardFragment = (
 
 export const writeEdytorClipboardData = (
 	data: ClipboardWritable | null | undefined,
-	fragment: EdytorClipboardFragment
+	fragment: EdytorClipboardFragment,
+	kinds: ExportKinds
 ) => {
 	if (!data) {
 		return;
 	}
 
 	data.setData(EDYTOR_FRAGMENT_MIME, encodeClipboardJson(fragment));
-	data.setData('text/html', serializeClipboardFragmentToHtml(fragment));
-	data.setData('text/plain', serializeClipboardFragmentToPlainText(fragment));
+	data.setData('text/html', serializeClipboardFragmentToHtml(fragment, kinds));
+	data.setData('text/plain', serializeClipboardFragmentToPlainText(fragment, kinds));
 };

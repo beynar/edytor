@@ -23,7 +23,13 @@
 			},
 			inlineBlocks: {
 				mention: {
-					snippet: mention
+					snippet: mention,
+					plain: (data) => {
+						const { label, name, title, id } = (data ?? {}) as Record<string, unknown>;
+						const value = label ?? name ?? title ?? id;
+						if (typeof value !== 'string' && typeof value !== 'number') return '@mention';
+						return String(value).startsWith('@') ? String(value) : `@${value}`;
+					}
 				}
 			}
 		};

@@ -56,7 +56,7 @@ export async function onCut(this: Edytor, e: ClipboardEvent) {
 	}
 
 	e.preventDefault();
-	writeEdytorClipboardData(e.clipboardData, fragment);
+	writeEdytorClipboardData(e.clipboardData, fragment, this);
 	// The clipboard is written before the delete, which is one user command.
 	await this.dispatcher.run('deleteByCut', () =>
 		this.selection.selectedBlocks.size > 0

@@ -12,7 +12,7 @@
 	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 	import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
-	import { canConvertBlock } from '$lib/plugins/richtext/richTextOperations.js';
+	import { convertToKind, type KindRow } from '$lib/kinds.js';
 	import type { BlockHandleActivation } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 	import type { Plugin } from '$lib/plugins.js';
 	import './demo.css';
@@ -40,33 +40,7 @@
 			return () => {
 				if (node.id === anchor) node.removeAttribute('id');
 			};
-		},
-		commands: [
-			{
-				id: 'block.code',
-				label: 'Code',
-				group: 'Blocks',
-				keywords: ['code block', 'snippet'],
-				isEnabled: (editor) => canConvertBlock(editor.selection.state.startBlock),
-				run: async (editor) => {
-					const block = editor.selection.state.startBlock;
-					if (!canConvertBlock(block)) return;
-					block.setBlock({
-						value: {
-							type: 'code',
-							content: [{ text: '' }],
-							children: [{ type: 'codeLine', content: [{ text: '' }] }]
-						}
-					});
-					await tick();
-					const line = block.children[0]?.firstText;
-					if (line) {
-						editor.selection.setCollapsedStateAtTextOffset(line, 0);
-						await editor.selection.setAtTextOffset(line, 0);
-					}
-				}
-			}
-		]
+		}
 	});
 	const plugins = [
 		arrowMovePlugin,
@@ -174,18 +148,8 @@
 		]
 	};
 
-	const blockChoices = [
-		{ type: 'paragraph', label: 'Text', icon: 'T', data: {} },
-		{ type: 'heading', label: 'Heading 1', icon: 'H₁', data: { level: 'h1' } },
-		{ type: 'heading', label: 'Heading 2', icon: 'H₂', data: { level: 'h2' } },
-		{ type: 'heading', label: 'Heading 3', icon: 'H₃', data: { level: 'h3' } },
-		{ type: 'bulleted-list-item', label: 'Bulleted list', icon: '•', data: {} },
-		{ type: 'numbered-list-item', label: 'Numbered list', icon: '1.', data: {} },
-		{ type: 'todo-item', label: 'To-do list', icon: '☐', data: { checked: false } },
-		{ type: 'quote', label: 'Quote', icon: '❝', data: {} },
-		{ type: 'callout', label: 'Callout', icon: '✦', data: { icon: '✦' } },
-		{ type: 'toggle', label: 'Toggle list', icon: '▸', data: {} }
-	] as const;
+	// "Turn into" rows: the kind catalogue's conversions that keep the block's content.
+	const blockChoices = $derived(edytor?.kinds.filter((kind) => !kind.replaces) ?? []);
 	const activeBlock = $derived(
 		blockMenu && edytor ? edytor.idToBlock.get(blockMenu.blockId) : undefined
 	);
@@ -232,9 +196,9 @@
 		blockMenu = null;
 		void restoreCaret(next);
 	};
-	const transformBlock = (choice: (typeof blockChoices)[number]) => {
+	const transformBlock = (choice: KindRow) => {
 		const block = activeBlock;
-		block?.setBlock({ value: { type: choice.type, data: choice.data } });
+		if (edytor) convertToKind(edytor, block, choice);
 		blockMenu = null;
 		void restoreCaret(block);
 	};
@@ -498,7 +462,7 @@
 		>
 			<div class="block-menu-heading">Turn into</div>
 			<div class="block-menu-types">
-				{#each blockChoices as choice (choice.label)}
+				{#each blockChoices as choice (choice.id)}
 					<button type="button" role="menuitem" onclick={() => transformBlock(choice)}
 						><span class="block-menu-icon">{choice.icon}</span><span>{choice.label}</span></button
 					>

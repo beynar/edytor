@@ -80,9 +80,6 @@ export const sanitizeLinkHref = (href: unknown): string | null => {
 	}
 };
 
-export const canConvertBlock = (block: Block | null | undefined): block is Block =>
-	Boolean(block?.convertible);
-
 const selectedRangeMutates = (edytor: Edytor) => {
 	const { yStart, yEnd, texts } = edytor.selection.state;
 	return texts.some((text, index) => {
@@ -134,26 +131,6 @@ const normalizeLink = (link: RichTextLink): Record<string, SerializableContent> 
 };
 
 export const richTextOperations = (edytor: Edytor) => ({
-	canConvertCurrentBlock: () => canConvertBlock(edytor.selection.state.startBlock),
-	convertCurrentBlock: ({
-		type,
-		data = {},
-		void: isVoid = false
-	}: {
-		type: string;
-		data?: Record<string, SerializableContent>;
-		void?: boolean;
-	}) => {
-		const block = edytor.selection.state.startBlock;
-		if (!canConvertBlock(block)) {
-			return null;
-		}
-
-		block.setBlock({
-			value: isVoid ? { type, data, content: [], children: [] } : { type, data }
-		});
-		return block;
-	},
 	/**
 	 * Insert a `divider` void block at the caret — the native
 	 * `insertHorizontalRule` semantic — as one command (`insertDivider`, one
@@ -163,7 +140,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 	 */
 	insertDividerAtSelection: () => {
 		const { startBlock: block, startText, yStart, isCollapsed } = edytor.selection.state;
-		if (!canConvertBlock(block) || !block.parent || !block.model || !isCollapsed) return null;
+		if (!block?.convertible || !block.parent || !block.model || !isCollapsed) return null;
 		const { facade, dispatcher } = edytor;
 		const [self, parent] = [block.model.id, block.parent._blockId ?? null];
 		const divider = { id: id('b'), type: 'divider', data: {} };

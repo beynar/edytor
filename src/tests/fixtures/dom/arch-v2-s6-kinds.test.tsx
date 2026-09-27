@@ -16,7 +16,10 @@
  *   command).
  * - Markdown: every prefix of today's table converts to today's kind and data.
  * - Clipboard export: today's HTML and plain forms for every built-in kind,
- *   mark and atom are unchanged when they come from records.
+ *   mark and atom are unchanged when they come from records; marks wrap in
+ *   registration order (first innermost), the order the toolbar shows.
+ * - Toolbar: the mark buttons are the mark records' toolbar entries; a new
+ *   mark record with one gets a button.
  *
  * Expected values come from the plan rows and today's tables, never from
  * running the code.
@@ -31,6 +34,7 @@ import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
+import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import { bannerPlugin } from '../../dom/S6BannerKind.svelte';
 import {
 	canonicalTree,
@@ -42,7 +46,7 @@ import {
 } from '../../dom/test.utils.js';
 
 /** Red on the reference; green since S6. */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -99,8 +103,7 @@ describe('extension cost: a new kind and a new mark are one record each (§10 (a
 
 	row('catalogue: block menus read the kind row from edytor.kinds', async () => {
 		const { edytor } = await render([bannerPlugin]);
-		const kinds = (edytor as unknown as { kinds: { id: string; label: string }[] }).kinds;
-		expect(kinds.find((kind) => kind.id === 'block.banner')).toMatchObject({
+		expect(edytor.kinds.find((kind) => kind.id === 'block.banner')).toMatchObject({
 			label: 'Banner',
 			icon: '⚑',
 			value: { type: 'banner', data: { tone: 'info' } }
@@ -235,7 +238,6 @@ describe('clipboard export: the HTML and plain forms come from records', () => {
 					{ text: 'u', marks: { underline: true } },
 					{ text: 's', marks: { strike: true } },
 					{ text: 'k', marks: { code: true } },
-					{ text: 'x', marks: { bold: true, code: true } },
 					{ text: 'y', marks: { bold: true, italic: true } },
 					{ text: '<&>' }
 				]
@@ -261,13 +263,21 @@ describe('clipboard export: the HTML and plain forms come from records', () => {
 		]
 	};
 
+	row('marks wrap in registration order, first innermost (the toolbar order)', async () => {
+		const { edytor, editor } = await render([], {
+			children: [{ type: 'paragraph', content: [{ text: 'x', marks: { code: true, bold: true } }] }]
+		});
+		// The reference's exporter hard-coded code innermost: `<strong><code>x</code></strong>`.
+		expect((await copyAll(edytor, editor)).html).toBe('<p><code><strong>x</strong></code></p>');
+	});
+
 	pin('every built-in kind, mark and atom keeps its export form', async () => {
 		const { edytor, editor } = await render([codePlugin, imagePlugin], doc);
 		expect(await copyAll(edytor, editor)).toEqual({
 			html: [
 				'<h2>Title</h2>',
 				'<p>a<strong>b</strong><em>i</em><u>u</u><s>s</s><code>k</code>',
-				'<strong><code>x</code></strong><em><strong>y</strong></em>&lt;&amp;&gt;</p>',
+				'<em><strong>y</strong></em>&lt;&amp;&gt;</p>',
 				'<blockquote>q</blockquote>',
 				'<li>one<li>two</li></li>',
 				'<li data-edytor-todo-item="true"><input type="checkbox" checked>done</li>',
@@ -282,7 +292,7 @@ describe('clipboard export: the HTML and plain forms come from records', () => {
 			].join(''),
 			plain: [
 				'Title',
-				'abiuskxy<&>',
+				'abiusky<&>',
 				'q',
 				'one',
 				'two',
@@ -297,5 +307,50 @@ describe('clipboard export: the HTML and plain forms come from records', () => {
 				'[ ] open'
 			].join('\n')
 		});
+	});
+});
+
+describe('toolbar: mark buttons come from mark records', () => {
+	const buttons = () =>
+		[
+			...document.querySelectorAll(
+				'[data-testid="selection-toolbar"] button[data-testid^="toolbar-"]'
+			)
+		]
+			.filter((button) => !/link/.test(button.getAttribute('data-testid') ?? ''))
+			.map(
+				(button) =>
+					`${button.getAttribute('data-testid')} ${button.getAttribute('aria-label')} ${button.textContent}`
+			);
+
+	const selected = (
+		<root>
+			<paragraph>|Hello|</paragraph>
+		</root>
+	);
+
+	pin('built-in marks keep their buttons, order, labels and icons', async () => {
+		await renderDomEdytor(selected, { plugins: [richTextPlugin, mentionPlugin, toolbarPlugin] });
+		expect(buttons()).toEqual([
+			'toolbar-bold Bold B',
+			'toolbar-italic Italic I',
+			'toolbar-underline Underline U',
+			'toolbar-strike Strike S',
+			'toolbar-code Code </>'
+		]);
+	});
+
+	row('a new mark record with a toolbar entry gets a button that toggles it', async () => {
+		const { edytor } = await renderDomEdytor(selected, {
+			plugins: [richTextPlugin, mentionPlugin, toolbarPlugin, bannerPlugin]
+		});
+		expect(buttons().at(-1)).toBe('toolbar-glow Glow ✧');
+		const button = document.querySelector('[data-testid="toolbar-glow"]') as HTMLElement;
+		button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+		button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+		await flushDomUpdates();
+		expect(canonicalTree(edytor)).toEqual([
+			{ type: 'paragraph', content: [{ text: 'Hello', marks: { glow: true } }] }
+		]);
 	});
 });

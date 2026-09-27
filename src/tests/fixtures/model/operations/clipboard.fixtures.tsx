@@ -76,7 +76,7 @@ export const fixtures = defineFixtures([
 				throw new Error('Expected a clipboard fragment');
 			}
 			const { clipboardData, data } = createClipboardData();
-			writeEdytorClipboardData(clipboardData, fragment);
+			writeEdytorClipboardData(clipboardData, fragment, edytor);
 			return {
 				written: data,
 				fragment: readEdytorClipboardFragment(clipboardData)
@@ -206,7 +206,7 @@ export const fixtures = defineFixtures([
 				throw new Error('Expected a clipboard fragment');
 			}
 			const { clipboardData, data } = createClipboardData();
-			writeEdytorClipboardData(clipboardData, fragment);
+			writeEdytorClipboardData(clipboardData, fragment, edytor);
 			const encoded = data.get('text/html')?.match(/data-edytor-fragment="([^"]+)"/)?.[1];
 			if (!encoded) {
 				throw new Error('Expected embedded clipboard fragment');
@@ -263,7 +263,7 @@ export const fixtures = defineFixtures([
 				throw new Error('Expected a clipboard fragment');
 			}
 			const { data, clipboardData } = createClipboardData();
-			writeEdytorClipboardData(clipboardData, fragment);
+			writeEdytorClipboardData(clipboardData, fragment, edytor);
 			return data.get('text/plain');
 		},
 		assert: ({ result }) => {

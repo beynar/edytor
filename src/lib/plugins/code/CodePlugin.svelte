@@ -125,10 +125,15 @@
 					snippet: code,
 					island: true,
 					rendersContent: false,
-					defaultChild: 'codeLine'
+					defaultChild: 'codeLine',
+					presets: [
+						{ label: 'Code', icon: '</>', keywords: ['code block', 'snippet'], markdown: ['```'] }
+					],
+					empty: { content: [], children: [{ type: 'codeLine', content: [{ text: '' }] }] }
 				},
 				codeLine: {
 					snippet: codeLine,
+					html: (_, content) => `<pre><code>${content}</code></pre>`,
 					transformText: ({ text }) => {
 						const tokens = Prism.tokenize(text.stringContent, Prism.languages['jsx']);
 						return tokens.map((token) => {

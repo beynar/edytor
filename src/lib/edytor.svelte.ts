@@ -64,6 +64,7 @@ import {
 	prepareFlow
 } from './edytor.utils.js';
 import { Dispatcher } from './session/commands.js';
+import { kindCatalogue, kindCommand, type KindRow } from './kinds.js';
 import {
 	getSelectionReplacementState,
 	replaceSelectedBlocksWithEmptyBlockTarget,
@@ -167,6 +168,8 @@ export class Edytor {
 	blocks = new Map<string, BlockDefinition>();
 	inlineBlocks = new Map<string, InlineBlockDefinition>();
 	commands = new Map<string, EditorCommand>();
+	/** The kind catalogue: one row per preset of each kind record (slash, markdown, block menus). */
+	kinds: KindRow[] = [];
 	plugins: InitializedPlugin[];
 	container = $state<HTMLDivElement>();
 	idToBlock = new SvelteMap<string, Block>();
@@ -592,6 +595,11 @@ export class Edytor {
 					});
 				}
 			});
+
+			// Kind records generate their commands; an extension's own command id wins.
+			this.kinds = kindCatalogue(this.blocks);
+			for (const row of this.kinds)
+				if (!this.commands.has(row.id)) this.commands.set(row.id, kindCommand(this, row));
 
 			this.placeholder =
 				placeholder || this.plugins.find((plugin) => plugin.placeholder)?.placeholder;

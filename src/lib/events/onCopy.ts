@@ -37,5 +37,5 @@ export function onCopy(this: Edytor, e: ClipboardEvent) {
 	}
 
 	e.preventDefault();
-	writeEdytorClipboardData(e.clipboardData, fragment);
+	writeEdytorClipboardData(e.clipboardData, fragment, this);
 }

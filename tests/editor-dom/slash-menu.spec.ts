@@ -104,7 +104,6 @@ test.describe('browser slash menu', () => {
 	// S6: the code kind's record is a slash command wherever the code
 	// extension is loaded — the test route, not only the demo.
 	test('lists and runs the code kind from its record', async ({ page }) => {
-		test.fail(true, 'S6 tests first: the code command was demo-only on the reference');
 		const issues = trackPageIssues(page);
 
 		await page.goto('/test/dom?scenario=basic&empty=first');

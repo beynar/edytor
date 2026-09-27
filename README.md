@@ -338,27 +338,32 @@ const MyPlugin = (editor: Edytor) => ({
 
 Blocks are the fundamental building blocks of the editor. They can be paragraphs, headings, lists, or any custom block type.
 
-| Option              | Type       | Description                                                   | Example Use Case                                           |
-| ------------------- | ---------- | ------------------------------------------------------------- | ---------------------------------------------------------- |
-| `snippet`           | `Snippet`  | Svelte snippet for rendering the block                        | Defining how a code block renders with syntax highlighting |
-| `void`              | `boolean`  | If true, block is not editable but can have editable captions | Image blocks with editable captions                        |
-| `island`            | `boolean`  | If true, block is editable but structurally isolated          | Code blocks that should be merged with other blocks        |
-| `transformText`     | `Function` | Transform text content within the block                       | Adding syntax highlighting to code blocks in real-time     |
-| `onFocus`           | `Function` | Called when block receives focus                              | Showing a toolbar when focusing a heading block            |
-| `onBlur`            | `Function` | Called when block loses focus                                 | Make an indicator disapear                                 |
-| `onSelect`          | `Function` | Called when block is selected                                 | Showing resize handles when selecting an image block       |
-| `onDeselect`        | `Function` | Called when block is deselected                               | Hiding UI controls when deselecting a block                |
-| `normalizeContent`  | `Function` | Normalize block content after operations                      | Ensuring list items always start with a bullet point       |
-| `normalizeChildren` | `Function` | Normalize block children after operations                     | Ensuring table cells are properly structured               |
-| `schema`            | `any`      | Schema for synchronization state data                         | Defining the structure of a table block's metadata         |
+| Option              | Type                  | Description                                                                                                                                                                                                                                | Example Use Case                                                   |
+| ------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| `snippet`           | `Snippet`             | Svelte snippet for rendering the block                                                                                                                                                                                                     | Defining how a code block renders with syntax highlighting         |
+| `void`              | `boolean`             | If true, block is not editable but can have editable captions                                                                                                                                                                              | Image blocks with editable captions                                |
+| `island`            | `boolean`             | If true, block is editable but structurally isolated                                                                                                                                                                                       | Code blocks that should be merged with other blocks                |
+| `presets`           | `Array`               | Ways to create the kind: `{label, icon?, keywords?, data?, markdown?}` each; the slash menu, markdown shortcuts and block menus (`edytor.kinds`) are generated from them (command id `block.<type>`, numbered from 1 with several presets) | `{ label: 'Heading 2', data: { level: 'h2' }, markdown: ['## '] }` |
+| `empty`             | `object`              | Content and children a conversion into the kind replaces the block's own with                                                                                                                                                              | A code block starting with one empty code line                     |
+| `html` / `plain`    | `string` / `Function` | Clipboard export forms (a tag wrapping content then children, or a function of the block and its serialized content and children); default `<p>` and text lines                                                                            | `html: 'blockquote'`                                               |
+| `transformText`     | `Function`            | Transform text content within the block                                                                                                                                                                                                    | Adding syntax highlighting to code blocks in real-time             |
+| `onFocus`           | `Function`            | Called when block receives focus                                                                                                                                                                                                           | Showing a toolbar when focusing a heading block                    |
+| `onBlur`            | `Function`            | Called when block loses focus                                                                                                                                                                                                              | Make an indicator disapear                                         |
+| `onSelect`          | `Function`            | Called when block is selected                                                                                                                                                                                                              | Showing resize handles when selecting an image block               |
+| `onDeselect`        | `Function`            | Called when block is deselected                                                                                                                                                                                                            | Hiding UI controls when deselecting a block                        |
+| `normalizeContent`  | `Function`            | Normalize block content after operations                                                                                                                                                                                                   | Ensuring list items always start with a bullet point               |
+| `normalizeChildren` | `Function`            | Normalize block children after operations                                                                                                                                                                                                  | Ensuring table cells are properly structured                       |
+| `schema`            | `any`                 | Schema for synchronization state data                                                                                                                                                                                                      | Defining the structure of a table block's metadata                 |
 
 ### Mark Definitions
 
 Marks are used for text formatting like bold, italic, or custom formatting.
 
-| Option    | Type      | Description                           | Example Use Case                                          |
-| --------- | --------- | ------------------------------------- | --------------------------------------------------------- |
-| `snippet` | `Snippet` | Svelte snippet for rendering the mark | Rendering highlighted text with a custom background color |
+| Option    | Type                 | Description                                                                                                                         | Example Use Case                                          |
+| --------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `snippet` | `Snippet`            | Svelte snippet for rendering the mark                                                                                               | Rendering highlighted text with a custom background color |
+| `html`    | `string \| Function` | Clipboard HTML form: a tag, or a function of the inner HTML and the mark's value; marks wrap in registration order, first innermost | `html: 'strong'`                                          |
+| `toolbar` | `{label, icon}`      | A selection-toolbar button toggling the mark                                                                                        | `{ label: 'Bold', icon: 'B' }`                            |
 
 ### Plugin Operations
 
@@ -393,7 +398,7 @@ Edytor handles clipboard operations from the model, not by cloning rendered DOM.
 - Paste, drop and programmatic fragment insertion place content with one rule (`flow.*` in `docs/editor-delete-contract.md`): one line joins the text at the caret; several lines split the block, the first joining the text before the caret and the last the text after it (`Hello|World` + `X`, `Y` → `HelloX`, `YWorld`, for internal, HTML and multi-line plain text alike); a copy of selected blocks pastes as whole blocks after the caret block.
 - Copy is allowed in readonly mode. Cut and paste are ignored in readonly mode.
 - Copy does not create a history entry. Cut and paste each create one undoable mutation.
-- Clipboard serialization is currently core-owned. Plugin-specific serializers are intentionally deferred until there is a second concrete plugin need.
+- The HTML and plain flavours come from the records: each block kind's `html`/`plain`, each mark's `html`, each inline block's `plain`; a kind without one exports as `<p>` and its text.
 
 ### Prevention in Plugin Operations
 

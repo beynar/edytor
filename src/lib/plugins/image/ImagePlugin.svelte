@@ -10,7 +10,8 @@
 			blocks: {
 				image: {
 					void: true,
-					snippet: image
+					snippet: image,
+					html: (_, caption) => `<figure><figcaption>${caption}</figcaption></figure>`
 				}
 			}
 		};

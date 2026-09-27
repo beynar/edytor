@@ -52,7 +52,9 @@ describe('attachment lifecycle maps', () => {
 
 		currentAttachment.destroy();
 
+		// A live block stays registered without an element: a moved block's
+		// element is re-created where it moved (R2); `_drop` unregisters it.
 		expect(block.node).toBeUndefined();
-		expect(edytor.idToBlock.has(block.id)).toBe(false);
+		expect(edytor.idToBlock.get(block.id)).toBe(block);
 	});
 });

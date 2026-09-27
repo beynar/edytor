@@ -286,8 +286,8 @@ test.describe('composition node lock against remote/model edits', () => {
 		await stashCompositionDom(page, 1);
 
 		// Local formatting op on the host mid-composition (e.g. a hotkey or
-		// plugin call): `markText` → `refreshFromModel` bumps `domVersion`,
-		// which is part of the content each-key — the naive path remounts the
+		// plugin call): `markText` re-renders the host from its cell; the pin
+		// (`surface/pin`) keeps the frozen render — no path remounts the
 		// span out from under the IME.
 		await page.evaluate(() => {
 			const edytor = (window as EdytorWindow).__EDYTOR__;

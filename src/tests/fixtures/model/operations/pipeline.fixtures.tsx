@@ -9,10 +9,9 @@
  *   for `defaultChild`, `clear()` and the empty-root bootstrap (arch-v2
  *   D3 / D-13: `getDefaultBlock` and its implicit caret-block argument
  *   became `defaultChild(parent)` over adopted data).
- * - D20: `transformText` memoizes — repeated `children`/`renderChildren`
- *   reads do not re-run the transformer.
- * - D21: pending text-carrier aliases retire with their owner — a dead
- *   id never resolves to a dead wrapper.
+ * - D21 (R2): a pending text carrier merged into a live segment retires;
+ *   there is no alias, so its id resolves to nothing. (D20's transform memo
+ *   left with the wrapper render state: cells feed `transformText`.)
  * - `onDeselect`: fires when a block leaves the selected set.
  */
 import { expect, vi } from 'vitest';
@@ -333,41 +332,7 @@ export const fixtures = defineFixtures([
 	}),
 	defineModelOperationFixture({
 		description:
-			'memoizes transformText output across repeated children/renderChildren reads (D20)',
-		input: emptyFixture,
-		run: () => null,
-		assert: () => {
-			const transformText = vi.fn(({ content }: { content: { text: string }[] }) => content);
-			const transformPlugin: Plugin = (editor) => ({
-				blocks: {
-					// Extend the rich-text definition so `marks`/lifecycle stay
-					// intact; listed first, since the first definition wins (D-11).
-					paragraph: { ...(richTextPlugin(editor).blocks!.paragraph as object), transformText }
-				}
-			});
-
-			const { edytor } = createTestEdytor(emptyFixture, {
-				plugins: [transformPlugin, richTextPlugin],
-				value: { children: [{ type: 'paragraph', content: [{ text: 'seed' }] }] }
-			});
-			const text = edytor.root!.children[0].content[0] as Text;
-
-			transformText.mockClear();
-			const first = text.children;
-			expect(text.children).toBe(first);
-			expect(text.renderChildren).toBe(text.renderChildren);
-			expect(transformText).toHaveBeenCalledTimes(1);
-
-			// A source change re-derives exactly once per state.
-			text.insertAt(text.length, '!');
-			text.children;
-			text.children;
-			expect(transformText).toHaveBeenCalledTimes(2);
-		}
-	}),
-	defineModelOperationFixture({
-		description:
-			'retires pending text-carrier aliases when the owner wrapper dies (D21) — no dead-id → dead-wrapper resolution',
+			'retires a pending text carrier merged into a live segment — its id resolves to nothing (R2: no aliasing)',
 		input: emptyFixture,
 		run: () => null,
 		assert: () => {
@@ -377,29 +342,14 @@ export const fixtures = defineFixtures([
 			const block = edytor.root!.children[0];
 
 			// Insert a text part adjacent to the existing segment — its atoms
-			// merge into the live segment and the pending carrier is retired
-			// with its id aliased to the owner.
+			// merge into the live segment and the pending carrier is retired.
 			const pending = new Text({ parent: block, content: [{ text: 'c' }] });
 			block.insertParts(1, [pending]);
 
 			expect(block.content).toHaveLength(1);
-			const aliasIds = [...edytor.idToText.keys()].filter((key) => key.startsWith('t_'));
-			expect(aliasIds).toHaveLength(1);
-			const owner = edytor.idToText.get(aliasIds[0])!;
-			expect(owner._live).toBe(true);
-			expect(owner._pendingAliases?.has(aliasIds[0])).toBe(true);
-			expect(edytor.getTextById(aliasIds[0])).toBe(owner);
-
-			// Emptying the segment keeps the owner alive (the text-first
-			// invariant retains an empty segment), so the alias stays valid…
-			block.deleteParts(0, 1);
-			expect(edytor.idToText.get(aliasIds[0])).toBe(owner);
-
-			// …but killing the owner purges the alias — the map never
-			// resolves a dead id to a dead wrapper.
-			edytor.root!.deleteChildren(0, 1);
-			expect(owner._live).toBe(false);
-			expect(edytor.idToText.get(aliasIds[0])).toBeUndefined();
+			expect((block.content[0] as Text).stringContent).toBe('abc');
+			expect(pending._live).toBe(false);
+			expect(edytor.idToText.get(pending.id)).toBeUndefined();
 			expect([...edytor.idToText.keys()].filter((key) => key.startsWith('t_'))).toHaveLength(0);
 		}
 	}),

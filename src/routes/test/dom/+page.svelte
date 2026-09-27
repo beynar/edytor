@@ -1024,15 +1024,12 @@
 		JSON.stringify(getSelectionSnapshot(secondaryEdytor))
 	);
 
-	// arch-v2 R1: a cell tree next to the editor's mirror, compared on demand by specs.
+	// arch-v2 R1/R2: the cells the editor renders, compared on demand with a fresh build.
 	$effect(() => {
 		const view = edytor;
-		const lib = cellsLib;
-		if (!data.cells || !view || !lib) return;
-		const cells = untrack(() => lib.createCells(view.facade));
+		if (!data.cells || !view || !cellsLib) return;
 		(window as Window & { __EDYTOR_CELLS__?: () => unknown }).__EDYTOR_CELLS__ = () =>
-			compareView(view, cells);
-		return () => cells.dispose();
+			view.cells ? compareView(view, view.cells) : null;
 	});
 
 	$effect(() => {

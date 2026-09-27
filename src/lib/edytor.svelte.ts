@@ -16,6 +16,15 @@ import { type JSONBlock, type JSONDoc } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
 import { Projector } from './surface/projector.svelte.js';
+import {
+	createCells,
+	segmentDeltas,
+	type Cell,
+	type Cells,
+	type RenderDelta,
+	type Segment
+} from './surface/cells.js';
+import { Pin } from './surface/pin.svelte.js';
 import { Block } from './block/block.svelte.js';
 import { Text } from './text/text.svelte.js';
 import { SvelteMap } from 'svelte/reactivity';
@@ -178,6 +187,10 @@ export class Edytor {
 	selection: EdytorSelection;
 	/** The only writer of the DOM selection (R10, `surface/projector`). */
 	readonly projector: Projector = new Projector(this);
+	/** What the components render (R1, R2): one cell per visible block, patched from change reports. */
+	cells = $state.raw<Cells>();
+	/** The IME host pin (`surface/pin`): the composing cell's segment list and render, frozen. */
+	readonly pin = new Pin();
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
 	placeholder?: string | Snippet<[{ block: Block }]>;
@@ -608,6 +621,7 @@ export class Edytor {
 
 		this.undoManager = this.document.history;
 		this.history.bind();
+		this.cells = createCells(this.facade);
 		this.root = new Block({
 			edytor: this,
 			blockId: null
@@ -711,10 +725,6 @@ export class Edytor {
 		this._treeCache = { version, doc, index };
 		return this._treeCache;
 	};
-
-	/** Full projected subtree of a visible block id (null when hidden/deleted). */
-	projectedBlock = (blockId: string): ProjectedBlock | null =>
-		this._projectedTree().index.get(blockId) ?? null;
 
 	/** Projected children of `parent` (`null` = root). */
 	projectedChildren = (parent: string | null): ProjectedBlock[] => {
@@ -1087,19 +1097,21 @@ export class Edytor {
 	 * The session end's catch-up display, and the IME post-commit jump rule
 	 * (plan §9.1 rule 5): the browser may move the selection after a commit.
 	 */
-	stabilizeCompositionSelection = async (textOrId: Text | string, offset: number) => {
-		const textId = typeof textOrId === 'string' ? textOrId : textOrId.id;
+	stabilizeCompositionSelection = async (caret: Text, at: number) => {
+		// Held across frames and timers: an anchor, not the wrapper or its id (R4).
+		const anchor = this.selection.createTextAnchor(caret, at);
 		const armedSerial = this.intentSerial;
 		const restore = async (disarmedByUserGesture: boolean) => {
 			if (this.readonly || this.isComposing) {
 				return;
 			}
 
-			const text = this.getTextById(textId);
-			if (!text) {
+			const resolved = anchor && this.selection.resolveTextAnchor(anchor);
+			if (!resolved) {
 				return;
 			}
-			const targetOffset = Math.min(offset, text.length);
+			const { text } = resolved;
+			const targetOffset = Math.min(resolved.offset, text.length);
 
 			if (disarmedByUserGesture && this.intentSerial !== armedSerial) {
 				// A real user gesture (click/key/paste) landed after this
@@ -1191,14 +1203,38 @@ export class Edytor {
 
 	deleteBlocks = batch('deleteBlocks', deleteBlocks, prepareDeleteBlocks);
 
-	getTextById = (id: string) => {
-		const isText = id.startsWith('t');
-		if (!isText) {
-			throw new Error('Invalid id, expected text id');
-		}
-
-		return this.idToText.get(id);
+	/**
+	 * The wrapper of the `ordinal`-th text segment of block `id` — the handle
+	 * operations still use (R3/R4) for the element a cell segment renders.
+	 */
+	textAt = (id: string, ordinal: number): Text | undefined => {
+		let k = 0;
+		for (const part of this.idToBlock.get(id)?.content ?? [])
+			if (part instanceof Text && k++ === ordinal) return part;
 	};
+
+	/** The cell segment the element of `text` renders (the frozen list while pinned). */
+	segmentOf = (text: Text): { cell: Cell; segment: Segment } | null => {
+		const cell = this.cells?.get(text.parent.id);
+		const part = cell && this.pin.parts(cell).filter((p) => p.kind === 'text')[text._segOrd];
+		return cell && part?.kind === 'text' ? { cell, segment: part } : null;
+	};
+
+	/** The render deltas the element of `text` shows. */
+	deltasOf = (text: Text): readonly RenderDelta[] => {
+		const at = this.segmentOf(text);
+		if (!at) return [];
+		const { cell, segment } = at;
+		const pinned = this.pin.render(cell.id, segment.key);
+		const transform = this.getBlockDefinition('block', cell.type).transformText;
+		return pinned?.deltas ?? segmentDeltas(cell, segment, transform);
+	};
+
+	/** The wrapper of inline atom `atom` in block `id`. */
+	atomAt = (id: string, atom: string): InlineBlock | undefined =>
+		this.idToBlock
+			.get(id)
+			?.content.find((part): part is InlineBlock => !(part instanceof Text) && part.id === atom);
 
 	clear = () => {
 		const newBlock = this.transact(() => {
@@ -1286,7 +1322,6 @@ export class Edytor {
 				return;
 			}
 
-			const textId = text.id;
 			const offset = this.selection.state.yStart;
 			const applyMeaningfulDomSelection = () => {
 				const selection = getDomSelectionSnapshot(node);
@@ -1334,9 +1369,9 @@ export class Edytor {
 				if (!s.isCollapsed || !s.startText) {
 					return;
 				}
-				const unchanged = s.startText.id === textId && s.yStart === offset;
+				const unchanged = s.startText === text && s.yStart === offset;
 				const focusReset = s.startText === this.root?.firstEditableText && s.yStart === 0;
-				const targetText = unchanged || focusReset ? this.idToText.get(textId) : s.startText;
+				const targetText = unchanged || focusReset ? text : s.startText;
 				const targetOffset = unchanged || focusReset ? offset : s.yStart;
 				if (!targetText?.node?.isConnected) {
 					return;
@@ -1552,6 +1587,7 @@ export class Edytor {
 		// Pending placeholder-repair passes (microtask/rAF/timers) must
 		// never act on a destroyed view — release kills them all.
 		this.placeholderRepair.release();
+		this.cells?.dispose();
 
 		// Wrapper maps — drop every id/node→wrapper edge a shared doc or a
 		// stray mutation could still reach.

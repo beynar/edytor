@@ -570,13 +570,13 @@ export function addInlineBlock(
 		this.insertParts(text.index + 1, [newInlineBlock, newText]);
 	}
 	this.normalizeContent();
-	if (pendingMarks !== undefined) {
-		queueMicrotask(() => {
-			const insertedText = this.edytor.getTextById(newText.id) ?? newText;
-			insertedText.markOnNextInsert = pendingMarks;
-		});
-	}
-	return newText;
+	// The text after the atom, by position: a carrier merged into a segment
+	// already owned by a live wrapper is retired (R2).
+	const at = this.content.findIndex((part) => part.id === newInlineBlock.id);
+	const after = this.content[at + 1];
+	const inserted = at >= 0 && after instanceof Text ? after : newText;
+	if (pendingMarks !== undefined) inserted.markOnNextInsert = pendingMarks;
+	return inserted;
 }
 
 /**

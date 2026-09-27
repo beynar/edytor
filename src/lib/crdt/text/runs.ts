@@ -1549,8 +1549,9 @@ export const bindRuns = (Y: EngineApi) => {
 				content: new Map(),
 				order: new Map()
 			};
-			// Added subtrees carry their descendants: none of them is reported
-			// again as moved, retyped or edited.
+			// Added subtrees carry their new descendants. A descendant that was
+			// visible before is reported like any visible block (moved, retyped,
+			// edited against its published baseline), so consumers keep it (K7).
 			const covered = new Set<BlockId>();
 			if (after !== before) {
 				for (const [parent, ids] of after.order) {
@@ -1561,20 +1562,16 @@ export const bindRuns = (Y: EngineApi) => {
 					if (!after.order.has(parent)) r.order.set(parent, EMPTY_IDS);
 				}
 				const register = (b: ProjectedBlock): void => {
-					covered.add(b.id);
-					if (!before.nodes.has(b.id)) r.added.set(b.id, b);
-					else {
-						// A block that moved into an added subtree is published with it:
-						// its baseline becomes what the subtree carries (K7).
-						const n = after.nodes.get(b.id)!;
-						const rec = blocks.get(b.id)!;
-						Object.assign(n, { type: rec.type, data: rec.data, runs: runs(b.id), key: undefined });
-					}
+					if (!before.nodes.has(b.id)) covered.add(b.id);
 					b.children.forEach(register);
 				};
 				for (const [id, n] of after.nodes) {
-					if (!before.nodes.has(id) && !covered.has(id)) register(projectBlock(id));
-					else if (!covered.has(id)) {
+					if (!before.nodes.has(id)) {
+						if (covered.has(id)) continue;
+						const b = projectBlock(id);
+						r.added.set(id, b);
+						register(b);
+					} else {
 						const o = before.nodes.get(id)!;
 						if (o.parent !== n.parent || o.index !== n.index) r.moved.add(id);
 					}

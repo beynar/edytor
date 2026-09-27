@@ -390,7 +390,7 @@ const refreshSelectionTextFromModel = async (edytor: Edytor, forceDomRefresh = f
 		return;
 	}
 	const offset = edytor.selection.state.yStart;
-	forceDomRefresh ? text.refreshFromModel() : text.syncFromModel();
+	forceDomRefresh ? text.refreshFromModel() : text.refreshFromProject();
 	await tick();
 	scheduleRemoveStalePlaceholders(text);
 	await edytor.selection.setAtTextOffset(text, Math.min(offset, text.length));

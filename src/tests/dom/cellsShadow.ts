@@ -2,16 +2,15 @@
  * arch-v2 R1 — the render-cells shadow in the dom lane (plan §9.1 rule 3,
  * §9.3 R1).
  *
- * Every view gets a cell tree (`surface/cells`) seeded from its document's
- * projection and patched only from the document's change reports, next to
- * today's wrapper mirror. After each step — the end of every synchronous
- * turn in which a report was applied, every `flushDomUpdates()`, and the end
- * of every test — `compareView` (`src/tests/oracles/cells-render-model.ts`)
- * compares what the mirror renders with what the cells render, and the cells
- * with a from-scratch build. A difference no §8 class explains fails the test
+ * Every view renders its cell tree (`edytor.cells`, patched only from the
+ * document's change reports; R2). After each step — the end of every
+ * synchronous turn in which a report was applied, every `flushDomUpdates()`,
+ * and the end of every test — `compareView`
+ * (`src/tests/oracles/cells-render-model.ts`) compares those cells with a
+ * from-scratch build (K7). Any difference fails the test
  * (`endCellsShadowTest`). Census: `CELLS_SHADOW_REPORT=/abs/file.jsonl
  * pnpm test:dom` appends one line per test file.
- * Temporary: removed at R4 with the mirror it compares against.
+ * Temporary: removed at R4.
  */
 import { appendFileSync } from 'node:fs';
 import { expect } from 'vitest';
@@ -20,7 +19,7 @@ import { CLASSES, cellsLib, compareView } from '../oracles/cells-render-model.js
 // Loosely typed: the shadow holds views and cell trees without importing their modules.
 type Any = any;
 
-type Shadow = { edytor: Any; cells: Any };
+type Shadow = { edytor: Any; dispose: () => void };
 
 const shadows = new Set<Shadow>();
 const seen = new WeakSet<object>();
@@ -33,7 +32,7 @@ const register = (edytor: Any) => {
 	} catch {
 		return;
 	}
-	shadows.add({ edytor, cells: cellsLib!.createCells(facade, scheduleTurn) });
+	shadows.add({ edytor, dispose: facade.onChange(scheduleTurn) });
 };
 
 /**
@@ -87,17 +86,17 @@ let testUnexplained: object[] = [];
 const compareOne = (shadow: Shadow, kind: string) => {
 	const { edytor } = shadow;
 	if (edytor.destroyed) {
-		shadow.cells.dispose();
+		shadow.dispose();
 		shadows.delete(shadow);
 		return;
 	}
-	if (!edytor.root) return;
+	if (!edytor.root || !edytor.cells) return;
 	census.steps++;
-	const verdict = compareView(edytor, shadow.cells);
+	const verdict = compareView(edytor, edytor.cells);
 	if (verdict.differences === 0) return;
 	census.differing++;
 	for (const [name, differences] of Object.entries(verdict.byClass)) {
-		const row = CLASSES.find((c) => c.name === name)!.row;
+		const row = CLASSES.find((c) => c.name === name)?.row ?? name;
 		const entry = (census.byClass[name] ??= { row, steps: 0, differences: 0 });
 		entry.steps++;
 		entry.differences += differences;
@@ -121,7 +120,7 @@ export const compareAllCells = (kind: string) => {
 /** Test end: compare, dispose every shadow, and fail on a difference no §8 row explains. */
 export const endCellsShadowTest = () => {
 	compareAllCells('test end');
-	for (const shadow of shadows) shadow.cells.dispose();
+	for (const shadow of shadows) shadow.dispose();
 	shadows.clear();
 	const unexplained = testUnexplained;
 	testUnexplained = [];

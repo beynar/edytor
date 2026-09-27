@@ -4,12 +4,14 @@
 	let {
 		block
 	}: {
-		block: InlineBlock;
+		block: InlineBlock | undefined;
 	} = $props();
 
-	const snippet = $derived(block.definition.snippet);
+	const snippet = $derived(block?.definition.snippet);
 </script>
 
-<span data-edytor-inline-block use:block.attach>
-	{@render snippet({ block })}
-</span>
+{#if block && snippet}
+	<span data-edytor-inline-block use:block.attach>
+		{@render snippet({ block })}
+	</span>
+{/if}

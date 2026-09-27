@@ -17,7 +17,7 @@
 							text: startText,
 							block: { type: 'mention', data: {} }
 						});
-						edytor.dispatcher.caret(after && (edytor.getTextById(after.id) ?? after), 0);
+						edytor.dispatcher.caret(after, 0);
 					});
 				}
 			},

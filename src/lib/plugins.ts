@@ -3,6 +3,7 @@ import type { Edytor } from './edytor.svelte.js';
 import type { Block } from './block/block.svelte.js';
 import type { JSONBlock, JSONInlineBlock, JSONText } from './utils/json.js';
 import type { Text } from './text/text.svelte.js';
+import type { TextTransform } from './surface/cells.js';
 import type { SerializableContent } from './utils/json.js';
 import type { HotKey, HotKeyCombination } from './session/keymap.js';
 import type { TextOperations } from './text/text.utils.js';
@@ -193,8 +194,9 @@ export type BlockDefinition = {
 	 * This transformation is applied after the text is synced in to the state.
 	 *
 	 * You can use it to render custom marks decorations on the text like code tokens that are not stored in the document.
+	 * It receives declared values (R2): the segment's `{stringContent, value}` and the block's `{id, type, data}`.
 	 */
-	transformText?: (payload: { text: Text; block: Block; content: JSONText[] }) => JSONText[];
+	transformText?: TextTransform;
 	/** Called when the block receives focus */
 	onFocus?: (payload: { block: Block }) => void;
 	/** Called when the block loses focus */

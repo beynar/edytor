@@ -32,7 +32,7 @@ import {
 } from '../../dom/test.utils.js';
 
 /** Red on the reference (`arch-v2/ref-r2`); green since R2. */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -204,7 +204,6 @@ describe('a peer atom in the composing block keeps the IME node (D16, BI-13)', (
 			await dispatchComposition(editor, [{ type: 'compositionend', data: 'に' }]);
 			await flushDomUpdates();
 			expect(edytor.value.children?.[0]?.content).toEqual([
-				{ text: '' },
 				{ type: 'mention', id: 'peer-atom', data: {} },
 				{ text: 'abcに' }
 			]);

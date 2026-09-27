@@ -1,24 +1,43 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
+	import type { Edytor } from '$lib/edytor.svelte.js';
 	import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
+	import type { RenderDelta } from '$lib/surface/cells.js';
 	import { Text } from '../text/text.svelte.js';
 	import Mark from './Mark.svelte';
+
+	/**
+	 * One segment of a cell (R2): its render deltas, the empty filler and the
+	 * trailing-newline marker. `text` is the wrapper the element maps to for
+	 * the operations and the selection (R3/R4); a segment re-keyed or shifted
+	 * rebinds it without remounting the element.
+	 */
 	let {
-		text
+		text,
+		deltas,
+		empty,
+		newline,
+		placeholder = false
 	}: {
-		text: Text;
+		text: Text | undefined;
+		deltas: readonly RenderDelta[];
+		empty: boolean;
+		newline: boolean;
+		placeholder?: boolean;
 	} = $props();
 
+	const edytor = getContext<Edytor>('edytor');
 	let hasDomText = $state(false);
 
-	const attachText = (node: HTMLElement, initialText: Text) => {
+	const attachText = (node: HTMLElement, initialText: Text | undefined) => {
 		let attachedText = initialText;
 		// `ReadonlyText.attach` returns undefined — only the live Text
 		// adapter hands back a `{destroy}` handle.
-		let attachment = attachedText.attach(node);
+		let attachment = attachedText?.attach(node);
 
 		return {
-			update(nextText: Text) {
-				if (nextText === attachedText) return;
+			update(nextText: Text | undefined) {
+				if (!nextText || nextText === attachedText) return;
 				attachment?.destroy();
 				attachedText = nextText;
 				attachment = attachedText.attach(node);
@@ -29,7 +48,7 @@
 		};
 	};
 
-	const getDeltaKey = (delta: Text['children'][number], index: number) =>
+	const getDeltaKey = (delta: RenderDelta, index: number) =>
 		`${index}:${JSON.stringify(delta.marks)}`;
 
 	const restoreTextSelectionFromClick = (node: HTMLElement) => {
@@ -62,7 +81,7 @@
 				return;
 			}
 
-			text.edytor.selection.setTextSelectionFromPointer(text, event.clientX, event.clientY);
+			if (text) edytor.selection.setTextSelectionFromPointer(text, event.clientX, event.clientY);
 		};
 
 		node.addEventListener('pointerdown', handlePointerDown);
@@ -79,8 +98,8 @@
 	const focusPlaceholder = (event?: Event) => {
 		event?.preventDefault();
 		event?.stopPropagation();
-		text.edytor.node?.focus();
-		void text.edytor.selection.setAtTextOffset(text, 0);
+		edytor.node?.focus();
+		void edytor.selection.setAtTextOffset(text, 0);
 	};
 
 	const focusPlaceholderWithKeyboard = (event: KeyboardEvent) => {
@@ -137,7 +156,7 @@
 		};
 
 		const removeIfStale = () => {
-			if (text.stringContent.length > 0 || blockHasVisibleText(node)) {
+			if (!text || text.stringContent.length > 0 || blockHasVisibleText(node)) {
 				removeNode();
 			}
 		};
@@ -166,7 +185,7 @@
 		// the commit-scoped queue can't see (a placeholder mounted while
 		// `shouldShowPlaceholder` still holds that gains sibling DOM text
 		// through a browser/mutation path that produced no facade commit).
-		text.edytor.placeholderRepair.addKeyed(node, () => node.parentElement);
+		edytor.placeholderRepair.addKeyed(node, () => node.parentElement);
 
 		return {
 			destroy: () => observer?.disconnect()
@@ -179,8 +198,8 @@
 			// Any observed mutation under a text span can re-park a live DOM
 			// caret — mark it so the trailing selectionchange echo is
 			// reverted, not derived as a user move.
-			text.edytor.markDomSelectionChurn();
-			scheduleRemoveStalePlaceholders(text);
+			edytor.markDomSelectionChurn();
+			if (text) scheduleRemoveStalePlaceholders(text);
 		};
 
 		let observer: MutationObserver | null = null;
@@ -199,24 +218,12 @@
 		};
 	};
 
-	const shouldShowPlaceholder = $derived(
-		text.domVersion >= 0 &&
-			text.parent.content.length === 1 &&
-			text.isEmpty &&
-			!hasDomText &&
-			!text.edytor.isComposing
-	);
+	// The cell's placeholder attribute (§2.4), still gated on the DOM read (L34, R5).
+	const shouldShowPlaceholder = $derived(placeholder && !hasDomText);
 
 	$effect(() => {
-		if (!text.isEmpty || text.stringContent.length > 0) {
-			scheduleRemoveStalePlaceholders(text);
-		}
-	});
-
-	$effect(() => {
-		if (shouldShowPlaceholder) {
-			scheduleRemoveStalePlaceholders(text);
-		}
+		void deltas;
+		if (text && (!empty || shouldShowPlaceholder)) scheduleRemoveStalePlaceholders(text);
 	});
 </script>
 
@@ -227,13 +234,13 @@
 	use:attachText={text}
 	use:trackTextDomContent
 	use:restoreTextSelectionFromClick
-	data-edytor-text-empty={text.isEmpty ? 'true' : 'false'}
+	data-edytor-text-empty={empty ? 'true' : 'false'}
 	style:white-space="break-spaces"
 	><!--
--->{#if text.isEmpty}<!--
+-->{#if empty}<!--
 -->&#8203;<!--
 -->{:else}<!--
-	-->{#each text.renderChildren as delta, index (getDeltaKey(delta, index))}<!--
+	-->{#each deltas as delta, index (getDeltaKey(delta, index))}<!--
 -->{#if delta.marks.length}<!--
 --><Mark
 					{delta}
@@ -245,7 +252,7 @@
 -->{/if}<!--
 -->{/each}<!--
 -->{/if}<!--
--->{#if text.endsWithNewline}<!--
+-->{#if newline}<!--
 --><span
 			class="newline"
 			data-edytor-trailing-newline>&#8203;</span
@@ -253,7 +260,7 @@
 -->{/if}<!--
 --></span
 ><!--
---->{#if shouldShowPlaceholder && text.edytor.placeholder}<!--
+--->{#if shouldShowPlaceholder && text && edytor.placeholder}<!--
 --><span
 		use:removePlaceholderWhenBlockHasText
 		data-edytor-text-placeholder
@@ -265,10 +272,10 @@
 		onclick={focusPlaceholder}
 		onkeydown={focusPlaceholderWithKeyboard}
 	>
-		{#if typeof text.edytor.placeholder === 'string'}
-			{text.edytor.placeholder}
+		{#if typeof edytor.placeholder === 'string'}
+			{edytor.placeholder}
 		{:else}
-			{@render text.edytor.placeholder({ block: text.parent })}
+			{@render edytor.placeholder({ block: text.parent })}
 		{/if}
 	</span><!--
 	-->{/if}

@@ -54,7 +54,7 @@ test.describe('R2 components render from cells', () => {
 	});
 
 	// Red on the reference (`arch-v2/ref-r2`): three whole-editor remounts.
-	test.fail('Tab nests one block without remounting the editor root (F-P9)', async ({ page }) => {
+	test('Tab nests one block without remounting the editor root (F-P9)', async ({ page }) => {
 		await gotoEditorRoute(page, '/test/dom?scenario=basic', { requireRuntime: true });
 		await setSelectionByTextIndex(page, 1, 1);
 		await settle(page);

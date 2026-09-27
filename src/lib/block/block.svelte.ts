@@ -590,7 +590,7 @@ export class Block {
 		// - Text carriers are fungible: when their atoms merged into a segment
 		//   already owned by a live wrapper, the live wrapper keeps the slot
 		//   (v13 merged adjacent pushed Y.Texts the same way). The carrier is
-		//   retired and its id is aliased to the owner so `getTextById` resolves.
+		//   retired: callers find the text at the carrier's position.
 		for (const [idx, wrapper] of this._pendingParts) {
 			if (wrapper instanceof InlineBlock) {
 				const targetIndex = next.findIndex(
@@ -616,23 +616,7 @@ export class Block {
 				}
 				continue;
 			}
-			const sameKind = (k: number) =>
-				k >= 0 && k < next.length && next[k] instanceof Text && parts[k]?.kind === 'text';
-			const targetIndex = [idx, idx - 1, idx + 1].find(sameKind);
-			const old = targetIndex === undefined ? undefined : next[targetIndex];
-			if (old === wrapper) {
-				used.add(wrapper);
-				continue;
-			}
-			const pendingId = wrapper.id;
-			wrapper._kill();
-			if (old instanceof Text) {
-				this.edytor.idToText.set(pendingId, old);
-				// Track the alias on its owner — `Text._kill` purges the
-				// entries it owns, so a dead id can never resolve to a dead
-				// wrapper (D21).
-				(old._pendingAliases ??= new Set()).add(pendingId);
-			}
+			if (!used.has(wrapper)) wrapper._kill();
 		}
 		this._pendingParts.clear();
 
@@ -730,81 +714,92 @@ export class Block {
 		if (parent) this.parent = parent;
 	};
 
-	/** Content parts derived from the CURRENT doc state (mid-transaction safe). */
+	/**
+	 * Content parts derived from the CURRENT doc state — mid-transaction safe
+	 * (read-your-writes) and scoped to this block (`contentItems`, O(this
+	 * block), never a whole-tree projection per keystroke). `null` when the
+	 * block is not bound or not visible.
+	 */
 	projectedParts = (): DerivedContentPart[] | null => {
-		if (!this._bound || this._blockId == null || this._blockId === undefined) {
-			return null;
-		}
-		const node = this.edytor.projectedBlock(this._blockId);
-		return node ? deriveContentParts(node.content) : null;
+		const id = this._blockId;
+		if (!this._bound || id == null || !this.facade.isVisibleBlock(id)) return null;
+		return deriveContentParts(this.facade.contentItems(id));
 	};
 
 	deriveContentParts = deriveContentParts;
 
-	/** Display offset (atoms) of a content part inside this block. */
+	/** Display offset (atoms) where content part `i` starts in the current doc state. */
+	atomOffsetOfPartIndex = (i: number, parts = this.projectedParts()): number => {
+		let off = 0;
+		if (parts) for (let k = 0; k < i && k < parts.length; k++) off += displayLenOfPart(parts[k]);
+		else
+			for (let k = 0; k < i && k < this.content.length; k++) {
+				const p = this.content[k];
+				off += p instanceof Text ? p.length : 1;
+			}
+		return off;
+	};
+
+	/**
+	 * Display offset (atoms) of a content part inside this block — the one
+	 * part → offset mapper (`Text.segStart` reads it). The part is found among
+	 * the current parts by identity (`segOrd`, atom id); the `content` mirror
+	 * may be stale mid-transaction, so its index is only a fallback.
+	 */
 	partOffsetOf = (part: Text | InlineBlock): number => {
 		const parts = this.projectedParts();
-		if (parts) {
-			// Match by live part identity — `segOrd` for text segments, atom id
-			// for inlines. The `content` mirror may be stale mid-transaction,
-			// so `content.indexOf` is only a fallback.
-			const index = parts.findIndex((p) =>
+		let index =
+			parts?.findIndex((p) =>
 				part instanceof Text
 					? p.kind === 'text' && p.segOrd === part._segOrd
 					: p.kind === 'inline' && p.item.id === part.id
-			);
-			if (index !== -1) {
-				let off = 0;
-				for (let i = 0; i < index; i++) {
-					off += displayLenOfPart(parts[i]);
-				}
-				return off;
-			}
-			const mirrorIndex = this.content.indexOf(part);
-			if (mirrorIndex !== -1 && mirrorIndex < parts.length) {
-				let off = 0;
-				for (let i = 0; i < mirrorIndex; i++) {
-					off += displayLenOfPart(parts[i]);
-				}
-				return off;
-			}
-		}
+			) ?? -1;
+		if (index === -1) index = this.content.indexOf(part);
+		if (parts && index !== -1 && index < parts.length)
+			return this.atomOffsetOfPartIndex(index, parts);
+		const at = this.content.indexOf(part);
+		return this.atomOffsetOfPartIndex(at === -1 ? this.content.length : at, null);
+	};
+
+	/**
+	 * The text segment that displays block offset `offset`, and the offset in
+	 * it — the one offset → segment mapper (a boundary before an atom reads
+	 * the text before it). The current parts are the engine-fresh read (a
+	 * wrapper's items can lag a write until the mirror reconciles); the
+	 * wrappers themselves are the fallback.
+	 */
+	textAtOffset = (
+		offset: number,
+		parts = this.projectedParts()
+	): { text: Text; offset: number } | null => {
+		const texts = this.content.filter((part): part is Text => part instanceof Text);
+		const walk = parts
+			? parts.map((p) =>
+					p.kind === 'text'
+						? { text: texts.find((t) => t._segOrd === p.segOrd) ?? null, len: displayLenOfPart(p) }
+						: { text: undefined, len: 1 }
+				)
+			: this.content.map((p) =>
+					p instanceof Text ? { text: p, len: p.length } : { text: undefined, len: 1 }
+				);
 		let off = 0;
-		for (const p of this.content) {
-			if (p === part) return off;
-			off += p instanceof Text ? p.length : 1;
+		let hit: { text: Text | null; offset: number } | null = null;
+		for (const part of walk) {
+			if (part.text !== undefined) {
+				hit = { text: part.text, offset: part.len };
+				if (offset <= off + part.len) {
+					hit.offset = Math.max(0, offset - off);
+					break;
+				}
+			} else if (offset <= off) break;
+			off += part.len;
 		}
-		return off;
+		if (hit?.text) return { text: hit.text, offset: Math.min(hit.offset, hit.text.length) };
+		return parts ? this.textAtOffset(offset, null) : null;
 	};
 
 	/** Display length of the block's content in atoms. */
-	displayLength = (): number => {
-		if (this._bound && this._blockId != null) {
-			const parts = this.projectedParts();
-			if (parts) {
-				return parts.reduce((n, p) => n + displayLenOfPart(p), 0);
-			}
-		}
-		return this.content.reduce((n, p) => n + (p instanceof Text ? p.length : 1), 0);
-	};
-
-	/** Atom offset corresponding to content part index `i` in current doc state. */
-	atomOffsetOfPartIndex = (i: number): number => {
-		const parts = this.projectedParts();
-		if (parts) {
-			let off = 0;
-			for (let k = 0; k < i && k < parts.length; k++) {
-				off += displayLenOfPart(parts[k]);
-			}
-			return off;
-		}
-		let off = 0;
-		for (let k = 0; k < i && k < this.content.length; k++) {
-			const p = this.content[k];
-			off += p instanceof Text ? p.length : 1;
-		}
-		return off;
-	};
+	displayLength = (): number => this.atomOffsetOfPartIndex(Infinity);
 
 	// ── typed content/children mutation surface ─────────────────────────
 	//
@@ -976,7 +971,9 @@ export class Block {
 			destroy: () => {
 				if (this.node === node) {
 					this.node = undefined;
-					if (this.edytor.idToBlock.get(this.id) === this) {
+					// A moved block's element is re-created where it moved (R2):
+					// only a dead wrapper leaves the registry the cells resolve through.
+					if (!this._live && this.edytor.idToBlock.get(this.id) === this) {
 						this.edytor.idToBlock.delete(this.id);
 					}
 				}

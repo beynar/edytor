@@ -23,7 +23,7 @@ const lib = import.meta.glob('../../../lib/surface/cells.ts', { eager: true });
 const { createCells } = Object.values(lib)[0] ?? {};
 
 /** Red on the reference (`arch-v2/ref-r2`); green since R2. */
-const red = test.fails;
+const red = test;
 
 const E = bindEdytorDoc(Y);
 

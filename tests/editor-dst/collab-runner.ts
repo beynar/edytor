@@ -746,7 +746,7 @@ const remoteOverlayStaleness = (page: Page) =>
 		const w = window as Window & {
 			__EDYTOR__?: {
 				awareness?: { getStates?: () => Map<number, Record<string, unknown>> };
-				getTextById?: (id: string) => { _live?: boolean } | undefined;
+				idToText?: { get: (id: string) => { _live?: boolean } | undefined };
 				selection?: {
 					resolveTextAnchor?: (anchor: unknown) => {
 						text: { _live?: boolean; parent?: { id?: string } | null };
@@ -814,7 +814,7 @@ const remoteOverlayStaleness = (page: Page) =>
 			}
 			if (!text && typeof textId === 'string') {
 				try {
-					text = edytor.getTextById?.(textId);
+					text = edytor.idToText?.get(textId);
 				} catch {
 					text = null;
 				}

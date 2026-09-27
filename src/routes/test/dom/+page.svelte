@@ -381,7 +381,7 @@
 			const anchorConsistent = (
 				owner: unknown,
 				anchor: unknown,
-				text: { id?: string; _live?: boolean } | null,
+				text: { id?: string; isInDocument?: boolean } | null,
 				offset: number | null
 			): boolean => {
 				if (anchor == null || text?.id == null || offset == null) return false;
@@ -389,7 +389,7 @@
 					owner as {
 						selection?: {
 							resolveTextAnchor?: (a: unknown) => {
-								text: { id?: string; _live?: boolean };
+								text: { id?: string; isInDocument?: boolean };
 								offset: number;
 							} | null;
 						};
@@ -397,7 +397,7 @@
 				)?.selection?.resolveTextAnchor?.(anchor);
 				return (
 					resolved != null &&
-					resolved.text._live === true &&
+					resolved.text.isInDocument === true &&
 					resolved.text.id === text.id &&
 					resolved.offset === offset
 				);

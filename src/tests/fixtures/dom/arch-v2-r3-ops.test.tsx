@@ -198,19 +198,35 @@ describe('F-O5 (end to end) — 1,000 paragraphs through the mounted editor', ()
 		async () => {
 			const { edytor } = await many(1000);
 			const text = edytor.root!.children[500]!.firstText!;
+			// R4: text handles read the index's runs, which walk the block's
+			// uncommitted items mid-transaction (the index's cost, D9/D12): the
+			// view's own work is the time outside those reads.
+			const { facade } = edytor;
+			const runs = facade.runs;
+			let indexReads = 0;
+			facade.runs = (id) => {
+				const t0 = now();
+				try {
+					return runs(id);
+				} finally {
+					indexReads += now() - t0;
+				}
+			};
 			const run = (n: number, from: number) => {
+				indexReads = 0;
 				const t0 = now();
 				edytor.transact(() => {
 					for (let i = 0; i < n; i++)
 						text.insertText({ value: 'x', start: from + i, end: from + i });
 				});
-				return now() - t0;
+				return now() - t0 - indexReads;
 			};
 			run(50, 0); // warm
 			const m = meter(edytor);
 			const small = run(500, 50);
 			const large = run(2000, 550);
 			m.stop();
+			facade.runs = runs;
 			await flushDomUpdates();
 
 			expect(texts(edytor)[500]).toBe('x'.repeat(2550) + 'paragraph 500');

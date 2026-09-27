@@ -367,10 +367,7 @@ export class EdytorSelection {
 	} | null = null;
 	/** Blocks holding the last selection's endpoints: a suggestion there is cleared when they are left. */
 	#edges: string[] = [];
-	#compat = new WeakMap<
-		SelectionProjection,
-		{ surface: unknown; mirror: number; state: SelectionState }
-	>();
+	#compat = new WeakMap<SelectionProjection, { surface: unknown; state: SelectionState }>();
 
 	constructor(
 		edytor: Edytor,
@@ -394,18 +391,16 @@ export class EdytorSelection {
 	get state(): SelectionState {
 		const projection = this.projection;
 		const surface = this.#surface?.value === this.value ? this.#surface : null;
-		const mirror = this.edytor._docCommitVersion;
 		const hit = this.#compat.get(projection);
-		if (hit && hit.surface === surface && hit.mirror === mirror) return hit.state;
+		if (hit && hit.surface === surface) return hit.state;
 		const state = this.#compatState(this.value, projection, surface);
-		this.#compat.set(projection, { surface, mirror, state });
+		this.#compat.set(projection, { surface, state });
 		return state;
 	}
 
 	#textOf = (block: Block, segment: SelectionSegment | undefined): Text | null => {
 		if (segment?.kind !== 'text') return null;
-		const texts = block.content.filter((part): part is Text => part instanceof Text);
-		return texts.find((text) => text._segOrd === segment.segOrd) ?? texts[segment.segOrd] ?? null;
+		return this.edytor.idToBlock.text(block.id, segment.segOrd);
 	};
 
 	#compatState = (
@@ -626,8 +621,9 @@ export class EdytorSelection {
 		isReversed = false
 	): SelectionValue =>
 		this.textValue(startText, yStart, endText, yEnd, isReversed, undefined, (text, at, side) => {
-			const block = text.parent?._blockId;
-			return block == null ? null : this.edytor.facade.anchorAt(block, text.segStart + at, side);
+			return text.parent.isRoot
+				? null
+				: this.edytor.facade.anchorAt(text.blockId, text.segStart + at, side);
 		});
 
 	/** Ask the projector to display the current value after the flush (R10). */
@@ -1516,11 +1512,8 @@ export class EdytorSelection {
 		offset: number,
 		affinity: 'left' | 'right' = 'left'
 	): TextAnchor | null => {
-		const blockId = text.parent?._blockId;
-		if (blockId == null || !text._live || !this.edytor.facade) {
-			return null;
-		}
-		return this.edytor.facade.anchorAt(blockId, text.segStart + offset, affinity);
+		if (text.parent.isRoot || !text.isInDocument) return null;
+		return this.edytor.facade.anchorAt(text.blockId, text.segStart + offset, affinity);
 	};
 
 	/**
@@ -1614,7 +1607,7 @@ export class EdytorSelection {
 			const state = this.state;
 			if (state.startText) {
 				// The text it was displayed in died while its anchor moved on: display again.
-				if (this.#lastText !== null && !this.#lastText._live) this.display();
+				if (this.#lastText !== null && !this.#lastText.isInDocument) this.display();
 				this.#lastText = state.startText;
 				this.#lastBlock = state.startBlock?.id ?? null;
 				return;

@@ -25,8 +25,9 @@ import {
 	type Segment
 } from './surface/cells.js';
 import { Pin } from './surface/pin.svelte.js';
-import { Block } from './block/block.svelte.js';
-import { Text } from './text/text.svelte.js';
+import type { Block } from './block/block.svelte.js';
+import type { Text } from './text/text.svelte.js';
+import { Handles } from './session/handles.js';
 import { id } from './utils.js';
 import { SvelteMap } from 'svelte/reactivity';
 import { Y } from '$lib/crdt/engine.js';
@@ -170,10 +171,11 @@ export class Edytor {
 	kinds: KindRow[] = [];
 	plugins: InitializedPlugin[];
 	container = $state<HTMLDivElement>();
-	idToBlock = new SvelteMap<string, Block>();
-	idToInlineBlock = new SvelteMap<string, InlineBlock>();
+	/** The view's handles (R4): one id-only `Block` per live id, texts and atoms by position and id. */
+	idToBlock: Handles = new Handles(this);
 	nodeToInlineBlock = new SvelteMap<Node, InlineBlock>();
-	idToText = new SvelteMap<string, Text>();
+	/** The text whose id is `t:<block>:<ordinal>`, while its segment exists. */
+	idToText = { get: (id: string) => this.idToBlock.textById(id) };
 	nodeToText = new SvelteMap<Node, Text>();
 	transaction = new TRANSACTION();
 	hotKeys: Keymap;
@@ -282,13 +284,6 @@ export class Edytor {
 		return sharedCrdt;
 	}
 	/**
-	 * Counts the committed transactions (local, remote, undo/redo) whose
-	 * change report the wrappers were patched from — bumped after the patch,
-	 * so a cache keyed on it (the selection's compatibility state) never holds
-	 * wrappers from before a report (R3: the only mirror write is the commit's).
-	 */
-	_docCommitVersion = 0;
-	/**
 	 * The document's shared undo manager — assigned at the end of `sync()`,
 	 * never in the constructor, so history capture still starts only after
 	 * the document decides its content state (the bootstrap-before-capture
@@ -310,23 +305,31 @@ export class Edytor {
 	/** The view's command dispatcher (R7): every mutation this view makes goes through it. */
 	readonly dispatcher: Dispatcher = new Dispatcher(this);
 
+	/** An outermost `transact` of this view is running. */
+	private transacting = false;
 	/**
-	 * One transaction of this view. The outermost one runs the normalization
-	 * its operations requested once it has committed (the dispatcher's
-	 * passes read the wrappers the commit's report patched).
+	 * One transaction of this view. The outermost call runs the normalization
+	 * its operations requested at its end, inside the same transaction (S1:
+	 * one transaction, normalization once per touched parent): normalizers read
+	 * handles over the index, so a command is one update and a peer never
+	 * sees its un-normalized state.
 	 */
 	transact = <T>(cb: () => T): T => {
 		this.attempts.hold();
-		if (this.doc._transaction) return this.doc.transact(cb, this.transaction);
-		let out: T;
+		if (this.transacting) return this.doc.transact(cb, this.transaction);
+		this.transacting = true;
 		try {
-			out = this.doc.transact(cb, this.transaction);
+			return this.doc.transact(() => {
+				const out = cb();
+				this.dispatcher.drain();
+				return out;
+			}, this.transaction);
 		} catch (error) {
 			this.dispatcher.drain(false);
 			throw error;
+		} finally {
+			this.transacting = false;
 		}
-		this.dispatcher.drain();
-		return out;
 	};
 
 	/** Whether a block move (relative step or beside/inside a target) is structurally allowed. */
@@ -619,16 +622,7 @@ export class Edytor {
 		this.undoManager = this.document.history;
 		this.history.bind();
 		this.cells = createCells(this.facade);
-		this.root = new Block({
-			edytor: this,
-			blockId: null
-		});
-		// Built once from the projection, like the cells; after that the
-		// wrappers change only when a commit's change report is applied (R3).
-		this.root.reconcileChildren(this.facade.project().children);
-		// The root has no facade content node — give it the same empty-text
-		// sentinel mirror shape blocks get so `root.content` invariants hold.
-		this.root.reconcileContent([]);
+		this.root = this.idToBlock.root;
 		this.offCommit = this.facade.onChange(this.onCommit);
 	};
 
@@ -636,9 +630,9 @@ export class Edytor {
 	private offCommit?: () => void;
 
 	/**
-	 * One commit (local, remote, undo/redo): patch the wrappers from its
-	 * change report — the mirror's only write (R3, L16), like the cells' —
-	 * then the selection's seam, the value consumers and the placeholder pass.
+	 * One commit (local, remote, undo/redo): prune the handles of the removed
+	 * blocks, then the selection's seam, the value consumers and the
+	 * placeholder pass.
 	 */
 	private onCommit = (change: DocChange) => {
 		this.valueRevision++;
@@ -650,10 +644,10 @@ export class Edytor {
 		// window must not scroll the page.
 		this.suppressCaretScrollDepth++;
 		try {
-			this.applyReport(change);
-			this._docCommitVersion++;
-			// Kills (`_drop`/`reconcileContent`) never re-resolve the caret's
-			// wrapper — repair a selection that no longer resolves.
+			this.idToBlock.prune(change);
+			// The render of this commit can re-park a live DOM caret.
+			if (change.content.size || change.removed.size) this.markDomSelectionChurn();
+			// Repair a selection that no longer resolves.
 			this.selection?.restoreDeadSelectionEndpoints();
 		} finally {
 			this.suppressCaretScrollDepth--;
@@ -668,40 +662,6 @@ export class Edytor {
 			});
 		}
 		void tick().then(() => this.queuePlaceholderRepair(change));
-	};
-
-	/**
-	 * Patch the wrapper tree from one committed {@link DocChange}: `order`
-	 * lists are authoritative for every parent whose visible children
-	 * changed, `added` roots carry their full projected subtree, `removed`
-	 * ids drop, and every visible child a commit re-placed elsewhere is
-	 * claimed by an `order` list (the contract `mirror.test.ts` builds a
-	 * convergent mirror from). The wrappers see no other write, so the report
-	 * always applies (R3: no mid-transaction flush, no full fallback).
-	 */
-	private applyReport = (change: DocChange) => {
-		const root = this.root;
-		if (!root) return;
-		// Every id a changed parent's new child list names — still visible,
-		// so a doomed subtree keeps the children this commit moved out of it.
-		const claimed = new Set<string>();
-		for (const ids of change.order.values()) for (const id of ids) claimed.add(id);
-		const keep = (id: string) => claimed.has(id);
-		for (const id of change.removed) this.idToBlock.get(id)?._drop(keep);
-		for (const [parentId, ids] of change.order) {
-			// A parent inside an added subtree is built with its root.
-			const parent = parentId === null ? root : this.idToBlock.get(parentId);
-			parent?.reconcileChildren(
-				ids.map((id) => change.added.get(id) ?? id),
-				keep
-			);
-		}
-		for (const [id, meta] of change.meta) {
-			this.idToBlock.get(id)?._reconcileMeta(meta.type, meta.data);
-		}
-		for (const [id, items] of change.content) {
-			this.idToBlock.get(id)?.reconcileContent(items);
-		}
 	};
 
 	/**
@@ -962,20 +922,13 @@ export class Edytor {
 
 	deleteBlocks = batch('deleteBlocks', deleteBlocks, prepareDeleteBlocks);
 
-	/**
-	 * The wrapper of the `ordinal`-th text segment of block `id` — the handle
-	 * operations still use (R3/R4) for the element a cell segment renders.
-	 */
-	textAt = (id: string, ordinal: number): Text | undefined => {
-		let k = 0;
-		for (const part of this.idToBlock.get(id)?.content ?? [])
-			if (part instanceof Text && k++ === ordinal) return part;
-	};
+	/** The handle of the `ordinal`-th text segment of block `id` (the element a cell segment renders). */
+	textAt = (id: string, ordinal: number): Text => this.idToBlock.text(id, ordinal);
 
 	/** The cell segment the element of `text` renders (the frozen list while pinned). */
 	segmentOf = (text: Text): { cell: Cell; segment: Segment } | null => {
 		const cell = this.cells?.get(text.parent.id);
-		const part = cell && this.pin.parts(cell).filter((p) => p.kind === 'text')[text._segOrd];
+		const part = cell && this.pin.parts(cell).filter((p) => p.kind === 'text')[text.ordinal];
 		return cell && part?.kind === 'text' ? { cell, segment: part } : null;
 	};
 
@@ -989,26 +942,19 @@ export class Edytor {
 		return pinned?.deltas ?? segmentDeltas(cell, segment, transform);
 	};
 
-	/** The wrapper of inline atom `atom` in block `id`. */
-	atomAt = (id: string, atom: string): InlineBlock | undefined =>
-		this.idToBlock
-			.get(id)
-			?.content.find((part): part is InlineBlock => !(part instanceof Text) && part.id === atom);
+	/** The handle of inline atom `atom`, shown in block `id`. */
+	atomAt = (id: string, atom: string): InlineBlock => this.idToBlock.atom(id, atom);
 
 	clear = () => {
-		const created = this.transact(() => {
+		const newBlock = this.transact(() => {
 			const root = this.root!;
 			root.deleteChildren(0, root.children.length);
 			const block = { id: id('b'), type: this.defaultChild(root) };
 			root.insertChildren(0, [block]);
-			return block.id;
+			return this.idToBlock.block(block.id);
 		});
-		const newBlock = this.idToBlock.get(created);
 		this.refreshEditorDom();
-		void this.selection.setAtTextOffset(
-			newBlock?.firstText ?? this.root?.children[0]?.firstText,
-			0
-		);
+		void this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
 		void tick().then(() => {
 			this.expectInternalFocus();
 			this.node?.focus({ preventScroll: true });
@@ -1345,9 +1291,7 @@ export class Edytor {
 		// Wrapper maps — drop every id/node→wrapper edge a shared doc or a
 		// stray mutation could still reach.
 		this.idToBlock.clear();
-		this.idToInlineBlock.clear();
 		this.nodeToInlineBlock.clear();
-		this.idToText.clear();
 		this.nodeToText.clear();
 		this.root = undefined;
 		this.node = undefined;

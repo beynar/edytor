@@ -26,7 +26,7 @@ import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 
 /** Red on the reference (`arch-v2/ref-r4`); green since R4. */
-const row = test.fails;
+const row = test;
 /** Green on the reference: a regression guard. */
 const pin = test;
 

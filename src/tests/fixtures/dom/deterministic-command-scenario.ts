@@ -75,7 +75,7 @@ const selectionOf = (peer: CommandPeer) => {
 		text: s.startText?.stringContent,
 		yStart: s.yStart,
 		yEnd: s.yEnd,
-		live: s.startText?._live === true
+		live: s.startText?.isInDocument === true
 	};
 };
 
@@ -132,7 +132,7 @@ export const runCommandScenario = async (): Promise<
 		set.deliver('A', 'B');
 		await flushDomUpdates();
 		await quiesce();
-		if (!B.edytor.selection.state.startText?._live) {
+		if (!B.edytor.selection.state.startText?.isInDocument) {
 			throw new Error('B caret did not recover to live text');
 		}
 		// The recovered seam position — captured BEFORE the follow-up insert

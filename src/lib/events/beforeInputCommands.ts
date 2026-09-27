@@ -222,15 +222,10 @@ const insertFromDataTransfer = async (edytor: Edytor, snapshot: Attempt) => {
 /** Enter at the end of a block with content and children: a split whose tail keeps the kind. */
 const liftContent = (block: Block, text: Text): Block | null => {
 	const plan = dispatchPlan(block, 'splitBlock', { index: text.length, text }, ({ index, text }) =>
-		block.edytor.facade.prepare.splitBlock(
-			block.model!.id,
-			block.partOffsetOf(text) + index,
-			id('b'),
-			{
-				type: block.type,
-				data: cloneJson(block.data)
-			}
-		)
+		block.edytor.facade.prepare.splitBlock(block.model!.id, text.segStart + index, id('b'), {
+			type: block.type,
+			data: cloneJson(block.data)
+		})
 	);
 	return plan && (block.edytor.idToBlock.get(plan.ids[0]!) ?? null);
 };

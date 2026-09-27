@@ -4,8 +4,8 @@
  * An operation is admitted (readonly, `document.writable`), prepared, shown
  * to every extension hook before any write — the command itself, then each
  * planned step under its documented operation name (D-10) — applied in one
- * transaction, normalized once per requested block after that transaction
- * commits, and reported (`refused | noop | applied | failed`). A user command (`run`) wraps the
+ * transaction, normalized once per requested block at the end of that
+ * transaction (normalizers read handles over the index), and reported (`refused | noop | applied | failed`). A user command (`run`) wraps the
  * operations one gesture issues and closes the undo policy table. `prevent()`
  * is caught here, once (`prevented`).
  */
@@ -343,9 +343,9 @@ export class Dispatcher {
 
 	/**
 	 * Inside an operation (or a normalization pass), normalization is
-	 * requested, not run: each (block, normalizer) runs once per request,
-	 * after the command's transaction commits. Answers whether the request
-	 * was queued.
+	 * requested, not run: each (block, normalizer) runs once per request, at
+	 * the end of the command's transaction. Answers whether the request was
+	 * queued.
 	 */
 	defer = (block: Block, normalize: Normalizer): boolean => {
 		const [id, fn] = this.current ?? [];
@@ -355,11 +355,8 @@ export class Dispatcher {
 		return true;
 	};
 
-	/** A normalizer's work: one transaction of this view (its operations are steps). */
-	write = (work: () => void) => {
-		this.edytor.attempts.hold();
-		this.edytor.doc.transact(work, this.edytor.transaction);
-	};
+	/** A normalizer's work: part of the command's transaction (its operations are steps). */
+	write = (work: () => void) => this.edytor.transact(work);
 
 	/** Request a normalization pass of block `id` (deduped against the pending ones). */
 	request = (id: string, normalize: Normalizer) => {
@@ -368,11 +365,10 @@ export class Dispatcher {
 	};
 
 	/**
-	 * Run the requested normalization once the outermost transaction has
-	 * committed (`run` false: it threw, drop them). A pass reads the wrappers
-	 * the last commit patched, so a normalizer sees what the command (and the
-	 * previous pass) wrote; its work is one transaction ({@link write}); a
-	 * pass that asks for its block again runs again, at most
+	 * Run the requested normalization at the end of the outermost transaction,
+	 * inside it (`run` false: it threw, drop them). A pass reads handles over
+	 * the index, so a normalizer sees what the command (and the previous pass)
+	 * wrote; a pass that asks for its block again runs again, at most
 	 * {@link MAX_PASSES} times.
 	 */
 	drain = (run = true) => {
@@ -389,7 +385,7 @@ export class Dispatcher {
 				const entry = this.queue[i]!;
 				const [id, normalize] = entry;
 				const block = edytor.idToBlock.get(id);
-				if (!block || !(block.isRoot || block._live)) continue;
+				if (!block) continue;
 				const counts = passes.get(normalize) ?? passes.set(normalize, new Map()).get(normalize)!;
 				const count = (counts.get(id) ?? 0) + 1;
 				counts.set(id, count);

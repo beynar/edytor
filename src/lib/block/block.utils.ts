@@ -4,16 +4,15 @@
  * These functions are the `BlockOperations` layer bound onto `Block` via
  * `batch()`, which dispatches each call as a command (admission, plugin
  * interception, one transaction: `session/commands.ts`). The functions own
- * path/offset resolution (target paths → parent blocks, `partOffsetOf`
- * segment offsets, sibling lookup for `nestBlock`), the plan of an operation
+ * path/offset resolution (target paths → parent blocks, a text's `segStart`,
+ * sibling lookup for `nestBlock`), the plan of an operation
  * that is one document op (`prepare*`) and its normalization requests.
  *
- * OPERATIONS READ AND WRITE ONLY THE DOCUMENT (R3): the wrappers are patched
- * once per commit from its change report, so an operation's body never reads
- * a wrapper after its own write. What a caller needs after the write (the new
- * block, the text after an inserted atom, the caret a range op decided) is
- * the op's document result, resolved to wrappers once the command committed
- * (`batch`'s `resolve`).
+ * OPERATIONS READ AND WRITE ONLY THE DOCUMENT (R3): `Block`/`Text` are id-only
+ * handles whose getters read the index (R4), so what a caller needs after the
+ * write (the new block, the text after an inserted atom, the caret a range op
+ * decided) is the op's document result as a handle (`batch`'s `resolve`) —
+ * inside an outer transaction too.
  *
  * STRUCTURAL PERMISSION IS DOCUMENT-OWNED: every op delegates to
  * `block.model.*` (the facade through `DocBlock`) and treats a `refused` result
@@ -148,8 +147,9 @@ export function batch<
 }
 
 /**
- * The wrapper of block `id` once the command committed (null: refused at
- * preparation, or gone; undefined: the command did not run).
+ * The handle of block `id` (null: refused at preparation, or gone; undefined:
+ * the command did not run). Inside an outer transaction too: the index shows
+ * the block that transaction created.
  */
 export function blockOf(this: Block, id: string | null | undefined): Block | null | undefined {
 	return id === undefined ? undefined : (id && this.edytor.idToBlock.get(id)) || null;
@@ -168,6 +168,9 @@ const applyPlan = (block: Block, plan: Prepared, touched: (Block | null | undefi
 	for (const parent of touched) parent?.normalizeChildren();
 	return plan;
 };
+
+/** The document's name for `block`'s child list: `null` for the root. */
+const ref = (block: Block) => (block.isRoot ? null : block.id);
 
 /**
  * Dispatch `operation` on `block` as the one plan `prepare` answers (a
@@ -189,15 +192,10 @@ export const dispatchPlan = <O extends keyof BlockOperations>(
 		prepare
 	) ?? null;
 
-/** The wrappers of blocks `ids` once the command committed. */
-export function blocksOf(this: Block, ids: string[] | undefined): Block[] {
-	return (ids ?? []).flatMap((id) => this.edytor.idToBlock.get(id) ?? []);
-}
-
 export function addChildBlock(
 	this: Block,
 	{ block, index = this.children.length }: BlockOperations['addChildBlock']
-): string {
+) {
 	if (index < 0) {
 		index = 0;
 	} else if (index > this.children.length) {
@@ -206,13 +204,13 @@ export function addChildBlock(
 	const spec = { ...(block || { type: this.edytor.defaultChild(this) }), id: block?.id ?? id('b') };
 	this.insertChildren(index, [spec]);
 	this.normalizeChildren();
-	return spec.id;
+	return this.edytor.idToBlock.block(spec.id);
 }
 
 export function addChildBlocks(
 	this: Block,
 	{ blocks, index = this.children.length }: BlockOperations['addChildBlocks']
-): string[] {
+) {
 	if (index < 0) {
 		index = 0;
 	} else if (index > this.children.length) {
@@ -221,14 +219,14 @@ export function addChildBlocks(
 	const specs = blocks.map((block) => ({ ...block, id: block.id ?? id('b') }));
 	this.insertChildren(index, specs);
 	this.normalizeChildren();
-	return specs.map((spec) => spec.id);
+	return specs.map((spec) => this.edytor.idToBlock.block(spec.id));
 }
 
 /** Insert `block` as a sibling of `this`, `after` it or before it. */
 const prepareSibling = (self: Block, block: JSONBlock, after: boolean): Prepared =>
 	self.parent
 		? self.edytor.facade.prepare.insertBlocks(
-				{ parent: self.parent._blockId ?? null, index: self.index + (after ? 1 : 0) },
+				{ parent: ref(self.parent), index: self.index + (after ? 1 : 0) },
 				[jsonBlockToSpec(block)]
 			)
 		: REFUSED;
@@ -266,7 +264,7 @@ export function prepareSplit(this: Block, { index, text }: BlockOperations['spli
 	if (!text || !this.parent || !this.model) return REFUSED;
 	// G5: the sibling takes its parent's default child type and no data.
 	const tail = { type: this.edytor.defaultChild(this.parent), data: {} };
-	const offset = this.partOffsetOf(text) + index;
+	const offset = text.segStart + index;
 	return this.edytor.facade.prepare.splitBlock(this.model.id, offset, id('b'), tail);
 }
 
@@ -282,7 +280,7 @@ export function prepareRemove(
 	this: Block,
 	{ keepChildren = false }: { keepChildren?: boolean } = {}
 ) {
-	if (!this.parent || !this.model || !this._live) return REFUSED;
+	if (!this.parent || !this.model || !this.isInTree) return REFUSED;
 	return this.edytor.facade.prepare.deleteBlock(this.model.id, { keepChildren });
 }
 
@@ -337,10 +335,7 @@ export function prepareMove(this: Block, { path }: BlockOperations['moveBlock'])
 	if (!path.length || path.some((p) => isNaN(p) || p < 0) || !this.parent) return REFUSED;
 	const [parent, index] = parentAt(this.edytor, path);
 	if (!parent || !this.model) return REFUSED;
-	return this.edytor.facade.prepare.moveBlock(this.model.id, {
-		parent: parent._blockId ?? null,
-		index
-	});
+	return this.edytor.facade.prepare.moveBlock(this.model.id, { parent: ref(parent), index });
 }
 
 export function moveBlock(
@@ -363,12 +358,11 @@ export function moveBlock(
 export function prepareMoves(this: Block, { blocks, path }: BlockOperations['moveBlocks']) {
 	if (!path.length || path.some((p) => isNaN(p) || p < 0) || !blocks.length) return REFUSED;
 	const [parent, index] = parentAt(this.edytor, path);
-	const ids = blocks.map((block) => block._blockId);
-	if (!parent || ids.some((blockId) => blockId == null)) return REFUSED;
-	return this.edytor.facade.prepare.moveBlocks(ids as string[], {
-		parent: parent._blockId ?? null,
-		index
-	});
+	if (!parent || blocks.some((block) => block.isRoot)) return REFUSED;
+	return this.edytor.facade.prepare.moveBlocks(
+		blocks.map((block) => block.id),
+		{ parent: ref(parent), index }
+	);
 }
 
 export function moveBlocks(
@@ -405,7 +399,7 @@ export function unNestBlock(
  * targets and island-sealed sources (`canPlace`).
  */
 export function prepareNest(this: Block) {
-	const target = this.previousBlock?._blockId;
+	const target = this.previousBlock?.id;
 	return this.parent && this.model && target != null
 		? this.edytor.facade.prepare.nestBlock(this.model.id, target)
 		: REFUSED;
@@ -496,7 +490,7 @@ export function addInlineBlock(
 	{ index, block, text }: BlockOperations['addInlineBlock']
 ): string {
 	const atom = { ...block, id: block.id ?? id('i') };
-	this.model?.insertInline(this.partOffsetOf(text) + index, {
+	this.model?.insertInline(text.segStart + index, {
 		id: atom.id,
 		type: atom.type,
 		...(atom.data ? { data: cloneJson(atom.data) } : {})
@@ -505,7 +499,7 @@ export function addInlineBlock(
 	return atom.id;
 }
 
-/** The text after atom `atom` of this block, once committed; it takes `payload.text`'s pending marks. */
+/** The text after atom `atom` of this block; it takes `payload.text`'s pending marks. */
 export function textAfterAtom(
 	this: Block,
 	atom: string | undefined,
@@ -524,10 +518,10 @@ export function textAfterAtom(
 }
 
 /**
- * Normalization runs after the command commits (`Dispatcher.drain`): a
- * normalizer reads the wrappers the commit patched; when a plugin hook
- * answers work, the work runs in one transaction and the block is requested
- * again (bounded by the dispatcher's pass limit, D25).
+ * Normalization runs at the end of the command's transaction
+ * (`Dispatcher.drain`): a normalizer reads handles over the index; when a
+ * plugin hook answers work, the work runs in the same transaction and the
+ * block is requested again (bounded by the dispatcher's pass limit, D25).
  */
 export function normalizeContent(this: Block): void {
 	if (this.edytor.dispatcher.defer(this, normalizeContent)) return;
@@ -543,7 +537,7 @@ export function normalizeContent(this: Block): void {
 
 export function normalizeChildren(this: Block): void {
 	if (this.edytor.dispatcher.defer(this, normalizeChildren)) return;
-	if (this.type === 'root' && this.children.length === 0) {
+	if (this.isRoot && this.children.length === 0) {
 		const block = { type: this.edytor.defaultChild(this) };
 		this.edytor.dispatcher.write(() => this.insertChildren(0, [block]));
 		return this.normalizeChildren();
@@ -593,11 +587,11 @@ export function prepareDeleteRange(
 		end: [endIndex, endOffset]
 	}: { start: number[]; end: number[] }
 ) {
-	const startPart = this.content.at(startIndex!);
-	const endPart = this.content.at(endIndex!);
+	const parts = this.edytor.idToBlock.parts(this.id);
+	const [startPart, endPart] = [parts.at(startIndex!), parts.at(endIndex!)];
 	if (!startPart || !endPart || !this.model) return REFUSED;
-	const at = this.partOffsetOf(startPart) + startOffset!;
-	const length = Math.max(0, this.partOffsetOf(endPart) + endOffset! - at);
+	const at = startPart.start + startOffset!;
+	const length = Math.max(0, endPart.start + endOffset! - at);
 	return this.edytor.facade.prepare.deleteText(this.model.id, at, length);
 }
 

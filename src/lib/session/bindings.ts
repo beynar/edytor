@@ -36,9 +36,8 @@ export const replaceSelectedAtom = (edytor: Edytor, value = '') => {
 	if (!selected) return false;
 	edytor.dispatcher.cut(value ? 'replaceInlineBlock' : 'deleteInlineBlock');
 	edytor.selection.clearInlineBlockSelection();
-	const atom = edytor.idToInlineBlock.get(selected.id) ?? selected;
-	const { parent } = atom;
-	const index = parent.content.findIndex((part) => part.id === atom.id);
+	const { parent } = selected;
+	const index = parent.content.indexOf(selected);
 	if (index === -1) return true;
 	const [before, after] = [parent.content[index - 1], parent.content[index + 1]];
 	const caret = before instanceof Text ? before : after instanceof Text ? after : parent.firstText;

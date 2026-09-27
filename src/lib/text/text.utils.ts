@@ -232,7 +232,7 @@ export function removeMarksFromText(
 	// Persisted mark changes delegate to the document: `clearMarks` discovers
 	// every mark name present in the range and unsets them; `segStart` maps
 	// the segment-local range into the block's display offsets.
-	if (this._live) this.parent.model?.clearMarks(this.segStart + start, end - start);
+	this.parent.model?.clearMarks(this.segStart + start, end - start);
 }
 
 export function markText(

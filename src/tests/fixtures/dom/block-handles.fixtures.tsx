@@ -145,8 +145,8 @@ export const fixtures = defineFixtures([
 			const { moved, lead, note, leadCrdtId, noteCrdtId } = result as any;
 			// The SAME wrappers came back — no clone/delete/recreate.
 			expect(moved).toEqual([lead, note]);
-			expect(lead._live).toBe(true);
-			expect(note._live).toBe(true);
+			expect(lead.isInTree).toBe(true);
+			expect(note.isInTree).toBe(true);
 			// Engine identity retained through the grouped move.
 			expect(moved[0].edytor.facade!.crdtId(lead.id)).toBe(leadCrdtId);
 			expect(moved[0].edytor.facade!.crdtId(note.id)).toBe(noteCrdtId);

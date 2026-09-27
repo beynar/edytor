@@ -1,5 +1,4 @@
 import { Edytor } from '../edytor.svelte.js';
-import { tick } from 'svelte';
 import { type JSONText, type SerializableContent } from '$lib/utils/json.js';
 import { Block } from '../block/block.svelte.js';
 import {
@@ -13,65 +12,85 @@ import {
 	splitText
 } from './text.utils.js';
 import { deltaToJson, runsToDeltas } from './deltas.js';
-import { id } from '$lib/utils.js';
 import { climb } from '$lib/selection/selection.utils.js';
-import { scheduleRemoveStalePlaceholders } from './removeStalePlaceholders.js';
 import type { OpResult } from '$lib/crdt/index.js';
+import type { ContentPart } from '$lib/session/handles.js';
 
 /** A write through the block's model that the document did not refuse. */
 const accepted = (r: OpResult | undefined): boolean => r !== undefined && r.status !== 'refused';
 
-export type TextRunItem = {
-	text: string;
-	marks?: Record<string, unknown>;
-};
-
+/**
+ * An id-only text handle (§2.4 "Handles", R4): the `ordinal`-th text segment
+ * of block `blockId` — no identity across commits beyond that position (K5).
+ * Getters read the document index; mutators write through the block's model.
+ * `node` is the element that renders the segment (a Surface fact).
+ */
 export class Text {
 	readonly = false;
-	parent: Block;
-	edytor: Edytor;
-	/** Position among the parent's content parts (the mirror's; operations read it until R3/R4). */
-	index = 0;
+	readonly edytor: Edytor;
+	readonly blockId: string;
+	/** The segment's position among its block's text segments. */
+	readonly ordinal: number;
+	readonly id: string;
 	node: HTMLElement | undefined;
 	// Used when user toggles mark without selection range.
 	markOnNextInsert: undefined | Record<string, SerializableContent | null> = undefined;
-	id: string;
 
-	/** Run items backing this segment (the facade's `{kind:'text'}` runs of the segment). */
-	_items: TextRunItem[] = [];
-	/** True while this wrapper maps a live segment of its parent's content. */
-	_live = false;
-	/** Text-segment ordinal inside the parent (`t:{blockId}:{segOrd}` id source). */
-	_segOrd = -1;
-
-	get value(): JSONText[] {
-		return deltaToJson(runsToDeltas(this._items)[0]);
+	constructor(edytor: Edytor, blockId: string, ordinal: number) {
+		this.edytor = edytor;
+		this.blockId = blockId;
+		this.ordinal = ordinal;
+		this.id = `t:${blockId}:${ordinal}`;
 	}
 
-	/** The segment's text (derived from its items on read; nothing renders from it, R2). */
+	get parent(): Block {
+		return this.edytor.idToBlock.block(this.blockId);
+	}
+
+	/** This segment in its block's parts, and its position among them. */
+	get #at(): { part?: Extract<ContentPart, { kind: 'text' }>; index: number } {
+		const parts = this.edytor.idToBlock.parts(this.blockId);
+		for (let index = 0, k = 0; index < parts.length; index++) {
+			const part = parts[index]!;
+			if (part.kind === 'text' && k++ === this.ordinal) return { part, index };
+		}
+		return { index: -1 };
+	}
+
+	/** Position among the block's content parts. */
+	get index(): number {
+		return this.#at.index;
+	}
+
+	get value(): JSONText[] {
+		return deltaToJson(runsToDeltas(this.#at.part?.items ?? [])[0]);
+	}
+
+	/** The segment's text. */
 	get stringContent(): string {
-		return this._items.map((item) => item.text).join('');
+		return this.#at.part?.items.map((item) => item.text).join('') ?? '';
 	}
 
 	get isEmpty(): boolean {
-		return this.stringContent.length === 0;
+		return this.length === 0;
 	}
 
 	get endsWithNewline(): boolean {
 		return this.stringContent.endsWith('\n');
 	}
 
-	get length() {
-		return this.stringContent.length;
+	get length(): number {
+		return this.#at.part?.length ?? 0;
 	}
 
-	/** Display offset of this segment inside the parent block's content (atoms). */
-	get segStart() {
-		return this.parent.partOffsetOf(this);
+	/** Display offset of this segment inside its block's content (atoms count 1). */
+	get segStart(): number {
+		return this.#at.part?.start ?? 0;
 	}
 
-	get isInDocument() {
-		return this._live && this.parent.content.includes(this);
+	/** The segment is shown by a live block. */
+	get isInDocument(): boolean {
+		return this.parent.isInTree && this.#at.part !== undefined;
 	}
 
 	/**
@@ -87,73 +106,25 @@ export class Text {
 		this.edytor.cells?.remount(this.parent.id);
 	};
 
-	/** Bind this wrapper to segment `segOrd` of the parent (reconcile/adoption path). */
-	_bind = (segOrd: number, items: TextRunItem[]) => {
-		this._segOrd = segOrd;
-		this._live = true;
-		// The id is no render key (segments are keyed causally, R2): it follows at once.
-		const nextId = `t:${this.parent._blockId ?? 'detached'}:${segOrd}`;
-		if (nextId !== this.id) {
-			if (this.edytor.idToText.get(this.id) === this) this.edytor.idToText.delete(this.id);
-			this.id = nextId;
-			this.node?.setAttribute('data-edytor-id', nextId);
-		}
-		this.edytor.idToText.set(this.id, this);
-		this._setItems(items);
-	};
-
-	/** Mark the wrapper dead — the segment it mirrored no longer exists. */
-	_kill = () => {
-		this.edytor.markDomSelectionChurn();
-		this._live = false;
-		this._segOrd = -1;
-		this._items = [];
-		if (this.edytor.idToText.get(this.id) === this) {
-			this.edytor.idToText.delete(this.id);
-		}
-		if (this.node && this.edytor.nodeToText.get(this.node) === this) {
-			this.edytor.nodeToText.delete(this.node);
-		}
-	};
-
-	private _setItems = (items: TextRunItem[]) => {
-		// This render rewrites the span's DOM — a live DOM caret inside it
-		// can be re-parked by the browser (Gecko clamps into a shortened
-		// node). Mark eagerly: observer timing reports too late for engines
-		// that dispatch `selectionchange` synchronously.
-		this.edytor.markDomSelectionChurn();
-		this._items = items;
-		void tick().then(() => scheduleRemoveStalePlaceholders(this));
-	};
-
-	/** A text wrapper a reconcile binds next. */
-	constructor({ parent }: { parent: Block }) {
-		this.parent = parent;
-		this.edytor = parent.edytor;
-		this.id = id('t');
-		this.edytor.idToText.set(this.id, this);
-	}
-
 	// ── segment writes ───────────────────────────────────────────────────
 	//
 	// `insertAt`/`deleteAt`/`formatAt` are the offset-based primitives the
-	// operation layer (`text.utils`), event handlers and plugins call. A live
-	// wrapper writes through its block's model (`segStart + offset`); the
-	// wrapper's items follow at the commit (its change report, R3). Offsets
-	// are SEGMENT-LOCAL display atoms (UTF-16 units).
+	// operation layer (`text.utils`), event handlers and plugins call. Offsets
+	// are SEGMENT-LOCAL display atoms (UTF-16 units); `segStart` maps them into
+	// the block's display space (read from the index, so a write after another
+	// in the same transaction lands right).
 
 	/** Insert `text` (optionally marked) at segment-local `offset`. */
 	insertAt = (offset: number, text: string, marks?: Record<string, unknown> | null): boolean =>
-		this._live &&
 		accepted(this.parent.model?.insertText(this.segStart + offset, text, marks ?? undefined));
 
 	/** Delete `length` atoms at segment-local `offset`. */
 	deleteAt = (offset: number, length: number): boolean =>
-		this._live && accepted(this.parent.model?.deleteText(this.segStart + offset, length));
+		accepted(this.parent.model?.deleteText(this.segStart + offset, length));
 
 	/** Multi-mark format over `[offset, offset+length)` — `null` values remove the mark. */
 	formatAt = (offset: number, length: number, attributes: Record<string, unknown>): boolean =>
-		this._live && accepted(this.parent.model?.format(this.segStart + offset, length, attributes));
+		accepted(this.parent.model?.format(this.segStart + offset, length, attributes));
 
 	private batch = batch.bind(this);
 	getMarksAtRange = getMarksAtRange.bind(this);
@@ -166,7 +137,6 @@ export class Text {
 
 	attach = (node: HTMLElement) => {
 		this.node = node;
-		this.edytor.idToText.set(this.id, this);
 		this.edytor.nodeToText.set(node, this);
 		node.setAttribute('data-edytor-id', `${this.id}`);
 		node.setAttribute('data-edytor-text', `true`);
@@ -201,15 +171,8 @@ export class Text {
 
 		return {
 			destroy: () => {
-				if (this.node === node) {
-					this.node = undefined;
-					if (this.edytor.idToText.get(this.id) === this) {
-						this.edytor.idToText.delete(this.id);
-					}
-				}
-				if (this.edytor.nodeToText.get(node) === this) {
-					this.edytor.nodeToText.delete(node);
-				}
+				if (this.node === node) this.node = undefined;
+				if (this.edytor.nodeToText.get(node) === this) this.edytor.nodeToText.delete(node);
 				pluginDestroy.forEach((destroy) => destroy());
 			}
 		};

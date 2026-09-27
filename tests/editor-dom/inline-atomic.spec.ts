@@ -1060,14 +1060,13 @@ test.describe('browser inline atomic behavior', () => {
 						).filter((element) => !element.parentElement?.closest('[data-edytor-inline-block]'));
 						return {
 							inlineDomNodes: inlineBlocks.length,
-							inlineIdMappings: edytor?.idToInlineBlock.size ?? 0,
+							// (R4: atoms are handles by id; only elements are registered.)
 							inlineNodeMappings: edytor?.nodeToInlineBlock.size ?? 0
 						};
 					})
 				)
 				.toEqual({
 					inlineDomNodes: 1,
-					inlineIdMappings: 1,
 					inlineNodeMappings: 2
 				});
 

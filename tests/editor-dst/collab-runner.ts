@@ -729,9 +729,9 @@ const expectConverged = async (
  *
  * The render path (`getRenderedRemoteSelections`) skips unresolvable
  * candidates, but `resolveTextAnchor`'s fallback walk can return a text
- * inside a DELETED block (its `block.content` scan doesn't check `_live`),
+ * inside a DELETED block (its `block.content` scan doesn't check liveness),
  * so a span that resolved at render time can stay parked on a dead
- * wrapper. Re-resolving and checking `text._live` is the honest "points
+ * wrapper. Re-resolving and checking `text.isInDocument` is the honest "points
  * at a live block" test; an absent span is always acceptable (the
  * renderer correctly declined or the presence expired).
  */
@@ -746,10 +746,10 @@ const remoteOverlayStaleness = (page: Page) =>
 		const w = window as Window & {
 			__EDYTOR__?: {
 				awareness?: { getStates?: () => Map<number, Record<string, unknown>> };
-				idToText?: { get: (id: string) => { _live?: boolean } | undefined };
+				idToText?: { get: (id: string) => { isInDocument?: boolean } | undefined };
 				selection?: {
 					resolveTextAnchor?: (anchor: unknown) => {
-						text: { _live?: boolean; parent?: { id?: string } | null };
+						text: { isInDocument?: boolean; parent?: { id?: string } | null };
 						offset: number;
 					} | null;
 				};
@@ -804,7 +804,7 @@ const remoteOverlayStaleness = (page: Page) =>
 			anchor: unknown,
 			textId: unknown
 		): { live: boolean; blockId: string | null } | null => {
-			let text: { _live?: boolean; parent?: { id?: string } | null } | null | undefined;
+			let text: { isInDocument?: boolean; parent?: { id?: string } | null } | null | undefined;
 			try {
 				// `resolveTextAnchor` is the anchor-first path the renderer
 				// uses; malformed wire anchors throw, hence the guard.
@@ -820,7 +820,7 @@ const remoteOverlayStaleness = (page: Page) =>
 				}
 			}
 			if (!text) return null;
-			return { live: text._live !== false, blockId: text.parent?.id ?? null };
+			return { live: text.isInDocument !== false, blockId: text.parent?.id ?? null };
 		};
 		const stale: StaleOverlay[] = [];
 		for (const clientId of renderedClientIds) {
@@ -1245,14 +1245,22 @@ const resolvePeerAnchor = async (page: Page, anchor: unknown): Promise<SeamSpot 
 				__EDYTOR__?: {
 					selection?: {
 						resolveTextAnchor?: (anchor: unknown) => {
-							text: { id: string; _live: boolean; parent?: { id: string; _live?: boolean } };
+							text: {
+								id: string;
+								isInDocument: boolean;
+								parent?: { id: string; isInTree?: boolean };
+							};
 							offset: number;
 						} | null;
 					};
 				};
 			};
 			const resolved = w.__EDYTOR__?.selection?.resolveTextAnchor?.(a);
-			if (!resolved || resolved.text._live !== true || resolved.text.parent?._live === false) {
+			if (
+				!resolved ||
+				resolved.text.isInDocument !== true ||
+				resolved.text.parent?.isInTree === false
+			) {
 				return null;
 			}
 			return {

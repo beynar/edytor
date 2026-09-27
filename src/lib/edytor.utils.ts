@@ -20,7 +20,7 @@ type At = { block: string; offset: number };
 
 /**
  * Apply a prepared op and answer the caret it reports (`null` when it planned
- * none); the caret's block and its parent are normalized after the commit.
+ * none); the caret's block and its parent are normalized in its transaction.
  */
 const applyAt = (edytor: Edytor, plan: Prepared): At | null => {
 	if (!('writes' in plan) || !plan.at) return null;
@@ -31,7 +31,7 @@ const applyAt = (edytor: Edytor, plan: Prepared): At | null => {
 	return plan.at;
 };
 
-/** The caret an op answered, as a text part and offset once committed. */
+/** The caret an op answered, as a text handle and offset. */
 export function caretOf(this: Edytor, at: At | null | undefined): readonly [Text | null, number] {
 	const hit = at && this.idToBlock.get(at.block)?.textAtOffset(at.offset);
 	return hit ? [hit.text, hit.offset] : [null, 0];
@@ -45,7 +45,7 @@ export function prepareDeleteContent(this: Edytor, { replace = false, selection 
 	if (!startText || !endText) return REFUSED;
 	const at = (text: Text, offset: number) => ({
 		block: text.parent.id,
-		offset: text.parent.partOffsetOf(text) + offset
+		offset: text.segStart + offset
 	});
 	const prepare = replace ? this.facade.prepare.replaceRange : this.facade.prepare.deleteRange;
 	return prepare(at(startText, yStart), at(endText, yEnd), id('b'));

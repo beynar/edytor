@@ -27,8 +27,9 @@ describe('attachment lifecycle maps', () => {
 
 		currentAttachment.destroy();
 
+		// A live segment resolves by its id without an element (R4: handles read the index).
 		expect(text.node).toBeUndefined();
-		expect(edytor.idToText.has(text.id)).toBe(false);
+		expect(edytor.idToText.get(text.id)).toBe(text);
 		expect(edytor.nodeToText.has(currentNode)).toBe(false);
 	});
 
@@ -52,8 +53,8 @@ describe('attachment lifecycle maps', () => {
 
 		currentAttachment.destroy();
 
-		// A live block stays registered without an element: a moved block's
-		// element is re-created where it moved (R2); `_drop` unregisters it.
+		// A live block's handle resolves without an element: a moved block's
+		// element is re-created where it moved (R2); the commit that removes it prunes it (R4).
 		expect(block.node).toBeUndefined();
 		expect(edytor.idToBlock.get(block.id)).toBe(block);
 	});

@@ -2,22 +2,22 @@
 import { describe, expect, it } from 'vitest';
 import { Y } from '$lib/crdt/engine.js';
 import { createOperationEdytor } from './test.utils.js';
-import { Block, deriveContentParts } from '$lib/block/block.svelte.js';
+import type { Block } from '$lib/block/block.svelte.js';
+import { contentParts } from '$lib/session/handles.js';
 import { deltaToJson, runsToDeltas } from '$lib/text/deltas.js';
 import type { ProjectedBlock } from '$lib/crdt/index.js';
 import type { JSONBlock } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 
 /**
- * Incremental-mirror equivalence oracle — serialize a `ProjectedBlock` to
- * the exact JSON shape `Block.value` produces, so the wrapper tree can be
- * compared against the canonical projected tree after every commit (the
- * same contract `src/tests/crdt/doc/mirror.test.ts` proves for a dumb
- * mirror: DocChange patches reconstruct the fresh `project()` result).
+ * Handle-tree equivalence oracle — serialize a `ProjectedBlock` to the exact
+ * JSON shape `Block.value` produces, so the handle tree (id-only handles
+ * reading the index, R4; it was the incremental wrapper mirror until R3) can
+ * be compared against the canonical projected tree after every commit.
  */
 const projectedToValue = (node: ProjectedBlock): JSONBlock => {
 	const children = node.children.map(projectedToValue);
-	const content = deriveContentParts(node.content).flatMap((part) => {
+	const content = contentParts(node.content).flatMap((part) => {
 		if (part.kind === 'text') {
 			return deltaToJson(runsToDeltas(part.items)[0]);
 		}
@@ -35,11 +35,11 @@ const canonicalValue = (edytor: Edytor) => ({
 	children: edytor.facade.project().children.map(projectedToValue)
 });
 
-/** Every registered wrapper is live, reachable, and indexed. */
+/** Every block of the handle tree is live, reachable, and indexed. */
 const expectRegistryInvariants = (edytor: Edytor) => {
 	let liveCount = 0;
 	const walk = (block: Block, parent: Block) => {
-		expect(block._live, `${block.id} must be live`).toBe(true);
+		expect(block.isInTree, `${block.id} must be live`).toBe(true);
 		expect(block.parent).toBe(parent);
 		expect(edytor.idToBlock.get(block.id)).toBe(block);
 		liveCount++;
@@ -49,11 +49,7 @@ const expectRegistryInvariants = (edytor: Edytor) => {
 		});
 	};
 	edytor.root!.children.forEach((child) => walk(child, edytor.root!));
-	for (const [id, block] of edytor.idToBlock) {
-		if (id === 'root') continue;
-		expect(block._live, `${id} registered but dead`).toBe(true);
-	}
-	expect(edytor.idToBlock.size).toBe(liveCount + 1);
+	expect(liveCount).toBe(edytor.facade.order().length);
 };
 
 const expectConverged = (edytor: Edytor) => {
@@ -63,7 +59,7 @@ const expectConverged = (edytor: Edytor) => {
 	expectRegistryInvariants(edytor);
 };
 
-describe('incremental mirror reconcile', () => {
+describe('handle tree = the document after every commit', () => {
 	it('patches content/meta/order/structure per DocChange — equal to fresh projection', () => {
 		const { edytor } = createOperationEdytor(
 			(
@@ -111,8 +107,8 @@ describe('incremental mirror reconcile', () => {
 		parentItem.removeBlock({ keepChildren: true });
 		expectConverged(edytor);
 		for (const child of kept) {
-			// claimed children keep their wrapper — no drop+remount
-			expect(child._live).toBe(true);
+			// claimed children keep their handle
+			expect(child.isInTree).toBe(true);
 			expect(edytor.idToBlock.get(child.id)).toBe(child);
 		}
 
@@ -127,7 +123,7 @@ describe('incremental mirror reconcile', () => {
 		split?.mergeBlockBackward();
 		expectConverged(edytor);
 
-		// add a fresh child block (a JSON spec: its wrapper is built from the commit's report)
+		// add a fresh child block (a JSON spec: the handle resolves at once)
 		root.children[0].addChildBlock({
 			block: { type: 'paragraph', content: [{ text: 'fresh' }] },
 			index: -1

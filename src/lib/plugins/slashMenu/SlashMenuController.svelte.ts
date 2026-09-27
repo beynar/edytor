@@ -133,7 +133,7 @@ export class SlashMenuController {
 			// The trigger's removal leads the command's first operation (one plan:
 			// refusing the command keeps the trigger); a command that plans
 			// nothing synchronously runs after it.
-			const at = text.parent.partOffsetOf(text) + triggerStart;
+			const at = text.segStart + triggerStart;
 			const trigger = edytor.facade.prepare.deleteText(
 				text.parent.model!.id,
 				at,

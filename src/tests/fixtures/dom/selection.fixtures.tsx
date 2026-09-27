@@ -308,7 +308,7 @@ export const fixtures = defineFixtures([
 			// An edit in front of the caret shifts the anchored position —
 			// written through the facade (the engine-authoritative path).
 			// The display offset moves 5 → 6…
-			edytor.facade.insertText(block._blockId!, 0, 'X');
+			edytor.facade.insertText(block.id, 0, 'X');
 			const display = edytor.facade.resolveAnchor(anchor);
 			if (!display || display.offset !== 6) {
 				throw new Error(

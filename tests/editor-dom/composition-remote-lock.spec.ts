@@ -23,7 +23,7 @@ const getBlockId = (page: Page, childIndex: number) =>
 	page.evaluate((index) => {
 		const edytor = (window as EdytorWindow).__EDYTOR__;
 		const block = edytor?.root?.children?.[index];
-		return block?.id ?? block?._blockId ?? null;
+		return block?.id ?? null;
 	}, childIndex);
 
 /** Programmatic "remote" write — no `edytor.transaction` origin → mirror treats it as remote. */

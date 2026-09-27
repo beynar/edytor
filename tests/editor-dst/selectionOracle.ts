@@ -96,7 +96,7 @@ export type SelectionShape = {
  * endpoint expectations (dead start → `beta@0`) wrongly reject.
  *
  * `startDead`/`endDead` mirror the wrapper-liveness gate
- * (`!state.startText._live`): a part id absent from every live block's
+ * (`!state.startText.isInDocument`): a part id absent from every live block's
  * `content` is dead; a null pre textId is NOT dead (production returns
  * early on a null startText — nothing repairs, the position stands).
  * `seam` must be null when the start BLOCK survived — production's

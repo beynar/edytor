@@ -8,11 +8,7 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
-import {
-	moveCaretAcrossHorizontalBoundary,
-	moveToCurrentBlockBoundary,
-	navigationHotKeys
-} from '$lib/hotkeys/navigation.js';
+import { extendVertically, navigationBindings } from './navigation.js';
 import { insertLineBreak, runIntent } from '$lib/events/beforeInputCommands.js';
 import { attemptOf, intentSnapshot } from './attempt.js';
 import {
@@ -208,25 +204,12 @@ const kill =
 		if (state.startText) prevent(() => runIntent(edytor, inputType(state)));
 	};
 
-/** A caret motion that claims the key when there is a text caret. */
-const motion =
-	(move: (edytor: Edytor) => unknown): HotKey =>
-	({ edytor, prevent }) => {
-		if (edytor.selection.state.startText) prevent(() => move(edytor));
-	};
-
-/** A logical (document-order, never RTL-flipped) one-step move; claims only when it moved. */
-const step =
-	(direction: 'backward' | 'forward'): HotKey =>
-	({ edytor, prevent }) => {
-		if (moveCaretAcrossHorizontalBoundary(edytor, direction, false)) prevent();
-	};
-
 /**
  * macOS Emacs/Cocoa text bindings. Bare `ctrl+` chords only resolve on
  * Apple platforms (the keymap folds Ctrl into `mod` elsewhere), so the table
- * is platform-gated by the chord encoding. Not bound: `ctrl+t` (no transpose
- * operation) and `ctrl+y` (no kill ring).
+ * is platform-gated by the chord encoding; its motions (ctrl+a/e/b/f) are
+ * navigation rows. Not bound: `ctrl+t` (no transpose operation) and `ctrl+y`
+ * (no kill ring).
  */
 const emacs: Record<string, HotKey> = {
 	'ctrl+h': kill(() => 'deleteContentBackward'),
@@ -244,10 +227,6 @@ const emacs: Record<string, HotKey> = {
 			)
 		);
 	},
-	'ctrl+a': motion((edytor) => moveToCurrentBlockBoundary(edytor, 'start', false)),
-	'ctrl+e': motion((edytor) => moveToCurrentBlockBoundary(edytor, 'end', false)),
-	'ctrl+b': step('backward'),
-	'ctrl+f': step('forward'),
 	'ctrl+p': arrowUp,
 	'ctrl+n': arrowDown
 };
@@ -282,34 +261,17 @@ export const builtInBindings: Record<string, HotKey> = {
 			}
 		});
 	},
-	...navigationHotKeys,
+	...navigationBindings,
+	// Without a block selection the editor owns vertical extension (K1).
 	'shift+arrowup': ({ edytor, prevent }) => {
-		if (edytor.selection.selectedBlocks.size >= 1) {
-			prevent(() => extendBlockSelection(edytor, 'up'));
-			return;
-		}
-		// No block selection: native vertical extension is engine-defined
-		// (Firefox can collapse at the anchor or drop the focus on stray
-		// boundary text nodes) — own the semantic deterministically.
-		if (edytor.selection.extendSelectionVertically('up')) {
-			prevent();
-		}
+		if (edytor.selection.selectedBlocks.size)
+			return prevent(() => extendBlockSelection(edytor, 'up'));
+		if (extendVertically(edytor, -1)) prevent();
 	},
 	'shift+arrowdown': ({ edytor, prevent }) => {
-		const selectedBlocks = edytor.selection.selectedBlocks;
-		if (selectedBlocks.size === 0 && selectNextVoidBlockFromCaret(edytor)) {
-			prevent();
-			return;
-		}
-
-		if (selectedBlocks.size >= 1) {
-			prevent(() => extendBlockSelection(edytor, 'down'));
-			return;
-		}
-		// See shift+arrowup — deterministic cross-engine extension.
-		if (edytor.selection.extendSelectionVertically('down')) {
-			prevent();
-		}
+		if (edytor.selection.selectedBlocks.size)
+			return prevent(() => extendBlockSelection(edytor, 'down'));
+		if (selectNextVoidBlockFromCaret(edytor) || extendVertically(edytor, 1)) prevent();
 	},
 	arrowup: arrowUp,
 	arrowdown: arrowDown,

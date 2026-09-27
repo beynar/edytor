@@ -64,7 +64,6 @@ const RTL = [p('אבג דהו'), p('זחט')];
 
 test.describe('V6 — RTL: one logical direction per key, from the focus text', () => {
 	test('a word key moves visually in an RTL paragraph (Left = forward)', async ({ page }) => {
-		test.fail(true, 'red on the reference: word keys moved logically');
 		const issues = trackPageIssues(page);
 		await open(page, RTL, 'rtl');
 		const word = await getWordKey(page);
@@ -91,7 +90,6 @@ test.describe('V6 — RTL: one logical direction per key, from the focus text', 
 	test('Shift+ArrowLeft at an RTL range focus at the block end extends forward', async ({
 		page
 	}) => {
-		test.fail(true, 'red on the reference: native (no move, or one grapheme in Firefox)');
 		const issues = trackPageIssues(page);
 		await open(page, RTL, 'rtl');
 		await setSelectionByTextIndex(page, 0, 4, 0, 7);
@@ -110,7 +108,6 @@ test.describe('V6 — the stream skips non-displayable content', () => {
 	];
 
 	test('ArrowRight at a collapsed toggle summary end lands after the toggle', async ({ page }) => {
-		test.fail(true, 'red on the reference: the caret entered the hidden body');
 		const issues = trackPageIssues(page);
 		await open(page, TOGGLE);
 		// Text elements in DOM order: before 0, sum 1, one 2, two 3, after 4.
@@ -130,7 +127,6 @@ test.describe('V6 — atoms at block edges', () => {
 	test('a selected atom that ends a block extends across the edge with Shift+ArrowRight', async ({
 		page
 	}) => {
-		test.fail(true, 'red on the reference: no extension from an atom selection');
 		const issues = trackPageIssues(page);
 		await open(page, EDGES);
 		// Text elements: ab 0, y 1, '' 2, cd 3.
@@ -145,7 +141,6 @@ test.describe('V6 — atoms at block edges', () => {
 	test('a reversed range focus after an atom that starts a block steps over it', async ({
 		page
 	}) => {
-		test.fail(true, 'red on the reference: native extension stops at the block start');
 		const issues = trackPageIssues(page);
 		await open(page, [p('ab'), p('', '@', 'xy')]);
 		// Text elements: ab 0, '' 1, xy 2.

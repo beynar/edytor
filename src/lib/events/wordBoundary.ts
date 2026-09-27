@@ -1,6 +1,6 @@
 /**
  * One semantic rule for word boundaries, shared by caret word jumps
- * (hotkeys/navigation.ts) and word deletion (beforeInputDeleteCommands.ts):
+ * (session/navigation.ts) and word deletion (beforeInputDeleteCommands.ts):
  * a word is a run of Unicode letters, numbers, or `_`; whitespace and
  * punctuation are boundaries. When no word run remains in the direction,
  * the boundary is the boundary run's far edge — a trailing `· ` is still

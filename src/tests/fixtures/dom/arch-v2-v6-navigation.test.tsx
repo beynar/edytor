@@ -45,7 +45,7 @@ import {
 } from '../../dom/test.utils.js';
 
 /** Red on the reference; green since V6. */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -436,8 +436,10 @@ describe('vertical extension walks the same displayable blocks (O44)', () => {
 			end: [4, 2],
 			reversed: false
 		});
+		// Going up from the block after it (K1: the start edge moves up).
+		await place(edytor, blocks()[4], 2);
 		await press(editor, 'ArrowUp', { shift: true });
-		expect(sel(edytor)).toMatchObject(caretAt(1, 2));
+		expect(sel(edytor)).toMatchObject({ kind: 'text', start: [1, 2], end: [4, 2], reversed: true });
 	});
 
 	row('Shift+ArrowDown into a list lands in its first item, never the container slot', async () => {

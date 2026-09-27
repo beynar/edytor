@@ -7,7 +7,6 @@ import {
 	getRangesFromSelection,
 	getTextOfNode,
 	getTextsInSelection,
-	getVerticalLineDestination,
 	getYIndex,
 	getMarkEdgeSide,
 	isTextBoundSelectionPoint,
@@ -1350,17 +1349,20 @@ export class EdytorSelection {
 	 * subtree. A phantom content slot (a snippet that renders no `content()`)
 	 * never mounts.
 	 */
-	#displayable = (id: string) => {
+	displayable = (id: string) => {
 		const node = this.edytor.idToBlock
 			.get(id)
 			?.content.find((part): part is Text => part instanceof Text && part.node != null)?.node;
 		return !!node && !node.closest(HIDDEN);
 	};
 
+	/** The text's computed direction (a Surface fact): arrow and word keys are visual. */
+	rtl = (text: Text) => !!text.node?.isConnected && getComputedStyle(text.node).direction === 'rtl';
+
 	/** A caret at the seam `dead` vacated (`doc/anchors`); `null` when nothing displays. */
 	#seamValue = (dead: string | null): SelectionValue | null => {
 		const { facade } = this.edytor;
-		const at = seam(facade, dead, this.#displayable);
+		const at = seam(facade, dead, this.displayable);
 		const anchor = at && facade.anchorAt(at.block, at.offset, 'left');
 		return anchor ? textSelection(anchor) : null;
 	};
@@ -1533,86 +1535,6 @@ export class EdytorSelection {
 	/** Select the whole content from `startText` to `endText` (the code block's select-all). */
 	setAtTextsRange = async (startText: Text, endText: Text) =>
 		this.setRangeStateAtTextOffsets(startText, 0, endText, endText.length);
-
-	#verticalExtendGoal: { column: number; signature: string } | null = null;
-
-	/**
-	 * Deterministic Shift+ArrowUp/ArrowDown extension over a text
-	 * selection. Native vertical extension is engine-defined — Firefox can
-	 * collapse the range at its anchor, drop the focus on stray boundary
-	 * text nodes, or measure a different destination column than
-	 * Blink/WebKit — so the same keypress used to derive three different
-	 * model selections. The editor owns the semantic instead: the
-	 * document-order edge nearest the motion direction moves one visual
-	 * line (the start edge for `up`, the end edge for `down`) and the
-	 * opposite edge stays as the pivot — `up` therefore yields a reversed
-	 * range and `down` a forward one, matching Blink/WebKit conventions.
-	 *
-	 * Returns false when no model text selection is live (block/inline
-	 * selections keep their own hotkey behavior) so callers can fall back
-	 * to native handling.
-	 */
-	extendSelectionVertically = (direction: 'up' | 'down'): boolean => {
-		const { startText, endText, yStart, yEnd, isReversed } = this.state;
-		if (
-			!startText ||
-			!endText ||
-			this.selectedBlocks.size > 0 ||
-			this.selectedInlineBlock.size > 0
-		) {
-			return false;
-		}
-
-		const movingText = direction === 'up' ? startText : endText;
-		const movingOffset = direction === 'up' ? yStart : yEnd;
-
-		const signatureOf = (start: Text, ys: number, end: Text, ye: number, reversed: boolean) =>
-			`${start.id}:${ys}:${end.id}:${ye}:${reversed ? 1 : 0}`;
-
-		// Goal-column memory: consecutive vertical extends keep the column
-		// the gesture started on instead of drifting toward clamped edges.
-		const goal = this.#verticalExtendGoal;
-		const column =
-			goal && goal.signature === signatureOf(startText, yStart, endText, yEnd, isReversed)
-				? goal.column
-				: undefined;
-
-		const destination = getVerticalLineDestination(movingText, movingOffset, direction, column);
-		if (!destination) {
-			return false;
-		}
-
-		const normalized =
-			direction === 'up'
-				? this.normalizeTextRangePoints(destination.text, destination.offset, endText, yEnd, true)
-				: this.normalizeTextRangePoints(
-						startText,
-						yStart,
-						destination.text,
-						destination.offset,
-						false
-					);
-
-		this.#verticalExtendGoal = {
-			column: destination.column,
-			signature: signatureOf(
-				normalized.startText,
-				normalized.startOffset,
-				normalized.endText,
-				normalized.endOffset,
-				normalized.isReversed
-			)
-		};
-
-		void this.setAtRange(
-			normalized.startText,
-			normalized.startOffset,
-			normalized.endText,
-			normalized.endOffset,
-			{ isReversed: normalized.isReversed }
-		);
-		return true;
-	};
 
 	/** Select a text range; the projector displays it after the flush (R10). */
 	setAtRange = async (

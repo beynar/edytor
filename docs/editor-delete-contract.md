@@ -377,8 +377,9 @@ survivor intersection `["aa"]`.
 
 ## Anchor contract
 
-A selection endpoint anchor (`DocAnchor` = `{b, a, o?}`) carries four
-separable facts; implementations and oracles must keep them distinct:
+A selection endpoint anchor (`DocAnchor` = `{b, a}`: `b` the home block of
+the backing text, `a` an engine relative position) carries four separable
+facts; implementations and oracles must keep them distinct:
 
 - **Visible position** — owning block, inline/text boundary, offset.
 - **Insertion affinity** — which side of an insert _at_ the position the
@@ -412,18 +413,18 @@ Required semantics:
    interchangeable (wrappers may normalize); different blocks or
    opposite sides of an inline atom are not.
 
-**`o` facet (`sel.anchor.seam-owner`).** A mid-backing stream start needs
-two facts `assoc` cannot encode: left insert-affinity AND right-side
-ownership. Minted anchors use `a.a <= -2` (engine treats any `assoc < 0`
-as left-sticky, so affinity math is untouched) plus `o` = the intended
-display block. Resolution rebases the bound gap onto `o`'s own stream —
-an insert into the _left_ neighbor at the shared gap lands a foreign atom
-there and must not pull the caret across. `o` is honored only while
-`ownerOf(o) === o` (alive and self-owning); a merge claim or deletion
-returns the anchor to generic atom-following, and an `o` that emptied in
-place resolves to `{o, 0}`. Anchors without `o` resolve by the generic
-path — the wire/JSON shape accepts both (compatible extension, no
-migration).
+**Block starts (`sel.anchor.seam-owner`, arch-v2 D12).** Text ownership is
+streams delimited by boundary items (plan §2.1, R2): a split-born block's
+stream starts right after its boundary item in the text it was split from.
+A left-affine caret at such a block's start binds that boundary item, so
+the containing stream and the side are two facts in two fields — no owner
+facet: an insert into the _left_ neighbour at the shared gap lands before
+the boundary, in the neighbour's stream, and never pulls the caret across.
+Resolution finds the stream holding the resolved index (the one whose
+delimiting boundary precedes it) and its display owner; a stream whose
+block is deleted or hidden resolves `null` and the caller takes the seam.
+A streamless block (its boundary died with its host text) binds the start
+of the own text its first typing creates (`{b: block, a: {i: null}}`).
 
 ## Selection ownership and lifecycle
 
@@ -521,8 +522,8 @@ or the echo gate reads their synthetic `selectionchange` as drift.
 
 | Concern                           | Owner                                                                                                                                                  |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Anchor mint/resolve, owner facet  | `facade.anchorAt` / `facade.resolveAnchor` (`src/lib/crdt/edytor-doc.ts`)                                                                              |
-| Engine relative positions         | vendored Yjs v14 (`atomAnchorAt`/`resolveAnchor` in `src/lib/crdt/text/model.ts`)                                                                      |
+| Anchor mint/resolve               | `facade.anchorAt` / `facade.resolveAnchor` (`src/lib/crdt/edytor-doc.ts`)                                                                              |
+| Engine relative positions         | vendored Yjs v14 (`anchorAt`/`resolveAnchor` in `src/lib/crdt/text/model.ts`)                                                                          |
 | Logical recovery destination      | `selection.restoreDeadSelectionEndpoints` + seam walk (`src/lib/selection/selection.svelte.ts`)                                                        |
 | Editable-destination traversal    | `Block.firstEditableText`/`lastEditableText` (`src/lib/block/block.svelte.ts`)                                                                         |
 | DOM mount readiness → display     | projector pass after the flush that mounts the text; a text mount or the records signal re-runs a waiting pass (`src/lib/surface/projector.svelte.ts`) |
@@ -581,11 +582,11 @@ separate pinned programs.
 | block-start ownership × adjacent remote insert | `a split-start caret stays in its block through an adjacent-block append` (anchors.test.ts) + mounted-replica pin (command-simulation.test.tsx: caret at `Hello@0`, remote `X` append to `alpha`, local `Z` → `alphaX`/`ZHello`) |
 | block-start ownership × same-gap remote insert | `a split-start caret keeps left insert-affinity` — remote insert lands to the caret's right                                                                                                                                      |
 | block-start ownership × composition            | `replaces intermediate composition text at a fresh split block start` — `alpha\|Hello` split, compose `n`→`に`, result `にHello`                                                                                                 |
-| block-start ownership × remote merge           | `…follows its facet into a remote merge` (backward) and `…through a remote mergeForward`                                                                                                                                         |
+| block-start ownership × remote merge           | `…follows its facet into a remote merge` (backward) and `…through a remote mergeForward` — the bound boundary's stream now displays in the claimer                                                                               |
 | block-start ownership × predecessor deletion   | `…survives deletion of the predecessor's last atom` and `…of the whole predecessor block`                                                                                                                                        |
 | block-start ownership × block move             | `…stays in its block when the block is moved`                                                                                                                                                                                    |
-| block-start ownership × empty-in-place         | `…lands in its own block when the destination empties in place` — live block, no atoms → `{o,0}`, no neighbor migration                                                                                                          |
-| block-start ownership × serialization          | `a split-start anchor keeps its owner facet through JSON round-trip` (`o` survives the wire shape)                                                                                                                               |
+| block-start ownership × empty-in-place         | `…lands in its own block when the destination empties in place` — live block, no atoms → `{block, 0}`, no neighbor migration                                                                                                     |
+| block-start ownership × serialization          | `a split-start anchor binds its boundary item and survives JSON round-trip` (`{b, a}` only)                                                                                                                                      |
 | recovery topology × nested/non-editable        | `list(divider, gamma)` → caret in `gamma`; container ending in divider → previous editable end (command-simulation.test.tsx)                                                                                                     |
 | recovery topology × whole-document deletion    | remote whole-doc delete → replacement paragraph mounts → pending recovery lands; `insertText("Z")` reaches it (command-simulation.test.tsx)                                                                                      |
 | range recovery × one dead endpoint             | joint-shape oracle: collapse to the resolvable survivor (selectionOracle.ts + browser-state-oracle.spec.ts)                                                                                                                      |

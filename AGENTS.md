@@ -226,13 +226,14 @@ This is the most fragile part of the repo and also the least tested part.
 "Anchor contract" / "Selection ownership and lifecycle" / "Responsibility
 map" sections):
 
-- A caret anchor is `{b, a, o?}`: `a.i` binds the backing atom (causal
-  identity), `a.a`'s sign carries insert affinity, and `o` carries the
-  intended display block when a `-2` anchor is minted at a mid-backing
-  stream start. `o` is honored only while the block is alive and
-  self-owning (`ownerOf(o) === o`); merges/deletes fall back to generic
-  atom-following. Never let a caret migrate into a surviving neighbor
-  block because that neighbor received text at the shared gap.
+- A caret anchor is `{b, a}`: `b` the home block of the backing text,
+  `a.i` the bound item (causal identity), `a.a`'s sign the insert
+  affinity. Text ownership is streams delimited by boundary items (R2): a
+  left caret at a split-born block's start binds that block's boundary
+  item, so the containing stream and the side are two facts in two fields
+  (no owner facet since arch-v2 D12). Never let a caret migrate into a
+  surviving neighbor block because that neighbor received text at the
+  shared gap.
 - Logical recovery destination and DOM readiness are separate: a live
   destination with no mounted node stays the selection value and is
   displayed by the projector's pass after the flush that mounts it (a

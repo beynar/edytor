@@ -6,6 +6,7 @@
 	import { id, prevent } from '$lib/utils.js';
 	import { Text } from '$lib/text/text.svelte.js';
 	import { Block } from '$lib/block/block.svelte.js';
+	import { runIntent } from '$lib/events/beforeInputCommands.js';
 
 	(globalThis as typeof globalThis & { Prism?: typeof Prism }).Prism = Prism;
 
@@ -90,19 +91,7 @@
 				'shift+enter': () => {
 					const { startText } = edytor.selection.state;
 					if (startText?.parent.type === 'codeLine') {
-						prevent(() => {
-							const event =
-								typeof InputEvent !== 'undefined'
-									? new InputEvent('beforeinput', {
-											bubbles: true,
-											cancelable: true,
-											inputType: 'insertParagraph'
-										})
-									: Object.assign(new Event('beforeinput', { bubbles: true, cancelable: true }), {
-											inputType: 'insertParagraph'
-										});
-							edytor.onBeforeInput(event as InputEvent);
-						});
+						prevent(() => runIntent(edytor, 'insertParagraph'));
 					}
 				}
 			},

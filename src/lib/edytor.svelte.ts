@@ -52,7 +52,7 @@ import type {
 	EditorCommand
 } from './plugins.js';
 import { on } from 'svelte/events';
-import { HotKeys, type HotKey } from './hotkeys.js';
+import { Keymap, type HotKey } from './session/keymap.js';
 import { TRANSACTION } from './constants.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import {
@@ -154,6 +154,13 @@ const isAppleWebKitBrowser = () => {
  */
 const sharedCrdt = bindCrdt(Y);
 
+/** Register definitions a first extension has not: a bare snippet is `{ snippet }`. */
+const define = <T extends object>(into: Map<string, T>, definitions: object = {}) => {
+	for (const [key, value] of Object.entries(definitions))
+		if (!into.has(key))
+			into.set(key, typeof value === 'object' ? value : ({ snippet: value } as T));
+};
+
 export class Edytor {
 	node?: HTMLElement;
 	marks = new Map<string, MarkDefinition>();
@@ -168,7 +175,7 @@ export class Edytor {
 	idToText = new SvelteMap<string, Text>();
 	nodeToText = new SvelteMap<Node, Text>();
 	transaction = new TRANSACTION();
-	hotKeys: HotKeys;
+	hotKeys: Keymap;
 	readonly = $state(false);
 	root = $state<Block>();
 	editorDomRevision = $state(0);
@@ -544,34 +551,12 @@ export class Edytor {
 					}
 				}
 
-				initializedPlugin.marks &&
-					Object.entries(initializedPlugin.marks).forEach(([key, snippet]) => {
-						if (typeof snippet === 'object') {
-							this.marks.set(key, snippet);
-						} else {
-							this.marks.set(key, { snippet });
-						}
-					});
-
-				initializedPlugin.blocks &&
-					Object.entries(initializedPlugin.blocks).forEach(([key, definition]) => {
-						if (typeof definition === 'object') {
-							this.blocks.set(key, definition);
-						} else {
-							this.blocks.set(key, { snippet: definition });
-						}
-					});
-				initializedPlugin.inlineBlocks &&
-					Object.entries(initializedPlugin.inlineBlocks).forEach(([key, definition]) => {
-						if (typeof definition === 'object') {
-							this.inlineBlocks.set(key, definition);
-						} else {
-							this.inlineBlocks.set(key, { snippet: definition });
-						}
-					});
-				initializedPlugin.commands?.forEach((command) => {
-					this.commands.set(command.id, command);
-				});
+				// Duplicate definitions: the first extension wins (README, D-11).
+				define(this.marks, initializedPlugin.marks);
+				define(this.blocks, initializedPlugin.blocks);
+				define(this.inlineBlocks, initializedPlugin.inlineBlocks);
+				for (const command of initializedPlugin.commands ?? [])
+					if (!this.commands.has(command.id)) this.commands.set(command.id, command);
 				return initializedPlugin;
 			});
 
@@ -648,7 +633,7 @@ export class Edytor {
 			}
 
 			this.selection = new EdytorSelection(this, onSelectionChange);
-			this.hotKeys = new HotKeys(this, hotKeys, this.plugins);
+			this.hotKeys = new Keymap(this, hotKeys, this.plugins);
 		} catch (error) {
 			// Constructor failure — release what the partial view claimed:
 			// the history origin (untracked live — already-captured commits
@@ -1970,24 +1955,20 @@ export class Edytor {
 		// change sub's unsubscribe — re-establish it on every (re)attach.
 		this.ensureFacadeChangeSub();
 		this.selection.init();
-		this.hotKeys.init();
-		const handleKeyDownCapture = (event: KeyboardEvent) => {
-			onKeyDown.call(this, event);
-		};
+		// Keydown serial bumps happen INSIDE onKeyDown, after the
+		// composition-phantom swallow — a swallowed trailing Enter/Backspace
+		// is a browser artifact, not a gesture, and must not disarm pending
+		// composition caret restores.
+		const keydown = this.withUserInput(onKeyDown.bind(this), { bumpSerial: false });
 		const domMutationObserver = observeDomTextMutations(this, node);
 		this.off.push(
-			// Keydown serial bumps happen INSIDE onKeyDown, after the
-			// composition-phantom swallow — a swallowed trailing
-			// Enter/Backspace is a browser artifact, not a gesture, and
-			// must not disarm pending composition caret restores.
-			on(node, 'keydown', this.withUserInput(handleKeyDownCapture, { bumpSerial: false }), {
-				capture: true
+			// One handler per keyboard occurrence: keys inside the editor at
+			// capture; the document sees only keys whose path misses it (a
+			// block selection with focus on the body).
+			on(node, 'keydown', keydown, { capture: true }),
+			on(node.ownerDocument, 'keydown', (event: KeyboardEvent) => {
+				if (!event.composedPath().includes(node)) keydown(event);
 			}),
-			on(
-				node.ownerDocument,
-				'keydown',
-				this.withUserInput(onKeyDown.bind(this), { bumpSerial: false })
-			),
 			// Any pointerdown anywhere disarms pending restores — Firefox
 			// can move the DOM selection on outside clicks without
 			// blurring the editor, so node-local marking is not enough. The

@@ -340,14 +340,14 @@ export const fixtures = defineFixtures([
 			const transformText = vi.fn(({ content }: { content: { text: string }[] }) => content);
 			const transformPlugin: Plugin = (editor) => ({
 				blocks: {
-					// Merge over the rich-text definition so `marks`/lifecycle
-					// stay intact — later plugin definitions replace wholesale.
-					paragraph: { ...editor.blocks.get('paragraph')!, transformText }
+					// Extend the rich-text definition so `marks`/lifecycle stay
+					// intact; listed first, since the first definition wins (D-11).
+					paragraph: { ...(richTextPlugin(editor).blocks!.paragraph as object), transformText }
 				}
 			});
 
 			const { edytor } = createTestEdytor(emptyFixture, {
-				plugins: [richTextPlugin, transformPlugin],
+				plugins: [transformPlugin, richTextPlugin],
 				value: { children: [{ type: 'paragraph', content: [{ text: 'seed' }] }] }
 			});
 			const text = edytor.root!.children[0].content[0] as Text;
@@ -412,12 +412,16 @@ export const fixtures = defineFixtures([
 			const onDeselect = vi.fn();
 			const lifecyclePlugin: Plugin = (editor) => ({
 				blocks: {
-					paragraph: { ...editor.blocks.get('paragraph')!, onSelect, onDeselect }
+					paragraph: {
+						...(richTextPlugin(editor).blocks!.paragraph as object),
+						onSelect,
+						onDeselect
+					}
 				}
 			});
 
 			const { edytor } = createTestEdytor(emptyFixture, {
-				plugins: [richTextPlugin, lifecyclePlugin],
+				plugins: [lifecyclePlugin, richTextPlugin],
 				value: { children: [{ type: 'paragraph', content: [{ text: 'a' }] }] }
 			});
 			const block = edytor.root!.children[0];

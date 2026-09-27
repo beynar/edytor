@@ -29,7 +29,7 @@ import {
 	createBeforeInputSnapshot,
 	getEffectiveBeforeInputType,
 	isTabTextInput,
-	type BeforeInputSnapshot
+	type EventSnapshot
 } from './beforeInputSnapshot.js';
 
 const getBeforeInputTargetRange = (event: InputEvent): StaticRange | null => {
@@ -322,14 +322,14 @@ const isBrowserOwnedNativeInput = (edytor: Edytor, event: InputEvent) =>
 	edytor.selection.selectedBlocks.size === 0 &&
 	edytor.selection.selectedInlineBlock.size === 0;
 
-const shouldIgnoreBeforeInput = (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
+const shouldIgnoreBeforeInput = (edytor: Edytor, snapshot: EventSnapshot) =>
 	edytor.readonly ||
 	snapshot.isVoidEditableElement ||
 	isBrowserOwnedNativeInput(edytor, snapshot.event) ||
 	isNativeInteractiveControl(snapshot.event.target) ||
 	isNestedForeignEditableTarget(edytor.node, snapshot.event.target);
 
-const isTextLocalDeletion = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const isTextLocalDeletion = (edytor: Edytor, snapshot: EventSnapshot) => {
 	if (
 		edytor.selection.selectedBlocks.size > 0 ||
 		snapshot.isStructuralKeyFallback ||
@@ -353,7 +353,7 @@ const isTextLocalDeletion = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
 		: !snapshot.isAtEndOfText;
 };
 
-const isTextLocalReplacement = (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
+const isTextLocalReplacement = (edytor: Edytor, snapshot: EventSnapshot) =>
 	snapshot.inputType === 'insertReplacementText' &&
 	edytor.selection.selectedBlocks.size === 0 &&
 	snapshot.isCollapsed &&
@@ -362,13 +362,13 @@ const isTextLocalReplacement = (edytor: Edytor, snapshot: BeforeInputSnapshot) =
 	!snapshot.isTextSpanning &&
 	!snapshot.isBlockSpanning;
 
-const isNonCancelableInsertText = (snapshot: BeforeInputSnapshot) =>
+const isNonCancelableInsertText = (snapshot: EventSnapshot) =>
 	!snapshot.event.cancelable && snapshot.inputType === 'insertText';
 
-const isNonCancelableReplacementText = (snapshot: BeforeInputSnapshot) =>
+const isNonCancelableReplacementText = (snapshot: EventSnapshot) =>
 	!snapshot.event.cancelable && snapshot.inputType === 'insertReplacementText';
 
-const isSafeTextLocalInsertion = (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
+const isSafeTextLocalInsertion = (edytor: Edytor, snapshot: EventSnapshot) =>
 	isNonCancelableInsertText(snapshot) &&
 	!isTabTextInput(snapshot) &&
 	!(snapshot.data === '@' && edytor.inlineBlocks.has('mention')) &&
@@ -379,13 +379,13 @@ const isSafeTextLocalInsertion = (edytor: Edytor, snapshot: BeforeInputSnapshot)
 	!snapshot.isTextSpanning &&
 	!snapshot.isBlockSpanning;
 
-const isUnsafeNativeInsertText = (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
+const isUnsafeNativeInsertText = (edytor: Edytor, snapshot: EventSnapshot) =>
 	isNonCancelableInsertText(snapshot) && !isSafeTextLocalInsertion(edytor, snapshot);
 
-const isUnsafeNativeReplacementText = (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
+const isUnsafeNativeReplacementText = (edytor: Edytor, snapshot: EventSnapshot) =>
 	isNonCancelableReplacementText(snapshot) && !isTextLocalReplacement(edytor, snapshot);
 
-const isUnsafeNativeTextInsertion = (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
+const isUnsafeNativeTextInsertion = (edytor: Edytor, snapshot: EventSnapshot) =>
 	isUnsafeNativeInsertText(edytor, snapshot) ||
 	isUnsafeNativeReplacementText(edytor, snapshot) ||
 	(!snapshot.event.cancelable &&
@@ -401,7 +401,7 @@ const isUnsafeNativeTextInsertion = (edytor: Edytor, snapshot: BeforeInputSnapsh
  * single text: a spanning range would let the browser clobber structure
  * the model cannot recover.
  */
-const isTextLocalRearrangeInput = (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
+const isTextLocalRearrangeInput = (edytor: Edytor, snapshot: EventSnapshot) =>
 	(snapshot.inputType === 'insertTranspose' || snapshot.inputType === 'insertFromYank') &&
 	!snapshot.data &&
 	!snapshot.hasDataTransferTextPayload &&
@@ -412,14 +412,14 @@ const isTextLocalRearrangeInput = (edytor: Edytor, snapshot: BeforeInputSnapshot
 	!snapshot.isTextSpanning &&
 	!snapshot.isBlockSpanning;
 
-const shouldLetBrowserHandleBeforeInput = (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
+const shouldLetBrowserHandleBeforeInput = (edytor: Edytor, snapshot: EventSnapshot) =>
 	(!snapshot.hasDataTransferTextPayload && isTextLocalReplacement(edytor, snapshot)) ||
 	snapshot.inputType === 'deleteCompositionText' ||
 	isSafeTextLocalInsertion(edytor, snapshot) ||
 	isTextLocalDeletion(edytor, snapshot) ||
 	isTextLocalRearrangeInput(edytor, snapshot);
 
-const rememberBrowserOwnedInputTarget = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const rememberBrowserOwnedInputTarget = (edytor: Edytor, snapshot: EventSnapshot) => {
 	const text = snapshot.startText;
 	if (!text || edytor.selection.selectedBlocks.size > 0) {
 		edytor.browserOwnedInputTarget = null;
@@ -478,10 +478,7 @@ const rememberBrowserOwnedInputTarget = (edytor: Edytor, snapshot: BeforeInputSn
 	edytor.browserOwnedInputTarget = null;
 };
 
-const shouldRepairNativeMutationAfterModelCommand = (
-	edytor: Edytor,
-	snapshot: BeforeInputSnapshot
-) =>
+const shouldRepairNativeMutationAfterModelCommand = (edytor: Edytor, snapshot: EventSnapshot) =>
 	!snapshot.event.cancelable &&
 	(isUnsafeNativeTextInsertion(edytor, snapshot) ||
 		(isModelOwnedDeleteInput(snapshot.inputType) && !isTextLocalDeletion(edytor, snapshot)) ||
@@ -489,16 +486,13 @@ const shouldRepairNativeMutationAfterModelCommand = (
 
 const shouldFlushObservedNativeMutationsAfterSuppressedInput = (
 	edytor: Edytor,
-	snapshot: BeforeInputSnapshot
+	snapshot: EventSnapshot
 ) =>
 	!snapshot.event.cancelable &&
 	(isUnsafeNativeTextInsertion(edytor, snapshot) ||
 		isStructuralNativeMutationInput(snapshot.inputType));
 
-const scheduleAndroidChromeNativeBackspaceFallback = (
-	edytor: Edytor,
-	snapshot: BeforeInputSnapshot
-) => {
+const scheduleAndroidChromeNativeBackspaceFallback = (edytor: Edytor, snapshot: EventSnapshot) => {
 	if (
 		!isAndroidChromeBrowser() ||
 		snapshot.inputType !== 'deleteContentBackward' ||
@@ -539,7 +533,7 @@ const scheduleAndroidChromeNativeBackspaceFallback = (
 	}, NATIVE_INPUT_REPAIR_WINDOW_MS);
 };
 
-const resetCompositionIfNeeded = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const resetCompositionIfNeeded = (edytor: Edytor, snapshot: EventSnapshot) => {
 	if (
 		snapshot.inputType !== 'insertCompositionText' &&
 		snapshot.inputType !== 'insertFromComposition' &&
@@ -549,7 +543,7 @@ const resetCompositionIfNeeded = (edytor: Edytor, snapshot: BeforeInputSnapshot)
 	}
 };
 
-const deleteTrailingSoftBreakBackward = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const deleteTrailingSoftBreakBackward = (edytor: Edytor, snapshot: EventSnapshot) => {
 	const { startText, yStart } = snapshot;
 	const isModelCollapsed = snapshot.isCollapsed || snapshot.yStart === snapshot.yEnd;
 	if (
@@ -587,7 +581,7 @@ const NON_COMPOSITION_INSERT_TYPES = new Set([
 	'insertFromDrop'
 ]);
 
-const markCompositionInputHandledIfNeeded = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const markCompositionInputHandledIfNeeded = (edytor: Edytor, snapshot: EventSnapshot) => {
 	if (
 		edytor.isComposing &&
 		snapshot.inputType.startsWith('insert') &&
@@ -611,7 +605,7 @@ const refreshSelectionTextFromModel = async (edytor: Edytor, forceDomRefresh = f
 
 const rememberInterruptedCompositionSelectionIfNeeded = (
 	edytor: Edytor,
-	snapshot: BeforeInputSnapshot
+	snapshot: EventSnapshot
 ) => {
 	if (!edytor.isComposing || !edytor.compositionState || isCompositionInput(snapshot.inputType)) {
 		return;
@@ -632,7 +626,7 @@ const runBeforeInputPlugins = (edytor: Edytor, event: InputEvent) => {
 	});
 };
 
-const runBeforeInputHistoryCommand = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const runBeforeInputHistoryCommand = (edytor: Edytor, snapshot: EventSnapshot) => {
 	if (snapshot.inputType !== 'historyUndo' && snapshot.inputType !== 'historyRedo') {
 		return false;
 	}
@@ -648,6 +642,9 @@ const runBeforeInputHistoryCommand = (edytor: Edytor, snapshot: BeforeInputSnaps
 export async function onBeforeInput(this: Edytor, event: InputEvent) {
 	const structuralKeyFallbackInputType = this.structuralKeyFallbackInputType;
 	this.cancelStructuralKeyFallback();
+	// The keydown of this occurrence already offered its key to the bindings.
+	const offered = this.hotKeys.offered;
+	this.hotKeys.offered = null;
 	if (event.inputType === 'deleteByDrag' && event.isTrusted) {
 		event.preventDefault();
 		this.selection.clearPointerDragStart();
@@ -717,7 +714,7 @@ export async function onBeforeInput(this: Edytor, event: InputEvent) {
 			return;
 		}
 
-		if (runBeforeInputHotkeyBridge(this, snapshot)) {
+		if (runBeforeInputHotkeyBridge(this, snapshot, offered)) {
 			event.preventDefault();
 			return;
 		}

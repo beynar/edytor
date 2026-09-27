@@ -4,7 +4,7 @@ import type { Block } from './block/block.svelte.js';
 import type { JSONBlock, JSONInlineBlock, JSONText } from './utils/json.js';
 import type { Text } from './text/text.svelte.js';
 import type { SerializableContent } from './utils/json.js';
-import type { HotKey, HotKeyCombination } from './hotkeys.js';
+import type { HotKey, HotKeyCombination } from './session/keymap.js';
 import type { TextOperations } from './text/text.utils.js';
 import type { BlockOperations } from './block/block.utils.js';
 import type { EdytorSelection } from './selection/selection.svelte.js';

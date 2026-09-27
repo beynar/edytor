@@ -25,7 +25,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Snippet } from 'svelte';
 import { Edytor } from '$lib/edytor.svelte.js';
-import type { HotKey } from '$lib/hotkeys.js';
+import type { HotKey } from '$lib/session/keymap.js';
 import type { Plugin } from '$lib/plugins.js';
 import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
@@ -39,7 +39,7 @@ import {
 } from '../../dom/test.utils.js';
 
 /** Red on the reference; green since S4. */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -349,9 +349,8 @@ describe('O36 — one precedence rule for bindings', () => {
 				richTextPlugin
 			]
 		});
-		edytor.hotKeys.init();
 		const event = key({ key: 'j', ctrlKey: true });
-		expect(edytor.hotKeys.isHotkey(event)).toBe(true);
+		expect(edytor.hotKeys.handle(event)).toBe(true);
 		expect(event.defaultPrevented).toBe(true);
 		expect(calls).toEqual(['consumer', 'first', 'second']);
 	});
@@ -362,9 +361,8 @@ describe('O36 — one precedence rule for bindings', () => {
 			hotKeys: { 'Shift+Alt+Mod+X': ({ prevent }) => prevent(() => calls.push('x')) },
 			plugins: [richTextPlugin]
 		});
-		edytor.hotKeys.init();
 		expect(
-			edytor.hotKeys.isHotkey(key({ key: 'X', ctrlKey: true, altKey: true, shiftKey: true }))
+			edytor.hotKeys.handle(key({ key: 'X', ctrlKey: true, altKey: true, shiftKey: true }))
 		).toBe(true);
 		expect(calls).toEqual(['x']);
 	});

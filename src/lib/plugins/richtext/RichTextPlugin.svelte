@@ -1,7 +1,7 @@
 <script module lang="ts">
 	import type { Plugin, MarkSnippetPayload, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { SerializableContent } from '$lib/utils/json.js';
-	import type { HotKey } from '$lib/hotkeys.js';
+	import type { HotKey } from '$lib/session/keymap.js';
 	import { createRichTextCommands } from './richTextCommands.js';
 	import {
 		richTextOperations,

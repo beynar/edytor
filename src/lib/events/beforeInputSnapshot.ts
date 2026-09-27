@@ -3,7 +3,8 @@ import type { Text } from '$lib/text/text.svelte.js';
 import type { EdgeSide } from '$lib/session/editing/text.js';
 
 export type BeforeInputSnapshot = {
-	event: InputEvent;
+	/** The browser event; absent for an intent a key binding or an extension issues. */
+	event?: InputEvent;
 	inputType: InputEvent['inputType'];
 	isStructuralKeyFallback: boolean;
 	data: InputEvent['data'];
@@ -30,6 +31,9 @@ export type BeforeInputSnapshot = {
 	isNested: boolean;
 	isLastChild: boolean;
 };
+
+/** A snapshot of a browser `beforeinput`. */
+export type EventSnapshot = BeforeInputSnapshot & { event: InputEvent };
 
 const isNativeLineBreakTextInput = (event: InputEvent) =>
 	event.inputType === 'insertText' && (event.data === '\n' || event.data === '\r');
@@ -69,59 +73,59 @@ const getTextInsertionDataTransferPayload = (event: InputEvent) => {
 	return text.length > 0 ? text : null;
 };
 
-export const createBeforeInputSnapshot = (
-	edytor: Edytor,
-	event: InputEvent,
-	structuralKeyFallbackInputType: InputEvent['inputType'] | null
-): BeforeInputSnapshot => {
-	const {
-		yStart,
-		length,
-		isCollapsed,
-		isTextSpanning,
-		isAtStartOfBlock,
-		isAtStartOfText,
-		endText,
-		isAtEndOfText,
-		isBlockSpanning,
-		startText,
-		isAtEndOfBlock,
-		yEnd,
-		islandRoot,
-		texts,
-		isVoidEditableElement,
-		edge
-	} = edytor.selection.state;
-	const dataTransferTextPayload = getTextInsertionDataTransferPayload(event);
-
+/** The selection facts every snapshot carries, read once. */
+const selectionFacts = (edytor: Edytor) => {
+	const { state } = edytor.selection;
+	const { startText } = state;
 	return {
-		event,
-		inputType: getEffectiveBeforeInputType(event, structuralKeyFallbackInputType),
-		isStructuralKeyFallback: Boolean(structuralKeyFallbackInputType),
-		dataTransfer: event.dataTransfer,
-		data: event.data ?? dataTransferTextPayload,
-		hasDataTransferTextPayload: dataTransferTextPayload !== null,
 		startText,
-		endText,
-		texts,
-		yStart,
-		yEnd,
-		edge,
-		length,
-		isCollapsed,
-		isTextSpanning,
-		isBlockSpanning,
-		isAtStartOfBlock: Boolean(isAtStartOfBlock),
-		isAtEndOfBlock: Boolean(isAtEndOfBlock),
-		isAtStartOfText: Boolean(isAtStartOfText),
-		isAtEndOfText: Boolean(isAtEndOfText),
-		islandRoot,
-		isVoidEditableElement,
+		endText: state.endText,
+		texts: state.texts,
+		yStart: state.yStart,
+		yEnd: state.yEnd,
+		edge: state.edge,
+		length: state.length,
+		isCollapsed: state.isCollapsed,
+		isTextSpanning: state.isTextSpanning,
+		isBlockSpanning: state.isBlockSpanning,
+		isAtStartOfBlock: Boolean(state.isAtStartOfBlock),
+		isAtEndOfBlock: Boolean(state.isAtEndOfBlock),
+		isAtStartOfText: Boolean(state.isAtStartOfText),
+		isAtEndOfText: Boolean(state.isAtEndOfText),
+		islandRoot: state.islandRoot,
+		isVoidEditableElement: state.isVoidEditableElement,
 		isFirstChildOfDocument: startText?.parent === edytor.root?.children.at(0),
 		isNested: Boolean(startText && startText.parent.parent !== edytor.root),
 		isLastChild: startText?.parent.parent?.children.at(-1) === startText?.parent
 	};
 };
+
+export const createBeforeInputSnapshot = (
+	edytor: Edytor,
+	event: InputEvent,
+	structuralKeyFallbackInputType: InputEvent['inputType'] | null
+): EventSnapshot => {
+	const dataTransferTextPayload = getTextInsertionDataTransferPayload(event);
+	return {
+		...selectionFacts(edytor),
+		event,
+		inputType: getEffectiveBeforeInputType(event, structuralKeyFallbackInputType),
+		isStructuralKeyFallback: Boolean(structuralKeyFallbackInputType),
+		dataTransfer: event.dataTransfer,
+		data: event.data ?? dataTransferTextPayload,
+		hasDataTransferTextPayload: dataTransferTextPayload !== null
+	};
+};
+
+/** An editing intent at the current selection, with no browser event (a key binding's command). */
+export const intentSnapshot = (edytor: Edytor, inputType: string): BeforeInputSnapshot => ({
+	...selectionFacts(edytor),
+	inputType,
+	isStructuralKeyFallback: false,
+	dataTransfer: null,
+	data: null,
+	hasDataTransferTextPayload: false
+});
 
 export const isTabTextInput = (snapshot: BeforeInputSnapshot) =>
 	snapshot.inputType === 'insertText' && snapshot.data === '\t';

@@ -1,5 +1,5 @@
 import type { Edytor } from '../edytor.svelte.js';
-import type { HotKey, HotKeyCombination } from '../hotkeys.js';
+import type { HotKey, HotKeyCombination } from '../session/keymap.js';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import { Text } from '../text/text.svelte.js';
 import { clearDomSelection } from '../selection/domSelection.js';
@@ -553,8 +553,8 @@ const moveNodeSelectionHorizontally = (edytor: Edytor, key: 'ArrowLeft' | 'Arrow
 const shouldUseAltWordNavigation = (edytor: Edytor) => edytor.hotKeys.isMac;
 const shouldUseModWordNavigation = (edytor: Edytor) => !edytor.hotKeys.isMac;
 
-const arrowKeyDirection = (event: KeyboardEvent) => (text: Text) =>
-	getVisualHorizontalDirection(text, event.key as 'ArrowLeft' | 'ArrowRight');
+const arrowKeyDirection = (key: 'ArrowLeft' | 'ArrowRight') => (text: Text) =>
+	getVisualHorizontalDirection(text, key);
 
 /**
  * Logical (non-visual) one-step caret boundary crossing — used by the
@@ -568,31 +568,31 @@ export const moveCaretAcrossHorizontalBoundary = (
 ) => moveAcrossHorizontalBoundary(edytor, () => direction, extendSelection);
 
 export const navigationHotKeys = {
-	arrowleft: ({ event, edytor, prevent }) => {
-		if (moveAcrossHorizontalBoundary(edytor, arrowKeyDirection(event), false)) {
+	arrowleft: ({ edytor, prevent }) => {
+		if (moveAcrossHorizontalBoundary(edytor, arrowKeyDirection('ArrowLeft'), false)) {
 			prevent();
 		}
 	},
-	arrowright: ({ event, edytor, prevent }) => {
-		if (moveAcrossHorizontalBoundary(edytor, arrowKeyDirection(event), false)) {
+	arrowright: ({ edytor, prevent }) => {
+		if (moveAcrossHorizontalBoundary(edytor, arrowKeyDirection('ArrowRight'), false)) {
 			prevent();
 		}
 	},
-	'shift+arrowleft': ({ event, edytor, prevent }) => {
-		if (moveAcrossHorizontalBoundary(edytor, arrowKeyDirection(event), true)) {
+	'shift+arrowleft': ({ edytor, prevent }) => {
+		if (moveAcrossHorizontalBoundary(edytor, arrowKeyDirection('ArrowLeft'), true)) {
 			prevent();
 			return;
 		}
-		if (moveNodeSelectionHorizontally(edytor, event.key as 'ArrowLeft')) {
+		if (moveNodeSelectionHorizontally(edytor, 'ArrowLeft')) {
 			prevent();
 		}
 	},
-	'shift+arrowright': ({ event, edytor, prevent }) => {
-		if (moveAcrossHorizontalBoundary(edytor, arrowKeyDirection(event), true)) {
+	'shift+arrowright': ({ edytor, prevent }) => {
+		if (moveAcrossHorizontalBoundary(edytor, arrowKeyDirection('ArrowRight'), true)) {
 			prevent();
 			return;
 		}
-		if (moveNodeSelectionHorizontally(edytor, event.key as 'ArrowRight')) {
+		if (moveNodeSelectionHorizontally(edytor, 'ArrowRight')) {
 			prevent();
 		}
 	},

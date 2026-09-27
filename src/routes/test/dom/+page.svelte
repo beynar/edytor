@@ -30,7 +30,7 @@
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import type { Text } from '$lib/text/text.svelte.js';
 	import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
-	import type { HotKey } from '$lib/hotkeys.js';
+	import type { HotKey } from '$lib/session/keymap.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();

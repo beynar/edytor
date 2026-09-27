@@ -7,7 +7,7 @@ import {
 	isNestedForeignEditableTarget,
 	isNestedForeignEditableEvent
 } from './nativeInteractiveControl.js';
-import { Text } from '$lib/text/text.svelte.js';
+import { replaceSelectedAtom } from '$lib/session/bindings.js';
 
 const getRootSelection = (node: HTMLElement) => {
 	const root = node.getRootNode();
@@ -98,43 +98,6 @@ const isPrintableReplacementKey = (event: KeyboardEvent) => {
 	}
 
 	return event.key.length === 1;
-};
-
-const replaceSelectedInlineBlockWithText = (edytor: Edytor, value: string) => {
-	const inlineBlock =
-		edytor.selection.selectedInlineBlock.values().next().value ??
-		edytor.selection.inlineBlockDeletionTarget;
-	if (!inlineBlock) {
-		return false;
-	}
-
-	const parent = inlineBlock.parent;
-	const index = parent.content.indexOf(inlineBlock);
-	if (index === -1) {
-		edytor.selection.clearInlineBlockSelection();
-		return true;
-	}
-
-	const previousPart = parent.content[index - 1];
-	const nextPart = parent.content[index + 1];
-	const fallbackText =
-		previousPart instanceof Text
-			? previousPart
-			: nextPart instanceof Text
-				? nextPart
-				: parent.firstText!;
-	const insertionOffset = previousPart instanceof Text ? previousPart.length : 0;
-
-	edytor.dispatcher.cut('replaceInlineBlock');
-	edytor.selection.clearInlineBlockSelection();
-	parent.removeInlineBlock({ index });
-	fallbackText.insertText({
-		value,
-		start: insertionOffset,
-		end: insertionOffset
-	});
-	void edytor.selection.setAtTextOffset(fallbackText, insertionOffset + value.length);
-	return true;
 };
 
 const isReadonlyAllowedShortcut = (event: KeyboardEvent) => {
@@ -302,6 +265,8 @@ const getStructuralFallbackInputType = (
 };
 
 export function onKeyDown(this: Edytor, e: KeyboardEvent) {
+	// A keydown the bindings are not offered offers no key to its `beforeinput`.
+	this.hotKeys.offered = null;
 	if (e.defaultPrevented) {
 		return;
 	}
@@ -355,14 +320,14 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 
 	// One prevention scope per keydown: a veto anywhere in it aborts the key.
 	this.dispatcher.scope(() => {
-		if (isPrintableReplacementKey(e) && replaceSelectedInlineBlockWithText(this, e.key)) {
-			e.preventDefault();
-			e.stopPropagation();
+		if (this.hotKeys.handle(e) || e.defaultPrevented) {
 			return;
 		}
 
-		const handledByHotkey = this.hotKeys.isHotkey(e);
-		if (handledByHotkey || e.defaultPrevented) {
+		// A printable key over a selected inline atom types over it (O40).
+		if (isPrintableReplacementKey(e) && replaceSelectedAtom(this, e.key)) {
+			e.preventDefault();
+			e.stopPropagation();
 			return;
 		}
 

@@ -48,8 +48,8 @@ import type { DocBlock } from '$lib/crdt/index.js';
 /**
  * An id-only block handle (§2.4 "Handles", R4): every getter reads the
  * document index (transaction-aware), every mutator issues a command. The
- * view keeps one per id (`edytor.idToBlock`); `node` is the element its
- * snippet attached (a Surface fact the core owns from R5).
+ * view keeps one per id (`edytor.idToBlock`); `node` is the element the core
+ * renders for it (O45).
  */
 export class Block {
 	readonly = false;
@@ -310,6 +310,7 @@ export class Block {
 	acceptSuggestedText = batch('acceptSuggestedText', acceptSuggestedText);
 	deleteContentAtRange = batch('deleteContentAtRange', deleteContentAtRange, prepareDeleteRange);
 
+	/** Mark an element inside the block's markup as non-editable chrome (a header, a caption bar). */
 	void = (node: HTMLElement) => {
 		node.setAttribute('data-edytor-void', `true`);
 		node.style.userSelect = 'none';
@@ -379,12 +380,9 @@ export class Block {
 		}
 	};
 
+	/** Register the element the core rendered for this block (O45) and run the attach hooks. */
 	attach = (node: HTMLElement) => {
 		this.node = node;
-		node.setAttribute('data-edytor-id', `${this.id}`);
-		node.setAttribute('data-edytor-block', `true`);
-		node.setAttribute('data-edytor-type', `${this.type}`);
-
 		const onDestroy = this.edytor.plugins.reduce(
 			(acc, plugin) => {
 				const action = plugin.onBlockAttached?.({ node, block: this });
@@ -393,10 +391,6 @@ export class Block {
 			},
 			[] as (() => void)[]
 		);
-		if (this.definition.void) {
-			this.void(node);
-		}
-
 		return {
 			destroy: () => {
 				if (this.node === node) this.node = undefined;

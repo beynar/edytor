@@ -33,8 +33,7 @@
 		},
 		get handle() {
 			return block;
-		},
-		attach: (node: HTMLElement) => block?.attach(node)
+		}
 	};
 </script>
 

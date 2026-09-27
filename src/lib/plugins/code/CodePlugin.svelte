@@ -123,6 +123,7 @@
 			blocks: {
 				code: {
 					snippet: code,
+					element: { tag: 'div', attributes: { class: 'grid gap-2 rounded bg-neutral-600 p-1' } },
 					island: true,
 					rendersContent: false,
 					defaultChild: 'codeLine',
@@ -133,6 +134,7 @@
 				},
 				codeLine: {
 					snippet: codeLine,
+					element: { tag: 'div', attributes: { style: 'tab-size: 7px' } },
 					html: (_, content) => `<pre><code>${content}</code></pre>`,
 					transformText: ({ text }) => {
 						const tokens = Prism.tokenize(text.stringContent, Prism.languages['jsx']);
@@ -182,31 +184,25 @@
 </script>
 
 {#snippet code({ block, children }: BlockSnippetPayload)}
-	<div use:block.attach class="grid gap-2 rounded bg-neutral-600 p-1">
-		<div use:block.void class="text-xs flex justify-between">
-			<code>JavaScript</code>
-			<div>
-				<button
-					onclick={async (e) => {
-						e.preventDefault();
-						e.stopPropagation();
-						await navigator.clipboard.writeText(getCodeText(block.handle));
-					}}
-				>
-					Copy
-				</button>
-			</div>
+	<div use:block.void class="text-xs flex justify-between">
+		<code>JavaScript</code>
+		<div>
+			<button
+				onclick={async (e) => {
+					e.preventDefault();
+					e.stopPropagation();
+					await navigator.clipboard.writeText(getCodeText(block.handle));
+				}}
+			>
+				Copy
+			</button>
 		</div>
-		<pre use:block.attach class="language-jsx"><code class="language-jsx"
-				>{@render children?.()}</code
-			></pre>
 	</div>
+	<pre class="language-jsx"><code class="language-jsx">{@render children?.()}</code></pre>
 {/snippet}
 
-{#snippet codeLine({ content, block }: BlockSnippetPayload)}
-	<div style:tab-size="7px" use:block.attach>
-		{@render content()}
-	</div>
+{#snippet codeLine({ content }: BlockSnippetPayload)}
+	{@render content()}
 {/snippet}
 
 {#snippet codeToken({ content, mark }: MarkSnippetPayload)}

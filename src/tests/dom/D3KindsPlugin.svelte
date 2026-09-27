@@ -11,22 +11,20 @@
 		blocks: {
 			box: { snippet: box, island: true },
 			line: { snippet: line },
-			panel: { snippet: panel }
+			panel: { snippet: panel, element: 'section' }
 		}
 	});
 </script>
 
-{#snippet box({ block, content, children }: BlockSnippetPayload)}
-	<div use:block.attach>
-		<div>{@render content()}</div>
-		{@render children?.()}
-	</div>
+{#snippet box({ content, children }: BlockSnippetPayload)}
+	<div>{@render content()}</div>
+	{@render children?.()}
 {/snippet}
 
-{#snippet line({ block, content }: BlockSnippetPayload)}
-	<div use:block.attach>{@render content()}</div>
+{#snippet line({ content }: BlockSnippetPayload)}
+	{@render content()}
 {/snippet}
 
-{#snippet panel({ block, children }: BlockSnippetPayload)}
-	<section use:block.attach>{@render children?.()}</section>
+{#snippet panel({ children }: BlockSnippetPayload)}
+	{@render children?.()}
 {/snippet}

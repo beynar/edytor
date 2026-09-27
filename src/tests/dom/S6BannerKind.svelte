@@ -11,6 +11,7 @@
 		blocks: {
 			banner: {
 				snippet: banner,
+				element: 'aside',
 				presets: [
 					{
 						label: 'Banner',
@@ -35,11 +36,9 @@
 	});
 </script>
 
-{#snippet banner({ block, content, children }: BlockSnippetPayload)}
-	<aside use:block.attach data-edytor-type="banner">
-		<div>{@render content()}</div>
-		{@render children?.()}
-	</aside>
+{#snippet banner({ content, children }: BlockSnippetPayload)}
+	<div>{@render content()}</div>
+	{@render children?.()}
 {/snippet}
 
 {#snippet glow({ content }: MarkSnippetPayload)}

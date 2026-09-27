@@ -115,6 +115,9 @@ export const waitForEditorReady = async (
 	options: { requireRuntime?: boolean } = {}
 ) => {
 	await expect(page.locator('[data-edytor-block="true"]').first()).toBeVisible();
+	// Block elements render declaratively (R5), server-side too: a registered
+	// text element is what shows the client took over the editor.
+	await expect(page.locator('[data-edytor-text="true"]').first()).toBeAttached();
 	if (!options.requireRuntime) {
 		return;
 	}

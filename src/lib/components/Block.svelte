@@ -2,7 +2,7 @@
 	import { DEV } from 'esm-env';
 	import type { Edytor } from '../edytor.svelte.js';
 	import type { Block as BlockHandle } from '../block/block.svelte.js';
-	import type { BlockView } from '../plugins.js';
+	import type { BlockDefinition, BlockView } from '../plugins.js';
 
 	const reported = new WeakMap<Edytor, Set<string>>();
 
@@ -24,9 +24,20 @@
 				return handle.focused;
 			},
 			handle,
-			attach: handle.attach,
 			void: handle.void
 		};
+	};
+
+	/** Tags that take no content: the kind renders the element only. */
+	const VOID_TAGS = new Set(['area', 'br', 'col', 'embed', 'hr', 'img', 'input', 'wbr']);
+
+	/** The element a kind declares (O45): a tag, or tag and attributes, from the block's data. */
+	const elementOf = (definition: BlockDefinition, data: Record<string, unknown> | undefined) => {
+		const spec =
+			typeof definition.element === 'function'
+				? definition.element(data ?? {})
+				: (definition.element ?? 'div');
+		return typeof spec === 'string' ? { tag: spec, attributes: {} } : { attributes: {}, ...spec };
 	};
 
 	/**
@@ -61,15 +72,16 @@
 	// The structure renders from the cell (R2); the snippet receives a view object (R4).
 	const cell = $derived(edytor.cells?.get(id));
 	const block = $derived(viewOf(edytor, id));
-	const snippet = $derived(cell && edytor.getBlockDefinition('block', cell.type).snippet);
-	const snippetKey = $derived(
-		cell?.type === 'heading' ? `${cell.type}:${cell.data?.level ?? 'h1'}` : cell?.type
-	);
+	const definition = $derived(cell && edytor.getBlockDefinition('block', cell.type));
+	// The core renders the block element from the definition; the snippet renders inside it (R11).
+	const element = $derived(definition && elementOf(definition, cell?.data));
+	/** Registers the block element (O45): one element per block, re-registered when the tag changes. */
+	const register = (node: HTMLElement) => block.handle.attach(node);
 
-	// The snippet key `content()` last rendered under — read after each render.
-	let contentRenderedFor: string | null | undefined = null;
+	// The kind `content()` last rendered under — read after each render.
+	let contentRenderedFor: string | undefined;
 	$effect(() => {
-		if (DEV) checkRendersContent(block.handle, contentRenderedFor === snippetKey);
+		if (DEV) checkRendersContent(block.handle, contentRenderedFor === cell?.type);
 	});
 </script>
 
@@ -77,7 +89,7 @@
 -->{#snippet content()}<!--
 --><Content
 		{id}
-		onrender={DEV ? () => (contentRenderedFor = snippetKey) : undefined}
+		onrender={DEV ? () => (contentRenderedFor = cell?.type) : undefined}
 	/><!--
 -->{/snippet}<!--
 -->{#snippet children()}<!--
@@ -87,15 +99,28 @@
 		/><!--
 -->{/each}<!--
 -->{/snippet}<!--
--->{#if cell && snippet}<!--
--->{#key snippetKey}<!--
--->{@render snippet(
-			{
-				block,
-				content,
-				children: cell.childIds.length ? children : null
-			}
-		)}<!--
--->{/key}<!--
+-->{#if cell && definition && element}<!--
+--><svelte:element
+		this={element.tag}
+		{...element.attributes}
+		data-edytor-block="true"
+		data-edytor-id={id}
+		data-edytor-type={cell.type}
+		data-edytor-void={definition.void ? 'true' : undefined}
+		contenteditable={definition.void ? 'false' : undefined}
+		style:user-select={definition.void ? 'none' : undefined}
+		use:register
+		><!--
+	-->{#if definition.snippet && !VOID_TAGS.has(element.tag)}<!--
+	-->{@render definition.snippet(
+				{
+					block,
+					content,
+					children: cell.childIds.length ? children : null
+				}
+			)}<!--
+	-->{/if}<!--
+--></svelte:element
+	><!--
 -->{/if}<!--
 -->

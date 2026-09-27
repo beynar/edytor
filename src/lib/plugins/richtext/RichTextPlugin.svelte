@@ -27,6 +27,9 @@
 
 	/** A thematic break's clipboard forms. */
 	const rule = { html: () => '<hr>', plain: () => '---' };
+	/** A native disclosure: the browser owns `open` (declared view state). */
+	const disclosure = { element: 'details', viewState: ['open'] };
+	const HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
 
 	export const richTextPlugin: Plugin = (edytor) => {
 		const setMarkAndSelect =
@@ -117,10 +120,12 @@
 			blocks: {
 				paragraph: {
 					snippet: paragraph,
+					element: { tag: 'div', attributes: { class: 'rounded bg-opacity-25 p-1 my-1' } },
 					presets: [{ label: 'Text', icon: 'T' }]
 				},
 				heading: {
 					snippet: heading,
+					element: (data) => (HEADINGS.includes(data.level) ? data.level : 'h1'),
 					presets: [
 						{
 							label: 'Heading 1',
@@ -152,11 +157,13 @@
 				},
 				quote: {
 					snippet: quote,
+					element: 'blockquote',
 					presets: [{ label: 'Quote', icon: '❝', markdown: ['> '] }],
 					html: 'blockquote'
 				},
 				'bulleted-list-item': {
-					snippet: bulletedListItem,
+					snippet: listItem,
+					element: 'li',
 					presets: [
 						{
 							label: 'Bulleted list',
@@ -168,7 +175,8 @@
 					html: 'li'
 				},
 				'numbered-list-item': {
-					snippet: numberedListItem,
+					snippet: listItem,
+					element: 'li',
 					presets: [
 						{ label: 'Numbered list', icon: '1.', keywords: ['number', 'ol'], markdown: ['1. '] }
 					],
@@ -192,13 +200,17 @@
 							.filter(Boolean)
 							.join('\n')
 				},
-				toggle: { snippet: toggle, presets: [{ label: 'Toggle list', icon: '▸' }] },
+				toggle: {
+					snippet: details,
+					...disclosure,
+					presets: [{ label: 'Toggle list', icon: '▸' }]
+				},
 				callout: {
 					snippet: callout,
 					presets: [{ label: 'Callout', icon: '✦', data: { icon: '!' } }]
 				},
 				divider: {
-					snippet: divider,
+					element: 'hr',
 					void: true,
 					rendersContent: false,
 					presets: [
@@ -207,22 +219,24 @@
 					empty: { content: [], children: [] },
 					...rule
 				},
-				details,
+				details: { snippet: details, ...disclosure },
 				'ordered-list': {
-					snippet: orderedList,
+					snippet: list,
+					element: 'ol',
 					rendersContent: false,
 					defaultChild: 'list-item',
 					html: 'ol'
 				},
 				'unordered-list': {
-					snippet: unorderedList,
+					snippet: list,
+					element: 'ul',
 					rendersContent: false,
 					defaultChild: 'list-item',
 					html: 'ul'
 				},
-				'list-item': { snippet: listItem, html: 'li' },
+				'list-item': { snippet: listItem, element: 'li', html: 'li' },
 				horizontalRule: {
-					snippet: horizontalRule,
+					element: 'hr',
 					void: true,
 					rendersContent: false,
 					...rule
@@ -299,145 +313,79 @@
 	</span>
 {/snippet}
 
-{#snippet paragraph({ block, content, children }: BlockSnippetPayload)}
-	<div class="rounded bg-opacity-25 p-1 my-1" use:block.attach>
-		<p>
-			{@render content()}
-		</p>
-		{@render children?.()}
-	</div>
-{/snippet}
-{#snippet details({ block, content, children }: BlockSnippetPayload)}
-	<details use:block.attach>
-		<summary>
-			{@render content()}
-		</summary>
-		{#if children}
-			<div>
-				{@render children()}
-			</div>
-		{/if}
-	</details>
-{/snippet}
-{#snippet toggle({ block, content, children }: BlockSnippetPayload)}
-	<details use:block.attach data-edytor-type="toggle">
-		<summary>
-			{@render content()}
-		</summary>
-		{#if children}
-			<div>
-				{@render children()}
-			</div>
-		{/if}
-	</details>
-{/snippet}
-{#snippet heading({ block, content, children }: BlockSnippetPayload<{ level: number }>)}
-	<svelte:element this={block.data.level || 'h1'} use:block.attach>
+{#snippet paragraph({ content, children }: BlockSnippetPayload)}
+	<p>
 		{@render content()}
-		{#if children}
-			<div>
-				{@render children()}
-			</div>
-		{/if}
-	</svelte:element>
+	</p>
+	{@render children?.()}
 {/snippet}
 
-{#snippet quote({ block, content, children }: BlockSnippetPayload)}
-	<blockquote use:block.attach data-edytor-type="quote">
+{#snippet details({ content, children }: BlockSnippetPayload)}
+	<summary>
 		{@render content()}
-		{#if children}
-			<div>
-				{@render children()}
-			</div>
-		{/if}
-	</blockquote>
+	</summary>
+	{#if children}
+		<div>
+			{@render children()}
+		</div>
+	{/if}
+{/snippet}
+
+{#snippet heading({ content, children }: BlockSnippetPayload)}
+	{@render content()}
+	{#if children}
+		<div>
+			{@render children()}
+		</div>
+	{/if}
+{/snippet}
+
+{#snippet quote({ content, children }: BlockSnippetPayload)}
+	{@render content()}
+	{#if children}
+		<div>
+			{@render children()}
+		</div>
+	{/if}
 {/snippet}
 
 {#snippet callout({ block, content, children }: BlockSnippetPayload<{ icon?: string }>)}
-	<div use:block.attach data-edytor-type="callout">
-		<span contenteditable="false">{block.data.icon || '!'}</span>
-		<div>
-			{@render content()}
-		</div>
-		{#if children}
-			<div>
-				{@render children()}
-			</div>
-		{/if}
+	<span contenteditable="false">{block.data.icon || '!'}</span>
+	<div>
+		{@render content()}
 	</div>
+	{#if children}
+		<div>
+			{@render children()}
+		</div>
+	{/if}
 {/snippet}
 
 {#snippet todoItem({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}
-	<div use:block.attach data-edytor-type="todo-item">
-		<input type="checkbox" checked={Boolean(block.data.checked)} contenteditable="false" readonly />
-		<div>
-			{@render content()}
-		</div>
-		{#if children}
-			<div>
-				{@render children()}
-			</div>
-		{/if}
+	<input type="checkbox" checked={Boolean(block.data.checked)} contenteditable="false" readonly />
+	<div>
+		{@render content()}
 	</div>
+	{#if children}
+		<div>
+			{@render children()}
+		</div>
+	{/if}
 {/snippet}
 
-{#snippet bulletedListItem({ block, content, children }: BlockSnippetPayload)}
-	<li use:block.attach data-edytor-type="bulleted-list-item">
-		<div>{@render content()}</div>
-		{#if children}
-			<div>
-				{@render children()}
-			</div>
-		{/if}
-	</li>
+{#snippet listItem({ content, children }: BlockSnippetPayload)}
+	<div>{@render content()}</div>
+	{#if children}
+		<div>
+			{@render children()}
+		</div>
+	{/if}
 {/snippet}
 
-{#snippet numberedListItem({ block, content, children }: BlockSnippetPayload)}
-	<li use:block.attach data-edytor-type="numbered-list-item">
-		<div>{@render content()}</div>
-		{#if children}
-			<div>
-				{@render children()}
-			</div>
-		{/if}
-	</li>
-{/snippet}
-
-{#snippet orderedList({ block, content, children }: BlockSnippetPayload)}
-	<ol use:block.attach>
-		{#if children}
-			<div>
-				{@render children()}
-			</div>
-		{/if}
-	</ol>
-{/snippet}
-
-{#snippet unorderedList({ block, content, children }: BlockSnippetPayload)}
-	<ul use:block.attach>
-		{#if children}
-			<div>
-				{@render children()}
-			</div>
-		{/if}
-	</ul>
-{/snippet}
-
-{#snippet listItem({ block, content, children }: BlockSnippetPayload)}
-	<li use:block.attach>
-		<div>{@render content()}</div>
-		{#if children}
-			<div>
-				{@render children()}
-			</div>
-		{/if}
-	</li>
-{/snippet}
-
-{#snippet horizontalRule({ block }: BlockSnippetPayload)}
-	<hr use:block.attach use:block.void />
-{/snippet}
-
-{#snippet divider({ block }: BlockSnippetPayload)}
-	<hr use:block.attach use:block.void data-edytor-type="divider" />
+{#snippet list({ children }: BlockSnippetPayload)}
+	{#if children}
+		<div>
+			{@render children()}
+		</div>
+	{/if}
 {/snippet}

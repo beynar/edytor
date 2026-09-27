@@ -8,8 +8,7 @@
  *   its cell and the selection — not the block's wrapper; its `data` follows a
  *   committed change. Its `handle` is the block's id-only handle.
  * - An inline-atom snippet receives `{id, type, data, selected, …}`.
- * - `use:block.attach` still registers the block element (moved into the core
- *   at R5).
+ * - The core registers the block element (R5: snippets render inner markup).
  *
  * Expected values come from the plan rows, never from running the code.
  */
@@ -41,7 +40,6 @@ const recorder =
 					setup: (node: Element) => {
 						seen.block = payload().block;
 						seen.node = node as HTMLElement;
-						return seen.block.attach(node).destroy;
 					}
 				})) as never
 			}
@@ -102,11 +100,11 @@ describe('snippets receive declared view objects', () => {
 		expect([atom.type, atom.data, atom.selected]).toEqual(['tag', {}, false]);
 	});
 
-	pin('use:block.attach registers the block element', async () => {
+	pin('the core registers the block element around the snippet (R5)', async () => {
 		const seen: Seen = {};
 		const { edytor } = await mount(seen);
 		const note = edytor.root!.children[1]!;
-		expect(note.node).toBe(seen.node);
-		expect(seen.node?.getAttribute('data-edytor-id')).toBe(note.id);
+		expect(note.node).toBe(seen.node?.parentElement);
+		expect(note.node?.getAttribute('data-edytor-id')).toBe(note.id);
 	});
 });

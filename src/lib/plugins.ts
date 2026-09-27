@@ -52,10 +52,14 @@ export type BlockView<D = Record<string, any>> = {
 	readonly focused: boolean;
 	/** The block's id-only handle (non-reactive reads, commands). */
 	readonly handle: Block;
-	/** Registers the snippet's block element (the core renders it from R5). */
-	attach: Block['attach'];
+	/** Marks inner chrome (a header, a toolbar) non-editable; the block element is the core's. */
 	void: Block['void'];
 };
+
+/** The block element a kind declares (O45): a tag, or a tag and attributes. */
+export type BlockElement =
+	| string
+	| { tag: string; attributes?: Record<string, string | undefined> };
 
 /**
  * Represents the payload for block snippets.
@@ -157,8 +161,18 @@ export type PluginOperations = {
  * Defines the structure and behavior of a block type.
  */
 export type BlockDefinition = {
-	/** The block's rendering snippet */
-	snippet: Snippet<[BlockSnippetPayload<any>]>;
+	/** The markup inside the block element; a kind whose element takes no content (`hr`) has none. */
+	snippet?: Snippet<[BlockSnippetPayload<any>]>;
+	/**
+	 * The element the core renders for the block (R11, O45): a tag, or tag and
+	 * attributes, possibly from the block's data. Default `div`.
+	 */
+	element?: BlockElement | ((data: Record<string, any>) => BlockElement);
+	/**
+	 * Attributes of the block element the browser or the user own (`open` on a
+	 * `details`): declared view state, never inverted (R11, O60).
+	 */
+	viewState?: string[];
 	/** Whether the block is void (not editable)
 	 *
 	 * Void blocks are blocks that are not editable by the edytor.
@@ -256,7 +270,6 @@ export type InlineBlockView<D = Record<string, any>> = {
 	readonly selected: boolean;
 	/** The atom's id-only handle; a suggested atom has none. */
 	readonly handle: InlineBlock | undefined;
-	attach: (node: HTMLElement) => unknown;
 };
 
 export type InlineBlockSnippetPayload<D = Record<string, any>> = {

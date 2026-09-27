@@ -2681,6 +2681,8 @@ test.describe('browser input behavior', () => {
 		await page.goto('/test/dom?scenario=basic&empty=first&placeholder=Start%20writing');
 		await waitForEditorReady(page);
 		await getPlaceholderLocators(page).first().click();
+		// The click lands through the browser's selectionchange (R5: no placeholder element).
+		await expectSelection(page, { startBlockPath: [0], isCollapsed: true });
 
 		const wasPrevented = await dispatchBeforeInput(page, {
 			inputType: 'insertText',
@@ -2751,6 +2753,8 @@ test.describe('browser input behavior', () => {
 		await page.goto('/test/dom?scenario=basic&empty=first&placeholder=Start%20writing');
 		await waitForEditorReady(page);
 		await getPlaceholderLocators(page).first().click();
+		// The click lands through the browser's selectionchange (R5: no placeholder element).
+		await expectSelection(page, { startBlockPath: [0], isCollapsed: true });
 		await mutateDomTextWithoutInput(page, {
 			textIndex: 0,
 			value: 'A',

@@ -296,12 +296,20 @@ The CRDT engine and its sync layer run server-side too: a Cloudflare Durable Obj
 **Import only**
 
 - `edytor/crdt` — the vendored v14 engine (`import * as Y from 'edytor/crdt'`);
-- `edytor/crdt/edytor` — `bindCrdt(Y)` (`.createDoc`, `.sync`, `.admission`, `.doc`), the envelope (`readProtocolVersion`, `writeProtocolVersion`, `PROTOCOL_VERSION`, `SCHEMA_VERSION`, `GENERATION_RECORD`, `GenerationMismatchError`) and the message types (`messageSync`, `messageAwareness`, `messageAuth`, `messageQueryAwareness`);
-- `lib0` at the version this package pins (`lib0@1.0.0-rc.32`) for the varuint encoder/decoder the frames are written with.
+- `edytor/crdt/edytor`, which gives you:
+  - `bindCrdt(Y)` (`.createDoc`, `.sync`, `.admission`, `.doc`);
+  - the frame contract: `GENERATION`, `generationWord`, `frame`, `readProtocolVersion`, `GENERATION_RECORD` and `GenerationMismatchError`;
+  - the message types: `messageSync`, `messageAwareness`, `messageAuth`, `messageQueryAwareness`, and the sync subtypes `messageYjsSyncStep1`, `messageYjsSyncStep2` and `messageYjsUpdate`;
+  - the wire read helpers: `createDecoder`, `readVarUint`, `readVarUint8Array`, and `writeVarUint8Array` for a `frame` body;
+  - the instance-free awareness codec: `readAwarenessEntries` and `writeAwarenessEntries`.
 
-Never import the package root `edytor` (it re-exports the Svelte components) or any `.svelte`/view module. Do not `createDocument`/`attachDocument` the room doc on the server. Doing so makes the server an actor, so it writes its client id into the replicated attribution dictionary. To read the room, use `crdt.doc.create(doc).toJSON()` and then `.dispose()`. Neither call writes anything.
+A coordinator needs **no direct lib0 dependency** for framing.
 
-**Frame contract.** Every frame is `varuint GENERATION | varuint messageType | payload`, with `GENERATION = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION` (14003 at schema 3). The message types are:
+Never import the package root `edytor` (it re-exports the Svelte components) or any `.svelte`/view module.
+
+**Read the room with `bindCrdt(Y).doc.create(doc).toJSON()`, then `.dispose()`.** This writes nothing. Never call `attachDocument` (or `createDocument`/`loadDocument`) on the server's doc. Doing so makes the server an actor, so it writes its client id into the replicated attribution dictionary, and every client receives that write.
+
+**Frame contract.** Every frame is `varuint GENERATION | varuint messageType | payload`, with `GENERATION = generationWord(SCHEMA_VERSION) = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION` (14003 at schema 3). Build one with `frame(type, (encoder) => …)`, for example `frame(messageSync, (e) => crdt.sync.writeUpdate(e, update))`. Read one with `createDecoder(bytes)`, then `readProtocolVersion`, then `readVarUint` for the type and subtype, then `readVarUint8Array` for the payload. The message types are:
 
 - `0` sync, with subtypes `0` Step1 (state vector), `1` Step2 (update) and `2` Update;
 - `1` awareness (the y-protocols v1 awareness update);
@@ -317,15 +325,19 @@ A v13 peer's first word is its message type, so it never matches.
 3. **Persist append-only** from `doc.on('update')`, which gives you the integrated bytes rather than the raw payload. Write before you broadcast. Keep the generation record as the container's first row. When you rebuild, verify that record, then run `crdt.admission.admitUpdate(Y.mergeUpdates(rows))`.
 4. **Compact** from an alarm. Atomically replace the rows with the generation record plus a snapshot, `Y.encodeStateAsUpdate(doc)`.
 5. **Broadcast** each integrated update to every other socket.
-6. **Relay awareness** as frames. Keep the latest entry per client id (the newest clock wins) so that a joiner gets everyone present. When a socket closes, announce its client ids as removed (clock + 1, state `null`).
+6. **Relay awareness** as frames, without an `Awareness` instance:
+   - Forward each frame verbatim to the other sockets.
+   - Decode its payload with `readAwarenessEntries` (`{clientID, clock, state}`, where `state: null` means removed). Keep the latest entry per client id (the newest clock wins) so that a joiner gets everyone present: `writeAwarenessEntries([...])` inside a `frame(messageAwareness, …)`.
+   - Record each socket's `[clientID, clock]` pairs in its attachment.
+   - When a socket closes, announce those clients as removed with `{clientID, clock: clock + 1, state: null}`.
 
 **Durable Object facts that shape this**
 
 - A SQLite-backed object stores up to 10 GB, but one row/BLOB/string is capped at **2 MB**. Split every record (updates and snapshots) into parts and write them in one `transactionSync`. A compacted snapshot of a large document will exceed one row.
 - Received WebSocket messages can be up to 32 MiB, so a single client update can also exceed a row.
 - Use the hibernation API (`ctx.acceptWebSocket`, `webSocketMessage`, `webSocketClose`). A hibernated object loses its in-memory `Y.Doc` and rebuilds it from rows in its constructor (`blockConcurrencyWhile`).
-- An object with a pending `setTimeout`/`setInterval` never hibernates. Do **not** hold an `Awareness` instance on the server, because its constructor starts a 3 s sweep interval. Relay presence as bytes instead. The reference test asserts that the coordinator schedules no timer.
-- A socket attachment (`serializeAttachment`, max 16 KiB) survives hibernation. Keep a connection's awareness client ids there so that a close after hibernation can still announce them as removed.
+- An object with a pending `setTimeout`/`setInterval` never hibernates. Do **not** hold an `Awareness` instance on the server, because its constructor starts a 3 s sweep interval. Use the instance-free codec instead. The reference test runs every coordinator entry point with timers forbidden.
+- A socket attachment (`serializeAttachment`, max 16 KiB) survives hibernation. Keep a connection's awareness client ids and clocks there so that a close after a wake can still announce them as removed. The in-memory join snapshot is lost on hibernation and refills as clients renew, every 15 s. The reference test covers a wake followed by a drop with no goodbye frame.
 
 ## 📦 Plugins
 

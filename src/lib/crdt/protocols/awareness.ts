@@ -235,6 +235,38 @@ export const encodeAwarenessUpdate = (
 	return encoding.toUint8Array(encoder);
 };
 
+/** One awareness entry on the wire: a client's clock and state (`null` = removed). */
+export type AwarenessEntry = {
+	clientID: number;
+	clock: number;
+	state: Record<string, unknown> | null;
+};
+
+/**
+ * Instance-free awareness codec: decode an update into its entries. Pure —
+ * no `Awareness` (whose constructor starts an interval), so a relay that
+ * must not hold timers (a hibernating Durable Object) can track presence.
+ */
+export const readAwarenessEntries = (update: Uint8Array): AwarenessEntry[] => {
+	const decoder = decoding.createDecoder(update);
+	return Array.from({ length: decoding.readVarUint(decoder) }, () => ({
+		clientID: decoding.readVarUint(decoder),
+		clock: decoding.readVarUint(decoder),
+		state: JSON.parse(decoding.readVarString(decoder))
+	}));
+};
+
+/** Instance-free awareness codec: encode entries as an update (the wire format of {@link encodeAwarenessUpdate}). */
+export const writeAwarenessEntries = (entries: readonly AwarenessEntry[]): Uint8Array =>
+	encoding.encode((encoder) => {
+		encoding.writeVarUint(encoder, entries.length);
+		for (const { clientID, clock, state } of entries) {
+			encoding.writeVarUint(encoder, clientID);
+			encoding.writeVarUint(encoder, clock);
+			encoding.writeVarString(encoder, JSON.stringify(state));
+		}
+	});
+
 /**
  * Modify the content of an awareness update before re-encoding it to an
  * awareness update — e.g. a central server preventing identity hijacking.
@@ -242,22 +274,10 @@ export const encodeAwarenessUpdate = (
 export const modifyAwarenessUpdate = (
 	update: Uint8Array,
 	modify: (state: Record<string, unknown> | null) => Record<string, unknown> | null
-): Uint8Array => {
-	const decoder = decoding.createDecoder(update);
-	const encoder = encoding.createEncoder();
-	const len = decoding.readVarUint(decoder);
-	encoding.writeVarUint(encoder, len);
-	for (let i = 0; i < len; i++) {
-		const clientID = decoding.readVarUint(decoder);
-		const clock = decoding.readVarUint(decoder);
-		const state = JSON.parse(decoding.readVarString(decoder));
-		const modifiedState = modify(state);
-		encoding.writeVarUint(encoder, clientID);
-		encoding.writeVarUint(encoder, clock);
-		encoding.writeVarString(encoder, JSON.stringify(modifiedState));
-	}
-	return encoding.toUint8Array(encoder);
-};
+): Uint8Array =>
+	writeAwarenessEntries(
+		readAwarenessEntries(update).map((entry) => ({ ...entry, state: modify(entry.state) }))
+	);
 
 /**
  * Apply an encoded awareness update. `origin` is forwarded on the emitted

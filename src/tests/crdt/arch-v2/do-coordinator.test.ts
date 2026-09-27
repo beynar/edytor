@@ -5,11 +5,11 @@
  *
  * Maintainer constraint (architecture v2): the CRDT engine runs
  * server-side in a Durable Object that coordinates clients over WebSockets
- * (a central DO, not P2P). The coordinator below imports ONLY the public
- * CRDT entry (`src/lib/crdt/index.ts` = `edytor/crdt/edytor`), the
- * vendored engine (`src/lib/crdt/vendor/yjs/src/index.js` = `edytor/crdt`)
- * and lib0's encoder/decoder (the wire codec every frame is written with),
- * and it loads them only AFTER `window`, `document`, `indexedDB`,
+ * (a central DO, not P2P). This file imports ONLY the public CRDT entry
+ * (`src/lib/crdt/index.ts` = `edytor/crdt/edytor`: the frame contract, the
+ * wire read helpers, the instance-free awareness codec) and the vendored
+ * engine (`src/lib/crdt/vendor/yjs/src/index.js` = `edytor/crdt`) — no
+ * direct lib0 — and it loads them only AFTER `window`, `document`, `indexedDB`,
  * `BroadcastChannel`, `localStorage` and `navigator.locks` are gone from
  * `globalThis` (`navigator` is left Worker-shaped: a user agent, no locks).
  *
@@ -30,9 +30,12 @@
  * - BROADCAST each integrated update to every other connection;
  * - RELAY awareness without an `Awareness` instance (its constructor
  *   starts a 3 s sweep interval, and a Durable Object with a pending
- *   timer never hibernates): forward each presence frame to the others,
+ *   timer never hibernates) through `readAwarenessEntries` /
+ *   `writeAwarenessEntries`: forward each presence frame to the others,
  *   keep the latest entry per client so a joiner gets every present peer,
- *   and announce a departed connection's clients as removed.
+ *   record each socket's client ids + clocks in its attachment
+ *   (`serializeAttachment`, which survives hibernation), and on close
+ *   announce them removed — also after a hibernation wake.
  *
  * Hibernation compatibility is asserted, not assumed: every coordinator
  * entry point runs under {@link noTimers}, which throws if the engine, the
@@ -85,8 +88,6 @@ const restoreBrowserGlobals = () => {
 
 let Y; // vendored engine — `edytor/crdt`
 let E; // public CRDT entry — `edytor/crdt/edytor`
-let encoding;
-let decoding;
 let crdt;
 let sync;
 
@@ -96,8 +97,6 @@ beforeAll(async () => {
 	expect(globalThis.navigator.locks).toBeUndefined();
 	Y = await import('../../../lib/crdt/vendor/yjs/src/index.js');
 	E = await import('../../../lib/crdt/index.js');
-	encoding = await import('lib0-v14/encoding');
-	decoding = await import('lib0-v14/decoding');
 	crdt = E.bindCrdt(Y);
 	sync = crdt.sync;
 });
@@ -137,8 +136,12 @@ const noTimers = <T>(fn: () => T): T => {
 	}
 };
 
+/** Max serialized attachment per hibernatable socket (DO `serializeAttachment`). */
+const ATTACHMENT_LIMIT = 16384;
+
 class ServerSocket {
 	closed: { code: number; reason: string } | null = null;
+	private attachment: string | undefined;
 	constructor(private client: ClientSocket) {}
 	send(bytes: Uint8Array) {
 		if (this.closed) return;
@@ -150,8 +153,21 @@ class ServerSocket {
 		this.closed = { code, reason };
 		later(() => this.client._closedByServer(code, reason));
 	}
+	serializeAttachment(value: unknown) {
+		const json = JSON.stringify(value);
+		if (json.length > ATTACHMENT_LIMIT) throw new Error('attachment over 16 KiB');
+		this.attachment = json;
+	}
+	deserializeAttachment() {
+		return this.attachment === undefined ? null : JSON.parse(this.attachment);
+	}
 }
 
+/**
+ * The client end. Frames are routed to whatever coordinator holds the room
+ * at delivery time — after a hibernation wake that is a NEW instance
+ * holding the same (server-end) sockets.
+ */
 class ClientSocket {
 	static OPEN = 1;
 	OPEN = 1;
@@ -162,37 +178,38 @@ class ClientSocket {
 	onerror = null;
 	onmessage = null;
 	server: ServerSocket;
-	coordinator: Coordinator | undefined;
-	received = 0;
+	private room: string;
 	constructor(public url: string) {
 		this.server = new ServerSocket(this);
+		this.room = roomOf(url);
 		later(() => {
-			this.coordinator = rooms.get(roomOf(url));
-			if (this.readyState !== 0 || !this.coordinator) return this._closedByServer(1011, 'no room');
+			const coordinator = rooms.get(this.room);
+			if (this.readyState !== 0 || !coordinator) return this._closedByServer(1011, 'no room');
 			this.readyState = 1;
-			this.coordinator.acceptWebSocket(this.server);
+			coordinator.acceptWebSocket(this.server);
 			this.onopen?.({ type: 'open' });
 		});
 	}
 	send(data: Uint8Array | ArrayBuffer) {
 		if (this.readyState !== 1) return;
 		const bytes = data instanceof Uint8Array ? data.slice() : new Uint8Array(data);
-		const coordinator = this.coordinator!;
 		later(() => {
-			if (!this.server.closed) coordinator.webSocketMessage(this.server, bytes);
+			if (!this.server.closed) rooms.get(this.room)?.webSocketMessage(this.server, bytes);
 		});
 	}
 	close() {
+		this.drop();
+	}
+	/** The socket goes away without any goodbye frame (close, or a network drop). */
+	drop() {
 		if (this.readyState === 3) return;
 		this.readyState = 3;
-		const coordinator = this.coordinator;
 		this.server.closed ??= { code: 1000, reason: 'client close' };
-		later(() => coordinator?.webSocketClose(this.server));
+		later(() => rooms.get(this.room)?.webSocketClose(this.server));
 		this.onclose?.({ code: 1000 });
 	}
 	_deliver(bytes: Uint8Array) {
 		if (this.readyState !== 1) return;
-		this.received++;
 		this.onmessage?.({ data: bytes.buffer });
 	}
 	_closedByServer(code: number, reason: string) {
@@ -262,15 +279,19 @@ class RowStore {
 
 // ── The coordinator (what a Durable Object would run) ────────────────────
 
+type AwarenessEntry = { clientID: number; clock: number; state: Record<string, unknown> | null };
+
 type Refusal = { reason: 'generation' | 'schema' | 'malformed'; detail: unknown };
 
-type Presence = { clock: number; state: string };
+/** What a socket's attachment holds: the awareness clients it speaks for, with their last clock. */
+type Attachment = { clients: Array<[clientID: number, clock: number]> };
 
 class Coordinator {
 	doc;
-	conns = new Map<ServerSocket, { clients: Set<number> }>();
-	/** Latest awareness entry per client id (the relay's only presence state). */
-	presence = new Map<number, Presence>();
+	/** The accepted sockets — a DO reads them back with `ctx.getWebSockets()`. */
+	sockets = new Set<ServerSocket>();
+	/** Latest awareness entry per client id, for join snapshots (in memory: lost on hibernation). */
+	presence = new Map<number, AwarenessEntry>();
 	refusals: Refusal[] = [];
 	private encodeText = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 
@@ -285,7 +306,7 @@ class Coordinator {
 		doc.on('update', (update: Uint8Array, origin) => {
 			this.store.append('update', update);
 			this.broadcast(
-				this.frame(E.messageSync, (e) => sync.writeUpdate(e, update)),
+				E.frame(E.messageSync, (e) => sync.writeUpdate(e, update)),
 				origin
 			);
 		});
@@ -326,30 +347,31 @@ class Coordinator {
 
 	acceptWebSocket(ws: ServerSocket) {
 		noTimers(() => {
-			this.conns.set(ws, { clients: new Set() });
+			this.sockets.add(ws);
+			ws.serializeAttachment({ clients: [] } satisfies Attachment);
 			// The join rule from our side: ask for what the client holds, and
 			// hand it every present peer.
-			ws.send(this.frame(E.messageSync, (e) => sync.writeSyncStep1(e, this.doc)));
-			if (this.presence.size > 0) ws.send(this.presenceFrame([...this.presence]));
+			ws.send(E.frame(E.messageSync, (e) => sync.writeSyncStep1(e, this.doc)));
+			if (this.presence.size > 0) ws.send(presenceFrame([...this.presence.values()]));
 		});
 	}
 
 	webSocketMessage(ws: ServerSocket, bytes: Uint8Array) {
 		noTimers(() => {
-			const decoder = decoding.createDecoder(bytes);
+			const decoder = E.createDecoder(bytes);
 			// 1 · Admission: the generation word, before anything is decoded.
 			if (!E.readProtocolVersion(decoder)) {
 				return this.refuse(ws, { reason: 'generation', detail: bytes[0] });
 			}
 			try {
-				const type = decoding.readVarUint(decoder);
+				const type = E.readVarUint(decoder);
 				if (type === E.messageSync) return this.onSync(ws, decoder);
 				if (type === E.messageAwareness) {
-					this.onPresence(ws, decoding.readVarUint8Array(decoder));
+					this.onPresence(ws, E.readVarUint8Array(decoder));
 					return this.broadcast(bytes, ws); // relayed verbatim
 				}
 				if (type === E.messageQueryAwareness) {
-					return ws.send(this.presenceFrame([...this.presence]));
+					return ws.send(presenceFrame([...this.presence.values()]));
 				}
 				this.refuse(ws, { reason: 'malformed', detail: `message type ${type}` });
 			} catch (error) {
@@ -358,20 +380,35 @@ class Coordinator {
 		});
 	}
 
+	/**
+	 * The departure announcement the client may not have sent — read from
+	 * the socket's attachment, so it works after a hibernation wake too.
+	 */
 	webSocketClose(ws: ServerSocket) {
 		noTimers(() => {
-			const conn = this.conns.get(ws);
-			this.conns.delete(ws);
-			if (!conn || conn.clients.size === 0) return;
-			// The departure announcement the client may not have sent.
-			const gone: Array<[number, Presence]> = [];
-			for (const client of conn.clients) {
-				const last = this.presence.get(client);
-				this.presence.delete(client);
-				gone.push([client, { clock: (last?.clock ?? 0) + 1, state: 'null' }]);
-			}
-			this.broadcast(this.presenceFrame(gone), ws);
+			if (!this.sockets.delete(ws)) return;
+			const { clients } = (ws.deserializeAttachment() ?? { clients: [] }) as Attachment;
+			if (clients.length === 0) return;
+			const gone = clients.map(([clientID, clock]) => {
+				this.presence.delete(clientID);
+				return { clientID, clock: clock + 1, state: null };
+			});
+			this.broadcast(presenceFrame(gone), ws);
 		});
+	}
+
+	/** Hibernation: the in-memory object goes away, the sockets (and their attachments) stay. */
+	hibernate(): ServerSocket[] {
+		const sockets = [...this.sockets];
+		this.sockets.clear();
+		this.presence.clear();
+		this.doc.destroy();
+		return sockets;
+	}
+
+	/** After a wake: the runtime hands the surviving sockets back (`ctx.getWebSockets()`). */
+	adopt(sockets: ServerSocket[]) {
+		for (const ws of sockets) this.sockets.add(ws);
 	}
 
 	/** Compaction — the rows become the generation record + one chunked snapshot. */
@@ -386,31 +423,27 @@ class Coordinator {
 
 	/** Eviction: sockets die with the object; nothing in memory survives. */
 	evict() {
-		for (const ws of [...this.conns.keys()]) ws.close(1001, 'evicted');
-		this.conns.clear();
+		for (const ws of this.sockets) ws.close(1001, 'evicted');
+		this.sockets.clear();
 		this.presence.clear();
 		this.doc.destroy();
 	}
 
 	private onSync(ws: ServerSocket, decoder) {
-		const syncType = decoding.readVarUint(decoder);
-		if (syncType === sync.messageYjsSyncStep1) {
-			const sv = decoding.readVarUint8Array(decoder);
-			ws.send(this.frame(E.messageSync, (e) => sync.writeSyncStep2(e, this.doc, sv)));
+		const syncType = E.readVarUint(decoder);
+		if (syncType === E.messageYjsSyncStep1) {
+			const sv = E.readVarUint8Array(decoder);
+			ws.send(E.frame(E.messageSync, (e) => sync.writeSyncStep2(e, this.doc, sv)));
 			if (sync.lacks(this.doc, sv)) {
-				ws.send(this.frame(E.messageSync, (e) => sync.writeSyncStep1(e, this.doc)));
+				ws.send(E.frame(E.messageSync, (e) => sync.writeSyncStep1(e, this.doc)));
 			}
 			return;
 		}
-		if (syncType === sync.messageYjsSyncStep2 || syncType === sync.messageYjsUpdate) {
+		if (syncType === E.messageYjsSyncStep2 || syncType === E.messageYjsUpdate) {
 			// 2 · Admission: the inbound refusal of a foreign schema stamp.
 			// `ws` is the transaction origin, so the doc's `update` handler
 			// persists + relays to everyone else.
-			const { applied, problem } = sync.applyRemote(
-				this.doc,
-				decoding.readVarUint8Array(decoder),
-				ws
-			);
+			const { applied, problem } = sync.applyRemote(this.doc, E.readVarUint8Array(decoder), ws);
 			if (problem !== null) return this.refuse(ws, { reason: 'schema', detail: problem });
 			if (!applied) return this.refuse(ws, { reason: 'malformed', detail: 'undecodable update' });
 			return;
@@ -419,40 +452,24 @@ class Coordinator {
 	}
 
 	/**
-	 * Awareness update wire format (y-protocols v1): `varuint n`, then per
-	 * entry `varuint clientID | varuint clock | varstring JSON state`
-	 * (`"null"` = removed). The newest clock per client wins.
+	 * Track presence from an awareness update (instance-free codec): the
+	 * newest clock per client wins; the socket's attachment records the
+	 * clients it speaks for.
 	 */
 	private onPresence(ws: ServerSocket, update: Uint8Array) {
-		const conn = this.conns.get(ws)!;
-		const d = decoding.createDecoder(update);
-		for (let n = decoding.readVarUint(d); n > 0; n--) {
-			const client = decoding.readVarUint(d);
-			const clock = decoding.readVarUint(d);
-			const state = decoding.readVarString(d);
-			const known = this.presence.get(client);
-			if (known && known.clock > clock) continue;
-			if (state === 'null') {
-				this.presence.delete(client);
-				conn.clients.delete(client);
+		const mine = new Map((ws.deserializeAttachment() as Attachment).clients);
+		for (const entry of E.readAwarenessEntries(update)) {
+			const known = this.presence.get(entry.clientID);
+			if (known && known.clock > entry.clock) continue;
+			if (entry.state === null) {
+				this.presence.delete(entry.clientID);
+				mine.delete(entry.clientID);
 			} else {
-				this.presence.set(client, { clock, state });
-				conn.clients.add(client);
+				this.presence.set(entry.clientID, entry);
+				mine.set(entry.clientID, entry.clock);
 			}
 		}
-	}
-
-	private presenceFrame(entries: Array<[number, Presence]>): Uint8Array {
-		return this.frame(E.messageAwareness, (e) => {
-			const inner = encoding.createEncoder();
-			encoding.writeVarUint(inner, entries.length);
-			for (const [client, { clock, state }] of entries) {
-				encoding.writeVarUint(inner, client);
-				encoding.writeVarUint(inner, clock);
-				encoding.writeVarString(inner, state);
-			}
-			encoding.writeVarUint8Array(e, encoding.toUint8Array(inner));
-		});
+		ws.serializeAttachment({ clients: [...mine] } satisfies Attachment);
 	}
 
 	/** A refused frame is dropped whole and its socket closed (1008 policy violation). */
@@ -463,17 +480,13 @@ class Coordinator {
 	}
 
 	private broadcast(bytes: Uint8Array, except: unknown) {
-		for (const ws of this.conns.keys()) if (ws !== except) ws.send(bytes);
-	}
-
-	private frame(type: number, write: (e) => void): Uint8Array {
-		const e = encoding.createEncoder();
-		E.writeProtocolVersion(e);
-		encoding.writeVarUint(e, type);
-		write(e);
-		return encoding.toUint8Array(e);
+		for (const ws of this.sockets) if (ws !== except) ws.send(bytes);
 	}
 }
+
+/** An awareness frame carrying `entries` — no `Awareness` instance involved. */
+const presenceFrame = (entries: AwarenessEntry[]): Uint8Array =>
+	E.frame(E.messageAwareness, (e) => E.writeVarUint8Array(e, E.writeAwarenessEntries(entries)));
 
 // ── Clients: the shipped headless document + websocket sync path ─────────
 
@@ -509,6 +522,14 @@ const serverJSON = (coordinator: Coordinator) => {
 	} finally {
 		facade.dispose();
 	}
+};
+
+/** A varuint as lib0 writes it — only to forge frames of OTHER builds (foreign generation words). */
+const varUint = (n: number): number[] => {
+	const out: number[] = [];
+	for (; n > 0x7f; n = Math.floor(n / 128)) out.push(0x80 | (n & 0x7f));
+	out.push(n);
+	return out;
 };
 
 const svOf = (doc) => Object.fromEntries(Y.decodeStateVector(Y.encodeStateVector(doc)));
@@ -633,7 +654,7 @@ describe('Infra — Worker-safe CRDT boundary: a Durable Object coordinator', ()
 			() => a.awareness.getStates().get(b.doc.clientID)?.user?.name === 'Bob',
 			'B presence at A'
 		);
-		expect(JSON.parse(server.presence.get(b.doc.clientID)!.state).user).toEqual({ name: 'Bob' });
+		expect(server.presence.get(b.doc.clientID)!.state!.user).toEqual({ name: 'Bob' });
 		expect(server.presence.has(server.doc.clientID)).toBe(false);
 
 		// Records are stored in parts no larger than a row allows.
@@ -659,20 +680,19 @@ describe('Infra — Worker-safe CRDT boundary: a Durable Object coordinator', ()
 			write(peer);
 			return Y.mergeUpdates(out);
 		};
+		/** A sync Update frame as a build speaking generation word `word` writes it. */
 		const updateFrame = (word: number, update: Uint8Array) => {
-			const e = encoding.createEncoder();
-			encoding.writeVarUint(e, word);
-			encoding.writeVarUint(e, E.messageSync);
-			sync.writeUpdate(e, update);
-			return encoding.toUint8Array(e);
+			const ours = E.frame(E.messageSync, (e) => sync.writeUpdate(e, update));
+			return Uint8Array.from([...varUint(word), ...ours.subarray(varUint(E.GENERATION).length)]);
 		};
-		const GENERATION = E.PROTOCOL_VERSION * 1000 + E.SCHEMA_VERSION;
+		const GENERATION = E.generationWord(E.SCHEMA_VERSION);
+		expect(E.GENERATION).toBe(GENERATION);
 		// A peer of the NEXT schema generation types into p1 — valid content,
 		// wrong generation: refused at the envelope.
 		const typed = peerUpdate((peer) =>
 			E.attachDocument(peer).facade.insertText('p1', 0, 'FOREIGN ')
 		);
-		await rogue(updateFrame(GENERATION + 1, typed));
+		await rogue(updateFrame(E.generationWord(E.SCHEMA_VERSION + 1), typed));
 		// A v13-era peer: its first word is a bare message type.
 		await rogue(updateFrame(E.messageSync, typed));
 		// Same generation, forged stamps (unsupported version, foreign manifest).
@@ -722,6 +742,7 @@ describe('Infra — Worker-safe CRDT boundary: a Durable Object coordinator', ()
 		const rebuilt = Coordinator.restore(ROOM, store);
 		expect(serverJSON(rebuilt)).toEqual(liveJSON);
 		expect(svOf(rebuilt.doc)).toEqual(svOf(server.doc));
+		rebuilt.evict();
 		// A container of another generation never rebuilds.
 		const tampered = new RowStore(MAX_ROW_BYTES);
 		tampered.append(
@@ -732,32 +753,56 @@ describe('Infra — Worker-safe CRDT boundary: a Durable Object coordinator', ()
 		);
 		expect(() => Coordinator.restore('tampered', tampered)).toThrow(E.GenerationMismatchError);
 
+		// ── Hibernation: presence tracked in socket attachments survives ──
+		// A presence-only client (no provider, so no goodbye frame on leave).
+		const ghost = new ClientSocket(`${SERVER}/${ROOM}`);
+		await until(() => ghost.readyState === 1, 'ghost open');
+		ghost.send(presenceFrame([{ clientID: 777, clock: 4, state: { user: { name: 'Zed' } } }]));
+		await until(() => a.awareness.getStates().get(777)?.user?.name === 'Zed', 'Zed at A');
+		expect(ghost.server.deserializeAttachment()).toEqual({ clients: [[777, 4]] });
+
+		const sockets = noTimers(() => server.hibernate());
+		const woke = Coordinator.restore(ROOM, store); // the DO constructor on wake
+		noTimers(() => woke.adopt(sockets));
+		rooms.set(ROOM, woke);
+		expect(woke.presence.size).toBe(0); // memory is gone; attachments are not
+
+		ghost.drop();
+		await until(() => !a.awareness.getStates().has(777), 'Zed removed at A after the wake');
+		expect(b.awareness.getStates().has(777)).toBe(false);
+		// The surviving sockets keep syncing through the woken instance.
+		ok(a.transact(() => a.facade.insertText('p1', 5, ','))); // "hello,"
+		await until(() => b.facade.blockText('p1') === 'hello,', 'edit after the wake');
+		expect(serverJSON(woke)).toEqual(a.facade.toJSON());
+		const wokeJSON = serverJSON(woke);
+
 		// ── Late join: A and B leave, the DO is evicted, C syncs from storage ──
 		releaseB();
 		await until(() => !a.awareness.getStates().has(b.doc.clientID), 'B presence removed at A');
 		releaseA();
 		a.destroy();
 		b.destroy();
-		await until(() => server.conns.size === 0, 'all sockets closed');
-		expect(server.presence.size).toBe(0);
-		server.evict();
-		rooms.set(ROOM, rebuilt);
+		await until(() => woke.sockets.size === 0, 'all sockets closed');
+		expect(woke.presence.size).toBe(0);
+		woke.evict();
+		const final = Coordinator.restore(ROOM, store);
+		rooms.set(ROOM, final);
 
 		const c = E.createDocument({ actor: { id: 'cy' }, history: { captureTimeout: 0 } });
 		const releaseC = connect(c, ROOM);
 		await until(() => c.ready, 'C hydrated from the rebuilt coordinator');
-		expect(c.facade.toJSON()).toEqual(liveJSON);
+		expect(c.facade.toJSON()).toEqual(wokeJSON);
 		expect(shape(c.facade.toJSON())).toEqual({
 			children: [
-				{ id: 'p1', type: 'paragraph', text: 'hello' },
+				{ id: 'p1', type: 'paragraph', text: 'hello,' },
 				{ id: 'p1b', type: 'paragraph', text: ' world' },
 				{ id: 'p2', type: 'paragraph', text: 'line three' }
 			]
 		});
 		// C's own edits land in the rebuilt coordinator's store.
 		const writes = store.writes;
-		ok(c.transact(() => c.facade.insertText('p1', 5, '!')));
-		await until(() => shape(serverJSON(rebuilt)).children[0].text === 'hello!', 'C edit stored');
+		ok(c.transact(() => c.facade.insertText('p1', 6, '!')));
+		await until(() => shape(serverJSON(final)).children[0].text === 'hello,!', 'C edit stored');
 		expect(store.writes).toBeGreaterThan(writes);
 		const again = Coordinator.restore(ROOM, store);
 		expect(serverJSON(again)).toEqual(c.facade.toJSON());
@@ -765,8 +810,64 @@ describe('Infra — Worker-safe CRDT boundary: a Durable Object coordinator', ()
 
 		releaseC();
 		c.destroy();
-		await until(() => rebuilt.conns.size === 0, 'C socket closed');
-		rebuilt.evict();
+		await until(() => final.sockets.size === 0, 'C socket closed');
+		final.evict();
 		rooms.clear();
+	});
+
+	it('the instance-free awareness codec is wire-compatible with Awareness, both ways', () => {
+		// Awareness → entries: decode what the instance encoder wrote.
+		const doc = new Y.Doc();
+		const aw = new crdt.Awareness(doc);
+		aw.setLocalStateField('user', { name: 'Ada' });
+		const peers = E.writeAwarenessEntries([
+			{ clientID: 11, clock: 3, state: { cursor: 4 } },
+			{ clientID: 12, clock: 1, state: { user: { name: 'Bo' } } }
+		]);
+		E.applyAwarenessUpdate(aw, peers, 'test');
+		const ids = [doc.clientID, 11, 12];
+		const encoded = E.encodeAwarenessUpdate(aw, ids);
+		const entries = E.readAwarenessEntries(encoded);
+		expect(entries).toEqual([
+			{
+				clientID: doc.clientID,
+				clock: aw.meta.get(doc.clientID).clock,
+				state: { user: { name: 'Ada' } }
+			},
+			{ clientID: 11, clock: 3, state: { cursor: 4 } },
+			{ clientID: 12, clock: 1, state: { user: { name: 'Bo' } } }
+		]);
+		expect(E.writeAwarenessEntries(entries)).toEqual(encoded);
+
+		// Entries → Awareness: an instance applies what the codec wrote, and
+		// re-encodes it byte-identically; a null state removes the client.
+		const other = new crdt.Awareness(new Y.Doc());
+		E.applyAwarenessUpdate(other, E.writeAwarenessEntries(entries), 'test');
+		for (const { clientID, clock, state } of entries) {
+			expect(other.getStates().get(clientID)).toEqual(state);
+			expect(other.meta.get(clientID).clock).toBe(clock);
+		}
+		expect(E.encodeAwarenessUpdate(other, ids)).toEqual(encoded);
+		E.applyAwarenessUpdate(
+			other,
+			E.writeAwarenessEntries([{ clientID: 11, clock: 4, state: null }]),
+			'test'
+		);
+		expect(other.getStates().has(11)).toBe(false);
+		expect(E.readAwarenessEntries(E.encodeAwarenessUpdate(other, [11]))).toEqual([
+			{ clientID: 11, clock: 4, state: null }
+		]);
+
+		// modifyAwarenessUpdate (now built on the codec) keeps its contract.
+		const modified = E.modifyAwarenessUpdate(encoded, (state) =>
+			state && 'cursor' in state ? null : state
+		);
+		expect(E.readAwarenessEntries(modified).map((e) => e.state)).toEqual([
+			{ user: { name: 'Ada' } },
+			null,
+			{ user: { name: 'Bo' } }
+		]);
+		aw.destroy();
+		other.destroy();
 	});
 });

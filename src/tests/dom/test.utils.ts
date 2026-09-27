@@ -144,6 +144,13 @@ const findDomTextNode = (node: HTMLElement, offset: number) => {
 	};
 };
 
+/** The mounted element of a text, once its cell mounted (a few flushes at most). */
+export const textNodeOf = async (text: ModelText | null | undefined): Promise<HTMLElement> => {
+	for (let attempt = 0; attempt <= 10 && !text?.node; attempt++) await tick();
+	if (!text?.node) throw new Error('Failed to find text node');
+	return text.node;
+};
+
 export const flushDomUpdates = async () => {
 	for (let attempt = 0; attempt < 4; attempt++) {
 		await Promise.resolve();
@@ -295,8 +302,8 @@ export const setNativeSelection = async (
 	// echo at the new serial is admitted instead of gated as render-churn
 	// drift (`restoreDriftedEchoCaret`).
 	edytor.markUserGesture();
-	const startNode = await edytor.getTextNode(startText);
-	const endNode = await edytor.getTextNode(endText);
+	const startNode = await textNodeOf(startText);
+	const endNode = await textNodeOf(endText);
 	const startLeaf = findDomTextNode(startNode, startOffset);
 	const endLeaf = findDomTextNode(endNode, endOffset);
 	const selection = window.getSelection();
@@ -708,8 +715,8 @@ export const dragSelection = async (
 ) => {
 	const start = resolveText(edytor, startText);
 	const end = resolveText(edytor, endText);
-	const startNode = await edytor.getTextNode(start);
-	const endNode = await edytor.getTextNode(end);
+	const startNode = await textNodeOf(start);
+	const endNode = await textNodeOf(end);
 	const startLeaf = findDomTextNode(startNode, startOffset);
 	const endLeaf = findDomTextNode(endNode, endOffset);
 	const selection = window.getSelection();

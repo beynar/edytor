@@ -1493,7 +1493,7 @@ const healForeignAttributeMutations = (
 
 export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 	if (typeof MutationObserver === 'undefined') {
-		return { destroy: () => {}, flushNow: () => {} };
+		return { destroy: () => {}, flushNow: () => {}, pending: () => false };
 	}
 
 	const queuedTexts = new Set<Text>();
@@ -1628,6 +1628,9 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 				} finally {
 					observe();
 				}
+				// The repair put back nodes the browser's drift moved the DOM
+				// selection out of: the projector displays the current value.
+				edytor.selection.display();
 				return;
 			}
 
@@ -1843,7 +1846,9 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 
 		isFlushScheduled = true;
 		queueMicrotask(() => {
-			void flush();
+			// The records signal (O55): a display waiting for a destination the
+			// repair restores gets its pass once the repair ran.
+			void flush().finally(edytor.projector.recordsChanged);
 		});
 	};
 
@@ -1898,6 +1903,8 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 		// still requeue inside `flush` — this only skips the microtask.
 		flushNow: () => {
 			void flush();
-		}
+		},
+		/** DOM records not yet reconciled: the DOM differs from what the cells rendered. */
+		pending: () => queuedMutations.length > 0 || queuedTexts.size > 0
 	};
 };

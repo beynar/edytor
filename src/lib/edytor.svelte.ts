@@ -14,6 +14,7 @@ import { setSuppressedInputRepairSelectionTarget } from './events/beforeInputRep
 import { type JSONBlock, type JSONDoc, type SerializableContent } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection, type TextAnchor } from './selection/selection.svelte.js';
+import { Projector } from './surface/projector.svelte.js';
 import { Block } from './block/block.svelte.js';
 import { Text } from './text/text.svelte.js';
 import { SvelteMap } from 'svelte/reactivity';
@@ -190,6 +191,8 @@ export class Edytor {
 	}
 	edytor = this;
 	selection: EdytorSelection;
+	/** The only writer of the DOM selection (R10, `surface/projector`). */
+	readonly projector: Projector = new Projector(this);
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
 	placeholder?: string | Snippet<[{ block: Block }]>;
@@ -777,19 +780,9 @@ export class Edytor {
 			this._docCommitVersion++;
 			this.valueRevision++;
 			this._mirrorChange = change;
-			// ANY commit's render can churn the DOM under a live caret — the
-			// browser re-parks it and the trailing selectionchange echo
-			// re-mints anchors from the drifted spot (Gecko clamps to the
-			// shortened node; Blink keeps the offset). Capture the anchored
-			// selection now so the post-flush tick can re-assert DOM ← model
-			// before the echo lands. Skip while a user-input flow is in
-			// flight: there the DOM caret is the user's own write (autocorrect,
-			// IME, drop) and the input path owns the final position — a
-			// commit under it can legitimately slide the anchors, so a
-			// model→DOM re-assert would fight the user's caret.
-			const remoteSelectionCapture = this.isHandlingUserInput
-				? null
-				: (this.selection?.captureSelectionForRemoteApply() ?? null);
+			// A commit this view did not issue re-renders under the caret: the
+			// projector displays the current value after that flush (R10).
+			if (change.origin !== this.transaction) this.projector.render++;
 			// Remote/programmatic mirror writes run under the scroll
 			// suppressor — a remote commit landing inside an in-flight
 			// `isHandlingUserInput` window must not scroll the page.
@@ -811,12 +804,7 @@ export class Edytor {
 					plugin.onChange?.(value);
 				});
 			}
-			void tick().then(() => {
-				this.queuePlaceholderRepair(change, mirrorWasIncremental);
-				if (remoteSelectionCapture) {
-					this.selection?.reconcileSelectionAfterRemoteApply(remoteSelectionCapture);
-				}
-			});
+			void tick().then(() => this.queuePlaceholderRepair(change, mirrorWasIncremental));
 		});
 		const release = () => {
 			if (this._facadeChangeOff !== release) return;
@@ -1129,7 +1117,7 @@ export class Edytor {
 	private userInputHandlingDepth = 0;
 	private withUserInput = <E extends Event>(
 		handler: (event: E) => unknown,
-		opts: { bumpSerial?: boolean } = {}
+		opts: { bumpSerial?: boolean; intent?: boolean } = {}
 	) => {
 		return (event: E): unknown => {
 			// Depth-counted, not boolean: a synchronous wrapped listener
@@ -1138,7 +1126,7 @@ export class Edytor {
 			this.userInputHandlingDepth++;
 			this.isHandlingUserInput = true;
 			if (opts.bumpSerial !== false) {
-				this.markUserGesture();
+				this.markUserGesture(opts.intent);
 			}
 			const clear = () => {
 				this.userInputHandlingDepth--;
@@ -1179,8 +1167,9 @@ export class Edytor {
 	 * (onKeyDown) can mark real keys AFTER swallow checks — a swallowed
 	 * phantom composition key is not a gesture.
 	 */
-	markUserGesture = () => {
+	markUserGesture = (intent = true) => {
 		this.userGestureSerial++;
+		if (intent) this.intentSerial++;
 		// Baseline churn at gesture-start so churn caused by the gesture's
 		// own effects stays outstanding for later quiet-serial echoes.
 		this.churnBaselineAtGesture = this.domSelectionChurnSeq;
@@ -1211,6 +1200,8 @@ export class Edytor {
 	 * user gesture (pointer, key, focus change) intervened and the
 	 * pending restore must be disarmed.
 	 */
+	/** Like the gesture serial, without `input` events (a selection intent). */
+	intentSerial = 0;
 	get gestureSerial() {
 		return this.userGestureSerial;
 	}
@@ -1730,43 +1721,26 @@ export class Edytor {
 		return this.idToText.get(id);
 	};
 
-	getTextNode = async (idOrText: string | Text): Promise<HTMLElement> => {
-		await tick();
-		const text = idOrText instanceof Text ? idOrText : this.getTextById(idOrText);
-		let node = text?.node;
-		let breakCount = 0;
-		while (!node) {
-			await tick();
-			node = text?.node;
-			breakCount++;
-			if (breakCount > 10) {
-				throw new Error('Failed to find text node');
-			}
-		}
-		return node;
-	};
-
 	clear = () => {
-		let newBlock: Block | null = null;
-		this.transact(() => {
+		const newBlock = this.transact(() => {
 			const root = this.root!;
 			root.deleteChildren(0, root.children.length);
-			newBlock = new Block({
+			const block = new Block({
 				edytor: this,
 				parent: this.root,
 				block: {
 					type: this.defaultChild(root)
 				}
 			});
-			root.insertChildren(root.children.length, [newBlock]);
+			root.insertChildren(root.children.length, [block]);
+			return block;
 		});
 		this.refreshEditorDom();
-
-		tick().then(async () => {
+		void this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
+		void tick().then(() => {
 			this.expectInternalFocus();
 			this.node?.focus({ preventScroll: true });
-			const targetText = newBlock?.firstText ?? this.root?.children[0]?.firstText;
-			await this.selection.setAtTextOffset(targetText, 0);
+			this.selection.display();
 		});
 	};
 
@@ -1914,12 +1888,19 @@ export class Edytor {
 		// change sub's unsubscribe — re-establish it on every (re)attach.
 		this.ensureFacadeChangeSub();
 		this.selection.init();
+		this.doc.on('beforeTransaction', this.projector.before);
+		this.doc.on('afterTransaction', this.projector.after);
+		this.off.push(() => {
+			this.doc.off('beforeTransaction', this.projector.before);
+			this.doc.off('afterTransaction', this.projector.after);
+		});
 		// Keydown serial bumps happen INSIDE onKeyDown, after the
 		// composition-phantom swallow — a swallowed trailing Enter/Backspace
 		// is a browser artifact, not a gesture, and must not disarm pending
 		// composition caret restores.
 		const keydown = this.withUserInput(onKeyDown.bind(this), { bumpSerial: false });
 		const domMutationObserver = observeDomTextMutations(this, node);
+		this.projector.recordsPending = domMutationObserver.pending;
 		this.off.push(
 			// One handler per keyboard occurrence: keys inside the editor at
 			// capture; the document sees only keys whose path misses it (a
@@ -1970,7 +1951,9 @@ export class Edytor {
 			// same reason).
 			on(node, 'contextmenu', () => domMutationObserver.flushNow()),
 			on(node, 'beforeinput', this.withUserInput(this.onBeforeInput)),
-			on(node, 'input', this.withUserInput(this.onInput)),
+			// An `input` records what the browser did; it says nothing new about
+			// where the user wants the selection (a display still to land wins).
+			on(node, 'input', this.withUserInput(this.onInput, { intent: false })),
 			on(node, 'copy', this.onCopy),
 			on(node, 'cut', this.withUserInput(this.onCut)),
 			on(node, 'paste', this.withUserInput(this.onPaste)),
@@ -1986,10 +1969,11 @@ export class Edytor {
 				// housekeeping, not user gestures. Click-driven focus returns
 				// are already marked by the document-level pointerdown capture.
 				if (this.expectInternalFocusArmed) {
+					// The projector focused the host for its own display: nothing to restore.
 					this.expectInternalFocusArmed = false;
-				} else if (
-					!(event.relatedTarget instanceof Node && this.node?.contains(event.relatedTarget))
-				) {
+					return;
+				}
+				if (!(event.relatedTarget instanceof Node && this.node?.contains(event.relatedTarget))) {
 					this.markUserGesture();
 				}
 				restoreCachedSelectionAfterKeyboardFocus(event);

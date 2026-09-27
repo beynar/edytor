@@ -9,15 +9,16 @@
  *    collapsed caret, the start edge of the range otherwise). A caret
  *    inside a plain run after marked text reported the mark.
  *  - D7: `setAtBlockRange` had no staleness guard — a foreign selection
- *    landing mid-await got stomped by the stale write. `setAtRange` had
- *    no `getTextNode` rejection handling — an unresolvable endpoint
- *    escaped as an unhandled rejection instead of falling back to the
- *    model-side write like `setAtTextOffset`.
+ *    landing mid-await got stomped by the stale write. Since V4 no writer
+ *    waits: each request is selected in its turn and the projector displays
+ *    the current value, so a newer move wins by construction.
  *  - D8: `applySelectionSnapshot` cleared `selectedInlineBlock` without
  *    clearing `inlineBlockDeletionTarget`, leaving an armed delete
  *    target after the atom was no longer selected.
  */
-import { describe, expect, test, vi } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import type { Edytor } from '$lib/edytor.svelte.js';
+import type { Text } from '$lib/text/text.svelte.js';
 import {
 	renderDomEdytor,
 	flushDomUpdates,
@@ -141,148 +142,38 @@ describe('D7 — aligned guards on the DOM writers', () => {
 		expect(edytor.selection.state.yStart).toBe(4);
 	});
 
-	test('a newer gesture supersedes a deferred caret write even when it re-picks the call position', async () => {
-		const rendered = await renderDomEdytor(
-			<root>
-				<paragraph>hello world</paragraph>
-			</root>,
-			{ autoSelectFixture: false }
-		);
-		const { edytor } = rendered;
-		const text = edytor.root!.children[0]!.firstText!;
-
-		await edytor.selection.setAtTextOffset(text, 1);
-		expect(edytor.selection.state.yStart).toBe(1);
-
-		// Deferred write @1→@4 (its getTextNode lookup awaits); a newer
-		// user gesture lands mid-flight and re-picks @1 — position
-		// equality cannot tell the newer decision apart, only the
-		// gesture serial can. The stale write must abort.
-		const pending = edytor.selection.setAtTextOffset(text, 4);
-		edytor.markUserGesture();
-		await pending;
-		await flushDomUpdates();
-
-		expect(edytor.selection.state.isCollapsed).toBe(true);
-		expect(edytor.selection.state.startText).toBe(text);
-		expect(edytor.selection.state.yStart).toBe(1);
-	});
-
-	test('a newer gesture supersedes a deferred setAtRange write the same way', async () => {
-		const rendered = await renderDomEdytor(
-			<root>
-				<paragraph>hello world</paragraph>
-			</root>,
-			{ autoSelectFixture: false }
-		);
-		const { edytor } = rendered;
-		const text = edytor.root!.children[0]!.firstText!;
-
-		await edytor.selection.setAtTextOffset(text, 1);
-		const pending = edytor.selection.setAtRange(text, 2, text, 6);
-		edytor.markUserGesture();
-		await pending;
-		await flushDomUpdates();
-
-		expect(edytor.selection.state.isCollapsed).toBe(true);
-		expect(edytor.selection.state.startText).toBe(text);
-		expect(edytor.selection.state.yStart).toBe(1);
-	});
-
-	test('a string-id setAtTextOffset write is gated by the gesture serial too', async () => {
-		const rendered = await renderDomEdytor(
-			<root>
-				<paragraph>hello world</paragraph>
-			</root>,
-			{ autoSelectFixture: false }
-		);
-		const { edytor } = rendered;
-		const text = edytor.root!.children[0]!.firstText!;
-
-		await edytor.selection.setAtTextOffset(text, 1);
-		expect(edytor.selection.state.yStart).toBe(1);
-
-		// String-id writes used to bypass the staleness guard entirely —
-		// the guard resolved `null` for non-Text arguments and skipped.
-		// Assert before flushing: the DOM caret never moved, so a later
-		// selectionchange echo can mask a stale commit.
-		const pending = edytor.selection.setAtTextOffset(text.id, 4);
-		edytor.markUserGesture();
-		await pending;
-
-		expect(edytor.selection.state.isCollapsed).toBe(true);
-		expect(edytor.selection.state.startText).toBe(text);
-		expect(edytor.selection.state.yStart).toBe(1);
-	});
-
-	test('a newer gesture supersedes a setAtRange write whose endpoint lookup FAILS', async () => {
-		const rendered = await renderDomEdytor(
-			<root>
-				<paragraph>hello world</paragraph>
-			</root>,
-			{ autoSelectFixture: false }
-		);
-		const { edytor } = rendered;
-		const text = edytor.root!.children[0]!.firstText!;
-
-		await edytor.selection.setAtTextOffset(text, 0);
-
-		// The lookup-error branch wrote the old range BEFORE the stale
-		// check ran — a delayed rejection restored [2,4] over a newer
-		// collapsed caret. Assert BEFORE flushDomUpdates: the DOM caret
-		// never moved, so a selectionchange echo can re-derive @0 and mask
-		// the stale commit.
-		const spy = vi
-			.spyOn(edytor, 'getTextNode')
-			.mockImplementation(() => Promise.reject(new Error('endpoint gone')));
-		try {
-			const pending = edytor.selection.setAtRange(text, 2, text, 4);
-			edytor.markUserGesture();
+	// V4: there is no deferred write any more — a request is selected in its
+	// turn and the projector displays the CURRENT value after the flush, so a
+	// newer user move always wins (W1), whatever form the older request took.
+	for (const [name, request] of [
+		['a caret write', (e: Edytor, t: Text) => e.selection.setAtTextOffset(t, 4)],
+		['a string-id caret write', (e: Edytor, t: Text) => e.selection.setAtTextOffset(t.id, 4)],
+		['a range write', (e: Edytor, t: Text) => e.selection.setAtRange(t, 2, t, 6)],
+		['a block-range write', (e: Edytor, t: Text) => e.selection.setAtBlockRange(t.parent, 0, 4)]
+	] as const) {
+		test(`a user move after ${name} in the same turn wins, in the model and the DOM`, async () => {
+			const rendered = await renderDomEdytor(
+				<root>
+					<paragraph>hello world</paragraph>
+				</root>,
+				{ autoSelectFixture: false }
+			);
+			const { edytor } = rendered;
+			const text = edytor.root!.children[0]!.firstText!;
+			await edytor.selection.setAtTextOffset(text, 0);
+			const pending = request(edytor, text);
+			await setNativeSelection(edytor, text, 1);
 			await pending;
+			await flushDomUpdates();
 
 			expect(edytor.selection.state.isCollapsed).toBe(true);
 			expect(edytor.selection.state.startText).toBe(text);
-			expect(edytor.selection.state.yStart).toBe(0);
-		} finally {
-			spy.mockRestore();
-		}
-	});
+			expect(edytor.selection.state.yStart).toBe(1);
+			expect(window.getSelection()?.anchorOffset).toBe(1);
+		});
+	}
 
-	test('a newer gesture supersedes a setAtBlockRange write whose endpoint lookup FAILS', async () => {
-		const rendered = await renderDomEdytor(
-			<root>
-				<paragraph>hello world</paragraph>
-			</root>,
-			{ autoSelectFixture: false }
-		);
-		const { edytor } = rendered;
-		const text = edytor.root!.children[0]!.firstText!;
-		const block = edytor.root!.children[0]!;
-
-		await edytor.selection.setAtTextOffset(text, 0);
-
-		const spy = vi
-			.spyOn(edytor, 'getTextNode')
-			.mockImplementation(() => Promise.reject(new Error('endpoint gone')));
-		try {
-			// `syncModelState: false` — the default sync path commits at
-			// call time (by design); this exercises the DEFERRED catch-branch
-			// write, which ran before the stale check existed. Assert before
-			// the next flush — the unmoved DOM caret can otherwise mask a
-			// stale commit.
-			const pending = edytor.selection.setAtBlockRange(block, 0, 4, { syncModelState: false });
-			edytor.markUserGesture();
-			await pending;
-
-			expect(edytor.selection.state.isCollapsed).toBe(true);
-			expect(edytor.selection.state.startText).toBe(text);
-			expect(edytor.selection.state.yStart).toBe(0);
-		} finally {
-			spy.mockRestore();
-		}
-	});
-
-	test('setAtRange falls back to the model write when an endpoint cannot resolve', async () => {
+	test('setAtRange writes the model in its turn', async () => {
 		const rendered = await renderDomEdytor(
 			<root>
 				<paragraph>hello world</paragraph>
@@ -292,24 +183,18 @@ describe('D7 — aligned guards on the DOM writers', () => {
 		const { edytor } = rendered;
 		const text = edytor.root!.children[0]!.firstText!;
 
-		const spy = vi.spyOn(edytor, 'getTextNode').mockRejectedValue(new Error('endpoint gone'));
-		try {
-			// Must resolve — not reject — and land the model-side range
-			// (the setAtTextOffset catch contract).
-			await edytor.selection.setAtRange(text, 1, text, 4);
-			const state = edytor.selection.state;
-			expect(state.isCollapsed).toBe(false);
-			expect(state.startText).toBe(text);
-			expect(state.endText).toBe(text);
-			expect(state.yStart).toBe(1);
-			expect(state.yEnd).toBe(4);
-			expect(state.content).toBe('ell');
-		} finally {
-			spy.mockRestore();
-		}
+		// The model write lands in the request's turn, displayed or not.
+		void edytor.selection.setAtRange(text, 1, text, 4);
+		const state = edytor.selection.state;
+		expect(state.isCollapsed).toBe(false);
+		expect(state.startText).toBe(text);
+		expect(state.endText).toBe(text);
+		expect(state.yStart).toBe(1);
+		expect(state.yEnd).toBe(4);
+		expect(state.content).toBe('ell');
 	});
 
-	test('setAtBlockRange falls back to the model write when an endpoint cannot resolve', async () => {
+	test('setAtBlockRange writes the model in its turn', async () => {
 		const rendered = await renderDomEdytor(
 			<root>
 				<paragraph>hello world</paragraph>
@@ -319,17 +204,12 @@ describe('D7 — aligned guards on the DOM writers', () => {
 		const { edytor } = rendered;
 		const block = edytor.root!.children[0]!;
 
-		const spy = vi.spyOn(edytor, 'getTextNode').mockRejectedValue(new Error('endpoint gone'));
-		try {
-			await edytor.selection.setAtBlockRange(block);
-			const state = edytor.selection.state;
-			expect(state.isCollapsed).toBe(false);
-			expect(state.startText).toBe(block.firstText);
-			expect(state.endText).toBe(block.lastText);
-			expect(state.yStart).toBe(0);
-			expect(state.yEnd).toBe(block.lastText.length);
-		} finally {
-			spy.mockRestore();
-		}
+		void edytor.selection.setAtBlockRange(block);
+		const state = edytor.selection.state;
+		expect(state.isCollapsed).toBe(false);
+		expect(state.startText).toBe(block.firstText);
+		expect(state.endText).toBe(block.lastText);
+		expect(state.yStart).toBe(0);
+		expect(state.yEnd).toBe(block.lastText.length);
 	});
 });

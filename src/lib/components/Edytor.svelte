@@ -151,6 +151,12 @@
 
 	setContext('edytor', edytor);
 
+	// The display projector (R10): the root `$effect.pre` notes the focused
+	// element before the flush writes the DOM; the root `$effect` — the last
+	// effect of the editor subtree — displays the selection after them.
+	$effect.pre(edytor.projector.pre);
+	$effect(edytor.projector.post);
+
 	type EditableRootBrowserAttributes = {
 		spellcheck: boolean;
 		autocorrect: 'on' | 'off';

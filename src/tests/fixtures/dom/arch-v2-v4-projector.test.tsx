@@ -47,10 +47,12 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 
-/** Red on the reference (expected-fail until V4 lands). */
-const row = it.fails;
+/** Red on the reference; green since V4. */
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
+/** Red until V4b (L52 anchors, the element-boundary point, the call sites' timers). */
+const v4b = it.fails;
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -225,7 +227,7 @@ describe('F-S4 — a programmatic DOM selection with no gesture is adopted', () 
 });
 
 describe('F-S5 — an element-boundary point inside a text element', () => {
-	row('(textElement, i) reads the text before child i: 0, 2, 4, 6', async () => {
+	v4b('(textElement, i) reads the text before child i: 0, 2, 4, 6', async () => {
 		const { edytor } = await renderDomEdytor(
 			<root>
 				<paragraph>
@@ -435,7 +437,7 @@ describe('F-S11 (d) — an unobserved native move is admitted after the apply co
 });
 
 describe('F-P2 — the toolbar holds the selection as a value (L52)', () => {
-	row('a link applied after a peer insert covers the selected word', async () => {
+	v4b('a link applied after a peer insert covers the selected word', async () => {
 		const rendered = await renderDomEdytor(
 			<root>
 				<paragraph>hello world</paragraph>
@@ -468,7 +470,7 @@ describe('F-P2 — the toolbar holds the selection as a value (L52)', () => {
 });
 
 describe('F-P3 — the slash menu holds its range as anchors (L52)', () => {
-	row('a peer insert before the query keeps the menu open on quo; Enter runs on /quo', async () => {
+	v4b('a peer insert before the query keeps the menu open on quo; Enter runs on /quo', async () => {
 		const rendered = await renderDomEdytor(
 			<root>
 				<paragraph>ab|</paragraph>
@@ -496,7 +498,7 @@ describe('F-P3 — the slash menu holds its range as anchors (L52)', () => {
 });
 
 describe('F-O1 (timer half) — no selection-display timer is left once a program settles', () => {
-	/** Pending timers scheduled through the selection display (selection, surface, bindings). */
+	/** Pending timers scheduled by the selection display (selection, surface, bindings). */
 	const timerSpy = () => {
 		const pending = new Map<unknown, string>();
 		const setTimeoutOriginal = window.setTimeout;
@@ -510,7 +512,9 @@ describe('F-O1 (timer half) — no selection-display timer is left once a progra
 				if (typeof handler === 'function') handler(...runArgs);
 			};
 			id = setTimeoutOriginal(run as TimerHandler, timeout, ...args);
-			if (displayOwned.test(stack)) pending.set(id, stack.split('\n').slice(1, 4).join(' | '));
+			// The scheduling frame: the first library frame on the stack.
+			const frame = stack.split('\n').find((line) => line.includes('/src/lib/')) ?? '';
+			if (displayOwned.test(frame)) pending.set(id, frame.trim());
 			return id;
 		}) as typeof window.setTimeout;
 		window.clearTimeout = ((id?: number) => {
@@ -562,8 +566,10 @@ describe('F-O1 (timer half) — no selection-display timer is left once a progra
 		]
 	];
 
+	/** Programs whose timers belong to call sites and repairers retired at V4b. */
+	const atV4b = new Set(['a block-set delete']);
 	for (const [name, program] of programs) {
-		row(`${name}: no display timer pending at settle`, async () => {
+		(atV4b.has(name) ? v4b : row)(`${name}: no display timer pending at settle`, async () => {
 			const { edytor, editor } = await renderDomEdytor(
 				<root>
 					<paragraph>fir|st</paragraph>

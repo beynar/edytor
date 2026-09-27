@@ -763,13 +763,6 @@ export class Text {
 		this.edytor.markDomSelectionChurn();
 		this._items = items;
 		this._syncCompositionRegion();
-		const change = this.edytor._mirrorChange;
-		if (change && change.origin !== this.edytor.transaction && !this._compositionLocked) {
-			// Remote/programmatic changes keep the cached model selection in sync.
-			// Skipped while the composition pin holds — the composition owns
-			// the caret; writing the DOM selection mid-composition disturbs IMEs.
-			this.edytor.selection.restoreRelativePosition(this);
-		}
 		this.syncDerived();
 		void tick().then(() => scheduleRemoveStalePlaceholders(this));
 	};
@@ -945,9 +938,8 @@ export class Text {
 		// caret — mark the churn before the browser's echo can be mistaken
 		// for a user move.
 		this.edytor.markDomSelectionChurn();
-		// A dead-endpoint recovery deferred because its destination was not
-		// yet mounted completes now — the DOM node it needed exists.
-		this.edytor.selection?.notifyTextMounted();
+		// A display that waited for a mounted destination runs in the next pass.
+		this.edytor.projector?.mounted(this);
 
 		return {
 			destroy: () => {

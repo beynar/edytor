@@ -137,6 +137,23 @@ const composeObserved = async (
  * preview, once", F-S12 / BI-2 "no DOM-selection write while the session
  * lives; the next imeSetComposition extends the same composition").
  */
+/**
+ * F-S12's display half (BI-2, V4): the projector never writes the DOM
+ * selection while a composition session owns a host — the session's end
+ * catches up. Green since V4, in every scenario.
+ */
+const expectNoSelectionWrite = (observed: SessionObservation) =>
+	expect(observed.selectionWrites, 'no DOM-selection write while the session lives').toEqual([]);
+
+/**
+ * The composition-restart half is not V4's: with no selection write left
+ * (V4), Chromium still restarts the composition because the host text node is
+ * rewritten under the IME after the first update (the render writes the
+ * preview — at the host's end mid-word, identical text at the end — and a
+ * rewrite resets the caret: §1.1 text-writer fact). The IME-node pin owns it.
+ */
+const RESTART = 'F-S12 restart half (I3 pin: the render rewrites the IME node)';
+
 const expectSessionContract = (observed: SessionObservation, liveDom: string) => {
 	expect.soft(observed.liveDom, 'the preview renders once, at the caret').toBe(liveDom);
 	expect
@@ -237,8 +254,14 @@ test.describe('cdp IME baseline — single editor', () => {
 		issues.assertClean();
 	});
 
+	test('mid-word: no DOM-selection write while the session lives (F-S12, BI-2)', async ({
+		page
+	}) => {
+		expectNoSelectionWrite(await driveMidWord(page));
+	});
+
 	test('mid-word: session contract (F-S12, §1.3 IME node)', async ({ page }) => {
-		knownRed('F-S12 (V4) / §1.3 IME-node row');
+		knownRed(`${RESTART} / §1.3 IME-node row`);
 		const observed = await driveMidWord(page);
 		expectSessionContract(observed, 'noかte');
 	});
@@ -334,6 +357,12 @@ test.describe('cdp IME baseline — single editor', () => {
 		expectSessionContract(observed, 'す');
 	});
 
+	test('empty block: no DOM-selection write while the session lives (F-S12, BI-2)', async ({
+		page
+	}) => {
+		expectNoSelectionWrite((await driveEmptyBlock(page)).observed);
+	});
+
 	test('undo right after an IME commit removes exactly the composed text (F-I16a, §1.3 COMP-02)', async ({
 		page
 	}) => {
@@ -414,8 +443,14 @@ test.describe('cdp IME baseline — single editor', () => {
 		issues.assertClean();
 	});
 
+	test('bold mark: no DOM-selection write while the session lives (F-S12, BI-2)', async ({
+		page
+	}) => {
+		expectNoSelectionWrite(await driveBold(page));
+	});
+
 	test('bold mark: session contract (F-S12, §1.3 IME node)', async ({ page }) => {
-		knownRed('F-S12 (V4) / §1.3 IME-node row');
+		knownRed(`${RESTART} / §1.3 IME-node row`);
 		const observed = await driveBold(page);
 		expectSessionContract(observed, 'Alêpha beta');
 	});
@@ -500,10 +535,18 @@ test.describe('cdp IME baseline — with a peer in a second browser context', ()
 		});
 	});
 
+	test('peer insert before the region, SAME block: no DOM-selection write while the session lives (F-S12, BI-2)', async ({
+		browser
+	}, testInfo) => {
+		await withPair(browser, testInfo, async (pair) =>
+			expectNoSelectionWrite(await drivePeerSameBlock(pair))
+		);
+	});
+
 	test('peer insert before the region, SAME block: session contract (F-S12)', async ({
 		browser
 	}, testInfo) => {
-		knownRed('F-S12 (V4)');
+		knownRed(RESTART);
 		await withPair(browser, testInfo, async (pair) => {
 			const observed = await drivePeerSameBlock(pair);
 			// composition-remote-lock: the DOM the IME owns is not rewritten by
@@ -529,10 +572,18 @@ test.describe('cdp IME baseline — with a peer in a second browser context', ()
 		});
 	});
 
+	test('peer insert in ANOTHER block: no DOM-selection write while the session lives (F-S12, BI-2)', async ({
+		browser
+	}, testInfo) => {
+		await withPair(browser, testInfo, async (pair) =>
+			expectNoSelectionWrite(await drivePeerOtherBlock(pair))
+		);
+	});
+
 	test('peer insert in ANOTHER block: session contract (composition-remote-lock, F-S12)', async ({
 		browser
 	}, testInfo) => {
-		knownRed('F-S12 (V4)');
+		knownRed(RESTART);
 		await withPair(browser, testInfo, async (pair) => {
 			const observed = await drivePeerOtherBlock(pair);
 			expectSessionContract(observed, 'alphaに');

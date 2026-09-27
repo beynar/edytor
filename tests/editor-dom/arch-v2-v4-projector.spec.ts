@@ -15,13 +15,11 @@
  *   script racing a remote apply: the user's move survives (BI-3).
  *
  * The remote apply is a same-page write under a foreign origin (the view did
- * not issue it). Expected values come from the plan rows.
+ * not issue it). Expected values come from the plan rows. Red on the
+ * reference (`arch-v2/ref-v4`): F-S9 (a) and F-S11 (c) on all three engines,
+ * F-S11 (a) on firefox.
  */
 import { expect, test, type Page } from './editorTest';
-
-/** A row red on the reference in `engines` (expected-fail until V4 lands). */
-const redOnReference = (browserName: string, engines: string[], row: string) =>
-	test.fail(engines.includes(browserName), `${row}: red on the reference (V4)`);
 
 import {
 	expectSelection,
@@ -106,10 +104,8 @@ test.describe('V4 projector — F-S6', () => {
 
 test.describe('V4 projector — F-S9 focus verdict', () => {
 	test('(a) our render detaches the focused node: the caret is displayed, focus kept', async ({
-		page,
-		browserName
+		page
 	}) => {
-		redOnReference(browserName, ['chromium', 'firefox', 'webkit'], 'F-S9 (a)');
 		const issues = trackPageIssues(page);
 		await open(page);
 		await setSelectionByTextIndex(page, 0, 2);
@@ -180,10 +176,8 @@ test.describe('V4 projector — F-S9 focus verdict', () => {
 
 test.describe('V4 projector — F-S11 the user’s move survives a remote apply (BI-3)', () => {
 	test('(a) ArrowRight with a remote update applied before its selectionchange', async ({
-		page,
-		browserName
+		page
 	}) => {
-		redOnReference(browserName, ['firefox'], 'F-S11 (a)');
 		const issues = trackPageIssues(page);
 		await open(page);
 		await setSelectionByTextIndex(page, 0, 1);
@@ -246,11 +240,7 @@ test.describe('V4 projector — F-S11 the user’s move survives a remote apply 
 		issues.assertClean();
 	});
 
-	test('(c) setBaseAndExtent from a page script racing a remote apply', async ({
-		page,
-		browserName
-	}) => {
-		redOnReference(browserName, ['chromium', 'firefox', 'webkit'], 'F-S11 (c)');
+	test('(c) setBaseAndExtent from a page script racing a remote apply', async ({ page }) => {
 		const issues = trackPageIssues(page);
 		await open(page);
 		await setSelectionByTextIndex(page, 0, 0);

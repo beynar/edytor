@@ -441,8 +441,6 @@ const patchOperationSelectionApis = (edytor: Edytor) => {
 
 		setSelectionState(edytor, startText, startOffset, endText, endOffset, options?.isReversed);
 	};
-
-	edytor.selection.setAtNodeOffset = () => {};
 };
 
 export const createOperationEdytor = (jsx: RenderedNode, options: TestEdytorOptions = {}) => {

@@ -115,6 +115,5 @@ export class History {
 				: value,
 			'history'
 		);
-		selection.display();
 	}
 }

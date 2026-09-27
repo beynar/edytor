@@ -14,7 +14,12 @@
 // @ts-nocheck -- probes touch private fields intentionally.
 import { describe, expect, test } from 'vitest';
 import { tick } from 'svelte';
-import { renderDomEdytor, flushDomUpdates, setNativeSelection } from '../../../dom/test.utils.js';
+import {
+	renderDomEdytor,
+	flushDomUpdates,
+	setNativeSelection,
+	textNodeOf
+} from '../../../dom/test.utils.js';
 import { Awareness } from '$lib/crdt/index.js';
 
 describe('gate3 dom: this.off accumulation across keyed remounts', () => {
@@ -79,7 +84,7 @@ describe('gate3 dom: mutation observer boundary', () => {
 			</root>
 		);
 		const text = edytor.root!.children[0]!.firstText;
-		const node = await edytor.getTextNode(text);
+		const node = await textNodeOf(text);
 
 		const rogue = document.createElement('span');
 		rogue.textContent = 'ROGUE';
@@ -104,7 +109,7 @@ describe('gate3 dom: mutation observer boundary', () => {
 			</root>
 		);
 		const text = edytor.root!.children[0]!.firstText;
-		const node = await edytor.getTextNode(text);
+		const node = await textNodeOf(text);
 		const mark = node.querySelector('[data-edytor-mark]');
 		expect(mark).not.toBeNull();
 

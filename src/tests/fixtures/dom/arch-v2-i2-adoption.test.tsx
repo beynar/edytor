@@ -97,7 +97,8 @@ const textNodes = (element: Node) => {
 	const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
 	const out: globalThis.Text[] = [];
 	while (walker.nextNode()) out.push(walker.currentNode as globalThis.Text);
-	return out;
+	// The renderer's empty text anchors are not the browser's text.
+	return out.filter((node) => node.data.length > 0);
 };
 
 const caretAt = (node: Node, offset: number) => {

@@ -352,6 +352,27 @@ the set, else after it (F-S13, FP-7).
 
 ## History
 
+### `hist.capture-group` — one undo step per gesture
+
+Undo cuts come from one policy table in the dispatcher (`session/commands.ts`
+`CUT`): deletions, paste, drop, structural and format commands cut before
+they write; typed insertion coalesces within `captureTimeout`. A
+composition session is one step with its ending: its first write opens a
+capture group that is held open before each later preview (K15), and it
+cuts nothing, like a typed insertion. Undo and redo are the bare engine
+calls (never inside a transaction, no tracked write after them); the
+issuing view selects the step's recorded `before` (undo) or `after` (redo).
+
+### `sel.presence.wire` — one presence entry per view
+
+`selections[viewKey] = serialize(value) + t`: a text value is
+`{start, end, collapsed, reversed}` (`DocAnchor`s `{b, a}` in document
+order), a block set `{blocks}`, an atom `{atom, block}`. A view writes only
+its own key (from `select()` when the value changed) and clears it in
+`destroy()`; nobody sweeps another view's key. Peers draw the freshest
+valid text entry per client; an anchor that does not resolve paints
+nothing.
+
 ## Concurrency policy
 
 ### `conc.delete-wins-block` — insert into a concurrently deleted block
@@ -463,36 +484,48 @@ of the own text its first typing creates (`{b: block, a: {i: null}}`).
 
 ### `sel.drift.churn` — render churn under a live caret
 
-Any commit's render can mutate the DOM under a live caret — a delta
-re-split shortening a text node, a keyed span remount (`domVersion`
-in `Content.svelte`), a `_setItems`/`_kill` re-render. Gecko re-parks the
-caret at the surviving boundary (Blink usually keeps the offset) and the
-trailing `selectionchange` would derive+re-mint anchors from the drifted
-spot. Two layered defenses:
-
-- **Echo gate** (`restoreDriftedEchoCaret`): internal render churn bumps
-  `domSelectionChurnSeq` (`Text.attach`/destroy, `Text._setItems`,
-  `_kill`, the per-span mutation observer); `markUserGesture` snapshots it
-  into `churnBaselineAtGesture`, so churn stays outstanding for the whole
-  inter-gesture window. An echo at an unchanged `intentSerial` whose
-  derived position differs from the resolved anchors is drift — the DOM
-  is reverted to the resolved anchors instead of deriving. A matching
-  echo, an echo after a serial bump (real gesture), and an echo with no
-  outstanding churn (settled foreign write) all derive normally.
-- **Projection after the flush** (`surface/projector.svelte.ts`): a commit
-  this view did not issue bumps the render epoch; the pass after the flush
-  compares the live DOM selection with the value in model coordinates and
-  writes only a difference (focus inside, or orphaned by our own render;
-  never a foreign focus or a selection outside the editor). It also
-  requires a flush since the last observation before the echo gate calls
-  a move drift (F-S4). The retired proactive reconcile and post-write
-  verification timers have no replacement: the pass is the only re-assert.
+A commit's render can move the DOM selection under a live caret (a node
+re-split, a moved block's element re-created; Gecko re-parks the caret
+at the surviving boundary). The projector (`surface/projector.svelte.ts`,
+arch-v2 V5) classifies every `selectionchange` against its last display,
+the render epoch (a flush after which the DOM selection was not
+observed, or records the observer has not reconciled) and the gesture
+serial: an unchanged last display is an **echo** (ignored); a move with
+no gesture since the last observation after our own render is **drift**
+(the current value is displayed again); a move while a composition is
+live is the IME's; a gesture or a drag is **intent** (adopted); anything
+else is a **foreign** write (adopted). The two named, time-bounded
+signatures are the Android post-delete snap-back (250 ms) and the IME
+post-commit jump (100 ms), compared at use — no timer.
 
 Harness contract: DOM-first selection placement IS a user decision —
 fixture/harness paths that write the DOM selection directly
 (`setNativeSelection` in `src/tests/dom/test.utils.ts`, the playwright
-helpers in `tests/editor-*/`) must call `edytor.markUserGesture()` first,
-or the echo gate reads their synthetic `selectionchange` as drift.
+helpers in `tests/editor-*/`) call `edytor.markUserGesture()` first, or
+the classifier reads their synthetic `selectionchange` as drift.
+
+## Host DOM ownership (D-25)
+
+The host renders a pure function of the model and declared view state;
+the compare-to-truth observer (`surface/observer.svelte.ts`, arch-v2 R7)
+is the only interpreter of DOM changes.
+
+- **Strict regions** — only the editor writes them: the root's children,
+  every text and core mark element, and a block's own text/atom run (the
+  nodes between two registered text/atom elements of one content). A
+  foreign node there is removed; foreign text inside a content is browser
+  input and is adopted through the dispatcher unless an expectation
+  claims its host (composition tail, pending structural key, model-owned
+  drift — then the cell is restored); structure is restored from the
+  cell; identity clones are removed without adoption.
+- **Tolerance** covers only a kind's own markup **around** the content and
+  children slots (a callout icon, a code block header, an extension's node
+  beside the slots) and attributes the ownership table
+  (`surface/attributes.ts`) does not list (`open` on a native toggle, an
+  extension's `id` on a block element). The editor never inverts them.
+- The live composition host is the IME's; read-only divergence is
+  restored when the view becomes editable again; divergence during an
+  open model-owned attempt window waits until the window closes.
 
 ## Oracle and checkpoint contract
 
@@ -529,12 +562,13 @@ or the echo gate reads their synthetic `selectionchange` as drift.
 | DOM mount readiness → display     | projector pass after the flush that mounts the text; a text mount or the records signal re-runs a waiting pass (`src/lib/surface/projector.svelte.ts`) |
 | DOM-selection write (only writer) | `projector.post()` after every Svelte flush, current value; writers `select()` in their own turn                                                       |
 | Gesture serial (one)              | `Edytor.intentSerial` via `markUserGesture` (not bumped by `input`)                                                                                    |
-| Drift-echo gate                   | `restoreDriftedEchoCaret` + `domSelectionChurnSeq`/`churnBaselineAtGesture`                                                                            |
+| `selectionchange` classification  | projector `classify` (echo / drift / composition / foreign / intent; two named browser rules)                                                          |
 | Unobserved native move            | projector BI-3: mint in `beforeTransaction` of a foreign transaction → `select(…, 'dom')` after commit                                                 |
 | Remote anchor validation          | `isTextAnchor`/`resolvePeerSelection` (`src/lib/collaboration/awarenessSelection.ts`)                                                                  |
 | Presence wire/equality            | `publishPresence` under the view's own `presenceKey` (`jsonValuesEqual` dedupe, `awarenessSelection.ts`)                                               |
 | History selections                | per-view `{before, after}` values in stack-item `meta` (`src/lib/session/history.ts`)                                                                  |
-| Independent oracle                | `dense-ownership-oracle.ts`, `selectionOracle.ts`, dump inventories in `collab-runner.ts`                                                              |
+| DOM change interpretation         | compare-to-truth observer + attribute table (`src/lib/surface/observer.svelte.ts`, `attributes.ts`; D-25)                                              |
+| Independent oracle                | `src/tests/oracles/truth.ts`, `selectionOracle.ts`, `deleteOracle.ts`, dump inventories in `collab-runner.ts`                                          |
 | Settlement checkpoint             | `command-peer-set.ts` `quiesce()`                                                                                                                      |
 
 ## History
@@ -568,8 +602,9 @@ actions were scheduled — actions may be legal no-ops.
   delete extent is always model-computed (`del.unit.model-boundary`).
   Native chords and visual line breaks remain browser-owned (U4).
 - Native composition deletion, focus theft, painted carets: browser lane.
-- Undo/redo semantic restoration beyond `hist.dead-pop`: `undoRestore.ts`
-  and history fixtures own the details.
+- Undo/redo selection restoration beyond `hist.dead-pop`:
+  `src/lib/session/history.ts` (per-view `{before, after}` values) and the
+  history fixtures own the details.
 
 ## Boundary matrix (recorded coverage)
 
@@ -591,8 +626,8 @@ separate pinned programs.
 | recovery topology × whole-document deletion    | remote whole-doc delete → replacement paragraph mounts → pending recovery lands; `insertText("Z")` reaches it (command-simulation.test.tsx)                                                                                      |
 | range recovery × one dead endpoint             | joint-shape oracle: collapse to the resolvable survivor (selectionOracle.ts + browser-state-oracle.spec.ts)                                                                                                                      |
 | range recovery × both dead                     | seam walk on the start block's live/dead status → root first-editable fallback                                                                                                                                                   |
-| deferred ownership × newer gesture             | all write paths (string id, range, block range, catch/fallback exits) re-check the gesture serial (selection-ownership.test.tsx, elegance-selection.test.tsx)                                                                    |
-| deferred ownership × unmounted destination     | `deadEndpointRecoveryPending` + `Text.attach` retry — model destination vs DOM readiness are separate facts                                                                                                                      |
+| display ownership × newer gesture              | the projector writes the current value after the flush; a later `select()` in the same turn wins (arch-v2-v4-projector F-S1, elegance-selection D7)                                                                              |
+| display ownership × unmounted destination      | the value waits; the pass after the flush that mounts the text displays it (arch-v2-v4-projector F-S9, arch-v2-v3-seam)                                                                                                          |
 | affinity × character identity                  | `remote insert AT the caret respects affinity`, `deleted atoms resolve to the gap`                                                                                                                                               |
 | three-peer held release                        | command-simulation.test.tsx three-peer program: B holds selection, A deletes the destination, C edits unrelated content; both legal release orders preserve C's content and B's continuation                                     |
 | history independence                           | `a seam caret behaves identically whether its block was split or built directly` — equivalent structures via different histories, explicit identity mapping, sequential edits, semantic comparison                               |

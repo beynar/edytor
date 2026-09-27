@@ -21,7 +21,18 @@ document is the thing views render, not something a view owns.
 `createDocument`/`loadDocument`/`attachDocument` are bound to the vendored
 engine at module level — **no `bindCrdt` call and no engine import is
 needed for document work**. `bindCrdt(Y)` remains the entry for the raw
-provider/migration/sync stacks on docs you own yourself.
+provider/migration/sync stacks on docs you own yourself, and for a server
+coordinator (README "Server coordinator"). The `bind*` building blocks,
+rank/run/placement plumbing and the per-block subscriber API
+(`subscribeBlock`, `blockVersion`, `snapshot`, `decorateRuns`) are no
+longer exported (arch-v2 C1, D-15): subscribe to `facade.onChange`, read
+`facade.runs(id)`.
+
+Every facade op is `apply(prepare.op(…))` (arch-v2 D5) and returns an
+`OpResult` (`{status: 'applied' | 'noop' | 'refused', ids, reason?}`), not
+a boolean. `facade.onChange` delivers one `DocChange` per commit that
+changed the visible document (`added`, `removed`, `moved`, `meta`,
+`content`, `order`, plus `origin`, `local`, `version`).
 
 ### Why no `edytor/crdt/document` subpath
 
@@ -344,10 +355,11 @@ carets read. With no actor supplied the document mints an opaque
 ```
 
 Every `<Edytor {document}>` on the same document shares the one facade
-(one maintained run view), one history (one undo stack — per-view caret
+(one index per engine doc), one history (one undo stack — per-view caret
 restoration still scopes to the view that issued the undo) and one
 awareness (per-view presence states merge onto it). Plugin-implied
-structural roles (`void`/`island`, `defaultType`) adopt onto the document
+structural roles and capabilities (`void`/`island`, `rendersContent`,
+`defaultChild`, `defaultType`) adopt onto the document
 — a conflicting second declaration raises `SemanticConflictError` instead
 of silently reshaping the shared doc.
 
@@ -393,7 +405,7 @@ refused updates keep their bytes, refused stored rows are never deleted.
 ## Ownership rules (the short version)
 
 - `createDocument`/`loadDocument` **own** their engine doc — `destroy()`
-  tears down undo manager, facade lease, attribution controller, awareness
+  tears down undo manager, facade, attribution controller, awareness
   (if document-created), tracked sync cleanups and the doc, exactly once.
 - `attachDocument` **borrows** — `destroy()` releases the services, never
   `doc.destroy()`s the borrowed doc; an injected `awareness` follows the

@@ -4,7 +4,9 @@ Companion to `crdt-v14-implementation-plan.md` and the execution ledger.
 This document records the U09 contract: how selection endpoints are
 anchored to backing-text atoms, how remote carets ride awareness, how
 local undo stays selective under concurrent remote edits, and what the
-browser-input/composition lanes cover.
+browser-input/composition lanes cover. Sections marked **arch-v2**
+describe the mechanisms that replaced U09's (see
+`docs/architecture-v2/execution-ledger.md`).
 
 ## Anchor model
 
@@ -37,79 +39,51 @@ Two levels, both JSON-serializable:
   to the anchor's **left** — outside a range starting here. Used for
   range **starts**.
 
-`T.atomAnchorAt` (`src/lib/crdt/text/model.ts`) is the selection-anchor
-primitive — distinct from the slice-record `T.anchorAt`, which keeps
-index sentinels (`{i:null,a:-1}`/`{i:null,a:0}` at both ends) because
-records need absolute range edges, not affinity edges.
+`T.anchorAt` (`src/lib/crdt/text/model.ts`) mints the engine relative
+position; slice records and their index sentinels are gone (arch-v2 D12).
 
-### `facade.anchorAt` mapping
+### `facade.anchorAt` / `facade.resolveAnchor` (arch-v2 D12: streams)
 
-Display offset → backing anchor:
+Text ownership is streams in backing texts, delimited by boundary items
+(`docs/crdt-v14-text-ownership-adr.md`, plan §2.1):
 
-1. `anchorView()` = `collectBlocks` + `computeOwnership` (no placements —
-   pure replicated state, safe mid-transaction).
-2. `T.flatten(blockId)` gives ordered `{t, i0, i1}` segments of the
-   block's visible content.
-3. The segment containing the position's affinity-side atom supplies the
-   backing text + index; at cross-segment seams affinity picks the side.
-4. Empty display binds the block's **own** backing text at index 0 —
-   where typed content will land.
-5. `null` when the block has no backing text (e.g. unknown id).
+- `anchorAt(blockId, displayOffset, affinity)` locates the offset in the
+  block's display pieces (its stream, then each claimed stream) and binds
+  an engine relative position in that backing text; `b` is the text's
+  home block. A merged-away or hidden block's own pieces still bind, so a
+  write aimed at a text that died to a merge follows its items. A
+  streamless block binds `{b: block, a: {i: null}}`, the start of the own
+  text its first typing creates. A left-affine caret at a split-born
+  block's start binds that block's boundary item.
+- `resolveAnchor(anchor)` resolves the engine position, finds the stream
+  holding it (the one whose delimiting boundary precedes it) and that
+  stream's display owner → `{blockId, offset}`. `null` when the item is
+  not integrated yet, or the stream's block is deleted or hidden: the
+  caller takes the seam (`crdt/anchors.ts`, `sel.seam.*` in
+  `docs/editor-delete-contract.md`). There is no owner facet (`o`), no
+  `a: -2` form and no emission-seam scan.
+- `followUndo(anchor)` rebinds an anchor through this replica's `redone`
+  chain (history restores a value recorded before a delete).
 
-### `facade.resolveAnchor` mapping
+## Selection integration (arch-v2 V1–V5)
 
-Backing anchor → `{blockId, offset}` (current display position):
+The selection is a value (`src/lib/session/selection.ts`): `none`, a text
+range of two `DocAnchor`s (`anchor`, `focus`, optional `pending` marks),
+one atom, or a set of block ids. `EdytorSelection.select(value, cause)` is
+its only writer; `project(value, doc)` (memoized per value and index
+version) gives every derived field, and `selection.state` is a read-only
+compatibility getter over it. The DOM selection is written only by the
+projector (`surface/projector.svelte.ts`) after a flush. A range start
+binds right, an end or caret binds left. A value that no longer projects
+is repaired at the seam; one dead endpoint collapses the range to the
+survivor.
 
-1. `T.resolveAnchor` resolves the engine anchor to a live gap index
-   (`followUndoneDeletions = false`; `null` = bound item not yet
-   integrated — the position converges when the update lands).
-2. The gap's owner is the owner of the affinity-side adjacent atom
-   (left atom first for left affinity, right for right), the other side
-   as fallback. Moved/merged atoms keep their anchor — the position
-   follows them into whichever block now displays them.
-3. Neither adjacent atom owned → scan outward for the nearest owned atom
-   in the same backing text (affinity direction first).
-4. No atom of the backing text owned anywhere → `ownerOf(t)` — the block
-   the slice list routes to — at the **emission seam**
-   (`emissionOffset`, the display offset where a merge-claim chain first
-   reaches `t`'s records — exactly where restored content reappears).
-5. Dead/deleted owner → `null`; callers fall back to id/path restore.
-6. Bound atom tombstoned → resolves to the gap where it lived; deleted
-   content never resurrects and never displaces the anchor.
+### Undo selections (arch-v2 S7)
 
-`selection.resolveTextAnchor` then maps the display offset onto a `Text`
-wrapper using the **engine-fresh projection** (`deriveContentParts`
-boundaries + `_segOrd` matching) — wrapper part lengths can lag a model
-write until the mirror reconciles, which previously misplaced the caret
-right after an edit (found by the inline-atom round-trip fixture).
-
-## Selection integration
-
-`EdytorSelection` keeps the public contract — `startText`, `endText`,
-`yStart`, `yEnd`, collapsed/range flags — while endpoints are
-anchor-authoritative underneath:
-
-- `createTextAnchor(text, offset, affinity)` → `facade.anchorAt(
-blockId, text.segStart + offset, affinity)`; `null` while the text is
-  not bound to a live block (mirrors the old non-integrated `Y.Text`
-  behavior).
-- `state.relativePosition` = the caret's `TextAnchor` — `'left'` when
-  collapsed, `'right'` for a range's left edge.
-- `restoreRelativePosition` re-anchors a caret whose text was edited
-  under it (blur-repair path unchanged).
-
-### Undo selection snapshots
-
-`UndoSelectionSnapshot` carries `startAnchor`/`endAnchor` **plus** the
-pre-U09 fields (text ids, paths, `yStart`/`yEnd`, selected block
-ids/paths). Restore resolves anchors **first** — they follow
-moved/merged atoms and land on the documented deleted-backing fallback —
-and falls back to id/path + numeric offset only when the anchor cannot
-resolve (deleted target, pre-U09 snapshot, not-yet-integrated bound
-item). Anchors are re-resolved on every retry attempt, so a bound item
-that was in flight converges as remote updates land. Block selections
-still restore by id/path (block identity is stable; anchors are a
-text-position concern).
+Each stack item's `meta` carries per-view `{before, after}` selection
+values; the issuing view selects `before` on undo and `after` on redo
+(anchors rebound through `followUndo`). `UndoSelectionSnapshot` and the
+id/path/numeric fallbacks are gone.
 
 ## Presence contract
 
@@ -149,9 +123,8 @@ anchor that does not resolve paints nothing.
   - undo+redo converge on both replicas (`toJSON` equality);
   - remote deletes adjacent to a local insert stay deleted;
   - remote writes mid-session grow the stack by 0.
-- `historyUndo`/`historyRedo` beforeinput routes through
-  `runBeforeInputHistoryCommand` → `undoManager` + anchored snapshot
-  restore.
+- Every history channel (Mod+Z, `historyUndo`/`historyRedo`
+  `beforeinput`, `edytor.historyUndo()`) calls `session/history.ts`.
 
 ## Browser input / IME
 
@@ -168,31 +141,20 @@ Forward`, `deleteSoftLine*`, `deleteHardLine*`, `deleteByCut`,
   `deleteEntireSoftLine`;
 - history: `historyUndo`, `historyRedo`.
 
-Browser-owned fast paths (text-local insert/delete, `deleteComposition-
-Text`, text-local `insertReplacementText`) intentionally fall through
-and are reconciled by the DOM-mutation fallback — verified by the
-autocorrect/reconciliation fixtures.
+Each occurrence becomes one input attempt (`session/attempt.ts`, arch-v2
+I1): intent, anchored target and owner are fixed at admission. A
+browser-owned change is adopted by the observer through the dispatcher
+(`surface/observer.svelte.ts`, I2/R7); a model-owned attempt owns the DOM
+drift around it until its deadline.
 
-Composition (`edytor.svelte.ts` + `beforeInputCommands`):
-
-- `compositionstart` captures the selection snapshot +
-  `compositionStartReplacementState`;
-- `insertCompositionText` keeps `compositionState`
-  `{textId, startOffset, value, marks}` and replaces the whole
-  intermediate span on every event — the model is the source of truth
-  for the composed span, so DOM mutations stay suppressed while
-  composing (`observeDomTextMutations` guard);
-- `insertFromComposition` commits the final value and restores the caret
-  through `stabilizeCompositionSelection` (rAF + 0/30ms restores absorb
-  delayed browser caret jumps);
-- browsers that send `insertText` as the final commit are handled by
-  `commitCompositionFromInsertText`;
-- non-cancelable composition input still flows through the model;
-- a browser-owned backward delete during composition leaves the model
-  span intact for the next composition write (fixture);
-- `focusout` schedules the dangling-composition reset (50ms) —
-  `resetDanglingComposition` clears `isComposing`/`compositionState`/
-  restore timers, and `destroy` clears the timer (fixture).
+Composition is one session (`session/composition.svelte.ts`, arch-v2
+I3/I4): the start target is replaced by an ordinary command at the first
+write, previews are tracked writes inside one capture group, and the
+session ends exactly once (`commit`, `cancel`, `abandon`, or D-20 when a
+commit re-places the host's block). No timer ends a session; while it is
+live the host segment list is frozen (`surface/pin.svelte.ts`) and no DOM
+selection is written. `compositionState`, the 750 ms idle cancel, the
+dangling-blur reset and the post-commit restore timers are gone.
 
 ## Verification snapshot (U09)
 

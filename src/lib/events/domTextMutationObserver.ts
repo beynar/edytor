@@ -1598,8 +1598,10 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 		}, MUTATION_REPAIR_WINDOW_MS);
 	};
 
+	let destroyed = false;
 	const flush = async () => {
 		isFlushScheduled = false;
+		if (destroyed) return;
 		const texts = Array.from(queuedTexts);
 		const mutations = queuedMutations.splice(0);
 		queuedTexts.clear();
@@ -1855,6 +1857,8 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 			healedAttribute ||
 			refreshedTexts.size > 0
 		) {
+			// The editor may be destroyed while this flush awaited.
+			if (destroyed) return;
 			await restoreSelectionAfterRepair(edytor, selectionBeforeRepair);
 			scheduleDeferredSelectionRestore(edytor, root);
 		}
@@ -1905,6 +1909,7 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 
 	return {
 		destroy: () => {
+			destroyed = true;
 			if (suppressedMutationRetryTimer) {
 				clearTimeout(suppressedMutationRetryTimer);
 			}

@@ -634,6 +634,8 @@ export class Edytor {
 			this.idToBlock.prune(change);
 			// Repair a selection that no longer resolves.
 			this.selection?.restoreDeadSelectionEndpoints();
+			// D-20: a live composition whose block was re-placed commits first.
+			this.composition.restructured(change);
 		} finally {
 			this.suppressCaretScrollDepth--;
 		}

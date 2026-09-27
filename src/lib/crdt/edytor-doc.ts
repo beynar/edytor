@@ -1158,6 +1158,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * transaction that changed the visible document, local and remote.
 		 * No writes, ever. Returns an unsubscribe; with no subscriber left the
 		 * index stops building reports.
+		 * One named exception: the composition session's D-20 commit
+		 * (`session/composition` `restructured`) writes from its subscriber —
+		 * safe because the engine queues a transaction opened in an `update`
+		 * handler until the current one finishes, so every listener sees the
+		 * structural change's report first and the commit's report after it.
 		 */
 		const onChange = (cb: (change: DocChange) => void): (() => void) => {
 			subs.add(cb);

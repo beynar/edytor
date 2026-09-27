@@ -24,6 +24,14 @@
  * - `abandon()` — focus loss, a non-composing key, a new `compositionstart`,
  *   a pointer gesture: what the host shows is adopted (the browser committed
  *   it). No timer ever ends a session.
+ * - D-20 — a commit that re-places the host's block (deleted, merged away,
+ *   retyped, re-parented or moved among its siblings, itself or an ancestor
+ *   — each re-creates or moves the IME's node) commits what the IME
+ *   shows before the change renders; a preview deleted with its block is
+ *   lost with it. The IME, unaware, keeps composing (Chromium drops its
+ *   composition with its node and sends the commit as a plain insertion):
+ *   its next start, update or commit resumes over the text just committed,
+ *   so it commits once — or, after a deletion, writes nothing.
  * Then it keeps a tail (`live → tail → gone`) that owns late composition
  * signals — a trailing `compositionend`, a trailing composition `input` or
  * host mutation (resolved to the committed text), the phantom Enter/Backspace
@@ -33,6 +41,7 @@
  * session owns), `owns(node)`, and `ended(fn)` (the session end, after its
  * writes: where the catch-up display runs).
  */
+import type { DocChange } from '$lib/crdt/index.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { TextAnchor } from '$lib/selection/selection.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
@@ -84,6 +93,11 @@ export class Composition {
 	#tail: Text | null = null;
 	#caret: { text: Text; offset: number } | null = null;
 	#waiting: (() => void)[] = [];
+	/** Where the host's block sits (its and its ancestors' ids and types), and their siblings: D-20 compares them. */
+	#where = '';
+	#order: { id: string; kids: readonly string[] }[] = [];
+	/** After a D-20 commit, until the IME ends: the text it committed (resumed over), or `lost` (dropped). */
+	#resume: SelectionValue | 'lost' | null = null;
 	/** Phantom structural keys the tail swallowed (a test oracle). */
 	swallows = 0;
 
@@ -106,21 +120,29 @@ export class Composition {
 	start = () => {
 		if (this.live) this.abandon();
 		const { selection } = this.edytor;
+		const resume = this.#resume;
+		this.#resume = null;
+		if (resume && resume !== 'lost') selection.select(resume);
 		const { startText, endText, yStart, yEnd } = selection.state;
 		this.phase = 'live';
 		this.#tail = this.#caret = this.#region = null;
 		this.#start = selection.value;
 		this.preview = '';
-		this.#refused = this.#interrupted = this.native = false;
+		this.#interrupted = this.native = false;
+		// The IME continues a composition whose block was deleted: it writes nothing.
+		this.#refused = resume === 'lost';
 		this.#item = null;
 		this.marks = insertionMarks(this.edytor, intentSnapshot(this.edytor, 'insertCompositionText'));
 		const host = selection.selectedBlocks.size ? null : (startText ?? null);
 		if (host) this.#pin(host, yStart, endText === host ? yEnd : host.length);
 		this.host = host;
+		this.#where = this.#place();
+		this.#order = this.#siblings();
 	};
 
 	/** A composition update: the model holds `value` (mechanical, in the capture group). */
 	update = (value: string, attempt?: Attempt) => {
+		if (!this.live && this.#resume) this.start();
 		if (!this.live || !this.#open(attempt)) return;
 		this.#announced = Boolean(attempt);
 		this.native = !attempt?.event?.defaultPrevented;
@@ -131,7 +153,10 @@ export class Composition {
 		if (at) selection.select(selection.textValue(at.text, at.offset + value.length));
 	};
 
-	commit = (value: string) => this.#end(value);
+	commit = (value: string) => {
+		if (!this.live && this.#resume) this.start();
+		return this.#end(value);
+	};
 	cancel = () => this.#end('');
 	/** Adopt what the host shows: the browser committed it. */
 	abandon = () => this.#end(this.edytor.pin.imeBuffer() ?? this.preview);
@@ -153,9 +178,28 @@ export class Composition {
 		if (this.live) this.#interrupted = true;
 	};
 
-	/** A non-composition occurrence ends the tail. */
-	occurred = () => {
+	/** A non-composition occurrence ends the tail (and a resume, unless it is the IME's plain commit). */
+	occurred = (inputType?: string) => {
+		if (inputType !== 'insertText') this.#resume = null;
 		if (this.phase === 'tail') this.phase = 'gone';
+	};
+
+	/**
+	 * A commit (D-20): when it re-placed the host's block, commit what the IME
+	 * shows now, before the change renders — nothing when the preview went
+	 * with a deleted block. The commit's own report follows this one.
+	 */
+	restructured = (change: DocChange) => {
+		if (!this.live || !(change.removed.size || change.moved.size || change.meta.size)) return;
+		if (this.#place() === this.#where && !this.#reordered()) return;
+		const shown = this.edytor.pin.imeBuffer() ?? this.preview;
+		const at = this.#kept();
+		const lost = !at && this.preview ? 'lost' : null;
+		if (!at) this.#region = null;
+		this.#end(at ? shown : '');
+		const { selection } = this.edytor;
+		const to = at ? at.offset + shown.length : 0;
+		this.#resume = at && shown ? selection.textValue(at.text, at.offset, at.text, to) : lost;
 	};
 
 	/** The tail's host while it owns late signals (`at`: the signal's time). */
@@ -237,6 +281,50 @@ export class Composition {
 		return true;
 	}
 
+	/** The host's block and its ancestors (none once it is not visible). */
+	#chain() {
+		const { facade } = this.edytor;
+		const id = this.host?.parent.id;
+		return id && facade.isVisibleBlock(id) ? [id, ...facade.ancestorsOf(id)] : [];
+	}
+
+	/** The chain with its types. */
+	#place() {
+		const { facade } = this.edytor;
+		return this.#chain()
+			.map((id) => `${id}:${facade.blockTypeOf(id)}`)
+			.join('/');
+	}
+
+	/** Each chain member with its parent's child ids. */
+	#siblings() {
+		const { facade } = this.edytor;
+		return this.#chain().map((id) => ({ id, kids: facade.childrenIds(facade.parentOf(id)) }));
+	}
+
+	/** A chain member moved among the siblings it had and still has (a same-parent move). */
+	#reordered() {
+		const [before, after] = [this.#order, (this.#order = this.#siblings())];
+		const rank = (id: string, kids: readonly string[], other: readonly string[]) => {
+			const kept = new Set(other);
+			return kids.filter((kid) => kept.has(kid)).indexOf(id);
+		};
+		return before.some(({ id, kids }, i) => {
+			const now = after[i]?.kids ?? [];
+			return rank(id, kids, now) !== rank(id, now, kids);
+		});
+	}
+
+	/** The region start while the preview is live and whole in one visible block (not deleted with it). */
+	#kept() {
+		const { facade } = this.edytor;
+		const [start, end] = [this.#region?.start, this.#region?.end].map(
+			(a) => a && facade.resolveAnchor(a)
+		);
+		const whole = start && end?.blockId === start.blockId && facade.isVisibleBlock(start.blockId);
+		return whole && end.offset - start.offset === this.preview.length ? this.#at() : null;
+	}
+
 	/** The region start as a text position. */
 	#at() {
 		return this.#region && this.edytor.selection.resolveTextAnchor(this.#region.start);
@@ -314,7 +402,10 @@ export class Composition {
 
 	/** The one ending: `value` replaces the preview (a commit shown to hooks), '' deletes it. */
 	#end(value: string) {
-		if (!this.live) return false;
+		if (!this.live) {
+			this.#resume = null;
+			return false;
+		}
 		const { edytor } = this;
 		const { dispatcher, selection } = edytor;
 		// A command that moved the caret out of the region keeps it there.

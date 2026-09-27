@@ -464,7 +464,7 @@ const occur = (
 ) => {
 	observeInternalDragSources(edytor.node?.getRootNode());
 	const intent = intentOf(occurrence.inputType, occurrence.data ?? null, key?.inputType);
-	if (kindOf(intent) !== 'composition') edytor.composition.occurred();
+	if (kindOf(intent) !== 'composition') edytor.composition.occurred(intent);
 	if (!reuse) syncSelectionFromDeclaredRange(edytor, occurrence, intent);
 	const attempt = reuse ? reproject(edytor, reuse) : attemptOf(edytor, occurrence, key?.inputType);
 	if (

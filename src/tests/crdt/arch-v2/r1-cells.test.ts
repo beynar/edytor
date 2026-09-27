@@ -26,16 +26,26 @@
 import { describe, expect, test } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
 import { bindEdytorDoc } from '../../../lib/crdt/index.js';
+import { setDocRand } from '../../../lib/crdt/rand.js';
 
 // Resolved lazily so the rows load on the reference, where the module does not exist.
 const lib = import.meta.glob('../../../lib/surface/cells.ts', { eager: true });
 const cellsLib = Object.values(lib)[0] ?? {};
 const { createCells, partsOf, renderDeltas, placeholderOf, START } = cellsLib;
 
-/** Red on the reference (`arch-v2/ref-r1`): `surface/cells` does not exist there. */
-const red = test.fails;
+/** Red on the reference (`arch-v2/ref-r1`, where `surface/cells` does not exist); green since R1. */
+const red = test;
 
 const E = bindEdytorDoc(Y);
+
+/** Deterministic PRNG (mulberry32). */
+const rng = (seed: number) => () => {
+	seed |= 0;
+	seed = (seed + 0x6d2b79f5) | 0;
+	let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+	t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+	return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
 
 const p = (id: string, text: string, children?: unknown[], type = 'paragraph') => ({
 	id,
@@ -47,6 +57,8 @@ const p = (id: string, text: string, children?: unknown[], type = 'paragraph') =
 const open = (clientID: number, content?: unknown[], bytes?: Uint8Array) => {
 	const doc = new Y.Doc();
 	doc.clientID = clientID;
+	// Ranks and nonces from a stream seeded per client: a run is reproducible.
+	setDocRand(doc, rng(clientID * 7919));
 	if (bytes) Y.applyUpdate(doc, bytes);
 	const ed = E.create(doc);
 	if (content) ed.init({ content });
@@ -232,6 +244,36 @@ describe('R1 — cells patched exactly from the change report', () => {
 		);
 	});
 
+	// Found by the corpus below (K7): an added subtree carries a block that was
+	// visible before and moved into it, retyped and edited in the same commit;
+	// the report names it only inside the subtree, and the index must take the
+	// subtree's payload as that block's baseline, or a later change back to the
+	// old type or text compares equal to the stale baseline and is not reported.
+	red('a block moved into an added subtree: its cell follows, later changes are reported', () => {
+		const A = open(1, [p('x', 'xx', undefined, 'heading'), p('y', 'yy')]);
+		const B = open(2, undefined, Y.encodeStateAsUpdate(A.doc));
+		const m = mount(A.ed);
+		const reports = [];
+		A.ed.onChange((c) => reports.push(c));
+		const sv = Y.encodeStateVector(A.doc);
+		B.ed.insertBlock({ parent: null, index: 0 }, { id: 'z', type: 'paragraph' });
+		B.ed.setBlockType('x', 'paragraph');
+		B.ed.insertText('x', 2, '!');
+		B.ed.moveBlock('x', { parent: 'z', index: 0 });
+		Y.applyUpdate(A.doc, Y.encodeStateAsUpdate(B.doc, sv), 'remote');
+		expect(shape(m.tree)).toEqual(oracle(A.ed));
+		expect([...m.patches.at(-1)].sort()).toEqual([null, 'x', 'z'].sort());
+		reports.length = 0;
+		A.ed.transact(() => {
+			A.ed.setBlockType('x', 'heading');
+			A.ed.deleteText('x', 2, 1);
+		});
+		expect(reports.map((r) => [[...r.meta.keys()], [...r.content.keys()]])).toEqual([
+			[['x'], ['x']]
+		]);
+		expect(shape(m.tree)).toEqual(oracle(A.ed));
+	});
+
 	red('remote text insert and remote block insert', () => {
 		const A = seed();
 		const B = open(2, undefined, Y.encodeStateAsUpdate(A.doc));
@@ -268,21 +310,19 @@ describe('R1 — cells patched exactly from the change report', () => {
 
 // ── exactness over a random corpus (K7) ─────────────────────────────────────
 
-/** Deterministic PRNG (mulberry32). */
-const rng = (seed: number) => () => {
-	seed |= 0;
-	seed = (seed + 0x6d2b79f5) | 0;
-	let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-	t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-	return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-};
-
 describe('R1 — patched cells equal a fresh build after every commit (K7)', () => {
-	for (const [seed, mine, theirs] of [
-		[1, 7, 3],
-		[2, 3, 7],
-		[3, 100, 50]
-	]) {
+	// `R1_CELLS_SEEDS=1-200` widens the corpus (client ids cycle through the three assignments).
+	const [from, to] = (process.env.R1_CELLS_SEEDS ?? '1-3').split('-').map(Number);
+	const assignments = [
+		[7, 3],
+		[3, 7],
+		[100, 50]
+	];
+	const runs = Array.from({ length: to - from + 1 }, (_, i) => [
+		from + i,
+		...assignments[(from + i - 1) % 3]
+	]);
+	for (const [seed, mine, theirs] of runs) {
 		red(`seed ${seed}, clients ${mine}/${theirs}`, () => {
 			const rand = rng(seed * 131);
 			const pick = (xs) => xs[Math.floor(rand() * xs.length)];
@@ -301,6 +341,9 @@ describe('R1 — patched cells equal a fresh build after every commit (K7)', () 
 			const um = A.ed.createUndoManager({ captureTimeout: 0 });
 			const bad = [];
 			let commits = 0;
+			// The last report, for a failure's message (subscribed before the cells).
+			let last = null;
+			A.ed.onChange((c) => (last = c));
 			const tree = createCells(A.ed, () => {
 				commits++;
 				const want = oracle(A.ed);
@@ -311,7 +354,16 @@ describe('R1 — patched cells equal a fresh build after every commit (K7)', () 
 				const cells = [...ids]
 					.filter((id) => JSON.stringify(want.cells[id]) !== JSON.stringify(got.cells[id]))
 					.map((id) => ({ id, want: want.cells[id], got: got.cells[id] }));
-				bad.push({ commits, rootIds: [want.rootIds, got.rootIds], cells });
+				const named = (m) => [...m.keys()].filter((id) => ids.has(id) || id === null);
+				const report = {
+					origin: String(last.origin),
+					added: named(last.added),
+					removed: [...last.removed],
+					meta: [...last.meta].filter(([id]) => ids.has(id)),
+					content: named(last.content),
+					order: [...last.order]
+				};
+				bad.push({ commits, rootIds: [want.rootIds, got.rootIds], cells, report });
 			});
 			let fresh = 0;
 			const freshId = () => `n${seed}-${fresh++}`;

@@ -63,8 +63,7 @@ export const replaceSelectionWithCollapsedTarget = async (
 };
 
 export const removeSelectedBlocksForReplacement = (
-	edytor: Edytor,
-	{ queueUndoSelectionSnapshot = false }: { queueUndoSelectionSnapshot?: boolean } = {}
+	edytor: Edytor
 ): RemovedSelectedBlocks | null => {
 	const selectedBlocks = getSelectedBlocksInDocumentOrder(edytor);
 	const firstBlock = selectedBlocks.at(0);
@@ -80,8 +79,7 @@ export const removeSelectedBlocksForReplacement = (
 	let blockToFocus =
 		getClosestUnselectedBlock(firstBlock, selectedBlockSet, 'previous') ||
 		getClosestUnselectedBlock(lastBlock, selectedBlockSet, 'next');
-	if (!edytor.deleteBlocks({ blocks: selectedBlocks, snapshot: queueUndoSelectionSnapshot }))
-		return null;
+	if (!edytor.deleteBlocks({ blocks: selectedBlocks })) return null;
 	edytor.selection.selectBlocks();
 	blockToFocus ??=
 		parent.children[index] ?? parent.children[index - 1] ?? edytor.root?.children[0] ?? null;

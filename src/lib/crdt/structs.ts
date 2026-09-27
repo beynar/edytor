@@ -126,6 +126,25 @@ export const walkIdSetStructs = (
 	return complete;
 };
 
+/**
+ * The id the local `redone` chain leads `id` to: the copy an undo or redo
+ * on THIS replica re-created of a deleted item (redo copies chain), or `id`
+ * itself. Replica-dependent by design: only the replica that ran the
+ * history command has the chain.
+ */
+export const followRedone = (
+	Y: EngineApi,
+	doc: EngineDoc,
+	id: { client: number; clock: number }
+): { client: number; clock: number } => {
+	const clients = clientsOf(doc);
+	for (let at = id; ; ) {
+		const struct = structAt(Y, clients.get(at.client) ?? [], at.clock);
+		if (!struct?.redone) return at;
+		at = { client: struct.redone.client, clock: struct.redone.clock + at.clock - struct.id.clock };
+	}
+};
+
 /** This replica's next clock — it advances exactly when the replica writes an item. */
 export const clockOf = (doc: EngineDoc): number => {
 	const own = clientsOf(doc).get(doc.clientID);

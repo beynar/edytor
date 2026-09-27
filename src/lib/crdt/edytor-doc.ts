@@ -141,7 +141,7 @@ import {
 	type RunView
 } from './text/runs.js';
 import { bindNodes, type DocBlock } from './nodes.js';
-import { walkIdSetStructs, type IdSetLike } from './structs.js';
+import { followRedone, walkIdSetStructs, type IdSetLike } from './structs.js';
 import {
 	bindBlockAttribution,
 	blockAttributionOf,
@@ -1467,6 +1467,21 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 
 		/**
+		 * `anchor` rebound to the copy this replica's last undo/redo
+		 * re-created of its item (the local `redone` chain): history restores
+		 * a selection recorded before a delete through it, so the anchor
+		 * binds the restored content instead of its tombstone.
+		 */
+		const followUndo = (anchor: DocAnchor): DocAnchor => {
+			const i = anchor.a.i;
+			if (i === null) return anchor;
+			const to = followRedone(Y, doc, { client: i.c, clock: i.k });
+			return to.client === i.c && to.clock === i.k
+				? anchor
+				: { ...anchor, a: { ...anchor.a, i: { c: to.client, k: to.clock } } };
+		};
+
+		/**
 		 * Backing-text anchor → current display position
 		 * `{blockId, offset}`:
 		 *
@@ -2209,6 +2224,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			// caret anchors (U09) — backing-text-bound selection endpoints
 			anchorAt: byRef(anchorAt),
 			resolveAnchor,
+			followUndo,
 			// roles
 			isVoid: byRef(isVoid),
 			isIsland: byRef(isIsland),

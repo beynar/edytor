@@ -37,18 +37,13 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 
-/** Rows red on the reference (expected-fail until S7 lands). */
-const RED = new Set([
-	'F-U1 hotkey',
-	'F-U1 beforeinput',
-	'F-U2 hotkey',
-	'F-U2 beforeinput',
-	'F-U6 hotkey',
-	'F-U6 beforeinput',
-	'F-U6 api',
-	'F-U9 api'
-]);
-/** A plan row on one channel: `it.fails` while red on the reference, else `it`. */
+/**
+ * Rows still red (expected-fail). Red on the reference (arch-v2/ref-s7): F-U1
+ * and F-U2 on hotkey and beforeinput, F-U6 on every channel, F-U9 on api —
+ * all green since S7.
+ */
+const RED = new Set<string>([]);
+/** A plan row on one channel: `it.fails` while red, else `it`. */
 const row = (id: string, channel: Channel) => (RED.has(`${id} ${channel}`) ? it.fails : it);
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -507,7 +507,7 @@ or the echo gate reads their synthetic `selectionchange` as drift.
 | Post-write verify supersession          | `caretWriteEpoch` + `_docCommitVersion` in `scheduleCaretWriteVerification`                      |
 | Remote anchor validation                | `isTextAnchor`/`resolveRelativePosition` (`src/lib/collaboration/remoteSelection.ts`)            |
 | Wire/equality                           | `awarenessSelection.ts` (`anchorsEqual`, JSON round-trip)                                        |
-| History snapshots                       | `UndoSelectionSnapshot` anchors (in-memory `meta`, not persisted)                                |
+| History selections                      | per-view `{before, after}` values in stack-item `meta` (`src/lib/session/history.ts`)            |
 | Independent oracle                      | `dense-ownership-oracle.ts`, `selectionOracle.ts`, dump inventories in `collab-runner.ts`        |
 | Settlement checkpoint                   | `command-peer-set.ts` `quiesce()`                                                                |
 

@@ -80,17 +80,6 @@ export const sanitizeLinkHref = (href: unknown): string | null => {
 	}
 };
 
-const selectedRangeMutates = (edytor: Edytor) => {
-	const { yStart, yEnd, texts } = edytor.selection.state;
-	return texts.some((text, index) => {
-		const isFirst = index === 0;
-		const isLast = index === texts.length - 1;
-		const start = isFirst ? yStart : 0;
-		const end = isLast ? yEnd : text.length;
-		return end > start;
-	});
-};
-
 const formatSelectedTextRange = (
 	edytor: Edytor,
 	mark: RichTextMark,
@@ -103,9 +92,6 @@ const formatSelectedTextRange = (
 		return;
 	}
 
-	if (selectedRangeMutates(edytor)) {
-		edytor.selection.queueNextUndoSelectionSnapshot();
-	}
 	edytor.dispatcher.cut('format');
 	texts.forEach((text, index) => {
 		const isFirst = index === 0;
@@ -184,16 +170,6 @@ export const richTextOperations = (edytor: Edytor) => ({
 			return;
 		}
 
-		const mutatesSelectedRange = texts.some((text, index) => {
-			const isFirst = index === 0;
-			const isLast = index === texts.length - 1;
-			const start = isFirst ? yStart : 0;
-			const end = isLast ? yEnd : text.length;
-			return end > start;
-		});
-		if (mutatesSelectedRange) {
-			edytor.selection.queueNextUndoSelectionSnapshot();
-		}
 		texts.forEach((text, index) => {
 			const isFirst = index === 0;
 			const isLast = index === texts.length - 1;

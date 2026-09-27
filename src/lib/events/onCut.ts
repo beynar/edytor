@@ -12,15 +12,10 @@ import {
 } from '$lib/selection/replaceSelection.js';
 import { isNestedForeignEditableTarget } from './nativeInteractiveControl.js';
 
-const deleteSelectedContent = async (edytor: Edytor) => {
-	edytor.selection.queueNextUndoSelectionSnapshot();
-	await replaceSelectionWithCollapsedTarget(edytor);
-};
+const deleteSelectedContent = (edytor: Edytor) => replaceSelectionWithCollapsedTarget(edytor);
 
 const focusDeletedBlockFallback = async (edytor: Edytor) => {
-	const removed = removeSelectedBlocksForReplacement(edytor, {
-		queueUndoSelectionSnapshot: true
-	});
+	const removed = removeSelectedBlocksForReplacement(edytor);
 	const text = removed?.blockToFocus?.firstEditableText;
 	if (text) {
 		await edytor.selection.setAtTextOffset(text, text.length);

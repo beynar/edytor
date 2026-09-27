@@ -155,6 +155,13 @@ command dispatcher (`edytor.dispatcher`, [src/lib/session/commands.ts](/Users/ar
 commands (`dispatcher.run(kind, …)`) apply the undo policy table (`cut`). Never
 call `undoManager.stopCapturing()` or catch `PreventionError` elsewhere.
 
+History (`session/history.ts`) is the named exception: `edytor.historyUndo()`/
+`historyRedo()` run the bare `um.undo()`/`redo()` — never inside a transaction,
+and no tracked write (normalization included) after them, which would empty
+the redo stack. Each stack item's `meta` holds per-view `{before, after}`
+selection values; the issuing view restores its value through `select()`. Do
+not queue selection snapshots before a command's write.
+
 This is the real editing command layer.
 
 Examples:

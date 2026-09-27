@@ -13,9 +13,7 @@ import {
 	isNativeInteractiveEvent,
 	isNestedForeignEditableTarget
 } from './nativeInteractiveControl.js';
-import { runHistoryCommand } from './undoRestore.js';
 import { getTextContentOffsetAtPoint } from './domTextOffset.js';
-import { getTextPath } from './events.utils.js';
 
 const ZERO_WIDTH_SPACE = '\u200B';
 
@@ -59,7 +57,7 @@ const isNativeHistoryInput = (event: Event): event is InputEvent =>
 	(event.inputType === 'historyUndo' || event.inputType === 'historyRedo');
 
 const runInputHistoryCommand = (edytor: Edytor, event: InputEvent) =>
-	runHistoryCommand(edytor, event.inputType === 'historyUndo' ? 'undo' : 'redo');
+	event.inputType === 'historyUndo' ? edytor.historyUndo() : edytor.historyRedo();
 
 const getNormalizedDomText = (text: Text) => {
 	let value = text.node?.textContent ?? '';
@@ -76,25 +74,6 @@ const getNormalizedDomText = (text: Text) => {
 };
 
 export const isLiveText = (text: Text) => text.isInDocument;
-
-const queueBrowserOwnedInputSelectionSnapshot = (
-	edytor: Edytor,
-	target: NonNullable<Edytor['browserOwnedInputTarget']>
-) => {
-	const textPath = getTextPath(target.text);
-	edytor.selection.queueNextUndoSelectionSnapshot({
-		isCollapsed: true,
-		isReversed: false,
-		startTextId: target.text.id,
-		endTextId: target.text.id,
-		startTextPath: textPath,
-		endTextPath: textPath,
-		yStart: target.historyOffset ?? target.offset,
-		yEnd: target.historyOffset ?? target.offset,
-		selectedBlockIds: [],
-		selectedBlockPaths: []
-	});
-};
 
 const getDomOffsetWithinText = (text: Text, node: Node, offset: number) => {
 	if (!text.node) {
@@ -568,17 +547,14 @@ const reconcileBrowserOwnedInputTarget = async (
 			? nativeSelection.offset
 			: getCaretOffsetAfterTextDiff(target.valueBeforeInput, domText, target.offset);
 	const operations = planDomTextDiff(target.text, target.text.stringContent, domText);
+	// The reconcile is the input's command: it runs against the selection the
+	// input was admitted with (a native selection jump may have moved it since),
+	// which history records as the step's `before`.
+	edytor.selection.select(target.selection);
 
-	queueBrowserOwnedInputSelectionSnapshot(edytor, {
-		...target,
-		offset: selectionOffset
-	});
 	const didReconcile = await reconcileTextValue(edytor, target.text, domText, selectionOffset);
-	if (!didReconcile) {
-		edytor.selection.nextUndoSelectionSnapshot = null;
-		if (target.text.stringContent !== domText) {
-			return false;
-		}
+	if (!didReconcile && target.text.stringContent !== domText) {
+		return false;
 	}
 
 	await edytor.selection.setAtTextOffset(
@@ -656,7 +632,7 @@ export async function onInput(this: Edytor, event: Event) {
 		if (this.isComposing) {
 			return;
 		}
-		await runInputHistoryCommand(this, event);
+		runInputHistoryCommand(this, event);
 		return;
 	}
 

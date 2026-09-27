@@ -62,12 +62,6 @@ export function deleteContentWithinSelection(
 	plan = prepareDeleteContent.call(this, payload)
 ): readonly [Text | null, number] {
 	const { startText, yStart } = payload.selection ?? this.selection.state;
-	// Undo restores the selection current before the delete: snapshot it before
-	// the write (unless the command queued one) by text ids, paths and offsets —
-	// undo restores exactly this structure. No anchors: they would bind atoms the
-	// delete removes (undo re-creates them) or, minted after it, merged atoms.
-	if ('writes' in plan && plan.at && !this.selection.nextUndoSelectionSnapshot)
-		this.selection.queueNextUndoSelectionSnapshot({ startAnchor: null, endAnchor: null });
 	return applyAt(this, plan) ?? [startText, yStart];
 }
 
@@ -86,28 +80,19 @@ export function insertFlow(
 	return applyAt(this, plan) ?? [null, 0];
 }
 
-type BlocksDelete = { blocks: Block[]; snapshot?: boolean };
+type BlocksDelete = { blocks: Block[] };
 
 export function prepareDeleteBlocks(this: Edytor, { blocks }: BlocksDelete) {
 	return this.facade.prepare.deleteBlocks(blocks.map((block) => block.id));
 }
 
-/**
- * Delete a block selection (one document plan; nested members ride their
- * ancestor). `snapshot`: queue the undo selection snapshot of the selected
- * blocks before the write.
- */
+/** Delete a block selection (one document plan; nested members ride their ancestor). */
 export function deleteBlocks(
 	this: Edytor,
-	{ blocks, snapshot = false }: BlocksDelete,
+	{ blocks }: BlocksDelete,
 	plan = prepareDeleteBlocks.call(this, { blocks })
 ): boolean {
 	if (!('writes' in plan)) return false;
-	if (snapshot)
-		this.selection.queueNextUndoSelectionSnapshot({
-			selectedBlockIds: blocks.map((block) => block.id),
-			selectedBlockPaths: blocks.map((block) => [...block.path])
-		});
 	const parents = new Set(blocks.map((block) => block.parent));
 	this.facade.apply(plan);
 	this.flushMirror();

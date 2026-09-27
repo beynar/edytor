@@ -55,7 +55,7 @@ import {
 	type SelectionSegment,
 	type SelectionValue
 } from '$lib/session/selection.js';
-import { getTextPath, isAndroidChromeBrowser } from '$lib/events/events.utils.js';
+import { isAndroidChromeBrowser } from '$lib/events/events.utils.js';
 
 /**
  * CRDT-stable anchor for a text position — `{b}` is the home block id of
@@ -272,30 +272,6 @@ const getInlineBlockBetweenBoundaryTexts = (
 		: null;
 };
 
-type UndoSelectionSnapshot = {
-	isCollapsed: boolean;
-	isReversed: boolean;
-	startTextId: string | null;
-	endTextId: string | null;
-	startTextPath: number[] | null;
-	endTextPath: number[] | null;
-	yStart: number;
-	yEnd: number;
-	/**
-	 * U09 — backing-text anchors for both endpoints (authoritative when
-	 * present). The START endpoint binds 'right' (the first atom inside
-	 * the range) and END binds 'left' (the last atom inside the range) so
-	 * boundary inserts stay outside the restored range; collapsed
-	 * snapshots carry a 'left' caret anchor in both fields. The numeric
-	 * `yStart`/`yEnd` + id/path fields remain as the compatibility
-	 * fallback for anchors that can no longer resolve (deleted backing).
-	 */
-	startAnchor: TextAnchor | null;
-	endAnchor: TextAnchor | null;
-	selectedBlockIds: string[];
-	selectedBlockPaths: number[][];
-};
-
 type PointerTextPoint = {
 	text: Text;
 	offset: number;
@@ -307,9 +283,6 @@ type DocumentWithCaretPoint = Document & {
 	caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
 	caretRangeFromPoint?: (x: number, y: number) => Range | null;
 };
-
-const CURSOR_LOCATION_META = 'cursor-location';
-const RESTORE_CURSOR_LOCATION_META = 'restore-cursor-location';
 
 /**
  * Android Chrome mutates the DOM anyway after a canceled
@@ -378,27 +351,11 @@ export class EdytorSelection {
 	selectedBlocks = new SvelteSet<Block>();
 	selectedInlineBlock = new SvelteSet<InlineBlock>();
 	inlineBlockDeletionTarget: InlineBlock | null = null;
-	nextUndoSelectionSnapshot = $state<Partial<UndoSelectionSnapshot> | null>(null);
-	isRestoringHistorySelection = $state(false);
 	/**
-	 * Gesture serial captured when the current history restore armed —
-	 * compared against `edytor.gestureSerial` in `onSelectionChange` and
-	 * `isCurrentRestore`: a real user gesture (pointer/key/focus) inside
-	 * the restore window means the USER owns the selection now, so the
-	 * restore's delayed writes must disarm (P1-3).
-	 */
-	private historyRestoreGestureSerial = 0;
-	/**
-	 * Set only for the synchronous window of THIS view's own history
-	 * command (`edytor.historyUndo()`/`historyRedo()`). The undo manager is
-	 * document-shared, so `stack-item-popped` reaches EVERY view's listener
-	 * when any one view (or a headless `document.history.undo()`) runs a
-	 * history command — this flag marks the issuer. Only the issuing view
-	 * consumes its per-view snapshot and restores its caret; every other
-	 * view treats the pop as an ordinary document change — identical to a
-	 * REMOTE peer's undo, which never restores local carets either (the
-	 * caret rides normal reconciliation instead of being regressed to a
-	 * snapshot recorded when the undone edit committed).
+	 * Set for the synchronous window of THIS view's history command
+	 * (`session/history`): the replay commits under the history's origin, so
+	 * the remote-apply and repair restores stand aside — the view's recorded
+	 * value is selected right after.
 	 */
 	expectHistoryRestore = false;
 	ignoreNextSelectionChange = $state(false);
@@ -414,11 +371,7 @@ export class EdytorSelection {
 	 * "who owns the caret right now" but over DIFFERENT windows and with
 	 * different staleness evidence — merging them onto one epoch would
 	 * couple aborts that are currently independent (a `selectBlocks`
-	 * superseding a block-range write must not cancel an in-flight
-	 * history restore, and vice versa):
-	 * - `historySelectionRestoreVersion` + `historyRestoreGestureSerial`
-	 *   own the undo/redo restore loop — aborted by a foreign write, a
-	 *   doc commit, or a real user gesture inside the window;
+	 * superseding a block-range write must not cancel a caret write):
 	 * - `pendingBlockRangeRequest` owns an in-flight `setAtBlockRange` —
 	 *   superseded by the next block-range request or `selectBlocks`;
 	 * - `postDeleteCaretTarget` owns the Android post-delete echo window
@@ -435,7 +388,6 @@ export class EdytorSelection {
 	private shouldKeepModelSelectionForNextTextInsertion = false;
 	private modelSelectionPreservationBlock: Block | null = null;
 	private pendingBlockRangeRequest: symbol | null = null;
-	private historySelectionRestoreVersion = 0;
 
 	/**
 	 * The selection (R9, L4): a value — none, a text range of two anchors,
@@ -444,6 +396,8 @@ export class EdytorSelection {
 	value = $state.raw<SelectionValue>(noSelection);
 	/** Advanced by every `select()`. */
 	epoch = 0;
+	/** The epoch of the last write that did not come from the DOM. */
+	#modelEpoch = 0;
 	/** Why the last `select()` ran. */
 	cause: SelectCause = 'model';
 	/**
@@ -605,6 +559,7 @@ export class EdytorSelection {
 		if (changed) this.value = next;
 		const value = this.value;
 		this.epoch++;
+		if (cause !== 'dom') this.#modelEpoch = this.epoch;
 		this.cause = cause;
 		if (surface) this.#surface = { value, ...surface };
 		const projection = project(value, this.edytor.facade);
@@ -762,19 +717,6 @@ export class EdytorSelection {
 		}
 	};
 
-	private getTextByPath = (path: number[] | null) => {
-		if (!path || path.length < 2) {
-			return null;
-		}
-
-		let block: Block | undefined = this.edytor.root;
-		for (const index of path.slice(0, -1)) {
-			block = block?.children[index];
-		}
-
-		const part = block?.content[path.at(-1)!];
-		return part instanceof Text ? part : null;
-	};
 	private getBlockByPath = (path: number[] | null) => {
 		if (!path?.length) {
 			return null;
@@ -786,81 +728,7 @@ export class EdytorSelection {
 		}
 		return block ?? null;
 	};
-	private isCurrentText = (text: Text | null | undefined) =>
-		Boolean(text && this.getTextByPath(getTextPath(text)) === text);
-	private getRestorableText = (id: string | null, path: number[] | null) => {
-		// `getTextById` throws on malformed ids — a stale/corrupt snapshot
-		// id must degrade to the path fallback, never crash a restore.
-		let textById: Text | null;
-		try {
-			textById = (id ? this.edytor.getTextById(id) : null) ?? null;
-		} catch {
-			textById = null;
-		}
-		if (this.isCurrentText(textById)) {
-			return textById ?? null;
-		}
-
-		return this.getTextByPath(path);
-	};
-
-	/**
-	 * Resolve one stored undo-snapshot endpoint → `{text, offset}`.
-	 * Anchors are authoritative (they follow moved/merged atoms and land
-	 * on the documented deleted-backing fallback); the id/path + numeric
-	 * offset pair is the compatibility fallback when the anchor no longer
-	 * resolves (deleted target) or is absent (pre-U09 snapshots).
-	 */
-	private resolveSnapshotEndpoint = (
-		anchor: TextAnchor | null | undefined,
-		textId: string | null,
-		textPath: number[] | null,
-		fallbackOffset: number
-	): { text: Text; offset: number } | null => {
-		if (anchor) {
-			const resolved = this.resolveTextAnchor(anchor);
-			if (resolved) {
-				return resolved;
-			}
-		}
-		const text = this.getRestorableText(textId, textPath);
-		if (!text) {
-			return null;
-		}
-		return { text, offset: Math.min(Math.max(fallbackOffset, 0), text.length) };
-	};
-	private createUndoSelectionSnapshot = (
-		override?: Partial<UndoSelectionSnapshot> | null
-	): UndoSelectionSnapshot => ({
-		isCollapsed: this.#written.isCollapsed,
-		isReversed: this.#written.isReversed,
-		startTextId: this.#written.startText?.id ?? null,
-		endTextId: this.#written.endText?.id ?? null,
-		startTextPath: this.#written.startText && getTextPath(this.#written.startText),
-		endTextPath: this.#written.endText && getTextPath(this.#written.endText),
-		yStart: this.#written.yStart,
-		yEnd: this.#written.yEnd,
-		startAnchor: this.#written.startText
-			? this.createTextAnchor(
-					this.#written.startText,
-					this.#written.yStart,
-					this.#written.isCollapsed ? 'left' : 'right'
-				)
-			: null,
-		endAnchor: this.#written.endText
-			? this.createTextAnchor(this.#written.endText, this.#written.yEnd, 'left')
-			: null,
-		selectedBlockIds: Array.from(this.selectedBlocks).map((block) => block.id),
-		selectedBlockPaths: Array.from(this.selectedBlocks).map((block) => [...block.path]),
-		...override
-	});
-	queueNextUndoSelectionSnapshot = (override?: Partial<UndoSelectionSnapshot> | null) => {
-		this.nextUndoSelectionSnapshot = this.createUndoSelectionSnapshot(override);
-	};
 	destroy = () => {
-		// Document-shared undo manager — drop our listeners so the dead
-		// view no longer writes/pops per-view snapshots on it.
-		this._unbindHistoryListeners();
 		if (this.selectionDocument) {
 			this.selectionDocument.removeEventListener('selectionchange', this.onSelectionChange);
 			this.selectionDocument = null;
@@ -1030,360 +898,11 @@ export class EdytorSelection {
 		};
 	};
 
-	private restoreRangeSelectionSnapshot = async (
-		cursorLocation: UndoSelectionSnapshot,
-		shouldContinue: () => boolean = () => true
-	) => {
-		// State this restore last wrote — a foreign selection write inside
-		// the window (a programmatic move carrying no gesture evidence)
-		// replaces `state`; the delayed re-writes must not overwrite it.
-		let ownedState: SelectionState | null = null;
-		const abortOnForeignWrite = () => {
-			this.historySelectionRestoreVersion++;
-			this.isRestoringHistorySelection = false;
-		};
-		for (let attempt = 0; attempt < 10; attempt++) {
-			if (!shouldContinue()) {
-				return;
-			}
-			await tick();
-			if (!shouldContinue()) {
-				return;
-			}
-
-			// Anchors are re-resolved every attempt — a bound item that was
-			// not yet integrated converges as remote updates land.
-			const startPoint = this.resolveSnapshotEndpoint(
-				cursorLocation.startAnchor,
-				cursorLocation.startTextId,
-				cursorLocation.startTextPath,
-				cursorLocation.yStart
-			);
-			const endPoint = this.resolveSnapshotEndpoint(
-				cursorLocation.endAnchor,
-				cursorLocation.endTextId,
-				cursorLocation.endTextPath,
-				cursorLocation.yEnd
-			);
-
-			if (!startPoint || !endPoint) {
-				continue;
-			}
-			const normalizedRange = this.normalizeTextRangePoints(
-				startPoint.text,
-				startPoint.offset,
-				endPoint.text,
-				endPoint.offset,
-				cursorLocation.isReversed
-			);
-			const { startText, startOffset, endText, endOffset, isReversed } = normalizedRange;
-			const isCollapsed = startText === endText && startOffset === endOffset;
-
-			const restoreModelRange = () => {
-				if (!shouldContinue()) {
-					return;
-				}
-				if (ownedState !== null && this.#written !== ownedState) {
-					// `state` is replaced on EVERY derive — including derives
-					// that re-write this same range (a selectionchange echo, a
-					// reconcile adopting the restored point). Object identity
-					// alone can't tell "foreign caret move" from "equivalent
-					// re-derive" — compare fields: only a DIFFERENT target is
-					// a foreign write whose owner keeps the caret.
-					const sameTarget = this.stateMatchesSelectionTarget(this.#written, {
-						startText,
-						endText,
-						yStart: startOffset,
-						yEnd: endOffset,
-						isCollapsed,
-						isReversed
-					});
-					if (!sameTarget) {
-						abortOnForeignWrite();
-						return;
-					}
-					ownedState = this.#written;
-				}
-
-				this.setRangeStateAtTextOffsets(startText, startOffset, endText, endOffset, {
-					isReversed
-				});
-				ownedState = this.#written;
-				this.ignoreNextSelectionChange = true;
-			};
-
-			restoreModelRange();
-			await this.setAtRange(startText, startOffset, endText, endOffset, {
-				isReversed
-			});
-			// The DOM-write's own derive also counts as this restore's
-			// landing — adopt it before the delayed re-writes check ownership.
-			ownedState = this.#written;
-			restoreModelRange();
-			this.scheduleReassert(restoreModelRange, [0, 30]);
-
-			if (!shouldContinue()) {
-				return;
-			}
-			await tick();
-			restoreModelRange();
-
-			if (
-				this.stateMatchesSelectionTarget(this.#written, {
-					startText,
-					endText,
-					yStart: startOffset,
-					yEnd: endOffset,
-					isCollapsed,
-					isReversed
-				})
-			) {
-				return;
-			}
-		}
-	};
-
 	init = () => {
-		// Re-attach safe: the undo listeners are document-lifetime (the
-		// manager is shared across every view of the document) — rebind
-		// without duplicating after a `{#key}` remount, and release them on
-		// `destroy()` so dead views stop writing/popping snapshots on the
-		// shared manager.
-		this._unbindHistoryListeners();
-		const offs: (() => void)[] = [];
-		const undoManager = this.edytor.undoManager;
-		const on = (
-			name: 'stack-item-added' | 'stack-item-updated' | 'stack-item-popped',
-			handler: (event: any) => void
-		) => {
-			undoManager.on(name, handler);
-			// Off targets the SAME manager instance that received the
-			// handler — never re-dereferences `edytor.undoManager` later.
-			offs.push(() => undoManager.off(name, handler));
-		};
-		// Selection snapshots live in stack-item `meta` keyed PER VIEW —
-		// `Map<view transaction origin, snapshot>` under each meta key.
-		// Every view of a shared document keeps INDEPENDENT selection state,
-		// so each one writes only its own entry (previously all views raced
-		// one shared snapshot — first writer won, every view restored it).
-		//
-		// POP POLICY (deliberate): the shared manager's `stack-item-popped`
-		// reaches every live view, but only the view that ISSUED the history
-		// command restores — `expectHistoryRestore` marks that issuer. A
-		// sibling's caret is NOT yanked to the snapshot it recorded when the
-		// undone edit committed: for the sibling, a local undo is
-		// indistinguishable from a REMOTE undo, which never restores local
-		// carets either. Its snapshot still rides in the popped item — the
-		// redo path restores it correctly when the sibling itself invokes
-		// the command.
-		const viewKey = this.edytor.transaction;
-		const snapshotMapOf = (stackItem: any, key: string): Map<unknown, UndoSelectionSnapshot> => {
-			let map = stackItem.meta.get(key) as Map<unknown, UndoSelectionSnapshot> | undefined;
-			if (!(map instanceof Map)) {
-				map = new Map();
-				stackItem.meta.set(key, map);
-			}
-			return map;
-		};
-		const persistUndoSelectionSnapshot = (event: any) => {
-			const override = this.nextUndoSelectionSnapshot;
-			const snapshots = snapshotMapOf(event.stackItem, CURSOR_LOCATION_META);
-			const restores = snapshotMapOf(event.stackItem, RESTORE_CURSOR_LOCATION_META);
-			const currentSnapshot = snapshots.get(viewKey);
-			if (override && currentSnapshot) {
-				restores.set(viewKey, currentSnapshot);
-			}
-			if (override || !snapshots.has(viewKey)) {
-				snapshots.set(viewKey, this.createUndoSelectionSnapshot(override));
-			}
-			this.nextUndoSelectionSnapshot = null;
-		};
-		on('stack-item-added', persistUndoSelectionSnapshot);
-		on('stack-item-updated', persistUndoSelectionSnapshot);
-		on('stack-item-popped', (event: any) => {
-			// Issuing-view-only restore: this view did not run the history
-			// command — leave its caret alone (and do not touch the popped
-			// item: a sibling's snapshots ride through to the redo side).
-			if (!this.expectHistoryRestore) {
-				return;
-			}
-			this.expectHistoryRestore = false;
-
-			const snapshots = event.stackItem.meta.get(CURSOR_LOCATION_META) as
-				| Map<unknown, UndoSelectionSnapshot>
-				| undefined;
-			const restores = event.stackItem.meta.get(RESTORE_CURSOR_LOCATION_META) as
-				| Map<unknown, UndoSelectionSnapshot>
-				| undefined;
-			const cursorLocation = (restores?.get(viewKey) ?? snapshots?.get(viewKey)) as
-				| UndoSelectionSnapshot
-				| undefined;
-			restores?.delete(viewKey);
-
-			if (!cursorLocation) {
-				return;
-			}
-
-			const restoreVersion = ++this.historySelectionRestoreVersion;
-			// `stack-item-popped` fires after the undo/redo commit, so the
-			// document version here already includes the history change
-			// itself. Any LATER commit — a keystroke landing inside this
-			// restore's async window, a remote update — makes the stored
-			// offsets stale; the delayed restores below must not regress
-			// the caret over newer input. The gesture serial gets the same
-			// treatment: a real user gesture (pointer/key/focus) means the
-			// user owns the caret even without a doc commit (P1-3).
-			const docVersion = this.edytor._docCommitVersion;
-			const gestureSerial = (this.historyRestoreGestureSerial = this.edytor.gestureSerial);
-			const isCurrentRestore = () =>
-				this.historySelectionRestoreVersion === restoreVersion &&
-				this.edytor._docCommitVersion === docVersion &&
-				this.edytor.gestureSerial === gestureSerial;
-			this.isRestoringHistorySelection = true;
-			const clearHistoryRestoration = () => {
-				// The latch must release even when this restore was aborted —
-				// a commit landing inside the async window makes
-				// `isCurrentRestore()` permanently false, which would leave
-				// `isRestoringHistorySelection` stuck true and silence every
-				// future selection derive. Only a NEWER restore (version
-				// bump) should keep the flag alive.
-				if (this.historySelectionRestoreVersion === restoreVersion) {
-					this.isRestoringHistorySelection = false;
-				}
-			};
-
-			if (cursorLocation.selectedBlockIds.length) {
-				const restoreDeletedSelectionFallback = () => {
-					const firstPath = cursorLocation.selectedBlockPaths[0];
-					const previousPath =
-						firstPath && firstPath.at(-1)! > 0
-							? [...firstPath.slice(0, -1), firstPath.at(-1)! - 1]
-							: null;
-					const fallbackBlock = this.getBlockByPath(previousPath) ?? this.getBlockByPath(firstPath);
-					const fallbackText = fallbackBlock?.firstEditableText;
-					if (!fallbackText) {
-						return false;
-					}
-
-					this.setCollapsedStateAtTextOffset(fallbackText, fallbackText.length);
-					void this.setAtTextOffset(fallbackText, fallbackText.length);
-					return true;
-				};
-
-				if ((event as { type?: string }).type === 'redo' && restoreDeletedSelectionFallback()) {
-					clearHistoryRestoration();
-					return;
-				}
-
-				void (async () => {
-					try {
-						for (let attempt = 0; attempt < 10; attempt++) {
-							if (!isCurrentRestore()) {
-								return;
-							}
-							await tick();
-							if (!isCurrentRestore()) {
-								return;
-							}
-
-							const blocksById = cursorLocation.selectedBlockIds
-								.map((id) => this.edytor.idToBlock.get(id))
-								.filter((block): block is Block => block instanceof Block);
-
-							if (blocksById.length) {
-								if (typeof window !== 'undefined') {
-									clearDomSelection(this.edytor.node);
-								}
-								this.selectBlocks(...blocksById);
-								return;
-							}
-
-							if (attempt < 9) {
-								continue;
-							}
-
-							if (restoreDeletedSelectionFallback()) {
-								return;
-							}
-						}
-					} finally {
-						clearHistoryRestoration();
-					}
-				})();
-				return;
-			}
-
-			if (!cursorLocation.isCollapsed && cursorLocation.endTextPath) {
-				const startPoint = this.resolveSnapshotEndpoint(
-					cursorLocation.startAnchor,
-					cursorLocation.startTextId,
-					cursorLocation.startTextPath,
-					cursorLocation.yStart
-				);
-				const endPoint = this.resolveSnapshotEndpoint(
-					cursorLocation.endAnchor,
-					cursorLocation.endTextId,
-					cursorLocation.endTextPath,
-					cursorLocation.yEnd
-				);
-				if (startPoint && endPoint) {
-					this.setRangeStateAtTextOffsets(
-						startPoint.text,
-						startPoint.offset,
-						endPoint.text,
-						endPoint.offset,
-						{
-							isReversed: cursorLocation.isReversed
-						}
-					);
-				}
-				void this.restoreRangeSelectionSnapshot(cursorLocation, isCurrentRestore).finally(
-					clearHistoryRestoration
-				);
-				return;
-			}
-
-			void (async () => {
-				await tick();
-				if (!isCurrentRestore()) {
-					return;
-				}
-
-				const startPoint = this.resolveSnapshotEndpoint(
-					cursorLocation.startAnchor ?? cursorLocation.endAnchor,
-					cursorLocation.startTextId,
-					cursorLocation.startTextPath,
-					cursorLocation.yEnd
-				);
-
-				if (!startPoint || !isCurrentRestore()) {
-					return;
-				}
-
-				this.ignoreNextSelectionChange = true;
-				await this.setAtTextOffset(startPoint.text, startPoint.offset);
-			})().finally(clearHistoryRestoration);
-		});
-
-		this._historyOffs = offs;
-
 		if (typeof document !== 'undefined') {
 			this.selectionDocument = this.edytor.node?.ownerDocument ?? document;
 			this.selectionDocument.addEventListener('selectionchange', this.onSelectionChange);
 		}
-	};
-
-	/**
-	 * Undo-manager listeners are bound in {@link init} — the manager is
-	 * document-owned and outlives this view, so they must be released on
-	 * destroy (and before a re-init) or dead views keep writing and
-	 * restoring snapshots on the shared stack items.
-	 */
-	private _historyOffs: (() => void)[] | null = null;
-	private _unbindHistoryListeners = () => {
-		const offs = this._historyOffs;
-		this._historyOffs = null;
-		offs?.forEach((off) => off());
 	};
 
 	handleTripleClick = async (e: MouseEvent) => {
@@ -1648,22 +1167,6 @@ export class EdytorSelection {
 
 	onSelectionChange = () => {
 		const selection = getDomSelectionSnapshot(this.edytor.node);
-		if (this.isRestoringHistorySelection) {
-			if (this.edytor.gestureSerial === this.historyRestoreGestureSerial) {
-				// Latched echoes are consumed by the latch itself — leave
-				// `ignoreNextSelectionChange` armed so the skip applies to the
-				// first real selectionchange after the restore lands.
-				return;
-			}
-			// A real user gesture landed inside the restore window — the
-			// user owns the selection now (P1-3). Abort the pending restore
-			// (version bump disarms `isCurrentRestore`), release the latch
-			// so THIS change derives normally, and drop the armed echo-skip
-			// that would have swallowed the user's caret move.
-			this.historySelectionRestoreVersion++;
-			this.isRestoringHistorySelection = false;
-			this.ignoreNextSelectionChange = false;
-		}
 		if (this.ignoreNextSelectedBlockSelectionChange) {
 			this.ignoreNextSelectedBlockSelectionChange = false;
 			this.ignoreNextSelectionChange = false;
@@ -1738,7 +1241,6 @@ export class EdytorSelection {
 			this.edytor.isHandlingUserInput ||
 			this.pointerDragStart !== null ||
 			this.expectHistoryRestore ||
-			this.isRestoringHistorySelection ||
 			this.selectedBlocks.size > 0 ||
 			this.selectedInlineBlock.size > 0 ||
 			!state.relativePosition ||
@@ -2193,7 +1695,7 @@ export class EdytorSelection {
 	};
 
 	restoreRelativePosition = (text: Text) => {
-		if (this.expectHistoryRestore || this.isRestoringHistorySelection) {
+		if (this.expectHistoryRestore) {
 			return;
 		}
 		// Atomic selections (block / inline-block) keep their own restore
@@ -2326,12 +1828,15 @@ export class EdytorSelection {
 	captureSelectionForRemoteApply = (): {
 		state: SelectionState;
 		gestureSerial: number;
+		epoch: number;
 	} | null => {
 		const state = this.state;
-		if (!state.relativePosition || !state.startText) {
+		// A history replay's commit: the view's recorded value is selected
+		// and displayed right after it, not this pre-replay one.
+		if (this.expectHistoryRestore || !state.relativePosition || !state.startText) {
 			return null;
 		}
-		return { state: { ...state }, gestureSerial: this.edytor.gestureSerial };
+		return { state: { ...state }, gestureSerial: this.edytor.gestureSerial, epoch: this.epoch };
 	};
 
 	/**
@@ -2349,8 +1854,11 @@ export class EdytorSelection {
 	reconcileSelectionAfterRemoteApply = (capture: {
 		state: SelectionState;
 		gestureSerial: number;
+		epoch: number;
 	}) => {
-		if (this.expectHistoryRestore || this.isRestoringHistorySelection) {
+		// A model, repair or history write since the capture decided the
+		// selection (echoes from the DOM are what this re-assert overrides).
+		if (this.#modelEpoch > capture.epoch) {
 			return;
 		}
 		if (this.selectedBlocks.size > 0 || this.selectedInlineBlock.size > 0) {
@@ -2455,7 +1963,7 @@ export class EdytorSelection {
 	 * displayed in died while its anchor moved on).
 	 */
 	restoreDeadSelectionEndpoints = () => {
-		if (this.expectHistoryRestore || this.isRestoringHistorySelection) {
+		if (this.expectHistoryRestore) {
 			return;
 		}
 		// Mid pointer-drag the user's in-progress range owns the selection.
@@ -2516,6 +2024,25 @@ export class EdytorSelection {
 		// paragraph's text element mounts. The next `Text.attach` replays
 		// the recovery instead of leaving the caret on dead content forever.
 		this.deadEndpointRecoveryPending = true;
+	};
+
+	/**
+	 * Show the current value in the DOM: a caret or range through the
+	 * deferred writers (they wait for the text to mount); a block set clears
+	 * the DOM selection (the set shows as selected blocks).
+	 */
+	display = () => {
+		const { value, state } = this;
+		if (value.kind === 'blocks') {
+			if (typeof window !== 'undefined') clearDomSelection(this.edytor.node);
+			return;
+		}
+		if (value.kind !== 'text' || !state.startText) return;
+		if (state.isCollapsed) void this.setAtTextOffset(state.startText, state.yStart);
+		else
+			void this.setAtRange(state.startText, state.yStart, state.endText, state.yEnd, {
+				isReversed: state.isReversed
+			});
 	};
 
 	/** Select a repaired caret; a focused editor also displays it. */

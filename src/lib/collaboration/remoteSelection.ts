@@ -78,43 +78,38 @@ const findDomPoint = ({ text, offset }: PresencePoint): DomPoint | null => {
 	};
 };
 
+/** A viewport rect made relative to the overlay layer's origin (the caret follows its anchor). */
 const toRemoteRect = (
 	rect: Pick<DOMRect, 'left' | 'top' | 'width' | 'height'>,
-	_editorRect: DOMRect,
-	_editor: HTMLElement
+	origin: DOMRect
 ): RemoteSelectionRect => ({
-	left: rect.left,
-	top: rect.top,
+	left: rect.left - origin.left,
+	top: rect.top - origin.top,
 	width: Math.max(rect.width, 2),
 	height: Math.max(rect.height, 16)
 });
 
-const getFallbackRect = (point: DomPoint, editorRect: DOMRect, editor: HTMLElement) => {
+const getFallbackRect = (point: DomPoint, origin: DOMRect, editor: HTMLElement) => {
 	const textRect = point.text.node?.getBoundingClientRect();
+	const editorRect = editor.getBoundingClientRect();
 	return toRemoteRect(
 		textRect && (textRect.width || textRect.height)
 			? textRect
-			: {
-					left: editorRect.left,
-					top: editorRect.top,
-					width: 2,
-					height: 16
-				},
-		editorRect,
-		editor
+			: { left: editorRect.left, top: editorRect.top, width: 2, height: 16 },
+		origin
 	);
 };
 
-const getCaretRect = (point: DomPoint, editorRect: DOMRect, editor: HTMLElement) => {
+const getCaretRect = (point: DomPoint, origin: DOMRect, editor: HTMLElement) => {
 	const range = (point.node.ownerDocument ?? editor.ownerDocument).createRange();
 	range.setStart(point.node, point.offset);
 	range.collapse(true);
 	const rect =
 		typeof range.getBoundingClientRect === 'function' ? range.getBoundingClientRect() : null;
 	if (rect && (rect.width || rect.height)) {
-		return toRemoteRect(rect, editorRect, editor);
+		return toRemoteRect(rect, origin);
 	}
-	return getFallbackRect(point, editorRect, editor);
+	return getFallbackRect(point, origin, editor);
 };
 
 const createRange = (start: DomPoint, end: DomPoint, editor: HTMLElement) => {
@@ -135,7 +130,7 @@ const createRange = (start: DomPoint, end: DomPoint, editor: HTMLElement) => {
 const getSelectionRects = (
 	start: DomPoint,
 	end: DomPoint,
-	editorRect: DOMRect,
+	origin: DOMRect,
 	editor: HTMLElement
 ) => {
 	const range = createRange(start, end, editor);
@@ -148,7 +143,7 @@ const getSelectionRects = (
 	const seen = new Set<string>();
 	const rects = clientRects
 		.filter((rect) => rect.width || rect.height)
-		.map((rect) => toRemoteRect(rect, editorRect, editor))
+		.map((rect) => toRemoteRect(rect, origin))
 		.filter((rect) => {
 			const key = `${rect.left}:${rect.top}:${rect.width}:${rect.height}`;
 			if (seen.has(key)) {
@@ -158,10 +153,14 @@ const getSelectionRects = (
 			return true;
 		});
 
-	return rects.length ? rects : [getFallbackRect(start, editorRect, editor)];
+	return rects.length ? rects : [getFallbackRect(start, origin, editor)];
 };
 
-export const getRenderedRemoteSelections = (edytor: Edytor): RenderedRemoteSelection[] => {
+/** The peers' carets and ranges, relative to the overlay's `origin` (R11, F-T8). */
+export const getRenderedRemoteSelections = (
+	edytor: Edytor,
+	origin: DOMRect
+): RenderedRemoteSelection[] => {
 	const editor = edytor.node;
 	if (!editor) {
 		return [];
@@ -200,15 +199,14 @@ export const getRenderedRemoteSelections = (edytor: Edytor): RenderedRemoteSelec
 		return [];
 	}
 
-	const editorRect = editor.getBoundingClientRect();
 	return candidates.map(({ clientId, collapsed, reversed, startPoint, endPoint, user }) => {
 		const cursorPoint = reversed ? startPoint : endPoint;
 		return {
 			clientId,
 			color: normalizeColor(user.color),
 			label: user.name ?? null,
-			cursor: getCaretRect(cursorPoint, editorRect, editor),
-			rects: collapsed ? [] : getSelectionRects(startPoint, endPoint, editorRect, editor)
+			cursor: getCaretRect(cursorPoint, origin, editor),
+			rects: collapsed ? [] : getSelectionRects(startPoint, endPoint, origin, editor)
 		};
 	});
 };

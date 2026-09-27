@@ -70,7 +70,8 @@ export class BlockHandleController {
 	private indicatorOverlay: HTMLElement | null = null;
 	private activeDropTarget: HTMLElement | null = null;
 	private activePlacement: DropPlacement | null = null;
-	private readonly repositionIndicator = () => this.positionIndicator();
+	/** The indicator's measure in the overlay, while one is shown. */
+	private offIndicator: (() => void) | null = null;
 
 	constructor(
 		private edytor: Edytor,
@@ -282,7 +283,7 @@ export class BlockHandleController {
 			this.indicatorNode === placement.node &&
 			placement.node.dataset.edytorBlockDropPosition === placement.position
 		) {
-			this.positionIndicator();
+			this.edytor.overlay.invalidate();
 			return;
 		}
 		this.clearIndicator();
@@ -304,26 +305,31 @@ export class BlockHandleController {
 			.getPropertyValue('--edytor-drop-indicator-color')
 			.trim();
 		overlay.style.setProperty('--edytor-drop-indicator-color', color || '#2383e2');
-		document.body.append(overlay);
+		const layer = this.edytor.overlay.layer;
+		layer?.append(overlay);
 		this.indicatorOverlay = overlay;
-		this.positionIndicator();
-		document.defaultView?.addEventListener('scroll', this.repositionIndicator, true);
-		document.defaultView?.addEventListener('resize', this.repositionIndicator);
+		// Placed at once (it must not show at the layer's origin for a frame), then per frame.
+		if (layer) this.positionIndicator(layer.getBoundingClientRect())?.();
+		this.offIndicator = this.edytor.overlay.add((origin) => this.positionIndicator(origin));
 	}
 
-	private positionIndicator() {
+	/** Layer-relative geometry (R11): between the two siblings of the slot, or inside the target. */
+	private positionIndicator(origin: DOMRect) {
 		const placement = this.activePlacement;
 		const overlay = this.indicatorOverlay;
 		if (!placement || !overlay) {
 			return;
 		}
 		const rect = placement.node.getBoundingClientRect();
+		const place = (left: number, width: number, top: number, height?: number) => () => {
+			overlay.style.left = `${left - origin.left}px`;
+			overlay.style.width = `${width}px`;
+			overlay.style.top = `${top - origin.top}px`;
+			if (height !== undefined) overlay.style.height = `${height}px`;
+		};
 		if (placement.position === 'inside') {
-			overlay.style.left = `${rect.left}px`;
-			overlay.style.width = `${rect.width}px`;
-			overlay.style.top = `${rect.top}px`;
-			overlay.style.height = `${Math.max(2, getOwnRowBottom(placement.node) - rect.top)}px`;
-			return;
+			const height = Math.max(2, getOwnRowBottom(placement.node) - rect.top);
+			return place(rect.left, rect.width, rect.top, height);
 		}
 
 		const siblings = placement.target.parent?.children;
@@ -332,14 +338,11 @@ export class BlockHandleController {
 		const next = siblings?.[index]?.node?.getBoundingClientRect();
 		if (previous && next && previous.bottom <= next.top) {
 			const left = Math.min(previous.left, next.left);
-			overlay.style.left = `${left}px`;
-			overlay.style.width = `${Math.max(previous.right, next.right) - left}px`;
-			overlay.style.top = `${(previous.bottom + next.top) / 2 - 1}px`;
-		} else {
-			overlay.style.left = `${rect.left}px`;
-			overlay.style.width = `${rect.width}px`;
-			overlay.style.top = `${placement.position === 'before' ? rect.top - 1 : rect.bottom - 1}px`;
+			const width = Math.max(previous.right, next.right) - left;
+			return place(left, width, (previous.bottom + next.top) / 2 - 1);
 		}
+		const top = placement.position === 'before' ? rect.top - 1 : rect.bottom - 1;
+		return place(rect.left, rect.width, top);
 	}
 
 	private clearIndicator() {
@@ -347,9 +350,8 @@ export class BlockHandleController {
 			delete this.indicatorNode.dataset.edytorBlockDropPosition;
 			this.indicatorNode = null;
 		}
-		const view = this.indicatorOverlay?.ownerDocument.defaultView;
-		view?.removeEventListener('scroll', this.repositionIndicator, true);
-		view?.removeEventListener('resize', this.repositionIndicator);
+		this.offIndicator?.();
+		this.offIndicator = null;
 		this.indicatorOverlay?.remove();
 		this.indicatorOverlay = null;
 		this.activeDropTarget = null;

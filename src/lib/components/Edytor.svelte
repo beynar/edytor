@@ -60,7 +60,6 @@
 	import type { HotKey } from '$lib/session/keymap.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 	import Block from './Block.svelte';
-	import RemoteSelections from '$lib/collaboration/RemoteSelections.svelte';
 
 	let {
 		plugins,
@@ -146,6 +145,11 @@
 
 	$effect(() => {
 		edytor.readonly = readonly;
+	});
+	// A readonly change shows or hides chrome: the overlay repositions it.
+	$effect(() => {
+		void edytor.readonly;
+		edytor.overlay.invalidate();
 	});
 
 	setContext('edytor', edytor);
@@ -246,5 +250,4 @@
 			></span>
 		</div>
 	{/key}
-	<RemoteSelections {edytor} />
 {/if}

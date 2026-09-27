@@ -11,8 +11,8 @@ const openBlockMenu = async (page: Page, id: string) => {
 
 const rootOrder = (page: Page) =>
 	page
-		.locator('[data-edytor] > [data-edytor-block-handle-host]')
-		.evaluateAll((hosts) => hosts.map((host) => host.getAttribute('data-block-id')));
+		.locator('[data-edytor] > [data-edytor-block="true"]')
+		.evaluateAll((blocks) => blocks.map((block) => block.getAttribute('data-edytor-id')));
 
 test.describe('document demo', () => {
 	test('keeps code line hover consistent with the code surface', async ({ page }) => {
@@ -241,14 +241,14 @@ test.describe('document demo', () => {
 		await openBlockMenu(page, 'page-task-two');
 		await page.getByRole('menuitem', { name: /Indent/ }).click();
 		await expect(
-			page.locator('[data-edytor] > [data-edytor-block-handle-host][data-block-id="page-task-two"]')
+			page.locator('[data-edytor] > [data-edytor-block="true"][data-edytor-id="page-task-two"]')
 		).toHaveCount(0);
 		await expect(handle(page, 'page-task-two')).toHaveCount(1);
 
 		await openBlockMenu(page, 'page-task-two');
 		await page.getByRole('menuitem', { name: /Outdent/ }).click();
 		await expect(
-			page.locator('[data-edytor] > [data-edytor-block-handle-host][data-block-id="page-task-two"]')
+			page.locator('[data-edytor] > [data-edytor-block="true"][data-edytor-id="page-task-two"]')
 		).toHaveCount(1);
 		issues.assertClean();
 	});

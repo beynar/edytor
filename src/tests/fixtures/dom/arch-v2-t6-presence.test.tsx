@@ -179,6 +179,8 @@ describe('T6 — one presence entry per view key, written by its view', () => {
 			{ added: [remoteClientId], updated: [], removed: [] },
 			'test'
 		]);
+		// Remote carets are overlay chrome, positioned in the next frame (R5).
+		await new Promise((resolve) => requestAnimationFrame(resolve));
 		await flushDomUpdates();
 
 		const cursors = container.querySelectorAll(

@@ -1,4 +1,13 @@
-import { getContext, hasContext, setContext, tick, type Snippet, onMount } from 'svelte';
+import {
+	getContext,
+	hasContext,
+	setContext,
+	tick,
+	type Snippet,
+	onMount,
+	mount,
+	unmount
+} from 'svelte';
 import { onBeforeInput } from './events/onBeforeInput.js';
 import { onCopy } from './events/onCopy.js';
 import { onCut } from './events/onCut.js';
@@ -26,6 +35,8 @@ import {
 	type Segment
 } from './surface/cells.js';
 import { Pin } from './surface/pin.svelte.js';
+import { Overlay } from './surface/overlay.js';
+import RemoteSelections from './collaboration/RemoteSelections.svelte';
 import type { Block } from './block/block.svelte.js';
 import type { Text } from './text/text.svelte.js';
 import { Handles } from './session/handles.js';
@@ -192,6 +203,8 @@ export class Edytor {
 	cells = $state.raw<Cells>();
 	/** The IME host pin (`surface/pin`): the composing cell's segment list and render, frozen. */
 	readonly pin = new Pin();
+	/** The chrome layer outside the host (R11): handles, menus, remote carets. */
+	readonly overlay = new Overlay();
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
 	placeholder?: Placeholder;
@@ -609,6 +622,7 @@ export class Edytor {
 	 */
 	private onCommit = (change: DocChange) => {
 		this.valueRevision++;
+		this.overlay.invalidate();
 		// A commit this view did not issue re-renders under the caret: the
 		// projector displays the current value after that flush (R10).
 		if (change.origin !== this.transaction) this.projector.render++;
@@ -1108,6 +1122,13 @@ export class Edytor {
 			domMutationObserver.destroy
 		);
 
+		// Chrome lives in the overlay, outside the host: remote carets, then the plugins'.
+		const detachOverlay = this.overlay.attach(node);
+		const presence = mount(RemoteSelections, {
+			target: this.overlay.layer!,
+			props: { edytor: this }
+		});
+		this.off.push(() => unmount(presence), detachOverlay);
 		this.plugins.forEach((plugin) => {
 			const action = plugin.onEdytorAttached?.({ node });
 			action && this.off.push(action);

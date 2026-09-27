@@ -9,11 +9,8 @@
 
 	let { edytor }: { edytor: Edytor } = $props();
 
-	let presenceRevision = $state(0);
-	const selections: RenderedRemoteSelection[] = $derived.by(() => {
-		void presenceRevision;
-		return getRenderedRemoteSelections(edytor);
-	});
+	/** The peers' carets and ranges, positioned by the overlay once per frame (R11). */
+	let selections: RenderedRemoteSelection[] = $state([]);
 
 	const rectStyle = (rect: RemoteSelectionRect, color: string) =>
 		`left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;background:${color};`;
@@ -24,24 +21,17 @@
 	const rectKey = (rect: RemoteSelectionRect) =>
 		`${rect.left}:${rect.top}:${rect.width}:${rect.height}`;
 
-	const refresh = () => {
-		presenceRevision += 1;
-	};
-
 	onMount(() => {
-		// U8a — 'change' only: it fires exactly when a presence map entry is
-		// added/removed/deep-changed, while 'update' additionally fires on
-		// clock-only heartbeat refreshes AND (locally) on every setLocalState
-		// — subscribing to both recomputed geometry twice per real change.
-		// 'change' is the minimal sufficient signal; doc 'update' covers
-		// remote edits moving the anchors we resolve.
-		edytor.awareness.on('change', refresh);
-		edytor.doc.on('update', refresh);
-		refresh();
-
+		// A peer change ('change': an entry added, removed or changed) repositions;
+		// commits, resizes and scrolls reach the overlay on their own.
+		const off = edytor.overlay.add((origin) => {
+			const next = getRenderedRemoteSelections(edytor, origin);
+			if (next.length || selections.length) return () => (selections = next);
+		});
+		edytor.awareness.on('change', edytor.overlay.invalidate);
 		return () => {
-			edytor.awareness.off('change', refresh);
-			edytor.doc.off('update', refresh);
+			off();
+			edytor.awareness.off('change', edytor.overlay.invalidate);
 		};
 	});
 </script>
@@ -71,9 +61,10 @@
 
 <style>
 	[data-edytor-remote-presence] {
-		inset: 0;
+		left: 0;
+		top: 0;
 		pointer-events: none;
-		position: fixed;
+		position: absolute;
 		z-index: 20;
 	}
 

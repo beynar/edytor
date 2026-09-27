@@ -135,7 +135,7 @@ test.describe('demo route editing regressions', () => {
 		const intro = await textInBlock(page, 'page-intro').textContent();
 		if (!intro) throw new Error('Missing demo introduction text');
 		await selectTextInBlock(page, 'page-intro', intro.length);
-		const blocks = page.locator('[data-edytor] > [data-edytor-block-handle-host]');
+		const blocks = page.locator('[data-edytor] > [data-edytor-block="true"]');
 		const before = await blocks.count();
 		await page.keyboard.press('Enter');
 		await expect(blocks).toHaveCount(before + 1);
@@ -223,7 +223,7 @@ test.describe('demo route editing regressions', () => {
 		await page.goto('/');
 		await waitForEditorReady(page);
 		await createTextInEndBlock(page, 'One');
-		const blocks = page.locator('[data-edytor] > [data-edytor-block-handle-host]');
+		const blocks = page.locator('[data-edytor] > [data-edytor-block="true"]');
 		const before = await blocks.count();
 		await page.keyboard.press('Enter');
 		await expect(blocks).toHaveCount(before + 1);

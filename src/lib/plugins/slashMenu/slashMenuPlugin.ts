@@ -9,8 +9,8 @@ import { SlashMenuController } from './SlashMenuController.svelte.js';
 export const slashMenuPlugin: Plugin = (edytor) => {
 	const controller = new SlashMenuController(edytor);
 	let menuHost: HTMLDivElement | null = null;
-	let positionFrame = 0;
 
+	/** Beside the caret, kept in the viewport; run by the overlay's frame (R11). */
 	const positionMenu = () => {
 		const host = menuHost;
 		const editor = edytor.node;
@@ -36,12 +36,7 @@ export const slashMenuPlugin: Plugin = (edytor) => {
 		host.style.top = `${Math.max(8, rect.bottom + height + 8 < view.innerHeight ? rect.bottom + 8 : rect.top - height - 8)}px`;
 	};
 
-	const schedulePosition = () => {
-		const view = edytor.node?.ownerDocument.defaultView;
-		if (!view || !menuHost) return;
-		view.cancelAnimationFrame(positionFrame);
-		positionFrame = view.requestAnimationFrame(positionMenu);
-	};
+	const schedulePosition = () => edytor.overlay.invalidate();
 
 	return {
 		hotkeys: {
@@ -91,22 +86,17 @@ export const slashMenuPlugin: Plugin = (edytor) => {
 			host.dataset.edytorSlashMenuHost = 'true';
 			host.style.position = 'fixed';
 			host.style.zIndex = '50';
-			node.after(host);
+			edytor.overlay.layer?.append(host);
 			menuHost = host;
 
 			const component = mount(SlashMenu, {
 				target: host,
 				props: { controller }
 			});
-			const onViewportChange = () => schedulePosition();
-			node.ownerDocument.addEventListener('scroll', onViewportChange, true);
-			node.ownerDocument.defaultView?.addEventListener('resize', onViewportChange);
-			schedulePosition();
+			const off = edytor.overlay.add(() => positionMenu);
 
 			return () => {
-				node.ownerDocument.defaultView?.cancelAnimationFrame(positionFrame);
-				node.ownerDocument.removeEventListener('scroll', onViewportChange, true);
-				node.ownerDocument.defaultView?.removeEventListener('resize', onViewportChange);
+				off();
 				menuHost = null;
 				unmount(component);
 				host.remove();

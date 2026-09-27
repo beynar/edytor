@@ -8,8 +8,8 @@ import { gotoEditorRoute, setSelectionByTextIndex, trackPageIssues } from './hel
  * readonly and peers (plan R11, §2.4 "Overlay geometry", §8.6 F-T8, §11.1 K9).
  */
 
-/** Rows red on the reference (`arch-v2/ref-r5`): expected-fail until R5 lands. */
-const REF_RED = true;
+/** Rows red on the reference (`arch-v2/ref-r5`); green since R5c. */
+const REF_RED = false;
 
 const TOLERANCE_PX = 3;
 

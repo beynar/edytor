@@ -7,8 +7,8 @@ import { ToolbarController } from './ToolbarController.svelte.js';
 export const toolbarPlugin: Plugin = (edytor) => {
 	const controller = new ToolbarController(edytor);
 	let toolbarHost: HTMLDivElement | null = null;
-	let positionFrame = 0;
 
+	/** Above the selection, kept in the viewport; run by the overlay's frame (R11). */
 	const positionToolbar = () => {
 		const host = toolbarHost;
 		const editor = edytor.node;
@@ -26,12 +26,7 @@ export const toolbarPlugin: Plugin = (edytor) => {
 		host.style.top = `${rect.top - height - 8 >= 8 ? rect.top - height - 8 : rect.bottom + 8}px`;
 	};
 
-	const schedulePosition = () => {
-		const view = edytor.node?.ownerDocument.defaultView;
-		if (!view || !toolbarHost) return;
-		view.cancelAnimationFrame(positionFrame);
-		positionFrame = view.requestAnimationFrame(positionToolbar);
-	};
+	const schedulePosition = () => edytor.overlay.invalidate();
 
 	return {
 		onAfterOperation: () => {
@@ -47,22 +42,17 @@ export const toolbarPlugin: Plugin = (edytor) => {
 			host.dataset.edytorToolbarHost = 'true';
 			host.style.position = 'fixed';
 			host.style.zIndex = '60';
-			node.after(host);
+			edytor.overlay.layer?.append(host);
 			toolbarHost = host;
 
 			const component = mount(Toolbar, {
 				target: host,
 				props: { controller }
 			});
-			const onViewportChange = () => schedulePosition();
-			node.ownerDocument.addEventListener('scroll', onViewportChange, true);
-			node.ownerDocument.defaultView?.addEventListener('resize', onViewportChange);
-			schedulePosition();
+			const off = edytor.overlay.add(() => positionToolbar);
 
 			return () => {
-				node.ownerDocument.defaultView?.cancelAnimationFrame(positionFrame);
-				node.ownerDocument.removeEventListener('scroll', onViewportChange, true);
-				node.ownerDocument.defaultView?.removeEventListener('resize', onViewportChange);
+				off();
 				toolbarHost = null;
 				unmount(component);
 				host.remove();

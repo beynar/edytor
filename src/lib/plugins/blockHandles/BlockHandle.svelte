@@ -40,27 +40,6 @@
 </button>
 
 <style>
-	:global([data-edytor-block-handle-host]) {
-		position: absolute;
-		z-index: 5;
-		transform: translateX(calc(-100% - 6px)) translateY(var(--edytor-handle-offset-y, 0px));
-		opacity: 0;
-		transition: opacity 100ms ease;
-	}
-
-	:global([data-edytor-block-handle-host][data-visible='true']),
-	:global([data-edytor-block-handle-host]:hover),
-	:global([data-edytor-block-handle-host]:focus-within) {
-		opacity: 1;
-	}
-
-	@media (hover: none) {
-		:global([data-edytor-block-handle-host]) {
-			opacity: 1;
-			transform: translateX(-100%) translateY(var(--edytor-handle-offset-y, 0px));
-		}
-	}
-
 	.edytor-block-handle {
 		display: inline-flex;
 		align-items: center;
@@ -98,7 +77,7 @@
 	}
 
 	:global([data-edytor-drop-indicator]) {
-		position: fixed;
+		position: absolute;
 		z-index: 100;
 		box-sizing: border-box;
 		height: 2px;

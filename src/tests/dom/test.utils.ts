@@ -687,7 +687,7 @@ export const clickBlock = async (
 
 export const clickPlaceholder = async (edytor: Edytor, blockPath: number[]) => {
 	const block = findBlockAtPath(edytor, blockPath);
-	const placeholder = block.node?.querySelector('[data-edytor-text-placeholder]');
+	const placeholder = block.node?.querySelector('[data-edytor-text][data-placeholder]');
 
 	if (!(placeholder instanceof HTMLElement)) {
 		throw new Error(`Placeholder not found for block ${blockPath.join('.')}`);

@@ -341,8 +341,9 @@
 	color: #d24b63;
 	font-size: 0.88em;
 }
-.page-editor [data-edytor-text-placeholder] {
+.page-editor [data-placeholder]::before {
 	color: #b6b4af;
+	opacity: 1;
 }
 .page-editor [data-edytor-selected] {
 	background: #e8e6df;

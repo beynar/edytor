@@ -6,8 +6,7 @@
 	import type { Awareness, EdytorDocument, YDoc } from '../crdt/index.js';
 	import type { EdytorSync } from '$lib/collaboration/index.js';
 	export { EdytorClass as EdytorContext, useEdytor };
-	import type { Plugin } from '$lib/plugins.js';
-	import type { Block as BlockType } from '$lib/block/block.svelte.js';
+	import type { Placeholder, Plugin } from '$lib/plugins.js';
 	import {
 		blockHandlesPlugin,
 		createBlockHandlesPlugin,
@@ -39,7 +38,7 @@
 		onChange?: (value: JSONBlock) => void;
 		onSelectionChange?: (selection: EdytorSelection) => void;
 		value?: JSONDoc;
-		placeholder?: string | Snippet<[{ block: BlockType }]>;
+		placeholder?: Placeholder;
 		translate?: 'yes' | 'no';
 		spellcheck?: boolean;
 		autocorrect?: 'on' | 'off';
@@ -57,7 +56,7 @@
 
 <script lang="ts">
 	import type { JSONBlock, JSONDoc } from '../utils/json.js';
-	import { onMount, setContext, type Snippet, untrack } from 'svelte';
+	import { onMount, setContext, untrack } from 'svelte';
 	import type { HotKey } from '$lib/session/keymap.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 	import Block from './Block.svelte';

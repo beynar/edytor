@@ -22,7 +22,7 @@ import { domPointOf } from '$lib/surface/projector.svelte.js';
 import { Block } from '../block/block.svelte.js';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
-import type { EdgeSide } from '$lib/session/editing/text.js';
+import type { EdgeSide, PendingMarks } from '$lib/session/editing/text.js';
 import type { JSONInlineBlock, JSONText } from '$lib/utils/json.js';
 import { publishPresence } from '$lib/collaboration/awarenessSelection.js';
 import {
@@ -42,7 +42,9 @@ import {
 	textSelection,
 	anchorsInOrder,
 	type AtomSide,
+	type Marks,
 	type SelectCause,
+	type SelectionPoint,
 	type SelectionProjection,
 	type SelectionSegment,
 	type SelectionValue
@@ -168,9 +170,7 @@ export const isBackward = (selection: {
 	}
 };
 
-const SYNTHETIC_TEXT_OVERLAY_SELECTOR =
-	'[data-edytor-text-placeholder], [data-edytor-text-suggestion]';
-const TEXT_PLACEHOLDER_SELECTOR = '[data-edytor-text-placeholder]';
+const SYNTHETIC_TEXT_OVERLAY_SELECTOR = '[data-edytor-text-suggestion]';
 /** Content hidden by view state: a collapsed toggle's body, a `hidden` subtree. */
 const HIDDEN = '[hidden], details:not([open]) > :not(summary)';
 
@@ -219,34 +219,6 @@ const getSyntheticTextOverlayElement = (node: Node | null, offset: number) => {
 	}
 
 	return null;
-};
-
-const getTextPlaceholderInRange = (range: Range | undefined) => {
-	if (!range) {
-		return null;
-	}
-
-	const root =
-		range.commonAncestorContainer instanceof Element
-			? range.commonAncestorContainer
-			: range.commonAncestorContainer.parentElement;
-	if (!root) {
-		return null;
-	}
-
-	const placeholders = [
-		...(root.matches(TEXT_PLACEHOLDER_SELECTOR) ? [root] : []),
-		...Array.from(root.querySelectorAll(TEXT_PLACEHOLDER_SELECTOR))
-	];
-	return (
-		placeholders.find((placeholder) => {
-			try {
-				return range.intersectsNode(placeholder);
-			} catch {
-				return false;
-			}
-		}) ?? null
-	);
 };
 
 const getInlineBlockBetweenBoundaryTexts = (
@@ -481,6 +453,7 @@ export class EdytorSelection {
 		cause: SelectCause = 'model',
 		surface?: { startNode: Node | null; endNode: Node | null; edge?: EdgeSide }
 	) => {
+		next = this.#keepPending(next);
 		const changed = !sameValue(this.value, next);
 		if (changed) this.value = next;
 		const value = this.value;
@@ -538,6 +511,30 @@ export class EdytorSelection {
 		this.edytor.plugins.forEach((plugin) => {
 			plugin.onSelectionChange?.(this);
 		});
+	};
+
+	/** The marks the next insertion at the caret takes (L4, values kept). */
+	get pending(): PendingMarks | undefined {
+		return this.value.kind === 'text' ? (this.value.pending as PendingMarks) : undefined;
+	}
+
+	/** Stage (or, with `undefined`, clear) the caret's pending marks: a new value, same anchors. */
+	stage = (pending: Marks | undefined) => {
+		const value = this.value;
+		if (value.kind === 'text') this.select(Object.freeze({ ...value, pending }));
+	};
+
+	/** A caret that did not move keeps its pending marks (L4); a value that names them wins. */
+	#keepPending = (next: SelectionValue): SelectionValue => {
+		const prev = this.value;
+		if (prev.kind !== 'text' || !prev.pending || next.kind !== 'text' || 'pending' in next)
+			return next;
+		const [a, b] = [project(prev, this.edytor.facade), project(next, this.edytor.facade)];
+		const at = (p: SelectionPoint | null, q: SelectionPoint | null) =>
+			p !== null && q !== null && p.block === q.block && p.offset === q.offset;
+		return at(a.start, b.start) && at(a.end, b.end)
+			? textSelection(next.anchor, next.focus, prev.pending)
+			: next;
 	};
 
 	/** Diff one block set against its new members: hooks and attributes only for changes. */
@@ -1074,25 +1071,6 @@ export class EdytorSelection {
 			? { startText: null, endText: null, inlineBlock: selectedInlineBlock }
 			: this.getTextsInSelection(startNode, endNode, start, end);
 		let { startText, endText, inlineBlock } = selectionParts;
-
-		const placeholderInRange = getTextPlaceholderInRange(ranges[0]);
-		if (placeholderInRange) {
-			const overlayBlock = this.getBlockOfNode(placeholderInRange);
-			const targetText = overlayBlock?.lastText ?? startText;
-			const blockNode = overlayBlock?.node;
-			const range = ranges[0];
-			const isBoundaryInsideBlock = (node: Node) =>
-				Boolean(blockNode && (blockNode === node || blockNode.contains(node)));
-			const isRangeContainedByEmptyBlock = Boolean(
-				range &&
-				isBoundaryInsideBlock(range.startContainer) &&
-				isBoundaryInsideBlock(range.endContainer)
-			);
-			if (targetText?.parent.isEmpty && (isCollapsed || isRangeContainedByEmptyBlock)) {
-				void this.setAtTextOffset(targetText, 0);
-				return;
-			}
-		}
 
 		if (!startText) {
 			const islandBlock = this.getNonNativeEditableIslandBlock(startNode);

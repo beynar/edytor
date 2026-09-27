@@ -437,12 +437,9 @@
 							value={demoValue}
 							class="demo-edytor"
 							blockHandles={{ onActivate: openBlockMenu }}
+							placeholder={(view) => (view.focused ? "Type '/' for commands" : null)}
 							bind:edytor
-						>
-							{#snippet placeholder({ block })}
-								{#if block.focused}<span>Type '/' for commands</span>{/if}
-							{/snippet}
-						</Edytor>
+						/>
 					{/if}
 				</div>
 				<div class="page-footer"><span>✦</span> A blank page is an invitation. Keep writing.</div>

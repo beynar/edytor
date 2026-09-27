@@ -7,8 +7,7 @@ import type { DomSelectionSnapshot } from './domSelection.js';
 import type { EdgeSide } from '$lib/session/editing/text.js';
 
 const TRAILING_NEWLINE_SELECTOR = '[data-edytor-trailing-newline]';
-const SYNTHETIC_TEXT_OVERLAY_SELECTOR =
-	'[data-edytor-text-placeholder], [data-edytor-text-suggestion]';
+const SYNTHETIC_TEXT_OVERLAY_SELECTOR = '[data-edytor-text-suggestion]';
 
 const getElementFromNode = (node: Node | null) => {
 	if (!node || typeof Element === 'undefined') {

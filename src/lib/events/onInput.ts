@@ -4,7 +4,6 @@ import { diffText } from '$lib/utils/diffText.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
 import { isInsideTrailingNewlineMarker } from '$lib/selection/selection.utils.js';
-import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
 import { replaceSelectionWithCollapsedTarget } from '$lib/selection/replaceSelection.js';
 import {
 	isNativeInteractiveEvent,
@@ -204,7 +203,6 @@ const replaceExpandedSelectionFromInputOnlyText = async (edytor: Edytor, value: 
 	});
 	target.text.refreshFromModel();
 	await tick();
-	scheduleRemoveStalePlaceholders(target.text);
 	await edytor.selection.setAtTextOffset(target.text, target.offset + value.length);
 	return true;
 };

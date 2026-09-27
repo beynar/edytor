@@ -13,6 +13,17 @@ import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import type { PlanEffect } from './crdt/edytor-doc.js';
 import type { MarkEdge } from './session/editing/text.js';
 
+/** What a placeholder function receives (D-8): the empty block's declared values. */
+export type PlaceholderView = {
+	type: string;
+	data: Readonly<Record<string, unknown>>;
+	focused: boolean;
+	empty: boolean;
+};
+
+/** An empty block's placeholder text: one string, or one per block (`null`: none). */
+export type Placeholder = string | ((view: PlaceholderView) => string | null);
+
 /**
  * Represents the payload for mark snippets with generic serializable content.
  * @template D - The type of serializable content
@@ -122,8 +133,8 @@ export type PluginOperations = {
 	onChange?: (value: JSONBlock) => void;
 	/** Called when the selection changes */
 	onSelectionChange?: (selection: EdytorSelection) => void;
-	/** Placeholder content for empty blocks */
-	placeholder?: string | Snippet<[{ block: Block }]>;
+	/** The placeholder of an empty block (D-8): rendered by a `::before` rule the library ships. */
+	placeholder?: Placeholder;
 	/** Called when the editor is attached to the DOM */
 	onEdytorAttached?: (payload: { node: HTMLElement }) => () => void;
 	/** Called when a block is attached to the DOM */
@@ -243,9 +254,9 @@ export type InlineBlockView<D = Record<string, any>> = {
 	readonly type: string;
 	readonly data: D;
 	readonly selected: boolean;
-	/** The atom's id-only handle. */
-	readonly handle: InlineBlock;
-	attach: InlineBlock['attach'];
+	/** The atom's id-only handle; a suggested atom has none. */
+	readonly handle: InlineBlock | undefined;
+	attach: (node: HTMLElement) => unknown;
 };
 
 export type InlineBlockSnippetPayload<D = Record<string, any>> = {

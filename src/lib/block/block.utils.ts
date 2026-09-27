@@ -483,7 +483,7 @@ export function removeInlineBlock(
 /**
  * Insert an inline atom at `index` of `text`. Answers the atom's id; the
  * batched operation resolves it to the text after the atom once committed
- * ({@link textAfterAtom}), which takes the text's pending marks.
+ * ({@link textAfterAtom}), where the caret's pending marks follow.
  */
 export function addInlineBlock(
 	this: Block,
@@ -499,21 +499,16 @@ export function addInlineBlock(
 	return atom.id;
 }
 
-/** The text after atom `atom` of this block; it takes `payload.text`'s pending marks. */
-export function textAfterAtom(
-	this: Block,
-	atom: string | undefined,
-	{ text }: BlockOperations['addInlineBlock']
-): Text | null | undefined {
+/** The text after atom `atom` of this block; the caret's pending marks follow it there (L4). */
+export function textAfterAtom(this: Block, atom: string | undefined): Text | null | undefined {
 	if (atom === undefined) return undefined;
 	const at = this.content.findIndex((part) => part.id === atom);
 	const after = at < 0 ? undefined : this.content[at + 1];
 	if (!after || after instanceof InlineBlock) return null;
-	const marks = text.markOnNextInsert;
-	if (marks !== undefined) {
-		text.markOnNextInsert = undefined;
-		after.markOnNextInsert = { ...marks };
-	}
+	const { selection } = this.edytor;
+	const pending = selection.pending;
+	const caret = pending && selection.textValue(after, 0);
+	if (caret && caret.kind === 'text') selection.select(Object.freeze({ ...caret, pending }));
 	return after;
 }
 
@@ -570,7 +565,7 @@ export function suggestText(this: Block, { value }: BlockOperations['suggestText
 }
 
 export function acceptSuggestedText(this: Block) {
-	const suggestions = this.rawSuggestions;
+	const suggestions = this.suggestions;
 	if (!suggestions) {
 		return;
 	}

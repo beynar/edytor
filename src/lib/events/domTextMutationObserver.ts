@@ -17,7 +17,6 @@ import {
 	handleNativeLineBreakTextValue,
 	removeUnmanagedLineBreaks
 } from './onInput.js';
-import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
 import { diffText } from '$lib/utils/diffText.js';
 import { activeMarks } from '$lib/session/editing/text.js';
 import { INTENTS } from '$lib/session/attempt.js';
@@ -28,7 +27,6 @@ const MANAGED_SELECTOR = [
 	'[data-edytor-block]',
 	'[data-edytor-text]',
 	'[data-edytor-inline-block]',
-	'[data-edytor-text-placeholder]',
 	'[data-edytor-text-suggestion]',
 	'[data-edytor-trailing-newline]',
 	'[data-edytor-mark]',
@@ -40,7 +38,6 @@ const MANAGED_SELECTOR = [
 const EDITABLE_ISLAND_SELECTOR = [
 	'[data-edytor-text]',
 	'[data-edytor-inline-block]',
-	'[data-edytor-text-placeholder]',
 	'[data-edytor-text-suggestion]',
 	'[data-edytor-trailing-newline]',
 	'[data-edytor-mark]',
@@ -347,57 +344,6 @@ const shouldRestoreManagedMark = (text: Text, node: Element) => {
 	return renderedCount < expectedCount;
 };
 
-const TEXT_SELECTOR = '[data-edytor-text="true"]';
-const PLACEHOLDER_SELECTOR = '[data-edytor-text-placeholder]';
-const OBSERVER_ZERO_WIDTH_SPACE = '\u200B';
-
-const hasVisibleTextElementContent = (element: Element) =>
-	Boolean(element.textContent?.replaceAll(OBSERVER_ZERO_WIDTH_SPACE, '').length);
-
-/**
- * A placeholder is live only while it should be rendered: the parent it
- * was removed from holds no visible text element and no surviving sibling
- * placeholder. A removal that fails either check is intentional staleness
- * repair (the repair queue's sweep or Svelte's own unmount) — restoring it
- * would fight the repair and loop forever.
- */
-// Placeholder liveness is scoped to the parent's DIRECT children —
-// `heading`/`quote` snippets render nested block children inside the
-// same element as their own content, so a descendant query would count
-// a nested child's text (or placeholder) against the parent's own
-// placeholder (cf. `blockHasVisibleText` in Text.svelte).
-const directChildrenMatching = (parent: Element, selector: string) =>
-	Array.from(parent.children).filter((child) => child.matches(selector));
-
-const isLivePlaceholderElement = (node: Node, removedFrom?: Node) => {
-	const parent = node.parentElement ?? (removedFrom instanceof Element ? removedFrom : null);
-	if (!parent) {
-		return true;
-	}
-	if (directChildrenMatching(parent, TEXT_SELECTOR).some(hasVisibleTextElementContent)) {
-		return false;
-	}
-	return directChildrenMatching(parent, PLACEHOLDER_SELECTOR).length === 0;
-};
-
-/**
- * The added-node counterpart — the element itself already sits in the
- * parent, so the sibling check excludes it (a second placeholder means
- * the added one is the stale duplicate).
- */
-const isLiveAddedPlaceholderElement = (element: Element) => {
-	const parent = element.parentElement;
-	if (!parent) {
-		return false;
-	}
-	if (directChildrenMatching(parent, TEXT_SELECTOR).some(hasVisibleTextElementContent)) {
-		return false;
-	}
-	return directChildrenMatching(parent, PLACEHOLDER_SELECTOR).every(
-		(placeholder) => placeholder === element
-	);
-};
-
 const isLiveManagedElement = (
 	edytor: Edytor,
 	node: Node,
@@ -441,10 +387,6 @@ const isLiveManagedElement = (
 		// separate mutation records. Restore the wrapper only while the current
 		// render projection still requires more instances of that mark.
 		return shouldRestoreManagedMark(mutatedText, node);
-	}
-
-	if (node.hasAttribute('data-edytor-text-placeholder')) {
-		return isLivePlaceholderElement(node, removedFrom);
 	}
 
 	// Remaining chrome markers are judged on "still required", not marker
@@ -563,10 +505,6 @@ const isLiveAddedManagedElement = (edytor: Edytor, element: Element): boolean =>
 		const id = textElement.getAttribute('data-edytor-id');
 		const text = id ? edytor.idToText.get(id) : undefined;
 		return Boolean(text?.node === textElement && text.endsWithNewline && text.isInDocument);
-	}
-
-	if (element.hasAttribute('data-edytor-text-placeholder')) {
-		return isLiveAddedPlaceholderElement(element);
 	}
 
 	if (element.hasAttribute('data-edytor-mark')) {
@@ -1116,6 +1054,7 @@ const textMutationAttributeSpec = (text: Text): ManagedAttributeSpec => {
 			'data-edytor-text': 'true',
 			'data-edytor-id': text.id,
 			'data-edytor-text-empty': String(text.isEmpty),
+			'data-placeholder': text.edytor.placeholderAt(text.parent.id),
 			contenteditable: insideVoid ? 'true' : null
 		},
 		ownedStyle: {
@@ -1152,17 +1091,6 @@ const inlineBlockMutationAttributeSpec = (inlineBlock: InlineBlock): ManagedAttr
 	ownedStyle: {}
 });
 
-const PLACEHOLDER_ATTRIBUTE_SPEC: ManagedAttributeSpec = {
-	strict: true,
-	owned: {
-		'data-edytor-text-placeholder': '',
-		role: 'button',
-		contenteditable: 'false',
-		tabindex: '-1'
-	},
-	ownedStyle: { 'user-select': 'none' }
-};
-
 const SUGGESTION_ATTRIBUTE_SPEC: ManagedAttributeSpec = {
 	strict: true,
 	owned: {
@@ -1197,7 +1125,6 @@ const PLUGIN_CHROME_ATTRIBUTE_SPEC: ManagedAttributeSpec = {
  * only thing left identifying its role).
  */
 const LEAF_ATTRIBUTE_SPECS: Record<string, ManagedAttributeSpec> = {
-	'data-edytor-text-placeholder': PLACEHOLDER_ATTRIBUTE_SPEC,
 	'data-edytor-text-suggestion': SUGGESTION_ATTRIBUTE_SPEC,
 	'data-edytor-render-anchor': RENDER_ANCHOR_ATTRIBUTE_SPEC,
 	'data-edytor-plugin-chrome': PLUGIN_CHROME_ATTRIBUTE_SPEC
@@ -1219,7 +1146,6 @@ const IDENTITY_ATTRIBUTES = new Set([
 	'data-edytor-mark',
 	'data-edytor-mark-void',
 	'data-edytor-trailing-newline',
-	'data-edytor-text-placeholder',
 	'data-edytor-text-suggestion',
 	'data-edytor-render-anchor',
 	'data-edytor-plugin-chrome',
@@ -1413,8 +1339,8 @@ const resolveManagedAttributeTarget = (
 		return null;
 	}
 
-	// Marker elements outside a text subtree (placeholder, suggestion,
-	// render anchor, plugin chrome).
+	// Marker elements outside a text subtree (suggestion, render anchor,
+	// plugin chrome).
 	for (const [marker, spec] of Object.entries(LEAF_ATTRIBUTE_SPECS)) {
 		if (element.hasAttribute(marker)) {
 			return { kind: 'spec', element, spec };
@@ -1506,10 +1432,7 @@ const adopt = async (edytor: Edytor, text: Text, dom: string, domCaret?: number)
 	const back = attempt?.isCollapsed && INTENTS[attempt.inputType]?.dir === 'back';
 	const prefer = attempt && startText === text ? yStart + (back ? grow : Math.max(0, grow)) : caret;
 	const change = diffText(text.stringContent, value, prefer);
-	if (!change) {
-		scheduleRemoveStalePlaceholders(text);
-		return false;
-	}
+	if (!change) return false;
 	const { at, remove, insert } = change;
 	// The command runs at the change (a hook reads the selection).
 	if (startText !== text && (attempt || caret !== undefined))
@@ -1529,16 +1452,17 @@ const adopt = async (edytor: Edytor, text: Text, dom: string, domCaret?: number)
 	const adopted = text.isInDocument && text.stringContent === value;
 	if (attempt) attempt.phase = adopted ? 'applied' : 'failed';
 	if (!text.isInDocument) return true;
-	if (adopted && same && Object.keys(marks).length > 0) text.markOnNextInsert = marks;
 	if (!adopted || drifted) {
 		text.refreshFromModel();
 		removeUnmanagedLineBreaks(text);
 	}
 	await tick();
-	scheduleRemoveStalePlaceholders(text);
 	const end = caret ?? (attempt ? at + insert.length : undefined);
 	if (adopted && end !== undefined)
 		await edytor.selection.setAtTextOffset(text, Math.min(end, text.length));
+	// A deletion of uniformly marked text keeps its marks pending at the caret.
+	if (adopted && same && Object.keys(marks).length > 0 && edytor.selection.state.startText === text)
+		edytor.selection.stage(marks);
 	return true;
 };
 
@@ -1639,7 +1563,6 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 				try {
 					removeAddedUnmanagedNodes(edytor, root, mutations, addedManagedRoots);
 					restoreRemovedManagedNodes(edytor, root, mutations);
-					edytor.placeholderRepair.add(root);
 				} finally {
 					observe();
 				}
@@ -1701,7 +1624,6 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 				healForeignAttributeMutations(edytor, root, mutations, refreshedTexts);
 				restoreRemovedManagedNodes(edytor, root, mutations);
 				removeAddedUnmanagedNodes(edytor, root, mutations, getAddedManagedRoots(edytor, mutations));
-				edytor.placeholderRepair.add(root);
 				if (refreshedTexts.size > 0) {
 					await tick();
 				}
@@ -1812,15 +1734,6 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 			}
 			// An adoption placed the caret: the repair restores that one.
 			if (changedTexts.size > 0) selectionBeforeRepair = captureSelectionBeforeRepair(edytor);
-
-			for (const text of [...texts, ...replacedTexts]) {
-				scheduleRemoveStalePlaceholders(text);
-			}
-
-			// The root sweep is a mutation-driven safety net, not per-flush
-			// work: queue it so bursts of flushes share one bounded repair
-			// window instead of paying a full scan per flush.
-			edytor.placeholderRepair.add(root);
 
 			if (refreshedTexts.size > 0) {
 				await tick();

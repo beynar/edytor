@@ -334,7 +334,7 @@ export class Composition {
 					dispatcher.dispatch('insertText', payload, { block: text.parent, text }, (p) => {
 						this.#erase();
 						text.insertAt(p.start, p.value, p.marks ?? this.marks);
-						text.markOnNextInsert = undefined;
+						if (selection.pending) selection.stage(undefined);
 					})
 				);
 			}

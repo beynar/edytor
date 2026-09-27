@@ -28,8 +28,10 @@ import {
 	renderDomEdytor
 } from '../../dom/test.utils.js';
 
-/** Red on the reference (`arch-v2/ref-r5`): expected-fail until R5 lands. */
-const row = it.fails;
+/** Red on the reference (`arch-v2/ref-r5`); green since R5. */
+const row = it;
+/** Red on the reference; green since R5b (the core renders the block element). */
+const rowB = it.fails;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -48,7 +50,7 @@ const inner = (html: string) =>
 	})) as never;
 
 describe('R5 — the core renders the block element', () => {
-	row('F-P7 a code block: one element carries its id; its handle mounts once', async () => {
+	rowB('F-P7 a code block: one element carries its id; its handle mounts once', async () => {
 		const log: { id: string; node: HTMLElement }[] = [];
 		const { editor, edytor } = await renderDomEdytor(
 			<root>
@@ -98,7 +100,7 @@ describe('R5 — the core renders the block element', () => {
 		expect(log.find((entry) => entry.id === ids[2])?.node.tagName).toBe('BLOCKQUOTE');
 	});
 
-	row(
+	rowB(
 		'a kind declares its element (tag and attributes from data); the snippet renders inside it',
 		async () => {
 			const banner: Plugin = () => ({
@@ -130,7 +132,7 @@ describe('R5 — the core renders the block element', () => {
 		}
 	);
 
-	row('a declared void kind is non-editable without use:block.void', async () => {
+	rowB('a declared void kind is non-editable without use:block.void', async () => {
 		const figure: Plugin = () => ({
 			blocks: {
 				figureKind: {

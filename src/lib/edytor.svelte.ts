@@ -18,6 +18,7 @@ import { EdytorSelection } from './selection/selection.svelte.js';
 import { Projector } from './surface/projector.svelte.js';
 import {
 	createCells,
+	placeholderOf,
 	segmentDeltas,
 	type Cell,
 	type Cells,
@@ -61,7 +62,8 @@ import type {
 	MarkDefinition,
 	InlineBlockDefinition,
 	InlineBlockSnippetPayload,
-	EditorCommand
+	EditorCommand,
+	Placeholder
 } from './plugins.js';
 import { on } from 'svelte/events';
 import { Keymap, type HotKey } from './session/keymap.js';
@@ -88,10 +90,6 @@ import {
 	getDomSelectionSnapshot
 } from './selection/domSelection.js';
 import { getYIndex } from './selection/selection.utils.js';
-import {
-	createPlaceholderRepairQueue,
-	type PlaceholderRepairQueue
-} from './text/removeStalePlaceholders.js';
 
 export type Snippets = {
 	// `mentionInlineBlock` satisfies BOTH the `*InlineBlock` and `*Block`
@@ -129,7 +127,7 @@ export type EdytorOptions = {
 	value?: JSONDoc;
 	onChange?: (value: JSONBlock) => void;
 	onSelectionChange?: (selection: EdytorSelection) => void;
-	placeholder?: string | Snippet<[{ block: Block }]>;
+	placeholder?: Placeholder;
 };
 
 export type RootBlock = Block & {
@@ -196,7 +194,7 @@ export class Edytor {
 	readonly pin = new Pin();
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
-	placeholder?: string | Snippet<[{ block: Block }]>;
+	placeholder?: Placeholder;
 	/** The view's composition session (R8, L7, O34): at most one, live then tail. */
 	readonly composition: Composition = new Composition(this);
 	/** A composition session is live. */
@@ -278,16 +276,6 @@ export class Edytor {
 	 * editor mounts, so all runtime readers see it set.
 	 */
 	undoManager!: YUndoManager;
-	/**
-	 * Coalesced stale-placeholder repair — ONE pending-roots set per view.
-	 * Commits queue only the block roots their `DocChange` touched; the
-	 * queue's phase chain (immediate → microtask → rAF → deferred retries)
-	 * scans just those roots, so a burst of N commits costs one repair
-	 * round instead of N overlapping full-editor sweeps. `destroy()`
-	 * releases it — no scheduled pass may act on a dead view.
-	 */
-	readonly placeholderRepair: PlaceholderRepairQueue = createPlaceholderRepairQueue();
-
 	/** The view's command dispatcher (R7): every mutation this view makes goes through it. */
 	readonly dispatcher: Dispatcher = new Dispatcher(this);
 
@@ -617,8 +605,7 @@ export class Edytor {
 
 	/**
 	 * One commit (local, remote, undo/redo): prune the handles of the removed
-	 * blocks, then the selection's seam, the value consumers and the
-	 * placeholder pass.
+	 * blocks, then the selection's seam and the value consumers.
 	 */
 	private onCommit = (change: DocChange) => {
 		this.valueRevision++;
@@ -645,36 +632,21 @@ export class Edytor {
 				plugin.onChange?.(value);
 			});
 		}
-		void tick().then(() => this.queuePlaceholderRepair(change));
 	};
 
 	/**
-	 * Scoped stale-placeholder repair. The commit queues only the block
-	 * roots its {@link DocChange} touched — `content` (text composition
-	 * changed: the only way a placeholder becomes stale or needed),
-	 * `moved`/`meta` (re-parented or re-typed subtrees render their content
-	 * under a new context), and `added` subtree roots (freshly placed —
-	 * their projected descendants render inside the root's node). Each id
-	 * resolves lazily through `idToBlock`, so a `{#key}` remount between
-	 * commit and pass retargets the FRESH node instead of scanning a
-	 * detached one; `removed` ids are detached by definition and skipped.
+	 * The placeholder block `id` shows (§2.4, D-8): its cell has one empty
+	 * text and no live composition in it; a function answers per block.
 	 */
-	private queuePlaceholderRepair = (change: DocChange) => {
-		const repair = this.placeholderRepair;
-		const addBlock = (id: string) =>
-			repair.addKeyed(`block:${id}`, () => this.idToBlock.get(id)?.node ?? undefined);
-		for (const id of change.content.keys()) {
-			addBlock(id);
-		}
-		for (const id of change.moved) {
-			addBlock(id);
-		}
-		for (const id of change.meta.keys()) {
-			addBlock(id);
-		}
-		for (const id of change.added.keys()) {
-			addBlock(id);
-		}
+	placeholderAt = (id: string): string | null => {
+		const cell = this.cells?.get(id);
+		const placeholder = this.placeholder;
+		if (!placeholder || !cell || !placeholderOf(cell, this.composition.host?.parent.id === id))
+			return null;
+		if (typeof placeholder === 'string') return placeholder;
+		const { type, data = {} } = cell;
+		const focused = this.idToBlock.block(id).focused;
+		return placeholder({ type, data, focused, empty: true }) || null;
 	};
 
 	onBeforeInput = onBeforeInput.bind(this);
@@ -1197,9 +1169,6 @@ export class Edytor {
 
 		this.attempts.clear();
 		this.composition.reset();
-		// Pending placeholder-repair passes (microtask/rAF/timers) must
-		// never act on a destroyed view — release kills them all.
-		this.placeholderRepair.release();
 		this.cells?.dispose();
 
 		// Wrapper maps — drop every id/node→wrapper edge a shared doc or a

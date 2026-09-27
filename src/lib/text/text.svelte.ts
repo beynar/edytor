@@ -1,5 +1,5 @@
 import { Edytor } from '../edytor.svelte.js';
-import { type JSONText, type SerializableContent } from '$lib/utils/json.js';
+import { type JSONText } from '$lib/utils/json.js';
 import { Block } from '../block/block.svelte.js';
 import {
 	batch,
@@ -33,8 +33,6 @@ export class Text {
 	readonly ordinal: number;
 	readonly id: string;
 	node: HTMLElement | undefined;
-	// Used when user toggles mark without selection range.
-	markOnNextInsert: undefined | Record<string, SerializableContent | null> = undefined;
 
 	constructor(edytor: Edytor, blockId: string, ordinal: number) {
 		this.edytor = edytor;

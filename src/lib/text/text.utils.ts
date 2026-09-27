@@ -60,9 +60,13 @@ export function insertText(
 	}: TextOperations['insertText']
 ) {
 	const isCollapsed = start === end || !end;
+	// The caret's pending marks (L4) apply to an insertion at the caret, which consumes them.
+	const { selection } = this.edytor;
+	const { startText, yStart } = selection.state;
+	const pending = startText === this && yStart === start ? selection.pending : undefined;
 	marks ??= marksForInsertion(this, start, {
 		replaced: isCollapsed ? undefined : this.getMarksAtRange(start, end),
-		pending: this.markOnNextInsert
+		pending
 	});
 	this.edytor.transact(() => {
 		if (isAutoDot) {
@@ -76,9 +80,7 @@ export function insertText(
 			this.insertAt(start, value, marks);
 		}
 	});
-	if (this.markOnNextInsert) {
-		this.markOnNextInsert = undefined;
-	}
+	if (pending) selection.stage(undefined);
 }
 
 export function getMarksAtRange(this: Text, yStart: number, yEnd: number) {
@@ -247,11 +249,12 @@ export function markText(
 ) {
 	if (start === end) {
 		// A caret stages the full set the next insertion carries (values kept).
+		const { selection } = this.edytor;
 		const { [mark]: current = null, ...rest } = marksForInsertion(this, start, {
-			pending: this.markOnNextInsert
+			pending: selection.pending
 		});
 		const next = current !== null && toggle ? null : value;
-		this.markOnNextInsert = next === null ? rest : { ...rest, [mark]: next };
+		selection.stage(next === null ? rest : { ...rest, [mark]: next });
 		return;
 	}
 	const marksAtRange = this.getMarksAtRange(start, end);

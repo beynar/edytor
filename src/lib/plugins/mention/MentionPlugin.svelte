@@ -40,9 +40,7 @@
 </script>
 
 {#snippet mention({ block }: InlineBlockSnippetPayload)}
-	<kbd
-		class={block.selected ? 'ring ring-1 ring-purple-300' : ''}
-		data-edytor-mention
-		use:block.attach>@mention {block.selected ? 'selected' : 'false'}</kbd
+	<kbd class={block.selected ? 'ring ring-1 ring-purple-300' : ''} data-edytor-mention
+		>@mention {block.selected ? 'selected' : 'false'}</kbd
 	>
 {/snippet}

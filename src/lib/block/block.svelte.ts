@@ -43,8 +43,6 @@ import {
 import { jsonBlockToSpec, jsonContentToItems } from '$lib/utils/json.js';
 import type { BlockDefinition } from '$lib/plugins.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
-import { createReadonlyText } from '$lib/components/readonlyElements.svelte.js';
-import { createReadonlyInlineBlock } from '$lib/components/readonlyElements.svelte.js';
 import type { DocBlock } from '$lib/crdt/index.js';
 
 /**
@@ -190,27 +188,9 @@ export class Block {
 		return this.isRoot || this.edytor.facade.isVisibleBlock(this.id);
 	}
 
-	/** Inline suggestions are session state (L12), keyed by this block's id. */
-	get suggestions(): (Text | InlineBlock)[] | null {
-		const suggestions = this.rawSuggestions;
-		if (!suggestions) {
-			return null;
-		}
-		return suggestions.map((suggestion) => {
-			if ('type' in suggestion) {
-				return createReadonlyInlineBlock({
-					block: suggestion,
-					edytor: this.edytor,
-					parent: this
-				});
-			} else {
-				return createReadonlyText({
-					value: suggestion,
-					parent: this,
-					edytor: this.edytor
-				}) as Text;
-			}
-		});
+	/** Inline suggestions are session state (L12), keyed by this block's id: plain JSON parts. */
+	get suggestions(): (JSONText[] | JSONInlineBlock)[] | null {
+		return this.edytor.selection?.suggestions.get(this.id) ?? null;
 	}
 
 	set suggestions(value: (JSONText[] | JSONInlineBlock)[] | null) {
@@ -220,7 +200,7 @@ export class Block {
 	}
 
 	get rawSuggestions(): (JSONText[] | JSONInlineBlock)[] | null {
-		return this.edytor.selection?.suggestions.get(this.id) ?? null;
+		return this.suggestions;
 	}
 
 	get nextBlock(): Block | null {

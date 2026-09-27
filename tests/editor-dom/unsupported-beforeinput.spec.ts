@@ -98,7 +98,7 @@ test.describe('unsupported native beforeinput commands', () => {
 			await expect
 				.poll(() => readEditorDomShape(page))
 				.toEqual({
-					blockTexts: ['lead ', 'note ', 'Write something here ... '],
+					blockTexts: ['lead ', 'note ', ' '],
 					nativeStructuralNodes: 0,
 					nativeStyleNodes: 0,
 					nativeLinkNodes: 0,
@@ -140,7 +140,7 @@ test.describe('unsupported native beforeinput commands', () => {
 			await expect
 				.poll(() => readEditorDomShape(page))
 				.toEqual({
-					blockTexts: ['lead ', 'note ', 'Write something here ... '],
+					blockTexts: ['lead ', 'note ', ' '],
 					nativeStructuralNodes: 0,
 					nativeStyleNodes: 0,
 					nativeLinkNodes: 0,

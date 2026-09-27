@@ -164,7 +164,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 			edytor.selection.state;
 		if (isCollapsed) {
 			if (startText) {
-				startText.markOnNextInsert = {};
+				edytor.selection.stage({});
 				edytor.selection.setAtTextOffset(startText, yStart);
 			}
 			return;
@@ -216,10 +216,10 @@ export const richTextOperations = (edytor: Edytor) => ({
 			if (startText) {
 				// Stage the full set the next insertion carries, values kept (O29).
 				edytor.dispatcher.cut('format');
-				startText.markOnNextInsert = {
-					...marksForInsertion(startText, yStart, { pending: startText.markOnNextInsert }),
+				edytor.selection.stage({
+					...marksForInsertion(startText, yStart, { pending: edytor.selection.pending }),
 					[mark]: safeValue
-				};
+				});
 				void edytor.selection.setAtTextOffset(startText, yStart);
 			}
 			return;

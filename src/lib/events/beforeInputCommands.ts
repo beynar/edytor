@@ -5,7 +5,6 @@ import {
 	replaceSelectionWithCollapsedTargetSync
 } from '$lib/selection/replaceSelection.js';
 import type { Text } from '$lib/text/text.svelte.js';
-import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { flowOfFragment, flowOfText, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
 import { cloneJson, type JSONText } from '$lib/utils/json.js';
@@ -55,7 +54,7 @@ export const insertionMarks = (edytor: Edytor, snapshot: Attempt) => {
 	return marksForInsertion(startText, yStart, {
 		replaced: isCollapsed ? undefined : replaced,
 		side: snapshot.edge,
-		pending: startText.markOnNextInsert
+		pending: edytor.selection.pending
 	});
 };
 
@@ -90,7 +89,6 @@ const insertText = async (edytor: Edytor, snapshot: Attempt) => {
 		edytor.attempts.caret(target.text, target.offset + 1);
 		await edytor.selection.setAtTextOffset(target.text, target.offset + 1);
 		await tick();
-		scheduleRemoveStalePlaceholders(target.text);
 		return;
 	}
 
@@ -98,7 +96,6 @@ const insertText = async (edytor: Edytor, snapshot: Attempt) => {
 	edytor.attempts.caret(target.text, target.offset + data.length);
 	await edytor.selection.setAtTextOffset(target.text, target.offset + data.length);
 	await tick();
-	scheduleRemoveStalePlaceholders(target.text);
 };
 
 /**
@@ -160,7 +157,7 @@ const insertFromPaste = async (edytor: Edytor, snapshot: Attempt) => {
 	const flow = textFlow(edytor, snapshot.dataTransfer, '', insertionMarks(edytor, snapshot));
 	if (!flow) return;
 	// The paste consumes the caret's pending marks, as typing does.
-	if (snapshot.startText) snapshot.startText.markOnNextInsert = undefined;
+	if (edytor.selection.pending) edytor.selection.stage(undefined);
 	await pasteFlow(edytor, flow, { selection: snapshot });
 };
 

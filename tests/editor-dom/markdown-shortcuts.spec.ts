@@ -1,6 +1,7 @@
 import { expect, test } from './editorTest';
 
 import {
+	getPlaceholderLocators,
 	readJsonByTestId,
 	setSelectionByTextIndex,
 	trackPageIssues,
@@ -101,7 +102,7 @@ test.describe('browser markdown shortcuts', () => {
 			).__EDYTOR__;
 			edytor?.clear();
 		});
-		await page.locator('[data-edytor-text-placeholder]').first().click();
+		await getPlaceholderLocators(page).first().click();
 		await page.keyboard.type('## Title');
 
 		await expect

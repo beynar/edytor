@@ -1,6 +1,7 @@
 import { expect, test, type Page } from './editorTest';
 
 import {
+	getPlaceholderLocators,
 	expectSelection,
 	modKey,
 	readNativeSelectionDirection,
@@ -26,7 +27,7 @@ test.describe('browser navigation selection sync', () => {
 
 		await page.goto('/test/dom?scenario=basic&empty=first');
 		await waitForEditorReady(page);
-		await page.getByRole('button', { name: 'Write something here ...' }).click();
+		await getPlaceholderLocators(page).first().click();
 		await page.keyboard.type('abc');
 
 		await expectSelection(page, {

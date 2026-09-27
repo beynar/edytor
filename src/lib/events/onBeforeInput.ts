@@ -21,7 +21,6 @@ import {
 	type Expect,
 	type Occurrence
 } from '$lib/session/attempt.js';
-import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
 import { isAndroidChromeBrowser } from './events.utils.js';
 import {
 	isNativeInteractiveControl,
@@ -392,7 +391,6 @@ const refreshSelectionTextFromModel = async (edytor: Edytor, forceDomRefresh = f
 	const offset = edytor.selection.state.yStart;
 	if (forceDomRefresh) text.refreshFromModel();
 	await tick();
-	scheduleRemoveStalePlaceholders(text);
 	await edytor.selection.setAtTextOffset(text, Math.min(offset, text.length));
 };
 

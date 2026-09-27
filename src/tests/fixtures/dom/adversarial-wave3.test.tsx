@@ -420,7 +420,7 @@ describe('placeholder scope with nested children', () => {
 		await flushDomUpdates();
 
 		const placeholder = Array.from(headingElement!.children).find((child) =>
-			child.matches('[data-edytor-text-placeholder]')
+			child.matches('[data-edytor-text][data-placeholder]')
 		);
 		expect(
 			placeholder,
@@ -599,7 +599,7 @@ describe('formatFontColor collapsed staging', () => {
 		});
 		expect(result.defaultPrevented).toBe(true);
 
-		const staged = edytor.selection.state.startText?.markOnNextInsert;
+		const staged = edytor.selection.pending;
 		expect(staged?.color).toBe('rgb(255, 0, 0)');
 		expect(
 			staged?.bold,

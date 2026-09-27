@@ -597,7 +597,7 @@ export const captureBrowserSnapshot = (page: Page): Promise<DstBrowserSnapshot> 
 			: -1;
 		const native = window.getSelection();
 		const placeholderBlockIndexes = Array.from(
-			editor.querySelectorAll<HTMLElement>('[data-edytor-text-placeholder]')
+			editor.querySelectorAll<HTMLElement>('[data-edytor-text][data-placeholder]')
 		).map((placeholder) => {
 			const block = placeholder.closest<HTMLElement>('[data-edytor-block="true"]');
 			return block ? blockElements.indexOf(block) : -1;

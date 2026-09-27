@@ -1,6 +1,7 @@
 import { expect, test } from './editorTest';
 
 import {
+	getPlaceholderLocators,
 	expectSelection,
 	readJsonByTestId,
 	setSelectionByTextIndex,
@@ -69,7 +70,7 @@ test.describe('browser slash menu', () => {
 
 		await page.goto('/test/dom?scenario=basic&empty=first');
 		await waitForEditorReady(page);
-		await page.getByRole('button', { name: 'Write something here ...' }).click();
+		await getPlaceholderLocators(page).first().click();
 		await page.keyboard.type('/h2');
 
 		await expect(page.getByTestId('slash-menu-item')).toHaveText('Heading 2');

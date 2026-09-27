@@ -524,7 +524,7 @@ export const expectTextValue = (text: Text, expected: JSONText[]) => {
 
 export const expectMarksState = (text: Text, expected: MarkStateExpectation) => {
 	if ('pending' in expected) {
-		expect(text.markOnNextInsert).toEqual(expected.pending);
+		expect(text.edytor.selection.pending).toEqual(expected.pending);
 	}
 
 	if (expected.range) {

@@ -122,12 +122,16 @@ test.describe('browser feature-route parity', () => {
 
 		await page.goto('/test/dom?scenario=basic&empty=first&placeholder=Start%20writing');
 		await waitForEditorReady(page);
-		await expect(getPlaceholderLocators(page).first()).toContainText('Start writing');
+		await expect(page.locator('[data-edytor-text][data-placeholder="Start writing"]')).toHaveCount(
+			1
+		);
 		await getPlaceholderLocators(page).first().click();
 		await page.keyboard.type('A');
 		await expect(getPlaceholderLocators(page)).toHaveCount(0);
 		await page.keyboard.press('Backspace');
-		await expect(getPlaceholderLocators(page).first()).toContainText('Start writing');
+		await expect(page.locator('[data-edytor-text][data-placeholder="Start writing"]')).toHaveCount(
+			1
+		);
 
 		issues.assertClean();
 	});

@@ -152,8 +152,12 @@ export const getTextLocators = (page: Page) => page.locator('[data-edytor-text="
 
 export const getBlockLocators = (page: Page) => page.locator('[data-edytor-block="true"]');
 
+/**
+ * The rows that show a placeholder (D-8: `data-placeholder` on the empty text,
+ * drawn by a `::before` rule): the element holding that text, where a click lands.
+ */
 export const getPlaceholderLocators = (page: Page) =>
-	page.locator('[data-edytor-text-placeholder]:visible');
+	page.locator('[data-edytor-text][data-placeholder]').locator('xpath=..');
 
 export const readSelection = (page: Page) =>
 	page.evaluate(() => {

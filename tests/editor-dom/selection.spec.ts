@@ -163,9 +163,7 @@ const selectEmptyPlaceholderNativeRange = async (page: Page, textIndex: number) 
 		const text = document.querySelectorAll<HTMLElement>('[data-edytor-text="true"]')[
 			targetTextIndex
 		];
-		const placeholder = text?.parentElement?.querySelector<HTMLElement>(
-			'[data-edytor-text-placeholder]'
-		);
+		const placeholder = text?.hasAttribute('data-placeholder') ? text : null;
 		if (!text || !placeholder) {
 			throw new Error(`Missing empty placeholder for text index ${targetTextIndex}`);
 		}

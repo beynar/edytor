@@ -19,6 +19,7 @@ import { createBeforeInputSnapshot } from '$lib/events/beforeInputSnapshot.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import {
 	assertCanonicalTree,
+	dispatchDomBeforeInput,
 	flushDomUpdates,
 	renderDomEdytor,
 	setNativeSelection
@@ -96,5 +97,88 @@ describe('del.range.outside-survives (dom)', () => {
 			{ type: 'paragraph', content: [{ text: 'omega' }] }
 		]);
 		expect(caret(edytor)).toEqual({ text: 'alta', at: 2, collapsed: true });
+	});
+});
+
+describe('D6 follow-up — seam delete and undo selection (dom)', () => {
+	const basic = () => (
+		<root>
+			<paragraph></paragraph>
+			<paragraph>note</paragraph>
+			<paragraph>tail</paragraph>
+		</root>
+	);
+	const texts = (edytor: Edytor) =>
+		edytor.root!.children.map((block) => block.firstText?.stringContent ?? '');
+
+	it('a range from a block end to the next block start joins them (del.range.flat)', async () => {
+		const { edytor } = await renderDomEdytor(basic(), { autoSelectFixture: false });
+		const note = edytor.root!.children[1]!.firstText;
+		const tail = edytor.root!.children[2]!.firstText;
+		edytor.selection.markUserGesture?.();
+		// The model range the Shift+ArrowRight extension hands the command.
+		edytor.selection.state = {
+			...edytor.selection.state,
+			startText: note,
+			endText: tail,
+			startBlock: note!.parent,
+			endBlock: tail!.parent,
+			yStart: 4,
+			yEnd: 0,
+			isCollapsed: false,
+			isBlockSpanning: true,
+			isTextSpanning: true
+		};
+		await backspace(edytor);
+		await flushDomUpdates();
+		expect(texts(edytor)).toEqual(['', 'notetail']);
+		expect(caret(edytor)).toEqual({ text: 'notetail', at: 4, collapsed: true });
+	});
+
+	it('undo restores the cross-block range a replacement consumed', async () => {
+		const { edytor, editor } = await renderDomEdytor(basic(), { autoSelectFixture: false });
+		const empty = edytor.root!.children[0]!.firstText;
+		const note = edytor.root!.children[1]!.firstText;
+		await setNativeSelection(edytor, empty, 0, note, 3);
+		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'Z' });
+		await flushDomUpdates();
+		expect(texts(edytor)).toEqual(['Ze', 'tail']);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(texts(edytor)).toEqual(['', 'note', 'tail']);
+		const { startText, endText, yStart, yEnd, isCollapsed } = edytor.selection.state;
+		expect({
+			start: startText?.parent.index,
+			end: endText?.parent.index,
+			yStart,
+			yEnd,
+			isCollapsed
+		}).toEqual({ start: 0, end: 1, yStart: 0, yEnd: 3, isCollapsed: false });
+	});
+
+	it('undo restores a reversed in-block range a soft break replaced', async () => {
+		const { edytor, editor } = await renderDomEdytor(
+			<root>
+				<paragraph>lead</paragraph>
+				<paragraph>note</paragraph>
+			</root>,
+			{ autoSelectFixture: false }
+		);
+		const lead = edytor.root!.children[0]!.firstText;
+		await setNativeSelection(edytor, lead, 1, lead, 4, { reversed: true });
+		await dispatchDomBeforeInput(editor, { inputType: 'insertLineBreak' });
+		await flushDomUpdates();
+		expect(texts(edytor)).toEqual(['l\n', 'note']);
+		await setNativeSelection(edytor, edytor.root!.children[1]!.firstText, 0);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		const { yStart, yEnd, isCollapsed, isReversed } = edytor.selection.state;
+		expect(texts(edytor)).toEqual(['lead', 'note']);
+		expect({ yStart, yEnd, isCollapsed, isReversed }).toEqual({
+			yStart: 1,
+			yEnd: 4,
+			isCollapsed: false,
+			isReversed: true
+		});
 	});
 });

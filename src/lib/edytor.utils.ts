@@ -55,9 +55,14 @@ export function deleteContentWithinSelection(
 		offset: text.parent.partOffsetOf(text) + offset
 	});
 	const prepare = replace ? this.facade.prepare.replaceRange : this.facade.prepare.deleteRange;
-	return (
-		applyAt(this, prepare(at(startText, yStart), at(endText, yEnd), id('b'))) ?? [startText, yStart]
-	);
+	const plan = prepare(at(startText, yStart), at(endText, yEnd), id('b'));
+	// Undo restores the selection current before the delete: snapshot it before
+	// the write (unless the command queued one) by text ids, paths and offsets —
+	// undo restores exactly this structure. No anchors: they would bind atoms the
+	// delete removes (undo re-creates them) or, minted after it, merged atoms.
+	if ('writes' in plan && plan.at && !this.selection.nextUndoSelectionSnapshot)
+		this.selection.queueNextUndoSelectionSnapshot({ startAnchor: null, endAnchor: null });
+	return applyAt(this, plan) ?? [startText, yStart];
 }
 
 /** Place an admitted flow at `target` (`flow.*`) and answer the caret the op decided. */

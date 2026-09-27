@@ -22,8 +22,8 @@ import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import type { Plugin } from '$lib/plugins.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 
-/** Red on the reference (`arch-v2/ref-r4`); green since R4. */
-const row = it.fails;
+/** Red on the reference (`arch-v2/ref-r4`); green since R4a. */
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 

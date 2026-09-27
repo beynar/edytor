@@ -171,7 +171,8 @@ describe('handles read the index', () => {
 		expect(seen).toEqual(['aaZ', ['c']]);
 	});
 
-	row('insertChildren and insertParts take JSON specs', () => {
+	/** Green since R4a. */
+	test('insertChildren and insertParts take JSON specs', () => {
 		const { edytor } = view();
 		const root = edytor.root!;
 		root.insertChildren(1, [{ id: 'j', type: 'paragraph', content: [{ text: 'json' }] }]);

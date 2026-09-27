@@ -25,16 +25,14 @@
  * facade, not in this file.
  *
  * Content preparation produces `BlockSpec`/`ContentItem` DIRECTLY from
- * JSON (`jsonBlockToSpec`/`jsonContentToItems` in `utils/json.ts`) — never
- * through disposable `Block` trees. `groupContent` remains only for
- * DETACHED spec mirrors (`new Block({block})` pre-admission `content`
- * parts and `suggestText` staging): the live-content invariant
+ * JSON (`jsonBlockToSpec`/`jsonContentToItems` in `utils/json.ts`): specs are
+ * data (K5: `new Block({block})` is gone). The live-content invariant
  * (text-first/text-last, no adjacent same-kind parts) is derived by the
  * document's projection on read, so stored content needs no
  * pre-normalization.
  */
-import { Block } from '$lib/block/block.svelte.js';
-import { Text } from '$lib/text/text.svelte.js';
+import type { Block } from '$lib/block/block.svelte.js';
+import type { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { ChangePayload } from '$lib/plugins.js';
 import type { Flow, FlowTarget } from '$lib/crdt/flow.js';
@@ -191,40 +189,39 @@ export const dispatchPlan = <O extends keyof BlockOperations>(
 		prepare
 	) ?? null;
 
+/** The wrappers of blocks `ids` once the command committed. */
+export function blocksOf(this: Block, ids: string[] | undefined): Block[] {
+	return (ids ?? []).flatMap((id) => this.edytor.idToBlock.get(id) ?? []);
+}
+
 export function addChildBlock(
 	this: Block,
 	{ block, index = this.children.length }: BlockOperations['addChildBlock']
-) {
+): string {
 	if (index < 0) {
 		index = 0;
 	} else if (index > this.children.length) {
 		index = this.children.length;
 	}
-	const newBlock = new Block({
-		parent: this,
-		edytor: this.edytor,
-		block: block || {
-			type: this.edytor.defaultChild(this)
-		}
-	});
-	this.insertChildren(index, [newBlock]);
+	const spec = { ...(block || { type: this.edytor.defaultChild(this) }), id: block?.id ?? id('b') };
+	this.insertChildren(index, [spec]);
 	this.normalizeChildren();
-	return newBlock;
+	return spec.id;
 }
 
 export function addChildBlocks(
 	this: Block,
 	{ blocks, index = this.children.length }: BlockOperations['addChildBlocks']
-) {
+): string[] {
 	if (index < 0) {
 		index = 0;
 	} else if (index > this.children.length) {
 		index = this.children.length;
 	}
-	const newBlocks = blocks.map((block) => new Block({ parent: this, edytor: this.edytor, block }));
-	this.insertChildren(index, newBlocks);
+	const specs = blocks.map((block) => ({ ...block, id: block.id ?? id('b') }));
+	this.insertChildren(index, specs);
 	this.normalizeChildren();
-	return newBlocks;
+	return specs.map((spec) => spec.id);
 }
 
 /** Insert `block` as a sibling of `this`, `after` it or before it. */
@@ -489,51 +486,6 @@ export function removeInlineBlock(
 	if (applyPlan(this, plan, [])) this.normalizeContent();
 }
 
-export const groupContent = (
-	content?: (JSONText | JSONInlineBlock)[]
-): (JSONText[] | JSONInlineBlock)[] => {
-	const isInlineJSONBlock = (
-		part?: JSONText | JSONInlineBlock | JSONText[]
-	): part is JSONInlineBlock => {
-		return part ? 'type' in part : false;
-	};
-	// this function group JSONBlock.content texts together in order to avoid having successive inline Y.Text as it would be ineficient.
-	if (!content) return [[{ text: '' }]];
-	const groupedContent = content.reduce(
-		(acc, part) => {
-			const isInlineBlock = 'type' in part;
-			if (isInlineBlock) {
-				if (isInlineJSONBlock(acc.at(-1))) {
-					// Make sure that two consecutive inline blocks are separated by a text block
-					acc.push([{ text: '' }]);
-				}
-				acc.push(part);
-			} else {
-				const lastPart = acc.at(-1);
-				if (acc.length && lastPart && Array.isArray(lastPart)) {
-					lastPart.push(part);
-				} else {
-					acc.push([part]);
-				}
-			}
-			return acc;
-		},
-		[] as (JSONText[] | JSONInlineBlock)[]
-	);
-
-	if (isInlineJSONBlock(groupedContent.at(0))) {
-		// Make sure that the first part is an inline block
-		groupedContent.unshift([{ text: '' }]);
-	}
-
-	if (isInlineJSONBlock(groupedContent.at(-1))) {
-		// Make sure that the last part is a text block
-		groupedContent.push([{ text: '' }]);
-	}
-
-	return groupedContent;
-};
-
 /**
  * Insert an inline atom at `index` of `text`. Answers the atom's id; the
  * batched operation resolves it to the text after the atom once committed
@@ -544,18 +496,11 @@ export function addInlineBlock(
 	{ index, block, text }: BlockOperations['addInlineBlock']
 ): string {
 	const atom = { ...block, id: block.id ?? id('i') };
-	const model = this.model;
-	if (model)
-		model.insertInline(this.partOffsetOf(text) + index, {
-			id: atom.id,
-			type: atom.type,
-			...(atom.data ? { data: cloneJson(atom.data) } : {})
-		});
-	else {
-		// A detached spec block: its content is a local buffer.
-		const tail = new Text({ parent: this, content: text._sliceFrom(index) });
-		this.insertParts(text.index + 1, [new InlineBlock({ parent: this, block: atom }), tail]);
-	}
+	this.model?.insertInline(this.partOffsetOf(text) + index, {
+		id: atom.id,
+		type: atom.type,
+		...(atom.data ? { data: cloneJson(atom.data) } : {})
+	});
 	this.normalizeContent();
 	return atom.id;
 }
@@ -569,7 +514,7 @@ export function textAfterAtom(
 	if (atom === undefined) return undefined;
 	const at = this.content.findIndex((part) => part.id === atom);
 	const after = at < 0 ? undefined : this.content[at + 1];
-	if (!(after instanceof Text)) return null;
+	if (!after || after instanceof InlineBlock) return null;
 	const marks = text.markOnNextInsert;
 	if (marks !== undefined) {
 		text.markOnNextInsert = undefined;
@@ -599,12 +544,8 @@ export function normalizeContent(this: Block): void {
 export function normalizeChildren(this: Block): void {
 	if (this.edytor.dispatcher.defer(this, normalizeChildren)) return;
 	if (this.type === 'root' && this.children.length === 0) {
-		const newBlock = new Block({
-			parent: this,
-			edytor: this.edytor,
-			block: { type: this.edytor.defaultChild(this), children: [] }
-		});
-		this.edytor.dispatcher.write(() => this.insertChildren(0, [newBlock]));
+		const block = { type: this.edytor.defaultChild(this) };
+		this.edytor.dispatcher.write(() => this.insertChildren(0, [block]));
 		return this.normalizeChildren();
 	}
 	const work = this.definition?.normalizeChildren?.({ block: this });
@@ -618,7 +559,17 @@ export function suggestText(this: Block, { value }: BlockOperations['suggestText
 	if (typeof value === 'string') {
 		this.suggestions = [[{ text: value }]];
 	} else if (value) {
-		this.suggestions = groupContent(value);
+		// Runs of text group into one ghost text; an atom stands alone.
+		this.suggestions = value.reduce(
+			(parts, part) => {
+				const last = parts.at(-1);
+				if ('type' in part) parts.push(part);
+				else if (Array.isArray(last)) last.push(part);
+				else parts.push([part]);
+				return parts;
+			},
+			[] as (JSONText[] | JSONInlineBlock)[]
+		);
 	} else {
 		this.suggestions = null;
 	}
@@ -629,20 +580,7 @@ export function acceptSuggestedText(this: Block) {
 	if (!suggestions) {
 		return;
 	}
-	const editableSuggestions = suggestions.map((part) => {
-		if ('type' in part) {
-			return new InlineBlock({
-				parent: this,
-				block: part
-			});
-		} else {
-			return new Text({
-				parent: this,
-				content: part
-			});
-		}
-	});
-	this.insertParts(this.content.length, editableSuggestions);
+	this.insertParts(this.content.length, suggestions);
 
 	this.suggestions = null;
 	this.normalizeContent();

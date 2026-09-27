@@ -27,6 +27,7 @@ import {
 import { Pin } from './surface/pin.svelte.js';
 import { Block } from './block/block.svelte.js';
 import { Text } from './text/text.svelte.js';
+import { id } from './utils.js';
 import { SvelteMap } from 'svelte/reactivity';
 import { Y } from '$lib/crdt/engine.js';
 import {
@@ -296,8 +297,6 @@ export class Edytor {
 	 * editor mounts, so all runtime readers see it set.
 	 */
 	undoManager!: YUndoManager;
-	/** Detached block wrappers awaiting adoption onto a fresh facade id. */
-	_pendingBlocks = new Map<string, Block>();
 	/**
 	 * Coalesced stale-placeholder repair — ONE pending-roots set per view.
 	 * Commits queue only the block roots their `DocChange` touched; the
@@ -997,21 +996,19 @@ export class Edytor {
 			?.content.find((part): part is InlineBlock => !(part instanceof Text) && part.id === atom);
 
 	clear = () => {
-		const newBlock = this.transact(() => {
+		const created = this.transact(() => {
 			const root = this.root!;
 			root.deleteChildren(0, root.children.length);
-			const block = new Block({
-				edytor: this,
-				parent: this.root,
-				block: {
-					type: this.defaultChild(root)
-				}
-			});
+			const block = { id: id('b'), type: this.defaultChild(root) };
 			root.insertChildren(0, [block]);
-			return block;
+			return block.id;
 		});
+		const newBlock = this.idToBlock.get(created);
 		this.refreshEditorDom();
-		void this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
+		void this.selection.setAtTextOffset(
+			newBlock?.firstText ?? this.root?.children[0]?.firstText,
+			0
+		);
 		void tick().then(() => {
 			this.expectInternalFocus();
 			this.node?.focus({ preventScroll: true });
@@ -1352,7 +1349,6 @@ export class Edytor {
 		this.nodeToInlineBlock.clear();
 		this.idToText.clear();
 		this.nodeToText.clear();
-		this._pendingBlocks.clear();
 		this.root = undefined;
 		this.node = undefined;
 		this.container = undefined;

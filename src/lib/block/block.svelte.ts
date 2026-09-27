@@ -1,6 +1,13 @@
 import { Text } from '../text/text.svelte.js';
 import { Edytor } from '../edytor.svelte.js';
-import { cloneJson, type JSONBlock, type JSONText, type JSONInlineBlock } from '$lib/utils/json.js';
+import {
+	cloneJson,
+	jsonBlockToSpec,
+	jsonContentToItems,
+	type JSONBlock,
+	type JSONText,
+	type JSONInlineBlock
+} from '$lib/utils/json.js';
 import {
 	batch,
 	removeInlineBlock,
@@ -32,10 +39,10 @@ import {
 	moveBlock,
 	moveBlocks,
 	normalizeContent,
-	groupContent,
 	addInlineBlock,
 	textAfterAtom,
 	blockOf,
+	blocksOf,
 	acceptSuggestedText,
 	suggestText,
 	deleteContentAtRange,
@@ -47,7 +54,7 @@ import { climb } from '$lib/selection/selection.utils.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
 import { createReadonlyText } from '$lib/components/readonlyElements.svelte.js';
 import { createReadonlyInlineBlock } from '$lib/components/readonlyElements.svelte.js';
-import type { BlockSpec, ContentItem, DocBlock, ProjectedBlock } from '$lib/crdt/index.js';
+import type { ContentItem, DocBlock, ProjectedBlock } from '$lib/crdt/index.js';
 import type { TextRunItem } from '../text/text.svelte.js';
 
 /**
@@ -87,13 +94,6 @@ export const deriveContentParts = (items: readonly ContentItem[]): DerivedConten
 const displayLenOfPart = (part: DerivedContentPart): number =>
 	part.kind === 'text' ? part.items.reduce((n, i) => n + i.text.length, 0) : 1;
 
-/**
- * `JSONBlock` → facade insert spec — the canonical converter now lives in
- * `utils/json.ts` (`jsonBlockToSpec`) so spec preparation never needs a
- * disposable `Block` tree; re-exported here for the historical import path.
- */
-export { jsonBlockToSpec } from '$lib/utils/json.js';
-
 export class Block {
 	readonly = false;
 	edytor: Edytor;
@@ -105,26 +105,18 @@ export class Block {
 	node?: HTMLElement;
 	definition = $state<BlockDefinition>({} as BlockDefinition);
 
-	/**
-	 * Facade block id — `null` for the root block, `undefined` while the
-	 * wrapper is a detached spec (`new Block({block})` before insertion).
-	 */
-	_blockId: string | null | undefined = undefined;
-	/** True once bound to a facade block (or the root). */
-	_bound = false;
+	/** Facade block id — `null` for the root block. */
+	_blockId: string | null;
 	/** True while the block is visible in the projected tree. */
-	_live = false;
-	/** Pending wrapper adoptions by content part index (insertParts). */
-	_pendingParts = new Map<number, Text | InlineBlock>();
+	_live = true;
 
 	/**
-	 * The typed model node for this block — `null` for the root block and
-	 * for detached spec wrappers (which carry no facade id). All document
-	 * reads/writes route through it: `block.model.insertText(...)`,
+	 * The typed model node for this block — `null` for the root block. All
+	 * document reads/writes route through it: `block.model.insertText(...)`,
 	 * `block.model.split(...)`, `block.model.children()`, …
 	 */
 	get model(): DocBlock | null {
-		return this._bound && this._blockId != null ? this.edytor.facade.block(this._blockId) : null;
+		return this._blockId != null ? this.edytor.facade.block(this._blockId) : null;
 	}
 
 	get selected() {
@@ -298,12 +290,10 @@ export class Block {
 
 	/**
 	 * This block's JSON — the document's one serializer (`facade.blockJSON`,
-	 * L14). The root reads the document's top level. A detached spec wrapper
-	 * (not yet inserted) has no document value beyond its own fields.
+	 * L14). The root reads the document's top level.
 	 */
 	get value(): JSONBlock {
 		const { facade } = this.edytor;
-		if (!this._bound) return { type: this.#type, id: this.id, data: this.data };
 		if (this._blockId != null) return facade.blockJSON(this._blockId);
 		const children = facade.toJSON().children;
 		return {
@@ -347,8 +337,8 @@ export class Block {
 		return this.rendersContent ? this.content.findLast((p) => p instanceof Text) : undefined;
 	}
 
-	addChildBlock = batch('addChildBlock', addChildBlock);
-	addChildBlocks = batch('addChildBlocks', addChildBlocks);
+	addChildBlock = batch('addChildBlock', addChildBlock, undefined, blockOf);
+	addChildBlocks = batch('addChildBlocks', addChildBlocks, undefined, blocksOf);
 	insertBlockAfter = batch('insertBlockAfter', insertBlockAfter, prepareInsertAfter, blockOf);
 	insertBlockBefore = batch('insertBlockBefore', insertBlockBefore, prepareInsertBefore, blockOf);
 	splitBlock = batch('splitBlock', splitBlock, prepareSplit, blockOf);
@@ -380,68 +370,21 @@ export class Block {
 		node.contentEditable = 'false';
 	};
 
+	/** A wrapper of document block `blockId` (`null`: the root); a reconcile fills it. */
 	constructor({
 		parent,
-		block,
 		blockId,
 		edytor
 	}: {
 		parent?: Block;
 		edytor: Edytor;
-	} & ({ block: JSONBlock; blockId?: undefined } | { blockId: string | null; block?: undefined })) {
+		blockId: string | null;
+	}) {
 		this.parent = parent;
 		this.edytor = edytor;
-
-		if (block !== undefined) {
-			if (block.type === 'root') {
-				// Bound root wrapper — children reconcile from the projected tree.
-				this._blockId = null;
-				this._bound = true;
-				this._live = true;
-				this.id = 'root';
-				this.#type = 'root';
-				this.data = block.data || {};
-				this.children = (block.children || []).map(
-					(child) => new Block({ parent: this, edytor, block: child })
-				);
-			} else {
-				// Detached spec mode — fields populate the pending spec used by
-				// `insertChildren`/`insertBlock`; no facade calls until bound.
-				this._bound = false;
-				this._live = false;
-				this.id = block.id ?? id('b');
-				this.#type = block.type;
-				this.data = block.data || {};
-				this.children = (block.children || []).map(
-					(child) => new Block({ parent: this, edytor, block: child })
-				);
-				const groupedContent = groupContent(block.content);
-				if (!groupedContent.length) {
-					groupedContent.push([{ text: '' }]);
-				}
-				this.content = groupedContent.map((part, index) => {
-					const isInlineBlock = 'type' in part;
-					if (isInlineBlock) {
-						const inlineBlock = new InlineBlock({ parent: this, block: part });
-						inlineBlock.index = index;
-						return inlineBlock;
-					} else {
-						const text = new Text({ parent: this, content: part });
-						text.index = index;
-						return text;
-					}
-				});
-			}
-		} else {
-			// Bound mode — a reconcile fills it from its projected node.
-			this._blockId = blockId;
-			this._bound = true;
-			this._live = true;
-			this.id = blockId ?? 'root';
-			if (blockId === null) {
-				this.#type = 'root';
-			}
-		}
+		this._blockId = blockId;
+		this.id = blockId ?? 'root';
+		if (blockId === null) this.#type = 'root';
 		this.definition = this.edytor.getBlockDefinition('block', this.#type);
 		this.edytor.idToBlock.set(this.id, this);
 	}
@@ -482,16 +425,12 @@ export class Block {
 		nodes: readonly (ProjectedBlock | string)[],
 		keep = (id: string) => this.edytor.facade.isVisibleBlock(id)
 	) => {
-		const { idToBlock, _pendingBlocks } = this.edytor;
+		const { idToBlock } = this.edytor;
 		const next = nodes.map((node) => {
 			const id = typeof node === 'string' ? node : node.id;
-			// A detached spec wrapper is adopted onto its new id.
 			const child =
-				idToBlock.get(id) ??
-				_pendingBlocks.get(id) ??
-				new Block({ parent: this, edytor: this.edytor, blockId: id });
-			_pendingBlocks.delete(id);
-			child._bind(id, this);
+				idToBlock.get(id) ?? new Block({ parent: this, edytor: this.edytor, blockId: id });
+			child._bind(this);
 			if (typeof node !== 'string') child._reconcile(node);
 			return child;
 		});
@@ -502,20 +441,15 @@ export class Block {
 
 	/**
 	 * Rebuild `content` from the block's items: an atom keeps its wrapper by
-	 * id (a pending carrier from `insertParts` first), a text segment the
-	 * pending carrier at its slot, else the wrapper of the same ordinal.
+	 * id, a text segment the wrapper of the same ordinal.
 	 */
 	reconcileContent = (items: readonly ContentItem[]) => {
 		const prev = this.content;
-		const pending = [...this._pendingParts];
-		this._pendingParts.clear();
 		const atoms = new Map<string, InlineBlock>();
 		const texts = new Map<number, Text>();
 		for (const part of prev)
 			if (part instanceof Text) texts.set(part._segOrd, part);
 			else atoms.set(part.id, part);
-		for (const [, part] of pending) if (part instanceof InlineBlock) atoms.set(part.id, part);
-		const slots = new Map(pending.filter(([, part]) => part instanceof Text)) as Map<number, Text>;
 		const used = new Set<Text | InlineBlock>();
 		const next = deriveContentParts(items).map((part, index): Text | InlineBlock => {
 			if (part.kind === 'inline') {
@@ -527,51 +461,17 @@ export class Block {
 				used.add(wrapper);
 				return wrapper;
 			}
-			const slot = slots.get(index);
 			const byOrd = texts.get(part.segOrd);
-			const wrapper =
-				(slot && !used.has(slot) ? slot : undefined) ??
-				(byOrd && !used.has(byOrd) ? byOrd : undefined) ??
-				new Text({ parent: this, content: '' });
+			const wrapper = (byOrd && !used.has(byOrd) ? byOrd : undefined) ?? new Text({ parent: this });
 			wrapper._bind(part.segOrd, part.items);
 			wrapper.parent = this;
 			wrapper.index = index;
 			used.add(wrapper);
 			return wrapper;
 		});
-		for (const old of [...prev, ...pending.map(([, part]) => part)])
-			if (!used.has(old)) old._kill();
+		for (const old of prev) if (!used.has(old)) old._kill();
 		this.content = next;
 	};
-
-	/** Detached spec → facade BlockSpec (used by `insertChildren`/`insertChild`). */
-	_toSpec = (): BlockSpec => ({
-		id: this.id,
-		type: this.#type,
-		...(Object.keys(this.data).length ? { data: cloneJson(this.data) } : {}),
-		...(this.content.length
-			? {
-					content: this.content.flatMap((part): ContentItem[] => {
-						if (part instanceof Text) {
-							return part._items.map((item) => ({
-								kind: 'text' as const,
-								text: item.text,
-								...(item.marks ? { marks: { ...item.marks } } : {})
-							}));
-						}
-						return [
-							{
-								kind: 'inline' as const,
-								id: part.id,
-								type: part.type,
-								...(part.data ? { data: cloneJson(part.data) } : {})
-							}
-						];
-					})
-				}
-			: {}),
-		...(this.children.length ? { children: this.children.map((c) => c._toSpec()) } : {})
-	});
 
 	/**
 	 * Mark this wrapper dead — no longer visible in the tree. Descendants
@@ -609,24 +509,9 @@ export class Block {
 		}
 	};
 
-	/** Bind a (possibly detached) wrapper to a live facade block id. */
-	_bind = (blockId: string | null, parent?: Block) => {
-		if (this._bound && this._blockId === blockId) {
-			this._live = true;
-			if (parent) this.parent = parent;
-			return;
-		}
-		const oldId = this.id;
-		this._blockId = blockId;
-		this._bound = true;
+	/** The wrapper shows a visible block under `parent`. */
+	_bind = (parent?: Block) => {
 		this._live = true;
-		this.id = blockId ?? 'root';
-		if (oldId !== this.id) {
-			if (this.edytor.idToBlock.get(oldId) === this) {
-				this.edytor.idToBlock.delete(oldId);
-			}
-			this.edytor.idToBlock.set(this.id, this);
-		}
 		if (parent) this.parent = parent;
 	};
 
@@ -638,7 +523,7 @@ export class Block {
 	 */
 	projectedParts = (): DerivedContentPart[] | null => {
 		const id = this._blockId;
-		if (!this._bound || id == null || !this.facade.isVisibleBlock(id)) return null;
+		if (id == null || !this.facade.isVisibleBlock(id)) return null;
 		return deriveContentParts(this.facade.contentItems(id));
 	};
 
@@ -700,143 +585,41 @@ export class Block {
 		return hit;
 	};
 
-	// ── typed content/children mutation surface ─────────────────────────
-	//
-	// These are the command primitives the operation layer (`block.utils`,
-	// event handlers, plugins) uses to move WRAPPER-level content into the
-	// document. They replace the old `yChildren`/`yContent` array adapters:
-	// the same callers pass live `Block`/`Text`/`InlineBlock` wrappers and
-	// the `_pendingBlocks`/`_pendingParts` adoption applies at the commit (the
-	// wrappers see the writes once its change report is applied, R3).
+	// ── JSON insertion (K5: specs are data; `new Block({block})` is gone) ──
 
 	/**
-	 * Insert (or relocate) child BLOCK wrappers at `index`.
-	 *
-	 * - Detached wrappers (`new Block({block})` specs) become an
-	 *   `insertBlock` spec under this block and are registered in
-	 *   `_pendingBlocks` so the next reconcile adopts them onto the fresh id.
-	 * - Bound wrappers move with identity preserved (`model.moveTo`).
-	 * - On an UNBOUND block (detached spec tree) this splices the local
-	 *   `children` mirror only.
+	 * Insert children at `index`: a JSON spec is created (its id kept, minted
+	 * when missing; the commit's report builds its wrapper); a block wrapper
+	 * moves there with its identity.
 	 */
-	insertChildren = (index: number, blocks: Block[]): void => {
-		if (!this._bound) {
-			blocks.forEach((w, k) => {
-				w.parent = this;
-				this.children.splice(index + k, 0, w);
-			});
-			return;
-		}
-		const model = this.model;
-		let i = index;
-		for (const child of blocks) {
-			if (child.model) {
-				child.model.moveTo({ parent: model, index: i });
-			} else {
-				// Registered before the write: a write outside a transaction commits at once.
-				const spec = child._toSpec();
-				this.edytor._pendingBlocks.set(spec.id!, child);
-				const created = model
-					? model.insertChild(i, spec)
-					: this.edytor.facade.insertBlock({ parent: null, index: i }, spec);
-				if (created.status !== 'applied') this.edytor._pendingBlocks.delete(spec.id!);
-			}
-			i++;
-		}
+	insertChildren = (index: number, blocks: (JSONBlock | Block)[]): void => {
+		const { facade } = this.edytor;
+		blocks.forEach((block, k) => {
+			if (block instanceof Block) block.model?.moveTo({ parent: this.model, index: index + k });
+			else facade.insertBlock({ parent: this._blockId, index: index + k }, jsonBlockToSpec(block));
+		});
 	};
 
-	/**
-	 * Delete `length` visible children starting at `index` (document delete,
-	 * not detach). On an unbound block this splices the local mirror only.
-	 */
+	/** Delete `length` visible children from `index` (a document delete). */
 	deleteChildren = (index: number, length = 1): void => {
-		if (!this._bound) {
-			this.children.splice(index, length);
-			return;
-		}
-		const ids = this.model ? this.model.childIds() : this.edytor.facade.childrenIds(null);
-		for (let k = index + length - 1; k >= index; k--) {
-			const target = ids[k];
-			if (target !== undefined) {
-				this.edytor.facade.block(target).delete();
-			}
-		}
+		const ids = this.edytor.facade.childrenIds(this._blockId);
+		for (const id of ids.slice(index, index + length).reverse())
+			this.edytor.facade.block(id).delete();
 	};
 
 	/**
-	 * Insert content PART wrappers (`Text`/`InlineBlock`) at part `index`.
-	 *
-	 * - A `Text` contributes its `_items` runs as `insertText` writes at the
-	 *   display offset of the part slot.
-	 * - An `InlineBlock` becomes one `insertInline` atom (its `_spec`/type/
-	 *   data preserved).
-	 * - Each wrapper registers in `_pendingParts` so the next reconcile
-	 *   adopts it onto the fresh segment/atom at that slot.
-	 * - On an unbound block this splices the local `content` mirror only.
-	 *   The root block has no content node — the call is a no-op.
+	 * Insert content before part `index` (a text segment or an inline atom):
+	 * each entry is a text's runs or an atom, as JSON.
 	 */
-	insertParts = (index: number, parts: (Text | InlineBlock)[]): void => {
-		if (!this._bound) {
-			parts.forEach((w, k) => {
-				w.parent = this;
-				this.content.splice(index + k, 0, w);
-			});
-			this.content.forEach((c, k) => (c.index = k));
-			return;
-		}
+	insertParts = (index: number, parts: (JSONText[] | JSONInlineBlock)[]): void => {
 		const model = this.model;
 		if (!model) return;
-		let partIndex = index;
-		let offset = this.atomOffsetOfPartIndex(partIndex);
-		for (const part of parts) {
-			// Registered before the write: a write outside a transaction commits at once.
-			this._pendingParts.set(partIndex, part);
-			if (part instanceof Text) {
-				for (const run of part._items) {
-					if (run.text.length) {
-						model.insertText(offset, run.text, run.marks);
-						offset += run.text.length;
-					}
-				}
-			} else {
-				const spec = part._spec ?? { type: part.type, data: part.data };
-				model.insertInline(offset, {
-					id: part.id,
-					type: spec.type,
-					...(spec.data ? { data: cloneJson(spec.data) } : {})
-				});
-				offset += 1;
-			}
-			partIndex++;
-		}
-	};
-
-	/**
-	 * Delete `length` content parts starting at part `index` — text segments
-	 * delete their atom span, inline atoms remove by id. On an unbound block
-	 * this splices the local `content` mirror only. The root block has no
-	 * content node — the call is a no-op.
-	 */
-	deleteParts = (index: number, length = 1): void => {
-		if (!this._bound) {
-			this.content.splice(index, length);
-			this.content.forEach((c, k) => (c.index = k));
-			return;
-		}
-		const model = this.model;
-		if (!model) return;
-		const parts = this.projectedParts() ?? [];
-		for (let k = index + length - 1; k >= index; k--) {
-			const part = parts[k];
-			if (!part) continue;
-			if (part.kind === 'text') {
-				const segStart = this.atomOffsetOfPartIndex(k);
-				const segLen = part.items.reduce((n, i) => n + i.text.length, 0);
-				if (segLen > 0) {
-					model.deleteText(segStart, segLen);
-				}
-			} else {
-				model.removeInline(part.item.id);
+		let at = this.atomOffsetOfPartIndex(index);
+		for (const item of jsonContentToItems(parts.flat())) {
+			if (item.kind === 'inline') model.insertInline(at++, item);
+			else if (item.text) {
+				model.insertText(at, item.text, item.marks);
+				at += item.text.length;
 			}
 		}
 	};

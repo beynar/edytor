@@ -35,7 +35,7 @@ const canonicalValue = (edytor: Edytor) => ({
 	children: edytor.facade.project().children.map(projectedToValue)
 });
 
-/** Every registered non-pending wrapper is live, reachable, and indexed. */
+/** Every registered wrapper is live, reachable, and indexed. */
 const expectRegistryInvariants = (edytor: Edytor) => {
 	let liveCount = 0;
 	const walk = (block: Block, parent: Block) => {
@@ -50,12 +50,10 @@ const expectRegistryInvariants = (edytor: Edytor) => {
 	};
 	edytor.root!.children.forEach((child) => walk(child, edytor.root!));
 	for (const [id, block] of edytor.idToBlock) {
-		if (id === 'root' || edytor._pendingBlocks.has(id)) {
-			continue;
-		}
+		if (id === 'root') continue;
 		expect(block._live, `${id} registered but dead`).toBe(true);
 	}
-	expect(edytor.idToBlock.size - edytor._pendingBlocks.size).toBe(liveCount + 1);
+	expect(edytor.idToBlock.size).toBe(liveCount + 1);
 };
 
 const expectConverged = (edytor: Edytor) => {
@@ -129,7 +127,7 @@ describe('incremental mirror reconcile', () => {
 		split?.mergeBlockBackward();
 		expectConverged(edytor);
 
-		// add a fresh child block (pending-wrapper adoption path)
+		// add a fresh child block (a JSON spec: its wrapper is built from the commit's report)
 		root.children[0].addChildBlock({
 			block: { type: 'paragraph', content: [{ text: 'fresh' }] },
 			index: -1

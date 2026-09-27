@@ -332,7 +332,7 @@ export const fixtures = defineFixtures([
 	}),
 	defineModelOperationFixture({
 		description:
-			'retires a pending text carrier merged into a live segment — its id resolves to nothing (R2: no aliasing)',
+			'a text part inserted beside a live segment joins it — no carrier, no second segment (R2, R4: parts are JSON)',
 		input: emptyFixture,
 		run: () => null,
 		assert: () => {
@@ -341,16 +341,13 @@ export const fixtures = defineFixtures([
 			});
 			const block = edytor.root!.children[0];
 
-			// Insert a text part adjacent to the existing segment — its atoms
-			// merge into the live segment and the pending carrier is retired.
-			const pending = new Text({ parent: block, content: [{ text: 'c' }] });
-			block.insertParts(1, [pending]);
+			// Insert a text part after the existing segment — its atoms join the
+			// live segment; no second segment resolves.
+			block.insertParts(1, [[{ text: 'c' }]]);
 
 			expect(block.content).toHaveLength(1);
 			expect((block.content[0] as Text).stringContent).toBe('abc');
-			expect(pending._live).toBe(false);
-			expect(edytor.idToText.get(pending.id)).toBeUndefined();
-			expect([...edytor.idToText.keys()].filter((key) => key.startsWith('t_'))).toHaveLength(0);
+			expect(edytor.idToText.get(`t:${block.id}:1`)).toBeUndefined();
 		}
 	}),
 	defineModelOperationFixture({

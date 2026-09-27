@@ -23,7 +23,7 @@
 	const cell = $derived(edytor.cells?.get(id));
 	/** The cell's segments and atoms — the frozen list while the IME pin holds this cell. */
 	const parts = $derived(cell ? edytor.pin.parts(cell) : []);
-	/** Each part with its text ordinal (the wrapper operations still use, R3/R4). */
+	/** Each part with its text ordinal (its text handle's position). */
 	const items = $derived.by(() => {
 		let ordinal = 0;
 		return parts.map((part) => ({ part, ordinal: part.kind === 'text' ? ordinal++ : -1 }));
@@ -65,6 +65,7 @@
 	-->{:else}<!--
 --><RenderInlineBlock
 			block={edytor.atomAt(id, item.part.id)}
+			part={item.part}
 		/><!--
 	-->{/if}<!--
 -->{/each}<!--

@@ -384,9 +384,7 @@ export const sanitizeSpec = (spec: BlockSpec): BlockSpec => {
 // Normalization is deliberately NOT done here: the document's projection
 // derives the content invariant (text-first/text-last, no adjacent
 // text/inline parts — `deriveContentParts` over `contentItemsOf`), so raw
-// JSON items are stored verbatim and read back normalized. The view's
-// `groupContent` exists only for DETACHED spec mirrors (`new Block({block})`
-// pre-admission `content` parts) — see `block.utils.ts`.
+// JSON items are stored verbatim and read back normalized.
 
 /** `(JSONText | JSONInlineBlock)[]` → facade `ContentItem[]` (ids minted where missing). */
 export const jsonContentToItems = (

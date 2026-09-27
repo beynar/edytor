@@ -7,7 +7,7 @@ import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import type { JSONBlock } from '$lib/utils/json.js';
+import type { JSONBlock, JSONInlineBlock, JSONText } from '$lib/utils/json.js';
 import { createTestEdytor, expectBlockInvariantSnapshot, removeIds } from '../../../test.utils.js';
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
@@ -25,8 +25,9 @@ const expectSecondPassStable = (block: Block) => {
 	expectBlockInvariantSnapshot(block.edytor);
 };
 
-const replaceContent = (block: Block, content: Array<Text | InlineBlock>) => {
-	block.deleteParts(0, block.content.length);
+/** Replace a block's content with JSON parts (R4: parts are specs, not wrappers). */
+const replaceContent = (block: Block, content: (JSONText[] | JSONInlineBlock)[]) => {
+	block.model!.deleteText(0, block.model!.length);
 	block.insertParts(0, content);
 };
 
@@ -94,10 +95,7 @@ export const fixtures = defineFixtures([
 				}
 			});
 			const block = edytor.root!.children[0];
-			const first = new InlineBlock({ parent: block, block: { type: 'mention' } });
-			const second = new InlineBlock({ parent: block, block: { type: 'mention' } });
-
-			replaceContent(block, [first, second]);
+			replaceContent(block, [{ type: 'mention' }, { type: 'mention' }]);
 			block.normalizeContent();
 
 			expect(block.content[0]).toBeInstanceOf(Text);
@@ -127,13 +125,7 @@ export const fixtures = defineFixtures([
 				}
 			});
 			const block = edytor.root!.children[0];
-			const first = new Text({ parent: block, content: [{ text: 'Hello' }] });
-			const second = new Text({
-				parent: block,
-				content: [{ text: ' world', marks: { bold: true } }]
-			});
-
-			replaceContent(block, [first, second]);
+			replaceContent(block, [[{ text: 'Hello' }], [{ text: ' world', marks: { bold: true } }]]);
 			block.normalizeContent();
 
 			expect(snapshotChildren(block)).toEqual([

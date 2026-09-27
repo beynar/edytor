@@ -2,8 +2,29 @@
 	import { DEV } from 'esm-env';
 	import type { Edytor } from '../edytor.svelte.js';
 	import type { Block as BlockWrapper } from '../block/block.svelte.js';
+	import type { BlockView } from '../plugins.js';
 
 	const reported = new WeakMap<Edytor, Set<string>>();
+
+	/** A snippet's view object (R4): declared values read from the cell and the selection. */
+	const viewOf = (edytor: Edytor, handle: BlockWrapper): BlockView => ({
+		id: handle.id,
+		get type() {
+			return edytor.cells?.get(handle.id)?.type ?? handle.type;
+		},
+		get data() {
+			return edytor.cells?.get(handle.id)?.data ?? {};
+		},
+		get selected() {
+			return handle.selected;
+		},
+		get focused() {
+			return handle.focused;
+		},
+		handle,
+		attach: handle.attach,
+		void: handle.void
+	});
 
 	/**
 	 * Dev check of the declared `rendersContent` (O22, F-S14): a kind whose
@@ -34,10 +55,10 @@
 	} = $props();
 
 	const edytor = getContext<Edytor>('edytor');
-	// The structure renders from the cell (R2); the snippet still receives the
-	// block's wrapper until R4 hands extensions view objects.
+	// The structure renders from the cell (R2); the snippet receives a view object (R4).
 	const cell = $derived(edytor.cells?.get(id));
-	const block = $derived(edytor.idToBlock.get(id));
+	const handle = $derived(edytor.idToBlock.get(id));
+	const block = $derived(handle && viewOf(edytor, handle));
 	const snippet = $derived(cell && edytor.getBlockDefinition('block', cell.type).snippet);
 	const snippetKey = $derived(
 		cell?.type === 'heading' ? `${cell.type}:${cell.data?.level ?? 'h1'}` : cell?.type
@@ -46,7 +67,7 @@
 	// The snippet key `content()` last rendered under — read after each render.
 	let contentRenderedFor: string | null | undefined = null;
 	$effect(() => {
-		if (DEV && block) checkRendersContent(block, contentRenderedFor === snippetKey);
+		if (DEV && handle) checkRendersContent(handle, contentRenderedFor === snippetKey);
 	});
 </script>
 

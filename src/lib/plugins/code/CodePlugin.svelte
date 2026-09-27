@@ -166,15 +166,9 @@
 								if (!block.parent) {
 									return;
 								}
-								const newBlock = new Block({
-									edytor,
-									block: {
-										type: 'codeLine',
-										content: [{ text: lines[i] }]
-									},
-									parent: block.parent
-								});
-								block.parent.insertChildren(block.index + i, [newBlock]);
+								block.parent.insertChildren(block.index + i, [
+									{ type: 'codeLine', content: [{ text: lines[i]! }] }
+								]);
 							}
 						}
 					}
@@ -196,7 +190,7 @@
 					onclick={async (e) => {
 						e.preventDefault();
 						e.stopPropagation();
-						await navigator.clipboard.writeText(getCodeText(block));
+						await navigator.clipboard.writeText(getCodeText(block.handle));
 					}}
 				>
 					Copy

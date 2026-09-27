@@ -26,81 +26,6 @@ export type TextRunItem = {
 	marks?: Record<string, unknown>;
 };
 
-/** Text items of one segment → splice `deleteLen` chars at `offset`, optionally inserting `insert`. */
-export const spliceTextItems = (
-	items: readonly TextRunItem[],
-	offset: number,
-	deleteLen: number,
-	insert?: TextRunItem
-): TextRunItem[] => {
-	const out: TextRunItem[] = [];
-	let pos = 0;
-	let inserted = false;
-	const pushInsert = () => {
-		if (!inserted && insert && insert.text.length > 0) {
-			out.push({ text: insert.text, ...(insert.marks ? { marks: { ...insert.marks } } : {}) });
-		}
-		inserted = true;
-	};
-	for (const item of items) {
-		const start = pos;
-		const end = pos + item.text.length;
-		pos = end;
-		if (end <= offset || start >= offset + deleteLen) {
-			// JSON-payload contract: omit the marks key entirely when absent —
-			// `marks: undefined` would be silently dropped by serialization.
-			const { marks, ...rest } = item;
-			out.push(marks ? { ...rest, marks: { ...marks } } : rest);
-			continue;
-		}
-		const head = item.text.slice(0, Math.max(0, offset - start));
-		const tail = item.text.slice(Math.min(item.text.length, offset + deleteLen - start));
-		if (head) out.push({ text: head, ...(item.marks ? { marks: { ...item.marks } } : {}) });
-		if (!inserted && start <= offset && offset <= end) pushInsert();
-		if (tail) out.push({ text: tail, ...(item.marks ? { marks: { ...item.marks } } : {}) });
-	}
-	pushInsert();
-	return out.filter((i) => i.text.length > 0);
-};
-
-/** Set/unset marks over a range of detached text items (`null` value removes the key). */
-export const formatTextItems = (
-	items: readonly TextRunItem[],
-	offset: number,
-	length: number,
-	attributes: Record<string, unknown>
-): TextRunItem[] => {
-	const out: TextRunItem[] = [];
-	let pos = 0;
-	for (const item of items) {
-		const start = pos;
-		const end = pos + item.text.length;
-		pos = end;
-		if (end <= offset || start >= offset + length) {
-			out.push(item);
-			continue;
-		}
-		const head = item.text.slice(0, Math.max(0, offset - start));
-		const mid = item.text.slice(
-			Math.max(0, offset - start),
-			Math.min(item.text.length, offset + length - start)
-		);
-		const tail = item.text.slice(Math.min(item.text.length, offset + length - start));
-		const base = item.marks ? { ...item.marks } : undefined;
-		if (head) out.push({ text: head, ...(base ? { marks: { ...base } } : {}) });
-		if (mid) {
-			const marks = { ...(base ?? {}) } as Record<string, unknown>;
-			for (const [k, v] of Object.entries(attributes)) {
-				if (v === null) delete marks[k];
-				else marks[k] = v;
-			}
-			out.push({ text: mid, ...(Object.keys(marks).length ? { marks } : {}) });
-		}
-		if (tail) out.push({ text: tail, ...(base ? { marks: { ...base } } : {}) });
-	}
-	return out.filter((i) => i.text.length > 0);
-};
-
 export class Text {
 	readonly = false;
 	parent: Block;
@@ -112,11 +37,7 @@ export class Text {
 	markOnNextInsert: undefined | Record<string, SerializableContent | null> = undefined;
 	id: string;
 
-	/**
-	 * Run items backing this segment — bound parts mirror the facade's items
-	 * (`{kind:'text'}` runs of the segment); detached wrappers keep a pending
-	 * spec buffer (like v13's unintegrated `Y.Text`).
-	 */
+	/** Run items backing this segment (the facade's `{kind:'text'}` runs of the segment). */
 	_items: TextRunItem[] = [];
 	/** True while this wrapper maps a live segment of its parent's content. */
 	_live = false;
@@ -195,23 +116,6 @@ export class Text {
 		}
 	};
 
-	/** Slice this segment's JSON value from `index` — non-destructive (used by addInlineBlock). */
-	_sliceFrom = (index: number): JSONText[] => {
-		const out: JSONText[] = [];
-		let pos = 0;
-		for (const item of this._items) {
-			const end = pos + item.text.length;
-			if (end > index) {
-				out.push({
-					text: item.text.slice(Math.max(0, index - pos)),
-					...(item.marks ? { marks: { ...item.marks } as JSONText['marks'] } : {})
-				});
-			}
-			pos = end;
-		}
-		return out;
-	};
-
 	private _setItems = (items: TextRunItem[]) => {
 		// This render rewrites the span's DOM — a live DOM caret inside it
 		// can be re-parked by the browser (Gecko clamps into a shortened
@@ -222,74 +126,34 @@ export class Text {
 		void tick().then(() => scheduleRemoveStalePlaceholders(this));
 	};
 
-	/** A detached text (a spec's content, or a part a reconcile binds next). */
-	constructor({ parent, content }: { parent: Block; content: string | JSONText[] }) {
+	/** A text wrapper a reconcile binds next. */
+	constructor({ parent }: { parent: Block }) {
 		this.parent = parent;
 		this.edytor = parent.edytor;
 		this.id = id('t');
-		this._items =
-			typeof content === 'string'
-				? [{ text: content }]
-				: content.map((part) => ({
-						text: part.text,
-						...(part.marks ? { marks: { ...part.marks } as Record<string, unknown> } : {})
-					}));
 		this.edytor.idToText.set(this.id, this);
 	}
 
-	// ── typed segment mutation surface ──────────────────────────────────
+	// ── segment writes ───────────────────────────────────────────────────
 	//
 	// `insertAt`/`deleteAt`/`formatAt` are the offset-based primitives the
-	// operation layer (`text.utils`), event handlers, and plugins call to
-	// mutate this segment. They replace the old `yText` adapter:
-	//
-	// - BOUND wrappers (`_live` under a bound parent) route through the
-	//   typed node — `parent.model.insertText(segStart + offset, …)`; the
-	//   wrapper's items follow at the commit (its change report, R3).
-	// - DETACHED wrappers splice the pending `_items` buffer — the spec a
-	//   later `insertParts` carries into the document (the old adapter's
-	//   unbound branch).
-	//
-	// Offsets are SEGMENT-LOCAL display atoms (UTF-16 units); `segStart`
-	// maps them into the block's display space before the typed node
-	// applies its ownership/flattening mapping into backing text.
-
-	/** True while this wrapper can write through its parent's model node. */
-	private get _writable(): boolean {
-		return this._live && this.parent._bound === true;
-	}
+	// operation layer (`text.utils`), event handlers and plugins call. A live
+	// wrapper writes through its block's model (`segStart + offset`); the
+	// wrapper's items follow at the commit (its change report, R3). Offsets
+	// are SEGMENT-LOCAL display atoms (UTF-16 units).
 
 	/** Insert `text` (optionally marked) at segment-local `offset`. */
-	insertAt = (offset: number, text: string, marks?: Record<string, unknown> | null): boolean => {
-		if (this._writable)
-			return accepted(
-				this.parent.model?.insertText(this.segStart + offset, text, marks ?? undefined)
-			);
-		this._items = spliceTextItems(this._items, offset, 0, {
-			text,
-			...(marks != null ? { marks: { ...marks } } : {})
-		});
-		return true;
-	};
+	insertAt = (offset: number, text: string, marks?: Record<string, unknown> | null): boolean =>
+		this._live &&
+		accepted(this.parent.model?.insertText(this.segStart + offset, text, marks ?? undefined));
 
 	/** Delete `length` atoms at segment-local `offset`. */
-	deleteAt = (offset: number, length: number): boolean => {
-		if (this._writable)
-			return accepted(this.parent.model?.deleteText(this.segStart + offset, length));
-		this._items = spliceTextItems(this._items, offset, length);
-		return true;
-	};
+	deleteAt = (offset: number, length: number): boolean =>
+		this._live && accepted(this.parent.model?.deleteText(this.segStart + offset, length));
 
-	/**
-	 * Multi-mark format over `[offset, offset+length)` — `null` values
-	 * remove the mark (same contract as the old `yText.format`).
-	 */
-	formatAt = (offset: number, length: number, attributes: Record<string, unknown>): boolean => {
-		if (this._writable)
-			return accepted(this.parent.model?.format(this.segStart + offset, length, attributes));
-		this._items = formatTextItems(this._items, offset, length, attributes);
-		return true;
-	};
+	/** Multi-mark format over `[offset, offset+length)` — `null` values remove the mark. */
+	formatAt = (offset: number, length: number, attributes: Record<string, unknown>): boolean =>
+		this._live && accepted(this.parent.model?.format(this.segStart + offset, length, attributes));
 
 	private batch = batch.bind(this);
 	getMarksAtRange = getMarksAtRange.bind(this);

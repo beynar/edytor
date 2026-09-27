@@ -229,30 +229,10 @@ export function removeMarksFromText(
 		end = this.edytor.selection.state.yEnd || this.length
 	}: TextOperations['removeMarksFromText']
 ) {
-	// Persisted mark changes delegate to the document: `clearMarks`
-	// discovers every mark name present in the range from the maintained
-	// runs view and unsets them via `formatRange` — the same collect+clear
-	// this used to re-derive locally. `segStart` maps the segment-local
-	// range into the block's display offsets. (Toggle/range READS above stay
-	// view-side: they decide WHAT to write, the document owns the write.)
-	const model = this.parent.model;
-	if (this._live && model) {
-		model.clearMarks(this.segStart + start, end - start);
-		return;
-	}
-	// Detached spec buffer (`new Text` pre-admission): no document node —
-	// collect the names locally and unset through the spec-buffer `formatAt`.
-	const marksAtRange = this.getMarksAtRange(start, end);
-	const attributes = marksAtRange.reduce(
-		(acc, { marks }) => {
-			Object.keys(marks || {}).forEach((key) => {
-				Object.assign(acc, { [key]: null });
-			});
-			return acc;
-		},
-		{} as Record<string, null>
-	);
-	this.formatAt(start, end - start, attributes);
+	// Persisted mark changes delegate to the document: `clearMarks` discovers
+	// every mark name present in the range and unsets them; `segStart` maps
+	// the segment-local range into the block's display offsets.
+	if (this._live) this.parent.model?.clearMarks(this.segStart + start, end - start);
 }
 
 export function markText(

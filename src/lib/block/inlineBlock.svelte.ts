@@ -2,7 +2,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { InlineBlockDefinition } from '$lib/plugins.js';
 import { cloneJson, type JSONInlineBlock } from '$lib/utils/json.js';
 import type { Block } from './block.svelte.js';
-import { id } from '$lib/utils.js';
 import { clearDomSelection } from '$lib/selection/domSelection.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { ContentItem } from '$lib/crdt/index.js';
@@ -25,9 +24,7 @@ export class InlineBlock {
 	private attachedNodes = new Set<HTMLElement>();
 
 	/** True while this wrapper maps a live inline atom of its parent's content. */
-	_live = false;
-	/** Pending spec for detached wrappers (like v13's unintegrated `Y.Map`). */
-	_spec: { type: string; data?: Record<string, unknown> } | null = null;
+	_live = true;
 
 	get selected() {
 		return this.edytor.selection.selectedInlineBlock.has(this);
@@ -37,23 +34,10 @@ export class InlineBlock {
 		return this.#type;
 	}
 
-	set type(value: string) {
-		this.#type = value;
-		if (this._spec) this._spec.type = value;
-	}
-
-	/**
-	 * Write the inline atom's `data` payload — routed through the parent's
-	 * typed node (`setInlineData`) when bound, else into the pending `_spec`
-	 * (the detached-wrapper contract the old `yBlock.set('data')` had).
-	 */
+	/** Write the inline atom's `data` payload through the parent's typed node. */
 	setData = (data: Record<string, unknown>): void => {
 		this.data = data;
-		if (this._live && this.parent._bound === true && this.parent._blockId != null) {
-			this.parent.model?.setInlineData(this.id, cloneJson(data));
-		} else if (this._spec) {
-			this._spec.data = data;
-		}
+		if (this._live) this.parent.model?.setInlineData(this.id, cloneJson(data));
 	};
 
 	/** True while this wrapper maps a live inline atom inside its parent's content. */
@@ -94,29 +78,13 @@ export class InlineBlock {
 		}
 	};
 
-	constructor({
-		parent,
-		block,
-		run
-	}: {
-		parent: Block;
-	} & (
-		| { run?: undefined; block: JSONInlineBlock }
-		| { run: ContentItem & { kind: 'inline' }; block?: undefined }
-	)) {
+	/** The wrapper of inline atom `run` in `parent`'s content. */
+	constructor({ parent, run }: { parent: Block; run: ContentItem & { kind: 'inline' } }) {
 		this.parent = parent;
 		this.edytor = parent.edytor;
-		if (run !== undefined) {
-			this.id = run.id;
-			this.#type = run.type;
-			this.data = run.data || {};
-			this._live = true;
-		} else {
-			this.id = block.id ?? id('i');
-			this.#type = block.type;
-			this.data = block.data || {};
-			this._spec = { type: this.#type, ...(block.data ? { data: block.data } : {}) };
-		}
+		this.id = run.id;
+		this.#type = run.type;
+		this.data = run.data || {};
 		this.definition = this.edytor.getBlockDefinition('inline', this.#type);
 	}
 

@@ -30,6 +30,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Y } from '../../../lib/crdt/engine.js';
+import { loadDocument } from '../../../lib/crdt/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { bindMigration } from '../../../lib/crdt/migration/migrate.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
@@ -42,8 +43,6 @@ const fixture = (name) => ({
 });
 const LEGACY = fixture('nested-marks');
 
-/** Rows red on `arch-v2/ref-t5` (measured, stable over 3 runs) — expected-fail until T5 lands. */
-const red = it.fails;
 const HEADING = 'b_Qs9z29q9tO';
 const PARA = 'b_NIq2lE62ps';
 const NESTED = 'b_z0UIzQd6UL';
@@ -146,7 +145,7 @@ const allIds = (json) => {
 describe('F-T3: migrate → edit → force → reload (6 trials, 2 tabs)', () => {
 	for (let trial = 0; trial < 6; trial++) {
 		const compacted = trial % 2 === 1;
-		red(`trial ${trial} (${compacted ? 'compacted' : 'uncompacted'} edit rows)`, async () => {
+		it(`trial ${trial} (${compacted ? 'compacted' : 'uncompacted'} edit rows)`, async () => {
 			const name = uniqueName(`ft3-${trial}`);
 			await seedLegacyDb(name, [LEGACY.update]);
 			expect((await tab().migrate(name)).status).toBe('active');
@@ -178,88 +177,102 @@ describe('F-T3: migrate → edit → force → reload (6 trials, 2 tabs)', () =>
 });
 
 describe('F-T15: force restores legacy ids in place (restore-definition)', () => {
-	red(
-		'an edit deletes / splits / merges / retypes legacy blocks; force restores every id in place',
-		async () => {
-			const name = uniqueName('ft15-one');
-			await seedLegacyDb(name, [LEGACY.update]);
-			await tab().migrate(name);
+	it('an edit deletes / splits / merges / retypes legacy blocks; force restores every id in place', async () => {
+		const name = uniqueName('ft15-one');
+		await seedLegacyDb(name, [LEGACY.update]);
+		await tab().migrate(name);
 
-			const a = await openTab(name);
-			const identity = Object.fromEntries(LEGACY_IDS.map((id) => [id, a.ed.crdtId(id)]));
-			expect(Object.values(identity).every((v) => typeof v === 'string')).toBe(true);
-			expect(a.ed.deleteBlock(TAIL).status).toBe('applied');
-			expect(a.ed.splitBlock(HEADING, 7, 'post-split').status).toBe('applied');
-			a.ed.insertText('post-split', 0, 'X');
-			expect(a.ed.mergeBlocks(QUOTE, NESTED).status).toBe('applied');
-			a.ed.setBlockType(PARA, 'heading');
-			a.ed.insertBlock({ parent: null, index: 0 }, { id: 'post-new', type: 'paragraph' });
-			await settle();
-			await a.provider.destroy();
+		const a = await openTab(name);
+		const identity = Object.fromEntries(LEGACY_IDS.map((id) => [id, a.ed.crdtId(id)]));
+		expect(Object.values(identity).every((v) => typeof v === 'string')).toBe(true);
+		expect(a.ed.deleteBlock(TAIL).status).toBe('applied');
+		expect(a.ed.splitBlock(HEADING, 7, 'post-split').status).toBe('applied');
+		a.ed.insertText('post-split', 0, 'X');
+		expect(a.ed.mergeBlocks(QUOTE, NESTED).status).toBe('applied');
+		a.ed.setBlockType(PARA, 'heading');
+		a.ed.insertBlock({ parent: null, index: 0 }, { id: 'post-new', type: 'paragraph' });
+		await settle();
+		await a.provider.destroy();
 
-			const forced = await tab().migrate(name, { force: true });
-			expect(forced.status).toBe('active');
-			// Verify compares ids: the result carries the legacy ids verbatim.
-			expect(allIds(forced.json)).toEqual(allIds(LEGACY.expected));
+		const forced = await tab().migrate(name, { force: true });
+		expect(forced.status).toBe('active');
+		// Verify compares ids: the result carries the legacy ids verbatim.
+		expect(allIds(forced.json)).toEqual(allIds(LEGACY.expected));
 
-			const r = await openTab(name);
-			expect(r.ed.toJSON()).toEqual(LEGACY.expected);
-			expect(r.doc.store.pendingStructs).toBeNull();
-			// In place: every legacy id is the SAME registry entry it was before.
-			for (const id of LEGACY_IDS) expect(r.ed.crdtId(id)).toBe(identity[id]);
-			await r.provider.destroy();
-		}
-	);
+		const r = await openTab(name);
+		expect(r.ed.toJSON()).toEqual(LEGACY.expected);
+		expect(r.doc.store.pendingStructs).toBeNull();
+		// In place: every legacy id is the SAME registry entry it was before.
+		for (const id of LEGACY_IDS) expect(r.ed.crdtId(id)).toBe(identity[id]);
+		await r.provider.destroy();
+	});
 
 	for (let assignment = 0; assignment < 3; assignment++) {
-		red(
-			`two devices force independently, then sync: no duplicate (assignment ${assignment})`,
-			async () => {
-				const legacy = uniqueName('ft15-legacy');
-				const devA = uniqueName('ft15-devA');
-				const devB = uniqueName('ft15-devB');
-				await seedLegacyDb(legacy, [LEGACY.update]);
-				await tab().migrate(devA, { sourceName: legacy });
+		it(`two devices force independently, then sync: no duplicate (assignment ${assignment})`, async () => {
+			const legacy = uniqueName('ft15-legacy');
+			const devA = uniqueName('ft15-devA');
+			const devB = uniqueName('ft15-devB');
+			await seedLegacyDb(legacy, [LEGACY.update]);
+			await tab().migrate(devA, { sourceName: legacy });
 
-				// Device A edits; device B has synced everything A has.
-				const a = await openTab(devA);
-				a.ed.deleteBlock(TAIL);
-				a.ed.splitBlock(HEADING, 3, `split-${assignment}`);
-				a.ed.insertText(QUOTE, 0, 'offline ');
-				await settle();
-				await providers.storeState(a.provider);
-				await a.provider.destroy();
-				await copyGeneration(devA, devB);
+			// Device A edits; device B has synced everything A has.
+			const a = await openTab(devA);
+			a.ed.deleteBlock(TAIL);
+			a.ed.splitBlock(HEADING, 3, `split-${assignment}`);
+			a.ed.insertText(QUOTE, 0, 'offline ');
+			await settle();
+			await providers.storeState(a.provider);
+			await a.provider.destroy();
+			await copyGeneration(devA, devB);
 
-				// Both force independently (order varies with the assignment).
-				const order = assignment === 1 ? [devB, devA] : [devA, devB];
-				if (assignment === 2) {
-					await Promise.all(
-						order.map((n) => tab().migrate(n, { sourceName: legacy, force: true }))
-					);
-				} else {
-					for (const n of order) await tab().migrate(n, { sourceName: legacy, force: true });
-				}
-
-				// Then sync: each device receives the other's state (duplicated delivery too).
-				const ra = await openTab(devA);
-				const rb = await openTab(devB);
-				const ua = Y.encodeStateAsUpdate(ra.doc);
-				const ub = Y.encodeStateAsUpdate(rb.doc);
-				Y.applyUpdate(ra.doc, ub);
-				Y.applyUpdate(rb.doc, ua);
-				Y.applyUpdate(rb.doc, ua);
-				for (const r of [ra, rb]) {
-					const json = r.ed.toJSON();
-					expect(json).toEqual(LEGACY.expected);
-					expect(new Set(allIds(json)).size).toBe(allIds(json).length);
-					expect(r.doc.store.pendingStructs).toBeNull();
-				}
-				await ra.provider.destroy();
-				await rb.provider.destroy();
+			// Both force independently (order varies with the assignment).
+			const order = assignment === 1 ? [devB, devA] : [devA, devB];
+			if (assignment === 2) {
+				await Promise.all(order.map((n) => tab().migrate(n, { sourceName: legacy, force: true })));
+			} else {
+				for (const n of order) await tab().migrate(n, { sourceName: legacy, force: true });
 			}
-		);
+
+			// Then sync: each device receives the other's state (duplicated delivery too).
+			const ra = await openTab(devA);
+			const rb = await openTab(devB);
+			const ua = Y.encodeStateAsUpdate(ra.doc);
+			const ub = Y.encodeStateAsUpdate(rb.doc);
+			Y.applyUpdate(ra.doc, ub);
+			Y.applyUpdate(rb.doc, ua);
+			Y.applyUpdate(rb.doc, ua);
+			for (const r of [ra, rb]) {
+				const json = r.ed.toJSON();
+				expect(json).toEqual(LEGACY.expected);
+				expect(new Set(allIds(json)).size).toBe(allIds(json).length);
+				expect(r.doc.store.pendingStructs).toBeNull();
+			}
+			await ra.provider.destroy();
+			await rb.provider.destroy();
+		});
 	}
+});
+
+describe('F-T15 bridge: a live document receives the forced restore', () => {
+	it('an open, edited document that applies the forced state renders the legacy materialization', async () => {
+		const name = uniqueName('bridge');
+		await seedLegacyDb(name, [LEGACY.update]);
+		const first = await tab().migrate(name);
+		const live = loadDocument(first.update);
+		live.facade.deleteBlock(TAIL);
+		live.facade.splitBlock(HEADING, 4, 'live-split');
+		live.facade.insertText(QUOTE, 0, 'live ');
+		// The edits reach the generation as a provider would store them.
+		const db = await openGeneration(name);
+		const [updates] = idb.transact(db, ['updates']);
+		await idb.addAutoKey(updates, Y.encodeStateAsUpdate(live.doc).slice().buffer);
+		db.close();
+
+		const forced = await tab().migrate(name, { force: true });
+		Y.applyUpdate(live.doc, forced.update);
+		expect(live.facade.toJSON()).toEqual(LEGACY.expected);
+		live.destroy();
+	});
 });
 
 /** Hold a migration inside its attempt until `release()` — a tab mid-import. */
@@ -300,7 +313,7 @@ describe('F-T16: status() and wait:false while another tab holds the attempt', (
 });
 
 describe('attempt vs progress (O79): no lease, no owner, atomic progress', () => {
-	red('the durable record never carries a lease or an owner, and is never "pending"', async () => {
+	it('the durable record never carries a lease or an owner, and is never "pending"', async () => {
 		const name = uniqueName('no-lease');
 		await seedLegacyDb(name, [LEGACY.update]);
 		const held = heldMigration(name);
@@ -316,59 +329,52 @@ describe('attempt vs progress (O79): no lease, no owner, atomic progress', () =>
 		expect(after).not.toHaveProperty('leaseUntil');
 	});
 
-	red(
-		'a crashed attempt never blocks the next one (the exclusivity ends with the attempt)',
-		async () => {
-			const name = uniqueName('crash');
-			await seedLegacyDb(name, [LEGACY.update]);
-			await expect(
-				tab().migrate(name, {
-					onPhase: (p) => {
-						if (p === 'verify') throw new Error('simulated crash');
-					}
-				})
-			).rejects.toThrow('simulated crash');
-			expect((await tab().status(name)).status).not.toBe('pending');
-			expect((await generationRows(name)).length).toBe(0);
+	it('a crashed attempt never blocks the next one (the exclusivity ends with the attempt)', async () => {
+		const name = uniqueName('crash');
+		await seedLegacyDb(name, [LEGACY.update]);
+		await expect(
+			tab().migrate(name, {
+				onPhase: (p) => {
+					if (p === 'verify') throw new Error('simulated crash');
+				}
+			})
+		).rejects.toThrow('simulated crash');
+		expect((await tab().status(name)).status).not.toBe('pending');
+		expect((await generationRows(name)).length).toBe(0);
 
-			// No lease to wait out: the next attempt runs at once.
-			const next = await Promise.race([
-				tab().migrate(name),
-				settle(1500).then(() => ({ status: 'timed out' }))
-			]);
-			expect(next.status).toBe('active');
-			expect((await generationRows(name)).length).toBe(1);
+		// No lease to wait out: the next attempt runs at once.
+		const next = await Promise.race([
+			tab().migrate(name),
+			settle(1500).then(() => ({ status: 'timed out' }))
+		]);
+		expect(next.status).toBe('active');
+		expect((await generationRows(name)).length).toBe(1);
+	});
+
+	it('the import row and the active record commit together (a failed record write leaves no row)', async () => {
+		const name = uniqueName('atomic');
+		await seedLegacyDb(name, [LEGACY.update]);
+		const put = IDBObjectStore.prototype.put;
+		IDBObjectStore.prototype.put = function (value, key) {
+			if (key === 'migration' && value?.status === 'active') throw new Error('record write failed');
+			return put.call(this, value, key);
+		};
+		try {
+			await tab()
+				.migrate(name)
+				.catch(() => undefined);
+		} finally {
+			IDBObjectStore.prototype.put = put;
 		}
-	);
+		await settle();
+		expect((await tab().status(name)).status).not.toBe('active');
+		expect((await generationRows(name)).length).toBe(0);
 
-	red(
-		'the import row and the active record commit together (a failed record write leaves no row)',
-		async () => {
-			const name = uniqueName('atomic');
-			await seedLegacyDb(name, [LEGACY.update]);
-			const put = IDBObjectStore.prototype.put;
-			IDBObjectStore.prototype.put = function (value, key) {
-				if (key === 'migration' && value?.status === 'active')
-					throw new Error('record write failed');
-				return put.call(this, value, key);
-			};
-			try {
-				await tab()
-					.migrate(name)
-					.catch(() => undefined);
-			} finally {
-				IDBObjectStore.prototype.put = put;
-			}
-			await settle();
-			expect((await tab().status(name)).status).not.toBe('active');
-			expect((await generationRows(name)).length).toBe(0);
+		expect((await tab().migrate(name)).status).toBe('active');
+		expect((await generationRows(name)).length).toBe(1);
+	});
 
-			expect((await tab().migrate(name)).status).toBe('active');
-			expect((await generationRows(name)).length).toBe(1);
-		}
-	);
-
-	red('force appends: every row a provider stored before it survives', async () => {
+	it('force appends: every row a provider stored before it survives', async () => {
 		const name = uniqueName('append');
 		await seedLegacyDb(name, [LEGACY.update]);
 		await tab().migrate(name);

@@ -12,7 +12,9 @@
  *   but `verify` compares produced-vs-expected JSON.
  * - `migrate()` on a name whose legacy DB never existed creates an empty
  *   legacy DB — does that poison a later v13 provider open?
- * - A live-owner claim whose lease expires mid-flight (reclaim race).
+ * - A second caller while the first attempt is still alive (T5: the
+ *   attempt is a lock, so the second queues — there is no lease to expire
+ *   and no reclaim race).
  */
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import 'fake-indexeddb/auto';
@@ -251,30 +253,27 @@ describe('legacy-DB poisoning by the migrator', () => {
 	});
 });
 
-describe('lease-expiry reclaim while the first owner is still alive', () => {
-	test('a second caller reclaims a live claim and both finish active with one row', async () => {
-		const name = uniqueName('mig-lease');
+describe('a second caller while the first attempt is still alive', () => {
+	test('the second queues behind a slow first attempt; both finish active with one row', async () => {
+		const name = uniqueName('mig-slow');
 		const doc13 = v13Doc([v13Block(undefined, { id: 'b1', text: 'owned' })]);
 		await seedLegacyDb(name, [Y13.encodeStateAsUpdate(doc13)]);
 
-		// Owner A claims with a lease that expires mid-flight.
+		// Owner A is slow inside its attempt.
 		const a = migration.migrate(name, {
-			owner: 'owner-A',
-			leaseMs: 5,
 			onPhase: async (p) => {
-				if (p === 'persist') await nextTick(60); // slow persist — lease expires
+				if (p === 'persist') await nextTick(60);
 			}
 		});
 		await nextTick(20);
-		// Owner B sees the expired lease, reclaims, runs the whole flow.
-		const b = migration.migrate(name, { owner: 'owner-B', waitMs: 3000, pollMs: 20 });
+		const b = migration.migrate(name);
 
 		const [ra, rb] = await Promise.all([a, b]);
-		// Whatever the interleaving, exactly one snapshot row must survive.
+		// Whatever the interleaving, exactly one import row must survive.
 		const rows = await generationRows(name);
-		console.log(`[gate2] lease-reclaim results: A=${ra.status} B=${rb.status} rows=${rows.length}`);
 		expect(rows.length).toBe(1);
-		expect([ra.status, rb.status]).toContain('active');
+		expect(ra).toMatchObject({ status: 'active' });
+		expect(rb).toMatchObject({ status: 'active', alreadyActive: true });
 	});
 });
 

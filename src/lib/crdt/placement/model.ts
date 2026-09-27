@@ -740,6 +740,37 @@ export const bindModel = (
 	): string => ranksAt(siblings, index, 1, clientId, rand)[0]!;
 
 	/**
+	 * Give `node` a fresh backing text holding `sp.content` and a fresh slice
+	 * list with one self record over the whole text (`g`: its generation —
+	 * 0 for a new block). Pre-integration writes materialize when the node
+	 * integrates.
+	 */
+	const writeContent = (node: EngineNode, sp: BlockSpec, g = 0): void => {
+		const content = newNode(CONTENT_NODE);
+		node.setAttr(CONTENT, content);
+		let clen = 0;
+		for (const item of sp.content ?? []) {
+			if (item.kind === 'text') {
+				content.insert(clen, item.text, item.marks);
+				clen += item.text.length;
+			} else {
+				content.insert(clen, [buildInline(item)]);
+				clen += 1;
+			}
+		}
+		const slices = newNode(SLICES_NODE);
+		node.setAttr(SLICES, slices);
+		slices.insert(0, [
+			{
+				t: sp.id,
+				s: { i: null, a: -1 },
+				e: { i: null, a: 0 },
+				...(g > 0 && { g })
+			} satisfies SliceRecord
+		]);
+	};
+
+	/**
 	 * Materialize one spec into the registry: the block node with its
 	 * `content`/`slices`/`at` maps, the default whole-text slice record and
 	 * the atomic first placement candidate `{p, r}` stamped `1.clientID`.
@@ -759,27 +790,9 @@ export const bindModel = (
 		node.setAttr(ID, sp.id);
 		node.setAttr(TYPE, sp.type);
 		if (sp.data !== undefined) node.setAttr(DATA, sp.data);
-		const content = newNode(CONTENT_NODE);
-		node.setAttr(CONTENT, content);
-		const slices = newNode(SLICES_NODE);
-		node.setAttr(SLICES, slices);
+		writeContent(node, sp);
 		const at = newNode(AT_NODE);
 		node.setAttr(AT, at);
-		// Pre-integration writes materialize when the subtree integrates.
-		let clen = 0;
-		for (const item of sp.content ?? []) {
-			if (item.kind === 'text') {
-				content.insert(clen, item.text, item.marks);
-				clen += item.text.length;
-			} else {
-				content.insert(clen, [buildInline(item)]);
-				clen += 1;
-			}
-		}
-		// The block owns its whole backing text by default.
-		slices.insert(0, [
-			{ t: sp.id, s: { i: null, a: -1 }, e: { i: null, a: 0 } } satisfies SliceRecord
-		]);
 		at.setAttr(`1.${doc.clientID}`, { p: parent, r: rank });
 		registryOf(doc).setAttr(sp.id, node);
 		// Children get sequential ranks among themselves.
@@ -871,6 +884,54 @@ export const bindModel = (
 			return true;
 		});
 	};
+
+	/**
+	 * Restore definition (O24, D-22 — migration only; a first import
+	 * restores into an empty doc): make `specs` the whole visible document
+	 * under their own ids, in ONE transaction. An
+	 * existing id keeps its registry entry: every delete mark is cleared and
+	 * its type, data, placement and content are rewritten in place (a fresh
+	 * backing text whose self record outranks every claim ever written on that
+	 * text, so records of split-off or merged-in blocks can win none of it);
+	 * an absent id is created. Every other block gets this writer's delete
+	 * mark. Ranks are derived from the tree alone and the rewrites are
+	 * last-writer-wins attrs, so two replicas restoring the same specs
+	 * converge on one copy.
+	 */
+	const restoreBlocks = (doc: EngineDoc, specs: BlockSpec[]): void =>
+		doc.transact(() => {
+			const { maxG } = view(doc).own;
+			const keep = new Set<BlockId>();
+			const restore = (list: BlockSpec[], parent: BlockId | null): void => {
+				let rank: string | undefined;
+				for (const sp of list) {
+					keep.add(sp.id);
+					let node = blockNodeOf(doc, sp.id);
+					if (node === null) {
+						node = newNode(BLOCK_NODE);
+						node.setAttr(ID, sp.id);
+						node.setAttr(AT, newNode(AT_NODE));
+						registryOf(doc).setAttr(sp.id, node);
+					}
+					for (const key of [...node.attrKeys()]) {
+						if (key.startsWith(DEL_PREFIX)) node.deleteAttr(key);
+					}
+					setIfChanged(node, TYPE, sp.type);
+					if (sp.data === undefined) node.deleteAttr(DATA);
+					else setIfChanged(node, DATA, sp.data);
+					writeContent(node, sp, (maxG.get(sp.id) ?? 0) + 1);
+					rank = rankBetween(rank, undefined, 0, () => 0);
+					writePlacement(doc, node, parent, rank);
+					restore(sp.children ?? [], sp.id);
+				}
+			};
+			restore(specs, null);
+			registryOf(doc).forEachAttr((node: unknown, id: string) => {
+				if (!keep.has(id) && isNodeLike(node) && !hasDeleteMark(node)) {
+					node.setAttr(DEL_PREFIX + doc.clientID, true);
+				}
+			});
+		});
 
 	/**
 	 * Grouped move: relocate `ids` (in given source order) to consecutive
@@ -1222,6 +1283,7 @@ export const bindModel = (
 		insertBlock,
 		insertBlocks,
 		deleteBlock,
+		restoreBlocks,
 		moveBlocks,
 		splitBlock,
 		mergeBlocks,

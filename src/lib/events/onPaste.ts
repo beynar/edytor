@@ -6,6 +6,7 @@ import { Block } from '$lib/block/block.svelte.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
 import { observeInternalDragSources } from './onDrop.js';
+import { runOccurrence } from './onBeforeInput.js';
 import { firstUriListEntry } from './dataTransferPayload.js';
 import { isNestedForeignEditableTarget } from './nativeInteractiveControl.js';
 
@@ -38,46 +39,6 @@ export const observeShiftPasteModifier = (rootNode: Node | null | undefined) => 
 if (typeof document !== 'undefined') {
 	observeShiftPasteModifier(document);
 }
-
-const createSyntheticPasteInput = (e: ClipboardEvent): InputEvent => {
-	const text = e.clipboardData?.getData('text/plain') ?? '';
-	const html = e.clipboardData?.getData('text/html') ?? '';
-	const uriList = e.clipboardData?.getData('text/uri-list') ?? '';
-	const event = new Event('beforeinput', {
-		bubbles: true,
-		cancelable: true
-	}) as InputEvent;
-
-	Object.defineProperties(event, {
-		inputType: {
-			value: 'insertFromPaste',
-			configurable: true
-		},
-		data: {
-			value: text,
-			configurable: true
-		},
-		dataTransfer: {
-			value: {
-				getData: (type: string) => {
-					if (type === 'text/html') {
-						return html;
-					}
-					if (type === 'text/plain') {
-						return text;
-					}
-					if (type === 'text/uri-list') {
-						return uriList;
-					}
-					return '';
-				}
-			} satisfies Pick<DataTransfer, 'getData'>,
-			configurable: true
-		}
-	});
-
-	return event;
-};
 
 const isInsideSelectedBlock = (block: Block, selectedBlocks: Set<Block>) => {
 	let current: Block | undefined = block;
@@ -178,5 +139,10 @@ export async function onPaste(this: Edytor, e: ClipboardEvent) {
 	}
 
 	e.preventDefault();
-	return this.onBeforeInput(createSyntheticPasteInput(e));
+	return runOccurrence(this, {
+		inputType: 'insertFromPaste',
+		data: e.clipboardData?.getData('text/plain') ?? '',
+		dataTransfer: e.clipboardData,
+		cancelable: true
+	});
 }

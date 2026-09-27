@@ -28,7 +28,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runBeforeInputCommand } from '$lib/events/beforeInputCommands.js';
-import { createBeforeInputSnapshot } from '$lib/events/beforeInputSnapshot.js';
+import { attemptOf } from '$lib/session/attempt.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
@@ -114,22 +114,16 @@ const textOf = (edytor: Edytor, index: number) => edytor.root!.children[index]!.
 const drop = (edytor: Edytor, data: Record<string, string>) =>
 	runBeforeInputCommand(
 		edytor,
-		createBeforeInputSnapshot(
-			edytor,
-			{
-				inputType: 'insertFromDrop',
-				data: null,
-				dataTransfer: {
-					types: Object.keys(data),
-					files: [],
-					getData: (type: string) => data[type] ?? ''
-				},
-				cancelable: true,
-				getTargetRanges: () => [],
-				preventDefault() {}
-			} as unknown as InputEvent,
-			null
-		)
+		attemptOf(edytor, {
+			inputType: 'insertFromDrop',
+			data: null,
+			dataTransfer: {
+				types: Object.keys(data),
+				files: [],
+				getData: (type: string) => data[type] ?? ''
+			} as unknown as DataTransfer,
+			cancelable: true
+		})
 	);
 
 const abc = () => (

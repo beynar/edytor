@@ -1,7 +1,9 @@
+import type { Edytor } from '$lib/edytor.svelte.js';
 import {
 	isNativeInteractiveControl,
 	isNestedForeignEditableTarget
 } from './nativeInteractiveControl.js';
+import { runOccurrence } from './onBeforeInput.js';
 
 /**
  * Payloads the editor can consume on drop. Preventing `dragover` is what
@@ -111,31 +113,24 @@ const createCollapsedStaticRange = (container: Node, offset: number): StaticRang
 };
 
 // Preventing the drop suppresses the browser's own `insertFromDrop`
-// beforeinput, so the accepted payload is re-dispatched as a synthetic
-// beforeinput that the regular input pipeline consumes — same routing as
-// `insertFromPaste`, with the resolved drop point reported as the target
-// range.
-const dispatchInsertFromDrop = (root: Element, event: DragEvent) => {
+// beforeinput, so the accepted payload is the occurrence itself — the same
+// routing as `insertFromPaste`, with the resolved drop point as its declared
+// target range.
+const insertFromDrop = (edytor: Edytor, root: Element, event: DragEvent) => {
 	const caret = caretRangeFromPoint(
 		root.ownerDocument as CaretPointDocument,
 		event.clientX,
 		event.clientY
 	);
-	const targetRanges =
-		caret && root.contains(caret.container)
-			? [createCollapsedStaticRange(caret.container, caret.offset)]
-			: [];
-
-	const beforeInput = new Event('beforeinput', {
-		bubbles: true,
+	return runOccurrence(edytor, {
+		inputType: 'insertFromDrop',
+		dataTransfer: event.dataTransfer,
+		declared:
+			caret && root.contains(caret.container)
+				? createCollapsedStaticRange(caret.container, caret.offset)
+				: null,
 		cancelable: true
-	}) as InputEvent;
-	Object.defineProperties(beforeInput, {
-		inputType: { value: 'insertFromDrop', configurable: true },
-		dataTransfer: { value: event.dataTransfer, configurable: true },
-		getTargetRanges: { value: () => targetRanges, configurable: true }
 	});
-	root.dispatchEvent(beforeInput);
 };
 
 /**
@@ -149,7 +144,7 @@ const dispatchInsertFromDrop = (root: Element, event: DragEvent) => {
  *   model. Accepted foreign payloads are funneled into the beforeinput
  *   pipeline as `insertFromDrop`; everything else is swallowed.
  */
-export const preventUnsupportedDrop = (event: DragEvent) => {
+export const preventUnsupportedDrop = (event: DragEvent, edytor?: Edytor) => {
 	const root = event.currentTarget;
 	if (!(root instanceof Element)) {
 		event.preventDefault();
@@ -184,5 +179,6 @@ export const preventUnsupportedDrop = (event: DragEvent) => {
 		// model write.
 		return;
 	}
-	dispatchInsertFromDrop(root, event);
+	// Mid-composition drops are swallowed: the preview owns the write path.
+	if (edytor && !edytor.isComposing) return insertFromDrop(edytor, root, event);
 };

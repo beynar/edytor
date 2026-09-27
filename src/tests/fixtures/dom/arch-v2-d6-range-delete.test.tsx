@@ -15,7 +15,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { runBeforeInputCommand } from '$lib/events/beforeInputCommands.js';
-import { createBeforeInputSnapshot } from '$lib/events/beforeInputSnapshot.js';
+import { attemptOf } from '$lib/session/attempt.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import {
 	assertCanonicalTree,
@@ -31,17 +31,12 @@ const row = it;
 const backspace = (edytor: Edytor) =>
 	runBeforeInputCommand(
 		edytor,
-		createBeforeInputSnapshot(
-			edytor,
-			{
-				inputType: 'deleteContentBackward',
-				data: null,
-				dataTransfer: null,
-				cancelable: true,
-				preventDefault() {}
-			} as InputEvent,
-			null
-		)
+		attemptOf(edytor, {
+			inputType: 'deleteContentBackward',
+			data: null,
+			dataTransfer: null,
+			cancelable: true
+		})
 	);
 
 const caret = (edytor: Edytor) => ({

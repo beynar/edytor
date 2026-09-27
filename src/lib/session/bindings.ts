@@ -14,7 +14,7 @@ import {
 	navigationHotKeys
 } from '$lib/hotkeys/navigation.js';
 import { insertLineBreak, runIntent } from '$lib/events/beforeInputCommands.js';
-import { intentSnapshot } from '$lib/events/beforeInputSnapshot.js';
+import { attemptOf, intentSnapshot } from './attempt.js';
 import {
 	getSelectedBlocksInDocumentOrder,
 	deleteSelectedBlocks
@@ -64,9 +64,10 @@ const selectNextVoidBlockFromCaret = (edytor: Edytor) => {
 	return true;
 };
 
+/** The key's attempt: the model owns the DOM drift around its command for `window` ms. */
 const suppressHotkeyDomDrift = (edytor: Edytor, window: number) => {
-	edytor.suppressNextInputFallback(window);
-	edytor.repairSuppressedInputFallback(window, { flushObservedMutations: true });
+	const attempt = attemptOf(edytor, { inputType: 'hotkey', cancelable: true });
+	edytor.attempts.drift(edytor.attempts.admit(attempt, 'model'), 'discard', window);
 };
 
 const refreshStructuralChildren = (block: Block) => {
@@ -87,7 +88,7 @@ const remountStructure = (edytor: Edytor) => {
  * is selected at once and the projector displays it after that flush (R10).
  */
 const restoreStructuralHotkeyCaret = (edytor: Edytor, text: Text, offset: number) => {
-	edytor.suppressedInputRepairSelectionTarget = { text, offset };
+	edytor.attempts.caret(text, offset);
 	remountStructure(edytor);
 	void edytor.selection.setAtTextOffset(text, offset);
 };

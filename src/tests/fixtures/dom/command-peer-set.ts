@@ -38,7 +38,7 @@ import { setDocRand } from '$lib/crdt/rand.js';
 import { Y } from '$lib/crdt/engine.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { runBeforeInputCommand } from '$lib/events/beforeInputCommands.js';
-import { createBeforeInputSnapshot } from '$lib/events/beforeInputSnapshot.js';
+import { attemptOf } from '$lib/session/attempt.js';
 import type { JSONDoc } from '$lib/utils/json.js';
 import {
 	SEED_DOC_CLIENT_ID,
@@ -127,17 +127,12 @@ export const createCommandPeers = async (
 export const runCommand = (edytor: Edytor, inputType: string, data: string | null = null) =>
 	runBeforeInputCommand(
 		edytor,
-		createBeforeInputSnapshot(
-			edytor,
-			{
-				inputType,
-				data,
-				dataTransfer: null,
-				cancelable: true,
-				preventDefault() {}
-			} as InputEvent,
-			null
-		)
+		attemptOf(edytor, {
+			inputType,
+			data,
+			dataTransfer: null,
+			cancelable: true
+		})
 	);
 
 /** The first text of the `i`th top-level block — selection shorthand. */

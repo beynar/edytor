@@ -174,7 +174,7 @@ export class Projector {
 	isEcho = (selection: DomSelectionSnapshot | null) => {
 		const displayed = this.#displayed;
 		if (!selection || !displayed || displayed.epoch !== this.edytor.selection.epoch) return false;
-		if ('cleared' in displayed) return displayed.cleared === this.edytor.gestureSerial;
+		if ('cleared' in displayed) return displayed.cleared === this.edytor.intentSerial;
 		return (
 			samePoint(displayed.anchor, selection.anchorNode, selection.anchorOffset) &&
 			samePoint(displayed.focus, selection.focusNode, selection.focusOffset)
@@ -215,7 +215,7 @@ export class Projector {
 			if (dom.anchorNode && node.contains(dom.anchorNode) && this.#ours(requested)) {
 				clearDomSelection(node);
 				this.#displayed = {
-					cleared: edytor.gestureSerial,
+					cleared: edytor.intentSerial,
 					epoch: selection.epoch,
 					intent: edytor.intentSerial
 				};

@@ -8,6 +8,7 @@ import {
 	isNestedForeignEditableEvent
 } from './nativeInteractiveControl.js';
 import { replaceSelectedAtom } from '$lib/session/bindings.js';
+import { admitKeyAttempt } from './onBeforeInput.js';
 
 const getRootSelection = (node: HTMLElement) => {
 	const root = node.getRootNode();
@@ -337,7 +338,7 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 
 		const fallbackInputType = getStructuralFallbackInputType(this, e);
 		if (fallbackInputType) {
-			this.scheduleStructuralKeyFallback(fallbackInputType);
+			admitKeyAttempt(this, fallbackInputType);
 		}
 	});
 }

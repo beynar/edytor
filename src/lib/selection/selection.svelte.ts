@@ -1117,7 +1117,7 @@ export class EdytorSelection {
 			return;
 		}
 
-		this.lastEchoGestureSerial = this.edytor.gestureSerial;
+		this.lastEchoGestureSerial = this.edytor.intentSerial;
 		this.applySelectionSnapshot(selection);
 	};
 
@@ -1137,7 +1137,7 @@ export class EdytorSelection {
 	 * one position off — and the echo would re-mint anchors from the
 	 * drifted spot. Detection is deliberately structural: every real user
 	 * caret move is preceded by a gesture event (pointerdown/focusin/
-	 * keydown/beforeinput → `markUserGesture` bumps `gestureSerial` and
+	 * keydown/beforeinput → `markUserGesture` bumps `intentSerial` and
 	 * baselines `domSelectionChurnSeq`), so an echo at an unchanged serial
 	 * while churn is still outstanding for the gesture window is drift —
 	 * revert DOM to the resolved anchors. A matching echo derives as
@@ -1146,7 +1146,7 @@ export class EdytorSelection {
 	 */
 	private restoreDriftedEchoCaret = (selection: DomSelectionSnapshot | null): boolean => {
 		const state = this.state;
-		if (this.edytor.gestureSerial !== this.lastEchoGestureSerial) {
+		if (this.edytor.intentSerial !== this.lastEchoGestureSerial) {
 			return false;
 		}
 		// Drift needs a render since the gesture AND since the last observation

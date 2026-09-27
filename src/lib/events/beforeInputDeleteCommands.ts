@@ -1,11 +1,10 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import { tick } from 'svelte';
-import type { BeforeInputSnapshot } from './beforeInputSnapshot.js';
-import { setSuppressedInputRepairSelectionTarget } from './beforeInputRepairTarget.js';
+import type { Attempt } from '$lib/session/attempt.js';
 import { getNextWordEndOffset, getPreviousWordStartOffset } from './wordBoundary.js';
 
-const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: Attempt) => {
 	const state = edytor.compositionState;
 	if (
 		!edytor.isComposing ||
@@ -24,12 +23,12 @@ const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: Before
 };
 
 /** A non-collapsed selection: the document's range deletion, then its caret (`del.range.*`). */
-const deleteSelectedRange = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const deleteSelectedRange = async (edytor: Edytor, snapshot: Attempt) => {
 	const [text, offset] = edytor.deleteContentWithinSelection({ selection: snapshot }) ?? [];
 	if (text) await edytor.selection.setAtTextOffset(text, offset!);
 };
 
-const deleteContentForward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const deleteContentForward = async (edytor: Edytor, snapshot: Attempt) => {
 	const { startText, yStart } = snapshot;
 	if (!startText) {
 		return;
@@ -54,7 +53,7 @@ const deleteContentForward = async (edytor: Edytor, snapshot: BeforeInputSnapsho
 		}
 
 		currentBlock.mergeBlockForward();
-		setSuppressedInputRepairSelectionTarget(edytor, startText, yStart);
+		edytor.attempts.caret(startText, yStart);
 		await edytor.selection.setAtTextOffset(startText, yStart);
 		return;
 	}
@@ -71,7 +70,7 @@ const deleteContentForward = async (edytor: Edytor, snapshot: BeforeInputSnapsho
 	await edytor.selection.setAtTextOffset(startText, yStart);
 };
 
-const deleteContentBackward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const deleteContentBackward = async (edytor: Edytor, snapshot: Attempt) => {
 	const { startText, yStart } = snapshot;
 
 	if (snapshot.isAtStartOfBlock && snapshot.isFirstChildOfDocument && startText?.parent.isEmpty) {
@@ -115,7 +114,7 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 		const offset = previousText?.length;
 		startText.parent.mergeBlockBackward();
 		if (previousText && typeof offset === 'number') {
-			setSuppressedInputRepairSelectionTarget(edytor, previousText, offset);
+			edytor.attempts.caret(previousText, offset);
 			await edytor.selection.setAtTextOffset(previousText, offset);
 		}
 		return;
@@ -143,7 +142,7 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: BeforeInputSnapsh
  * run from the caret's own text, or the block's line to either side, or all
  * of it — deleted as one range; the caret lands at its start.
  */
-const deleteCollapsedUnit = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const deleteCollapsedUnit = async (edytor: Edytor, snapshot: Attempt) => {
 	const { startText: text, yStart, inputType } = snapshot;
 	if (!text) return;
 	const [first, last] = [text.parent.firstText!, text.parent.lastText!];
@@ -176,7 +175,7 @@ const deleteCollapsedUnit = async (edytor: Edytor, snapshot: BeforeInputSnapshot
 	await edytor.selection.setAtTextOffset(...from);
 };
 
-export const runBeforeInputDeleteCommand = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+export const runBeforeInputDeleteCommand = (edytor: Edytor, snapshot: Attempt) => {
 	// Timestamp the delete so the Android post-delete caret snap-back can
 	// arm only on caret writes caused by an actual delete — navigational
 	// jumps with the same "offset-0 → different text" signature must not

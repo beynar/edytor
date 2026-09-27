@@ -378,15 +378,9 @@ export const settleEditor = async (page: Page) => {
 			};
 			const edytor = browserWindow.__EDYTOR__;
 			const hasPendingRepair = Boolean(
-				edytor?.structuralKeyFallbackTimer ||
-				edytor?.inputFallbackSuppressionTimer ||
-				edytor?.observedMutationFallbackSuppressionTimer ||
-				edytor?.inputFallbackRepairTimer ||
+				(edytor?.attempts as { busy?: boolean } | undefined)?.busy ||
 				edytor?.compositionSelectionRestoreFrame ||
 				edytor?.danglingCompositionBlurTimer ||
-				edytor?.shouldSuppressNextInputFallback ||
-				edytor?.shouldSuppressObservedMutationFallback ||
-				edytor?.shouldRepairSuppressedInputFallback ||
 				edytor?.isComposing
 			);
 			const quietFor = performance.now() - (browserWindow.__EDYTOR_DST_LAST_EVENT_AT__ ?? 0);
@@ -1525,11 +1519,9 @@ const expectedSyntheticSequence = (
 		case 'copy':
 			return [{ type: 'copy' }];
 		case 'drop':
-			// Accepted foreign drops are consumed by onDrop's
-			// dispatchInsertFromDrop — a synthetic `beforeinput` (a plain
-			// Event carrying inputType via defineProperty, so the recorder
-			// sees no inputType) is part of the expected delivery.
-			return [{ type: 'dragover' }, { type: 'drop' }, { type: 'beforeinput' }];
+			// An accepted foreign drop runs its own occurrence (arch-v2 I1):
+			// no fabricated `beforeinput` follows the drop.
+			return [{ type: 'dragover' }, { type: 'drop' }];
 		case 'foreignMutation':
 			// Scripted DOM writes dispatch no events — the input-event guard
 			// in assertTrustedAction is the real check for this action.

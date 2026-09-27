@@ -715,17 +715,13 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 	const seedUpdate = (value: JSONBlock[], defaultType = 'paragraph'): Uint8Array => {
 		// Canonical form (object keys sorted, arrays in order): the hash AND
 		// the build read it, so key order never splits one template.
-		const canonical = (v: unknown): unknown =>
-			Array.isArray(v)
-				? v.map(canonical)
-				: v !== null && typeof v === 'object'
-					? Object.fromEntries(
-							Object.keys(v)
-								.sort()
-								.map((k) => [k, canonical((v as Record<string, unknown>)[k])])
-						)
-					: v;
-		const blocks = canonical(value.length > 0 ? value : [{ type: defaultType }]) as JSONBlock[];
+		const sorted = (_: string, v: unknown) =>
+			v && typeof v === 'object' && !Array.isArray(v)
+				? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1)))
+				: v;
+		const blocks: JSONBlock[] = JSON.parse(
+			JSON.stringify(value.length > 0 ? value : [{ type: defaultType }], sorted)
+		);
 		const writer = hash32(`yjs-v14/${SCHEMA_NAME}@${SCHEMA_VERSION}:${JSON.stringify(blocks)}`);
 		let n = 0;
 		const mint = (prefix: string) => `${prefix}${writer.toString(36)}.${n++}`;

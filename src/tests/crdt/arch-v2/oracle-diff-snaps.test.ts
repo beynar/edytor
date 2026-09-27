@@ -2,8 +2,8 @@
  * arch-v2 L63 — the test copy of `diffSnaps` (the F-O7 oracle) stays
  * runnable: snapshots built from the public projection + maintained runs,
  * diffed by the oracle, must describe the same change the facade's
- * `onChange` reports for each commit. D9 replaces the production diff with
- * the fold and compares its change report against this oracle.
+ * `onChange` reports for each commit. Since D9 the report comes from the
+ * index's fold; the random-corpus comparison is `d9-fold-report.test.ts`.
  */
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import { describe, expect, test } from 'vitest';

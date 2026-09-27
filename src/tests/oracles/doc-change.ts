@@ -1,9 +1,8 @@
 /**
- * Test oracle: the skeleton-snapshot diff that builds a `DocChange`
- * (arch-v2 L63 / F-O7). A copy of the facade-internal `diffSnaps` in
- * `src/lib/crdt/edytor-doc.ts`; the production copy stays until D9 replaces
- * the fast/slow DocChange split with the fold, at which point this copy is
- * the reference the fold's change report is compared against.
+ * Test oracle: the skeleton-snapshot diff that built a `DocChange` before
+ * arch-v2 D9 (L63 / F-O7). Production no longer diffs snapshots — the doc's
+ * index publishes a change report from its fold (`text/runs.ts`); this copy
+ * is the reference that report is compared against on every commit.
  *
  * Pure: `version` is passed in instead of read from the facade counter.
  */

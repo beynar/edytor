@@ -1,6 +1,6 @@
 /**
- * WU7 — shared per-document model state (`src/lib/crdt/text/runs.ts` +
- * `bindModel`'s `modelState` provider + the `EdytorDoc` facade).
+ * WU7 / arch-v2 D9 — the per-document index (`src/lib/crdt/text/runs.ts`,
+ * read by `bindModel` and the `EdytorDoc` facade).
  *
  * Contract under test (docs/crdt-v14-follow-up-prompt.md, WU7):
  *
@@ -8,37 +8,46 @@
  *   derived indexes — block records, ownership, per-text interval rows,
  *   resolved placements and the children index are maintained once and
  *   shared by commands (`bindModel.view`), anchors, maintained runs,
- *   `DocChange` and rendering. `modelCtx()`/`M.view()` hand out the SAME
- *   object; multiple leases and multiple facades never get private copies.
+ *   `DocChange` and rendering. `index.view()`/`M.view()` hand out the SAME
+ *   object; every binding and facade on a doc gets the doc's one index.
  * - FACET INVALIDATION: a content edit preserves `placements`/`kids`
  *   object identity (no rebuild); `at`/structure/registry churn rebuilds
- *   them. `commitInfo()` reports `fast` eligibility and the touched sets.
+ *   them. The change report names exactly what the commit changed.
  * - OWNERSHIP SHIM: `ctx.own` satisfies `Ownership` over the maintained
  *   indexes — `ownerOf`/`hidden`/`intervals`/`resolvedRange`/`maxG` agree
  *   with a fresh `computeOwnership` baseline, including merge claims.
  * - READ-YOUR-WRITES: reads inside an open transaction see that
- *   transaction's own writes (`doc._transaction.changed` folded in).
- * - DOCCHANGE FAST PATH: content-only commits emit content-only diffs;
+ *   transaction's own writes (its pending writes are folded first).
+ * - CHANGE REPORT: content-only commits emit content-only diffs;
  *   placement commits emit moved/order diffs; meta commits emit meta
  *   diffs — and every stream still reconstructs the fresh projection.
- * - LEASES/DISPOSAL: releasing one lease keeps the shared state alive for
- *   the rest; the last release (or doc destroy) tears it down and
- *   `M.view()` falls back to fresh collection.
+ * - LIFETIME: the index lives as long as the doc — disposing a facade
+ *   leaves it serving every other reader; the doc's `destroy` tears it down.
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc, bindRuns } from '../../../lib/crdt/index.js';
 import { bindModel } from '../../oracles/model-ops.js';
+import { collectBlocks } from '../../oracles/fresh-view.js';
 import { bindText } from '../../../lib/crdt/text/model.js';
 import { createPeerPair, remoteOrigin } from '../harness/peer-set.js';
 import { modelSpecSeed } from '../scenarios/seeds.js';
 
 const R = bindRuns(Y);
-/** Model wired the way `bindEdytorDoc` wires it — shared state preferred. */
-const M = bindModel(Y, (doc) => R.modelState(doc));
-/** Unwired model — the fresh-view fallback baseline. */
-const MF = bindModel(Y);
+const M = bindModel(Y);
+/** The projection an index rebuilt from scratch reports (a reloaded copy of `doc`). */
+const freshProject = (doc) => {
+	const copy = new Y.Doc();
+	Y.applyUpdate(copy, Y.encodeStateAsUpdate(doc));
+	return M.project(copy);
+};
+/** Collect the reports `index` publishes. */
+const reports = (index) => {
+	const out = [];
+	index.onReport((r) => out.push(r));
+	return out;
+};
 const T = bindText(Y);
 const E = bindEdytorDoc(Y);
 
@@ -61,7 +70,7 @@ describe('shared model ctx — identity', () => {
 		const set = createPeerPair(SEED);
 		const doc = set.A.doc;
 		const view = R.attach(doc);
-		const ctx = view.modelCtx();
+		const ctx = view.view();
 		expect(M.view(doc)).toBe(ctx);
 		expect(M.view(doc)).toBe(ctx);
 		// Facets are the maintained instances, not per-call copies.
@@ -69,20 +78,16 @@ describe('shared model ctx — identity', () => {
 		expect(M.view(doc).placements).toBe(ctx.placements);
 		expect(M.view(doc).kids).toBe(ctx.kids);
 		expect(M.view(doc).own).toBe(ctx.own);
-		view.dispose();
 	});
 
-	it('two leases share one ctx; content reads agree with the fresh model', () => {
+	it('every attach returns the doc’s one index; reads agree with a fresh collect', () => {
 		const set = createPeerPair(SEED);
 		const doc = set.A.doc;
 		const v1 = R.attach(doc);
-		const v2 = R.attach(doc);
-		expect(v1.modelCtx()).toBe(v2.modelCtx());
-		const fresh = MF.view(doc);
-		expect([...v1.modelCtx().blocks.keys()].sort()).toEqual([...fresh.blocks.keys()].sort());
-		expect(M.project(doc)).toEqual(MF.project(doc));
-		v1.dispose();
-		v2.dispose();
+		const v2 = bindRuns(Y).attach(doc);
+		expect(v2).toBe(v1);
+		expect([...v1.view().blocks.keys()].sort()).toEqual([...collectBlocks(doc).keys()].sort());
+		expect(M.project(doc)).toEqual(freshProject(doc));
 	});
 });
 
@@ -91,7 +96,7 @@ describe('shared model ctx — facet invalidation', () => {
 		const set = createPeerPair(SEED);
 		const doc = set.A.doc;
 		const view = R.attach(doc);
-		const ctx = view.modelCtx();
+		const ctx = view.view();
 		const placements = ctx.placements;
 		const kids = ctx.kids;
 		const bRuns = view.runs('b');
@@ -99,6 +104,7 @@ describe('shared model ctx — facet invalidation', () => {
 		const c1Runs = view.runs('c1');
 		view.runs('a');
 		view.debug.reset();
+		const seen = reports(view);
 		set.A.transact(() => M.insertText(doc, 'a', 0, '!'));
 		expect(ctx.placements).toBe(placements); // untouched — same map
 		expect(ctx.kids).toBe(kids);
@@ -107,67 +113,65 @@ describe('shared model ctx — facet invalidation', () => {
 		expect(view.runs('c1')).toBe(c1Runs);
 		view.runs('a');
 		expect([...view.debug.recomputed].sort()).toEqual(['a']);
-		const info = view.commitInfo();
-		expect(info.fast).toBe(true);
-		expect([...info.content]).toEqual(['a']);
-		expect(info.meta.size).toBe(0);
-		view.dispose();
+		expect(seen).toHaveLength(1);
+		expect([...seen[0].content.keys()]).toEqual(['a']);
+		expect(seen[0].meta.size + seen[0].order.size + seen[0].moved.size).toBe(0);
 	});
 
 	it('an `at` write rebuilds placements+kids but recomputes no runs', () => {
 		const set = createPeerPair(SEED);
 		const doc = set.A.doc;
 		const view = R.attach(doc);
-		const ctx = view.modelCtx();
+		const ctx = view.view();
 		const placements = ctx.placements;
 		const kids = ctx.kids;
 		const aRuns = view.runs('a');
 		view.debug.reset();
+		const seen = reports(view);
 		set.A.transact(() => M.moveBlock(doc, 'a', { parent: 'c', index: 1 }));
 		expect(ctx.placements).not.toBe(placements);
 		expect(ctx.kids).not.toBe(kids);
 		// The move changed display order only — a's runs are identical refs.
 		expect(view.runs('a')).toBe(aRuns);
 		expect(view.debug.recomputed.has('a')).toBe(false);
-		expect(view.commitInfo().fast).toBe(false);
+		expect([...seen[0].moved].sort()).toEqual(['a', 'b', 'c']);
+		expect(seen[0].content.size).toBe(0);
 		// And the new placements reflect the move (root is now [b, c]).
 		expect(M.project(doc).children[1].children.map((k) => k.id)).toEqual(['c1', 'a']);
-		view.dispose();
 	});
 
-	it('meta-only writes report a fast commit with an empty content set', () => {
+	it('meta-only writes report meta and no content', () => {
 		const set = createPeerPair(SEED);
 		const doc = set.A.doc;
 		const view = R.attach(doc);
 		set.A.transact(() => M.setMark(doc, 'a', 0, 3, 'x', true)); // warm caches
-		const placements = view.modelCtx().placements;
+		const placements = view.view().placements;
+		const seen = reports(view);
 		set.A.transact(() => {
 			const node = doc.get('blocks').getAttr('a');
 			node.setAttr('data', { level: 2 });
 		});
-		const info = view.commitInfo();
-		expect(info.fast).toBe(true);
-		expect(info.content.size).toBe(0);
-		expect([...info.meta]).toEqual(['a']);
-		expect(view.modelCtx().placements).toBe(placements);
-		expect(view.modelCtx().blocks.get('a').data).toEqual({ level: 2 });
-		view.dispose();
+		expect(seen).toHaveLength(1);
+		expect(seen[0].content.size).toBe(0);
+		expect([...seen[0].meta.keys()]).toEqual(['a']);
+		expect(view.view().placements).toBe(placements);
+		expect(view.view().blocks.get('a').data).toEqual({ level: 2 });
 	});
 
 	it('a merge claim rebuilds ownership, placements and kids', () => {
 		const set = createPeerPair(SEED);
 		const doc = set.A.doc;
 		const view = R.attach(doc);
-		const ctx = view.modelCtx();
+		const ctx = view.view();
 		const placements = ctx.placements;
 		const kids = ctx.kids;
+		const seen = reports(view);
 		set.A.transact(() => M.mergeBlocks(doc, 'b', 'a'));
 		expect(ctx.placements).not.toBe(placements);
 		expect(ctx.kids).not.toBe(kids);
-		expect(view.commitInfo().fast).toBe(false);
+		expect([...seen[0].removed]).toEqual(['b']);
 		expect(ctx.own.hidden('b')).toBe(true);
 		expect(M.project(doc).children.map((k) => k.id)).toEqual(['a', 'c']);
-		view.dispose();
 	});
 });
 
@@ -178,8 +182,8 @@ describe('shared model ctx — ownership shim', () => {
 		const view = R.attach(doc);
 		set.A.transact(() => M.mergeBlocks(doc, 'b', 'a'));
 		set.A.transact(() => M.insertText(doc, 'a', 0, '>>'));
-		const ctx = view.modelCtx();
-		const freshBlocks = MF.collectBlocks(doc);
+		const ctx = view.view();
+		const freshBlocks = collectBlocks(doc);
 		const fresh = T.computeOwnership(doc, freshBlocks);
 		for (const id of freshBlocks.keys()) {
 			expect(ctx.own.ownerOf(id), `ownerOf(${id})`).toBe(fresh.ownerOf(id));
@@ -191,20 +195,18 @@ describe('shared model ctx — ownership shim', () => {
 			);
 			expect(ctx.own.maxG.get(t) ?? 0, `maxG(${t})`).toBe(fresh.maxG.get(t) ?? 0);
 		}
-		view.dispose();
 	});
 
 	it('per-text interval rows stay shared — an edit to text a never rebuilds text c', () => {
 		const set = createPeerPair(SEED);
 		const doc = set.A.doc;
 		const view = R.attach(doc);
-		const ctx = view.modelCtx();
+		const ctx = view.view();
 		const aIvs = ctx.own.intervals.get('a');
 		const cIvs = ctx.own.intervals.get('c');
 		set.A.transact(() => M.insertText(doc, 'a', 0, '!'));
 		expect(ctx.own.intervals.get('c')).toBe(cIvs); // untouched row — same array
 		expect(ctx.own.intervals.get('a')).not.toBe(aIvs); // rebuilt row
-		view.dispose();
 	});
 });
 
@@ -219,11 +221,8 @@ describe('shared model ctx — read-your-writes', () => {
 			const runs = view.runs('a');
 			expect(runs[0].text.startsWith('ZZ')).toBe(true);
 			// And the model view's text projection agrees.
-			expect(T.contentItemsOf('a', view.modelCtx().blocks, view.modelCtx().own)[0].text).toBe(
-				'ZZalpha'
-			);
+			expect(T.contentItemsOf('a', view.view().blocks, view.view().own)[0].text).toBe('ZZalpha');
 		});
-		view.dispose();
 	});
 
 	it('mid-transaction reads see the transaction’s own placement writes', () => {
@@ -232,13 +231,12 @@ describe('shared model ctx — read-your-writes', () => {
 		const view = R.attach(doc);
 		set.A.transact(() => {
 			M.moveBlock(doc, 'a', { parent: 'c', index: 0 });
-			const ctx = view.modelCtx(); // syncs tr.changed
+			const ctx = view.view(); // syncs tr.changed
 			expect(ctx.placements.get('a').displayParent ?? ctx.placements.get('a')).toBeTruthy();
 			// The children index already reflects the uncommitted move.
 			expect((ctx.kids.get('c') ?? []).map((k) => k.id)).toContain('a');
 			expect((ctx.kids.get(null) ?? []).map((k) => k.id)).not.toContain('a');
 		});
-		view.dispose();
 	});
 });
 
@@ -247,54 +245,54 @@ describe('shared model ctx — remote commits & disposal', () => {
 		const set = createPeerPair(SEED);
 		const docB = set.B.doc;
 		const view = R.attach(docB);
-		const ctx = view.modelCtx();
+		const ctx = view.view();
 		const placements = ctx.placements;
+		const seen = reports(view);
 		set.A.transact(() => M.insertText(set.A.doc, 'a', 0, 'R'));
 		const upd = Y.encodeStateAsUpdate(set.A.doc, Y.encodeStateVector(docB));
 		docB.transact(() => Y.applyUpdate(docB, upd, remoteOrigin('A')), remoteOrigin('A'));
 		expect(ctx.placements).toBe(placements); // content-only — identity kept
-		expect(view.commitInfo().fast).toBe(true);
+		expect([...seen[0].content.keys()]).toEqual(['a']);
 		expect(view.runs('a')[0].text.startsWith('R')).toBe(true);
-		view.dispose();
 	});
 
-	it('disposing one lease keeps the shared state alive for the other', () => {
-		const set = createPeerPair(SEED);
-		const doc = set.A.doc;
-		const v1 = R.attach(doc);
-		const v2 = R.attach(doc);
-		const ctx = v1.modelCtx();
-		v1.dispose();
-		expect(R.modelState(doc)).toBe(ctx); // still owned by v2's lease
-		set.A.transact(() => M.insertText(doc, 'a', 0, '!'));
-		expect(v2.runs('a')[0].text.startsWith('!')).toBe(true);
-		v2.dispose();
-		expect(R.modelState(doc)).toBeUndefined(); // last release tears down
-		// M.view now falls back to fresh collection — still correct.
-		expect(M.view(doc)).not.toBe(ctx);
-		expect(M.project(doc)).toEqual(MF.project(doc));
+	it('the index lives as long as the doc: disposing facades never tears it down', () => {
+		const doc = newDoc();
+		const ed1 = seedEd(doc);
+		const ed2 = E.create(doc);
+		const index = R.attach(doc);
+		const ctx = index.view();
+		ed1.dispose();
+		ed2.insertText('a', 0, '!');
+		expect(index.runs('a')[0].text.startsWith('!')).toBe(true);
+		ed2.dispose();
+		expect(R.attach(doc)).toBe(index);
+		expect(M.view(doc)).toBe(ctx);
+		expect(M.project(doc)).toEqual(freshProject(doc));
+		// The doc's destroy releases it; a later attach builds a new one.
+		doc.destroy();
+		expect(R.attach(doc)).not.toBe(index);
 	});
 });
 
-describe('facade — DocChange fast path & shared state', () => {
-	const seedEd = () => {
-		const doc = newDoc();
-		const ed = E.create(doc);
-		ed.init({
-			content: [
-				{ id: 'a', type: 'paragraph', content: [{ kind: 'text', text: 'alpha' }] },
-				{ id: 'b', type: 'paragraph', content: [{ kind: 'text', text: 'beta' }] },
-				{
-					id: 'c',
-					type: 'list',
-					content: [{ kind: 'text', text: 'gamma' }],
-					children: [{ id: 'c1', type: 'paragraph', content: [{ kind: 'text', text: 'child' }] }]
-				}
-			]
-		});
-		return ed;
-	};
+function seedEd(doc = newDoc()) {
+	const ed = E.create(doc);
+	ed.init({
+		content: [
+			{ id: 'a', type: 'paragraph', content: [{ kind: 'text', text: 'alpha' }] },
+			{ id: 'b', type: 'paragraph', content: [{ kind: 'text', text: 'beta' }] },
+			{
+				id: 'c',
+				type: 'list',
+				content: [{ kind: 'text', text: 'gamma' }],
+				children: [{ id: 'c1', type: 'paragraph', content: [{ kind: 'text', text: 'child' }] }]
+			}
+		]
+	});
+	return ed;
+}
 
+describe('facade — change report & shared state', () => {
 	it('content-only commits emit a content-only DocChange', () => {
 		const ed = seedEd();
 		const changes = [];
@@ -345,7 +343,7 @@ describe('facade — DocChange fast path & shared state', () => {
 		// Both facades project identically — one maintained model underneath.
 		expect(ed1.project()).toEqual(ed2.project());
 		ed1.dispose();
-		// ed2 keeps working — its lease still owns the shared state.
+		// ed2 keeps working — the doc's index outlives any facade.
 		ed2.insertText('b', 0, '?');
 		expect(c2.length).toBe(2);
 		expect(ed2.project().children[1].content[0].text.startsWith('?')).toBe(true);

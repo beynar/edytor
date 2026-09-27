@@ -36,6 +36,7 @@ import { createPeerPair, createPeerTriple, type Peer } from '../harness/peer-set
 import { expandOwnerRow } from '../harness/dense-ownership-oracle.js';
 import { createDocOps } from '../harness/ops/doc-ops.js';
 import { assertConverged, assertAllStructurallyValid } from '../harness/assert/convergence.js';
+import { collectBlocks } from '../../oracles/fresh-view.js';
 
 const E = bindEdytorDoc(Y);
 const ops = createDocOps();
@@ -62,7 +63,7 @@ const text = (peer: Peer, id: string) => ed(peer).blockText(id);
 const dropBlock = (peer: Peer, id: string) =>
 	peer.doc.transact(() => peer.doc.get('blocks').deleteAttr(id));
 const atomOwners = (peer: Peer, t: string): (string | null)[] => {
-	const blocks = ed(peer).model.collectBlocks(peer.doc);
+	const blocks = collectBlocks(peer.doc);
 	const own = ed(peer).text.computeOwnership(peer.doc, blocks);
 	return expandOwnerRow(own.intervals.get(t));
 };

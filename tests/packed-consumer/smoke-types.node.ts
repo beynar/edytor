@@ -121,10 +121,10 @@ const legacyMap: ReturnType<bindings.DocumentAttribution['legacy']> = attributio
 const blockAttr: bindings.BlockAttribution | undefined = attribution.block(firstProjected!.id);
 const actorsMap: ReadonlyMap<string, bindings.ActorProfile> = attribution.actors;
 const runsApi: bindings.RunsApi = bindings.bindRuns(Y as bindings.EngineApi);
-const modelView: bindings.ModelView | undefined = runsApi.modelState(
-	crdtDoc as unknown as bindings.EngineDoc
-);
-type _commitInfo = bindings.CommitInfo;
+const modelView: bindings.ModelView = runsApi
+	.attach(crdtDoc as unknown as bindings.EngineDoc)
+	.view();
+type _indexReport = bindings.IndexReport;
 type _engineTx = bindings.EngineTransaction;
 void contentRun;
 void legacyMap;

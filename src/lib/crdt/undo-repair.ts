@@ -124,8 +124,11 @@ type TransactionLike = {
  * on vendored-layout change) instead of silently skipping the repair.
  */
 export type UndoRepairLayers = {
-	collectBlocks: (doc: EngineDoc) => Map<BlockId, TextBlockRec>;
-	computeOwnership: (doc: EngineDoc, blocks: Map<BlockId, TextBlockRec>) => Ownership;
+	/** The doc's index, folded up to `transaction` (its observer pass has not run yet). */
+	view: (
+		doc: EngineDoc,
+		transaction: unknown
+	) => { blocks: Map<BlockId, TextBlockRec>; own: Ownership };
 	undoRepairClaims: (
 		doc: EngineDoc,
 		blocks: Map<BlockId, TextBlockRec>,
@@ -279,10 +282,9 @@ export const bindUndoRepair = (
 		}
 		if (spansByContent.size === 0) return;
 
-		// Fresh replicated-state view — the maintained view has not observed
-		// this transaction yet (we run before its observer pass).
-		const blocks = layers.collectBlocks(doc);
-		const own = layers.computeOwnership(doc, blocks);
+		// The doc's index, folded up to this transaction explicitly: its own
+		// commit fold runs in the observer pass, after us.
+		const { blocks, own } = layers.view(doc, transaction);
 		const contentToId = new Map<EngineNode, BlockId>();
 		for (const [id, rec] of blocks) {
 			if (rec.content !== undefined) contentToId.set(rec.content, id);

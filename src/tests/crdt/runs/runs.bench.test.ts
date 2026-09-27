@@ -92,7 +92,7 @@ describe('U05 run-view invalidation benchmarks', () => {
 		const set = createPeerPair(seedDoc(N));
 		const doc = set.A.doc;
 
-		// ── cold construction: attach to the REAL doc + read all blocks ──
+		// ── the doc's index (built once, lives as long as the doc) + read all blocks ──
 		{
 			const samples = [];
 			for (let i = 0; i < 7; i++) {
@@ -101,9 +101,8 @@ describe('U05 run-view invalidation benchmarks', () => {
 				const t0 = performance.now();
 				for (let b = 0; b < N; b++) v.runs(`b${b}`);
 				samples.push(performance.now() - t0);
-				v.dispose();
 			}
-			results['cold-first-read-all-runs (1000 blocks, attach+read)'] = statsOf(samples, 0);
+			results['read-all-runs (1000 blocks, attached index)'] = statsOf(samples, 0);
 		}
 		// True cold: fresh doc built from the same update each time.
 		{

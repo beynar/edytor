@@ -36,8 +36,8 @@ import { diffSnaps, type DocSnap } from '../../oracles/doc-change.js';
 
 const E = bindEdytorDoc(Y);
 
-/** Red on the reference: expected-fail until the fold lands. */
-const red = test.fails;
+/** Red on the reference (`arch-v2/ref-d9`); green since the fold landed. */
+const red = test;
 
 const p = (id: string, text: string, children?: unknown[], type = 'paragraph') => ({
 	id,

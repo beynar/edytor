@@ -42,9 +42,8 @@ export type EngineItemRef = {
  * Structural minimum of the in-flight engine `Transaction` — exposed on the
  * doc as `doc._transaction` while a transaction is open. `changed` maps each
  * touched shared type to the set of `parentSub` keys whose items changed
- * (attr names for map-like children, `null` for sequence edits). The shared
- * model state folds this into its incremental invalidation so reads issued
- * mid-transaction observe their own writes (WU7 read-your-writes).
+ * (attr names for map-like children, `null` for sequence edits); the
+ * document index folds it once at commit.
  */
 export interface EngineTransaction {
 	changed?: Map<unknown, Set<string | null>>;
@@ -52,17 +51,8 @@ export interface EngineTransaction {
 
 /**
  * The deep-observer event surface (v14 `YEvent`, observed through
- * `observeDeep` on an ancestor — in our schema, the registry root).
- *
- * `deltaDeep` is the nested *modify* delta rooted at the observed node:
- * `toJSON()` yields `{type:'delta', attrs: {<attrKey>: op}}` where each op
- * is `{type:'insert'|'modify'|'delete', value?}` and a `modify` value is
- * itself a delta JSON — recursing down to the changed leaf. The run view
- * (`text/runs.ts`) parses exactly this shape to derive per-block
- * invalidation facets (`content` / `slices` / `del`). `delta` is the
- * shallow change delta of `target`.
- *
- * Not present on v13-style events — consumers must tolerate `undefined`.
+ * `observeDeep` on an ancestor — in our schema, the registry root). The
+ * document index folds the event's `transaction.changed` at commit.
  */
 export interface EngineDeepEvent {
 	readonly target: unknown;

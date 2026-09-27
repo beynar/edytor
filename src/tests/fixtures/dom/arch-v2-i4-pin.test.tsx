@@ -250,6 +250,66 @@ const composing = async () => {
 	return { ...rendered, remote, prev, host };
 };
 
+/** `prev | abc| | next` with a live preview `に` in the middle block, seen by the peer. */
+const composingBetween = async () => {
+	const rendered = await renderDomEdytor(
+		<root>
+			<paragraph>prev</paragraph>
+			<paragraph>abc|</paragraph>
+			<paragraph>next</paragraph>
+		</root>
+	);
+	const { edytor, editor } = rendered;
+	const remote = peer(edytor);
+	const host = blockOf(edytor, 1).id;
+	await start(editor);
+	await preview(editor, 'に');
+	remote.sync();
+	return { ...rendered, remote, host };
+};
+
+describe('F-I12 (a) — D-20: a same-parent reorder moves the IME’s node too', () => {
+	row(
+		'a peer moves the composing block after its next sibling: committed first, once',
+		async () => {
+			const { edytor, editor, remote, host } = await composingBetween();
+			expect(remote.facade.moveBlock(host, { parent: null, index: 3 }).status).toBe('applied');
+			remote.sync();
+			expect(edytor.isComposing).toBe(false);
+			await flushDomUpdates();
+			expect(shape(edytor)).toEqual(['paragraph:prev', 'paragraph:next', 'paragraph:abcに']);
+			expect(caret(edytor)).toEqual({ block: host, offset: 4, isCollapsed: true });
+
+			// The IME continues: its next update resumes over the committed text.
+			await preview(editor, 'にほ');
+			await end(editor, '日本');
+			await flushDomUpdates();
+			remote.sync();
+			expect(shape(edytor)).toEqual(['paragraph:prev', 'paragraph:next', 'paragraph:abc日本']);
+			expect(remote.read()).toEqual(['paragraph:prev', 'paragraph:next', 'paragraph:abc日本']);
+		}
+	);
+
+	pin('a peer inserting a sibling above only shifts the index: the session lives', async () => {
+		const { edytor, editor, remote } = await composingBetween();
+		remote.facade.insertBlock(
+			{ parent: null, index: 0 },
+			{ id: 'peer-top', type: 'paragraph', content: [{ kind: 'text', text: 'top' }] }
+		);
+		remote.sync();
+		await flushDomUpdates();
+		expect(edytor.isComposing).toBe(true);
+		await end(editor, 'に');
+		await flushDomUpdates();
+		expect(shape(edytor)).toEqual([
+			'paragraph:top',
+			'paragraph:prev',
+			'paragraph:abcに',
+			'paragraph:next'
+		]);
+	});
+});
+
 describe('F-I12 (a) — D-20: a peer’s structural change commits the session first', () => {
 	row('delete: the composed text is lost with the block; nothing lands elsewhere', async () => {
 		const { edytor, editor, remote, prev, host } = await composing();

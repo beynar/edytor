@@ -260,6 +260,11 @@ const structural: Structural[] = [
 		name: 'merge',
 		run: (peer) => op(peer, 'mergeBackward', 'collab-b2'),
 		arrived: ['paragraph:alphabetan', 'paragraph:gamma']
+	},
+	{
+		name: 'reorder (after its next sibling)',
+		run: (peer) => op(peer, 'moveBlock', 'collab-b2', { parent: null, index: 3 }),
+		arrived: ['paragraph:alpha', 'paragraph:gamma', 'paragraph:betan']
 	}
 ];
 
@@ -291,28 +296,30 @@ test.describe('I4 — D-20: a peer’s structural change commits the live sessio
 		});
 	}
 
-	test('F-I12 (b) retype, then the IME keeps composing: one more commit, never a duplicate', async ({
-		browser
-	}, testInfo) => {
-		await withPair(browser, testInfo, async (pair) => {
-			await compose(
-				pair,
-				1,
-				4,
-				async () => {
-					expect(await op(pair.peer, 'setBlockType', 'collab-b2', 'quote')).toBe('applied');
-					await expect.poll(async () => (await readShape(pair.user))[1]).toBe('quote:betan');
-				},
-				async (ime) => {
-					await ime.compose('に');
-					await pair.user.waitForTimeout(KEY_PACE_MS);
-					await ime.commit('に');
-				}
-			);
-			await expectConverged(pair.user, pair.peer);
-			await expect
-				.poll(() => readShape(pair.user))
-				.toEqual(['paragraph:alpha', 'quote:betaに', 'paragraph:gamma']);
+	for (const change of structural.filter(({ name }) => name !== 'delete')) {
+		test(`F-I12 (b) ${change.name}, then the IME keeps composing: one more commit, never a duplicate`, async ({
+			browser
+		}, testInfo) => {
+			await withPair(browser, testInfo, async (pair) => {
+				await compose(
+					pair,
+					1,
+					4,
+					async () => {
+						expect(await change.run(pair.peer)).toBe('applied');
+						await expect.poll(() => readShape(pair.user)).toEqual(change.arrived);
+					},
+					async (ime) => {
+						await ime.compose('に');
+						await pair.user.waitForTimeout(KEY_PACE_MS);
+						await ime.commit('に');
+					}
+				);
+				await expectConverged(pair.user, pair.peer);
+				const composed = change.arrived.map((block) => block.replace('betan', 'betaに'));
+				await expect.poll(() => readShape(pair.user)).toEqual(composed);
+				expect(await readShape(pair.peer)).toEqual(composed);
+			});
 		});
-	});
+	}
 });

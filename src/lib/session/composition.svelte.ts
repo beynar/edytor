@@ -25,7 +25,8 @@
  *   a pointer gesture: what the host shows is adopted (the browser committed
  *   it). No timer ever ends a session.
  * - D-20 — a commit that re-places the host's block (deleted, merged away,
- *   retyped or re-parented, itself or an ancestor) commits what the IME
+ *   retyped, re-parented or moved among its siblings, itself or an ancestor
+ *   — each re-creates or moves the IME's node) commits what the IME
  *   shows before the change renders; a preview deleted with its block is
  *   lost with it. The IME, unaware, keeps composing (Chromium drops its
  *   composition with its node and sends the commit as a plain insertion):
@@ -92,8 +93,9 @@ export class Composition {
 	#tail: Text | null = null;
 	#caret: { text: Text; offset: number } | null = null;
 	#waiting: (() => void)[] = [];
-	/** Where the host's block sits (its and its ancestors' ids and types): D-20 compares it. */
+	/** Where the host's block sits (its and its ancestors' ids and types), and their siblings: D-20 compares them. */
 	#where = '';
+	#order: { id: string; kids: readonly string[] }[] = [];
 	/** After a D-20 commit, until the IME ends: the text it committed (resumed over), or `lost` (dropped). */
 	#resume: SelectionValue | 'lost' | null = null;
 	/** Phantom structural keys the tail swallowed (a test oracle). */
@@ -135,6 +137,7 @@ export class Composition {
 		if (host) this.#pin(host, yStart, endText === host ? yEnd : host.length);
 		this.host = host;
 		this.#where = this.#place();
+		this.#order = this.#siblings();
 	};
 
 	/** A composition update: the model holds `value` (mechanical, in the capture group). */
@@ -188,7 +191,7 @@ export class Composition {
 	 */
 	restructured = (change: DocChange) => {
 		if (!this.live || !(change.removed.size || change.moved.size || change.meta.size)) return;
-		if (this.#place() === this.#where) return;
+		if (this.#place() === this.#where && !this.#reordered()) return;
 		const shown = this.edytor.pin.imeBuffer() ?? this.preview;
 		const at = this.#kept();
 		const lost = !at && this.preview ? 'lost' : null;
@@ -278,12 +281,38 @@ export class Composition {
 		return true;
 	}
 
-	/** The host's block and its ancestors, with their types; '' once it is not visible. */
-	#place() {
+	/** The host's block and its ancestors (none once it is not visible). */
+	#chain() {
 		const { facade } = this.edytor;
 		const id = this.host?.parent.id;
-		if (!id || !facade.isVisibleBlock(id)) return '';
-		return [id, ...facade.ancestorsOf(id)].map((b) => `${b}:${facade.blockTypeOf(b)}`).join('/');
+		return id && facade.isVisibleBlock(id) ? [id, ...facade.ancestorsOf(id)] : [];
+	}
+
+	/** The chain with its types. */
+	#place() {
+		const { facade } = this.edytor;
+		return this.#chain()
+			.map((id) => `${id}:${facade.blockTypeOf(id)}`)
+			.join('/');
+	}
+
+	/** Each chain member with its parent's child ids. */
+	#siblings() {
+		const { facade } = this.edytor;
+		return this.#chain().map((id) => ({ id, kids: facade.childrenIds(facade.parentOf(id)) }));
+	}
+
+	/** A chain member moved among the siblings it had and still has (a same-parent move). */
+	#reordered() {
+		const [before, after] = [this.#order, (this.#order = this.#siblings())];
+		const rank = (id: string, kids: readonly string[], other: readonly string[]) => {
+			const kept = new Set(other);
+			return kids.filter((kid) => kept.has(kid)).indexOf(id);
+		};
+		return before.some(({ id, kids }, i) => {
+			const now = after[i]?.kids ?? [];
+			return rank(id, kids, now) !== rank(id, now, kids);
+		});
 	}
 
 	/** The region start while the preview is live and whole in one visible block (not deleted with it). */

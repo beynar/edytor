@@ -26,16 +26,12 @@ import { Edytor } from '../../../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 
-// The module lands with V1's implementation; on the reference the rows fail (expected).
-const lib = import.meta.glob('../../../lib/session/selection.ts', { eager: true });
-const S = () => {
-	const mod = Object.values(lib)[0];
-	if (!mod) throw new Error('session/selection is not implemented');
-	return mod;
-};
+import * as selection from '$lib/session/selection.js';
+
+const S = () => selection;
 
 /** Red on the reference; green since V1. */
-const row = test.fails;
+const row = test;
 
 const E = bindEdytorDoc(Y);
 const ROLES = { box: { island: true }, figure: { void: true } };

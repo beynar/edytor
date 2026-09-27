@@ -27,7 +27,7 @@ import {
 } from './domSelection.js';
 import { Block } from '../block/block.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
-import { tick } from 'svelte';
+import { tick, untrack } from 'svelte';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import type { JSONText } from '$lib/utils/json.js';
 import {
@@ -41,6 +41,12 @@ import {
 	isNestedForeignEditableTarget
 } from '$lib/events/nativeInteractiveControl.js';
 import type { Anchor } from '$lib/crdt/text/model.js';
+import {
+	noSelection,
+	selectionShadowHook,
+	selectionValueOf,
+	type SelectionValue
+} from '$lib/session/selection.js';
 
 /**
  * CRDT-stable anchor for a text position — `{b}` is the home block id of
@@ -419,11 +425,29 @@ export class EdytorSelection {
 		// TOREMOVE
 		yTextContent: ''
 	});
+	/**
+	 * V1 shadow (temporary, removed at V2): the selection value derived from
+	 * `state` and the atomic sets by every writer, the state object it was
+	 * derived from, and the index version then. It decides nothing; the dom
+	 * lane compares its projection with `state` (plan §9.1 rule 3).
+	 */
+	shadow: SelectionValue = noSelection;
+	shadowState: SelectionState;
+	shadowVersion = -1;
+	private syncShadow = () =>
+		untrack(() => {
+			this.shadow = selectionValueOf(this.state, this.selectedBlocks, this.selectedInlineBlock);
+			this.shadowState = this.state;
+			this.shadowVersion = this.edytor.facade.version;
+			selectionShadowHook()?.turn(this);
+		});
 	constructor(
 		edytor: Edytor,
 		private edytorOnSelectionChange?: (selection: EdytorSelection) => void
 	) {
 		this.edytor = edytor;
+		this.shadowState = this.state;
+		selectionShadowHook()?.register(this);
 	}
 	/**
 	 * The last state `emitSelectionChange` actually emitted — U8a dedupe.
@@ -665,6 +689,7 @@ export class EdytorSelection {
 		this.nextUndoSelectionSnapshot = this.createUndoSelectionSnapshot(override);
 	};
 	destroy = () => {
+		selectionShadowHook()?.unregister(this);
 		// Document-shared undo manager — drop our listeners so the dead
 		// view no longer writes/pops per-view snapshots on it.
 		this._unbindHistoryListeners();
@@ -687,11 +712,13 @@ export class EdytorSelection {
 	clearInlineBlockSelection = () => {
 		this.selectedInlineBlock.clear();
 		this.inlineBlockDeletionTarget = null;
+		this.syncShadow();
 	};
 	selectInlineBlock = (inlineBlock: InlineBlock) => {
 		this.clearInlineBlockSelection();
 		this.selectedInlineBlock.add(inlineBlock);
 		this.inlineBlockDeletionTarget = inlineBlock;
+		this.syncShadow();
 	};
 	clearModelSelectionPreservation = () => {
 		this.shouldKeepModelSelectionForNextTextInsertion = false;
@@ -2015,6 +2042,7 @@ export class EdytorSelection {
 				? this.getMarksAtSelection(startText, yStart, endText ?? startText, yEnd)
 				: {}
 		};
+		this.syncShadow();
 		this.emitSelectionChange();
 		if (shouldRestoreNormalizedDomRange && options.restoreNormalizedDomRange !== false && endText) {
 			void this.setAtRange(startText, yStart, endText, yEnd, { isReversed });
@@ -2253,6 +2281,7 @@ export class EdytorSelection {
 				yEnd,
 				isReversed: state.isReversed
 			});
+			this.syncShadow();
 			const repairBlurredNativeSelection = () => {
 				// Ownership may have moved on while this repair waited (tick
 				// + 0/50ms): any focusin or pointerdown back inside the editor
@@ -2533,6 +2562,7 @@ export class EdytorSelection {
 				yEnd,
 				isReversed: state.isReversed
 			});
+			this.syncShadow();
 			this.recordPostDeleteCaretTarget(previousState);
 		};
 
@@ -2732,6 +2762,7 @@ export class EdytorSelection {
 			isReversed: false,
 			endPosition: this.createTextAnchor(endText, endText.length, 'left')
 		};
+		this.syncShadow();
 	};
 
 	private setStateFromBlockContentRange = (block: Block) => {
@@ -2756,6 +2787,7 @@ export class EdytorSelection {
 			isReversed: false,
 			endPosition: this.createTextAnchor(endText, endText.length, 'left')
 		};
+		this.syncShadow();
 		this.emitSelectionChange();
 	};
 
@@ -2791,6 +2823,7 @@ export class EdytorSelection {
 		if (blocks.length === 1) {
 			this.focusBlocks();
 		}
+		this.syncShadow();
 	};
 
 	addBlockToSelection = (block: Block) => {
@@ -2800,6 +2833,7 @@ export class EdytorSelection {
 		this.selectedBlocks.add(block);
 		block.definition.onSelect?.({ block });
 		block.node?.setAttribute('data-edytor-selected', 'true');
+		this.syncShadow();
 	};
 
 	removeBlockFromSelection = (block: Block) => {
@@ -2810,6 +2844,7 @@ export class EdytorSelection {
 		block.definition.onDeselect?.({ block });
 		block.definition.onBlur?.({ block });
 		block.node?.removeAttribute('data-edytor-selected');
+		this.syncShadow();
 	};
 
 	focusBlocks = (...blocks: Block[]) => {
@@ -2964,6 +2999,7 @@ export class EdytorSelection {
 		this.focusBlocks(...state.blocks);
 		this.clearInlineBlockSelection();
 		this.state = state;
+		this.syncShadow();
 		this.emitSelectionChange();
 	};
 
@@ -2986,6 +3022,7 @@ export class EdytorSelection {
 		this.focusBlocks(text.parent);
 		this.clearInlineBlockSelection();
 		this.state = state;
+		this.syncShadow();
 		// Route through `emitSelectionChange` — a direct notify would leave
 		// `lastEmittedSelectionKey` stale, so a later derive back to the
 		// previous position would be swallowed by the dedupe while

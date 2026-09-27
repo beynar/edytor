@@ -40,11 +40,18 @@ type Projection = {
 	marks: Record<string, unknown>;
 	content: string;
 };
-type SelectionModule = { project: (value: unknown, doc: unknown) => Projection };
+type SelectionModule = {
+	project: (value: unknown, doc: unknown) => Projection;
+	segmentsOf: (
+		doc: unknown,
+		block: string
+	) => { kind: string; segOrd?: number; start: number; end: number }[];
+};
 
 // Resolved lazily so this file loads on the reference, where the module does not exist yet.
 const lib = import.meta.glob<SelectionModule>('../../lib/session/selection.ts', { eager: true });
 const project = Object.values(lib)[0]?.project;
+const segmentsOf = Object.values(lib)[0]?.segmentsOf;
 
 // Loosely typed: the comparator reads today's wrapper-based state and the V1 shadow fields.
 type View = any;
@@ -164,6 +171,13 @@ export type ShadowContext = {
 	deadEndpoint: boolean;
 	/** The editor host holds focus. */
 	focused: boolean;
+	/** Document commits since the last writer, by origin. */
+	local: boolean;
+	remote: boolean;
+	/** The state was derived from a DOM selection (`startNode` is set only by the DOM derive). */
+	domDerived: boolean;
+	/** A state endpoint wrapper's length differs from its engine segment (the mirror lags the model). */
+	mirrorLag: boolean;
 };
 
 /** A class of explained differences: the plan §8 row that owns it and its objective predicate. */
@@ -177,21 +191,127 @@ export type ShadowClass = {
 const only = (c: ShadowContext, ...fields: string[]) =>
 	[...c.fields].every((f) => fields.includes(f));
 
+/**
+ * Today's own rules for the derived fields, re-applied now to the state's stored
+ * endpoints (the wrapper reads `buildSelectionState` makes). When they agree with
+ * the projection, a difference is staleness of a stored snapshot, not a rule
+ * disagreement between the state and the shadow.
+ */
+const todayRule = (view: View): Shared => {
+	const s = view.state;
+	const { startText: a, endText: b, yStart, yEnd } = s;
+	if (!a || !b) return {};
+	const content = s.isCollapsed
+		? ''
+		: s.texts
+				.map((t: View) => t.stringContent.slice(t === a ? yStart : 0, t === b ? yEnd : t.length))
+				.join('');
+	const markEnd = a === b ? yEnd : a.length;
+	const markStart = yStart === markEnd ? Math.max(yStart - 1, 0) : yStart;
+	const marks = view.selectedBlocks.size
+		? {}
+		: a
+				.getMarksAtRange(markStart, markEnd)
+				.reduce((acc: Shared, run: View) => Object.assign(acc, run.marks ?? {}), {});
+	return {
+		content,
+		length: content.length,
+		marks,
+		isAtStartOfText: yStart === 0,
+		isAtEndOfText: yEnd === b.length,
+		isAtStartOfBlock: a === a.parent.firstText && yStart === 0,
+		isAtEndOfBlock: b === b.parent.lastText && yEnd === b.length
+	};
+};
+
+const squash = (text: unknown) => String(text).replace(/[\s\u200b\ufeff]/g, '');
+
+const firstLast = (view: View) => {
+	const ids: string[] = Array.from(view.selectedBlocks, (b: View) => b.id);
+	ids.sort((x, y) => view.edytor.facade.compare(x, y));
+	return [ids[0], ids[ids.length - 1]];
+};
+
 /** Explained difference classes, first match wins. Each names the §8 row whose gate removes it. */
-export const CLASSES: ShadowClass[] = [];
+export const CLASSES: ShadowClass[] = [
+	{
+		id: 'blocks-deleted-under-block-selection',
+		row: 'F-S13 (local block-set delete/cut/replace: the command authors its result selection, V3); F-S7 when a peer deleted them (V2)',
+		note: 'every block the selection covered is gone, so no endpoint resolves (the vanished-endpoint seam is V3); the state still names their dead wrappers until the deferred restore writes the next selection',
+		match: (c) => c.shadow.start === null && c.deadEndpoint
+	},
+	{
+		id: 'block-set-changed-without-state',
+		row: 'F-S3 (a block-set write applies every side effect once, V2)',
+		note: '`addBlockToSelection`/`removeBlockFromSelection` (Shift+Arrow block extension) change the set but not the state',
+		match: (c) => {
+			if (c.state.kind !== 'blocks') return false;
+			const [first, last] = firstLast(c.view);
+			const s = c.view.state;
+			return s.startBlock?.id !== first || s.endBlock?.id !== last;
+		}
+	},
+	{
+		id: 'dom-string-content',
+		row: 'F-S6 (content equals the model slice, V4); reader F9',
+		note: 'a cross-text DOM-derived state stores `Selection.toString()` (block separators, filler) instead of the model slice',
+		match: (c) =>
+			c.domDerived &&
+			only(c, 'content', 'length') &&
+			c.state.content !== c.shadow.content &&
+			squash(c.state.content) === squash(c.shadow.content)
+	},
+	{
+		id: 'local-command-caret-pending',
+		row: 'F-S1 (a write sets the selection synchronously; deferred writes go, V4)',
+		note: 'inside the turn of a local edit the state still holds the pre-edit caret; the command writes its caret after the turn',
+		match: (c) => c.step === 'turn' && c.docMoved && c.local && !c.remote
+	},
+	{
+		id: 'stale-derived-field',
+		row: 'F-S8 (the selection is a projection of the current version immediately, V2)',
+		note: 'endpoints agree; a derived field is a snapshot taken before the document (or the mirror) reached this version — today’s own rule re-applied now gives the projection’s answer',
+		match: (c) => {
+			if (c.fields.has('start') || c.fields.has('end')) return false;
+			const rule = todayRule(c.view);
+			return c.diffs.every((d) => d.field in rule && equal(rule[d.field], d.shadow));
+		}
+	}
+];
 
 type Census = {
 	steps: number;
 	compared: number;
 	skipped: Record<string, number>;
 	classes: Record<string, { row: string; count: number; samples: string[] }>;
-	unexplained: { test: string; step: string; diffs: ShadowDiff[] }[];
+	unexplained: { test: string; step: string; diffs: ShadowDiff[]; context: Shared }[];
 };
 const fresh = (): Census => ({ steps: 0, compared: 0, skipped: {}, classes: {}, unexplained: [] });
 let census = fresh();
 let pendingUnexplained: Census['unexplained'] = [];
 
 const views = new Set<View>();
+/** Commits per view since registration: `[version, local]`. */
+const commits = new WeakMap<View, [number, boolean][]>();
+const track = (view: View) => {
+	if (commits.has(view)) return commits.get(view)!;
+	const list: [number, boolean][] = [];
+	commits.set(view, list);
+	const facade = view.edytor.facade;
+	facade.onChange((change: { local: boolean }) => {
+		list.push([facade.version, change.local]);
+		if (list.length > 64) list.shift();
+	});
+	return list;
+};
+
+const lagging = (facade: unknown, text: any) => {
+	if (!text || !text._live || !segmentsOf) return false;
+	const segment = segmentsOf(facade, text.parent.id).find(
+		(x) => x.kind === 'text' && x.segOrd === text._segOrd
+	);
+	return !segment || segment.end - segment.start !== text.length;
+};
 
 const testName = () => expect.getState().currentTestName ?? '(outside a test)';
 
@@ -218,6 +338,7 @@ export const compareShadow = (view: View, step: string) => {
 		.map((field) => ({ field, state: state[field], shadow: shadow[field] }));
 	if (diffs.length === 0) return;
 	const s = view.state;
+	const since = track(view).filter(([version]) => version > view.shadowVersion);
 	const node = view.edytor.node as HTMLElement | undefined;
 	const active = node?.ownerDocument.activeElement;
 	const context: ShadowContext = {
@@ -229,13 +350,26 @@ export const compareShadow = (view: View, step: string) => {
 		shadow,
 		docMoved: facade.version !== view.shadowVersion,
 		deadEndpoint: Boolean((s.startText && !s.startText._live) || (s.endText && !s.endText._live)),
-		focused: Boolean(node && active && node.contains(active))
+		focused: Boolean(node && active && node.contains(active)),
+		local: since.some(([, local]) => local),
+		remote: since.some(([, local]) => !local),
+		domDerived: s.startNode !== null,
+		mirrorLag: lagging(facade, s.startText) || lagging(facade, s.endText)
 	};
 	const cls = CLASSES.find((c) => c.match(context));
 	const sample = `${testName()} [${step}] ${JSON.stringify(diffs)}`.slice(0, 600);
 	if (!cls) {
-		census.unexplained.push({ test: testName(), step, diffs });
-		pendingUnexplained.push({ test: testName(), step, diffs });
+		const {
+			view: _view,
+			diffs: _diffs,
+			fields: _fields,
+			state: _s,
+			shadow: _p,
+			...flags
+		} = context;
+		const entry = { test: testName(), step, diffs, context: flags };
+		census.unexplained.push(entry);
+		pendingUnexplained.push(entry);
 		return;
 	}
 	const entry = (census.classes[cls.id] ??= { row: cls.row, count: 0, samples: [] });
@@ -263,7 +397,10 @@ export const reportShadowCensus = (file: string) => {
 
 const scheduled = new Set<View>();
 (globalThis as { __EDYTOR_SELECTION_SHADOW__?: unknown }).__EDYTOR_SELECTION_SHADOW__ = {
-	register: (view: View) => views.add(view),
+	register: (view: View) => {
+		views.add(view);
+		queueMicrotask(() => views.has(view) && track(view));
+	},
 	unregister: (view: View) => views.delete(view),
 	turn: (view: View) => {
 		if (scheduled.has(view)) return;
@@ -274,5 +411,3 @@ const scheduled = new Set<View>();
 		});
 	}
 };
-
-export { only };

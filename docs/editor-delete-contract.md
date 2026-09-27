@@ -33,6 +33,16 @@ text `[yEnd, len)`, interior blocks die — then:
   the range covered all its text. `[a@2→c@0] → "aa","cc"` (only the
   interior block dies — the neighbors do NOT join);
   `[a@0→b@0] → "","bb","cc"` (head survives empty).
+  _Reading (arch-v2 D6):_ an end at a block's start is the end of the
+  block before it in document order when that block renders its content
+  (the same canonical form the selection gives such a range), so the two
+  examples above are `[a@2→b@2]` and the whole-text `[a@0→a@2]`. When the
+  block before the tail renders no content (a list container, a void),
+  the end stays at the tail's start: the tail is untouched, no merge runs,
+  and the head follows the uniform head rule (it dies iff its prefix is
+  empty — `del.range.nested-tail`'s `alpha@0 → beta@0` pin).
+- **Merge capability:** the tail's suffix merges into the head only when
+  the document's `canMerge(tail, head)` allows it (`del.range.island-seal`).
 
 ### `del.range.whole-text` — one block's entire text selected
 
@@ -71,12 +81,61 @@ Result: `[list-item "ta", paragraph "omega"]`.
   nesting of the tail does not change the head's fate.
 - The nested tail keeps its suffix `ta`, keeps `list-item` type and id,
   and is **promoted to root** when its `ordered-list` container dies
-  (the ancestor-rescue path in `deleteContentWithinSelection`).
+  (the ancestor rescue of the document's range deletion,
+  `prepare.deleteRange`).
 
 Former UNRESOLVED-1 — the asymmetry was a defect: the ancestor-rescue
 branch returned after removing only the container, leaving the doomed
 head's selected text behind. All doomed blocks outside the rescued
 subtree are now removed in that branch.
+
+### `del.range.outside-survives` — what follows the range end is kept
+
+Blocks after the range end are outside the range and never die with it:
+the tail's children, and the later siblings of the tail (and of each of
+its ancestors) inside a container the range dies through. They take that
+container's slot, in document order (the rescue of `del.range.nested-tail`
+applies whether the head survives or not). When the tail merges into the
+head, its children take the tail's vacated slot exactly as
+`mergeBackward` places them (an island tail's children take that slot's
+default child type). `[alpha, ordered-list > [beta, gamma], omega]`,
+`alpha@2 → beta@2` → `[paragraph "alta", list-item "gamma", paragraph
+"omega"]`; `[aa, bb > [cc]]`, `aa@1 → bb@2` → `["a", "cc"]`. A rescue
+never carries a block across an island boundary: when it would, the
+containers the range ends inside stay (with their surviving content).
+
+### `del.range.island-seal` — the merge is the document's (F-D1)
+
+`root > [box(island) > [A "aa"], Y "yy"]`, `A@1 → Y@1` →
+`[box > [A "a"], Y "y"]`: `canMerge(Y, A)` refuses (the island seal), so
+the head keeps its prefix, the tail keeps its suffix and nothing merges —
+the same answer `mergeForward(A)` gives. One level deeper
+(`root > [X > [box > [A "aa"]], Y "yy"]`) is identical.
+
+### `del.range.empty-container` — no empty container is left (F-D12)
+
+A block that renders no content of its own (a list container) and whose
+every child dies with the range dies too, and so on upward (never the
+root). `[ordered-list > [i1 "one", i2 "two"], P "three"]`, `i1@0 → P@2` →
+`[P "ree"]`, caret `P@0`.
+
+### `del.range.replace` — the deletion half of a replacement
+
+Typing, pasting or composing over a range deletes it with the **head
+kept**: the head block survives even when its prefix is empty (the
+replacement lands at `yStart` inside it), and the tail's suffix merges
+into it under the same `canMerge` rule. `alpha@0 → beta@2` replaced →
+`[paragraph(alpha) "ta"]`, insertion point `alpha@0`. Every other rule of
+this section is unchanged. (Whole-document replacement therefore keeps
+the head instead of synthesizing a survivor.)
+
+### `del.range.caret` — where the caret lands
+
+The head survives → `head@yStart`; else the tail survives → `tail@0`
+(`sel.seam.next-sibling`: the block that slid into the head's place);
+else the nearest surviving block before the range that renders content,
+at its end; else the nearest one after it, at its start; else the
+survivor `del.range.whole-doc` synthesizes, at 0.
 
 ### `del.range.nested-subtree` — range covers a whole subtree
 

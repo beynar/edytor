@@ -104,7 +104,7 @@ const setCodeLineSuggestion = async (page: Page, suggestion: string) =>
 		}
 
 		codeLine.suggestions = [[{ text: suggestionText }]];
-		return codeLine.rawSuggestions !== null;
+		return codeLine.suggestions !== null;
 	}, suggestion);
 
 const readCodeSuggestionState = async (page: Page) =>
@@ -113,7 +113,7 @@ const readCodeSuggestionState = async (page: Page) =>
 		const codeLine = edytor?.root?.children?.[0]?.children?.[0];
 		const suggestion = document.querySelector<HTMLElement>('[data-edytor-text-suggestion]');
 		return {
-			hasRawSuggestion: codeLine?.rawSuggestions !== null,
+			hasRawSuggestion: codeLine?.suggestions !== null,
 			suggestionText: suggestion?.textContent ?? null,
 			visibleSuggestionCount: document.querySelectorAll('[data-edytor-text-suggestion]').length
 		};

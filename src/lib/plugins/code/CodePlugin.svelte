@@ -8,6 +8,10 @@
 	import { Block } from '$lib/block/block.svelte.js';
 	import { runIntent } from '$lib/events/beforeInputCommands.js';
 
+	// Never auto-highlight: Prism's `highlightAll` (DOMContentLoaded / next
+	// frame) would rewrite the editor's code DOM, which only the renderer
+	// writes. The code kind tokenizes through `transformText` instead.
+	Prism.manual = true;
 	(globalThis as typeof globalThis & { Prism?: typeof Prism }).Prism = Prism;
 
 	/** Auto-pairs typed at a collapsed caret in a code line. */

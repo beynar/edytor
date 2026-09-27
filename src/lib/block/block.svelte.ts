@@ -199,10 +199,6 @@ export class Block {
 		else suggestions.delete(this.id);
 	}
 
-	get rawSuggestions(): (JSONText[] | JSONInlineBlock)[] | null {
-		return this.suggestions;
-	}
-
 	get nextBlock(): Block | null {
 		if (!this.parent) {
 			return null;

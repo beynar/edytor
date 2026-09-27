@@ -1630,7 +1630,7 @@ test.describe('browser hotkey behavior', () => {
 						return false;
 					}
 					codeLine.suggestions = [[{ text: ' // done' }]];
-					return codeLine.rawSuggestions !== null;
+					return codeLine.suggestions !== null;
 				})
 			)
 			.toBe(true);
@@ -1652,7 +1652,7 @@ test.describe('browser hotkey behavior', () => {
 				page.evaluate(() => {
 					const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 					const codeLine = edytor?.root?.children?.[0]?.children?.[0];
-					return codeLine?.rawSuggestions === null;
+					return codeLine?.suggestions === null;
 				})
 			)
 			.toBe(true);
@@ -1682,7 +1682,7 @@ test.describe('browser hotkey behavior', () => {
 						return false;
 					}
 					codeLine.suggestions = [[{ text: "const b = 'world';" }]];
-					return codeLine.rawSuggestions !== null;
+					return codeLine.suggestions !== null;
 				})
 			)
 			.toBe(true);
@@ -1698,7 +1698,7 @@ test.describe('browser hotkey behavior', () => {
 				page.evaluate(() => {
 					const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 					const codeLine = edytor?.root?.children?.[0]?.children?.[0];
-					return codeLine?.rawSuggestions !== null;
+					return codeLine?.suggestions !== null;
 				})
 			)
 			.toBe(true);
@@ -1708,7 +1708,7 @@ test.describe('browser hotkey behavior', () => {
 				page.evaluate(() => {
 					const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 					const codeLine = edytor?.root?.children?.[0]?.children?.[0];
-					return codeLine?.rawSuggestions === null;
+					return codeLine?.suggestions === null;
 				})
 			)
 			.toBe(true);

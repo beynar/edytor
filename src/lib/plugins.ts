@@ -3,6 +3,7 @@ import type { Edytor } from './edytor.svelte.js';
 import type { Block } from './block/block.svelte.js';
 import type { JSONBlock, JSONInlineBlock, JSONText } from './utils/json.js';
 import type { Text } from './text/text.svelte.js';
+import type { TextTransform } from './surface/cells.js';
 import type { SerializableContent } from './utils/json.js';
 import type { HotKey, HotKeyCombination } from './session/keymap.js';
 import type { TextOperations } from './text/text.utils.js';
@@ -28,11 +29,29 @@ export type MarkSnippetPayload<D extends SerializableContent = SerializableConte
 type Prevent = (cb?: () => void) => void;
 
 /**
- * Represents the payload for block snippets with generic serializable content.
- * @template D - The type of serializable content
+ * What a block snippet receives (R4, §2.4 "Snippet view objects"): declared
+ * values read from the block's cell and the selection — reactive, never the
+ * block's handle itself — plus the handle for document reads and commands.
  */
-export type BlockSnippetPayload<D extends SerializableContent = SerializableContent> = {
-	block: Block;
+export type BlockView<D = Record<string, any>> = {
+	readonly id: string;
+	readonly type: string;
+	readonly data: D;
+	readonly selected: boolean;
+	readonly focused: boolean;
+	/** The block's id-only handle (non-reactive reads, commands). */
+	readonly handle: Block;
+	/** Registers the snippet's block element (the core renders it from R5). */
+	attach: Block['attach'];
+	void: Block['void'];
+};
+
+/**
+ * Represents the payload for block snippets.
+ * @template D - The block's data
+ */
+export type BlockSnippetPayload<D = Record<string, any>> = {
+	block: BlockView<D>;
 	content: Snippet;
 	children: Snippet | null;
 };
@@ -193,8 +212,9 @@ export type BlockDefinition = {
 	 * This transformation is applied after the text is synced in to the state.
 	 *
 	 * You can use it to render custom marks decorations on the text like code tokens that are not stored in the document.
+	 * It receives declared values (R2): the segment's `{stringContent, value}` and the block's `{id, type, data}`.
 	 */
-	transformText?: (payload: { text: Text; block: Block; content: JSONText[] }) => JSONText[];
+	transformText?: TextTransform;
 	/** Called when the block receives focus */
 	onFocus?: (payload: { block: Block }) => void;
 	/** Called when the block loses focus */
@@ -204,21 +224,32 @@ export type BlockDefinition = {
 	/** Called when the block is deselected */
 	onDeselect?: (payload: { block: Block }) => void;
 	/** Normalize block content
-	 * This is called after each operation on the block.
-	 * You may want to work with the yjs types directly because the operation has not been synced in to the state yet.
-	 * If you return a function, it will be executed otherwise it will be ignored.
+	 * Called at the end of the transaction of each operation on the block: the
+	 * block is an id-only handle whose reads show the operation's writes.
+	 * If you return a function, it runs in the same transaction.
 	 */
 	normalizeContent?: (payload: { block: Block }) => (() => void) | void;
 	/** Normalize block children
-	 * This is called after each operation on the block.
-	 * You may want to work with the yjs types directly because the operation has not been synced in to the state yet.
-	 * If you return a function, it will be executed otherwise it will be ignored.
+	 * Called at the end of the transaction of each operation on the block: the
+	 * block is an id-only handle whose reads show the operation's writes.
+	 * If you return a function, it runs in the same transaction.
 	 */
 	normalizeChildren?: (payload: { block: Block }) => (() => void) | void;
 };
 
-export type InlineBlockSnippetPayload<D extends SerializableContent = SerializableContent> = {
-	block: InlineBlock;
+/** What an inline-atom snippet receives (R4): declared values; a suggestion's atom is never selected. */
+export type InlineBlockView<D = Record<string, any>> = {
+	readonly id: string;
+	readonly type: string;
+	readonly data: D;
+	readonly selected: boolean;
+	/** The atom's id-only handle. */
+	readonly handle: InlineBlock;
+	attach: InlineBlock['attach'];
+};
+
+export type InlineBlockSnippetPayload<D = Record<string, any>> = {
+	block: InlineBlockView<D>;
 };
 
 export type InlineBlockDefinition = {

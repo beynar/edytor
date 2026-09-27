@@ -348,10 +348,7 @@ export class EdytorSelection {
 	} | null = null;
 	/** Blocks holding the last selection's endpoints: a suggestion there is cleared when they are left. */
 	#edges: string[] = [];
-	#compat = new WeakMap<
-		SelectionProjection,
-		{ surface: unknown; mirror: number; state: SelectionState }
-	>();
+	#compat = new WeakMap<SelectionProjection, { surface: unknown; state: SelectionState }>();
 
 	constructor(
 		edytor: Edytor,
@@ -375,18 +372,16 @@ export class EdytorSelection {
 	get state(): SelectionState {
 		const projection = this.projection;
 		const surface = this.#surface?.value === this.value ? this.#surface : null;
-		const mirror = this.edytor.mirrorRevision;
 		const hit = this.#compat.get(projection);
-		if (hit && hit.surface === surface && hit.mirror === mirror) return hit.state;
+		if (hit && hit.surface === surface) return hit.state;
 		const state = this.#compatState(this.value, projection, surface);
-		this.#compat.set(projection, { surface, mirror, state });
+		this.#compat.set(projection, { surface, state });
 		return state;
 	}
 
 	#textOf = (block: Block, segment: SelectionSegment | undefined): Text | null => {
 		if (segment?.kind !== 'text') return null;
-		const texts = block.content.filter((part): part is Text => part instanceof Text);
-		return texts.find((text) => text._segOrd === segment.segOrd) ?? texts[segment.segOrd] ?? null;
+		return this.edytor.idToBlock.text(block.id, segment.segOrd);
 	};
 
 	#compatState = (
@@ -602,8 +597,9 @@ export class EdytorSelection {
 		isReversed = false
 	): SelectionValue =>
 		this.textValue(startText, yStart, endText, yEnd, isReversed, undefined, (text, at, side) => {
-			const block = text.parent?._blockId;
-			return block == null ? null : this.edytor.facade.anchorAt(block, text.segStart + at, side);
+			return text.parent.isRoot
+				? null
+				: this.edytor.facade.anchorAt(text.blockId, text.segStart + at, side);
 		});
 
 	/** Ask the projector to display the current value after the flush (R10). */
@@ -1246,11 +1242,8 @@ export class EdytorSelection {
 		offset: number,
 		affinity: 'left' | 'right' = 'left'
 	): TextAnchor | null => {
-		const blockId = text.parent?._blockId;
-		if (blockId == null || !text._live || !this.edytor.facade) {
-			return null;
-		}
-		return this.edytor.facade.anchorAt(blockId, text.segStart + offset, affinity);
+		if (text.parent.isRoot || !text.isInDocument) return null;
+		return this.edytor.facade.anchorAt(text.blockId, text.segStart + offset, affinity);
 	};
 
 	/**
@@ -1271,73 +1264,7 @@ export class EdytorSelection {
 		if (!resolved) {
 			return null;
 		}
-		const block = this.edytor.idToBlock.get(resolved.blockId);
-		if (!block) {
-			return null;
-		}
-		// Map the display offset onto a Text segment using the ENGINE-fresh
-		// per-block read (`deriveContentParts` boundaries) — wrapper part
-		// lengths can lag a model write until the mirror reconciles, which
-		// would misplace the caret right after an edit. The live wrapper is
-		// matched by `segOrd` (the segment ordinal it is bound to).
-		//
-		// U8a — scoped reads: `isVisibleBlock` carries the
-		// `projectedBlock → null` oracle (hidden/deleted), `contentItems`
-		// is the maintained per-block runs view `project()` itself reads —
-		// same pair `Text.refreshFromProject` uses (U5). The old
-		// `projectedBlock` call forced a full-tree `facade.project()` per
-		// doc-version change — the dominant selection-restore cost at 5k.
-		if (facade.isVisibleBlock(resolved.blockId)) {
-			const parts = block.deriveContentParts(facade.contentItems(resolved.blockId));
-			let off = 0;
-			let lastTextPart: { segOrd: number; len: number } | null = null;
-			let target: { segOrd: number; offset: number } | null = null;
-			for (const part of parts) {
-				const len = part.kind === 'text' ? part.items.reduce((n, i) => n + i.text.length, 0) : 1;
-				if (part.kind === 'text') {
-					lastTextPart = { segOrd: part.segOrd, len };
-					if (resolved.offset <= off + len) {
-						target = {
-							segOrd: part.segOrd,
-							offset: Math.max(0, resolved.offset - off)
-						};
-						break;
-					}
-				} else if (resolved.offset <= off) {
-					break;
-				}
-				off += len;
-			}
-			const segOrd = target?.segOrd ?? lastTextPart?.segOrd;
-			const segOffset = target?.offset ?? lastTextPart?.len ?? 0;
-			const wrapper =
-				segOrd == null
-					? null
-					: (block.content.find(
-							(part): part is Text => part instanceof Text && part._segOrd === segOrd
-						) ?? null);
-			if (wrapper) {
-				return { text: wrapper, offset: Math.min(segOffset, wrapper.length) };
-			}
-		}
-		// Fallback — no projection (or no matching live wrapper): walk the
-		// wrapper parts directly. Boundary offsets prefer the left part's
-		// end.
-		let off = 0;
-		let lastText: Text | null = null;
-		for (const part of block.content) {
-			const len = part instanceof Text ? part.length : 1;
-			if (part instanceof Text) {
-				lastText = part;
-				if (resolved.offset <= off + len) {
-					return { text: part, offset: Math.max(0, resolved.offset - off) };
-				}
-			} else if (resolved.offset <= off) {
-				break;
-			}
-			off += len;
-		}
-		return lastText ? { text: lastText, offset: lastText.length } : null;
+		return this.edytor.idToBlock.get(resolved.blockId)?.textAtOffset(resolved.offset) ?? null;
 	};
 
 	/** The text and block the selection's start last resolved to (the seam origin once they die). */
@@ -1413,7 +1340,7 @@ export class EdytorSelection {
 			const state = this.state;
 			if (state.startText) {
 				// The text it was displayed in died while its anchor moved on: display again.
-				if (this.#lastText !== null && !this.#lastText._live) this.display();
+				if (this.#lastText !== null && !this.#lastText.isInDocument) this.display();
 				this.#lastText = state.startText;
 				this.#lastBlock = state.startBlock?.id ?? null;
 				return;
@@ -1497,9 +1424,8 @@ export class EdytorSelection {
 		);
 	};
 
-	setCollapsedStateAtTextOffset = (textOrId: Text | string, offset: number) => {
+	setCollapsedStateAtTextOffset = (text: Text | undefined, offset: number) => {
 		this.clearModelSelectionPreservation();
-		const text = textOrId instanceof Text ? textOrId : this.edytor.getTextById(textOrId);
 		if (text) this.select(this.textValue(text, Math.min(Math.max(offset, 0), text.length)));
 	};
 
@@ -1509,10 +1435,9 @@ export class EdytorSelection {
 	 * display is followed through its atoms, else the seam of its block.
 	 */
 	setAtTextOffset = async (
-		textOrId: Text | string | undefined | null,
+		text: Text | undefined | null,
 		textOffset: number | null | undefined = this.state.yStart
 	) => {
-		const text = typeof textOrId === 'string' ? this.edytor.idToText.get(textOrId) : textOrId;
 		if (!text || typeof textOffset !== 'number') return;
 		this.#admit(this.#intent(text, Math.min(Math.max(textOffset, 0), text.length)), text);
 	};

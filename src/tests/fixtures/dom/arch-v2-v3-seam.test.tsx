@@ -446,14 +446,14 @@ describe('writes capture anchors at call time (L21 writeCollapsed…)', () => {
 		const remote = peer(edytor);
 		remote.facade.mergeBackward(beta!.id);
 		await remote.push();
-		expect(dead._live).toBe(false);
+		expect(dead.isInDocument).toBe(false);
 		await edytor.selection.setAtTextOffset(dead, 2);
 		await flushDomUpdates();
 		expect(texts(edytor)).toEqual(['alphabeta', 'gamma']);
 		// The merged-into block (anchor contract: a dead text's atoms are
 		// followed through its record), never the seam's next sibling `gamma`.
 		expect(caret(edytor)).toMatchObject({ block: alpha!.id, isCollapsed: true });
-		expect(edytor.selection.state.startText?._live).toBe(true);
+		expect(edytor.selection.state.startText?.isInDocument).toBe(true);
 	});
 
 	pin('a range write whose blocks die while it waits lands at the seam', async () => {

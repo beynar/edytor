@@ -16,8 +16,19 @@ import { type JSONBlock, type JSONDoc } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
 import { Projector } from './surface/projector.svelte.js';
-import { Block } from './block/block.svelte.js';
-import { Text } from './text/text.svelte.js';
+import {
+	createCells,
+	segmentDeltas,
+	type Cell,
+	type Cells,
+	type RenderDelta,
+	type Segment
+} from './surface/cells.js';
+import { Pin } from './surface/pin.svelte.js';
+import type { Block } from './block/block.svelte.js';
+import type { Text } from './text/text.svelte.js';
+import { Handles } from './session/handles.js';
+import { id } from './utils.js';
 import { SvelteMap } from 'svelte/reactivity';
 import { Y } from '$lib/crdt/engine.js';
 import {
@@ -30,8 +41,6 @@ import {
 	type EdytorDoc,
 	type EdytorDocument,
 	type OrderPolicy,
-	type ProjectedBlock,
-	type ProjectedDoc,
 	type YDoc,
 	type YUndoManager
 } from '$lib/crdt/index.js';
@@ -59,9 +68,11 @@ import { Keymap, type HotKey } from './session/keymap.js';
 import { TRANSACTION } from './constants.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import {
+	caretOf,
 	deleteBlocks,
 	deleteContentWithinSelection,
 	insertFlow,
+	rangeCaret,
 	prepareDeleteBlocks,
 	prepareDeleteContent,
 	prepareFlow
@@ -160,10 +171,11 @@ export class Edytor {
 	kinds: KindRow[] = [];
 	plugins: InitializedPlugin[];
 	container = $state<HTMLDivElement>();
-	idToBlock = new SvelteMap<string, Block>();
-	idToInlineBlock = new SvelteMap<string, InlineBlock>();
+	/** The view's handles (R4): one id-only `Block` per live id, texts and atoms by position and id. */
+	idToBlock: Handles = new Handles(this);
 	nodeToInlineBlock = new SvelteMap<Node, InlineBlock>();
-	idToText = new SvelteMap<string, Text>();
+	/** The text whose id is `t:<block>:<ordinal>`, while its segment exists. */
+	idToText = { get: (id: string) => this.idToBlock.textById(id) };
 	nodeToText = new SvelteMap<Node, Text>();
 	transaction = new TRANSACTION();
 	hotKeys: Keymap;
@@ -178,6 +190,10 @@ export class Edytor {
 	selection: EdytorSelection;
 	/** The only writer of the DOM selection (R10, `surface/projector`). */
 	readonly projector: Projector = new Projector(this);
+	/** What the components render (R1, R2): one cell per visible block, patched from change reports. */
+	cells = $state.raw<Cells>();
+	/** The IME host pin (`surface/pin`): the composing cell's segment list and render, frozen. */
+	readonly pin = new Pin();
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
 	placeholder?: string | Snippet<[{ block: Block }]>;
@@ -254,20 +270,6 @@ export class Edytor {
 		return sharedCrdt;
 	}
 	/**
-	 * Counts committed document transactions (local, remote, undo/redo) —
-	 * bumped only inside the facade `onChange` listener. Selection-restore
-	 * code reads this to detect real edits landing in an async restore
-	 * window. (The memoized live projection invalidates on `facade.version`
-	 * — the model-state token the facade itself owns — so this counter is
-	 * purely a commit signal, not a read-cache key.)
-	 */
-	_docCommitVersion = 0;
-	private _treeCache: {
-		version: number;
-		doc: ProjectedDoc;
-		index: Map<string, ProjectedBlock>;
-	} | null = null;
-	/**
 	 * The document's shared undo manager — assigned at the end of `sync()`,
 	 * never in the constructor, so history capture still starts only after
 	 * the document decides its content state (the bootstrap-before-capture
@@ -276,14 +278,6 @@ export class Edytor {
 	 * editor mounts, so all runtime readers see it set.
 	 */
 	undoManager!: YUndoManager;
-	/**
-	 * The DocChange currently being applied to the mirror (set while the
-	 * facade onChange dispatch runs) — lets wrappers distinguish
-	 * remote/programmatic updates from local ops.
-	 */
-	_mirrorChange: DocChange | null = null;
-	/** Detached block wrappers awaiting adoption onto a fresh facade id. */
-	_pendingBlocks = new Map<string, Block>();
 	/**
 	 * Coalesced stale-placeholder repair — ONE pending-roots set per view.
 	 * Commits queue only the block roots their `DocChange` touched; the
@@ -297,12 +291,31 @@ export class Edytor {
 	/** The view's command dispatcher (R7): every mutation this view makes goes through it. */
 	readonly dispatcher: Dispatcher = new Dispatcher(this);
 
+	/** An outermost `transact` of this view is running. */
+	private transacting = false;
+	/**
+	 * One transaction of this view. The outermost call runs the normalization
+	 * its operations requested at its end, inside the same transaction (S1:
+	 * one transaction, normalization once per touched parent): normalizers read
+	 * handles over the index, so a command is one update and a peer never
+	 * sees its un-normalized state.
+	 */
 	transact = <T>(cb: () => T): T => {
 		this.attempts.hold();
-		return this.doc.transact(() => {
-			const result = cb();
-			return result;
-		}, this.transaction);
+		if (this.transacting) return this.doc.transact(cb, this.transaction);
+		this.transacting = true;
+		try {
+			return this.doc.transact(() => {
+				const out = cb();
+				this.dispatcher.drain();
+				return out;
+			}, this.transaction);
+		} catch (error) {
+			this.dispatcher.drain(false);
+			throw error;
+		} finally {
+			this.transacting = false;
+		}
 	};
 
 	/** Whether a block move (relative step or beside/inside a target) is structurally allowed. */
@@ -594,302 +607,47 @@ export class Edytor {
 
 		this.undoManager = this.document.history;
 		this.history.bind();
-		this.root = new Block({
-			edytor: this,
-			blockId: null
-		});
-		this.root.reconcileChildren(this.projectedChildren(null));
-		// The root has no facade content node — give it the same empty-text
-		// sentinel mirror shape blocks get so `root.content` invariants hold.
-		this.root.reconcileContent([]);
-		this.ensureFacadeChangeSub();
+		this.cells = createCells(this.facade);
+		this.root = this.idToBlock.root;
+		this.offCommit = this.facade.onChange(this.onCommit);
 	};
 
-	/**
-	 * Unsubscribe handle for the facade→mirror change subscription, when live.
-	 */
-	private _facadeChangeOff: (() => void) | null = null;
+	/** The commit subscription: editor-lifetime (a remount's `off` drain never releases it). */
+	private offCommit?: () => void;
 
 	/**
-	 * The facade→mirror change subscription is an EDYTOR-lifetime listener,
-	 * but its unsubscribe rides in `this.off`, which the attach action drains
-	 * on every remount (`{#key editorDomRevision}` re-runs `use:edytor.attach`
-	 * after structural DOM refreshes like undo/redo). Without re-establishing
-	 * it, the first remount permanently detaches the mirror from doc changes —
-	 * undo/redo and remote updates stop reconciling `root.children` while the
-	 * doc itself stays correct. Re-subscribing on each attach (and forcing a
-	 * resync, in case a change landed while detached) keeps the mirror bound.
+	 * One commit (local, remote, undo/redo): prune the handles of the removed
+	 * blocks, then the selection's seam, the value consumers and the
+	 * placeholder pass.
 	 */
-	ensureFacadeChangeSub = () => {
-		if (this._facadeChangeOff || this.destroyed) return;
-		const off = this.facade.onChange((change) => {
-			// The facade already bumped `facade.version` for this commit —
-			// the memoized projection recomputes on next read.
-			this._docCommitVersion++;
-			this.valueRevision++;
-			this._mirrorChange = change;
-			// A commit this view did not issue re-renders under the caret: the
-			// projector displays the current value after that flush (R10).
-			if (change.origin !== this.transaction) this.projector.render++;
-			// Remote/programmatic mirror writes run under the scroll
-			// suppressor — a remote commit landing inside an in-flight
-			// `isHandlingUserInput` window must not scroll the page.
-			this.suppressCaretScrollDepth++;
-			let mirrorWasIncremental = true;
-			try {
-				mirrorWasIncremental = this.flushMirror();
-			} finally {
-				this.suppressCaretScrollDepth--;
-				this._mirrorChange = null;
-			}
-			// `this.value` is a full-document export (O(doc) — ~17ms at 5k
-			// blocks) — compute it only when a consumer actually exists. The
-			// version-keyed memo keeps repeated reads inside one commit cheap.
-			if (this.onChange || this.plugins.some((plugin) => plugin.onChange)) {
-				const value = this.value;
-				this.onChange?.(value);
-				this.plugins.forEach((plugin) => {
-					plugin.onChange?.(value);
-				});
-			}
-			void tick().then(() => this.queuePlaceholderRepair(change, mirrorWasIncremental));
-		});
-		const release = () => {
-			if (this._facadeChangeOff !== release) return;
-			this._facadeChangeOff = null;
-			off();
-		};
-		this._facadeChangeOff = release;
-		this.off.push(release);
-		if (this.root) {
-			// A change may have landed while the sub was detached — converge the
-			// mirror now (the projection re-derives from `facade.version`, so
-			// this flush always reads current state).
-			this.flushMirror();
+	private onCommit = (change: DocChange) => {
+		this.valueRevision++;
+		// A commit this view did not issue re-renders under the caret: the
+		// projector displays the current value after that flush (R10).
+		if (change.origin !== this.transaction) this.projector.render++;
+		// Remote/programmatic commits run under the scroll suppressor —
+		// a remote commit landing inside an in-flight `isHandlingUserInput`
+		// window must not scroll the page.
+		this.suppressCaretScrollDepth++;
+		try {
+			this.idToBlock.prune(change);
+			// Repair a selection that no longer resolves.
+			this.selection?.restoreDeadSelectionEndpoints();
+		} finally {
+			this.suppressCaretScrollDepth--;
 		}
-	};
-
-	/**
-	 * The live projected tree — `facade.project()` reads current node state,
-	 * so unlike the maintained runs view it reflects writes made earlier in
-	 * the SAME uncommitted transaction. Memoized on `facade.version` — the
-	 * model-state token the facade bumps on every write (inside the same
-	 * transaction) and on every committed update — so command-layer reads
-	 * always observe post-write state (read-your-writes).
-	 */
-	private _projectedTree = (): {
-		doc: ProjectedDoc;
-		index: Map<string, ProjectedBlock>;
-	} => {
-		const version = this.facade.version;
-		if (this._treeCache?.version === version) {
-			return this._treeCache;
-		}
-		const doc = this.facade.project();
-		const index = new Map<string, ProjectedBlock>();
-		const walk = (nodes: ProjectedBlock[]) => {
-			for (const node of nodes) {
-				index.set(node.id, node);
-				walk(node.children);
-			}
-		};
-		walk(doc.children);
-		this._treeCache = { version, doc, index };
-		return this._treeCache;
-	};
-
-	/** Full projected subtree of a visible block id (null when hidden/deleted). */
-	projectedBlock = (blockId: string): ProjectedBlock | null =>
-		this._projectedTree().index.get(blockId) ?? null;
-
-	/** Projected children of `parent` (`null` = root). */
-	projectedChildren = (parent: string | null): ProjectedBlock[] => {
-		const tree = this._projectedTree();
-		if (parent === null) {
-			return tree.doc.children;
-		}
-		return tree.index.get(parent)?.children ?? [];
-	};
-
-	/**
-	 * Incremental mirror apply — patch the wrapper tree from one committed
-	 * {@link DocChange} instead of re-projecting + re-reconciling the whole
-	 * document (~5ms project + O(doc) reconcile at 5k blocks, per commit).
-	 *
-	 * The DocChange contract (same one `src/tests/crdt/doc/mirror.test.ts`
-	 * builds a convergent mirror from): `order` lists are authoritative for
-	 * every parent whose visible children changed, `added` roots carry their
-	 * full projected subtree, `removed` ids and every visible child a commit
-	 * re-placed elsewhere is claimed by an `order` list. That makes the
-	 * change self-contained — no projected index needed.
-	 *
-	 * Returns false when an id the change references cannot be resolved
-	 * from the current mirror (divergence — e.g. a missed event while the
-	 * subscription was detached): the caller then falls back to the full
-	 * `reconcileChildren(projectedChildren(null))` path, which converges
-	 * regardless of history.
-	 */
-	private applyMirrorChange = (change: DocChange): boolean => {
-		const root = this.root;
-		if (!root) {
-			return true;
-		}
-
-		// `claimed` = every id listed by a changed parent's new child list —
-		// the change's own "still visible" oracle. Protects children moved
-		// out of a doomed subtree (see `_drop(keep)`) and fast-paths the
-		// per-parent drop check before the `facade.positionOf` fallback.
-		const claimed = new Set<string>();
-		for (const ids of change.order.values()) {
-			for (const id of ids) {
-				claimed.add(id);
-			}
-		}
-
-		// Ids inside an `added` subtree — resolvable once the subtree root is
-		// placed by its parent's order entry (the projected node carries
-		// descendants, so covered ids never need individual patches).
-		const addedIds = new Set<string>();
-		const collectAdded = (node: ProjectedBlock) => {
-			addedIds.add(node.id);
-			for (const child of node.children) {
-				collectAdded(child);
-			}
-		};
-		for (const node of change.added.values()) {
-			collectAdded(node);
-		}
-
-		// Mirror-side ids inside a `removed` subtree — collected off the
-		// pre-change wrapper tree, before any drop mutates it.
-		const doomed = new Set<string>();
-		const collectDoomed = (block: Block) => {
-			doomed.add(block.id);
-			for (const child of block.children) {
-				if (!claimed.has(child.id)) {
-					collectDoomed(child);
-				}
-			}
-		};
-		for (const id of change.removed) {
-			const wrapper = this.idToBlock.get(id);
-			if (wrapper) {
-				collectDoomed(wrapper);
-			}
-		}
-
-		// Preflight — every id the apply below dereferences must resolve
-		// without the projected index, or be provably covered by an
-		// added/removed subtree. Anything else ⇒ mirror diverged from the
-		// diff stream ⇒ caller runs the full reconcile instead.
-		for (const [parentId, ids] of change.order) {
-			if (
-				parentId !== null &&
-				!this.idToBlock.has(parentId) &&
-				!addedIds.has(parentId) &&
-				!doomed.has(parentId)
-			) {
-				return false;
-			}
-			for (const id of ids) {
-				if (!this.idToBlock.has(id) && !this._pendingBlocks.has(id) && !addedIds.has(id)) {
-					return false;
-				}
-			}
-		}
-		for (const id of change.meta.keys()) {
-			if (!this.idToBlock.has(id)) {
-				return false;
-			}
-		}
-		for (const id of change.content.keys()) {
-			if (!this.idToBlock.has(id)) {
-				return false;
-			}
-		}
-
-		// Removed subtree roots — the claimed-aware cascade keeps children
-		// this same commit re-placed elsewhere.
-		const keepAlive = (id: string) => claimed.has(id);
-		for (const id of change.removed) {
-			this.idToBlock.get(id)?._drop(keepAlive);
-		}
-
-		// Changed parents — each new child list is authoritative; mirrors
-		// `reconcileChildren` (reuse by id → pending adoption → create).
-		for (const [parentId, ids] of change.order) {
-			const parent = parentId === null ? root : this.idToBlock.get(parentId);
-			if (!parent) {
-				// Parent inside an added subtree (built with its root) or
-				// removed with an ancestor — validated by the preflight.
-				continue;
-			}
-			const prev = parent.children;
-			const used = new Set<Block>();
-			let degraded = false;
-			const next: Block[] = [];
-			ids.forEach((id) => {
-				let child = this.idToBlock.get(id);
-				const pending = this._pendingBlocks.get(id);
-				this._pendingBlocks.delete(id);
-				if (!child && pending) {
-					child = pending;
-				}
-				const addedNode = change.added.get(id);
-				if (!child && !addedNode) {
-					degraded = true; // preflight-guaranteed unreachable — guard anyway
-					return;
-				}
-				if (!child) {
-					child = new Block({ parent, edytor: this, blockId: id });
-				}
-				child._bind(id, parent);
-				child.parent = parent;
-				used.add(child);
-				if (addedNode) {
-					// `added` roots carry the full projected subtree — the same
-					// `_reconcile` the full path runs for them.
-					child._reconcile(addedNode);
-				}
-				next.push(child);
+		// `this.value` is a full-document export (O(doc) — ~17ms at 5k
+		// blocks) — compute it only when a consumer actually exists.
+		if (this.onChange || this.plugins.some((plugin) => plugin.onChange)) {
+			const value = this.value;
+			this.onChange?.(value);
+			this.plugins.forEach((plugin) => {
+				plugin.onChange?.(value);
 			});
-			if (degraded) {
-				return false;
-			}
-			for (const old of prev) {
-				if (
-					!used.has(old) &&
-					old._live &&
-					!claimed.has(old.id) &&
-					!this.facade.isVisibleBlock(old.id)
-				) {
-					old._drop(keepAlive);
-				}
-			}
-			parent.children = next;
 		}
-
-		for (const [id, meta] of change.meta) {
-			this.idToBlock.get(id)?._reconcileMeta(meta.type, meta.data);
-		}
-		for (const [id, items] of change.content) {
-			this.idToBlock.get(id)?.reconcileContent(items);
-		}
-		return true;
+		void tick().then(() => this.queuePlaceholderRepair(change));
 	};
 
-	/**
-	 * Reconcile the wrapper tree with the projected tree. Called by the facade
-	 * onChange dispatch on every commit, and directly by the typed mutation
-	 * surface (`insertChildren`/`insertParts`/`deleteParts`/…) after an op so
-	 * intra-transaction mirror reads (`parent.children`, `content`) stay fresh.
-	 *
-	 * Commit dispatch carries the committed {@link DocChange} in
-	 * `_mirrorChange` — the incremental path patches only touched blocks.
-	 * Direct mid-transaction calls (`_mirrorChange === null`) keep the full
-	 * projected reconcile: `project()` reflects uncommitted same-transaction
-	 * writes, which DocChange deltas (commit-boundary only) cannot.
-	 */
 	/**
 	 * Scoped stale-placeholder repair. The commit queues only the block
 	 * roots its {@link DocChange} touched — `content` (text composition
@@ -900,18 +658,9 @@ export class Edytor {
 	 * resolves lazily through `idToBlock`, so a `{#key}` remount between
 	 * commit and pass retargets the FRESH node instead of scanning a
 	 * detached one; `removed` ids are detached by definition and skipped.
-	 *
-	 * When the mirror fell back to a full reconcile (`applyMirrorChange`
-	 * returned false — divergence the diff can't describe), the affected
-	 * set is unknowable from the change: scope the pass to the editor root
-	 * once, still through the same coalesced window.
 	 */
-	private queuePlaceholderRepair = (change: DocChange, mirrorWasIncremental: boolean) => {
+	private queuePlaceholderRepair = (change: DocChange) => {
 		const repair = this.placeholderRepair;
-		if (!mirrorWasIncremental) {
-			repair.addKeyed('edytor:root', () => this.node);
-			return;
-		}
 		const addBlock = (id: string) =>
 			repair.addKeyed(`block:${id}`, () => this.idToBlock.get(id)?.node ?? undefined);
 		for (const id of change.content.keys()) {
@@ -926,29 +675,6 @@ export class Edytor {
 		for (const id of change.added.keys()) {
 			addBlock(id);
 		}
-	};
-
-	/** Bumped by every mirror flush: wrappers are looked up again after it. */
-	mirrorRevision = 0;
-	flushMirror = (): boolean => {
-		if (!this.root) {
-			return true;
-		}
-		const change = this._mirrorChange;
-		const applied = change !== null && this.applyMirrorChange(change);
-		if (!applied) this.root.reconcileChildren(this.projectedChildren(null));
-		this.mirrorRevision++;
-		// Remote/programmatic kills (`_drop`/`reconcileContent`) never run
-		// `_setItems` on the caret's wrapper — repair a selection that no
-		// longer resolves. (`this.selection` is undefined during the
-		// constructor's first sync — nothing is selected yet anyway.)
-		this.selection?.restoreDeadSelectionEndpoints();
-		if (applied) return true;
-		// `change === null` (a mid-transaction flush for read-your-writes)
-		// still ran the incremental-safe path — no DocChange exists, so
-		// nothing needed scoping; report incremental. Only a real change
-		// that failed to apply reports a fallback.
-		return change === null;
 	};
 
 	onBeforeInput = onBeforeInput.bind(this);
@@ -1058,9 +784,8 @@ export class Edytor {
 	 * render lands) and arm the IME post-commit jump rule — a move right after
 	 * the commit with no gesture since is displayed back (`surface/projector`).
 	 */
-	stabilizeCompositionSelection = async (textOrId: Text | string, offset: number) => {
-		const text = this.getTextById(typeof textOrId === 'string' ? textOrId : textOrId.id);
-		if (this.readonly || this.isComposing || !text) return;
+	stabilizeCompositionSelection = async (text: Text, offset: number) => {
+		if (this.readonly || this.isComposing || !text.isInDocument) return;
 		const active = getActiveElement(this.node);
 		const selection = getDomSelection(this.node);
 		const ours = (node?: Node | null) => Boolean(node && this.node?.contains(node));
@@ -1104,35 +829,44 @@ export class Edytor {
 	deleteContentWithinSelection = batch(
 		'deleteContentWithinSelection',
 		deleteContentWithinSelection,
-		prepareDeleteContent
+		prepareDeleteContent,
+		rangeCaret
 	);
 
-	insertFlow = batch('insertFlow', insertFlow, prepareFlow);
+	insertFlow = batch('insertFlow', insertFlow, prepareFlow, caretOf);
 
 	deleteBlocks = batch('deleteBlocks', deleteBlocks, prepareDeleteBlocks);
 
-	getTextById = (id: string) => {
-		const isText = id.startsWith('t');
-		if (!isText) {
-			throw new Error('Invalid id, expected text id');
-		}
+	/** The handle of the `ordinal`-th text segment of block `id` (the element a cell segment renders). */
+	textAt = (id: string, ordinal: number): Text => this.idToBlock.text(id, ordinal);
 
-		return this.idToText.get(id);
+	/** The cell segment the element of `text` renders (the frozen list while pinned). */
+	segmentOf = (text: Text): { cell: Cell; segment: Segment } | null => {
+		const cell = this.cells?.get(text.parent.id);
+		const part = cell && this.pin.parts(cell).filter((p) => p.kind === 'text')[text.ordinal];
+		return cell && part?.kind === 'text' ? { cell, segment: part } : null;
 	};
+
+	/** The render deltas the element of `text` shows. */
+	deltasOf = (text: Text): readonly RenderDelta[] => {
+		const at = this.segmentOf(text);
+		if (!at) return [];
+		const { cell, segment } = at;
+		const pinned = this.pin.render(cell.id, segment.key);
+		const transform = this.getBlockDefinition('block', cell.type).transformText;
+		return pinned?.deltas ?? segmentDeltas(cell, segment, transform);
+	};
+
+	/** The handle of inline atom `atom`, shown in block `id`. */
+	atomAt = (id: string, atom: string): InlineBlock => this.idToBlock.atom(id, atom);
 
 	clear = () => {
 		const newBlock = this.transact(() => {
 			const root = this.root!;
 			root.deleteChildren(0, root.children.length);
-			const block = new Block({
-				edytor: this,
-				parent: this.root,
-				block: {
-					type: this.defaultChild(root)
-				}
-			});
-			root.insertChildren(root.children.length, [block]);
-			return block;
+			const block = { id: id('b'), type: this.defaultChild(root) };
+			root.insertChildren(0, [block]);
+			return this.idToBlock.block(block.id);
 		});
 		this.refreshEditorDom();
 		void this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
@@ -1206,7 +940,6 @@ export class Edytor {
 				return;
 			}
 
-			const textId = text.id;
 			const offset = this.selection.state.yStart;
 			const applyMeaningfulDomSelection = () => {
 				const selection = getDomSelectionSnapshot(node);
@@ -1254,9 +987,9 @@ export class Edytor {
 				if (!s.isCollapsed || !s.startText) {
 					return;
 				}
-				const unchanged = s.startText.id === textId && s.yStart === offset;
+				const unchanged = s.startText === text && s.yStart === offset;
 				const focusReset = s.startText === this.root?.firstEditableText && s.yStart === 0;
-				const targetText = unchanged || focusReset ? this.idToText.get(textId) : s.startText;
+				const targetText = unchanged || focusReset ? text : s.startText;
 				const targetOffset = unchanged || focusReset ? offset : s.yStart;
 				if (!targetText?.node?.isConnected) {
 					return;
@@ -1284,9 +1017,6 @@ export class Edytor {
 
 		this.node = node;
 		this.container = node;
-		// The attach destroy path drains `this.off`, which carries the facade
-		// change sub's unsubscribe — re-establish it on every (re)attach.
-		this.ensureFacadeChangeSub();
 		this.selection.init();
 		this.doc.on('beforeTransaction', this.projector.before);
 		this.doc.on('afterTransaction', this.projector.after);
@@ -1421,8 +1151,7 @@ export class Edytor {
 				// editorDomRevision}` remount — leaving the spent batch in place
 				// would retain ~18 dead closures (+ the detached editor DOM
 				// subtree they close over) per remount and re-run them on every
-				// later destroy. The facade-change release is in this batch —
-				// `ensureFacadeChangeSub` re-establishes it on the next attach.
+				// later destroy.
 				this.off.splice(0).forEach((off) => off());
 			}
 		};
@@ -1458,9 +1187,9 @@ export class Edytor {
 		this._readinessRelease = undefined;
 
 		// Runs the whole attach-lifetime batch — DOM listeners, the mutation
-		// observer, plugin actions, and the facade-change release (which
-		// clears `_facadeChangeOff`) — and empties the array.
+		// observer, plugin actions — and empties the array.
 		this.off.splice(0).forEach((off) => off());
+		this.offCommit?.();
 		this.history.unbind();
 
 		// `selectionchange` listener + the published remote caret.
@@ -1471,15 +1200,13 @@ export class Edytor {
 		// Pending placeholder-repair passes (microtask/rAF/timers) must
 		// never act on a destroyed view — release kills them all.
 		this.placeholderRepair.release();
+		this.cells?.dispose();
 
 		// Wrapper maps — drop every id/node→wrapper edge a shared doc or a
 		// stray mutation could still reach.
 		this.idToBlock.clear();
-		this.idToInlineBlock.clear();
 		this.nodeToInlineBlock.clear();
-		this.idToText.clear();
 		this.nodeToText.clear();
-		this._pendingBlocks.clear();
 		this.root = undefined;
 		this.node = undefined;
 		this.container = undefined;

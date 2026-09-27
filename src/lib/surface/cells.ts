@@ -15,9 +15,13 @@
  * identity beyond that key, so typing inside it, or an atom inserted in
  * another segment, never renames it (positional ordinals did, L18).
  *
- * R1: computed in shadow next to today's wrapper mirror; nothing renders from
- * cells yet (R2 switches the components).
+ * Cells are reactive (R2): each cell and the root list are pointers a patch
+ * replaces, so a component re-renders only when the cell it reads was named
+ * by a report. Components render from cells only; operations read the
+ * document (R3), and the wrapper mirror is patched from the same reports
+ * until R4.
  */
+import { SvelteMap, createSubscriber } from 'svelte/reactivity';
 import type { BlockId, ContentRun, DocChange, ProjectedBlock } from '../crdt/index.js';
 import type { JSONText } from '../utils/json.js';
 
@@ -50,6 +54,10 @@ export type Cells = {
 	get: (id: BlockId) => Cell | undefined;
 	/** Patch from one change report. */
 	apply: (report: CellReport) => Patched;
+	/** Re-create a block's text elements from its cell (the observer's repair of foreign damage). */
+	remount: (id: BlockId) => void;
+	/** Bumped by {@link remount}: part of the block's text element keys. */
+	epoch: (id: BlockId) => number;
 	dispose: () => void;
 };
 
@@ -70,7 +78,13 @@ const sameIds = (a: readonly BlockId[], b: readonly BlockId[]) =>
  * reports (`onPatch` is told which cells each report replaced).
  */
 export const createCells = (source: CellSource, onPatch?: (patched: Patched) => void): Cells => {
-	const cells = new Map<BlockId, Cell>();
+	const cells = new SvelteMap<BlockId, Cell>();
+	const epochs = new SvelteMap<BlockId, number>();
+	let notifyRoot = () => {};
+	const trackRoot = createSubscriber((update) => {
+		notifyRoot = update;
+		return () => (notifyRoot = () => {});
+	});
 	const build = (node: ProjectedBlock) => {
 		cells.set(node.id, cellOf(node));
 		node.children.forEach(build);
@@ -98,13 +112,14 @@ export const createCells = (source: CellSource, onPatch?: (patched: Patched) => 
 			for (const child of cell.childIds) if (!listed.has(child)) drop(child);
 		};
 		report.removed.forEach(drop);
-		// An added subtree carries its descendants, including blocks that were
-		// visible before and moved into it: the report names none of them again
-		// (as moved, retyped or edited), so each is rebuilt from the subtree.
+		// An added subtree carries its new descendants. One that was visible
+		// before keeps its cell: the report names it again where it changed (K7).
 		const rebuild = (node: ProjectedBlock) => {
 			if (patched.has(node.id)) return;
-			cells.set(node.id, cellOf(node));
-			patched.add(node.id);
+			if (!cells.has(node.id)) {
+				cells.set(node.id, cellOf(node));
+				patched.add(node.id);
+			}
 			node.children.forEach(rebuild);
 		};
 		report.added.forEach(rebuild);
@@ -113,6 +128,7 @@ export const createCells = (source: CellSource, onPatch?: (patched: Patched) => 
 				if (sameIds(rootIds, ids)) continue;
 				rootIds = ids;
 				patched.add(null);
+				notifyRoot();
 			} else if (!sameIds(cells.get(parent)?.childIds ?? ids, ids)) {
 				patch(parent, { childIds: ids });
 				patched.add(parent);
@@ -131,6 +147,7 @@ export const createCells = (source: CellSource, onPatch?: (patched: Patched) => 
 
 	return {
 		get rootIds() {
+			trackRoot();
 			return rootIds;
 		},
 		get size() {
@@ -138,6 +155,8 @@ export const createCells = (source: CellSource, onPatch?: (patched: Patched) => 
 		},
 		get: (id) => cells.get(id),
 		apply,
+		remount: (id) => epochs.set(id, (epochs.get(id) ?? 0) + 1),
+		epoch: (id) => epochs.get(id) ?? 0,
 		dispose: off
 	};
 };

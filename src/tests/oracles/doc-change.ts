@@ -58,10 +58,11 @@ export const diffSnaps = (
 	const meta = new Map<BlockId, { type: string; data?: JsonObj }>();
 	const content = new Map<BlockId, readonly ContentRun[]>();
 	const order = new Map<BlockId | null, readonly BlockId[]>();
-	// Pass 1: added subtree ROOTS — descendants ride inside the root's spec.
+	// Pass 1: added subtree ROOTS — new descendants ride inside the root's
+	// spec; a descendant that was visible before is diffed like any other (K7).
 	const covered = new Set<BlockId>();
 	for (const id of after.nodes.keys()) {
-		if (!before.nodes.has(id)) {
+		if (!before.nodes.has(id) && !covered.has(id)) {
 			const node = after.nodeFor!(id);
 			added.set(id, node);
 			subtreeIds(node, covered);
@@ -69,8 +70,8 @@ export const diffSnaps = (
 	}
 	// Pass 2: per-node diffs for pre-existing blocks.
 	for (const [id, n] of after.nodes) {
-		if (covered.has(id)) continue;
-		const o = before.nodes.get(id)!;
+		const o = before.nodes.get(id);
+		if (!o) continue;
 		if (o.parent !== n.parent || o.index !== n.index) moved.add(id);
 		if (o.type !== n.type || safeKeyOf(o.data) !== safeKeyOf(n.data)) {
 			meta.set(id, {

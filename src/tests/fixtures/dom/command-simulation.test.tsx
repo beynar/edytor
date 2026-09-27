@@ -106,7 +106,7 @@ const selectionInfo = (edytor: Edytor) => {
 		text: s.startText?.stringContent,
 		yStart: s.yStart,
 		yEnd: s.yEnd,
-		live: s.startText?._live === true
+		live: s.startText?.isInDocument === true
 	};
 };
 
@@ -243,7 +243,7 @@ describe('headless command simulation (U2)', () => {
 		assertCanonicalTree(b.edytor, [p('alphabeta')]);
 
 		// B's caret's atoms were claimed by the merge: beta@2 → alphabeta@(5+2).
-		await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(selectionInfo(b.edytor)).toEqual({
 			text: 'alphabeta',
 			yStart: 7,
@@ -310,7 +310,7 @@ describe('headless command simulation (U2)', () => {
 		// A deletes EVERYTHING; normalization mints a fresh empty paragraph
 		// on both sides. On B the paragraph's text wrapper exists in the
 		// model before its DOM node mounts — the dead-endpoint recovery that
-		// ran inside flushMirror found no mounted editable text and armed
+		// ran with the commit's mirror patch found no mounted editable text and armed
 		// the post-mount retry instead of leaving the caret on dead beta.
 		const a = await renderDomEdytor(seed, { autoSelectFixture: false });
 		const b = await mountReplicaPeer(a, seed);
@@ -335,7 +335,7 @@ describe('headless command simulation (U2)', () => {
 
 		// The replacement paragraph is mounted AND the selection owns a
 		// live endpoint on it — no 80ms grace period required.
-		await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(selectionInfo(b.edytor)).toEqual({ text: '', yStart: 0, yEnd: 0, live: true });
 
 		// Follow-up input reaches the replacement paragraph.
@@ -373,7 +373,7 @@ describe('headless command simulation (U2)', () => {
 
 		// B's caret block is dead → lands at the seam it occupied: the sibling
 		// now at index 0, at its start.
-		await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(selectionInfo(b.edytor)).toEqual({ text: 'eta', yStart: 0, yEnd: 0, live: true });
 
 		await runCommand(b.edytor, 'insertText', 'Z');
@@ -411,7 +411,7 @@ describe('headless command simulation (U2)', () => {
 		// surviving sibling in the PREVIOUS ordering is 'omega', so B lands
 		// at its first text @0. Landing on the root's phantom content text
 		// would silently swallow the next input.
-		await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(selectionInfo(b.edytor)).toEqual({ text: 'omega', yStart: 0, yEnd: 0, live: true });
 
 		// The recovered caret must accept real input — the defect this
@@ -451,7 +451,7 @@ describe('headless command simulation (U2)', () => {
 		// array [omega, tail] would land in 'tail', skipping 'omega'. The
 		// seam is the next surviving sibling in the PREVIOUS ordering:
 		// omega (old index 2) → first text @0.
-		await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(selectionInfo(b.edytor)).toEqual({ text: 'omega', yStart: 0, yEnd: 0, live: true });
 
 		await runCommand(b.edytor, 'insertText', 'Z');
@@ -503,7 +503,7 @@ describe('headless command simulation (U2)', () => {
 		// The forward surviving sibling is the list CONTAINER — its own
 		// first text is an unrendered phantom (container content slot). The
 		// seam's editable destination is its first editable leaf: gamma @0.
-		await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(selectionInfo(b.edytor)).toEqual({ text: 'gamma', yStart: 0, yEnd: 0, live: true });
 
 		// Proof the destination is editable — typing must produce visible
@@ -555,7 +555,7 @@ describe('headless command simulation (U2)', () => {
 
 		// The forward neighbor is a void divider — no editable text. The
 		// seam keeps walking forward to the next editable text: tail @0.
-		await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(selectionInfo(b.edytor)).toEqual({ text: 'tail', yStart: 0, yEnd: 0, live: true });
 
 		await runCommand(b.edytor, 'insertText', 'Z');
@@ -606,7 +606,7 @@ describe('headless command simulation (U2)', () => {
 		// The surviving forward sibling's first child is a divider —
 		// `firstEditableText` must continue to gamma, not stop at the
 		// noneditable child (or the container's own phantom slot).
-		await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(selectionInfo(b.edytor)).toEqual({ text: 'gamma', yStart: 0, yEnd: 0, live: true });
 
 		await runCommand(b.edytor, 'insertText', 'Z');
@@ -653,7 +653,7 @@ describe('headless command simulation (U2)', () => {
 		await deliver(a, b);
 		assertCanonicalTree(b.edytor, remaining);
 
-		await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(selectionInfo(b.edytor)).toEqual({ text: 'alpha', yStart: 5, yEnd: 5, live: true });
 
 		await runCommand(b.edytor, 'insertText', 'Z');
@@ -709,7 +709,7 @@ describe('multi-user command programs (U8 headless)', () => {
 
 		// B's caret was inside the dead block → seam = the sibling that slid
 		// into its slot ('cc'@0), and B can keep typing there.
-		await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(selectionInfo(b.edytor)).toEqual({ text: 'cc', yStart: 0, yEnd: 0, live: true });
 		await runCommand(b.edytor, 'insertText', 'Y');
 		await flushDomUpdates();
@@ -846,7 +846,7 @@ describe('multi-user command programs (U8 headless)', () => {
 		await deliver(a, c);
 
 		// B (affected): dead block → seam at 'cc'@0.
-		await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(selectionInfo(b.edytor)).toEqual({ text: 'cc', yStart: 0, yEnd: 0, live: true });
 		// C (unaffected): its caret rides untouched at 'cc'@1 — different users
 		// correctly hold different selections.
@@ -930,7 +930,7 @@ describe('multi-user command programs (U8 headless)', () => {
 			// Unrelated content survives; B's dead block recovered to the
 			// seam — the surviving forward sibling's start ('cc…'@0).
 			assertCanonicalTree(b.edytor, [p('aa'), p('ccX')]);
-			await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+			await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 			expect(selectionInfo(b.edytor)).toEqual({
 				text: 'ccX',
 				yStart: 0,

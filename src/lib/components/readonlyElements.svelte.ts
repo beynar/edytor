@@ -1,12 +1,6 @@
 import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import type { InlineBlockDefinition } from '$lib/plugins.js';
-import {
-	deltaToJson,
-	jsonToDelta,
-	mergeRenderDeltas,
-	toDeltas,
-	type JSONDelta
-} from '$lib/text/deltas.js';
+import { renderDeltas } from '$lib/surface/cells.js';
 import { id } from '$lib/utils.js';
 import type { JSONInlineBlock, JSONText } from '$lib/utils/json.js';
 import type { Block } from '../block/block.svelte.js';
@@ -70,8 +64,7 @@ export class ReadonlyText {
 	readonly = true;
 	edytor: Edytor;
 	parent: Block;
-	#children;
-	domVersion = 0;
+	value: JSONText[];
 	stringContent: string;
 	node: HTMLElement | undefined;
 	isEmpty: boolean;
@@ -79,35 +72,30 @@ export class ReadonlyText {
 	id: string;
 	length: number;
 
-	get value(): JSONText[] {
-		return deltaToJson(this.#children);
-	}
-
-	get children() {
-		const transformer = this.parent.definition?.transformText;
-		return transformer
-			? jsonToDelta(
-					// @ts-expect-error
-					transformer({ text: this, block: this.parent, content: deltaToJson(this.#children) })
-				)
-			: this.#children;
-	}
-
-	/** Mirrors `Text.renderChildren` — the render each-block consumes this
-	 *  surface on readonly proxies too (suggestion text, readonly editor). */
+	/** The ghost text's render deltas, decorated by its kind's `transformText` (declared values). */
 	get renderChildren() {
-		return mergeRenderDeltas(this.children);
+		const transform = this.parent.definition?.transformText;
+		const { value, parent } = this;
+		return renderDeltas(
+			transform
+				? transform({
+						text: { stringContent: this.stringContent, value },
+						block: { id: parent.id, type: parent.type, data: parent.data },
+						content: value
+					})
+				: value
+		);
 	}
 
 	constructor({ value, parent, edytor }: { value: JSONText[]; parent: Block; edytor: Edytor }) {
-		this.#children = jsonToDelta(value);
+		this.value = value;
 		this.stringContent = value.map((child) => child.text).join('');
 		this.isEmpty = this.stringContent.length === 0;
 		this.parent = parent;
 		this.endsWithNewline = this.stringContent.endsWith('\n');
 		this.id = id('t');
 		this.edytor = edytor;
-		this.length = this.children.reduce((acc, child) => acc + child.text.length, 0);
+		this.length = this.stringContent.length;
 	}
 
 	attach(node: HTMLElement) {

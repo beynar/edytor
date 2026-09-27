@@ -388,15 +388,17 @@ export class Projector {
 		isReversed: boolean
 	) => {
 		if (!dom.anchorNode || !dom.focusNode || dom.rangeCount > 1) return false;
-		const { selection } = this.edytor;
 		const collapsed = startText === endText && yStart === yEnd;
 		const [first, last] = isReversed
 			? [[dom.focusNode, dom.focusOffset] as const, [dom.anchorNode, dom.anchorOffset] as const]
 			: [[dom.anchorNode, dom.anchorOffset] as const, [dom.focusNode, dom.focusOffset] as const];
+		// Only points inside the texts' own elements show the value: an element
+		// boundary (a re-parented block's old parent, R2; a caret left after a
+		// text) is written again, whichever text a boundary walk would map it to.
 		return (
 			dom.isCollapsed === collapsed &&
-			selection.getTextOfNode(first[0]) === startText &&
-			selection.getTextOfNode(last[0]) === endText &&
+			!!startText.node?.contains(first[0]) &&
+			!!endText.node?.contains(last[0]) &&
 			getYIndex(startText, first[0], first[1]) === yStart &&
 			getYIndex(endText, last[0], last[1]) === yEnd
 		);

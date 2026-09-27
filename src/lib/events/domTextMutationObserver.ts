@@ -333,11 +333,13 @@ const shouldRestoreManagedMark = (text: Text, node: Element) => {
 		return false;
 	}
 
-	const expectedCount = text.renderChildren.reduce(
-		(count, delta) =>
-			count + delta.marks.filter(([currentMarkName]) => currentMarkName === markName).length,
-		0
-	);
+	const expectedCount = text.edytor
+		.deltasOf(text)
+		.reduce(
+			(count, delta) =>
+				count + delta.marks.filter(([currentMarkName]) => currentMarkName === markName).length,
+			0
+		);
 	const renderedCount = Array.from(text.node.querySelectorAll('[data-edytor-mark]')).filter(
 		(mark) => mark.getAttribute('data-edytor-mark') === markName
 	).length;
@@ -487,7 +489,7 @@ const isLiveManagedElement = (
 			markName &&
 			text?.node === textElement &&
 			text.isInDocument &&
-			text.renderChildren.some((delta) => delta.marks.some(([name]) => name === markName))
+			edytor.deltasOf(text).some((delta) => delta.marks.some(([name]) => name === markName))
 		);
 	}
 
@@ -576,7 +578,7 @@ const isLiveAddedManagedElement = (edytor: Edytor, element: Element): boolean =>
 			markName &&
 			text?.node === textElement &&
 			text.isInDocument &&
-			text.renderChildren.some((delta) => delta.marks.some(([name]) => name === markName))
+			edytor.deltasOf(text).some((delta) => delta.marks.some(([name]) => name === markName))
 		);
 	}
 
@@ -1528,8 +1530,7 @@ const adopt = async (edytor: Edytor, text: Text, dom: string, domCaret?: number)
 	if (attempt) attempt.phase = adopted ? 'applied' : 'failed';
 	if (!text.isInDocument) return true;
 	if (adopted && same && Object.keys(marks).length > 0) text.markOnNextInsert = marks;
-	if (adopted && !drifted) text.syncFromModel();
-	else {
+	if (!adopted || drifted) {
 		text.refreshFromModel();
 		removeUnmanagedLineBreaks(text);
 	}

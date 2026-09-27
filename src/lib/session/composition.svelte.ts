@@ -93,8 +93,8 @@ export class Composition {
 		return this.phase === 'live';
 	}
 
-	/** `node` lies inside the element a live session owns. */
-	owns = (node: Node | null | undefined) => Boolean(node && this.host?.node?.contains(node));
+	/** `node` lies inside the element a live session owns (the pinned element). */
+	owns = (node: Node | null | undefined) => this.host !== null && this.edytor.pin.owns(node);
 
 	/** Run `fn` once the live session has ended (after its writes), or now when none is live. */
 	ended = (fn: () => void) => {
@@ -115,7 +115,7 @@ export class Composition {
 		this.#item = null;
 		this.marks = insertionMarks(this.edytor, intentSnapshot(this.edytor, 'insertCompositionText'));
 		const host = selection.selectedBlocks.size ? null : (startText ?? null);
-		host?._acquireCompositionPin(yStart, endText === host ? yEnd : host.length);
+		if (host) this.#pin(host, yStart, endText === host ? yEnd : host.length);
 		this.host = host;
 	};
 
@@ -134,7 +134,7 @@ export class Composition {
 	commit = (value: string) => this.#end(value);
 	cancel = () => this.#end('');
 	/** Adopt what the host shows: the browser committed it. */
-	abandon = () => this.#end(this.host?._imeBuffer() ?? this.preview);
+	abandon = () => this.#end(this.edytor.pin.imeBuffer() ?? this.preview);
 
 	/** `offset` of `text` lies in the live session's region. */
 	covers = (text: Text, offset: number) => {
@@ -169,7 +169,7 @@ export class Composition {
 		}
 		if (this.live) {
 			// An update no `beforeinput` announced (Android): the model takes what the IME shows.
-			const shown = this.#announced ? null : this.host?._imeBuffer();
+			const shown = this.#announced ? null : this.edytor.pin.imeBuffer();
 			this.#announced = false;
 			if (shown != null && shown !== this.preview) this.update(shown);
 			return 'live';
@@ -259,10 +259,20 @@ export class Composition {
 		if (end.offset > 0) facade.deleteText(end.blockId, 0, end.offset);
 	}
 
+	/** Pin the host's cell and segment: the renderer never rewrites the IME's node (`surface/pin`). */
+	#pin(host: Text, from: number, to: number) {
+		const { edytor } = this;
+		const at = edytor.segmentOf(host);
+		if (!at) return;
+		const transform = edytor.getBlockDefinition('block', at.cell.type).transformText;
+		edytor.pin.acquire(at.cell, at.segment, transform, from, to, host.node ?? null);
+	}
+
 	/** A mechanical tracked write: the region holds `value`. */
 	#write(value: string) {
 		const { edytor } = this;
 		this.preview = value;
+		edytor.pin.show(value, this.marks, this.native);
 		this.#hold();
 		const { facade } = edytor;
 		this.#tracked(() =>
@@ -344,9 +354,8 @@ export class Composition {
 	}
 
 	#release() {
-		const host = this.host;
 		this.host = null;
 		this.#region = null;
-		host?._releaseCompositionPin();
+		this.edytor.pin.release();
 	}
 }

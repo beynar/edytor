@@ -4,10 +4,15 @@
  * These functions are the `BlockOperations` layer bound onto `Block` via
  * `batch()`, which dispatches each call as a command (admission, plugin
  * interception, one transaction: `session/commands.ts`). The functions own
- * path/offset resolution (target paths → parent blocks, `partOffsetOf`
- * segment offsets, sibling lookup for `nestBlock`), the plan of an operation
- * that is one document op (`prepare*`), and post-op mirror maintenance
- * (`flushMirror`, normalization requests).
+ * path/offset resolution (target paths → parent blocks, a text's `segStart`,
+ * sibling lookup for `nestBlock`), the plan of an operation
+ * that is one document op (`prepare*`) and its normalization requests.
+ *
+ * OPERATIONS READ AND WRITE ONLY THE DOCUMENT (R3): `Block`/`Text` are id-only
+ * handles whose getters read the index (R4), so what a caller needs after the
+ * write (the new block, the text after an inserted atom, the caret a range op
+ * decided) is the op's document result as a handle (`batch`'s `resolve`) —
+ * inside an outer transaction too.
  *
  * STRUCTURAL PERMISSION IS DOCUMENT-OWNED: every op delegates to
  * `block.model.*` (the facade through `DocBlock`) and treats a `refused` result
@@ -19,16 +24,14 @@
  * facade, not in this file.
  *
  * Content preparation produces `BlockSpec`/`ContentItem` DIRECTLY from
- * JSON (`jsonBlockToSpec`/`jsonContentToItems` in `utils/json.ts`) — never
- * through disposable `Block` trees. `groupContent` remains only for
- * DETACHED spec mirrors (`new Block({block})` pre-admission `content`
- * parts and `suggestText` staging): the live-content invariant
+ * JSON (`jsonBlockToSpec`/`jsonContentToItems` in `utils/json.ts`): specs are
+ * data (K5: `new Block({block})` is gone). The live-content invariant
  * (text-first/text-last, no adjacent same-kind parts) is derived by the
  * document's projection on read, so stored content needs no
  * pre-normalization.
  */
-import { Block } from '$lib/block/block.svelte.js';
-import { Text } from '$lib/text/text.svelte.js';
+import type { Block } from '$lib/block/block.svelte.js';
+import type { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { ChangePayload } from '$lib/plugins.js';
 import type { Flow, FlowTarget } from '$lib/crdt/flow.js';
@@ -117,38 +120,57 @@ export type BlockOperations = {
  * Bind an operation onto its wrapper: every call is dispatched as a command
  * (`session/commands.ts`): admission, hooks before any write (on the command
  * and, when `prepare` answers one document plan, on each planned step), one
- * transaction, normalization, the result. `func` receives the prepared plan.
+ * transaction, normalization, the result. `func` receives the prepared plan
+ * and answers the op's document result; `resolve` turns it into wrappers
+ * after the commit patched them.
  */
-export function batch<T extends (...args: any[]) => any, O extends keyof BlockOperations>(
+export function batch<
+	T extends (...args: any[]) => any,
+	O extends keyof BlockOperations,
+	R = ReturnType<T>
+>(
 	operation: O,
 	func: T,
-	prepare?: (payload: BlockOperations[O]) => Prepared
-): T {
-	return function (this: Block, payload: BlockOperations[O]): ReturnType<T> {
-		return this.edytor.dispatcher.dispatch(
+	prepare?: (payload: BlockOperations[O]) => Prepared,
+	resolve?: (this: any, out: ReturnType<T> | undefined, payload: Parameters<T>[0]) => R
+): (...args: Parameters<T>) => R {
+	return function (this: Block, ...[payload]: Parameters<T>): R {
+		const out = this.edytor.dispatcher.dispatch(
 			operation,
 			payload,
 			{ block: this },
 			(p, plan) => func.call(this, p, plan),
 			prepare && ((p) => prepare.call(this, p))
-		) as ReturnType<T>;
-	} as T;
+		);
+		return resolve ? resolve.call(this, out, payload) : (out as R);
+	};
+}
+
+/**
+ * The handle of block `id` (null: refused at preparation, or gone; undefined:
+ * the command did not run). Inside an outer transaction too: the index shows
+ * the block that transaction created.
+ */
+export function blockOf(this: Block, id: string | null | undefined): Block | null | undefined {
+	return id === undefined ? undefined : (id && this.edytor.idToBlock.get(id)) || null;
 }
 
 const REFUSED: Prepared = { status: 'refused', ids: [] };
 
 /**
- * An op's body over its prepared plan: write it, refresh the mirror, request
- * normalization of the blocks it touched (captured before the write).
- * Answers the applied plan, or null when it was refused.
+ * An op's body over its prepared plan: write it and request normalization of
+ * the blocks it touched (captured before the write). Answers the applied
+ * plan, or null when it was refused.
  */
 const applyPlan = (block: Block, plan: Prepared, touched: (Block | null | undefined)[]) => {
 	if (!('writes' in plan)) return null;
 	block.edytor.facade.apply(plan);
-	block.edytor.flushMirror();
 	for (const parent of touched) parent?.normalizeChildren();
 	return plan;
 };
+
+/** The document's name for `block`'s child list: `null` for the root. */
+const ref = (block: Block) => (block.isRoot ? null : block.id);
 
 /**
  * Dispatch `operation` on `block` as the one plan `prepare` answers (a
@@ -179,16 +201,10 @@ export function addChildBlock(
 	} else if (index > this.children.length) {
 		index = this.children.length;
 	}
-	const newBlock = new Block({
-		parent: this,
-		edytor: this.edytor,
-		block: block || {
-			type: this.edytor.defaultChild(this)
-		}
-	});
-	this.insertChildren(index, [newBlock]);
+	const spec = { ...(block || { type: this.edytor.defaultChild(this) }), id: block?.id ?? id('b') };
+	this.insertChildren(index, [spec]);
 	this.normalizeChildren();
-	return newBlock;
+	return this.edytor.idToBlock.block(spec.id);
 }
 
 export function addChildBlocks(
@@ -200,17 +216,17 @@ export function addChildBlocks(
 	} else if (index > this.children.length) {
 		index = this.children.length;
 	}
-	const newBlocks = blocks.map((block) => new Block({ parent: this, edytor: this.edytor, block }));
-	this.insertChildren(index, newBlocks);
+	const specs = blocks.map((block) => ({ ...block, id: block.id ?? id('b') }));
+	this.insertChildren(index, specs);
 	this.normalizeChildren();
-	return newBlocks;
+	return specs.map((spec) => this.edytor.idToBlock.block(spec.id));
 }
 
 /** Insert `block` as a sibling of `this`, `after` it or before it. */
 const prepareSibling = (self: Block, block: JSONBlock, after: boolean): Prepared =>
 	self.parent
 		? self.edytor.facade.prepare.insertBlocks(
-				{ parent: self.parent._blockId ?? null, index: self.index + (after ? 1 : 0) },
+				{ parent: ref(self.parent), index: self.index + (after ? 1 : 0) },
 				[jsonBlockToSpec(block)]
 			)
 		: REFUSED;
@@ -223,17 +239,16 @@ export function prepareInsertBefore(this: Block, { block }: { block: JSONBlock }
 	return prepareSibling(this, block, false);
 }
 
-/** Apply `plan` under `this`'s parent; the block it answers first (inserted or surviving). */
-function resultOf(this: Block, plan: Prepared): Block | null {
-	const applied = applyPlan(this, plan, [this.parent]);
-	return applied ? (this.edytor.idToBlock.get(applied.ids[0]!) ?? null) : null;
+/** Apply `plan` under `this`'s parent; the id it answers first (inserted or surviving). */
+function resultOf(this: Block, plan: Prepared): string | null {
+	return applyPlan(this, plan, [this.parent])?.ids[0] ?? null;
 }
 
 export function insertBlockAfter(
 	this: Block,
 	payload: BlockOperations['insertBlockAfter'],
 	plan = prepareInsertAfter.call(this, payload)
-): Block | null {
+): string | null {
 	return resultOf.call(this, plan);
 }
 
@@ -241,7 +256,7 @@ export function insertBlockBefore(
 	this: Block,
 	payload: BlockOperations['insertBlockBefore'],
 	plan = prepareInsertBefore.call(this, payload)
-): Block | null {
+): string | null {
 	return resultOf.call(this, plan);
 }
 
@@ -249,7 +264,7 @@ export function prepareSplit(this: Block, { index, text }: BlockOperations['spli
 	if (!text || !this.parent || !this.model) return REFUSED;
 	// G5: the sibling takes its parent's default child type and no data.
 	const tail = { type: this.edytor.defaultChild(this.parent), data: {} };
-	const offset = this.partOffsetOf(text) + index;
+	const offset = text.segStart + index;
 	return this.edytor.facade.prepare.splitBlock(this.model.id, offset, id('b'), tail);
 }
 
@@ -257,19 +272,15 @@ export function splitBlock(
 	this: Block,
 	payload: BlockOperations['splitBlock'],
 	plan = prepareSplit.call(this, payload)
-): Block | null {
-	if (!('writes' in plan)) return null;
-	this.edytor.facade.apply(plan);
-	this.edytor.flushMirror();
-	this.parent?.normalizeChildren();
-	return this.edytor.idToBlock.get(plan.effect.creates[0]!) ?? null;
+): string | null {
+	return applyPlan(this, plan, [this.parent])?.effect.creates[0] ?? null;
 }
 
 export function prepareRemove(
 	this: Block,
 	{ keepChildren = false }: { keepChildren?: boolean } = {}
 ) {
-	if (!this.parent || !this.model || !this._live) return REFUSED;
+	if (!this.parent || !this.model || !this.isInTree) return REFUSED;
 	return this.edytor.facade.prepare.deleteBlock(this.model.id, { keepChildren });
 }
 
@@ -297,7 +308,7 @@ export function mergeBlockBackward(
 	this: Block,
 	_: BlockOperations['mergeBlockBackward'] = {},
 	plan = prepareMergeBackward.call(this)
-): Block | null {
+): string | null {
 	return resultOf.call(this, plan);
 }
 
@@ -305,7 +316,7 @@ export function mergeBlockForward(
 	this: Block,
 	_: BlockOperations['mergeBlockForward'] = {},
 	plan = prepareMergeForward.call(this)
-): Block | null {
+): string | null {
 	return resultOf.call(this, plan);
 }
 
@@ -324,10 +335,7 @@ export function prepareMove(this: Block, { path }: BlockOperations['moveBlock'])
 	if (!path.length || path.some((p) => isNaN(p) || p < 0) || !this.parent) return REFUSED;
 	const [parent, index] = parentAt(this.edytor, path);
 	if (!parent || !this.model) return REFUSED;
-	return this.edytor.facade.prepare.moveBlock(this.model.id, {
-		parent: parent._blockId ?? null,
-		index
-	});
+	return this.edytor.facade.prepare.moveBlock(this.model.id, { parent: ref(parent), index });
 }
 
 export function moveBlock(
@@ -335,13 +343,7 @@ export function moveBlock(
 	payload: BlockOperations['moveBlock'],
 	plan = prepareMove.call(this, payload)
 ): Block | null {
-	if (!('writes' in plan)) return null;
-	const from = this.parent;
-	this.edytor.facade.apply(plan);
-	this.edytor.flushMirror();
-	from?.normalizeChildren();
-	this.parent?.normalizeChildren();
-	return this;
+	return applyPlan(this, plan, [this.parent, parentAt(this.edytor, payload.path)[0]]) ? this : null;
 }
 
 /**
@@ -356,12 +358,11 @@ export function moveBlock(
 export function prepareMoves(this: Block, { blocks, path }: BlockOperations['moveBlocks']) {
 	if (!path.length || path.some((p) => isNaN(p) || p < 0) || !blocks.length) return REFUSED;
 	const [parent, index] = parentAt(this.edytor, path);
-	const ids = blocks.map((block) => block._blockId);
-	if (!parent || ids.some((blockId) => blockId == null)) return REFUSED;
-	return this.edytor.facade.prepare.moveBlocks(ids as string[], {
-		parent: parent._blockId ?? null,
-		index
-	});
+	if (!parent || blocks.some((block) => block.isRoot)) return REFUSED;
+	return this.edytor.facade.prepare.moveBlocks(
+		blocks.map((block) => block.id),
+		{ parent: ref(parent), index }
+	);
 }
 
 export function moveBlocks(
@@ -369,15 +370,9 @@ export function moveBlocks(
 	payload: BlockOperations['moveBlocks'],
 	plan = prepareMoves.call(this, payload)
 ): Block[] {
-	if (!('writes' in plan)) return [];
-	const { blocks } = payload;
-	// Source parents captured pre-move — reconcile reassigns `parent`.
-	const parents = new Set(blocks.flatMap((block) => (block.parent ? [block.parent] : [])));
-	this.edytor.facade.apply(plan);
-	this.edytor.flushMirror();
-	for (const block of [...parents, ...blocks.map((block) => block.parent)])
-		block?.normalizeChildren();
-	return blocks;
+	const { blocks, path } = payload;
+	const parents = new Set([...blocks.map((block) => block.parent), parentAt(this.edytor, path)[0]]);
+	return applyPlan(this, plan, [...parents]) ? blocks : [];
 }
 
 /**
@@ -404,7 +399,7 @@ export function unNestBlock(
  * targets and island-sealed sources (`canPlace`).
  */
 export function prepareNest(this: Block) {
-	const target = this.previousBlock?._blockId;
+	const target = this.previousBlock?.id;
 	return this.parent && this.model && target != null
 		? this.edytor.facade.prepare.nestBlock(this.model.id, target)
 		: REFUSED;
@@ -438,10 +433,7 @@ export function setBlock(
 	payload: BlockOperations['setBlock'],
 	plan = prepareSet.call(this, payload)
 ) {
-	if (!('writes' in plan)) return;
-	this.edytor.facade.apply(plan);
-	this.edytor.flushMirror();
-	this.normalizeChildren();
+	if (!applyPlan(this, plan, [this])) return;
 	this.normalizeContent();
 }
 
@@ -470,7 +462,6 @@ export function pushContentIntoBlock(
 			}
 		}
 	}
-	this.edytor.flushMirror();
 	this.normalizeContent();
 }
 
@@ -489,158 +480,72 @@ export function removeInlineBlock(
 	if (applyPlan(this, plan, [])) this.normalizeContent();
 }
 
-export const groupContent = (
-	content?: (JSONText | JSONInlineBlock)[]
-): (JSONText[] | JSONInlineBlock)[] => {
-	const isInlineJSONBlock = (
-		part?: JSONText | JSONInlineBlock | JSONText[]
-	): part is JSONInlineBlock => {
-		return part ? 'type' in part : false;
-	};
-	// this function group JSONBlock.content texts together in order to avoid having successive inline Y.Text as it would be ineficient.
-	if (!content) return [[{ text: '' }]];
-	const groupedContent = content.reduce(
-		(acc, part) => {
-			const isInlineBlock = 'type' in part;
-			if (isInlineBlock) {
-				if (isInlineJSONBlock(acc.at(-1))) {
-					// Make sure that two consecutive inline blocks are separated by a text block
-					acc.push([{ text: '' }]);
-				}
-				acc.push(part);
-			} else {
-				const lastPart = acc.at(-1);
-				if (acc.length && lastPart && Array.isArray(lastPart)) {
-					lastPart.push(part);
-				} else {
-					acc.push([part]);
-				}
-			}
-			return acc;
-		},
-		[] as (JSONText[] | JSONInlineBlock)[]
-	);
-
-	if (isInlineJSONBlock(groupedContent.at(0))) {
-		// Make sure that the first part is an inline block
-		groupedContent.unshift([{ text: '' }]);
-	}
-
-	if (isInlineJSONBlock(groupedContent.at(-1))) {
-		// Make sure that the last part is a text block
-		groupedContent.push([{ text: '' }]);
-	}
-
-	return groupedContent;
-};
-
+/**
+ * Insert an inline atom at `index` of `text`. Answers the atom's id; the
+ * batched operation resolves it to the text after the atom once committed
+ * ({@link textAfterAtom}), which takes the text's pending marks.
+ */
 export function addInlineBlock(
 	this: Block,
 	{ index, block, text }: BlockOperations['addInlineBlock']
-): Text {
-	const newInlineBlock = new InlineBlock({
-		parent: this,
-		block
+): string {
+	const atom = { ...block, id: block.id ?? id('i') };
+	this.model?.insertInline(text.segStart + index, {
+		id: atom.id,
+		type: atom.type,
+		...(atom.data ? { data: cloneJson(atom.data) } : {})
 	});
-	const pendingMarks =
-		text.markOnNextInsert === undefined ? undefined : { ...text.markOnNextInsert };
-	// The tail of the split text keeps its atoms in the engine — the new text
-	// wrapper is adopted onto the segment after the inserted inline.
-	const newText = new Text({
-		parent: this,
-		content: text._sliceFrom(index)
-	});
-	if (pendingMarks !== undefined) {
-		text.markOnNextInsert = undefined;
-		newText.markOnNextInsert = pendingMarks;
-	}
-
-	const model = this.model;
-	if (model) {
-		const offset = this.partOffsetOf(text) + index;
-		model.insertInline(offset, {
-			id: newInlineBlock.id,
-			type: newInlineBlock.type,
-			...(newInlineBlock.data ? { data: cloneJson(newInlineBlock.data) } : {})
-		});
-		this._pendingParts.set(text.index + 1, newInlineBlock);
-		this._pendingParts.set(text.index + 2, newText);
-		this.edytor.flushMirror();
-	} else {
-		this.insertParts(text.index + 1, [newInlineBlock, newText]);
-	}
 	this.normalizeContent();
-	if (pendingMarks !== undefined) {
-		queueMicrotask(() => {
-			const insertedText = this.edytor.getTextById(newText.id) ?? newText;
-			insertedText.markOnNextInsert = pendingMarks;
-		});
+	return atom.id;
+}
+
+/** The text after atom `atom` of this block; it takes `payload.text`'s pending marks. */
+export function textAfterAtom(
+	this: Block,
+	atom: string | undefined,
+	{ text }: BlockOperations['addInlineBlock']
+): Text | null | undefined {
+	if (atom === undefined) return undefined;
+	const at = this.content.findIndex((part) => part.id === atom);
+	const after = at < 0 ? undefined : this.content[at + 1];
+	if (!after || after instanceof InlineBlock) return null;
+	const marks = text.markOnNextInsert;
+	if (marks !== undefined) {
+		text.markOnNextInsert = undefined;
+		after.markOnNextInsert = { ...marks };
 	}
-	return newText;
+	return after;
 }
 
 /**
- * Bound for plugin-driven re-normalization passes (D25). A
- * `normalizeContent`/`normalizeChildren` hook that keeps returning work
- * re-enters the batched op recursively — without a cap a non-converging
- * plugin overflows the stack. The counter lives on the block
- * (`_normalizationDepth`) and is shared by both hooks so a
- * content→children→content ping-pong is bounded too; the depth is per
- * call-chain (incremented before the re-entry, decremented after), so
- * legitimate multi-pass normalization still converges.
+ * Normalization runs at the end of the command's transaction
+ * (`Dispatcher.drain`): a normalizer reads handles over the index; when a
+ * plugin hook answers work, the work runs in the same transaction and the
+ * block is requested again (bounded by the dispatcher's pass limit, D25).
  */
-const MAX_NORMALIZATION_DEPTH = 50;
-
 export function normalizeContent(this: Block): void {
 	if (this.edytor.dispatcher.defer(this, normalizeContent)) return;
 	// The v14 content model maintains the part invariants by construction —
 	// projected content always derives to text-first/text-last/non-adjacent
 	// parts — so the only remaining normalization is the plugin hook.
-	const pluginNormalization = this.definition?.normalizeContent?.({ block: this });
-	if (pluginNormalization) {
-		pluginNormalization();
-		if (this._normalizationDepth >= MAX_NORMALIZATION_DEPTH) {
-			console.warn(
-				`edytor: normalizeContent on block "${this.id}" exceeded ${MAX_NORMALIZATION_DEPTH} passes — a plugin normalizer is not converging; skipping further passes`
-			);
-			return;
-		}
-		this._normalizationDepth += 1;
-		try {
-			this.normalizeContent();
-		} finally {
-			this._normalizationDepth -= 1;
-		}
+	const work = this.definition?.normalizeContent?.({ block: this });
+	if (work) {
+		this.edytor.dispatcher.write(work);
+		this.normalizeContent();
 	}
 }
 
 export function normalizeChildren(this: Block): void {
 	if (this.edytor.dispatcher.defer(this, normalizeChildren)) return;
-	if (this.type === 'root' && this.children.length === 0) {
-		const newBlock = new Block({
-			parent: this,
-			edytor: this.edytor,
-			block: { type: this.edytor.defaultChild(this), children: [] }
-		});
-		this.insertChildren(0, [newBlock]);
+	if (this.isRoot && this.children.length === 0) {
+		const block = { type: this.edytor.defaultChild(this) };
+		this.edytor.dispatcher.write(() => this.insertChildren(0, [block]));
 		return this.normalizeChildren();
 	}
-	const pluginNormalization = this.definition?.normalizeChildren?.({ block: this });
-
-	if (pluginNormalization) {
-		pluginNormalization();
-		if (this._normalizationDepth >= MAX_NORMALIZATION_DEPTH) {
-			console.warn(
-				`edytor: normalizeChildren on block "${this.id}" exceeded ${MAX_NORMALIZATION_DEPTH} passes — a plugin normalizer is not converging; skipping further passes`
-			);
-			return;
-		}
-		this._normalizationDepth += 1;
-		try {
-			this.normalizeChildren();
-		} finally {
-			this._normalizationDepth -= 1;
-		}
+	const work = this.definition?.normalizeChildren?.({ block: this });
+	if (work) {
+		this.edytor.dispatcher.write(work);
+		this.normalizeChildren();
 	}
 }
 
@@ -648,7 +553,17 @@ export function suggestText(this: Block, { value }: BlockOperations['suggestText
 	if (typeof value === 'string') {
 		this.suggestions = [[{ text: value }]];
 	} else if (value) {
-		this.suggestions = groupContent(value);
+		// Runs of text group into one ghost text; an atom stands alone.
+		this.suggestions = value.reduce(
+			(parts, part) => {
+				const last = parts.at(-1);
+				if ('type' in part) parts.push(part);
+				else if (Array.isArray(last)) last.push(part);
+				else parts.push([part]);
+				return parts;
+			},
+			[] as (JSONText[] | JSONInlineBlock)[]
+		);
 	} else {
 		this.suggestions = null;
 	}
@@ -659,20 +574,7 @@ export function acceptSuggestedText(this: Block) {
 	if (!suggestions) {
 		return;
 	}
-	const editableSuggestions = suggestions.map((part) => {
-		if ('type' in part) {
-			return new InlineBlock({
-				parent: this,
-				block: part
-			});
-		} else {
-			return new Text({
-				parent: this,
-				content: part
-			});
-		}
-	});
-	this.insertParts(this.content.length, editableSuggestions);
+	this.insertParts(this.content.length, suggestions);
 
 	this.suggestions = null;
 	this.normalizeContent();
@@ -685,11 +587,11 @@ export function prepareDeleteRange(
 		end: [endIndex, endOffset]
 	}: { start: number[]; end: number[] }
 ) {
-	const startPart = this.content.at(startIndex!);
-	const endPart = this.content.at(endIndex!);
+	const parts = this.edytor.idToBlock.parts(this.id);
+	const [startPart, endPart] = [parts.at(startIndex!), parts.at(endIndex!)];
 	if (!startPart || !endPart || !this.model) return REFUSED;
-	const at = this.partOffsetOf(startPart) + startOffset!;
-	const length = Math.max(0, this.partOffsetOf(endPart) + endOffset! - at);
+	const at = startPart.start + startOffset!;
+	const length = Math.max(0, endPart.start + endOffset! - at);
 	return this.edytor.facade.prepare.deleteText(this.model.id, at, length);
 }
 

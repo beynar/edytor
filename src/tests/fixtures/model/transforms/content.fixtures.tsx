@@ -315,10 +315,9 @@ export const fixtures = defineFixtures([
 				]
 			});
 
-			if (!block.suggestions || block.suggestions.length !== 3) {
-				throw new Error(
-					'Expected grouped suggestions to include text sentinels around the inline block'
-				);
+			// The atom, then its run of text (R4: no sentinel texts; the ghost text is not content).
+			if (!block.suggestions || block.suggestions.length !== 2) {
+				throw new Error('Expected grouped suggestions: the inline block, then the text run');
 			}
 
 			block.acceptSuggestedText();

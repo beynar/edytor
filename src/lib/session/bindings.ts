@@ -32,9 +32,8 @@ export const replaceSelectedAtom = (edytor: Edytor, value = '') => {
 	if (!selected) return false;
 	edytor.dispatcher.cut(value ? 'replaceInlineBlock' : 'deleteInlineBlock');
 	edytor.selection.clearInlineBlockSelection();
-	const atom = edytor.idToInlineBlock.get(selected.id) ?? selected;
-	const { parent } = atom;
-	const index = parent.content.findIndex((part) => part.id === atom.id);
+	const { parent } = selected;
+	const index = parent.content.indexOf(selected);
 	if (index === -1) return true;
 	const [before, after] = [parent.content[index - 1], parent.content[index + 1]];
 	const caret = before instanceof Text ? before : after instanceof Text ? after : parent.firstText;
@@ -66,31 +65,17 @@ const suppressHotkeyDomDrift = (edytor: Edytor, window: number) => {
 	edytor.attempts.drift(edytor.attempts.admit(attempt, 'model'), 'discard', window);
 };
 
-const refreshStructuralChildren = (block: Block) => {
-	block.children = [...block.children];
-	for (const child of block.children) {
-		refreshStructuralChildren(child);
-	}
-};
-
-const remountStructure = (edytor: Edytor) => {
-	if (!edytor.root) return;
-	refreshStructuralChildren(edytor.root);
-	edytor.refreshEditorDom();
-};
-
 /**
- * After a structural hotkey the tree is re-keyed and remounted; the selection
- * is selected at once and the projector displays it after that flush (R10).
+ * After a structural hotkey the cells re-parent only what moved (R2, F-P9);
+ * the selection is selected at once and the projector displays it after that
+ * flush (R10).
  */
 const restoreStructuralHotkeyCaret = (edytor: Edytor, text: Text, offset: number) => {
 	edytor.attempts.caret(text, offset);
-	remountStructure(edytor);
 	void edytor.selection.setAtTextOffset(text, offset);
 };
 
 const restoreStructuralHotkeyBlockSelection = (edytor: Edytor, block: Block) => {
-	remountStructure(edytor);
 	edytor.selection.selectBlocks(block);
 };
 

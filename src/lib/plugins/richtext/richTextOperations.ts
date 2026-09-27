@@ -128,12 +128,12 @@ export const richTextOperations = (edytor: Edytor) => ({
 		const { startBlock: block, startText, yStart, isCollapsed } = edytor.selection.state;
 		if (!block?.convertible || !block.parent || !block.model || !isCollapsed) return null;
 		const { facade, dispatcher } = edytor;
-		const [self, parent] = [block.model.id, block.parent._blockId ?? null];
+		const [self, parent] = [block.model.id, block.parent.isRoot ? null : block.parent.id];
 		const divider = { id: id('b'), type: 'divider', data: {} };
 		const paragraph = { id: id('b'), type: edytor.defaultChild(block.parent) };
 		const slot = (after: number, specs: BlockSpec[]) =>
 			facade.prepare.insertBlocks({ parent, index: block.index + after }, specs);
-		const offset = startText ? block.partOffsetOf(startText) + yStart : 0;
+		const offset = startText ? startText.segStart + yStart : 0;
 		const next = block.parent.children[block.index + 1];
 		// The caret lands in `caret` (a block id), or stays at `yStart` in its text.
 		let caret: string | undefined = paragraph.id;

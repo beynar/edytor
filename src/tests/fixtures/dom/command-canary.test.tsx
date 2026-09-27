@@ -147,7 +147,7 @@ describe('command-lane oracle sensitivity (U11)', () => {
 		);
 		await flushDomUpdates();
 		await tick();
-		await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 
 		// The recovery contract: B's caret lands on the sibling that slid
 		// into the dead slot — 'cc'@0, collapsed, on a LIVE text.
@@ -174,7 +174,7 @@ describe('command-lane oracle sensitivity (U11)', () => {
 		);
 		await flushDomUpdates();
 		await tick();
-		await waitFor(() => expect(b.edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(b.edytor.selection.state.isCollapsed).toBe(true);
 	});
 });

@@ -687,7 +687,7 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 					const state = (window as Window & { __EDYTOR__?: any }).__EDYTOR__?.selection?.state;
 					return {
 						blockId: state?.startText?.parent?.id ?? state?.startBlock?.id ?? null,
-						textLive: state?.startText?._live ?? null,
+						textLive: state?.startText?.isInDocument ?? null,
 						yStart: state?.yStart ?? null
 					};
 				});
@@ -715,13 +715,13 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 			const deadWrite = await pageA.evaluate(async () => {
 				const edytor = (window as Window & { __EDYTOR__?: any; __DEAD__?: any }).__EDYTOR__;
 				const deadText = (window as Window & { __DEAD__?: any }).__DEAD__;
-				if (!deadText || deadText._live) {
+				if (!deadText || deadText.isInDocument) {
 					return { error: 'captured text was not killed by the merge' };
 				}
 				await edytor.selection.setAtTextOffset(deadText, 2);
 				const state = edytor.selection.state;
 				return {
-					wroteDead: state.startText?._live === false,
+					wroteDead: state.startText?.isInDocument === false,
 					blockId: state.startText?.parent?.id ?? state.startBlock?.id ?? null
 				};
 			});

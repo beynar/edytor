@@ -145,9 +145,9 @@ describe('D7 — aligned guards on the DOM writers', () => {
 	// V4: there is no deferred write any more — a request is selected in its
 	// turn and the projector displays the CURRENT value after the flush, so a
 	// newer user move always wins (W1), whatever form the older request took.
+	// (The string-id form went with R2; R4's text handles read their id's block.)
 	for (const [name, request] of [
 		['a caret write', (e: Edytor, t: Text) => e.selection.setAtTextOffset(t, 4)],
-		['a string-id caret write', (e: Edytor, t: Text) => e.selection.setAtTextOffset(t.id, 4)],
 		['a range write', (e: Edytor, t: Text) => e.selection.setAtRange(t, 2, t, 6)],
 		['a block-range write', (e: Edytor, t: Text) => e.selection.setAtBlockRange(t.parent, 0, 4)]
 	] as const) {

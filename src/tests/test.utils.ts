@@ -405,7 +405,7 @@ const patchOperationSelectionApis = (edytor: Edytor) => {
 			return;
 		}
 
-		const text = textOrId instanceof Text ? textOrId : edytor.getTextById(textOrId);
+		const text = textOrId instanceof Text ? textOrId : edytor.idToText.get(textOrId);
 		if (!text) {
 			return;
 		}

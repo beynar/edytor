@@ -4,8 +4,8 @@
  * An operation is admitted (readonly, `document.writable`), prepared, shown
  * to every extension hook before any write — the command itself, then each
  * planned step under its documented operation name (D-10) — applied in one
- * transaction, normalized once per requested block, and reported
- * (`refused | noop | applied | failed`). A user command (`run`) wraps the
+ * transaction, normalized once per requested block at the end of that
+ * transaction (normalizers read handles over the index), and reported (`refused | noop | applied | failed`). A user command (`run`) wraps the
  * operations one gesture issues and closes the undo policy table. `prevent()`
  * is caught here, once (`prevented`).
  */
@@ -87,6 +87,11 @@ const partAt = (block: Block, offset: number) => {
 	return part ? { index, offset: part.length, part } : null;
 };
 
+type Normalizer = (this: Block) => void;
+type Pass = [id: string, normalize: Normalizer];
+/** Passes one normalizer may take on one block per command: the first and 50 re-requests (D25). */
+const MAX_PASSES = 51;
+
 const specJSON = (spec: BlockSpec): unknown => ({
 	id: spec.id,
 	type: spec.type,
@@ -115,8 +120,12 @@ export class Dispatcher {
 	private depth = 0;
 	/** Extensions whose replacement is running (a command is replaced at most once per extension). */
 	private replacing = new Set<unknown>();
-	private queue: [Block, () => void][] = [];
-	private current: [Block, () => void] | null = null;
+	/** Requested normalization passes: (block id, normalizer). */
+	private queue: Pass[] = [];
+	private current: Pass | null = null;
+	/** The drain is entering `current`'s normalizer (its own request runs it). */
+	private entering = false;
+	private draining = false;
 	/** A plan the next dispatched operation composes before its own (`lead`). */
 	private leading: Plan | null = null;
 
@@ -266,12 +275,9 @@ export class Dispatcher {
 				try {
 					// An unplanned command runs after its lead, reading the state it leaves.
 					if (lead && !plan) this.edytor.facade.apply(lead);
-					const out = body(payload, plan);
-					this.drain();
-					return out;
+					return body(payload, plan);
 				} finally {
 					this.active = false;
-					this.queue = [];
 				}
 			});
 		} catch (error) {
@@ -335,31 +341,76 @@ export class Dispatcher {
 	};
 
 	/**
-	 * Inside an operation, normalization is requested, not run: each (block,
-	 * normalizer) runs once, at the end of the command's transaction. Answers
-	 * whether the request was queued.
+	 * Inside an operation (or a normalization pass), normalization is
+	 * requested, not run: each (block, normalizer) runs once per request, at
+	 * the end of the command's transaction. Answers whether the request was
+	 * queued.
 	 */
-	defer = (block: Block, normalize: () => void): boolean => {
-		if (!this.active || (this.current?.[0] === block && this.current[1] === normalize))
-			return false;
-		const pending = this.queue.slice(this.queue.indexOf(this.current!) + 1);
-		if (!pending.some(([b, n]) => b === block && n === normalize))
-			this.queue.push([block, normalize]);
+	defer = (block: Block, normalize: Normalizer): boolean => {
+		const [id, fn] = this.current ?? [];
+		if (this.entering && id === block.id && fn === normalize) return (this.entering = false);
+		if (!this.active) return false;
+		this.request(block.id, normalize);
 		return true;
 	};
 
-	private drain() {
-		for (let i = 0; i < this.queue.length; i++) {
-			if (i === 1000) {
-				console.warn('[edytor] normalization is not converging; skipping further passes');
-				break;
+	/** A normalizer's work: part of the command's transaction (its operations are steps). */
+	write = (work: () => void) => this.edytor.transact(work);
+
+	/** Request a normalization pass of block `id` (deduped against the pending ones). */
+	request = (id: string, normalize: Normalizer) => {
+		const pending = this.queue.slice(this.current ? this.queue.indexOf(this.current) + 1 : 0);
+		if (!pending.some(([i, n]) => i === id && n === normalize)) this.queue.push([id, normalize]);
+	};
+
+	/**
+	 * Run the requested normalization at the end of the outermost transaction,
+	 * inside it (`run` false: it threw, drop them). A pass reads handles over
+	 * the index, so a normalizer sees what the command (and the previous pass)
+	 * wrote; a pass that asks for its block again runs again, at most
+	 * {@link MAX_PASSES} times.
+	 */
+	drain = (run = true) => {
+		if (this.draining) return;
+		this.draining = true;
+		const passes = new Map<Normalizer, Map<string, number>>();
+		const { edytor } = this;
+		try {
+			for (let i = 0; run && i < this.queue.length; i++) {
+				if (i === 1000) {
+					console.warn('[edytor] normalization is not converging; skipping further passes');
+					break;
+				}
+				const entry = this.queue[i]!;
+				const [id, normalize] = entry;
+				const block = edytor.idToBlock.get(id);
+				if (!block) continue;
+				const counts = passes.get(normalize) ?? passes.set(normalize, new Map()).get(normalize)!;
+				const count = (counts.get(id) ?? 0) + 1;
+				counts.set(id, count);
+				if (count > MAX_PASSES) {
+					if (count === MAX_PASSES + 1)
+						console.warn(
+							`edytor: ${normalize.name} on block "${id}" exceeded ${MAX_PASSES - 1} passes — a plugin normalizer is not converging; skipping further passes`
+						);
+					continue;
+				}
+				this.current = entry;
+				this.entering = true;
+				this.active = true;
+				try {
+					normalize.call(block);
+				} finally {
+					this.active = false;
+					this.entering = false;
+				}
 			}
-			this.current = this.queue[i]!;
-			const [block, normalize] = this.current;
-			if (block.isRoot || block._live) normalize.call(block);
+		} finally {
+			this.queue = [];
+			this.current = null;
+			this.draining = false;
 		}
-		this.current = null;
-	}
+	};
 
 	private refuse(operation: string): undefined {
 		this.last = { operation, status: 'refused' };

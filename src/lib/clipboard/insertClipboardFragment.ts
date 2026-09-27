@@ -43,9 +43,7 @@ export const pasteFlow = async (
 		: (at ?? replaceSelectionWithCollapsedTargetSync(edytor, selection));
 	const block = p?.text.parent;
 	if (!replace.length && !block) return;
-	const target = block
-		? { block: block.id, offset: block.partOffsetOf(p!.text) + p!.offset }
-		: { replace };
+	const target = block ? { block: block.id, offset: p!.text.segStart + p!.offset } : { replace };
 	const [text, offset] = edytor.insertFlow({ flow, target });
 	if (replace.length) edytor.selection.selectBlocks();
 	if (!text) return;

@@ -223,8 +223,6 @@
 			}
 		};
 	};
-
-	const getBlockRenderKey = (block: BlockType) => block.id;
 </script>
 
 {#if edytor.synced}
@@ -241,9 +239,7 @@
 			aria-readonly={readonly ? 'true' : 'false'}
 			{translate}
 		>
-			{#each edytor.root?.children || [] as block (getBlockRenderKey(block))}<Block
-					{block}
-				/>{/each}<span
+			{#each edytor.cells?.rootIds ?? [] as id (id)}<Block {id} />{/each}<span
 				data-edytor-render-anchor
 				contenteditable="false"
 				aria-hidden="true"

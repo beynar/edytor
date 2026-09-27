@@ -131,11 +131,11 @@ describe('remote edits vs local selection', () => {
 		const { remote, push } = await createRemotePeer(edytor);
 		remote.facade.deleteBlock(edytor.root!.children[1]!.id);
 		await push();
-		await waitFor(() => expect(edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(edytor.selection.state.startText?.isInDocument).toBe(true));
 
 		// The dead wrapper is abandoned for the sibling seam: last block
 		// deleted → caret at the previous sibling's end ('First'.length).
-		expect(edytor.selection.state.startText?.parent?._live).toBe(true);
+		expect(edytor.selection.state.startText?.parent?.isInTree).toBe(true);
 		expect(edytor.selection.state.yStart).toBe('First'.length);
 	});
 
@@ -147,7 +147,7 @@ describe('remote edits vs local selection', () => {
 		const { remote, push } = await createRemotePeer(edytor);
 		remote.facade.deleteBlock(edytor.root!.children[0]!.id);
 		await push();
-		await waitFor(() => expect(edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(edytor.selection.state.startText?.isInDocument).toBe(true));
 
 		// The block that slid into slot 0 is 'Second' — caret at its start.
 		expect(edytor.selection.state.startText?.stringContent).toBe('Second');
@@ -164,7 +164,7 @@ describe('remote edits vs local selection', () => {
 		remote.facade.setMark(edytor.root!.children[0]!.id, 4, 3, 'bold', true);
 		await push();
 
-		await waitFor(() => expect(edytor.selection.state.startText?._live).toBe(true));
+		await waitFor(() => expect(edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(edytor.selection.state.yStart).toBe(5);
 	});
 
@@ -180,7 +180,7 @@ describe('remote edits vs local selection', () => {
 
 		await waitFor(() => expect(edytor.root!.children.length).toBe(1));
 		// 'Second' merged into 'First' → caret's atoms claimed → offset 5+3=8.
-		expect(edytor.selection.state.startText?._live).toBe(true);
+		expect(edytor.selection.state.startText?.isInDocument).toBe(true);
 		expect(edytor.selection.state.startText?.stringContent).toBe('FirstSecond');
 		expect(edytor.selection.state.yStart).toBe(8);
 	});

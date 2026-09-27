@@ -4,12 +4,14 @@ import {
 	replaceSelectionWithCollapsedTarget,
 	replaceSelectionWithCollapsedTargetSync
 } from '$lib/selection/replaceSelection.js';
-import { Text } from '$lib/text/text.svelte.js';
+import type { Text } from '$lib/text/text.svelte.js';
 import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { flowOfFragment, flowOfText, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
 import { cloneJson, type JSONText, type SerializableContent } from '$lib/utils/json.js';
-import { prevent } from '$lib/utils.js';
+import { id, prevent } from '$lib/utils.js';
+import type { Block } from '$lib/block/block.svelte.js';
+import { dispatchPlan } from '$lib/block/block.utils.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
 import { tick } from 'svelte';
 import { runBeforeInputDeleteCommand } from './beforeInputDeleteCommands.js';
@@ -463,6 +465,22 @@ const insertFromDataTransfer = async (edytor: Edytor, snapshot: BeforeInputSnaps
 	if (flow && at !== null) await pasteFlow(edytor, flow, { at, selection: snapshot });
 };
 
+/** Enter at the end of a block with content and children: a split whose tail keeps the kind. */
+const liftContent = (block: Block, text: Text): Block | null => {
+	const plan = dispatchPlan(block, 'splitBlock', { index: text.length, text }, ({ index, text }) =>
+		block.edytor.facade.prepare.splitBlock(
+			block.model!.id,
+			block.partOffsetOf(text) + index,
+			id('b'),
+			{
+				type: block.type,
+				data: cloneJson(block.data)
+			}
+		)
+	);
+	return plan && (block.edytor.idToBlock.get(plan.ids[0]!) ?? null);
+};
+
 const insertParagraph = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
 	const target = await replaceSelectionWithCollapsedTarget(edytor, snapshot);
 	if (!target) {
@@ -481,24 +499,14 @@ const insertParagraph = async (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
 	if (isAtEndOfBlock) {
 		const currentBlock = startText.parent;
 		if (currentBlock.hasChildren && currentBlock.hasContent) {
-			const currentValue = cloneJson(currentBlock.value);
-			currentBlock.insertBlockBefore({
-				block: {
-					type: currentBlock.type,
-					data: currentValue.data,
-					content: currentValue.content
-				}
-			});
-			const emptyText = new Text({
-				parent: currentBlock,
-				content: [{ text: '' }]
-			});
-			currentBlock.deleteParts(0, currentBlock.content.length);
-			currentBlock.insertParts(0, [emptyText]);
-			currentBlock.normalizeContent();
-			const currentText = edytor.getTextById(emptyText.id) || emptyText;
-			setSuppressedInputRepairSelectionTarget(edytor, currentText, 0);
-			await edytor.selection.setAtTextOffset(currentText, 0);
+			// Lift the content above the children: one split at the end whose
+			// tail keeps the kind and takes the children.
+			const lifted = liftContent(currentBlock, startText);
+			const text = lifted?.firstText;
+			if (text) {
+				setSuppressedInputRepairSelectionTarget(edytor, text, 0);
+				await edytor.selection.setAtTextOffset(text, 0);
+			}
 			return;
 		}
 

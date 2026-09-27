@@ -32,7 +32,7 @@ import { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { ChangePayload } from '$lib/plugins.js';
 import type { Flow, FlowTarget } from '$lib/crdt/flow.js';
-import type { Prepared } from '$lib/crdt/edytor-doc.js';
+import type { Plan, Prepared } from '$lib/crdt/edytor-doc.js';
 import { id } from '$lib/utils.js';
 import {
 	cloneJson,
@@ -109,6 +109,8 @@ export type BlockOperations = {
 	};
 	insertFlow: { flow: Flow; target: FlowTarget };
 	deleteBlocks: { blocks: Block[]; snapshot?: boolean };
+	/** A divider at the caret: its steps are the conversion, insertion or split it plans. */
+	insertDivider: {};
 };
 
 /**
@@ -127,13 +129,46 @@ export function batch<T extends (...args: any[]) => any, O extends keyof BlockOp
 			operation,
 			payload,
 			{ block: this },
-			func,
-			prepare
+			(p, plan) => func.call(this, p, plan),
+			prepare && ((p) => prepare.call(this, p))
 		) as ReturnType<T>;
 	} as T;
 }
 
 const REFUSED: Prepared = { status: 'refused', ids: [] };
+
+/**
+ * An op's body over its prepared plan: write it, refresh the mirror, request
+ * normalization of the blocks it touched (captured before the write).
+ * Answers the applied plan, or null when it was refused.
+ */
+const applyPlan = (block: Block, plan: Prepared, touched: (Block | null | undefined)[]) => {
+	if (!('writes' in plan)) return null;
+	block.edytor.facade.apply(plan);
+	block.edytor.flushMirror();
+	for (const parent of touched) parent?.normalizeChildren();
+	return plan;
+};
+
+/**
+ * Dispatch `operation` on `block` as the one plan `prepare` answers (a
+ * composed command: hooks see it and each planned step, one transaction).
+ * Answers the applied plan, or null when refused.
+ */
+export const dispatchPlan = <O extends keyof BlockOperations>(
+	block: Block,
+	operation: O,
+	payload: BlockOperations[O],
+	prepare: (payload: BlockOperations[O]) => Prepared,
+	touched: (Block | null | undefined)[] = [block.parent]
+): Plan | null =>
+	block.edytor.dispatcher.dispatch(
+		operation,
+		payload,
+		{ block },
+		(p, plan = prepare(p)) => applyPlan(block, plan, touched),
+		prepare
+	) ?? null;
 
 export function addChildBlock(
 	this: Block,
@@ -171,36 +206,43 @@ export function addChildBlocks(
 	return newBlocks;
 }
 
+/** Insert `block` as a sibling of `this`, `after` it or before it. */
+const prepareSibling = (self: Block, block: JSONBlock, after: boolean): Prepared =>
+	self.parent
+		? self.edytor.facade.prepare.insertBlocks(
+				{ parent: self.parent._blockId ?? null, index: self.index + (after ? 1 : 0) },
+				[jsonBlockToSpec(block)]
+			)
+		: REFUSED;
+
+export function prepareInsertAfter(this: Block, { block }: { block: JSONBlock }) {
+	return prepareSibling(this, block, true);
+}
+
+export function prepareInsertBefore(this: Block, { block }: { block: JSONBlock }) {
+	return prepareSibling(this, block, false);
+}
+
+/** Apply `plan` under `this`'s parent; the block it answers first (inserted or surviving). */
+function resultOf(this: Block, plan: Prepared): Block | null {
+	const applied = applyPlan(this, plan, [this.parent]);
+	return applied ? (this.edytor.idToBlock.get(applied.ids[0]!) ?? null) : null;
+}
+
 export function insertBlockAfter(
 	this: Block,
-	{ block }: BlockOperations['insertBlockAfter']
+	payload: BlockOperations['insertBlockAfter'],
+	plan = prepareInsertAfter.call(this, payload)
 ): Block | null {
-	if (!this.parent) {
-		return null;
-	}
-	const result = this.parent.addChildBlock({
-		block,
-		index: this.index + 1
-	});
-	this.parent?.normalizeChildren();
-
-	return result;
+	return resultOf.call(this, plan);
 }
 
 export function insertBlockBefore(
 	this: Block,
-	{ block }: BlockOperations['insertBlockBefore']
+	payload: BlockOperations['insertBlockBefore'],
+	plan = prepareInsertBefore.call(this, payload)
 ): Block | null {
-	if (!this.parent) {
-		return null;
-	}
-	const result = this.parent.addChildBlock({
-		block,
-		index: this.index
-	});
-	this.parent?.normalizeChildren();
-
-	return result;
+	return resultOf.call(this, plan);
 }
 
 export function prepareSplit(this: Block, { index, text }: BlockOperations['splitBlock']) {
@@ -223,39 +265,48 @@ export function splitBlock(
 	return this.edytor.idToBlock.get(plan.effect.creates[0]!) ?? null;
 }
 
+export function prepareRemove(
+	this: Block,
+	{ keepChildren = false }: { keepChildren?: boolean } = {}
+) {
+	if (!this.parent || !this.model || !this._live) return REFUSED;
+	return this.edytor.facade.prepare.deleteBlock(this.model.id, { keepChildren });
+}
+
 export function removeBlock(
 	this: Block,
-	{ keepChildren = false }: BlockOperations['removeBlock'] = { keepChildren: false }
+	payload: BlockOperations['removeBlock'] = { keepChildren: false },
+	plan = prepareRemove.call(this, payload)
 ) {
-	const model = this.model;
-	if (!this.parent || !model || !this._live) {
-		return;
-	}
-	model.delete({ keepChildren });
-	this.edytor.flushMirror();
-	this.parent?.normalizeChildren();
+	applyPlan(this, plan, [this.parent]);
 }
 
-export function mergeBlockBackward(this: Block): Block | null {
-	const model = this.model;
-	if (!this.parent || !model) {
-		return null;
-	}
-	const [target] = model.mergeBackward().ids;
-	this.edytor.flushMirror();
-	this.parent?.normalizeChildren();
-	return target ? (this.edytor.idToBlock.get(target) ?? null) : null;
+export function prepareMergeBackward(this: Block) {
+	return this.parent && this.model
+		? this.edytor.facade.prepare.mergeBackward(this.model.id)
+		: REFUSED;
 }
 
-export function mergeBlockForward(this: Block): Block | null {
-	const model = this.model;
-	if (!this.parent || !model) {
-		return null;
-	}
-	const [target] = model.mergeForward().ids;
-	this.edytor.flushMirror();
-	this.parent?.normalizeChildren();
-	return target ? (this.edytor.idToBlock.get(target) ?? null) : null;
+export function prepareMergeForward(this: Block) {
+	return this.parent && this.model
+		? this.edytor.facade.prepare.mergeForward(this.model.id)
+		: REFUSED;
+}
+
+export function mergeBlockBackward(
+	this: Block,
+	_: BlockOperations['mergeBlockBackward'] = {},
+	plan = prepareMergeBackward.call(this)
+): Block | null {
+	return resultOf.call(this, plan);
+}
+
+export function mergeBlockForward(
+	this: Block,
+	_: BlockOperations['mergeBlockForward'] = {},
+	plan = prepareMergeForward.call(this)
+): Block | null {
+	return resultOf.call(this, plan);
 }
 
 /** The destination parent a view-tree path (`[...parentPath, index]`) names. */
@@ -329,42 +380,42 @@ export function moveBlocks(
 	return blocks;
 }
 
-export function unNestBlock(this: Block): Block | null {
-	const { parent } = this;
-	const model = this.model;
-	if (!parent || !model) {
-		return null;
-	}
-
-	const grandParent = parent.parent;
-
-	// `model.unNest()` (facade `unNestBlock`) owns the refusal rules:
-	// top-level blocks, island-sealed blocks and sealed destinations.
-	if (model.unNest().status === 'refused') {
-		return null;
-	}
-	this.edytor.flushMirror();
-	parent.normalizeChildren();
-	grandParent?.normalizeChildren();
-	return this;
+/**
+ * The facade owns the refusal rules (`unNestBlock`: top-level blocks,
+ * island-sealed blocks and sealed destinations).
+ */
+export function prepareUnNest(this: Block) {
+	return this.parent && this.model
+		? this.edytor.facade.prepare.unNestBlock(this.model.id)
+		: REFUSED;
 }
 
-export function nestBlock(this: Block): Block | null {
-	// Admission resolves the nest target — the previous sibling — and the
-	// facade owns permission: `nestBlock` refuses void/island/inside-island
-	// targets and island-sealed sources (`canPlace`).
-	const previousBlock = this.previousBlock;
-	const model = this.model;
-	if (!previousBlock || !this.parent || !model || previousBlock._blockId == null) {
-		return null;
-	}
-	if (model.nestUnder(previousBlock._blockId).status === 'refused') {
-		return null;
-	}
-	this.edytor.flushMirror();
-	this.parent?.normalizeChildren();
-	previousBlock.normalizeChildren();
-	return this;
+export function unNestBlock(
+	this: Block,
+	_: BlockOperations['unNestBlock'] = {},
+	plan = prepareUnNest.call(this)
+): Block | null {
+	return applyPlan(this, plan, [this.parent, this.parent?.parent]) ? this : null;
+}
+
+/**
+ * Admission resolves the nest target — the previous sibling — and the
+ * facade owns permission: `nestBlock` refuses void/island/inside-island
+ * targets and island-sealed sources (`canPlace`).
+ */
+export function prepareNest(this: Block) {
+	const target = this.previousBlock?._blockId;
+	return this.parent && this.model && target != null
+		? this.edytor.facade.prepare.nestBlock(this.model.id, target)
+		: REFUSED;
+}
+
+export function nestBlock(
+	this: Block,
+	_: BlockOperations['nestBlock'] = {},
+	plan = prepareNest.call(this)
+): Block | null {
+	return applyPlan(this, plan, [this.parent, this.previousBlock]) ? this : null;
 }
 
 export function prepareSet(this: Block, { value }: BlockOperations['setBlock']) {
@@ -423,15 +474,19 @@ export function pushContentIntoBlock(
 	this.normalizeContent();
 }
 
+export function prepareRemoveInline(this: Block, { index }: { index: number }) {
+	const part = this.content.at(index);
+	return part instanceof InlineBlock && this.model
+		? this.edytor.facade.prepare.removeInline(this.model.id, part.id)
+		: REFUSED;
+}
+
 export function removeInlineBlock(
 	this: Block,
-	{ index }: BlockOperations['removeInlineBlock']
+	payload: BlockOperations['removeInlineBlock'],
+	plan = prepareRemoveInline.call(this, payload)
 ): void {
-	const part = this.content.at(index);
-	if (part && part instanceof InlineBlock) {
-		this.deleteParts(index, 1);
-		this.normalizeContent();
-	}
+	if (applyPlan(this, plan, [])) this.normalizeContent();
 }
 
 export const groupContent = (
@@ -623,24 +678,25 @@ export function acceptSuggestedText(this: Block) {
 	this.normalizeContent();
 }
 
+export function prepareDeleteRange(
+	this: Block,
+	{
+		start: [startIndex, startOffset],
+		end: [endIndex, endOffset]
+	}: { start: number[]; end: number[] }
+) {
+	const startPart = this.content.at(startIndex!);
+	const endPart = this.content.at(endIndex!);
+	if (!startPart || !endPart || !this.model) return REFUSED;
+	const at = this.partOffsetOf(startPart) + startOffset!;
+	const length = Math.max(0, this.partOffsetOf(endPart) + endOffset! - at);
+	return this.edytor.facade.prepare.deleteText(this.model.id, at, length);
+}
+
 export function deleteContentAtRange(
 	this: Block,
-	{ start, end }: BlockOperations['deleteContentAtRange']
+	payload: BlockOperations['deleteContentAtRange'],
+	plan = prepareDeleteRange.call(this, payload)
 ) {
-	const [startIndex, startOffset] = start;
-	const [endIndex, endOffset] = end;
-
-	const startPart = this.content.at(startIndex);
-	const endPart = this.content.at(endIndex);
-	const model = this.model;
-	if (!startPart || !endPart || !model) {
-		return;
-	}
-	const startAtom = this.partOffsetOf(startPart) + startOffset;
-	const endAtom = this.partOffsetOf(endPart) + endOffset;
-	if (endAtom > startAtom) {
-		model.deleteText(startAtom, endAtom - startAtom);
-	}
-	this.edytor.flushMirror();
-	this.normalizeContent();
+	if (applyPlan(this, plan, [])) this.normalizeContent();
 }

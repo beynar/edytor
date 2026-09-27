@@ -1270,7 +1270,6 @@ export class Edytor {
 	 * focusout signal as a user blur but must still be repaired.
 	 */
 	lastUserGestureOutsideEditor = false;
-	batch = batch.bind(this);
 	suppressNextInputFallback = (durationMs = 0) => {
 		this.clearInputFallbackSuppression();
 		this.shouldSuppressNextInputFallback = true;
@@ -1787,19 +1786,15 @@ export class Edytor {
 	 */
 	postCompositionGuardSwallows = 0;
 
-	deleteContentWithinSelection = this.batch(
+	deleteContentWithinSelection = batch(
 		'deleteContentWithinSelection',
-		deleteContentWithinSelection.bind(this),
-		prepareDeleteContent.bind(this)
+		deleteContentWithinSelection,
+		prepareDeleteContent
 	);
 
-	insertFlow = this.batch('insertFlow', insertFlow.bind(this), prepareFlow.bind(this));
+	insertFlow = batch('insertFlow', insertFlow, prepareFlow);
 
-	deleteBlocks = this.batch(
-		'deleteBlocks',
-		deleteBlocks.bind(this),
-		prepareDeleteBlocks.bind(this)
-	);
+	deleteBlocks = batch('deleteBlocks', deleteBlocks, prepareDeleteBlocks);
 
 	getTextById = (id: string) => {
 		const isText = id.startsWith('t');

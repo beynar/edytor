@@ -7,7 +7,6 @@ import {
 	addChildBlock,
 	insertBlockAfter,
 	insertBlockBefore,
-	pushContentIntoBlock,
 	mergeBlockBackward,
 	mergeBlockForward,
 	nestBlock,
@@ -18,7 +17,17 @@ import {
 	prepareSet,
 	prepareMove,
 	prepareMoves,
+	prepareInsertAfter,
+	prepareInsertBefore,
+	prepareRemove,
+	prepareMergeBackward,
+	prepareMergeForward,
+	prepareUnNest,
+	prepareNest,
+	prepareRemoveInline,
+	prepareDeleteRange,
 	addChildBlocks,
+	pushContentIntoBlock,
 	unNestBlock,
 	moveBlock,
 	moveBlocks,
@@ -352,28 +361,27 @@ export class Block {
 		return this.rendersContent ? this.content.findLast((p) => p instanceof Text) : undefined;
 	}
 
-	private batch = batch.bind(this);
-	addChildBlock = this.batch('addChildBlock', addChildBlock.bind(this));
-	addChildBlocks = this.batch('addChildBlocks', addChildBlocks.bind(this));
-	insertBlockAfter = this.batch('insertBlockAfter', insertBlockAfter.bind(this));
-	insertBlockBefore = this.batch('insertBlockBefore', insertBlockBefore.bind(this));
-	splitBlock = this.batch('splitBlock', splitBlock.bind(this), prepareSplit.bind(this));
-	removeBlock = this.batch('removeBlock', removeBlock.bind(this));
-	unNestBlock = this.batch('unNestBlock', unNestBlock.bind(this));
-	mergeBlockBackward = this.batch('mergeBlockBackward', mergeBlockBackward.bind(this));
-	mergeBlockForward = this.batch('mergeBlockForward', mergeBlockForward.bind(this));
-	nestBlock = this.batch('nestBlock', nestBlock.bind(this));
-	setBlock = this.batch('setBlock', setBlock.bind(this), prepareSet.bind(this));
-	moveBlock = this.batch('moveBlock', moveBlock.bind(this), prepareMove.bind(this));
-	moveBlocks = this.batch('moveBlocks', moveBlocks.bind(this), prepareMoves.bind(this));
-	pushContentIntoBlock = this.batch('pushContentIntoBlock', pushContentIntoBlock.bind(this));
-	removeInlineBlock = this.batch('removeInlineBlock', removeInlineBlock.bind(this));
-	addInlineBlock = this.batch('addInlineBlock', addInlineBlock.bind(this));
-	normalizeContent = this.batch('normalizeContent', normalizeContent.bind(this));
-	normalizeChildren = this.batch('normalizeChildren', normalizeChildren.bind(this));
-	suggestText = this.batch('suggestText', suggestText.bind(this));
-	acceptSuggestedText = this.batch('acceptSuggestedText', acceptSuggestedText.bind(this));
-	deleteContentAtRange = this.batch('deleteContentAtRange', deleteContentAtRange.bind(this));
+	addChildBlock = batch('addChildBlock', addChildBlock);
+	addChildBlocks = batch('addChildBlocks', addChildBlocks);
+	insertBlockAfter = batch('insertBlockAfter', insertBlockAfter, prepareInsertAfter);
+	insertBlockBefore = batch('insertBlockBefore', insertBlockBefore, prepareInsertBefore);
+	splitBlock = batch('splitBlock', splitBlock, prepareSplit);
+	removeBlock = batch('removeBlock', removeBlock, prepareRemove);
+	unNestBlock = batch('unNestBlock', unNestBlock, prepareUnNest);
+	mergeBlockBackward = batch('mergeBlockBackward', mergeBlockBackward, prepareMergeBackward);
+	mergeBlockForward = batch('mergeBlockForward', mergeBlockForward, prepareMergeForward);
+	nestBlock = batch('nestBlock', nestBlock, prepareNest);
+	setBlock = batch('setBlock', setBlock, prepareSet);
+	moveBlock = batch('moveBlock', moveBlock, prepareMove);
+	moveBlocks = batch('moveBlocks', moveBlocks, prepareMoves);
+	pushContentIntoBlock = batch('pushContentIntoBlock', pushContentIntoBlock);
+	removeInlineBlock = batch('removeInlineBlock', removeInlineBlock, prepareRemoveInline);
+	addInlineBlock = batch('addInlineBlock', addInlineBlock);
+	normalizeContent = batch('normalizeContent', normalizeContent);
+	normalizeChildren = batch('normalizeChildren', normalizeChildren);
+	suggestText = batch('suggestText', suggestText);
+	acceptSuggestedText = batch('acceptSuggestedText', acceptSuggestedText);
+	deleteContentAtRange = batch('deleteContentAtRange', deleteContentAtRange, prepareDeleteRange);
 
 	void = (node: HTMLElement) => {
 		node.setAttribute('data-edytor-void', `true`);

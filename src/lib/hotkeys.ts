@@ -96,58 +96,28 @@ const isAltGraphInput = (event: KeyboardEvent) => {
 	return event.getModifierState?.('AltGraph') === true;
 };
 
-const findInlineBlockLocation = (
-	block: Block,
-	id: string
-): { parent: Block; index: number } | null => {
-	const index = block.content.findIndex((part) => part.id === id);
-	if (index !== -1) {
-		return { parent: block, index };
-	}
-
-	for (const child of block.children) {
-		const location = findInlineBlockLocation(child, id);
-		if (location) {
-			return location;
-		}
-	}
-
-	return null;
-};
-
+/** Remove the selected inline atom (one command); the caret lands where it was. */
 const deleteSelectedInlineBlock = (event: KeyboardEvent, edytor: Edytor) => {
-	const inlineBlock =
+	const selected =
 		edytor.selection.selectedInlineBlock.values().next().value ??
 		edytor.selection.inlineBlockDeletionTarget;
-	if (!inlineBlock) {
+	if (!selected) {
 		return false;
 	}
 
 	event.preventDefault();
 	event.stopPropagation();
 	edytor.dispatcher.cut('deleteInlineBlock');
-
-	const location = edytor.root ? findInlineBlockLocation(edytor.root, inlineBlock.id) : null;
-	if (!location) {
-		edytor.selection.clearInlineBlockSelection();
-		return true;
-	}
-
-	const { parent, index } = location;
-	const previousPart = parent.content[index - 1];
-	const nextPart = parent.content[index + 1];
-	const fallbackText =
-		previousPart instanceof Text
-			? previousPart
-			: nextPart instanceof Text
-				? nextPart
-				: parent.firstText;
-	const fallbackOffset = previousPart instanceof Text ? previousPart.length : 0;
-
 	edytor.selection.clearInlineBlockSelection();
+	const atom = edytor.idToInlineBlock.get(selected.id) ?? selected;
+	const { parent } = atom;
+	const index = parent.content.findIndex((part) => part.id === atom.id);
+	if (index === -1) return true;
+	const [before, after] = [parent.content[index - 1], parent.content[index + 1]];
+	const caret = before instanceof Text ? before : after instanceof Text ? after : parent.firstText;
+	const offset = before instanceof Text ? before.length : 0;
 	parent.removeInlineBlock({ index });
-	void tick().then(() => edytor.selection.setAtTextOffset(fallbackText, fallbackOffset));
-
+	edytor.dispatcher.caret(caret, offset);
 	return true;
 };
 
@@ -307,7 +277,7 @@ const runDeleteCommandByInputType = (edytor: Edytor, inputType: EmacsDeleteInput
 		{ inputType, data: null, dataTransfer: null } as InputEvent,
 		null
 	);
-	void runBeforeInputDeleteCommand(edytor, snapshot);
+	void edytor.dispatcher.run(inputType, () => runBeforeInputDeleteCommand(edytor, snapshot));
 };
 
 const handleUndoHotkey: HotKey = ({ edytor }) => {
@@ -395,10 +365,7 @@ const macEmacsHotKeys = {
 		if (!edytor.selection.state.startText) {
 			return;
 		}
-		prevent(() => {
-			edytor.dispatcher.cut('deleteContentBackward');
-			runDeleteCommandByInputType(edytor, 'deleteContentBackward');
-		});
+		prevent(() => runDeleteCommandByInputType(edytor, 'deleteContentBackward'));
 	},
 	'ctrl+d': ({ event, edytor, prevent }) => {
 		if (hasEditorOwnedDeleteSelection(edytor)) {
@@ -408,10 +375,7 @@ const macEmacsHotKeys = {
 		if (!edytor.selection.state.startText) {
 			return;
 		}
-		prevent(() => {
-			edytor.dispatcher.cut('deleteContentForward');
-			runDeleteCommandByInputType(edytor, 'deleteContentForward');
-		});
+		prevent(() => runDeleteCommandByInputType(edytor, 'deleteContentForward'));
 	},
 	'ctrl+k': ({ event, edytor, prevent }) => {
 		if (hasEditorOwnedDeleteSelection(edytor)) {
@@ -423,7 +387,6 @@ const macEmacsHotKeys = {
 			return;
 		}
 		prevent(() => {
-			edytor.dispatcher.cut('deleteHardLineForward');
 			// Cocoa kill-line deletes to the paragraph end — and at the end
 			// kills the paragraph break itself, joining the next block.
 			runDeleteCommandByInputType(

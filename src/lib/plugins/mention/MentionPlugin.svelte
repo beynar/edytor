@@ -1,6 +1,5 @@
 <script module lang="ts">
 	import { type Plugin, type InlineBlockSnippetPayload } from '$lib/plugins.js';
-	import { tick } from 'svelte';
 
 	export const mentionPlugin: Plugin = (edytor) => {
 		return {
@@ -11,45 +10,14 @@
 						return;
 					}
 
+					// The atom replaces the typed `@`; the caret lands after it.
 					prevent(() => {
-						const newText = block.addInlineBlock({
+						const after = block.addInlineBlock({
 							index: yStart,
 							text: startText,
-							block: {
-								type: 'mention',
-								data: {}
-							}
+							block: { type: 'mention', data: {} }
 						});
-
-						const getLiveText = () => edytor.getTextById(newText.id) ?? newText;
-						const trailingTextBeforeNextInput = getLiveText().stringContent;
-						const shouldRestoreSelection = () =>
-							getLiveText().stringContent === trailingTextBeforeNextInput;
-						const restoreSelection = () => {
-							if (!shouldRestoreSelection()) {
-								return;
-							}
-							edytor.selection.setCollapsedStateAtTextOffset(getLiveText(), 0);
-						};
-						const restoreDomSelection = () => {
-							if (!shouldRestoreSelection()) {
-								return;
-							}
-							if (!edytor.node) {
-								restoreSelection();
-								return;
-							}
-							edytor.selection.ignoreNextSelectionChange = true;
-							void edytor.selection.setAtTextOffset(getLiveText(), 0).finally(restoreSelection);
-						};
-
-						edytor.selection.ignoreNextSelectionChange = true;
-						restoreSelection();
-						void tick().then(() => {
-							restoreDomSelection();
-							setTimeout(restoreDomSelection);
-							setTimeout(restoreDomSelection, 30);
-						});
+						edytor.dispatcher.caret(after && (edytor.getTextById(after.id) ?? after), 0);
 					});
 				}
 			},

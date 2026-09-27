@@ -230,6 +230,14 @@ Caret `beta@0` + Backspace over `[alpha, beta]` → `[paragraph "alphabeta"]`:
 tail content merges into the head block; the tail block dies.
 Verified through the real command path in `command-simulation.test.tsx`.
 
+### `del.caret.one-command` — each branch is one prepared command
+
+Every collapsed Backspace/Delete branch (character, atom, unnest, merge,
+word or line unit) issues exactly one command over one prepared plan: a
+merge that unnests children plans the children moves with the merge. A
+veto of any planned step refuses the whole branch before any write (zero
+bytes, no undo step). Pinned in `arch-v2-s2-commands.test.tsx`.
+
 ## Unit deletion — word and line
 
 ### `del.unit.caret-edge` — the model owns the extent

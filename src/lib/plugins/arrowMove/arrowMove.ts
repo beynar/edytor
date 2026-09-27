@@ -1,6 +1,5 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import { type Plugin } from '$lib/plugins.js';
-import { tick } from 'svelte';
 
 export const arrowMovePlugin: Plugin = (edytor) => {
 	return {
@@ -32,11 +31,7 @@ export const arrowMovePlugin: Plugin = (edytor) => {
 						}
 
 						const newBlock = selectedBlock.moveBlock({ path });
-						if (newBlock) {
-							tick().then(() => {
-								edytor.selection.selectBlocks(newBlock);
-							});
-						}
+						if (newBlock) edytor.selection.selectBlocks(newBlock);
 					});
 				} else {
 					const selectedBlocks = Array.from(edytor.selection.selectedBlocks.values());
@@ -72,12 +67,7 @@ export const arrowMovePlugin: Plugin = (edytor) => {
 						}
 
 						const newBlock = selectedBlock.moveBlock({ path });
-
-						if (newBlock) {
-							tick().then(() => {
-								edytor.selection.selectBlocks(newBlock);
-							});
-						}
+						if (newBlock) edytor.selection.selectBlocks(newBlock);
 					});
 				}
 			}

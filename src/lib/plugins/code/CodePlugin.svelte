@@ -9,6 +9,9 @@
 
 	(globalThis as typeof globalThis & { Prism?: typeof Prism }).Prism = Prism;
 
+	/** Auto-pairs typed at a collapsed caret in a code line. */
+	const PAIRS: Record<string, string> = { '{': '}', '[': ']', '(': ')', '"': '"', "'": "'" };
+
 	type PrismTokenLike = {
 		type: string;
 		content: unknown;
@@ -104,53 +107,28 @@
 				}
 			},
 			onBeforeOperation: ({ operation, payload, block }) => {
-				if (block.closestNextBlock?.type === 'code' && operation === 'mergeBlockForward') {
-					if (block.isEmpty) {
-						prevent(() => {
-							block.mergeBlockBackward();
-						});
-					} else {
-						prevent();
-					}
+				// Delete before a code block: an empty block is removed (the command is
+				// replaced by merging it backward), any other is refused.
+				if (operation === 'mergeBlockForward' && block.closestNextBlock?.type === 'code') {
+					if (!block.isEmpty) prevent();
+					prevent(() => {
+						const into = block.mergeBlockBackward();
+						const text = into?.lastText;
+						edytor.dispatcher.caret(text, text?.length ?? 0);
+					});
 				}
-				if (block.type === 'codeLine') {
-					const selection = edytor.selection.state;
-					const isCollapsed = selection.isCollapsed;
-					if (operation === 'insertText') {
-						if (isCollapsed) {
-							if (payload.value === '{') {
-								payload.value = '{}';
-							}
-							if (payload.value === '[') {
-								payload.value = '[]';
-							}
-							if (payload.value === '(') {
-								payload.value = '()';
-							}
-							if (payload.value === '"') {
-								payload.value = '""';
-							}
-							if (payload.value === "'") {
-								payload.value = "''";
-							}
-						}
-					}
-
-					if (
-						operation === 'mergeBlockBackward' &&
-						block.parent &&
-						block.parent.children.length === 1
-					) {
-						prevent();
-					}
-					if (
-						operation === 'mergeBlockForward' &&
-						block.parent &&
-						block.index === block.parent.children.length - 1
-					) {
-						prevent();
-					}
+				if (block.type !== 'codeLine') return;
+				if (
+					operation === 'insertText' &&
+					edytor.selection.state.isCollapsed &&
+					Object.hasOwn(PAIRS, payload.value)
+				) {
+					return { ...payload, value: payload.value + PAIRS[payload.value] };
 				}
+				// A code line never merges out of its island's first or last slot.
+				const siblings = block.parent?.children.length ?? 0;
+				if (operation === 'mergeBlockBackward' && siblings === 1) prevent();
+				if (operation === 'mergeBlockForward' && block.index === siblings - 1) prevent();
 			},
 
 			blocks: {

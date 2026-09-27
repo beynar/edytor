@@ -1,5 +1,4 @@
 import type { ElementDropTargetEventPayloadMap } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
-import { tick } from 'svelte';
 
 import type { Block } from '$lib/block/block.svelte.js';
 import type { BlockMovePosition, BlockMoveRequest } from '$lib/block/blockMove.js';
@@ -210,9 +209,7 @@ export class BlockHandleController {
 
 	private moveAndSelect(request: BlockMoveRequest) {
 		const moved = this.edytor.moveBlocks(request);
-		if (moved.length) {
-			void tick().then(() => this.edytor.selection.selectBlocks(...moved));
-		}
+		if (moved.length) this.edytor.selection.selectBlocks(...moved);
 	}
 
 	private canDrop(source: Block, target: Block, position: BlockMovePosition) {

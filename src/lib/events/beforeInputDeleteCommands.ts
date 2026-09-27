@@ -40,8 +40,6 @@ const deleteContentForward = async (edytor: Edytor, snapshot: BeforeInputSnapsho
 		return;
 	}
 
-	if (!snapshot.isCollapsed) return deleteSelectedRange(edytor, snapshot);
-
 	if (snapshot.isAtEndOfBlock) {
 		const currentBlock = startText.parent;
 		if (currentBlock.definition.void) {
@@ -76,17 +74,10 @@ const deleteContentForward = async (edytor: Edytor, snapshot: BeforeInputSnapsho
 const deleteContentBackward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
 	const { startText, yStart } = snapshot;
 
-	if (
-		snapshot.isCollapsed &&
-		snapshot.isAtStartOfBlock &&
-		snapshot.isFirstChildOfDocument &&
-		startText?.parent.isEmpty
-	) {
+	if (snapshot.isAtStartOfBlock && snapshot.isFirstChildOfDocument && startText?.parent.isEmpty) {
 		await edytor.selection.setAtTextOffset(startText, 0);
 		return;
 	}
-
-	if (!snapshot.isCollapsed) return deleteSelectedRange(edytor, snapshot);
 
 	if (!startText) {
 		return;
@@ -147,104 +138,42 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 	await edytor.selection.setAtTextOffset(startText, deletion?.start ?? yStart - 1);
 };
 
-const deleteCollapsedWordBackward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	const { startText, yStart } = snapshot;
-	if (!startText) {
-		return;
-	}
-
-	const start = getPreviousWordStartOffset(startText.stringContent, yStart);
-	startText.deleteText({ direction: 'BACKWARD', length: yStart - start });
-	await edytor.selection.setAtTextOffset(startText, start);
-};
-
-const deleteCollapsedWordForward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	const { startText, yStart } = snapshot;
-	if (!startText) {
-		return;
-	}
-
-	const end = getNextWordEndOffset(startText.stringContent, yStart);
-	startText.deleteText({ direction: 'FORWARD', length: end - yStart });
-	await edytor.selection.setAtTextOffset(startText, yStart);
-};
-
-const deleteCollapsedLineBackward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	const { startText, yStart } = snapshot;
-	if (!startText) {
-		return;
-	}
-
-	const firstText = startText.parent.firstText!;
-	firstText.parent.deleteContentAtRange({
-		start: [firstText.index, 0],
-		end: [startText.index, yStart]
-	});
-	await edytor.selection.setAtTextOffset(firstText, 0);
-};
-
-const deleteCollapsedLineForward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	const { startText, yStart } = snapshot;
-	if (!startText) {
-		return;
-	}
-
-	const lastText = startText.parent.lastText!;
-	startText.parent.deleteContentAtRange({
-		start: [startText.index, yStart],
-		end: [lastText.index, lastText.length]
-	});
-	await edytor.selection.setAtTextOffset(startText, yStart);
-};
-
-const deleteAdvancedBackward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	if (!snapshot.isCollapsed) {
-		return deleteContentBackward(edytor, snapshot);
-	}
-
-	return snapshot.inputType === 'deleteWordBackward'
-		? deleteCollapsedWordBackward(edytor, snapshot)
-		: deleteCollapsedLineBackward(edytor, snapshot);
-};
-
-const deleteAdvancedForward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	if (!snapshot.isCollapsed) {
-		return deleteContentForward(edytor, snapshot);
-	}
-
-	return snapshot.inputType === 'deleteWordForward'
-		? deleteCollapsedWordForward(edytor, snapshot)
-		: deleteCollapsedLineForward(edytor, snapshot);
-};
-
-const deleteFragment = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	if (snapshot.isCollapsed) {
-		return;
-	}
-
-	return deleteContentBackward(edytor, snapshot);
-};
-
-const deleteContent = async (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
-	deleteContentForward(edytor, snapshot);
-
-const deleteEntireSoftLine = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	if (!snapshot.isCollapsed) {
-		return deleteContentForward(edytor, snapshot);
-	}
-
-	const { startText } = snapshot;
-	if (!startText) {
-		return;
-	}
-
-	const firstText = startText.parent.firstText!;
-	const lastText = startText.parent.lastText!;
-	firstText.parent.deleteContentAtRange({
-		start: [firstText.index, 0],
-		end: [lastText.index, lastText.length]
-	});
-	await edytor.selection.setAtTextOffset(firstText, 0);
+/**
+ * A collapsed unit delete (`del.unit.*`): the model owns the extent — a word
+ * run from the caret's own text, or the block's line to either side, or all
+ * of it — deleted as one range; the caret lands at its start.
+ */
+const deleteCollapsedUnit = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+	const { startText: text, yStart, inputType } = snapshot;
+	if (!text) return;
+	const [first, last] = [text.parent.firstText!, text.parent.lastText!];
+	const [from, to]: [Text, number][] =
+		inputType === 'deleteWordBackward'
+			? [
+					[text, getPreviousWordStartOffset(text.stringContent, yStart)],
+					[text, yStart]
+				]
+			: inputType === 'deleteWordForward'
+				? [
+						[text, yStart],
+						[text, getNextWordEndOffset(text.stringContent, yStart)]
+					]
+				: inputType === 'deleteEntireSoftLine'
+					? [
+							[first, 0],
+							[last, last.length]
+						]
+					: inputType.endsWith('Backward')
+						? [
+								[first, 0],
+								[text, yStart]
+							]
+						: [
+								[text, yStart],
+								[last, last.length]
+							];
+	text.parent.deleteContentAtRange({ start: [from[0].index, from[1]], end: [to[0].index, to[1]] });
+	await edytor.selection.setAtTextOffset(...from);
 };
 
 export const runBeforeInputDeleteCommand = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
@@ -253,26 +182,16 @@ export const runBeforeInputDeleteCommand = (edytor: Edytor, snapshot: BeforeInpu
 	// jumps with the same "offset-0 → different text" signature must not
 	// qualify (selection.svelte.ts `recordPostDeleteCaretTarget`).
 	edytor.selection.lastDeleteCommandAt = Date.now();
-	switch (snapshot.inputType) {
-		case 'deleteContentForward':
-			return deleteContentForward(edytor, snapshot);
-		case 'deleteContentBackward':
-			return deleteContentBackward(edytor, snapshot);
-		case 'deleteWordBackward':
-		case 'deleteSoftLineBackward':
-		case 'deleteHardLineBackward':
-			return deleteAdvancedBackward(edytor, snapshot);
-		case 'deleteWordForward':
-		case 'deleteSoftLineForward':
-		case 'deleteHardLineForward':
-			return deleteAdvancedForward(edytor, snapshot);
-		case 'deleteByCut':
-		case 'deleteByDrag':
-		case 'deleteByComposition':
-			return deleteFragment(edytor, snapshot);
-		case 'deleteContent':
-			return deleteContent(edytor, snapshot);
-		case 'deleteEntireSoftLine':
-			return deleteEntireSoftLine(edytor, snapshot);
+	const { inputType } = snapshot;
+	const forward = /Forward$|^deleteContent$|^deleteEntireSoftLine$/.test(inputType);
+	// A selection: the document's range deletion (a forward one needs its text).
+	if (!snapshot.isCollapsed) {
+		return forward && !snapshot.startText ? undefined : deleteSelectedRange(edytor, snapshot);
 	}
+	if (inputType === 'deleteContentBackward') return deleteContentBackward(edytor, snapshot);
+	if (inputType === 'deleteContentForward' || inputType === 'deleteContent')
+		return deleteContentForward(edytor, snapshot);
+	// A collapsed cut, drag or composition fragment deletes nothing.
+	if (!/^delete(ByCut|ByDrag|ByComposition)$/.test(inputType))
+		return deleteCollapsedUnit(edytor, snapshot);
 };

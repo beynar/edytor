@@ -9,6 +9,7 @@ import type { TextOperations } from './text/text.utils.js';
 import type { BlockOperations } from './block/block.utils.js';
 import type { EdytorSelection } from './selection/selection.svelte.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
+import type { PlanEffect } from './crdt/edytor-doc.js';
 
 /**
  * Represents the payload for mark snippets with generic serializable content.
@@ -42,6 +43,12 @@ export type BlockSnippetPayload<D extends SerializableContent = SerializableCont
 export type ChangePayload = {
 	block: Block;
 	prevent: Prevent;
+	/**
+	 * The prepared command's effect (blocks created, removed, merged, moved,
+	 * retyped, text ranges written), on a command that is one document plan
+	 * (R6, FP-6) — a hook can refuse a command by what it would do.
+	 */
+	effect?: PlanEffect;
 } & (
 	| {
 			[K in keyof TextOperations]: {

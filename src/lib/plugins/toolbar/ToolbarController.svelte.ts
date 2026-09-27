@@ -138,18 +138,13 @@ export class ToolbarController {
 
 	private restoreSelection(snapshot: ToolbarSelectionSnapshot) {
 		this.restoreModelSelection(snapshot);
-		void this.edytor.selection
-			.setAtRange(snapshot.startText, snapshot.yStart, snapshot.endText, snapshot.yEnd, {
-				isReversed: snapshot.isReversed
-			})
-			.finally(() => {
-				this.restoreModelSelection(snapshot);
-			});
-
-		const view = this.edytor.node?.ownerDocument?.defaultView;
-		view?.setTimeout(() => {
-			this.restoreModelSelection(snapshot);
-		}, 0);
+		void this.edytor.selection.setAtRange(
+			snapshot.startText,
+			snapshot.yStart,
+			snapshot.endText,
+			snapshot.yEnd,
+			{ isReversed: snapshot.isReversed }
+		);
 	}
 
 	private restoreModelSelection(snapshot: ToolbarSelectionSnapshot) {

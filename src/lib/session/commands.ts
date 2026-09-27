@@ -12,7 +12,7 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import type { BlockId, BlockSpec } from '$lib/crdt/index.js';
-import type { Plan, Prepared } from '$lib/crdt/edytor-doc.js';
+import type { Plan, PlanStep, Prepared } from '$lib/crdt/edytor-doc.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { ChangePayload } from '$lib/plugins.js';
 import type { Text } from '$lib/text/text.svelte.js';
@@ -25,8 +25,17 @@ export type CommandResult = {
 	error?: unknown;
 };
 
-/** What a hook sees: an operation name, its payload and the block (and text) it is about. */
-type Change = { operation: string; payload: unknown; block: unknown; text?: Text };
+/**
+ * What a hook sees: an operation name, its payload, the block (and text) it
+ * is about and, on a prepared command, its effect.
+ */
+type Change = {
+	operation: string;
+	payload: unknown;
+	block: unknown;
+	text?: Text;
+	effect?: Plan['effect'];
+};
 
 /**
  * The undo policy (O31, FP-2) — today's grouping: deletions, paste, drop and
@@ -98,6 +107,8 @@ export class Dispatcher {
 	private replacing = new Set<unknown>();
 	private queue: [Block, () => void][] = [];
 	private current: [Block, () => void] | null = null;
+	/** A plan the next dispatched operation composes before its own (`lead`). */
+	private leading: Plan | null = null;
 
 	constructor(private edytor: Edytor) {}
 
@@ -176,15 +187,31 @@ export class Dispatcher {
 		prepare?: (payload: P) => Prepared
 	): R | undefined => {
 		if (this.active) return body(payload);
+		const lead = this.leading;
+		this.leading = null;
 		if (!this.permits()) return this.refuse(operation);
 		const original = payload;
 		const replaced = new Set<unknown>();
-		let plan = prepare?.(payload);
-		// Refused at preparation: the body answers its refusal, nothing is shown.
-		if (plan && !('writes' in plan)) return body(payload, plan);
+		// A lead composes with the command's plan (both prepared at this version);
+		// its steps on a block whose content the plan replaces are subsumed.
+		const prepared = (p: P) => {
+			const own = prepare?.(p);
+			if (!lead || !own || !('writes' in own)) return own;
+			const { displayLength, compose } = this.edytor.facade;
+			const whole = own.writes.flatMap((w) =>
+				w.op === 'deleteText' && w.offset === 0 && w.length === displayLength(w.id) ? [w.id] : []
+			);
+			const writes = lead.writes.filter((w) => !('id' in w) || !whole.includes(w.id));
+			return compose({ ...lead, writes }, own);
+		};
+		let plan = prepared(payload);
 		hooks: for (;;) {
-			const command: Change = { operation, payload, ...context };
-			const changes = plan ? [command, ...this.steps(plan as Plan, command)] : [command];
+			// A command refused at preparation is still shown (without steps): an
+			// extension may replace or retarget it.
+			const planned = plan && 'writes' in plan ? plan : undefined;
+			const command: Change = { operation, payload, ...context, effect: planned?.effect };
+			const steps = [...(lead && !plan ? lead.writes : []), ...(planned?.writes ?? [])];
+			const changes = [command, ...this.steps(steps, planned?.effect.creates ?? [], command)];
 			for (const change of changes) {
 				for (const plugin of this.edytor.plugins) {
 					let out: unknown;
@@ -209,13 +236,17 @@ export class Dispatcher {
 					} else if (!replaced.has(plugin) && !this.replacing.has(plugin)) {
 						replaced.add(plugin);
 						payload = out as P;
-						plan = prepare?.(payload);
-						if (plan && !('writes' in plan)) return body(payload, plan);
+						plan = prepared(payload);
 						continue hooks;
 					}
 				}
 			}
 			break;
+		}
+		// Refused at preparation, and no extension replaced it.
+		if (plan && !('writes' in plan)) {
+			this.refuse(operation);
+			return body(payload, plan);
 		}
 		const version = this.edytor.facade.version;
 		let result: R;
@@ -223,6 +254,8 @@ export class Dispatcher {
 			result = this.edytor.transact(() => {
 				this.active = true;
 				try {
+					// An unplanned command runs after its lead, reading the state it leaves.
+					if (lead && !plan) this.edytor.facade.apply(lead);
 					const out = body(payload, plan);
 					this.drain();
 					return out;
@@ -242,6 +275,33 @@ export class Dispatcher {
 		const change = { operation, payload: original, ...context } as Omit<ChangePayload, 'prevent'>;
 		for (const plugin of this.edytor.plugins) plugin.onAfterOperation?.(change);
 		return result;
+	};
+
+	/**
+	 * Run `body` with `lead` (a plan prepared now) composed into the first
+	 * operation it dispatches: one plan, so a veto of any step, or a refusal,
+	 * refuses both (a slash or markdown trigger removal with its conversion).
+	 * Answers `body`'s result and whether an operation took the lead.
+	 */
+	lead = <T>(lead: Prepared, body: () => T): { out: T | undefined; taken: boolean } => {
+		if (!('writes' in lead)) return { out: undefined, taken: false };
+		this.leading = lead;
+		try {
+			return { out: body(), taken: this.leading === null };
+		} finally {
+			this.leading = null;
+		}
+	};
+
+	/**
+	 * A command's result caret, shown once after its commit: the model first,
+	 * then the DOM, through today's selection API (V2 replaces it by `select`).
+	 */
+	caret = (text: Text | null | undefined, offset: number) => {
+		if (!text) return;
+		const at = Math.max(0, Math.min(offset, text.length));
+		this.edytor.selection.setCollapsedStateAtTextOffset(text, at);
+		void this.edytor.selection.setAtTextOffset(text, at);
 	};
 
 	/**
@@ -283,14 +343,25 @@ export class Dispatcher {
 		return undefined;
 	}
 
-	/** Run a prevention's replacement; its extension cannot replace again meanwhile. */
+	/**
+	 * Run a prevention's replacement: a command of its own, so a veto of one
+	 * of its operations refuses that operation (the replacement reads the
+	 * result) instead of unwinding it. Its extension cannot replace again
+	 * meanwhile.
+	 */
 	private replace({ cb, by }: PreventionError) {
 		if (!cb) return;
 		const fresh = by !== undefined && !this.replacing.has(by);
 		if (fresh) this.replacing.add(by);
+		const depth = this.depth;
+		this.depth = 0;
 		try {
-			this.scope(cb);
+			const out: unknown = cb();
+			if (out instanceof Promise) out.catch((error) => this.settle(error));
+		} catch (error) {
+			this.settle(error);
 		} finally {
+			this.depth = depth;
 			if (fresh) this.replacing.delete(by);
 		}
 	}
@@ -299,19 +370,24 @@ export class Dispatcher {
 	 * The planned steps as hooks see them (D-10), under the documented
 	 * operation names. A step that is the command itself (same name, same
 	 * block) is not repeated; a write into a block the plan creates is part
-	 * of that creation. (`formatRange`, `removeInline` and `setInlineData`
-	 * steps belong to no dispatched plan yet: they have no mapping.)
+	 * of that creation. (A `removeInline` step is only ever its own command,
+	 * `removeInlineBlock`; `formatRange` and `setInlineData` steps belong to no
+	 * dispatched plan yet: they have no mapping.)
 	 */
-	private steps(plan: Plan, command: Change): Change[] {
+	private steps(
+		writes: readonly PlanStep[],
+		creates: readonly BlockId[],
+		command: Change
+	): Change[] {
 		const { idToBlock, root } = this.edytor;
-		const created = new Set(plan.effect.creates);
+		const created = new Set(creates);
 		const block = (id: BlockId | null) => (id === null ? root : idToBlock.get(id));
 		const path = (parent: BlockId | null, index: number) =>
 			parent === null ? [index] : [...(block(parent)?.path ?? []), index];
 		const out: Change[] = [];
 		const show = (operation: string, block: unknown, payload: unknown, text?: Text) =>
 			out.push({ operation, block, payload, ...(text ? { text } : {}) });
-		for (const w of plan.writes) {
+		for (const w of writes) {
 			const target = 'id' in w ? w.id : w.op === 'mergeBlocks' ? w.from : w.parent;
 			const b = block(target);
 			if ((target !== null && created.has(target)) || !b) continue;

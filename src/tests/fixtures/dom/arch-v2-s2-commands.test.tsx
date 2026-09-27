@@ -38,7 +38,7 @@ import {
 } from '../../dom/test.utils.js';
 
 /** Red on the reference; green since S2. */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -85,15 +85,16 @@ const shape = (edytor: Edytor) => {
 	return out;
 };
 
-/** Run `act`; the document must end exactly as it started, with zero bytes written. */
+/** Run `act`: the document ends as it started, zero bytes written, no undo step added. */
 const expectRefusedWhole = async (edytor: Edytor, act: () => Promise<unknown>) => {
 	const before = shape(edytor);
+	const steps = edytor.undoManager.undoStack.length;
 	const bytes = track(edytor);
 	await act();
 	await flushDomUpdates();
 	expect(shape(edytor)).toEqual(before);
 	expect(bytes()).toBe(0);
-	expect(edytor.undoManager.undoStack.length).toBe(0);
+	expect(edytor.undoManager.undoStack.length).toBe(steps);
 };
 
 afterEach(() => {
@@ -199,9 +200,7 @@ describe('F-M3 — a veto inside a composite', () => {
 });
 
 describe('a veto on any step refuses the whole command (zero writes)', () => {
-	// Skipped on the reference: the refused conversion escapes the async slash
-	// command as an unhandled PreventionError (it would fail the lane).
-	it.skip('slash command: refusing the conversion keeps the trigger text', async () => {
+	row('slash command: refusing the conversion keeps the trigger text', async () => {
 		const { edytor, editor } = await renderDomEdytor(
 			<root>
 				<paragraph>|</paragraph>
@@ -216,7 +215,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 		expect(shape(edytor)).toEqual(['paragraph:/']);
 	});
 
-	row('Enter lifting content above children: refusing the content deletion', async () => {
+	row('Enter lifting content above children: refusing the split', async () => {
 		const { edytor, editor } = await renderDomEdytor(
 			<root>
 				<paragraph>
@@ -224,7 +223,7 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 					<paragraph>child</paragraph>
 				</paragraph>
 			</root>,
-			{ plugins: plugins(vetoing('deleteContentAtRange', 'ab')) }
+			{ plugins: plugins(vetoing('splitBlock', 'ab')) }
 		);
 		await expectRefusedWhole(edytor, () =>
 			dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' })
@@ -268,6 +267,31 @@ describe('a veto on any step refuses the whole command (zero writes)', () => {
 		await dispatchDomBeforeInput(editor, { inputType: 'insertHorizontalRule' });
 		expect(shape(edytor)).toEqual(['paragraph:ab', 'divider:', 'paragraph:cd']);
 		expect(edytor.selection.state.startText).toBe(textOf(edytor, [2]));
+	});
+
+	pin('divider in an empty block converts it, a fresh paragraph after', async () => {
+		const { edytor, editor } = await renderDomEdytor(
+			<root>
+				<paragraph>|</paragraph>
+			</root>,
+			{ plugins: plugins() }
+		);
+		await dispatchDomBeforeInput(editor, { inputType: 'insertHorizontalRule' });
+		expect(shape(edytor)).toEqual(['divider:', 'paragraph:']);
+		expect(edytor.selection.state.startText).toBe(textOf(edytor, [1]));
+	});
+
+	pin('divider at a block start goes before it, the caret stays', async () => {
+		const { edytor, editor } = await renderDomEdytor(
+			<root>
+				<paragraph>|ab</paragraph>
+			</root>,
+			{ plugins: plugins() }
+		);
+		await dispatchDomBeforeInput(editor, { inputType: 'insertHorizontalRule' });
+		expect(shape(edytor)).toEqual(['divider:', 'paragraph:ab']);
+		expect(edytor.selection.state.startText).toBe(textOf(edytor, [1]));
+		expect(edytor.selection.state.yStart).toBe(0);
 	});
 
 	row('Backspace merge unnesting children: refusing the children move', async () => {

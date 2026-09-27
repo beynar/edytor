@@ -1,7 +1,6 @@
 import type { Block } from '$lib/block/block.svelte.js';
-import type { SerializableContent } from '$lib/utils/json.js';
+import type { JSONBlock } from '$lib/utils/json.js';
 import type { Plugin } from '$lib/plugins.js';
-import { tick } from 'svelte';
 
 type Shortcut =
 	| { type: 'heading'; level: 'h1' | 'h2' | 'h3' }
@@ -56,128 +55,75 @@ const canApplyShortcut = (block: Block, prefixLength: number) => {
 	);
 };
 
-const clearShortcutText = (block: Block, length: number) => {
-	const text = block.firstText!;
-	if (length > 0) {
-		text.deleteAt(0, length);
+/** The conversion a shortcut asks for; content-replacing kinds drop the text. */
+const conversionOf = (shortcut: Shortcut): Partial<JSONBlock> & { type: string } => {
+	switch (shortcut.type) {
+		case 'heading':
+			return { type: 'heading', data: { level: shortcut.level } };
+		case 'todo-item':
+			return { type: 'todo-item', data: { checked: false } };
+		case 'divider':
+			return { type: 'divider', data: {}, content: [], children: [] };
+		case 'code':
+			return {
+				type: 'code',
+				data: {},
+				content: [],
+				children: [{ type: 'codeLine', content: [{ text: '' }] }]
+			};
+		default:
+			return { type: shortcut.type };
 	}
 };
 
-const restoreConvertedBlockSelection = (block: Block, offset: number) => {
-	// A kind that displays no text (a divider) takes no caret.
-	const target = block.firstText;
-	if (!target) return;
-	block.edytor.selection.setCollapsedStateAtTextOffset(target, Math.min(offset, target.length));
-	void block.edytor.selection.setAtTextOffset(target, Math.min(offset, target.length));
-	void tick().then(() => {
-		const current = block.firstText;
-		if (current)
-			void block.edytor.selection.setAtTextOffset(current, Math.min(offset, current.length));
-	});
-};
-
-const convertToCodeBlock = (block: Block) => {
-	if (!block.edytor.blocks.has('code') || !block.edytor.blocks.has('codeLine')) {
-		return;
-	}
-	block.setBlock({
-		value: {
-			type: 'code',
-			data: {},
-			content: [],
-			children: [{ type: 'codeLine', content: [{ text: '' }] }]
-		}
-	});
-	const codeLine = block.children[0];
-	if (codeLine) {
-		restoreConvertedBlockSelection(codeLine, 0);
-	}
-};
-
-const convertCurrentBlock = (
-	block: Block,
-	value: {
-		type: string;
-		data?: Record<string, SerializableContent>;
-		content?: [];
-		children?: [];
-	}
-) => {
-	if (!block.edytor.blocks.has(value.type)) {
-		return;
-	}
-	block.setBlock({ value });
-	restoreConvertedBlockSelection(block, 0);
-};
-
+/**
+ * Convert `block`, the shortcut's prefix removal leading the conversion: one
+ * plan, so a refusal of either refuses both (F-M3). The caret lands at the
+ * start of the converted kind's first text. Answers whether it applied.
+ */
 const applyShortcut = (block: Block, shortcut: Shortcut, prefixLength: number) => {
-	clearShortcutText(block, prefixLength);
-
-	if (shortcut.type === 'heading') {
-		convertCurrentBlock(block, {
-			type: 'heading',
-			data: { level: shortcut.level }
-		});
-		return;
-	}
-	if (shortcut.type === 'bulleted-list-item') {
-		convertCurrentBlock(block, {
-			type: 'bulleted-list-item'
-		});
-		return;
-	}
-	if (shortcut.type === 'numbered-list-item') {
-		convertCurrentBlock(block, {
-			type: 'numbered-list-item'
-		});
-		return;
-	}
-	if (shortcut.type === 'todo-item') {
-		convertCurrentBlock(block, {
-			type: 'todo-item',
-			data: { checked: false }
-		});
-		return;
-	}
-	if (shortcut.type === 'quote') {
-		convertCurrentBlock(block, {
-			type: 'quote'
-		});
-		return;
-	}
-	if (shortcut.type === 'divider') {
-		convertCurrentBlock(block, {
-			type: 'divider',
-			data: {},
-			content: [],
-			children: []
-		});
-		return;
-	}
-	if (shortcut.type === 'code') {
-		convertToCodeBlock(block);
-	}
+	const { edytor } = block;
+	const value = conversionOf(shortcut);
+	if (!edytor.blocks.has(value.type) || (value.type === 'code' && !edytor.blocks.has('codeLine')))
+		return false;
+	const prefix = edytor.facade.prepare.deleteText(block.model!.id, 0, prefixLength);
+	edytor.dispatcher.lead(prefix, () => block.setBlock({ value }));
+	if (edytor.dispatcher.last?.status !== 'applied') return false;
+	const target = value.type === 'code' ? block.children[0] : block;
+	edytor.dispatcher.caret(target?.firstText, 0);
+	return true;
 };
 
-export const markdownShortcutsPlugin: Plugin = (edytor) => ({
-	onBeforeOperation: ({ operation, payload, block, prevent }) => {
-		if (operation !== 'insertText' || block !== edytor.selection.state.startBlock) {
-			return;
-		}
+export const markdownShortcutsPlugin: Plugin = (edytor) => {
+	/** The typed text landing as typed after a refused conversion. */
+	let fallback = false;
+	return {
+		onBeforeOperation: ({ operation, payload, block, prevent }) => {
+			if (fallback || operation !== 'insertText' || block !== edytor.selection.state.startBlock) {
+				return;
+			}
 
-		const startText = edytor.selection.state.startText;
-		if (!startText || startText !== block.firstText) {
-			return;
-		}
+			const { startText, yStart } = edytor.selection.state;
+			if (!startText || startText !== block.firstText) {
+				return;
+			}
 
-		const prefix = startText.stringContent.slice(0, edytor.selection.state.yStart);
-		const shortcut = getShortcut(prefix, payload.value);
-		if (!shortcut || !canApplyShortcut(block, prefix.length)) {
-			return;
-		}
+			const prefix = startText.stringContent.slice(0, yStart);
+			const shortcut = getShortcut(prefix, payload.value);
+			if (!shortcut || !canApplyShortcut(block, prefix.length)) {
+				return;
+			}
 
-		prevent(() => {
-			applyShortcut(block, shortcut, prefix.length);
-		});
-	}
-});
+			prevent(() => {
+				if (applyShortcut(block, shortcut, prefix.length)) return;
+				fallback = true;
+				try {
+					startText.insertText(payload);
+				} finally {
+					fallback = false;
+				}
+				edytor.dispatcher.caret(startText, (payload.start ?? yStart) + payload.value.length);
+			});
+		}
+	};
+};

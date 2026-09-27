@@ -267,8 +267,10 @@ describe('gateH-R1 — facade-level randomized differential (markers on vs off)'
 	/** Content node accessor for delta-level comparison. */
 	const contentOf = (ed: any, id: string) => ed.resolveBlock(id)!.getAttr('content') as any;
 
+	// A split's boundary item carries the new block's random incarnation
+	// nonce (R2): the two replicas draw different ones, so it is masked.
 	const facadeDeltaJson = (ed: any, id: string) =>
-		JSON.stringify(contentOf(ed, id).toDelta().toJSON());
+		JSON.stringify(contentOf(ed, id)?.toDelta().toJSON())?.replace(/"n":\d+/g, '"n":0');
 
 	const MARKS = [undefined, { b: true }, { i: true }, { b: true, u: 1 }, { b: null }];
 

@@ -16,7 +16,7 @@ import { bindModel as bindPlacement } from '../../lib/crdt/index.js';
 import { isLiveIn } from '../../lib/crdt/placement/model.js';
 import { bindText } from '../../lib/crdt/text/model.js';
 import { randOf } from '../../lib/crdt/rand.js';
-import { DATA, DEL_PREFIX, ID, TYPE } from '../../lib/crdt/schema.js';
+import { DATA, DEL_PREFIX, TYPE } from '../../lib/crdt/schema.js';
 import { jsonEquals } from '../../lib/utils/json.js';
 import { collectBlocks } from './fresh-view.js';
 
@@ -26,7 +26,6 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 	const kids = (doc, parent) => [...(M.view(doc).kids.get(parent) ?? [])];
 	const ranks = (doc, sibs, index, count) =>
 		M.ranksAt(sibs, Math.max(0, Math.min(index, sibs.length)), count, doc.clientID, randOf(doc));
-	const isNodeLike = (v) => v != null && typeof v.getAttr === 'function';
 
 	const insertBlocks = (doc, dest, specs) => {
 		if (specs.length === 0) return true;
@@ -73,8 +72,9 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 		if (!pos) return false;
 		const node = M.blockNodeOf(doc, id);
 		return doc.transact(() => {
+			if (!M.view(doc).blocks.get(id)?.claimsNode) return false;
+			if ((M.view(doc).own.display(id) ?? []).length === 0) M.ownText(doc, id);
 			const { blocks } = M.view(doc);
-			if (!blocks.get(id)?.slicesNode) return false;
 			const sibs = kids(doc, pos.parent);
 			const myIdx = sibs.findIndex((s) => s.id === id);
 			const [rank] = ranks(doc, sibs, myIdx + 1, 1);
@@ -93,7 +93,7 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 		if (!isLiveIn(v, fromId) || !isLiveIn(v, intoId)) return false;
 		const { blocks, placements, own } = v;
 		if (M.isSelfOrDescendant(placements, own, intoId, fromId)) return false;
-		if (!blocks.get(intoId)?.slicesNode) return false;
+		if (!blocks.get(intoId)?.claimsNode) return false;
 		return doc.transact(() => {
 			const intoKids = kids(doc, intoId);
 			const fromKids = kids(doc, fromId);
@@ -107,8 +107,7 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 	/** A live content target's view, or null. */
 	const ownView = (doc, id) => {
 		const v = M.view(doc);
-		const rec = v.blocks.get(id);
-		return isLiveIn(v, id) && rec?.content && rec.slicesNode ? v : null;
+		return isLiveIn(v, id) && v.blocks.get(id)?.claimsNode ? v : null;
 	};
 	/** `[at, end)` of a display range, clamped. */
 	const clamp = (v, id, offset, length) => {
@@ -118,9 +117,15 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 	};
 	const insertInto = (doc, id, offset, payload, marks?) =>
 		doc.transact(() => {
-			const v = ownView(doc, id);
+			let v = ownView(doc, id);
 			if (!v) return false;
-			if (payload !== '') T.insertIntoText(doc, v.blocks, v.own, id, offset, payload, marks);
+			if (payload === '') return true;
+			// A streamless block gets its own text first (derived writer, R2).
+			if ((v.own.display(id) ?? []).length === 0) {
+				M.ownText(doc, id);
+				v = M.view(doc);
+			}
+			T.insertIntoText(doc, v.blocks, v.own, id, offset, payload, marks);
 			return true;
 		});
 	const ranged =
@@ -135,22 +140,6 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 			});
 	const deleteText = ranged(T.deleteRange);
 	const format = ranged(T.formatRangeIn);
-
-	/** The inline atom `inlineId` in `id`'s owned content: its text and position. */
-	const findAtom = (v, id, inlineId) => {
-		for (const seg of T.flatten(id, v.blocks, v.own)) {
-			const text = v.blocks.get(seg.t)?.content;
-			if (!text) continue;
-			let p = 0;
-			for (const entry of text.toArray()) {
-				if (isNodeLike(entry) && entry.getAttr(ID) === inlineId && p >= seg.i0 && p < seg.i1) {
-					return { text, p, entry };
-				}
-				p += typeof entry === 'string' ? entry.length : 1;
-			}
-		}
-		return null;
-	};
 
 	const moveBlock = (doc, id, dest) => moveBlocks(doc, [id], dest);
 	return {
@@ -169,17 +158,17 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 		removeInline: (doc, id, inlineId) =>
 			doc.transact(() => {
 				const v = ownView(doc, id);
-				const hit = v && findAtom(v, id, inlineId);
+				const hit = v && T.findAtom(v.own, id, inlineId);
 				if (!hit) return false;
-				hit.text.delete(hit.p, 1);
+				hit.text.delete(hit.at, 1);
 				return true;
 			}),
 		setInlineData: (doc, id, inlineId, data) =>
 			doc.transact(() => {
 				const v = ownView(doc, id);
-				const hit = v && findAtom(v, id, inlineId);
+				const hit = v && T.findAtom(v.own, id, inlineId);
 				if (!hit) return false;
-				if (!jsonEquals(hit.entry.getAttr(DATA), data)) hit.entry.setAttr(DATA, data);
+				if (!jsonEquals(hit.node.getAttr(DATA), data)) hit.node.setAttr(DATA, data);
 				return true;
 			}),
 		moveBlock,

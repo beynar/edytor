@@ -24,16 +24,18 @@
  *      {b,END,g1} wins it -> v stays '', thief displays 'bcX'.
  *
  * The remaining probes exercise the adversarial variants the review asked
- * for: 3+ concurrent splits then left-edge insert, a record fragmented
- * into 3+ disjoint segs, concurrent left-edge inserts on two replicas,
- * boundary (not interior) inserts, and revive racing a tail deletion.
+ * for: 3+ concurrent splits then left-edge insert, concurrent left-edge
+ * inserts on two replicas, and revive racing a tail deletion. (Probes 3 and
+ * 6 staged slice records fragmented into disjoint segs by removing registry
+ * entries — a state streams do not have: arch-v2 D12 retired them with the
+ * slice-record model, L1–L3.)
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/index.js';
 import { createPeerPair, createPeerTriple, type Peer } from '../harness/peer-set.js';
-import { expandOwnerRow } from '../harness/dense-ownership-oracle.js';
+import { contentOwners } from '../harness/streams.js';
 import { createDocOps } from '../harness/ops/doc-ops.js';
 import { assertConverged, assertAllStructurallyValid } from '../harness/assert/convergence.js';
 import { collectBlocks } from '../../oracles/fresh-view.js';
@@ -62,11 +64,7 @@ const text = (peer: Peer, id: string) => ed(peer).blockText(id);
  */
 const dropBlock = (peer: Peer, id: string) =>
 	peer.doc.transact(() => peer.doc.get('blocks').deleteAttr(id));
-const atomOwners = (peer: Peer, t: string): (string | null)[] => {
-	const blocks = collectBlocks(peer.doc);
-	const own = ed(peer).text.computeOwnership(peer.doc, blocks);
-	return expandOwnerRow(own.intervals.get(t));
-};
+const atomOwners = (peer: Peer, t: string): (string | null)[] => contentOwners(peer.doc, t);
 
 const SEED = (doc) => {
 	E.init(doc, {
@@ -249,54 +247,6 @@ describe('gateF1 probe 2 — three concurrent splits then left-edge insert', () 
 	});
 });
 
-describe('gateF1 probe 3 — left-edge insert into a 3-way fragmented record', () => {
-	it('disjoint [3,5)∪[7,8)∪[9,E) coverage is re-anchored per-seg, holes kept', () => {
-		const set = createPeerPair(SEED);
-		const { A, B } = set;
-		// early gets an E-ended record from 3; B carves two bounded holes so
-		// that deleting the right records leaves early with THREE disjoint segs.
-		ops.splitBlock(A, 'b', 3, 'early'); // early = {3,E}
-		ops.splitBlock(B, 'b', 5, 'mid1'); // mid1 = {5,E}
-		ops.splitBlock(B, 'mid1', 2, 'mid2'); // mid1={5,7} mid2={7,E}
-		ops.splitBlock(B, 'mid2', 1, 'mid3'); // mid2={7,8} mid3={8,E}
-		ops.splitBlock(B, 'mid3', 1, 'tail'); // mid3={8,9} tail={9,E}
-		set.deliver('A', 'B');
-		set.deliver('B', 'A');
-		assertConverged(set, ops);
-		// Kill mid2{7,8} and tail{9,E}: those atoms fall back to early's {3,E}
-		// claim -> early = [3,5) ∪ [7,8) ∪ [9,10) — three disjoint segs with
-		// mid1{5,7}='fg' and mid3{8,9}='i' as the holes.
-		dropBlock(A, 'mid2');
-		dropBlock(A, 'tail');
-		expect(text(A, 'mid1')).toBe('fg');
-		expect(text(A, 'mid3')).toBe('i');
-		expect(text(A, 'early')).toBe('dehj');
-		// Left-edge insert: rewrites all three disjoint segs of early's record.
-		ops.insertText(A, 'early', 0, 'X');
-		expect(text(A, 'early')).toBe('Xdehj');
-		expect(text(A, 'mid1')).toBe('fg');
-		expect(text(A, 'mid3')).toBe('i');
-		// 'X'@3 is early's; holes mid1{fg}@6,7 and mid3{i}@9 preserved.
-		expect(atomOwners(A, 'b')).toEqual([
-			'b',
-			'b',
-			'b',
-			'early',
-			'early',
-			'early',
-			'mid1',
-			'mid1',
-			'early',
-			'mid3',
-			'early'
-		]);
-		set.deliver('A', 'B');
-		set.deliver('B', 'A');
-		assertConverged(set, ops, 'post-insert');
-		assertAllStructurallyValid(set, ops, 'post-insert');
-	});
-});
-
 describe('gateF1 probe 4 — concurrent left-edge inserts into the same seg', () => {
 	it('two replicas type at offset 0 of the same mid block; both chars survive', () => {
 		const set = createPeerPair(SEED);
@@ -337,38 +287,5 @@ describe('gateF1 probe 5 — revive racing a concurrent tail deletion', () => {
 		// tail is gone; its 10 atoms are dead. 'X' must survive under b.
 		expect(text(A, 'b')).toBe('X');
 		expect(text(B, 'b')).toBe('X');
-	});
-});
-
-describe('gateF1 probe 6 — boundary (non-interior) inserts at seg seams', () => {
-	it('insert at the seam between two disjoint segs lands left, never in the hole', () => {
-		const set = createPeerPair(SEED);
-		const { A, B } = set;
-		ops.splitBlock(A, 'b', 3, 'early'); // early = {3,E}
-		ops.splitBlock(B, 'b', 5, 'mid1'); // mid1 = {5,E}
-		ops.splitBlock(B, 'mid1', 2, 'mid2'); // mid1={5,7} mid2={7,E}
-		ops.splitBlock(B, 'mid2', 1, 'mid3'); // mid2={7,8} mid3={8,E}
-		set.deliver('A', 'B');
-		set.deliver('B', 'A');
-		assertConverged(set, ops);
-		// Kill mid2{7,8}: 'h' falls back to early -> early = [3,5)∪[7,8) —
-		// 'de' + 'h' = 'deh' with mid1{5,7}='fg' and mid3{8,E}='ij' as holes.
-		dropBlock(A, 'mid2');
-		expect(text(A, 'early')).toBe('deh');
-		expect(text(A, 'mid1')).toBe('fg');
-		expect(text(A, 'mid3')).toBe('ij');
-		// Seam at display offset 2 between 'de' and 'h': insert exactly there.
-		ops.insertText(A, 'early', 2, 'X');
-		const got = text(A, 'early');
-		// 'X' must belong to early, and must not land inside mid1's hole.
-		expect(got).toContain('X');
-		expect(text(A, 'mid1')).toBe('fg');
-		expect(text(A, 'mid3')).toBe('ij');
-		// Every 'X' atom is owned by early (or at least never by a hole block).
-		const owners = atomOwners(A, 'b');
-		expect(owners).not.toContain(null);
-		set.deliver('A', 'B');
-		set.deliver('B', 'A');
-		assertConverged(set, ops, 'seam insert');
 	});
 });

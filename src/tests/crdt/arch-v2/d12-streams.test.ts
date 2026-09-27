@@ -41,7 +41,7 @@ const alice = { id: 'alice' };
 const bob = { id: 'bob' };
 
 /** Red on the reference (`arch-v2/ref-d12`, slice records): `it.fails` until the switch. */
-const red = it.fails;
+const red = it;
 
 const CLIENT_IDS = [
 	{ a: 7, b: 3 },
@@ -374,6 +374,35 @@ describe('requirements 2+4: concurrent first typing into a boundary-dead streaml
 					expect(idOf(B)).toEqual(ia);
 				}
 			);
+		}
+	}
+});
+
+describe('requirements 2+4: undoing the first typing into a streamless block removes only that typing', () => {
+	const attributed = (who: 'A' | 'B') => ({ actor: () => (who === 'A' ? alice : bob) });
+	for (const ids of CLIENT_IDS) {
+		for (const order of ['xy', 'yx'] as const) {
+			it(`A's undo keeps B's concurrent typing, the shared text and createdBy — A=${ids.a} B=${ids.b} · ${order}`, () => {
+				const { A, B } = deadBoundary(ids, attributed);
+				const um = A.ed.createUndoManager({ captureTimeout: 0 });
+				expect(A.ed.insertText('u', 0, 'a').status).toBe('applied');
+				expect(B.ed.insertText('u', 0, 'b').status).toBe('applied');
+				sync(A, B, order);
+				expect([...A.ed.blockText('u')].sort().join('')).toBe('ab');
+				// No history step captures the derived writer's items: the undo
+				// removes A's typing, not the text both replicas share.
+				expect(um.undo()).not.toBe(null);
+				sync(A, B, order);
+				for (const ed of [A.ed, B.ed, reload(A.doc, 900), reload(B.doc, 901)]) {
+					expect(ed.blockText('u')).toBe('b');
+					expect(ed.blockAttribution('u')?.createdBy).toBe('bob');
+				}
+				// the redone typing comes back into the same text
+				expect(um.redo()).not.toBe(null);
+				sync(A, B, order);
+				expect([...A.ed.blockText('u')].sort().join('')).toBe('ab');
+				expect(B.ed.blockText('u')).toBe(A.ed.blockText('u'));
+			});
 		}
 	}
 });

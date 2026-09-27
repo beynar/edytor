@@ -647,11 +647,11 @@ const expectConverged = async (
 					.evaluate(() => {
 						const w = window as Window & {
 							__EDYTOR__?: { document?: { doc?: any } };
-							__EDYTOR_COLLABORATION_TEST__?: { probeSliceRanges?: (d: any) => unknown };
+							__EDYTOR_COLLABORATION_TEST__?: { probeStreams?: (d: any) => unknown };
 						};
 						const doc = w.__EDYTOR__?.document?.doc;
 						const document = w.__EDYTOR__?.document;
-						const probe = w.__EDYTOR_COLLABORATION_TEST__?.probeSliceRanges;
+						const probe = w.__EDYTOR_COLLABORATION_TEST__?.probeStreams;
 						if (!doc) return null;
 						// Raw store view: which items back each block's content node and
 						// whether they are integrated-but-deleted vs never-integrated.
@@ -667,7 +667,7 @@ const expectConverged = async (
 						for (const key of registry.attrKeys()) {
 							const node = registry.getAttr(key);
 							const rec: Record<string, unknown> = {};
-							for (const attr of ['content', 'slices'] as const) {
+							for (const attr of ['content', 'claims'] as const) {
 								const list = node?.getAttr?.(attr);
 								if (!list) continue;
 								const items: unknown[] = [];
@@ -692,9 +692,9 @@ const expectConverged = async (
 							rec._nodeDeleted = !!node?._item?.deleted;
 							out[key] = rec;
 						}
-						// Resolved claim ranges via the engine's own anchor machinery —
-						// identical slices + identical resolution proves the divergence
-						// lives above the store (maintained caches), not in it.
+						// Stream boundaries per text — identical boundaries + identical
+						// items prove the divergence lives above the store (maintained
+						// caches), not in it.
 						out.__resolved = probe ? (probe(document) as Record<string, unknown>) : null;
 						return out;
 					})

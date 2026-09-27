@@ -26,7 +26,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/index.js';
 import { createPeerPair, type Peer } from '../harness/peer-set.js';
-import { expandOwnerRow } from '../harness/dense-ownership-oracle.js';
+import { contentOwners } from '../harness/streams.js';
 import { createDocOps } from '../harness/ops/doc-ops.js';
 import { assertConverged, assertAllStructurallyValid } from '../harness/assert/convergence.js';
 import { collectBlocks } from '../../oracles/fresh-view.js';
@@ -74,11 +74,7 @@ const op = (peer: Peer, fn: () => unknown) => {
  * assertion: WHICH block displays each atom, not just the concatenated
  * result. `null` marks unowned (dead/unclaimed) atoms.
  */
-const atomOwners = (peer: Peer, t: string): (string | null)[] => {
-	const blocks = collectBlocks(peer.doc);
-	const own = ed(peer).text.computeOwnership(peer.doc, blocks);
-	return expandOwnerRow(own.intervals.get(t));
-};
+const atomOwners = (peer: Peer, t: string): (string | null)[] => contentOwners(peer.doc, t);
 
 /**
  * Flush every queued update + state-vector sync, persist + reload every
@@ -260,50 +256,6 @@ describe('regression A — insert after concurrent splits must not steal owned a
 		});
 	}
 
-	it('disjoint coverage is preserved through a left-edge rewrite', () => {
-		// A splits b→early CONCURRENTLY with B's b→mid→n carve-up, so early's
-		// record stays E-ended (it is never re-split). Removing n drops its
-		// records; the 'hij' atoms then fall back to early's older {3,E}
-		// claim — early owns two DISJOINT spans with mid's bounded record in
-		// the hole. A left-edge insert must re-claim both spans, not fuse
-		// the hole mid owns.
-		const set = createPeerPair(SEED);
-		const { A, B } = set;
-		ops.splitBlock(A, 'b', 3, 'early'); // A: early = {3,E}
-		ops.splitBlock(B, 'b', 5, 'mid'); // B: mid = {5,E}
-		ops.splitBlock(B, 'mid', 2, 'n'); // B: mid → {5,7}, n = {7,E}
-		set.deliver('A', 'B');
-		set.deliver('B', 'A');
-		assertConverged(set, ops);
-		dropBlock(A, 'n'); // n's records gone → 'hij' falls back to early's claim
-		expect(text(A, 'early')).toBe('dehij'); // disjoint: [3,5) ∪ [7,E)
-		expect(text(A, 'mid')).toBe('fg');
-		ops.insertText(A, 'early', 0, 'X'); // left edge of the FIRST covered seg
-		expect(text(A, 'early')).toBe('Xdehij'); // must NOT steal mid's 'fg'
-		expect(text(A, 'mid')).toBe('fg');
-		expect(atomOwners(A, 'b')).toEqual([
-			'b',
-			'b',
-			'b',
-			'early',
-			'early',
-			'early',
-			'mid',
-			'mid',
-			'early',
-			'early',
-			'early'
-		]);
-		set.deliver('A', 'B');
-		set.deliver('B', 'A');
-		assertConverged(set, ops);
-		assertAllStructurallyValid(set, ops);
-		reloadAndVerify(set, (s) => {
-			expect(text(s.A, 'early')).toBe('Xdehij');
-			expect(text(s.A, 'mid')).toBe('fg');
-		});
-	});
-
 	it('duplicate delivery of the contested insert stays idempotent', () => {
 		const set = createPeerPair(SEED);
 		const { A, B } = set;
@@ -356,21 +308,9 @@ describe('regression B — insert into an empty head must not edit the tail', ()
 		op(A, () => expect(ops.insertText(A, 'b', 0, 'X')).toBe(true));
 		expect(text(A, 'b')).toBe('X');
 		expect(text(A, 'tail')).toBe('abcdefghij');
-		// Ownership row: the 10 original atoms stay with tail; 'X' (appended
-		// at the backing-text end) is owned by b.
-		expect(atomOwners(A, 'b')).toEqual([
-			'tail',
-			'tail',
-			'tail',
-			'tail',
-			'tail',
-			'tail',
-			'tail',
-			'tail',
-			'tail',
-			'tail',
-			'b'
-		]);
+		// Ownership row (R2): 'X' lands in b's stream — before tail's boundary
+		// at the text start — and the 10 original atoms stay with tail.
+		expect(atomOwners(A, 'b')).toEqual(['b', ...Array(10).fill('tail')]);
 		// Follow-ups: the revived block is a real editable target.
 		op(A, () => ops.insertText(A, 'b', 1, 'Y')); // right edge of b's revived span
 		expect(text(A, 'b')).toBe('XY');
@@ -385,13 +325,10 @@ describe('regression B — insert into an empty head must not edit the tail', ()
 			{ kind: 'inline', id: 'in-b', type: 'mention' }
 		]);
 		expect(text(A, 'tail')).toBe('abcdefghij');
-		// ── undo/redo: undoing the delete resurrects X as a NEW item — the
-		// slice anchors bound to the dead original don't follow it, so
-		// without repair the resurrected atom would be claimed by tail's
-		// {B,E} record. The R3 repair re-asserts b's pre-delete claim over
-		// the copy atom as replicated state: X comes home to 'b'
-		// (docs/crdt-v14-undo-ownership-adr.md).
-		A.undoManager.undo(); // undoes `del` — X resurrects under b's claim
+		// ── undo/redo: undoing the delete resurrects X as a NEW item, which
+		// `redoItem` integrates beside its tombstone — before tail's boundary,
+		// in b's stream (R2): X comes home to 'b' with no repair write.
+		A.undoManager.undo(); // undoes `del` — X resurrects in b's stream
 		expect(text(A, 'b')).toBe('XY');
 		expect(text(A, 'tail')).toBe('abcdefghij');
 		// Undo the rest (mark, in-b, Y, X-insert) — the insert's own undo
@@ -434,20 +371,7 @@ describe('regression B — insert into an empty head must not edit the tail', ()
 			expect(text(p, 'b')).toHaveLength(2);
 			expect([...text(p, 'b')].sort().join('')).toBe('QX');
 			expect(text(p, 'tail')).toBe('abcdefghij');
-			expect(atomOwners(p, 'b')).toEqual([
-				'tail',
-				'tail',
-				'tail',
-				'tail',
-				'tail',
-				'tail',
-				'tail',
-				'tail',
-				'tail',
-				'tail',
-				'b',
-				'b'
-			]);
+			expect(atomOwners(p, 'b')).toEqual(['b', 'b', ...Array(10).fill('tail')]);
 		}
 		reloadAndVerify(set, (s) => {
 			expect(text(s.A, 'tail')).toBe('abcdefghij');

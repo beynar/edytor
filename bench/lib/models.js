@@ -63,20 +63,20 @@ export const insertModelBlock14 = (doc, spec) => {
 	doc.transact(() => {
 		const block = new Y14.Node('block');
 		block.setAttr('id', spec.id);
+		block.setAttr('n', 1);
 		block.setAttr('type', spec.type ?? 'paragraph');
 		const content = new Y14.Node('content');
-		const slices = new Y14.Node('slices');
+		const claims = new Y14.Node('claims');
 		const at = new Y14.Node('at');
 		block.setAttr('content', content);
-		block.setAttr('slices', slices);
+		block.setAttr('claims', claims);
 		block.setAttr('at', at);
 		let clen = 0;
 		for (const item of spec.content ?? []) {
 			content.insert(clen, item.text, item.marks);
 			clen += item.text.length;
 		}
-		// U04: the block owns its whole backing text by default — B/E sentinels.
-		slices.insert(0, [{ t: spec.id, s: { i: null, a: -1 }, e: { i: null, a: 0 } }]);
+		// R2: a block created fresh owns its whole backing text — no record.
 		at.setAttr(`1.${doc.clientID}`, { p: spec.parent ?? null, r: spec.rank ?? 'a0' });
 		doc.get('blocks').setAttr(spec.id, block);
 	});
@@ -109,61 +109,38 @@ export const moveByModel14 = (doc, id, dest, rank) => {
 };
 
 /**
- * U04 anchor encoding — the JSON form `splitSlices` writes into slice
- * records: B/E sentinels at the ends, `{i:{c,k},a}` bound to an item
- * otherwise (`createRelativePositionFromTypeIndex` + `relativePositionToJSON`,
- * mapped to the record's `{i:{c,k}|null,a}` shape).
- */
-export const anchorAt14 = (content, index) => {
-	if (index <= 0) return { i: null, a: -1 };
-	if (index >= content.length) return { i: null, a: 0 };
-	const rpos = Y14.createRelativePositionFromTypeIndex(content, index, 0);
-	const json = Y14.relativePositionToJSON(rpos);
-	return {
-		i: json.item ? { c: json.item.client, k: json.item.clock } : null,
-		a: json.assoc ?? 0
-	};
-};
-
-/**
- * One real U04 `splitBlock` on a canonical block (single self-record):
- * tombstone the covering record, insert the anchored head record, create the
- * sibling with its materialized tail record + placement — the backing text
- * is NEVER re-encoded. Mirrors `splitSlices`/`splitBlock` in
- * src/lib/crdt for the common case (seam inside a plain self-slice).
+ * One real `splitBlock` (arch-v2 D12, R2): ONE boundary item `{s, n}` at the
+ * end of the gap at `offset` (engine primitive P7) and the sibling's node with
+ * an empty claims list + placement — the backing text is NEVER re-encoded.
+ * Mirrors `writeSplit` in src/lib/crdt for a block with no merge claims.
  */
 export const splitModelBlock14 = (doc, id, offset, newId, rank = 's1') => {
 	const block = doc.get('blocks').getAttr(id);
 	const content = block.getAttr('content');
-	const slices = block.getAttr('slices');
 	doc.transact(() => {
-		const anchor = anchorAt14(content, offset);
-		slices.delete(0, 1);
-		slices.insert(0, [{ t: id, s: { i: null, a: -1 }, e: anchor }]);
+		content.insertAtGapEnd(offset, [{ s: newId, n: 2 }]);
 		const sibling = new Y14.Node('block');
 		sibling.setAttr('id', newId);
+		sibling.setAttr('n', 2);
 		sibling.setAttr('type', block.getAttr('type'));
-		sibling.setAttr('content', new Y14.Node('content'));
-		const sSlices = new Y14.Node('slices');
-		sibling.setAttr('slices', sSlices);
+		sibling.setAttr('claims', new Y14.Node('claims'));
 		const sAt = new Y14.Node('at');
 		sibling.setAttr('at', sAt);
-		sSlices.insert(0, [{ t: id, s: anchor, e: { i: null, a: 0 }, g: 1 }]);
 		sAt.setAttr(`1.${doc.clientID}`, { p: null, r: rank });
 		doc.get('blocks').setAttr(newId, sibling);
 	});
 };
 
 /**
- * One real U04 `mergeBlocks` on a childless source: ONE `{m:from}` claim item
- * appended to the destination's slice list — the source's atoms stay in its
- * backing text and are displayed through the live claim.
+ * One real `mergeBlocks` on a childless source: ONE `{m:from}` claim item
+ * appended to the destination's claims list — the source's text stays where
+ * it is and is displayed through the live claim.
  */
 export const mergeModelBlocks14 = (doc, fromId, intoId) => {
 	const into = doc.get('blocks').getAttr(intoId);
-	const slices = into.getAttr('slices');
+	const claims = into.getAttr('claims');
 	doc.transact(() => {
-		slices.insert(slices.length, [{ m: fromId }]);
+		claims.insert(claims.length, [{ m: fromId }]);
 	});
 };
 

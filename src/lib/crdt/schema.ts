@@ -17,7 +17,7 @@ export const BLOCK_ATTR_ROOT = 'blockattr';
 /** Named node roles (`SCHEMA.nodes`). */
 export const BLOCK_NODE = 'block';
 export const CONTENT_NODE = 'content';
-export const SLICES_NODE = 'slices';
+export const CLAIMS_NODE = 'claims';
 export const AT_NODE = 'at';
 export const INLINE_NODE = 'inline';
 
@@ -27,8 +27,10 @@ export const TYPE = 'type';
 export const DATA = 'data';
 /**
  * Incarnation nonce (O23, §2.1): which creation of a (recyclable) block id a
- * node is. Written once at creation — random from the `rand` seam, derived
- * from the seed hash for seeded blocks — and replicated, so an undo/redo copy
+ * node is — and which stream boundary `{s, n}` starts the block's stream.
+ * Written at creation (random from the `rand` seam, derived from the seed
+ * hash for seeded blocks) and re-minted, derived from the dead incarnation,
+ * when a streamless block gets its own text; replicated, so an undo/redo copy
  * of the node carries it and every replica agrees on the incarnation.
  */
 export const NONCE = 'n';
@@ -42,7 +44,8 @@ export const hasDeleteMark = (node: { attrKeys(): IterableIterator<string> }): b
 /** U1 `lastChangedBy` LWW attr (`SCHEMA.blockAttrs.lastChanged`). */
 export const LAST_CHANGED_ATTR = 'l';
 export const CONTENT = 'content';
-export const SLICES = 'slices';
+/** Ordered merge claims `{m: blockId}` (R2). */
+export const CLAIMS = 'claims';
 export const AT = 'at';
 
 /** `b/<blockId>` record-key prefix on the `blockattr` root. */
@@ -50,7 +53,7 @@ export const REC_PREFIX = 'b/';
 
 /** The schema generation stamped on the `meta` root (`v`) and its manifest name (`schema`). */
 export const SCHEMA = {
-	version: 3,
+	version: 4,
 	name: 'edytor-doc',
 	roots: { registry: REGISTRY_KEY, meta: META_ROOT_KEY },
 	metaAttrs: { version: 'v', schema: 'schema' }

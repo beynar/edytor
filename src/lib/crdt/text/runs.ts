@@ -1,8 +1,9 @@
 /**
  * The per-document index (R6, §2.4 "Per-doc index" and "Change report") —
  * the ONE owner of every fact derived from the replicated document: block
- * records, ownership, resolved placements, the children index and document
- * order, and each block's visible content as ordered, immutable runs.
+ * records, the claim graph, the stream table (R2), resolved placements, the
+ * children index and document order, and each block's visible content as
+ * ordered, immutable runs.
  *
  * Lifetime: the engine doc's. `bindRuns(Y).attach(doc)` returns the doc's
  * one index (built on first use, torn down on the doc's `destroy`); every
@@ -17,27 +18,18 @@
  * The fold (see `docs/crdt-v14-richtext-adr.md` for the run contract):
  *
  * - One classifier maps a changed `(type, parentSub)` pair to the block and
- *   the facet it entered through (`content`, `slices`, `at`, a delete mark,
- *   `type`/`data`, or the registry entry itself); one routine folds a set of
- *   such pairs into the indexes.
- * - A transaction is folded ONCE at commit, from `transaction.changed`
- *   (which also carries the undo repair's follow-up writes).
+ *   the facet it entered through (`content`, `claims`, `at`, `n`, a delete
+ *   mark, `type`/`data`, or the registry entry itself); one routine folds a
+ *   set of such pairs into the indexes.
+ * - A transaction is folded ONCE at commit, from `transaction.changed`.
  * - A read inside an open transaction first folds the PENDING part: the
- *   structs the transaction's insert/delete sets gained since the last fold.
- *   The watermark is those sets' lengths, the folded part a copy of them —
- *   `transaction.changed` cannot serve here, because it does not grow on a
- *   second edit to an already-changed type (attack F11), and re-folding it
- *   on every read made batching quadratic (probe C10).
- * - Forward dependencies: every cached block records which backing TEXTS
- *   its flatten consulted and which SLICE LISTS it walked. Reverse effects:
- *   every slice list records which texts its records ever covered and which
- *   blocks its merge claims ever targeted (union — never shrunk, so removed
- *   records still invalidate their old range).
- * - `content` on block X → rebuild X's atom-ownership row + invalidate the
- *   blocks consulting text X (narrowed to the edited spans when the fold
- *   can locate them). `slices`/delete marks on X → bump the ownership
- *   structure version + invalidate every consumer of X's effects. `at` →
- *   placements only; `type`/`data` → the record's metadata only.
+ *   structs the transaction's insert/delete sets gained since the last fold
+ *   (the watermark is those sets' lengths).
+ * - An edited backing text is rescanned for its boundary items; the stream
+ *   table is rebuilt only when a boundary set, a nonce or a registry entry
+ *   changed. Every cached block records which texts and which claim lists
+ *   its display walked; an edit invalidates the display owners of the
+ *   streams it touched (or every reader of the text when it cannot say).
  *
  * Publication is COMMIT-BOUND (R5): a mid-transaction read refreshes the
  * cache for read-your-writes, but `subscribeBlock` listeners and the change
@@ -48,15 +40,6 @@
  * fold against the last published index: the blocks the commit's folds
  * touched or invalidated are compared with what was published for them;
  * when the children index was rebuilt, the reachable tree is compared too.
- *
- * Delta-cache contract (probed in `tests/crdt/runs/delta-contract.test.ts`):
- * `node.delta` is the engine-maintained LIVE cache — authoritative once the
- * node is integrated, but mutable and shared: NEVER mutate it, NEVER hold
- * it as a snapshot (`clone()` at boundaries), and NEVER read it on a
- * detached node (a pre-integration read materializes an empty cache that is
- * never back-filled — poisoned until `clearCache()`). This module reads
- * `.delta` only through `itemsOfRange` on integrated nodes and snapshots
- * everything that crosses the API boundary.
  */
 import type {
 	EngineApi,
@@ -86,35 +69,30 @@ import {
 import {
 	bindText,
 	canonKey,
-	computeOwners,
+	claimGraph,
 	DEAD,
 	deepFreeze,
-	gatherClaims,
-	intervalsOver,
-	isMergeClaim,
-	isSliceRecord,
+	delimiters,
+	displayOf,
+	placeText,
 	protectItems,
-	readRange,
-	readSliceEntries,
-	sweepOwnership,
-	type OwnedSeg,
-	type OwnInterval,
+	readClaims,
+	scanText,
 	type Owner,
 	type Ownership,
-	type RangeCursor,
 	type RangeReadStats,
-	type SliceEntry,
-	type SliceRecord,
-	type TextBlockRec
+	type Stream,
+	type TextRow
 } from './model.js';
 import {
 	AT,
+	CLAIMS,
 	CONTENT,
 	DATA,
 	hasDeleteMark,
 	ID,
 	LAST_CHANGED_ATTR,
-	SLICES,
+	NONCE,
 	TYPE
 } from '../schema.js';
 import { walkIdSetStructs, type IdSetLike, type StoreStruct } from '../structs.js';
@@ -192,30 +170,24 @@ const isNodeLike = (v: unknown): v is EngineNode =>
  */
 export const ENTRY_FACET = '';
 
+/** The facet name of a write to a block's `content` attr itself (a streamless block's own text). */
+export const CONTENT_ATTR = '#content';
+
 /**
- * Facets of a block node that can change derived state: `at` (placement
- * candidate writes — invalidate the placement/order facets but never the
- * content facets) and `meta` (type/data payload writes — invalidate only
- * metadata projections).
+ * Facets of a block node that can change derived state: `content` (a
+ * sequence edit of the block's own text), `structure` (claims, delete marks,
+ * the nonce, the `content` attr, unknown attrs), `at` (placement candidates —
+ * placements and order only) and `meta` (type/data — metadata only).
  */
 type Facet = 'content' | 'structure' | 'at' | 'meta' | 'ignore';
 
 const facetOf = (attr: string): Facet => {
 	if (attr === CONTENT) return 'content';
-	// Per-writer delete marks (`del.<writer>`) fall through to 'structure' below.
-	if (attr === SLICES) return 'structure';
-	// `at` changes placements/display order — never content.
 	if (attr === AT) return 'at';
-	// Payload attrs change only the block's metadata projection — a move or
-	// data write must not trigger run recomputes.
 	if (attr === ID || attr === TYPE || attr === DATA) return 'meta';
-	// U1: the `l` lastChangedBy stamp (SCHEMA.blockAttrs.lastChanged) is
-	// pure attribution bookkeeping — it carries no derived state and must
-	// not dirty runs, structure, or placements (and must not poison the
-	// claim-refinement fast path when it shares a commit with `slices`).
+	// U1: the `l` lastChangedBy stamp is attribution bookkeeping only.
 	if (attr === LAST_CHANGED_ATTR) return 'ignore';
-	// Unknown attr — a future schema extension; treat as structural so its
-	// consumers recompute rather than silently serving stale runs.
+	// `claims`, `n`, `#content`, delete marks and unknown attrs.
 	return 'structure';
 };
 
@@ -248,7 +220,8 @@ const sameRuns = (a: readonly ContentRun[] | undefined, b: readonly ContentRun[]
 	return true;
 };
 
-type Deps = { texts: Set<string>; lists: Set<string> };
+/** What a cached display walked: the homes of the texts it read, the blocks whose claims it followed. */
+type Deps = { texts: Set<BlockId>; lists: Set<BlockId> };
 
 type Cached = { runs: readonly ContentRun[]; deps: Deps };
 
@@ -275,16 +248,6 @@ export type IndexReport = {
 
 /** What the folds since {@link RunView.track} saw: facets per block, and whether anything was written. */
 export type Folded = { touched: Map<BlockId, Set<string>>; wrote: boolean };
-
-type AtomRow = {
-	/** Ordered disjoint winner intervals for the text (WU6 — the old dense
-	 *  per-position owner/claim rows are gone; see `sweepOwnership`). */
-	ivs: OwnInterval[];
-	maxG: number;
-	builtAt: number;
-};
-
-type Effects = { texts: Set<string>; lists: Set<string> };
 
 export type RunViewDebug = {
 	/** Total run recomputes since attach (or last `reset()`). */
@@ -375,6 +338,7 @@ export type RunView = {
 };
 
 /** One index per engine doc, shared by every binding (the doc's lifetime). */
+/** One index per engine doc, shared by every binding (the doc's lifetime). */
 const indexes = new WeakMap<EngineDoc, RunView>();
 
 export const bindRuns = (Y: EngineApi) => {
@@ -390,171 +354,170 @@ export const bindRuns = (Y: EngineApi) => {
 	const buildView = (doc: EngineDoc): RunView => {
 		const registry = doc.get(REGISTRY_KEY);
 
-		// ── per-transaction content extents (U8b) ─────────────────────
+		// ── edited spans of one fold (L7 narrowing) ───────────────────
 		//
-		// A `content` facet change on block X is a sequence edit inside X's
-		// backing text node. `Transaction.changed` names only the touched
-		// type — not WHERE in it — so sibling blocks sharing one backing
-		// text all used to invalidate on every keystroke. The transaction's
-		// `insertSet`/`deleteSet` record exactly which items were written;
-		// resolving each item's id to a live index yields the edited spans
-		// in post-edit coordinates (a tombstone resolves to the gap it
-		// occupied, and its `length` restores the pre-edit span — the same
-		// span doubles as the pre-edit frame for old-row checks; the
-		// over-approximation only ever touches extra atoms).
-		//
-		// A block's display of text X is exactly the ownership intervals it
-		// wins on X's atom row, so an edit that intersects none of a
-		// consumer's intervals cannot change its runs: anchors translate
-		// coverage verbatim, and a surviving atom's winning claim can only
-		// change where a record boundary moved — which happens only inside
-		// an edited span (a boundary also moves when its bound item is
-		// deleted, collapsing INTO the delete span). Both the fresh row and
-		// the pre-edit row are consulted so an owner that LOST atoms is
-		// invalidated alongside the owner that gained them.
-		//
-		// Anything unclassifiable — non-countable items (ContentFormat
-		// markers, whose effect runs to the next same-key marker and so
-		// cannot be bounded by the marker's own span), GC/Skip structs,
-		// unresolvable positions, or missing engine internals — marks the
-		// node's bucket `null`; a wholly unusable transaction yields `null`
-		// from the resolver. Both mean "fall back to all consumers".
-		//
-		// The id-set → struct walk lives in `../structs.js` (S11) — the same
-		// `walkIdSetStructs` undo-repair uses; an incomplete walk (missing
-		// client list / unlocatable range) degrades the whole index to
-		// opaque rather than trusting partial coverage.
+		// A keystroke inserts countable items into one backing text; the fold
+		// resolves each inserted item to its post-edit live index, so only the
+		// display owners of the streams those spans touch recompute. Anything
+		// else — a deleted item (its index is a post-delete gap), a format
+		// marker (its effect runs to the next same-key marker), an
+		// unresolvable id — makes the text opaque: every consumer recomputes.
 		type TxLike = { insertSet?: IdSetLike; deleteSet?: IdSetLike };
-		type ExtentMap = Map<EngineNode, [number, number][] | null>;
-
-		const resolveItemSpan = (
-			typeId: { client: number; clock: number },
-			s: StoreStruct
-		): [number, number] | null => {
-			const abs = Y.createAbsolutePositionFromRelativePosition(
-				Y.createRelativePositionFromJSON({
-					type: { client: typeId.client, clock: typeId.clock },
-					item: { client: s.id.client, clock: s.id.clock },
-					assoc: 0
-				}),
-				doc as unknown as YDoc,
-				false
-			);
-			if (abs === null) return null;
-			return [abs.index, abs.index + Math.max(1, s.length)];
-		};
-
-		/**
-		 * Lazily-built extent index for one transaction. Returns a lookup:
-		 * node → edited spans (`null` = opaque node, `undefined` = the
-		 * whole transaction is opaque). Built per fold, over the id sets that
-		 * fold covers.
-		 */
 		const makeExtentIndex = (tr: unknown) => {
-			let built: ExtentMap | null | undefined; // undefined = not built
-			const build = (): ExtentMap | null => {
+			let built: Map<EngineNode, [number, number][] | null> | null | undefined;
+			const build = () => {
 				if (built !== undefined) return built;
-				built = null;
 				const tx = tr as TxLike | null | undefined;
-				const insertSet = tx?.insertSet;
-				const deleteSet = tx?.deleteSet;
-				// A missing `store.clients` is a vendored-layout change: the
-				// extent index is a perf refinement, so it degrades to opaque
-				// (all-consumers invalidation stays CORRECT) rather than let
-				// `clientsOf` throw inside the observer pass. Undo-repair —
-				// where silent emptiness corrupts — fails fast instead.
-				if (insertSet === undefined || deleteSet === undefined) return null;
-				if ((doc as { store?: { clients?: unknown } }).store?.clients === undefined) {
-					return null;
-				}
-				const out: ExtentMap = new Map();
+				if (tx?.insertSet === undefined || tx.deleteSet === undefined) return (built = null);
+				const out = new Map<EngineNode, [number, number][] | null>();
 				const visit = (idSet: IdSetLike, deleted: boolean): boolean =>
 					walkIdSetStructs(Y, doc, idSet, (s) => {
-						const parent = s.parent;
+						const parent = s.parent as EngineNode;
 						if (s.parentSub !== null || !isNodeLike(parent)) return;
-						const typeId = (parent as EngineNode)._item?.id;
-						// A deleted item resolves to its post-delete gap position —
-						// but `resolveNarrowed` intersects spans against the STALE
-						// atom row whose intervals are pre-edit coordinates. The
-						// spaces are incomparable, so a tombstoned span can never
-						// reach the owners that held its atoms before the delete.
-						// Tombstones degrade the node's bucket to opaque — the
-						// all-consumers fallback is the only sound answer.
-						if (deleted || s.countable !== true || typeId === undefined) {
-							out.set(parent as EngineNode, null);
-							return;
+						const typeId = parent._item?.id;
+						const abs =
+							deleted || s.countable !== true || typeId === undefined
+								? null
+								: Y.createAbsolutePositionFromRelativePosition(
+										Y.createRelativePositionFromJSON({
+											type: { client: typeId.client, clock: typeId.clock },
+											item: { client: s.id.client, clock: s.id.clock },
+											assoc: 0
+										}),
+										doc as unknown as YDoc,
+										false
+									);
+						const spans = out.get(parent);
+						if (abs === null) out.set(parent, null);
+						else if (spans !== null) {
+							out.set(parent, [...(spans ?? []), [abs.index, abs.index + s.length]]);
 						}
-						const span = resolveItemSpan(typeId, s);
-						if (span === null) {
-							out.set(parent as EngineNode, null);
-							return;
-						}
-						let spans = out.get(parent as EngineNode);
-						if (spans === null) return;
-						if (spans === undefined) out.set(parent as EngineNode, (spans = []));
-						spans.push(span);
 					});
-				const complete = visit(insertSet, false) && visit(deleteSet, true);
-				built = complete ? out : null;
+				built = visit(tx.insertSet, false) && visit(tx.deleteSet, true) ? out : null;
 				return built;
 			};
-			return (node: EngineNode): readonly [number, number][] | undefined => {
-				const m = build();
-				if (m === null) return undefined;
-				const spans = m.get(node);
-				// Absent bucket contradicts the recorded sequence edit (a
-				// null `changed` sub always accompanies an item write) —
-				// treat as opaque rather than under-invalidate.
-				if (spans === undefined) return undefined;
-				return spans ?? undefined;
-			};
+			return (node: EngineNode): readonly [number, number][] | undefined =>
+				build()?.get(node) ?? undefined;
 		};
 		type ExtentLookup = ReturnType<typeof makeExtentIndex>;
 
-		// ── incremental replicated-state indexes ─────────────────────────
-		// WU7: recs are FULL BlockRecs (node/type/data/cands alongside the
-		// text fields) so this same map backs the placement model's view.
+		// ── the replicated-state index ──────────────────────────────────
 		const blocks = new Map<BlockId, BlockRec>();
-		/** Current entries read per slices-holder (drives recordsByText pruning). */
-		const listEntries = new Map<BlockId, SliceEntry[]>();
-		/** Per text: every CURRENT slice record covering it, by holder list. */
-		const recordsByText = new Map<string, Map<BlockId, Set<SliceEntry>>>();
-		/** Union-ever coverage/claim targets per slices-holder (never shrinks). */
-		const effects = new Map<BlockId, Effects>();
-
-		// ── forward dependencies of cached run snapshots ─────────────────
-		const textConsumers = new Map<string, Set<BlockId>>();
+		/** Union-ever claim targets per holder (never shrinks: a dropped claim still invalidates). */
+		const effects = new Map<BlockId, Set<BlockId>>();
+		/** Forward dependencies of cached runs: backing text (by home) / walked block → consumers. */
+		const textConsumers = new Map<BlockId, Set<BlockId>>();
 		const listConsumers = new Map<BlockId, Set<BlockId>>();
 
-		// ── lazily-maintained ownership ──────────────────────────────────
+		// ── the claim graph (lazy, per structure version) ─────────────────
 		let owners = new Map<BlockId, Owner>();
-		/** `-1` forces the first `ensureOwners` to build (structureVersion is 0). */
+		let tops = new Map<BlockId, BlockId>();
+		/** `-1` forces the first build (structureVersion starts at 0). */
 		let ownersVersion = -1;
-		/** Bumps on every slices/del/registry-structure event. */
 		let structureVersion = 0;
-		const dirtyTexts = new Set<string>();
-		const atomRows = new Map<string, AtomRow>();
-		const rangeCache = new WeakMap<SliceEntry, readonly [number, number] | null>();
-
-		// ── native bounded range reads (U3) ──────────────────────────────
-		// `itemsOfRange` used to render the whole backing text per call;
-		// WU8 added an Edytor-side checkpoint index, now replaced by the
-		// vendored `Y.RangeCursor`: `computeFresh` opens one cursor per
-		// backing text, which seeds itself from the engine's own
-		// search-marker checkpoints (planted adaptively by reads AND
-		// mutations at the same cadence — no Edytor-side index to maintain
-		// or invalidate). A read costs O(checkpoint-gap + range), never
-		// O(text); markers self-maintain through engine invalidation, so
-		// no `dirtyContentTexts` bookkeeping survives here.
-		const rangeStats: RangeReadStats = { items: 0, markers: 0 };
-
-		/**
-		 * Single funnel for "text `t`'s items changed" — advances the
-		 * atom-row/`dirtyTexts` bookkeeping together.
-		 */
-		const markTextDirty = (t: string): void => {
-			dirtyTexts.add(t);
+		const ensureOwners = (): void => {
+			if (ownersVersion >= structureVersion) return;
+			({ owners, top: tops } = claimGraph(blocks));
+			ownersVersion = structureVersion;
 		};
+		const ownerOf = (b: BlockId): Owner => {
+			ensureOwners();
+			return owners.get(b) ?? DEAD;
+		};
+
+		// ── the stream table (R2) ────────────────────────────────────────
+		// One scanned row per backing text (keyed by its home block), the
+		// delimiting boundary of each block, and the streams per text. A
+		// text's rows are rescanned when the fold sees it edited; the table
+		// is rebuilt only when a boundary set, a nonce or a registry entry
+		// changed — otherwise only the edited text's stream offsets move.
+		const rows = new Map<BlockId, TextRow>();
+		let delim = new Map<BlockId, string>();
+		const streams = new Map<BlockId, Stream>();
+		const inText = new Map<BlockId, Stream[]>();
+		/** A stream's identity (text and delimiting boundary) — what a rebuild compares. */
+		const streamKey = (b: BlockId): string | undefined => {
+			const s = streams.get(b);
+			return s && `${s.home}|${delim.get(b) ?? ''}`;
+		};
+		const place = (home: BlockId): void => {
+			for (const s of inText.get(home) ?? [])
+				if (streams.get(s.block) === s) streams.delete(s.block);
+			const row = rows.get(home);
+			const list = row === undefined ? [] : placeText(row, delim);
+			if (list.length === 0) inText.delete(home);
+			else inText.set(home, list);
+			for (const s of list) streams.set(s.block, s);
+		};
+		/** Rescan `home`'s text; `true` when its boundary set (or the text itself) changed. */
+		const rescan = (home: BlockId): boolean => {
+			const old = rows.get(home);
+			const text = blocks.get(home)?.content;
+			if (text === undefined) {
+				rows.delete(home);
+				return old !== undefined;
+			}
+			const row = scanText(home, text);
+			rows.set(home, row);
+			return old === undefined || old.text !== text || old.key !== row.key;
+		};
+		/** Rebuild delimiters and every stream; invalidate the blocks whose stream changed. */
+		const rebuildTable = (invalidated: Set<BlockId>): void => {
+			const before = new Map([...streams.keys()].map((b) => [b, streamKey(b)]));
+			delim = delimiters(blocks, rows.values());
+			streams.clear();
+			inText.clear();
+			for (const home of rows.keys()) place(home);
+			for (const b of new Set([...before.keys(), ...streams.keys()])) {
+				if (before.get(b) === streamKey(b)) continue;
+				invalidated.add(b);
+				for (const c of listConsumers.get(b) ?? []) invalidated.add(c);
+			}
+		};
+
+		const ownShim: Ownership = {
+			ownerOf,
+			hidden: (b) => ownerOf(b) !== b,
+			top: (m) => {
+				ensureOwners();
+				return tops.get(m);
+			},
+			streamOf: (b) => streams.get(b),
+			streamsIn: (home) => inText.get(home) ?? [],
+			display: (b) => displayOf(b, blocks, ownShim)
+		};
+
+		/** Owner → displayed blocks, rebuilt lazily with `owners` (the delete step's marks). */
+		let displaysMap = new Map<BlockId, BlockId[]>();
+		let displaysAt = -1;
+		const displays = (owner: BlockId): readonly BlockId[] => {
+			ensureOwners();
+			if (displaysAt !== ownersVersion) {
+				displaysMap = displayIndex(blocks, ownerOf);
+				displaysAt = ownersVersion;
+			}
+			return displaysMap.get(owner) ?? [];
+		};
+
+		// ── lazily-maintained placement / children-index facets ───────────
+		// They rebuild only on `at` writes, delete marks, claim churn (the
+		// display edge is `owner(parent)`) and registry entry churn; a
+		// keystroke keeps the resolved placements and children index verbatim.
+		let placementsMap: Map<BlockId, ResolvedPlacement> | null = null;
+		let kidsMap: Map<BlockId | null, { id: BlockId; rank: string }[]> | null = null;
+		let orderCache: DocOrder | null = null;
+		let placementsBuiltAt = -1;
+		let placementVersion = 0;
+		const ensurePlacements = (): void => {
+			if (placementsBuiltAt >= placementVersion) return;
+			ensureOwners();
+			placementsMap = resolvePlacements(blocks, ownerOf);
+			kidsMap = childrenIndex(placementsMap, ownShim);
+			orderCache = null;
+			placementsBuiltAt = placementVersion;
+		};
+
+		const rangeStats: RangeReadStats = { items: 0, markers: 0 };
 
 		// ── run cache ────────────────────────────────────────────────────
 		const cache = new Map<BlockId, Cached>();
@@ -568,13 +531,9 @@ export const bindRuns = (Y: EngineApi) => {
 		const blockSubs = new Map<BlockId, Set<(runs: readonly ContentRun[]) => void>>();
 		/**
 		 * R5 commit-bound publication: `publishedRuns` is the last snapshot
-		 * array each subscribed block's listeners actually saw, and
-		 * `pendingNotify` queues blocks whose runs changed during an OPEN
-		 * transaction (a `runs()` read forces a mid-transaction recompute
-		 * for read-your-writes, but listeners must observe committed state
-		 * only). `handleEvent` flushes the queue once per commit, so a
-		 * mid-transaction read can never publish a half-finished snapshot
-		 * and a change-then-revert transaction publishes nothing.
+		 * each subscribed block's listeners saw; `pendingNotify` queues blocks
+		 * whose runs changed inside an OPEN transaction (a mid-transaction read
+		 * recomputes for read-your-writes, listeners see committed state only).
 		 */
 		const publishedRuns = new Map<BlockId, readonly ContentRun[]>();
 		const pendingNotify = new Set<BlockId>();
@@ -597,216 +556,54 @@ export const bindRuns = (Y: EngineApi) => {
 		};
 
 		// ── interning / freezing ─────────────────────────────────────────
+		// `cloneJsonSafe` is total even against hostile replicated payloads,
+		// and interning the normalized form keys it by its own canonical shape.
 		const intern = <T>(v: T): T => {
-			// `cloneJsonSafe` is TOTAL even against hostile replicated payloads
-			// (a raw `setAttr` write or a remote non-JSON value that bypassed
-			// boundary validation): the canonical instance is always the JSON
-			// projection, so `canonKey`/`JSON.stringify` downstream can never
-			// throw on an interned value — reads project `{big:10n}` to
-			// `{big:10}` instead of crashing (R4). Interning the NORMALIZED
-			// form also keys it by its own canonical shape (a `Date` no longer
-			// collides with `{}`).
 			const canon = deepFreeze(cloneJsonSafe(v));
 			const key = canonKey(canon);
 			let f = internMap.get(key) as T | undefined;
-			if (f === undefined) {
-				internMap.set(key, (f = canon));
-			}
+			if (f === undefined) internMap.set(key, (f = canon));
 			return f;
 		};
 
-		// ── replicated-state index maintenance ───────────────────────────
-
-		const selfSlice = (id: BlockId): SliceEntry => ({
-			payload: { t: id, s: { i: null, a: -1 }, e: { i: null, a: 0 } },
-			stamp: { c: -1, k: -1 },
-			seqIndex: 0
-		});
-
-		const removeRecordIndex = (t: string, holder: BlockId, e: SliceEntry) => {
-			const byHolder = recordsByText.get(t);
-			const set = byHolder?.get(holder);
-			if (!set) return;
-			set.delete(e);
-			if (set.size === 0) {
-				byHolder!.delete(holder);
-				if (byHolder!.size === 0) recordsByText.delete(t);
-			}
-		};
-
-		const addRecordIndex = (t: string, holder: BlockId, e: SliceEntry) => {
-			let byHolder = recordsByText.get(t);
-			if (!byHolder) {
-				byHolder = new Map();
-				recordsByText.set(t, byHolder);
-			}
-			let set = byHolder.get(holder);
-			if (!set) {
-				set = new Set();
-				byHolder.set(holder, set);
-			}
-			set.add(e);
-		};
-
-		/** Re-index `id`'s current entries (recordsByText is pruned; effects union). */
-		const indexEntries = (id: BlockId, entries: SliceEntry[]): void => {
-			for (const e of listEntries.get(id) ?? []) {
-				if (isSliceRecord(e.payload)) removeRecordIndex(e.payload.t, id, e);
-			}
-			listEntries.set(id, entries);
-			let fx = effects.get(id);
-			if (!fx) {
-				fx = { texts: new Set(), lists: new Set() };
-				effects.set(id, fx);
-			}
-			for (const e of entries) {
-				if (isSliceRecord(e.payload)) {
-					addRecordIndex(e.payload.t, id, e);
-					fx.texts.add(e.payload.t);
-				} else if (isMergeClaim(e.payload)) {
-					fx.lists.add(e.payload.m);
-				}
-			}
-		};
-
-		/** Union-only effects update — used by flatten walks on consulted lists. */
-		const indexEffects = (id: BlockId, entries: readonly SliceEntry[]): void => {
-			let fx = effects.get(id);
-			if (!fx) {
-				fx = { texts: new Set(), lists: new Set() };
-				effects.set(id, fx);
-			}
-			for (const e of entries) {
-				if (isSliceRecord(e.payload)) fx.texts.add(e.payload.t);
-				else if (isMergeClaim(e.payload)) fx.lists.add(e.payload.m);
-			}
-		};
+		// ── records ──────────────────────────────────────────────────────
 
 		const buildRec = (id: BlockId, node: EngineNode): BlockRec => {
-			const slices = node.getAttr(SLICES);
-			const slicesNode = isNodeLike(slices) ? slices : undefined;
+			const list = node.getAttr(CLAIMS);
+			const claimsNode = isNodeLike(list) ? list : undefined;
 			const content = node.getAttr(CONTENT);
 			const type = node.getAttr(TYPE);
-			const entries = slicesNode ? readSliceEntries(slicesNode) : [selfSlice(id)];
 			return {
 				id,
 				node,
 				type: typeof type === 'string' ? type : 'unknown',
 				data: node.getAttr(DATA),
+				n: node.getAttr(NONCE),
 				deleted: hasDeleteMark(node),
 				content: isNodeLike(content) ? content : undefined,
-				slicesNode,
-				entries,
+				claimsNode,
+				claims: readClaims(claimsNode),
 				cands: candidatesOf(node)
 			};
 		};
 
-		/** Rebuild (or create) block `id`'s record + all derived indexes. */
-		const updateBlockRec = (id: BlockId): void => {
-			const node = registry.getAttr(id);
-			if (!isNodeLike(node)) {
-				blocks.delete(id);
-				indexEntries(id, []);
-				return;
-			}
-			const rec = buildRec(id, node);
-			blocks.set(id, rec);
-			indexEntries(id, rec.entries);
+		const noteEffects = (id: BlockId, rec: BlockRec | undefined): void => {
+			let fx = effects.get(id);
+			if (fx === undefined) effects.set(id, (fx = new Set()));
+			for (const c of rec?.claims ?? []) fx.add(c.m);
 		};
 
-		/** Create the rec only when absent (cheap — entries read once). */
+		/** Rebuild (or create, or drop) block `id`'s record. */
+		const updateBlockRec = (id: BlockId): void => {
+			const node = registry.getAttr(id);
+			if (!isNodeLike(node)) blocks.delete(id);
+			else blocks.set(id, buildRec(id, node));
+			noteEffects(id, blocks.get(id));
+		};
 		const ensureRec = (id: BlockId): void => {
 			if (!blocks.has(id)) updateBlockRec(id);
 		};
 
-		/** `at`-facet refresh: re-read only the placement candidates. */
-		const refreshCands = (id: BlockId): void => {
-			const rec = blocks.get(id);
-			if (!rec) {
-				ensureRec(id);
-				return;
-			}
-			rec.cands = candidatesOf(rec.node);
-		};
-
-		/** `meta`-facet refresh: re-read only type/data (cheap attr reads). */
-		const refreshMeta = (id: BlockId): void => {
-			const rec = blocks.get(id);
-			if (!rec) {
-				ensureRec(id);
-				return;
-			}
-			const type = rec.node.getAttr(TYPE);
-			rec.type = typeof type === 'string' ? type : 'unknown';
-			rec.data = rec.node.getAttr(DATA);
-		};
-
-		// ── lazily-maintained ownership ──────────────────────────────────
-
-		const ensureOwners = (): void => {
-			if (ownersVersion >= structureVersion) return;
-			owners = computeOwners(blocks);
-			ownersVersion = structureVersion;
-		};
-
-		/** `b`'s display owner (`DEAD` when deleted or unknown); owners rebuild lazily. */
-		const ownerOf = (b: BlockId): Owner => {
-			ensureOwners();
-			return owners.get(b) ?? DEAD;
-		};
-
-		/** Owner → displayed blocks, rebuilt lazily with `owners` (the delete step's marks). */
-		let displaysMap = new Map<BlockId, BlockId[]>();
-		let displaysAt = -1;
-		const displays = (owner: BlockId): readonly BlockId[] => {
-			ensureOwners();
-			if (displaysAt !== ownersVersion) {
-				displaysMap = displayIndex(blocks, ownerOf);
-				displaysAt = ownersVersion;
-			}
-			return displaysMap.get(owner) ?? [];
-		};
-
-		// ── lazily-maintained placement / children-index facets (WU7) ────
-		//
-		// `placements` and `kids` rebuild only when `placementVersion` moves —
-		// i.e. on `at` candidate writes, `del` flags, slice-list/claim churn
-		// (the composed display edge is `owner(parent)`) and registry entry
-		// churn. Content edits never touch them, so a keystroke keeps the
-		// previous resolved placements AND children index verbatim.
-		let placementsMap: Map<BlockId, ResolvedPlacement> | null = null;
-		let kidsMap: Map<BlockId | null, { id: BlockId; rank: string }[]> | null = null;
-		let orderCache: DocOrder | null = null;
-		let placementsBuiltAt = -1;
-		let placementVersion = 0;
-		const ensurePlacements = (): void => {
-			if (placementsBuiltAt >= placementVersion) return;
-			ensureOwners();
-			placementsMap = resolvePlacements(blocks, ownerOf);
-			kidsMap = childrenIndex(placementsMap, ownShim);
-			orderCache = null;
-			placementsBuiltAt = placementVersion;
-		};
-
-		/**
-		 * The index's `Ownership`: owners from the lazily-rebuilt map; a text's
-		 * `intervals`/`maxG` from its atom row (only that text's claims are
-		 * recomputed, never the whole document); ranges from the anchor cache.
-		 */
-		const ownShim: Ownership = {
-			ownerOf,
-			hidden: (b: BlockId): boolean => ownerOf(b) !== b,
-			intervals: { get: (t: string) => ensureRow(t).ivs } as Ownership['intervals'],
-			resolvedRange: (entry: SliceEntry, text: EngineNode) =>
-				rangeOf(entry, text) as [number, number] | null,
-			maxG: { get: (t: string) => ensureRow(t).maxG } as Ownership['maxG']
-		};
-
-		/**
-		 * The index as a `ModelView`. `blocks` is the LIVE record map (consumers
-		 * never mutate it); `placements`, `kids` and `order` are getters, so
-		 * content-only ops never trigger a rebuild.
-		 */
 		const ctx: ModelView = {
 			blocks,
 			own: ownShim,
@@ -822,184 +619,79 @@ export const bindRuns = (Y: EngineApi) => {
 				ensurePlacements();
 				return (orderCache ??= documentOrder(kidsMap!));
 			},
-			// R4: publication boundary shares THIS interner, so a payload
-			// emitted by `project()`/`contentItems()` is `===` the one the
-			// runs view holds for equal content — canonical and frozen.
+			// R4: the publication boundary shares THIS interner, so a payload
+			// emitted by `project()`/`contentItems()` is `===` the runs' one.
 			intern,
 			displays
 		};
 
-		/**
-		 * Claim-multiset fingerprints as of the last COMMITTED registry
-		 * state. A mid-transaction fold advances `blocks` recs ahead of the
-		 * commit boundary (read-your-writes), so comparing `claimKeySet`
-		 * against the live rec at commit time would always report the same
-		 * claims and misclassify a real claim write (merge/move) as record
-		 * churn. The fingerprint is therefore refreshed only inside the
-		 * commit fold, never mid-transaction.
-		 */
-		const committedClaims = new Map<BlockId, string>();
-
-		// Anchor→range resolution through the maintained cache — the shared
-		// `sliceRange` body (model.ts); this WeakMap's lifetime is longer
-		// than a view's, so `handleBlockChange` drops a text's entries from
-		// the cache whenever its items change (anchor positions shift).
-		const rangeOf = (entry: SliceEntry, text: EngineNode): readonly [number, number] | null =>
-			T.sliceRange(doc, entry, text, rangeCache);
-
-		/** `(holder, entry)` pairs out of the per-text record index. */
-		function* recordPairs(
-			byHolder: Map<BlockId, Set<SliceEntry>>
-		): IterableIterator<[BlockId, SliceEntry]> {
-			for (const [holder, entries] of byHolder) {
-				for (const e of entries) yield [holder, e];
-			}
-		}
-
-		const buildRow = (t: string): AtomRow => {
-			// The same per-atom contest computeOwnership runs — one shared
-			// `gatherClaims` pass over the maintained per-text record index,
-			// evaluated over claim endpoints via sweepOwnership — O(claims
-			// log claims), not O(text length). `maxG` tracks every record on
-			// the text, live or losing (materializing records write maxG+1
-			// to win their range) — its own unfiltered pass, same as
-			// computeOwnership.
-			let maxG = 0;
-			const text = blocks.get(t)?.content;
-			const byHolder = recordsByText.get(t);
-			let claims: ReturnType<typeof gatherClaims> = [];
-			if (text && byHolder) {
-				for (const [, e] of recordPairs(byHolder)) {
-					const g = (e.payload as SliceRecord).g ?? 0;
-					if (g > maxG) maxG = g;
-				}
-				claims = gatherClaims(blocks, ownerOf, recordPairs(byHolder), rangeOf, { t });
-			}
-			return { ivs: sweepOwnership(claims), maxG, builtAt: structureVersion };
-		};
-
-		const ensureRow = (t: string): AtomRow => {
-			let row = atomRows.get(t);
-			if (row && row.builtAt >= structureVersion && !dirtyTexts.has(t)) return row;
-			row = buildRow(t);
-			atomRows.set(t, row);
-			dirtyTexts.delete(t);
-			return row;
-		};
-
-		// ── flatten with dependency capture (S2: THE bindText.flatten walk) ──
-		//
-		// `flattenTracked` runs the shared `T.flatten` walk over the runs
-		// layer's own `Ownership` shim — `intervals.get`/`resolvedRange` on
-		// the shim already route through the maintained per-text rows and
-		// `rangeCache` — with `track` hooks capturing the invalidation deps:
-		// every consulted list (plus its effects) and every record's text.
-		const flattenTracked = (b: BlockId): { segs: OwnedSeg[]; deps: Deps } => {
-			const deps: Deps = { texts: new Set(), lists: new Set() };
-			const segs = T.flatten(b, blocks, ownShim, {
-				list: (listId, entries) => {
-					deps.lists.add(listId);
-					if (entries !== undefined) indexEffects(listId, entries);
-				},
-				text: (t) => deps.texts.add(t)
-			});
-			return { segs, deps };
-		};
-
 		// ── dep bookkeeping ──────────────────────────────────────────────
 
-		const dropConsumers = (b: BlockId, deps: Deps): void => {
-			for (const t of deps.texts) {
-				const set = textConsumers.get(t);
+		const drop = (index: Map<BlockId, Set<BlockId>>, keys: Set<BlockId>, b: BlockId) => {
+			for (const k of keys) {
+				const set = index.get(k);
 				set?.delete(b);
-				if (set?.size === 0) textConsumers.delete(t);
-			}
-			for (const l of deps.lists) {
-				const set = listConsumers.get(l);
-				set?.delete(b);
-				if (set?.size === 0) listConsumers.delete(l);
+				if (set?.size === 0) index.delete(k);
 			}
 		};
-
+		const add = (index: Map<BlockId, Set<BlockId>>, keys: Set<BlockId>, b: BlockId) => {
+			for (const k of keys) {
+				let set = index.get(k);
+				if (set === undefined) index.set(k, (set = new Set()));
+				set.add(b);
+			}
+		};
 		const applyDeps = (b: BlockId, deps: Deps): void => {
 			const old = cache.get(b)?.deps;
-			if (old) dropConsumers(b, old);
-			for (const t of deps.texts) {
-				let set = textConsumers.get(t);
-				if (!set) {
-					set = new Set();
-					textConsumers.set(t, set);
-				}
-				set.add(b);
+			if (old) {
+				drop(textConsumers, old.texts, b);
+				drop(listConsumers, old.lists, b);
 			}
-			for (const l of deps.lists) {
-				let set = listConsumers.get(l);
-				if (!set) {
-					set = new Set();
-					listConsumers.set(l, set);
-				}
-				set.add(b);
-			}
+			add(textConsumers, deps.texts, b);
+			add(listConsumers, deps.lists, b);
 		};
 
 		// ── snapshot construction ────────────────────────────────────────
 
 		const freezeFresh = (r: ContentRun): ContentRun => Object.freeze(r) as ContentRun;
 
-		/**
-		 * Build the normalized fresh run list: marks/data interned, adjacent
-		 * text items with equal marks merged across segment boundaries.
-		 */
+		/** The normalized fresh runs of `b` (interned payloads, equal marks merged) and their deps. */
 		const computeFresh = (b: BlockId): { fresh: ContentRun[]; deps: Deps } => {
-			ensureOwners();
-			const { segs, deps } = flattenTracked(b);
+			const deps: Deps = { texts: new Set(), lists: new Set([b]) };
+			const segs =
+				displayOf(b, blocks, ownShim, (x, home) => {
+					deps.lists.add(x);
+					if (home !== undefined) deps.texts.add(home);
+				}) ?? [];
 			const fresh: ContentRun[] = [];
-			// One native cursor per backing text — it seeds itself from the
-			// engine's search-marker checkpoints and continues forward across
-			// ordered segs, so a read costs gap + range, not text (U3).
-			const cursors = new Map<string, RangeCursor>();
-			for (const seg of segs) {
-				const text = blocks.get(seg.t)?.content;
-				if (!text) continue;
-				let cur = cursors.get(seg.t);
-				if (cur === undefined) cursors.set(seg.t, (cur = T.openRangeCursor(text)));
-				for (const item of readRange(cur, seg.i0, seg.i1, rangeStats)) {
-					if (item.kind === 'text') {
-						const last = fresh[fresh.length - 1];
-						const marks = item.marks === undefined ? undefined : intern(item.marks);
-						if (last && last.kind === 'text' && last.marks === marks) {
-							// Same interned marks — extend the previous run. Built
-							// mutable here; frozen by reconcile.
-							(last as { text: string }).text += item.text;
-						} else {
-							fresh.push({
-								kind: 'text',
-								text: item.text,
-								...(marks === undefined ? {} : { marks })
-							} as ContentRun);
-						}
+			for (const item of T.readSegs(segs, rangeStats)) {
+				if (item.kind === 'text') {
+					const last = fresh[fresh.length - 1];
+					const marks = item.marks === undefined ? undefined : intern(item.marks);
+					if (last && last.kind === 'text' && last.marks === marks) {
+						(last as { text: string }).text += item.text;
 					} else {
-						const inl = item as unknown as {
-							id: string;
-							type: string;
-							data?: Record<string, unknown>;
-						};
 						fresh.push({
-							kind: 'inline',
-							id: inl.id,
-							type: inl.type,
-							...(inl.data === undefined ? {} : { data: intern(inl.data) })
+							kind: 'text',
+							text: item.text,
+							...(marks === undefined ? {} : { marks })
 						} as ContentRun);
 					}
+				} else {
+					fresh.push({
+						kind: 'inline',
+						id: item.id,
+						type: item.type,
+						...(item.data === undefined ? {} : { data: intern(item.data) })
+					} as ContentRun);
 				}
 			}
 			return { fresh, deps };
 		};
 
 		/**
-		 * Structural sharing: reuse unchanged run objects from `old` —
-		 * maximal equal prefix + equal suffix around the edited window.
-		 * Returns `old` itself when every run reconciles identical.
+		 * Structural sharing: reuse unchanged run objects from `old` — maximal
+		 * equal prefix + equal suffix; `old` itself when every run is identical.
 		 */
 		const reconcile = (
 			old: readonly ContentRun[] | undefined,
@@ -1009,7 +701,7 @@ export const bindRuns = (Y: EngineApi) => {
 			let s = 0;
 			const n = Math.min(old.length, fresh.length);
 			while (s < n && runEquals(old[s], fresh[s])) s++;
-			if (s === old.length && s === fresh.length) return old; // identical
+			if (s === old.length && s === fresh.length) return old;
 			let eo = old.length - 1;
 			let ef = fresh.length - 1;
 			while (eo >= s && ef >= s && runEquals(old[eo], fresh[ef])) {
@@ -1019,28 +711,15 @@ export const bindRuns = (Y: EngineApi) => {
 			const out: ContentRun[] = new Array(fresh.length);
 			for (let i = 0; i < s; i++) out[i] = old[i];
 			for (let i = s; i <= ef; i++) out[i] = freezeFresh(fresh[i]);
-			for (let i = eo + 1; i < old.length; i++) {
-				out[fresh.length - (old.length - i)] = old[i];
-			}
+			for (let i = eo + 1; i < old.length; i++) out[fresh.length - (old.length - i)] = old[i];
 			return Object.freeze(out);
 		};
 
-		// ── recompute ────────────────────────────────────────────────────
+		// ── recompute and publication ────────────────────────────────────
 
 		/**
-		 * Hand `b`'s current snapshot to its `subscribeBlock` listeners —
-		 * once per distinct published state (R5). `publishedRuns` records
-		 * what listeners last saw, so a deferred mid-transaction recompute
-		 * publishes the FINAL runs exactly once at commit and a change-
-		 * then-revert transaction publishes nothing.
-		 */
-		/**
-		 * lib0 `callAll` semantics for subscriber callbacks: every listener
-		 * in the batch is invoked, THEN the first thrown error propagates
-		 * (R5 — a throwing listener must never starve the listeners queued
-		 * behind it, and must not wedge the block either: the watermark has
-		 * already advanced, so the NEXT commit publishes the next state
-		 * rather than re-offering a stale one to the buggy listener).
+		 * lib0 `callAll` semantics: every listener runs, THEN the first thrown
+		 * error propagates (R5 — a throwing listener never starves the rest).
 		 */
 		const callEach = <A>(cbs: Iterable<(arg: A) => void>, arg: A): void => {
 			let threw = false;
@@ -1079,31 +758,15 @@ export const bindRuns = (Y: EngineApi) => {
 			if (runs !== old?.runs) {
 				stamps.set(b, (stamps.get(b) ?? 0) + 1);
 				if (blockSubs.has(b)) {
-					// R5: while a transaction is open this is a MID-TRANSACTION
-					// recompute (a `runs()` read forcing read-your-writes) —
-					// listeners must not see the half-finished snapshot, so the
-					// publication is queued for the commit's `handleEvent`.
-					// Outside a transaction — including commit cleanup, where
-					// `doc._transaction` is already null — publish directly.
+					// Inside an open transaction the publication waits for the commit.
 					if (doc._transaction != null) pendingNotify.add(b);
 					else publish(b);
 				}
 			}
 		};
 
-		/**
-		 * Publish every queued block at the commit boundary. A pending
-		 * block still dirty (e.g. after a conservative fallback
-		 * invalidation) recomputes its final state first — `computeRuns`
-		 * republishes through `publish`, which also coalesces a
-		 * mid-transaction intermediate state with the committed one.
-		 */
+		/** Publish every queued block at the commit boundary (listener isolation, R5). */
 		const flushPending = (): void => {
-			// A throwing listener must not abort the rest of the commit's
-			// publication batch — collect the first failure per block, drain
-			// the queue completely (callbacks may enqueue further
-			// notifications), then rethrow the earliest error after the
-			// whole batch was served (R5, `callAll` convention).
 			let threw = false;
 			let firstErr: unknown;
 			while (pendingNotify.size > 0) {
@@ -1125,183 +788,102 @@ export const bindRuns = (Y: EngineApi) => {
 		};
 
 		const runs = (b: BlockId): readonly ContentRun[] => {
-			// Read-your-writes: fold the open transaction's pending writes
-			// first. The recompute updates the CACHE immediately; only
-			// subscriber publication is deferred to the commit boundary (R5).
+			// Read-your-writes: fold the open transaction's pending writes first.
 			syncPending(openTx());
 			if (dirty.has(b) || !cache.has(b)) computeRuns(b);
 			return cache.get(b)?.runs ?? EMPTY_RUNS;
 		};
 
-		// ── event handling ───────────────────────────────────────────────
-
-		const invalidateBlock = (b: BlockId, invalidated: Set<BlockId>): void => {
-			invalidated.add(b);
-		};
-
-		// ── deferred narrowed invalidation (U8b) ───────────────────────
-		//
-		// `pendingNarrow` accumulates `content`-facet changes whose edited
-		// spans the transaction could identify; `resolveNarrowed` runs once
-		// the changed-entry fold completes — every slices/structure entry
-		// applied, every record index current — and intersects each span
-		// against the ownership intervals of the text's atom row:
-		//
-		// - the FRESH row (rebuilt post-edit — `markTextDirty` already ran)
-		//   yields the owners of intervals covering gained/changed atoms;
-		// - the STALE row kept from before the rebuild yields owners whose
-		//   coverage the edit destroyed (a winning record's anchor
-		//   collapsing into a delete span shrinks its interval onto the
-		//   survivor that now owns those atoms — both sides must recompute).
-		//
-		// `commitRecordsChurn` marks any claim-preserving `slices` rewrite
-		// seen during the fold (recordsChanged) — record ranges move under
-		// the same claim set, so interval owners may shift without any
-		// structure flag. Together with `flags.structure`, either one
-		// collapses every pending entry back to all-consumers (the pre-U8b
-		// behavior): narrowing never trades correctness for precision.
-		const pendingNarrow: { id: BlockId; spans: readonly [number, number][] }[] = [];
-		let commitRecordsChurn = false;
-
-		const resolveNarrowed = (invalidated: Set<BlockId>, collapse: boolean): void => {
-			const narrow = !collapse && !commitRecordsChurn;
-			for (const { id, spans } of pendingNarrow) {
-				if (!narrow) {
-					for (const c of textConsumers.get(id) ?? []) invalidateBlock(c, invalidated);
-					continue;
-				}
-				ensureOwners();
-				const staleRow = atomRows.get(id);
-				const row = ensureRow(id); // rebuilds — id is in dirtyTexts
-				for (const [lo, hi] of spans) {
-					for (const iv of intervalsOver(row.ivs, lo, hi)) {
-						invalidateBlock(iv.owner, invalidated);
-					}
-					if (staleRow !== undefined && staleRow !== row) {
-						for (const iv of intervalsOver(staleRow.ivs, lo, hi)) {
-							invalidateBlock(iv.owner, invalidated);
-						}
-					}
-				}
-			}
-			pendingNarrow.length = 0;
-			commitRecordsChurn = false;
-		};
-
-		/**
-		 * Canonical fingerprint of a list's merge-claim multiset — stamp +
-		 * claim target per claim entry, sorted. `computeOwners` reads ONLY
-		 * claims, so an identical fingerprint proves `ownerOf`/`hidden`,
-		 * placements and the children index cannot have moved: the slices
-		 * write was pure record churn (typing re-anchors edge records via
-		 * delete+insert on every keystroke) whose blast radius is ranges
-		 * and runs, never structure.
-		 */
-		const claimKeySet = (entries: SliceEntry[] | undefined): string | null => {
-			if (entries === undefined) return null;
-			const keys: string[] = [];
-			for (const e of entries) {
-				if (isMergeClaim(e.payload)) keys.push(`${e.stamp.c}.${e.stamp.k}›${e.payload.m}`);
-			}
-			return keys.sort().join('|');
-		};
-
 		// ── the fold ─────────────────────────────────────────────────────
 
-		/** One fold's derived-state effects: invalidated blocks and rebuilt facets. */
-		type FoldCtx = { invalidated: Set<BlockId>; structure: boolean; placement: boolean };
+		/** One fold's effects: invalidated blocks, rescanned texts, rebuilt facets. */
+		type FoldCtx = {
+			invalidated: Set<BlockId>;
+			texts: Map<BlockId, readonly [number, number][] | null>;
+			table: boolean;
+			structure: boolean;
+			placement: boolean;
+		};
 
-		/**
-		 * Fold one block's changed facets. `spans` narrows a `content` change
-		 * to the edited spans of its backing text (`null`: every consumer).
-		 * The committed claim fingerprint advances only at commit.
-		 */
+		/** Fold one block's changed facets (`spans`: its text's edited spans, `null` = opaque). */
 		const foldBlock = (
 			id: BlockId,
 			facets: ReadonlySet<string>,
 			spans: readonly [number, number][] | null,
-			ctx: FoldCtx,
-			atCommit: boolean
+			ctx: FoldCtx
 		): void => {
 			const kinds = new Set<Facet | 'entry'>();
 			for (const f of facets) kinds.add(f === ENTRY_FACET ? 'entry' : facetOf(f));
-			let structureChanged = false;
-			// Record-only `slices` churn (same claim set) — the range-level
-			// fanout below still runs, but owners/placements/kids stay put.
-			let recordsChanged = false;
-			let content = kinds.has('content');
-			if (kinds.has('entry')) {
-				updateBlockRec(id); // (re)builds or drops the rec + record index
-				structureChanged = true;
-				// A new entry's slices may carry records/claims onto EXISTING
-				// texts (a split tail's materialization).
-				content ||= blocks.has(id);
-			} else if (kinds.has('structure')) {
-				// Refinable only when every structural attr is `slices` (a delete
-				// mark or an unknown attr is structure). The baseline is the
-				// COMMITTED fingerprint: the live rec may carry this
-				// transaction's earlier folds.
-				const refinable = [...facets].every((f) => facetOf(f) !== 'structure' || f === SLICES);
-				const before = refinable ? (committedClaims.get(id) ?? null) : null;
+			if (kinds.has('entry') || kinds.has('structure')) {
+				const claimsBefore = blocks.get(id)?.claims;
 				updateBlockRec(id);
-				const same = before !== null && before === claimKeySet(blocks.get(id)?.entries);
-				structureChanged = !same;
-				recordsChanged = same;
+				ctx.structure = ctx.placement = true;
+				// A new entry, a nonce or an own text can move streams (R2).
+				if (kinds.has('entry') || facets.has(NONCE) || facets.has(CONTENT_ATTR)) {
+					ctx.table = true;
+					ctx.texts.set(id, null);
+				}
+				ctx.invalidated.add(id);
+				for (const c of listConsumers.get(id) ?? []) ctx.invalidated.add(c);
+				for (const m of new Set([
+					...(effects.get(id) ?? []),
+					...(claimsBefore ?? []).map((c) => c.m)
+				])) {
+					ctx.invalidated.add(m);
+					for (const c of listConsumers.get(m) ?? []) ctx.invalidated.add(c);
+				}
 			} else {
-				if (kinds.has('at')) refreshCands(id);
-				if (kinds.has('meta')) refreshMeta(id);
+				if (kinds.has('at')) {
+					ensureRec(id);
+					const rec = blocks.get(id);
+					if (rec) rec.cands = candidatesOf(rec.node);
+					ctx.placement = true;
+				}
+				if (kinds.has('meta')) {
+					ensureRec(id);
+					const rec = blocks.get(id);
+					if (rec) {
+						const type = rec.node.getAttr(TYPE);
+						rec.type = typeof type === 'string' ? type : 'unknown';
+						rec.data = rec.node.getAttr(DATA);
+					}
+				}
 				ensureRec(id);
 			}
-			if (content) {
-				markTextDirty(id);
-				// Anchor resolutions of records covering this text are stale.
-				for (const set of recordsByText.get(id)?.values() ?? []) {
-					for (const e of set) rangeCache.delete(e);
-				}
-				// U8b: with the edited spans known, only owners of the ownership
-				// intervals they intersect can have different runs — siblings
-				// sharing the backing text whose slices merely translate stay
-				// cached. Resolved at the end of the fold (`resolveNarrowed`): a
-				// `slices` change folded later in the same pass rewrites the
-				// records the row is built from.
-				if (spans === null) {
-					for (const c of textConsumers.get(id) ?? []) invalidateBlock(c, ctx.invalidated);
-				} else {
-					pendingNarrow.push({ id, spans });
-				}
+			if (kinds.has('content') && ctx.texts.get(id) !== null) {
+				ctx.texts.set(id, spans === null ? null : [...(ctx.texts.get(id) ?? []), ...spans]);
 			}
-			if (kinds.has('at')) ctx.placement = true;
-			if (structureChanged) ctx.structure = ctx.placement = true;
-			if (recordsChanged) commitRecordsChurn = true;
-			if (structureChanged || recordsChanged) {
-				// Consumers of this list itself (holders/walkers incl. self).
-				for (const c of listConsumers.get(id) ?? []) invalidateBlock(c, ctx.invalidated);
-				// Everything the list's records ever covered / claims ever targeted.
-				const fx = effects.get(id);
-				for (const t of fx?.texts ?? []) {
-					markTextDirty(t);
-					for (const c of textConsumers.get(t) ?? []) invalidateBlock(c, ctx.invalidated);
+		};
+
+		/** Rescan the edited texts, move or rebuild the stream table, and invalidate their readers. */
+		const foldTexts = (ctx: FoldCtx): void => {
+			const changed = new Set<BlockId>();
+			for (const home of ctx.texts.keys()) if (rescan(home)) changed.add(home);
+			if (changed.size > 0) ctx.table = true;
+			if (ctx.table) rebuildTable(ctx.invalidated);
+			else for (const home of ctx.texts.keys()) place(home);
+			for (const [home, spans] of ctx.texts) {
+				const readers = textConsumers.get(home) ?? [];
+				if (spans === null || changed.has(home) || ctx.structure) {
+					for (const c of readers) ctx.invalidated.add(c);
+					continue;
 				}
-				for (const l of fx?.lists ?? []) {
-					for (const c of listConsumers.get(l) ?? []) invalidateBlock(c, ctx.invalidated);
+				// Only the streams the edit touched change their display (L7).
+				for (const s of inText.get(home) ?? []) {
+					if (!spans.some(([lo, hi]) => s.start <= hi && lo <= s.end)) continue;
+					const owner = ownerOf(s.block);
+					if (typeof owner === 'string') ctx.invalidated.add(owner);
 				}
-			}
-			if (atCommit) {
-				const k = claimKeySet(blocks.get(id)?.entries);
-				if (k === null) committedClaims.delete(id);
-				else committedClaims.set(id, k);
 			}
 		};
 
 		const registryNode = registry as unknown as EngineNode;
 
 		/**
-		 * The block a changed `(type, parentSub)` pair belongs to, the facet
-		 * it entered through (the block attr the chain hangs under), and
-		 * whether it is a sequence edit of the block's own `content` (whose
-		 * edited spans the transaction can locate). Depth-general: a change
-		 * inside an inline atom enters through `content`. `null` outside the
-		 * registry subtree.
+		 * The block a changed `(type, parentSub)` pair belongs to, the facet it
+		 * entered through (the block attr the chain hangs under; the `content`
+		 * attr itself is {@link CONTENT_ATTR}), and whether it is a sequence
+		 * edit of the block's own text. `null` outside the registry subtree.
 		 */
 		const locate = (type: EngineNode, sub: string | null): [BlockId, string, boolean] | null => {
 			if (type === registryNode) return typeof sub === 'string' ? [sub, ENTRY_FACET, false] : null;
@@ -1312,7 +894,7 @@ export const bindRuns = (Y: EngineApi) => {
 				if (parent === registryNode) {
 					const id = it!.parentSub;
 					if (typeof id !== 'string') return null;
-					if (below === null) return [id, sub ?? '?', false];
+					if (below === null) return [id, sub === CONTENT ? CONTENT_ATTR : (sub ?? '?'), false];
 					const facet = below._item?.parentSub ?? CONTENT;
 					return [id, facet, sub === null && below === type && facet === CONTENT];
 				}
@@ -1327,14 +909,10 @@ export const bindRuns = (Y: EngineApi) => {
 		const candidates = new Set<BlockId>();
 		let reporting = false;
 
-		/**
-		 * THE fold: one pass over a set of changed `(type, parentSub)` pairs,
-		 * each block folded once with the union of its facets.
-		 */
+		/** THE fold: one pass over changed `(type, parentSub)` pairs, each block folded once. */
 		const fold = (
 			changed: Map<unknown, Set<string | null>>,
-			extentOf: ExtentLookup,
-			atCommit: boolean
+			extentOf: ExtentLookup
 		): Map<BlockId, Set<string>> => {
 			const touched = new Map<BlockId, Set<string>>();
 			const spans = new Map<BlockId, [number, number][] | null>();
@@ -1348,18 +926,23 @@ export const bindRuns = (Y: EngineApi) => {
 					facets.add(facet);
 					if (facet !== CONTENT || spans.get(id) === null) continue;
 					const edited = seq ? extentOf(type as EngineNode) : undefined;
-					if (edited === undefined) spans.set(id, null);
-					else spans.set(id, [...(spans.get(id) ?? []), ...edited]);
+					spans.set(id, edited === undefined ? null : [...(spans.get(id) ?? []), ...edited]);
 				}
 			}
-			const ctx: FoldCtx = { invalidated: new Set(), structure: false, placement: false };
+			const ctx: FoldCtx = {
+				invalidated: new Set(),
+				texts: new Map(),
+				table: false,
+				structure: false,
+				placement: false
+			};
 			let derived = false;
 			for (const [id, facets] of touched) {
-				foldBlock(id, facets, spans.get(id) ?? null, ctx, atCommit);
+				foldBlock(id, facets, spans.get(id) ?? null, ctx);
 				derived ||= [...facets].some((f) => f === ENTRY_FACET || facetOf(f) !== 'ignore');
 			}
-			resolveNarrowed(ctx.invalidated, ctx.structure);
 			if (ctx.structure) structureVersion++;
+			foldTexts(ctx);
 			if (ctx.placement) placementVersion++;
 			for (const b of ctx.invalidated) dirty.add(b);
 			if (derived) version++;
@@ -1394,8 +977,9 @@ export const bindRuns = (Y: EngineApi) => {
 
 		/**
 		 * Fold the pending part of `tr` — the structs its insert/delete sets
-		 * gained since the last fold — before a read inside it. Returns
-		 * whether the transaction wrote anything since.
+		 * gained since the last fold — before a read inside it (read-your-
+		 * writes; `transaction.changed` does not grow on a second edit to an
+		 * already-changed type, F11).
 		 */
 		const syncPending = (tr: Tx | null | undefined): boolean => {
 			if (tr?.insertSet === undefined || tr.deleteSet === undefined) return false;
@@ -1419,7 +1003,7 @@ export const bindRuns = (Y: EngineApi) => {
 			};
 			walkIdSetStructs(Y, doc, ins, note);
 			walkIdSetStructs(Y, doc, del, note);
-			fold(changed, makeExtentIndex({ insertSet: ins, deleteSet: del }), false);
+			fold(changed, makeExtentIndex({ insertSet: ins, deleteSet: del }));
 			return true;
 		};
 		const openTx = (): Tx | null | undefined => doc._transaction as Tx | null | undefined;
@@ -1428,10 +1012,7 @@ export const bindRuns = (Y: EngineApi) => {
 		const onCommit = (e: EngineDeepEvent): void => {
 			const tr = e.transaction as Tx;
 			if (cursor?.tr === tr) cursor = null;
-			const touched = fold(tr.changed ?? new Map(), makeExtentIndex(tr), true);
-			// R5 listener isolation: a throwing subscriber must not starve the
-			// rest of this commit's publication; the earliest error propagates
-			// to the committer at the end (lib0's `callAll` convention).
+			const touched = fold(tr.changed ?? new Map(), makeExtentIndex(tr));
 			let firstErr: unknown;
 			let threw = false;
 			const collect = (f: () => void): void => {
@@ -1448,7 +1029,6 @@ export const bindRuns = (Y: EngineApi) => {
 			for (const b of [...blockSubs.keys()]) {
 				if (dirty.has(b)) collect(() => computeRuns(b));
 			}
-			// R5: deferred mid-transaction publications land at the commit.
 			collect(flushPending);
 			if (touched.size > 0) collect(() => callEach([...subs], version));
 			if (threw) throw firstErr;
@@ -1456,7 +1036,10 @@ export const bindRuns = (Y: EngineApi) => {
 
 		// ── projection ───────────────────────────────────────────────────
 
-		/** `id`'s projected subtree — content is the ownership-projected slice list. */
+		/** `id`'s visible content items, canonical and frozen (R4). */
+		const itemsOf = (id: BlockId): ContentItem[] =>
+			protectItems(T.readSegs(ownShim.display(id) ?? []), intern) as ContentItem[];
+
 		const projectBlock = (id: BlockId): ProjectedBlock => {
 			const rec = blocks.get(id)!;
 			const projected: ProjectedBlock = {
@@ -1466,16 +1049,9 @@ export const bindRuns = (Y: EngineApi) => {
 					rec.data === undefined || rec.data === null
 						? undefined
 						: (cloneJsonSafe(rec.data) as Record<string, unknown>),
-				// R4: publish canonical frozen payloads, never borrowed engine refs.
-				content: rec.content
-					? (protectItems(
-							T.contentItemsOf(id, blocks, ownShim) as ContentItem[],
-							intern
-						) as ContentItem[])
-					: [],
+				content: itemsOf(id),
 				children: []
 			};
-			if (!rec.content) projected.malformed = true;
 			for (const k of kidsMap!.get(id) ?? []) projected.children.push(projectBlock(k.id));
 			return projected;
 		};
@@ -1627,14 +1203,12 @@ export const bindRuns = (Y: EngineApi) => {
 
 		// ── initial scan: index every existing block ────────────────────
 		registry.forEachAttr((v: unknown, id: string) => {
-			if (isNodeLike(v)) {
-				const rec = buildRec(id, v);
-				blocks.set(id, rec);
-				indexEntries(id, rec.entries);
-				const k = claimKeySet(rec.entries);
-				if (k !== null) committedClaims.set(id, k);
-			}
+			if (!isNodeLike(v)) return;
+			blocks.set(id, buildRec(id, v));
+			noteEffects(id, blocks.get(id));
+			rescan(id);
 		});
+		rebuildTable(new Set());
 
 		const observer = (e: EngineDeepEvent): void => onCommit(e);
 		registry.observeDeep(observer);
@@ -1662,9 +1236,7 @@ export const bindRuns = (Y: EngineApi) => {
 			snapshot: (b: BlockId): ContentRun[] => JSON.parse(JSON.stringify(runs(b))) as ContentRun[],
 			contentItems: (b: BlockId): ContentItem[] => {
 				syncPending(openTx());
-				const rec = blocks.get(b);
-				if (rec?.content === undefined || rec.deleted) return [];
-				return protectItems(T.contentItemsOf(b, blocks, ownShim) as ContentItem[], intern);
+				return blocks.get(b)?.deleted === false ? itemsOf(b) : [];
 			},
 			contentJSON: (b: BlockId) =>
 				runs(b).map((r) => {

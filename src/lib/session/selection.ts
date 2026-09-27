@@ -327,14 +327,13 @@ export type SelectCause = 'dom' | 'model' | 'repair' | 'history';
 const sameAnchor = (a: DocAnchor, b: DocAnchor) =>
 	a === b ||
 	(a.b === b.b &&
-		a.o === b.o &&
 		a.a.a === b.a.a &&
 		(a.a.i === b.a.i || (a.a.i?.c === b.a.i?.c && a.a.i?.k === b.a.i?.k)));
 
 const sameMarks = (a: Marks | undefined, b: Marks | undefined) =>
 	a === b || JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-/** Value equality: kind, anchors (item + side + owner facet), ids, pending marks. */
+/** Value equality: kind, anchors (item + side), ids, pending marks. */
 export const sameValue = (a: SelectionValue, b: SelectionValue): boolean => {
 	if (a === b) return true;
 	if (a.kind === 'text' && b.kind === 'text')

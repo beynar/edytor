@@ -60,8 +60,9 @@ const push = (from: Y.Doc, to: Y.Doc) => {
 	Y.applyUpdate(to, Y.encodeStateAsUpdate(from, Y.encodeStateVector(to)));
 };
 
+/** The block's replicated claims list — an undo must write nothing there (R2: no repair). */
 const slicesOf = (ed: any, id: string) =>
-	ed.resolveBlock(id)!.getAttr('slices').toArray() as unknown[];
+	ed.resolveBlock(id)!.getAttr('claims').toArray() as unknown[];
 
 describe('gateH-R3 — undo inside an outer transaction', () => {
 	test('ed.transact(() => um.undo()) — repair must still fire', () => {

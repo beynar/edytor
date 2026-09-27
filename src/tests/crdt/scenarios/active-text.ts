@@ -32,12 +32,12 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { expect } from 'vitest';
 import { createPeerPair, createPeerTriple, type PeerSet } from '../harness/peer-set.js';
-import { scenarioOps } from '../harness/ops/backend.js';
+import { createModelOps } from '../harness/ops/model-ops.js';
 import { assertConverged, assertAllStructurallyValid } from '../harness/assert/convergence.js';
 import { MODEL_BASE_SEED, modelSpecSeed } from './seeds.js';
 import type { Scenario } from './registry.js';
 
-const ops = scenarioOps();
+const ops = createModelOps();
 
 const text = (peer, id) => ops.blockText(peer, id);
 const topIds = (peer) => ops.project(peer).children.map((b) => b.id);
@@ -104,6 +104,13 @@ const bothOrders = (
 		reloadAndVerify(set, verify);
 	}
 };
+
+/** Client-id assignments for the YATA-order re-pins (both outcomes, ≥3 assignments). */
+const YATA_IDS = [
+	[7, 3],
+	[3, 7],
+	[100, 50]
+];
 
 export const textScenarios: Scenario[] = [
 	// ── TX01 ────────────────────────────────────────────────────────────
@@ -328,20 +335,25 @@ export const textScenarios: Scenario[] = [
 	{
 		id: 'TX06a',
 		requirement: 'TX06',
-		title: 'concurrent insert exactly at the split seam — head-side affinity',
+		title: 'concurrent insert exactly at the split seam — YATA order (D-1 re-pin, F-D14)',
 		run: () => {
-			bothOrders(
-				(set) => {
-					ops.splitBlock(set.A, 'b1', 6, 's1');
-					ops.insertText(set.B, 'b1', 6, '|'); // the seam: before 'w'
-				},
-				(set) => {
-					// Both anchors bind "before the same item" — the seam insert
-					// resolves left of the bound atom → head side.
-					expect(text(set.A, 'b1')).toBe('hello |');
-					expect(text(set.A, 's1')).toBe('world');
-				}
-			);
+			// R2: the split's boundary and the seam insert share origin and
+			// right origin, so the lower client id goes left (decision D-1):
+			// the `|` stays in the head iff the inserter's id is lower.
+			for (const [a, b] of YATA_IDS) {
+				bothOrders(
+					(set) => {
+						set.A.doc.clientID = a;
+						set.B.doc.clientID = b;
+						ops.splitBlock(set.A, 'b1', 6, 's1');
+						ops.insertText(set.B, 'b1', 6, '|'); // the seam: before 'w'
+					},
+					(set) => {
+						expect(text(set.A, 'b1')).toBe(b < a ? 'hello |' : 'hello ');
+						expect(text(set.A, 's1')).toBe(b < a ? 'world' : '|world');
+					}
+				);
+			}
 		}
 	},
 	{
@@ -480,27 +492,34 @@ export const textScenarios: Scenario[] = [
 	{
 		id: 'TX09a',
 		requirement: 'TX09',
-		title: 'empty blocks — split produces a live empty sibling; merge claims it cleanly',
+		title:
+			'empty blocks — split produces a live empty sibling (YATA order, D-1 class); merge claims it cleanly',
 		run: () => {
-			bothOrders(
-				(set) => {
-					ops.splitBlock(set.A, 'e1', 0, 'e1b');
-					ops.insertText(set.B, 'e1', 0, 'z'); // revive insert races the split
-				},
-				(set) => {
-					expect(topIds(set.A)).toEqual(['e1', 'e1b', 'e2']);
-					// The concurrent insert lands on the head (offset 0 covers
-					// the insert point); the sibling stays empty — and stays a
-					// live, renderable block.
-					expect(text(set.A, 'e1')).toBe('z');
-					expect(text(set.A, 'e1b')).toBe('');
-					expect(ops.positionOf(set.A, 'e1b')).not.toBeNull();
-				},
-				modelSpecSeed([
-					{ id: 'e1', type: 'paragraph' },
-					{ id: 'e2', type: 'paragraph', content: [{ kind: 'text', text: 'x' }] }
-				])
-			);
+			// R2: typing into an empty block races its split at 0 — the typed
+			// unit and the boundary share origin and right origin, so the
+			// lower client id goes left: `z` stays in the head iff the typist's
+			// id is lower (re-pinned with TX06a, orchestrator D12 answer 1).
+			for (const [a, b] of YATA_IDS) {
+				bothOrders(
+					(set) => {
+						set.A.doc.clientID = a;
+						set.B.doc.clientID = b;
+						ops.splitBlock(set.A, 'e1', 0, 'e1b');
+						ops.insertText(set.B, 'e1', 0, 'z'); // races the split
+					},
+					(set) => {
+						expect(topIds(set.A)).toEqual(['e1', 'e1b', 'e2']);
+						expect(text(set.A, 'e1')).toBe(b < a ? 'z' : '');
+						expect(text(set.A, 'e1b')).toBe(b < a ? '' : 'z');
+						// the sibling is a live, renderable block either way
+						expect(ops.positionOf(set.A, 'e1b')).not.toBeNull();
+					},
+					modelSpecSeed([
+						{ id: 'e1', type: 'paragraph' },
+						{ id: 'e2', type: 'paragraph', content: [{ kind: 'text', text: 'x' }] }
+					])
+				);
+			}
 			// Sequential half: merge the empty sibling — the claim resolves,
 			// nothing is displayed twice, the empty block hides.
 			const set = createPeerPair(

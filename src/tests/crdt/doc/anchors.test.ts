@@ -95,22 +95,19 @@ describe('anchorAt/resolveAnchor — positions, affinity, boundaries', () => {
 		expect(ed.resolveAnchor(revived)).toEqual({ blockId: DEFAULT_SEED_ID, offset: 3 });
 	});
 
-	it('a split-start anchor keeps its owner facet through JSON round-trip', () => {
+	it('a split-start anchor binds its boundary item and survives JSON round-trip', () => {
 		const { ed } = seeded();
 		ed.insertText(DEFAULT_SEED_ID, 0, 'alphaHello');
 		ed.splitBlock(DEFAULT_SEED_ID, 5, 'tail');
+		// R4: a left-affine caret at a split-born block's start binds that
+		// block's boundary item in the shared text (home: the text's block);
+		// the containing stream and the side are two facts in two fields.
 		const anchor = ed.anchorAt('tail', 0, 'left');
-		expect(anchor?.o).toBe('tail');
+		expect(anchor?.b).toBe(DEFAULT_SEED_ID);
+		expect(anchor?.a.a).toBe(-1);
+		expect(Object.keys(anchor!).sort()).toEqual(['a', 'b']);
 		const revived = JSON.parse(JSON.stringify(anchor));
-		expect(revived?.o).toBe('tail');
-		// The owner facet must survive serialization — an awareness
-		// round-trip that dropped `o` would re-expose the adjacent-block
-		// migration (the receiver re-resolves into BOOTSTRAP's stream).
 		expect(ed.resolveAnchor(revived)).toEqual({ blockId: 'tail', offset: 0 });
-		// Older anchors have no `o` — they must still resolve (compatible
-		// fallback via generic atom-following).
-		const { o: _dropped, ...legacy } = revived!;
-		expect(ed.resolveAnchor(legacy)).toBeTruthy();
 	});
 });
 
@@ -265,12 +262,11 @@ describe('anchors under concurrency (two replicas)', () => {
 		const { ed } = seeded();
 		ed.insertText(DEFAULT_SEED_ID, 0, 'alphaHello');
 		ed.splitBlock(DEFAULT_SEED_ID, 5, 'tail');
-		// tail's stream is a mid-backing slice of the shared text — the
-		// left neighbour atom belongs to BOOTSTRAP. A plain left anchor
-		// would encode the seam's left facet; the minted anchor must carry
-		// tail's own facet (a === -2 marker on a left-sticky binding).
+		// tail's stream starts right after its boundary item in the shared
+		// text: a left caret there binds the boundary, which only tail's
+		// stream follows (R2, R4).
 		const caret = ed.anchorAt('tail', 0, 'left');
-		expect(caret?.a.a).toBe(-2);
+		expect(caret?.a.a).toBe(-1);
 		expect(ed.resolveAnchor(caret)).toEqual({ blockId: 'tail', offset: 0 });
 	});
 
@@ -293,7 +289,7 @@ describe('anchors under concurrency (two replicas)', () => {
 		e1.splitBlock(DEFAULT_SEED_ID, 5, 'tail');
 		push(d1, d2);
 		const caret = e1.anchorAt('tail', 0, 'left');
-		expect(caret?.a.a).toBe(-2);
+		expect(caret?.a.a).toBe(-1);
 		// The LEFT neighbour appends — the atom now occupying the seam gap
 		// is owned by BOOTSTRAP, not tail. The caret must not migrate into
 		// BOOTSTRAP's stream (would land alphaX@5 and type 'Z' there).
@@ -413,13 +409,12 @@ describe('history independence — direct vs split construction', () => {
 		split.ed.splitBlock(DEFAULT_SEED_ID, 5, 'tail');
 
 		const map: Record<string, string> = { tail: 'd2' };
-		// Same intent, different encodings: the direct doc's block starts
-		// its OWN backing (plain left anchor); the split doc's stream
-		// starts mid-backing (-2 facet anchor carrying `o`).
+		// Same encoding: the direct doc's caret binds its own text's start,
+		// the split doc's caret binds tail's boundary item (R4, F-D15).
 		const directCaret = direct.ed.anchorAt('d2', 0, 'left');
 		const splitCaret = split.ed.anchorAt('tail', 0, 'left');
 		expect(directCaret?.a.a).toBe(-1);
-		expect(splitCaret?.a.a).toBe(-2);
+		expect(splitCaret?.a.a).toBe(-1);
 
 		// Sequential edit — append into the predecessor's end on both.
 		direct.ed.insertText(DEFAULT_SEED_ID, 5, 'X');

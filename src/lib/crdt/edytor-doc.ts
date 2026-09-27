@@ -6,8 +6,8 @@
  *
  * - `placement/model.ts` (`bindModel`) — stable block registry + placement
  *   candidates; identity-preserving move/nest/split/merge (U03).
- * - `text/model.ts` (`bindText`) — stable backing texts + slice/merge claims;
- *   content ownership survives split/merge without copying atoms (U04).
+ * - `text/model.ts` (`bindText`) — stable backing texts delimited by stream
+ *   boundaries + merge claims (R2); split/merge never copy text.
  * - `text/runs.ts` (`bindRuns`) — the maintained run view: immutable run
  *   snapshots, structural sharing, per-block subscriptions (U05).
  *
@@ -26,7 +26,7 @@
  *
  * ```
  * doc.get('blocks')                      registry — flat map, blockId → node('block')
- *   └ <blockId>                           id/n/type/data/del + content/slices/at
+ *   └ <blockId>                           id/n/type/data/del + content/claims/at
  *                                         (n: incarnation nonce, O23)
  * doc.get('meta')                        version record root
  *   ├ v : number                          SCHEMA_VERSION (LWW attr — concurrent init converges)
@@ -94,7 +94,6 @@
  */
 import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode, YUndoManager } from './engine-api.js';
 import { hash32, setDocRand } from './rand.js';
-import { bindUndoRepair } from './undo-repair.js';
 import {
 	AT,
 	BLOCK_NODE,
@@ -119,21 +118,10 @@ import {
 	type ProjectedBlock,
 	type SplitTail
 } from './placement/model.js';
-import {
-	bindText,
-	DEAD,
-	intervalsOver,
-	isMergeClaim,
-	isSliceRecord,
-	nearestOwned,
-	ownerAt,
-	type Anchor,
-	type Ownership,
-	type SliceEntry,
-	type TextBlockRec
-} from './text/model.js';
+import { bindText, DEAD, displayOf, locate, ownedLength, type Anchor } from './text/model.js';
 import {
 	bindRuns,
+	CONTENT_ATTR,
 	ENTRY_FACET,
 	type ContentRun,
 	type Folded,
@@ -142,6 +130,7 @@ import {
 } from './text/runs.js';
 import { bindNodes, type DocBlock } from './nodes.js';
 import { followRedone, walkIdSetStructs, type IdSetLike } from './structs.js';
+import { ownTextIds } from './text/model.js';
 import {
 	bindBlockAttribution,
 	blockAttributionOf,
@@ -445,27 +434,14 @@ export type EdytorDocBinding = ReturnType<typeof bindEdytorDoc>;
 export type AnchorAffinity = 'left' | 'right';
 
 /**
- * A selection endpoint bound to BACKING-text atoms — `{b}` is the home
- * block id of the backing text the bound atom lives in (NOT necessarily
- * the block that displays it — merges/splits reroute display while the
- * anchor stays on the same atoms), `a` the engine anchor carrying the
- * affinity in its `a` field (`a < 0` left, `a >= 0` right).
- * JSON-serializable — this is the awareness/undo-snapshot wire shape.
+ * A selection endpoint (R4): `b` is the home block of the backing text the
+ * position lives in (NOT necessarily the block that displays it — merges and
+ * splits reroute display while the anchor stays on the same items), `a` an
+ * engine relative position whose `a` carries the side (`< 0` left, `>= 0`
+ * right). The containing stream and the side are two facts in two fields.
+ * JSON-serializable — the presence and history wire shape.
  */
-export type DocAnchor = {
-	b: BlockId;
-	a: Anchor;
-	/**
-	 * The display block a `-2` seam anchor belongs to (`anchorAt`'s
-	 * `blockId`). `a <= -2` alone cannot distinguish "the atom at the
-	 * resolved gap is owned by the anchor's block" from "the left
-	 * neighbour appended a foreign atom across the seam" — both place a
-	 * non-owned atom right of the bound atom. `o` pins the intended
-	 * stream so resolution rebases the index onto ITS segs instead of
-	 * trusting whichever owner currently sits at the gap.
-	 */
-	o?: BlockId;
-};
+export type DocAnchor = { b: BlockId; a: Anchor };
 
 // ── internals ───────────────────────────────────────────────────────────
 
@@ -677,17 +653,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 	// per-doc (WeakMap-keyed), so facades on the same doc share it.
 	const BA = bindBlockAttribution(Y);
 
-	// R3 — the doc-level undo-resurrection ownership repair lives in
-	// `undo-repair.ts` (vendor-internal struct/store/transaction walks —
-	// keep the blast radius out of this file). Attached once per doc for
-	// the doc's lifetime from `create()` below; the module-level dedupe
-	// table spans every binding.
-	const attachUndoRepair = bindUndoRepair(Y, {
-		view: (doc, transaction) => R.attach(doc).view(transaction),
-		undoRepairClaims: T.undoRepairClaims,
-		contentNodeName: CONTENT_NODE
-	});
-
 	// ── version record / bootstrap (doc-level, facade-free) ────────────
 	// `schemaVersion`, `registryEmpty`, `isInitialized`, `checkSchema` and
 	// `assertSchema` are module-level (see above) — pure doc reads shared by
@@ -818,12 +783,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 */
 		let disposed = false;
 
-		// R3 — doc-level undo-resurrection ownership repair (extracted to
-		// `undo-repair.ts`). Attached once per doc for the doc's lifetime —
-		// raw `Y.UndoManager` consumers get the same repair as
-		// `createUndoManager()`, extra facades cannot double-write, and an
-		// undo after the last `dispose()` is still repaired (Gate-H).
-		attachUndoRepair(doc);
 		// Lineage ring watermark repair — concurrent partition appends can
 		// merge a ring past every writer's `depth`; this converges the
 		// stored ring back to the entries' own watermark after remote
@@ -919,6 +878,17 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			}
 		};
 
+		/**
+		 * A streamless block gets its own text before the first write that
+		 * needs a stream (`M.ownText`: a writer derived from its dead
+		 * incarnation); its attribution record follows the re-minted nonce.
+		 */
+		const needStream = (id: BlockId): void => {
+			if ((M.view(doc).own.display(id) ?? []).length > 0) return;
+			const { from, to } = M.ownText(doc, id);
+			BA.retarget(doc, id, from, to);
+		};
+
 		/** One planned step, written (the plan decided it; writers never refuse). */
 		const writeStep = (w: PlanStep, f: Frame): void => {
 			// Structural steps need no view: delete marks and placements write one node.
@@ -926,6 +896,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				return w.marks.forEach((id) =>
 					M.blockNodeOf(doc, id)!.setAttr(DEL_PREFIX + doc.clientID, true)
 				);
+			if (w.op === 'splitBlock' || w.op === 'insertText' || w.op === 'insertInline')
+				needStream(w.id);
 			const { blocks, own } = M.view(doc);
 			const node = (id: BlockId) => M.blockNodeOf(doc, id)!;
 			switch (w.op) {
@@ -953,19 +925,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				case 'formatRange':
 					return T.formatRangeIn(doc, blocks, own, w.id, w.offset, w.length, w.marks);
 				case 'setInlineData':
-					for (const seg of T.flatten(w.id, blocks, own)) {
-						let p = 0;
-						for (const entry of blocks.get(seg.t)!.content!.toArray()) {
-							if (
-								isNodeLike(entry) &&
-								entry.getAttr(ID) === w.inlineId &&
-								p >= seg.i0 &&
-								p < seg.i1
-							)
-								return void entry.setAttr(DATA, w.data);
-							p += typeof entry === 'string' ? entry.length : 1;
-						}
-					}
+					return void T.findAtom(own, w.id, w.inlineId)?.node.setAttr(DATA, w.data);
 			}
 		};
 
@@ -1216,8 +1176,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			unsubscribe?.();
 			unsubscribe = null;
 			subs.clear();
-			// The doc's index and its undo-repair observer live as long as the
-			// doc — other facades on it keep reading them.
+			// The doc's index lives as long as the doc — other facades on it
+			// keep reading it.
 		};
 
 		/**
@@ -1256,6 +1216,16 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				if (!isInitialized(doc)) init(doc);
 			});
 			const um = new Y.UndoManager(M.registryOf(doc) as unknown as YNode, opts) as YUndoManager;
+			// A streamless block's own text (R2) is shared by every replica that
+			// typed into it first: no history step captures it, so undoing the
+			// first typing removes the typing and keeps the text (and nonce).
+			const skipOwnText = ({ stackItem }: { stackItem: { inserts: unknown } }): void => {
+				const ids = ownTextIds.get(doc);
+				if (ids !== undefined)
+					stackItem.inserts = Y.diffIdSet(stackItem.inserts as never, ids as never);
+			};
+			um.on('stack-item-added', skipOwnText as never);
+			um.on('stack-item-updated', skipOwnText as never);
 			// Lineage for undo/redo (O19, F4): the replay displaces the state
 			// every block the popped stack item touches, so each one's subtree
 			// is captured (`force`: lost whoever owns `l`) from the history
@@ -1300,19 +1270,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return um;
 		};
 
-		/**
-		 * Display length in atoms (chars + inline atoms) of `id`'s content —
-		 * computed from the LIVE view so mid-transaction callers read
-		 * post-write state.
-		 */
-		const displayLength = (id: BlockId): number => {
-			const { blocks, own } = view();
-			let n = 0;
-			for (const item of T.contentItemsOf(id, blocks, own) as ContentItem[]) {
-				n += item.kind === 'text' ? item.text.length : 1;
-			}
-			return n;
-		};
+		/** Display length (UTF-16 units + inline atoms) of `id`'s content, read-your-writes. */
+		const displayLength = (id: BlockId): number => ownedLength(view().own.display(id) ?? []);
 
 		/**
 		 * Resolved display content of `id` — the canonical `ContentItem[]`
@@ -1339,143 +1298,32 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/** The one liveness answer ({@link isLiveIn}): `id` renders in `project()`. O(depth). */
 		const isVisibleBlock = (id: BlockId): boolean => M.isLive(doc, id);
 
-		// ── caret anchors (U09) ──────────────────────────────────────────
-		// Anchors bind selection endpoints to BACKING-text atoms — the
-		// identity that survives split/merge/move. Both reads below compute
-		// a FRESH ownership view (`view()`) so they are correct mid-transaction
-		// (the maintained runs view only refreshes at commit). A handful of
-		// calls per gesture; O(doc) per call.
+		// ── anchors (R4) ─────────────────────────────────────────────────
+		// An anchor is the home text id plus a relative position; the stream
+		// containing the position says which block displays it. Both reads use
+		// the index folded up to the last write, so they hold mid-transaction.
 
 		/**
-		 * Display offset inside `B` where backing text `t`'s slice-list
-		 * records would emit — the seam an unowned anchor falls back to.
-		 * Walks `B`'s flattened entry order accumulating owned-atom
-		 * contributions; the offset where the walk first reaches `t` (a
-		 * merge-claim chain entering `t`'s list, or the first `t`-covering
-		 * record when `B === t`) is the emission point — for a merge this
-		 * is exactly the merge seam where restored content reappears.
-		 */
-		const emissionOffset = (
-			blocks: Map<BlockId, TextBlockRec>,
-			own: Ownership,
-			B: BlockId,
-			t: BlockId
-		): number => {
-			let off = 0;
-			let found: number | null = null;
-			const contribution = (entry: SliceEntry): number => {
-				const p = entry.payload;
-				if (!isSliceRecord(p)) return 0;
-				const text = blocks.get(p.t)?.content;
-				if (!text) return 0;
-				const range = own.resolvedRange(entry, text);
-				if (range === null) return 0;
-				// Owned atoms this record emits under B = the widths of its
-				// winning intervals inside its own resolved range (WU6 —
-				// was a per-position count over the dense owner/claim rows).
-				let n = 0;
-				for (const iv of intervalsOver(own.intervals.get(p.t), range[0], range[1])) {
-					if (iv.owner === B && iv.claim === entry) {
-						n += Math.min(iv.i1, range[1]) - Math.max(iv.i0, range[0]);
-					}
-				}
-				return n;
-			};
-			const walk = (listId: BlockId, seen: Set<BlockId>): void => {
-				if (found !== null || seen.has(listId)) return;
-				seen.add(listId);
-				if (listId === t && listId !== B) {
-					found = off;
-					return;
-				}
-				const rec = blocks.get(listId);
-				if (!rec) return;
-				for (const e of rec.entries) {
-					if (found !== null) return;
-					if (isSliceRecord(e.payload)) {
-						if (e.payload.t === t) {
-							found = off;
-							return;
-						}
-						off += contribution(e);
-					} else if (isMergeClaim(e.payload)) {
-						walk(e.payload.m, seen);
-					}
-				}
-			};
-			walk(B, new Set());
-			return found ?? off;
-		};
-
-		/**
-		 * Display offset inside `blockId` → backing-text anchor. The seg
-		 * containing the position's affinity-side atom supplies the backing
-		 * text + index; at cross-seg/cross-text seams the affinity picks the
-		 * side ('left' → the seg ending at the position, 'right' → the seg
-		 * starting there). An empty display binds to the block's OWN
-		 * backing text at index 0 (where typed content will land).
-		 * `null` when the block has no backing text.
+		 * Display offset in `blockId` → anchor. `'left'` binds the unit before
+		 * the position (a caret, a range end: an insert there lands right of
+		 * it; at a split-born block's start that unit is the block's boundary),
+		 * `'right'` the unit at it (a range start). A streamless block with no
+		 * claim binds its own future text's start. `null` for an unknown id.
 		 */
 		const anchorAt = (
 			blockId: BlockId,
 			offset: number,
 			affinity: AnchorAffinity = 'left'
 		): DocAnchor | null => {
-			const assoc = affinity === 'left' ? -1 : 0;
 			const { blocks, own } = view();
-			const rec = blocks.get(blockId);
-			if (!rec?.content) return null;
-			const segs = T.flatten(blockId, blocks, own);
-			if (segs.length === 0) {
-				return { b: blockId, a: T.atomAnchorAt(doc, rec.content, 0, assoc) };
-			}
-			let acc = 0;
-			for (let s = 0; s < segs.length; s++) {
-				const seg = segs[s];
-				const w = seg.i1 - seg.i0;
-				const inside = assoc < 0 ? offset <= acc + w : offset < acc + w;
-				if (inside) {
-					const text = blocks.get(seg.t)?.content;
-					if (!text) return null;
-					const inner = Math.min(Math.max(offset - acc, 0), w);
-					if (assoc < 0 && inner === 0) {
-						// Left affinity at a seg start must bind the previous atom
-						// of THIS BLOCK'S OWN display stream — the backing-text
-						// neighbour at `seg.i0 - 1` can belong to a different
-						// owner (a split sharing one backing, or routed merge
-						// content), which would resolve the anchor into the
-						// wrong block. At the stream's own start there is no
-						// in-stream left atom: the seg's backing start resolves
-						// the live-start sentinel on its own when `seg.i0 === 0`.
-						const prev = segs[s - 1];
-						if (prev) {
-							const prevText = blocks.get(prev.t)?.content;
-							if (!prevText) return null;
-							return { b: prev.t, a: T.atomAnchorAt(doc, prevText, prev.i1, -1) };
-						}
-						if (seg.i0 > 0) {
-							// Mid-backing stream start: bind LEFT to the
-							// backing neighbour atom but tag the anchor
-							// `a: -2` — left INSERT affinity (an insert at
-							// the seam lands right of the caret, exactly
-							// like any other caret anchor) with the owner
-							// facet flipped to the RIGHT-hand atom, this
-							// block's own first atom. An untagged left
-							// anchor would resolve into the neighbour's
-							// owner (encoding collision at a shared seam);
-							// a right-bound anchor would ride PAST inserts
-							// at the gap — the `nにello` corruption.
-							return { b: seg.t, a: T.atomAnchorAt(doc, text, seg.i0, -2), o: blockId };
-						}
-					}
-					return { b: seg.t, a: T.atomAnchorAt(doc, text, seg.i0 + inner, assoc) };
-				}
-				acc += w;
-			}
-			const last = segs[segs.length - 1];
-			const text = blocks.get(last.t)?.content;
-			if (!text) return null;
-			return { b: last.t, a: T.atomAnchorAt(doc, text, last.i1, assoc) };
+			if (!blocks.has(blockId)) return null;
+			// A merged-away or deleted block's items still bind: the anchor
+			// follows them to whichever block displays them (or to the seam).
+			const segs = displayOf(blockId, blocks, own, undefined, true)!;
+			const assoc = affinity === 'left' ? -1 : 0;
+			const hit = locate(segs, Math.max(0, Math.min(offset, ownedLength(segs))), affinity);
+			if (hit === null) return { b: blockId, a: { i: null, a: assoc } };
+			return { b: hit.seg.t, a: T.anchorAt(hit.seg.text, hit.idx, assoc) };
 		};
 
 		/**
@@ -1494,139 +1342,33 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 
 		/**
-		 * Backing-text anchor → current display position
-		 * `{blockId, offset}`:
-		 *
-		 * 1. Resolve the engine anchor to a live gap index inside the
-		 *    backing text (`null` → the bound item is not yet integrated —
-		 *    the position converges once it arrives).
-		 * 2. The gap's owner is the owner of the affinity-side adjacent
-		 *    atom (left atom first for left affinity, right atom for
-		 *    right), the other side as fallback. Moved/merged atoms keep
-		 *    their anchor — the position follows them into whichever block
-		 *    now displays them.
-		 * 3. Neither adjacent atom owned → scan outward for the nearest
-		 *    owned atom in the same backing text (affinity direction
-		 *    first); the position lands adjacent to it.
-		 * 4. No atom of the backing text owned anywhere → resolve to
-		 *    `ownerOf(t)` — the block the backing text's slice list routes
-		 *    to (a merge keeps a home) — at the emission seam
-		 *    ({@link emissionOffset}). A dead/deleted owner → `null`
-		 *    (caller falls back to text-id/path restoration).
+		 * Anchor → `{blockId, offset}` in the block that displays it now: the
+		 * position's stream (the one whose delimiting boundary precedes it) and
+		 * its display owner. `null` when the item is not integrated yet or the
+		 * stream is not displayed (its block deleted or hidden) — the caller
+		 * falls back to the seam.
 		 */
 		const resolveAnchor = (anchor: DocAnchor): { blockId: BlockId; offset: number } | null => {
 			const { blocks, own } = view();
-			const t = anchor.b;
-			const text = blocks.get(t)?.content;
-			if (!text) return null;
+			const text = blocks.get(anchor.b)?.content;
+			if (text === undefined) {
+				// A streamless block's own text does not exist yet: its start.
+				return anchor.a.i === null && own.display(anchor.b)?.length === 0
+					? { blockId: anchor.b, offset: 0 }
+					: null;
+			}
 			const i = T.resolveAnchor(doc, text, anchor.a);
 			if (i === null) return null;
-			const ivs = own.intervals.get(t);
-			const len = text.length;
-			const ownedAt = (j: number): BlockId | undefined =>
-				j >= 0 && j < len ? ownerAt(ivs, j) : undefined;
-			// `assoc`'s sign alone cannot encode both degrees of freedom a
-			// seam position needs. `a >= 0` and `a === -1` follow the
-			// affinity side; `a <= -2` (minted by `anchorAt` at a
-			// mid-backing stream start) is a LEFT-insert-affinity anchor
-			// whose owner facet is the RIGHT-hand atom — the gap is the
-			// start of the block whose stream begins there, not the end of
-			// whatever owns the atom before it. The engine reads any
-			// `assoc < 0` identically (left-sticky), so position math is
-			// unaffected — only the owner pick flips.
-			const assoc = anchor.a.a;
-			// `o` is usable only while it is ALIVE AND SELF-OWNING —
-			// `ownerOf` follows the claim chain, so a merged-away block
-			// resolves to its surviving claimer (not DEAD); a deleted
-			// block resolves DEAD. Either way the seam belongs to the
-			// claim chain now: fall through to generic atom-following.
-			if (assoc <= -2 && anchor.o !== undefined && own.ownerOf(anchor.o) === anchor.o) {
-				// `a <= -2` + `o`: a left-insert-affinity caret minted at a
-				// block's stream start on a mid-backing seam. The bound atom
-				// belongs to the LEFT neighbour; `i` is the gap right after
-				// it. Ownership at that gap is unreliable — an insert into
-				// the left neighbour lands a foreign atom exactly at `i`
-				// (`alpha`+X before the `Hello` caret) and would pull the
-				// caret across the block boundary. Rebase `i` onto the
-				// ANCHOR'S OWN block stream instead: the position is the
-				// display offset where that gap falls inside `o`'s segs —
-				// before foreign atoms at the seam, inside `o`'s own atoms
-				// if `o`'s claim extended over the bound atom. Inserts into
-				// `o` at the seam land right of the gap (left affinity), so
-				// composition still resolves before them.
-				const o = anchor.o;
-				let off = 0;
-				let seamEnd: number | null = null;
-				for (const seg of T.flatten(o, blocks, own)) {
-					const w = seg.i1 - seg.i0;
-					if (seg.t === t) {
-						if (i <= seg.i1) {
-							return {
-								blockId: o,
-								offset: off + Math.min(Math.max(i - seg.i0, 0), w)
-							};
-						}
-						seamEnd = off + w;
-					}
-					off += w;
-				}
-				// `i` past `o`'s last atom in this text → the seam sits at
-				// that atom's stream position. `o` live but holding no
-				// atoms in this text at all → the seam's destination
-				// emptied in place (a merge would have KILLED `o`, and a
-				// backing change moves the caret to `o`'s start either
-				// way) — the caret belongs at the empty block's start,
-				// not inside the neighbour's surviving content.
-				if (seamEnd !== null) return { blockId: o, offset: seamEnd };
-				return { blockId: o, offset: 0 };
+			const s = own.streamsIn(anchor.b).find((x) => x.start <= i && i <= x.end);
+			const owner = s === undefined ? DEAD : own.ownerOf(s.block);
+			if (typeof owner !== 'string' || !isLiveIn(view(), owner)) return null;
+			let offset = 0;
+			for (const seg of own.display(owner) ?? []) {
+				if (seg.block === s!.block && seg.i0 <= i && i <= seg.i1)
+					return { blockId: owner, offset: offset + i - seg.i0 };
+				offset += seg.i1 - seg.i0;
 			}
-			const preferRightFacet = assoc >= 0 || assoc <= -2;
-			let hit: { j: number; after: boolean } | null = null;
-			const adjacent: [number, boolean][] = preferRightFacet
-				? [
-						[i, false],
-						[i - 1, true]
-					]
-				: [
-						[i - 1, true],
-						[i, false]
-					];
-			for (const [j, after] of adjacent) {
-				if (ownedAt(j) !== undefined) {
-					hit = { j, after };
-					break;
-				}
-			}
-			if (hit === null) {
-				// Interval-boundary hops — the same outward search the dense row
-				// scanned position-by-position (WU6).
-				const dirs = preferRightFacet ? [1, -1] : [-1, 1];
-				for (const dir of dirs) {
-					const j = nearestOwned(ivs, i, dir, len);
-					if (j >= 0) {
-						hit = { j, after: dir < 0 };
-						break;
-					}
-				}
-			}
-			if (hit === null) {
-				const owner = own.ownerOf(t);
-				if (owner === DEAD) return null;
-				return { blockId: owner, offset: emissionOffset(blocks, own, owner, t) };
-			}
-			const owner = ownedAt(hit.j)!;
-			const segs = T.flatten(owner, blocks, own);
-			let off = 0;
-			for (const seg of segs) {
-				if (seg.t === t && seg.i0 <= hit.j && hit.j < seg.i1) {
-					return {
-						blockId: owner,
-						offset: off + (hit.j - seg.i0) + (hit.after ? 1 : 0)
-					};
-				}
-				off += seg.i1 - seg.i0;
-			}
-			return { blockId: owner, offset: off };
+			return null;
 		};
 
 		/** A replacement content item normalized at ingress. */
@@ -1661,10 +1403,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			version: runsView.version()
 		});
 		const live = (id: BlockId): boolean => isLiveIn(view(), id);
-		/** A live block that can hold content: its own backing text and slice list. */
+		/** A live block that can hold content: it has a claims list (a streamless block gets its own text on first write). */
 		const contentTarget = (id: BlockId): boolean => {
 			const rec = view().blocks.get(id);
-			return live(id) && rec?.content !== undefined && rec.slicesNode !== undefined;
+			return live(id) && rec?.claimsNode !== undefined;
 		};
 
 		/** `count` ranks at `index` among `parent`'s children, the moving `exclude` left out. */
@@ -1781,8 +1523,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 
 		/**
-		 * Split `id` at content `offset` into a new sibling `newId` (the tail's
-		 * slice records move, no atom copies; children follow the sibling).
+		 * Split `id` at content `offset` into a new sibling `newId` (one boundary
+		 * item and the claims that follow it, no text copied; children follow).
 		 * `tail` decides the sibling's type/data once (default: the source's).
 		 * Refused on `void` blocks. `ids`: the new block.
 		 */
@@ -1796,7 +1538,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const born = ref(newId);
 			const pos = positionOf(id);
 			const rec = view().blocks.get(id);
-			if (pos === null || isVoid(id) || !rec?.slicesNode || M.blockNodeOf(doc, born) !== null) {
+			if (pos === null || isVoid(id) || !rec?.claimsNode || M.blockNodeOf(doc, born) !== null) {
 				return REFUSED;
 			}
 			const [at] = clamp(id, offset, 0);
@@ -1828,7 +1570,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const from = ref(fromId);
 			const into = ref(intoId);
 			const v = view();
-			if (!canMerge(from, into) || !v.blocks.get(into)?.slicesNode) return REFUSED;
+			if (!canMerge(from, into) || !v.blocks.get(into)?.claimsNode) return REFUSED;
 			if (M.isSelfOrDescendant(v.placements, v.own, into, from)) return REFUSED;
 			return plan([into], [merge(from, into), ...move(childrenIds(from), into, Infinity)]);
 		};
@@ -1841,7 +1583,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 */
 		const mergeUnnesting = (from: BlockId, into: BlockId): Prepared => {
 			const pos = canMerge(from, into) ? positionOf(from) : null;
-			if (pos === null || !view().blocks.get(into)?.slicesNode) return REFUSED;
+			if (pos === null || !view().blocks.get(into)?.claimsNode) return REFUSED;
 			const kids = childrenIds(from);
 			const reset = isIsland(from) ? defaultChild(pos.parent) : null;
 			const retype = reset === null ? [] : kids.flatMap((kid) => attr(kid, TYPE, reset));

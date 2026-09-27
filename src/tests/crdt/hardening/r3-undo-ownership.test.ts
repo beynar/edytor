@@ -21,11 +21,11 @@
  *   concurrent remote edit on b:       b='hello !world', tail=''
  *   binary save → reload:              wrongness persists byte-for-byte
  *
- * U3 FIXED this via the doc-level undo-ownership repair: after an
- * UndoManager transaction resurrects deleted atoms, the doc writes a
- * fresh replicated slice claim (g = maxG+1) on the pre-delete holder's
- * list over the COPY atoms — every replica derives the restored owner
- * from ordinary replicated state. See docs/crdt-v14-undo-ownership-adr.md.
+ * U3 fixed this with a doc-level undo-ownership repair (a follow-up slice
+ * claim over the copies). Since arch-v2 D12 there is no repair: a stream is
+ * delimited by boundary items placed at the end of the gap (P7), and the
+ * engine's `redoItem` integrates each copy between its tombstone's left
+ * neighbour and the tombstone — inside the stream that displayed it (R2).
  * `wu6-delete-range.test.ts` was amended in the same unit: it previously
  * expected the redistributed ownership ('early'='' after undo), i.e. it
  * blessed this defect.
@@ -235,48 +235,32 @@ describe('R3 — undo restores text into the wrong paragraph', () => {
 	});
 });
 
-describe('R3 — repair listener lifecycle', () => {
-	// The repair observer is attached ONCE per doc across ALL bindEdytorDoc
-	// bindings (module-level WeakMap dedupe) and NEVER detached — Gate-H
-	// showed the refcounted lease released the listener on the last facade
-	// `dispose`, leaving a permanently-unrepaired undo window. The
-	// WeakMap entry and the doc-held listener are freed with the doc, so
-	// the "never detach" policy leaks nothing. The listener lives on the
-	// `beforeObserverCalls` channel (it must write the repair BEFORE the
-	// committing transaction's observer pass — see the ADR).
+describe('R3 — no repair listener (arch-v2 D12: streams need no undo repair)', () => {
+	// Until D12 an undo-resurrection repair observer sat on the
+	// `beforeObserverCalls` channel, once per doc. Under R2 every boundary
+	// sits after the gap it was inserted into, and `redoItem` puts each copy
+	// beside its tombstone — inside the stream that displayed it — so no
+	// facade installs any observer there, and the undo is one update.
 	const channelListeners = (doc: Y.Doc, channel: string): number =>
 		(doc as unknown as { _observers?: Map<string, Set<unknown>> })._observers?.get(channel)?.size ??
 		0;
 	const updateListeners = (doc: Y.Doc): number => channelListeners(doc, 'update');
 	const repairListeners = (doc: Y.Doc): number => channelListeners(doc, 'beforeObserverCalls');
 
-	test('N facades on one doc share ONE repair listener — installed once, never detached', () => {
+	test('facades install no repair listener; the index listens to `update` only while reporting', () => {
 		const doc = new Y.Doc();
 		const baseUpdate = updateListeners(doc);
-		const baseRepair = repairListeners(doc);
 		const ed1 = E.create(doc);
 		const ed2 = E.create(doc);
-		// Facades add no `update` listener (arch-v2 D9: the doc's index is
-		// the one derived-state owner, and it listens to `update` only while
-		// a change-report subscriber exists); the repair observer is exactly
-		// ONE regardless of facade/binding count.
 		expect(updateListeners(doc) - baseUpdate).toBe(0);
-		expect(repairListeners(doc) - baseRepair).toBe(1);
+		expect(repairListeners(doc)).toBe(0);
 		const off = ed2.onChange(() => {});
 		expect(updateListeners(doc) - baseUpdate).toBe(1); // the index's report listener
 		ed1.dispose();
-		expect(repairListeners(doc) - baseRepair).toBe(1); // repair survives
 		ed2.dispose();
 		off();
 		expect(updateListeners(doc)).toBe(baseUpdate); // no subscriber, no listener
-		expect(repairListeners(doc) - baseRepair).toBe(1); // repair stays armed
-		// Re-creating on the same doc does NOT add a second listener.
-		const ed3 = E.create(doc);
-		expect(updateListeners(doc) - baseUpdate).toBe(0);
-		expect(repairListeners(doc) - baseRepair).toBe(1);
-		ed3.dispose();
-		expect(updateListeners(doc)).toBe(baseUpdate);
-		expect(repairListeners(doc) - baseRepair).toBe(1);
+		expect(repairListeners(doc)).toBe(0);
 	});
 
 	test('disposing one facade keeps undo repair working for the other', () => {

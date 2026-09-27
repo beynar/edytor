@@ -8,10 +8,10 @@
  * ```
  * doc.get('blocks')                        registry — flat map, block-id → node
  *   └ <blockId>  node('block')             stable identity; survives every move
- *        ├ id / type / data                payload attrs
+ *        ├ id / type / data / n            payload attrs (n: incarnation nonce)
  *        ├ del.<writer>                     per-writer delete marks (any live mark = deleted)
- *        ├ content → node('content')       BACKING text (atoms never move/copy — U04)
- *        ├ slices → node('slices')         ordered slice/merge claim records (U04)
+ *        ├ content → node('content')       BACKING text of a block created fresh (R2)
+ *        ├ claims → node('claims')         ordered merge claims `{m}` (R2)
  *        └ at → node('at')                 placement candidate map
  *             └ "<seq>.<clientId>" → { p: parentId|null, r: rank }
  * ```
@@ -38,16 +38,10 @@
  *   beats concurrent move. Deleting marks the block and every block it
  *   displays through merge claims (R3); undo removes only the undoer's mark.
  *
- * Content ownership semantics (see docs/crdt-v14-text-ownership-adr.md, U04):
- *
- * - A block's visible content is the concatenation of its `slices` claims —
- *   anchored ranges into backing texts (`{t,s,e}`) plus merge claims
- *   (`{m}`) that adopt another list's claims wholesale. Split divides the
- *   slice list; merge appends a claim — no atom is ever copied.
- * - `owner(b)` resolves the claim graph: the max-stamp merge claim on `b`'s
- *   list wins; a merged block is hidden (`owner(b) !== b`) and its atoms
- *   route to the claimer. Per-atom contested ranges resolve by claim-item
- *   stamp. A delete-marked block hides every atom its records win.
+ * Content ownership (R2, `text/model.ts`): a block displays its stream —
+ * delimited by boundary items in a backing text — then the displays of the
+ * blocks it claims. A split inserts one boundary; a merge appends one claim;
+ * no text is ever copied.
  *
  * The module is engine-agnostic: `bindModel(Y)` takes the vendored module
  * surface so this file type-checks against structural interfaces and never
@@ -65,11 +59,11 @@ import {
 	DEL_PREFIX,
 	hasDeleteMark,
 	ID,
+	CLAIMS,
+	CLAIMS_NODE,
 	INLINE_NODE,
 	NONCE,
 	REGISTRY_KEY,
-	SLICES,
-	SLICES_NODE,
 	TYPE
 } from '../schema.js';
 import { nonceOf, randOf } from '../rand.js';
@@ -78,10 +72,9 @@ import {
 	bindText,
 	computeOwners,
 	DEAD,
+	type MergeClaim,
 	type Owner,
 	type Ownership,
-	type SlicePayload,
-	type SliceRecord,
 	type TextBlockRec
 } from '../text/model.js';
 import { cloneJson, jsonEquals } from '../../utils/json.js';
@@ -181,10 +174,9 @@ type OrderedCand = PlacementCand & { blockId: BlockId };
 /**
  * Internal per-block record: the registry node plus decoded placement
  * candidates sorted by `(seq, client)` descending (index 0 = argmax), plus
- * the U04 slice-claim state (backing text + ordered claim entries).
+ * the text-ownership facts (nonce, own text, merge claims).
  */
 export type BlockRec = TextBlockRec & {
-	node: EngineNode;
 	type: string;
 	data: unknown;
 	cands: PlacementCand[];
@@ -283,14 +275,14 @@ export const candidatesOf = (node: EngineNode): PlacementCand[] => {
  * display edge back into the block's own subtree (e.g. `A` merged into
  * `B` while `B` sits under `A`, or `del` resurrection re-arming a claim).
  * Because the claim-owner map is computed independently of placements
- * (claims live on `slices` records), the acceptance test composes the
+ * (claims live on `claims` lists), the acceptance test composes the
  * two: the candidate's tentative display edge is `ownerOf(p)` — a live
  * self-owned block, `null` (root), or `DEAD` (deleted parent — a sink
  * that hides the subtree and can never close a cycle).
  *
  * `ownerOf` is injectable so callers can share an ownership context they
  * already computed; standalone callers get the map derived from the
- * block records (pure over replicated state — claims are `slices` items).
+ * block records (pure over replicated state — claims are `claims` items).
  */
 export const resolvePlacements = (
 	blocks: Map<BlockId, BlockRec>,
@@ -405,7 +397,7 @@ export const isLiveIn = (v: Pick<ModelView, 'placements' | 'own'>, id: BlockId):
 
 /**
  * The parent under which `id` actually DISPLAYS. Normally the resolved
- * placement parent — but when that parent is merged-away (its slice list
+ * placement parent — but when that parent is merged-away (its display
  * is claimed, `owner(parent) !== parent`), the child follows the claim to
  * the merge destination: `owner(parent)`. This prevents hidden orphans in
  * chained/overlapping merges (B+C merged while A+B merged: C's children
@@ -481,7 +473,7 @@ export const bindModel = (Y: EngineApi) => {
 	/** Construct a detached v14 node, viewed through the structural interface. */
 	const newNode = (name: string): EngineNode => new Y.Node(name) as unknown as EngineNode;
 
-	/** The U04 text-ownership engine (anchors, slice claims, ownership). */
+	/** The text-ownership engine (streams, claims, anchors). */
 	const T = bindText(Y);
 	/** The doc's index — every read of derived state goes through it. */
 	const R = bindRuns(Y);
@@ -542,15 +534,6 @@ export const bindModel = (Y: EngineApi) => {
 		if (atom.data !== undefined) node.setAttr(DATA, atom.data);
 		return node;
 	};
-
-	/**
-	 * Serialize one backing-text node's sequence into ContentItem runs —
-	 * the full-range case of the direct sequence walk (WU8), mid-transaction
-	 * safe the same way `toDelta()` was. Live inline nodes come back as
-	 * `{kind:'inline'}` items identical to the old delta-JSON conversion.
-	 */
-	const contentItemsOf = (content: EngineNode): ContentItem[] =>
-		content.doc === null ? [] : (T.itemsOfRange(content, 0, content.length) as ContentItem[]);
 
 	// ── structural predicates ───────────────────────────────────────────
 
@@ -623,10 +606,11 @@ export const bindModel = (Y: EngineApi) => {
 	};
 
 	/**
-	 * One registry entry: the block node with its `content`/`slices`/`at`
-	 * maps, `records` on its slice list and the atomic first placement
-	 * candidate `{p, r}` stamped `1.clientID`. Pre-integration writes
-	 * materialize when the node integrates (the registry write comes last).
+	 * One registry entry: the block node with its `claims` list (holding
+	 * `claims`), its own backing text holding `items` (none for a split-born
+	 * block: its stream lives in the text it was split from), and the atomic
+	 * first placement candidate `{p, r}` stamped `1.clientID`. Pre-integration
+	 * writes materialize when the node integrates (the registry write comes last).
 	 */
 	const createBlock = (
 		doc: EngineDoc,
@@ -634,20 +618,28 @@ export const bindModel = (Y: EngineApi) => {
 		type: unknown,
 		data: unknown,
 		place: PlacementValue,
-		records: SlicePayload[],
-		items: readonly ContentItem[] = []
+		claims: MergeClaim[],
+		items: readonly ContentItem[] | null,
+		n: number = nonceOf(doc)
 	): void => {
 		const node = newNode(BLOCK_NODE);
 		node.setAttr(ID, id);
-		node.setAttr(NONCE, nonceOf(doc));
+		node.setAttr(NONCE, n);
 		node.setAttr(TYPE, type);
 		if (data !== undefined) node.setAttr(DATA, data);
-		const content = newNode(CONTENT_NODE);
-		node.setAttr(CONTENT, content);
-		const slices = newNode(SLICES_NODE);
-		node.setAttr(SLICES, slices);
+		if (items !== null) node.setAttr(CONTENT, textOf(items));
+		const list = newNode(CLAIMS_NODE);
+		node.setAttr(CLAIMS, list);
+		if (claims.length > 0) list.insert(0, claims);
 		const at = newNode(AT_NODE);
 		node.setAttr(AT, at);
+		at.setAttr(`1.${doc.clientID}`, place);
+		registryOf(doc).setAttr(id, node);
+	};
+
+	/** A detached backing text holding `items`. */
+	const textOf = (items: readonly ContentItem[]): EngineNode => {
+		const content = newNode(CONTENT_NODE);
 		let clen = 0;
 		for (const item of items) {
 			if (item.kind === 'text') {
@@ -657,58 +649,25 @@ export const bindModel = (Y: EngineApi) => {
 				content.insert(clen++, [buildInline(item)]);
 			}
 		}
-		if (records.length > 0) slices.insert(0, records);
-		at.setAttr(`1.${doc.clientID}`, place);
-		registryOf(doc).setAttr(id, node);
-	};
-
-	/**
-	 * Give `node` a fresh backing text holding `sp.content` and a fresh slice
-	 * list with one self record over the whole text (`g`: its generation —
-	 * 0 for a new block). Pre-integration writes materialize when the node
-	 * integrates.
-	 */
-	const writeContent = (node: EngineNode, sp: BlockSpec, g = 0): void => {
-		const content = newNode(CONTENT_NODE);
-		node.setAttr(CONTENT, content);
-		let clen = 0;
-		for (const item of sp.content ?? []) {
-			if (item.kind === 'text') {
-				content.insert(clen, item.text, item.marks);
-				clen += item.text.length;
-			} else {
-				content.insert(clen, [buildInline(item)]);
-				clen += 1;
-			}
-		}
-		const slices = newNode(SLICES_NODE);
-		node.setAttr(SLICES, slices);
-		slices.insert(0, [
-			{
-				t: sp.id,
-				s: { i: null, a: -1 },
-				e: { i: null, a: 0 },
-				...(g > 0 && { g })
-			} satisfies SliceRecord
-		]);
+		return content;
 	};
 
 	/**
 	 * Restore definition (O24, D-22 — migration only; a first import
 	 * restores into an empty doc): make `specs` the whole visible document
-	 * under their own ids, in ONE transaction. An
-	 * existing id keeps its registry entry: every delete mark is cleared and
-	 * its type, data, placement and content are rewritten in place (a fresh
-	 * backing text whose self record outranks every claim ever written on that
-	 * text, so records of split-off or merged-in blocks can win none of it);
-	 * an absent id is created. Every other block gets this writer's delete
-	 * mark. Ranks are derived from the tree alone and the rewrites are
-	 * last-writer-wins attrs, so two replicas restoring the same specs
-	 * converge on one copy.
+	 * under their own ids, in ONE transaction. An existing id keeps its
+	 * registry entry: every delete mark is cleared and its type, data,
+	 * placement and content are rewritten in place — a fresh own text holding
+	 * the spec's content and an empty claims list; a block whose stream still
+	 * starts at a live boundary gets a new nonce, so that boundary goes inert
+	 * and the own text is its stream (R2). An absent id is created. Every other
+	 * block gets this writer's delete mark. Ranks are derived from the tree
+	 * alone and the rewrites are last-writer-wins attrs, so two replicas
+	 * restoring the same specs converge on one copy.
 	 */
 	const restoreBlocks = (doc: EngineDoc, specs: BlockSpec[]): void =>
 		doc.transact(() => {
-			const { maxG } = view(doc).own;
+			const { own } = view(doc);
 			const keep = new Set<BlockId>();
 			const restore = (list: BlockSpec[], parent: BlockId | null): void => {
 				let rank: string | undefined;
@@ -721,6 +680,8 @@ export const bindModel = (Y: EngineApi) => {
 						node.setAttr(NONCE, nonceOf(doc));
 						node.setAttr(AT, newNode(AT_NODE));
 						registryOf(doc).setAttr(sp.id, node);
+					} else if (own.streamOf(sp.id)?.home !== sp.id && own.streamOf(sp.id) !== undefined) {
+						node.setAttr(NONCE, nonceOf(doc));
 					}
 					for (const key of [...node.attrKeys()]) {
 						if (key.startsWith(DEL_PREFIX)) node.deleteAttr(key);
@@ -728,7 +689,8 @@ export const bindModel = (Y: EngineApi) => {
 					if (node.getAttr(TYPE) !== sp.type) node.setAttr(TYPE, sp.type);
 					if (sp.data === undefined) node.deleteAttr(DATA);
 					else if (!jsonEquals(node.getAttr(DATA), sp.data)) node.setAttr(DATA, sp.data);
-					writeContent(node, sp, (maxG.get(sp.id) ?? 0) + 1);
+					node.setAttr(CONTENT, textOf(sp.content ?? []));
+					node.setAttr(CLAIMS, newNode(CLAIMS_NODE));
 					rank = rankBetween(rank, undefined, 0, () => 0);
 					writePlacement(doc, node, parent, rank);
 					restore(sp.children ?? [], sp.id);
@@ -743,9 +705,9 @@ export const bindModel = (Y: EngineApi) => {
 		});
 
 	/**
-	 * Materialize one spec subtree: the block owns its whole backing text
-	 * (one `{B, E}` self-record); children recurse under a fresh
-	 * sequential rank chain (a new block has no siblings to interleave with).
+	 * Materialize one spec subtree: the block owns its backing text (its
+	 * stream from index 0); children recurse under a fresh sequential rank
+	 * chain (a new block has no siblings to interleave with).
 	 */
 	const materializeSpec = (
 		doc: EngineDoc,
@@ -753,8 +715,7 @@ export const bindModel = (Y: EngineApi) => {
 		parent: BlockId | null,
 		rank: string
 	): void => {
-		const self: SliceRecord = { t: sp.id, s: { i: null, a: -1 }, e: { i: null, a: 0 } };
-		createBlock(doc, sp.id, sp.type, sp.data, { p: parent, r: rank }, [self], sp.content);
+		createBlock(doc, sp.id, sp.type, sp.data, { p: parent, r: rank }, [], sp.content ?? []);
 		let left: string | undefined;
 		for (const child of sp.children ?? []) {
 			const r = rankBetween(left, undefined, doc.clientID, randOf(doc));
@@ -803,11 +764,12 @@ export const bindModel = (Y: EngineApi) => {
 
 	/**
 	 * Split `id` at content `offset` into the new block `newId` placed at
-	 * `place`: `id`'s slice list is divided at `offset` and the tail records
-	 * move into the new block's `slices` — no atom is copied, so an offline
-	 * edit to the tail keeps landing on the same backing items and is
-	 * claimed by the new block after convergence. `tail` is the new block's
-	 * type/data, decided once by the plan. Children are a separate step.
+	 * `place`: one boundary item for `newId` at the end of the gap at `offset`
+	 * (P7) and the merge claims that follow it re-inserted on the new block —
+	 * no text is copied, so an offline edit to the tail keeps landing on the
+	 * same items and displays in the new block after convergence. `tail` is
+	 * the new block's type/data, decided once by the plan. Children are a
+	 * separate step. `id` must have a stream or a claim ({@link ownText}).
 	 */
 	const writeSplit = (
 		doc: EngineDoc,
@@ -818,10 +780,17 @@ export const bindModel = (Y: EngineApi) => {
 		place: PlacementValue
 	): void => {
 		const { blocks, own } = view(doc);
-		const split = T.splitSlices(doc, blocks, own, id, offset)!;
+		const n = nonceOf(doc);
+		const claims = T.splitAt(blocks, own, id, offset, newId, n);
 		const data = tail.data === undefined ? undefined : cloneJson(tail.data);
-		createBlock(doc, newId, tail.type, data, place, split.tail);
+		createBlock(doc, newId, tail.type, data, place, claims, null, n);
 	};
+
+	/**
+	 * Give the streamless block `id` its own text (`T.ownText`: a derived
+	 * writer, a re-minted nonce) — before the first write that needs a stream.
+	 */
+	const ownText = (doc: EngineDoc, id: BlockId) => T.ownText(doc, view(doc).blocks.get(id)!);
 
 	// ── queries ─────────────────────────────────────────────────────────
 
@@ -829,7 +798,7 @@ export const bindModel = (Y: EngineApi) => {
 	 * Canonical projection: pure derivation from replicated state — the
 	 * visible tree of live blocks ordered by `(rank, id)`, children of
 	 * deleted/merged-away/invalid parents pruned (hidden-with-subtree
-	 * policy). Content is the ownership-projected slice list.
+	 * policy). Content is each block's display (R2).
 	 */
 	const project = (doc: EngineDoc): ProjectedDoc => ({ children: R.attach(doc).project() });
 
@@ -888,7 +857,6 @@ export const bindModel = (Y: EngineApi) => {
 		resolvePlacements,
 		childrenIndex,
 		positionInView,
-		contentItemsOf,
 		// write primitives (the document's prepared plans apply these)
 		buildInline,
 		isSelfOrDescendant,
@@ -897,6 +865,7 @@ export const bindModel = (Y: EngineApi) => {
 		materializeSpec,
 		collides,
 		writeSplit,
+		ownText,
 		// the seed writer's bulk insert
 		insertBlocks,
 		insertBlock: (doc: EngineDoc, dest: Destination, spec: BlockSpec) =>

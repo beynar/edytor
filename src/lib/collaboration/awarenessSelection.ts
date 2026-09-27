@@ -188,10 +188,7 @@ const isEngineAnchor = (value: unknown): value is TextAnchor['a'] =>
 		(isRecord(value.i) && typeof value.i.c === 'number' && typeof value.i.k === 'number'));
 
 const isTextAnchor = (value: unknown): value is TextAnchor =>
-	isRecord(value) &&
-	typeof value.b === 'string' &&
-	isEngineAnchor(value.a) &&
-	(value.o === undefined || typeof value.o === 'string');
+	isRecord(value) && typeof value.b === 'string' && isEngineAnchor(value.a);
 
 export type PresencePoint = { text: Text; offset: number };
 

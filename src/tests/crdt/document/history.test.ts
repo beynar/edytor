@@ -17,10 +17,10 @@
  *   captured; untracked origins (repair/bookkeeping) are not.
  * - RETENTION — `clearHistory()` is the pruning surface; stacks are
  *   otherwise unbounded.
- * - PER-VIEW SELECTION SNAPSHOTS — one shared history, independent view
- *   selections: stack-item `meta['cursor-location']` is a Map keyed by
- *   each view's transaction origin, so undo restores the undoing view's
- *   own caret and dead views stop writing.
+ * - PER-VIEW SELECTION VALUES — one shared history, independent view
+ *   selections: stack-item `meta['edytor:selection']` is a Map keyed by
+ *   each view's transaction origin of `{before, after}` selection values, so
+ *   undo restores the undoing view's own caret and dead views stop writing.
  */
 import { describe, expect, it } from 'vitest';
 import { tick } from 'svelte';
@@ -29,11 +29,20 @@ import * as decoding from 'lib0-v14/decoding';
 import { Y } from '../../../lib/crdt/engine.js';
 import { attachDocument, bindSync, createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
-import { getHistorySelectionSnapshot } from '$lib/history/historySelectionSnapshot.js';
+import { project, type SelectionValue } from '$lib/session/selection.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONDoc } from '../../../lib/utils/json.js';
 
 const syncProtocol = bindSync(Y);
+
+/** The caret offset a view recorded on a stack item (`before` or `after`). */
+const recorded = (view: Edytor, item: { meta: Map<string, unknown> }, side: 'before' | 'after') => {
+	const entries = item.meta.get('edytor:selection') as
+		| Map<unknown, Record<string, SelectionValue | undefined>>
+		| undefined;
+	const value = entries?.get(view.transaction)?.[side];
+	return value && project(value, view.facade).start?.offset;
+};
 
 const docValue = (text = 'hello'): JSONDoc => ({
 	children: [{ type: 'paragraph', content: [{ text }] }]
@@ -271,7 +280,7 @@ describe('retention — clearHistory', () => {
 	});
 });
 
-describe('multi-view shared history — per-view selection snapshots', () => {
+describe('multi-view shared history — per-view selection values', () => {
 	const makeViews = (document: ReturnType<typeof createDocument>, count: number) =>
 		Array.from({ length: count }, () => new Edytor({ document, plugins: [richTextPlugin] }));
 
@@ -288,16 +297,13 @@ describe('multi-view shared history — per-view selection snapshots', () => {
 		document.transact(() => document.facade.insertText(v1.root!.children[0]!.id, 2, 'X'));
 
 		const stackItem = document.history.undoStack.at(-1)!;
-		const snapshots = stackItem.meta.get('cursor-location') as Map<unknown, unknown>;
-		expect(snapshots).toBeInstanceOf(Map);
-		// Both live views wrote their OWN snapshot under their origin key.
-		expect(snapshots.has(v1.transaction)).toBe(true);
-		expect(snapshots.has(v2.transaction)).toBe(true);
-
-		const s1 = getHistorySelectionSnapshot(v1, stackItem)!;
-		const s2 = getHistorySelectionSnapshot(v2, stackItem)!;
-		expect(s1.yEnd).toBe(1);
-		expect(s2.yEnd).toBe(2);
+		const entries = stackItem.meta.get('edytor:selection') as Map<unknown, unknown>;
+		expect(entries).toBeInstanceOf(Map);
+		// Both live views wrote their OWN entry under their origin key.
+		expect(entries.has(v1.transaction)).toBe(true);
+		expect(entries.has(v2.transaction)).toBe(true);
+		expect(recorded(v1, stackItem, 'before')).toBe(1);
+		expect(recorded(v2, stackItem, 'before')).toBe(2);
 
 		// POP POLICY (F1/U4b): the shared manager's `stack-item-popped`
 		// reaches BOTH views' listeners, but only the ISSUING view restores
@@ -305,6 +311,10 @@ describe('multi-view shared history — per-view selection snapshots', () => {
 		// issuer. For v2 the pop is indistinguishable from a REMOTE undo:
 		// its caret is left alone, never regressed to the snapshot it
 		// recorded when the undone edit committed.
+		// A newer gesture moves both carets: the step's `after` stays where
+		// the edit left each view.
+		v1.markUserGesture();
+		v2.markUserGesture();
 		v1.selection.setCollapsedStateAtTextOffset(text, 0);
 		v2.selection.setCollapsedStateAtTextOffset(text, 0);
 		v1.historyUndo();
@@ -312,11 +322,11 @@ describe('multi-view shared history — per-view selection snapshots', () => {
 		expect(v1.selection.state.yStart).toBe(1); // issuer restores its snapshot
 		expect(v2.selection.state.yStart).toBe(0); // sibling untouched — not pulled back to 2
 
-		// The popped item moved to the redo side carrying both views'
-		// at-undo-time carets — still keyed per view.
+		// The redo side carries both views' entries, still keyed per view:
+		// `after` is where the step's transaction left each caret.
 		const popped = document.history.redoStack.at(-1)!;
-		expect(getHistorySelectionSnapshot(v1, popped)?.yEnd).toBe(0);
-		expect(getHistorySelectionSnapshot(v2, popped)?.yEnd).toBe(0);
+		expect(recorded(v1, popped, 'after')).toBe(1);
+		expect(recorded(v2, popped, 'after')).toBe(2);
 
 		v1.selection.destroy();
 		v2.selection.destroy();
@@ -351,24 +361,20 @@ describe('multi-view shared history — per-view selection snapshots', () => {
 		document.destroy();
 	});
 
-	it('a destroyed view stops writing snapshots — the shared manager no longer holds its handlers', () => {
+	it('a destroyed view stops writing entries — the shared manager no longer holds its handlers', () => {
 		const document = createDocument({ value: docValue('ab') });
 		const [v1, v2] = makeViews(document, 2);
-		v1.selection.init();
-		v2.selection.init();
 		const [block] = document.facade.project().children;
 
-		v2.selection.destroy(); // detach without tearing down the view
+		v2.destroy(); // the view's history listeners go with it
 
 		document.transact(() => document.facade.insertText(block.id, 2, 'X'));
 		const stackItem = document.history.undoStack.at(-1)!;
-		const snapshots = stackItem.meta.get('cursor-location') as Map<unknown, unknown>;
-		expect(snapshots.has(v1.transaction)).toBe(true);
-		expect(snapshots.has(v2.transaction)).toBe(false);
+		const entries = stackItem.meta.get('edytor:selection') as Map<unknown, unknown>;
+		expect(entries.has(v1.transaction)).toBe(true);
+		expect(entries.has(v2.transaction)).toBe(false);
 
-		v1.selection.destroy();
 		v1.destroy();
-		v2.destroy();
 		document.destroy();
 	});
 });

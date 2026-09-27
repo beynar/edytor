@@ -108,7 +108,7 @@ export type BlockOperations = {
 		replace?: boolean;
 	};
 	insertFlow: { flow: Flow; target: FlowTarget };
-	deleteBlocks: { blocks: Block[]; snapshot?: boolean };
+	deleteBlocks: { blocks: Block[] };
 	/** A divider at the caret: its steps are the conversion, insertion or split it plans. */
 	insertDivider: {};
 };

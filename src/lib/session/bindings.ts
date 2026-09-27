@@ -17,7 +17,6 @@ import {
 } from '$lib/hotkeys/navigation.js';
 import { insertLineBreak, runIntent } from '$lib/events/beforeInputCommands.js';
 import { intentSnapshot } from '$lib/events/beforeInputSnapshot.js';
-import { runHistoryCommand } from '$lib/events/undoRestore.js';
 import {
 	getSelectedBlocksInDocumentOrder,
 	deleteSelectedBlocks
@@ -147,7 +146,8 @@ const history =
 	({ edytor, prevent }) =>
 		prevent(() => {
 			suppressHotkeyDomDrift(edytor, HISTORY_HOTKEY_DOM_REPAIR_WINDOW_MS);
-			void runHistoryCommand(edytor, direction, { queueSelectionSnapshot: true });
+			if (direction === 'undo') edytor.historyUndo();
+			else edytor.historyRedo();
 		});
 
 /** Block-selection keys walk the document order with the island seal (R5). */

@@ -11,7 +11,6 @@ import {
 } from '$lib/selection/domSelection.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
 import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
-import { runHistoryCommand } from './undoRestore.js';
 import { isAndroidChromeBrowser } from './events.utils.js';
 import {
 	isNativeInteractiveControl,
@@ -431,7 +430,8 @@ const rememberBrowserOwnedInputTarget = (edytor: Edytor, snapshot: EventSnapshot
 			text,
 			offset: snapshot.yStart + (snapshot.data?.length ?? 0),
 			inputType: snapshot.inputType,
-			valueBeforeInput: text.stringContent
+			valueBeforeInput: text.stringContent,
+			selection: edytor.selection.value
 		};
 		return;
 	}
@@ -441,21 +441,22 @@ const rememberBrowserOwnedInputTarget = (edytor: Edytor, snapshot: EventSnapshot
 			text,
 			offset: snapshot.yStart,
 			inputType: snapshot.inputType,
-			valueBeforeInput: text.stringContent
+			valueBeforeInput: text.stringContent,
+			selection: edytor.selection.value
 		};
 		return;
 	}
 
 	if (isTextLocalRearrangeInput(edytor, snapshot)) {
 		// Transpose/yank — the caret stays at the same model offset after
-		// the native rearrange; recording the target preserves the undo
-		// selection snapshot and plugin insert notifications.
+		// the native rearrange; recording the target preserves the plugin
+		// insert notifications.
 		edytor.browserOwnedInputTarget = {
 			text,
 			offset: snapshot.yStart,
-			historyOffset: snapshot.yStart,
 			inputType: snapshot.inputType,
-			valueBeforeInput: text.stringContent
+			valueBeforeInput: text.stringContent,
+			selection: edytor.selection.value
 		};
 		return;
 	}
@@ -468,9 +469,9 @@ const rememberBrowserOwnedInputTarget = (edytor: Edytor, snapshot: EventSnapshot
 		edytor.browserOwnedInputTarget = {
 			text,
 			offset,
-			historyOffset: snapshot.yStart,
 			inputType: snapshot.inputType,
-			valueBeforeInput: text.stringContent
+			valueBeforeInput: text.stringContent,
+			selection: edytor.selection.value
 		};
 		return;
 	}
@@ -633,9 +634,8 @@ const runBeforeInputHistoryCommand = (edytor: Edytor, snapshot: EventSnapshot) =
 
 	snapshot.event.preventDefault();
 	edytor.suppressNextInputFallback();
-	void runHistoryCommand(edytor, snapshot.inputType === 'historyUndo' ? 'undo' : 'redo', {
-		queueSelectionSnapshot: true
-	});
+	if (snapshot.inputType === 'historyUndo') edytor.historyUndo();
+	else edytor.historyRedo();
 	return true;
 };
 

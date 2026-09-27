@@ -12,10 +12,7 @@ import {
 } from '$lib/selection/replaceSelection.js';
 import { isNestedForeignEditableTarget } from './nativeInteractiveControl.js';
 
-const deleteSelectedContent = async (edytor: Edytor) => {
-	edytor.selection.queueNextUndoSelectionSnapshot();
-	await replaceSelectionWithCollapsedTarget(edytor);
-};
+const deleteSelectedContent = (edytor: Edytor) => replaceSelectionWithCollapsedTarget(edytor);
 
 export async function onCut(this: Edytor, e: ClipboardEvent) {
 	if (this.readonly || this.selection.state.isVoidEditableElement) {

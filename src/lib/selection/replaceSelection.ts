@@ -62,15 +62,13 @@ export const replaceSelectionWithCollapsedTarget = async (
 };
 
 export const removeSelectedBlocksForReplacement = (
-	edytor: Edytor,
-	{ queueUndoSelectionSnapshot = false }: { queueUndoSelectionSnapshot?: boolean } = {}
+	edytor: Edytor
 ): RemovedSelectedBlocks | null => {
 	const selectedBlocks = getSelectedBlocksInDocumentOrder(edytor);
 	const parent = selectedBlocks[0]?.parent;
 	const index = selectedBlocks[0]?.index ?? 0;
 	if (!parent) return null;
-	if (!edytor.deleteBlocks({ blocks: selectedBlocks, snapshot: queueUndoSelectionSnapshot }))
-		return null;
+	if (!edytor.deleteBlocks({ blocks: selectedBlocks })) return null;
 	return { parent, index, selectedBlocks };
 };
 
@@ -89,7 +87,7 @@ export const deleteSelectedBlocks = (edytor: Edytor): Text | null => {
 		getClosestUnselectedBlock(selectedBlocks.at(-1), set, 'next')
 	)?.firstEditableText;
 	const removed = edytor.dispatcher.caret(text, text?.length ?? 0, () =>
-		removeSelectedBlocksForReplacement(edytor, { queueUndoSelectionSnapshot: true })
+		removeSelectedBlocksForReplacement(edytor)
 	);
 	return removed ? (text ?? null) : null;
 };

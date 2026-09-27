@@ -5,17 +5,20 @@ import { Text } from '$lib/text/text.svelte.js';
 import {
 	createDomRange,
 	createDomSelectionSnapshotFromRange,
-	domSelectionCoversRange,
 	getActiveElement,
 	getDomSelection
 } from '$lib/selection/domSelection.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
+import { sameValue } from '$lib/session/selection.js';
 import {
 	INTENTS,
 	attemptOf,
 	intentOf,
 	kindOf,
+	reproject,
 	type Attempt,
+	type Drift,
+	type Expect,
 	type Occurrence
 } from '$lib/session/attempt.js';
 import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
@@ -28,6 +31,7 @@ import {
 } from './nativeInteractiveControl.js';
 import { observeInternalDragSources } from './onDrop.js';
 import { runBeforeInputCommand, runBeforeInputHotkeyBridge } from './beforeInputCommands.js';
+import { getNormalizedDomText } from './onInput.js';
 
 const isRangeInsideEditor = (edytor: Edytor, range: StaticRange) =>
 	Boolean(
@@ -56,6 +60,7 @@ const isTextInsertionInput = (inputType: string) =>
 	inputType !== 'insertFromDrop' &&
 	['text', 'composition', 'payload'].includes(kindOf(inputType) ?? '');
 
+/** The Android no-op-Backspace and model-owned drift deadlines (plan §9.1 rule 5). */
 const NATIVE_INPUT_REPAIR_WINDOW_MS = 150;
 
 const getBeforeInputTextTargetRange = (
@@ -144,47 +149,24 @@ const syncSelectionFromDeclaredRange = (edytor: Edytor, occurrence: Occurrence, 
 		return;
 	}
 
-	const selection = getDomSelection(edytor.node);
-
-	const liveRange = createDomRange(targetRange.startContainer);
-	const collapsesDeleteTargetRange =
-		Boolean(deleteDir(reported)) && edytor.selection.state.isCollapsed;
-	if (collapsesDeleteTargetRange) {
-		const backward = deleteDir(reported) === 'back';
-		const container = backward ? targetRange.endContainer : targetRange.startContainer;
-		const offset = backward ? targetRange.endOffset : targetRange.startOffset;
-		liveRange.setStart(container, offset);
-		liveRange.collapse(true);
+	// The declared range becomes the model selection directly: the DOM
+	// selection is not a transport (a delete's caret edge for a collapsed caret).
+	const range = createDomRange(targetRange.startContainer);
+	const dir = deleteDir(reported);
+	if (dir && edytor.selection.state.isCollapsed) {
+		const [container, offset] =
+			dir === 'back'
+				? [targetRange.endContainer, targetRange.endOffset]
+				: [targetRange.startContainer, targetRange.startOffset];
+		range.setStart(container, offset);
+		range.collapse(true);
 	} else {
-		liveRange.setStart(targetRange.startContainer, targetRange.startOffset);
-		liveRange.setEnd(targetRange.endContainer, targetRange.endOffset);
+		range.setStart(targetRange.startContainer, targetRange.startOffset);
+		range.setEnd(targetRange.endContainer, targetRange.endOffset);
 	}
-	if (
-		!collapsesDeleteTargetRange &&
-		// U8a — the browser usually fires beforeinput with the target range
-		// the DOM selection already covers (e.g. deleting the current
-		// selection). The previous unconditional removeAllRanges+addRange
-		// forced a synchronous layout per keystroke for an identical write.
-		// Only skip when the selection matches exactly — a reversed live
-		// selection still gets normalized to forward, as before.
-		!domSelectionCoversRange(
-			selection,
-			liveRange.startContainer,
-			liveRange.startOffset,
-			liveRange.endContainer,
-			liveRange.endOffset,
-			false
-		)
-	) {
-		selection?.removeAllRanges();
-		selection?.addRange(liveRange);
-	}
-	edytor.selection.applySelectionSnapshot(
-		createDomSelectionSnapshotFromRange(liveRange, selection),
-		{
-			restoreNormalizedDomRange: false
-		}
-	);
+	edytor.selection.applySelectionSnapshot(createDomSelectionSnapshotFromRange(range), {
+		restoreNormalizedDomRange: false
+	});
 };
 
 /**
@@ -309,62 +291,68 @@ const isTextLocalRearrangeInput = (edytor: Edytor, attempt: Attempt) =>
 /**
  * The owner rule: the browser performs a text-local insertion, replacement,
  * rearrangement or deletion (and composition-text deletion); the model
- * performs everything else.
+ * performs everything else. Answers the change a browser-owned attempt
+ * expects, or `undefined` when the model owns it.
  */
-const shouldLetBrowserHandleBeforeInput = (edytor: Edytor, attempt: Attempt) =>
-	(!attempt.hasDataTransferTextPayload && isTextLocalReplacement(edytor, attempt)) ||
-	attempt.inputType === 'deleteCompositionText' ||
-	isSafeTextLocalInsertion(edytor, attempt) ||
-	isTextLocalDeletion(edytor, attempt) ||
-	isTextLocalRearrangeInput(edytor, attempt);
-
-/** The change a browser-owned attempt expects: its text, value before and caret after. */
-const rememberBrowserOwnedInputTarget = (edytor: Edytor, attempt: Attempt) => {
+const browserExpectation = (edytor: Edytor, attempt: Attempt): Expect | null | undefined => {
 	const text = attempt.startText;
-	const target = (offset: number, historyOffset?: number) =>
+	const change = (
+		caret: number,
+		historyCaret?: number,
+		after: string | null = null
+	): Expect | null =>
 		text && edytor.selection.selectedBlocks.size === 0
-			? {
-					text,
-					offset,
-					historyOffset,
-					inputType: attempt.inputType,
-					valueBeforeInput: text.stringContent
-				}
+			? { kind: 'change', host: text, before: text.stringContent, after, caret, historyCaret }
 			: null;
-	edytor.browserOwnedInputTarget = isSafeTextLocalInsertion(edytor, attempt)
-		? target(attempt.yStart + (attempt.data?.length ?? 0))
-		: isTextLocalReplacement(edytor, attempt)
-			? target(attempt.yStart)
-			: // Transpose/yank — the caret stays at the same model offset after
-				// the native rearrange; the target keeps the undo selection
-				// snapshot and plugin insert notifications.
-				isTextLocalRearrangeInput(edytor, attempt)
-				? target(attempt.yStart, attempt.yStart)
-				: isTextLocalDeletion(edytor, attempt)
-					? target(
-							!attempt.isCollapsed || attempt.inputType === 'deleteContentForward'
-								? attempt.yStart
-								: Math.max(0, attempt.yStart - 1),
-							attempt.yStart
-						)
-					: null;
+	if (isSafeTextLocalInsertion(edytor, attempt)) {
+		const { yStart } = attempt;
+		const data = attempt.data ?? '';
+		const before = text!.stringContent;
+		return change(
+			yStart + data.length,
+			undefined,
+			before.slice(0, yStart) + data + before.slice(yStart)
+		);
+	}
+	if (!attempt.hasDataTransferTextPayload && isTextLocalReplacement(edytor, attempt))
+		return change(attempt.yStart);
+	// Transpose/yank — the caret stays at the same model offset after the
+	// native rearrange; the target keeps the undo selection snapshot and
+	// plugin insert notifications.
+	if (isTextLocalRearrangeInput(edytor, attempt)) return change(attempt.yStart, attempt.yStart);
+	if (isTextLocalDeletion(edytor, attempt)) {
+		const at =
+			!attempt.isCollapsed || attempt.inputType === 'deleteContentForward'
+				? attempt.yStart
+				: Math.max(0, attempt.yStart - 1);
+		return change(at, attempt.yStart);
+	}
+	if (attempt.inputType === 'deleteCompositionText') return null;
+	return undefined;
 };
 
-/** How the browser's own mutation around a model-owned attempt is handled: repair it, flush structure too. */
-const driftOf = (edytor: Edytor, attempt: Attempt) => {
+/** How the browser's own mutation around a model-owned attempt is handled, for how long. */
+const driftOf = (edytor: Edytor, attempt: Attempt): [Drift, number] => {
 	const kind = kindOf(attempt.inputType);
-	const flush =
-		!attempt.cancelable && (isUnsafeNativeTextInsertion(edytor, attempt) || kind === 'break');
-	const repair =
-		flush || (!attempt.cancelable && kind === 'delete' && !isTextLocalDeletion(edytor, attempt));
-	return { repair, flush };
+	if (attempt.cancelable || kind === 'history') return ['refresh', 0];
+	if (isUnsafeNativeTextInsertion(edytor, attempt) || kind === 'break')
+		return ['discard', NATIVE_INPUT_REPAIR_WINDOW_MS];
+	if (kind === 'delete' && !isTextLocalDeletion(edytor, attempt))
+		return ['restore', NATIVE_INPUT_REPAIR_WINDOW_MS];
+	return ['refresh', 0];
 };
 
-const scheduleAndroidChromeNativeBackspaceFallback = (edytor: Edytor, attempt: Attempt) => {
+/**
+ * Android can announce a non-cancelable Backspace it never performs. At the
+ * deadline, the attempt that no adoption applied deletes one grapheme before
+ * its anchored caret — unless the caret moved or a native change is pending.
+ */
+const androidNoOpBackspaceDeadline = (edytor: Edytor, attempt: Attempt) => {
+	const text = attempt.startText;
 	if (
 		!isAndroidChromeBrowser() ||
 		attempt.inputType !== 'deleteContentBackward' ||
-		!attempt.startText ||
+		!text ||
 		!attempt.isCollapsed ||
 		attempt.isAtStartOfText ||
 		attempt.isTextSpanning ||
@@ -373,31 +361,19 @@ const scheduleAndroidChromeNativeBackspaceFallback = (edytor: Edytor, attempt: A
 		return;
 	}
 
-	const text = attempt.startText;
-	const initialValue = text.stringContent;
-	const initialDomValue = text.node?.textContent ?? null;
-	const initialOffset = attempt.yStart;
-
 	setTimeout(() => {
-		if (!text.isInDocument) {
-			return;
-		}
-
 		if (
-			text.stringContent !== initialValue ||
-			(text.node?.textContent ?? null) !== initialDomValue
+			attempt.phase !== 'open' ||
+			!text.isInDocument ||
+			!sameValue(edytor.selection.value, attempt.target) ||
+			getNormalizedDomText(text) !== text.stringContent
 		) {
 			return;
 		}
-
-		const { startText, yStart, isCollapsed } = edytor.selection.state;
-		if (startText !== text || !isCollapsed || yStart !== initialOffset) {
-			return;
-		}
-
-		edytor.suppressNextInputFallback();
+		attempt.phase = 'applied';
+		edytor.attempts.drift(attempt, 'refresh', 0);
 		const deletion = text.deleteText({ direction: 'BACKWARD', length: 1 });
-		void edytor.selection.setAtTextOffset(text, deletion?.start ?? initialOffset - 1);
+		void edytor.selection.setAtTextOffset(text, deletion?.start ?? attempt.yStart - 1);
 	}, NATIVE_INPUT_REPAIR_WINDOW_MS);
 };
 
@@ -495,17 +471,18 @@ const runBeforeInputPlugins = (edytor: Edytor, event: InputEvent) => {
 /**
  * Perform a model-owned attempt as one user command (undo policy, prevention
  * scope): the key's bindings first (offered once per occurrence), then its
- * drift windows, the extension hook and the intent's command.
+ * drift expectation, the extension hook and the intent's command.
  */
 const perform = (edytor: Edytor, attempt: Attempt, offered: string | null) =>
 	edytor.dispatcher.run(attempt.inputType, async () => {
 		const { event } = attempt;
 		const kind = kindOf(attempt.inputType);
+		attempt.phase = 'applied';
 		resetCompositionIfNeeded(edytor, attempt);
 		markCompositionInputHandledIfNeeded(edytor, attempt);
 		event?.preventDefault();
 		if (kind === 'history') {
-			edytor.suppressNextInputFallback();
+			edytor.attempts.drift(attempt, 'refresh', 0);
 			void runHistoryCommand(edytor, attempt.inputType === 'historyUndo' ? 'undo' : 'redo', {
 				queueSelectionSnapshot: true
 			});
@@ -515,14 +492,21 @@ const perform = (edytor: Edytor, attempt: Attempt, offered: string | null) =>
 		// observer repairs what the browser did around it.
 		if (runBeforeInputHotkeyBridge(edytor, attempt, offered)) return;
 
-		const { repair, flush } = driftOf(edytor, attempt);
-		const window = repair ? NATIVE_INPUT_REPAIR_WINDOW_MS : 0;
-		edytor.suppressNextInputFallback(window);
-		if (event) runBeforeInputPlugins(edytor, event);
-		if (repair) edytor.repairSuppressedInputFallback(window, { flushObservedMutations: flush });
-		await runBeforeInputCommand(edytor, attempt);
-		if (repair) edytor.suppressObservedMutationFallback(window);
-		if (flush && attempt.inputType !== 'insertLineBreak' && edytor.selection.state.startText) {
+		const [mode, window] = driftOf(edytor, attempt);
+		edytor.attempts.drift(attempt, mode, window);
+		try {
+			if (event) runBeforeInputPlugins(edytor, event);
+			await runBeforeInputCommand(edytor, attempt);
+		} catch (error) {
+			attempt.phase = 'failed';
+			throw error;
+		}
+		if (mode !== 'refresh') edytor.attempts.arm(attempt, window);
+		if (
+			mode === 'discard' &&
+			attempt.inputType !== 'insertLineBreak' &&
+			edytor.selection.state.startText
+		) {
 			await edytor.selection.setAtTextOffset(
 				edytor.selection.state.startText,
 				edytor.selection.state.yStart
@@ -535,44 +519,102 @@ const perform = (edytor: Edytor, attempt: Attempt, offered: string | null) =>
 	});
 
 /**
- * Admit one occurrence and run it: resolve its declared target, fix intent
- * and target, then let the browser perform it or perform it here.
- * `keyIntent` is the intent a keydown of the same occurrence announced.
+ * Admit one occurrence and run it: resolve its declared target, fix intent,
+ * target and owner, then let the browser perform it or perform it here.
+ * `key` is the keydown's attempt when that keydown announced the intent;
+ * `reuse` is that attempt itself when its `beforeinput` never came.
  */
 const occur = (
 	edytor: Edytor,
 	occurrence: Occurrence,
-	keyIntent: string | null,
-	offered: string | null
+	key: Attempt | null = null,
+	offered: string | null = null,
+	reuse?: Attempt
 ) => {
 	observeInternalDragSources(edytor.node?.getRootNode());
-	const intent = intentOf(occurrence.inputType, occurrence.data ?? null, keyIntent ?? undefined);
-	syncSelectionFromDeclaredRange(edytor, occurrence, intent);
-	const attempt = attemptOf(edytor, occurrence, keyIntent ?? undefined);
+	const intent = intentOf(occurrence.inputType, occurrence.data ?? null, key?.inputType);
+	if (!reuse) syncSelectionFromDeclaredRange(edytor, occurrence, intent);
+	const attempt = reuse ? reproject(edytor, reuse) : attemptOf(edytor, occurrence, key?.inputType);
 	if (
 		shouldIgnoreBeforeInput(edytor, attempt) ||
 		deleteTrailingSoftBreakBackward(edytor, attempt)
 	) {
+		if (reuse) edytor.attempts.close(reuse);
 		return;
 	}
-	if (shouldLetBrowserHandleBeforeInput(edytor, attempt)) {
+	const expect = browserExpectation(edytor, attempt);
+	if (expect !== undefined) {
 		edytor.dispatcher.cut(attempt.inputType);
-		rememberBrowserOwnedInputTarget(edytor, attempt);
-		scheduleAndroidChromeNativeBackspaceFallback(edytor, attempt);
+		edytor.attempts.admit(attempt, 'browser', expect);
+		androidNoOpBackspaceDeadline(edytor, attempt);
 		return;
 	}
 
 	if (!edytor.dispatcher.permits()) {
 		occurrence.event?.preventDefault();
+		if (reuse) edytor.attempts.close(reuse);
 		return;
 	}
+	if (!reuse) edytor.attempts.admit(attempt, 'model');
 	return perform(edytor, attempt, offered);
 };
 
+/** An occurrence with no `beforeinput` of its own (paste, drop, a line break found in the DOM). */
+export const runOccurrence = (edytor: Edytor, occurrence: Occurrence) => {
+	const offered = edytor.hotKeys.offered;
+	edytor.hotKeys.offered = null;
+	return occur(edytor, occurrence, edytor.attempts.confirm(), offered);
+};
+
+/**
+ * A keydown whose intent some engines never announce (structural keys): an
+ * attempt at the keydown's anchored target, run at the missing-`beforeinput`
+ * deadline unless a `beforeinput` of the same occurrence confirms it first.
+ */
+export const admitKeyAttempt = (edytor: Edytor, inputType: string) => {
+	const attempt = edytor.attempts.admit(
+		attemptOf(edytor, { inputType, cancelable: false }, inputType),
+		'model'
+	);
+	edytor.attempts.drift(attempt, 'refresh', 50);
+	// The missing-`beforeinput` deadline (plan §9.1 rule 5).
+	setTimeout(() => void runKeyAttempt(edytor, attempt));
+};
+
+const runKeyAttempt = async (edytor: Edytor, attempt: Attempt) => {
+	if (edytor.attempts.key !== attempt) return;
+	edytor.attempts.arm(attempt, NATIVE_INPUT_REPAIR_WINDOW_MS);
+	// The browser may have moved the selection since the keydown: the key
+	// acts on its anchored target, which followed any concurrent edit.
+	edytor.selection.select(attempt.target, 'repair');
+	const { state, selectedBlocks } = edytor.selection;
+	if (selectedBlocks.size > 0) {
+		edytor.selection.selectBlocks(...selectedBlocks);
+	} else if (state.startText && state.endText) {
+		await (state.isCollapsed
+			? edytor.selection.setAtTextOffset(state.startText, state.yStart)
+			: edytor.selection.setAtRange(state.startText, state.yStart, state.endText, state.yEnd));
+	} else {
+		// Its target is gone (a remote delete): a named no-op.
+		edytor.attempts.close(attempt);
+		return;
+	}
+	// A real `beforeinput` or a newer key may have taken over meanwhile.
+	if (edytor.attempts.key !== attempt) return;
+	await edytor.userInput(() =>
+		occur(
+			edytor,
+			{ inputType: attempt.inputType, cancelable: false },
+			attempt,
+			INTENTS[attempt.inputType]?.key ?? null,
+			attempt
+		)
+	);
+};
+
 export async function onBeforeInput(this: Edytor, event: InputEvent) {
-	// The keydown of this occurrence may have announced its intent and offered its key.
-	const keyIntent = this.structuralKeyFallbackInputType;
-	this.cancelStructuralKeyFallback();
+	// The keydown of this occurrence may have admitted its attempt and offered its key.
+	const key = this.attempts.confirm();
 	const offered = this.hotKeys.offered;
 	this.hotKeys.offered = null;
 	if (event.inputType === 'deleteByDrag' && event.isTrusted) {
@@ -582,7 +624,7 @@ export async function onBeforeInput(this: Edytor, event: InputEvent) {
 	}
 
 	if (isBrowserOwnedNativeInput(this, event)) {
-		this.browserOwnedInputTarget = null;
+		this.attempts.clear((attempt) => attempt.owner === 'browser');
 		return;
 	}
 
@@ -630,7 +672,7 @@ export async function onBeforeInput(this: Edytor, event: InputEvent) {
 			cancelable: event.cancelable,
 			event
 		},
-		keyIntent,
+		key,
 		offered
 	);
 }

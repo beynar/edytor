@@ -16,6 +16,8 @@ import {
 import { runHistoryCommand } from './undoRestore.js';
 import { getTextContentOffsetAtPoint } from './domTextOffset.js';
 import { getTextPath } from './events.utils.js';
+import { runOccurrence } from './onBeforeInput.js';
+import { kindOf, type Attempt, type Expect, type TextPoint } from '$lib/session/attempt.js';
 
 const ZERO_WIDTH_SPACE = '\u200B';
 
@@ -42,9 +44,7 @@ const isCompositionCommitInputEvent = (event: Event) =>
 const isNativeLineBreakTextInput = (event: Event) =>
 	typeof InputEvent !== 'undefined' &&
 	event instanceof InputEvent &&
-	(event.inputType === 'insertText' ||
-		event.inputType === 'insertParagraph' ||
-		event.inputType === 'insertLineBreak');
+	(event.inputType === 'insertText' || kindOf(event.inputType) === 'break');
 
 const isTextInsertionInput = (event: Event): event is InputEvent =>
 	typeof InputEvent !== 'undefined' &&
@@ -56,12 +56,12 @@ const isTextInsertionInput = (event: Event): event is InputEvent =>
 const isNativeHistoryInput = (event: Event): event is InputEvent =>
 	typeof InputEvent !== 'undefined' &&
 	event instanceof InputEvent &&
-	(event.inputType === 'historyUndo' || event.inputType === 'historyRedo');
+	kindOf(event.inputType) === 'history';
 
 const runInputHistoryCommand = (edytor: Edytor, event: InputEvent) =>
 	runHistoryCommand(edytor, event.inputType === 'historyUndo' ? 'undo' : 'redo');
 
-const getNormalizedDomText = (text: Text) => {
+export const getNormalizedDomText = (text: Text) => {
 	let value = text.node?.textContent ?? '';
 
 	if (value === ZERO_WIDTH_SPACE) {
@@ -77,20 +77,17 @@ const getNormalizedDomText = (text: Text) => {
 
 export const isLiveText = (text: Text) => text.isInDocument;
 
-const queueBrowserOwnedInputSelectionSnapshot = (
-	edytor: Edytor,
-	target: NonNullable<Edytor['browserOwnedInputTarget']>
-) => {
-	const textPath = getTextPath(target.text);
+const queueBrowserOwnedInputSelectionSnapshot = (edytor: Edytor, text: Text, offset: number) => {
+	const textPath = getTextPath(text);
 	edytor.selection.queueNextUndoSelectionSnapshot({
 		isCollapsed: true,
 		isReversed: false,
-		startTextId: target.text.id,
-		endTextId: target.text.id,
+		startTextId: text.id,
+		endTextId: text.id,
 		startTextPath: textPath,
 		endTextPath: textPath,
-		yStart: target.historyOffset ?? target.offset,
-		yEnd: target.historyOffset ?? target.offset,
+		yStart: offset,
+		yEnd: offset,
 		selectedBlockIds: [],
 		selectedBlockPaths: []
 	});
@@ -151,49 +148,27 @@ const getInputType = (event: Event) => {
 	return typeof inputType === 'string' ? inputType : '';
 };
 
-const isDeleteInputType = (inputType: string) => inputType.startsWith('delete');
-
-const isBrowserOwnedTextInputType = (inputType: string) =>
-	inputType === 'insertText' || inputType === 'insertReplacementText';
-
-const isCompatibleBrowserOwnedInputType = (
-	target: NonNullable<Edytor['browserOwnedInputTarget']>,
-	inputType: string
-) =>
-	!inputType ||
-	inputType === target.inputType ||
-	(isBrowserOwnedTextInputType(inputType) && isBrowserOwnedTextInputType(target.inputType));
-
-const shouldPreserveModelSelectionDuringRepair = (event: Event) => {
-	const inputType = getInputType(event);
-	return inputType === 'insertParagraph' || inputType === 'insertLineBreak';
-};
-
 const waitForSuppressedObservedMutationRepair = () =>
 	new Promise((resolve) => setTimeout(resolve, 20));
 
-const getModelSelectionRepairTarget = (edytor: Edytor) => {
-	const text = edytor.selection.state.startText;
-	if (!text) {
-		return null;
-	}
-
-	return {
-		text,
-		offset: edytor.selection.state.yStart
-	};
-};
-
-const getSuppressedInputRepairTarget = (
+/**
+ * Where drift repair puts the caret: the command's caret, else the model
+ * caret (a restore, or a line break), else the DOM caret; the event's text last.
+ */
+const driftRepairTarget = (
 	edytor: Edytor,
 	event: Event,
-	preserveModelSelection = false
+	repair: boolean,
+	caret: TextPoint | null
 ) => {
-	if (preserveModelSelection || shouldPreserveModelSelectionDuringRepair(event)) {
-		return getModelSelectionRepairTarget(edytor) ?? getEventTextRepairTarget(edytor, event);
-	}
-
-	return getCollapsedDomTextSelection(edytor) ?? getEventTextRepairTarget(edytor, event);
+	const { startText, yStart } = edytor.selection.state;
+	const model = startText ? { text: startText, offset: yStart } : null;
+	const preferModel = repair || kindOf(getInputType(event)) === 'break';
+	return (
+		(repair && caret) ||
+		(preferModel ? model : getCollapsedDomTextSelection(edytor)) ||
+		getEventTextRepairTarget(edytor, event)
+	);
 };
 
 const removeUnmanagedLineBreaks = (text: Text) => {
@@ -290,32 +265,6 @@ const getNativeLineBreakInsertionIndexFromValue = (text: Text, value: string) =>
 const getNativeLineBreakInsertionIndex = (text: Text) =>
 	getNativeLineBreakInsertionIndexFromValue(text, getNormalizedDomText(text));
 
-const createSyntheticStructuralInput = (inputType: InputEvent['inputType']) => {
-	const event = new Event('beforeinput', {
-		bubbles: true,
-		cancelable: false
-	}) as InputEvent;
-	Object.defineProperties(event, {
-		inputType: {
-			value: inputType,
-			configurable: true
-		},
-		data: {
-			value: null,
-			configurable: true
-		},
-		dataTransfer: {
-			value: null,
-			configurable: true
-		},
-		getTargetRanges: {
-			value: () => [],
-			configurable: true
-		}
-	});
-	return event;
-};
-
 export const handleNativeLineBreakTextValue = async (edytor: Edytor, text: Text, value: string) => {
 	if (!isLiveText(text)) {
 		return false;
@@ -326,17 +275,16 @@ export const handleNativeLineBreakTextValue = async (edytor: Edytor, text: Text,
 		return false;
 	}
 
+	// The native line break is the key's occurrence: its intent, run by the model.
 	const inputType =
-		edytor.structuralKeyFallbackInputType === 'insertLineBreak' || value.includes('\n')
+		edytor.attempts.confirm()?.inputType === 'insertLineBreak' || value.includes('\n')
 			? 'insertLineBreak'
 			: 'insertParagraph';
-
-	edytor.cancelStructuralKeyFallback();
 	text.refreshFromModel();
 	removeUnmanagedLineBreaks(text);
 	await tick();
 	await edytor.selection.setAtTextOffset(text, insertionIndex);
-	await edytor.onBeforeInput(createSyntheticStructuralInput(inputType));
+	await runOccurrence(edytor, { inputType, cancelable: false });
 	return true;
 };
 
@@ -438,6 +386,7 @@ export const reconcileTextValue = async (
 		scheduleRemoveStalePlaceholders(text);
 		return false;
 	}
+	edytor.attempts.adopted(text);
 
 	text.syncFromModel();
 	await tick();
@@ -543,112 +492,113 @@ const notifyBrowserOwnedTextInsertions = (
 	}
 };
 
+/** Adopt the change a browser-owned attempt expected on its host. */
 const reconcileBrowserOwnedInputTarget = async (
 	edytor: Edytor,
-	target: NonNullable<Edytor['browserOwnedInputTarget']>,
+	attempt: Attempt,
+	expect: Extract<Expect, { kind: 'change' }>,
 	event: Event
 ) => {
-	const inputType = getInputType(event);
-	if (!isCompatibleBrowserOwnedInputType(target, inputType)) {
+	const { host } = expect;
+	if (!isLiveText(host)) {
 		return false;
 	}
 
-	if (!isLiveText(target.text)) {
-		return false;
-	}
-
-	if (isDeleteInputType(inputType) || isDeleteInputType(target.inputType)) {
+	if (kindOf(getInputType(event)) === 'delete' || kindOf(attempt.inputType) === 'delete') {
 		edytor.dispatcher.cut('deleteContent');
 	}
 
-	const domText = getNormalizedDomText(target.text);
+	// A model-owned attempt's drift on the same host is not this attempt's
+	// change: adopt what this attempt expected, and re-render the rest.
+	const dom = getNormalizedDomText(host);
+	const drifted = expect.after !== null && dom !== expect.after && edytor.attempts.drifting(host);
+	const domText = drifted ? expect.after! : dom;
 	const nativeSelection = getCollapsedDomTextSelection(edytor);
 	const selectionOffset =
-		nativeSelection?.text === target.text
+		!drifted && nativeSelection?.text === host
 			? nativeSelection.offset
-			: getCaretOffsetAfterTextDiff(target.valueBeforeInput, domText, target.offset);
-	const operations = planDomTextDiff(target.text, target.text.stringContent, domText);
+			: getCaretOffsetAfterTextDiff(expect.before, domText, expect.caret);
+	const operations = planDomTextDiff(host, host.stringContent, domText);
 
-	queueBrowserOwnedInputSelectionSnapshot(edytor, {
-		...target,
-		offset: selectionOffset
-	});
-	const didReconcile = await reconcileTextValue(edytor, target.text, domText, selectionOffset);
+	queueBrowserOwnedInputSelectionSnapshot(edytor, host, expect.historyCaret ?? selectionOffset);
+	const didReconcile = await reconcileTextValue(edytor, host, domText, selectionOffset);
 	if (!didReconcile) {
 		edytor.selection.nextUndoSelectionSnapshot = null;
-		if (target.text.stringContent !== domText) {
+		if (host.stringContent !== domText) {
 			return false;
 		}
 	}
+	if (drifted) host.refreshFromModel();
+	attempt.phase = 'applied';
 
-	await edytor.selection.setAtTextOffset(
-		target.text,
-		Math.min(selectionOffset, target.text.length)
-	);
-	notifyBrowserOwnedTextInsertions(edytor, target.text, operations);
+	await edytor.selection.setAtTextOffset(host, Math.min(selectionOffset, host.length));
+	notifyBrowserOwnedTextInsertions(edytor, host, operations);
 	return true;
 };
 
-export async function onInput(this: Edytor, event: Event) {
-	if (this.shouldSuppressNextInputFallback) {
-		const shouldRepair = this.shouldRepairSuppressedInputFallback;
-		const hasPendingStructuralKeyFallback = Boolean(this.structuralKeyFallbackInputType);
-		const shouldRefreshFromModel = !shouldRepair;
-		const shouldFlushObservedMutations = this.shouldFlushSuppressedObservedMutationFallback;
-		const shouldPreserveModelSelection = shouldRepair || shouldFlushObservedMutations;
-		if (hasPendingStructuralKeyFallback && !shouldRepair) {
-			this.consumeNextInputFallbackSuppression();
-			this.suppressObservedMutationFallback(50);
-			return;
-		}
-		if (shouldPreserveModelSelection) {
-			await tick();
-		}
-		if (shouldFlushObservedMutations) {
-			await waitForSuppressedObservedMutationRepair();
-		}
-		const explicitRepairTarget = this.consumeNextInputFallbackSuppression();
-		const target =
-			explicitRepairTarget && shouldPreserveModelSelection
-				? explicitRepairTarget
-				: shouldRepair || shouldRefreshFromModel
-					? getSuppressedInputRepairTarget(this, event, shouldPreserveModelSelection)
-					: null;
-		if (target) {
-			const eventTarget = getEventTextRepairTarget(this, event);
-			if (eventTarget && eventTarget.text !== target.text && isLiveText(eventTarget.text)) {
-				eventTarget.text.refreshFromModel();
-				removeUnmanagedLineBreaks(eventTarget.text);
-			}
-			target.text.refreshFromModel();
-			removeUnmanagedLineBreaks(target.text);
-			await tick();
-			const offset = Math.min(target.offset, target.text.length);
-			await this.selection.setAtTextOffset(target.text, offset);
-			if (shouldPreserveModelSelection) {
-				this.selection.ignoreNextSelectionChange = true;
-				setTimeout(() => {
-					if (!isLiveText(target.text)) {
-						return;
-					}
-					this.selection.ignoreNextSelectionChange = true;
-					void this.selection.setAtTextOffset(target.text, offset);
-				}, 30);
-			}
-		}
+/** Drift around a model-owned attempt: re-render its texts from the model and put the caret back. */
+const repairDrift = async (
+	edytor: Edytor,
+	attempt: Attempt,
+	expect: Extract<Expect, { kind: 'drift' }>,
+	event: Event
+) => {
+	const repair = expect.mode !== 'refresh';
+	if (attempt.isStructuralKeyFallback && attempt.phase === 'open' && !repair) {
+		// The key's attempt has not run yet: its deadline performs it.
+		expect.input = false;
+		edytor.attempts.arm(attempt, 50);
 		return;
 	}
+	if (repair) {
+		await tick();
+	}
+	if (expect.mode === 'discard') {
+		await waitForSuppressedObservedMutationRepair();
+	}
+	expect.input = false;
+	if (expect.mode !== 'discard') edytor.attempts.arm(attempt, 0);
+	const target = driftRepairTarget(edytor, event, repair, expect.caret);
+	if (!target) return;
+	const eventTarget = getEventTextRepairTarget(edytor, event);
+	if (eventTarget && eventTarget.text !== target.text && isLiveText(eventTarget.text)) {
+		eventTarget.text.refreshFromModel();
+		removeUnmanagedLineBreaks(eventTarget.text);
+	}
+	target.text.refreshFromModel();
+	removeUnmanagedLineBreaks(target.text);
+	await tick();
+	const offset = Math.min(target.offset, target.text.length);
+	await edytor.selection.setAtTextOffset(target.text, offset);
+	if (repair) {
+		edytor.selection.ignoreNextSelectionChange = true;
+		setTimeout(() => {
+			if (!isLiveText(target.text)) {
+				return;
+			}
+			edytor.selection.ignoreNextSelectionChange = true;
+			void edytor.selection.setAtTextOffset(target.text, offset);
+		}, 30);
+	}
+};
+
+export async function onInput(this: Edytor, event: Event) {
+	// The attempt this `input` belongs to: the newest whose expectation it satisfies.
+	const attempt = this.attempts.inputOf(getInputType(event));
+	const expect = attempt?.expect;
+	if (attempt && expect?.kind === 'drift') {
+		return repairDrift(this, attempt, expect, event);
+	}
+	if (attempt) this.attempts.close(attempt);
 
 	if (
 		isNativeInteractiveEvent(event) ||
 		(event && isNestedForeignEditableTarget(this.node, event.target))
 	) {
-		this.browserOwnedInputTarget = null;
 		return;
 	}
 
 	if (isNativeHistoryInput(event)) {
-		this.browserOwnedInputTarget = null;
 		// Same guard as the beforeinput channel — a history command
 		// mid-composition consumes capture groups while the IME still
 		// owns the DOM node (engines that deliver history via `input`
@@ -659,9 +609,6 @@ export async function onInput(this: Edytor, event: Event) {
 		await runInputHistoryCommand(this, event);
 		return;
 	}
-
-	const browserOwnedInputTarget = this.browserOwnedInputTarget;
-	this.browserOwnedInputTarget = null;
 
 	if (this.isComposing && isCompositionCommitInputEvent(event)) {
 		this.compositionState = null;
@@ -681,8 +628,9 @@ export async function onInput(this: Edytor, event: Event) {
 	}
 
 	if (
-		browserOwnedInputTarget &&
-		(await reconcileBrowserOwnedInputTarget(this, browserOwnedInputTarget, event))
+		attempt &&
+		expect?.kind === 'change' &&
+		(await reconcileBrowserOwnedInputTarget(this, attempt, expect, event))
 	) {
 		return;
 	}

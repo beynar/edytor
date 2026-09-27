@@ -177,7 +177,7 @@ describe('F-I1 — the keydown fallback runs against the anchored target', () =>
 });
 
 describe('F-I2 — the Android no-op Backspace deadline is phase-based', () => {
-	row.fails(
+	row(
 		'the browser does not delete; a peer edits inside the deadline → one grapheme before the anchored caret',
 		async () => {
 			const restore = asAndroid();
@@ -245,7 +245,7 @@ describe('F-I4 — a hook that throws fails the attempt', () => {
 		});
 	};
 
-	row.fails(
+	row(
 		'non-cancelable range insert: attempt failed, DOM equals model, next keystroke works, error surfaces',
 		async () => {
 			const errors = surfaced();
@@ -340,7 +340,7 @@ describe('F-I5 — Shift+Enter in a code line: one intent on desktop and Android
 });
 
 describe('F-I19 — attempts queue per host; drift is attributed by expectation', () => {
-	row.fails(
+	row(
 		'a prevented word delete with late drift, then a non-cancelable insertText: both land once',
 		async () => {
 			const { edytor, editor } = await renderDomEdytor(

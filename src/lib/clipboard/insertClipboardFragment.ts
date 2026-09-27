@@ -8,7 +8,6 @@ import {
 } from '$lib/selection/replaceSelection.js';
 import { jsonBlockToSpec, jsonContentToItems, type JSONText } from '$lib/utils/json.js';
 import { id } from '$lib/utils.js';
-import { setSuppressedInputRepairSelectionTarget } from '$lib/events/beforeInputRepairTarget.js';
 import { isValidEdytorClipboardFragment } from './fragmentData.js';
 import type { EdytorClipboardFragment } from './types.js';
 
@@ -50,7 +49,7 @@ export const pasteFlow = async (
 	const [text, offset] = edytor.insertFlow({ flow, target });
 	if (replace.length) edytor.selection.selectBlocks();
 	if (!text) return;
-	setSuppressedInputRepairSelectionTarget(edytor, text, offset);
+	edytor.attempts.caret(text, offset);
 	await edytor.selection.setAtTextOffset(text, offset);
 };
 

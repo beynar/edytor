@@ -10,7 +10,7 @@ import {
 import { onInput } from './events/onInput.js';
 import { onPaste } from './events/onPaste.js';
 import { preventUnsupportedDrop } from './events/onDrop.js';
-import { setSuppressedInputRepairSelectionTarget } from './events/beforeInputRepairTarget.js';
+import { Attempts, attemptOf } from './session/attempt.js';
 import { type JSONBlock, type JSONDoc, type SerializableContent } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection, type TextAnchor } from './selection/selection.svelte.js';
@@ -312,23 +312,8 @@ export class Edytor {
 		return { text: tracked, startOffset, length };
 	};
 	hasHandledCompositionInput = false;
-	shouldSuppressNextInputFallback = false;
-	shouldSuppressObservedMutationFallback = false;
-	shouldRepairSuppressedInputFallback = false;
-	shouldFlushSuppressedObservedMutationFallback = false;
-	suppressedInputRepairSelectionTarget: { text: Text; offset: number } | null = null;
-	browserOwnedInputTarget: {
-		text: Text;
-		offset: number;
-		historyOffset?: number;
-		inputType: InputEvent['inputType'];
-		valueBeforeInput: string;
-	} | null = null;
-	private inputFallbackSuppressionTimer: ReturnType<typeof setTimeout> | null = null;
-	private observedMutationFallbackSuppressionTimer: ReturnType<typeof setTimeout> | null = null;
-	private inputFallbackRepairTimer: ReturnType<typeof setTimeout> | null = null;
-	private structuralKeyFallbackTimer: ReturnType<typeof setTimeout> | null = null;
-	structuralKeyFallbackInputType: InputEvent['inputType'] | null = null;
+	/** The view's input attempts (R8, L6): one per user occurrence. */
+	readonly attempts = new Attempts();
 	private compositionSelectionRestoreFrame: number | null = null;
 	private compositionSelectionRestoreTimers: ReturnType<typeof setTimeout>[] = [];
 	/**
@@ -432,7 +417,7 @@ export class Edytor {
 	readonly dispatcher: Dispatcher = new Dispatcher(this);
 
 	transact = <T>(cb: () => T): T => {
-		this.suppressObservedMutationFallback();
+		this.attempts.hold();
 		return this.doc.transact(() => {
 			const result = cb();
 			return result;
@@ -1237,158 +1222,14 @@ export class Edytor {
 	 * focusout signal as a user blur but must still be repaired.
 	 */
 	lastUserGestureOutsideEditor = false;
-	suppressNextInputFallback = (durationMs = 0) => {
-		this.clearInputFallbackSuppression();
-		this.shouldSuppressNextInputFallback = true;
-		this.inputFallbackSuppressionTimer = setTimeout(() => {
-			this.shouldSuppressNextInputFallback = false;
-			this.inputFallbackSuppressionTimer = null;
-		}, durationMs);
-		this.suppressObservedMutationFallback(durationMs);
+	/** The post-commit window (I3 replaces it by the session tail): drift after a commit is the model's. */
+	private driftAfterComposition = () => {
+		const attempt = attemptOf(this, { inputType: 'compositionend', cancelable: false });
+		this.attempts.drift(this.attempts.admit(attempt, 'model'), 'restore', 50);
 	};
-	consumeNextInputFallbackSuppression = () => {
-		const shouldRepair = this.shouldRepairSuppressedInputFallback;
-		const shouldFlushObservedMutations = this.shouldFlushSuppressedObservedMutationFallback;
-		this.shouldSuppressNextInputFallback = false;
-		this.shouldRepairSuppressedInputFallback = false;
-		const repairSelectionTarget = this.suppressedInputRepairSelectionTarget;
-		this.suppressedInputRepairSelectionTarget = null;
-		if (this.inputFallbackRepairTimer && !(shouldRepair && shouldFlushObservedMutations)) {
-			clearTimeout(this.inputFallbackRepairTimer);
-			this.inputFallbackRepairTimer = null;
-		}
-		if (shouldRepair && shouldFlushObservedMutations) {
-			return repairSelectionTarget;
-		}
-		this.shouldFlushSuppressedObservedMutationFallback = false;
-		this.suppressObservedMutationFallback();
-		return repairSelectionTarget;
-	};
-	suppressObservedMutationFallback = (durationMs = 0) => {
-		if (this.observedMutationFallbackSuppressionTimer) {
-			clearTimeout(this.observedMutationFallbackSuppressionTimer);
-		}
-		this.shouldSuppressObservedMutationFallback = true;
-		this.observedMutationFallbackSuppressionTimer = setTimeout(() => {
-			this.shouldSuppressObservedMutationFallback = false;
-			this.observedMutationFallbackSuppressionTimer = null;
-		}, durationMs);
-	};
-	repairSuppressedInputFallback = (
-		durationMs = 0,
-		options: { flushObservedMutations?: boolean } = {}
-	) => {
-		if (this.inputFallbackRepairTimer) {
-			clearTimeout(this.inputFallbackRepairTimer);
-		}
-		this.shouldRepairSuppressedInputFallback = true;
-		this.shouldFlushSuppressedObservedMutationFallback = Boolean(options.flushObservedMutations);
-		this.inputFallbackRepairTimer = setTimeout(() => {
-			this.shouldRepairSuppressedInputFallback = false;
-			this.shouldFlushSuppressedObservedMutationFallback = false;
-			this.inputFallbackRepairTimer = null;
-		}, durationMs);
-	};
-	clearInputFallbackSuppression = () => {
-		if (this.inputFallbackSuppressionTimer) {
-			clearTimeout(this.inputFallbackSuppressionTimer);
-			this.inputFallbackSuppressionTimer = null;
-		}
-		if (this.observedMutationFallbackSuppressionTimer) {
-			clearTimeout(this.observedMutationFallbackSuppressionTimer);
-			this.observedMutationFallbackSuppressionTimer = null;
-		}
-		if (this.inputFallbackRepairTimer) {
-			clearTimeout(this.inputFallbackRepairTimer);
-			this.inputFallbackRepairTimer = null;
-		}
-		this.cancelStructuralKeyFallback();
-		this.shouldSuppressNextInputFallback = false;
-		this.shouldSuppressObservedMutationFallback = false;
-		this.shouldRepairSuppressedInputFallback = false;
-		this.shouldFlushSuppressedObservedMutationFallback = false;
-		this.suppressedInputRepairSelectionTarget = null;
-		this.browserOwnedInputTarget = null;
-		this.structuralKeyFallbackInputType = null;
-	};
-	cancelStructuralKeyFallback = () => {
-		if (this.structuralKeyFallbackTimer) {
-			clearTimeout(this.structuralKeyFallbackTimer);
-		}
-		this.structuralKeyFallbackTimer = null;
-		this.structuralKeyFallbackInputType = null;
-	};
-	scheduleStructuralKeyFallback = (inputType: InputEvent['inputType']) => {
-		this.cancelStructuralKeyFallback();
-		// The key's anchored target: it follows any concurrent edit until the deadline.
-		const target = this.selection.value;
-		this.suppressNextInputFallback(50);
-		this.structuralKeyFallbackInputType = inputType;
-		const fallbackTimer = setTimeout(() => {
-			void (async () => {
-				try {
-					// The browser may have moved the selection since the keydown.
-					this.selection.select(target, 'repair');
-					const { state, selectedBlocks } = this.selection;
-					if (selectedBlocks.size > 0) {
-						this.selection.selectBlocks(...selectedBlocks);
-					} else if (state.startText && state.endText) {
-						await (state.isCollapsed
-							? this.selection.setAtTextOffset(state.startText, state.yStart)
-							: this.selection.setAtRange(
-									state.startText,
-									state.yStart,
-									state.endText,
-									state.yEnd
-								));
-					} else {
-						// Its target is gone (a remote delete): a named no-op.
-						return;
-					}
-
-					// A real beforeinput or a newer structural key may have canceled
-					// this fallback while the DOM selection was being restored.
-					if (this.structuralKeyFallbackTimer !== fallbackTimer) {
-						return;
-					}
-
-					const event = new Event('beforeinput', {
-						bubbles: true,
-						cancelable: false
-					}) as InputEvent;
-					Object.defineProperties(event, {
-						inputType: {
-							value: inputType,
-							configurable: true
-						},
-						data: {
-							value: null,
-							configurable: true
-						},
-						dataTransfer: {
-							value: null,
-							configurable: true
-						},
-						getTargetRanges: {
-							value: () => [],
-							configurable: true
-						}
-					});
-					// Runs deferred (timer) — outside the keydown's flag
-					// window — so the fallback's own writes need the
-					// user-input flag for caret scroll. The serial was
-					// already bumped by the wrapping keydown.
-					await this.withUserInput(this.onBeforeInput, { bumpSerial: false })(event);
-				} finally {
-					if (this.structuralKeyFallbackTimer === fallbackTimer) {
-						this.structuralKeyFallbackTimer = null;
-						this.structuralKeyFallbackInputType = null;
-					}
-				}
-			})();
-		});
-		this.structuralKeyFallbackTimer = fallbackTimer;
-	};
+	/** Run `body` as part of the user's input (deferred work of an occurrence). */
+	userInput = <T>(body: () => T) =>
+		this.withUserInput(body, { bumpSerial: false })(new Event('input'));
 	clearCompositionSelectionRestore = () => {
 		if (this.compositionSelectionRestoreFrame !== null) {
 			cancelAnimationFrame(this.compositionSelectionRestoreFrame);
@@ -1571,8 +1412,7 @@ export class Edytor {
 				return;
 			}
 
-			this.suppressNextInputFallback(50);
-			this.repairSuppressedInputFallback(50);
+			this.driftAfterComposition();
 			const target =
 				this.selection.selectedBlocks.size > 0
 					? await replaceSelectedBlocksWithEmptyBlockTarget(this)
@@ -1587,7 +1427,7 @@ export class Edytor {
 				end: target.offset
 			});
 			const selectionOffset = target.offset + finalValue.length;
-			setSuppressedInputRepairSelectionTarget(this, target.text, selectionOffset);
+			this.attempts.caret(target.text, selectionOffset);
 			await this.stabilizeCompositionSelection(target.text, selectionOffset);
 			return;
 		}
@@ -1619,13 +1459,11 @@ export class Edytor {
 			return true;
 		};
 
-		this.suppressNextInputFallback(50);
-		this.repairSuppressedInputFallback(50);
+		this.driftAfterComposition();
 		const interruptedSelection = state.restoreSelectionAfterCommit;
 		const repairText = interruptedSelection ? this.getTextById(interruptedSelection.textId) : text;
 		if (repairText) {
-			setSuppressedInputRepairSelectionTarget(
-				this,
+			this.attempts.caret(
 				repairText,
 				interruptedSelection?.offset ?? startOffset + finalValue.length
 			);
@@ -1993,7 +1831,11 @@ export class Edytor {
 			on(node, 'cut', this.withUserInput(this.onCut)),
 			on(node, 'paste', this.withUserInput(this.onPaste)),
 			on(node, 'dragover', preventUnsupportedDrop),
-			on(node, 'drop', preventUnsupportedDrop),
+			on(
+				node,
+				'drop',
+				this.withUserInput((event: DragEvent) => preventUnsupportedDrop(event, this))
+			),
 			on(node, 'focusin', (event: FocusEvent) => {
 				// Focus arriving back inside the editor re-establishes editor
 				// ownership of the selection.
@@ -2048,7 +1890,7 @@ export class Edytor {
 			destroy: () => {
 				clearAttachedNativeState();
 				this.selection.destroy();
-				this.clearInputFallbackSuppression();
+				this.attempts.clear();
 				this.clearCompositionSelectionRestore();
 				this.clearDanglingCompositionBlurTimer();
 				// Drain AND clear: `attach` re-runs on every `{#key
@@ -2095,10 +1937,9 @@ export class Edytor {
 		// `selectionchange` listener + the published remote caret.
 		this.selection.destroy();
 
-		this.clearInputFallbackSuppression();
+		this.attempts.clear();
 		this.clearCompositionSelectionRestore();
 		this.clearDanglingCompositionBlurTimer();
-		this.cancelStructuralKeyFallback();
 		// Pending placeholder-repair passes (microtask/rAF/timers) must
 		// never act on a destroyed view — release kills them all.
 		this.placeholderRepair.release();

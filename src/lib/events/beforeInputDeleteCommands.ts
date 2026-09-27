@@ -2,7 +2,6 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import { tick } from 'svelte';
 import type { Attempt } from '$lib/session/attempt.js';
-import { setSuppressedInputRepairSelectionTarget } from './beforeInputRepairTarget.js';
 import { getNextWordEndOffset, getPreviousWordStartOffset } from './wordBoundary.js';
 
 const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: Attempt) => {
@@ -54,7 +53,7 @@ const deleteContentForward = async (edytor: Edytor, snapshot: Attempt) => {
 		}
 
 		currentBlock.mergeBlockForward();
-		setSuppressedInputRepairSelectionTarget(edytor, startText, yStart);
+		edytor.attempts.caret(startText, yStart);
 		await edytor.selection.setAtTextOffset(startText, yStart);
 		return;
 	}
@@ -115,7 +114,7 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: Attempt) => {
 		const offset = previousText?.length;
 		startText.parent.mergeBlockBackward();
 		if (previousText && typeof offset === 'number') {
-			setSuppressedInputRepairSelectionTarget(edytor, previousText, offset);
+			edytor.attempts.caret(previousText, offset);
 			await edytor.selection.setAtTextOffset(previousText, offset);
 		}
 		return;

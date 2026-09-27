@@ -378,15 +378,9 @@ export const settleEditor = async (page: Page) => {
 			};
 			const edytor = browserWindow.__EDYTOR__;
 			const hasPendingRepair = Boolean(
-				edytor?.structuralKeyFallbackTimer ||
-				edytor?.inputFallbackSuppressionTimer ||
-				edytor?.observedMutationFallbackSuppressionTimer ||
-				edytor?.inputFallbackRepairTimer ||
+				(edytor?.attempts as { busy?: boolean } | undefined)?.busy ||
 				edytor?.compositionSelectionRestoreFrame ||
 				edytor?.danglingCompositionBlurTimer ||
-				edytor?.shouldSuppressNextInputFallback ||
-				edytor?.shouldSuppressObservedMutationFallback ||
-				edytor?.shouldRepairSuppressedInputFallback ||
 				edytor?.isComposing
 			);
 			const quietFor = performance.now() - (browserWindow.__EDYTOR_DST_LAST_EVENT_AT__ ?? 0);

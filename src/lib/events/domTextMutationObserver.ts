@@ -1616,8 +1616,12 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 			return;
 		}
 
-		if (edytor.shouldSuppressObservedMutationFallback) {
-			if (edytor.shouldFlushSuppressedObservedMutationFallback) {
+		// Records inside a model-owned attempt's drift deadline (or a model
+		// write's render) are the model's: deferred, or discarded when the
+		// attempt owns the structure too.
+		const observed = edytor.attempts.observed;
+		if (observed) {
+			if (observed === 'discard') {
 				// Model-owned native input repairs must discard stale browser mutations.
 				const addedManagedRoots = getAddedManagedRoots(edytor, mutations);
 				observer.disconnect();

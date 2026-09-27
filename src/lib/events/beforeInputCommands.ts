@@ -17,7 +17,6 @@ import { getYIndex } from '$lib/selection/selection.utils.js';
 import { tick } from 'svelte';
 import { runBeforeInputDeleteCommand } from './beforeInputDeleteCommands.js';
 import { firstUriListEntry } from './dataTransferPayload.js';
-import { setSuppressedInputRepairSelectionTarget } from './beforeInputRepairTarget.js';
 import { INTENTS, intentSnapshot, kindOf, type Attempt } from '$lib/session/attempt.js';
 
 /**
@@ -241,7 +240,7 @@ const insertText = async (edytor: Edytor, snapshot: Attempt) => {
 			marks,
 			isAutoDot: true
 		});
-		setSuppressedInputRepairSelectionTarget(edytor, target.text, target.offset + 1);
+		edytor.attempts.caret(target.text, target.offset + 1);
 		await edytor.selection.setAtTextOffset(target.text, target.offset + 1);
 		await tick();
 		scheduleRemoveStalePlaceholders(target.text);
@@ -249,7 +248,7 @@ const insertText = async (edytor: Edytor, snapshot: Attempt) => {
 	}
 
 	target.text.insertText({ value: data, start: target.offset, end: target.offset, marks });
-	setSuppressedInputRepairSelectionTarget(edytor, target.text, target.offset + data.length);
+	edytor.attempts.caret(target.text, target.offset + data.length);
 	await edytor.selection.setAtTextOffset(target.text, target.offset + data.length);
 	await tick();
 	scheduleRemoveStalePlaceholders(target.text);
@@ -290,7 +289,7 @@ export const insertLineBreak = async (
 			? (sourceBlock.lastText ?? target.text)
 			: normalizedNextBlock.firstText!;
 	const offset = !split ? target.offset + (before ? 0 : 1) : before ? text.length : 0;
-	setSuppressedInputRepairSelectionTarget(edytor, text, offset);
+	edytor.attempts.caret(text, offset);
 	await edytor.selection.setAtTextOffset(text, offset);
 };
 
@@ -412,7 +411,7 @@ const insertParagraph = async (edytor: Edytor, snapshot: Attempt) => {
 			const lifted = liftContent(currentBlock, startText);
 			const text = lifted?.firstText;
 			if (text) {
-				setSuppressedInputRepairSelectionTarget(edytor, text, 0);
+				edytor.attempts.caret(text, 0);
 				await edytor.selection.setAtTextOffset(text, 0);
 			}
 			return;
@@ -425,7 +424,7 @@ const insertParagraph = async (edytor: Edytor, snapshot: Attempt) => {
 		});
 		const text = newBlock?.firstText;
 		if (text) {
-			setSuppressedInputRepairSelectionTarget(edytor, text, text.length);
+			edytor.attempts.caret(text, text.length);
 			await edytor.selection.setAtTextOffset(text, text.length);
 		}
 		return;
@@ -437,7 +436,7 @@ const insertParagraph = async (edytor: Edytor, snapshot: Attempt) => {
 				type: defaultBlock
 			}
 		});
-		setSuppressedInputRepairSelectionTarget(edytor, startText, 0);
+		edytor.attempts.caret(startText, 0);
 		await edytor.selection.setAtTextOffset(startText, 0);
 		return;
 	}
@@ -448,7 +447,7 @@ const insertParagraph = async (edytor: Edytor, snapshot: Attempt) => {
 	});
 	const text = newBlock?.firstText;
 	if (text) {
-		setSuppressedInputRepairSelectionTarget(edytor, text, 0);
+		edytor.attempts.caret(text, 0);
 		await edytor.selection.setAtTextOffset(text, 0);
 	}
 };

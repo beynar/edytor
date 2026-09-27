@@ -1,4 +1,5 @@
 import type { JSONText, SerializableContent } from '$lib/utils/json.js';
+import { marksForInsertion } from '$lib/session/editing/text.js';
 import type { Text } from './text.svelte.js';
 
 export type TextOperations = {
@@ -55,10 +56,14 @@ export function insertText(
 		isAutoDot,
 		start = this.edytor.selection.state.yStart,
 		end = this.edytor.selection.state.yEnd,
-		marks = this.markOnNextInsert
+		marks
 	}: TextOperations['insertText']
 ) {
 	const isCollapsed = start === end || !end;
+	marks ??= marksForInsertion(this, start, {
+		replaced: isCollapsed ? undefined : this.getMarksAtRange(start, end),
+		pending: this.markOnNextInsert
+	});
 	this.edytor.transact(() => {
 		if (isAutoDot) {
 			// Replace the previous char with the inserted value (autocorrect).
@@ -262,39 +267,20 @@ export function markText(
 		end = this.edytor.selection.state.yEnd
 	}: TextOperations['markText']
 ) {
-	const length = end - start;
-	const isCollasped = end - start === 0;
-	const marksAtRange = this.getMarksAtRange(isCollasped ? start - 1 : start, end);
-	const isNextActiveMark = isCollasped && this.markOnNextInsert && mark in this.markOnNextInsert;
+	if (start === end) {
+		// A caret stages the full set the next insertion carries (values kept).
+		const { [mark]: current = null, ...rest } = marksForInsertion(this, start, {
+			pending: this.markOnNextInsert
+		});
+		const next = current !== null && toggle ? null : value;
+		this.markOnNextInsert = next === null ? rest : { ...rest, [mark]: next };
+		return;
+	}
+	const marksAtRange = this.getMarksAtRange(start, end);
 	const spreadOnAllRange =
 		marksAtRange.length > 0 && marksAtRange.every(({ marks }) => marks && mark in marks);
-	const markValue = (spreadOnAllRange || isNextActiveMark) && toggle ? null : value;
-
-	if (isCollasped) {
-		const activeMarks = marksAtRange.reduce((acc, { marks }) => {
-			Object.entries(marks || {}).forEach(([key, value]) => {
-				if (value === true) {
-					Object.assign(acc, { [key]: true });
-				}
-			});
-			return acc;
-		}, {});
-
-		if (isNextActiveMark && markValue === null) {
-			delete this.markOnNextInsert![mark];
-		} else {
-			this.markOnNextInsert = {
-				...(this.markOnNextInsert || {}),
-				...activeMarks,
-				[mark]: markValue
-			};
-		}
-	} else {
-		this.formatAt(start, length, {
-			[mark]: markValue
-		});
-		this.refreshFromModel();
-	}
+	this.formatAt(start, end - start, { [mark]: spreadOnAllRange && toggle ? null : value });
+	this.refreshFromModel();
 }
 
 // This function split a Y.Text at an index, delete what is after the index and returns the deleted content as a JSONText[]

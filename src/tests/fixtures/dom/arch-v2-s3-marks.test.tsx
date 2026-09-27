@@ -38,7 +38,7 @@ import {
 } from '../../dom/test.utils.js';
 
 /** Red on the reference; green since S3. */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -114,9 +114,14 @@ describe('F-P4 — pending marks keep their values (D12)', () => {
 		const { edytor, editor, text } = await mount(
 			paragraph({ text: 'Link', marks: { link: LINK } })
 		);
-		await setNativeSelection(edytor, text, 2);
+		// jsdom's `focus()` on an anchor moves the caret to its start (also when
+		// the Mod+B command restores the selection): place it again after.
+		const inside = leafAt(text, 2);
+		await placeDomCaret(edytor, inside.node, inside.offset);
 		await modB();
+		await placeDomCaret(edytor, inside.node, inside.offset);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'x' });
+		expect(runs(edytor).map((run) => run.text)).toEqual(['Li', 'x', 'nk']);
 		expect(marksAt(edytor, 2)).toEqual({ link: LINK, bold: true });
 	});
 });

@@ -1657,35 +1657,6 @@ export class Edytor {
 			return true;
 		};
 
-		const getFinalCompositionMarks = () => {
-			if (state.marks !== undefined) {
-				return state.marks;
-			}
-			if (state.value.length === 0) {
-				return undefined;
-			}
-
-			const previewParts = text
-				.getMarksAtRange(startOffset, startOffset + state.value.length)
-				.filter((part) => part.text.length > 0);
-			if (previewParts.length === 0) {
-				return {};
-			}
-
-			const marks: Record<string, SerializableContent | null> = {
-				...(previewParts[0].marks ?? {})
-			};
-			for (const part of previewParts.slice(1)) {
-				const partMarks = part.marks ?? {};
-				for (const mark of Object.keys(marks)) {
-					if (JSON.stringify(marks[mark] ?? undefined) !== JSON.stringify(partMarks[mark])) {
-						delete marks[mark];
-					}
-				}
-			}
-			return marks;
-		};
-
 		this.suppressNextInputFallback(50);
 		this.repairSuppressedInputFallback(50);
 		const interruptedSelection = state.restoreSelectionAfterCommit;
@@ -1705,7 +1676,6 @@ export class Edytor {
 			return;
 		}
 
-		const finalMarks = getFinalCompositionMarks();
 		if (regionLength > 0) {
 			text.deleteAt(startOffset, regionLength);
 		}
@@ -1715,7 +1685,8 @@ export class Edytor {
 				value: finalValue,
 				start: startOffset,
 				end: startOffset,
-				marks: finalMarks
+				// Captured when the composition started (O29).
+				marks: state.marks
 			});
 		}
 

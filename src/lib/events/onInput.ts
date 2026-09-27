@@ -5,6 +5,8 @@ import type { SerializableContent } from '$lib/utils/json.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
 import { isInsideTrailingNewlineMarker } from '$lib/selection/selection.utils.js';
+import { activeMarks, marksForInsertion } from '$lib/session/editing/text.js';
+import { jsonValuesEqual } from '$lib/collaboration/awarenessSelection.js';
 import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
 import { replaceSelectionWithCollapsedTarget } from '$lib/selection/replaceSelection.js';
 import {
@@ -200,93 +202,18 @@ const removeUnmanagedLineBreaks = (text: Text) => {
 	});
 };
 
-const withoutNullMarks = (marks?: Record<string, SerializableContent | null>) => {
-	if (!marks) {
-		return undefined;
-	}
-
-	const activeMarks = Object.entries(marks).filter(
-		(entry): entry is [string, SerializableContent] => entry[1] !== null
-	);
-	return activeMarks.length ? Object.fromEntries(activeMarks) : undefined;
-};
-
-const getMarksForInsertion = (text: Text, index: number) => {
-	if (text.markOnNextInsert) {
-		return withoutNullMarks(text.markOnNextInsert);
-	}
-
-	const before = index > 0 ? text.getMarksAtRange(index - 1, index)[0]?.marks : undefined;
-	if (before && Object.keys(before).length > 0) {
-		return before;
-	}
-
-	const after = index < text.length ? text.getMarksAtRange(index, index + 1)[0]?.marks : undefined;
-	if (after && Object.keys(after).length > 0) {
-		return after;
-	}
-
-	return undefined;
-};
-
-const haveSameMarks = (
-	left: Record<string, SerializableContent>,
-	right: Record<string, SerializableContent>
-) => {
-	const leftEntries = Object.entries(left);
-	if (leftEntries.length !== Object.keys(right).length) {
-		return false;
-	}
-
-	return leftEntries.every(([key, value]) => right[key] === value);
-};
-
-const getUniformMarksForDeletedRange = (text: Text, index: number, length: number) => {
-	let uniformMarks: Record<string, SerializableContent> | undefined;
-
-	for (const part of text.getMarksAtRange(index, index + length)) {
-		const marks = withoutNullMarks(part.marks);
-		if (!marks) {
-			return undefined;
-		}
-
-		if (!uniformMarks) {
-			uniformMarks = marks;
-			continue;
-		}
-
-		if (!haveSameMarks(uniformMarks, marks)) {
-			return undefined;
-		}
-	}
-
-	return uniformMarks;
-};
-
+/** The marks of a native deletion's removed runs when they are all the same (kept pending). */
 const getPendingMarksForDeletionOnlyDiff = (text: Text, operations: PlannedDiffOperation[]) => {
-	let pendingMarks: Record<string, SerializableContent> | undefined;
-
-	for (const operation of operations) {
-		if (operation.type !== 'delete') {
-			return undefined;
-		}
-
-		const marks = getUniformMarksForDeletedRange(text, operation.index, operation.length);
-		if (!marks) {
-			return undefined;
-		}
-
-		if (!pendingMarks) {
-			pendingMarks = marks;
-			continue;
-		}
-
-		if (!haveSameMarks(pendingMarks, marks)) {
-			return undefined;
-		}
-	}
-
-	return pendingMarks;
+	const parts = operations.flatMap((operation) =>
+		operation.type === 'delete'
+			? text.getMarksAtRange(operation.index, operation.index + operation.length)
+			: [{ text: '' }]
+	);
+	const marks = activeMarks(parts[0]?.marks);
+	return Object.keys(marks).length > 0 &&
+		parts.every((part) => jsonValuesEqual(activeMarks(part.marks), marks))
+		? marks
+		: undefined;
 };
 
 const planDomTextDiff = (text: Text, modelText: string, domText: string) => {
@@ -311,7 +238,7 @@ const planDomTextDiff = (text: Text, modelText: string, domText: string) => {
 				type: 'insert',
 				index,
 				value: operation.insert,
-				marks: getMarksForInsertion(text, index)
+				marks: marksForInsertion(text, index, { pending: text.markOnNextInsert })
 			});
 			index += operation.insert.length;
 		}

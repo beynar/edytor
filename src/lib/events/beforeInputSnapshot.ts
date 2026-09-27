@@ -1,5 +1,6 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
+import type { EdgeSide } from '$lib/session/editing/text.js';
 
 export type BeforeInputSnapshot = {
 	event: InputEvent;
@@ -13,6 +14,8 @@ export type BeforeInputSnapshot = {
 	texts: Text[];
 	yStart: number;
 	yEnd: number;
+	/** The admitted mark-edge side of a caret (R4). */
+	edge: EdgeSide | undefined;
 	length: number;
 	isCollapsed: boolean;
 	isTextSpanning: boolean;
@@ -86,7 +89,8 @@ export const createBeforeInputSnapshot = (
 		yEnd,
 		islandRoot,
 		texts,
-		isVoidEditableElement
+		isVoidEditableElement,
+		edge
 	} = edytor.selection.state;
 	const dataTransferTextPayload = getTextInsertionDataTransferPayload(event);
 
@@ -102,6 +106,7 @@ export const createBeforeInputSnapshot = (
 		texts,
 		yStart,
 		yEnd,
+		edge,
 		length,
 		isCollapsed,
 		isTextSpanning,

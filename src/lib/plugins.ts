@@ -10,6 +10,7 @@ import type { BlockOperations } from './block/block.utils.js';
 import type { EdytorSelection } from './selection/selection.svelte.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import type { PlanEffect } from './crdt/edytor-doc.js';
+import type { MarkEdge } from './session/editing/text.js';
 
 /**
  * Represents the payload for mark snippets with generic serializable content.
@@ -206,6 +207,8 @@ export type InlineBlockDefinition = {
 export type MarkDefinition = {
 	snippet: Snippet<[MarkSnippetPayload<any>]>;
 	void?: boolean;
+	/** Whether typing at the mark's edges extends it (O69, `marksForInsertion`); default `inclusive`. */
+	edge?: MarkEdge;
 };
 
 export type EditorCommand = {

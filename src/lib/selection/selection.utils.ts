@@ -4,6 +4,7 @@ import { Block } from '$lib/block/block.svelte.js';
 import { Edytor } from '$lib/edytor.svelte.js';
 import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import type { DomSelectionSnapshot } from './domSelection.js';
+import type { EdgeSide } from '$lib/session/editing/text.js';
 
 const TRAILING_NEWLINE_SELECTOR = '[data-edytor-trailing-newline]';
 const SYNTHETIC_TEXT_OVERLAY_SELECTOR =
@@ -469,6 +470,27 @@ export function getTextsInSelection(
 		texts: Array.from(texts)
 	};
 }
+
+/**
+ * The edge side of a collapsed DOM point at `offset` of `text` (R4): inside
+ * when every mark element rendering the character before it contains the
+ * point, outside when one does not; `undefined` when that character has none.
+ */
+export const getMarkEdgeSide = (text: Text, node: Node | null, offset: number) => {
+	const walker = text.node?.ownerDocument.createTreeWalker(text.node, NodeFilter.SHOW_TEXT);
+	let leaf: Node | null | undefined = null;
+	for (let start = 0; node && offset > 0 && (leaf = walker?.nextNode()); ) {
+		start += leaf.textContent?.length ?? 0;
+		if (offset <= start) break;
+	}
+	let side: EdgeSide | undefined;
+	for (let element = leaf?.parentElement; element && element !== text.node; ) {
+		if (element.hasAttribute('data-edytor-mark'))
+			side = element.contains(node) ? (side ?? 'inside') : 'outside';
+		element = element.parentElement;
+	}
+	return side;
+};
 
 export const getYIndex = (text: Text | null, node: Node | null, _start: number) => {
 	if (!text || !node) return _start;

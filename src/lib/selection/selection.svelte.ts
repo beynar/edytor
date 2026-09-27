@@ -10,6 +10,7 @@ import {
 	getTextsInSelection,
 	getVerticalLineDestination,
 	getYIndex,
+	getMarkEdgeSide,
 	isTextBoundSelectionPoint,
 	normalizeUtf16Boundary
 } from './selection.utils.js';
@@ -29,6 +30,7 @@ import { Block } from '../block/block.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
 import { tick } from 'svelte';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
+import type { EdgeSide } from '$lib/session/editing/text.js';
 import type { JSONText } from '$lib/utils/json.js';
 import {
 	clearAwarenessSelection,
@@ -95,6 +97,8 @@ type SelectionState = {
 	 */
 	endPosition: TextAnchor | null;
 	currentMarks: JSONText['marks'];
+	/** R4 admission: the mark-edge side of a DOM-derived caret (`marksForInsertion`). */
+	edge?: EdgeSide;
 	// TOREMOVE
 	yTextContent: string;
 };
@@ -2013,7 +2017,8 @@ export class EdytorSelection {
 			yTextContent: startText?.stringContent!,
 			currentMarks: startText
 				? this.getMarksAtSelection(startText, yStart, endText ?? startText, yEnd)
-				: {}
+				: {},
+			edge: isCollapsed ? getMarkEdgeSide(startText, startNode, yStart) : undefined
 		};
 		this.emitSelectionChange();
 		if (shouldRestoreNormalizedDomRange && options.restoreNormalizedDomRange !== false && endText) {

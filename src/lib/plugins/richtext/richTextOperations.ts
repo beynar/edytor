@@ -5,6 +5,7 @@ import type { Prepared } from '$lib/crdt/edytor-doc.js';
 import type { BlockSpec } from '$lib/crdt/index.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
 import { id } from '$lib/utils.js';
+import { marksForInsertion } from '$lib/session/editing/text.js';
 
 export type RichTextMark =
 	| 'bold'
@@ -260,25 +261,10 @@ export const richTextOperations = (edytor: Edytor) => ({
 		const { isCollapsed, startText, yStart } = edytor.selection.state;
 		if (isCollapsed) {
 			if (startText) {
-				// Inherit the surrounding truthy marks like `markText`'s
-				// collapsed path — a bare `markOnNextInsert` write
-				// short-circuits adjacent-mark inheritance, so a color
-				// command inside italic text would silently drop the
-				// italic on the next insert.
-				const activeMarks = startText
-					.getMarksAtRange(yStart - 1, yStart)
-					.reduce<Record<string, SerializableContent>>((acc, { marks }) => {
-						for (const [key, value] of Object.entries(marks ?? {})) {
-							if (value === true) {
-								acc[key] = true;
-							}
-						}
-						return acc;
-					}, {});
+				// Stage the full set the next insertion carries, values kept (O29).
 				edytor.dispatcher.cut('format');
 				startText.markOnNextInsert = {
-					...activeMarks,
-					...(startText.markOnNextInsert ?? {}),
+					...marksForInsertion(startText, yStart, { pending: startText.markOnNextInsert }),
 					[mark]: safeValue
 				};
 				void edytor.selection.setAtTextOffset(startText, yStart);

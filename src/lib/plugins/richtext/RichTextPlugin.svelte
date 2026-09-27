@@ -2,7 +2,6 @@
 	import type { Plugin, MarkSnippetPayload, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { SerializableContent } from '$lib/utils/json.js';
 	import type { HotKey } from '$lib/hotkeys.js';
-	import type { Text } from '$lib/text/text.svelte.js';
 	import { createRichTextCommands } from './richTextCommands.js';
 	import {
 		richTextOperations,
@@ -27,49 +26,6 @@
 		inputType: string
 	): inputType is keyof typeof nativeFormatMarks => inputType in nativeFormatMarks;
 
-	const getMarksBeforeOffset = (text: Text, offset: number) => {
-		let currentOffset = 0;
-
-		for (const part of text.value) {
-			const nextOffset = currentOffset + part.text.length;
-			if (offset > currentOffset && offset <= nextOffset) {
-				return part.marks ?? {};
-			}
-			currentOffset = nextOffset;
-		}
-
-		return null;
-	};
-
-	const getMarksAfterOffset = (text: Text, offset: number) => {
-		let currentOffset = 0;
-
-		for (const part of text.value) {
-			const nextOffset = currentOffset + part.text.length;
-			if (offset >= currentOffset && offset < nextOffset) {
-				return part.marks ?? {};
-			}
-			currentOffset = nextOffset;
-		}
-
-		return null;
-	};
-
-	const withoutLinkMark = (marks: Record<string, SerializableContent>) => {
-		const nextMarks = { ...marks };
-		delete nextMarks.link;
-		return nextMarks;
-	};
-
-	const isInsideLinkMark = (node: Node | null) => {
-		if (typeof Element === 'undefined' || !node) {
-			return false;
-		}
-
-		const element = node.nodeType === 3 ? node.parentElement : (node as Element | null);
-		return Boolean(element?.closest('[data-edytor-mark="link"]'));
-	};
-
 	export const richTextPlugin: Plugin = (edytor) => {
 		const setMarkAndSelect =
 			(mark: RichTextMark, value?: SerializableContent): HotKey =>
@@ -88,39 +44,6 @@
 				'mod+shift+h': setMarkAndSelect('color', 'red')
 			},
 			commands: createRichTextCommands(edytor),
-			onBeforeOperation: (change) => {
-				if (change.operation !== 'insertText') {
-					return;
-				}
-
-				const { payload, text } = change;
-				if (payload.marks || text.markOnNextInsert) {
-					return;
-				}
-
-				const start = payload.start ?? edytor.selection.state.yStart;
-				const end = payload.end ?? edytor.selection.state.yEnd;
-				if (start !== end) {
-					return;
-				}
-
-				const marksBefore = getMarksBeforeOffset(text, start);
-				if (!marksBefore?.link) {
-					return;
-				}
-
-				const marksAfter = getMarksAfterOffset(text, start);
-				if (marksAfter?.link) {
-					return;
-				}
-
-				return {
-					...payload,
-					marks: isInsideLinkMark(edytor.selection.state.startNode)
-						? marksBefore
-						: withoutLinkMark(marksAfter ?? marksBefore)
-				};
-			},
 			onBeforeInput: ({ e, prevent }) => {
 				if (isNativeFormatInputType(e.inputType)) {
 					const mark = nativeFormatMarks[e.inputType];
@@ -183,7 +106,8 @@
 				italic,
 				underline,
 				code,
-				link,
+				// FP-8: typing at a link's trailing edge extends it only from inside the anchor.
+				link: { snippet: link, edge: 'side-dependent' },
 				strike,
 				superscript,
 				subscript,

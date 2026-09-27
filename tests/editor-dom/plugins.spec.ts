@@ -59,6 +59,43 @@ test.describe('browser plugin semantics', () => {
 		issues.assertClean();
 	});
 
+	test('does not extend the link when the DOM caret sits after the anchor (F-P15, FP-8)', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=links');
+		await waitForEditorReady(page);
+		// Same model offset as `Link|`, but the DOM point is the start of ` tail`.
+		await page.evaluate(() => {
+			const text = document.querySelector('[data-edytor-text]')!;
+			const walker = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+			let node = walker.nextNode();
+			while (node && node.textContent !== ' tail') node = walker.nextNode();
+			const range = document.createRange();
+			range.setStart(node!, 0);
+			range.collapse(true);
+			window.getSelection()!.removeAllRanges();
+			window.getSelection()!.addRange(range);
+		});
+		await expectSelection(page, { startBlockPath: [0], yStart: 4, yEnd: 4, isCollapsed: true });
+		await page.keyboard.type('!');
+
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{ content?: Array<{ marks?: Record<string, unknown>; text: string }> }>;
+				}>(page, 'value');
+				return value.children[0]?.content;
+			})
+			.toEqual([
+				{ text: 'Link', marks: { link: { href: 'https://example.com', target: '_blank' } } },
+				{ text: '! tail' }
+			]);
+
+		issues.assertClean();
+	});
+
 	test('keeps image bodies non-editable while captions stay editable', async ({ page }) => {
 		const issues = trackPageIssues(page);
 

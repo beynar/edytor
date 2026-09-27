@@ -8,7 +8,8 @@ import type { Text } from '$lib/text/text.svelte.js';
 import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { flowOfFragment, flowOfText, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
-import { cloneJson, type JSONText, type SerializableContent } from '$lib/utils/json.js';
+import { cloneJson, type JSONText } from '$lib/utils/json.js';
+import { marksForInsertion } from '$lib/session/editing/text.js';
 import { id, prevent } from '$lib/utils.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
@@ -77,85 +78,19 @@ const replaceSelectionBeforeTextInsertion = (edytor: Edytor, snapshot: BeforeInp
 	return replaceSelectionWithCollapsedTargetSync(edytor, snapshot);
 };
 
-const areSerializableValuesEqual = (
-	left: SerializableContent | undefined,
-	right: SerializableContent | undefined
-) => JSON.stringify(left) === JSON.stringify(right);
-
-const getSelectedTextParts = (snapshot: BeforeInputSnapshot) => {
-	const parts: JSONText[] = [];
-
-	if (snapshot.isCollapsed || !snapshot.startText || !snapshot.endText) {
-		return parts;
-	}
-
-	if (snapshot.startText === snapshot.endText) {
-		return snapshot.startText
-			.getMarksAtRange(snapshot.yStart, snapshot.yEnd)
-			.filter((part) => part.text.length > 0);
-	}
-
-	for (const text of snapshot.texts) {
-		const start = text === snapshot.startText ? snapshot.yStart : 0;
-		const end = text === snapshot.endText ? snapshot.yEnd : text.length;
-		if (end <= start) {
-			continue;
-		}
-		parts.push(...text.getMarksAtRange(start, end).filter((part) => part.text.length > 0));
-	}
-
-	return parts;
+/** The marks of text inserted at the snapshot's selection (O29), read before it is replaced. */
+const insertionMarks = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+	const { startText, endText, yStart, yEnd, isCollapsed } = snapshot;
+	if (!startText || edytor.selection.selectedBlocks.size > 0) return {};
+	const replaced = (snapshot.texts.length ? snapshot.texts : [startText]).flatMap((text) =>
+		text.getMarksAtRange(text === startText ? yStart : 0, text === endText ? yEnd : text.length)
+	);
+	return marksForInsertion(startText, yStart, {
+		replaced: isCollapsed ? undefined : replaced,
+		side: snapshot.edge,
+		pending: startText.markOnNextInsert
+	});
 };
-
-const getInsertionMarksForSelectionReplacement = (snapshot: BeforeInputSnapshot) => {
-	if (snapshot.isCollapsed) {
-		return undefined;
-	}
-
-	const selectedParts = getSelectedTextParts(snapshot);
-	if (selectedParts.length === 0) {
-		return {};
-	}
-
-	const commonMarks: Record<string, SerializableContent | null> = {
-		...(selectedParts[0].marks ?? {})
-	};
-
-	for (const part of selectedParts.slice(1)) {
-		const marks = part.marks ?? {};
-		for (const mark of Object.keys(commonMarks)) {
-			if (!areSerializableValuesEqual(commonMarks[mark] ?? undefined, marks[mark])) {
-				delete commonMarks[mark];
-			}
-		}
-	}
-
-	return commonMarks;
-};
-
-/**
- * Marks inherited by a typed insertion at `index` when neither explicit marks
- * nor `markOnNextInsert` apply — mirrors `getMarksForInsertion` in onInput.ts:
- * the character before the caret first, then the character at the caret.
- */
-const getAdjacentMarksForInsert = (text: Text, index: number) => {
-	if (index > 0) {
-		const before = text.getMarksAtRange(index - 1, index)[0]?.marks;
-		if (before && Object.keys(before).length > 0) {
-			return before;
-		}
-	}
-	if (index < text.length) {
-		const after = text.getMarksAtRange(index, index + 1)[0]?.marks;
-		if (after && Object.keys(after).length > 0) {
-			return after;
-		}
-	}
-	return undefined;
-};
-
-const getMarksForTypedInsertion = (text: Text, index: number) =>
-	text.markOnNextInsert ?? getAdjacentMarksForInsert(text, index);
 
 const finishCompositionFromBeforeInput = (edytor: Edytor) => {
 	edytor.compositionState = null;
@@ -172,7 +107,7 @@ const insertCompositionText = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 
 	const compositionValue = data ?? '';
 	if (!edytor.compositionState) {
-		const replacementMarks = getInsertionMarksForSelectionReplacement(snapshot);
+		const marks = insertionMarks(edytor, snapshot);
 		const target = replaceSelectionBeforeTextInsertion(edytor, snapshot);
 		if (!target) {
 			return;
@@ -181,7 +116,7 @@ const insertCompositionText = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 			textId: target.text.id,
 			startOffset: target.offset,
 			value: '',
-			marks: replacementMarks ?? getMarksForTypedInsertion(target.text, target.offset)
+			marks
 		};
 	}
 
@@ -222,7 +157,7 @@ const insertFromComposition = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 	}
 
 	if (!edytor.compositionState) {
-		const replacementMarks = getInsertionMarksForSelectionReplacement(snapshot);
+		const marks = insertionMarks(edytor, snapshot);
 		const target = replaceSelectionBeforeTextInsertion(edytor, snapshot);
 		if (!target) {
 			return;
@@ -232,7 +167,7 @@ const insertFromComposition = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 			value: compositionValue,
 			start: target.offset,
 			end: target.offset,
-			marks: replacementMarks ?? getMarksForTypedInsertion(target.text, target.offset)
+			marks
 		});
 		finishCompositionFromBeforeInput(edytor);
 		await edytor.stabilizeCompositionSelection(
@@ -330,12 +265,11 @@ const insertText = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
 		return;
 	}
 
-	const replacementMarks = getInsertionMarksForSelectionReplacement(snapshot);
+	const marks = insertionMarks(edytor, snapshot);
 	const target = replaceSelectionBeforeTextInsertion(edytor, snapshot);
 	if (!target) {
 		return;
 	}
-	const marks = replacementMarks ?? getMarksForTypedInsertion(target.text, target.offset);
 
 	const autoDotPreviousCharacter = target.text.stringContent.slice(
 		target.offset - 1,
@@ -366,13 +300,12 @@ const insertText = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
 };
 
 const insertLineBreak = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	const replacementMarks = getInsertionMarksForSelectionReplacement(snapshot);
+	const marks = insertionMarks(edytor, snapshot);
 	const target = replaceSelectionBeforeTextInsertion(edytor, snapshot);
 	if (!target) {
 		return;
 	}
 
-	const marks = replacementMarks ?? getMarksForTypedInsertion(target.text, target.offset);
 	const sourceBlock = target.text.parent;
 	const sourceParent = sourceBlock.parent;
 	const sourceIndex = sourceBlock.index;
@@ -395,19 +328,25 @@ const insertLineBreak = async (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
 const getLinkMarksForUri = (edytor: Edytor, uri: string) =>
 	edytor.marks.has('link') ? { link: { href: uri } } : undefined;
 
-/** Plain text (or a URI, as a link) as a flow (`flow.shape`). */
-const textFlow = (edytor: Edytor, dataTransfer: DataTransfer | null | undefined, fallback = '') => {
+/** Plain text with `marks` (or a URI, as a link) as a flow (`flow.shape`). */
+const textFlow = (
+	edytor: Edytor,
+	dataTransfer: DataTransfer | null | undefined,
+	fallback = '',
+	marks?: JSONText['marks']
+) => {
 	const uri = firstUriListEntry(dataTransfer?.getData('text/uri-list'));
 	const plain = dataTransfer?.getData('text/plain') || '';
 	const value = plain || uri || fallback;
-	return value
-		? flowOfText(value, !plain && uri ? getLinkMarksForUri(edytor, uri) : undefined)
-		: null;
+	return value ? flowOfText(value, !plain && uri ? getLinkMarksForUri(edytor, uri) : marks) : null;
 };
 
 const insertFromPaste = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	const flow = textFlow(edytor, snapshot.dataTransfer);
-	if (flow) await pasteFlow(edytor, flow, { selection: snapshot });
+	const flow = textFlow(edytor, snapshot.dataTransfer, '', insertionMarks(edytor, snapshot));
+	if (!flow) return;
+	// The paste consumes the caret's pending marks, as typing does.
+	if (snapshot.startText) snapshot.startText.markOnNextInsert = undefined;
+	await pasteFlow(edytor, flow, { selection: snapshot });
 };
 
 const runDataTransferPastePlugins = (edytor: Edytor, dataTransfer: DataTransfer) => {

@@ -180,11 +180,24 @@ const shouldSyncBeforeInputTargetRange = (
 		return false;
 	}
 
+	const targetTextRange = getBeforeInputTextTargetRange(edytor, targetRange);
+	const { startText, yStart, isCollapsed } = edytor.selection.state;
+	if (
+		isTextInsertionInput(effectiveInputType) &&
+		isCollapsed &&
+		targetTextRange?.startText === startText &&
+		targetTextRange.endText === startText &&
+		targetTextRange.yStart === yStart &&
+		targetTextRange.yEnd === yStart
+	) {
+		// The engine re-reports the admitted caret, canonicalized (Chromium moves
+		// ` tail`@0 into `Link`@4): the caret keeps its admitted edge side (R4).
+		return false;
+	}
 	if (!isDeleteTargetRangeInput(event.inputType)) {
 		return true;
 	}
 
-	const targetTextRange = getBeforeInputTextTargetRange(edytor, targetRange);
 	return targetTextRange ? isSafeDeleteTargetRange(event.inputType, targetTextRange) : false;
 };
 

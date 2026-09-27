@@ -1,9 +1,10 @@
-import { Text } from './text/text.svelte.js';
+import type { Text } from './text/text.svelte.js';
 import type { Block } from './block/block.svelte.js';
 import type { Edytor } from './edytor.svelte.js';
 import { id } from './utils.js';
 import type { Flow, FlowTarget } from './crdt/flow.js';
 import type { Prepared } from './crdt/edytor-doc.js';
+import { normalizeChildren, normalizeContent } from './block/block.utils.js';
 
 /** The two endpoints of a range, as the selection holds them. */
 export type RangeEndpoints = {
@@ -13,30 +14,28 @@ export type RangeEndpoints = {
 	yEnd: number;
 };
 
-/** The text part and offset showing display offset `offset` of `block`. */
-const textAt = (block: Block, offset: number): readonly [Text | null, number] => {
-	let at = 0;
-	for (const part of block.content) {
-		if (!(part instanceof Text)) at += 1;
-		else if (offset <= at + part.length) return [part, offset - at];
-		else at += part.length;
-	}
-	return [block.lastText ?? null, block.lastText?.length ?? 0];
-};
-
 const REFUSED: Prepared = { status: 'refused', ids: [] };
 
-/** Apply a prepared op and answer the caret it reports; `null` when it planned none. */
-const applyAt = (edytor: Edytor, plan: Prepared): readonly [Text | null, number] | null => {
+type At = { block: string; offset: number };
+
+/**
+ * Apply a prepared op and answer the caret it reports (`null` when it planned
+ * none); the caret's block and its parent are normalized after the commit.
+ */
+const applyAt = (edytor: Edytor, plan: Prepared): At | null => {
 	if (!('writes' in plan) || !plan.at) return null;
-	edytor.facade.apply(plan);
-	edytor.flushMirror();
-	const block = edytor.idToBlock.get(plan.at.block);
-	if (!block) return [null, 0];
-	block.normalizeContent();
-	block.parent?.normalizeChildren();
-	return textAt(block, plan.at.offset);
+	const { facade, dispatcher } = edytor;
+	facade.apply(plan);
+	dispatcher.request(plan.at.block, normalizeContent);
+	dispatcher.request(facade.parentOf(plan.at.block) ?? 'root', normalizeChildren);
+	return plan.at;
 };
+
+/** The caret an op answered, as a text part and offset once committed. */
+export function caretOf(this: Edytor, at: At | null | undefined): readonly [Text | null, number] {
+	const hit = at && this.idToBlock.get(at.block)?.textAtOffset(at.offset);
+	return hit ? [hit.text, hit.offset] : [null, 0];
+}
 
 type RangeDelete = { replace?: boolean; selection?: RangeEndpoints };
 
@@ -60,9 +59,15 @@ export function deleteContentWithinSelection(
 	this: Edytor,
 	payload: RangeDelete,
 	plan = prepareDeleteContent.call(this, payload)
-): readonly [Text | null, number] {
+): At | null {
+	return applyAt(this, plan);
+}
+
+/** The range deletion's caret; refused at preparation: the range's start; vetoed: none. */
+export function rangeCaret(this: Edytor, at: At | null | undefined, payload: RangeDelete) {
+	if (at === undefined) return undefined;
 	const { startText, yStart } = payload.selection ?? this.selection.state;
-	return applyAt(this, plan) ?? [startText, yStart];
+	return at ? caretOf.call(this, at) : ([startText, yStart] as const);
 }
 
 type FlowInsert = { flow: Flow; target: FlowTarget };
@@ -76,8 +81,8 @@ export function insertFlow(
 	this: Edytor,
 	payload: FlowInsert,
 	plan = prepareFlow.call(this, payload)
-): readonly [Text | null, number] {
-	return applyAt(this, plan) ?? [null, 0];
+): At | null {
+	return applyAt(this, plan);
 }
 
 type BlocksDelete = { blocks: Block[] };
@@ -95,7 +100,6 @@ export function deleteBlocks(
 	if (!('writes' in plan)) return false;
 	const parents = new Set(blocks.map((block) => block.parent));
 	this.facade.apply(plan);
-	this.flushMirror();
 	for (const parent of parents) parent?.normalizeChildren();
 	return true;
 }

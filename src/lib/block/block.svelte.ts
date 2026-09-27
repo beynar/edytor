@@ -34,6 +34,8 @@ import {
 	normalizeContent,
 	groupContent,
 	addInlineBlock,
+	textAfterAtom,
+	blockOf,
 	acceptSuggestedText,
 	suggestText,
 	deleteContentAtRange,
@@ -114,13 +116,6 @@ export class Block {
 	_live = false;
 	/** Pending wrapper adoptions by content part index (insertParts). */
 	_pendingParts = new Map<number, Text | InlineBlock>();
-	/**
-	 * Re-normalization pass depth for the current call chain — shared by
-	 * `normalizeContent`/`normalizeChildren` so plugin hooks that keep
-	 * returning work (or ping-pong between the two) are bounded instead of
-	 * overflowing the stack (D25).
-	 */
-	_normalizationDepth = 0;
 
 	/**
 	 * The typed model node for this block — `null` for the root block and
@@ -354,20 +349,25 @@ export class Block {
 
 	addChildBlock = batch('addChildBlock', addChildBlock);
 	addChildBlocks = batch('addChildBlocks', addChildBlocks);
-	insertBlockAfter = batch('insertBlockAfter', insertBlockAfter, prepareInsertAfter);
-	insertBlockBefore = batch('insertBlockBefore', insertBlockBefore, prepareInsertBefore);
-	splitBlock = batch('splitBlock', splitBlock, prepareSplit);
+	insertBlockAfter = batch('insertBlockAfter', insertBlockAfter, prepareInsertAfter, blockOf);
+	insertBlockBefore = batch('insertBlockBefore', insertBlockBefore, prepareInsertBefore, blockOf);
+	splitBlock = batch('splitBlock', splitBlock, prepareSplit, blockOf);
 	removeBlock = batch('removeBlock', removeBlock, prepareRemove);
 	unNestBlock = batch('unNestBlock', unNestBlock, prepareUnNest);
-	mergeBlockBackward = batch('mergeBlockBackward', mergeBlockBackward, prepareMergeBackward);
-	mergeBlockForward = batch('mergeBlockForward', mergeBlockForward, prepareMergeForward);
+	mergeBlockBackward = batch(
+		'mergeBlockBackward',
+		mergeBlockBackward,
+		prepareMergeBackward,
+		blockOf
+	);
+	mergeBlockForward = batch('mergeBlockForward', mergeBlockForward, prepareMergeForward, blockOf);
 	nestBlock = batch('nestBlock', nestBlock, prepareNest);
 	setBlock = batch('setBlock', setBlock, prepareSet);
 	moveBlock = batch('moveBlock', moveBlock, prepareMove);
 	moveBlocks = batch('moveBlocks', moveBlocks, prepareMoves);
 	pushContentIntoBlock = batch('pushContentIntoBlock', pushContentIntoBlock);
 	removeInlineBlock = batch('removeInlineBlock', removeInlineBlock, prepareRemoveInline);
-	addInlineBlock = batch('addInlineBlock', addInlineBlock);
+	addInlineBlock = batch('addInlineBlock', addInlineBlock, undefined, textAfterAtom);
 	normalizeContent = batch('normalizeContent', normalizeContent);
 	normalizeChildren = batch('normalizeChildren', normalizeChildren);
 	suggestText = batch('suggestText', suggestText);
@@ -384,15 +384,11 @@ export class Block {
 		parent,
 		block,
 		blockId,
-		projected,
 		edytor
 	}: {
 		parent?: Block;
 		edytor: Edytor;
-	} & (
-		| { block: JSONBlock; blockId?: undefined; projected?: undefined }
-		| { blockId: string | null; block?: undefined; projected?: ProjectedBlock }
-	)) {
+	} & ({ block: JSONBlock; blockId?: undefined } | { blockId: string | null; block?: undefined })) {
 		this.parent = parent;
 		this.edytor = edytor;
 
@@ -437,19 +433,13 @@ export class Block {
 				});
 			}
 		} else {
-			// Bound mode — `projected` populates immediately when available.
+			// Bound mode — a reconcile fills it from its projected node.
 			this._blockId = blockId;
 			this._bound = true;
 			this._live = true;
 			this.id = blockId ?? 'root';
 			if (blockId === null) {
 				this.#type = 'root';
-			}
-			if (projected) {
-				this.#type = projected.type;
-				this.data = projected.data || {};
-				this.reconcileChildren(projected.children);
-				this.reconcileContent(projected.content);
 			}
 		}
 		this.definition = this.edytor.getBlockDefinition('block', this.#type);
@@ -484,147 +474,73 @@ export class Block {
 		}
 	};
 
-	/** Rebuild `children` from projected child nodes, reusing wrappers by id. */
-	reconcileChildren = (projectedChildren: ProjectedBlock[]) => {
-		const prev = this.children;
-		const used = new Set<Block>();
-		const next = projectedChildren.map((node) => {
-			let child = this.edytor.idToBlock.get(node.id);
-			const pending = this.edytor._pendingBlocks.get(node.id);
-			this.edytor._pendingBlocks.delete(node.id);
-			if (!child && pending) {
-				// Detached spec wrapper adoption — bind it to the new block id.
-				child = pending;
-			}
-			if (!child) {
-				child = new Block({ parent: this, edytor: this.edytor, blockId: node.id });
-			}
-			child._bind(node.id, this);
-			child.parent = this;
-			used.add(child);
-			child._reconcile(node);
+	/**
+	 * Set `children` to the listed ids (a projected node: a subtree to build),
+	 * reusing wrappers by id; a child left out drops unless `keep` names it.
+	 */
+	reconcileChildren = (
+		nodes: readonly (ProjectedBlock | string)[],
+		keep = (id: string) => this.edytor.facade.isVisibleBlock(id)
+	) => {
+		const { idToBlock, _pendingBlocks } = this.edytor;
+		const next = nodes.map((node) => {
+			const id = typeof node === 'string' ? node : node.id;
+			// A detached spec wrapper is adopted onto its new id.
+			const child =
+				idToBlock.get(id) ??
+				_pendingBlocks.get(id) ??
+				new Block({ parent: this, edytor: this.edytor, blockId: id });
+			_pendingBlocks.delete(id);
+			child._bind(id, this);
+			if (typeof node !== 'string') child._reconcile(node);
 			return child;
 		});
-		for (const old of prev) {
-			if (!used.has(old) && !this.edytor.facade.isVisibleBlock(old.id)) {
-				old._drop();
-			}
-		}
+		const used = new Set(next);
+		for (const old of this.children) if (!used.has(old) && !keep(old.id)) old._drop(keep);
 		this.children = next;
 	};
 
-	/** Rebuild `content` from projected items, reusing wrappers by segment/atom. */
+	/**
+	 * Rebuild `content` from the block's items: an atom keeps its wrapper by
+	 * id (a pending carrier from `insertParts` first), a text segment the
+	 * pending carrier at its slot, else the wrapper of the same ordinal.
+	 */
 	reconcileContent = (items: readonly ContentItem[]) => {
-		const parts = deriveContentParts(items);
 		const prev = this.content;
+		const pending = [...this._pendingParts];
+		this._pendingParts.clear();
+		const atoms = new Map<string, InlineBlock>();
+		const texts = new Map<number, Text>();
+		for (const part of prev)
+			if (part instanceof Text) texts.set(part._segOrd, part);
+			else atoms.set(part.id, part);
+		for (const [, part] of pending) if (part instanceof InlineBlock) atoms.set(part.id, part);
+		const slots = new Map(pending.filter(([, part]) => part instanceof Text)) as Map<number, Text>;
 		const used = new Set<Text | InlineBlock>();
-		const byItem = new Map<unknown, Text | InlineBlock>();
-		const bySegOrd = new Map<number, Text>();
-		for (const part of prev) {
-			if (part instanceof Text) {
-				bySegOrd.set(part._segOrd, part);
-				for (const item of part._items) {
-					byItem.set(item, part);
-				}
-			} else {
-				byItem.set(part, part);
-			}
-		}
-
-		const next: (Text | InlineBlock)[] = [];
-		for (let partIndex = 0; partIndex < parts.length; partIndex++) {
-			const part = parts[partIndex];
+		const next = deriveContentParts(items).map((part, index): Text | InlineBlock => {
 			if (part.kind === 'inline') {
-				let wrapper =
-					this._pendingParts.get(partIndex) instanceof InlineBlock
-						? (this._pendingParts.get(partIndex) as InlineBlock)
-						: undefined;
-				if (!wrapper) {
-					// Reuse by atom id — inline ids are stable.
-					wrapper =
-						prev.find(
-							(p): p is InlineBlock =>
-								p instanceof InlineBlock && p.id === part.item.id && !used.has(p)
-						) ?? undefined;
-				}
-				if (!wrapper) {
-					wrapper = new InlineBlock({ parent: this, run: part.item });
-				}
+				const wrapper =
+					atoms.get(part.item.id) ?? new InlineBlock({ parent: this, run: part.item });
 				wrapper._bindRun(part.item);
 				wrapper.parent = this;
-				wrapper.index = partIndex;
+				wrapper.index = index;
 				used.add(wrapper);
-				next.push(wrapper);
-				this._pendingParts.delete(partIndex);
-			} else {
-				const pending =
-					this._pendingParts.get(partIndex) instanceof Text
-						? (this._pendingParts.get(partIndex) as Text)
-						: undefined;
-				const byItems = part.items
-					.map((item) => byItem.get(item))
-					.find((w): w is Text => w instanceof Text && !used.has(w));
-				const byOrd = bySegOrd.get(part.segOrd);
-				const wrapper =
-					pending ??
-					byItems ??
-					(byOrd !== undefined && !used.has(byOrd) ? byOrd : undefined) ??
-					new Text({ parent: this, content: '' });
-				wrapper._bind(part.segOrd, part.items);
-				wrapper.parent = this;
-				wrapper.index = partIndex;
-				used.add(wrapper);
-				next.push(wrapper);
-				this._pendingParts.delete(partIndex);
-				if (this._pendingParts.get(partIndex + 1) === wrapper) {
-					this._pendingParts.delete(partIndex + 1);
-				}
+				return wrapper;
 			}
-		}
-
-		// Second pass — leftover pending wrappers (carriers from `insertParts`
-		// whose atoms did not land on a fresh part slot):
-		// - Inline carriers keep their identity: if the atom exists at a shifted
-		//   index, the pending wrapper claims it (callers hold a reference to it);
-		//   if the atom never materialized, the carrier is dropped.
-		// - Text carriers are fungible: when their atoms merged into a segment
-		//   already owned by a live wrapper, the live wrapper keeps the slot
-		//   (v13 merged adjacent pushed Y.Texts the same way). The carrier is
-		//   retired: callers find the text at the carrier's position.
-		for (const [idx, wrapper] of this._pendingParts) {
-			if (wrapper instanceof InlineBlock) {
-				const targetIndex = next.findIndex(
-					(w, k) =>
-						w instanceof InlineBlock &&
-						parts[k]?.kind === 'inline' &&
-						(parts[k] as Extract<DerivedContentPart, { kind: 'inline' }>).item.id === wrapper.id
-				);
-				if (targetIndex !== -1) {
-					const part = parts[targetIndex] as Extract<DerivedContentPart, { kind: 'inline' }>;
-					const old = next[targetIndex];
-					wrapper._bindRun(part.item);
-					wrapper.parent = this;
-					wrapper.index = targetIndex;
-					next[targetIndex] = wrapper;
-					used.add(wrapper);
-					if (old !== wrapper) {
-						used.delete(old);
-						old._kill();
-					}
-				} else {
-					wrapper._kill();
-				}
-				continue;
-			}
-			if (!used.has(wrapper)) wrapper._kill();
-		}
-		this._pendingParts.clear();
-
-		for (const old of prev) {
-			if (!used.has(old)) {
-				old._kill();
-			}
-		}
+			const slot = slots.get(index);
+			const byOrd = texts.get(part.segOrd);
+			const wrapper =
+				(slot && !used.has(slot) ? slot : undefined) ??
+				(byOrd && !used.has(byOrd) ? byOrd : undefined) ??
+				new Text({ parent: this, content: '' });
+			wrapper._bind(part.segOrd, part.items);
+			wrapper.parent = this;
+			wrapper.index = index;
+			used.add(wrapper);
+			return wrapper;
+		});
+		for (const old of [...prev, ...pending.map(([, part]) => part)])
+			if (!used.has(old)) old._kill();
 		this.content = next;
 	};
 
@@ -726,8 +642,6 @@ export class Block {
 		return deriveContentParts(this.facade.contentItems(id));
 	};
 
-	deriveContentParts = deriveContentParts;
-
 	/** Display offset (atoms) where content part `i` starts in the current doc state. */
 	atomOffsetOfPartIndex = (i: number, parts = this.projectedParts()): number => {
 		let off = 0;
@@ -747,6 +661,8 @@ export class Block {
 	 * may be stale mid-transaction, so its index is only a fallback.
 	 */
 	partOffsetOf = (part: Text | InlineBlock): number => {
+		// The first text segment starts the content: no read needed.
+		if (part instanceof Text && part._segOrd === 0 && part.parent === this) return 0;
 		const parts = this.projectedParts();
 		let index =
 			parts?.findIndex((p) =>
@@ -763,43 +679,26 @@ export class Block {
 
 	/**
 	 * The text segment that displays block offset `offset`, and the offset in
-	 * it — the one offset → segment mapper (a boundary before an atom reads
-	 * the text before it). The current parts are the engine-fresh read (a
-	 * wrapper's items can lag a write until the mirror reconciles); the
-	 * wrappers themselves are the fallback.
+	 * it — the one offset → segment mapper over the committed parts (a
+	 * boundary before an atom reads the text before it; past the end, the
+	 * last text's end).
 	 */
-	textAtOffset = (
-		offset: number,
-		parts = this.projectedParts()
-	): { text: Text; offset: number } | null => {
-		const texts = this.content.filter((part): part is Text => part instanceof Text);
-		const walk = parts
-			? parts.map((p) =>
-					p.kind === 'text'
-						? { text: texts.find((t) => t._segOrd === p.segOrd) ?? null, len: displayLenOfPart(p) }
-						: { text: undefined, len: 1 }
-				)
-			: this.content.map((p) =>
-					p instanceof Text ? { text: p, len: p.length } : { text: undefined, len: 1 }
-				);
-		let off = 0;
-		let hit: { text: Text | null; offset: number } | null = null;
-		for (const part of walk) {
-			if (part.text !== undefined) {
-				hit = { text: part.text, offset: part.len };
-				if (offset <= off + part.len) {
-					hit.offset = Math.max(0, offset - off);
-					break;
-				}
-			} else if (offset <= off) break;
-			off += part.len;
+	textAtOffset = (offset: number): { text: Text; offset: number } | null => {
+		let at = 0;
+		let hit: { text: Text; offset: number } | null = null;
+		for (const part of this.content) {
+			if (!(part instanceof Text)) {
+				if (offset <= at) return hit;
+				at += 1;
+			} else if (offset <= at + part.length) {
+				return { text: part, offset: Math.max(0, offset - at) };
+			} else {
+				hit = { text: part, offset: part.length };
+				at += part.length;
+			}
 		}
-		if (hit?.text) return { text: hit.text, offset: Math.min(hit.offset, hit.text.length) };
-		return parts ? this.textAtOffset(offset, null) : null;
+		return hit;
 	};
-
-	/** Display length of the block's content in atoms. */
-	displayLength = (): number => this.atomOffsetOfPartIndex(Infinity);
 
 	// ── typed content/children mutation surface ─────────────────────────
 	//
@@ -807,10 +706,8 @@ export class Block {
 	// event handlers, plugins) uses to move WRAPPER-level content into the
 	// document. They replace the old `yChildren`/`yContent` array adapters:
 	// the same callers pass live `Block`/`Text`/`InlineBlock` wrappers and
-	// the same `_pendingBlocks`/`_pendingParts` adoption + `flushMirror`
-	// contract applies — the only difference is the writes go through the
-	// typed node (`block.model` / `child.model`) instead of a fake Yjs
-	// array.
+	// the `_pendingBlocks`/`_pendingParts` adoption applies at the commit (the
+	// wrappers see the writes once its change report is applied, R3).
 
 	/**
 	 * Insert (or relocate) child BLOCK wrappers at `index`.
@@ -836,17 +733,16 @@ export class Block {
 			if (child.model) {
 				child.model.moveTo({ parent: model, index: i });
 			} else {
+				// Registered before the write: a write outside a transaction commits at once.
 				const spec = child._toSpec();
+				this.edytor._pendingBlocks.set(spec.id!, child);
 				const created = model
 					? model.insertChild(i, spec)
 					: this.edytor.facade.insertBlock({ parent: null, index: i }, spec);
-				if (created.status === 'applied') {
-					this.edytor._pendingBlocks.set(created.ids[0], child);
-				}
+				if (created.status !== 'applied') this.edytor._pendingBlocks.delete(spec.id!);
 			}
 			i++;
 		}
-		this.edytor.flushMirror();
 	};
 
 	/**
@@ -865,7 +761,6 @@ export class Block {
 				this.edytor.facade.block(target).delete();
 			}
 		}
-		this.edytor.flushMirror();
 	};
 
 	/**
@@ -894,6 +789,8 @@ export class Block {
 		let partIndex = index;
 		let offset = this.atomOffsetOfPartIndex(partIndex);
 		for (const part of parts) {
+			// Registered before the write: a write outside a transaction commits at once.
+			this._pendingParts.set(partIndex, part);
 			if (part instanceof Text) {
 				for (const run of part._items) {
 					if (run.text.length) {
@@ -901,7 +798,6 @@ export class Block {
 						offset += run.text.length;
 					}
 				}
-				this._pendingParts.set(partIndex, part);
 			} else {
 				const spec = part._spec ?? { type: part.type, data: part.data };
 				model.insertInline(offset, {
@@ -910,11 +806,9 @@ export class Block {
 					...(spec.data ? { data: cloneJson(spec.data) } : {})
 				});
 				offset += 1;
-				this._pendingParts.set(partIndex, part);
 			}
 			partIndex++;
 		}
-		this.edytor.flushMirror();
 	};
 
 	/**
@@ -945,7 +839,6 @@ export class Block {
 				model.removeInline(part.item.id);
 			}
 		}
-		this.edytor.flushMirror();
 	};
 
 	attach = (node: HTMLElement) => {

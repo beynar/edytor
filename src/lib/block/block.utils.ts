@@ -6,8 +6,14 @@
  * interception, one transaction: `session/commands.ts`). The functions own
  * path/offset resolution (target paths → parent blocks, `partOffsetOf`
  * segment offsets, sibling lookup for `nestBlock`), the plan of an operation
- * that is one document op (`prepare*`), and post-op mirror maintenance
- * (`flushMirror`, normalization requests).
+ * that is one document op (`prepare*`) and its normalization requests.
+ *
+ * OPERATIONS READ AND WRITE ONLY THE DOCUMENT (R3): the wrappers are patched
+ * once per commit from its change report, so an operation's body never reads
+ * a wrapper after its own write. What a caller needs after the write (the new
+ * block, the text after an inserted atom, the caret a range op decided) is
+ * the op's document result, resolved to wrappers once the command committed
+ * (`batch`'s `resolve`).
  *
  * STRUCTURAL PERMISSION IS DOCUMENT-OWNED: every op delegates to
  * `block.model.*` (the facade through `DocBlock`) and treats a `refused` result
@@ -117,35 +123,50 @@ export type BlockOperations = {
  * Bind an operation onto its wrapper: every call is dispatched as a command
  * (`session/commands.ts`): admission, hooks before any write (on the command
  * and, when `prepare` answers one document plan, on each planned step), one
- * transaction, normalization, the result. `func` receives the prepared plan.
+ * transaction, normalization, the result. `func` receives the prepared plan
+ * and answers the op's document result; `resolve` turns it into wrappers
+ * after the commit patched them.
  */
-export function batch<T extends (...args: any[]) => any, O extends keyof BlockOperations>(
+export function batch<
+	T extends (...args: any[]) => any,
+	O extends keyof BlockOperations,
+	R = ReturnType<T>
+>(
 	operation: O,
 	func: T,
-	prepare?: (payload: BlockOperations[O]) => Prepared
-): T {
-	return function (this: Block, payload: BlockOperations[O]): ReturnType<T> {
-		return this.edytor.dispatcher.dispatch(
+	prepare?: (payload: BlockOperations[O]) => Prepared,
+	resolve?: (this: any, out: ReturnType<T> | undefined, payload: Parameters<T>[0]) => R
+): (...args: Parameters<T>) => R {
+	return function (this: Block, ...[payload]: Parameters<T>): R {
+		const out = this.edytor.dispatcher.dispatch(
 			operation,
 			payload,
 			{ block: this },
 			(p, plan) => func.call(this, p, plan),
 			prepare && ((p) => prepare.call(this, p))
-		) as ReturnType<T>;
-	} as T;
+		);
+		return resolve ? resolve.call(this, out, payload) : (out as R);
+	};
+}
+
+/**
+ * The wrapper of block `id` once the command committed (null: refused at
+ * preparation, or gone; undefined: the command did not run).
+ */
+export function blockOf(this: Block, id: string | null | undefined): Block | null | undefined {
+	return id === undefined ? undefined : (id && this.edytor.idToBlock.get(id)) || null;
 }
 
 const REFUSED: Prepared = { status: 'refused', ids: [] };
 
 /**
- * An op's body over its prepared plan: write it, refresh the mirror, request
- * normalization of the blocks it touched (captured before the write).
- * Answers the applied plan, or null when it was refused.
+ * An op's body over its prepared plan: write it and request normalization of
+ * the blocks it touched (captured before the write). Answers the applied
+ * plan, or null when it was refused.
  */
 const applyPlan = (block: Block, plan: Prepared, touched: (Block | null | undefined)[]) => {
 	if (!('writes' in plan)) return null;
 	block.edytor.facade.apply(plan);
-	block.edytor.flushMirror();
 	for (const parent of touched) parent?.normalizeChildren();
 	return plan;
 };
@@ -223,17 +244,16 @@ export function prepareInsertBefore(this: Block, { block }: { block: JSONBlock }
 	return prepareSibling(this, block, false);
 }
 
-/** Apply `plan` under `this`'s parent; the block it answers first (inserted or surviving). */
-function resultOf(this: Block, plan: Prepared): Block | null {
-	const applied = applyPlan(this, plan, [this.parent]);
-	return applied ? (this.edytor.idToBlock.get(applied.ids[0]!) ?? null) : null;
+/** Apply `plan` under `this`'s parent; the id it answers first (inserted or surviving). */
+function resultOf(this: Block, plan: Prepared): string | null {
+	return applyPlan(this, plan, [this.parent])?.ids[0] ?? null;
 }
 
 export function insertBlockAfter(
 	this: Block,
 	payload: BlockOperations['insertBlockAfter'],
 	plan = prepareInsertAfter.call(this, payload)
-): Block | null {
+): string | null {
 	return resultOf.call(this, plan);
 }
 
@@ -241,7 +261,7 @@ export function insertBlockBefore(
 	this: Block,
 	payload: BlockOperations['insertBlockBefore'],
 	plan = prepareInsertBefore.call(this, payload)
-): Block | null {
+): string | null {
 	return resultOf.call(this, plan);
 }
 
@@ -257,12 +277,8 @@ export function splitBlock(
 	this: Block,
 	payload: BlockOperations['splitBlock'],
 	plan = prepareSplit.call(this, payload)
-): Block | null {
-	if (!('writes' in plan)) return null;
-	this.edytor.facade.apply(plan);
-	this.edytor.flushMirror();
-	this.parent?.normalizeChildren();
-	return this.edytor.idToBlock.get(plan.effect.creates[0]!) ?? null;
+): string | null {
+	return applyPlan(this, plan, [this.parent])?.effect.creates[0] ?? null;
 }
 
 export function prepareRemove(
@@ -297,7 +313,7 @@ export function mergeBlockBackward(
 	this: Block,
 	_: BlockOperations['mergeBlockBackward'] = {},
 	plan = prepareMergeBackward.call(this)
-): Block | null {
+): string | null {
 	return resultOf.call(this, plan);
 }
 
@@ -305,7 +321,7 @@ export function mergeBlockForward(
 	this: Block,
 	_: BlockOperations['mergeBlockForward'] = {},
 	plan = prepareMergeForward.call(this)
-): Block | null {
+): string | null {
 	return resultOf.call(this, plan);
 }
 
@@ -335,13 +351,7 @@ export function moveBlock(
 	payload: BlockOperations['moveBlock'],
 	plan = prepareMove.call(this, payload)
 ): Block | null {
-	if (!('writes' in plan)) return null;
-	const from = this.parent;
-	this.edytor.facade.apply(plan);
-	this.edytor.flushMirror();
-	from?.normalizeChildren();
-	this.parent?.normalizeChildren();
-	return this;
+	return applyPlan(this, plan, [this.parent, parentAt(this.edytor, payload.path)[0]]) ? this : null;
 }
 
 /**
@@ -369,15 +379,9 @@ export function moveBlocks(
 	payload: BlockOperations['moveBlocks'],
 	plan = prepareMoves.call(this, payload)
 ): Block[] {
-	if (!('writes' in plan)) return [];
-	const { blocks } = payload;
-	// Source parents captured pre-move — reconcile reassigns `parent`.
-	const parents = new Set(blocks.flatMap((block) => (block.parent ? [block.parent] : [])));
-	this.edytor.facade.apply(plan);
-	this.edytor.flushMirror();
-	for (const block of [...parents, ...blocks.map((block) => block.parent)])
-		block?.normalizeChildren();
-	return blocks;
+	const { blocks, path } = payload;
+	const parents = new Set([...blocks.map((block) => block.parent), parentAt(this.edytor, path)[0]]);
+	return applyPlan(this, plan, [...parents]) ? blocks : [];
 }
 
 /**
@@ -438,10 +442,7 @@ export function setBlock(
 	payload: BlockOperations['setBlock'],
 	plan = prepareSet.call(this, payload)
 ) {
-	if (!('writes' in plan)) return;
-	this.edytor.facade.apply(plan);
-	this.edytor.flushMirror();
-	this.normalizeChildren();
+	if (!applyPlan(this, plan, [this])) return;
 	this.normalizeContent();
 }
 
@@ -470,7 +471,6 @@ export function pushContentIntoBlock(
 			}
 		}
 	}
-	this.edytor.flushMirror();
 	this.normalizeContent();
 }
 
@@ -534,83 +534,65 @@ export const groupContent = (
 	return groupedContent;
 };
 
+/**
+ * Insert an inline atom at `index` of `text`. Answers the atom's id; the
+ * batched operation resolves it to the text after the atom once committed
+ * ({@link textAfterAtom}), which takes the text's pending marks.
+ */
 export function addInlineBlock(
 	this: Block,
 	{ index, block, text }: BlockOperations['addInlineBlock']
-): Text {
-	const newInlineBlock = new InlineBlock({
-		parent: this,
-		block
-	});
-	const pendingMarks =
-		text.markOnNextInsert === undefined ? undefined : { ...text.markOnNextInsert };
-	// The tail of the split text keeps its atoms in the engine — the new text
-	// wrapper is adopted onto the segment after the inserted inline.
-	const newText = new Text({
-		parent: this,
-		content: text._sliceFrom(index)
-	});
-	if (pendingMarks !== undefined) {
-		text.markOnNextInsert = undefined;
-		newText.markOnNextInsert = pendingMarks;
-	}
-
+): string {
+	const atom = { ...block, id: block.id ?? id('i') };
 	const model = this.model;
-	if (model) {
-		const offset = this.partOffsetOf(text) + index;
-		model.insertInline(offset, {
-			id: newInlineBlock.id,
-			type: newInlineBlock.type,
-			...(newInlineBlock.data ? { data: cloneJson(newInlineBlock.data) } : {})
+	if (model)
+		model.insertInline(this.partOffsetOf(text) + index, {
+			id: atom.id,
+			type: atom.type,
+			...(atom.data ? { data: cloneJson(atom.data) } : {})
 		});
-		this._pendingParts.set(text.index + 1, newInlineBlock);
-		this._pendingParts.set(text.index + 2, newText);
-		this.edytor.flushMirror();
-	} else {
-		this.insertParts(text.index + 1, [newInlineBlock, newText]);
+	else {
+		// A detached spec block: its content is a local buffer.
+		const tail = new Text({ parent: this, content: text._sliceFrom(index) });
+		this.insertParts(text.index + 1, [new InlineBlock({ parent: this, block: atom }), tail]);
 	}
 	this.normalizeContent();
-	// The text after the atom, by position: a carrier merged into a segment
-	// already owned by a live wrapper is retired (R2).
-	const at = this.content.findIndex((part) => part.id === newInlineBlock.id);
-	const after = this.content[at + 1];
-	const inserted = at >= 0 && after instanceof Text ? after : newText;
-	if (pendingMarks !== undefined) inserted.markOnNextInsert = pendingMarks;
-	return inserted;
+	return atom.id;
+}
+
+/** The text after atom `atom` of this block, once committed; it takes `payload.text`'s pending marks. */
+export function textAfterAtom(
+	this: Block,
+	atom: string | undefined,
+	{ text }: BlockOperations['addInlineBlock']
+): Text | null | undefined {
+	if (atom === undefined) return undefined;
+	const at = this.content.findIndex((part) => part.id === atom);
+	const after = at < 0 ? undefined : this.content[at + 1];
+	if (!(after instanceof Text)) return null;
+	const marks = text.markOnNextInsert;
+	if (marks !== undefined) {
+		text.markOnNextInsert = undefined;
+		after.markOnNextInsert = { ...marks };
+	}
+	return after;
 }
 
 /**
- * Bound for plugin-driven re-normalization passes (D25). A
- * `normalizeContent`/`normalizeChildren` hook that keeps returning work
- * re-enters the batched op recursively — without a cap a non-converging
- * plugin overflows the stack. The counter lives on the block
- * (`_normalizationDepth`) and is shared by both hooks so a
- * content→children→content ping-pong is bounded too; the depth is per
- * call-chain (incremented before the re-entry, decremented after), so
- * legitimate multi-pass normalization still converges.
+ * Normalization runs after the command commits (`Dispatcher.drain`): a
+ * normalizer reads the wrappers the commit patched; when a plugin hook
+ * answers work, the work runs in one transaction and the block is requested
+ * again (bounded by the dispatcher's pass limit, D25).
  */
-const MAX_NORMALIZATION_DEPTH = 50;
-
 export function normalizeContent(this: Block): void {
 	if (this.edytor.dispatcher.defer(this, normalizeContent)) return;
 	// The v14 content model maintains the part invariants by construction —
 	// projected content always derives to text-first/text-last/non-adjacent
 	// parts — so the only remaining normalization is the plugin hook.
-	const pluginNormalization = this.definition?.normalizeContent?.({ block: this });
-	if (pluginNormalization) {
-		pluginNormalization();
-		if (this._normalizationDepth >= MAX_NORMALIZATION_DEPTH) {
-			console.warn(
-				`edytor: normalizeContent on block "${this.id}" exceeded ${MAX_NORMALIZATION_DEPTH} passes — a plugin normalizer is not converging; skipping further passes`
-			);
-			return;
-		}
-		this._normalizationDepth += 1;
-		try {
-			this.normalizeContent();
-		} finally {
-			this._normalizationDepth -= 1;
-		}
+	const work = this.definition?.normalizeContent?.({ block: this });
+	if (work) {
+		this.edytor.dispatcher.write(work);
+		this.normalizeContent();
 	}
 }
 
@@ -622,25 +604,13 @@ export function normalizeChildren(this: Block): void {
 			edytor: this.edytor,
 			block: { type: this.edytor.defaultChild(this), children: [] }
 		});
-		this.insertChildren(0, [newBlock]);
+		this.edytor.dispatcher.write(() => this.insertChildren(0, [newBlock]));
 		return this.normalizeChildren();
 	}
-	const pluginNormalization = this.definition?.normalizeChildren?.({ block: this });
-
-	if (pluginNormalization) {
-		pluginNormalization();
-		if (this._normalizationDepth >= MAX_NORMALIZATION_DEPTH) {
-			console.warn(
-				`edytor: normalizeChildren on block "${this.id}" exceeded ${MAX_NORMALIZATION_DEPTH} passes — a plugin normalizer is not converging; skipping further passes`
-			);
-			return;
-		}
-		this._normalizationDepth += 1;
-		try {
-			this.normalizeChildren();
-		} finally {
-			this._normalizationDepth -= 1;
-		}
+	const work = this.definition?.normalizeChildren?.({ block: this });
+	if (work) {
+		this.edytor.dispatcher.write(work);
+		this.normalizeChildren();
 	}
 }
 

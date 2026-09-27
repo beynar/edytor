@@ -307,13 +307,13 @@ export const fixtures = defineFixtures([
 	}),
 	defineModelTransformFixture({
 		description:
-			'bounds a non-converging normalizeContent hook (D25) — recursion stops at the shared cap and the depth counter unwinds',
+			'bounds a non-converging normalizeContent hook (D25) — passes stop at the limit and the next command is not suppressed',
 		input: emptyFixture,
 		run: () => null,
 		assert: () => {
-			// A hook that ALWAYS defers more work would recurse forever —
-			// the per-block depth cap converts that into a bounded pass
-			// count plus a warning.
+			// A hook that ALWAYS answers more work would request its block
+			// forever — the dispatcher's per-command pass limit converts that
+			// into a bounded pass count plus a warning.
 			const normalizeContent = vi.fn(() => () => {});
 			const loopPlugin: Plugin = (editor) => ({
 				blocks: {
@@ -332,12 +332,14 @@ export const fixtures = defineFixtures([
 				warnSpy.mockClear();
 				block.normalizeContent();
 
-				// MAX_NORMALIZATION_DEPTH (50) re-entries + the initial pass.
+				// 50 re-requests + the initial pass (the dispatcher's pass limit).
 				expect(normalizeContent).toHaveBeenCalledTimes(51);
 				expect(warnSpy).toHaveBeenCalled();
-				// The `finally` unwinds the shared depth — the next pass is not
-				// silently suppressed by a leaked counter.
-				expect(block._normalizationDepth).toBe(0);
+				// The limit is per command — the next one is not silently
+				// suppressed by a leaked counter.
+				normalizeContent.mockClear();
+				block.normalizeContent();
+				expect(normalizeContent).toHaveBeenCalledTimes(51);
 				expectBlockInvariantSnapshot(edytor);
 			} finally {
 				warnSpy.mockRestore();
@@ -346,7 +348,7 @@ export const fixtures = defineFixtures([
 	}),
 	defineModelTransformFixture({
 		description:
-			'bounds a non-converging normalizeChildren hook (D25) — content→children share one depth counter',
+			'bounds a non-converging normalizeChildren hook (D25) — passes stop at the limit and the next command is not suppressed',
 		input: emptyFixture,
 		run: () => null,
 		assert: () => {
@@ -370,7 +372,9 @@ export const fixtures = defineFixtures([
 
 				expect(normalizeChildren).toHaveBeenCalledTimes(51);
 				expect(warnSpy).toHaveBeenCalled();
-				expect(block._normalizationDepth).toBe(0);
+				normalizeChildren.mockClear();
+				block.normalizeChildren();
+				expect(normalizeChildren).toHaveBeenCalledTimes(51);
 				expectBlockInvariantSnapshot(edytor);
 			} finally {
 				warnSpy.mockRestore();

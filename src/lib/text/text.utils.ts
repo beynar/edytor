@@ -238,7 +238,6 @@ export function removeMarksFromText(
 	const model = this.parent.model;
 	if (this._live && model) {
 		model.clearMarks(this.segStart + start, end - start);
-		this.refreshFromProject();
 		return;
 	}
 	// Detached spec buffer (`new Text` pre-admission): no document node —
@@ -254,7 +253,6 @@ export function removeMarksFromText(
 		{} as Record<string, null>
 	);
 	this.formatAt(start, end - start, attributes);
-	this.refreshFromProject();
 }
 
 export function markText(
@@ -280,7 +278,6 @@ export function markText(
 	const spreadOnAllRange =
 		marksAtRange.length > 0 && marksAtRange.every(({ marks }) => marks && mark in marks);
 	this.formatAt(start, end - start, { [mark]: spreadOnAllRange && toggle ? null : value });
-	this.refreshFromProject();
 }
 
 // This function split a Y.Text at an index, delete what is after the index and returns the deleted content as a JSONText[]

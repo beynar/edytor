@@ -8,25 +8,20 @@ import type { JSONDoc } from '$lib/utils/json.js';
 import type { ProjectedDoc } from '$lib/crdt/index.js';
 
 /**
- * U5 — scoped text refresh.
+ * U5 → arch-v2 R3 — text edits never project the document, and the
+ * wrappers change only at the commit.
  *
- * `Text.refreshFromProject` (and the `segStart` display-offset read the
- * `insertAt`/`deleteAt`/`formatAt` mutation surface performs) used to go
- * through `edytor.projectedBlock` → `_projectedTree()` → `facade.project()`
- * + a whole-tree index walk — O(document) work on every `facade.version`
- * bump, i.e. per keystroke. The refresh now reads
- * `facade.contentItems(blockId)` (the maintained, transaction-aware
- * per-block surface) gated by `facade.isVisibleBlock(blockId)` (the
- * O(depth) projected-tree-membership oracle `projectedBlock → null`
- * provided).
+ * The `segStart` display-offset read the `insertAt`/`deleteAt`/`formatAt`
+ * mutation surface performs reads `facade.contentItems(blockId)` (the
+ * transaction-aware per-block surface), never `facade.project()`. Since R3
+ * no write refreshes a wrapper: its items follow from the commit's change
+ * report (L16), so inside a transaction a wrapper shows what was committed
+ * while the document shows the writes.
  *
- * These tests pin the two halves of the change:
  *  - `facade.project()` is never called during ordinary text edits
- *    (instrumented on the live facade), while the committed-change mirror
- *    keeps applying incrementally (`flushMirror` — no full fallbacks).
- *  - The scoped read is a drop-in semantic replacement: read-your-writes
- *    mid-transaction, `_segOrd` mapping across inline atoms, marks, empty
- *    vs hidden/deleted blocks, and split/merge ownership aftermath.
+ *    (instrumented on the live facade); a sibling's wrapper is not touched.
+ *  - `_segOrd` mapping across inline atoms, marks, empty vs hidden/deleted
+ *    blocks, and split/merge ownership aftermath hold after each commit.
  */
 
 const paragraphDoc = (n: number): JSONDoc => ({
@@ -37,28 +32,16 @@ const paragraphDoc = (n: number): JSONDoc => ({
 	}))
 });
 
-type Counters = { project: number; flushMirror: number; flushFullFallback: number };
+type Counters = { project: number };
 
-/**
- * Test-visible counters: wraps `facade.project` (the tree-build the old
- * refresh forced per version bump) and `edytor.flushMirror` (the committed-
- * change mirror — its boolean return distinguishes the incremental
- * `applyMirrorChange` path from the full `reconcileChildren` fallback).
- */
+/** Test-visible counter: wraps `facade.project` (the whole-document tree build). */
 const instrumentEdytor = (edytor: Edytor): Counters => {
-	const counts: Counters = { project: 0, flushMirror: 0, flushFullFallback: 0 };
+	const counts: Counters = { project: 0 };
 	const facade = edytor.facade;
 	const project = facade.project;
 	facade.project = (): ProjectedDoc => {
 		counts.project++;
 		return project();
-	};
-	const flushMirror = edytor.flushMirror;
-	edytor.flushMirror = (): boolean => {
-		counts.flushMirror++;
-		const incremental = flushMirror();
-		if (!incremental) counts.flushFullFallback++;
-		return incremental;
 	};
 	return counts;
 };
@@ -80,10 +63,6 @@ describe('scoped text refresh — project() elimination', () => {
 			const sibling = textOf(edytor, 51);
 			const siblingItems = sibling._items;
 			const reconcileSpy = vi.spyOn(sibling.parent, 'reconcileContent');
-
-			// Warm the projected tree at the current version (selection/
-			// structure reads do this continuously in a live editor).
-			edytor.projectedChildren(null);
 			const before = { ...counts };
 
 			edytor.transact(() => {
@@ -91,8 +70,6 @@ describe('scoped text refresh — project() elimination', () => {
 			});
 
 			expect(counts.project - before.project).toBe(0);
-			expect(counts.flushMirror - before.flushMirror).toBe(1);
-			expect(counts.flushFullFallback - before.flushFullFallback).toBe(0);
 			expect(text.stringContent).toBe('Xblock 50 content');
 			// The sibling wrapper was never reconciled — same `_items`
 			// array instance, same derived string.
@@ -123,7 +100,6 @@ describe('scoped text refresh — project() elimination', () => {
 		edytor.transact(() => text.formatAt(0, 3, { bold: true }));
 
 		expect(counts.project).toBe(0);
-		expect(counts.flushFullFallback).toBe(0);
 		expect(text.stringContent.slice(0, 3)).toBe('xxH');
 		expect(text._items.some((item) => item.marks?.bold === true)).toBe(true);
 	});
@@ -152,7 +128,7 @@ describe('scoped text refresh — project() elimination', () => {
 });
 
 describe('scoped text refresh — correctness', () => {
-	it('read-your-writes: write → refresh → write → refresh inside one transaction', () => {
+	it('inside a transaction the document shows the writes, the wrapper what was committed', () => {
 		const { edytor } = createTestEdytor(
 			(
 				<root>
@@ -161,23 +137,26 @@ describe('scoped text refresh — correctness', () => {
 			) as any
 		);
 		const text = textOf(edytor, 0);
+		const id = text.parent.id;
+		const shown = () =>
+			edytor.facade
+				.contentItems(id)
+				.map((item) => (item.kind === 'text' ? item.text : '@'))
+				.join('');
 
 		edytor.transact(() => {
 			text.insertAt(5, ' brave');
-			// The write above already ran the scoped refresh inside insertAt;
-			// refresh again explicitly to prove the mid-transaction read.
-			text.refreshFromProject();
-			expect(text.stringContent).toBe('Hello brave world');
-			text.deleteAt(5, 6);
-			text.refreshFromProject();
+			expect(shown()).toBe('Hello brave world');
 			expect(text.stringContent).toBe('Hello world');
+			text.deleteAt(5, 6);
+			expect(shown()).toBe('Hello world');
 			text.formatAt(0, 5, { italic: true });
-			text.refreshFromProject();
-			expect(text._items[0]?.marks?.italic).toBe(true);
+			expect(text._items[0]?.marks).toBeUndefined();
 		});
-		// Committed state agrees with what the mid-transaction reads saw
-		// (U7 provenance stamps `attribution` on emitted items — strip it).
+		// The commit's report patched the wrapper (U7 provenance stamps
+		// `attribution` on emitted items — strip it).
 		expect(text.stringContent).toBe('Hello world');
+		expect(text._items[0]?.marks?.italic).toBe(true);
 		expect(stripAttribution(edytor.value.children?.[0]?.content ?? [])).toEqual([
 			{ text: 'Hello', marks: { italic: true } },
 			{ text: ' world' }
@@ -213,8 +192,8 @@ describe('scoped text refresh — correctness', () => {
 		expect(secondText.stringContent).toBe('!world');
 		expect(firstText.stringContent).toBe('Hello');
 		// Same-block sibling segments are re-bound by the commit's
-		// `reconcileContent` (fresh items array, same content) — the scoped
-		// refresh keeps identity only for OTHER blocks' wrappers.
+		// `reconcileContent` (fresh items array, same content); other blocks'
+		// wrappers keep their identity.
 		expect(stripAttribution(firstText._items)).toEqual(stripAttribution(firstItems));
 		expect(secondText._segOrd).toBe(1);
 
@@ -278,18 +257,17 @@ describe('scoped text refresh — correctness', () => {
 		expect(edytor.facade.isVisibleBlock(text.parent._blockId!)).toBe(true);
 		expect(edytor.facade.contentItems(text.parent._blockId!)).toEqual([]);
 
-		text.refreshFromProject();
 		expect(text._items).toEqual([]);
 		expect(text.isEmpty).toBe(true);
 
-		// A write into the empty block refreshes through the same path.
+		// A write into the empty block reaches the wrapper at the commit.
 		edytor.transact(() => {
 			text.insertAt(0, 'now full');
 		});
 		expect(text.stringContent).toBe('now full');
 	});
 
-	it('hidden/deleted block mid-edit keeps last-known items (projectedBlock-null parity)', () => {
+	it('hidden/deleted block mid-edit keeps last-known items until the commit kills it', () => {
 		const { edytor } = createTestEdytor(
 			(
 				<root>
@@ -304,12 +282,10 @@ describe('scoped text refresh — correctness', () => {
 
 		edytor.transact(() => {
 			edytor.facade.deleteBlock(block._blockId!);
-			// Mid-transaction the block is already hidden — `contentItems`
-			// alone would emit `[]` like an empty block; the visibility gate
-			// keeps the stale items, exactly as `projectedBlock → null` did.
+			// Mid-transaction the block is already hidden in the document; the
+			// wrapper keeps what was committed.
 			expect(edytor.facade.isVisibleBlock(block._blockId!)).toBe(false);
 			expect(edytor.facade.contentItems(block._blockId!)).toEqual([]);
-			text.refreshFromProject();
 			expect(text._items).toBe(itemsBefore);
 			expect(text.stringContent).toBe('two');
 		});
@@ -339,12 +315,12 @@ describe('scoped text refresh — correctness', () => {
 			edytor.facade.mergeBlocks(second._blockId!, first._blockId!);
 			expect(edytor.facade.hasBlock(second._blockId!)).toBe(true);
 			expect(edytor.facade.isVisibleBlock(second._blockId!)).toBe(false);
-			secondText.refreshFromProject();
 			expect(secondText._items).toBe(itemsBefore);
 		});
+		expect(secondText._live).toBe(false);
 	});
 
-	it('split/merge aftermath — refreshed segments show the atoms their new owner displays', () => {
+	it('split/merge aftermath — committed segments show the atoms their new owner displays', () => {
 		const { edytor } = createTestEdytor(
 			(
 				<root>
@@ -361,20 +337,17 @@ describe('scoped text refresh — correctness', () => {
 		const sibling = block.splitBlock({ index: 6, text });
 		expect(sibling).toBeTruthy();
 		const siblingText = sibling!.content[0] as Text;
-		siblingText.refreshFromProject();
 		expect(siblingText.stringContent).toBe('world');
-		text.refreshFromProject();
 		expect(text.stringContent).toBe('Hello ');
 		// The sibling's segment is bound to the NEW block id.
 		expect(siblingText.parent).toBe(sibling);
 		expect(siblingText._live).toBe(true);
 
-		// Merge the sibling back — the refreshed segment of the surviving
+		// Merge the sibling back — the committed segment of the surviving
 		// block shows the reclaimed atoms under the original owner.
 		const merged = sibling!.mergeBlockBackward();
 		expect(merged).toBeTruthy();
 		const mergedText = merged!.content[0] as Text;
-		mergedText.refreshFromProject();
 		expect(mergedText.stringContent).toBe('Hello world');
 	});
 

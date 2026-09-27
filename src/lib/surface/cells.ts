@@ -17,8 +17,9 @@
  *
  * Cells are reactive (R2): each cell and the root list are pointers a patch
  * replaces, so a component re-renders only when the cell it reads was named
- * by a report. Components render from cells only; operations still read the
- * wrapper mirror until R3/R4.
+ * by a report. Components render from cells only; operations read the
+ * document (R3), and the wrapper mirror is patched from the same reports
+ * until R4.
  */
 import { SvelteMap, createSubscriber } from 'svelte/reactivity';
 import type { BlockId, ContentRun, DocChange, ProjectedBlock } from '../crdt/index.js';

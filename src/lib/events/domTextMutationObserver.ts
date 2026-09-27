@@ -1530,8 +1530,7 @@ const adopt = async (edytor: Edytor, text: Text, dom: string, domCaret?: number)
 	if (attempt) attempt.phase = adopted ? 'applied' : 'failed';
 	if (!text.isInDocument) return true;
 	if (adopted && same && Object.keys(marks).length > 0) text.markOnNextInsert = marks;
-	if (adopted && !drifted) text.refreshFromProject();
-	else {
+	if (!adopted || drifted) {
 		text.refreshFromModel();
 		removeUnmanagedLineBreaks(text);
 	}

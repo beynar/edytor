@@ -310,7 +310,7 @@ describe('headless command simulation (U2)', () => {
 		// A deletes EVERYTHING; normalization mints a fresh empty paragraph
 		// on both sides. On B the paragraph's text wrapper exists in the
 		// model before its DOM node mounts — the dead-endpoint recovery that
-		// ran inside flushMirror found no mounted editable text and armed
+		// ran with the commit's mirror patch found no mounted editable text and armed
 		// the post-mount retry instead of leaving the caret on dead beta.
 		const a = await renderDomEdytor(seed, { autoSelectFixture: false });
 		const b = await mountReplicaPeer(a, seed);

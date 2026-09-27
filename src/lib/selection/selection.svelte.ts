@@ -394,7 +394,7 @@ export class EdytorSelection {
 	get state(): SelectionState {
 		const projection = this.projection;
 		const surface = this.#surface?.value === this.value ? this.#surface : null;
-		const mirror = this.edytor.mirrorRevision;
+		const mirror = this.edytor._docCommitVersion;
 		const hit = this.#compat.get(projection);
 		if (hit && hit.surface === surface && hit.mirror === mirror) return hit.state;
 		const state = this.#compatState(this.value, projection, surface);

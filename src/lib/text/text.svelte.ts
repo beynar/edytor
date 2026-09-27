@@ -16,7 +16,7 @@ import { deltaToJson, runsToDeltas } from './deltas.js';
 import { id } from '$lib/utils.js';
 import { climb } from '$lib/selection/selection.utils.js';
 import { scheduleRemoveStalePlaceholders } from './removeStalePlaceholders.js';
-import type { ContentItem, OpResult } from '$lib/crdt/index.js';
+import type { OpResult } from '$lib/crdt/index.js';
 
 /** A write through the block's model that the document did not refuse. */
 const accepted = (r: OpResult | undefined): boolean => r !== undefined && r.status !== 'refused';
@@ -154,28 +154,16 @@ export class Text {
 	}
 
 	/**
-	 * Re-read the items and re-create this block's text elements from its
-	 * cell — the repair of a DOM the browser or a foreign script changed
-	 * (typing and model commits never remount). Never while the IME owns the
-	 * element. The remount can re-park a live DOM caret: the churn is marked
-	 * so a same-task selectionchange echo is drift, not user intent.
+	 * Re-create this block's text elements from its cell — the repair of a
+	 * DOM the browser or a foreign script changed (typing and model commits
+	 * never remount). Never while the IME owns the element. The remount can
+	 * re-park a live DOM caret: the churn is marked so a same-task
+	 * selectionchange echo is drift, not user intent.
 	 */
 	refreshFromModel = () => {
-		this.refreshFromProject();
 		if (this.edytor.pin.owns(this.node)) return;
 		this.edytor.markDomSelectionChurn();
 		this.edytor.cells?.remount(this.parent.id);
-	};
-
-	/**
-	 * Re-derive `_items` from the document (mid-transaction safe, scoped to
-	 * the block: `Block.projectedParts`). A hidden or deleted block keeps its
-	 * last-known items (the pending reconcile kills the wrapper).
-	 */
-	refreshFromProject = () => {
-		if (!this._live) return;
-		const mine = this.parent.projectedParts()?.filter((part) => part.kind === 'text')[this._segOrd];
-		if (mine?.kind === 'text') this._items = mine.items;
 	};
 
 	/** Bind this wrapper to segment `segOrd` of the parent (reconcile/adoption path). */
@@ -234,36 +222,18 @@ export class Text {
 		void tick().then(() => scheduleRemoveStalePlaceholders(this));
 	};
 
-	constructor({
-		parent,
-		content,
-		segment
-	}: { parent: Block } & (
-		| { segment?: undefined; content: string | JSONText[] }
-		| { segment: { segOrd: number; items: ContentItem[] }; content?: undefined }
-	)) {
+	/** A detached text (a spec's content, or a part a reconcile binds next). */
+	constructor({ parent, content }: { parent: Block; content: string | JSONText[] }) {
 		this.parent = parent;
 		this.edytor = parent.edytor;
-		if (segment !== undefined) {
-			this._segOrd = segment.segOrd;
-			this._live = true;
-			this._items = segment.items
-				.filter((item): item is ContentItem & { kind: 'text' } => item.kind === 'text')
-				.map((item) => ({
-					text: item.text,
-					...(item.marks ? { marks: item.marks } : {})
-				}));
-			this.id = `t:${parent._blockId ?? 'detached'}:${segment.segOrd}`;
-		} else {
-			this.id = id('t');
-			this._items =
-				typeof content === 'string'
-					? [{ text: content }]
-					: (content ?? []).map((part) => ({
-							text: part.text,
-							...(part.marks ? { marks: { ...part.marks } as Record<string, unknown> } : {})
-						}));
-		}
+		this.id = id('t');
+		this._items =
+			typeof content === 'string'
+				? [{ text: content }]
+				: content.map((part) => ({
+						text: part.text,
+						...(part.marks ? { marks: { ...part.marks } as Record<string, unknown> } : {})
+					}));
 		this.edytor.idToText.set(this.id, this);
 	}
 
@@ -274,10 +244,8 @@ export class Text {
 	// mutate this segment. They replace the old `yText` adapter:
 	//
 	// - BOUND wrappers (`_live` under a bound parent) route through the
-	//   typed node — `parent.model.insertText(segStart + offset, …)` — and
-	//   refresh `_items` from the post-write projection (the projection is
-	//   memoized on `facade.version`, so it reflects writes made earlier in
-	//   the same transaction — read-your-writes).
+	//   typed node — `parent.model.insertText(segStart + offset, …)`; the
+	//   wrapper's items follow at the commit (its change report, R3).
 	// - DETACHED wrappers splice the pending `_items` buffer — the spec a
 	//   later `insertParts` carries into the document (the old adapter's
 	//   unbound branch).
@@ -293,15 +261,10 @@ export class Text {
 
 	/** Insert `text` (optionally marked) at segment-local `offset`. */
 	insertAt = (offset: number, text: string, marks?: Record<string, unknown> | null): boolean => {
-		if (this._writable) {
-			const applied = accepted(
+		if (this._writable)
+			return accepted(
 				this.parent.model?.insertText(this.segStart + offset, text, marks ?? undefined)
 			);
-			if (applied) {
-				this.refreshFromProject();
-			}
-			return applied;
-		}
 		this._items = spliceTextItems(this._items, offset, 0, {
 			text,
 			...(marks != null ? { marks: { ...marks } } : {})
@@ -311,13 +274,8 @@ export class Text {
 
 	/** Delete `length` atoms at segment-local `offset`. */
 	deleteAt = (offset: number, length: number): boolean => {
-		if (this._writable) {
-			const applied = accepted(this.parent.model?.deleteText(this.segStart + offset, length));
-			if (applied) {
-				this.refreshFromProject();
-			}
-			return applied;
-		}
+		if (this._writable)
+			return accepted(this.parent.model?.deleteText(this.segStart + offset, length));
 		this._items = spliceTextItems(this._items, offset, length);
 		return true;
 	};
@@ -327,15 +285,8 @@ export class Text {
 	 * remove the mark (same contract as the old `yText.format`).
 	 */
 	formatAt = (offset: number, length: number, attributes: Record<string, unknown>): boolean => {
-		if (this._writable) {
-			const applied = accepted(
-				this.parent.model?.format(this.segStart + offset, length, attributes)
-			);
-			if (applied) {
-				this.refreshFromProject();
-			}
-			return applied;
-		}
+		if (this._writable)
+			return accepted(this.parent.model?.format(this.segStart + offset, length, attributes));
 		this._items = formatTextItems(this._items, offset, length, attributes);
 		return true;
 	};

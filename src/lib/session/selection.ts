@@ -28,7 +28,13 @@ export type SelectionValue =
 			/** Marks the next insertion at a caret takes (values kept); cleared when the caret moves. */
 			readonly pending?: Marks;
 	  }
-	| { readonly kind: 'atom'; readonly blockId: BlockId; readonly atomId: string }
+	| {
+			readonly kind: 'atom';
+			readonly blockId: BlockId;
+			readonly atomId: string;
+			/** The side the selection is anchored on: a Shift key extends from it. */
+			readonly from: AtomSide;
+	  }
 	| { readonly kind: 'blocks'; readonly ids: readonly BlockId[] };
 
 export const noSelection: SelectionValue = Object.freeze({ kind: 'none' });
@@ -40,8 +46,14 @@ export const textSelection = (
 ): SelectionValue =>
 	Object.freeze({ kind: 'text', anchor, focus, ...(pending ? { pending } : {}) });
 
-export const atomSelection = (blockId: BlockId, atomId: string): SelectionValue =>
-	Object.freeze({ kind: 'atom', blockId, atomId });
+/** Where an atom selection is anchored: a click or a host selects from `before`. */
+export type AtomSide = 'before' | 'after';
+
+export const atomSelection = (
+	blockId: BlockId,
+	atomId: string,
+	from: AtomSide = 'before'
+): SelectionValue => Object.freeze({ kind: 'atom', blockId, atomId, from });
 
 export const blockSelection = (ids: readonly BlockId[]): SelectionValue =>
 	Object.freeze({ kind: 'blocks', ids: Object.freeze([...ids]) });
@@ -346,7 +358,7 @@ export const sameValue = (a: SelectionValue, b: SelectionValue): boolean => {
 	if (a.kind === 'blocks' && b.kind === 'blocks')
 		return a.ids.length === b.ids.length && a.ids.every((id, i) => id === b.ids[i]);
 	if (a.kind === 'atom' && b.kind === 'atom')
-		return a.blockId === b.blockId && a.atomId === b.atomId;
+		return a.blockId === b.blockId && a.atomId === b.atomId && a.from === b.from;
 	return a.kind === b.kind && a.kind === 'none';
 };
 

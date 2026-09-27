@@ -297,7 +297,10 @@ describe('atoms at block edges', () => {
 
 	row('Shift+ArrowLeft on the atom that starts a block extends across the block edge', async () => {
 		const { edytor, editor, blocks } = await mount(edges());
-		await selectAtom(edytor, blocks()[1]);
+		// Selected from after it (the V6 follow-up: an atom keeps its anchor side).
+		await place(edytor, blocks()[1], 1);
+		await press(editor, 'ArrowLeft', { shift: true });
+		expect(sel(edytor)).toMatchObject({ kind: 'atom', start: [1, 0], end: [1, 1] });
 		await press(editor, 'ArrowLeft', { shift: true });
 		expect(sel(edytor)).toMatchObject({
 			kind: 'text',
@@ -306,6 +309,39 @@ describe('atoms at block edges', () => {
 			collapsed: false,
 			reversed: true
 		});
+	});
+
+	/** V6 follow-up (b): the atom selection value remembers the side it was anchored on. */
+	row(
+		'caret before an atom: Shift+ArrowRight selects it, Shift+ArrowLeft shrinks back',
+		async () => {
+			const { edytor, editor, blocks } = await mount({ children: [p('ab', '@', 'cd')] });
+			await place(edytor, blocks()[0], 2);
+			await press(editor, 'ArrowRight', { shift: true });
+			expect(sel(edytor)).toMatchObject({ kind: 'atom', start: [0, 2], end: [0, 3] });
+			expect(edytor.selection.value).toMatchObject({ kind: 'atom', from: 'before' });
+			await press(editor, 'ArrowLeft', { shift: true });
+			expect(sel(edytor)).toMatchObject(caretAt(0, 2));
+		}
+	);
+
+	row(
+		'caret after an atom: Shift+ArrowLeft selects it, Shift+ArrowRight shrinks back',
+		async () => {
+			const { edytor, editor, blocks } = await mount({ children: [p('ab', '@', 'cd')] });
+			await place(edytor, blocks()[0], 3);
+			await press(editor, 'ArrowLeft', { shift: true });
+			expect(sel(edytor)).toMatchObject({ kind: 'atom', start: [0, 2], end: [0, 3] });
+			expect(edytor.selection.value).toMatchObject({ kind: 'atom', from: 'after' });
+			await press(editor, 'ArrowRight', { shift: true });
+			expect(sel(edytor)).toMatchObject(caretAt(0, 3));
+		}
+	);
+
+	row('a clicked or programmatic atom selection is anchored before the atom', async () => {
+		const { edytor, blocks } = await mount({ children: [p('ab', '@', 'cd')] });
+		await selectAtom(edytor, blocks()[0]);
+		expect(edytor.selection.value).toMatchObject({ kind: 'atom', from: 'before' });
 	});
 
 	pin('a word extension from the caret before an atom selects the atom', async () => {
@@ -436,11 +472,44 @@ describe('vertical extension walks the same displayable blocks (O44)', () => {
 			end: [4, 2],
 			reversed: false
 		});
-		// Going up from the block after it (K1: the start edge moves up).
+		// V6 follow-up (a): the focus moves back up — the original caret.
+		await press(editor, 'ArrowUp', { shift: true });
+		expect(sel(edytor)).toMatchObject(caretAt(1, 2));
+		// From the block after it, upward from the caret over the hidden body.
 		await place(edytor, blocks()[4], 2);
 		await press(editor, 'ArrowUp', { shift: true });
 		expect(sel(edytor)).toMatchObject({ kind: 'text', start: [1, 2], end: [4, 2], reversed: true });
 	});
+
+	/** V6 follow-up (a): vertical extension moves the focus, like every horizontal key. */
+	row('Shift+ArrowDown then Shift+ArrowUp returns to the original caret', async () => {
+		const { edytor, editor, blocks } = await mount({ children: [p('abcdef'), p('ghijkl')] });
+		await place(edytor, blocks()[0], 3);
+		await press(editor, 'ArrowDown', { shift: true });
+		expect(sel(edytor)).toMatchObject({ start: [0, 3], end: [1, 3], reversed: false });
+		await press(editor, 'ArrowUp', { shift: true });
+		expect(sel(edytor)).toMatchObject(caretAt(0, 3));
+	});
+
+	row('Shift+ArrowUp extends upward from the caret; Shift+ArrowDown shrinks back', async () => {
+		const { edytor, editor, blocks } = await mount({ children: [p('abcdef'), p('ghijkl')] });
+		await place(edytor, blocks()[1], 3);
+		await press(editor, 'ArrowUp', { shift: true });
+		expect(sel(edytor)).toMatchObject({ start: [0, 3], end: [1, 3], reversed: true });
+		await press(editor, 'ArrowDown', { shift: true });
+		expect(sel(edytor)).toMatchObject(caretAt(1, 3));
+	});
+
+	row(
+		'Shift+ArrowUp on a forward range moves its focus (the end), keeping the anchor',
+		async () => {
+			const { edytor, editor, blocks } = await mount({ children: [p('abcdef'), p('ghijkl')] });
+			const [first, second] = [blocks()[0]!.firstText!, blocks()[1]!.firstText!];
+			await setNativeSelection(edytor, first, 1, second, 3);
+			await press(editor, 'ArrowUp', { shift: true });
+			expect(sel(edytor)).toMatchObject({ start: [0, 1], end: [0, 3], reversed: false });
+		}
+	);
 
 	row('Shift+ArrowDown into a list lands in its first item, never the container slot', async () => {
 		const { edytor, editor, blocks } = await mount({

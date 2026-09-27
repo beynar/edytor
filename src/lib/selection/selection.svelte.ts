@@ -41,6 +41,7 @@ import {
 	serialize,
 	textSelection,
 	anchorsInOrder,
+	type AtomSide,
 	type SelectCause,
 	type SelectionProjection,
 	type SelectionSegment,
@@ -657,8 +658,8 @@ export class EdytorSelection {
 		const before = atom?.parent.content[atom.parent.content.indexOf(atom) - 1];
 		this.select(before instanceof Text ? this.textValue(before, before.length) : noSelection);
 	};
-	selectInlineBlock = (inlineBlock: InlineBlock) => {
-		this.select(atomSelection(inlineBlock.parent.id, inlineBlock.id));
+	selectInlineBlock = (inlineBlock: InlineBlock, from: AtomSide = 'before') => {
+		this.select(atomSelection(inlineBlock.parent.id, inlineBlock.id, from));
 	};
 	clearModelSelectionPreservation = () => {
 		this.shouldKeepModelSelectionForNextTextInsertion = false;
@@ -1171,7 +1172,7 @@ export class EdytorSelection {
 		);
 		if (inlineBlockSelectedByBoundaryRange) {
 			clearDomSelection(this.edytor.node);
-			this.selectInlineBlock(inlineBlockSelectedByBoundaryRange);
+			this.selectInlineBlock(inlineBlockSelectedByBoundaryRange, isReversed ? 'after' : 'before');
 			return;
 		}
 

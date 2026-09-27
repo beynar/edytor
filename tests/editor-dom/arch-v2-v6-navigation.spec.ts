@@ -153,3 +153,38 @@ test.describe('V6 — atoms at block edges', () => {
 		issues.assertClean();
 	});
 });
+
+/** V6 follow-up: vertical extension moves the focus; an atom selection keeps its anchor side. */
+test.describe('V6 follow-up — focus-moving vertical extension, anchored atom selection', () => {
+	test('Shift+ArrowDown then Shift+ArrowUp returns to the original caret', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page, [p('abcdef'), p('ghijkl'), p('mnopqr')]);
+		await setSelectionByTextIndex(page, 1, 3);
+		await page.keyboard.press('Shift+ArrowDown');
+		await expectStops(page, { start: [1, 3], end: [2, 3], reversed: false });
+		await page.keyboard.press('Shift+ArrowUp');
+		await expectStops(page, caretAt(1, 3));
+		await page.keyboard.press('Shift+ArrowUp');
+		await expectStops(page, { start: [0, 3], end: [1, 3], reversed: true });
+		issues.assertClean();
+	});
+
+	for (const [first, second, offset] of [
+		['ArrowRight', 'ArrowLeft', 2],
+		['ArrowLeft', 'ArrowRight', 3]
+	] as const)
+		test(`caret ${offset === 2 ? 'before' : 'after'} an atom: Shift+${first} selects it, Shift+${second} shrinks back`, async ({
+			page
+		}) => {
+			const issues = trackPageIssues(page);
+			await open(page, [p('ab', '@', 'cd')]);
+			// Text elements: ab 0, cd 1.
+			await setSelectionByTextIndex(page, offset === 2 ? 0 : 1, offset === 2 ? 2 : 0);
+			await expectStops(page, caretAt(0, offset));
+			await page.keyboard.press(`Shift+${first}`);
+			await expectStops(page, { kind: 'atom', start: [0, 2], end: [0, 3] });
+			await page.keyboard.press(`Shift+${second}`);
+			await expectStops(page, caretAt(0, offset));
+			issues.assertClean();
+		});
+});

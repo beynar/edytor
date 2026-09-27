@@ -93,7 +93,7 @@ const select = (edytor: Edytor, anchor: Stop, focus: Stop) => {
 		start.offset === start.text.length &&
 		end.offset === 0
 	)
-		return edytor.selection.selectInlineBlock(atom);
+		return edytor.selection.selectInlineBlock(atom, order > 0 ? 'after' : 'before');
 	void edytor.selection.setAtRange(start.text, start.offset, end.text, end.offset, {
 		isReversed: order > 0
 	});
@@ -119,8 +119,8 @@ export const move = (
 	const end = { text: state.endText, offset: state.yEnd };
 	const rtl = selection.rtl(state.isReversed ? start.text : end.text);
 	const dir: Dir = typeof key === 'number' ? key : (key === 'right') !== rtl ? 1 : -1;
-	// The focus moves; an atom extends from its side opposite the direction.
-	const reversed = value.kind === 'atom' ? dir < 0 : state.isReversed;
+	// The focus moves; an atom is the range anchored on the side it came from.
+	const reversed = value.kind === 'atom' ? value.from === 'after' : state.isReversed;
 	const [anchor, focus] = reversed ? [end, start] : [start, end];
 	const nodeBound = unit === 'char' && value.kind === 'text' && selection.hasNativeNodeSelection();
 	if (!extend && !state.isCollapsed && unit !== 'line' && unit !== 'doc') {
@@ -251,25 +251,20 @@ const goals = new WeakMap<Edytor, { column: number; value: SelectionValue }>();
 /**
  * Shift+ArrowUp/Down over a text selection (K1, O44). Native vertical
  * extension is engine-defined (Firefox collapses at the anchor or drops the
- * focus on stray boundary nodes), so the document-order edge nearest the
- * motion moves one line — the start going up, the end going down — while the
- * other edge stays; consecutive moves keep the goal column. Answers whether a
- * text selection moved.
+ * focus on stray boundary nodes), so the editor owns it with the horizontal
+ * keys' rule: the focus moves one line and the anchor stays; consecutive
+ * moves keep the goal column. Answers whether a text selection moved.
  */
 export const extendVertically = (edytor: Edytor, dir: Dir): boolean => {
 	const { value, state } = edytor.selection;
 	if (value.kind !== 'text' || !state.startText || !state.endText) return false;
 	const start = { text: state.startText, offset: state.yStart };
 	const end = { text: state.endText, offset: state.yEnd };
+	const [anchor, focus] = state.isReversed ? [end, start] : [start, end];
 	const kept = goals.get(edytor);
-	const to = lineStop(
-		edytor,
-		dir < 0 ? start : end,
-		dir,
-		kept?.value === value ? kept.column : undefined
-	);
+	const to = lineStop(edytor, focus, dir, kept?.value === value ? kept.column : undefined);
 	if (!to) return false;
-	select(edytor, dir < 0 ? end : start, to);
+	select(edytor, anchor, to);
 	goals.set(edytor, { column: to.column, value: edytor.selection.value });
 	return true;
 };

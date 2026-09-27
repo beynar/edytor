@@ -11,7 +11,8 @@
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc, BOOTSTRAP_BLOCK_ID } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/index.js';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -51,13 +52,13 @@ const pair = () => {
 describe('selective undo — remote writes are never undone locally', () => {
 	it('concurrent text edits: local undo removes only the local insert', () => {
 		const { d1, d2, e1, e2, um, sync } = pair();
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'base');
+		e1.insertText(DEFAULT_SEED_ID, 0, 'base');
 		sync();
 
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 4, '-LOCAL');
-		e2.insertText(BOOTSTRAP_BLOCK_ID, 0, 'REMOTE-');
+		e1.insertText(DEFAULT_SEED_ID, 4, '-LOCAL');
+		e2.insertText(DEFAULT_SEED_ID, 0, 'REMOTE-');
 		sync();
-		const merged = textOf(e1, BOOTSTRAP_BLOCK_ID);
+		const merged = textOf(e1, DEFAULT_SEED_ID);
 		expect(merged).toContain('REMOTE-');
 		expect(merged).toContain('-LOCAL');
 		expect(merged).toContain('base');
@@ -65,7 +66,7 @@ describe('selective undo — remote writes are never undone locally', () => {
 
 		um.undo();
 		sync();
-		const undone = textOf(e1, BOOTSTRAP_BLOCK_ID);
+		const undone = textOf(e1, DEFAULT_SEED_ID);
 		expect(undone).toContain('REMOTE-');
 		expect(undone).not.toContain('-LOCAL');
 		expect(undone).toContain('base');
@@ -74,23 +75,23 @@ describe('selective undo — remote writes are never undone locally', () => {
 
 	it('local edit then remote text edit: undo keeps the remote text', () => {
 		const { d1, d2, e1, e2, um, sync } = pair();
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'hello');
+		e1.insertText(DEFAULT_SEED_ID, 0, 'hello');
 		sync();
 
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 5, ' local');
-		e2.insertText(BOOTSTRAP_BLOCK_ID, 0, 'R');
+		e1.insertText(DEFAULT_SEED_ID, 5, ' local');
+		e2.insertText(DEFAULT_SEED_ID, 0, 'R');
 		sync();
-		expect(textOf(e1, BOOTSTRAP_BLOCK_ID)).toBe('Rhello local');
+		expect(textOf(e1, DEFAULT_SEED_ID)).toBe('Rhello local');
 
 		um.undo();
 		sync();
-		expect(textOf(e1, BOOTSTRAP_BLOCK_ID)).toBe('Rhello');
+		expect(textOf(e1, DEFAULT_SEED_ID)).toBe('Rhello');
 		expect(e1.toJSON()).toEqual(e2.toJSON());
 	});
 
 	it('local move + remote text edit: undo restores position, keeps remote text', () => {
 		const { d1, d2, e1, e2, um, sync } = pair();
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'a');
+		e1.insertText(DEFAULT_SEED_ID, 0, 'a');
 		e1.insertBlock({ parent: null, index: 1 }, { id: 'b2', type: 'paragraph' });
 		e1.insertText('b2', 0, 'b');
 		e1.insertBlock({ parent: null, index: 2 }, { id: 'wrap', type: 'paragraph' });
@@ -113,12 +114,12 @@ describe('selective undo — remote writes are never undone locally', () => {
 
 	it('undo + redo converge on both replicas', () => {
 		const { d1, d2, e1, e2, um, sync } = pair();
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'doc');
+		e1.insertText(DEFAULT_SEED_ID, 0, 'doc');
 		sync();
 
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 3, '-L1');
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 6, '-L2');
-		e2.insertText(BOOTSTRAP_BLOCK_ID, 0, 'R>');
+		e1.insertText(DEFAULT_SEED_ID, 3, '-L1');
+		e1.insertText(DEFAULT_SEED_ID, 6, '-L2');
+		e2.insertText(DEFAULT_SEED_ID, 0, 'R>');
 		sync();
 
 		um.undo(); // removes -L2
@@ -126,30 +127,30 @@ describe('selective undo — remote writes are never undone locally', () => {
 		um.redo(); // restores -L2
 		sync();
 
-		const converged = textOf(e1, BOOTSTRAP_BLOCK_ID);
+		const converged = textOf(e1, DEFAULT_SEED_ID);
 		expect(converged).toBe('R>doc-L1-L2');
 		expect(e1.toJSON()).toEqual(e2.toJSON());
 	});
 
 	it('remote edits between local ops only peel the local stack', () => {
 		const { d1, d2, e1, e2, um, sync } = pair();
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'xy');
+		e1.insertText(DEFAULT_SEED_ID, 0, 'xy');
 		sync();
 
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 2, '1');
-		e2.insertText(BOOTSTRAP_BLOCK_ID, 0, 'r');
+		e1.insertText(DEFAULT_SEED_ID, 2, '1');
+		e2.insertText(DEFAULT_SEED_ID, 0, 'r');
 		sync();
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 4, '2');
-		e2.insertText(BOOTSTRAP_BLOCK_ID, 0, 's');
+		e1.insertText(DEFAULT_SEED_ID, 4, '2');
+		e2.insertText(DEFAULT_SEED_ID, 0, 's');
 		sync();
-		expect(textOf(e1, BOOTSTRAP_BLOCK_ID)).toBe('srxy12');
+		expect(textOf(e1, DEFAULT_SEED_ID)).toBe('srxy12');
 
 		um.undo(); // peel '2'
 		sync();
-		expect(textOf(e1, BOOTSTRAP_BLOCK_ID)).toBe('srxy1');
+		expect(textOf(e1, DEFAULT_SEED_ID)).toBe('srxy1');
 		um.undo(); // peel '1'
 		sync();
-		expect(textOf(e1, BOOTSTRAP_BLOCK_ID)).toBe('srxy');
+		expect(textOf(e1, DEFAULT_SEED_ID)).toBe('srxy');
 		expect(e1.toJSON()).toEqual(e2.toJSON());
 		// One item left: the pre-sync 'xy' insert. Remote inserts remain —
 		// undo never touched them, and nothing remote was captured.
@@ -158,27 +159,27 @@ describe('selective undo — remote writes are never undone locally', () => {
 
 	it('a remote delete next to a local insert stays deleted after undo', () => {
 		const { d1, d2, e1, e2, um, sync } = pair();
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'ab');
+		e1.insertText(DEFAULT_SEED_ID, 0, 'ab');
 		sync();
 
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 2, 'L');
-		e2.deleteText(BOOTSTRAP_BLOCK_ID, 0, 1); // remote removes 'a'
+		e1.insertText(DEFAULT_SEED_ID, 2, 'L');
+		e2.deleteText(DEFAULT_SEED_ID, 0, 1); // remote removes 'a'
 		sync();
-		expect(textOf(e1, BOOTSTRAP_BLOCK_ID)).toBe('bL');
+		expect(textOf(e1, DEFAULT_SEED_ID)).toBe('bL');
 
 		um.undo();
 		sync();
-		expect(textOf(e1, BOOTSTRAP_BLOCK_ID)).toBe('b');
+		expect(textOf(e1, DEFAULT_SEED_ID)).toBe('b');
 		expect(e1.toJSON()).toEqual(e2.toJSON());
 	});
 
 	it('remote-applied updates never enter the local stack even mid-session', () => {
 		const { d1, d2, e1, e2, um, sync } = pair();
-		e1.insertText(BOOTSTRAP_BLOCK_ID, 0, 'hi');
+		e1.insertText(DEFAULT_SEED_ID, 0, 'hi');
 		sync();
 		const depthAfterLocal = um.undoStack.length;
 
-		e2.insertText(BOOTSTRAP_BLOCK_ID, 0, 'RR');
+		e2.insertText(DEFAULT_SEED_ID, 0, 'RR');
 		e2.insertBlock({ parent: null, index: 1 }, { id: 'rb', type: 'paragraph' });
 		sync();
 		// Remote transactions are non-local → nothing captured.

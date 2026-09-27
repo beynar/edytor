@@ -36,21 +36,20 @@
  *                                                                      attach (raw bypass writes):
  *                                                                      typed error, document stays
  *                                                                      `pending`, doc preserved
- *   provider hydration        `applyUpdateStaged` → `gateSchema`       refused frame dropped; live
- *                             (transport staging, `protocols/sync.ts`) doc untouched; refused
- *                                                                      IndexedDB rows preserved,
- *                                                                      compaction stays blocked
+ *   provider frames/rows      generation word / container record;     foreign generation: dropped
+ *                             inbound refusal of a foreign stamp      before decode; forged stamp:
+ *                             (`protocols/sync.ts` `applyRemote`)     refused + reported; a stamp
+ *                                                                      that got in anyway makes the
+ *                                                                      doc read-only (`writable`)
  *   v13 migration             `bindLegacyReader` gate → rebuild via    legacy DB byte-identical; no
  *                             document-level `init` → `loadDocument`   v14 generation activated
  *
- * TWO LAYERS, ONE VOCABULARY. The transport layer (`providers/*`,
- * `protocols/sync.ts`) keeps its own STAGED admission — it must answer
- * "does merging this frame corrupt the live doc" without composing a
- * document. This module is the DOCUMENT layer: compose only admitted
- * docs, decide readiness by verdict. Both run the same
- * `checkSchema`/`assertUsableDoc` reads on the same definitions — this
- * module re-exports that gate vocabulary so both layers import it from
- * one doorway.
+ * TWO LAYERS. The transport layer (`providers/*`, `protocols/*`) proves
+ * the generation of every frame and container and refuses updates that
+ * write a foreign stamp; it never stages. This module is the DOCUMENT
+ * layer for bytes of unknown provenance: compose only admitted docs,
+ * decide readiness by verdict, and answer `document.writable`. Both read
+ * the same `checkSchema` definitions through this doorway.
  *
  * REFUSAL PRESERVES DATA. Every gate read is write-free — a refusal
  * mutates nothing: the target doc stays byte-identical, the caller's
@@ -172,10 +171,6 @@ export const bindAdmission = (Y: EngineApi) => ({
 	 * is returned for composition. A refusal therefore leaves nothing
 	 * mutated: the caller's bytes are never written anywhere, and no
 	 * partially-integrated state escapes the scratch.
-	 *
-	 * Mirrors the transport layer's `applyUpdateStaged` (scratch →
-	 * `checkSchema` → commit) at document granularity — same checks,
-	 * same vocabulary.
 	 *
 	 * Throws {@link UndecodableUpdateError} for payloads that fail to
 	 * decode/integrate at all, then the usual typed refusals.

@@ -1,23 +1,27 @@
 /**
- * WU3 — application-schema boundary for the v14 provider stack.
+ * Schema boundary for the v14 provider stack — rewritten at arch-v2 T1
+ * against compatibility by generation (R13, D-2).
  *
- * The transport envelope proves a peer speaks v14; it does NOT prove the
- * payload's application-schema version (`meta.v`). This suite pins the
- * boundary contract on every inbound path:
+ * The pinned intent of each case survives; the mechanism under test is the
+ * one D-2 adopts instead of per-update staging:
  *
- * - An update whose merge would move the live doc to an unsupported
- *   (`meta.v=99`) or unversioned schema is REFUSED — staged on a scratch
- *   doc, never integrated: the live doc is not mutated, the payload never
- *   enters accepted persistent state, and it is never rebroadcast.
- * - 'schema-mismatch' + 'message-error' fire per refusal; `synced` never
- *   fires falsely (a refused SyncStep2 handshake does not claim sync).
- * - The provider stays usable for subsequent VALID updates (recoverability
- *   — a refused update does not poison the connection).
- * - A valid incremental update that carries NO schema write still applies
- *   (same-schema peer mid-session — no regression).
- * - IndexedDB: a stored generation whose rows violate the schema boundary
- *   does not hydrate the live doc; the stored bytes are left intact
- *   (non-destructive); clean rows in a mixed store still hydrate.
+ * - GENERATION MISMATCH. Frames carry the generation word (engine + wire +
+ *   schema) and containers the generation record. A frame or container of
+ *   another schema generation is refused before a single byte is decoded:
+ *   the live doc is untouched, the refusal is observable
+ *   ('protocol-mismatch' / 'load-error' + 'failed'), stored bytes stay
+ *   intact.
+ * - SAME-GENERATION FORGED STAMP. A writer that speaks this generation but
+ *   writes a foreign `meta` stamp (v99, a foreign manifest name, a deleted
+ *   stamp) is refused inbound and reported ('schema-mismatch' +
+ *   'message-error'); the provider stays usable for valid updates, and the
+ *   stamp never reaches the receiver's container or the room. A document
+ *   that nonetheless carries a foreign stamp (a raw local write, a forged
+ *   row already in a same-generation container) is read-only: it neither
+ *   persists, compacts, nor broadcasts, and document admission refuses it.
+ * - UNVERSIONED CONTENT (registry writes with no stamp at all) is not a
+ *   stamp write: it integrates, and the doc is read-only and quarantined
+ *   until a versioned state makes it admissible again.
  */
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import 'fake-indexeddb/auto';
@@ -27,11 +31,13 @@ import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js'
 import { bindWebsocketProvider } from '../../../lib/crdt/providers/websocket.js';
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
-import { Awareness } from '../../../lib/crdt/protocols/awareness.js';
+import { checkSchema } from '../../../lib/crdt/admission.js';
+import { attachDocument, SCHEMA_VERSION } from '../../../lib/crdt/index.js';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import * as bc from 'lib0-v14/broadcastchannel';
 import * as idb from 'lib0-v14/indexeddb';
+import * as envelope from '../../../lib/crdt/protocols/envelope.js';
 import {
 	writeProtocolVersion,
 	generationDbName,
@@ -56,6 +62,18 @@ const until = async (cond, timeout = 5000) => {
 let counter = 0;
 const uniqueName = (base) => `${base}-${counter++}`;
 
+/** The frame word a build of application schema `schema` writes. */
+const wordOf = (schema) => envelope.generationWord?.(schema) ?? envelope.PROTOCOL_VERSION;
+
+/** A frame as a build of application schema `schema` writes it. */
+const encodeFor = (schema, type, payloadWriter) => {
+	const e = encoding.createEncoder();
+	encoding.writeVarUint(e, wordOf(schema));
+	encoding.writeVarUint(e, type);
+	payloadWriter?.(e);
+	return encoding.toUint8Array(e);
+};
+
 const encodeV14 = (type, payloadWriter) => {
 	const e = encoding.createEncoder();
 	writeProtocolVersion(e);
@@ -73,7 +91,7 @@ const makeV99Update = () => {
 	const remote = new Y.Doc();
 	// Yjs map-attr conflicts resolve by clientID (higher wins) — pin the
 	// remote clientID to the max so its meta.v=99 write deterministically
-	// wins the merge against any live doc's meta.v=1.
+	// wins the merge against any live doc's own meta.v stamp.
 	remote.clientID = Number.MAX_SAFE_INTEGER;
 	const er = E.create(remote);
 	er.init();
@@ -146,7 +164,7 @@ const openDb = (name) =>
 	);
 
 /** Write rows directly into a v14-generation DB (store + record). */
-const seedGenerationDb = async (name, rows) => {
+const seedGenerationDb = async (name, rows, record = GENERATION_RECORD) => {
 	const db = await openDb(generationDbName(name));
 	try {
 		const [updatesStore, custom] = idb.transact(db, ['updates', 'custom']);
@@ -155,11 +173,14 @@ const seedGenerationDb = async (name, rows) => {
 			copy.set(row);
 			await idb.addAutoKey(updatesStore, copy.buffer);
 		}
-		await idb.rtop(custom.put({ ...GENERATION_RECORD }, GENERATION_KEY));
+		await idb.rtop(custom.put({ ...record }, GENERATION_KEY));
 	} finally {
 		db.close();
 	}
 };
+
+const sameBytes = (a, b) =>
+	new Uint8Array(a).byteLength === b.byteLength && new Uint8Array(a).every((x, i) => x === b[i]);
 
 const readRows = async (name) => {
 	const db = await openDb(generationDbName(name));
@@ -219,9 +240,118 @@ class FakeWebSocket {
 		this.onclose?.({});
 	}
 }
+describe('generation mismatch — refused at the envelope and the container record', () => {
+	test('a frame of another schema generation on BC: dropped before decode, observable', async () => {
+		const name = uniqueName('gen-bc');
+		const docA = new Y.Doc();
+		E.create(docA).init();
+		const pA = new providers.IndexeddbPersistence(name, docA);
+		await pA.whenSynced;
+		const before = Y.encodeStateVector(docA);
+		const mismatches = [];
+		const mismatchSchema = [];
+		pA.on('protocol-mismatch', (m) => mismatches.push(m));
+		pA.on('schema-mismatch', (d) => mismatchSchema.push(d));
 
-describe('WU3 boundary — BroadcastChannel (IndexeddbPersistence)', () => {
-	test('v99 update on BC: refused, signaled, live doc untouched, recoverable', async () => {
+		bc.publish(
+			generationDbName(name),
+			encodeFor(99, 0, (e) => sync.writeUpdate(e, makeV99Update())).slice().buffer,
+			'v99-build'
+		);
+		await nextTick();
+
+		expect(Y.encodeStateVector(docA)).toEqual(before);
+		expect(mismatches).toEqual([{ expected: wordOf(SCHEMA_VERSION), found: wordOf(99) }]);
+		// Nothing was decoded, so nothing was judged as schema content.
+		expect(mismatchSchema.length).toBe(0);
+
+		// This generation's frames keep flowing.
+		bc.publish(
+			generationDbName(name),
+			encodeV14(0, (e) => sync.writeUpdate(e, makeIncrementalUpdate(docA, 'after-gen'))).slice()
+				.buffer,
+			'own-generation-peer'
+		);
+		await until(() => docA.get('blocks').getAttr('after-gen') !== undefined, 3000);
+		await pA.destroy();
+	});
+
+	test('a SyncStep2 of another schema generation over ws: dropped, no synced', async () => {
+		const url = `ws://fake-wu3/${counter++}`;
+		const docA = new Y.Doc();
+		E.create(docA).init();
+		const pA = new wsProviders.WebsocketProvider(url, 'room', docA, {
+			WebSocketPolyfill: FakeWebSocket,
+			disableBc: true
+		});
+		const mismatches = [];
+		pA.on('protocol-mismatch', (m) => mismatches.push(m));
+		await until(() => pA.wsconnected, 4000);
+		const before = Y.encodeStateVector(docA);
+		const remote = new Y.Doc();
+		Y.applyUpdate(remote, makeV99Update());
+		pA.ws.onmessage({
+			data: encodeFor(99, 0, (e) => sync.writeSyncStep2(e, remote)).slice().buffer
+		});
+		await nextTick();
+		expect(Y.encodeStateVector(docA)).toEqual(before);
+		expect(mismatches.map((m) => m.found)).toEqual([wordOf(99)]);
+		expect(pA.synced).toBe(false);
+		pA.destroy();
+	});
+
+	test('a container of another schema generation never hydrates; bytes intact; failed once', async () => {
+		const name = uniqueName('gen-idb');
+		const good = new Y.Doc();
+		E.create(good).init();
+		const row = Y.encodeStateAsUpdate(good);
+		await seedGenerationDb(name, [row], { ...GENERATION_RECORD, schema: 99 });
+
+		const docB = new Y.Doc();
+		const pB = new providers.IndexeddbPersistence(name, docB);
+		const failed = [];
+		pB.on('failed', (e) => failed.push(e));
+		await expect(pB.whenSynced).rejects.toThrow(/not a v14 document generation/);
+		expect(pB.synced).toBe(false);
+		expect(failed.length).toBe(1);
+		expect(E.schemaVersion(docB)).toBeUndefined();
+		const rows = await readRows(name);
+		expect(rows.length).toBe(1);
+		expect(sameBytes(rows[0], row)).toBe(true);
+		await pB.destroy();
+	});
+
+	// Re-pinned at the D1 schema bump (generation 2): a record written before
+	// the `schema` field existed was written by a schema-1 build, and schema 1
+	// stored deletion as a single `del` flag. Since D1's per-writer
+	// `del.<writer>` marks, reading such a container would resurface its
+	// deleted blocks — so it is another generation and is refused like one.
+	test('a container record written before the schema field is refused as another generation (D1 bump)', async () => {
+		const name = uniqueName('gen-legacy-record');
+		const good = new Y.Doc();
+		E.create(good).init();
+		const row = Y.encodeStateAsUpdate(good);
+		await seedGenerationDb(name, [row], {
+			engine: GENERATION_RECORD.engine,
+			protocol: GENERATION_RECORD.protocol
+		});
+		const docB = new Y.Doc();
+		const pB = new providers.IndexeddbPersistence(name, docB);
+		const failed = [];
+		pB.on('failed', (e) => failed.push(e));
+		await expect(pB.whenSynced).rejects.toThrow(/not a v14 document generation/);
+		expect(pB.synced).toBe(false);
+		expect(failed.length).toBe(1);
+		expect(E.schemaVersion(docB)).toBeUndefined();
+		const rows = await readRows(name);
+		expect(rows.length).toBe(1);
+		expect(sameBytes(rows[0], row)).toBe(true);
+		await pB.destroy();
+	});
+});
+
+describe('same-generation forged stamp — BroadcastChannel (IndexeddbPersistence)', () => {
+	test('v99 stamp: refused, signaled, live doc untouched, recoverable, never persisted', async () => {
 		const name = uniqueName('wu3-bc-v99');
 		const docA = new Y.Doc();
 		const edA = E.create(docA);
@@ -244,7 +374,7 @@ describe('WU3 boundary — BroadcastChannel (IndexeddbPersistence)', () => {
 		await nextTick();
 
 		// The update was refused BEFORE mutating the live doc.
-		expect(E.schemaVersion(docA)).toBe(1);
+		expect(E.schemaVersion(docA)).toBe(SCHEMA_VERSION);
 		expect(docA.get('blocks').getAttr('evil-v99')).toBeUndefined();
 		expect(Y.encodeStateVector(docA)).toEqual(before);
 
@@ -254,20 +384,17 @@ describe('WU3 boundary — BroadcastChannel (IndexeddbPersistence)', () => {
 		).toBe(true);
 		expect(msgErrors.length).toBeGreaterThan(0);
 
-		// Recoverability: a subsequent VALID incremental update (no schema
-		// write — a same-schema peer mid-session) still applies.
+		// Recoverability: a subsequent VALID incremental update still applies.
 		const inc = makeIncrementalUpdate(docA, 'inc-after-v99');
 		bc.publish(
 			generationDbName(name),
 			encodeV14(0, (e) => sync.writeUpdate(e, inc)).slice().buffer,
-			'v1-peer'
+			'own-generation-peer'
 		);
 		await until(() => docA.get('blocks').getAttr('inc-after-v99') !== undefined, 3000);
-		expect(docA.get('blocks').getAttr('inc-after-v99')).toBeDefined();
-		expect(E.schemaVersion(docA)).toBe(1);
+		expect(E.schemaVersion(docA)).toBe(SCHEMA_VERSION);
 
-		// Not persisted into accepted state: compact the store and decode
-		// every row — none reconstructs a v99 document.
+		// Not persisted: compact the store and decode every row.
 		await providers.storeState(pA);
 		const rows = await readRows(name);
 		for (const row of rows) {
@@ -278,7 +405,7 @@ describe('WU3 boundary — BroadcastChannel (IndexeddbPersistence)', () => {
 		await pA.destroy();
 	});
 
-	test('v1 update carrying a foreign meta.schema is refused (gate-F1 F5)', async () => {
+	test('a foreign meta.schema is refused (gate-F1 F5)', async () => {
 		const name = uniqueName('wu3-bc-foreign');
 		const docA = new Y.Doc();
 		E.create(docA).init();
@@ -289,13 +416,7 @@ describe('WU3 boundary — BroadcastChannel (IndexeddbPersistence)', () => {
 		const mismatches = [];
 		pA.on('schema-mismatch', (d) => mismatches.push(d));
 
-		// A same-generation peer keeps meta.v=1 but rewrites meta.schema to a
-		// foreign manifest name — a valid VERSION is not proof the payload is
-		// an edytor document. The staging path must refuse it.
 		const foreign = new Y.Doc();
-		// Pin the clientID high so the foreign meta.schema write wins the
-		// LWW merge against the live doc's 'edytor-doc' (same trick as
-		// makeV99Update — map attrs resolve by clientID).
 		foreign.clientID = Number.MAX_SAFE_INTEGER - 1;
 		Y.applyUpdate(foreign, Y.encodeStateAsUpdate(docA));
 		foreign.get('meta').setAttr('schema', 'not-edytor');
@@ -315,62 +436,11 @@ describe('WU3 boundary — BroadcastChannel (IndexeddbPersistence)', () => {
 		);
 		await nextTick();
 
-		expect(E.schemaVersion(docA)).toBe(1);
+		expect(E.schemaVersion(docA)).toBe(SCHEMA_VERSION);
 		expect(docA.get('meta').getAttr('schema')).toBe('edytor-doc');
 		expect(docA.get('blocks').getAttr('evil-foreign')).toBeUndefined();
 		expect(Y.encodeStateVector(docA)).toEqual(before);
 		expect(mismatches.some((m) => m.problem?.kind === 'foreign')).toBe(true);
-		await pA.destroy();
-	});
-
-	test('a doc in unversioned state refuses schema-less writes, heals on versioned state', async () => {
-		const name = uniqueName('wu3-bc-rogue');
-		// docA carries rogue registry content with NO meta.v — an unversioned
-		// (self-poisoned) doc. Its provider refuses to persist or ship it.
-		const docA = new Y.Doc();
-		docA.get('blocks').setAttr(
-			'rogue',
-			(() => {
-				const n = new Y.Node('block');
-				n.setAttr('id', 'rogue');
-				n.setAttr('type', 'paragraph');
-				return n;
-			})()
-		);
-		const mismatches = [];
-		const pA = new providers.IndexeddbPersistence(name, docA);
-		pA.on('schema-mismatch', (d) => mismatches.push(d));
-		// The self-poisoned doc is treated as hydration refusal: whenSynced
-		// rejects, synced never fires, but the BC room is still joined.
-		await expect(pA.whenSynced).rejects.toThrow(/no meta\.v schema version/);
-		expect(pA.synced).toBe(false);
-		expect(pA.bcconnected).toBe(true);
-		expect(mismatches.some((m) => m.problem?.kind === 'unversioned')).toBe(true);
-
-		// An incremental write that carries no schema word keeps the merged
-		// doc unversioned → refused (not applied, not persisted, not shipped).
-		const marker = makeUnversionedUpdate('rogue-peer');
-		bc.publish(
-			generationDbName(name),
-			encodeV14(0, (e) => sync.writeUpdate(e, marker)).slice().buffer,
-			'rogue-peer-2'
-		);
-		await nextTick();
-		expect(docA.get('blocks').getAttr('rogue-peer')).toBeUndefined();
-		// docA still has ONLY its own rogue write — nothing new merged.
-		expect(E.schemaVersion(docA)).toBeUndefined();
-
-		// …but a full VERSIONED state update heals it: the merge supplies
-		// meta.v=1, the staged result is clean, and it applies.
-		const good = new Y.Doc();
-		E.create(good).init();
-		bc.publish(
-			generationDbName(name),
-			encodeV14(0, (e) => sync.writeUpdate(e, Y.encodeStateAsUpdate(good))).slice().buffer,
-			'v1-peer'
-		);
-		await until(() => E.schemaVersion(docA) === 1, 3000);
-		expect(E.schemaVersion(docA)).toBe(1);
 		await pA.destroy();
 	});
 
@@ -386,53 +456,51 @@ describe('WU3 boundary — BroadcastChannel (IndexeddbPersistence)', () => {
 		bc.publish(
 			generationDbName(name),
 			encodeV14(0, (e) => sync.writeUpdate(e, makeIncrementalUpdate(docA))).slice().buffer,
-			'v1-peer'
+			'own-generation-peer'
 		);
 		await until(() => docA.get('blocks').getAttr('inc-valid') !== undefined, 3000);
-		expect(docA.get('blocks').getAttr('inc-valid')).toBeDefined();
 		expect(mismatches.length).toBe(0);
 		await pA.destroy();
 	});
 
-	test('a v99 doc provider does not ship its state (SyncStep2 publish + Step1 reply gated)', async () => {
+	test('a read-only (v99-stamped) doc does not ship its state (SyncStep2 publish + Step1 reply)', async () => {
 		const name = uniqueName('wu3-bc-ship');
 		const docA = new Y.Doc();
 		E.create(docA).init();
 		docA.transact(() => docA.get('meta').setAttr('v', 99));
 
-		// Observe the room at the raw BC level.
 		const seen = [];
 		const seenFn = (data) => seen.push(new Uint8Array(data));
 		bc.subscribe(generationDbName(name), seenFn);
 
-		const mismatches = [];
 		const pA = new providers.IndexeddbPersistence(name, docA);
-		pA.on('schema-mismatch', (d) => mismatches.push(d));
-		// The self-poisoned doc counts as hydration refusal: whenSynced
-		// rejects and synced never fires — but the room is still joined.
 		await pA.whenSynced.catch(() => {});
 		await nextTick();
 
-		// pA signaled its own unsupported state…
-		expect(
-			mismatches.some((m) => m.problem?.kind === 'unsupported' && m.problem?.version === 99)
-		).toBe(true);
-		// …and published SyncStep1 (harmless state vector) but NEVER a
-		// SyncStep2 state publish (would ship v99 to the room).
-		const syncMsgs = seen.filter((f) => f[0] === 14 && f[1] === 0);
+		// SyncStep1 (a harmless state vector) goes out, a SyncStep2 state
+		// publish never does.
+		const word = encoding.createEncoder();
+		encoding.writeVarUint(word, wordOf(SCHEMA_VERSION));
+		const prefix = encoding.toUint8Array(word);
+		const syncMsgs = seen.filter(
+			(f) => prefix.every((b, i) => f[i] === b) && f[prefix.length] === 0
+		);
+		expect(syncMsgs.length).toBeGreaterThan(0);
 		for (const frame of syncMsgs) {
 			const dec = decoding.createDecoder(frame);
-			decoding.readVarUint(dec); // version
+			decoding.readVarUint(dec); // generation word
 			decoding.readVarUint(dec); // outer type (sync)
-			const sub = decoding.readVarUint(dec);
-			expect(sub).not.toBe(sync.messageYjsSyncStep2);
+			expect(decoding.readVarUint(dec)).not.toBe(sync.messageYjsSyncStep2);
 		}
+		// A peer's state request gets no state back.
+		const step1 = encodeV14(0, (e) => sync.writeSyncStep1(e, new Y.Doc()));
+		expect(encoding.length(pA.readMessage(step1, false))).toBe(prefix.length + 1);
 		bc.unsubscribe(generationDbName(name), seenFn);
 		await pA.destroy();
 	});
 });
 
-describe('WU3 boundary — websocket (opaque relay)', () => {
+describe('same-generation forged stamp — websocket (opaque relay)', () => {
 	test('v99 SyncStep2 over ws: refused, no false synced, recoverable', async () => {
 		const url = `ws://fake-wu3/${counter++}`;
 		FakeWebSocket.sentLog = [];
@@ -448,8 +516,6 @@ describe('WU3 boundary — websocket (opaque relay)', () => {
 		pA.on('synced', (s) => syncedEvents.push(s));
 		await until(() => pA.wsconnected, 4000);
 
-		// Server → provider SyncStep2 carrying v99 state (a peer that speaks
-		// v14 but writes a future application schema).
 		const v99Update = makeV99Update();
 		const frame = encodeV14(0, (e) =>
 			sync.writeSyncStep2(
@@ -464,18 +530,14 @@ describe('WU3 boundary — websocket (opaque relay)', () => {
 		pA.ws.onmessage({ data: frame.slice().buffer });
 		await nextTick();
 
-		// Refused before mutating the live doc.
-		expect(E.schemaVersion(docA)).toBe(1);
+		expect(E.schemaVersion(docA)).toBe(SCHEMA_VERSION);
 		expect(docA.get('blocks').getAttr('evil-v99')).toBeUndefined();
 		expect(
 			mismatches.some((m) => m.problem?.kind === 'unsupported' && m.problem?.version === 99)
 		).toBe(true);
-		// No false synced: the refused handshake payload produced no sync claim.
 		expect(pA.synced).toBe(false);
 		expect(syncedEvents.filter(Boolean).length).toBe(0);
 
-		// Recoverability: a valid incremental update still applies and the
-		// refused payload was never rebroadcast (A sends only its own edits).
 		const inc = makeIncrementalUpdate(docA, 'inc-ws');
 		pA.ws.onmessage({
 			data: encodeV14(0, (e) => sync.writeUpdate(e, inc)).slice().buffer
@@ -483,8 +545,6 @@ describe('WU3 boundary — websocket (opaque relay)', () => {
 		await nextTick();
 		expect(docA.get('blocks').getAttr('inc-ws')).toBeDefined();
 
-		// The provider never rebroadcast the v99 payload bytes — a refused
-		// update never entered the doc, so doc.on('update') never emitted it.
 		for (const sent of FakeWebSocket.sentLog) {
 			const u = sent instanceof Uint8Array ? sent : new Uint8Array(sent);
 			expect(containsSubseq(u, v99Update)).toBe(false);
@@ -511,77 +571,34 @@ describe('WU3 boundary — websocket (opaque relay)', () => {
 	});
 });
 
-describe('WU3 boundary — IndexedDB hydration', () => {
-	test('a stored v99 generation never hydrates; bytes intact; no synced; recoverable', async () => {
+describe('same-generation forged stamp — already in a same-generation container', () => {
+	test('the container hydrates; the doc is read-only; nothing is compacted; admission refuses', async () => {
 		const name = uniqueName('wu3-idb-v99');
 		const v99Update = makeV99Update();
 		await seedGenerationDb(name, [v99Update]);
 
 		const docB = new Y.Doc();
-		const mismatches = [];
-		const msgErrors = [];
 		const pB = new providers.IndexeddbPersistence(name, docB);
-		pB.on('schema-mismatch', (d) => mismatches.push(d));
-		pB.on('message-error', (e) => msgErrors.push(e));
+		await pB.whenSynced;
+		expect(checkSchema(docB)).toMatchObject({ kind: 'unsupported', version: 99 });
 
-		// Hydration refused the stored rows — whenSynced rejects with the
-		// schema verdict and `synced` never fires (no false sync claim).
-		await expect(pB.whenSynced).rejects.toThrow(/unsupported schema version 99/);
-		expect(pB.synced).toBe(false);
-		expect(E.schemaVersion(docB)).toBeUndefined();
-		expect(docB.get('blocks').getAttr('evil-v99')).toBeUndefined();
-		expect(
-			mismatches.some((m) => m.problem?.kind === 'unsupported' && m.problem?.version === 99)
-		).toBe(true);
-		expect(msgErrors.length).toBeGreaterThan(0);
-
-		// Non-destructive: the stored row bytes are untouched.
+		// Read-only: no compaction, the stored bytes survive byte-for-byte.
+		await providers.storeState(pB);
 		const rows = await readRows(name);
-		const seeded = new Uint8Array(v99Update);
-		expect(
-			rows.some(
-				(r) =>
-					new Uint8Array(r).byteLength === seeded.byteLength &&
-					new Uint8Array(r).every((b, i) => b === seeded[i])
-			)
-		).toBe(true);
-
-		// Recoverability: the provider joined the BC room — a subsequent
-		// VALID peer update still applies.
-		expect(pB.bcconnected).toBe(true);
-		const good = new Y.Doc();
-		E.create(good).init();
-		good.get('blocks').setAttr(
-			'recovered',
-			(() => {
-				const n = new Y.Node('block');
-				n.setAttr('id', 'recovered');
-				n.setAttr('type', 'paragraph');
-				return n;
-			})()
-		);
-		bc.publish(
-			generationDbName(name),
-			encodeV14(0, (e) => sync.writeUpdate(e, Y.encodeStateAsUpdate(good))).slice().buffer,
-			'v1-peer'
-		);
-		await until(() => docB.get('blocks').getAttr('recovered') !== undefined, 3000);
-		expect(docB.get('blocks').getAttr('recovered')).toBeDefined();
-		expect(E.schemaVersion(docB)).toBe(1);
+		expect(rows.some((r) => sameBytes(r, v99Update))).toBe(true);
+		// The document layer refuses to adopt it.
+		expect(() => attachDocument(docB)).toThrow(/unsupported schema version 99/);
 		await pB.destroy();
 	});
 
-	test('mixed store: clean rows hydrate, the poisoned row is skipped (non-destructive)', async () => {
+	test('mixed store: every row hydrates, the forged stamp wins → read-only, rows intact', async () => {
 		const name = uniqueName('wu3-idb-mixed');
-		// Row 1: legit v1 doc with block A.
 		const good1 = new Y.Doc();
 		const eg1 = E.create(good1);
 		eg1.init();
 		eg1.insertBlock({ parent: null, index: 0 }, { id: 'good-a', type: 'paragraph' });
 		const row1 = Y.encodeStateAsUpdate(good1);
-		// Row 2: poison — v99.
 		const row2 = makeV99Update();
-		// Row 3: legit v1 doc with block B (independent clientID — no deps on row 2).
 		const good3 = new Y.Doc();
 		const eg3 = E.create(good3);
 		eg3.init();
@@ -590,24 +607,77 @@ describe('WU3 boundary — IndexedDB hydration', () => {
 		await seedGenerationDb(name, [row1, row2, row3]);
 
 		const docB = new Y.Doc();
-		const mismatches = [];
 		const pB = new providers.IndexeddbPersistence(name, docB);
-		pB.on('schema-mismatch', (d) => mismatches.push(d));
-
-		// The refusal is still reported (and synced suppressed)…
-		await expect(pB.whenSynced).rejects.toThrow(/unsupported schema version 99/);
-		expect(pB.synced).toBe(false);
-		// …but the clean rows hydrated — the doc carries v1 content.
-		expect(E.schemaVersion(docB)).toBe(1);
+		await pB.whenSynced;
 		expect(docB.get('blocks').getAttr('good-a')).toBeDefined();
 		expect(docB.get('blocks').getAttr('good-b')).toBeDefined();
-		// …while the poisoned row never touched the live doc.
-		expect(docB.get('blocks').getAttr('evil-v99')).toBeUndefined();
-		expect(mismatches.length).toBeGreaterThan(0);
+		// makeV99Update's writer holds the max client id: its stamp wins.
+		expect(checkSchema(docB)).toMatchObject({ kind: 'unsupported', version: 99 });
 
-		// Non-destructive: all three original rows remain in the store.
+		await providers.storeState(pB);
 		const rows = await readRows(name);
-		expect(rows.length).toBeGreaterThanOrEqual(3);
+		for (const row of [row1, row2, row3]) expect(rows.some((r) => sameBytes(r, row))).toBe(true);
 		await pB.destroy();
+	});
+});
+
+describe('unversioned content (no stamp at all) — D-2 / R13', () => {
+	// The frame proves the generation; only foreign stamps are refused at
+	// ingress. An unversioned doc is read-only and quarantined until a
+	// versioned state makes it admissible again.
+	test('an unversioned doc accepts schema-less writes but spreads nothing; a versioned state heals it', async () => {
+		const name = uniqueName('wu3-bc-rogue');
+		const docA = new Y.Doc();
+		docA.get('blocks').setAttr(
+			'rogue',
+			(() => {
+				const n = new Y.Node('block');
+				n.setAttr('id', 'rogue');
+				n.setAttr('type', 'paragraph');
+				return n;
+			})()
+		);
+		const mismatches = [];
+		const pA = new providers.IndexeddbPersistence(name, docA);
+		pA.on('schema-mismatch', (d) => mismatches.push(d));
+		await pA.whenSynced;
+		expect(pA.bcconnected).toBe(true);
+		expect(checkSchema(docA)?.kind).toBe('unversioned');
+
+		// A schema-less write is not a stamp: it integrates, unreported.
+		bc.publish(
+			generationDbName(name),
+			encodeV14(0, (e) => sync.writeUpdate(e, makeUnversionedUpdate('rogue-peer'))).slice().buffer,
+			'rogue-peer-2'
+		);
+		await nextTick();
+		expect(docA.get('blocks').getAttr('rogue-peer')).toBeDefined();
+		expect(mismatches.length).toBe(0);
+
+		// Quarantined: a local write while unversioned is never persisted.
+		docA.transact(() => docA.get('scratch').setAttr('before', 1));
+		await providers.storeState(pA);
+		const stored = () =>
+			readRows(name).then((rows) => {
+				const d = new Y.Doc();
+				for (const r of rows) Y.applyUpdate(d, new Uint8Array(r));
+				return d;
+			});
+		expect((await stored()).get('scratch').getAttr('before')).toBeUndefined();
+
+		// A versioned state heals it: writable again, and it persists again.
+		const good = new Y.Doc();
+		E.create(good).init();
+		bc.publish(
+			generationDbName(name),
+			encodeV14(0, (e) => sync.writeUpdate(e, Y.encodeStateAsUpdate(good))).slice().buffer,
+			'own-generation-peer'
+		);
+		await until(() => E.schemaVersion(docA) === SCHEMA_VERSION, 3000);
+		expect(checkSchema(docA)).toBeNull();
+		docA.transact(() => docA.get('scratch').setAttr('after', 1));
+		await nextTick();
+		expect((await stored()).get('scratch').getAttr('after')).toBe(1);
+		await pA.destroy();
 	});
 });

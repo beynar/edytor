@@ -108,9 +108,11 @@ transport files import the gate vocabulary through `admission.ts`):
   that entered a problem state through raw `applyUpdate` writes (which
   bypass the transport gate) refuses there instead of being seeded over —
   it stays `pending` and preserves its content;
-- a `pending` document never writes or broadcasts a bootstrap block —
-  provider `SyncStep2` publishes only the pre-existing state, and the
-  seed commits exactly when the `synced` callback runs `sync()`.
+- a `pending` document never writes or broadcasts a seed — provider
+  `SyncStep2` publishes only the pre-existing state. An empty document
+  seeds only once every attached provider settled or reached its bound
+  (arch-v2 T3, settle-or-bound); a non-empty one is `hydrated` as soon as
+  a provider settles.
 
 A doc carrying foreign/unrelated ROOTS but no schema claim still admits
 `pending` — `sync()` then seeds the schema next to them; the transport
@@ -166,19 +168,23 @@ live document.
 SyncStep2 handshake payload was actually _applied_. A refused SyncStep2
 yields no sync claim — the doc does not reflect the peer's state.
 
-**Empty-room readiness (two-round settle):** an applied SyncStep2 that
-leaves the doc empty is ambiguous over an opaque relay — it may be the
-room's true empty state or a reply raced ahead of a delayed hydration.
-A single quiet window is not sufficient evidence. On the first settle
-expiry (`syncSettleMs`, default 300 ms, plumbed through
-`WebsocketSyncOptions`) the provider re-sends a SyncStep1 probe and arms
-a second window; `synced` is claimed only after two consecutive quiet
-windows while the transport is connected. A state-bearing SyncStep2 at
-any point claims `synced` immediately; disconnect/destroy clears the
-settle state so a reconnect re-derives readiness from its own handshake.
-Residual bound: a hydration reply delayed past _both_ windows can still
-race the seed — the honest limit of request/reply without a server-side
-room epoch.
+**Join rule and readiness (arch-v2 T2):** one rule, derived from state
+vectors, identical on the socket and the BroadcastChannel and correct
+behind an opaque relay. Joining sends a hello (SyncStep1 + own presence).
+A SyncStep1 is answered with a SyncStep2 and, when the asker's state
+vector holds anything we lack, with our own SyncStep1 — so a reconnecting
+client's offline edits reach the room without `resyncInterval`, which is
+now an optional loss-healing timer (off by default). The connection's
+`synced` is claimed when it holds a member's state: an applied SyncStep2,
+or a SyncStep1 whose state vector it covers. It resets with the socket;
+`hasSynced` is the lifetime fact, and the terminal `failed` reads it (a
+provider that synced and then lost its socket never fails). The two-round
+settle window (`syncSettleMs`) is deleted: `synced` is a readiness
+signal, and the seed it could race is idempotent: seeds are one
+deterministic update from a writer hashed from the seed (T3), so a client
+that claims `synced` off another member's empty handshake and seeds
+converges with the room. A client alone in a new room is resolved by the
+readiness bound (`DEFAULT_READINESS_BOUND`, or the factory's `bound`).
 
 **Merge semantics worth knowing:** the staged verdict follows CRDT LWW on
 `meta.v` — resolved by clientID for same-key writes. A v99 peer's state
@@ -299,8 +305,8 @@ on the `bindEdytorDoc` facade — never by constructing the engine's
 - It scopes the manager to the **`blocks` registry** — `meta.v` writes and
   schema-version transitions are outside the scope, so undo can never strip
   the version stamp or resurrect a stale version.
-- It runs `init` first (no-op when already initialized) — the deterministic
-  bootstrap insert always predates capture, so no undo step can remove it.
+- It runs `init` first (no-op when already initialized) — the seed is
+  applied as an update with a non-local origin, so no undo step captures it.
 - Remote/provider writes never enter the stack (foreign origins + non-local
   transactions fail the `trackedOrigins`/`local` filter).
 
@@ -393,8 +399,9 @@ cross-tab BC), keeping:
   after the transaction commits and rejects on storage failure (the timed
   path forwards failures to `'message-error'`). Snapshot + later rows
   reconstruct the full document (tested).
-- BC room = the generation DB name; on connect it publishes
-  SyncStep1 + SyncStep2 + QueryAwareness + local awareness state.
+- BC room = the generation DB name; on connect it publishes its hello
+  (SyncStep1 + local awareness state) and a QueryAwareness; the join rule
+  exchanges what each side lacks.
 - `doc.on('update')` stores every non-provider-origin update and
   broadcasts it as a sync `Update` message.
 

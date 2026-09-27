@@ -62,7 +62,6 @@
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 	import Block from './Block.svelte';
 	import RemoteSelections from '$lib/collaboration/RemoteSelections.svelte';
-	import { attachDocumentSync } from '$lib/collaboration/index.js';
 
 	let {
 		plugins,
@@ -120,19 +119,23 @@
 
 	edytor = new EdytorClass(initialEdytorOptions);
 
+	// ONE attach path for owned and injected documents (U5/F3): `attachSync`
+	// tracks the provider on the DOCUMENT's lifetime (one provider per
+	// transport target, settle-or-bound readiness, R13). It attaches while the tree
+	// initializes (client only), so every sibling view's provider is in
+	// flight before any view decides on mount. A view-owned document still
+	// dies with the component: `edytor.destroy()` runs `document.destroy()`,
+	// which runs the tracked cleanup.
+	const initialSync = untrack(() => sync);
+	if (typeof window !== 'undefined' && !initialEdytorOptions.readonly && initialSync) {
+		edytor.document.attachSync(initialSync, { value: initialEdytorOptions.value });
+	}
+
 	onMount(() => {
-		if (!initialEdytorOptions.readonly && sync) {
-			// ONE attach path for owned and injected documents (U5/F3 +
-			// the owned-path failure channel): `attachSync` tracks the
-			// provider on the DOCUMENT's lifetime — dedupe by factory
-			// identity, pending accounting (`syncPending`), and the
-			// terminal-`failed` settle that hands the decision back to
-			// the view (`syncFailed` wakes `whenDocumentReady`). For a
-			// view-owned document the lifetime is still the component's:
-			// `edytor.destroy()` below runs `document.destroy()`, which
-			// runs the tracked cleanup — with the same async-error rethrow
-			// semantics the old inline `destroySync` wrapper had.
-			attachDocumentSync(edytor.document, sync, initialEdytorOptions.value);
+		// An editable view without a provider decides an injected pending
+		// document only when no sibling's provider is in flight.
+		if (!initialEdytorOptions.readonly && !initialSync && !edytor.document.syncPending) {
+			edytor.document.sync(initialEdytorOptions.value);
 		}
 
 		return () => {

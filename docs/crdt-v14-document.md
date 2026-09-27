@@ -87,11 +87,20 @@ transactions are tracked). `document.history` is the shared
 ### Creating without a value — the provider-first path
 
 `createDocument()` with no `value` stays **`pending`**: nothing is
-bootstrapped and nothing is broadcast, so a provider may still hydrate
-the doc first. `document.sync(value?)` is the single readiness
-transition — it seeds `value` (or the canonical bootstrap block) on a
-still-fresh doc, adopts content on a hydrated one, and is idempotent once
-ready. `attachSync` runs it automatically on `synced`.
+seeded and nothing is broadcast, so a provider may still hydrate the doc
+first. `document.sync(value?)` is the single readiness transition — it
+seeds `value` on a still-fresh doc, adopts content on a hydrated one, and
+is idempotent once ready.
+
+**Seeds are deterministic** (arch-v2 R13, D-3). A seed is ONE update built
+in a scratch doc whose writer id is a 32-bit hash of the generation and the
+seed JSON: caller ids are kept, missing ids are derived from the hash and
+position (an empty value seeds one `defaultType` block), and it is applied
+with a non-local origin — never an undo step, no attribution stamp. Two
+replicas seeding the same value write the same items, so a late identical
+seed is a no-op and never erases an edit; different values union, and
+blocks sharing an id resolve by last-writer-wins. Change a template's ids
+when its content changes.
 
 | `readiness`  | meaning                                    | gated surface                  |
 | ------------ | ------------------------------------------ | ------------------------------ |
@@ -125,7 +134,7 @@ const document = attachDocument(doc, { actor: { id: 'user-42' } });
 
 document.doc === doc; // borrowed, not owned
 document.readiness; // 'pending' — attach never auto-seeds
-document.sync(); // seeds the bootstrap block on a still-fresh doc
+document.sync(); // seeds one default paragraph on a still-fresh doc
 
 document.destroy(); // releases document services — doc is NOT destroyed
 doc.destroy(); // the borrowed doc is yours to finish with
@@ -150,12 +159,17 @@ document.attachSync(crdt.providers.createIndexeddbSync('my-doc'), {
 });
 ```
 
-`attachSync(syncFactory, { value? })` hands `{ doc, awareness, synced }`
+`attachSync(syncFactory, { value? })` hands `{ doc, awareness, synced, failed }`
 to any `EdytorSync`-shaped factory — the exact contract `<Edytor {sync}>`
-consumes. On `synced` the document runs its readiness transition
-(seed-if-empty, never before hydration). The returned cleanup is tracked:
-`document.destroy()` runs it — provider lifetime is the document's, not a
-view's.
+consumes. Readiness is **settle-or-bound**: a document with content is
+`hydrated` as soon as a provider settles; an EMPTY one seeds `value` only
+once every attached provider reported `synced`/`failed`, was torn down, or
+reached its bound — `factory.bound` ms, `DEFAULT_READINESS_BOUND` (1000)
+for a provider that cannot report "settled" (a websocket alone in a new
+room). `createIndexeddbSync` always settles (`bound: Infinity`). A factory
+that throws never attached and decides nothing. The returned cleanup is
+tracked: `document.destroy()` runs it — provider lifetime is the
+document's, not a view's.
 
 The same factories sit on the package root for Svelte consumers
 (`import { createIndexeddbSync, createWebsocketSync } from 'edytor'`) —
@@ -176,7 +190,7 @@ document.attribution.legacy(); // merged ContentMap over pre-existing a/ records
 Ordinary editing writes **no per-edit attribution** (U2): a keystroke is
 one transaction, and the block-level `b/<blockId>` record + `l`
 lastChangedBy stamp ride inside it. Durable authorship is per block —
-`createdBy` (insert stamp), `contributors` (monotonic union, outside undo
+`createdBy` (insert stamp; seeded blocks have none), `contributors` (monotonic union, outside undo
 scope), `lastChangedBy` (LWW on the block node, inside undo scope). The
 replicated `u/`/`c/` actor dictionary travels inside `encode()` output.
 
@@ -342,8 +356,11 @@ owns its lifetime (and with the dedupe rule, every `attachDocument`
 reference needs its own `destroy()`).
 
 With a provider, attach `sync` on **one** view — the factory attaches to
-the document (document-lifetime, deduplicated by factory identity), not to
-the view:
+the document (document-lifetime), not to the view. The document keeps one
+provider per transport target (the IndexedDB name; the websocket server URL
+and room), so views that each evaluate `createIndexeddbSync('my-doc')` still
+share one provider; a custom factory without a `target` key is its own
+target:
 
 ```svelte
 <Edytor {document} {plugins} sync={createIndexeddbSync('my-doc')} />
@@ -351,9 +368,10 @@ the view:
 ```
 
 Sibling views mount/unmount freely — the provider only dies with
-`document.destroy()`. While the document is still `pending` a view waits
-for readiness instead of seeding it early; a ready document syncs views
-immediately.
+`document.destroy()`. Providers attach while the component tree
+initializes; an editable view without `sync` decides a still-`pending`
+injected document at mount only if no provider is in flight, otherwise it
+waits for readiness; a ready document syncs views immediately.
 
 ## Errors worth knowing
 

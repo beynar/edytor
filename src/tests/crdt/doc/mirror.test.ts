@@ -10,9 +10,10 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc, BOOTSTRAP_BLOCK_ID } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/index.js';
 import { createPeerPair } from '../harness/peer-set.js';
 import { remoteOrigin } from '../harness/peer-set.js';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -239,7 +240,7 @@ describe('event-driven mirror', () => {
 		ed.onChange((c) => mirror.apply(c));
 		ed.init();
 		expect(mirror.serialize()).toEqual(canonProjected(ed.project()));
-		expect(mirror.serialize().children[0].id).toBe(BOOTSTRAP_BLOCK_ID);
+		expect(mirror.serialize().children[0].id).toBe(DEFAULT_SEED_ID);
 		ed.dispose();
 	});
 

@@ -4,7 +4,14 @@
  * dictionary, and the merged read of any legacy `a/` records.
  */
 import { Y } from '../../../lib/crdt/engine.js';
-import type { EdytorDocument } from '../../../lib/crdt/document.js';
+import type {
+	CreateDocumentOptions,
+	DocumentActor,
+	EdytorDocument
+} from '../../../lib/crdt/document.js';
+import { createDocument } from '../../../lib/crdt/document.js';
+import { SCHEMA_NAME, SCHEMA_VERSION } from '../../../lib/crdt/edytor-doc.js';
+import { jsonBlockToSpec } from '../../../lib/utils/json.js';
 import type { EngineDoc, EngineNode, YDoc } from '../../../lib/crdt/engine-api.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
 import type * as Engine from '../../../lib/crdt/vendor/yjs/dts/index.js';
@@ -14,6 +21,29 @@ export const docValue = (text = 'hello'): JSONDoc => ({
 });
 
 export const firstBlock = (document: EdytorDocument) => document.facade.project().children[0]!;
+
+/**
+ * A document whose `value` content is authored by `actor` (createdBy,
+ * contributors, lastChangedBy). The document's own seed carries no
+ * attribution stamp (R13, §2.1 "Seeds", D-3), so authored fixture content
+ * is inserted through the facade's attributed ops into a stamped doc, and
+ * the document then hydrates it.
+ */
+export const authoredDocument = (
+	value: JSONDoc,
+	actor: DocumentActor,
+	options: Omit<CreateDocumentOptions, 'actor' | 'value'> = {}
+): EdytorDocument => {
+	const document = createDocument({ ...options, actor });
+	const meta = (document.doc as unknown as EngineDoc).get('meta');
+	meta.setAttr('v', SCHEMA_VERSION);
+	meta.setAttr('schema', SCHEMA_NAME);
+	value.children.forEach((block, index) =>
+		document.facade.insertBlock({ parent: null, index }, jsonBlockToSpec(block))
+	);
+	document.sync();
+	return document;
+};
 
 /** The block's backing `content` node (physical sequence: atoms, markers, inlines). */
 export const contentNodeOf = (document: EdytorDocument, blockId: string): EngineNode => {

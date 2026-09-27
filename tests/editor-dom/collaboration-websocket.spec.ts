@@ -7,6 +7,8 @@ import {
 	trackPageIssues
 } from './helpers';
 import { startOpaqueRelay, type OpaqueRelay } from './ws-relay';
+import * as decoding from 'lib0-v14/decoding';
+import { GENERATION } from '../../src/lib/crdt/protocols/envelope.js';
 
 /**
  * Real-browser multi-client proof over an ACTUAL websocket transport.
@@ -42,11 +44,17 @@ type JSONDocValue = {
 
 const roomName = () => `ws-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-const openSocketPage = async (page: Page, room: string, relay: OpaqueRelay) => {
+/**
+ * Mount a socket client with the library's default options. `resync` opts
+ * into the periodic resync handshake — only the specs that inject harness
+ * LOSS (dropped frames, which TCP cannot produce) need it; everything else
+ * converges through the join rule alone (arch-v2 T2).
+ */
+const openSocketPage = async (page: Page, room: string, relay: OpaqueRelay, resync = false) => {
 	await gotoEditorRoute(
 		page,
 		`/test/dom?scenario=collab&collabws=${room}&wsserver=${encodeURIComponent(relay.url)}` +
-			`&wsresync=200&wsbackoff=400`,
+			`${resync ? '&wsresync=200' : ''}&wsbackoff=400`,
 		{ requireRuntime: true }
 	);
 };
@@ -124,14 +132,18 @@ const openClients = async (
 	browser: Browser,
 	relay: OpaqueRelay,
 	room: string,
-	testInfo: { project: { use: { baseURL?: string } } }
+	testInfo: { project: { use: { baseURL?: string } } },
+	resync = false
 ): Promise<SocketClients> => {
 	const baseURL = testInfo.project.use.baseURL;
 	const contextA = await browser.newContext({ baseURL });
 	const contextB = await browser.newContext({ baseURL });
 	const pageA = await contextA.newPage();
 	const pageB = await contextB.newPage();
-	await Promise.all([openSocketPage(pageA, room, relay), openSocketPage(pageB, room, relay)]);
+	await Promise.all([
+		openSocketPage(pageA, room, relay, resync),
+		openSocketPage(pageB, room, relay, resync)
+	]);
 	return { contextA, contextB, pageA, pageB };
 };
 
@@ -144,6 +156,39 @@ const openClients = async (
 const WS_RECONNECT_NOISE = [/ws:\/\/127\.0\.0\.1:\d+\//];
 
 test.describe('multi-client collaboration over a real websocket relay', () => {
+	test('the first client of a new room is ready after the readiness bound; a joiner converges (F-T6)', async ({
+		browser
+	}, testInfo) => {
+		// arch-v2 T3, R13: alone behind an opaque relay the provider never
+		// syncs (P6); with the library defaults the document decides once the
+		// readiness bound elapses and seeds its value deterministically.
+		const relay = await startOpaqueRelay();
+		const room = roomName();
+		const baseURL = testInfo.project.use.baseURL;
+		const contextA = await browser.newContext({ baseURL });
+		const contextB = await browser.newContext({ baseURL });
+		try {
+			const pageA = await contextA.newPage();
+			await openSocketPage(pageA, room, relay);
+			await expectProviderState(pageA, { wsconnected: true, synced: false });
+			expect(await readBlockIds(pageA)).toEqual(['collab-b1', 'collab-b2', 'collab-b3']);
+
+			const pageB = await contextB.newPage();
+			await openSocketPage(pageB, room, relay);
+			await expectProviderState(pageB, { wsconnected: true, synced: true });
+			const converged = await expectConverged(pageA, pageB);
+			expect(converged.children.map((block) => block.id)).toEqual([
+				'collab-b1',
+				'collab-b2',
+				'collab-b3'
+			]);
+		} finally {
+			await contextA.close();
+			await contextB.close();
+			await relay.close();
+		}
+	});
+
 	test('converges two independent browser contexts over the socket transport', async ({
 		browser
 	}, testInfo) => {
@@ -188,10 +233,16 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 			expect(middle).toContain('beta');
 			expect(middle).toContain('<R');
 
-			// Every frame the relay forwarded carries the v14 envelope
-			// (`varuint 14` — the first byte is the protocol-version word).
+			// Every frame the relay forwarded carries this generation's
+			// envelope: the first varuint is GENERATION (protocol × 1000 + schema,
+			// derived from the build's constants).
 			expect(relay.forwarded.length).toBeGreaterThan(0);
-			expect(relay.forwarded.every((frame) => frame[0] === 14)).toBe(true);
+			expect(
+				relay.forwarded.every(
+					(frame) =>
+						decoding.readVarUint(decoding.createDecoder(new Uint8Array(frame))) === GENERATION
+				)
+			).toBe(true);
 
 			issuesA.assertClean();
 			issuesB.assertClean();
@@ -231,6 +282,40 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 
 			issuesA.assertClean();
 			issuesB.assertClean();
+		} finally {
+			await clients?.contextA.close();
+			await clients?.contextB.close();
+			await relay.close();
+		}
+	});
+
+	test('a websocket-only peer that closes its tab drops its caret on the others (F-T9)', async ({
+		browser
+	}, testInfo) => {
+		// arch-v2 §8.6 F-T9 (C13): the departure announcement is the room's,
+		// so a socket-only peer announces it exactly as an IndexedDB /
+		// BroadcastChannel peer does — well before the 30 s awareness expiry.
+		const relay = await startOpaqueRelay();
+		const room = roomName();
+		let clients: SocketClients | undefined;
+		try {
+			clients = await openClients(browser, relay, room, testInfo);
+			const { pageA, pageB } = clients;
+			const issuesA = trackPageIssues(pageA);
+			await expectConverged(pageA, pageB);
+
+			const clientIdB = await getClientId(pageB);
+			await setSelectionByTextIndex(pageB, 1, 3);
+			const remoteCursor = pageA.locator(
+				`[data-edytor-remote-cursor][data-client-id="${clientIdB}"]`
+			);
+			await expect(remoteCursor.first()).toBeVisible({ timeout: 10000 });
+
+			// B closes its tab (the browser runs its unload handlers).
+			await pageB.close({ runBeforeUnload: true });
+			await expect(remoteCursor).toHaveCount(0, { timeout: 5000 });
+
+			issuesA.assertClean();
 		} finally {
 			await clients?.contextA.close();
 			await clients?.contextB.close();
@@ -315,7 +400,7 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 		const room = roomName();
 		let clients: SocketClients | undefined;
 		try {
-			clients = await openClients(browser, relay, room, testInfo);
+			clients = await openClients(browser, relay, room, testInfo, true);
 			const { pageA, pageB } = clients;
 			const issuesA = trackPageIssues(pageA);
 			const issuesB = trackPageIssues(pageB);
@@ -544,7 +629,7 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 			// whole point is that synced stays false and no blocks appear.
 			await page.goto(
 				`/test/dom?scenario=collab&collabws=${room}&wsserver=${encodeURIComponent(relay.url)}` +
-					`&wsresync=200&wsbackoff=400`,
+					`&wsbackoff=400`,
 				{ waitUntil: 'domcontentloaded' }
 			);
 

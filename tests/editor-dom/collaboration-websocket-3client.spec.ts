@@ -2,6 +2,8 @@ import type { Browser, BrowserContext, Page } from '@playwright/test';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import * as Y from '../../src/lib/crdt/vendor/yjs/src/index.js';
+// This build's frame word (protocol × 1000 + schema) — derived, never pinned.
+import { GENERATION } from '../../src/lib/crdt/protocols/envelope.js';
 import { expect, test } from './editorTest';
 import { gotoEditorRoute, readJsonByTestId, trackPageIssues, waitForEditorReady } from './helpers';
 import { startOpaqueRelay, type OpaqueRelay } from './ws-relay';
@@ -52,11 +54,17 @@ type ContentPart = { text?: string; marks?: Record<string, unknown>; type?: stri
 
 const roomName = () => `ws3-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-const openSocketPage = async (page: Page, room: string, relay: OpaqueRelay) => {
+/**
+ * Mount a socket client with the library's default options. `resync` opts
+ * into the periodic resync handshake — only the specs that inject harness
+ * LOSS (dropped frames, which TCP cannot produce) need it; everything else
+ * converges through the join rule alone (arch-v2 T2).
+ */
+const openSocketPage = async (page: Page, room: string, relay: OpaqueRelay, resync = false) => {
 	await gotoEditorRoute(
 		page,
 		`/test/dom?scenario=collab&collabws=${room}&wsserver=${encodeURIComponent(relay.url)}` +
-			`&wsresync=200&wsbackoff=400`,
+			`${resync ? '&wsresync=200' : ''}&wsbackoff=400`,
 		{ requireRuntime: true }
 	);
 };
@@ -156,7 +164,8 @@ const openClients3 = async (
 	browser: Browser,
 	relay: OpaqueRelay,
 	room: string,
-	testInfo: { project: { use: { baseURL?: string } } }
+	testInfo: { project: { use: { baseURL?: string } } },
+	resync = false
 ): Promise<Required<SocketClients3>> => {
 	const baseURL = testInfo.project.use.baseURL;
 	const contextA = await browser.newContext({ baseURL });
@@ -166,9 +175,9 @@ const openClients3 = async (
 	const pageB = await contextB.newPage();
 	const pageC = await contextC.newPage();
 	await Promise.all([
-		openSocketPage(pageA, room, relay),
-		openSocketPage(pageB, room, relay),
-		openSocketPage(pageC, room, relay)
+		openSocketPage(pageA, room, relay, resync),
+		openSocketPage(pageB, room, relay, resync),
+		openSocketPage(pageC, room, relay, resync)
 	]);
 	return { contextA, contextB, contextC, pageA, pageB, pageC };
 };
@@ -181,14 +190,14 @@ const closeClients3 = async (clients: SocketClients3 | undefined) => {
 
 /**
  * A rogue room member driven from the Playwright worker: a raw Node
- * `WebSocket` that speaks the real v14 envelope (`varuint 14 | type |
- * payload`) but answers every SyncStep1 with a SyncStep2 carrying an
- * unsupported-schema document (`meta.v = 99` plus marker block
+ * `WebSocket` that speaks this generation's envelope (`varuint GENERATION |
+ * type | payload` — a same-generation writer) but answers every SyncStep1
+ * with a SyncStep2 carrying a forged unsupported-schema stamp (`meta.v = 99` plus marker block
  * `evil-v99`). `clientID = MAX_SAFE_INTEGER` makes the rogue's `meta.v`
  * write win the map-attr LWW merge deterministically — the same recipe as
  * `schema-boundary.test.ts`'s `makeV99Update`. Relayed verbatim like any
- * other member's frames — the refusal under test happens at the
- * receiving provider's staging boundary, not in transport.
+ * other member's frames — the refusal under test is the receiving
+ * provider's inbound refusal of a foreign stamp (R13, D-2), not transport.
  */
 const startRoguePeer = async (relay: OpaqueRelay, room: string) => {
 	const rogue = new Y.Doc();
@@ -201,11 +210,11 @@ const startRoguePeer = async (relay: OpaqueRelay, room: string) => {
 	const rogueState = Y.encodeStateAsUpdate(rogue);
 	rogue.destroy();
 
-	// SyncStep2 frame: envelope(14) | messageSync(0) | subtype SyncStep2(1)
+	// SyncStep2 frame: envelope(GENERATION) | messageSync(0) | subtype SyncStep2(1)
 	// | varuint8array(update) — the wire shape `sync.writeSyncStep2` emits.
 	const syncStep2Frame = (update: Uint8Array) => {
 		const encoder = encoding.createEncoder();
-		encoding.writeVarUint(encoder, 14);
+		encoding.writeVarUint(encoder, GENERATION);
 		encoding.writeVarUint(encoder, 0);
 		encoding.writeVarUint(encoder, 1);
 		encoding.writeVarUint8Array(encoder, update);
@@ -227,7 +236,7 @@ const startRoguePeer = async (relay: OpaqueRelay, room: string) => {
 			const decoder = decoding.createDecoder(buffer);
 			const version = decoding.readVarUint(decoder);
 			const messageType = decoding.readVarUint(decoder);
-			if (version !== 14 || messageType !== 0) return;
+			if (version !== GENERATION || messageType !== 0) return;
 			if (decoding.readVarUint(decoder) !== 0) return; // SyncStep1 only
 			ws.send(syncStep2Frame(rogueState));
 			replies++;
@@ -421,7 +430,7 @@ test.describe('three-client collaboration over a real websocket relay', () => {
 		const room = roomName();
 		let clients: SocketClients3 | undefined;
 		try {
-			clients = await openClients3(browser, relay, room, testInfo);
+			clients = await openClients3(browser, relay, room, testInfo, true);
 			const { pageA, pageB, pageC } = clients;
 			const issuesA = trackPageIssues(pageA);
 			const issuesB = trackPageIssues(pageB);
@@ -635,8 +644,11 @@ test.describe('three-client collaboration over a real websocket relay', () => {
 			);
 
 			// No false synced: a full second of refused handshakes (≥4 resync
-			// cycles) leaves provider.synced AND edytor.synced false, renders
-			// zero blocks, and never admits the marker block.
+			// cycles) leaves provider.synced false and never admits the marker
+			// block. The document is not held hostage by a member it cannot
+			// hear: R13 (arch-v2 T3) — an empty document decides once every
+			// provider settled OR its readiness bound elapsed, so A is ready
+			// with its own deterministic seed of the fixture.
 			await pageA.waitForTimeout(1000);
 			expect(await getCollabProvider(pageA)).toMatchObject({ wsconnected: true, synced: false });
 			await expect
@@ -645,8 +657,7 @@ test.describe('three-client collaboration over a real websocket relay', () => {
 						Boolean((window as Window & { __EDYTOR__?: any }).__EDYTOR__?.synced)
 					)
 				)
-				.toBe(false);
-			await expect(pageA.locator('[data-edytor-block="true"]')).toHaveCount(0);
+				.toBe(true);
 			expect(JSON.stringify(await readValue(pageA))).not.toContain('evil-v99');
 
 			// Recovery: clean peers join the same room — their SyncStep2 replies

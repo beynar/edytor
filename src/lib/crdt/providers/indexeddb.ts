@@ -9,24 +9,27 @@
  *   wrapped in a fresh ArrayBuffer (`encodeUpdateForStore`); `custom` holds
  *   provider metadata via `get`/`set`/`del`.
  * - `PREFERRED_TRIM_SIZE = 500`: past it, a debounced `storeState` appends a
- *   compacted `encodeStateAsUpdate` snapshot and deletes prior rows — but
- *   ONLY while every stored row was admitted: a refused hydration
- *   (`_hydrationRefused`) blocks compaction entirely for the instance, so
- *   bytes the snapshot never represented are never deleted (R2).
+ *   compacted `encodeStateAsUpdate` snapshot and deletes prior rows. Every
+ *   row of a proven generation is applied, so the snapshot represents them
+ *   all; only a read-only document (outbound quarantine) never compacts.
  * - BC room carries sync (0), awareness (1) and query-awareness (3)
- *   messages; connect publishes SyncStep1+SyncStep2+QueryAwareness+state.
- * - `synced`/`whenSynced`, `bcconnected`, `_ownsAwareness`, idempotent
- *   `destroy()`, `beforeunload` + doc-`destroy` cleanup.
+ *   messages; joining says hello (Step1 + presence) and the room's join
+ *   rule exchanges what each side lacks (`room.ts`).
+ * - `synced`/`whenSynced` (the room lifecycle: `synced` is the lifetime
+ *   hydration claim), `bcconnected`, `_ownsAwareness`, idempotent
+ *   `destroy()`, departure (`beforeunload`) + doc-`destroy` cleanup.
  *
- * U07 differences (the version gate — see `protocols/envelope.ts`):
+ * The generation gate (R13, D-2 — see `protocols/envelope.ts`):
  *
- * - STORAGE: the database name is `edytor-v14:<name>` — a separate storage
- *   generation. Legacy v13 databases (`<name>`) are never opened here and
- *   their rows are never applied; a `generation` record in `custom` is
- *   written on creation and verified before any row is applied.
- * - TRANSPORT: every BC message is tagged with `PROTOCOL_VERSION` (14).
- *   Messages without it — e.g. a v13 peer writing to this room — are dropped
- *   before `readSyncMessage`; 'protocol-mismatch' is emitted instead.
+ * - STORAGE: the database name is `edytor-v14:<name>`; legacy v13
+ *   databases (`<name>`) are never opened here. A `generation` record
+ *   (engine, protocol, schema) in `custom` is written on creation and
+ *   verified before any row is applied — a container of another
+ *   generation fails the load; nothing inside a row is inspected.
+ * - TRANSPORT: every BC message carries this build's generation word;
+ *   anything else is dropped before decode ('protocol-mismatch').
+ * - A read-only document (a foreign stamp got in) is neither persisted,
+ *   compacted nor broadcast (outbound quarantine).
  *
  * The engine module is injected (`bindIndexeddbProvider(Y)`) — `src/lib`
  * never runtime-imports the vendored `.js`.
@@ -43,15 +46,16 @@ import {
 	GENERATION_KEY,
 	GENERATION_RECORD,
 	GenerationMismatchError,
-	type GenerationRecord
+	isGenerationRecord
 } from '../protocols/envelope.js';
-// Gate vocabulary via the shared admission doorway (U8) — see admission.ts.
-import { checkSchema, SchemaMismatchError, type SchemaProblem } from '../admission.js';
 import {
+	beginDestroy,
 	bindRoomProtocol,
 	emitFailed,
-	emitSchemaProblem as emitSchemaProblemAt,
-	gateSchema as gateSchemaAt,
+	initLifecycle,
+	markSynced,
+	quarantined,
+	type LifecycleHost,
 	type ProtocolMismatch,
 	type RoomMessageHandler,
 	type SchemaMismatchDetail
@@ -81,12 +85,6 @@ const decodeStoredUpdate = (update: unknown): Uint8Array => {
 	throw new TypeError('Stored Yjs update is not binary data');
 };
 
-const isGenerationRecord = (v: unknown): v is GenerationRecord =>
-	typeof v === 'object' &&
-	v !== null &&
-	(v as GenerationRecord).engine === GENERATION_RECORD.engine &&
-	(v as GenerationRecord).protocol === GENERATION_RECORD.protocol;
-
 type IdbPersistenceLike = {
 	db: IDBDatabase | null;
 	name: string;
@@ -94,23 +92,6 @@ type IdbPersistenceLike = {
 	_dbref: number;
 	_dbsize: number;
 	_destroyed: boolean;
-	/** Last signaled schema-gate state key — dedupes 'schema-mismatch' emits. */
-	_schemaGateKey?: string | null;
-	/**
-	 * Set when `fetchUpdates` refused stored rows (schema boundary — during
-	 * hydration or a later `storeState` fetch). `synced` is suppressed and
-	 * `whenSynced` rejects when set during hydration — the provider still
-	 * joins the BC room so subsequent VALID peer updates keep flowing
-	 * (recoverability). While set, `storeState` never compacts: the live
-	 * doc does not represent every stored row, so no snapshot may subsume
-	 * them (R2).
-	 */
-	_hydrationRefused?: SchemaProblem | null;
-	/** The ObservableV2 emit channel (typed per-event on the real provider). */
-	emit?: {
-		(event: 'schema-mismatch', args: [SchemaMismatchDetail, unknown]): void;
-		(event: 'message-error', args: [unknown, unknown]): void;
-	};
 };
 
 export type IndexeddbPersistenceOptions = {
@@ -129,23 +110,16 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 	const syncProtocol: SyncProtocol = bindSync(Y);
 
 	/**
-	 * The shared room protocol (S1) — dispatch, gated sync handling,
-	 * awareness flow, BC subscriber + connect/disconnect sequences. This
-	 * provider keeps only its transport edge: room traffic is BC-only, and
-	 * `synced` is the local-hydration claim made in `connectBc` (suppressed
-	 * by the `_hydrationRefused` latch), not a handshake verdict.
+	 * The shared room protocol (S1) — dispatch, the join rule, awareness
+	 * flow, BC subscriber + join/leave, the lifecycle. This provider keeps
+	 * only its transport edge: room traffic is BC-only, and `synced` is the
+	 * local-hydration claim, not a handshake verdict.
 	 */
 	const room = bindRoomProtocol<IndexeddbPersistence>(syncProtocol, {
 		docName: (p) => p.name,
 		roomChannel: (p) => p.dbName,
 		broadcast: (p, buf) => p.broadcastMessage(buf)
 	});
-
-	const emitSchemaProblem = (p: IdbPersistenceLike, problem: SchemaProblem): void =>
-		emitSchemaProblemAt(p, p.name, problem);
-
-	/** Gate the provider's own doc; returns the detected problem (or null). */
-	const gateSchema = (p: IdbPersistenceLike): SchemaProblem | null => gateSchemaAt(p, p.name);
 
 	/**
 	 * Apply all stored update rows (from `_dbref` on) to the doc. Verifies the
@@ -184,71 +158,16 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			.then((updates) => {
 				if (!idbPersistence._destroyed) {
 					beforeApplyUpdatesCallback(updatesStore);
-					// Application-schema boundary on hydration: stage the rows
-					// onto a scratch doc seeded with the doc's current state.
-					// Fast path — the merged result is clean, apply the whole
-					// batch. Cold path — at least one row would move the doc
-					// into a schema-problem state; re-stage row by row and apply
-					// only the rows that keep the merged doc clean. Refused
-					// rows stay in the store untouched (non-destructive) and
-					// are reported via 'schema-mismatch'; hydration refusal
-					// also suppresses `synced` and rejects `whenSynced` (the
-					// doc does NOT reflect accepted stored state) while the
-					// provider still joins the BC room for recoverability.
-					const liveSnapshot = Y.encodeStateAsUpdate(idbPersistence.doc);
-					const scratch = new Y.Doc();
-					Y.applyUpdate(scratch, liveSnapshot);
-					for (const update of updates) {
-						Y.applyUpdate(scratch, decodeStoredUpdate(update));
-					}
-					const problem = checkSchema(scratch as unknown as import('../engine-api.js').EngineDoc);
-					if (problem === null) {
-						Y.transact(
-							idbPersistence.doc,
-							() => {
-								updates.forEach((update) =>
-									Y.applyUpdate(idbPersistence.doc, decodeStoredUpdate(update))
-								);
-							},
-							idbPersistence,
-							false
-						);
-					} else {
-						let accepted = new Y.Doc();
-						Y.applyUpdate(accepted, liveSnapshot);
-						const acceptedRows: Uint8Array[] = [];
-						let lastProblem = problem;
-						for (const stored of updates) {
-							const row = decodeStoredUpdate(stored);
-							Y.applyUpdate(accepted, row);
-							const rowProblem = checkSchema(
-								accepted as unknown as import('../engine-api.js').EngineDoc
+					Y.transact(
+						idbPersistence.doc,
+						() => {
+							updates.forEach((update) =>
+								Y.applyUpdate(idbPersistence.doc, decodeStoredUpdate(update))
 							);
-							if (rowProblem === null) {
-								acceptedRows.push(row);
-							} else {
-								// This row is the poison — never applied, never
-								// persisted-as-accepted. Rebuild the staging doc
-								// from the accepted prefix so following rows are
-								// judged against clean state.
-								lastProblem = rowProblem;
-								const rebuilt = new Y.Doc();
-								Y.applyUpdate(rebuilt, liveSnapshot);
-								for (const r of acceptedRows) Y.applyUpdate(rebuilt, r);
-								accepted = rebuilt;
-							}
-						}
-						Y.transact(
-							idbPersistence.doc,
-							() => {
-								acceptedRows.forEach((row) => Y.applyUpdate(idbPersistence.doc, row));
-							},
-							idbPersistence,
-							false
-						);
-						emitSchemaProblem(idbPersistence, lastProblem);
-						idbPersistence._hydrationRefused = lastProblem;
-					}
+						},
+						idbPersistence,
+						false
+					);
 					afterApplyUpdatesCallback(updatesStore);
 				}
 			})
@@ -270,20 +189,9 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 	 * or past `PREFERRED_TRIM_SIZE`) append a compacted snapshot and delete
 	 * the rows it subsumes.
 	 *
-	 * Refusal ↔ compaction contract (R2): the delete range `key < _dbref`
-	 * may only remove rows whose content the replacement snapshot
-	 * represents. A clean live schema is NOT proof of that — once
-	 * `fetchUpdates` refused ANY stored row (`_hydrationRefused`), the live
-	 * doc permanently lacks those bytes and no snapshot of it can subsume
-	 * them. The smallest provably-safe policy is to skip compaction
-	 * entirely for the instance: nothing is deleted, so every refused row
-	 * and every row its updates depend on (regardless of row order — a
-	 * dep may sit before or after the refused row) survives byte-for-byte.
-	 * A selective scheme would have to prove each excluded row plus its
-	 * dependency closure is preserved; blocking needs no such proof. The
-	 * fetch still runs, so valid peer rows keep hydrating. `_dbref` still
-	 * advances past refused rows (they are not re-staged per fetch); it is
-	 * a fetch cursor only — never again a safe delete boundary.
+	 * Every applied row is represented in the snapshot, so deleting
+	 * `key < _dbref` is always safe; a read-only document (outbound
+	 * quarantine) never compacts.
 	 *
 	 * The returned promise settles only after the storage transaction
 	 * commits (the upstream version dropped the write/delete chain —
@@ -298,12 +206,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			// missing handle) must surface as a rejection, not a throw.
 			.then(() => fetchUpdates(idbPersistence))
 			.then((updatesStore) => {
-				// Schema boundary: never persist a snapshot of schema-problem
-				// content (unversioned OR unsupported).
-				if (gateSchema(idbPersistence) !== null) return undefined;
-				// Refusal gate (R2): checked AFTER the fetch so rows refused
-				// during THIS fetch are covered too.
-				if (idbPersistence._hydrationRefused != null) return undefined;
+				if (quarantined(idbPersistence.doc)) return undefined;
 				if (!forceStore && idbPersistence._dbsize < PREFERRED_TRIM_SIZE) {
 					return undefined;
 				}
@@ -355,21 +258,16 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		 * Fired when a received room message was tagged v14 but could not be
 		 * decoded (truncated/corrupt frame or an unknown message type), or
 		 * when a sync payload failed to apply. The message is dropped — it is
-		 * never applied to the doc. Also mirrors schema-gate violations so
-		 * the error channel alone observes every failure mode.
+		 * never applied to the doc. Also mirrors inbound refusals so the
+		 * error channel alone observes every failure mode.
 		 */
 		'message-error': (error: unknown, provider: IndexeddbPersistence) => void;
-		/**
-		 * The document's replicated state violates the application-schema
-		 * gate (`meta.v` absent with content present = quarantined;
-		 * `meta.v` unsupported = synced but flagged). See SchemaMismatchDetail.
-		 */
+		/** A received update wrote a foreign schema stamp and was refused (SchemaMismatchDetail). */
 		'schema-mismatch': (detail: SchemaMismatchDetail, provider: IndexeddbPersistence) => void;
 		/**
-		 * Terminal sync failure (the D4 contract): the provider can never
-		 * reach `synced` — destroyed before syncing, a persistence load
-		 * failure, or refused hydration. Emitted at most once; never after
-		 * `synced === true`.
+		 * Terminal sync failure (the D4 contract): the provider never
+		 * synced — destroyed before hydrating or a persistence load
+		 * failure. Emitted at most once; never once `synced`.
 		 */
 		failed: (error: unknown, provider: IndexeddbPersistence) => void;
 	}> {
@@ -380,21 +278,17 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		dbName: string;
 		_dbref: number;
 		_dbsize: number;
-		_destroyed: boolean;
 		db: IDBDatabase | null;
-		synced: boolean;
 		_db: Promise<IDBDatabase>;
-		whenSynced: Promise<IndexeddbPersistence>;
-		_rejectSynced: ((reason?: unknown) => void) | null = null;
+		// The room lifecycle (O74) — installed by `initLifecycle`.
+		_destroyed!: boolean;
+		hasSynced!: boolean;
+		whenSynced!: Promise<IndexeddbPersistence>;
+		_failedEmitted?: boolean;
+		_settleSynced!: LifecycleHost['_settleSynced'];
+		_leave!: () => void;
 		/** Set when loading persisted state failed (generation mismatch, …). */
 		loadError: unknown = null;
-		/**
-		 * Set when hydration refused stored rows (schema boundary): `synced`
-		 * is suppressed and `whenSynced` rejects — see `connectBc`.
-		 */
-		_hydrationRefused: SchemaProblem | null;
-		/** Latch — 'failed' emits at most once (see `emitFailed` in room.ts). */
-		_failedEmitted?: boolean;
 		_storeTimeout: number;
 		_storeTimeoutId: ReturnType<typeof setTimeout> | null;
 		_storeUpdate: (update: Uint8Array, origin: unknown) => void;
@@ -402,7 +296,6 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		bcconnected = false;
 		_ownsAwareness: boolean;
 		_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
-		_beforeUnloadHandler: () => void;
 		_awarenessUpdateHandler: (
 			updates: { added: number[]; updated: number[]; removed: number[] },
 			origin: unknown
@@ -415,10 +308,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			this.dbName = generationDbName(name);
 			this._dbref = 0;
 			this._dbsize = 0;
-			this._destroyed = false;
-			this._hydrationRefused = null;
 			this.db = null;
-			this.synced = false;
 			this.awareness = options.awareness ?? new Awareness(doc);
 			this._ownsAwareness = !options.awareness;
 
@@ -426,15 +316,8 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 				idb.createStores(db, [['updates', { autoIncrement: true }], ['custom']])
 			);
 
-			this.whenSynced = promise.create((resolve, reject) => {
-				this._rejectSynced = (reason?: unknown) =>
-					reject(reason instanceof Error ? reason : new Error(String(reason)));
-				this.on('synced', () => resolve(this));
-			});
-			// Consumers that never attach a catch still shouldn't crash the
-			// process on a rejected whenSynced — the 'load-error' event is the
-			// diagnostic channel.
-			this.whenSynced.catch(() => {});
+			this.destroy = this.destroy.bind(this);
+			initLifecycle(this, this.destroy);
 
 			this._bcSubscriber = room.bcSubscriber(this);
 			this._awarenessUpdateHandler = room.awarenessUpdateHandler(this);
@@ -444,7 +327,6 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			// synced once loading its persisted state has failed (D4).
 			const onLoadError = (error: unknown) => {
 				this.loadError = error;
-				this._rejectSynced?.(error);
 				this.emit('load-error', [error, this]);
 				emitFailed(this, error);
 			};
@@ -456,32 +338,17 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 						return;
 					}
 					this.db = db;
+					// A read-only doc's pre-hydration state is never persisted.
 					const beforeApplyUpdatesCallback = (updatesStore: IDBObjectStore) => {
-						// Schema boundary: a doc already in a schema-problem state
-						// (rogue/unsupported write before provider attach) is
-						// quarantined — its state is never persisted to the
-						// generation DB.
-						if (gateSchema(this) === null) {
-							return idb.addAutoKey(updatesStore, encodeUpdateForStore(Y.encodeStateAsUpdate(doc)));
+						if (!quarantined(doc)) {
+							idb.addAutoKey(updatesStore, encodeUpdateForStore(Y.encodeStateAsUpdate(doc)));
 						}
-						return undefined;
 					};
+					// Hydrated: join the room and claim `synced` (lifetime).
 					const afterApplyUpdatesCallback = () => {
 						if (this._destroyed) return;
-						// Hydration refused stored rows → the doc does NOT reflect
-						// accepted stored state: `synced` stays suppressed and
-						// `whenSynced` rejects, but the provider still joins the
-						// BC room — subsequent VALID peer updates keep flowing
-						// (recoverability). `connectBc` itself enforces the latch
-						// (D10) — the synced claim cannot be re-enabled by a
-						// later disconnect/reconnect.
 						this.connectBc();
-						const refused = this._hydrationRefused;
-						if (refused !== null) {
-							const error = new SchemaMismatchError(this.name, refused);
-							this._rejectSynced?.(error);
-							emitFailed(this, error);
-						}
+						if (markSynced(this)) this.emit('synced', [this]);
 					};
 					// Deferred call: a synchronous fetchUpdates throw (closed
 					// handle, transact failure) reaches the same .catch — every
@@ -501,11 +368,10 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			this._storeTimeoutId = null;
 
 			this._storeUpdate = (update: Uint8Array, origin: unknown) => {
-				// Schema boundary: an update leaving the doc in ANY
-				// schema-problem state (unversioned OR unsupported) is
-				// quarantined — never persisted, never broadcast.
-				const gated = origin !== this && gateSchema(this) !== null;
-				if (this.db && origin !== this && !gated) {
+				// Outbound quarantine: a read-only doc is never persisted
+				// (`broadcastUpdate` applies the same rule to the room).
+				if (origin === this || quarantined(doc)) return;
+				if (this.db) {
 					try {
 						const [updatesStore] = idb.transact(this.db, [updatesStoreName]);
 						// Storage failures must surface — never an unobserved
@@ -532,24 +398,21 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 					}
 				}
 				// Broadcast the update to other tabs
-				if (origin !== this && !gated) {
-					room.broadcastUpdate(this, update);
-				}
+				room.broadcastUpdate(this, update);
 			};
 
 			doc.on('update', this._storeUpdate);
 			this.awareness.on('update', this._awarenessUpdateHandler);
-			this.destroy = this.destroy.bind(this);
-			this._beforeUnloadHandler = () => this.destroy();
 			doc.on('destroy', this.destroy);
-			(globalThis as { addEventListener?: (t: string, f: () => void) => void }).addEventListener?.(
-				'beforeunload',
-				this._beforeUnloadHandler
-			);
+		}
+
+		/** The lifetime hydration claim. */
+		get synced(): boolean {
+			return this.hasSynced;
 		}
 
 		/**
-		 * The room dispatch table — owned by `room.ts` (S1): gated
+		 * The room dispatch table — owned by `room.ts` (S1):
 		 * `messageSync`, awareness publish/query. This provider adds no
 		 * extra handlers (auth exists only on a server socket).
 		 */
@@ -569,21 +432,9 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			}
 		}
 
-		/**
-		 * Join the BC room. The `synced` claim consults the refusal latch
-		 * INTERNALLY (D10): hydration-refused providers stay in the room
-		 * for subsequent VALID peer updates, but a `disconnectBc()` +
-		 * `connectBc()` cycle can no longer bypass `_hydrationRefused` and
-		 * claim a `synced` that `whenSynced` still rejects. (Residual: no
-		 * heal path — a doc cleaned by later peer updates keeps the latch +
-		 * rejected `whenSynced` for this instance's lifetime.)
-		 */
+		/** Join the BC room (after hydration; again after `disconnectBc`). */
 		connectBc() {
 			room.connectBc(this);
-			if (this._hydrationRefused === null) {
-				this.synced = true;
-				this.emit('synced', [this]);
-			}
 		}
 
 		disconnectBc() {
@@ -595,29 +446,17 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		 * close the DB. Does NOT remove stored data — `clearDocument` does.
 		 */
 		destroy(): Promise<void> {
-			if (this._destroyed) {
+			// The destroy guard — a provider that never synced settles its
+			// waiters: `whenSynced` rejects (D22) and 'failed' fires once.
+			if (!beginDestroy(this, `IndexeddbPersistence "${this.name}"`)) {
 				return Promise.resolve();
 			}
 			if (this._storeTimeoutId) {
 				clearTimeout(this._storeTimeoutId);
 			}
-			(
-				globalThis as { removeEventListener?: (t: string, f: () => void) => void }
-			).removeEventListener?.('beforeunload', this._beforeUnloadHandler);
 			this.doc.off('update', this._storeUpdate);
 			this.doc.off('destroy', this.destroy);
 			this.awareness.off('update', this._awarenessUpdateHandler);
-			this._destroyed = true;
-			// A provider destroyed before ever syncing can never reach
-			// synced (D4) — settle the pending waiters: `whenSynced` rejects
-			// (D22) and 'failed' fires (at most once, never once synced).
-			if (!this.synced) {
-				const error = new Error(
-					`IndexeddbPersistence "${this.name}" was destroyed before it synced`
-				);
-				this._rejectSynced?.(error);
-				emitFailed(this, error);
-			}
 			this.disconnectBc();
 			if (this._ownsAwareness) {
 				this.awareness.destroy();

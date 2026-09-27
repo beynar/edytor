@@ -27,7 +27,9 @@ export const load: PageLoad = ({ url }) => {
 		collab: url.searchParams.get('collab'),
 		collabws: url.searchParams.get('collabws'),
 		wsserver: url.searchParams.get('wsserver'),
-		wsresync: Number(url.searchParams.get('wsresync')) || 250,
+		// The library default (no periodic resync) unless a spec opts in: the
+		// resync timer only heals deliberate harness loss (dropped frames).
+		wsresync: Number(url.searchParams.get('wsresync')) || undefined,
 		wsbackoff: Number(url.searchParams.get('wsbackoff')) || 500,
 		// Collaboration DST knobs: `actor` pins the document's local actor
 		// identity (deterministic per peer) and `lineagedepth` opts the

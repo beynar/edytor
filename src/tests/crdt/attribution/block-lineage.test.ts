@@ -16,7 +16,7 @@
  *   lineage writes — byte-identical to the pre-feature schema.
  */
 import { describe, expect, it } from 'vitest';
-import { applyUpdate, docValue, firstBlock, wireDocs } from './helpers.js';
+import { applyUpdate, docValue, firstBlock, wireDocs, authoredDocument } from './helpers.js';
 import { Y } from '../../../lib/crdt/engine.js';
 import { lineageOf } from '../../../lib/crdt/attribution/block.js';
 import { blockRecordsOf } from '../../oracles/block-records.js';
@@ -40,9 +40,7 @@ const append = (d: EdytorDocument, blockId: string, text: string) => {
 const historyOf = (d: EdytorDocument, blockId: string) => d.attribution.history(blockId);
 
 const withLineage = (options: { actor: DocumentActor; depth?: number; text?: string }) =>
-	createDocument({
-		value: docValue(options.text ?? 'hello'),
-		actor: options.actor,
+	authoredDocument(docValue(options.text ?? 'hello'), options.actor, {
 		lineage: { depth: options.depth ?? 5 },
 		history: { captureTimeout: 0 }
 	});
@@ -356,18 +354,14 @@ describe('lineage — incarnation isolation & opt-out', () => {
 
 	it('depth 0 and missing actor perform zero lineage writes', () => {
 		// depth 0 — never captures.
-		const off = createDocument({
-			value: docValue('x'),
-			actor: alice,
-			lineage: { depth: 0 }
-		});
+		const off = authoredDocument(docValue('x'), alice, { lineage: { depth: 0 } });
 		const blockId = firstBlock(off).id;
 		append(off, blockId, '1');
 		expect(historyOf(off, blockId)).toEqual([]);
 
 		// Byte-identity: a doc with lineage configured and an unattributed
 		// foreign write produce no ring entries.
-		const bare = createDocument({ value: docValue('x'), actor: alice });
+		const bare = authoredDocument(docValue('x'), alice);
 		const bareId = firstBlock(bare).id;
 		append(bare, bareId, '1');
 		expect(historyOf(bare, bareId)).toEqual([]);
@@ -413,17 +407,16 @@ describe('lineage — incarnation isolation & opt-out', () => {
 
 describe('lineage — coverage gaps', () => {
 	it('merge captures BOTH sides: survivor pre-state + absorbed block final state', () => {
-		const A = createDocument({
-			value: {
+		const A = authoredDocument(
+			{
 				children: [
 					{ type: 'paragraph', content: [{ text: 'one' }] },
 					{ type: 'paragraph', content: [{ text: 'two' }] }
 				]
 			},
-			actor: alice,
-			lineage: { depth: 5 },
-			history: { captureTimeout: 0 }
-		});
+			alice,
+			{ lineage: { depth: 5 }, history: { captureTimeout: 0 } }
+		);
 		const [b1, b2] = A.facade.project().children;
 		const B = createDocument({ actor: bob, lineage: { depth: 5 }, history: { captureTimeout: 0 } });
 		applyUpdate(B.doc, A.encode());
@@ -468,8 +461,8 @@ describe('lineage — coverage gaps', () => {
 	});
 
 	it('snapshot fidelity: marks, inline atoms, children and data survive in j', () => {
-		const A = createDocument({
-			value: {
+		const A = authoredDocument(
+			{
 				children: [
 					{
 						type: 'section',
@@ -486,10 +479,9 @@ describe('lineage — coverage gaps', () => {
 					}
 				]
 			},
-			actor: alice,
-			lineage: { depth: 3 },
-			history: { captureTimeout: 0 }
-		});
+			alice,
+			{ lineage: { depth: 3 }, history: { captureTimeout: 0 } }
+		);
 		const blockId = firstBlock(A).id;
 		const B = createDocument({ actor: bob, lineage: { depth: 3 }, history: { captureTimeout: 0 } });
 		applyUpdate(B.doc, A.encode());
@@ -554,8 +546,8 @@ describe('lineage — coverage gaps', () => {
 	});
 
 	it('keepChildren delete captures the pre-move subtree on the dead record', () => {
-		const A = createDocument({
-			value: {
+		const A = authoredDocument(
+			{
 				children: [
 					{
 						type: 'section',
@@ -564,10 +556,9 @@ describe('lineage — coverage gaps', () => {
 					}
 				]
 			},
-			actor: alice,
-			lineage: { depth: 5 },
-			history: { captureTimeout: 0 }
-		});
+			alice,
+			{ lineage: { depth: 5 }, history: { captureTimeout: 0 } }
+		);
 		const parentId = firstBlock(A).id;
 		const B = createDocument({ actor: bob, lineage: { depth: 5 }, history: { captureTimeout: 0 } });
 		applyUpdate(B.doc, A.encode());
@@ -638,8 +629,8 @@ describe('lineage — cap & validation regressions', () => {
 		// Children-replace deletes kids through the raw model path — each
 		// must still land a forced capture on its own (soon-orphaned)
 		// record, or a destructive edit leaves no recovery copy.
-		const A = createDocument({
-			value: {
+		const A = authoredDocument(
+			{
 				children: [
 					{
 						type: 'section',
@@ -655,10 +646,9 @@ describe('lineage — cap & validation regressions', () => {
 					}
 				]
 			},
-			actor: alice,
-			lineage: { depth: 5 },
-			history: { captureTimeout: 0 }
-		});
+			alice,
+			{ lineage: { depth: 5 }, history: { captureTimeout: 0 } }
+		);
 		const parent = firstBlock(A);
 		const [k1, k2] = parent.children!;
 		const B = createDocument({ actor: bob, lineage: { depth: 5 }, history: { captureTimeout: 0 } });
@@ -772,7 +762,7 @@ describe('lineage — cap & validation regressions', () => {
 
 	it('invalid lineage.depth refuses at every entry path', () => {
 		const bad = [Number.NaN, Number.POSITIVE_INFINITY, -1, 2.5];
-		const seed = createDocument({ value: docValue('s'), actor: alice });
+		const seed = authoredDocument(docValue('s'), alice);
 		const seedBytes = seed.encode();
 		for (const depth of bad) {
 			expect(() => createDocument({ actor: alice, lineage: { depth } })).toThrowError(RangeError);

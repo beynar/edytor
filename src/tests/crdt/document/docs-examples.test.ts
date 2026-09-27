@@ -129,8 +129,10 @@ describe('docs: attribution + actor reads', () => {
 		const [block] = document.facade.project().children;
 		document.transact(() => document.facade.insertText(block.id, 5, '!'));
 		// U1 compact block attribution — the edit's author stamps the block.
+		// The seed itself carries no stamp (R13 §2.1, D-3): no `createdBy`.
 		expect(document.attribution.block(block.id)).toMatchObject({
-			createdBy: 'user-42',
+			createdBy: undefined,
+			contributors: new Set(['user-42']),
 			lastChangedBy: 'user-42'
 		});
 		// U2 — no per-edit capture records on a fresh document.

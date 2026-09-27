@@ -4,7 +4,13 @@
  * citations are in the review report.
  */
 import { describe, expect, it } from 'vitest';
-import { applyUpdate, docValue, firstBlock, wireDocs } from '../attribution/helpers.js';
+import {
+	applyUpdate,
+	docValue,
+	firstBlock,
+	wireDocs,
+	authoredDocument
+} from '../attribution/helpers.js';
 import {
 	createDocument,
 	type DocumentActor,
@@ -85,7 +91,7 @@ describe('review — setBlock content no-op stamps a phantom change', () => {
 
 describe('review — insertText("") is not a clean no-op', () => {
 	it('an empty insert at a segment boundary emits a real update (slice rewrite)', () => {
-		const d = createDocument({ value: docValue('hi'), actor: alice });
+		const d = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(d).id;
 		// insertIntoText's inner===0 branch rewrites the covering slice
 		// record at a bumped generation even when payload.length === 0
@@ -101,7 +107,7 @@ describe('review — insertText("") is not a clean no-op', () => {
 // Characterization (documents the delete-attribution gap — passes today):
 describe('review — deletes are invisible to attribution', () => {
 	it('deleteBlock leaves no trace of the deleter', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);

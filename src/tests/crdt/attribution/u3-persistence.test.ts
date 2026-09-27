@@ -29,7 +29,7 @@ import {
 	loadDocument,
 	type DocumentActor
 } from '../../../lib/crdt/index.js';
-import { docValue, firstBlock, wireDocs } from './helpers.js';
+import { docValue, firstBlock, wireDocs, authoredDocument } from './helpers.js';
 import type { EngineNode, YDoc } from '../../../lib/crdt/engine-api.js';
 
 const idbProviders = bindIndexeddbProvider(Y);
@@ -162,15 +162,15 @@ class FakeWebSocket {
 
 describe('encode → loadDocument', () => {
 	it('multi-block, multi-actor attribution round-trips byte-faithfully (incl. a deleted block)', () => {
-		const a = createDocument({
-			value: {
+		const a = authoredDocument(
+			{
 				children: [
 					{ type: 'paragraph', id: 'p1', content: [{ text: 'one' }] },
 					{ type: 'paragraph', id: 'p2', content: [{ text: 'two' }] }
 				]
 			},
-			actor: alice
-		});
+			alice
+		);
 		const b = createDocument({ actor: bob });
 		Y.applyUpdate(b.doc, a.encode());
 		b.sync();
@@ -215,7 +215,7 @@ describe('encode → loadDocument', () => {
 describe('IndexedDB persistence + compaction', () => {
 	it('blockattr state hydrates from stored rows AND from a compacted snapshot', async () => {
 		const name = uniqueName('u3-attr-idb');
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
 		const pA = new idbProviders.IndexeddbPersistence(name, a.doc as never);
 		await pA.whenSynced;
@@ -253,7 +253,7 @@ describe('IndexedDB persistence + compaction', () => {
 
 	it('stored rows carrying ONLY blockattr/dictionary writes hydrate cleanly', async () => {
 		const name = uniqueName('u3-attr-only');
-		const a = createDocument({ value: docValue('x'), actor: alice });
+		const a = authoredDocument(docValue('x'), alice);
 		const blockId = firstBlock(a).id;
 		a.transact(() => a.facade.insertText(blockId, 0, 'y'));
 		// The whole document state — meta + blocks + blockattr + dictionary —
@@ -283,7 +283,7 @@ describe('IndexedDB persistence + compaction', () => {
 describe('provider sync', () => {
 	it('two IndexeddbPersistence providers sync attribution live over BroadcastChannel', async () => {
 		const name = uniqueName('u3-bc');
-		const a = createDocument({ value: docValue('room'), actor: alice });
+		const a = authoredDocument(docValue('room'), alice);
 		const blockId = firstBlock(a).id;
 		const pA = new idbProviders.IndexeddbPersistence(name, a.doc as never);
 		await pA.whenSynced;
@@ -329,9 +329,11 @@ describe('provider sync', () => {
 
 		const b = createDocument({ actor: bob });
 		b.attachSync(providers.createIndexeddbSync(name));
-		await until(() => b.ready && b.attribution.block(blockId)?.createdBy === 'alice', 4000);
-		expect(b.attribution.block(blockId)).toEqual({
-			createdBy: 'alice',
+		// The seed carries no stamp (R13 §2.1, D-3): alice's edit is the
+		// first attribution the block records.
+		await until(() => b.ready && b.attribution.block(blockId)?.lastChangedBy === 'alice', 4000);
+		expect(b.attribution.block(blockId)).toEqual(a.attribution.block(blockId));
+		expect(b.attribution.block(blockId)).toMatchObject({
 			contributors: new Set(['alice']),
 			lastChangedBy: 'alice'
 		});
@@ -341,7 +343,7 @@ describe('provider sync', () => {
 
 	it('createWebsocketSync over an opaque relay carries attribution both ways', async () => {
 		const url = `ws://fake-u3/${counter++}`;
-		const a = createDocument({ value: docValue('ws'), actor: alice });
+		const a = authoredDocument(docValue('ws'), alice);
 		const blockId = firstBlock(a).id;
 		a.attachSync(
 			providers.createWebsocketSync({

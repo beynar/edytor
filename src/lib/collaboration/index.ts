@@ -7,7 +7,7 @@ export {
 	type EdytorAwarenessUser,
 	type EdytorAwarenessViewSelection
 } from './awarenessSelection.js';
-export { attachDocumentSync, whenDocumentReady } from './documentSync.js';
+export { whenDocumentReady } from './documentSync.js';
 export {
 	createIndexeddbSync,
 	createWebsocketSync,

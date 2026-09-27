@@ -391,13 +391,14 @@ export const sanitizeSpec = (spec: BlockSpec): BlockSpec => {
 /** `(JSONText | JSONInlineBlock)[]` → facade `ContentItem[]` (ids minted where missing). */
 export const jsonContentToItems = (
 	content: (JSONText | JSONInlineBlock)[],
-	freshIds = false
+	freshIds = false,
+	mint: (prefix: 'b' | 'i') => string = id
 ): ContentItem[] =>
 	content.map((part): ContentItem => {
 		if ('type' in part) {
 			return {
 				kind: 'inline',
-				id: freshIds || !part.id ? id('i') : part.id,
+				id: freshIds || !part.id ? mint('i') : part.id,
 				type: part.type,
 				...(part.data ? { data: cloneJson(part.data) } : {})
 			};
@@ -409,11 +410,17 @@ export const jsonContentToItems = (
 		};
 	});
 
-/** `JSONBlock` → facade insert spec (ids assigned where missing, recursively). */
-export const jsonBlockToSpec = (block: JSONBlock, freshIds = false): BlockSpec => ({
-	id: freshIds || !block.id ? id('b') : block.id,
+/** `JSONBlock` → facade insert spec (ids `mint`ed where missing, recursively). */
+export const jsonBlockToSpec = (
+	block: JSONBlock,
+	freshIds = false,
+	mint: (prefix: 'b' | 'i') => string = id
+): BlockSpec => ({
+	id: freshIds || !block.id ? mint('b') : block.id,
 	type: block.type,
 	...(block.data ? { data: cloneJson(block.data) as Record<string, unknown> } : {}),
-	...(block.content ? { content: jsonContentToItems(block.content, freshIds) } : {}),
-	...(block.children ? { children: block.children.map((c) => jsonBlockToSpec(c, freshIds)) } : {})
+	...(block.content ? { content: jsonContentToItems(block.content, freshIds, mint) } : {}),
+	...(block.children
+		? { children: block.children.map((c) => jsonBlockToSpec(c, freshIds, mint)) }
+		: {})
 });

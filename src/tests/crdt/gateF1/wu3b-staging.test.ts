@@ -1,37 +1,33 @@
 /**
- * Gate-F1 measurement probe — WU3b `applyUpdateStaged` cost.
+ * Gate-F1 probe, rewritten at arch-v2 T1 — the inbound refusal
+ * (`applyRemote`) that replaced per-update staging (D-2, L55).
  *
- * The schema boundary stages EVERY inbound remote update: a throwaway
- * Y.Doc is built, the LIVE doc's full state is encoded into it
- * (`Y.encodeStateAsUpdate(doc)`), the incoming update is applied on top,
- * `checkSchema` runs on the merged scratch, and only then does the update
- * apply to the live doc. Both providers route SyncStep2 AND messageYjsUpdate
- * through it — there is no fast path for updates that do not touch `meta`.
+ * Frames already proved their generation (engine + wire + schema), so
+ * nothing is staged: an inbound update is scanned once — O(update) — for a
+ * write that forges the `meta` stamp, and applied directly otherwise.
  *
- * This probe quantifies the cost on a 1,000-block document across a burst
- * of 100 single-keystroke remote updates, and reports:
- *   - staged vs direct per-update wall time;
- *   - the full-state encode size (bytes shipped to the scratch doc);
- *   - schema-check and scratch-apply split of the staged cost.
+ * It verifies the correctness edges the staging suite pinned:
+ *   - a refused update leaves the live store byte-identical;
+ *   - an unsupported version, a foreign manifest name, a parentless
+ *     overwrite, and a deleted stamp are refused;
+ *   - a brand-new peer's SyncStep2 (full state, our stamp) applies;
+ *   - a corrupt payload is reported and mutates nothing;
+ *   - a forged stamp that slips in through pending resolution leaves the
+ *     document read-only (the `writable` guard, O18).
  *
- * It also verifies the correctness edges the review asked for:
- *   - staging happens BEFORE live integration (a refused update leaves the
- *     live store byte-identical);
- *   - a v14-valid update with an UNSUPPORTED schema attribute state is
- *     refused;
- *   - a v14-valid update carrying a FOREIGN meta.schema manifest name is
- *     refused through the same staging path (gate-F1 F5);
- *   - a brand-new peer's SyncStep2 (full state) is staged, not direct.
- *
- * Measurement data is printed, not asserted — the numbers are input to
- * the WU5-WU9 performance work, not a gate.
+ * The keystroke-burst timing is printed, not asserted.
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc, bindSync } from '../../../lib/crdt/index.js';
-import { checkSchema } from '../../../lib/crdt/edytor-doc.js';
-import type { EngineDoc } from '../../../lib/crdt/engine-api.js';
+import {
+	bindEdytorDoc,
+	bindSync,
+	checkSchema,
+	createDocument,
+	SchemaMismatchError,
+	SCHEMA_VERSION
+} from '../../../lib/crdt/index.js';
 
 const E = bindEdytorDoc(Y);
 const S = bindSync(Y);
@@ -59,12 +55,11 @@ const buildRemote = (seedUpdate: Uint8Array) => {
 	return remote;
 };
 
-describe('gateF1 WU3b — applyUpdateStaged staging cost', () => {
-	it('measures staged vs direct apply across a 100-keystroke burst on 1,000 blocks', () => {
+describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
+	it('a 100-keystroke burst on 1,000 blocks applies directly (timing printed)', () => {
 		const live = buildLive();
 		const remote = buildRemote(Y.encodeStateAsUpdate(live));
 		const red = E.create(remote);
-		// Produce BURST one-char inserts on the remote; collect the update log.
 		const updates: Uint8Array[] = [];
 		remote.on('update', (u: Uint8Array) => updates.push(u));
 		for (let i = 0; i < BURST; i++) {
@@ -72,155 +67,98 @@ describe('gateF1 WU3b — applyUpdateStaged staging cost', () => {
 		}
 		expect(updates.length).toBe(BURST);
 
-		const liveStateBytes = Y.encodeStateAsUpdate(live).byteLength;
-		const updateBytes = updates.map((u) => u.byteLength);
-		console.log(
-			`[WU3b] live doc: ${BLOCKS} blocks, full-state encode = ${liveStateBytes} bytes; ` +
-				`incoming updates: ${BURST} × ~${Math.max(...updateBytes)}B (median ` +
-				`${updateBytes.sort((a, b) => a - b)[Math.floor(BURST / 2)]}B)`
-		);
-
-		// ── what staging used to cost (manual scratch simulation) ──────
-		const scratchSim = buildLive();
-		let schemaNs = 0;
-		let scratchNs = 0;
-		const sT0 = performance.now();
-		for (const u of updates) {
-			const s0 = performance.now();
-			const scratch = new Y.Doc();
-			Y.applyUpdate(scratch, Y.encodeStateAsUpdate(scratchSim));
-			Y.applyUpdate(scratch, u);
-			scratchNs += performance.now() - s0;
-			const c0 = performance.now();
-			checkSchema(scratch as unknown as EngineDoc);
-			schemaNs += performance.now() - c0;
-			Y.applyUpdate(scratchSim, u, 'bench');
-		}
-		const manualStagedMs = performance.now() - sT0;
-
-		// ── applyUpdateStaged (WU5 fast path engaged) ──────────────────
 		const t0 = performance.now();
-		let stagedCount = 0;
-		for (const u of updates) {
-			const res = S.applyUpdateStaged(live, u, 'bench');
-			expect(res.applied).toBe(true);
-			if (res.staged) stagedCount++;
-		}
-		const stagedMs = performance.now() - t0;
-		// Keystroke content updates must never reach the scratch path.
-		expect(stagedCount).toBe(0);
-
-		// ── direct path (what upstream y-protocols does) ───────────────
+		for (const u of updates) expect(S.applyRemote(live, u, 'bench').applied).toBe(true);
+		const remoteMs = performance.now() - t0;
 		const live2 = buildLive();
 		const t1 = performance.now();
 		for (const u of updates) Y.applyUpdate(live2, u, 'bench');
 		const directMs = performance.now() - t1;
-
-		const perStaged = stagedMs / BURST;
-		const perDirect = directMs / BURST;
 		console.log(
-			`[WU3b] applyUpdateStaged (fast path): ${stagedMs.toFixed(1)}ms total, ` +
-				`${perStaged.toFixed(3)}ms/update (${stagedCount}/${BURST} staged); ` +
-				`old staged cost (manual scratch): ${manualStagedMs.toFixed(1)}ms total, ` +
-				`${(manualStagedMs / BURST).toFixed(2)}ms/update ` +
-				`(scratch-build+apply ${(scratchNs / BURST).toFixed(2)}ms + schema ` +
-				`${(schemaNs / BURST).toFixed(2)}ms); ` +
-				`direct apply: ${directMs.toFixed(1)}ms total, ${perDirect.toFixed(3)}ms/update`
+			`[WU3b] applyRemote: ${(remoteMs / BURST).toFixed(3)}ms/update; ` +
+				`direct apply: ${(directMs / BURST).toFixed(3)}ms/update`
 		);
-		// Sanity: the staged doc actually integrated the burst.
 		expect(E.create(live).blockText('b0')).toContain('x');
 	});
 
-	it('a refused update leaves the live doc byte-identical (staging before integration)', () => {
+	it('a refused update leaves the live doc byte-identical', () => {
 		const live = buildLive();
 		const before = Y.encodeStateAsUpdate(live);
-		// Forge a v14-envelope-shaped update whose merge leaves meta.v=99.
-		// Pin the clientID to the max so the v99 write deterministically wins
-		// the LWW merge against the live doc's meta.v=1 (map attrs resolve by
-		// clientID — without the pin the refusal was clientID-lottery).
 		const poison = new Y.Doc({ guid: 'other' });
 		poison.clientID = Number.MAX_SAFE_INTEGER;
 		poison.get('meta').setAttr('v', 99);
-		const poisonUpdate = Y.encodeStateAsUpdate(poison);
-		const res = S.applyUpdateStaged(live, poisonUpdate, 'bench');
+		const res = S.applyRemote(live, Y.encodeStateAsUpdate(poison), 'bench');
 		expect(res.applied).toBe(false);
-		expect(res.problem).not.toBeNull();
+		expect(res.problem).toMatchObject({ kind: 'unsupported', version: 99 });
 		expect(Y.encodeStateAsUpdate(live)).toEqual(before);
 	});
 
 	it('a valid-version update carrying a foreign meta.schema is refused', () => {
 		const live = buildLive();
 		const before = Y.encodeStateAsUpdate(live);
-		// meta.v stays the supported version but meta.schema is a foreign
-		// document name — the manifest name is part of the schema contract
-		// (gate-F1 F5: checkSchema now rejects it through the same staging
-		// path as an unsupported version).
 		const foreign = new Y.Doc({ guid: 'staging-bench' });
 		Y.applyUpdate(foreign, Y.encodeStateAsUpdate(live));
 		foreign.get('meta').setAttr('schema', 'not-edytor');
 		const diff = Y.encodeStateAsUpdate(foreign, Y.encodeStateVector(live));
-		const res = S.applyUpdateStaged(live, diff, 'bench');
+		const res = S.applyRemote(live, diff, 'bench');
 		expect(res.applied).toBe(false);
 		expect(res.problem?.kind).toBe('foreign');
-		// Refused BEFORE mutating the live doc — byte-identical store.
 		expect(Y.encodeStateAsUpdate(live)).toEqual(before);
 		expect(live.get('meta').getAttr('schema')).toBe('edytor-doc');
 	});
 
-	it('a brand-new peer SyncStep2 (full state) goes through the same staging path', () => {
-		// Truly empty doc — a brand-new peer that never ran init. The remote
-		// full state carries meta.v, so the merged scratch is clean.
+	it('a brand-new peer SyncStep2 (full state, our stamp) applies', () => {
 		const live = new Y.Doc({ guid: 'staging-bench' });
-		const remote = buildLive();
-		const full = Y.encodeStateAsUpdate(remote);
-		const res = S.applyUpdateStaged(live, full, 'bench');
-		// The scan flags meta/blocks root writes → the scratch path ran.
-		expect(res.staged).toBe(true);
-		expect(res.applied).toBe(true);
+		const full = Y.encodeStateAsUpdate(buildLive());
+		const res = S.applyRemote(live, full, 'bench');
+		expect(res).toEqual({ applied: true, problem: null });
 		expect(E.create(live).childrenIds(null).length).toBe(BLOCKS);
 	});
 
-	it('a meta.v OVERWRITE (parentless wire item) is caught and staged', () => {
+	it('a meta.v OVERWRITE (parentless wire item) is caught through its origin chain', () => {
 		const live = buildLive();
 		const before = Y.encodeStateAsUpdate(live);
-		// A peer seeded with the live state rewrites meta.v in place — the
-		// wire item carries no parent/parentSub (origin-encoded), so only
-		// the scan's left-chain resolution can see it lands under `meta`.
 		const peer = new Y.Doc({ guid: 'staging-bench' });
 		peer.clientID = Number.MAX_SAFE_INTEGER;
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
 		let captured: Uint8Array | null = null;
 		peer.on('update', (u: Uint8Array) => (captured = u));
 		peer.transact(() => peer.get('meta').setAttr('v', 99));
-		const res = S.applyUpdateStaged(live, captured!, 'bench');
-		expect(res.staged).toBe(true);
+		const res = S.applyRemote(live, captured!, 'bench');
 		expect(res.applied).toBe(false);
 		expect(res.problem?.kind).toBe('unsupported');
 		expect(Y.encodeStateAsUpdate(live)).toEqual(before);
 	});
 
-	it('a meta attr DELETE carried by the delete set is staged and refused', () => {
+	it('a same-value stamp rewrite applies', () => {
+		const live = buildLive();
+		const peer = new Y.Doc({ guid: 'staging-bench' });
+		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
+		let captured: Uint8Array | null = null;
+		peer.on('update', (u: Uint8Array) => (captured = u));
+		peer.transact(() => peer.get('meta').setAttr('v', SCHEMA_VERSION));
+		expect(S.applyRemote(live, captured!, 'bench')).toEqual({ applied: true, problem: null });
+		expect(E.schemaVersion(live)).toBe(SCHEMA_VERSION);
+	});
+
+	it('a meta attr DELETE carried by the delete set is refused', () => {
 		const live = buildLive();
 		const before = Y.encodeStateAsUpdate(live);
 		const peer = new Y.Doc({ guid: 'staging-bench' });
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
 		let captured: Uint8Array | null = null;
 		peer.on('update', (u: Uint8Array) => (captured = u));
-		// Remote undo of init: the update's delete set covers the live
-		// meta.v attr item. Merged doc loses v while the registry stays
-		// non-empty → unversioned → refused before mutating live state.
 		peer.transact(() => peer.get('meta').deleteAttr('v'));
-		const res = S.applyUpdateStaged(live, captured!, 'bench');
-		expect(res.staged).toBe(true);
+		const res = S.applyRemote(live, captured!, 'bench');
 		expect(res.applied).toBe(false);
 		expect(res.problem?.kind).toBe('unversioned');
 		expect(Y.encodeStateAsUpdate(live)).toEqual(before);
 	});
 
-	it('a blocks-root write on a clean-but-unversioned doc is staged (registry flip)', () => {
-		// Empty live doc: clean (no v, empty registry, no foreign name) —
-		// the versioned check in the scan is what flags this write, not the
-		// already-broken gate.
+	// D-2 / R13: a registry write carries no stamp, so it is not refused at
+	// ingress; the doc becomes unversioned — read-only — and a versioned
+	// state arriving later makes it writable again.
+	it('a blocks-root write on a clean doc applies; the doc is read-only until a stamp arrives', () => {
 		const live = new Y.Doc({ guid: 'staging-bench' });
 		const rogue = new Y.Doc({ guid: 'other' });
 		rogue.get('blocks').setAttr(
@@ -232,58 +170,74 @@ describe('gateF1 WU3b — applyUpdateStaged staging cost', () => {
 				return n;
 			})()
 		);
-		const res = S.applyUpdateStaged(live, Y.encodeStateAsUpdate(rogue), 'bench');
-		expect(res.staged).toBe(true);
-		expect(res.applied).toBe(false);
-		expect(res.problem?.kind).toBe('unversioned');
+		expect(S.applyRemote(live, Y.encodeStateAsUpdate(rogue), 'bench')).toEqual({
+			applied: true,
+			problem: null
+		});
+		expect(checkSchema(live)?.kind).toBe('unversioned');
+		const stamped = new Y.Doc();
+		E.init(stamped);
+		expect(S.applyRemote(live, Y.encodeStateAsUpdate(stamped), 'bench').applied).toBe(true);
+		expect(checkSchema(live)).toBeNull();
 	});
 
-	it('an update that resolves a pending schema write is staged (pendingStructs)', () => {
+	it('a pending forged rewrite is refused when its own stamp write is forged', () => {
 		const live = buildLive();
 		const peer = new Y.Doc({ guid: 'staging-bench' });
 		peer.clientID = Number.MAX_SAFE_INTEGER;
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
 		const captured: Uint8Array[] = [];
 		peer.on('update', (u: Uint8Array) => captured.push(u));
-		// A meta attr rewrite's left dep is the PRIOR attr item: u_mid's
-		// v=2 item is what u_late's v=99 rewrite needs. Delivering u_late
-		// without u_mid pends it — its schema write sits in pendingStructs.
-		peer.transact(() => peer.get('meta').setAttr('v', 2));
+		peer.transact(() => peer.get('meta').setAttr('v', SCHEMA_VERSION + 1)); // another generation
 		peer.transact(() => peer.get('meta').setAttr('v', 99));
-		expect(captured.length).toBe(2);
 		const [uMid, uLate] = captured;
-		// u_late's dep (the v=2 item) is missing → scan returns unsure →
-		// staged → merged scratch stays clean (pending tail does not
-		// integrate) → applied → pends in the LIVE doc too.
-		const rLate = S.applyUpdateStaged(live, uLate, 'bench');
-		expect(rLate.staged).toBe(true);
-		expect(rLate.applied).toBe(true);
-		expect(E.schemaVersion(live)).toBe(1);
-		// u_mid resolves u_late's dep — the pendingStructs gate keeps it on
-		// the staging path so the pending v99 tail is judged BEFORE it can
-		// integrate: refused, and neither update lands.
+		// uLate's dep is missing: it cannot be judged and pends in the engine.
+		expect(S.applyRemote(live, uLate, 'bench').applied).toBe(true);
+		expect(E.schemaVersion(live)).toBe(SCHEMA_VERSION);
+		// uMid itself forges the stamp: refused, so the pending tail stays pending.
 		const before = Y.encodeStateAsUpdate(live);
-		const rMid = S.applyUpdateStaged(live, uMid, 'bench');
-		expect(rMid.staged).toBe(true);
-		expect(rMid.applied).toBe(false);
-		expect(rMid.problem?.kind).toBe('unsupported');
-		expect(E.schemaVersion(live)).toBe(1);
+		expect(S.applyRemote(live, uMid, 'bench').problem?.kind).toBe('unsupported');
+		expect(E.schemaVersion(live)).toBe(SCHEMA_VERSION);
 		expect(Y.encodeStateAsUpdate(live)).toEqual(before);
 	});
 
-	it('a corrupt payload stays on the staged error path (errorHandler + no mutation)', () => {
+	it('a forged stamp that slips in through pending resolution leaves the document read-only', () => {
+		const document = createDocument({
+			value: { children: [{ id: 'p', type: 'paragraph', content: [{ text: 'x' }] }] }
+		});
+		const live = document.doc;
+		const peer = new Y.Doc();
+		peer.clientID = Number.MAX_SAFE_INTEGER;
+		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
+		const captured: Uint8Array[] = [];
+		peer.on('update', (u: Uint8Array) => captured.push(u));
+		peer.transact(() => peer.get('meta').setAttr('v', SCHEMA_VERSION)); // a same-value rewrite
+		peer.transact(() => peer.get('meta').setAttr('v', 99)); // forged, over it
+		const [uMid, uLate] = captured;
+		const signals: boolean[] = [];
+		document.onWritableChange((w) => signals.push(w));
+		S.applyRemote(live, uLate, 'bench'); // pends: not judgeable
+		expect(S.applyRemote(live, uMid, 'bench').applied).toBe(true); // legit; resolves uLate
+		expect(E.schemaVersion(live)).toBe(99);
+		expect(document.writable).toBe(false);
+		expect(signals).toEqual([false]);
+		expect(() => document.transact(() => document.facade.insertText('p', 0, '!'))).toThrow(
+			SchemaMismatchError
+		);
+		document.destroy();
+	});
+
+	it('a corrupt payload is reported and mutates nothing', () => {
 		const live = buildLive();
 		const before = Y.encodeStateAsUpdate(live);
 		const errors: unknown[] = [];
-		const res = S.applyUpdateStaged(
+		const res = S.applyRemote(
 			live,
 			new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff]),
 			'bench',
 			(e: Error) => errors.push(e)
 		);
-		expect(res.staged).toBe(true);
-		expect(res.applied).toBe(false);
-		expect(res.problem).toBeNull();
+		expect(res).toEqual({ applied: false, problem: null });
 		expect(errors.length).toBe(1);
 		expect(Y.encodeStateAsUpdate(live)).toEqual(before);
 	});

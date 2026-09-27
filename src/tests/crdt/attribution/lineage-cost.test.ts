@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
-import { docValue, firstBlock, wireDocs } from './helpers.js';
+import { docValue, firstBlock, wireDocs, authoredDocument } from './helpers.js';
 import {
 	createDocument,
 	type DocumentActor,
@@ -47,7 +47,7 @@ const append = (d: EdytorDocument, blockId: string, text: string) => {
 
 /** Seed `doc` on A, wire a bob replica, return [A, B, blockId]. */
 const pair = (doc: JSONDoc, depth: number) => {
-	const A = createDocument({ value: doc, actor: alice, lineage: { depth } });
+	const A = authoredDocument(doc, alice, { lineage: { depth } });
 	const B = createDocument({ actor: bob, lineage: { depth }, history: { captureTimeout: 0 } });
 	applyInit(B, A);
 	return { A, B, blockId: firstBlock(A).id };
@@ -66,8 +66,8 @@ const row = (name: string, base: number, withRing: number, extra = '') =>
 describe('lineage — document-size cost projections', () => {
 	it('feature off vs on — zero cost until a handoff', () => {
 		const doc = docValue('hello world');
-		const off = createDocument({ value: doc, actor: alice });
-		const on = createDocument({ value: doc, actor: alice, lineage: { depth: 20 } });
+		const off = authoredDocument(doc, alice);
+		const on = authoredDocument(doc, alice, { lineage: { depth: 20 } });
 		// Same-actor typing on the ON doc — the ring stays empty.
 		const id = firstBlock(on).id;
 		for (let i = 0; i < 50; i++) append(on, id, `k${i}`);
@@ -201,7 +201,7 @@ describe('lineage — document-size cost projections', () => {
 				content: [{ text: `block ${i} with representative content` }]
 			}))
 		};
-		const A = createDocument({ value: doc, actor: alice, lineage: { depth: 5 } });
+		const A = authoredDocument(doc, alice, { lineage: { depth: 5 } });
 		const B = createDocument({ actor: bob, lineage: { depth: 5 }, history: { captureTimeout: 0 } });
 		applyInit(B, A);
 		const off = wireDocs(A, B);

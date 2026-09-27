@@ -27,11 +27,11 @@ import {
 	attachDocument,
 	bindEdytorDoc,
 	bindProviders,
-	BOOTSTRAP_BLOCK_ID,
 	createDocument,
 	inspectAdmission,
 	loadDocument,
 	SchemaMismatchError,
+	SCHEMA_VERSION,
 	UndecodableUpdateError,
 	UnsupportedDocError,
 	type EngineDoc
@@ -45,6 +45,7 @@ import {
 } from '../../../lib/crdt/protocols/envelope.js';
 import type { JSONDoc } from '../../../lib/utils/json.js';
 import type { YDoc } from '../../../lib/crdt/engine-api.js';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
 const providers = bindProviders(Y);
@@ -90,7 +91,7 @@ const makeV99Doc = (): YDoc => {
 /** Supported version but a manifest naming another schema. */
 const makeForeignManifestDoc = (): YDoc => {
 	const doc = new Y.Doc();
-	doc.get('meta').setAttr('v', 1);
+	doc.get('meta').setAttr('v', SCHEMA_VERSION);
 	doc.get('meta').setAttr('schema', 'other-schema');
 	doc.get('blocks').setAttr('b1', { type: 'paragraph' });
 	return doc;
@@ -163,7 +164,7 @@ describe('loadDocument admission', () => {
 	it('admits an empty update → local bootstrap', () => {
 		const restored = loadDocument(encoded(new Y.Doc()));
 		expect(restored.readiness).toBe('local');
-		expect(restored.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(restored.facade.project().children.map((b) => b.id)).toEqual([DEFAULT_SEED_ID]);
 		restored.destroy();
 	});
 
@@ -200,7 +201,7 @@ describe('attachDocument admission', () => {
 		expect(document.facade.isInitialized()).toBe(false);
 		document.sync();
 		expect(document.readiness).toBe('local');
-		expect(document.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(document.facade.project().children.map((b) => b.id)).toEqual([DEFAULT_SEED_ID]);
 		document.destroy();
 	});
 
@@ -247,7 +248,7 @@ describe('attachDocument admission', () => {
 		expect(() => attachDocument(doc)).toThrowError(SchemaMismatchError);
 		// The state heals in place — version + manifest arrive (here: raw,
 		// as a peer update would deliver them).
-		doc.get('meta').setAttr('v', 1);
+		doc.get('meta').setAttr('v', SCHEMA_VERSION);
 		doc.get('meta').setAttr('schema', 'edytor-doc');
 		const document = attachDocument(doc);
 		document.sync();
@@ -266,7 +267,7 @@ describe('attachDocument admission', () => {
 		expect(document.readiness).toBe('local');
 		// Foreign content coexists next to the seeded schema.
 		expect(doc.get('todos').getAttr('t1')).toEqual({ text: 'milk' });
-		expect(document.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(document.facade.project().children.map((b) => b.id)).toEqual([DEFAULT_SEED_ID]);
 		document.destroy();
 		doc.destroy();
 	});
@@ -287,7 +288,7 @@ describe('sync() — the admission re-check', () => {
 		// The doc's state is preserved — no cleanup/normalization writes.
 		expect(doc.get('blocks').getAttr('rogue')).toEqual({ type: 'paragraph' });
 		// …and a retry after healing works.
-		doc.get('meta').setAttr('v', 1);
+		doc.get('meta').setAttr('v', SCHEMA_VERSION);
 		doc.get('meta').setAttr('schema', 'edytor-doc');
 		document.sync();
 		expect(document.readiness).toBe('hydrated');
@@ -347,9 +348,10 @@ describe('pending doc — no bootstrap before sync', () => {
 		});
 		let updates = 0;
 		doc.on('update', () => updates++);
+		const preSeed = Y.encodeStateVector(doc);
 		document.attachSync(providers.createIndexeddbSync(name));
-		// While pending, the doc emits NOTHING — the provider handshake
-		// (SyncStep1/2, awareness) may publish, but the doc itself never
+		// While pending, the doc emits NOTHING — the provider's hello
+		// (SyncStep1, awareness) may publish, but the doc itself never
 		// writes a bootstrap before the synced callback runs sync().
 		const start = Date.now();
 		while (!document.ready) {
@@ -358,28 +360,24 @@ describe('pending doc — no bootstrap before sync', () => {
 			await new Promise((r) => setTimeout(r, 10));
 		}
 		expect(updates).toBeGreaterThan(0); // the seed commits at the synced transition
-		// The provider joined the room and published its handshake — decode
-		// the SyncStep2 state broadcast and prove it carries no bootstrap.
-		const step2 = frames
+		// The provider joined the room and said hello — its SyncStep1 is the
+		// pre-seed state vector (arch-v2 T2 join rule: a joiner publishes no
+		// unsolicited state; a member asks for what it lacks) — the attach
+		// state exactly: no bootstrap was written before the synced
+		// transition.
+		const step1 = frames
 			.map((buf) => {
 				const decoder = decoding.createDecoder(buf);
 				if (!readProtocolVersion(decoder)) return null;
-				const messageType = decoding.readVarUint(decoder);
-				if (messageType !== 0 /* messageSync */) return null;
-				const subtype = decoding.readVarUint(decoder);
-				if (subtype !== syncProtocol.messageYjsSyncStep2) return null;
+				if (decoding.readVarUint(decoder) !== 0 /* messageSync */) return null;
+				if (decoding.readVarUint(decoder) !== syncProtocol.messageYjsSyncStep1) return null;
 				return decoding.readVarUint8Array(decoder);
 			})
 			.find((u) => u !== null);
-		expect(step2).toBeDefined();
-		const published = new Y.Doc();
-		Y.applyUpdate(published, step2!);
-		// The published state is the pre-seed doc — nothing bootstrap-shaped
-		// ever shipped: no meta.v, no registry content.
-		expect(E.isInitialized(published as unknown as EngineDoc)).toBe(false);
-		expect(E.registryEmpty(published as unknown as EngineDoc)).toBe(true);
+		expect(step1).toBeDefined();
+		expect(step1).toEqual(preSeed);
 		expect(document.readiness).toBe('local');
-		expect(document.facade.project().children.map((b) => b.id)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(document.facade.project().children.map((b) => b.id)).toEqual([DEFAULT_SEED_ID]);
 		document.destroy();
 		doc.destroy();
 	});
@@ -429,26 +427,26 @@ describe('IndexedDB hydration → document admission', () => {
 		doc.destroy();
 	});
 
-	it('refused hydration → document stays pending, doc unchanged, rows preserved', async () => {
+	it('a forged stamp in a same-generation container → pending, read-only, rows preserved', async () => {
+		// D-2: the container record proves the generation, so its rows
+		// hydrate; the document — not the transport — refuses the stamp.
 		const name = uniqueName('admit-idb-refused');
 		const v99 = encoded(makeV99Doc());
 		await seedGeneration(name, v99);
 
 		const doc = new Y.Doc();
 		const document = attachDocument(doc);
-		// Post-attach baseline (attribution records are the designed
-		// pre-readiness write) — refused hydration must add nothing.
-		const before = encoded(doc);
+		let readyEvents = 0;
+		document.onReady(() => readyEvents++);
 		document.attachSync(providers.createIndexeddbSync(name));
-		// Refused hydration suppresses synced — the document never runs its
-		// readiness transition.
 		await new Promise((r) => setTimeout(r, 200));
+		// Admission refused readiness; the document stays pending and no
+		// readiness event wakes a view into a decision refused the same way.
 		expect(document.readiness).toBe('pending');
-		// The live doc never absorbed the refused state.
-		expect(encoded(doc)).toEqual(before);
-		// The refused row was never deleted or rewritten — it sits first
-		// (insertion order); the provider's own post-attach state row may
-		// follow, but nothing replaced the refused bytes.
+		expect(document.syncPending).toBe(false);
+		expect(readyEvents).toBe(0);
+		// Read-only: no write lands, nothing is persisted or compacted.
+		expect(document.writable).toBe(false);
 		const rows = await generationRows(name);
 		expect(rows[0]).toEqual(v99);
 		document.destroy();

@@ -4,9 +4,9 @@
  * A sibling view (readonly, or without a `sync` prop) must not decide a
  * pending injected document's content while a provider hydration is in
  * flight. Only the document's explicit readiness decision or the
- * provider's `synced` path may seed pending shared content. An injected
- * document with NO provider attached is treated as already decided —
- * the editable view's `document.sync()` is the explicit decision.
+ * provider's `synced` path may seed pending shared content. A mounted
+ * editable `<Edytor>` without a provider decides an injected document at
+ * mount (after sibling providers attached); a headless view never decides.
  */
 import { describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
@@ -20,9 +20,6 @@ const docValue = (text = 'remote'): JSONDoc => ({
 });
 
 const flushMicrotasks = async () => {
-	// The readiness waiter's first "decided" check is deferred one
-	// microtask so a sibling's provider can attach inside the same
-	// synchronous mount flush; a macrotask covers either way.
 	await new Promise((resolve) => setTimeout(resolve, 0));
 };
 
@@ -113,15 +110,18 @@ describe('pending injected document — sibling views never seed early', () => {
 		document.destroy();
 	});
 
-	it('an injected document with no provider is treated as already decided', async () => {
+	it('a headless view on a provider-less injected document waits for a decision', async () => {
+		// arch-v2 T3 (L56): the view's one-task `setTimeout(0)` self-decision
+		// is deleted. The document decides; a mounted `<Edytor>` decides an
+		// injected document at mount, once sibling providers attached (DOM
+		// lane); a headless view binds on the readiness event.
 		const document = attachDocument(new Y.Doc());
 		const view = new Edytor({ document, plugins: [richTextPlugin], value: docValue('solo') });
-
-		// The decision is deferred one task so a provider could still
-		// attach in this mount flush — binding is async now.
-		expect(view.synced).toBe(false);
 		await flushMicrotasks();
+		expect(view.synced).toBe(false);
+		expect(document.readiness).toBe('pending');
 
+		document.sync(docValue('solo'));
 		expect(view.synced).toBe(true);
 		expect(document.readiness).toBe('local');
 		expect(document.facade.project().children[0]!.content).toEqual([

@@ -2,12 +2,27 @@
  * Room protocol — the transport-agnostic half of the two providers (S1).
  *
  * Both providers join one BroadcastChannel room per document and speak the
- * same enveloped protocol (`protocols/envelope.ts`): the version word, the
- * message-type dispatch, the gated `messageSync` handler, and the
- * awareness publish/query flow are identical between them — this module is
- * their ONE owner. The providers keep only their transport edges:
- * websocket.ts owns the socket lifecycle and the synced-handshake settle
- * window; indexeddb.ts owns the persistence stores.
+ * same enveloped protocol (`protocols/envelope.ts`): the generation word,
+ * the message-type dispatch, the sync handler, and the awareness
+ * publish/query flow are identical between them — this module is their
+ * ONE owner. It owns:
+ *
+ * - the two schema rules of R13 (D-2) that bytes of a proven generation
+ *   still need: the inbound refusal of an update that writes a foreign
+ *   schema stamp (reported, never integrated), and the outbound quarantine
+ *   of a read-only document (it answers no state request, publishes no
+ *   update);
+ * - ONE join rule, derived from state vectors, identical on the socket and
+ *   the BroadcastChannel and correct behind an opaque relay (O76): joining
+ *   sends a hello (Step1 + presence); a Step1 is answered with a Step2 and,
+ *   when the asker holds anything we lack, with our own Step1. Once two
+ *   replicas have each received one Step1 from the other, each holds the
+ *   other's state — no periodic resync is needed for that;
+ * - the provider lifecycle (O74): `hasSynced` (lifetime) apart from a
+ *   transport's `connected`/`synced` (transient), the terminal `failed`
+ *   (once, never after `hasSynced`), `whenSynced`, the destroy guard, and
+ *   the departure announcement (leaving the page destroys the provider,
+ *   which announces its presence removal on every transport it speaks).
  *
  * `bindRoomProtocol(syncProtocol, behavior)` is bound once per provider
  * class; the returned handle takes the provider instance on every call.
@@ -15,18 +30,17 @@
  *
  * - `broadcast` — ws sends room traffic on its socket AND the BC channel;
  *   idb's room traffic is BC-only.
- * - `onSyncApplied` — only ws derives `synced` from the SyncStep2
- *   handshake (the `syncSettleMs` ambiguity window); idb's `synced` is the
- *   local-hydration claim made by its own `connectBc` wrapper.
+ * - `heard` — ws claims its connection's `synced` when it holds a member's
+ *   state (an applied Step2, or a Step1 it covers, received on the
+ *   socket); idb's `synced` is its local-hydration claim.
  * - `handlers` — ws adds `messageAuth` (the auth reply exists only on a
  *   server socket — a BC room has no authority to deny).
- *
- * The `failed` emission is the terminal half of the sync contract (D4):
- * exactly once, only while the provider can never reach `synced`.
  */
 import * as bc from 'lib0-v14/broadcastchannel';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
+import * as env from 'lib0-v14/environment';
+import * as promise from 'lib0-v14/promise';
 import {
 	applyAwarenessUpdate,
 	encodeAwarenessUpdate,
@@ -35,11 +49,11 @@ import {
 } from '../protocols/awareness.js';
 import type { SyncProtocol } from '../protocols/sync.js';
 import {
-	PROTOCOL_VERSION,
-	readProtocolVersion,
+	BARE_REPLY_LENGTH,
+	frame,
+	GENERATION,
 	writeProtocolVersion
 } from '../protocols/envelope.js';
-// Gate vocabulary via the shared admission doorway (U8) — see admission.ts.
 import { checkSchema, SchemaMismatchError, type SchemaProblem } from '../admission.js';
 import type { EngineDoc, YDoc } from '../engine-api.js';
 
@@ -51,117 +65,116 @@ export const messageQueryAwareness = 3;
 export type ProtocolMismatch = { expected: number; found: number | null };
 
 /**
- * Schema-gate signal detail — emitted on `'schema-mismatch'` (and mirrored
- * through `'message-error'` carrying the {@link SchemaMismatchError}) when a
- * doc's replicated state violates the schema gate:
- *
- * - `unversioned` — replicated registry content without `meta.v` (rogue or
- *   legacy write). The update is QUARANTINED: not persisted, not broadcast,
- *   and never applied to a hydrating doc.
- * - `unsupported` — `meta.v` names a version this build does not speak.
- *   The update is REFUSED at the staging boundary: never applied to the
- *   live doc, never persisted, never rebroadcast (work-unit-3 boundary —
- *   see docs/crdt-v14-providers.md §application-schema boundary).
+ * Inbound refusal detail — emitted on `'schema-mismatch'` (and mirrored
+ * through `'message-error'` as a {@link SchemaMismatchError}) when a
+ * received update would write a foreign schema stamp (`unsupported`
+ * version, `foreign` manifest, or a deleted stamp — `unversioned`). The
+ * update is never integrated, persisted, or rebroadcast.
  */
 export type SchemaMismatchDetail = { docName: string; problem: SchemaProblem };
 
-/**
- * What the schema gate needs of a host — the standalone idb helpers
- * (`fetchUpdates`/`storeState`, typed on `IdbPersistenceLike`) satisfy this
- * without being full providers. `emit` is declared in method syntax on
- * purpose: the providers' `ObservableV2.emit` is a generic method whose
- * per-event args carry the concrete provider type — method-style
- * declarations keep the assignability bivariant so `[detail, unknown]`
- * call sites still satisfy it.
- */
-export type SchemaGateHost = {
-	doc: YDoc;
-	/** Last signaled schema-gate state key — dedupes 'schema-mismatch' emits. */
-	_schemaGateKey?: string | null;
-	emit?(event: 'schema-mismatch', args: [SchemaMismatchDetail, unknown]): void;
-	emit?(event: 'message-error', args: [unknown, unknown]): void;
-};
+/** The outbound quarantine: a read-only document does not spread. */
+export const quarantined = (doc: YDoc): boolean =>
+	checkSchema(doc as unknown as EngineDoc) !== null;
 
-/**
- * Emit the schema-gate signal pair: structured `'schema-mismatch'` detail
- * plus the same condition as a {@link SchemaMismatchError} on the generic
- * `'message-error'` channel (so the error channel alone observes every
- * failure mode).
- */
-export const emitSchemaProblem = (
-	host: SchemaGateHost,
-	docName: string,
-	problem: SchemaProblem
-): void => {
-	host.emit?.('schema-mismatch', [{ docName, problem }, host]);
-	host.emit?.('message-error', [new SchemaMismatchError(docName, problem), host]);
-};
-
-/**
- * Schema gate (gate-2 attack 1a). Two regimes:
- *
- * - `unversioned` — replicated registry content with no `meta.v`. The
- *   update is QUARANTINED: callers must not persist it, broadcast it, or
- *   apply it into a hydrating doc. An uninitialized doc can still carry
- *   engine-level state (a completely untouched doc reads clean — `null`).
- * - `unsupported` — `meta.v` names a version this build does not speak.
- *   Remote updates are REFUSED at the staging boundary before they mutate
- *   the live doc; outbound writes from a doc already in this state are
- *   equally quarantined.
- *
- * Doc-state transitions emit once per problem-state transition — the
- * `kind:version` key dedupes repeat reports of the same state.
- */
-export const gateSchema = (host: SchemaGateHost, docName: string): SchemaProblem | null => {
-	const problem = checkSchema(host.doc as unknown as EngineDoc);
-	const key = problem === null ? null : `${problem.kind}:${problem.version ?? '?'}`;
-	if (key !== (host._schemaGateKey ?? null)) {
-		host._schemaGateKey = key;
-		if (problem !== null) emitSchemaProblem(host, docName, problem);
-	}
-	return problem;
-};
-
-/** What the terminal `failed` signal needs of a host. */
-export type FailSignalHost = {
-	readonly synced: boolean;
+/** The lifecycle a provider carries (O74) — installed by {@link initLifecycle}. */
+export type LifecycleHost = {
+	/** Lifetime: the provider has held the room's (or its store's) state once. */
+	hasSynced: boolean;
+	/** Resolves on the first sync; rejects on the terminal failure. */
+	whenSynced: Promise<unknown>;
+	_destroyed: boolean;
 	_failedEmitted?: boolean;
+	_settleSynced: [(value: unknown) => void, (reason: Error) => void];
+	_leave: () => void;
 	emit?(event: 'failed', args: [unknown, unknown]): void;
+};
+
+type Listeners = { on?(e: string, f: () => void): void; off?(e: string, f: () => void): void };
+type PageEvents = {
+	addEventListener?(e: string, f: () => void): void;
+	removeEventListener?(e: string, f: () => void): void;
+};
+
+/**
+ * Install the lifecycle on a provider: `hasSynced`, `whenSynced`, and the
+ * departure announcement — leaving the page (`beforeunload`; Node `exit`)
+ * destroys the provider, whose teardown announces its presence removal.
+ */
+export const initLifecycle = (host: LifecycleHost, destroy: () => unknown): void => {
+	host.hasSynced = false;
+	host._destroyed = false;
+	host.whenSynced = promise.create((resolve, reject) => {
+		host._settleSynced = [resolve, reject];
+	});
+	// A consumer that never attaches a catch must not crash the process.
+	host.whenSynced.catch(() => {});
+	const leave = () => void destroy();
+	const page = globalThis as PageEvents;
+	if (page.addEventListener) {
+		page.addEventListener('beforeunload', leave);
+		host._leave = () => page.removeEventListener?.('beforeunload', leave);
+	} else {
+		const proc = (env.isNode ? (globalThis as { process?: Listeners }).process : undefined) ?? {};
+		proc.on?.('exit', leave);
+		host._leave = () => proc.off?.('exit', leave);
+	}
+};
+
+/** The first sync — lifetime. Returns `true` only the first time. */
+export const markSynced = (host: LifecycleHost): boolean => {
+	if (host.hasSynced) return false;
+	host.hasSynced = true;
+	host._settleSynced[0](host);
+	return true;
 };
 
 /**
  * Terminal `'failed'` emission (the sync-failure contract — D4): fires at
- * most once per provider, only while it can never reach `synced` —
- * destroy-before-sync, a persistence load failure / refused hydration, or
- * a permission-denied auth verdict. Never after `synced === true`, never
- * on a transient (reconnectable) disconnect — those are suppressed here
- * and at the call sites.
+ * most once per provider, only while it has never synced — destroy before
+ * sync, a persistence load failure, or a permission-denied auth verdict.
+ * A transient disconnect never reaches here, and a provider that synced
+ * once never fails (D37: `hasSynced`, not the connection's `synced`).
  */
-export const emitFailed = (host: FailSignalHost, error: unknown): void => {
-	if (host._failedEmitted || host.synced) return;
+export const emitFailed = (host: LifecycleHost, error: unknown): void => {
+	if (host._failedEmitted || host.hasSynced) return;
 	host._failedEmitted = true;
+	host._settleSynced[1](error instanceof Error ? error : new Error(String(error)));
 	host.emit?.('failed', [error, host]);
 };
 
-/** One dispatch-table entry: decode `decoder`, write any reply into `encoder`. */
+/**
+ * The destroy guard: `false` when already destroyed; otherwise marks the
+ * provider destroyed, drops the departure hook, and reports the terminal
+ * failure of a provider that never synced.
+ */
+export const beginDestroy = (host: LifecycleHost, name: string): boolean => {
+	if (host._destroyed) return false;
+	host._destroyed = true;
+	host._leave();
+	emitFailed(host, new Error(`${name} was destroyed before it synced`));
+	return true;
+};
+
+/**
+ * One dispatch-table entry: decode `decoder`, write any reply into
+ * `encoder`; a returned frame is a follow-up sent after the reply.
+ */
 export type RoomMessageHandler<P> = (
 	encoder: encoding.Encoder,
 	decoder: decoding.Decoder,
 	provider: P,
 	emitSynced: boolean
-) => void;
+) => Uint8Array | void;
 
 /** The provider surface the room protocol drives. */
-export type RoomProvider<P> = {
+export type RoomProvider<P> = LifecycleHost & {
 	doc: YDoc;
 	awareness: Awareness;
 	bcconnected: boolean;
-	readonly synced: boolean;
 	/** Dispatch table — assigned from the bound room handle at construction. */
 	messageHandlers: Record<number, RoomMessageHandler<P>>;
 	_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
-	_schemaGateKey?: string | null;
-	_failedEmitted?: boolean;
 	emit?(event: 'schema-mismatch', args: [SchemaMismatchDetail, unknown]): void;
 	emit?(event: 'message-error', args: [unknown, unknown]): void;
 	emit?(event: 'protocol-mismatch', args: [ProtocolMismatch, unknown]): void;
@@ -182,70 +195,64 @@ export type RoomBehavior<P> = {
 	/** Extra dispatch entries beyond sync/query-awareness/awareness (ws: auth). */
 	handlers?: Record<number, RoomMessageHandler<P>>;
 	/**
-	 * Post-dispatch hook for an evaluated sync payload (SyncStep2/Update).
-	 * ws derives the `synced` handshake + settle window from it; idb leaves
-	 * it unset — its `synced` claim is the local-hydration semantic in its
-	 * own `connectBc` wrapper.
+	 * The provider now holds a room member's state, learned on its
+	 * `emitSynced` channel: an applied Step2, or a Step1 whose state vector
+	 * it covers. ws claims its connection's `synced` here; idb leaves it
+	 * unset (its `synced` is the local-hydration claim).
 	 */
-	onSyncApplied?(provider: P, syncMessageType: number, applied: boolean, emitSynced: boolean): void;
+	heard?(provider: P): void;
 };
 
 /**
  * Bind the shared room protocol for one provider class. The returned
  * handle owns: message dispatch (`readMessage`/`messageHandlers`), the
- * gated sync handler, awareness message flow, the BC subscriber + the
- * connect/disconnect sequences, and the schema-gate/`failed` helpers.
+ * sync handler (join rule, inbound refusal), awareness message flow, the
+ * BC subscriber + the join/leave sequences (outbound quarantine).
  */
 export const bindRoomProtocol = <P extends RoomProvider<P>>(
 	syncProtocol: SyncProtocol,
 	behavior: RoomBehavior<P>
 ) => {
-	const gate = (provider: P): SchemaProblem | null =>
-		gateSchema(provider, behavior.docName(provider));
-	const emitProblem = (provider: P, problem: SchemaProblem): void =>
-		emitSchemaProblem(provider, behavior.docName(provider), problem);
+	const step1 = (provider: P) =>
+		frame(messageSync, (e) => syncProtocol.writeSyncStep1(e, provider.doc));
 
 	const messageHandlers: Record<number, RoomMessageHandler<P>> = {
 		[messageSync]: (encoder, decoder, provider, emitSynced) => {
 			encoding.writeVarUint(encoder, messageSync);
 			const syncMessageType = decoding.readVarUint(decoder);
 			if (syncMessageType === syncProtocol.messageYjsSyncStep1) {
-				// State-vector request → reply with our state — but only when
-				// our own doc passes the schema boundary: a doc in a
-				// schema-problem state must not ship its state to the room.
-				if (gate(provider) === null) {
-					syncProtocol.readSyncStep1(decoder, encoder, provider.doc);
-				}
+				// The join rule. Reply with what the asker lacks (unless we
+				// are read-only — outbound quarantine); ask back when the
+				// asker holds anything we lack; otherwise we hold its state.
+				const sv = decoding.readVarUint8Array(decoder);
+				if (!quarantined(provider.doc)) syncProtocol.writeSyncStep2(encoder, provider.doc, sv);
+				if (syncProtocol.lacks(provider.doc, sv)) return step1(provider);
+				if (emitSynced) behavior.heard?.(provider);
 				return;
 			}
 			if (
 				syncMessageType === syncProtocol.messageYjsSyncStep2 ||
 				syncMessageType === syncProtocol.messageYjsUpdate
 			) {
-				// Staging boundary: the payload is merged into a scratch doc
-				// seeded with live state and only integrated when the merged
-				// schema record is clean — a refused update never mutates
-				// the live doc, is never persisted, never rebroadcast. A
-				// corrupt payload inside a VALID v14 envelope surfaces
-				// through 'message-error' (gate-2 contract).
-				const update = decoding.readVarUint8Array(decoder);
-				const { applied, problem } = syncProtocol.applyUpdateStaged(
+				// Inbound refusal: an update writing a foreign stamp never
+				// integrates and is reported once. A corrupt payload inside a
+				// valid envelope surfaces through 'message-error'.
+				const { applied, problem } = syncProtocol.applyRemote(
 					provider.doc,
-					update,
+					decoding.readVarUint8Array(decoder),
 					provider,
 					(error) => provider.emit?.('message-error', [error, provider])
 				);
 				if (problem !== null) {
-					// Refused — reported exactly once per refused payload here;
-					// the live doc was untouched so there is nothing to re-gate.
-					emitProblem(provider, problem);
-				} else if (applied) {
-					// The staged verdict was clean, but the live apply could
-					// have integrated pending structs carrying a schema write —
-					// the one case the post-apply recheck still owns (D24).
-					gate(provider);
+					const docName = behavior.docName(provider);
+					provider.emit?.('schema-mismatch', [{ docName, problem }, provider]);
+					provider.emit?.('message-error', [new SchemaMismatchError(docName, problem), provider]);
 				}
-				behavior.onSyncApplied?.(provider, syncMessageType, applied, emitSynced);
+				// Only an ACCEPTED Step2 is a held member state — a refused
+				// one never claims the handshake.
+				if (emitSynced && applied && syncMessageType === syncProtocol.messageYjsSyncStep2) {
+					behavior.heard?.(provider);
+				}
 				return;
 			}
 			// Unknown sync subtype inside a valid envelope — observable.
@@ -268,154 +275,126 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 	};
 
 	/**
-	 * Decode one room message. The protocol-version word is verified before
-	 * anything else — a foreign message (v13 writer, corrupt frame) is
-	 * dropped and reported; its payload is never decoded.
+	 * Decode one room message. The generation word is verified before
+	 * anything else — a foreign message (v13 writer, another schema
+	 * generation, corrupt frame) is dropped and reported; its payload is
+	 * never decoded. Returns the reply; with `send`, the reply (when it
+	 * carries anything — longer than `BARE_REPLY_LENGTH`) and any follow-up
+	 * go out on the channel the message came from.
 	 */
-	const readMessage = (provider: P, buf: Uint8Array, emitSynced: boolean): encoding.Encoder => {
+	const readMessage = (
+		provider: P,
+		buf: Uint8Array,
+		emitSynced: boolean,
+		send?: (frame: Uint8Array) => void
+	): encoding.Encoder => {
 		const decoder = decoding.createDecoder(buf);
 		const encoder = encoding.createEncoder();
-		if (!readProtocolVersion(decoder)) {
-			provider.emit?.('protocol-mismatch', [
-				{ expected: PROTOCOL_VERSION, found: buf.length > 0 ? buf[0] : null },
-				provider
-			]);
+		const found = decoding.readVarUint(decoder);
+		if (found !== GENERATION) {
+			provider.emit?.('protocol-mismatch', [{ expected: GENERATION, found }, provider]);
 			return encoder;
 		}
 		writeProtocolVersion(encoder);
 		const messageType = decoding.readVarUint(decoder);
 		const messageHandler = provider.messageHandlers[messageType];
-		if (messageHandler) {
-			messageHandler(encoder, decoder, provider, emitSynced);
-		} else {
-			// Fail closed + observable: a VALID v14 envelope carrying a
-			// message type no handler claims is still surfaced — protocol
-			// skew (a newer peer, a buggy peer) must not be silent
-			// (gate-2 attack 1c).
+		if (!messageHandler) {
+			// Fail closed + observable: a VALID envelope carrying a message
+			// type no handler claims is protocol skew — never silent.
 			provider.emit?.('message-error', [
 				new Error(`Unknown v14 message type ${messageType}`),
 				provider
 			]);
+			return encoder;
 		}
+		const followUp = messageHandler(encoder, decoder, provider, emitSynced);
+		if (send && encoding.length(encoder) > BARE_REPLY_LENGTH) send(encoding.toUint8Array(encoder));
+		if (send && followUp) send(followUp);
 		return encoder;
 	};
 
-	/**
-	 * The BC subscriber: decode a room message, publish a reply only when
-	 * the handler actually wrote one. `> 2`: the version envelope makes an
-	 * empty reply 2 bytes (version word + mirrored message type), not 1 as
-	 * upstream — publishing the bare header produces a truncated frame that
-	 * throws in the receiver's readSyncMessage.
-	 */
+	/** The BC subscriber: replies go back on the room channel. */
 	const bcSubscriber = (provider: P) => {
+		const send = (buf: Uint8Array) => bc.publish(behavior.roomChannel(provider), buf, provider);
 		return (data: ArrayBuffer, origin: unknown): void => {
-			if (origin !== provider) {
-				try {
-					const encoder = readMessage(provider, new Uint8Array(data), false);
-					if (encoding.length(encoder) > 2) {
-						bc.publish(behavior.roomChannel(provider), encoding.toUint8Array(encoder), provider);
-					}
-				} catch (error) {
-					// lib0 delivers same-tab publishes synchronously — a malformed
-					// message must not propagate into the publisher's call stack
-					// (it would surface as a load/connect failure on the peer).
-					// Drop it and report instead.
-					provider.emit?.('message-error', [error, provider]);
-				}
+			if (origin === provider) return;
+			try {
+				readMessage(provider, new Uint8Array(data), false, send);
+			} catch (error) {
+				// lib0 delivers same-tab publishes synchronously — a malformed
+				// message must not propagate into the publisher's call stack.
+				provider.emit?.('message-error', [error, provider]);
 			}
 		};
 	};
 
-	/**
-	 * Local awareness change → room publish. Shared by both providers;
-	 * `behavior.broadcast` decides the transports (ws socket + BC / BC only).
-	 */
+	/** Local awareness change → room publish (`behavior.broadcast` picks the transports). */
 	const awarenessUpdateHandler = (provider: P) => {
 		return ({ added, updated, removed }: AwarenessUpdate, _origin: unknown): void => {
-			const changedClients = added.concat(updated).concat(removed);
-			const encoder = encoding.createEncoder();
-			writeProtocolVersion(encoder);
-			encoding.writeVarUint(encoder, messageAwareness);
-			encoding.writeVarUint8Array(
-				encoder,
-				encodeAwarenessUpdate(provider.awareness, changedClients)
+			const changed = added.concat(updated).concat(removed);
+			behavior.broadcast(
+				provider,
+				frame(messageAwareness, (e) =>
+					encoding.writeVarUint8Array(e, encodeAwarenessUpdate(provider.awareness, changed))
+				)
 			);
-			behavior.broadcast(provider, encoding.toUint8Array(encoder));
 		};
 	};
 
 	/**
 	 * Encode a local doc update as a sync message and broadcast it to the
-	 * room. Callers gate first — a schema-problem doc's updates never leave.
+	 * room — unless the document is read-only (outbound quarantine).
 	 */
 	const broadcastUpdate = (provider: P, update: Uint8Array): void => {
-		const encoder = encoding.createEncoder();
-		writeProtocolVersion(encoder);
-		encoding.writeVarUint(encoder, messageSync);
-		syncProtocol.writeUpdate(encoder, update);
-		behavior.broadcast(provider, encoding.toUint8Array(encoder));
+		if (quarantined(provider.doc)) return;
+		behavior.broadcast(
+			provider,
+			frame(messageSync, (e) => syncProtocol.writeUpdate(e, update))
+		);
 	};
 
 	/**
-	 * Join the room: subscribe the BC channel and publish SyncStep1 + the
-	 * gated SyncStep2 + QueryAwareness + local awareness state. Claiming
-	 * `synced` is NOT decided here — ws derives it from the handshake
-	 * reply; idb's wrapper claims it (suppressed by its refusal latch).
+	 * The hello a joining member sends on a channel: its Step1 (the join
+	 * rule does the rest) and its own presence.
 	 */
+	const hello = (provider: P): Uint8Array[] => [
+		step1(provider),
+		frame(messageAwareness, (e) =>
+			encoding.writeVarUint8Array(
+				e,
+				encodeAwarenessUpdate(provider.awareness, [provider.doc.clientID])
+			)
+		)
+	];
+
+	/** Join the BroadcastChannel room: hello, and ask the tabs for their presence. */
 	const connectBc = (provider: P): void => {
 		const channel = behavior.roomChannel(provider);
 		if (!provider.bcconnected) {
 			bc.subscribe(channel, provider._bcSubscriber);
 			provider.bcconnected = true;
 		}
-		// Sync initial state — the state-vector request.
-		const encoderSync = encoding.createEncoder();
-		writeProtocolVersion(encoderSync);
-		encoding.writeVarUint(encoderSync, messageSync);
-		syncProtocol.writeSyncStep1(encoderSync, provider.doc);
-		bc.publish(channel, encoding.toUint8Array(encoderSync), provider);
-
-		// Schema boundary: a doc in a schema-problem state must not ship its
-		// state to the room — SyncStep2 is the full-state publish.
-		if (gate(provider) === null) {
-			const encoderState = encoding.createEncoder();
-			writeProtocolVersion(encoderState);
-			encoding.writeVarUint(encoderState, messageSync);
-			syncProtocol.writeSyncStep2(encoderState, provider.doc);
-			bc.publish(channel, encoding.toUint8Array(encoderState), provider);
+		const [sv, presence] = hello(provider);
+		for (const buf of [sv, frame(messageQueryAwareness, () => {}), presence]) {
+			bc.publish(channel, buf, provider);
 		}
-
-		// Sync awareness state
-		const encoderAwarenessQuery = encoding.createEncoder();
-		writeProtocolVersion(encoderAwarenessQuery);
-		encoding.writeVarUint(encoderAwarenessQuery, messageQueryAwareness);
-		bc.publish(channel, encoding.toUint8Array(encoderAwarenessQuery), provider);
-
-		const encoderAwarenessState = encoding.createEncoder();
-		writeProtocolVersion(encoderAwarenessState);
-		encoding.writeVarUint(encoderAwarenessState, messageAwareness);
-		encoding.writeVarUint8Array(
-			encoderAwarenessState,
-			encodeAwarenessUpdate(provider.awareness, [provider.doc.clientID])
-		);
-		bc.publish(channel, encoding.toUint8Array(encoderAwarenessState), provider);
 	};
 
 	/**
-	 * Leave the room: notify peers with an awareness removal (routed through
+	 * Leave the room: announce the presence removal (routed through
 	 * `behavior.broadcast` — ws also sends it on the socket), then
 	 * unsubscribe the BC channel.
 	 */
 	const disconnectBc = (provider: P): void => {
-		const encoder = encoding.createEncoder();
-		writeProtocolVersion(encoder);
-		encoding.writeVarUint(encoder, messageAwareness);
-		encoding.writeVarUint8Array(
-			encoder,
-			encodeAwarenessUpdate(provider.awareness, [provider.doc.clientID], new Map())
+		behavior.broadcast(
+			provider,
+			frame(messageAwareness, (e) =>
+				encoding.writeVarUint8Array(
+					e,
+					encodeAwarenessUpdate(provider.awareness, [provider.doc.clientID], new Map())
+				)
+			)
 		);
-		behavior.broadcast(provider, encoding.toUint8Array(encoder));
-
 		if (provider.bcconnected) {
 			bc.unsubscribe(behavior.roomChannel(provider), provider._bcSubscriber);
 			provider.bcconnected = false;
@@ -428,10 +407,9 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 		bcSubscriber,
 		awarenessUpdateHandler,
 		broadcastUpdate,
+		step1,
+		hello,
 		connectBc,
-		disconnectBc,
-		gateSchema: gate,
-		emitSchemaProblem: emitProblem,
-		emitFailed: (provider: P, error: unknown) => emitFailed(provider, error)
+		disconnectBc
 	};
 };

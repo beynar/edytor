@@ -21,7 +21,8 @@
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc, BOOTSTRAP_BLOCK_ID, SCHEMA_VERSION } from '../../../lib/crdt/edytor-doc.js';
+import { bindEdytorDoc, SCHEMA_VERSION } from '../../../lib/crdt/edytor-doc.js';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -41,25 +42,20 @@ const freshDoc = (withContent = true) => {
 };
 
 describe('attack 2: undo scope vs meta/schema', () => {
-	test('doc-scoped UM: undoing init removes the version stamp AND the bootstrap', () => {
+	test('doc-scoped UM: the seed (version stamp + default block) is not an undo step', () => {
+		// R13 §2.1 / D-3: init's seed is one update applied with a non-local
+		// origin — it used to be a tracked local write that undo removed.
 		const doc = new Y.Doc();
 		const um = new Y.UndoManager(doc, { captureTimeout: 0 });
 		const ed = E.create(doc);
 		ed.init();
 		expect(E.schemaVersion(doc)).toBe(SCHEMA_VERSION);
-		expect(ed.childrenIds(null)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(ed.childrenIds(null)).toEqual([DEFAULT_SEED_ID]);
 
-		um.undo(); // init was tracked (origin null ∈ default trackedOrigins)
-		// The version record AND the bootstrap are both gone — the doc is
-		// indistinguishable from never-initialized. Nothing protects the
-		// schema stamp from undo.
-		expect(E.schemaVersion(doc)).toBeUndefined();
-		expect(E.registryEmpty(doc)).toBe(true);
-		expect(ed.childrenIds(null)).toEqual([]);
-
-		um.redo();
+		expect(um.undoStack).toHaveLength(0);
+		um.undo();
 		expect(E.schemaVersion(doc)).toBe(SCHEMA_VERSION);
-		expect(ed.childrenIds(null)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(ed.childrenIds(null)).toEqual([DEFAULT_SEED_ID]);
 		ed.dispose();
 	});
 
@@ -76,7 +72,7 @@ describe('attack 2: undo scope vs meta/schema', () => {
 		ed.dispose();
 	});
 
-	test('registry-scoped UM attached BEFORE init eats the bootstrap (meta.v survives)', () => {
+	test('registry-scoped UM attached BEFORE init cannot reach the seed', () => {
 		const doc = new Y.Doc();
 		const registry = doc.get('blocks');
 		const um = new Y.UndoManager(registry, { captureTimeout: 0 });
@@ -88,13 +84,12 @@ describe('attack 2: undo scope vs meta/schema', () => {
 		);
 
 		um.undo(); // removes b1
-		expect(ed.childrenIds(null)).toEqual([BOOTSTRAP_BLOCK_ID]);
-		um.undo(); // removes the BOOTSTRAP — it was inside the registry scope
-		// The doc is left "versioned but empty": meta.v still says schema 1,
-		// so isInitialized() is true and nothing re-bootstraps it.
-		expect(ed.childrenIds(null)).toEqual([]);
-		expect(E.schemaVersion(doc)).toBe(SCHEMA_VERSION);
-		expect(E.isInitialized(doc)).toBe(true); // ← the trap
+		expect(ed.childrenIds(null)).toEqual([DEFAULT_SEED_ID]);
+		// R13 §2.1 / D-3: the seed was never captured, so the trap this row
+		// pinned (undo leaving a "versioned but empty" doc) is gone.
+		expect(um.canUndo()).toBe(false);
+		um.undo();
+		expect(ed.childrenIds(null)).toEqual([DEFAULT_SEED_ID]);
 		ed.dispose();
 	});
 
@@ -105,7 +100,7 @@ describe('attack 2: undo scope vs meta/schema', () => {
 		ed.insertBlock({ parent: null, index: 0 }, { id: 'b1', type: 'paragraph' });
 		um.undo();
 		// Undo consumed the only captured op — the bootstrap is unreachable.
-		expect(ed.childrenIds(null)).toEqual([BOOTSTRAP_BLOCK_ID]);
+		expect(ed.childrenIds(null)).toEqual([DEFAULT_SEED_ID]);
 		expect(um.canUndo()).toBe(false);
 		ed.dispose();
 	});
@@ -225,7 +220,7 @@ describe('attack 9: aliasing — caller objects leak into replicated state', () 
 describe('attack 9: projector purity', () => {
 	test('project/toJSON/runs write nothing — update bytes identical across reads', () => {
 		const { doc, ed } = freshDoc();
-		ed.nestBlock('b1', BOOTSTRAP_BLOCK_ID);
+		ed.nestBlock('b1', DEFAULT_SEED_ID);
 		const before = Y.encodeStateAsUpdate(doc);
 		// Exercise every read surface twice.
 		for (let i = 0; i < 2; i++) {

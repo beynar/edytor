@@ -17,7 +17,7 @@
  *   addressed — lineage keeps that contributor on the source id.
  */
 import { describe, expect, it } from 'vitest';
-import { applyUpdate, docValue, firstBlock, wireDocs } from './helpers.js';
+import { applyUpdate, docValue, firstBlock, wireDocs, authoredDocument } from './helpers.js';
 import {
 	createDocument,
 	type DocumentActor,
@@ -42,9 +42,7 @@ const attrOf = (d: EdytorDocument, blockId: string) => d.attribution.block(block
 
 describe('P1-4 — same-actor lastChangedBy survives another replica’s undo', () => {
 	it('undo on one device does not hide a later surviving same-actor edit', () => {
-		const A = createDocument({
-			value: docValue('x'),
-			actor: alice,
+		const A = authoredDocument(docValue('x'), alice, {
 			history: { captureTimeout: 0 } // every A commit its own undo step
 		});
 		const B = createDocument({ actor: alice }); // same ACTOR, other replica
@@ -82,9 +80,7 @@ describe('P1-4 — same-actor lastChangedBy survives another replica’s undo', 
 	});
 
 	it('a same-actor stamp after a foreign lastChangedBy still writes (no cache leak)', () => {
-		const A = createDocument({
-			value: docValue('x'),
-			actor: alice,
+		const A = authoredDocument(docValue('x'), alice, {
 			history: { captureTimeout: 0 } // each edit its own undo step
 		});
 		const B = createDocument({ actor: bob });

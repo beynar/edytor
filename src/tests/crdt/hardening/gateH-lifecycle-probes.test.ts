@@ -15,9 +15,10 @@ import 'fake-indexeddb/auto';
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
-import { bindEdytorDoc, BOOTSTRAP_BLOCK_ID } from '../../../lib/crdt/edytor-doc.js';
+import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import * as idb from 'lib0-v14/indexeddb';
 import { generationDbName } from '../../../lib/crdt/protocols/envelope.js';
+import { DEFAULT_SEED_ID } from '../default-seed.js';
 
 const E = bindEdytorDoc(Y);
 const providers = bindIndexeddbProvider(Y);
@@ -47,7 +48,7 @@ describe('gateH-R2 — lifecycle edges', () => {
 		ed.init();
 		const p = new providers.IndexeddbPersistence(name, doc);
 		await p.whenSynced;
-		ed.insertText(BOOTSTRAP_BLOCK_ID, 0, 'x'.repeat(600)); // > trim size → debounce path
+		ed.insertText(DEFAULT_SEED_ID, 0, 'x'.repeat(600)); // > trim size → debounce path
 		await sleep(30);
 		let storeErr: unknown = null;
 		const pending = providers.storeState(p).catch((e) => (storeErr = e));
@@ -71,14 +72,14 @@ describe('gateH-R2 — lifecycle edges', () => {
 		ed.init();
 		const p = new providers.IndexeddbPersistence(name, doc);
 		await p.whenSynced;
-		ed.insertText(BOOTSTRAP_BLOCK_ID, 0, 'CONCURRENT');
+		ed.insertText(DEFAULT_SEED_ID, 0, 'CONCURRENT');
 		await sleep(50);
 		await Promise.all([providers.storeState(p), providers.storeState(p)]);
 		// Rehydrate and verify the text survived a double-compaction.
 		const doc2 = new Y.Doc();
 		const p2 = new providers.IndexeddbPersistence(name, doc2);
 		await p2.whenSynced;
-		const text = doc2.get('blocks').getAttr(BOOTSTRAP_BLOCK_ID)?.getAttr('content')?.toString();
+		const text = doc2.get('blocks').getAttr(DEFAULT_SEED_ID)?.getAttr('content')?.toString();
 		console.log(`[r2-dbl] rehydrated=${JSON.stringify(text?.slice(0, 40))}`);
 		expect(text).toContain('CONCURRENT');
 		await p.destroy();

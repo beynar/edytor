@@ -11,16 +11,19 @@
  * - a view-owned document (no `document` prop) keeps the legacy
  *   component-lifetime teardown.
  */
+import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { render, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 
 import EdytorHarness from '../../../dom/EdytorHarness.svelte';
+import SiblingEdytors from '../../../dom/SiblingEdytors.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../../dom/test.utils.js';
 import { createDocument } from '$lib/crdt/index.js';
+import { Y } from '$lib/crdt/engine.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { EdytorSync } from '$lib/collaboration/index.js';
+import { createIndexeddbSync, type EdytorSync } from '$lib/collaboration/index.js';
 import type { JSONDoc } from '$lib/utils/json.js';
 
 const input = (
@@ -148,6 +151,42 @@ describe('document-lifetime sync for injected documents', () => {
 		expect(counts.cleanup).toBe(1);
 	});
 
+	// arch-v2 F-T7 (T4), the view half: each view evaluates its own inline
+	// `createIndexeddbSync('notes')` — distinct factories, one transport
+	// target — and the document keeps ONE provider.
+	it('two views with inline createIndexeddbSync on one database attach ONE provider', async () => {
+		const document = createDocument();
+		const counts = { attach: 0 };
+		const inline = (): EdytorSync => {
+			const sync = createIndexeddbSync('t4-dom-notes');
+			return Object.assign((payload: Parameters<EdytorSync>[0]) => {
+				counts.attach++;
+				return sync(payload);
+			}, sync);
+		};
+		const views: Edytor[] = [];
+		const mounted = [0, 1].map(() =>
+			render(EdytorHarness, {
+				props: {
+					value,
+					plugins: [richTextPlugin],
+					document,
+					sync: inline(),
+					onReady: (edytor: Edytor) => {
+						views.push(edytor);
+					}
+				}
+			})
+		);
+		expect(counts.attach).toBe(1);
+		await waitFor(() => {
+			expect(views.length).toBe(2);
+			expect(views.every((view) => view.synced)).toBe(true);
+		});
+		for (const view of mounted) view.unmount();
+		document.destroy();
+	});
+
 	it('a view-owned document keeps component-lifetime sync teardown', async () => {
 		const counts = { attach: 0, cleanup: 0 };
 		const sync = countingSync(counts);
@@ -163,8 +202,9 @@ describe('document-lifetime sync for injected documents', () => {
 
 	it('a view-owned document still seeds after the provider reports terminal `failed`', async () => {
 		// The owned path must not skip the `failed` contract: a terminal
-		// provider failure settles the document's pending claim and hands
-		// the decision back to this view — pending must not latch forever.
+		// provider failure settles the document's pending claim; with no
+		// provider left the document decides (R13) and this view mirrors
+		// it — pending must not latch forever.
 		let reportFailed: ((error: unknown, provider: unknown) => void) | null = null;
 		const counts = { attach: 0, cleanup: 0 };
 		const sync: EdytorSync = (payload) => {
@@ -195,11 +235,10 @@ describe('document-lifetime sync for injected documents', () => {
 
 		reportFailed!(new Error('refused'), null);
 		await waitFor(() => {
-			// `syncFailed && !syncPending` → the view's readiness path
-			// decides: the document seeds and the view syncs.
+			// No provider left in flight → the document seeds and the
+			// view syncs on its readiness event.
 			expect(edytor!.synced).toBe(true);
 		});
-		expect(edytor!.document.syncFailed).toBe(true);
 		expect(edytor!.document.syncPending).toBe(false);
 		expect(edytor!.document.ready).toBe(true);
 		expect(rendered.container.querySelector('[data-edytor]')).toBeInstanceOf(HTMLElement);
@@ -226,4 +265,42 @@ describe('document-lifetime sync for injected documents', () => {
 		document.destroy();
 		expect(counts.cleanup).toBe(1);
 	});
+
+	for (const syncFirst of [true, false]) {
+		it(`a sibling without sync never seeds before the provider decides (sync view ${syncFirst ? 'first' : 'second'})`, async () => {
+			// arch-v2 T3 (L56): no one-task deferral. Providers attach while the
+			// tree initializes and a sync-less view decides only at mount, so
+			// tree order cannot let it seed ahead of hydration (P1).
+			const document = createDocument();
+			let hydrate!: () => void;
+			const sync: EdytorSync = ({ doc, synced }) => {
+				hydrate = () => {
+					const remote = createDocument({
+						value: { children: [{ type: 'paragraph', id: 'room', content: [{ text: 'room' }] }] }
+					});
+					Y.applyUpdate(doc, remote.encode(), 'remote');
+					remote.destroy();
+					synced();
+				};
+				return () => {};
+			};
+			const views: { carrier?: Edytor; sibling?: Edytor } = {};
+			const rendered = render(SiblingEdytors, {
+				props: { value, plugins: [richTextPlugin], document, sync, syncFirst, views }
+			});
+			await flushDomUpdates();
+			expect(document.readiness).toBe('pending');
+			expect(views.sibling!.synced).toBe(false);
+
+			hydrate();
+			await waitFor(() => {
+				expect(views.carrier!.synced).toBe(true);
+				expect(views.sibling!.synced).toBe(true);
+			});
+			expect(document.readiness).toBe('hydrated');
+			expect(document.facade.project().children.map((b) => b.id)).toEqual(['room']);
+			rendered.unmount();
+			document.destroy();
+		});
+	}
 });

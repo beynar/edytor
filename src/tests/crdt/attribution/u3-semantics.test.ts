@@ -44,7 +44,8 @@ import {
 	legacyMapFor,
 	recordKeys,
 	wireDocs,
-	writeLegacyRecord
+	writeLegacyRecord,
+	authoredDocument
 } from './helpers.js';
 import type { EngineDoc, EngineNode, YDoc } from '../../../lib/crdt/engine-api.js';
 
@@ -165,7 +166,7 @@ const blockattrSnapshot = (doc: YDoc) => {
 
 describe('local undo/redo', () => {
 	it('undo restores the prior lastChangedBy; contributors unchanged; redo re-stamps', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
@@ -200,7 +201,7 @@ describe('local undo/redo', () => {
 	});
 
 	it('undo of a mark op restores `l`; the contributor union never shrinks', () => {
-		const a = createDocument({ value: docValue('hello'), actor: alice });
+		const a = authoredDocument(docValue('hello'), alice);
 		const blockId = firstBlock(a).id;
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
@@ -220,7 +221,7 @@ describe('local undo/redo', () => {
 	});
 
 	it('cross-actor undo chain: insert → remote edit → undo edit → undo insert → redo twice', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
 		const unwire = wireDocs(a, b);
@@ -284,7 +285,7 @@ describe('local undo/redo', () => {
 
 describe('remote updates', () => {
 	it("replica B's stamps arrive verbatim on A; A never relabels B's blocks", () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const base = firstBlock(a).id;
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
@@ -329,7 +330,7 @@ describe('remote updates', () => {
 	});
 
 	it('suppression memory is per-replica: A re-stamps after a remote `l` overwrite', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
@@ -367,7 +368,7 @@ describe('remote updates', () => {
 
 describe('multi-view — one document, one actor', () => {
 	it('edits through either view stamp the document actor; no double-stamping', () => {
-		const document = createDocument({ value: docValue('hi'), actor: alice });
+		const document = authoredDocument(docValue('hi'), alice);
 		const v1 = new Edytor({ document, plugins: [richTextPlugin] });
 		const v2 = new Edytor({ document, plugins: [richTextPlugin] });
 		const blockId = firstBlock(document).id;
@@ -411,7 +412,7 @@ describe('multi-view — one document, one actor', () => {
 	});
 
 	it('undo across sibling views keeps the union; `l` falls back to the seed stamp', () => {
-		const document = createDocument({ value: docValue('hi'), actor: alice });
+		const document = authoredDocument(docValue('hi'), alice);
 		const v1 = new Edytor({ document, plugins: [richTextPlugin] });
 		const v2 = new Edytor({ document, plugins: [richTextPlugin] });
 		const blockId = firstBlock(document).id;
@@ -515,7 +516,7 @@ describe('same actor, multiple replicas', () => {
 
 describe('remote edits vs local history', () => {
 	it("a remote edit interleaved with local ops: undo touches only the local op — and bob's stamps survive", () => {
-		const a = createDocument({ value: docValue('seed'), actor: alice });
+		const a = authoredDocument(docValue('seed'), alice);
 		const blockId = firstBlock(a).id;
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
@@ -542,7 +543,7 @@ describe('remote edits vs local history', () => {
 	});
 
 	it('undo of a local op never removes a remote-inserted block or its record', () => {
-		const a = createDocument({ value: docValue('x'), actor: alice });
+		const a = authoredDocument(docValue('x'), alice);
 		const b = createDocument({ actor: bob });
 		joinLate(a, b);
 		const unwire = wireDocs(a, b);
@@ -692,7 +693,7 @@ describe('upgrade — old record shapes', () => {
 	});
 
 	it('a U1-era doc (a/ records + blockattr records) loads with BOTH layers intact', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const blockId = firstBlock(a).id;
 		const first = itemsOf(contentNodeOf(a, blockId))[0]!;
 		writeLegacyRecord(a.doc, 'a/oldbuild/0', legacyMapFor([first], 'alice'));
@@ -720,7 +721,7 @@ describe('upgrade — old record shapes', () => {
 
 describe('admission gates', () => {
 	it('a blockattr-bearing doc passes admission and schema checks', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		a.transact(() => a.facade.insertText(firstBlock(a).id, 0, 'x'));
 		expect(checkSchema(a.doc as unknown as EngineDoc)).toBeNull();
 		expect(inspectAdmission(a.doc as unknown as EngineDoc)).toEqual({

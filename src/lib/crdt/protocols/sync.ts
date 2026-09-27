@@ -3,9 +3,9 @@
  * `@y/protocols@1.0.6-rc.1` `src/sync.js` (MIT © Kevin Jahns — see
  * `src/lib/crdt/vendor/yjs/LICENSE` for the matching upstream license),
  * with EdytorDoc-aware additions that make it no longer a verbatim port:
- * inbound applies are staged against the application-schema gate
- * (`applyUpdateStaged`/`canApplyDirect`) and stamped with a non-null
- * `remoteApplyOrigin` so echo suppression + undo exclusion keep working.
+ * inbound applies refuse an update that writes a foreign schema stamp
+ * (`applyRemote`) and are stamped with a non-null `remoteApplyOrigin` so
+ * echo suppression + undo exclusion keep working.
  *
  * Wire format (unchanged from y-protocols):
  *
@@ -26,14 +26,13 @@
  * API boundary — two tiers:
  *
  * - RAW readers (`readSyncStep1`, `readSyncStep2`, `readUpdate`,
- *   `readSyncMessage`) apply payloads DIRECTLY to the live doc — no schema
- *   gate — and `readSyncMessage` THROWS on an unknown message type. They
- *   exist for harnesses/custom transports that gate themselves; the
- *   shipped providers do not route room traffic through them.
- * - The GATED path the providers actually use lives in
- *   `providers/room.ts`: `applyUpdateStaged` + per-type dispatch, so a
- *   refused payload never mutates the live doc and an unknown type is a
- *   reported drop rather than a throw.
+ *   `readSyncMessage`) apply through the inbound refusal but report
+ *   nothing, and `readSyncMessage` THROWS on an unknown message type. They
+ *   exist for harnesses/custom transports; the shipped providers do not
+ *   route room traffic through them.
+ * - The path the providers use lives in `providers/room.ts`:
+ *   `applyRemote` + per-type dispatch, so a refused payload never mutates
+ *   the live doc and an unknown type is a reported drop, not a throw.
  *
  * Engine functions are injected (`bindSync(Y)`): `src/lib` never
  * runtime-imports the vendored `.js` (see `engine-api.ts`), so the caller
@@ -42,11 +41,8 @@
  */
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
-import { SCHEMA } from '../edytor-doc.js';
-// The gate vocabulary comes through the shared admission doorway (U8) —
-// the transport layer's staged admission and the document layer's gate
-// run the same ordered reads on the same definitions.
-import { checkSchema, schemaVersion, type SchemaProblem } from '../admission.js';
+import { SCHEMA, SCHEMA_NAME, SCHEMA_VERSION } from '../edytor-doc.js';
+import type { SchemaProblem } from '../admission.js';
 import type { EngineApi, EngineDoc, YDoc } from '../engine-api.js';
 
 export type SyncProtocol = ReturnType<typeof bindSync>;
@@ -101,9 +97,9 @@ export const bindSync = (Y: EngineApi) => {
 		writeSyncStep2(encoder, doc, decoding.readVarUint8Array(decoder));
 
 	/**
-	 * Read and apply structs + delete set to a doc. RAW reader — applies
-	 * directly to the live doc with no schema gate (see the module header):
-	 * providers route payloads through `applyUpdateStaged` instead.
+	 * Read and apply structs + delete set to a doc — through the same
+	 * inbound refusal as the providers ({@link applyRemote}), which report
+	 * a refused stamp; this raw reader reports only decode/apply errors.
 	 */
 	const readSyncStep2 = (
 		decoder: decoding.Decoder,
@@ -111,19 +107,19 @@ export const bindSync = (Y: EngineApi) => {
 		transactionOrigin: unknown,
 		errorHandler?: (error: Error) => unknown
 	): void => {
-		try {
-			// `?? remoteApplyOrigin` — inbound applies always carry a
-			// non-null origin (see the contract at the top of this binding).
-			Y.applyUpdate(
-				doc,
-				decoding.readVarUint8Array(decoder),
-				transactionOrigin ?? remoteApplyOrigin
-			);
-		} catch (error) {
-			if (errorHandler != null) errorHandler(error as Error);
-			// This catches errors that are thrown by event handlers
-			console.error('Caught error while handling a Yjs update', error);
+		applyRemote(doc, decoding.readVarUint8Array(decoder), transactionOrigin, errorHandler);
+	};
+
+	/**
+	 * The state-vector coverage test of the join rule: does the encoded
+	 * state vector `sv` hold anything `doc` lacks?
+	 */
+	const lacks = (doc: YDoc, sv: Uint8Array): boolean => {
+		const ours = Y.decodeStateVector(Y.encodeStateVector(doc));
+		for (const [client, clock] of Y.decodeStateVector(sv)) {
+			if ((ours.get(client) ?? 0) < clock) return true;
 		}
+		return false;
 	};
 
 	const writeUpdate = (encoder: encoding.Encoder, update: Uint8Array): void => {
@@ -134,260 +130,94 @@ export const bindSync = (Y: EngineApi) => {
 	const readUpdate = readSyncStep2;
 
 	/**
-	 * Fast-path predicate for {@link applyUpdateStaged} (WU5 staging fast
-	 * path — the gate-F1 F2 fix): returns true when applying `update`
-	 * directly to `doc` is PROVABLY verdict-equivalent to staging it.
-	 *
-	 * `checkSchema` reads exactly three things — `meta.v`, `meta.schema`
-	 * (attr items directly under the `meta` root) and `attrKeys()` on the
-	 * `blocks` root (registry emptiness). Only parentSub items DIRECTLY
-	 * under a root create/remove attr keys. In the wire format a struct's
-	 * `parent` is a string exactly when it integrates under a root type
-	 * (roots are not items, so an item ID can never resolve to one), and a
-	 * parentSub item whose origin/rightOrigin is set encodes NEITHER parent
-	 * NOR parentSub — integrate copies both from its left (or right)
-	 * neighbour (`getMissing`). Attr overwrites are exactly that shape, so
-	 * the scan resolves parentless structs through their origin chains —
-	 * the same update's structs first, then the live store — mirroring the
-	 * engine's own resolution. The merged verdict can therefore differ
-	 * from the live verdict only when the update:
-	 *
-	 * - writes ANY item under the `meta` root (version/manifest writes and
-	 *   rewrites, plus conservative cover for foreign non-key children), or
-	 * - writes a keyed item under the `blocks` root while `meta.v` is
-	 *   absent — the only state where registry empty→non-empty flips the
-	 *   verdict (clean → `unversioned`). When `meta.v` is present the
-	 *   registry's contents cannot affect the verdict, so remote block
-	 *   creation fast-paths like every other content update, or
-	 * - deletes a LIVE `meta` attr item (a remote undo of `init`, a crafted
-	 *   attr delete) — checked by covering the update's delete set against
-	 *   the live items' ids. `blocks`-root deletes are never checked here:
-	 *   they can only flip registry emptiness, which matters only when
-	 *   `meta.v` is absent — and absent-v + non-empty registry is already
-	 *   `unversioned`, so a doc in that state never reaches the fast path
-	 *   (the checkSchema gate below routes it to full staging), or
-	 * - could let PENDING state integrate — a queued `pendingStructs`/
-	 *   `pendingDs` tail may carry a schema write that lands as a
-	 *   side-effect of this update resolving its missing deps. Staging is
-	 *   required whenever pending state exists (rare — only while a peer's
-	 *   causal deps are in flight), or
-	 * - carries a parentless struct whose parent cannot be resolved here
-	 *   (missing dep → the item pends, or a GC'd neighbour → it cannot
-	 *   become an attr child; unprovable either way → stage).
-	 *
-	 * A doc already in a schema-problem state also stays on the staging
-	 * path: its merged verdict must be judged per update (refuse, or heal
-	 * when the merge resolves clean) exactly as before.
-	 *
-	 * Undecodable payloads return false — staging owns the corrupt-payload
-	 * error path so its observable contract (errorHandler + console.error,
-	 * `applied: false`, live doc untouched by decode failures) is byte-for-
-	 * byte what it was before. The residual class a clean decode cannot
-	 * exclude — a struct that parses but crashes `Item.integrate` — is the
-	 * same hole the old path already had (scratch-succeeds/live-crashes):
-	 * documented, not widened.
+	 * Inbound refusal (R13, F8): the schema problem `update` would write, or
+	 * `null`. The frame already proved its generation; this catches a
+	 * same-generation writer forging the stamp — an attr item under the
+	 * `meta` root whose value is not this build's (`v`, `schema`; any other
+	 * key is foreign), or a delete of a live stamp the update does not
+	 * rewrite. An attr overwrite is parentless on the wire: its key is its
+	 * origin's (the item it overwrites — in the store, or earlier in the
+	 * update). An item whose origin is unknown pends in the engine and is not
+	 * judged here; if it later lands a foreign stamp the document turns
+	 * read-only (O18).
 	 */
-	const canApplyDirect = (doc: YDoc, update: Uint8Array): boolean => {
-		type DecodedStruct = ReturnType<EngineApi['decodeUpdate']>['structs'][number];
-		type StructId = { client: number; clock: number };
-		type StoredStruct = { id: StructId; length: number };
-		const engineDoc = doc as unknown as EngineDoc;
-		if (checkSchema(engineDoc) !== null) return false;
-		const store = engineDoc.store as
-			| (NonNullable<EngineDoc['store']> & {
-					clients?: Map<number, StoredStruct[]>;
-			  })
-			| undefined;
-		if (store != null && (store.pendingStructs != null || store.pendingDs != null)) {
-			return false;
-		}
-		let decoded: ReturnType<EngineApi['decodeUpdate']>;
-		try {
-			decoded = Y.decodeUpdate(update);
-		} catch {
-			return false;
-		}
-		const META = SCHEMA.roots.meta;
-		const REGISTRY = SCHEMA.roots.registry;
-		const metaRoot = engineDoc.get(META);
-		const blocksRoot = engineDoc.get(REGISTRY);
-		const versioned = schemaVersion(engineDoc) !== undefined;
-
-		// The update's own structs, grouped by client and ascending clock —
-		// origin chains are resolved through these first, then the live
-		// store (an attr rewrite's left item is always pre-existing).
-		const ownStructs = new Map<number, DecodedStruct[]>();
-		for (const s of decoded.structs) {
-			const arr = ownStructs.get(s.id.client) ?? [];
-			arr.push(s);
-			ownStructs.set(s.id.client, arr);
-		}
-		const containing = (structs: StoredStruct[] | undefined, clock: number) => {
-			if (structs === undefined) return null;
-			let lo = 0;
-			let hi = structs.length - 1;
-			while (lo <= hi) {
-				const mid = (lo + hi) >> 1;
-				const s = structs[mid];
-				if (clock < s.id.clock) hi = mid - 1;
-				else if (clock >= s.id.clock + s.length) lo = mid + 1;
-				else return s;
-			}
-			return null;
+	const foreignStamp = (doc: YDoc, update: Uint8Array): SchemaProblem | null => {
+		type Id = { client: number; clock: number };
+		type Attr = { id: Id; deleted: boolean; parentSub?: string | null; left?: Attr | null };
+		const { structs, ds } = Y.decodeUpdate(update);
+		const meta = (doc as unknown as EngineDoc).get(SCHEMA.roots.meta) as unknown as {
+			_map: Map<string, Attr>;
 		};
-		const findStruct = (id: StructId): StoredStruct | null =>
-			containing(ownStructs.get(id.client), id.clock) ??
-			containing(store?.clients?.get(id.client), id.clock);
-
-		/**
-		 * Effective root this struct integrates under + effective parentSub
-		 * — mirrors `getMissing`: a parentless struct copies left.parent /
-		 * left.parentSub (right's when no left), resolved recursively. A
-		 * terminating struct's own parentSub is what the whole chain
-		 * inherits. Returns `'unknown'` when a dep is unresolvable —
-		 * callers stage, matching the engine's pending/unsure outcomes.
-		 */
-		const resolveRoot = (
-			s: DecodedStruct
-		): { root: 'meta' | 'blocks' | null; parentSub: unknown } | 'unknown' => {
-			let cur: StoredStruct | DecodedStruct = s;
-			const seen = new Set<unknown>();
-			for (let hops = 0; hops < 128; hops++) {
-				if (seen.has(cur)) return 'unknown';
-				seen.add(cur);
-				const p = (cur as { parent?: unknown }).parent;
-				if (p != null) {
-					const sub = (cur as { parentSub?: unknown }).parentSub;
-					if (p === metaRoot || p === META) return { root: 'meta', parentSub: sub };
-					if (p === blocksRoot || p === REGISTRY) return { root: 'blocks', parentSub: sub };
-					// Any other parent — a different root name, an item ID,
-					// or a nested YNode — can never become a schema attr.
-					return { root: null, parentSub: sub };
+		const at = ({ client, clock }: Id) => `${client}:${clock}`;
+		const keyOf = new Map<string, unknown>();
+		for (const item of meta._map.values()) {
+			for (let it: Attr | null | undefined = item; it; it = it.left)
+				keyOf.set(at(it.id), it.parentSub);
+		}
+		const { version, schema } = SCHEMA.metaAttrs;
+		const rewritten = new Set<unknown>();
+		for (let grew = true; grew; ) {
+			grew = false;
+			for (const s of structs) {
+				if (!(s instanceof Y.Item) || keyOf.has(at(s.id))) continue;
+				const key =
+					s.parent === SCHEMA.roots.meta ? s.parentSub : s.origin && keyOf.get(at(s.origin));
+				if (key == null) continue;
+				keyOf.set(at(s.id), key);
+				grew = true;
+				if (ds.has(s.id.client, s.id.clock)) continue;
+				const value = (s.content as { arr?: unknown[] }).arr?.[0];
+				if (key === version && value !== SCHEMA_VERSION) {
+					return { kind: 'unsupported', version: value as number };
 				}
-				const dep =
-					(cur as { origin?: StructId | null }).origin ??
-					(cur as { rightOrigin?: StructId | null }).rightOrigin;
-				if (dep == null)
-					return { root: null, parentSub: (cur as { parentSub?: unknown }).parentSub };
-				const next = findStruct(dep);
-				if (next == null) return 'unknown';
-				cur = next;
-			}
-			return 'unknown';
-		};
-
-		for (const s of decoded.structs) {
-			// Only Items carry parents — GC/Skip fill clock space only.
-			if (!(s instanceof Y.Item)) continue;
-			const resolved = resolveRoot(s);
-			if (resolved === 'unknown') return false;
-			if (resolved.root === 'meta') return false;
-			if (!versioned && resolved.root === 'blocks' && resolved.parentSub != null) {
-				return false;
+				if (key !== version && (key !== schema || value !== SCHEMA_NAME)) {
+					return { kind: 'foreign', version: SCHEMA_VERSION, schema: value };
+				}
+				rewritten.add(key);
 			}
 		}
-		const metaItems = (
-			metaRoot as unknown as {
-				_map?: Map<string, { id: StructId; deleted: boolean }>;
-			}
-		)._map;
-		if (metaItems !== undefined) {
-			for (const item of metaItems.values()) {
-				if (!item.deleted && decoded.ds.has(item.id.client, item.id.clock)) return false;
+		for (const [key, item] of meta._map) {
+			if (!item.deleted && !rewritten.has(key) && ds.has(item.id.client, item.id.clock)) {
+				return key === version
+					? { kind: 'unversioned' }
+					: { kind: 'foreign', version: SCHEMA_VERSION };
 			}
 		}
-		return true;
+		return null;
 	};
 
 	/**
-	 * The application-schema boundary for incoming remote updates
-	 * (work-unit-3 hardening — see `docs/crdt-v14-providers.md` §boundary).
-	 *
-	 * `readSyncStep2`/`readUpdate` apply payloads directly to the live doc;
-	 * this variant VALIDATES first: the update is merged into a throwaway
-	 * staging doc seeded with the live doc's full state, and the merged
-	 * `meta.v`/registry record is inspected through `checkSchema`. The update
-	 * is integrated into the live doc ONLY when the merged result is clean.
-	 *
-	 * Why staging (and not per-message schema metadata): BroadcastChannel is
-	 * connectionless — there is no handshake to negotiate a session schema,
-	 * so every arriving update must be self-validating. Staging also gets the
-	 * LWW semantics right for free: a peer's incremental update that carries
-	 * no `meta.v` write keeps the staged doc at the live version and applies,
-	 * while an update whose merge would move the doc to an unsupported or
-	 * unversioned state is refused BEFORE it mutates the live document —
-	 * which means it is also never persisted and never rebroadcast (both are
-	 * `doc.on('update')`-driven).
-	 *
-	 * WU5 fast path: {@link canApplyDirect} proves per update whether the
-	 * merged verdict can differ from the live one; ordinary content updates
-	 * (keystrokes, moves, deletes, remote block creation on a versioned doc)
-	 * apply directly at O(update) instead of paying the O(doc) scratch
-	 * merge — ~17 ms → ~0.06 ms per inbound update on a 1,000-block doc.
-	 * First-contact SyncStep2 full-state payloads are flagged by the scan
-	 * (they carry `meta`/`blocks` root writes) and stay staged, exactly as
-	 * before; a reconnect SyncStep2 that is a plain content diff fast-paths
-	 * — the merged verdict is provably unchanged, so staging could only
-	 * repeat the live verdict.
-	 *
-	 * Returns `{ applied, problem }`: `applied === false` means the update
-	 * was refused (schema problem) or failed to apply (corrupt payload —
-	 * reported through `errorHandler`); `problem` names the schema verdict
-	 * so the caller can emit the structured signal.
+	 * Apply one inbound update (SyncStep2 / Update payload) to the live doc
+	 * under a non-null remote origin — unless it writes a foreign schema
+	 * stamp, which is refused before integration and returned as `problem`.
+	 * `applied === false` with no problem means the payload could not be
+	 * decoded or integrated (reported through `errorHandler` + the console).
 	 */
-	const applyUpdateStaged = (
+	const applyRemote = (
 		doc: YDoc,
 		update: Uint8Array,
 		transactionOrigin: unknown,
 		errorHandler?: (error: Error) => unknown
-	): { applied: boolean; problem: SchemaProblem | null; staged: boolean } => {
-		// `?? remoteApplyOrigin` — inbound applies always carry a non-null
-		// origin (see the contract at the top of this binding). The scratch
-		// doc applies below stay originless: they never commit to a live
-		// doc and have no update consumers.
-		if (canApplyDirect(doc, update)) {
-			try {
-				Y.applyUpdate(doc, update, transactionOrigin ?? remoteApplyOrigin);
-			} catch (error) {
-				if (errorHandler != null) errorHandler(error as Error);
-				console.error('Caught error while handling a Yjs update', error);
-				return { applied: false, problem: null, staged: false };
-			}
-			return { applied: true, problem: null, staged: false };
-		}
-		let problem: SchemaProblem | null;
+	): { applied: boolean; problem: SchemaProblem | null } => {
 		try {
-			const scratch = new Y.Doc();
-			Y.applyUpdate(scratch, Y.encodeStateAsUpdate(doc));
-			Y.applyUpdate(scratch, update);
-			problem = checkSchema(scratch as unknown as EngineDoc);
-		} catch (error) {
-			if (errorHandler != null) errorHandler(error as Error);
-			// Same visibility as readSyncStep2's catch — a refused/corrupt
-			// payload is observable on the console channel too.
-			console.error('Caught error while handling a Yjs update', error);
-			return { applied: false, problem: null, staged: true };
-		}
-		if (problem !== null) {
-			return { applied: false, problem, staged: true };
-		}
-		try {
+			const problem = foreignStamp(doc, update);
+			if (problem !== null) return { applied: false, problem };
 			Y.applyUpdate(doc, update, transactionOrigin ?? remoteApplyOrigin);
+			return { applied: true, problem: null };
 		} catch (error) {
 			if (errorHandler != null) errorHandler(error as Error);
 			console.error('Caught error while handling a Yjs update', error);
-			return { applied: false, problem: null, staged: true };
+			return { applied: false, problem: null };
 		}
-		return { applied: true, problem: null, staged: true };
 	};
 
 	/**
 	 * Read a sync message from `decoder`; writes any reply (SyncStep2) into
 	 * `encoder`. Returns the decoded message type. Callers MUST gate the
 	 * protocol-version envelope before invoking this (see `envelope.ts`).
-	 * RAW/ungated: payloads apply directly to the live doc and an unknown
-	 * message type THROWS — the shipped providers dispatch through
-	 * `providers/room.ts` (staged apply + reported drops) instead.
+	 * RAW: payloads apply through the inbound refusal (unreported) and an
+	 * unknown message type THROWS — the shipped providers dispatch through
+	 * `providers/room.ts` (`applyRemote` + reported drops) instead.
 	 */
 	const readSyncMessage = (
 		decoder: decoding.Decoder,
@@ -425,6 +255,7 @@ export const bindSync = (Y: EngineApi) => {
 		writeUpdate,
 		readUpdate,
 		readSyncMessage,
-		applyUpdateStaged
+		applyRemote,
+		lacks
 	};
 };

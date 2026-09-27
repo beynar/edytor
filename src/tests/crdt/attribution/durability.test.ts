@@ -24,7 +24,8 @@ import {
 	legacyMapFor,
 	recordKeys,
 	wireDocs,
-	writeLegacyRecord
+	writeLegacyRecord,
+	authoredDocument
 } from './helpers.js';
 import {
 	attachDocument,
@@ -89,7 +90,7 @@ const seedLegacy = (a: EdytorDocument, blockId: string): void => {
 
 describe('legacy compat — save/load', () => {
 	it('encode → loadDocument preserves every legacy record byte-for-byte', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const block = firstBlock(a);
 		seedLegacy(a, block.id);
 
@@ -107,7 +108,7 @@ describe('legacy compat — save/load', () => {
 	});
 
 	it('legacy() decodes the merged ContentMap (insert + delete attrs)', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const block = firstBlock(a);
 		expect(a.attribution.legacy()).toBeNull(); // fresh doc — no records
 		seedLegacy(a, block.id);
@@ -129,7 +130,7 @@ describe('legacy compat — save/load', () => {
 	});
 
 	it('new edits on a restored doc append no a/ records and leave legacy state untouched', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const block = firstBlock(a);
 		seedLegacy(a, block.id);
 		const restored = loadDocument(a.encode(), { actor: bob });
@@ -151,7 +152,7 @@ describe('legacy compat — save/load', () => {
 describe('legacy compat — IndexedDB', () => {
 	it('a fresh provider-hydrated doc replays persisted legacy records', async () => {
 		const name = uniqueName('attr-idb');
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const block = firstBlock(a);
 		seedLegacy(a, block.id);
 		const pA = new providers.IndexeddbPersistence(name, a.doc as never);
@@ -177,7 +178,7 @@ describe('legacy compat — IndexedDB', () => {
 
 describe('legacy compat — live sync', () => {
 	it('mixed old/new state converges both directions; new edits append no a/ records', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const block = firstBlock(a);
 		seedLegacy(a, block.id);
 		const b = createDocument({ actor: bob });
@@ -209,7 +210,7 @@ describe('legacy compat — live sync', () => {
 	});
 
 	it('metadata-first delivery: a record landing before its content is preserved', () => {
-		const a = createDocument({ value: docValue('hi'), actor: alice });
+		const a = authoredDocument(docValue('hi'), alice);
 		const block = firstBlock(a);
 		const docD = new Y.Doc();
 		applyUpdate(docD, a.encode());
@@ -240,7 +241,7 @@ describe('legacy compat — live sync', () => {
 
 describe('legacy compat — retention / GC', () => {
 	it('delete-side records survive payload GC — ids, not bytes, are attributed', () => {
-		const a = createDocument({ value: docValue('gone'), actor: alice });
+		const a = authoredDocument(docValue('gone'), alice);
 		const block = firstBlock(a);
 		a.transact(() => a.facade.insertText(block.id, 0, 'X'));
 		const x = itemsOf(contentNodeOf(a, block.id))[0]!;

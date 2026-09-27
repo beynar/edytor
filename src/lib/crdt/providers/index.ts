@@ -27,7 +27,20 @@ export type EdytorSyncPayload = {
 };
 
 export type EdytorSyncCleanup = () => void | Promise<void>;
-export type EdytorSync = (payload: EdytorSyncPayload) => void | EdytorSyncCleanup;
+export type EdytorSync = ((payload: EdytorSyncPayload) => void | EdytorSyncCleanup) & {
+	/**
+	 * ms an empty document waits for this provider to settle before it
+	 * decides without it (R13); `Infinity` for a provider that always
+	 * reports `synced` or `failed`. Default: `DEFAULT_READINESS_BOUND`.
+	 */
+	bound?: number;
+	/**
+	 * The transport target (database, server + room): a document keeps one
+	 * provider per target, whatever factory instance attaches it (O75).
+	 * Without it the factory itself is the target.
+	 */
+	target?: string;
+};
 
 export type IndexeddbSyncOptions = {
 	awareness?: Awareness;
@@ -43,8 +56,6 @@ export type WebsocketSyncOptions = {
 	resyncInterval?: number;
 	maxBackoffTime?: number;
 	disableBc?: boolean;
-	/** See `WebsocketProviderOptions.syncSettleMs` — empty-reply handshake window. */
-	syncSettleMs?: number;
 };
 
 export type ProviderStack = ReturnType<typeof bindProviders>;
@@ -53,37 +64,41 @@ export const bindProviders = (Y: EngineApi) => {
 	const idb = bindIndexeddbProvider(Y);
 	const ws = bindWebsocketProvider(Y);
 
-	const createIndexeddbSync =
-		(name: string): EdytorSync =>
-		({ doc, awareness, synced, failed }) => {
-			const provider = new idb.IndexeddbPersistence(name, doc, { awareness });
-			provider.on('synced', () => synced(provider));
-			if (failed) provider.on('failed', failed);
-			return () => provider.destroy();
-		};
+	// Local hydration always ends in `synced` or `failed`: no bound.
+	const createIndexeddbSync = (name: string): EdytorSync =>
+		Object.assign(
+			({ doc, awareness, synced, failed }: EdytorSyncPayload) => {
+				const provider = new idb.IndexeddbPersistence(name, doc, { awareness });
+				provider.on('synced', () => synced(provider));
+				if (failed) provider.on('failed', failed);
+				return () => provider.destroy();
+			},
+			{ bound: Infinity, target: `indexeddb:${name}` }
+		);
 
-	const createWebsocketSync =
-		(options: WebsocketSyncOptions): EdytorSync =>
-		({ doc, awareness, synced, failed }) => {
-			const provider = new ws.WebsocketProvider(options.serverUrl, options.roomName, doc, {
-				connect: options.connect,
-				awareness,
-				params: options.params,
-				protocols: options.protocols,
-				WebSocketPolyfill: options.WebSocketPolyfill,
-				resyncInterval: options.resyncInterval,
-				maxBackoffTime: options.maxBackoffTime,
-				disableBc: options.disableBc,
-				syncSettleMs: options.syncSettleMs
-			});
-			provider.on('sync', (isSynced: boolean) => {
-				if (isSynced) {
-					synced(provider);
-				}
-			});
-			if (failed) provider.on('failed', failed);
-			return () => provider.destroy();
-		};
+	const createWebsocketSync = (options: WebsocketSyncOptions): EdytorSync =>
+		Object.assign(
+			({ doc, awareness, synced, failed }: EdytorSyncPayload) => {
+				const provider = new ws.WebsocketProvider(options.serverUrl, options.roomName, doc, {
+					connect: options.connect,
+					awareness,
+					params: options.params,
+					protocols: options.protocols,
+					WebSocketPolyfill: options.WebSocketPolyfill,
+					resyncInterval: options.resyncInterval,
+					maxBackoffTime: options.maxBackoffTime,
+					disableBc: options.disableBc
+				});
+				provider.on('sync', (isSynced: boolean) => {
+					if (isSynced) {
+						synced(provider);
+					}
+				});
+				if (failed) provider.on('failed', failed);
+				return () => provider.destroy();
+			},
+			{ target: `websocket:${options.serverUrl.replace(/\/+$/, '')}/${options.roomName}` }
+		);
 
 	return {
 		IndexeddbPersistence: idb.IndexeddbPersistence,

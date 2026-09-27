@@ -725,10 +725,10 @@
 				// provider against the spec-driven local opaque relay
 				// (tests/editor-dom/ws-relay.ts). `disableBc` is forced so
 				// BroadcastChannel can never mask a socket failure — the only
-				// transport is the socket. `resyncInterval` re-runs the
-				// state-vector handshake so the first room member (whose initial
-				// SyncStep1 had no peer to answer) still reaches `synced`, and so
-				// deliberate harness faults (dropped/held frames) heal.
+				// transport is the socket. `resyncInterval` is off unless a spec
+				// passes `wsresync`: the join rule makes every member hear the
+				// room, and the periodic resync only heals deliberate harness
+				// loss (dropped frames).
 				const provider =
 					data.collabws && data.wsserver
 						? new WebsocketProvider(data.wsserver, data.collabws, doc, {
@@ -788,13 +788,13 @@
 					if (fired || !persistenceReady) {
 						return;
 					}
-					// A failed/refused hydration is terminal: `loadError`
-					// (load threw) or `_hydrationRefused` (schema gate) mean
-					// the stored state was rejected — seeding the pending doc
-					// now would mount the fixture over refused data and report
-					// a refused sync as a successful one.
-					const refusal =
-						persistence == null ? null : (persistence.loadError ?? persistence._hydrationRefused);
+					// A failed hydration is terminal: `loadError` (a container of
+					// another generation, a load failure) means the stored state
+					// was rejected — seeding the pending doc now would mount the
+					// fixture over refused data and report a refused sync as a
+					// successful one. (A forged stamp that hydrated is refused by
+					// `document.sync()` admission below.)
+					const refusal = persistence == null ? null : persistence.loadError;
 					if (refusal != null) {
 						fired = true;
 						(window as Window & { __EDYTOR_SYNC_ERROR__?: unknown }).__EDYTOR_SYNC_ERROR__ =

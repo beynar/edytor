@@ -164,7 +164,10 @@ export class Edytor {
 	readonly = $state(false);
 	root = $state<Block>();
 	editorDomRevision = $state(0);
-	synced = $state(false);
+	/** The view is bound to its decided document (its root is built). */
+	get synced(): boolean {
+		return this.root !== undefined;
+	}
 	edytor = this;
 	selection: EdytorSelection;
 	private off: (() => void)[] = [];
@@ -620,22 +623,17 @@ export class Edytor {
 			// this document's undo manager captures THIS view's edits.
 			this.document.trackOrigin(this.transaction);
 
-			// Readiness ownership (adversarial P1-1): a `sync` prop on an
-			// editable view means a PROVIDER owns the content decision —
-			// for owned documents too. The view binds the readiness wait so
-			// a terminal provider `failed` still hands the decision back
-			// (`syncFailed && !syncPending` wakes `whenDocumentReady`);
-			// without it a failed provider latched the view unsynced
-			// forever. For an injected document the decision is the
-			// document's: an already-decided document binds immediately;
-			// a PENDING one defers — a sibling view must never seed
-			// content a provider is about to hydrate.
-			if (!readonly && sync) {
-				this.bindReadiness(true, value);
-			} else if (this.ownsDocument || this.document.ready) {
+			// Readiness (R13): the document decides. A view seeds only the
+			// document it owns, unless its own provider (`sync`) owns the
+			// decision; every other view binds on the one readiness event
+			// (`<Edytor>` decides an injected document at mount, once the
+			// providers of its sibling views attached).
+			if (this.ownsDocument && !(sync && !readonly)) {
 				this.sync(value || { children: [] });
 			} else {
-				this.bindReadiness(false, value);
+				this._readinessRelease = whenDocumentReady(this.document, () => {
+					if (!this.destroyed) this.sync(value || { children: [] });
+				});
 			}
 
 			this.selection = new EdytorSelection(this, onSelectionChange);
@@ -745,44 +743,8 @@ export class Edytor {
 	defaultChild = (parent: Block): string =>
 		this.document.defaultChild(parent.isRoot ? null : parent.type);
 
-	/**
-	 * Readiness binding for an injected PENDING document — installed in the
-	 * constructor so headless views (no component mount) bind identically.
-	 * `_readinessRelease` cancels the decision listener;
-	 * `_readinessTimer` is the one-task deferral that lets a provider
-	 * attached in the same synchronous mount flush win the seed.
-	 */
+	/** Releases the readiness wait of a view bound before its document decided. */
 	private _readinessRelease: (() => void) | undefined;
-	private _readinessTimer: ReturnType<typeof setTimeout> | undefined;
-
-	private bindReadiness = (wantsSync: boolean, value: JSONDoc | undefined) => {
-		// Mirror the document's decision the moment it lands — whichever
-		// path makes it (provider `synced`, or an explicit `document.sync`).
-		this._readinessRelease = whenDocumentReady(this.document, () => {
-			if (!this.destroyed && !this.synced) {
-				this.sync(value || { children: [] });
-			}
-		});
-		// An editable view carrying no `sync` prop IS the document's
-		// explicit decision — but only while no provider is in flight
-		// (`syncPending`: an attached-but-unsynced provider owns the seed).
-		// Readonly and sync-carrying views never self-decide.
-		if (!this.readonly && !wantsSync) {
-			this._readinessTimer = setTimeout(() => {
-				this._readinessTimer = undefined;
-				if (
-					this.destroyed ||
-					this.synced ||
-					this.document.destroyed ||
-					this.document.ready ||
-					this.document.syncPending
-				) {
-					return;
-				}
-				this.sync(value || { children: [] });
-			}, 0);
-		}
-	};
 
 	sync = ({ children = [] }: JSONDoc = { children: [] }) => {
 		if (this.synced) {
@@ -795,6 +757,7 @@ export class Edytor {
 		// when the view owned it.
 		this.document.sync({ children });
 
+		this.undoManager = this.document.history;
 		this.root = new Block({
 			edytor: this,
 			blockId: null
@@ -803,9 +766,6 @@ export class Edytor {
 		// The root has no facade content node — give it the same empty-text
 		// sentinel mirror shape blocks get so `root.content` invariants hold.
 		this.root.reconcileContent([]);
-
-		this.undoManager = this.document.history;
-		this.synced = true;
 		this.ensureFacadeChangeSub();
 	};
 
@@ -2177,14 +2137,9 @@ export class Edytor {
 		}
 		this.destroyed = true;
 
-		// A pending readiness binding must not resurrect a dead view —
-		// release the decision listener and cancel the deferred decision.
+		// A pending readiness binding must not resurrect a dead view.
 		this._readinessRelease?.();
 		this._readinessRelease = undefined;
-		if (this._readinessTimer !== undefined) {
-			clearTimeout(this._readinessTimer);
-			this._readinessTimer = undefined;
-		}
 
 		// Runs the whole attach-lifetime batch — DOM listeners, the mutation
 		// observer, plugin actions, and the facade-change release (which

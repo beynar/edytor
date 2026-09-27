@@ -156,11 +156,11 @@ import {
 	type EdytorDoc,
 	type EdytorDocBinding
 } from './edytor-doc.js';
-import { assertAdmission, bindAdmission } from './admission.js';
+import { assertAdmission, assertSchema, bindAdmission, checkSchema } from './admission.js';
 import { Awareness } from './protocols/awareness.js';
 import type { EdytorSync, EdytorSyncCleanup, EdytorSyncPayload } from './providers/index.js';
 import { TRANSACTION } from '../constants.js';
-import { jsonBlockToSpec, type JSONDoc } from '../utils/json.js';
+import type { JSONDoc } from '../utils/json.js';
 
 /** Local actor identity — durable across replicas, independent of presence profiles. */
 export type DocumentActor = {
@@ -307,6 +307,14 @@ export class DocumentDestroyedError extends Error {
  */
 export type DocumentReadiness = 'pending' | 'local' | 'hydrated';
 
+/**
+ * How long (ms) an empty document waits for a provider that has not
+ * settled before it decides without it (R13 settle-or-bound) — the bound a
+ * provider that cannot report "settled" (an opaque websocket relay in an
+ * empty room) gets. A factory sets its own with `sync.bound`.
+ */
+export const DEFAULT_READINESS_BOUND = 1000;
+
 type NormalizedRole = { void: boolean; island: boolean };
 
 const normalizeRole = (role: BlockRole | undefined): NormalizedRole => ({
@@ -439,18 +447,11 @@ export class EdytorDocument {
 	private _defaultType: string;
 	private readonly _historyOptions: { captureTimeout?: number } | undefined;
 	private readonly _lineageDepth: number | undefined;
-	private _syncCleanups: { cleanup: EdytorSyncCleanup }[] = [];
+	/** Attached providers keyed by transport target (O75): one per target. */
+	private _providers = new Map<unknown, EdytorSyncCleanup | undefined>();
 	private _pendingSyncs = 0;
-	/**
-	 * Sticky — `true` once an attached provider released its pending claim
-	 * WITHOUT the document deciding (terminal `failed`, teardown before
-	 * `synced`, or a throwing factory). Views consult it alongside
-	 * {@link syncPending}: still-`pending` + `syncFailed` + no provider in
-	 * flight means the readiness decision has returned to the views (D4).
-	 */
-	private _syncFailed = false;
+	private _healOff: (() => void) | undefined;
 	private _readyListeners = new Set<() => void>();
-	private _syncSettledListeners = new Set<() => void>();
 
 	/** @internal Construct through {@link createDocument}/{@link loadDocument}/{@link attachDocument}. */
 	constructor(init: EdytorDocumentInit) {
@@ -465,7 +466,10 @@ export class EdytorDocument {
 			// U1: the facade's block-attribution ops read the actor lazily —
 			// `this.actor` is assigned below, after facade construction.
 			actor: () => this.actor,
-			lineageDepth: init.lineage?.depth
+			lineageDepth: init.lineage?.depth,
+			// The `writable` guard: a write on a read-only document refuses
+			// with the `SchemaMismatchError` naming the stamp.
+			assertWritable: () => assertSchema(this.doc as unknown as EngineDoc, 'document')
 		});
 		this.awareness = init.awareness ?? new init.awarenessCtor(this.doc);
 		this._ownsAwareness = init.awareness === undefined;
@@ -522,6 +526,28 @@ export class EdytorDocument {
 	get destroyed(): boolean {
 		return this._destroyed;
 	}
+
+	/**
+	 * `false` while the document carries a schema stamp this build cannot
+	 * own (a foreign stamp got in despite the transport's inbound refusal):
+	 * every write refuses with a `SchemaMismatchError`, and the providers
+	 * neither persist nor broadcast it (O18, D-2).
+	 */
+	get writable(): boolean {
+		return checkSchema(this.doc as unknown as EngineDoc) === null;
+	}
+
+	/**
+	 * Subscribe to {@link writable} transitions — the visible signal that
+	 * the document turned read-only (once per transition, not per refused
+	 * edit). Returns the unsubscribe.
+	 */
+	onWritableChange = (listener: (writable: boolean) => void): (() => void) => {
+		let last = this.writable;
+		const watch = () => this.writable !== last && listener((last = !last));
+		this.doc.on('update', watch);
+		return () => this.doc.off('update', watch);
+	};
 
 	/**
 	 * The capture timeout this document's history was configured with —
@@ -622,8 +648,9 @@ export class EdytorDocument {
 	 * usable → schema → verdict, the same reads the transport layer's
 	 * staging gate runs):
 	 *
-	 * - `'fresh'` verdict → `init` stamps the schema and inserts `value`'s
-	 *   children (or the canonical bootstrap block when empty);
+	 * - `'fresh'` verdict → the deterministic seed of `value` (R13, D-3:
+	 *   one update from a writer hashed from the seed; an empty value seeds
+	 *   one `defaultType` block; non-local, so never an undo step);
 	 * - `'initialized'` verdict (provider-hydrated, or a loaded restore) →
 	 *   the schema was just asserted; content is left alone;
 	 * - a doc in a problem state (unversioned/unsupported/foreign schema
@@ -644,10 +671,6 @@ export class EdytorDocument {
 		if (this._destroyed) {
 			throw new DocumentDestroyedError('sync');
 		}
-		// D15: an explicit decision releases the facade's pending gate —
-		// once `sync()` runs the provider no longer owns the bootstrap,
-		// so `facade.init` below must be able to write the schema/seed.
-		this.facade._clearSyncPending();
 		if (this._readiness !== 'pending') {
 			return;
 		}
@@ -656,18 +679,7 @@ export class EdytorDocument {
 			// Hydrated/loaded doc — asserted above; content is left alone.
 			this._readiness = 'hydrated';
 		} else {
-			// Fresh doc — stamp the schema and insert the initial children
-			// (or the deterministic bootstrap block when empty). The
-			// canonical `jsonBlockToSpec` keeps caller ids and mints missing
-			// ones (`freshIds` stays false — concurrent same-id inits dedupe).
-			this.facade.init({
-				content: value.children.map((block) => jsonBlockToSpec(block)),
-				defaultType: this._defaultType,
-				// U1: user-supplied initial content is authored by the
-				// document actor; the empty-children bootstrap path inside
-				// `init` stays unattributed regardless.
-				author: this.actor
-			});
+			this.facade.seed(value.children);
 			this._readiness = 'local';
 		}
 		this._attachHistory();
@@ -690,7 +702,7 @@ export class EdytorDocument {
 	/**
 	 * The default local history (registry-scoped `Y.UndoManager` —
 	 * `undo`/`redo`/`stopCapturing`/stacks). Lazy: attaches at `sync()`,
-	 * or on first access once the doc is initialized — it NEVER initializes
+	 * or on first access once the document is decided — it NEVER seeds
 	 * content itself (accessing it on a pending doc throws
 	 * {@link DocumentNotReadyError} instead of silently seeding).
 	 */
@@ -711,7 +723,7 @@ export class EdytorDocument {
 			history = undefined;
 		}
 		if (history === undefined) {
-			if (!isInitialized(this.doc as unknown as EngineDoc)) {
+			if (this._readiness === 'pending') {
 				throw new DocumentNotReadyError('history');
 			}
 			history = this._attachHistory();
@@ -817,151 +829,96 @@ export class EdytorDocument {
 	};
 
 	/**
-	 * Whether a sync factory is attached but has not reported `synced`
-	 * yet. Views consult this while deciding a PENDING document: an
-	 * editable view may become the document's explicit decision only when
-	 * no provider is in flight — a pending provider owns the seed.
+	 * Whether an attached provider has neither settled nor reached its
+	 * bound. An editable view decides a pending document only when none is.
 	 */
 	get syncPending(): boolean {
 		return this._pendingSyncs > 0;
 	}
 
 	/**
-	 * `true` once a provider released its pending claim without the
-	 * document deciding — see {@link _syncFailed}. Sticky: it reports that
-	 * a failure HAPPENED, not that one is in flight.
+	 * The readiness decision (R13, O17): a document with content is decided
+	 * (`hydrated`) as soon as any provider settles; an EMPTY one only once
+	 * every attached provider settled or reached its bound, and then it
+	 * seeds `value`. A refused admission leaves it pending, read-only and
+	 * quarantined; it decides again when it turns writable (the refusal
+	 * propagates to the reporting provider only).
 	 */
-	get syncFailed(): boolean {
-		return this._syncFailed;
-	}
-
-	/**
-	 * Subscribe to provider settle-without-decision — fires synchronously
-	 * inside `attachSync`'s settle path when a provider reports `failed`,
-	 * is torn down before `synced`, or its factory throws. The readiness
-	 * transition itself stays on {@link onReady}; this is the internal
-	 * seam `whenDocumentReady` uses to wake views whose provider gave up
-	 * (the decision is theirs once {@link syncPending} clears).
-	 * @internal
-	 */
-	onSyncSettled = (listener: () => void): (() => void) => {
-		if (this._destroyed) {
-			return () => {};
-		}
-		this._syncSettledListeners.add(listener);
-		return () => {
-			this._syncSettledListeners.delete(listener);
-		};
-	};
-
-	/** Listener-isolated emit — same convention as the `onReady` fanout in {@link sync}. */
-	private _emitSyncSettled = (): void => {
-		const listeners = Array.from(this._syncSettledListeners);
-		for (const listener of listeners) {
-			try {
-				listener();
-			} catch (err) {
-				console.error('[edytor-document] sync-settled listener failed; continuing', err);
-			}
+	private _decide = (value: JSONDoc | undefined, report = false): void => {
+		if (this._destroyed || this.ready) return;
+		if (this._pendingSyncs > 0 && !isInitialized(this.doc as unknown as EngineDoc)) return;
+		try {
+			this.sync(value);
+		} catch (error) {
+			this._healOff ??= this.onWritableChange((writable) => {
+				if (!writable) return;
+				this._healOff?.();
+				this._healOff = undefined;
+				this._decide(value);
+			});
+			if (report) throw error;
 		}
 	};
 
 	/**
 	 * Attach a provider sync factory to this document (headless `EdytorSync`
-	 * path — the same contract views use). On `synced` the document runs
-	 * its readiness transition (`seed-if-empty`, never before hydration).
-	 * On `failed` — the terminal provider-failure callback (D4) — the
-	 * document only releases the pending claim: it must NOT seed or call
-	 * {@link sync}; the decision returns to the views once
-	 * {@link syncPending} clears (`whenDocumentReady` wakes them). The
-	 * returned cleanup is also tracked: {@link destroy} runs it.
-	 * While attached-but-unsynced the document reports
-	 * {@link syncPending} — sibling views must not seed in that window.
+	 * path — the same contract views use). The provider stays pending until
+	 * it reports `synced` or the terminal `failed` (D4), is torn down, or its
+	 * bound elapses: `sync.bound` ms, {@link DEFAULT_READINESS_BOUND} for a
+	 * provider that cannot report settled. Each settle runs the readiness
+	 * decision ({@link _decide}). A factory that throws never attached: its
+	 * error propagates and it decides nothing. A transport target
+	 * (`sync.target`, else the factory) already attached is a no-op: the
+	 * document keeps one provider per target. The returned cleanup is also
+	 * tracked: {@link destroy} runs it; it frees the target.
 	 */
 	attachSync = (sync: EdytorSync, opts: { value?: JSONDoc } = {}): EdytorSyncCleanup | void => {
 		if (this._destroyed) {
 			throw new DocumentDestroyedError('attachSync');
 		}
+		const target = sync.target ?? sync;
+		if (this._providers.has(target)) return;
 		this._pendingSyncs += 1;
-		// D15 — while a provider may still hydrate, the facade must not
-		// stamp schema/bootstrap state (`init`/`createUndoManager` refuse):
-		// an early stamp would make the later `sync()` verdict read
-		// `initialized` and mislabel a local seed `hydrated`.
-		if (this._readiness === 'pending') {
-			this.facade._markSyncPending();
-		}
 		let pending = true;
-		const settle = (failed = false) => {
-			if (!pending) {
-				return;
-			}
+		const settle = (): boolean => {
+			if (!pending) return false;
 			pending = false;
+			clearTimeout(bound);
 			this._pendingSyncs -= 1;
-			// The pending gate belongs to the LAST in-flight provider —
-			// an earlier settle leaves a sibling still owning hydration.
-			if (this._pendingSyncs === 0) {
-				this.facade._clearSyncPending();
-			}
-			// A settle that did not decide the document (failed, torn down
-			// pre-sync, throwing factory) hands the decision back to the
-			// views — record it and wake `whenDocumentReady` waiters.
-			if (failed && this._readiness === 'pending') {
-				this._syncFailed = true;
-				this._emitSyncSettled();
-			}
+			return true;
 		};
+		const decide = () => settle() && this._decide(opts.value);
+		const ms = sync.bound ?? DEFAULT_READINESS_BOUND;
+		const bound = Number.isFinite(ms) ? setTimeout(decide, ms) : undefined;
 		let cleanup: ReturnType<EdytorSync>;
 		try {
-			// A factory that throws mid-build leaves nothing tracked here —
-			// registration only happens after a successful return (a factory
-			// that built a provider then threw owns its own partial resources;
-			// this surface can only track what it was handed back).
-			//
-			// `failed` is the terminal-failure half of the provider contract
-			// (D4): reported only for permanent failure modes (refused
-			// hydration, unrecoverable close) — transient reconnects keep
-			// the pending claim. On failure the document only SETTLES — it
-			// must not `sync()`/seed; the view's readiness path decides once
-			// pending clears.
-			const payload: EdytorSyncPayload = {
+			cleanup = sync({
 				doc: this.doc,
 				awareness: this.awareness,
 				synced: () => {
 					settle();
-					this.sync(opts.value);
+					this._decide(opts.value, true);
 				},
-				failed: (_reason?: unknown) => {
-					settle(true);
-				}
-			};
-			cleanup = sync(payload);
+				failed: decide
+			});
 		} catch (error) {
-			settle(true);
+			settle();
 			throw error;
 		}
 		if (typeof cleanup !== 'function') {
+			this._providers.set(target, undefined);
 			return cleanup;
 		}
-		// The returned cleanup unregisters itself from `_syncCleanups`: a
-		// caller tearing its provider down early must not see `destroy()`
-		// run the same cleanup a second time. Tearing down an unsynced
-		// provider also releases the pending claim — the document may be
-		// decided by a view afterwards.
-		const record = {
-			cleanup: (): ReturnType<EdytorSyncCleanup> => {
-				const index = this._syncCleanups.indexOf(record);
-				if (index !== -1) {
-					this._syncCleanups.splice(index, 1);
-				}
-				// Tearing down an unsynced provider releases the claim the
-				// same way a failure does — the document may be decided by
-				// a view afterwards.
-				settle(true);
-				return cleanup();
-			}
+		// The returned cleanup runs once and frees the target; tearing down
+		// an unsynced provider settles it like a failure.
+		const release = (): ReturnType<EdytorSyncCleanup> => {
+			if (this._providers.get(target) !== release) return;
+			this._providers.delete(target);
+			decide();
+			return cleanup();
 		};
-		this._syncCleanups.push(record);
-		return record.cleanup;
+		this._providers.set(target, release);
+		return release;
 	};
 
 	/** Full replicated state as a v14 update — `loadDocument` restores it on a fresh replica. */
@@ -1033,6 +990,7 @@ export class EdytorDocument {
 		// a destroyed document never decides, and their views check
 		// `destroyed` before binding anyway.
 		this._readyListeners.clear();
+		this._healOff?.();
 
 		// Provider/sync cleanups registered through `attachSync`.
 		const rethrowAsyncCleanupError = (error: unknown) => {
@@ -1040,9 +998,9 @@ export class EdytorDocument {
 				throw error;
 			});
 		};
-		for (const { cleanup } of this._syncCleanups.splice(0)) {
+		for (const release of [...this._providers.values()]) {
 			try {
-				const result = cleanup();
+				const result = release?.();
 				if (result && typeof result === 'object' && 'catch' in result) {
 					void (result as Promise<void>).catch(rethrowAsyncCleanupError);
 				}

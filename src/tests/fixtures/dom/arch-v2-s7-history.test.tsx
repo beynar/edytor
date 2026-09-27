@@ -18,6 +18,9 @@
  * - F-U9 (dom half) — undo then redo; a normalizer armed before the undo →
  *   the undo is one update, the normalizer does not fire, redo stays
  *   available and redoes (D-23, F4).
+ * - S7-after (coordinator row, L2/F-U6 intent) — type `abc` (caret @3), click
+ *   the caret to @0, undo, redo → the caret is @3 again: `after` is the
+ *   selection the step's last transaction left, not the one at undo time.
  *
  * Expected values come from the plan rows, never from running the code.
  */
@@ -282,6 +285,34 @@ describe('S7 — history restores the issuing view’s recorded selection', () =
 				expect(plainText(edytor)).toBe('Hello!');
 				expect(updates).toBe(2);
 				expect(caret(edytor).offset).toBe(6);
+			}
+		);
+
+		row('S7-after', channel)(
+			`S7-after (${channel}): redo returns the caret to where the command left it`,
+			async () => {
+				const { edytor, editor } = await renderDomEdytor(
+					<root>
+						<paragraph>|</paragraph>
+					</root>
+				);
+				const block = edytor.root!.children[0]!;
+				edytor.undoManager.stopCapturing();
+				await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'abc' });
+				expect(plainText(edytor)).toBe('abc');
+				expect(caret(edytor)).toEqual({ block: block.id, offset: 3, isCollapsed: true });
+
+				// A click moves the caret to the start.
+				editor.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+				await setNativeSelection(edytor, block.firstText, 0);
+				await flushDomUpdates();
+				expect(caret(edytor).offset).toBe(0);
+
+				await history(channel, edytor, editor, 'undo');
+				expect(plainText(edytor)).toBe('');
+				await history(channel, edytor, editor, 'redo');
+				expect(plainText(edytor)).toBe('abc');
+				expect(caret(edytor)).toEqual({ block: block.id, offset: 3, isCollapsed: true });
 			}
 		);
 	}

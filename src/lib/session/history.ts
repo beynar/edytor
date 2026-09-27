@@ -7,12 +7,15 @@
  *
  * Each stack item carries, per view, the selection values around it
  * (`meta: Map<viewKey, {before, after}>`): `before` is this view's value when
- * the item's first transaction began (whichever view or origin wrote it); `after` is its value when it
- * undid the item (the redo side). The replay's own item inherits the entry,
- * so undo and redo alternate between the two. One restorer — this view's,
- * only for the commands it issues — selects the recorded value; other views
- * and a headless `document.history` call restore nothing (their carets ride
- * the change, as for a remote undo).
+ * the item's first transaction began (whichever view or origin wrote it);
+ * `after` is the selection the item's last transaction left — the view's
+ * value at its end, then every `select()` of the same gesture (the command's
+ * result selection) until a newer gesture, transaction or history command.
+ * The replay's own item inherits the entry, so undo and redo alternate
+ * between the two. One restorer — this view's, only for the commands it
+ * issues — selects the recorded value; other views and a headless
+ * `document.history` call restore nothing (their carets ride the change, as
+ * for a remote undo).
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { textSelection, type SelectionValue } from './selection.js';
@@ -32,6 +35,8 @@ const entries = (item: StackItem): Map<unknown, Entry> => {
 export class History {
 	/** This view's value when the current outer transaction began. */
 	#start: SelectionValue | null = null;
+	/** The entry whose `after` follows this view's selection, and the gesture it belongs to. */
+	#open: { entry: Entry; gesture: number } | null = null;
 	#off: (() => void) | null = null;
 
 	constructor(private edytor: Edytor) {}
@@ -44,18 +49,21 @@ export class History {
 		const value = () => this.edytor.selection.value;
 		const begin = () => {
 			this.#start = value();
+			this.#open = null;
 		};
 		const record = ({ stackItem }: StackEvent) => {
 			if (um.undoing || um.redoing) {
-				// The replay's item inherits the popped item's entry; an undo
-				// records where this view was as the redo side.
+				// The replay's item inherits the popped item's entry.
 				const popped = um.currStackItem as StackItem | null;
 				const entry = popped && entries(popped).get(key);
-				if (entry) entries(stackItem).set(key, um.undoing ? { ...entry, after: value() } : entry);
+				if (entry) entries(stackItem).set(key, entry);
 				return;
 			}
 			const map = entries(stackItem);
-			if (!map.has(key)) map.set(key, { before: this.#start ?? value() });
+			const entry = map.get(key) ?? { before: this.#start ?? value() };
+			entry.after = value();
+			map.set(key, entry);
+			this.#open = { entry, gesture: this.edytor.gestureSerial };
 		};
 		doc.on('beforeTransaction', begin);
 		um.on('stack-item-added', record);
@@ -72,11 +80,20 @@ export class History {
 		this.#off = null;
 	};
 
+	/** A `select()` of this view: the open step's result selection, while its gesture lasts. */
+	selected = (value: SelectionValue) => {
+		const open = this.#open;
+		if (!open) return;
+		if (open.gesture === this.edytor.gestureSerial) open.entry.after = value;
+		else this.#open = null;
+	};
+
 	undo = () => this.#run('undo');
 	redo = () => this.#run('redo');
 
 	#run(command: 'undo' | 'redo') {
 		const { undoManager: um, transaction: key, selection, facade } = this.edytor;
+		this.#open = null;
 		// Other writers (remote-apply and repair restores) stand aside while the
 		// replay commits: this view's recorded value decides.
 		selection.expectHistoryRestore = true;

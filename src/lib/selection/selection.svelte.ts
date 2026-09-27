@@ -596,6 +596,7 @@ export class EdytorSelection {
 		this.#edges = edges;
 		const state = this.state;
 		this.#written = state;
+		this.edytor.history?.selected(value);
 		if (state.startText) {
 			this.#lastText = state.startText;
 			this.#lastBlock = state.startBlock;

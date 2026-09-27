@@ -311,6 +311,10 @@ describe('multi-view shared history — per-view selection values', () => {
 		// issuer. For v2 the pop is indistinguishable from a REMOTE undo:
 		// its caret is left alone, never regressed to the snapshot it
 		// recorded when the undone edit committed.
+		// A newer gesture moves both carets: the step's `after` stays where
+		// the edit left each view.
+		v1.markUserGesture();
+		v2.markUserGesture();
 		v1.selection.setCollapsedStateAtTextOffset(text, 0);
 		v2.selection.setCollapsedStateAtTextOffset(text, 0);
 		v1.historyUndo();
@@ -318,11 +322,11 @@ describe('multi-view shared history — per-view selection values', () => {
 		expect(v1.selection.state.yStart).toBe(1); // issuer restores its snapshot
 		expect(v2.selection.state.yStart).toBe(0); // sibling untouched — not pulled back to 2
 
-		// The popped item moved to the redo side carrying both views'
-		// at-undo-time carets — still keyed per view.
+		// The redo side carries both views' entries, still keyed per view:
+		// `after` is where the step's transaction left each caret.
 		const popped = document.history.redoStack.at(-1)!;
-		expect(recorded(v1, popped, 'after')).toBe(0);
-		expect(recorded(v2, popped, 'after')).toBe(0);
+		expect(recorded(v1, popped, 'after')).toBe(1);
+		expect(recorded(v2, popped, 'after')).toBe(2);
 
 		v1.selection.destroy();
 		v2.selection.destroy();

@@ -299,6 +299,40 @@ describe('F-T12 — a late identical seed after another client edited the seed (
 	}
 });
 
+describe('F-T11b — the same template with a different key order (canonical seed)', () => {
+	const keyed = (order) => ({
+		children: [
+			{
+				type: 'paragraph',
+				data: order
+					? { align: 'left', level: 1, meta: { a: 1, b: 2 } }
+					: { meta: { b: 2, a: 1 }, level: 1, align: 'left' },
+				content: [
+					{
+						text: 'Same',
+						marks: order ? { bold: true, italic: true } : { italic: true, bold: true }
+					}
+				]
+			}
+		]
+	});
+	for (const [a, b] of ASSIGNMENTS.slice(0, 2)) {
+		for (const delivery of DELIVERIES) {
+			it(`one copy, converged (A=${a}, B=${b}, ${JSON.stringify(delivery)})`, () => {
+				const A = documentOn(a);
+				const B = documentOn(b);
+				A.sync(keyed(true));
+				B.sync(keyed(false));
+				exchange([A, B], delivery);
+				expect(topIds(A)).toHaveLength(1);
+				expect(json(A)).toEqual(json(B));
+				A.destroy();
+				B.destroy();
+			});
+		}
+	}
+});
+
 describe('F-T13 — caller ids survive (FP-1)', () => {
 	const demo = {
 		children: [

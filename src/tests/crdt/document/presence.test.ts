@@ -3,9 +3,10 @@
  *
  * One awareness instance per document is shared by every view; actor/user
  * are document-level fields published once; `selections` holds ONE entry
- * per live view (per-view presence — sibling teardown can no longer
- * clobber a surviving view's caret). D-16: no legacy `selection` mirror;
- * a peer renders the freshest valid entry.
+ * per live view, keyed by the key that view minted and written only by it
+ * (T6/R1 — a view's own teardown clears its entry; nobody sweeps another
+ * view's key). D-16: no legacy `selection` mirror; a peer renders the
+ * freshest valid entry.
  *
  * `Awareness.destroy()` is idempotent (F6 — the owned-doc + owned-
  * awareness composition used to double-emit). View-carried `sync`
@@ -24,11 +25,10 @@ import {
 } from '../../../lib/crdt/index.js';
 import {
 	freshestPublishedSelection,
-	publishAwarenessSelection,
+	publishPresence,
 	whenDocumentReady,
 	type EdytorSync
 } from '../../../lib/collaboration/index.js';
-import { clearAwarenessSelection } from '../../../lib/collaboration/awarenessSelection.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { noSelection } from '../../../lib/session/selection.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
@@ -113,7 +113,7 @@ describe('per-view selection presence', () => {
 		publishSelection(v2, 4);
 		expect(Object.keys(selectionsOf(document))).toHaveLength(2);
 
-		v1.destroy(); // edytor.destroyed is set before selection.destroy() runs
+		v1.destroy(); // clears v1's own key
 		const survivors = selectionsOf(document);
 		expect(Object.keys(survivors)).toHaveLength(1);
 		expect(freshestOffset(document, v2)).toBe(4); // v2's caret is the mirror now
@@ -127,21 +127,37 @@ describe('per-view selection presence', () => {
 		document.destroy();
 	});
 
-	it('a sibling publish sweeps entries whose owner view died without teardown', () => {
+	it('a view destroyed without selection teardown still clears its own entry (F-T10, C14)', () => {
 		const document = createDocument({ value: docValue() });
 		const v1 = makeView(document);
 		const v2 = makeView(document);
 
 		publishSelection(v1, 2);
-		// v1 died without running selection.destroy() — mark it destroyed
-		// the way Edytor.destroy() does before clearing awareness.
-		v1.destroyed = true;
+		publishSelection(v2, 6);
+		v1.selection.destroy = () => {}; // the selection layer's teardown never runs
 
-		publishSelection(v2, 6); // sweeps v1's dead entry as it writes its own
-		const survivors = selectionsOf(document);
-		expect(Object.keys(survivors)).toHaveLength(1);
+		v1.destroy(); // no sibling activity needed
+		expect(Object.keys(selectionsOf(document))).toEqual([v2.presenceKey]);
 		expect(freshestOffset(document, v2)).toBe(6);
 
+		v2.destroy();
+		document.destroy();
+	});
+
+	it('a sibling publish writes only its own key — no sweep (R1)', () => {
+		const document = createDocument({ value: docValue() });
+		const v1 = makeView(document);
+		const v2 = makeView(document);
+
+		publishSelection(v1, 2);
+		const entry = selectionsOf(document)[v1.presenceKey];
+		v1.destroyed = true; // dead, teardown not run yet: the entry is still v1's to clear
+
+		publishSelection(v2, 6);
+		expect(selectionsOf(document)[v1.presenceKey]).toEqual(entry);
+
+		v1.destroyed = false;
+		v1.destroy();
 		v2.destroy();
 		document.destroy();
 	});
@@ -156,7 +172,6 @@ describe('per-view selection presence', () => {
 
 		// v1's selection goes null (blur) — its key drops, v2's survives.
 		v1.selection.select(noSelection);
-		publishAwarenessSelection(v1.selection);
 		expect(Object.keys(selectionsOf(document))).toHaveLength(1);
 		expect(freshestOffset(document, v2)).toBe(5);
 
@@ -409,31 +424,28 @@ describe('attachSync + view integration', () => {
 	});
 });
 
-describe('clearAwarenessSelection — remount (U6b/R4)', () => {
-	it('does not rebroadcast an identical presence map when nothing died', () => {
+describe('presence teardown (U6b/R4, T6)', () => {
+	it('clearing a key that holds no entry does not broadcast', () => {
 		const document = createDocument({ value: docValue() });
 		const v1 = makeView(document);
+		const v2 = makeView(document);
 		publishSelection(v1, 3);
 
-		// A live view's remount fires clearAwarenessSelection while its
-		// owner is still alive — nothing is swept and the recomputed
-		// mirror is identical, so no `setLocalState` may broadcast.
 		const spy = vi.spyOn(document.awareness, 'setLocalState');
-		clearAwarenessSelection(document.awareness);
+		v2.destroy(); // v2 never published — nothing to clear
 		expect(spy).not.toHaveBeenCalled();
 
 		v1.destroy();
 		document.destroy();
 	});
 
-	it('still broadcasts once when a dead entry is actually swept', () => {
+	it("a view's teardown broadcasts once and drops the emptied field", () => {
 		const document = createDocument({ value: docValue() });
 		const v1 = makeView(document);
 		publishSelection(v1, 3);
-		v1.destroyed = true; // died without running selection.destroy()
 
 		const spy = vi.spyOn(document.awareness, 'setLocalState');
-		clearAwarenessSelection(document.awareness);
+		v1.destroy();
 		expect(spy).toHaveBeenCalledTimes(1);
 		expect(document.awareness.getLocalState()?.selections).toBeUndefined();
 
@@ -441,7 +453,7 @@ describe('clearAwarenessSelection — remount (U6b/R4)', () => {
 	});
 });
 
-describe('publishAwarenessSelection — write dedupe (U8a)', () => {
+describe('publishPresence — write dedupe (U8a)', () => {
 	it('does not rebroadcast when the published payload is unchanged', () => {
 		const document = createDocument({ value: docValue() });
 		const v1 = makeView(document);
@@ -507,7 +519,7 @@ describe('publishAwarenessSelection — write dedupe (U8a)', () => {
 		expect(spy).toHaveBeenCalledTimes(1);
 		expect(document.awareness.getLocalState()?.selections).toBeUndefined();
 
-		publishAwarenessSelection(v1.selection); // already cleared — no-op
+		publishPresence(document.awareness, v1.presenceKey, null); // already cleared — no-op
 		expect(spy).toHaveBeenCalledTimes(1);
 
 		v1.destroy();

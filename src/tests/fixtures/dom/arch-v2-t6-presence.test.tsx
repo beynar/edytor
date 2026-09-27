@@ -24,8 +24,8 @@ import { noSelection } from '$lib/session/selection.js';
 import type { JSONDoc } from '$lib/utils/json.js';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 
-/** Red on the reference; green since T6. */
-const row = it.fails;
+/** Red on the reference (expected-fail in the tests-first commit); green since T6. */
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 

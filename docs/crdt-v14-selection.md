@@ -113,25 +113,25 @@ text-position concern).
 
 ## Presence contract
 
-`EdytorAwarenessSelection` (awareness `selection` field):
+One encoding per view key (T6; plan L10, R1, D-16). The awareness local
+state carries `selections: Record<viewKey, entry>`, where an entry is
+`serialize(value)` plus a client-local publish sequence `t`:
 
-- `start`/`end`: `TextAnchor | null` — serialized anchors with affinity
-  (range start `'right'`, end/caret `'left'`).
-- `startTextId`/`endTextId`, `yStart`/`yEnd`, `isCollapsed`,
-  `isReversed`: compatibility fields for older peers and as the numeric
-  fallback.
+- text: `{start, end, collapsed, reversed, t}` — `start`/`end` are
+  `DocAnchor`s in document order (a range start binds right, an end or a
+  caret binds left);
+- block set: `{blocks, t}`; inline atom: `{atom, block, t}` (published,
+  not drawn as remote carets).
 
-Remote rendering (`getRenderedRemoteSelections`) resolves anchors first,
-then `startTextId`/`yStart`. `isTextAnchor` validates the wire shape —
-`{b: string, a: {i: {c,k}|null, a: number}}` — so foreign payloads
-(v13-shaped `RelativePosition` `{type,item,assoc}`, malformed objects)
-are safely ignored rather than interpreted with wrong offsets, and
-`resolveTextOffset` is wrapped so a malformed remote id degrades to "not
-rendered" instead of throwing. Awareness changes (`added`/`updated`/
-`removed`) drive `remotePresenceRevision`; `selection.destroy()` calls
-`clearAwarenessSelection` so detaching the editor drops our published
-caret (the awareness object itself is owned by the provider, which
-already broadcasts `setLocalState(null)` on disconnect).
+Each view mints its key (`Edytor.presenceKey`) and is the only writer of
+that entry: `select()` publishes when the value changed (an unchanged
+payload is not rebroadcast and keeps its `t`), and `Edytor.destroy()`
+clears it. Nobody removes another view's key; a DOM remount of a live view
+leaves its entry alone. Peers render one caret per client — the freshest
+valid text entry (`freshestPublishedSelection`), resolved by
+`resolvePeerSelection` (`isTextAnchor` validates the wire shape, so
+foreign payloads such as v13 `RelativePosition` objects are ignored); an
+anchor that does not resolve paints nothing.
 
 ## History
 

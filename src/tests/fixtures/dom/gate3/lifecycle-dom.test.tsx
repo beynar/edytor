@@ -6,8 +6,8 @@
  *     every `{#key editorDomRevision}` remount pushes a fresh cleanup batch
  *     onto the same array — pinned: the array always holds exactly one live
  *     batch, so dead closures and detached editor DOM trees never accrete.
- *  2. Unmount clears the published awareness selection (selection.destroy
- *     → clearAwarenessSelection) — the remote-caret cleanup contract.
+ *  2. Unmount clears the published awareness selection (Edytor.destroy
+ *     clears the view's own presence key) — the remote-caret cleanup contract.
  *  3. Observer boundary: unmanaged DOM nodes injected inside a managed
  *     text element get reconciled; managed-node removal is repaired.
  */

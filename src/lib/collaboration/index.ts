@@ -1,7 +1,6 @@
 export {
-	createAwarenessSelection,
 	freshestPublishedSelection,
-	publishAwarenessSelection,
+	publishPresence,
 	type EdytorAwarenessSelection,
 	type EdytorAwarenessState,
 	type EdytorAwarenessUser,

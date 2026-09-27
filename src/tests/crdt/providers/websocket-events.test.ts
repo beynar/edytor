@@ -3,7 +3,9 @@
  * terminal `failed` contract (D4).
  *
  * - `connect: false` defers the socket until `connect()`; `params` reach
- *   the URL; `protocols` reach the polyfill; `status` events fire in order.
+ *   the URL; `status` events fire in order. (`protocols` and the
+ *   `wsconnecting` flag are retired — D-24 G-e; see
+ *   `src/tests/crdt/arch-v2/g-e-websocket-surface.test.ts`.)
  * - `connection-close`/`connection-error` surface; a transient close is
  *   reconnectable and must NOT emit `failed`.
  * - A forged `permission-denied` auth reply emits `'permission-denied'`
@@ -107,14 +109,13 @@ describe('websocket options + socket events', () => {
 		await nextTick(60);
 		expect(p.ws).toBeNull();
 		expect(p.wsconnected).toBe(false);
-		expect(p.wsconnecting).toBe(false);
 
 		p.connect();
 		await until(() => p.wsconnected, 4000);
 		p.destroy();
 	});
 
-	test('params land on the URL and protocols reach the polyfill', async () => {
+	test('params land on the URL', async () => {
 		const url = uniqueUrl();
 		FakeWebSocket.instances = [];
 		const statuses = [];
@@ -123,7 +124,6 @@ describe('websocket options + socket events', () => {
 			// attach the listener first so the order is observable.
 			connect: false,
 			params: { token: 'abc', region: 'eu' },
-			protocols: ['edytor-v14'],
 			WebSocketPolyfill: FakeWebSocket,
 			disableBc: true
 		});
@@ -132,7 +132,6 @@ describe('websocket options + socket events', () => {
 		expect(p.url).toBe(`${url}/room?token=abc&region=eu`);
 		p.connect();
 		await until(() => p.wsconnected, 4000);
-		expect(FakeWebSocket.instances.at(-1).protocols).toEqual(['edytor-v14']);
 		expect(FakeWebSocket.instances.at(-1).url).toBe(`${url}/room?token=abc&region=eu`);
 		expect(statuses).toEqual(['connecting', 'connected']);
 		p.destroy();

@@ -4,7 +4,7 @@
  * A selection is a value: none, a text range of two anchors (the anchor where
  * it started, the focus that moves) with optional pending marks, one inline
  * atom, or a set of block ids. Anchors are the document's codec (`DocAnchor`,
- * `{b, a, o?}`: one item plus a side); nothing else is stored. Everything a
+ * `{b, a}`: one item plus a side); nothing else is stored. Everything a
  * command reads — endpoints as *(block, display offset)*, direction,
  * collapsed, covered blocks and segments, edge flags, island/void root, and
  * lazily the marks at the caret and the selected string — is `project(value,

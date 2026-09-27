@@ -61,7 +61,7 @@ import { getTextPath } from '$lib/events/events.utils.js';
  * replaces the v13 `RelativePosition`. Same wire shape as `DocAnchor` on
  * the facade (`facade.anchorAt`/`facade.resolveAnchor`).
  */
-export type TextAnchor = { b: string; a: Anchor; o?: string };
+export type TextAnchor = { b: string; a: Anchor };
 
 type SelectionState = {
 	yStart: number;

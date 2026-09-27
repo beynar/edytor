@@ -24,23 +24,25 @@ Rule (verified across the endpoint matrix in
 `command-programs.test.tsx`): head keeps text `[0, yStart)`, tail keeps
 text `[yEnd, len)`, interior blocks die — then:
 
-- **`yEnd > 0` (tail cut):** tail suffix merges **into the head block**
+- **tail cut (`yEnd > 0`, or the seam covered):** tail suffix merges **into the head block**
   (head type/id wins). Head dies iff its prefix is empty; tail dies iff
   its suffix is empty. `[a@1→b@1] → "ab"`, `[a@1→c@1] nonadjacent → "ac"`,
   `[a@0→b@1] → "eta"` (head dies), `[a@1→b@2] → "a","cc"` (tail dies).
-- **`yEnd == 0` (range ends on the tail's start boundary):** the tail is
-  **untouched** and no merge runs — head keeps its own block, emptied if
-  the range covered all its text. `[a@2→c@0] → "aa","cc"` (only the
-  interior block dies — the neighbors do NOT join);
-  `[a@0→b@0] → "","bb","cc"` (head survives empty).
-  _Reading (arch-v2 D6):_ an end at a block's start is the end of the
-  block before it in document order when that block renders its content
-  (the same canonical form the selection gives such a range), so the two
-  examples above are `[a@2→b@2]` and the whole-text `[a@0→a@2]`. When the
-  block before the tail renders no content (a list container, a void),
-  the end stays at the tail's start: the tail is untouched, no merge runs,
-  and the head follows the uniform head rule (it dies iff its prefix is
-  empty — `del.range.nested-tail`'s `alpha@0 → beta@0` pin).
+- **`yEnd == 0` (range ends on the tail's start boundary):** the
+  selection presents such a range, when the block before the tail shows
+  text, as ending at that block's end (its canonical form), so
+  `[a@2→c@0]` deletes as `[a@2→b@2]` → `"aa","cc"` (only the interior
+  block dies) and `[a@0→b@0]` as the whole-text `[a@0→a@2]` →
+  `"","bb","cc"` (head survives empty). A range that still ends on the
+  tail's start when it reaches the delete (a model range such as
+  Shift+ArrowRight's `note@4 → tail@0`, or one whose preceding block is a
+  container) is not special: it covers the seam, the tail's whole text is
+  its suffix, and the rules above apply — `["note","tail"]` →
+  `"notetail"` (`navigation-selection-sync.spec` seam delete), and with an
+  empty head prefix the tail survives whole with its id
+  (`del.range.nested-tail`'s `alpha@0 → beta@0` pin). _(arch-v2 D6 fix:
+  the document op does not canonicalize; the first D6 reading, "tail
+  untouched", broke the seam delete.)_
 - **Merge capability:** the tail's suffix merges into the head only when
   the document's `canMerge(tail, head)` allows it (`del.range.island-seal`).
 
@@ -133,8 +135,8 @@ the head instead of synthesizing a survivor.)
 
 The head survives → `head@yStart`; else the tail survives → `tail@0`
 (`sel.seam.next-sibling`: the block that slid into the head's place);
-else the nearest surviving block before the range that renders content,
-at its end; else the nearest one after it, at its start; else the
+else the nearest surviving block before the tail that renders content
+(an island a sealed rescue kept inside the range counts), at its end; else the nearest one after it, at its start; else the
 survivor `del.range.whole-doc` synthesizes, at 0.
 
 ### `del.range.nested-subtree` — range covers a whole subtree

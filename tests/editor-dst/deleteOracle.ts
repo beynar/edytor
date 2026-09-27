@@ -1209,10 +1209,9 @@ const describeDeleteInner = (
 	 * The document's range deletion (`prepare.deleteRange`, arch-v2 D6) —
 	 * the `del.range.*` rows of `docs/editor-delete-contract.md`, re-derived
 	 * on the oracle tree: head keeps its prefix (dies iff empty), tail keeps
-	 * its suffix (dies iff cut to empty), blocks strictly between die, a cut
-	 * tail merges into a surviving head when the island seal allows; an end
-	 * at a block start is the end of the block before it when that block
-	 * shows text (else the tail is untouched); what follows the range end
+	 * its suffix (dies iff empty), blocks strictly between die, the tail's
+	 * suffix merges into a surviving head when the island seal allows (an
+	 * end at the tail's start included: the seam is deleted); what follows the range end
 	 * takes the topmost dying container's slot unless that crosses an island;
 	 * containers that show no text and lose every child die; a document left
 	 * with nothing to hold the caret gets one fresh block.
@@ -1223,14 +1222,9 @@ const describeDeleteInner = (
 		const walk = (block: OBlock) => block.children.forEach((kid) => (order.push(kid), walk(kid)));
 		walk(root);
 		const S = startBlock;
-		let E = endBlock;
+		const E = endBlock;
 		const s = partAtomOffset(S, start.partIndex) + yStart;
-		let e = partAtomOffset(E, end.partIndex) + yEnd;
-		const previous = order[order.indexOf(E) - 1];
-		if (E !== S && e === 0 && previous && shows(previous)) {
-			E = previous;
-			e = blockAtomLength(previous);
-		}
+		const e = partAtomOffset(E, end.partIndex) + yEnd;
 		if (E === S) {
 			deleteAtomRange(S, s, e);
 			return;
@@ -1239,9 +1233,9 @@ const describeDeleteInner = (
 		for (let a = E.parent; a && !a.isRoot; a = a.parent) chain.push(a);
 		const between = order.slice(order.indexOf(S) + 1, order.indexOf(E));
 		const headDies = s === 0;
-		const tailDies = e > 0 && e === blockAtomLength(E);
+		const tailDies = e === blockAtomLength(E);
 		const sameSide = islandOf(E) === islandOf(S) || S === islandOf(E);
-		const merges = !headDies && e > 0 && !tailDies && !E.void && !S.void && sameSide;
+		const merges = !headDies && !tailDies && !E.void && !S.void && sameSide;
 		const tailGone = tailDies || merges;
 		const partial = chain.filter((a) => (headDies && a === S) || between.includes(a));
 		const top = partial.at(-1);

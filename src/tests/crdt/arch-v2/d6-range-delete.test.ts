@@ -104,18 +104,36 @@ describe('del.range.flat — flat siblings', () => {
 		expect(tree(f)).toEqual([P('a', 'a'), P('c', 'cc')]);
 	});
 
-	row('yEnd == 0: [a@2→c@0] → "aa","cc" (the neighbours do not join)', () => {
+	// D6 fix: the document op does not canonicalize an end at the tail's start —
+	// the range covers the seam (del.range.flat, `yEnd == 0`; the selection's
+	// canonical form gives the contract's `"aa","cc"` / `"","bb","cc"` examples).
+	row('yEnd == 0 at the op: [a@2→c@0] covers the seam → "aacc"', () => {
 		const f = threeFlat();
 		const { at } = del(f, ['a', 2], ['c', 0]);
-		expect(tree(f)).toEqual([P('a', 'aa'), P('c', 'cc')]);
+		expect(tree(f)).toEqual([P('a', 'aacc')]);
 		expect(at).toEqual({ block: 'a', offset: 2 });
 	});
 
-	row('yEnd == 0: [a@0→b@0] → "","bb","cc" (the head survives empty)', () => {
+	row('yEnd == 0 at the op, adjacent: [a@2→b@0] joins the seam → "aabb"', () => {
+		const f = threeFlat();
+		del(f, ['a', 2], ['b', 0]);
+		expect(tree(f)).toEqual([P('a', 'aabb'), P('c', 'cc')]);
+	});
+
+	row('yEnd == 0 at the op, empty head prefix: [a@0→b@0] → the tail survives whole', () => {
 		const f = threeFlat();
 		const { at } = del(f, ['a', 0], ['b', 0]);
-		expect(tree(f)).toEqual([P('a', ''), P('b', 'bb'), P('c', 'cc')]);
-		expect(at).toEqual({ block: 'a', offset: 0 });
+		expect(tree(f)).toEqual([P('b', 'bb'), P('c', 'cc')]);
+		expect(at).toEqual({ block: 'b', offset: 0 });
+	});
+
+	row('the canonical forms of those ranges give the contract examples', () => {
+		const f = threeFlat();
+		del(f, ['a', 2], ['b', 2]);
+		expect(tree(f)).toEqual([P('a', 'aa'), P('c', 'cc')]);
+		const g = threeFlat();
+		del(g, ['a', 0], ['a', 2]);
+		expect(tree(g)).toEqual([P('a', ''), P('b', 'bb'), P('c', 'cc')]);
 	});
 
 	row('the positions may be given end first (a reversed selection)', () => {

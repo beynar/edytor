@@ -6,11 +6,10 @@
  * - the head keeps `[0, start)`, the tail keeps `[end, len)`, and every
  *   block strictly between them in document order dies;
  * - the head dies iff its prefix is empty (never for a replacement,
- *   `del.range.replace`); the tail dies iff it was cut and its suffix is
- *   empty; otherwise, a cut tail's suffix merges into a surviving head when
- *   `canMerge(tail, head)` allows it (`del.range.island-seal`);
- * - an end at a block's start is the end of the block before it when that
- *   block renders content; otherwise the tail is untouched (`yEnd == 0`);
+ *   `del.range.replace`) and the tail then keeps its id; the tail dies iff
+ *   its suffix is empty; otherwise the tail's suffix merges into the head
+ *   when `canMerge(tail, head)` allows it (`del.range.island-seal`) — an end
+ *   at the tail's start included: the seam between them is deleted;
  * - what follows the range end survives: the dying tail's children and the
  *   later siblings inside every container the range dies through take the
  *   topmost such container's slot, unless that would cross an island seal —
@@ -66,9 +65,6 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 			const { ids, at } = c.order();
 			if (at.get(s.block)! > at.get(e.block)! || (s.block === e.block && s.offset > e.offset))
 				[s, e] = [e, s];
-			const before = e.offset === 0 && e.block !== s.block ? ids[at.get(e.block)! - 1] : undefined;
-			if (before !== undefined && holds(before))
-				e = { block: before, offset: c.displayLength(before) };
 			const S = s.block;
 			const E = e.block;
 			if (S === E) {
@@ -83,8 +79,8 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 			const between = ids.slice(at.get(S)! + 1, at.get(E)!);
 			const headDies = !keepHead && s.offset === 0;
 			const lenE = c.displayLength(E);
-			const tailDies = e.offset > 0 && e.offset === lenE;
-			const merges = !headDies && e.offset > 0 && !tailDies && c.canMerge(E, S);
+			const tailDies = e.offset === lenE;
+			const merges = !headDies && !tailDies && c.canMerge(E, S);
 			const tailGone = tailDies || merges;
 
 			// E's ancestors the range starts before die unless the rescue would cross an island.
@@ -132,7 +128,8 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 			if (merges) {
 				// The whole tail merges, then its cut prefix goes: E's own text is never written.
 				writes.push({ op: 'mergeBlocks', from: E, into: S, at: s.offset, length: lenE });
-				writes.push({ op: 'deleteText', id: S, offset: s.offset, length: e.offset });
+				if (e.offset > 0)
+					writes.push({ op: 'deleteText', id: S, offset: s.offset, length: e.offset });
 			}
 			const kept = [...rescued, ...(merges ? [E] : [])];
 			for (const id of doomed) if (!doomed.has(parent(id)!)) writes.push(c.remove(id, kept));
@@ -143,7 +140,8 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 				const survives = (id: BlockId | null): boolean =>
 					id === null || rescued.includes(id) || (!gone(id) && survives(parent(id)));
 				const shown = (id: BlockId) => survives(id) && holds(id);
-				const prev = ids.slice(0, at.get(S)).findLast(shown);
+				// Before the tail: blocks a sealed rescue spared between S and E count too.
+				const prev = ids.slice(0, at.get(E)).findLast(shown);
 				if (prev !== undefined) return { block: prev, offset: c.displayLength(prev) };
 				return { block: ids.slice(at.get(E)! + 1).find(shown) ?? newId, offset: 0 };
 			})();

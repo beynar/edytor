@@ -43,6 +43,12 @@ export function deleteContentWithinSelection(
 	const prepare = replace ? this.facade.prepare.replaceRange : this.facade.prepare.deleteRange;
 	const plan = prepare(at(startText, yStart), at(endText, yEnd), id('b'));
 	if (!('writes' in plan) || !plan.at) return [startText, yStart];
+	// Undo restores the selection current before the delete: snapshot it before
+	// the write (unless the command queued one) by text ids, paths and offsets —
+	// undo restores exactly this structure. No anchors: they would bind atoms the
+	// delete removes (undo re-creates them) or, minted after it, merged atoms.
+	if (!this.selection.nextUndoSelectionSnapshot)
+		this.selection.queueNextUndoSelectionSnapshot({ startAnchor: null, endAnchor: null });
 	this.facade.apply(plan);
 	this.flushMirror();
 	const block = this.idToBlock.get(plan.at.block);

@@ -30,7 +30,7 @@ import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 
 /** Red on the reference (flipped to `it` by I2). */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -111,7 +111,8 @@ const caretAt = (node: Node, offset: number) => {
 
 const firstBlock = (edytor: Edytor) => edytor.root!.children[0]!;
 const firstText = (edytor: Edytor) => firstBlock(edytor).firstText!;
-const domText = (edytor: Edytor) => (firstText(edytor).node?.textContent ?? '').replace(/​/g, '');
+const domText = (edytor: Edytor) =>
+	(firstText(edytor).node?.textContent ?? '').replace(/\u200B/g, '');
 const content = (edytor: Edytor) => firstBlock(edytor).value.content;
 
 /** `n` characters of `word ` repeated: no shared edge with a different word. */

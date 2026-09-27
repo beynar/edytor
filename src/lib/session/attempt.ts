@@ -110,14 +110,8 @@ export type TextPoint = { text: Text; offset: number };
 export type Expect =
 	/** The model performs the attempt; DOM changes before its deadline are drift. */
 	| { kind: 'drift'; mode: Drift; input: boolean; caret: TextPoint | null }
-	/** The browser performs the attempt: the change it makes on `host`. */
-	| {
-			kind: 'change';
-			host: Text;
-			before: string;
-			after: string | null;
-			caret: number;
-	  };
+	/** The browser performs the attempt on `host` (`after`: the text it should leave, when known). */
+	| { kind: 'change'; host: Text; after: string | null };
 
 export type Occurrence = {
 	/** The inputType the browser reported (or the key's intent). */
@@ -283,13 +277,11 @@ export class Attempts {
 		if (expect?.kind === 'drift') expect.caret = { text, offset };
 	};
 
-	/** The browser's change on `host` was adopted: its attempt applied. */
-	adopted = (host: Text) => {
-		const attempt = this.#queue.findLast(
+	/** The open browser-owned attempt whose change is expected on `host`: its adoption owns it. */
+	on = (host: Text) =>
+		this.#queue.findLast(
 			(a) => a.expect?.kind === 'change' && a.expect.host === host && a.phase === 'open'
-		);
-		if (attempt) attempt.phase = 'applied';
-	};
+		) ?? null;
 
 	/** Any model-owned attempt or held model write is live (quiescence probes). */
 	get busy() {

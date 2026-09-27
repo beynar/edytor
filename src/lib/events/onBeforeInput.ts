@@ -295,28 +295,21 @@ const isTextLocalRearrangeInput = (edytor: Edytor, attempt: Attempt) =>
  */
 const browserExpectation = (edytor: Edytor, attempt: Attempt): Expect | null | undefined => {
 	const text = attempt.startText;
-	const change = (caret: number, after: string | null = null): Expect | null =>
+	const change = (after: string | null = null): Expect | null =>
 		text && edytor.selection.selectedBlocks.size === 0
-			? { kind: 'change', host: text, before: text.stringContent, after, caret }
+			? { kind: 'change', host: text, after }
 			: null;
 	if (isSafeTextLocalInsertion(edytor, attempt)) {
-		const { yStart } = attempt;
-		const data = attempt.data ?? '';
 		const before = text!.stringContent;
-		return change(yStart + data.length, before.slice(0, yStart) + data + before.slice(yStart));
+		return change(before.slice(0, attempt.yStart) + attempt.data + before.slice(attempt.yStart));
 	}
-	if (!attempt.hasDataTransferTextPayload && isTextLocalReplacement(edytor, attempt))
-		return change(attempt.yStart);
-	// Transpose/yank — the caret stays at the same model offset after the
-	// native rearrange; the target keeps the plugin insert notifications.
-	if (isTextLocalRearrangeInput(edytor, attempt)) return change(attempt.yStart);
-	if (isTextLocalDeletion(edytor, attempt)) {
-		const at =
-			!attempt.isCollapsed || attempt.inputType === 'deleteContentForward'
-				? attempt.yStart
-				: Math.max(0, attempt.yStart - 1);
-		return change(at);
-	}
+	if (
+		(!attempt.hasDataTransferTextPayload && isTextLocalReplacement(edytor, attempt)) ||
+		// Transpose/yank: the browser rearranges; the model adopts it.
+		isTextLocalRearrangeInput(edytor, attempt) ||
+		isTextLocalDeletion(edytor, attempt)
+	)
+		return change();
 	if (attempt.inputType === 'deleteCompositionText') return null;
 	return undefined;
 };
@@ -352,8 +345,10 @@ const androidNoOpBackspaceDeadline = (edytor: Edytor, attempt: Attempt) => {
 	}
 
 	setTimeout(() => {
+		// Did this attempt's adoption apply (or refuse) a deletion (BI-8)?
 		if (
-			attempt.phase !== 'open' ||
+			attempt.phase === 'applied' ||
+			attempt.phase === 'failed' ||
 			!text.isInDocument ||
 			!sameValue(edytor.selection.value, attempt.target) ||
 			getNormalizedDomText(text) !== text.stringContent

@@ -1,12 +1,9 @@
 import type { Edytor } from '../edytor.svelte.js';
 import { tick } from 'svelte';
 import { diffText } from '$lib/utils/diffText.js';
-import type { SerializableContent } from '$lib/utils/json.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
 import { isInsideTrailingNewlineMarker } from '$lib/selection/selection.utils.js';
-import { activeMarks, marksForInsertion } from '$lib/session/editing/text.js';
-import { jsonValuesEqual } from '$lib/collaboration/awarenessSelection.js';
 import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
 import { replaceSelectionWithCollapsedTarget } from '$lib/selection/replaceSelection.js';
 import {
@@ -15,21 +12,15 @@ import {
 } from './nativeInteractiveControl.js';
 import { getTextContentOffsetAtPoint } from './domTextOffset.js';
 import { runOccurrence } from './onBeforeInput.js';
-import { kindOf, type Attempt, type Expect, type TextPoint } from '$lib/session/attempt.js';
+import {
+	attemptOf,
+	kindOf,
+	type Attempt,
+	type Expect,
+	type TextPoint
+} from '$lib/session/attempt.js';
 
 const ZERO_WIDTH_SPACE = '\u200B';
-
-type PlannedDiffOperation =
-	| { type: 'delete'; index: number; length: number }
-	| {
-			type: 'insert';
-			index: number;
-			value: string;
-			marks?: Record<string, SerializableContent>;
-	  };
-
-const isComposingInputEvent = (event: Event) =>
-	typeof InputEvent !== 'undefined' && event instanceof InputEvent && event.isComposing;
 
 const isCompositionCommitInputEvent = (event: Event) =>
 	typeof InputEvent !== 'undefined' &&
@@ -73,7 +64,7 @@ export const getNormalizedDomText = (text: Text) => {
 	return value;
 };
 
-export const isLiveText = (text: Text) => text.isInDocument;
+const isLiveText = (text: Text) => text.isInDocument;
 
 const getDomOffsetWithinText = (text: Text, node: Node, offset: number) => {
 	if (!text.node) {
@@ -153,99 +144,16 @@ const driftRepairTarget = (
 	);
 };
 
-const removeUnmanagedLineBreaks = (text: Text) => {
+export const removeUnmanagedLineBreaks = (text: Text) => {
 	text.node?.querySelectorAll('br').forEach((lineBreak) => {
 		lineBreak.remove();
 	});
 };
 
-/** The marks of a native deletion's removed runs when they are all the same (kept pending). */
-const getPendingMarksForDeletionOnlyDiff = (text: Text, operations: PlannedDiffOperation[]) => {
-	const parts = operations.flatMap((operation) =>
-		operation.type === 'delete'
-			? text.getMarksAtRange(operation.index, operation.index + operation.length)
-			: [{ text: '' }]
-	);
-	const marks = activeMarks(parts[0]?.marks);
-	return Object.keys(marks).length > 0 &&
-		parts.every((part) => jsonValuesEqual(activeMarks(part.marks), marks))
-		? marks
-		: undefined;
-};
-
-const planDomTextDiff = (text: Text, modelText: string, domText: string) => {
-	const operations: PlannedDiffOperation[] = [];
-	let index = 0;
-
-	for (const operation of diffText(modelText, domText)) {
-		if (operation.retain) {
-			index += operation.retain;
-		}
-
-		if (operation.delete) {
-			operations.push({
-				type: 'delete',
-				index,
-				length: operation.delete
-			});
-		}
-
-		if (operation.insert) {
-			operations.push({
-				type: 'insert',
-				index,
-				value: operation.insert,
-				marks: marksForInsertion(text, index, { pending: text.markOnNextInsert })
-			});
-			index += operation.insert.length;
-		}
-	}
-
-	return operations;
-};
-
-const getCaretOffsetAfterTextDiff = (
-	valueBeforeInput: string,
-	valueAfterInput: string,
-	fallbackOffset: number
-) => {
-	let index = 0;
-	let changedOffset: number | null = null;
-
-	for (const operation of diffText(valueBeforeInput, valueAfterInput)) {
-		if (operation.retain) {
-			index += operation.retain;
-		}
-
-		if (operation.delete) {
-			changedOffset = index;
-		}
-
-		if (operation.insert) {
-			changedOffset = index + operation.insert.length;
-			index += operation.insert.length;
-		}
-	}
-
-	return changedOffset ?? fallbackOffset;
-};
-
 const getNativeLineBreakInsertionIndexFromValue = (text: Text, value: string) => {
-	const operations = planDomTextDiff(text, text.stringContent, value);
-	if (operations.length !== 1) {
-		return null;
-	}
-
-	const operation = operations[0];
-	if (operation.type !== 'insert' || !/^[\r\n]+$/.test(operation.value)) {
-		return null;
-	}
-
-	return operation.index;
+	const change = diffText(text.stringContent, value);
+	return change && !change.remove && /^[\r\n]+$/.test(change.insert) ? change.at : null;
 };
-
-const getNativeLineBreakInsertionIndex = (text: Text) =>
-	getNativeLineBreakInsertionIndexFromValue(text, getNormalizedDomText(text));
 
 export const handleNativeLineBreakTextValue = async (edytor: Edytor, text: Text, value: string) => {
 	if (!isLiveText(text)) {
@@ -282,154 +190,14 @@ const handleNativeLineBreakTextInput = async (edytor: Edytor, event: Event) => {
 	return target ? handleNativeLineBreakTextMutation(edytor, target.text) : false;
 };
 
-const applyDomTextDiff = (text: Text, domText: string) => {
-	const operations = planDomTextDiff(text, text.stringContent, domText);
-	if (operations.length === 0) {
-		return false;
-	}
-
-	const pendingMarksAfterDeletion = getPendingMarksForDeletionOnlyDiff(text, operations);
-	const shouldClearPendingMarks =
-		Boolean(text.markOnNextInsert) && operations.some((operation) => operation.type === 'insert');
-
-	text.edytor.transact(() => {
-		for (const operation of operations) {
-			if (operation.type === 'delete') {
-				const length = Math.min(operation.length, text.length - operation.index);
-				if (length > 0) {
-					text.deleteAt(operation.index, length);
-				}
-				continue;
-			}
-
-			if (operation.value.length > 0) {
-				text.insertAt(operation.index, operation.value, operation.marks);
-			}
-		}
-	});
-
-	if (shouldClearPendingMarks) {
-		text.markOnNextInsert = undefined;
-	}
-
-	if (pendingMarksAfterDeletion) {
-		text.markOnNextInsert = pendingMarksAfterDeletion;
-	}
-
-	return true;
-};
-
-const insertNativeMentionTrigger = async (edytor: Edytor, text: Text, value: string) => {
-	if (!edytor.inlineBlocks.has('mention')) {
-		return false;
-	}
-
-	const operations = planDomTextDiff(text, text.stringContent, value);
-	if (operations.length !== 1 || operations[0].type !== 'insert' || operations[0].value !== '@') {
-		return false;
-	}
-
-	text.refreshFromModel();
-	removeUnmanagedLineBreaks(text);
-	await tick();
-
-	const trailingText = text.parent.addInlineBlock({
-		index: operations[0].index,
-		block: {
-			type: 'mention',
-			data: {}
-		},
-		text
-	});
-	await tick();
-	scheduleRemoveStalePlaceholders(text);
-	const liveTrailingText = edytor.getTextById(trailingText.id) ?? trailingText;
-	await edytor.selection.setAtTextOffset(liveTrailingText, 0);
-	return true;
-};
-
-export const reconcileTextValue = async (
-	edytor: Edytor,
-	text: Text,
-	value: string,
-	selectionOffset?: number
-) => {
-	if (!isLiveText(text)) {
-		return false;
-	}
-
-	if (await insertNativeMentionTrigger(edytor, text, value)) {
-		return true;
-	}
-
-	const caretOffset =
-		typeof selectionOffset === 'number' ? Math.min(selectionOffset, value.length) : undefined;
-	if (!applyDomTextDiff(text, value)) {
-		scheduleRemoveStalePlaceholders(text);
-		return false;
-	}
-	edytor.attempts.adopted(text);
-
-	text.syncFromModel();
-	await tick();
-	scheduleRemoveStalePlaceholders(text);
-
-	if (typeof caretOffset === 'number') {
-		await edytor.selection.setAtTextOffset(text, caretOffset);
-	}
-
-	return true;
-};
-
-export const reconcileDomText = async (edytor: Edytor, text: Text, selectionOffset?: number) =>
-	reconcileTextValue(edytor, text, getNormalizedDomText(text), selectionOffset);
-
-export const reconcileFocusedDomText = async (edytor: Edytor, event?: Event) => {
-	if (
-		edytor.readonly ||
-		edytor.isComposing ||
-		(event &&
-			(isComposingInputEvent(event) ||
-				isNativeInteractiveEvent(event) ||
-				isNestedForeignEditableTarget(edytor.node, event.target)))
-	) {
-		return false;
-	}
-
-	const target = getCollapsedDomTextSelection(edytor);
-	if (!target) {
-		return false;
-	}
-
-	return reconcileDomText(edytor, target.text, target.offset);
-};
-
-const getExpandedSelectionInputText = (edytor: Edytor, event: Event) => {
-	if (
-		edytor.readonly ||
-		edytor.isComposing ||
-		!isTextInsertionInput(event) ||
-		edytor.selection.state.isCollapsed ||
-		edytor.selection.selectedBlocks.size > 0
-	) {
-		return null;
-	}
-
-	const value = event.data;
-	if (value) {
-		return value;
-	}
-
-	const { startText, endText } = edytor.selection.state;
-	if (!startText || startText !== endText) {
-		return null;
-	}
-
-	const insertedText = diffText(startText.stringContent, getNormalizedDomText(startText))
-		.map((operation) => operation.insert ?? '')
-		.join('');
-	return insertedText || null;
-};
+const getExpandedSelectionInputText = (edytor: Edytor, event: Event) =>
+	!edytor.readonly &&
+	!edytor.isComposing &&
+	isTextInsertionInput(event) &&
+	!edytor.selection.state.isCollapsed &&
+	edytor.selection.selectedBlocks.size === 0
+		? event.data
+		: null;
 
 const replaceExpandedSelectionFromInputOnlyText = async (edytor: Edytor, value: string) => {
 	const target = await replaceSelectionWithCollapsedTarget(edytor);
@@ -446,75 +214,6 @@ const replaceExpandedSelectionFromInputOnlyText = async (edytor: Edytor, value: 
 	await tick();
 	scheduleRemoveStalePlaceholders(target.text);
 	await edytor.selection.setAtTextOffset(target.text, target.offset + value.length);
-	return true;
-};
-
-const notifyBrowserOwnedTextInsertions = (
-	edytor: Edytor,
-	text: Text,
-	operations: PlannedDiffOperation[]
-) => {
-	for (const operation of operations) {
-		if (operation.type !== 'insert' || operation.value.length === 0) {
-			continue;
-		}
-
-		edytor.plugins.forEach((plugin) => {
-			plugin.onAfterOperation?.({
-				operation: 'insertText',
-				text,
-				block: text.parent,
-				payload: {
-					value: operation.value,
-					start: operation.index,
-					end: operation.index
-				}
-			});
-		});
-	}
-};
-
-/** Adopt the change a browser-owned attempt expected on its host. */
-const reconcileBrowserOwnedInputTarget = async (
-	edytor: Edytor,
-	attempt: Attempt,
-	expect: Extract<Expect, { kind: 'change' }>,
-	event: Event
-) => {
-	const { host } = expect;
-	if (!isLiveText(host)) {
-		return false;
-	}
-
-	if (kindOf(getInputType(event)) === 'delete' || kindOf(attempt.inputType) === 'delete') {
-		edytor.dispatcher.cut('deleteContent');
-	}
-
-	// A model-owned attempt's drift on the same host is not this attempt's
-	// change: adopt what this attempt expected, and re-render the rest.
-	const dom = getNormalizedDomText(host);
-	const drifted = expect.after !== null && dom !== expect.after && edytor.attempts.drifting(host);
-	const domText = drifted ? expect.after! : dom;
-	const nativeSelection = getCollapsedDomTextSelection(edytor);
-	const selectionOffset =
-		!drifted && nativeSelection?.text === host
-			? nativeSelection.offset
-			: getCaretOffsetAfterTextDiff(expect.before, domText, expect.caret);
-	const operations = planDomTextDiff(host, host.stringContent, domText);
-	// The reconcile is the input's command: it runs against the attempt's
-	// anchored target (a native selection jump may have moved the selection
-	// since), which history records as the step's `before`.
-	edytor.selection.select(attempt.target);
-
-	const didReconcile = await reconcileTextValue(edytor, host, domText, selectionOffset);
-	if (!didReconcile && host.stringContent !== domText) {
-		return false;
-	}
-	if (drifted) host.refreshFromModel();
-	attempt.phase = 'applied';
-
-	await edytor.selection.setAtTextOffset(host, Math.min(selectionOffset, host.length));
-	notifyBrowserOwnedTextInsertions(edytor, host, operations);
 	return true;
 };
 
@@ -564,58 +263,72 @@ const repairDrift = async (
 	}
 };
 
+/**
+ * An `input` no attempt expected (its engine sent no `beforeinput`): the
+ * browser changed the text under its caret — a browser-owned attempt of its own.
+ */
+const claimOf = (edytor: Edytor, event: Event) => {
+	const caret = !edytor.isComposing && getCollapsedDomTextSelection(edytor);
+	if (!caret || (event as InputEvent).isComposing) return null;
+	const attempt = attemptOf(edytor, { inputType: getInputType(event), cancelable: false });
+	return edytor.attempts.admit(attempt, 'browser', {
+		kind: 'change',
+		host: caret.text,
+		after: null
+	});
+};
+
+/**
+ * An `input` event. Model-owned drift is repaired here; browser-made text is
+ * never adopted here: the mutation queue is the only adopter (R8, L31), so
+ * the `input` flushes it — a browser-owned attempt's change is adopted there,
+ * once, through the dispatcher — then closes the attempt it belongs to.
+ */
 export async function onInput(this: Edytor, event: Event) {
 	// The attempt this `input` belongs to: the newest whose expectation it satisfies.
-	const attempt = this.attempts.inputOf(getInputType(event));
+	let attempt = this.attempts.inputOf(getInputType(event));
 	const expect = attempt?.expect;
 	if (attempt && expect?.kind === 'drift') {
 		return repairDrift(this, attempt, expect, event);
 	}
-	if (attempt) this.attempts.close(attempt);
 
-	if (
-		isNativeInteractiveEvent(event) ||
-		(event && isNestedForeignEditableTarget(this.node, event.target))
-	) {
-		return;
-	}
-
-	if (isNativeHistoryInput(event)) {
-		// Same guard as the beforeinput channel — a history command
-		// mid-composition consumes capture groups while the IME still
-		// owns the DOM node (engines that deliver history via `input`
-		// only would otherwise bypass the beforeinput swallow).
-		if (this.isComposing) {
+	try {
+		if (
+			isNativeInteractiveEvent(event) ||
+			(event && isNestedForeignEditableTarget(this.node, event.target))
+		) {
 			return;
 		}
-		runInputHistoryCommand(this, event);
-		return;
-	}
 
-	if (this.isComposing && isCompositionCommitInputEvent(event)) {
-		this.compositionState = null;
-		this.isComposing = false;
-		this.hasHandledCompositionInput = false;
-	}
-
-	if (await handleNativeLineBreakTextInput(this, event)) {
-		return;
-	}
-
-	const expandedSelectionInputText = getExpandedSelectionInputText(this, event);
-	if (expandedSelectionInputText) {
-		if (await replaceExpandedSelectionFromInputOnlyText(this, expandedSelectionInputText)) {
+		if (isNativeHistoryInput(event)) {
+			// Same guard as the beforeinput channel — a history command
+			// mid-composition consumes capture groups while the IME still
+			// owns the DOM node (engines that deliver history via `input`
+			// only would otherwise bypass the beforeinput swallow).
+			if (!this.isComposing) runInputHistoryCommand(this, event);
 			return;
 		}
-	}
 
-	if (
-		attempt &&
-		expect?.kind === 'change' &&
-		(await reconcileBrowserOwnedInputTarget(this, attempt, expect, event))
-	) {
-		return;
-	}
+		attempt ??= claimOf(this, event);
+		if (this.isComposing && isCompositionCommitInputEvent(event)) {
+			this.compositionState = null;
+			this.isComposing = false;
+			this.hasHandledCompositionInput = false;
+		}
 
-	await reconcileFocusedDomText(this, event);
+		if (await handleNativeLineBreakTextInput(this, event)) {
+			return;
+		}
+
+		const expandedSelectionInputText = getExpandedSelectionInputText(this, event);
+		if (expandedSelectionInputText) {
+			if (await replaceExpandedSelectionFromInputOnlyText(this, expandedSelectionInputText)) {
+				return;
+			}
+		}
+
+		await this.observer?.flushNow();
+	} finally {
+		if (attempt) this.attempts.close(attempt);
+	}
 }

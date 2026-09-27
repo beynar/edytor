@@ -316,6 +316,8 @@ export class Edytor {
 	hasHandledCompositionInput = false;
 	/** The view's input attempts (R8, L6): one per user occurrence. */
 	readonly attempts = new Attempts();
+	/** The DOM observer: the only adopter of browser-made text (R8, L31). */
+	observer: ReturnType<typeof observeDomTextMutations> | null = null;
 	private compositionSelectionRestoreFrame: number | null = null;
 	private compositionSelectionRestoreTimers: ReturnType<typeof setTimeout>[] = [];
 	/**
@@ -1751,7 +1753,7 @@ export class Edytor {
 		// is a browser artifact, not a gesture, and must not disarm pending
 		// composition caret restores.
 		const keydown = this.withUserInput(onKeyDown.bind(this), { bumpSerial: false });
-		const domMutationObserver = observeDomTextMutations(this, node);
+		const domMutationObserver = (this.observer = observeDomTextMutations(this, node));
 		this.off.push(
 			// One handler per keyboard occurrence: keys inside the editor at
 			// capture; the document sees only keys whose path misses it (a

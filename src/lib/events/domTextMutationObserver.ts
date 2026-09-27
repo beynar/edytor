@@ -12,12 +12,16 @@ import { climb } from '$lib/selection/selection.utils.js';
 import { isNestedForeignEditableTarget } from './nativeInteractiveControl.js';
 import {
 	getCollapsedDomTextSelection,
+	getNormalizedDomText,
 	handleNativeLineBreakTextMutation,
 	handleNativeLineBreakTextValue,
-	reconcileDomText,
-	reconcileTextValue
+	removeUnmanagedLineBreaks
 } from './onInput.js';
 import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
+import { diffText } from '$lib/utils/diffText.js';
+import { activeMarks } from '$lib/session/editing/text.js';
+import { INTENTS } from '$lib/session/attempt.js';
+import { jsonValuesEqual } from '$lib/collaboration/awarenessSelection.js';
 
 const MANAGED_SELECTOR = [
 	'[data-edytor]',
@@ -868,25 +872,11 @@ const hasTextNodeBoundaryMutation = (
 		);
 	});
 
-const getNormalizedTextNodeContent = (text: Text) => {
-	let value = text.node?.textContent ?? '';
-
-	if (value === '\u200B') {
-		return '';
-	}
-
-	if ((text.isEmpty || text.endsWithNewline) && value.endsWith('\u200B')) {
-		value = value.slice(0, -1);
-	}
-
-	return value;
-};
-
 const refreshManagedSubtreeMutationFromModel = (
 	text: Text,
 	options: { refreshUnchanged?: boolean } = {}
 ) => {
-	if (!options.refreshUnchanged && getNormalizedTextNodeContent(text) === text.stringContent) {
+	if (!options.refreshUnchanged && getNormalizedDomText(text) === text.stringContent) {
 		return false;
 	}
 
@@ -1491,9 +1481,70 @@ const healForeignAttributeMutations = (
 	return healed;
 };
 
+/**
+ * Adopt what the browser made of `text` (R8, O59) — the only adopter: one
+ * user command through the dispatcher (hooks, undo policy, marks for
+ * insertion), placed by the prefix/suffix diff that prefers the owning
+ * attempt's target. A browser-owned attempt expecting this host owns the
+ * change: its anchored target is the command's selection (history's
+ * `before`) and the diff's preference, and its expected text wins over a
+ * model-owned attempt's drift on the host. A vetoed or replaced change
+ * re-renders the text from the model. The caret lands where the browser put
+ * it (`domCaret`), else, for an attempt, where the change ends.
+ */
+const adopt = async (edytor: Edytor, text: Text, dom: string, domCaret?: number) => {
+	if (!text.isInDocument) return false;
+	const attempt = edytor.attempts.on(text);
+	const after = attempt?.expect?.kind === 'change' ? attempt.expect.after : null;
+	const drifted = after !== null && dom !== after && edytor.attempts.drifting(text);
+	const value = drifted ? after : dom;
+	const caret = drifted ? undefined : domCaret;
+	if (attempt) edytor.selection.select(attempt.target);
+	const { startText, yStart } = edytor.selection.state;
+	const grow = value.length - text.length;
+	const back = attempt?.isCollapsed && INTENTS[attempt.inputType]?.dir === 'back';
+	const prefer = attempt && startText === text ? yStart + (back ? grow : Math.max(0, grow)) : caret;
+	const change = diffText(text.stringContent, value, prefer);
+	if (!change) {
+		scheduleRemoveStalePlaceholders(text);
+		return false;
+	}
+	const { at, remove, insert } = change;
+	// The command runs at the change (a hook reads the selection).
+	if (startText !== text && (attempt || caret !== undefined))
+		edytor.selection.select(edytor.selection.textValue(text, at));
+	// A deletion of uniformly marked text keeps its marks pending.
+	const removed = insert ? [] : text.getMarksAtRange(at, at + remove);
+	const marks = activeMarks(removed[0]?.marks);
+	const same = removed.every((part) => jsonValuesEqual(activeMarks(part.marks), marks));
+	edytor.dispatcher.run(attempt?.inputType || (insert ? 'insertText' : 'deleteContent'), () =>
+		insert
+			? text.insertText({ value: insert, start: at, end: at + remove })
+			: text.parent.deleteContentAtRange({
+					start: [text.index, at],
+					end: [text.index, at + remove]
+				})
+	);
+	const adopted = text.isInDocument && text.stringContent === value;
+	if (attempt) attempt.phase = adopted ? 'applied' : 'failed';
+	if (!text.isInDocument) return true;
+	if (adopted && same && Object.keys(marks).length > 0) text.markOnNextInsert = marks;
+	if (adopted && !drifted) text.syncFromModel();
+	else {
+		text.refreshFromModel();
+		removeUnmanagedLineBreaks(text);
+	}
+	await tick();
+	scheduleRemoveStalePlaceholders(text);
+	const end = caret ?? (attempt ? at + insert.length : undefined);
+	if (adopted && end !== undefined)
+		await edytor.selection.setAtTextOffset(text, Math.min(end, text.length));
+	return true;
+};
+
 export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 	if (typeof MutationObserver === 'undefined') {
-		return { destroy: () => {}, flushNow: () => {} };
+		return { destroy: () => {}, flushNow: async () => {} };
 	}
 
 	const queuedTexts = new Set<Text>();
@@ -1635,7 +1686,10 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 				return;
 			}
 
+			// A browser-owned attempt's host is its own: adopted now (the
+			// drift around it is re-rendered from the model).
 			for (const text of texts) {
+				if (edytor.attempts.on(text)) await adopt(edytor, text, getNormalizedDomText(text));
 				queuedTexts.add(text);
 			}
 			queuedMutations.unshift(...mutations);
@@ -1720,17 +1774,25 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 		let settledTextWrapper: boolean;
 		let normalizedConvertedSpace: boolean;
 		let healedAttribute: boolean;
-		const selectionBeforeRepair = captureSelectionBeforeRepair(edytor);
+		let selectionBeforeRepair = captureSelectionBeforeRepair(edytor);
+		const claimed = texts.filter((text) => edytor.attempts.on(text) && !replacedTexts.has(text));
+		const domCaret = getCollapsedDomTextSelection(edytor);
 
 		observer.disconnect();
 		try {
+			// A browser-owned attempt's host: its change is adopted first,
+			// whatever the browser did to the structure (repaired below).
+			for (const text of claimed) {
+				const caret = domCaret?.text === text ? domCaret.offset : undefined;
+				if (await adopt(edytor, text, getNormalizedDomText(text), caret)) changedTexts.add(text);
+			}
 			for (const replacement of textReplacements) {
 				if (await handleNativeLineBreakTextValue(edytor, replacement.text, replacement.value)) {
 					changedTexts.add(replacement.text);
 					continue;
 				}
 
-				if (await reconcileTextValue(edytor, replacement.text, replacement.value)) {
+				if (await adopt(edytor, replacement.text, replacement.value)) {
 					changedTexts.add(replacement.text);
 				}
 			}
@@ -1755,24 +1817,21 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 
 				if (
 					hasTextNodeBoundaryMutation(edytor, root, text, mutations) &&
-					getNormalizedTextNodeContent(text) === text.stringContent
+					getNormalizedDomText(text) === text.stringContent
 				) {
 					refreshManagedSubtreeMutationFromModel(text, { refreshUnchanged: true });
 					refreshedTexts.add(text);
 					continue;
 				}
 
+				if (claimed.includes(text)) continue;
 				if (await handleNativeLineBreakTextMutation(edytor, text)) {
 					changedTexts.add(text);
 					continue;
 				}
 
-				const didReconcile = await reconcileDomText(
-					edytor,
-					text,
-					selection?.text === text ? selection.offset : undefined
-				);
-				if (didReconcile) {
+				const caret = selection?.text === text ? selection.offset : undefined;
+				if (await adopt(edytor, text, getNormalizedDomText(text), caret)) {
 					changedTexts.add(text);
 				}
 			}
@@ -1782,6 +1841,8 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 					await edytor.selection.setAtTextOffset(replacement.text, replacement.selectionOffset);
 				}
 			}
+			// An adoption placed the caret: the repair restores that one.
+			if (changedTexts.size > 0) selectionBeforeRepair = captureSelectionBeforeRepair(edytor);
 
 			for (const text of [...texts, ...replacedTexts]) {
 				scheduleRemoveStalePlaceholders(text);
@@ -1851,26 +1912,28 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 		});
 	};
 
-	observer = new MutationObserver((mutations) => {
-		for (const mutation of mutations) {
-			if (
-				mutation.type !== 'characterData' &&
-				mutation.type !== 'childList' &&
-				mutation.type !== 'attributes'
-			) {
-				continue;
-			}
-
-			queuedMutations.push(mutation);
-			// Identical-value `characterData` records (nodeValue === oldValue,
-			// distinguishable thanks to `characterDataOldValue`) are mobile
-			// type-overs — the browser rewrote the node. They stay queued like
-			// any other record so the owning text runs through reconciliation.
-			const text = findMutatedText(edytor, root, mutation.target);
-			if (text) {
-				queuedTexts.add(text);
-			}
+	const enqueue = (mutation: MutationRecord) => {
+		if (
+			mutation.type !== 'characterData' &&
+			mutation.type !== 'childList' &&
+			mutation.type !== 'attributes'
+		) {
+			return;
 		}
+
+		queuedMutations.push(mutation);
+		// Identical-value `characterData` records (nodeValue === oldValue,
+		// distinguishable thanks to `characterDataOldValue`) are mobile
+		// type-overs — the browser rewrote the node. They stay queued like
+		// any other record so the owning text runs through reconciliation.
+		const text = findMutatedText(edytor, root, mutation.target);
+		if (text) {
+			queuedTexts.add(text);
+		}
+	};
+
+	observer = new MutationObserver((mutations) => {
+		mutations.forEach(enqueue);
 
 		if (queuedTexts.size > 0 || queuedMutations.length > 0) {
 			queueFlush();
@@ -1901,7 +1964,8 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 		// reason). Deferred states (composition, suppressed fallback)
 		// still requeue inside `flush` — this only skips the microtask.
 		flushNow: () => {
-			void flush();
+			for (const mutation of observer.takeRecords()) enqueue(mutation);
+			return flush();
 		}
 	};
 };

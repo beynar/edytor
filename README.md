@@ -438,6 +438,14 @@ When using multiple plugins, prevention follows these rules:
 - If multiple plugins try to prevent the same operation, only the first prevention (in plugin order) takes effect
 - If a plugin doesn't call prevent(), the operation continues to the next plugin or executes the default behavior
 
+Operations are dispatched as commands (one dispatcher per editor):
+
+- `onBeforeOperation` runs before any write, on the command itself and on each step the command plans, under the step's documented operation name. A range deletion, for example, is shown as `deleteContentWithinSelection`, then as the `deleteContentAtRange`, `removeBlock` and `mergeBlockBackward` steps it plans; a paste or drop as `insertFlow`, then its `splitBlock`, `insertText` and `addChildBlocks` steps; a block-selection deletion as `deleteBlocks`, then one `removeBlock` per selected block.
+- A `prevent()` on any of them refuses the whole command: nothing is written and no undo step is recorded. `prevent(() => …)` also runs the callback in its place.
+- A payload returned for the command replaces it: the replacement is prepared again and shown to every plugin. Each plugin replaces a command at most once. A payload returned for a planned step is ignored (with a warning in development).
+- Operations an operation performs internally (normalization, nested structural calls) are part of it and are not shown separately. `onAfterOperation` runs once per command, after its transaction, with the original payload.
+- A readonly editor, or a document that turned read-only, refuses every mutating command. An error thrown by a hook surfaces; it is never reported as handled.
+
 This system allows plugins to:
 
 - Completely stop operations when needed

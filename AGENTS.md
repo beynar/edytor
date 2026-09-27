@@ -141,11 +141,19 @@ Block operations are in [src/lib/block/block.utils.ts](/Users/arnaud/code/edytor
 
 Text operations are in [src/lib/text/text.utils.ts](/Users/arnaud/code/edytor/src/lib/text/text.utils.ts).
 
-Both files use a `batch()` wrapper that:
+Both files use a `batch()` wrapper that dispatches each call through the view's
+command dispatcher (`edytor.dispatcher`, [src/lib/session/commands.ts](/Users/arnaud/code/edytor/src/lib/session/commands.ts)):
 
-- offers plugin interception through `onBeforeOperation`
-- runs the final operation in an editor transaction
-- runs `onAfterOperation`
+- admission (readonly, `document.writable`) refuses before any write
+- `onBeforeOperation` runs before any write, on the command and on each step of
+  its prepared document plan (`prepare*` functions) under the documented names
+- the operation runs in one transaction; nested operations are its steps (no
+  hooks) and normalization requests run once at its end
+- `onAfterOperation` runs once, after the transaction
+
+`prevent()` is caught only in the dispatcher (`scope`/`intercept`/`run`); user
+commands (`dispatcher.run(kind, …)`) apply the undo policy table (`cut`). Never
+call `undoManager.stopCapturing()` or catch `PreventionError` elsewhere.
 
 This is the real editing command layer.
 

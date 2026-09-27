@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { HotKeys, type HotKey } from '$lib/hotkeys.js';
+import { Dispatcher } from '$lib/session/commands.js';
 
 /**
  * Pure `HotKeys.isHotkey`/`combination()` coverage — platform modifier
@@ -39,7 +40,10 @@ const createKeydown = (init: KeydownInit): KeyboardEvent => {
 };
 
 const initHotKeys = (bindings: Record<string, HotKey>, { isMac = false } = {}) => {
-	const hotKeys = new HotKeys({} as Edytor, bindings, []);
+	// A bare view: the hotkey loop's prevention scope is the dispatcher's.
+	const edytor = {} as { dispatcher: Dispatcher };
+	edytor.dispatcher = new Dispatcher(edytor as unknown as Edytor);
+	const hotKeys = new HotKeys(edytor as unknown as Edytor, bindings, []);
 	if (isMac) {
 		Object.defineProperty(hotKeys, 'isMac', { configurable: true, get: () => true });
 	}

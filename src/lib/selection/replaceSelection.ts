@@ -46,8 +46,9 @@ export const replaceSelectionWithCollapsedTargetSync = (
 	if (!startText || state.isCollapsed) {
 		return startText && { text: startText, offset: yStart };
 	}
-	const [text, offset] = edytor.deleteContentWithinSelection({ replace: true, selection: state });
-	return text && { text, offset };
+	const [text, offset] =
+		edytor.deleteContentWithinSelection({ replace: true, selection: state }) ?? [];
+	return text ? { text, offset: offset! } : null;
 };
 
 export const replaceSelectionWithCollapsedTarget = async (
@@ -76,19 +77,11 @@ export const removeSelectedBlocksForReplacement = (
 		return null;
 	}
 
-	if (queueUndoSelectionSnapshot) {
-		edytor.selection.queueNextUndoSelectionSnapshot({
-			selectedBlockIds: selectedBlocks.map((block) => block.id),
-			selectedBlockPaths: selectedBlocks.map((block) => [...block.path])
-		});
-	}
-
 	let blockToFocus =
 		getClosestUnselectedBlock(firstBlock, selectedBlockSet, 'previous') ||
 		getClosestUnselectedBlock(lastBlock, selectedBlockSet, 'next');
-	edytor.transact(() => edytor.facade.deleteBlocks(selectedBlocks.map((block) => block.id)));
-	edytor.flushMirror();
-	parent.normalizeChildren();
+	if (!edytor.deleteBlocks({ blocks: selectedBlocks, snapshot: queueUndoSelectionSnapshot }))
+		return null;
 	edytor.selection.selectBlocks();
 	blockToFocus ??=
 		parent.children[index] ?? parent.children[index - 1] ?? edytor.root?.children[0] ?? null;

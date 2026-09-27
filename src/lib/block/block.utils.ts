@@ -2,11 +2,12 @@
  * View-side command adapter for block operations (U2 delegation contract).
  *
  * These functions are the `BlockOperations` layer bound onto `Block` via
- * `batch()`. The adapter owns ADMISSION only — plugin interception
- * (`onBeforeOperation`/`onAfterOperation`), readonly gating, path/offset
- * resolution (target paths → parent blocks, `partOffsetOf` segment
- * offsets, sibling lookup for `nestBlock`) and post-op mirror maintenance
- * (`flushMirror`, `normalizeChildren`/`normalizeContent` plugin hooks).
+ * `batch()`, which dispatches each call as a command (admission, plugin
+ * interception, one transaction: `session/commands.ts`). The functions own
+ * path/offset resolution (target paths → parent blocks, `partOffsetOf`
+ * segment offsets, sibling lookup for `nestBlock`), the plan of an operation
+ * that is one document op (`prepare*`), and post-op mirror maintenance
+ * (`flushMirror`, normalization requests).
  *
  * STRUCTURAL PERMISSION IS DOCUMENT-OWNED: every op delegates to
  * `block.model.*` (the facade through `DocBlock`) and treats a `refused` result
@@ -31,7 +32,8 @@ import { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { ChangePayload } from '$lib/plugins.js';
 import type { Flow, FlowTarget } from '$lib/crdt/flow.js';
-import { id, prevent } from '$lib/utils.js';
+import type { Prepared } from '$lib/crdt/edytor-doc.js';
+import { id } from '$lib/utils.js';
 import {
 	cloneJson,
 	jsonBlockToSpec,
@@ -106,89 +108,32 @@ export type BlockOperations = {
 		replace?: boolean;
 	};
 	insertFlow: { flow: Flow; target: FlowTarget };
+	deleteBlocks: { blocks: Block[]; snapshot?: boolean };
 };
 
 /**
- * Shared operation/interception pipeline — the admission contract both
- * `Block.batch` and `Text.batch` delegate to (D5/S9):
- *
- *   1. optional readonly gate (`readonlyGate` — block ops gate at this
- *      layer; text ops historically rely on the input pipeline's gate,
- *      preserved as-is);
- *   2. `onBeforeOperation` normalization — plugins run in order, the
- *      FIRST non-void return becomes the effective payload (a `prevent()`
- *      call throws `PreventionError` out of the whole op, caught by the
- *      event layer — this function deliberately does not catch it);
- *   3. the operation body inside ONE `edytor.transact` (one history step);
- *   4. `onAfterOperation` notifications (with the ORIGINAL payload, not
- *      the normalized one — the historical contract).
- *
- * `context.block` is the structural anchor reported to plugins — the
- * block itself for block ops (or the `Edytor` root stand-in for
- * `deleteContentWithinSelection`), the parent block for text ops;
- * `context.text` is set only on text ops. The pair matches the
- * `ChangePayload` shape in `plugins.ts`.
+ * Bind an operation onto its wrapper: every call is dispatched as a command
+ * (`session/commands.ts`): admission, hooks before any write (on the command
+ * and, when `prepare` answers one document plan, on each planned step), one
+ * transaction, normalization, the result. `func` receives the prepared plan.
  */
-export const runOperation = <Payload, Result>(
-	edytor: Edytor,
-	operation: string,
-	payload: Payload,
-	context: { block: Block; text?: Text },
-	func: (payload: Payload) => Result,
-	options?: { readonlyGate?: boolean }
-): Result | undefined => {
-	if (options?.readonlyGate && edytor.readonly) {
-		return undefined;
-	}
-
-	let finalPayload = payload;
-
-	// `operation` is a runtime key, so the hook payload can't be
-	// re-narrowed from the `ChangePayload` union generically — the ops map
-	// guarantees `payload` matches `operation` (the same contract the
-	// per-surface `@ts-expect-error` loops asserted before this helper).
-	const hookPayload = {
-		operation,
-		payload,
-		block: context.block,
-		...(context.text === undefined ? {} : { text: context.text })
-	} as unknown as Omit<ChangePayload, 'prevent'>;
-
-	for (const plugin of edytor.plugins) {
-		const normalizedPayload = plugin.onBeforeOperation?.({
-			...hookPayload,
-			prevent
-		} as ChangePayload) as Payload | undefined;
-		if (normalizedPayload) {
-			finalPayload = normalizedPayload;
-			break;
-		}
-	}
-
-	const result = edytor.transact(() => func(finalPayload));
-
-	for (const plugin of edytor.plugins) {
-		plugin.onAfterOperation?.(hookPayload);
-	}
-
-	return result;
-};
-
 export function batch<T extends (...args: any[]) => any, O extends keyof BlockOperations>(
 	operation: O,
-	func: T
+	func: T,
+	prepare?: (payload: BlockOperations[O]) => Prepared
 ): T {
 	return function (this: Block, payload: BlockOperations[O]): ReturnType<T> {
-		return runOperation(
-			this.edytor,
+		return this.edytor.dispatcher.dispatch(
 			operation,
 			payload,
 			{ block: this },
-			(finalPayload) => func.bind(this)(finalPayload),
-			{ readonlyGate: true }
+			func,
+			prepare
 		) as ReturnType<T>;
 	} as T;
 }
+
+const REFUSED: Prepared = { status: 'refused', ids: [] };
 
 export function addChildBlock(
 	this: Block,
@@ -258,24 +203,24 @@ export function insertBlockBefore(
 	return result;
 }
 
-export function splitBlock(
-	this: Block,
-	{ index, text }: BlockOperations['splitBlock']
-): Block | null {
-	const model = this.model;
-	if (!text || !this.parent || !model) {
-		return null;
-	}
-	const newId = id('b');
-	const offset = this.partOffsetOf(text) + index;
+export function prepareSplit(this: Block, { index, text }: BlockOperations['splitBlock']) {
+	if (!text || !this.parent || !this.model) return REFUSED;
 	// G5: the sibling takes its parent's default child type and no data.
 	const tail = { type: this.edytor.defaultChild(this.parent), data: {} };
-	if (model.split(offset, newId, tail).status === 'refused') {
-		return null;
-	}
+	const offset = this.partOffsetOf(text) + index;
+	return this.edytor.facade.prepare.splitBlock(this.model.id, offset, id('b'), tail);
+}
+
+export function splitBlock(
+	this: Block,
+	payload: BlockOperations['splitBlock'],
+	plan = prepareSplit.call(this, payload)
+): Block | null {
+	if (!('writes' in plan)) return null;
+	this.edytor.facade.apply(plan);
 	this.edytor.flushMirror();
 	this.parent?.normalizeChildren();
-	return this.edytor.idToBlock.get(newId) ?? null;
+	return this.edytor.idToBlock.get(plan.effect.creates[0]!) ?? null;
 }
 
 export function removeBlock(
@@ -313,42 +258,38 @@ export function mergeBlockForward(this: Block): Block | null {
 	return target ? (this.edytor.idToBlock.get(target) ?? null) : null;
 }
 
-export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): Block | null {
-	// Admission: the caller path is a view-tree address — validate shape and
-	// resolve it to the destination PARENT block + index. Structural
-	// permission is NOT decided here: `model.moveTo` (facade `moveBlock`)
-	// refuses island-sealed sources, void/island/inside-island destinations
-	// and moves into the block's own subtree (`isSelfOrDescendant`). The old
-	// view-side ancestry check (`this.path.some((p,i) => targetPath[i] === p)`)
-	// was both redundant and WRONG — it fired on ANY shared path element,
-	// rejecting the legal sibling-nest `[0,0]→[0,1,0]`.
-	const targetPath = [...path];
-	if (!targetPath.length || targetPath.some((p) => isNaN(p) || p < 0) || !this.parent) {
-		return null;
-	}
+/** The destination parent a view-tree path (`[...parentPath, index]`) names. */
+const parentAt = (edytor: Block['edytor'], path: number[]): [Block | undefined, number] => {
+	let parent: Block | undefined = edytor.root!;
+	for (const index of path.slice(0, -1)) parent = parent?.children[index];
+	return [parent, path.at(-1)!];
+};
 
-	const lastIndex = targetPath.pop();
-	let currentBlock: Block = this.edytor.root!;
+export function prepareMove(this: Block, { path }: BlockOperations['moveBlock']) {
+	// Admission: the caller path is a view-tree address — validate its shape
+	// and resolve it to the destination PARENT block + index. Structural
+	// permission is the document's (`canPlace`: island seals, void/island
+	// destinations, moves into the block's own subtree).
+	if (!path.length || path.some((p) => isNaN(p) || p < 0) || !this.parent) return REFUSED;
+	const [parent, index] = parentAt(this.edytor, path);
+	if (!parent || !this.model) return REFUSED;
+	return this.edytor.facade.prepare.moveBlock(this.model.id, {
+		parent: parent._blockId ?? null,
+		index
+	});
+}
 
-	while (targetPath.length > 0 && currentBlock) {
-		const index = targetPath.shift();
-		if (typeof index !== 'number' || isNaN(index)) break;
-		currentBlock = currentBlock.children[index!];
-	}
-
-	const model = this.model;
-	if (!currentBlock || !model) {
-		return null;
-	}
-	// The move preserves block identity — the baseline rebuilt the block
-	// from JSON, but `crdtId`/wrapper stability is the intended v14
-	// improvement and reconcile keeps the same wrapper registered.
-	if (model.moveTo({ parent: currentBlock.model, index: lastIndex! }).status === 'refused') {
-		return null;
-	}
+export function moveBlock(
+	this: Block,
+	payload: BlockOperations['moveBlock'],
+	plan = prepareMove.call(this, payload)
+): Block | null {
+	if (!('writes' in plan)) return null;
+	const from = this.parent;
+	this.edytor.facade.apply(plan);
 	this.edytor.flushMirror();
-	this.parent.normalizeChildren();
-	currentBlock.normalizeChildren();
+	from?.normalizeChildren();
+	this.parent?.normalizeChildren();
 	return this;
 }
 
@@ -359,44 +300,32 @@ export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): 
  * the FINAL index — already discounted for the moved members by the
  * caller (the `facade.moveBlocks` contract, which counts the
  * destination's children with the moved members excluded). Structural
- * permission stays in the facade: island seals, void/island
- * destinations, own-subtree moves and the all-or-nothing member
- * validation are all document-owned — this layer only resolves the path
- * and runs plugin normalization hooks per affected parent.
+ * permission stays in the facade.
  */
-export function moveBlocks(this: Block, { blocks, path }: BlockOperations['moveBlocks']): Block[] {
-	const targetPath = [...path];
-	if (!targetPath.length || targetPath.some((p) => isNaN(p) || p < 0) || !blocks.length) {
-		return [];
-	}
-
-	const lastIndex = targetPath.pop()!;
-	let currentBlock: Block | undefined = this.edytor.root!;
-	while (targetPath.length > 0 && currentBlock) {
-		const index = targetPath.shift()!;
-		currentBlock = currentBlock.children[index];
-	}
-
+export function prepareMoves(this: Block, { blocks, path }: BlockOperations['moveBlocks']) {
+	if (!path.length || path.some((p) => isNaN(p) || p < 0) || !blocks.length) return REFUSED;
+	const [parent, index] = parentAt(this.edytor, path);
 	const ids = blocks.map((block) => block._blockId);
-	if (!currentBlock || ids.some((blockId) => blockId == null)) {
-		return [];
-	}
-	// Source parents captured pre-move — reconcile reassigns `parent`.
-	const parents = new Set<Block>([
-		...blocks.flatMap((block) => (block.parent ? [block.parent] : [])),
-		currentBlock
-	]);
-	const moved = this.edytor.facade.moveBlocks(ids as string[], {
-		parent: currentBlock._blockId ?? null,
-		index: lastIndex
+	if (!parent || ids.some((blockId) => blockId == null)) return REFUSED;
+	return this.edytor.facade.prepare.moveBlocks(ids as string[], {
+		parent: parent._blockId ?? null,
+		index
 	});
-	if (moved.status === 'refused') {
-		return [];
-	}
+}
+
+export function moveBlocks(
+	this: Block,
+	payload: BlockOperations['moveBlocks'],
+	plan = prepareMoves.call(this, payload)
+): Block[] {
+	if (!('writes' in plan)) return [];
+	const { blocks } = payload;
+	// Source parents captured pre-move — reconcile reassigns `parent`.
+	const parents = new Set(blocks.flatMap((block) => (block.parent ? [block.parent] : [])));
+	this.edytor.facade.apply(plan);
 	this.edytor.flushMirror();
-	for (const parent of parents) {
-		parent.normalizeChildren();
-	}
+	for (const block of [...parents, ...blocks.map((block) => block.parent)])
+		block?.normalizeChildren();
 	return blocks;
 }
 
@@ -438,17 +367,12 @@ export function nestBlock(this: Block): Block | null {
 	return this;
 }
 
-export function setBlock(this: Block, { value }: BlockOperations['setBlock']) {
-	const model = this.model;
-	if (!model) {
-		return;
-	}
-	// Spec preparation is pure JSON → `ContentItem`/`BlockSpec` conversion —
+export function prepareSet(this: Block, { value }: BlockOperations['setBlock']) {
+	if (!this.model) return REFUSED;
+	// Spec preparation is pure JSON → `ContentItem`/`BlockSpec` conversion:
 	// the document stores the items verbatim and derives the content
-	// invariant on projection, so no disposable `Block` tree is needed (the
-	// old path built detached wrappers just to serialize them back via
-	// `_toSpec()`, which also leaked them into `edytor.idToBlock`).
-	model.set({
+	// invariant on projection.
+	return this.edytor.facade.prepare.setBlock(this.model.id, {
 		...(value.type !== undefined ? { type: value.type } : {}),
 		...(value.data !== undefined ? { data: cloneJson(value.data) } : {}),
 		...(value.content !== undefined ? { content: jsonContentToItems(value.content) } : {}),
@@ -456,8 +380,16 @@ export function setBlock(this: Block, { value }: BlockOperations['setBlock']) {
 			? { children: value.children.map((child) => jsonBlockToSpec(child)) }
 			: {})
 	});
-	this.edytor.flushMirror();
+}
 
+export function setBlock(
+	this: Block,
+	payload: BlockOperations['setBlock'],
+	plan = prepareSet.call(this, payload)
+) {
+	if (!('writes' in plan)) return;
+	this.edytor.facade.apply(plan);
+	this.edytor.flushMirror();
 	this.normalizeChildren();
 	this.normalizeContent();
 }
@@ -605,6 +537,7 @@ export function addInlineBlock(
 const MAX_NORMALIZATION_DEPTH = 50;
 
 export function normalizeContent(this: Block): void {
+	if (this.edytor.dispatcher.defer(this, normalizeContent)) return;
 	// The v14 content model maintains the part invariants by construction —
 	// projected content always derives to text-first/text-last/non-adjacent
 	// parts — so the only remaining normalization is the plugin hook.
@@ -627,6 +560,7 @@ export function normalizeContent(this: Block): void {
 }
 
 export function normalizeChildren(this: Block): void {
+	if (this.edytor.dispatcher.defer(this, normalizeChildren)) return;
 	if (this.type === 'root' && this.children.length === 0) {
 		const newBlock = new Block({
 			parent: this,

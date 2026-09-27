@@ -25,8 +25,8 @@ const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: Before
 
 /** A non-collapsed selection: the document's range deletion, then its caret (`del.range.*`). */
 const deleteSelectedRange = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	const [text, offset] = edytor.deleteContentWithinSelection({ selection: snapshot });
-	if (text) await edytor.selection.setAtTextOffset(text, offset);
+	const [text, offset] = edytor.deleteContentWithinSelection({ selection: snapshot }) ?? [];
+	if (text) await edytor.selection.setAtTextOffset(text, offset!);
 };
 
 const deleteContentForward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {

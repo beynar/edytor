@@ -1,6 +1,5 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { isInsideTrailingNewlineMarker } from '$lib/selection/selection.utils.js';
-import { PreventionError } from '$lib/utils.js';
 import {
 	isNativeInteractiveEvent,
 	isNativeTextControl,
@@ -126,7 +125,7 @@ const replaceSelectedInlineBlockWithText = (edytor: Edytor, value: string) => {
 				: parent.firstText!;
 	const insertionOffset = previousPart instanceof Text ? previousPart.length : 0;
 
-	edytor.undoManager.stopCapturing();
+	edytor.dispatcher.cut('replaceInlineBlock');
 	edytor.selection.clearInlineBlockSelection();
 	parent.removeInlineBlock({ index });
 	fallbackText.insertText({
@@ -354,7 +353,8 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 		this.selection.onSelectionChange();
 	}
 
-	try {
+	// One prevention scope per keydown: a veto anywhere in it aborts the key.
+	this.dispatcher.scope(() => {
 		if (isPrintableReplacementKey(e) && replaceSelectedInlineBlockWithText(this, e.key)) {
 			e.preventDefault();
 			e.stopPropagation();
@@ -374,11 +374,5 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 		if (fallbackInputType) {
 			this.scheduleStructuralKeyFallback(fallbackInputType);
 		}
-	} catch (error) {
-		if (error instanceof PreventionError) {
-			error.cb?.();
-		} else {
-			throw error;
-		}
-	}
+	});
 }

@@ -3,7 +3,7 @@ import {
 	writeEdytorClipboardData
 } from '$lib/clipboard/clipboard.js';
 import type { Edytor } from '../edytor.svelte.js';
-import { prevent, PreventionError } from '$lib/utils.js';
+import { prevent } from '$lib/utils.js';
 import { observeInternalDragSources } from './onDrop.js';
 import { observeShiftPasteModifier } from './onPaste.js';
 import {
@@ -42,17 +42,13 @@ export async function onCut(this: Edytor, e: ClipboardEvent) {
 	observeInternalDragSources(this.node?.getRootNode());
 	observeShiftPasteModifier(this.node?.getRootNode());
 
-	try {
-		for (const plugin of this.plugins) {
-			plugin.onCut?.({ prevent, e });
-		}
-	} catch (error) {
-		if (error instanceof PreventionError) {
-			e.preventDefault();
-			return error.cb?.();
-		}
-		throw error;
-	}
+	if (
+		this.dispatcher.intercept(
+			(plugin) => plugin.onCut?.({ prevent, e }),
+			() => e.preventDefault()
+		)
+	)
+		return;
 
 	const fragment = createEdytorClipboardFragment(this);
 	if (!fragment) {
@@ -61,12 +57,10 @@ export async function onCut(this: Edytor, e: ClipboardEvent) {
 
 	e.preventDefault();
 	writeEdytorClipboardData(e.clipboardData, fragment);
-	this.undoManager.stopCapturing();
-
-	if (this.selection.selectedBlocks.size > 0) {
-		await focusDeletedBlockFallback(this);
-		return;
-	}
-
-	await deleteSelectedContent(this);
+	// The clipboard is written before the delete, which is one user command.
+	await this.dispatcher.run('deleteByCut', () =>
+		this.selection.selectedBlocks.size > 0
+			? focusDeletedBlockFallback(this)
+			: deleteSelectedContent(this)
+	);
 }

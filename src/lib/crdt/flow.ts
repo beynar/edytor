@@ -93,9 +93,9 @@ export const flowOps = (c: FlowContext) => ({
 		const kids = (to: BlockId, l: FlowLine, moved: BlockId[] = []) => {
 			const k = l.children?.length ?? 0;
 			const ranks = c.ranksFor(to, 0, k + moved.length);
-			if (k) writes.push({ op: 'insertBlocks', parent: to, specs: l.children!, ranks });
+			if (k) writes.push({ op: 'insertBlocks', parent: to, index: 0, specs: l.children!, ranks });
 			if (moved.length)
-				writes.push({ op: 'moveBlocks', ids: moved, parent: to, ranks: ranks.slice(k) });
+				writes.push({ op: 'moveBlocks', ids: moved, parent: to, index: k, ranks: ranks.slice(k) });
 		};
 		const head = text(B, o, first);
 		if (len === 0 && first.type)
@@ -111,7 +111,8 @@ export const flowOps = (c: FlowContext) => ({
 		const length = len - o;
 		writes.push({ op: 'splitBlock', id: B, offset: head, length, newId: T, tail, parent, rank });
 		kids(T, last(), moved);
-		if (middle.length) writes.push({ op: 'insertBlocks', parent, specs: middle, ranks });
+		if (middle.length)
+			writes.push({ op: 'insertBlocks', parent, index: index + 1, specs: middle, ranks });
 		const at = { block: T, offset: text(T, 0, last()) };
 		return { ...c.plan([B, ...middle.map((m) => m.id), T], writes), at };
 	}

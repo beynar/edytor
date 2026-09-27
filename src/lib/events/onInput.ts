@@ -631,7 +631,7 @@ const reconcileBrowserOwnedInputTarget = async (
 	}
 
 	if (isDeleteInputType(inputType) || isDeleteInputType(target.inputType)) {
-		edytor.undoManager.stopCapturing();
+		edytor.dispatcher.cut('deleteContent');
 	}
 
 	const domText = getNormalizedDomText(target.text);

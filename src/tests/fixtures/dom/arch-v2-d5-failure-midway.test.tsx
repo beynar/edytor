@@ -87,7 +87,7 @@ describe('F-M4 — throw after partial writes (a normalizer throws during a spli
 	});
 
 	// Red on the reference (no dispatcher); green since S1.
-	test.fails('the command reports `failed` (the dispatcher result — S1)', async () => {
+	test('the command reports `failed` (the dispatcher result — S1)', async () => {
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 		const { edytor, editor } = await renderDomEdytor(
 			<root>

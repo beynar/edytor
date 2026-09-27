@@ -478,66 +478,62 @@ const insertParagraph = async (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
 	// The new sibling's actual parent decides its type (G5, O9).
 	const defaultBlock = edytor.defaultChild(startText.parent.parent);
 
-	try {
-		if (isAtEndOfBlock) {
-			const currentBlock = startText.parent;
-			if (currentBlock.hasChildren && currentBlock.hasContent) {
-				const currentValue = cloneJson(currentBlock.value);
-				currentBlock.insertBlockBefore({
-					block: {
-						type: currentBlock.type,
-						data: currentValue.data,
-						content: currentValue.content
-					}
-				});
-				const emptyText = new Text({
-					parent: currentBlock,
-					content: [{ text: '' }]
-				});
-				currentBlock.deleteParts(0, currentBlock.content.length);
-				currentBlock.insertParts(0, [emptyText]);
-				currentBlock.normalizeContent();
-				const currentText = edytor.getTextById(emptyText.id) || emptyText;
-				setSuppressedInputRepairSelectionTarget(edytor, currentText, 0);
-				await edytor.selection.setAtTextOffset(currentText, 0);
-				return;
-			}
-
-			const newBlock = currentBlock.insertBlockAfter({
+	if (isAtEndOfBlock) {
+		const currentBlock = startText.parent;
+		if (currentBlock.hasChildren && currentBlock.hasContent) {
+			const currentValue = cloneJson(currentBlock.value);
+			currentBlock.insertBlockBefore({
 				block: {
-					type: defaultBlock
+					type: currentBlock.type,
+					data: currentValue.data,
+					content: currentValue.content
 				}
 			});
-			const text = newBlock?.firstText;
-			if (text) {
-				setSuppressedInputRepairSelectionTarget(edytor, text, text.length);
-				await edytor.selection.setAtTextOffset(text, text.length);
-			}
+			const emptyText = new Text({
+				parent: currentBlock,
+				content: [{ text: '' }]
+			});
+			currentBlock.deleteParts(0, currentBlock.content.length);
+			currentBlock.insertParts(0, [emptyText]);
+			currentBlock.normalizeContent();
+			const currentText = edytor.getTextById(emptyText.id) || emptyText;
+			setSuppressedInputRepairSelectionTarget(edytor, currentText, 0);
+			await edytor.selection.setAtTextOffset(currentText, 0);
 			return;
 		}
 
-		if (isAtStartOfBlock) {
-			startText.parent.insertBlockBefore({
-				block: {
-					type: defaultBlock
-				}
-			});
-			setSuppressedInputRepairSelectionTarget(edytor, startText, 0);
-			await edytor.selection.setAtTextOffset(startText, 0);
-			return;
-		}
-
-		const newBlock = startText.parent.splitBlock({
-			index: yStart,
-			text: startText
+		const newBlock = currentBlock.insertBlockAfter({
+			block: {
+				type: defaultBlock
+			}
 		});
 		const text = newBlock?.firstText;
 		if (text) {
-			setSuppressedInputRepairSelectionTarget(edytor, text, 0);
-			await edytor.selection.setAtTextOffset(text, 0);
+			setSuppressedInputRepairSelectionTarget(edytor, text, text.length);
+			await edytor.selection.setAtTextOffset(text, text.length);
 		}
-	} finally {
-		edytor.undoManager.stopCapturing();
+		return;
+	}
+
+	if (isAtStartOfBlock) {
+		startText.parent.insertBlockBefore({
+			block: {
+				type: defaultBlock
+			}
+		});
+		setSuppressedInputRepairSelectionTarget(edytor, startText, 0);
+		await edytor.selection.setAtTextOffset(startText, 0);
+		return;
+	}
+
+	const newBlock = startText.parent.splitBlock({
+		index: yStart,
+		text: startText
+	});
+	const text = newBlock?.firstText;
+	if (text) {
+		setSuppressedInputRepairSelectionTarget(edytor, text, 0);
+		await edytor.selection.setAtTextOffset(text, 0);
 	}
 };
 
@@ -556,7 +552,11 @@ export const shouldRefreshDomAfterModelCommand = (snapshot: BeforeInputSnapshot)
 		snapshot.inputType === 'insertFromPasteAsQuotation' ||
 		snapshot.inputType === 'insertFromDrop');
 
-export const runBeforeInputCommand = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+/** The model command for a `beforeinput`, run as one user command (undo policy, prevention scope). */
+export const runBeforeInputCommand = (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
+	edytor.dispatcher.run(snapshot.inputType, () => beforeInputCommand(edytor, snapshot));
+
+const beforeInputCommand = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
 	switch (snapshot.inputType) {
 		case 'insertCompositionText':
 			return insertCompositionText(edytor, snapshot);

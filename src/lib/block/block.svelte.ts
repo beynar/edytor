@@ -14,6 +14,10 @@ import {
 	removeBlock,
 	setBlock,
 	splitBlock,
+	prepareSplit,
+	prepareSet,
+	prepareMove,
+	prepareMoves,
 	addChildBlocks,
 	unNestBlock,
 	moveBlock,
@@ -353,15 +357,15 @@ export class Block {
 	addChildBlocks = this.batch('addChildBlocks', addChildBlocks.bind(this));
 	insertBlockAfter = this.batch('insertBlockAfter', insertBlockAfter.bind(this));
 	insertBlockBefore = this.batch('insertBlockBefore', insertBlockBefore.bind(this));
-	splitBlock = this.batch('splitBlock', splitBlock.bind(this));
+	splitBlock = this.batch('splitBlock', splitBlock.bind(this), prepareSplit.bind(this));
 	removeBlock = this.batch('removeBlock', removeBlock.bind(this));
 	unNestBlock = this.batch('unNestBlock', unNestBlock.bind(this));
 	mergeBlockBackward = this.batch('mergeBlockBackward', mergeBlockBackward.bind(this));
 	mergeBlockForward = this.batch('mergeBlockForward', mergeBlockForward.bind(this));
 	nestBlock = this.batch('nestBlock', nestBlock.bind(this));
-	setBlock = this.batch('setBlock', setBlock.bind(this));
-	moveBlock = this.batch('moveBlock', moveBlock.bind(this));
-	moveBlocks = this.batch('moveBlocks', moveBlocks.bind(this));
+	setBlock = this.batch('setBlock', setBlock.bind(this), prepareSet.bind(this));
+	moveBlock = this.batch('moveBlock', moveBlock.bind(this), prepareMove.bind(this));
+	moveBlocks = this.batch('moveBlocks', moveBlocks.bind(this), prepareMoves.bind(this));
 	pushContentIntoBlock = this.batch('pushContentIntoBlock', pushContentIntoBlock.bind(this));
 	removeInlineBlock = this.batch('removeInlineBlock', removeInlineBlock.bind(this));
 	addInlineBlock = this.batch('addInlineBlock', addInlineBlock.bind(this));

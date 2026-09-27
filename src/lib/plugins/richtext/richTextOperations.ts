@@ -104,7 +104,7 @@ const formatSelectedTextRange = (
 	if (selectedRangeMutates(edytor)) {
 		edytor.selection.queueNextUndoSelectionSnapshot();
 	}
-	edytor.undoManager.stopCapturing();
+	edytor.dispatcher.cut('format');
 	texts.forEach((text, index) => {
 		const isFirst = index === 0;
 		const isLast = index === texts.length - 1;
@@ -285,7 +285,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 						}
 						return acc;
 					}, {});
-				edytor.undoManager.stopCapturing();
+				edytor.dispatcher.cut('format');
 				startText.markOnNextInsert = {
 					...activeMarks,
 					...(startText.markOnNextInsert ?? {}),
@@ -301,7 +301,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 		const { yStart, yEnd, startText, endText, texts, isCollapsed } = edytor.selection.state;
 		if (isCollapsed) {
 			if (startText) {
-				edytor.undoManager.stopCapturing();
+				edytor.dispatcher.cut('format');
 				startText.markText({
 					mark,
 					value,

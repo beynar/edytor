@@ -5,7 +5,6 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { BlockMovePosition, BlockMoveRequest } from '$lib/block/blockMove.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { draggable, dropTargetForElements } from '$lib/dnd/pragmatic.js';
-import { PreventionError } from '$lib/utils.js';
 
 const blockDragMimeType = 'application/x-edytor-block-id';
 
@@ -210,17 +209,9 @@ export class BlockHandleController {
 	}
 
 	private moveAndSelect(request: BlockMoveRequest) {
-		try {
-			const moved = this.edytor.moveBlocks(request);
-			if (moved.length) {
-				void tick().then(() => this.edytor.selection.selectBlocks(...moved));
-			}
-		} catch (error) {
-			if (error instanceof PreventionError) {
-				error.cb?.();
-				return;
-			}
-			throw error;
+		const moved = this.edytor.moveBlocks(request);
+		if (moved.length) {
+			void tick().then(() => this.edytor.selection.selectBlocks(...moved));
 		}
 	}
 

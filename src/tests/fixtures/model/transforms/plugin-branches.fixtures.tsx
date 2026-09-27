@@ -6,7 +6,6 @@ import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 import type { Plugin } from '$lib/plugins.js';
-import { PreventionError } from '$lib/utils.js';
 import { expectOperationResult, removeIds } from '../../../test.utils.js';
 import { emptyFixture } from '../../helpers/model.js';
 import { defineFixtures, defineModelTransformFixture } from '../../types.js';
@@ -130,9 +129,9 @@ export const fixtures = defineFixtures([
 			]
 		},
 		run: ({ edytor }) => {
-			expect(() => edytor.selection.state.startBlock?.mergeBlockBackward()).toThrow(
-				PreventionError
-			);
+			// The veto refuses the command; the dispatcher catches `prevent()` (S1).
+			edytor.selection.state.startBlock?.mergeBlockBackward();
+			expect(edytor.dispatcher.last).toMatchObject({ status: 'refused' });
 			return null;
 		},
 		assert: ({ edytor }) => {
@@ -158,7 +157,8 @@ export const fixtures = defineFixtures([
 			]
 		},
 		run: ({ edytor }) => {
-			expect(() => edytor.selection.state.startBlock?.mergeBlockForward()).toThrow(PreventionError);
+			edytor.selection.state.startBlock?.mergeBlockForward();
+			expect(edytor.dispatcher.last).toMatchObject({ status: 'refused' });
 			return null;
 		},
 		assert: ({ edytor }) => {

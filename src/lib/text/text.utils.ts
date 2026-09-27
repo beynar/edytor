@@ -1,4 +1,3 @@
-import { runOperation } from '$lib/block/block.utils.js';
 import type { JSONText, SerializableContent } from '$lib/utils/json.js';
 import type { Text } from './text.svelte.js';
 
@@ -38,18 +37,13 @@ export function batch<T extends (...args: any[]) => any, O extends keyof TextOpe
 	func: T
 ): T {
 	return function (this: Text, payload: TextOperations[O]): ReturnType<T> {
-		// Shares the block-side pipeline (`runOperation` in block.utils) —
-		// plugins see `block: this.parent` + `text: this`, matching the
-		// text-arm of `ChangePayload`. `readonlyGate` stays off here: text
-		// ops were historically ungated at this layer (the input pipeline
-		// gates before reaching them) — the asymmetry is preserved rather
-		// than silently flipped.
-		return runOperation(
-			this.edytor,
+		// Dispatched like block operations (`session/commands.ts`): plugins see
+		// `block: this.parent` + `text: this`, the text arm of `ChangePayload`.
+		return this.edytor.dispatcher.dispatch(
 			operation,
 			payload,
 			{ block: this.parent, text: this },
-			(finalPayload) => func.bind(this)(finalPayload)
+			func
 		) as ReturnType<T>;
 	} as T;
 }

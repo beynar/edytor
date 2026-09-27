@@ -1,7 +1,7 @@
 import type { Edytor, EdytorOptions } from './edytor.svelte.js';
 import { Text } from './text/text.svelte.js';
 import type { InitializedPlugin } from './plugins.js';
-import { prevent, PreventionError } from './utils.js';
+import { prevent } from './utils.js';
 import { Block } from './block/block.svelte.js';
 import { tick } from 'svelte';
 import { clearDomSelection } from './selection/domSelection.js';
@@ -125,7 +125,7 @@ const deleteSelectedInlineBlock = (event: KeyboardEvent, edytor: Edytor) => {
 
 	event.preventDefault();
 	event.stopPropagation();
-	edytor.undoManager.stopCapturing();
+	edytor.dispatcher.cut('deleteInlineBlock');
 
 	const location = edytor.root ? findInlineBlockLocation(edytor.root, inlineBlock.id) : null;
 	if (!location) {
@@ -396,7 +396,7 @@ const macEmacsHotKeys = {
 			return;
 		}
 		prevent(() => {
-			edytor.undoManager.stopCapturing();
+			edytor.dispatcher.cut('deleteContentBackward');
 			runDeleteCommandByInputType(edytor, 'deleteContentBackward');
 		});
 	},
@@ -409,7 +409,7 @@ const macEmacsHotKeys = {
 			return;
 		}
 		prevent(() => {
-			edytor.undoManager.stopCapturing();
+			edytor.dispatcher.cut('deleteContentForward');
 			runDeleteCommandByInputType(edytor, 'deleteContentForward');
 		});
 	},
@@ -423,7 +423,7 @@ const macEmacsHotKeys = {
 			return;
 		}
 		prevent(() => {
-			edytor.undoManager.stopCapturing();
+			edytor.dispatcher.cut('deleteHardLineForward');
 			// Cocoa kill-line deletes to the paragraph end — and at the end
 			// kills the paragraph break itself, joining the next block.
 			runDeleteCommandByInputType(
@@ -441,7 +441,7 @@ const macEmacsHotKeys = {
 			return;
 		}
 		prevent(() => {
-			edytor.undoManager.stopCapturing();
+			edytor.dispatcher.cut('insertBlock');
 			const target = isCollapsed
 				? { text: startText, offset: yStart }
 				: replaceSelectionWithCollapsedTargetSync(edytor);
@@ -507,7 +507,7 @@ const defaultHotKeys = {
 	},
 	'mod+enter': ({ edytor, prevent }) => {
 		prevent(() => {
-			edytor.undoManager.stopCapturing();
+			edytor.dispatcher.cut('insertBlock');
 			const newBlock = edytor.selection.state.startText?.parent.splitBlock({
 				index: edytor.selection.state.startText?.length,
 				text: edytor.selection.state.startText
@@ -574,7 +574,7 @@ const defaultHotKeys = {
 	tab: ({ edytor, prevent }) => {
 		prevent(() => {
 			suppressStructuralHotkeyDomDrift(edytor);
-			edytor.undoManager.stopCapturing();
+			edytor.dispatcher.cut('nestBlock');
 			const selectedBlocks = edytor.selection.selectedBlocks;
 			if (selectedBlocks.size <= 1) {
 				const selectedBlock = selectedBlocks.values().next().value as Block;
@@ -596,7 +596,7 @@ const defaultHotKeys = {
 	'shift+tab': ({ edytor, prevent }) => {
 		prevent(() => {
 			suppressStructuralHotkeyDomDrift(edytor);
-			edytor.undoManager.stopCapturing();
+			edytor.dispatcher.cut('unNestBlock');
 			const selectedBlocks = edytor.selection.selectedBlocks;
 			if (selectedBlocks.size > 1) {
 				return;
@@ -640,7 +640,7 @@ const defaultHotKeys = {
 		if (edytor.selection.selectedBlocks.size) {
 			event.preventDefault();
 			event.stopPropagation();
-			edytor.undoManager.stopCapturing();
+			edytor.dispatcher.cut('deleteBlocks');
 			const selectedBlocks = getSelectedBlocksInDocumentOrder(edytor);
 			const selectedBlock = selectedBlocks.at(0) as Block | undefined;
 			if (!selectedBlock) {
@@ -790,18 +790,16 @@ export class HotKeys {
 		for (const combination of combinations) {
 			const hotKeys = this.hotkeys.get(combination);
 			if (!hotKeys?.length) continue;
-			try {
-				hotKeys.forEach((hotKey) => {
-					hotKey({ event: e, edytor: this.edytor, prevent });
-				});
-			} catch (error) {
-				if (error instanceof PreventionError) {
+			let handled = false;
+			this.edytor.dispatcher.scope(
+				() => hotKeys.forEach((hotKey) => hotKey({ event: e, edytor: this.edytor, prevent })),
+				() => {
+					handled = true;
 					e.preventDefault();
 					e.stopPropagation();
-					error.cb?.();
 				}
-				return true;
-			}
+			);
+			if (handled) return true;
 		}
 		return false;
 	};

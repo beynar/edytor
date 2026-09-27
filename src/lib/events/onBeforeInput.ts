@@ -1,6 +1,6 @@
 import type { Edytor } from '../edytor.svelte.js';
 import { tick } from 'svelte';
-import { prevent, PreventionError } from '$lib/utils.js';
+import { prevent } from '$lib/utils.js';
 import { Text } from '$lib/text/text.svelte.js';
 import {
 	createDomRange,
@@ -536,18 +536,6 @@ const resetCompositionIfNeeded = (edytor: Edytor, snapshot: BeforeInputSnapshot)
 	}
 };
 
-const stopHistoryCaptureIfNeeded = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	if (
-		snapshot.inputType === 'insertParagraph' ||
-		snapshot.inputType === 'insertFromPaste' ||
-		snapshot.inputType === 'insertFromPasteAsQuotation' ||
-		snapshot.inputType === 'insertFromDrop' ||
-		(snapshot.inputType.startsWith('delete') && snapshot.inputType !== 'deleteCompositionText')
-	) {
-		edytor.undoManager.stopCapturing();
-	}
-};
-
 const deleteTrailingSoftBreakBackward = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
 	const { startText, yStart } = snapshot;
 	const isModelCollapsed = snapshot.isCollapsed || snapshot.yStart === snapshot.yEnd;
@@ -561,7 +549,7 @@ const deleteTrailingSoftBreakBackward = (edytor: Edytor, snapshot: BeforeInputSn
 	}
 
 	snapshot.event.preventDefault();
-	stopHistoryCaptureIfNeeded(edytor, snapshot);
+	edytor.dispatcher.cut(snapshot.inputType);
 	edytor.transact(() => {
 		startText.deleteAt(yStart - 1, 1);
 	});
@@ -697,15 +685,19 @@ export async function onBeforeInput(this: Edytor, event: InputEvent) {
 		return;
 	}
 	if (shouldLetBrowserHandleBeforeInput(this, snapshot)) {
-		stopHistoryCaptureIfNeeded(this, snapshot);
+		this.dispatcher.cut(snapshot.inputType);
 		rememberBrowserOwnedInputTarget(this, snapshot);
 		scheduleAndroidChromeNativeBackspaceFallback(this, snapshot);
 		return;
 	}
 
-	try {
+	if (!this.dispatcher.permits()) {
+		event.preventDefault();
+		return;
+	}
+	// One user command: its undo policy, and a prevention scope a veto aborts.
+	return this.dispatcher.run(snapshot.inputType, async () => {
 		resetCompositionIfNeeded(this, snapshot);
-		stopHistoryCaptureIfNeeded(this, snapshot);
 		markCompositionInputHandledIfNeeded(this, snapshot);
 
 		if (runBeforeInputHistoryCommand(this, snapshot)) {
@@ -751,10 +743,5 @@ export async function onBeforeInput(this: Edytor, event: InputEvent) {
 			await refreshSelectionTextFromModel(this, snapshot.inputType === 'insertFromPaste');
 		}
 		rememberInterruptedCompositionSelectionIfNeeded(this, snapshot);
-	} catch (error) {
-		if (error instanceof PreventionError) {
-			return error.cb?.();
-		}
-		throw error;
-	}
+	});
 }

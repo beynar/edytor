@@ -502,8 +502,15 @@ export type TextRange = { block: BlockId; offset: number; length: number };
  * their write needs (ranks, marks, offsets), decided at prepare time.
  */
 export type PlanStep =
-	| { op: 'insertBlocks'; parent: BlockId | null; specs: BlockSpec[]; ranks: string[] }
-	| { op: 'moveBlocks'; ids: BlockId[]; parent: BlockId | null; ranks: string[] }
+	/** `index`: the destination slot at prepare time, as hooks see it (D-10). */
+	| {
+			op: 'insertBlocks';
+			parent: BlockId | null;
+			index: number;
+			specs: BlockSpec[];
+			ranks: string[];
+	  }
+	| { op: 'moveBlocks'; ids: BlockId[]; parent: BlockId | null; index: number; ranks: string[] }
 	/** `marks`: the blocks that get this writer's mark; `removes`: those that leave the document. */
 	| { op: 'deleteBlock'; id: BlockId; marks: BlockId[]; removes: BlockId[] }
 	| {
@@ -1647,7 +1654,15 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const move = (ids: BlockId[], parent: BlockId | null, index: number): PlanStep[] =>
 			ids.length === 0
 				? []
-				: [{ op: 'moveBlocks', ids, parent, ranks: ranksFor(parent, index, ids.length, ids) }];
+				: [
+						{
+							op: 'moveBlocks',
+							ids,
+							parent,
+							index,
+							ranks: ranksFor(parent, index, ids.length, ids)
+						}
+					];
 		/** A type/data step, planned only when the value differs (the one same-value guard). */
 		const attr = (id: BlockId, key: typeof TYPE | typeof DATA, value: unknown): PlanStep[] => {
 			if (jsonEquals(M.blockNodeOf(doc, id)!.getAttr(key), value)) return [];
@@ -1716,7 +1731,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const ranks = ranksFor(parent, dest.index, clean.length);
 			return plan(
 				clean.map((s) => s.id),
-				[{ op: 'insertBlocks', parent, specs: clean, ranks }]
+				[{ op: 'insertBlocks', parent, index: dest.index, specs: clean, ranks }]
 			);
 		};
 
@@ -1898,7 +1913,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				// Every current child is deleted, so the new ones rank from an empty list.
 				const ranks = M.ranksAt([], 0, children.length, doc.clientID, randOf(doc));
 				if (children.length > 0)
-					writes.push({ op: 'insertBlocks', parent: id, specs: children, ranks });
+					writes.push({ op: 'insertBlocks', parent: id, index: 0, specs: children, ranks });
 			}
 			return plan([id], writes);
 		};

@@ -27,7 +27,7 @@ import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { prevent } from '$lib/utils.js';
 
 /** Red on the reference; green since S1. */
-const row = test.fails;
+const row = test;
 /** Green on the reference: a regression guard. */
 const pin = test;
 

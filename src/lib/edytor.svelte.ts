@@ -55,7 +55,15 @@ import { on } from 'svelte/events';
 import { HotKeys, type HotKey } from './hotkeys.js';
 import { TRANSACTION } from './constants.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
-import { deleteContentWithinSelection, insertFlow } from './edytor.utils.js';
+import {
+	deleteBlocks,
+	deleteContentWithinSelection,
+	insertFlow,
+	prepareDeleteBlocks,
+	prepareDeleteContent,
+	prepareFlow
+} from './edytor.utils.js';
+import { Dispatcher } from './session/commands.js';
 import {
 	getSelectionReplacementState,
 	replaceSelectedBlocksWithEmptyBlockTarget,
@@ -415,6 +423,9 @@ export class Edytor {
 	 * releases it — no scheduled pass may act on a dead view.
 	 */
 	readonly placeholderRepair: PlaceholderRepairQueue = createPlaceholderRepairQueue();
+
+	/** The view's command dispatcher (R7): every mutation this view makes goes through it. */
+	readonly dispatcher: Dispatcher = new Dispatcher(this);
 
 	transact = <T>(cb: () => T): T => {
 		this.suppressObservedMutationFallback();
@@ -1175,12 +1186,14 @@ export class Edytor {
 				// user's input". Timer/rAF-deferred restores run after
 				// settlement and stay unflagged.
 				if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
-					// `Promise.resolve` normalizes non-native thenables; the
-					// chained `.catch` prevents a SECOND unhandled rejection —
-					// the original promise still reports its own failure.
+					// A failed async handler (a command's hook or write) surfaces
+					// through the platform's error reporting; the DOM ignores
+					// the listener's promise.
 					void Promise.resolve(result)
 						.finally(clear)
-						.catch(() => {});
+						.catch((error) =>
+							typeof reportError === 'function' ? reportError(error) : console.error(error)
+						);
 				} else {
 					clear();
 				}
@@ -1776,10 +1789,17 @@ export class Edytor {
 
 	deleteContentWithinSelection = this.batch(
 		'deleteContentWithinSelection',
-		deleteContentWithinSelection.bind(this)
+		deleteContentWithinSelection.bind(this),
+		prepareDeleteContent.bind(this)
 	);
 
-	insertFlow = this.batch('insertFlow', insertFlow.bind(this));
+	insertFlow = this.batch('insertFlow', insertFlow.bind(this), prepareFlow.bind(this));
+
+	deleteBlocks = this.batch(
+		'deleteBlocks',
+		deleteBlocks.bind(this),
+		prepareDeleteBlocks.bind(this)
+	);
 
 	getTextById = (id: string) => {
 		const isText = id.startsWith('t');

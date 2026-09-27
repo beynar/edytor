@@ -10,6 +10,8 @@ export const id = (prefix: 't' | 'b' | 'i') => {
 
 export class PreventionError extends Error {
 	cb?: () => void;
+	/** The extension whose hook prevented (set by the dispatcher). */
+	by?: unknown;
 	constructor(cb?: () => void) {
 		super('Prevent');
 		this.name = 'PreventionError';

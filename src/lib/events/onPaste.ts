@@ -1,5 +1,5 @@
 import type { Edytor } from '../edytor.svelte.js';
-import { prevent, PreventionError } from '$lib/utils.js';
+import { prevent } from '$lib/utils.js';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { flowOfFragment, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
 import { Block } from '$lib/block/block.svelte.js';
@@ -153,21 +153,13 @@ export async function onPaste(this: Edytor, e: ClipboardEvent) {
 		const fragment = readEdytorClipboardFragment(e.clipboardData);
 		if (fragment) {
 			e.preventDefault();
-			this.undoManager.stopCapturing();
-			return pasteFlow(this, flowOfFragment(fragment));
+			return this.dispatcher.run('insertFromPaste', () =>
+				pasteFlow(this, flowOfFragment(fragment))
+			);
 		}
 
-		try {
-			for (const plugin of this.plugins) {
-				plugin.onPaste?.({ prevent, e });
-			}
-		} catch (error) {
-			if (error instanceof PreventionError) {
-				e.preventDefault();
-				return error.cb?.();
-			}
-			throw error;
-		}
+		const claimed = (plugin: (typeof this.plugins)[number]) => plugin.onPaste?.({ prevent, e });
+		if (this.dispatcher.intercept(claimed, () => e.preventDefault())) return;
 
 		// File payloads route only through the plugin `onPaste` hook (the
 		// Files → image seam — no bundled consumer yet). An unclaimed file
@@ -186,6 +178,5 @@ export async function onPaste(this: Edytor, e: ClipboardEvent) {
 	}
 
 	e.preventDefault();
-	this.undoManager.stopCapturing();
 	return this.onBeforeInput(createSyntheticPasteInput(e));
 }

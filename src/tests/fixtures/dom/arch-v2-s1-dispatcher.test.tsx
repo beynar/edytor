@@ -44,7 +44,7 @@ import {
 } from '../../dom/test.utils.js';
 
 /** Red on the reference; green since S1. */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -195,10 +195,12 @@ describe('F-O3 — hooks see the prepared command and each planned step before a
 		track(edytor, calls);
 		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
 		expect(texts(edytor)).toEqual(['ac']);
+		// The plan (D6) deletes the tail's prefix after the merge, where it then
+		// shows: in the head. A step is shown on the block it names.
 		expectHooksBeforeWrites(calls, [
 			'deleteContentWithinSelection:',
 			'deleteContentAtRange:aa',
-			'deleteContentAtRange:cc',
+			'deleteContentAtRange:aa',
 			'removeBlock:bb',
 			'mergeBlockBackward:cc'
 		]);

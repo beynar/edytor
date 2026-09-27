@@ -1563,6 +1563,13 @@ export const bindRuns = (Y: EngineApi) => {
 				const register = (b: ProjectedBlock): void => {
 					covered.add(b.id);
 					if (!before.nodes.has(b.id)) r.added.set(b.id, b);
+					else {
+						// A block that moved into an added subtree is published with it:
+						// its baseline becomes what the subtree carries (K7).
+						const n = after.nodes.get(b.id)!;
+						const rec = blocks.get(b.id)!;
+						Object.assign(n, { type: rec.type, data: rec.data, runs: runs(b.id), key: undefined });
+					}
 					b.children.forEach(register);
 				};
 				for (const [id, n] of after.nodes) {

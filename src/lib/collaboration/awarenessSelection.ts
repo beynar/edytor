@@ -1,6 +1,16 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
-import { serialize, type PresenceSelection } from '$lib/session/selection.js';
+import type { Text } from '$lib/text/text.svelte.js';
+import type { TextAnchor } from '$lib/selection/selection.svelte.js';
+import type { PresenceSelection } from '$lib/session/selection.js';
+
+/**
+ * Presence (L10, R1): one entry per view key, `selections[viewKey] =
+ * serialize(value) + t`. The view that minted a key is the only writer of
+ * its entry — it publishes on `select()` when the value changed and clears
+ * the entry in its own teardown. Peers render one caret per client, the
+ * freshest valid text entry, resolved here; geometry lives with the
+ * remote-caret renderer.
+ */
 
 export type EdytorAwarenessUser = {
 	name?: string;
@@ -34,18 +44,16 @@ export type EdytorAwarenessState = {
 	actor?: { id: string; name?: string; color?: string };
 	user?: EdytorAwarenessUser;
 	/**
-	 * Per-view presence (U5/F4): one entry per live view of this client,
-	 * keyed by a client-local view id. Sibling views share ONE awareness
-	 * state slot (one clientID), so a single `selection` field made view
-	 * teardown clobber the siblings' published caret — each view now owns
-	 * its key and a destroyed view's key is swept without touching the rest.
+	 * Per-view presence: one entry per live view of this client, keyed by the
+	 * client-local key its view minted. Sibling views share ONE awareness
+	 * state slot (one clientID); each writes and clears only its own key.
 	 */
 	selections?: Record<string, EdytorAwarenessViewSelection>;
 };
 
 /**
- * Structural awareness surface used by the selection publish/clear
- * helpers — the real `Awareness` satisfies it; tests may substitute stubs.
+ * Structural awareness surface used by `publishPresence` — the real
+ * `Awareness` satisfies it; tests may substitute stubs.
  */
 type AwarenessLike = {
 	getLocalState: () => Record<string, unknown> | null;
@@ -56,12 +64,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === 'object' && value !== null;
 
 /**
- * JSON-value structural equality — the dedupe compare for presence
- * fields (S12, replacing per-emit `JSON.stringify`). Mirrors stringify
- * equivalence without serializing: object key order is ignored (order
- * carries no meaning on the wire) and `undefined`-valued keys are
- * skipped (stringify drops them), so two payloads compare equal exactly
- * when peers could not tell the resulting states apart.
+ * JSON-value structural equality — the presence write's dedupe compare
+ * (also used for mark sets). Mirrors stringify equivalence without
+ * serializing: object key order is ignored and `undefined`-valued keys are
+ * skipped, so two payloads compare equal exactly when peers could not tell
+ * the resulting states apart.
  */
 export const jsonValuesEqual = (a: unknown, b: unknown): boolean => {
 	if (a === b) {
@@ -87,6 +94,42 @@ export const jsonValuesEqual = (a: unknown, b: unknown): boolean => {
 	);
 };
 
+let presenceKeys = 0;
+/** A client-local presence key, minted once by the view that owns the entry. */
+export const mintPresenceKey = (): string => `view-${++presenceKeys}`;
+
+/** Local publish sequence — orders `selections` entries by write recency. */
+let publishSeq = 0;
+
+/**
+ * Write the entry under `key` — `payload` null removes it. Called only by
+ * the view that minted `key` (R1): other keys are copied untouched. An
+ * unchanged payload (`t` aside) is not rebroadcast and keeps its `t`, so a
+ * no-op republish cannot steal the freshest slot from a sibling; the field
+ * is dropped when no entry is left. Other local-state fields are kept.
+ */
+export const publishPresence = (
+	awareness: AwarenessLike,
+	key: string,
+	payload: PresenceSelection | null
+) => {
+	const local = awareness.getLocalState();
+	if (!local) return;
+	const { selections, ...state } = local;
+	const { [key]: previous, ...others } = isRecord(selections)
+		? (selections as Record<string, EdytorAwarenessViewSelection>)
+		: {};
+	if (
+		payload === null
+			? previous === undefined
+			: previous !== undefined && jsonValuesEqual({ ...previous, t: undefined }, payload)
+	) {
+		return;
+	}
+	const next = payload === null ? others : { ...others, [key]: { ...payload, t: ++publishSeq } };
+	awareness.setLocalState(Object.keys(next).length > 0 ? { ...state, selections: next } : state);
+};
+
 /**
  * Validate + coerce one `selections` entry as a text selection. `start`/
  * `end` must be present (a block set or an atom has none and is not
@@ -102,75 +145,6 @@ export const normalizeAwarenessSelection = (value: unknown): EdytorAwarenessSele
 		collapsed: value.collapsed === true,
 		reversed: value.reversed === true
 	};
-};
-
-/**
- * Stable per-view presence keys — minted lazily, live as long as the
- * Edytor they identify. Keys only need uniqueness inside one client's
- * `selections` map; remote peers never interpret them.
- */
-const viewPresenceIds = new WeakMap<Edytor, string>();
-let viewPresenceCounter = 0;
-const viewPresenceId = (edytor: Edytor): string => {
-	let id = viewPresenceIds.get(edytor);
-	if (id === undefined) {
-		id = `view-${++viewPresenceCounter}`;
-		viewPresenceIds.set(edytor, id);
-	}
-	return id;
-};
-
-/**
- * viewId → owning Edytor, per shared awareness. The destroy path
- * (`selection.destroy()` → `clearAwarenessSelection(awareness)`) cannot
- * identify WHICH view is tearing down through the shared awareness object
- * alone — the registry is the ownership record: an entry whose Edytor is
- * `destroyed` is dead and gets swept, everything else is preserved.
- */
-const presenceOwners = new WeakMap<AwarenessLike, Map<string, Edytor>>();
-const ownersOf = (awareness: AwarenessLike): Map<string, Edytor> => {
-	let owners = presenceOwners.get(awareness);
-	if (owners === undefined) {
-		owners = new Map();
-		presenceOwners.set(awareness, owners);
-	}
-	return owners;
-};
-
-/** Local publish sequence — orders `selections` entries by write recency. */
-let publishSeq = 0;
-
-/** The live `selections` map inside a local-state record (empty when absent/foreign). */
-const readSelections = (
-	state: Record<string, unknown>
-): Record<string, EdytorAwarenessViewSelection> =>
-	isRecord(state.selections)
-		? (state.selections as Record<string, EdytorAwarenessViewSelection>)
-		: {};
-
-/**
- * Drop `selections` keys owned by destroyed views. Returns the SAME map
- * reference when nothing was swept (callers compare by identity), a copy
- * otherwise; dead owners are also dropped from the registry so it cannot
- * grow past the live view set.
- */
-const sweepDestroyedViews = (
-	awareness: AwarenessLike,
-	selections: Record<string, EdytorAwarenessViewSelection>
-): Record<string, EdytorAwarenessViewSelection> => {
-	const owners = presenceOwners.get(awareness);
-	if (owners === undefined) {
-		return selections;
-	}
-	let swept: Record<string, EdytorAwarenessViewSelection> | undefined;
-	for (const [viewId, edytor] of owners) {
-		if (edytor.destroyed) {
-			swept ??= { ...selections };
-			delete swept[viewId];
-			owners.delete(viewId);
-		}
-	}
-	return swept ?? selections;
 };
 
 /**
@@ -199,95 +173,58 @@ export const freshestPublishedSelection = (
 	return freshest;
 };
 
-/** Write `selections` onto `nextState` (mutating the clone); no entry left drops the field. */
-const writePresenceFields = (
-	nextState: Record<string, unknown>,
-	selections: Record<string, EdytorAwarenessViewSelection>
-): void => {
-	delete nextState.selections;
-	if (Object.keys(selections).length > 0) {
-		nextState.selections = selections;
+/**
+ * Strict wire-shape guard for serialized selection anchors (U09): `{b}`
+ * is the backing text's home block id and `a` is the engine anchor
+ * `{i: {c,k}|null, a: number}` (a < 0 = left affinity). Foreign presence
+ * payloads — e.g. v13 `RelativePosition` objects shaped
+ * `{type, item, assoc}` — fail this check, so mismatched formats are
+ * safely ignored rather than interpreted with wrong offsets.
+ */
+const isEngineAnchor = (value: unknown): value is TextAnchor['a'] =>
+	isRecord(value) &&
+	typeof value.a === 'number' &&
+	(value.i === null ||
+		(isRecord(value.i) && typeof value.i.c === 'number' && typeof value.i.k === 'number'));
+
+const isTextAnchor = (value: unknown): value is TextAnchor =>
+	isRecord(value) &&
+	typeof value.b === 'string' &&
+	isEngineAnchor(value.a) &&
+	(value.o === undefined || typeof value.o === 'string');
+
+export type PresencePoint = { text: Text; offset: number };
+
+const resolveAnchor = (edytor: Edytor, value: unknown): PresencePoint | null => {
+	try {
+		const resolved = isTextAnchor(value) ? edytor.selection.resolveTextAnchor(value) : null;
+		return resolved
+			? {
+					text: resolved.text,
+					offset: Math.min(Math.max(resolved.offset, 0), resolved.text.length)
+				}
+			: null;
+	} catch {
+		return null;
 	}
 };
-
-/** This view's presence payload: `serialize(value)` (anchors only), `null` for no selection. */
-export const createAwarenessSelection = (selection: EdytorSelection): PresenceSelection | null =>
-	serialize(selection.value, selection.projection);
 
 /**
- * Drop the published local selections of DEAD views — called from
- * `selection.destroy()` so detaching the editor does not leave a stale
- * remote caret behind.
- *
- * U5/F4 — with views sharing one awareness slot, clearing must not strip
- * sibling views' entries: only keys owned by destroyed Edytors (this view,
- * when `Edytor.destroy()` set `destroyed` before `selection.destroy()`
- * ran) are removed; a still-mounted sibling's caret survives. Other
- * local-state fields (actor, user, …) are preserved. No-op when nothing
- * died (a live view's remount must not republish an identical map).
+ * A peer's caret in this view: the freshest valid text entry of its
+ * awareness state with both anchors resolved, or `null` — an anchor that
+ * does not resolve paints nothing.
  */
-export const clearAwarenessSelection = (awareness: AwarenessLike) => {
-	const localState = awareness.getLocalState();
-	if (!localState || !('selections' in localState)) {
-		return;
-	}
-	const selections = sweepDestroyedViews(awareness, readSelections(localState));
-	if (selections === readSelections(localState)) {
-		return;
-	}
-	const nextState = { ...localState };
-	writePresenceFields(nextState, selections);
-	awareness.setLocalState(nextState);
-};
-
-/** Whether the published entry carries the same payload (`t`, the local publish recency, excluded). */
-const publishedEntryEquals = (
-	prev: EdytorAwarenessViewSelection | undefined,
-	next: PresenceSelection
-): boolean => prev !== undefined && jsonValuesEqual({ ...prev, t: undefined }, next);
-
-export const publishAwarenessSelection = (selection: EdytorSelection) => {
-	const edytor = selection.edytor;
-	if (edytor.destroyed) {
-		return; // a dead view never publishes
-	}
-	const awareness = edytor.awareness;
-	const localState = awareness.getLocalState();
-	if (!localState) {
-		return;
-	}
-
-	const viewId = viewPresenceId(edytor);
-	ownersOf(awareness).set(viewId, edytor);
-
-	const currentSelections = readSelections(localState);
-	const sweptSelections = sweepDestroyedViews(awareness, currentSelections);
-	const swept = sweptSelections !== currentSelections;
-	const selections = { ...sweptSelections };
-
-	const awarenessSelection = createAwarenessSelection(selection);
-	const previousEntry = selections[viewId];
-	let changed = swept;
-	if (awarenessSelection) {
-		if (!publishedEntryEquals(previousEntry, awarenessSelection)) {
-			selections[viewId] = { ...awarenessSelection, t: ++publishSeq };
-			changed = true;
-		}
-		// Identical payload: keep the previous entry (and its `t`).
-	} else if (viewId in selections) {
-		delete selections[viewId];
-		changed = true;
-	}
-
-	if (!changed) {
-		return;
-	}
-	const nextState = { ...localState };
-	writePresenceFields(nextState, selections);
-	// Final guard — `swept` can report a change even when the dropped keys
-	// were absent from `selections` (a dead owner with nothing published).
-	if (jsonValuesEqual(nextState.selections ?? null, localState.selections ?? null)) {
-		return;
-	}
-	awareness.setLocalState(nextState);
+export const resolvePeerSelection = (
+	edytor: Edytor,
+	state: unknown
+): { start: PresencePoint; end: PresencePoint; collapsed: boolean; reversed: boolean } | null => {
+	const selection =
+		isRecord(state) && isRecord(state.selections)
+			? freshestPublishedSelection(state.selections)
+			: null;
+	const start = selection && resolveAnchor(edytor, selection.start);
+	const end = start && resolveAnchor(edytor, selection.end);
+	return selection && start && end
+		? { start, end, collapsed: selection.collapsed, reversed: selection.reversed }
+		: null;
 };

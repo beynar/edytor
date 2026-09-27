@@ -29,23 +29,19 @@
 	};
 
 	onMount(() => {
-		const refreshFromCollaborationUpdate = () => {
-			refresh();
-		};
-
 		// U8a — 'change' only: it fires exactly when a presence map entry is
 		// added/removed/deep-changed, while 'update' additionally fires on
 		// clock-only heartbeat refreshes AND (locally) on every setLocalState
 		// — subscribing to both recomputed geometry twice per real change.
 		// 'change' is the minimal sufficient signal; doc 'update' covers
 		// remote edits moving the anchors we resolve.
-		edytor.awareness.on('change', refreshFromCollaborationUpdate);
-		edytor.doc.on('update', refreshFromCollaborationUpdate);
+		edytor.awareness.on('change', refresh);
+		edytor.doc.on('update', refresh);
 		refresh();
 
 		return () => {
-			edytor.awareness.off('change', refreshFromCollaborationUpdate);
-			edytor.doc.off('update', refreshFromCollaborationUpdate);
+			edytor.awareness.off('change', refresh);
+			edytor.doc.off('update', refresh);
 		};
 	});
 </script>

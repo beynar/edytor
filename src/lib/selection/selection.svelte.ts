@@ -25,10 +25,7 @@ import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import type { EdgeSide } from '$lib/session/editing/text.js';
 import type { JSONInlineBlock, JSONText } from '$lib/utils/json.js';
-import {
-	clearAwarenessSelection,
-	publishAwarenessSelection
-} from '$lib/collaboration/awarenessSelection.js';
+import { publishPresence } from '$lib/collaboration/awarenessSelection.js';
 import {
 	isNativeFormControl,
 	isNativeInteractiveEvent,
@@ -42,6 +39,7 @@ import {
 	project,
 	sameValue,
 	segmentsOf,
+	serialize,
 	textSelection,
 	anchorsInOrder,
 	type SelectCause,
@@ -561,7 +559,10 @@ export class EdytorSelection {
 			this.#lastBlock = state.startBlock?.id ?? null;
 		}
 		if (!changed) return;
-		publishAwarenessSelection(this);
+		// A dead view never publishes: its entry went with its teardown.
+		if (!this.edytor.destroyed) {
+			publishPresence(this.edytor.awareness, this.edytor.presenceKey, serialize(value, projection));
+		}
 		this.edytorOnSelectionChange?.(this);
 		this.edytor.plugins.forEach((plugin) => {
 			plugin.onSelectionChange?.(this);
@@ -675,10 +676,6 @@ export class EdytorSelection {
 			this.selectionDocument.removeEventListener('selectionchange', this.onSelectionChange);
 			this.selectionDocument = null;
 		}
-		// U09 lifecycle — drop our published caret so remote peers remove
-		// it when this editor detaches (awareness state itself is owned by
-		// the provider, not the component).
-		clearAwarenessSelection(this.edytor.awareness);
 	};
 	/**
 	 * `selectedInlineBlock` and `inlineBlockDeletionTarget` are one

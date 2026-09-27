@@ -45,6 +45,9 @@ export const load: PageLoad = ({ url }) => {
 			}
 			return depth;
 		})(),
+		// arch-v2 R1: `?cells=shadow` keeps render cells next to the mirror and
+		// exposes their comparison on `window.__EDYTOR_CELLS__`.
+		cells: url.searchParams.get('cells') === 'shadow',
 		readonly: url.searchParams.get('readonly') === 'true',
 		dynamicReadonly: url.searchParams.get('dynamicReadonly') === 'true',
 		placeholder: url.searchParams.get('placeholder') ?? undefined,

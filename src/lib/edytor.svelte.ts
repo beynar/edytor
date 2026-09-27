@@ -35,6 +35,7 @@ import {
 	type YUndoManager
 } from '$lib/crdt/index.js';
 import { whenDocumentReady } from '$lib/collaboration/documentSync.js';
+import { mintPresenceKey, publishPresence } from '$lib/collaboration/awarenessSelection.js';
 import { batch } from './block/block.utils.js';
 import {
 	canMoveBlocks as canMoveBlocksRelative,
@@ -2037,11 +2038,15 @@ export class Edytor {
 	 * (the undo manager exists only after first `sync()`).
 	 */
 	destroyed = false;
+	/** The key of this view's presence entry — minted here, written only by this view (R1). */
+	readonly presenceKey = mintPresenceKey();
 	destroy = () => {
 		if (this.destroyed) {
 			return;
 		}
 		this.destroyed = true;
+		// This view's presence entry — its own key, cleared by its own teardown (R1).
+		publishPresence(this.awareness, this.presenceKey, null);
 
 		// A pending readiness binding must not resurrect a dead view.
 		this._readinessRelease?.();

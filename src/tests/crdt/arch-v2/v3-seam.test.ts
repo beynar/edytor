@@ -33,7 +33,7 @@ const E = bindEdytorDoc(Y);
 const REMOTE = { remote: true };
 
 /** Red on the reference (no `doc/anchors`); green since V3. */
-const row = it.fails;
+const row = it;
 
 const b = (id: string, text: string, children?: unknown[], type = 'paragraph') => ({
 	id,

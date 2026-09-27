@@ -1065,6 +1065,18 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return out;
 		};
 
+		/**
+		 * The replicated slot of any registered block, dead or live (the seam
+		 * of a vanished endpoint, `anchors.seam`): its rank and its display
+		 * parent — the placement parent itself when that one is dead.
+		 */
+		const slotOf = (id: BlockId): { parent: BlockId | null; rank: string } | null => {
+			const pl = view().placements.get(id);
+			if (!pl) return null;
+			const parent = displayParentOf(view().own, pl);
+			return { parent: parent === DEAD ? pl.parent : (parent as BlockId | null), rank: pl.rank };
+		};
+
 		// ── roles (island/void) ───────────────────────────────────────────
 
 		const roleOfId = (id: BlockId): BlockRole => {
@@ -2180,6 +2192,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			toJSON,
 			blockJSON: byRef(blockJSON),
 			childrenIds: byRef(childrenIds),
+			/** Visible children of `parent` with their ranks, in `(rank, id)` order. */
+			childSlots: (parent: BlockId | null) => view().kids.get(parent) ?? [],
+			slotOf: byRef(slotOf),
 			positionOf: byRef(positionOf),
 			pathOf: byRef(pathOf),
 			parentOf: byRef((id: BlockId) => positionOf(id)?.parent ?? null),

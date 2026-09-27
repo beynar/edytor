@@ -15,6 +15,7 @@ import type { BlockId, BlockSpec } from '$lib/crdt/index.js';
 import type { Plan, PlanStep, Prepared } from '$lib/crdt/edytor-doc.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { ChangePayload } from '$lib/plugins.js';
+import type { SelectionValue } from '$lib/session/selection.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { DEV } from 'esm-env';
 import { prevent, PreventionError } from '$lib/utils.js';
@@ -23,6 +24,8 @@ export type CommandResult = {
 	operation: string;
 	status: 'refused' | 'noop' | 'applied' | 'failed';
 	error?: unknown;
+	/** The result selection the command authored (R9), selected once. */
+	selection?: SelectionValue;
 };
 
 /**
@@ -98,6 +101,11 @@ const specJSON = (spec: BlockSpec): unknown => ({
 export class Dispatcher {
 	/** The last operation's result (L5). */
 	last: CommandResult | null = null;
+	/**
+	 * The result selection a command in flight declared before its operations
+	 * (R9): the seam repair leaves this view's endpoints to it.
+	 */
+	authoring: SelectionValue | null = null;
 	/** An operation's body is running: nested operations are its steps. */
 	private active = false;
 	/** A user command's synchronous part is running: nested commands are its steps. */
@@ -295,14 +303,35 @@ export class Dispatcher {
 	};
 
 	/**
-	 * A command's result caret, shown once after its commit: the model first,
-	 * then the DOM, through today's selection API (V2 replaces it by `select`).
+	 * A command's result caret (R9): selected once, recorded on the result,
+	 * then displayed (through today's selection API until V4). With `ops`, the
+	 * caret is declared before the command's operations run — minted while its
+	 * text is live, so it survives them — and written only when they applied;
+	 * meanwhile the seam repair leaves this view's endpoints to it.
 	 */
-	caret = (text: Text | null | undefined, offset: number) => {
-		if (!text) return;
-		const at = Math.max(0, Math.min(offset, text.length));
-		this.edytor.selection.setCollapsedStateAtTextOffset(text, at);
-		void this.edytor.selection.setAtTextOffset(text, at);
+	caret = <T>(text: Text | null | undefined, offset: number, ops?: () => T): T | undefined => {
+		const selection = this.edytor.selection;
+		const at = text ? Math.max(0, Math.min(offset, text.length)) : 0;
+		const value = text ? selection.textValue(text, at) : null;
+		let out: T | undefined;
+		if (ops) {
+			const outer = this.authoring;
+			this.authoring = value;
+			try {
+				out = ops();
+			} finally {
+				this.authoring = outer;
+			}
+			if (!out) return out;
+		}
+		if (!text || !value || value.kind === 'none') return out;
+		selection.clearModelSelectionPreservation();
+		selection.select(value);
+		// Declared before its operations: gone with them after all, the seam.
+		if (!selection.projection.start) selection.restoreDeadSelectionEndpoints();
+		if (this.last) this.last = { ...this.last, selection: selection.value };
+		void selection.setAtTextOffset(text, at);
+		return out;
 	};
 
 	/**

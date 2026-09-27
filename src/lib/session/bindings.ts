@@ -20,7 +20,7 @@ import { intentSnapshot } from '$lib/events/beforeInputSnapshot.js';
 import { runHistoryCommand } from '$lib/events/undoRestore.js';
 import {
 	getSelectedBlocksInDocumentOrder,
-	removeSelectedBlocksForReplacement
+	deleteSelectedBlocks
 } from '$lib/selection/replaceSelection.js';
 import type { HotKey } from './keymap.js';
 
@@ -233,12 +233,9 @@ const deleteSelection: HotKey = ({ edytor, prevent }) => {
 		edytor.plugins.forEach((plugin) =>
 			plugin.onDeleteSelectedBlocks?.({ prevent, selectedBlocks })
 		);
-		const removed = removeSelectedBlocksForReplacement(edytor, {
-			queueUndoSelectionSnapshot: true
-		});
-		const block = removed?.blockToFocus;
+		const block = deleteSelectedBlocks(edytor)?.parent;
 		if (!block) return;
-		// Caret re-assertion after the render (L26's core part, V4 owns it).
+		// Focus re-assertion after the render (L26's core part, V4 owns it).
 		const focus = () => {
 			const text = block.firstEditableText;
 			if (!text) return;

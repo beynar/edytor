@@ -55,6 +55,7 @@ import {
 	type SelectionSegment,
 	type SelectionValue
 } from '$lib/session/selection.js';
+import { seam } from '$lib/crdt/anchors.js';
 import { getTextPath, isAndroidChromeBrowser } from '$lib/events/events.utils.js';
 
 /**
@@ -169,6 +170,8 @@ export const isBackward = (selection: {
 const SYNTHETIC_TEXT_OVERLAY_SELECTOR =
 	'[data-edytor-text-placeholder], [data-edytor-text-suggestion]';
 const TEXT_PLACEHOLDER_SELECTOR = '[data-edytor-text-placeholder]';
+/** Content hidden by view state: a collapsed toggle's body, a `hidden` subtree. */
+const HIDDEN = '[hidden], details:not([open]) > :not(summary)';
 
 const getElementFromNode = (node: Node | null) => {
 	if (!node || typeof Element === 'undefined') {
@@ -643,7 +646,7 @@ export class EdytorSelection {
 		this.#written = state;
 		if (state.startText) {
 			this.#lastText = state.startText;
-			this.#lastBlock = state.startBlock;
+			this.#lastBlock = state.startBlock?.id ?? null;
 		}
 		if (!changed) return;
 		publishAwarenessSelection(this);
@@ -2431,7 +2434,7 @@ export class EdytorSelection {
 
 	/** The text and block the selection's start last resolved to (the seam origin once they die). */
 	#lastText: Text | null = null;
-	#lastBlock: Block | null = null;
+	#lastBlock: string | null = null;
 
 	private isEditorFocused = () => {
 		const activeElement = getActiveElement(this.edytor.node);
@@ -2443,28 +2446,49 @@ export class EdytorSelection {
 	};
 
 	/**
-	 * Post-mirror-flush repair, through `select()` (L21 until V3 moves the
-	 * seam to `doc/anchors`). The text endpoints follow their anchors by
-	 * projection; what is repaired here is a value that no longer resolves:
-	 * a block set keeps its live members, an atom that vanished leaves a
-	 * caret at its block's start, and when nothing survives the selection
-	 * lands at the seam the dead block vacated — the start of the next live
-	 * sibling's editable text, else the end of the previous one, else the
-	 * document's first editable text. The model is written at once; a
-	 * focused editor also displays it (also when the text the caret was
-	 * displayed in died while its anchor moved on).
+	 * Displayable (§2.4, a Surface fact): the block's own content is mounted
+	 * and not hidden by view state — a collapsed toggle's body, a `hidden`
+	 * subtree. A phantom content slot (a snippet that renders no `content()`)
+	 * never mounts.
+	 */
+	#displayable = (id: string) => {
+		const node = this.edytor.idToBlock
+			.get(id)
+			?.content.find((part): part is Text => part instanceof Text && part.node != null)?.node;
+		return !!node && !node.closest(HIDDEN);
+	};
+
+	/** A caret at the seam `dead` vacated (`doc/anchors`); `null` when nothing displays. */
+	#seamValue = (dead: string | null): SelectionValue | null => {
+		const { facade } = this.edytor;
+		const at = seam(facade, dead, this.#displayable);
+		const anchor = at && facade.anchorAt(at.block, at.offset, 'left');
+		return anchor ? textSelection(anchor) : null;
+	};
+
+	/**
+	 * Post-mirror-flush repair of the endpoints this view did not author
+	 * (R9: a command that declared its result selection authors its own), through
+	 * `select()`. Text endpoints follow their anchors by projection; what is
+	 * repaired is a value that no longer resolves: a block set keeps its live
+	 * members, an atom that vanished leaves a caret at its block's start, and
+	 * otherwise the selection lands at the seam of the block it last resolved in
+	 * (`doc/anchors`: the replicated slot, displayable stops only). The model is
+	 * written at once; a focused editor also displays it (also when the text the
+	 * caret was displayed in died while its anchor moved on).
 	 */
 	restoreDeadSelectionEndpoints = () => {
 		if (this.expectHistoryRestore || this.isRestoringHistorySelection) {
 			return;
 		}
-		// Mid pointer-drag the user's in-progress range owns the selection.
-		if (this.pointerDragStart !== null) {
+		// Mid pointer-drag the user's in-progress range owns the selection; a
+		// command that declared its result selection owns this view's endpoints.
+		if (this.pointerDragStart !== null || this.edytor.dispatcher.authoring) {
 			return;
 		}
 		const { value } = this;
 		const facade = this.edytor.facade;
-		let dead: Block | null;
+		let dead: string | null;
 		if (value.kind === 'blocks') {
 			const live = value.ids.filter((id) => facade.isVisibleBlock(id));
 			if (live.length === value.ids.length) return;
@@ -2472,22 +2496,23 @@ export class EdytorSelection {
 				this.select(blockSelection(live), 'repair');
 				return;
 			}
-			dead = this.selectedBlocks.values().next().value ?? null;
+			dead = value.ids[0] ?? null;
 		} else if (value.kind === 'atom') {
 			if (this.state.startText) return;
-			const block = this.edytor.idToBlock.get(value.blockId);
-			const text = block?._live ? block.firstEditableText : undefined;
-			if (text) {
-				this.#land({ text, offset: 0 });
+			const anchor = facade.isVisibleBlock(value.blockId)
+				? facade.anchorAt(value.blockId, 0, 'left')
+				: null;
+			if (anchor) {
+				this.#land(textSelection(anchor));
 				return;
 			}
-			dead = block ?? null;
+			dead = value.blockId;
 		} else if (value.kind === 'text') {
 			const state = this.state;
 			if (state.startText) {
 				const displayedDied = this.#lastText !== null && !this.#lastText._live;
 				this.#lastText = state.startText;
-				this.#lastBlock = state.startBlock;
+				this.#lastBlock = state.startBlock?.id ?? null;
 				this.deadEndpointRecoveryPending = false;
 				if (displayedDied && this.isEditorFocused()) {
 					if (state.isCollapsed) void this.setAtTextOffset(state.startText, state.yStart);
@@ -2503,102 +2528,22 @@ export class EdytorSelection {
 			return;
 		}
 		// A live origin means the anchors are not integrated yet: they converge.
-		if (dead?._live) return;
-		const target = this.#seamOf(dead);
-		if (target) {
-			this.deadEndpointRecoveryPending = false;
-			this.#land(target);
-			return;
-		}
-		// A live destination can exist in the model without a mounted DOM
-		// node — a whole-document remote delete runs this pass inside
-		// `flushMirror`, BEFORE the normalization-created replacement
-		// paragraph's text element mounts. The next `Text.attach` replays
-		// the recovery instead of leaving the caret on dead content forever.
-		this.deadEndpointRecoveryPending = true;
+		if (dead !== null && facade.isVisibleBlock(dead)) return;
+		const target = this.#seamValue(dead);
+		// A live destination can exist in the model without a mounted DOM node
+		// (a whole-document remote delete runs this pass before the replacement
+		// paragraph mounts): the next `Text.attach` replays the recovery.
+		this.deadEndpointRecoveryPending = !target;
+		if (target) this.#land(target);
 	};
 
 	/** Select a repaired caret; a focused editor also displays it. */
-	#land = (target: { text: Text; offset: number }) => {
+	#land = (target: SelectionValue) => {
 		const previous = this.caretSignature();
-		this.select(this.textValue(target.text, target.offset), 'repair');
+		this.select(target, 'repair');
 		this.recordPostDeleteCaretTarget(previous);
-		if (this.isEditorFocused()) void this.setAtTextOffset(target.text, target.offset);
-	};
-
-	/** The seam a dead block vacated (see `restoreDeadSelectionEndpoints`); null when nothing is mounted. */
-	#seamOf = (deadBlock: Block | null): { text: Text; offset: number } | null => {
-		// `firstEditableText`/`lastEditableText` skip a container's
-		// unrendered phantom text (a content slot holding no rendered node)
-		// and descend into children — a caret on phantom text is
-		// invisible: the next input lands in content the document never
-		// shows. Contentless blocks return undefined; the walk degrades to
-		// the next candidate rather than crashing like `firstText` does.
-		const editableFirstTextOf = (block: Block | null | undefined): Text | null => {
-			try {
-				return block?.firstEditableText ?? null;
-			} catch {
-				return null;
-			}
-		};
-		const editableLastTextOf = (block: Block | null | undefined): Text | null => {
-			try {
-				return block?.lastEditableText ?? null;
-			} catch {
-				return null;
-			}
-		};
-		let parent: Block | null = deadBlock?.parent instanceof Block ? deadBlock.parent : null;
-		while (parent && !parent._live) {
-			parent = parent.parent instanceof Block ? parent.parent : null;
-		}
-		if (deadBlock && parent) {
-			// The slot the dead subtree vacated in the live ancestor: the
-			// topmost dead child of `parent`. Dead blocks keep their parent
-			// link, and the links `_drop` captured while the sibling array was
-			// still whole name its neighbours (skipping dead ones: a batched
-			// remote delete can drop several adjacent slots).
-			let topDead = deadBlock;
-			for (
-				let cur: Block | null = deadBlock.parent instanceof Block ? deadBlock.parent : null;
-				cur && cur !== parent;
-				cur = cur.parent instanceof Block ? cur.parent : null
-			) {
-				topDead = cur;
-			}
-			let forward: Block | null = topDead._dropNext;
-			while (forward && !forward._live) {
-				forward = forward._dropNext;
-			}
-			let backward: Block | null = topDead._dropPrev;
-			while (backward && !backward._live) {
-				backward = backward._dropPrev;
-			}
-			const siblings = parent.children;
-			// From each live seam neighbour, continue over live siblings with
-			// no editable text (void blocks like dividers) in the same direction.
-			const scan = (
-				from: Block | null,
-				dir: 1 | -1,
-				pick: (block: Block) => Text | null
-			): { text: Text; offset: number } | null => {
-				if (!from) return null;
-				for (let i = siblings.indexOf(from); i >= 0 && i < siblings.length; i += dir) {
-					const text = pick(siblings[i]!);
-					if (text) {
-						return { text, offset: dir === 1 ? 0 : text.length };
-					}
-				}
-				return null;
-			};
-			const target =
-				scan(forward, 1, editableFirstTextOf) ?? scan(backward, -1, editableLastTextOf);
-			if (target) return target;
-		}
-		// Every ancestor dead or no live sibling — the first editable text
-		// anywhere under the root (never the root's own phantom slot).
-		const fallback = editableFirstTextOf(this.edytor.root);
-		return fallback ? { text: fallback, offset: 0 } : null;
+		const { startText, yStart } = this.state;
+		if (startText && this.isEditorFocused()) void this.setAtTextOffset(startText, yStart);
 	};
 
 	/**
@@ -2758,6 +2703,17 @@ export class EdytorSelection {
 		// observes `backToPreWrite` after the other drags state back).
 		const writeEpoch = ++this.caretWriteEpoch;
 		const commitVersion = this.edytor._docCommitVersion;
+		const lookup = () => (textOrId instanceof Text ? textOrId : this.edytor.getTextById(textOrId));
+		const callText = lookup();
+		const clamp = (text: Text) => Math.min(Math.max(textOffset, 0), text.length);
+		const intended = callText?._live ? this.textValue(callText, clamp(callText)) : null;
+		// The model fallback: the anchors minted now, else (a text created or
+		// already gone at call time) the ones its wrapper answers then.
+		const fallback = () => {
+			const text = lookup();
+			const late = text?._live ? this.textValue(text, clamp(text)) : noSelection;
+			this.#admit(intended ?? late, text ?? callText);
+		};
 
 		// Same staleness contract as `setAtRange`: the `getTextNode` awaits
 		// below span a window where a foreign write (remote resolution,
@@ -2824,7 +2780,7 @@ export class EdytorSelection {
 					done();
 					return;
 				}
-				this.writeCollapsedCaretState(textOrId, textOffset);
+				fallback();
 				done();
 				return;
 			}
@@ -2847,7 +2803,7 @@ export class EdytorSelection {
 				// The awaits above span a window where an outside click can
 				// claim focus — writing the DOM range now would drag it back.
 				if (this.foreignFocusOwnsSelection()) {
-					this.writeCollapsedCaretState(textOrId, textOffset);
+					fallback();
 				} else {
 					this.setAtNodeOffset(textNode, nodeOffset);
 				}
@@ -2862,75 +2818,24 @@ export class EdytorSelection {
 			done();
 			return;
 		}
-		this.writeCollapsedCaretState(textOrId, textOffset);
+		fallback();
 		done();
 	};
 
 	/**
-	 * Re-resolve a caret target that died while the write was in flight.
-	 * A remote kill/merge can dead the wrapper between the caller's model
-	 * read and the awaited DOM write — committing `state` onto a dead
-	 * wrapper strands the caret on content the document no longer shows
-	 * (a dead endpoint the collab barrier reads as a selection anchored
-	 * on a deleted block). The anchor is bound to the dead text's atoms
-	 * via its still-persisting block record — claimed content resolves
-	 * through ownership onto the survivor's seam.
+	 * A write's model-side fallback: the value minted when the write was
+	 * requested (R4: anchors are captured at call time, before any await, so
+	 * a target merged away meanwhile is followed through its atoms), or the
+	 * seam of `origin`'s block when nothing of it resolves any more.
 	 */
-	private resolveDeadCaretTarget = (
-		text: Text,
-		offset: number
-	): { text: Text; offset: number } | null => {
-		const blockId = text.parent?._blockId;
-		const anchor =
-			blockId != null
-				? (this.edytor.facade?.anchorAt(blockId, text.segStart + offset, 'left') ?? null)
-				: null;
-		return anchor ? this.resolveTextAnchor(anchor) : null;
-	};
-
-	private writeCollapsedCaretState = (textOrId: Text | string, offset: number) => {
-		const text = textOrId instanceof Text ? textOrId : this.edytor.getTextById(textOrId);
-		if (!text || text._live) {
-			this.setCollapsedStateAtTextOffset(textOrId, offset);
+	#admit = (intended: SelectionValue, origin: Text | undefined) => {
+		this.clearModelSelectionPreservation();
+		if (project(intended, this.edytor.facade).start) {
+			this.select(intended);
 			return;
 		}
-		const resolved = this.resolveDeadCaretTarget(text, offset) ?? this.#seamOf(text.parent);
-		if (resolved) this.setCollapsedStateAtTextOffset(resolved.text, resolved.offset);
-	};
-
-	/**
-	 * The range twin of `writeCollapsedCaretState`: each dead endpoint
-	 * re-resolves independently; a range whose endpoints both die collapses
-	 * to whichever resolution survives, and a fully-unresolvable write
-	 * lands on `restoreDeadSelectionEndpoints`'s seam walk.
-	 */
-	private writeRangeCaretState = (
-		startText: Text,
-		startOffset: number,
-		endText: Text,
-		endOffset: number,
-		isReversed: boolean
-	) => {
-		if (startText._live && endText._live) {
-			this.setRangeStateAtTextOffsets(startText, startOffset, endText, endOffset, {
-				isReversed
-			});
-			return;
-		}
-		const start = startText._live
-			? { text: startText, offset: startOffset }
-			: this.resolveDeadCaretTarget(startText, startOffset);
-		const end = endText._live
-			? { text: endText, offset: endOffset }
-			: this.resolveDeadCaretTarget(endText, endOffset);
-		if (start && end) {
-			this.setRangeStateAtTextOffsets(start.text, start.offset, end.text, end.offset, {
-				isReversed
-			});
-			return;
-		}
-		const survivor = start ?? end ?? this.#seamOf(startText.parent);
-		if (survivor) this.setCollapsedStateAtTextOffset(survivor.text, survivor.offset);
+		const target = origin && this.#seamValue(origin.parent?.id ?? null);
+		if (target) this.select(target);
 	};
 
 	/**
@@ -3207,6 +3112,13 @@ export class EdytorSelection {
 			isReversed: stateAtCall.isReversed
 		};
 		const previousCaret = this.caretSignature();
+		const intended = this.textValue(
+			startText,
+			startOffset,
+			endText,
+			endOffset,
+			normalizedRange.isReversed
+		);
 		// Admission gate for EVERY write this call can perform — DOM ranges
 		// AND the model-side fallbacks. A newer user gesture (serial bump)
 		// supersedes the write even when it re-picks the call-time position
@@ -3241,13 +3153,7 @@ export class EdytorSelection {
 				if (stale()) {
 					return;
 				}
-				this.writeRangeCaretState(
-					startText,
-					startOffset,
-					endText,
-					endOffset,
-					normalizedRange.isReversed
-				);
+				this.#admit(intended, startText);
 				if (writeIsCollapsed) {
 					this.recordPostDeleteCaretTarget(previousCaret);
 				}
@@ -3278,13 +3184,7 @@ export class EdytorSelection {
 			// The awaits above span a window where an outside click can
 			// claim focus — writing the DOM range now would drag it back.
 			if (this.foreignFocusOwnsSelection()) {
-				this.writeRangeCaretState(
-					startText,
-					startOffset,
-					endText,
-					endOffset,
-					normalizedRange.isReversed
-				);
+				this.#admit(intended, startText);
 				if (writeIsCollapsed) {
 					this.recordPostDeleteCaretTarget(previousCaret);
 				}

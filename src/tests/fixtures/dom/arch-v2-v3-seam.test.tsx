@@ -42,7 +42,7 @@ import {
 } from '../../dom/test.utils.js';
 
 /** Red on the reference; green since V3. */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 

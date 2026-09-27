@@ -326,6 +326,29 @@ content text (unrendered): the caret looked alive but the next keystroke
 was silently dropped. The fallback now names the first real child's
 text, never the root's own content slot.
 
+### `sel.seam.slot` — one seam rule, for endpoints this view did not author (arch-v2 V3)
+
+The slot is replicated data: a dead block keeps its winning placement
+`{p, r}`, so the seam is the same on every replica whatever order the
+deletes arrived in (`doc/anchors` `seam`, `src/lib/crdt/anchors.ts`). The
+rules above are its sibling level; when the live parent has no
+displayable stop on either side, the same question is asked one level up
+(the parent's own content is then the stop before the slot), instead of
+jumping to the document's first text. Only **displayable** stops count:
+the block's own content is mounted and not hidden by view state (a
+collapsed toggle's body, a `hidden` subtree; a phantom content slot never
+mounts) — so a peer's delete inside a collapsed toggle lands on the next
+visible stop, never in a hidden sibling (F-S14).
+
+The seam applies only to endpoints this view did not author: remote
+deletes, another view's or a headless change, a local operation that
+declared no result. A command that authors its result selection declares
+it before its operations run (`Dispatcher.caret(text, offset, ops)`); the
+repair leaves this view's endpoints to it and the result is selected once
+(`dispatcher.last.selection`). A block-set delete or cut authors a caret at
+the end of the first editable text of the nearest unselected block before
+the set, else after it (F-S13, FP-7).
+
 ## History
 
 ## Concurrency policy
@@ -423,7 +446,7 @@ migration).
 - After settlement, endpoints reference live editable content with
   correct owner and bounds; follow-up input reaches it without a harness
   selection reset.
-- Fallback order: surviving **forward** editable destination, then
+- Fallback order (see `sel.seam.slot`): surviving **forward** editable destination, then
   backward, then the documented root/first-editable destination —
   traversing past noneditable descendants and siblings at every level.
 

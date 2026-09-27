@@ -146,6 +146,69 @@ container and all its children die with the range.
 
 `alpha@1 → alpha@3` → `"aha"`. Interior structure untouched.
 
+## Flow placement (paste, drop, fragment insertion)
+
+Written at arch-v2 D7 (plan §4.1 `doc/flow`, decision D-4). One prepared
+document op, `prepare.insertFlow(target, flow)`, places every inbound
+fragment; paste, drop and programmatic fragment insertion all call it.
+Over a text range the range is deleted first by `replaceRange`
+(`del.range.replace`) and the flow is placed at the caret that op reports.
+
+### `flow.shape` — what a flow is
+
+An admitted flow is an ordered list of **lines**, every id fresh (minted
+once, at ingress): a line with a kind is a block (`type`, `data`,
+`content`, `children`); a line without one is an **inline run** (content
+only). Sources: plain text → one run per line (`\n`, `\r\n`); a URI →
+one run carrying the link mark; an internal same-block copy → one run; an
+internal cross-block copy and parsed HTML → kinded lines (HTML inline runs
+stay runs); an internal copy of a **block selection** → kinded lines marked
+`whole` (`flow.whole`). A flow with no lines (an empty payload; HTML with
+only a comment, a `<script>` or an empty `<span>`) changes nothing and adds
+no undo step (F-P10). A taken id refuses the op before any write.
+
+### `flow.inline` — one line joins the text
+
+At a position `(B, o)`, a single line's content is inserted at `o`. `B`
+keeps its kind, unless `B` shows no text: then it takes a kinded line's
+kind and data (`<blockquote>` pasted into an empty paragraph gives a quote;
+an empty `h2` given a paragraph line becomes a paragraph without the stale
+`level`). The line's children become `B`'s first children. Caret: after
+the inserted content.
+
+### `flow.split` — several lines split the block (D-4)
+
+`B` splits at `o`. The first line's content joins the head (`B`, text
+`[0, o)`), the last line's content joins the tail (text `[o, len)`, with
+`B`'s children, which come after the caret), and the lines between are
+placed as blocks between the two, in order. The tail is the last line's
+block: its id, and its kind and data when it is kinded (a run keeps `B`'s,
+as a split does). The head keeps `B`'s kind unless `B` showed no text
+(then the first line's, as in `flow.inline`). A run placed as a block takes
+the default child of its parent. A joined line's children become the first
+children of the block it joins. `Hello|World` + `X`, `Y` →
+`["HelloX", "YWorld"]` on the internal, HTML, plain and drop paths (F-P5).
+Caret: in the tail, after the last line's content.
+
+### `flow.whole` — a block selection's copy is whole blocks
+
+A `whole` flow is placed as blocks right after `B`; `B` is never split. An
+empty `B` (no text, no children) is replaced by them. Caret: the end of the
+last placed block's own content.
+
+### `flow.slot` — over selected blocks
+
+Over a block selection the selected blocks are deleted (`deleteBlocks`) and
+the lines are placed as blocks in the first one's slot, in the same plan
+(runs take the slot's default child). Caret: the end of the last placed
+block's own content.
+
+### `flow.void` — a block that cannot split
+
+A void block (its caption) is never split: at a position inside one, the
+lines' content joins into one run separated by `\n`; their children are
+not placed.
+
 ## Collapsed caret deletion
 
 ### `del.caret.char` — character backward/forward

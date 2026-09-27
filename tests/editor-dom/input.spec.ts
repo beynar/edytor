@@ -3114,13 +3114,15 @@ test.describe('browser input behavior', () => {
 				}>(page, 'value');
 				return value.children.map((child) => child.content?.[0]?.text ?? '');
 			})
-			.toEqual(['leX\nYte', '']);
+			.toEqual(['leX', 'Yte', '']);
 
+		// arch-v2 D7 (decision D-4, `flow.split`): a multiline paste splits
+		// the block like every other paste path; the caret follows `Y`.
 		await expectSelection(page, {
-			startBlockPath: [0],
-			endBlockPath: [0],
-			yStart: 5,
-			yEnd: 5,
+			startBlockPath: [1],
+			endBlockPath: [1],
+			yStart: 1,
+			yEnd: 1,
 			isCollapsed: true
 		});
 

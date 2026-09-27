@@ -201,6 +201,53 @@ describe('V2 — one commit point', () => {
 	});
 });
 
+/** The DST seed-7 shape: one text of three marked runs, `l words`. */
+const markedRuns = {
+	children: [
+		{
+			type: 'paragraph',
+			content: [
+				{ text: 'l', marks: { code: true } },
+				{ text: ' ' },
+				{ text: 'words', marks: { highlight: 'yellow' } }
+			]
+		}
+	]
+};
+
+describe('V2 fix — typing over a reversed range leaves the caret after the insertion', () => {
+	// DST seed 7 (multiline-rich-blocks) step 3: Firefox commits `insertText`
+	// through a composition. With the range collapsed by its replacement,
+	// the compatibility `relativePosition` must stay the start endpoint's
+	// anchor (it was the end's), or the composition region starts after the
+	// inserted text and the caret lands one character late.
+	for (const via of ['composition', 'beforeinput'] as const) {
+		it(`${via}: reversed range over marked runs → caret after \`é\``, async () => {
+			const { edytor, editor } = await renderDomEdytor(<root></root>, {
+				value: structuredClone(markedRuns),
+				autoSelectFixture: false
+			});
+			const text = edytor.root!.children[0]!.firstText;
+			await setNativeSelection(edytor, text, 0, text, 3, { reversed: true });
+			expect(edytor.selection.state).toMatchObject({ yStart: 0, yEnd: 3, isReversed: true });
+			if (via === 'composition')
+				await dispatchComposition(editor, [
+					{ type: 'compositionstart' },
+					{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'é' },
+					{ type: 'compositionend', data: 'é' }
+				]);
+			else await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'é' });
+			await flushDomUpdates();
+			expect(edytor.value.children?.[0]?.content).toEqual([
+				{ text: 'é' },
+				{ text: 'ords', marks: { highlight: 'yellow' } }
+			]);
+			const state = edytor.selection.state;
+			expect([state.startText?.segStart + state.yStart, state.isCollapsed]).toEqual([1, true]);
+		});
+	}
+});
+
 const codeValue = {
 	children: [
 		{ type: 'code', children: [{ type: 'codeLine', content: [{ text: 'const a = 1;' }] }] },

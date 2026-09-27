@@ -7,28 +7,30 @@ test.describe('collaboration presence and persistence', () => {
 
 		await gotoEditorRoute(page, '/test/dom?scenario=selection', { requireRuntime: true });
 		await setSelectionByTextIndex(page, 0, 5);
+		// D-16 (plan §11.2): presence is `selections[viewKey] = serialize(value) + t`
+		// only — no legacy `selection` mirror. The peer copies this view's entry.
 		await expect
 			.poll(() =>
 				page.evaluate(() => {
 					const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-					return Boolean(edytor?.awareness.getLocalState()?.selection);
+					return Object.keys(edytor?.awareness.getLocalState()?.selections ?? {}).length;
 				})
 			)
-			.toBe(true);
+			.toBe(1);
 
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 			if (!edytor) {
 				throw new Error('Missing editor runtime');
 			}
-			const selection = edytor.awareness.getLocalState()?.selection;
-			if (!selection) {
+			const selections = edytor.awareness.getLocalState()?.selections;
+			if (!selections) {
 				throw new Error('Missing local awareness selection');
 			}
 
 			edytor.awareness.states.set(9001, {
 				user: { name: 'Ada', color: '#dc2626' },
-				selection
+				selections: { 'view-1': Object.values(selections)[0] }
 			});
 			edytor.awareness.emit('change', [{ added: [9001], updated: [], removed: [] }, 'test']);
 			edytor.awareness.emit('update', [{ added: [9001], updated: [], removed: [] }, 'test']);

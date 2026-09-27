@@ -47,6 +47,7 @@ import {
 	sameValue,
 	segmentsOf,
 	textSelection,
+	anchorsInOrder,
 	type SelectCause,
 	type SelectionProjection,
 	type SelectionSegment,
@@ -531,11 +532,7 @@ export class EdytorSelection {
 						.flatMap((id) => blockOf(id) ?? [])
 				: projection.blocks.flatMap((id) => blockOf(id) ?? []);
 		const [anchorStart, anchorEnd] =
-			value.kind === 'text'
-				? projection.isReversed
-					? [value.focus, value.anchor]
-					: [value.anchor, value.focus]
-				: [null, null];
+			value.kind === 'text' ? anchorsInOrder(value, projection) : [null, null];
 		const voidRoot = projection.voidRoot ? blockOf(projection.voidRoot) : null;
 		const edytor = this.edytor;
 		return Object.defineProperties(

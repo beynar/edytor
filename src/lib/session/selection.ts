@@ -360,18 +360,30 @@ export type PresenceSelection =
 	| { blocks: BlockId[] }
 	| { atom: string; block: BlockId };
 
+/**
+ * A text value's anchors as (start, end). A range an edit collapsed has no
+ * order left; its anchors keep the roles they were minted with (a start
+ * binds right, an end binds left), so the start stays the start.
+ */
+export const anchorsInOrder = (
+	value: Extract<SelectionValue, { kind: 'text' }>,
+	projection: SelectionProjection
+): [DocAnchor, DocAnchor] =>
+	projection.isReversed ||
+	(projection.isCollapsed &&
+		value.anchor !== value.focus &&
+		value.anchor.a.a < 0 &&
+		value.focus.a.a >= 0)
+		? [value.focus, value.anchor]
+		: [value.anchor, value.focus];
+
 export const serialize = (
 	value: SelectionValue,
 	projection: SelectionProjection
 ): PresenceSelection | null => {
 	if (value.kind === 'text') {
-		const reversed = projection.isReversed;
-		return {
-			start: reversed ? value.focus : value.anchor,
-			end: reversed ? value.anchor : value.focus,
-			collapsed: projection.isCollapsed,
-			reversed
-		};
+		const [start, end] = anchorsInOrder(value, projection);
+		return { start, end, collapsed: projection.isCollapsed, reversed: projection.isReversed };
 	}
 	if (value.kind === 'blocks') return { blocks: [...value.ids] };
 	if (value.kind === 'atom') return { atom: value.atomId, block: value.blockId };

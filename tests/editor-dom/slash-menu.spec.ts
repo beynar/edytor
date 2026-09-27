@@ -101,4 +101,36 @@ test.describe('browser slash menu', () => {
 
 		issues.assertClean();
 	});
+	// S6: the code kind's record is a slash command wherever the code
+	// extension is loaded — the test route, not only the demo.
+	test('lists and runs the code kind from its record', async ({ page }) => {
+		test.fail(true, 'S6 tests first: the code command was demo-only on the reference');
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=first');
+		await waitForEditorReady(page);
+		await setSelectionByTextIndex(page, 0, 0);
+		await page.keyboard.type('/code');
+
+		const item = page.getByTestId('slash-menu-item');
+		await expect(item).toHaveCount(1);
+		await expect(item).toHaveText('Code');
+		await expect(item).toHaveAttribute('data-icon', '</>');
+		await page.keyboard.press('Enter');
+		await page.keyboard.type('hello');
+		await expect
+			.poll(async () => {
+				const value = await readJsonByTestId<{
+					children: Array<{
+						type: string;
+						children?: Array<{ type: string; content?: Array<{ text: string }> }>;
+					}>;
+				}>(page, 'value');
+				const first = value.children[0];
+				return { type: first?.type, line: first?.children?.[0]?.content?.[0]?.text };
+			})
+			.toEqual({ type: 'code', line: 'hello' });
+
+		issues.assertClean();
+	});
 });

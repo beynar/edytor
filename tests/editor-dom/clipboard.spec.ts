@@ -93,6 +93,8 @@ test.describe('browser clipboard behavior', () => {
 		expect(copyResult.defaultPrevented).toBe(true);
 		expect(copyResult.clipboardData['application/x-edytor-fragment']).toBeTruthy();
 		expect(copyResult.clipboardData['text/html']).toContain('data-edytor-fragment');
+		// The readable HTML flavour: the mark's export form from its record (S6).
+		expect(copyResult.clipboardData['text/html']).toContain('<p><strong>Alpha</strong></p>');
 		expect(copyResult.clipboardData['text/plain']).toBe('Alpha');
 
 		await setSelectionByTextIndex(page, 1, 0);

@@ -424,3 +424,48 @@ describe('line and word extension move the focus', () => {
 		expect(sel(edytor)).toMatchObject(caretAt(0, 8));
 	});
 });
+
+describe('vertical extension walks the same displayable blocks (O44)', () => {
+	row('Shift+ArrowDown at a collapsed toggle summary extends past its hidden body', async () => {
+		const { edytor, editor, blocks } = await mount(toggleDoc());
+		await place(edytor, blocks()[1], 2);
+		await press(editor, 'ArrowDown', { shift: true });
+		expect(sel(edytor)).toMatchObject({
+			kind: 'text',
+			start: [1, 2],
+			end: [4, 2],
+			reversed: false
+		});
+		await press(editor, 'ArrowUp', { shift: true });
+		expect(sel(edytor)).toMatchObject(caretAt(1, 2));
+	});
+
+	row('Shift+ArrowDown into a list lands in its first item, never the container slot', async () => {
+		const { edytor, editor, blocks } = await mount({
+			children: [
+				p('abc'),
+				{ type: 'ordered-list', children: [{ type: 'list-item', content: [{ text: 'First' }] }] }
+			]
+		});
+		await place(edytor, blocks()[0], 2);
+		await press(editor, 'ArrowDown', { shift: true });
+		// Order: abc 0, list 1, First 2.
+		expect(sel(edytor)).toMatchObject({
+			kind: 'text',
+			start: [0, 2],
+			end: [2, 2],
+			reversed: false
+		});
+	});
+
+	pin('Shift+ArrowUp then Shift+ArrowDown keeps the goal column over a shorter line', async () => {
+		const { edytor, editor, blocks } = await mount({
+			children: [p('abcdef'), p('ab'), p('uvwxyz')]
+		});
+		await place(edytor, blocks()[2], 5);
+		await press(editor, 'ArrowUp', { shift: true });
+		expect(sel(edytor)).toMatchObject({ start: [1, 2], end: [2, 5], reversed: true });
+		await press(editor, 'ArrowUp', { shift: true });
+		expect(sel(edytor)).toMatchObject({ start: [0, 5], end: [2, 5], reversed: true });
+	});
+});

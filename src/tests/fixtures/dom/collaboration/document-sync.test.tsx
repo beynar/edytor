@@ -11,6 +11,7 @@
  * - a view-owned document (no `document` prop) keeps the legacy
  *   component-lifetime teardown.
  */
+import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { render, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
@@ -22,7 +23,7 @@ import { createDocument } from '$lib/crdt/index.js';
 import { Y } from '$lib/crdt/engine.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { EdytorSync } from '$lib/collaboration/index.js';
+import { createIndexeddbSync, type EdytorSync } from '$lib/collaboration/index.js';
 import type { JSONDoc } from '$lib/utils/json.js';
 
 const input = (
@@ -149,6 +150,45 @@ describe('document-lifetime sync for injected documents', () => {
 		document.destroy();
 		expect(counts.cleanup).toBe(1);
 	});
+
+	// arch-v2 F-T7 (T4), the view half: each view evaluates its own inline
+	// `createIndexeddbSync('notes')` — distinct factories, one transport
+	// target — and the document keeps ONE provider (red on arch-v2/ref-t4).
+	it.fails(
+		'two views with inline createIndexeddbSync on one database attach ONE provider',
+		async () => {
+			const document = createDocument();
+			const counts = { attach: 0 };
+			const inline = (): EdytorSync => {
+				const sync = createIndexeddbSync('t4-dom-notes');
+				return Object.assign((payload: Parameters<EdytorSync>[0]) => {
+					counts.attach++;
+					return sync(payload);
+				}, sync);
+			};
+			const views: Edytor[] = [];
+			const mounted = [0, 1].map(() =>
+				render(EdytorHarness, {
+					props: {
+						value,
+						plugins: [richTextPlugin],
+						document,
+						sync: inline(),
+						onReady: (edytor: Edytor) => {
+							views.push(edytor);
+						}
+					}
+				})
+			);
+			expect(counts.attach).toBe(1);
+			await waitFor(() => {
+				expect(views.length).toBe(2);
+				expect(views.every((view) => view.synced)).toBe(true);
+			});
+			for (const view of mounted) view.unmount();
+			document.destroy();
+		}
+	);
 
 	it('a view-owned document keeps component-lifetime sync teardown', async () => {
 		const counts = { attach: 0, cleanup: 0 };

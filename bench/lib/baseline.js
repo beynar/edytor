@@ -50,7 +50,6 @@ const jiti = createJiti(import.meta.url);
 const here = fileURLToPath(new URL('.', import.meta.url));
 const { bindEdytorDoc } = await jiti.import(`${here}../../src/lib/crdt/edytor-doc.ts`);
 const { bindSync } = await jiti.import(`${here}../../src/lib/crdt/protocols/sync.ts`);
-const { isSliceRecord } = await jiti.import(`${here}../../src/lib/crdt/text/model.ts`);
 // arch-v2 D9: production has no fresh collect (the doc's index is the owner);
 // the from-scratch stages below measure the test oracle's rebuild.
 const { collectBlocks } = await jiti.import(`${here}../../src/tests/oracles/fresh-view.ts`);
@@ -313,16 +312,14 @@ const instrumentOp = (doc, ed, fn, { runsId, useEvents = false } = {}) => {
 		runsRecomputed = ed.runsView.debug.recomputed.size;
 	}
 
-	// WU6 counters: `ownershipPositions` is now the total INTERVAL count
-	// across all texts (was: dense owner-row length — the metric that must
-	// drop from O(text length) to O(claim boundaries)); `claimsVisited` is
-	// the number of slice RECORDS swept while building them (was: covered
-	// positions) — the ownership pass's actual work unit.
+	// Ownership counters (arch-v2 D12, R2): `ownershipPositions` is the total
+	// stream count across all backing texts; `claimsVisited` the merge claims
+	// the claim graph walked.
 	let ownershipPositions = 0;
-	for (const ivs of own.intervals.values()) ownershipPositions += ivs.length;
 	let claimsVisited = 0;
 	for (const rec of blocks.values()) {
-		for (const e of rec.entries) if (isSliceRecord(e.payload)) claimsVisited++;
+		ownershipPositions += own.streamsIn(rec.id).length;
+		claimsVisited += rec.claims.length;
 	}
 	return {
 		out,

@@ -6,28 +6,17 @@
  * `computeAllRuns` recomputes every visible block's runs with no caches —
  * the honest "full recomputation" comparator for benchmarks and the
  * fresh-projection oracle for the maintained run view's equivalence tests.
- * It reuses the production ownership + flatten primitives
- * (`computeOwnership`, `contentItemsOf`), so it is an oracle for the
- * MAINTENANCE layer (invalidation, caching, structural sharing), not for
- * ownership itself.
+ * It reuses the production ownership primitives (`computeOwnership` — the
+ * from-scratch claim graph and stream table — and `contentItemsOf`), so it is
+ * an oracle for the MAINTENANCE layer (invalidation, caching, structural
+ * sharing), not for ownership itself.
  */
-import type { EngineApi, EngineDoc, EngineNode } from '../../lib/crdt/engine-api.js';
+import type { EngineApi, EngineDoc } from '../../lib/crdt/engine-api.js';
 import type { BlockId, ContentItem } from '../../lib/crdt/placement/model.js';
-import { REGISTRY_KEY } from '../../lib/crdt/placement/model.js';
-import {
-	bindText,
-	canonKey,
-	deepFreeze,
-	protectItems,
-	readSliceEntries,
-	type TextBlockRec
-} from '../../lib/crdt/text/model.js';
+import { bindText, canonKey, deepFreeze, protectItems } from '../../lib/crdt/text/model.js';
 import type { ContentRun } from '../../lib/crdt/text/runs.js';
-import { CONTENT, hasDeleteMark, SLICES } from '../../lib/crdt/schema.js';
+import { collectBlocks } from './fresh-view.js';
 import { cloneJsonSafe } from '../../lib/utils/json.js';
-
-const isNodeLike = (v: unknown): v is EngineNode =>
-	v != null && typeof (v as { getAttr?: unknown }).getAttr === 'function';
 
 const sameMarks = (
 	a: Record<string, unknown> | undefined,
@@ -73,29 +62,7 @@ export const bindRunsOracle = (Y: EngineApi) => {
 		// borrows live marks/data refs, so the baseline applies the same
 		// R4 freeze a public read would (no shared interner here).
 		const freezeClone = <V>(v: V): V => deepFreeze(cloneJsonSafe(v));
-		const registry = doc.get(REGISTRY_KEY);
-		const blocks = new Map<BlockId, TextBlockRec>();
-		registry.forEachAttr((v: unknown, id: string) => {
-			if (!isNodeLike(v)) return;
-			const slices = v.getAttr(SLICES);
-			const slicesNode = isNodeLike(slices) ? slices : undefined;
-			const content = v.getAttr(CONTENT);
-			blocks.set(id, {
-				id,
-				deleted: hasDeleteMark(v),
-				content: isNodeLike(content) ? content : undefined,
-				slicesNode,
-				entries: slicesNode
-					? readSliceEntries(slicesNode)
-					: [
-							{
-								payload: { t: id, s: { i: null, a: -1 }, e: { i: null, a: 0 } },
-								stamp: { c: -1, k: -1 },
-								seqIndex: 0
-							}
-						]
-			});
-		});
+		const blocks = collectBlocks(doc);
 		const own = T.computeOwnership(doc, blocks);
 		const out = new Map<BlockId, readonly ContentRun[]>();
 		for (const [id, rec] of blocks) {

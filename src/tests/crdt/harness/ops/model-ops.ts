@@ -25,16 +25,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import * as Y from '../../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../../oracles/model-ops.js';
-import {
-	bindText,
-	DEAD,
-	canonKey,
-	cmpStamp,
-	intervalAt,
-	isMergeClaim,
-	isSliceRecord,
-	ownerAt
-} from '../../../../lib/crdt/text/model.js';
+import { bindText, DEAD, canonKey, cmpStamp, isBoundary } from '../../../../lib/crdt/text/model.js';
 import type { Peer } from '../peer-set.js';
 import type {
 	AtomFate,
@@ -123,6 +114,8 @@ type AtomRow = {
 	marksObj: Record<string, unknown> | undefined;
 	payload: string;
 	inlineId?: string;
+	/** A stream boundary item (R2) — a claim, not content. */
+	boundary?: { s: string; n: unknown };
 };
 
 const atomRows = (text: unknown): AtomRow[] => {
@@ -160,7 +153,8 @@ const atomRows = (text: unknown): AtomRow[] => {
 				payload: inline
 					? canonKey({ id: v.getAttr('id'), type: v.getAttr('type'), data: v.getAttr('data') })
 					: '',
-				...(inline ? { inlineId: v.getAttr('id') as string } : {})
+				...(inline ? { inlineId: v.getAttr('id') as string } : {}),
+				...(isBoundary(v) ? { boundary: { s: v.s, n: v.n } } : {})
 			});
 		}
 		pos += it.length - n;
@@ -177,6 +171,7 @@ const atomRows = (text: unknown): AtomRow[] => {
 			const v = arr[j];
 			const inline = isNodeLike(v);
 			atoms.push({
+				...(isBoundary(v) ? { boundary: { s: v.s, n: v.n } } : {}),
 				c: it.id.client,
 				k: it.id.clock + j,
 				ch: typeof v === 'string' ? v : '\0',
@@ -259,45 +254,27 @@ export const locateTagAtoms = (
 };
 
 /**
- * Strict-oracle classify (WU3): for each tracked atom, where it ended up in
- * the converged state on `peer`. The per-atom verdict distinguishes the
- * three outcomes the plan requires the oracle to separate — explicit
- * deletion (`tombstoned`, `dead-owner`), owner-move (`moved`) and actual
- * loss (`uncovered`, `gone`, `unreachable`). Positions resolve through
- * `ownerAt` on the ownership intervals, so a claim held by a merged-away
- * block still counts as claimed-by-its-owner (atoms route, they do not die).
- *
- * `context` supplies the schedule-side causal expectations (gate-F1 F3 —
- * {@link TagClassifyContext}): a foreign visible owner that no recorded
- * split/merge produced, or one that already owned the atoms at insert
- * time, classifies `stolen` rather than `moved`. With no context the
- * verdict stays `moved` (callers without schedule information get the
- * pre-F3 semantics).
- */
-/**
- * Replicates `computeOwners`' walk for ONE block, collecting the traversed
- * merge-claim stamps — the physical route from `id`'s slice list to its
- * display owner. Returns the resolved owner (same verdict as
- * `ownerOf(id)`), the claim stamps in order, and — when the chain dies —
- * the block id it died at (`end`).
+ * Replicates `claimGraph`'s owner walk for ONE block, collecting the traversed
+ * merge-claim stamps — the physical route from `id` to its display owner.
+ * Returns the resolved owner (same verdict as `ownerOf(id)`), the claim stamps
+ * in order, and — when the chain dies — the block id it died at (`end`).
  */
 const ownerChain = (
 	blocks: Map<
 		BlockId,
-		{ deleted: boolean; entries: { payload: unknown; stamp: { c: number; k: number } }[] }
+		{ deleted: boolean; claims: { m: BlockId; stamp: { c: number; k: number } }[] }
 	>,
 	id: BlockId
 ): { owner: BlockId | typeof DEAD; route: StampKey[]; end?: BlockId } => {
-	// claimsOn[X] = live `{m:X}` entries held by LIVE blocks (mirrors
-	// computeOwners — a claim on a del-flagged list is inert).
+	// claimsOn[X] = live `{m:X}` claims held by LIVE blocks (a claim on a
+	// deleted list is inert).
 	const claimsOn = new Map<BlockId, { claimer: BlockId; stamp: { c: number; k: number } }[]>();
 	for (const [holderId, rec] of blocks) {
 		if (rec.deleted) continue;
-		for (const e of rec.entries) {
-			if (!isMergeClaim(e.payload)) continue;
-			const list = claimsOn.get(e.payload.m) ?? [];
-			list.push({ claimer: holderId, stamp: e.stamp });
-			claimsOn.set(e.payload.m, list);
+		for (const c of rec.claims) {
+			const list = claimsOn.get(c.m) ?? [];
+			list.push({ claimer: holderId, stamp: c.stamp });
+			claimsOn.set(c.m, list);
 		}
 	}
 	const topClaim = (x: BlockId) => {
@@ -314,8 +291,6 @@ const ownerChain = (
 		const rec = blocks.get(cur);
 		if (!rec || rec.deleted) return { owner: DEAD, route, end: cur };
 		if (path.includes(cur)) {
-			// Claim cycle — the max-stamp edge among members wins (computeOwners
-			// parity): its claimer keeps its own list.
 			const cycle = path.slice(path.indexOf(cur));
 			let winner: BlockId = cur;
 			let winnerStamp: { c: number; k: number } | null = null;
@@ -337,6 +312,33 @@ const ownerChain = (
 	}
 };
 
+/**
+ * The stream holding live position `pos` of `home`'s text (R2), and the
+ * "claim" that puts it there: the stream's delimiting boundary item, or the
+ * pseudo stamp for the head of a block's own text.
+ */
+const streamAt = (own: ReturnType<typeof T.computeOwnership>, home: BlockId, pos: number) => {
+	const s = own.streamsIn(home).find((x) => x.start <= pos && pos < x.end);
+	if (s === undefined) return undefined;
+	if (s.home === s.block && s.start === 0) return { s, via: PSEUDO_STAMP };
+	const boundary = atomRows(s.text).find((a) => !a.deleted && a.pos === s.start - 1);
+	return { s, via: boundary === undefined ? PSEUDO_STAMP : atomKey(boundary) };
+};
+
+/**
+ * Strict-oracle classify (WU3): for each tracked atom, where it ended up in
+ * the converged state on `peer`. The per-atom verdict distinguishes the
+ * three outcomes the plan requires the oracle to separate — explicit
+ * deletion (`tombstoned`, `dead-owner`), owner-move (`moved`) and actual
+ * loss (`uncovered`, `gone`, `unreachable`). A position resolves to the
+ * stream holding it (R2) and that stream's display owner, so content of a
+ * merged-away block still counts as displayed by its owner.
+ *
+ * `context` supplies the schedule-side causal expectations (gate-F1 F3 —
+ * {@link TagClassifyContext}): a foreign visible owner that no recorded
+ * split/merge produced, or one that already owned the atoms at insert time,
+ * classifies `stolen` rather than `moved`.
+ */
 export const classifyTagAtoms = (
 	peer: Peer,
 	target: BlockId,
@@ -348,7 +350,6 @@ export const classifyTagAtoms = (
 	const own = T.computeOwnership(doc, blocks);
 	const expected = expectedProjectedIds(peer);
 	const projectedIds = new Set(M.listBlockIds(doc));
-	// Index every atom of every backing text once for this classify call.
 	const index = new Map<
 		string,
 		{
@@ -373,33 +374,9 @@ export const classifyTagAtoms = (
 			});
 		}
 	}
-	// Claim stamp → the block whose `slices` list physically holds it (the
-	// winning claim is always a live entry).
-	const holderOf = new Map<StampKey, BlockId>();
-	for (const [holderId, rec] of blocks) {
-		for (const e of rec.entries) holderOf.set(stampKey(e.stamp), holderId);
-	}
-	// Dead-held slice records covering `pos` of `textId` — an unowned
-	// position under such coverage is hidden by its holder's delete (R3:
-	// a deleted block's records keep winning what they display).
-	const deadCoverage = (textId: string, pos: number): BlockId[] => {
-		const text = blocks.get(textId)?.content;
-		if (!text) return [];
-		const holders: BlockId[] = [];
-		for (const [holderId, rec] of blocks) {
-			if (own.ownerOf(holderId) !== DEAD) continue;
-			for (const e of rec.entries) {
-				if (!isSliceRecord(e.payload) || e.payload.t !== textId) continue;
-				const r = own.resolvedRange(e, text);
-				if (r !== null && r[0] <= pos && pos < r[1]) holders.push(holderId);
-			}
-		}
-		return holders;
-	};
 	// Store-level lookup for atoms the item walk did not find: a GC struct
-	// is a tombstone whose content was compacted — still a legit deletion.
-	// A live Item outside every content text, a Skip (not integrated), or no
-	// struct at all is genuinely gone.
+	// or an item deleted with its text is a legit deletion; a live Item
+	// outside every content text, a Skip, or no struct at all is gone.
 	const storeFate = (a: { c: number; k: number }): AtomFate => {
 		const structs = doc.store.clients.get(a.c);
 		if (!structs || structs.length === 0 || a.k >= doc.store.getClock(a.c)) {
@@ -413,9 +390,9 @@ export const classifyTagAtoms = (
 		if (struct instanceof Y.GC || struct.deleted) return { kind: 'tombstoned' } as AtomFate;
 		return { kind: 'gone' } as AtomFate;
 	};
-	// U5: an atom's ownership is authorized iff its winning claim record AND
-	// every merge claim on its holder→owner route carry a stamp the executed
-	// schedule wrote (`authorizedClaims`); pseudo claims are exempt.
+	// U5: an atom's display is authorized iff its stream's boundary AND every
+	// merge claim on the stream block → owner route carry a stamp the executed
+	// schedule wrote (`authorizedClaims`); pseudo stamps are exempt.
 	const auth = context?.authorizedClaims;
 	const authorized = (via: StampKey | undefined, route: StampKey[] | undefined): boolean => {
 		if (auth === undefined) return true;
@@ -426,55 +403,20 @@ export const classifyTagAtoms = (
 		const found = index.get(atomKey(a));
 		if (!found) return storeFate(a);
 		if (found.deleted) return { kind: 'tombstoned' } as AtomFate;
-		const iv = intervalAt(own.intervals.get(found.textId), found.pos);
-		if (iv === undefined) {
-			const holders = deadCoverage(found.textId, found.pos);
-			return holders.length > 0
-				? ({
-						kind: 'dead-owner',
-						holders,
-						marks: found.marks,
-						marksObj: found.marksObj,
-						payload: found.payload
-					} as AtomFate)
-				: ({ kind: 'uncovered' } as AtomFate);
+		const at = streamAt(own, found.textId, found.pos);
+		if (at === undefined) return { kind: 'uncovered' } as AtomFate;
+		const chain = ownerChain(blocks, at.s.block);
+		const owner = chain.owner;
+		const fields = { marks: found.marks, marksObj: found.marksObj, payload: found.payload };
+		if (owner === DEAD) {
+			return { kind: 'dead-owner', holders: [at.s.block], ...fields } as AtomFate;
 		}
-		const owner = iv.owner;
-		const via = stampKey(iv.claim.stamp);
-		// The pseudo self-slice of a legacy record belongs to the text's own
-		// block; every real claim resolves to its physical holder.
-		const holder = holderOf.get(via) ?? found.textId;
-		const route = holder === owner ? [] : ownerChain(blocks, holder).route;
-		const detail = {
-			via,
-			route,
-			marks: found.marks,
-			marksObj: found.marksObj,
-			payload: found.payload
-		};
-		// Claim-authorization precedes owner shape: an atom routed through a
-		// claim the schedule never wrote is a steal even when the owner looks
-		// familiar (R6b — an injected merge into a recorded split destination).
-		if (!authorized(via, route)) return { kind: 'stolen', owner, ...detail } as AtomFate;
+		const detail = { via: at.via, route: chain.route, ...fields };
+		if (!authorized(at.via, chain.route)) return { kind: 'stolen', owner, ...detail } as AtomFate;
 		if (owner === target) return { kind: 'present', ...detail } as AtomFate;
-		// A live owner that is legitimately hidden (deleted or under a
-		// deleted ancestor) took the atoms down with it — same contract as
-		// `dead-owner`. One that SHOULD be projected but is not is the
-		// `unreachable-block` invariant, kept distinct.
 		if (!expected.has(owner))
-			return { kind: 'dead-owner', holders: [owner], ...detail } as AtomFate;
-		if (!projectedIds.has(owner)) {
-			return { kind: 'unreachable', owner, ...detail } as AtomFate;
-		}
-		// `moved` vs `stolen` (gate-F1 F3): the owner is visible and live,
-		// so the atoms SURVIVED — but surviving under a foreign block is
-		// legitimate only when the schedule's causal operations explain the
-		// transfer. An owner that already claimed the atoms at insert time
-		// (`insertOwners`) is the ownership-steal signature: the insert
-		// itself was misrouted, so persisting under it is a steal, not a
-		// move. With `authorizedClaims` the claim-path check above has
-		// already decided authorization; `legitOwners` (the pre-U5
-		// destination-name check) applies only when no stamp set was given.
+			return { kind: 'dead-owner', holders: [owner], ...fields } as AtomFate;
+		if (!projectedIds.has(owner)) return { kind: 'unreachable', owner, ...detail } as AtomFate;
 		if (context !== undefined) {
 			if (context.insertOwners?.has(owner)) {
 				return { kind: 'stolen', owner, ...detail } as AtomFate;
@@ -493,11 +435,9 @@ export const classifyTagAtoms = (
 
 /**
  * Loss-correlation oracle (gate-F1 F4): the engine ids each tracked atom's
- * display depends on — its own item plus the claim stamps of every slice
- * record covering it on this replica (any holder, live or dead; a covering
- * record on a dead holder still explains the atom's coverage history).
- * The runner intersects these with the ids observed-destroyed by lossy
- * reloads to decide whether a hard fate is convergent-loss or a defect.
+ * display depends on — the boundary item that starts its stream (none for a
+ * block's own-text head). The runner intersects these with the ids
+ * observed-destroyed by lossy reloads.
  */
 export const tagAtomDeps = (
 	peer: Peer,
@@ -508,29 +448,14 @@ export const tagAtomDeps = (
 	const blocks = M.collectBlocks(doc);
 	const own = T.computeOwnership(doc, blocks);
 	const text = blocks.get(textId)?.content;
-	// Index every atom of the home text once (positions for coverage lookup).
 	const positions = new Map<string, number>();
-	if (text) {
-		for (const a of atomRows(text)) {
-			if (!a.deleted) positions.set(`${a.c}:${a.k}`, a.pos);
-		}
-	}
-	// Every slice-record entry covering `pos` of `textId`, any holder.
-	const coveringStamps = (pos: number): { c: number; k: number }[] => {
-		if (!text) return [];
-		const stamps: { c: number; k: number }[] = [];
-		for (const [, rec] of blocks) {
-			for (const e of rec.entries) {
-				if (!isSliceRecord(e.payload) || e.payload.t !== textId) continue;
-				const r = own.resolvedRange(e, text);
-				if (r !== null && r[0] <= pos && pos < r[1]) stamps.push(e.stamp);
-			}
-		}
-		return stamps;
-	};
+	if (text) for (const a of atomRows(text)) if (!a.deleted) positions.set(atomKey(a), a.pos);
 	return atoms.map((a) => {
-		const pos = positions.get(`${a.c}:${a.k}`);
-		return pos === undefined ? [] : coveringStamps(pos);
+		const pos = positions.get(atomKey(a));
+		const at = pos === undefined ? undefined : streamAt(own, textId, pos);
+		if (at === undefined || at.via === PSEUDO_STAMP) return [];
+		const [c, k] = at.via.split(':').map(Number);
+		return [{ c, k }];
 	});
 };
 
@@ -538,13 +463,12 @@ export const tagAtomDeps = (
 //
 // The runner snapshots the replicated mutation surface around every
 // scheduled op (`captureOpState` pre/post) and checks the diff against the
-// envelope the op's KIND and resolved target allow (`opTarget` supplies
-// the surface: displayed atoms, reachable backing texts, claim-bearing
-// holders, display children). `deadCause` explains per-holder why a
-// `dead-owner` atom's coverage died so the barrier can verify the schedule
-// authorized it.
+// envelope the op's KIND and resolved target allow. Under R2 a stream
+// boundary is the claim a split writes: it is reported with the claims
+// (`kind: 'slice'`, holder = the block it starts, `t` = its text), never as
+// content.
 
-/** Snapshot the full mutation surface — atoms, claims, block state. */
+/** Snapshot the full mutation surface — atoms, claims (merge claims and boundaries), block state. */
 export const captureOpState = (peer: Peer): OpState => {
 	const blocks = M.collectBlocks(peer.doc);
 	const atoms: OpState['atoms'] = new Map();
@@ -552,6 +476,10 @@ export const captureOpState = (peer: Peer): OpState => {
 	const blocksOut: OpState['blocks'] = new Map();
 	for (const [id, rec] of blocks) {
 		for (const a of atomRows(rec.content ?? { _start: null })) {
+			if (a.boundary !== undefined) {
+				claims.set(atomKey(a), { holder: a.boundary.s, kind: 'slice', t: id, live: !a.deleted });
+				continue;
+			}
 			atoms.set(atomKey(a), {
 				text: id,
 				live: !a.deleted,
@@ -560,10 +488,10 @@ export const captureOpState = (peer: Peer): OpState => {
 				payload: a.payload
 			});
 		}
-		// EVERY slices item — tombstoned included: a claim dying is a state
+		// EVERY claims item — tombstoned included: a claim dying is a state
 		// change the envelope must authorize.
 		for (
-			let it = (rec.slicesNode as { _start?: never } | undefined)?._start ?? null;
+			let it = (rec.claimsNode as { _start?: never } | undefined)?._start ?? null;
 			it !== null;
 			it = it.right
 		) {
@@ -573,17 +501,15 @@ export const captureOpState = (peer: Peer): OpState => {
 			const n = Math.min(arr.length, it.length);
 			for (let j = 0; j < n; j++) {
 				const payload = arr[j];
-				const kind = isSliceRecord(payload) ? 'slice' : isMergeClaim(payload) ? 'merge' : 'other';
+				const m = typeof payload?.m === 'string' ? payload.m : undefined;
 				claims.set(`${it.id.client}:${it.id.clock + j}`, {
 					holder: id,
-					kind,
-					t: isSliceRecord(payload) ? payload.t : undefined,
-					m: isMergeClaim(payload) ? payload.m : undefined,
+					kind: m === undefined ? 'other' : 'merge',
+					m,
 					live: !it.deleted
 				});
 			}
 		}
-		// The items carrying live delete marks (stamps kept for loss correlation).
 		const delItems = [
 			...((
 				rec.node as {
@@ -611,9 +537,7 @@ export const captureOpState = (peer: Peer): OpState => {
 
 /**
  * The surface an op targeting `id` may address — resolved against THIS
- * peer's current replicated state. `null` when `id` is not visible (the
- * op must then produce an empty diff — the adapters refuse non-visible
- * targets without mutating).
+ * peer's current replicated state. `null` when `id` is not visible.
  */
 export const opTarget = (peer: Peer, id: BlockId): OpTarget | null => {
 	const doc = peer.doc;
@@ -640,8 +564,7 @@ export const opTarget = (peer: Peer, id: BlockId): OpTarget | null => {
 			}
 		}
 	}
-	// Every holder whose slice list may carry claims routing to `id` —
-	// `owner(h) === id` covers `id` itself plus merged-away holders.
+	// Every block whose claims route to `id` — `owner(h) === id`.
 	const holders = new Set<BlockId>();
 	for (const hid of blocks.keys()) if (own.ownerOf(hid) === id) holders.add(hid);
 	const children = new Set<BlockId>(
@@ -663,8 +586,6 @@ export const deadCause = (peer: Peer, id: BlockId): DeadCause => {
 	if (rec.deleted) return { kind: 'del' };
 	const chain = ownerChain(blocks, id);
 	if (chain.owner === DEAD) return { kind: 'claim', chain: chain.route, end: chain.end ?? id };
-	// Live and self-owned — hidden by placement ancestry: walk display
-	// parents to the first dead ancestor.
 	const own = T.computeOwnership(doc, blocks);
 	const placements = M.resolvePlacements(blocks, own.ownerOf);
 	let cur: BlockId = id;
@@ -674,7 +595,7 @@ export const deadCause = (peer: Peer, id: BlockId): DeadCause => {
 		if (pl === undefined || pl.parent === null) return { kind: 'live' };
 		const dp = own.ownerOf(pl.parent);
 		if (dp === DEAD) return { kind: 'ancestor', root: pl.parent };
-		if (seen.has(dp)) return { kind: 'live' }; // display cycle → not dead
+		if (seen.has(dp)) return { kind: 'live' };
 		seen.add(dp);
 		cur = dp;
 	}

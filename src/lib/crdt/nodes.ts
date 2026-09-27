@@ -59,7 +59,7 @@ export type DocBlock = {
 
 	/**
 	 * Resolved content items of this block's display ({kind:'text'} runs and
-	 * {kind:'inline'} atoms in display order, unmerged per slice record).
+	 * {kind:'inline'} atoms in display order, unmerged across streams).
 	 * Reflects writes made earlier in the same transaction.
 	 */
 	readonly items: readonly ContentItem[];

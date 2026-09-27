@@ -997,8 +997,8 @@ export const runSchedule = (
 					env: {
 						blocksCreate: created,
 						placements: created,
-						// A new block writes only its self-slice record.
-						claimsWrite: (c) => created.has(c.holder) && c.kind === 'slice' && c.t === c.holder,
+						// A new block writes its own text and an empty claims list.
+						claimsWrite: () => false,
 						touchedTexts: created
 					},
 					exec: () =>
@@ -1040,18 +1040,23 @@ export const runSchedule = (
 				if (tgt === null)
 					return { env: EMPTY, exec: () => ops.splitBlock(peer, id, op.offset, op.newId) };
 				const newId = sanitizeWireString(op.newId);
-				const mergeMs = mergeTargetsOf(pre, id);
+				// R2: the split writes one boundary (a `slice` claim held by
+				// newId in a text the display reads) and moves the merge claims
+				// that follow the split point — from any list routing to `id`
+				// (D-21) — onto newId.
+				const mergeMs = new Set([...tgt.holders].flatMap((h) => [...mergeTargetsOf(pre, h)]));
 				return {
 					env: {
 						blocksCreate: new Set([newId]),
 						// newId's own placement + the children reparented onto it.
 						placements: new Set([newId, ...tgt.children]),
-						// Entries on `id`'s list may be tombstoned (moved/cut);
-						// writes land on `id` (head materialization) and `newId`
-						// (tail records + verbatim merge claims).
-						claimsRemove: liveClaimsOf(pre, new Set([id])),
+						claimsRemove: new Set(
+							[...liveClaimsOf(pre, new Set([id, ...tgt.holders]))].filter(
+								(stamp) => pre.claims.get(stamp)?.kind === 'merge'
+							)
+						),
 						claimsWrite: (c) =>
-							(c.holder === id || c.holder === newId) &&
+							c.holder === newId &&
 							(c.kind === 'slice'
 								? c.t !== undefined && tgt.texts.has(c.t)
 								: c.kind === 'merge'
@@ -1087,15 +1092,8 @@ export const runSchedule = (
 					tgt === null
 						? EMPTY
 						: {
+								// R2: typing writes content only — no claim, no boundary.
 								atomsIn: { texts: tgt.texts, count: op.text.length },
-								// Boundary claims land on a holder routing to `id`
-								// (its own list included) and target reachable texts.
-								claimsWrite: (c) =>
-									tgt.holders.has(c.holder) &&
-									c.kind === 'slice' &&
-									c.t !== undefined &&
-									tgt.texts.has(c.t),
-								claimsRemove: liveClaimsOf(pre, tgt.holders),
 								touchedTexts: tgt.texts
 							};
 				return {
@@ -1213,12 +1211,6 @@ export const runSchedule = (
 						? EMPTY
 						: {
 								atomsIn: { texts: tgt.texts, count: 1 },
-								claimsWrite: (c) =>
-									tgt.holders.has(c.holder) &&
-									c.kind === 'slice' &&
-									c.t !== undefined &&
-									tgt.texts.has(c.t),
-								claimsRemove: liveClaimsOf(pre, tgt.holders),
 								touchedTexts: tgt.texts
 							};
 				return {

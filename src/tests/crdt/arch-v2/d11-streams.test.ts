@@ -1,5 +1,7 @@
 /**
- * arch-v2 D11 — the stream-boundary spike (plan §2.1, R2; §9.3 D11 row).
+ * arch-v2 D11 → D12 — stream boundaries (plan §2.1, R2; §9.3 D11/D12 rows).
+ * Written against the D11 spike; since D12 the spike is the implementation and
+ * these rows run on the production model (`createModelOps`) and index.
  *
  * Rows (expected results from the plan's contracts, never from running code):
  * F-D13 (R2 property corpus, 4 replicas, concurrent-format generator, property
@@ -14,19 +16,20 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { createPeerSet } from '../harness/peer-set.js';
-import { createStreamOps, spike } from '../harness/ops/stream-ops.js';
-import { isBoundary } from '../../../lib/crdt/streams.next.js';
+import { createModelOps } from '../harness/ops/model-ops.js';
+import * as S_ from '../harness/streams.js';
+import { isBoundary } from '../../../lib/crdt/text/model.js';
 import { modelSpecSeed } from '../scenarios/seeds.js';
 import { assertAllStructurallyValid, assertConverged } from '../harness/assert/convergence.js';
 import { bool, int, mulberry32, pick } from '../harness/rng.js';
 
-/** Red on the reference (no spike, no P7): `it.fails` in the tests-first commit (295b51b). */
+/** Red on the D11 reference (no spike, no P7): `it.fails` in the tests-first commit (295b51b). */
 const row = it;
 
-const ops = createStreamOps();
-const S = () => spike();
+const ops = createModelOps();
+const S = () => ({ ...S_, view: S_.streamView });
 const text = (p, id) => ops.blockText(p, id);
-const runs = (p, id) => ops.runs(p, id);
+const runs = (p, id) => S_.runs(p.doc, id);
 
 /** Client-id assignments per peer count (≥3 each; plan §8). */
 const PERMS3 = [
@@ -488,7 +491,7 @@ describe('split re-inserts the merge claims that follow the split point on the n
 
 describe('F-U3: one wire update per undo; the receiver never shows hello world in the head', () => {
 	for (const [a, b] of ASSIGN[2]) {
-		row(`A=${a} B=${b} (lineage off; the lineage-on half needs the facade — D12)`, () => {
+		row(`A=${a} B=${b} (lineage off; the lineage-on half is in d12-streams.test.ts)`, () => {
 			const set = withTail(HELLO, [a, b]);
 			ops.deleteText(set.A, 't', 0, 5);
 			set.deliver('A', 'B');
@@ -578,8 +581,9 @@ describe('F-I7 (doc half): `alpha|Hello` split, then compose at the fresh block 
 			const caret = S().anchorAt(set.A.doc, 'u', 0, 'left');
 			const v = S().view(set.A.doc);
 			const bound = v.texts.get(v.streams.get('u').text).bounds.find((x) => x.s === 'u');
-			expect(caret.a.item).toEqual({ client: bound.item.id.client, clock: bound.clock });
-			expect(caret.a.assoc).toBe(-1);
+			const [c, k] = bound.key.split(':').map(Number);
+			expect(caret.a.i).toEqual({ c, k });
+			expect(caret.a.a).toBe(-1);
 			// compose n → に at the caret (preview, then the commit replaces it)
 			ops.insertText(set.A, 'u', 0, 'n');
 			ops.deleteText(set.A, 'u', 0, 1);
@@ -590,7 +594,7 @@ describe('F-I7 (doc half): `alpha|Hello` split, then compose at the fresh block 
 			for (const p of set.peers) {
 				expect(text(p, 'u')).toBe('にHello');
 				expect(text(p, 'p')).toBe('alpha!');
-				expect(S().resolveAnchor(p.doc, caret)).toEqual({ block: 'u', offset: 0 });
+				expect(S().resolveAnchor(p.doc, caret)).toEqual({ blockId: 'u', offset: 0 });
 			}
 		});
 	}
@@ -602,7 +606,7 @@ describe('F-I7 (doc half): `alpha|Hello` split, then compose at the fresh block 
 const liveBounds = (doc) => {
 	const out = new Map();
 	for (const [t, info] of S().view(doc).texts) {
-		for (const x of info.bounds) out.set(`${x.item.id.client}:${x.clock}`, { x, t });
+		for (const x of info.bounds) out.set(x.key, { x, t });
 	}
 	return out;
 };

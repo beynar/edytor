@@ -4,9 +4,8 @@
  * set. Centralizing these reads keeps the blast radius of a vendored
  * engine upgrade in one module: when an internal is renamed or reshaped,
  * the fail-fast checks below break loudly at upgrade time instead of
- * silently disabling undo-repair or run invalidation (the old
- * optional-chained reads turned a rename into "repair quietly stops
- * firing").
+ * silently disabling run invalidation or history lineage (the old
+ * optional-chained reads turned a rename into a silent no-op).
  *
  * The engine surface is injected (`Y: EngineApi`) like every other bound
  * module — this file never imports vendor `.js`.

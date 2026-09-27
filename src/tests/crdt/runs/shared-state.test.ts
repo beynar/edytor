@@ -189,24 +189,26 @@ describe('shared model ctx — ownership shim', () => {
 			expect(ctx.own.ownerOf(id), `ownerOf(${id})`).toBe(fresh.ownerOf(id));
 			expect(ctx.own.hidden(id), `hidden(${id})`).toBe(fresh.hidden(id));
 		}
-		for (const t of ['a', 'b', 'c', 'c1']) {
-			expect(ctx.own.intervals.get(t) ?? [], `intervals(${t})`).toEqual(
-				fresh.intervals.get(t) ?? []
-			);
-			expect(ctx.own.maxG.get(t) ?? 0, `maxG(${t})`).toBe(fresh.maxG.get(t) ?? 0);
+		// The stream table (R2): every block's stream and display agree.
+		for (const id of freshBlocks.keys()) {
+			const keep = (x) => x && { block: x.block, home: x.home, start: x.start, end: x.end };
+			expect(keep(ctx.own.streamOf(id)), `streamOf(${id})`).toEqual(keep(fresh.streamOf(id)));
+			const segs = (x) => x?.map((g) => [g.t, g.block, g.i0, g.i1]) ?? null;
+			expect(segs(ctx.own.display(id)), `display(${id})`).toEqual(segs(fresh.display(id)));
 		}
 	});
 
-	it('per-text interval rows stay shared — an edit to text a never rebuilds text c', () => {
+	it('streams of other texts stay shared — an edit to text a never re-places text c', () => {
 		const set = createPeerPair(SEED);
 		const doc = set.A.doc;
 		const view = R.attach(doc);
 		const ctx = view.view();
-		const aIvs = ctx.own.intervals.get('a');
-		const cIvs = ctx.own.intervals.get('c');
+		const aStream = ctx.own.streamOf('a');
+		const cStreams = ctx.own.streamsIn('c');
 		set.A.transact(() => M.insertText(doc, 'a', 0, '!'));
-		expect(ctx.own.intervals.get('c')).toBe(cIvs); // untouched row — same array
-		expect(ctx.own.intervals.get('a')).not.toBe(aIvs); // rebuilt row
+		expect(ctx.own.streamsIn('c')).toBe(cStreams); // untouched text — same list
+		expect(ctx.own.streamOf('a')).not.toBe(aStream); // re-placed stream
+		expect(ctx.own.streamOf('a').end).toBe(aStream.end + 1);
 	});
 });
 

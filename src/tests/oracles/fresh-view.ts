@@ -3,8 +3,8 @@
  * `src/lib/crdt/placement/model.ts`). Production derives every fact from the
  * doc's one index (`text/runs.ts`), folded once per transaction; this is the
  * from-scratch collect it replaced — every registry entry read into a record,
- * ownership computed over all of them, placements resolved, children
- * bucketed — so tests can compare the maintained index against a rebuild.
+ * the claim graph and stream table computed over all of them, placements
+ * resolved, children bucketed — so tests can compare the maintained index against a rebuild.
  */
 // @ts-nocheck -- drives the vendored engine JS directly (excluded lane).
 import {
@@ -17,8 +17,16 @@ import {
 	type BlockRec,
 	type ModelView
 } from '../../lib/crdt/placement/model.js';
-import { bindText, deepFreeze, readSliceEntries } from '../../lib/crdt/text/model.js';
-import { CONTENT, DATA, hasDeleteMark, REGISTRY_KEY, SLICES, TYPE } from '../../lib/crdt/schema.js';
+import { bindText, deepFreeze, readClaims } from '../../lib/crdt/text/model.js';
+import {
+	CLAIMS,
+	CONTENT,
+	DATA,
+	hasDeleteMark,
+	NONCE,
+	REGISTRY_KEY,
+	TYPE
+} from '../../lib/crdt/schema.js';
 import { cloneJsonSafe } from '../../lib/utils/json.js';
 import type { EngineApi, EngineDoc } from '../../lib/crdt/engine-api.js';
 
@@ -31,27 +39,19 @@ export const collectBlocks = (doc: EngineDoc): Map<BlockId, BlockRec> => {
 	doc.get(REGISTRY_KEY).forEachAttr((v: unknown, id: string) => {
 		if (!isNodeLike(v)) return;
 		const content = v.getAttr(CONTENT);
-		const slices = v.getAttr(SLICES);
+		const claims = v.getAttr(CLAIMS);
 		const type = v.getAttr(TYPE);
-		const slicesNode = isNodeLike(slices) ? slices : undefined;
+		const claimsNode = isNodeLike(claims) ? claims : undefined;
 		blocks.set(id, {
 			id,
 			node: v,
 			type: typeof type === 'string' ? type : 'unknown',
 			data: v.getAttr(DATA),
+			n: v.getAttr(NONCE),
 			deleted: hasDeleteMark(v),
 			content: isNodeLike(content) ? content : undefined,
-			slicesNode,
-			// Legacy rows without a `slices` node are one whole self-slice.
-			entries: slicesNode
-				? readSliceEntries(slicesNode)
-				: [
-						{
-							payload: { t: id, s: { i: null, a: -1 }, e: { i: null, a: 0 } },
-							stamp: { c: -1, k: -1 },
-							seqIndex: 0
-						}
-					],
+			claimsNode,
+			claims: readClaims(claimsNode),
 			cands: candidatesOf(v)
 		});
 	});

@@ -636,47 +636,28 @@
 			};
 		},
 		/**
-		 * Resolve every live slice record's anchors through the engine's own
-		 * relative-position machinery and report the resolved range + the
-		 * claimed text's live length. Replica-dependent inputs (search
-		 * markers, item splits) make this the divergence oracle: equal
-		 * inputs must resolve equal ranges on every peer.
+		 * Every backing text's live stream boundaries (R2): item id, the
+		 * block each starts, its incarnation nonce and live index, plus the
+		 * text's live length. Replica-independent inputs: equal documents
+		 * must report equal rows on every peer.
 		 */
-		probeSliceRanges: (document: EdytorDocument) => {
-			const doc = document.doc as unknown as YDoc;
-			const registry = (doc as any).get('blocks');
-			const resolve = (textNode: any, a: { i: { c: number; k: number } | null; a: number }) => {
-				const textItem = textNode?._item;
-				if (!textItem) return null;
-				const rpos = Y.createRelativePositionFromJSON({
-					type: { client: textItem.id.client, clock: textItem.id.clock },
-					item: a.i === null ? null : { client: a.i.c, clock: a.i.k },
-					assoc: a.a
-				});
-				const abs = Y.createAbsolutePositionFromRelativePosition(rpos as never, doc, false);
-				return abs === null ? null : abs.index;
-			};
-			const out: Record<string, unknown[]> = {};
+		probeStreams: (document: EdytorDocument) => {
+			const registry = (document.doc as any).get('blocks');
+			const out: Record<string, unknown> = {};
 			for (const key of registry.attrKeys()) {
-				const node = registry.getAttr(key);
-				const slices = node?.getAttr?.('slices');
-				if (!slices) continue;
+				const text = registry.getAttr(key)?.getAttr?.('content');
+				if (!text) continue;
 				const rows: unknown[] = [];
-				for (let it = slices._start; it !== null; it = it.right) {
-					const payload = it.content?.getContent?.()?.[0];
-					if (it.deleted || !payload || payload.t === undefined || payload.m !== undefined)
-						continue;
-					const textNode = registry.getAttr(payload.t)?.getAttr?.('content');
-					rows.push({
-						id: `${it.id.client}:${it.id.clock}`,
-						t: payload.t,
-						g: payload.g ?? 0,
-						i0: resolve(textNode, payload.s),
-						i1: resolve(textNode, payload.e),
-						textLen: textNode?.length ?? null
+				let at = 0;
+				for (let it = text._start; it !== null; it = it.right) {
+					if (it.deleted || !it.countable) continue;
+					(it.content?.arr ?? []).forEach((v: { s?: unknown; n?: unknown }, j: number) => {
+						if (typeof v?.s === 'string')
+							rows.push({ id: `${it.id.client}:${it.id.clock + j}`, s: v.s, n: v.n, at: at + j });
 					});
+					at += it.length;
 				}
-				if (rows.length) out[key] = rows;
+				out[key] = { bounds: rows, textLen: at };
 			}
 			return out;
 		},

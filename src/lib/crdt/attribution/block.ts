@@ -271,6 +271,17 @@ export const bindBlockAttribution = (Y: EngineApi) => {
 		/** Scaffolding with no authorship — used by init for system blocks. */
 		ensureRecord,
 		/**
+		 * A streamless block's nonce was re-minted `from` → `to` (its own text,
+		 * R2): its record, when stamped for `from`, moves to `to`, so the
+		 * block keeps `createdBy` and its contributors. Every replica writes
+		 * the same value.
+		 */
+		retarget: (doc: EngineDoc, id: BlockId, from: unknown, to: unknown): void => {
+			const rec = recordOf(doc, id);
+			if (rec !== null && from !== undefined && rec.getAttr(INCARNATION_KEY) === from)
+				rec.setAttr(INCARNATION_KEY, to);
+		},
+		/**
 		 * The actor changed the block's state: `contributors.add(actor)` and
 		 * `lastChangedBy = actor`, each independently suppressed.
 		 */
@@ -360,8 +371,8 @@ export const bindBlockAttribution = (Y: EngineApi) => {
 		lineageOf,
 		/**
 		 * Attach the doc's shared ring-watermark repair — once per doc for
-		 * the doc's lifetime (module-level dedupe, same convention as
-		 * `attachUndoRepair`). See the module-level comment below.
+		 * the doc's lifetime (module-level dedupe). See the module-level comment
+		 * below.
 		 */
 		attachRingTrim: (doc: EngineDoc): void => {
 			if (ringTrimAttached.has(doc)) return;

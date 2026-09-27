@@ -9,10 +9,11 @@
  * A second seg of the SAME text then deletes atoms at stale positions —
  * atoms belonging to a different owner (or the wrong own atoms).
  *
- * Reachable through legal ops (gateF1 probe-3 staging): a block displaying
- * DISJOINT segs of one backing text — [3,5)∪[7,8)∪[9,10) = 'dehj' with
- * rival holes 'fg' and 'i'. Deleting across the segs must remove exactly
- * the displayed atoms.
+ * Reachable through legal ops (splits, then merges of two split-off blocks
+ * back into the first): a block displaying DISJOINT pieces of one backing
+ * text — 'de', 'h', 'j' — with rival holes 'fg' and 'i'. Deleting across
+ * the pieces must remove exactly the displayed atoms (the per-stream delete
+ * writes right to left).
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
@@ -37,16 +38,6 @@ const ed = (peer: Peer) => {
 
 const text = (peer: Peer, id: string) => ed(peer).blockText(id);
 
-/**
- * D-14 (R3): a delete now hides everything the block displays, including
- * what it displays through merge claims, so the pre-D1 "a deleted holder
- * releases its coverage" state these probes start from is staged by
- * removing the registry entry instead — an absent block's records claim
- * nothing, exactly what the old delete produced.
- */
-const dropBlock = (peer: Peer, id: string) =>
-	peer.doc.transact(() => peer.doc.get('blocks').deleteAttr(id));
-
 const SEED = (doc) => {
 	E.init(doc, {
 		content: [{ id: 'b', type: 'paragraph', content: [{ kind: 'text', text: 'abcdefghij' }] }]
@@ -54,21 +45,22 @@ const SEED = (doc) => {
 };
 
 /**
- * gateF1 probe-3 staging: `early` displays THREE disjoint segs of T_b —
- * [3,5)∪[7,8)∪[9,10) = 'dehj'; mid1 owns 'fg'@5,6, mid3 owns 'i'@8.
+ * `early` displays THREE disjoint pieces of T_b — its own stream 'de', then
+ * the streams of `mid2` ('h') and `tail` ('j') through merge claims (R2) —
+ * with the rival streams mid1 'fg' and mid3 'i' as holes between them.
  */
 const stageFragmented = (set) => {
-	const { A, B } = set;
-	ops.splitBlock(A, 'b', 3, 'early'); // early = {3,E}
-	ops.splitBlock(B, 'b', 5, 'mid1'); // mid1 = {5,E}
-	ops.splitBlock(B, 'mid1', 2, 'mid2'); // mid1={5,7} mid2={7,E}
-	ops.splitBlock(B, 'mid2', 1, 'mid3'); // mid2={7,8} mid3={8,E}
-	ops.splitBlock(B, 'mid3', 1, 'tail'); // mid3={8,9} tail={9,E}
+	const { A } = set;
+	ops.splitBlock(A, 'b', 3, 'early');
+	ops.splitBlock(A, 'early', 2, 'mid1');
+	ops.splitBlock(A, 'mid1', 2, 'mid2');
+	ops.splitBlock(A, 'mid2', 1, 'mid3');
+	ops.splitBlock(A, 'mid3', 1, 'tail');
+	ops.mergeBlocks(A, 'mid2', 'early');
+	ops.mergeBlocks(A, 'tail', 'early');
 	set.deliver('A', 'B');
 	set.deliver('B', 'A');
 	assertConverged(set, ops);
-	dropBlock(A, 'mid2');
-	dropBlock(A, 'tail');
 	expect(text(A, 'early')).toBe('dehj');
 	expect(text(A, 'mid1')).toBe('fg');
 	expect(text(A, 'mid3')).toBe('i');

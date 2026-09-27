@@ -366,6 +366,58 @@ test.describe('cdp IME baseline — single editor', () => {
 		issues.assertClean();
 	});
 
+	test('undo right after an equal-text IME commit removes exactly the composed text (F-I16b)', async ({
+		page
+	}) => {
+		knownRed('F-I16(b) (I3)');
+		const issues = trackPageIssues(page);
+		await page.goto('/test/dom?scenario=basic');
+		await waitForEditorReady(page, { requireRuntime: true });
+		await setSelectionByTextIndex(page, 1, 4); // note|
+
+		const ime = await openIme(page);
+		await ime.composeSteps(['ㅎ', '하', '한'], IME_GAP_MS);
+		await page.waitForTimeout(IME_GAP_MS);
+		await ime.commit('한');
+		await ime.detach();
+		await expect.poll(() => readBlockText(page, 1)).toBe('note한');
+
+		await page.keyboard.press(`${modKey}+Z`);
+		await expect.poll(() => readBlockText(page, 1)).toBe('note');
+		await expect.poll(() => readDomText(page, 1)).toBe('note');
+		await page.keyboard.press(`${modKey}+Shift+Z`);
+		await expect.poll(() => readBlockText(page, 1)).toBe('note한');
+		await expect.poll(() => readDomText(page, 1)).toBe('note한');
+		issues.assertClean();
+	});
+
+	test('a 10 s pause leaves the session live; it commits once (F-I17, BI-4)', async ({ page }) => {
+		knownRed('F-I17 (I3)');
+		test.setTimeout(45_000);
+		const issues = trackPageIssues(page);
+		await page.goto('/test/dom?scenario=basic');
+		await waitForEditorReady(page, { requireRuntime: true });
+		await setSelectionByTextIndex(page, 1, 4); // note|
+
+		const ime = await openIme(page);
+		await ime.compose('に');
+		await pinComposingNode(page, 'preview');
+		await page.waitForTimeout(10_000);
+		expect(await readBlockText(page, 1)).toBe('noteに');
+		expect(await readDomText(page, 1)).toBe('noteに');
+		expect(await readPinnedNode(page, 'preview', 'noteに')).toMatchObject({
+			connected: true,
+			hostIntact: true,
+			holdsText: true
+		});
+
+		await ime.commit('に');
+		await ime.detach();
+		await expect.poll(() => readBlockText(page, 1)).toBe('noteに');
+		await expect.poll(() => readDomText(page, 1)).toBe('noteに');
+		issues.assertClean();
+	});
+
 	test('undo after composing over a selected word restores the word and the selection (F-I16c, COMP-02)', async ({
 		page
 	}) => {

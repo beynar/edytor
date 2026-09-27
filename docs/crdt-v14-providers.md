@@ -344,8 +344,8 @@ varuint PROTOCOL_VERSION (=14) | varuint messageType | payload
   either.
 
 Message types keep the y-websocket numbering inside the envelope: sync `0`,
-awareness `1`, auth `2`, query-awareness `3` (plus `7` for migration
-announcements on the separate `edytor-v14-migration:<name>` room).
+awareness `1`, auth `2`, query-awareness `3` (migration sends nothing:
+`edytor-v14-migration:<name>` names its lock).
 
 **The envelope is transport-only.** It authenticates that a peer speaks the
 v14 wire protocol — it does **not** authenticate payload provenance. A v14
@@ -497,26 +497,28 @@ Non-destructive v13 → v14 migration. `bindMigration(Y)` exposes
   preserving CRDT identity or history.
 - **Disconnected legacy writes after cutover:** land in the untouched
   legacy DB and are _not_ live-mapped. Recovery path is explicit:
-  `migrate(name, { force: true })` re-imports the legacy doc wholesale.
+  `migrate(name, { force: true })` restores the legacy materialization in
+  place (below).
 
-### Phases and arbitration
+### Attempt, phases and progress (T5)
 
-`claim → read → materialize → rebuild → verify → persist → activate →
-announce`.
+`claim → read → materialize → rebuild → verify → persist`.
 
-- **claim**: the `migration` record in the generation's `custom` store is
-  written inside one `readwrite` transaction — IndexedDB serializes
-  read-write transactions over a store, so exactly one caller owns
-  `{status:'pending', owner, leaseUntil}`. Other callers observe the
-  record and wait (poll + BC nudge on `edytor-v14-migration:<name>`);
-  `wait:false` returns `busy`. A `pending` lease that expires (crashed
-  tab) is reclaimable — `waitForSettled` treats an expired lease as
-  settled, so resume latency is bounded by `leaseMs`, not `waitMs`.
-- **read**: the legacy `<name>` DB's `updates` rows are read raw. A
-  never-existing name produces a phantom store-less DB — the migrator
-  heals it (creates the v13 stores / deletes the phantom) so a later v13
-  `y-indexeddb` open still finds a healthy database and the rollback
-  guarantee holds.
+- **The attempt is a lock**, not a record: `navigator.locks` lock
+  `edytor-v14-migration:<name>` (`migrationBcRoom(name)`), released with
+  the tab or the attempt — a crash never blocks the next caller, so there
+  is no lease, owner or poll. Where the platform has no `navigator.locks`
+  (Node 22) an in-process mutex stands in. A second caller queues behind
+  the holder and then observes `alreadyActive`; `wait:false` asks
+  `ifAvailable` and returns `busy`. `status(name)` reports `pending` while
+  an attempt holds the lock (`locks.query()`), the durable record
+  otherwise; `waitForSettled(name)` waits for the lock (shared) and reads
+  the record. `leaseMs`, `owner`, `pollMs` and `waitMs` are accepted and
+  ignored (D-15).
+- **read**: the legacy `<name>` DB's `updates` rows are read raw in one
+  readonly transaction; the database is opened non-creating
+  (`container.ts` `openIfExists`), so a never-existing name leaves no
+  phantom behind.
 - **materialize**: `readLegacyJSON` applies the v1 rows to a scratch v14
   doc and materializes the v13 Edytor schema (root `content` map →
   `children` sequence → block maps with `content` text/inline arrays).
@@ -525,27 +527,31 @@ announce`.
   dependencies fail closed**: if applied rows leave
   `store.pendingStructs`/`pendingDs` non-null (a peer's offline row whose
   deps never landed), `PendingLegacyUpdatesError` aborts the migration —
-  content is never silently dropped.
-- **rebuild**: `edytorDoc.init(doc, { content: specs })` — the same
-  document-level path used for fresh docs; ids preserved, `mig-*`
-  deterministic fallbacks for missing ones.
-- **verify**: the snapshot is applied to a second scratch doc and its
-  `toJSON()` deep-equals the materialized legacy JSON, else `failed`. The
-  expected side is normalized through the same fallback-id assignment
-  first, so id-less legacy docs verify instead of dead-ending.
-- **persist**: **additive** — the snapshot row is written under the fixed
-  key `MIGRATION_SNAPSHOT_KEY`; the `updates` store is **never cleared**,
-  so rows a live v14 provider already wrote survive a late migration.
-  Re-runs overwrite the same key — idempotent, cannot duplicate.
-- **activate**: single record write `status:'active'`.
-- **announce**: BC nudge so waiting tabs settle immediately.
+  content is never silently dropped. Id-less blocks and atoms get
+  deterministic `mig-*` ids once; the import is built from, and verified
+  against, that JSON.
+- **rebuild**: `edytorDoc.restore(doc, specs)` into a fresh doc (a first
+  import: fresh identity) or, with `force`, into the generation's hydrated
+  state (a replace-edit — restore-definition: every legacy id's delete
+  marks cleared and its type, data, placement and content rewritten in
+  place; every other block delete-marked; ranks derived from the tree).
+- **verify**: the migrated state is applied to a second scratch doc and its
+  `toJSON()` — ids included — deep-equals the legacy JSON, else `failed`.
+- **persist**: ONE `readwrite` transaction over `updates` + `custom`
+  verifies-or-stamps the container (`container.ts`, the rule the provider
+  uses), **appends** the row (the whole state for a first import, the
+  restore's diff for `force`) and writes `status:'active'`. A completed
+  import is visible iff both committed; the store is append-only, so rows
+  a live v14 provider wrote survive, and a forced re-run never orphans
+  them.
 
-Every phase is idempotent; resuming re-runs the import into the same
-generation and cannot duplicate identities because the migrated doc is
-rebuilt from scratch and persisted as one row. `rollback(name)` marks the
-generation `rolledback` and clears its rows; the legacy DB is untouched
-so the v13 stack keeps working on its own data. A subsequent `migrate`
-requires `force:true` — rollback is an operator decision.
+A crash anywhere before the commit leaves nothing behind; the next call
+re-runs the import. Two devices that force independently write the same
+restore (last-writer-wins attrs, derived ranks) and converge on one copy.
+`rollback(name)` marks the generation `rolledback` and clears its rows;
+the legacy DB is untouched so the v13 stack keeps working on its own data.
+A subsequent `migrate` requires `force:true` — rollback is an operator
+decision.
 
 ### Boot/migration recipe (integrator wiring)
 
@@ -553,7 +559,7 @@ Migration is **explicit-only** — nothing in the runtime invokes it. A v13
 user opening the app post-upgrade otherwise lands on the empty
 `edytor-v14:<name>` generation and sees a fresh document. The intended
 boot order is **migrate first, provider second**: the migrator stamps the
-generation record and persists the snapshot row into `edytor-v14:<name>`,
+generation record and appends the import row into `edytor-v14:<name>`,
 so a provider opened afterwards passes the storage gate and hydrates the
 migrated content inside the same `whenSynced`.
 
@@ -578,8 +584,8 @@ const bootDocument = async (name: string) => {
 			// offline rows never landed; retry later, do not force.
 		}
 	} else if (record.status === 'pending') {
-		// Another tab owns the claim — wait for its settle (expired leases
-		// count as settled).
+		// Another tab is migrating — wait until its attempt (a lock that is
+		// released with the tab) ends, then read the record.
 		await crdt.migration.waitForSettled(name);
 	}
 	// 'rolledback' is an operator decision — never auto-migrate over it
@@ -605,19 +611,18 @@ const bootDocument = async (name: string) => {
 
 Rules that make this safe:
 
-- **Order matters.** Persist is additive (`MIGRATION_SNAPSHOT_KEY`; the
-  `updates` store is never cleared), so a migration that runs _while a
-  provider is already open_ still lands correctly on disk — but the open
-  provider does not re-read its store, so that tab only sees the migrated
-  content on next hydration (or if you bridge it explicitly via
-  `Y.applyUpdate(doc, Y.encodeStateAsUpdate(result.doc))`). Running
-  `status`/`migrate` before opening the provider avoids the bridge
-  entirely.
-- Concurrent tabs serialize on the claim: `migrate` losers wait
-  (`wait:true` default) then observe `alreadyActive`; `wait:false`
+- **Order matters.** Persist appends (the `updates` store is never
+  cleared), so a migration that runs _while a provider is already open_
+  still lands correctly on disk — but the open provider only reads the
+  row at its next compaction, so that tab sees the migrated content on
+  next hydration (or if you bridge it explicitly via
+  `Y.applyUpdate(doc, result.update)`). Running `status`/`migrate` before
+  opening the provider avoids the bridge entirely.
+- Concurrent tabs serialize on the migration lock: `migrate` callers
+  queue (`wait:true` default) then observe `alreadyActive`; `wait:false`
   returns `busy` for callers that prefer to proceed immediately — the
-  claim already stamped the generation record, so the provider still
-  passes the storage gate, just without the snapshot yet.
+  provider stamps an empty container itself, so it still opens, just
+  without the import yet.
 - The legacy `<name>` DB is never written — v13 installs keep working on
   their own data, and `rollback(name)` + `force` stays an explicit
   recovery path.

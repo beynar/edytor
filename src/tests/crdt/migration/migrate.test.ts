@@ -10,8 +10,9 @@
  *   and activated; a v14 provider then hydrates the migrated document.
  *   The legacy DB is never written or deleted (rollback surface).
  * - CO03: arbitration + interruption — concurrent callers produce one
- *   winner; a crashed claim (onPhase throw) is resumed via lease expiry;
- *   re-runs are idempotent; rollback is explicit and non-destructive.
+ *   winner; a crashed attempt (onPhase throw) releases its lock with it and
+ *   the next call resumes at once (no lease — T5, O79); re-runs are
+ *   idempotent; rollback is explicit and non-destructive.
  */
 // @ts-nocheck -- tests import vendored engine JS directly (excluded lane).
 import 'fake-indexeddb/auto';
@@ -207,45 +208,45 @@ describe('CO03: arbitration, interruption, rollback', () => {
 		// First call "crashes" when the persist phase starts.
 		await expect(
 			migration.migrate(name, {
-				owner: 'crasher',
-				leaseMs: 30,
 				onPhase: (p) => {
 					if (p === 'persist') throw new Error('simulated crash');
 				}
 			})
 		).rejects.toThrow('simulated crash');
-		expect((await migration.status(name)).status).toBe('pending');
+		// The attempt ended with the crash: nothing is pending, nothing persisted.
+		expect((await migration.status(name)).status).toBe('none');
 		expect((await generationRows(name)).length).toBe(0);
 
-		// Resume after the stale lease expires — the full flow re-runs.
-		const result = await migration.migrate(name, { leaseMs: 30, waitMs: 2000, pollMs: 20 });
+		// Resume at once — the full flow re-runs.
+		const result = await migration.migrate(name);
 		expect(result.status).toBe('active');
 		expect(result.json).toEqual(sidecar.expected);
 		expect((await generationRows(name)).length).toBe(1);
 	});
 
-	test('crash after persist but before activate resumes identically', async () => {
+	test('a crash between the row and the active record resumes identically', async () => {
 		const name = uniqueName('mig-crash-post');
 		const { sidecar, update } = readFixture('nested-marks');
 		await seedLegacyDb(name, [update]);
 
-		await expect(
-			migration.migrate(name, {
-				owner: 'crasher',
-				leaseMs: 30,
-				onPhase: (p) => {
-					if (p === 'activate') throw new Error('simulated crash');
-				}
-			})
-		).rejects.toThrow('simulated crash');
-		// Snapshot persisted but never activated — the generation is not live.
-		expect((await migration.status(name)).status).toBe('pending');
-		expect((await generationRows(name)).length).toBe(1);
+		// The record write fails after the row was queued in the same
+		// transaction: the row must not survive without its record.
+		const put = IDBObjectStore.prototype.put;
+		IDBObjectStore.prototype.put = function (value, key) {
+			if (key === 'migration') throw new Error('simulated crash');
+			return put.call(this, value, key);
+		};
+		try {
+			await expect(migration.migrate(name)).rejects.toThrow('simulated crash');
+		} finally {
+			IDBObjectStore.prototype.put = put;
+		}
+		expect((await migration.status(name)).status).toBe('none');
+		expect((await generationRows(name)).length).toBe(0);
 
-		const result = await migration.migrate(name, { leaseMs: 30, waitMs: 2000, pollMs: 20 });
+		const result = await migration.migrate(name);
 		expect(result.status).toBe('active');
 		expect(result.json).toEqual(sidecar.expected);
-		// Re-run rewrote the single row — still exactly one.
 		expect((await generationRows(name)).length).toBe(1);
 	});
 
@@ -268,24 +269,21 @@ describe('CO03: arbitration, interruption, rollback', () => {
 		expect(forced.status).toBe('active');
 	});
 
-	test('busy result when a live claim is held and wait=false', async () => {
+	test('busy result when another tab holds the attempt and wait=false', async () => {
 		const name = uniqueName('mig-busy');
 		const { update } = readFixture('tombstones');
 		await seedLegacyDb(name, [update]);
-		// Simulate a live foreign claim.
-		const db = await idb.openDB(generationDbName(name), (db) =>
-			idb.createStores(db, [['updates', { autoIncrement: true }], ['custom']])
-		);
-		const [custom] = idb.transact(db, ['custom']);
-		await idb.rtop(
-			custom.put(
-				{ v: 1, status: 'pending', owner: 'other-tab', leaseUntil: Date.now() + 60_000 },
-				'migration'
-			)
-		);
-		db.close();
+		// Another tab's live attempt: it holds the migration lock.
+		let release;
+		const held = new Promise((r) => (release = r));
+		const holding = navigator.locks.request(`edytor-v14-migration:${name}`, () => held);
+		await new Promise((r) => setTimeout(r));
 
+		expect((await migration.status(name)).status).toBe('pending');
 		const result = await migration.migrate(name, { wait: false });
 		expect(result.status).toBe('busy');
+		release();
+		await holding;
+		expect((await migration.migrate(name)).status).toBe('active');
 	});
 });

@@ -1,102 +1,66 @@
 /**
  * Non-destructive v13 → v14 persistence migration.
  *
- * What it does — and what it deliberately does NOT do:
+ * - READS every row of the legacy `<name>` database's `updates` store (the
+ *   v13 y-indexeddb layout) in one readonly transaction, and materializes the
+ *   logical JSON a v13 editor produced (`legacy-schema.ts`).
+ * - WRITES the import into the generation `edytor-v14:<name>`: the row is
+ *   APPENDED and the `active` record written in ONE transaction, so a
+ *   completed import is visible iff both committed. The store is append-only
+ *   for this writer as for the provider; the legacy database is never
+ *   written, so rollback stays available.
+ * - A first import is a fresh identity appended beside whatever a live
+ *   provider already stored. `force` is a replace-edit instead (D-22): it
+ *   hydrates the generation, restores every legacy id in place
+ *   (restore-definition — delete marks cleared, type, data, placement and
+ *   content rewritten, every other block deleted) and appends that diff, so
+ *   a forced re-migration reproduces the legacy ids and two devices forcing
+ *   independently converge on one copy.
  *
- * - READS the legacy generation: every row of the old `<name>` database's
- *   `updates` store (the v13 y-indexeddb layout this app shipped). Rows are
- *   V1 updates; the vendored v14 `applyUpdate` decodes them.
- * - MATERIALIZES the logical JSON (`migration/legacy-schema.ts`) — the same
- *   tree a v13 editor produced — and re-imports it through the v14
- *   document-level `init`/insert path.
- * - WRITES the result into the NEW generation (`edytor-v14:<name>`) as a
- *   single compacted snapshot row, then flips a `migration` record in the
- *   `custom` store to `active`.
- * - The legacy database is NEVER written to or deleted — rollback is a
- *   record flip plus clearing the new generation's rows.
+ * CRDT identity, history and undo do not survive a first import (it is a
+ * JSON-level import); logical `b_*`/`i_*` ids do, and verification compares
+ * them.
  *
- * What does not survive (by design — this is a JSON-level import):
- *
- * - CRDT item identities (`client:clock`), CRDT history, and collaborative
- *   undo — the migrated doc is a fresh document containing the same logical
- *   content. Logical block/inline ids (`b_*`, `i_*`) DO survive as data.
- * - Presence/awareness state.
- * - Offline v13 writes made AFTER the cutover: they land in the untouched
- *   legacy generation and are not live-mapped (recovery path: re-run
- *   `migrate({force:true})` — it re-imports the legacy doc wholesale).
- *
- * Arbitration: the `migration` record in the new generation's `custom`
- * store is claimed inside ONE `readwrite` IndexedDB transaction — IDB
- * serializes read-write transactions over the same store, so the first tab
- * to commit `{status:'pending', owner, leaseUntil}` owns the migration.
- * Other callers observe the record and wait for `active` (poll +
- * BroadcastChannel nudge on room `edytor-v14-migration:<name>`). A pending
- * lease that expires (crashed tab) is reclaimed by the next caller.
- *
- * Interruption safety: every phase is idempotent. `persist` writes the
- * snapshot under a FIXED updates-store key (never clears the store — a
- * live v14 provider's rows must survive a late migration); `activate` is a
- * single record write. Resuming after a crash re-runs the whole import into
- * the same generation — it cannot duplicate identities because the migrated
- * doc is rebuilt from scratch and overwrites the same snapshot key.
- *
- * Live-generation coexistence (gate-2): a provider that already opened the
- * generation keeps its rows. The migrated snapshot never contains the
- * deterministic `edytor:bootstrap` block — non-empty legacy content is
- * imported under its own ids, and an empty legacy doc persists as a
- * meta-only update — so merging snapshot + live rows can never LWW-race
- * the live doc's bootstrap identity.
+ * Attempt vs progress (O79): the attempt is a `navigator.locks` lock named
+ * {@link migrationBcRoom} — crash-released, so no lease, owner or poll
+ * exists; where the platform has none (Node 22) an in-process mutex stands
+ * in (U-5). Progress is only the durable record, which is never `pending`:
+ * `status()` reports `pending` while the lock is held, and `wait: false`
+ * asks for the lock `ifAvailable` and returns `busy`.
  */
 import * as idb from 'lib0-v14/indexeddb';
-import * as bc from 'lib0-v14/broadcastchannel';
-import * as encoding from 'lib0-v14/encoding';
-import * as decoding from 'lib0-v14/decoding';
 import * as f from 'lib0-v14/function';
 import type { EngineApi, EngineDoc, YDoc } from '../engine-api.js';
 import { bindEdytorDoc } from '../edytor-doc.js';
 import { bindLegacyReader } from './legacy-schema.js';
+import { generationDbName } from '../protocols/envelope.js';
 import {
-	generationDbName,
-	writeProtocolVersion,
-	GENERATION_KEY,
-	GENERATION_RECORD
-} from '../protocols/envelope.js';
-import type { BlockSpec, ContentItem } from '../placement/model.js';
+	CUSTOM,
+	decodeRow,
+	encodeRow,
+	openContainer,
+	openIfExists,
+	UPDATES,
+	verifyOrStamp
+} from '../providers/container.js';
 import {
-	cloneJson,
+	jsonBlockToSpec,
 	sanitizeWireJson,
 	type JSONBlock,
-	type JSONDoc,
-	type JSONInlineBlock,
-	type JSONText
+	type JSONDoc
 } from '../../utils/json.js';
 
-const updatesStoreName = 'updates';
-const customStoreName = 'custom';
 const MIGRATION_KEY = 'migration';
-/** messageType inside the version envelope for migration announcements. */
-const messageMigration = 7;
-/**
- * Fixed updates-store key for the migrated snapshot row. The store is
- * auto-increment (generated keys start at 1), so key `0` never collides
- * with provider rows — re-runs overwrite the same key (idempotent) while
- * live provider rows are preserved (additive persist, no `clear()`).
- * A provider-side compaction snapshot still absorbs the migrated content,
- * so the row may later be trimmed without loss.
- */
-const MIGRATION_SNAPSHOT_KEY = 0;
 
+/** The name of the migration lock of logical document `name`. */
 export const migrationBcRoom = (name: string): string => `edytor-v14-migration:${name}`;
 
 export type MigrationStatus = 'none' | 'pending' | 'active' | 'failed' | 'rolledback';
 
+/** Durable progress. `pending` is never stored: it is the lock, reported by `status()`. */
 export type MigrationRecord = {
 	v: 1;
 	status: MigrationStatus;
-	/** Claim owner (a random per-call id). */
-	owner?: string;
-	/** Claim expiry — unix ms after which a stale `pending` may be reclaimed. */
-	leaseUntil?: number;
 	migratedAt?: number;
 	rolledbackAt?: number;
 	sourceRows?: number;
@@ -104,32 +68,24 @@ export type MigrationRecord = {
 	error?: string;
 };
 
-export type MigrationPhase =
-	| 'claim'
-	| 'read'
-	| 'materialize'
-	| 'rebuild'
-	| 'verify'
-	| 'persist'
-	| 'activate'
-	| 'announce';
+export type MigrationPhase = 'claim' | 'read' | 'materialize' | 'rebuild' | 'verify' | 'persist';
 
 export type MigrateResult = {
 	/** `active` also covers `already-active` and `nothing-to-migrate`. */
 	status: 'active' | 'busy' | 'failed' | 'rolledback';
 	alreadyActive?: boolean;
 	empty?: boolean;
-	/** The rebuilt v14 doc (present when this call ran the import). */
+	/** The migrated v14 doc (present when this call ran the import). */
 	doc?: YDoc;
 	/**
-	 * The compacted v14 snapshot persisted into the new generation
-	 * (present when this call ran the import) — byte-identical to the
-	 * stored row. Feed it through the document admission path:
-	 * `loadDocument(result.update)` restores the migrated state as a
-	 * `hydrated` document through the same gate every load crosses (U8).
+	 * The migrated state (present when this call ran the import) — restore it
+	 * through the document admission path: `loadDocument(result.update)`
+	 * lands a `hydrated` document through the gate every load crosses (U8).
+	 * The appended row is its diff against what the generation held (the
+	 * whole state for a first import).
 	 */
 	update?: Uint8Array;
-	/** The materialized logical JSON (present when this call ran the import). */
+	/** The materialized logical JSON with its ids (present when this call ran the import). */
 	json?: JSONDoc;
 	sourceRows?: number;
 	error?: string;
@@ -138,109 +94,71 @@ export type MigrateResult = {
 export type MigrateOptions = {
 	/** Legacy database name — defaults to the logical `name` (the v13 layout). */
 	sourceName?: string;
-	/** Claim lease in ms (default 30s); a crashed owner's claim expires after this. */
-	leaseMs?: number;
-	/** How long to wait for another owner's migration to activate (default 30s). */
-	waitMs?: number;
-	/** Poll interval while waiting (default 150ms). */
-	pollMs?: number;
-	/** Claim owner id (default: random per call). */
-	owner?: string;
-	/** Re-run even when already `active` or `rolledback`. */
+	/** Re-run even when already `active` or `rolledback` — restores the legacy ids in place. */
 	force?: boolean;
-	/** Don't wait for a live `pending` claim — return `busy` immediately. */
+	/** `false`: return `busy` instead of queueing behind another tab's attempt. */
 	wait?: boolean;
 	/** Phase observer — invoked BEFORE each phase; throwing simulates a crash. */
 	onPhase?: (phase: MigrationPhase) => void | Promise<void>;
+	/** @deprecated No-op (D-15): the attempt is a crash-released lock, not a lease. */
+	leaseMs?: number;
+	/** @deprecated No-op (D-15): waiting is queueing on the lock. */
+	waitMs?: number;
+	/** @deprecated No-op (D-15): nothing polls. */
+	pollMs?: number;
+	/** @deprecated No-op (D-15): no durable owner exists. */
+	owner?: string;
 };
 
-const randomOwner = (): string =>
-	`${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-
-const decodeStoredUpdate = (update: unknown): Uint8Array => {
-	if (update instanceof ArrayBuffer) return new Uint8Array(update);
-	if (update instanceof Uint8Array) return update;
-	throw new TypeError('Stored Yjs update is not binary data');
+/** The part of the Web Locks API the migrator uses. */
+type Locks = {
+	request<T>(
+		name: string,
+		options: { ifAvailable?: boolean; mode?: 'shared' | 'exclusive' },
+		fn: (lock: unknown) => T | Promise<T>
+	): Promise<T>;
+	query(): Promise<{ held?: { name?: string; mode?: string }[] }>;
 };
 
-const openGenerationDB = (dbName: string): Promise<IDBDatabase> =>
-	idb.openDB(dbName, (db) =>
-		idb.createStores(db, [['updates', { autoIncrement: true }], ['custom']])
-	);
+/** U-5: where `navigator.locks` is absent, an in-process mutex (exclusive only) with its surface. */
+const tails = new Map<string, Promise<unknown>>();
+const inProcess: Locks = {
+	request: (name, { ifAvailable }, fn) => {
+		if (ifAvailable && tails.has(name)) return Promise.resolve(fn(null));
+		const run = (tails.get(name) ?? Promise.resolve()).then(() => fn({ name }));
+		const tail = run.then(f.nop, f.nop);
+		tails.set(name, tail);
+		void tail.then(() => tails.get(name) === tail && tails.delete(name));
+		return run;
+	},
+	query: async () => ({ held: [...tails.keys()].map((name) => ({ name })) })
+};
+const locks = (): Locks =>
+	(globalThis as { navigator?: { locks?: Locks } }).navigator?.locks ?? inProcess;
+
+const readRecord = async (db: IDBDatabase): Promise<MigrationRecord> =>
+	((await idb.rtop(idb.transact(db, [CUSTOM], 'readonly')[0].get(MIGRATION_KEY))) as
+		| MigrationRecord
+		| undefined) ?? { v: 1, status: 'none' };
 
 /**
- * Open a database read-only WITHOUT creating it — used for the legacy
- * source AND the generation `status()` probe. `idb.openDB(name, () => {})`
- * on a never-existing name leaves a v1 database with no object stores
- * behind — poison for a later provider open, whose store creation only
- * runs inside `onupgradeneeded` (gate-2 legacy-DB probe; D23 generation
- * probe). Opening with no explicit version and ABORTING the upgrade
- * transaction rolls creation back entirely: existing DBs open normally,
- * absent ones yield `null`.
+ * The legacy rows, in ONE readonly transaction — the fence (D23): a live v13
+ * writer's rows land entirely before or after this snapshot (later rows are
+ * the `force` path's). Never creates the legacy database.
  */
-const openDbIfExists = (dbName: string): Promise<IDBDatabase | null> => {
-	const idbFactory = (globalThis as { indexedDB?: IDBFactory }).indexedDB;
-	if (!idbFactory) return Promise.resolve(null);
-	return new Promise((resolve, reject) => {
-		let abortedCreate = false;
-		const request = idbFactory.open(dbName);
-		request.onupgradeneeded = () => {
-			// Brand-new database — abort so no store-less shell persists.
-			abortedCreate = true;
-			request.transaction?.abort();
-		};
-		request.onsuccess = () => resolve(request.result);
-		request.onerror = () => (abortedCreate ? resolve(null) : reject(request.error));
-		request.onblocked = () =>
-			reject(new Error(`legacy database "${dbName}" is blocked by an open connection`));
-	});
-};
-
-const readMigrationRecord = (db: IDBDatabase): Promise<MigrationRecord | undefined> => {
-	const [custom] = idb.transact(db, [customStoreName], 'readonly');
-	return idb.rtop(custom.get(MIGRATION_KEY)) as Promise<MigrationRecord | undefined>;
+const readLegacyRows = async (sourceName: string): Promise<Uint8Array[]> => {
+	const db = await openIfExists(sourceName);
+	try {
+		if (!db?.objectStoreNames.contains(UPDATES)) return [];
+		return (await idb.getAll(idb.transact(db, [UPDATES], 'readonly')[0])).map(decodeRow);
+	} finally {
+		db?.close();
+	}
 };
 
 /**
- * JSONDoc → BlockSpec conversion. Logical ids are preserved as data
- * (`b_*`/`i_*` keep their values); blocks lacking an id get a deterministic
- * `mig-` fallback so concurrent migrators produce identical specs.
- */
-const blockToSpec = (b: JSONBlock, path: string): BlockSpec => {
-	const spec: BlockSpec = {
-		id: b.id ?? `mig-${path}`,
-		type: b.type
-	};
-	if (b.data != null) spec.data = cloneJson(b.data) as Record<string, unknown>;
-	if (b.content && b.content.length > 0) {
-		spec.content = b.content.map((item, i): ContentItem => {
-			if ('text' in item) {
-				const t: JSONText = item;
-				const ci: ContentItem = { kind: 'text', text: t.text };
-				if (t.marks) ci.marks = cloneJson(t.marks) as Record<string, unknown>;
-				return ci;
-			}
-			const inline: JSONInlineBlock = item;
-			return {
-				kind: 'inline',
-				id: inline.id ?? `mig-${path}-i${i}`,
-				type: inline.type,
-				...(inline.data != null ? { data: cloneJson(inline.data) as Record<string, unknown> } : {})
-			};
-		});
-	}
-	if (b.children && b.children.length > 0) {
-		spec.children = b.children.map((c, i) => blockToSpec(c, `${path}.${i}`));
-	}
-	return spec;
-};
-
-/**
- * Apply the SAME `mig-` fallback ids `blockToSpec` assigns to the expected
- * JSON — verification compares the produced document against THIS
- * normalized shape, so an id-less legacy block verifies instead of
- * dead-ending on `produced.id='mig-…'` vs `expected.id=undefined`
- * (gate-2 verify probe).
+ * Give id-less legacy blocks and atoms a deterministic `mig-<path>` id — the
+ * one id policy: the import is built from, and verified against, this JSON.
  */
 const withFallbackIds = (b: JSONBlock, path: string): JSONBlock => {
 	const out: JSONBlock = { ...b, id: b.id ?? `mig-${path}` };
@@ -264,365 +182,146 @@ export const bindMigration = (Y: EngineApi) => {
 	const reader = bindLegacyReader(Y);
 	const edytorDoc = bindEdytorDoc(Y);
 
-	const announce = (name: string, record: MigrationRecord): void => {
-		const encoder = encoding.createEncoder();
-		writeProtocolVersion(encoder);
-		encoding.writeVarUint(encoder, messageMigration);
-		encoding.writeVarString(encoder, JSON.stringify(record));
-		bc.publish(migrationBcRoom(name), encoding.toUint8Array(encoder), null);
-	};
-
-	/**
-	 * Read the migration record of a generation DB — NON-CREATING (D23):
-	 * `status('fresh-name')` must not leave a phantom `edytor-v14:<name>`
-	 * database behind (a store-less shell is poison for a later provider
-	 * open). `indexedDB.databases()` — where the factory exposes it —
-	 * short-circuits a missing name without touching a handle; otherwise
-	 * `openDbIfExists` opens with an aborted upgrade so creation rolls
-	 * back. `status:'none'` covers a missing record AND a missing DB
-	 * (nothing has ever been migrated).
-	 */
-	const status = async (name: string): Promise<MigrationRecord> => {
-		const dbName = generationDbName(name);
-		const none: MigrationRecord = { v: 1, status: 'none' };
-		const factory = (globalThis as { indexedDB?: IDBFactory }).indexedDB;
-		if (typeof factory?.databases === 'function') {
-			try {
-				const infos = await factory.databases();
-				if (!infos.some((info) => info.name === dbName)) return none;
-			} catch {
-				// Existence probe failed — fall through to the open below,
-				// which still never creates.
-			}
-		}
-		const db = await openDbIfExists(dbName);
-		if (db === null) return none;
+	/** The durable record — NON-CREATING (D23): probing never leaves a database behind. */
+	const stored = async (name: string): Promise<MigrationRecord> => {
+		const db = await openIfExists(generationDbName(name));
 		try {
-			if (!db.objectStoreNames.contains(customStoreName)) return none;
-			return (await readMigrationRecord(db)) ?? none;
+			return db?.objectStoreNames.contains(CUSTOM)
+				? await readRecord(db)
+				: { v: 1, status: 'none' };
 		} finally {
-			db.close();
+			db?.close();
 		}
 	};
 
-	/**
-	 * Wait until the generation's migration record leaves `pending` (or
-	 * appears as `active`/`failed`/`rolledback`). Polls `custom` every
-	 * `pollMs` and subscribes to the migration BC room for the fast path.
-	 */
+	/** `pending` while a tab holds the attempt (a waiter's shared hold is not one); the durable record otherwise. */
+	const status = async (name: string): Promise<MigrationRecord> => {
+		const { held = [] } = await locks().query();
+		return held.some((lock) => lock.name === migrationBcRoom(name) && lock.mode !== 'shared')
+			? { v: 1, status: 'pending' }
+			: stored(name);
+	};
+
+	/** Resolve with the durable record once no tab holds the attempt (the options are no-ops, D-15). */
 	const waitForSettled = (
 		name: string,
-		{ waitMs = 30_000, pollMs = 150 }: { waitMs?: number; pollMs?: number } = {}
-	): Promise<MigrationRecord> => {
-		const dbName = generationDbName(name);
-		const room = migrationBcRoom(name);
-		return new Promise((resolve) => {
-			let settled = false;
-			let db: IDBDatabase | null = null;
-			let timer: ReturnType<typeof setTimeout> | null = null;
-			let interval: ReturnType<typeof setInterval> | null = null;
-			const deadline = Date.now() + waitMs;
-			const sub = () => void check();
-			const finish = (rec: MigrationRecord) => {
-				if (settled) return;
-				settled = true;
-				if (interval) clearInterval(interval);
-				if (timer) clearTimeout(timer);
-				bc.unsubscribe(room, sub);
-				db?.close();
-				resolve(rec);
-			};
-			const check = async () => {
-				if (!db) return;
-				try {
-					const rec = (await readMigrationRecord(db as IDBDatabase)) ?? {
-						v: 1 as const,
-						status: 'none' as const
-					};
-					// A live pending claim keeps us waiting; an expired lease is
-					// already reclaimable — treat it as settled immediately.
-					const leaseExpired = rec.status === 'pending' && (rec.leaseUntil ?? 0) <= Date.now();
-					if (rec.status !== 'pending' || leaseExpired || Date.now() > deadline) finish(rec);
-				} catch {
-					if (Date.now() > deadline) finish({ v: 1, status: 'failed', error: 'poll failed' });
-				}
-			};
-			openGenerationDB(dbName).then(
-				(opened) => {
-					db = opened;
-					bc.subscribe(room, sub);
-					interval = setInterval(() => void check(), pollMs);
-					timer = setTimeout(() => void check(), Math.min(pollMs, 50));
-					void check();
-				},
-				// The OPEN itself can fail (D23) — without a rejection
-				// branch the promise hung forever and the caller waited out
-				// nothing. Settle as `failed` so `migrate`'s loop re-reads
-				// and can reclaim rather than deadlocking.
-				(error) =>
-					finish({
-						v: 1,
-						status: 'failed',
-						error: `open failed: ${error instanceof Error ? error.message : String(error)}`
-					})
-			);
-		});
-	};
+		_options?: { waitMs?: number; pollMs?: number }
+	): Promise<MigrationRecord> =>
+		locks().request(migrationBcRoom(name), { mode: 'shared' }, () => stored(name));
 
-	/**
-	 * Run the migration for logical document `name`.
-	 *
-	 * - `active` already → `{status:'active', alreadyActive:true}` (idempotent).
-	 * - Another owner mid-flight → waits for settle, then re-reads (with
-	 *   `wait:false` → `{status:'busy'}`).
-	 * - `rolledback` → `{status:'rolledback'}` unless `force`.
-	 * - Otherwise claims, imports, verifies, persists, activates.
-	 */
-	const migrate = async (name: string, opts: MigrateOptions = {}): Promise<MigrateResult> => {
-		const {
-			sourceName = name,
-			leaseMs = 30_000,
-			waitMs = 30_000,
-			pollMs = 150,
-			owner = randomOwner(),
-			force = false,
-			wait = true,
-			onPhase
-		} = opts;
-		const dbName = generationDbName(name);
-		const phase = async (p: MigrationPhase) => {
-			await onPhase?.(p);
-		};
-
-		// ── claim ──────────────────────────────────────────────────────────
-		await phase('claim');
-		const db = await openGenerationDB(dbName);
+	/** One attempt, run while holding the lock. */
+	const attempt = async (
+		name: string,
+		{ sourceName = name, force = false, onPhase }: MigrateOptions
+	): Promise<MigrateResult> => {
+		await onPhase?.('claim');
+		const db = await openContainer(generationDbName(name));
 		try {
-			for (;;) {
-				// One readwrite transaction: read + conditional write is atomic —
-				// IDB serializes read-write transactions over the same store.
-				const [custom] = idb.transact(db, [customStoreName]);
-				const outcome = await (
-					idb.rtop(custom.get(MIGRATION_KEY)) as Promise<MigrationRecord | undefined>
-				).then((rec) => {
-					const stale = rec?.status === 'pending' && (rec.leaseUntil ?? 0) <= Date.now();
-					const claimable =
-						rec == null ||
-						force ||
-						stale ||
-						rec.status === 'failed' ||
-						(rec.status !== 'active' && rec.status !== 'pending' && rec.status !== 'rolledback');
-					if (claimable) {
-						const next: MigrationRecord = {
-							v: 1,
-							status: 'pending',
-							owner,
-							leaseUntil: Date.now() + leaseMs
-						};
-						return idb.rtop(custom.put(next, MIGRATION_KEY)).then(() => 'claimed' as const);
-					}
-					return rec.status as MigrationStatus;
-				});
+			const record = await readRecord(db);
+			if (!force && record.status === 'active') return { status: 'active', alreadyActive: true };
+			if (!force && record.status === 'rolledback') return { status: 'rolledback' };
 
-				if (outcome === 'claimed') {
-					break;
-				}
-				if (outcome === 'active' && !force) {
-					return { status: 'active', alreadyActive: true };
-				}
-				if (outcome === 'rolledback' && !force) {
-					return { status: 'rolledback' };
-				}
-				if (outcome === 'pending' && !wait) {
-					return { status: 'busy' };
-				}
-				// Someone else owns the claim (or a race resolved) — wait for
-				// settlement, then loop to re-read the final record.
-				const settled = await waitForSettled(name, { waitMs, pollMs });
-				if (settled.status === 'active') return { status: 'active', alreadyActive: true };
-				if (settled.status === 'pending' && !wait) return { status: 'busy' };
-				if (settled.status === 'rolledback' && !force) return { status: 'rolledback' };
-				// stale/failed/expired — loop to try claiming again
-			}
-
-			// Stamp the generation record immediately — the claimed DB is a
-			// v14 generation from this point on, so a provider opening it
-			// (e.g. after `activate`) passes the storage gate.
-			{
-				const [custom] = idb.transact(db, [customStoreName]);
-				await idb.rtop(custom.put({ ...GENERATION_RECORD }, GENERATION_KEY));
-			}
-
-			// ── read legacy rows ─────────────────────────────────────────────
-			await phase('read');
-			const legacyRows = await (async (): Promise<Uint8Array[]> => {
-				// openDbIfExists never CREATES the legacy database — an
-				// absent one resolves to null (no store-less shell behind).
-				const dbLegacy = await openDbIfExists(sourceName);
-				if (dbLegacy === null) return [];
+			/** Progress, atomically: the appended row (if any) and the record. */
+			const commit = async (next: Omit<MigrationRecord, 'v'>, row?: Uint8Array) => {
+				const [updates, custom] = idb.transact(db, [UPDATES, CUSTOM]);
 				try {
-					if (!dbLegacy.objectStoreNames.contains(updatesStoreName)) return [];
-					// ONE readonly transaction over the only store the import
-					// reads — that IS the fence (D23): IDB gives a readonly tx a
-					// consistent point-in-time view, so a live v13 writer
-					// appending rows mid-migration lands entirely before or
-					// after this snapshot, never torn inside it. (Rows appended
-					// after it are covered by the documented `force` re-run
-					// path — they are not live-mapped.)
-					const [updatesStore] = idb.transact(dbLegacy, [updatesStoreName], 'readonly');
-					const rows = await idb.getAll(updatesStore);
-					return (rows as unknown[]).map(decodeStoredUpdate);
-				} finally {
-					dbLegacy.close();
+					await verifyOrStamp(name, updates, custom);
+					if (row) await idb.addAutoKey(updates, encodeRow(row));
+					await idb.rtop(custom.put({ v: 1, ...next }, MIGRATION_KEY));
+				} catch (error) {
+					try {
+						updates.transaction.abort();
+					} catch {
+						// Already finished — the failed request aborted it.
+					}
+					throw error;
 				}
-			})();
-
-			const markFailed = async (error: string): Promise<MigrateResult> => {
-				const [custom] = idb.transact(db, [customStoreName]);
-				const rec: MigrationRecord = {
-					v: 1,
-					status: 'failed',
-					owner,
-					error,
-					migratedAt: Date.now()
-				};
-				await idb.rtop(custom.put(rec, MIGRATION_KEY));
-				announce(name, rec);
+			};
+			const failed = async (error: string): Promise<MigrateResult> => {
+				await commit({ status: 'failed', error, migratedAt: Date.now() });
 				return { status: 'failed', error };
 			};
 
-			if (legacyRows.length === 0) {
-				// Nothing to carry over — the new generation is authoritative and
-				// empty; activate so subsequent opens skip the whole flow.
-				await phase('activate');
-				const [custom] = idb.transact(db, [customStoreName]);
-				const rec: MigrationRecord = {
-					v: 1,
-					status: 'active',
-					owner,
-					migratedAt: Date.now(),
-					sourceRows: 0,
-					sourceBytes: 0
-				};
-				await idb.rtop(custom.put(rec, MIGRATION_KEY));
-				await phase('announce');
-				announce(name, rec);
-				return { status: 'active', empty: true, sourceRows: 0 };
+			await onPhase?.('read');
+			const rows = await readLegacyRows(sourceName);
+			const sourceRows = rows.length;
+			if (sourceRows === 0) {
+				await onPhase?.('persist');
+				await commit({ status: 'active', migratedAt: Date.now(), sourceRows, sourceBytes: 0 });
+				return { status: 'active', empty: true, sourceRows };
 			}
 
-			// ── materialize ──────────────────────────────────────────────────
-			await phase('materialize');
-			let json: JSONDoc;
+			await onPhase?.('materialize');
+			let legacy: JSONDoc;
 			try {
 				// Throws PendingLegacyUpdatesError when rows carry structs whose
-				// CRDT deps never landed — a truncated document must not
-				// activate (retryable: a later run sees the deps if they sync).
-				json = reader.readLegacyJSON(legacyRows);
+				// deps never landed — a truncated document must not activate.
+				// Every string becomes well-formed UTF-16 (F2-M1), as the wire
+				// would deliver it, so verify compares normalized JSON.
+				legacy = sanitizeWireJson(reader.readLegacyJSON(rows));
 			} catch (error) {
-				return markFailed(`legacy decode failed: ${(error as Error).message}`);
+				return failed(`legacy decode failed: ${(error as Error).message}`);
 			}
-			// Boundary normalization (F2-M1): every string in the materialized
-			// tree — text, marks, data, ids, types — becomes well-formed UTF-16
-			// (unpaired surrogates → U+FFFD), matching what the wire encode
-			// would deliver anyway. The migrated doc then carries only
-			// wire-idempotent content, and the verify step below compares
-			// normalized-vs-normalized JSON.
-			json = sanitizeWireJson(json);
+			const json: JSONDoc = { children: legacy.children.map((b, i) => withFallbackIds(b, `${i}`)) };
 
-			// ── rebuild through the document-level init/insert path ──────────
-			await phase('rebuild');
+			await onPhase?.('rebuild');
 			const doc = new Y.Doc();
-			const specs = json.children.map((b, i) => blockToSpec(b, `${i}`));
-			if (specs.length === 0) {
-				// Meta-only snapshot: a content-free migration stamps the
-				// version record WITHOUT seeding a default block.
-				(doc as unknown as EngineDoc).transact(() => {
-					const meta = (doc as unknown as EngineDoc).get(edytorDoc.META_KEY);
-					meta.setAttr(edytorDoc.SCHEMA.metaAttrs.version, edytorDoc.SCHEMA_VERSION);
-					meta.setAttr(edytorDoc.SCHEMA.metaAttrs.schema, edytorDoc.SCHEMA_NAME);
-				});
-			} else {
-				edytorDoc.init(doc as unknown as EngineDoc, { content: specs });
+			if (force) {
+				const [updates, custom] = idb.transact(db, [UPDATES, CUSTOM]);
+				await verifyOrStamp(name, updates, custom);
+				for (const row of await idb.getAll(updates)) Y.applyUpdate(doc, decodeRow(row));
 			}
-			const snapshot = Y.encodeStateAsUpdate(doc);
+			const base = Y.encodeStateVector(doc);
+			edytorDoc.restore(
+				doc as unknown as EngineDoc,
+				json.children.map((b) => jsonBlockToSpec(b))
+			);
+			const update = Y.encodeStateAsUpdate(doc);
 
-			// ── verify: materialize the NEW doc and compare logical JSON ─────
-			await phase('verify');
-			const verifyDoc = new Y.Doc();
-			Y.applyUpdate(verifyDoc, snapshot);
-			const produced = edytorDoc.create(verifyDoc as unknown as EngineDoc).toJSON();
-			// Expected JSON carries the SAME `mig-` fallback ids blockToSpec
-			// assigned — an id-less legacy block verifies instead of
-			// dead-ending on produced-vs-expected id mismatch.
-			const expected: JSONDoc = {
-				children: json.children.map((b, i) => withFallbackIds(b, `${i}`))
-			};
-			if (!f.equalityDeep(produced, expected)) {
-				return markFailed(
+			await onPhase?.('verify');
+			const check = new Y.Doc();
+			Y.applyUpdate(check, update);
+			if (!f.equalityDeep(edytorDoc.create(check as unknown as EngineDoc).toJSON(), json)) {
+				return failed(
 					'verification failed: migrated document does not reproduce the legacy logical JSON'
 				);
 			}
 
-			// ── persist snapshot into the new generation ─────────────────────
-			await phase('persist');
-			{
-				const [updatesStore] = idb.transact(db, [updatesStoreName]);
-				// ADDITIVE persist (gate-2 live-generation probe): the snapshot
-				// is written under a FIXED key so re-runs are idempotent, and
-				// the store is NEVER cleared — rows a live v14 provider already
-				// wrote survive the migration and keep integrating.
-				const stored = new Uint8Array(snapshot.byteLength);
-				stored.set(snapshot);
-				await idb.rtop(updatesStore.put(stored.buffer, MIGRATION_SNAPSHOT_KEY));
-			}
-
-			// ── activate the generation pointer ──────────────────────────────
-			await phase('activate');
-			const sourceBytes = legacyRows.reduce((n, r) => n + r.byteLength, 0);
-			{
-				const [custom] = idb.transact(db, [customStoreName]);
-				const rec: MigrationRecord = {
-					v: 1,
-					status: 'active',
-					owner,
-					migratedAt: Date.now(),
-					sourceRows: legacyRows.length,
-					sourceBytes
-				};
-				await idb.rtop(custom.put(rec, MIGRATION_KEY));
-				await phase('announce');
-				announce(name, rec);
-			}
-			return {
-				status: 'active',
-				doc,
-				update: snapshot,
-				json: expected,
-				sourceRows: legacyRows.length
-			};
+			await onPhase?.('persist');
+			const sourceBytes = rows.reduce((n, r) => n + r.byteLength, 0);
+			await commit(
+				{ status: 'active', migratedAt: Date.now(), sourceRows, sourceBytes },
+				Y.encodeStateAsUpdate(doc, base)
+			);
+			return { status: 'active', doc, update, json, sourceRows };
 		} finally {
 			db.close();
 		}
 	};
 
 	/**
-	 * Roll back a migration: mark the generation `rolledback` and clear its
-	 * update rows. The legacy generation is untouched (it never is), so a
-	 * v13 stack works again on its own data. A subsequent `migrate` must
-	 * pass `force:true` — rollback is an explicit operator decision.
+	 * Run the migration for logical document `name`: `active` already →
+	 * `{alreadyActive: true}`; `rolledback` → `{status: 'rolledback'}` unless
+	 * `force`; another tab mid-attempt → queue behind it (`wait: false` →
+	 * `busy`); otherwise import, verify and commit.
+	 */
+	const migrate = (name: string, options: MigrateOptions = {}): Promise<MigrateResult> =>
+		locks().request(migrationBcRoom(name), { ifAvailable: options.wait === false }, (lock) =>
+			lock === null ? { status: 'busy' as const } : attempt(name, options)
+		);
+
+	/**
+	 * Roll back: mark the generation `rolledback` and clear its rows. The
+	 * legacy database is untouched, so a v13 stack works again on its own
+	 * data; a later `migrate` needs `force` — rollback is an operator decision.
 	 */
 	const rollback = async (name: string): Promise<void> => {
-		const db = await openGenerationDB(generationDbName(name));
+		const db = await openContainer(generationDbName(name));
 		try {
-			const [updatesStore, custom] = idb.transact(db, [updatesStoreName, customStoreName]);
-			const rec: MigrationRecord = {
-				v: 1,
-				status: 'rolledback',
-				rolledbackAt: Date.now()
-			};
-			await idb.rtop(custom.put(rec, MIGRATION_KEY));
-			await idb.rtop(updatesStore.clear());
-			announce(name, rec);
+			const [updates, custom] = idb.transact(db, [UPDATES, CUSTOM]);
+			const record: MigrationRecord = { v: 1, status: 'rolledback', rolledbackAt: Date.now() };
+			await idb.rtop(custom.put(record, MIGRATION_KEY));
+			await idb.rtop(updates.clear());
 		} finally {
 			db.close();
 		}

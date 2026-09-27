@@ -749,6 +749,29 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 	};
 
 	/**
+	 * Stamp the version record, absent only: never downgrade a higher
+	 * version written by a newer peer — U07's gate decides compatibility.
+	 */
+	const stamp = (doc: EngineDoc): void => {
+		const meta = doc.get(META_KEY);
+		if (meta.getAttr(SCHEMA.metaAttrs.version) !== undefined) return;
+		meta.setAttr(SCHEMA.metaAttrs.version, SCHEMA_VERSION);
+		meta.setAttr(SCHEMA.metaAttrs.schema, SCHEMA_NAME);
+	};
+
+	/**
+	 * Restore definition (O24, D-22 — migration only): stamp the version
+	 * record (absent only) and make `content` the whole document under its
+	 * own ids, rewritten in place where they exist (the model's
+	 * `restoreBlocks`). Writes no attribution.
+	 */
+	const restore = (doc: EngineDoc, content: BlockSpec[]): void =>
+		doc.transact(() => {
+			stamp(doc);
+			M.restoreBlocks(doc, content.map(sanitizeSpec));
+		});
+
+	/**
 	 * Stamp the version record (absent only) and, into an EMPTY registry,
 	 * bulk-insert `content` — the local materializer: the seed's scratch
 	 * doc, migration's rebuild and fixtures. Without `content` it seeds an
@@ -764,13 +787,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return seed(doc, [], opts.defaultType);
 		}
 		doc.transact(() => {
-			const meta = doc.get(META_KEY);
-			if (meta.getAttr(SCHEMA.metaAttrs.version) === undefined) {
-				// Never downgrade a higher version written by a newer peer —
-				// U07's gate decides compatibility; init only stamps absent.
-				meta.setAttr(SCHEMA.metaAttrs.version, SCHEMA_VERSION);
-				meta.setAttr(SCHEMA.metaAttrs.schema, SCHEMA_NAME);
-			}
+			stamp(doc);
 			if (specs.length === 0 || !registryEmpty(doc)) return;
 			// Bulk path (U7): one sibling read + a local rank chain for the
 			// whole batch. All-or-nothing: a dup spec id refuses the batch.
@@ -2617,6 +2634,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		META_KEY,
 		/** Doc-level API (no facade needed). */
 		init,
+		restore,
 		seed,
 		isInitialized,
 		schemaVersion,

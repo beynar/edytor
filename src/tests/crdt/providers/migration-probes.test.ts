@@ -6,9 +6,9 @@
  *   and leaves NO phantom `edytor-v14:<name>` database behind — a
  *   store-less shell would poison a later provider open (store creation
  *   only runs inside `onupgradeneeded`).
- * - `waitForSettled` settles as `failed` when the generation open itself
- *   fails — previously the promise hung forever (open had no rejection
- *   branch), wedging `migrate`'s wait loop.
+ * - `waitForSettled` settles when the generation open itself fails — the
+ *   poller it replaced once hung forever there (open had no rejection
+ *   branch). T5: it waits for the attempt lock, then reads the record.
  * - The legacy read runs inside ONE readonly transaction — the fence that
  *   makes the snapshot atomic against a still-moving v13 writer.
  */
@@ -46,15 +46,12 @@ describe('migration status() probe (D23)', () => {
 		const db = await openGenerationDb(name);
 		try {
 			const [custom] = idb.transact(db, ['custom']);
-			await idb.rtop(
-				custom.put({ v: 1, status: 'active', owner: 'tab-1', migratedAt: 1234 }, 'migration')
-			);
+			await idb.rtop(custom.put({ v: 1, status: 'active', migratedAt: 1234 }, 'migration'));
 		} finally {
 			db.close();
 		}
 		const rec = await migration.status(name);
 		expect(rec.status).toBe('active');
-		expect(rec.owner).toBe('tab-1');
 		expect(rec.migratedAt).toBe(1234);
 	});
 
@@ -70,24 +67,22 @@ describe('migration status() probe (D23)', () => {
 });
 
 describe('waitForSettled open failure (D23)', () => {
-	test('a failed generation open settles as failed instead of hanging', async () => {
+	test('a failed generation open settles instead of hanging', async () => {
 		const name = uniqueName('wait-open-fail');
+		// The generation exists, so the non-creating probe must open it.
+		(await openGenerationDb(name)).close();
 		const original = indexedDB.open;
-		// Force every open to fail — the rejection must reach the waiter's
-		// settlement path, not dangle.
+		// Force every open to fail — the rejection must reach the waiter, not dangle.
 		indexedDB.open = () => {
 			const req = {};
 			setTimeout(() => {
 				req.error = new Error('forced open failure');
-				// lib0's onerror reads `event.target.error`.
 				req.onerror?.({ target: req });
 			});
 			return req;
 		};
 		try {
-			const rec = await migration.waitForSettled(name, { waitMs: 2000, pollMs: 20 });
-			expect(rec.status).toBe('failed');
-			expect(rec.error).toMatch(/open failed/);
+			await expect(migration.waitForSettled(name)).rejects.toThrow('forced open failure');
 		} finally {
 			indexedDB.open = original;
 		}
@@ -102,7 +97,7 @@ describe('waitForSettled open failure (D23)', () => {
 		} finally {
 			db.close();
 		}
-		const rec = await migration.waitForSettled(name, { waitMs: 2000, pollMs: 20 });
+		const rec = await migration.waitForSettled(name);
 		expect(rec.status).toBe('active');
 	});
 });

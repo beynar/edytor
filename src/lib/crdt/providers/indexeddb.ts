@@ -6,7 +6,7 @@
  * Semantics preserved from the v13 provider:
  *
  * - `updates` object store (auto-increment keys) holds raw V1 update rows
- *   wrapped in a fresh ArrayBuffer (`encodeUpdateForStore`); `custom` holds
+ *   wrapped in a fresh ArrayBuffer (`container.ts`); `custom` holds
  *   provider metadata via `get`/`set`/`del`.
  * - `PREFERRED_TRIM_SIZE = 500`: past it, a debounced `storeState` appends a
  *   compacted `encodeStateAsUpdate` snapshot and deletes prior rows. Every
@@ -41,13 +41,15 @@ import * as bc from 'lib0-v14/broadcastchannel';
 import * as encoding from 'lib0-v14/encoding';
 import { Awareness } from '../protocols/awareness.js';
 import { bindSync, type SyncProtocol } from '../protocols/sync.js';
+import { generationDbName } from '../protocols/envelope.js';
 import {
-	generationDbName,
-	GENERATION_KEY,
-	GENERATION_RECORD,
-	GenerationMismatchError,
-	isGenerationRecord
-} from '../protocols/envelope.js';
+	CUSTOM as customStoreName,
+	decodeRow,
+	encodeRow,
+	openContainer,
+	UPDATES as updatesStoreName,
+	verifyOrStamp
+} from './container.js';
 import {
 	beginDestroy,
 	bindRoomProtocol,
@@ -64,26 +66,7 @@ import type { EngineApi, YDoc } from '../engine-api.js';
 
 export type { ProtocolMismatch, SchemaMismatchDetail };
 
-const customStoreName = 'custom';
-const updatesStoreName = 'updates';
-
 export const PREFERRED_TRIM_SIZE = 500;
-
-const encodeUpdateForStore = (update: Uint8Array): ArrayBuffer => {
-	const storedUpdate = new Uint8Array(update.byteLength);
-	storedUpdate.set(update);
-	return storedUpdate.buffer;
-};
-
-const decodeStoredUpdate = (update: unknown): Uint8Array => {
-	if (update instanceof ArrayBuffer) {
-		return new Uint8Array(update);
-	}
-	if (update instanceof Uint8Array) {
-		return update;
-	}
-	throw new TypeError('Stored Yjs update is not binary data');
-};
 
 type IdbPersistenceLike = {
 	db: IDBDatabase | null;
@@ -133,25 +116,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 	) => {
 		const db = idbPersistence.db as IDBDatabase;
 		const [updatesStore, customStore] = idb.transact(db, [updatesStoreName, customStoreName]);
-		return idb
-			.get(customStore, GENERATION_KEY)
-			.then((generation) => {
-				if (generation === undefined) {
-					// No generation record yet. Only an EMPTY updates store can be
-					// stamped — a populated store without a record is a foreign DB
-					// that happens to share our name; refuse to apply its rows.
-					return idb.count(updatesStore).then((cnt) => {
-						if (cnt > 0) {
-							throw new GenerationMismatchError(idbPersistence.name, generation);
-						}
-						return idb.rtop(customStore.put({ ...GENERATION_RECORD }, GENERATION_KEY));
-					});
-				}
-				if (!isGenerationRecord(generation)) {
-					throw new GenerationMismatchError(idbPersistence.name, generation);
-				}
-				return undefined;
-			})
+		return verifyOrStamp(idbPersistence.name, updatesStore, customStore)
 			.then(() =>
 				idb.getAll(updatesStore, idb.createIDBKeyRangeLowerBound(idbPersistence._dbref, false))
 			)
@@ -161,9 +126,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 					Y.transact(
 						idbPersistence.doc,
 						() => {
-							updates.forEach((update) =>
-								Y.applyUpdate(idbPersistence.doc, decodeStoredUpdate(update))
-							);
+							updates.forEach((update) => Y.applyUpdate(idbPersistence.doc, decodeRow(update)));
 						},
 						idbPersistence,
 						false
@@ -226,10 +189,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 				return promise
 					.all([
 						idb
-							.addAutoKey(
-								updatesStore,
-								encodeUpdateForStore(Y.encodeStateAsUpdate(idbPersistence.doc))
-							)
+							.addAutoKey(updatesStore, encodeRow(Y.encodeStateAsUpdate(idbPersistence.doc)))
 							.then(() =>
 								idb.del(updatesStore, idb.createIDBKeyRangeUpperBound(idbPersistence._dbref, true))
 							)
@@ -312,9 +272,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			this.awareness = options.awareness ?? new Awareness(doc);
 			this._ownsAwareness = !options.awareness;
 
-			this._db = idb.openDB(this.dbName, (db) =>
-				idb.createStores(db, [['updates', { autoIncrement: true }], ['custom']])
-			);
+			this._db = openContainer(this.dbName);
 
 			this.destroy = this.destroy.bind(this);
 			initLifecycle(this, this.destroy);
@@ -341,7 +299,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 					// A read-only doc's pre-hydration state is never persisted.
 					const beforeApplyUpdatesCallback = (updatesStore: IDBObjectStore) => {
 						if (!quarantined(doc)) {
-							idb.addAutoKey(updatesStore, encodeUpdateForStore(Y.encodeStateAsUpdate(doc)));
+							idb.addAutoKey(updatesStore, encodeRow(Y.encodeStateAsUpdate(doc)));
 						}
 					};
 					// Hydrated: join the room and claim `synced` (lifetime).
@@ -376,7 +334,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 						const [updatesStore] = idb.transact(this.db, [updatesStoreName]);
 						// Storage failures must surface — never an unobserved
 						// rejection (the error channel observes every failure mode).
-						idb.addAutoKey(updatesStore, encodeUpdateForStore(update)).catch((error) => {
+						idb.addAutoKey(updatesStore, encodeRow(update)).catch((error) => {
 							this.emit('message-error', [error, this]);
 						});
 						if (++this._dbsize >= PREFERRED_TRIM_SIZE) {

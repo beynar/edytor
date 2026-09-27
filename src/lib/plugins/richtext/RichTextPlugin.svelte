@@ -1,9 +1,7 @@
 <script module lang="ts">
 	import type { Plugin, MarkSnippetPayload, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { SerializableContent } from '$lib/utils/json.js';
-	import type { HotKey } from '$lib/hotkeys.js';
-	import type { Text } from '$lib/text/text.svelte.js';
-	import { createRichTextCommands } from './richTextCommands.js';
+	import type { HotKey } from '$lib/session/keymap.js';
 	import {
 		richTextOperations,
 		sanitizeLinkHref,
@@ -27,48 +25,8 @@
 		inputType: string
 	): inputType is keyof typeof nativeFormatMarks => inputType in nativeFormatMarks;
 
-	const getMarksBeforeOffset = (text: Text, offset: number) => {
-		let currentOffset = 0;
-
-		for (const part of text.value) {
-			const nextOffset = currentOffset + part.text.length;
-			if (offset > currentOffset && offset <= nextOffset) {
-				return part.marks ?? {};
-			}
-			currentOffset = nextOffset;
-		}
-
-		return null;
-	};
-
-	const getMarksAfterOffset = (text: Text, offset: number) => {
-		let currentOffset = 0;
-
-		for (const part of text.value) {
-			const nextOffset = currentOffset + part.text.length;
-			if (offset >= currentOffset && offset < nextOffset) {
-				return part.marks ?? {};
-			}
-			currentOffset = nextOffset;
-		}
-
-		return null;
-	};
-
-	const withoutLinkMark = (marks: Record<string, SerializableContent>) => {
-		const nextMarks = { ...marks };
-		delete nextMarks.link;
-		return nextMarks;
-	};
-
-	const isInsideLinkMark = (node: Node | null) => {
-		if (typeof Element === 'undefined' || !node) {
-			return false;
-		}
-
-		const element = node.nodeType === 3 ? node.parentElement : (node as Element | null);
-		return Boolean(element?.closest('[data-edytor-mark="link"]'));
-	};
+	/** A thematic break's clipboard forms. */
+	const rule = { html: () => '<hr>', plain: () => '---' };
 
 	export const richTextPlugin: Plugin = (edytor) => {
 		const setMarkAndSelect =
@@ -86,40 +44,6 @@
 				'mod+e': setMarkAndSelect('code'),
 				'mod+shift+x': setMarkAndSelect('strike'),
 				'mod+shift+h': setMarkAndSelect('color', 'red')
-			},
-			commands: createRichTextCommands(edytor),
-			onBeforeOperation: (change) => {
-				if (change.operation !== 'insertText') {
-					return;
-				}
-
-				const { payload, text } = change;
-				if (payload.marks || text.markOnNextInsert) {
-					return;
-				}
-
-				const start = payload.start ?? edytor.selection.state.yStart;
-				const end = payload.end ?? edytor.selection.state.yEnd;
-				if (start !== end) {
-					return;
-				}
-
-				const marksBefore = getMarksBeforeOffset(text, start);
-				if (!marksBefore?.link) {
-					return;
-				}
-
-				const marksAfter = getMarksAfterOffset(text, start);
-				if (marksAfter?.link) {
-					return;
-				}
-
-				return {
-					...payload,
-					marks: isInsideLinkMark(edytor.selection.state.startNode)
-						? marksBefore
-						: withoutLinkMark(marksAfter ?? marksBefore)
-				};
 			},
 			onBeforeInput: ({ e, prevent }) => {
 				if (isNativeFormatInputType(e.inputType)) {
@@ -166,9 +90,7 @@
 				if (e.inputType === 'insertOrderedList' || e.inputType === 'insertUnorderedList') {
 					const type =
 						e.inputType === 'insertOrderedList' ? 'numbered-list-item' : 'bulleted-list-item';
-					prevent(() => {
-						richTextOperations(edytor).convertCurrentBlock({ type });
-					});
+					prevent(() => void edytor.runCommand(`block.${type}`));
 					return;
 				}
 
@@ -178,48 +100,132 @@
 					});
 				}
 			},
+			// Toolbar buttons and export wrapping follow this order (first innermost).
 			marks: {
-				bold,
-				italic,
-				underline,
-				code,
-				link,
-				strike,
+				bold: { snippet: bold, html: 'strong', toolbar: { label: 'Bold', icon: 'B' } },
+				italic: { snippet: italic, html: 'em', toolbar: { label: 'Italic', icon: 'I' } },
+				underline: { snippet: underline, html: 'u', toolbar: { label: 'Underline', icon: 'U' } },
+				strike: { snippet: strike, html: 's', toolbar: { label: 'Strike', icon: 'S' } },
+				code: { snippet: code, html: 'code', toolbar: { label: 'Code', icon: '</>' } },
+				// FP-8: typing at a link's trailing edge extends it only from inside the anchor.
+				link: { snippet: link, edge: 'side-dependent' },
 				superscript,
 				subscript,
 				color,
 				highlight
 			},
 			blocks: {
-				paragraph,
+				paragraph: {
+					snippet: paragraph,
+					presets: [{ label: 'Text', icon: 'T' }]
+				},
+				heading: {
+					snippet: heading,
+					presets: [
+						{
+							label: 'Heading 1',
+							icon: 'H₁',
+							keywords: ['h1', 'title'],
+							data: { level: 'h1' },
+							markdown: ['# ']
+						},
+						{
+							label: 'Heading 2',
+							icon: 'H₂',
+							keywords: ['h2', 'subtitle'],
+							data: { level: 'h2' },
+							markdown: ['## ']
+						},
+						{
+							label: 'Heading 3',
+							icon: 'H₃',
+							keywords: ['h3'],
+							data: { level: 'h3' },
+							markdown: ['### ']
+						}
+					],
+					html: (block, content, children) => {
+						const level = String(block.data?.level);
+						const tag = ['h1', 'h2', 'h3'].includes(level) ? level : 'h1';
+						return `<${tag}>${content}</${tag}>${children}`;
+					}
+				},
+				quote: {
+					snippet: quote,
+					presets: [{ label: 'Quote', icon: '❝', markdown: ['> '] }],
+					html: 'blockquote'
+				},
+				'bulleted-list-item': {
+					snippet: bulletedListItem,
+					presets: [
+						{
+							label: 'Bulleted list',
+							icon: '•',
+							keywords: ['bullet', 'ul'],
+							markdown: ['- ', '* ']
+						}
+					],
+					html: 'li'
+				},
+				'numbered-list-item': {
+					snippet: numberedListItem,
+					presets: [
+						{ label: 'Numbered list', icon: '1.', keywords: ['number', 'ol'], markdown: ['1. '] }
+					],
+					html: 'li'
+				},
+				'todo-item': {
+					snippet: todoItem,
+					presets: [
+						{
+							label: 'To-do list',
+							icon: '☐',
+							keywords: ['task', 'check'],
+							data: { checked: false },
+							markdown: ['[ ] ', '[] ']
+						}
+					],
+					html: (block, content, children) =>
+						`<li data-edytor-todo-item="true"><input type="checkbox"${block.data?.checked === true ? ' checked' : ''}>${content}${children}</li>`,
+					plain: (block, content, children) =>
+						[`${block.data?.checked === true ? '[x]' : '[ ]'} ${content}`.trim(), children]
+							.filter(Boolean)
+							.join('\n')
+				},
+				toggle: { snippet: toggle, presets: [{ label: 'Toggle list', icon: '▸' }] },
+				callout: {
+					snippet: callout,
+					presets: [{ label: 'Callout', icon: '✦', data: { icon: '!' } }]
+				},
+				divider: {
+					snippet: divider,
+					void: true,
+					rendersContent: false,
+					presets: [
+						{ label: 'Divider', icon: '—', keywords: ['hr', 'separator'], markdown: ['---'] }
+					],
+					empty: { content: [], children: [] },
+					...rule
+				},
 				details,
-				toggle,
-				heading,
-				quote,
-				callout,
-				'todo-item': todoItem,
-				'bulleted-list-item': bulletedListItem,
-				'numbered-list-item': numberedListItem,
 				'ordered-list': {
 					snippet: orderedList,
 					rendersContent: false,
-					defaultChild: 'list-item'
+					defaultChild: 'list-item',
+					html: 'ol'
 				},
 				'unordered-list': {
 					snippet: unorderedList,
 					rendersContent: false,
-					defaultChild: 'list-item'
+					defaultChild: 'list-item',
+					html: 'ul'
 				},
-				'list-item': listItem,
-				divider: {
-					snippet: divider,
-					void: true,
-					rendersContent: false
-				},
+				'list-item': { snippet: listItem, html: 'li' },
 				horizontalRule: {
 					snippet: horizontalRule,
 					void: true,
-					rendersContent: false
+					rendersContent: false,
+					...rule
 				}
 			}
 		};

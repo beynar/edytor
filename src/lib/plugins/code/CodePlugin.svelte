@@ -6,8 +6,12 @@
 	import { id, prevent } from '$lib/utils.js';
 	import { Text } from '$lib/text/text.svelte.js';
 	import { Block } from '$lib/block/block.svelte.js';
+	import { runIntent } from '$lib/events/beforeInputCommands.js';
 
 	(globalThis as typeof globalThis & { Prism?: typeof Prism }).Prism = Prism;
+
+	/** Auto-pairs typed at a collapsed caret in a code line. */
+	const PAIRS: Record<string, string> = { '{': '}', '[': ']', '(': ')', '"': '"', "'": "'" };
 
 	type PrismTokenLike = {
 		type: string;
@@ -87,70 +91,33 @@
 				'shift+enter': () => {
 					const { startText } = edytor.selection.state;
 					if (startText?.parent.type === 'codeLine') {
-						prevent(() => {
-							const event =
-								typeof InputEvent !== 'undefined'
-									? new InputEvent('beforeinput', {
-											bubbles: true,
-											cancelable: true,
-											inputType: 'insertParagraph'
-										})
-									: Object.assign(new Event('beforeinput', { bubbles: true, cancelable: true }), {
-											inputType: 'insertParagraph'
-										});
-							edytor.onBeforeInput(event as InputEvent);
-						});
+						prevent(() => runIntent(edytor, 'insertParagraph'));
 					}
 				}
 			},
 			onBeforeOperation: ({ operation, payload, block }) => {
-				if (block.closestNextBlock?.type === 'code' && operation === 'mergeBlockForward') {
-					if (block.isEmpty) {
-						prevent(() => {
-							block.mergeBlockBackward();
-						});
-					} else {
-						prevent();
-					}
+				// Delete before a code block: an empty block is removed (the command is
+				// replaced by merging it backward), any other is refused.
+				if (operation === 'mergeBlockForward' && block.closestNextBlock?.type === 'code') {
+					if (!block.isEmpty) prevent();
+					prevent(() => {
+						const into = block.mergeBlockBackward();
+						const text = into?.lastText;
+						edytor.dispatcher.caret(text, text?.length ?? 0);
+					});
 				}
-				if (block.type === 'codeLine') {
-					const selection = edytor.selection.state;
-					const isCollapsed = selection.isCollapsed;
-					if (operation === 'insertText') {
-						if (isCollapsed) {
-							if (payload.value === '{') {
-								payload.value = '{}';
-							}
-							if (payload.value === '[') {
-								payload.value = '[]';
-							}
-							if (payload.value === '(') {
-								payload.value = '()';
-							}
-							if (payload.value === '"') {
-								payload.value = '""';
-							}
-							if (payload.value === "'") {
-								payload.value = "''";
-							}
-						}
-					}
-
-					if (
-						operation === 'mergeBlockBackward' &&
-						block.parent &&
-						block.parent.children.length === 1
-					) {
-						prevent();
-					}
-					if (
-						operation === 'mergeBlockForward' &&
-						block.parent &&
-						block.index === block.parent.children.length - 1
-					) {
-						prevent();
-					}
+				if (block.type !== 'codeLine') return;
+				if (
+					operation === 'insertText' &&
+					edytor.selection.state.isCollapsed &&
+					Object.hasOwn(PAIRS, payload.value)
+				) {
+					return { ...payload, value: payload.value + PAIRS[payload.value] };
 				}
+				// A code line never merges out of its island's first or last slot.
+				const siblings = block.parent?.children.length ?? 0;
+				if (operation === 'mergeBlockBackward' && siblings === 1) prevent();
+				if (operation === 'mergeBlockForward' && block.index === siblings - 1) prevent();
 			},
 
 			blocks: {
@@ -158,10 +125,15 @@
 					snippet: code,
 					island: true,
 					rendersContent: false,
-					defaultChild: 'codeLine'
+					defaultChild: 'codeLine',
+					presets: [
+						{ label: 'Code', icon: '</>', keywords: ['code block', 'snippet'], markdown: ['```'] }
+					],
+					empty: { content: [], children: [{ type: 'codeLine', content: [{ text: '' }] }] }
 				},
 				codeLine: {
 					snippet: codeLine,
+					html: (_, content) => `<pre><code>${content}</code></pre>`,
 					transformText: ({ text }) => {
 						const tokens = Prism.tokenize(text.stringContent, Prism.languages['jsx']);
 						return tokens.map((token) => {

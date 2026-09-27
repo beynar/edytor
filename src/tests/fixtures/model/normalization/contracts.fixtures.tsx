@@ -172,7 +172,7 @@ export const fixtures = defineFixtures([
 	defineModelTransformFixture({
 		description: 'honors plugin-provided normalizeContent hooks',
 		input: emptyFixture,
-		plugins: [richTextPlugin, mentionPlugin, normalizationPlugin('content')],
+		plugins: [normalizationPlugin('content'), richTextPlugin, mentionPlugin],
 		value: {
 			children: [{ type: 'paragraph', content: [{ text: 'Hello' }] }]
 		},
@@ -194,7 +194,7 @@ export const fixtures = defineFixtures([
 	defineModelTransformFixture({
 		description: 'honors plugin-provided normalizeChildren hooks',
 		input: emptyFixture,
-		plugins: [richTextPlugin, mentionPlugin, normalizationPlugin('children')],
+		plugins: [normalizationPlugin('children'), richTextPlugin, mentionPlugin],
 		value: {
 			children: [{ type: 'paragraph', content: [{ text: 'Hello' }] }]
 		},
@@ -317,13 +317,13 @@ export const fixtures = defineFixtures([
 			const normalizeContent = vi.fn(() => () => {});
 			const loopPlugin: Plugin = (editor) => ({
 				blocks: {
-					paragraph: { ...editor.blocks.get('paragraph')!, normalizeContent }
+					paragraph: { ...(richTextPlugin(editor).blocks!.paragraph as object), normalizeContent }
 				}
 			});
 			const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 			try {
 				const { edytor } = createTestEdytor(emptyFixture, {
-					plugins: [richTextPlugin, loopPlugin],
+					plugins: [loopPlugin, richTextPlugin],
 					value: { children: [{ type: 'paragraph', content: [{ text: 'seed' }] }] }
 				});
 				const block = edytor.root!.children[0];
@@ -353,13 +353,13 @@ export const fixtures = defineFixtures([
 			const normalizeChildren = vi.fn(() => () => {});
 			const loopPlugin: Plugin = (editor) => ({
 				blocks: {
-					paragraph: { ...editor.blocks.get('paragraph')!, normalizeChildren }
+					paragraph: { ...(richTextPlugin(editor).blocks!.paragraph as object), normalizeChildren }
 				}
 			});
 			const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 			try {
 				const { edytor } = createTestEdytor(emptyFixture, {
-					plugins: [richTextPlugin, loopPlugin],
+					plugins: [loopPlugin, richTextPlugin],
 					value: { children: [{ type: 'paragraph', content: [{ text: 'seed' }] }] }
 				});
 				const block = edytor.root!.children[0];

@@ -124,17 +124,30 @@ export class SlashMenuController {
 
 		this.isExecutingCommand = true;
 		try {
+			const { edytor } = this;
 			const { text, triggerStart, queryEnd } = this.activeRange;
-			this.removeTriggerText(text, triggerStart, queryEnd);
+			const end = Math.min(queryEnd, text.length);
 			this.close();
-			this.edytor.selection.setCollapsedStateAtTextOffset(text, triggerStart);
-			const didRun = await this.edytor.runCommand(command.id);
+			edytor.selection.setCollapsedStateAtTextOffset(text, triggerStart);
+			// The trigger's removal leads the command's first operation (one plan:
+			// refusing the command keeps the trigger); a command that plans
+			// nothing synchronously runs after it.
+			const at = text.parent.partOffsetOf(text) + triggerStart;
+			const trigger = edytor.facade.prepare.deleteText(
+				text.parent.model!.id,
+				at,
+				end - triggerStart
+			);
+			const run = edytor.dispatcher.lead(trigger, () => edytor.runCommand(command.id));
+			if (!run.taken) this.removeTriggerText(text, triggerStart, end);
+			const refused = run.taken && edytor.dispatcher.last?.status === 'refused';
+			const didRun = await run.out;
 			// Commands that replace the block (for example, Code) choose their own
 			// caret. Only restore the slash caret when it still owns the selection.
-			if (this.edytor.selection.state.startText === text) {
-				await this.edytor.selection.setAtTextOffset(text, triggerStart);
+			if (edytor.selection.state.startText === text) {
+				edytor.dispatcher.caret(text, refused ? end : triggerStart);
 			}
-			return didRun;
+			return didRun ?? false;
 		} finally {
 			this.isExecutingCommand = false;
 		}

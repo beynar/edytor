@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { HotKeys, type HotKey } from '$lib/hotkeys.js';
+import { Keymap, type HotKey } from '$lib/session/keymap.js';
 import { Dispatcher } from '$lib/session/commands.js';
 
 /**
- * Pure `HotKeys.isHotkey`/`combination()` coverage — platform modifier
+ * Pure `Keymap.handle`/`chordOf()` coverage — platform modifier
  * normalization and the non-Latin layout `event.code` fallback. No editor
  * instance is needed: handlers only exercise the prevent() contract.
  */
@@ -43,11 +43,10 @@ const initHotKeys = (bindings: Record<string, HotKey>, { isMac = false } = {}) =
 	// A bare view: the hotkey loop's prevention scope is the dispatcher's.
 	const edytor = {} as { dispatcher: Dispatcher };
 	edytor.dispatcher = new Dispatcher(edytor as unknown as Edytor);
-	const hotKeys = new HotKeys(edytor as unknown as Edytor, bindings, []);
+	const hotKeys = new Keymap(edytor as unknown as Edytor, bindings, []);
 	if (isMac) {
 		Object.defineProperty(hotKeys, 'isMac', { configurable: true, get: () => true });
 	}
-	hotKeys.init();
 	return hotKeys;
 };
 
@@ -61,13 +60,13 @@ const observed = (calls: string[], name: string): HotKey => {
 	};
 };
 
-describe('HotKeys platform modifier normalization', () => {
+describe('Keymap platform modifier normalization', () => {
 	it('matches mod bindings from metaKey and ctrlKey on non-Apple platforms', () => {
 		const calls: string[] = [];
 		const hotKeys = initHotKeys({ 'mod+b': handled(calls, 'bold') });
 
-		expect(hotKeys.isHotkey(createKeydown({ key: 'b', code: 'KeyB', metaKey: true }))).toBe(true);
-		expect(hotKeys.isHotkey(createKeydown({ key: 'b', code: 'KeyB', ctrlKey: true }))).toBe(true);
+		expect(hotKeys.handle(createKeydown({ key: 'b', code: 'KeyB', metaKey: true }))).toBe(true);
+		expect(hotKeys.handle(createKeydown({ key: 'b', code: 'KeyB', ctrlKey: true }))).toBe(true);
 		expect(calls).toEqual(['bold', 'bold']);
 	});
 
@@ -81,11 +80,11 @@ describe('HotKeys platform modifier normalization', () => {
 			{ isMac: true }
 		);
 
-		expect(hotKeys.isHotkey(createKeydown({ key: 'b', code: 'KeyB', metaKey: true }))).toBe(true);
+		expect(hotKeys.handle(createKeydown({ key: 'b', code: 'KeyB', metaKey: true }))).toBe(true);
 		expect(calls).toEqual(['mod+b']);
 
 		calls.length = 0;
-		expect(hotKeys.isHotkey(createKeydown({ key: 'b', code: 'KeyB', ctrlKey: true }))).toBe(true);
+		expect(hotKeys.handle(createKeydown({ key: 'b', code: 'KeyB', ctrlKey: true }))).toBe(true);
 		expect(calls).toEqual(['ctrl+b']);
 	});
 
@@ -94,7 +93,7 @@ describe('HotKeys platform modifier normalization', () => {
 		const hotKeys = initHotKeys({ 'mod+ctrl+x': handled(calls, 'mod+ctrl+x') }, { isMac: true });
 
 		expect(
-			hotKeys.isHotkey(createKeydown({ key: 'x', code: 'KeyX', metaKey: true, ctrlKey: true }))
+			hotKeys.handle(createKeydown({ key: 'x', code: 'KeyX', metaKey: true, ctrlKey: true }))
 		).toBe(true);
 		expect(calls).toEqual(['mod+ctrl+x']);
 	});
@@ -104,19 +103,19 @@ describe('HotKeys platform modifier normalization', () => {
 		const hotKeys = initHotKeys({ 'mod+x': handled(calls, 'mod+x') });
 
 		expect(
-			hotKeys.isHotkey(createKeydown({ key: 'x', code: 'KeyX', metaKey: true, ctrlKey: true }))
+			hotKeys.handle(createKeydown({ key: 'x', code: 'KeyX', metaKey: true, ctrlKey: true }))
 		).toBe(true);
 		expect(calls).toEqual(['mod+x']);
 	});
 });
 
-describe('HotKeys non-Latin layout fallback', () => {
+describe('Keymap non-Latin layout fallback', () => {
 	it('matches a mod binding through event.code when the layout reports a Cyrillic key', () => {
 		const calls: string[] = [];
 		const hotKeys = initHotKeys({ 'mod+b': handled(calls, 'bold') });
 
-		expect(hotKeys.isHotkey(createKeydown({ key: 'в', code: 'KeyB', metaKey: true }))).toBe(true);
-		expect(hotKeys.isHotkey(createKeydown({ key: 'в', code: 'KeyB', ctrlKey: true }))).toBe(true);
+		expect(hotKeys.handle(createKeydown({ key: 'в', code: 'KeyB', metaKey: true }))).toBe(true);
+		expect(hotKeys.handle(createKeydown({ key: 'в', code: 'KeyB', ctrlKey: true }))).toBe(true);
 		expect(calls).toEqual(['bold', 'bold']);
 	});
 
@@ -125,7 +124,7 @@ describe('HotKeys non-Latin layout fallback', () => {
 		const hotKeys = initHotKeys({ 'mod+shift+o': handled(calls, 'mod+shift+o') });
 
 		expect(
-			hotKeys.isHotkey(createKeydown({ key: 'Щ', code: 'KeyO', ctrlKey: true, shiftKey: true }))
+			hotKeys.handle(createKeydown({ key: 'Щ', code: 'KeyO', ctrlKey: true, shiftKey: true }))
 		).toBe(true);
 		expect(calls).toEqual(['mod+shift+o']);
 	});
@@ -134,7 +133,7 @@ describe('HotKeys non-Latin layout fallback', () => {
 		const calls: string[] = [];
 		const hotKeys = initHotKeys({ 'mod+b': handled(calls, 'bold'), b: handled(calls, 'b') });
 
-		expect(hotKeys.isHotkey(createKeydown({ key: 'б', code: 'KeyB' }))).toBe(false);
+		expect(hotKeys.handle(createKeydown({ key: 'б', code: 'KeyB' }))).toBe(false);
 		expect(calls).toEqual([]);
 	});
 
@@ -143,7 +142,7 @@ describe('HotKeys non-Latin layout fallback', () => {
 		const hotKeys = initHotKeys({ 'mod+alt+q': handled(calls, 'mod+alt+q') });
 
 		expect(
-			hotKeys.isHotkey(
+			hotKeys.handle(
 				createKeydown({ key: '@', code: 'KeyQ', ctrlKey: true, altKey: true, altGraph: true })
 			)
 		).toBe(false);
@@ -155,7 +154,7 @@ describe('HotKeys non-Latin layout fallback', () => {
 		const hotKeys = initHotKeys({ 'mod+alt+q': handled(calls, 'mod+alt+q') });
 
 		expect(
-			hotKeys.isHotkey(createKeydown({ key: '@', code: 'KeyQ', ctrlKey: true, altKey: true }))
+			hotKeys.handle(createKeydown({ key: '@', code: 'KeyQ', ctrlKey: true, altKey: true }))
 		).toBe(false);
 		expect(calls).toEqual([]);
 	});
@@ -167,7 +166,7 @@ describe('HotKeys non-Latin layout fallback', () => {
 			'mod+b': handled(calls, 'mod+b')
 		});
 
-		expect(hotKeys.isHotkey(createKeydown({ key: 'в', code: 'KeyB', metaKey: true }))).toBe(true);
+		expect(hotKeys.handle(createKeydown({ key: 'в', code: 'KeyB', metaKey: true }))).toBe(true);
 		expect(calls).toEqual(['mod+в']);
 	});
 
@@ -178,7 +177,7 @@ describe('HotKeys non-Latin layout fallback', () => {
 			'mod+b': handled(calls, 'mod+b')
 		});
 
-		expect(hotKeys.isHotkey(createKeydown({ key: 'в', code: 'KeyB', metaKey: true }))).toBe(true);
+		expect(hotKeys.handle(createKeydown({ key: 'в', code: 'KeyB', metaKey: true }))).toBe(true);
 		expect(calls).toEqual(['mod+в', 'mod+b']);
 	});
 
@@ -190,7 +189,7 @@ describe('HotKeys non-Latin layout fallback', () => {
 		});
 
 		// On a Dvorak layout the physical KeyN position produces `b`.
-		expect(hotKeys.isHotkey(createKeydown({ key: 'b', code: 'KeyN', metaKey: true }))).toBe(true);
+		expect(hotKeys.handle(createKeydown({ key: 'b', code: 'KeyN', metaKey: true }))).toBe(true);
 		expect(calls).toEqual(['mod+b']);
 	});
 
@@ -198,7 +197,7 @@ describe('HotKeys non-Latin layout fallback', () => {
 		const calls: string[] = [];
 		const hotKeys = initHotKeys({ 'mod+j': handled(calls, 'mod+j') });
 
-		expect(hotKeys.isHotkey(createKeydown({ key: 'ж', code: 'Semicolon', metaKey: true }))).toBe(
+		expect(hotKeys.handle(createKeydown({ key: 'ж', code: 'Semicolon', metaKey: true }))).toBe(
 			false
 		);
 		expect(calls).toEqual([]);

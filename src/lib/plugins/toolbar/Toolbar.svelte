@@ -1,13 +1,6 @@
 <script lang="ts">
-	import type { ToolbarController, ToolbarMark } from './ToolbarController.svelte.js';
+	import type { ToolbarController } from './ToolbarController.svelte.js';
 	let { controller }: { controller: ToolbarController } = $props();
-	const marks: Array<{ mark: ToolbarMark; label: string; icon: string; testId: string }> = [
-		{ mark: 'bold', label: 'Bold', icon: 'B', testId: 'toolbar-bold' },
-		{ mark: 'italic', label: 'Italic', icon: 'I', testId: 'toolbar-italic' },
-		{ mark: 'underline', label: 'Underline', icon: 'U', testId: 'toolbar-underline' },
-		{ mark: 'strike', label: 'Strike', icon: 'S', testId: 'toolbar-strike' },
-		{ mark: 'code', label: 'Code', icon: '</>', testId: 'toolbar-code' }
-	];
 </script>
 
 {#if controller.isVisible}
@@ -19,13 +12,13 @@
 	>
 		<span class="toolbar-type">Text</span>
 		<span class="toolbar-divider" aria-hidden="true"></span>
-		{#each marks as item (item.mark)}
+		{#each controller.marks as item (item.mark)}
 			<button
 				type="button"
 				class={`mark-${item.mark}`}
 				aria-label={item.label}
 				title={item.label}
-				data-testid={item.testId}
+				data-testid={`toolbar-${item.mark}`}
 				onmousedown={(event) => event.preventDefault()}
 				onclick={() => controller.toggleMark(item.mark)}>{item.icon}</button
 			>

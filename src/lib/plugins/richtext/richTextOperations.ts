@@ -1,6 +1,11 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { SerializableContent } from '$lib/utils/json.js';
+import type { Prepared } from '$lib/crdt/edytor-doc.js';
+import type { BlockSpec } from '$lib/crdt/index.js';
+import { dispatchPlan } from '$lib/block/block.utils.js';
+import { id } from '$lib/utils.js';
+import { marksForInsertion } from '$lib/session/editing/text.js';
 
 export type RichTextMark =
 	| 'bold'
@@ -75,9 +80,6 @@ export const sanitizeLinkHref = (href: unknown): string | null => {
 	}
 };
 
-export const canConvertBlock = (block: Block | null | undefined): block is Block =>
-	Boolean(block?.convertible);
-
 const selectedRangeMutates = (edytor: Edytor) => {
 	const { yStart, yEnd, texts } = edytor.selection.state;
 	return texts.some((text, index) => {
@@ -117,11 +119,7 @@ const formatSelectedTextRange = (
 		});
 	});
 	edytor.selection.setRangeStateAtTextOffsets(startText, yStart, endText, yEnd, { isReversed });
-	void edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed }).finally(() =>
-		edytor.selection.setRangeStateAtTextOffsets(startText, yStart, endText, yEnd, {
-			isReversed
-		})
-	);
+	void edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 };
 
 const normalizeLink = (link: RichTextLink): Record<string, SerializableContent> => {
@@ -133,76 +131,46 @@ const normalizeLink = (link: RichTextLink): Record<string, SerializableContent> 
 };
 
 export const richTextOperations = (edytor: Edytor) => ({
-	canConvertCurrentBlock: () => canConvertBlock(edytor.selection.state.startBlock),
-	convertCurrentBlock: ({
-		type,
-		data = {},
-		void: isVoid = false
-	}: {
-		type: string;
-		data?: Record<string, SerializableContent>;
-		void?: boolean;
-	}) => {
-		const block = edytor.selection.state.startBlock;
-		if (!canConvertBlock(block)) {
-			return null;
-		}
-
-		block.setBlock({
-			value: isVoid ? { type, data, content: [], children: [] } : { type, data }
-		});
-		return block;
-	},
 	/**
 	 * Insert a `divider` void block at the caret — the native
-	 * `insertHorizontalRule` semantic. Splitting at the caret (or
-	 * inserting before/after at the edges) preserves the block's content;
-	 * converting it would silently delete text and children.
+	 * `insertHorizontalRule` semantic — as one command (`insertDivider`, one
+	 * plan). Splitting at the caret (or inserting before/after at the edges)
+	 * preserves the block's content; converting it would silently delete text
+	 * and children.
 	 */
 	insertDividerAtSelection: () => {
-		const { startBlock, startText, yStart, isCollapsed } = edytor.selection.state;
-		if (!canConvertBlock(startBlock) || !startBlock.parent || !isCollapsed) {
-			return null;
-		}
-		const block = startBlock;
-		const defaultType = () => edytor.defaultChild(block.parent!);
-		const caretInto = (target: typeof block | null | undefined) => {
-			const text = target?.firstText;
-			if (text) {
-				void edytor.selection.setAtTextOffset(text, 0);
-			}
-		};
-
+		const { startBlock: block, startText, yStart, isCollapsed } = edytor.selection.state;
+		if (!block?.convertible || !block.parent || !block.model || !isCollapsed) return null;
+		const { facade, dispatcher } = edytor;
+		const [self, parent] = [block.model.id, block.parent._blockId ?? null];
+		const divider = { id: id('b'), type: 'divider', data: {} };
+		const paragraph = { id: id('b'), type: edytor.defaultChild(block.parent) };
+		const slot = (after: number, specs: BlockSpec[]) =>
+			facade.prepare.insertBlocks({ parent, index: block.index + after }, specs);
+		const offset = startText ? block.partOffsetOf(startText) + yStart : 0;
+		const next = block.parent.children[block.index + 1];
+		// The caret lands in `caret` (a block id), or stays at `yStart` in its text.
+		let caret: string | undefined = paragraph.id;
+		let prepare: () => Prepared;
 		if (block.isEmpty) {
-			// Nothing to lose — convert in place, then land the caret in a
-			// fresh paragraph after the divider.
-			block.setBlock({ value: { type: 'divider', data: {}, content: [], children: [] } });
-			caretInto(block.insertBlockAfter({ block: { type: defaultType() } }));
-			return block;
+			// Nothing to lose — convert in place, then a fresh paragraph after it.
+			const value = { type: 'divider', data: {}, content: [], children: [] };
+			prepare = () => facade.compose(facade.prepare.setBlock(self, value), slot(1, [paragraph]));
+		} else if (yStart === 0) {
+			caret = undefined;
+			prepare = () => slot(0, [divider]);
+		} else if (startText && yStart < startText.length) {
+			// Split at the caret with the divider between: one flow.
+			const lines = [{ id: id('b'), content: [] }, divider, { ...paragraph, content: [] }];
+			prepare = () => facade.prepare.insertFlow({ block: self, offset }, { lines });
+		} else {
+			// At the end — continue after the divider, in the next block or a fresh paragraph.
+			caret = next?.id ?? paragraph.id;
+			prepare = () => slot(1, next ? [divider] : [divider, paragraph]);
 		}
-
-		if (startText && yStart === 0) {
-			block.insertBlockBefore({ block: { type: 'divider', data: {} } });
-			void edytor.selection.setAtTextOffset(startText, 0);
-			return block;
-		}
-
-		let tail: typeof block | null = null;
-		if (startText && yStart < startText.length) {
-			tail = block.splitBlock({ index: yStart, text: startText });
-			if (!tail) {
-				return null;
-			}
-		}
-		const divider = block.insertBlockAfter({ block: { type: 'divider', data: {} } });
-		if (tail) {
-			caretInto(tail);
-			return block;
-		}
-		// Caret was at the block's end — continue after the divider, in
-		// the existing next block or a fresh paragraph.
-		const next = divider?.parent?.children[(divider.index ?? 0) + 1];
-		caretInto(next ?? divider?.insertBlockAfter({ block: { type: defaultType() } }));
+		if (!dispatchPlan(block, 'insertDivider', {}, prepare)) return null;
+		const text = caret ? edytor.idToBlock.get(caret)?.firstText : startText;
+		dispatcher.caret(text, caret ? 0 : yStart);
 		return block;
 	},
 	removeAllMarksAtRange: () => {
@@ -270,25 +238,10 @@ export const richTextOperations = (edytor: Edytor) => ({
 		const { isCollapsed, startText, yStart } = edytor.selection.state;
 		if (isCollapsed) {
 			if (startText) {
-				// Inherit the surrounding truthy marks like `markText`'s
-				// collapsed path — a bare `markOnNextInsert` write
-				// short-circuits adjacent-mark inheritance, so a color
-				// command inside italic text would silently drop the
-				// italic on the next insert.
-				const activeMarks = startText
-					.getMarksAtRange(yStart - 1, yStart)
-					.reduce<Record<string, SerializableContent>>((acc, { marks }) => {
-						for (const [key, value] of Object.entries(marks ?? {})) {
-							if (value === true) {
-								acc[key] = true;
-							}
-						}
-						return acc;
-					}, {});
+				// Stage the full set the next insertion carries, values kept (O29).
 				edytor.dispatcher.cut('format');
 				startText.markOnNextInsert = {
-					...activeMarks,
-					...(startText.markOnNextInsert ?? {}),
+					...marksForInsertion(startText, yStart, { pending: startText.markOnNextInsert }),
 					[mark]: safeValue
 				};
 				void edytor.selection.setAtTextOffset(startText, yStart);

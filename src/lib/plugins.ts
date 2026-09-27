@@ -4,11 +4,13 @@ import type { Block } from './block/block.svelte.js';
 import type { JSONBlock, JSONInlineBlock, JSONText } from './utils/json.js';
 import type { Text } from './text/text.svelte.js';
 import type { SerializableContent } from './utils/json.js';
-import type { HotKey, HotKeyCombination } from './hotkeys.js';
+import type { HotKey, HotKeyCombination } from './session/keymap.js';
 import type { TextOperations } from './text/text.utils.js';
 import type { BlockOperations } from './block/block.utils.js';
 import type { EdytorSelection } from './selection/selection.svelte.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
+import type { PlanEffect } from './crdt/edytor-doc.js';
+import type { MarkEdge } from './session/editing/text.js';
 
 /**
  * Represents the payload for mark snippets with generic serializable content.
@@ -42,6 +44,12 @@ export type BlockSnippetPayload<D extends SerializableContent = SerializableCont
 export type ChangePayload = {
 	block: Block;
 	prevent: Prevent;
+	/**
+	 * The prepared command's effect (blocks created, removed, merged, moved,
+	 * retyped, text ranges written), on a command that is one document plan
+	 * (R6, FP-6) — a hook can refuse a command by what it would do.
+	 */
+	effect?: PlanEffect;
 } & (
 	| {
 			[K in keyof TextOperations]: {
@@ -159,6 +167,27 @@ export type BlockDefinition = {
 	 * document; two extensions declaring different values is an error.
 	 */
 	defaultChild?: string;
+	/**
+	 * Catalogue rows (O68): one per way to create this kind — the slash menu,
+	 * markdown shortcuts and block menus are generated from them
+	 * (`edytor.kinds`). Command ids are `block.<type>`, numbered from 1 when
+	 * the kind has several presets (`block.heading2`).
+	 */
+	presets?: KindPreset[];
+	/**
+	 * The content and children a conversion into this kind replaces the
+	 * block's own with (a void has none; an island starts with a first child).
+	 * Without it a conversion keeps content and children.
+	 */
+	empty?: Pick<JSONBlock, 'content' | 'children'>;
+	/**
+	 * Clipboard HTML form: a tag wrapping content then children, or a
+	 * function of the block and its serialized content and children.
+	 * Default `<p>{content}</p>{children}`.
+	 */
+	html?: string | ((block: JSONBlock, content: string, children: string) => string);
+	/** Clipboard plain-text form; default content then children, one per line. */
+	plain?: (block: JSONBlock, content: string, children: string) => string;
 	/** Transform text content within the block
 	 *
 	 * This transformation is applied after the text is synced in to the state.
@@ -194,16 +223,40 @@ export type InlineBlockSnippetPayload<D extends SerializableContent = Serializab
 
 export type InlineBlockDefinition = {
 	snippet: Snippet<[InlineBlockSnippetPayload<any>]>;
+	/** Clipboard plain-text form of the atom; default none. */
+	plain?: (data: JSONInlineBlock['data']) => string;
 };
 
 export type MarkDefinition = {
 	snippet: Snippet<[MarkSnippetPayload<any>]>;
 	void?: boolean;
+	/** Whether typing at the mark's edges extends it (O69, `marksForInsertion`); default `inclusive`. */
+	edge?: MarkEdge;
+	/**
+	 * Clipboard HTML form: a tag, or a function of the serialized inner HTML
+	 * and the mark's value. Marks wrap in registration order (first innermost);
+	 * a mark without one exports its text only.
+	 */
+	html?: string | ((inner: string, value: SerializableContent) => string);
+	/** A selection-toolbar button toggling the mark. */
+	toolbar?: { label: string; icon: string };
+};
+
+/** A way to create a block kind: one slash command, markdown prefixes, one block-menu row. */
+export type KindPreset = {
+	label: string;
+	icon?: string;
+	keywords?: string[];
+	/** The new block's data. */
+	data?: Record<string, SerializableContent>;
+	/** Typed at the start of a block's first text, each converts it (the last character triggers). */
+	markdown?: string[];
 };
 
 export type EditorCommand = {
 	id: string;
 	label: string;
+	icon?: string;
 	keywords?: string[];
 	group?: string;
 	isEnabled?: (edytor: Edytor) => boolean;

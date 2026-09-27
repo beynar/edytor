@@ -56,7 +56,7 @@ export const slashMenuPlugin: Plugin = (edytor) => {
 				}
 			},
 			enter: ({ prevent }) => {
-				if (controller.isOpen) {
+				if (controller.isOpen && controller.commands.length) {
 					prevent(() => {
 						void controller.runSelected();
 					});

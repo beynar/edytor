@@ -9,6 +9,7 @@ import {
 	getTextsInSelection,
 	getVerticalLineDestination,
 	getYIndex,
+	getMarkEdgeSide,
 	isTextBoundSelectionPoint,
 	normalizeUtf16Boundary
 } from './selection.utils.js';
@@ -28,6 +29,7 @@ import { Block } from '../block/block.svelte.js';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import { tick } from 'svelte';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
+import type { EdgeSide } from '$lib/session/editing/text.js';
 import type { JSONInlineBlock, JSONText } from '$lib/utils/json.js';
 import {
 	clearAwarenessSelection,
@@ -108,6 +110,8 @@ type SelectionState = {
 	 */
 	endPosition: TextAnchor | null;
 	currentMarks: JSONText['marks'];
+	/** R4 admission: the mark-edge side of a DOM-derived caret (`marksForInsertion`). */
+	edge?: EdgeSide;
 };
 
 /** An inline suggestion (L12): content parts shown after a block's text until cleared. */
@@ -449,7 +453,12 @@ export class EdytorSelection {
 	 */
 	suggestions = new SvelteMap<string, SuggestionParts>();
 	/** DOM fields (Surface) observed with the value they describe. */
-	#surface: { value: SelectionValue; startNode: Node | null; endNode: Node | null } | null = null;
+	#surface: {
+		value: SelectionValue;
+		startNode: Node | null;
+		endNode: Node | null;
+		edge?: EdgeSide;
+	} | null = null;
 	/** Blocks holding the last selection's endpoints: a suggestion there is cleared when they are left. */
 	#edges: string[] = [];
 	#compat = new WeakMap<
@@ -498,7 +507,7 @@ export class EdytorSelection {
 	#compatState = (
 		value: SelectionValue,
 		projection: SelectionProjection,
-		surface: { startNode: Node | null; endNode: Node | null } | null
+		surface: { startNode: Node | null; endNode: Node | null; edge?: EdgeSide } | null
 	): SelectionState => {
 		const { start, end } = projection;
 		const blockOf = (id: string) => this.edytor.idToBlock.get(id) ?? null;
@@ -550,6 +559,7 @@ export class EdytorSelection {
 				isAtEndOfText: projection.isAtEndOfText,
 				startNode: surface?.startNode ?? null,
 				endNode: surface?.endNode ?? null,
+				edge: surface?.edge,
 				startText,
 				endText,
 				startBlock,
@@ -589,7 +599,7 @@ export class EdytorSelection {
 	select = (
 		next: SelectionValue,
 		cause: SelectCause = 'model',
-		surface?: { startNode: Node | null; endNode: Node | null }
+		surface?: { startNode: Node | null; endNode: Node | null; edge?: EdgeSide }
 	) => {
 		const changed = !sameValue(this.value, next);
 		if (changed) this.value = next;
@@ -2021,7 +2031,8 @@ export class EdytorSelection {
 
 		this.select(this.textValue(startText, yStart, endText ?? startText, yEnd, isReversed), 'dom', {
 			startNode,
-			endNode
+			endNode,
+			edge: isCollapsed ? getMarkEdgeSide(startText, startNode, yStart) : undefined
 		});
 		if (shouldRestoreNormalizedDomRange && options.restoreNormalizedDomRange !== false && endText) {
 			void this.setAtRange(startText, yStart, endText, yEnd, { isReversed });

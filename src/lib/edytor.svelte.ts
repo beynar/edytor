@@ -39,7 +39,7 @@ import {
 	canMoveBlocks as canMoveBlocksRelative,
 	moveBlocks as moveBlocksRelative,
 	type BlockMoveRequest
-} from './block/blockMove.js';
+} from './session/moves.js';
 import type {
 	Plugin,
 	BlockSnippetPayload,
@@ -52,7 +52,7 @@ import type {
 	EditorCommand
 } from './plugins.js';
 import { on } from 'svelte/events';
-import { HotKeys, type HotKey } from './hotkeys.js';
+import { Keymap, type HotKey } from './session/keymap.js';
 import { TRANSACTION } from './constants.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import {
@@ -64,6 +64,7 @@ import {
 	prepareFlow
 } from './edytor.utils.js';
 import { Dispatcher } from './session/commands.js';
+import { kindCatalogue, kindCommand, type KindRow } from './kinds.js';
 import {
 	getSelectionReplacementState,
 	replaceSelectedBlocksWithEmptyBlockTarget,
@@ -154,12 +155,21 @@ const isAppleWebKitBrowser = () => {
  */
 const sharedCrdt = bindCrdt(Y);
 
+/** Register definitions a first extension has not: a bare snippet is `{ snippet }`. */
+const define = <T extends object>(into: Map<string, T>, definitions: object = {}) => {
+	for (const [key, value] of Object.entries(definitions))
+		if (!into.has(key))
+			into.set(key, typeof value === 'object' ? value : ({ snippet: value } as T));
+};
+
 export class Edytor {
 	node?: HTMLElement;
 	marks = new Map<string, MarkDefinition>();
 	blocks = new Map<string, BlockDefinition>();
 	inlineBlocks = new Map<string, InlineBlockDefinition>();
 	commands = new Map<string, EditorCommand>();
+	/** The kind catalogue: one row per preset of each kind record (slash, markdown, block menus). */
+	kinds: KindRow[] = [];
 	plugins: InitializedPlugin[];
 	container = $state<HTMLDivElement>();
 	idToBlock = new SvelteMap<string, Block>();
@@ -168,7 +178,7 @@ export class Edytor {
 	idToText = new SvelteMap<string, Text>();
 	nodeToText = new SvelteMap<Node, Text>();
 	transaction = new TRANSACTION();
-	hotKeys: HotKeys;
+	hotKeys: Keymap;
 	readonly = $state(false);
 	root = $state<Block>();
 	editorDomRevision = $state(0);
@@ -429,10 +439,10 @@ export class Edytor {
 		}, this.transaction);
 	};
 
-	/** Check whether a relative block move is structurally allowed. */
+	/** Whether a block move (relative step or beside/inside a target) is structurally allowed. */
 	canMoveBlocks = (request: BlockMoveRequest): boolean => canMoveBlocksRelative(this, request);
 
-	/** Move blocks before, after, or inside a live target block. */
+	/** Move blocks one relative step (D-5), or before, after or inside a live target block. */
 	moveBlocks = (request: BlockMoveRequest): Block[] => moveBlocksRelative(this, request);
 
 	/**
@@ -538,34 +548,12 @@ export class Edytor {
 					}
 				}
 
-				initializedPlugin.marks &&
-					Object.entries(initializedPlugin.marks).forEach(([key, snippet]) => {
-						if (typeof snippet === 'object') {
-							this.marks.set(key, snippet);
-						} else {
-							this.marks.set(key, { snippet });
-						}
-					});
-
-				initializedPlugin.blocks &&
-					Object.entries(initializedPlugin.blocks).forEach(([key, definition]) => {
-						if (typeof definition === 'object') {
-							this.blocks.set(key, definition);
-						} else {
-							this.blocks.set(key, { snippet: definition });
-						}
-					});
-				initializedPlugin.inlineBlocks &&
-					Object.entries(initializedPlugin.inlineBlocks).forEach(([key, definition]) => {
-						if (typeof definition === 'object') {
-							this.inlineBlocks.set(key, definition);
-						} else {
-							this.inlineBlocks.set(key, { snippet: definition });
-						}
-					});
-				initializedPlugin.commands?.forEach((command) => {
-					this.commands.set(command.id, command);
-				});
+				// Duplicate definitions: the first extension wins (README, D-11).
+				define(this.marks, initializedPlugin.marks);
+				define(this.blocks, initializedPlugin.blocks);
+				define(this.inlineBlocks, initializedPlugin.inlineBlocks);
+				for (const command of initializedPlugin.commands ?? [])
+					if (!this.commands.has(command.id)) this.commands.set(command.id, command);
 				return initializedPlugin;
 			});
 
@@ -601,6 +589,11 @@ export class Edytor {
 					});
 				}
 			});
+
+			// Kind records generate their commands; an extension's own command id wins.
+			this.kinds = kindCatalogue(this.blocks);
+			for (const row of this.kinds)
+				if (!this.commands.has(row.id)) this.commands.set(row.id, kindCommand(this, row));
 
 			this.placeholder =
 				placeholder || this.plugins.find((plugin) => plugin.placeholder)?.placeholder;
@@ -642,7 +635,7 @@ export class Edytor {
 			}
 
 			this.selection = new EdytorSelection(this, onSelectionChange);
-			this.hotKeys = new HotKeys(this, hotKeys, this.plugins);
+			this.hotKeys = new Keymap(this, hotKeys, this.plugins);
 		} catch (error) {
 			// Constructor failure — release what the partial view claimed:
 			// the history origin (untracked live — already-captured commits
@@ -1244,7 +1237,6 @@ export class Edytor {
 	 * focusout signal as a user blur but must still be repaired.
 	 */
 	lastUserGestureOutsideEditor = false;
-	batch = batch.bind(this);
 	suppressNextInputFallback = (durationMs = 0) => {
 		this.clearInputFallbackSuppression();
 		this.shouldSuppressNextInputFallback = true;
@@ -1632,35 +1624,6 @@ export class Edytor {
 			return true;
 		};
 
-		const getFinalCompositionMarks = () => {
-			if (state.marks !== undefined) {
-				return state.marks;
-			}
-			if (state.value.length === 0) {
-				return undefined;
-			}
-
-			const previewParts = text
-				.getMarksAtRange(startOffset, startOffset + state.value.length)
-				.filter((part) => part.text.length > 0);
-			if (previewParts.length === 0) {
-				return {};
-			}
-
-			const marks: Record<string, SerializableContent | null> = {
-				...(previewParts[0].marks ?? {})
-			};
-			for (const part of previewParts.slice(1)) {
-				const partMarks = part.marks ?? {};
-				for (const mark of Object.keys(marks)) {
-					if (JSON.stringify(marks[mark] ?? undefined) !== JSON.stringify(partMarks[mark])) {
-						delete marks[mark];
-					}
-				}
-			}
-			return marks;
-		};
-
 		this.suppressNextInputFallback(50);
 		this.repairSuppressedInputFallback(50);
 		const interruptedSelection = state.restoreSelectionAfterCommit;
@@ -1680,7 +1643,6 @@ export class Edytor {
 			return;
 		}
 
-		const finalMarks = getFinalCompositionMarks();
 		if (regionLength > 0) {
 			text.deleteAt(startOffset, regionLength);
 		}
@@ -1690,7 +1652,8 @@ export class Edytor {
 				value: finalValue,
 				start: startOffset,
 				end: startOffset,
-				marks: finalMarks
+				// Captured when the composition started (O29).
+				marks: state.marks
 			});
 		}
 
@@ -1761,19 +1724,15 @@ export class Edytor {
 	 */
 	postCompositionGuardSwallows = 0;
 
-	deleteContentWithinSelection = this.batch(
+	deleteContentWithinSelection = batch(
 		'deleteContentWithinSelection',
-		deleteContentWithinSelection.bind(this),
-		prepareDeleteContent.bind(this)
+		deleteContentWithinSelection,
+		prepareDeleteContent
 	);
 
-	insertFlow = this.batch('insertFlow', insertFlow.bind(this), prepareFlow.bind(this));
+	insertFlow = batch('insertFlow', insertFlow, prepareFlow);
 
-	deleteBlocks = this.batch(
-		'deleteBlocks',
-		deleteBlocks.bind(this),
-		prepareDeleteBlocks.bind(this)
-	);
+	deleteBlocks = batch('deleteBlocks', deleteBlocks, prepareDeleteBlocks);
 
 	getTextById = (id: string) => {
 		const isText = id.startsWith('t');
@@ -1978,24 +1937,20 @@ export class Edytor {
 		// change sub's unsubscribe — re-establish it on every (re)attach.
 		this.ensureFacadeChangeSub();
 		this.selection.init();
-		this.hotKeys.init();
-		const handleKeyDownCapture = (event: KeyboardEvent) => {
-			onKeyDown.call(this, event);
-		};
+		// Keydown serial bumps happen INSIDE onKeyDown, after the
+		// composition-phantom swallow — a swallowed trailing Enter/Backspace
+		// is a browser artifact, not a gesture, and must not disarm pending
+		// composition caret restores.
+		const keydown = this.withUserInput(onKeyDown.bind(this), { bumpSerial: false });
 		const domMutationObserver = observeDomTextMutations(this, node);
 		this.off.push(
-			// Keydown serial bumps happen INSIDE onKeyDown, after the
-			// composition-phantom swallow — a swallowed trailing
-			// Enter/Backspace is a browser artifact, not a gesture, and
-			// must not disarm pending composition caret restores.
-			on(node, 'keydown', this.withUserInput(handleKeyDownCapture, { bumpSerial: false }), {
-				capture: true
+			// One handler per keyboard occurrence: keys inside the editor at
+			// capture; the document sees only keys whose path misses it (a
+			// block selection with focus on the body).
+			on(node, 'keydown', keydown, { capture: true }),
+			on(node.ownerDocument, 'keydown', (event: KeyboardEvent) => {
+				if (!event.composedPath().includes(node)) keydown(event);
 			}),
-			on(
-				node.ownerDocument,
-				'keydown',
-				this.withUserInput(onKeyDown.bind(this), { bumpSerial: false })
-			),
 			// Any pointerdown anywhere disarms pending restores — Firefox
 			// can move the DOM selection on outside clicks without
 			// blurring the editor, so node-local marking is not enough. The

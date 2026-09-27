@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import type { Block } from '$lib/block/block.svelte.js';
+	import type { BlockMoveDirection } from '$lib/session/moves.js';
 	import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
@@ -11,7 +12,7 @@
 	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 	import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
-	import { canConvertBlock } from '$lib/plugins/richtext/richTextOperations.js';
+	import { convertToKind, type KindRow } from '$lib/kinds.js';
 	import type { BlockHandleActivation } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 	import type { Plugin } from '$lib/plugins.js';
 	import './demo.css';
@@ -39,33 +40,7 @@
 			return () => {
 				if (node.id === anchor) node.removeAttribute('id');
 			};
-		},
-		commands: [
-			{
-				id: 'block.code',
-				label: 'Code',
-				group: 'Blocks',
-				keywords: ['code block', 'snippet'],
-				isEnabled: (editor) => canConvertBlock(editor.selection.state.startBlock),
-				run: async (editor) => {
-					const block = editor.selection.state.startBlock;
-					if (!canConvertBlock(block)) return;
-					block.setBlock({
-						value: {
-							type: 'code',
-							content: [{ text: '' }],
-							children: [{ type: 'codeLine', content: [{ text: '' }] }]
-						}
-					});
-					await tick();
-					const line = block.children[0]?.firstText;
-					if (line) {
-						editor.selection.setCollapsedStateAtTextOffset(line, 0);
-						await editor.selection.setAtTextOffset(line, 0);
-					}
-				}
-			}
-		]
+		}
 	});
 	const plugins = [
 		arrowMovePlugin,
@@ -173,18 +148,8 @@
 		]
 	};
 
-	const blockChoices = [
-		{ type: 'paragraph', label: 'Text', icon: 'T', data: {} },
-		{ type: 'heading', label: 'Heading 1', icon: 'H₁', data: { level: 'h1' } },
-		{ type: 'heading', label: 'Heading 2', icon: 'H₂', data: { level: 'h2' } },
-		{ type: 'heading', label: 'Heading 3', icon: 'H₃', data: { level: 'h3' } },
-		{ type: 'bulleted-list-item', label: 'Bulleted list', icon: '•', data: {} },
-		{ type: 'numbered-list-item', label: 'Numbered list', icon: '1.', data: {} },
-		{ type: 'todo-item', label: 'To-do list', icon: '☐', data: { checked: false } },
-		{ type: 'quote', label: 'Quote', icon: '❝', data: {} },
-		{ type: 'callout', label: 'Callout', icon: '✦', data: { icon: '✦' } },
-		{ type: 'toggle', label: 'Toggle list', icon: '▸', data: {} }
-	] as const;
+	// "Turn into" rows: the kind catalogue's conversions that keep the block's content.
+	const blockChoices = $derived(edytor?.kinds.filter((kind) => !kind.replaces) ?? []);
 	const activeBlock = $derived(
 		blockMenu && edytor ? edytor.idToBlock.get(blockMenu.blockId) : undefined
 	);
@@ -231,22 +196,18 @@
 		blockMenu = null;
 		void restoreCaret(next);
 	};
-	const transformBlock = (choice: (typeof blockChoices)[number]) => {
+	const transformBlock = (choice: KindRow) => {
 		const block = activeBlock;
-		block?.setBlock({ value: { type: choice.type, data: choice.data } });
+		if (edytor) convertToKind(edytor, block, choice);
 		blockMenu = null;
 		void restoreCaret(block);
 	};
-	const moveBlock = (direction: 'up' | 'down' | 'indent' | 'outdent') => {
+	const canMove = (direction: BlockMoveDirection) =>
+		!!activeBlock && !!edytor?.canMoveBlocks({ blocks: [activeBlock], direction });
+	const moveBlock = (direction: BlockMoveDirection) => {
 		const block = activeBlock;
 		if (!block || !edytor) return;
-		if (direction === 'indent') block.nestBlock();
-		else if (direction === 'outdent') block.unNestBlock();
-		else {
-			const target = direction === 'up' ? block.previousBlock : block.nextBlock;
-			const position = direction === 'up' ? 'before' : 'after';
-			if (target) edytor.moveBlocks({ blocks: [block], target, position });
-		}
+		edytor.moveBlocks({ blocks: [block], direction });
 		blockMenu = null;
 		void restoreCaret(block);
 	};
@@ -501,7 +462,7 @@
 		>
 			<div class="block-menu-heading">Turn into</div>
 			<div class="block-menu-types">
-				{#each blockChoices as choice (choice.label)}
+				{#each blockChoices as choice (choice.id)}
 					<button type="button" role="menuitem" onclick={() => transformBlock(choice)}
 						><span class="block-menu-icon">{choice.icon}</span><span>{choice.label}</span></button
 					>
@@ -512,28 +473,26 @@
 				type="button"
 				role="menuitem"
 				onclick={() => moveBlock('up')}
-				disabled={!activeBlock.previousBlock}
-				><span class="block-menu-icon">↑</span><span>Move up</span></button
+				disabled={!canMove('up')}><span class="block-menu-icon">↑</span><span>Move up</span></button
 			>
 			<button
 				type="button"
 				role="menuitem"
 				onclick={() => moveBlock('down')}
-				disabled={!activeBlock.nextBlock}
+				disabled={!canMove('down')}
 				><span class="block-menu-icon">↓</span><span>Move down</span></button
 			>
 			<button
 				type="button"
 				role="menuitem"
-				onclick={() => moveBlock('indent')}
-				disabled={!activeBlock.previousBlock}
-				><span class="block-menu-icon">→</span><span>Indent</span></button
+				onclick={() => moveBlock('in')}
+				disabled={!canMove('in')}><span class="block-menu-icon">→</span><span>Indent</span></button
 			>
 			<button
 				type="button"
 				role="menuitem"
-				onclick={() => moveBlock('outdent')}
-				disabled={!activeBlock.isNested}
+				onclick={() => moveBlock('out')}
+				disabled={!canMove('out')}
 				><span class="block-menu-icon">←</span><span>Outdent</span></button
 			>
 			<div class="block-menu-divider"></div>

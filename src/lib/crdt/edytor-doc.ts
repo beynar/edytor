@@ -2110,6 +2110,26 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			...flowOps(context)
 		};
 
+		/**
+		 * Plans prepared at one version, as one plan (refused if any part is;
+		 * stamped with the oldest part's version, so `apply` refuses a stale
+		 * one). The caller guarantees the parts are independent: no step's
+		 * coordinates depend on an earlier part's writes.
+		 */
+		const compose = (...parts: Prepared[]): Prepared => {
+			const plans = parts as Plan[];
+			const version = Math.min(...plans.map((p) => p.version));
+			return (
+				parts.find((p) => !('writes' in p)) ?? {
+					...plan(
+						plans.flatMap((p) => p.ids),
+						plans.flatMap((p) => p.writes)
+					),
+					version
+				}
+			);
+		};
+
 		// ── JSON boundary ─────────────────────────────────────────────────
 
 		/**
@@ -2213,6 +2233,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			prepare,
 			/** Write a prepared plan exactly (refusals pass through). */
 			apply,
+			compose,
 			// transactions (composed ops already run in one; expose for callers
 			// that batch several ops into one undo step / one event)
 			transact: <R>(fn: () => R, origin?: unknown): R => write(() => doc.transact(fn, origin)),

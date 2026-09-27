@@ -1,12 +1,23 @@
 import type { ElementDropTargetEventPayloadMap } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
-import { tick } from 'svelte';
 
 import type { Block } from '$lib/block/block.svelte.js';
-import type { BlockMovePosition, BlockMoveRequest } from '$lib/block/blockMove.js';
+import type {
+	BlockMoveDirection,
+	BlockMovePosition,
+	BlockMoveRequest
+} from '$lib/session/moves.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { draggable, dropTargetForElements } from '$lib/dnd/pragmatic.js';
 
 const blockDragMimeType = 'application/x-edytor-block-id';
+
+/** Alt+arrow on a handle: one relative step. */
+const keyMoves: Record<string, BlockMoveDirection> = {
+	ArrowUp: 'up',
+	ArrowDown: 'down',
+	ArrowRight: 'in',
+	ArrowLeft: 'out'
+};
 
 type DragLocation = ElementDropTargetEventPayloadMap['onDrag']['location'];
 
@@ -176,43 +187,16 @@ export class BlockHandleController {
 	}
 
 	handleKeyDown(event: KeyboardEvent, block: Block) {
-		if (this.edytor.readonly || !event.altKey) {
-			return;
-		}
-
-		if (event.key === 'ArrowUp' && block.previousBlock) {
-			event.preventDefault();
-			event.stopPropagation();
-			this.moveAndSelect({ blocks: [block], target: block.previousBlock, position: 'before' });
-			return;
-		}
-
-		if (event.key === 'ArrowDown' && block.nextBlock) {
-			event.preventDefault();
-			event.stopPropagation();
-			this.moveAndSelect({ blocks: [block], target: block.nextBlock, position: 'after' });
-			return;
-		}
-
-		if (event.key === 'ArrowRight' && block.previousBlock) {
-			event.preventDefault();
-			event.stopPropagation();
-			this.moveAndSelect({ blocks: [block], target: block.previousBlock, position: 'inside' });
-			return;
-		}
-
-		if (event.key === 'ArrowLeft' && block.parent && !block.parent.isRoot) {
-			event.preventDefault();
-			event.stopPropagation();
-			block.unNestBlock();
-		}
+		const direction = event.altKey ? keyMoves[event.key] : undefined;
+		if (this.edytor.readonly || !direction) return;
+		event.preventDefault();
+		event.stopPropagation();
+		this.moveAndSelect({ blocks: [block], direction });
 	}
 
 	private moveAndSelect(request: BlockMoveRequest) {
 		const moved = this.edytor.moveBlocks(request);
-		if (moved.length) {
-			void tick().then(() => this.edytor.selection.selectBlocks(...moved));
-		}
+		if (moved.length) this.edytor.selection.selectBlocks(...moved);
 	}
 
 	private canDrop(source: Block, target: Block, position: BlockMovePosition) {

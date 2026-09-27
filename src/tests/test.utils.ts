@@ -450,7 +450,6 @@ export const createOperationEdytor = (jsx: RenderedNode, options: TestEdytorOpti
 
 	patchOperationSelectionApis(testEdytor.edytor);
 	testEdytor.edytor.selection.init();
-	testEdytor.edytor.hotKeys.init();
 
 	return testEdytor;
 };

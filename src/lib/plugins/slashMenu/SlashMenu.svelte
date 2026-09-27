@@ -3,22 +3,6 @@
 
 	let { controller }: { controller: SlashMenuController } = $props();
 	const commands = $derived(controller.commands);
-
-	const icons: Record<string, string> = {
-		'block.paragraph': 'T',
-		'block.heading1': 'H₁',
-		'block.heading2': 'H₂',
-		'block.heading3': 'H₃',
-		'block.quote': '❝',
-		'block.bulleted-list-item': '•',
-		'block.numbered-list-item': '1.',
-		'block.todo-item': '☐',
-		'block.toggle': '▸',
-		'block.callout': '✦',
-		'block.divider': '—',
-		'block.code': '</>'
-	};
-	const commandIcon = (id: string) => icons[id] ?? '⋮';
 </script>
 
 {#if controller.isOpen}
@@ -37,7 +21,7 @@
 						type="button"
 						class="slash-item"
 						data-command-id={command.id}
-						data-icon={commandIcon(command.id)}
+						data-icon={command.icon ?? '⋮'}
 						data-selected={index === controller.selectedIndex}
 						data-testid="slash-menu-item"
 						role="option"

@@ -58,7 +58,7 @@
 <script lang="ts">
 	import type { JSONBlock, JSONDoc } from '../utils/json.js';
 	import { onMount, setContext, type Snippet, untrack } from 'svelte';
-	import type { HotKey } from '$lib/hotkeys.js';
+	import type { HotKey } from '$lib/session/keymap.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 	import Block from './Block.svelte';
 	import RemoteSelections from '$lib/collaboration/RemoteSelections.svelte';

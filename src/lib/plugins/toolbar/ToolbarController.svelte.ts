@@ -4,11 +4,6 @@ import type { Text } from '$lib/text/text.svelte.js';
 import type { SerializableContent } from '$lib/utils/json.js';
 import { richTextOperations, type RichTextMark } from '$lib/plugins/richtext/richTextOperations.js';
 
-export type ToolbarMark = Extract<
-	RichTextMark,
-	'bold' | 'italic' | 'underline' | 'strike' | 'code'
->;
-
 type ToolbarSelectionSnapshot = {
 	startText: Text;
 	endText: Text;
@@ -55,9 +50,16 @@ export class ToolbarController {
 		this.linkUrl = value;
 	}
 
-	toggleMark(mark: ToolbarMark) {
+	/** The mark records declaring a toolbar button, in registration order. */
+	get marks() {
+		return [...this.edytor.marks].flatMap(([mark, { toolbar }]) =>
+			toolbar ? [{ mark, ...toolbar }] : []
+		);
+	}
+
+	toggleMark(mark: string) {
 		this.runWithSelection(() => {
-			richTextOperations(this.edytor).setMarkAtRange(mark);
+			richTextOperations(this.edytor).setMarkAtRange(mark as RichTextMark);
 		});
 	}
 
@@ -138,18 +140,13 @@ export class ToolbarController {
 
 	private restoreSelection(snapshot: ToolbarSelectionSnapshot) {
 		this.restoreModelSelection(snapshot);
-		void this.edytor.selection
-			.setAtRange(snapshot.startText, snapshot.yStart, snapshot.endText, snapshot.yEnd, {
-				isReversed: snapshot.isReversed
-			})
-			.finally(() => {
-				this.restoreModelSelection(snapshot);
-			});
-
-		const view = this.edytor.node?.ownerDocument?.defaultView;
-		view?.setTimeout(() => {
-			this.restoreModelSelection(snapshot);
-		}, 0);
+		void this.edytor.selection.setAtRange(
+			snapshot.startText,
+			snapshot.yStart,
+			snapshot.endText,
+			snapshot.yEnd,
+			{ isReversed: snapshot.isReversed }
+		);
 	}
 
 	private restoreModelSelection(snapshot: ToolbarSelectionSnapshot) {

@@ -50,6 +50,12 @@
 
 	const getDeltaKey = (delta: RenderDelta, index: number) =>
 		`${index}:${JSON.stringify(delta.marks)}`;
+	/**
+	 * An empty text renders the filler as its first unmarked delta: the same
+	 * keyed item, so the first character typed or composed into an empty
+	 * block lands in the node the browser (and the IME) already holds (BI-15).
+	 */
+	const FILLER: readonly RenderDelta[] = [{ text: '\u200B', marks: [] }];
 
 	const restoreTextSelectionFromClick = (node: HTMLElement) => {
 		let pointerStart: { clientX: number; clientY: number } | null = null;
@@ -233,21 +239,17 @@
 	data-edytor-text-empty={empty ? 'true' : 'false'}
 	style:white-space="break-spaces"
 	><!--
--->{#if empty}<!--
--->&#8203;<!--
--->{:else}<!--
-	-->{#each deltas as delta, index (getDeltaKey(delta, index))}<!--
+	-->{#each empty ? FILLER : deltas as delta, index (getDeltaKey(delta, index))}<!--
 -->{#if delta.marks.length}<!--
 --><Mark
-					{delta}
-					index={0}
-					{text}
-				/><!--
+				{delta}
+				index={0}
+				{text}
+			/><!--
 -->{:else}<!--
 -->{delta.text}<!--
 -->{/if}<!--
 -->{/each}<!--
--->{/if}<!--
 -->{#if newline}<!--
 --><span
 			class="newline"

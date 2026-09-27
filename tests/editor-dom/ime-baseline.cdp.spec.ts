@@ -50,7 +50,8 @@ import {
  *   checkpoint, so the checkpoint that fixes them flips them. I3 flipped
  *   F-I6, F-I16 (a, b, d), F-I17 and the F-S12 session contracts: the
  *   session writes no DOM selection while it lives and keeps the host's
- *   render frozen while the browser shows the preview.
+ *   render frozen while the browser shows the preview. I4 flipped F-I15:
+ *   the empty block's filler and its text share one node (BI-15).
  *
  * Updates are sent at a human IME pace (`KEY_PACE_MS`) — back-to-back CDP
  * calls finish before any deferred editor write and hide it (the smoke
@@ -115,7 +116,8 @@ const composeObserved = async (
 		await ime.compose(step);
 		await page.waitForTimeout(KEY_PACE_MS);
 	}
-	const liveDom = await readDomText(page, options.textIndex);
+	// The empty filler shares the IME's node (BI-15): it is not content.
+	const liveDom = (await readDomText(page, options.textIndex))?.replace(/\u200B/g, '') ?? null;
 	const liveNode = await readPinnedNode(page, 'preview', options.steps[options.steps.length - 1]);
 	const live = await readSpy(page);
 	const previewInExistingNode = await samePinnedNode(page, 'before', 'preview');
@@ -345,7 +347,6 @@ test.describe('cdp IME baseline — single editor', () => {
 	test('empty block: session contract — the host text node is kept (F-I15, BI-15)', async ({
 		page
 	}) => {
-		knownRed('F-I15 (I4)');
 		const { observed } = await driveEmptyBlock(page);
 		expectSessionContract(observed, 'す');
 	});

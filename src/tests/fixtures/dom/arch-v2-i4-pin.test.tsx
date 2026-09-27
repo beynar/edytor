@@ -38,7 +38,7 @@ import {
 } from '../../dom/test.utils.js';
 
 /** Red on the reference (`arch-v2/ref-i4`): expected-fail until I4 flips it. */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -277,7 +277,7 @@ describe('F-I12 (a) — D-20: a peer’s structural change commits the session f
 		await flushDomUpdates();
 		expect(shape(edytor)).toEqual(['paragraph:prev', 'quote:abcに']);
 		expect(caret(edytor)).toEqual({ block: host, offset: 4, isCollapsed: true });
-		expect(shown(blockOf(edytor, 1).node!)).toBe('abcに');
+		expect(shown(blockOf(edytor, 1).firstText!.node!)).toBe('abcに');
 
 		await end(editor, 'に');
 		await flushDomUpdates();
@@ -357,6 +357,41 @@ describe('F-I12 (b) — the IME keeps composing after the forced commit', () => 
 		expect(shape(edytor)).toEqual(['paragraph:prev', 'quote:abc日本']);
 		expect(remote.read()).toEqual(['paragraph:prev', 'quote:abc日本']);
 		expect(caret(edytor)).toEqual({ block: host, offset: 5, isCollapsed: true });
+	});
+});
+
+describe('F-I12 (b) — Chromium’s shape: the dropped composition commits as a plain insertion', () => {
+	// Green on the reference in jsdom too (its session was never ended); cdp holds the red shape.
+	pin('after a retype, the plain commit replaces the forced commit: once', async () => {
+		const { edytor, editor, remote, host } = await composing();
+		remote.facade.setBlockType(host, 'quote');
+		remote.sync();
+		await flushDomUpdates();
+		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'に' });
+		await flushDomUpdates();
+		expect(shape(edytor)).toEqual(['paragraph:prev', 'quote:abcに']);
+		expect(caret(edytor)).toEqual({ block: host, offset: 4, isCollapsed: true });
+	});
+
+	pin('after a deletion, the plain commit writes nothing', async () => {
+		const { edytor, editor, remote, host } = await composing();
+		remote.facade.deleteBlock(host);
+		remote.sync();
+		await flushDomUpdates();
+		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'に' });
+		await flushDomUpdates();
+		expect(shape(edytor)).toEqual(['paragraph:prev']);
+	});
+
+	pin('a real key after the forced commit types normally', async () => {
+		const { edytor, editor, remote, host } = await composing();
+		remote.facade.setBlockType(host, 'quote');
+		remote.sync();
+		await flushDomUpdates();
+		editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', bubbles: true }));
+		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'x' });
+		await flushDomUpdates();
+		expect(shape(edytor)).toEqual(['paragraph:prev', 'quote:abcにx']);
 	});
 });
 

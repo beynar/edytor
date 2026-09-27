@@ -20,6 +20,8 @@
  *   text with it; nothing is duplicated on either replica. (b) the IME keeps
  *   composing after the forced commit → one more commit, never a duplicate.
  *
+ * F-I12 rows were `test.fail` on the reference (`arch-v2/ref-i4`); green since I4.
+ *
  * Expected values come from the plan rows, never from running the code.
  */
 import {
@@ -35,10 +37,6 @@ import {
 } from './cdp';
 import { expect, test, type Page } from './editorTest';
 import { setSelectionByTextIndex, trackPageIssues } from './helpers';
-
-/** A row red on the reference (`arch-v2/ref-i4`); `CDP_SHOW_RED=1` runs it as a normal test. */
-const knownRed = (row: string) =>
-	test.fail(!process.env.CDP_SHOW_RED, `${row}: red on the reference — I4`);
 
 /** Delay between two IME updates: a fast human typist on a real IME. */
 const KEY_PACE_MS = 100;
@@ -270,7 +268,6 @@ test.describe('I4 — D-20: a peer’s structural change commits the live sessio
 		test(`F-I12 (a) ${change.name}: committed first, nothing duplicated`, async ({
 			browser
 		}, testInfo) => {
-			knownRed(`F-I12 (a) ${change.name}`);
 			await withPair(browser, testInfo, async (pair) => {
 				// Compose at `beta|` (text element 1, offset 4).
 				let composingAfter = true;
@@ -297,7 +294,6 @@ test.describe('I4 — D-20: a peer’s structural change commits the live sessio
 	test('F-I12 (b) retype, then the IME keeps composing: one more commit, never a duplicate', async ({
 		browser
 	}, testInfo) => {
-		knownRed('F-I12 (b)');
 		await withPair(browser, testInfo, async (pair) => {
 			await compose(
 				pair,

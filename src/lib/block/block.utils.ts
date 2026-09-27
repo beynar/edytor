@@ -102,7 +102,7 @@ export type BlockOperations = {
 		end: [number, number];
 	};
 	deleteContentWithinSelection: {
-		preserveStartBlock?: boolean;
+		replace?: boolean;
 	};
 };
 

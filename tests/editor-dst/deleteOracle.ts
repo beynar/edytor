@@ -10,7 +10,7 @@
  * semantics, mirroring the implementation contract in:
  *
  *   src/lib/events/beforeInputDeleteCommands.ts  (dispatch + boundaries)
- *   src/lib/edytor.utils.ts                    (deleteContentWithinSelection)
+ *   src/lib/crdt/rangeDelete.ts                (prepare.deleteRange, D6)
  *   src/lib/block/block.utils.ts               (removeBlock/removeInlineBlock)
  *   src/lib/crdt/edytor-doc.ts                 (mergeBackward/Forward/unNest)
  *   src/lib/text/text.utils.ts                 (grapheme-aware deleteText)
@@ -555,11 +555,17 @@ const removeInlinePart = (block: OBlock, partIndex: number) => {
 };
 
 /** Root re-population — `normalizeChildren` inserts a fresh default block. */
-const normalizeRoot = (root: OBlock, defaultType: string | null, freshIds: Set<string>) => {
-	if (root.children.length === 0) {
+const normalizeRoot = (
+	root: OBlock,
+	defaultType: string | null,
+	freshIds: Set<string>,
+	/** Insert even into a non-empty root, here (a range delete left nothing to hold the caret). */
+	at?: number
+) => {
+	if (root.children.length === 0 || at !== undefined) {
 		const id = `__fresh_${freshIds.size}__`;
 		freshIds.add(id);
-		root.children.push({
+		root.children.splice(at ?? 0, 0, {
 			id,
 			type: defaultType ?? 'paragraph',
 			data: {},
@@ -1199,91 +1205,91 @@ const describeDeleteInner = (
 	const isLastChild = startBlock.parent?.children.at(-1) === startBlock;
 	const islandRoot = islandRootOf(startBlock);
 
-	/** `deleteContentWithinSelection({})` — the four structural paths. */
+	/**
+	 * The document's range deletion (`prepare.deleteRange`, arch-v2 D6) —
+	 * the `del.range.*` rows of `docs/editor-delete-contract.md`, re-derived
+	 * on the oracle tree: head keeps its prefix (dies iff empty), tail keeps
+	 * its suffix (dies iff cut to empty), blocks strictly between die, a cut
+	 * tail merges into a surviving head when the island seal allows; an end
+	 * at a block start is the end of the block before it when that block
+	 * shows text (else the tail is untouched); what follows the range end
+	 * takes the topmost dying container's slot unless that crosses an island;
+	 * containers that show no text and lose every child die; a document left
+	 * with nothing to hold the caret gets one fresh block.
+	 */
 	const deleteWithinSelection = (): void => {
-		if (startBlock === endBlock) {
-			deleteAtomRange(
-				startBlock,
-				partAtomOffset(startBlock, start.partIndex) + yStart,
-				partAtomOffset(endBlock, end.partIndex) + yEnd
-			);
+		const shows = (block: OBlock) => before.model.rendersContent?.[block.type] !== false;
+		const order: OBlock[] = [];
+		const walk = (block: OBlock) => block.children.forEach((kid) => (order.push(kid), walk(kid)));
+		walk(root);
+		const S = startBlock;
+		let E = endBlock;
+		const s = partAtomOffset(S, start.partIndex) + yStart;
+		let e = partAtomOffset(E, end.partIndex) + yEnd;
+		const previous = order[order.indexOf(E) - 1];
+		if (E !== S && e === 0 && previous && shows(previous)) {
+			E = previous;
+			e = blockAtomLength(previous);
+		}
+		if (E === S) {
+			deleteAtomRange(S, s, e);
 			return;
 		}
+		const chain: OBlock[] = [];
+		for (let a = E.parent; a && !a.isRoot; a = a.parent) chain.push(a);
+		const between = order.slice(order.indexOf(S) + 1, order.indexOf(E));
+		const headDies = s === 0;
+		const tailDies = e > 0 && e === blockAtomLength(E);
+		const sameSide = islandOf(E) === islandOf(S) || S === islandOf(E);
+		const merges = !headDies && e > 0 && !tailDies && !E.void && !S.void && sameSide;
+		const tailGone = tailDies || merges;
+		const partial = chain.filter((a) => (headDies && a === S) || between.includes(a));
+		const top = partial.at(-1);
+		const sealed =
+			top !== undefined && chain.slice(0, chain.indexOf(top) + 1).some((a) => a.island);
+		const doomed = new Set(between.filter((b) => !chain.includes(b)));
+		if (!sealed) partial.forEach((a) => doomed.add(a));
+		if (headDies && !(sealed && chain.includes(S))) doomed.add(S);
+		if (tailDies) doomed.add(E);
+		const home = sealed || top === undefined ? (tailGone ? E : undefined) : top;
+		const rescued = home === undefined ? [] : tailGone ? [...E.children] : [E];
+		for (let cur = E; home !== undefined && cur !== home; cur = cur.parent!) {
+			rescued.push(...cur.parent!.children.slice(indexOf(cur) + 1));
+		}
+		const destParent = rescued.length > 0 ? home!.parent! : null;
+		const gone = (b: OBlock) => doomed.has(b) || (merges && b === E);
+		const emptied = (b: OBlock | null): void => {
+			if (!b || b.isRoot || gone(b) || shows(b) || b === destParent) return;
+			if (!b.children.every(gone)) return;
+			doomed.add(b);
+			emptied(b.parent);
+		};
+		[...doomed, ...(merges ? [E] : [])].forEach((b) => emptied(b.parent));
+		const survives = (b: OBlock | null): boolean =>
+			!b || b.isRoot || rescued.includes(b) || (!gone(b) && survives(b.parent));
+		const caretHome =
+			!doomed.has(S) ||
+			!gone(E) ||
+			order.some((b) => b !== S && b !== E && survives(b) && shows(b));
+		const survivorIndex = Math.max(0, root.children.findIndex(gone));
+		const tailKids = [...E.children];
 
-		const selected: OBlock[] = [startBlock];
-		let current: OBlock | null = startBlock;
-		while (current && current !== endBlock) {
-			current = closestNextBlock(current);
-			if (current) selected.push(current);
+		if (!doomed.has(S)) deleteAtomRange(S, s, blockAtomLength(S));
+		if (!doomed.has(E)) deleteAtomRange(E, 0, e);
+		if (destParent) {
+			const index = indexOf(home!);
+			rescued.forEach((block, i) => moveUnder(destParent, index + i, block));
+			const resetType = tailGone && E.island ? defaultChildOf(destParent) : null;
+			if (resetType) tailKids.forEach((kid) => (kid.type = resetType));
 		}
-		const toDelete = selected.filter((block, index) => {
-			if (index === 0) return isAtStartOfBlock;
-			if (index === selected.length - 1) return isAtEndOfBlock;
-			return true;
-		});
-		const deleted = new Set(toDelete);
-		const deletesStart = deleted.has(startBlock);
-		const keepsPartialEnd = !deleted.has(endBlock);
-		const deletedEndAncestor = toDelete.find((block) => isStrictAncestor(block, endBlock));
-
-		if (deletesStart && keepsPartialEnd && deletedEndAncestor && deletedEndAncestor.parent) {
-			// End-block hoist: the partial end block (plus each ancestor's
-			// trailing siblings) is re-parented over the deleted ancestor's slot.
-			deleteAtomRange(endBlock, 0, partAtomOffset(endBlock, end.partIndex) + yEnd);
-			const destinationParent = deletedEndAncestor.parent;
-			const destinationIndex = indexOf(deletedEndAncestor);
-			const survivors = [endBlock];
-			let branch = endBlock;
-			while (branch !== deletedEndAncestor) {
-				const parent = branch.parent;
-				if (!parent) break;
-				survivors.push(...parent.children.slice(indexOf(branch) + 1));
-				branch = parent;
-			}
-			survivors.forEach((survivor, i) =>
-				moveUnder(destinationParent, destinationIndex + i, survivor)
-			);
-			removeSubtree(deletedEndAncestor);
-			normalizeRoot(root, rootDefaultType, freshIds);
-			return;
+		if (merges) {
+			S.parts.push(...E.parts);
+			removeSubtree(E);
 		}
-
-		if (deletesStart && keepsPartialEnd && !deletedEndAncestor) {
-			deleteAtomRange(endBlock, 0, partAtomOffset(endBlock, end.partIndex) + yEnd);
-			for (const block of [...toDelete].reverse()) removeSubtree(block);
-			normalizeRoot(root, rootDefaultType, freshIds);
-			return;
+		for (const block of doomed) removeSubtree(block);
+		if (!caretHome) {
+			normalizeRoot(root, rootDefaultType, freshIds, survivorIndex);
 		}
-
-		// General path: trim the kept start tail, salvage the kept end tail
-		// into the start block, delete every doomed block, hoist the end
-		// block's children under the start block's parent.
-		const startParent = startBlock.parent;
-		const startIndex = indexOf(startBlock);
-		if (startBlock !== toDelete[0]) {
-			deleteAtomRange(
-				startBlock,
-				partAtomOffset(startBlock, start.partIndex) + yStart,
-				blockAtomLength(startBlock)
-			);
-		}
-		if (endBlock !== toDelete.at(-1)) {
-			const tail = endBlock.parts.slice(end.partIndex).map((part, index) => {
-				if (index === 0 && part.kind === 'text') {
-					return { kind: 'text' as const, id: part.id, runs: sliceRunsFrom(part.runs, yEnd) };
-				}
-				return clonePart(part);
-			});
-			startBlock.parts.push(...tail);
-		}
-		for (const block of toDelete) removeSubtree(block);
-		if (endBlock.children.length > 0 && !deleted.has(endBlock) && startParent) {
-			[...endBlock.children].forEach((child, i) =>
-				moveUnder(startParent, startIndex + 1 + i, child)
-			);
-		}
-		removeSubtree(endBlock);
-		normalizeRoot(root, rootDefaultType, freshIds);
 	};
 
 	const contentBackward = (): DeleteExpectation => {

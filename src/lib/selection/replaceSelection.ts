@@ -1,21 +1,14 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
+import type { RangeEndpoints } from '$lib/edytor.utils.js';
 
 export type SelectionInsertionTarget = {
 	text: Text;
 	offset: number;
 };
 
-export type SelectionReplacementState = {
-	startText: Text | null;
-	endText: Text | null;
-	yStart: number;
-	yEnd: number;
-	isCollapsed: boolean;
-	isTextSpanning: boolean;
-	isBlockSpanning: boolean;
-};
+export type SelectionReplacementState = RangeEndpoints & { isCollapsed: boolean };
 
 export type RemovedSelectedBlocks = {
 	parent: Block;
@@ -25,18 +18,8 @@ export type RemovedSelectedBlocks = {
 };
 
 export const getSelectionReplacementState = (edytor: Edytor): SelectionReplacementState => {
-	const { startText, endText, yStart, yEnd, isCollapsed, isTextSpanning, isBlockSpanning } =
-		edytor.selection.state;
-
-	return {
-		startText,
-		endText,
-		yStart,
-		yEnd,
-		isCollapsed,
-		isTextSpanning,
-		isBlockSpanning
-	};
+	const { startText, endText, yStart, yEnd, isCollapsed } = edytor.selection.state;
+	return { startText, endText, yStart, yEnd, isCollapsed };
 };
 
 export const getSelectedBlocksInDocumentOrder = (edytor: Edytor) =>
@@ -59,42 +42,12 @@ export const replaceSelectionWithCollapsedTargetSync = (
 	edytor: Edytor,
 	state: SelectionReplacementState = getSelectionReplacementState(edytor)
 ): SelectionInsertionTarget | null => {
-	const { startText, endText, yStart, yEnd } = state;
-	if (!startText) {
-		return null;
+	const { startText, yStart } = state;
+	if (!startText || state.isCollapsed) {
+		return startText && { text: startText, offset: yStart };
 	}
-
-	if (state.isBlockSpanning) {
-		const [nextStartText, offset] = edytor.deleteContentWithinSelection({
-			preserveStartBlock: true,
-			selection: state
-		});
-		if (!nextStartText) {
-			return null;
-		}
-		return { text: nextStartText, offset };
-	}
-
-	if (state.isTextSpanning) {
-		if (!endText) {
-			return null;
-		}
-		startText.parent.deleteContentAtRange({
-			start: [startText.index, yStart],
-			end: [endText.index, yEnd]
-		});
-		return { text: startText, offset: yStart };
-	}
-
-	if (!state.isCollapsed) {
-		startText.deleteText({
-			direction: 'FORWARD',
-			length: yEnd - yStart
-		});
-		return { text: startText, offset: yStart };
-	}
-
-	return { text: startText, offset: yStart };
+	const [text, offset] = edytor.deleteContentWithinSelection({ replace: true, selection: state });
+	return text && { text, offset };
 };
 
 export const replaceSelectionWithCollapsedTarget = async (
@@ -133,11 +86,9 @@ export const removeSelectedBlocksForReplacement = (
 	let blockToFocus =
 		getClosestUnselectedBlock(firstBlock, selectedBlockSet, 'previous') ||
 		getClosestUnselectedBlock(lastBlock, selectedBlockSet, 'next');
-	edytor.transact(() => {
-		for (const block of selectedBlocks.toReversed()) {
-			block.removeBlock();
-		}
-	});
+	edytor.transact(() => edytor.facade.deleteBlocks(selectedBlocks.map((block) => block.id)));
+	edytor.flushMirror();
+	parent.normalizeChildren();
 	edytor.selection.selectBlocks();
 	blockToFocus ??=
 		parent.children[index] ?? parent.children[index - 1] ?? edytor.root?.children[0] ?? null;

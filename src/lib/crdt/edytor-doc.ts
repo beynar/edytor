@@ -147,6 +147,7 @@ import {
 import type { AttributionActor } from './attribution/index.js';
 import { isLegacyDoc } from './migration/legacy-schema.js';
 import { randOf } from './rand.js';
+import { rangeDeleteOps, type DocPosition } from './rangeDelete.js';
 import { jsonEquals } from '../utils/json.js';
 import {
 	cloneJsonSafe,
@@ -364,6 +365,8 @@ export type EdytorDocConfig = {
 	 * merge-out reset applies it against the children's actual new parent.
 	 */
 	defaultChildOf?: (parentType: string) => string | undefined;
+	/** The adopted `rendersContent` per kind (R5, O22); undeclared kinds render theirs. */
+	rendersContent?: (type: string) => boolean;
 	/**
 	 * U1 — the local actor getter for compact per-block attribution
 	 * (`attribution/block.ts`). Read lazily per op so the document can
@@ -564,6 +567,8 @@ export type Plan = {
 	readonly writes: readonly PlanStep[];
 	readonly effect: PlanEffect;
 	readonly version: number;
+	/** Where the op leaves the caret, when it decides one (`deleteRange`). */
+	readonly at?: DocPosition;
 };
 /** `prepare`'s answer: a plan, or the op's refusal. */
 export type Prepared = Plan | OpResult;
@@ -850,6 +855,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const roleOf = config.roleOf ?? (() => undefined);
 		const defaultType = config.defaultType ?? 'paragraph';
 		const defaultChildOf = config.defaultChildOf ?? (() => undefined);
+		const rendersContentOf = config.rendersContent ?? (() => true);
 		const runsView: RunView = R.attach(doc);
 
 		// ── model-state version + read invalidation (WU2) ───────────────
@@ -1025,6 +1031,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 
 		/** One planned step, written (the plan decided it; writers never refuse). */
 		const writeStep = (w: PlanStep, f: Frame): void => {
+			// Structural steps need no view: delete marks and placements write one node.
+			if (w.op === 'deleteBlock')
+				return w.marks.forEach((id) =>
+					M.blockNodeOf(doc, id)!.setAttr(DEL_PREFIX + doc.clientID, true)
+				);
 			const { blocks, own } = M.view(doc);
 			const node = (id: BlockId) => M.blockNodeOf(doc, id)!;
 			switch (w.op) {
@@ -1032,8 +1043,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					return w.specs.forEach((sp, i) => M.materializeSpec(doc, sp, w.parent, w.ranks[i]!));
 				case 'moveBlocks':
 					return w.ids.forEach((id, i) => M.writePlacement(doc, node(id), w.parent, w.ranks[i]!));
-				case 'deleteBlock':
-					return w.marks.forEach((id) => node(id).setAttr(DEL_PREFIX + doc.clientID, true));
 				case 'splitBlock':
 					f.inherit.set(w.newId, w.id);
 					return M.writeSplit(doc, w.id, w.offset, w.newId, w.tail, { p: w.parent, r: w.rank });
@@ -2094,16 +2103,25 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			];
 		};
 		/** Delete (R3): marks on `id` and on what it displays; `id` and its subtree leave, `kept` children aside. */
+		let displayed: { version: number; by: Map<BlockId, BlockId[]> } | undefined;
 		const remove = (id: BlockId, kept: readonly BlockId[] = []): PlanStep => {
-			const { blocks, own } = view();
+			const v = view();
 			const removes: BlockId[] = [];
 			const walk = (b: BlockId): void => {
 				removes.push(b);
 				for (const kid of childrenIds(b)) if (!kept.includes(kid)) walk(kid);
 			};
 			walk(id);
-			const marks = [...blocks.keys()].filter((b) => own.ownerOf(b) === id);
-			return { op: 'deleteBlock', id, marks, removes };
+			// Who displays what, once per version (a block set deletes many).
+			if (displayed?.version !== stateVersion) {
+				const by = new Map<BlockId, BlockId[]>();
+				for (const b of v.blocks.keys()) {
+					const owner = v.own.ownerOf(b);
+					if (typeof owner === 'string') by.set(owner, [...(by.get(owner) ?? []), b]);
+				}
+				displayed = { version: stateVersion, by };
+			}
+			return { op: 'deleteBlock', id, marks: displayed.by.get(id) ?? [], removes };
 		};
 		const merge = (from: BlockId, into: BlockId): PlanStep => ({
 			op: 'mergeBlocks',
@@ -2490,7 +2508,36 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			clearMarks,
 			insertInline,
 			removeInline,
-			setInlineData
+			setInlineData,
+			/** Delete a set of blocks (a block selection) — one plan; nested members ride their ancestor. */
+			deleteBlocks: (ids: readonly BlockId[]): Prepared => {
+				const set = new Set(ids.map(ref));
+				if ([...set].some((id) => !live(id))) return REFUSED;
+				const roots = [...set].filter((id) => !ancestorsOf(id).some((a) => set.has(a)));
+				return plan(
+					roots,
+					roots.map((id) => remove(id))
+				);
+			},
+			...rangeDeleteOps({
+				ref,
+				refused: REFUSED,
+				plan,
+				order: () => view().order,
+				positionOf,
+				ancestorsOf: (id) => ancestorsOf(id),
+				childrenIds,
+				displayLength,
+				contentTarget,
+				rendersContent: (id) => rendersContentOf(blockTypeOf(id) ?? ''),
+				canMerge,
+				isIsland,
+				defaultChild,
+				move,
+				retype: (id, type) => attr(id, TYPE, type),
+				remove,
+				insertBlocks
+			})
 		};
 
 		// ── JSON boundary ─────────────────────────────────────────────────

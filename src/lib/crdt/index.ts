@@ -99,6 +99,7 @@ export {
 	type DocAnchor,
 	type AnchorAffinity
 } from './edytor-doc.js';
+export { type DocPosition } from './rangeDelete.js';
 
 export {
 	type BlockId,

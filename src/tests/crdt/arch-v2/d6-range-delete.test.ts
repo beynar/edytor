@@ -32,8 +32,8 @@ import { prepareApply, rng } from './prepared-oracle.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 
-/** Red on the reference (no `prepare.deleteRange`): expected-fail until D6 lands. */
-const row = test.fails;
+/** Red on the reference (no `prepare.deleteRange`); green since D6. */
+const row = test;
 
 const noopSnippet = (() => null) as never;
 const boxPlugin = () => ({

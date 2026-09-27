@@ -463,6 +463,7 @@ export class EdytorDocument {
 			roleOf: (type) => this._capability.roles.get(type),
 			defaultType: this._defaultType,
 			defaultChildOf: (type) => this._capability.defaultChild.get(type),
+			rendersContent: (type) => this.rendersContent(type),
 			// U1: the facade's block-attribution ops read the actor lazily —
 			// `this.actor` is assigned below, after facade construction.
 			actor: () => this.actor,

@@ -24,8 +24,8 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 
-/** Red on the reference: expected-fail until D6 lands. */
-const row = it.fails;
+/** Red on the reference; green since D6. */
+const row = it;
 
 const backspace = (edytor: Edytor) =>
 	runBeforeInputCommand(

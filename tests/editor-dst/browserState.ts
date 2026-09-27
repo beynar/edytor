@@ -110,6 +110,8 @@ export type DstBrowserSnapshot = {
 		defaultType: string | null;
 		rootDefaultType: string | null;
 		defaultChild?: Record<string, string>;
+		/** Kinds declaring they render no content of their own (arch-v2 D6: empty containers die). */
+		rendersContent?: Record<string, boolean>;
 		texts: string[];
 		textIds: string[];
 		renderedTexts: string[];
@@ -452,7 +454,13 @@ export const captureBrowserSnapshot = (page: Page): Promise<DstBrowserSnapshot> 
 		};
 		type BrowserEdytor = {
 			value: unknown;
-			document?: { semantics: { defaultType: string; defaultChild: Map<string, string> } };
+			document?: {
+				semantics: {
+					defaultType: string;
+					defaultChild: Map<string, string>;
+					rendersContent: Map<string, boolean>;
+				};
+			};
 			defaultChild?: (parent?: unknown) => string;
 			idToText: Map<string, BrowserPart>;
 			nodeToText: Map<Node, BrowserPart>;
@@ -664,6 +672,7 @@ export const captureBrowserSnapshot = (page: Page): Promise<DstBrowserSnapshot> 
 			defaultType: edytor.document?.semantics.defaultType ?? null,
 			rootDefaultType: edytor.defaultChild?.(edytor.root) ?? null,
 			defaultChild: Object.fromEntries(edytor.document?.semantics.defaultChild ?? []),
+			rendersContent: Object.fromEntries(edytor.document?.semantics.rendersContent ?? []),
 			texts: [] as string[],
 			textIds: [] as string[],
 			renderedTexts: [] as string[],

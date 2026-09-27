@@ -23,42 +23,10 @@ const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: Before
 	);
 };
 
-const restoreSelectionAfterBlockRangeDeletion = (
-	edytor: Edytor,
-	targetText: Text | null,
-	targetOffset: number
-) => {
-	const restore = async (attempt: number): Promise<void> => {
-		await tick();
-		if (edytor.destroyed) return;
-		try {
-			const targetIsAttached = Boolean(
-				targetText?.node?.isConnected && edytor.idToText.get(targetText.id) === targetText
-			);
-			// `firstText` yields undefined on a contentless/childless block —
-			// keep retrying rather than letting the fallback reject.
-			const candidate = targetIsAttached
-				? targetText
-				: (edytor.root?.children[0]?.firstText ?? null);
-			if (candidate?.node?.isConnected) {
-				await edytor.selection.setAtTextOffset(
-					candidate,
-					candidate === targetText ? targetOffset : 0
-				);
-				return;
-			}
-		} catch {
-			// A mid-restore throw (detached remount, stale text) is transient
-			// — the retry cadence below covers it.
-		}
-		if (attempt >= 9) {
-			console.error('[edytor] failed to restore selection after deleting a block range');
-			return;
-		}
-		setTimeout(() => void restore(attempt + 1), 10);
-	};
-
-	setTimeout(() => void restore(0));
+/** A non-collapsed selection: the document's range deletion, then its caret (`del.range.*`). */
+const deleteSelectedRange = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+	const [text, offset] = edytor.deleteContentWithinSelection({ selection: snapshot });
+	if (text) await edytor.selection.setAtTextOffset(text, offset);
 };
 
 const deleteContentForward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
@@ -72,13 +40,9 @@ const deleteContentForward = async (edytor: Edytor, snapshot: BeforeInputSnapsho
 		return;
 	}
 
-	if (snapshot.isBlockSpanning) {
-		const [targetText, targetOffset] = edytor.deleteContentWithinSelection({});
-		restoreSelectionAfterBlockRangeDeletion(edytor, targetText, targetOffset);
-		return;
-	}
+	if (!snapshot.isCollapsed) return deleteSelectedRange(edytor, snapshot);
 
-	if (snapshot.isCollapsed && snapshot.isAtEndOfBlock) {
+	if (snapshot.isAtEndOfBlock) {
 		const currentBlock = startText.parent;
 		if (currentBlock.definition.void) {
 			await edytor.selection.setAtTextOffset(startText, yStart);
@@ -97,28 +61,14 @@ const deleteContentForward = async (edytor: Edytor, snapshot: BeforeInputSnapsho
 		return;
 	}
 
-	if (snapshot.isCollapsed && snapshot.isAtEndOfText) {
+	if (snapshot.isAtEndOfText) {
 		const index = startText.parent.content.indexOf(startText) + 1;
 		startText.parent.removeInlineBlock({ index });
 		await edytor.selection.setAtTextOffset(startText, yStart);
 		return;
 	}
 
-	if (snapshot.isTextSpanning) {
-		const firstText = snapshot.texts[0];
-		const lastText = snapshot.texts.at(-1);
-		if (!firstText || !lastText) {
-			return;
-		}
-		firstText.parent.deleteContentAtRange({
-			start: [firstText.index, yStart],
-			end: [lastText.index, snapshot.yEnd]
-		});
-		await edytor.selection.setAtTextOffset(firstText, yStart);
-		return;
-	}
-
-	startText.deleteText({ direction: 'FORWARD', length: snapshot.length || 1 });
+	startText.deleteText({ direction: 'FORWARD', length: 1 });
 	await tick();
 	await edytor.selection.setAtTextOffset(startText, yStart);
 };
@@ -136,17 +86,13 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 		return;
 	}
 
-	if (snapshot.isBlockSpanning) {
-		const [targetText, targetOffset] = edytor.deleteContentWithinSelection({});
-		restoreSelectionAfterBlockRangeDeletion(edytor, targetText, targetOffset);
-		return;
-	}
+	if (!snapshot.isCollapsed) return deleteSelectedRange(edytor, snapshot);
 
 	if (!startText) {
 		return;
 	}
 
-	if (snapshot.isCollapsed && snapshot.isAtStartOfBlock) {
+	if (snapshot.isAtStartOfBlock) {
 		if (snapshot.isNested && snapshot.isLastChild && !snapshot.islandRoot) {
 			const newBlock = startText.parent.unNestBlock();
 			if (newBlock) {
@@ -184,7 +130,7 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 		return;
 	}
 
-	if (snapshot.isCollapsed && snapshot.isAtStartOfText) {
+	if (snapshot.isAtStartOfText) {
 		const index = startText.parent.content.indexOf(startText) - 1;
 		const previousText = startText.parent.content.at(index - 1);
 		const hasPreviousText = previousText && previousText instanceof Text;
@@ -196,26 +142,9 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 		return;
 	}
 
-	if (snapshot.isTextSpanning) {
-		const firstText = snapshot.texts[0];
-		const lastText = snapshot.texts.at(-1);
-		if (!firstText || !lastText) {
-			return;
-		}
-		firstText.parent.deleteContentAtRange({
-			start: [firstText.index, yStart],
-			end: [lastText.index, snapshot.yEnd]
-		});
-		await edytor.selection.setAtTextOffset(firstText, yStart);
-		return;
-	}
-
-	const deletion = startText.deleteText({ direction: 'BACKWARD', length: snapshot.length || 1 });
+	const deletion = startText.deleteText({ direction: 'BACKWARD', length: 1 });
 	await tick();
-	await edytor.selection.setAtTextOffset(
-		startText,
-		snapshot.isCollapsed ? (deletion?.start ?? yStart - 1) : yStart
-	);
+	await edytor.selection.setAtTextOffset(startText, deletion?.start ?? yStart - 1);
 };
 
 const deleteCollapsedWordBackward = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {

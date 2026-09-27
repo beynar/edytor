@@ -314,7 +314,7 @@ export class Block {
 	void = (node: HTMLElement) => {
 		node.setAttribute('data-edytor-void', `true`);
 		node.style.userSelect = 'none';
-		node.contentEditable = 'false';
+		node.setAttribute('contenteditable', 'false');
 	};
 
 	/**
@@ -383,6 +383,7 @@ export class Block {
 	/** Register the element the core rendered for this block (O45) and run the attach hooks. */
 	attach = (node: HTMLElement) => {
 		this.node = node;
+		const release = this.edytor.surface.register(node, 'block', this.id);
 		const onDestroy = this.edytor.plugins.reduce(
 			(acc, plugin) => {
 				const action = plugin.onBlockAttached?.({ node, block: this });
@@ -394,6 +395,7 @@ export class Block {
 		return {
 			destroy: () => {
 				if (this.node === node) this.node = undefined;
+				release();
 				onDestroy.forEach((destroy) => destroy());
 			}
 		};

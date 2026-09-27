@@ -157,7 +157,11 @@
 	// The display projector (R10): the root `$effect.pre` notes the focused
 	// element before the flush writes the DOM; the root `$effect` — the last
 	// effect of the editor subtree — displays the selection after them.
+	// The compare-to-truth observer (R12): the pre pass snapshots edited
+	// contents before the flush's writes, the compare pass runs after them.
+	$effect.pre(edytor.surface.pre);
 	$effect.pre(edytor.projector.pre);
+	$effect(edytor.surface.post);
 	$effect(edytor.projector.post);
 
 	type EditableRootBrowserAttributes = {

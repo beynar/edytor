@@ -25,6 +25,7 @@ import { type JSONBlock, type JSONDoc } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
 import { Projector } from './surface/projector.svelte.js';
+import { SurfaceObserver } from './surface/observer.svelte.js';
 import {
 	createCells,
 	placeholderOf,
@@ -199,6 +200,8 @@ export class Edytor {
 	selection: EdytorSelection;
 	/** The only writer of the DOM selection (R10, `surface/projector`). */
 	readonly projector: Projector = new Projector(this);
+	/** The compare-to-truth observer (R12): registry, render epoch, passes (in shadow at R6). */
+	readonly surface: SurfaceObserver = new SurfaceObserver(this);
 	/** What the components render (R1, R2): one cell per visible block, patched from change reports. */
 	cells = $state.raw<Cells>();
 	/** The IME host pin (`surface/pin`): the composing cell's segment list and render, frozen. */
@@ -608,7 +611,7 @@ export class Edytor {
 
 		this.undoManager = this.document.history;
 		this.history.bind();
-		this.cells = createCells(this.facade);
+		this.cells = createCells(this.facade, this.surface.patched);
 		this.root = this.idToBlock.root;
 		this.offCommit = this.facade.onChange(this.onCommit);
 	};
@@ -1006,9 +1009,11 @@ export class Edytor {
 		this.node = node;
 		this.container = node;
 		this.selection.init();
+		this.doc.on('beforeTransaction', this.surface.before);
 		this.doc.on('beforeTransaction', this.projector.before);
 		this.doc.on('afterTransaction', this.projector.after);
 		this.off.push(() => {
+			this.doc.off('beforeTransaction', this.surface.before);
 			this.doc.off('beforeTransaction', this.projector.before);
 			this.doc.off('afterTransaction', this.projector.after);
 		});

@@ -111,6 +111,44 @@ const workerSafeRules = {
 };
 const VENDOR = 'src/lib/crdt/vendor/**';
 
+// ── Host writers (plan §12.5 BI2-5, R1, R11) ─────────────────────────────
+//
+// The contenteditable host is written by the renderer only: Svelte template
+// effects and the core's attachment bodies (`components/`, the handles'
+// `attach`/`void`). Chrome writes its own layer outside the host (overlay,
+// plugin UI). Today's observer and the `input` line-break repair still invert
+// by hand until R7 moves inversion into `surface/observer`.
+const HOST_MUTATION =
+	'appendChild|insertBefore|removeChild|replaceChild|replaceWith|setAttribute|removeAttribute|toggleAttribute|prepend|append|remove';
+const HOST_WRITERS = [
+	'src/lib/components/**',
+	'src/lib/text/text.svelte.ts',
+	'src/lib/block/block.svelte.ts',
+	'src/lib/block/inlineBlock.svelte.ts',
+	'src/lib/surface/observer.svelte.ts',
+	'src/lib/surface/overlay.ts',
+	'src/lib/plugins/**',
+	'src/lib/collaboration/**',
+	'src/lib/events/domTextMutationObserver.ts',
+	'src/lib/events/onInput.ts'
+];
+const hostWriterRules = {
+	'no-restricted-syntax': [
+		'error',
+		{
+			selector: `CallExpression[callee.property.name=/^(${HOST_MUTATION})$/][arguments.length<3]`,
+			message:
+				'Only template effects and attachment bodies write the host (BI2-5): render it from cells or declared view state.'
+		},
+		{
+			selector:
+				'AssignmentExpression[left.property.name=/^(textContent|nodeValue|innerHTML|contentEditable)$/]',
+			message:
+				'Only template effects and attachment bodies write the host (BI2-5): render it from cells or declared view state.'
+		}
+	]
+};
+
 const repoConfig = [
 	{
 		ignores: [
@@ -220,6 +258,11 @@ export default [
 			? config
 			: { ...config, ignores: [...(config.ignores ?? []), VENDOR] }
 	),
+	{
+		files: ['src/lib/**/*.{ts,js,svelte}'],
+		ignores: [...HOST_WRITERS, 'src/lib/crdt/**'],
+		rules: hostWriterRules
+	},
 	{
 		files: WORKER_SAFE,
 		languageOptions: { parser: tsParser, parserOptions: { sourceType: 'module' } },

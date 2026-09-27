@@ -107,6 +107,12 @@
 		data-edytor-id={id}
 		data-edytor-type={cell.type}
 		data-edytor-void={definition.void ? 'true' : undefined}
+		data-edytor-selected={edytor.selection.selectedBlocks.has(edytor.idToBlock.block(id))
+			? 'true'
+			: undefined}
+		data-edytor-focused={edytor.selection.focusedBlocks.has(edytor.idToBlock.block(id))
+			? 'true'
+			: undefined}
 		contenteditable={definition.void ? 'false' : undefined}
 		style:user-select={definition.void ? 'none' : undefined}
 		use:register

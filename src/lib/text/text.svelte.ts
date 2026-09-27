@@ -99,6 +99,7 @@ export class Text {
 	 */
 	refreshFromModel = () => {
 		if (this.edytor.pin.owns(this.node)) return;
+		this.edytor.surface.acted(this.parent.id, 'invert', 'remount');
 		this.edytor.cells?.remount(this.parent.id);
 	};
 
@@ -134,6 +135,7 @@ export class Text {
 	attach = (node: HTMLElement) => {
 		this.node = node;
 		this.edytor.nodeToText.set(node, this);
+		const release = this.edytor.surface.register(node, 'text', this.parent.id);
 		node.setAttribute('data-edytor-id', `${this.id}`);
 		node.setAttribute('data-edytor-text', `true`);
 
@@ -154,7 +156,7 @@ export class Text {
 		});
 
 		if (insideVoid) {
-			node.contentEditable = 'true';
+			node.setAttribute('contenteditable', 'true');
 			node.style.outline = 'none';
 		}
 
@@ -165,6 +167,7 @@ export class Text {
 			destroy: () => {
 				if (this.node === node) this.node = undefined;
 				if (this.edytor.nodeToText.get(node) === this) this.edytor.nodeToText.delete(node);
+				release();
 				pluginDestroy.forEach((destroy) => destroy());
 			}
 		};

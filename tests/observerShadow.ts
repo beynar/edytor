@@ -59,6 +59,11 @@ export const collectObserverShadow = async (page: Page, label: string) => {
 	for (const entry of entries) census.push(entry);
 	census.end();
 	const summary = census.summary();
+	if (process.env.OBSERVER_SHADOW_DEBUG && summary.unexplained.length)
+		appendFileSync(
+			process.env.OBSERVER_SHADOW_DEBUG,
+			JSON.stringify({ test: label, differences: census.differences, entries }) + '\n'
+		);
 	appendFileSync(
 		REPORT,
 		JSON.stringify({

@@ -76,12 +76,13 @@ export class InlineBlock {
 	}
 
 	attach = (node: HTMLElement) => {
-		node.contentEditable = 'false';
+		node.setAttribute('contenteditable', 'false');
 		node.dataset.edytorId = this.id;
 		node.dataset.edytorInlineBlock = this.type;
 		this.attachedNodes.add(node);
 		this.edytor.nodeToInlineBlock.set(node, this);
 		this.node = node;
+		const release = this.edytor.surface.register(node, 'atom', this.blockId);
 
 		const selectInlineBlock = (event: PointerEvent) => {
 			if (event.button !== 0) {
@@ -130,6 +131,7 @@ export class InlineBlock {
 					this.node = this.attachedNodes.values().next().value;
 				}
 				this.edytor.nodeToInlineBlock.delete(node);
+				release();
 			}
 		};
 	};

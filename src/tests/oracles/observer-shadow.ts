@@ -65,7 +65,10 @@ export const CLASSES: { name: string; row: string; test: (d: Difference) => bool
 		// Keyed moves of block elements read as removals of live managed nodes: re-inserted.
 		name: 'own-render-restored',
 		row: 'F-O10 (R7): nothing the renderer wrote is adopted or inverted',
-		test: (d) => d.shadow === 'equal' && /^invert:restore(\+invert:remount)?$/.test(d.observer)
+		test: (d) =>
+			d.shadow === 'equal' &&
+			d.observer.includes('invert:restore') &&
+			/^(invert:(restore|remove|remount)\+?)+$/.test(d.observer)
 	},
 	{
 		// Nodes inside a kind's own markup around the slots (a callout's icon the
@@ -90,7 +93,61 @@ export const CLASSES: { name: string; row: string; test: (d: Difference) => bool
 		// current cell; today's observer has nothing left to do.
 		name: 'claimed-drift-restored-by-render',
 		row: 'F-O13 (d): the DOM ends at the cell’s current text, never at the text last rendered',
-		test: (d) => /^invert:(drift|tail)$/.test(d.shadow) && d.observer === 'none'
+		test: (d) => /^invert:(drift|tail|key)$/.test(d.shadow) && d.observer === 'none'
+	},
+	{
+		// Structure the browser changed around model-owned input (a native merge
+		// or removal while a structural key waited for its `beforeinput`): the
+		// command's own render put the cells' elements back; nothing was left to invert.
+		name: 'structure-restored-by-render',
+		row: '§1.3 (R8, R12): drift around model-owned input is reverted (F-O13 (d))',
+		test: (d) =>
+			!d.key.startsWith('unresolved:') &&
+			/^invert:(missing|escaped|root-order|root-child|partition|filler|foreign-child|mark-chain|clone)$/.test(
+				d.shadow
+			) &&
+			d.observer === 'none'
+	},
+	{
+		// An attribute heal that never converges: a foreign writer re-damaging
+		// every heal until today's bound trips, or an owned style the engine
+		// serializes differently (WebKit's `outline`, `user-select`). The shadow
+		// uses today's table, so both heal.
+		name: 'attribute-heal-does-not-converge',
+		row: 'F-P17 (e) (R7): foreign damage healed, bounded repair; the ownership table (§4.4)',
+		test: (d) =>
+			d.key.startsWith('unresolved:invert:attribute') && d.observer.includes('invert:attribute')
+	},
+	{
+		// A registered element left the DOM while its cell still renders it (a
+		// code line gone after a split in a hydrated page, after Android's native
+		// paragraph in a code line): today's remount does not bring back a block
+		// element; the pass would re-insert it from its record.
+		name: 'missing-element-left-by-today',
+		row: '§12.5 BI2-2, L39 (R7): missing registered elements are re-inserted from their records',
+		test: (d) =>
+			d.shadow === 'invert:missing' &&
+			d.key.startsWith('unresolved:') &&
+			/^(none|(invert:remount\+?)+)$/.test(d.observer)
+	},
+	{
+		// Today's WebKit converted-space normalization leaves an extra text node
+		// in the text element after adopting its space: the DOM keeps one space
+		// more than the cell (F-O10 fails today; R7 must not adopt it twice).
+		name: 'residue-after-space-normalization',
+		row: 'F-O10 (R7): after a settle every content equals its cell',
+		test: (d) => d.key === 'unresolved:adopt:location/adopt:text'
+	},
+	{
+		// The table would heal an element the renderer re-rendered or removed
+		// before today's observer processed its record (WebKit leaves `style=""`
+		// where it rejects the core's `user-select` on a void block).
+		name: 'attribute-divergence-resolved-by-render',
+		row: 'F-O2 / R11 (R7): owned attributes are rendered and compared against the table',
+		test: (d) =>
+			/^invert:attribute:/.test(d.shadow) &&
+			d.observer === 'none' &&
+			!d.key.startsWith('unresolved:')
 	},
 	{
 		// A foreign element with text inside a text element: the location

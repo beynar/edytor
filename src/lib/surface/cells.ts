@@ -46,6 +46,8 @@ export type CellSource = {
 
 /** The ids a patch replaced; `null` names the root's child list. */
 export type Patched = ReadonlySet<BlockId | null>;
+/** The cells a patch replaced, as they were before it (what the DOM still shows). */
+export type Replaced = ReadonlyMap<BlockId, Cell>;
 
 export type Cells = {
 	/** The root's visible child ids. */
@@ -77,7 +79,10 @@ const sameIds = (a: readonly BlockId[], b: readonly BlockId[]) =>
  * The cells of `source`'s visible tree, patched from each of its change
  * reports (`onPatch` is told which cells each report replaced).
  */
-export const createCells = (source: CellSource, onPatch?: (patched: Patched) => void): Cells => {
+export const createCells = (
+	source: CellSource,
+	onPatch?: (patched: Patched, before: Replaced) => void
+): Cells => {
 	const cells = new SvelteMap<BlockId, Cell>();
 	const epochs = new SvelteMap<BlockId, number>();
 	let notifyRoot = () => {};
@@ -93,13 +98,16 @@ export const createCells = (source: CellSource, onPatch?: (patched: Patched) => 
 	let rootIds: readonly BlockId[] = Object.freeze(top.map((node) => node.id));
 	top.forEach(build);
 
+	let before = new Map<BlockId, Cell>();
 	const patch = (id: BlockId, fields: Partial<Cell>) => {
 		const cell = cells.get(id);
+		if (cell && !before.has(id)) before.set(id, cell);
 		if (cell) cells.set(id, Object.freeze({ ...cell, ...fields }));
 		return cell !== undefined;
 	};
 
 	const apply = (report: CellReport): Patched => {
+		before = new Map();
 		const patched = new Set<BlockId | null>();
 		// A child listed by a changed parent is still visible, even when its old
 		// parent's subtree went away in the same commit.
@@ -142,7 +150,7 @@ export const createCells = (source: CellSource, onPatch?: (patched: Patched) => 
 
 	const off = source.onChange((change) => {
 		const patched = apply(change);
-		onPatch?.(patched);
+		onPatch?.(patched, before);
 	});
 
 	return {
@@ -155,7 +163,10 @@ export const createCells = (source: CellSource, onPatch?: (patched: Patched) => 
 		},
 		get: (id) => cells.get(id),
 		apply,
-		remount: (id) => epochs.set(id, (epochs.get(id) ?? 0) + 1),
+		remount: (id) => {
+			epochs.set(id, (epochs.get(id) ?? 0) + 1);
+			onPatch?.(new Set([id]), new Map());
+		},
 		epoch: (id) => epochs.get(id) ?? 0,
 		dispose: off
 	};

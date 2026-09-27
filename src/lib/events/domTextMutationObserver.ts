@@ -661,6 +661,7 @@ const restoreRemovedManagedNodes = (
 			}
 
 			mutation.target.insertBefore(removedNode, referenceNode);
+			edytor.surface.acted(mutation.target, 'invert', 'restore');
 			restoredManagedNode = true;
 		}
 	}
@@ -682,6 +683,7 @@ const removeAddedUnmanagedNodes = (
 				continue;
 			}
 
+			if (addedNode.parentNode) edytor.surface.acted(mutation.target, 'invert', 'remove');
 			addedNode.parentNode?.removeChild(addedNode);
 			removedUnmanagedNode = true;
 		}
@@ -760,6 +762,7 @@ const settleAddedUnmanagedTextWrappers = (
 				continue;
 			}
 
+			edytor.surface.acted(text.parent.id, 'invert', 'wrapper');
 			if (modelAuthoritativeTexts.has(text)) {
 				addedNode.parentNode?.removeChild(addedNode);
 				settledTextWrapper = true;
@@ -1173,7 +1176,9 @@ const healOwnedAttribute = (element: HTMLElement, name: string, expected: string
 // `outline`. Strict-strip must keep longhands of an OWNED shorthand or
 // every heal re-removes them and the strip→write loop never converges.
 const SHORTHAND_LONGHANDS: Record<string, readonly string[]> = {
-	outline: ['outline-width', 'outline-style', 'outline-color']
+	outline: ['outline-width', 'outline-style', 'outline-color'],
+	// Chromium expands `white-space` into these (R6's shadow found the strip→write loop).
+	'white-space': ['white-space-collapse', 'text-wrap-mode', 'text-wrap']
 };
 
 const isLonghandOfOwnedStyle = (ownedStyle: Record<string, string | null>, property: string) =>
@@ -1373,6 +1378,18 @@ const stripSpoofedIdentityAttribute = (root: HTMLElement, mutation: MutationReco
 	return true;
 };
 
+/** R6 shadow: the attribute table would heal `mutation`'s element (tried on a detached copy). */
+export const attributeDiverges = (edytor: Edytor, mutation: MutationRecord) => {
+	const { node: root } = edytor;
+	const element = mutation.target;
+	const name = mutation.attributeName;
+	if (!root || !name || !(element instanceof HTMLElement)) return false;
+	const target = resolveManagedAttributeTarget(edytor, root, mutation);
+	if (!target) return IDENTITY_ATTRIBUTES.has(name) && element.hasAttribute(name);
+	if (target.kind === 'textSubtree') return element.getAttribute(name) !== mutation.oldValue;
+	return healManagedElementAttributes(target.element.cloneNode(false) as HTMLElement, target.spec);
+};
+
 const healForeignAttributeMutations = (
 	edytor: Edytor,
 	root: HTMLElement,
@@ -1388,7 +1405,10 @@ const healForeignAttributeMutations = (
 		}
 		const target = resolveManagedAttributeTarget(edytor, root, mutation);
 		if (!target) {
-			healed = stripSpoofedIdentityAttribute(root, mutation) || healed;
+			if (stripSpoofedIdentityAttribute(root, mutation)) {
+				edytor.surface.acted(mutation.target, 'invert', 'spoof');
+				healed = true;
+			}
 			continue;
 		}
 		if (target.kind === 'textSubtree') {
@@ -1402,7 +1422,10 @@ const healForeignAttributeMutations = (
 			continue;
 		}
 		healedElements.add(target.element);
-		healed = healManagedElementAttributes(target.element, target.spec) || healed;
+		if (healManagedElementAttributes(target.element, target.spec)) {
+			edytor.surface.acted(target.element, 'invert', 'attribute');
+			healed = true;
+		}
 	}
 
 	return healed;
@@ -1434,6 +1457,7 @@ const adopt = async (edytor: Edytor, text: Text, dom: string, domCaret?: number)
 	const change = diffText(text.stringContent, value, prefer);
 	if (!change) return false;
 	const { at, remove, insert } = change;
+	edytor.surface.acted(text.parent.id, 'adopt', attempt ? 'attempt' : 'text');
 	// The command runs at the change (a hook reads the selection).
 	if (startText !== text && (attempt || caret !== undefined))
 		edytor.selection.select(edytor.selection.textValue(text, at));
@@ -1468,7 +1492,7 @@ const adopt = async (edytor: Edytor, text: Text, dom: string, domCaret?: number)
 
 export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 	if (typeof MutationObserver === 'undefined') {
-		return { destroy: () => {}, flushNow: async () => {}, pending: () => false };
+		return { destroy: () => {}, flushNow: async () => {}, take: () => {}, pending: () => false };
 	}
 
 	const queuedTexts = new Set<Text>();
@@ -1671,6 +1695,7 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 			}
 			for (const replacement of textReplacements) {
 				if (await handleNativeLineBreakTextValue(edytor, replacement.text, replacement.value)) {
+					edytor.surface.acted(replacement.text.parent.id, 'adopt', 'line-break');
 					changedTexts.add(replacement.text);
 					continue;
 				}
@@ -1717,6 +1742,7 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 					continue;
 				}
 				if (await handleNativeLineBreakTextMutation(edytor, text)) {
+					edytor.surface.acted(text.parent.id, 'adopt', 'line-break');
 					changedTexts.add(text);
 					continue;
 				}
@@ -1801,6 +1827,7 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 		}
 
 		queuedMutations.push(mutation);
+		edytor.surface.intake(mutation);
 		// Identical-value `characterData` records (nodeValue === oldValue,
 		// distinguishable thanks to `characterDataOldValue`) are mobile
 		// type-overs — the browser rewrote the node. They stay queued like
@@ -1813,6 +1840,7 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 
 	observer = new MutationObserver((mutations) => {
 		mutations.forEach(enqueue);
+		edytor.surface.signal();
 
 		if (queuedTexts.size > 0 || queuedMutations.length > 0) {
 			queueFlush();
@@ -1842,7 +1870,21 @@ export const observeDomTextMutations = (edytor: Edytor, root: HTMLElement) => {
 		// still requeue inside `flush` — this only skips the microtask.
 		flushNow: () => {
 			for (const mutation of observer.takeRecords()) enqueue(mutation);
+			edytor.surface.signal();
 			return flush().finally(edytor.projector.recordsChanged);
+		},
+		/**
+		 * R6 shadow: take pending records before a transaction so the surface
+		 * observer names their contents while the model still equals the
+		 * render; they are processed as the callback would have, after the
+		 * flush the transaction schedules.
+		 */
+		take: () => {
+			const records = observer.takeRecords();
+			if (!records.length) return;
+			records.forEach(enqueue);
+			edytor.surface.signal();
+			queueMicrotask(queueFlush);
 		},
 		/** DOM records not yet reconciled: the DOM differs from what the cells rendered. */
 		pending: () => queuedMutations.length > 0 || queuedTexts.size > 0

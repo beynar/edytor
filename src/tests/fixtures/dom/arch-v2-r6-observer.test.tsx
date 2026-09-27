@@ -52,7 +52,7 @@ import { effectDispatcher } from '../../dom/r6Effects.svelte.js';
 import type { Finding, ShadowEntry } from '../../oracles/observer-shadow.js';
 
 /** Red on the reference (`arch-v2/ref-r6`: no surface observer); flipped to `it` by R6. */
-const row = it.fails;
+const row = it;
 
 afterEach(() => {
 	vi.restoreAllMocks();

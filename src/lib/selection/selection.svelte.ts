@@ -537,10 +537,9 @@ export class EdytorSelection {
 			: next;
 	};
 
-	/** Diff one block set against its new members: hooks and attributes only for changes. */
+	/** Diff one block set against its new members: hooks only for changes (the renderer draws the attributes). */
 	#sync = (set: SvelteSet<Block>, blocks: Block[], kind: 'selected' | 'focused') => {
 		const next = new Set(blocks);
-		const attribute = `data-edytor-${kind}`;
 		for (const block of set) {
 			if (next.has(block)) continue;
 			set.delete(block);
@@ -548,14 +547,12 @@ export class EdytorSelection {
 			// (it has historically doubled as the selection-loss hook).
 			if (kind === 'selected') block.definition.onDeselect?.({ block });
 			block.definition.onBlur?.({ block });
-			block.node?.removeAttribute(attribute);
 		}
 		for (const block of next) {
 			if (set.has(block)) continue;
 			set.add(block);
 			if (kind === 'selected') block.definition.onSelect?.({ block });
 			else block.definition.onFocus?.({ block });
-			block.node?.setAttribute(attribute, 'true');
 		}
 	};
 

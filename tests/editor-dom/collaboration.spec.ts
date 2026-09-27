@@ -133,4 +133,61 @@ test.describe('collaboration presence and persistence', () => {
 
 		expect(didCleanup).toBe(true);
 	});
+	// arch-v2 F-T16 (browser half): the migration attempt is an origin-wide
+	// lock. While one tab holds it, a second tab of the same origin reads
+	// `pending` and `migrate({wait: false})` returns `busy` (runbook API, FP-12).
+	test('a second tab sees a held migration as pending and busy', async ({ context }) => {
+		const pageA = await context.newPage();
+		const pageB = await context.newPage();
+		await gotoEditorRoute(pageA, '/test/dom?scenario=basic', { requireRuntime: true });
+		await gotoEditorRoute(pageB, '/test/dom?scenario=basic', { requireRuntime: true });
+		const name = `edytor-ft16-${Date.now()}-${Math.random()}`;
+
+		await pageA.evaluate((name) => {
+			const w = window as Window & { __EDYTOR_COLLABORATION_TEST__?: any; __ft16?: any };
+			const { migration } = w.__EDYTOR_COLLABORATION_TEST__;
+			let release: () => void = () => {};
+			const gate = new Promise<void>((r) => (release = r));
+			let entered: () => void = () => {};
+			const inside = new Promise<void>((r) => (entered = r));
+			const done = migration.migrate(name, {
+				onPhase: async (phase: string) => {
+					if (phase === 'read') {
+						entered();
+						await gate;
+					}
+				}
+			});
+			w.__ft16 = { release, inside, done };
+			return inside;
+		}, name);
+
+		const seen = await pageB.evaluate(async (name) => {
+			const { migration } = (window as Window & { __EDYTOR_COLLABORATION_TEST__?: any })
+				.__EDYTOR_COLLABORATION_TEST__;
+			const status = (await migration.status(name)).status;
+			const busy = (await migration.migrate(name, { wait: false })).status;
+			return { status, busy };
+		}, name);
+		expect(seen).toEqual({ status: 'pending', busy: 'busy' });
+
+		const finished = await pageA.evaluate(async () => {
+			const w = window as Window & { __ft16?: any };
+			w.__ft16.release();
+			return (await w.__ft16.done).status;
+		});
+		expect(finished).toBe('active');
+		const after = await pageB.evaluate(
+			async (name) =>
+				(
+					await (
+						window as Window & { __EDYTOR_COLLABORATION_TEST__?: any }
+					).__EDYTOR_COLLABORATION_TEST__.migration.status(name)
+				).status,
+			name
+		);
+		expect(after).toBe('active');
+		await pageA.close();
+		await pageB.close();
+	});
 });

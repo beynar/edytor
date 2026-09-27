@@ -19,6 +19,7 @@
 	} from '$lib/collaboration/index.js';
 	import { Y } from '$lib/crdt/engine.js';
 	import {
+		bindMigration,
 		checkSchema,
 		createDocument,
 		GENERATION_KEY,
@@ -354,6 +355,8 @@
 		IndexeddbPersistence,
 		clearDocument,
 		storeState,
+		/** The v13 → v14 migrator, so specs can drive it from two tabs of one origin (F-T16). */
+		migration: bindMigration(Y),
 		/**
 		 * Persist `doc` directly into the room's IndexedDB store — bypasses
 		 * the application-schema boundary (`storeState` refuses to snapshot

@@ -57,12 +57,14 @@ import type {
 	BlockId,
 	BlockRec,
 	ContentItem,
+	DocOrder,
 	ModelView,
 	ResolvedPlacement
 } from '../placement/model.js';
 import {
 	candidatesOf,
 	childrenIndex,
+	documentOrder,
 	REGISTRY_KEY,
 	resolvePlacements
 } from '../placement/model.js';
@@ -90,7 +92,16 @@ import {
 	type SliceRecord,
 	type TextBlockRec
 } from './model.js';
-import { AT, CONTENT, DATA, DEL, ID, LAST_CHANGED_ATTR, SLICES, TYPE } from '../schema.js';
+import {
+	AT,
+	CONTENT,
+	DATA,
+	hasDeleteMark,
+	ID,
+	LAST_CHANGED_ATTR,
+	SLICES,
+	TYPE
+} from '../schema.js';
 import { walkIdSetStructs, type IdSetLike, type StoreStruct } from '../structs.js';
 import { cloneJsonSafe } from '../../utils/json.js';
 
@@ -178,7 +189,8 @@ type Facet = 'content' | 'structure' | 'gone' | 'at' | 'meta' | 'ignore';
 
 const facetOf = (attr: string): Facet => {
 	if (attr === CONTENT) return 'content';
-	if (attr === SLICES || attr === DEL) return 'structure';
+	// Per-writer delete marks (`del.<writer>`) fall through to 'structure' below.
+	if (attr === SLICES) return 'structure';
 	// `at` changes placements/display order — never content.
 	if (attr === AT) return 'at';
 	// Payload attrs change only the block's metadata projection — a move or
@@ -722,7 +734,7 @@ export const bindRuns = (Y: EngineApi) => {
 				node,
 				type: typeof type === 'string' ? type : 'unknown',
 				data: node.getAttr(DATA),
-				deleted: node.getAttr(DEL) !== undefined,
+				deleted: hasDeleteMark(node),
 				content: isNodeLike(content) ? content : undefined,
 				slicesNode,
 				entries,
@@ -795,13 +807,15 @@ export const bindRuns = (Y: EngineApi) => {
 		// previous resolved placements AND children index verbatim.
 		let placementsMap: Map<BlockId, ResolvedPlacement> | null = null;
 		let kidsMap: Map<BlockId | null, { id: BlockId; rank: string }[]> | null = null;
+		let orderCache: DocOrder | null = null;
 		let placementsBuiltAt = -1;
 		let placementVersion = 0;
 		const ensurePlacements = (): void => {
 			if (placementsBuiltAt >= placementVersion) return;
 			ensureOwners();
 			placementsMap = resolvePlacements(blocks, ownerOf);
-			kidsMap = childrenIndex(blocks, placementsMap, ownShim);
+			kidsMap = childrenIndex(placementsMap, ownShim);
+			orderCache = null;
 			placementsBuiltAt = placementVersion;
 		};
 
@@ -852,6 +866,10 @@ export const bindRuns = (Y: EngineApi) => {
 			get kids() {
 				ensurePlacements();
 				return kidsMap!;
+			},
+			get order() {
+				ensurePlacements();
+				return (orderCache ??= documentOrder(kidsMap!));
 			},
 			// R4: publication boundary shares THIS interner, so a payload
 			// emitted by `project()`/`contentItems()` is `===` the one the
@@ -1666,16 +1684,14 @@ export const bindRuns = (Y: EngineApi) => {
 						}
 						return out;
 					}
+					// Inline atoms always carry `data` (`{}` when absent) — the
+					// public `JSONInlineBlock` shape of `edytor.value`.
 					const inl = r as { id: string; type: string; data?: unknown };
-					const out: {
-						id: string;
-						type: string;
-						data?: unknown;
-					} = { id: inl.id, type: inl.type };
-					if (inl.data !== undefined) {
-						out.data = JSON.parse(JSON.stringify(inl.data)) as unknown;
-					}
-					return out;
+					return {
+						id: inl.id,
+						type: inl.type,
+						data: inl.data === undefined ? {} : (JSON.parse(JSON.stringify(inl.data)) as unknown)
+					};
 				}),
 			subscribe: (cb: (v: number) => void) => {
 				subs.add(cb);

@@ -76,12 +76,7 @@ export const sanitizeLinkHref = (href: unknown): string | null => {
 };
 
 export const canConvertBlock = (block: Block | null | undefined): block is Block =>
-	block !== null &&
-	block !== undefined &&
-	!block.isRoot &&
-	!block.definition.void &&
-	!block.definition.island &&
-	!block.insideIsland;
+	Boolean(block?.convertible);
 
 const selectedRangeMutates = (edytor: Edytor) => {
 	const { yStart, yEnd, texts } = edytor.selection.state;
@@ -170,7 +165,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 			return null;
 		}
 		const block = startBlock;
-		const defaultType = () => edytor.getDefaultBlock(block.parent);
+		const defaultType = () => edytor.defaultChild(block.parent!);
 		const caretInto = (target: typeof block | null | undefined) => {
 			const text = target?.firstText;
 			if (text) {

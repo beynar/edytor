@@ -103,11 +103,6 @@
 					}
 				}
 			},
-			defaultBlock: (parent) => {
-				if (parent.type === 'code' || parent.type === 'codeLine') {
-					return 'codeLine';
-				}
-			},
 			onBeforeOperation: ({ operation, payload, block }) => {
 				if (block.closestNextBlock?.type === 'code' && operation === 'mergeBlockForward') {
 					if (block.isEmpty) {
@@ -161,7 +156,9 @@
 			blocks: {
 				code: {
 					snippet: code,
-					island: true
+					island: true,
+					rendersContent: false,
+					defaultChild: 'codeLine'
 				},
 				codeLine: {
 					snippet: codeLine,

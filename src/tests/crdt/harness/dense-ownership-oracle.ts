@@ -86,7 +86,6 @@ export const denseOwnership = (
 			const t = e.payload.t;
 			const g = e.payload.g ?? 0;
 			if (g > (maxG.get(t) ?? 0)) maxG.set(t, g);
-			if (candBlock === DEAD) continue; // dead holders can't claim
 			const textRec = blocks.get(t);
 			if (!textRec || !textRec.content) continue;
 			const range = resolvedRange(e, textRec.content);
@@ -108,6 +107,13 @@ export const denseOwnership = (
 				atomClaim.set(t, claims);
 				bestKey.set(t, keys);
 			}
+		}
+	}
+	// R3 (D-14): dead holders contest like any other; what they win is hidden.
+	for (const [t, arr] of atomOwner) {
+		const claims = atomClaim.get(t)!;
+		for (let i = 0; i < arr.length; i++) {
+			if (arr[i] === DEAD) arr[i] = claims[i] = undefined;
 		}
 	}
 	return { ownerOf, atomOwner, atomClaim, resolvedRange, maxG };

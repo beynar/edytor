@@ -77,5 +77,6 @@ export const setSelectionAtBlockOffset = async (block: Block, offset: number) =>
 		remaining -= part.length;
 	}
 
-	await block.edytor.selection.setAtTextOffset(block.lastText, block.lastText.length);
+	const text = block.lastText;
+	if (text) await block.edytor.selection.setAtTextOffset(text, text.length);
 };

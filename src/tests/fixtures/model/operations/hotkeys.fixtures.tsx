@@ -198,7 +198,8 @@ export const fixtures = defineFixtures([
 						data: {},
 						children: [
 							{ type: 'codeLine', data: {}, content: [{ text: 'const value = 1;' }] },
-							{ type: 'paragraph', data: {} }
+							// D-13: the code kind's declared default child (was 'paragraph').
+							{ type: 'codeLine', data: {} }
 						]
 					}
 				]

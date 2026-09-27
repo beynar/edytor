@@ -103,8 +103,6 @@ export type PluginOperations = {
 	onBlockAttached?: (payload: { node: HTMLElement; block: Block }) => () => void;
 	/** Called when text is attached to the DOM */
 	onTextAttached?: (payload: { node: HTMLElement; text: Text }) => () => void;
-	/** Defines the default block type */
-	defaultBlock?: string | ((parent: Block) => string | void);
 	/** Called when selected blocks are deleted */
 	onDeleteSelectedBlocks?: (payload: { prevent: Prevent; selectedBlocks: Block[] }) => void;
 	/** Called before input is processed */
@@ -145,9 +143,22 @@ export type BlockDefinition = {
 	 *
 	 * Their structure will remain as if.
 	 *
-	 * In case of a merge operation, the island block will be merged with the parent block and all its children will ne unnest and set to the default block type without being added as children of the merge destination block. The same wil happen to the island's content.
+	 * In case of a merge operation, the island block will be merged with the parent block and all its children will ne unnest and set to the default child type of their new parent without being added as children of the merge destination block. The same wil happen to the island's content.
 	 */
 	island?: boolean;
+	/**
+	 * Whether the snippet renders the block's own content (`content()`).
+	 * Defaults to `true`; containers that render only their children
+	 * declare `false` so no caret or endpoint lands in the unrendered slot.
+	 * Adopted by the document; checked in development against the snippet.
+	 */
+	rendersContent?: boolean;
+	/**
+	 * The type a new child of this block takes by default (Enter inside a
+	 * child, a split, an island merged out into it). Adopted by the
+	 * document; two extensions declaring different values is an error.
+	 */
+	defaultChild?: string;
 	/** Transform text content within the block
 	 *
 	 * This transformation is applied after the text is synced in to the state.

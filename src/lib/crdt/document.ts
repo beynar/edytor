@@ -86,12 +86,15 @@
  *
  * ── Semantic configuration ─────────────────────────────────────────────
  *
- * Structural roles (`void`/`island`) and `defaultType` are document-level
- * state — they must outlive any single view. Views contribute the roles
- * implied by their plugin block definitions via {@link adoptSemantics}:
- * the first declaration for a type is adopted, a later CONFLICTING one is
- * an error (views cannot silently impose incompatible structural rules on
- * a shared document). Snippets and DOM hooks stay view-side.
+ * The adopted capability (rule R5) is document-level state that outlives
+ * any single view: structural roles (`void`/`island`), whether a kind
+ * renders its own content (`rendersContent`), the default child type per
+ * parent type (`defaultChild`) and `defaultType`. Views contribute what
+ * their plugin block definitions declare via {@link adoptSemantics}: the
+ * first declaration for a type is adopted, a later CONFLICTING one is an
+ * error, and a refused contribution adopts nothing (views cannot silently
+ * impose incompatible structural rules on a shared document). Snippets
+ * and DOM hooks stay view-side.
  *
  * ── History ────────────────────────────────────────────────────────────
  *
@@ -148,6 +151,7 @@ import {
 import {
 	bindEdytorDoc,
 	isInitialized,
+	lineageDepthOf,
 	type BlockRole,
 	type EdytorDoc,
 	type EdytorDocBinding
@@ -172,14 +176,18 @@ export type DocumentActor = {
 
 /**
  * Document-level semantic configuration — the structural subset of what
- * plugin `BlockDefinition`s carry (`void`/`island` roles + the default
- * block type). Snippets/DOM hooks are deliberately NOT part of this: they
- * are view-side rendering policy.
+ * plugin `BlockDefinition`s carry (roles, `rendersContent`, `defaultChild`)
+ * plus the default block type. Snippets/DOM hooks are deliberately NOT
+ * part of this: they are view-side rendering policy.
  */
 export type DocumentSemanticsConfig = {
 	/** Structural role per block type (`{void?, island?}` — absent flags mean false). */
 	roles?: Record<string, BlockRole>;
-	/** Default block type — bootstrap block + island-merge child reset. */
+	/** Whether a kind renders its own content slot (undeclared kinds do). */
+	rendersContent?: Record<string, boolean>;
+	/** Default child type per parent type (undeclared parents take `defaultType`). */
+	defaultChild?: Record<string, string>;
+	/** Default block type — the root's default child and the bootstrap block. */
 	defaultType?: string;
 };
 
@@ -419,7 +427,6 @@ export class EdytorDocument {
 	 * an external caller can kill it while the document lives. The getter
 	 * reattaches a fresh manager rather than handing back the corpse.
 	 */
-	private _historyDead = false;
 	private _readiness: DocumentReadiness = 'pending';
 	private _destroyed = false;
 	/**
@@ -431,7 +438,12 @@ export class EdytorDocument {
 	 * callers/views).
 	 */
 	private _refs = 1;
-	private readonly _roles = new Map<string, NormalizedRole>();
+	/** The adopted capability tables (R5): per kind, the first declaration. */
+	private readonly _capability = {
+		roles: new Map<string, NormalizedRole>(),
+		rendersContent: new Map<string, boolean>(),
+		defaultChild: new Map<string, string>()
+	};
 	private _defaultType: string;
 	private readonly _historyOptions: { captureTimeout?: number } | undefined;
 	private readonly _lineageDepth: number | undefined;
@@ -448,8 +460,9 @@ export class EdytorDocument {
 		this._ownsDoc = init.ownsDoc;
 		this._defaultType = init.semantics?.defaultType ?? 'paragraph';
 		this.facade = init.binding.create(this.doc as unknown as EngineDoc, {
-			roleOf: (type) => this._roles.get(type),
+			roleOf: (type) => this._capability.roles.get(type),
 			defaultType: this._defaultType,
+			defaultChildOf: (type) => this._capability.defaultChild.get(type),
 			// U1: the facade's block-attribution ops read the actor lazily —
 			// `this.actor` is assigned below, after facade construction.
 			actor: () => this.actor,
@@ -481,8 +494,8 @@ export class EdytorDocument {
 		this._attributionCtl = init.attribution.attach(this.doc as unknown as EngineDoc, {
 			actor: this.actor
 		});
-		if (init.semantics?.roles) {
-			this.adoptSemantics({ roles: init.semantics.roles });
+		if (init.semantics) {
+			this.adoptSemantics({ ...init.semantics, defaultType: undefined });
 		}
 	}
 
@@ -559,25 +572,30 @@ export class EdytorDocument {
 	}
 
 	/**
-	 * Retain one more attach reference — the `attachDocument` dedupe hands
-	 * out this same live document; each reference must see exactly one
-	 * `destroy()` before the document tears down.
-	 * @internal
+	 * The document-level semantic configuration (snapshot). The maps are
+	 * copies — mutation is not supported; contribute via {@link adoptSemantics}.
 	 */
-	_retain = (): void => {
-		if (this._destroyed) {
-			throw new DocumentDestroyedError('attachDocument');
-		}
-		this._refs += 1;
-	};
+	get semantics() {
+		const { roles, rendersContent, defaultChild } = this._capability;
+		return {
+			defaultType: this._defaultType,
+			roles: new Map<string, BlockRole>(roles),
+			rendersContent: new Map(rendersContent),
+			defaultChild: new Map(defaultChild)
+		};
+	}
 
 	/**
-	 * The document-level semantic configuration (snapshot). `roles` is a
-	 * copy — mutation is not supported; contribute via {@link adoptSemantics}.
+	 * The default child type under a parent of `parentType` (`null` = the
+	 * root) — the one answer split, paragraph insert, merge-unnest, clear
+	 * and root normalization apply against the new block's actual parent.
 	 */
-	get semantics(): { defaultType: string; roles: ReadonlyMap<string, BlockRole> } {
-		return { defaultType: this._defaultType, roles: new Map(this._roles) };
-	}
+	defaultChild = (parentType: string | null): string =>
+		(parentType !== null ? this._capability.defaultChild.get(parentType) : undefined) ??
+		this._defaultType;
+
+	/** Whether kind `type` renders its own content slot (undeclared kinds do). */
+	rendersContent = (type: string): boolean => this._capability.rendersContent.get(type) ?? true;
 
 	/**
 	 * Contribute document-level semantics — the seam views use to seed the
@@ -587,7 +605,10 @@ export class EdytorDocument {
 	 * - a type with no adopted role yet ADOPTS the incoming role;
 	 * - an already-adopted role must equal the incoming one — otherwise
 	 *   {@link SemanticConflictError} (incompatible rules on one document);
+	 * - `rendersContent` and `defaultChild` entries follow the same rule;
 	 * - `defaultType` must match the document's when supplied.
+	 *
+	 * Atomic: everything validates before anything is adopted.
 	 *
 	 * Contributions are document-lifetime: they survive the contributing
 	 * view's teardown, so sibling views keep the same structural rules.
@@ -596,27 +617,28 @@ export class EdytorDocument {
 		if (this._destroyed) {
 			throw new DocumentDestroyedError('adoptSemantics');
 		}
-		const roles = Object.entries(config.roles ?? {});
-		// Pass 1 — validate EVERYTHING before mutating: a conflicting role
-		// late in the map must not leave earlier roles half-adopted.
 		if (config.defaultType !== undefined && config.defaultType !== this._defaultType) {
 			throw new SemanticConflictError('defaultType', this._defaultType, config.defaultType);
 		}
-		for (const [type, role] of roles) {
-			const normalized = normalizeRole(role);
-			const existing = this._roles.get(type);
-			if (
-				existing !== undefined &&
-				(existing.void !== normalized.void || existing.island !== normalized.island)
-			) {
-				throw new SemanticConflictError(`block role "${type}"`, existing, normalized);
+		const incoming = [
+			['roles', Object.entries(config.roles ?? {}).map(([t, r]) => [t, normalizeRole(r)] as const)],
+			['rendersContent', Object.entries(config.rendersContent ?? {})],
+			['defaultChild', Object.entries(config.defaultChild ?? {})]
+		] as const;
+		// Pass 1 — validate EVERYTHING before mutating: a conflicting entry
+		// late in a table must not leave earlier entries half-adopted.
+		for (const [table, entries] of incoming) {
+			for (const [type, value] of entries) {
+				const existing = this._capability[table].get(type);
+				if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(value)) {
+					throw new SemanticConflictError(`${table} "${type}"`, existing, value);
+				}
 			}
 		}
 		// Pass 2 — apply: every incoming entry proved compatible.
-		for (const [type, role] of roles) {
-			if (!this._roles.has(type)) {
-				this._roles.set(type, normalizeRole(role));
-			}
+		for (const [table, entries] of incoming) {
+			const adopted = this._capability[table] as Map<string, unknown>;
+			for (const [type, value] of entries) adopted.set(type, value);
 		}
 	};
 
@@ -689,7 +711,10 @@ export class EdytorDocument {
 			throw new DocumentDestroyedError('history');
 		}
 		let history = this._history;
-		if (history !== undefined && this._historyDead) {
+		// A manager enrolls itself in its tracked origins and leaves them on
+		// `destroy()` — an external teardown (misuse, or the engine's own
+		// `doc.destroy` cascade) shows there.
+		if (history !== undefined && !this._trackedOrigins.has(history)) {
 			// The manager was destroyed externally — it no longer observes
 			// transactions or emits stack events, so returning it would
 			// silently disable capture. Reattach a fresh one (the dead
@@ -758,20 +783,6 @@ export class EdytorDocument {
 			captureTimeout: this._historyOptions?.captureTimeout,
 			captureTransaction: (transaction: { local?: boolean }) => transaction.local !== false
 		});
-		// Guard: nothing but this document owns the manager, yet `destroy()`
-		// is a public engine method — an external caller (or the engine's
-		// own `doc.destroy` cascade) can tear it down while the document
-		// lives. Mark that teardown so `history` never hands the corpse
-		// back (see the getter — it reattaches instead). The vendored
-		// `UndoManager.destroy()` emits no event (`ObservableV2.destroy`
-		// just clears observers), so the monkey-patch is the only signal.
-		const manager = this._history;
-		const engineDestroy = manager.destroy.bind(manager);
-		manager.destroy = () => {
-			this._historyDead = true;
-			engineDestroy();
-		};
-		this._historyDead = false;
 		return this._history;
 	};
 
@@ -1046,26 +1057,10 @@ export const bindDocument = (Y: EngineApi) => {
 	 */
 	const attached = new WeakMap<YDoc, EdytorDocument>();
 
-	/**
-	 * `lineage.depth` must be a finite non-negative integer — NaN,
-	 * Infinity, or fractional values would silently disable the ring's
-	 * trim bound (`len > depth` never fires) and grow unbounded rings.
-	 * Validated at every entry path (`init` covers create/load/attach-new;
-	 * `assertAttachCompatible` covers reattach) so an invalid depth can
-	 * never reach the live facade.
-	 */
-	const assertValidLineageDepth = (depth: number | undefined): void => {
-		if (depth !== undefined && (!Number.isInteger(depth) || depth < 0)) {
-			throw new RangeError(
-				`EdytorDocument lineage.depth must be a non-negative integer, got ${JSON.stringify(depth)}`
-			);
-		}
-	};
-
 	const init = (
 		initOpts: Omit<EdytorDocumentInit, 'binding' | 'attribution' | 'engine' | 'awarenessCtor'>
 	): EdytorDocument => {
-		assertValidLineageDepth(initOpts.lineage?.depth);
+		lineageDepthOf(initOpts.lineage?.depth);
 		return new EdytorDocument({
 			...initOpts,
 			binding,
@@ -1082,7 +1077,7 @@ export const bindDocument = (Y: EngineApi) => {
 	 * actor, awareness instance or merge window is a conflict.
 	 */
 	const assertAttachCompatible = (existing: EdytorDocument, options: DocumentOptions): void => {
-		assertValidLineageDepth(options.lineage?.depth);
+		lineageDepthOf(options.lineage?.depth);
 		if (options.awareness !== undefined && options.awareness !== existing.awareness) {
 			// SemanticConflictError serializes its operands — the awareness
 			// objects themselves are circular; describe them instead.
@@ -1224,7 +1219,7 @@ export const bindDocument = (Y: EngineApi) => {
 			const existing = attached.get(doc);
 			if (existing !== undefined && !existing.destroyed) {
 				assertAttachCompatible(existing, options);
-				existing._retain();
+				existing.retain();
 				return existing;
 			}
 			// Doc-level admission before composition — a refusal is typed

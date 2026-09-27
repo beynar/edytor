@@ -26,12 +26,6 @@ const commandMatchesQuery = (command: EditorCommand, query: string) => {
 	return searchable.some((value) => value.includes(query));
 };
 
-const canOpenInBlock = (block: Block) =>
-	!block.definition.void &&
-	!block.definition.island &&
-	!block.insideIsland &&
-	block.type !== 'codeLine';
-
 export class SlashMenuController {
 	isOpen = $state(false);
 	query = $state('');
@@ -59,7 +53,7 @@ export class SlashMenuController {
 
 		const start = payload.start ?? this.edytor.selection.state.yStart;
 		const end = payload.end ?? this.edytor.selection.state.yEnd;
-		if (payload.value === '/' && start === end && canOpenInBlock(block)) {
+		if (payload.value === '/' && start === end && block.convertible) {
 			this.open(text, start, start + payload.value.length);
 			return;
 		}

@@ -25,7 +25,8 @@ import {
 	bindSync,
 	checkSchema,
 	createDocument,
-	SchemaMismatchError
+	SchemaMismatchError,
+	SCHEMA_VERSION
 } from '../../../lib/crdt/index.js';
 
 const E = bindEdytorDoc(Y);
@@ -135,9 +136,9 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
 		let captured: Uint8Array | null = null;
 		peer.on('update', (u: Uint8Array) => (captured = u));
-		peer.transact(() => peer.get('meta').setAttr('v', 1));
+		peer.transact(() => peer.get('meta').setAttr('v', SCHEMA_VERSION));
 		expect(S.applyRemote(live, captured!, 'bench')).toEqual({ applied: true, problem: null });
-		expect(E.schemaVersion(live)).toBe(1);
+		expect(E.schemaVersion(live)).toBe(SCHEMA_VERSION);
 	});
 
 	it('a meta attr DELETE carried by the delete set is refused', () => {
@@ -187,16 +188,16 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
 		const captured: Uint8Array[] = [];
 		peer.on('update', (u: Uint8Array) => captured.push(u));
-		peer.transact(() => peer.get('meta').setAttr('v', 2));
+		peer.transact(() => peer.get('meta').setAttr('v', SCHEMA_VERSION + 1)); // another generation
 		peer.transact(() => peer.get('meta').setAttr('v', 99));
 		const [uMid, uLate] = captured;
 		// uLate's dep is missing: it cannot be judged and pends in the engine.
 		expect(S.applyRemote(live, uLate, 'bench').applied).toBe(true);
-		expect(E.schemaVersion(live)).toBe(1);
+		expect(E.schemaVersion(live)).toBe(SCHEMA_VERSION);
 		// uMid itself forges the stamp: refused, so the pending tail stays pending.
 		const before = Y.encodeStateAsUpdate(live);
 		expect(S.applyRemote(live, uMid, 'bench').problem?.kind).toBe('unsupported');
-		expect(E.schemaVersion(live)).toBe(1);
+		expect(E.schemaVersion(live)).toBe(SCHEMA_VERSION);
 		expect(Y.encodeStateAsUpdate(live)).toEqual(before);
 	});
 
@@ -210,7 +211,7 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
 		const captured: Uint8Array[] = [];
 		peer.on('update', (u: Uint8Array) => captured.push(u));
-		peer.transact(() => peer.get('meta').setAttr('v', 1)); // a same-value rewrite
+		peer.transact(() => peer.get('meta').setAttr('v', SCHEMA_VERSION)); // a same-value rewrite
 		peer.transact(() => peer.get('meta').setAttr('v', 99)); // forged, over it
 		const [uMid, uLate] = captured;
 		const signals: boolean[] = [];

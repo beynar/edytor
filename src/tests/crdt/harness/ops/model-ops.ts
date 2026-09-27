@@ -24,7 +24,7 @@
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import * as Y from '../../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindModel } from '../../../../lib/crdt/index.js';
+import { bindModel } from '../../../oracles/model-ops.js';
 import {
 	bindText,
 	DEAD,
@@ -35,7 +35,6 @@ import {
 	isSliceRecord,
 	ownerAt
 } from '../../../../lib/crdt/text/model.js';
-import { isVisible } from '../../../../lib/crdt/placement/model.js';
 import type { Peer } from '../peer-set.js';
 import type {
 	AtomFate,
@@ -380,14 +379,15 @@ export const classifyTagAtoms = (
 	for (const [holderId, rec] of blocks) {
 		for (const e of rec.entries) holderOf.set(stampKey(e.stamp), holderId);
 	}
-	// Live slice records covering `pos` of `textId`, regardless of holder
-	// liveness — the intervals already skipped dead holders, so a hit here
-	// is precisely coverage that died with its owner.
+	// Dead-held slice records covering `pos` of `textId` — an unowned
+	// position under such coverage is hidden by its holder's delete (R3:
+	// a deleted block's records keep winning what they display).
 	const deadCoverage = (textId: string, pos: number): BlockId[] => {
 		const text = blocks.get(textId)?.content;
 		if (!text) return [];
 		const holders: BlockId[] = [];
 		for (const [holderId, rec] of blocks) {
+			if (own.ownerOf(holderId) !== DEAD) continue;
 			for (const e of rec.entries) {
 				if (!isSliceRecord(e.payload) || e.payload.t !== textId) continue;
 				const r = own.resolvedRange(e, text);
@@ -583,13 +583,20 @@ export const captureOpState = (peer: Peer): OpState => {
 				});
 			}
 		}
-		// The item carrying the `del` flag (stamp kept for loss correlation).
-		const delItem = (
-			rec.node as { _map?: Map<string, { id: { client: number; clock: number } }> }
-		)?._map?.get?.('del');
+		// The items carrying live delete marks (stamps kept for loss correlation).
+		const delItems = [
+			...((
+				rec.node as {
+					_map?: Map<string, { deleted: boolean; id: { client: number; clock: number } }>;
+				}
+			)?._map ?? [])
+		]
+			.filter(([k, it]) => k.startsWith('del.') && !it.deleted)
+			.map(([, it]) => `${it.id.client}:${it.id.clock}`)
+			.sort();
 		blocksOut.set(id, {
 			deleted: rec.deleted,
-			delStamp: delItem ? `${delItem.id.client}:${delItem.id.clock}` : null,
+			delStamp: delItems.length > 0 ? delItems.join(',') : null,
 			placements: canonKey(
 				rec.cands.map((c: { key: string; p: unknown; r: string }) => ({
 					key: c.key,
@@ -612,7 +619,7 @@ export const opTarget = (peer: Peer, id: BlockId): OpTarget | null => {
 	const doc = peer.doc;
 	const blocks = M.collectBlocks(doc);
 	const own = T.computeOwnership(doc, blocks);
-	if (!isVisible(blocks, own, id)) return null;
+	if (own.hidden(id)) return null;
 	const placements = M.resolvePlacements(blocks, own.ownerOf);
 	const atoms: OpTarget['atoms'] = [];
 	const texts = new Set<BlockId>([id]);
@@ -638,7 +645,7 @@ export const opTarget = (peer: Peer, id: BlockId): OpTarget | null => {
 	const holders = new Set<BlockId>();
 	for (const hid of blocks.keys()) if (own.ownerOf(hid) === id) holders.add(hid);
 	const children = new Set<BlockId>(
-		M.childrenOf(blocks, placements, own, id).map((k: { id: BlockId }) => k.id)
+		M.childrenOf(placements, own, id).map((k: { id: BlockId }) => k.id)
 	);
 	return { atoms, texts, holders, children };
 };

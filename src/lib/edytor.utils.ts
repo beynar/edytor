@@ -3,18 +3,7 @@ import { Text } from './text/text.svelte.js';
 import type { Edytor } from './edytor.svelte.js';
 
 import { InlineBlock } from './block/inlineBlock.svelte.js';
-
-const getClosestRemainingBlock = (
-	block: Block | undefined,
-	blocksToDelete: Set<Block>,
-	direction: 'previous' | 'next'
-) => {
-	let current = direction === 'previous' ? block?.closestPreviousBlock : block?.closestNextBlock;
-	while (current && blocksToDelete.has(current)) {
-		current = direction === 'previous' ? current.closestPreviousBlock : current.closestNextBlock;
-	}
-	return current && !current.isRoot ? current : null;
-};
+import { getClosestUnselectedBlock } from './selection/replaceSelection.js';
 
 export function deleteContentWithinSelection(
 	this: Edytor,
@@ -47,19 +36,7 @@ export function deleteContentWithinSelection(
 		if (!selectionOverride) {
 			return this.selection.state.blocks;
 		}
-		if (!startBlock) {
-			return [];
-		}
-
-		const blocks = [startBlock];
-		let current: Block | null = startBlock;
-		while (current && current !== endBlock) {
-			current = current.closestNextBlock;
-			if (current) {
-				blocks.push(current);
-			}
-		}
-		return blocks;
+		return startBlock ? this.blocksBetween(startBlock, endBlock) : [];
 	})();
 
 	if (startBlock && endBlock && startBlock === endBlock && startText && endText) {
@@ -112,7 +89,7 @@ export function deleteContentWithinSelection(
 		}
 
 		endBlock.deleteContentAtRange({
-			start: [endBlock.firstText.index, 0],
+			start: [endBlock.firstText!.index, 0],
 			end: [endText.index, yEnd]
 		});
 		destinationParent.insertChildren(destinationIndex, survivingBlocks);
@@ -129,27 +106,27 @@ export function deleteContentWithinSelection(
 			if (!insideDoomedSubtree) block.removeBlock();
 		}
 		destinationParent.normalizeChildren();
-		return [endBlock.firstText, 0] as const;
+		return [endBlock.firstText!, 0] as const;
 	}
 	if (deletesStartBlock && keepsPartialEndBlock && !deletedEndAncestor && endBlock && endText) {
 		endBlock.deleteContentAtRange({
-			start: [endBlock.firstText.index, 0],
+			start: [endBlock.firstText!.index, 0],
 			end: [endText.index, yEnd]
 		});
 		for (const block of blocksToDelete.toReversed()) {
 			block.removeBlock();
 		}
 		endBlock.parent?.normalizeChildren();
-		return [endBlock.firstText, 0] as const;
+		return [endBlock.firstText!, 0] as const;
 	}
 	const firstDeletedBlock = blocksToDelete[0];
 	const lastDeletedBlock = blocksToDelete.at(-1);
-	const fallbackPreviousBlock = getClosestRemainingBlock(
+	const fallbackPreviousBlock = getClosestUnselectedBlock(
 		firstDeletedBlock,
 		deletedBlockSet,
 		'previous'
 	);
-	const fallbackNextBlock = getClosestRemainingBlock(lastDeletedBlock, deletedBlockSet, 'next');
+	const fallbackNextBlock = getClosestUnselectedBlock(lastDeletedBlock, deletedBlockSet, 'next');
 	const fallbackText =
 		startBlock && !deletedBlockSet.has(startBlock) && startText
 			? startText
@@ -165,7 +142,7 @@ export function deleteContentWithinSelection(
 		startText && startBlock
 			? {
 					start: [startText.index, yStart] as [number, number],
-					end: [startBlock.lastText.index, startBlock.lastText.length] as [number, number]
+					end: [startBlock.lastText!.index, startBlock.lastText!.length] as [number, number]
 				}
 			: null;
 
@@ -221,7 +198,7 @@ export function deleteContentWithinSelection(
 	startBlock?.parent?.normalizeChildren();
 
 	const liveFallbackText =
-		fallbackText && this.isVisibleBlockId(fallbackText.parent.id)
+		fallbackText && this.facade.isVisibleBlock(fallbackText.parent.id)
 			? fallbackText
 			: (this.root?.children[0]?.firstText ?? null);
 	return [liveFallbackText, liveFallbackText === fallbackText ? fallbackOffset : 0] as const;

@@ -197,7 +197,7 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				};
 			},
 			onBlockAttached: ({ node, block }) => {
-				if (block.isRoot || block.insideIsland) {
+				if (!block.movable) {
 					return () => {};
 				}
 

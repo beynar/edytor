@@ -31,6 +31,7 @@ import {
 	inspectAdmission,
 	loadDocument,
 	SchemaMismatchError,
+	SCHEMA_VERSION,
 	UndecodableUpdateError,
 	UnsupportedDocError,
 	type EngineDoc
@@ -90,7 +91,7 @@ const makeV99Doc = (): YDoc => {
 /** Supported version but a manifest naming another schema. */
 const makeForeignManifestDoc = (): YDoc => {
 	const doc = new Y.Doc();
-	doc.get('meta').setAttr('v', 1);
+	doc.get('meta').setAttr('v', SCHEMA_VERSION);
 	doc.get('meta').setAttr('schema', 'other-schema');
 	doc.get('blocks').setAttr('b1', { type: 'paragraph' });
 	return doc;
@@ -247,7 +248,7 @@ describe('attachDocument admission', () => {
 		expect(() => attachDocument(doc)).toThrowError(SchemaMismatchError);
 		// The state heals in place — version + manifest arrive (here: raw,
 		// as a peer update would deliver them).
-		doc.get('meta').setAttr('v', 1);
+		doc.get('meta').setAttr('v', SCHEMA_VERSION);
 		doc.get('meta').setAttr('schema', 'edytor-doc');
 		const document = attachDocument(doc);
 		document.sync();
@@ -287,7 +288,7 @@ describe('sync() — the admission re-check', () => {
 		// The doc's state is preserved — no cleanup/normalization writes.
 		expect(doc.get('blocks').getAttr('rogue')).toEqual({ type: 'paragraph' });
 		// …and a retry after healing works.
-		doc.get('meta').setAttr('v', 1);
+		doc.get('meta').setAttr('v', SCHEMA_VERSION);
 		doc.get('meta').setAttr('schema', 'edytor-doc');
 		document.sync();
 		expect(document.readiness).toBe('hydrated');

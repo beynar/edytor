@@ -1,13 +1,8 @@
 /**
- * Schema attribute names — the dependency-free leaf the model layers share.
- *
- * `edytor-doc.ts`'s `SCHEMA` object is the public manifest of every
- * semantic node role, root key and attr name a document carries; the names
- * themselves live here so `placement`/`text`/`attribution` modules can read
- * them WITHOUT importing the facade module (the import cycle the literal
- * redeclarations worked around). The two declarations must carry identical
- * values — `SCHEMA` is the record a reader consults, this module is the
- * write-side source the layers code against.
+ * Schema names — the one table (O20): every root key, node role and attr name
+ * a document carries, plus the generation stamp written on `meta`. A
+ * dependency-free leaf, so every model layer reads it without importing the
+ * facade module.
  */
 
 /** Flat block registry root: blockId → node('block') (`SCHEMA.roots.registry`). */
@@ -30,8 +25,13 @@ export const INLINE_NODE = 'inline';
 export const ID = 'id';
 export const TYPE = 'type';
 export const DATA = 'data';
-/** Presence = explicitly deleted (deletion-wins flag). */
-export const DEL = 'del';
+/**
+ * Per-writer delete marks (R3): `del.<writer>: true`. A block is deleted iff
+ * any mark is live, so an undo removes only the undoer's own mark.
+ */
+export const DEL_PREFIX = 'del.';
+export const hasDeleteMark = (node: { attrKeys(): IterableIterator<string> }): boolean =>
+	[...node.attrKeys()].some((key) => key.startsWith(DEL_PREFIX));
 /** U1 `lastChangedBy` LWW attr (`SCHEMA.blockAttrs.lastChanged`). */
 export const LAST_CHANGED_ATTR = 'l';
 export const CONTENT = 'content';
@@ -40,3 +40,11 @@ export const AT = 'at';
 
 /** `b/<blockId>` record-key prefix on the `blockattr` root. */
 export const REC_PREFIX = 'b/';
+
+/** The schema generation stamped on the `meta` root (`v`) and its manifest name (`schema`). */
+export const SCHEMA = {
+	version: 2,
+	name: 'edytor-doc',
+	roots: { registry: REGISTRY_KEY, meta: META_ROOT_KEY },
+	metaAttrs: { version: 'v', schema: 'schema' }
+} as const;

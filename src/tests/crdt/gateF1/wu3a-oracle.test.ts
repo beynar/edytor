@@ -53,6 +53,16 @@ const ed = (peer: Peer) => {
 };
 const text = (peer: Peer, id: string) => ed(peer).blockText(id);
 
+/**
+ * D-14 (R3): a delete now hides everything the block displays, including
+ * what it displays through merge claims, so the pre-D1 "a deleted holder
+ * releases its coverage" state these probes start from is staged by
+ * removing the registry entry instead — an absent block's records claim
+ * nothing, exactly what the old delete produced.
+ */
+const dropBlock = (peer: Peer, id: string) =>
+	peer.doc.transact(() => peer.doc.get('blocks').deleteAttr(id));
+
 const SEED_VC = (doc) => {
 	E.init(doc, {
 		content: [
@@ -66,7 +76,7 @@ const SEED_VC = (doc) => {
 const stageSteal = (peer: Peer) => {
 	ops.mergeBlocks(peer, 'v', 'c');
 	ops.splitBlock(peer, 'c', 1, 'thief');
-	ops.deleteBlock(peer, 'c');
+	dropBlock(peer, 'c');
 	ops.deleteText(peer, 'v', 0, 1);
 };
 

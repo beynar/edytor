@@ -23,7 +23,10 @@ import {
 import { id } from '$lib/utils.js';
 import { climb } from '$lib/selection/selection.utils.js';
 import { scheduleRemoveStalePlaceholders } from './removeStalePlaceholders.js';
-import type { ContentItem } from '$lib/crdt/index.js';
+import type { ContentItem, OpResult } from '$lib/crdt/index.js';
+
+/** A write through the block's model that the document did not refuse. */
+const accepted = (r: OpResult | undefined): boolean => r !== undefined && r.status !== 'refused';
 
 export type TextRunItem = {
 	text: string;
@@ -833,8 +836,9 @@ export class Text {
 	insertAt = (offset: number, text: string, marks?: Record<string, unknown> | null): boolean => {
 		offset = this._resolveCompositionOffset(offset);
 		if (this._writable) {
-			const applied =
-				this.parent.model?.insertText(this.segStart + offset, text, marks ?? undefined) ?? false;
+			const applied = accepted(
+				this.parent.model?.insertText(this.segStart + offset, text, marks ?? undefined)
+			);
 			if (applied) {
 				this.refreshFromProject();
 			}
@@ -870,7 +874,7 @@ export class Text {
 			}
 		}
 		if (this._writable) {
-			const applied = this.parent.model?.deleteText(this.segStart + offset, length) ?? false;
+			const applied = accepted(this.parent.model?.deleteText(this.segStart + offset, length));
 			if (applied) {
 				this.refreshFromProject();
 			}
@@ -887,8 +891,9 @@ export class Text {
 	 */
 	formatAt = (offset: number, length: number, attributes: Record<string, unknown>): boolean => {
 		if (this._writable) {
-			const applied =
-				this.parent.model?.format(this.segStart + offset, length, attributes) ?? false;
+			const applied = accepted(
+				this.parent.model?.format(this.segStart + offset, length, attributes)
+			);
 			if (applied) {
 				this.refreshFromProject();
 			}

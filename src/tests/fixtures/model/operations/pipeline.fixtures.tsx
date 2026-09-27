@@ -6,7 +6,9 @@
  *   ops — `onBeforeOperation` normalization, `onAfterOperation`
  *   notification, the readonly gate and one transaction/history step.
  * - D16: the document semantic `defaultType` is the fallback authority
- *   for `getDefaultBlock`, `clear()` and the empty-root bootstrap.
+ *   for `defaultChild`, `clear()` and the empty-root bootstrap (arch-v2
+ *   D3 / D-13: `getDefaultBlock` and its implicit caret-block argument
+ *   became `defaultChild(parent)` over adopted data).
  * - D20: `transformText` memoizes — repeated `children`/`renderChildren`
  *   reads do not re-run the transformer.
  * - D21: pending text-carrier aliases retire with their owner — a dead
@@ -282,7 +284,7 @@ export const fixtures = defineFixtures([
 	}),
 	defineModelOperationFixture({
 		description:
-			'adopts an injected document semantic defaultType for getDefaultBlock, clear() and the empty-root bootstrap (D16)',
+			'adopts an injected document semantic defaultType for defaultChild, clear() and the empty-root bootstrap (D16)',
 		input: emptyFixture,
 		run: () => null,
 		assert: () => {
@@ -297,8 +299,8 @@ export const fixtures = defineFixtures([
 
 			// The facade bootstrap block took the document default already.
 			expect(edytor.root!.children[0].type).toBe('heading');
-			expect(edytor.getDefaultBlock()).toBe('heading');
-			expect(edytor.getDefaultBlock(edytor.root)).toBe('heading');
+			expect(edytor.defaultChild(edytor.root!)).toBe('heading');
+			expect(edytor.defaultChild(edytor.root!.children[0])).toBe('heading');
 
 			// `clear()` reseeds one block of the semantic default type.
 			edytor.clear();
@@ -324,9 +326,9 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => {
 			const list = edytor.root!.children[0];
-			expect(edytor.getDefaultBlock(list)).toBe('list-item');
+			expect(edytor.defaultChild(list)).toBe('list-item');
 			// Unrelated parents still fall back to the semantic default.
-			expect(edytor.getDefaultBlock()).toBe('paragraph');
+			expect(edytor.defaultChild(list.children[0])).toBe('paragraph');
 		}
 	}),
 	defineModelOperationFixture({

@@ -26,7 +26,8 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindRunsOracle } from '../../oracles/runs.js';
-import { bindModel, bindRuns } from '../../../lib/crdt/index.js';
+import { bindRuns } from '../../../lib/crdt/index.js';
+import { bindModel } from '../../oracles/model-ops.js';
 import { bindText, readRange } from '../../../lib/crdt/text/model.js';
 import { decorateRuns } from '../../../lib/crdt/text/runs.js';
 import { createPeerPair } from '../harness/peer-set.js';

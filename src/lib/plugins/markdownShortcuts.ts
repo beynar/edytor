@@ -52,32 +52,27 @@ const canApplyShortcut = (block: Block, prefixLength: number) => {
 		selection.state.startText === block.firstText &&
 		selection.state.yStart === prefixLength &&
 		selection.state.yStart === selection.state.startText.length &&
-		!block.definition.void &&
-		!block.definition.island &&
-		!block.insideIsland &&
-		block.type !== 'codeLine'
+		block.convertible
 	);
 };
 
 const clearShortcutText = (block: Block, length: number) => {
-	const text = block.firstText;
+	const text = block.firstText!;
 	if (length > 0) {
 		text.deleteAt(0, length);
 	}
 };
 
 const restoreConvertedBlockSelection = (block: Block, offset: number) => {
-	const getTarget = () => block.firstText;
-	const setModelState = () => {
-		const target = getTarget();
-		block.edytor.selection.setCollapsedStateAtTextOffset(target, Math.min(offset, target.length));
-	};
-
-	setModelState();
-	void block.edytor.selection.setAtTextOffset(getTarget(), Math.min(offset, getTarget().length));
+	// A kind that displays no text (a divider) takes no caret.
+	const target = block.firstText;
+	if (!target) return;
+	block.edytor.selection.setCollapsedStateAtTextOffset(target, Math.min(offset, target.length));
+	void block.edytor.selection.setAtTextOffset(target, Math.min(offset, target.length));
 	void tick().then(() => {
-		const target = getTarget();
-		void block.edytor.selection.setAtTextOffset(target, Math.min(offset, target.length));
+		const current = block.firstText;
+		if (current)
+			void block.edytor.selection.setAtTextOffset(current, Math.min(offset, current.length));
 	});
 };
 

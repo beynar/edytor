@@ -6,10 +6,16 @@
 	import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 
 	let {
-		block
+		block,
+		onrender
 	}: {
 		block: Block;
+		/** Dev check (O22): told when the kind's snippet rendered `content()`. */
+		onrender?: () => void;
 	} = $props();
+
+	// Called once per mount: the kind's snippet rendered `content()`.
+	(() => onrender?.())();
 
 	const getContentKey = (blockOrText: Text | InlineBlock) =>
 		blockOrText instanceof Text ? `${blockOrText.id}:${blockOrText.domVersion}` : blockOrText.id;

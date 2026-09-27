@@ -2,6 +2,8 @@ import type { Browser, BrowserContext, Page } from '@playwright/test';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import * as Y from '../../src/lib/crdt/vendor/yjs/src/index.js';
+// This build's frame word (protocol × 1000 + schema) — derived, never pinned.
+import { GENERATION } from '../../src/lib/crdt/protocols/envelope.js';
 import { expect, test } from './editorTest';
 import { gotoEditorRoute, readJsonByTestId, trackPageIssues, waitForEditorReady } from './helpers';
 import { startOpaqueRelay, type OpaqueRelay } from './ws-relay';
@@ -197,8 +199,6 @@ const closeClients3 = async (clients: SocketClients3 | undefined) => {
  * other member's frames — the refusal under test is the receiving
  * provider's inbound refusal of a foreign stamp (R13, D-2), not transport.
  */
-/** `envelope.ts` GENERATION: protocol 14 × 1000 + schema 1. */
-const GENERATION = 14_001;
 const startRoguePeer = async (relay: OpaqueRelay, room: string) => {
 	const rogue = new Y.Doc();
 	rogue.clientID = Number.MAX_SAFE_INTEGER;

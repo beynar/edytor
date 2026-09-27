@@ -5,11 +5,11 @@ import { createOperationEdytor } from './test.utils.js';
 
 // Seam regression — a split block shares the source's backing text, so
 // atoms typed at the new block's head land INSIDE the predecessor's slice
-// claim window. `model.delete` only hides the block: its released atoms
-// fell back to the covering claim and re-surfaced in the sibling
-// (observed as a duplicated seam char — 'abc!!d' — in collab DST seed
-// 10's cross-block salvage). `removeBlock` must tombstone the doomed
-// block's displayed content first.
+// claim window. They used to fall back to the covering claim when the block
+// was deleted and re-surface in the sibling (observed as a duplicated seam
+// char — 'abc!!d' — in collab DST seed 10's cross-block salvage). Since
+// arch-v2 D1 (R3, D-14) a delete writes marks only and a deleted block's
+// records keep hiding what they win; no content is tombstoned.
 describe('removeBlock claim release', () => {
 	it('does not leak head-typed atoms into the split predecessor', () => {
 		const { edytor } = createOperationEdytor(
@@ -57,7 +57,7 @@ describe('removeBlock claim release', () => {
 		expect(root.children).toHaveLength(1);
 	});
 
-	it('undo restores the block AND its atoms — tombstones ride the same capture', () => {
+	it('undo restores the block AND its atoms — one capture removes the delete marks', () => {
 		const { edytor } = createOperationEdytor(
 			<root>
 				<paragraph>abcde</paragraph>

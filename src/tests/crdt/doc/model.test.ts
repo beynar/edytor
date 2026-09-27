@@ -144,13 +144,15 @@ describe('structural operations', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
 		const idBefore = ed.crdtId('b1');
-		expect(ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' })).toBe(true);
+		expect(ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' }).status).toBe(
+			'applied'
+		);
 		expect(topIds(ed)).toEqual(['b1', 'x', 'b2', 'b3']);
-		expect(ed.moveBlock('x', { parent: null, index: 0 })).toBe(true);
+		expect(ed.moveBlock('x', { parent: null, index: 0 }).status).toBe('applied');
 		expect(topIds(ed)).toEqual(['x', 'b1', 'b2', 'b3']);
-		expect(ed.nestBlock('x', 'b2')).toBe(true);
+		expect(ed.nestBlock('x', 'b2').status).toBe('applied');
 		expect(ed.positionOf('x')).toEqual({ parent: 'b2', index: 0 });
-		expect(ed.unNestBlock('x')).toBe(true);
+		expect(ed.unNestBlock('x').status).toBe('applied');
 		expect(ed.positionOf('x')).toEqual({ parent: null, index: 2 });
 		expect(ed.crdtId('b1')).toBe(idBefore); // untouched blocks keep identity
 		// moving the moved block kept ITS identity too
@@ -160,7 +162,7 @@ describe('structural operations', () => {
 	it('moveBlocks relocates a group in one transaction', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
-		expect(ed.moveBlocks(['b1', 'b2'], { parent: 'b3', index: 1 })).toBe(true);
+		expect(ed.moveBlocks(['b1', 'b2'], { parent: 'b3', index: 1 }).status).toBe('applied');
 		expect(topIds(ed)).toEqual(['b3']);
 		expect(kidIds(ed, 'b3')).toEqual(['b3a', 'b1', 'b2', 'b3b']);
 	});
@@ -169,7 +171,7 @@ describe('structural operations', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
 		const crdtB3 = ed.crdtId('b3');
-		expect(ed.splitBlock('b3', 3, 'b3-tail')).toBe(true);
+		expect(ed.splitBlock('b3', 3, 'b3-tail').status).toBe('applied');
 		expect(ed.blockText('b3')).toBe('par');
 		expect(ed.blockText('b3-tail')).toBe('ent');
 		// baseline split: children follow the tail
@@ -182,7 +184,7 @@ describe('structural operations', () => {
 	it('mergeBlocks (engine primitive) claims content and adopts children', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
-		expect(ed.mergeBlocks('b3', 'b1')).toBe(true);
+		expect(ed.mergeBlocks('b3', 'b1').status).toBe('applied');
 		expect(ed.blockText('b1')).toBe('hello worldparent');
 		expect(kidIds(ed, 'b1')).toEqual(['b3a', 'b3b']);
 		expect(topIds(ed)).toEqual(['b1', 'b2']);
@@ -198,7 +200,7 @@ describe('structural operations', () => {
 		const ed = seed(E.create(doc));
 		// b3 'parent' + children merges BACKWARD into b2 — its children must
 		// unnest to b3's vacated root slot, NOT into b2.
-		expect(ed.mergeBackward('b3')).toBe('b2');
+		expect(ed.mergeBackward('b3').ids).toEqual(['b2']);
 		expect(ed.blockText('b2')).toBe('second blockparent');
 		expect(kidIds(ed, 'b2')).toEqual([]);
 		expect(topIds(ed)).toEqual(['b1', 'b2', 'b3a', 'b3b']);
@@ -207,7 +209,7 @@ describe('structural operations', () => {
 	it('mergeBackward on a first child merges into the parent', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
-		expect(ed.mergeBackward('b3a')).toBe('b3');
+		expect(ed.mergeBackward('b3a').ids).toEqual(['b3']);
 		expect(ed.blockText('b3')).toBe('parentchild a');
 		expect(kidIds(ed, 'b3')).toEqual(['b3b']);
 	});
@@ -217,10 +219,10 @@ describe('structural operations', () => {
 		const ed = seed(E.create(doc));
 		// b1 has content → refused when it cannot go anywhere? b1 IS the first
 		// block — baseline falls back to mergeForward only when EMPTY.
-		expect(ed.mergeBackward('b1')).toBeNull();
+		expect(ed.mergeBackward('b1').status).toBe('refused');
 		// Empty it, then retry → forward merge pulls b2 in.
 		ed.deleteText('b1', 0, 'hello world'.length);
-		expect(ed.mergeBackward('b1')).toBe('b1');
+		expect(ed.mergeBackward('b1').ids).toEqual(['b1']);
 		expect(ed.blockText('b1')).toBe('second block');
 		expect(topIds(ed)).toEqual(['b1', 'b3']);
 	});
@@ -228,7 +230,7 @@ describe('structural operations', () => {
 	it('mergeForward pulls the next sibling in, unnesting its children', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
-		expect(ed.mergeForward('b2')).toBe('b2');
+		expect(ed.mergeForward('b2').ids).toEqual(['b2']);
 		expect(ed.blockText('b2')).toBe('second blockparent');
 		expect(topIds(ed)).toEqual(['b1', 'b2', 'b3a', 'b3b']);
 	});
@@ -238,7 +240,7 @@ describe('structural operations', () => {
 		const ed = seed(E.create(doc));
 		const idA = ed.crdtId('b3a');
 		const idB = ed.crdtId('b3b');
-		expect(ed.deleteBlock('b3', { keepChildren: true })).toBe(true);
+		expect(ed.deleteBlock('b3', { keepChildren: true }).status).toBe('applied');
 		expect(topIds(ed)).toEqual(['b1', 'b2', 'b3a', 'b3b']);
 		expect(ed.crdtId('b3a')).toBe(idA);
 		expect(ed.crdtId('b3b')).toBe(idB);
@@ -247,7 +249,7 @@ describe('structural operations', () => {
 	it('deleteBlock without keepChildren hides the whole subtree', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
-		expect(ed.deleteBlock('b3')).toBe(true);
+		expect(ed.deleteBlock('b3').status).toBe('applied');
 		expect(topIds(ed)).toEqual(['b1', 'b2']);
 		expect(ed.listBlockIds()).not.toContain('b3a');
 		expect(ed.resolveBlock('b3')).toBeNull(); // del flag set on the root
@@ -257,7 +259,7 @@ describe('structural operations', () => {
 	it('duplicateBlock copies a subtree under fresh ids, keeping the source', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
-		const newId = ed.duplicateBlock('b3', (old) => `${old}-copy`);
+		const newId = ed.duplicateBlock('b3', (old) => `${old}-copy`).ids[0];
 		expect(newId).toBe('b3-copy');
 		expect(topIds(ed)).toEqual(['b1', 'b2', 'b3', 'b3-copy']);
 		expect(ed.blockText('b3-copy')).toBe('parent');
@@ -271,8 +273,8 @@ describe('structural operations', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
 		const idBefore = ed.crdtId('b1');
-		expect(ed.setBlockType('b1', 'heading')).toBe(true);
-		expect(ed.setBlockData('b1', { level: 2 })).toBe(true);
+		expect(ed.setBlockType('b1', 'heading').status).toBe('applied');
+		expect(ed.setBlockData('b1', { level: 2 }).status).toBe('applied');
 		expect(ed.blockTypeOf('b1')).toBe('heading');
 		expect(ed.blockDataOf('b1')).toEqual({ level: 2 });
 		expect(ed.crdtId('b1')).toBe(idBefore);
@@ -288,8 +290,8 @@ describe('structural operations', () => {
 					{ kind: 'inline', id: 'in1', type: 'mention', data: { u: 'a' } }
 				],
 				children: [{ id: 'nb', type: 'paragraph' }]
-			})
-		).toBe(true);
+			}).status
+		).toBe('applied');
 		expect(ed.blockText('b1')).toBe('replaced ');
 		expect(ed.project().children[0].content).toEqual([
 			{ kind: 'text', text: 'replaced ' },
@@ -301,7 +303,9 @@ describe('structural operations', () => {
 	it('insertBlock refuses an already-used id (whole spec atomic)', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
-		expect(ed.insertBlock({ parent: null, index: 0 }, { id: 'b1', type: 'x' })).toBe(false);
+		expect(ed.insertBlock({ parent: null, index: 0 }, { id: 'b1', type: 'x' }).status).toBe(
+			'refused'
+		);
 		expect(
 			ed.insertBlock(
 				{ parent: null, index: 0 },
@@ -310,8 +314,8 @@ describe('structural operations', () => {
 					type: 'x',
 					children: [{ id: 'b2', type: 'x' }]
 				}
-			)
-		).toBe(false);
+			).status
+		).toBe('refused');
 		expect(topIds(ed)).toEqual(['b1', 'b2', 'b3']);
 	});
 });
@@ -322,30 +326,32 @@ describe('content operations', () => {
 	it('insert/delete text and marks', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
-		expect(ed.insertText('b1', 0, 'XX')).toBe(true);
+		expect(ed.insertText('b1', 0, 'XX').status).toBe('applied');
 		expect(ed.blockText('b1')).toBe('XXhello world');
-		expect(ed.deleteText('b1', 0, 2)).toBe(true);
+		expect(ed.deleteText('b1', 0, 2).status).toBe('applied');
 		expect(ed.blockText('b1')).toBe('hello world');
-		expect(ed.setMark('b1', 0, 5, 'italic', true)).toBe(true);
-		expect(ed.unsetMark('b1', 0, 5, 'italic')).toBe(true);
-		expect(ed.formatRange('b1', 0, 5, { italic: true, link: 'x' })).toBe(true);
-		expect(ed.clearMarks('b1', 0, 5)).toBe(true);
+		expect(ed.setMark('b1', 0, 5, 'italic', true).status).toBe('applied');
+		expect(ed.unsetMark('b1', 0, 5, 'italic').status).toBe('applied');
+		expect(ed.formatRange('b1', 0, 5, { italic: true, link: 'x' }).status).toBe('applied');
+		expect(ed.clearMarks('b1', 0, 5).status).toBe('applied');
 		expect(ed.project().children[0].content).toEqual([{ kind: 'text', text: 'hello world' }]);
 	});
 
 	it('inline atoms insert, carry data, update, remove', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
-		expect(ed.insertInline('b1', 5, { id: 'm1', type: 'mention', data: { u: 'x' } })).toBe(true);
+		expect(ed.insertInline('b1', 5, { id: 'm1', type: 'mention', data: { u: 'x' } }).status).toBe(
+			'applied'
+		);
 		expect(ed.project().children[0].content[1]).toEqual({
 			kind: 'inline',
 			id: 'm1',
 			type: 'mention',
 			data: { u: 'x' }
 		});
-		expect(ed.setInlineData('b1', 'm1', { u: 'y' })).toBe(true);
+		expect(ed.setInlineData('b1', 'm1', { u: 'y' }).status).toBe('applied');
 		expect(ed.project().children[0].content[1].data).toEqual({ u: 'y' });
-		expect(ed.removeInline('b1', 'm1')).toBe(true);
+		expect(ed.removeInline('b1', 'm1').status).toBe('applied');
 		expect(ed.blockText('b1')).toBe('hello world');
 	});
 });
@@ -400,15 +406,17 @@ describe('island/void enforcement', () => {
 	it('void blocks reject children, splits and merges — but allow content edits', () => {
 		const doc = newDoc();
 		const ed = islandSeed(E.create(doc, { roleOf }));
-		expect(ed.insertBlock({ parent: 'v1', index: 0 }, { id: 'n', type: 'paragraph' })).toBe(false);
-		expect(ed.moveBlock('p1', { parent: 'v1', index: 0 })).toBe(false);
-		expect(ed.nestBlock('p1', 'v1')).toBe(false);
-		expect(ed.splitBlock('v1', 2, 'v-tail')).toBe(false);
-		expect(ed.mergeBlocks('v1', 'p1')).toBe(false);
-		expect(ed.mergeBlocks('p2', 'v1')).toBe(false);
-		expect(ed.mergeBackward('v1')).toBeNull();
+		expect(ed.insertBlock({ parent: 'v1', index: 0 }, { id: 'n', type: 'paragraph' }).status).toBe(
+			'refused'
+		);
+		expect(ed.moveBlock('p1', { parent: 'v1', index: 0 }).status).toBe('refused');
+		expect(ed.nestBlock('p1', 'v1').status).toBe('refused');
+		expect(ed.splitBlock('v1', 2, 'v-tail').status).toBe('refused');
+		expect(ed.mergeBlocks('v1', 'p1').status).toBe('refused');
+		expect(ed.mergeBlocks('p2', 'v1').status).toBe('refused');
+		expect(ed.mergeBackward('v1').status).toBe('refused');
 		// caption stays editable
-		expect(ed.insertText('v1', 0, 'edited ')).toBe(true);
+		expect(ed.insertText('v1', 0, 'edited ').status).toBe('applied');
 		expect(ed.blockText('v1')).toBe('edited caption');
 	});
 
@@ -416,19 +424,19 @@ describe('island/void enforcement', () => {
 		const doc = newDoc();
 		const ed = islandSeed(E.create(doc, { roleOf }));
 		// inside → out
-		expect(ed.moveBlock('ic', { parent: null, index: 0 })).toBe(false);
-		expect(ed.unNestBlock('ic')).toBe(false);
+		expect(ed.moveBlock('ic', { parent: null, index: 0 }).status).toBe('refused');
+		expect(ed.unNestBlock('ic').status).toBe('refused');
 		// outside → in
-		expect(ed.moveBlock('p1', { parent: 'isl', index: 1 })).toBe(false);
-		expect(ed.moveBlock('p1', { parent: 'ic', index: 0 })).toBe(false);
+		expect(ed.moveBlock('p1', { parent: 'isl', index: 1 }).status).toBe('refused');
+		expect(ed.moveBlock('p1', { parent: 'ic', index: 0 }).status).toBe('refused');
 		// merges across the boundary refused, interior merge allowed
-		expect(ed.mergeBlocks('p1', 'ic')).toBe(false);
-		expect(ed.mergeBlocks('ic', 'isl')).toBe(true); // child merges into its island
+		expect(ed.mergeBlocks('p1', 'ic').status).toBe('refused');
+		expect(ed.mergeBlocks('ic', 'isl').status).toBe('applied'); // child merges into its island
 		expect(ed.blockText('isl')).toBe('islandinner');
 		// ...but building the interior via insertBlock is allowed
-		expect(ed.insertBlock({ parent: 'isl', index: 0 }, { id: 'ic2', type: 'paragraph' })).toBe(
-			true
-		);
+		expect(
+			ed.insertBlock({ parent: 'isl', index: 0 }, { id: 'ic2', type: 'paragraph' }).status
+		).toBe('applied');
 		expect(kidIds(ed, 'isl')).toEqual(['ic2']);
 	});
 
@@ -437,7 +445,7 @@ describe('island/void enforcement', () => {
 		const ed = islandSeed(E.create(doc, { roleOf }));
 		// ic is a 'paragraph' child; tag it to observe the reset.
 		ed.setBlockType('ic', 'list');
-		expect(ed.mergeBackward('isl')).toBe('p1');
+		expect(ed.mergeBackward('isl').ids).toEqual(['p1']);
 		expect(ed.blockText('p1')).toBe('aaaisland');
 		// child unnested to the island's vacated slot and reset to 'paragraph'
 		expect(topIds(ed)).toEqual(['p1', 'ic', 'v1', 'p2']);
@@ -447,8 +455,8 @@ describe('island/void enforcement', () => {
 	it('no roles configured → pure engine behavior (moves into any block allowed)', () => {
 		const doc = newDoc();
 		const ed = islandSeed(E.create(doc)); // no roleOf
-		expect(ed.moveBlock('ic', { parent: null, index: 0 })).toBe(true);
-		expect(ed.moveBlock('p1', { parent: 'v1', index: 0 })).toBe(true);
+		expect(ed.moveBlock('ic', { parent: null, index: 0 }).status).toBe('applied');
+		expect(ed.moveBlock('p1', { parent: 'v1', index: 0 }).status).toBe('applied');
 	});
 });
 
@@ -542,7 +550,7 @@ describe('onChange', () => {
 		const seen = [];
 		ed.onChange((c) => seen.push(c));
 		ed.transact(() => {
-			expect(ed.mergeBackward('b')).toBe('a');
+			expect(ed.mergeBackward('b').ids).toEqual(['a']);
 			ed.project(); // modelCtx read — folds the in-flight claim write
 		});
 		expect(seen).toHaveLength(1);

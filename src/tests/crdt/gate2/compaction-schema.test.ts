@@ -83,7 +83,7 @@ describe('attack 6: compaction', () => {
 
 		// Post-reload operation still works on the compacted doc.
 		const b2 = ed2.childrenIds(null)[0];
-		expect(ed2.insertText(b2, 0, 'post-reload ')).toBe(true);
+		expect(ed2.insertText(b2, 0, 'post-reload ').status).toBe('applied');
 		expect(JSON.stringify(ed2.toJSON())).toContain('post-reload');
 		await p.destroy();
 		await p2.destroy();

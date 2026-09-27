@@ -41,7 +41,6 @@ import {
 	isNestedForeignEditableTarget
 } from '$lib/events/nativeInteractiveControl.js';
 import type { Anchor } from '$lib/crdt/text/model.js';
-import { compareBlockPath } from '$lib/block/blockPath.js';
 
 /**
  * CRDT-stable anchor for a text position — `{b}` is the home block id of
@@ -311,6 +310,15 @@ const restoreBackwardDomRange = (
 	selection.addRange(range);
 	return false;
 };
+
+/**
+ * A block's text endpoint for block-level selection state. A kind that
+ * displays no text (a divider) has none; its own content slot stands in as
+ * the model endpoint of the block selection (selection state holds texts
+ * until block sets are stored by id).
+ */
+const edgeText = (block: Block, edge: 'first' | 'last'): Text =>
+	(edge === 'first' ? block.firstText : block.lastText) ?? (block.content[0] as Text);
 
 export class EdytorSelection {
 	edytor: Edytor;
@@ -800,7 +808,7 @@ export class EdytorSelection {
 				? clampedStart - clampedEnd
 				: startText.parent === endText.parent
 					? startText.index - endText.index
-					: compareBlockPath(startText.parent, endText.parent);
+					: this.edytor.compareBlocks(startText.parent, endText.parent);
 
 		if (order <= 0) {
 			return {
@@ -1955,17 +1963,7 @@ export class EdytorSelection {
 				? startText.stringContent.slice(yStart, yEnd)
 				: content;
 
-		const blocks: Block[] = startBlock ? [startBlock] : [];
-		let currentBlock: Block | null = startBlock;
-
-		// Collect all blocks between the start and end blocks
-		while (currentBlock && currentBlock !== endBlock) {
-			const nextBlock: Block | null = currentBlock.closestNextBlock;
-			currentBlock = nextBlock;
-			if (nextBlock) {
-				blocks.push(nextBlock);
-			}
-		}
+		const blocks = startBlock ? this.edytor.blocksBetween(startBlock, endBlock) : [];
 
 		// Flatten the blocks into a single array of content parts
 		const allContentParts = blocks.flatMap((block) => block.content);
@@ -2717,8 +2715,8 @@ export class EdytorSelection {
 			return;
 		}
 
-		const startText = firstBlock.firstText;
-		const endText = lastBlock.lastText;
+		const startText = edgeText(firstBlock, 'first');
+		const endText = edgeText(lastBlock, 'last');
 		this.state = {
 			...this.buildSelectionState({
 				startText,
@@ -2737,8 +2735,8 @@ export class EdytorSelection {
 	};
 
 	private setStateFromBlockContentRange = (block: Block) => {
-		const startText = block.firstText;
-		const endText = block.lastText;
+		const startText = edgeText(block, 'first');
+		const endText = edgeText(block, 'last');
 		const state = this.buildSelectionState({
 			startText,
 			yStart: 0,
@@ -2862,15 +2860,7 @@ export class EdytorSelection {
 		const isReversed = isCollapsed ? false : (target.isReversed ?? false);
 		const startBlock = startText.parent;
 		const endBlock = endText.parent;
-		const blocks: Block[] = [startBlock];
-		let currentBlock: Block | null = startBlock;
-
-		while (currentBlock && currentBlock !== endBlock) {
-			currentBlock = currentBlock.closestNextBlock;
-			if (currentBlock) {
-				blocks.push(currentBlock);
-			}
-		}
+		const blocks = this.edytor.blocksBetween(startBlock, endBlock);
 
 		const allContentParts = blocks.flatMap((block) => block.content);
 		const startIndex = allContentParts.indexOf(startText);
@@ -3698,10 +3688,12 @@ export class EdytorSelection {
 			startOffset = 0;
 		}
 		if (!endOffset) {
-			endOffset = block.lastText.length;
+			endOffset = edgeText(block, 'last').length;
 		}
 		const syncModelState =
-			options.syncModelState !== false && startOffset === 0 && endOffset === block.lastText.length;
+			options.syncModelState !== false &&
+			startOffset === 0 &&
+			endOffset === edgeText(block, 'last').length;
 		// Same staleness contract as `setAtRange`, captured BEFORE the
 		// sync-model write below so a mid-await derive to a position that
 		// matches neither the write target nor the call-time state aborts
@@ -3724,9 +3716,9 @@ export class EdytorSelection {
 				this.setStateFromBlockContentRange(targetBlock);
 			} else {
 				this.setRangeStateAtTextOffsets(
-					targetBlock.firstText,
+					edgeText(targetBlock, 'first'),
 					resolvedStartOffset,
-					targetBlock.lastText,
+					edgeText(targetBlock, 'last'),
 					resolvedEndOffset
 				);
 			}
@@ -3742,8 +3734,8 @@ export class EdytorSelection {
 		const blockStale = () => {
 			if (this.edytor.gestureSerial !== gestureSerialAtCall) return true;
 			const s = this.state;
-			const startText = block.firstText;
-			const endText = block.lastText;
+			const startText = edgeText(block, 'first');
+			const endText = edgeText(block, 'last');
 			return (
 				s !== stateAtCall &&
 				!this.stateMatchesSelectionTarget(s, {
@@ -3767,8 +3759,8 @@ export class EdytorSelection {
 			let endNode: HTMLElement;
 			try {
 				[startNode, endNode] = await Promise.all([
-					this.edytor.getTextNode(block.firstText),
-					this.edytor.getTextNode(block.lastText)
+					this.edytor.getTextNode(edgeText(block, 'first')),
+					this.edytor.getTextNode(edgeText(block, 'last'))
 				]);
 			} catch {
 				// Unresolvable endpoint — mirror the model write like every
@@ -3780,8 +3772,8 @@ export class EdytorSelection {
 				}
 				return;
 			}
-			const startText = block.firstText;
-			const endText = block.lastText;
+			const startText = edgeText(block, 'first');
+			const endText = edgeText(block, 'last');
 			const [startTextNode, startNodeOffset] = this.findTextNode(startNode, startOffset);
 			const [endTextNode, endNodeOffset] = this.findTextNode(endNode, endOffset);
 

@@ -343,6 +343,7 @@ const hasContent = (block: OBlock) =>
 
 const isEmptyBlock = (block: OBlock) => !hasContent(block) && block.children.length === 0;
 
+/** Document order (O7): the block before `block` in the one pre-order over visible blocks. */
 const closestPreviousBlock = (block: OBlock): OBlock | null => {
 	const index = indexOf(block);
 	if (index === 0) {
@@ -355,16 +356,13 @@ const closestPreviousBlock = (block: OBlock): OBlock | null => {
 	return current;
 };
 
-/** `block.closestNextBlock` — island/void blocks do not climb past their sibling list. */
+/** Document order (O7): the block after `block` — no island/void seal (merges apply their own rule). */
 const closestNextBlock = (block: OBlock): OBlock | null => {
 	if (block.children.length > 0) return block.children[0];
-	const next = block.parent?.children[indexOf(block) + 1];
-	if (next || block.island || block.void) return next ?? null;
-	let parent = block.parent;
-	while (parent && !parent.isRoot) {
-		const parentNext = parent.parent?.children[indexOf(parent) + 1];
-		if (parentNext) return parentNext;
-		parent = parent.parent;
+	for (let current = block; current.parent; current = current.parent) {
+		const next = current.parent.children[indexOf(current) + 1];
+		if (next) return next;
+		if (current.parent.isRoot) return null;
 	}
 	return null;
 };
@@ -498,12 +496,16 @@ const unNest = (block: OBlock): boolean => {
 	return true;
 };
 
+/** The adopted default child type under `parent` (null when not captured). */
+type DefaultChildOf = (parent: OBlock) => string | null;
+
 /**
  * Facade `mergeUnnesting`: `from`'s children take over its vacated slot
- * (island sources also reset child types), then `from`'s content appends
- * into `into` and `from` leaves the live tree.
+ * (island sources also reset child types to the default child of that
+ * slot's parent), then `from`'s content appends into `into` and `from`
+ * leaves the live tree.
  */
-const mergeUnnesting = (from: OBlock, into: OBlock, defaultType: string | null): boolean => {
+const mergeUnnesting = (from: OBlock, into: OBlock, defaultChildOf: DefaultChildOf): boolean => {
 	if (from === into || from.void || into.void) return false;
 	const islandFrom = islandOf(from);
 	if (islandFrom !== islandOf(into) && into !== islandFrom) return false;
@@ -516,8 +518,9 @@ const mergeUnnesting = (from: OBlock, into: OBlock, defaultType: string | null):
 		kid.parent = parent;
 	});
 	from.children = [];
-	if (from.island && defaultType) {
-		for (const kid of kids) kid.type = defaultType;
+	const resetType = from.island ? defaultChildOf(parent) : null;
+	if (resetType) {
+		for (const kid of kids) kid.type = resetType;
 	}
 	into.parts.push(...from.parts);
 	removeSubtree(from);
@@ -525,48 +528,24 @@ const mergeUnnesting = (from: OBlock, into: OBlock, defaultType: string | null):
 };
 
 /** Facade `mergeBackward` — merge `block` into the previous doc-order block. */
-const mergeBackward = (block: OBlock, defaultType: string | null): boolean => {
+const mergeBackward = (block: OBlock, defaultChildOf: DefaultChildOf): boolean => {
 	if (block.void) return false;
-	const index = indexOf(block);
-	const previous =
-		index === 0
-			? block.parent && !block.parent.isRoot
-				? block.parent
-				: null
-			: (() => {
-					const sibling = block.parent?.children[index - 1];
-					if (!sibling) return null;
-					let current = sibling;
-					while (current.children.length > 0) current = current.children.at(-1)!;
-					return current;
-				})();
+	const previous = closestPreviousBlock(block);
 	if (previous === null) {
 		if (block.children.length === 0 && blockAtomLength(block) === 0) {
-			return mergeForward(block, defaultType);
+			return mergeForward(block, defaultChildOf);
 		}
 		return false;
 	}
-	return mergeUnnesting(block, previous, defaultType);
+	return mergeUnnesting(block, previous, defaultChildOf);
 };
 
 /** Facade `mergeForward` — pull the next doc-order block into `block`. */
-const mergeForward = (block: OBlock, defaultType: string | null): boolean => {
+const mergeForward = (block: OBlock, defaultChildOf: DefaultChildOf): boolean => {
 	if (block.void) return false;
-	const next = (() => {
-		if (block.children.length > 0) return block.children[0];
-		let current = block;
-		for (;;) {
-			const parent = current.parent;
-			if (!parent) return null;
-			const sibling = parent.children[indexOf(current) + 1];
-			if (sibling) return sibling;
-			if (current.island || current.void) return null;
-			if (parent.isRoot) return null;
-			current = parent;
-		}
-	})();
+	const next = closestNextBlock(block);
 	if (next === null) return false;
-	return mergeUnnesting(next, block, defaultType);
+	return mergeUnnesting(next, block, defaultChildOf);
 };
 
 /** `removeInlineBlock` — only fires when the addressed part is an inline atom. */
@@ -731,6 +710,8 @@ const describeDeleteInner = (
 	const freshIds = new Set<string>();
 	const defaultType = before.model.defaultType;
 	const rootDefaultType = before.model.rootDefaultType ?? defaultType;
+	const defaultChildOf: DefaultChildOf = (parent) =>
+		(parent.isRoot ? undefined : before.model.defaultChild?.[parent.type]) ?? defaultType;
 	const tree = (description: string): DeleteExpectation => ({
 		kind: 'tree',
 		description,
@@ -1329,7 +1310,7 @@ const describeDeleteInner = (
 			if (previous?.void) {
 				return selectOnly(previous.id, 'backspace before a void block selects it');
 			}
-			return mergeBackward(startBlock, defaultType)
+			return mergeBackward(startBlock, defaultChildOf)
 				? tree('start-of-block backspace merges into the previous block')
 				: unchanged('merge backward refused');
 		}
@@ -1375,7 +1356,7 @@ const describeDeleteInner = (
 			if (next?.void) {
 				return selectOnly(next.id, 'forward delete before a void block selects it');
 			}
-			return mergeForward(startBlock, defaultType)
+			return mergeForward(startBlock, defaultChildOf)
 				? tree('end-of-block forward delete pulls in the next block')
 				: unchanged('merge forward refused');
 		}

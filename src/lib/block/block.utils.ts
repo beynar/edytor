@@ -9,12 +9,11 @@
  * (`flushMirror`, `normalizeChildren`/`normalizeContent` plugin hooks).
  *
  * STRUCTURAL PERMISSION IS DOCUMENT-OWNED: every op delegates to
- * `block.model.*` (the facade through `DocBlock`) and treats `false`/`null`
+ * `block.model.*` (the facade through `DocBlock`) and treats a `refused` result
  * as "refused" — no view-side re-checks of the rules the document already
  * enforces (island sealing, void/island destinations, own-subtree moves,
- * merges across island boundaries; see `edytor-doc.ts` `canAcceptMove`,
- * `insideIsland`, `mergeUnnesting` and `placement/model.ts`
- * `isSelfOrDescendant`). Removing a view-side semantic guard must never
+ * merges across island boundaries; see `edytor-doc.ts` `canPlace` and
+ * `canMerge`, R5). Removing a view-side semantic guard must never
  * change document behavior — if a rule matters here it belongs in the
  * facade, not in this file.
  *
@@ -202,7 +201,7 @@ export function addChildBlock(
 		parent: this,
 		edytor: this.edytor,
 		block: block || {
-			type: this.edytor.getDefaultBlock()
+			type: this.edytor.defaultChild(this)
 		}
 	});
 	this.insertChildren(index, [newBlock]);
@@ -267,15 +266,11 @@ export function splitBlock(
 	}
 	const newId = id('b');
 	const offset = this.partOffsetOf(text) + index;
-	const sibling = model.split(offset, newId);
-	if (!sibling) {
+	// G5: the sibling takes its parent's default child type and no data.
+	const tail = { type: this.edytor.defaultChild(this.parent), data: {} };
+	if (model.split(offset, newId, tail).status === 'refused') {
 		return null;
 	}
-	// Baseline semantics: the sibling takes the default block type (and no
-	// data) — the engine copies type+data, so reset both in the same
-	// transaction.
-	sibling.setType(this.edytor.getDefaultBlock(this.parent));
-	sibling.setData({});
 	this.edytor.flushMirror();
 	this.parent?.normalizeChildren();
 	return this.edytor.idToBlock.get(newId) ?? null;
@@ -289,13 +284,6 @@ export function removeBlock(
 	if (!this.parent || !model || !this._live) {
 		return;
 	}
-	// Tombstone the block's displayed content first — `model.delete` only
-	// hides the block; atoms released inside a neighbour's covering slice
-	// claim (split-share backing seam) would otherwise re-surface there.
-	const doomedParts = this.projectedParts()?.length ?? this.content.length;
-	if (doomedParts > 0) {
-		this.deleteParts(0, doomedParts);
-	}
 	model.delete({ keepChildren });
 	this.edytor.flushMirror();
 	this.parent?.normalizeChildren();
@@ -306,10 +294,10 @@ export function mergeBlockBackward(this: Block): Block | null {
 	if (!this.parent || !model) {
 		return null;
 	}
-	const target = model.mergeBackward();
+	const [target] = model.mergeBackward().ids;
 	this.edytor.flushMirror();
 	this.parent?.normalizeChildren();
-	return target ? (this.edytor.idToBlock.get(target.id) ?? null) : null;
+	return target ? (this.edytor.idToBlock.get(target) ?? null) : null;
 }
 
 export function mergeBlockForward(this: Block): Block | null {
@@ -317,10 +305,10 @@ export function mergeBlockForward(this: Block): Block | null {
 	if (!this.parent || !model) {
 		return null;
 	}
-	const target = model.mergeForward();
+	const [target] = model.mergeForward().ids;
 	this.edytor.flushMirror();
 	this.parent?.normalizeChildren();
-	return target ? (this.edytor.idToBlock.get(target.id) ?? null) : null;
+	return target ? (this.edytor.idToBlock.get(target) ?? null) : null;
 }
 
 export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): Block | null {
@@ -353,7 +341,7 @@ export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): 
 	// The move preserves block identity — the baseline rebuilt the block
 	// from JSON, but `crdtId`/wrapper stability is the intended v14
 	// improvement and reconcile keeps the same wrapper registered.
-	if (!model.moveTo({ parent: currentBlock.model, index: lastIndex! })) {
+	if (model.moveTo({ parent: currentBlock.model, index: lastIndex! }).status === 'refused') {
 		return null;
 	}
 	this.edytor.flushMirror();
@@ -400,7 +388,7 @@ export function moveBlocks(this: Block, { blocks, path }: BlockOperations['moveB
 		parent: currentBlock._blockId ?? null,
 		index: lastIndex
 	});
-	if (!moved) {
+	if (moved.status === 'refused') {
 		return [];
 	}
 	this.edytor.flushMirror();
@@ -421,7 +409,7 @@ export function unNestBlock(this: Block): Block | null {
 
 	// `model.unNest()` (facade `unNestBlock`) owns the refusal rules:
 	// top-level blocks, island-sealed blocks and sealed destinations.
-	if (!model.unNest()) {
+	if (model.unNest().status === 'refused') {
 		return null;
 	}
 	this.edytor.flushMirror();
@@ -433,13 +421,13 @@ export function unNestBlock(this: Block): Block | null {
 export function nestBlock(this: Block): Block | null {
 	// Admission resolves the nest target — the previous sibling — and the
 	// facade owns permission: `nestBlock` refuses void/island/inside-island
-	// targets and island-sealed sources (`canAcceptMove`/`insideIsland`).
+	// targets and island-sealed sources (`canPlace`).
 	const previousBlock = this.previousBlock;
 	const model = this.model;
 	if (!previousBlock || !this.parent || !model || previousBlock._blockId == null) {
 		return null;
 	}
-	if (!model.nestUnder(previousBlock._blockId)) {
+	if (model.nestUnder(previousBlock._blockId).status === 'refused') {
 		return null;
 	}
 	this.edytor.flushMirror();
@@ -641,7 +629,7 @@ export function normalizeChildren(this: Block): void {
 		const newBlock = new Block({
 			parent: this,
 			edytor: this.edytor,
-			block: { type: this.edytor.getDefaultBlock(this), children: [] }
+			block: { type: this.edytor.defaultChild(this), children: [] }
 		});
 		this.insertChildren(0, [newBlock]);
 		return this.normalizeChildren();

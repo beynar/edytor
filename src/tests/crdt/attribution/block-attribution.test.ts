@@ -180,7 +180,7 @@ describe('block attribution — content and metadata edits', () => {
 		expect(a.attribution.block(blockId)?.lastChangedBy).toBe('bob');
 		// Same-value inline data rewrite → suppressed: no commit at all.
 		const noopCommits = commitsDuring(b, () => {
-			b.transact(() => expect(b.facade.setInlineData(blockId, 'm1', { k: 1 })).toBe(true));
+			b.transact(() => expect(b.facade.setInlineData(blockId, 'm1', { k: 1 }).status).toBe('noop'));
 		});
 		expect(noopCommits.filter((c) => c.attr || c.content)).toHaveLength(0);
 		b.transact(() => b.facade.removeInline(blockId, 'm1'));
@@ -219,7 +219,7 @@ describe('block attribution — content and metadata edits', () => {
 
 		// clearMarks over a range carrying no marks → early true, no write.
 		const clearCommits = commitsDuring(d, () => {
-			d.transact(() => expect(d.facade.clearMarks(blockId, 3, 2)).toBe(true));
+			d.transact(() => expect(d.facade.clearMarks(blockId, 3, 2).status).toBe('noop'));
 		});
 		expect(clearCommits.filter((c) => c.attr || c.content)).toHaveLength(0);
 
@@ -228,9 +228,9 @@ describe('block attribution — content and metadata edits', () => {
 		expect(d.attribution.block(blockId)?.lastChangedBy).toBe('alice');
 		expect(d.attribution.block(blockId)?.contributors).toEqual(new Set(['alice']));
 
-		// Empty-range format → false → no stamp write.
+		// Empty-range format → noop (F-D5) → no stamp write.
 		const before = d.attribution.block(blockId);
-		expect(d.facade.formatRange(blockId, 99, 10, { italic: true })).toBe(false);
+		expect(d.facade.formatRange(blockId, 99, 10, { italic: true }).status).toBe('noop');
 		expect(d.attribution.block(blockId)).toEqual(before);
 		d.destroy();
 	});

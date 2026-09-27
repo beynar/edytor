@@ -32,7 +32,7 @@ import { bindWebsocketProvider } from '../../../lib/crdt/providers/websocket.js'
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { checkSchema } from '../../../lib/crdt/admission.js';
-import { attachDocument } from '../../../lib/crdt/index.js';
+import { attachDocument, SCHEMA_VERSION } from '../../../lib/crdt/index.js';
 import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import * as bc from 'lib0-v14/broadcastchannel';
@@ -91,7 +91,7 @@ const makeV99Update = () => {
 	const remote = new Y.Doc();
 	// Yjs map-attr conflicts resolve by clientID (higher wins) — pin the
 	// remote clientID to the max so its meta.v=99 write deterministically
-	// wins the merge against any live doc's meta.v=1.
+	// wins the merge against any live doc's own meta.v stamp.
 	remote.clientID = Number.MAX_SAFE_INTEGER;
 	const er = E.create(remote);
 	er.init();
@@ -261,7 +261,7 @@ describe('generation mismatch — refused at the envelope and the container reco
 		await nextTick();
 
 		expect(Y.encodeStateVector(docA)).toEqual(before);
-		expect(mismatches).toEqual([{ expected: wordOf(1), found: wordOf(99) }]);
+		expect(mismatches).toEqual([{ expected: wordOf(SCHEMA_VERSION), found: wordOf(99) }]);
 		// Nothing was decoded, so nothing was judged as schema content.
 		expect(mismatchSchema.length).toBe(0);
 
@@ -270,7 +270,7 @@ describe('generation mismatch — refused at the envelope and the container reco
 			generationDbName(name),
 			encodeV14(0, (e) => sync.writeUpdate(e, makeIncrementalUpdate(docA, 'after-gen'))).slice()
 				.buffer,
-			'v1-peer'
+			'own-generation-peer'
 		);
 		await until(() => docA.get('blocks').getAttr('after-gen') !== undefined, 3000);
 		await pA.destroy();
@@ -321,18 +321,31 @@ describe('generation mismatch — refused at the envelope and the container reco
 		await pB.destroy();
 	});
 
-	test('a container record written before the schema field hydrates as schema 1', async () => {
+	// Re-pinned at the D1 schema bump (generation 2): a record written before
+	// the `schema` field existed was written by a schema-1 build, and schema 1
+	// stored deletion as a single `del` flag. Since D1's per-writer
+	// `del.<writer>` marks, reading such a container would resurface its
+	// deleted blocks — so it is another generation and is refused like one.
+	test('a container record written before the schema field is refused as another generation (D1 bump)', async () => {
 		const name = uniqueName('gen-legacy-record');
 		const good = new Y.Doc();
 		E.create(good).init();
-		await seedGenerationDb(name, [Y.encodeStateAsUpdate(good)], {
+		const row = Y.encodeStateAsUpdate(good);
+		await seedGenerationDb(name, [row], {
 			engine: GENERATION_RECORD.engine,
 			protocol: GENERATION_RECORD.protocol
 		});
 		const docB = new Y.Doc();
 		const pB = new providers.IndexeddbPersistence(name, docB);
-		await pB.whenSynced;
-		expect(E.schemaVersion(docB)).toBe(1);
+		const failed = [];
+		pB.on('failed', (e) => failed.push(e));
+		await expect(pB.whenSynced).rejects.toThrow(/not a v14 document generation/);
+		expect(pB.synced).toBe(false);
+		expect(failed.length).toBe(1);
+		expect(E.schemaVersion(docB)).toBeUndefined();
+		const rows = await readRows(name);
+		expect(rows.length).toBe(1);
+		expect(sameBytes(rows[0], row)).toBe(true);
 		await pB.destroy();
 	});
 });
@@ -361,7 +374,7 @@ describe('same-generation forged stamp — BroadcastChannel (IndexeddbPersistenc
 		await nextTick();
 
 		// The update was refused BEFORE mutating the live doc.
-		expect(E.schemaVersion(docA)).toBe(1);
+		expect(E.schemaVersion(docA)).toBe(SCHEMA_VERSION);
 		expect(docA.get('blocks').getAttr('evil-v99')).toBeUndefined();
 		expect(Y.encodeStateVector(docA)).toEqual(before);
 
@@ -376,10 +389,10 @@ describe('same-generation forged stamp — BroadcastChannel (IndexeddbPersistenc
 		bc.publish(
 			generationDbName(name),
 			encodeV14(0, (e) => sync.writeUpdate(e, inc)).slice().buffer,
-			'v1-peer'
+			'own-generation-peer'
 		);
 		await until(() => docA.get('blocks').getAttr('inc-after-v99') !== undefined, 3000);
-		expect(E.schemaVersion(docA)).toBe(1);
+		expect(E.schemaVersion(docA)).toBe(SCHEMA_VERSION);
 
 		// Not persisted: compact the store and decode every row.
 		await providers.storeState(pA);
@@ -423,7 +436,7 @@ describe('same-generation forged stamp — BroadcastChannel (IndexeddbPersistenc
 		);
 		await nextTick();
 
-		expect(E.schemaVersion(docA)).toBe(1);
+		expect(E.schemaVersion(docA)).toBe(SCHEMA_VERSION);
 		expect(docA.get('meta').getAttr('schema')).toBe('edytor-doc');
 		expect(docA.get('blocks').getAttr('evil-foreign')).toBeUndefined();
 		expect(Y.encodeStateVector(docA)).toEqual(before);
@@ -443,7 +456,7 @@ describe('same-generation forged stamp — BroadcastChannel (IndexeddbPersistenc
 		bc.publish(
 			generationDbName(name),
 			encodeV14(0, (e) => sync.writeUpdate(e, makeIncrementalUpdate(docA))).slice().buffer,
-			'v1-peer'
+			'own-generation-peer'
 		);
 		await until(() => docA.get('blocks').getAttr('inc-valid') !== undefined, 3000);
 		expect(mismatches.length).toBe(0);
@@ -467,7 +480,7 @@ describe('same-generation forged stamp — BroadcastChannel (IndexeddbPersistenc
 		// SyncStep1 (a harmless state vector) goes out, a SyncStep2 state
 		// publish never does.
 		const word = encoding.createEncoder();
-		encoding.writeVarUint(word, wordOf(1));
+		encoding.writeVarUint(word, wordOf(SCHEMA_VERSION));
 		const prefix = encoding.toUint8Array(word);
 		const syncMsgs = seen.filter(
 			(f) => prefix.every((b, i) => f[i] === b) && f[prefix.length] === 0
@@ -517,7 +530,7 @@ describe('same-generation forged stamp — websocket (opaque relay)', () => {
 		pA.ws.onmessage({ data: frame.slice().buffer });
 		await nextTick();
 
-		expect(E.schemaVersion(docA)).toBe(1);
+		expect(E.schemaVersion(docA)).toBe(SCHEMA_VERSION);
 		expect(docA.get('blocks').getAttr('evil-v99')).toBeUndefined();
 		expect(
 			mismatches.some((m) => m.problem?.kind === 'unsupported' && m.problem?.version === 99)
@@ -658,9 +671,9 @@ describe('unversioned content (no stamp at all) — D-2 / R13', () => {
 		bc.publish(
 			generationDbName(name),
 			encodeV14(0, (e) => sync.writeUpdate(e, Y.encodeStateAsUpdate(good))).slice().buffer,
-			'v1-peer'
+			'own-generation-peer'
 		);
-		await until(() => E.schemaVersion(docA) === 1, 3000);
+		await until(() => E.schemaVersion(docA) === SCHEMA_VERSION, 3000);
 		expect(checkSchema(docA)).toBeNull();
 		docA.transact(() => docA.get('scratch').setAttr('after', 1));
 		await nextTick();

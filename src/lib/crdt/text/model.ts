@@ -34,6 +34,10 @@
  *   claim depth), then the claim item's `(client, clock)` stamp for truly
  *   concurrent overlaps. The candidate block is `owner(holderOf(record))`,
  *   so a merged block's records route to its owner automatically.
+ * - A deleted holder's records keep contesting: atoms they win are hidden
+ *   (R3 — deleting a block hides what it displays, including atoms a peer
+ *   typed concurrently into its claim window), never handed to a covering
+ *   neighbour.
  *
  * Engine notes: slice entries are `ContentAny` objects; their item id
  * `(client, clock + offset-in-item)` is the claim stamp. Anchors use the
@@ -42,7 +46,6 @@
  */
 import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode } from '../engine-api.js';
 import { DATA, ID, TYPE } from '../schema.js';
-import { sanitizeWireJson, sanitizeWireString } from '../../utils/json.js';
 
 /** Block-id of the backing text a slice record points into. */
 export type TextId = string;
@@ -611,7 +614,7 @@ export const nearestOwned = (
 	return iv.i0 <= target ? target : Math.min(iv.i0, len - 1); // gap → next interval's head
 };
 
-/** One live resolved claim feeding the ownership sweep. */
+/** One resolved claim feeding the ownership sweep. */
 export type SweepClaim = {
 	/** Covered span `[lo, hi)` inside the text (already clamped to its length). */
 	lo: number;
@@ -620,8 +623,8 @@ export type SweepClaim = {
 	key: ClaimKey;
 	/** The slice-record entry claiming the span. */
 	entry: SliceEntry;
-	/** The resolved display owner of `entry`'s holder (never `DEAD`). */
-	owner: BlockId;
+	/** The resolved display owner of `entry`'s holder; `DEAD` hides what it wins. */
+	owner: Owner;
 };
 
 // ── ownership sweep internals ────────────────────────────────────────
@@ -698,8 +701,8 @@ export const sweepOwnership = (claims: SweepClaim[]): OwnInterval[] => {
 		while (ci < byLo.length && byLo[ci].lo <= p) heapPush(heap, byLo[ci++]);
 		while (heap.length > 0 && heap[0].hi <= p) heapPop(heap);
 		const top = heap[0];
-		if (top === undefined) {
-			last = null; // unowned span — break coalescing
+		if (top === undefined || top.owner === DEAD) {
+			last = null; // unowned or dead-won span — break coalescing
 			continue;
 		}
 		const q = pts[pi + 1];
@@ -716,8 +719,7 @@ export const sweepOwnership = (claims: SweepClaim[]): OwnInterval[] => {
 /**
  * Every `(holder, entry)` pair whose payload is a slice record — the
  * shared enumeration behind the claim-election passes
- * ({@link gatherClaims}) and the `maxG` scan. Dead-held records are
- * yielded too — the election filters them, `maxG` must count them.
+ * ({@link gatherClaims}) and the `maxG` scan.
  */
 export function* eachSliceRecord(
 	blocks: Map<BlockId, TextBlockRec>
@@ -755,9 +757,9 @@ export type GatheredClaim = SweepClaim & {
  * `pairs` is the pair source — `eachSliceRecord(blocks)` for a whole-
  * registry scan, or the runs layer's per-text record index. `opts.t`
  * narrows to one text; `opts.skip` drops an entry before resolution
- * (undo-repair's fresh-claim exclusion). Dead-held records cannot claim;
- * records on a missing/dead text or with unresolvable anchors contribute
- * nothing.
+ * (undo-repair's fresh-claim exclusion). Dead-held records contest with
+ * owner `DEAD` (the sweep hides what they win); records on a missing text
+ * or with unresolvable anchors contribute nothing.
  */
 export const gatherClaims = (
 	blocks: Map<BlockId, TextBlockRec>,
@@ -769,7 +771,6 @@ export const gatherClaims = (
 	const out: GatheredClaim[] = [];
 	for (const [holder, e] of pairs) {
 		const owner = ownerOf(holder);
-		if (owner === DEAD) continue; // dead holders can't claim
 		const p = e.payload as SliceRecord;
 		if (opts?.t !== undefined && p.t !== opts.t) continue;
 		if (opts?.skip !== undefined && opts.skip(e)) continue;
@@ -1328,16 +1329,9 @@ export const bindText = (Y: EngineApi) => {
 		payload: string | EngineNode,
 		marks?: Record<string, unknown>
 	): boolean => {
-		// Clone caller marks ONCE at the boundary: `text.insert` keeps the
-		// format object by reference, so a caller-held marks payload would
-		// alias straight into replicated state (gate-2 finding 11).
-		// `sanitizeWireJson` normalizes lone surrogates to U+FFFD at the same
-		// boundary — the wire's UTF-8 encoder would otherwise deliver a
-		// different string to every receiving replica (F2-M1).
-		if (marks !== undefined) marks = sanitizeWireJson(marks);
-		// Text payloads normalize the same way — verbatim lone surrogates
-		// are not wire-idempotent; U+FFFD is what the wire delivers.
-		if (typeof payload === 'string') payload = sanitizeWireString(payload);
+		// `payload` and `marks` arrive normalized and cloned by the facade's
+		// ingress (O1, F2-M1): `text.insert` keeps the format object by
+		// reference.
 		const rec = blocks.get(b);
 		if (!rec) return false;
 		// Empty payload: resolve the block (above) but skip every write
@@ -1607,17 +1601,14 @@ export const bindText = (Y: EngineApi) => {
 		formats: Record<string, unknown>
 	): boolean => {
 		void doc;
-		// Clone caller formats ONCE — `text.format` stores them by reference
-		// (gate-2 finding 11; covers setMark's `{[name]: value}` payloads too).
-		// `sanitizeWireJson` also normalizes lone surrogates in mark names and
-		// string values to U+FFFD — the wire's UTF-8 encode would otherwise
-		// deliver a different format payload to every receiving replica (F2-M1).
-		formats = sanitizeWireJson(formats);
+		// `formats` arrive normalized and cloned by the facade's ingress (O1):
+		// `text.format` stores them by reference. An empty range writes
+		// nothing (the op's result reads `noop` from the transaction).
 		const segs = flatten(b, blocks, own);
 		const total = ownedLength(segs);
 		const at = Math.max(0, Math.min(offset, total));
 		const end = Math.min(total, at + Math.max(0, length));
-		if (end <= at) return false;
+		if (end <= at) return true;
 		let base = 0;
 		for (const seg of segs) {
 			const len = seg.i1 - seg.i0;

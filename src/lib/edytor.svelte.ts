@@ -21,11 +21,13 @@ import { Y } from '$lib/crdt/engine.js';
 import {
 	attachDocument,
 	bindCrdt,
+	SemanticConflictError,
 	type Awareness,
 	type Crdt,
 	type DocChange,
 	type EdytorDoc,
 	type EdytorDocument,
+	type OrderPolicy,
 	type ProjectedBlock,
 	type ProjectedDoc,
 	type YDoc,
@@ -120,26 +122,6 @@ export type RootBlock = Block & {
 const getEventTimeStamp = (event: Event | undefined) =>
 	event?.timeStamp || (typeof performance === 'undefined' ? Date.now() : performance.now());
 
-/**
- * Mirror-shape adapter for the canonical `facade.toJSON()` export (S6):
- * the wrapper mirror's `InlineBlock.value` historically emitted `data`
- * even when empty (`{}`), while the canonical export omits absent `data`.
- * Re-adding `data: {}` to data-less inline atoms keeps `edytor.value` /
- * `onChange` payloads byte-identical to the serialization they replaced.
- */
-const withMirrorInlineData = (blocks: JSONBlock[]): JSONBlock[] =>
-	blocks.map((block) => {
-		const content = block.content?.map((part) =>
-			'type' in part && part.data === undefined ? { ...part, data: {} } : part
-		);
-		const children = block.children ? withMirrorInlineData(block.children) : undefined;
-		return {
-			...block,
-			...(content ? { content } : {}),
-			...(children ? { children } : {})
-		};
-	});
-
 const isAppleWebKitBrowser = () => {
 	if (typeof navigator === 'undefined') {
 		return false;
@@ -188,7 +170,6 @@ export class Edytor {
 	}
 	edytor = this;
 	selection: EdytorSelection;
-	defaultType = 'paragraph';
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
 	placeholder?: string | Snippet<[{ block: Block }]>;
@@ -363,6 +344,24 @@ export class Edytor {
 	get facade(): EdytorDoc {
 		return this.document.facade;
 	}
+
+	// Document order (O7): the view's walkers and block-selection keys read
+	// the document's one pre-order; `policy` is its island-sealing policy.
+	blockAfter = (block: Block, policy?: OrderPolicy): Block | null =>
+		this.idToBlock.get(this.facade.next(block.id, policy) ?? '') ?? null;
+	blockBefore = (block: Block, policy?: OrderPolicy): Block | null =>
+		this.idToBlock.get(this.facade.previous(block.id, policy) ?? '') ?? null;
+	compareBlocks = (a: Block, b: Block): number => this.facade.compare(a.id, b.id);
+	/** `start`, `end` and every block between them in document order (no `end`: to the last). */
+	blocksBetween = (start: Block, end: Block | null): Block[] => {
+		const ids = this.facade.order();
+		const from = ids.indexOf(start.id);
+		if (from < 0) return [start];
+		const to = end ? ids.indexOf(end.id, from) : -1;
+		return ids
+			.slice(from, to < 0 ? undefined : to + 1)
+			.flatMap((id) => this.idToBlock.get(id) ?? []);
+	};
 	get awareness(): Awareness {
 		return this.document.awareness;
 	}
@@ -506,16 +505,10 @@ export class Edytor {
 				);
 			}
 			this.document = document;
-			// The document is the semantic authority — an injected document's
-			// defaultType is inherited (a view cannot reshape it).
-			this.defaultType = document.semantics.defaultType;
 		} else {
 			// Legacy path — the view internally owns a document composed
 			// around the injected (or a fresh) doc/awareness.
-			this.document = attachDocument(doc ?? new Y.Doc(), {
-				awareness,
-				semantics: { defaultType: this.defaultType }
-			});
+			this.document = attachDocument(doc ?? new Y.Doc(), { awareness });
 			this.ownsDocument = true;
 		}
 		this.readonly = readonly || false;
@@ -527,9 +520,18 @@ export class Edytor {
 		// the document's attach reference itself. A borrowed/injected
 		// document is never destroyed by a failed view.
 		try {
-			// Initialize plugins
+			// Initialize plugins. Default children are merged across extensions
+			// before definition precedence applies: two extensions declaring
+			// different default children for one parent type is an error (D-13).
+			const defaultChild: Record<string, string> = {};
 			this.plugins = (plugins || []).map((plugin) => {
 				const initializedPlugin = plugin(this);
+				for (const [type, definition] of Object.entries(initializedPlugin.blocks ?? {})) {
+					const child = typeof definition === 'object' ? definition.defaultChild : undefined;
+					if (child !== undefined && (defaultChild[type] ??= child) !== child) {
+						throw new SemanticConflictError(`defaultChild "${type}"`, defaultChild[type], child);
+					}
+				}
 
 				initializedPlugin.marks &&
 					Object.entries(initializedPlugin.marks).forEach(([key, snippet]) => {
@@ -598,20 +600,21 @@ export class Edytor {
 			this.placeholder =
 				placeholder || this.plugins.find((plugin) => plugin.placeholder)?.placeholder;
 
-			// Contribute this view's plugin-implied structural roles to the
-			// document — document-level semantics outlive any single view. The
-			// first declaration for a type is adopted; a conflicting one is an
-			// error (views cannot silently impose incompatible structural rules
-			// on a shared document). Atomic: a conflict validates before ANY
-			// role is applied, so a failed view cannot half-seed semantics.
+			// Contribute this view's capability (R5) to the document — roles,
+			// `rendersContent` and default children outlive any single view.
+			// The first declaration for a type is adopted; a conflicting one is
+			// an error (views cannot silently impose incompatible structural
+			// rules on a shared document). Atomic: a conflict validates before
+			// ANYTHING is applied, so a failed view cannot half-seed semantics.
+			const blocks = Array.from(this.blocks);
 			this.document.adoptSemantics({
 				roles: Object.fromEntries(
-					Array.from(this.blocks, ([type, definition]) => [
-						type,
-						{ void: definition.void, island: definition.island }
-					])
+					blocks.map(([type, { void: v, island }]) => [type, { void: v, island }])
 				),
-				defaultType: this.defaultType
+				rendersContent: Object.fromEntries(
+					blocks.map(([type, definition]) => [type, definition.rendersContent !== false])
+				),
+				defaultChild
 			});
 
 			// Enroll this view's local-edit origin in the document's history —
@@ -718,10 +721,9 @@ export class Edytor {
 		}
 		const json: JSONBlock = {
 			type: 'root',
-			// `facade.toJSON()` is the canonical document export — one
-			// serializer instead of a second mirror walk that could drift
-			// (S6). `withMirrorInlineData` preserves the emitted shape.
-			children: root ? withMirrorInlineData(this.facade.toJSON().children) : []
+			// `facade.toJSON()` is the canonical document export — the one
+			// serializer (S6, L14).
+			children: root ? this.facade.toJSON().children : []
 		};
 		this._valueCache = { version, revision, root, json };
 		return json;
@@ -737,28 +739,9 @@ export class Edytor {
 		return true;
 	};
 
-	getDefaultBlock = (
-		parent: Block | Edytor | undefined = this.selection.state.startText?.parent
-	) => {
-		// The document is the semantic authority — `defaultType` mirrors
-		// `document.semantics.defaultType` (adopted in the constructor) and
-		// is the fallback when no parent-sensitive plugin override applies.
-		if (!parent || parent instanceof Edytor) {
-			return this.defaultType;
-		}
-		for (const plugin of this.plugins) {
-			if (plugin.defaultBlock) {
-				const defaultBlock =
-					typeof plugin.defaultBlock === 'function'
-						? plugin.defaultBlock(parent)
-						: plugin.defaultBlock;
-				if (defaultBlock) {
-					return defaultBlock;
-				}
-			}
-		}
-		return this.defaultType;
-	};
+	/** The adopted default type for a new child of `parent` — its actual parent (R5, O9). */
+	defaultChild = (parent: Block): string =>
+		this.document.defaultChild(parent.isRoot ? null : parent.type);
 
 	/** Releases the readiness wait of a view bound before its document decided. */
 	private _readinessRelease: (() => void) | undefined;
@@ -915,14 +898,6 @@ export class Edytor {
 	};
 
 	/**
-	 * True while `blockId` is visible in the projected tree — delegates to
-	 * the facade's canonical visibility oracle (`isVisible` + the
-	 * display-ancestor walk) rather than re-deriving it from the memoized
-	 * projected index, so view code has ONE visibility authority (S7).
-	 */
-	isVisibleBlockId = (blockId: string): boolean => this.facade.isVisibleBlock(blockId);
-
-	/**
 	 * Incremental mirror apply — patch the wrapper tree from one committed
 	 * {@link DocChange} instead of re-projecting + re-reconciling the whole
 	 * document (~5ms project + O(doc) reconcile at 5k blocks, per commit).
@@ -1039,7 +1014,7 @@ export class Edytor {
 			const used = new Set<Block>();
 			let degraded = false;
 			const next: Block[] = [];
-			ids.forEach((id, index) => {
+			ids.forEach((id) => {
 				let child = this.idToBlock.get(id);
 				const pending = this._pendingBlocks.get(id);
 				this._pendingBlocks.delete(id);
@@ -1056,7 +1031,6 @@ export class Edytor {
 				}
 				child._bind(id, parent);
 				child.parent = parent;
-				child.index = index;
 				used.add(child);
 				if (addedNode) {
 					// `added` roots carry the full projected subtree — the same
@@ -1073,7 +1047,7 @@ export class Edytor {
 					!used.has(old) &&
 					old._live &&
 					!claimed.has(old.id) &&
-					this.facade.positionOf(old.id) === null
+					!this.facade.isVisibleBlock(old.id)
 				) {
 					old._drop(keepAlive);
 				}
@@ -1839,7 +1813,7 @@ export class Edytor {
 				edytor: this,
 				parent: this.root,
 				block: {
-					type: this.getDefaultBlock(this.root)
+					type: this.defaultChild(root)
 				}
 			});
 			root.insertChildren(root.children.length, [newBlock]);

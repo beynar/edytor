@@ -836,8 +836,9 @@ export const runSchedule = (
 			// `delOn`'s live view alone.
 			if (env.delSet?.has(dd.id) || env.delAny?.has(dd.id)) delAuthed.add(dd.id);
 			if (dd.stamp !== null) {
+				// Per-writer delete marks: one stamp per live mark, comma-joined.
 				const s = delStamps.get(dd.id) ?? new Set<string>();
-				s.add(dd.stamp);
+				for (const stamp of dd.stamp.split(',')) s.add(stamp);
 				delStamps.set(dd.id, s);
 			}
 		}
@@ -1007,7 +1008,10 @@ export const runSchedule = (
 			case 'deleteBlock': {
 				const id = resolveId(peer, op.idIndex);
 				if (id === undefined) return null;
-				return { env: { delSet: new Set([id]) }, exec: () => ops.deleteBlock(peer, id) };
+				// D-14: a delete marks the target and every block it displays
+				// through merge claims (the holders routing to it).
+				const del = new Set([id, ...(ops.opTarget?.(peer, id)?.holders ?? [])]);
+				return { env: { delSet: del }, exec: () => ops.deleteBlock(peer, id) };
 			}
 			case 'moveBlock': {
 				const id = resolveId(peer, op.idIndex);
@@ -1579,7 +1583,7 @@ export const runSchedule = (
 			if (b.deleted) {
 				delOn.add(id);
 				delAuthed.add(id);
-				if (b.delStamp !== null) delStamps.set(id, new Set([b.delStamp]));
+				if (b.delStamp !== null) delStamps.set(id, new Set(b.delStamp.split(',')));
 			}
 		}
 		for (const [k, a] of base.atoms) {

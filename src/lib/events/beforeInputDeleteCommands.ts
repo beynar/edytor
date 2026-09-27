@@ -246,7 +246,7 @@ const deleteCollapsedLineBackward = async (edytor: Edytor, snapshot: BeforeInput
 		return;
 	}
 
-	const firstText = startText.parent.firstText;
+	const firstText = startText.parent.firstText!;
 	firstText.parent.deleteContentAtRange({
 		start: [firstText.index, 0],
 		end: [startText.index, yStart]
@@ -260,7 +260,7 @@ const deleteCollapsedLineForward = async (edytor: Edytor, snapshot: BeforeInputS
 		return;
 	}
 
-	const lastText = startText.parent.lastText;
+	const lastText = startText.parent.lastText!;
 	startText.parent.deleteContentAtRange({
 		start: [startText.index, yStart],
 		end: [lastText.index, lastText.length]
@@ -309,8 +309,8 @@ const deleteEntireSoftLine = async (edytor: Edytor, snapshot: BeforeInputSnapsho
 		return;
 	}
 
-	const firstText = startText.parent.firstText;
-	const lastText = startText.parent.lastText;
+	const firstText = startText.parent.firstText!;
+	const lastText = startText.parent.lastText!;
 	firstText.parent.deleteContentAtRange({
 		start: [firstText.index, 0],
 		end: [lastText.index, lastText.length]

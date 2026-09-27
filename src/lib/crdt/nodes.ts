@@ -1,8 +1,8 @@
 /**
  * Typed node surface (WU2) — `document.block(id)` handles over the semantic
  * model. Each handle is a thin dead-safe wrapper: ops delegate to the
- * facade's ownership-aware operations and refuse (`false`/`null`) on
- * absent/merged ids.
+ * facade's ownership-aware operations and return its {@link OpResult}
+ * (`refused` on absent/merged ids).
  *
  * Handles are transaction-aware: `childIds()` etc. reflect mutations made
  * earlier in the same transaction.
@@ -22,11 +22,10 @@
  * `childIds`. Richer structure reads (positions, paths, roles, anchors)
  * live on the facade (`positionOf`/`pathOf`/`isVoid`/`anchorAt`/…).
  */
-import type { BlockId, BlockSpec, ContentItem, InlineSpec } from './placement/model.js';
+import type { BlockId, BlockSpec, ContentItem, InlineSpec, SplitTail } from './placement/model.js';
 import type { ContentRun } from './text/runs.js';
-import type { EdytorDoc } from './edytor-doc.js';
+import type { EdytorDoc, OpResult } from './edytor-doc.js';
 import type { BlockAttribution } from './attribution/block.js';
-import { sanitizeWireString } from '../utils/json.js';
 
 /** A node argument: another block handle, a raw block id, or `null` for the root list. */
 export type NodeRef = DocBlock | BlockId | null;
@@ -36,8 +35,8 @@ const idOf = (ref: NodeRef | undefined): BlockId | null =>
 
 /**
  * Typed handle over one document block. Handles are dead-safe: constructing
- * one for an absent/merged id is legal — ops return `false`/`null` (the
- * underlying facade ops guard the same way).
+ * one for an absent/merged id is legal — ops are `refused` (the underlying
+ * facade ops guard the same way).
  *
  * Read members are getters — every access re-derives from current doc state,
  * so a handle obtained before a mutation sees the mutation afterwards
@@ -82,67 +81,50 @@ export type DocBlock = {
 	/** Ordered visible child ids. */
 	childIds(): BlockId[];
 
-	// ── content ops — display offsets, ownership-mapped ─────────────────
+	// ── ops — display offsets, ownership-mapped; each returns the
+	//    document's {@link OpResult} (the facade op with this block's id) ──
 
-	insertText(offset: number, text: string, marks?: Record<string, unknown>): boolean;
-	deleteText(offset: number, length: number): boolean;
+	insertText(offset: number, text: string, marks?: Record<string, unknown>): OpResult;
+	deleteText(offset: number, length: number): OpResult;
 	/** Multi-mark format over `[offset, offset+length)`; `null` values unset. */
-	format(offset: number, length: number, marks: Record<string, unknown>): boolean;
-	setMark(offset: number, length: number, name: string, value: unknown): boolean;
-	unsetMark(offset: number, length: number, name: string): boolean;
+	format(offset: number, length: number, marks: Record<string, unknown>): OpResult;
+	setMark(offset: number, length: number, name: string, value: unknown): OpResult;
+	unsetMark(offset: number, length: number, name: string): OpResult;
 	/** Remove every mark present anywhere in the range. */
-	clearMarks(offset: number, length: number): boolean;
-	insertInline(offset: number, spec: InlineSpec): boolean;
-	removeInline(inlineId: string): boolean;
-	setInlineData(inlineId: string, data: Record<string, unknown>): boolean;
-
-	// ── structural ops ──────────────────────────────────────────────────
-
-	/** Insert a fresh-identity child spec; returns the new block handle. */
-	insertChild(index: number, spec: BlockSpec): DocBlock | null;
+	clearMarks(offset: number, length: number): OpResult;
+	insertInline(offset: number, spec: InlineSpec): OpResult;
+	removeInline(inlineId: string): OpResult;
+	setInlineData(inlineId: string, data: Record<string, unknown>): OpResult;
+	/** Insert a fresh-identity child spec; `ids`: the new block. */
+	insertChild(index: number, spec: BlockSpec): OpResult;
 	/** Relocate this block — identity preserved; island/void rules apply. */
-	moveTo(dest: { parent: NodeRef; index: number }): boolean;
+	moveTo(dest: { parent: NodeRef; index: number }): OpResult;
 	/** Move to the last position under `parent`. */
-	nestUnder(parent: DocBlock | BlockId): boolean;
+	nestUnder(parent: DocBlock | BlockId): OpResult;
 	/** Move beside the parent (index = parent index + 1). */
-	unNest(): boolean;
-	/**
-	 * Split content at display `offset` into a new sibling `newId` — the
-	 * tail's slice records move without atom copies, children follow the
-	 * sibling. Returns the new block handle (type/data copied from this
-	 * block — callers applying the baseline split reset type+data).
-	 */
-	split(offset: number, newId: BlockId): DocBlock | null;
-	/** Baseline merge into the previous block in document order. */
-	mergeBackward(): DocBlock | null;
+	unNest(): OpResult;
+	/** Split content at display `offset` into a new sibling `newId`; `ids`: the new block. */
+	split(offset: number, newId: BlockId, tail?: SplitTail): OpResult;
+	/** Baseline merge into the previous block in document order; `ids`: the survivor. */
+	mergeBackward(): OpResult;
 	/** Baseline merge pulling the next block in document order into this. */
-	mergeForward(): DocBlock | null;
+	mergeForward(): OpResult;
 	/** Engine merge primitive — `other`'s content+children claim into this. */
-	mergeFrom(other: DocBlock | BlockId): boolean;
-	/** Delete (`del` flag, wins over concurrent moves); `keepChildren` reparents. */
-	delete(opts?: { keepChildren?: boolean }): boolean;
-
-	// ── metadata / replacement ──────────────────────────────────────────
-
-	setType(type: string): boolean;
-	setData(data: Record<string, unknown>): boolean;
-	/** Baseline `setBlock` — type/data update in place; content/children replace. */
-	set(value: {
-		type?: string;
-		data?: Record<string, unknown>;
-		content?: (
-			| { kind: 'text'; text: string; marks?: Record<string, unknown> }
-			| { kind: 'inline'; id: string; type: string; data?: Record<string, unknown> }
-		)[];
-		children?: BlockSpec[];
-	}): boolean;
-	/** Fresh-identity copy of this subtree right after it (paste/drag-clone). */
-	duplicate(freshId: (oldId: BlockId) => BlockId): DocBlock | null;
+	mergeFrom(other: DocBlock | BlockId): OpResult;
+	/** Delete (per-writer marks on this block and what it displays; R3); `keepChildren` reparents. */
+	delete(opts?: { keepChildren?: boolean }): OpResult;
+	setType(type: string): OpResult;
+	setData(data: Record<string, unknown>): OpResult;
+	/** Baseline `setBlock` — type/data update in place; content/children replace (all-or-nothing). */
+	set(value: Parameters<EdytorDoc['setBlock']>[1]): OpResult;
+	/** Fresh-identity copy of this subtree right after it; `ids`: the copy. */
+	duplicate(freshId: (oldId: BlockId) => BlockId): OpResult;
 };
 
 /**
  * Build the `document.block(id)` node surface over an existing facade —
- * one cached handle per id, all delegating to the facade's semantic ops.
+ * one cached handle per id (the facade normalized it at ingress), all
+ * delegating to the facade's semantic ops.
  */
 export const bindNodes = (doc: EdytorDoc) => {
 	const cache = new Map<BlockId, DocBlock>();
@@ -180,37 +162,19 @@ export const bindNodes = (doc: EdytorDoc) => {
 			insertInline: (offset, spec) => doc.insertInline(id, offset, spec),
 			removeInline: (inlineId) => doc.removeInline(id, inlineId),
 			setInlineData: (inlineId, data) => doc.setInlineData(id, inlineId, data),
-
-			insertChild: (index, spec) =>
-				// insertBlock normalizes caller-supplied ids at the boundary
-				// (F2-M1), so the handle binds the sanitized stored id.
-				doc.insertBlock({ parent: id, index }, spec) ? block(sanitizeWireString(spec.id)) : null,
+			insertChild: (index, spec) => doc.insertBlock({ parent: id, index }, spec),
 			moveTo: (dest) => doc.moveBlock(id, { parent: idOf(dest.parent), index: dest.index }),
-			nestUnder: (parent) => {
-				const pid = idOf(parent);
-				return pid !== null && doc.nestBlock(id, pid);
-			},
+			nestUnder: (parent) => doc.nestBlock(id, idOf(parent)!),
 			unNest: () => doc.unNestBlock(id),
-			split: (offset, newId) =>
-				doc.splitBlock(id, offset, newId) ? block(sanitizeWireString(newId)) : null,
-			mergeBackward: () => {
-				const t = doc.mergeBackward(id);
-				return t === null ? null : block(t);
-			},
-			mergeForward: () => {
-				const t = doc.mergeForward(id);
-				return t === null ? null : block(t);
-			},
+			split: (offset, newId, tail) => doc.splitBlock(id, offset, newId, tail),
+			mergeBackward: () => doc.mergeBackward(id),
+			mergeForward: () => doc.mergeForward(id),
 			mergeFrom: (other) => doc.mergeBlocks(idOf(other)!, id),
 			delete: (opts) => doc.deleteBlock(id, opts),
-
 			setType: (type) => doc.setBlockType(id, type),
 			setData: (data) => doc.setBlockData(id, data),
 			set: (value) => doc.setBlock(id, value),
-			duplicate: (freshId) => {
-				const n = doc.duplicateBlock(id, freshId);
-				return n === null ? null : block(n);
-			}
+			duplicate: (freshId) => doc.duplicateBlock(id, freshId)
 		};
 		cache.set(id, handle);
 		return handle;

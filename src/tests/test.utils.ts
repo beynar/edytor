@@ -319,19 +319,10 @@ const getSelectedContent = (
 };
 
 const getBlocksInSelection = (startBlock: Block, endBlock: Block) => {
-	const blocks = [startBlock];
-	let currentBlock = startBlock;
-
-	while (currentBlock !== endBlock) {
-		const nextBlock = currentBlock.closestNextBlock;
-		if (!nextBlock) {
-			throw new Error('Failed to resolve block range from JSX DSL fixture');
-		}
-
-		blocks.push(nextBlock);
-		currentBlock = nextBlock;
+	const blocks = startBlock.edytor.blocksBetween(startBlock, endBlock);
+	if (blocks.at(-1) !== endBlock) {
+		throw new Error('Failed to resolve block range from JSX DSL fixture');
 	}
-
 	return blocks;
 };
 

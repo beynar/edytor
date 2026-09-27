@@ -47,6 +47,15 @@ const ed = (peer: Peer) => {
 };
 
 const text = (peer: Peer, id: string) => ed(peer).blockText(id);
+
+/**
+ * D-14 (R3): a delete now hides everything the block displays, so the
+ * pre-D1 "a deleted holder releases its coverage" state is staged by
+ * removing the registry entry — an absent block's records claim nothing,
+ * exactly what the old delete produced.
+ */
+const dropBlock = (peer: Peer, id: string) =>
+	peer.doc.transact(() => peer.doc.get('blocks').deleteAttr(id));
 const topIds = (peer: Peer) => ed(peer).childrenIds(null);
 
 /**
@@ -252,7 +261,7 @@ describe('regression A — insert after concurrent splits must not steal owned a
 
 	it('disjoint coverage is preserved through a left-edge rewrite', () => {
 		// A splits b→early CONCURRENTLY with B's b→mid→n carve-up, so early's
-		// record stays E-ended (it is never re-split). Deleting n kills its
+		// record stays E-ended (it is never re-split). Removing n drops its
 		// records; the 'hij' atoms then fall back to early's older {3,E}
 		// claim — early owns two DISJOINT spans with mid's bounded record in
 		// the hole. A left-edge insert must re-claim both spans, not fuse
@@ -265,7 +274,7 @@ describe('regression A — insert after concurrent splits must not steal owned a
 		set.deliver('A', 'B');
 		set.deliver('B', 'A');
 		assertConverged(set, ops);
-		ops.deleteBlock(A, 'n'); // n's records die → 'hij' falls back to early's claim
+		dropBlock(A, 'n'); // n's records gone → 'hij' falls back to early's claim
 		expect(text(A, 'early')).toBe('dehij'); // disjoint: [3,5) ∪ [7,E)
 		expect(text(A, 'mid')).toBe('fg');
 		ops.insertText(A, 'early', 0, 'X'); // left edge of the FIRST covered seg

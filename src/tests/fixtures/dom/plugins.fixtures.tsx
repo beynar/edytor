@@ -258,8 +258,10 @@ export const fixtures = defineFixtures([
 							data: {},
 							content: [{ text: 'const value = 1;' }]
 						},
+						// D-13: the code kind's declared default child applies (was
+						// 'paragraph': richText's first-truthy defaultBlock hook won).
 						{
-							type: 'paragraph',
+							type: 'codeLine',
 							data: {}
 						}
 					]

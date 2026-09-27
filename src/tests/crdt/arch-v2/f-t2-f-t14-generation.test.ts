@@ -31,7 +31,12 @@ import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js'
 import { bindWebsocketProvider } from '../../../lib/crdt/providers/websocket.js';
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
 import * as envelope from '../../../lib/crdt/protocols/envelope.js';
-import { createDocument, schemaVersion, SchemaMismatchError } from '../../../lib/crdt/index.js';
+import {
+	createDocument,
+	schemaVersion,
+	SchemaMismatchError,
+	SCHEMA_VERSION
+} from '../../../lib/crdt/index.js';
 
 const idbProviders = bindIndexeddbProvider(Y);
 const wsProviders = bindWebsocketProvider(Y);
@@ -52,7 +57,7 @@ const until = async (cond, timeout = 4000) => {
 const wordOf = (schema) => envelope.generationWord?.(schema) ?? envelope.PROTOCOL_VERSION;
 
 /** A sync `Update` frame as a build of `schema` sends it. */
-const updateFrame = (update, schema = 1) => {
+const updateFrame = (update, schema = SCHEMA_VERSION) => {
 	const e = encoding.createEncoder();
 	encoding.writeVarUint(e, wordOf(schema));
 	encoding.writeVarUint(e, 0); // messageSync
@@ -184,7 +189,7 @@ describe('F-T2 (a) — a peer of another schema generation integrates zero bytes
 
 		expect(Y.encodeStateVector(a.doc)).toEqual(before);
 		expect(a.doc.get('blocks').getAttr('from-v99-peer')).toBeUndefined();
-		expect(schemaVersion(a.doc)).toBe(1);
+		expect(schemaVersion(a.doc)).toBe(SCHEMA_VERSION);
 		expect(mismatches.length).toBe(frames.length);
 		await p.destroy();
 		a.destroy();
@@ -260,7 +265,7 @@ describe('F-T2 (b) — a foreign stamp turns the document read-only once, visibl
 		// accepted edit and this build's stamp.
 		await nextTick();
 		const stored = await containerDoc(name);
-		expect(schemaVersion(stored)).toBe(1);
+		expect(schemaVersion(stored)).toBe(SCHEMA_VERSION);
 		expect(stored.get('blocks').getAttr('p')).toBeDefined();
 		await p.destroy();
 		a.destroy();
@@ -308,7 +313,7 @@ describe('F-T14 — a same-generation forged stamp is refused, reported, and nev
 			// The stamp never reached the receiver's container.
 			await idbProviders.storeState(p);
 			const stored = await containerDoc(name);
-			expect(schemaVersion(stored)).toBe(1);
+			expect(schemaVersion(stored)).toBe(SCHEMA_VERSION);
 			expect(stored.get('meta').getAttr('schema')).toBe('edytor-doc');
 			await p.destroy();
 			r.destroy();
@@ -329,7 +334,7 @@ describe('F-T14 — a same-generation forged stamp is refused, reported, and nev
 		Y.applyUpdate(forger, Y.encodeStateAsUpdate(r.doc));
 		forger.transact(() => forger.get('meta').setAttr('v', 99));
 		const e = encoding.createEncoder();
-		encoding.writeVarUint(e, wordOf(1));
+		encoding.writeVarUint(e, wordOf(SCHEMA_VERSION));
 		encoding.writeVarUint(e, 0);
 		sync.writeSyncStep2(e, forger);
 		const before = Y.encodeStateVector(r.doc);
@@ -367,13 +372,13 @@ describe('F-T14 — a same-generation forged stamp is refused, reported, and nev
 		for (const seen of bcSeen) expect(contains(seen, stampUpdate)).toBe(false);
 		// A joining peer's state request gets no state back.
 		const step1 = encoding.createEncoder();
-		encoding.writeVarUint(step1, wordOf(1));
+		encoding.writeVarUint(step1, wordOf(SCHEMA_VERSION));
 		encoding.writeVarUint(step1, 0);
 		sync.writeSyncStep1(step1, new Y.Doc());
 		const reply = idbP.readMessage(encoding.toUint8Array(step1), false);
 		expect(encoding.length(reply)).toBeLessThanOrEqual(2 + 1);
 		await idbProviders.storeState(idbP).catch(() => {});
-		expect(schemaVersion(await containerDoc(name))).toBe(1);
+		expect(schemaVersion(await containerDoc(name))).toBe(SCHEMA_VERSION);
 
 		bc.unsubscribe(envelope.generationDbName(name), onBc);
 		wsP.destroy();

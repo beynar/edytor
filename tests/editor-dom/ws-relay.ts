@@ -9,8 +9,9 @@
  * `y-websocket`'s `setupWSConnection` is NOT this — even with no persistence
  * hook it creates a server-side doc, decodes `varuint messageType`, and runs
  * the sync handshake, so our enveloped frames arrive there as unhandled
- * message type `14001` and are dropped (never relayed). THIS file is the
- * reference implementation of the only proven-compatible server class.
+ * message type (the GENERATION word, e.g. `14002`) and are dropped (never
+ * relayed). THIS file is the reference implementation of the only
+ * proven-compatible server class.
  *
  * This is a dependency-free RFC6455 implementation (~150 lines of wire
  * mechanics): HTTP upgrade → Sec-WebSocket-Accept, masked client-frame

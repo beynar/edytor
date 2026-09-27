@@ -324,42 +324,55 @@ const handleRedoHotkey: HotKey = ({ edytor, prevent }) => {
 	});
 };
 
-const handleArrowUpHotkey: HotKey = ({ edytor, prevent }) => {
-	const selectedBlocks = edytor.selection.selectedBlocks;
-	if (selectedBlocks.size === 1) {
-		prevent(() => {
-			const selectedBlock = selectedBlocks.values().next().value as Block;
-			let prevBlock = selectedBlock.closestPreviousBlock;
+/** Block-selection keys walk the document order with the island seal (R5). */
+const SEALED = { sealed: true } as const;
 
-			// If the block is inside an island, we will select the island root
-			while (prevBlock?.insideIsland) {
-				if (prevBlock.parent instanceof Block) {
-					prevBlock = prevBlock.parent;
+/** Move a single block selection to its sealed neighbour in document order. */
+const moveBlockSelection =
+	(step: 'blockBefore' | 'blockAfter'): HotKey =>
+	({ edytor, prevent }) => {
+		const selectedBlocks = edytor.selection.selectedBlocks;
+		if (selectedBlocks.size === 1) {
+			prevent(() => {
+				const target = edytor[step](selectedBlocks.values().next().value as Block, SEALED);
+				if (target) {
+					edytor.selection.selectBlocks(target);
+					edytor.selection.focusBlocks();
 				}
-			}
-			if (prevBlock && prevBlock instanceof Block) {
-				edytor.selection.selectBlocks(prevBlock);
-				edytor.selection.focusBlocks();
-			}
-		});
-	}
-};
+			});
+		}
+	};
+const handleArrowUpHotkey = moveBlockSelection('blockBefore');
+const handleArrowDownHotkey = moveBlockSelection('blockAfter');
 
-const handleArrowDownHotkey: HotKey = ({ edytor, prevent }) => {
-	const selectedBlocks = edytor.selection.selectedBlocks;
-	if (selectedBlocks.size === 1) {
-		prevent(() => {
-			const selectedBlock = selectedBlocks.values().next().value as Block;
-			let nextBlock = selectedBlock.definition.island
-				? selectedBlock.nextBlock
-				: selectedBlock.closestNextBlock;
-
-			if (nextBlock && nextBlock instanceof Block) {
-				edytor.selection.selectBlocks(nextBlock);
-				edytor.selection.focusBlocks();
-			}
-		});
+/**
+ * Shift+ArrowUp/Down over a block selection. Its first member is the
+ * anchor and its last the focus (insertion order): a key moving the focus
+ * back toward the anchor shrinks the selection, otherwise it extends past
+ * the selection's edge in document order (K7).
+ */
+const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void => {
+	const members = Array.from(edytor.selection.selectedBlocks);
+	const focus = members.at(-1)!;
+	const sign = Math.sign(edytor.compareBlocks(focus, members[0]!));
+	if (sign === (direction === 'up' ? 1 : -1)) {
+		edytor.selection.removeBlockFromSelection(focus);
+		return;
 	}
+	const sorted = members.toSorted(edytor.compareBlocks);
+	if (direction === 'up') {
+		const first = sorted[0]!;
+		const previous = edytor.blockBefore(first, SEALED);
+		if (!previous) return;
+		// Reaching the parent selects it instead of its first child.
+		if (first.parent === previous) edytor.selection.removeBlockFromSelection(first);
+		edytor.selection.addBlockToSelection(previous);
+		return;
+	}
+	const last = sorted.at(-1)!;
+	let next = edytor.blockAfter(last, SEALED);
+	while (next?.isChildOf(last)) next = edytor.blockAfter(next, SEALED);
+	if (next) edytor.selection.addBlockToSelection(next);
 };
 
 /**
@@ -529,28 +542,8 @@ const defaultHotKeys = {
 	},
 	...navigationHotKeys,
 	'shift+arrowup': ({ edytor, prevent }) => {
-		const selectedBlocks = Array.from(edytor.selection.selectedBlocks.values());
-		if (selectedBlocks.length >= 1) {
-			prevent(() => {
-				const selectedBlock = selectedBlocks
-					.toSorted((a, b) => a.path[0] - b.path[0])
-					.at(0) as Block;
-				let prevBlock = selectedBlock.closestPreviousBlock;
-
-				// If the block is inside an island, we will select the island root
-				while (prevBlock?.insideIsland) {
-					if (prevBlock.parent instanceof Block) {
-						prevBlock = prevBlock.parent;
-					}
-				}
-
-				if (prevBlock && prevBlock instanceof Block) {
-					if (selectedBlock.isNested && selectedBlock.parent === prevBlock) {
-						edytor.selection.removeBlockFromSelection(selectedBlock);
-					}
-					edytor.selection.addBlockToSelection(prevBlock);
-				}
-			});
+		if (edytor.selection.selectedBlocks.size >= 1) {
+			prevent(() => extendBlockSelection(edytor, 'up'));
 			return;
 		}
 		// No block selection: native vertical extension is engine-defined
@@ -561,30 +554,14 @@ const defaultHotKeys = {
 		}
 	},
 	'shift+arrowdown': ({ edytor, prevent }) => {
-		const selectedBlocks = Array.from(edytor.selection.selectedBlocks.values());
-		if (selectedBlocks.length === 0 && selectNextVoidBlockFromCaret(edytor)) {
+		const selectedBlocks = edytor.selection.selectedBlocks;
+		if (selectedBlocks.size === 0 && selectNextVoidBlockFromCaret(edytor)) {
 			prevent();
 			return;
 		}
 
-		if (selectedBlocks.length >= 1) {
-			prevent(() => {
-				const selectedBlock = selectedBlocks
-					.toSorted((a, b) => a.path[0] - b.path[0])
-					.at(-1) as Block;
-
-				let nextBlock = selectedBlock.definition.island
-					? selectedBlock.nextBlock
-					: selectedBlock.closestNextBlock;
-
-				while (nextBlock?.isChildOf(selectedBlock)) {
-					nextBlock = nextBlock.closestNextBlock;
-				}
-
-				if (nextBlock && nextBlock instanceof Block) {
-					edytor.selection.addBlockToSelection(nextBlock);
-				}
-			});
+		if (selectedBlocks.size >= 1) {
+			prevent(() => extendBlockSelection(edytor, 'down'));
 			return;
 		}
 		// See shift+arrowup — deterministic cross-engine extension.

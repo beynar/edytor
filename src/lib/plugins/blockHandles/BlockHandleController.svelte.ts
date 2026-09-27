@@ -18,18 +18,6 @@ type BlockHandleControllerOptions = {
 	onActivate?: (payload: { block: Block; anchor: HTMLElement }) => void;
 };
 
-const comparePath = (a: Block, b: Block) => {
-	const length = Math.max(a.path.length, b.path.length);
-	for (let index = 0; index < length; index++) {
-		const left = a.path[index] ?? -1;
-		const right = b.path[index] ?? -1;
-		if (left !== right) {
-			return left - right;
-		}
-	}
-	return 0;
-};
-
 const getOwnRowBottom = (node: HTMLElement) => {
 	const rect = node.getBoundingClientRect();
 	// Block nodes wrap their children in the DOM; the parent's placement
@@ -88,7 +76,7 @@ export class BlockHandleController {
 	}
 
 	selectBlock(block: Block) {
-		if (this.edytor.readonly || !this.canUseHandle(block)) {
+		if (this.edytor.readonly || !block.movable) {
 			return;
 		}
 
@@ -96,7 +84,7 @@ export class BlockHandleController {
 	}
 
 	activateBlock(block: Block, anchor: HTMLElement) {
-		if (this.edytor.readonly || !this.canUseHandle(block)) {
+		if (this.edytor.readonly || !block.movable) {
 			return;
 		}
 		this.selectBlock(block);
@@ -109,7 +97,7 @@ export class BlockHandleController {
 		}
 		return draggable({
 			element,
-			canDrag: () => !this.edytor.readonly && this.canUseHandle(block),
+			canDrag: () => !this.edytor.readonly && block.movable,
 			getInitialData: () => ({ owner: this.owner, blockId: block.id }),
 			getInitialDataForExternal: () => ({ [blockDragMimeType]: block.id }),
 			onDragStart: () => {
@@ -221,10 +209,6 @@ export class BlockHandleController {
 		}
 	}
 
-	private canUseHandle(block: Block) {
-		return block.isInTree && !block.isRoot && Boolean(block.parent) && !block.insideIsland;
-	}
-
 	private moveAndSelect(request: BlockMoveRequest) {
 		try {
 			const moved = this.edytor.moveBlocks(request);
@@ -255,7 +239,7 @@ export class BlockHandleController {
 		}
 		const parent = selected[0]?.parent;
 		return parent && selected.every((block) => block.parent === parent)
-			? selected.toSorted(comparePath)
+			? selected.toSorted(this.edytor.compareBlocks)
 			: [source];
 	}
 

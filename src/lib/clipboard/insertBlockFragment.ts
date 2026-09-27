@@ -10,11 +10,8 @@ import { stripIdsFromBlock } from './jsonClipboard.js';
 import type { EdytorClipboardFragment } from './types.js';
 
 const focusLastInsertedBlock = async (block: Block | undefined) => {
-	if (!block) {
-		return;
-	}
-
-	await block.edytor.selection.setAtTextOffset(block.lastText, block.lastText.length);
+	const text = block?.lastText;
+	if (text) await block.edytor.selection.setAtTextOffset(text, text.length);
 };
 
 const insertBlocksAtSelectionTarget = async (

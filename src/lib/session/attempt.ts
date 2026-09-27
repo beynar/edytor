@@ -117,7 +117,6 @@ export type Expect =
 			before: string;
 			after: string | null;
 			caret: number;
-			historyCaret?: number;
 	  };
 
 export type Occurrence = {

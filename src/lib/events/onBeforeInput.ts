@@ -22,7 +22,6 @@ import {
 	type Occurrence
 } from '$lib/session/attempt.js';
 import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
-import { runHistoryCommand } from './undoRestore.js';
 import { isAndroidChromeBrowser } from './events.utils.js';
 import {
 	isNativeInteractiveControl,
@@ -296,36 +295,27 @@ const isTextLocalRearrangeInput = (edytor: Edytor, attempt: Attempt) =>
  */
 const browserExpectation = (edytor: Edytor, attempt: Attempt): Expect | null | undefined => {
 	const text = attempt.startText;
-	const change = (
-		caret: number,
-		historyCaret?: number,
-		after: string | null = null
-	): Expect | null =>
+	const change = (caret: number, after: string | null = null): Expect | null =>
 		text && edytor.selection.selectedBlocks.size === 0
-			? { kind: 'change', host: text, before: text.stringContent, after, caret, historyCaret }
+			? { kind: 'change', host: text, before: text.stringContent, after, caret }
 			: null;
 	if (isSafeTextLocalInsertion(edytor, attempt)) {
 		const { yStart } = attempt;
 		const data = attempt.data ?? '';
 		const before = text!.stringContent;
-		return change(
-			yStart + data.length,
-			undefined,
-			before.slice(0, yStart) + data + before.slice(yStart)
-		);
+		return change(yStart + data.length, before.slice(0, yStart) + data + before.slice(yStart));
 	}
 	if (!attempt.hasDataTransferTextPayload && isTextLocalReplacement(edytor, attempt))
 		return change(attempt.yStart);
 	// Transpose/yank — the caret stays at the same model offset after the
-	// native rearrange; the target keeps the undo selection snapshot and
-	// plugin insert notifications.
-	if (isTextLocalRearrangeInput(edytor, attempt)) return change(attempt.yStart, attempt.yStart);
+	// native rearrange; the target keeps the plugin insert notifications.
+	if (isTextLocalRearrangeInput(edytor, attempt)) return change(attempt.yStart);
 	if (isTextLocalDeletion(edytor, attempt)) {
 		const at =
 			!attempt.isCollapsed || attempt.inputType === 'deleteContentForward'
 				? attempt.yStart
 				: Math.max(0, attempt.yStart - 1);
-		return change(at, attempt.yStart);
+		return change(at);
 	}
 	if (attempt.inputType === 'deleteCompositionText') return null;
 	return undefined;
@@ -483,9 +473,8 @@ const perform = (edytor: Edytor, attempt: Attempt, offered: string | null) =>
 		event?.preventDefault();
 		if (kind === 'history') {
 			edytor.attempts.drift(attempt, 'refresh', 0);
-			void runHistoryCommand(edytor, attempt.inputType === 'historyUndo' ? 'undo' : 'redo', {
-				queueSelectionSnapshot: true
-			});
+			if (attempt.inputType === 'historyUndo') edytor.historyUndo();
+			else edytor.historyRedo();
 			return;
 		}
 		// A binding claimed the intent: its command owns the result, the

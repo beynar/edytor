@@ -13,9 +13,7 @@ import {
 	isNativeInteractiveEvent,
 	isNestedForeignEditableTarget
 } from './nativeInteractiveControl.js';
-import { runHistoryCommand } from './undoRestore.js';
 import { getTextContentOffsetAtPoint } from './domTextOffset.js';
-import { getTextPath } from './events.utils.js';
 import { runOccurrence } from './onBeforeInput.js';
 import { kindOf, type Attempt, type Expect, type TextPoint } from '$lib/session/attempt.js';
 
@@ -59,7 +57,7 @@ const isNativeHistoryInput = (event: Event): event is InputEvent =>
 	kindOf(event.inputType) === 'history';
 
 const runInputHistoryCommand = (edytor: Edytor, event: InputEvent) =>
-	runHistoryCommand(edytor, event.inputType === 'historyUndo' ? 'undo' : 'redo');
+	event.inputType === 'historyUndo' ? edytor.historyUndo() : edytor.historyRedo();
 
 export const getNormalizedDomText = (text: Text) => {
 	let value = text.node?.textContent ?? '';
@@ -76,22 +74,6 @@ export const getNormalizedDomText = (text: Text) => {
 };
 
 export const isLiveText = (text: Text) => text.isInDocument;
-
-const queueBrowserOwnedInputSelectionSnapshot = (edytor: Edytor, text: Text, offset: number) => {
-	const textPath = getTextPath(text);
-	edytor.selection.queueNextUndoSelectionSnapshot({
-		isCollapsed: true,
-		isReversed: false,
-		startTextId: text.id,
-		endTextId: text.id,
-		startTextPath: textPath,
-		endTextPath: textPath,
-		yStart: offset,
-		yEnd: offset,
-		selectedBlockIds: [],
-		selectedBlockPaths: []
-	});
-};
 
 const getDomOffsetWithinText = (text: Text, node: Node, offset: number) => {
 	if (!text.node) {
@@ -519,14 +501,14 @@ const reconcileBrowserOwnedInputTarget = async (
 			? nativeSelection.offset
 			: getCaretOffsetAfterTextDiff(expect.before, domText, expect.caret);
 	const operations = planDomTextDiff(host, host.stringContent, domText);
+	// The reconcile is the input's command: it runs against the attempt's
+	// anchored target (a native selection jump may have moved the selection
+	// since), which history records as the step's `before`.
+	edytor.selection.select(attempt.target);
 
-	queueBrowserOwnedInputSelectionSnapshot(edytor, host, expect.historyCaret ?? selectionOffset);
 	const didReconcile = await reconcileTextValue(edytor, host, domText, selectionOffset);
-	if (!didReconcile) {
-		edytor.selection.nextUndoSelectionSnapshot = null;
-		if (host.stringContent !== domText) {
-			return false;
-		}
+	if (!didReconcile && host.stringContent !== domText) {
+		return false;
 	}
 	if (drifted) host.refreshFromModel();
 	attempt.phase = 'applied';
@@ -606,7 +588,7 @@ export async function onInput(this: Edytor, event: Event) {
 		if (this.isComposing) {
 			return;
 		}
-		await runInputHistoryCommand(this, event);
+		runInputHistoryCommand(this, event);
 		return;
 	}
 

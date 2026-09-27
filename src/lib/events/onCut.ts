@@ -7,25 +7,12 @@ import { prevent } from '$lib/utils.js';
 import { observeInternalDragSources } from './onDrop.js';
 import { observeShiftPasteModifier } from './onPaste.js';
 import {
-	removeSelectedBlocksForReplacement,
+	deleteSelectedBlocks,
 	replaceSelectionWithCollapsedTarget
 } from '$lib/selection/replaceSelection.js';
 import { isNestedForeignEditableTarget } from './nativeInteractiveControl.js';
 
-const deleteSelectedContent = async (edytor: Edytor) => {
-	edytor.selection.queueNextUndoSelectionSnapshot();
-	await replaceSelectionWithCollapsedTarget(edytor);
-};
-
-const focusDeletedBlockFallback = async (edytor: Edytor) => {
-	const removed = removeSelectedBlocksForReplacement(edytor, {
-		queueUndoSelectionSnapshot: true
-	});
-	const text = removed?.blockToFocus?.firstEditableText;
-	if (text) {
-		await edytor.selection.setAtTextOffset(text, text.length);
-	}
-};
+const deleteSelectedContent = (edytor: Edytor) => replaceSelectionWithCollapsedTarget(edytor);
 
 export async function onCut(this: Edytor, e: ClipboardEvent) {
 	if (this.readonly || this.selection.state.isVoidEditableElement) {
@@ -60,7 +47,7 @@ export async function onCut(this: Edytor, e: ClipboardEvent) {
 	// The clipboard is written before the delete, which is one user command.
 	await this.dispatcher.run('deleteByCut', () =>
 		this.selection.selectedBlocks.size > 0
-			? focusDeletedBlockFallback(this)
+			? deleteSelectedBlocks(this)
 			: deleteSelectedContent(this)
 	);
 }

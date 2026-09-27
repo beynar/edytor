@@ -13,7 +13,6 @@ export type SelectionReplacementState = RangeEndpoints & { isCollapsed: boolean 
 export type RemovedSelectedBlocks = {
 	parent: Block;
 	index: number;
-	blockToFocus: Block | null;
 	selectedBlocks: Block[];
 };
 
@@ -63,35 +62,34 @@ export const replaceSelectionWithCollapsedTarget = async (
 };
 
 export const removeSelectedBlocksForReplacement = (
-	edytor: Edytor,
-	{ queueUndoSelectionSnapshot = false }: { queueUndoSelectionSnapshot?: boolean } = {}
+	edytor: Edytor
 ): RemovedSelectedBlocks | null => {
 	const selectedBlocks = getSelectedBlocksInDocumentOrder(edytor);
-	const firstBlock = selectedBlocks.at(0);
-	const lastBlock = selectedBlocks.at(-1);
-	const parent = firstBlock?.parent;
-	const index = firstBlock?.index ?? 0;
-	const selectedBlockSet = new Set(selectedBlocks);
+	const parent = selectedBlocks[0]?.parent;
+	const index = selectedBlocks[0]?.index ?? 0;
+	if (!parent) return null;
+	if (!edytor.deleteBlocks({ blocks: selectedBlocks })) return null;
+	return { parent, index, selectedBlocks };
+};
 
-	if (!firstBlock || !lastBlock || !parent) {
-		return null;
-	}
-
-	let blockToFocus =
-		getClosestUnselectedBlock(firstBlock, selectedBlockSet, 'previous') ||
-		getClosestUnselectedBlock(lastBlock, selectedBlockSet, 'next');
-	if (!edytor.deleteBlocks({ blocks: selectedBlocks, snapshot: queueUndoSelectionSnapshot }))
-		return null;
-	edytor.selection.selectBlocks();
-	blockToFocus ??=
-		parent.children[index] ?? parent.children[index - 1] ?? edytor.root?.children[0] ?? null;
-
-	return {
-		parent,
-		index,
-		blockToFocus,
-		selectedBlocks
-	};
+/**
+ * Delete (or cut) the selected blocks. The command authors its result
+ * selection (FP-7, R9): a caret at the end of the first editable text of the
+ * nearest unselected block before them, else after them — declared before the
+ * delete, so the seam never runs for it. With neither, the seam applies.
+ * Answers the caret's text.
+ */
+export const deleteSelectedBlocks = (edytor: Edytor): Text | null => {
+	const selectedBlocks = getSelectedBlocksInDocumentOrder(edytor);
+	const set = new Set(selectedBlocks);
+	const text = (
+		getClosestUnselectedBlock(selectedBlocks[0], set, 'previous') ||
+		getClosestUnselectedBlock(selectedBlocks.at(-1), set, 'next')
+	)?.firstEditableText;
+	const removed = edytor.dispatcher.caret(text, text?.length ?? 0, () =>
+		removeSelectedBlocksForReplacement(edytor)
+	);
+	return removed ? (text ?? null) : null;
 };
 
 export const replaceSelectedBlocksWithEmptyBlockTargetSync = (
@@ -102,6 +100,7 @@ export const replaceSelectedBlocksWithEmptyBlockTargetSync = (
 	if (!removed) {
 		return null;
 	}
+	edytor.selection.selectBlocks();
 
 	const [insertedBlock] = removed.parent.addChildBlocks({
 		blocks: [{ type: blockType ?? edytor.defaultChild(removed.parent) }],

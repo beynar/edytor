@@ -141,7 +141,7 @@ import {
 	type RunView
 } from './text/runs.js';
 import { bindNodes, type DocBlock } from './nodes.js';
-import { walkIdSetStructs, type IdSetLike } from './structs.js';
+import { followRedone, walkIdSetStructs, type IdSetLike } from './structs.js';
 import {
 	bindBlockAttribution,
 	blockAttributionOf,
@@ -1065,6 +1065,18 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return out;
 		};
 
+		/**
+		 * The replicated slot of any registered block, dead or live (the seam
+		 * of a vanished endpoint, `anchors.seam`): its rank and its display
+		 * parent — the placement parent itself when that one is dead.
+		 */
+		const slotOf = (id: BlockId): { parent: BlockId | null; rank: string } | null => {
+			const pl = view().placements.get(id);
+			if (!pl) return null;
+			const parent = displayParentOf(view().own, pl);
+			return { parent: parent === DEAD ? pl.parent : (parent as BlockId | null), rank: pl.rank };
+		};
+
 		// ── roles (island/void) ───────────────────────────────────────────
 
 		const roleOfId = (id: BlockId): BlockRole => {
@@ -1464,6 +1476,21 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const text = blocks.get(last.t)?.content;
 			if (!text) return null;
 			return { b: last.t, a: T.atomAnchorAt(doc, text, last.i1, assoc) };
+		};
+
+		/**
+		 * `anchor` rebound to the copy this replica's last undo/redo
+		 * re-created of its item (the local `redone` chain): history restores
+		 * a selection recorded before a delete through it, so the anchor
+		 * binds the restored content instead of its tombstone.
+		 */
+		const followUndo = (anchor: DocAnchor): DocAnchor => {
+			const i = anchor.a.i;
+			if (i === null) return anchor;
+			const to = followRedone(Y, doc, { client: i.c, clock: i.k });
+			return to.client === i.c && to.clock === i.k
+				? anchor
+				: { ...anchor, a: { ...anchor.a, i: { c: to.client, k: to.clock } } };
 		};
 
 		/**
@@ -2180,6 +2207,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			toJSON,
 			blockJSON: byRef(blockJSON),
 			childrenIds: byRef(childrenIds),
+			/** Visible children of `parent` with their ranks, in `(rank, id)` order. */
+			childSlots: (parent: BlockId | null) => view().kids.get(parent) ?? [],
+			slotOf: byRef(slotOf),
 			positionOf: byRef(positionOf),
 			pathOf: byRef(pathOf),
 			parentOf: byRef((id: BlockId) => positionOf(id)?.parent ?? null),
@@ -2209,6 +2239,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			// caret anchors (U09) — backing-text-bound selection endpoints
 			anchorAt: byRef(anchorAt),
 			resolveAnchor,
+			followUndo,
 			// roles
 			isVoid: byRef(isVoid),
 			isIsland: byRef(isIsland),

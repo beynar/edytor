@@ -64,6 +64,8 @@ import {
 	prepareFlow
 } from './edytor.utils.js';
 import { Dispatcher } from './session/commands.js';
+import { History } from './session/history.js';
+import type { SelectionValue } from './session/selection.js';
 import { kindCatalogue, kindCommand, type KindRow } from './kinds.js';
 import {
 	getSelectionReplacementState,
@@ -430,34 +432,17 @@ export class Edytor {
 	/** Move blocks one relative step (D-5), or before, after or inside a live target block. */
 	moveBlocks = (request: BlockMoveRequest): Block[] => moveBlocksRelative(this, request);
 
+	/** This view's history (R7's named exception): bare engine undo/redo, one restorer. */
+	readonly history = new History(this);
+
 	/**
-	 * History commands through THIS view — the only undo/redo entry points
-	 * that restore a view caret. The undo manager is document-shared, so
-	 * its `stack-item-popped` fires on EVERY view's selection listener;
-	 * `expectHistoryRestore` marks this view as the issuer for the
-	 * synchronous duration of the command, and only that view consumes its
-	 * per-view snapshot. Sibling views treat the pop as an ordinary
-	 * document change — the same semantics a REMOTE peer's undo has (their
-	 * carets ride normal reconciliation, never a snapshot recorded when
-	 * the undone edit committed). `document.history.undo()` invoked
-	 * headlessly restores no view's caret by the same rule.
+	 * Undo/redo through THIS view: the only history entry points that restore
+	 * a view's selection (its recorded `before`/`after`); sibling views and a
+	 * headless `document.history.undo()` restore none (their carets ride the
+	 * change, as for a remote undo).
 	 */
-	historyUndo = (): void => {
-		this.runHistoryCommand(() => this.document.history.undo());
-	};
-	historyRedo = (): void => {
-		this.runHistoryCommand(() => this.document.history.redo());
-	};
-	private runHistoryCommand = (command: () => unknown): void => {
-		// The popped handler runs synchronously inside undo()/redo() — the
-		// flag only needs to live for this call, never across async work.
-		this.selection.expectHistoryRestore = true;
-		try {
-			command();
-		} finally {
-			this.selection.expectHistoryRestore = false;
-		}
-	};
+	historyUndo = (): void => this.history.undo();
+	historyRedo = (): void => this.history.redo();
 
 	private deferredEditorDomRefresh: ReturnType<typeof setTimeout> | null = null;
 	refreshEditorDom = () => {
@@ -741,6 +726,7 @@ export class Edytor {
 		this.document.sync({ children });
 
 		this.undoManager = this.document.history;
+		this.history.bind();
 		this.root = new Block({
 			edytor: this,
 			blockId: null
@@ -1712,16 +1698,6 @@ export class Edytor {
 					return;
 				}
 
-				// A history selection restore owns the caret while it runs.
-				// This cached point was captured at focus time — before the
-				// undo/redo pop resolved its target — so re-applying it now
-				// (or adopting the browser's post-remount collapse via
-				// applyMeaningfulDomSelection) stomps the in-flight restore
-				// and leaves model=range vs DOM=caret.
-				if (this.selection.isRestoringHistorySelection) {
-					return;
-				}
-
 				if (applyMeaningfulDomSelection()) {
 					return;
 				}
@@ -1843,18 +1819,12 @@ export class Edytor {
 				// The editor's own programmatic `focus()` calls (selection
 				// writes refocus the text host) also fire focusin — with a
 				// relatedTarget already inside the editor they're internal
-				// housekeeping, not user gestures. During a history-restore
-				// window the restore's OWN focus() calls can arrive with an
-				// external relatedTarget (the undo's render detached the
-				// previously focused node → focus fell to body) — counting
-				// them would bump the gesture serial and self-abort the
-				// restore. Click-driven focus returns are already marked by
-				// the document-level pointerdown capture.
+				// housekeeping, not user gestures. Click-driven focus returns
+				// are already marked by the document-level pointerdown capture.
 				if (this.expectInternalFocusArmed) {
 					this.expectInternalFocusArmed = false;
 				} else if (
-					!(event.relatedTarget instanceof Node && this.node?.contains(event.relatedTarget)) &&
-					!this.selection.isRestoringHistorySelection
+					!(event.relatedTarget instanceof Node && this.node?.contains(event.relatedTarget))
 				) {
 					this.markUserGesture();
 				}
@@ -1933,6 +1903,7 @@ export class Edytor {
 		// observer, plugin actions, and the facade-change release (which
 		// clears `_facadeChangeOff`) — and empties the array.
 		this.off.splice(0).forEach((off) => off());
+		this.history.unbind();
 
 		// `selectionchange` listener + the published remote caret.
 		this.selection.destroy();

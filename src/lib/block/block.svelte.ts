@@ -112,17 +112,6 @@ export class Block {
 	_bound = false;
 	/** True while the block is visible in the projected tree. */
 	_live = false;
-	/**
-	 * Neighbors captured at `_drop` time in the PREVIOUS sibling ordering.
-	 * Every drop path (`reconcileChildren`, the incremental mirror apply)
-	 * drops children while `parent.children` still holds the pre-removal
-	 * array, so `indexOf` reads the true old slot here — information a
-	 * stale `index` cannot recover once several siblings die in one
-	 * commit and the array shrinks. Dead-endpoint seam repair walks these
-	 * links instead of indexing the shortened array.
-	 */
-	_dropNext: Block | null = null;
-	_dropPrev: Block | null = null;
 	/** Pending wrapper adoptions by content part index (insertParts). */
 	_pendingParts = new Map<number, Text | InlineBlock>();
 	/**
@@ -704,17 +693,6 @@ export class Block {
 	_drop = (keepAlive?: (id: string) => boolean) => {
 		const keep = keepAlive ?? ((id: string) => this.edytor.facade.isVisibleBlock(id));
 		this._live = false;
-		// Capture neighbors while `parent.children` is still the
-		// pre-removal ordering — after the array shrinks, the vacated
-		// slot's neighbors are only recoverable through these links.
-		const siblings = this.parent instanceof Block ? this.parent.children : null;
-		if (siblings) {
-			const idx = siblings.indexOf(this);
-			if (idx >= 0) {
-				this._dropPrev = siblings[idx - 1] ?? null;
-				this._dropNext = siblings[idx + 1] ?? null;
-			}
-		}
 		if (this.edytor.idToBlock.get(this.id) === this) {
 			this.edytor.idToBlock.delete(this.id);
 		}

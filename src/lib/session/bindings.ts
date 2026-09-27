@@ -17,10 +17,9 @@ import {
 } from '$lib/hotkeys/navigation.js';
 import { insertLineBreak, runIntent } from '$lib/events/beforeInputCommands.js';
 import { attemptOf, intentSnapshot } from './attempt.js';
-import { runHistoryCommand } from '$lib/events/undoRestore.js';
 import {
 	getSelectedBlocksInDocumentOrder,
-	removeSelectedBlocksForReplacement
+	deleteSelectedBlocks
 } from '$lib/selection/replaceSelection.js';
 import type { HotKey } from './keymap.js';
 
@@ -148,7 +147,8 @@ const history =
 	({ edytor, prevent }) =>
 		prevent(() => {
 			suppressHotkeyDomDrift(edytor, HISTORY_HOTKEY_DOM_REPAIR_WINDOW_MS);
-			void runHistoryCommand(edytor, direction, { queueSelectionSnapshot: true });
+			if (direction === 'undo') edytor.historyUndo();
+			else edytor.historyRedo();
 		});
 
 /** Block-selection keys walk the document order with the island seal (R5). */
@@ -234,12 +234,9 @@ const deleteSelection: HotKey = ({ edytor, prevent }) => {
 		edytor.plugins.forEach((plugin) =>
 			plugin.onDeleteSelectedBlocks?.({ prevent, selectedBlocks })
 		);
-		const removed = removeSelectedBlocksForReplacement(edytor, {
-			queueUndoSelectionSnapshot: true
-		});
-		const block = removed?.blockToFocus;
+		const block = deleteSelectedBlocks(edytor)?.parent;
 		if (!block) return;
-		// Caret re-assertion after the render (L26's core part, V4 owns it).
+		// Focus re-assertion after the render (L26's core part, V4 owns it).
 		const focus = () => {
 			const text = block.firstEditableText;
 			if (!text) return;

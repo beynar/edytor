@@ -259,9 +259,9 @@ const instrumentOp = (doc, ed, fn, { runsId, useEvents = false } = {}) => {
 		const orig = doc.transact.bind(doc);
 		doc.transact = (inner, origin) => {
 			const t0 = performance.now();
-			const r = orig(() => {
+			const r = orig((tr) => {
 				const f0 = performance.now();
-				const out = inner();
+				const out = inner(tr);
 				writeMs += performance.now() - f0;
 				return out;
 			}, origin);
@@ -707,7 +707,7 @@ const remote = () => {
 		const t0 = performance.now();
 		for (const u of updates) {
 			const t1 = performance.now();
-			const res = S.applyUpdateStaged(doc, u, 'bench');
+			const res = { staged: false, ...S.applyRemote(doc, u, 'bench') };
 			if (i >= WARMUP) {
 				burstSamples.push({
 					applyMs: performance.now() - t1,
@@ -733,7 +733,7 @@ const remote = () => {
 		for (let k = 0; k < K; k++) peerEd.insertText(targetId, caret(k), 'z');
 		const diff = Y14.encodeStateAsUpdate(peer, Y14.encodeStateVector(doc));
 		const t0 = performance.now();
-		const res = S.applyUpdateStaged(doc, diff, 'bench');
+		const res = { staged: false, ...S.applyRemote(doc, diff, 'bench') };
 		const applyMs = performance.now() - t0;
 		if (i >= WARMUP) {
 			reconSamples.push({
@@ -782,7 +782,7 @@ const staging = () => {
 		for (let k = 0; k < K; k++) peerEd.insertText(`b${500 + (k % 10)}`, caret(k), 'z');
 		for (const u of updates) {
 			const t0 = performance.now();
-			S.applyUpdateStaged(doc, u, 'bench');
+			({ staged: false, ...S.applyRemote(doc, u, 'bench') });
 			const afterMs = performance.now() - t0;
 			// The pre-WU5 algorithm: scratch ← live state + update → verdict.
 			const t1 = performance.now();

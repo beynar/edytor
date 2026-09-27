@@ -301,8 +301,8 @@ describe('lineage — incarnation isolation & opt-out', () => {
 		// Facade insert of an existing id is refused even when deleted —
 		// reincarnation only ever happens via undo/redo (the `redone` line).
 		expect(
-			A.facade.insertBlock({ parent: null, index: 0 }, { id: blockId, type: 'paragraph' })
-		).toBe(false);
+			A.facade.insertBlock({ parent: null, index: 0 }, { id: blockId, type: 'paragraph' }).status
+		).toBe('refused');
 
 		// Undo the delete: the block returns on the SAME incarnation line —
 		// its record is adopted (`i` refreshed), so the ring persists.

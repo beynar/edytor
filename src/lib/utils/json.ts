@@ -307,6 +307,70 @@ export const sanitizeWireJson = <T>(value: T): T => {
 	return walk(cloneJson(value)) as T;
 };
 
+/**
+ * Order-insensitive JSON structural equality — the same-value guard
+ * of attr writes (`setIfChanged`). Total: non-JSON values compare `false`
+ * rather than throwing.
+ */
+export const jsonEquals = (a: unknown, b: unknown): boolean => {
+	if (a === b) return true;
+	if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+	if (Array.isArray(a) !== Array.isArray(b)) return false;
+	if (Array.isArray(a)) {
+		const bb = b as unknown[];
+		return a.length === bb.length && a.every((x, i) => jsonEquals(x, bb[i]));
+	}
+	// Non-plain-object leaves (Date, engine nodes, class instances — only
+	// reachable via raw/foreign writes) compare false even when both carry
+	// zero enumerable keys: write-suppression must never silence a real
+	// normalization write.
+	const ap = Object.getPrototypeOf(a);
+	const bp = Object.getPrototypeOf(b);
+	if ((ap !== Object.prototype && ap !== null) || (bp !== Object.prototype && bp !== null)) {
+		return false;
+	}
+	const ao = a as Record<string, unknown>;
+	const bo = b as Record<string, unknown>;
+	const ak = Object.keys(ao);
+	if (ak.length !== Object.keys(bo).length) return false;
+	return ak.every((k) => jsonEquals(ao[k], bo[k]));
+};
+
+/**
+ * Ingress for a `BlockSpec` (F2-M1, O1): every caller-supplied string — ids,
+ * types, `data`, content text/marks, inline atom fields, recursively through
+ * `children` — is rewritten to well-formed UTF-16 (the update encoder applies
+ * the same mapping on delivery, so a verbatim lone surrogate would decode
+ * differently on every receiving replica), and every payload is cloned (the
+ * engine stores payloads by reference). The caller's spec is not mutated.
+ */
+export const sanitizeSpec = (spec: BlockSpec): BlockSpec => {
+	const out: BlockSpec = {
+		id: sanitizeWireString(spec.id),
+		type: sanitizeWireString(spec.type)
+	};
+	if (spec.data !== undefined) out.data = sanitizeWireJson(spec.data);
+	if (spec.content !== undefined) {
+		out.content = spec.content.map(
+			(item): ContentItem =>
+				item.kind === 'text'
+					? {
+							kind: 'text',
+							text: sanitizeWireString(item.text),
+							...(item.marks !== undefined ? { marks: sanitizeWireJson(item.marks) } : {})
+						}
+					: {
+							kind: 'inline',
+							id: sanitizeWireString(item.id),
+							type: sanitizeWireString(item.type),
+							...(item.data !== undefined ? { data: sanitizeWireJson(item.data) } : {})
+						}
+		);
+	}
+	if (spec.children !== undefined) out.children = spec.children.map(sanitizeSpec);
+	return out;
+};
+
 // ── spec preparation (JSON → facade admission shapes) ──────────────────
 //
 // The converters below are the ONLY live path from caller JSON to the

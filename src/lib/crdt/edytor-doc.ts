@@ -116,6 +116,7 @@ import {
 	bindModel,
 	displayParentOf,
 	isLiveIn,
+	setIfChanged,
 	type BlockId,
 	type BlockSpec,
 	type ContentItem,
@@ -134,13 +135,18 @@ import {
 	ownerAt,
 	type Anchor,
 	type Ownership,
-	type RangeCursor,
 	type SliceEntry,
 	type TextBlockRec
 } from './text/model.js';
 import { bindRuns, type ContentRun, type RunView } from './text/runs.js';
 import { bindNodes, type DocBlock } from './nodes.js';
-import { walkIdSetStructs, type IdSetLike } from './structs.js';
+import {
+	clockOf,
+	deletedLen,
+	walkIdSetStructs,
+	type IdSetLike,
+	type StoreStruct
+} from './structs.js';
 import {
 	bindBlockAttribution,
 	blockAttributionOf,
@@ -149,14 +155,12 @@ import {
 import type { AttributionActor } from './attribution/index.js';
 import { isLegacyDoc } from './migration/legacy-schema.js';
 import {
-	cloneJson,
 	cloneJsonSafe,
+	sanitizeSpec,
 	sanitizeWireJson,
 	sanitizeWireString,
 	type JSONBlock,
-	type JSONDoc,
-	type JSONInlineBlock,
-	type JSONText
+	type JSONDoc
 } from '../utils/json.js';
 
 // ── schema manifest ─────────────────────────────────────────────────────
@@ -553,6 +557,50 @@ type JsonObj = Record<string, unknown>;
 /** Shared frozen empty child list for `DocChange.order` tombstone entries. */
 const EMPTY_IDS = Object.freeze([]) as readonly BlockId[];
 
+/**
+ * The observed outcome of one document operation (R6, §2.4) — the one result
+ * shape every op returns, empty inputs included. `refused`: the op did not
+ * apply and wrote nothing; `noop`: it applied and changed nothing; `applied`:
+ * the transaction wrote. Read from the transaction's effects, never predicted.
+ */
+export type OpResult = {
+	readonly status: 'refused' | 'noop' | 'applied';
+	/** What the op is about — created, moved, merge target, or its target; empty unless applied. */
+	readonly ids: readonly BlockId[];
+	/** Why a refused op refused, when it names a reason (`'id-collision'`). */
+	readonly reason?: string;
+};
+/** An op body's refusal: `null`, or the reason it names. */
+type Refusal = null | string;
+const NOOP: OpResult = Object.freeze({ status: 'noop', ids: EMPTY_IDS });
+const refused = (reason: Refusal): OpResult =>
+	Object.freeze({ status: 'refused', ids: EMPTY_IDS, ...(reason !== null && { reason }) });
+
+/**
+ * Ingress for an id reference (O1): it normalizes exactly like a stored id
+ * (`sanitizeSpec`), so a write and a later lookup by the same string agree.
+ */
+const ref = <I extends string | null>(id: I): I => (id === null ? id : sanitizeWireString(id)) as I;
+
+/** Replacement content for `setBlock`. */
+type SetBlockContent = (
+	| { kind: 'text'; text: string; marks?: Record<string, unknown> }
+	| { kind: 'inline'; id: string; type: string; data?: Record<string, unknown> }
+)[];
+
+/**
+ * The lineage ring depth, validated — `NaN`/`Infinity`/fractional/negative
+ * values would silently disable the ring's trim bound. The one check every
+ * entry path (facade creation, document attach and reattach) runs.
+ */
+export const lineageDepthOf = (depth: number | undefined): number => {
+	const d = depth ?? 0;
+	if (!Number.isInteger(d) || d < 0) {
+		throw new RangeError(`lineage.depth must be a non-negative integer, got ${JSON.stringify(d)}`);
+	}
+	return d;
+};
+
 const isNodeLike = (v: unknown): v is EngineNode =>
 	v != null && typeof (v as { getAttr?: unknown }).getAttr === 'function';
 
@@ -571,36 +619,6 @@ const safeKeyOf = (v: unknown): string => {
 };
 const contentKeyOf = (items: unknown): string => safeKeyOf(items);
 const dataKeyOf = (v: unknown): string => safeKeyOf(v);
-
-/**
- * Order-insensitive JSON structural equality — used for U1 semantic
- * no-op suppression (`setBlockData`/`setBlockType` with the same value
- * must not stamp attribution). Total: non-JSON values compare `false`
- * rather than throwing.
- */
-const jsonEquals = (a: unknown, b: unknown): boolean => {
-	if (a === b) return true;
-	if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
-	if (Array.isArray(a) !== Array.isArray(b)) return false;
-	if (Array.isArray(a)) {
-		const bb = b as unknown[];
-		return a.length === bb.length && a.every((x, i) => jsonEquals(x, bb[i]));
-	}
-	// Non-plain-object leaves (Date, engine nodes, class instances — only
-	// reachable via raw/foreign writes) compare false even when both carry
-	// zero enumerable keys: write-suppression must never silence a real
-	// normalization write.
-	const ap = Object.getPrototypeOf(a);
-	const bp = Object.getPrototypeOf(b);
-	if ((ap !== Object.prototype && ap !== null) || (bp !== Object.prototype && bp !== null)) {
-		return false;
-	}
-	const ao = a as JsonObj;
-	const bo = b as JsonObj;
-	const ak = Object.keys(ao);
-	if (ak.length !== Object.keys(bo).length) return false;
-	return ak.every((k) => jsonEquals(ao[k], bo[k]));
-};
 
 /**
  * Per-event snapshot of the projected tree for diffing.
@@ -683,13 +701,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 	/**
 	 * U1 — stamp a freshly materialized spec tree (all levels) with
 	 * `createdBy`/`contributors`/`lastChangedBy` = `actorId`. Call inside
-	 * the creating transaction; the spec's ids are re-sanitized the way
-	 * `materializeSpec` stored them.
+	 * the creating transaction; the spec is the normalized one that was stored.
 	 */
 	const stampSpecTree = (doc: EngineDoc, spec: BlockSpec, actorId: string): void => {
-		const id = sanitizeWireString(spec.id);
-		const node = M.blockNodeOf(doc, id);
-		if (node !== null) BA.stampCreated(doc, node, id, actorId);
+		const node = M.blockNodeOf(doc, spec.id);
+		if (node !== null) BA.stampCreated(doc, node, spec.id, actorId);
 		for (const child of spec.children ?? []) stampSpecTree(doc, child, actorId);
 	};
 
@@ -726,7 +742,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			if (!registryEmpty(doc)) return;
 			const hasUserContent = opts.content !== undefined && opts.content.length > 0;
 			const specs = hasUserContent
-				? opts.content!
+				? opts.content!.map(sanitizeSpec)
 				: [
 						{
 							id: BOOTSTRAP_BLOCK_ID,
@@ -863,133 +879,166 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			}
 		};
 
-		// ── U1 block attribution (attribution/block.ts) ─────────────────
+		// ── the write funnel (R6, O10, O19) ─────────────────────────────
 		//
-		// Every stamped op below writes its `b/`/`l` metadata INSIDE the
-		// operation's own `doc.transact` — content and metadata commit in
-		// ONE update; there is no observer-driven follow-up transaction.
-		// With no configured `actor` the facade performs no attribution
-		// writes at all (bare facades stay byte-identical).
+		// Every document op runs through `op`: one transaction, and a result
+		// folded from what that transaction actually did — `applied` iff this
+		// replica's clock advanced (an item was written) or the transaction's
+		// delete set grew; otherwise `noop`. Nothing predicts it per op: a
+		// same-value attr goes through `setIfChanged`, and the engine's own
+		// format minimization writes nothing for a range that already carries
+		// the marks.
 		//
-		// Suppression is op-level: the helpers are invoked only after the
-		// underlying model write provably ran (op boolean + explicit
-		// no-op guards — `deleteText` range clamp, empty-string insert,
-		// same-value type/data), and `BA.stamp*` itself suppresses the
-		// `l` restamp / contributor re-add. Pure moves and `del` writes
-		// are never stamped (parents are not marked for child-order
-		// changes; deletes persist records by not touching them).
+		// The outermost op opens a frame (an op nested in it — a composite's
+		// steps — joins it). When it closes, ONE pass over what the frame
+		// wrote stamps attribution and
+		// commits lineage (U1): a block created by a registry insert gets its
+		// `createdBy` record; a block whose content, claims, type or data
+		// changed gets a contributor stamp; moves and delete marks stamp
+		// nothing. Two intents the effects cannot name are recorded by their
+		// ops: a split-born block inherits its source's contributors, and a
+		// merge survivor unions the absorbed block's. Lineage is captured
+		// before the first write for each target an op names, and committed
+		// only for targets the effects show changed, deleted or absorbed. With
+		// no configured `actor` the funnel writes no attribution at all.
 
 		const actorOf = (): AttributionActor | undefined => config.actor?.();
+		const lineageDepth = lineageDepthOf(config.lineageDepth);
 
-		/** The actor changed `id`'s state → contributors.add + lastChangedBy. */
-		const stampTouched = (id: BlockId, pending?: PendingLineage): void => {
-			const actor = actorOf();
-			if (actor === undefined) return;
-			const node = M.blockNodeOf(doc, id);
-			if (node !== null) BA.stampChange(doc, node, id, actor.id);
-			commitLineage(id, pending);
-		};
-
-		/** A materialized spec tree → created stamps at every level. */
-		const stampCreatedSpec = (spec: BlockSpec): void => {
-			const actor = actorOf();
-			if (actor === undefined) return;
-			stampSpecTree(doc, spec, actor.id);
-		};
-
-		/**
-		 * Merge survivor stamping: the merger touches `intoId` and the
-		 * absorbed block's contributor set unions into it (`createdBy`
-		 * stays with the survivor's original creation).
-		 */
-		const stampMerged = (intoId: BlockId, fromId: BlockId, pending?: PendingLineage): void => {
-			const actor = actorOf();
-			if (actor === undefined) return;
-			const node = M.blockNodeOf(doc, intoId);
-			if (node !== null) BA.stampChange(doc, node, intoId, actor.id);
-			BA.unionContributors(doc, intoId, fromId);
-			commitLineage(intoId, pending);
-		};
-
-		// ── opt-in bounded lineage ring (config.lineageDepth) ────────────
-		//
-		// `lineagePending(id)` runs BEFORE an op's model write: when the
-		// write would displace the current `l` winner it captures the
-		// block's subtree JSON (pre-state) plus the displaced owner. The
-		// post-write stamp then commits the entry to the record's ring
-		// (`commitLineage`), so refused writes and same-actor edits
-		// (`l === actor`) leave no trace — the ring stores transitions,
-		// not keystrokes. Deletes capture too: the entry lands on the
-		// orphaned record, which stays readable via `history()`.
-
-		const lineageDepth = (() => {
-			const d = config.lineageDepth ?? 0;
-			// NaN/Infinity/fractional values would silently disable the
-			// ring's trim bound (`len > depth` never fires) — refuse them
-			// at the boundary rather than grow unbounded rings.
-			if (!Number.isInteger(d) || d < 0) {
-				throw new RangeError(
-					`EdytorDoc lineage.depth must be a non-negative integer, got ${JSON.stringify(d)}`
-				);
-			}
-			return d;
-		})();
-
-		/** A pre-write capture awaiting its op's post-write commit. */
+		/** A pre-write capture awaiting its frame's commit. */
 		type PendingLineage = { a?: string; by: string; t: number; j: JSONBlock };
-
-		/** `id`'s subtree as a `JSONBlock` — the same shape `toJSON` emits. */
-		const subtreeJSON = (id: BlockId): JSONBlock | undefined => {
-			const emit = (bid: BlockId): JSONBlock | undefined => {
-				const node = M.blockNodeOf(doc, bid);
-				if (node === null) return undefined;
-				const block: JSONBlock = {
-					type: String(node.getAttr(TYPE) ?? ''),
-					id: bid,
-					data: (node.getAttr(DATA) ?? {}) as JSONBlock['data']
-				};
-				const content = runsView.contentJSON(bid) as JSONBlock['content'];
-				if (content !== undefined && content.length > 0) block.content = cloneJson(content);
-				const childBlocks: JSONBlock[] = [];
-				for (const kid of childrenIds(bid)) {
-					const j = emit(kid);
-					if (j !== undefined) childBlocks.push(j);
-				}
-				if (childBlocks.length > 0) block.children = childBlocks;
-				return block;
-			};
-			return emit(id);
+		type Frame = {
+			clock: number;
+			deleted: number;
+			lineage: Map<BlockId, PendingLineage>;
+			inherit: Map<BlockId, BlockId>;
+			unions: [into: BlockId, from: BlockId][];
 		};
+		let frame: Frame | null = null;
 
 		/**
-		 * Capture `id`'s displaced state when the current actor is NOT the
-		 * `l` winner — the entry describes "what this edit overwrote".
-		 * Returns `undefined` (no capture) when the feature is off, no actor
-		 * is configured, the block is unattributed-by-me already
-		 * (`l === actor`), or the block doesn't exist.
+		 * Capture `id`'s displaced state when the current actor is NOT the `l`
+		 * winner (`force`: destructive paths, where the state is lost whoever
+		 * owns `l`). First capture in a frame wins — it is the pre-frame state.
 		 */
-		const lineagePending = (
-			id: BlockId,
-			opts?: { force?: boolean }
-		): PendingLineage | undefined => {
-			if (lineageDepth <= 0) return undefined;
+		const lineagePending = (id: BlockId, force = false): PendingLineage | undefined => {
 			const actor = actorOf();
-			if (actor === undefined) return undefined;
 			const node = M.blockNodeOf(doc, id);
-			if (node === null) return undefined;
+			if (lineageDepth <= 0 || actor === undefined || node === null) return undefined;
 			const l = node.getAttr(LAST_CHANGED_ATTR);
-			// `force` is for destructive paths (delete, undo/redo) where the
-			// state is lost regardless of who owns `l` — same-actor
-			// suppression would silently drop the only recovery copy.
-			if (opts?.force !== true && l === actor.id) return undefined;
-			const j = subtreeJSON(id);
-			if (j === undefined) return undefined;
+			if (!force && l === actor.id) return undefined;
+			const j = blockJSON(id);
 			return { ...(typeof l === 'string' ? { a: l } : {}), by: actor.id, t: Date.now(), j };
 		};
+		const capture = (f: Frame, id: BlockId, force = false): void => {
+			const pending = f.lineage.has(id) ? undefined : lineagePending(id, force);
+			if (pending !== undefined) f.lineage.set(id, pending);
+		};
 
-		/** Commit a pending capture — same transaction as the op's stamp. */
-		const commitLineage = (id: BlockId, pending: PendingLineage | undefined): void => {
-			if (pending !== undefined) BA.appendLineage(doc, id, pending, lineageDepth);
+		/** The frame's one attribution pass over what its transaction wrote. */
+		const close = (f: Frame, tr: unknown): void => {
+			const actor = actorOf();
+			const now = clockOf(doc);
+			const deletes = deletedLen(tr) > f.deleted;
+			if (actor === undefined || (now === f.clock && !deletes)) return;
+			const registry = M.registryOf(doc);
+			const created = new Set<BlockId>();
+			const changed = new Set<BlockId>();
+			const gone = new Set<BlockId>(f.unions.map(([, from]) => from));
+			const sort = (inserted: boolean) => (s: StoreStruct) => {
+				let n = s.parent as EngineNode | null;
+				let facet: string | null = null;
+				if (n === registry) {
+					if (inserted && typeof s.parentSub === 'string') created.add(s.parentSub);
+					return;
+				}
+				while (n !== null && typeof n === 'object' && n.name !== BLOCK_NODE) {
+					facet = n.name;
+					n = (n._item?.parent ?? null) as EngineNode | null;
+				}
+				const id = n?.getAttr(ID);
+				if (typeof id !== 'string') return;
+				if (facet === null) {
+					if (s.parentSub === TYPE || s.parentSub === DATA) changed.add(id);
+					else if (s.parentSub?.startsWith(DEL_PREFIX)) gone.add(id);
+				} else if (facet !== AT_NODE) changed.add(id);
+			};
+			const own = new Map([
+				[doc.clientID, { getIds: () => [{ clock: f.clock, len: now - f.clock }] }]
+			]);
+			walkIdSetStructs(Y, doc, { clients: own, has: () => false }, sort(true));
+			if (deletes)
+				walkIdSetStructs(Y, doc, (tr as { deleteSet: IdSetLike }).deleteSet, sort(false));
+			for (const id of created) {
+				const node = M.blockNodeOf(doc, id);
+				if (node !== null) BA.stampCreated(doc, node, id, actor.id, f.inherit.get(id));
+			}
+			for (const id of changed) {
+				const node = created.has(id) ? null : M.blockNodeOf(doc, id);
+				if (node !== null) BA.stampChange(doc, node, id, actor.id);
+			}
+			for (const [into, from] of f.unions) BA.unionContributors(doc, into, from);
+			for (const [id, pending] of f.lineage) {
+				if (changed.has(id) || gone.has(id)) BA.appendLineage(doc, id, pending, lineageDepth);
+			}
+		};
+
+		/** Open the frame when this is the transaction's outermost op; close it on success. */
+		const framed = <R>(tr: unknown, body: (f: Frame) => R): R => {
+			if (frame !== null) return body(frame);
+			const f: Frame = (frame = {
+				clock: clockOf(doc),
+				deleted: deletedLen(tr),
+				lineage: new Map(),
+				inherit: new Map(),
+				unions: []
+			});
+			try {
+				const out = body(f);
+				close(f, tr);
+				return out;
+			} finally {
+				frame = null;
+			}
+		};
+
+		/**
+		 * Run one op. `fn` returns the ids the op is about (created, moved,
+		 * merge target, target), or a refusal (`null`, or a reason) — and a
+		 * refusing `fn` must not have written. `touch` names the blocks whose
+		 * pre-write state lineage captures.
+		 */
+		const op = (
+			fn: (f: Frame) => readonly BlockId[] | Refusal,
+			touch: readonly BlockId[] = []
+		): OpResult =>
+			write(() =>
+				doc.transact((tr) =>
+					framed(tr, (f) => {
+						const clock = clockOf(doc);
+						const deleted = deletedLen(tr);
+						for (const id of touch) capture(f, id);
+						const out = fn(f);
+						if (out === null || typeof out === 'string') return refused(out);
+						return clockOf(doc) > clock || deletedLen(tr) > deleted
+							? { status: 'applied', ids: out }
+							: NOOP;
+					})
+				)
+			);
+
+		/** The one serializer (L14): `id`'s subtree in the public `JSONBlock` shape. */
+		const blockJSON = (id: BlockId): JSONBlock => {
+			const block: JSONBlock = {
+				type: blockTypeOf(id) ?? '',
+				id,
+				data: (blockDataOf(id) ?? {}) as JSONBlock['data']
+			};
+			const content = runsView.contentJSON(id) as JSONBlock['content'] & unknown[];
+			if (content.length > 0) block.content = content;
+			const children = childrenIds(id);
+			if (children.length > 0) block.children = children.map(blockJSON);
+			return block;
 		};
 
 		// WU7: `view()` is the shared per-document model state — when a
@@ -1574,7 +1623,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					if (touched.size === 0) return;
 					doc.transact(() => {
 						for (const bid of touched) {
-							commitLineage(bid, lineagePending(bid, { force: true }));
+							const pending = lineagePending(bid, true);
+							if (pending !== undefined) BA.appendLineage(doc, bid, pending, lineageDepth);
 						}
 					});
 				};
@@ -1593,265 +1643,194 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 
 		// ── structural ops ────────────────────────────────────────────────
+		// Every op normalizes its inputs once, here at ingress (O1): ids and
+		// strings as the wire would deliver them, payloads cloned. The model
+		// layers below trust what they are handed.
 
 		/**
-		 * Insert a block (spec may carry children/content/data — ids are
-		 * caller-assigned and must be fresh; the whole spec validates
-		 * atomically). Rejected without mutation or update when the parent
-		 * is unresolvable or `void` (voids cannot accept children). Inserting
-		 * INSIDE an island is allowed — island interiors are built this way.
+		 * Insert blocks (specs may carry children/content/data — ids are
+		 * caller-assigned and must be fresh; the whole batch validates
+		 * atomically). Refused when the parent is unresolvable or `void`, or
+		 * any id collides. Inserting INSIDE an island is allowed — island
+		 * interiors are built this way. `ids`: the inserted roots.
 		 */
-		const insertBlock = (dest: Destination, spec: BlockSpec): boolean =>
-			write(() =>
-				doc.transact(() => {
-					if (dest.parent !== null && isVoid(dest.parent)) return false;
-					const ok = M.insertBlock(doc, dest, spec);
-					// U1: fresh ids are authored here — createdBy/contributors/
-					// lastChangedBy on every spec-tree block, same commit.
-					if (ok) stampCreatedSpec(spec);
-					return ok;
-				})
-			);
-
-		/** Relocate `id` — identity preserved; refused exactly when `canPlace` refuses. */
-		const moveBlock = (id: BlockId, dest: Destination): boolean =>
-			write(() => canPlace([id], dest.parent) && M.moveBlock(doc, id, dest));
+		const insertBlocks = (dest: Destination, specs: readonly BlockSpec[]): OpResult => {
+			const parent = ref(dest.parent);
+			const clean = specs.map(sanitizeSpec);
+			return op(() => {
+				if (parent !== null && isVoid(parent)) return null;
+				return M.insertBlocks(doc, { parent, index: dest.index }, clean)
+					? clean.map((s) => s.id)
+					: null;
+			});
+		};
+		const insertBlock = (dest: Destination, spec: BlockSpec): OpResult =>
+			insertBlocks(dest, [spec]);
 
 		/**
 		 * Grouped move — ONE transaction (one undo step), per-member conflict
-		 * resolution, all-or-nothing locally; refused exactly when `canPlace`
-		 * refuses the group.
+		 * resolution; refused exactly when `canPlace` refuses the group.
+		 * `ids`: the moved blocks, in request order.
 		 */
-		const moveBlocks = (ids: BlockId[], dest: Destination): boolean =>
-			write(() => canPlace(ids, dest.parent) && M.moveBlocks(doc, ids, dest));
-
-		/** Move `id` to the last position under `newParentId`. */
-		const nestBlock = (id: BlockId, newParentId: BlockId): boolean =>
-			write(() => canPlace([id], newParentId) && M.nestBlock(doc, id, newParentId));
-
-		/**
-		 * Move `id` beside its parent (index = parent index + 1). Refused for
-		 * blocks inside an island — unnesting across the boundary would
-		 * escape the sealed subtree (baseline checked neither move nor
-		 * unnest for this; the facade closes the hole).
-		 */
-		const unNestBlock = (id: BlockId): boolean =>
-			write(() => {
-				const pos = M.positionOf(doc, id);
-				if (!pos || pos.parent === null) return false;
-				const ppos = M.positionOf(doc, pos.parent);
-				if (!ppos || !canPlace([id], ppos.parent)) return false;
-				return M.unNestBlock(doc, id);
+		const moveBlocks = (ids: readonly BlockId[], dest: Destination): OpResult => {
+			const moved = ids.map(ref);
+			const parent = ref(dest.parent);
+			return op(() => {
+				if (moved.length === 0) return [];
+				if (!canPlace(moved, parent)) return null;
+				return M.moveBlocks(doc, moved, { parent, index: dest.index }) ? moved : null;
 			});
+		};
+		/** Relocate `id` — identity preserved. */
+		const moveBlock = (id: BlockId, dest: Destination): OpResult => moveBlocks([id], dest);
+		/** Move `id` to the last position under `parent`. */
+		const nestBlock = (id: BlockId, parent: BlockId): OpResult =>
+			moveBlocks([id], { parent, index: childrenIds(ref(parent)).length });
+		/** Move `id` beside its parent (index = parent index + 1). */
+		const unNestBlock = (id: BlockId): OpResult => {
+			const pos = M.positionOf(doc, ref(id));
+			const ppos = pos?.parent != null ? M.positionOf(doc, pos.parent) : null;
+			return ppos
+				? moveBlocks([id], { parent: ppos.parent, index: ppos.index + 1 })
+				: op(() => null);
+		};
 
 		/**
-		 * Split `id` at content `offset` — the tail's slice records move to a
-		 * new sibling `newId` (no atom copies), children follow the sibling.
-		 * Refused on `void` blocks (no structural flow through voids).
+		 * Split `id` at content `offset` into a new sibling `newId` (the tail's
+		 * slice records move, no atom copies; children follow the sibling).
+		 * `tail` decides the sibling's type/data once. Refused on `void`
+		 * blocks. `ids`: the new block.
 		 */
-		const splitBlock = (id: BlockId, offset: number, newId: BlockId, tail?: SplitTail): boolean =>
-			write(() =>
-				doc.transact(() => {
-					if (isVoid(id)) return false;
-					const lin = lineagePending(id);
-					const ok = M.splitBlock(doc, id, offset, newId, tail);
-					if (ok) {
-						// U1: the tail is authored by the splitter and INHERITS
-						// the source's contributor set — read BEFORE the
-						// splitter's own stamp lands on the source, so the
-						// inherited set is exactly the pre-split contributors
-						// (the splitter's authorship is carried by
-						// createdBy/lastChangedBy, not a contributor add).
-						const actor = actorOf();
-						const nid = sanitizeWireString(newId);
-						const node = M.blockNodeOf(doc, nid);
-						if (actor !== undefined && node !== null) {
-							BA.stampCreated(doc, node, nid, actor.id, id);
-						}
-						// The split changed the source's state (its tail
-						// slices moved out) → the splitter touches it.
-						stampTouched(id, lin);
-					}
-					return ok;
-				})
+		const splitBlock = (
+			id: BlockId,
+			offset: number,
+			newId: BlockId,
+			tail?: SplitTail
+		): OpResult => {
+			id = ref(id);
+			const born = ref(newId);
+			const t = tail && { type: ref(tail.type), data: tail.data && sanitizeWireJson(tail.data) };
+			return op(
+				(f) => {
+					if (isVoid(id) || !M.splitBlock(doc, id, offset, born, t)) return null;
+					f.inherit.set(born, id);
+					return [born];
+				},
+				[id]
 			);
+		};
 
 		/**
 		 * Engine merge primitive: `from`'s content is claimed by `into`, its
 		 * children ADOPTED into `into`'s child list, and `from` is hidden via
-		 * the claim (undo restores it). Role rules are `canMerge`'s.
+		 * the claim (undo restores it). Role rules are `canMerge`'s. `ids`: `into`.
 		 */
-		const mergeBlocks = (fromId: BlockId, intoId: BlockId): boolean =>
-			write(() =>
-				doc.transact(() => {
-					if (!canMerge(fromId, intoId)) return false;
-					const lin = lineagePending(intoId);
-					// `from` is destroyed by the merge like a delete — force-
-					// capture its final state onto its own (soon-orphaned) ring.
-					const fromLin = lineagePending(fromId, { force: true });
-					const ok = M.mergeBlocks(doc, fromId, intoId);
-					// U1: survivor keeps its createdBy, unions the absorbed
-					// block's contributors, and records the merger.
-					if (ok) {
-						commitLineage(fromId, fromLin);
-						stampMerged(intoId, fromId, lin);
+		const mergeBlocks = (fromId: BlockId, intoId: BlockId): OpResult => {
+			const from = ref(fromId);
+			const into = ref(intoId);
+			return op(
+				(f) => {
+					capture(f, from, true);
+					if (!canMerge(from, into) || !M.mergeBlocks(doc, from, into)) return null;
+					f.unions.push([into, from]);
+					return [into];
+				},
+				[into]
+			);
+		};
+
+		/**
+		 * Baseline-shaped merge (both `mergeBackward` and `mergeForward`):
+		 * `from`'s children unnest to `from`'s vacated sibling slot — NOT
+		 * adopted into `into` — and, when `from` is an island, take the default
+		 * child of that slot's parent; then `from`'s content claims into `into`.
+		 */
+		const mergeUnnesting = (from: BlockId, into: BlockId): OpResult =>
+			op(
+				(f) => {
+					const pos = canMerge(from, into) ? M.positionOf(doc, from) : null;
+					if (pos === null) return null;
+					const kids = childrenIds(from);
+					const reset = isIsland(from) ? defaultChild(pos.parent) : null;
+					capture(f, from, true);
+					if (reset !== null) for (const kid of kids) capture(f, kid);
+					if (kids.length > 0) write(() => M.moveBlocks(doc, kids, pos));
+					if (reset !== null) {
+						for (const kid of kids)
+							write(() => setIfChanged(M.blockNodeOf(doc, kid)!, TYPE, reset));
 					}
-					return ok;
-				})
+					if (!write(() => M.mergeBlocks(doc, from, into))) return null;
+					f.unions.push([into, from]);
+					return [into];
+				},
+				[into]
 			);
 
 		/**
-		 * Baseline-shaped merge (both `mergeBlockBackward` and
-		 * `mergeBlockForward` share this form): `from`'s children are unnested
-		 * to `from`'s vacated sibling slot — NOT adopted into `into` — and,
-		 * when `from` is an island, reset to the default child of that slot's
-		 * parent; then `from`'s content claims into `into`. One transaction.
+		 * Baseline `mergeBlockBackward`: merge `id` into the previous block in
+		 * document order. No previous block → an empty block merges forward,
+		 * else refused. `ids`: the surviving block.
 		 */
-		const mergeUnnesting = (fromId: BlockId, intoId: BlockId): boolean =>
-			write(() => {
-				if (!canMerge(fromId, intoId)) return false;
-				const pos = M.positionOf(doc, fromId);
-				if (!pos) return false;
-				return doc.transact(() => {
-					const kids = childrenIds(fromId);
-					const reset = isIsland(fromId);
-					const resetType = sanitizeWireString(defaultChild(pos.parent));
-					const resetKids: BlockId[] = [];
-					const kidPend = new Map<BlockId, PendingLineage | undefined>();
-					for (let i = 0; i < kids.length; i++) {
-						write(() => M.moveBlock(doc, kids[i], { parent: pos.parent, index: pos.index + i }));
-						if (reset)
-							write(() => {
-								const kn = M.blockNodeOf(doc, kids[i]);
-								if (kn !== null) {
-									// U1: the reset is a real type change → the
-									// merger touched that child. A same-value reset
-									// is a semantic no-op — not stamped.
-									if (kn.getAttr(SCHEMA.blockAttrs.type) !== resetType) {
-										resetKids.push(kids[i]);
-										kidPend.set(kids[i], lineagePending(kids[i]));
-									}
-									kn.setAttr(SCHEMA.blockAttrs.type, resetType);
-								}
-							});
-					}
-					const lin = lineagePending(intoId);
-					const fromLin = lineagePending(fromId, { force: true });
-					const ok = write(() => M.mergeBlocks(doc, fromId, intoId));
-					if (ok) {
-						commitLineage(fromId, fromLin);
-						stampMerged(intoId, fromId, lin);
-						for (const kid of resetKids) stampTouched(kid, kidPend.get(kid));
-					}
-					return ok;
-				});
-			});
+		const mergeBackward = (id: BlockId): OpResult => {
+			id = ref(id);
+			const prev = isVoid(id) ? undefined : previous(id);
+			if (prev === null && childrenIds(id).length === 0 && displayLength(id) === 0) {
+				return mergeForward(id);
+			}
+			return prev ? mergeUnnesting(id, prev) : op(() => null);
+		};
 
-		/**
-		 * Baseline `mergeBlockBackward`: merge `id` into the previous block
-		 * in document order (deepest last descendant of the previous sibling,
-		 * or the parent for a first child). No previous block → merges
-		 * forward when empty, else refuses — the baseline fallback.
-		 */
-		const mergeBackward = (id: BlockId): BlockId | null =>
-			write(() => {
-				if (isVoid(id)) return null;
-				const prev = previous(id);
-				if (prev === null) {
-					// Baseline: no previous block → empty blocks merge forward.
-					const kids = childrenIds(id);
-					const len = displayLength(id);
-					if (kids.length === 0 && len === 0) return mergeForward(id);
-					return null;
-				}
-				return mergeUnnesting(id, prev) ? prev : null;
-			});
-
-		/**
-		 * Baseline `mergeBlockForward`: pull the next block in document order
-		 * into `id` (its children unnest to its vacated slot).
-		 */
-		const mergeForward = (id: BlockId): BlockId | null =>
-			write(() => {
-				if (isVoid(id)) return null;
-				const after = next(id);
-				if (after === null) return null;
-				return mergeUnnesting(after, id) ? id : null;
-			});
+		/** Baseline `mergeBlockForward`: pull the next block in document order into `id`. */
+		const mergeForward = (id: BlockId): OpResult => {
+			id = ref(id);
+			const after = isVoid(id) ? null : next(id);
+			return after ? mergeUnnesting(after, id) : op(() => null);
+		};
 
 		/**
 		 * Delete `id` (R3: this writer's marks on `id` and on what it displays
-		 * through merge claims — wins over concurrent moves).
-		 * `keepChildren` reparents the children to `id`'s vacated slot with
-		 * their identity PRESERVED — an intentional improvement over the
-		 * baseline, which cloned children into fresh `Block`s.
+		 * through merge claims — wins over concurrent moves). `keepChildren`
+		 * reparents the children to `id`'s vacated slot, identity preserved.
 		 */
-		const deleteBlock = (id: BlockId, opts: { keepChildren?: boolean } = {}): boolean =>
-			write(() => {
-				// Deletes stamp no attribution (the record persists by not
-				// touching it) but DO capture lineage — `force` because the
-				// subtree is destroyed regardless of who owns `l`. The entry
-				// lands on the orphaned `b/<id>` record, which stays readable
-				// via `attribution.history` — "restore what X deleted".
-				const lin = lineagePending(id, { force: true });
-				if (!opts.keepChildren) {
-					const ok = write(() => M.deleteBlock(doc, id));
-					if (ok) commitLineage(id, lin);
-					return ok;
-				}
-				const pos = M.positionOf(doc, id);
-				if (!pos) return false;
-				const kids = childrenIds(id);
-				return doc.transact(() => {
-					for (let i = 0; i < kids.length; i++) {
-						write(() => M.moveBlock(doc, kids[i], { parent: pos.parent, index: pos.index + i }));
-					}
-					const ok = write(() => M.deleteBlock(doc, id));
-					if (ok) commitLineage(id, lin);
-					return ok;
-				});
+		const deleteBlock = (id: BlockId, opts: { keepChildren?: boolean } = {}): OpResult => {
+			id = ref(id);
+			return op((f) => {
+				capture(f, id, true);
+				const pos = opts.keepChildren ? M.positionOf(doc, id) : null;
+				const kids = pos ? childrenIds(id) : [];
+				if (pos && kids.length > 0) write(() => M.moveBlocks(doc, kids, pos));
+				return write(() => M.deleteBlock(doc, id)) ? [id] : null;
 			});
+		};
 
 		// ── metadata / replacement ops ────────────────────────────────────
 
 		/** Set the block type (attr write — the block keeps its identity). */
-		const setBlockType = (id: BlockId, type: string): boolean =>
-			write(() =>
-				doc.transact(() => {
-					if (!M.isLive(doc, id)) return false;
-					const node = M.blockNodeOf(doc, id)!;
-					// Boundary normalization (F2-M1) — lone surrogates become
-					// U+FFFD, matching what the wire encode would deliver.
-					const clean = sanitizeWireString(type);
-					// U1 semantic no-op: writing the same value is suppressed
-					// entirely — no item churn, no update, no attribution.
-					if (node.getAttr(SCHEMA.blockAttrs.type) === clean) return true;
-					const lin = lineagePending(id);
-					node.setAttr(SCHEMA.blockAttrs.type, clean);
-					stampTouched(id, lin);
-					return true;
-				})
+		const setBlockType = (id: BlockId, type: string): OpResult => {
+			id = ref(id);
+			const clean = ref(type);
+			return op(
+				() =>
+					M.isLive(doc, id) ? (setIfChanged(M.blockNodeOf(doc, id)!, TYPE, clean), [id]) : null,
+				[id]
 			);
+		};
 
 		/** Replace the block's `data` payload (whole-attr write). */
-		const setBlockData = (id: BlockId, data: Record<string, unknown>): boolean =>
-			write(() =>
-				doc.transact(() => {
-					if (!M.isLive(doc, id)) return false;
-					const node = M.blockNodeOf(doc, id)!;
-					const clean = sanitizeWireJson(data);
-					if (jsonEquals(node.getAttr(SCHEMA.blockAttrs.data), clean)) return true;
-					const lin = lineagePending(id);
-					node.setAttr(SCHEMA.blockAttrs.data, clean);
-					stampTouched(id, lin);
-					return true;
-				})
+		const setBlockData = (id: BlockId, data: Record<string, unknown>): OpResult => {
+			id = ref(id);
+			const clean = sanitizeWireJson(data);
+			return op(
+				() =>
+					M.isLive(doc, id) ? (setIfChanged(M.blockNodeOf(doc, id)!, DATA, clean), [id]) : null,
+				[id]
 			);
+		};
 
 		/**
 		 * Display length in atoms (chars + inline atoms) of `id`'s content —
-		 * computed from the LIVE view so mid-transaction callers (e.g.
-		 * `setBlock` deleting prior content) read post-write state.
+		 * computed from the LIVE view so mid-transaction callers read
+		 * post-write state.
 		 */
 		const displayLength = (id: BlockId): number => {
 			const { blocks, own } = view();
@@ -1860,65 +1839,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				n += item.kind === 'text' ? item.text.length : 1;
 			}
 			return n;
-		};
-
-		/**
-		 * U1 same-value suppression for mark writes: the engine's
-		 * `formatText` already skips items whose folded mark state equals
-		 * the target (`insertFormats`/`minimizeFormatChanges` in the
-		 * vendored ynode), so a range whose atoms ALL already satisfy
-		 * `marks` writes zero content items — stamping anyway would emit
-		 * an attribution-only commit on a semantic no-op. Folded mark
-		 * state is read per piece through the live range cursor, so
-		 * inline atoms inside the range are covered too (their `formats`
-		 * reflect the cursor's folded state even though runs don't
-		 * surface marks on inlines).
-		 *
-		 * Returns `true` when the write would be a semantic no-op. Must
-		 * be evaluated BEFORE the model write — post-write every range
-		 * trivially satisfies the check. (S13: this re-walks the folded
-		 * marks the engine's `minimizeFormatChanges` resolves again —
-		 * a `wroteItems` verdict on the format ops would retire this
-		 * scan.)
-		 */
-		const marksAlready = (
-			id: BlockId,
-			offset: number,
-			length: number,
-			marks: Record<string, unknown>
-		): boolean => {
-			// Same sanitize as `formatRangeIn` so the comparison runs on the
-			// exact payload the engine would write.
-			const entries = Object.entries(sanitizeWireJson(marks) as Record<string, unknown>);
-			const { blocks, own } = view();
-			const segs = T.flatten(id, blocks, own);
-			const total = T.ownedLength(segs);
-			const at = Math.max(0, Math.min(offset, total));
-			const end = Math.min(total, at + Math.max(0, length));
-			if (entries.length === 0 || end <= at) return true;
-			let base = 0;
-			const cursors = new Map<string, RangeCursor>();
-			for (const seg of segs) {
-				const len = seg.i1 - seg.i0;
-				const lo = Math.max(at, base);
-				const hi = Math.min(end, base + len);
-				if (lo < hi) {
-					const text = blocks.get(seg.t)?.content;
-					if (text === undefined || text === null) return false;
-					let cur = cursors.get(seg.t);
-					if (cur === undefined) cursors.set(seg.t, (cur = T.openRangeCursor(text)));
-					for (const piece of cur.read(seg.i0 + (lo - base), seg.i0 + (hi - base))) {
-						if (piece.len === 0 || piece.deleted) continue;
-						for (const [k, v] of entries) {
-							// `?? null` mirrors the engine's `currentFormats.get(k) ?? null`.
-							if (!jsonEquals(piece.formats?.[k] ?? null, v ?? null)) return false;
-						}
-					}
-				}
-				base += len;
-				if (base >= end) break;
-			}
-			return true;
 		};
 
 		/**
@@ -2221,191 +2141,127 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return { blockId: owner, offset: off };
 		};
 
+		/** A replacement content item normalized at ingress. */
+		const sanitizeItem = (item: SetBlockContent[number]): SetBlockContent[number] =>
+			item.kind === 'text'
+				? {
+						kind: 'text',
+						text: ref(item.text),
+						...(item.marks && { marks: sanitizeWireJson(item.marks) })
+					}
+				: sanitizeInline(item);
+		const sanitizeInline = <I extends InlineSpec>(item: I): I => ({
+			...item,
+			id: ref(item.id),
+			type: ref(item.type),
+			...(item.data !== undefined && { data: sanitizeWireJson(item.data) })
+		});
+
 		/**
 		 * Baseline `setBlock`: `type`/`data` update the block in place;
 		 * `content`/`children` REPLACE wholesale — explicit replacement is a
-		 * new-identity operation (fresh atoms/children), matching the
-		 * baseline which rebuilt both from JSON. `children` on a `void`
-		 * block is refused (voids cannot accept children). One transaction.
+		 * new-identity operation. All-or-nothing (D-12): `children` on a `void`
+		 * block, or a replacement id that is already taken (a live or deleted
+		 * block, the replaced children included, or a duplicate inside the
+		 * replacement), refuses before any write — `id-collision` for the
+		 * latter. A caller wanting a child back re-creates it with a fresh id.
 		 */
 		const setBlock = (
 			id: BlockId,
 			value: {
 				type?: string;
 				data?: Record<string, unknown>;
-				content?: (
-					| { kind: 'text'; text: string; marks?: Record<string, unknown> }
-					| { kind: 'inline'; id: string; type: string; data?: Record<string, unknown> }
-				)[];
+				content?: SetBlockContent;
 				children?: BlockSpec[];
 			}
-		): boolean =>
-			write(() => {
-				if (!M.isLive(doc, id)) return false;
-				if (value.children !== undefined && isVoid(id)) return false;
-				return doc.transact(() => {
-					// U1: leaf `setBlockType`/`setBlockData` self-stamp when the
-					// value actually changes (same-value writes suppressed).
-					if (value.type !== undefined) setBlockType(id, value.type);
-					if (value.data !== undefined) setBlockData(id, value.data);
-					if (value.content !== undefined) {
-						// Lineage: capture before the first content mutation.
-						// When a type/data write above already displaced `l`,
-						// this returns undefined — the bundle captures once.
-						const lin = lineagePending(id);
+		): OpResult => {
+			id = ref(id);
+			const type = value.type === undefined ? undefined : ref(value.type);
+			const data = value.data === undefined ? undefined : sanitizeWireJson(value.data);
+			const content = value.content?.map(sanitizeItem);
+			const children = value.children?.map(sanitizeSpec);
+			return op(
+				(f) => {
+					if (!M.isLive(doc, id)) return null;
+					if (children !== undefined && isVoid(id)) return null;
+					if (children !== undefined && M.collides(doc, children)) return 'id-collision';
+					const node = M.blockNodeOf(doc, id)!;
+					if (type !== undefined) setIfChanged(node, TYPE, type);
+					if (data !== undefined) setIfChanged(node, DATA, data);
+					if (content !== undefined) {
 						const len = displayLength(id);
 						if (len > 0) write(() => M.deleteText(doc, id, 0, len));
-						let wrote = len > 0;
-						let off = 0;
-						for (const item of value.content) {
-							if (item.kind === 'text') {
-								// '' inserts are skipped entirely — they write no
-								// atom and (pre-fix) still stamped attribution.
-								if (item.text !== '') {
-									wrote = write(() => M.insertText(doc, id, off, item.text, item.marks)) || wrote;
-								}
-								off += item.text.length;
-							} else {
-								wrote = write(() => M.insertInline(doc, id, off, item)) || wrote;
-								off += 1;
+						let at = 0;
+						for (const item of content) {
+							if (item.kind === 'inline') write(() => M.insertInline(doc, id, at++, item));
+							else if (item.text !== '') {
+								write(() => M.insertText(doc, id, at, item.text, item.marks));
+								at += item.text.length;
 							}
 						}
-						// U1: explicit content replacement is authored — stamp
-						// only when something was actually deleted or inserted
-						// (a `[]`/`''` replace on empty content is a semantic
-						// no-op, as is a write the model refused).
-						if (wrote) stampTouched(id, lin);
 					}
-					if (value.children !== undefined) {
+					if (children !== undefined) {
 						for (const kid of childrenIds(id)) {
-							// Lineage: children-replace deletes each kid through
-							// the raw model path — force-capture its subtree
-							// first (the same destructive capture `deleteBlock`
-							// performs) or the only recovery copy is lost.
-							const kidLin = lineagePending(kid, { force: true });
-							const ok = write(() => M.deleteBlock(doc, kid));
-							if (ok) commitLineage(kid, kidLin);
+							capture(f, kid, true);
+							write(() => M.deleteBlock(doc, kid));
 						}
-						for (const child of value.children) {
-							write(() => {
-								// U1: replacement children are fresh identities —
-								// authored by this actor. The parent itself is not
-								// stamped: its own state (type/data/content) is
-								// untouched, matching the pure-move rule.
-								if (M.insertBlock(doc, { parent: id, index: Number.MAX_SAFE_INTEGER }, child)) {
-									stampCreatedSpec(child);
-								}
-							});
-						}
+						write(() =>
+							M.insertBlocks(doc, { parent: id, index: Number.MAX_SAFE_INTEGER }, children)
+						);
 					}
-					return true;
-				});
-			});
+					return [id];
+				},
+				[id]
+			);
+		};
 
 		/**
 		 * Explicit fresh-identity copy of a subtree (paste / drag-clone):
-		 * projects `id`, remaps every block id through `freshId`, inserts the
-		 * spec right after `id`. Returns the new root id, or null when `id`
-		 * is unresolvable. Text atoms get new identity too — duplication is
-		 * a creation op, not a relocation.
+		 * serializes `id`, remaps every block id through `freshId`, inserts the
+		 * copy right after `id`. Text atoms get new identity too — duplication
+		 * is a creation op, not a relocation. `ids`: the copy's root.
 		 */
-		const duplicateBlock = (id: BlockId, freshId: (oldId: BlockId) => BlockId): BlockId | null =>
-			write(() => {
-				const pos = M.positionOf(doc, id);
-				if (!pos) return null;
-				const spec = (b: ProjectedBlock): BlockSpec => ({
-					id: freshId(b.id),
-					type: b.type,
-					...(b.data !== undefined ? { data: cloneJson(b.data) } : {}),
-					content: b.content.map((i) => cloneJson(i)),
-					children: b.children.map(spec)
-				});
-				const stack = [...M.project(doc).children];
-				let found: ProjectedBlock | undefined;
-				while (stack.length) {
-					const b = stack.pop()!;
-					if (b.id === id) {
-						found = b;
-						break;
-					}
-					stack.push(...b.children);
-				}
-				if (!found) return null;
-				const newSpec = spec(found);
-				// insertBlock normalizes caller-supplied ids at the boundary
-				// (F2-M1), so report the sanitized form `freshId` produced,
-				// not the raw callback output.
-				return insertBlock({ parent: pos.parent, index: pos.index + 1 }, newSpec)
-					? sanitizeWireString(newSpec.id)
-					: null;
-			});
+		const duplicateBlock = (id: BlockId, freshId: (oldId: BlockId) => BlockId): OpResult => {
+			id = ref(id);
+			const pos = M.positionOf(doc, id);
+			if (pos === null) return op(() => null);
+			const spec = (b: BlockId): BlockSpec => {
+				const data = blockDataOf(b);
+				return {
+					id: freshId(b),
+					type: blockTypeOf(b) ?? '',
+					...(data !== undefined && { data }),
+					content: contentItems(b),
+					children: childrenIds(b).map(spec)
+				};
+			};
+			return insertBlock({ parent: pos.parent, index: pos.index + 1 }, spec(id));
+		};
 
 		// ── content ops (allowed inside voids — caption contract) ─────────
+
+		/** The ownership view for a content op on `id`, or null when `id` is not a live target. */
+		const target = (id: BlockId) => {
+			const v = view();
+			return isLiveIn(v, id) ? v : null;
+		};
 
 		const insertText = (
 			id: BlockId,
 			offset: number,
 			text: string,
 			marks?: Record<string, unknown>
-		): boolean =>
-			write(() =>
-				doc.transact(() => {
-					const lin = text === '' ? undefined : lineagePending(id);
-					const ok = M.insertText(doc, id, offset, text, marks);
-					// U1: '' is a semantic no-op (no atom written).
-					if (ok && text !== '') stampTouched(id, lin);
-					return ok;
-				})
-			);
+		): OpResult => {
+			id = ref(id);
+			const clean = ref(text);
+			const m = marks && sanitizeWireJson(marks);
+			return op(() => (M.insertText(doc, id, offset, clean, m) ? [id] : null), [id]);
+		};
 
-		const deleteText = (id: BlockId, offset: number, length: number): boolean =>
-			write(() =>
-				doc.transact(() => {
-					// U1: `deleteRange` returns `true` for empty/no-op ranges —
-					// resolve the clamped span BEFORE the op so a zero-width
-					// result suppresses the stamp. (S13: this re-derives the
-					// clamp the model computes again inside `M.deleteText` —
-					// consuming the model's verdict needs a widened return
-					// shape on the op itself.)
-					const total = displayLength(id);
-					const at = Math.max(0, Math.min(offset, total));
-					const end = Math.min(total, at + Math.max(0, length));
-					const lin = end > at ? lineagePending(id) : undefined;
-					const ok = M.deleteText(doc, id, offset, length);
-					if (ok && end > at) stampTouched(id, lin);
-					return ok;
-				})
-			);
-
-		const setMark = (
-			id: BlockId,
-			offset: number,
-			length: number,
-			name: string,
-			value: unknown
-		): boolean =>
-			write(() =>
-				doc.transact(() => {
-					// U1: evaluated BEFORE the write — a range already carrying
-					// this exact mark produces no items → suppress the stamp.
-					const noop = marksAlready(id, offset, length, { [name]: value });
-					const lin = noop ? undefined : lineagePending(id);
-					const ok = M.setMark(doc, id, offset, length, name, value);
-					if (ok && !noop) stampTouched(id, lin);
-					return ok;
-				})
-			);
-
-		const unsetMark = (id: BlockId, offset: number, length: number, name: string): boolean =>
-			write(() =>
-				doc.transact(() => {
-					const noop = marksAlready(id, offset, length, { [name]: null });
-					const lin = noop ? undefined : lineagePending(id);
-					const ok = M.unsetMark(doc, id, offset, length, name);
-					if (ok && !noop) stampTouched(id, lin);
-					return ok;
-				})
-			);
+		const deleteText = (id: BlockId, offset: number, length: number): OpResult => {
+			id = ref(id);
+			return op(() => (M.deleteText(doc, id, offset, length) ? [id] : null), [id]);
+		};
 
 		/** Multi-mark format write over a range (values may be null = unset). */
 		const formatRange = (
@@ -2413,111 +2269,69 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			offset: number,
 			length: number,
 			marks: Record<string, unknown>
-		): boolean =>
-			write(() => {
-				if (!M.isLive(doc, id)) return false;
-				return doc.transact(() => {
-					const { blocks, own } = view();
-					// U1: `formatRangeIn` returns false on empty/clamped-away
-					// ranges — those never stamp. A range whose atoms already
-					// satisfy `marks` writes no items either (engine-level
-					// suppression) — suppress the stamp the same way.
-					const noop = marksAlready(id, offset, length, marks);
-					const lin = noop ? undefined : lineagePending(id);
-					const ok = write(() => T.formatRangeIn(doc, blocks, own, id, offset, length, marks));
-					if (ok && !noop) stampTouched(id, lin);
-					return ok;
-				});
-			});
+		): OpResult => {
+			id = ref(id);
+			const clean = sanitizeWireJson(marks);
+			return op(() => {
+				const v = target(id);
+				return v && T.formatRangeIn(doc, v.blocks, v.own, id, offset, length, clean) ? [id] : null;
+			}, [id]);
+		};
+		const setMark = (id: BlockId, offset: number, length: number, name: string, value: unknown) =>
+			formatRange(id, offset, length, { [name]: value });
+		const unsetMark = (id: BlockId, offset: number, length: number, name: string) =>
+			formatRange(id, offset, length, { [name]: null });
 
 		/**
 		 * Baseline `removeMarksFromText`: every mark present anywhere in the
-		 * range is unset over the range. Names are discovered from the runs
-		 * view — no replicated scan needed.
+		 * range is unset over the range. Names are discovered from the runs.
 		 */
-		const clearMarks = (id: BlockId, offset: number, length: number): boolean => {
-			const names = new Set<string>();
+		const clearMarks = (id: BlockId, offset: number, length: number): OpResult => {
+			id = ref(id);
+			const clears: JsonObj = {};
 			let pos = 0;
 			for (const r of runsView.runs(id)) {
 				const len = r.kind === 'text' ? (r as { text: string }).text.length : 1;
 				if (pos + len > offset && pos < offset + length) {
-					for (const k of Object.keys((r as { marks?: JsonObj }).marks ?? {})) names.add(k);
+					for (const k of Object.keys((r as { marks?: JsonObj }).marks ?? {})) clears[k] = null;
 				}
 				pos += len;
 			}
-			if (names.size === 0) return true;
-			const clears: JsonObj = {};
-			for (const n of names) clears[n] = null;
 			return formatRange(id, offset, length, clears);
 		};
 
-		const insertInline = (id: BlockId, offset: number, atom: InlineSpec): boolean =>
-			write(() =>
-				doc.transact(() => {
-					const lin = lineagePending(id);
-					const ok = M.insertInline(doc, id, offset, atom);
-					if (ok) stampTouched(id, lin);
-					return ok;
-				})
-			);
+		const insertInline = (id: BlockId, offset: number, atom: InlineSpec): OpResult => {
+			id = ref(id);
+			const clean = sanitizeInline(atom);
+			return op(() => (M.insertInline(doc, id, offset, clean) ? [id] : null), [id]);
+		};
 
-		const removeInline = (id: BlockId, inlineId: string): boolean =>
-			write(() =>
-				doc.transact(() => {
-					const lin = lineagePending(id);
-					const ok = M.removeInline(doc, id, inlineId);
-					if (ok) stampTouched(id, lin);
-					return ok;
-				})
-			);
+		const removeInline = (id: BlockId, inlineId: string): OpResult => {
+			id = ref(id);
+			const atom = ref(inlineId);
+			return op(() => (M.removeInline(doc, id, atom) ? [id] : null), [id]);
+		};
 
-		const setInlineData = (id: BlockId, inlineId: string, data: Record<string, unknown>): boolean =>
-			write(() =>
-				doc.transact(() => {
-					const clean = sanitizeWireJson(data) as Record<string, unknown>;
-					// U1 same-value suppression: an identical payload is a
-					// semantic no-op — skip the model write entirely (no item
-					// churn, no stamp). An inline absent from the projected
-					// content falls through to the model's `false` verdict.
-					// (S13: the runs scan duplicates the lookup
-					// `M.setInlineData` performs — a same-value verdict on
-					// the op would retire it.)
-					for (const r of runsView.runs(id)) {
-						if (r.kind === 'inline' && (r as { id: string }).id === inlineId) {
-							if (jsonEquals((r as { data?: unknown }).data, clean)) return true;
-							break;
-						}
-					}
-					const lin = lineagePending(id);
-					const ok = M.setInlineData(doc, id, inlineId, clean);
-					if (ok) stampTouched(id, lin);
-					return ok;
-				})
-			);
+		const setInlineData = (
+			id: BlockId,
+			inlineId: string,
+			data: Record<string, unknown>
+		): OpResult => {
+			id = ref(id);
+			const atom = ref(inlineId);
+			const clean = sanitizeWireJson(data);
+			return op(() => (M.setInlineData(doc, id, atom, clean) ? [id] : null), [id]);
+		};
 
 		// ── JSON boundary ─────────────────────────────────────────────────
 
 		/**
 		 * Public JSON export — `{ children: JSONBlock[] }` matching
-		 * `src/lib/utils/json.ts` (baseline `Block.value` shape: `data` always
-		 * present, `content`/`children` omitted when empty). Structure comes
-		 * from the canonical projection; content from the maintained runs
-		 * view's export boundary — the two are guaranteed to agree (AN04).
+		 * `src/lib/utils/json.ts` (`data` always present, `content`/`children`
+		 * omitted when empty): the one serializer, {@link blockJSON}, over the
+		 * root's visible children.
 		 */
-		const toJSON = (): JSONDoc => {
-			const emit = (b: ProjectedBlock): JSONBlock => {
-				const block: JSONBlock = {
-					type: b.type,
-					id: b.id,
-					data: (b.data ?? {}) as JSONBlock['data']
-				};
-				const content = runsView.contentJSON(b.id) as (JSONText | JSONInlineBlock)[];
-				if (content.length > 0) block.content = content;
-				if (b.children.length > 0) block.children = b.children.map(emit);
-				return block;
-			};
-			return { children: M.project(doc).children.map(emit) };
-		};
+		const toJSON = (): JSONDoc => ({ children: childrenIds(null).map(blockJSON) });
 
 		// ── facade object ─────────────────────────────────────────────────
 
@@ -2527,6 +2341,12 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * handle per block id, so repeated `facade.block(id)` calls return
 		 * the same instance.
 		 */
+		/** A read taking an id first: the id normalizes at ingress (O1). */
+		const byRef =
+			<I extends BlockId | null, A extends unknown[], R>(f: (id: I, ...rest: A) => R) =>
+			(id: I, ...rest: A): R =>
+				f(ref(id), ...rest);
+
 		let nodeApi: ReturnType<typeof bindNodes> | undefined;
 		const nodes = () => (nodeApi ??= bindNodes(facade));
 
@@ -2568,55 +2388,60 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			_clearSyncPending: (): void => {
 				syncPending = false;
 			},
-			// reads
+			// reads — every id argument normalizes at ingress (O1)
 			project: () => M.project(doc),
 			toJSON,
-			childrenIds,
-			positionOf,
-			pathOf,
-			parentOf: (id: BlockId) => positionOf(id)?.parent ?? null,
-			ancestorsOf,
+			blockJSON: byRef(blockJSON),
+			childrenIds: byRef(childrenIds),
+			positionOf: byRef(positionOf),
+			pathOf: byRef(pathOf),
+			parentOf: byRef((id: BlockId) => positionOf(id)?.parent ?? null),
+			ancestorsOf: byRef((id: BlockId) => ancestorsOf(id)),
 			listBlockIds: () => M.listBlockIds(doc),
-			blockText: (id: BlockId) => M.blockText(doc, id),
-			blockTypeOf,
-			blockDataOf,
+			blockText: byRef((id: BlockId) => M.blockText(doc, id)),
+			blockTypeOf: byRef(blockTypeOf),
+			blockDataOf: byRef(blockDataOf),
 			/**
 			 * U1 — compact per-block attribution (`{createdBy, contributors,
 			 * lastChangedBy}`), or `undefined` for unauthored/system blocks.
 			 * O(1) per call; live-replicated (remote values read the same).
 			 */
-			blockAttribution: (id: BlockId): BlockAttribution | undefined => blockAttributionOf(doc, id),
-			crdtId: (id: BlockId) => M.crdtId(doc, id),
-			resolveBlock: (id: BlockId) => M.resolveBlock(doc, id),
-			displayLength,
-			contentItems,
-			hasBlock,
-			isVisibleBlock,
+			blockAttribution: byRef((id: BlockId): BlockAttribution | undefined =>
+				blockAttributionOf(doc, id)
+			),
+			crdtId: byRef((id: BlockId) => M.crdtId(doc, id)),
+			resolveBlock: byRef((id: BlockId) => M.resolveBlock(doc, id)),
+			displayLength: byRef(displayLength),
+			contentItems: byRef(contentItems),
+			hasBlock: byRef(hasBlock),
+			isVisibleBlock: byRef(isVisibleBlock),
 			order,
-			compare,
-			next,
-			previous,
+			compare: (a: BlockId, b: BlockId) => compare(ref(a), ref(b)),
+			next: byRef(next),
+			previous: byRef(previous),
 			// caret anchors (U09) — backing-text-bound selection endpoints
-			anchorAt,
+			anchorAt: byRef(anchorAt),
 			resolveAnchor,
 			// roles
-			isVoid,
-			isIsland,
-			islandOf,
-			insideIsland,
+			isVoid: byRef(isVoid),
+			isIsland: byRef(isIsland),
+			islandOf: byRef((id: BlockId) => islandOf(id)),
+			insideIsland: byRef((id: BlockId) => insideIsland(id)),
 			// structural capability (R5)
-			canPlace,
-			canMerge,
-			defaultChild,
+			canPlace: (ids: readonly BlockId[], parent?: BlockId | null) =>
+				canPlace(ids.map(ref), parent == null ? parent : ref(parent)),
+			canMerge: (from: BlockId, into: BlockId) => canMerge(ref(from), ref(into)),
+			defaultChild: byRef(defaultChild),
 			// maintained runs (U05 surface, bound to this doc)
-			runs: runsView.runs,
+			runs: byRef(runsView.runs),
 			snapshot: runsView.snapshot,
-			contentJSON: runsView.contentJSON,
-			blockVersion: runsView.blockVersion,
-			subscribeBlock: runsView.subscribeBlock,
+			contentJSON: byRef(runsView.contentJSON),
+			blockVersion: byRef(runsView.blockVersion),
+			subscribeBlock: byRef(runsView.subscribeBlock),
 			// events
 			onChange,
-			// structural ops
+			// structural ops — each returns an {@link OpResult}
+			insertBlocks,
 			insertBlock,
 			moveBlock,
 			moveBlocks,
@@ -2667,7 +2492,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			 * id; a handle for an absent id reports `exists`/`live`/`visible`
 			 * false and refuses ops.
 			 */
-			block: (id: BlockId): DocBlock => nodes().block(id)
+			block: (id: BlockId): DocBlock => nodes().block(ref(id))
 		};
 		return facade;
 	};

@@ -88,7 +88,7 @@ describe('F-D2 — order is one answer', () => {
 
 	test('document: the island seal of the merge is the merge rule, not the order (G6)', () => {
 		const ed = facade();
-		expect(ed.mergeForward('A')).toBeNull();
+		expect(ed.mergeForward('A').status).toBe('refused');
 		expect(ed.blockText('A')).toBe('aa');
 		expect(ed.blockText('Y')).toBe('yy');
 	});

@@ -46,7 +46,6 @@
  */
 import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode } from '../engine-api.js';
 import { DATA, ID, TYPE } from '../schema.js';
-import { sanitizeWireJson, sanitizeWireString } from '../../utils/json.js';
 
 /** Block-id of the backing text a slice record points into. */
 export type TextId = string;
@@ -1330,16 +1329,9 @@ export const bindText = (Y: EngineApi) => {
 		payload: string | EngineNode,
 		marks?: Record<string, unknown>
 	): boolean => {
-		// Clone caller marks ONCE at the boundary: `text.insert` keeps the
-		// format object by reference, so a caller-held marks payload would
-		// alias straight into replicated state (gate-2 finding 11).
-		// `sanitizeWireJson` normalizes lone surrogates to U+FFFD at the same
-		// boundary — the wire's UTF-8 encoder would otherwise deliver a
-		// different string to every receiving replica (F2-M1).
-		if (marks !== undefined) marks = sanitizeWireJson(marks);
-		// Text payloads normalize the same way — verbatim lone surrogates
-		// are not wire-idempotent; U+FFFD is what the wire delivers.
-		if (typeof payload === 'string') payload = sanitizeWireString(payload);
+		// `payload` and `marks` arrive normalized and cloned by the facade's
+		// ingress (O1, F2-M1): `text.insert` keeps the format object by
+		// reference.
 		const rec = blocks.get(b);
 		if (!rec) return false;
 		// Empty payload: resolve the block (above) but skip every write
@@ -1609,17 +1601,14 @@ export const bindText = (Y: EngineApi) => {
 		formats: Record<string, unknown>
 	): boolean => {
 		void doc;
-		// Clone caller formats ONCE — `text.format` stores them by reference
-		// (gate-2 finding 11; covers setMark's `{[name]: value}` payloads too).
-		// `sanitizeWireJson` also normalizes lone surrogates in mark names and
-		// string values to U+FFFD — the wire's UTF-8 encode would otherwise
-		// deliver a different format payload to every receiving replica (F2-M1).
-		formats = sanitizeWireJson(formats);
+		// `formats` arrive normalized and cloned by the facade's ingress (O1):
+		// `text.format` stores them by reference. An empty range writes
+		// nothing (the op's result reads `noop` from the transaction).
 		const segs = flatten(b, blocks, own);
 		const total = ownedLength(segs);
 		const at = Math.max(0, Math.min(offset, total));
 		const end = Math.min(total, at + Math.max(0, length));
-		if (end <= at) return false;
+		if (end <= at) return true;
 		let base = 0;
 		for (const seg of segs) {
 			const len = seg.i1 - seg.i0;

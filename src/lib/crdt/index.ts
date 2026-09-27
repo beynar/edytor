@@ -91,6 +91,7 @@ export type {
 
 export {
 	type EdytorDoc,
+	type OpResult,
 	type DocChange,
 	type BlockRole,
 	type OrderPolicy,

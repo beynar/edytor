@@ -131,7 +131,7 @@ describe('anchor resolution through structure', () => {
 		ed.insertText('b2', 0, 'def');
 		const caret = ed.anchorAt('b2', 1, 'left'); // binds 'd' in b2's backing
 		expect(caret?.b).toBe('b2');
-		expect(ed.mergeBackward('b2')).toBe(BOOTSTRAP_BLOCK_ID);
+		expect(ed.mergeBackward('b2').ids).toEqual([BOOTSTRAP_BLOCK_ID]);
 		expect(textOf(ed, BOOTSTRAP_BLOCK_ID)).toBe('abcdef');
 		// 'd' now displays at index 3 of the merged block — resolves after it.
 		expect(ed.resolveAnchor(caret)).toEqual({ blockId: BOOTSTRAP_BLOCK_ID, offset: 4 });
@@ -376,7 +376,7 @@ describe('anchors under concurrency (two replicas)', () => {
 		// Moving the OWNED block does not move its atoms' ownership —
 		// display order decouples from backing order; the seam caret is
 		// still the start of tail's stream.
-		expect(ed.moveBlock('tail', { parent: null, index: 0 })).toBe(true);
+		expect(ed.moveBlock('tail', { parent: null, index: 0 }).status).toBe('applied');
 		expect(ed.resolveAnchor(caret)).toEqual({ blockId: 'tail', offset: 0 });
 	});
 

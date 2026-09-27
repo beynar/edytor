@@ -84,12 +84,7 @@ import {
 	type SliceRecord,
 	type TextBlockRec
 } from '../text/model.js';
-import {
-	cloneJson,
-	cloneJsonSafe,
-	sanitizeWireJson,
-	sanitizeWireString
-} from '../../utils/json.js';
+import { cloneJson, cloneJsonSafe, jsonEquals } from '../../utils/json.js';
 
 /** Logical block identifier — caller-assigned, immutable per block. */
 export type BlockId = string;
@@ -489,6 +484,19 @@ export const documentOrder = (kids: ModelView['kids']): DocOrder => {
  * 'lib/crdt/vendor/yjs'`). Consumers inject it so this file stays free of
  * runtime vendor imports (see `engine-api.ts`).
  */
+/**
+ * The same-value guard for attr writes: the engine writes a new item for an
+ * equal value, so an unchanged attr must not be written (R6: `noop` is read
+ * from the transaction, which then holds nothing).
+ */
+export const setIfChanged = (
+	node: { getAttr(key: string): unknown; setAttr(key: string, value: unknown): unknown },
+	key: string,
+	value: unknown
+): void => {
+	if (!jsonEquals(node.getAttr(key), value)) node.setAttr(key, value);
+};
+
 export const bindModel = (
 	Y: EngineApi,
 	/**
@@ -636,17 +644,11 @@ export const bindModel = (
 	// ── content (rich-text sequence) helpers ────────────────────────────
 
 	const buildInline = (atom: InlineSpec): EngineNode => {
+		// Inputs arrive normalized and cloned by the facade's ingress (O1).
 		const node = newNode(INLINE_NODE);
-		// Every caller-supplied string normalizes to well-formed UTF-16 at
-		// the boundary — the wire's UTF-8 encoder maps lone surrogates to
-		// U+FFFD, so verbatim storage would diverge on delivery (F2-M1).
-		node.setAttr(ID, sanitizeWireString(atom.id));
-		node.setAttr(TYPE, sanitizeWireString(atom.type));
-		// Clone at the replicated boundary: the engine stores payloads by
-		// reference, so a caller-held `data` object would alias into shared
-		// state (mutating the caller's object post-insert would corrupt the
-		// doc and replicate the corruption — gate-2 finding 11).
-		if (atom.data !== undefined) node.setAttr(DATA, sanitizeWireJson(atom.data));
+		node.setAttr(ID, atom.id);
+		node.setAttr(TYPE, atom.type);
+		if (atom.data !== undefined) node.setAttr(DATA, atom.data);
 		return node;
 	};
 
@@ -738,47 +740,6 @@ export const bindModel = (
 	): string => ranksAt(siblings, index, 1, clientId, rand)[0]!;
 
 	/**
-	 * Boundary normalization (F2-M1): every caller-supplied string in a
-	 * `BlockSpec` — ids, types, `data`, content text/marks, inline atom
-	 * fields, recursively through `children` — is rewritten to well-formed
-	 * UTF-16 (unpaired surrogates → U+FFFD) before it enters replicated
-	 * state. The update encoder applies the same USVString mapping on
-	 * delivery, so a verbatim lone surrogate would decode differently on
-	 * every receiving replica (permanent same-item divergence); normalizing
-	 * at ingress makes the local store identical to what the wire carries.
-	 * The caller's spec object is NOT mutated — a normalized copy is built.
-	 * Identifier REFERENCES (`dest.parent`, the `id` args of other ops) stay
-	 * verbatim: they resolve against stored (already-normalized) ids or are
-	 * refused, never silently re-bound.
-	 */
-	const sanitizeSpec = (spec: BlockSpec): BlockSpec => {
-		const out: BlockSpec = {
-			id: sanitizeWireString(spec.id),
-			type: sanitizeWireString(spec.type)
-		};
-		if (spec.data !== undefined) out.data = sanitizeWireJson(spec.data);
-		if (spec.content !== undefined) {
-			out.content = spec.content.map(
-				(item): ContentItem =>
-					item.kind === 'text'
-						? {
-								kind: 'text',
-								text: sanitizeWireString(item.text),
-								...(item.marks !== undefined ? { marks: sanitizeWireJson(item.marks) } : {})
-							}
-						: {
-								kind: 'inline',
-								id: sanitizeWireString(item.id),
-								type: sanitizeWireString(item.type),
-								...(item.data !== undefined ? { data: sanitizeWireJson(item.data) } : {})
-							}
-			);
-		}
-		if (spec.children !== undefined) out.children = spec.children.map(sanitizeSpec);
-		return out;
-	};
-
-	/**
 	 * Materialize one spec into the registry: the block node with its
 	 * `content`/`slices`/`at` maps, the default whole-text slice record and
 	 * the atomic first placement candidate `{p, r}` stamped `1.clientID`.
@@ -797,7 +758,7 @@ export const bindModel = (
 		const node = newNode(BLOCK_NODE);
 		node.setAttr(ID, sp.id);
 		node.setAttr(TYPE, sp.type);
-		if (sp.data !== undefined) node.setAttr(DATA, cloneJson(sp.data));
+		if (sp.data !== undefined) node.setAttr(DATA, sp.data);
 		const content = newNode(CONTENT_NODE);
 		node.setAttr(CONTENT, content);
 		const slices = newNode(SLICES_NODE);
@@ -808,13 +769,7 @@ export const bindModel = (
 		let clen = 0;
 		for (const item of sp.content ?? []) {
 			if (item.kind === 'text') {
-				// Clone caller mark payloads — `insert` keeps the format
-				// object by reference (see buildInline / gate-2 f.11).
-				content.insert(
-					clen,
-					item.text,
-					item.marks === undefined ? undefined : cloneJson(item.marks)
-				);
+				content.insert(clen, item.text, item.marks);
 				clen += item.text.length;
 			} else {
 				content.insert(clen, [buildInline(item)]);
@@ -837,6 +792,23 @@ export const bindModel = (
 	};
 
 	/**
+	 * Does any id of `specs` (whole subtrees) collide — with another spec id,
+	 * or with any registry entry, live or deleted? The registry is keyed by
+	 * id, so writing a taken id would replace that block in place (D-12).
+	 */
+	const collides = (doc: EngineDoc, specs: readonly BlockSpec[]): boolean => {
+		const seen = new Set<BlockId>();
+		const stack = [...specs];
+		while (stack.length > 0) {
+			const sp = stack.pop()!;
+			if (seen.has(sp.id) || blockNodeOf(doc, sp.id) !== null) return true;
+			seen.add(sp.id);
+			stack.push(...(sp.children ?? []));
+		}
+		return false;
+	};
+
+	/**
 	 * Insert `specs` (whole subtrees, in list order) at `dest` in ONE
 	 * transaction — the bulk form of `insertBlock`. All-or-nothing across the
 	 * whole batch: ANY spec id colliding with a live block or with another
@@ -850,21 +822,10 @@ export const bindModel = (
 	 * one projection per spec, which made initialization quadratic. The
 	 * emitted rank stream is identical either way.
 	 */
-	const insertBlocks = (doc: EngineDoc, dest: Destination, specs: BlockSpec[]): boolean => {
-		const clean = specs.map(sanitizeSpec);
+	const insertBlocks = (doc: EngineDoc, dest: Destination, clean: BlockSpec[]): boolean => {
 		if (clean.length === 0) return true;
 		if (dest.parent !== null && !isLive(doc, dest.parent)) return false;
-		{
-			// Batch-wide dup check before ANY write — see insertBlock.
-			const specIds = new Set<BlockId>();
-			const stack: BlockSpec[] = [...clean];
-			while (stack.length > 0) {
-				const sp = stack.pop()!;
-				if (specIds.has(sp.id) || blockNodeOf(doc, sp.id) !== null) return false;
-				specIds.add(sp.id);
-				for (const child of sp.children ?? []) stack.push(child);
-			}
-		}
+		if (collides(doc, clean)) return false;
 		return doc.transact(() => {
 			const sibs = liveChildrenOf(doc, dest.parent);
 			const idx = Math.max(0, Math.min(dest.index, sibs.length));
@@ -887,9 +848,8 @@ export const bindModel = (
 	 * tombstone the victim's registry item (gate-1 finding: `registry.setAttr`
 	 * on an existing id silently replaces content, slices, placements and
 	 * engine identity in place). Ids duplicated WITHIN the spec are rejected
-	 * the same way. The spec is boundary-normalized FIRST (see
-	 * {@link sanitizeSpec}) — validation runs on the stored form, so two
-	 * raw ids colliding only after normalization are refused the same way.
+	 * the same way. Specs arrive normalized by the caller's ingress
+	 * (`sanitizeSpec`), so validation runs on the stored form.
 	 */
 	const insertBlock = (doc: EngineDoc, dest: Destination, spec: BlockSpec): boolean =>
 		insertBlocks(doc, dest, [spec]);
@@ -1007,10 +967,6 @@ export const bindModel = (
 		newId: BlockId,
 		tail?: SplitTail
 	): boolean => {
-		// Caller-assigned ids normalize at the boundary like spec ids (F2-M1)
-		// — BEFORE the collision probe, so a raw id colliding only after
-		// normalization is refused instead of silently replaced.
-		newId = sanitizeWireString(newId);
 		if (blockNodeOf(doc, newId) !== null) return false;
 		const pos = positionOf(doc, id);
 		if (!pos) return false; // not live — no-op
@@ -1025,9 +981,9 @@ export const bindModel = (
 			const rank = rankAt(sibs, myIdx + 1, doc.clientID, randOf(doc));
 			const sibling = newNode(BLOCK_NODE);
 			sibling.setAttr(ID, newId);
-			sibling.setAttr(TYPE, tail ? sanitizeWireString(tail.type) : node.getAttr(TYPE));
+			sibling.setAttr(TYPE, tail ? tail.type : node.getAttr(TYPE));
 			const data = tail ? tail.data : node.getAttr(DATA);
-			if (data !== undefined) sibling.setAttr(DATA, sanitizeWireJson(data));
+			if (data !== undefined) sibling.setAttr(DATA, cloneJson(data));
 			// Own empty backing text (future inserts/undo targets) + tail claims.
 			sibling.setAttr(CONTENT, newNode(CONTENT_NODE));
 			const sSlices = newNode(SLICES_NODE);
@@ -1205,9 +1161,7 @@ export const bindModel = (
 				for (const entry of arr) {
 					const elen = typeof entry === 'string' ? entry.length : 1;
 					if (isNodeLike(entry) && entry.getAttr(ID) === inlineId && p >= seg.i0 && p < seg.i1) {
-						// Clone the caller payload — setAttr stores by reference;
-						// sanitizeWireJson also normalizes lone surrogates (F2-M1).
-						entry.setAttr(DATA, sanitizeWireJson(data));
+						setIfChanged(entry, DATA, data);
 						return true;
 					}
 					p += elen;
@@ -1332,6 +1286,7 @@ export const bindModel = (
 		positionInView,
 		contentItemsOf,
 		// structural ops
+		collides,
 		insertBlock,
 		insertBlocks,
 		deleteBlock,

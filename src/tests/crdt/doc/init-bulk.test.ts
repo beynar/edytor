@@ -123,7 +123,9 @@ describe('U7 — init quadratic removal', () => {
 		ed.transact(() => {
 			// New block mid-transaction — its rec exists only through the
 			// read-your-writes fold of the in-flight changed map.
-			expect(ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' })).toBe(true);
+			expect(
+				ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' }).status
+			).toBe('applied');
 			// Repeat writes to the SAME registry attr key in one transaction:
 			// `changed` holds one (type,key) pair no matter how many writes —
 			// the fold must still surface the latest value every read.
@@ -151,7 +153,7 @@ describe('U7 — init quadratic removal', () => {
 		ed.insertText('b0', 0, 'pre ');
 		expect(ed.blockText('b0')).toMatch(/^pre block 0/);
 		const whole = ed.blockText('b1');
-		expect(ed.splitBlock('b1', 3, 'b1x')).toBe(true);
+		expect(ed.splitBlock('b1', 3, 'b1x').status).toBe('applied');
 		expect(topIds(ed)).toEqual(['b0', 'b1', 'b1x', 'b2']);
 		expect(ed.blockText('b1') + ed.blockText('b1x')).toBe(whole);
 		document.destroy();

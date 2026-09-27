@@ -148,8 +148,8 @@ const expectObservers = (seed: Uint8Array, updates: Uint8Array[], expected: unkn
 
 /** Delete `id` through `path` on replica `r`; returns the op's verdict. */
 const deleteVia = (r: Replica, path: Path, id: string): boolean => {
-	if (path === 'facade') return r.ed.deleteBlock(id);
-	if (path === 'handle') return r.ed.block(id).delete();
+	if (path === 'facade') return r.ed.deleteBlock(id).status === 'applied';
+	if (path === 'handle') return r.ed.block(id).delete().status === 'applied';
 	const block = r.view!.idToBlock.get(id);
 	expect(block, `view block ${id}`).toBeDefined();
 	block!.removeBlock();
@@ -159,11 +159,11 @@ const deleteVia = (r: Replica, path: Path, id: string): boolean => {
 /** Split `id` at `offset` through `path`; returns the new block's id. */
 const splitVia = (r: Replica, path: Path, id: string, offset: number, newId: string): string => {
 	if (path === 'facade') {
-		expect(r.ed.splitBlock(id, offset, newId)).toBe(true);
+		expect(r.ed.splitBlock(id, offset, newId).status).toBe('applied');
 		return newId;
 	}
 	if (path === 'handle') {
-		expect(r.ed.block(id).split(offset, newId)).not.toBe(null);
+		expect(r.ed.block(id).split(offset, newId).status).toBe('applied');
 		return newId;
 	}
 	const before = new Set(r.ed.listBlockIds());
@@ -183,31 +183,33 @@ describe('F-D3 — a block hidden under a deleted parent is not a target', () =>
 			doc.clientID = 10;
 			const ed = E.create(doc);
 			ed.init({ content: [p('p', 'pp', [p('c', 'cc')]), p('z', 'zz')] });
-			expect(ed.deleteBlock('p')).toBe(true);
+			expect(ed.deleteBlock('p').status).toBe('applied');
 			const bytes = Y.encodeStateAsUpdate(doc);
 			const unchanged = () => expect(Y.encodeStateAsUpdate(doc)).toEqual(bytes);
 
 			if (via === 'facade') {
-				expect(ed.insertText('c', 0, 'x'), 'insertText(c)').toBe(false);
+				expect(ed.insertText('c', 0, 'x').status, 'insertText(c)').toBe('refused');
 				unchanged();
 				expect(
-					ed.insertBlock({ parent: 'c', index: 0 }, p('n', 'nn')),
+					ed.insertBlock({ parent: 'c', index: 0 }, p('n', 'nn')).status,
 					'insertBlock(parent: c)'
-				).toBe(false);
+				).toBe('refused');
 				unchanged();
-				expect(ed.moveBlock('c', { parent: null, index: 0 }), 'moveBlock(c → root)').toBe(false);
+				expect(ed.moveBlock('c', { parent: null, index: 0 }).status, 'moveBlock(c → root)').toBe(
+					'refused'
+				);
 				unchanged();
-				expect(ed.splitBlock('c', 1, 's'), 'splitBlock(c)').toBe(false);
+				expect(ed.splitBlock('c', 1, 's').status, 'splitBlock(c)').toBe('refused');
 				unchanged();
 			} else {
 				const c = ed.block('c');
-				expect(c.insertText(0, 'x'), 'insertText(c)').toBe(false);
+				expect(c.insertText(0, 'x').status, 'insertText(c)').toBe('refused');
 				unchanged();
-				expect(c.insertChild(0, p('n', 'nn')), 'insertBlock(parent: c)').toBe(null);
+				expect(c.insertChild(0, p('n', 'nn')).status, 'insertBlock(parent: c)').toBe('refused');
 				unchanged();
-				expect(c.moveTo({ parent: null, index: 0 }), 'moveBlock(c → root)').toBe(false);
+				expect(c.moveTo({ parent: null, index: 0 }).status, 'moveBlock(c → root)').toBe('refused');
 				unchanged();
-				expect(c.split(1, 's'), 'splitBlock(c)').toBe(null);
+				expect(c.split(1, 's').status, 'splitBlock(c)').toBe('refused');
 				unchanged();
 			}
 			expect(shapeOf(ed)).toEqual([['z', 'zz']]);
@@ -227,9 +229,9 @@ describe('F-D8 — merge b into a, delete a: the merged block dies with it; undo
 			if (path === 'view') {
 				expect(r.view!.idToBlock.get('b')!.mergeBlockBackward()).not.toBe(null);
 			} else if (path === 'facade') {
-				expect(r.ed.mergeBlocks('b', 'a')).toBe(true);
+				expect(r.ed.mergeBlocks('b', 'a').status).toBe('applied');
 			} else {
-				expect(r.ed.block('a').mergeFrom('b')).toBe(true);
+				expect(r.ed.block('a').mergeFrom('b').status).toBe('applied');
 			}
 			expect(shapeOf(r.ed)).toEqual([
 				['a', 'aabb'],
@@ -265,7 +267,7 @@ describe('F-D9 — A deletes a ‖ B merges b into a: a gone, b visible (ST02b)'
 				const B = replica(seed, ids.b, false);
 				expect(deleteVia(A, path, 'a')).toBe(true);
 				const del = send(A);
-				expect(B.ed.mergeBlocks('b', 'a')).toBe(true);
+				expect(B.ed.mergeBlocks('b', 'a').status).toBe('applied');
 				const merge = send(B);
 
 				const expected = [
@@ -294,11 +296,11 @@ describe('F-D10 — abcde split at 3; B types Q at the tail head ‖ A deletes t
 					aSawQ ? 'saw' : 'did not see'
 				} Q`, () => {
 					const seed = seedUpdate(ids.seed, [p('b0', 'abcde')], (ed) => {
-						expect(ed.splitBlock('b0', 3, 't')).toBe(true);
+						expect(ed.splitBlock('b0', 3, 't').status).toBe('applied');
 					});
 					const A = replica(seed, ids.a, path === 'view');
 					const B = replica(seed, ids.b, false);
-					expect(B.ed.insertText('t', 0, 'Q')).toBe(true);
+					expect(B.ed.insertText('t', 0, 'Q').status).toBe('applied');
 					expect(shapeOf(B.ed)).toEqual([
 						['b0', 'abc'],
 						['t', 'Qde']
@@ -340,8 +342,8 @@ describe('F-D17 — A deletes b and undoes; offline P deletes "world" and bolds 
 				A.undo();
 				const undo = send(A);
 
-				expect(P.ed.deleteText('b', 6, 5)).toBe(true);
-				expect(P.ed.setMark('b', 0, 5, 'bold', true)).toBe(true);
+				expect(P.ed.deleteText('b', 6, 5).status).toBe('applied');
+				expect(P.ed.setMark('b', 0, 5, 'bold', true).status).toBe('applied');
 				const edits = send(P);
 
 				deliver(A, edits);
@@ -385,7 +387,7 @@ describe('F-D18 — A and P delete the same block concurrently; A undoes → sti
 					expect(deleteVia(A, path, 'b')).toBe(true);
 					A.stopCapturing();
 					const aDel = send(A);
-					expect(P.ed.deleteBlock('b')).toBe(true);
+					expect(P.ed.deleteBlock('b').status).toBe('applied');
 					const pDel = send(P);
 
 					if (aOrder === 'p-then-undo') deliver(A, pDel);

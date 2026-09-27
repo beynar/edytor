@@ -32,6 +32,9 @@ import {
 
 const E = bindEdytorDoc(Y);
 
+/** The harness contract is boolean across backends: a facade op that was not refused (D4, R6). */
+const ok = (r: { status: string }): boolean => r.status !== 'refused';
+
 export const createDocOps = (): CrdtOps => {
 	// One EdytorDoc per underlying doc instance (peer.doc swaps on reload).
 	const facades = new WeakMap<InstanceType<typeof Y.Doc>, ReturnType<typeof E.create>>();
@@ -67,28 +70,30 @@ export const createDocOps = (): CrdtOps => {
 		preservesIdentityOnMove: true,
 		preservesIdentityOnSplitMerge: true,
 
-		insertBlock: (peer, dest, spec) => peer.transact(() => ed(peer).insertBlock(dest, spec)),
-		deleteBlock: (peer, id) => peer.transact(() => ed(peer).deleteBlock(id)),
-		moveBlock: (peer, id, dest) => peer.transact(() => ed(peer).moveBlock(id, dest)),
-		moveBlocks: (peer, ids, dest) => peer.transact(() => ed(peer).moveBlocks(ids, dest)),
-		nestBlock: (peer, id, newParentId) => peer.transact(() => ed(peer).nestBlock(id, newParentId)),
-		unNestBlock: (peer, id) => peer.transact(() => ed(peer).unNestBlock(id)),
+		insertBlock: (peer, dest, spec) => peer.transact(() => ok(ed(peer).insertBlock(dest, spec))),
+		deleteBlock: (peer, id) => peer.transact(() => ok(ed(peer).deleteBlock(id))),
+		moveBlock: (peer, id, dest) => peer.transact(() => ok(ed(peer).moveBlock(id, dest))),
+		moveBlocks: (peer, ids, dest) => peer.transact(() => ok(ed(peer).moveBlocks(ids, dest))),
+		nestBlock: (peer, id, newParentId) =>
+			peer.transact(() => ok(ed(peer).nestBlock(id, newParentId))),
+		unNestBlock: (peer, id) => peer.transact(() => ok(ed(peer).unNestBlock(id))),
 		splitBlock: (peer, id, offset, newId) =>
-			peer.transact(() => ed(peer).splitBlock(id, offset, newId)),
+			peer.transact(() => ok(ed(peer).splitBlock(id, offset, newId))),
 		mergeBlocks: (peer, fromId, intoId) =>
-			peer.transact(() => ed(peer).mergeBlocks(fromId, intoId)),
+			peer.transact(() => ok(ed(peer).mergeBlocks(fromId, intoId))),
 
 		insertText: (peer, id, offset, text, marks) =>
-			peer.transact(() => ed(peer).insertText(id, offset, text, marks)),
+			peer.transact(() => ok(ed(peer).insertText(id, offset, text, marks))),
 		deleteText: (peer, id, offset, length) =>
-			peer.transact(() => ed(peer).deleteText(id, offset, length)),
+			peer.transact(() => ok(ed(peer).deleteText(id, offset, length))),
 		setMark: (peer, id, offset, length, name, value) =>
-			peer.transact(() => ed(peer).setMark(id, offset, length, name, value)),
+			peer.transact(() => ok(ed(peer).setMark(id, offset, length, name, value))),
 		unsetMark: (peer, id, offset, length, name) =>
-			peer.transact(() => ed(peer).unsetMark(id, offset, length, name)),
+			peer.transact(() => ok(ed(peer).unsetMark(id, offset, length, name))),
 		insertInline: (peer, id, offset, atom) =>
-			peer.transact(() => ed(peer).insertInline(id, offset, atom)),
-		removeInline: (peer, id, inlineId) => peer.transact(() => ed(peer).removeInline(id, inlineId)),
+			peer.transact(() => ok(ed(peer).insertInline(id, offset, atom))),
+		removeInline: (peer, id, inlineId) =>
+			peer.transact(() => ok(ed(peer).removeInline(id, inlineId))),
 
 		project: (peer) => ed(peer).project(),
 		resolveBlock: (peer, id) => ed(peer).resolveBlock(id),

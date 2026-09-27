@@ -138,7 +138,8 @@ describe('views sharing one document', () => {
 		expect(document.facade.isVoid(block.id)).toBe(true);
 		expect(
 			document.facade.insertBlock({ parent: block.id, index: 0 }, { id: 'x', type: 'paragraph' })
-		).toBe(false);
+				.status
+		).toBe('refused');
 
 		// A sibling attaching later inherits the adopted rules (compatible
 		// re-declaration is a no-op, not a conflict).

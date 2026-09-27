@@ -124,7 +124,7 @@ describe('F-D4 — same definition, different position', () => {
 				defaultChild: { 'ordered-list': 'list-item' }
 			}
 		});
-		expect(document.facade.mergeBackward('box')).toBe('one');
+		expect(document.facade.mergeBackward('box').ids).toEqual(['one']);
 		const [ol] = document.facade.toJSON().children;
 		expect(ol.children.map((child) => [child.id, child.type])).toEqual([
 			['one', 'list-item'],
@@ -293,7 +293,7 @@ describe('F-O6 — canMoveBlocks(r) ⇔ moveBlocks(r) is not refused', () => {
 			value: { children: CORPUS },
 			semantics: { roles: CORPUS_ROLES }
 		});
-		expect(document.facade.deleteBlock('gone')).toBe(true);
+		expect(document.facade.deleteBlock('gone').status).toBe('applied');
 		return document;
 	};
 
@@ -311,11 +311,11 @@ describe('F-O6 — canMoveBlocks(r) ⇔ moveBlocks(r) is not refused', () => {
 			const kind = r();
 			let actual: boolean;
 			if (ids.length === 1 && kind < 0.3) {
-				actual = ed.moveBlock(ids[0], { parent, index });
+				actual = ed.moveBlock(ids[0], { parent, index }).status !== 'refused';
 			} else if (ids.length === 1 && kind < 0.45 && parent !== null) {
-				actual = ed.nestBlock(ids[0], parent);
+				actual = ed.nestBlock(ids[0], parent).status !== 'refused';
 			} else {
-				actual = ed.moveBlocks(ids, { parent, index });
+				actual = ed.moveBlocks(ids, { parent, index }).status !== 'refused';
 			}
 			expect({ step, ids, parent, actual }).toEqual({ step, ids, parent, actual: expected });
 			if (actual) accepted++;
@@ -364,7 +364,7 @@ describe('F-O6 — canMoveBlocks(r) ⇔ moveBlocks(r) is not refused', () => {
 			if (!ed.isVisibleBlock(id)) continue;
 			const after = ed.next(id);
 			const expected = after !== null && ed.canMerge(after, id);
-			expect({ step, id, merged: ed.mergeForward(id) !== null }).toEqual({
+			expect({ step, id, merged: ed.mergeForward(id).status !== 'refused' }).toEqual({
 				step,
 				id,
 				merged: expected

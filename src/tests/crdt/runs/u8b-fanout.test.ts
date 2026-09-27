@@ -108,7 +108,7 @@ describe('U8b shared-backing fanout', () => {
 		// split into 50 siblings × ~2000 chars on ONE backing text
 		let head = 'b0';
 		for (let s = 1; s < 50; s++) {
-			expect(ed.splitBlock(head, 2000, `s${s}`)).toBe(true);
+			expect(ed.splitBlock(head, 2000, `s${s}`).status).toBe('applied');
 			head = `s${s}`;
 		}
 		const ids = ['b0', ...Array.from({ length: 49 }, (_, i) => `s${i + 1}`)];

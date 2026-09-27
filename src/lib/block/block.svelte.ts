@@ -857,11 +857,9 @@ export class Block {
 				const spec = child._toSpec();
 				const created = model
 					? model.insertChild(i, spec)
-					: this.edytor.facade.insertBlock({ parent: null, index: i }, spec)
-						? this.edytor.facade.block(spec.id)
-						: null;
-				if (created) {
-					this.edytor._pendingBlocks.set(spec.id, child);
+					: this.edytor.facade.insertBlock({ parent: null, index: i }, spec);
+				if (created.status === 'applied') {
+					this.edytor._pendingBlocks.set(created.ids[0], child);
 				}
 			}
 			i++;

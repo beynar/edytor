@@ -108,7 +108,7 @@ describe('F-U5 — A deletes bb; B edits cc; A undoes → bb restored, cc keeps 
 
 					// A deletes bb.
 					const del = capture(A.doc, () => {
-						expect(A.ed.block('bb').delete()).toBe(true);
+						expect(A.ed.block('bb').delete().status).toBe('applied');
 					});
 					expect(shape(A.ed)).toEqual([
 						['aa', 'aa'],
@@ -118,7 +118,7 @@ describe('F-U5 — A deletes bb; B edits cc; A undoes → bb restored, cc keeps 
 					// B edits cc (after or concurrently with the delete).
 					if (bSawDelete) deliver(B.doc, del);
 					const edit = capture(B.doc, () => {
-						expect(B.ed.block('cc').insertText(2, '!')).toBe(true);
+						expect(B.ed.block('cc').insertText(2, '!').status).toBe('applied');
 					});
 
 					// A undoes, with B's edit delivered before or after the undo.

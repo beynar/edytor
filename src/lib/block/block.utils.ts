@@ -9,7 +9,7 @@
  * (`flushMirror`, `normalizeChildren`/`normalizeContent` plugin hooks).
  *
  * STRUCTURAL PERMISSION IS DOCUMENT-OWNED: every op delegates to
- * `block.model.*` (the facade through `DocBlock`) and treats `false`/`null`
+ * `block.model.*` (the facade through `DocBlock`) and treats a `refused` result
  * as "refused" — no view-side re-checks of the rules the document already
  * enforces (island sealing, void/island destinations, own-subtree moves,
  * merges across island boundaries; see `edytor-doc.ts` `canPlace` and
@@ -268,7 +268,7 @@ export function splitBlock(
 	const offset = this.partOffsetOf(text) + index;
 	// G5: the sibling takes its parent's default child type and no data.
 	const tail = { type: this.edytor.defaultChild(this.parent), data: {} };
-	if (!model.split(offset, newId, tail)) {
+	if (model.split(offset, newId, tail).status === 'refused') {
 		return null;
 	}
 	this.edytor.flushMirror();
@@ -294,10 +294,10 @@ export function mergeBlockBackward(this: Block): Block | null {
 	if (!this.parent || !model) {
 		return null;
 	}
-	const target = model.mergeBackward();
+	const [target] = model.mergeBackward().ids;
 	this.edytor.flushMirror();
 	this.parent?.normalizeChildren();
-	return target ? (this.edytor.idToBlock.get(target.id) ?? null) : null;
+	return target ? (this.edytor.idToBlock.get(target) ?? null) : null;
 }
 
 export function mergeBlockForward(this: Block): Block | null {
@@ -305,10 +305,10 @@ export function mergeBlockForward(this: Block): Block | null {
 	if (!this.parent || !model) {
 		return null;
 	}
-	const target = model.mergeForward();
+	const [target] = model.mergeForward().ids;
 	this.edytor.flushMirror();
 	this.parent?.normalizeChildren();
-	return target ? (this.edytor.idToBlock.get(target.id) ?? null) : null;
+	return target ? (this.edytor.idToBlock.get(target) ?? null) : null;
 }
 
 export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): Block | null {
@@ -341,7 +341,7 @@ export function moveBlock(this: Block, { path }: BlockOperations['moveBlock']): 
 	// The move preserves block identity — the baseline rebuilt the block
 	// from JSON, but `crdtId`/wrapper stability is the intended v14
 	// improvement and reconcile keeps the same wrapper registered.
-	if (!model.moveTo({ parent: currentBlock.model, index: lastIndex! })) {
+	if (model.moveTo({ parent: currentBlock.model, index: lastIndex! }).status === 'refused') {
 		return null;
 	}
 	this.edytor.flushMirror();
@@ -388,7 +388,7 @@ export function moveBlocks(this: Block, { blocks, path }: BlockOperations['moveB
 		parent: currentBlock._blockId ?? null,
 		index: lastIndex
 	});
-	if (!moved) {
+	if (moved.status === 'refused') {
 		return [];
 	}
 	this.edytor.flushMirror();
@@ -409,7 +409,7 @@ export function unNestBlock(this: Block): Block | null {
 
 	// `model.unNest()` (facade `unNestBlock`) owns the refusal rules:
 	// top-level blocks, island-sealed blocks and sealed destinations.
-	if (!model.unNest()) {
+	if (model.unNest().status === 'refused') {
 		return null;
 	}
 	this.edytor.flushMirror();
@@ -427,7 +427,7 @@ export function nestBlock(this: Block): Block | null {
 	if (!previousBlock || !this.parent || !model || previousBlock._blockId == null) {
 		return null;
 	}
-	if (!model.nestUnder(previousBlock._blockId)) {
+	if (model.nestUnder(previousBlock._blockId).status === 'refused') {
 		return null;
 	}
 	this.edytor.flushMirror();

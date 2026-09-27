@@ -8,8 +8,6 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
-import { tick } from 'svelte';
-import { clearDomSelection } from '$lib/selection/domSelection.js';
 import {
 	moveCaretAcrossHorizontalBoundary,
 	moveToCurrentBlockBoundary,
@@ -78,64 +76,25 @@ const refreshStructuralChildren = (block: Block) => {
 	}
 };
 
-const restoreStructuralHotkeyCaret = (edytor: Edytor, text: Text, offset: number) => {
-	edytor.selection.setCollapsedStateAtTextOffset(text, offset);
-	edytor.suppressedInputRepairSelectionTarget = { text, offset };
-	const restore = () => {
-		// Deferred re-runs must not clobber a selection the user made
-		// after the hotkey — DOM drift this repairs leaves MODEL state
-		// untouched, so a real caret move / block / inline-atom selection
-		// shows up here and aborts the restore.
-		const state = edytor.selection.state;
-		if (
-			state.startText !== text ||
-			state.yStart !== offset ||
-			!state.isCollapsed ||
-			edytor.selection.selectedBlocks.size > 0 ||
-			edytor.selection.selectedInlineBlock.size > 0 ||
-			edytor.selection.inlineBlockDeletionTarget
-		) {
-			return;
-		}
-		if (edytor.root) {
-			refreshStructuralChildren(edytor.root);
-			edytor.refreshEditorDom();
-		}
-		edytor.selection.ignoreNextSelectionChange = true;
-		void edytor.selection.setAtTextOffset(text, offset);
-	};
+const remountStructure = (edytor: Edytor) => {
+	if (!edytor.root) return;
+	refreshStructuralChildren(edytor.root);
+	edytor.refreshEditorDom();
+};
 
-	void tick().then(restore);
-	setTimeout(restore, 30);
-	setTimeout(restore, STRUCTURAL_HOTKEY_DOM_REPAIR_WINDOW_MS);
+/**
+ * After a structural hotkey the tree is re-keyed and remounted; the selection
+ * is selected at once and the projector displays it after that flush (R10).
+ */
+const restoreStructuralHotkeyCaret = (edytor: Edytor, text: Text, offset: number) => {
+	edytor.suppressedInputRepairSelectionTarget = { text, offset };
+	remountStructure(edytor);
+	void edytor.selection.setAtTextOffset(text, offset);
 };
 
 const restoreStructuralHotkeyBlockSelection = (edytor: Edytor, block: Block) => {
-	const restore = (deferred: boolean) => {
-		// Deferred re-runs only re-apply while the block selection is
-		// still the live one — a text/inline selection made inside the
-		// window wins over this stale repair. The FIRST run installs the
-		// selection, so it is never gated.
-		if (
-			deferred &&
-			(edytor.selection.selectedBlocks.size !== 1 || !edytor.selection.selectedBlocks.has(block))
-		) {
-			return;
-		}
-		if (edytor.root) {
-			refreshStructuralChildren(edytor.root);
-			edytor.refreshEditorDom();
-		}
-		clearDomSelection(edytor.node);
-		edytor.selection.selectBlocks(block);
-		edytor.selection.ignoreNextSelectedBlockSelectionChange = true;
-		edytor.selection.ignoreNextSelectionChange = true;
-	};
-
-	restore(false);
-	void tick().then(() => restore(true));
-	setTimeout(() => restore(true), 30);
-	setTimeout(() => restore(true), STRUCTURAL_HOTKEY_DOM_REPAIR_WINDOW_MS);
+	remountStructure(edytor);
+	edytor.selection.selectBlocks(block);
 };
 
 const ownsDeleteSelection = (edytor: Edytor) =>
@@ -233,18 +192,8 @@ const deleteSelection: HotKey = ({ edytor, prevent }) => {
 		edytor.plugins.forEach((plugin) =>
 			plugin.onDeleteSelectedBlocks?.({ prevent, selectedBlocks })
 		);
-		const block = deleteSelectedBlocks(edytor)?.parent;
-		if (!block) return;
-		// Focus re-assertion after the render (L26's core part, V4 owns it).
-		const focus = () => {
-			const text = block.firstEditableText;
-			if (!text) return;
-			edytor.expectInternalFocus();
-			edytor.node?.focus();
-			void edytor.selection.setAtTextOffset(text, text.length);
-		};
-		void tick().then(focus);
-		setTimeout(focus, 30);
+		// The command authored its caret (FP-7); the projector displays it.
+		deleteSelectedBlocks(edytor);
 	});
 };
 
@@ -327,9 +276,6 @@ export const builtInBindings: Record<string, HotKey> = {
 				edytor.selection.selectBlocks(...edytor.root!.children);
 			} else if (isAtStartOfBlock && isAtEndOfBlock) {
 				edytor.selection.selectBlocks(isIsland ? islandRoot! : startText.parent);
-				edytor.selection.ignoreNextSelectedBlockSelectionChange = true;
-				edytor.selection.ignoreNextSelectionChange = true;
-				clearDomSelection(edytor.node);
 			} else {
 				edytor.selection.setAtBlockRange(startBlock);
 			}

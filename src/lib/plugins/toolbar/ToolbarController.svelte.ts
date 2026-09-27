@@ -1,16 +1,8 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
-import type { Text } from '$lib/text/text.svelte.js';
+import type { SelectionValue } from '$lib/session/selection.js';
 import type { SerializableContent } from '$lib/utils/json.js';
 import { richTextOperations, type RichTextMark } from '$lib/plugins/richtext/richTextOperations.js';
-
-type ToolbarSelectionSnapshot = {
-	startText: Text;
-	endText: Text;
-	yStart: number;
-	yEnd: number;
-	isReversed: boolean;
-};
 
 const isRecord = (
 	value: SerializableContent | undefined
@@ -26,7 +18,8 @@ const getLinkHref = (value: SerializableContent | undefined) => {
 export class ToolbarController {
 	isVisible = $state(false);
 	linkUrl = $state('');
-	private selectionSnapshot: ToolbarSelectionSnapshot | null = null;
+	/** The selection the toolbar acts on: a value (anchors), so peers' edits move it (L52). */
+	private selectionSnapshot: SelectionValue | null = null;
 	private isRestoringSelection = false;
 
 	constructor(private edytor: Edytor) {}
@@ -43,7 +36,7 @@ export class ToolbarController {
 		if (!this.isRestoringSelection) {
 			this.linkUrl = this.getSelectedLinkUrl(selection);
 		}
-		this.selectionSnapshot = this.createSelectionSnapshot(selection);
+		this.selectionSnapshot = selection.value.kind === 'text' ? selection.value : null;
 	}
 
 	setLinkUrl(value: string) {
@@ -118,47 +111,22 @@ export class ToolbarController {
 		return '';
 	}
 
-	private createSelectionSnapshot(selection: EdytorSelection): ToolbarSelectionSnapshot | null {
-		const { startText, endText, yStart, yEnd, isReversed } = selection.state;
-		if (!startText || !endText) {
-			return null;
-		}
-
-		return { startText, endText, yStart, yEnd, isReversed };
-	}
-
+	/** Act on the held selection, then select it again (the projector displays it). */
 	private runWithSelection(callback: () => void) {
 		const snapshot = this.selectionSnapshot;
 		if (!this.isVisible || !snapshot) {
 			return;
 		}
 
-		this.restoreModelSelection(snapshot);
+		this.restoreSelection(snapshot);
 		callback();
 		this.restoreSelection(snapshot);
 	}
 
-	private restoreSelection(snapshot: ToolbarSelectionSnapshot) {
-		this.restoreModelSelection(snapshot);
-		void this.edytor.selection.setAtRange(
-			snapshot.startText,
-			snapshot.yStart,
-			snapshot.endText,
-			snapshot.yEnd,
-			{ isReversed: snapshot.isReversed }
-		);
-	}
-
-	private restoreModelSelection(snapshot: ToolbarSelectionSnapshot) {
+	private restoreSelection(snapshot: SelectionValue) {
 		this.isRestoringSelection = true;
 		try {
-			this.edytor.selection.setRangeStateAtTextOffsets(
-				snapshot.startText,
-				snapshot.yStart,
-				snapshot.endText,
-				snapshot.yEnd,
-				{ isReversed: snapshot.isReversed }
-			);
+			this.edytor.selection.select(snapshot);
 		} finally {
 			this.isRestoringSelection = false;
 		}

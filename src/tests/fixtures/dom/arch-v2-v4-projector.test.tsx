@@ -51,8 +51,6 @@ import {
 const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
-/** Red until V4b (L52 anchors, the element-boundary point, the call sites' timers). */
-const v4b = it.fails;
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -227,7 +225,7 @@ describe('F-S4 — a programmatic DOM selection with no gesture is adopted', () 
 });
 
 describe('F-S5 — an element-boundary point inside a text element', () => {
-	v4b('(textElement, i) reads the text before child i: 0, 2, 4, 6', async () => {
+	row('(textElement, i) reads the text before child i: 0, 2, 4, 6', async () => {
 		const { edytor } = await renderDomEdytor(
 			<root>
 				<paragraph>
@@ -437,7 +435,7 @@ describe('F-S11 (d) — an unobserved native move is admitted after the apply co
 });
 
 describe('F-P2 — the toolbar holds the selection as a value (L52)', () => {
-	v4b('a link applied after a peer insert covers the selected word', async () => {
+	row('a link applied after a peer insert covers the selected word', async () => {
 		const rendered = await renderDomEdytor(
 			<root>
 				<paragraph>hello world</paragraph>
@@ -470,7 +468,7 @@ describe('F-P2 — the toolbar holds the selection as a value (L52)', () => {
 });
 
 describe('F-P3 — the slash menu holds its range as anchors (L52)', () => {
-	v4b('a peer insert before the query keeps the menu open on quo; Enter runs on /quo', async () => {
+	row('a peer insert before the query keeps the menu open on quo; Enter runs on /quo', async () => {
 		const rendered = await renderDomEdytor(
 			<root>
 				<paragraph>ab|</paragraph>
@@ -566,10 +564,8 @@ describe('F-O1 (timer half) — no selection-display timer is left once a progra
 		]
 	];
 
-	/** Programs whose timers belong to call sites and repairers retired at V4b. */
-	const atV4b = new Set(['a block-set delete']);
 	for (const [name, program] of programs) {
-		(atV4b.has(name) ? v4b : row)(`${name}: no display timer pending at settle`, async () => {
+		row(`${name}: no display timer pending at settle`, async () => {
 			const { edytor, editor } = await renderDomEdytor(
 				<root>
 					<paragraph>fir|st</paragraph>

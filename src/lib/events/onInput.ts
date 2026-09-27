@@ -599,18 +599,10 @@ export async function onInput(this: Edytor, event: Event) {
 			target.text.refreshFromModel();
 			removeUnmanagedLineBreaks(target.text);
 			await tick();
-			const offset = Math.min(target.offset, target.text.length);
-			await this.selection.setAtTextOffset(target.text, offset);
-			if (shouldPreserveModelSelection) {
-				this.selection.ignoreNextSelectionChange = true;
-				setTimeout(() => {
-					if (!isLiveText(target.text)) {
-						return;
-					}
-					this.selection.ignoreNextSelectionChange = true;
-					void this.selection.setAtTextOffset(target.text, offset);
-				}, 30);
-			}
+			await this.selection.setAtTextOffset(
+				target.text,
+				Math.min(target.offset, target.text.length)
+			);
 		}
 		return;
 	}

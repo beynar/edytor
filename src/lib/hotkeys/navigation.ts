@@ -2,7 +2,6 @@ import type { Edytor } from '../edytor.svelte.js';
 import type { HotKey, HotKeyCombination } from '../session/keymap.js';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import { Text } from '../text/text.svelte.js';
-import { clearDomSelection } from '../selection/domSelection.js';
 import { getNextGraphemeEnd, getPreviousGraphemeStart } from '../text/text.utils.js';
 import { getNextWordEndOffset, getPreviousWordStartOffset } from '../events/wordBoundary.js';
 
@@ -161,15 +160,11 @@ const getInlineBlockBetweenBoundaryPositions = (
 		: null;
 };
 
-const selectInlineBlock = (edytor: Edytor, inlineBlock: InlineBlock) => {
+const selectInlineBlock = (edytor: Edytor, inlineBlock: InlineBlock) =>
 	edytor.selection.selectInlineBlock(inlineBlock);
-	edytor.selection.ignoreNextSelectionChange = true;
-	clearDomSelection(edytor.node);
-};
 
 const collapseToTextPosition = (edytor: Edytor, text: Text, offset: number) => {
 	edytor.selection.clearInlineBlockSelection();
-	edytor.selection.setCollapsedStateAtTextOffset(text, offset);
 	void edytor.selection.setAtTextOffset(text, offset);
 };
 
@@ -182,18 +177,12 @@ const extendToTextPosition = (
 	direction: 'backward' | 'forward'
 ) => {
 	if (direction === 'backward') {
-		edytor.selection.setRangeStateAtTextOffsets(focusText, focusOffset, anchorText, anchorOffset, {
-			isReversed: true
-		});
 		void edytor.selection.setAtRange(focusText, focusOffset, anchorText, anchorOffset, {
 			isReversed: true
 		});
 		return;
 	}
 
-	edytor.selection.setRangeStateAtTextOffsets(anchorText, anchorOffset, focusText, focusOffset, {
-		isReversed: false
-	});
 	void edytor.selection.setAtRange(anchorText, anchorOffset, focusText, focusOffset, {
 		isReversed: false
 	});

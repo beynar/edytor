@@ -11,7 +11,6 @@ import {
 import { onBeforeInput } from './events/onBeforeInput.js';
 import { onCopy } from './events/onCopy.js';
 import { onCut } from './events/onCut.js';
-import { observeDomTextMutations } from './events/domTextMutationObserver.js';
 import {
 	isNativeInteractiveEvent,
 	isNestedForeignEditableTarget
@@ -191,7 +190,6 @@ export class Edytor {
 	hotKeys: Keymap;
 	readonly = $state(false);
 	root = $state<Block>();
-	editorDomRevision = $state(0);
 	/** The view is bound to its decided document (its root is built). */
 	get synced(): boolean {
 		return this.root !== undefined;
@@ -200,7 +198,7 @@ export class Edytor {
 	selection: EdytorSelection;
 	/** The only writer of the DOM selection (R10, `surface/projector`). */
 	readonly projector: Projector = new Projector(this);
-	/** The compare-to-truth observer (R12): registry, render epoch, passes (in shadow at R6). */
+	/** The compare-to-truth observer (R12): registry, the render epoch, the passes, the only adopter (R8, L31). */
 	readonly surface: SurfaceObserver = new SurfaceObserver(this);
 	/** What the components render (R1, R2): one cell per visible block, patched from change reports. */
 	cells = $state.raw<Cells>();
@@ -234,9 +232,7 @@ export class Edytor {
 	suppressCaretScrollDepth = 0;
 	/**
 	/** The view's input attempts (R8, L6): one per user occurrence. */
-	readonly attempts = new Attempts();
-	/** The DOM observer: the only adopter of browser-made text (R8, L31). */
-	observer: ReturnType<typeof observeDomTextMutations> | null = null;
+	readonly attempts = new Attempts(() => this.surface.signal());
 
 	// CRDT (v14) — the document is the composition owner: it holds the ONE
 	// engine doc, the shared facade (only structural read/write surface),
@@ -305,7 +301,6 @@ export class Edytor {
 	 * sees its un-normalized state.
 	 */
 	transact = <T>(cb: () => T): T => {
-		this.attempts.hold();
 		if (this.transacting) return this.doc.transact(cb, this.transaction);
 		this.transacting = true;
 		try {
@@ -339,18 +334,6 @@ export class Edytor {
 	 */
 	historyUndo = (): void => this.history.undo();
 	historyRedo = (): void => this.history.redo();
-
-	private deferredEditorDomRefresh = false;
-	refreshEditorDom = () => {
-		// `{#key editorDomRevision}` remounts the whole subtree — that would
-		// destroy the DOM node the IME owns: the remount waits for the session's end.
-		if (this.deferredEditorDomRefresh) return;
-		this.deferredEditorDomRefresh = true;
-		this.composition.ended(() => {
-			this.deferredEditorDomRefresh = false;
-			if (!this.destroyed) this.editorDomRevision += 1;
-		});
-	};
 
 	constructor({
 		snippets,
@@ -628,7 +611,7 @@ export class Edytor {
 		this.overlay.invalidate();
 		// A commit this view did not issue re-renders under the caret: the
 		// projector displays the current value after that flush (R10).
-		if (change.origin !== this.transaction) this.projector.render++;
+		if (change.origin !== this.transaction) this.surface.update();
 		// Remote/programmatic commits run under the scroll suppressor —
 		// a remote commit landing inside an in-flight `isHandlingUserInput`
 		// window must not scroll the page.
@@ -859,7 +842,6 @@ export class Edytor {
 			root.insertChildren(0, [block]);
 			return this.idToBlock.block(block.id);
 		});
-		this.refreshEditorDom();
 		void this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
 		void tick().then(() => {
 			this.expectInternalFocus();
@@ -1022,8 +1004,8 @@ export class Edytor {
 		// is a browser artifact, not a gesture, and must not disarm pending
 		// composition caret restores.
 		const keydown = this.withUserInput(onKeyDown.bind(this), { bumpSerial: false });
-		const domMutationObserver = (this.observer = observeDomTextMutations(this, node));
-		this.projector.recordsPending = domMutationObserver.pending;
+		const detachSurface = this.surface.attach(node);
+		this.projector.recordsPending = this.surface.pending;
 		this.off.push(
 			// One handler per keyboard occurrence: keys inside the editor at
 			// capture; the document sees only keys whose path misses it (a
@@ -1075,7 +1057,7 @@ export class Edytor {
 			// spellcheck suggestions are computed against the DOM at this
 			// moment (PM flushes its DOM observer on contextmenu for the
 			// same reason).
-			on(node, 'contextmenu', () => void domMutationObserver.flushNow()),
+			on(node, 'contextmenu', () => void this.surface.flush()),
 			on(node, 'beforeinput', this.withUserInput(this.onBeforeInput)),
 			// An `input` records what the browser did; it says nothing new about
 			// where the user wants the selection (a display still to land wins).
@@ -1126,7 +1108,7 @@ export class Edytor {
 			}),
 			on(node, 'compositionstart', this.onCompositionStart),
 			on(node, 'compositionend', this.onCompositionEnd),
-			domMutationObserver.destroy
+			detachSurface
 		);
 
 		// Chrome lives in the overlay, outside the host: remote carets, then the plugins'.
@@ -1147,11 +1129,7 @@ export class Edytor {
 				this.selection.destroy();
 				this.attempts.clear();
 				this.composition.reset();
-				// Drain AND clear: `attach` re-runs on every `{#key
-				// editorDomRevision}` remount — leaving the spent batch in place
-				// would retain ~18 dead closures (+ the detached editor DOM
-				// subtree they close over) per remount and re-run them on every
-				// later destroy.
+				// Drain AND clear: `destroy()` runs the same batch again.
 				this.off.splice(0).forEach((off) => off());
 			}
 		};

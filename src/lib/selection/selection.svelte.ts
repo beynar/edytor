@@ -460,7 +460,7 @@ export class EdytorSelection {
 		this.epoch++;
 		// A repair is a background display (it never takes focus); a command,
 		// history or host code asks for one (R10).
-		if (cause === 'repair') this.edytor.projector.render++;
+		if (cause === 'repair') this.edytor.surface.update();
 		else if (cause !== 'dom') this.display();
 		this.cause = cause;
 		if (surface) this.#surface = { value, ...surface };

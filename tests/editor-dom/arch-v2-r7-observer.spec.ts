@@ -37,58 +37,57 @@ const caretAtEnd = async (page: Page, index: number) => {
 };
 
 test.describe('R7 — the host is the projection of its cells', () => {
-	// Red on the reference (`arch-v2/ref-r7`): the line's element is gone, nothing restores it.
-	test.fail(
-		'(e) Enter in a code block after earlier scenarios keeps every code line',
-		async ({ page }) => {
-			const issues = trackPageIssues(page);
-			await open(page, 'marks');
-			await setSelectionByTextIndex(page, 0, 3);
-			await page.keyboard.type('xy');
-			await page.keyboard.press('Enter');
-			await page.keyboard.press('Backspace');
-			await page.keyboard.press('Backspace');
+	// Red on the reference (`arch-v2/ref-r7`): the line's element was gone, nothing restored it.
+	test('(e) Enter in a code block after earlier scenarios keeps every code line', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page, 'marks');
+		await setSelectionByTextIndex(page, 0, 3);
+		await page.keyboard.type('xy');
+		await page.keyboard.press('Enter');
+		await page.keyboard.press('Backspace');
+		await page.keyboard.press('Backspace');
 
-			await open(page, 'inline');
-			await setSelectionByTextIndex(page, 1, 0);
-			await page.keyboard.type('ab');
-			await page.keyboard.press('Backspace');
-			await page.keyboard.press('Backspace');
-			await page.keyboard.press('Backspace');
-			await page.keyboard.press('Enter');
+		await open(page, 'inline');
+		await setSelectionByTextIndex(page, 1, 0);
+		await page.keyboard.type('ab');
+		await page.keyboard.press('Backspace');
+		await page.keyboard.press('Backspace');
+		await page.keyboard.press('Backspace');
+		await page.keyboard.press('Enter');
 
-			await open(page, 'lists');
-			await caretAtEnd(page, 0);
-			await page.keyboard.press('Enter');
-			await page.keyboard.type('Inserted');
-			await page.keyboard.press('Tab');
+		await open(page, 'lists');
+		await caretAtEnd(page, 0);
+		await page.keyboard.press('Enter');
+		await page.keyboard.type('Inserted');
+		await page.keyboard.press('Tab');
 
-			await open(page, 'code');
-			await setSelectionByTextIndex(page, 0, 5);
-			await page.keyboard.press('Enter');
-			await page.keyboard.type('let x = 2;');
-			await settle(page);
+		await open(page, 'code');
+		await setSelectionByTextIndex(page, 0, 5);
+		await page.keyboard.press('Enter');
+		await page.keyboard.type('let x = 2;');
+		await settle(page);
 
-			await expect.poll(() => truth(page)).toEqual([]);
-			const lines = await page.evaluate(() => {
-				const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-				const code = edytor.root.children[0];
-				return {
-					model: code.children.map((line: { id: string }) => edytor.facade.blockText(line.id)),
-					dom: code.children.map(
-						(line: { node?: HTMLElement }) =>
-							line.node?.isConnected &&
-							(line.node.querySelector('[data-edytor-text]')?.textContent ?? '').replaceAll(
-								'\u200B',
-								''
-							)
-					)
-				};
-			});
-			expect(lines.dom).toEqual(lines.model);
-			issues.assertClean();
-		}
-	);
+		await expect.poll(() => truth(page)).toEqual([]);
+		const lines = await page.evaluate(() => {
+			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
+			const code = edytor.root.children[0];
+			return {
+				model: code.children.map((line: { id: string }) => edytor.facade.blockText(line.id)),
+				dom: code.children.map(
+					(line: { node?: HTMLElement }) =>
+						line.node?.isConnected &&
+						(line.node.querySelector('[data-edytor-text]')?.textContent ?? '').replaceAll(
+							'\u200B',
+							''
+						)
+				)
+			};
+		});
+		expect(lines.dom).toEqual(lines.model);
+		issues.assertClean();
+	});
 
 	test('a code line a foreign script removes is re-inserted', async ({ page }) => {
 		const issues = trackPageIssues(page);

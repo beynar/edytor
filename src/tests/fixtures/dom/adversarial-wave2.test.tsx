@@ -397,31 +397,28 @@ describe('foreign element spoofing of managed markers', () => {
 	// element carrying text inside it is input — its text is adopted by the
 	// location default and the element removed. A mark name no mark declares
 	// claims no core identity.
-	test.fails(
-		'a spoofed mark inside a live text: its text is adopted, the element removed',
-		async () => {
-			const { edytor } = await renderDomEdytor(
-				<root>
-					<paragraph>Hello|</paragraph>
-				</root>
-			);
-			const textElement = firstText(edytor).node!;
-			const modelBefore = JSON.stringify(edytor.value);
+	test('a spoofed mark inside a live text: its text is adopted, the element removed', async () => {
+		const { edytor } = await renderDomEdytor(
+			<root>
+				<paragraph>Hello|</paragraph>
+			</root>
+		);
+		const textElement = firstText(edytor).node!;
+		const modelBefore = JSON.stringify(edytor.value);
 
-			const spoof = document.createElement('span');
-			spoof.setAttribute('data-edytor-mark', 'evil-mark');
-			spoof.textContent = 'x';
-			textElement.append(spoof);
-			await flushDomUpdates();
+		const spoof = document.createElement('span');
+		spoof.setAttribute('data-edytor-mark', 'evil-mark');
+		spoof.textContent = 'x';
+		textElement.append(spoof);
+		await flushDomUpdates();
 
-			expect(spoof.isConnected).toBe(false);
-			expect(modelBefore).not.toContain('Hellox');
-			expect(edytor.root!.children[0]!.firstText!.stringContent).toBe('Hellox');
-			expect(
-				textElement.isConnected ? textElement.textContent : firstText(edytor).node!.textContent
-			).toBe('Hellox');
-		}
-	);
+		expect(spoof.isConnected).toBe(false);
+		expect(modelBefore).not.toContain('Hellox');
+		expect(edytor.root!.children[0]!.firstText!.stringContent).toBe('Hellox');
+		expect(
+			textElement.isConnected ? textElement.textContent : firstText(edytor).node!.textContent
+		).toBe('Hellox');
+	});
 });
 
 describe('prototype-chain attribute names on managed elements', () => {

@@ -2775,7 +2775,13 @@ test.describe('browser input behavior', () => {
 		issues.assertClean();
 	});
 
-	test('removes unmanaged DOM nodes inserted into the editable tree', async ({ page }) => {
+	// R7 rewrite (answer (b), D-25): the paragraph element is the kind's own
+	// markup around its content slot; a node appended there stays and never
+	// reaches the model. Nodes inside the content's run or inside a text
+	// element are the core's to remove (the next specs, `dom-mutation.spec`).
+	test('keeps an unmanaged node the kind’s markup holds; the model is untouched', async ({
+		page
+	}) => {
 		const issues = trackPageIssues(page);
 
 		await page.goto('/test/dom?scenario=basic&empty=last');
@@ -2785,7 +2791,7 @@ test.describe('browser input behavior', () => {
 			textIndex: 0
 		});
 
-		await expect(page.locator('[data-test-unmanaged]')).toHaveCount(0);
+		await expect(page.locator('[data-test-unmanaged]')).toHaveCount(1);
 		await expect
 			.poll(async () => {
 				const value = await readJsonByTestId<{

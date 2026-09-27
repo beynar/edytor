@@ -99,7 +99,6 @@ export class Text {
 	 */
 	refreshFromModel = () => {
 		if (this.edytor.pin.owns(this.node)) return;
-		this.edytor.surface.acted(this.parent.id, 'invert', 'remount');
 		this.edytor.cells?.remount(this.parent.id);
 	};
 

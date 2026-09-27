@@ -116,8 +116,8 @@ const VENDOR = 'src/lib/crdt/vendor/**';
 // The contenteditable host is written by the renderer only: Svelte template
 // effects and the core's attachment bodies (`components/`, the handles'
 // `attach`/`void`). Chrome writes its own layer outside the host (overlay,
-// plugin UI). Today's observer and the `input` line-break repair still invert
-// by hand until R7 moves inversion into `surface/observer`.
+// plugin UI). The observer (`surface/observer`, `surface/attributes`) inverts
+// foreign damage: restoring what the cells render is the renderer's write.
 const HOST_MUTATION =
 	'appendChild|insertBefore|removeChild|replaceChild|replaceWith|setAttribute|removeAttribute|toggleAttribute|prepend|append|remove';
 const HOST_WRITERS = [
@@ -126,11 +126,10 @@ const HOST_WRITERS = [
 	'src/lib/block/block.svelte.ts',
 	'src/lib/block/inlineBlock.svelte.ts',
 	'src/lib/surface/observer.svelte.ts',
+	'src/lib/surface/attributes.ts',
 	'src/lib/surface/overlay.ts',
 	'src/lib/plugins/**',
-	'src/lib/collaboration/**',
-	'src/lib/events/domTextMutationObserver.ts',
-	'src/lib/events/onInput.ts'
+	'src/lib/collaboration/**'
 ];
 const hostWriterRules = {
 	'no-restricted-syntax': [

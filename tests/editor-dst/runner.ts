@@ -1,4 +1,4 @@
-import { collectObserverShadow, installObserverShadow } from '../observerShadow';
+import { assertTruth } from '../truthCheck';
 import {
 	chromium,
 	firefox,
@@ -941,7 +941,6 @@ const createActivePage = async (
 	page.on('console', (message) => {
 		if (message.type() === 'error') consoleErrors.push(message.text());
 	});
-	await installObserverShadow(page);
 	await installEventRecorder(page);
 	await page.goto(pageRoute(schedule), { waitUntil: 'domcontentloaded' });
 	await waitForEditorReady(page, { requireRuntime: true });
@@ -1620,6 +1619,9 @@ export const runDstSchedule = async (
 			compareEngines(afterSnapshots, step.action, escapedSet(afterSnapshots));
 			historyEntry.status = 'passed';
 		}
+		// F-O10: the settled host of every engine is the projection of its cells.
+		for (const active of activePages)
+			await assertTruth(active.page, `dst seed ${schedule.seed} ${active.engine.name}`);
 
 		return {
 			ok: true,
@@ -1639,8 +1641,6 @@ export const runDstSchedule = async (
 			)
 		};
 	} finally {
-		for (const active of activePages)
-			await collectObserverShadow(active.page, `dst seed ${schedule.seed} ${active.engine.name}`);
 		await Promise.all(activePages.map(({ context }) => context.close().catch(() => undefined)));
 	}
 };

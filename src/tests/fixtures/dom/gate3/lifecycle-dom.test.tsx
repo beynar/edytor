@@ -125,25 +125,22 @@ describe('gate3 dom: mutation observer boundary', () => {
 
 	// R7 (answer (b), D-25): the block element holds the kind's own markup — a
 	// sibling a foreign script adds there stays, and never reaches the model.
-	test.fails(
-		'unmanaged SIBLING node at block level stays and does not corrupt the model',
-		async () => {
-			const { edytor, editor } = await renderDomEdytor(
-				<root>
-					<paragraph>Hello</paragraph>
-				</root>
-			);
-			const block = edytor.root!.children[0]!;
-			const blockNode = block.node!;
+	test('unmanaged SIBLING node at block level stays and does not corrupt the model', async () => {
+		const { edytor, editor } = await renderDomEdytor(
+			<root>
+				<paragraph>Hello</paragraph>
+			</root>
+		);
+		const block = edytor.root!.children[0]!;
+		const blockNode = block.node!;
 
-			const rogue = document.createElement('div');
-			rogue.setAttribute('data-rogue', '1');
-			rogue.textContent = 'INJECTED';
-			blockNode.appendChild(rogue);
-			await flushDomUpdates();
+		const rogue = document.createElement('div');
+		rogue.setAttribute('data-rogue', '1');
+		rogue.textContent = 'INJECTED';
+		blockNode.appendChild(rogue);
+		await flushDomUpdates();
 
-			expect(rogue.isConnected).toBe(true);
-			expect(block.value.content.map((p) => ('text' in p ? p.text : '')).join('')).toBe('Hello');
-		}
-	);
+		expect(rogue.isConnected).toBe(true);
+		expect(block.value.content.map((p) => ('text' in p ? p.text : '')).join('')).toBe('Hello');
+	});
 });

@@ -233,25 +233,24 @@
 </script>
 
 {#if edytor.synced}
-	{#key edytor.editorDomRevision}
-		<div
-			class={className}
-			use:edytor.attach
-			use:editableRootBrowserAttributes={browserMutationGuardAttributes}
-			use:nonNativeEditableBlockChromeSelection
-			data-edytor
-			contenteditable={!readonly}
-			role="textbox"
-			aria-multiline="true"
-			aria-readonly={readonly ? 'true' : 'false'}
-			{translate}
-		>
-			{#each edytor.cells?.rootIds ?? [] as id (id)}<Block {id} />{/each}<span
-				data-edytor-render-anchor
-				contenteditable="false"
-				aria-hidden="true"
-				style="display: none"
-			></span>
-		</div>
-	{/key}
+	<div
+		class={className}
+		use:edytor.attach
+		use:editableRootBrowserAttributes={browserMutationGuardAttributes}
+		use:nonNativeEditableBlockChromeSelection
+		data-edytor
+		contenteditable={!readonly}
+		role="textbox"
+		aria-multiline="true"
+		aria-readonly={readonly ? 'true' : 'false'}
+		{translate}
+	>
+		{#each edytor.cells?.rootIds ?? [] as id (id)}<Block {id} />{/each}<span
+			data-edytor-render-anchor
+			contenteditable="false"
+			aria-hidden="true"
+			style="display: none"
+			use:edytor.surface.anchor
+		></span>
+	</div>
 {/if}

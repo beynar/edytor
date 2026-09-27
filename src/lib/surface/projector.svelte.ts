@@ -86,8 +86,6 @@ export const domPointOf = (element: HTMLElement, offset: number): Point => {
 const samePoint = (a: Point, node: Node | null, offset: number) => a[0] === node && a[1] === offset;
 
 export class Projector {
-	/** Render epoch: commits this view did not issue, and cells mounted while a display waits. */
-	render = $state(0);
 	/** What the last display left in the DOM, and the selection epoch it showed. */
 	#displayed: (Points & { epoch: number }) | null = null;
 	/** The observer holds DOM records it has not reconciled yet (set at attach). */
@@ -133,7 +131,7 @@ export class Projector {
 	#deps = () => {
 		const { edytor } = this;
 		void edytor.valueRevision;
-		return `${edytor.selection.request}:${this.render}:${edytor.editorDomRevision}`;
+		return `${edytor.selection.request}:${edytor.surface.epoch}`;
 	};
 
 	#pass = (key: string) => {
@@ -173,7 +171,8 @@ export class Projector {
 		const { selection } = this.edytor;
 		const { startText, endText } = selection.state;
 		const dead = selection.value.kind !== 'none' && !selection.projection.start;
-		if (this.#pending || dead || text === startText || text === endText) this.render++;
+		if (this.#pending || dead || text === startText || text === endText)
+			this.edytor.surface.update();
 	};
 
 	/**
@@ -187,7 +186,7 @@ export class Projector {
 			this.#held = true;
 			composition.ended(() => {
 				this.#held = false;
-				this.render++;
+				this.edytor.surface.update();
 			});
 		}
 		return true;
@@ -195,7 +194,7 @@ export class Projector {
 
 	/** The observer processed DOM records (O55): a display that waits gets a pass. */
 	recordsChanged = () => {
-		if (this.#pending) this.render++;
+		if (this.#pending) this.edytor.surface.update();
 	};
 
 	/**

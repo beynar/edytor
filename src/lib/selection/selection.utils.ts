@@ -432,7 +432,9 @@ export const getYIndex = (text: Text | null, node: Node | null, _start: number) 
 		let length = 0;
 		const end = Math.min(offset, element.childNodes.length);
 		for (let index = 0; index < end; index++) {
-			length += element.childNodes[index].textContent?.length ?? 0;
+			// Svelte's hydration comments carry data, never text.
+			const child = element.childNodes[index];
+			if (child.nodeType !== Node.COMMENT_NODE) length += child.textContent?.length ?? 0;
 		}
 		return length;
 	};

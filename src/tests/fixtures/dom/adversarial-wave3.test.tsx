@@ -78,23 +78,20 @@ describe('root-level managed chrome', () => {
 	// R7 rewrite (R11): the root is a strict container — only its cells' block
 	// elements and the core's own (registered) render anchor stay; a foreign
 	// element carrying the marker is removed.
-	test.fails(
-		'a foreign element carrying the render-anchor marker under our root is removed; ours stays',
-		async () => {
-			const { editor } = await renderDomEdytor(
-				<root>
-					<paragraph>Hello|</paragraph>
-				</root>
-			);
-			const ours = editor.querySelector('[data-edytor-render-anchor]');
-			const extra = document.createElement('span');
-			extra.setAttribute('data-edytor-render-anchor', '');
-			editor.append(extra);
-			await flushDomUpdates();
-			expect(extra.isConnected).toBe(false);
-			expect(ours?.isConnected).toBe(true);
-		}
-	);
+	test('a foreign element carrying the render-anchor marker under our root is removed; ours stays', async () => {
+		const { editor } = await renderDomEdytor(
+			<root>
+				<paragraph>Hello|</paragraph>
+			</root>
+		);
+		const ours = editor.querySelector('[data-edytor-render-anchor]');
+		const extra = document.createElement('span');
+		extra.setAttribute('data-edytor-render-anchor', '');
+		editor.append(extra);
+		await flushDomUpdates();
+		expect(extra.isConnected).toBe(false);
+		expect(ours?.isConnected).toBe(true);
+	});
 });
 
 describe('link href sanitization', () => {

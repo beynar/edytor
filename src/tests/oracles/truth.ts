@@ -15,7 +15,7 @@ export const truthOf = (edytor: any): string[] => {
 	const root: HTMLElement | undefined = edytor?.node;
 	const cells = edytor?.cells;
 	if (!root?.isConnected || !cells || edytor.destroyed) return out;
-	const ATOM = '￼';
+	const ATOM = '\uFFFC';
 	const strip = (value: string) => value.replace(/\u200B/g, '');
 	const isAnchor = (node: Node) =>
 		node.nodeType === Node.COMMENT_NODE || (node.nodeType === Node.TEXT_NODE && !node.nodeValue);

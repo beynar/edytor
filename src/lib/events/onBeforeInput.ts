@@ -29,7 +29,7 @@ import {
 } from './nativeInteractiveControl.js';
 import { observeInternalDragSources } from './onDrop.js';
 import { runBeforeInputCommand, runBeforeInputHotkeyBridge } from './beforeInputCommands.js';
-import { getNormalizedDomText } from './onInput.js';
+import { readDomText } from './onInput.js';
 
 const isRangeInsideEditor = (edytor: Edytor, range: StaticRange) =>
 	Boolean(
@@ -350,7 +350,7 @@ const androidNoOpBackspaceDeadline = (edytor: Edytor, attempt: Attempt) => {
 			attempt.phase === 'failed' ||
 			!text.isInDocument ||
 			!sameValue(edytor.selection.value, attempt.target) ||
-			getNormalizedDomText(text) !== text.stringContent
+			readDomText(text) !== text.stringContent
 		) {
 			return;
 		}

@@ -1306,6 +1306,23 @@ test.describe('DST v4 foreign-mutation oracle', () => {
 			/foreign-element-survived/
 		);
 	});
+
+	test('D-25: a foreign element in a block element’s own markup may stay; the model may not change', () => {
+		const before = twoBlockSnapshot({ yStart: 1, yEnd: 1 });
+		const kept = twoBlockSnapshot({ yStart: 1, yEnd: 1 });
+		kept.dom.foreignResidual.nodes = ['span@block:0'];
+		const action: DstAction = {
+			kind: 'foreignMutation',
+			mutation: { kind: 'insertForeignElement', where: 'block', index: 0, text: 'zz' }
+		};
+		expect(() => assertActionEffect('chromium', action, before, kept)).not.toThrow();
+		const adopted = twoBlockSnapshot({ yStart: 1, yEnd: 1 });
+		adopted.dom.foreignResidual.nodes = ['span@block:0'];
+		adopted.value.children[0].content![0] = { text: 'hellozz' };
+		expect(() => assertActionEffect('chromium', action, before, adopted)).toThrow(
+			/foreign-mutation-mutated-model/
+		);
+	});
 });
 
 test.describe('passive selection oracle', () => {

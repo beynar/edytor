@@ -41,14 +41,28 @@ const isNativeHistoryInput = (event: Event): event is InputEvent =>
 const runInputHistoryCommand = (edytor: Edytor, event: InputEvent) =>
 	event.inputType === 'historyUndo' ? edytor.historyUndo() : edytor.historyRedo();
 
-export const getNormalizedDomText = (text: Text) => {
-	let value = text.node?.textContent ?? '';
-
-	if (value === ZERO_WIDTH_SPACE) {
-		return '';
+/**
+ * What the browser shows for `text`: its element's text nodes in order (WebKit's
+ * converted-space wrappers read as plain spaces), the empty filler and the
+ * trailing-newline marker stripped.
+ */
+export const readDomText = (text: Text) => {
+	let value = '';
+	const node = text.node;
+	if (node) {
+		const walker = (node.ownerDocument ?? document).createTreeWalker(node, NodeFilter.SHOW_TEXT);
+		while (walker.nextNode()) {
+			const leaf = walker.currentNode as globalThis.Text;
+			value += leaf.parentElement?.closest('span.Apple-converted-space')
+				? leaf.data.replaceAll('\u00A0', ' ')
+				: leaf.data;
+		}
 	}
 
-	if ((text.isEmpty || text.endsWithNewline) && value.endsWith(ZERO_WIDTH_SPACE)) {
+	// An empty text's filler shares its node with what the browser typed, on either side (F-I22).
+	if (text.isEmpty) return value.replaceAll(ZERO_WIDTH_SPACE, '');
+
+	if (text.endsWithNewline && value.endsWith(ZERO_WIDTH_SPACE)) {
 		value = value.slice(0, -ZERO_WIDTH_SPACE.length);
 	}
 
@@ -135,12 +149,6 @@ const driftRepairTarget = (
 	);
 };
 
-export const removeUnmanagedLineBreaks = (text: Text) => {
-	text.node?.querySelectorAll('br').forEach((lineBreak) => {
-		lineBreak.remove();
-	});
-};
-
 const getNativeLineBreakInsertionIndexFromValue = (text: Text, value: string) => {
 	const change = diffText(text.stringContent, value);
 	return change && !change.remove && /^[\r\n]+$/.test(change.insert) ? change.at : null;
@@ -162,7 +170,6 @@ export const handleNativeLineBreakTextValue = async (edytor: Edytor, text: Text,
 			? 'insertLineBreak'
 			: 'insertParagraph';
 	text.refreshFromModel();
-	removeUnmanagedLineBreaks(text);
 	await tick();
 	await edytor.selection.setAtTextOffset(text, insertionIndex);
 	await runOccurrence(edytor, { inputType, cancelable: false });
@@ -170,7 +177,7 @@ export const handleNativeLineBreakTextValue = async (edytor: Edytor, text: Text,
 };
 
 export const handleNativeLineBreakTextMutation = async (edytor: Edytor, text: Text) =>
-	handleNativeLineBreakTextValue(edytor, text, getNormalizedDomText(text));
+	handleNativeLineBreakTextValue(edytor, text, readDomText(text));
 
 const handleNativeLineBreakTextInput = async (edytor: Edytor, event: Event) => {
 	if (!isNativeLineBreakTextInput(event)) {
@@ -234,10 +241,8 @@ const repairDrift = async (
 	const eventTarget = getEventTextRepairTarget(edytor, event);
 	if (eventTarget && eventTarget.text !== target.text && isLiveText(eventTarget.text)) {
 		eventTarget.text.refreshFromModel();
-		removeUnmanagedLineBreaks(eventTarget.text);
 	}
 	target.text.refreshFromModel();
-	removeUnmanagedLineBreaks(target.text);
 	await tick();
 	// The attempt decided the caret; `select()` it — the projector displays it (V4).
 	await edytor.selection.setAtTextOffset(target.text, Math.min(target.offset, target.text.length));
@@ -304,7 +309,7 @@ export async function onInput(this: Edytor, event: Event) {
 			}
 		}
 
-		await this.observer?.flushNow();
+		await this.surface.flush();
 	} finally {
 		if (attempt) this.attempts.close(attempt);
 	}

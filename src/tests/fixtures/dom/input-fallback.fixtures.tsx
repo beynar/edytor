@@ -472,7 +472,6 @@ export const fixtures = defineFixtures([
 		// markup around its slot, not a strict container — a node beside the text
 		// element stays there and never reaches the model.
 		description: 'keeps an unmanaged node the kind’s markup holds beside the text element (D-25)',
-		fails: true,
 		input: (
 			<root>
 				<paragraph>Hello|</paragraph>

@@ -189,10 +189,11 @@ const compatible = (a: string, b: string) =>
 export class Attempts {
 	#queue: Attempt[] = [];
 	#timers = new Map<Attempt, ReturnType<typeof setTimeout>>();
-	/** Model writes own the DOM until the end of their task (a render follows them). */
-	#held: ReturnType<typeof setTimeout> | null = null;
 	/** The last attempt admitted. */
 	last: Attempt | null = null;
+
+	/** `closed`: an attempt closed (its deadline, a newer one): the observer compares again. */
+	constructor(private closed: () => void = () => {}) {}
 
 	/** Queue `attempt`; a model-owned one supersedes every live attempt, a browser-owned one the browser-owned ones. */
 	admit = (attempt: Attempt, owner: Attempt['owner'], expect: Expect | null = null) => {
@@ -225,19 +226,12 @@ export class Attempts {
 		this.#timers.delete(attempt);
 		this.#queue = this.#queue.filter((a) => a !== attempt);
 		if (attempt.phase === 'open') attempt.phase = 'closed';
+		this.closed();
 	};
 
 	/** Close every attempt the predicate selects (all by default). */
 	clear = (which: (attempt: Attempt) => boolean = () => true) => {
 		for (const attempt of [...this.#queue]) if (which(attempt)) this.close(attempt);
-		clearTimeout(this.#held ?? undefined);
-		this.#held = null;
-	};
-
-	/** A model write: the DOM is the model's until its render (the end of this task). */
-	hold = () => {
-		clearTimeout(this.#held ?? undefined);
-		this.#held = setTimeout(() => (this.#held = null));
 	};
 
 	/** The keydown attempt still waiting for its `beforeinput` or its deadline. */
@@ -260,13 +254,6 @@ export class Attempts {
 				: expect?.kind === 'change' && compatible(inputType, reported)
 		) ?? null;
 
-	/** How the observer treats records now: discard structural drift, defer them, or adopt. */
-	get observed(): 'discard' | 'defer' | null {
-		const drift = this.#queue.findLast((a) => a.expect?.kind === 'drift')?.expect;
-		if (drift?.kind === 'drift') return drift.mode === 'discard' ? 'discard' : 'defer';
-		return this.#held ? 'defer' : null;
-	}
-
 	/** A model-owned attempt's drift is live on `host`. */
 	drifting = (host: Text) =>
 		this.#queue.some((a) => a.expect?.kind === 'drift' && a.startText === host);
@@ -283,8 +270,8 @@ export class Attempts {
 			(a) => a.expect?.kind === 'change' && a.expect.host === host && a.phase === 'open'
 		) ?? null;
 
-	/** Any model-owned attempt or held model write is live (quiescence probes). */
+	/** Any model-owned attempt is live (quiescence probes). */
 	get busy() {
-		return Boolean(this.#held) || this.#queue.some((a) => a.expect?.kind === 'drift');
+		return this.#queue.some((a) => a.expect?.kind === 'drift');
 	}
 }

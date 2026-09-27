@@ -61,10 +61,8 @@ import { fold, foldPlugin } from '../../dom/R6FoldKind.svelte';
 import { effectDispatcher } from '../../dom/r6Effects.svelte.js';
 import { truthOf } from '../../oracles/truth.js';
 
-/** Green on the reference too: a guard the switch must keep. */
+/** Rows; those red on the reference (`arch-v2/ref-r7`) were `it.fails` in the tests-first commit. */
 const row = it;
-/** Red on the reference (`arch-v2/ref-r7`: today's observer acts); flipped to `it` by R7. */
-const red = it.fails;
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -327,7 +325,7 @@ describe('F-O13 — the correction is adopted once, where it was typed; the conc
 		return settled(edytor);
 	};
 
-	red('(b) the autocorrect, then a remote insert in its task', async () => {
+	row('(b) the autocorrect, then a remote insert in its task', async () => {
 		const { edytor } = await mount({ children: [paragraph('teh cat|')] });
 		const remote = peer(edytor);
 		const id = blockId(edytor, 0);
@@ -339,7 +337,7 @@ describe('F-O13 — the correction is adopted once, where it was typed; the conc
 		expect(truth).toEqual([]);
 	});
 
-	red('(b) the other order: a remote insert, then the autocorrect in the same task', async () => {
+	row('(b) the other order: a remote insert, then the autocorrect in the same task', async () => {
 		const { edytor } = await mount({ children: [paragraph('teh cat|')] });
 		const remote = peer(edytor);
 		const id = blockId(edytor, 0);
@@ -350,7 +348,7 @@ describe('F-O13 — the correction is adopted once, where it was typed; the conc
 		expect(textOfId(edytor, id)).toBe('Xthe cat');
 	});
 
-	red('(e) a remote format of the autocorrected run', async () => {
+	row('(e) a remote format of the autocorrected run', async () => {
 		const { edytor } = await mount({ children: [paragraph('teh cat|')] });
 		const remote = peer(edytor);
 		const id = blockId(edytor, 0);
@@ -366,7 +364,7 @@ describe('F-O13 — the correction is adopted once, where it was typed; the conc
 		});
 	});
 
-	red('(e) a mark-nesting change over the run', async () => {
+	row('(e) a mark-nesting change over the run', async () => {
 		const { edytor } = await mount({
 			children: [
 				{
@@ -390,7 +388,7 @@ describe('F-O13 — the correction is adopted once, where it was typed; the conc
 		).toBe(true);
 	});
 
-	red('(e) a retype of its block', async () => {
+	row('(e) a retype of its block', async () => {
 		const { edytor } = await mount({ children: [paragraph('teh cat|')] });
 		const remote = peer(edytor);
 		const id = blockId(edytor, 0);
@@ -403,7 +401,7 @@ describe('F-O13 — the correction is adopted once, where it was typed; the conc
 		expect(truth).toEqual([]);
 	});
 
-	red('(e) the deletion of the atom before it', async () => {
+	row('(e) the deletion of the atom before it', async () => {
 		const { edytor } = await mount({
 			children: [
 				{
@@ -447,7 +445,7 @@ describe('F-O13 — the correction is adopted once, where it was typed; the conc
 		expect(truth).toEqual([]);
 	});
 
-	red('(e) a split before it: the correction follows its text into the new block', async () => {
+	row('(e) a split before it: the correction follows its text into the new block', async () => {
 		const { edytor } = await mount({ children: [paragraph('xx teh cat')] });
 		const remote = peer(edytor);
 		const id = blockId(edytor, 0);
@@ -460,7 +458,7 @@ describe('F-O13 — the correction is adopted once, where it was typed; the conc
 		expect(truth).toEqual([]);
 	});
 
-	red(
+	row(
 		'(c) an extension’s unowned attribute on a block element and a style on a mark element stay',
 		async () => {
 			const { edytor } = await mount({
@@ -554,7 +552,7 @@ describe('F-O10 — after a settle every content equals its cell (the truth inva
 // ── The orchestrator's answers to R6's questions ──────────────────────────
 
 describe('answers (b)–(f): what the observer does with each divergence', () => {
-	red(
+	row(
 		'(b) D-25: a foreign node beside a text element stays and never reaches the model',
 		async () => {
 			const { edytor } = await mount({ children: [paragraph('Hello')] });
@@ -568,7 +566,7 @@ describe('answers (b)–(f): what the observer does with each divergence', () =>
 		}
 	);
 
-	red(
+	row(
 		'(c) a foreign element with text inside a text element: its text is adopted, the element removed',
 		async () => {
 			const { edytor } = await mount({ children: [paragraph('Hello')] });
@@ -583,13 +581,13 @@ describe('answers (b)–(f): what the observer does with each divergence', () =>
 		}
 	);
 
-	red(
+	row(
 		'(d) WebKit’s converted space is adopted once as a space; no leftover node is adopted again',
 		async () => {
 			const { edytor } = await mount({ children: [paragraph('lead|')] });
 			const converted = document.createElement('span');
 			converted.className = 'Apple-converted-space';
-			converted.textContent = ' ';
+			converted.textContent = '\u00A0';
 			hostOf(edytor, 0).node!.append(converted);
 			expect(await settled(edytor)).toEqual([]);
 			await wait(50);
@@ -626,7 +624,7 @@ describe('answers (b)–(f): what the observer does with each divergence', () =>
 		]);
 	});
 
-	red(
+	row(
 		'(f) one render epoch: a remote commit bumps the surface’s epoch the projector reads',
 		async () => {
 			const { edytor } = await mount({ children: [paragraph('Hello|')] });
@@ -645,7 +643,7 @@ describe('answers (b)–(f): what the observer does with each divergence', () =>
 // ── F-P17 (b), (c), F-P20 ────────────────────────────────────────────────
 
 describe('F-P17 / F-P20 — read-only views and extension attributes', () => {
-	red('F-P17 (b) a read-only rewrite stays until the flip back, then is inverted', async () => {
+	row('F-P17 (b) a read-only rewrite stays until the flip back, then is inverted', async () => {
 		const { edytor } = await mount({ children: [paragraph('Hello'), paragraph('world')] });
 		edytor.readonly = true;
 		await flushDomUpdates();
@@ -675,7 +673,7 @@ describe('F-P17 / F-P20 — read-only views and extension attributes', () => {
 		expect(element.getAttribute('id')).toBe('anchor-b1');
 	});
 
-	red(
+	row(
 		'F-P20 a read-only view keeps a foreign annotation wrapper and heals an identity attribute',
 		async () => {
 			const { edytor } = await mount({ children: [paragraph('Hello world')] }, { readonly: true });
@@ -696,4 +694,52 @@ describe('F-P17 / F-P20 — read-only views and extension attributes', () => {
 			expect(modelText(edytor, 0)).toBe('Hello world');
 		}
 	);
+});
+
+// ── F-I22 ────────────────────────────────────────────────────────────────
+
+describe('F-I22 — Android types natively into an empty block', () => {
+	/** A non-cancelable `insertText` the browser performs in the text's first text node. */
+	const typeNatively = async (edytor: Edytor, value: string, caret: number, data: string) => {
+		const element = hostOf(edytor, 0).node!;
+		const event = new Event('beforeinput', { bubbles: true, cancelable: false }) as InputEvent;
+		Object.defineProperties(event, {
+			inputType: { value: 'insertText' },
+			data: { value: data },
+			dataTransfer: { value: null }
+		});
+		element.dispatchEvent(event);
+		const leaf = textNodes(element)[0]!;
+		leaf.data = value;
+		const range = document.createRange();
+		range.setStart(leaf, caret);
+		range.collapse(true);
+		window.getSelection()!.removeAllRanges();
+		window.getSelection()!.addRange(range);
+		const input = new Event('input', { bubbles: true }) as InputEvent;
+		Object.defineProperties(input, {
+			inputType: { value: 'insertText' },
+			data: { value: data },
+			isComposing: { value: false }
+		});
+		element.dispatchEvent(input);
+		await flushDomUpdates();
+	};
+
+	row('each character is adopted once; the filler never reaches the model', async () => {
+		const restore = asAndroid();
+		try {
+			const { edytor } = await mount({ children: [paragraph('|')] });
+			// The first character lands in the filler's node, beside the filler.
+			await typeNatively(edytor, '\u200Ba', 2, 'a');
+			expect(modelText(edytor, 0)).toBe('a');
+			await typeNatively(edytor, 'ab', 2, 'b');
+			expect(modelText(edytor, 0)).toBe('ab');
+			expect(await settled(edytor)).toEqual([]);
+			expect(domText(edytor, 0)).toBe('ab');
+			expect(edytor.selection.state.yStart).toBe(2);
+		} finally {
+			restore();
+		}
+	});
 });

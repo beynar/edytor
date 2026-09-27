@@ -439,7 +439,7 @@ export class Composition {
 		const caret = keep && startText ? { text: startText, offset: yStart } : this.#caret;
 		this.#release();
 		if (caret) void edytor.stabilizeCompositionSelection(caret.text, caret.offset);
-		void edytor.observer?.flushNow();
+		void edytor.surface.flush();
 		for (const fn of this.#waiting.splice(0)) fn();
 		return true;
 	}

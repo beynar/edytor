@@ -280,7 +280,9 @@ export const installEventRecorder = (page: Page) =>
 						const childTextLength = (el: Node, upto: number) => {
 							let len = 0;
 							for (let i = 0; i < Math.min(upto, el.childNodes.length); i++) {
-								len += el.childNodes[i].textContent?.length ?? 0;
+								// Svelte's hydration comments carry data, never text.
+								if (el.childNodes[i].nodeType !== Node.COMMENT_NODE)
+									len += el.childNodes[i].textContent?.length ?? 0;
 							}
 							return len;
 						};
@@ -2200,11 +2202,13 @@ export const assertActionEffect = (
 				after: afterSemantic
 			});
 		}
-		// Injected elements must never survive reconciliation: they are
-		// removed outright outside editable islands, or unwrapped once so
-		// their text can be adopted — the tagged element itself is always
-		// settled away.
-		if (after.dom.foreignResidual.nodes.length > 0) {
+		// Injected elements never survive in a strict container (the root, a
+		// text element: removed, or adopted then removed). A block element
+		// holds the kind's own markup around its slots, which is tolerant
+		// (R11, D-25): a node injected there stays, and never reaches the
+		// model (checked above).
+		const strict = after.dom.foreignResidual.nodes.filter((node) => !/@block:/.test(node));
+		if (strict.length > 0) {
 			fail(
 				'foreign-element-survived',
 				engine,

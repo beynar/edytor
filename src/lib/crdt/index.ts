@@ -421,4 +421,4 @@ export {
 	messageAwareness,
 	messageAuth,
 	messageQueryAwareness
-} from './providers/websocket.js';
+} from './providers/room.js';

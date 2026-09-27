@@ -14,8 +14,9 @@ import { startOpaqueRelay, type OpaqueRelay } from './ws-relay';
  * (which covers two independent contexts).
  *
  * Topology: THREE INDEPENDENT browser contexts (separate storage, separate
- * BroadcastChannel domains — and the route forces `disableBc` on the
- * provider anyway, so nothing but the socket can carry updates). Each page
+ * BroadcastChannel domains — and the websocket provider has no
+ * BroadcastChannel leg (D-24 G-e), so nothing but the socket can carry
+ * updates). Each page
  * mounts the production `Edytor` component with
  * `?scenario=collab&collabws=<room>&wsserver=<relay>` and attaches a real
  * `WebsocketProvider` to its own v14 doc. Frames travel browser → TCP →
@@ -127,7 +128,8 @@ const getCollabProvider = (page: Page) =>
 		}
 		return {
 			wsconnected: collab.provider.wsconnected,
-			bcconnected: collab.provider.bcconnected,
+			// No BroadcastChannel leg (D-24 G-e).
+			bcLeg: 'bcconnected' in collab.provider,
 			synced: collab.provider.synced
 		};
 	});
@@ -266,9 +268,9 @@ test.describe('three-client collaboration over a real websocket relay', () => {
 			const issuesC = trackPageIssues(pageC);
 
 			// All three providers reached `synced` through the socket handshake —
-			// with BroadcastChannel disabled there is no other path.
+			// the provider has no BroadcastChannel leg, so there is no other path.
 			for (const page of [pageA, pageB, pageC]) {
-				await expectProviderState(page, { wsconnected: true, synced: true, bcconnected: false });
+				await expectProviderState(page, { wsconnected: true, synced: true, bcLeg: false });
 			}
 			expect(relay.socketCount(room)).toBe(3);
 

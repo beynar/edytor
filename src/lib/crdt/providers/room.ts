@@ -1,8 +1,10 @@
 /**
  * Room protocol — the transport-agnostic half of the two providers (S1).
  *
- * Both providers join one BroadcastChannel room per document and speak the
- * same enveloped protocol (`protocols/envelope.ts`): the generation word,
+ * Both providers speak the same enveloped protocol
+ * (`protocols/envelope.ts`) — the IndexedDB provider on one
+ * BroadcastChannel room per document, the websocket provider on its
+ * socket (its BroadcastChannel leg is retired, D-24 G-e): the generation word,
  * the message-type dispatch, the sync handler, and the awareness
  * publish/query flow are identical between them — this module is their
  * ONE owner. It owns:
@@ -28,8 +30,8 @@
  * class; the returned handle takes the provider instance on every call.
  * Real per-provider differences stay in the behavior hooks:
  *
- * - `broadcast` — ws sends room traffic on its socket AND the BC channel;
- *   idb's room traffic is BC-only.
+ * - `broadcast` — ws sends room traffic on its socket; idb's on the BC
+ *   channel (`roomChannel`, idb only).
  * - `heard` — ws claims its connection's `synced` when it holds a member's
  *   state (an applied Step2, or a Step1 it covers, received on the
  *   socket); idb's `synced` is its local-hydration claim.
@@ -171,26 +173,27 @@ export type RoomMessageHandler<P> = (
 export type RoomProvider<P> = LifecycleHost & {
 	doc: YDoc;
 	awareness: Awareness;
-	bcconnected: boolean;
 	/** Dispatch table — assigned from the bound room handle at construction. */
 	messageHandlers: Record<number, RoomMessageHandler<P>>;
-	_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
 	emit?(event: 'schema-mismatch', args: [SchemaMismatchDetail, unknown]): void;
 	emit?(event: 'message-error', args: [unknown, unknown]): void;
 	emit?(event: 'protocol-mismatch', args: [ProtocolMismatch, unknown]): void;
 	emit?(event: 'failed', args: [unknown, unknown]): void;
 };
 
+/** A provider that joins the BroadcastChannel room (idb). */
+export type BcMember = {
+	bcconnected: boolean;
+	_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
+};
+
 /** Per-provider hooks — the real differences between the two transports. */
 export type RoomBehavior<P> = {
 	/** Logical document/room name for `SchemaMismatchDetail` + errors. */
 	docName(provider: P): string;
-	/** The BroadcastChannel room the provider syncs on. */
-	roomChannel(provider: P): string;
-	/**
-	 * Provider-originated room traffic: ws sends on the socket AND the BC
-	 * channel; idb publishes on the BC channel only.
-	 */
+	/** The BroadcastChannel room the provider syncs on (idb only). */
+	roomChannel?(provider: P): string;
+	/** Provider-originated room traffic: ws sends on the socket; idb publishes on the BC channel. */
 	broadcast(provider: P, buf: Uint8Array): void;
 	/** Extra dispatch entries beyond sync/query-awareness/awareness (ws: auth). */
 	handlers?: Record<number, RoomMessageHandler<P>>;
@@ -313,9 +316,11 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 		return encoder;
 	};
 
+	const channelOf = (provider: P) => behavior.roomChannel!(provider);
+
 	/** The BC subscriber: replies go back on the room channel. */
 	const bcSubscriber = (provider: P) => {
-		const send = (buf: Uint8Array) => bc.publish(behavior.roomChannel(provider), buf, provider);
+		const send = (buf: Uint8Array) => bc.publish(channelOf(provider), buf, provider);
 		return (data: ArrayBuffer, origin: unknown): void => {
 			if (origin === provider) return;
 			try {
@@ -367,9 +372,18 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 		)
 	];
 
+	/** The departure announcement: our presence, removed. */
+	const goodbye = (provider: P): Uint8Array =>
+		frame(messageAwareness, (e) =>
+			encoding.writeVarUint8Array(
+				e,
+				encodeAwarenessUpdate(provider.awareness, [provider.doc.clientID], new Map())
+			)
+		);
+
 	/** Join the BroadcastChannel room: hello, and ask the tabs for their presence. */
-	const connectBc = (provider: P): void => {
-		const channel = behavior.roomChannel(provider);
+	const connectBc = (provider: P & BcMember): void => {
+		const channel = channelOf(provider);
 		if (!provider.bcconnected) {
 			bc.subscribe(channel, provider._bcSubscriber);
 			provider.bcconnected = true;
@@ -380,23 +394,11 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 		}
 	};
 
-	/**
-	 * Leave the room: announce the presence removal (routed through
-	 * `behavior.broadcast` — ws also sends it on the socket), then
-	 * unsubscribe the BC channel.
-	 */
-	const disconnectBc = (provider: P): void => {
-		behavior.broadcast(
-			provider,
-			frame(messageAwareness, (e) =>
-				encoding.writeVarUint8Array(
-					e,
-					encodeAwarenessUpdate(provider.awareness, [provider.doc.clientID], new Map())
-				)
-			)
-		);
+	/** Leave the room: announce the presence removal, then unsubscribe the BC channel. */
+	const disconnectBc = (provider: P & BcMember): void => {
+		behavior.broadcast(provider, goodbye(provider));
 		if (provider.bcconnected) {
-			bc.unsubscribe(behavior.roomChannel(provider), provider._bcSubscriber);
+			bc.unsubscribe(channelOf(provider), provider._bcSubscriber);
 			provider.bcconnected = false;
 		}
 	};
@@ -409,6 +411,7 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 		broadcastUpdate,
 		step1,
 		hello,
+		goodbye,
 		connectBc,
 		disconnectBc
 	};

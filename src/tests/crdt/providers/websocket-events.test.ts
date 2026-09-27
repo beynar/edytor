@@ -103,8 +103,7 @@ describe('websocket options + socket events', () => {
 		const url = uniqueUrl();
 		const p = new providers.WebsocketProvider(url, 'room', new Y.Doc(), {
 			connect: false,
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		await nextTick(60);
 		expect(p.ws).toBeNull();
@@ -124,8 +123,7 @@ describe('websocket options + socket events', () => {
 			// attach the listener first so the order is observable.
 			connect: false,
 			params: { token: 'abc', region: 'eu' },
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		p.on('status', (s) => statuses.push(s.status));
 
@@ -142,13 +140,11 @@ describe('websocket options + socket events', () => {
 		const docA = new Y.Doc();
 		docA.get('content').setAttr('x', 'a-1');
 		const pA = new providers.WebsocketProvider(url, 'room', docA, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		const docB = new Y.Doc();
 		const pB = new providers.WebsocketProvider(url, 'room', docB, {
 			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true,
 			maxBackoffTime: 50
 		});
 		await until(() => pB.synced, 4000);
@@ -180,8 +176,7 @@ describe('websocket options + socket events', () => {
 	test('connection-error fires on a socket error event', async () => {
 		const url = uniqueUrl();
 		const p = new providers.WebsocketProvider(url, 'room', new Y.Doc(), {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		const errors = [];
 		const failed = [];
@@ -202,8 +197,7 @@ describe('auth replies', () => {
 	test('a forged permission-denied frame emits permission-denied + failed once', async () => {
 		const url = uniqueUrl();
 		const p = new providers.WebsocketProvider(url, 'room', new Y.Doc(), {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		const denied = [];
 		const failed = [];
@@ -236,8 +230,7 @@ describe('auth replies', () => {
 	test('an unknown auth subtype is reported on message-error', async () => {
 		const url = uniqueUrl();
 		const p = new providers.WebsocketProvider(url, 'room', new Y.Doc(), {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		const denied = [];
 		const msgErrs = [];
@@ -267,8 +260,7 @@ describe('failure channel (D4) — WebsocketProvider', () => {
 		// connect:false — the provider is asked to never even dial out.
 		const p = new providers.WebsocketProvider(url, 'room', new Y.Doc(), {
 			connect: false,
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		const failed = [];
 		p.on('failed', (e, prov) => failed.push([e, prov]));
@@ -281,8 +273,7 @@ describe('failure channel (D4) — WebsocketProvider', () => {
 	test('destroy while connecting (socket open, no handshake) emits failed once', async () => {
 		const url = uniqueUrl();
 		const p = new providers.WebsocketProvider(url, 'room', new Y.Doc(), {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		const failed = [];
 		p.on('failed', (e) => failed.push(e));
@@ -296,12 +287,10 @@ describe('failure channel (D4) — WebsocketProvider', () => {
 		const docA = new Y.Doc();
 		docA.get('content').setAttr('x', 'a-1');
 		const pA = new providers.WebsocketProvider(url, 'room', docA, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		const pB = new providers.WebsocketProvider(url, 'room', new Y.Doc(), {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		await until(() => pB.synced, 4000);
 		const failed = [];

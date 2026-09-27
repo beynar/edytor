@@ -91,8 +91,7 @@ const until = async (cond, timeout = 4000) => {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** A provider with the library's DEFAULT options (no `resyncInterval`). */
-const open = (url, doc) =>
-	new ws.WebsocketProvider(url, 'room', doc, { WebSocketPolyfill: Relay, disableBc: true });
+const open = (url, doc) => new ws.WebsocketProvider(url, 'room', doc, { WebSocketPolyfill: Relay });
 
 const docWith = (clientID) => {
 	const doc = new Y.Doc();

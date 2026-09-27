@@ -3,16 +3,18 @@
  * `y-websocket@3.0.0` `src/y-websocket.js` (MIT © Kevin Jahns — see
  * `src/lib/crdt/vendor/yjs/LICENSE`).
  *
- * Semantics preserved: `sync`/`synced`/`status`/`connection-*` events,
- * `connect()`/`disconnect()`, awareness injection, query `params`,
- * `protocols`, `WebSocketPolyfill`, `resyncInterval`, exponential-backoff
- * reconnect (`maxBackoffTime`), `disableBc`, and BroadcastChannel cross-tab
- * fan-out on `serverUrl + '/' + roomname`.
+ * Retained surface (D-24 G-e): `status`/`synced`/`connection-*` events,
+ * `connect()`/`disconnect()`, awareness injection, auth `params` (read at
+ * every dial, so a refreshed token reaches the next connection),
+ * `WebSocketPolyfill`, exponential-backoff reconnect (`maxBackoffTime`),
+ * liveness, and `resyncInterval`. Retired: `protocols`, the `sync` alias,
+ * `wsconnecting`, and the BroadcastChannel leg with `disableBc` (cross-tab
+ * sync is the IndexedDB provider's).
  *
  * The generation gate (`protocols/envelope.ts`, R13): every websocket
- * frame and every BC message is tagged `varuint GENERATION | messageType |
- * payload`. Inbound frames of any other generation are dropped before
- * decode and reported via `'protocol-mismatch'`. A v13
+ * frame is tagged `varuint GENERATION | messageType | payload`. Inbound
+ * frames of any other generation are dropped before decode and reported
+ * via `'protocol-mismatch'`. A v13
  * y-websocket server in the room therefore cannot feed updates to this
  * provider (and vice versa) — see docs/crdt-v14-providers.md §server
  * classification: only an OPAQUE v1-update relay stays compatible; a server
@@ -20,16 +22,16 @@
  * run the vendored v14 engine + v14 protocol modules.
  *
  * The room half — enveloped dispatch, the join rule, the inbound refusal,
- * awareness publish/query, the BroadcastChannel subscriber + join/leave
- * sequences, the outbound quarantine and the provider lifecycle — is shared
- * with the IndexedDB provider in `room.ts` (S1). This file keeps the
- * transport edges: the socket lifecycle, reconnect backoff, liveness, the
- * auth reply, and the connection's `synced` (transient: it resets with the
- * socket; `hasSynced` is the lifetime fact). `resyncInterval` is an
- * optional loss-healing timer, not a correctness dependency: the join rule
- * already exchanges what each side lacks on every (re)connect.
+ * awareness publish/query, the departure announcement, the outbound
+ * quarantine and the provider lifecycle — is shared with the IndexedDB
+ * provider in `room.ts` (S1). This file keeps the transport edges: the
+ * socket lifecycle, reconnect backoff, liveness, the auth reply, and the
+ * connection's `synced` (transient: it resets with the socket; `hasSynced`
+ * is the lifetime fact). `resyncInterval` is not a correctness dependency:
+ * the join rule exchanges what each side lacks on every (re)connect. It
+ * re-sends a Step1 on the live socket for harnesses that drop frames
+ * there (TCP never does).
  */
-import * as bc from 'lib0-v14/broadcastchannel';
 import * as time from 'lib0-v14/time';
 import { ObservableV2 } from 'lib0-v14/observable';
 import * as math from 'lib0-v14/math';
@@ -44,9 +46,6 @@ import {
 	initLifecycle,
 	markSynced,
 	messageAuth,
-	messageAwareness,
-	messageQueryAwareness,
-	messageSync,
 	type LifecycleHost,
 	type ProtocolMismatch,
 	type RoomMessageHandler,
@@ -54,14 +53,11 @@ import {
 } from './room.js';
 import type { EngineApi, YDoc } from '../engine-api.js';
 
-export { messageSync, messageAwareness, messageAuth, messageQueryAwareness };
-
 // @todo - this should depend on awareness.outdatedTime
 const messageReconnectTimeout = 30000;
 
 export type WebsocketProviderEvents = {
 	status: (event: { status: 'connected' | 'disconnected' | 'connecting' }) => void;
-	sync: (state: boolean) => void;
 	synced: (state: boolean) => void;
 	'connection-close': (event: CloseEvent | null, provider: unknown) => void;
 	'connection-error': (event: Event, provider: unknown) => void;
@@ -87,7 +83,7 @@ export type WebsocketProviderEvents = {
 };
 
 export type WebsocketPolyfill = {
-	new (url: string, protocols?: string | string[]): WebSocket;
+	new (url: string): WebSocket;
 	prototype: WebSocket;
 	readonly OPEN: number;
 };
@@ -95,18 +91,16 @@ export type WebsocketPolyfill = {
 export type WebsocketProviderOptions = {
 	connect?: boolean;
 	awareness?: Awareness;
+	/** Query parameters (auth tokens), read at every dial. */
 	params?: Record<string, string>;
-	protocols?: string[];
 	WebSocketPolyfill?: WebsocketPolyfill;
 	/**
-	 * Request room state every `resyncInterval` milliseconds — an optional
-	 * loss-healing timer (off by default; the join rule needs no timer).
+	 * Re-send a Step1 every `resyncInterval` ms on the live socket (off by
+	 * default): heals frames a test harness drops; the join rule needs no timer.
 	 */
 	resyncInterval?: number;
 	/** Max reconnect backoff (exponential backoff is used). */
 	maxBackoffTime?: number;
-	/** Disable cross-tab BroadcastChannel communication. */
-	disableBc?: boolean;
 };
 
 export type WebsocketProviderApi = InstanceType<
@@ -121,34 +115,31 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 
 	type Provider = WebsocketProvider;
 
-	const permissionDeniedHandler = (provider: Provider, reason: string) => {
-		// Observable event instead of console.warn — a denied peer must be
-		// visible to consumers (auth failures are indistinguishable from a
-		// silent disconnect otherwise). A denied handshake is also a
-		// terminal sync failure (D4): on a server that refuses it, the
-		// provider can never reach `synced` — reported at most once.
-		provider.emit('permission-denied', [reason, provider]);
-		emitFailed(provider, new Error(`permission denied: ${reason}`));
+	/** Room traffic goes out on the socket while it is open. */
+	const send = (provider: Provider, buf: Uint8Array) => {
+		const ws = provider.ws;
+		if (provider.wsconnected && ws && ws.readyState === ws.OPEN) ws.send(buf);
 	};
 
 	/**
 	 * The shared room protocol (S1). The transport edges stay here:
-	 * `messageAuth` exists only on a server socket (a BC room has no
-	 * authority to deny), and `heard` claims the connection's `synced`.
+	 * `messageAuth` exists only on a server socket, and `heard` claims the
+	 * connection's `synced`.
 	 */
 	const room = bindRoomProtocol<Provider>(syncProtocol, {
 		docName: (provider) => provider.roomname,
-		roomChannel: (provider) => provider.bcChannel,
-		broadcast: (provider, buf) => broadcastMessage(provider, buf),
+		broadcast: send,
 		handlers: {
 			[messageAuth]: (_encoder, decoder, provider) => {
-				const authType = readAuthMessage(decoder, provider.doc, (_ydoc, reason) =>
-					permissionDeniedHandler(provider, reason)
-				);
+				const authType = readAuthMessage(decoder, provider.doc, (_ydoc, reason) => {
+					// Observable, and a terminal sync failure (D4): a denied
+					// provider can never reach `synced` — reported at most once.
+					provider.emit('permission-denied', [reason, provider]);
+					emitFailed(provider, new Error(`permission denied: ${reason}`));
+				});
 				if (authType !== messagePermissionDenied) {
-					// Same contract as unknown sync subtypes — a valid v14
-					// envelope carrying an auth type we do not speak is protocol
-					// skew; report it rather than dropping silently.
+					// An auth type we do not speak inside a valid v14 envelope is
+					// protocol skew — reported, never dropped silently.
 					provider.emit('message-error', [
 						new Error(`Unknown auth message type ${authType}`),
 						provider
@@ -174,7 +165,6 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			provider.emit('connection-close', [event, provider]);
 			provider.ws = null;
 			ws.close();
-			provider.wsconnecting = false;
 			if (provider.wsconnected) {
 				provider.wsconnected = false;
 				provider.synced = false;
@@ -202,10 +192,9 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 
 	const setupWS = (provider: Provider) => {
 		if (provider.shouldConnect && provider.ws === null) {
-			const websocket = new provider._WS(provider.url, provider.protocols);
+			const websocket = new provider._WS(provider.url);
 			websocket.binaryType = 'arraybuffer';
 			provider.ws = websocket;
-			provider.wsconnecting = true;
 			provider.wsconnected = false;
 			provider.synced = false;
 
@@ -227,7 +216,6 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			};
 			websocket.onopen = () => {
 				provider.wsLastMessageReceived = time.getUnixTime();
-				provider.wsconnecting = false;
 				provider.wsconnected = true;
 				provider.wsUnsuccessfulReconnects = 0;
 				provider.emit('status', [{ status: 'connected' }]);
@@ -238,36 +226,21 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		}
 	};
 
-	const broadcastMessage = (provider: Provider, buf: Uint8Array) => {
-		const ws = provider.ws;
-		if (provider.wsconnected && ws && ws.readyState === ws.OPEN) {
-			ws.send(buf);
-		}
-		if (provider.bcconnected) {
-			bc.publish(provider.bcChannel, buf, provider);
-		}
-	};
-
 	class WebsocketProvider extends ObservableV2<WebsocketProviderEvents> {
 		serverUrl: string;
-		bcChannel: string;
-		maxBackoffTime: number;
-		params: Record<string, string>;
-		protocols: string[];
 		roomname: string;
 		doc: YDoc;
-		_WS: WebsocketPolyfill;
 		awareness: Awareness;
-		wsconnected: boolean;
-		wsconnecting: boolean;
-		bcconnected: boolean;
-		disableBc: boolean;
-		wsUnsuccessfulReconnects: number;
-		messageHandlers: Record<number, RoomMessageHandler<WebsocketProvider>>;
-		_synced: boolean;
-		ws: WebSocket | null;
-		wsLastMessageReceived: number;
+		params: Record<string, string>;
+		maxBackoffTime: number;
+		_WS: WebsocketPolyfill;
 		shouldConnect: boolean;
+		ws: WebSocket | null = null;
+		wsconnected = false;
+		wsUnsuccessfulReconnects = 0;
+		wsLastMessageReceived = 0;
+		_synced = false;
+		messageHandlers: Record<number, RoomMessageHandler<WebsocketProvider>> = room.messageHandlers;
 		// The room lifecycle (O74) — installed by `initLifecycle`.
 		hasSynced!: boolean;
 		whenSynced!: Promise<unknown>;
@@ -275,9 +248,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		_failedEmitted?: boolean;
 		_settleSynced!: LifecycleHost['_settleSynced'];
 		_leave!: () => void;
-		_resyncInterval: ReturnType<typeof setInterval> | 0;
+		_resync: ReturnType<typeof setInterval> | undefined;
 		_checkInterval: ReturnType<typeof setInterval>;
-		_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
 		_updateHandler: (update: Uint8Array, origin: unknown) => void;
 		_awarenessUpdateHandler: (
 			updates: { added: number[]; updated: number[]; removed: number[] },
@@ -292,51 +264,27 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				connect = true,
 				awareness = new Awareness(doc),
 				params = {},
-				protocols = [],
 				WebSocketPolyfill = WebSocket as unknown as WebsocketPolyfill,
-				resyncInterval = -1,
-				maxBackoffTime = 2500,
-				disableBc = false
+				resyncInterval = 0,
+				maxBackoffTime = 2500
 			}: WebsocketProviderOptions = {}
 		) {
 			super();
-			// ensure that serverUrl does not end with /
-			while (serverUrl[serverUrl.length - 1] === '/') {
-				serverUrl = serverUrl.slice(0, serverUrl.length - 1);
-			}
-			this.serverUrl = serverUrl;
-			this.bcChannel = serverUrl + '/' + roomname;
-			this.maxBackoffTime = maxBackoffTime;
-			this.params = params;
-			this.protocols = protocols;
+			this.serverUrl = serverUrl.replace(/\/+$/, '');
 			this.roomname = roomname;
 			this.doc = doc;
-			this._WS = WebSocketPolyfill;
 			this.awareness = awareness;
-			this.wsconnected = false;
-			this.wsconnecting = false;
-			this.bcconnected = false;
-			this.disableBc = disableBc;
-			this.wsUnsuccessfulReconnects = 0;
-			this.messageHandlers = room.messageHandlers;
-			this._synced = false;
-			this.ws = null;
-			this.wsLastMessageReceived = 0;
+			this.params = params;
+			this.maxBackoffTime = maxBackoffTime;
+			this._WS = WebSocketPolyfill;
 			this.shouldConnect = connect;
-			this._resyncInterval = 0;
 			initLifecycle(this, () => this.destroy());
 			if (resyncInterval > 0) {
-				this._resyncInterval = setInterval(() => {
-					if (this.ws && this.ws.readyState === this._WS.OPEN) {
-						this.ws.send(room.step1(this));
-					}
-				}, resyncInterval);
+				this._resync = setInterval(() => send(this, room.step1(this)), resyncInterval);
 			}
-
-			this._bcSubscriber = room.bcSubscriber(this);
-			// Listens to doc updates and sends them to remote peers (ws and bc)
+			// Local doc updates go to the room (`broadcastUpdate` quarantines
+			// a read-only document).
 			this._updateHandler = (update, origin) => {
-				// `broadcastUpdate` quarantines a read-only document.
 				if (origin !== this) room.broadcastUpdate(this, update);
 			};
 			this.doc.on('update', this._updateHandler);
@@ -377,7 +325,6 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				this._synced = state;
 				if (state) markSynced(this);
 				this.emit('synced', [state]);
-				this.emit('sync', [state]);
 			}
 		}
 
@@ -386,9 +333,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			// provider that never synced (a synced one that merely lost its
 			// socket did not fail — `hasSynced`, D37).
 			if (!beginDestroy(this, `WebsocketProvider "${this.roomname}"`)) return;
-			if (this._resyncInterval !== 0) {
-				clearInterval(this._resyncInterval);
-			}
+			clearInterval(this._resync);
 			clearInterval(this._checkInterval);
 			this.disconnect();
 			this.awareness.off('update', this._awarenessUpdateHandler);
@@ -396,21 +341,11 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			super.destroy();
 		}
 
-		connectBc(): void {
-			if (this.disableBc) {
-				return;
-			}
-			room.connectBc(this);
-		}
-
-		disconnectBc(): void {
-			room.disconnectBc(this);
-		}
-
 		disconnect(): void {
 			this.shouldConnect = false;
-			this.disconnectBc();
 			if (this.ws !== null) {
+				// The departure announcement, then the socket closes.
+				send(this, room.goodbye(this));
 				closeWebsocketConnection(this, this.ws, null);
 			}
 		}
@@ -419,7 +354,6 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			this.shouldConnect = true;
 			if (!this.wsconnected && this.ws === null) {
 				setupWS(this);
-				this.connectBc();
 			}
 		}
 	}

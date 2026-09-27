@@ -14,8 +14,9 @@ import { GENERATION } from '../../src/lib/crdt/protocols/envelope.js';
  * Real-browser multi-client proof over an ACTUAL websocket transport.
  *
  * Topology: TWO INDEPENDENT browser contexts (separate storage, separate
- * BroadcastChannel domains — and the provider is mounted with `disableBc`
- * anyway, so nothing but the socket can carry updates). Each page mounts the
+ * BroadcastChannel domains — and the websocket provider has no
+ * BroadcastChannel leg (D-24 G-e), so nothing but the socket can carry
+ * updates). Each page mounts the
  * production `Edytor` component with
  * `?scenario=collab&collabws=<room>&wsserver=<relay>` which attaches a real
  * `WebsocketProvider` (`src/lib/crdt/providers/websocket.ts`) to its own v14
@@ -112,7 +113,8 @@ const getCollabProvider = (page: Page) =>
 		}
 		return {
 			wsconnected: collab.provider.wsconnected,
-			bcconnected: collab.provider.bcconnected,
+			// No BroadcastChannel leg (D-24 G-e).
+			bcLeg: 'bcconnected' in collab.provider,
 			synced: collab.provider.synced
 		};
 	});
@@ -202,9 +204,9 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 			const issuesB = trackPageIssues(pageB);
 
 			// Both providers reached `synced` through the socket handshake —
-			// with BroadcastChannel disabled there is no other path.
-			await expectProviderState(pageA, { wsconnected: true, synced: true, bcconnected: false });
-			await expectProviderState(pageB, { wsconnected: true, synced: true, bcconnected: false });
+			// the provider has no BroadcastChannel leg, so there is no other path.
+			await expectProviderState(pageA, { wsconnected: true, synced: true, bcLeg: false });
+			await expectProviderState(pageB, { wsconnected: true, synced: true, bcLeg: false });
 
 			// Deterministic same-id seed dedupes to exactly three blocks.
 			const seed = await expectConverged(pageA, pageB);

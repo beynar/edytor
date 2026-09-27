@@ -46,16 +46,17 @@ export type IndexeddbSyncOptions = {
 	awareness?: Awareness;
 };
 
+/**
+ * The factory-owned provider always dials (D-24 G-e retired `connect`,
+ * `protocols`, `resyncInterval` and `disableBc` here).
+ */
 export type WebsocketSyncOptions = {
 	serverUrl: string;
 	roomName: string;
-	connect?: boolean;
+	/** Query parameters (auth tokens), read at every dial. */
 	params?: Record<string, string>;
-	protocols?: string[];
 	WebSocketPolyfill?: import('./websocket.js').WebsocketPolyfill;
-	resyncInterval?: number;
 	maxBackoffTime?: number;
-	disableBc?: boolean;
 };
 
 export type ProviderStack = ReturnType<typeof bindProviders>;
@@ -79,20 +80,15 @@ export const bindProviders = (Y: EngineApi) => {
 	const createWebsocketSync = (options: WebsocketSyncOptions): EdytorSync =>
 		Object.assign(
 			({ doc, awareness, synced, failed }: EdytorSyncPayload) => {
-				const provider = new ws.WebsocketProvider(options.serverUrl, options.roomName, doc, {
-					connect: options.connect,
+				const { serverUrl, roomName, params, WebSocketPolyfill, maxBackoffTime } = options;
+				const provider = new ws.WebsocketProvider(serverUrl, roomName, doc, {
 					awareness,
-					params: options.params,
-					protocols: options.protocols,
-					WebSocketPolyfill: options.WebSocketPolyfill,
-					resyncInterval: options.resyncInterval,
-					maxBackoffTime: options.maxBackoffTime,
-					disableBc: options.disableBc
+					params,
+					WebSocketPolyfill,
+					maxBackoffTime
 				});
-				provider.on('sync', (isSynced: boolean) => {
-					if (isSynced) {
-						synced(provider);
-					}
+				provider.on('synced', (isSynced) => {
+					if (isSynced) synced(provider);
 				});
 				if (failed) provider.on('failed', failed);
 				return () => provider.destroy();

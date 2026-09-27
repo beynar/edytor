@@ -722,17 +722,16 @@
 		? ({ doc, awareness, synced }) => {
 				// `?collabws=<room>&wsserver=<ws-url>` mounts the REAL websocket
 				// provider against the spec-driven local opaque relay
-				// (tests/editor-dom/ws-relay.ts). `disableBc` is forced so
-				// BroadcastChannel can never mask a socket failure — the only
-				// transport is the socket. `resyncInterval` is off unless a spec
-				// passes `wsresync`: the join rule makes every member hear the
-				// room, and the periodic resync only heals deliberate harness
-				// loss (dropped frames).
+				// (tests/editor-dom/ws-relay.ts). The websocket provider has no
+				// BroadcastChannel leg (D-24 G-e), so nothing can mask a socket
+				// failure — the only transport is the socket. `resyncInterval` is
+				// off unless a spec passes `wsresync`: the join rule makes every
+				// member hear the room, and the periodic resync only heals
+				// deliberate harness loss (dropped frames).
 				const provider =
 					data.collabws && data.wsserver
 						? new WebsocketProvider(data.wsserver, data.collabws, doc, {
 								awareness,
-								disableBc: true,
 								resyncInterval: data.wsresync,
 								maxBackoffTime: data.wsbackoff
 							})

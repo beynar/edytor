@@ -242,8 +242,8 @@ describe('G-e retained surface — status, backoff, liveness, auth, the socket s
 	});
 });
 
-describe('G-e retired surface (D-24) — expected to fail on the reference', () => {
-	it.fails('protocols never reach the socket: the dial passes the URL alone', async () => {
+describe('G-e retired surface (D-24)', () => {
+	it('protocols never reach the socket: the dial passes the URL alone', async () => {
 		const url = uniqueUrl();
 		const p = new ws.WebsocketProvider(url, 'room', new Y.Doc(), {
 			protocols: ['edytor-v14'],
@@ -255,7 +255,7 @@ describe('G-e retired surface (D-24) — expected to fail on the reference', () 
 		p.destroy();
 	});
 
-	it.fails('no `sync` alias: only `synced` fires', async () => {
+	it('no `sync` alias: only `synced` fires', async () => {
 		const url = uniqueUrl();
 		const a = new ws.WebsocketProvider(url, 'room', new Y.Doc(), { WebSocketPolyfill: Relay });
 		const b = new ws.WebsocketProvider(url, 'room', new Y.Doc(), { WebSocketPolyfill: Relay });
@@ -270,7 +270,7 @@ describe('G-e retired surface (D-24) — expected to fail on the reference', () 
 		b.destroy();
 	});
 
-	it.fails('no wsconnecting flag: the status event carries it', () => {
+	it('no wsconnecting flag: the status event carries it', () => {
 		const p = new ws.WebsocketProvider(uniqueUrl(), 'room', new Y.Doc(), {
 			connect: false,
 			WebSocketPolyfill: Relay
@@ -279,51 +279,45 @@ describe('G-e retired surface (D-24) — expected to fail on the reference', () 
 		p.destroy();
 	});
 
-	it.fails(
-		'no BroadcastChannel leg: two same-room providers with no socket do not sync in-process',
-		async () => {
-			// A socket that never opens: only a BroadcastChannel could carry the edit.
-			class Silent extends Relay {
-				constructor(...args) {
-					super(...args);
-					this.readyState = 2;
-				}
+	it('no BroadcastChannel leg: two same-room providers with no socket do not sync in-process', async () => {
+		// A socket that never opens: only a BroadcastChannel could carry the edit.
+		class Silent extends Relay {
+			constructor(...args) {
+				super(...args);
+				this.readyState = 2;
 			}
-			const url = uniqueUrl();
-			const docA = new Y.Doc();
-			const docB = new Y.Doc();
-			const a = new ws.WebsocketProvider(url, 'room', docA, { WebSocketPolyfill: Silent });
-			const b = new ws.WebsocketProvider(url, 'room', docB, { WebSocketPolyfill: Silent });
-			docA.get('content').setAttr('k', 'from-a');
-			await wait(150);
-			expect(docB.get('content').getAttr('k')).toBeUndefined();
-			expect('bcconnected' in a).toBe(false);
-			expect('disableBc' in a).toBe(false);
-			a.destroy();
-			b.destroy();
 		}
-	);
+		const url = uniqueUrl();
+		const docA = new Y.Doc();
+		const docB = new Y.Doc();
+		const a = new ws.WebsocketProvider(url, 'room', docA, { WebSocketPolyfill: Silent });
+		const b = new ws.WebsocketProvider(url, 'room', docB, { WebSocketPolyfill: Silent });
+		docA.get('content').setAttr('k', 'from-a');
+		await wait(150);
+		expect(docB.get('content').getAttr('k')).toBeUndefined();
+		expect('bcconnected' in a).toBe(false);
+		expect('disableBc' in a).toBe(false);
+		a.destroy();
+		b.destroy();
+	});
 
-	it.fails(
-		'createWebsocketSync always dials: connect/protocols/resyncInterval are not options',
-		async () => {
-			const url = uniqueUrl();
-			const sync = providers.createWebsocketSync({
-				serverUrl: url,
-				roomName: 'r',
-				connect: false,
-				protocols: ['x'],
-				resyncInterval: 20,
-				WebSocketPolyfill: Relay
-			});
-			const doc = new Y.Doc();
-			const cleanup = sync({ doc, awareness: new Awareness(doc), synced: () => {} });
-			await until(() => socketsOf(url).length === 1 && socketsOf(url)[0].readyState === 1, 1000);
-			const [socket] = socketsOf(url);
-			expect(socket.args).toEqual([`${url}/r`]);
-			await wait(120);
-			expect(step1Count(socket)).toBe(1);
-			cleanup();
-		}
-	);
+	it('createWebsocketSync always dials: connect/protocols/resyncInterval are not options', async () => {
+		const url = uniqueUrl();
+		const sync = providers.createWebsocketSync({
+			serverUrl: url,
+			roomName: 'r',
+			connect: false,
+			protocols: ['x'],
+			resyncInterval: 20,
+			WebSocketPolyfill: Relay
+		});
+		const doc = new Y.Doc();
+		const cleanup = sync({ doc, awareness: new Awareness(doc), synced: () => {} });
+		await until(() => socketsOf(url).length === 1 && socketsOf(url)[0].readyState === 1, 1000);
+		const [socket] = socketsOf(url);
+		expect(socket.args).toEqual([`${url}/r`]);
+		await wait(120);
+		expect(step1Count(socket)).toBe(1);
+		cleanup();
+	});
 });

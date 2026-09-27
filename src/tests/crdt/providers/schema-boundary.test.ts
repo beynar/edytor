@@ -281,8 +281,7 @@ describe('generation mismatch — refused at the envelope and the container reco
 		const docA = new Y.Doc();
 		E.create(docA).init();
 		const pA = new wsProviders.WebsocketProvider(url, 'room', docA, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		const mismatches = [];
 		pA.on('protocol-mismatch', (m) => mismatches.push(m));
@@ -507,8 +506,7 @@ describe('same-generation forged stamp — websocket (opaque relay)', () => {
 		const docA = new Y.Doc();
 		E.create(docA).init();
 		const pA = new wsProviders.WebsocketProvider(url, 'room', docA, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		const mismatches = [];
 		const syncedEvents = [];
@@ -557,8 +555,7 @@ describe('same-generation forged stamp — websocket (opaque relay)', () => {
 		const docA = new Y.Doc();
 		E.create(docA).init();
 		const pA = new wsProviders.WebsocketProvider(url, 'room', docA, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		await until(() => pA.wsconnected, 4000);
 		pA.ws.onmessage({

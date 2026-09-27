@@ -269,6 +269,8 @@ Websocket provider setup:
 <Edytor {sync} />
 ```
 
+`createWebsocketSync` also takes `params` (query parameters such as an auth token, read at every dial) and `maxBackoffTime` (the reconnect backoff cap). It carries no BroadcastChannel leg: for cross-tab sync and offline persistence, stack `createIndexeddbSync` beside it.
+
 The sync helpers pass Edytor's `awareness` instance into the provider. Set local user metadata on the editor awareness state:
 
 ```ts

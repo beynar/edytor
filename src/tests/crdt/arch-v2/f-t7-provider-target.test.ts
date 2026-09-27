@@ -69,9 +69,7 @@ const wsSync = (serverUrl, roomName = 'room') =>
 	providers.createWebsocketSync({
 		serverUrl,
 		roomName,
-		WebSocketPolyfill: Silent,
-		disableBc: true,
-		connect: false
+		WebSocketPolyfill: Silent
 	});
 
 const value = { children: [{ type: 'paragraph', id: 'p', content: [{ text: 'notes' }] }] };

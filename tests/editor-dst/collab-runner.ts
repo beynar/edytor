@@ -40,7 +40,8 @@ import {
  * independent browser CONTEXTS mount the same `dst` document under
  * `scenario=dst` with `collabws=<room>` against the local opaque relay —
  * one shared room, deterministic per-peer actors (`?actor=peer-N`),
- * `disableBc` so nothing but the socket can carry updates.
+ * and the websocket provider has no BroadcastChannel leg (D-24 G-e), so
+ * nothing but the socket can carry updates.
  *
  * The oracle is a REFERENCE DOCUMENT, not peer-equality alone (equality
  * passes when every replica loses the same edit). After each local action

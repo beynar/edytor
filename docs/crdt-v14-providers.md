@@ -174,7 +174,8 @@ behind an opaque relay. Joining sends a hello (SyncStep1 + own presence).
 A SyncStep1 is answered with a SyncStep2 and, when the asker's state
 vector holds anything we lack, with our own SyncStep1 — so a reconnecting
 client's offline edits reach the room without `resyncInterval`, which is
-now an optional loss-healing timer (off by default). The connection's
+now an optional loss-healing timer (off by default; kept for harnesses
+that drop frames on a live socket, arch-v2 G-e). The connection's
 `synced` is claimed when it holds a member's state: an applied SyncStep2,
 or a SyncStep1 whose state vector it covers. It resets with the socket;
 `hasSynced` is the lifetime fact, and the terminal `failed` reads it (a
@@ -407,11 +408,30 @@ cross-tab BC), keeping:
 
 ### `WebsocketProvider` (`providers/websocket.ts`)
 
-Port of `y-websocket@3.0.0` keeping `connect()`/`disconnect()`,
-`status`/`sync`/`synced` events, exponential-backoff reconnect,
-`resyncInterval`, `params`, `protocols`, `WebSocketPolyfill`, `disableBc`,
-and BC cross-tab fan-out on `serverUrl + '/' + roomname`. Auth messages
-(`protocols/auth.ts`) are handled.
+Port of `y-websocket@3.0.0`, cut to the surface the docs, demo and tests
+use (arch-v2 G-e, D-24): `connect()`/`disconnect()` (and the `connect`
+option), `status`/`synced`/`connection-close`/`connection-error` events,
+exponential-backoff reconnect (`maxBackoffTime`), liveness (a socket silent
+for 30 s is closed and redialed), auth `params` on the URL (read at every
+dial, so a refreshed token reaches the next connection), the auth
+permission-denied reply (`protocols/auth.ts`), `awareness`,
+`WebSocketPolyfill`, and `resyncInterval` (off by default; a loss-healing
+knob for harnesses that drop frames on a live socket — the join rule needs
+no timer). Leaving announces the presence removal on the socket.
+
+`createWebsocketSync({ serverUrl, roomName, params?, WebSocketPolyfill?,
+maxBackoffTime? })` — the factory-owned provider always dials.
+
+**Retired in G-e** (0.0.x API change, release notes C1): the `protocols`
+option (WebSocket subprotocols — pass tokens in `params`), the `sync` event
+(an alias of `synced`), the `wsconnecting` field (the `status` event carries
+it), the BroadcastChannel leg with `disableBc`, `bcconnected`, `bcChannel`,
+`connectBc()`/`disconnectBc()` (cross-tab sync is the IndexedDB
+provider's; stack it beside the websocket provider as the demo does), and
+on `createWebsocketSync` the `connect`, `protocols`, `resyncInterval` and
+`disableBc` options. The `messageSync`/`messageAwareness`/`messageAuth`/
+`messageQueryAwareness` constants still export from `edytor/crdt` (now
+from `providers/room.ts`).
 
 **Server compatibility classification — the verified topology (work
 unit 3, corrected post-review R8).** The websocket path was tested

@@ -198,8 +198,7 @@ describe('F-T2 (a) — a peer of another schema generation integrates zero bytes
 	it('websocket: every frame dropped at the envelope, observably', async () => {
 		const a = createDocument({ value });
 		const p = new wsProviders.WebsocketProvider('ws://ft2a', uniqueName('room'), a.doc, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		await until(() => p.wsconnected);
 		const before = Y.encodeStateVector(a.doc);
@@ -323,8 +322,7 @@ describe('F-T14 — a same-generation forged stamp is refused, reported, and nev
 	it('a full-state SyncStep2 carrying a forged stamp is refused over the websocket', async () => {
 		const r = createDocument({ value });
 		const p = new wsProviders.WebsocketProvider('ws://ft14', uniqueName('room'), r.doc, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		await until(() => p.wsconnected);
 		const reports = [];
@@ -354,8 +352,7 @@ describe('F-T14 — a same-generation forged stamp is refused, reported, and nev
 		await idbP.whenSynced;
 		FakeWebSocket.sent = [];
 		const wsP = new wsProviders.WebsocketProvider('ws://ft14-tx', uniqueName('room'), w.doc, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		await until(() => wsP.wsconnected);
 		const bcSeen = [];

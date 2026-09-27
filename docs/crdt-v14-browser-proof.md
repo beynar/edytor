@@ -49,8 +49,10 @@ clearDocument, storeState }` for seeding/quarantining scenarios.
   `WebsocketProvider` (`src/lib/crdt/providers/websocket.ts`) instead of
   `IndexeddbPersistence`. Optional `wsresync=<ms>` / `wsbackoff=<ms>` tune the
   provider's resync interval and reconnect backoff for spec determinism.
-- **`disableBc: true` is forced** on this path — BroadcastChannel can never
-  mask a socket failure; the socket is the only transport.
+- **No BroadcastChannel leg**: the websocket provider has none (retired in
+  arch-v2 G-e; it used to be forced off here with `disableBc`), so
+  BroadcastChannel can never mask a socket failure; the socket is the only
+  transport.
 - **Two and three independent browser contexts**: the socket specs call
   `browser.newContext()` per client — separate storage, separate BC domains,
   separate `Y.Doc`s that can only ever meet at the relay. The original spec
@@ -94,12 +96,12 @@ awareness cleanup — rewritten from v13 `doc.getText` to the v14 `doc.get` /
 
 ## Scenarios proven over the socket (`tests/editor-dom/collaboration-websocket.spec.ts`, 6 tests)
 
-All six run against the local opaque relay with `disableBc` — nothing but
+All six run against the local opaque relay, and the websocket provider has no BroadcastChannel leg — nothing but
 browser → TCP → relay → TCP → browser carries state.
 
 | #   | Scenario                                                                              | What it proves                                                                                                                                                                                                                                                                                                                                                                                         |
 | --- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | `converges two independent browser contexts over the socket transport`                | Providers reach `wsconnected: true, synced: true, bcconnected: false`; the same-id seed dedupes to `collab-b1/b2/b3`; concurrent **real-keyboard** typing in different blocks and the same block converges to byte-identical JSON on both replicas; every relayed frame asserted to carry the v14 envelope (first byte `varuint 14`).                                                                  |
+| 1   | `converges two independent browser contexts over the socket transport`                | Providers reach `wsconnected: true, synced: true` with no BroadcastChannel leg; the same-id seed dedupes to `collab-b1/b2/b3`; concurrent **real-keyboard** typing in different blocks and the same block converges to byte-identical JSON on both replicas; every relayed frame asserted to carry the v14 envelope (first byte `varuint 14`).                                                         |
 | 2   | `propagates awareness and renders the remote caret over the socket`                   | B's caret rides `messageAwareness` frames over the socket and renders inside A's DOM as `[data-edytor-remote-cursor][data-client-id]`; stays live while B types; convergence holds.                                                                                                                                                                                                                    |
 | 3   | `converges divergent edits after a socket kill and a relay restart`                   | Two partition flavours: (a) `killRoom` severs all sockets while the relay stays up — providers reconnect and re-handshake on their own; (b) `stop()` kills the relay entirely — edits made offline stay local (verified divergent), then `start()` on the same port → backoff reconnect → SyncStep1/2 replay → `PA>alpha` + `PB>gamma` merge on both replicas with identical ids.                      |
 | 4   | `converges under held, permuted, duplicated, delayed and dropped delivery`            | `hold` buffers both sides (genuine concurrency), `release({permute, duplicates:2})` replays the batch out-of-order and doubled — converges anyway; `setLatency(150)` delayed delivery converges; `dropNext(2)` deliberate loss is healed by the provider's periodic resync handshake. Distinct from TCP semantics, deliberately: these are replay faults a live connection can't produce.              |
@@ -109,7 +111,7 @@ browser → TCP → relay → TCP → browser carries state.
 ## Scenarios proven over the socket with three clients (`tests/editor-dom/collaboration-websocket-3client.spec.ts`, 5 tests)
 
 Hardening Unit-6 extension: **three** independent browser contexts (separate
-storage, separate BC domains), `disableBc` on every provider — the socket is
+storage, separate BC domains), no BroadcastChannel leg on any provider — the socket is
 the only transport. Assertions are semantic per replica (exact `blockText`,
 `marks` runs, block-identity ownership), not just "all equal".
 

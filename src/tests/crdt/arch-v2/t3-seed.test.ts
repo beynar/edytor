@@ -97,8 +97,7 @@ const wsSync = (url) =>
 	providers.createWebsocketSync({
 		serverUrl: url,
 		roomName: 'room',
-		WebSocketPolyfill: Relay,
-		disableBc: true
+		WebSocketPolyfill: Relay
 	});
 
 /** A document on a raw doc with a pinned replica id. */

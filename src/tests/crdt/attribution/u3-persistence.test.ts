@@ -349,8 +349,7 @@ describe('provider sync', () => {
 			providers.createWebsocketSync({
 				serverUrl: url,
 				roomName: 'room',
-				WebSocketPolyfill: FakeWebSocket as never,
-				disableBc: true
+				WebSocketPolyfill: FakeWebSocket as never
 			})
 		);
 		const b = createDocument({ actor: bob });
@@ -358,8 +357,7 @@ describe('provider sync', () => {
 			providers.createWebsocketSync({
 				serverUrl: url,
 				roomName: 'room',
-				WebSocketPolyfill: FakeWebSocket as never,
-				disableBc: true
+				WebSocketPolyfill: FakeWebSocket as never
 			})
 		);
 		await until(() => b.ready && b.facade.hasBlock(blockId), 4000);

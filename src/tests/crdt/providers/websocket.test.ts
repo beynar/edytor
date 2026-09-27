@@ -104,13 +104,11 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 
 		const pA = new providers.WebsocketProvider(url, 'room', docA, {
 			awareness: awA,
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		const pB = new providers.WebsocketProvider(url, 'room', docB, {
 			awareness: awB,
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 
 		await until(() => pB.wsconnected && pA.wsconnected);
@@ -138,12 +136,10 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 		const docA = new Y.Doc();
 		const docB = new Y.Doc();
 		const pA = new providers.WebsocketProvider(url, 'room', docA, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		const pB = new providers.WebsocketProvider(url, 'room', docB, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		await until(() => pB.wsconnected && pB.synced, 4000);
 
@@ -164,8 +160,7 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 		FakeWebSocket.sentLog = [];
 		const docA = new Y.Doc();
 		const pA = new providers.WebsocketProvider(url, 'room', docA, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		const mismatches = [];
 		pA.on('protocol-mismatch', (m) => mismatches.push(m));
@@ -222,8 +217,7 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 		FakeWebSocket.sentLog = [];
 		const docC = new Y.Doc();
 		const pC = new providers.WebsocketProvider(url, 'room', docC, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		await until(() => pC.wsconnected, 4000);
 		expect(pC.synced).toBe(false);
@@ -242,8 +236,7 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 		const docC = new Y.Doc();
 		docC.get('content').setAttr('x', 'c');
 		const pC = new providers.WebsocketProvider(url, 'room', docC, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		await until(() => pC.wsconnected, 4000);
 		expect(countSentStep1()).toBe(1);
@@ -278,13 +271,11 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 		const docA = new Y.Doc();
 		docA.get('content').setAttr('x', 'a-1');
 		const pA = new providers.WebsocketProvider(url, 'room', docA, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		const docB = new Y.Doc();
 		const pB = new providers.WebsocketProvider(url, 'room', docB, {
-			WebSocketPolyfill: FakeWebSocket,
-			disableBc: true
+			WebSocketPolyfill: FakeWebSocket
 		});
 		await until(() => pB.synced, 4000);
 		expect(docB.get('content').getAttr('x')).toBe('a-1');

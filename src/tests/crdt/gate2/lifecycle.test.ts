@@ -91,8 +91,7 @@ describe('WS lifecycle', () => {
 		const doc = new Y.Doc();
 		E.create(doc).init();
 		const p = new wsProviders.WebsocketProvider('ws://gate2', 'room', doc, {
-			WebSocketPolyfill: FakeWS,
-			disableBc: true
+			WebSocketPolyfill: FakeWS
 		});
 		const statuses = [];
 		p.on('synced', (s) => statuses.push(s));
@@ -118,7 +117,6 @@ describe('WS lifecycle', () => {
 		const doc = new Y.Doc();
 		const p = new wsProviders.WebsocketProvider('ws://gate2r', 'room', doc, {
 			WebSocketPolyfill: FakeWS,
-			disableBc: true,
 			resyncInterval: 40
 		});
 		await until(() => p.wsconnected);
@@ -136,8 +134,7 @@ describe('WS lifecycle', () => {
 		const { FakeWS } = makeFakeWS();
 		const doc = new Y.Doc();
 		const p = new wsProviders.WebsocketProvider('ws://gate2d', 'room', doc, {
-			WebSocketPolyfill: FakeWS,
-			disableBc: true
+			WebSocketPolyfill: FakeWS
 		});
 		await until(() => p.wsconnected);
 		const ownedAwareness = p.awareness; // default-constructed by provider
@@ -155,8 +152,7 @@ describe('WS lifecycle', () => {
 		const { FakeWS, instances } = makeFakeWS();
 		const doc = new Y.Doc();
 		const p = new wsProviders.WebsocketProvider('ws://gate2e', 'room', doc, {
-			WebSocketPolyfill: FakeWS,
-			disableBc: true
+			WebSocketPolyfill: FakeWS
 		});
 		p.destroy();
 		await nextTick(200);
@@ -252,8 +248,7 @@ describe('cross-provider relay', () => {
 		const pIdb = new providers.IndexeddbPersistence(name, docA);
 		await pIdb.whenSynced;
 		const pWs = new wsProviders.WebsocketProvider('ws://relay', 'r', docA, {
-			WebSocketPolyfill: FakeWS,
-			disableBc: true
+			WebSocketPolyfill: FakeWS
 		});
 		await until(() => pWs.wsconnected);
 

@@ -152,8 +152,7 @@ describe('attack 1b: real v13 updates never reach a v14 doc', () => {
 			}
 		}
 		const pA = new wsProviders.WebsocketProvider(url, 'room', docA, {
-			WebSocketPolyfill: FakeWS,
-			disableBc: true
+			WebSocketPolyfill: FakeWS
 		});
 		const mismatches = [];
 		pA.on('protocol-mismatch', (m) => mismatches.push(m));

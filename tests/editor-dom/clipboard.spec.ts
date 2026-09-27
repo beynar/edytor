@@ -245,7 +245,8 @@ test.describe('browser clipboard behavior', () => {
 		issues.assertClean();
 	});
 
-	test('malformed internal html payload falls through to external html paste', async ({ page }) => {
+	// D-24 G-a: the HTML import plugin is retired, so external HTML falls back to text/plain.
+	test('malformed internal html payload falls through to plain text', async ({ page }) => {
 		const issues = trackPageIssues(page);
 
 		await page.goto('/test/dom?scenario=basic&empty=first');
@@ -264,7 +265,7 @@ test.describe('browser clipboard behavior', () => {
 				);
 				return stripIds(value.children[0].content ?? []);
 			})
-			.toEqual([{ text: 'Fallback', marks: { bold: true } }]);
+			.toEqual([{ text: 'Plain' }]);
 
 		issues.assertClean();
 	});

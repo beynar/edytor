@@ -134,7 +134,8 @@ test.describe('browser drop behavior', () => {
 		issues.assertClean();
 	});
 
-	test('routes a foreign text/html drop through the html paste pipeline', async ({ page }) => {
+	// D-24 G-a: no HTML import plugin — a foreign HTML drop places its text/plain.
+	test('places a foreign text/html drop as its text/plain', async ({ page }) => {
 		const issues = trackPageIssues(page);
 
 		await gotoEditorRoute(page, '/test/dom?scenario=basic&empty=last');
@@ -152,7 +153,7 @@ test.describe('browser drop behavior', () => {
 		expect(result).toEqual({ dragoverPrevented: true, dropPrevented: true });
 		await expect
 			.poll(() => readBlockContent(page, 1))
-			.toEqual([{ text: 'no' }, { text: 'Bold', marks: { bold: true } }, { text: 'te' }]);
+			.toEqual([{ text: 'noBoldte' }]);
 
 		issues.assertClean();
 	});

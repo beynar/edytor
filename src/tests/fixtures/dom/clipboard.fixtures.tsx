@@ -202,8 +202,8 @@ export const fixtures = defineFixtures([
 		}
 	}),
 	defineDomFixture({
-		description: 'html paste uses the shared selected-block replacement target',
-		plugins: [htmlPlugin({}), mentionPlugin, richTextPlugin],
+		// D-24 G-a: external HTML falls back to its text/plain (no HTML import plugin).
+		description: 'external html paste places its text/plain over the selected block',
 		input: (
 			<root>
 				<paragraph>Before</paragraph>
@@ -221,16 +221,14 @@ export const fixtures = defineFixtures([
 		output: (
 			<root>
 				<paragraph>Before</paragraph>
-				<paragraph>
-					<bold>HTML</bold>
-				</paragraph>
+				<paragraph>Plain</paragraph>
 				<paragraph>After</paragraph>
 			</root>
 		),
 		expectSelection: {
 			startBlockPath: [1],
-			yStart: 4,
-			yEnd: 4,
+			yStart: 5,
+			yEnd: 5,
 			isCollapsed: true
 		}
 	}),

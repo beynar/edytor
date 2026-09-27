@@ -22,8 +22,11 @@ import {
 } from '../../../dom/test.utils.js';
 import { Awareness } from '$lib/crdt/index.js';
 
-describe('gate3 dom: this.off accumulation across keyed remounts', () => {
-	test('each editorDomRevision remount drains the previous off[] batch before re-attaching', async () => {
+describe('gate3 dom: this.off accumulation across remounts', () => {
+	// R7 rewrite (L39): the whole-editor `{#key}` remount is gone; a render
+	// re-creates text elements, never the host, so `attach` runs once per
+	// mount and its batch never grows.
+	test('re-created text elements leave the one off[] batch as it was', async () => {
 		const { edytor, unmount } = await renderDomEdytor(
 			<root>
 				<paragraph>Hello</paragraph>
@@ -33,11 +36,8 @@ describe('gate3 dom: this.off accumulation across keyed remounts', () => {
 		const initialLen = offList.length;
 		expect(initialLen).toBeGreaterThan(0);
 
-		// Each refreshEditorDom() re-runs use:edytor.attach via {#key}; the
-		// destroy path drains (runs + clears) the previous batch first, so the
-		// array always holds exactly one live batch — never 18N dead closures.
 		for (let i = 0; i < 5; i++) {
-			edytor.refreshEditorDom();
+			edytor.cells!.remount(edytor.root!.children[0]!.id);
 			await tick();
 			await flushDomUpdates();
 			expect(offList.length).toBe(initialLen);
@@ -123,22 +123,27 @@ describe('gate3 dom: mutation observer boundary', () => {
 		expect(node.textContent).toBe('Hello worldROGUE');
 	});
 
-	test('unmanaged SIBLING node at block level does not corrupt the model', async () => {
-		const { edytor, editor } = await renderDomEdytor(
-			<root>
-				<paragraph>Hello</paragraph>
-			</root>
-		);
-		const block = edytor.root!.children[0]!;
-		const blockNode = block.node!;
+	// R7 (answer (b), D-25): the block element holds the kind's own markup — a
+	// sibling a foreign script adds there stays, and never reaches the model.
+	test.fails(
+		'unmanaged SIBLING node at block level stays and does not corrupt the model',
+		async () => {
+			const { edytor, editor } = await renderDomEdytor(
+				<root>
+					<paragraph>Hello</paragraph>
+				</root>
+			);
+			const block = edytor.root!.children[0]!;
+			const blockNode = block.node!;
 
-		const rogue = document.createElement('div');
-		rogue.setAttribute('data-rogue', '1');
-		rogue.textContent = 'INJECTED';
-		blockNode.appendChild(rogue);
-		await flushDomUpdates();
+			const rogue = document.createElement('div');
+			rogue.setAttribute('data-rogue', '1');
+			rogue.textContent = 'INJECTED';
+			blockNode.appendChild(rogue);
+			await flushDomUpdates();
 
-		// The injection is reverted or at minimum never enters the model.
-		expect(block.value.content.map((p) => ('text' in p ? p.text : '')).join('')).toBe('Hello');
-	});
+			expect(rogue.isConnected).toBe(true);
+			expect(block.value.content.map((p) => ('text' in p ? p.text : '')).join('')).toBe('Hello');
+		}
+	);
 });

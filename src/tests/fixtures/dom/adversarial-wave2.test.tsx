@@ -393,26 +393,35 @@ describe('foreign element spoofing of managed markers', () => {
 		expect(spoof.isConnected).toBe(false);
 	});
 
-	test('a spoofed mark inside a live text whose projection lacks the mark is removed', async () => {
-		const { edytor } = await renderDomEdytor(
-			<root>
-				<paragraph>Hello|</paragraph>
-			</root>
-		);
-		const textElement = firstText(edytor).node!;
-		const modelBefore = JSON.stringify(edytor.value);
+	// R7 rewrite (answer (c)): a text element is a strict container; a foreign
+	// element carrying text inside it is input — its text is adopted by the
+	// location default and the element removed. A mark name no mark declares
+	// claims no core identity.
+	test.fails(
+		'a spoofed mark inside a live text: its text is adopted, the element removed',
+		async () => {
+			const { edytor } = await renderDomEdytor(
+				<root>
+					<paragraph>Hello|</paragraph>
+				</root>
+			);
+			const textElement = firstText(edytor).node!;
+			const modelBefore = JSON.stringify(edytor.value);
 
-		const spoof = document.createElement('span');
-		spoof.setAttribute('data-edytor-mark', 'evil-mark');
-		spoof.textContent = 'x';
-		textElement.append(spoof);
-		await flushDomUpdates();
+			const spoof = document.createElement('span');
+			spoof.setAttribute('data-edytor-mark', 'evil-mark');
+			spoof.textContent = 'x';
+			textElement.append(spoof);
+			await flushDomUpdates();
 
-		expect(spoof.isConnected).toBe(false);
-		// The settle/reconcile paths either drop the wrapper or its text —
-		// the model is untouched either way.
-		expect(JSON.stringify(edytor.value)).toBe(modelBefore);
-	});
+			expect(spoof.isConnected).toBe(false);
+			expect(modelBefore).not.toContain('Hellox');
+			expect(edytor.root!.children[0]!.firstText!.stringContent).toBe('Hellox');
+			expect(
+				textElement.isConnected ? textElement.textContent : firstText(edytor).node!.textContent
+			).toBe('Hellox');
+		}
+	);
 });
 
 describe('prototype-chain attribute names on managed elements', () => {

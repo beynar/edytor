@@ -37,7 +37,7 @@ export const collectFixtureEntries = <TFixture>(
 };
 
 export const runFixtureEntries = async <
-	TFixture extends { description: string; only?: boolean; skip?: boolean }
+	TFixture extends { description: string; only?: boolean; skip?: boolean; fails?: boolean }
 >(
 	modules: Record<string, FixtureModule<TFixture>>,
 	runFixture: (entry: FixtureEntry<TFixture>) => Promise<void> | void
@@ -55,7 +55,13 @@ export const runFixtureEntries = async <
 	for (const [groupName, groupEntries] of groups) {
 		describe(groupName, () => {
 			for (const entry of groupEntries) {
-				const testMethod = entry.fixture.only ? it.only : entry.fixture.skip ? it.skip : it;
+				const testMethod = entry.fixture.only
+					? it.only
+					: entry.fixture.skip
+						? it.skip
+						: entry.fixture.fails
+							? it.fails
+							: it;
 				testMethod(entry.fixture.description, async () => {
 					await runFixture(entry);
 				});

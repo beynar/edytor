@@ -108,7 +108,8 @@ describe('T6 — one presence entry per view key, written by its view', () => {
 		const before = structuredClone(entries(document));
 		const writes = vi.spyOn(document.awareness, 'setLocalState');
 
-		v1.edytor.refreshEditorDom();
+		// A render that re-creates the view's text elements (R7: no whole-editor remount).
+		v1.edytor.cells!.remount(v1.edytor.root!.children[0]!.id);
 		await tick();
 		await flushDomUpdates();
 

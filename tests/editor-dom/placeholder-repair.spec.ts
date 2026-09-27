@@ -249,7 +249,9 @@ test.describe('placeholder (user-visible)', () => {
 		issuesB.assertClean();
 	});
 
-	test('a whole-editor remount keeps exactly one placeholder; typing removes it', async ({
+	// R7 rewrite (L39): no whole-editor remount exists; every block's text
+	// elements are re-created instead.
+	test('re-created text elements keep exactly one placeholder; typing removes it', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -258,10 +260,10 @@ test.describe('placeholder (user-visible)', () => {
 
 		await page.evaluate(() => {
 			document
-				.querySelector('[data-edytor-block="true"]')
+				.querySelector('[data-edytor-text="true"]')
 				?.setAttribute('data-r5-preremount', 'true');
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
-			edytor.refreshEditorDom();
+			for (const block of edytor.root.children) edytor.cells.remount(block.id);
 		});
 		await expect(page.locator('[data-r5-preremount]')).toHaveCount(0);
 		await expect(getBlockLocators(page)).toHaveCount(3);

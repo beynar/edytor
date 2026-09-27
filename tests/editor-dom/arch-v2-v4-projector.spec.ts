@@ -103,7 +103,9 @@ test.describe('V4 projector — F-S6', () => {
 });
 
 test.describe('V4 projector — F-S9 focus verdict', () => {
-	test('(a) our render detaches the focused node: the caret is displayed, focus kept', async ({
+	// R7 rewrite (L39): our render re-creates the caret's text element (no
+	// whole-editor remount exists); the caret is displayed in it, focus kept.
+	test('(a) our render detaches the caret’s node: the caret is displayed, focus kept', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -111,9 +113,10 @@ test.describe('V4 projector — F-S9 focus verdict', () => {
 		await setSelectionByTextIndex(page, 0, 2);
 		await expectSelection(page, { startBlockPath: [0], yStart: 2, isCollapsed: true });
 		expect(await activeInsideEditor(page)).toBe(true);
-		await page.evaluate(() =>
-			(window as Window & { __EDYTOR__?: any }).__EDYTOR__.refreshEditorDom()
-		);
+		await page.evaluate(() => {
+			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
+			edytor.cells.remount(edytor.root.children[0].id);
+		});
 		await expect
 			.poll(() => readDom(page))
 			.toMatchObject({

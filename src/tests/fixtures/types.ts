@@ -18,6 +18,8 @@ type FixtureBase = {
 	value?: JSONDoc;
 	only?: boolean;
 	skip?: boolean;
+	/** Red on the reference of the checkpoint that adds it (`it.fails`). */
+	fails?: boolean;
 };
 
 export type ModelFixtureContext = {

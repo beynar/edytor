@@ -468,7 +468,11 @@ export const fixtures = defineFixtures([
 		}
 	}),
 	defineDomFixture({
-		description: 'removes unmanaged child nodes inserted outside managed text wrappers',
+		// R7 rewrite (answer (b), D-25): the paragraph element is the kind's own
+		// markup around its slot, not a strict container — a node beside the text
+		// element stays there and never reaches the model.
+		description: 'keeps an unmanaged node the kind’s markup holds beside the text element (D-25)',
+		fails: true,
 		input: (
 			<root>
 				<paragraph>Hello|</paragraph>
@@ -489,8 +493,8 @@ export const fixtures = defineFixtures([
 			isCollapsed: true
 		},
 		assert: ({ container }) => {
-			if (container.querySelector('[data-test-unmanaged]')) {
-				throw new Error('Expected the observer to remove the unmanaged DOM node');
+			if (!container.querySelector('[data-test-unmanaged]')) {
+				throw new Error('Expected the kind’s own markup to keep the unmanaged node (D-25)');
 			}
 		}
 	}),

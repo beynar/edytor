@@ -279,19 +279,23 @@ describe('F-S6 — a node-bound focus keeps the native direction', () => {
 });
 
 describe('F-S9 — the focus verdict (BI-14)', () => {
-	row('(a) our render detaches the focused node: the caret is displayed', async () => {
+	// R7 rewrite (L39): our render re-creates the caret's text element (no
+	// whole-editor remount exists); the caret is displayed in the new one.
+	row('(a) our render detaches the caret’s node: the caret is displayed', async () => {
 		const { edytor } = await renderDomEdytor(
 			<root>
 				<paragraph>hel|lo</paragraph>
 			</root>
 		);
-		// jsdom does not focus a contenteditable: the focus half is the browser row's.
-		const before = edytor.node!;
-		edytor.refreshEditorDom();
+		// jsdom does not focus a contenteditable: a tabindex lets the host hold focus.
+		edytor.node!.tabIndex = -1;
+		edytor.node!.focus();
+		const before = edytor.root!.children[0]!.firstText!.node!;
+		edytor.cells!.remount(edytor.root!.children[0]!.id);
 		await flushDomUpdates();
-		expect(edytor.node).not.toBe(before);
-		expect(before.isConnected).toBe(false);
 		const text = edytor.root!.children[0]!.firstText!;
+		expect(text.node).not.toBe(before);
+		expect(before.isConnected).toBe(false);
 		expect(range(edytor)).toMatchObject({ start: 3, isCollapsed: true });
 		expect(domRange(text.node!)).toEqual({ anchor: 3, focus: 3, anchorIsText: true });
 	});

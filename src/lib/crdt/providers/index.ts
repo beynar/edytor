@@ -34,6 +34,12 @@ export type EdytorSync = ((payload: EdytorSyncPayload) => void | EdytorSyncClean
 	 * reports `synced` or `failed`. Default: `DEFAULT_READINESS_BOUND`.
 	 */
 	bound?: number;
+	/**
+	 * The transport target (database, server + room): a document keeps one
+	 * provider per target, whatever factory instance attaches it (O75).
+	 * Without it the factory itself is the target.
+	 */
+	target?: string;
 };
 
 export type IndexeddbSyncOptions = {
@@ -67,30 +73,32 @@ export const bindProviders = (Y: EngineApi) => {
 				if (failed) provider.on('failed', failed);
 				return () => provider.destroy();
 			},
-			{ bound: Infinity }
+			{ bound: Infinity, target: `indexeddb:${name}` }
 		);
 
-	const createWebsocketSync =
-		(options: WebsocketSyncOptions): EdytorSync =>
-		({ doc, awareness, synced, failed }) => {
-			const provider = new ws.WebsocketProvider(options.serverUrl, options.roomName, doc, {
-				connect: options.connect,
-				awareness,
-				params: options.params,
-				protocols: options.protocols,
-				WebSocketPolyfill: options.WebSocketPolyfill,
-				resyncInterval: options.resyncInterval,
-				maxBackoffTime: options.maxBackoffTime,
-				disableBc: options.disableBc
-			});
-			provider.on('sync', (isSynced: boolean) => {
-				if (isSynced) {
-					synced(provider);
-				}
-			});
-			if (failed) provider.on('failed', failed);
-			return () => provider.destroy();
-		};
+	const createWebsocketSync = (options: WebsocketSyncOptions): EdytorSync =>
+		Object.assign(
+			({ doc, awareness, synced, failed }: EdytorSyncPayload) => {
+				const provider = new ws.WebsocketProvider(options.serverUrl, options.roomName, doc, {
+					connect: options.connect,
+					awareness,
+					params: options.params,
+					protocols: options.protocols,
+					WebSocketPolyfill: options.WebSocketPolyfill,
+					resyncInterval: options.resyncInterval,
+					maxBackoffTime: options.maxBackoffTime,
+					disableBc: options.disableBc
+				});
+				provider.on('sync', (isSynced: boolean) => {
+					if (isSynced) {
+						synced(provider);
+					}
+				});
+				if (failed) provider.on('failed', failed);
+				return () => provider.destroy();
+			},
+			{ target: `websocket:${options.serverUrl.replace(/\/+$/, '')}/${options.roomName}` }
+		);
 
 	return {
 		IndexeddbPersistence: idb.IndexeddbPersistence,

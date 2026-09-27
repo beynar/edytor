@@ -435,7 +435,8 @@ export class EdytorDocument {
 	private _defaultType: string;
 	private readonly _historyOptions: { captureTimeout?: number } | undefined;
 	private readonly _lineageDepth: number | undefined;
-	private _syncCleanups: { cleanup: EdytorSyncCleanup }[] = [];
+	/** Attached providers keyed by transport target (O75): one per target. */
+	private _providers = new Map<unknown, EdytorSyncCleanup | undefined>();
 	private _pendingSyncs = 0;
 	private _healOff: (() => void) | undefined;
 	private _readyListeners = new Set<() => void>();
@@ -855,13 +856,17 @@ export class EdytorDocument {
 	 * bound elapses: `sync.bound` ms, {@link DEFAULT_READINESS_BOUND} for a
 	 * provider that cannot report settled. Each settle runs the readiness
 	 * decision ({@link _decide}). A factory that throws never attached: its
-	 * error propagates and it decides nothing. The returned cleanup is also
-	 * tracked: {@link destroy} runs it.
+	 * error propagates and it decides nothing. A transport target
+	 * (`sync.target`, else the factory) already attached is a no-op: the
+	 * document keeps one provider per target. The returned cleanup is also
+	 * tracked: {@link destroy} runs it; it frees the target.
 	 */
 	attachSync = (sync: EdytorSync, opts: { value?: JSONDoc } = {}): EdytorSyncCleanup | void => {
 		if (this._destroyed) {
 			throw new DocumentDestroyedError('attachSync');
 		}
+		const target = sync.target ?? sync;
+		if (this._providers.has(target)) return;
 		this._pendingSyncs += 1;
 		let pending = true;
 		const settle = (): boolean => {
@@ -890,23 +895,19 @@ export class EdytorDocument {
 			throw error;
 		}
 		if (typeof cleanup !== 'function') {
+			this._providers.set(target, undefined);
 			return cleanup;
 		}
-		// The returned cleanup unregisters itself from `_syncCleanups` (no
-		// second run from `destroy()`); tearing down an unsynced provider
-		// settles it like a failure.
-		const record = {
-			cleanup: (): ReturnType<EdytorSyncCleanup> => {
-				const index = this._syncCleanups.indexOf(record);
-				if (index !== -1) {
-					this._syncCleanups.splice(index, 1);
-				}
-				decide();
-				return cleanup();
-			}
+		// The returned cleanup runs once and frees the target; tearing down
+		// an unsynced provider settles it like a failure.
+		const release = (): ReturnType<EdytorSyncCleanup> => {
+			if (this._providers.get(target) !== release) return;
+			this._providers.delete(target);
+			decide();
+			return cleanup();
 		};
-		this._syncCleanups.push(record);
-		return record.cleanup;
+		this._providers.set(target, release);
+		return release;
 	};
 
 	/** Full replicated state as a v14 update — `loadDocument` restores it on a fresh replica. */
@@ -986,9 +987,9 @@ export class EdytorDocument {
 				throw error;
 			});
 		};
-		for (const { cleanup } of this._syncCleanups.splice(0)) {
+		for (const release of [...this._providers.values()]) {
 			try {
-				const result = cleanup();
+				const result = release?.();
 				if (result && typeof result === 'object' && 'catch' in result) {
 					void (result as Promise<void>).catch(rethrowAsyncCleanupError);
 				}

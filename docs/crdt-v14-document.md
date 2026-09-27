@@ -356,8 +356,11 @@ owns its lifetime (and with the dedupe rule, every `attachDocument`
 reference needs its own `destroy()`).
 
 With a provider, attach `sync` on **one** view — the factory attaches to
-the document (document-lifetime, deduplicated by factory identity), not to
-the view:
+the document (document-lifetime), not to the view. The document keeps one
+provider per transport target (the IndexedDB name; the websocket server URL
+and room), so views that each evaluate `createIndexeddbSync('my-doc')` still
+share one provider; a custom factory without a `target` key is its own
+target:
 
 ```svelte
 <Edytor {document} {plugins} sync={createIndexeddbSync('my-doc')} />

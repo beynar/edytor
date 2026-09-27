@@ -24,16 +24,6 @@ import { generationDbName } from '../../../lib/crdt/protocols/envelope.js';
 
 const providers = bindProviders(Y);
 
-/** Rows red on `arch-v2/ref-t4` (factory-identity dedupe in the view helper only). */
-const RED = new Set([
-	'F-T7: two views with inline createIndexeddbSync on one document attach ONE provider',
-	'F-T7: rows grow as with one view, session after session',
-	'F-T7: inline websocket factories on one room attach ONE provider',
-	'F-T7: a trailing slash on the server URL names the same room',
-	'F-T7: a factory without a target key dedupes by identity'
-]);
-const row = (name, fn) => (RED.has(name) ? it.fails : it)(name, fn);
-
 let counter = 0;
 const uniqueName = (base) => `t4-${base}-${counter++}`;
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -106,24 +96,21 @@ const session = async (name, views) => {
 };
 
 describe('F-T7 — providers keyed by transport target (T4)', () => {
-	row(
-		'F-T7: two views with inline createIndexeddbSync on one document attach ONE provider',
-		async () => {
-			const name = uniqueName('notes');
-			const document = createDocument();
-			const counts = { n: 0 };
-			document.attachSync(counted(providers.createIndexeddbSync(name), counts), { value });
-			document.attachSync(counted(providers.createIndexeddbSync(name), counts), { value });
-			expect(counts.n).toBe(1);
-			await ready(document);
-			expect(document.syncPending).toBe(false);
-			expect(document.facade.blockText('p')).toBe('notes');
-			document.destroy();
-			await wait(20);
-		}
-	);
+	it('F-T7: two views with inline createIndexeddbSync on one document attach ONE provider', async () => {
+		const name = uniqueName('notes');
+		const document = createDocument();
+		const counts = { n: 0 };
+		document.attachSync(counted(providers.createIndexeddbSync(name), counts), { value });
+		document.attachSync(counted(providers.createIndexeddbSync(name), counts), { value });
+		expect(counts.n).toBe(1);
+		await ready(document);
+		expect(document.syncPending).toBe(false);
+		expect(document.facade.blockText('p')).toBe('notes');
+		document.destroy();
+		await wait(20);
+	});
 
-	row('F-T7: rows grow as with one view, session after session', async () => {
+	it('F-T7: rows grow as with one view, session after session', async () => {
 		const one = uniqueName('one-view');
 		const two = uniqueName('two-views');
 		const control = [];
@@ -136,7 +123,7 @@ describe('F-T7 — providers keyed by transport target (T4)', () => {
 		expect(candidate.map((r) => r.providers)).toEqual([1, 1, 1]);
 	});
 
-	row('F-T7: inline websocket factories on one room attach ONE provider', () => {
+	it('F-T7: inline websocket factories on one room attach ONE provider', () => {
 		const document = createDocument({ value });
 		const counts = { n: 0 };
 		document.attachSync(counted(wsSync('ws://t4-a'), counts));
@@ -145,7 +132,7 @@ describe('F-T7 — providers keyed by transport target (T4)', () => {
 		document.destroy();
 	});
 
-	row('F-T7: a trailing slash on the server URL names the same room', () => {
+	it('F-T7: a trailing slash on the server URL names the same room', () => {
 		const document = createDocument({ value });
 		const counts = { n: 0 };
 		document.attachSync(counted(wsSync('ws://t4-b'), counts));
@@ -154,23 +141,20 @@ describe('F-T7 — providers keyed by transport target (T4)', () => {
 		document.destroy();
 	});
 
-	row(
-		'F-T7: distinct targets compose (two rooms, two databases, IndexedDB + websocket)',
-		async () => {
-			const document = createDocument({ value });
-			const counts = { n: 0 };
-			document.attachSync(counted(wsSync('ws://t4-c', 'one'), counts));
-			document.attachSync(counted(wsSync('ws://t4-c', 'two'), counts));
-			document.attachSync(counted(providers.createIndexeddbSync('t4-c-one'), counts));
-			document.attachSync(counted(providers.createIndexeddbSync('t4-c-two'), counts));
-			document.attachSync(counted(providers.createIndexeddbSync('ws://t4-c/one'), counts));
-			expect(counts.n).toBe(5);
-			document.destroy();
-			await wait(20);
-		}
-	);
+	it('F-T7: distinct targets compose (two rooms, two databases, IndexedDB + websocket)', async () => {
+		const document = createDocument({ value });
+		const counts = { n: 0 };
+		document.attachSync(counted(wsSync('ws://t4-c', 'one'), counts));
+		document.attachSync(counted(wsSync('ws://t4-c', 'two'), counts));
+		document.attachSync(counted(providers.createIndexeddbSync('t4-c-one'), counts));
+		document.attachSync(counted(providers.createIndexeddbSync('t4-c-two'), counts));
+		document.attachSync(counted(providers.createIndexeddbSync('ws://t4-c/one'), counts));
+		expect(counts.n).toBe(5);
+		document.destroy();
+		await wait(20);
+	});
 
-	row('F-T7: a released provider frees its target — the next attach builds a new one', async () => {
+	it('F-T7: a released provider frees its target — the next attach builds a new one', async () => {
 		const name = uniqueName('release');
 		const document = createDocument({ value });
 		const counts = { n: 0 };
@@ -182,7 +166,7 @@ describe('F-T7 — providers keyed by transport target (T4)', () => {
 		await wait(20);
 	});
 
-	row('F-T7: a factory without a target key dedupes by identity', () => {
+	it('F-T7: a factory without a target key dedupes by identity', () => {
 		const document = createDocument({ value });
 		let built = 0;
 		let released = 0;
@@ -202,7 +186,7 @@ describe('F-T7 — providers keyed by transport target (T4)', () => {
 		expect(released).toBe(1);
 	});
 
-	row('F-T7: a target is per document — two documents each get their provider', async () => {
+	it('F-T7: a target is per document — two documents each get their provider', async () => {
 		const name = uniqueName('per-doc');
 		const a = createDocument({ value });
 		const b = createDocument({ value });

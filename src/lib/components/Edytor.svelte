@@ -62,7 +62,6 @@
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 	import Block from './Block.svelte';
 	import RemoteSelections from '$lib/collaboration/RemoteSelections.svelte';
-	import { attachDocumentSync } from '$lib/collaboration/index.js';
 
 	let {
 		plugins,
@@ -121,15 +120,15 @@
 	edytor = new EdytorClass(initialEdytorOptions);
 
 	// ONE attach path for owned and injected documents (U5/F3): `attachSync`
-	// tracks the provider on the DOCUMENT's lifetime (dedupe by factory
-	// identity, settle-or-bound readiness, R13). It attaches while the tree
+	// tracks the provider on the DOCUMENT's lifetime (one provider per
+	// transport target, settle-or-bound readiness, R13). It attaches while the tree
 	// initializes (client only), so every sibling view's provider is in
 	// flight before any view decides on mount. A view-owned document still
 	// dies with the component: `edytor.destroy()` runs `document.destroy()`,
 	// which runs the tracked cleanup.
 	const initialSync = untrack(() => sync);
 	if (typeof window !== 'undefined' && !initialEdytorOptions.readonly && initialSync) {
-		attachDocumentSync(edytor.document, initialSync, initialEdytorOptions.value);
+		edytor.document.attachSync(initialSync, { value: initialEdytorOptions.value });
 	}
 
 	onMount(() => {

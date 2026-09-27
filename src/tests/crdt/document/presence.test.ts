@@ -9,8 +9,8 @@
  *
  * `Awareness.destroy()` is idempotent (F6 — the owned-doc + owned-
  * awareness composition used to double-emit). View-carried `sync`
- * factories attach through `attachDocumentSync` — one provider per
- * factory per document, released by `document.destroy()` (F3).
+ * factories attach through `document.attachSync` — one provider per
+ * transport target per document, released by `document.destroy()` (F3, T4).
  */
 import { describe, expect, it, vi } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
@@ -23,7 +23,6 @@ import {
 	type EdytorDocument
 } from '../../../lib/crdt/index.js';
 import {
-	attachDocumentSync,
 	publishAwarenessSelection,
 	whenDocumentReady,
 	type EdytorSync
@@ -255,8 +254,8 @@ describe('awareness state merge after provider sync', () => {
 	});
 });
 
-describe('attachDocumentSync — document-lifetime providers (F3)', () => {
-	it('attaches once per factory per document — second identical attach dedupes', () => {
+describe('document.attachSync — document-lifetime providers (F3, T4)', () => {
+	it('attaches once per target per document — a keyless factory is its own target', () => {
 		const document = createDocument();
 		let attachCount = 0;
 		let cleanups = 0;
@@ -268,8 +267,8 @@ describe('attachDocumentSync — document-lifetime providers (F3)', () => {
 			};
 		};
 
-		expect(attachDocumentSync(document, sync)).toBe(true);
-		expect(attachDocumentSync(document, sync)).toBe(false); // dedupe no-op
+		expect(document.attachSync(sync)).toBeTypeOf('function');
+		expect(document.attachSync(sync)).toBeUndefined(); // dedupe no-op
 		expect(attachCount).toBe(1);
 		expect(document.ready).toBe(true); // synced ran document.sync(value)
 
@@ -289,21 +288,21 @@ describe('attachDocumentSync — document-lifetime providers (F3)', () => {
 			};
 		};
 
-		expect(attachDocumentSync(document, makeSync())).toBe(true);
-		expect(attachDocumentSync(document, makeSync())).toBe(true);
+		expect(document.attachSync(makeSync())).toBeTypeOf('function');
+		expect(document.attachSync(makeSync())).toBeTypeOf('function');
 		expect(attachCount).toBe(2);
 		document.destroy();
 		expect(cleanups).toBe(2);
 	});
 
-	it('attaching on a destroyed document is a no-op', () => {
+	it('attaching on a destroyed document refuses without running the factory', () => {
 		const document = createDocument({ value: docValue() });
 		document.destroy();
-		expect(
-			attachDocumentSync(document, () => {
+		expect(() =>
+			document.attachSync(() => {
 				throw new Error('must not run');
 			})
-		).toBe(false);
+		).toThrow(/attachSync/);
 	});
 });
 
@@ -375,7 +374,7 @@ describe('attachSync + view integration', () => {
 		const release1 = whenDocumentReady(document, () => v1Inits++);
 		const release2 = whenDocumentReady(document, () => v2Inits++);
 
-		attachDocumentSync(document, sync);
+		document.attachSync(sync);
 		Y.applyUpdate(document.doc, remote.encode());
 		reportSynced!(); // provider reports synced → document.sync + notify
 
@@ -406,7 +405,7 @@ describe('attachSync + view integration', () => {
 		});
 		const r3 = whenDocumentReady(document, () => fired++);
 
-		attachDocumentSync(document, sync);
+		document.attachSync(sync);
 		Y.applyUpdate(document.doc, remote.encode());
 		expect(() => reportSynced!()).not.toThrow();
 

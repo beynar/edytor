@@ -68,13 +68,15 @@ export type SyncProtocol = ReturnType<typeof bindSync>;
  */
 const defaultRemoteApplyOrigin = () => Symbol('edytor-remote-apply');
 
+/** Sync message subtypes (the varuint after `messageSync`). */
+export const messageYjsSyncStep1 = 0;
+export const messageYjsSyncStep2 = 1;
+export const messageYjsUpdate = 2;
+
 /**
  * Bind the sync protocol to a concrete engine module (the vendored v14 `Y`).
  */
 export const bindSync = (Y: EngineApi) => {
-	const messageYjsSyncStep1 = 0;
-	const messageYjsSyncStep2 = 1;
-	const messageYjsUpdate = 2;
 	const remoteApplyOrigin = defaultRemoteApplyOrigin();
 
 	const writeSyncStep1 = (encoder: encoding.Encoder, doc: YDoc): void => {

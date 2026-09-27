@@ -394,7 +394,10 @@ export {
 	encodeAwarenessUpdate,
 	modifyAwarenessUpdate,
 	removeAwarenessStates,
-	outdatedTimeout
+	outdatedTimeout,
+	readAwarenessEntries,
+	writeAwarenessEntries,
+	type AwarenessEntry
 } from './protocols/awareness.js';
 
 export {
@@ -404,7 +407,14 @@ export {
 	type PermissionDeniedHandler
 } from './protocols/auth.js';
 
+// The frame contract — `varuint GENERATION | varuint messageType | payload`
+// — for a server coordinator (a Cloudflare Durable Object): build frames
+// with `frame`, read them with the lib0 decoder helpers below, so a
+// coordinator needs only `edytor/crdt` + `edytor/crdt/edytor`.
 export {
+	GENERATION,
+	generationWord,
+	frame,
 	PROTOCOL_VERSION,
 	GENERATION_PREFIX,
 	generationDbName,
@@ -422,3 +432,11 @@ export {
 	messageAuth,
 	messageQueryAwareness
 } from './providers/room.js';
+
+export { messageYjsSyncStep1, messageYjsSyncStep2, messageYjsUpdate } from './protocols/sync.js';
+
+// Minimal wire codec for frame bodies (lib0 — the codec the frames are
+// written with): read the header/subtype/payload, write a payload into a
+// `frame` callback's encoder.
+export { createDecoder, readVarUint, readVarUint8Array, type Decoder } from 'lib0-v14/decoding';
+export { writeVarUint8Array, type Encoder } from 'lib0-v14/encoding';

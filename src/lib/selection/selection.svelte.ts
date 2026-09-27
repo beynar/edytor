@@ -15,26 +15,17 @@ import {
 } from './selection.utils.js';
 import {
 	clearDomSelection,
-	createDomSelectionSnapshotFromRange,
-	createDomRange,
-	domSelectionCoversRange,
-	domSelectionIsCollapsedAt,
 	getActiveElement,
-	getDomSelection,
 	getDomSelectionSnapshot,
-	scrollCaretIntoView,
 	type DomSelectionSnapshot
 } from './domSelection.js';
+import { domPointOf } from '$lib/surface/projector.svelte.js';
 import { Block } from '../block/block.svelte.js';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-import { tick } from 'svelte';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import type { EdgeSide } from '$lib/session/editing/text.js';
 import type { JSONInlineBlock, JSONText } from '$lib/utils/json.js';
-import {
-	clearAwarenessSelection,
-	publishAwarenessSelection
-} from '$lib/collaboration/awarenessSelection.js';
+import { publishPresence } from '$lib/collaboration/awarenessSelection.js';
 import {
 	isNativeFormControl,
 	isNativeInteractiveEvent,
@@ -48,6 +39,7 @@ import {
 	project,
 	sameValue,
 	segmentsOf,
+	serialize,
 	textSelection,
 	anchorsInOrder,
 	type SelectCause,
@@ -151,21 +143,30 @@ const EMPTY_STATE: SelectionState = Object.freeze({
 	currentMarks: {}
 }) as SelectionState;
 
-/** Whether a DOM selection runs backward (focus before anchor in document order). */
+/**
+ * Whether a DOM selection runs backward (focus before anchor in document
+ * order), comparing boundary points — a focus on an ancestor element of the
+ * anchor (`(textElement, childCount)`) is after it (F-S6).
+ */
 export const isBackward = (selection: {
 	anchorNode: Node | null;
 	anchorOffset: number;
 	focusNode: Node | null;
 	focusOffset: number;
-}) =>
-	selection.focusNode === selection.anchorNode
-		? selection.focusOffset < selection.anchorOffset
-		: Boolean(
-				selection.anchorNode &&
-				selection.focusNode &&
-				selection.anchorNode.compareDocumentPosition(selection.focusNode) &
-					Node.DOCUMENT_POSITION_PRECEDING
-			);
+}) => {
+	const { anchorNode, focusNode } = selection;
+	if (!anchorNode || !focusNode) return false;
+	if (anchorNode === focusNode) return selection.focusOffset < selection.anchorOffset;
+	try {
+		const range = (anchorNode.ownerDocument ?? document).createRange();
+		range.setStart(anchorNode, selection.anchorOffset);
+		return range.comparePoint(focusNode, selection.focusOffset) < 0;
+	} catch {
+		return Boolean(
+			anchorNode.compareDocumentPosition(focusNode) & Node.DOCUMENT_POSITION_PRECEDING
+		);
+	}
+};
 
 const SYNTHETIC_TEXT_OVERLAY_SELECTOR =
 	'[data-edytor-text-placeholder], [data-edytor-text-suggestion]';
@@ -298,48 +299,6 @@ type DocumentWithCaretPoint = Document & {
 const ANDROID_POST_DELETE_RESTORE_WINDOW_MS = 250;
 
 /**
- * Window for the post-write caret verification in `setAtTextOffset`.
- * Gecko re-anchors the DOM selection at the same absolute offset when a
- * rendered text node is swapped instead of shifting it back past a
- * deletion — a caret write can therefore land on a node that is
- * replaced a tick later and silently revert to the pre-write offset via
- * the resulting selectionchange echo. The verification only has to
- * cover that post-render echo, which lands within the next frames.
- */
-const SELECTION_WRITE_VERIFY_DELAY_MS = 150;
-
-const restoreBackwardDomRange = (
-	selection: Selection,
-	range: Range,
-	endTextNode: Node,
-	endNodeOffset: number,
-	startTextNode: Node,
-	startNodeOffset: number
-) => {
-	try {
-		if (typeof selection.setBaseAndExtent === 'function') {
-			selection.setBaseAndExtent(endTextNode, endNodeOffset, startTextNode, startNodeOffset);
-			return true;
-		}
-	} catch {
-		selection.removeAllRanges();
-	}
-
-	try {
-		if (typeof selection.extend === 'function') {
-			selection.collapse(endTextNode, endNodeOffset);
-			selection.extend(startTextNode, startNodeOffset);
-			return true;
-		}
-	} catch {
-		selection.removeAllRanges();
-	}
-
-	selection.addRange(range);
-	return false;
-};
-
-/**
  * A block's text endpoint for block-level selection state. A kind that
  * displays no text (a divider) has none; its own content slot stands in as
  * the model endpoint of the block selection (selection state holds texts
@@ -367,30 +326,13 @@ export class EdytorSelection {
 	 * The collapsed caret target written by a cross-text jump — the
 	 * write a backward merge/delete ends with. An Android-shifted
 	 * `selectionchange` reporting `offset + 1` on that same text gets
-	 * snapped back to this target.
-	 */
-	/**
-	 * Deferred caret re-assert ownership. The mechanisms below all answer
-	 * "who owns the caret right now" but over DIFFERENT windows and with
-	 * different staleness evidence — merging them onto one epoch would
-	 * couple aborts that are currently independent (a `selectBlocks`
-	 * superseding a block-range write must not cancel a caret write):
-	 * - `pendingBlockRangeRequest` owns an in-flight `setAtBlockRange` —
-	 *   superseded by the next block-range request or `selectBlocks`;
-	 * - `postDeleteCaretTarget` owns the Android post-delete echo window
-	 *   (timestamp-bounded, ANDROID_POST_DELETE_RESTORE_WINDOW_MS);
-	 * - `scheduleCaretWriteVerification` owns the Gecko re-anchor echo
-	 *   (bounded re-arm, gesture-serial checked).
-	 * What they share — "is live state still at position X" — is the
-	 * single `stateMatchesSelectionTarget` predicate; multi-pass
-	 * re-asserts schedule through `scheduleReassert`.
+	 * snapped back to this target (the named Android rule, V5).
 	 */
 	private postDeleteCaretTarget: { text: Text; offset: number; at: number } | null = null;
 	private pointerDragStart: PointerTextPoint | null = null;
 	private selectionDocument: Document | null = null;
 	private shouldKeepModelSelectionForNextTextInsertion = false;
 	private modelSelectionPreservationBlock: Block | null = null;
-	private pendingBlockRangeRequest: symbol | null = null;
 
 	/**
 	 * The selection (R9, L4): a value — none, a text range of two anchors,
@@ -399,8 +341,15 @@ export class EdytorSelection {
 	value = $state.raw<SelectionValue>(noSelection);
 	/** Advanced by every `select()`. */
 	epoch = 0;
-	/** The epoch of the last write that did not come from the DOM. */
-	#modelEpoch = 0;
+	/**
+	 * Advanced by every `select()` that did not come from the DOM: the
+	 * projector displays the current value after the flush (R10).
+	 */
+	request = $state(0);
+	/** The last display request came from a user-input frame: the display may scroll (O54). */
+	scrollOnDisplay = false;
+	/** The intent serial (gestures but `input`) when the last display was requested. */
+	requestSerial = 0;
 	/** Why the last `select()` ran. */
 	cause: SelectCause = 'model';
 	/**
@@ -422,8 +371,6 @@ export class EdytorSelection {
 		SelectionProjection,
 		{ surface: unknown; mirror: number; state: SelectionState }
 	>();
-	/** The state as the last `select()` wrote it. */
-	#written: SelectionState = EMPTY_STATE;
 
 	constructor(
 		edytor: Edytor,
@@ -562,7 +509,10 @@ export class EdytorSelection {
 		if (changed) this.value = next;
 		const value = this.value;
 		this.epoch++;
-		if (cause !== 'dom') this.#modelEpoch = this.epoch;
+		// A repair is a background display (it never takes focus); a command,
+		// history or host code asks for one (R10).
+		if (cause === 'repair') this.edytor.projector.render++;
+		else if (cause !== 'dom') this.display();
 		this.cause = cause;
 		if (surface) this.#surface = { value, ...surface };
 		const projection = project(value, this.edytor.facade);
@@ -598,14 +548,21 @@ export class EdytorSelection {
 		for (const id of this.#edges) if (!edges.includes(id)) this.suggestions.delete(id);
 		this.#edges = edges;
 		const state = this.state;
-		this.#written = state;
+		this.#caret = {
+			startText: state.startText,
+			yStart: state.yStart,
+			isCollapsed: state.isCollapsed
+		};
 		this.edytor.history?.selected(value);
 		if (state.startText) {
 			this.#lastText = state.startText;
 			this.#lastBlock = state.startBlock?.id ?? null;
 		}
 		if (!changed) return;
-		publishAwarenessSelection(this);
+		// A dead view never publishes: its entry went with its teardown.
+		if (!this.edytor.destroyed) {
+			publishPresence(this.edytor.awareness, this.edytor.presenceKey, serialize(value, projection));
+		}
 		this.edytorOnSelectionChange?.(this);
 		this.edytor.plugins.forEach((plugin) => {
 			plugin.onSelectionChange?.(this);
@@ -673,67 +630,35 @@ export class EdytorSelection {
 			return block == null ? null : this.edytor.facade.anchorAt(block, text.segStart + at, side);
 		});
 
-	/**
-	 * A dead-endpoint recovery pass that found no mounted editable
-	 * destination — e.g. a remote whole-document delete whose
-	 * normalization-created replacement paragraph exists in the model but
-	 * has not mounted a DOM node yet. `Text.attach` replays the recovery
-	 * when a real text element mounts; phantom content slots (container
-	 * blocks whose snippet never renders `content`) never attach, so the
-	 * retry can never land on one. The flag carries no position of its
-	 * own — the retried `restoreDeadSelectionEndpoints` re-derives the
-	 * destination from the live state, so a newer gesture that already
-	 * fixed the endpoints makes the replay a no-op.
-	 */
-	private deadEndpointRecoveryPending = false;
-	/**
-	 * "Is `state` still at this caret position?" — the one comparison
-	 * every staleness/echo/foreign-write check shares (previously four
-	 * ad-hoc field lists that each re-derived the same rule). Direction
-	 * only distinguishes two states on a non-collapsed range — a
-	 * collapsed caret's `isReversed` is a don't-care derived false, so
-	 * comparing it would flag caret equivalents as foreign (P2-6).
-	 */
-	private stateMatchesSelectionTarget = (
-		state: SelectionState,
-		target: {
-			startText: Text | null;
-			endText: Text | null;
-			yStart: number;
-			yEnd: number;
-			isCollapsed: boolean;
-			isReversed: boolean;
-		}
-	) =>
-		state.startText === target.startText &&
-		state.endText === target.endText &&
-		state.yStart === target.yStart &&
-		state.yEnd === target.yEnd &&
-		state.isCollapsed === target.isCollapsed &&
-		(target.isCollapsed || state.isReversed === target.isReversed);
-
-	/**
-	 * The pre-write caret snapshot `recordPostDeleteCaretTarget` compares
-	 * against: the caret as the last `select()` wrote it (a projection
-	 * already follows the edit that moved it).
-	 */
-	private caretSignature = () => {
-		const { startText, yStart, isCollapsed } = this.#written;
-		return { startText, yStart, isCollapsed };
+	/** Ask the projector to display the current value after the flush (R10). */
+	display = () => {
+		this.scrollOnDisplay =
+			this.edytor.isHandlingUserInput && this.edytor.suppressCaretScrollDepth === 0;
+		this.requestSerial = this.edytor.intentSerial;
+		this.request++;
 	};
 
-	/**
-	 * The deferred re-assert channel: caret writes and restores re-run
-	 * their assertion across the post-commit render window because a
-	 * synchronous write can be reverted by a later selectionchange echo.
-	 * Mechanisms differ in their guard evidence (see the ownership-token
-	 * note on `postDeleteCaretTarget` et al.) but share scheduling.
-	 */
-	private scheduleReassert = (reassert: () => void, delays: number[]) => {
-		for (const delay of delays) {
-			setTimeout(reassert, delay);
-		}
+	/** The DOM nodes a display showed the current value with (DOM-derived fields). */
+	observed = (surface: { startNode: Node | null; endNode: Node | null; edge?: EdgeSide }) => {
+		this.#surface = { value: this.value, ...surface };
 	};
+
+	/** A pointer drag is in progress: the projector does not display under it (O57). */
+	get dragging() {
+		return this.pointerDragStart !== null;
+	}
+
+	/**
+	 * The caret as the last `select()` left it — the Android snap-back's
+	 * arming evidence ("a write moved a caret that sat at a text start"),
+	 * which a projection that already followed the merge cannot give.
+	 */
+	#caret: { startText: Text | null; yStart: number; isCollapsed: boolean } = {
+		startText: null,
+		yStart: 0,
+		isCollapsed: true
+	};
+	private caretSignature = () => this.#caret;
 
 	private getBlockByPath = (path: number[] | null) => {
 		if (!path?.length) {
@@ -751,10 +676,6 @@ export class EdytorSelection {
 			this.selectionDocument.removeEventListener('selectionchange', this.onSelectionChange);
 			this.selectionDocument = null;
 		}
-		// U09 lifecycle — drop our published caret so remote peers remove
-		// it when this editor detaches (awareness state itself is owned by
-		// the provider, not the component).
-		clearAwarenessSelection(this.edytor.awareness);
 	};
 	/**
 	 * `selectedInlineBlock` and `inlineBlockDeletionTarget` are one
@@ -872,7 +793,6 @@ export class EdytorSelection {
 			return;
 		}
 
-		this.setCollapsedStateAtTextOffset(targetText, 0);
 		void this.setAtTextOffset(targetText, 0);
 		this.ignoreNextSelectionChange = true;
 	};
@@ -931,9 +851,7 @@ export class EdytorSelection {
 			e.preventDefault();
 			window.requestAnimationFrame(() => {
 				window.setTimeout(() => {
-					clearDomSelection(this.edytor.node);
 					this.selectBlocks(clickedBlock);
-					this.ignoreNextSelectionChange = true;
 				});
 			});
 			return;
@@ -958,12 +876,7 @@ export class EdytorSelection {
 					return;
 				}
 
-				void (async () => {
-					await this.setAtBlockRange(targetBlock, undefined, undefined, {
-						syncModelState: false
-					});
-					this.ignoreNextSelectionChange = true;
-				})();
+				void this.setAtBlockRange(targetBlock);
 			});
 		});
 	};
@@ -1001,11 +914,7 @@ export class EdytorSelection {
 		let closestOffset = 0;
 		let closestDistance = Number.POSITIVE_INFINITY;
 		for (let offset = 0; offset <= text.length; offset++) {
-			const [textNode, nodeOffset] = this.findTextNode(text.node, offset);
-			if (!textNode) {
-				continue;
-			}
-
+			const [textNode, nodeOffset] = domPointOf(text.node, offset);
 			const range = ownerDocument.createRange();
 			range.setStart(textNode, nodeOffset);
 			range.collapse(true);
@@ -1023,14 +932,7 @@ export class EdytorSelection {
 		return closestOffset;
 	};
 	setTextSelectionFromPointer = (text: Text, clientX: number, clientY: number) => {
-		const offset = this.getTextOffsetFromClientPoint(text, clientX, clientY);
-		this.setCollapsedStateAtTextOffset(text, offset);
-		if (text.node) {
-			const [textNode, nodeOffset] = this.findTextNode(text.node, offset);
-			if (textNode) {
-				this.setAtNodeOffset(textNode, nodeOffset);
-			}
-		}
+		void this.setAtTextOffset(text, this.getTextOffsetFromClientPoint(text, clientX, clientY));
 	};
 
 	capturePointerDragStart = (event: PointerEvent) => {
@@ -1054,7 +956,6 @@ export class EdytorSelection {
 			return;
 		}
 
-		this.setCollapsedStateAtTextOffset(point.text, point.offset);
 		void this.setAtTextOffset(point.text, point.offset);
 	};
 
@@ -1184,9 +1085,12 @@ export class EdytorSelection {
 	};
 
 	onSelectionChange = () => {
-		// Composition noise: a live session owns the caret; its end displays it.
-		if (this.edytor.isComposing) return;
+		const { projector } = this.edytor;
+		// Composition noise, the echo of the projector's own display, or a DOM
+		// state older than a display still to land, is not intent (R10).
+		if (projector.compositionNoise()) return;
 		const selection = getDomSelectionSnapshot(this.edytor.node);
+		if (projector.isEcho(selection) || projector.awaited) return;
 		if (this.ignoreNextSelectedBlockSelectionChange) {
 			this.ignoreNextSelectedBlockSelectionChange = false;
 			this.ignoreNextSelectionChange = false;
@@ -1215,7 +1119,7 @@ export class EdytorSelection {
 			return;
 		}
 
-		this.lastEchoGestureSerial = this.edytor.gestureSerial;
+		this.lastEchoGestureSerial = this.edytor.intentSerial;
 		this.applySelectionSnapshot(selection);
 	};
 
@@ -1227,12 +1131,6 @@ export class EdytorSelection {
 	 * caret moved without one — internal render churn re-parked it.
 	 */
 	private lastEchoGestureSerial = -1;
-	/**
-	 * Monotonic epoch bumped by every `setAtTextOffset` — a pending
-	 * caret-write verification armed under an older epoch was superseded
-	 * by a newer write and must not re-assert its stale target.
-	 */
-	private caretWriteEpoch = 0;
 
 	/**
 	 * Gecko caret-drift guard. When a render mutates the DOM under a live
@@ -1241,7 +1139,7 @@ export class EdytorSelection {
 	 * one position off — and the echo would re-mint anchors from the
 	 * drifted spot. Detection is deliberately structural: every real user
 	 * caret move is preceded by a gesture event (pointerdown/focusin/
-	 * keydown/beforeinput → `markUserGesture` bumps `gestureSerial` and
+	 * keydown/beforeinput → `markUserGesture` bumps `intentSerial` and
 	 * baselines `domSelectionChurnSeq`), so an echo at an unchanged serial
 	 * while churn is still outstanding for the gesture window is drift —
 	 * revert DOM to the resolved anchors. A matching echo derives as
@@ -1250,14 +1148,19 @@ export class EdytorSelection {
 	 */
 	private restoreDriftedEchoCaret = (selection: DomSelectionSnapshot | null): boolean => {
 		const state = this.state;
-		if (this.edytor.gestureSerial !== this.lastEchoGestureSerial) {
+		if (this.edytor.intentSerial !== this.lastEchoGestureSerial) {
 			return false;
 		}
-		if (this.edytor.domSelectionChurnSeq === this.edytor.churnBaselineAtGesture) {
+		// Drift needs a render since the gesture AND since the last observation
+		// (a display or a derive): with none, the move is a foreign write (F-S4).
+		if (
+			this.edytor.domSelectionChurnSeq === this.edytor.churnBaselineAtGesture ||
+			!this.edytor.projector.renderedSinceObservation
+		) {
 			return false;
 		}
 		if (
-			this.edytor.isComposing ||
+			this.edytor.composition.live ||
 			this.edytor.isHandlingUserInput ||
 			this.pointerDragStart !== null ||
 			this.expectHistoryRestore ||
@@ -1335,7 +1238,7 @@ export class EdytorSelection {
 		if (!selection?.isCollapsed || !selection.anchorNode) {
 			return false;
 		}
-		const { startText, yStart, isCollapsed } = this.#written;
+		const { startText, yStart, isCollapsed } = this.state;
 		if (!isCollapsed || startText !== target.text || yStart !== target.offset) {
 			return false;
 		}
@@ -1371,21 +1274,22 @@ export class EdytorSelection {
 		yStart: number;
 		isCollapsed: boolean;
 	}) => {
+		const written = this.state;
 		if (
 			!previous.isCollapsed ||
 			!previous.startText ||
 			previous.yStart !== 0 ||
-			!this.#written.isCollapsed ||
-			!this.#written.startText ||
-			this.#written.startText === previous.startText ||
+			!written.isCollapsed ||
+			!written.startText ||
+			written.startText === previous.startText ||
 			Date.now() - this.lastDeleteCommandAt > ANDROID_POST_DELETE_RESTORE_WINDOW_MS
 		) {
 			return;
 		}
 
 		this.postDeleteCaretTarget = {
-			text: this.#written.startText,
-			offset: this.#written.yStart,
+			text: written.startText,
+			offset: written.yStart,
 			at: Date.now()
 		};
 	};
@@ -1459,7 +1363,6 @@ export class EdytorSelection {
 				isBoundaryInsideBlock(range.endContainer)
 			);
 			if (targetText?.parent.isEmpty && (isCollapsed || isRangeContainedByEmptyBlock)) {
-				this.setCollapsedStateAtTextOffset(targetText, 0);
 				void this.setAtTextOffset(targetText, 0);
 				return;
 			}
@@ -1471,16 +1374,9 @@ export class EdytorSelection {
 				return this.setAtTextOffset(islandBlock.firstText, 0);
 			}
 
-			// If the user is focusind on a white space node.
+			// A point on a white space node: the model caret is displayed again.
 			if (this.state.startText && !inlineBlock) {
-				const [textNode, nodeOffset] = this.state.startText.node
-					? this.findTextNode(this.state.startText.node, this.state.yStart)
-					: [null, 0];
-				if (textNode) {
-					this.setAtNodeOffset(textNode, nodeOffset);
-				} else {
-					this.setAtTextOffset(this.state.startText, this.state.yStart);
-				}
+				this.display();
 				return;
 			} else {
 				clearDomSelection(this.edytor.node);
@@ -1497,7 +1393,6 @@ export class EdytorSelection {
 		if (syntheticOverlay) {
 			const overlayBlock = this.getBlockOfNode(syntheticOverlay);
 			const targetText = overlayBlock?.lastText ?? startText;
-			this.setCollapsedStateAtTextOffset(targetText, targetText.length);
 			return this.setAtTextOffset(targetText, targetText.length);
 		}
 
@@ -1556,6 +1451,7 @@ export class EdytorSelection {
 			endNode,
 			edge: isCollapsed ? getMarkEdgeSide(startText, startNode, yStart) : undefined
 		});
+		this.edytor.projector.observe();
 		if (shouldRestoreNormalizedDomRange && options.restoreNormalizedDomRange !== false && endText) {
 			void this.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 		}
@@ -1714,261 +1610,9 @@ export class EdytorSelection {
 		return lastText ? { text: lastText, offset: lastText.length } : null;
 	};
 
-	restoreRelativePosition = (text: Text) => {
-		if (this.expectHistoryRestore) {
-			return;
-		}
-		// Atomic selections (block / inline-block) keep their own restore
-		// machinery — a remote text edit must never collapse them to a caret.
-		if (this.selectedBlocks.size > 0 || this.selectedInlineBlock.size > 0) {
-			return;
-		}
-		// Mid pointer-drag the live DOM range IS the user's in-progress
-		// choice — each drag derive already re-mints anchors on the moved
-		// atoms, so a remote-edit restore here would only hijack the drag.
-		if (this.pointerDragStart !== null) {
-			return;
-		}
-
-		const state = this.state;
-		if (!state.relativePosition) {
-			return;
-		}
-
-		const resolved = this.resolveTextAnchor(state.relativePosition);
-		if (!resolved) {
-			return;
-		}
-		// The range end rides its own anchor (`endPosition`, 'left' affinity —
-		// boundary inserts stay outside). An unresolvable end collapses at the
-		// restored start rather than holding a stale offset on a dead span.
-		const resolvedEnd = state.isCollapsed
-			? resolved
-			: state.endPosition
-				? this.resolveTextAnchor(state.endPosition)
-				: null;
-
-		const touchesStart = text === state.startText;
-		const touchesEnd = !state.isCollapsed && text === state.endText;
-		if (!touchesStart && !touchesEnd) {
-			// An endpoint's anchor can migrate INTO `text` while the state's
-			// own wrapper stays live: a caret at a fresh split block's empty
-			// start binds its anchor to the neighbor's atoms, and a remote
-			// merge then claims those atoms into the neighbor's text. The
-			// touched text owns the endpoint's position now — follow it.
-			const startDriftedHere =
-				resolved.text === text &&
-				(resolved.text !== state.startText || resolved.offset !== state.yStart);
-			const endDriftedHere =
-				!state.isCollapsed &&
-				resolvedEnd != null &&
-				resolvedEnd.text === text &&
-				(resolvedEnd.text !== state.endText || resolvedEnd.offset !== state.yEnd);
-			if (!startDriftedHere && !endDriftedHere) {
-				return;
-			}
-		}
-
-		const activeElement = getActiveElement(this.edytor.node);
-		const isEditorFocused =
-			typeof Node !== 'undefined' &&
-			activeElement instanceof Node &&
-			Boolean(this.edytor.node?.contains(activeElement));
-		if (!isEditorFocused) {
-			const externalActiveElement =
-				typeof HTMLElement !== 'undefined' &&
-				activeElement instanceof HTMLElement &&
-				this.edytor.node &&
-				!this.edytor.node.contains(activeElement)
-					? activeElement
-					: null;
-			// The model position is the projection of the anchors: nothing to
-			// write. Only the native selection left inside the blurred editor
-			// is repaired, and the user's outside focus kept.
-			const repairBlurredNativeSelection = () => {
-				// Ownership may have moved on while this repair waited (tick
-				// + 0/50ms): any focusin or pointerdown back inside the editor
-				// clears `lastUserGestureOutsideEditor` — a user who returned
-				// to the editor (or a programmatic refocus) owns the caret
-				// they just placed. Clearing the fresh DOM selection or
-				// refocusing the stale external element would yank the
-				// selection back out from under them.
-				if (!this.edytor.lastUserGestureOutsideEditor) {
-					return;
-				}
-				const selection = getDomSelection(this.edytor.node);
-				if (
-					this.edytor.node &&
-					((selection?.anchorNode && this.edytor.node.contains(selection.anchorNode)) ||
-						(selection?.focusNode && this.edytor.node.contains(selection.focusNode)))
-				) {
-					clearDomSelection(this.edytor.node);
-				}
-
-				const currentActiveElement = getActiveElement(this.edytor.node);
-				const ownerDocument = this.edytor.node?.ownerDocument;
-				const shouldRestoreExternalFocus =
-					externalActiveElement?.isConnected &&
-					(currentActiveElement === null ||
-						currentActiveElement === ownerDocument?.body ||
-						(this.edytor.node &&
-							currentActiveElement instanceof Node &&
-							this.edytor.node.contains(currentActiveElement)));
-				if (shouldRestoreExternalFocus) {
-					externalActiveElement.focus({ preventScroll: true });
-				}
-			};
-			void tick().then(() => {
-				repairBlurredNativeSelection();
-				this.scheduleReassert(repairBlurredNativeSelection, [0, 50]);
-			});
-			return;
-		}
-
-		if (
-			!resolvedEnd ||
-			(resolved.text === resolvedEnd.text && resolved.offset === resolvedEnd.offset)
-		) {
-			this.setAtTextOffset(resolved.text, resolved.offset);
-			return;
-		}
-		void this.setAtRange(resolved.text, resolved.offset, resolvedEnd.text, resolvedEnd.offset, {
-			isReversed: state.isReversed
-		});
-	};
-
-	/**
-	 * Pre-remote-commit selection capture — the
-	 * `reconcileSelectionAfterRemoteApply` counterpart. Position identity
-	 * lives in the anchors (`relativePosition`/`endPosition`), which
-	 * re-resolve on the post-apply document; capturing the state object
-	 * preserves that identity even when the remote edit legitimately moves
-	 * the caret (deletions before it, merges claiming its backing).
-	 */
-	captureSelectionForRemoteApply = (): {
-		state: SelectionState;
-		gestureSerial: number;
-		epoch: number;
-	} | null => {
-		const state = this.state;
-		// A history replay's commit: the view's recorded value is selected
-		// and displayed right after it, not this pre-replay one.
-		if (this.expectHistoryRestore || !state.relativePosition || !state.startText) {
-			return null;
-		}
-		return { state: { ...state }, gestureSerial: this.edytor.gestureSerial, epoch: this.epoch };
-	};
-
-	/**
-	 * Post-render reconcile for remote commits (called from the `tick()`
-	 * continuation after `flushMirror`). A remote apply can churn the DOM
-	 * under a LIVE caret — a reconciled text node re-splits or gets
-	 * replaced — and the browser re-parks the caret wherever the nodes land
-	 * (Gecko clamps to the shortened node; Blink keeps the offset). The
-	 * trailing `selectionchange` echo then re-derives the model from the
-	 * drifted position and re-mints the anchor one atom off. Running after
-	 * Svelte's flush but before the echo's task, this resolves the captured
-	 * anchors on the post-apply document and re-asserts DOM ← model when
-	 * they disagree, turning the echo into a no-op.
-	 */
-	reconcileSelectionAfterRemoteApply = (capture: {
-		state: SelectionState;
-		gestureSerial: number;
-		epoch: number;
-	}) => {
-		// A model, repair or history write since the capture decided the
-		// selection (echoes from the DOM are what this re-assert overrides).
-		if (this.#modelEpoch > capture.epoch) {
-			return;
-		}
-		if (this.selectedBlocks.size > 0 || this.selectedInlineBlock.size > 0) {
-			return;
-		}
-		// Mid pointer-drag the live DOM range IS the user's in-progress
-		// choice — remote churn repair would hijack it.
-		if (this.pointerDragStart !== null) {
-			return;
-		}
-		// A newer user gesture supersedes the captured position — the same
-		// serial contract every other deferred selection write honors.
-		if (this.edytor.gestureSerial !== capture.gestureSerial) {
-			return;
-		}
-		if (this.edytor.isComposing) {
-			return;
-		}
-		// Inside a user-input window the DOM caret is the user's own write
-		// (autocorrect, IME commit, drop) — the input path owns the final
-		// position. A commit under it can legitimately slide the captured
-		// anchors (deleting the bound atom drops the anchor to the deletion
-		// seam), so model→DOM re-assertion would revert the user's caret.
-		if (this.edytor.isHandlingUserInput) {
-			return;
-		}
-		const pre = capture.state;
-		if (pre.isBlockSpanning || pre.isVoid || !pre.relativePosition) {
-			return;
-		}
-		const resolved = this.resolveTextAnchor(pre.relativePosition);
-		const resolvedEnd =
-			pre.isCollapsed || !pre.endPosition ? resolved : this.resolveTextAnchor(pre.endPosition);
-		if (!resolved || !resolvedEnd) {
-			// Dead endpoints are restoreDeadSelectionEndpoints' recovery —
-			// it ran during flushMirror and retries on text mount.
-			return;
-		}
-		if (!resolved.text.node?.isConnected || !resolvedEnd.text.node?.isConnected) {
-			return;
-		}
-		const container = this.edytor.node;
-		if (!container) {
-			return;
-		}
-		const selection = getDomSelectionSnapshot(container);
-		if (selection?.anchorNode && selection.focusNode) {
-			if (!container.contains(selection.anchorNode)) {
-				// The DOM selection legitimately lives outside this editor —
-				// not drift to repair.
-				return;
-			}
-			const nativeIsReversed = isBackward(selection);
-			const domStartNode = nativeIsReversed ? selection.focusNode : selection.anchorNode;
-			const domStartOffset = nativeIsReversed ? selection.focusOffset : selection.anchorOffset;
-			const domEndNode = nativeIsReversed ? selection.anchorNode : selection.focusNode;
-			const domEndOffset = nativeIsReversed ? selection.anchorOffset : selection.focusOffset;
-			const domStartText = this.getTextOfNode(domStartNode);
-			const domEndText = this.getTextOfNode(domEndNode);
-			if (
-				selection.isCollapsed === pre.isCollapsed &&
-				domStartText === resolved.text &&
-				domEndText === resolvedEnd.text &&
-				getYIndex(resolved.text, domStartNode, domStartOffset) === resolved.offset &&
-				getYIndex(resolvedEnd.text, domEndNode, domEndOffset) === resolvedEnd.offset
-			) {
-				return;
-			}
-		}
-		if (resolved.text === resolvedEnd.text && resolved.offset === resolvedEnd.offset) {
-			void this.setAtTextOffset(resolved.text, resolved.offset);
-			return;
-		}
-		void this.setAtRange(resolved.text, resolved.offset, resolvedEnd.text, resolvedEnd.offset, {
-			isReversed: pre.isReversed
-		});
-	};
-
 	/** The text and block the selection's start last resolved to (the seam origin once they die). */
 	#lastText: Text | null = null;
 	#lastBlock: string | null = null;
-
-	private isEditorFocused = () => {
-		const activeElement = getActiveElement(this.edytor.node);
-		return (
-			typeof Node !== 'undefined' &&
-			activeElement instanceof Node &&
-			Boolean(this.edytor.node?.contains(activeElement))
-		);
-	};
 
 	/**
 	 * Displayable (§2.4, a Surface fact): the block's own content is mounted
@@ -1999,8 +1643,8 @@ export class EdytorSelection {
 	 * members, an atom that vanished leaves a caret at its block's start, and
 	 * otherwise the selection lands at the seam of the block it last resolved in
 	 * (`doc/anchors`: the replicated slot, displayable stops only). The model is
-	 * written at once; a focused editor also displays it (also when the text the
-	 * caret was displayed in died while its anchor moved on).
+	 * written at once; the projector displays it (also when the text the caret
+	 * was displayed in died while its anchor moved on).
 	 */
 	restoreDeadSelectionEndpoints = () => {
 		if (this.expectHistoryRestore) {
@@ -2035,17 +1679,10 @@ export class EdytorSelection {
 		} else if (value.kind === 'text') {
 			const state = this.state;
 			if (state.startText) {
-				const displayedDied = this.#lastText !== null && !this.#lastText._live;
+				// The text it was displayed in died while its anchor moved on: display again.
+				if (this.#lastText !== null && !this.#lastText._live) this.display();
 				this.#lastText = state.startText;
 				this.#lastBlock = state.startBlock?.id ?? null;
-				this.deadEndpointRecoveryPending = false;
-				if (displayedDied && this.isEditorFocused()) {
-					if (state.isCollapsed) void this.setAtTextOffset(state.startText, state.yStart);
-					else
-						void this.setAtRange(state.startText, state.yStart, state.endText, state.yEnd, {
-							isReversed: state.isReversed
-						});
-				}
 				return;
 			}
 			dead = this.#lastBlock;
@@ -2054,54 +1691,18 @@ export class EdytorSelection {
 		}
 		// A live origin means the anchors are not integrated yet: they converge.
 		if (dead !== null && facade.isVisibleBlock(dead)) return;
+		// With no displayable stop yet (a whole-document remote delete runs this
+		// pass before the replacement paragraph mounts), the value stays: the
+		// projector's pass after the flush that mounts it runs this repair again.
 		const target = this.#seamValue(dead);
-		// A live destination can exist in the model without a mounted DOM node
-		// (a whole-document remote delete runs this pass before the replacement
-		// paragraph mounts): the next `Text.attach` replays the recovery.
-		this.deadEndpointRecoveryPending = !target;
 		if (target) this.#land(target);
 	};
 
-	/**
-	 * Show the current value in the DOM: a caret or range through the
-	 * deferred writers (they wait for the text to mount); a block set clears
-	 * the DOM selection (the set shows as selected blocks).
-	 */
-	display = () => {
-		const { value, state } = this;
-		if (value.kind === 'blocks') {
-			if (typeof window !== 'undefined') clearDomSelection(this.edytor.node);
-			return;
-		}
-		if (value.kind !== 'text' || !state.startText) return;
-		if (state.isCollapsed) void this.setAtTextOffset(state.startText, state.yStart);
-		else
-			void this.setAtRange(state.startText, state.yStart, state.endText, state.yEnd, {
-				isReversed: state.isReversed
-			});
-	};
-
-	/** Select a repaired caret; a focused editor also displays it. */
+	/** Select a repaired caret (the projector displays it). */
 	#land = (target: SelectionValue) => {
 		const previous = this.caretSignature();
 		this.select(target, 'repair');
 		this.recordPostDeleteCaretTarget(previous);
-		const { startText, yStart } = this.state;
-		if (startText && this.isEditorFocused()) void this.setAtTextOffset(startText, yStart);
-	};
-
-	/**
-	 * `Text.attach` hook — a real editable element just mounted. Replays
-	 * a pending dead-endpoint recovery once, when the destination that was
-	 * missing at `flushMirror` time now has a DOM node. Phantom content
-	 * slots never attach, so this cannot retarget a caret onto hidden
-	 * text; all admission guards (gesture serial, live endpoints, focus
-	 * ownership) re-run inside the recovery itself.
-	 */
-	notifyTextMounted = () => {
-		if (this.deadEndpointRecoveryPending) {
-			this.restoreDeadSelectionEndpoints();
-		}
 	};
 
 	/** A text range over one block's content (the triple-click shape); the start binds left. */
@@ -2117,7 +1718,6 @@ export class EdytorSelection {
 	 * the value becomes the text range the set spanned.
 	 */
 	selectBlocks = (...blocks: Block[]) => {
-		this.pendingBlockRangeRequest = null;
 		if (blocks.length) {
 			this.select(blockSelection(blocks.map((block) => block.id)));
 			return;
@@ -2175,194 +1775,20 @@ export class EdytorSelection {
 		if (text) this.select(this.textValue(text, Math.min(Math.max(offset, 0), text.length)));
 	};
 
-	private findTextNode = (node: HTMLElement, offset: number = 0) => {
-		let nodeOffset = 0;
-		const treeWalker = node.ownerDocument.createTreeWalker(node, NodeFilter.SHOW_TEXT, (node) => {
-			if (node.nodeType === Node.TEXT_NODE) {
-				return NodeFilter.FILTER_ACCEPT;
-			}
-			return NodeFilter.FILTER_SKIP;
-		});
-		let currentNode = treeWalker.nextNode();
-		let textNode: Node | null = null;
-		let currentOffset = 0;
-
-		while (currentNode) {
-			const endOffset = currentOffset + (currentNode as any).length;
-			if (offset >= currentOffset && offset <= endOffset) {
-				textNode = currentNode;
-				nodeOffset = offset - currentOffset;
-				break;
-			}
-			currentOffset = endOffset;
-			currentNode = treeWalker.nextNode();
-		}
-
-		return [textNode, nodeOffset] as const;
-	};
 	/**
-	 * Whether a foreign element currently holds DOM focus. While true, a
-	 * DOM selection write would steal it back — Firefox focuses the
-	 * contenteditable on `addRange` alone, no `.focus()` call needed — so
-	 * async writers must fall back to the model-only write. Nothing/body
-	 * focused stays writable (the programmatic-restore case), and a
-	 * preventDefault'd outside mousedown (plugin chrome like the toolbar)
-	 * keeps the editor's own focus, so it is writable too.
-	 *
-	 * Checked at WRITE time — `await` continuations resume only after the
-	 * click's task completes, focus transfer included, so `activeElement`
-	 * here is already settled.
+	 * Select a caret at `offset` of `textOrId`; the projector displays it after
+	 * the flush (R10). The value is minted now (R4): a text that dies before the
+	 * display is followed through its atoms, else the seam of its block.
 	 */
-	private foreignFocusOwnsSelection = () => {
-		const activeElement = getActiveElement(this.edytor.node);
-		const ownerDocument = this.edytor.node?.ownerDocument;
-		return Boolean(
-			this.edytor.node &&
-			activeElement instanceof Node &&
-			!this.edytor.node.contains(activeElement) &&
-			activeElement !== ownerDocument?.body &&
-			activeElement !== ownerDocument?.documentElement
-		);
-	};
-
 	setAtTextOffset = async (
 		textOrId: Text | string | undefined | null,
-		textOffset: number | null | undefined = this.state.yStart,
-		options: { verify?: boolean } = {}
+		textOffset: number | null | undefined = this.state.yStart
 	) => {
-		if (!textOrId || typeof textOffset !== 'number') {
-			return;
-		}
-
-		// Capture the position this write moves the caret FROM. A stale
-		// native re-anchor (the DOM text node swapped after the write, the
-		// browser re-establishing the anchor at its old absolute offset)
-		// reverts the model to exactly this state — the signature the
-		// post-write verification repairs.
-		const verify = options.verify !== false;
-		const preWriteState = verify ? this.#written : null;
-		const gestureSerial = this.edytor.gestureSerial;
-		// Every armed verify supersedes older pending ones — otherwise two
-		// verifies fighting over different targets ping-pong the caret (each
-		// observes `backToPreWrite` after the other drags state back).
-		const writeEpoch = ++this.caretWriteEpoch;
-		const commitVersion = this.edytor._docCommitVersion;
-		const lookup = () => (textOrId instanceof Text ? textOrId : this.edytor.getTextById(textOrId));
-		const callText = lookup();
-		const clamp = (text: Text) => Math.min(Math.max(textOffset, 0), text.length);
-		const intended = callText && this.#intent(callText, clamp(callText));
-		// The model fallback: the anchors minted now, else (a text created
-		// after the call) the ones its wrapper answers then.
-		const fallback = () => {
-			const text = lookup() ?? callText;
-			this.#admit(intended ?? (text ? this.#intent(text, clamp(text)) : noSelection), text);
-		};
-
-		// Same staleness contract as `setAtRange`: the `getTextNode` awaits
-		// below span a window where a foreign write (remote resolution,
-		// repair restore, a newer user gesture) can re-target the model
-		// selection. Committing then would stomp the newer state with this
-		// call's captured offset.
-		const stateAtCall = this.#written;
-		const callTarget = {
-			startText: stateAtCall.startText,
-			endText: stateAtCall.endText,
-			yStart: stateAtCall.yStart,
-			yEnd: stateAtCall.yEnd,
-			isCollapsed: stateAtCall.isCollapsed,
-			isReversed: stateAtCall.isReversed
-		};
-		const stale = () => {
-			// A newer user gesture supersedes the write even when it
-			// re-picks the call-time position — position equality cannot
-			// distinguish the newer decision, only the serial can. Runs for
-			// EVERY admission, including string-id writes and the failure
-			// fallbacks — a `Text` argument is not required to know a newer
-			// gesture happened.
-			if (this.edytor.gestureSerial !== gestureSerial) {
-				return true;
-			}
-			const s = this.#written;
-			if (s === stateAtCall) return false;
-			const text = textOrId instanceof Text ? textOrId : this.edytor.getTextById(textOrId);
-			if (
-				text &&
-				this.stateMatchesSelectionTarget(s, {
-					startText: text,
-					endText: text,
-					yStart: textOffset,
-					yEnd: textOffset,
-					isCollapsed: true,
-					isReversed: false
-				})
-			) {
-				return false;
-			}
-			return !this.stateMatchesSelectionTarget(s, callTarget);
-		};
-
-		const done = () => {
-			if (preWriteState) {
-				this.scheduleCaretWriteVerification(
-					textOrId,
-					textOffset,
-					preWriteState,
-					gestureSerial,
-					writeEpoch,
-					commitVersion
-				);
-			}
-		};
-
-		for (let attempt = 0; attempt < 10; attempt++) {
-			let node: HTMLElement;
-			try {
-				node = await this.edytor.getTextNode(textOrId);
-			} catch {
-				if (stale()) {
-					done();
-					return;
-				}
-				fallback();
-				done();
-				return;
-			}
-			if (!node.isConnected) {
-				// A remount can leave `text.node` pointing at a detached element
-				// for a few ticks — retry through it like a missing text node.
-				// Falling back to a model-only write here would let a later
-				// selectionchange re-derive the stale native position and
-				// silently revert the caret.
-				await tick();
-				continue;
-			}
-			const [textNode, nodeOffset] = this.findTextNode(node, textOffset);
-
-			if (textNode) {
-				if (stale()) {
-					done();
-					return;
-				}
-				// The awaits above span a window where an outside click can
-				// claim focus — writing the DOM range now would drag it back.
-				if (this.foreignFocusOwnsSelection()) {
-					fallback();
-				} else {
-					this.setAtNodeOffset(textNode, nodeOffset);
-				}
-				done();
-				return;
-			}
-
-			await tick();
-		}
-
-		if (stale()) {
-			done();
-			return;
-		}
-		fallback();
-		done();
+		const text = typeof textOrId === 'string' ? this.edytor.idToText.get(textOrId) : textOrId;
+		if (!text || typeof textOffset !== 'number') return;
+		const previous = this.caretSignature();
+		this.#admit(this.#intent(text, Math.min(Math.max(textOffset, 0), text.length)), text);
+		this.recordPostDeleteCaretTarget(previous);
 	};
 
 	/**
@@ -2381,136 +1807,9 @@ export class EdytorSelection {
 		if (target) this.select(target);
 	};
 
-	/**
-	 * Bounded post-write repair: if the caret drifted back to the exact
-	 * pre-write position inside the verify window and no user gesture
-	 * intervened, the last derive was a stale native re-anchor echo —
-	 * re-assert the intended offset. Gecko can re-anchor after EACH write
-	 * while a remount chain settles (observed bouncing twice on Firefox),
-	 * so the check re-arms a few times; `attemptsLeft` bounds the fight —
-	 * a browser that permanently insists on its own position keeps it
-	 * rather than looping.
-	 */
-	private scheduleCaretWriteVerification = (
-		textOrId: Text | string,
-		textOffset: number,
-		preWriteState: SelectionState,
-		gestureSerial: number,
-		writeEpoch: number,
-		commitVersion: number,
-		attemptsLeft = 3
-	) => {
-		setTimeout(() => {
-			if (this.edytor.destroyed || this.edytor.gestureSerial !== gestureSerial) {
-				return;
-			}
-			// Superseded by a newer caret write, or a commit landed since
-			// arming — a remote/local edit is a legitimate caret mover owned
-			// by the post-commit reconcile, not evidence the write reverted.
-			if (writeEpoch !== this.caretWriteEpoch || commitVersion !== this.edytor._docCommitVersion) {
-				return;
-			}
-			// The verify repairs the caret the user is editing with — if
-			// focus left the editor (click-out, foreign control), the caret
-			// war is over: a re-assert would steal focus back from the
-			// user's new target.
-			const activeElement = getActiveElement(this.edytor.node);
-			if (
-				!this.edytor.node ||
-				!(activeElement instanceof Node) ||
-				!this.edytor.node.contains(activeElement)
-			) {
-				return;
-			}
-			const text = textOrId instanceof Text ? textOrId : this.edytor.getTextById(textOrId);
-			const s = this.#written;
-			const atTarget =
-				s.isCollapsed && s.startText === text && s.yStart === textOffset && s.yEnd === textOffset;
-			const backToPreWrite =
-				s.isCollapsed === preWriteState.isCollapsed &&
-				s.startText === preWriteState.startText &&
-				s.endText === preWriteState.endText &&
-				s.yStart === preWriteState.yStart &&
-				s.yEnd === preWriteState.yEnd &&
-				s.isReversed === preWriteState.isReversed;
-			if (atTarget || !backToPreWrite) {
-				return;
-			}
-			void this.setAtTextOffset(textOrId, textOffset, { verify: false });
-			if (attemptsLeft > 0) {
-				this.scheduleCaretWriteVerification(
-					textOrId,
-					textOffset,
-					preWriteState,
-					gestureSerial,
-					this.caretWriteEpoch,
-					commitVersion,
-					attemptsLeft - 1
-				);
-			}
-		}, SELECTION_WRITE_VERIFY_DELAY_MS);
-	};
-
-	setAtTextsRange = async (startText: Text, endText: Text) => {
-		if (!startText.node || !endText.node) {
-			return;
-		}
-
-		// Outside gesture owns the selection — a DOM write would steal the
-		// user's focus back into the editor. Model write only.
-		if (this.foreignFocusOwnsSelection()) {
-			this.setRangeStateAtTextOffsets(startText, 0, endText, endText.length);
-			return;
-		}
-
-		const [startTextNode, startNodeOffset] = this.findTextNode(startText.node, 0);
-		const [endTextNode, endNodeOffset] = this.findTextNode(endText.node, endText.length);
-
-		if (startTextNode && endTextNode) {
-			const selection = getDomSelection(startText.node);
-			// U8a — the live DOM selection already covers this exact range:
-			// skip the redundant removeAllRanges/addRange write (each forces
-			// synchronous layout), keep the state derive so the model mirrors
-			// the live selection.
-			if (
-				domSelectionCoversRange(
-					selection,
-					startTextNode,
-					startNodeOffset,
-					endTextNode,
-					endNodeOffset,
-					false
-				)
-			) {
-				this.edytor.expectInternalFocus();
-				startTextNode.parentElement?.focus();
-				this.applySelectionSnapshot(getDomSelectionSnapshot(startTextNode));
-				return;
-			}
-			const range = createDomRange(startTextNode);
-			range.setStart(startTextNode, startNodeOffset);
-			range.setEnd(endTextNode, endNodeOffset);
-			selection?.removeAllRanges();
-			selection?.addRange(range);
-			this.scrollCaretIntoView();
-
-			this.edytor.expectInternalFocus();
-			startTextNode.parentElement?.focus();
-			this.applySelectionSnapshot(createDomSelectionSnapshotFromRange(range, selection ?? null));
-		}
-	};
-
-	/**
-	 * Typing affordance — scrolls the just-written caret into view only
-	 * for real user input (`edytor.isHandlingUserInput`). Programmatic
-	 * writes (`clear()`, remote sync, API-driven selection, deferred
-	 * restores) must never move the page under the user.
-	 */
-	private scrollCaretIntoView = () => {
-		if (this.edytor.isHandlingUserInput && this.edytor.suppressCaretScrollDepth === 0) {
-			scrollCaretIntoView(this.edytor.node);
-		}
-	};
+	/** Select the whole content from `startText` to `endText` (the code block's select-all). */
+	setAtTextsRange = async (startText: Text, endText: Text) =>
+		this.setRangeStateAtTextOffsets(startText, 0, endText, endText.length);
 
 	#verticalExtendGoal: { column: number; signature: string } | null = null;
 
@@ -2592,6 +1891,7 @@ export class EdytorSelection {
 		return true;
 	};
 
+	/** Select a text range; the projector displays it after the flush (R10). */
 	setAtRange = async (
 		startText: Text | undefined | null,
 		startOffset: number | undefined | null,
@@ -2607,378 +1907,69 @@ export class EdytorSelection {
 		) {
 			return;
 		}
-		const requestedReversed =
+		const state = this.state;
+		const range = this.normalizeTextRangePoints(
+			startText,
+			startOffset,
+			endText,
+			endOffset,
 			options.isReversed ??
-			(!this.state.isCollapsed &&
-				this.state.isReversed &&
-				this.state.startText === startText &&
-				this.state.endText === endText &&
-				this.state.yStart === startOffset &&
-				this.state.yEnd === endOffset);
-		const normalizedRange = this.normalizeTextRangePoints(
-			startText,
-			startOffset,
-			endText,
-			endOffset,
-			requestedReversed
+				(!state.isCollapsed &&
+					state.isReversed &&
+					state.startText === startText &&
+					state.endText === endText &&
+					state.yStart === startOffset &&
+					state.yEnd === endOffset)
 		);
-		startText = normalizedRange.startText;
-		startOffset = normalizedRange.startOffset;
-		endText = normalizedRange.endText;
-		endOffset = normalizedRange.endOffset;
-
-		// Staleness guard: this call awaits `getTextNode` before touching the
-		// DOM, so a newer selection (a real selectionchange, another restore,
-		// a programmatic collapse) can land in between. `this.state` is
-		// replaced on every derive, so identity change + mismatch means the
-		// write was superseded — dropping it is what stops a stale async
-		// write from stomping a fresh caret. Direction is part of the
-		// mismatch (P2-6): a newer range on the SAME endpoints with the
-		// opposite direction still supersedes this write.
-		const stateAtCall = this.#written;
-		const gestureSerialAtCall = this.edytor.gestureSerial;
-		const writeIsCollapsed = startText === endText && startOffset === endOffset;
-		const writeTarget = {
-			startText,
-			endText,
-			yStart: startOffset,
-			yEnd: endOffset,
-			isCollapsed: writeIsCollapsed,
-			isReversed: normalizedRange.isReversed
-		};
-		const callTarget = {
-			startText: stateAtCall.startText,
-			endText: stateAtCall.endText,
-			yStart: stateAtCall.yStart,
-			yEnd: stateAtCall.yEnd,
-			isCollapsed: stateAtCall.isCollapsed,
-			isReversed: stateAtCall.isReversed
-		};
-		const previousCaret = this.caretSignature();
-		const intended = this.#intent(
-			startText,
-			startOffset,
-			endText,
-			endOffset,
-			normalizedRange.isReversed
+		const previous = this.caretSignature();
+		this.#admit(
+			this.#intent(
+				range.startText,
+				range.startOffset,
+				range.endText,
+				range.endOffset,
+				range.isReversed
+			),
+			range.startText
 		);
-		// Admission gate for EVERY write this call can perform — DOM ranges
-		// AND the model-side fallbacks. A newer user gesture (serial bump)
-		// supersedes the write even when it re-picks the call-time position
-		// — position equality cannot distinguish the newer decision. A
-		// foreign state differing from both targets is likewise stale.
-		const stale = () => {
-			if (this.edytor.gestureSerial !== gestureSerialAtCall) return true;
-			const s = this.#written;
-			return (
-				s !== stateAtCall &&
-				!this.stateMatchesSelectionTarget(s, writeTarget) &&
-				!this.stateMatchesSelectionTarget(s, callTarget)
-			);
-		};
-		// U8a — both endpoint lookups each await at least one tick();
-		// running them concurrently halves the serialized restore latency
-		// (same flush semantics — each still ticks before reading .node).
-		for (let attempt = 0; attempt < 10; attempt++) {
-			let startNode: HTMLElement;
-			let endNode: HTMLElement;
-			try {
-				[startNode, endNode] = await Promise.all([
-					this.edytor.getTextNode(startText),
-					this.edytor.getTextNode(endText)
-				]);
-			} catch {
-				// Unresolvable endpoint (dead/malformed text) — fall back to
-				// the model-side write like `setAtTextOffset`'s catch rather
-				// than letting the rejection escape unhandled. The stale
-				// gate applies HERE too: a lookup that only resolves after
-				// a newer gesture must not commit the old range.
-				if (stale()) {
-					return;
-				}
-				this.#admit(intended, startText);
-				if (writeIsCollapsed) {
-					this.recordPostDeleteCaretTarget(previousCaret);
-				}
-				return;
-			}
-			const [startTextNode, startNodeOffset] = this.findTextNode(startNode, startOffset);
-			const [endTextNode, endNodeOffset] = this.findTextNode(endNode, endOffset);
-			// `state` is replaced on EVERY derive, so identity change alone
-			// can't tell "foreign caret move" from an equivalent re-derive of
-			// the call-time position (a selectionchange echo of the op's own
-			// DOM mutation carries the pre-write position — no new intent).
-			// Abort only when the live state differs from BOTH the write
-			// target AND the call-time fields: a genuinely different
-			// position. An echo of `stateAtCall` proceeds and this write
-			// still corrects the DOM. A newer user GESTURE supersedes the
-			// write even when it re-picks the call-time position — position
-			// equality cannot distinguish the newer decision.
-			if (stale()) {
-				return;
-			}
-
-			// A remount can leave `text.node` detached for a few ticks — writing
-			// into a dead subtree would land nothing in the live DOM while the
-			// fabricated snapshot claims success; a later selectionchange then
-			// re-derives the stale native position and reverts the caret. Retry
-			// through the transient window (the staleness guard above still
-			// aborts on genuinely newer writes).
-			// The awaits above span a window where an outside click can
-			// claim focus — writing the DOM range now would drag it back.
-			if (this.foreignFocusOwnsSelection()) {
-				this.#admit(intended, startText);
-				if (writeIsCollapsed) {
-					this.recordPostDeleteCaretTarget(previousCaret);
-				}
-				return;
-			}
-			if (startNode.isConnected && endNode.isConnected && startTextNode && endTextNode) {
-				const selection = getDomSelection(startNode);
-				const shouldRestoreBackwardRange = normalizedRange.isReversed;
-				// U8a — the live DOM selection already covers this exact range
-				// (direction included): skip the redundant
-				// removeAllRanges/(addRange|setBaseAndExtent) write — each one
-				// forces synchronous layout — but still run the state derive so
-				// the model mirrors the live selection.
-				if (
-					domSelectionCoversRange(
-						selection,
-						startTextNode,
-						startNodeOffset,
-						endTextNode,
-						endNodeOffset,
-						shouldRestoreBackwardRange
-					)
-				) {
-					this.edytor.expectInternalFocus();
-					startTextNode.parentElement?.focus();
-					this.applySelectionSnapshot(getDomSelectionSnapshot(startNode));
-				} else {
-					const range = createDomRange(startTextNode);
-					range.setStart(startTextNode, startNodeOffset);
-					range.setEnd(endTextNode, endNodeOffset);
-					selection?.removeAllRanges();
-					let restoredBackwardRange = false;
-					if (selection && shouldRestoreBackwardRange) {
-						restoredBackwardRange = restoreBackwardDomRange(
-							selection,
-							range,
-							endTextNode,
-							endNodeOffset,
-							startTextNode,
-							startNodeOffset
-						);
-					} else {
-						selection?.addRange(range);
-					}
-					this.scrollCaretIntoView();
-					this.edytor.expectInternalFocus();
-					startTextNode.parentElement?.focus();
-					this.applySelectionSnapshot(
-						(restoredBackwardRange ? getDomSelectionSnapshot(startNode) : null) ??
-							createDomSelectionSnapshotFromRange(range, selection ?? null)
-					);
-				}
-				if (
-					this.state.startText !== startText ||
-					this.state.endText !== endText ||
-					this.state.yStart !== startOffset ||
-					this.state.yEnd !== endOffset
-				) {
-					this.setRangeStateAtTextOffsets(startText, startOffset, endText, endOffset, {
-						isReversed: shouldRestoreBackwardRange
-					});
-				}
-				if (startText === endText && startOffset === endOffset) {
-					this.recordPostDeleteCaretTarget(previousCaret);
-				}
-				return;
-			}
-			await tick();
+		if (range.startText === range.endText && range.startOffset === range.endOffset) {
+			this.recordPostDeleteCaretTarget(previous);
 		}
 	};
 
-	setAtBlockRange = async (
-		block?: Block | null,
-		startOffset?: number,
-		endOffset?: number,
-		options: { syncModelState?: boolean } = {}
-	) => {
-		if (!block) {
-			return;
-		}
-		if (!startOffset) {
-			startOffset = 0;
-		}
-		if (!endOffset) {
-			endOffset = edgeText(block, 'last').length;
-		}
-		const syncModelState =
-			options.syncModelState !== false &&
-			startOffset === 0 &&
-			endOffset === edgeText(block, 'last').length;
-		// Same staleness contract as `setAtRange`, captured BEFORE the
-		// sync-model write below so a mid-await derive to a position that
-		// matches neither the write target nor the call-time state aborts
-		// this stale write instead of stomping the newer selection (P2-6).
-		const stateAtCall = this.#written;
-		const gestureSerialAtCall = this.edytor.gestureSerial;
-		const callTarget = {
-			startText: stateAtCall.startText,
-			endText: stateAtCall.endText,
-			yStart: stateAtCall.yStart,
-			yEnd: stateAtCall.yEnd,
-			isCollapsed: stateAtCall.isCollapsed,
-			isReversed: stateAtCall.isReversed
-		};
-		const targetBlock = block;
-		const resolvedStartOffset = startOffset;
-		const resolvedEndOffset = endOffset;
-		const syncStateToBlockRange = () => {
-			if (syncModelState) {
-				this.setStateFromBlockContentRange(targetBlock);
-			} else {
-				this.setRangeStateAtTextOffsets(
-					edgeText(targetBlock, 'first'),
-					resolvedStartOffset,
-					edgeText(targetBlock, 'last'),
-					resolvedEndOffset
-				);
-			}
-		};
-		if (syncModelState) {
-			this.setStateFromBlockContentRange(block);
-		}
-		const blockRangeRequest = Symbol();
-		this.pendingBlockRangeRequest = blockRangeRequest;
-		// Same admission gate as `setAtRange`/`setAtTextOffset` — every
-		// write this call can still perform (DOM range AND model-side
-		// fallbacks) checks gesture serial + foreign-state drift.
-		const blockStale = () => {
-			if (this.edytor.gestureSerial !== gestureSerialAtCall) return true;
-			const s = this.#written;
-			const startText = edgeText(block, 'first');
-			const endText = edgeText(block, 'last');
-			return (
-				s !== stateAtCall &&
-				!this.stateMatchesSelectionTarget(s, {
-					startText,
-					endText,
-					yStart: resolvedStartOffset,
-					yEnd: resolvedEndOffset,
-					isCollapsed: startText === endText && resolvedStartOffset === resolvedEndOffset,
-					isReversed: false
-				}) &&
-				!this.stateMatchesSelectionTarget(s, callTarget)
-			);
-		};
-
-		// U8a — overlap the two tick()-gated endpoint lookups (same flush
-		// semantics, half the serialized latency). Remounts can leave the
-		// resolved node detached for a few ticks — retry through that
-		// transient window instead of writing into a dead subtree.
-		for (let attempt = 0; attempt < 10; attempt++) {
-			let startNode: HTMLElement;
-			let endNode: HTMLElement;
-			try {
-				[startNode, endNode] = await Promise.all([
-					this.edytor.getTextNode(edgeText(block, 'first')),
-					this.edytor.getTextNode(edgeText(block, 'last'))
-				]);
-			} catch {
-				// Unresolvable endpoint — mirror the model write like every
-				// other `setAt*` writer instead of rejecting unhandled. A
-				// superseded request writes nothing at all.
-				if (this.pendingBlockRangeRequest === blockRangeRequest && !blockStale()) {
-					syncStateToBlockRange();
-					this.pendingBlockRangeRequest = null;
-				}
-				return;
-			}
-			const startText = edgeText(block, 'first');
-			const endText = edgeText(block, 'last');
-			const [startTextNode, startNodeOffset] = this.findTextNode(startNode, startOffset);
-			const [endTextNode, endNodeOffset] = this.findTextNode(endNode, endOffset);
-
-			if (!(startTextNode && endTextNode && startNode.isConnected && endNode.isConnected)) {
-				if (this.pendingBlockRangeRequest !== blockRangeRequest) {
-					return;
-				}
-				await tick();
-				continue;
-			}
-
-			if (this.pendingBlockRangeRequest !== blockRangeRequest || this.selectedBlocks.size > 0) {
-				return;
-			}
-			if (blockStale()) {
-				return;
-			}
-			// Deferred write — if an outside gesture claimed the selection
-			// since the call, the interaction is over: `addRange`/`focus()`
-			// here would steal focus back from the user's new target. Land
-			// the model write only, same as the unresolvable-endpoint path.
-			if (this.foreignFocusOwnsSelection()) {
-				syncStateToBlockRange();
-				this.pendingBlockRangeRequest = null;
-				return;
-			}
-			const selection = getDomSelection(startNode);
-			// U8a — the live DOM selection already covers this exact range:
-			// skip the redundant removeAllRanges/addRange write.
-			if (
-				domSelectionCoversRange(
-					selection,
-					startTextNode,
-					startNodeOffset,
-					endTextNode,
-					endNodeOffset,
-					false
-				)
-			) {
-				this.edytor.expectInternalFocus();
-				startTextNode.parentElement?.focus();
-				this.applySelectionSnapshot(getDomSelectionSnapshot(startTextNode));
-				this.pendingBlockRangeRequest = null;
-				return;
-			}
-			const range = createDomRange(startTextNode);
-			range.setStart(startTextNode, startNodeOffset);
-			range.setEnd(endTextNode, endNodeOffset);
-			selection?.removeAllRanges();
-			selection?.addRange(range);
-			this.scrollCaretIntoView();
-			// this.edytor.node!.focus();
-			this.edytor.expectInternalFocus();
-			startTextNode.parentElement?.focus();
-			this.applySelectionSnapshot(createDomSelectionSnapshotFromRange(range, selection ?? null));
-			this.pendingBlockRangeRequest = null;
-			return;
-		}
+	/** Select `block`'s content (the whole of it by default); displayed after the flush. */
+	setAtBlockRange = async (block?: Block | null, startOffset = 0, endOffset?: number) => {
+		if (!block) return;
+		const last = edgeText(block, 'last');
+		const end = endOffset || last.length;
+		if (!startOffset && end === last.length) this.setStateFromBlockContentRange(block);
+		else this.setRangeStateAtTextOffsets(edgeText(block, 'first'), startOffset, last, end);
 	};
 
-	setAtNodeOffset = (node: Node, offset: number) => {
-		const selection = getDomSelection(node);
-		// U8a — the caret is already exactly where this call would put it
-		// (the common case: a second setAtTextOffset for the same offset
-		// after reconcile, or a no-op restore). `addRange` forces a
-		// synchronous layout pass even when it changes nothing — skip the
-		// write, keep the state derive so callers still observe a fresh
-		// snapshot.
-		const previousState = this.caretSignature();
-		if (domSelectionIsCollapsedAt(selection, node, offset)) {
-			this.applySelectionSnapshot(getDomSelectionSnapshot(node));
-			this.recordPostDeleteCaretTarget(previousState);
-			return;
-		}
-		const range = createDomRange(node);
-		range.setStart(node, offset);
-		range.collapse(true);
-		selection?.removeAllRanges();
-		selection?.addRange(range);
-		this.scrollCaretIntoView();
-		this.applySelectionSnapshot(createDomSelectionSnapshotFromRange(range, selection ?? null));
-		this.recordPostDeleteCaretTarget(previousState);
+	/**
+	 * Anchors from a DOM selection, without selecting them: the projector mints
+	 * an unobserved native move before a transaction it did not issue (BI-3).
+	 */
+	mint = (snapshot: DomSelectionSnapshot): SelectionValue | null => {
+		const container = this.edytor.node;
+		const { anchorNode, focusNode } = snapshot;
+		if (!container || !anchorNode || !focusNode) return null;
+		for (const node of [anchorNode, focusNode])
+			if (!container.contains(node) || isNestedForeignEditableTarget(container, node)) return null;
+		const reversed = isBackward(snapshot);
+		const [startNode, start, endNode, end] = reversed
+			? [focusNode, snapshot.focusOffset, anchorNode, snapshot.anchorOffset]
+			: [anchorNode, snapshot.anchorOffset, focusNode, snapshot.focusOffset];
+		const { startText, endText } = this.getTextsInSelection(startNode, endNode, start, end);
+		if (!startText || !endText) return null;
+		const at = (text: Text, node: Node, offset: number) =>
+			Math.min(Math.max(getYIndex(text, node, offset), 0), text.length);
+		return this.textValue(
+			startText,
+			at(startText, startNode, start),
+			endText,
+			at(endText, endNode, end),
+			reversed
+		);
 	};
 }

@@ -234,14 +234,22 @@ map" sections):
   atom-following. Never let a caret migrate into a surviving neighbor
   block because that neighbor received text at the shared gap.
 - Logical recovery destination and DOM readiness are separate: a live
-  destination with no mounted node arms `deadEndpointRecoveryPending`
-  and is completed by `Text.attach` — do not "fix" this by treating
-  unmounted text as unrecoverable or by weakening `firstEditableText`'s
-  mounted-node requirement (container phantom slots must stay skipped).
-- Every deferred selection write checks the gesture serial before
-  writing — all argument forms and all exits, including lookup-rejection
-  and final fallbacks. A newer gesture supersedes an older write even
-  when it picks the same numeric offset.
+  destination with no mounted node stays the selection value and is
+  displayed by the projector's pass after the flush that mounts it (a
+  value that no longer projects runs the seam repair; a text mount or the
+  observer's records re-run a waiting pass). Do not "fix" this by
+  treating unmounted text as unrecoverable or by weakening
+  `firstEditableText`'s mounted-node requirement (container phantom slots
+  must stay skipped).
+- `src/lib/surface/projector.svelte.ts` is the only DOM-selection writer:
+  after every Svelte flush it writes the CURRENT value, so no older
+  request can overwrite a newer gesture. There is no deferred selection
+  write — commands and input attempts decide the value and `select()` it
+  in their own turn (`edytor.attempts.caret` only records the drift-repair
+  caret); do not bring back tick/timeout re-assert loops. While a
+  requested display has not landed, a `selectionchange` with no intent
+  gesture since the request (`Edytor.intentSerial`, the one gesture
+  serial; `input` events do not bump it) is not adopted.
 
 ## Plugin System
 

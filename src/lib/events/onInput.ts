@@ -241,18 +241,8 @@ const repairDrift = async (
 	target.text.refreshFromModel();
 	removeUnmanagedLineBreaks(target.text);
 	await tick();
-	const offset = Math.min(target.offset, target.text.length);
-	await edytor.selection.setAtTextOffset(target.text, offset);
-	if (repair) {
-		edytor.selection.ignoreNextSelectionChange = true;
-		setTimeout(() => {
-			if (!isLiveText(target.text)) {
-				return;
-			}
-			edytor.selection.ignoreNextSelectionChange = true;
-			void edytor.selection.setAtTextOffset(target.text, offset);
-		}, 30);
-	}
+	// The attempt decided the caret; `select()` it — the projector displays it (V4).
+	await edytor.selection.setAtTextOffset(target.text, Math.min(target.offset, target.text.length));
 };
 
 /**

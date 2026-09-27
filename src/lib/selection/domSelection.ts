@@ -62,27 +62,6 @@ export const createDomRange = (node: Node): Range => {
 };
 
 /**
- * U8a — true when the live selection is already collapsed at
- * `(node, offset)`. The keystroke path re-asserts the caret through
- * `setAtNodeOffset` on every commit; skipping the redundant
- * `removeAllRanges()`/`addRange()` pair avoids a forced synchronous
- * layout per write (the dominant selection-restore cost at scale).
- */
-export const domSelectionIsCollapsedAt = (
-	selection: Selection | null,
-	node: Node,
-	offset: number
-): boolean =>
-	selection !== null &&
-	// Multi-range selections (Firefox) can satisfy the endpoint match
-	// while carrying extra ranges — they are never "already there".
-	selection.rangeCount <= 1 &&
-	selection.anchorNode === node &&
-	selection.focusNode === node &&
-	selection.anchorOffset === offset &&
-	selection.focusOffset === offset;
-
-/**
  * U8a — true when the live selection already covers
  * `(startNode, startOffset) → (endNode, endOffset)` INCLUDING direction:
  * a backward selection carries anchor=end/focus=start, so an

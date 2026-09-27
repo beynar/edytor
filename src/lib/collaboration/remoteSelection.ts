@@ -1,10 +1,9 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
-import type { TextAnchor } from '$lib/selection/selection.svelte.js';
 import {
-	freshestPublishedSelection,
-	type EdytorAwarenessSelection,
-	type EdytorAwarenessUser
+	resolvePeerSelection,
+	type EdytorAwarenessUser,
+	type PresencePoint
 } from './awarenessSelection.js';
 
 export type RemoteSelectionRect = {
@@ -48,54 +47,7 @@ const getUser = (state: unknown): EdytorAwarenessUser => {
 	};
 };
 
-/** Per-view presence: one caret per remote client, its freshest text entry (D-16: no legacy field). */
-const getSelection = (state: unknown): EdytorAwarenessSelection | null =>
-	isRecord(state) && isRecord(state.selections)
-		? freshestPublishedSelection(state.selections)
-		: null;
-
-/**
- * Strict wire-shape guard for serialized selection anchors (U09): `{b}`
- * is the backing text's home block id and `a` is the engine anchor
- * `{i: {c,k}|null, a: number}` (a < 0 = left affinity). Foreign presence
- * payloads — e.g. v13 `RelativePosition` objects shaped
- * `{type, item, assoc}` — fail this check, so mismatched formats are
- * safely ignored rather than interpreted with wrong offsets.
- */
-const isEngineAnchor = (value: unknown): value is TextAnchor['a'] =>
-	isRecord(value) &&
-	typeof value.a === 'number' &&
-	(value.i === null ||
-		(isRecord(value.i) && typeof value.i.c === 'number' && typeof value.i.k === 'number'));
-
-const isTextAnchor = (value: unknown): value is TextAnchor =>
-	isRecord(value) &&
-	typeof value.b === 'string' &&
-	isEngineAnchor(value.a) &&
-	(value.o === undefined || typeof value.o === 'string');
-
-const resolveRelativePosition = (
-	edytor: Edytor,
-	value: unknown
-): { text: Text; offset: number } | null => {
-	try {
-		if (!isTextAnchor(value)) {
-			return null;
-		}
-		const resolved = edytor.selection.resolveTextAnchor(value);
-		if (!resolved) {
-			return null;
-		}
-		return {
-			text: resolved.text,
-			offset: Math.min(Math.max(resolved.offset, 0), resolved.text.length)
-		};
-	} catch {
-		return null;
-	}
-};
-
-const findDomPoint = ({ text, offset }: { text: Text; offset: number }): DomPoint | null => {
+const findDomPoint = ({ text, offset }: PresencePoint): DomPoint | null => {
 	const node = text.node;
 	if (!node) {
 		return null;
@@ -222,7 +174,8 @@ export const getRenderedRemoteSelections = (edytor: Edytor): RenderedRemoteSelec
 	// even with zero remote peers (the common solo-editing case).
 	type ResolvedCandidate = {
 		clientId: number;
-		selection: EdytorAwarenessSelection;
+		collapsed: boolean;
+		reversed: boolean;
 		startPoint: DomPoint;
 		endPoint: DomPoint;
 		user: EdytorAwarenessUser;
@@ -233,31 +186,14 @@ export const getRenderedRemoteSelections = (edytor: Edytor): RenderedRemoteSelec
 		if (clientId === edytor.doc.clientID) {
 			continue;
 		}
-
-		const selection = getSelection(state);
-		if (!selection) {
+		const selection = resolvePeerSelection(edytor, state);
+		const startPoint = selection && findDomPoint(selection.start);
+		const endPoint = selection && findDomPoint(selection.end);
+		if (!selection || !startPoint || !endPoint) {
 			continue;
 		}
-
-		const startPosition = resolveRelativePosition(edytor, selection.start);
-		const endPosition = resolveRelativePosition(edytor, selection.end);
-		if (!startPosition || !endPosition) {
-			continue;
-		}
-
-		const startPoint = findDomPoint(startPosition);
-		const endPoint = findDomPoint(endPosition);
-		if (!startPoint || !endPoint) {
-			continue;
-		}
-
-		candidates.push({
-			clientId,
-			selection,
-			startPoint,
-			endPoint,
-			user: getUser(state)
-		});
+		const { collapsed, reversed } = selection;
+		candidates.push({ clientId, collapsed, reversed, startPoint, endPoint, user: getUser(state) });
 	}
 
 	if (candidates.length === 0) {
@@ -265,14 +201,14 @@ export const getRenderedRemoteSelections = (edytor: Edytor): RenderedRemoteSelec
 	}
 
 	const editorRect = editor.getBoundingClientRect();
-	return candidates.map(({ clientId, selection, startPoint, endPoint, user }) => {
-		const cursorPoint = selection.reversed ? startPoint : endPoint;
+	return candidates.map(({ clientId, collapsed, reversed, startPoint, endPoint, user }) => {
+		const cursorPoint = reversed ? startPoint : endPoint;
 		return {
 			clientId,
 			color: normalizeColor(user.color),
 			label: user.name ?? null,
 			cursor: getCaretRect(cursorPoint, editorRect, editor),
-			rects: selection.collapsed ? [] : getSelectionRects(startPoint, endPoint, editorRect, editor)
+			rects: collapsed ? [] : getSelectionRects(startPoint, endPoint, editorRect, editor)
 		};
 	});
 };

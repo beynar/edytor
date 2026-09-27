@@ -420,7 +420,11 @@ export const getYIndex = (text: Text | null, node: Node | null, _start: number) 
 		return text.length;
 	}
 
-	const boundaryOffset = getTextOffsetAtElementBoundary(text, node, _start);
+	// A point inside the text element reads the text before it (F-S5); the
+	// element-boundary rule is for points outside it.
+	const boundaryOffset = parent.contains(node)
+		? null
+		: getTextOffsetAtElementBoundary(text, node, _start);
 	if (boundaryOffset !== null) {
 		return boundaryOffset;
 	}

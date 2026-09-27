@@ -281,9 +281,10 @@ independently by `contractWord{Start,End}Offset` in `deleteOracle.ts`.
 ## Selection recovery on the passive peer (remote-origin changes)
 
 Anchors are relative positions; carets bind left affinity, range ends bind
-per their own anchor. Recovery runs through
-`Text._setItems → selection.restoreRelativePosition` and
-`restoreDeadSelectionEndpoints` after mirror flush.
+per their own anchor. The value's anchors ride the remote change; the
+projector's pass after the flush displays the current value, running
+`restoreDeadSelectionEndpoints` (the seam repair) when it no longer
+projects (arch-v2 V4).
 
 ### `sel.ride.insert` — caret rides remote inserts
 
@@ -426,19 +427,28 @@ migration).
 
 ## Selection ownership and lifecycle
 
-- A newer user gesture supersedes older deferred writes — including when
-  it chooses the same numeric offset. All argument forms (`Text` object,
-  string id, range) and all exits (success, lookup rejection, detached
-  retry, foreign-focus fallback, final fallback) check the gesture
-  serial before writing.
-- Programmatic focus caused by the current write is not a new gesture.
+- **The projector is the only DOM-selection writer** (`surface/projector.svelte.ts`,
+  arch-v2 V4). There is no deferred selection write: every writer —
+  commands, input attempts, history, host code — `select()`s its value in
+  its own turn, and the projector writes the **current** value after the
+  Svelte flush, so an older request can never overwrite a newer gesture
+  (including one that picks the same numeric offset).
+- While a requested display has not landed, a `selectionchange` with no
+  intent gesture since the request is not adopted. The one gesture serial
+  is `Edytor.intentSerial` (pointer, focus, key, `beforeinput`, cut,
+  paste, drop — not `input`, which records what the browser did). A
+  native move no handler observed is minted before the next foreign
+  transaction (BI-3) and admitted through `select(…, 'dom')` after it
+  commits.
+- Programmatic focus caused by the projector's display is not a new gesture.
   History-restore and composition ownership remain separate lifetimes.
 - **Model destination and DOM readiness are separate facts.** A valid
   destination whose text wrapper has no DOM node yet is _not_ "no
-  recovery": `restoreDeadSelectionEndpoints` arms
-  `deadEndpointRecoveryPending`, and the first `Text.attach` replays the
-  recovery (phantom slots never attach, so the hook cannot target hidden
-  text). Admission revalidates on every attempt.
+  recovery": it stays the selection value, and the projector's pass after
+  the flush that mounts it displays it (a value that no longer projects
+  runs the seam repair; a text mount or the observer's records re-run a
+  pass while a display waits). The seam's displayable filter still skips
+  phantom slots.
 - Hidden container text and temporarily-unmounted editable text differ:
   a phantom is a container's own content part that never renders; an
   editable text may lack a node only inside a settle window. At a
@@ -463,27 +473,19 @@ spot. Two layered defenses:
   `domSelectionChurnSeq` (`Text.attach`/destroy, `Text._setItems`,
   `_kill`, the per-span mutation observer); `markUserGesture` snapshots it
   into `churnBaselineAtGesture`, so churn stays outstanding for the whole
-  inter-gesture window. An echo at an unchanged `gestureSerial` whose
+  inter-gesture window. An echo at an unchanged `intentSerial` whose
   derived position differs from the resolved anchors is drift — the DOM
   is reverted to the resolved anchors instead of deriving. A matching
   echo, an echo after a serial bump (real gesture), and an echo with no
   outstanding churn (settled foreign write) all derive normally.
-- **Proactive reconcile** (`captureSelectionForRemoteApply` →
-  `reconcileSelectionAfterRemoteApply` at the post-flush `tick()`):
-  captures the anchored state at every commit and, after Svelte's DOM
-  write lands but before the echo's task, re-asserts DOM ← resolved
-  anchors when they disagree. Skipped while `isHandlingUserInput` — inside
-  a user-input window the DOM caret is the user's own write (autocorrect,
-  IME commit, drop) and a commit can legitimately slide the captured
-  anchors (deleting the bound atom drops the anchor to the deletion seam),
-  so model→DOM re-assertion would revert the user's caret; the input
-  path's explicit write owns the final position.
-
-Deferred-write discipline: `scheduleCaretWriteVerification` repairs only
-when state was dragged back to the exact pre-write position inside its
-window; it is superseded by a newer write (`caretWriteEpoch`) and disarmed
-by an intervening document commit (`_docCommitVersion` — a remote frame's
-legitimate move is not "the browser reverted my write").
+- **Projection after the flush** (`surface/projector.svelte.ts`): a commit
+  this view did not issue bumps the render epoch; the pass after the flush
+  compares the live DOM selection with the value in model coordinates and
+  writes only a difference (focus inside, or orphaned by our own render;
+  never a foreign focus or a selection outside the editor). It also
+  requires a flush since the last observation before the echo gate calls
+  a move drift (F-S4). The retired proactive reconcile and post-write
+  verification timers have no replacement: the pass is the only re-assert.
 
 Harness contract: DOM-first selection placement IS a user decision —
 fixture/harness paths that write the DOM selection directly
@@ -517,22 +519,22 @@ or the echo gate reads their synthetic `selectionchange` as drift.
 
 ## Responsibility map
 
-| Concern                                 | Owner                                                                                            |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Anchor mint/resolve, owner facet        | `facade.anchorAt` / `facade.resolveAnchor` (`src/lib/crdt/edytor-doc.ts`)                        |
-| Engine relative positions               | vendored Yjs v14 (`atomAnchorAt`/`resolveAnchor` in `src/lib/crdt/text/model.ts`)                |
-| Logical recovery destination            | `selection.restoreDeadSelectionEndpoints` + seam walk (`src/lib/selection/selection.svelte.ts`)  |
-| Editable-destination traversal          | `Block.firstEditableText`/`lastEditableText` (`src/lib/block/block.svelte.ts`)                   |
-| DOM mount readiness → deferred recovery | `Text.attach` → `selection.notifyTextMounted` (`src/lib/text/text.svelte.ts`)                    |
-| Final write admission (gesture serial)  | `setAtTextOffset`/`setAtRange`/`setAtBlockRange` guards                                          |
-| Drift-echo gate                         | `restoreDriftedEchoCaret` + `domSelectionChurnSeq`/`churnBaselineAtGesture`                      |
-| Post-commit DOM re-assert               | `captureSelectionForRemoteApply`/`reconcileSelectionAfterRemoteApply` (skipped under user input) |
-| Post-write verify supersession          | `caretWriteEpoch` + `_docCommitVersion` in `scheduleCaretWriteVerification`                      |
-| Remote anchor validation                | `isTextAnchor`/`resolveRelativePosition` (`src/lib/collaboration/remoteSelection.ts`)            |
-| Wire/equality                           | `awarenessSelection.ts` (`anchorsEqual`, JSON round-trip)                                        |
-| History selections                      | per-view `{before, after}` values in stack-item `meta` (`src/lib/session/history.ts`)            |
-| Independent oracle                      | `dense-ownership-oracle.ts`, `selectionOracle.ts`, dump inventories in `collab-runner.ts`        |
-| Settlement checkpoint                   | `command-peer-set.ts` `quiesce()`                                                                |
+| Concern                           | Owner                                                                                                                                                  |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Anchor mint/resolve, owner facet  | `facade.anchorAt` / `facade.resolveAnchor` (`src/lib/crdt/edytor-doc.ts`)                                                                              |
+| Engine relative positions         | vendored Yjs v14 (`atomAnchorAt`/`resolveAnchor` in `src/lib/crdt/text/model.ts`)                                                                      |
+| Logical recovery destination      | `selection.restoreDeadSelectionEndpoints` + seam walk (`src/lib/selection/selection.svelte.ts`)                                                        |
+| Editable-destination traversal    | `Block.firstEditableText`/`lastEditableText` (`src/lib/block/block.svelte.ts`)                                                                         |
+| DOM mount readiness → display     | projector pass after the flush that mounts the text; a text mount or the records signal re-runs a waiting pass (`src/lib/surface/projector.svelte.ts`) |
+| DOM-selection write (only writer) | `projector.post()` after every Svelte flush, current value; writers `select()` in their own turn                                                       |
+| Gesture serial (one)              | `Edytor.intentSerial` via `markUserGesture` (not bumped by `input`)                                                                                    |
+| Drift-echo gate                   | `restoreDriftedEchoCaret` + `domSelectionChurnSeq`/`churnBaselineAtGesture`                                                                            |
+| Unobserved native move            | projector BI-3: mint in `beforeTransaction` of a foreign transaction → `select(…, 'dom')` after commit                                                 |
+| Remote anchor validation          | `isTextAnchor`/`resolvePeerSelection` (`src/lib/collaboration/awarenessSelection.ts`)                                                                  |
+| Presence wire/equality            | `publishPresence` under the view's own `presenceKey` (`jsonValuesEqual` dedupe, `awarenessSelection.ts`)                                               |
+| History selections                | per-view `{before, after}` values in stack-item `meta` (`src/lib/session/history.ts`)                                                                  |
+| Independent oracle                | `dense-ownership-oracle.ts`, `selectionOracle.ts`, dump inventories in `collab-runner.ts`                                                              |
+| Settlement checkpoint             | `command-peer-set.ts` `quiesce()`                                                                                                                      |
 
 ## History
 

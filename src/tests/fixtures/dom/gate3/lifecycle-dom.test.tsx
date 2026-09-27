@@ -6,15 +6,20 @@
  *     every `{#key editorDomRevision}` remount pushes a fresh cleanup batch
  *     onto the same array — pinned: the array always holds exactly one live
  *     batch, so dead closures and detached editor DOM trees never accrete.
- *  2. Unmount clears the published awareness selection (selection.destroy
- *     → clearAwarenessSelection) — the remote-caret cleanup contract.
+ *  2. Unmount clears the published awareness selection (Edytor.destroy
+ *     clears the view's own presence key) — the remote-caret cleanup contract.
  *  3. Observer boundary: unmanaged DOM nodes injected inside a managed
  *     text element get reconciled; managed-node removal is repaired.
  */
 // @ts-nocheck -- probes touch private fields intentionally.
 import { describe, expect, test } from 'vitest';
 import { tick } from 'svelte';
-import { renderDomEdytor, flushDomUpdates, setNativeSelection } from '../../../dom/test.utils.js';
+import {
+	renderDomEdytor,
+	flushDomUpdates,
+	setNativeSelection,
+	textNodeOf
+} from '../../../dom/test.utils.js';
 import { Awareness } from '$lib/crdt/index.js';
 
 describe('gate3 dom: this.off accumulation across keyed remounts', () => {
@@ -79,7 +84,7 @@ describe('gate3 dom: mutation observer boundary', () => {
 			</root>
 		);
 		const text = edytor.root!.children[0]!.firstText;
-		const node = await edytor.getTextNode(text);
+		const node = await textNodeOf(text);
 
 		const rogue = document.createElement('span');
 		rogue.textContent = 'ROGUE';
@@ -104,7 +109,7 @@ describe('gate3 dom: mutation observer boundary', () => {
 			</root>
 		);
 		const text = edytor.root!.children[0]!.firstText;
-		const node = await edytor.getTextNode(text);
+		const node = await textNodeOf(text);
 		const mark = node.querySelector('[data-edytor-mark]');
 		expect(mark).not.toBeNull();
 

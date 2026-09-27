@@ -305,8 +305,8 @@ export class Dispatcher {
 	};
 
 	/**
-	 * A command's result caret (R9): selected once, recorded on the result,
-	 * then displayed (through today's selection API until V4). With `ops`, the
+	 * A command's result caret (R9): selected once and recorded on the result;
+	 * the projector displays it after the flush (R10). With `ops`, the
 	 * caret is declared before the command's operations run — minted while its
 	 * text is live, so it survives them — and written only when they applied;
 	 * meanwhile the seam repair leaves this view's endpoints to it.
@@ -332,7 +332,6 @@ export class Dispatcher {
 		// Declared before its operations: gone with them after all, the seam.
 		if (!selection.projection.start) selection.restoreDeadSelectionEndpoints();
 		if (this.last) this.last = { ...this.last, selection: selection.value };
-		void selection.setAtTextOffset(text, at);
 		return out;
 	};
 

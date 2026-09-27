@@ -63,7 +63,7 @@ export class History {
 			const entry = map.get(key) ?? { before: this.#start ?? value() };
 			entry.after = value();
 			map.set(key, entry);
-			this.#open = { entry, gesture: this.edytor.gestureSerial };
+			this.#open = { entry, gesture: this.edytor.intentSerial };
 		};
 		doc.on('beforeTransaction', begin);
 		um.on('stack-item-added', record);
@@ -84,7 +84,7 @@ export class History {
 	selected = (value: SelectionValue) => {
 		const open = this.#open;
 		if (!open) return;
-		if (open.gesture === this.edytor.gestureSerial) open.entry.after = value;
+		if (open.gesture === this.edytor.intentSerial) open.entry.after = value;
 		else this.#open = null;
 	};
 
@@ -115,6 +115,5 @@ export class History {
 				: value,
 			'history'
 		);
-		selection.display();
 	}
 }

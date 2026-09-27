@@ -1518,11 +1518,9 @@ const expectedSyntheticSequence = (
 		case 'copy':
 			return [{ type: 'copy' }];
 		case 'drop':
-			// Accepted foreign drops are consumed by onDrop's
-			// dispatchInsertFromDrop — a synthetic `beforeinput` (a plain
-			// Event carrying inputType via defineProperty, so the recorder
-			// sees no inputType) is part of the expected delivery.
-			return [{ type: 'dragover' }, { type: 'drop' }, { type: 'beforeinput' }];
+			// An accepted foreign drop runs its own occurrence (arch-v2 I1):
+			// no fabricated `beforeinput` follows the drop.
+			return [{ type: 'dragover' }, { type: 'drop' }];
 		case 'foreignMutation':
 			// Scripted DOM writes dispatch no events — the input-event guard
 			// in assertTrustedAction is the real check for this action.

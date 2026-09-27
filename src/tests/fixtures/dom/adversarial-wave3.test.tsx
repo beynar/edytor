@@ -35,8 +35,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const gestureSerial = (edytor: Edytor) =>
-	(edytor as unknown as { userGestureSerial: number }).userGestureSerial;
+const gestureSerial = (edytor: Edytor) => edytor.intentSerial;
 const blockTypes = (doc: { children?: JSONBlock[] }) =>
 	(doc.children ?? []).map((block) => block.type);
 

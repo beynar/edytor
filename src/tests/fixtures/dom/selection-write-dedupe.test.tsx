@@ -211,9 +211,8 @@ describe('U8a — native selection write dedupe', () => {
 });
 
 describe('U8a — domSelection helpers', () => {
-	test('domSelectionIsCollapsedAt / domSelectionCoversRange match only exact selections', async () => {
-		const { domSelectionIsCollapsedAt, domSelectionCoversRange } =
-			await import('$lib/selection/domSelection.js');
+	test('domSelectionCoversRange matches only exact selections', async () => {
+		const { domSelectionCoversRange } = await import('$lib/selection/domSelection.js');
 		const rendered = await renderDomEdytor(
 			<root>
 				<paragraph>hello world</paragraph>
@@ -225,8 +224,6 @@ describe('U8a — domSelection helpers', () => {
 		await setNativeSelection(edytor, text, 4);
 		const selection = getDomSelection(edytor.node)!;
 		const leaf = edytor.selection.state.startNode!;
-		expect(domSelectionIsCollapsedAt(selection, leaf, 4)).toBe(true);
-		expect(domSelectionIsCollapsedAt(selection, leaf, 5)).toBe(false);
 		expect(domSelectionCoversRange(selection, leaf, 4, leaf, 4, false)).toBe(true);
 		expect(domSelectionCoversRange(selection, leaf, 3, leaf, 4, false)).toBe(false);
 		// A COLLAPSED selection has no direction — a reversed target at the

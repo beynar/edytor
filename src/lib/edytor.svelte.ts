@@ -15,6 +15,7 @@ import { Composition } from './session/composition.svelte.js';
 import { type JSONBlock, type JSONDoc } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
+import { Projector } from './surface/projector.svelte.js';
 import { Block } from './block/block.svelte.js';
 import { Text } from './text/text.svelte.js';
 import { SvelteMap } from 'svelte/reactivity';
@@ -35,6 +36,7 @@ import {
 	type YUndoManager
 } from '$lib/crdt/index.js';
 import { whenDocumentReady } from '$lib/collaboration/documentSync.js';
+import { mintPresenceKey, publishPresence } from '$lib/collaboration/awarenessSelection.js';
 import { batch } from './block/block.utils.js';
 import {
 	canMoveBlocks as canMoveBlocksRelative,
@@ -174,6 +176,8 @@ export class Edytor {
 	}
 	edytor = this;
 	selection: EdytorSelection;
+	/** The only writer of the DOM selection (R10, `surface/projector`). */
+	readonly projector: Projector = new Projector(this);
 	private off: (() => void)[] = [];
 	private onChange?: (value: JSONBlock) => void;
 	placeholder?: string | Snippet<[{ block: Block }]>;
@@ -217,14 +221,6 @@ export class Edytor {
 	observer: ReturnType<typeof observeDomTextMutations> | null = null;
 	private compositionSelectionRestoreFrame: number | null = null;
 	private compositionSelectionRestoreTimers: ReturnType<typeof setTimeout>[] = [];
-	/**
-	 * Bumped by every real user-input gesture (beforeinput/keydown/paste/
-	 * pointer/focus). Deferred composition-caret restores compare serials
-	 * to tell the browser's spontaneous post-commit selection jump (which
-	 * they exist to repair) apart from a genuine user gesture that must
-	 * not be overwritten.
-	 */
-	private userGestureSerial = 0;
 
 	// CRDT (v14) — the document is the composition owner: it holds the ONE
 	// engine doc, the shared facade (only structural read/write surface),
@@ -646,19 +642,9 @@ export class Edytor {
 			this._docCommitVersion++;
 			this.valueRevision++;
 			this._mirrorChange = change;
-			// ANY commit's render can churn the DOM under a live caret — the
-			// browser re-parks it and the trailing selectionchange echo
-			// re-mints anchors from the drifted spot (Gecko clamps to the
-			// shortened node; Blink keeps the offset). Capture the anchored
-			// selection now so the post-flush tick can re-assert DOM ← model
-			// before the echo lands. Skip while a user-input flow is in
-			// flight: there the DOM caret is the user's own write (autocorrect,
-			// IME, drop) and the input path owns the final position — a
-			// commit under it can legitimately slide the anchors, so a
-			// model→DOM re-assert would fight the user's caret.
-			const remoteSelectionCapture = this.isHandlingUserInput
-				? null
-				: (this.selection?.captureSelectionForRemoteApply() ?? null);
+			// A commit this view did not issue re-renders under the caret: the
+			// projector displays the current value after that flush (R10).
+			if (change.origin !== this.transaction) this.projector.render++;
 			// Remote/programmatic mirror writes run under the scroll
 			// suppressor — a remote commit landing inside an in-flight
 			// `isHandlingUserInput` window must not scroll the page.
@@ -680,12 +666,7 @@ export class Edytor {
 					plugin.onChange?.(value);
 				});
 			}
-			void tick().then(() => {
-				this.queuePlaceholderRepair(change, mirrorWasIncremental);
-				if (remoteSelectionCapture) {
-					this.selection?.reconcileSelectionAfterRemoteApply(remoteSelectionCapture);
-				}
-			});
+			void tick().then(() => this.queuePlaceholderRepair(change, mirrorWasIncremental));
 		});
 		const release = () => {
 			if (this._facadeChangeOff !== release) return;
@@ -1049,7 +1030,7 @@ export class Edytor {
 	 * phantom composition key is not a gesture.
 	 */
 	markUserGesture = () => {
-		this.userGestureSerial++;
+		this.intentSerial++;
 		// Baseline churn at gesture-start so churn caused by the gesture's
 		// own effects stays outstanding for later quiet-serial echoes.
 		this.churnBaselineAtGesture = this.domSelectionChurnSeq;
@@ -1075,14 +1056,12 @@ export class Edytor {
 		});
 	};
 	/**
-	 * Current gesture serial — compared by deferred caret restores
-	 * against the serial armed at schedule time. A mismatch means a real
-	 * user gesture (pointer, key, focus change) intervened and the
-	 * pending restore must be disarmed.
+	 * The one gesture serial (Surface bookkeeping, L8): pointer, focus, key,
+	 * `beforeinput`, cut, paste and drop bump it; an `input` does not (it
+	 * records what the browser did, not where the user wants the selection).
+	 * Attempts are per occurrence (`attempts`), not counted here.
 	 */
-	get gestureSerial() {
-		return this.userGestureSerial;
-	}
+	intentSerial = 0;
 	/**
 	 * The last pointerdown landed outside the editor (or focus moved to a
 	 * relatedTarget outside it) — subsequent focus/selection state is
@@ -1110,7 +1089,7 @@ export class Edytor {
 	 */
 	stabilizeCompositionSelection = async (textOrId: Text | string, offset: number) => {
 		const textId = typeof textOrId === 'string' ? textOrId : textOrId.id;
-		const armedSerial = this.userGestureSerial;
+		const armedSerial = this.intentSerial;
 		const restore = async (disarmedByUserGesture: boolean) => {
 			if (this.readonly || this.isComposing) {
 				return;
@@ -1122,7 +1101,7 @@ export class Edytor {
 			}
 			const targetOffset = Math.min(offset, text.length);
 
-			if (disarmedByUserGesture && this.userGestureSerial !== armedSerial) {
+			if (disarmedByUserGesture && this.intentSerial !== armedSerial) {
 				// A real user gesture (click/key/paste) landed after this
 				// restore was armed — the user owns the caret now. The
 				// browser's spontaneous post-commit selection jump carries
@@ -1221,43 +1200,26 @@ export class Edytor {
 		return this.idToText.get(id);
 	};
 
-	getTextNode = async (idOrText: string | Text): Promise<HTMLElement> => {
-		await tick();
-		const text = idOrText instanceof Text ? idOrText : this.getTextById(idOrText);
-		let node = text?.node;
-		let breakCount = 0;
-		while (!node) {
-			await tick();
-			node = text?.node;
-			breakCount++;
-			if (breakCount > 10) {
-				throw new Error('Failed to find text node');
-			}
-		}
-		return node;
-	};
-
 	clear = () => {
-		let newBlock: Block | null = null;
-		this.transact(() => {
+		const newBlock = this.transact(() => {
 			const root = this.root!;
 			root.deleteChildren(0, root.children.length);
-			newBlock = new Block({
+			const block = new Block({
 				edytor: this,
 				parent: this.root,
 				block: {
 					type: this.defaultChild(root)
 				}
 			});
-			root.insertChildren(root.children.length, [newBlock]);
+			root.insertChildren(root.children.length, [block]);
+			return block;
 		});
 		this.refreshEditorDom();
-
-		tick().then(async () => {
+		void this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
+		void tick().then(() => {
 			this.expectInternalFocus();
 			this.node?.focus({ preventScroll: true });
-			const targetText = newBlock?.firstText ?? this.root?.children[0]?.firstText;
-			await this.selection.setAtTextOffset(targetText, 0);
+			this.selection.display();
 		});
 	};
 
@@ -1406,12 +1368,19 @@ export class Edytor {
 		// change sub's unsubscribe — re-establish it on every (re)attach.
 		this.ensureFacadeChangeSub();
 		this.selection.init();
+		this.doc.on('beforeTransaction', this.projector.before);
+		this.doc.on('afterTransaction', this.projector.after);
+		this.off.push(() => {
+			this.doc.off('beforeTransaction', this.projector.before);
+			this.doc.off('afterTransaction', this.projector.after);
+		});
 		// Keydown serial bumps happen INSIDE onKeyDown, after the
 		// composition-phantom swallow — a swallowed trailing Enter/Backspace
 		// is a browser artifact, not a gesture, and must not disarm pending
 		// composition caret restores.
 		const keydown = this.withUserInput(onKeyDown.bind(this), { bumpSerial: false });
 		const domMutationObserver = (this.observer = observeDomTextMutations(this, node));
+		this.projector.recordsPending = domMutationObserver.pending;
 		this.off.push(
 			// One handler per keyboard occurrence: keys inside the editor at
 			// capture; the document sees only keys whose path misses it (a
@@ -1462,9 +1431,11 @@ export class Edytor {
 			// spellcheck suggestions are computed against the DOM at this
 			// moment (PM flushes its DOM observer on contextmenu for the
 			// same reason).
-			on(node, 'contextmenu', () => domMutationObserver.flushNow()),
+			on(node, 'contextmenu', () => void domMutationObserver.flushNow()),
 			on(node, 'beforeinput', this.withUserInput(this.onBeforeInput)),
-			on(node, 'input', this.withUserInput(this.onInput)),
+			// An `input` records what the browser did; it says nothing new about
+			// where the user wants the selection (a display still to land wins).
+			on(node, 'input', this.withUserInput(this.onInput, { bumpSerial: false })),
 			on(node, 'copy', this.onCopy),
 			on(node, 'cut', this.withUserInput(this.onCut)),
 			on(node, 'paste', this.withUserInput(this.onPaste)),
@@ -1484,10 +1455,11 @@ export class Edytor {
 				// housekeeping, not user gestures. Click-driven focus returns
 				// are already marked by the document-level pointerdown capture.
 				if (this.expectInternalFocusArmed) {
+					// The projector focused the host for its own display: nothing to restore.
 					this.expectInternalFocusArmed = false;
-				} else if (
-					!(event.relatedTarget instanceof Node && this.node?.contains(event.relatedTarget))
-				) {
+					return;
+				}
+				if (!(event.relatedTarget instanceof Node && this.node?.contains(event.relatedTarget))) {
 					this.markUserGesture();
 				}
 				restoreCachedSelectionAfterKeyboardFocus(event);
@@ -1551,11 +1523,15 @@ export class Edytor {
 	 * (the undo manager exists only after first `sync()`).
 	 */
 	destroyed = false;
+	/** The key of this view's presence entry — minted here, written only by this view (R1). */
+	readonly presenceKey = mintPresenceKey();
 	destroy = () => {
 		if (this.destroyed) {
 			return;
 		}
 		this.destroyed = true;
+		// This view's presence entry — its own key, cleared by its own teardown (R1).
+		publishPresence(this.awareness, this.presenceKey, null);
 
 		// A pending readiness binding must not resurrect a dead view.
 		this._readinessRelease?.();

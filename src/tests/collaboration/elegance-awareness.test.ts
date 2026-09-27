@@ -7,7 +7,7 @@
  *    never rendered. The legacy mirror is gone (D-16); the one
  *    validated-winner helper is what a peer renders.
  *  - S12: presence dedupe compared `JSON.stringify` snapshots per
- *    publish/clear; the structural `jsonValuesEqual` compare must agree
+ *    publish; the structural `jsonValuesEqual` compare must agree
  *    with stringify semantics on the cases that matter (key order is
  *    not a difference, `undefined`-valued keys are invisible).
  */
@@ -17,10 +17,10 @@ import {
 	freshestPublishedSelection,
 	jsonValuesEqual,
 	normalizeAwarenessSelection,
-	publishAwarenessSelection,
-	clearAwarenessSelection
+	publishPresence
 } from '../../lib/collaboration/awarenessSelection.js';
 import { Edytor } from '../../lib/edytor.svelte.js';
+import { serialize } from '../../lib/session/selection.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import type { JSONDoc } from '../../lib/utils/json.js';
 
@@ -30,10 +30,14 @@ const docValue = (text = 'shared'): JSONDoc => ({
 
 const makeView = (document: EdytorDocument) => new Edytor({ document, plugins: [richTextPlugin] });
 
-/** Write the view's caret (which publishes) and run the publish path once more. */
+/** Write the view's caret (which publishes) and run the one write once more with the same payload. */
 const publishSelection = (view: Edytor, offset = 0) => {
 	view.selection.setCollapsedStateAtTextOffset(view.root!.children[0]!.firstText!, offset);
-	publishAwarenessSelection(view.selection);
+	publishPresence(
+		view.awareness,
+		view.presenceKey,
+		serialize(view.selection.value, view.selection.projection)
+	);
 };
 
 /** The caret offset a peer renders for this document's freshest published entry. */
@@ -109,17 +113,15 @@ describe('D17 — one validated freshest-selection winner', () => {
 		document.destroy();
 	});
 
-	it('a swept selections map rebroadcasts and the surviving entry wins', () => {
+	it("a view's teardown rebroadcasts once and the surviving entry wins", () => {
 		const document = createDocument({ value: docValue() });
 		const v1 = makeView(document);
 		const v2 = makeView(document);
 		publishSelection(v1, 1);
 		publishSelection(v2, 5); // v2 is freshest
 
-		v2.destroyed = true; // died without running selection.destroy()
-
 		const spy = vi.spyOn(document.awareness, 'setLocalState');
-		clearAwarenessSelection(document.awareness);
+		v2.destroy(); // clears its own key
 		expect(spy).toHaveBeenCalledTimes(1);
 		// The surviving valid entry is the rendered winner.
 		expect(renderedOffset(v1, document)).toBe(1);

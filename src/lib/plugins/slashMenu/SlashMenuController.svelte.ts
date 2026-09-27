@@ -2,12 +2,10 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EditorCommand } from '$lib/plugins.js';
+import type { TextAnchor } from '$lib/selection/selection.svelte.js';
 
-type ActiveSlashRange = {
-	text: Text;
-	triggerStart: number;
-	queryEnd: number;
-};
+/** The trigger `/` and the query's end, held as anchors so peers' edits move them (L52). */
+type ActiveSlashRange = { trigger: TextAnchor; end: TextAnchor };
 
 type TextInsertionPayload = {
 	value: string;
@@ -59,17 +57,17 @@ export class SlashMenuController {
 			return;
 		}
 
+		const range = this.range;
 		if (!this.activeRange) {
 			return;
 		}
 
-		if (text !== this.activeRange.text || start !== this.activeRange.queryEnd) {
+		if (text !== range?.text || start !== range.queryEnd) {
 			this.close();
 			return;
 		}
 
-		this.activeRange.queryEnd = start + payload.value.length;
-		this.syncQueryFromText();
+		this.setEnd(text, start + payload.value.length);
 	}
 
 	reconcileSelection() {
@@ -77,19 +75,20 @@ export class SlashMenuController {
 			return;
 		}
 
+		const range = this.range;
 		const { startText, yStart, isCollapsed } = this.edytor.selection.state;
 		if (
+			!range ||
 			!isCollapsed ||
-			startText !== this.activeRange.text ||
-			yStart <= this.activeRange.triggerStart ||
-			this.activeRange.text.stringContent.at(this.activeRange.triggerStart) !== '/'
+			startText !== range.text ||
+			yStart <= range.triggerStart ||
+			range.text.stringContent.at(range.triggerStart) !== '/'
 		) {
 			this.close();
 			return;
 		}
 
-		this.activeRange.queryEnd = yStart;
-		this.syncQueryFromText();
+		this.setEnd(range.text, yStart);
 	}
 
 	moveSelection(delta: number) {
@@ -119,14 +118,15 @@ export class SlashMenuController {
 	}
 
 	async run(command: EditorCommand | undefined) {
-		if (!this.activeRange || !command) {
+		const range = this.range;
+		if (!range || !command) {
 			return false;
 		}
 
 		this.isExecutingCommand = true;
 		try {
 			const { edytor } = this;
-			const { text, triggerStart, queryEnd } = this.activeRange;
+			const { text, triggerStart, queryEnd } = range;
 			const end = Math.min(queryEnd, text.length);
 			this.close();
 			edytor.selection.setCollapsedStateAtTextOffset(text, triggerStart);
@@ -154,18 +154,38 @@ export class SlashMenuController {
 		}
 	}
 
+	/** The range where its anchors resolve now: one text, the trigger before the query end. */
+	private get range() {
+		const { selection } = this.edytor;
+		const trigger = this.activeRange && selection.resolveTextAnchor(this.activeRange.trigger);
+		const end = this.activeRange && selection.resolveTextAnchor(this.activeRange.end);
+		if (!trigger || !end || trigger.text !== end.text || end.offset <= trigger.offset) return null;
+		return { text: trigger.text, triggerStart: trigger.offset, queryEnd: end.offset };
+	}
+
+	private setEnd(text: Text, queryEnd: number) {
+		const end = this.edytor.selection.createTextAnchor(text, queryEnd, 'left');
+		if (this.activeRange && end) this.activeRange.end = end;
+		this.syncQueryFromText();
+	}
+
 	private open(text: Text, triggerStart: number, queryEnd: number) {
-		this.activeRange = { text, triggerStart, queryEnd };
+		const { selection } = this.edytor;
+		const trigger = selection.createTextAnchor(text, triggerStart, 'right');
+		const end = selection.createTextAnchor(text, queryEnd, 'left');
+		if (!trigger || !end) return;
+		this.activeRange = { trigger, end };
 		this.isOpen = true;
 		this.syncQueryFromText();
 	}
 
 	private syncQueryFromText() {
-		if (!this.activeRange) {
+		const range = this.range;
+		if (!range) {
 			return;
 		}
 
-		const { text, triggerStart, queryEnd } = this.activeRange;
+		const { text, triggerStart, queryEnd } = range;
 		this.query = text.stringContent.slice(triggerStart + 1, queryEnd);
 		const commandCount = this.commands.length;
 		this.selectedIndex = commandCount === 0 ? 0 : Math.min(this.selectedIndex, commandCount - 1);

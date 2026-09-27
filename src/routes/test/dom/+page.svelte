@@ -27,6 +27,7 @@
 	} from '$lib/crdt/index.js';
 	import type { EdytorDocument, JSONBlock as CrdtJSONBlock, YDoc } from '$lib/crdt/index.js';
 	import { blockRecordsOf } from '../../../tests/oracles/block-records.js';
+	import { cellsLib, compareView } from '../../../tests/oracles/cells-render-model.js';
 	import type { JSONDoc } from '$lib/utils/json.js';
 	import type { Text } from '$lib/text/text.svelte.js';
 	import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
@@ -1022,6 +1023,17 @@
 	const serializedSecondarySelection = $derived(
 		JSON.stringify(getSelectionSnapshot(secondaryEdytor))
 	);
+
+	// arch-v2 R1: a cell tree next to the editor's mirror, compared on demand by specs.
+	$effect(() => {
+		const view = edytor;
+		const lib = cellsLib;
+		if (!data.cells || !view || !lib) return;
+		const cells = untrack(() => lib.createCells(view.facade));
+		(window as Window & { __EDYTOR_CELLS__?: () => unknown }).__EDYTOR_CELLS__ = () =>
+			compareView(view, cells);
+		return () => cells.dispose();
+	});
 
 	$effect(() => {
 		if (typeof window !== 'undefined') {

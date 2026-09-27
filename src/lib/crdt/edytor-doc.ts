@@ -108,7 +108,6 @@ import {
 	bindModel,
 	displayParentOf,
 	isLiveIn,
-	setIfChanged,
 	type BlockId,
 	type BlockSpec,
 	type ContentItem,
@@ -146,6 +145,8 @@ import {
 } from './attribution/block.js';
 import type { AttributionActor } from './attribution/index.js';
 import { isLegacyDoc } from './migration/legacy-schema.js';
+import { randOf } from './rand.js';
+import { jsonEquals } from '../utils/json.js';
 import {
 	cloneJsonSafe,
 	sanitizeSpec,
@@ -499,6 +500,135 @@ const NOOP: OpResult = Object.freeze({ status: 'noop', ids: EMPTY_IDS });
 const refused = (reason: Refusal): OpResult =>
 	Object.freeze({ status: 'refused', ids: EMPTY_IDS, ...(reason !== null && { reason }) });
 
+/** A text range an op writes, in display offsets before the write. */
+export type TextRange = { block: BlockId; offset: number; length: number };
+
+/**
+ * One planned write (R6, §2.4), named by the document operation that
+ * performs it — the name a hook matches (D-10). Steps carry everything
+ * their write needs (ranks, marks, offsets), decided at prepare time.
+ */
+export type PlanStep =
+	| { op: 'insertBlocks'; parent: BlockId | null; specs: BlockSpec[]; ranks: string[] }
+	| { op: 'moveBlocks'; ids: BlockId[]; parent: BlockId | null; ranks: string[] }
+	/** `marks`: the blocks that get this writer's mark; `removes`: those that leave the document. */
+	| { op: 'deleteBlock'; id: BlockId; marks: BlockId[]; removes: BlockId[] }
+	| {
+			op: 'splitBlock';
+			id: BlockId;
+			offset: number;
+			/** Display atoms moving to the new block. */
+			length: number;
+			newId: BlockId;
+			tail: SplitTail;
+			parent: BlockId | null;
+			rank: string;
+	  }
+	/** `at`/`length`: where `from`'s display lands in `into`'s. */
+	| { op: 'mergeBlocks'; from: BlockId; into: BlockId; at: number; length: number }
+	| { op: 'setBlockType'; id: BlockId; type: string }
+	| { op: 'setBlockData'; id: BlockId; data: Record<string, unknown> }
+	| {
+			op: 'insertText';
+			id: BlockId;
+			offset: number;
+			text: string;
+			marks?: Record<string, unknown>;
+	  }
+	| { op: 'insertInline'; id: BlockId; offset: number; atom: InlineSpec }
+	| { op: 'deleteText'; id: BlockId; offset: number; length: number }
+	| { op: 'removeInline'; id: BlockId; offset: number; inlineId: string }
+	| {
+			op: 'formatRange';
+			id: BlockId;
+			offset: number;
+			length: number;
+			marks: Record<string, unknown>;
+	  }
+	| {
+			op: 'setInlineData';
+			id: BlockId;
+			offset: number;
+			inlineId: string;
+			data: Record<string, unknown>;
+	  };
+
+/**
+ * What applying a plan does (R6): blocks created, removed (they leave the
+ * document), merged (`[from, into]`), moved (a placement written), retyped
+ * or given new data (`meta`), and the text ranges written. Derived from the
+ * plan's steps; the applied transaction changes exactly this (F-O11).
+ */
+export type PlanEffect = {
+	creates: BlockId[];
+	removes: BlockId[];
+	merges: [from: BlockId, into: BlockId][];
+	moves: BlockId[];
+	meta: BlockId[];
+	textRanges: TextRange[];
+};
+
+/**
+ * A prepared operation (R6, §2.4): its steps, their effect, the ids the op
+ * is about, and the document version it was prepared against — valid only
+ * there, applied in the same synchronous turn.
+ */
+export type Plan = {
+	readonly ids: readonly BlockId[];
+	readonly writes: readonly PlanStep[];
+	readonly effect: PlanEffect;
+	readonly version: number;
+};
+/** `prepare`'s answer: a plan, or the op's refusal. */
+export type Prepared = Plan | OpResult;
+
+/** Each prepared op, applied: the op itself. */
+type Applied<P> = {
+	[K in keyof P]: P[K] extends (...args: infer A) => Prepared ? (...args: A) => OpResult : never;
+};
+const applied = <P extends Record<string, (...args: never[]) => Prepared>>(
+	prepare: P,
+	apply: (p: Prepared) => OpResult
+): Applied<P> =>
+	Object.fromEntries(
+		Object.entries(prepare).map(([name, op]) => [name, (...args: never[]) => apply(op(...args))])
+	) as Applied<P>;
+
+/** The effect summary of `writes`. */
+const effectOf = (writes: readonly PlanStep[]): PlanEffect => {
+	const e: PlanEffect = {
+		creates: [],
+		removes: [],
+		merges: [],
+		moves: [],
+		meta: [],
+		textRanges: []
+	};
+	const text = (block: BlockId, offset: number, length: number): void => {
+		if (length > 0) e.textRanges.push({ block, offset, length });
+	};
+	const created = (sp: BlockSpec): void => {
+		e.creates.push(sp.id);
+		sp.children?.forEach(created);
+	};
+	for (const w of writes) {
+		if (w.op === 'insertBlocks') w.specs.forEach(created);
+		else if (w.op === 'moveBlocks') e.moves.push(...w.ids);
+		else if (w.op === 'deleteBlock') e.removes.push(...w.removes);
+		else if (w.op === 'splitBlock') {
+			e.creates.push(w.newId);
+			text(w.id, w.offset, w.length);
+		} else if (w.op === 'mergeBlocks') {
+			e.merges.push([w.from, w.into]);
+			text(w.into, w.at, w.length);
+		} else if (w.op === 'setBlockType' || w.op === 'setBlockData') e.meta.push(w.id);
+		else if (w.op === 'insertText') text(w.id, w.offset, w.text.length);
+		else if (w.op === 'deleteText' || w.op === 'formatRange') text(w.id, w.offset, w.length);
+		else text(w.id, w.offset, 1);
+	}
+	return e;
+};
+
 /**
  * Ingress for an id reference (O1): it normalizes exactly like a stored id
  * (`sanitizeSpec`), so a write and a later lookup by the same string agree.
@@ -804,24 +934,21 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 
 		// ── the write funnel (R6, O10, O19) ─────────────────────────────
 		//
-		// Every document op runs through `op`: one transaction, and a result
-		// folded from what that transaction actually did — `applied` iff this
-		// replica's clock advanced (an item was written) or the transaction's
-		// delete set grew; otherwise `noop`. Nothing predicts it per op: a
-		// same-value attr goes through `setIfChanged`, and the engine's own
-		// format minimization writes nothing for a range that already carries
-		// the marks.
+		// Every document op is a prepared plan (R6, below) written by `apply`:
+		// one transaction, and a result folded from what that transaction
+		// actually did — `applied` iff this replica's clock advanced (an item
+		// was written) or the transaction's delete set grew; otherwise `noop`.
+		// The plan decides what to write (a same-value attr or format is never
+		// planned); the result is observed, never predicted.
 		//
-		// The outermost op opens a frame (an op nested in it — a composite's
-		// steps — joins it). When it closes, ONE pass over what the frame
-		// wrote stamps attribution and
-		// commits lineage (U1): a block created by a registry insert gets its
-		// `createdBy` record; a block whose content, claims, type or data
+		// Each apply opens a frame. When it closes, ONE pass over what the
+		// frame wrote stamps attribution and commits lineage (U1): a block
+		// created by a registry insert gets its `createdBy` record; a block whose content, claims, type or data
 		// changed gets a contributor stamp; moves and delete marks stamp
 		// nothing. Two intents the effects cannot name are recorded by their
-		// ops: a split-born block inherits its source's contributors, and a
+		// steps: a split-born block inherits its source's contributors, and a
 		// merge survivor unions the absorbed block's. Lineage is captured
-		// before the first write for each target an op names, and committed
+		// before the first write for each target a step names, and committed
 		// only for targets the effects show changed, deleted or absorbed. With
 		// no configured `actor` the funnel writes no attribution at all.
 
@@ -837,7 +964,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			inherit: Map<BlockId, BlockId>;
 			unions: [into: BlockId, from: BlockId][];
 		};
-		let frame: Frame | null = null;
 
 		/**
 		 * Capture `id`'s displaced state when the current actor is NOT the `l`
@@ -906,49 +1032,93 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			}
 		};
 
-		/** Open the frame when this is the transaction's outermost op; close it on success. */
-		const framed = <R>(tr: unknown, body: (f: Frame) => R): R => {
-			if (frame !== null) return body(frame);
-			const f: Frame = (frame = {
-				clock: clockOf(doc),
-				deleted: deletedLen(tr),
-				lineage: new Map(),
-				inherit: new Map(),
-				unions: []
-			});
-			try {
-				const out = body(f);
-				close(f, tr);
-				return out;
-			} finally {
-				frame = null;
+		/** One planned step, written (the plan decided it; writers never refuse). */
+		const writeStep = (w: PlanStep, f: Frame): void => {
+			const { blocks, own } = M.view(doc);
+			const node = (id: BlockId) => M.blockNodeOf(doc, id)!;
+			switch (w.op) {
+				case 'insertBlocks':
+					return w.specs.forEach((sp, i) => M.materializeSpec(doc, sp, w.parent, w.ranks[i]!));
+				case 'moveBlocks':
+					return w.ids.forEach((id, i) => M.writePlacement(doc, node(id), w.parent, w.ranks[i]!));
+				case 'deleteBlock':
+					return w.marks.forEach((id) => node(id).setAttr(DEL_PREFIX + doc.clientID, true));
+				case 'splitBlock':
+					f.inherit.set(w.newId, w.id);
+					return M.writeSplit(doc, w.id, w.offset, w.newId, w.tail, { p: w.parent, r: w.rank });
+				case 'mergeBlocks':
+					f.unions.push([w.into, w.from]);
+					return T.claimInto(blocks, w.from, w.into);
+				case 'setBlockType':
+					return void node(w.id).setAttr(TYPE, w.type);
+				case 'setBlockData':
+					return void node(w.id).setAttr(DATA, w.data);
+				case 'insertText':
+					return T.insertIntoText(doc, blocks, own, w.id, w.offset, w.text, w.marks);
+				case 'insertInline':
+					return T.insertIntoText(doc, blocks, own, w.id, w.offset, M.buildInline(w.atom));
+				case 'deleteText':
+				case 'removeInline':
+					return T.deleteRange(doc, blocks, own, w.id, w.offset, 'length' in w ? w.length : 1);
+				case 'formatRange':
+					return T.formatRangeIn(doc, blocks, own, w.id, w.offset, w.length, w.marks);
+				case 'setInlineData':
+					for (const seg of T.flatten(w.id, blocks, own)) {
+						let p = 0;
+						for (const entry of blocks.get(seg.t)!.content!.toArray()) {
+							if (
+								isNodeLike(entry) &&
+								entry.getAttr(ID) === w.inlineId &&
+								p >= seg.i0 &&
+								p < seg.i1
+							)
+								return void entry.setAttr(DATA, w.data);
+							p += typeof entry === 'string' ? entry.length : 1;
+						}
+					}
 			}
 		};
 
 		/**
-		 * Run one op. `fn` returns the ids the op is about (created, moved,
-		 * merge target, target), or a refusal (`null`, or a reason) — and a
-		 * refusing `fn` must not have written. `touch` names the blocks whose
-		 * pre-write state lineage captures.
+		 * Apply a prepared plan (R6): write exactly its steps in one transaction
+		 * and fold the result from what that transaction did. A refusal writes
+		 * nothing. A plan is valid only at the version it was prepared against,
+		 * in the same synchronous turn: applying it anywhere else throws.
 		 */
-		const op = (
-			fn: (f: Frame) => readonly BlockId[] | Refusal,
-			touch: readonly BlockId[] = []
-		): OpResult =>
-			write(() =>
-				doc.transact((tr) =>
-					framed(tr, (f) => {
-						const clock = clockOf(doc);
-						const deleted = deletedLen(tr);
-						for (const id of touch) capture(f, id);
-						const out = fn(f);
-						if (out === null || typeof out === 'string') return refused(out);
-						return clockOf(doc) > clock || deletedLen(tr) > deleted
-							? { status: 'applied', ids: out }
-							: NOOP;
-					})
-				)
+		const apply = (p: Prepared): OpResult => {
+			if (!('writes' in p)) return write(() => p);
+			if (p.version !== stateVersion) {
+				throw new Error('[edytor-doc] stale plan: prepared against another document version');
+			}
+			return write(() =>
+				doc.transact((tr) => {
+					const f: Frame = {
+						clock: clockOf(doc),
+						deleted: deletedLen(tr),
+						lineage: new Map(),
+						inherit: new Map(),
+						unions: []
+					};
+					// Lineage captures every target's pre-write state before the
+					// first write; destructive steps capture whoever owns `l`.
+					for (const w of p.writes) {
+						if (w.op === 'deleteBlock') capture(f, w.id, true);
+						else if (w.op === 'mergeBlocks') {
+							capture(f, w.from, true);
+							capture(f, w.into);
+						} else if ('id' in w) capture(f, w.id);
+					}
+					for (const w of p.writes) {
+						invalidate();
+						writeStep(w, f);
+					}
+					close(f, tr);
+					return clockOf(doc) > f.clock || deletedLen(tr) > f.deleted
+						? { status: 'applied', ids: p.ids }
+						: NOOP;
+				})
 			);
+		};
 
 		/** The one serializer (L14): `id`'s subtree in the public `JSONBlock` shape. */
 		const blockJSON = (id: BlockId): JSONBlock => {
@@ -1565,191 +1735,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return um;
 		};
 
-		// ── structural ops ────────────────────────────────────────────────
-		// Every op normalizes its inputs once, here at ingress (O1): ids and
-		// strings as the wire would deliver them, payloads cloned. The model
-		// layers below trust what they are handed.
-
-		/**
-		 * Insert blocks (specs may carry children/content/data — ids are
-		 * caller-assigned and must be fresh; the whole batch validates
-		 * atomically). Refused when the parent is unresolvable or `void`, or
-		 * any id collides. Inserting INSIDE an island is allowed — island
-		 * interiors are built this way. `ids`: the inserted roots.
-		 */
-		const insertBlocks = (dest: Destination, specs: readonly BlockSpec[]): OpResult => {
-			const parent = ref(dest.parent);
-			const clean = specs.map(sanitizeSpec);
-			return op(() => {
-				if (parent !== null && isVoid(parent)) return null;
-				return M.insertBlocks(doc, { parent, index: dest.index }, clean)
-					? clean.map((s) => s.id)
-					: null;
-			});
-		};
-		const insertBlock = (dest: Destination, spec: BlockSpec): OpResult =>
-			insertBlocks(dest, [spec]);
-
-		/**
-		 * Grouped move — ONE transaction (one undo step), per-member conflict
-		 * resolution; refused exactly when `canPlace` refuses the group.
-		 * `ids`: the moved blocks, in request order.
-		 */
-		const moveBlocks = (ids: readonly BlockId[], dest: Destination): OpResult => {
-			const moved = ids.map(ref);
-			const parent = ref(dest.parent);
-			return op(() => {
-				if (moved.length === 0) return [];
-				if (!canPlace(moved, parent)) return null;
-				return M.moveBlocks(doc, moved, { parent, index: dest.index }) ? moved : null;
-			});
-		};
-		/** Relocate `id` — identity preserved. */
-		const moveBlock = (id: BlockId, dest: Destination): OpResult => moveBlocks([id], dest);
-		/** Move `id` to the last position under `parent`. */
-		const nestBlock = (id: BlockId, parent: BlockId): OpResult =>
-			moveBlocks([id], { parent, index: childrenIds(ref(parent)).length });
-		/** Move `id` beside its parent (index = parent index + 1). */
-		const unNestBlock = (id: BlockId): OpResult => {
-			const pos = M.positionOf(doc, ref(id));
-			const ppos = pos?.parent != null ? M.positionOf(doc, pos.parent) : null;
-			return ppos
-				? moveBlocks([id], { parent: ppos.parent, index: ppos.index + 1 })
-				: op(() => null);
-		};
-
-		/**
-		 * Split `id` at content `offset` into a new sibling `newId` (the tail's
-		 * slice records move, no atom copies; children follow the sibling).
-		 * `tail` decides the sibling's type/data once. Refused on `void`
-		 * blocks. `ids`: the new block.
-		 */
-		const splitBlock = (
-			id: BlockId,
-			offset: number,
-			newId: BlockId,
-			tail?: SplitTail
-		): OpResult => {
-			id = ref(id);
-			const born = ref(newId);
-			const t = tail && { type: ref(tail.type), data: tail.data && sanitizeWireJson(tail.data) };
-			return op(
-				(f) => {
-					if (isVoid(id) || !M.splitBlock(doc, id, offset, born, t)) return null;
-					f.inherit.set(born, id);
-					return [born];
-				},
-				[id]
-			);
-		};
-
-		/**
-		 * Engine merge primitive: `from`'s content is claimed by `into`, its
-		 * children ADOPTED into `into`'s child list, and `from` is hidden via
-		 * the claim (undo restores it). Role rules are `canMerge`'s. `ids`: `into`.
-		 */
-		const mergeBlocks = (fromId: BlockId, intoId: BlockId): OpResult => {
-			const from = ref(fromId);
-			const into = ref(intoId);
-			return op(
-				(f) => {
-					capture(f, from, true);
-					if (!canMerge(from, into) || !M.mergeBlocks(doc, from, into)) return null;
-					f.unions.push([into, from]);
-					return [into];
-				},
-				[into]
-			);
-		};
-
-		/**
-		 * Baseline-shaped merge (both `mergeBackward` and `mergeForward`):
-		 * `from`'s children unnest to `from`'s vacated sibling slot — NOT
-		 * adopted into `into` — and, when `from` is an island, take the default
-		 * child of that slot's parent; then `from`'s content claims into `into`.
-		 */
-		const mergeUnnesting = (from: BlockId, into: BlockId): OpResult =>
-			op(
-				(f) => {
-					const pos = canMerge(from, into) ? M.positionOf(doc, from) : null;
-					if (pos === null) return null;
-					const kids = childrenIds(from);
-					const reset = isIsland(from) ? defaultChild(pos.parent) : null;
-					capture(f, from, true);
-					if (reset !== null) for (const kid of kids) capture(f, kid);
-					if (kids.length > 0) write(() => M.moveBlocks(doc, kids, pos));
-					if (reset !== null) {
-						for (const kid of kids)
-							write(() => setIfChanged(M.blockNodeOf(doc, kid)!, TYPE, reset));
-					}
-					if (!write(() => M.mergeBlocks(doc, from, into))) return null;
-					f.unions.push([into, from]);
-					return [into];
-				},
-				[into]
-			);
-
-		/**
-		 * Baseline `mergeBlockBackward`: merge `id` into the previous block in
-		 * document order. No previous block → an empty block merges forward,
-		 * else refused. `ids`: the surviving block.
-		 */
-		const mergeBackward = (id: BlockId): OpResult => {
-			id = ref(id);
-			const prev = isVoid(id) ? undefined : previous(id);
-			if (prev === null && childrenIds(id).length === 0 && displayLength(id) === 0) {
-				return mergeForward(id);
-			}
-			return prev ? mergeUnnesting(id, prev) : op(() => null);
-		};
-
-		/** Baseline `mergeBlockForward`: pull the next block in document order into `id`. */
-		const mergeForward = (id: BlockId): OpResult => {
-			id = ref(id);
-			const after = isVoid(id) ? null : next(id);
-			return after ? mergeUnnesting(after, id) : op(() => null);
-		};
-
-		/**
-		 * Delete `id` (R3: this writer's marks on `id` and on what it displays
-		 * through merge claims — wins over concurrent moves). `keepChildren`
-		 * reparents the children to `id`'s vacated slot, identity preserved.
-		 */
-		const deleteBlock = (id: BlockId, opts: { keepChildren?: boolean } = {}): OpResult => {
-			id = ref(id);
-			return op((f) => {
-				capture(f, id, true);
-				const pos = opts.keepChildren ? M.positionOf(doc, id) : null;
-				const kids = pos ? childrenIds(id) : [];
-				if (pos && kids.length > 0) write(() => M.moveBlocks(doc, kids, pos));
-				return write(() => M.deleteBlock(doc, id)) ? [id] : null;
-			});
-		};
-
-		// ── metadata / replacement ops ────────────────────────────────────
-
-		/** Set the block type (attr write — the block keeps its identity). */
-		const setBlockType = (id: BlockId, type: string): OpResult => {
-			id = ref(id);
-			const clean = ref(type);
-			return op(
-				() =>
-					M.isLive(doc, id) ? (setIfChanged(M.blockNodeOf(doc, id)!, TYPE, clean), [id]) : null,
-				[id]
-			);
-		};
-
-		/** Replace the block's `data` payload (whole-attr write). */
-		const setBlockData = (id: BlockId, data: Record<string, unknown>): OpResult => {
-			id = ref(id);
-			const clean = sanitizeWireJson(data);
-			return op(
-				() =>
-					M.isLive(doc, id) ? (setIfChanged(M.blockNodeOf(doc, id)!, DATA, clean), [id]) : null,
-				[id]
-			);
-		};
-
 		/**
 		 * Display length in atoms (chars + inline atoms) of `id`'s content —
 		 * computed from the LIVE view so mid-transaction callers read
@@ -2080,6 +2065,249 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			...(item.data !== undefined && { data: sanitizeWireJson(item.data) })
 		});
 
+		// ── prepared ops (R6) ─────────────────────────────────────────────
+		// Every op is `prepare` (pure: `refused`, or a plan of named steps plus
+		// its effect summary, against the current version) then `apply(plan)`;
+		// composites compose their steps into one plan, so a hook sees the
+		// whole command before any write and a refusal refuses before one.
+		// Each prepare normalizes its inputs once, here at ingress (O1): ids
+		// and strings as the wire would deliver them, payloads cloned.
+
+		const REFUSED = refused(null);
+		const plan = (ids: readonly BlockId[], writes: PlanStep[]): Plan => ({
+			ids,
+			writes,
+			effect: effectOf(writes),
+			version: stateVersion
+		});
+		const live = (id: BlockId): boolean => isLiveIn(view(), id);
+		/** A live block that can hold content: its own backing text and slice list. */
+		const contentTarget = (id: BlockId): boolean => {
+			const rec = view().blocks.get(id);
+			return live(id) && rec?.content !== undefined && rec.slicesNode !== undefined;
+		};
+
+		/** `count` ranks at `index` among `parent`'s children, the moving `exclude` left out. */
+		const ranksFor = (
+			parent: BlockId | null,
+			index: number,
+			count: number,
+			exclude: readonly BlockId[] = []
+		): string[] => {
+			const sibs = (view().kids.get(parent) ?? []).filter((k) => !exclude.includes(k.id));
+			const at = Math.max(0, Math.min(index, sibs.length));
+			return M.ranksAt(sibs, at, count, doc.clientID, randOf(doc));
+		};
+		const move = (ids: BlockId[], parent: BlockId | null, index: number): PlanStep[] =>
+			ids.length === 0
+				? []
+				: [{ op: 'moveBlocks', ids, parent, ranks: ranksFor(parent, index, ids.length, ids) }];
+		/** A type/data step, planned only when the value differs (the one same-value guard). */
+		const attr = (id: BlockId, key: typeof TYPE | typeof DATA, value: unknown): PlanStep[] => {
+			if (jsonEquals(M.blockNodeOf(doc, id)!.getAttr(key), value)) return [];
+			return [
+				key === TYPE
+					? { op: 'setBlockType', id, type: value as string }
+					: { op: 'setBlockData', id, data: value as JsonObj }
+			];
+		};
+		/** Delete (R3): marks on `id` and on what it displays; `id` and its subtree leave, `kept` children aside. */
+		const remove = (id: BlockId, kept: readonly BlockId[] = []): PlanStep => {
+			const { blocks, own } = view();
+			const removes: BlockId[] = [];
+			const walk = (b: BlockId): void => {
+				removes.push(b);
+				for (const kid of childrenIds(b)) if (!kept.includes(kid)) walk(kid);
+			};
+			walk(id);
+			const marks = [...blocks.keys()].filter((b) => own.ownerOf(b) === id);
+			return { op: 'deleteBlock', id, marks, removes };
+		};
+		const merge = (from: BlockId, into: BlockId): PlanStep => ({
+			op: 'mergeBlocks',
+			from,
+			into,
+			at: displayLength(into),
+			length: displayLength(from)
+		});
+		/** `[at, end)` — `[offset, offset + length)` clamped to `id`'s display. */
+		const clamp = (id: BlockId, offset: number, length: number): [number, number] => {
+			const total = displayLength(id);
+			const at = Math.max(0, Math.min(offset, total));
+			return [at, Math.min(total, at + Math.max(0, length))];
+		};
+		/** `id`'s display items, each with its `[at, end)` display offsets. */
+		const spans = (id: BlockId) => {
+			let end = 0;
+			return contentItems(id).map((item) => {
+				const at = end;
+				end += item.kind === 'text' ? item.text.length : 1;
+				return { item, at, end };
+			});
+		};
+		/** The live inline atom `atom` in `id`'s display, or undefined. */
+		const atomOf = (id: BlockId, atom: string) =>
+			live(id)
+				? spans(id).find(({ item }) => item.kind === 'inline' && item.id === atom)
+				: undefined;
+		/** Text items overlapping `[at, end)` of `id` (inline atoms carry no marks). */
+		const textIn = (id: BlockId, at: number, end: number) =>
+			spans(id).flatMap((s) =>
+				s.item.kind === 'text' && s.at < end && s.end > at ? [s.item] : []
+			);
+
+		/**
+		 * Insert blocks (specs may carry children/content/data — ids are
+		 * caller-assigned and must be fresh; the batch is all-or-nothing).
+		 * Refused when the parent is not live or is `void`, or any id collides.
+		 * Inserting INSIDE an island is allowed — island interiors are built
+		 * this way. `ids`: the inserted roots.
+		 */
+		const insertBlocks = (dest: Destination, specs: readonly BlockSpec[]): Prepared => {
+			const parent = ref(dest.parent);
+			const clean = specs.map(sanitizeSpec);
+			if (parent !== null && isVoid(parent)) return REFUSED;
+			if (clean.length === 0) return plan([], []);
+			if ((parent !== null && !live(parent)) || M.collides(doc, clean)) return REFUSED;
+			const ranks = ranksFor(parent, dest.index, clean.length);
+			return plan(
+				clean.map((s) => s.id),
+				[{ op: 'insertBlocks', parent, specs: clean, ranks }]
+			);
+		};
+
+		/**
+		 * Grouped move — one step, per-member conflict resolution; refused
+		 * exactly when `canPlace` refuses the group. `ids`: the moved blocks,
+		 * in request order.
+		 */
+		const moveBlocks = (ids: readonly BlockId[], dest: Destination): Prepared => {
+			const moved = ids.map(ref);
+			const parent = ref(dest.parent);
+			if (moved.length === 0) return plan([], []);
+			return canPlace(moved, parent) ? plan(moved, move(moved, parent, dest.index)) : REFUSED;
+		};
+		/** Move `id` beside its parent (index = parent index + 1). */
+		const unNestBlock = (id: BlockId): Prepared => {
+			const pos = positionOf(ref(id));
+			const ppos = pos?.parent != null ? positionOf(pos.parent) : null;
+			return ppos ? moveBlocks([id], { parent: ppos.parent, index: ppos.index + 1 }) : REFUSED;
+		};
+
+		/**
+		 * Split `id` at content `offset` into a new sibling `newId` (the tail's
+		 * slice records move, no atom copies; children follow the sibling).
+		 * `tail` decides the sibling's type/data once (default: the source's).
+		 * Refused on `void` blocks. `ids`: the new block.
+		 */
+		const splitBlock = (
+			id: BlockId,
+			offset: number,
+			newId: BlockId,
+			tail?: SplitTail
+		): Prepared => {
+			id = ref(id);
+			const born = ref(newId);
+			const pos = positionOf(id);
+			const rec = view().blocks.get(id);
+			if (pos === null || isVoid(id) || !rec?.slicesNode || M.blockNodeOf(doc, born) !== null) {
+				return REFUSED;
+			}
+			const [at] = clamp(id, offset, 0);
+			const t = tail
+				? { type: ref(tail.type), data: tail.data && sanitizeWireJson(tail.data) }
+				: { type: rec.node.getAttr(TYPE) as string, data: rec.node.getAttr(DATA) as JsonObj };
+			const [rank] = ranksFor(pos.parent, pos.index + 1, 1);
+			const length = displayLength(id) - at;
+			const split: PlanStep = {
+				op: 'splitBlock',
+				id,
+				offset: at,
+				length,
+				newId: born,
+				tail: t,
+				parent: pos.parent,
+				rank: rank!
+			};
+			return plan([born], [split, ...move(childrenIds(id), born, 0)]);
+		};
+
+		/**
+		 * Engine merge primitive: `from`'s content is claimed by `into`, its
+		 * children ADOPTED into `into`'s child list, and `from` is hidden via
+		 * the claim (undo restores it). Role rules are `canMerge`'s; a merge
+		 * that would close a display cycle is refused. `ids`: `into`.
+		 */
+		const mergeBlocks = (fromId: BlockId, intoId: BlockId): Prepared => {
+			const from = ref(fromId);
+			const into = ref(intoId);
+			const v = view();
+			if (!canMerge(from, into) || !v.blocks.get(into)?.slicesNode) return REFUSED;
+			if (M.isSelfOrDescendant(v.placements, v.own, into, from)) return REFUSED;
+			return plan([into], [merge(from, into), ...move(childrenIds(from), into, Infinity)]);
+		};
+
+		/**
+		 * Baseline-shaped merge (both `mergeBackward` and `mergeForward`):
+		 * `from`'s children unnest to `from`'s vacated sibling slot — NOT
+		 * adopted into `into` — and, when `from` is an island, take the default
+		 * child of that slot's parent; then `from`'s content claims into `into`.
+		 */
+		const mergeUnnesting = (from: BlockId, into: BlockId): Prepared => {
+			const pos = canMerge(from, into) ? positionOf(from) : null;
+			if (pos === null || !view().blocks.get(into)?.slicesNode) return REFUSED;
+			const kids = childrenIds(from);
+			const reset = isIsland(from) ? defaultChild(pos.parent) : null;
+			const retype = reset === null ? [] : kids.flatMap((kid) => attr(kid, TYPE, reset));
+			return plan([into], [...move(kids, pos.parent, pos.index), ...retype, merge(from, into)]);
+		};
+
+		/**
+		 * Baseline `mergeBlockBackward`: merge `id` into the previous block in
+		 * document order. No previous block → an empty block merges forward,
+		 * else refused. `ids`: the surviving block.
+		 */
+		const mergeBackward = (id: BlockId): Prepared => {
+			id = ref(id);
+			const prev = isVoid(id) ? undefined : previous(id);
+			if (prev === null && childrenIds(id).length === 0 && displayLength(id) === 0) {
+				return mergeForward(id);
+			}
+			return prev ? mergeUnnesting(id, prev) : REFUSED;
+		};
+
+		/** Baseline `mergeBlockForward`: pull the next block in document order into `id`. */
+		const mergeForward = (id: BlockId): Prepared => {
+			id = ref(id);
+			const after = isVoid(id) ? null : next(id);
+			return after ? mergeUnnesting(after, id) : REFUSED;
+		};
+
+		/**
+		 * Delete `id` (R3: this writer's marks on `id` and on what it displays
+		 * through merge claims — wins over concurrent moves). `keepChildren`
+		 * first moves the children to `id`'s vacated slot, identity preserved.
+		 */
+		const deleteBlock = (id: BlockId, opts: { keepChildren?: boolean } = {}): Prepared => {
+			id = ref(id);
+			const pos = positionOf(id);
+			if (pos === null) return REFUSED;
+			const kids = opts.keepChildren ? childrenIds(id) : [];
+			return plan([id], [...move(kids, pos.parent, pos.index), remove(id, kids)]);
+		};
+
+		/** Set the block type (attr write — the block keeps its identity). */
+		const setBlockType = (id: BlockId, type: string): Prepared => {
+			id = ref(id);
+			return live(id) ? plan([id], attr(id, TYPE, ref(type))) : REFUSED;
+		};
+
+		/** Replace the block's `data` payload (whole-attr write). */
+		const setBlockData = (id: BlockId, data: Record<string, unknown>): Prepared => {
+			id = ref(id);
+			return live(id) ? plan([id], attr(id, DATA, sanitizeWireJson(data))) : REFUSED;
+		};
+
 		/**
 		 * Baseline `setBlock`: `type`/`data` update the block in place;
 		 * `content`/`children` REPLACE wholesale — explicit replacement is a
@@ -2097,45 +2325,38 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				content?: SetBlockContent;
 				children?: BlockSpec[];
 			}
-		): OpResult => {
+		): Prepared => {
 			id = ref(id);
-			const type = value.type === undefined ? undefined : ref(value.type);
-			const data = value.data === undefined ? undefined : sanitizeWireJson(value.data);
 			const content = value.content?.map(sanitizeItem);
 			const children = value.children?.map(sanitizeSpec);
-			return op(
-				(f) => {
-					if (!M.isLive(doc, id)) return null;
-					if (children !== undefined && isVoid(id)) return null;
-					if (children !== undefined && M.collides(doc, children)) return 'id-collision';
-					const node = M.blockNodeOf(doc, id)!;
-					if (type !== undefined) setIfChanged(node, TYPE, type);
-					if (data !== undefined) setIfChanged(node, DATA, data);
-					if (content !== undefined) {
-						const len = displayLength(id);
-						if (len > 0) write(() => M.deleteText(doc, id, 0, len));
-						let at = 0;
-						for (const item of content) {
-							if (item.kind === 'inline') write(() => M.insertInline(doc, id, at++, item));
-							else if (item.text !== '') {
-								write(() => M.insertText(doc, id, at, item.text, item.marks));
-								at += item.text.length;
-							}
-						}
+			if (!live(id) || (content !== undefined && !contentTarget(id))) return REFUSED;
+			if (children !== undefined && isVoid(id)) return REFUSED;
+			if (children !== undefined && M.collides(doc, children)) return refused('id-collision');
+			const writes: PlanStep[] = [
+				...(value.type === undefined ? [] : attr(id, TYPE, ref(value.type))),
+				...(value.data === undefined ? [] : attr(id, DATA, sanitizeWireJson(value.data)))
+			];
+			if (content !== undefined) {
+				const length = displayLength(id);
+				if (length > 0) writes.push({ op: 'deleteText', id, offset: 0, length });
+				let at = 0;
+				for (const item of content) {
+					if (item.kind === 'inline')
+						writes.push({ op: 'insertInline', id, offset: at++, atom: item });
+					else if (item.text !== '') {
+						writes.push({ op: 'insertText', id, offset: at, text: item.text, marks: item.marks });
+						at += item.text.length;
 					}
-					if (children !== undefined) {
-						for (const kid of childrenIds(id)) {
-							capture(f, kid, true);
-							write(() => M.deleteBlock(doc, kid));
-						}
-						write(() =>
-							M.insertBlocks(doc, { parent: id, index: Number.MAX_SAFE_INTEGER }, children)
-						);
-					}
-					return [id];
-				},
-				[id]
-			);
+				}
+			}
+			if (children !== undefined) {
+				for (const kid of childrenIds(id)) writes.push(remove(kid));
+				// Every current child is deleted, so the new ones rank from an empty list.
+				const ranks = M.ranksAt([], 0, children.length, doc.clientID, randOf(doc));
+				if (children.length > 0)
+					writes.push({ op: 'insertBlocks', parent: id, specs: children, ranks });
+			}
+			return plan([id], writes);
 		};
 
 		/**
@@ -2144,10 +2365,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * copy right after `id`. Text atoms get new identity too — duplication
 		 * is a creation op, not a relocation. `ids`: the copy's root.
 		 */
-		const duplicateBlock = (id: BlockId, freshId: (oldId: BlockId) => BlockId): OpResult => {
+		const duplicateBlock = (id: BlockId, freshId: (oldId: BlockId) => BlockId): Prepared => {
 			id = ref(id);
-			const pos = M.positionOf(doc, id);
-			if (pos === null) return op(() => null);
+			const pos = positionOf(id);
+			if (pos === null) return REFUSED;
 			const spec = (b: BlockId): BlockSpec => {
 				const data = blockDataOf(b);
 				return {
@@ -2158,92 +2379,136 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					children: childrenIds(b).map(spec)
 				};
 			};
-			return insertBlock({ parent: pos.parent, index: pos.index + 1 }, spec(id));
+			return insertBlocks({ parent: pos.parent, index: pos.index + 1 }, [spec(id)]);
 		};
 
-		// ── content ops (allowed inside voids — caption contract) ─────────
-
-		/** The ownership view for a content op on `id`, or null when `id` is not a live target. */
-		const target = (id: BlockId) => {
-			const v = view();
-			return isLiveIn(v, id) ? v : null;
-		};
+		// content ops (allowed inside voids — caption contract)
 
 		const insertText = (
 			id: BlockId,
 			offset: number,
 			text: string,
 			marks?: Record<string, unknown>
-		): OpResult => {
+		): Prepared => {
 			id = ref(id);
 			const clean = ref(text);
+			if (!contentTarget(id)) return REFUSED;
+			const [at] = clamp(id, offset, 0);
 			const m = marks && sanitizeWireJson(marks);
-			return op(() => (M.insertText(doc, id, offset, clean, m) ? [id] : null), [id]);
+			return plan(
+				[id],
+				clean === '' ? [] : [{ op: 'insertText', id, offset: at, text: clean, marks: m }]
+			);
 		};
 
-		const deleteText = (id: BlockId, offset: number, length: number): OpResult => {
+		const deleteText = (id: BlockId, offset: number, length: number): Prepared => {
 			id = ref(id);
-			return op(() => (M.deleteText(doc, id, offset, length) ? [id] : null), [id]);
+			if (!contentTarget(id)) return REFUSED;
+			const [at, end] = clamp(id, offset, length);
+			return plan([id], end > at ? [{ op: 'deleteText', id, offset: at, length: end - at }] : []);
 		};
 
-		/** Multi-mark format write over a range (values may be null = unset). */
+		/**
+		 * Multi-mark format over a range (values may be null = unset); planned
+		 * only when some text atom in the range carries a different value.
+		 */
 		const formatRange = (
 			id: BlockId,
 			offset: number,
 			length: number,
 			marks: Record<string, unknown>
-		): OpResult => {
+		): Prepared => {
 			id = ref(id);
 			const clean = sanitizeWireJson(marks);
-			return op(() => {
-				const v = target(id);
-				return v && T.formatRangeIn(doc, v.blocks, v.own, id, offset, length, clean) ? [id] : null;
-			}, [id]);
+			if (!contentTarget(id)) return REFUSED;
+			const [at, end] = clamp(id, offset, length);
+			// Planned only when some text atom carries another value (the same-value guard).
+			const differs = textIn(id, at, end).some((item) =>
+				Object.keys(clean).some((k) => !jsonEquals(item.marks?.[k] ?? null, clean[k] ?? null))
+			);
+			return plan(
+				[id],
+				differs ? [{ op: 'formatRange', id, offset: at, length: end - at, marks: clean }] : []
+			);
 		};
-		const setMark = (id: BlockId, offset: number, length: number, name: string, value: unknown) =>
-			formatRange(id, offset, length, { [name]: value });
-		const unsetMark = (id: BlockId, offset: number, length: number, name: string) =>
-			formatRange(id, offset, length, { [name]: null });
 
 		/**
 		 * Baseline `removeMarksFromText`: every mark present anywhere in the
-		 * range is unset over the range. Names are discovered from the runs.
+		 * range is unset over the range. Names are discovered from the content.
 		 */
-		const clearMarks = (id: BlockId, offset: number, length: number): OpResult => {
-			id = ref(id);
+		const clearMarks = (id: BlockId, offset: number, length: number): Prepared => {
 			const clears: JsonObj = {};
-			let pos = 0;
-			for (const r of runsView.runs(id)) {
-				const len = r.kind === 'text' ? (r as { text: string }).text.length : 1;
-				if (pos + len > offset && pos < offset + length) {
-					for (const k of Object.keys((r as { marks?: JsonObj }).marks ?? {})) clears[k] = null;
-				}
-				pos += len;
+			for (const item of textIn(ref(id), offset, offset + length)) {
+				for (const k of Object.keys(item.marks ?? {})) clears[k] = null;
 			}
 			return formatRange(id, offset, length, clears);
 		};
 
-		const insertInline = (id: BlockId, offset: number, atom: InlineSpec): OpResult => {
+		const insertInline = (id: BlockId, offset: number, atom: InlineSpec): Prepared => {
 			id = ref(id);
 			const clean = sanitizeInline(atom);
-			return op(() => (M.insertInline(doc, id, offset, clean) ? [id] : null), [id]);
+			if (!contentTarget(id)) return REFUSED;
+			return plan([id], [{ op: 'insertInline', id, offset: clamp(id, offset, 0)[0], atom: clean }]);
 		};
 
-		const removeInline = (id: BlockId, inlineId: string): OpResult => {
+		const removeInline = (id: BlockId, inlineId: string): Prepared => {
 			id = ref(id);
-			const atom = ref(inlineId);
-			return op(() => (M.removeInline(doc, id, atom) ? [id] : null), [id]);
+			const atom = atomOf(id, ref(inlineId));
+			if (atom === undefined) return REFUSED;
+			return plan([id], [{ op: 'removeInline', id, offset: atom.at, inlineId: ref(inlineId) }]);
 		};
 
 		const setInlineData = (
 			id: BlockId,
 			inlineId: string,
 			data: Record<string, unknown>
-		): OpResult => {
+		): Prepared => {
 			id = ref(id);
-			const atom = ref(inlineId);
 			const clean = sanitizeWireJson(data);
-			return op(() => (M.setInlineData(doc, id, atom, clean) ? [id] : null), [id]);
+			const atom = atomOf(id, ref(inlineId));
+			if (atom === undefined) return REFUSED;
+			if (jsonEquals((atom.item as InlineSpec).data, clean)) return plan([id], []);
+			const step = {
+				op: 'setInlineData',
+				id,
+				offset: atom.at,
+				inlineId: ref(inlineId),
+				data: clean
+			};
+			return plan([id], [step as PlanStep]);
+		};
+
+		/** Every document op, prepared (R6) — `apply(prepare.op(…))` is the op. */
+		const prepare = {
+			insertBlocks,
+			insertBlock: (dest: Destination, spec: BlockSpec) => insertBlocks(dest, [spec]),
+			moveBlocks,
+			/** Relocate `id` — identity preserved. */
+			moveBlock: (id: BlockId, dest: Destination) => moveBlocks([id], dest),
+			/** Move `id` to the last position under `parent`. */
+			nestBlock: (id: BlockId, parent: BlockId) =>
+				moveBlocks([id], { parent, index: childrenIds(ref(parent)).length }),
+			unNestBlock,
+			splitBlock,
+			mergeBlocks,
+			mergeBackward,
+			mergeForward,
+			deleteBlock,
+			setBlock,
+			setBlockType,
+			setBlockData,
+			duplicateBlock,
+			insertText,
+			deleteText,
+			formatRange,
+			setMark: (id: BlockId, offset: number, length: number, name: string, value: unknown) =>
+				formatRange(id, offset, length, { [name]: value }),
+			unsetMark: (id: BlockId, offset: number, length: number, name: string) =>
+				formatRange(id, offset, length, { [name]: null }),
+			clearMarks,
+			insertInline,
+			removeInline,
+			setInlineData
 		};
 
 		// ── JSON boundary ─────────────────────────────────────────────────
@@ -2363,33 +2628,12 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			subscribeBlock: byRef(runsView.subscribeBlock),
 			// events
 			onChange,
-			// structural ops — each returns an {@link OpResult}
-			insertBlocks,
-			insertBlock,
-			moveBlock,
-			moveBlocks,
-			nestBlock,
-			unNestBlock,
-			splitBlock,
-			mergeBlocks,
-			mergeBackward,
-			mergeForward,
-			deleteBlock,
-			// metadata / replacement
-			setBlock,
-			setBlockType,
-			setBlockData,
-			duplicateBlock,
-			// content ops
-			insertText,
-			deleteText,
-			setMark,
-			unsetMark,
-			formatRange,
-			clearMarks,
-			insertInline,
-			removeInline,
-			setInlineData,
+			// every op — each returns an {@link OpResult}; `apply(prepare.op(…))`
+			...applied(prepare, apply),
+			/** Every op prepared (R6): pure, a plan of named steps + its effect, or `refused`. */
+			prepare,
+			/** Write a prepared plan exactly (refusals pass through). */
+			apply,
 			// transactions (composed ops already run in one; expose for callers
 			// that batch several ops into one undo step / one event)
 			transact: <R>(fn: () => R, origin?: unknown): R => write(() => doc.transact(fn, origin)),

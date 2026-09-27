@@ -81,6 +81,7 @@ import {
 	readSliceEntries,
 	type Owner,
 	type Ownership,
+	type SlicePayload,
 	type SliceRecord,
 	type TextBlockRec
 } from '../text/model.js';
@@ -484,19 +485,6 @@ export const documentOrder = (kids: ModelView['kids']): DocOrder => {
  * 'lib/crdt/vendor/yjs'`). Consumers inject it so this file stays free of
  * runtime vendor imports (see `engine-api.ts`).
  */
-/**
- * The same-value guard for attr writes: the engine writes a new item for an
- * equal value, so an unchanged attr must not be written (R6: `noop` is read
- * from the transaction, which then holds nothing).
- */
-export const setIfChanged = (
-	node: { getAttr(key: string): unknown; setAttr(key: string, value: unknown): unknown },
-	key: string,
-	value: unknown
-): void => {
-	if (!jsonEquals(node.getAttr(key), value)) node.setAttr(key, value);
-};
-
 export const bindModel = (
 	Y: EngineApi,
 	/**
@@ -631,20 +619,10 @@ export const bindModel = (
 		};
 	};
 
-	/** Visible children of `parent` in projection order. */
-	const liveChildrenOf = (
-		doc: EngineDoc,
-		parent: BlockId | null,
-		exclude?: Set<BlockId>
-	): { id: BlockId; rank: string }[] => {
-		const kids = view(doc).kids.get(parent) ?? [];
-		return exclude ? kids.filter((k) => !exclude.has(k.id)) : kids;
-	};
-
 	// ── content (rich-text sequence) helpers ────────────────────────────
 
+	/** A detached inline-atom node (inputs arrive normalized by the facade's ingress, O1). */
 	const buildInline = (atom: InlineSpec): EngineNode => {
-		// Inputs arrive normalized and cloned by the facade's ingress (O1).
 		const node = newNode(INLINE_NODE);
 		node.setAttr(ID, atom.id);
 		node.setAttr(TYPE, atom.type);
@@ -668,11 +646,9 @@ export const bindModel = (
 	 * DISPLAY-ancestor chain — the composed relation `owner(parent)`
 	 * (`displayParentOf`), not the raw placement chain. A merge claim can
 	 * place a block inside another's display subtree without appearing in
-	 * its raw ancestry, so the local invalid-op rejection must see through
-	 * the claim redirect — this is exactly the relation `resolvePlacements`
-	 * keeps acyclic. Used for the local invalid-move/merge rejections: an op
-	 * that would nest a block under its own display subtree is refused
-	 * without mutation.
+	 * its raw ancestry, so the merge refusal must see through the claim
+	 * redirect — this is exactly the relation `resolvePlacements` keeps
+	 * acyclic: a merge that would close a cycle is refused without mutation.
 	 */
 	const isSelfOrDescendant = (
 		placements: Map<BlockId, ResolvedPlacement>,
@@ -694,11 +670,13 @@ export const bindModel = (
 		return false;
 	};
 
-	// ── ops ─────────────────────────────────────────────────────────────
+	// ── write primitives ────────────────────────────────────────────────
+	// The document's prepared plans (R6) decide every write; these only
+	// perform one planned step and never refuse. Must run inside a transaction.
 
 	/**
 	 * `count` consecutive insertion ranks at `index` into the sibling list
-	 * `siblings` — the multi-member form of the single-insert seam.
+	 * `siblings`.
 	 *
 	 * Degenerate seams (`left >= right`) are legal replicated states, not
 	 * caller errors: equal-rank neighbours occur after cycle-fallback
@@ -708,10 +686,10 @@ export const bindModel = (
 	 * so each new member takes `left` verbatim: it JOINS the tie and the
 	 * `(rank, id)` display sort orders the whole group deterministically.
 	 * On a valid seam the emitted chain is `rankBetween(left, right)` then
-	 * `rankBetween(prev, right)` — identical to `rankAt` when `count` is 1.
+	 * `rankBetween(prev, right)`.
 	 */
 	const ranksAt = (
-		siblings: { rank: string }[],
+		siblings: readonly { rank: string }[],
 		index: number,
 		count: number,
 		clientId: number,
@@ -731,23 +709,49 @@ export const bindModel = (
 		return out;
 	};
 
-	/** Rank for inserting ONE block at `index` — `ranksAt(.., 1)`. */
-	const rankAt = (
-		siblings: { rank: string }[],
-		index: number,
-		clientId: number,
-		rand?: () => number
-	): string => ranksAt(siblings, index, 1, clientId, rand)[0]!;
+	/**
+	 * One registry entry: the block node with its `content`/`slices`/`at`
+	 * maps, `records` on its slice list and the atomic first placement
+	 * candidate `{p, r}` stamped `1.clientID`. Pre-integration writes
+	 * materialize when the node integrates (the registry write comes last).
+	 */
+	const createBlock = (
+		doc: EngineDoc,
+		id: BlockId,
+		type: unknown,
+		data: unknown,
+		place: PlacementValue,
+		records: SlicePayload[],
+		items: readonly ContentItem[] = []
+	): void => {
+		const node = newNode(BLOCK_NODE);
+		node.setAttr(ID, id);
+		node.setAttr(TYPE, type);
+		if (data !== undefined) node.setAttr(DATA, data);
+		const content = newNode(CONTENT_NODE);
+		node.setAttr(CONTENT, content);
+		const slices = newNode(SLICES_NODE);
+		node.setAttr(SLICES, slices);
+		const at = newNode(AT_NODE);
+		node.setAttr(AT, at);
+		let clen = 0;
+		for (const item of items) {
+			if (item.kind === 'text') {
+				content.insert(clen, item.text, item.marks);
+				clen += item.text.length;
+			} else {
+				content.insert(clen++, [buildInline(item)]);
+			}
+		}
+		if (records.length > 0) slices.insert(0, records);
+		at.setAttr(`1.${doc.clientID}`, place);
+		registryOf(doc).setAttr(id, node);
+	};
 
 	/**
-	 * Materialize one spec into the registry: the block node with its
-	 * `content`/`slices`/`at` maps, the default whole-text slice record and
-	 * the atomic first placement candidate `{p, r}` stamped `1.clientID`.
-	 * Spec children recurse, each under a fresh sequential rank chain
-	 * (`left = undefined` restart per parent — a new block has no
-	 * pre-existing siblings to interleave with). Shared by
-	 * `insertBlock`/`insertBlocks` so the write shape is identical either
-	 * way. Must run inside a transaction.
+	 * Materialize one spec subtree: the block owns its whole backing text
+	 * (one `{B, E}` self-record); children recurse under a fresh
+	 * sequential rank chain (a new block has no siblings to interleave with).
 	 */
 	const materializeSpec = (
 		doc: EngineDoc,
@@ -755,39 +759,13 @@ export const bindModel = (
 		parent: BlockId | null,
 		rank: string
 	): void => {
-		const node = newNode(BLOCK_NODE);
-		node.setAttr(ID, sp.id);
-		node.setAttr(TYPE, sp.type);
-		if (sp.data !== undefined) node.setAttr(DATA, sp.data);
-		const content = newNode(CONTENT_NODE);
-		node.setAttr(CONTENT, content);
-		const slices = newNode(SLICES_NODE);
-		node.setAttr(SLICES, slices);
-		const at = newNode(AT_NODE);
-		node.setAttr(AT, at);
-		// Pre-integration writes materialize when the subtree integrates.
-		let clen = 0;
-		for (const item of sp.content ?? []) {
-			if (item.kind === 'text') {
-				content.insert(clen, item.text, item.marks);
-				clen += item.text.length;
-			} else {
-				content.insert(clen, [buildInline(item)]);
-				clen += 1;
-			}
-		}
-		// The block owns its whole backing text by default.
-		slices.insert(0, [
-			{ t: sp.id, s: { i: null, a: -1 }, e: { i: null, a: 0 } } satisfies SliceRecord
-		]);
-		at.setAttr(`1.${doc.clientID}`, { p: parent, r: rank });
-		registryOf(doc).setAttr(sp.id, node);
-		// Children get sequential ranks among themselves.
+		const self: SliceRecord = { t: sp.id, s: { i: null, a: -1 }, e: { i: null, a: 0 } };
+		createBlock(doc, sp.id, sp.type, sp.data, { p: parent, r: rank }, [self], sp.content);
 		let left: string | undefined;
 		for (const child of sp.children ?? []) {
-			const cr = rankBetween(left, undefined, doc.clientID, randOf(doc));
-			materializeSpec(doc, child, sp.id, cr);
-			left = cr;
+			const r = rankBetween(left, undefined, doc.clientID, randOf(doc));
+			materializeSpec(doc, child, sp.id, r);
+			left = r;
 		}
 	};
 
@@ -809,298 +787,46 @@ export const bindModel = (
 	};
 
 	/**
-	 * Insert `specs` (whole subtrees, in list order) at `dest` in ONE
-	 * transaction — the bulk form of `insertBlock`. All-or-nothing across the
-	 * whole batch: ANY spec id colliding with a live block or with another
-	 * spec id refuses the entire batch without writing; an empty batch is a
-	 * no-op that returns `true` without transacting.
-	 *
-	 * `dest.parent` must resolve to a live id unless `null` (root); `dest.index`
-	 * clamps into the live children. The live-sibling list is resolved ONCE
-	 * and ranks are chained locally (`rankBetween(prevRank, nextRank)` per
-	 * spec) — sequential `insertBlock` calls would recompute the same chain
-	 * one projection per spec, which made initialization quadratic. The
-	 * emitted rank stream is identical either way.
+	 * The seed writer's bulk insert (R1: the document is written by document
+	 * operations and, once, by the seed writer — `init`, the local
+	 * materializer): `specs` (whole subtrees, in list order) at `dest` in one
+	 * transaction, all-or-nothing — `false` without writing when the parent
+	 * is not live or any id collides. Document operations never call it:
+	 * they prepare their inserts (`insertBlocks` in the facade).
 	 */
-	const insertBlocks = (doc: EngineDoc, dest: Destination, clean: BlockSpec[]): boolean => {
-		if (clean.length === 0) return true;
+	const insertBlocks = (doc: EngineDoc, dest: Destination, specs: BlockSpec[]): boolean => {
+		if (specs.length === 0) return true;
 		if (dest.parent !== null && !isLive(doc, dest.parent)) return false;
-		if (collides(doc, clean)) return false;
+		if (collides(doc, specs)) return false;
 		return doc.transact(() => {
-			const sibs = liveChildrenOf(doc, dest.parent);
-			const idx = Math.max(0, Math.min(dest.index, sibs.length));
-			// Degenerate seams join the left tie — see `ranksAt`.
-			const ranks = ranksAt(sibs, idx, clean.length, doc.clientID, randOf(doc));
-			for (let i = 0; i < clean.length; i++) {
-				materializeSpec(doc, clean[i]!, dest.parent, ranks[i]!);
-			}
+			const sibs = view(doc).kids.get(dest.parent) ?? [];
+			const at = Math.max(0, Math.min(dest.index, sibs.length));
+			const ranks = ranksAt(sibs, at, specs.length, doc.clientID, randOf(doc));
+			specs.forEach((sp, i) => materializeSpec(doc, sp, dest.parent, ranks[i]!));
 			return true;
 		});
 	};
 
 	/**
-	 * Insert a new block (and its spec children, recursively) at `dest`.
-	 * No-op `false` when the parent is unresolvable/deleted or ANY id in the
-	 * spec tree is already taken — the registry is keyed by id, so a spec id
-	 * colliding with an existing entry (live or deleted) is refused rather
-	 * than overwriting it. Validation is all-or-nothing BEFORE any mutation:
-	 * a nested-child collision must not partially insert the spec nor
-	 * tombstone the victim's registry item (gate-1 finding: `registry.setAttr`
-	 * on an existing id silently replaces content, slices, placements and
-	 * engine identity in place). Ids duplicated WITHIN the spec are rejected
-	 * the same way. Specs arrive normalized by the caller's ingress
-	 * (`sanitizeSpec`), so validation runs on the stored form.
+	 * Split `id` at content `offset` into the new block `newId` placed at
+	 * `place`: `id`'s slice list is divided at `offset` and the tail records
+	 * move into the new block's `slices` — no atom is copied, so an offline
+	 * edit to the tail keeps landing on the same backing items and is
+	 * claimed by the new block after convergence. `tail` is the new block's
+	 * type/data, decided once by the plan. Children are a separate step.
 	 */
-	const insertBlock = (doc: EngineDoc, dest: Destination, spec: BlockSpec): boolean =>
-		insertBlocks(doc, dest, [spec]);
-
-	/**
-	 * Delete (R3): this writer's mark on `id` and on every block `id`
-	 * displays through merge claims (transitively) at delete time. Content,
-	 * payload and placements are untouched — a dead block's text is hidden by
-	 * its marks, so a tail a peer splits off concurrently keeps its text and
-	 * undo removes exactly this writer's marks.
-	 */
-	const deleteBlock = (doc: EngineDoc, id: BlockId): boolean => {
-		const v = view(doc);
-		if (!isLiveIn(v, id)) return false;
-		return doc.transact(() => {
-			for (const [b, rec] of v.blocks) {
-				if (v.own.ownerOf(b) === id) rec.node.setAttr(DEL_PREFIX + doc.clientID, true);
-			}
-			return true;
-		});
-	};
-
-	/**
-	 * Grouped move: relocate `ids` (in given source order) to consecutive
-	 * positions starting at `dest.index` (final-index semantics: the index
-	 * counts the destination's children with the moved blocks removed) —
-	 * ONE transaction, so one undo step. The facade's `moveBlock`,
-	 * `nestBlock` and `unNestBlock` are this op (L15).
-	 * Conflicts resolve per member (each block writes its own candidate); a
-	 * member separately moved later wins or loses by the normal order.
-	 * All-or-nothing locally: any unresolvable member or invalid destination
-	 * aborts the whole group without mutating.
-	 */
-	const moveBlocks = (doc: EngineDoc, ids: BlockId[], dest: Destination): boolean => {
-		if (ids.length === 0) return false;
-		const { placements, own } = view(doc);
-		const nodes: EngineNode[] = [];
-		for (const id of ids) {
-			if (!isLiveIn({ placements, own }, id)) return false;
-			nodes.push(blockNodeOf(doc, id)!);
-		}
-		if (dest.parent !== null && !isLiveIn({ placements, own }, dest.parent)) return false;
-		if (dest.parent !== null) {
-			for (const id of ids) {
-				if (isSelfOrDescendant(placements, own, dest.parent, id)) return false;
-			}
-		}
-		const members = new Set(ids);
-		return doc.transact(() => {
-			const sibs = liveChildrenOf(doc, dest.parent, members);
-			const idx = Math.max(0, Math.min(dest.index, sibs.length));
-			// D2: a degenerate destination seam (equal/inverted neighbour
-			// ranks — legal after cycle-fallback rehoming) would throw inside
-			// `rankBetween`; `ranksAt` joins the left tie instead, keeping the
-			// move deterministic and convergent.
-			const ranks = ranksAt(sibs, idx, ids.length, doc.clientID, randOf(doc));
-			for (let i = 0; i < ids.length; i++) {
-				writePlacement(doc, nodes[i], dest.parent, ranks[i]!);
-			}
-			return true;
-		});
-	};
-
-	/**
-	 * Split `id` at content `offset`: the block's slice list is materialized
-	 * into anchored records and divided at `offset`; the tail records move
-	 * into the new sibling `newId`'s `slices` — no atom is copied, so an
-	 * offline edit to the tail keeps landing on the same backing items and is
-	 * claimed by the sibling after convergence. The block's children are
-	 * reparented onto the sibling (the existing editor contract), each via a
-	 * normal placement write. `tail` decides the sibling's type/data once
-	 * (default: copied from `id`).
-	 */
-	const splitBlock = (
+	const writeSplit = (
 		doc: EngineDoc,
 		id: BlockId,
 		offset: number,
 		newId: BlockId,
-		tail?: SplitTail
-	): boolean => {
-		if (blockNodeOf(doc, newId) !== null) return false;
-		const pos = positionOf(doc, id);
-		if (!pos) return false; // not live — no-op
-		const node = blockNodeOf(doc, id)!;
-		return doc.transact(() => {
-			const { blocks, placements, own } = view(doc);
-			const split = T.splitSlices(doc, blocks, own, id, offset);
-			if (!split) return false;
-			// New sibling immediately after `id` under the same parent.
-			const sibs = childrenOf(placements, own, pos.parent);
-			const myIdx = sibs.findIndex((s) => s.id === id);
-			const rank = rankAt(sibs, myIdx + 1, doc.clientID, randOf(doc));
-			const sibling = newNode(BLOCK_NODE);
-			sibling.setAttr(ID, newId);
-			sibling.setAttr(TYPE, tail ? tail.type : node.getAttr(TYPE));
-			const data = tail ? tail.data : node.getAttr(DATA);
-			if (data !== undefined) sibling.setAttr(DATA, cloneJson(data));
-			// Own empty backing text (future inserts/undo targets) + tail claims.
-			sibling.setAttr(CONTENT, newNode(CONTENT_NODE));
-			const sSlices = newNode(SLICES_NODE);
-			sibling.setAttr(SLICES, sSlices);
-			const atNode = newNode(AT_NODE);
-			sibling.setAttr(AT, atNode);
-			if (split.tail.length > 0) sSlices.insert(0, split.tail);
-			atNode.setAttr(`1.${doc.clientID}`, { p: pos.parent, r: rank });
-			registryOf(doc).setAttr(newId, sibling);
-			// Children follow the split — reparent each onto `newId` in order.
-			let left: string | undefined;
-			for (const k of childrenOf(placements, own, id)) {
-				const r = rankBetween(left, undefined, doc.clientID, randOf(doc));
-				writePlacement(doc, blocks.get(k.id)!.node, newId, r);
-				left = r;
-			}
-			return true;
-		});
-	};
-
-	/**
-	 * Merge `fromId` into `intoId`: appends one merge-claim record `{m:fromId}`
-	 * to `intoId`'s slice list and reparents `fromId`'s children. `fromId` is
-	 * NOT `del`-flagged — it is hidden derivatively because the claim makes
-	 * `owner(fromId) = intoId`, so an undone or dead claim restores it.
-	 * Content is never copied: `fromId`'s atoms stay in its backing text and
-	 * are displayed by `intoId` through the claim.
-	 */
-	const mergeBlocks = (doc: EngineDoc, fromId: BlockId, intoId: BlockId): boolean => {
-		if (fromId === intoId) return false;
-		const v = view(doc);
-		if (!isLiveIn(v, fromId) || !isLiveIn(v, intoId)) return false;
-		const { blocks, placements, own } = v;
-		// Composed-cycle guard: the claim `{m:fromId}` redirects the display
-		// parent of every placement-child of `fromId`'s claimed set to
-		// `intoId`. If `intoId` displays inside `fromId`'s subtree, the claim
-		// closes a cycle in the composed relation (`intoId → … → fromId →
-		// intoId`) that the raw placement graph cannot see — the subtree
-		// would be live but unreachable on every replica. Reject without
-		// mutating, like the invalid-move rejection (concurrent versions of
-		// the same cycle that no local guard can see are resolved
-		// deterministically acyclic by `resolvePlacements`).
-		if (isSelfOrDescendant(placements, own, intoId, fromId)) return false;
-		return doc.transact(() => {
-			// `from`'s children append at the end of `into`'s child list — read
-			// BEFORE the claim hides `from` (its children stay visible either
-			// way, but the sibling order is read from the pre-claim state).
-			const intoKids = childrenOf(placements, own, intoId);
-			const fromKids = childrenOf(placements, own, fromId);
-			T.claimInto(blocks, fromId, intoId);
-			let left = intoKids[intoKids.length - 1]?.rank;
-			for (const k of fromKids) {
-				const r = rankBetween(left, undefined, doc.clientID, randOf(doc));
-				writePlacement(doc, blockNodeOf(doc, k.id)!, intoId, r);
-				left = r;
-			}
-			return true;
-		});
-	};
-
-	// ── inline content ops ──────────────────────────────────────────────
-
-	/** Shared op prelude: resolve the ownership view once; refuse non-live targets. */
-	const ownView = (doc: EngineDoc, id: BlockId) => {
-		const v = view(doc);
-		return isLiveIn(v, id) ? v : null;
-	};
-
-	const insertText = (
-		doc: EngineDoc,
-		id: BlockId,
-		offset: number,
-		text: string,
-		marks?: Record<string, unknown>
-	): boolean => {
-		return doc.transact(() => {
-			const v = ownView(doc, id);
-			if (!v) return false;
-			return T.insertIntoText(doc, v.blocks, v.own, id, offset, text, marks);
-		});
-	};
-
-	const deleteText = (doc: EngineDoc, id: BlockId, offset: number, length: number): boolean => {
-		return doc.transact(() => {
-			const v = ownView(doc, id);
-			if (!v) return false;
-			return T.deleteRange(doc, v.blocks, v.own, id, offset, length);
-		});
-	};
-
-	const insertInline = (doc: EngineDoc, id: BlockId, offset: number, atom: InlineSpec): boolean => {
-		return doc.transact(() => {
-			const v = ownView(doc, id);
-			if (!v) return false;
-			return T.insertIntoText(doc, v.blocks, v.own, id, offset, buildInline(atom));
-		});
-	};
-
-	const removeInline = (doc: EngineDoc, id: BlockId, inlineId: string): boolean => {
-		return doc.transact(() => {
-			const v = ownView(doc, id);
-			if (!v) return false;
-			for (const seg of T.flatten(id, v.blocks, v.own)) {
-				const text = v.blocks.get(seg.t)?.content;
-				if (!text) continue;
-				// `toArray` returns CONTENT elements — a multi-char string is
-				// ONE element — so the array index is not the sequence
-				// position. Track positions explicitly.
-				const arr = text.toArray();
-				let p = 0;
-				for (const entry of arr) {
-					const elen = typeof entry === 'string' ? entry.length : 1;
-					if (isNodeLike(entry) && entry.getAttr(ID) === inlineId && p >= seg.i0 && p < seg.i1) {
-						text.delete(p, 1);
-						return true;
-					}
-					p += elen;
-				}
-			}
-			return false;
-		});
-	};
-
-	/**
-	 * Replace an inline atom's `data` payload (metadata update — AN03).
-	 * Identity is preserved: the same atom node stays in place, only its
-	 * `data` attr is rewritten. Returns false when the atom is not found in
-	 * `id`'s owned content.
-	 */
-	const setInlineData = (
-		doc: EngineDoc,
-		id: BlockId,
-		inlineId: string,
-		data: Record<string, unknown>
-	): boolean => {
-		return doc.transact(() => {
-			const v = ownView(doc, id);
-			if (!v) return false;
-			for (const seg of T.flatten(id, v.blocks, v.own)) {
-				const text = v.blocks.get(seg.t)?.content;
-				if (!text) continue;
-				const arr = text.toArray();
-				let p = 0;
-				for (const entry of arr) {
-					const elen = typeof entry === 'string' ? entry.length : 1;
-					if (isNodeLike(entry) && entry.getAttr(ID) === inlineId && p >= seg.i0 && p < seg.i1) {
-						setIfChanged(entry, DATA, data);
-						return true;
-					}
-					p += elen;
-				}
-			}
-			return false;
-		});
+		tail: SplitTail,
+		place: PlacementValue
+	): void => {
+		const { blocks, own } = view(doc);
+		const split = T.splitSlices(doc, blocks, own, id, offset)!;
+		const data = tail.data === undefined ? undefined : cloneJson(tail.data);
+		createBlock(doc, newId, tail.type, data, place, split.tail);
 	};
 
 	// ── queries ─────────────────────────────────────────────────────────
@@ -1217,20 +943,18 @@ export const bindModel = (
 		childrenIndex,
 		positionInView,
 		contentItemsOf,
-		// structural ops
+		// write primitives (the document's prepared plans apply these)
+		buildInline,
+		isSelfOrDescendant,
+		ranksAt,
+		writePlacement,
+		materializeSpec,
 		collides,
-		insertBlock,
+		writeSplit,
+		// the seed writer's bulk insert
 		insertBlocks,
-		deleteBlock,
-		moveBlocks,
-		splitBlock,
-		mergeBlocks,
-		// content ops
-		insertText,
-		deleteText,
-		insertInline,
-		removeInline,
-		setInlineData,
+		insertBlock: (doc: EngineDoc, dest: Destination, spec: BlockSpec) =>
+			insertBlocks(doc, dest, [spec]),
 		// queries
 		project,
 		positionOf,

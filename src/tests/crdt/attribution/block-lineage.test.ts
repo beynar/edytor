@@ -590,10 +590,12 @@ describe('lineage — coverage gaps', () => {
 		// written below the facade — foreign/migrated/tooling inserts.
 		const A = withLineage({ actor: alice });
 		A.transact(() => {
-			A.facade.model.insertBlock(
+			const [rank] = A.facade.model.ranksAt([], 0, 1, A.doc.clientID);
+			A.facade.model.materializeSpec(
 				A.doc as never,
-				{ parent: null, index: 0 },
-				{ id: 'foreign-1', type: 'paragraph', content: [{ kind: 'text', text: 'sys' }] }
+				{ id: 'foreign-1', type: 'paragraph', content: [{ kind: 'text', text: 'sys' }] },
+				null,
+				rank!
 			);
 		});
 		expect(A.attribution.block('foreign-1')).toBeUndefined(); // never stamped

@@ -28,7 +28,7 @@
 // @ts-nocheck -- reaches into engine internals to stage the precondition.
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindModel } from '../../../lib/crdt/index.js';
+import { bindModel } from '../../oracles/model-ops.js';
 import { decodeRank, RANK_VMIN } from '../../../lib/crdt/placement/rank.js';
 import type { EngineNode } from '../../../lib/crdt/engine-api.js';
 

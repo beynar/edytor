@@ -1328,18 +1328,12 @@ export const bindText = (Y: EngineApi) => {
 		offset: number,
 		payload: string | EngineNode,
 		marks?: Record<string, unknown>
-	): boolean => {
-		// `payload` and `marks` arrive normalized and cloned by the facade's
-		// ingress (O1, F2-M1): `text.insert` keeps the format object by
-		// reference.
-		const rec = blocks.get(b);
-		if (!rec) return false;
-		// Empty payload: resolve the block (above) but skip every write
-		// branch — an `''` insert would otherwise rewrite the covering
-		// slice record at a bumped generation (a real ~40–60B update on a
-		// semantic no-op) or pin a `revive` record claiming [tLen, E) with
-		// nothing appended.
-		if (payload === '') return true;
+	): void => {
+		// A planned step (R6): the document's `prepare` admitted a live block
+		// with its own content and a non-empty payload. `payload` and `marks`
+		// arrive normalized and cloned by the facade's ingress (O1, F2-M1):
+		// `text.insert` keeps the format object by reference.
+		const rec = blocks.get(b)!;
 		const segs = flatten(b, blocks, own);
 		const total = ownedLength(segs);
 		const at = Math.max(0, Math.min(offset, total));
@@ -1362,8 +1356,7 @@ export const bindText = (Y: EngineApi) => {
 			// must NOT swallow atoms another block already owns, so the start
 			// anchor is pinned at the current text end. Skip it only when the
 			// append point is already owned by THIS block — see below.
-			const ownText = rec.content;
-			if (!ownText || !rec.slicesNode) return false;
+			const ownText = rec.content!;
 			const tLen = ownText.length;
 			// The appended atoms occupy [tLen, tLen+len) of T_b. The only
 			// records that can claim them are END-sentinel records
@@ -1406,13 +1399,12 @@ export const bindText = (Y: EngineApi) => {
 					// ([tLen, E)) — the rival keeps its owned range.
 					g: (own.maxG.get(b) ?? 0) + 1
 				};
-				rec.slicesNode.insert(rec.slicesNode.length, [revive]);
+				rec.slicesNode!.insert(rec.slicesNode!.length, [revive]);
 			}
-			return true;
+			return;
 		}
 		const seg = segs[segIdx];
-		const text = blocks.get(seg.t)?.content;
-		if (!text) return false;
+		const text = blocks.get(seg.t)!.content!;
 		const inner = at - base;
 		if (inner === 0) {
 			// Left edge of the covering segment.
@@ -1485,7 +1477,7 @@ export const bindText = (Y: EngineApi) => {
 					holderSlices.insert(seg.seqIndex, rewritten);
 				}
 			}
-			return true;
+			return;
 		}
 		const insertAt = seg.i0 + inner;
 		const n = typeof payload === 'string' ? payload.length : 1;
@@ -1511,7 +1503,6 @@ export const bindText = (Y: EngineApi) => {
 				rec.slicesNode.insert(rec.slicesNode.length, [claim]);
 			}
 		}
-		return true;
 	};
 
 	/**
@@ -1536,8 +1527,10 @@ export const bindText = (Y: EngineApi) => {
 	 * intervals are disjoint), so after the two validation passes — every
 	 * span in range AND non-overlapping — no `text.delete` can throw:
 	 * each span's atoms are still at their recorded positions when its
-	 * turn comes. A failed check returns BEFORE the first mutation, so a
-	 * refused delete can never strand half-applied.
+	 * turn comes. A failed check (a broken interval invariant) throws BEFORE
+	 * the first mutation, so a delete can never strand half-applied. The
+	 * range is a planned step (R6): `prepare` clamped it and planned no
+	 * empty delete.
 	 */
 	const deleteRange = (
 		doc: EngineDoc,
@@ -1546,13 +1539,12 @@ export const bindText = (Y: EngineApi) => {
 		b: BlockId,
 		offset: number,
 		length: number
-	): boolean => {
+	): void => {
 		void doc;
 		const segs = flatten(b, blocks, own);
-		const total = ownedLength(segs);
-		const at = Math.max(0, Math.min(offset, total));
-		const end = Math.min(total, at + Math.max(0, length));
-		if (end <= at) return true;
+		const at = offset;
+		const end = offset + length;
+		const broken = () => new Error(`deleteRange: ownership spans of "${b}" are inconsistent`);
 		type Span = { text: EngineNode; i0: number; len: number };
 		const byText = new Map<TextId, Span[]>();
 		let base = 0;
@@ -1566,7 +1558,7 @@ export const bindText = (Y: EngineApi) => {
 				const spanLen = hi - lo;
 				// Validation pass 1 — every span resolvable and in range
 				// against the pre-delete live length.
-				if (!text || i0 < 0 || i0 + spanLen > text.length) return false;
+				if (!text || i0 < 0 || i0 + spanLen > text.length) throw broken();
 				let spans = byText.get(seg.t);
 				if (spans === undefined) byText.set(seg.t, (spans = []));
 				spans.push({ text, i0, len: spanLen });
@@ -1582,12 +1574,11 @@ export const bindText = (Y: EngineApi) => {
 		for (const spans of byText.values()) {
 			spans.sort((x, y) => y.i0 - x.i0);
 			for (let k = 1; k < spans.length; k++) {
-				if (spans[k].i0 + spans[k].len > spans[k - 1].i0) return false;
+				if (spans[k].i0 + spans[k].len > spans[k - 1].i0) throw broken();
 			}
 			ordered.push(...spans);
 		}
 		for (const s of ordered) s.text.delete(s.i0, s.len);
-		return true;
 	};
 
 	/** Format `length` displayed atoms starting at `offset`. */
@@ -1599,30 +1590,24 @@ export const bindText = (Y: EngineApi) => {
 		offset: number,
 		length: number,
 		formats: Record<string, unknown>
-	): boolean => {
+	): void => {
 		void doc;
-		// `formats` arrive normalized and cloned by the facade's ingress (O1):
-		// `text.format` stores them by reference. An empty range writes
-		// nothing (the op's result reads `noop` from the transaction).
+		// A planned step (R6): `prepare` clamped the range and planned it only
+		// when some atom's marks differ. `formats` arrive normalized and
+		// cloned by the facade's ingress (O1): `text.format` stores them by
+		// reference.
 		const segs = flatten(b, blocks, own);
-		const total = ownedLength(segs);
-		const at = Math.max(0, Math.min(offset, total));
-		const end = Math.min(total, at + Math.max(0, length));
-		if (end <= at) return true;
+		const at = offset;
+		const end = offset + length;
 		let base = 0;
 		for (const seg of segs) {
 			const len = seg.i1 - seg.i0;
 			const lo = Math.max(at, base);
 			const hi = Math.min(end, base + len);
-			if (lo < hi) {
-				const text = blocks.get(seg.t)?.content;
-				if (!text) return false;
-				text.format(seg.i0 + (lo - base), hi - lo, formats);
-			}
+			if (lo < hi) blocks.get(seg.t)!.content!.format(seg.i0 + (lo - base), hi - lo, formats);
 			base += len;
 			if (base >= end) break;
 		}
-		return true;
 	};
 
 	/**
@@ -1782,11 +1767,9 @@ export const bindText = (Y: EngineApi) => {
 	};
 
 	/** Append a merge claim `{m: from}` to `into`'s slices list. */
-	const claimInto = (blocks: Map<BlockId, TextBlockRec>, from: BlockId, into: BlockId): boolean => {
-		const intoRec = blocks.get(into);
-		if (!intoRec?.slicesNode) return false;
-		intoRec.slicesNode.insert(intoRec.slicesNode.length, [{ m: from } satisfies MergeClaim]);
-		return true;
+	const claimInto = (blocks: Map<BlockId, TextBlockRec>, from: BlockId, into: BlockId): void => {
+		const slices = blocks.get(into)!.slicesNode!;
+		slices.insert(slices.length, [{ m: from } satisfies MergeClaim]);
 	};
 
 	return {

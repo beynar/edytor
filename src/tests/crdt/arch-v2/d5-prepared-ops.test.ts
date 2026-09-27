@@ -37,7 +37,7 @@ import { bindEdytorDoc } from '../../../lib/crdt/index.js';
 const E = bindEdytorDoc(Y);
 
 /** Red on the reference (no `prepare`/`apply`): expected-fail until the implementation lands. */
-const row = test.fails;
+const row = test;
 
 const p = (id: string, text: string, children?: unknown[], type = 'paragraph') => ({
 	id,

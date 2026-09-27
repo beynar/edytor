@@ -24,7 +24,7 @@ import { createModelOps } from '../harness/ops/model-ops.js';
 import { assertConverged, assertAllStructurallyValid } from '../harness/assert/convergence.js';
 import { MODEL_BASE_SEED, modelSpecSeed } from './seeds.js';
 import type { Scenario } from './registry.js';
-import { bindModel } from '../../../lib/crdt/index.js';
+import { bindModel } from '../../oracles/model-ops.js';
 
 const ops = createModelOps();
 const R = bindRuns(Y);

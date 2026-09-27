@@ -28,7 +28,8 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc, bindModel } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/index.js';
+import { bindModel } from '../../oracles/model-ops.js';
 import { createPeerPair, type Peer } from '../harness/peer-set.js';
 import { modelSpecSeed } from '../scenarios/seeds.js';
 import { assertConverged } from '../harness/assert/convergence.js';

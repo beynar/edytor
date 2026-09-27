@@ -32,7 +32,8 @@
 // @ts-nocheck -- reaches into engine internals to stage the colliding lists.
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindEdytorDoc, bindModel } from '../../../lib/crdt/index.js';
+import { bindEdytorDoc } from '../../../lib/crdt/index.js';
+import { bindModel } from '../../oracles/model-ops.js';
 import { bindText } from '../../../lib/crdt/text/model.js';
 
 const M = bindModel(Y);

@@ -13,7 +13,7 @@
 // @ts-nocheck
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import { bindModel } from '../../../lib/crdt/index.js';
+import { bindModel } from '../../oracles/model-ops.js';
 import { createPeerPair } from '../harness/peer-set.js';
 import { createModelOps } from '../harness/ops/model-ops.js';
 import { MODEL_BASE_SEED, modelSpecSeed } from '../scenarios/seeds.js';

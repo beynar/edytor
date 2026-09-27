@@ -10,7 +10,8 @@
 // @ts-nocheck
 import { describe, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
-import { bindModel, bindRuns, bindEdytorDoc } from '../../lib/crdt/index.js';
+import { bindRuns, bindEdytorDoc } from '../../lib/crdt/index.js';
+import { bindModel } from '../oracles/model-ops.js';
 import { bindText } from '../../lib/crdt/text/model.js';
 import { createPeerPair } from './harness/peer-set.js';
 import { modelSpecSeed } from './scenarios/seeds.js';

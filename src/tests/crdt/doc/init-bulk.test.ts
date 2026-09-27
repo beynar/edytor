@@ -20,12 +20,8 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
-import {
-	bindDocument,
-	bindEdytorDoc,
-	bindModel,
-	BOOTSTRAP_BLOCK_ID
-} from '../../../lib/crdt/index.js';
+import { bindDocument, bindEdytorDoc, BOOTSTRAP_BLOCK_ID } from '../../../lib/crdt/index.js';
+import { bindModel } from '../../oracles/model-ops.js';
 
 const E = bindEdytorDoc(Y);
 const M = bindModel(Y);

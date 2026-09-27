@@ -52,6 +52,7 @@ const CUT: Record<string, 'before' | 'both'> = {
 	replaceInlineBlock: 'before',
 	nestBlock: 'before',
 	unNestBlock: 'before',
+	moveBlocks: 'before',
 	format: 'before'
 };
 const policyOf = (kind: string) =>

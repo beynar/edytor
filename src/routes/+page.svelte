@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
 	import type { Block } from '$lib/block/block.svelte.js';
+	import type { BlockMoveDirection } from '$lib/session/moves.js';
 	import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
@@ -237,16 +238,12 @@
 		blockMenu = null;
 		void restoreCaret(block);
 	};
-	const moveBlock = (direction: 'up' | 'down' | 'indent' | 'outdent') => {
+	const canMove = (direction: BlockMoveDirection) =>
+		!!activeBlock && !!edytor?.canMoveBlocks({ blocks: [activeBlock], direction });
+	const moveBlock = (direction: BlockMoveDirection) => {
 		const block = activeBlock;
 		if (!block || !edytor) return;
-		if (direction === 'indent') block.nestBlock();
-		else if (direction === 'outdent') block.unNestBlock();
-		else {
-			const target = direction === 'up' ? block.previousBlock : block.nextBlock;
-			const position = direction === 'up' ? 'before' : 'after';
-			if (target) edytor.moveBlocks({ blocks: [block], target, position });
-		}
+		edytor.moveBlocks({ blocks: [block], direction });
 		blockMenu = null;
 		void restoreCaret(block);
 	};
@@ -512,28 +509,26 @@
 				type="button"
 				role="menuitem"
 				onclick={() => moveBlock('up')}
-				disabled={!activeBlock.previousBlock}
-				><span class="block-menu-icon">↑</span><span>Move up</span></button
+				disabled={!canMove('up')}><span class="block-menu-icon">↑</span><span>Move up</span></button
 			>
 			<button
 				type="button"
 				role="menuitem"
 				onclick={() => moveBlock('down')}
-				disabled={!activeBlock.nextBlock}
+				disabled={!canMove('down')}
 				><span class="block-menu-icon">↓</span><span>Move down</span></button
 			>
 			<button
 				type="button"
 				role="menuitem"
-				onclick={() => moveBlock('indent')}
-				disabled={!activeBlock.previousBlock}
-				><span class="block-menu-icon">→</span><span>Indent</span></button
+				onclick={() => moveBlock('in')}
+				disabled={!canMove('in')}><span class="block-menu-icon">→</span><span>Indent</span></button
 			>
 			<button
 				type="button"
 				role="menuitem"
-				onclick={() => moveBlock('outdent')}
-				disabled={!activeBlock.isNested}
+				onclick={() => moveBlock('out')}
+				disabled={!canMove('out')}
 				><span class="block-menu-icon">←</span><span>Outdent</span></button
 			>
 			<div class="block-menu-divider"></div>

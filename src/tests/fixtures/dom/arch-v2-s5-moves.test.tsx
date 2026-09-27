@@ -34,7 +34,7 @@ import {
 } from '../../dom/test.utils.js';
 
 /** Red on the reference; green since S5. */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
@@ -87,8 +87,7 @@ const move = async (edytor: Edytor, path: Path, direction: Direction, ...texts: 
 		const key = ARROWS[direction];
 		await dispatchDomKeyDown(handle, { key, code: key, altKey: true });
 	} else {
-		// The public relative-move request (plain object on the reference API).
-		(edytor.moveBlocks as (request: unknown) => Block[])({ blocks, direction });
+		edytor.moveBlocks({ blocks, direction });
 		await flushDomUpdates();
 	}
 };
@@ -260,14 +259,13 @@ describe('capability: canMoveBlocks answers exactly when moveBlocks moves', () =
 				<paragraph>B</paragraph>
 			</root>
 		);
-		const can = edytor.canMoveBlocks as (request: unknown) => boolean;
 		const answers = Object.fromEntries(
 			Object.keys(expected).map((text) => [
 				text,
 				Object.fromEntries(
 					(['up', 'down', 'in', 'out'] as const).map((direction) => [
 						direction,
-						can({ blocks: [find(edytor, text)], direction })
+						edytor.canMoveBlocks({ blocks: [find(edytor, text)], direction })
 					])
 				)
 			])

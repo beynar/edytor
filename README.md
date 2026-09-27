@@ -187,7 +187,7 @@ if (edytor.canMoveBlocks(request)) {
 }
 ```
 
-`position` is `before`, `after`, or `inside`. `moveBlocks` returns the blocks actually moved; grouped moves keep the supplied block order and run as one history step. `canMoveBlocks` checks structural eligibility, while plugins may still prevent the operation.
+`position` is `before`, `after`, or `inside`. A request can instead name one relative step, `{ blocks, direction }` with `direction` `up`, `down`, `in` or `out` — the meaning the handle keys and the arrow-move plugin (`Mod+↑/↓` on selected blocks) use: `down` places the blocks after their next sibling, never inside its children, and past the last sibling after their parent (`up` mirrors it); `in` makes them the last children of their previous sibling; `out` places them after their parent. A relative group must be siblings. `moveBlocks` returns the blocks actually moved; grouped moves keep the supplied block order and run as one history step. `canMoveBlocks` checks structural eligibility, while plugins may still prevent the operation.
 
 ### The document — headless or shared by views
 

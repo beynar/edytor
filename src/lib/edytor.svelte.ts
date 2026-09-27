@@ -39,7 +39,7 @@ import {
 	canMoveBlocks as canMoveBlocksRelative,
 	moveBlocks as moveBlocksRelative,
 	type BlockMoveRequest
-} from './block/blockMove.js';
+} from './session/moves.js';
 import type {
 	Plugin,
 	BlockSnippetPayload,
@@ -442,10 +442,10 @@ export class Edytor {
 		}, this.transaction);
 	};
 
-	/** Check whether a relative block move is structurally allowed. */
+	/** Whether a block move (relative step or beside/inside a target) is structurally allowed. */
 	canMoveBlocks = (request: BlockMoveRequest): boolean => canMoveBlocksRelative(this, request);
 
-	/** Move blocks before, after, or inside a live target block. */
+	/** Move blocks one relative step (D-5), or before, after or inside a live target block. */
 	moveBlocks = (request: BlockMoveRequest): Block[] => moveBlocksRelative(this, request);
 
 	/**

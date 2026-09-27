@@ -28,7 +28,7 @@
 export { default as Edytor } from './components/Edytor.svelte';
 export { useEdytor } from './edytor.svelte.js';
 export { Block } from './block/block.svelte.js';
-export type { BlockMovePosition, BlockMoveRequest } from './block/blockMove.js';
+export type { BlockMoveDirection, BlockMovePosition, BlockMoveRequest } from './session/moves.js';
 export { InlineBlock } from './block/inlineBlock.svelte.js';
 export { Text } from './text/text.svelte.js';
 export { type Plugin } from './plugins.js';

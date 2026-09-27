@@ -289,6 +289,44 @@ Unsupported collaboration surfaces:
 - Edytor does not provide hosted websocket infrastructure.
 - Edytor does not guarantee hosted persistence durability; IndexedDB persistence is local browser storage.
 
+### Server coordinator (Cloudflare Durable Object)
+
+The CRDT engine and its sync layer run server-side too: a Cloudflare Durable Object (one per document) is the central coordinator every client's `createWebsocketSync` dials. That layer is **Worker-safe** — no Svelte, no browser globals — and this is enforced by `pnpm lint` (an import-boundary rule on `src/lib/crdt/**`), `pnpm check:worker` (bundles the entry for a Worker target and fails on any Svelte/view module) and the coordinator test [`src/tests/crdt/arch-v2/do-coordinator.test.ts`](src/tests/crdt/arch-v2/do-coordinator.test.ts), a runnable reference coordinator.
+
+**Import only**
+
+- `edytor/crdt` — the vendored v14 engine (`import * as Y from 'edytor/crdt'`);
+- `edytor/crdt/edytor` — `bindCrdt(Y)` (`.createDoc`, `.sync`, `.admission`, `.doc`), the envelope (`readProtocolVersion`, `writeProtocolVersion`, `PROTOCOL_VERSION`, `SCHEMA_VERSION`, `GENERATION_RECORD`, `GenerationMismatchError`) and the message types (`messageSync`, `messageAwareness`, `messageAuth`, `messageQueryAwareness`);
+- `lib0` at the version this package pins (`lib0@1.0.0-rc.32`) for the varuint encoder/decoder the frames are written with.
+
+Never import the package root `edytor` (it re-exports the Svelte components) or any `.svelte`/view module. Do not `createDocument`/`attachDocument` the room doc on the server. Doing so makes the server an actor, so it writes its client id into the replicated attribution dictionary. To read the room, use `crdt.doc.create(doc).toJSON()` and then `.dispose()`. Neither call writes anything.
+
+**Frame contract.** Every frame is `varuint GENERATION | varuint messageType | payload`, with `GENERATION = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION` (14003 at schema 3). The message types are:
+
+- `0` sync, with subtypes `0` Step1 (state vector), `1` Step2 (update) and `2` Update;
+- `1` awareness (the y-protocols v1 awareness update);
+- `2` auth (server → client permission denied);
+- `3` query awareness.
+
+A v13 peer's first word is its message type, so it never matches.
+
+**The coordinator must**
+
+1. **Admit** every frame. Check the generation word first, with `readProtocolVersion(decoder)`. A mismatch is refused before anything is decoded. Then apply Step2/Update payloads through `crdt.sync.applyRemote(doc, update, ws)`, which refuses an update that writes a foreign schema stamp (`problem !== null`). A refused frame is never applied, stored or relayed. Close the socket (1008).
+2. **Sync** by the join rule. Answer Step1 with `writeSyncStep2(doc, sv)`, plus your own Step1 when `crdt.sync.lacks(doc, sv)`. Send a Step1 on accept.
+3. **Persist append-only** from `doc.on('update')`, which gives you the integrated bytes rather than the raw payload. Write before you broadcast. Keep the generation record as the container's first row. When you rebuild, verify that record, then run `crdt.admission.admitUpdate(Y.mergeUpdates(rows))`.
+4. **Compact** from an alarm. Atomically replace the rows with the generation record plus a snapshot, `Y.encodeStateAsUpdate(doc)`.
+5. **Broadcast** each integrated update to every other socket.
+6. **Relay awareness** as frames. Keep the latest entry per client id (the newest clock wins) so that a joiner gets everyone present. When a socket closes, announce its client ids as removed (clock + 1, state `null`).
+
+**Durable Object facts that shape this**
+
+- A SQLite-backed object stores up to 10 GB, but one row/BLOB/string is capped at **2 MB**. Split every record (updates and snapshots) into parts and write them in one `transactionSync`. A compacted snapshot of a large document will exceed one row.
+- Received WebSocket messages can be up to 32 MiB, so a single client update can also exceed a row.
+- Use the hibernation API (`ctx.acceptWebSocket`, `webSocketMessage`, `webSocketClose`). A hibernated object loses its in-memory `Y.Doc` and rebuilds it from rows in its constructor (`blockConcurrencyWhile`).
+- An object with a pending `setTimeout`/`setInterval` never hibernates. Do **not** hold an `Awareness` instance on the server, because its constructor starts a 3 s sweep interval. Relay presence as bytes instead. The reference test asserts that the coordinator schedules no timer.
+- A socket attachment (`serializeAttachment`, max 16 KiB) survives hibernation. Keep a connection's awareness client ids there so that a close after hibernation can still announce them as removed.
+
 ## 📦 Plugins
 
 Plugins are the primary way to extend Edytor's functionality. They allow you to add custom blocks, marks, inline blocks, hotkeys, and hook into various editor events. Each plugin is a function that receives the editor instance and returns a set of definitions and operations.

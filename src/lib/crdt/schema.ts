@@ -26,6 +26,13 @@ export const ID = 'id';
 export const TYPE = 'type';
 export const DATA = 'data';
 /**
+ * Incarnation nonce (O23, §2.1): which creation of a (recyclable) block id a
+ * node is. Written once at creation — random from the `rand` seam, derived
+ * from the seed hash for seeded blocks — and replicated, so an undo/redo copy
+ * of the node carries it and every replica agrees on the incarnation.
+ */
+export const NONCE = 'n';
+/**
  * Per-writer delete marks (R3): `del.<writer>: true`. A block is deleted iff
  * any mark is live, so an undo removes only the undoer's own mark.
  */
@@ -43,7 +50,7 @@ export const REC_PREFIX = 'b/';
 
 /** The schema generation stamped on the `meta` root (`v`) and its manifest name (`schema`). */
 export const SCHEMA = {
-	version: 2,
+	version: 3,
 	name: 'edytor-doc',
 	roots: { registry: REGISTRY_KEY, meta: META_ROOT_KEY },
 	metaAttrs: { version: 'v', schema: 'schema' }

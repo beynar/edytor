@@ -19,6 +19,7 @@ import { bindEdytorDoc } from '../../../lib/crdt/index.js';
 import { createPeerPair, type Peer } from '../harness/peer-set.js';
 import { createDocOps } from '../harness/ops/doc-ops.js';
 import { assertConverged, assertAllStructurallyValid } from '../harness/assert/convergence.js';
+import { collectBlocks } from '../../oracles/fresh-view.js';
 
 const E = bindEdytorDoc(Y);
 const ops = createDocOps();
@@ -163,7 +164,7 @@ describe('gateF1 WU2 — read-your-writes inside a transaction', () => {
 		const d = ed(A);
 		A.transact(() => {
 			expect(d.displayLength('c')).toBe(3); // memoizes the v1 view
-			const blocks = d.model.collectBlocks(A.doc);
+			const blocks = collectBlocks(A.doc);
 			const own = d.text.computeOwnership(A.doc, blocks);
 			d.text.insertIntoText(A.doc, blocks, own, 'c', 0, 'RAW');
 			// Raw write bypassed invalidation — the memoized view is stale.

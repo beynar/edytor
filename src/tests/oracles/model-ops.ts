@@ -18,11 +18,12 @@ import { bindText } from '../../lib/crdt/text/model.js';
 import { randOf } from '../../lib/crdt/rand.js';
 import { DATA, DEL_PREFIX, ID, TYPE } from '../../lib/crdt/schema.js';
 import { jsonEquals } from '../../lib/utils/json.js';
+import { collectBlocks } from './fresh-view.js';
 
 export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 	const M = bindPlacement(...args);
 	const T = bindText(args[0]);
-	const kids = (doc, parent) => M.view(doc).kids.get(parent) ?? [];
+	const kids = (doc, parent) => [...(M.view(doc).kids.get(parent) ?? [])];
 	const ranks = (doc, sibs, index, count) =>
 		M.ranksAt(sibs, Math.max(0, Math.min(index, sibs.length)), count, doc.clientID, randOf(doc));
 	const isNodeLike = (v) => v != null && typeof v.getAttr === 'function';
@@ -72,12 +73,12 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 		if (!pos) return false;
 		const node = M.blockNodeOf(doc, id);
 		return doc.transact(() => {
-			const { blocks, placements, own } = M.view(doc);
+			const { blocks } = M.view(doc);
 			if (!blocks.get(id)?.slicesNode) return false;
-			const sibs = M.childrenOf(placements, own, pos.parent);
+			const sibs = kids(doc, pos.parent);
 			const myIdx = sibs.findIndex((s) => s.id === id);
 			const [rank] = ranks(doc, sibs, myIdx + 1, 1);
-			const children = M.childrenOf(placements, own, id);
+			const children = kids(doc, id);
 			const t = tail ?? { type: node.getAttr(TYPE), data: node.getAttr(DATA) };
 			M.writeSplit(doc, id, offset, newId, t, { p: pos.parent, r: rank });
 			const r = ranks(doc, [], 0, children.length);
@@ -94,8 +95,8 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 		if (M.isSelfOrDescendant(placements, own, intoId, fromId)) return false;
 		if (!blocks.get(intoId)?.slicesNode) return false;
 		return doc.transact(() => {
-			const intoKids = M.childrenOf(placements, own, intoId);
-			const fromKids = M.childrenOf(placements, own, fromId);
+			const intoKids = kids(doc, intoId);
+			const fromKids = kids(doc, fromId);
 			T.claimInto(blocks, fromId, intoId);
 			const r = ranks(doc, intoKids, intoKids.length, fromKids.length);
 			fromKids.forEach((k, i) => M.writePlacement(doc, M.blockNodeOf(doc, k.id), intoId, r[i]));
@@ -154,6 +155,8 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 	const moveBlock = (doc, id, dest) => moveBlocks(doc, [id], dest);
 	return {
 		...M,
+		/** The fresh collect production no longer has (the index is the owner). */
+		collectBlocks,
 		insertBlocks,
 		insertBlock: (doc, dest, spec) => insertBlocks(doc, dest, [spec]),
 		deleteBlock,

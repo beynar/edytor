@@ -26,7 +26,8 @@
  *
  * ```
  * doc.get('blocks')                      registry — flat map, blockId → node('block')
- *   └ <blockId>                           id/type/data/del + content/slices/at
+ *   └ <blockId>                           id/n/type/data/del + content/slices/at
+ *                                         (n: incarnation nonce, O23)
  * doc.get('meta')                        version record root
  *   ├ v : number                          SCHEMA_VERSION (LWW attr — concurrent init converges)
  *   └ schema : 'edytor-doc'               SCHEMA_NAME
@@ -36,11 +37,11 @@
  *
  * `seed(doc, value)` applies ONE update built in a scratch doc whose writer
  * id is a 32-bit hash of (generation, canonical seed JSON): caller ids are
- * kept, missing ids are derived from the hash and position, ranks come from
- * the rand seam seeded by the hash. Peers seeding the same value therefore
- * write the SAME items — a late identical seed is a no-op and never erases
- * an edit — while different values union (shared ids resolve by registry
- * LWW). An empty value seeds one `defaultType` block. The update is applied
+ * kept, missing ids are derived from the hash and position, ranks and
+ * incarnation nonces come from the rand seam seeded by the hash. Peers
+ * seeding the same value therefore write the SAME items — a late identical
+ * seed is a no-op and never erases an edit — while different values union
+ * (shared ids resolve by registry LWW). An empty value seeds one `defaultType` block. The update is applied
  * with a non-local origin: never an undo step, no attribution stamp.
  * Seeding is explicit: reads never create or normalize state.
  *
@@ -95,7 +96,7 @@ import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode, YUndoManager } from
 import { hash32, setDocRand } from './rand.js';
 import { bindUndoRepair } from './undo-repair.js';
 import {
-	AT_NODE,
+	AT,
 	BLOCK_NODE,
 	CONTENT_NODE,
 	DATA,
@@ -114,6 +115,7 @@ import {
 	type ContentItem,
 	type Destination,
 	type InlineSpec,
+	type ModelView,
 	type ProjectedBlock,
 	type SplitTail
 } from './placement/model.js';
@@ -130,15 +132,16 @@ import {
 	type SliceEntry,
 	type TextBlockRec
 } from './text/model.js';
-import { bindRuns, type ContentRun, type RunView } from './text/runs.js';
-import { bindNodes, type DocBlock } from './nodes.js';
 import {
-	clockOf,
-	deletedLen,
-	walkIdSetStructs,
-	type IdSetLike,
-	type StoreStruct
-} from './structs.js';
+	bindRuns,
+	ENTRY_FACET,
+	type ContentRun,
+	type Folded,
+	type IndexReport,
+	type RunView
+} from './text/runs.js';
+import { bindNodes, type DocBlock } from './nodes.js';
+import { walkIdSetStructs, type IdSetLike } from './structs.js';
 import {
 	bindBlockAttribution,
 	blockAttributionOf,
@@ -652,76 +655,15 @@ const isNodeLike = (v: unknown): v is EngineNode =>
 	v != null && typeof (v as { getAttr?: unknown }).getAttr === 'function';
 
 /**
- * Canonical key for a content item list — for change detection only.
- * TOTAL against hostile replicated payloads (R4): a remote/raw non-JSON
- * value (`bigint`, a cycle) must not crash diffing — the normalized
- * projection is the comparison surface, deterministic on every replica.
- */
-const safeKeyOf = (v: unknown): string => {
-	try {
-		return JSON.stringify(v ?? null);
-	} catch {
-		return JSON.stringify(cloneJsonSafe(v ?? null));
-	}
-};
-const contentKeyOf = (items: unknown): string => safeKeyOf(items);
-const dataKeyOf = (v: unknown): string => safeKeyOf(v);
-
-/**
- * Per-event snapshot of the projected tree for diffing.
- *
- * U11: this is a SKELETON snapshot, not a materialized `project()` — the
- * snapshot is taken on every committed transaction and materializing full
- * projected nodes (per-block `contentItemsOf` + `data` clones) measured as
- * the dominant per-commit cost (~4ms of ~5.1ms at 1,000 blocks). Entries
- * keep only cheap comparison surface:
- *
- * - `data` is the LIVE replicated attr ref — compared via `dataKeyOf`
- *   only, and cloned at the boundary if it ever reaches a `DocChange`
- *   payload (`meta`), so subscribers can never mutate engine state.
- * - `contentRef` is the block's CACHED runs array. The runs view reuses
- *   the same frozen array while content is unchanged (structural sharing
- *   in `reconcile`), so `o.contentRef !== n.contentRef` is an O(1)
- *   "maybe changed" check. `runEquals` compares `marks`/`data` by
- *   REFERENCE, so a recomputed-but-equal array is possible — the lazy
- *   `contentKey` (JSON of the merged runs, consistent on both sides of
- *   the diff) confirms an actual change before it is reported.
- * - `nodeFor` materializes the full projected subtree lazily — only
- *   `added` roots ever need it.
- */
-type DocSnap = {
-	nodes: Map<
-		BlockId,
-		{
-			parent: BlockId | null;
-			index: number;
-			type: string;
-			data: Record<string, unknown> | undefined;
-			contentRef: readonly ContentRun[];
-			contentKey?: string;
-		}
-	>;
-	/** parentKey (id or null for root) → ordered child ids (frozen —
-	 *  the same array is published on a `DocChange` and retained as the
-	 *  diff baseline, so it must be immutable — R4). */
-	order: Map<BlockId | null, readonly BlockId[]>;
-	/** Materialize the projected subtree rooted at `id` (for `added` entries). */
-	nodeFor?: (id: BlockId) => ProjectedBlock;
-};
-
-/**
  * Bind the assembled model to a concrete engine surface. `Y` must be the
  * vendored v14 module — injected so this file type-checks structurally and
  * never imports vendor `.js` (see `engine-api.ts`).
  */
 export const bindEdytorDoc = (Y: EngineApi) => {
+	// The doc's index (`text/runs.ts`) is the one owner of derived state:
+	// commands, runs, anchors, the change report and rendering read it.
 	const R = bindRuns(Y);
-	// WU7: inject the doc-shared model state so `M.view()` returns the
-	// maintained indexes (block records, ownership, placements, children
-	// index) instead of rebuilding them per call — typed-node commands,
-	// maintained runs, anchors, `DocChange` and rendering all read ONE
-	// consistent incremental model.
-	const M = bindModel(Y, (doc) => R.modelState(doc));
+	const M = bindModel(Y);
 	const T = bindText(Y);
 	// U1 — compact per-block attribution writes (`attribution/block.ts`).
 	// One bound instance per engine binding; its suppression memory is
@@ -734,8 +676,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 	// the doc's lifetime from `create()` below; the module-level dedupe
 	// table spans every binding.
 	const attachUndoRepair = bindUndoRepair(Y, {
-		collectBlocks: M.collectBlocks,
-		computeOwnership: T.computeOwnership,
+		view: (doc, transaction) => R.attach(doc).view(transaction),
 		undoRepairClaims: T.undoRepairClaims,
 		contentNodeName: CONTENT_NODE
 	});
@@ -861,35 +802,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const rendersContentOf = config.rendersContent ?? (() => true);
 		const runsView: RunView = R.attach(doc);
 
-		// ── model-state version + read invalidation (WU2) ───────────────
-		//
-		// `stateVersion` is the facade's invalidation token — it bumps on
-		// EVERY mutation routed through this facade (each `write` below)
-		// and on every committed `update` (local AND remote). The eager
-		// `update` listener exists so remote commits invalidate the cached
-		// view even before the first `onChange` subscriber attaches (the
-		// DocChange listener below attaches lazily — it is for diffing, not
-		// for cache correctness).
-		//
-		// `view`/`anchorView` memoize on `stateVersion`: consecutive reads
-		// inside one version share ONE collected view (the U11 cost
-		// contract — `view()` is ~1.2ms at 1,000 blocks), while any write
-		// between them forces re-collection. This is what makes command-
-		// layer reads transaction-aware (read-your-writes): an op that
-		// mutates then reads mid-transaction always sees its own write.
-		//
-		// Contract caveat: the guarantee covers writes routed through this
-		// facade (any op, or `transact(fn)` containing facade ops). RAW
-		// engine writes through the `model`/`text`/`doc` escape hatches
-		// bypass `write` — inside a transaction they can leave the memoized
-		// view stale until the commit's `update` invalidates it. The
-		// application layer never does this; keep it that way.
-		let stateVersion = 0;
-		const invalidate = (): void => {
-			stateVersion++;
-		};
-		doc.on('update', invalidate);
-
 		/**
 		 * Terminal flag — set by `dispose()`. Mutating ops funnel through
 		 * `write`, so gating there covers every facade write + `transact` +
@@ -911,39 +823,28 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		// applies. Once per doc, doc-lifetime, no-op when nothing is over.
 		BA.attachRingTrim(doc);
 
-		/**
-		 * Mutation boundary — every facade write funnels through `write`.
-		 * The entry invalidate drops the memoized view so reads issued
-		 * mid-transaction recompute; the exit invalidate guarantees the
-		 * next post-write read recomputes too. Composed ops wrap their
-		 * inner engine writes individually so a read between two inner
-		 * writes stays fresh.
-		 */
+		/** Mutation boundary — every facade write funnels through `write`. */
 		const write = <R>(fn: () => R): R => {
 			if (disposed) {
 				throw new EdytorDocDisposedError();
 			}
 			config.assertWritable?.();
-			invalidate();
-			try {
-				return fn();
-			} finally {
-				invalidate();
-			}
+			return fn();
 		};
 
 		// ── the write funnel (R6, O10, O19) ─────────────────────────────
 		//
 		// Every document op is a prepared plan (R6, below) written by `apply`:
-		// one transaction, and a result folded from what that transaction
-		// actually did — `applied` iff this replica's clock advanced (an item
-		// was written) or the transaction's delete set grew; otherwise `noop`.
-		// The plan decides what to write (a same-value attr or format is never
-		// planned); the result is observed, never predicted.
+		// one transaction, and a result read from the index's fold of what the
+		// frame wrote — `applied` iff the transaction wrote anything (its
+		// insert or delete set grew); otherwise `noop`. The plan decides what
+		// to write (a same-value attr or format is never planned); the result
+		// is observed, never predicted.
 		//
-		// Each apply opens a frame. When it closes, ONE pass over what the
-		// frame wrote stamps attribution and commits lineage (U1): a block
-		// created by a registry insert gets its `createdBy` record; a block whose content, claims, type or data
+		// Each apply opens a frame that tracks the index's folds. When it
+		// closes, ONE pass over the facets the fold saw stamps attribution and
+		// commits lineage (U1): a block whose registry entry was created gets
+		// its `createdBy` record; a block whose content, claims, type or data
 		// changed gets a contributor stamp; moves and delete marks stamp
 		// nothing. Two intents the effects cannot name are recorded by their
 		// steps: a split-born block inherits its source's contributors, and a
@@ -958,8 +859,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/** A pre-write capture awaiting its frame's commit. */
 		type PendingLineage = { a?: string; by: string; t: number; j: JSONBlock };
 		type Frame = {
-			clock: number;
-			deleted: number;
 			lineage: Map<BlockId, PendingLineage>;
 			inherit: Map<BlockId, BlockId>;
 			unions: [into: BlockId, from: BlockId][];
@@ -984,40 +883,21 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			if (pending !== undefined) f.lineage.set(id, pending);
 		};
 
-		/** The frame's one attribution pass over what its transaction wrote. */
-		const close = (f: Frame, tr: unknown): void => {
+		/** The frame's one attribution pass over the facets the fold saw it write. */
+		const close = (f: Frame, folded: Folded): void => {
 			const actor = actorOf();
-			const now = clockOf(doc);
-			const deletes = deletedLen(tr) > f.deleted;
-			if (actor === undefined || (now === f.clock && !deletes)) return;
-			const registry = M.registryOf(doc);
+			if (actor === undefined || !folded.wrote) return;
 			const created = new Set<BlockId>();
 			const changed = new Set<BlockId>();
 			const gone = new Set<BlockId>(f.unions.map(([, from]) => from));
-			const sort = (inserted: boolean) => (s: StoreStruct) => {
-				let n = s.parent as EngineNode | null;
-				let facet: string | null = null;
-				if (n === registry) {
-					if (inserted && typeof s.parentSub === 'string') created.add(s.parentSub);
-					return;
-				}
-				while (n !== null && typeof n === 'object' && n.name !== BLOCK_NODE) {
-					facet = n.name;
-					n = (n._item?.parent ?? null) as EngineNode | null;
-				}
-				const id = n?.getAttr(ID);
-				if (typeof id !== 'string') return;
-				if (facet === null) {
-					if (s.parentSub === TYPE || s.parentSub === DATA) changed.add(id);
-					else if (s.parentSub?.startsWith(DEL_PREFIX)) gone.add(id);
-				} else if (facet !== AT_NODE) changed.add(id);
-			};
-			const own = new Map([
-				[doc.clientID, { getIds: () => [{ clock: f.clock, len: now - f.clock }] }]
-			]);
-			walkIdSetStructs(Y, doc, { clients: own, has: () => false }, sort(true));
-			if (deletes)
-				walkIdSetStructs(Y, doc, (tr as { deleteSet: IdSetLike }).deleteSet, sort(false));
+			for (const [id, facets] of folded.touched) {
+				if (facets.has(ENTRY_FACET) && M.blockNodeOf(doc, id) !== null) created.add(id);
+				else
+					for (const facet of facets) {
+						if (facet.startsWith(DEL_PREFIX)) gone.add(id);
+						else if (![ENTRY_FACET, AT, ID, LAST_CHANGED_ATTR].includes(facet)) changed.add(id);
+					}
+			}
 			for (const id of created) {
 				const node = M.blockNodeOf(doc, id);
 				if (node !== null) BA.stampCreated(doc, node, id, actor.id, f.inherit.get(id));
@@ -1090,18 +970,13 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 */
 		const apply = (p: Prepared): OpResult => {
 			if (!('writes' in p)) return write(() => p);
-			if (p.version !== stateVersion) {
+			if (p.version !== runsView.version()) {
 				throw new Error('[edytor-doc] stale plan: prepared against another document version');
 			}
 			return write(() =>
-				doc.transact((tr) => {
-					const f: Frame = {
-						clock: clockOf(doc),
-						deleted: deletedLen(tr),
-						lineage: new Map(),
-						inherit: new Map(),
-						unions: []
-					};
+				doc.transact(() => {
+					const frame = runsView.track();
+					const f: Frame = { lineage: new Map(), inherit: new Map(), unions: [] };
 					// Lineage captures every target's pre-write state before the
 					// first write; destructive steps capture whoever owns `l`.
 					for (const w of p.writes) {
@@ -1111,14 +986,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 							capture(f, w.into);
 						} else if ('id' in w) capture(f, w.id);
 					}
-					for (const w of p.writes) {
-						invalidate();
-						writeStep(w, f);
-					}
-					close(f, tr);
-					return clockOf(doc) > f.clock || deletedLen(tr) > f.deleted
-						? { status: 'applied', ids: p.ids }
-						: NOOP;
+					for (const w of p.writes) writeStep(w, f);
+					const folded = frame.end();
+					close(f, folded);
+					return folded.wrote ? { status: 'applied', ids: p.ids } : NOOP;
 				})
 			);
 		};
@@ -1137,28 +1008,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return block;
 		};
 
-		// WU7: `view()` is the shared per-document model state — when a
-		// facade is attached, `M.view()` returns the maintained indexes
-		// (synced mid-transaction for read-your-writes) instead of
-		// collectBlocks+computeOwnership+resolvePlacements per call.
-		const collectView = () => M.view(doc);
-		type View = ReturnType<typeof collectView>;
-
-		let viewToken = -1;
-		let cachedView: View | null = null;
-
-		/**
-		 * One consistent replicated-state view (blocks + ownership +
-		 * placements), memoized on `stateVersion`. The returned object is
-		 * SHARED — callers must not mutate it.
-		 */
-		const view = (): View => {
-			if (viewToken !== stateVersion) {
-				cachedView = collectView();
-				viewToken = stateVersion;
-			}
-			return cachedView!;
-		};
+		/** The doc's index, folded up to the last write (read-your-writes). */
+		const view = (): ModelView => runsView.view();
+		type View = ModelView;
 
 		// ── reads ────────────────────────────────────────────────────────
 
@@ -1175,18 +1027,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return d !== undefined && d !== null ? (cloneJsonSafe(d) as JsonObj) : undefined;
 		};
 
-		/**
-		 * Ordered visible children of `parent` inside an already-collected
-		 * view. Navigation helpers walk many levels; each public entry point
-		 * collects ONE view and threads it through (U11: `view()` is ~1.2ms
-		 * at 1,000 blocks — per-level collection made doc-order walks
-		 * O(depth × n)).
-		 */
-		const childrenIdsIn = (v: View, parent: BlockId | null): BlockId[] =>
-			(v.kids.get(parent) ?? []).map((k) => k.id);
-
 		/** Ordered visible children of `parent` (`null` = root) — canonical read. */
-		const childrenIds = (parent: BlockId | null): BlockId[] => childrenIdsIn(view(), parent);
+		const childrenIds = (parent: BlockId | null): BlockId[] =>
+			(view().kids.get(parent) ?? []).map((k) => k.id);
 
 		const positionOf = (id: BlockId): Destination | null => M.positionOf(doc, id);
 
@@ -1196,7 +1039,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const path: number[] = [];
 			let cur: BlockId | null = id;
 			while (cur !== null) {
-				const pos = M.positionInView(v.placements, v.own, cur);
+				const pos = M.positionInView(v, cur);
 				if (!pos) return null;
 				path.unshift(pos.index);
 				cur = pos.parent;
@@ -1207,10 +1050,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/** Display ancestors of `id`, nearest first (`null` parent = root → stop). */
 		const ancestorsOf = (id: BlockId, v: View = view()): BlockId[] => {
 			const out: BlockId[] = [];
-			for (let cur = id; isLiveIn(v, cur); ) {
-				const parent = displayParentOf(v.own, v.placements.get(cur)!);
-				if (parent === null || parent === DEAD) break;
-				out.push((cur = parent));
+			if (!isLiveIn(v, id)) return out;
+			for (let p = displayParentOf(v.own, v.placements.get(id)!); p !== null; ) {
+				out.push(p as BlockId);
+				p = displayParentOf(v.own, v.placements.get(p as BlockId)!);
 			}
 			return out;
 		};
@@ -1308,339 +1151,54 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		// ── change events ─────────────────────────────────────────────────
 
 		let changeVersion = 0;
-		let listening = false;
-		let prev: DocSnap | null = null;
 		const subs = new Set<(change: DocChange) => void>();
-
-		const takeSnap = (): DocSnap => {
-			const { blocks, kids } = view();
-			// `kids` is the view's maintained children index — ONE O(n)
-			// bucketing pass, rebuilt only when placements move (WU7). See
-			// the DocSnap comment: materializing projected nodes per commit
-			// was the dominant change-event cost (U11 measurement).
-			const nodes: DocSnap['nodes'] = new Map();
-			const order: DocSnap['order'] = new Map();
-			for (const [parent, ks] of kids) {
-				// Frozen: the same array is retained as the NEXT commit's
-				// diff baseline AND published on `DocChange.order` — a
-				// subscriber mutating it must not corrupt the baseline (R4).
-				order.set(parent, Object.freeze(ks.map((k) => k.id)));
-				ks.forEach((k, index) => {
-					const rec = blocks.get(k.id)!;
-					nodes.set(k.id, {
-						parent,
-						index,
-						type: rec.type,
-						data: rec.data as Record<string, unknown> | undefined,
-						contentRef: runsView.runs(k.id)
-					});
-				});
-			}
-			// Full projected subtrees come from the canonical materializer —
-			// `M.project`'s emit is the single implementation of
-			// `ProjectedBlock` (S14). Built lazily ONCE per snapshot and only
-			// when `diffSnaps` meets an added root, then indexed by id so
-			// each `added` lookup stays O(1). This snapshot's own skeleton
-			// walk above already covers the visible tree; the second O(doc)
-			// pass lands only on commits that actually add blocks.
-			let projectedById: Map<BlockId, ProjectedBlock> | null = null;
-			const nodeFor = (id: BlockId): ProjectedBlock => {
-				if (projectedById === null) {
-					projectedById = new Map();
-					const indexInto = (bs: ProjectedBlock[]): void => {
-						for (const b of bs) {
-							projectedById!.set(b.id, b);
-							indexInto(b.children);
-						}
-					};
-					indexInto(M.project(doc).children);
-				}
-				// `id` came from this snapshot's `nodes` — every entry is
-				// visible, so it must be present in the same view's
-				// projection (same committed state, read synchronously).
-				return projectedById.get(id)!;
-			};
-			return { nodes, order, nodeFor };
-		};
-
-		/** All ids inside a projected subtree (including the root). */
-		const subtreeIds = (b: ProjectedBlock, out: Set<BlockId>): void => {
-			out.add(b.id);
-			for (const c of b.children) subtreeIds(c, out);
-		};
-
-		const diffSnaps = (
-			before: DocSnap,
-			after: DocSnap,
-			origin: unknown,
-			local: boolean
-		): DocChange | null => {
-			const added = new Map<BlockId, ProjectedBlock>();
-			const removed = new Set<BlockId>();
-			const moved = new Set<BlockId>();
-			const meta = new Map<BlockId, { type: string; data?: JsonObj }>();
-			const content = new Map<BlockId, readonly ContentRun[]>();
-			const order = new Map<BlockId | null, readonly BlockId[]>();
-			// Pass 1: added subtree ROOTS — descendants are carried inside the
-			// root's spec, so they must not also appear as their own added /
-			// moved / meta / content entries.
-			const covered = new Set<BlockId>();
-			for (const id of after.nodes.keys()) {
-				if (!before.nodes.has(id)) {
-					// Full projected subtree materialized ONLY for added roots.
-					const node = after.nodeFor!(id);
-					added.set(id, node);
-					subtreeIds(node, covered);
-				}
-			}
-			// Pass 2: per-node diffs for pre-existing blocks.
-			for (const [id, n] of after.nodes) {
-				if (covered.has(id)) continue;
-				const o = before.nodes.get(id)!;
-				if (o.parent !== n.parent || o.index !== n.index) moved.add(id);
-				if (o.type !== n.type || dataKeyOf(o.data) !== dataKeyOf(n.data)) {
-					// `n.data` is a live replicated ref — clone at the
-					// DocChange boundary so subscribers can't reach engine
-					// state (takeSnap deliberately does not clone per block).
-					meta.set(id, {
-						type: n.type,
-						data:
-							n.data === undefined || n.data === null
-								? undefined
-								: (cloneJsonSafe(n.data) as JsonObj)
-					});
-				}
-				// O(1) "maybe changed": the runs view hands back the SAME
-				// frozen array while content is unchanged (structural
-				// sharing). A ref mismatch can still be a recomputed-but-
-				// equal array (`runEquals` compares marks/data by ref), so
-				// confirm with the JSON key before reporting a diff.
-				if (o.contentRef !== n.contentRef) {
-					const ko = (o.contentKey ??= contentKeyOf(o.contentRef));
-					const kn = (n.contentKey ??= contentKeyOf(n.contentRef));
-					if (ko !== kn) content.set(id, n.contentRef);
-				}
-			}
-			// Pass 3: removed subtree ROOTS — an id whose strict ancestor (in
-			// the BEFORE tree) is also absent in `after` is covered by that
-			// ancestor's removal; the mirror detaches the whole subtree.
-			for (const [id, o] of before.nodes) {
-				if (after.nodes.has(id)) continue;
-				let coveredByRemoved = false;
-				let p = o.parent;
-				while (p !== null) {
-					if (!after.nodes.has(p)) {
-						coveredByRemoved = true;
-						break;
-					}
-					p = before.nodes.get(p)?.parent ?? null;
-				}
-				if (!coveredByRemoved) removed.add(id);
-			}
-			// Pass 4: child-order changes. A parent's new list is authoritative.
-			for (const [parent, ids] of after.order) {
-				const prevIds = before.order.get(parent);
-				if (!prevIds || prevIds.join('\u0000') !== ids.join('\u0000')) order.set(parent, ids);
-			}
-			// A parent whose entire child list vanished still needs an entry —
-			// its old order is stale otherwise.
-			for (const [parent] of before.order) {
-				if (!after.order.has(parent)) order.set(parent, EMPTY_IDS);
-			}
-			if (
-				added.size === 0 &&
-				removed.size === 0 &&
-				moved.size === 0 &&
-				meta.size === 0 &&
-				content.size === 0 &&
-				order.size === 0
-			) {
-				return null;
-			}
-			return {
-				origin,
-				local,
-				version: ++changeVersion,
-				added,
-				removed,
-				moved,
-				meta,
-				content,
-				order
-			};
-		};
-
-		/**
-		 * Last registry commit this facade's snapshot reflects — the shared
-		 * state's per-commit sequence (its run-view version). An `update`
-		 * that didn't touch the registry leaves `seq` unchanged → nothing
-		 * to diff (meta-root writes, no-ops). WU7.
-		 */
-		let lastSeenSeq = 0;
-
-		/**
-		 * DocChange FAST PATH (WU7): the commit touched only `content`/
-		 * `meta` facets — no placements, ownership structure or registry
-		 * churn — so the previous skeleton is patched for exactly the
-		 * touched ids instead of re-walking the document. Eligibility and
-		 * the touched sets come from the shared state's `commitInfo`.
-		 * Defensive fallback: any touched id missing from the previous
-		 * skeleton (invisible before, visible now) escalates to a full
-		 * snapshot+diff — correctness over speed.
-		 */
-		const diffFast = (
-			content: ReadonlySet<BlockId>,
-			meta: ReadonlySet<BlockId>,
-			origin: unknown,
-			local: boolean
-		): DocChange | null => {
-			const before = prev!;
-			const v = view();
-			// Pass 1 — validate WITHOUT mutating: every touched id must be
-			// tracked in the skeleton or provably invisible (deleted/hidden/
-			// unreachable). An id that is visible but untracked can't be
-			// patched → escalate to a full diff BEFORE any `prev` writes —
-			// a half-patched skeleton would swallow the already-applied diffs.
-			const mustEscalate = (id: BlockId): boolean => !before.nodes.has(id) && isLiveIn(v, id); // live-but-untracked
-			for (const id of content) if (mustEscalate(id)) return fullDiff(origin, local);
-			for (const id of meta) if (mustEscalate(id)) return fullDiff(origin, local);
-			// Pass 2 — diff + patch the skeleton for the tracked ids.
-			const contentDiff = new Map<BlockId, readonly ContentRun[]>();
-			const metaDiff = new Map<BlockId, { type: string; data?: JsonObj }>();
-			for (const id of content) {
-				const n = before.nodes.get(id);
-				if (!n) continue; // invisible — nothing to patch
-				const nr = runsView.runs(id);
-				if (n.contentRef !== nr) {
-					const ko = (n.contentKey ??= contentKeyOf(n.contentRef));
-					const kn = contentKeyOf(nr);
-					if (ko !== kn) {
-						contentDiff.set(id, nr);
-						n.contentRef = nr;
-						n.contentKey = kn;
-					} else {
-						n.contentRef = nr; // recomputed-but-equal — adopt the ref
+		let unsubscribe: (() => void) | null = null;
+		/** One `DocChange` per commit, from the index's change report (the fold). */
+		const publish = (report: IndexReport, origin: unknown, local: boolean): void => {
+			const change: DocChange = { origin, local, version: ++changeVersion, ...report };
+			// R5 listener isolation (callAll convention): a throwing subscriber
+			// must not starve later subscribers — invoke all, then rethrow the
+			// first error to the committer.
+			let firstErr: unknown;
+			let threw = false;
+			for (const cb of [...subs]) {
+				try {
+					cb(change);
+				} catch (e) {
+					if (!threw) {
+						threw = true;
+						firstErr = e;
 					}
 				}
 			}
-			for (const id of meta) {
-				const n = before.nodes.get(id);
-				if (!n) continue;
-				const rec = v.blocks.get(id);
-				const nt = rec?.type ?? 'unknown';
-				const nd = rec?.data;
-				if (n.type !== nt || dataKeyOf(n.data) !== dataKeyOf(nd)) {
-					metaDiff.set(id, {
-						type: nt,
-						data: nd === undefined || nd === null ? undefined : (cloneJsonSafe(nd) as JsonObj)
-					});
-					n.type = nt;
-					n.data = nd as Record<string, unknown> | undefined;
-				}
-			}
-			if (contentDiff.size === 0 && metaDiff.size === 0) return null;
-			return {
-				origin,
-				local,
-				version: ++changeVersion,
-				added: new Map(),
-				removed: new Set(),
-				moved: new Set(),
-				meta: metaDiff,
-				content: contentDiff,
-				order: new Map()
-			};
-		};
-
-		/** Structural-commit path — full skeleton snapshot + diff. */
-		const fullDiff = (origin: unknown, local: boolean): DocChange | null => {
-			const after = takeSnap();
-			const change = diffSnaps(
-				prev ?? { nodes: new Map(), order: new Map(), nodeFor: undefined },
-				after,
-				origin,
-				local
-			);
-			prev = after;
-			return change;
-		};
-
-		const updateHandler = (_update: Uint8Array, origin: unknown, _d: EngineDoc, tr: unknown) => {
-			const info = runsView.commitInfo();
-			const local = (tr as { local?: boolean } | null)?.local === true;
-			if (info.seq === lastSeenSeq) return; // update didn't touch the registry
-			lastSeenSeq = info.seq;
-			const change =
-				prev !== null && info.fast
-					? diffFast(info.content, info.meta, origin, local)
-					: fullDiff(origin, local);
-			if (change) {
-				// R5 listener isolation (callAll convention): a throwing
-				// subscriber must not starve later subscribers — and must not
-				// escape mid-cleanup, where it would skip the transaction
-				// queue's remaining cleanups (update fires inside the
-				// engine's cleanup `finally`). Invoke all, then rethrow the
-				// first error to the committer.
-				let firstErr: unknown;
-				let threw = false;
-				for (const cb of subs) {
-					try {
-						cb(change);
-					} catch (e) {
-						if (!threw) {
-							threw = true;
-							firstErr = e;
-						}
-					}
-				}
-				if (threw) throw firstErr;
-			}
+			if (threw) throw firstErr;
 		};
 
 		/**
 		 * Subscribe to semantic changes — one {@link DocChange} per committed
-		 * transaction, local and remote. Attaches the underlying doc listener
-		 * lazily on first subscribe; no writes, ever (observer paths are
-		 * read-only). Returns an unsubscribe.
+		 * transaction that changed the visible document, local and remote.
+		 * No writes, ever. Returns an unsubscribe; with no subscriber left the
+		 * index stops building reports.
 		 */
 		const onChange = (cb: (change: DocChange) => void): (() => void) => {
 			subs.add(cb);
-			if (!listening) {
-				prev = takeSnap();
-				lastSeenSeq = runsView.commitInfo().seq;
-				doc.on('update', updateHandler);
-				listening = true;
-			}
+			unsubscribe ??= runsView.onReport(publish);
 			return () => {
 				subs.delete(cb);
-				// D9 — the listener and its diff baseline are demand-driven:
-				// with no subscribers left, detach the `update` handler and
-				// drop `prev`/`lastSeenSeq` so commits perform no diff work.
-				// The next subscription re-baselines lazily.
-				if (subs.size === 0 && listening) {
-					doc.off('update', updateHandler);
-					prev = null;
-					lastSeenSeq = 0;
-					listening = false;
+				if (subs.size === 0) {
+					unsubscribe?.();
+					unsubscribe = null;
 				}
 			};
 		};
 
 		const dispose = (): void => {
 			disposed = true;
-			doc.off('update', invalidate);
-			if (listening) doc.off('update', updateHandler);
-			listening = false;
-			prev = null;
+			unsubscribe?.();
+			unsubscribe = null;
 			subs.clear();
-			// The doc-shared undo-repair observer intentionally survives
-			// `dispose` — it is attached once per doc for the doc's lifetime
-			// (undo-after-last-dispose must still be repaired — Gate-H), and
-			// is freed with the doc via {@link undoRepairAttached}.
-			// Releases this facade's lease on the doc-shared RunView — the
-			// view itself is torn down only when the LAST facade releases it
-			// (or the doc is destroyed). See text/runs.ts `attach`.
-			runsView.dispose();
+			// The doc's index and its undo-repair observer live as long as the
+			// doc — other facades on it keep reading them.
 		};
 
 		/**
@@ -1679,52 +1237,46 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				if (!isInitialized(doc)) init(doc);
 			});
 			const um = new Y.UndoManager(M.registryOf(doc) as unknown as YNode, opts) as YUndoManager;
-			// Lineage: undo/redo replays displace the state every touched
-			// block currently shows — capture each block's subtree BEFORE
-			// the replay runs (`force`: the state is lost regardless of
-			// who owns `l`, and undo is precisely what the ring exists to
-			// recover from). The captures commit under the default origin
-			// BEFORE popStackItem's transaction — outside undo scope like
-			// every other `b/` write, and never re-captured by the replay.
+			// Lineage for undo/redo (O19, F4): the replay displaces the state
+			// every block the popped stack item touches, so each one's subtree
+			// is captured (`force`: lost whoever owns `l`) from the history
+			// transaction's own `beforeTransaction`, before the replay writes.
+			// The ring writes join that transaction — one update per undo —
+			// and sit outside the manager's scope, so the replay never undoes
+			// or re-captures them. Nothing else is stamped for undo/redo: the
+			// engine's replay restores `l`, and `contributors` are add-only.
+			// An undo run inside an enclosing transaction gets no lineage (it
+			// is a defect of its own: it empties the redo stack, F4).
 			if (lineageDepth > 0) {
-				const captureTouched = (stack: { inserts?: unknown; deletes?: unknown }[]): void => {
-					const item = stack[stack.length - 1];
-					if (item === undefined || actorOf() === undefined) return;
-					const touched = new Set<BlockId>();
-					const collect = (idSet: unknown): void => {
-						if (idSet === null || typeof idSet !== 'object' || !('clients' in idSet)) return;
-						walkIdSetStructs(Y, doc, idSet as IdSetLike, (s) => {
-							let n = s.parent as EngineNode | null;
-							while (n !== null && typeof n === 'object' && typeof n.getAttr === 'function') {
-								if (n.name === BLOCK_NODE) {
-									const bid = n.getAttr(ID);
-									if (typeof bid === 'string') touched.add(bid);
-									break;
+				const onBefore = (tr: { origin: unknown }): void => {
+					const stack = um.undoing ? um.undoStack : um.redoing ? um.redoStack : [];
+					const item = stack[stack.length - 1] as { inserts?: unknown; deletes?: unknown };
+					if (tr.origin !== um || item === undefined || actorOf() === undefined) return;
+					try {
+						const touched = new Set<BlockId>();
+						for (const idSet of [item.inserts, item.deletes]) {
+							walkIdSetStructs(Y, doc, idSet as IdSetLike, (s) => {
+								let n = s.parent as EngineNode | null;
+								while (n !== null && typeof n?.getAttr === 'function') {
+									const bid = n.name === BLOCK_NODE ? n.getAttr(ID) : undefined;
+									if (typeof bid === 'string') return void touched.add(bid);
+									n = (n._item?.parent ?? null) as EngineNode | null;
 								}
-								n = (n._item?.parent ?? null) as EngineNode | null;
-							}
-						});
-					};
-					collect(item.inserts);
-					collect(item.deletes);
-					if (touched.size === 0) return;
-					doc.transact(() => {
+							});
+						}
 						for (const bid of touched) {
 							const pending = lineagePending(bid, true);
 							if (pending !== undefined) BA.appendLineage(doc, bid, pending, lineageDepth);
 						}
-					});
+					} catch (err) {
+						// Throwing here would leave the engine's transaction open.
+						console.error('[edytor-doc] undo lineage capture failed', err);
+					}
 				};
-				const undoInner = um.undo.bind(um);
-				const redoInner = um.redo.bind(um);
-				um.undo = () => {
-					captureTouched(um.undoStack);
-					return undoInner();
-				};
-				um.redo = () => {
-					captureTouched(um.redoStack);
-					return redoInner();
-				};
+				(doc as unknown as { on(e: 'beforeTransaction', f: typeof onBefore): void }).on(
+					'beforeTransaction',
+					onBefore
+				);
 			}
 			return um;
 		};
@@ -2072,7 +1624,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			ids,
 			writes,
 			effect: effectOf(writes),
-			version: stateVersion
+			version: runsView.version()
 		});
 		const live = (id: BlockId): boolean => isLiveIn(view(), id);
 		/** A live block that can hold content: its own backing text and slice list. */
@@ -2106,25 +1658,14 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			];
 		};
 		/** Delete (R3): marks on `id` and on what it displays; `id` and its subtree leave, `kept` children aside. */
-		let displayed: { version: number; by: Map<BlockId, BlockId[]> } | undefined;
 		const remove = (id: BlockId, kept: readonly BlockId[] = []): PlanStep => {
-			const v = view();
 			const removes: BlockId[] = [];
 			const walk = (b: BlockId): void => {
 				removes.push(b);
 				for (const kid of childrenIds(b)) if (!kept.includes(kid)) walk(kid);
 			};
 			walk(id);
-			// Who displays what, once per version (a block set deletes many).
-			if (displayed?.version !== stateVersion) {
-				const by = new Map<BlockId, BlockId[]>();
-				for (const b of v.blocks.keys()) {
-					const owner = v.own.ownerOf(b);
-					if (typeof owner === 'string') by.set(owner, [...(by.get(owner) ?? []), b]);
-				}
-				displayed = { version: stateVersion, by };
-			}
-			return { op: 'deleteBlock', id, marks: displayed.by.get(id) ?? [], removes };
+			return { op: 'deleteBlock', id, marks: [...view().displays(id)], removes };
 		};
 		const merge = (from: BlockId, into: BlockId): PlanStep => ({
 			op: 'mergeBlocks',
@@ -2666,14 +2207,13 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			runsView,
 			// ── model-state version + typed node surface (WU2) ──────────
 			/**
-			 * Monotonic model-state version token — bumps on every mutation
-			 * routed through this facade and on every committed `update`
-			 * (local and remote). Read surfaces that memoize on it (the
-			 * editor's projected-tree cache) always observe post-write
-			 * state — this is the read-your-writes contract.
+			 * The index version — bumps on every fold that changed derived
+			 * state, mid-transaction writes included. Read surfaces that
+			 * memoize on it (the editor's projected-tree cache) always observe
+			 * post-write state — this is the read-your-writes contract.
 			 */
 			get version() {
-				return stateVersion;
+				return runsView.version();
 			},
 			/**
 			 * The typed handle over one document block — the domain command

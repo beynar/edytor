@@ -328,6 +328,62 @@ native `toDelta({ renderer })` projection restore the original format actor.
 The attribution and range-cursor slices cover ordinary insertion/deletion,
 torn delivery, custom projection, remote merge, and cursor parity.
 
+### P7 — `YNode#insertAtGapEnd(index, content)`: insert at the end of the gap (arch-v2 D11)
+
+Reason: Edytor's stream boundaries (plan `docs/architecture-v2/plan.md` §2.1,
+rule R2) must sit after the whole gap at a split point — after every tombstone
+and every format item that precedes the next live character — so that an undo
+of a text delete (whose copies `redoItem` integrates between the tombstone's
+current left neighbour and the tombstone) keeps the restored text in the stream
+that displayed it. The public insert cannot place an item there: its walk
+(`minimizeFormatChanges`) stops at the first live format item whose value
+differs from the requested one, and two concurrent formatters can leave two
+same-key items with different values in one gap (the F1 counterexample,
+`a5-concurrent-format-min`). The engine is an owned fork (maintainer decision,
+plan revision 2); P7 is a feature of it, charged to the plan's vendor delta.
+
+Patch (`src/ynode.js`, both hunks delimited by `// P7 begin` / `// P7 end`):
+
+- `insertAtGapEndHelper(transaction, parent, index, content)` (exported):
+  a renderer-free `ItemTextListPosition` walks `index` countable live units
+  (splitting a live item mid-way with `getItemCleanStart`), then forwards past
+  every deleted item and every `ContentFormat` item (folding live formats), and
+  integrates one `Item` with `content` between the cursor's neighbours. No
+  format item is inserted, so the content carries exactly the formats in
+  effect there. Search markers are shifted with `updateMarkerChanges`, the
+  same call `insertContent` makes. `index > length` throws
+  `Exceeded content range`, like `formatText`.
+- `YNode#insertAtGapEnd(index, content)`: one `transact` around the helper
+  with `new ContentAny(content)` (an array of JSON values, one countable unit
+  each). Throws on a detached node.
+- `dts/ynode.d.ts`: the two declarations added by hand (same shapes the
+  generator emits for the JSDoc).
+
+Nothing else changes: P7 adds a path and touches no existing function.
+
+Correctness oracle: `src/tests/crdt/p7-gap-end.test.ts`.
+- Semantics: the item lands after every tombstone and format item in the gap
+  and before the next live content item; the clock advances by exactly one and
+  no format item is added; with two live same-key format items of different
+  values in the gap (built by a delete concurrent with two formatters) the
+  public insert stops inside the gap while P7 passes both, and the inserted
+  unit renders with the fold's formats; mid-item split, index 0, text end, and
+  the out-of-range throw; concurrent gap-end inserts converge under three
+  client-id assignments.
+- Byte-equality differential (the P4 method): the test materializes the pre-P7
+  engine by copying `src/` into `node_modules/.cache/edytor-p7-baseline` with
+  every `// P7 begin … // P7 end` hunk stripped (and asserts the copy has no
+  `insertAtGapEnd`), then replays 40 seeded programs × 120 operations over every
+  existing public write path — `insert` with and without formats, `delete`,
+  `format`, inline `Node` and JSON inserts, `UndoManager` undo/redo, remote
+  `applyUpdate` between two docs, gc on and off — on both engines, and
+  requires identical `encodeStateAsUpdate` bytes for both docs and an
+  identical `toDelta` after EVERY operation.
+- The upstream suite (`pnpm test:crdt`, `vendor-tests/yjs`) passes unchanged.
+
+Vendor delta: +27 xloc in `src/` (census `--vendor`), plus 9 declaration lines
+in `dts/`.
+
 ## Generated declarations (`dts/`)
 
 `svelte-package` copies JS verbatim but emits no `.d.ts` for JS inputs, so

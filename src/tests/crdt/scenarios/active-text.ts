@@ -32,12 +32,12 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { expect } from 'vitest';
 import { createPeerPair, createPeerTriple, type PeerSet } from '../harness/peer-set.js';
-import { createModelOps } from '../harness/ops/model-ops.js';
+import { scenarioOps } from '../harness/ops/backend.js';
 import { assertConverged, assertAllStructurallyValid } from '../harness/assert/convergence.js';
 import { MODEL_BASE_SEED, modelSpecSeed } from './seeds.js';
 import type { Scenario } from './registry.js';
 
-const ops = createModelOps();
+const ops = scenarioOps();
 
 const text = (peer, id) => ops.blockText(peer, id);
 const topIds = (peer) => ops.project(peer).children.map((b) => b.id);

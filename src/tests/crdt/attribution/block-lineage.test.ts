@@ -341,7 +341,7 @@ describe('lineage — incarnation isolation & opt-out', () => {
 			expect(record!.lineage!.at(-1)!.by).toBe('bob');
 			// …carrying attribution and its incarnation stamp.
 			expect(record!.attribution?.contributors).toContain('bob');
-			expect(record!.incarnation).toMatch(/^\d+:\d+$/);
+			expect(record!.incarnation).toMatch(/^\d+$/);
 		}
 		// …and identical across replicas — the property the dump barrier diffs.
 		expect(blockRecordsOf(A.doc as unknown as EngineDoc)).toEqual(

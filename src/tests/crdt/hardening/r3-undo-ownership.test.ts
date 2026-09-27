@@ -256,19 +256,23 @@ describe('R3 — repair listener lifecycle', () => {
 		const baseRepair = repairListeners(doc);
 		const ed1 = E.create(doc);
 		const ed2 = E.create(doc);
-		// Each facade adds its own `invalidate` update listener; the repair
-		// observer is exactly ONE regardless of facade/binding count.
-		expect(updateListeners(doc) - baseUpdate).toBe(2);
+		// Facades add no `update` listener (arch-v2 D9: the doc's index is
+		// the one derived-state owner, and it listens to `update` only while
+		// a change-report subscriber exists); the repair observer is exactly
+		// ONE regardless of facade/binding count.
+		expect(updateListeners(doc) - baseUpdate).toBe(0);
 		expect(repairListeners(doc) - baseRepair).toBe(1);
+		const off = ed2.onChange(() => {});
+		expect(updateListeners(doc) - baseUpdate).toBe(1); // the index's report listener
 		ed1.dispose();
-		expect(updateListeners(doc) - baseUpdate).toBe(1); // ed2 keeps its own
 		expect(repairListeners(doc) - baseRepair).toBe(1); // repair survives
 		ed2.dispose();
-		expect(updateListeners(doc)).toBe(baseUpdate); // facade listeners detach
+		off();
+		expect(updateListeners(doc)).toBe(baseUpdate); // no subscriber, no listener
 		expect(repairListeners(doc) - baseRepair).toBe(1); // repair stays armed
 		// Re-creating on the same doc does NOT add a second listener.
 		const ed3 = E.create(doc);
-		expect(updateListeners(doc) - baseUpdate).toBe(1);
+		expect(updateListeners(doc) - baseUpdate).toBe(0);
 		expect(repairListeners(doc) - baseRepair).toBe(1);
 		ed3.dispose();
 		expect(updateListeners(doc)).toBe(baseUpdate);

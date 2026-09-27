@@ -334,7 +334,7 @@ export {
 	type RunsApi,
 	type RunView,
 	type RunViewDebug,
-	type CommitInfo,
+	type IndexReport,
 	type LocalDecoration,
 	type DecoratedRun
 } from './text/runs.js';

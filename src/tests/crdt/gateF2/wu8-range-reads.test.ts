@@ -134,7 +134,6 @@ describe('gateF2/U3 — marks aliasing contract boundary', () => {
 		}).toThrow();
 		// And subsequent reads are unaffected (the index never saw a write).
 		expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
-		view.dispose();
 	});
 });
 

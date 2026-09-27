@@ -20,20 +20,21 @@ import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindRunsOracle } from '../../oracles/runs.js';
 import { bindRuns, decorateRuns } from '../../../lib/crdt/index.js';
 import { createPeerPair, type PeerSet } from '../harness/peer-set.js';
-import { createModelOps } from '../harness/ops/model-ops.js';
+import { scenarioOps } from '../harness/ops/backend.js';
 import { assertConverged, assertAllStructurallyValid } from '../harness/assert/convergence.js';
 import { MODEL_BASE_SEED, modelSpecSeed } from './seeds.js';
 import type { Scenario } from './registry.js';
 import { bindModel } from '../../oracles/model-ops.js';
 
-const ops = createModelOps();
+const ops = scenarioOps();
 const R = bindRuns(Y);
 const O = bindRunsOracle(Y);
 // Model-level ops not part of the CrdtOps adapter contract (setInlineData).
 const opsModel = bindModel(Y);
 
-const runs = (peer, id) => R.attach(peer.doc).runs(id);
-const contentJSON = (peer, id) => R.attach(peer.doc).contentJSON(id);
+const runs = (peer, id) => (ops.runs ? ops.runs(peer, id) : R.attach(peer.doc).runs(id));
+const contentJSON = (peer, id) =>
+	ops.contentJSON ? ops.contentJSON(peer, id) : R.attach(peer.doc).contentJSON(id);
 
 /** Replicas' run views must agree exactly — runs are the comparison surface. */
 const assertRunsConverged = (set: PeerSet, ids: string[], context = '') => {
@@ -180,7 +181,8 @@ export const richtextScenarios: Scenario[] = [
 			bothOrders(
 				(set) => {
 					// Metadata update travels as a replicated attr write.
-					set.A.transact(() => opsModel.setInlineData(set.A.doc, 'a', 'm1', { user: 'bo' }));
+					if (ops.setInlineData) ops.setInlineData(set.A, 'a', 'm1', { user: 'bo' });
+					else set.A.transact(() => opsModel.setInlineData(set.A.doc, 'a', 'm1', { user: 'bo' }));
 					ops.splitBlock(set.B, 'a', 3, 'a2'); // remote split at the atom
 				},
 				(set) => {

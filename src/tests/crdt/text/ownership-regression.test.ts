@@ -29,6 +29,7 @@ import { createPeerPair, type Peer } from '../harness/peer-set.js';
 import { expandOwnerRow } from '../harness/dense-ownership-oracle.js';
 import { createDocOps } from '../harness/ops/doc-ops.js';
 import { assertConverged, assertAllStructurallyValid } from '../harness/assert/convergence.js';
+import { collectBlocks } from '../../oracles/fresh-view.js';
 
 const E = bindEdytorDoc(Y);
 const ops = createDocOps();
@@ -74,7 +75,7 @@ const op = (peer: Peer, fn: () => unknown) => {
  * result. `null` marks unowned (dead/unclaimed) atoms.
  */
 const atomOwners = (peer: Peer, t: string): (string | null)[] => {
-	const blocks = ed(peer).model.collectBlocks(peer.doc);
+	const blocks = collectBlocks(peer.doc);
 	const own = ed(peer).text.computeOwnership(peer.doc, blocks);
 	return expandOwnerRow(own.intervals.get(t));
 };
@@ -495,7 +496,7 @@ describe("regression C — a block literally named 'dead' is not the deletion se
 		expect(anchor).not.toBeNull();
 		expect(ed(A).resolveAnchor(anchor)).toEqual({ blockId: 'dead', offset: 5 });
 		// Ownership internals: 'dead' owns itself; it is not hidden.
-		const blocks = ed(A).model.collectBlocks(A.doc);
+		const blocks = collectBlocks(A.doc);
 		const own = ed(A).text.computeOwnership(A.doc, blocks);
 		expect(own.hidden('dead')).toBe(false);
 		expect(atomOwners(A, 'dead')).toEqual(new Array(10).fill('dead'));

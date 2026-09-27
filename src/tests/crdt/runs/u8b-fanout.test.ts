@@ -7,7 +7,6 @@
  *
  *   - `runsView.debug.recomputes` delta — run recomputes (flatten+readRange)
  *   - `runsView.debug.itemsWalked` delta — sequence items stepped over
- *   - `commitInfo().content.size` — blocks the DocChange fast path visits
  *   - `change.content.size` — blocks whose runs actually changed (Text
  *     wrappers that would re-render)
  *
@@ -48,7 +47,7 @@ const summarize = (label, rows) => {
 	const col = (k) => median(rows.map((r) => r[k]));
 	console.log(
 		`  ${label}: keystroke p50 ${col('ms').toFixed(3)}ms · recomputes ${col('recomputes')} · ` +
-			`itemsWalked ${col('walked')} · commitContent ${col('commit')} · docChangeContent ${col('rendered')} · fast=${rows.every((r) => r.fast)}`
+			`itemsWalked ${col('walked')} · docChangeContent ${col('rendered')}`
 	);
 };
 
@@ -78,14 +77,11 @@ const measureKeystrokes = (ed, doc, target, n = 24) => {
 		const t0 = performance.now();
 		ed.insertText(target, off2++, 'x');
 		const ms = performance.now() - t0;
-		const info = ed.runsView.commitInfo();
 		rows.push({
 			ms,
 			recomputes: ed.runsView.debug.recomputes - r0,
 			walked: ed.runsView.debug.itemsWalked - w0,
-			commit: info.content.size,
-			rendered: lastChange?.content?.size ?? 0,
-			fast: info.fast
+			rendered: lastChange?.content?.size ?? 0
 		});
 	}
 	off();
@@ -200,14 +196,11 @@ describe('U8b shared-backing fanout', () => {
 			const t0 = performance.now();
 			ed.formatRange('s10', 5, 25, { bold: i % 2 === 0 });
 			const ms = performance.now() - t0;
-			const info = ed.runsView.commitInfo();
 			rows.push({
 				ms,
 				recomputes: ed.runsView.debug.recomputes - r0,
 				walked: ed.runsView.debug.itemsWalked - w0,
-				commit: info.content.size,
-				rendered: lastChange?.content?.size ?? 0,
-				fast: info.fast
+				rendered: lastChange?.content?.size ?? 0
 			});
 		}
 		off();

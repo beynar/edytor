@@ -14,11 +14,12 @@
  * 3. REMOTE WRITES TO A LOCALLY-HIDDEN BLOCK: the strongest fanout case —
  *    B edits text b / appends a claim to b's slices while b is hidden on
  *    A; on delivery A's maintained view must reflect it through the claim.
- * 4. commitFast×5 THEN STRUCTURAL: five consecutive content-only commits
- *    patch the DocChange skeleton; a following structural commit's full
- *    diff must not be corrupted by accumulated skeleton drift — and a fast
- *    commit AFTER the structural one must still patch correctly.
- * 5. LIFECYCLE + MID-TRANSACTION read-your-writes.
+ * 4. CONTENT×5 THEN STRUCTURAL: five consecutive content-only commits
+ *    advance the published index; a following structural commit's report
+ *    must not be corrupted by accumulated drift — and a content commit
+ *    AFTER the structural one must still report correctly.
+ * 5. LIFECYCLE (the index lives as long as the doc) + MID-TRANSACTION
+ *    read-your-writes.
  */
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, it } from 'vitest';
@@ -42,6 +43,12 @@ const SEED = modelSpecSeed([
 ]);
 
 const flat = (runs) => runs.map((r) => (r.kind === 'text' ? r.text : '�')).join('');
+/** Collect the change reports `view` publishes from now on. */
+const reports = (view) => {
+	const out = [];
+	view.onReport((r) => out.push(r));
+	return out;
+};
 
 describe('gateF2/WU7 — shared backing + merge-chain invalidation', () => {
 	it('edit through a into b-claimed atoms invalidates a (textConsumers fanout)', () => {
@@ -53,14 +60,14 @@ describe('gateF2/WU7 — shared backing + merge-chain invalidation', () => {
 		// Ops on hidden b are refused — the write enters through a's display
 		// coords; offset 5 is the seam where the b-claim begins (text b pos 0).
 		expect(M.insertText(doc, 'b', 0, '>>')).toBe(false); // hidden: refused
+		const seen = reports(view);
 		set.A.transact(() => M.insertText(doc, 'a', 5, '>>'));
 		// a consulted text b during flatten — the write into text b must have
 		// invalidated a's cache through textConsumers['b'].
 		expect(flat(view.runs('a'))).toBe('alpha>>beta');
 		expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
-		// The commit must report a as content-touched (the fanout), not just b.
-		expect(view.commitInfo().content.has('a')).toBe(true);
-		view.dispose();
+		// The commit must report a's content (the fanout), not b's.
+		expect([...seen[0].content.keys()]).toEqual(['a']);
 	});
 
 	it('merge chain c→b→a: edits landing in middle and bottom texts reach the top', () => {
@@ -80,7 +87,6 @@ describe('gateF2/WU7 — shared backing + merge-chain invalidation', () => {
 		set.A.transact(() => M.insertText(doc, 'a', 12, '<<'));
 		expect(flat(view.runs('a'))).toBe('alphabe!taga<<mma');
 		expect(view.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
-		view.dispose();
 	});
 
 	it('REMOTE edit to a locally-hidden backing text fans out through the claim', () => {
@@ -90,14 +96,14 @@ describe('gateF2/WU7 — shared backing + merge-chain invalidation', () => {
 		set.A.transact(() => M.mergeBlocks(docA, 'b', 'a'));
 		const view = R.attach(docA);
 		view.runs('a'); // prime caches + dep tables
+		const seen = reports(view);
 		// B still sees b visible: edits text b directly, then delivers.
 		set.B.transact(() => M.insertText(set.B.doc, 'b', 0, 'REMOTE-'));
 		set.deliver('B', 'A');
 		// The remote write to hidden-b's text must invalidate a on A.
 		expect(flat(view.runs('a'))).toBe('alphaREMOTE-beta');
 		expect(view.runs('a')).toEqual([...O.computeAllRuns(docA).get('a')]);
-		expect(view.commitInfo().content.has('a')).toBe(true);
-		view.dispose();
+		expect([...seen[0].content.keys()]).toEqual(['a']);
 	});
 
 	it('REMOTE claim appended to a locally-hidden list extends the chain', () => {
@@ -106,6 +112,7 @@ describe('gateF2/WU7 — shared backing + merge-chain invalidation', () => {
 		set.A.transact(() => M.mergeBlocks(docA, 'b', 'a'));
 		const view = R.attach(docA);
 		expect(flat(view.runs('a'))).toBe('alphabeta');
+		const seen = reports(view);
 		// B (b still visible there) merges d into b — writes {m:d} onto b's
 		// slices list — while b is hidden on A. On delivery, a's flatten
 		// walks a→{m:b}→[b-recs,{m:d}]→d's records: a must gain d's atoms.
@@ -113,14 +120,14 @@ describe('gateF2/WU7 — shared backing + merge-chain invalidation', () => {
 		set.deliver('B', 'A');
 		expect(flat(view.runs('a'))).toBe('alphabetaparent');
 		expect(view.runs('a')).toEqual([...O.computeAllRuns(docA).get('a')]);
-		// The slices-list write is structural: not a fast commit.
-		expect(view.commitInfo().fast).toBe(false);
-		view.dispose();
+		// The claim hides d on A and extends a's content.
+		expect([...seen[0].removed]).toEqual(['d']);
+		expect([...seen[0].content.keys()]).toEqual(['a']);
 	});
 });
 
-describe('gateF2/WU7 — commitFast streak then structural', () => {
-	it('five fast commits + structural + fast commit keep DocChange complete', () => {
+describe('gateF2/WU7 — content streak then structural', () => {
+	it('five content commits + structural + content commit keep DocChange complete', () => {
 		const set = createPeerPair(SEED);
 		const doc = set.A.doc;
 		const ed = E.create(doc);
@@ -188,7 +195,7 @@ describe('gateF2/WU7 — commitFast streak then structural', () => {
 });
 
 describe('gateF2/WU7 — lifecycle: detach/reattach/destroy/subscriptions', () => {
-	it('released subscriptions never fire; reattach serves a fresh correct view', () => {
+	it('released subscriptions never fire; every attach serves the one index', () => {
 		const set = createPeerPair(SEED);
 		const doc = set.A.doc;
 		const v1 = R.attach(doc);
@@ -196,20 +203,14 @@ describe('gateF2/WU7 — lifecycle: detach/reattach/destroy/subscriptions', () =
 		const unsub = v1.subscribe(() => fired++);
 		set.A.transact(() => M.insertText(doc, 'a', 0, 'x'));
 		expect(fired).toBe(1);
-		v1.dispose();
+		unsub();
+		unsub(); // idempotent
 		set.A.transact(() => M.insertText(doc, 'a', 0, 'y'));
-		// The last lease is gone — the observer detached; no more events.
 		expect(fired).toBe(1);
-		expect(R.modelState(doc)).toBeUndefined();
-		unsub(); // release after teardown must be a no-op, never throws
-		// Reattach — fresh state, correct reads (no stale view after remount).
-		const v2 = R.attach(doc);
+		const v2 = bindRuns(Y).attach(doc);
+		expect(v2).toBe(v1);
 		expect(flat(v2.runs('a'))).toBe('yxalpha');
 		expect(v2.runs('a')).toEqual([...O.computeAllRuns(doc).get('a')]);
-		set.A.transact(() => M.insertText(doc, 'a', 0, 'z'));
-		expect(fired).toBe(1); // still dead — v1's sub is gone
-		expect(flat(v2.runs('a'))).toBe('zyxalpha');
-		v2.dispose();
 	});
 
 	it('doc.destroy tears the shared view down; a later attach rebuilds', () => {
@@ -218,10 +219,9 @@ describe('gateF2/WU7 — lifecycle: detach/reattach/destroy/subscriptions', () =
 		const v1 = R.attach(doc);
 		v1.runs('a');
 		doc.destroy();
-		expect(R.modelState(doc)).toBeUndefined();
 		const v2 = R.attach(doc);
+		expect(v2).not.toBe(v1);
 		expect(flat(v2.runs('a'))).toBe('alpha');
-		v2.dispose();
 	});
 
 	it('block-level subscriptions release exactly once and only for the right block', () => {
@@ -239,7 +239,6 @@ describe('gateF2/WU7 — lifecycle: detach/reattach/destroy/subscriptions', () =
 		set.A.transact(() => M.insertText(doc, 'b', 0, 'z'));
 		// a's sub is gone (once only), b's still live.
 		expect(seen).toEqual(['xalpha', 'b:zbeta']);
-		v.dispose();
 	});
 });
 
@@ -253,12 +252,11 @@ describe('gateF2/WU7 — mid-transaction read-your-writes (fast-eligible writes)
 			expect(flat(view.runs('a'))).toBe('IN-TXalpha');
 			const node = doc.get('blocks').getAttr('a');
 			node.setAttr('data', { t: 9 });
-			expect(view.modelCtx().blocks.get('a').data).toEqual({ t: 9 });
+			expect(view.view().blocks.get('a').data).toEqual({ t: 9 });
 			// The same transaction's slices churn must also be visible.
 			M.splitBlock(doc, 'b', 2, 'b2');
 			expect(flat(view.runs('b'))).toBe('be');
 			expect(flat(view.runs('b2'))).toBe('ta');
 		});
-		view.dispose();
 	});
 });

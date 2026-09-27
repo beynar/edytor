@@ -136,9 +136,9 @@ const rootAttached: EdytorDocument = attachDocument(doc);
 // actor dictionary + the `legacy()` read over pre-existing `a/` records.
 const rootContentRun: ContentRun = { kind: 'text', text: 'x' };
 const rootRunsApi = bindings.bindRuns(Y as bindings.EngineApi);
-const rootModelView: ModelView | undefined = rootRunsApi.modelState(
-	storyDoc as unknown as bindings.EngineDoc
-);
+const rootModelView: ModelView = rootRunsApi
+	.attach(storyDoc as unknown as bindings.EngineDoc)
+	.view();
 const rootLegacy = rootAttribution.legacy();
 const rootBlockAttr = rootAttribution.block(rootProjected.children[0]!.id);
 void rootContentRun;

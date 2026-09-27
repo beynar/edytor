@@ -30,7 +30,7 @@ export type BlockRecord = {
 	attribution: BlockAttribution | undefined;
 	/** The RAW stored ring (`history()`'s source), not the capped read view. */
 	lineage: LineageEntry[] | undefined;
-	/** `client:clock` incarnation stamp — distinguishes recycled ids' records. */
+	/** The incarnation nonce the record is stamped with — distinguishes recycled ids' records. */
 	incarnation: string | null;
 };
 
@@ -47,7 +47,7 @@ export const blockRecordsOf = (doc: EngineDoc): BlockRecord[] => {
 			id,
 			attribution: blockAttributionOf(doc, id),
 			lineage: rec.toArray() as LineageEntry[],
-			incarnation: typeof i === 'string' ? i : null
+			incarnation: i === undefined ? null : String(i)
 		});
 	}
 	return out;

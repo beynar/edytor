@@ -177,6 +177,8 @@ describe('gateH-R4 — non-JSON mark values via RAW engine write (facade bypass)
 		ed.init();
 		const cn = contentNodeOf(ed, BOOTSTRAP_BLOCK);
 		cn.insert(0, 'hi');
+		// An `update` listener (a provider) makes the commit encode its payload.
+		doc.on('update', () => {});
 		expect(() => cn.format(0, 2, { big: 5n })).toThrow(/BigInt/i); // throws at commit
 		// Reads survive: the hostile mark projects as its JSON value.
 		const runs = ed.runs(BOOTSTRAP_BLOCK);

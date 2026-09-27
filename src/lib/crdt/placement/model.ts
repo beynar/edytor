@@ -66,26 +66,25 @@ import {
 	hasDeleteMark,
 	ID,
 	INLINE_NODE,
+	NONCE,
 	REGISTRY_KEY,
 	SLICES,
 	SLICES_NODE,
 	TYPE
 } from '../schema.js';
-import { randOf } from '../rand.js';
+import { nonceOf, randOf } from '../rand.js';
+import { bindRuns } from '../text/runs.js';
 import {
 	bindText,
 	computeOwners,
 	DEAD,
-	deepFreeze,
-	protectItems,
-	readSliceEntries,
 	type Owner,
 	type Ownership,
 	type SlicePayload,
 	type SliceRecord,
 	type TextBlockRec
 } from '../text/model.js';
-import { cloneJson, cloneJsonSafe, jsonEquals } from '../../utils/json.js';
+import { cloneJson, jsonEquals } from '../../utils/json.js';
 
 /** Logical block identifier — caller-assigned, immutable per block. */
 export type BlockId = string;
@@ -198,13 +197,11 @@ export type ResolvedPlacement = {
 };
 
 /**
- * One consistent replicated-state view — the shared currency of commands,
- * anchors, projection and `DocChange` (WU7). `blocks`/`own`/`placements`
- * are always present; `kids` (the `childrenIndex` buckets) is computed
- * lazily on first access so pure-content ops never pay for it. When the
- * doc has an attached model-state owner, `view()` returns ITS maintained
- * indexes instead of rebuilding them per call — see `bindModel`'s
- * `modelState` parameter.
+ * The document index as one consistent replicated-state view — the shared
+ * currency of commands, anchors, projection and the change report.
+ * `blocks`/`own` are always current; `placements`, `kids` (the
+ * `childrenIndex` buckets) and `order` are rebuilt lazily, so pure-content
+ * ops never pay for them. Owned by the doc's index (`text/runs.ts`).
  */
 export type ModelView = {
 	blocks: Map<BlockId, BlockRec>;
@@ -215,14 +212,35 @@ export type ModelView = {
 	order: DocOrder;
 	/**
 	 * Canonicalize a JSON payload into its shared immutable instance —
-	 * deep-frozen, and interned by canonical key when the doc has an
-	 * attached model-state owner (so equal payloads are `===` across
-	 * `project()`/`contentItems()`/`runs()`). The publication boundary for
+	 * deep-frozen and interned by canonical key (so equal payloads are `===`
+	 * across `project()`/`contentItems()`/`runs()`). The publication boundary for
 	 * item `marks`/`data` (R4): range-read items carry borrowed references
 	 * into cursor/checkpoint/replicated state, and substituting the
 	 * interned clone is what keeps a caller's mutation out of the engine.
 	 */
 	intern: <T>(value: T) => T;
+	/**
+	 * The blocks `owner` displays (itself included while it owns its own
+	 * display) — the inverse of `own.ownerOf`, rebuilt with it (a delete
+	 * marks what its target displays; a block set deletes many).
+	 */
+	displays: (owner: BlockId) => readonly BlockId[];
+};
+
+/** The inverse of `ownerOf` over `blocks`: each live owner → the blocks it displays. */
+export const displayIndex = (
+	blocks: ReadonlyMap<BlockId, unknown>,
+	ownerOf: (b: BlockId) => Owner
+): Map<BlockId, BlockId[]> => {
+	const by = new Map<BlockId, BlockId[]>();
+	for (const b of blocks.keys()) {
+		const owner = ownerOf(b);
+		if (typeof owner !== 'string') continue;
+		const list = by.get(owner);
+		if (list === undefined) by.set(owner, [b]);
+		else list.push(b);
+	}
+	return by;
 };
 
 const isNodeLike = (v: unknown): v is EngineNode =>
@@ -405,34 +423,9 @@ export const displayParentOf = (own: Ownership, pl: ResolvedPlacement): Owner | 
 };
 
 /**
- * Ordered `{id, rank}` children of `parent` (null = root): every visible
- * block whose resolved placement points at `parent`, sorted by
- * `(rank, id)`. This is the same ordering the projector emits.
- *
- * O(#placements) per call — use {@link childrenIndex} when every parent's
- * list is needed (one pass total instead of one pass per parent).
- */
-export const childrenOf = (
-	placements: Map<BlockId, ResolvedPlacement>,
-	own: Ownership,
-	parent: BlockId | null
-): { id: BlockId; rank: string }[] => {
-	const out: { id: BlockId; rank: string }[] = [];
-	for (const [id, pl] of placements) {
-		if (displayParentOf(own, pl) !== parent) continue;
-		if (own.hidden(id)) continue;
-		out.push({ id, rank: pl.rank });
-	}
-	out.sort((a, b) => (a.rank === b.rank ? a.id.localeCompare(b.id) : a.rank < b.rank ? -1 : 1));
-	return out;
-};
-
-/**
- * All visible children's lists at once: `parent|null → sorted {id, rank}[]`
- * — ONE pass over `placements` plus one sort per list, so a whole-tree walk
- * is O(n) instead of the O(n²) of calling {@link childrenOf} per node
- * (U11 measurement: the per-node scan was ~10ms of an ~11ms projection
- * at 1,000 blocks). Ordering is identical to `childrenOf`.
+ * All visible children's lists at once: `parent|null → {id, rank}[]` sorted
+ * by `(rank, id)` — ONE pass over `placements` plus one sort per list. This
+ * is the order the projection emits.
  */
 export const childrenIndex = (
 	placements: Map<BlockId, ResolvedPlacement>,
@@ -442,8 +435,7 @@ export const childrenIndex = (
 	for (const [id, pl] of placements) {
 		if (own.hidden(id)) continue;
 		const dp = displayParentOf(own, pl);
-		// DEAD display parents never match a real parent in `childrenOf`
-		// either — hidden-with-subtree blocks appear in no list.
+		// Hidden-with-subtree blocks (a DEAD display parent) appear in no list.
 		if (dp === DEAD) continue;
 		const bucket = index.get(dp);
 		if (bucket) bucket.push({ id, rank: pl.rank });
@@ -485,22 +477,14 @@ export const documentOrder = (kids: ModelView['kids']): DocOrder => {
  * 'lib/crdt/vendor/yjs'`). Consumers inject it so this file stays free of
  * runtime vendor imports (see `engine-api.ts`).
  */
-export const bindModel = (
-	Y: EngineApi,
-	/**
-	 * Optional shared-state provider (WU7): returns the doc's MAINTAINED
-	 * `ModelView` when a model-state owner is attached (wired by
-	 * `bindEdytorDoc` to `bindRuns`' doc-shared state), `undefined`
-	 * otherwise. `view()` prefers it over a fresh collect so commands,
-	 * anchors and rendering all read one set of incremental indexes.
-	 */
-	modelState?: (doc: EngineDoc) => ModelView | undefined
-) => {
+export const bindModel = (Y: EngineApi) => {
 	/** Construct a detached v14 node, viewed through the structural interface. */
 	const newNode = (name: string): EngineNode => new Y.Node(name) as unknown as EngineNode;
 
 	/** The U04 text-ownership engine (anchors, slice claims, ownership). */
 	const T = bindText(Y);
+	/** The doc's index — every read of derived state goes through it. */
+	const R = bindRuns(Y);
 
 	// ── registry / record access ────────────────────────────────────────
 
@@ -524,40 +508,6 @@ export const bindModel = (
 	/** {@link isLiveIn} over the doc's current view. */
 	const isLive = (doc: EngineDoc, id: BlockId): boolean => isLiveIn(view(doc), id);
 
-	/** Read every registry entry into a record map. */
-	const collectBlocks = (doc: EngineDoc): Map<BlockId, BlockRec> => {
-		const blocks = new Map<BlockId, BlockRec>();
-		registryOf(doc).forEachAttr((v: unknown, id: string) => {
-			if (!isNodeLike(v)) return;
-			const content = v.getAttr(CONTENT);
-			const slices = v.getAttr(SLICES);
-			const type = v.getAttr(TYPE);
-			const slicesNode = isNodeLike(slices) ? slices : undefined;
-			blocks.set(id, {
-				id,
-				node: v,
-				type: typeof type === 'string' ? type : 'unknown',
-				data: v.getAttr(DATA),
-				deleted: hasDeleteMark(v),
-				content: isNodeLike(content) ? content : undefined,
-				slicesNode,
-				// Legacy rows without a `slices` node are treated as one whole
-				// self-slice — the pre-U04 schema degrades to intact content.
-				entries: slicesNode
-					? readSliceEntries(slicesNode)
-					: [
-							{
-								payload: { t: id, s: { i: null, a: -1 }, e: { i: null, a: 0 } },
-								stamp: { c: -1, k: -1 },
-								seqIndex: 0
-							}
-						],
-				cands: candidatesOf(v)
-			});
-		});
-		return blocks;
-	};
-
 	// ── placement write ──────────────────────────────────────────────────
 
 	/**
@@ -577,47 +527,10 @@ export const bindModel = (
 		at.setAttr(`${seq}.${doc.clientID}`, { p, r });
 	};
 
-	// ── pure projection ──────────────────────────────────────────────────
-	// `candidatesOf`, `resolvePlacements`, `isLiveIn`, `displayParentOf`,
-	// `childrenOf` and `childrenIndex` are module-level (see above) — shared
-	// with the maintained model state in `text/runs.ts` (WU7).
+	// ── derived state ───────────────────────────────────────────────────
 
-	/**
-	 * One consistent replicated-state view (`ModelView`).
-	 *
-	 * WU7: when the doc carries an attached model-state owner, `modelState`
-	 * (injected by `bindEdytorDoc`, backed by `bindRuns`' doc-shared state)
-	 * returns ITS maintained indexes — block records, ownership, resolved
-	 * placements and the children index are kept current incrementally and
-	 * shared by commands, anchors, runs and rendering. Otherwise we build
-	 * the facets fresh per call, as before. `kids` is lazy either way so
-	 * pure-content ops never pay for the children index.
-	 */
-	const view = (doc: EngineDoc): ModelView => {
-		const shared = modelState?.(doc);
-		if (shared) return shared;
-		const blocks = collectBlocks(doc);
-		const own = T.computeOwnership(doc, blocks);
-		const placements = resolvePlacements(blocks, own.ownerOf);
-		let kidsCache: ModelView['kids'] | null = null;
-		let orderCache: DocOrder | null = null;
-		return {
-			blocks,
-			own,
-			placements,
-			get kids() {
-				return (kidsCache ??= childrenIndex(placements, own));
-			},
-			get order() {
-				return (orderCache ??= documentOrder(this.kids));
-			},
-			// No shared interner without an attached state owner — a
-			// detached frozen clone satisfies the same boundary contract.
-			// `cloneJsonSafe` keeps this total against hostile replicated
-			// payloads (R4 — a remote non-JSON attr must not crash reads).
-			intern: (v) => deepFreeze(cloneJsonSafe(v))
-		};
-	};
+	/** The doc's index as a `ModelView` — folded up to the open transaction's last write. */
+	const view = (doc: EngineDoc): ModelView => R.attach(doc).view();
 
 	// ── content (rich-text sequence) helpers ────────────────────────────
 
@@ -726,6 +639,7 @@ export const bindModel = (
 	): void => {
 		const node = newNode(BLOCK_NODE);
 		node.setAttr(ID, id);
+		node.setAttr(NONCE, nonceOf(doc));
 		node.setAttr(TYPE, type);
 		if (data !== undefined) node.setAttr(DATA, data);
 		const content = newNode(CONTENT_NODE);
@@ -804,6 +718,7 @@ export const bindModel = (
 					if (node === null) {
 						node = newNode(BLOCK_NODE);
 						node.setAttr(ID, sp.id);
+						node.setAttr(NONCE, nonceOf(doc));
 						node.setAttr(AT, newNode(AT_NODE));
 						registryOf(doc).setAttr(sp.id, node);
 					}
@@ -916,56 +831,13 @@ export const bindModel = (
 	 * deleted/merged-away/invalid parents pruned (hidden-with-subtree
 	 * policy). Content is the ownership-projected slice list.
 	 */
-	const project = (doc: EngineDoc): ProjectedDoc => {
-		// `kids` is the view's children index — lazily built on first access,
-		// maintained incrementally when the doc has shared state (WU7).
-		const { blocks, own, kids: kidsByParent, intern } = view(doc);
-		const emit = (id: BlockId): ProjectedBlock => {
-			const rec = blocks.get(id)!;
-			const data = rec.data;
-			const projected: ProjectedBlock = {
-				id,
-				type: rec.type,
-				data:
-					data === undefined || data === null
-						? undefined
-						: (cloneJsonSafe(data) as Record<string, unknown>),
-				// R4: `contentItemsOf` emits borrowed marks/data refs — publish
-				// canonical frozen payloads so callers can never reach live
-				// engine state through the projection.
-				content: rec.content
-					? (protectItems(
-							T.contentItemsOf(id, blocks, own) as ContentItem[],
-							intern
-						) as ContentItem[])
-					: [],
-				children: []
-			};
-			if (!rec.content) projected.malformed = true;
-			for (const k of kidsByParent.get(id) ?? []) projected.children.push(emit(k.id));
-			return projected;
-		};
-		const children: ProjectedBlock[] = [];
-		for (const k of kidsByParent.get(null) ?? []) children.push(emit(k.id));
-		return { children };
-	};
+	const project = (doc: EngineDoc): ProjectedDoc => ({ children: R.attach(doc).project() });
 
-	/**
-	 * `positionOf` against an already-collected view — the public
-	 * {@link positionOf} delegates to this after calling {@link view}. Callers
-	 * walking several positions (paths, ancestors, doc-order neighbours) share
-	 * ONE view instead of re-collecting per step (U11: navigation helpers
-	 * were O(depth × collect) — ~1.2ms × depth at 1,000 blocks).
-	 */
-	const positionInView = (
-		placements: Map<BlockId, ResolvedPlacement>,
-		own: Ownership,
-		id: BlockId
-	): Destination | null => {
-		if (!isLiveIn({ placements, own }, id)) return null;
-		const dp = displayParentOf(own, placements.get(id)!) as BlockId | null;
-		const sibs = childrenOf(placements, own, dp);
-		const index = sibs.findIndex((s) => s.id === id);
+	/** `positionOf` in a view: the display parent and the index among its visible children. */
+	const positionInView = (v: ModelView, id: BlockId): Destination | null => {
+		if (!isLiveIn(v, id)) return null;
+		const dp = displayParentOf(v.own, v.placements.get(id)!) as BlockId | null;
+		const index = (v.kids.get(dp) ?? []).findIndex((s) => s.id === id);
 		return index < 0 ? null : { parent: dp, index };
 	};
 
@@ -974,10 +846,8 @@ export const bindModel = (
 	 * `parent` is the DISPLAY parent (merged-away ancestors resolve to their
 	 * owner — see `displayParentOf`).
 	 */
-	const positionOf = (doc: EngineDoc, id: BlockId): Destination | null => {
-		const { placements, own } = view(doc);
-		return positionInView(placements, own, id);
-	};
+	const positionOf = (doc: EngineDoc, id: BlockId): Destination | null =>
+		positionInView(view(doc), id);
 
 	/** Pre-order ids of the visible tree — the document order (O7). */
 	const listBlockIds = (doc: EngineDoc): BlockId[] => [...view(doc).order.ids];
@@ -1013,12 +883,9 @@ export const bindModel = (
 		liveNodeOf,
 		isLive,
 		candidatesOf,
-		collectBlocks,
-		/** The shared replicated-state view — maintained indexes when the
-		 *  doc carries shared model state (WU7), fresh collect otherwise. */
+		/** The doc's index as a `ModelView`. */
 		view,
 		resolvePlacements,
-		childrenOf,
 		childrenIndex,
 		positionInView,
 		contentItemsOf,

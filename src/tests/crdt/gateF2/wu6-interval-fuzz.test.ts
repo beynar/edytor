@@ -31,6 +31,7 @@ import {
 	expandClaimRow
 } from '../harness/dense-ownership-oracle.js';
 import { mulberry32, int, pick } from '../harness/rng.js';
+import { collectBlocks } from '../../oracles/fresh-view.js';
 
 const E = bindEdytorDoc(Y);
 const ops = createDocOps();
@@ -57,7 +58,7 @@ const segKey = (s) => [s.t, s.i0, s.i1, s.holder, s.seqIndex, stampOf(s.via)];
 
 const assertOwnershipParity = (peer: Peer, label: string) => {
 	const f = ed(peer);
-	const blocks = f.model.collectBlocks(peer.doc);
+	const blocks = collectBlocks(peer.doc);
 	const own = f.text.computeOwnership(peer.doc, blocks);
 	const dense = denseOwnership(peer.doc, blocks);
 	const texts = new Set([...own.intervals.keys(), ...dense.atomOwner.keys()]);

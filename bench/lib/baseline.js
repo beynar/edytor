@@ -18,9 +18,9 @@
  *                   dispatch (runs observer marking, onChange snapshot/diff,
  *                   listeners) = transact-total − writeMs
  *      `facadeMs`   the whole facade op (write+commit+facade bookkeeping)
- *      `collectMs`  registry collection (`M.collectBlocks` — the first
- *                   `ownView()` stage the next read pays after the write
- *                   invalidated the memoized view)
+ *      `collectMs`  registry collection from scratch (the test oracle's
+ *                   `collectBlocks` — since arch-v2 D9 no read pays it;
+ *                   kept as the rebuild reference)
  *      `ownMs`      ownership computation (`T.computeOwnership`)
  *      `placeMs`    placement resolution (`M.resolvePlacements`)
  *      `runsMs`     maintained-runs reconcile for the touched block
@@ -51,6 +51,9 @@ const here = fileURLToPath(new URL('.', import.meta.url));
 const { bindEdytorDoc } = await jiti.import(`${here}../../src/lib/crdt/edytor-doc.ts`);
 const { bindSync } = await jiti.import(`${here}../../src/lib/crdt/protocols/sync.ts`);
 const { isSliceRecord } = await jiti.import(`${here}../../src/lib/crdt/text/model.ts`);
+// arch-v2 D9: production has no fresh collect (the doc's index is the owner);
+// the from-scratch stages below measure the test oracle's rebuild.
+const { collectBlocks } = await jiti.import(`${here}../../src/tests/oracles/fresh-view.ts`);
 
 const E = bindEdytorDoc(Y14);
 const S = bindSync(Y14);
@@ -259,9 +262,9 @@ const instrumentOp = (doc, ed, fn, { runsId, useEvents = false } = {}) => {
 		const orig = doc.transact.bind(doc);
 		doc.transact = (inner, origin) => {
 			const t0 = performance.now();
-			const r = orig(() => {
+			const r = orig((tr) => {
 				const f0 = performance.now();
-				const out = inner();
+				const out = inner(tr);
 				writeMs += performance.now() - f0;
 				return out;
 			}, origin);
@@ -281,7 +284,7 @@ const instrumentOp = (doc, ed, fn, { runsId, useEvents = false } = {}) => {
 	// Post-write view re-collect — the cost the next read pays (the write
 	// invalidated the memoized view). Split into the three ownView stages.
 	const c0 = performance.now();
-	const blocks = M.collectBlocks(doc);
+	const blocks = collectBlocks(doc);
 	const collectMs = performance.now() - c0;
 	const o0 = performance.now();
 	const own = T.computeOwnership(doc, blocks);
@@ -321,10 +324,6 @@ const instrumentOp = (doc, ed, fn, { runsId, useEvents = false } = {}) => {
 	for (const rec of blocks.values()) {
 		for (const e of rec.entries) if (isSliceRecord(e.payload)) claimsVisited++;
 	}
-	// WU7: this commit's DocChange fast-path eligibility — 1 when no
-	// structural/placement facet was touched (the maintained indexes kept
-	// working), 0 when the commit escalated to a full skeleton diff.
-	const commitFast = ed.runsView.commitInfo().fast ? 1 : 0;
 	return {
 		out,
 		facadeMs,
@@ -340,8 +339,7 @@ const instrumentOp = (doc, ed, fn, { runsId, useEvents = false } = {}) => {
 		blocksCollected: blocks.length,
 		ownershipPositions,
 		claimsVisited,
-		runsRecomputed,
-		commitFast
+		runsRecomputed
 	};
 };
 
@@ -707,7 +705,7 @@ const remote = () => {
 		const t0 = performance.now();
 		for (const u of updates) {
 			const t1 = performance.now();
-			const res = S.applyUpdateStaged(doc, u, 'bench');
+			const res = { staged: false, ...S.applyRemote(doc, u, 'bench') };
 			if (i >= WARMUP) {
 				burstSamples.push({
 					applyMs: performance.now() - t1,
@@ -733,7 +731,7 @@ const remote = () => {
 		for (let k = 0; k < K; k++) peerEd.insertText(targetId, caret(k), 'z');
 		const diff = Y14.encodeStateAsUpdate(peer, Y14.encodeStateVector(doc));
 		const t0 = performance.now();
-		const res = S.applyUpdateStaged(doc, diff, 'bench');
+		const res = { staged: false, ...S.applyRemote(doc, diff, 'bench') };
 		const applyMs = performance.now() - t0;
 		if (i >= WARMUP) {
 			reconSamples.push({
@@ -782,7 +780,7 @@ const staging = () => {
 		for (let k = 0; k < K; k++) peerEd.insertText(`b${500 + (k % 10)}`, caret(k), 'z');
 		for (const u of updates) {
 			const t0 = performance.now();
-			S.applyUpdateStaged(doc, u, 'bench');
+			({ staged: false, ...S.applyRemote(doc, u, 'bench') });
 			const afterMs = performance.now() - t0;
 			// The pre-WU5 algorithm: scratch ← live state + update → verdict.
 			const t1 = performance.now();
@@ -969,7 +967,7 @@ const rangeReads = () => {
 		const { doc, ed } = f.restore();
 		const ids = ed.childrenIds(null);
 		ed.runsView.debug.reset();
-		const text = M.collectBlocks(doc).get('b0').content;
+		const text = M.view(doc).blocks.get('b0').content;
 		// First read pays the checkpoint-index build + its own range.
 		const t0 = performance.now();
 		ed.runsView.runs(ids[0]);

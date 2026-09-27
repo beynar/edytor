@@ -23,21 +23,15 @@
  *   registry subtree — already in the UndoManager's scope — so the
  *   engine's item-level undo restores the previous `l` item for free.
  *
- * INCARNATIONS — a public block id is recyclable: undo, deletes, and
- * recreation make one id outlive several registry-node items, and a
- * delayed remote write always addresses the incarnation its author
- * saw. Every `b/<id>` record is therefore stamped (`i`) with the
- * `client:clock` of the node item it belongs to, and `ensureRecord`
- * swaps in a FRESH record whenever the live node's item doesn't match —
- * a late write to a dead incarnation lands on an orphaned record the
- * recreated block never reads. Records whose stamped item was re-created
- * by undo/redo replaying the SAME original item are the same lineage
- * (followed via the engine's local `redone` chain) — their record is
- * adopted and re-stamped rather than swapped out. Reads simply take the
- * attr winner: `redone` links don't replicate, so a remote replica can
- * never distinguish a redo-restored incarnation from a foreign one —
- * isolation is guaranteed by the write-side swap being atomic with the
- * recreate op, not by read-side judgment.
+ * INCARNATIONS — a public block id is recyclable (a caller id created
+ * again after its creation was undone, or concurrently by two peers), and a
+ * delayed remote write always addresses the incarnation its author saw.
+ * Every block node carries the replicated nonce `n` of its incarnation
+ * (O23); every `b/<id>` record is stamped (`i`) with the nonce it belongs
+ * to, and `ensureRecord` swaps in a FRESH record whenever the live node's
+ * nonce doesn't match — a late write to a dead incarnation lands on an
+ * orphaned record the recreated block never reads. An undo/redo copy of the
+ * node carries `n` with it, so it keeps its record on every replica (F7).
  *
  * Suppression, per the ledger contract:
  *
@@ -54,13 +48,9 @@
  * - Semantic no-ops (same-value type/data, empty ranges, pure moves)
  *   are suppressed by the CALLERS: ops stamp only after a real write.
  *
- * Known residuals: `b/<id>` nodes are LWW map entries — concurrent
- * FIRST touches of a record-less block (bootstrap scaffolding is
- * created at init; foreign/migrated docs may lack records) can lose
- * one contributor add; and a stamp on a replica that received a redo
- * REMOTELY may see a stale `i` and swap early (the redoing replica's
- * `i` refresh usually lands first). Both are convergent and self-heal
- * on the next touch.
+ * Known residual: `b/<id>` nodes are LWW map entries — concurrent FIRST
+ * touches of a record-less block (foreign/migrated docs may lack records)
+ * can lose one contributor add. Convergent; heals on the next touch.
  *
  * All writes are plain `setAttr`s performed by the owning facade op
  * INSIDE the operation's transaction — the metadata commits in the
@@ -70,8 +60,7 @@
  */
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
 import { REGISTRY_KEY, type BlockId } from '../placement/model.js';
-import { BLOCK_ATTR_ROOT, LAST_CHANGED_ATTR, REC_PREFIX } from '../schema.js';
-import { clientsOf, structAt } from '../structs.js';
+import { BLOCK_ATTR_ROOT, LAST_CHANGED_ATTR, NONCE, REC_PREFIX } from '../schema.js';
 
 /** The durable per-block attribution record a replica sees. */
 export type ActorId = string;
@@ -152,14 +141,7 @@ export { BLOCK_ATTR_ROOT, LAST_CHANGED_ATTR };
 const REC_NODE = 'brec';
 const CREATED_KEY = 'c';
 const CONTRIBUTOR_PREFIX = 'k/';
-/**
- * Incarnation stamp on a `b/` record: `client:clock` of the block-registry
- * node item the record belongs to. A public block id is recyclable — undo,
- * recreation, and delayed delivery can all make one id outlive several
- * node items — so the record swaps to a FRESH node whenever a new
- * incarnation stamps. A delayed write then lands on the dead incarnation's
- * orphaned record and can never contaminate the live one.
- */
+/** Incarnation stamp on a `b/` record: the nonce `n` of the node it belongs to. */
 const INCARNATION_KEY = 'i';
 
 const isNodeLike = (v: unknown): v is EngineNode =>
@@ -177,21 +159,11 @@ const blockNodeOf = (doc: EngineDoc, id: BlockId): EngineNode | null => {
 	return isNodeLike(v) ? v : null;
 };
 
-/** `client:clock` of the node's integrating item — its incarnation identity. */
-const itemKeyOf = (node: EngineNode): string | null => {
-	const item = node._item;
-	return item !== null && item !== undefined && !item.deleted && item.id !== undefined
-		? `${item.id.client}:${item.id.clock}`
-		: null;
-};
-
 /**
  * Reads resolve whatever record node the `b/<id>` attr currently elects.
  * Isolation is enforced on the WRITE side — `ensureRecord` swaps a fresh
  * record in when the attr winner's incarnation stamp doesn't match the live
- * block node — so reads can't and needn't judge lineage (`redone` links are
- * local-only; a remote replica can't tell a redo-restored incarnation from
- * a foreign one, and the attr winner is already convergent).
+ * block node's nonce — and the attr winner is already convergent.
  */
 
 /** Client id of the replica that wrote the CURRENT `l` map item (null when none/deleted). */
@@ -257,62 +229,21 @@ export const bindBlockAttribution = (Y: EngineApi) => {
 	const newNode = (name: string): EngineNode => new Y.Node(name) as unknown as EngineNode;
 
 	/**
-	 * Incarnation LINEAGE: the record's stamped item reaches `node`'s item
-	 * via the engine's `redone` chain — i.e. the node was deleted and later
-	 * re-created by undo/redo replaying the SAME original item. A foreign
-	 * block reusing the public id mints an unrelated item, so a delayed
-	 * write stamped for it can never pass this check. Store access goes
-	 * through `structs.js` (`clientsOf` throws on a vendored-layout
-	 * change; `structAt` is the shared findIndexSS wrapper).
-	 */
-	const sameIncarnationLine = (doc: EngineDoc, stamped: string, node: EngineNode): boolean => {
-		const target = node._item?.id;
-		if (target === undefined) return false;
-		const sep = stamped.indexOf(':');
-		const client = Number(stamped.slice(0, sep));
-		const clock = Number(stamped.slice(sep + 1));
-		if (!Number.isFinite(client) || !Number.isFinite(clock)) return false;
-		let cur = structAt(Y, clientsOf(doc).get(client) ?? [], clock);
-		for (let guard = 0; cur !== null && guard < 1024; guard++) {
-			if (cur.id.client === target.client && cur.id.clock === target.clock) return true;
-			const r = cur.redone;
-			if (r === null || r === undefined) return false;
-			cur = structAt(Y, clientsOf(doc).get(r.client) ?? [], r.clock);
-		}
-		return false;
-	};
-
-	/**
-	 * Get-or-create the `b/<id>` record for `node`'s incarnation. A record
-	 * stamped for a different node item is dead state — a fresh record
+	 * Get-or-create the `b/<id>` record for `node`'s incarnation (its nonce).
+	 * A record stamped for another incarnation is dead state — a fresh record
 	 * replaces it as the attr winner (the orphan stays readable only as the
-	 * last-incarnation fallback for deleted blocks). `node` defaults to the
-	 * id's current registry node; call inside a transaction.
+	 * last-incarnation fallback). `node` defaults to the id's current registry
+	 * node; call inside a transaction.
 	 */
 	const ensureRecord = (doc: EngineDoc, id: BlockId, node?: EngineNode | null): EngineNode => {
-		const n = node === undefined ? blockNodeOf(doc, id) : node;
-		const key = n === null ? null : itemKeyOf(n);
+		const n = (node === undefined ? blockNodeOf(doc, id) : node)?.getAttr(NONCE);
 		const existing = recordOf(doc, id);
-		if (existing !== null) {
-			const i = existing.getAttr(INCARNATION_KEY);
-			if (key === null || i === key) return existing;
-			if (i === undefined) {
-				// Pre-incarnation record: adopt it for the live node
-				// (one-time heal — records written before `i` existed).
-				if (key !== null) existing.setAttr(INCARNATION_KEY, key);
-				return existing;
-			}
-			if (n !== null && key !== null && typeof i === 'string' && sameIncarnationLine(doc, i, n)) {
-				// Same lineage, newer incarnation (undo/redo replayed the
-				// original item): keep the record, refresh the stamp.
-				existing.setAttr(INCARNATION_KEY, key);
-				return existing;
-			}
+		if (existing !== null && (n === undefined || existing.getAttr(INCARNATION_KEY) === n)) {
+			return existing;
 		}
-		const root = doc.get(BLOCK_ATTR_ROOT);
 		const rec = newNode(REC_NODE);
-		root.setAttr(recKey(id), rec);
-		if (key !== null) rec.setAttr(INCARNATION_KEY, key);
+		doc.get(BLOCK_ATTR_ROOT).setAttr(recKey(id), rec);
+		if (n !== undefined) rec.setAttr(INCARNATION_KEY, n);
 		return rec;
 	};
 

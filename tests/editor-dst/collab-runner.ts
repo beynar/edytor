@@ -1,3 +1,4 @@
+import { collectObserverShadow, installObserverShadow } from '../observerShadow';
 import { createHash } from 'node:crypto';
 
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
@@ -255,6 +256,7 @@ const openPeer = async (
 	page.on('console', (message) => {
 		if (message.type() === 'error') consoleErrors.push(message.text());
 	});
+	await installObserverShadow(page);
 	await installEventRecorder(page);
 	await page.goto(collabRoute(schedule, room, relayUrl, actorId), {
 		waitUntil: 'domcontentloaded'
@@ -2188,6 +2190,8 @@ export const runCollabSchedule = async (
 	} finally {
 		reference?.destroy();
 		referenceDoc.destroy();
+		for (const peer of peers)
+			await collectObserverShadow(peer.page, `collab-dst seed ${schedule.seed} ${peer.actorId}`);
 		await Promise.all(peers.map((peer) => peer.context.close().catch(() => undefined)));
 		await relay.close();
 	}

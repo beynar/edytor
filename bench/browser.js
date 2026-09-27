@@ -921,7 +921,7 @@ try {
 				rec.t0 = performance.now();
 				for (const u of updates) {
 					const t1 = performance.now();
-					const r = S.applyUpdateStaged(doc, u, 'bench');
+					const r = (Y.applyUpdate(doc, u, 'bench'), { staged: false, applied: true });
 					rec.perApplyMs.push(performance.now() - t1);
 					rec.bytes.push(u.byteLength);
 					if (r.staged) rec.staged++;
@@ -987,7 +987,7 @@ try {
 							rec.timer = setTimeout(resolve, t);
 						});
 						rec.t0 = performance.now();
-						const r = S.applyUpdateStaged(doc, diff, 'bench');
+						const r = (Y.applyUpdate(doc, diff, 'bench'), { staged: false, applied: true });
 						rec.applyDone = performance.now();
 						rec.staged = r.staged ? 1 : 0;
 						rec.applied = r.applied ? 1 : 0;

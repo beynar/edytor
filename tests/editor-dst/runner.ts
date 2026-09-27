@@ -1,3 +1,4 @@
+import { collectObserverShadow, installObserverShadow } from '../observerShadow';
 import {
 	chromium,
 	firefox,
@@ -940,6 +941,7 @@ const createActivePage = async (
 	page.on('console', (message) => {
 		if (message.type() === 'error') consoleErrors.push(message.text());
 	});
+	await installObserverShadow(page);
 	await installEventRecorder(page);
 	await page.goto(pageRoute(schedule), { waitUntil: 'domcontentloaded' });
 	await waitForEditorReady(page, { requireRuntime: true });
@@ -1637,6 +1639,8 @@ export const runDstSchedule = async (
 			)
 		};
 	} finally {
+		for (const active of activePages)
+			await collectObserverShadow(active.page, `dst seed ${schedule.seed} ${active.engine.name}`);
 		await Promise.all(activePages.map(({ context }) => context.close().catch(() => undefined)));
 	}
 };

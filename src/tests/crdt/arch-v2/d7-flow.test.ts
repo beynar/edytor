@@ -23,7 +23,7 @@ import { bindEdytorDoc, createDocument } from '../../../lib/crdt/index.js';
 import { observe, prepareApply, rng } from './prepared-oracle.js';
 
 /** Red on the reference (no `prepare.insertFlow`); green since D7. */
-const row = test.fails;
+const row = test;
 
 const SEMANTICS = {
 	roles: { img: { void: true }, box: { island: true } },

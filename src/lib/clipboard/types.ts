@@ -12,6 +12,8 @@ export type EdytorClipboardFragment =
 			source: 'edytor';
 			kind: 'blocks';
 			blocks: JSONBlock[];
+			/** Copied from a block selection: whole blocks, never joined (`flow.whole`). */
+			whole?: boolean;
 	  }
 	| {
 			version: 1;

@@ -1,9 +1,7 @@
 import type { Edytor } from '../edytor.svelte.js';
 import { prevent, PreventionError } from '$lib/utils.js';
-import {
-	insertEdytorClipboardFragment,
-	readEdytorClipboardFragment
-} from '$lib/clipboard/clipboard.js';
+import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
+import { flowOfFragment, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
 import { Block } from '$lib/block/block.svelte.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
@@ -156,7 +154,7 @@ export async function onPaste(this: Edytor, e: ClipboardEvent) {
 		if (fragment) {
 			e.preventDefault();
 			this.undoManager.stopCapturing();
-			return insertEdytorClipboardFragment(this, fragment);
+			return pasteFlow(this, flowOfFragment(fragment));
 		}
 
 		try {

@@ -1,91 +1,10 @@
-import type { Block } from '$lib/block/block.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
-import {
-	getContentTextLength,
-	setSelectionAtBlockOffset,
-	splitBlockContentAtText,
-	type JSONContentPart
-} from '$lib/block/contentRange.js';
-import type { SelectionInsertionTarget } from '$lib/selection/replaceSelection.js';
-import {
-	replaceSelectedBlocksWithEmptyBlockTarget,
-	replaceSelectionWithCollapsedTarget
-} from '$lib/selection/replaceSelection.js';
 import type { JSONBlock } from '$lib/utils/json.js';
+import { flowOfBlocks, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
 import type { ElementDefinitions } from './deserialize.js';
 import { parseHtml } from './deserialize.js';
 
 type HTMLPluginOptions = Partial<ElementDefinitions>;
-
-const mergeTrailingContent = (block: Block, trailing: JSONContentPart[]) => {
-	if (!trailing.length) {
-		return;
-	}
-
-	block.setBlock({
-		value: {
-			content: [...(block.value.content ?? []), ...trailing]
-		}
-	});
-};
-
-const buildPastedTargetBlock = (
-	targetBlock: Block,
-	firstBlock: JSONBlock,
-	content: JSONContentPart[]
-): Partial<JSONBlock> => {
-	if (targetBlock.isEmpty && firstBlock.type !== '$fragment') {
-		return {
-			type: firstBlock.type,
-			data: firstBlock.data,
-			content
-		};
-	}
-
-	return { content };
-};
-
-const insertParsedHtml = async (target: SelectionInsertionTarget, blocks: JSONBlock[]) => {
-	const currentBlock = target.text.parent;
-	const { before, after } = splitBlockContentAtText(target.text, target.offset);
-	const [first, ...rest] = blocks;
-
-	if (!first) {
-		return;
-	}
-
-	const firstContent = first.type === '$fragment' ? (first.content ?? []) : (first.content ?? []);
-	if (rest.length === 0) {
-		currentBlock.setBlock({
-			value: buildPastedTargetBlock(currentBlock, first, [...before, ...firstContent, ...after])
-		});
-		await setSelectionAtBlockOffset(
-			currentBlock,
-			getContentTextLength([...before, ...firstContent])
-		);
-		return;
-	}
-
-	currentBlock.setBlock({
-		value: buildPastedTargetBlock(currentBlock, first, [...before, ...firstContent])
-	});
-
-	let previousBlock = currentBlock;
-	for (const nextBlock of rest) {
-		const inserted = previousBlock.insertBlockAfter({
-			block: nextBlock
-		});
-		if (inserted) {
-			previousBlock = inserted;
-		}
-	}
-
-	mergeTrailingContent(previousBlock, after);
-	await setSelectionAtBlockOffset(
-		previousBlock,
-		getContentTextLength(previousBlock.value.content ?? []) - getContentTextLength(after)
-	);
-};
 
 export const htmlPlugin =
 	(options: HTMLPluginOptions): Plugin =>
@@ -98,16 +17,16 @@ export const htmlPlugin =
 				}
 
 				prevent(async () => {
-					const parsedBlocks = parseHtml.call(edytor, html, options);
+					// Parsed before any write: a bad mapping throws with the selection intact.
+					const blocks = parseHtml.call(edytor, html, options);
+					// HTML that carries nothing (a comment, a script, an empty span) is an empty flow (F-P10).
+					const carries = (b: JSONBlock): boolean =>
+						Boolean(b.children?.length) || (b.content ?? []).some((p) => !('text' in p) || p.text);
+					const flow = flowOfBlocks(blocks.some(carries) ? blocks : []);
+					// `$fragment` pseudo-blocks are inline runs (`flow.shape`).
+					for (const line of flow.lines) if (line.type === '$fragment') delete line.type;
 					edytor.undoManager.stopCapturing();
-
-					const target =
-						edytor.selection.selectedBlocks.size > 0
-							? await replaceSelectedBlocksWithEmptyBlockTarget(edytor)
-							: await replaceSelectionWithCollapsedTarget(edytor);
-					if (!target) return;
-
-					await insertParsedHtml(target, parsedBlocks);
+					await pasteFlow(edytor, flow);
 				});
 			}
 		};

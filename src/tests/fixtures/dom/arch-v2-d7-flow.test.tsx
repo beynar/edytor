@@ -34,7 +34,7 @@ import {
 } from '../../dom/test.utils.js';
 
 /** Red on the reference; green since D7. */
-const row = it.fails;
+const row = it;
 /** Green on the reference: a clipboard spec assertion kept as a regression guard. */
 const pin = it;
 

@@ -2,6 +2,8 @@ import { Text } from './text/text.svelte.js';
 import type { Block } from './block/block.svelte.js';
 import type { Edytor } from './edytor.svelte.js';
 import { id } from './utils.js';
+import type { Flow, FlowTarget } from './crdt/flow.js';
+import type { Prepared } from './crdt/edytor-doc.js';
 
 /** The two endpoints of a range, as the selection holds them. */
 export type RangeEndpoints = {
@@ -20,6 +22,18 @@ const textAt = (block: Block, offset: number): readonly [Text | null, number] =>
 		else at += part.length;
 	}
 	return [block.lastText ?? null, block.lastText?.length ?? 0];
+};
+
+/** Apply a prepared op and answer the caret it reports; `null` when it planned none. */
+const applyAt = (edytor: Edytor, plan: Prepared): readonly [Text | null, number] | null => {
+	if (!('writes' in plan) || !plan.at) return null;
+	edytor.facade.apply(plan);
+	edytor.flushMirror();
+	const block = edytor.idToBlock.get(plan.at.block);
+	if (!block) return [null, 0];
+	block.normalizeContent();
+	block.parent?.normalizeChildren();
+	return textAt(block, plan.at.offset);
 };
 
 /**
@@ -41,13 +55,15 @@ export function deleteContentWithinSelection(
 		offset: text.parent.partOffsetOf(text) + offset
 	});
 	const prepare = replace ? this.facade.prepare.replaceRange : this.facade.prepare.deleteRange;
-	const plan = prepare(at(startText, yStart), at(endText, yEnd), id('b'));
-	if (!('writes' in plan) || !plan.at) return [startText, yStart];
-	this.facade.apply(plan);
-	this.flushMirror();
-	const block = this.idToBlock.get(plan.at.block);
-	if (!block) return [null, 0];
-	block.normalizeContent();
-	block.parent?.normalizeChildren();
-	return textAt(block, plan.at.offset);
+	return (
+		applyAt(this, prepare(at(startText, yStart), at(endText, yEnd), id('b'))) ?? [startText, yStart]
+	);
+}
+
+/** Place an admitted flow at `target` (`flow.*`) and answer the caret the op decided. */
+export function insertFlow(
+	this: Edytor,
+	{ flow, target }: { flow: Flow; target: FlowTarget }
+): readonly [Text | null, number] {
+	return applyAt(this, this.facade.prepare.insertFlow(target, flow)) ?? [null, 0];
 }

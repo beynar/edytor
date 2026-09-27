@@ -148,6 +148,7 @@ import type { AttributionActor } from './attribution/index.js';
 import { isLegacyDoc } from './migration/legacy-schema.js';
 import { randOf } from './rand.js';
 import { rangeDeleteOps, type DocPosition } from './rangeDelete.js';
+import { flowOps, type FlowContext } from './flow.js';
 import { jsonEquals } from '../utils/json.js';
 import {
 	cloneJsonSafe,
@@ -617,6 +618,8 @@ const effectOf = (writes: readonly PlanStep[]): PlanEffect => {
 		else if (w.op === 'deleteText' || w.op === 'formatRange') text(w.id, w.offset, w.length);
 		else text(w.id, w.offset, 1);
 	}
+	// Text written into a block the plan creates is part of its creation.
+	e.textRanges = e.textRanges.filter((r) => !e.creates.includes(r.block));
 	return e;
 };
 
@@ -2478,6 +2481,34 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return plan([id], [step as PlanStep]);
 		};
 
+		/** What range deletion and flow placement read, and the step writers they compose. */
+		const context: FlowContext = {
+			ref,
+			refused: REFUSED,
+			plan,
+			order: () => view().order,
+			positionOf,
+			ancestorsOf: (id) => ancestorsOf(id),
+			childrenIds,
+			displayLength,
+			contentTarget,
+			rendersContent: (id) => rendersContentOf(blockTypeOf(id) ?? ''),
+			canMerge,
+			isIsland,
+			defaultChild,
+			move,
+			retype: (id, type) => attr(id, TYPE, type),
+			remove,
+			insertBlocks,
+			sanitize: sanitizeSpec,
+			collides: (specs) => M.collides(doc, specs),
+			isVoid,
+			tailOf: (id) => ({ type: blockTypeOf(id)!, data: blockDataOf(id) }),
+			ranksFor,
+			redata: (id, data) => attr(id, DATA, data),
+			deleteBlocks: (ids) => prepare.deleteBlocks(ids)
+		};
+
 		/** Every document op, prepared (R6) — `apply(prepare.op(…))` is the op. */
 		const prepare = {
 			insertBlocks,
@@ -2519,25 +2550,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					roots.map((id) => remove(id))
 				);
 			},
-			...rangeDeleteOps({
-				ref,
-				refused: REFUSED,
-				plan,
-				order: () => view().order,
-				positionOf,
-				ancestorsOf: (id) => ancestorsOf(id),
-				childrenIds,
-				displayLength,
-				contentTarget,
-				rendersContent: (id) => rendersContentOf(blockTypeOf(id) ?? ''),
-				canMerge,
-				isIsland,
-				defaultChild,
-				move,
-				retype: (id, type) => attr(id, TYPE, type),
-				remove,
-				insertBlocks
-			})
+			...rangeDeleteOps(context),
+			...flowOps(context)
 		};
 
 		// ── JSON boundary ─────────────────────────────────────────────────

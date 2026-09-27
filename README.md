@@ -389,6 +389,7 @@ Edytor handles clipboard operations from the model, not by cloning rendered DOM.
 - The internal fragment is also mirrored into HTML as `data-edytor-fragment` so same-editor round trips survive clipboard implementations that strip custom MIME types.
 - Paste precedence is internal MIME, embedded internal HTML fragment, external `text/html`, then `text/plain`.
 - Pasted internal fragments never preserve copied block or inline-block IDs; IDs are regenerated while marks, data, children, and relative order are preserved.
+- Paste, drop and programmatic fragment insertion place content with one rule (`flow.*` in `docs/editor-delete-contract.md`): one line joins the text at the caret; several lines split the block, the first joining the text before the caret and the last the text after it (`Hello|World` + `X`, `Y` → `HelloX`, `YWorld`, for internal, HTML and multi-line plain text alike); a copy of selected blocks pastes as whole blocks after the caret block.
 - Copy is allowed in readonly mode. Cut and paste are ignored in readonly mode.
 - Copy does not create a history entry. Cut and paste each create one undoable mutation.
 - Clipboard serialization is currently core-owned. Plugin-specific serializers are intentionally deferred until there is a second concrete plugin need.

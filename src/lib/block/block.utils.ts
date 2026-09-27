@@ -30,6 +30,7 @@ import { Block } from '$lib/block/block.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { ChangePayload } from '$lib/plugins.js';
+import type { Flow, FlowTarget } from '$lib/crdt/flow.js';
 import { id, prevent } from '$lib/utils.js';
 import {
 	cloneJson,
@@ -104,6 +105,7 @@ export type BlockOperations = {
 	deleteContentWithinSelection: {
 		replace?: boolean;
 	};
+	insertFlow: { flow: Flow; target: FlowTarget };
 };
 
 /**

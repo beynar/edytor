@@ -6,10 +6,8 @@ import {
 } from '$lib/selection/replaceSelection.js';
 import { Text } from '$lib/text/text.svelte.js';
 import { scheduleRemoveStalePlaceholders } from '$lib/text/removeStalePlaceholders.js';
-import {
-	insertEdytorClipboardFragment,
-	readEdytorClipboardFragment
-} from '$lib/clipboard/clipboard.js';
+import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
+import { flowOfFragment, flowOfText, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
 import { cloneJson, type JSONText, type SerializableContent } from '$lib/utils/json.js';
 import { prevent } from '$lib/utils.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
@@ -395,27 +393,19 @@ const insertLineBreak = async (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
 const getLinkMarksForUri = (edytor: Edytor, uri: string) =>
 	edytor.marks.has('link') ? { link: { href: uri } } : undefined;
 
+/** Plain text (or a URI, as a link) as a flow (`flow.shape`). */
+const textFlow = (edytor: Edytor, dataTransfer: DataTransfer | null | undefined, fallback = '') => {
+	const uri = firstUriListEntry(dataTransfer?.getData('text/uri-list'));
+	const plain = dataTransfer?.getData('text/plain') || '';
+	const value = plain || uri || fallback;
+	return value
+		? flowOfText(value, !plain && uri ? getLinkMarksForUri(edytor, uri) : undefined)
+		: null;
+};
+
 const insertFromPaste = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	const uri = firstUriListEntry(snapshot.dataTransfer?.getData('text/uri-list'));
-	const plain = snapshot.dataTransfer?.getData('text/plain') || '';
-	const value = plain || uri || '';
-	if (!value) {
-		return;
-	}
-
-	const target = replaceSelectionBeforeTextInsertion(edytor, snapshot);
-	if (!target) {
-		return;
-	}
-
-	target.text.insertText({
-		value,
-		start: target.offset,
-		end: target.offset,
-		marks: !plain && uri ? getLinkMarksForUri(edytor, uri) : undefined
-	});
-	setSuppressedInputRepairSelectionTarget(edytor, target.text, target.offset + value.length);
-	await edytor.selection.setAtTextOffset(target.text, target.offset + value.length);
+	const flow = textFlow(edytor, snapshot.dataTransfer);
+	if (flow) await pasteFlow(edytor, flow, { selection: snapshot });
 };
 
 const runDataTransferPastePlugins = (edytor: Edytor, dataTransfer: DataTransfer) => {
@@ -428,33 +418,22 @@ const runDataTransferPastePlugins = (edytor: Edytor, dataTransfer: DataTransfer)
 // A drop reported while whole blocks are selected must insert at the drop
 // point — not replace the block selection. The earlier target-range sync is
 // skipped for block selections (the DOM caret sits inside a selected block),
-// so resolve the reported range directly.
-const resolveDataTransferInsertionTarget = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	if (edytor.selection.selectedBlocks.size > 0 || edytor.selection.selectedInlineBlock.size > 0) {
-		const targetRange =
-			typeof snapshot.event.getTargetRanges === 'function'
-				? snapshot.event.getTargetRanges()[0]
-				: null;
-		const node = edytor.node;
-		if (!targetRange || !node?.contains(targetRange.startContainer)) {
-			return null;
-		}
-		const text = edytor.selection.getTextOfNode(
-			targetRange.startContainer,
-			targetRange.startOffset
-		);
-		if (!text) {
-			return null;
-		}
-		const offset = Math.max(
-			0,
-			Math.min(getYIndex(text, targetRange.startContainer, targetRange.startOffset), text.length)
-		);
-		edytor.selection.setCollapsedStateAtTextOffset(text, offset);
-		return { text, offset };
-	}
-
-	return replaceSelectionBeforeTextInsertion(edytor, snapshot);
+// so resolve the reported range directly. `undefined`: no such selection.
+const resolveDropPoint = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+	const { selection, node } = edytor;
+	if (selection.selectedBlocks.size === 0 && selection.selectedInlineBlock.size === 0) return;
+	const range = snapshot.event.getTargetRanges?.()[0];
+	const text =
+		range && node?.contains(range.startContainer)
+			? selection.getTextOfNode(range.startContainer, range.startOffset)
+			: null;
+	if (!text) return null;
+	const offset = Math.max(
+		0,
+		Math.min(getYIndex(text, range!.startContainer, range!.startOffset), text.length)
+	);
+	selection.setCollapsedStateAtTextOffset(text, offset);
+	return { text, offset };
 };
 
 /**
@@ -467,44 +446,21 @@ const resolveDataTransferInsertionTarget = (edytor: Edytor, snapshot: BeforeInpu
  */
 const insertFromDataTransfer = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
 	const dataTransfer = snapshot.dataTransfer ?? null;
-
-	if (dataTransfer) {
-		const fragment = readEdytorClipboardFragment(dataTransfer);
-		if (fragment) {
-			await insertEdytorClipboardFragment(edytor, fragment);
-			return;
-		}
-
+	const fragment = readEdytorClipboardFragment(dataTransfer);
+	if (!fragment && dataTransfer) {
 		if ((dataTransfer.files?.length ?? 0) > 0) {
 			runDataTransferPastePlugins(edytor, dataTransfer);
 			return;
 		}
-
 		if (dataTransfer.getData('text/html')) {
 			runDataTransferPastePlugins(edytor, dataTransfer);
 		}
 	}
-
-	const uri = firstUriListEntry(dataTransfer?.getData('text/uri-list'));
-	const plain = dataTransfer?.getData('text/plain') || '';
-	const value = plain || uri || snapshot.data || '';
-	if (!value) {
-		return;
-	}
-
-	const target = resolveDataTransferInsertionTarget(edytor, snapshot);
-	if (!target) {
-		return;
-	}
-
-	target.text.insertText({
-		value,
-		start: target.offset,
-		end: target.offset,
-		marks: !plain && uri ? getLinkMarksForUri(edytor, uri) : undefined
-	});
-	setSuppressedInputRepairSelectionTarget(edytor, target.text, target.offset + value.length);
-	await edytor.selection.setAtTextOffset(target.text, target.offset + value.length);
+	const flow = fragment
+		? flowOfFragment(fragment)
+		: textFlow(edytor, dataTransfer, snapshot.data ?? '');
+	const at = flow ? resolveDropPoint(edytor, snapshot) : null;
+	if (flow && at !== null) await pasteFlow(edytor, flow, { at, selection: snapshot });
 };
 
 const insertParagraph = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {

@@ -5,8 +5,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { JSONContentPart } from './types.js';
 import type { EdytorClipboardFragment } from './types.js';
 import { sliceTextValue } from '$lib/block/contentRange.js';
-import { cloneJson } from '$lib/utils/json.js';
-import { stripIdsFromBlock } from './jsonClipboard.js';
+import { cloneJson, type JSONBlock } from '$lib/utils/json.js';
 import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
 
 const extractContentRange = (
@@ -45,11 +44,11 @@ const extractBlockRange = (edytor: Edytor) => {
 	}
 
 	const selectedBlocks = new Set(blocks);
-	const values = new Map<Block, ReturnType<typeof stripIdsFromBlock>>();
-	const fragmentBlocks: ReturnType<typeof stripIdsFromBlock>[] = [];
+	const values = new Map<Block, JSONBlock>();
+	const fragmentBlocks: JSONBlock[] = [];
 
 	for (const block of blocks) {
-		const value = stripIdsFromBlock(block.value);
+		const value = cloneJson(block.value);
 		delete value.children;
 
 		if (block === startBlock) {
@@ -98,7 +97,8 @@ export const createEdytorClipboardFragment = (edytor: Edytor): EdytorClipboardFr
 			version: 1,
 			source: 'edytor',
 			kind: 'blocks',
-			blocks: selectedBlocks.map((block) => stripIdsFromBlock(block.value))
+			blocks: selectedBlocks.map((block) => cloneJson(block.value)),
+			whole: true
 		};
 	}
 

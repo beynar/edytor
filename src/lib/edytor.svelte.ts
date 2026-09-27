@@ -55,7 +55,7 @@ import { on } from 'svelte/events';
 import { HotKeys, type HotKey } from './hotkeys.js';
 import { TRANSACTION } from './constants.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
-import { deleteContentWithinSelection } from './edytor.utils.js';
+import { deleteContentWithinSelection, insertFlow } from './edytor.utils.js';
 import {
 	getSelectionReplacementState,
 	replaceSelectedBlocksWithEmptyBlockTarget,
@@ -1778,6 +1778,8 @@ export class Edytor {
 		'deleteContentWithinSelection',
 		deleteContentWithinSelection.bind(this)
 	);
+
+	insertFlow = this.batch('insertFlow', insertFlow.bind(this));
 
 	getTextById = (id: string) => {
 		const isText = id.startsWith('t');

@@ -50,7 +50,7 @@ const flat = (
 	</root>
 );
 
-const at = (e: Edytor, i: number) => e.root!.children[i]!.firstText;
+const at = (e: Edytor, i: number) => e.root!.children[i]!.firstText!;
 
 const mountReplica = async (peer: Awaited<ReturnType<typeof renderDomEdytor>>) => {
 	const doc = new Y.Doc();
@@ -85,7 +85,7 @@ describe('command-lane oracle sensitivity (U11)', () => {
 			</root>
 		);
 		const { edytor } = await renderDomEdytor(marked, { autoSelectFixture: false });
-		const t = edytor.root!.children[0]!.firstText;
+		const t = edytor.root!.children[0]!.firstText!;
 		await setNativeSelection(edytor, t, 4, t, 4);
 		await runCommand(edytor, 'deleteContentBackward');
 		await flushDomUpdates();
@@ -101,7 +101,7 @@ describe('command-lane oracle sensitivity (U11)', () => {
 		// Corrupt for real: strip the bold mark off the surviving 'c' —
 		// the live model keeps one Text ('abcef') with internal mark runs;
 		// 'c' sits at offset 2 — via the production format path.
-		const text = edytor.root!.children[0]!.firstText;
+		const text = edytor.root!.children[0]!.firstText!;
 		expect(text.stringContent).toBe('abcef');
 		text.formatAt(2, 1, { bold: null });
 		await flushDomUpdates();

@@ -29,7 +29,7 @@ describe('mounted editor — placeholder attribute', () => {
 			{ placeholder: 'Write something here ...' }
 		);
 		expect(editor.querySelectorAll(MARKED)).toHaveLength(1);
-		const text = edytor.root!.children[0]!.firstText;
+		const text = edytor.root!.children[0]!.firstText!;
 		expect(text.node?.getAttribute('data-placeholder')).toBe('Write something here ...');
 		await setNativeSelection(edytor, text, 0);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'A' });
@@ -74,7 +74,7 @@ describe('mounted editor — placeholder attribute', () => {
 			</root>,
 			{ placeholder: 'Write' }
 		);
-		const [empty, full] = edytor.root!.children.map((block) => block.firstText.node!);
+		const [empty, full] = edytor.root!.children.map((block) => block.firstText!.node!);
 		empty.removeAttribute('data-placeholder');
 		full.setAttribute('data-placeholder', 'spoof');
 		await flushDomUpdates();
@@ -94,7 +94,7 @@ describe('mounted editor — placeholder attribute', () => {
 		// Svelte uses empty text nodes as {#if}/{#each} fragment anchors.
 		const anchor = document.createTextNode('');
 		blockNode.append(anchor);
-		const text = edytor.root!.children[0]!.firstText;
+		const text = edytor.root!.children[0]!.firstText!;
 		edytor.transact(() => {
 			text.insertAt(text.length, '!');
 		});

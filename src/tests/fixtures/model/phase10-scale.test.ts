@@ -75,11 +75,11 @@ describe('phase 10 scale checks', () => {
 			const root = getRoot(edytor);
 
 			expect(root.children).toHaveLength(count);
-			expect(root.children[0].firstText.stringContent).toBe('Block 0');
-			expect(root.children[Math.floor(count / 2)].firstText.stringContent).toBe(
+			expect(root.children[0].firstText!.stringContent).toBe('Block 0');
+			expect(root.children[Math.floor(count / 2)].firstText!.stringContent).toBe(
 				`Block ${Math.floor(count / 2)}`
 			);
-			expect(root.children[count - 1].firstText.stringContent).toBe(`Block ${count - 1}`);
+			expect(root.children[count - 1].firstText!.stringContent).toBe(`Block ${count - 1}`);
 			expect(edytor.value.children).toHaveLength(count);
 		});
 	}
@@ -92,7 +92,7 @@ describe('phase 10 scale checks', () => {
 		let block = getRoot(edytor).children[0];
 
 		for (let level = 0; level < depth; level++) {
-			expect(block.firstText.stringContent).toBe(`Level ${level}`);
+			expect(block.firstText!.stringContent).toBe(`Level ${level}`);
 			if (level < depth - 1) {
 				expect(block.children).toHaveLength(1);
 				block = block.children[0];

@@ -44,7 +44,7 @@ const normalizationPlugin = (kind: 'content' | 'children'): Plugin => {
 					normalizeContent:
 						kind === 'content'
 							? ({ block }) => {
-									const lastText = block.lastText;
+									const lastText = block.lastText!;
 									if (lastText.stringContent.endsWith('!')) {
 										return;
 									}

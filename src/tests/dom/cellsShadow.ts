@@ -12,6 +12,7 @@
  * pnpm test:dom` appends one line per test file.
  * Temporary: removed at R4.
  */
+// @ts-ignore -- node builtin; the dom typecheck lane carries no node types.
 import { appendFileSync } from 'node:fs';
 import { expect } from 'vitest';
 import { CLASSES, cellsLib, compareView } from '../oracles/cells-render-model.js';
@@ -128,7 +129,8 @@ export const endCellsShadowTest = () => {
 };
 
 export const reportCellsCensus = (file: string) => {
-	const out = process.env.CELLS_SHADOW_REPORT;
+	const out = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env
+		.CELLS_SHADOW_REPORT;
 	if (out && census.steps > 0) {
 		appendFileSync(
 			out,

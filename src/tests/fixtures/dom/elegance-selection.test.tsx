@@ -207,9 +207,9 @@ describe('D7 — aligned guards on the DOM writers', () => {
 		void edytor.selection.setAtBlockRange(block);
 		const state = edytor.selection.state;
 		expect(state.isCollapsed).toBe(false);
-		expect(state.startText).toBe(block.firstText);
-		expect(state.endText).toBe(block.lastText);
+		expect(state.startText).toBe(block.firstText!);
+		expect(state.endText).toBe(block.lastText!);
 		expect(state.yStart).toBe(0);
-		expect(state.yEnd).toBe(block.lastText.length);
+		expect(state.yEnd).toBe(block.lastText!.length);
 	});
 });

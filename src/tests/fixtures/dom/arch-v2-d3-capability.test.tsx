@@ -107,7 +107,7 @@ describe('F-S14 — dev check of declared rendersContent', () => {
 	});
 
 	const phantomReports = (spy: ReturnType<typeof vi.spyOn>) =>
-		spy.mock.calls.filter((args) => String(args[0]).includes('rendersContent'));
+		spy.mock.calls.filter((args: unknown[]) => String(args[0]).includes('rendersContent'));
 
 	test('an undeclared phantom content slot is reported', async () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

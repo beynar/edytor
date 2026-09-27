@@ -87,14 +87,14 @@ describe('phase 10 deterministic operation sequence checks', () => {
 		alphaText.insertText({ value: ' one', start: alphaText.length, end: alphaText.length });
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
-		expect(root.children[0].firstText.stringContent).toBe('Alpha one');
+		expect(root.children[0].firstText!.stringContent).toBe('Alpha one');
 
 		const splitText = getText(root.children[0], 'split');
 		const splitBlock = root.children[0].splitBlock({ index: 6, text: splitText });
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
-		expect(splitBlock?.firstText.stringContent).toBe('one');
-		expect(root.children.map((block) => block.firstText.stringContent)).toEqual([
+		expect(splitBlock?.firstText!.stringContent).toBe('one');
+		expect(root.children.map((block) => block.firstText!.stringContent)).toEqual([
 			'Alpha ',
 			'one',
 			'Beta',
@@ -105,8 +105,8 @@ describe('phase 10 deterministic operation sequence checks', () => {
 		const mergedBlock = splitBlock?.mergeBlockBackward();
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
-		expect(mergedBlock?.firstText.stringContent).toBe('Alpha one');
-		expect(root.children.map((block) => block.firstText.stringContent)).toEqual([
+		expect(mergedBlock?.firstText!.stringContent).toBe('Alpha one');
+		expect(root.children.map((block) => block.firstText!.stringContent)).toEqual([
 			'Alpha one',
 			'Beta',
 			'Gamma',
@@ -122,7 +122,7 @@ describe('phase 10 deterministic operation sequence checks', () => {
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
 		expect(mixedContentBlock.content.some((part) => part instanceof InlineBlock)).toBe(false);
-		expect(mixedContentBlock.firstText.stringContent).toBe('Galta');
+		expect(mixedContentBlock.firstText!.stringContent).toBe('Galta');
 
 		const nestedBlock = root.children[3].nestBlock();
 		stopHistoryCapture(edytor);
@@ -141,7 +141,7 @@ describe('phase 10 deterministic operation sequence checks', () => {
 		stopHistoryCapture(edytor);
 		assertSequenceProperty(edytor);
 		expect(movedBlock?.path).toEqual([0]);
-		expect(root.children.map((block) => block.firstText.stringContent)).toEqual([
+		expect(root.children.map((block) => block.firstText!.stringContent)).toEqual([
 			'Epsilon',
 			'Alpha one',
 			'Beta',

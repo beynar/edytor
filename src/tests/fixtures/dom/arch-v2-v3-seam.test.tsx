@@ -137,7 +137,7 @@ describe('F-S13 — a block-set delete authors its result selection (FP-7)', () 
 				});
 				record.bind(edytor);
 				const [first, middle] = edytor.root!.children;
-				await setNativeSelection(edytor, first!.firstText, 2);
+				await setNativeSelection(edytor, first!.firstText!, 2);
 				edytor.selection.selectBlocks(edytor.root!.children[selected]!);
 				await flushDomUpdates();
 				// FP-7: the end of the previous block's first editable text; with
@@ -180,7 +180,7 @@ describe('F-S13 — a block-set delete authors its result selection (FP-7)', () 
 			autoSelectFixture: false
 		});
 		const middle = edytor.root!.children[1]!;
-		await setNativeSelection(edytor, middle.firstText, 2);
+		await setNativeSelection(edytor, middle.firstText!, 2);
 		edytor.selection.selectBlocks(middle);
 		await flushDomUpdates();
 		fire(editor, keydown('Backspace'));
@@ -197,7 +197,7 @@ describe('F-S13 — a block-set delete authors its result selection (FP-7)', () 
 				autoSelectFixture: false
 			});
 			const [first, middle] = edytor.root!.children;
-			await setNativeSelection(edytor, middle!.firstText, 2);
+			await setNativeSelection(edytor, middle!.firstText!, 2);
 			edytor.selection.selectBlocks(middle!);
 			await flushDomUpdates();
 			const cut = await dispatchCut(editor);
@@ -239,7 +239,7 @@ describe('F-S14 — a seam lands only on displayable content', () => {
 			const [one, two] = toggle!.children;
 			const details = toggle!.node as HTMLDetailsElement;
 			details.open = true;
-			await setNativeSelection(edytor, two!.firstText, 1);
+			await setNativeSelection(edytor, two!.firstText!, 1);
 			details.open = false;
 			await flushDomUpdates();
 
@@ -261,7 +261,7 @@ describe('F-S14 — a seam lands only on displayable content', () => {
 		const [, two] = toggle!.children;
 		const details = toggle!.node as HTMLDetailsElement;
 		details.open = true;
-		await setNativeSelection(edytor, two!.firstText, 1);
+		await setNativeSelection(edytor, two!.firstText!, 1);
 		details.open = false;
 		await flushDomUpdates();
 
@@ -283,7 +283,7 @@ describe('F-S14 — a seam lands only on displayable content', () => {
 			autoSelectFixture: false
 		});
 		const [gone, toggle] = edytor.root!.children;
-		await setNativeSelection(edytor, gone!.firstText, 2);
+		await setNativeSelection(edytor, gone!.firstText!, 2);
 		const remote = peer(edytor);
 		remote.facade.deleteBlock(gone!.id);
 		await remote.push();
@@ -303,7 +303,7 @@ describe('F-S14 — a seam lands only on displayable content', () => {
 				autoSelectFixture: false
 			});
 			const [toggle, gone] = edytor.root!.children;
-			await setNativeSelection(edytor, gone!.firstText, 2);
+			await setNativeSelection(edytor, gone!.firstText!, 2);
 			const remote = peer(edytor);
 			remote.facade.deleteBlock(gone!.id);
 			await remote.push();
@@ -336,7 +336,7 @@ describe('F-S14 — a seam lands only on displayable content', () => {
 				const gone = edytor.root!.children.find((block) => block.type === 'paragraph')!;
 				const panel = edytor.root!.children.find((block) => block.type === 'panel')!;
 				const inside = panel.children[0]!;
-				await setNativeSelection(edytor, gone.firstText, 2);
+				await setNativeSelection(edytor, gone.firstText!, 2);
 				const remote = peer(edytor);
 				remote.facade.deleteBlock(gone.id);
 				await remote.push();
@@ -366,20 +366,20 @@ describe('sel.seam.* through the view: endpoints this view did not author', () =
 			);
 			const [alpha, list, bb, cc, omega] = edytor.root!.children;
 			// nested subtree: the dead chain climbs to the list's slot.
-			await setNativeSelection(edytor, list!.children[0]!.firstText, 2);
+			await setNativeSelection(edytor, list!.children[0]!.firstText!, 2);
 			let remote = peer(edytor);
 			remote.facade.deleteBlock(list!.id);
 			await remote.push();
 			expect(caret(edytor)).toMatchObject({ block: bb!.id, offset: 0 });
 			// adjacent dead siblings: the slot is the replicated rank.
-			await setNativeSelection(edytor, bb!.firstText, 1);
+			await setNativeSelection(edytor, bb!.firstText!, 1);
 			remote = peer(edytor);
 			remote.facade.deleteBlock(bb!.id);
 			remote.facade.deleteBlock(cc!.id);
 			await remote.push();
 			expect(caret(edytor)).toMatchObject({ block: omega!.id, offset: 0 });
 			// last block: the previous sibling's end.
-			await setNativeSelection(edytor, omega!.firstText, 3);
+			await setNativeSelection(edytor, omega!.firstText!, 3);
 			remote = peer(edytor);
 			remote.facade.deleteBlock(omega!.id);
 			await remote.push();
@@ -399,7 +399,7 @@ describe('sel.seam.* through the view: endpoints this view did not author', () =
 				{ autoSelectFixture: false }
 			);
 			const [, bb, cc] = edytor.root!.children;
-			await setNativeSelection(edytor, bb!.firstText, 1);
+			await setNativeSelection(edytor, bb!.firstText!, 1);
 			bb!.removeBlock();
 			await flushDomUpdates();
 			expect(caret(edytor)).toMatchObject({ block: cc!.id, offset: 0, isCollapsed: true });
@@ -419,10 +419,10 @@ describe('writes capture anchors at call time (L21 writeCollapsed…)', () => {
 				{ autoSelectFixture: false }
 			);
 			const [aa, bb] = edytor.root!.children;
-			await setNativeSelection(edytor, aa!.firstText, 0);
+			await setNativeSelection(edytor, aa!.firstText!, 0);
 			const remote = peer(edytor);
 			remote.facade.mergeBackward(bb!.id);
-			const write = edytor.selection.setAtTextOffset(bb!.firstText, 1);
+			const write = edytor.selection.setAtTextOffset(bb!.firstText!, 1);
 			remote.deliver();
 			await write;
 			await flushDomUpdates();
@@ -441,7 +441,7 @@ describe('writes capture anchors at call time (L21 writeCollapsed…)', () => {
 			{ autoSelectFixture: false }
 		);
 		const [alpha, beta] = edytor.root!.children;
-		const dead = beta!.firstText;
+		const dead = beta!.firstText!;
 		await setNativeSelection(edytor, dead, 2);
 		const remote = peer(edytor);
 		remote.facade.mergeBackward(beta!.id);
@@ -466,10 +466,10 @@ describe('writes capture anchors at call time (L21 writeCollapsed…)', () => {
 			{ autoSelectFixture: false }
 		);
 		const [, bb, cc] = edytor.root!.children;
-		await setNativeSelection(edytor, cc!.firstText, 0);
+		await setNativeSelection(edytor, cc!.firstText!, 0);
 		const remote = peer(edytor);
 		remote.facade.deleteBlock(bb!.id);
-		const write = edytor.selection.setAtRange(bb!.firstText, 0, bb!.firstText, 2);
+		const write = edytor.selection.setAtRange(bb!.firstText!, 0, bb!.firstText!, 2);
 		remote.deliver();
 		await write;
 		await flushDomUpdates();
@@ -486,7 +486,7 @@ describe('V1 shadow class 5: a local delete leaves its caret in its own turn', (
 			{ autoSelectFixture: false }
 		);
 		const block = edytor.root!.children[0]!;
-		await setNativeSelection(edytor, block.firstText, 5);
+		await setNativeSelection(edytor, block.firstText!, 5);
 		const event = new InputEvent('beforeinput', {
 			inputType: 'deleteContentBackward',
 			bubbles: true,

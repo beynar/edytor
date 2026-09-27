@@ -662,6 +662,7 @@ describe('F-P17 / F-P20 — read-only views and extension attributes', () => {
 		const deepLinks: Plugin = () => ({
 			onBlockAttached: ({ node, block }) => {
 				node.setAttribute('id', `anchor-${block.id}`);
+				return () => {};
 			}
 		});
 		const { edytor } = await mount(

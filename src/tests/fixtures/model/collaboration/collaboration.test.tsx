@@ -43,7 +43,7 @@ describe('collaboration provider lifecycle model contracts', () => {
 	it('propagates shared Y.Doc updates in both directions', () => {
 		const { first, second } = createSharedDocEditors();
 
-		first.edytor.root?.children[0]?.firstText.insertText({
+		first.edytor.root?.children[0]?.firstText!.insertText({
 			value: '!',
 			start: 5,
 			end: 5
@@ -51,7 +51,7 @@ describe('collaboration provider lifecycle model contracts', () => {
 		first.expect(output('Hello!'));
 		second.expect(output('Hello!'));
 
-		second.edytor.root?.children[0]?.firstText.insertText({
+		second.edytor.root?.children[0]?.firstText!.insertText({
 			value: 'Say ',
 			start: 0,
 			end: 0
@@ -70,7 +70,7 @@ describe('collaboration provider lifecycle model contracts', () => {
 		expect(first.edytor.document).toBe(second.edytor.document);
 		expect(first.edytor.undoManager).toBe(second.edytor.undoManager);
 
-		first.edytor.root?.children[0]?.firstText.insertText({
+		first.edytor.root?.children[0]?.firstText!.insertText({
 			value: '!',
 			start: 5,
 			end: 5
@@ -91,7 +91,7 @@ describe('collaboration provider lifecycle model contracts', () => {
 		const first = createOperationEdytor(input);
 		const second = createOperationEdytor(input);
 
-		first.edytor.root?.children[0]?.firstText.insertText({
+		first.edytor.root?.children[0]?.firstText!.insertText({
 			value: '!',
 			start: 5,
 			end: 5

@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest';
 import { Y } from '$lib/crdt/engine.js';
 import { attachDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import type { JSONDoc } from '$lib/utils/json.js';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
@@ -90,7 +91,7 @@ describe('V2 — one commit point', () => {
 				{ autoSelectFixture: false, onSelectionChange }
 			);
 			const [first, second] = edytor.root!.children;
-			await setNativeSelection(edytor, second!.firstText, 3);
+			await setNativeSelection(edytor, second!.firstText!, 3);
 			const button = outsideButton();
 			button.focus();
 			await flushDomUpdates();
@@ -125,7 +126,7 @@ describe('V2 — one commit point', () => {
 			{ autoSelectFixture: false, onSelectionChange }
 		);
 		const [aa, bb] = edytor.root!.children;
-		await setNativeSelection(edytor, aa!.firstText, 1);
+		await setNativeSelection(edytor, aa!.firstText!, 1);
 		const before = calls.length;
 
 		edytor.selection.selectBlocks(bb!);
@@ -148,7 +149,7 @@ describe('V2 — one commit point', () => {
 				{ autoSelectFixture: false, onSelectionChange }
 			);
 			const [, bb, cc] = edytor.root!.children;
-			await setNativeSelection(edytor, bb!.firstText, 1);
+			await setNativeSelection(edytor, bb!.firstText!, 1);
 			edytor.selection.selectBlocks(bb!);
 			await flushDomUpdates();
 			const before = calls.length;
@@ -180,7 +181,7 @@ describe('V2 — one commit point', () => {
 			{ autoSelectFixture: false }
 		);
 		const block = edytor.root!.children[0]!;
-		await setNativeSelection(edytor, block.firstText, 11);
+		await setNativeSelection(edytor, block.firstText!, 11);
 		const button = outsideButton();
 		button.focus();
 		await flushDomUpdates();
@@ -224,10 +225,10 @@ describe('V2 fix — typing over a reversed range leaves the caret after the ins
 	for (const via of ['composition', 'beforeinput'] as const) {
 		it(`${via}: reversed range over marked runs → caret after \`é\``, async () => {
 			const { edytor, editor } = await renderDomEdytor(<root></root>, {
-				value: structuredClone(markedRuns),
+				value: structuredClone(markedRuns) as JSONDoc,
 				autoSelectFixture: false
 			});
-			const text = edytor.root!.children[0]!.firstText;
+			const text = edytor.root!.children[0]!.firstText!;
 			await setNativeSelection(edytor, text, 0, text, 3, { reversed: true });
 			expect(edytor.selection.state).toMatchObject({ yStart: 0, yEnd: 3, isReversed: true });
 			if (via === 'composition')
@@ -243,7 +244,7 @@ describe('V2 fix — typing over a reversed range leaves the caret after the ins
 				{ text: 'ords', marks: { highlight: 'yellow' } }
 			]);
 			const state = edytor.selection.state;
-			expect([state.startText?.segStart + state.yStart, state.isCollapsed]).toEqual([1, true]);
+			expect([state.startText!.segStart + state.yStart, state.isCollapsed]).toEqual([1, true]);
 		});
 	}
 });
@@ -280,7 +281,7 @@ describe('V2 — suggestions are session state (F-P18, session half)', () => {
 		);
 		const [hello, world] = edytor.root!.children;
 		hello!.suggestions = [[{ text: ' there' }]];
-		edytor.selection.setCollapsedStateAtTextOffset(world!.firstText, 2);
+		edytor.selection.setCollapsedStateAtTextOffset(world!.firstText!, 2);
 		expect(hello!.suggestions).toBeNull();
 	});
 
@@ -294,7 +295,7 @@ describe('V2 — suggestions are session state (F-P18, session half)', () => {
 		const [hello, world] = edytor.root!.children;
 		hello!.suggestions = [[{ text: ' there' }]];
 		await flushDomUpdates();
-		await setNativeSelection(edytor, world!.firstText, 2);
+		await setNativeSelection(edytor, world!.firstText!, 2);
 		expect(hello!.suggestions).toBeNull();
 	});
 
@@ -307,7 +308,7 @@ describe('V2 — suggestions are session state (F-P18, session half)', () => {
 		);
 		const [hello, world] = edytor.root!.children;
 		world!.suggestions = [[{ text: '!' }]];
-		await setNativeSelection(edytor, hello!.firstText, 2);
+		await setNativeSelection(edytor, hello!.firstText!, 2);
 		expect(world!.suggestions).not.toBeNull();
 	});
 
@@ -318,16 +319,16 @@ describe('V2 — suggestions are session state (F-P18, session half)', () => {
 			autoSelectFixture: false
 		});
 		const line = edytor.root!.children[0]!.children[0]!;
-		await setNativeSelection(edytor, line.firstText, 'const a = 1;'.length);
+		await setNativeSelection(edytor, line.firstText!, 'const a = 1;'.length);
 		line.suggestions = [[{ text: ' // one' }]];
 		await dispatchDomKeyDown(document, { key: 'Tab', code: 'Tab' });
 		expect(line.suggestions).toBeNull();
-		expect(line.firstText.stringContent).toBe('const a = 1; // one');
+		expect(line.firstText!.stringContent).toBe('const a = 1; // one');
 
 		line.suggestions = [[{ text: ' // two' }]];
 		await dispatchDomKeyDown(document, { key: 'Escape', code: 'Escape' });
 		expect(line.suggestions).toBeNull();
-		expect(line.firstText.stringContent).toBe('const a = 1; // one');
+		expect(line.firstText!.stringContent).toBe('const a = 1; // one');
 	});
 
 	pin('a composition at the suggestion boundary keeps the suggestion', async () => {
@@ -357,7 +358,7 @@ describe('V2 — suggestions are session state (F-P18, session half)', () => {
 		block.suggestions = [[{ text: 'maybe' }]];
 		await flushDomUpdates();
 		block.suggestions = null;
-		await setNativeSelection(edytor, block.firstText, 1);
+		await setNativeSelection(edytor, block.firstText!, 1);
 		await flushDomUpdates();
 		expect(block.suggestions).toBeNull();
 		expect(editor.querySelector('[data-edytor-text-suggestion]')).toBeNull();

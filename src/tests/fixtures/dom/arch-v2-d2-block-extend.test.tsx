@@ -12,11 +12,15 @@
 import { describe, expect, test } from 'vitest';
 import { dispatchDomKeyDown, renderDomEdytor } from '../../dom/test.utils.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import type { Text } from '$lib/text/text.svelte.js';
 
 /** Selected blocks as their own text, in document order of their paths. */
 const selectedTexts = (edytor: Edytor) =>
 	Array.from(edytor.selection.selectedBlocks)
-		.map((block) => ({ path: block.path.join('.'), text: block.content[0]?.stringContent }))
+		.map((block) => ({
+			path: block.path.join('.'),
+			text: (block.content[0] as Text | undefined)?.stringContent
+		}))
 		.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
 		.map((entry) => entry.text);
 

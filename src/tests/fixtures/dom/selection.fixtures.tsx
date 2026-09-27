@@ -204,7 +204,7 @@ export const fixtures = defineFixtures([
 		),
 		autoSelectFixture: false,
 		run: async ({ edytor }) => {
-			const firstText = edytor.root!.children[0].firstText;
+			const firstText = edytor.root!.children[0].firstText!;
 			await dragSelection(edytor, firstText, 2, firstText, 8);
 			await dragSelection(edytor, firstText, 8, firstText, 2, { reverse: true });
 		},
@@ -292,7 +292,7 @@ export const fixtures = defineFixtures([
 		},
 		assert: async ({ edytor }) => {
 			const block = edytor.root!.children[0]!;
-			const tail = block.lastText;
+			const tail = block.lastText!;
 			const anchor = edytor.selection.state.relativePosition;
 			// The selection state's caret anchor is a backing-text anchor —
 			// {b: home block id of the backing text, a: {i, a}}.

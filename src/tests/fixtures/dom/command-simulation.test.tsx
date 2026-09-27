@@ -127,8 +127,8 @@ describe('headless command simulation (U2)', () => {
 				<paragraph>alpha-bravo</paragraph>
 			</root>
 		);
-		await setNativeSelection(b.edytor, b.edytor.root!.children[0]!.firstText, 7);
-		await setNativeSelection(a.edytor, a.edytor.root!.children[0]!.firstText, 2);
+		await setNativeSelection(b.edytor, b.edytor.root!.children[0]!.firstText!, 7);
+		await setNativeSelection(a.edytor, a.edytor.root!.children[0]!.firstText!, 2);
 		await runCommand(a.edytor, 'insertText', 'XXXXX');
 		await flushDomUpdates();
 		await deliver(a, b);
@@ -160,9 +160,9 @@ describe('headless command simulation (U2)', () => {
 				<paragraph>alpha-bravo</paragraph>
 			</root>
 		);
-		await setNativeSelection(b.edytor, b.edytor.root!.children[0]!.firstText, 7);
+		await setNativeSelection(b.edytor, b.edytor.root!.children[0]!.firstText!, 7);
 		// A formats [0,4) as bold — splitting the text part before the caret.
-		a.edytor.root!.children[0]!.firstText.formatAt(0, 4, { bold: {} });
+		a.edytor.root!.children[0]!.firstText!.formatAt(0, 4, { bold: {} });
 		await flushDomUpdates();
 		await deliver(a, b);
 		await flushDomUpdates();
@@ -193,12 +193,12 @@ describe('headless command simulation (U2)', () => {
 				<paragraph>alpha-bravo</paragraph>
 			</root>
 		);
-		await setNativeSelection(b.edytor, b.edytor.root!.children[0]!.firstText, 8);
+		await setNativeSelection(b.edytor, b.edytor.root!.children[0]!.firstText!, 8);
 		await runCommand(b.edytor, 'deleteContentBackward');
 		// B's caret is now at 7 in 'alpha-bavo' (backspace at 8 removes the
 		// 'r' at index 7). Deliver A's insert at offset 2 in the SAME
 		// flush window — before B's [0,30] reasserts.
-		await setNativeSelection(a.edytor, a.edytor.root!.children[0]!.firstText, 2);
+		await setNativeSelection(a.edytor, a.edytor.root!.children[0]!.firstText!, 2);
 		await runCommand(a.edytor, 'insertText', 'XXXXX');
 		await deliver(a, b);
 		await flushDomUpdates();
@@ -226,12 +226,12 @@ describe('headless command simulation (U2)', () => {
 		const b = await mountReplicaPeer(a, seed);
 
 		// B parks its caret inside 'beta' at offset 2 (between 'e' and 't').
-		const betaB = b.edytor.root!.children[1]!.firstText;
+		const betaB = b.edytor.root!.children[1]!.firstText!;
 		await setNativeSelection(b.edytor, betaB, 2, betaB, 2);
 		expect(selectionInfo(b.edytor)).toEqual({ text: 'beta', yStart: 2, yEnd: 2, live: true });
 
 		// A backspaces at beta's head — the real deleteBackward merge command.
-		const betaA = a.edytor.root!.children[1]!.firstText;
+		const betaA = a.edytor.root!.children[1]!.firstText!;
 		await setNativeSelection(a.edytor, betaA, 0, betaA, 0);
 		await runCommand(a.edytor, 'deleteContentBackward');
 		await flushDomUpdates();
@@ -273,7 +273,7 @@ describe('headless command simulation (U2)', () => {
 			</root>
 		);
 		const a = await renderDomEdytor(fixture, { autoSelectFixture: false });
-		const src = a.edytor.root!.children[0]!.firstText;
+		const src = a.edytor.root!.children[0]!.firstText!;
 		await setNativeSelection(a.edytor, src, 5, src, 5);
 		await runCommand(a.edytor, 'insertParagraph');
 		await flushDomUpdates();
@@ -281,13 +281,13 @@ describe('headless command simulation (U2)', () => {
 
 		const b = await mountReplicaPeer(a, fixture);
 
-		const helloB = b.edytor.root!.children[1]!.firstText;
+		const helloB = b.edytor.root!.children[1]!.firstText!;
 		await setNativeSelection(b.edytor, helloB, 0, helloB, 0);
 		expect(selectionInfo(b.edytor)).toEqual({ text: 'Hello', yStart: 0, yEnd: 0, live: true });
 
 		// A appends X to alpha — the seam gap's right-side atom is now
 		// alpha-owned.
-		const alphaA = a.edytor.root!.children[0]!.firstText;
+		const alphaA = a.edytor.root!.children[0]!.firstText!;
 		await setNativeSelection(a.edytor, alphaA, 5, alphaA, 5);
 		await runCommand(a.edytor, 'insertText', 'X');
 		await flushDomUpdates();
@@ -315,15 +315,15 @@ describe('headless command simulation (U2)', () => {
 		const a = await renderDomEdytor(seed, { autoSelectFixture: false });
 		const b = await mountReplicaPeer(a, seed);
 
-		const betaB = b.edytor.root!.children[1]!.firstText;
+		const betaB = b.edytor.root!.children[1]!.firstText!;
 		await setNativeSelection(b.edytor, betaB, 2, betaB, 2);
 		expect(selectionInfo(b.edytor)).toEqual({ text: 'beta', yStart: 2, yEnd: 2, live: true });
 
 		await setNativeSelection(
 			a.edytor,
-			a.edytor.root!.children[0]!.firstText,
+			a.edytor.root!.children[0]!.firstText!,
 			0,
-			a.edytor.root!.children[1]!.firstText,
+			a.edytor.root!.children[1]!.firstText!,
 			4
 		);
 		await runCommand(a.edytor, 'deleteContentBackward');
@@ -351,15 +351,15 @@ describe('headless command simulation (U2)', () => {
 		const b = await mountReplicaPeer(a, seed);
 
 		// B's caret lives in the first block.
-		const alphaB = b.edytor.root!.children[0]!.firstText;
+		const alphaB = b.edytor.root!.children[0]!.firstText!;
 		await setNativeSelection(b.edytor, alphaB, 2, alphaB, 2);
 
 		// A range-deletes [alpha@0 → beta@1]: alpha dies, beta loses its head.
 		await setNativeSelection(
 			a.edytor,
-			a.edytor.root!.children[0]!.firstText,
+			a.edytor.root!.children[0]!.firstText!,
 			0,
-			a.edytor.root!.children[1]!.firstText,
+			a.edytor.root!.children[1]!.firstText!,
 			1
 		);
 		await runCommand(a.edytor, 'deleteContentBackward');
@@ -388,15 +388,15 @@ describe('headless command simulation (U2)', () => {
 		const b = await mountReplicaPeer(a, nestedSeed);
 
 		// B's caret sits inside the nested list-item.
-		const betaB = b.edytor.root!.children[1]!.children[0]!.firstText;
+		const betaB = b.edytor.root!.children[1]!.children[0]!.firstText!;
 		await setNativeSelection(b.edytor, betaB, 2, betaB, 2);
 
 		// A deletes [alpha@0 → beta@4]: the entire list subtree + alpha die.
 		await setNativeSelection(
 			a.edytor,
-			a.edytor.root!.children[0]!.firstText,
+			a.edytor.root!.children[0]!.firstText!,
 			0,
-			a.edytor.root!.children[1]!.children[0]!.firstText,
+			a.edytor.root!.children[1]!.children[0]!.firstText!,
 			4
 		);
 		await runCommand(a.edytor, 'deleteContentBackward');
@@ -428,16 +428,16 @@ describe('headless command simulation (U2)', () => {
 		const b = await mountReplicaPeer(a, nestedSeedWithTail);
 
 		// B's caret sits inside the nested list-item.
-		const betaB = b.edytor.root!.children[1]!.children[0]!.firstText;
+		const betaB = b.edytor.root!.children[1]!.children[0]!.firstText!;
 		await setNativeSelection(b.edytor, betaB, 2, betaB, 2);
 
 		// A deletes [alpha@0 → beta@4]: the list subtree + alpha die,
 		// leaving [omega, tail].
 		await setNativeSelection(
 			a.edytor,
-			a.edytor.root!.children[0]!.firstText,
+			a.edytor.root!.children[0]!.firstText!,
 			0,
-			a.edytor.root!.children[1]!.children[0]!.firstText,
+			a.edytor.root!.children[1]!.children[0]!.firstText!,
 			4
 		);
 		await runCommand(a.edytor, 'deleteContentBackward');
@@ -477,14 +477,14 @@ describe('headless command simulation (U2)', () => {
 		const a = await renderDomEdytor(listNeighborSeed, { autoSelectFixture: false });
 		const b = await mountReplicaPeer(a, listNeighborSeed);
 
-		const betaB = b.edytor.root!.children[1]!.children[0]!.firstText;
+		const betaB = b.edytor.root!.children[1]!.children[0]!.firstText!;
 		await setNativeSelection(b.edytor, betaB, 2, betaB, 2);
 
 		await setNativeSelection(
 			a.edytor,
-			a.edytor.root!.children[0]!.firstText,
+			a.edytor.root!.children[0]!.firstText!,
 			0,
-			a.edytor.root!.children[1]!.children[0]!.firstText,
+			a.edytor.root!.children[1]!.children[0]!.firstText!,
 			4
 		);
 		await runCommand(a.edytor, 'deleteContentBackward');
@@ -536,14 +536,14 @@ describe('headless command simulation (U2)', () => {
 		const a = await renderDomEdytor(dividerSeed, { autoSelectFixture: false });
 		const b = await mountReplicaPeer(a, dividerSeed);
 
-		const betaB = b.edytor.root!.children[1]!.children[0]!.firstText;
+		const betaB = b.edytor.root!.children[1]!.children[0]!.firstText!;
 		await setNativeSelection(b.edytor, betaB, 2, betaB, 2);
 
 		await setNativeSelection(
 			a.edytor,
-			a.edytor.root!.children[0]!.firstText,
+			a.edytor.root!.children[0]!.firstText!,
 			0,
-			a.edytor.root!.children[1]!.children[0]!.firstText,
+			a.edytor.root!.children[1]!.children[0]!.firstText!,
 			4
 		);
 		await runCommand(a.edytor, 'deleteContentBackward');
@@ -580,14 +580,14 @@ describe('headless command simulation (U2)', () => {
 		const a = await renderDomEdytor(nestedDividerSeed, { autoSelectFixture: false });
 		const b = await mountReplicaPeer(a, nestedDividerSeed);
 
-		const betaB = b.edytor.root!.children[1]!.children[0]!.firstText;
+		const betaB = b.edytor.root!.children[1]!.children[0]!.firstText!;
 		await setNativeSelection(b.edytor, betaB, 2, betaB, 2);
 
 		await setNativeSelection(
 			a.edytor,
-			a.edytor.root!.children[0]!.firstText,
+			a.edytor.root!.children[0]!.firstText!,
 			0,
-			a.edytor.root!.children[1]!.children[0]!.firstText,
+			a.edytor.root!.children[1]!.children[0]!.firstText!,
 			4
 		);
 		await runCommand(a.edytor, 'deleteContentBackward');
@@ -635,7 +635,7 @@ describe('headless command simulation (U2)', () => {
 		const a = await renderDomEdytor(backwardSeed, { autoSelectFixture: false });
 		const b = await mountReplicaPeer(a, backwardSeed);
 
-		const betaB = b.edytor.root!.children[1]!.children[0]!.firstText;
+		const betaB = b.edytor.root!.children[1]!.children[0]!.firstText!;
 		await setNativeSelection(b.edytor, betaB, 2, betaB, 2);
 
 		// A removes the whole list(beta) subtree — beta is the LAST block,
@@ -684,14 +684,14 @@ describe('multi-user command programs (U8 headless)', () => {
 		// A deletes 'bb' via the interior range [aa@end → cc@0].
 		await setNativeSelection(
 			a.edytor,
-			a.edytor.root!.children[0]!.firstText,
+			a.edytor.root!.children[0]!.firstText!,
 			2,
-			a.edytor.root!.children[2]!.firstText,
+			a.edytor.root!.children[2]!.firstText!,
 			0
 		);
 		await runCommand(a.edytor, 'deleteContentBackward');
 		// B, unaware, types 'X' into 'bb' — a genuine authored concurrent edit.
-		const bbB = b.edytor.root!.children[1]!.firstText;
+		const bbB = b.edytor.root!.children[1]!.firstText!;
 		await setNativeSelection(b.edytor, bbB, 1, bbB, 1);
 		await runCommand(b.edytor, 'insertText', 'X');
 		assertCanonicalTree(b.edytor, [p('aa'), p('bXb'), p('cc')]);
@@ -724,9 +724,9 @@ describe('multi-user command programs (U8 headless)', () => {
 
 		await setNativeSelection(
 			a.edytor,
-			a.edytor.root!.children[0]!.firstText,
+			a.edytor.root!.children[0]!.firstText!,
 			2,
-			a.edytor.root!.children[2]!.firstText,
+			a.edytor.root!.children[2]!.firstText!,
 			0
 		);
 		await runCommand(a.edytor, 'deleteContentBackward');
@@ -734,7 +734,7 @@ describe('multi-user command programs (U8 headless)', () => {
 		assertCanonicalTree(b.edytor, [p('aa'), p('cc')]);
 
 		// B edits the survivor.
-		const ccB = b.edytor.root!.children[1]!.firstText;
+		const ccB = b.edytor.root!.children[1]!.firstText!;
 		await setNativeSelection(b.edytor, ccB, 2, ccB, 2);
 		await runCommand(b.edytor, 'insertText', '!');
 		await deliver(b, a);
@@ -756,17 +756,17 @@ describe('multi-user command programs (U8 headless)', () => {
 		// A deletes 'bb' (interior), B deletes 'cc' — both while partitioned.
 		await setNativeSelection(
 			a.edytor,
-			a.edytor.root!.children[0]!.firstText,
+			a.edytor.root!.children[0]!.firstText!,
 			2,
-			a.edytor.root!.children[2]!.firstText,
+			a.edytor.root!.children[2]!.firstText!,
 			0
 		);
 		await runCommand(a.edytor, 'deleteContentBackward');
 		await setNativeSelection(
 			b.edytor,
-			b.edytor.root!.children[1]!.firstText,
+			b.edytor.root!.children[1]!.firstText!,
 			2,
-			b.edytor.root!.children[2]!.firstText,
+			b.edytor.root!.children[2]!.firstText!,
 			2
 		);
 		await runCommand(b.edytor, 'deleteContentBackward');
@@ -787,9 +787,9 @@ describe('multi-user command programs (U8 headless)', () => {
 
 		await setNativeSelection(
 			a.edytor,
-			a.edytor.root!.children[0]!.firstText,
+			a.edytor.root!.children[0]!.firstText!,
 			1,
-			a.edytor.root!.children[2]!.firstText,
+			a.edytor.root!.children[2]!.firstText!,
 			1
 		);
 		await runCommand(a.edytor, 'deleteContentBackward');
@@ -802,7 +802,7 @@ describe('multi-user command programs (U8 headless)', () => {
 		expect(c.edytor.value).toEqual(a.edytor.value);
 		assertCanonicalTree(c.edytor, [p('ac')]);
 
-		const acC = c.edytor.root!.children[0]!.firstText;
+		const acC = c.edytor.root!.children[0]!.firstText!;
 		await setNativeSelection(c.edytor, acC, 1, acC, 1);
 		await runCommand(c.edytor, 'insertText', 'Z');
 		await flushDomUpdates();
@@ -821,24 +821,24 @@ describe('multi-user command programs (U8 headless)', () => {
 		// B's caret in 'bb'; C's caret in 'cc'.
 		await setNativeSelection(
 			b.edytor,
-			b.edytor.root!.children[1]!.firstText,
+			b.edytor.root!.children[1]!.firstText!,
 			1,
-			b.edytor.root!.children[1]!.firstText,
+			b.edytor.root!.children[1]!.firstText!,
 			1
 		);
 		await setNativeSelection(
 			c.edytor,
-			c.edytor.root!.children[2]!.firstText,
+			c.edytor.root!.children[2]!.firstText!,
 			1,
-			c.edytor.root!.children[2]!.firstText,
+			c.edytor.root!.children[2]!.firstText!,
 			1
 		);
 
 		await setNativeSelection(
 			a.edytor,
-			a.edytor.root!.children[0]!.firstText,
+			a.edytor.root!.children[0]!.firstText!,
 			2,
-			a.edytor.root!.children[2]!.firstText,
+			a.edytor.root!.children[2]!.firstText!,
 			0
 		);
 		await runCommand(a.edytor, 'deleteContentBackward');
@@ -890,9 +890,9 @@ describe('multi-user command programs (U8 headless)', () => {
 			// B's caret inside 'bb' — the block A is about to delete.
 			await setNativeSelection(
 				b.edytor,
-				b.edytor.root!.children[1]!.firstText,
+				b.edytor.root!.children[1]!.firstText!,
 				1,
-				b.edytor.root!.children[1]!.firstText,
+				b.edytor.root!.children[1]!.firstText!,
 				1
 			);
 
@@ -900,17 +900,17 @@ describe('multi-user command programs (U8 headless)', () => {
 			// C types into 'cc' — unrelated content B must not lose.
 			await setNativeSelection(
 				a.edytor,
-				a.edytor.root!.children[0]!.firstText,
+				a.edytor.root!.children[0]!.firstText!,
 				2,
-				a.edytor.root!.children[2]!.firstText,
+				a.edytor.root!.children[2]!.firstText!,
 				0
 			);
 			await runCommand(a.edytor, 'deleteContentBackward');
 			await setNativeSelection(
 				c.edytor,
-				c.edytor.root!.children[2]!.firstText,
+				c.edytor.root!.children[2]!.firstText!,
 				2,
-				c.edytor.root!.children[2]!.firstText,
+				c.edytor.root!.children[2]!.firstText!,
 				2
 			);
 			await runCommand(c.edytor, 'insertText', 'X');

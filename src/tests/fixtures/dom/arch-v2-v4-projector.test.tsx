@@ -400,7 +400,7 @@ describe('F-S11 (d) — an unobserved native move is admitted after the apply co
 			expect(range(edytor)).toMatchObject({ block: first!.id, start: 8, isCollapsed: true });
 			expect(hook).toEqual([{ open: false, offset: 8 }]);
 			expect(origins).toEqual(['peer', edytor.transaction]);
-			expect(edytor.value.children[1]!.content).toEqual([{ text: 'log!' }]);
+			expect(edytor.value.children![1]!.content).toEqual([{ text: 'log!' }]);
 		}
 	);
 
@@ -464,7 +464,7 @@ describe('F-P2 — the toolbar holds the selection as a value (L52)', () => {
 		apply.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
 		apply.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 		await flushDomUpdates();
-		expect(edytor.value.children[0]!.content).toEqual([
+		expect(edytor.value.children![0]!.content).toEqual([
 			{ text: 'ZZZhello ' },
 			{ text: 'world', marks: { link: { href: 'https://example.com' } } }
 		]);
@@ -493,7 +493,7 @@ describe('F-P3 — the slash menu holds its range as anchors (L52)', () => {
 
 		await dispatchDomKeyDown(document, { key: 'Enter', code: 'Enter' });
 		await flushDomUpdates();
-		expect(edytor.value.children.map((child) => [child.type, child.content])).toEqual([
+		expect(edytor.value.children!.map((child) => [child.type, child.content])).toEqual([
 			['quote', [{ text: 'ZZab' }]]
 		]);
 	});

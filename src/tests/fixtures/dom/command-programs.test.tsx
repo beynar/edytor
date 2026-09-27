@@ -97,7 +97,7 @@ const threeFlat = (
 	</root>
 );
 
-const at = (e: Edytor, i: number) => e.root!.children[i]!.firstText;
+const at = (e: Edytor, i: number) => e.root!.children[i]!.firstText!;
 
 describe('golden command programs — flat range deletion (del.range.flat)', () => {
 	it('partial/partial adjacent siblings merge suffix into head', async () => {
@@ -188,8 +188,8 @@ describe('golden command programs — nested boundary deletion (del.range.nested
 	);
 	const nestedAt = (e: Edytor, block: number, item?: number) =>
 		item === undefined
-			? e.root!.children[block]!.firstText
-			: e.root!.children[block]!.children[item]!.firstText;
+			? e.root!.children[block]!.firstText!
+			: e.root!.children[block]!.children[item]!.firstText!;
 
 	it('flat head at offset 0 + nested tail: the doomed head dies with the range', async () => {
 		const { edytor } = await renderDomEdytor(nested, { autoSelectFixture: false });
@@ -309,7 +309,7 @@ describe('golden command programs — word and line intent (del.word/del.line)',
 			<paragraph>alpha bravo charlie</paragraph>
 		</root>
 	);
-	const atWords = (e: Edytor) => e.root!.children[0]!.firstText;
+	const atWords = (e: Edytor) => e.root!.children[0]!.firstText!;
 
 	it('deleteWordBackward removes the word plus one separating space', async () => {
 		await program(words, {
@@ -363,7 +363,7 @@ describe('golden command programs — marks and inline atoms', () => {
 
 	it('a mark boundary alone does not change the delete unit', async () => {
 		const { edytor } = await renderDomEdytor(marked, { autoSelectFixture: false });
-		const t = edytor.root!.children[0]!.firstText;
+		const t = edytor.root!.children[0]!.firstText!;
 		await setNativeSelection(edytor, t, 4, t, 4);
 		await runCommand(edytor, 'deleteContentBackward');
 		await flushDomUpdates();
@@ -377,7 +377,7 @@ describe('golden command programs — marks and inline atoms', () => {
 
 	it('Backspace after an inline atom deletes the atom, texts merge', async () => {
 		const { edytor } = await renderDomEdytor(atomFixture, { autoSelectFixture: false });
-		const last = edytor.root!.children[0]!.lastText;
+		const last = edytor.root!.children[0]!.lastText!;
 		await setNativeSelection(edytor, last, 0, last, 0);
 		await runCommand(edytor, 'deleteContentBackward');
 		await flushDomUpdates();
@@ -387,7 +387,7 @@ describe('golden command programs — marks and inline atoms', () => {
 
 	it('forward delete before an inline atom deletes the atom', async () => {
 		const { edytor } = await renderDomEdytor(atomFixture, { autoSelectFixture: false });
-		const first = edytor.root!.children[0]!.firstText;
+		const first = edytor.root!.children[0]!.firstText!;
 		await setNativeSelection(edytor, first, 2, first, 2);
 		await runCommand(edytor, 'deleteContentForward');
 		await flushDomUpdates();
@@ -397,8 +397,8 @@ describe('golden command programs — marks and inline atoms', () => {
 
 	it('a range across an inline atom removes it with the text', async () => {
 		const { edytor } = await renderDomEdytor(atomFixture, { autoSelectFixture: false });
-		const first = edytor.root!.children[0]!.firstText;
-		const last = edytor.root!.children[0]!.lastText;
+		const first = edytor.root!.children[0]!.firstText!;
+		const last = edytor.root!.children[0]!.lastText!;
 		await setNativeSelection(edytor, first, 1, last, 1);
 		await runCommand(edytor, 'deleteContentBackward');
 		await flushDomUpdates();
@@ -408,7 +408,7 @@ describe('golden command programs — marks and inline atoms', () => {
 
 	it('typing after an inline atom lands in the following text', async () => {
 		const { edytor } = await renderDomEdytor(atomFixture, { autoSelectFixture: false });
-		const last = edytor.root!.children[0]!.lastText;
+		const last = edytor.root!.children[0]!.lastText!;
 		await setNativeSelection(edytor, last, 0, last, 0);
 		await runCommand(edytor, 'insertText', 'Z');
 		await flushDomUpdates();
@@ -428,7 +428,7 @@ describe('golden command programs — honest headless UTF-16 semantics', () => {
 			</root>,
 			{ autoSelectFixture: false }
 		);
-		const t = edytor.root!.children[0]!.firstText;
+		const t = edytor.root!.children[0]!.firstText!;
 		// Caret at 4 = mid-flag (🇫🇷 occupies units 2..6): one unit deleted.
 		// In a real browser the targetRange widens this to the whole flag —
 		// that derivation is native and lives in advanced-delete.spec.ts.

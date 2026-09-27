@@ -32,7 +32,7 @@ describe('collaboration remote presence rendering', () => {
 		const { container, edytor } = await renderDomEdytor(input, {
 			autoSelectFixture: false
 		});
-		const text = edytor.root!.children[0]!.firstText;
+		const text = edytor.root!.children[0]!.firstText!;
 
 		await setNativeSelection(edytor, text, 5);
 		await publishRemoteSelectionFromLocalSelection(edytor);
@@ -49,7 +49,7 @@ describe('collaboration remote presence rendering', () => {
 		const { container, edytor } = await renderDomEdytor(input, {
 			autoSelectFixture: false
 		});
-		const text = edytor.root!.children[0]!.firstText;
+		const text = edytor.root!.children[0]!.firstText!;
 
 		await setNativeSelection(edytor, text, 0, text, 5);
 		await publishRemoteSelectionFromLocalSelection(edytor);
@@ -77,7 +77,7 @@ describe('collaboration remote presence rendering', () => {
 
 	it('publishes selection endpoints as JSON-safe backing-text anchors', async () => {
 		const { edytor } = await renderDomEdytor(input, { autoSelectFixture: false });
-		const text = edytor.root!.children[0]!.firstText;
+		const text = edytor.root!.children[0]!.firstText!;
 
 		await setNativeSelection(edytor, text, 5);
 		const selections = edytor.awareness.getLocalState()?.selections as Record<
@@ -121,7 +121,7 @@ describe('collaboration remote presence rendering', () => {
 		const { container, edytor } = await renderDomEdytor(input, {
 			autoSelectFixture: false
 		});
-		const text = edytor.root!.children[0]!.firstText;
+		const text = edytor.root!.children[0]!.firstText!;
 
 		await setNativeSelection(edytor, text, 5);
 		await publishRemoteSelectionFromLocalSelection(edytor);
@@ -149,7 +149,7 @@ describe('collaboration remote presence rendering', () => {
 		const { container, edytor } = await renderDomEdytor(input, {
 			autoSelectFixture: false
 		});
-		const text = edytor.root!.children[0]!.firstText;
+		const text = edytor.root!.children[0]!.firstText!;
 
 		await setNativeSelection(edytor, text, 4);
 		// A v13-shaped RelativePosition payload is NOT a TextAnchor —
@@ -187,7 +187,7 @@ describe('collaboration remote presence rendering', () => {
 		const { container, edytor } = await renderDomEdytor(input, {
 			autoSelectFixture: false
 		});
-		const text = edytor.root!.children[0]!.firstText;
+		const text = edytor.root!.children[0]!.firstText!;
 
 		await setNativeSelection(edytor, text, 4);
 		// Garbage anchors + unknown ids → nothing resolvable → no render.
@@ -218,7 +218,7 @@ describe('collaboration remote presence rendering', () => {
 
 	it('clears the published local selection when the editor is destroyed', async () => {
 		const { edytor } = await renderDomEdytor(input, { autoSelectFixture: false });
-		const text = edytor.root!.children[0]!.firstText;
+		const text = edytor.root!.children[0]!.firstText!;
 
 		await setNativeSelection(edytor, text, 3);
 		// U5 — presence is per-view: the entry lives under `selections`

@@ -142,7 +142,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ editor, edytor }) => {
-			await mutateDomTextAndDispatchInput(editor, edytor.root!.children[0].firstText, 'Hello!');
+			await mutateDomTextAndDispatchInput(editor, edytor.root!.children[0].firstText!, 'Hello!');
 		},
 		output: (
 			<root>
@@ -166,7 +166,7 @@ export const fixtures = defineFixtures([
 		run: async ({ editor, edytor }) => {
 			await mutateDomTextAndDispatchInput(
 				editor,
-				edytor.root!.children[0].firstText,
+				edytor.root!.children[0].firstText!,
 				'the cat',
 				3,
 				'insertReplacementText'
@@ -199,7 +199,7 @@ export const fixtures = defineFixtures([
 
 			await mutateDomTextAndDispatchInput(
 				editor,
-				edytor.root!.children[0].firstText,
+				edytor.root!.children[0].firstText!,
 				'the cat',
 				3,
 				'insertReplacementText'
@@ -225,7 +225,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ editor, edytor }) => {
-			const text = edytor.root!.children[0].firstText;
+			const text = edytor.root!.children[0].firstText!;
 			editor.dispatchEvent(new Event('compositionstart', { bubbles: true, cancelable: true }));
 
 			const event = dispatchBeforeInputWithoutFlush(editor, 'insertCompositionText', 'é', false);
@@ -271,7 +271,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ editor, edytor }) => {
-			await mutateDomTextAndDispatchInput(editor, edytor.root!.children[0].firstText, 'Hello!');
+			await mutateDomTextAndDispatchInput(editor, edytor.root!.children[0].firstText!, 'Hello!');
 		},
 		output: (
 			<root>
@@ -295,7 +295,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ editor, edytor }) => {
-			const text = edytor.root!.children[0].firstText;
+			const text = edytor.root!.children[0].firstText!;
 			dispatchBeforeInputWithoutFlush(editor, 'insertText', '!');
 			await mutateDomTextAndDispatchInput(editor, text, 'Hello!!', 7);
 		},
@@ -319,7 +319,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ edytor }) => {
-			await mutateDomTextWithoutInput(edytor.root!.children[0].firstText, 'Hello!');
+			await mutateDomTextWithoutInput(edytor.root!.children[0].firstText!, 'Hello!');
 		},
 		output: (
 			<root>
@@ -341,7 +341,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ editor, edytor }) => {
-			const text = edytor.root!.children[0].firstText;
+			const text = edytor.root!.children[0].firstText!;
 			await dispatchComposition(editor, [{ type: 'compositionstart' }]);
 			await mutateDomTextWithoutInput(text, 'Hello IME', 9);
 			await dispatchComposition(editor, [{ type: 'compositionend', data: '' }]);
@@ -360,7 +360,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ editor, edytor }) => {
-			const text = edytor.root!.children[0].firstText;
+			const text = edytor.root!.children[0].firstText!;
 			await dispatchComposition(editor, [
 				{ type: 'compositionstart', data: '' },
 				{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'é' },
@@ -478,7 +478,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ edytor }) => {
-			await insertUnmanagedDomNode(edytor.root!.children[0].firstText);
+			await insertUnmanagedDomNode(edytor.root!.children[0].firstText!);
 		},
 		output: (
 			<root>
@@ -505,7 +505,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ edytor }) => {
-			await removeManagedTextNode(edytor.root!.children[0].firstText);
+			await removeManagedTextNode(edytor.root!.children[0].firstText!);
 		},
 		output: (
 			<root>
@@ -533,7 +533,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ edytor }) => {
-			await removeManagedBlockNode(edytor.root!.children[0].firstText);
+			await removeManagedBlockNode(edytor.root!.children[0].firstText!);
 		},
 		output: (
 			<root>
@@ -770,7 +770,7 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ editor, edytor }) => {
-			const text = edytor.root!.children[0].firstText;
+			const text = edytor.root!.children[0].firstText!;
 			await dispatchComposition(editor, [
 				{ type: 'compositionstart' },
 				{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'nich' }

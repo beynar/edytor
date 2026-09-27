@@ -678,7 +678,7 @@ export const clickBlock = async (
 	position: BlockPosition = 'center'
 ) => {
 	const block = findBlockAtPath(edytor, blockPath);
-	const text = position === 'end' ? block.lastText : block.firstText;
+	const text = position === 'end' ? block.lastText! : block.firstText!;
 	const offset =
 		position === 'start' ? 0 : position === 'end' ? text.length : Math.floor(text.length / 2);
 
@@ -703,7 +703,7 @@ export const clickPlaceholder = async (edytor: Edytor, blockPath: number[]) => {
 		);
 	}
 
-	await setNativeSelection(edytor, block.firstText, 0);
+	await setNativeSelection(edytor, block.firstText!, 0);
 };
 
 export const dragSelection = async (

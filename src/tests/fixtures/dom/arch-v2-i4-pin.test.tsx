@@ -59,8 +59,8 @@ const peer = (edytor: Edytor) => {
 			remote.facade
 				.project()
 				.children.map(
-					(block: { type: string; content: readonly { text?: string }[] }) =>
-						`${block.type}:${block.content.map((part) => part.text ?? '@').join('')}`
+					(block) =>
+						`${block.type}:${block.content.map((part) => ('text' in part ? part.text : '@')).join('')}`
 				)
 	};
 };

@@ -51,6 +51,8 @@ export const endTruthCheck = async () => {
 	}
 	const divergences = live().flatMap((edytor) => truthOf(edytor));
 	views.clear();
-	if (process.env.TRUTH_CHECK === '0') return;
+	const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process
+		?.env;
+	if (env?.TRUTH_CHECK === '0') return;
 	expect(divergences, 'F-O10: after a settle every content equals its cell').toEqual([]);
 };

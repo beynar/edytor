@@ -57,8 +57,8 @@ describe('F-D12 — nested, empty container (dom)', () => {
 			</root>,
 			{ autoSelectFixture: false }
 		);
-		const i1 = edytor.root!.children[0]!.children[0]!.firstText;
-		const p = edytor.root!.children[1]!.firstText;
+		const i1 = edytor.root!.children[0]!.children[0]!.firstText!;
+		const p = edytor.root!.children[1]!.firstText!;
 		const pId = edytor.root!.children[1]!.id;
 		await setNativeSelection(edytor, i1, 0, p, 2);
 		await backspace(edytor);
@@ -81,8 +81,8 @@ describe('del.range.outside-survives (dom)', () => {
 			</root>,
 			{ autoSelectFixture: false }
 		);
-		const alpha = edytor.root!.children[0]!.firstText;
-		const beta = edytor.root!.children[1]!.children[0]!.firstText;
+		const alpha = edytor.root!.children[0]!.firstText!;
+		const beta = edytor.root!.children[1]!.children[0]!.firstText!;
 		await setNativeSelection(edytor, alpha, 2, beta, 2);
 		await backspace(edytor);
 		await flushDomUpdates();
@@ -108,9 +108,8 @@ describe('D6 follow-up — seam delete and undo selection (dom)', () => {
 
 	it('a range from a block end to the next block start joins them (del.range.flat)', async () => {
 		const { edytor } = await renderDomEdytor(basic(), { autoSelectFixture: false });
-		const note = edytor.root!.children[1]!.firstText;
-		const tail = edytor.root!.children[2]!.firstText;
-		edytor.selection.markUserGesture?.();
+		const note = edytor.root!.children[1]!.firstText!;
+		const tail = edytor.root!.children[2]!.firstText!;
 		// The model range the Shift+ArrowRight extension hands the command.
 		edytor.selection.setRangeStateAtTextOffsets(note!, 4, tail!, 0);
 		await backspace(edytor);
@@ -121,8 +120,8 @@ describe('D6 follow-up — seam delete and undo selection (dom)', () => {
 
 	it('undo restores the cross-block range a replacement consumed', async () => {
 		const { edytor, editor } = await renderDomEdytor(basic(), { autoSelectFixture: false });
-		const empty = edytor.root!.children[0]!.firstText;
-		const note = edytor.root!.children[1]!.firstText;
+		const empty = edytor.root!.children[0]!.firstText!;
+		const note = edytor.root!.children[1]!.firstText!;
 		await setNativeSelection(edytor, empty, 0, note, 3);
 		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'Z' });
 		await flushDomUpdates();
@@ -148,12 +147,12 @@ describe('D6 follow-up — seam delete and undo selection (dom)', () => {
 			</root>,
 			{ autoSelectFixture: false }
 		);
-		const lead = edytor.root!.children[0]!.firstText;
+		const lead = edytor.root!.children[0]!.firstText!;
 		await setNativeSelection(edytor, lead, 1, lead, 4, { reversed: true });
 		await dispatchDomBeforeInput(editor, { inputType: 'insertLineBreak' });
 		await flushDomUpdates();
 		expect(texts(edytor)).toEqual(['l\n', 'note']);
-		await setNativeSelection(edytor, edytor.root!.children[1]!.firstText, 0);
+		await setNativeSelection(edytor, edytor.root!.children[1]!.firstText!, 0);
 		edytor.historyUndo();
 		await flushDomUpdates();
 		const { yStart, yEnd, isCollapsed, isReversed } = edytor.selection.state;

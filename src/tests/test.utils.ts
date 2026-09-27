@@ -420,13 +420,13 @@ const patchOperationSelectionApis = (edytor: Edytor) => {
 	edytor.selection.setAtBlockRange = async (
 		block,
 		startOffset = 0,
-		endOffset = block?.lastText.length
+		endOffset = block?.lastText!.length
 	) => {
 		if (!block) {
 			return;
 		}
 
-		setSelectionState(edytor, block.firstText, startOffset, block.lastText, endOffset);
+		setSelectionState(edytor, block.firstText!, startOffset, block.lastText!, endOffset);
 	};
 
 	edytor.selection.setAtRange = async (startText, startOffset, endText, endOffset, options) => {

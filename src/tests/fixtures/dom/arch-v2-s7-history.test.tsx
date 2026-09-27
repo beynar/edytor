@@ -29,7 +29,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { Y } from '$lib/crdt/engine.js';
 import { attachDocument, createDocument } from '$lib/crdt/document.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { Plugin } from '$lib/plugins.js';
+import type { BlockDefinition, Plugin } from '$lib/plugins.js';
+import type { Block } from '$lib/block/block.svelte.js';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import {
@@ -104,7 +105,7 @@ const caret = (edytor: Edytor) => {
 };
 
 const plainText = (edytor: Edytor, index = 0) =>
-	(edytor.value.children[index]?.content ?? [])
+	(edytor.value.children?.[index]?.content ?? [])
 		.map((part) => ('text' in part ? part.text : '@'))
 		.join('');
 
@@ -182,7 +183,7 @@ describe('S7 — history restores the issuing view’s recorded selection', () =
 				const list = edytor.root!.children[1]!;
 				const first = list.children[0]!;
 				editor.focus();
-				await setNativeSelection(edytor, first.firstText, 1);
+				await setNativeSelection(edytor, first.firstText!, 1);
 				edytor.selection.selectBlocks(first);
 				await flushDomUpdates();
 				edytor.undoManager.stopCapturing();
@@ -222,12 +223,12 @@ describe('S7 — history restores the issuing view’s recorded selection', () =
 				});
 				const block1 = v1.edytor.root!.children[0]!;
 				const block2 = v2.edytor.root!.children[0]!;
-				v2.edytor.selection.setCollapsedStateAtTextOffset(block2.firstText, 11);
+				v2.edytor.selection.setCollapsedStateAtTextOffset(block2.firstText!, 11);
 				// The user then clicks into V1: its host takes focus (jsdom does not
 				// move focus with a selection; since V4 V2's caret is displayed).
 				await flushDomUpdates();
 				v1.editor.focus();
-				await setNativeSelection(v1.edytor, block1.firstText, 5);
+				await setNativeSelection(v1.edytor, block1.firstText!, 5);
 				v1.edytor.undoManager.stopCapturing();
 				await dispatchDomBeforeInput(v1.editor, { inputType: 'insertText', data: 'abc' });
 				expect(plainText(v1.edytor)).toBe('Helloabc world');
@@ -254,10 +255,10 @@ describe('S7 — history restores the issuing view’s recorded selection', () =
 						blocks: {
 							...definitions.blocks,
 							paragraph: {
-								...paragraph,
-								normalizeContent: (payload) => {
+								...(paragraph as BlockDefinition),
+								normalizeContent: (payload: { block: Block }) => {
 									if (armed) firedWhileArmed++;
-									return paragraph.normalizeContent?.(payload);
+									return (paragraph as BlockDefinition).normalizeContent?.(payload);
 								}
 							}
 						}
@@ -308,7 +309,7 @@ describe('S7 — history restores the issuing view’s recorded selection', () =
 
 				// A click moves the caret to the start.
 				editor.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-				await setNativeSelection(edytor, block.firstText, 0);
+				await setNativeSelection(edytor, block.firstText!, 0);
 				await flushDomUpdates();
 				expect(caret(edytor).offset).toBe(0);
 

@@ -16,7 +16,7 @@ import {
 	navigationHotKeys
 } from '$lib/hotkeys/navigation.js';
 import { insertLineBreak, runIntent } from '$lib/events/beforeInputCommands.js';
-import { intentSnapshot } from '$lib/events/beforeInputSnapshot.js';
+import { intentSnapshot } from './attempt.js';
 import { runHistoryCommand } from '$lib/events/undoRestore.js';
 import {
 	getSelectedBlocksInDocumentOrder,

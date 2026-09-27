@@ -5,7 +5,7 @@ import { tick } from 'svelte';
 
 import { Y } from '$lib/crdt/engine.js';
 import { runBeforeInputCommand } from '$lib/events/beforeInputCommands.js';
-import { createBeforeInputSnapshot } from '$lib/events/beforeInputSnapshot.js';
+import { attemptOf } from '$lib/session/attempt.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import {
 	assertCanonicalTree,
@@ -28,17 +28,12 @@ import {
 const runCommand = (edytor: Edytor, inputType: string, data: string | null = null) =>
 	runBeforeInputCommand(
 		edytor,
-		createBeforeInputSnapshot(
-			edytor,
-			{
-				inputType,
-				data,
-				dataTransfer: null,
-				cancelable: true,
-				preventDefault() {}
-			} as InputEvent,
-			null
-		)
+		attemptOf(edytor, {
+			inputType,
+			data,
+			dataTransfer: null,
+			cancelable: true
+		})
 	);
 
 const p = (text: string, extra: Partial<CanonicalBlock> = {}): CanonicalBlock => ({

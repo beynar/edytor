@@ -1320,35 +1320,30 @@ export class Edytor {
 	};
 	scheduleStructuralKeyFallback = (inputType: InputEvent['inputType']) => {
 		this.cancelStructuralKeyFallback();
-		const selectionSnapshot = {
-			startText: this.selection.state.startText,
-			endText: this.selection.state.endText,
-			yStart: this.selection.state.yStart,
-			yEnd: this.selection.state.yEnd,
-			isCollapsed: this.selection.state.isCollapsed,
-			selectedBlocks: Array.from(this.selection.selectedBlocks)
-		};
+		// The key's anchored target: it follows any concurrent edit until the deadline.
+		const target = this.selection.value;
 		this.suppressNextInputFallback(50);
 		this.structuralKeyFallbackInputType = inputType;
 		const fallbackTimer = setTimeout(() => {
 			void (async () => {
 				try {
-					if (selectionSnapshot.selectedBlocks.length > 0) {
-						this.selection.selectBlocks(...selectionSnapshot.selectedBlocks);
-					} else if (selectionSnapshot.startText && selectionSnapshot.endText) {
-						if (selectionSnapshot.isCollapsed) {
-							await this.selection.setAtTextOffset(
-								selectionSnapshot.startText,
-								selectionSnapshot.yStart
-							);
-						} else {
-							await this.selection.setAtRange(
-								selectionSnapshot.startText,
-								selectionSnapshot.yStart,
-								selectionSnapshot.endText,
-								selectionSnapshot.yEnd
-							);
-						}
+					// The browser may have moved the selection since the keydown.
+					this.selection.select(target, 'repair');
+					const { state, selectedBlocks } = this.selection;
+					if (selectedBlocks.size > 0) {
+						this.selection.selectBlocks(...selectedBlocks);
+					} else if (state.startText && state.endText) {
+						await (state.isCollapsed
+							? this.selection.setAtTextOffset(state.startText, state.yStart)
+							: this.selection.setAtRange(
+									state.startText,
+									state.yStart,
+									state.endText,
+									state.yEnd
+								));
+					} else {
+						// Its target is gone (a remote delete): a named no-op.
+						return;
 					}
 
 					// A real beforeinput or a newer structural key may have canceled

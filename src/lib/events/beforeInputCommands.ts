@@ -16,36 +16,29 @@ import { dispatchPlan } from '$lib/block/block.utils.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
 import { tick } from 'svelte';
 import { runBeforeInputDeleteCommand } from './beforeInputDeleteCommands.js';
-import type { BeforeInputSnapshot } from './beforeInputSnapshot.js';
-import { intentSnapshot, isTabTextInput } from './beforeInputSnapshot.js';
-import { setSuppressedInputRepairSelectionTarget } from './beforeInputRepairTarget.js';
 import { firstUriListEntry } from './dataTransferPayload.js';
-
-/** The key an intent stands for when no keydown offered it (Android, virtual keyboards). */
-const INTENT_KEYS: Record<string, string> = {
-	insertParagraph: 'enter',
-	insertLineBreak: 'shift+enter',
-	deleteContentBackward: 'backspace',
-	deleteContentForward: 'delete'
-};
+import { setSuppressedInputRepairSelectionTarget } from './beforeInputRepairTarget.js';
+import { INTENTS, intentSnapshot, kindOf, type Attempt } from '$lib/session/attempt.js';
 
 /**
- * Offer a `beforeinput` intent's key to the bindings once per occurrence: not
- * when its keydown already offered it (`offered`); a line break the browser
- * cannot cancel is never replaced by a binding.
+ * Offer an intent's key to the bindings once per occurrence (the key it stands
+ * for when no keydown offered it: Android, virtual keyboards): not when its
+ * keydown already offered it (`offered`). A non-cancelable intent is offered
+ * too — its attempt owns the browser's drift either way.
  */
 export const runBeforeInputHotkeyBridge = (
 	edytor: Edytor,
-	snapshot: BeforeInputSnapshot,
+	snapshot: Attempt,
 	offered: string | null
 ) => {
-	const key = isTabTextInput(snapshot) ? 'tab' : INTENT_KEYS[snapshot.inputType];
-	if (!key || key === offered || (key.endsWith('enter') && !snapshot.event?.cancelable))
-		return false;
-	return edytor.hotKeys.run(key);
+	const key =
+		snapshot.inputType === 'insertText' && snapshot.data === '\t'
+			? 'tab'
+			: INTENTS[snapshot.inputType]?.key;
+	return Boolean(key && key !== offered && edytor.hotKeys.run(key));
 };
 
-const replaceSelectionBeforeTextInsertion = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const replaceSelectionBeforeTextInsertion = (edytor: Edytor, snapshot: Attempt) => {
 	if (edytor.selection.selectedBlocks.size > 0) {
 		return replaceSelectedBlocksWithEmptyBlockTargetSync(edytor);
 	}
@@ -54,7 +47,7 @@ const replaceSelectionBeforeTextInsertion = (edytor: Edytor, snapshot: BeforeInp
 };
 
 /** The marks of text inserted at the snapshot's selection (O29), read before it is replaced. */
-const insertionMarks = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const insertionMarks = (edytor: Edytor, snapshot: Attempt) => {
 	const { startText, endText, yStart, yEnd, isCollapsed } = snapshot;
 	if (!startText || edytor.selection.selectedBlocks.size > 0) return {};
 	const replaced = (snapshot.texts.length ? snapshot.texts : [startText]).flatMap((text) =>
@@ -74,7 +67,7 @@ const finishCompositionFromBeforeInput = (edytor: Edytor) => {
 	edytor.hasHandledCompositionInput = false;
 };
 
-const insertCompositionText = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const insertCompositionText = async (edytor: Edytor, snapshot: Attempt) => {
 	const { data } = snapshot;
 	if (!snapshot.startText || data === undefined) {
 		return;
@@ -124,7 +117,7 @@ const insertCompositionText = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 	);
 };
 
-const insertFromComposition = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const insertFromComposition = async (edytor: Edytor, snapshot: Attempt) => {
 	const compositionValue = snapshot.data ?? '';
 	if (compositionValue.length === 0) {
 		finishCompositionFromBeforeInput(edytor);
@@ -176,7 +169,7 @@ const insertFromComposition = async (edytor: Edytor, snapshot: BeforeInputSnapsh
 	await edytor.stabilizeCompositionSelection(compositionText, selectionOffset);
 };
 
-const commitCompositionFromInsertText = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const commitCompositionFromInsertText = async (edytor: Edytor, snapshot: Attempt) => {
 	if (!edytor.isComposing || snapshot.inputType !== 'insertText' || !edytor.compositionState) {
 		return false;
 	}
@@ -214,7 +207,7 @@ const commitCompositionFromInsertText = async (edytor: Edytor, snapshot: BeforeI
 	return true;
 };
 
-const insertText = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const insertText = async (edytor: Edytor, snapshot: Attempt) => {
 	if (
 		edytor.isComposing &&
 		snapshot.inputType === 'insertText' &&
@@ -269,7 +262,7 @@ const insertText = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
  */
 export const insertLineBreak = async (
 	edytor: Edytor,
-	snapshot: BeforeInputSnapshot,
+	snapshot: Attempt,
 	caret: 'after' | 'before' = 'after'
 ) => {
 	const marks = insertionMarks(edytor, snapshot);
@@ -317,7 +310,7 @@ const textFlow = (
 	return value ? flowOfText(value, !plain && uri ? getLinkMarksForUri(edytor, uri) : marks) : null;
 };
 
-const insertFromPaste = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const insertFromPaste = async (edytor: Edytor, snapshot: Attempt) => {
 	const flow = textFlow(edytor, snapshot.dataTransfer, '', insertionMarks(edytor, snapshot));
 	if (!flow) return;
 	// The paste consumes the caret's pending marks, as typing does.
@@ -336,10 +329,10 @@ const runDataTransferPastePlugins = (edytor: Edytor, dataTransfer: DataTransfer)
 // point — not replace the block selection. The earlier target-range sync is
 // skipped for block selections (the DOM caret sits inside a selected block),
 // so resolve the reported range directly. `undefined`: no such selection.
-const resolveDropPoint = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const resolveDropPoint = (edytor: Edytor, snapshot: Attempt) => {
 	const { selection, node } = edytor;
 	if (selection.selectedBlocks.size === 0 && selection.selectedInlineBlock.size === 0) return;
-	const range = snapshot.event?.getTargetRanges?.()[0];
+	const range = snapshot.declared;
 	const text =
 		range && node?.contains(range.startContainer)
 			? selection.getTextOfNode(range.startContainer, range.startOffset)
@@ -361,7 +354,7 @@ const resolveDropPoint = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
  * a link when a `link` mark is registered, and `text/plain` inserts as text.
  * Unclaimed files insert nothing rather than degrading to file-name text.
  */
-const insertFromDataTransfer = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const insertFromDataTransfer = async (edytor: Edytor, snapshot: Attempt) => {
 	const dataTransfer = snapshot.dataTransfer ?? null;
 	const fragment = readEdytorClipboardFragment(dataTransfer);
 	if (!fragment && dataTransfer) {
@@ -396,7 +389,7 @@ const liftContent = (block: Block, text: Text): Block | null => {
 	return plan && (block.edytor.idToBlock.get(plan.ids[0]!) ?? null);
 };
 
-const insertParagraph = async (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
+const insertParagraph = async (edytor: Edytor, snapshot: Attempt) => {
 	const target = await replaceSelectionWithCollapsedTarget(edytor, snapshot);
 	if (!target) {
 		return;
@@ -460,62 +453,31 @@ const insertParagraph = async (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
 	}
 };
 
-export const isCompositionInput = (inputType: InputEvent['inputType']) =>
-	inputType === 'insertCompositionText' ||
-	inputType === 'insertFromComposition' ||
-	inputType === 'deleteCompositionText';
-
-export const shouldRefreshDomAfterModelCommand = (snapshot: BeforeInputSnapshot) =>
-	!isCompositionInput(snapshot.inputType) &&
-	(snapshot.inputType === 'insertText' ||
-		snapshot.inputType === 'insertReplacementText' ||
-		snapshot.inputType === 'insertFromYank' ||
-		snapshot.inputType === 'insertTranspose' ||
-		snapshot.inputType === 'insertFromPaste' ||
-		snapshot.inputType === 'insertFromPasteAsQuotation' ||
-		snapshot.inputType === 'insertFromDrop');
-
 /** The model command for a `beforeinput`, run as one user command (undo policy, prevention scope). */
-export const runBeforeInputCommand = (edytor: Edytor, snapshot: BeforeInputSnapshot) =>
+export const runBeforeInputCommand = (edytor: Edytor, snapshot: Attempt) =>
 	edytor.dispatcher.run(snapshot.inputType, () => beforeInputCommand(edytor, snapshot));
 
 /** An editing intent at the current selection (a key binding's command): no event to fabricate. */
 export const runIntent = (edytor: Edytor, inputType: string) =>
 	runBeforeInputCommand(edytor, intentSnapshot(edytor, inputType));
 
-const beforeInputCommand = (edytor: Edytor, snapshot: BeforeInputSnapshot) => {
-	switch (snapshot.inputType) {
-		case 'insertCompositionText':
-			return insertCompositionText(edytor, snapshot);
-		case 'insertFromComposition':
-			return insertFromComposition(edytor, snapshot);
-		case 'insertTranspose':
-		case 'insertFromYank':
-		case 'insertReplacementText':
-		case 'insertText':
+const beforeInputCommand = (edytor: Edytor, snapshot: Attempt) => {
+	const type = snapshot.inputType;
+	switch (kindOf(type)) {
+		case 'text':
 			return insertText(edytor, snapshot);
-		case 'deleteContentForward':
-		case 'deleteContentBackward':
-		case 'deleteWordBackward':
-		case 'deleteSoftLineBackward':
-		case 'deleteHardLineBackward':
-		case 'deleteWordForward':
-		case 'deleteSoftLineForward':
-		case 'deleteHardLineForward':
-		case 'deleteByCut':
-		case 'deleteByDrag':
-		case 'deleteByComposition':
-		case 'deleteContent':
-		case 'deleteEntireSoftLine':
+		case 'delete':
 			return runBeforeInputDeleteCommand(edytor, snapshot);
-		case 'insertLineBreak':
-			return insertLineBreak(edytor, snapshot);
-		case 'insertFromPaste':
-			return insertFromPaste(edytor, snapshot);
-		case 'insertFromPasteAsQuotation':
-		case 'insertFromDrop':
-			return insertFromDataTransfer(edytor, snapshot);
-		case 'insertParagraph':
-			return insertParagraph(edytor, snapshot);
+		case 'break':
+			return type === 'insertParagraph'
+				? insertParagraph(edytor, snapshot)
+				: insertLineBreak(edytor, snapshot);
+		case 'payload':
+			return type === 'insertFromPaste'
+				? insertFromPaste(edytor, snapshot)
+				: insertFromDataTransfer(edytor, snapshot);
+		case 'composition':
+			if (type === 'insertCompositionText') return insertCompositionText(edytor, snapshot);
+			if (type === 'insertFromComposition') return insertFromComposition(edytor, snapshot);
 	}
 };

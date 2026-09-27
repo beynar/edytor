@@ -140,7 +140,7 @@ const surfaced = () => {
 };
 
 describe('F-I1 — the keydown fallback runs against the anchored target', () => {
-	row.fails(
+	row(
 		'`he[ll]o`, Backspace with no beforeinput, a peer inserts XX at 0 first → XXheo',
 		async () => {
 			const { edytor, editor } = await renderDomEdytor(
@@ -329,7 +329,7 @@ describe('F-I5 — Shift+Enter in a code line: one intent on desktop and Android
 		return { log, lines };
 	};
 
-	row.fails('the same binding, the same hooked operations and the same lines', async () => {
+	row('the same binding, the same hooked operations and the same lines', async () => {
 		const desktop = await run(false);
 		const android = await run(true);
 		expect(desktop.lines).toEqual(['const ', 'a = 1;']);

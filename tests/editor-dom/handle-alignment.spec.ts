@@ -188,8 +188,9 @@ test.describe('demo block handle alignment', () => {
 			.poll(() =>
 				page.evaluate(() => {
 					const handle = document.querySelector<HTMLElement>('[data-testid="block-handle"]');
-					const line =
-						handle?.parentElement?.nextElementSibling?.querySelector('[data-edytor-text]');
+					const line = document
+						.querySelector(`[data-edytor-block][data-edytor-id="${handle?.dataset.blockId}"]`)
+						?.querySelector('[data-edytor-text]');
 					if (!handle || !line) return Infinity;
 					const handleRect = handle.getBoundingClientRect();
 					const lineRect = line.getClientRects()[0];

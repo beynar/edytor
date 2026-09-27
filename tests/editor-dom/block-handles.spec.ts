@@ -33,19 +33,33 @@ const textOf = (block: SerializedBlock) =>
 
 const readRootTexts = async (page: Page) => (await readBlocks(page)).map(textOf);
 
+/** Each handle sits left of its block, on the block's own first text row. */
 const expectHandleHostsAligned = async (page: Page) => {
-	const hostState = await page.evaluate(() => {
-		const hosts = Array.from(
-			document.querySelectorAll<HTMLElement>('[data-edytor-block-handle-host]')
-		);
-		return {
-			count: hosts.length,
-			aligned: hosts.every(
-				(host) => host.nextElementSibling?.getAttribute('data-edytor-id') === host.dataset.blockId
-			)
-		};
-	});
-	expect(hostState).toEqual({ count: 3, aligned: true });
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const handles = Array.from(
+					document.querySelectorAll<HTMLElement>('[data-testid="block-handle"]')
+				);
+				return {
+					count: handles.length,
+					aligned: handles.every((handle) => {
+						const block = document.querySelector<HTMLElement>(
+							`[data-edytor-block="true"][data-edytor-id="${handle.dataset.blockId}"]`
+						);
+						const row = block?.querySelector('[data-edytor-text="true"]')?.getClientRects()[0];
+						const rect = handle.getBoundingClientRect();
+						const blockRect = block?.getBoundingClientRect();
+						if (!row || !blockRect) return false;
+						const center = rect.top + rect.height / 2;
+						return (
+							Math.abs(center - (row.top + row.height / 2)) <= 3 && rect.right <= blockRect.left + 1
+						);
+					})
+				};
+			})
+		)
+		.toEqual({ count: 3, aligned: true });
 };
 
 const dragHandleToBlock = async (

@@ -20,8 +20,8 @@ import { modelSpecSeed } from '../scenarios/seeds.js';
 import { assertAllStructurallyValid, assertConverged } from '../harness/assert/convergence.js';
 import { bool, int, mulberry32, pick } from '../harness/rng.js';
 
-/** Red on the reference (no spike, no P7): `it.fails` in the tests-first commit. */
-const row = it.fails;
+/** Red on the reference (no spike, no P7): `it.fails` in the tests-first commit (295b51b). */
+const row = it;
 
 const ops = createStreamOps();
 const S = () => spike();

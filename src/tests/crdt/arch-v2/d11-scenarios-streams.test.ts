@@ -15,7 +15,7 @@ const { modelScenarios } = await import('../scenarios/active-model.js');
 const { richtextScenarios } = await import('../scenarios/active-richtext.js');
 
 /** Red on the reference (no spike): `it.fails` in the tests-first commit. */
-const row = it.fails;
+const row = it;
 
 /** Scenario id → the decision that re-pins it on streams (re-stated in d11-streams.test.ts). */
 export const REPINNED: Record<string, string> = {

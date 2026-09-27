@@ -7,9 +7,8 @@
  * right after the split. Expected (plan row): the command reports `failed`;
  * one undo restores the pre-command document; the Surface shows the model.
  *
- * The command result belongs to the dispatcher (S1) and does not exist
- * before it, so that half is a `todo` here. The undo and Surface halves are
- * observable today.
+ * The command result belongs to the dispatcher (S1): that half was a `todo`
+ * until S1 wrote it. The undo and Surface halves were observable at D5.
  *
  * Expected values come from the plan row, never from running the code.
  */
@@ -87,5 +86,24 @@ describe('F-M4 — throw after partial writes (a normalizer throws during a spli
 		expect(shown(editor), 'the Surface shows the model after the undo').toEqual(['abcd']);
 	});
 
-	test.todo('the command reports `failed` (the dispatcher result — S1)');
+	// Red on the reference (no dispatcher); green since S1.
+	test.fails('the command reports `failed` (the dispatcher result — S1)', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const { edytor, editor } = await renderDomEdytor(
+			<root>
+				<ordered-list>
+					<list-item>ab|cd</list-item>
+				</ordered-list>
+			</root>,
+			{ plugins: [throwingOnce()] }
+		);
+		const onError = (event: ErrorEvent) => event.preventDefault();
+		window.addEventListener('error', onError);
+		try {
+			await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
+		} finally {
+			window.removeEventListener('error', onError);
+		}
+		expect(edytor.dispatcher.last).toMatchObject({ status: 'failed' });
+	});
 });

@@ -21,7 +21,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from '../../lib/crdt/vendor/yjs/src/index.js';
 
 /** Red on the reference (no P7): `it.fails` in the tests-first commit. */
-const row = it.fails;
+const row = it;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const VENDOR = join(here, '../../lib/crdt/vendor/yjs/src');

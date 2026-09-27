@@ -36,6 +36,7 @@ export function insertContent(transaction: Transaction, parent: YNode, currPos: 
 export function insertContentHelper(transaction: Transaction, parent: YNode, currPos: ItemTextListPosition, insert: Array<any> | string, formats: {
     [x: string]: any;
 }): void;
+export function insertAtGapEndHelper(transaction: Transaction, parent: YNode, index: number, content: import("./structs/Item.js").AbstractContent): void;
 export function deleteText(transaction: Transaction, currPos: ItemTextListPosition, length: number): ItemTextListPosition;
 export class ArraySearchMarker {
     /**
@@ -435,6 +436,14 @@ export class YNode<DConf extends delta.DeltaConf = any> extends ObservableV2<{
      * @param {delta.Formats} [format]
      */
     insert(index: number, content: Array<delta.DeltaConfGetChildren<DConf>> | delta.DeltaConfGetText<DConf>, format?: delta.Formats): void;
+    /**
+     * P7 (edytor fork): insert `content` at the end of the gap at live index `index` — after every
+     * deleted item and every format item before the next live content item, no format item added.
+     *
+     * @param {number} index
+     * @param {Array<any>} content
+     */
+    insertAtGapEnd(index: number, content: Array<any>): void;
     /**
      * Inserts new content at an index.
      *

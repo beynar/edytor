@@ -391,6 +391,42 @@ export const insertContentHelper = (transaction, parent, currPos, insert, format
   }
 }
 
+// P7 begin (edytor fork: insertAtGapEnd — see UPSTREAM.md P7)
+/**
+ * Insert `content` at the END of the gap at live index `index`: walk `index`
+ * countable live units, then pass every deleted item and every format item
+ * before the next live content item, and integrate `content` there. The
+ * content takes exactly the formats in effect at that point — no format item
+ * is added. The walk ignores any renderer: indices are live-content space.
+ *
+ * @param {Transaction} transaction
+ * @param {YNode} parent
+ * @param {number} index
+ * @param {import('./structs/Item.js').AbstractContent} content
+ */
+export const insertAtGapEndHelper = (transaction, parent, index, content) => {
+  const currPos = new ItemTextListPosition(null, parent._start, 0, new Map(), null)
+  let n = index
+  while (n > 0 && currPos.right !== null) {
+    const item = currPos.right
+    if (!item.deleted && item.countable) {
+      if (n < item.length) getItemCleanStart(transaction, createID(item.id.client, item.id.clock + n))
+      n -= item.length
+    }
+    currPos.forward()
+  }
+  if (n > 0) throw new Error('Exceeded content range')
+  while (currPos.right !== null && (currPos.right.deleted || currPos.right.content.constructor === ContentFormat)) {
+    currPos.forward()
+  }
+  if (parent._searchMarker) updateMarkerChanges(parent._searchMarker, currPos.index, content.getLength())
+  const doc = transaction.doc
+  const { left, right } = currPos
+  const item = new Item(createID(doc.clientID, doc.store.getClock(doc.clientID)), left, left && left.lastId, right, right && right.id, parent, null, content)
+  item.integrate(transaction, 0)
+}
+// P7 end
+
 /**
  * @param {Transaction} transaction
  * @param {ItemTextListPosition} currPos
@@ -2121,6 +2157,23 @@ export class YNode extends ObservableV2 {
   insert (index, content, format) {
     this.applyDelta(delta.create().retain(index).insert(/** @type {any} */ (content), format).done())
   }
+
+  // P7 begin (edytor fork: insertAtGapEnd — see UPSTREAM.md P7)
+  /**
+   * Insert `content` (an array of JSON values, one countable unit each) at the end of the gap at
+   * live index `index`: after every deleted item and every format item that precedes the next live
+   * content item, with the formats in effect there and no format item added.
+   *
+   * @param {number} index
+   * @param {Array<any>} content
+   */
+  insertAtGapEnd (index, content) {
+    if (this.doc == null) throw new Error('insertAtGapEnd: node is not integrated')
+    transact(this.doc, transaction => {
+      insertAtGapEndHelper(transaction, this, index, new ContentAny(content))
+    })
+  }
+  // P7 end
 
   /**
    * Inserts new content at an index.

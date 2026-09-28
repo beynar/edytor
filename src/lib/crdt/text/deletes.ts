@@ -647,9 +647,38 @@ export const bindDeletes = (Y: EngineApi) => {
 		 * Mark `spans` (the characters a text delete just deleted, inside its
 		 * transaction) as this writer's, and hide their other visible copies.
 		 */
-		markDeleted: (doc: EngineDoc, spans: readonly Span[]): void => {
-			if (spans.length === 0) return;
+		markDeleted: (doc: EngineDoc, deleted: readonly Span[]): void => {
 			const s = attach(doc);
+			// Text inserted and deleted within one open capture group never comes
+			// back by that step's undo (the engine skips such a step): no mark.
+			const fresh = [...s.policies].flatMap((p) => {
+				const um = p.um() as unknown as {
+					undoStack: Step[];
+					lastChange: number;
+					captureTimeout: number;
+					undoing: boolean;
+					redoing: boolean;
+				};
+				const top = um.undoStack[um.undoStack.length - 1];
+				const open =
+					top !== undefined &&
+					!um.undoing &&
+					!um.redoing &&
+					um.lastChange > 0 &&
+					Date.now() - um.lastChange < um.captureTimeout;
+				return open ? [top.inserts] : [];
+			});
+			const spans = deleted.flatMap((sp) => {
+				const out: Span[] = [];
+				for (let k = sp.k; k < sp.k + sp.n; k++) {
+					if (fresh.some((ids) => ids.has(sp.c, k))) continue;
+					const last = out[out.length - 1];
+					if (last !== undefined && last.k + last.n === k) last.n++;
+					else out.push({ c: sp.c, k, n: 1 });
+				}
+				return out;
+			});
+			if (spans.length === 0) return;
 			s.marks.insert(s.marks.length, [encode(spans.map((sp) => [sp.c, sp.k, sp.n]))]);
 			const tr = s.doc._transaction;
 			if (tr !== null)

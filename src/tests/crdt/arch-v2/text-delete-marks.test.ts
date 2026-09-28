@@ -34,6 +34,7 @@ import {
 	type Replica
 } from './p1-harness.js';
 import { mulberry32 } from '../harness/rng.js';
+import { loadDocument } from '../../../lib/crdt/index.js';
 
 const one = (outcomes) => {
 	for (const o of outcomes) {
@@ -286,6 +287,21 @@ describe('text delete marks — redo and repeated undo', () => {
 				}
 			})
 		);
+	});
+
+	it('text typed and deleted inside one capture group is no step: undo reaches the step before (a canceled preview)', () => {
+		const document = loadDocument(seedUpdate(ABC), { history: { captureTimeout: 60_000 } });
+		const ed = document.facade;
+		ed.insertText('p', 0, 'Y');
+		document.history.stopCapturing();
+		ed.insertText('p', 1, 'X');
+		ed.deleteText('p', 1, 1);
+		expect(ed.blockText('p')).toBe('Yabc');
+		document.history.undo();
+		expect(ed.blockText('p')).toBe('abc');
+		document.history.redo();
+		expect(ed.blockText('p')).toBe('Yabc');
+		document.destroy();
 	});
 
 	it('a single writer’s delete, undo, redo, undo is unchanged (`ac`, `abc`, `ac`, `abc`)', () => {

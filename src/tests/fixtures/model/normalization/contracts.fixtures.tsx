@@ -139,7 +139,7 @@ export const fixtures = defineFixtures([
 		}
 	}),
 	defineModelTransformFixture({
-		description: 'normalizes children so the root never becomes childless',
+		description: 'an emptied root writes nothing: the view shows its virtual paragraph',
 		input: emptyFixture,
 		run: () => null,
 		assert: () => {
@@ -152,11 +152,11 @@ export const fixtures = defineFixtures([
 			edytor.root!.deleteChildren(0, edytor.root!.children.length);
 			edytor.root!.normalizeChildren();
 
-			expect(snapshotChildren(edytor.root!)).toEqual([
-				{
-					type: 'paragraph',
-					data: {}
-				}
+			// The document is empty (`doc.empty.virtual`); the view's root shows one
+			// paragraph that is not written.
+			expect(snapshotChildren(edytor.root!)).toEqual([]);
+			expect(edytor.root!.children.map((block) => [block.id, block.type])).toEqual([
+				[edytor.facade.virtual(), 'paragraph']
 			]);
 			expectSecondPassStable(edytor.root!);
 		}

@@ -16,6 +16,7 @@ import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
 import { Projector } from './surface/projector.svelte.js';
 import { SurfaceObserver } from './surface/observer.svelte.js';
+import { virtualLens, type ViewDoc } from './session/virtual.js';
 import {
 	createCells,
 	placeholderOf,
@@ -234,8 +235,14 @@ export class Edytor {
 	get doc(): YDoc {
 		return this.document.doc;
 	}
-	get facade(): EdytorDoc {
-		return this.document.facade;
+	/** The document as this view reads it: its virtual paragraph while it shows no block (`doc.empty.virtual`). */
+	private lens?: ViewDoc;
+	get facade(): ViewDoc {
+		return (this.lens ??= virtualLens(
+			this.document.facade,
+			() => this.document.ready,
+			() => this.document.defaultChild(null)
+		));
 	}
 
 	// Document order (O7): the view's walkers and block-selection keys read
@@ -576,6 +583,8 @@ export class Edytor {
 		this.cells = createCells(this.facade, this.surface.patched);
 		this.root = this.idToBlock.root;
 		this.offCommit = this.facade.onChange(this.onCommit);
+		// A document that is already empty shows its virtual paragraph with the caret in it.
+		this.selection?.restoreDeadSelectionEndpoints();
 	};
 
 	/** The commit subscription: editor-lifetime (a remount's `off` drain never releases it). */

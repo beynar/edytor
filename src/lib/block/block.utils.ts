@@ -530,11 +530,7 @@ export function normalizeContent(this: Block): void {
 
 export function normalizeChildren(this: Block): void {
 	if (this.edytor.dispatcher.defer(this, normalizeChildren)) return;
-	if (this.isRoot && this.children.length === 0) {
-		const block = { type: this.edytor.defaultChild(this) };
-		this.edytor.dispatcher.write(() => this.insertChildren(0, [block]));
-		return this.normalizeChildren();
-	}
+	// An emptied root writes nothing: the view shows its virtual paragraph (`doc.empty.virtual`).
 	const work = this.definition?.normalizeChildren?.({ block: this });
 	if (work) {
 		this.edytor.dispatcher.write(work);

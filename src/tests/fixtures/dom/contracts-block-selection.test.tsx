@@ -12,7 +12,8 @@ import {
 	assertCanonicalTree,
 	dispatchCopy,
 	dispatchDomKeyDown,
-	renderDomEdytor
+	renderDomEdytor,
+	type CanonicalBlock
 } from '../../dom/test.utils.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
@@ -37,7 +38,7 @@ const mod = (key: string, shiftKey = false) =>
 	dispatchDomKeyDown(document, { key, code: `Key${key.toUpperCase()}`, metaKey: true, shiftKey });
 const key = (k: string, shiftKey = false) => dispatchDomKeyDown(document, { key: k, shiftKey });
 
-const p = (text: string, children?: ReturnType<typeof p>[]) => ({
+const p = (text: string, children?: CanonicalBlock[]): CanonicalBlock => ({
 	type: 'paragraph',
 	content: [{ text }],
 	...(children ? { children } : {})
@@ -68,9 +69,14 @@ describe('sel.blocks.exact — a block selection is exactly its members', () => 
 		for (let i = 0; i < 3; i++) await mod('a');
 		expect(selectedTexts(edytor)).toEqual(['A', 'A1', 'A2', 'A3', 'B']);
 		expect(markedTexts(editor, edytor)).toEqual(['A', 'A1', 'A2', 'A3', 'B']);
-		// Deleting everything that is selected leaves one empty paragraph (flow.slot / whole-doc).
+		// Deleting everything that is selected empties the document: the view shows
+		// its virtual paragraph (`doc.empty.virtual`), nothing is written for it.
 		await key('Backspace');
-		expect(edytor.value.children?.map((b) => b.content?.[0])).toEqual([undefined]);
+		expect(edytor.value.children).toEqual([]);
+		const [only, ...rest] = edytor.root!.children;
+		expect(rest).toEqual([]);
+		expect(edytor.facade.virtual()).toBe(only!.id);
+		expect(edytor.selection.state.startText?.parent.id).toBe(only!.id);
 	});
 
 	test('Shift+Down from a parent adds its first child, then the next', async () => {

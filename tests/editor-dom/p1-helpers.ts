@@ -221,6 +221,8 @@ export const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 /** Two (or more) contexts on one websocket room, each on the same `dst` document. */
 export type Room = {
 	relay: OpaqueRelay;
+	/** The relay's room name (for `relay.hold`/`release`). */
+	room: string;
 	pages: Page[];
 	contexts: BrowserContext[];
 	close: () => Promise<void>;
@@ -259,7 +261,7 @@ export const openRoom = async (
 					new Set(await Promise.all(pages.map(async (p) => JSON.stringify(await model(p))))).size
 			)
 			.toBe(1);
-		return { relay, pages, contexts, close };
+		return { relay, room, pages, contexts, close };
 	} catch (error) {
 		await close();
 		throw error;

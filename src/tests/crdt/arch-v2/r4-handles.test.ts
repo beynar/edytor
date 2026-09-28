@@ -64,19 +64,26 @@ const noteNormalizer = () => ({
 });
 
 describe('one command, one update — normalization inside the transaction', () => {
-	row('the root emptied by a delete gets its default child in the same update', () => {
-		const { edytor, updates } = view([p('a', 'aa')]);
-		const peer = new Y.Doc();
-		Y.applyUpdate(peer, Y.encodeStateAsUpdate(edytor.doc));
-		updates.length = 0;
-		edytor.idToBlock.get('a')!.removeBlock();
-		expect(updates.length).toBe(1);
-		// The peer never sees an empty root.
-		const remote = attachDocument(peer);
-		Y.applyUpdate(peer, updates[0]!);
-		expect(remote.facade.toJSON().children.map((b) => b.type)).toEqual(['paragraph']);
-		expect(texts(edytor)).toEqual([['paragraph', '']]);
-	});
+	row(
+		'the root emptied by a delete stays empty: one update, no block written; the view shows its virtual paragraph',
+		() => {
+			const { edytor, updates } = view([p('a', 'aa')]);
+			const peer = new Y.Doc();
+			Y.applyUpdate(peer, Y.encodeStateAsUpdate(edytor.doc));
+			updates.length = 0;
+			edytor.idToBlock.get('a')!.removeBlock();
+			expect(updates.length).toBe(1);
+			// Nothing is written for the emptied root (`doc.empty.virtual`): the
+			// peer's document is empty too, and each view shows a virtual paragraph.
+			const remote = attachDocument(peer);
+			Y.applyUpdate(peer, updates[0]!);
+			expect(remote.facade.toJSON().children).toEqual([]);
+			expect(texts(edytor)).toEqual([]);
+			expect(edytor.root!.children.map((b) => [b.id, b.type])).toEqual([
+				[edytor.facade.virtual(), 'paragraph']
+			]);
+		}
+	);
 
 	row('a content normalizer that writes: one update, the normalized text', () => {
 		const { edytor, updates } = view(

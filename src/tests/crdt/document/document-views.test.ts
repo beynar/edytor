@@ -48,8 +48,9 @@ describe('views sharing one document', () => {
 		for (const view of views) {
 			expect(view.document).toBe(document);
 			expect(view.doc).toBe(document.doc);
-			// One facade per document ⇒ one maintained run view lease.
-			expect(view.facade).toBe(document.facade);
+			// One facade per document ⇒ one maintained run view lease. A view
+			// reads it through its lens (its virtual paragraph, `doc.empty.virtual`).
+			expect(Object.getPrototypeOf(view.facade)).toBe(document.facade);
 			expect(view.awareness).toBe(document.awareness);
 			expect(view.undoManager).toBe(document.history);
 			expect(view.synced).toBe(true);

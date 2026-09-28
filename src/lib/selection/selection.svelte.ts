@@ -1274,6 +1274,9 @@ export class EdytorSelection {
 			}
 			dead = this.#lastBlock;
 		} else {
+			// An emptied document rests the caret in its virtual paragraph (`doc.empty.virtual`).
+			const virtual = facade.virtual();
+			if (virtual !== null) this.#land(textSelection(facade.anchorAt(virtual, 0, 'left')!));
 			return;
 		}
 		// A live origin means the anchors are not integrated yet: they converge.

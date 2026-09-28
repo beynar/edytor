@@ -3,7 +3,7 @@
  * document surface to the content node's item sequence, the actor
  * dictionary, and the merged read of any legacy `a/` records.
  */
-import { Y } from '../../../lib/crdt/engine.js';
+import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import type {
 	CreateDocumentOptions,
 	DocumentActor,

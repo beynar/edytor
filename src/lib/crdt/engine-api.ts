@@ -14,9 +14,15 @@
  * `.js`, so `pnpm check` never traverses vendored sources.
  */
 import type * as Y from './vendor/yjs/dts/index.js';
+import type { Y as Engine } from './engine.js';
 
-/** The vendored v14 module surface (`import * as Y`). */
-export type EngineApi = typeof Y;
+/**
+ * The engine surface every `bind*` receives: the named-import object in
+ * `engine.js` (exactly the symbols edytor calls, so consumer bundles
+ * tree-shake the rest). The full namespace `import * as Y from
+ * 'edytor/crdt'` is a superset and satisfies it.
+ */
+export type EngineApi = typeof Engine;
 
 export type YDoc = InstanceType<typeof Y.Doc>;
 export type YNode = InstanceType<typeof Y.Node>;

@@ -24,7 +24,7 @@
  */
 // @ts-nocheck -- tests drive the vendored engine JS directly (excluded lane).
 import { describe, expect, test } from 'vitest';
-import { Y } from '../../../lib/crdt/engine.js';
+import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { setDocRand } from '../../../lib/crdt/rand.js';
 

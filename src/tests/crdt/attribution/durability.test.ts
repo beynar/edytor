@@ -10,7 +10,7 @@
  */
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
-import { Y } from '../../../lib/crdt/engine.js';
+import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
 import {
 	applyUpdate,

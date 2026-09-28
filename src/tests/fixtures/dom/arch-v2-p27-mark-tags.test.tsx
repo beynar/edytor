@@ -20,7 +20,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import type { JSONText } from '$lib/utils/json.js';
+import type { JSONText, SerializableContent } from '$lib/utils/json.js';
 import { truthOf } from '../../oracles/truth.js';
 import { dispatchCopy, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 
@@ -29,7 +29,7 @@ const row = it;
 /** Green on the reference: a regression guard. */
 const pin = it;
 
-const MARKS: [name: string, value: JSONText['marks'][string], element: string][] = [
+const MARKS: [name: string, value: SerializableContent, element: string][] = [
 	['bold', true, '<strong>x</strong>'],
 	['italic', true, '<em>x</em>'],
 	['underline', true, '<u>x</u>'],

@@ -106,11 +106,11 @@ Each fact has exactly one writer. When a fix seems to need a second writer, the 
 
 `Plugin = (editor) => definitions & operations` (`src/lib/plugins.ts`). A plugin contributes:
 
-- kind records (`blocks`): `snippet`, `element`, `viewState`, `void`, `island`, `rendersContent`, `defaultChild`, `presets` (slash menu, markdown, "turn into"), `empty`, `html`/`plain` export, `transformText`, `normalizeContent`/`normalizeChildren`, focus/select hooks;
-- mark records (`marks`): `snippet`, `void`, `edge` (`inclusive | exclusive | side-dependent`), `html`, `toolbar`; atom records (`inlineBlocks`);
+- kind records (`blocks`): `snippet`, `element`, `viewState`, `void`, `island`, `rendersContent`, `defaultChild`, `presets` (slash menu, markdown, "turn into"), `empty`, `html`/`plain` export, `parse` (HTML import), `transformText`, `normalizeContent`/`normalizeChildren`, focus/select hooks;
+- mark records (`marks`): `tag` + `attributes(value)` (the one element the core renders and the clipboard exports, P2.7), an optional `snippet` (custom markup inside a core span), `parse` (HTML import), `void`, `edge` (`inclusive | exclusive | side-dependent`), `toolbar`; atom records (`inlineBlocks`);
 - `hotkeys`, `commands`, and hooks (`onBeforeOperation`, `onAfterOperation`, `onBeforeInput`, `onCopy`/`onCut`/`onPaste`, `onDeleteSelectedBlocks`, attach hooks, `placeholder`).
 
-Duplicate definitions and commands: **first wins** (an extension that extends another's definition lists itself first). Extensions read the document through handles and view objects, never Yjs types. Bundled: rich text, mention, code (Prism in manual mode; tokens are its `transformText`), image, block handles, slash menu, toolbar, arrow move. HTML import was retired: external HTML paste and drop fall back to `text/plain`; a consumer imports HTML through `onPaste`.
+Duplicate definitions and commands: **first wins** (an extension that extends another's definition lists itself first). Extensions read the document through handles and view objects, never Yjs types. Bundled: rich text, mention, code (Prism in manual mode; tokens are its `transformText`), image, block handles, slash menu, toolbar, arrow move. HTML import (P4.1, `clipboard/htmlFlow.ts`): external `text/html` paste and drop are parsed by the browser (`DOMParser`) into a flow; the tag tables are the kind and mark records inverted (a preset's export/element tag, a mark's `tag`, each record's `parse` hook first) — never a tag switch. Paste order: internal MIME, embedded fragment, a plugin's `onPaste`, HTML import, `text/plain`.
 
 ## Where to fix what
 

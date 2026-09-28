@@ -40,6 +40,18 @@
 		const safe = sanitizeCssColorValue(value);
 		return { style: safe ? `${property}: ${safe};` : undefined };
 	};
+	/** HTML import (P4.1): a pasted color that paints something, sanitized. */
+	const colorOf = (value: string) =>
+		/^(transparent|inherit|initial|unset|currentcolor)$/i.test(value)
+			? undefined
+			: (sanitizeCssColorValue(value) ?? undefined);
+	/** HTML import: a tag alias (unless its own style says otherwise) or a style (Google Docs). */
+	const alias =
+		(tags: RegExp, property: 'fontWeight' | 'fontStyle' | 'textDecoration', value: RegExp) =>
+		(el: HTMLElement) =>
+			(tags.test(el.localName) && !el.style[property]) ||
+			value.test(el.style[property]) ||
+			undefined;
 
 	export const richTextPlugin: Plugin = (edytor) => {
 		const setMarkAndSelect =
@@ -115,17 +127,47 @@
 			},
 			// Toolbar buttons and export wrapping follow this order (first innermost).
 			marks: {
-				bold: { tag: 'strong', toolbar: { label: 'Bold', icon: 'B' } },
-				italic: { tag: 'em', toolbar: { label: 'Italic', icon: 'I' } },
-				underline: { tag: 'u', toolbar: { label: 'Underline', icon: 'U' } },
-				strike: { tag: 's', toolbar: { label: 'Strike', icon: 'S' } },
+				bold: {
+					tag: 'strong',
+					toolbar: { label: 'Bold', icon: 'B' },
+					parse: alias(/^b$/, 'fontWeight', /^(bold|[6-9]00)$/)
+				},
+				italic: {
+					tag: 'em',
+					toolbar: { label: 'Italic', icon: 'I' },
+					parse: alias(/^i$/, 'fontStyle', /italic/)
+				},
+				underline: {
+					tag: 'u',
+					toolbar: { label: 'Underline', icon: 'U' },
+					parse: alias(/^u$/, 'textDecoration', /underline/)
+				},
+				strike: {
+					tag: 's',
+					toolbar: { label: 'Strike', icon: 'S' },
+					parse: alias(/^(strike|del)$/, 'textDecoration', /line-through/)
+				},
 				code: { tag: 'code', toolbar: { label: 'Code', icon: '</>' } },
 				// FP-8: typing at a link's trailing edge extends it only from inside the anchor.
-				link: { tag: 'a', attributes: linkAttributes, edge: 'side-dependent' },
+				link: {
+					tag: 'a',
+					attributes: linkAttributes,
+					edge: 'side-dependent',
+					parse: (el) => {
+						const href = el.localName === 'a' && sanitizeLinkHref(el.getAttribute('href'));
+						const target = el.getAttribute('target');
+						return href ? { href, ...(target ? { target } : {}) } : undefined;
+					}
+				},
 				superscript: { tag: 'sup' },
 				subscript: { tag: 'sub' },
-				color: { tag: 'span', attributes: styled('color') },
-				highlight: { tag: 'span', attributes: styled('background-color') }
+				color: { tag: 'span', attributes: styled('color'), parse: (el) => colorOf(el.style.color) },
+				highlight: {
+					tag: 'span',
+					attributes: styled('background-color'),
+					parse: (el) =>
+						colorOf(el.style.backgroundColor) ?? (el.localName === 'mark' ? 'yellow' : undefined)
+				}
 			},
 			blocks: {
 				paragraph: {
@@ -159,6 +201,8 @@
 							markdown: ['### ']
 						}
 					],
+					// HTML import: h1–h3 come from the presets; h4–h6 read as h3.
+					parse: (el) => (/^h[4-6]$/.test(el.localName) ? { level: 'h3' } : undefined),
 					html: (block, content, children) => {
 						const level = String(block.data?.level);
 						const tag = ['h1', 'h2', 'h3'].includes(level) ? level : 'h1';
@@ -190,7 +234,10 @@
 					presets: [
 						{ label: 'Numbered list', icon: '1.', keywords: ['number', 'ol'], markdown: ['1. '] }
 					],
-					html: 'li'
+					html: 'li',
+					// HTML import: an `li` is a bulleted item (the first `li` kind) unless its list is ordered.
+					parse: (el) =>
+						el.localName === 'li' && el.parentElement?.localName === 'ol' ? {} : undefined
 				},
 				'todo-item': {
 					snippet: todoItem,

@@ -232,6 +232,12 @@ export type BlockDefinition = {
 	html?: string | ((block: JSONBlock, content: string, children: string) => string);
 	/** Clipboard plain-text form; default content then children, one per line. */
 	plain?: (block: JSONBlock, content: string, children: string) => string;
+	/**
+	 * HTML import: the block's data when `element` is this kind, else
+	 * `undefined`. Checked before the tag tables (a preset's export form or
+	 * element tag), which need no hook.
+	 */
+	parse?: (element: HTMLElement) => Record<string, SerializableContent> | undefined;
 	/** Transform text content within the block
 	 *
 	 * This transformation is applied after the text is synced in to the state.

@@ -34,6 +34,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
+import type { JSONDoc } from '$lib/utils/json.js';
 import { runBeforeInputCommand } from '$lib/events/beforeInputCommands.js';
 import { attemptOf } from '$lib/session/attempt.js';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
@@ -227,6 +228,21 @@ describe('tag tables from the records', () => {
 		]);
 	});
 
+	row('a leading plain paragraph is the item’s text (Google Docs lists, quotes)', async () => {
+		expect(
+			await imported(
+				'<ul><li><p dir="ltr"><span>Item</span></p><p>More</p></li></ul><blockquote><p>Q</p></blockquote>'
+			)
+		).toEqual([
+			{
+				type: 'bulleted-list-item',
+				content: [{ text: 'Item' }],
+				children: [{ type: 'paragraph', content: [{ text: 'More' }] }]
+			},
+			{ type: 'quote', content: [{ text: 'Q' }] }
+		]);
+	});
+
 	row('pre is the code kind (its default child’s tag), one code line per line', async () => {
 		expect(
 			await imported('<p>x</p><pre><code>let a = 1;\n  a++;\n</code></pre>', [
@@ -305,13 +321,19 @@ describe('tag tables from the records', () => {
 describe('safety', () => {
 	row('an unsafe href, a hostile color and an event handler never reach the model', async () => {
 		const blocks = await imported(
-			'<p><a href="javascript:alert(1)">x</a><span style="color: red; position: fixed">y</span>' +
+			'<p><a href="javascript:alert(1)">x</a><span style="color: url(x)">y</span>' +
+				'<span style="color: red; position: fixed">r</span>' +
 				'<img src="x" onerror="alert(1)"><b onclick="alert(1)">z</b></p>'
 		);
+		// The CSSOM keeps one declaration per property: `position` never reaches the color.
 		expect(blocks).toEqual([
 			{
 				type: 'paragraph',
-				content: [{ text: 'xy' }, { text: 'z', marks: { bold: true } }]
+				content: [
+					{ text: 'xy' },
+					{ text: 'r', marks: { color: 'red' } },
+					{ text: 'z', marks: { bold: true } }
+				]
 			}
 		]);
 	});
@@ -376,7 +398,7 @@ describe('degradation and whitespace', () => {
 		expect(await imported('Before<p>Content</p><p></p><strong>After</strong>')).toEqual([
 			{ type: 'paragraph', content: [{ text: 'Before' }] },
 			{ type: 'paragraph', content: [{ text: 'Content' }] },
-			{ type: 'paragraph', content: [{ text: '' }] },
+			{ type: 'paragraph' },
 			{ type: 'paragraph', content: [{ text: 'After', marks: { bold: true } }] }
 		]);
 	});
@@ -384,7 +406,12 @@ describe('degradation and whitespace', () => {
 
 describe('paste order and history', () => {
 	pin('F-P10 — garbage html with no text/plain: no change, no undo step', async () => {
-		for (const html of ['<!-- c -->', '<script>alert(1)</script>', '<p></p><span></span>', '<']) {
+		for (const html of [
+			'<!-- c -->',
+			'<script>alert(1)</script>',
+			'<p></p><span></span>',
+			'<p>  </p>'
+		]) {
 			const { edytor, editor } = await renderDomEdytor(
 				<root>
 					<heading level="h2">|</heading>
@@ -487,7 +514,7 @@ describe('paste order and history', () => {
 
 describe('round trip: export then import reads one record', () => {
 	row('the exported HTML flavour imports back to the same blocks and marks', async () => {
-		const doc = {
+		const doc: JSONDoc = {
 			children: [
 				{ type: 'heading', data: { level: 'h2' }, content: [{ text: 'Title' }] },
 				{

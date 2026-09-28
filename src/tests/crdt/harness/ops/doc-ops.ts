@@ -71,7 +71,9 @@ export const createDocOps = (): CrdtOps => {
 		preservesIdentityOnSplitMerge: true,
 
 		insertBlock: (peer, dest, spec) => peer.transact(() => ok(ed(peer).insertBlock(dest, spec))),
-		deleteBlock: (peer, id) => peer.transact(() => ok(ed(peer).deleteBlock(id))),
+		// The adapters' `deleteBlock` is the whole-subtree delete (the model's op): explicit since promotion became the default.
+		deleteBlock: (peer, id) =>
+			peer.transact(() => ok(ed(peer).deleteBlock(id, { keepChildren: false }))),
 		moveBlock: (peer, id, dest) => peer.transact(() => ok(ed(peer).moveBlock(id, dest))),
 		moveBlocks: (peer, ids, dest) => peer.transact(() => ok(ed(peer).moveBlocks(ids, dest))),
 		nestBlock: (peer, id, newParentId) =>

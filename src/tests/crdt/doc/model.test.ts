@@ -246,10 +246,10 @@ describe('structural operations', () => {
 		expect(ed.crdtId('b3b')).toBe(idB);
 	});
 
-	it('deleteBlock without keepChildren hides the whole subtree', () => {
+	it('deleteBlock with keepChildren: false hides the whole subtree', () => {
 		const doc = newDoc();
 		const ed = seed(E.create(doc));
-		expect(ed.deleteBlock('b3').status).toBe('applied');
+		expect(ed.deleteBlock('b3', { keepChildren: false }).status).toBe('applied');
 		expect(topIds(ed)).toEqual(['b1', 'b2']);
 		expect(ed.listBlockIds()).not.toContain('b3a');
 		expect(ed.resolveBlock('b3')).toBeNull(); // del flag set on the root

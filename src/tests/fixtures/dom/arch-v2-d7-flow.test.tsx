@@ -164,7 +164,8 @@ describe('clipboard spec assertions (dom lane)', () => {
 		);
 		const source = edytor.root!.children[0]!;
 		const original = [source.id, source.children[0]!.id];
-		edytor.selection.selectBlocks(source);
+		// A block selection is exactly its members: the nested blocks are selected too.
+		edytor.selection.selectBlocks(source, ...source.children);
 		const copied = await dispatchCopy(editor);
 		await setNativeSelection(edytor, blockText(edytor, 1), 5);
 		await dispatchClipboardPaste(editor, copied.clipboardData);

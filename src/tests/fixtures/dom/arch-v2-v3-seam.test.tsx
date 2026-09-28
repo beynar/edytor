@@ -368,7 +368,7 @@ describe('sel.seam.* through the view: endpoints this view did not author', () =
 			// nested subtree: the dead chain climbs to the list's slot.
 			await setNativeSelection(edytor, list!.children[0]!.firstText!, 2);
 			let remote = peer(edytor);
-			remote.facade.deleteBlock(list!.id);
+			remote.facade.deleteBlock(list!.id, { keepChildren: false });
 			await remote.push();
 			expect(caret(edytor)).toMatchObject({ block: bb!.id, offset: 0 });
 			// adjacent dead siblings: the slot is the replicated rank.

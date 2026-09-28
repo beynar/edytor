@@ -115,7 +115,8 @@ const arrowDown = vertical(1, moveBlockSelection('blockAfter'));
  * Shift+ArrowUp/Down over a block selection. Its first member is the
  * anchor and its last the focus (insertion order): a key moving the focus
  * back toward the anchor shrinks the selection, otherwise it extends past
- * the selection's edge in document order (K7).
+ * the selection's edge in document order (K7), one block at a time — a
+ * parent and its children are separate members (`sel.blocks.exact`).
  */
 const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void => {
 	const members = Array.from(edytor.selection.selectedBlocks);
@@ -126,18 +127,10 @@ const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void =>
 		return;
 	}
 	const sorted = members.toSorted(edytor.compareBlocks);
-	if (direction === 'up') {
-		const first = sorted[0]!;
-		const previous = edytor.blockBefore(first, SEALED);
-		if (!previous) return;
-		// Reaching the parent selects it instead of its first child.
-		if (first.parent === previous) edytor.selection.removeBlockFromSelection(first);
-		edytor.selection.addBlockToSelection(previous);
-		return;
-	}
-	const last = sorted.at(-1)!;
-	let next = edytor.blockAfter(last, SEALED);
-	while (next?.isChildOf(last)) next = edytor.blockAfter(next, SEALED);
+	const next =
+		direction === 'up'
+			? edytor.blockBefore(sorted[0]!, SEALED)
+			: edytor.blockAfter(sorted.at(-1)!, SEALED);
 	if (next) edytor.selection.addBlockToSelection(next);
 };
 
@@ -238,7 +231,10 @@ export const builtInBindings: Record<string, HotKey> = {
 			const { islandRoot, isAtStartOfBlock, isAtEndOfBlock } = edytor.selection.projection;
 			if (!startText) return;
 			if (edytor.selection.selectedBlocks.size) {
-				edytor.selection.selectBlocks(...edytor.root!.children);
+				// Every block, nested ones included: a block selection is exactly its members.
+				edytor.selection.selectBlocks(
+					...edytor.facade.order().flatMap((id) => edytor.idToBlock.get(id) ?? [])
+				);
 			} else if (isAtStartOfBlock && isAtEndOfBlock) {
 				edytor.selection.selectBlocks(edytor.idToBlock.get(islandRoot ?? '') ?? startText.parent);
 			} else {

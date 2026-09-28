@@ -69,8 +69,9 @@ export type BlockOperations = {
 		index: number;
 		text: Text;
 	};
+	/** The children take the block's slot unless `keepChildren: false` (the whole subtree). */
 	removeBlock: {
-		keepChildren: boolean;
+		keepChildren?: boolean;
 	};
 	unNestBlock: {};
 	mergeBlockBackward: {};
@@ -275,7 +276,7 @@ export function splitBlock(
 
 export function prepareRemove(
 	this: Block,
-	{ keepChildren = false }: { keepChildren?: boolean } = {}
+	{ keepChildren = true }: { keepChildren?: boolean } = {}
 ) {
 	if (!this.parent || !this.model || !this.isInTree) return REFUSED;
 	return this.edytor.facade.prepare.deleteBlock(this.model.id, { keepChildren });
@@ -283,7 +284,7 @@ export function prepareRemove(
 
 export function removeBlock(
 	this: Block,
-	payload: BlockOperations['removeBlock'] = { keepChildren: false },
+	payload: BlockOperations['removeBlock'] = {},
 	plan = prepareRemove.call(this, payload)
 ) {
 	applyPlan(this, plan, [this.parent]);

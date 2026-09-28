@@ -380,8 +380,8 @@ describe('D9 — publication: nested once, change-then-revert nothing, every fac
 		peerDoc.clientID = 12;
 		Y.applyUpdate(peerDoc, Y.encodeStateAsUpdate(doc));
 		const peer = E.create(peerDoc);
-		// Concurrently: A deletes `b`; the peer adds a grandchild under `b1`.
-		ed.deleteBlock('b');
+		// Concurrently: A deletes `b` and its subtree; the peer adds a grandchild under `b1`.
+		ed.deleteBlock('b', { keepChildren: false });
 		peer.insertBlocks({ parent: 'b1', index: 0 }, [p('b2', 'grandkid')]);
 		const before = snapOf(ed);
 		const seen = [];
@@ -479,7 +479,7 @@ describe('F-O9 — a read inside a transaction sees the edits before it', () => 
 			expect(ed.listBlockIds()).toEqual(['a', 'm', 'b']);
 			ed.insertBlock({ parent: 'm', index: 0 }, p('m1', 'kid'));
 			expect(ed.listBlockIds()).toEqual(['a', 'm', 'm1', 'b']);
-			ed.deleteBlock('m');
+			ed.deleteBlock('m', { keepChildren: false });
 			expect(ed.listBlockIds()).toEqual(['a', 'b']);
 		});
 	});

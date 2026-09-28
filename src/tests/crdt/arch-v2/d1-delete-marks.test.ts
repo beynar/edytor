@@ -184,7 +184,8 @@ describe('F-D3 — a block hidden under a deleted parent is not a target', () =>
 			doc.clientID = 10;
 			const ed = E.create(doc);
 			ed.init({ content: [p('p', 'pp', [p('c', 'cc')]), p('z', 'zz')] });
-			expect(ed.deleteBlock('p').status).toBe('applied');
+			// The whole subtree (explicit since the default promotes the children).
+			expect(ed.deleteBlock('p', { keepChildren: false }).status).toBe('applied');
 			const bytes = Y.encodeStateAsUpdate(doc);
 			const unchanged = () => expect(Y.encodeStateAsUpdate(doc)).toEqual(bytes);
 

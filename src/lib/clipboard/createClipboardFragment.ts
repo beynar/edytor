@@ -38,21 +38,33 @@ const extractContentRange = (
 	return content;
 };
 
+/**
+ * Block values nested as in the document, members only: a child that is not
+ * a member is left out, a member under a non-member starts a top-level entry.
+ * `blocks` in document order; `valueOf` answers fresh JSON (children dropped here).
+ */
+const nestMembers = (blocks: Block[], valueOf: (block: Block) => JSONBlock): JSONBlock[] => {
+	const values = new Map<Block, JSONBlock>();
+	const out: JSONBlock[] = [];
+	for (const block of blocks) {
+		const value = valueOf(block);
+		delete value.children;
+		values.set(block, value);
+		const parent = block.parent && values.get(block.parent);
+		if (parent) parent.children = [...(parent.children ?? []), value];
+		else out.push(value);
+	}
+	return out;
+};
+
 const extractBlockRange = (edytor: Edytor) => {
 	const { blocks, startBlock, endBlock, startText, endText, yStart, yEnd } = edytor.selection.state;
 	if (!startBlock || !endBlock || !startText || !endText || blocks.length === 0) {
 		return null;
 	}
-
-	const selectedBlocks = new Set(blocks);
-	const values = new Map<Block, JSONBlock>();
-	const fragmentBlocks: JSONBlock[] = [];
-
-	for (const block of blocks) {
-		// `block.value` is the document's serializer output: fresh JSON, no clone.
+	// `block.value` is the document's serializer output: fresh JSON, no clone.
+	return nestMembers(blocks, (block) => {
 		const value = block.value;
-		delete value.children;
-
 		if (block === startBlock) {
 			value.content = extractContentRange(
 				block,
@@ -68,28 +80,8 @@ const extractBlockRange = (edytor: Edytor) => {
 		if (startBlock === endBlock) {
 			value.content = extractContentRange(block, startText, yStart, endText, yEnd);
 		}
-
-		values.set(block, value);
-	}
-
-	for (const block of blocks) {
-		const value = values.get(block);
-		if (!value) {
-			continue;
-		}
-
-		if (block.parent && selectedBlocks.has(block.parent)) {
-			const parentValue = values.get(block.parent);
-			if (parentValue) {
-				parentValue.children = [...(parentValue.children ?? []), value];
-				continue;
-			}
-		}
-
-		fragmentBlocks.push(value);
-	}
-
-	return fragmentBlocks;
+		return value;
+	});
 };
 
 export const createEdytorClipboardFragment = (edytor: Edytor): EdytorClipboardFragment | null => {
@@ -99,7 +91,8 @@ export const createEdytorClipboardFragment = (edytor: Edytor): EdytorClipboardFr
 			version: 1,
 			source: 'edytor',
 			kind: 'blocks',
-			blocks: selectedBlocks.map((block) => block.value),
+			// Exactly the members (`sel.blocks.exact`): what a cut copies is what it deletes.
+			blocks: nestMembers(selectedBlocks, (block) => block.value),
 			whole: true
 		};
 	}

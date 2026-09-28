@@ -111,7 +111,7 @@ export type DocBlock = {
 	mergeForward(): OpResult;
 	/** Engine merge primitive — `other`'s content+children claim into this. */
 	mergeFrom(other: DocBlock | BlockId): OpResult;
-	/** Delete (per-writer marks on this block and what it displays; R3); `keepChildren` reparents. */
+	/** Delete (per-writer marks on this block and what it displays; R3); the children take its slot unless `keepChildren: false`. */
 	delete(opts?: { keepChildren?: boolean }): OpResult;
 	setType(type: string): OpResult;
 	setData(data: Record<string, unknown>): OpResult;

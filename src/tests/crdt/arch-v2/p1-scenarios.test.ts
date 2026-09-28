@@ -480,13 +480,20 @@ describe('7. marks', () => {
 	});
 });
 
-describe('9. promote children — arch-v2 deletes subtrees (DIVERGENCE, pinned)', () => {
+/**
+ * Deleting a block promotes its unselected children (`del.blocks.promote`,
+ * the 2026-09-28 contract; the native probes' promote). Until then arch-v2
+ * deleted subtrees and pinned 9a/9d as divergences. What stays: a child the
+ * deleter never saw (a concurrent insertion or move into the deleted block)
+ * hides with it — explicit deletion wins over an unseen insertion.
+ */
+describe('9. promote children — deleting a parent promotes its children', () => {
 	const family = [
 		{ id: 'P', text: 'parent', children: [{ id: 'C', text: 'child' }] },
 		{ id: 'N', text: 'next' }
 	];
 
-	it('9a delete P ‖ peer adds a child under P → P’s subtree, the new child included, is gone (MV06b)', () => {
+	it('9a delete P ‖ peer adds a child under P → C promoted, the unseen D hides with P (MV06b)', () => {
 		for (const o of one(
 			converge(family, 2, ([a, b]) => {
 				a.ed.deleteBlocks(['P']);
@@ -496,8 +503,9 @@ describe('9. promote children — arch-v2 deletes subtrees (DIVERGENCE, pinned)'
 				);
 			})
 		)) {
-			// native: C and D promoted and kept.
-			expect(tree(o.ed)).toBe('N:"next"');
+			// native: C and D promoted and kept. D is an insertion into P the
+			// deleter never saw: explicit deletion wins over it.
+			expect(tree(o.ed)).toBe('C:"child" N:"next"');
 		}
 	});
 
@@ -541,7 +549,7 @@ describe('9. promote children — arch-v2 deletes subtrees (DIVERGENCE, pinned)'
 		}
 	});
 
-	it('9d delete P ‖ peer splits P (children move to the tail) → the tail survives with the children (ST02a)', () => {
+	it('9d delete P ‖ peer splits P (children move to the tail) → the tail and the child survive (ST02a)', () => {
 		for (const o of one(
 			converge(
 				[{ id: 'P', text: 'parent', children: [{ id: 'C', text: 'child' }] }],
@@ -552,9 +560,10 @@ describe('9. promote children — arch-v2 deletes subtrees (DIVERGENCE, pinned)'
 				}
 			)
 		)) {
-			// Same answer as the native probe: the split-born tail is rescued and
-			// carries the children the split moved to it.
-			expect(tree(o.ed)).toBe('T:"ent"[C:"child"]');
+			// The split-born tail is rescued. C has two concurrent moves — the
+			// delete's promotion and the split's move to the tail — and the
+			// placement's last-writer-wins (client order) picks one; nothing is lost.
+			expect(['T:"ent"[C:"child"]', 'C:"child" T:"ent"']).toContain(tree(o.ed));
 		}
 	});
 });

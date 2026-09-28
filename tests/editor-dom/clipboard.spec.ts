@@ -171,7 +171,8 @@ test.describe('browser clipboard behavior', () => {
 		const originalIds = await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 			const block = edytor.root.children[0];
-			edytor.selection.selectBlocks(block);
+			// A block selection is exactly its members: the nested block is selected too.
+			edytor.selection.selectBlocks(block, ...block.children);
 			return [block.id, block.children[0].id];
 		});
 		const copyResult = await dispatchClipboardEvent(page, 'copy');

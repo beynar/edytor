@@ -163,7 +163,7 @@ describe('gateF2/WU7 — content streak then structural', () => {
 		expect([...changes[7].meta.keys()]).toEqual(['b']);
 		// Structural removal — covered-by-parent semantics: deleting d
 		// removes a too (a's parent is d) but only the ROOT `d` is reported.
-		ed.deleteBlock('d');
+		ed.deleteBlock('d', { keepChildren: false });
 		const rm = changes[8];
 		expect([...rm.removed].sort()).toEqual(['d']); // 'a' covered by its parent d
 		expect(rm.order.get(null)).toEqual(['b', 'c']);

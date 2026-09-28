@@ -259,7 +259,7 @@ describe('F-D7 — one ingress normalization for writes and lookups', () => {
 		expect(ed.moveBlock('s\uDC00', { parent: null, index: 0 }).status).toBe('applied');
 		expect(ed.nestBlock('b', 's\uDC00').status).toBe('applied');
 		expect(ed.childrenIds('s\uDC00')).toEqual(['b']);
-		expect(ed.deleteBlock('s\uDC00').status).toBe('applied');
+		expect(ed.deleteBlock('s\uDC00', { keepChildren: false }).status).toBe('applied');
 		expect(ed.listBlockIds()).toEqual(['a']);
 	});
 });

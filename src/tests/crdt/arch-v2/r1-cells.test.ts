@@ -195,7 +195,7 @@ describe('R1 — cells patched exactly from the change report', () => {
 	red('delete: the parent list; the subtree cells are gone', () => {
 		const { ed } = seed();
 		const m = mount(ed);
-		expectPatch(ed, m, () => ed.deleteBlock('a'), [null]);
+		expectPatch(ed, m, () => ed.deleteBlock('a', { keepChildren: false }), [null]);
 		expect(m.tree.get('a1')).toBeUndefined();
 		expect(m.tree.size).toBe(3);
 	});

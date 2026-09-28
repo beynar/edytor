@@ -144,7 +144,8 @@ export const fixtures = defineFixtures([
 		),
 		run: async ({ edytor }) => {
 			const source = edytor.root!.children[0];
-			edytor.selection.selectBlocks(source);
+			// A block selection is exactly its members: the nested block is selected too.
+			edytor.selection.selectBlocks(source, source.children[0]);
 			const originalIds = [source.id, source.children[0].id];
 			const fragment = createEdytorClipboardFragment(edytor);
 			if (!fragment) {

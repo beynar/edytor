@@ -1624,17 +1624,52 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 
 		/**
-		 * Delete `id` (R3: this writer's marks on `id` and on what it displays
-		 * through merge claims — wins over concurrent moves). `keepChildren`
-		 * first moves the children to `id`'s vacated slot, identity preserved.
+		 * Delete a set of blocks (R3, `del.blocks.promote`): this writer's mark on
+		 * every member and on what it displays through merge claims (wins over
+		 * concurrent moves). Only the members leave: the unselected children of a
+		 * deleted block take its slot, in order, with their subtrees (a deleted
+		 * island's children take the slot parent's default child type, like an
+		 * island merge). `subtree` is the explicit whole-subtree delete.
 		 */
-		const deleteBlock = (id: BlockId, opts: { keepChildren?: boolean } = {}): Prepared => {
-			id = ref(id);
-			const pos = positionOf(id);
-			if (pos === null) return REFUSED;
-			const kids = opts.keepChildren ? childrenIds(id) : [];
-			return plan([id], [...move(kids, pos.parent, pos.index), remove(id, kids)]);
+		const deleteBlocks = (ids: readonly BlockId[], subtree = false): Prepared => {
+			const set = new Set(ids.map(ref));
+			if ([...set].some((id) => !live(id))) return REFUSED;
+			if (subtree) {
+				const roots = [...set].filter((id) => !ancestorsOf(id).some((a) => set.has(a)));
+				return plan(
+					roots,
+					roots.map((id) => remove(id))
+				);
+			}
+			const roots = [...set].filter((id) => !set.has(positionOf(id)!.parent!));
+			const writes = roots.flatMap((root) => {
+				const pos = positionOf(root)!;
+				const chunk: BlockId[] = [];
+				const kids: [BlockId, BlockId][] = [];
+				const walk = (b: BlockId): void => {
+					chunk.push(b);
+					for (const kid of childrenIds(b)) set.has(kid) ? walk(kid) : kids.push([kid, b]);
+				};
+				walk(root);
+				const reset = defaultChild(pos.parent);
+				const retype = kids.flatMap(([kid, from]) =>
+					isIsland(from) ? attr(kid, TYPE, reset) : []
+				);
+				const marks = [...new Set(chunk.flatMap((b) => view().displays(b)))];
+				// Ranked right after the root: a flow placed in the root's slot precedes them.
+				const kidIds = kids.map(([kid]) => kid);
+				return [
+					...move(kidIds, pos.parent, pos.index + 1),
+					...retype,
+					{ op: 'deleteBlock', id: root, marks, removes: chunk } as PlanStep
+				];
+			});
+			return plan(roots, writes);
 		};
+
+		/** Delete `id` — its children take its slot (`keepChildren: false`: the whole subtree). */
+		const deleteBlock = (id: BlockId, opts: { keepChildren?: boolean } = {}): Prepared =>
+			deleteBlocks([id], opts.keepChildren === false);
 
 		/** Set the block type (attr write — the block keeps its identity). */
 		const setBlockType = (id: BlockId, type: string): Prepared => {
@@ -1877,16 +1912,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			insertInline,
 			removeInline,
 			setInlineData,
-			/** Delete a set of blocks (a block selection) — one plan; nested members ride their ancestor. */
-			deleteBlocks: (ids: readonly BlockId[]): Prepared => {
-				const set = new Set(ids.map(ref));
-				if ([...set].some((id) => !live(id))) return REFUSED;
-				const roots = [...set].filter((id) => !ancestorsOf(id).some((a) => set.has(a)));
-				return plan(
-					roots,
-					roots.map((id) => remove(id))
-				);
-			},
+			/** Delete a block selection — one plan; only the members leave (`deleteBlocks` above). */
+			deleteBlocks: (ids: readonly BlockId[]): Prepared => deleteBlocks(ids),
 			...rangeDeleteOps(context),
 			...flowOps(context)
 		};

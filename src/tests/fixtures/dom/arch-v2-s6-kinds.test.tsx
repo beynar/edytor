@@ -74,7 +74,8 @@ const items = () =>
 
 /** Copy every top-level block as a block selection; the written flavours. */
 const copyAll = async (edytor: Edytor, editor: HTMLElement) => {
-	edytor.selection.selectBlocks(...edytor.root!.children);
+	// Every block, nested ones included (select-all; a block selection is exactly its members).
+	edytor.selection.selectBlocks(...edytor.facade.order().map((id) => edytor.idToBlock.get(id)!));
 	await flushDomUpdates();
 	const { clipboardData } = await dispatchCopy(editor);
 	const html = clipboardData['text/html'] ?? '';

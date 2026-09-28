@@ -77,7 +77,7 @@ describe('V3 — seam of a vanished endpoint (doc/anchors)', () => {
 			b('list', '', [b('item', 'beta')], 'ordered-list'),
 			b('omega', 'omega')
 		]);
-		ed.deleteBlock('list');
+		ed.deleteBlock('list', { keepChildren: false });
 		// The caret was inside `item`: the dead chain climbs to `list`'s slot.
 		expect(seam(ed, 'item', all)).toEqual({ block: 'omega', offset: 0 });
 		expect(seam(ed, 'list', all)).toEqual({ block: 'omega', offset: 0 });

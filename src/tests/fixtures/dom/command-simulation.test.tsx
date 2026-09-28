@@ -641,7 +641,7 @@ describe('headless command simulation (U2)', () => {
 		// A removes the whole list(beta) subtree — beta is the LAST block,
 		// so the seam has no forward candidate and must walk backward into
 		// list(alpha, divider), skipping its trailing void child.
-		a.edytor.facade.deleteBlock(a.edytor.root!.children[1]!.id);
+		a.edytor.facade.deleteBlock(a.edytor.root!.children[1]!.id, { keepChildren: false });
 		await flushDomUpdates();
 		const remaining = [
 			{

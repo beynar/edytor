@@ -210,14 +210,32 @@ describe('D5 — composites are prepared as one plan of named steps', () => {
 		expect(ed.listBlockIds()).toEqual(['y', 'z']);
 	});
 
-	row('delete hides the subtree: every block that leaves the document is in removes', () => {
-		const { doc, ed } = make([p('x', 'xx', [p('y', 'yy', [p('w', 'ww')])]), p('z', 'zz')]);
-		const plan = ed.prepare.deleteBlock('x');
-		expect(ops(plan)).toEqual(['deleteBlock']);
-		expect([...plan.effect.removes].sort()).toEqual(['w', 'x', 'y']);
-		prepareApply(ed, doc, 'deleteBlock', () => ed.prepare.deleteBlock('x'));
-		expect(ed.listBlockIds()).toEqual(['z']);
-	});
+	row(
+		'delete keepChildren: false hides the subtree: every block that leaves the document is in removes',
+		() => {
+			const { doc, ed } = make([p('x', 'xx', [p('y', 'yy', [p('w', 'ww')])]), p('z', 'zz')]);
+			const plan = ed.prepare.deleteBlock('x', { keepChildren: false });
+			expect(ops(plan)).toEqual(['deleteBlock']);
+			expect([...plan.effect.removes].sort()).toEqual(['w', 'x', 'y']);
+			prepareApply(ed, doc, 'deleteBlock', () =>
+				ed.prepare.deleteBlock('x', { keepChildren: false })
+			);
+			expect(ed.listBlockIds()).toEqual(['z']);
+		}
+	);
+
+	row(
+		'delete (the default) promotes: only the block is in removes, its children move to its slot',
+		() => {
+			const { doc, ed } = make([p('x', 'xx', [p('y', 'yy', [p('w', 'ww')])]), p('z', 'zz')]);
+			const plan = ed.prepare.deleteBlock('x');
+			expect(ops(plan)).toEqual(['moveBlocks', 'deleteBlock']);
+			expect(plan.effect.removes).toEqual(['x']);
+			expect(plan.effect.moves).toEqual(['y']);
+			prepareApply(ed, doc, 'deleteBlock', () => ed.prepare.deleteBlock('x'));
+			expect(ed.listBlockIds()).toEqual(['y', 'w', 'z']);
+		}
+	);
 
 	row('a split carrying children: split, then the children follow the new block', () => {
 		const { doc, ed } = make([p('a', 'ab', [p('k', 'kk')])]);

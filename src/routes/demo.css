@@ -349,6 +349,14 @@
 	background: #e8e6df;
 	border-radius: 3px;
 }
+/* A block selection is exactly its members: a nested block that is not one
+   paints over its selected ancestor's highlight (it stays if deleted). */
+.page-editor [data-edytor-selected] [data-edytor-block]:not([data-edytor-selected]) {
+	background: #fff;
+}
+.page-editor [data-edytor-selected] [data-edytor-type='callout']:not([data-edytor-selected]) {
+	background: #f6f5f2;
+}
 .page-editor [data-edytor-focused] {
 	background: transparent;
 }

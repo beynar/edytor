@@ -127,7 +127,8 @@ const setCaretAfterMarkWrapper = async (page: Page, markIndex: number) => {
 		}
 
 		const range = document.createRange();
-		range.setStart(mark, Math.min(1, mark.childNodes.length));
+		// P2.7: the mark element is the tag itself; past its last child is after its text.
+		range.setStart(mark, mark.childNodes.length);
 		range.collapse(true);
 
 		const selection = window.getSelection();

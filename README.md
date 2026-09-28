@@ -416,12 +416,13 @@ Blocks are the fundamental building blocks of the editor. They can be paragraphs
 
 Marks are used for text formatting like bold, italic, or custom formatting.
 
-| Option    | Type                                             | Description                                                                                                                         | Example Use Case                                          |
-| --------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `snippet` | `Snippet`                                        | Svelte snippet for rendering the mark                                                                                               | Rendering highlighted text with a custom background color |
-| `edge`    | `'inclusive' \| 'exclusive' \| 'side-dependent'` | Whether typing at the mark's edge extends it (default inclusive; a link is side-dependent)                                          | `edge: 'exclusive'`                                       |
-| `html`    | `string \| Function`                             | Clipboard HTML form: a tag, or a function of the inner HTML and the mark's value; marks wrap in registration order, first innermost | `html: 'strong'`                                          |
-| `toolbar` | `{label, icon}`                                  | A selection-toolbar button toggling the mark                                                                                        | `{ label: 'Bold', icon: 'B' }`                            |
+| Option       | Type                                             | Description                                                                                                                                             | Example Use Case                            |
+| ------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `tag`        | `string`                                         | The mark's element: the core renders `<tag data-edytor-mark>` and the clipboard exports the same tag; marks wrap in registration order, first innermost | `tag: 'strong'`                             |
+| `attributes` | `(value) => Record<string, string \| undefined>` | The element's attributes from the mark's value (sanitize here); used for render and export alike                                                        | `(v) => ({ href: safe(v.href) })`           |
+| `snippet`    | `Snippet`                                        | Custom markup, rendered inside a core `<span data-edytor-mark>` (wins over `tag` for rendering)                                                         | Rendering a code token with its own classes |
+| `edge`       | `'inclusive' \| 'exclusive' \| 'side-dependent'` | Whether typing at the mark's edge extends it (default inclusive; a link is side-dependent)                                                              | `edge: 'exclusive'`                         |
+| `toolbar`    | `{label, icon}`                                  | A selection-toolbar button toggling the mark                                                                                                            | `{ label: 'Bold', icon: 'B' }`              |
 
 ### Plugin Operations
 
@@ -455,7 +456,7 @@ Edytor handles clipboard operations from the model, not by cloning rendered DOM.
 - Paste, drop and programmatic fragment insertion place content with one rule (`flow.*` in `docs/editor-delete-contract.md`): one line joins the text at the caret; several lines split the block, the first joining the text before the caret and the last the text after it (`Hello|World` + `X`, `Y` → `HelloX`, `YWorld`, for internal, HTML and multi-line plain text alike); a copy of selected blocks pastes as whole blocks after the caret block.
 - Copy is allowed in readonly mode. Cut and paste are ignored in readonly mode.
 - Copy does not create a history entry. Cut and paste each create one undoable mutation.
-- The HTML and plain flavours come from the records: each block kind's `html`/`plain`, each mark's `html`, each inline block's `plain`; a kind without one exports as `<p>` and its text.
+- The HTML and plain flavours come from the records: each block kind's `html`/`plain`, each mark's `tag` and `attributes` (the element it renders), each inline block's `plain`; a kind without one exports as `<p>` and its text.
 
 ### Prevention in Plugin Operations
 
@@ -520,28 +521,24 @@ This system allows plugins to:
 ### Example: Simple Bold Mark Plugin
 
 ```svelte
-
 <script module>
 	export const boldPlugin = (editor: Edytor) => ({
+		// The core renders <strong data-edytor-mark="bold"> and copies it as <strong>.
 		marks: {
-			bold: {
-			snippet: bold
+			bold: { tag: 'strong' }
+		},
+		hotkeys: {
+			'mod+b': ({ prevent }) => {
+				prevent(() => {
+					// Do something
+				});
+			}
 		}
-	},
-	hotkeys: {
-		'mod+b': ({prevent}) => {
-			prevent(()=>{
-				// Do something
-			});
-		}
-	}
-});
+	});
 </script>
-
-{#snippet bold({content}: MarkSnippetPayload)}
-	<strong>{@render content()}</strong>
-{/snippet}
 ```
+
+A mark whose markup a tag cannot express declares a `snippet` instead; the core renders it inside `<span data-edytor-mark>`.
 
 ### Using Plugins
 
@@ -603,7 +600,7 @@ The next release is a rewrite of the editor's internals around one owner per fac
 - **Errors.** Top-level operations report `refused` (`edytor.dispatcher.last.status`) instead of throwing `PreventionError`; text operations refuse in readonly; a read-only (quarantined) document refuses instead of throwing `SchemaMismatchError`; async handler errors are reported, not swallowed.
 - **Normalization** (`normalizeContent`/`normalizeChildren`) runs at the end of the command's transaction, inside it, with handles that read the command's writes (at most 51 passes per normalizer and block); its work is part of the same update and undo step.
 - **Definitions: first wins** (was last): an extension that extends another's definition lists itself first.
-- **Kind records.** `BlockDefinition` gains `element`, `viewState`, `rendersContent`, `defaultChild`, `presets`, `empty`, `html`, `plain`; `snippet` is optional. `MarkDefinition` gains `edge`, `html`, `toolbar`; `InlineBlockDefinition` gains `plain`. `convertToKind`, `KindRow`, `KindPreset` are exported; `edytor.kinds` is the catalogue the slash menu, markdown shortcuts and menus read. One label per kind (`Text`, `To-do list`, `Toggle list`).
+- **Kind records.** `BlockDefinition` gains `element`, `viewState`, `rendersContent`, `defaultChild`, `presets`, `empty`, `html`, `plain`; `snippet` is optional. `MarkDefinition` gains `edge`, `toolbar` (and `tag`/`attributes`, phase 2); `InlineBlockDefinition` gains `plain`. `convertToKind`, `KindRow`, `KindPreset` are exported; `edytor.kinds` is the catalogue the slash menu, markdown shortcuts and menus read. One label per kind (`Text`, `To-do list`, `Toggle list`).
 - **Snippets render inner markup.** The core renders, registers and marks void the block element (`use:block.attach` and `BlockView.attach`/`InlineBlockView.attach` are removed; `use:block.void` still marks inner chrome). Block snippets receive `block: BlockView` = `{id, type, data, selected, focused, handle, void}`; inline-atom snippets `block: InlineBlockView` = `{id, type, data, selected, handle}` (`handle` is `undefined` for a suggested atom). Commands and document reads go through `block.handle`. `onBlockAttached` runs once per element. Identity attributes are declarative (present in server-rendered HTML).
 - **`transformText`** receives declared values `{text: {stringContent, value}, block: {id, type, data}, content}`, not handles.
 - **Marks at insertion** follow one rule (explicit → a replaced range's common marks → pending → the neighbour → the mark's `edge`); `insertText` without marks resolves them by that rule; plain paste inherits the caret's marks; the rich-text plugin no longer intercepts `insertText` for links; Mod+B at the start of a bold run toggles bold off.
@@ -618,6 +615,7 @@ The next release is a rewrite of the editor's internals around one owner per fac
 - Typing, formatting, Tab and block moves never remount the element under the caret; a moved block's element is re-created where it moved. `edytor.cells`, `edytor.pin`, `edytor.surface` (the DOM observer), `edytor.projector`, `textAt`, `atomAt`, `segmentOf`, `deltasOf` are new; `refreshEditorDom`/`editorDomRevision` are removed.
 - The DOM observer restores what the editor owns and leaves an extension's markup around the slots alone (D-25): a foreign node inside a block's text run is removed, a node beside it stays; foreign text inside a content is adopted; attributes the core does not own (an extension's `id` on a block element, `open` on a toggle) are never reverted.
 - A "`[data-edytor-block]` exists" check no longer means hydrated; wait for a registered text element.
+- **Marks by tag (phase 2, P2.7).** A mark record declares `tag` (and `attributes` from its value); the core renders the tag itself as the mark element (`<strong data-edytor-mark="bold">`, was `<span data-edytor-mark="bold"><b>`), and the clipboard exports the same element. `MarkDefinition.html` is replaced by `tag`/`attributes`; `snippet` is optional (a snippet still renders inside a core `<span data-edytor-mark>`). Built-ins: bold `strong`, italic `em`, underline `u`, strike `s`, code `code`, link `a` (sanitized `href`, `target`), superscript `sup`, subscript `sub`, color and highlight `span` with a sanitized `style`; links, colors and highlights now export their element (they exported text only). Selectors such as `[data-edytor-mark="link"] a` become `a[data-edytor-mark="link"]`.
 
 ### Collaboration and providers
 

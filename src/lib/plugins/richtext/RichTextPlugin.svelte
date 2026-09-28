@@ -1,5 +1,5 @@
 <script module lang="ts">
-	import type { Plugin, MarkSnippetPayload, BlockSnippetPayload } from '$lib/plugins.js';
+	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { SerializableContent } from '$lib/utils/json.js';
 	import type { HotKey } from '$lib/session/keymap.js';
 	import {
@@ -30,6 +30,16 @@
 	/** A native disclosure: the browser owns `open` (declared view state). */
 	const disclosure = { element: 'details', viewState: ['open'] };
 	const HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+	/** An unsafe scheme drops the href (and its target): an inert anchor still carries the text. */
+	const linkAttributes = (mark: { href?: unknown; target?: string }) => {
+		const href = sanitizeLinkHref(mark?.href) ?? undefined;
+		return { href, target: href && mark.target };
+	};
+	/** A hostile color value (a `;` payload would inject declarations) drops the style. */
+	const styled = (property: string) => (value: unknown) => {
+		const safe = sanitizeCssColorValue(value);
+		return { style: safe ? `${property}: ${safe};` : undefined };
+	};
 
 	export const richTextPlugin: Plugin = (edytor) => {
 		const setMarkAndSelect =
@@ -105,17 +115,17 @@
 			},
 			// Toolbar buttons and export wrapping follow this order (first innermost).
 			marks: {
-				bold: { snippet: bold, html: 'strong', toolbar: { label: 'Bold', icon: 'B' } },
-				italic: { snippet: italic, html: 'em', toolbar: { label: 'Italic', icon: 'I' } },
-				underline: { snippet: underline, html: 'u', toolbar: { label: 'Underline', icon: 'U' } },
-				strike: { snippet: strike, html: 's', toolbar: { label: 'Strike', icon: 'S' } },
-				code: { snippet: code, html: 'code', toolbar: { label: 'Code', icon: '</>' } },
+				bold: { tag: 'strong', toolbar: { label: 'Bold', icon: 'B' } },
+				italic: { tag: 'em', toolbar: { label: 'Italic', icon: 'I' } },
+				underline: { tag: 'u', toolbar: { label: 'Underline', icon: 'U' } },
+				strike: { tag: 's', toolbar: { label: 'Strike', icon: 'S' } },
+				code: { tag: 'code', toolbar: { label: 'Code', icon: '</>' } },
 				// FP-8: typing at a link's trailing edge extends it only from inside the anchor.
-				link: { snippet: link, edge: 'side-dependent' },
-				superscript,
-				subscript,
-				color,
-				highlight
+				link: { tag: 'a', attributes: linkAttributes, edge: 'side-dependent' },
+				superscript: { tag: 'sup' },
+				subscript: { tag: 'sub' },
+				color: { tag: 'span', attributes: styled('color') },
+				highlight: { tag: 'span', attributes: styled('background-color') }
 			},
 			blocks: {
 				paragraph: {
@@ -245,73 +255,6 @@
 		};
 	};
 </script>
-
-{#snippet bold({ content }: MarkSnippetPayload)}
-	<b>
-		{@render content()}
-	</b>
-{/snippet}
-
-{#snippet italic({ content }: MarkSnippetPayload)}
-	<i>
-		{@render content()}
-	</i>
-{/snippet}
-
-{#snippet underline({ content }: MarkSnippetPayload)}
-	<u>
-		{@render content()}
-	</u>
-{/snippet}
-
-{#snippet code({ content }: MarkSnippetPayload)}
-	<code>
-		{@render content()}
-	</code>
-{/snippet}
-
-{#snippet link({ mark, content }: MarkSnippetPayload<{ href: string; target?: string }>)}
-	{@const href = sanitizeLinkHref(mark.href)}
-	<!-- href omitted when the scheme is unsafe — an inert anchor still
-	     carries the text; a poisoned mark never reaches the DOM. -->
-	<a href={href ?? undefined} target={href ? mark.target : undefined}>
-		{@render content()}
-	</a>
-{/snippet}
-
-{#snippet strike({ content }: MarkSnippetPayload)}
-	<s>
-		{@render content()}
-	</s>
-{/snippet}
-
-{#snippet superscript({ content }: MarkSnippetPayload)}
-	<sup>
-		{@render content()}
-	</sup>
-{/snippet}
-
-{#snippet subscript({ content }: MarkSnippetPayload)}
-	<sub>
-		{@render content()}
-	</sub>
-{/snippet}
-
-{#snippet color({ mark, content }: MarkSnippetPayload<{ color: string }>)}
-	{@const safe = sanitizeCssColorValue(mark)}
-	<!-- style omitted on hostile values — a `;` payload would inject
-	     arbitrary declarations. The mark still wraps content harmlessly. -->
-	<span style={safe ? `color: ${safe}` : undefined}>
-		{@render content()}
-	</span>
-{/snippet}
-
-{#snippet highlight({ mark, content }: MarkSnippetPayload<string>)}
-	{@const safe = sanitizeCssColorValue(mark)}
-	<span style={safe ? `background-color: ${safe}` : undefined}>
-		{@render content()}
-	</span>
-{/snippet}
 
 {#snippet paragraph({ content, children }: BlockSnippetPayload)}
 	<p>

@@ -283,16 +283,27 @@ export type InlineBlockDefinition = {
 };
 
 export type MarkDefinition = {
-	snippet: Snippet<[MarkSnippetPayload<any>]>;
+	/** Custom markup inside a core `<span data-edytor-mark>`; without one the core renders `tag`. */
+	snippet?: Snippet<[MarkSnippetPayload<any>]>;
+	/**
+	 * The mark's element: rendered by the core (`<tag data-edytor-mark>`),
+	 * written by the clipboard's HTML export and read back by HTML import —
+	 * one tag, so render and export cannot disagree. Marks wrap in
+	 * registration order (first innermost); a mark without a tag exports its
+	 * text only.
+	 */
+	tag?: string;
+	/** The element's attributes from the mark's value (sanitized here); `undefined` omits one. */
+	attributes?: (value: any) => Record<string, string | undefined>;
+	/**
+	 * HTML import: the mark's value when `element` carries it, else
+	 * `undefined`. Checked before the tag; a mark without `attributes` also
+	 * matches its bare `tag` (value `true`).
+	 */
+	parse?: (element: HTMLElement) => SerializableContent | undefined;
 	void?: boolean;
 	/** Whether typing at the mark's edges extends it (O69, `marksForInsertion`); default `inclusive`. */
 	edge?: MarkEdge;
-	/**
-	 * Clipboard HTML form: a tag, or a function of the serialized inner HTML
-	 * and the mark's value. Marks wrap in registration order (first innermost);
-	 * a mark without one exports its text only.
-	 */
-	html?: string | ((inner: string, value: SerializableContent) => string);
 	/** A selection-toolbar button toggling the mark. */
 	toolbar?: { label: string; icon: string };
 };

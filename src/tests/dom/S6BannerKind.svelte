@@ -5,7 +5,7 @@
 	 * `glow`: the slash menu, markdown shortcuts, block menus (`edytor.kinds`)
 	 * and the clipboard's HTML/plain export read these records.
 	 */
-	import type { BlockSnippetPayload, MarkSnippetPayload, Plugin } from '$lib/plugins.js';
+	import type { BlockSnippetPayload, Plugin } from '$lib/plugins.js';
 
 	export const bannerPlugin: Plugin = () => ({
 		blocks: {
@@ -27,11 +27,7 @@
 			}
 		},
 		marks: {
-			glow: {
-				snippet: glow,
-				html: 'mark',
-				toolbar: { label: 'Glow', icon: '✧' }
-			}
+			glow: { tag: 'mark', toolbar: { label: 'Glow', icon: '✧' } }
 		}
 	});
 </script>
@@ -39,8 +35,4 @@
 {#snippet banner({ content, children }: BlockSnippetPayload)}
 	<div>{@render content()}</div>
 	{@render children?.()}
-{/snippet}
-
-{#snippet glow({ content }: MarkSnippetPayload)}
-	<mark>{@render content()}</mark>
 {/snippet}

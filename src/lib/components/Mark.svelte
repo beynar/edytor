@@ -33,16 +33,22 @@
 	{/if}
 {/snippet}
 
-{#if definition?.snippet}
-	{#if definition.void}
-		<span data-edytor-mark={mark?.[0]} data-edytor-mark-void contenteditable="false" use:register>
+<!-- One core element per mark (R11): the kind's tag, or a span around a custom snippet. -->
+{#if definition?.snippet || definition?.tag}
+	<svelte:element
+		this={definition.snippet ? 'span' : definition.tag}
+		{...definition.snippet ? {} : definition.attributes?.(mark?.[1])}
+		data-edytor-mark={mark?.[0]}
+		data-edytor-mark-void={definition.void ? '' : undefined}
+		contenteditable={definition.void ? 'false' : undefined}
+		use:register
+	>
+		{#if definition.snippet}
 			{@render definition.snippet({ content, mark: mark?.[1], text: text! })}
-		</span>
-	{:else}
-		<span data-edytor-mark={mark?.[0]} use:register>
-			{@render definition.snippet({ content, mark: mark?.[1], text: text! })}
-		</span>
-	{/if}
+		{:else}
+			{@render content()}
+		{/if}
+	</svelte:element>
 {:else}
 	{@render content()}
 {/if}

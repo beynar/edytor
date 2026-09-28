@@ -284,60 +284,90 @@ Remote cursor and expanded selection overlays render from awareness `selection` 
 
 Unsupported collaboration surfaces:
 
-- Edytor does not provide authentication.
-- Edytor does not provide document permissions or authorization rules.
-- Edytor does not provide hosted websocket infrastructure.
-- Edytor does not guarantee hosted persistence durability; IndexedDB persistence is local browser storage.
+- Edytor does not provide authentication or permission rules: the `edytor/cloudflare` room calls your `authorize` and enforces what it returns (user, replica, read-only).
+- Edytor ships a Durable Object room (below), not hosted infrastructure: you deploy it on your own Cloudflare account.
+- IndexedDB persistence is local browser storage; the room's durability is the Durable Object's SQLite storage.
 
 ### Server coordinator (Cloudflare Durable Object)
 
-The CRDT engine and its sync layer run server-side too: a Cloudflare Durable Object (one per document) is the central coordinator every client's `createWebsocketSync` dials. That layer is **Worker-safe** — no Svelte, no browser globals — and this is enforced by `pnpm lint` (an import-boundary rule on `src/lib/crdt/**`), `pnpm check:worker` (bundles the entry for a Worker target and fails on any Svelte/view module) and the coordinator test [`src/tests/crdt/arch-v2/do-coordinator.test.ts`](src/tests/crdt/arch-v2/do-coordinator.test.ts), a runnable reference coordinator.
+Edytor ships the server room: `edytor/cloudflare` exports `DocumentRoom`, a Durable Object that coordinates one document (deploy one object per document), and `routeDocumentSocket`, the Worker-side door that authorizes a client before its WebSocket upgrade. Clients are the ordinary `createWebsocketSync` / `WebsocketProvider`. The module is Worker-only (it imports `cloudflare:workers`) and is built on the Worker-safe CRDT entry: `pnpm lint` (an import-boundary rule on `src/lib/crdt/**` and `src/lib/cloudflare/**`) and `pnpm check:worker` (bundles both entries for a Worker target) keep Svelte and the view layers out of it.
 
-**Import only**
+**1. The Worker.** Export the class and route sockets through `routeDocumentSocket(request, namespace, documentId, authorize)`:
 
-- `edytor/crdt` — the vendored v14 engine (`import * as Y from 'edytor/crdt'`);
-- `edytor/crdt/edytor`, which gives you:
-  - `bindCrdt(Y)` (`.createDoc`, `.sync`, `.admission`, `.doc`);
-  - the frame contract: `GENERATION`, `generationWord`, `frame`, `readProtocolVersion`, `GENERATION_RECORD` and `GenerationMismatchError`;
-  - the message types: `messageSync`, `messageAwareness`, `messageAuth`, `messageQueryAwareness`, and the sync subtypes `messageYjsSyncStep1`, `messageYjsSyncStep2` and `messageYjsUpdate`;
-  - the wire read helpers: `createDecoder`, `readVarUint`, `readVarUint8Array`, and `writeVarUint8Array` for a `frame` body;
-  - the instance-free awareness codec: `readAwarenessEntries` and `writeAwarenessEntries`.
+```ts
+// src/worker.ts
+import { DocumentRoom, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
 
-A coordinator needs **no direct lib0 dependency** for framing.
+export { DocumentRoom };
 
-Never import the package root `edytor` (it re-exports the Svelte components) or any `.svelte`/view module.
+type Env = { ROOMS: DurableObjectNamespace<DocumentRoom> };
 
-**Read the room with `bindCrdt(Y).doc.create(doc).toJSON()`, then `.dispose()`.** This writes nothing. Never call `attachDocument` (or `createDocument`/`loadDocument`) on the server's doc. Doing so makes the server an actor, so it writes its client id into the replicated attribution dictionary, and every client receives that write.
+export default {
+	async fetch(request: Request, env: Env): Promise<Response> {
+		const match = /^\/rooms\/([^/]+)$/.exec(new URL(request.url).pathname);
+		if (!match) return new Response('not found', { status: 404 });
+		return routeDocumentSocket(
+			request,
+			env.ROOMS,
+			decodeURIComponent(match[1]),
+			async (request, documentId) => {
+				const session = await verifySession(request); // your authentication
+				const access = session && (await accessTo(session.userId, documentId)); // your permissions
+				if (!access) return null; // → 403, no socket
+				return {
+					userId: session.userId,
+					replica: requestedReplica(request), // the client's doc.clientID, from ?replica=
+					readOnly: access === 'view'
+				};
+			}
+		);
+	}
+} satisfies ExportedHandler<Env>;
+```
 
-**Frame contract.** Every frame is `varuint GENERATION | varuint messageType | payload`, with `GENERATION = generationWord(SCHEMA_VERSION) = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION` (14003 at schema 3). Build one with `frame(type, (encoder) => …)`, for example `frame(messageSync, (e) => crdt.sync.writeUpdate(e, update))`. Read one with `createDecoder(bytes)`, then `readProtocolVersion`, then `readVarUint` for the type and subtype, then `readVarUint8Array` for the payload. The message types are:
+**2. The binding** (`wrangler.jsonc`). The room stores in SQLite, so it must be declared a SQLite class:
 
-- `0` sync, with subtypes `0` Step1 (state vector), `1` Step2 (update) and `2` Update;
-- `1` awareness (the y-protocols v1 awareness update);
-- `2` auth (server → client permission denied);
-- `3` query awareness.
+```jsonc
+{
+	"main": "src/worker.ts",
+	"compatibility_date": "2026-09-26",
+	"durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "DocumentRoom" }] },
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["DocumentRoom"] }]
+}
+```
 
-A v13 peer's first word is its message type, so it never matches.
+**3. The client.** Dial `wss://<host>/rooms` with the document id as the room, and send the replica (and your token) as parameters:
 
-**The coordinator must**
+```ts
+const document = createDocument({ actor: { id: userId } });
+document.attachSync(
+	createWebsocketSync({
+		serverUrl: 'wss://example.com/rooms',
+		roomName: documentId,
+		params: { token, replica: String(document.doc.clientID) }
+	})
+);
+```
 
-1. **Admit** every frame. Check the generation word first, with `readProtocolVersion(decoder)`. A mismatch is refused before anything is decoded. Then apply Step2/Update payloads through `crdt.sync.applyRemote(doc, update, ws)`, which refuses an update that writes a foreign schema stamp (`problem !== null`). A refused frame is never applied, stored or relayed. Close the socket (1008).
-2. **Sync** by the join rule. Answer Step1 with `writeSyncStep2(doc, sv)`, plus your own Step1 when `crdt.sync.lacks(doc, sv)`. Send a Step1 on accept.
-3. **Persist append-only** from `doc.on('update')`, which gives you the integrated bytes rather than the raw payload. Write before you broadcast. Keep the generation record as the container's first row. When you rebuild, verify that record, then run `crdt.admission.admitUpdate(Y.mergeUpdates(rows))`.
-4. **Compact** from an alarm. Atomically replace the rows with the generation record plus a snapshot, `Y.encodeStateAsUpdate(doc)`.
-5. **Broadcast** each integrated update to every other socket.
-6. **Relay awareness** as frames, without an `Awareness` instance:
-   - Forward each frame verbatim to the other sockets.
-   - Decode its payload with `readAwarenessEntries` (`{clientID, clock, state}`, where `state: null` means removed). Keep the latest entry per client id (the newest clock wins) so that a joiner gets everyone present: `writeAwarenessEntries([...])` inside a `frame(messageAwareness, …)`.
-   - Record each socket's `[clientID, clock]` pairs in its attachment.
-   - When a socket closes, announce those clients as removed with `{clientID, clock: clock + 1, state: null}`.
+**`authorize`** runs before the upgrade and returns `{ userId, replica?, readOnly? }` or `null` (403). `routeDocumentSocket` then forwards a fresh request that carries only the verified identity (`X-Edytor-User`, `X-Edytor-Replica`, `X-Edytor-Access`); every header the client sent, including forged `X-Edytor-*` values, is dropped. The room trusts those headers, so reach it only through `routeDocumentSocket` (a direct request without them is refused 401).
 
-**Durable Object facts that shape this**
+**What the room enforces**
 
-- A SQLite-backed object stores up to 10 GB, but one row/BLOB/string is capped at **2 MB**. Split every record (updates and snapshots) into parts and write them in one `transactionSync`. A compacted snapshot of a large document will exceed one row.
-- Received WebSocket messages can be up to 32 MiB, so a single client update can also exceed a row.
-- Use the hibernation API (`ctx.acceptWebSocket`, `webSocketMessage`, `webSocketClose`). A hibernated object loses its in-memory `Y.Doc` and rebuilds it from rows in its constructor (`blockConcurrencyWhile`).
-- An object with a pending `setTimeout`/`setInterval` never hibernates. Do **not** hold an `Awareness` instance on the server, because its constructor starts a 3 s sweep interval. Use the instance-free codec instead. The reference test runs every coordinator entry point with timers forbidden.
-- A socket attachment (`serializeAttachment`, max 16 KiB) survives hibernation. Keep a connection's awareness client ids and clocks there so that a close after a wake can still announce them as removed. The in-memory join snapshot is lost on hibernation and refills as clients renew, every 15 s. The reference test covers a wake followed by a drop with no goodbye frame.
+- **Identity is bound to the socket.** `{user, replica, readOnly}` lives in the socket's attachment, so it survives hibernation. Each Yjs client id is registered to the user who first wrote under it (the socket's `replica` is registered at the upgrade). An update that writes new structs under a client id another user owns, or under an unregistered id that already has content, is refused (close 1008 `refused: replica`): nobody can write in someone else's name. A user may write under every id they own, so a reloaded page (a new `doc.clientID`) still delivers the offline edits its previous id made. A `replica` another user owns is refused at the upgrade (403). Without a `replica` from `authorize`, the socket's first presence entry binds it.
+- **Read-only sockets write nothing.** They catch up and share presence; the room never asks them for their state, and each Step2/Update they send is dropped with a `permission-denied` reply (the provider emits `'permission-denied'`); the socket stays open.
+- **Admission.** A frame of another generation is refused before it is decoded; an update writing a foreign schema stamp is refused (`sync.applyRemote`). A refused frame is never applied, stored or relayed.
+- **Presence** is relayed through the instance-free awareness codec (no `Awareness` instance: its sweep timer would block hibernation), only for the socket's own replica. A joiner gets every present peer; a socket that leaves without a goodbye is announced gone, also after a hibernation wake.
+
+**Storage, acknowledgement and catch-up**
+
+- Every integrated update is appended to SQLite as one record split into rows under the 2 MB row cap, in one `transactionSync`, then broadcast. After `EDYTOR_COMPACT_AFTER` update records (default 500) the rows are replaced by one snapshot, `Y.mergeUpdates` of every record, atomically. `compact()` is also callable over RPC. A woken object rebuilds from its rows under `blockConcurrencyWhile`; a container of another generation refuses every socket (1011).
+- **Store-before-ack.** Every sync message a client sends is answered, after the write, with a `messageSaved` frame carrying the room's state vector. The provider's `saved` (boolean) and `unsaved` (the count of local updates the room has not acknowledged, offline edits included) follow those acknowledgements, and it emits `'saved'` with `{ saved, unsaved }` when they change. No timer is involved.
+- **Bounded catch-up.** A frame larger than `EDYTOR_MAX_FRAME_BYTES` (default 32 MiB, the WebSocket message limit) is sent as `messageChunk` start/part/end frames that the provider applies only once the sequence is complete. Smaller frames are unchanged, so a client without chunk support still syncs small documents.
+- **No timers.** Every entry point runs under `noTimers`, which throws if anything schedules one: an object with a pending timer never hibernates.
+
+Optional `vars`: `EDYTOR_MAX_ROW_BYTES`, `EDYTOR_MAX_FRAME_BYTES`, `EDYTOR_COMPACT_AFTER` (they only lower the defaults). Limits: a single client → room message is still capped at 32 MiB by the platform (clients do not chunk); the in-memory presence snapshot refills as clients renew (every 15 s) after a wake.
+
+**Writing your own client or server.** Every frame is `varuint GENERATION | varuint messageType | payload`, with `GENERATION = generationWord(SCHEMA_VERSION) = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION` (14003 at schema 3); build one with `frame(type, (encoder) => …)` from `edytor/crdt/edytor`. The message types are `0` sync (subtypes `0` Step1, `1` Step2, `2` Update), `1` awareness, `2` auth (permission denied), `3` query awareness, `4` saved (the room's state vector) and `5` chunk (`chunkFrame`/`createChunkReader`). `edytor/crdt/edytor` also exports the sync readers/writers (`bindCrdt(Y).sync`), `readAwarenessEntries`/`writeAwarenessEntries`, and the lib0 read helpers. Never call `attachDocument` (or `createDocument`/`loadDocument`) on a server's doc: it would write the server into the replicated attribution dictionary.
 
 ## 📦 Plugins
 
@@ -574,7 +604,7 @@ The next release is a rewrite of the editor's internals around one owner per fac
 - **Order and capability.** New `facade.order()`, `compare(a, b)`, `next(id, policy?)`, `previous(id, policy?)` (one document order; `{sealed: true}` never enters an island it did not start in), `canPlace(ids, parent?)`, `canMerge(from, into)`, `defaultChild(parentId)`, `rendersContent(type)`.
 - **Change report.** `facade.onChange(cb)` delivers one `DocChange` per commit that changed the visible document: `{added, removed, moved, meta, content, order, origin, local, version}`. A block that moves into a subtree added in the same commit is reported in `moved`/`meta`/`content`, not folded into the subtree.
 - **Retired exports (D-15).** The per-block subscriber API (`subscribeBlock`, `subscribe`, `blockVersion`, `snapshot` on the facade and the index), `decorateRuns` and its types (`LocalDecoration`, `DecoratedRun`), and the "advanced internals" tier: `bindEdytorDoc`, `bindDocument`, `bindNodes`, `bindModel`, `bindRuns`, `bindIndexeddbProvider`, `bindWebsocketProvider`, `bindProviders`, `bindSync`, `bindAdmission`, `bindAttribution`, `bindBlockAttribution`, `bindMigration`, `bindLegacyReader`, `setDocRand`/`randOf`, the rank functions, `REGISTRY_KEY`, `SCHEMA`, `SCHEMA_NAME`, the attribution root constants, `migrationBcRoom`, `PREFERRED_TRIM_SIZE`, `GENERATION_PREFIX`, `generationDbName`, `GENERATION_KEY`, `writeProtocolVersion`, `removeAwarenessStates`, `outdatedTimeout`, `readAuthMessage`, and their types. Use `bindCrdt(Y)` (`.doc`, `.providers`, `.migration`, `.sync`, `.admission`, `.attribution`) for engine injection, `facade.onChange` + `facade.runs(id)` for reads, and a kind's `transformText` for local decorations.
-- **Kept for a server coordinator** (a Cloudflare Durable Object, README "Server coordinator"): `bindCrdt(Y)`, `SCHEMA_VERSION`, `META_KEY`, `GENERATION`, `generationWord`, `frame`, `PROTOCOL_VERSION`, `readProtocolVersion`, `GENERATION_RECORD`, `GenerationMismatchError`, the message types, the lib0 frame helpers, the awareness codec (`readAwarenessEntries`, `writeAwarenessEntries`, `applyAwarenessUpdate`, `encodeAwarenessUpdate`, `modifyAwarenessUpdate`) and `messagePermissionDenied`/`writePermissionDenied`.
+- **Kept for a server coordinator** (README "Server coordinator"; `edytor/cloudflare` is built on them): `bindCrdt(Y)`, `SCHEMA_VERSION`, `META_KEY`, `GENERATION`, `generationWord`, `frame`, `PROTOCOL_VERSION`, `readProtocolVersion`, `GENERATION_RECORD`, `GenerationMismatchError`, the message types, the lib0 frame helpers, the awareness codec (`readAwarenessEntries`, `writeAwarenessEntries`, `applyAwarenessUpdate`, `encodeAwarenessUpdate`, `modifyAwarenessUpdate`) and `messagePermissionDenied`/`writePermissionDenied`. New: `messageSaved`, `messageChunk`, `MAX_FRAME_BYTES`, `chunkFrame`, `createChunkReader`.
 - **Anchors** are `{b, a}`: the `o` owner facet and the `a: -2` form are gone from the selection value, the presence wire and history entries.
 - **Attribution.** Undo and redo keep a block's record (`createdBy` survives an undo/redo of its creation on every replica). A forced re-migration (`force`) gives a block whose stream started at a boundary a new nonce without moving its record, so its `createdBy` is replaced at the next attributed write.
 - `facade.toJSON()` inline atoms carry `data: {}` when they have no data (the shape `edytor.value` already had).
@@ -620,6 +650,8 @@ The next release is a rewrite of the editor's internals around one owner per fac
 
 - **Presence wire (D-16).** `selections[viewKey] = {start, end, collapsed, reversed, t}` for text (`DocAnchor`s), `{blocks, t}` for a block set, `{atom, block, t}` for an atom; the legacy `selection` mirror, `startTextId`/`yStart` fields and numeric fallbacks are gone. A view writes only its own key and clears it on destroy. `publishPresence` replaces `createAwarenessSelection`/`publishAwarenessSelection`/`clearAwarenessSelection`; `attachDocumentSync` is removed (use `document.attachSync`).
 - **`WebsocketProvider`**: removed the `protocols` option and field (pass tokens in `params`, read at every dial), the `sync` event (use `synced`), `wsconnecting` (the `status` event carries it), the BroadcastChannel leg (`disableBc`, `bcconnected`, `bcChannel`, `connectBc()`, `disconnectBc()`) — stack `createIndexeddbSync` for cross-tab sync — and the settle window (`syncSettleMs`). `resyncInterval` stays a provider option only. `createWebsocketSync` takes `serverUrl`, `roomName`, `params`, `maxBackoffTime`, `WebSocketPolyfill` (`connect`, `protocols`, `resyncInterval`, `disableBc` removed).
+- **`edytor/cloudflare` (new).** `DocumentRoom` (the Durable Object room, one per document) and `routeDocumentSocket(request, namespace, documentId, authorize)` replace the coordinator you wrote yourself (README "Server coordinator"). The room binds `{user, replica, readOnly}` to each socket and refuses updates under another user's client ids.
+- **Store-before-ack and chunked catch-up.** `WebsocketProvider` gains `saved`, `unsaved` and a `'saved'` event (the room's `messageSaved` acknowledgements), and reassembles `messageChunk` sequences (frames above 32 MiB). A server that sends neither leaves `unsaved` counting; older clients report the two new message types through `'message-error'` and are otherwise unaffected on small documents.
 - **`IndexeddbPersistence`**: `get`/`set`/`del` are removed (the `custom` store holds only the generation record).
 - **Readiness.** The document decides readiness itself: `syncFailed`, `onSyncSettled` and `EdytorDocSyncPendingError` are gone; a lone first client is ready after `DEFAULT_READINESS_BOUND` (1 s, per factory `EdytorSync.bound`; IndexedDB always settles); `history` refuses while `pending`. `whenSynced` exists on both providers and `synced` is the lifetime claim.
 - **One provider per target.** `EdytorSync.target` (`indexeddb:<name>`, `websocket:<server>/<room>`); attaching a target already attached is a no-op returning nothing; attaching on a destroyed document throws `DocumentDestroyedError`.

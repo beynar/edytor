@@ -5,7 +5,7 @@
  * insertion all place a flow through ONE prepared document op (`doc/flow`).
  *
  * - F-P5 (decision D-4) — `X`, `Y` pasted at `Hello|World` through the
- *   internal clipboard, HTML (its `text/plain`, D-24 G-a), plain text and a
+ *   internal clipboard, HTML (imported again since P4.1), plain text and a
  *   drop → `["HelloX", "YWorld"]` every time (red on the reference: internal
  *   `HelloWorld, X, Y`, plain `HelloX⏎YWorld`).
  * - F-P10 — HTML with only a comment, a `<script>` or an empty `<span>`
@@ -14,10 +14,9 @@
  * - Clipboard spec assertions (`tests/editor-dom/clipboard.spec.ts`,
  *   `input.spec.ts:3099`) on the dom lane, their expectations taken from the
  *   specs (the multiline plain paste under D-4).
- * - D8 (D-24 G-a): the HTML import plugin is retired. External HTML paste
- *   falls back to the clipboard's `text/plain` (the former
- *   `paste-html.spec.ts` rows, rewritten to the plain expectation); a
- *   consumer imports HTML through its own `onPaste`.
+ * - P4.1 (phase 2) restores HTML import (D8 had retired it, D-24 G-a): the
+ *   former `paste-html.spec.ts` rows expect the imported structure again,
+ *   placed by D-4 (`arch-v2-p41-html-import.test.tsx` has the full set).
  *
  * Expected values come from the plan rows, the `flow.*` contract rows and the
  * pinned specs, never from running the code.
@@ -38,14 +37,8 @@ import {
 const row = it;
 /** Green on the reference: a clipboard spec assertion kept as a regression guard. */
 const pin = it;
-/**
- * D8 (D-24 G-a): a former `paste-html.spec` row rewritten to the plain-text
- * fallback. Green here on the reference (the default plugin set never had the
- * HTML plugin); red on the reference's `/test/dom` route, which did.
- */
-const fallback = it;
-/** Red on the reference; green since D8. */
-const retired = it;
+/** A former `paste-html.spec` row: D8 rewrote it to the plain fallback, P4.1 restores the import. */
+const html = it;
 
 const texts = (edytor: Edytor) =>
 	(edytor.value.children ?? []).map((block) =>
@@ -95,7 +88,7 @@ describe('F-P5 — one paste shape on every path (D-4)', () => {
 		expect(caret(edytor)).toEqual({ block: [3], at: 1, collapsed: true });
 	});
 
-	pin('HTML: <p>X</p><p>Y</p> at Hello|World places its text/plain (D-24 G-a)', async () => {
+	pin('HTML: <p>X</p><p>Y</p> at Hello|World (imported, P4.1)', async () => {
 		const { edytor, editor } = await renderDomEdytor(helloWorld(), { autoSelectFixture: false });
 		await setNativeSelection(edytor, blockText(edytor, 2), 5);
 		await dispatchClipboardPaste(editor, { 'text/html': '<p>X</p><p>Y</p>', 'text/plain': 'X\nY' });
@@ -211,7 +204,7 @@ describe('clipboard spec assertions (dom lane)', () => {
 		]);
 	});
 
-	fallback('D-24 G-a: <p>Alpha</p><p>Beta</p> at le|ad places its text/plain lines', async () => {
+	html('paste-html.spec:121 — <p>Alpha</p><p>Beta</p> at le|ad splits the block', async () => {
 		const { edytor, editor } = await renderDomEdytor(basic(), { autoSelectFixture: false });
 		await setNativeSelection(edytor, blockText(edytor, 0), 2);
 		await dispatchClipboardPaste(editor, {
@@ -223,7 +216,7 @@ describe('clipboard spec assertions (dom lane)', () => {
 		expect(caret(edytor)).toEqual({ block: [1], at: 4, collapsed: true });
 	});
 
-	fallback('D-24 G-a: a pasted <blockquote> into an empty block stays a paragraph', async () => {
+	html('paste-html.spec:153 — a pasted <blockquote> into an empty block is a quote', async () => {
 		const { edytor, editor } = await renderDomEdytor(
 			<root>
 				<paragraph>|</paragraph>
@@ -235,10 +228,10 @@ describe('clipboard spec assertions (dom lane)', () => {
 			'text/plain': 'Quoted'
 		});
 		const first = edytor.value.children?.[0];
-		expect([first?.type, first?.content]).toEqual(['paragraph', [{ text: 'Quoted' }]]);
+		expect([first?.type, first?.content]).toEqual(['quote', [{ text: 'Quoted' }]]);
 	});
 
-	fallback('D-24 G-a: html lists into an empty block become plain lines', async () => {
+	html('paste-html.spec:180 — html lists into an empty block become list items', async () => {
 		const { edytor, editor } = await renderDomEdytor(
 			<root>
 				<paragraph>|</paragraph>
@@ -250,12 +243,12 @@ describe('clipboard spec assertions (dom lane)', () => {
 			'text/plain': 'Bullet\nNumber'
 		});
 		expect(edytor.value.children?.slice(0, 2).map((block) => [block.type, block.content])).toEqual([
-			['paragraph', [{ text: 'Bullet' }]],
-			['paragraph', [{ text: 'Number' }]]
+			['bulleted-list-item', [{ text: 'Bullet' }]],
+			['numbered-list-item', [{ text: 'Number' }]]
 		]);
 	});
 
-	fallback('D-24 G-a: html over a range places its text/plain, caret after it', async () => {
+	html('paste-html.spec:237 — malformed html over a range places two lines (D-4)', async () => {
 		const { edytor, editor } = await renderDomEdytor(basic(), { autoSelectFixture: false });
 		await setNativeSelection(edytor, blockText(edytor, 0), 1, blockText(edytor, 1), 2);
 		await dispatchClipboardPaste(editor, {
@@ -263,8 +256,9 @@ describe('clipboard spec assertions (dom lane)', () => {
 			'text/plain': 'fallback'
 		});
 		await flushDomUpdates();
-		expect(texts(edytor)).toEqual(['lfallbackte', '']);
-		expect(caret(edytor)).toEqual({ block: [0], at: 9, collapsed: true });
+		// The parser reconstructs <strong> into the second paragraph: two lines.
+		expect(texts(edytor)).toEqual(['loops', 'tailte', '']);
+		expect(caret(edytor)).toEqual({ block: [1], at: 4, collapsed: true });
 	});
 
 	row('input.spec:3099 under D-4 — multiline plain text over a live selection', async () => {
@@ -274,24 +268,5 @@ describe('clipboard spec assertions (dom lane)', () => {
 		await flushDomUpdates();
 		expect(texts(edytor)).toEqual(['leX', 'Yte', '']);
 		expect(caret(edytor)).toEqual({ block: [1], at: 1, collapsed: true });
-	});
-});
-
-describe('D8 (D-24 G-a) — the HTML import plugin is retired', () => {
-	retired('no module remains under src/lib/plugins/html', () => {
-		const modules = import.meta.glob('/src/lib/plugins/html/**/*.{ts,svelte}');
-		expect(Object.keys(modules)).toEqual([]);
-	});
-
-	retired('no route imports it', () => {
-		const sources = import.meta.glob('/src/routes/**/*.svelte', {
-			query: '?raw',
-			import: 'default',
-			eager: true
-		}) as Record<string, string>;
-		const importing = Object.entries(sources)
-			.filter(([, source]) => source.includes('plugins/html'))
-			.map(([path]) => path);
-		expect(importing).toEqual([]);
 	});
 });

@@ -93,7 +93,7 @@ let counter = 0;
 
 describe('SY01-WS: websocket provider over an opaque relay', () => {
 	test('two providers converge over the websocket path', async () => {
-		const url = `ws://fake/${counter++}`;
+		const url = `ws://fake-sy01/${counter++}`;
 		FakeWebSocket.sentLog = [];
 		const docA = new Y.Doc();
 		const docB = new Y.Doc();
@@ -102,13 +102,17 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 
 		docA.get('content').setAttr('x', 'a-1');
 
+		// Two machines: the socket is the only path (the cross-tab channel,
+		// on by default, would deliver in-process before the handshake).
 		const pA = new providers.WebsocketProvider(url, 'room', docA, {
 			awareness: awA,
-			WebSocketPolyfill: FakeWebSocket
+			WebSocketPolyfill: FakeWebSocket,
+			disableBc: true
 		});
 		const pB = new providers.WebsocketProvider(url, 'room', docB, {
 			awareness: awB,
-			WebSocketPolyfill: FakeWebSocket
+			WebSocketPolyfill: FakeWebSocket,
+			disableBc: true
 		});
 
 		await until(() => pB.wsconnected && pA.wsconnected);
@@ -131,7 +135,7 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 	});
 
 	test('every frame carries the v14 envelope; empty replies are never sent', async () => {
-		const url = `ws://fake/${counter++}`;
+		const url = `ws://fake-sy01/${counter++}`;
 		FakeWebSocket.sentLog = [];
 		const docA = new Y.Doc();
 		const docB = new Y.Doc();
@@ -156,7 +160,7 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 	});
 
 	test('a v13-shaped frame is dropped at the gate before decoding', async () => {
-		const url = `ws://fake/${counter++}`;
+		const url = `ws://fake-sy01/${counter++}`;
 		FakeWebSocket.sentLog = [];
 		const docA = new Y.Doc();
 		const pA = new providers.WebsocketProvider(url, 'room', docA, {
@@ -213,7 +217,7 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 	 * deterministic seed (T3), not by waiting.
 	 */
 	test('an applied SyncStep2 claims synced at once, empty or not (no settle window)', async () => {
-		const url = `ws://fake/${counter++}`;
+		const url = `ws://fake-sy01/${counter++}`;
 		FakeWebSocket.sentLog = [];
 		const docC = new Y.Doc();
 		const pC = new providers.WebsocketProvider(url, 'room', docC, {
@@ -231,7 +235,7 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 	});
 
 	test('the join rule: a Step1 we cover claims synced; one holding more is asked back', async () => {
-		const url = `ws://fake/${counter++}`;
+		const url = `ws://fake-sy01/${counter++}`;
 		FakeWebSocket.sentLog = [];
 		const docC = new Y.Doc();
 		docC.get('content').setAttr('x', 'c');
@@ -267,7 +271,7 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 	});
 
 	test('synced survives reconnect through a fresh handshake, not a stale settle', async () => {
-		const url = `ws://fake/${counter++}`;
+		const url = `ws://fake-sy01/${counter++}`;
 		const docA = new Y.Doc();
 		docA.get('content').setAttr('x', 'a-1');
 		const pA = new providers.WebsocketProvider(url, 'room', docA, {

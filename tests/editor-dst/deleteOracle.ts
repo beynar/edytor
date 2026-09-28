@@ -1420,26 +1420,26 @@ const describeDeleteInner = (
 			// boundary (`getPreviousWordStartOffset`), mirrored by the
 			// contract function.
 			const target = contractWordStartOffset(textPartContent(startPart), yStart);
+			// Nothing of the caret's own text before it (`del.unit.neighbour`):
+			// the unit is the neighbour, deleted like a character.
+			if (target === yStart) return contentBackward();
 			deleteAtomRange(
 				startBlock,
 				partAtomOffset(startBlock, start.partIndex) + target,
 				partAtomOffset(startBlock, start.partIndex) + yStart
 			);
-			return target === yStart
-				? unchanged('no word boundary before the caret')
-				: tree('word backward delete');
+			return tree('word backward delete');
 		}
 		case 'deleteWordForward': {
 			if (!isCollapsed) return contentForward();
 			const target = contractWordEndOffset(textPartContent(startPart), yStart);
+			if (target === yStart) return contentForward();
 			deleteAtomRange(
 				startBlock,
 				partAtomOffset(startBlock, start.partIndex) + yStart,
 				partAtomOffset(startBlock, start.partIndex) + target
 			);
-			return target === yStart
-				? unchanged('no word boundary after the caret')
-				: tree('word forward delete');
+			return tree('word forward delete');
 		}
 		case 'deleteSoftLineBackward':
 		case 'deleteHardLineBackward': {
@@ -1447,6 +1447,7 @@ const describeDeleteInner = (
 			const caret = partAtomOffset(startBlock, start.partIndex) + yStart;
 			const edge =
 				inputType === 'deleteSoftLineBackward' ? softLineEdge(startBlock, caret, true) : 0;
+			if (edge === caret) return contentBackward();
 			deleteAtomRange(startBlock, edge, caret);
 			return tree('line backward delete');
 		}
@@ -1458,6 +1459,7 @@ const describeDeleteInner = (
 				inputType === 'deleteSoftLineForward'
 					? softLineEdge(startBlock, caret, false)
 					: blockAtomLength(startBlock);
+			if (edge === caret) return contentForward();
 			deleteAtomRange(startBlock, caret, edge);
 			return tree('line forward delete');
 		}

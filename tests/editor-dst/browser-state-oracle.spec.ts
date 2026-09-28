@@ -927,7 +927,9 @@ test.describe('DST v3 effect oracle', () => {
 		// Phantom span: WebKit delivers the ZWSP placeholder of an EMPTY
 		// text part as a forward word unit — [0,1) has no model chars, so
 		// strict unit matching cannot apply; plausibility accepts and the
-		// collapsed word-forward command finds no boundary (no-op).
+		// collapsed word-forward command finds nothing of its own text
+		// ahead: the unit is the neighbour (`del.unit.neighbour`) — the
+		// next block merges in, and a no-op is a missed delete.
 		const empty = twoBlockSnapshot({ yStart: 0, yEnd: 0 });
 		empty.value.children[0].content = [{ text: '' }];
 		empty.model.blocks[0].parts = [{ kind: 'text', id: 't0', runs: [] }];
@@ -955,9 +957,13 @@ test.describe('DST v3 effect oracle', () => {
 				}
 			}
 		];
-		expect(() =>
-			assertActionEffect('webkit', { kind: 'wordDelete', direction: 'forward' }, empty, phantom)
-		).not.toThrow();
+		const wordForward: DstAction = { kind: 'wordDelete', direction: 'forward' };
+		expect(() => assertActionEffect('webkit', wordForward, empty, phantom)).toThrow(
+			/action-produced-no-effect/
+		);
+		const merged = structuredClone(phantom);
+		merged.value.children = [{ type: 'paragraph', id: 'b0', content: [{ text: 'world' }] }];
+		expect(() => assertActionEffect('webkit', wordForward, empty, merged)).not.toThrow();
 	});
 
 	test('a word delete may not truncate a run or span two blocks — ASCII gets independent expectations', () => {

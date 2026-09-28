@@ -282,6 +282,17 @@ boundary-run's far edge — a caret before `· ` still consumes `· ` to
 the text end, matching the platform's own word-delete result. Mirrored
 independently by `contractWord{Start,End}Offset` in `deleteOracle.ts`.
 
+### `del.unit.neighbour` — an empty unit deletes the neighbour
+
+When a collapsed word or line unit is empty — nothing of the caret's own
+text (word) or line (soft/hard line) lies in the delete direction: the
+caret sits beside an inline atom, a `\n`, or the block's edge — the unit
+is the neighbour, deleted like a character: the atom, the break, or the
+block merge/unnest of `del.caret.*` (a word delete at an empty
+paragraph's end pulls in the next block). Pinned: `command-programs.test.tsx`
+(P1.1b word rows), `p1-delete.spec.ts`; mirrored by the DST delete oracle,
+which falls back to its character delete for an empty unit.
+
 ### `del.unit.soft-line` — a line ends at a line break
 
 The collapsed line commands take their extent from the block, not the

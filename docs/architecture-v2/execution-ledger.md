@@ -155,3 +155,10 @@ The plan's proposed answers are adopted, with these explicit calls:
   `viewState` on kinds; `use:block.attach` removed); pending marks are `selection.pending`/`stage()`
   (`Text.markOnNextInsert` removed); `Block.suggestions` is JSON; chrome lives in `[data-edytor-overlay]`.
 - C1: D-15 API retirement (the advanced-internals exports, the per-block subscriber API, `decorateRuns`, IDB `get/set/del`, `rawSuggestions`); the server-coordinator surface is kept. Full changelog: README "Migrating from 0.0.11".
+
+## Phase 2 (plan: docs/architecture-v2/phase2-plan.md)
+
+Decisions adopted (maintainer "ok implement the plan"): D1 prune the Yjs fork (yes); D2 BroadcastChannel leg stays retired; D3 keep a thin read-only public `selection.state`; D4 build the Durable Object room now. Rule: no feature deletion. Same counter (sha c15490d2…) and discipline as phase 1.
+
+| CP | Commit(s) | xloc before → after | Lanes | Notes |
+|---|---|---|---|---|

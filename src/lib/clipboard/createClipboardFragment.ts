@@ -25,6 +25,7 @@ const extractContentRange = (
 		}
 
 		if (part instanceof InlineBlock) {
+			// An atom's `value.data` is a shallow copy of the index's: clone it.
 			content.push(cloneJson(part.value));
 			continue;
 		}
@@ -48,7 +49,8 @@ const extractBlockRange = (edytor: Edytor) => {
 	const fragmentBlocks: JSONBlock[] = [];
 
 	for (const block of blocks) {
-		const value = cloneJson(block.value);
+		// `block.value` is the document's serializer output: fresh JSON, no clone.
+		const value = block.value;
 		delete value.children;
 
 		if (block === startBlock) {
@@ -97,7 +99,7 @@ export const createEdytorClipboardFragment = (edytor: Edytor): EdytorClipboardFr
 			version: 1,
 			source: 'edytor',
 			kind: 'blocks',
-			blocks: selectedBlocks.map((block) => cloneJson(block.value)),
+			blocks: selectedBlocks.map((block) => block.value),
 			whole: true
 		};
 	}

@@ -160,9 +160,24 @@ live document.
     (`SchemaMismatchError`) emitted; the update never enters the doc —
     so it is never persisted and never rebroadcast (both are
     `doc.on('update')`-driven).
+- **Pending structs (independent review 2026-09-29).** Since arch-v2 T1
+  the staging doc is an O(update) scan (`sync.applyRemote`). An item whose
+  origin is unknown waits in the engine's pending store and integrates when
+  a later update supplies the origin, so the scan also judges the pending
+  store together with each update that could release it. A pending forged
+  stamp (an overwrite delivered before the item it overwrites, or a delete
+  of a stamp still to come) is discarded with the pending store (reported
+  as `discarded`, `'schema-mismatch'`), and the releasing update applies.
+  The room's Step2 never serves its pending store.
 - Unknown sync subtypes inside a valid envelope → `'message-error'`.
 - Corrupt payloads → `'message-error'` via the same `errorHandler`
   contract (staging applies are wrapped, `console.error` parity kept).
+
+**`saved` (websocket, store-before-ack):** each local update stays
+unsaved until a `messageSaved` acknowledgement covers its structs (the
+room's state vector) and its deletes (acknowledged by id: the deletes of
+the answered message the room holds, `sync.writeSaved`). A deletion that
+advances no clock is therefore unsaved until the room stores it.
 
 **`synced` honesty (websocket):** `provider.synced` is set only when the
 SyncStep2 handshake payload was actually _applied_. A refused SyncStep2

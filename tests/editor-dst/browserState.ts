@@ -1161,13 +1161,15 @@ export const assertBrowserSnapshot = (
 			dom: snapshot.dom.textIds
 		});
 	}
-	// Strict managed surfaces (text, mark, and inline-block elements) strip
-	// foreign attributes outright — a DST marker left on one means the heal
-	// missed. Tolerant surfaces (blocks, plugin chrome, the root) may
-	// legitimately keep foreign attrs; their residue is covered by the
+	// Strict managed surfaces (text and inline-block elements) strip foreign
+	// attributes outright — a DST marker left on one means the heal missed.
+	// Tolerant surfaces (marks, blocks, plugin chrome, the root) may
+	// legitimately keep foreign attrs (plan F-O13 (c), R11/O60: an extension's
+	// attribute on a mark element is never inverted; `surface/attributes.ts`
+	// gives the mark table `strict: false`); their residue is covered by the
 	// cross-engine repair signature instead.
 	const strictForeignAttrs = snapshot.dom.foreignResidual.attrs.filter((entry) =>
-		/^(text|mark|inlineBlock):/.test(entry)
+		/^(text|inlineBlock):/.test(entry)
 	);
 	if (strictForeignAttrs.length > 0) {
 		fail(

@@ -646,6 +646,39 @@ describe('answers (b)–(f): what the observer does with each divergence', () =>
 		]);
 	});
 
+	// DST seed 13 (Firefox `dom-text-projection`): Firefox removes a range that
+	// starts at a block's start one node per record — Svelte's anchors, then
+	// the block element, then the anchors after it. Inverting only the
+	// element's record put it back after the render anchor (its recorded
+	// siblings were gone), outside Svelte's block list: the next block the
+	// model created rendered before it. The whole removal is inverted.
+	row(
+		'(e) a block element removed with its anchors one node per record returns in the block list',
+		async () => {
+			const { edytor } = await mount({
+				children: [paragraph('ab', 'first'), paragraph('cd', 'second')]
+			});
+			const root = edytor.node!;
+			const first = edytor.root!.children[0]!.node!;
+			const second = edytor.root!.children[1]!.node!;
+			while (root.firstChild !== second) root.removeChild(root.firstChild!);
+			expect(await settled(edytor)).toEqual([]);
+			expect(first.isConnected).toBe(true);
+			edytor.root!.children[1]!.insertBlockAfter({
+				block: { id: 'third', type: 'paragraph', content: [{ text: 'ef' }] }
+			});
+			expect(await settled(edytor)).toEqual([]);
+			// The root renders its blocks in cell order, then the render anchor.
+			expect(
+				[...root.children].map((child) =>
+					child.hasAttribute('data-edytor-render-anchor')
+						? 'anchor'
+						: child.getAttribute('data-edytor-id')
+				)
+			).toEqual(['first', 'second', 'third', 'anchor']);
+		}
+	);
+
 	row(
 		'(f) one render epoch: a remote commit bumps the surface’s epoch the projector reads',
 		async () => {

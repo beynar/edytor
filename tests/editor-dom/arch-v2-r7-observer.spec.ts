@@ -111,4 +111,56 @@ test.describe('R7 — the host is the projection of its cells', () => {
 		).toEqual(before);
 		issues.assertClean();
 	});
+
+	/**
+	 * DST seed 13 (Firefox `dom-text-projection`): a composition over a range
+	 * from a block's start into the next block. Firefox removes the first
+	 * block's element and Svelte's anchors around it, one node per record,
+	 * before the model's replace. Only the element's record was inverted, so
+	 * with its recorded siblings gone it was appended after the render anchor,
+	 * outside Svelte's each block: the next block Enter created rendered
+	 * before it. A removal is inverted whole: the anchors return with it.
+	 */
+	test('a composition over a range from a block start into the next block keeps the root order', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		const doc = {
+			children: [
+				{ type: 'paragraph', content: [{ text: 'ab' }] },
+				{ type: 'paragraph', content: [{ text: 'cd' }] }
+			]
+		};
+		await gotoEditorRoute(
+			page,
+			`/test/dom?scenario=dst&dst=${encodeURIComponent(JSON.stringify(doc))}`,
+			{
+				requireRuntime: true
+			}
+		);
+		await setSelectionByTextIndex(page, 0, 0, 1, 1);
+		await page.keyboard.insertText('é');
+		await settle(page);
+		await expect.poll(() => truth(page)).toEqual([]);
+		// The root renders its blocks in cell order, then the render anchor.
+		const rootChildren = () =>
+			page.evaluate(() =>
+				Array.from(document.querySelector('[data-edytor]')!.children).map((child) =>
+					child.hasAttribute('data-edytor-render-anchor')
+						? 'anchor'
+						: (child.querySelector('[data-edytor-text]')?.textContent ?? '').replaceAll(
+								'\u200B',
+								''
+							)
+				)
+			);
+		await expect.poll(rootChildren).toEqual(['éd', 'anchor']);
+		await page.keyboard.press('End');
+		await page.keyboard.press('Enter');
+		await page.keyboard.type('z');
+		await settle(page);
+		await expect.poll(() => truth(page)).toEqual([]);
+		await expect.poll(rootChildren).toEqual(['éd', 'z', 'anchor']);
+		issues.assertClean();
+	});
 });

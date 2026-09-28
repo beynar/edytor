@@ -310,7 +310,7 @@ export class SurfaceObserver {
 		if (record.type !== 'childList') return;
 		for (const node of record.addedNodes) this.#added.add(node);
 		const removed = [...record.removedNodes];
-		if (!removed.some(this.#holds)) return;
+		if (!removed.some((node) => isAnchor(node) || this.#holds(node))) return;
 		const added = [...record.addedNodes];
 		const { target: parent, nextSibling: next, previousSibling: prev } = record;
 		this.#removed.push({ parent, nodes: removed, added, next, prev });
@@ -349,13 +349,21 @@ export class SurfaceObserver {
 	/**
 	 * A record that removed registered elements is inverted whole (newest
 	 * first): the nodes it added go, the nodes it removed return in order at
-	 * their recorded siblings — Svelte's anchors with them.
+	 * their recorded siblings — Svelte's anchors with them, also when the
+	 * browser removed them one record each (Firefox): an anchor-only record is
+	 * inverted in a parent that gets a registered element back, else the
+	 * element's recorded siblings are gone and it lands outside Svelte's block.
 	 */
 	#restore = () => {
 		const root = this.edytor.node;
-		for (const { parent, nodes, added, next, prev } of this.#removed.splice(0).reverse()) {
+		const removals = this.#removed.splice(0).reverse();
+		const held = ({ parent, nodes }: Removal) =>
+			nodes.some((node) => node.parentNode !== parent && this.#holds(node));
+		const parents = new Set(removals.filter(held).map(({ parent }) => parent));
+		for (const removal of removals) {
+			const { parent, nodes, added, next, prev } = removal;
 			if (!root?.contains(parent)) continue;
-			if (!nodes.some((node) => node.parentNode !== parent && this.#holds(node))) continue;
+			if (!held(removal) && !(parents.has(parent) && nodes.every(isAnchor))) continue;
 			// A browser-owned attempt's host: its change is adopted whatever the
 			// browser did to its structure, which the re-render then restores.
 			const inside = this.#textOf(parent);

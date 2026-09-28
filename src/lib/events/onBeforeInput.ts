@@ -1,5 +1,4 @@
 import type { Edytor } from '../edytor.svelte.js';
-import { tick } from 'svelte';
 import { prevent } from '$lib/utils.js';
 import { Text } from '$lib/text/text.svelte.js';
 import {
@@ -383,14 +382,13 @@ const deleteTrailingSoftBreakBackward = (edytor: Edytor, attempt: Attempt) => {
 	return true;
 };
 
-const refreshSelectionTextFromModel = async (edytor: Edytor, forceDomRefresh = false) => {
+const refreshSelectionTextFromModel = (edytor: Edytor, forceDomRefresh = false) => {
 	const text = edytor.selection.state.startText;
 	if (!text?.node?.isConnected) {
 		return;
 	}
 	const offset = edytor.selection.state.yStart;
 	if (forceDomRefresh) text.refreshFromModel();
-	await tick();
 	edytor.selection.setAtTextOffset(text, Math.min(offset, text.length));
 };
 
@@ -444,7 +442,7 @@ const perform = (edytor: Edytor, attempt: Attempt, offered: string | null) =>
 			);
 		}
 		if (kind === 'text' || kind === 'payload') {
-			await refreshSelectionTextFromModel(edytor, attempt.inputType === 'insertFromPaste');
+			refreshSelectionTextFromModel(edytor, attempt.inputType === 'insertFromPaste');
 		}
 		if (kind !== 'composition') edytor.composition.interrupt();
 	});

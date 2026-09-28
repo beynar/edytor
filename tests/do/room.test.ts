@@ -1,14 +1,15 @@
 /**
- * `pnpm test:do` — the room Durable Object (tests/do/room.ts) in the real
- * Workers runtime: SQLite storage, hibernatable sockets, eviction through
- * `evictDurableObject`. Clients dial the Worker route over real WebSocket
- * upgrades (`SELF.fetch`). Expected values are hand-authored from the edits
- * each test performs.
+ * `pnpm test:do` — the SHIPPED room Durable Object (`edytor/cloudflare`,
+ * `src/lib/cloudflare`) in the real Workers runtime: SQLite storage,
+ * hibernatable sockets, eviction through `evictDurableObject`. Clients dial
+ * the Worker route (`routeDocumentSocket`) over real WebSocket upgrades
+ * (`SELF.fetch`). Expected values are hand-authored from the edits each
+ * test performs.
  */
 import { env } from 'cloudflare:workers';
 import { SELF, evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
-import { noTimers, type Room } from './room';
+import { noTimers, type DocumentRoom as Room } from '../../src/lib/cloudflare/index.js';
 import {
 	E,
 	ORIGIN,
@@ -16,8 +17,10 @@ import {
 	SelfWebSocket,
 	Y,
 	crdt,
+	dialResponse,
 	readFacade,
 	para,
+	presenceFrame,
 	shape,
 	updateFrameWithWord
 } from './client';
@@ -30,7 +33,10 @@ declare global {
 	}
 }
 
-const ROW_BYTES = 4096; // tests/do/vitest.config.ts EDYTOR_MAX_ROW_BYTES
+// tests/do/vitest.config.ts
+const ROW_BYTES = 4096; // EDYTOR_MAX_ROW_BYTES
+const FRAME_BYTES = 16384; // EDYTOR_MAX_FRAME_BYTES
+const COMPACT_AFTER = 40; // EDYTOR_COMPACT_AFTER
 
 const stubOf = (room: string) => env.ROOM.getByName(room);
 

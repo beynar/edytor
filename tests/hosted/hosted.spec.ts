@@ -1,6 +1,6 @@
 /**
  * Hosted lane: two or three real browser contexts editing ONE document
- * through the room Durable Object (tests/do/room.ts) hosted by Miniflare,
+ * through the shipped room Durable Object (`edytor/cloudflare`) hosted by Miniflare,
  * over real WebSockets — no relay, no BroadcastChannel (each context has
  * its own storage and the websocket provider has no BC leg).
  *

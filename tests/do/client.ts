@@ -1,5 +1,6 @@
 /**
- * Test clients for the room fixture, running inside the Workers pool.
+ * Test clients for the shipped room (`src/lib/cloudflare`), running inside
+ * the Workers pool.
  *
  * - {@link RawClient}: speaks raw frames (built with the exported `frame`,
  *   `messageSync`, … and `bindCrdt(Y).sync`) over a socket from a real
@@ -23,11 +24,28 @@ export const ORIGIN = 'https://edytor-do.test';
 /** A remote-apply origin, so a client never echoes what it received. */
 const REMOTE = Symbol('remote');
 
+/** Who dials: the test Worker's `authorize` reads these from the query string. */
+export type Dial = { user?: string; replica?: number; access?: 'read' | 'write' };
+
+/** The `/rooms/<name>` URL for `dial` (query parameters only when given). */
+export const roomUrl = (room: string, dial: Dial = {}) => {
+	const query = new URLSearchParams();
+	if (dial.user) query.set('user', dial.user);
+	if (dial.replica !== undefined) query.set('replica', String(dial.replica));
+	if (dial.access) query.set('access', dial.access);
+	const search = query.size > 0 ? `?${query}` : '';
+	return `${ORIGIN}/rooms/${encodeURIComponent(room)}${search}`;
+};
+
+/** The upgrade response itself (a refusal is a plain HTTP status). */
+export const dialResponse = (room: string, dial: Dial = {}, headers: HeadersInit = {}) =>
+	SELF.fetch(roomUrl(room, dial), { headers: { ...headers, Upgrade: 'websocket' } });
+
 /** Open a server socket through the Worker's `/rooms/<name>` route. */
-export const upgrade = async (room: string): Promise<WebSocket> => {
-	const response = await SELF.fetch(`${ORIGIN}/rooms/${encodeURIComponent(room)}`, {
-		headers: { Upgrade: 'websocket' }
-	});
+export const upgrade = async (room: string, dial: Dial = {}): Promise<WebSocket> =>
+	accept(await dialResponse(room, dial));
+
+const accept = async (response: Response): Promise<WebSocket> => {
 	const ws = response.webSocket;
 	if (!ws) throw new Error(`upgrade refused: ${response.status} ${await response.text()}`);
 	ws.accept();
@@ -74,9 +92,18 @@ export class RawClient {
 	readonly doc: YDoc;
 	/** Presence as this client heard it (the relay's view of its peers). */
 	readonly presence = new Map<number, AwarenessEntry>();
-	/** Every frame received, raw. */
+	/** Every frame received, raw (chunks included, as they arrived). */
 	readonly received: Uint8Array[] = [];
+	/** Chunked frames reassembled from `received`. */
+	readonly reassembled: Uint8Array[] = [];
+	/** The room's `messageSaved` state vectors, in order. */
+	readonly acks: Map<number, number>[] = [];
+	/** Permission-denied reasons the room sent. */
+	readonly denied: string[] = [];
+	/** Step1 frames the room sent (it asks write sockets only). */
+	step1s = 0;
 	synced = false;
+	private readonly chunks = E.createChunkReader();
 	closed: { code: number; reason: string } | null = null;
 
 	private constructor(ws: WebSocket, doc: YDoc) {
@@ -93,15 +120,19 @@ export class RawClient {
 	}
 
 	/** Dial `room` with `doc` (a fresh engine doc by default) and send our SyncStep1. */
-	static async connect(room: string, doc: YDoc = crdt.createDoc()): Promise<RawClient> {
-		const client = new RawClient(await upgrade(room), doc);
+	static async connect(
+		room: string,
+		doc: YDoc = crdt.createDoc(),
+		dial: Dial = {}
+	): Promise<RawClient> {
+		const client = new RawClient(await upgrade(room, dial), doc);
 		client.send(E.frame(E.messageSync, (e) => crdt.sync.writeSyncStep1(e, doc)));
 		return client;
 	}
 
 	/** Dial without any handshake — for forged frames. */
-	static async bare(room: string): Promise<RawClient> {
-		return new RawClient(await upgrade(room), crdt.createDoc());
+	static async bare(room: string, dial: Dial = {}): Promise<RawClient> {
+		return new RawClient(await upgrade(room, dial), crdt.createDoc());
 	}
 
 	send(bytes: Uint8Array) {
@@ -128,13 +159,35 @@ export class RawClient {
 		const bytes =
 			data instanceof ArrayBuffer ? new Uint8Array(data) : new TextEncoder().encode(String(data));
 		this.received.push(bytes);
+		this.read(bytes);
+	}
+
+	private read(bytes: Uint8Array) {
 		const decoder = E.createDecoder(bytes);
 		if (!E.readProtocolVersion(decoder)) throw new Error('server spoke another generation');
 		const type = E.readVarUint(decoder);
+		if (type === E.messageChunk) {
+			const whole = this.chunks(decoder);
+			if (whole !== null) {
+				this.reassembled.push(whole);
+				this.read(whole);
+			}
+			return;
+		}
+		if (type === E.messageSaved) {
+			this.acks.push(Y.decodeStateVector(E.readVarUint8Array(decoder)));
+			return;
+		}
+		if (type === E.messageAuth) {
+			E.readVarUint(decoder); // messagePermissionDenied
+			this.denied.push(new TextDecoder().decode(E.readVarUint8Array(decoder)));
+			return;
+		}
 		if (type === E.messageSync) {
 			const syncType = E.readVarUint(decoder);
 			const payload = E.readVarUint8Array(decoder);
 			if (syncType === E.messageYjsSyncStep1) {
+				this.step1s++;
 				this.send(E.frame(E.messageSync, (e) => crdt.sync.writeSyncStep2(e, this.doc, payload)));
 				return;
 			}
@@ -177,21 +230,23 @@ export class SelfWebSocket {
 	private socket: WebSocket | null = null;
 
 	constructor(readonly url: string) {
-		const room = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop()!);
-		upgrade(room).then(
-			(ws) => {
-				if (this.readyState !== 0) return ws.close(1000, 'abandoned');
-				this.socket = ws;
-				ws.addEventListener('message', (event) => this.onmessage?.({ data: event.data }));
-				ws.addEventListener('close', (event) => this.finish(event.code, event.reason));
-				this.readyState = 1;
-				this.onopen?.({ type: 'open' });
-			},
-			(error) => {
-				this.onerror?.(error);
-				this.finish(1006, 'upgrade failed');
-			}
-		);
+		// The provider's own URL (its query parameters included), over `SELF`.
+		SELF.fetch(url.replace(/^ws/, 'http'), { headers: { Upgrade: 'websocket' } })
+			.then(accept)
+			.then(
+				(ws) => {
+					if (this.readyState !== 0) return ws.close(1000, 'abandoned');
+					this.socket = ws;
+					ws.addEventListener('message', (event) => this.onmessage?.({ data: event.data }));
+					ws.addEventListener('close', (event) => this.finish(event.code, event.reason));
+					this.readyState = 1;
+					this.onopen?.({ type: 'open' });
+				},
+				(error) => {
+					this.onerror?.(error);
+					this.finish(1006, 'upgrade failed');
+				}
+			);
 	}
 
 	send(data: ArrayBuffer | Uint8Array) {

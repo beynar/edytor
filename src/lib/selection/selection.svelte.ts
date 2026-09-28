@@ -50,6 +50,7 @@ import {
 } from '$lib/session/selection.js';
 import { seam } from '$lib/crdt/anchors.js';
 import { getTextPath } from '$lib/events/events.utils.js';
+import { landed } from '$lib/session/navigation.js';
 
 /**
  * CRDT-stable anchor for a text position — `{b}` is the home block id of
@@ -978,6 +979,14 @@ export class EdytorSelection {
 
 		const { anchorNode, focusNode, anchorOffset, focusOffset } = selection;
 		const isCollapsed = selection.isCollapsed;
+		// A native vertical move that landed on no caret stop takes the key's line stop (R9).
+		if (
+			isCollapsed &&
+			!isTextBoundSelectionPoint(anchorNode) &&
+			!this.getInlineBlockOfNode(anchorNode) &&
+			landed(this.edytor)
+		)
+			return;
 		const ranges = getRangesFromSelection(selection);
 		const isReversed = isBackward(selection);
 		const startNode = isReversed ? focusNode : anchorNode;

@@ -17,7 +17,8 @@
  * browser (it moves visually under bidi) unless the selection came from a
  * node-bound native range, whose extension engines disagree on (K10).
  * Vertical extension (Shift+ArrowUp/Down) crosses blocks through the same
- * displayable walk; plain vertical motion stays native.
+ * displayable walk; plain vertical motion stays native, unless the browser
+ * lands it on no caret stop (`landed`).
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
@@ -266,6 +267,43 @@ export const extendVertically = (edytor: Edytor, dir: Dir): boolean => {
 	if (!to) return false;
 	select(edytor, anchor, to);
 	goals.set(edytor, { column: to.column, value: edytor.selection.value });
+	return true;
+};
+
+/**
+ * A plain vertical key is the browser's: it knows the visual lines (O44). The
+ * key's origin is noted until the next gesture (`vertical`); a native move
+ * that lands on no caret stop — a foreign or kind line beside the slots
+ * (D-25) — is not the key's destination, the key's line stop from its origin
+ * is (`landed`), so the key is never swallowed and the DOM shows a stop.
+ */
+const natives = new WeakMap<Edytor, { serial: number; dir: Dir; value: SelectionValue }>();
+
+/** Note a plain vertical key over a text selection, then run the block-selection `binding`. */
+export const vertical =
+	(dir: Dir, binding: HotKey): HotKey =>
+	(payload) => {
+		const { edytor } = payload;
+		const { value } = edytor.selection;
+		if (value.kind === 'text') natives.set(edytor, { serial: edytor.intentSerial, dir, value });
+		binding(payload);
+	};
+
+/**
+ * The browser moved a caret for the noted vertical key onto no caret stop:
+ * select the key's line stop from its origin. Answers whether it did.
+ */
+export const landed = (edytor: Edytor): boolean => {
+	const native = natives.get(edytor);
+	const { selection } = edytor;
+	if (!native || native.serial !== edytor.intentSerial || native.value !== selection.value)
+		return false;
+	natives.delete(edytor);
+	const { startText, endText, yStart, yEnd, isReversed } = selection.state;
+	if (!startText || !endText) return false;
+	const focus = isReversed ? { text: startText, offset: yStart } : { text: endText, offset: yEnd };
+	const to = lineStop(edytor, focus, native.dir) ?? focus;
+	select(edytor, to, to);
 	return true;
 };
 

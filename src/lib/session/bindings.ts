@@ -8,7 +8,7 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
-import { extendVertically, navigationBindings } from './navigation.js';
+import { extendVertically, navigationBindings, vertical } from './navigation.js';
 import { insertLineBreak, runIntent } from '$lib/events/beforeInputCommands.js';
 import { attemptOf, intentSnapshot } from './attempt.js';
 import {
@@ -108,8 +108,8 @@ const moveBlockSelection =
 			});
 		}
 	};
-const arrowUp = moveBlockSelection('blockBefore');
-const arrowDown = moveBlockSelection('blockAfter');
+const arrowUp = vertical(-1, moveBlockSelection('blockBefore'));
+const arrowDown = vertical(1, moveBlockSelection('blockAfter'));
 
 /**
  * Shift+ArrowUp/Down over a block selection. Its first member is the

@@ -11,7 +11,7 @@
  * tolerated and never shifts model offsets.
  */
 import { expect, test } from './editorTest';
-import { b, caret, domTexts, open, texts } from './p1-helpers';
+import { b, caret, domSelection, domTexts, open, selection, texts } from './p1-helpers';
 
 const BASIC = [b('b0', 'first'), b('b1', 'note'), b('b2', 'tail')];
 
@@ -86,5 +86,59 @@ test.describe('P1 — foreign DOM (review-probes/robustness, D-25)', () => {
 		await page.keyboard.type('!');
 		await expect.poll(() => texts(page)).toEqual(['first', 'NOTE!', 'tail']);
 		await expect.poll(() => domTexts(page)).toEqual(['first', 'NOTE!', 'tail']);
+	});
+});
+
+/**
+ * A foreign line beside a block's slots (D-25 tolerates it) is no caret stop
+ * (R9, `session/navigation`): a plain vertical key the browser moves onto it
+ * still moves the caret — to the key's line stop — and the DOM shows the value.
+ * DST seed 1 (`move-produced-no-effect`, ArrowDown from an empty first block).
+ */
+test.describe('P1 — a foreign line between blocks does not swallow vertical keys', () => {
+	const appendForeignLine = (page: import('@playwright/test').Page, id: string) =>
+		page.evaluate((id) => {
+			const block = document.querySelector(`[data-edytor-block="true"][data-edytor-id="${id}"]`)!;
+			const span = document.createElement('span');
+			span.setAttribute('data-p1-foreign-line', '');
+			span.textContent = 'foreign';
+			block.appendChild(span);
+		}, id);
+	/** The native caret sits inside a text element (a stop), not on the foreign line. */
+	const caretInText = (page: import('@playwright/test').Page) =>
+		page.evaluate(() => {
+			const node = window.getSelection()?.anchorNode ?? null;
+			const element = node?.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element);
+			return Boolean(element?.closest('[data-edytor-text="true"]'));
+		});
+
+	for (const first of ['', 'first']) {
+		test(`ArrowDown from ${first ? 'a' : 'an empty'} first block reaches the next block`, async ({
+			page
+		}) => {
+			await open(page, [b('b0', first), b('b1', 'note')]);
+			await appendForeignLine(page, 'b0');
+			await caret(page, 'b0', 0);
+			await page.keyboard.press('ArrowDown');
+			await expect.poll(() => selection(page)).toMatchObject({ collapsed: true });
+			await expect.poll(async () => (await selection(page)).range).toMatch(/^b1@\d+-b1@\d+$/);
+			const { range } = await selection(page);
+			const at = range.split('-')[0];
+			await expect.poll(() => domSelection(page)).toEqual({ dom: `${at}->${at}`, collapsed: true });
+			expect(await caretInText(page)).toBe(true);
+			expect(await texts(page)).toEqual([first, 'note']);
+		});
+	}
+
+	test('ArrowUp from the second block reaches the first block', async ({ page }) => {
+		await open(page, [b('b0', 'first'), b('b1', 'note')]);
+		await appendForeignLine(page, 'b0');
+		await caret(page, 'b1', 0);
+		await page.keyboard.press('ArrowUp');
+		await expect.poll(async () => (await selection(page)).range).toMatch(/^b0@\d+-b0@\d+$/);
+		const { range } = await selection(page);
+		const at = range.split('-')[0];
+		await expect.poll(() => domSelection(page)).toEqual({ dom: `${at}->${at}`, collapsed: true });
+		expect(await caretInText(page)).toBe(true);
 	});
 });

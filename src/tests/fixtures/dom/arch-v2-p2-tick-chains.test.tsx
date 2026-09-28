@@ -67,8 +67,7 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 		expect(caret(edytor)).toEqual({ text: 'helo', offset: 2, isCollapsed: true });
 	});
 
-	// Red until its site lands (P2.3 is one site per commit).
-	test.fails('beforeInputDeleteCommands: a character Delete', async () => {
+	test('beforeInputDeleteCommands: a character Delete', async () => {
 		const { edytor } = await one('hello');
 		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 3);
 		const result = command(edytor, 'deleteContentForward');

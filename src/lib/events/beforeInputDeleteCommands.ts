@@ -16,7 +16,7 @@ const deleteSelectedRange = (edytor: Edytor, snapshot: Attempt) => {
 	if (text) edytor.selection.setAtTextOffset(text, offset!);
 };
 
-const deleteContentForward = async (edytor: Edytor, snapshot: Attempt) => {
+const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
 	const { startText, yStart } = snapshot;
 	if (!startText) {
 		return;
@@ -54,7 +54,6 @@ const deleteContentForward = async (edytor: Edytor, snapshot: Attempt) => {
 	}
 
 	startText.deleteText({ direction: 'FORWARD', length: 1 });
-	await tick();
 	edytor.selection.setAtTextOffset(startText, yStart);
 };
 

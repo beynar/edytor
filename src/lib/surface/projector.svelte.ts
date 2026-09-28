@@ -96,8 +96,6 @@ export class Projector {
 	#pending = false;
 	/** The focused element inside the editor, noted before the flush's DOM writes. */
 	#noted: Element | null = null;
-	/** The document version the last flush rendered. */
-	#rendered = -1;
 	/** Flushes rendered, and the flush at the last observation (a display, or a DOM derive). */
 	#flushes = 0;
 	#seen = -1;
@@ -136,7 +134,6 @@ export class Projector {
 
 	#pass = (key: string) => {
 		const { edytor } = this;
-		this.#rendered = edytor.facade.version;
 		this.#flushes++;
 		const { selection } = edytor;
 		// A value that no longer resolves is repaired on every pass (its seam may
@@ -458,10 +455,11 @@ export class Projector {
 		if (origin === edytor.transaction || origin === edytor.undoManager || this.#minted) return;
 		const node = edytor.node;
 		if (!node || edytor.composition.live || edytor.isHandlingUserInput) return;
-		// Only after a settled render, and with no display pending: then the DOM
-		// is behind the model, not ahead of it.
-		if (this.#rendered !== edytor.facade.version || edytor.selection.request !== this.#request)
-			return;
+		// Only when the last pass answered every render and display request: then
+		// the DOM is behind the model, not ahead of it. (A commit that rendered
+		// nothing leaves nothing to settle; comparing document versions kept the
+		// rule off until the next render — the move a peer's first commit reverted.)
+		if (this.#done !== `${edytor.selection.request}:${edytor.surface.epoch}`) return;
 		const snapshot = getDomSelectionSnapshot(node);
 		if (!snapshot?.anchorNode || this.#echoes(snapshot)) return;
 		const value = edytor.selection.mint(snapshot);

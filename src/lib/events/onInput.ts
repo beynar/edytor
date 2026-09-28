@@ -170,7 +170,6 @@ export const handleNativeLineBreakTextValue = async (edytor: Edytor, text: Text,
 			? 'insertLineBreak'
 			: 'insertParagraph';
 	text.refreshFromModel();
-	await tick();
 	edytor.selection.setAtTextOffset(text, insertionIndex);
 	await runOccurrence(edytor, { inputType, cancelable: false });
 	return true;

@@ -113,15 +113,13 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 		}
 	});
 
-	// Red until its site lands (P2.3 is one site per commit).
-	test.fails('onInput: a native line break runs its intent in the turn', async () => {
+	test('onInput: a native line break runs its intent in the turn', async () => {
 		const { edytor } = await one('hello');
 		const text = edytor.root!.children[0]!.firstText!;
 		void handleNativeLineBreakTextValue(edytor, text, 'hel\nlo');
-		expect(canonicalTree(edytor).map((block) => block.content)).toEqual([
-			[{ text: 'hel' }],
-			[{ text: 'lo' }]
-		]);
+		// A `\n` the browser typed is a soft break (its `insertLineBreak` intent).
+		expect(canonicalTree(edytor).map((block) => block.content)).toEqual([[{ text: 'hel\nlo' }]]);
+		expect(caret(edytor)).toEqual({ text: 'hel\nlo', offset: 4, isCollapsed: true });
 	});
 
 	// Red until its site lands (P2.3 is one site per commit).

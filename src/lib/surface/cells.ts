@@ -86,29 +86,25 @@ export const createCells = (
 		notifyRoot = update;
 		return () => (notifyRoot = () => {});
 	});
-	const build = (node: ProjectedBlock) => {
-		cells.set(node.id, cellOf(node));
-		node.children.forEach(build);
+	// A block new to the tree gets its cell; one visible before keeps its cell
+	// and is named again where it changed (K7).
+	const add = (node: ProjectedBlock, named: Map<BlockId, Partial<Cell>>) => {
+		if (!cells.has(node.id)) named.set(node.id, cellOf(node));
+		node.children.forEach((child) => add(child, named));
 	};
 	const top = source.project().children;
 	let rootIds: readonly BlockId[] = Object.freeze(top.map((node) => node.id));
-	top.forEach(build);
+	const initial = new Map<BlockId, Partial<Cell>>();
+	top.forEach((node) => add(node, initial));
+	for (const [id, cell] of initial) cells.set(id, cell as Cell);
 
 	let before = new Map<BlockId, Cell>();
-	const patch = (id: BlockId, fields: Partial<Cell>) => {
-		const cell = cells.get(id);
-		if (cell && !before.has(id)) before.set(id, cell);
-		if (cell) cells.set(id, Object.freeze({ ...cell, ...fields }));
-		return cell !== undefined;
-	};
-
+	/** Set the cells the report names (dropping removed subtrees first); every other cell is kept. */
 	const apply = (report: CellReport): Patched => {
 		before = new Map();
-		const patched = new Set<BlockId | null>();
 		// A child listed by a changed parent is still visible, even when its old
 		// parent's subtree went away in the same commit.
-		const listed = new Set<BlockId>();
-		for (const ids of report.order.values()) for (const id of ids) listed.add(id);
+		const listed = new Set([...report.order.values()].flat());
 		const drop = (id: BlockId) => {
 			const cell = cells.get(id);
 			if (!cell) return;
@@ -116,31 +112,31 @@ export const createCells = (
 			for (const child of cell.childIds) if (!listed.has(child)) drop(child);
 		};
 		report.removed.forEach(drop);
-		// An added subtree carries its new descendants. One that was visible
-		// before keeps its cell: the report names it again where it changed (K7).
-		const rebuild = (node: ProjectedBlock) => {
-			if (patched.has(node.id)) return;
-			if (!cells.has(node.id)) {
-				cells.set(node.id, cellOf(node));
-				patched.add(node.id);
-			}
-			node.children.forEach(rebuild);
-		};
-		report.added.forEach(rebuild);
+		const named = new Map<BlockId, Partial<Cell>>();
+		const name = (id: BlockId, fields: Partial<Cell>) =>
+			named.set(id, { ...named.get(id), ...fields });
+		report.added.forEach((node) => add(node, named));
 		for (const [parent, ids] of report.order) {
-			if (parent === null) {
-				if (sameIds(rootIds, ids)) continue;
-				rootIds = ids;
-				patched.add(null);
-				notifyRoot();
-			} else if (!sameIds(cells.get(parent)?.childIds ?? ids, ids)) {
-				patch(parent, { childIds: ids });
-				patched.add(parent);
-			}
+			if (parent === null) continue;
+			const current = named.get(parent)?.childIds ?? cells.get(parent)?.childIds ?? ids;
+			if (!sameIds(current, ids)) name(parent, { childIds: ids });
 		}
-		for (const [id, meta] of report.meta)
-			if (patch(id, { type: meta.type, data: meta.data })) patched.add(id);
-		for (const [id, runs] of report.content) if (patch(id, { runs })) patched.add(id);
+		for (const [id, meta] of report.meta) name(id, { type: meta.type, data: meta.data });
+		for (const [id, runs] of report.content) name(id, { runs });
+		const patched = new Set<BlockId | null>();
+		for (const [id, fields] of named) {
+			const cell = cells.get(id);
+			if (!cell && !fields.id) continue;
+			if (cell) before.set(id, cell);
+			cells.set(id, Object.freeze({ ...cell, ...fields }) as Cell);
+			patched.add(id);
+		}
+		const root = report.order.get(null);
+		if (root && !sameIds(rootIds, root)) {
+			rootIds = root;
+			patched.add(null);
+			notifyRoot();
+		}
 		return patched;
 	};
 

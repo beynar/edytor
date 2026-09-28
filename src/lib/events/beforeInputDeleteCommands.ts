@@ -1,6 +1,5 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
-import { tick } from 'svelte';
 import type { Attempt } from '$lib/session/attempt.js';
 import { getNextWordEndOffset, getPreviousWordStartOffset } from './wordBoundary.js';
 
@@ -57,7 +56,7 @@ const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
 	edytor.selection.setAtTextOffset(startText, yStart);
 };
 
-const deleteContentBackward = async (edytor: Edytor, snapshot: Attempt) => {
+const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 	const { startText, yStart } = snapshot;
 
 	if (snapshot.isAtStartOfBlock && snapshot.isFirstChildOfDocument && startText?.parent.isEmpty) {
@@ -120,7 +119,6 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: Attempt) => {
 	}
 
 	const deletion = startText.deleteText({ direction: 'BACKWARD', length: 1 });
-	await tick();
 	edytor.selection.setAtTextOffset(startText, deletion?.start ?? yStart - 1);
 };
 

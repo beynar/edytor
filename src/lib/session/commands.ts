@@ -44,8 +44,12 @@ type Change = {
  * The undo policy (O31, FP-2) — today's grouping: deletions, paste, drop and
  * structural commands cut the capture before they write; a paragraph split
  * also cuts after; everything else (insertions) coalesces within
- * `captureTimeout`. A composition session groups like an insertion and is one
- * capture group: `session/composition` holds it open between its writes.
+ * `captureTimeout` when it continues the step before it (it starts where that
+ * step left this view's selection, `history.continues`), else it cuts: an
+ * insertion after the caret moved is its own step whatever the pause, so the
+ * grouping never depends on timing alone. A composition session groups like
+ * an insertion and is one capture group: `session/composition` holds it open
+ * between its writes.
  */
 const CUT: Record<string, 'before' | 'both'> = {
 	insertParagraph: 'both',
@@ -57,11 +61,13 @@ const CUT: Record<string, 'before' | 'both'> = {
 	nestBlock: 'before',
 	unNestBlock: 'before',
 	moveBlocks: 'before',
-	format: 'before'
+	format: 'before',
+	// A DOM change no input occurrence owns (a foreign script): its own step.
+	foreignChange: 'both'
 };
 const policyOf = (kind: string) =>
 	CUT[kind] ??
-	(kind.startsWith('delete') && kind !== 'deleteCompositionText' ? 'before' : undefined);
+	(kind.includes('Composition') ? undefined : kind.startsWith('delete') ? 'before' : 'continue');
 
 /** The one place a `prevent()` is recognized; anything else propagates. */
 const prevented = (error: unknown): PreventionError => {
@@ -137,7 +143,12 @@ export class Dispatcher {
 	/** Apply the undo policy's cut before a `kind` command writes. */
 	cut = (kind: string, phase: 'before' | 'after' = 'before') => {
 		const policy = policyOf(kind);
-		if (policy === 'both' || (policy === 'before' && phase === 'before'))
+		const { history, selection } = this.edytor;
+		if (
+			policy === 'both' ||
+			(phase === 'before' &&
+				(policy === 'before' || (policy === 'continue' && !history.continues(selection.value))))
+		)
 			this.edytor.undoManager?.stopCapturing();
 	};
 

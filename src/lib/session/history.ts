@@ -89,6 +89,23 @@ export class History {
 		else this.#open = null;
 	};
 
+	/**
+	 * An insertion at `value` continues this view's last step: the top undo
+	 * item's recorded `after` projects where `value` does. Only a continuation
+	 * coalesces within `captureTimeout` (O31): after the selection moved, an
+	 * insertion starts its own step, however soon it follows.
+	 */
+	continues = (value: SelectionValue) => {
+		const { undoManager: um, transaction: key, facade } = this.edytor;
+		const item = um?.undoStack.at(-1) as StackItem | undefined;
+		const after = (item?.meta.get(KEY) as Map<unknown, Entry> | undefined)?.get(key)?.after;
+		if (after?.kind !== 'text' || value.kind !== 'text') return false;
+		const [a, b] = [project(after, facade), project(value, facade)];
+		const at = (p: typeof a.start, q: typeof a.start) =>
+			p !== null && q !== null && p.block === q.block && p.offset === q.offset;
+		return at(a.start, b.start) && at(a.end, b.end);
+	};
+
 	undo = () => this.#run('undo');
 	redo = () => this.#run('redo');
 

@@ -8,8 +8,9 @@
  * hooks) inside one capture group: the group opens with the session's first
  * write and is held open before each later one (`UndoManager.lastChange`,
  * K15), so the session and its ending are one undo step. Like a typed
- * insertion it cuts nothing: its first write coalesces with the step before
- * it within `captureTimeout`, and the next insertion may coalesce with it. The region the
+ * insertion, its first write coalesces with the step before it within
+ * `captureTimeout` when it continues that step (else it cuts), and the next
+ * insertion may coalesce with it. The region the
  * previews occupy is two anchors, written only by the session: its start is
  * bound to the atom before it, its end to the preview's last atom, so a
  * peer's edit outside the region moves it and one inside is absorbed.
@@ -266,6 +267,9 @@ export class Composition {
 		const { selection, dispatcher } = edytor;
 		// A declared target range re-states where the composition starts.
 		if (this.#start && !attempt?.declared) selection.select(this.#start);
+		// The first write groups like a typed insertion (O31): it continues the
+		// step before it only from where that step left the selection.
+		dispatcher.cut('insertText');
 		const target = this.#tracked(() =>
 			dispatcher.scope(
 				() =>

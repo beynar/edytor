@@ -848,14 +848,15 @@ export class SurfaceObserver {
 
 /**
  * Adopt what the browser made of `text` (R8, O59) — the only adopter: one
- * user command through the dispatcher (hooks, undo policy, marks for
- * insertion), placed by the prefix/suffix diff that prefers the owning
- * attempt's target (else `prefer`, else the DOM caret). A browser-owned
- * attempt expecting this host owns the change: its anchored target is the
- * command's selection (history's `before`), and its expected text wins over a
- * model-owned attempt's drift on the host. A vetoed or replaced change
- * re-renders the text from the model. The caret lands where the browser put
- * it (`domCaret`), else, for an attempt, where the change ends.
+ * user command through the dispatcher (hooks, undo policy — a change no input
+ * occurrence owns is its own undo step —, marks for insertion), placed by the
+ * prefix/suffix diff that prefers the owning attempt's target (else `prefer`,
+ * else the DOM caret). A browser-owned attempt expecting this host owns the
+ * change: its anchored target is the command's selection (history's
+ * `before`), and its expected text wins over a model-owned attempt's drift on
+ * the host. A vetoed or replaced change re-renders the text from the model.
+ * The caret lands where the browser put it (`domCaret`), else, for an
+ * attempt, where the change ends.
  */
 export const adopt = async (
 	edytor: Edytor,
@@ -888,7 +889,8 @@ export const adopt = async (
 	const removed = insert ? [] : text.getMarksAtRange(at, at + remove);
 	const marks = activeMarks(removed[0]?.marks);
 	const same = removed.every((part) => jsonEquals(activeMarks(part.marks), marks));
-	edytor.dispatcher.run(attempt?.inputType || (insert ? 'insertText' : 'deleteContent'), () =>
+	const kind = attempt ? attempt.inputType || (insert ? 'insertText' : 'deleteContent') : null;
+	edytor.dispatcher.run(kind ?? 'foreignChange', () =>
 		insert
 			? text.insertText({ value: insert, start: at, end: at + remove })
 			: text.parent.deleteContentAtRange({

@@ -568,13 +568,28 @@ test.describe('browser composition and selection resilience', () => {
 		await page.goto('/test/dom?scenario=basic&empty=first');
 		await waitForEditorReady(page);
 		await setSelectionByTextIndex(page, 0, 0);
+		// P1.2: the jump is the browser's, not the user's — a page script moves
+		// the DOM caret to 0 20 ms after the commit, with no pointer, key or
+		// focus event. The IME post-commit jump rule (V5, projector) displays
+		// the committed caret back. (The row used to place the jump with
+		// `setSelectionByTextIndex`, which marks a gesture: user intent, adopted.)
+		await page.evaluate(() => {
+			document.addEventListener(
+				'compositionend',
+				() =>
+					setTimeout(() => {
+						const element = document.querySelector('[data-edytor-text="true"]')!;
+						const leaf = document.createTreeWalker(element, NodeFilter.SHOW_TEXT).nextNode();
+						window.getSelection()!.collapse(leaf ?? element, 0);
+					}, 20),
+				{ once: true, capture: true }
+			);
+		});
 		await dispatchComposition(page, [
 			{ type: 'compositionstart', data: '' },
 			{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'é' },
 			{ type: 'compositionend', data: 'é' }
 		]);
-
-		await setSelectionByTextIndex(page, 0, 0);
 		await page.waitForTimeout(60);
 
 		await expectSelection(page, {
@@ -584,6 +599,21 @@ test.describe('browser composition and selection resilience', () => {
 			yEnd: 1,
 			isCollapsed: true
 		});
+		// The DOM caret shows it too.
+		await expect
+			.poll(() =>
+				page.evaluate(() => {
+					const selection = window.getSelection()!;
+					const element = document.querySelector('[data-edytor-text="true"]')!;
+					return (
+						element.contains(selection.anchorNode) &&
+						selection.isCollapsed &&
+						selection.anchorNode?.nodeType === Node.TEXT_NODE &&
+						selection.anchorOffset
+					);
+				})
+			)
+			.toBe(1);
 
 		issues.assertClean();
 	});

@@ -474,6 +474,53 @@ the P4/P5/P7 hunks (diff this tree against the pinned upstream as in
 ./vitest.crdt.config.ts --run src/tests/crdt/p8-surface.test.ts` — its
 closure failure lists exactly the declarations to delete (update `KEPT` for
 deliberate export changes), and regenerate `dts/`.
+### P9 — pending structs record every stacked dependency (`src/utils/encoding.js`)
+
+(P8 is reserved for the phase-2 P3 fork pruning.)
+
+Reason: `integrateStructs` walks a dependency stack; when the head waits for a
+client that is already on the stack it records only the head's missing client
+in the pending state vector (`missingSV`). The dependency of the struct at the
+bottom of the stack is lost, so the later update that supplies it never
+triggers `readUpdateV2`'s retry, and the document holds a pending update it
+could integrate — forever, until some unrelated update from the recorded
+client arrives. Reproduced on the unmodified `@y/y@14.0.0-rc.26` with four
+updates (A1 ← B1 ← A3, A2 independent) delivered as A3, B1, A1, A2; found by
+the arch-v2 phase 2 P1 fuzz (`src/tests/crdt/arch-v2/p1-fuzz.test.ts`, an
+observer fed every update in reverse order stayed pending in 74/1,500 seeds).
+
+Patch (all hunks marked `// P9` or delimited by `// P9 begin` / `// P9 end`):
+a `stackMissing` array parallel to `stack` records the client each stacked
+struct waits for (pushed with the struct, popped with it); `addStackToRestSS`
+first records every one of them in `missingSV` at the store's clock. Recording
+more clients can only cause more retries, never a wrong integration.
+
+Oracle: `src/tests/crdt/p9-p10-engine.test.ts` — the raw program in every
+delivery order, the facade program the fuzz found in every order, and the
+stripped tree (the P9 hunks removed) stays pending on A3, B1, A1, A2.
+
+### P10 — the formatting cleanup after a remote change runs under an untracked origin (`src/utils/Transaction.js`)
+
+Reason: `cleanupYTextAfterTransaction` deletes the format items a remote
+change made redundant in a new transaction with the `null` origin — the
+untyped-local origin every default `UndoManager` (and edytor's
+`document.history`) tracks. Receiving a peer's delete over text this user had
+formatted therefore pushed an invisible step onto this user's undo stack, and
+the next undo reverted the cleanup instead of the user's last edit
+(`docs/editor-delete-contract.md` `conc.undo.actor-local`,
+`hist.capture-group`). Reproduced on the unmodified `@y/y@14.0.0-rc.26`.
+
+Patch (hunks marked `// P10` or delimited by `// P10 begin` / `// P10 end`):
+the cleanup transaction's origin is a module-private
+`Symbol('yjs.formatting-cleanup')`. It stays a local transaction whose update
+providers broadcast like any local write (a replica's cleanup is
+order-dependent, so peers must receive it to converge); no undo manager
+tracks the symbol.
+
+Oracle: `src/tests/crdt/p9-p10-engine.test.ts` — after a peer's replace,
+partial delete or full delete over A's bold run, A's undo stack is unchanged,
+one undo removes A's last edit, and the peers still converge; the stripped
+tree (the P10 hunks removed) puts the cleanup on the stack.
 
 ## Generated declarations (`dts/`)
 

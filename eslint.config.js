@@ -23,17 +23,21 @@ import { fileURLToPath } from 'node:url';
 //   are themselves in `WORKER_SAFE`, and only the audited bare packages.
 //
 // Growing the set: add the module to `WORKER_SAFE` (it then falls under
-// the same rules) — never import a view module from the engine.
+// the same rules) — never import a view module from the engine. The
+// `edytor/cloudflare` room (`src/lib/cloudflare`) is in the set, and is the
+// only place `cloudflare:workers` may be imported.
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const LIB = path.join(ROOT, 'src/lib');
 const WORKER_SAFE = [
 	'src/lib/crdt/**/*.{js,ts}',
+	'src/lib/cloudflare/**/*.ts',
 	'src/lib/utils/json.ts',
 	'src/lib/utils.ts',
 	'src/lib/constants.ts'
 ];
 const WORKER_SAFE_FILES = [
 	/^crdt\//,
+	/^cloudflare\//,
 	/^utils\/json\.[jt]s$/,
 	/^utils\.[jt]s$/,
 	/^constants\.[jt]s$/
@@ -43,6 +47,8 @@ const VIEW_LAYERS =
 	'components|selection|surface|session|events|block|text|plugins|hotkeys|clipboard|collaboration|dnd';
 const VIEW_LAYER = new RegExp(`^(${VIEW_LAYERS})(\\/|\\.|$)|^edytor[^/]*\\.[jt]s$`);
 const SVELTE_MODULE = /\.svelte(\.[jt]s)?$/;
+
+const fileRel = (context) => path.relative(LIB, context.filename).split(path.sep).join('/');
 
 const workerSafeImports = {
 	meta: {
@@ -64,7 +70,8 @@ const workerSafeImports = {
 			if (spec.startsWith('.')) target = path.resolve(path.dirname(context.filename), spec);
 			else if (spec === '$lib' || spec.startsWith('$lib/')) target = path.join(LIB, spec.slice(4));
 			else {
-				if (!WORKER_SAFE_PACKAGES.some((re) => re.test(spec))) {
+				const room = spec === 'cloudflare:workers' && /^cloudflare\//.test(fileRel(context));
+				if (!room && !WORKER_SAFE_PACKAGES.some((re) => re.test(spec))) {
 					report('is not an audited Worker-safe package (lib0-v14, esm-env)');
 				}
 				return;
@@ -259,7 +266,7 @@ export default [
 	),
 	{
 		files: ['src/lib/**/*.{ts,js,svelte}'],
-		ignores: [...HOST_WRITERS, 'src/lib/crdt/**'],
+		ignores: [...HOST_WRITERS, 'src/lib/crdt/**', 'src/lib/cloudflare/**'],
 		rules: hostWriterRules
 	},
 	{

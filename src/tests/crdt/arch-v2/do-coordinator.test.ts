@@ -116,7 +116,22 @@ const rooms = new Map<string, Coordinator>();
 const roomOf = (url: string) => new URL(url).pathname.split('/').filter(Boolean).pop()!;
 // Captured before any guard: the fake network's own deliveries.
 const nativeSetTimeout = globalThis.setTimeout;
-const later = (fn: () => void) => nativeSetTimeout(fn, 0);
+/**
+ * Deliveries scheduled and not yet run. Convergence is asserted at
+ * quiescence (`inFlight === 0`): matching JSON alone can be a transient
+ * state — e.g. B's delete / undo / delete of p3 arrive as three frames,
+ * and a peer holding only the first already renders the final JSON while
+ * the other two are still on the wire (seen under load: the state
+ * vectors then differ by B's last struct).
+ */
+let inFlight = 0;
+const later = (fn: () => void) => {
+	inFlight++;
+	nativeSetTimeout(() => {
+		inFlight--;
+		fn();
+	}, 0);
+};
 
 /**
  * Run a coordinator entry point with timers forbidden — a Durable Object
@@ -639,7 +654,8 @@ describe('Infra — Worker-safe CRDT boundary: a Durable Object coordinator', ()
 			() =>
 				JSON.stringify(shape(a.facade.toJSON())) === JSON.stringify(expected) &&
 				JSON.stringify(shape(b.facade.toJSON())) === JSON.stringify(expected) &&
-				JSON.stringify(shape(serverJSON(server))) === JSON.stringify(expected),
+				JSON.stringify(shape(serverJSON(server))) === JSON.stringify(expected) &&
+				inFlight === 0,
 			'convergence'
 		);
 		// Convergence: both clients and the server serialize identically.

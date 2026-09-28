@@ -13,6 +13,8 @@ export type EngineSymbol =
 	| 'encodeStateVector'
 	| 'decodeStateVector'
 	| 'decodeUpdate'
+	| 'mergeUpdates'
+	| 'Skip'
 	| 'findIndexSS'
 	| 'createRelativePositionFromTypeIndex'
 	| 'createRelativePositionFromJSON'

@@ -159,6 +159,14 @@ const deleteCollapsedUnit = async (edytor: Edytor, snapshot: Attempt) => {
 								[text, yStart],
 								[last, last.length]
 							];
+	// Nothing of the caret's own text lies in the delete direction (the caret
+	// is at the text's edge: next to an inline atom, or at the block's edge):
+	// the unit is the neighbour, deleted like a character (atom, merge, unnest).
+	if (from[0] === to[0] && from[1] === to[1] && inputType !== 'deleteEntireSoftLine') {
+		return inputType.endsWith('Backward')
+			? deleteContentBackward(edytor, snapshot)
+			: deleteContentForward(edytor, snapshot);
+	}
 	text.parent.deleteContentAtRange({ start: [from[0].index, from[1]], end: [to[0].index, to[1]] });
 	await edytor.selection.setAtTextOffset(...from);
 };

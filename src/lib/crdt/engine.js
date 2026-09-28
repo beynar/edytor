@@ -24,6 +24,8 @@ export const Y = {
 	encodeStateVector: V.encodeStateVector,
 	decodeStateVector: V.decodeStateVector,
 	decodeUpdate: V.decodeUpdate,
+	mergeUpdates: V.mergeUpdates,
+	Skip: V.Skip,
 	findIndexSS: V.findIndexSS,
 	createRelativePositionFromTypeIndex: V.createRelativePositionFromTypeIndex,
 	createRelativePositionFromJSON: V.createRelativePositionFromJSON,

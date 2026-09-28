@@ -63,6 +63,84 @@ export const messageSync = 0;
 export const messageAwareness = 1;
 export const messageAuth = 2;
 export const messageQueryAwareness = 3;
+/** Server → client: the room persisted everything under this state vector (store-before-ack). */
+export const messageSaved = 4;
+/** Server → client: one piece of a frame too large to send whole (bounded catch-up). */
+export const messageChunk = 5;
+
+/** A WebSocket message limit on Cloudflare (32 MiB): a larger frame is sent as chunks. */
+export const MAX_FRAME_BYTES = 32 * 1024 * 1024;
+
+const chunkStart = 0;
+const chunkPart = 1;
+const chunkEnd = 2;
+
+/**
+ * Split `whole` (a complete frame) into frames of at most `maxFrameBytes`:
+ * itself when it fits, else `start(total)`, `part(bytes)`…, `end`. A
+ * receiver applies the reassembled frame only once `end` arrives.
+ */
+export const chunkFrame = (whole: Uint8Array, maxFrameBytes = MAX_FRAME_BYTES): Uint8Array[] => {
+	if (whole.length <= maxFrameBytes) return [whole];
+	const size = Math.max(1, maxFrameBytes - 16); // header: generation, type, kind, length
+	const frames = [
+		frame(messageChunk, (e) => {
+			encoding.writeVarUint(e, chunkStart);
+			encoding.writeVarUint(e, whole.length);
+		})
+	];
+	for (let at = 0; at < whole.length; at += size) {
+		const bytes = whole.subarray(at, at + size);
+		frames.push(
+			frame(messageChunk, (e) => {
+				encoding.writeVarUint(e, chunkPart);
+				encoding.writeVarUint8Array(e, bytes);
+			})
+		);
+	}
+	frames.push(frame(messageChunk, (e) => encoding.writeVarUint(e, chunkEnd)));
+	return frames;
+};
+
+/**
+ * The receiving half of {@link chunkFrame}, one per connection: feed it
+ * each chunk frame's body (after the message type); it returns the whole
+ * frame on `end`, `null` before. An out-of-order or oversized sequence
+ * throws and resets.
+ */
+export const createChunkReader = () => {
+	let parts: Uint8Array[] | null = null;
+	let total = 0;
+	let received = 0;
+	return (decoder: decoding.Decoder): Uint8Array | null => {
+		const kind = decoding.readVarUint(decoder);
+		if (kind === chunkStart) {
+			parts = [];
+			total = decoding.readVarUint(decoder);
+			received = 0;
+			return null;
+		}
+		const current = parts;
+		parts = null;
+		if (current === null) throw new Error(`chunk ${kind} without a start`);
+		if (kind === chunkPart) {
+			const bytes = decoding.readVarUint8Array(decoder);
+			received += bytes.length;
+			if (received > total) throw new Error('chunked frame longer than announced');
+			current.push(bytes);
+			parts = current;
+			return null;
+		}
+		if (kind !== chunkEnd || received !== total) throw new Error('incomplete chunked frame');
+		const whole = new Uint8Array(total);
+		let at = 0;
+		for (const bytes of current) {
+			whole.set(bytes, at);
+			at += bytes.length;
+		}
+		return whole;
+	};
+};
 
 export type ProtocolMismatch = { expected: number; found: number | null };
 

@@ -33,7 +33,10 @@ const SYMBOLS = {
 	createIdMap: 1,
 	insertIntoIdMap: 1,
 	createContentMap: 1,
-	decodeContentMap: 1
+	decodeContentMap: 1,
+	// used by the Durable Object room (P5): compaction and struct checks
+	mergeUpdates: 1,
+	Skip: 1
 } satisfies Record<EngineSymbol, 1>;
 
 describe('engine object (named imports)', () => {

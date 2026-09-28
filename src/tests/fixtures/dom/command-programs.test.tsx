@@ -406,6 +406,45 @@ describe('golden command programs — marks and inline atoms', () => {
 		expect(caret(edytor)).toEqual({ text: 'ad', at: 1 });
 	});
 
+	// arch-v2 phase 2 P1 (review probe `del.word-atom`): with nothing of the
+	// caret's own text in the delete direction, a word delete was an empty
+	// range — a silent no-op. The unit is then the neighbour (`del.caret.one-command`).
+	it('word delete right after an inline atom deletes the atom (P1 regression)', async () => {
+		const { edytor } = await renderDomEdytor(atomFixture, { autoSelectFixture: false });
+		const last = edytor.root!.children[0]!.lastText!;
+		await setNativeSelection(edytor, last, 0, last, 0);
+		await runCommand(edytor, 'deleteWordBackward');
+		await flushDomUpdates();
+		assertCanonicalTree(edytor, [p('abcd')]);
+		expect(caret(edytor)).toEqual({ text: 'abcd', at: 2 });
+	});
+
+	it('word delete forward right before an inline atom deletes the atom (P1 regression)', async () => {
+		const { edytor } = await renderDomEdytor(atomFixture, { autoSelectFixture: false });
+		const first = edytor.root!.children[0]!.firstText!;
+		await setNativeSelection(edytor, first, 2, first, 2);
+		await runCommand(edytor, 'deleteWordForward');
+		await flushDomUpdates();
+		assertCanonicalTree(edytor, [p('abcd')]);
+		expect(caret(edytor)).toEqual({ text: 'abcd', at: 2 });
+	});
+
+	it('word delete at a block start merges into the previous block (P1 regression)', async () => {
+		const { edytor } = await renderDomEdytor(
+			<root>
+				<paragraph>alpha</paragraph>
+				<paragraph>beta</paragraph>
+			</root>,
+			{ autoSelectFixture: false }
+		);
+		const t = edytor.root!.children[1]!.firstText!;
+		await setNativeSelection(edytor, t, 0, t, 0);
+		await runCommand(edytor, 'deleteWordBackward');
+		await flushDomUpdates();
+		assertCanonicalTree(edytor, [p('alphabeta')]);
+		expect(caret(edytor)).toEqual({ text: 'alphabeta', at: 5 });
+	});
+
 	it('typing after an inline atom lands in the following text', async () => {
 		const { edytor } = await renderDomEdytor(atomFixture, { autoSelectFixture: false });
 		const last = edytor.root!.children[0]!.lastText!;
@@ -417,6 +456,28 @@ describe('golden command programs — marks and inline atoms', () => {
 				'text' in part ? part.text : `[${(part as { type?: string }).type}]`
 			)
 		).toEqual(['ab', '[mention]', 'Zcd']);
+	});
+});
+
+describe('golden command programs — typing over a block selection (flow.slot)', () => {
+	// arch-v2 phase 2 P1 (review probe `del.select-all-type`): deleting every
+	// selected block first let the emptied root normalize in a survivor, and
+	// the typed block landed beside it.
+	it('typing over every block leaves one block holding the character (P1 regression)', async () => {
+		const { edytor } = await renderDomEdytor(
+			<root>
+				<paragraph>first</paragraph>
+				<paragraph>note</paragraph>
+				<paragraph>tail</paragraph>
+			</root>,
+			{ autoSelectFixture: false }
+		);
+		edytor.selection.selectBlocks(...edytor.root!.children);
+		await flushDomUpdates();
+		await runCommand(edytor, 'insertText', 'Z');
+		await flushDomUpdates();
+		assertCanonicalTree(edytor, [p('Z')]);
+		expect(caret(edytor)).toEqual({ text: 'Z', at: 1 });
 	});
 });
 

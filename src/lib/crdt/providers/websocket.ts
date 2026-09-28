@@ -33,6 +33,7 @@
  * there (TCP never does).
  */
 import * as time from 'lib0-v14/time';
+import * as decoding from 'lib0-v14/decoding';
 import { ObservableV2 } from 'lib0-v14/observable';
 import * as math from 'lib0-v14/math';
 import * as url from 'lib0-v14/url';
@@ -42,10 +43,13 @@ import { bindSync, type SyncProtocol } from '../protocols/sync.js';
 import {
 	beginDestroy,
 	bindRoomProtocol,
+	createChunkReader,
 	emitFailed,
 	initLifecycle,
 	markSynced,
 	messageAuth,
+	messageChunk,
+	messageSaved,
 	type LifecycleHost,
 	type ProtocolMismatch,
 	type RoomMessageHandler,
@@ -71,6 +75,12 @@ export type WebsocketProviderEvents = {
 	'message-error': (error: unknown, provider: unknown) => void;
 	/** A received update wrote a foreign schema stamp and was refused (SchemaMismatchDetail). */
 	'schema-mismatch': (detail: SchemaMismatchDetail, provider: unknown) => void;
+	/**
+	 * The count of local updates the room has not yet acknowledged as
+	 * persisted changed (store-before-ack: a `messageSaved` frame carries
+	 * the room's state vector after it stored what it holds).
+	 */
+	saved: (state: { saved: boolean; unsaved: number }, provider: unknown) => void;
 	/** Server refused access — the auth reply carried a denial reason. */
 	'permission-denied': (reason: string, provider: unknown) => void;
 	/**
@@ -151,6 +161,21 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			provider.synced = true;
 		}
 	});
+	// The room's acknowledgement and its bounded catch-up (a frame too large
+	// for one message arrives as chunks and is read only once complete).
+	room.messageHandlers[messageSaved] = (_encoder, decoder, provider) =>
+		provider._acknowledge(decoding.readVarUint8Array(decoder));
+	room.messageHandlers[messageChunk] = (_encoder, decoder, provider, emitSynced) => {
+		const whole = provider._chunks(decoder);
+		if (whole !== null) room.readMessage(provider, whole, emitSynced, (buf) => send(provider, buf));
+	};
+
+	type StateVector = Map<number, number>;
+	const stateVector = (doc: YDoc): StateVector => Y.decodeStateVector(Y.encodeStateVector(doc));
+	const covers = (acked: StateVector, sv: StateVector) => {
+		for (const [client, clock] of sv) if ((acked.get(client) ?? 0) < clock) return false;
+		return true;
+	};
 
 	/**
 	 * Outsource so a new websocket connection is created immediately —
@@ -197,6 +222,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			provider.ws = websocket;
 			provider.wsconnected = false;
 			provider.synced = false;
+			provider._chunks = createChunkReader();
 
 			websocket.onmessage = (event) => {
 				provider.wsLastMessageReceived = time.getUnixTime();
@@ -240,6 +266,12 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		wsUnsuccessfulReconnects = 0;
 		wsLastMessageReceived = 0;
 		_synced = false;
+		/** Reassembles this socket's chunked frames (reset per connection). */
+		_chunks = createChunkReader();
+		/** The doc's state vector after each local update not yet acknowledged (monotone). */
+		_pending: StateVector[] = [];
+		/** The room's last acknowledged state vector. */
+		_acked: StateVector = new Map();
 		messageHandlers: Record<number, RoomMessageHandler<WebsocketProvider>> = room.messageHandlers;
 		// The room lifecycle (O74) — installed by `initLifecycle`.
 		hasSynced!: boolean;
@@ -285,8 +317,12 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			// Local doc updates go to the room (`broadcastUpdate` quarantines
 			// a read-only document).
 			this._updateHandler = (update, origin) => {
-				if (origin !== this) room.broadcastUpdate(this, update);
+				if (origin === this) return;
+				room.broadcastUpdate(this, update);
+				this._track();
 			};
+			// What the doc already holds is unsaved until the room covers it.
+			this._track();
 			this.doc.on('update', this._updateHandler);
 			this._awarenessUpdateHandler = room.awarenessUpdateHandler(this);
 			awareness.on('update', this._awarenessUpdateHandler);
@@ -313,6 +349,33 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				this.roomname +
 				(encodedParams.length === 0 ? '' : '?' + encodedParams)
 			);
+		}
+
+		/** Local updates the room has not acknowledged as persisted yet. */
+		get unsaved(): number {
+			return this._pending.length;
+		}
+
+		/** The room has persisted everything this replica wrote (store-before-ack). */
+		get saved(): boolean {
+			return this._pending.length === 0;
+		}
+
+		_track(): void {
+			const sv = stateVector(this.doc);
+			if (covers(this._acked, sv)) return;
+			this._pending.push(sv);
+			this.emit('saved', [{ saved: false, unsaved: this._pending.length }, this]);
+		}
+
+		/** A `messageSaved` frame: the room stored everything under `sv`. */
+		_acknowledge(sv: Uint8Array): void {
+			this._acked = Y.decodeStateVector(sv);
+			const before = this._pending.length;
+			this._pending = this._pending.filter((entry) => !covers(this._acked, entry));
+			if (this._pending.length !== before) {
+				this.emit('saved', [{ saved: this.saved, unsaved: this._pending.length }, this]);
+			}
 		}
 
 		/** This connection has held a room member's state (transient). */

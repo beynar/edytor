@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"lib": ["ES2024", "WebWorker"],
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"allowJs": false,
+		"checkJs": false,
+		"noEmit": true,
+		"types": ["@cloudflare/workers-types", "@cloudflare/vitest-plugin/types"]
+	},
+	"include": ["./**/*.ts"],
+	"exclude": []
+}

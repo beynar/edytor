@@ -15,6 +15,20 @@ The script packs the real package (`pnpm package` + `pnpm pack`), installs
 the tarball here (`file:./edytor.tgz`), runs `smoke.js` under node, runs the
 Svelte consumer (`smoke-svelte.mjs`), and typechecks both postures (below).
 
+## Worker consumer (`smoke-worker.mjs` + `worker.js`)
+
+`worker.js` is the documented deployment: it re-exports the packed
+`edytor/cloudflare` `DocumentRoom` as its Durable Object class and routes
+`/rooms/<name>` through `routeDocumentSocket` (a smoke `authorize` reading
+`?user=`). `smoke-worker.mjs` bundles it with esbuild for a Worker target,
+asserts the bundle holds the cloudflare and CRDT dist and no Svelte/DOM view
+module, then runs it in Miniflare (SQLite storage, no port): `/health`, an
+authorize refusal (403), a writer pushes a seeded document and receives the
+room's saved acknowledgement covering it, a second socket syncs it back,
+another user's update under the writer's client id is refused (1008), and a
+frame without this generation's word is refused (1008). esbuild and
+Miniflare come from the repo's `@cloudflare/vitest-plugin` devDependency.
+
 ## Svelte consumer (`smoke-svelte.mjs` + `svelte-app/`)
 
 A real Vite/Svelte consumer of the tarball — `svelte-app/` imports `edytor`

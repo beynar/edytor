@@ -285,14 +285,15 @@ export type {
 
 // ── 8 · Server coordinator surface (Worker-safe) ────────────────────────
 //
-// What a server coordinator (a Cloudflare Durable Object — README "Server
-// coordinator") imports beside `bindCrdt(Y)` (`.sync` readers/writers and
+// What a server coordinator (`edytor/cloudflare`'s `DocumentRoom` — README
+// "Server coordinator") imports beside `bindCrdt(Y)` (`.sync` readers/writers and
 // `applyRemote`, `.admission`, `.doc`, `.createDoc`): the frame contract
 // `varuint GENERATION | varuint messageType | payload`, the message types,
 // the lib0 helpers that read and write frame bodies, and the awareness
 // codec that needs no `Awareness` instance (whose sweep timer blocks
-// hibernation). `src/tests/crdt/arch-v2/do-coordinator.test.ts` is the
-// runnable reference; `pnpm check:worker` keeps this graph Worker-safe.
+// hibernation), the store-before-ack frame (`messageSaved`) and the bounded
+// catch-up codec (`chunkFrame`/`createChunkReader`, `messageChunk`).
+// `pnpm check:worker` keeps this graph Worker-safe.
 
 export { SCHEMA_VERSION, META_KEY, EdytorDocDisposedError } from './edytor-doc.js';
 
@@ -311,7 +312,12 @@ export {
 	messageSync,
 	messageAwareness,
 	messageAuth,
-	messageQueryAwareness
+	messageQueryAwareness,
+	messageSaved,
+	messageChunk,
+	MAX_FRAME_BYTES,
+	chunkFrame,
+	createChunkReader
 } from './providers/room.js';
 
 export {

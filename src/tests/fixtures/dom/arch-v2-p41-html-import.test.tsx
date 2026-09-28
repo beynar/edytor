@@ -318,6 +318,65 @@ describe('tag tables from the records', () => {
 	});
 });
 
+describe('default colors import as no mark (P4.1 fix)', () => {
+	const docs = (style: string) =>
+		`<b style="font-weight:normal;" id="docs-internal-guid-2"><p dir="ltr"><span style="font-size:11pt;font-family:Arial;${style}">Docs</span></p></b>`;
+
+	row('a Google Docs span with color:#000000 is plain text', async () => {
+		expect(await imported(docs('color:#000000;background-color:transparent;'))).toEqual([
+			{ type: 'paragraph', content: [{ text: 'Docs' }] }
+		]);
+	});
+
+	row('every spelling of the default text color is no mark', async () => {
+		for (const color of [
+			'black',
+			'#000',
+			'rgb(0, 0, 0)',
+			'windowtext',
+			'initial',
+			'inherit',
+			'currentcolor'
+		])
+			expect(await imported(`<p><span style="color: ${color}">t</span></p>`)).toEqual([
+				{ type: 'paragraph', content: [{ text: 't' }] }
+			]);
+	});
+
+	pin('color:#e11d48 keeps the color', async () => {
+		const [block] = await imported(docs('color:#e11d48;'));
+		expect(block?.content).toHaveLength(1);
+		expect(
+			Object.keys(
+				block?.content?.[0] && 'marks' in block.content[0] ? (block.content[0].marks ?? {}) : {}
+			)
+		).toEqual(['color']);
+	});
+
+	row(
+		'background-color:transparent (and white, rgba(0,0,0,0), initial) is no highlight',
+		async () => {
+			for (const background of [
+				'transparent',
+				'rgba(0, 0, 0, 0)',
+				'white',
+				'#fff',
+				'rgb(255, 255, 255)',
+				'initial'
+			])
+				expect(
+					await imported(`<p><span style="background-color: ${background}">t</span></p>`)
+				).toEqual([{ type: 'paragraph', content: [{ text: 't' }] }]);
+		}
+	);
+
+	row('background-color:#fef08a keeps the highlight', async () => {
+		const [block] = await imported(docs('color:#000000;background-color:#fef08a;'));
+		const part = block?.content?.[0];
+		expect(part && 'marks' in part ? Object.keys(part.marks ?? {}) : []).toEqual(['highlight']);
+	});
+});
+
 describe('safety', () => {
 	row('an unsafe href, a hostile color and an event handler never reach the model', async () => {
 		const blocks = await imported(

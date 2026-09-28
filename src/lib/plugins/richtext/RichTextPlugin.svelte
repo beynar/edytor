@@ -40,11 +40,22 @@
 		const safe = sanitizeCssColorValue(value);
 		return { style: safe ? `${property}: ${safe};` : undefined };
 	};
-	/** HTML import (P4.1): a pasted color that paints something, sanitized. */
-	const colorOf = (value: string) =>
-		/^(transparent|inherit|initial|unset|currentcolor)$/i.test(value)
+	/**
+	 * HTML import (P4.1): a pasted color, sanitized, unless it is the page's
+	 * default (Google Docs writes black text and transparent backgrounds on
+	 * every span: they are no mark, and a black mark is unreadable in dark mode).
+	 */
+	const colorOf = (value: string, none: RegExp) =>
+		none.test(value.replace(/\s+/g, '').toLowerCase())
 			? undefined
 			: (sanitizeCssColorValue(value) ?? undefined);
+	const INHERITED = 'initial|inherit|unset|revert|currentcolor';
+	const NO_COLOR = new RegExp(
+		`^(${INHERITED}|black|windowtext|#000|#000000|rgba?\\(0,0,0(,1)?\\))$`
+	);
+	const NO_HIGHLIGHT = new RegExp(
+		`^(${INHERITED}|transparent|rgba\\(\\d+,\\d+,\\d+,0\\)|white|#fff|#ffffff|rgba?\\(255,255,255(,1)?\\))$`
+	);
 	/** HTML import: a tag alias (unless its own style says otherwise) or a style (Google Docs). */
 	const alias =
 		(tags: RegExp, property: 'fontWeight' | 'fontStyle' | 'textDecoration', value: RegExp) =>
@@ -161,12 +172,19 @@
 				},
 				superscript: { tag: 'sup' },
 				subscript: { tag: 'sub' },
-				color: { tag: 'span', attributes: styled('color'), parse: (el) => colorOf(el.style.color) },
+				color: {
+					tag: 'span',
+					attributes: styled('color'),
+					parse: (el) => colorOf(el.style.color, NO_COLOR)
+				},
 				highlight: {
 					tag: 'span',
 					attributes: styled('background-color'),
-					parse: (el) =>
-						colorOf(el.style.backgroundColor) ?? (el.localName === 'mark' ? 'yellow' : undefined)
+					parse: (el) => {
+						const background = el.style.backgroundColor;
+						if (background) return colorOf(background, NO_HIGHLIGHT);
+						return el.localName === 'mark' ? 'yellow' : undefined;
+					}
 				}
 			},
 			blocks: {

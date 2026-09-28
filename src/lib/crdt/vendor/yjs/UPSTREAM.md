@@ -522,6 +522,45 @@ partial delete or full delete over A's bold run, A's undo stack is unchanged,
 one undo removes A's last edit, and the peers still converge; the stripped
 tree (the P10 hunks removed) puts the cleanup on the stack.
 
+### P11 — UndoManager `restoreFilter` and `onApply`: the document decides how deleted text comes back (`src/utils/UndoManager.js`, `src/index.js`)
+
+Reason: the engine's undo re-creates deleted content as COPIES and records no
+writer for a delete. Two peers that delete the same character concurrently and
+each undo therefore brought it back twice (`abbc`), and the first undo brought
+it back although the other peer's delete still held it (arch-v2 contract
+program `history.concurrent-double-delete`). Edytor fixes this with per-writer
+text delete marks (`src/lib/crdt/text/deletes.ts`, execution ledger row
+"Text double-delete undo"); the engine needs two hooks for it, and nothing
+else changes.
+
+Patch (hunks marked `// P11` or delimited by `// P11 begin` / `// P11 end`):
+
+- `UndoManagerOptions.restoreFilter(item, stackItem) → boolean` (default
+  always `true`): asked for every deleted item a popped stack item would
+  re-create. A withheld item counts as a change, so the step is consumed
+  instead of skipped for the next one (upstream skips a step that changes
+  nothing).
+- `UndoManagerOptions.onApply(transaction, stackItem)` (default no-op): called
+  inside the undo/redo transaction once the stack item is applied; its writes
+  are part of the same update and of the step the other stack captures.
+- `index.js` exports `redoItem` (the document re-creates text through it, so
+  a restoration places its copy exactly as the engine's own undo does).
+
+The document also reads `iterateStructsByIdSet` and `getItemCleanStart`
+(already exported) through the engine object. `src/utils/Transaction.js`: the
+P10 block moved above the cleanup's JSDoc so the declaration generator binds
+`@param {Transaction}` again (no code change; `dts/` had been left stale).
+
+Oracle: `src/tests/crdt/p11-undo-hooks.test.ts` — the hook rows run on the
+patched tree and on the tree with the P11 hunks stripped (which ignores the
+options: the rows discriminate); a differential replays 40 seeded programs ×
+120 operations over the text write paths with undo/redo on both trees with no
+options and requires byte-identical `encodeStateAsUpdate` for both peers and
+an identical render after every operation. The P4/P7 differentials and the
+upstream suite pass unchanged.
+
+Vendor delta: +9 xloc in `src/` (census `--vendor`: 5,769 → 5,778).
+
 ## Generated declarations (`dts/`)
 
 `svelte-package` copies JS verbatim but emits no `.d.ts` for JS inputs, so

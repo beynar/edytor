@@ -240,7 +240,7 @@ const provider = new crdt.providers.IndexeddbPersistence('document-id', doc, { a
 await provider.whenSynced;
 ```
 
-`edytor/crdt` is edytor's owned fork of the engine, pruned to what edytor runs on (`UPSTREAM.md` patch P8): documents, nodes, transactions, undo, the V1/V2 update codecs (`applyUpdate`, `encodeStateAsUpdate`, `mergeUpdates`, `decodeUpdate`, state vectors), relative positions (JSON form), id sets/maps with their codecs, and `RangeCursor`. The concrete renderers, snapshots and the update diff/log/obfuscate helpers are not shipped (see "Migrating from 0.0.11"); the renderer interface (`AbstractRenderer`, `useRenderer`, `toDelta({renderer})`) stays for your own renderer. The document factories bind the 23-symbol engine object in `src/lib/crdt/engine.js`, so an app that never imports `edytor/crdt` bundles only what those symbols reach; `bindCrdt(Y)` with the whole namespace keeps the whole (pruned) engine.
+`edytor/crdt` is edytor's owned fork of the engine, pruned to what edytor runs on (`UPSTREAM.md` patch P8): documents, nodes, transactions, undo, the V1/V2 update codecs (`applyUpdate`, `encodeStateAsUpdate`, `mergeUpdates`, `decodeUpdate`, state vectors), relative positions (JSON form), id sets/maps with their codecs, and `RangeCursor`. The concrete renderers, snapshots and the update diff/log/obfuscate helpers are not shipped (see "Migrating from 0.0.11"); the renderer interface (`AbstractRenderer`, `useRenderer`, `toDelta({renderer})`) stays for your own renderer. The document factories bind the 28-symbol engine object in `src/lib/crdt/engine.js`, so an app that never imports `edytor/crdt` bundles only what those symbols reach; `bindCrdt(Y)` with the whole namespace keeps the whole (pruned) engine.
 
 Upgrading a deployment that has v13 (`yjs`) persisted documents? Read [`docs/crdt-v14-migration.md`](docs/crdt-v14-migration.md) — it's a one-way, non-destructive import with an explicit operator recipe and rollback.
 
@@ -293,6 +293,8 @@ edytor.awareness.setLocalStateField('user', {
 ```
 
 Remote cursor and expanded selection overlays render from awareness `selection` state. Edytor publishes its own local selection into awareness when the selection changes.
+
+Concurrent deletes and undo: each writer's text delete is its own (a per-writer mark, like a block's delete marks), so a character is visible only while no writer's delete of it is in effect. When two people delete the same text at the same time and one undoes, the text stays deleted until the other undoes too; then it comes back once. A restoration made before a peer's concurrent delete had arrived is hidden by that peer's replica as soon as it sees it (part of the peer's delete, so the peer's undo brings it back). Hiding, deduplicating and restoring text withheld by a peer are done by the replica of the writer whose history it concerns while that session lives: a writer whose history ended no longer hides a concurrent restoration, although its delete still withholds every later undo. Text typed and deleted inside one undo step carries no mark (that step can never bring it back).
 
 Unsupported collaboration surfaces:
 
@@ -673,6 +675,8 @@ The next release is a rewrite of the editor's internals around one owner per fac
 - **Readiness.** The document decides readiness itself: `syncFailed`, `onSyncSettled` and `EdytorDocSyncPendingError` are gone; a lone first client is ready after `DEFAULT_READINESS_BOUND` (1 s, per factory `EdytorSync.bound`; IndexedDB always settles); `history` refuses while `pending`. `whenSynced` exists on both providers and `synced` is the lifetime claim.
 - **One provider per target.** `EdytorSync.target` (`indexeddb:<name>`, `websocket:<server>/<room>`); attaching a target already attached is a no-op returning nothing; attaching on a destroyed document throws `DocumentDestroyedError`.
 - **Admission.** Unversioned content is not refused at ingress: the document is read-only and quarantined until admission accepts it (`document.writable`, `onWritableChange`).
+
+- **Text delete marks.** Every text delete writes a record naming its writer (root `textdel`, in the history's scope) and every undo that brings text back writes a restoration record (root `restored`, never removed). Old clients of the same schema generation ignore both and keep the previous undo behavior (a double delete undone by both peers can show the character twice); a new client's session may restore again text it withheld that an old client then deleted, since an old client's delete carries no mark. A text delete update is about 21 bytes larger and a stored document about 12 bytes per delete; an undo step of text restores through the document (`restoreFilter`/`onApply`, fork patch P11). `document.history` is created by `facade.createUndoManager` as before; a history created directly with `new Y.UndoManager` over the registry does not follow the marks.
 
 ### Migration
 

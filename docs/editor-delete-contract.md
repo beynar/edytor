@@ -278,6 +278,21 @@ boundary-run's far edge — a caret before `· ` still consumes `· ` to
 the text end, matching the platform's own word-delete result. Mirrored
 independently by `contractWord{Start,End}Offset` in `deleteOracle.ts`.
 
+### `del.unit.soft-line` — a line ends at a line break
+
+The collapsed line commands take their extent from the block, not the
+delivered range: `deleteSoftLine*` runs from the caret to the nearest
+`\n` of the block's texts in the delete direction (an inline atom is
+not a break), else to the block's edge; `deleteHardLine*` runs to the
+block's edge across line breaks. A caret right after (before) a `\n`
+has an empty soft line backward (forward): the unit is the neighbour,
+deleted like a character — the break itself, joining the two lines.
+Visual wraps stay browser-owned (U4). Pinned: `command-programs.test.tsx`
+(the `del.word/del.line` rows), `delete-shapes.spec.ts` (golden
+browser shapes), mirrored by `softLineEdge` in `deleteOracle.ts`.
+(P1.2: the model used the block's edge for both units, which the golden
+`deleteSoftLineBackward` row never accepted.)
+
 ## Selection recovery on the passive peer (remote-origin changes)
 
 Anchors are relative positions; carets bind left affinity, range ends bind

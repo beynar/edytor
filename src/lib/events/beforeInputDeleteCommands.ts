@@ -123,14 +123,37 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 };
 
 /**
+ * The caret's line edge in one direction (`del.unit.soft-line`): a soft line
+ * ends at the nearest `\n` of the block's texts, a hard line at the block's
+ * edge. Visual wraps stay browser-owned.
+ */
+const lineEdge = (text: Text, at: number, backward: boolean, soft: boolean): [Text, number] => {
+	const texts = text.parent.content.filter((part): part is Text => part instanceof Text);
+	const own = texts.findIndex((part) => part.id === text.id);
+	for (let i = own; ; i += backward ? -1 : 1) {
+		const value = texts[i].stringContent;
+		const from = i === own ? at : backward ? value.length : 0;
+		const k =
+			!soft || (backward && from === 0)
+				? -1
+				: backward
+					? value.lastIndexOf('\n', from - 1)
+					: value.indexOf('\n', from);
+		if (k >= 0) return [texts[i], backward ? k + 1 : k];
+		if (backward ? i === 0 : i === texts.length - 1) return [texts[i], backward ? 0 : value.length];
+	}
+};
+
+/**
  * A collapsed unit delete (`del.unit.*`): the model owns the extent — a word
- * run from the caret's own text, or the block's line to either side, or all
- * of it — deleted as one range; the caret lands at its start.
+ * run from the caret's own text, the caret's line to either side, or the
+ * whole block — deleted as one range; the caret lands at its start.
  */
 const deleteCollapsedUnit = (edytor: Edytor, snapshot: Attempt) => {
 	const { startText: text, yStart, inputType } = snapshot;
 	if (!text) return;
 	const [first, last] = [text.parent.firstText!, text.parent.lastText!];
+	const soft = inputType.startsWith('deleteSoftLine');
 	const [from, to]: [Text, number][] =
 		inputType === 'deleteWordBackward'
 			? [
@@ -148,14 +171,8 @@ const deleteCollapsedUnit = (edytor: Edytor, snapshot: Attempt) => {
 							[last, last.length]
 						]
 					: inputType.endsWith('Backward')
-						? [
-								[first, 0],
-								[text, yStart]
-							]
-						: [
-								[text, yStart],
-								[last, last.length]
-							];
+						? [lineEdge(text, yStart, true, soft), [text, yStart]]
+						: [[text, yStart], lineEdge(text, yStart, false, soft)];
 	// Nothing of the caret's own text lies in the delete direction (the caret
 	// is at the text's edge: next to an inline atom, or at the block's edge):
 	// the unit is the neighbour, deleted like a character (atom, merge, unnest).

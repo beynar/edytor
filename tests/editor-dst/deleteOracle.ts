@@ -317,6 +317,20 @@ const partAtomOffset = (block: OBlock, partIndex: number) =>
 const blockAtomLength = (block: OBlock) =>
 	block.parts.reduce((n, part) => n + partAtomLength(part), 0);
 
+/**
+ * `del.unit.soft-line`: the atom-space edge of the caret's soft line — the
+ * nearest `\n` in the delete direction (an inline atom is one non-newline
+ * unit), else the block's edge. Visual wraps stay browser-owned.
+ */
+const softLineEdge = (block: OBlock, caret: number, backward: boolean) => {
+	const flat = block.parts
+		.map((part) => (part.kind === 'text' ? textPartContent(part) : '\ufffc'))
+		.join('');
+	if (backward) return caret > 0 ? flat.lastIndexOf('\n', caret - 1) + 1 : 0;
+	const at = flat.indexOf('\n', caret);
+	return at < 0 ? flat.length : at;
+};
+
 const textPartLength = (part: Part & { kind: 'text' }) =>
 	part.runs.reduce((n, run) => n + run.text.length, 0);
 
@@ -1428,19 +1442,25 @@ const describeDeleteInner = (
 				: tree('word forward delete');
 		}
 		case 'deleteSoftLineBackward':
-		case 'deleteHardLineBackward':
+		case 'deleteHardLineBackward': {
 			if (!isCollapsed) return contentBackward();
-			deleteAtomRange(startBlock, 0, partAtomOffset(startBlock, start.partIndex) + yStart);
+			const caret = partAtomOffset(startBlock, start.partIndex) + yStart;
+			const edge =
+				inputType === 'deleteSoftLineBackward' ? softLineEdge(startBlock, caret, true) : 0;
+			deleteAtomRange(startBlock, edge, caret);
 			return tree('line backward delete');
+		}
 		case 'deleteSoftLineForward':
-		case 'deleteHardLineForward':
+		case 'deleteHardLineForward': {
 			if (!isCollapsed) return contentForward();
-			deleteAtomRange(
-				startBlock,
-				partAtomOffset(startBlock, start.partIndex) + yStart,
-				blockAtomLength(startBlock)
-			);
+			const caret = partAtomOffset(startBlock, start.partIndex) + yStart;
+			const edge =
+				inputType === 'deleteSoftLineForward'
+					? softLineEdge(startBlock, caret, false)
+					: blockAtomLength(startBlock);
+			deleteAtomRange(startBlock, caret, edge);
 			return tree('line forward delete');
+		}
 		case 'deleteByCut':
 		case 'deleteByDrag':
 		case 'deleteByComposition':

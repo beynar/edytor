@@ -343,6 +343,57 @@ describe('golden command programs — word and line intent (del.word/del.line)',
 			expectAfterFollow: [p('Xcharlie')]
 		});
 	});
+
+	// P1.2 — del.unit.soft-line: a soft line ends at a line break; a hard line
+	// is the block (the golden browser shape, delete-shapes.spec.ts).
+	const lines = (
+		<root>
+			<paragraph>{'one\ntwo'}</paragraph>
+		</root>
+	);
+	it('deleteSoftLineBackward stops after the line break', async () => {
+		await program(lines, {
+			select: (e) => [atWords(e), 6, atWords(e), 6],
+			inputType: 'deleteSoftLineBackward',
+			expectTree: [p('one\no')],
+			expectCaret: { text: 'one\no', at: 4 },
+			follow: 'X',
+			expectAfterFollow: [p('one\nXo')]
+		});
+	});
+
+	it('deleteSoftLineForward stops before the line break', async () => {
+		await program(lines, {
+			select: (e) => [atWords(e), 1, atWords(e), 1],
+			inputType: 'deleteSoftLineForward',
+			expectTree: [p('o\ntwo')],
+			expectCaret: { text: 'o\ntwo', at: 1 },
+			follow: 'X',
+			expectAfterFollow: [p('oX\ntwo')]
+		});
+	});
+
+	it('deleteSoftLineBackward right after a line break deletes the break', async () => {
+		await program(lines, {
+			select: (e) => [atWords(e), 4, atWords(e), 4],
+			inputType: 'deleteSoftLineBackward',
+			expectTree: [p('onetwo')],
+			expectCaret: { text: 'onetwo', at: 3 },
+			follow: 'X',
+			expectAfterFollow: [p('oneXtwo')]
+		});
+	});
+
+	it('deleteHardLineBackward crosses line breaks to the block start', async () => {
+		await program(lines, {
+			select: (e) => [atWords(e), 6, atWords(e), 6],
+			inputType: 'deleteHardLineBackward',
+			expectTree: [p('o')],
+			expectCaret: { text: 'o', at: 0 },
+			follow: 'X',
+			expectAfterFollow: [p('Xo')]
+		});
+	});
 });
 
 describe('golden command programs — marks and inline atoms', () => {

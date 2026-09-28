@@ -1,0 +1,80 @@
+---
+title: Extending the room
+description: Load a document from your own store, mirror it back, and edit it on the server by subclassing DocumentRoom.
+icon: puzzle
+---
+
+`DocumentRoom` is a class: subclass it to plug in your own storage and server-side logic, and export the subclass instead.
+
+```ts src/worker.ts
+import { DocumentRoom, routeDocumentSocket, type SavedDocument } from 'edytor/cloudflare';
+
+export class Room extends DocumentRoom<Env> {
+  // Retrieve: the first time a room opens.
+  protected override async onLoad() {
+    const row = await this.env.DB.prepare('SELECT json FROM documents WHERE id = ?')
+      .bind(this.ctx.id.name)
+      .first<{ json: string }>();
+    return row ? JSON.parse(row.json) : undefined;
+  }
+
+  // Save: a few seconds after edits.
+  protected override async onSave({ value }: SavedDocument) {
+    await this.env.DB.prepare('INSERT OR REPLACE INTO documents (id, json) VALUES (?, ?)')
+      .bind(this.ctx.id.name, JSON.stringify(value))
+      .run();
+  }
+
+  // Manipulate: your own RPC method, editing on the server.
+  appendNote(text: string) {
+    return this.transact((doc) => {
+      const id = crypto.randomUUID();
+      doc.insertBlock({ parent: null, index: doc.childrenIds(null).length }, { id, type: 'paragraph' });
+      return doc.insertText(id, 0, text);
+    });
+  }
+}
+
+export default {
+  fetch(request, env) {
+    const id = new URL(request.url).pathname.split('/').pop()!;
+    return routeDocumentSocket(request, env.ROOMS, id, authorize);
+  }
+} satisfies ExportedHandler<Env>;
+```
+
+Point the binding and the migration at the subclass: `"class_name": "Room"` and `"new_sqlite_classes": ["Room"]`.
+
+The room's SQLite storage stays the source of truth: every edit is stored there before it is acknowledged, whatever your hooks do. The hooks move the document in and out of your own systems.
+
+## Load
+
+`onLoad()` runs when the room starts and stores nothing yet, before any socket is served. Return:
+
+| Return | Effect |
+| --- | --- |
+| `JSONDoc` | Seeded as the document. Seeding is deterministic, so a client that seeds the same value offline converges with it. |
+| `Uint8Array` | A v14 update, such as `SavedDocument.update` from an earlier `onSave`. Admitted like stored data: another generation or schema is refused. |
+| `undefined` / `null` | An empty room; the first client seeds it. |
+
+Once anything is stored, the room restores from its own storage and does not ask again. If `onLoad` throws, the room refuses every socket until its next start.
+
+## Save
+
+`onSave({ value, update })` runs `EDYTOR_SAVE_AFTER` ms (default 2000) after the first edit it has not saved: `value` is the document as JSON, `update` the full CRDT state. It runs on a Durable Object alarm, so it does not keep the room from hibernating. If it throws, the platform retries the alarm with backoff. Rooms that do not override `onSave` never set an alarm.
+
+If your class defines its own `alarm()`, call `await super.alarm()` from it.
+
+## Edit on the server
+
+`transact(fn)` runs `fn` with the document's [facade](/docs/reference/document-api) in one transaction, then stores the edit and broadcasts it to every connected socket, like a client's edit. It returns what `fn` returns. Use it from your own RPC methods, a webhook route, or `onSave`-style jobs:
+
+```ts
+await env.ROOMS.getByName(documentId).appendNote('Deployed v2');
+```
+
+`read()` returns the document as JSON. A room with no document yet is seeded with one empty block before `transact` runs.
+
+:::note
+The server has no plugin definitions, so the facade does not know which block types are void or islands. Server edits that depend on those roles (moves into islands, merges) are not checked against them.
+:::

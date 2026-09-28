@@ -30,7 +30,11 @@ interface SqlStorage {
 
 interface DurableObjectState {
 	readonly id: { toString(): string };
-	readonly storage: { readonly sql: SqlStorage; transactionSync<T>(closure: () => T): T };
+	readonly storage: {
+		readonly sql: SqlStorage;
+		transactionSync<T>(closure: () => T): T;
+		setAlarm(scheduledTime: number | Date): Promise<void>;
+	};
 	acceptWebSocket(ws: WebSocket, tags?: string[]): void;
 	getWebSockets(tag?: string): WebSocket[];
 	blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;

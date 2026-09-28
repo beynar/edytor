@@ -8,11 +8,14 @@ export {
 	DocumentRoom,
 	DEFAULT_COMPACT_AFTER,
 	DEFAULT_MAX_ROW_BYTES,
+	DEFAULT_SAVE_AFTER,
+	ROOM_ORIGIN,
 	IDENTITY_HEADERS,
 	noTimers,
 	type Attachment,
 	type DocumentRoomEnv,
 	type Refusal,
+	type SavedDocument,
 	type SocketIdentity
 } from './DocumentRoom.js';
 export {

@@ -45,11 +45,24 @@
  *
  * No entry point schedules a timer: each runs under {@link noTimers}
  * (a Durable Object with a pending timer never hibernates).
+ *
+ * Extending (subclass it, export the subclass):
+ *
+ * - `onLoad()` — retrieve: seed a room that stores nothing yet from your
+ *   own store (JSON, or a v14 update). Runs before any socket is served.
+ * - `onSave(document)` — save: mirror the document to your own store,
+ *   `saveAfter` ms after the first unsaved change (a Durable Object alarm,
+ *   so hibernation is unaffected; a throw is retried by the platform).
+ *   SQLite stays the room's source of truth: acks never wait on `onSave`.
+ * - `transact(fn)` — manipulate: edit through the document facade on the
+ *   server; persisted and broadcast to every socket like a client's edit.
+ *   `read()` returns the document as JSON (both RPC-callable wrappers are
+ *   yours to define).
  */
 import { DurableObject } from 'cloudflare:workers';
 import { Y } from '../crdt/engine.js';
 import * as E from '../crdt/index.js';
-import type { AwarenessEntry, YDoc } from '../crdt/index.js';
+import type { AwarenessEntry, EdytorDoc, JSONDoc, YDoc } from '../crdt/index.js';
 
 const crdt = E.bindCrdt(Y);
 const sync = crdt.sync;
@@ -58,6 +71,19 @@ const sync = crdt.sync;
 export const DEFAULT_MAX_ROW_BYTES = 2_000_000 - 4096;
 /** Update records before the rows are merged into one snapshot. */
 export const DEFAULT_COMPACT_AFTER = 500;
+/** ms between the first unsaved change and `onSave`. */
+export const DEFAULT_SAVE_AFTER = 2000;
+
+/** The document as `onSave` receives it. */
+export type SavedDocument = {
+	/** The document as JSON. */
+	value: JSONDoc;
+	/** The full v14 state (`onLoad` takes it back as is). */
+	update: Uint8Array;
+};
+
+/** The transaction origin of the room's own edits (`transact`, `onLoad` seeds). */
+export const ROOM_ORIGIN = Symbol('edytor-room');
 
 /** Headers carrying the identity `routeDocumentSocket` verified — never the client's. */
 export const IDENTITY_HEADERS = {
@@ -74,6 +100,7 @@ export type DocumentRoomEnv = {
 	EDYTOR_MAX_ROW_BYTES?: string | number;
 	EDYTOR_MAX_FRAME_BYTES?: string | number;
 	EDYTOR_COMPACT_AFTER?: string | number;
+	EDYTOR_SAVE_AFTER?: string | number;
 };
 
 /** What a socket is bound to: its verified user, its replica (Yjs client id), its access. */
@@ -188,11 +215,13 @@ const storedStep2 = (doc: YDoc, sv: Uint8Array): Uint8Array => {
 };
 
 export class DocumentRoom<
-	Env extends DocumentRoomEnv = DocumentRoomEnv
+	// Unconstrained: an all-optional constraint would reject an Env naming none of the knobs.
+	Env = DocumentRoomEnv
 > extends DurableObject<Env> {
 	readonly maxRowBytes: number;
 	readonly maxFrameBytes: number;
 	readonly compactAfter: number;
+	readonly saveAfter: number;
 	/** The live document; `null` when the stored container was refused. */
 	doc: YDoc | null = null;
 	/** Why the stored container was refused (another generation, a torn record…). */
@@ -208,16 +237,102 @@ export class DocumentRoom<
 	/** A failed append: the live doc holds what storage does not, until it is rebuilt. */
 	private unstored: unknown = null;
 	private readonly sql: SqlStorage;
+	private _facade: EdytorDoc | null = null;
+	private saveScheduled = false;
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
 		this.sql = ctx.storage.sql;
-		this.maxRowBytes = knob(env.EDYTOR_MAX_ROW_BYTES, DEFAULT_MAX_ROW_BYTES);
-		this.maxFrameBytes = knob(env.EDYTOR_MAX_FRAME_BYTES, E.MAX_FRAME_BYTES);
-		this.compactAfter = knob(env.EDYTOR_COMPACT_AFTER, DEFAULT_COMPACT_AFTER, 1e9);
+		const knobs = env as DocumentRoomEnv;
+		this.maxRowBytes = knob(knobs.EDYTOR_MAX_ROW_BYTES, DEFAULT_MAX_ROW_BYTES);
+		this.maxFrameBytes = knob(knobs.EDYTOR_MAX_FRAME_BYTES, E.MAX_FRAME_BYTES);
+		this.compactAfter = knob(knobs.EDYTOR_COMPACT_AFTER, DEFAULT_COMPACT_AFTER, 1e9);
+		this.saveAfter = knob(knobs.EDYTOR_SAVE_AFTER, DEFAULT_SAVE_AFTER, 1e9);
 		void ctx.blockConcurrencyWhile(async () => {
 			noTimers(() => this.load());
+			if (this.origin.kind === 'fresh' && this.doc !== null) await this.seed();
 		});
+	}
+
+	// ── Extension points ─────────────────────────────────────────────────
+
+	/**
+	 * Retrieve: the document for a room that stores nothing yet (asked again
+	 * at each start until something is stored). Return JSON, a v14 update
+	 * (`SavedDocument.update`), or nothing for an empty room. A throw
+	 * refuses every socket until the next start.
+	 */
+	protected async onLoad(): Promise<JSONDoc | Uint8Array | null | undefined> {
+		return undefined;
+	}
+
+	/** Save: mirror the document to your own store. Not overridden: no alarm is ever set. */
+	protected async onSave(_document: SavedDocument): Promise<void> {}
+
+	/** The facade over the live document (roles unknown: no plugin definitions on the server). */
+	get facade(): EdytorDoc {
+		return (this._facade ??= crdt.doc.create(this.requireDoc() as never) as EdytorDoc);
+	}
+
+	/**
+	 * Manipulate: run `fn` on the facade in one transaction. The edit is
+	 * stored, then broadcast to every socket. An empty room is first seeded
+	 * with one empty block, as a client with no `value` would.
+	 */
+	transact<T>(fn: (facade: EdytorDoc) => T): T {
+		return noTimers(() => {
+			const doc = this.requireDoc();
+			if (!crdt.doc.isInitialized(doc as never)) this.facade.seed([]);
+			let result!: T;
+			this.facade.transact(() => {
+				result = fn(this.facade);
+			}, ROOM_ORIGIN);
+			if (this.unstored !== null) throw this.rebuild();
+			return result;
+		});
+	}
+
+	/** The document as JSON. */
+	read(): JSONDoc {
+		return this.facade.toJSON();
+	}
+
+	/** Runs `onSave` (the alarm `saveAfter` ms after the first unsaved change). Call `super.alarm()` if you override it. */
+	async alarm(): Promise<void> {
+		this.saveScheduled = false;
+		if (this.doc === null) return;
+		await this.onSave({ value: this.read(), update: Y.encodeStateAsUpdate(this.doc) });
+	}
+
+	private async seed() {
+		let found: JSONDoc | Uint8Array | null | undefined;
+		try {
+			found = await this.onLoad();
+		} catch (error) {
+			this.failure = error as Error;
+			this.doc?.destroy();
+			this.doc = null;
+			return;
+		}
+		if (found == null) return;
+		noTimers(() => {
+			if (found instanceof Uint8Array) {
+				// Admitted like a stored container, then stored as one snapshot record.
+				const doc = crdt.admission.admitUpdate(found, `room ${this.ctx.id} onLoad`);
+				this.ctx.storage.transactionSync(() => this.insert('snapshot', Y.encodeStateAsUpdate(doc)));
+				this.doc?.destroy();
+				this.adopt(doc);
+			} else {
+				// Deterministic: a client seeding the same value writes the same update.
+				this.facade.seed((found as JSONDoc).children);
+			}
+		});
+	}
+
+	private scheduleSave() {
+		if (this.saveScheduled || this.onSave === DocumentRoom.prototype.onSave) return;
+		this.saveScheduled = true;
+		void this.ctx.storage.setAlarm(Date.now() + this.saveAfter);
 	}
 
 	// ── Storage ──────────────────────────────────────────────────────────
@@ -332,12 +447,7 @@ export class DocumentRoom<
 	 * the edit is resent and stored.
 	 */
 	private recover(ws: WebSocket) {
-		this.refusals.push({ reason: 'storage', detail: String(this.unstored) });
-		const stale = this.doc;
-		this.doc = null;
-		this.unstored = null;
-		this.load();
-		stale?.destroy();
+		this.rebuild();
 		this.depart(ws);
 		try {
 			ws.close(1011, 'storage failure');
@@ -346,12 +456,26 @@ export class DocumentRoom<
 		}
 	}
 
+	/** Drop the live doc for the stored rows (a failed append); returns the append's error. */
+	private rebuild(): unknown {
+		const error = this.unstored;
+		this.refusals.push({ reason: 'storage', detail: String(error) });
+		const stale = this.doc;
+		this.doc = null;
+		this.unstored = null;
+		this.load();
+		stale?.destroy();
+		return error;
+	}
+
 	private requireDoc(): YDoc {
 		if (this.doc === null) throw this.failure ?? new Error('room has no document');
 		return this.doc;
 	}
 
 	private adopt(doc: YDoc) {
+		this._facade?.dispose();
+		this._facade = null;
 		this.doc = doc;
 		// Every INTEGRATED update is persisted first, then relayed to
 		// everyone but its sender (the socket is the transaction origin).
@@ -368,6 +492,7 @@ export class DocumentRoom<
 				E.frame(E.messageSync, (e) => sync.writeUpdate(e, update)),
 				origin
 			);
+			this.scheduleSave();
 			if (++this.updates >= this.compactAfter) this.compact();
 		});
 	}

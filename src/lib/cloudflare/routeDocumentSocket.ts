@@ -29,9 +29,10 @@ export type AuthorizeDocumentSocket = (
 export const requestedReplica = (request: Request, param = 'replica'): number | null =>
 	parseReplica(new URL(request.url).searchParams.get(param));
 
-export async function routeDocumentSocket(
+export async function routeDocumentSocket<Room extends DocumentRoom<any>>(
 	request: Request,
-	rooms: DurableObjectNamespace<DocumentRoom>,
+	/** The namespace of `DocumentRoom` or of your subclass. */
+	rooms: DurableObjectNamespace<Room>,
 	documentId: string,
 	authorize: AuthorizeDocumentSocket
 ): Promise<Response> {

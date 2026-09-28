@@ -61,6 +61,7 @@ Set these as `vars` in `wrangler.jsonc`. All are optional.
 | `EDYTOR_MAX_ROW_BYTES` | 1,995,904 | Largest stored row. Can only be lowered. |
 | `EDYTOR_MAX_FRAME_BYTES` | 33,554,432 (32 MiB) | Largest frame sent whole; larger ones are chunked. Can only be lowered. |
 | `EDYTOR_COMPACT_AFTER` | 500 | Update records before the room compacts its rows into one snapshot. |
+| `EDYTOR_SAVE_AFTER` | 2000 | ms between the first unsaved change and [`onSave`](/docs/server/extending#save). |
 
 ```jsonc wrangler.jsonc
 {
@@ -68,7 +69,7 @@ Set these as `vars` in `wrangler.jsonc`. All are optional.
 }
 ```
 
-Values that are not positive integers are ignored. Pass your own `Env` type to the class if you extend it: `DocumentRoom<Env extends DocumentRoomEnv>`.
+Values that are not positive integers are ignored. Pass your own `Env` type to the class if you extend it: `DocumentRoom<Env>`. To load, save or edit the document from your own code, see [Extending the room](/docs/server/extending).
 
 ## Compaction over RPC
 

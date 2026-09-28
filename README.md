@@ -380,7 +380,34 @@ Edits restored from the local copy were written under earlier client ids of the 
 - **Bounded catch-up.** A frame larger than `EDYTOR_MAX_FRAME_BYTES` (default 32 MiB, the WebSocket message limit) is sent as `messageChunk` start/part/end frames that the provider applies only once the sequence is complete. Smaller frames are unchanged, so a client without chunk support still syncs small documents.
 - **No timers.** Every entry point runs under `noTimers`, which throws if anything schedules one: an object with a pending timer never hibernates.
 
-Optional `vars`: `EDYTOR_MAX_ROW_BYTES`, `EDYTOR_MAX_FRAME_BYTES`, `EDYTOR_COMPACT_AFTER` (they only lower the defaults). Limits: a single client → room message is still capped at 32 MiB by the platform (clients do not chunk); the in-memory presence snapshot refills as clients renew (every 15 s) after a wake.
+**Extending the room.** Subclass `DocumentRoom` and export the subclass (bind it and migrate it by its own class name):
+
+```ts
+export class Room extends DocumentRoom<Env> {
+	/** Retrieve: a room that stores nothing yet. JSON, a v14 update, or nothing. */
+	protected override async onLoad() {
+		return loadFromMyDb(this.ctx.id.name);
+	}
+	/** Save: `EDYTOR_SAVE_AFTER` ms (default 2000) after the first unsaved change, on an alarm. */
+	protected override async onSave({ value, update }: SavedDocument) {
+		await saveToMyDb(this.ctx.id.name, value);
+	}
+	/** Manipulate: your RPC method; stored and broadcast like a client edit. */
+	appendNote(id: string, text: string) {
+		return this.transact((doc) => {
+			doc.insertBlock(
+				{ parent: null, index: doc.childrenIds(null).length },
+				{ id, type: 'paragraph' }
+			);
+			return doc.insertText(id, 0, text);
+		});
+	}
+}
+```
+
+SQLite stays the source of truth (acks never wait on `onSave`); `onLoad` runs before any socket is served and never again once something is stored; a throwing `onSave` is retried by the platform; `read()` returns the document as JSON. A subclass with its own `alarm()` calls `super.alarm()`. The server has no plugin definitions: `transact` edits are not checked against void/island roles.
+
+Optional `vars`: `EDYTOR_MAX_ROW_BYTES`, `EDYTOR_MAX_FRAME_BYTES`, `EDYTOR_COMPACT_AFTER` (they only lower the defaults), `EDYTOR_SAVE_AFTER`. Limits: a single client → room message is still capped at 32 MiB by the platform (clients do not chunk); the in-memory presence snapshot refills as clients renew (every 15 s) after a wake.
 
 **Writing your own client or server.** Every frame is `varuint GENERATION | varuint messageType | payload`, with `GENERATION = generationWord(SCHEMA_VERSION) = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION` (14003 at schema 3); build one with `frame(type, (encoder) => …)` from `edytor/crdt/edytor`. The message types are `0` sync (subtypes `0` Step1, `1` Step2, `2` Update), `1` awareness, `2` auth (permission denied), `3` query awareness, `4` saved (the room's state vector, then optionally the deletes it holds of the message it answers, as an update with no structs: `sync.writeSaved`/`sync.readSaved`) and `5` chunk (`chunkFrame`/`createChunkReader`). `edytor/crdt/edytor` also exports the sync readers/writers (`bindCrdt(Y).sync`), `readAwarenessEntries`/`writeAwarenessEntries`, and the lib0 read helpers. Never call `attachDocument` (or `createDocument`/`loadDocument`) on a server's doc: it would write the server into the replicated attribution dictionary.
 

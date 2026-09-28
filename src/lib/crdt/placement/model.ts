@@ -47,7 +47,7 @@
  * surface so this file type-checks against structural interfaces and never
  * imports vendor `.js` (which `pnpm check` must not traverse).
  */
-import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
+import type { EngineApi, EngineDoc, EngineItemRef, EngineNode } from '../engine-api.js';
 import { decodeRank, encodeRank, rankBetween, RANK_VMIN } from './rank.js';
 import {
 	AT,
@@ -64,7 +64,8 @@ import {
 	INLINE_NODE,
 	NONCE,
 	REGISTRY_KEY,
-	TYPE
+	TYPE,
+	WITHDRAW_PREFIX
 } from '../schema.js';
 import { nonceOf, randOf } from '../rand.js';
 import { bindRuns } from '../text/runs.js';
@@ -500,6 +501,35 @@ export const bindModel = (Y: EngineApi) => {
 	/** {@link isLiveIn} over the doc's current view. */
 	const isLive = (doc: EngineDoc, id: BlockId): boolean => isLiveIn(view(doc), id);
 
+	/**
+	 * The history's creation rule (P12 `withdraw`, `hist.undo.withdraw`): an
+	 * undo never deletes a block the undone step created. Its node and
+	 * structure (attrs, placement candidates, the content and claims nodes)
+	 * stay and the undoer's withdraw mark is written on it; what the step wrote
+	 * inside the content and claims nodes (the undoer's own text, atoms,
+	 * boundaries, claims) is deleted as usual. The index shows a withdrawn
+	 * block while it holds another writer's content.
+	 */
+	const withdrawOnUndo =
+		(doc: EngineDoc) =>
+		(item: EngineItemRef, stackItem: { inserts: { hasId(id: unknown): boolean } }): boolean => {
+			const registry = registryOf(doc);
+			let below: EngineItemRef = null;
+			let cur = item;
+			while (cur?.parent !== registry) {
+				below = cur;
+				cur = (cur?.parent as EngineNode | undefined)?._item ?? null;
+				if (cur === null) return false;
+			}
+			if (!stackItem.inserts.hasId(cur.id)) return false;
+			if (below === null) {
+				const node = (cur as { content: { type: EngineNode } }).content.type;
+				node.setAttr(WITHDRAW_PREFIX + doc.clientID, true);
+				return true;
+			}
+			return below === item || (below.parentSub !== CONTENT && below.parentSub !== CLAIMS);
+		};
+
 	// ── placement write ──────────────────────────────────────────────────
 
 	/**
@@ -684,7 +714,7 @@ export const bindModel = (Y: EngineApi) => {
 						node.setAttr(NONCE, nonceOf(doc));
 					}
 					for (const key of [...node.attrKeys()]) {
-						if (key.startsWith(DEL_PREFIX)) node.deleteAttr(key);
+						if (key.startsWith(DEL_PREFIX) || key.startsWith(WITHDRAW_PREFIX)) node.deleteAttr(key);
 					}
 					if (node.getAttr(TYPE) !== sp.type) node.setAttr(TYPE, sp.type);
 					if (sp.data === undefined) node.deleteAttr(DATA);
@@ -862,6 +892,7 @@ export const bindModel = (Y: EngineApi) => {
 		isSelfOrDescendant,
 		ranksAt,
 		writePlacement,
+		withdrawOnUndo,
 		materializeSpec,
 		collides,
 		writeSplit,

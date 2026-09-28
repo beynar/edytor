@@ -202,3 +202,189 @@ describe('del.blocks.promote — only the selected blocks leave', () => {
 			]);
 	});
 });
+
+const N = (id = 'N') => ({ id, type: 'paragraph' });
+/** A creates an empty block `N` after `P`; B receives it. */
+const created = (ids: number[]) => {
+	const [a, b] = peers([{ id: 'P', text: 'abc' }], ids);
+	b.receiveAll(a.capture(() => a.ed.insertBlock({ parent: null, index: 1 }, N())));
+	return [a, b];
+};
+
+describe('hist.undo.withdraw — an undone creation keeps what others put in the block', () => {
+	each(
+		'B types into A’s new block, A undoes the creation: the block stays with B’s text',
+		(ids) => {
+			const [a, b] = created(ids);
+			a.receiveAll(b.capture(() => b.ed.insertText('N', 0, 'foreign')));
+			expect(a.undo()).not.toBeNull();
+			settle([a, b], 'P:"abc" N:"foreign"');
+		}
+	);
+
+	each('A’s own typing in the block goes with the undo; B’s stays', (ids) => {
+		const [a, b] = created(ids);
+		expect(a.ed.insertText('N', 0, 'mine').status).toBe('applied');
+		quiesce([a, b]);
+		expect(b.ed.insertText('N', 4, '+theirs').status).toBe('applied');
+		quiesce([a, b]);
+		expect(a.undo()).not.toBeNull(); // the typing
+		expect(a.undo()).not.toBeNull(); // the creation
+		settle([a, b], 'P:"abc" N:"+theirs"');
+	});
+
+	each('B’s text arrives after A’s undo (concurrent): the block stays with it', (ids) => {
+		const [a, b] = created(ids);
+		expect(a.undo()).not.toBeNull();
+		expect(a.tree()).toBe('P:"abc"');
+		expect(b.ed.insertText('N', 0, 'late').status).toBe('applied');
+		settle([a, b], 'P:"abc" N:"late"');
+	});
+
+	each('control: nothing foreign in it, the undone block is gone; redo brings it back', (ids) => {
+		const [a, b] = created(ids);
+		expect(a.undo()).not.toBeNull();
+		settle([a, b], 'P:"abc"');
+		expect(a.redo()).not.toBeNull();
+		settle([a, b], 'P:"abc" N:""');
+		expect(a.ed.insertText('N', 0, 'again').status).toBe('applied');
+		settle([a, b], 'P:"abc" N:"again"');
+	});
+
+	each('A redoes the creation after the withdrawal: A’s typing returns beside B’s', (ids) => {
+		const [a, b] = created(ids);
+		expect(a.ed.insertText('N', 0, 'mine').status).toBe('applied');
+		quiesce([a, b]);
+		expect(b.ed.insertText('N', 4, '+theirs').status).toBe('applied');
+		quiesce([a, b]);
+		a.undo();
+		a.undo();
+		settle([a, b], 'P:"abc" N:"+theirs"');
+		expect(a.redo()).not.toBeNull(); // the creation: nothing of A's to show yet
+		settle([a, b], 'P:"abc" N:"+theirs"');
+		expect(a.redo()).not.toBeNull(); // the typing
+		settle([a, b], 'P:"abc" N:"mine+theirs"');
+		a.undo();
+		a.undo();
+		settle([a, b], 'P:"abc" N:"+theirs"');
+	});
+
+	each('B nests a child inside A’s new block: the undone block stays as its holder', (ids) => {
+		const [a, b] = created(ids);
+		expect(
+			b.ed.insertBlock(
+				{ parent: 'N', index: 0 },
+				{ id: 'K', type: 'paragraph', content: [{ kind: 'text', text: 'kid' }] }
+			).status
+		).toBe('applied');
+		quiesce([a, b]);
+		expect(a.undo()).not.toBeNull();
+		settle([a, b], 'P:"abc" N:""[K:"kid"]');
+	});
+
+	each('B’s child arrives after A’s undo: the same', (ids) => {
+		const [a, b] = created(ids);
+		expect(a.undo()).not.toBeNull();
+		expect(
+			b.ed.insertBlock(
+				{ parent: 'N', index: 0 },
+				{ id: 'K', type: 'paragraph', content: [{ kind: 'text', text: 'kid' }] }
+			).status
+		).toBe('applied');
+		settle([a, b], 'P:"abc" N:""[K:"kid"]');
+	});
+
+	each(
+		'the block stays while it holds: B deleting its text removes it, B’s undo brings it back',
+		(ids) => {
+			const [a, b] = created(ids);
+			a.receiveAll(b.capture(() => b.ed.insertText('N', 0, 'x')));
+			a.undo();
+			settle([a, b], 'P:"abc" N:"x"');
+			expect(b.ed.deleteText('N', 0, 1).status).toBe('applied');
+			settle([a, b], 'P:"abc"');
+			expect(b.undo()).not.toBeNull();
+			settle([a, b], 'P:"abc" N:"x"');
+		}
+	);
+
+	each(
+		'an undone paste: the pasted parent stays empty while the child B typed into holds',
+		(ids) => {
+			const [a, b] = peers([{ id: 'P', text: 'abc' }], ids);
+			const tree = {
+				id: 'Q',
+				type: 'paragraph',
+				content: [{ kind: 'text', text: 'q' }],
+				children: [
+					{ id: 'Q1', type: 'paragraph', content: [{ kind: 'text', text: 'one' }] },
+					{ id: 'Q2', type: 'paragraph', content: [{ kind: 'text', text: 'two' }] }
+				]
+			};
+			expect(a.ed.insertBlock({ parent: null, index: 1 }, tree).status).toBe('applied');
+			quiesce([a, b]);
+			expect(b.ed.insertText('Q2', 3, '!').status).toBe('applied');
+			quiesce([a, b]);
+			expect(a.undo()).not.toBeNull();
+			settle([a, b], 'P:"abc" Q:""[Q2:"!"]');
+		}
+	);
+
+	each('control (reviewer): an explicit delete still wins over an unseen insertion', (ids) => {
+		const [a, b] = created(ids);
+		expect(a.ed.deleteBlocks(['N']).status).toBe('applied');
+		expect(b.ed.insertText('N', 0, 'unseen').status).toBe('applied');
+		settle([a, b], 'P:"abc"');
+	});
+});
+
+describe('hist.undo.withdraw — splits: the text the tail received rides back into the source', () => {
+	each('A splits, B types into the tail, A undoes the split: one block with B’s text', (ids) => {
+		const [a, b] = peers([{ id: 'A', text: 'abcd' }], ids);
+		expect(a.ed.splitBlock('A', 2, 'T').status).toBe('applied');
+		quiesce([a, b]);
+		expect(b.ed.insertText('T', 1, 'X').status).toBe('applied');
+		quiesce([a, b]);
+		expect(a.undo()).not.toBeNull();
+		settle([a, b], 'A:"abcXd"');
+	});
+
+	each('B’s tail typing arrives after A’s undo: the same block, the same text', (ids) => {
+		const [a, b] = peers([{ id: 'A', text: 'abcd' }], ids);
+		expect(a.ed.splitBlock('A', 2, 'T').status).toBe('applied');
+		quiesce([a, b]);
+		expect(a.undo()).not.toBeNull();
+		expect(b.ed.insertText('T', 1, 'X').status).toBe('applied');
+		settle([a, b], 'A:"abcXd"');
+	});
+
+	each(
+		'Enter at the end, B types in the new line, A undoes: B’s text joins the line above',
+		(ids) => {
+			const [a, b] = peers([{ id: 'A', text: 'ab' }], ids);
+			expect(a.ed.splitBlock('A', 2, 'T').status).toBe('applied');
+			quiesce([a, b]);
+			expect(b.ed.insertText('T', 0, 'new').status).toBe('applied');
+			quiesce([a, b]);
+			expect(a.undo()).not.toBeNull();
+			settle([a, b], 'A:"abnew"');
+			expect(a.redo()).not.toBeNull();
+			settle([a, b], 'A:"ab" T:"new"');
+		}
+	);
+
+	each('B nests a child under the tail: the tail stays, empty, holding it', (ids) => {
+		const [a, b] = peers([{ id: 'A', text: 'abcd' }], ids);
+		expect(a.ed.splitBlock('A', 2, 'T').status).toBe('applied');
+		quiesce([a, b]);
+		expect(
+			b.ed.insertBlock(
+				{ parent: 'T', index: 0 },
+				{ id: 'K', type: 'paragraph', content: [{ kind: 'text', text: 'kid' }] }
+			).status
+		).toBe('applied');
+		quiesce([a, b]);
+		expect(a.undo()).not.toBeNull();
+		settle([a, b], 'A:"abcd" T:""[K:"kid"]');
+	});
+});

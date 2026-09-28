@@ -521,7 +521,9 @@ export const captureOpState = (peer: Peer): OpState => {
 			.map(([, it]) => `${it.id.client}:${it.id.clock}`)
 			.sort();
 		blocksOut.set(id, {
-			deleted: rec.deleted,
+			// Explicit deletion (a live delete mark). A withdrawn block's visibility
+			// (`hist.undo.withdraw`) is derived from what it holds, not a delete.
+			deleted: delItems.length > 0,
 			delStamp: delItems.length > 0 ? delItems.join(',') : null,
 			placements: canonKey(
 				rec.cands.map((c: { key: string; p: unknown; r: string }) => ({

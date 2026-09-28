@@ -37,8 +37,15 @@ const countUpdates = (document: EdytorDocument, fn: () => void): number => {
 	return n;
 };
 
-describe('review — undo frees the id but the stale b/ record poisons re-creation', () => {
-	it("re-inserting an undone block id keeps the dead block's createdBy/contributors", () => {
+/**
+ * The review found an undone creation freed its id and the stale `b/` record
+ * poisoned a re-creation. Since `hist.undo.withdraw` (2026-09-28) an undo
+ * withdraws the block instead of deleting it: the id stays taken (like a
+ * deleted block's), so a re-creation is refused and the record stays the
+ * creator's.
+ */
+describe('review — an undone creation keeps its id and its record (hist.undo.withdraw)', () => {
+	it('re-inserting an undone block id is refused; the record stays the creator’s', () => {
 		const a = createDocument({ actor: alice });
 		a.sync();
 		const b = createDocument({ actor: bob });
@@ -50,22 +57,22 @@ describe('review — undo frees the id but the stale b/ record poisons re-creati
 		);
 		expect(b.facade.hasBlock('shared')).toBe(true);
 
-		// Undo propagates — the registry item dies on every replica, but the
-		// `b/shared` record (outside undo scope) survives carrying c/k alice.
+		// Undo propagates: the block is withdrawn (hidden, it holds nothing) on
+		// every replica; its node and `b/shared` record stay.
 		a.history.undo();
-		expect(b.facade.hasBlock('shared')).toBe(false);
-
-		// Bob creates a FRESH block under the recycled id.
-		b.transact(() =>
-			b.facade.insertBlock({ parent: null, index: 1 }, { id: 'shared', type: 'paragraph' })
-		);
+		expect(b.facade.isVisibleBlock('shared')).toBe(false);
 		expect(b.facade.hasBlock('shared')).toBe(true);
 
+		// Bob cannot create a block under the withdrawn block's id.
+		const again = b.transact(() =>
+			b.facade.insertBlock({ parent: null, index: 1 }, { id: 'shared', type: 'paragraph' })
+		);
+		expect(again.status).toBe('refused');
+		expect(b.facade.isVisibleBlock('shared')).toBe(false);
+
 		const attr = b.attribution.block('shared');
-		expect(attr?.createdBy).toBe('bob'); // FAILS — still 'alice'
-		expect(attr?.contributors).toEqual(new Set(['bob'])); // FAILS — phantom 'alice'
-		expect(attr?.lastChangedBy).toBe('bob');
-		// The misattribution is convergent — every replica reads it wrong.
+		expect(attr?.createdBy).toBe('alice');
+		expect(attr?.contributors).toEqual(new Set(['alice']));
 		expect(a.attribution.block('shared')).toEqual(attr);
 		unwire();
 		a.destroy();

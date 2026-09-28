@@ -121,10 +121,10 @@ describe('block attribution × undo', () => {
 			lastChangedBy: 'alice'
 		});
 		d.history.undo();
-		expect(d.facade.hasBlock('b2')).toBe(false);
-		// `b/` records are keyed by block id and out of undo scope — the
-		// record persists (like tombstone attribution), but the in-scope
-		// `l` attr died with the block node's subtree.
+		// The undo withdraws the block (hist.undo.withdraw): hidden, its node
+		// (and in-scope `l`) kept; `b/` records are keyed by block id and out
+		// of undo scope — the record persists (like tombstone attribution).
+		expect(d.facade.isVisibleBlock('b2')).toBe(false);
 		const attr = d.attribution.block('b2');
 		expect(attr?.createdBy).toBe('alice');
 		expect([...attr!.contributors]).toEqual(['alice']);

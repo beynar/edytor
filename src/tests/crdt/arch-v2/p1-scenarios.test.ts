@@ -273,7 +273,7 @@ describe('5. undo with collaboration (conc.undo.actor-local)', () => {
 		}
 	});
 
-	it('5d undo of a block create after the peer typed in it — DIVERGENCE: the peer text dies with the block (conc.delete-wins-block, F-D19)', () => {
+	it('5d undo of a block create after the peer typed in it → the block stays with the peer text (hist.undo.withdraw)', () => {
 		for (const o of one(
 			pair([{ id: 'p', text: 'abc' }], (a, b) => {
 				b.receiveAll(
@@ -285,9 +285,9 @@ describe('5. undo with collaboration (conc.undo.actor-local)', () => {
 				b.receiveAll(a.capture(() => a.undo()));
 			})
 		)) {
-			// native: `peer text` survives. arch-v2: undo deletes `n`, and an insert
-			// into a deleted block is deleted with it.
-			expect(tree(o.ed)).toBe('p:"abc"');
+			// native: `peer text` survives — and since the 2026-09-28 contract,
+			// arch-v2 too: the undo removes only the undoer's contributions.
+			expect(tree(o.ed)).toBe('p:"abc" n:"peer text"');
 		}
 	});
 
@@ -303,7 +303,7 @@ describe('5. undo with collaboration (conc.undo.actor-local)', () => {
 		}
 	});
 
-	it('5f undo of a multi-line paste after the peer typed in a pasted line — DIVERGENCE: the pasted line dies with the peer text (F-D19)', () => {
+	it('5f undo of a multi-line paste after the peer typed in a pasted line → the line stays with the peer text (hist.undo.withdraw)', () => {
 		for (const o of one(
 			pair([{ id: 'p', text: 'abcd' }], (a, b) => {
 				const paste = a.capture(() =>
@@ -328,9 +328,10 @@ describe('5. undo with collaboration (conc.undo.actor-local)', () => {
 				b.receiveAll(a.capture(() => a.undo()));
 			})
 		)) {
-			// native keeps `PEER`; arch-v2's undo deletes the pasted blocks and the
-			// peer's insert dies with its block.
-			expect(texts(o)).toEqual(['abcd']);
+			// native keeps `PEER`; so does arch-v2 since the 2026-09-28 contract:
+			// the pasted text goes, the line the peer typed in stays with `PEER`,
+			// and the split tail's text rides back into `p`.
+			expect(texts(o)).toEqual(['abcd', 'PEER']);
 		}
 	});
 

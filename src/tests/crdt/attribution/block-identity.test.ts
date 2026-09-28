@@ -107,7 +107,14 @@ describe('P1-4 — same-actor lastChangedBy survives another replica’s undo', 
 	});
 });
 
-describe('P1-5 — delayed writes to a recycled block id cannot contaminate', () => {
+/**
+ * P1-5 was a delayed write to an older incarnation contaminating a block
+ * re-created under an id an undo had freed. Since `hist.undo.withdraw`
+ * (2026-09-28) an undone creation keeps its node and id: the re-creation is
+ * refused, and the delayed write lands in the withdrawn block, which then
+ * holds another writer's content and shows again — on every replica.
+ */
+describe('P1-5 under hist.undo.withdraw — an undone id is not recycled; a late write keeps the block', () => {
 	const scenario = (deliverBeforeRecreate: boolean) => {
 		const a = createDocument({ actor: alice });
 		a.sync();
@@ -148,7 +155,9 @@ describe('P1-5 — delayed writes to a recycled block id cannot contaminate', ()
 		a.history.undo();
 		expect(undoUpdate).toBeDefined();
 		applyUpdate(b.doc, undoUpdate!, 'alice-undo');
-		expect(b.facade.hasBlock('shared')).toBe(false);
+		// Alice saw carol's text: the block stays for her; bob has not yet.
+		expect(a.facade.blockText('shared')).toBe('carol');
+		expect(b.facade.isVisibleBlock('shared')).toBe(false);
 
 		if (deliverBeforeRecreate) {
 			// Reverse delivery order: carol's write lands while nothing
@@ -156,7 +165,7 @@ describe('P1-5 — delayed writes to a recycled block id cannot contaminate', ()
 			applyUpdate(b.doc, carolUpdate!, 'carol-late');
 		}
 
-		b.transact(() =>
+		const recreated = b.transact(() =>
 			b.facade.insertBlock(
 				{ parent: null, index: 1 },
 				{
@@ -166,6 +175,8 @@ describe('P1-5 — delayed writes to a recycled block id cannot contaminate', ()
 				}
 			)
 		);
+		// The withdrawn block still owns its id.
+		expect(recreated.status).toBe('refused');
 
 		if (!deliverBeforeRecreate) {
 			applyUpdate(b.doc, carolUpdate!, 'carol-late');
@@ -175,16 +186,17 @@ describe('P1-5 — delayed writes to a recycled block id cannot contaminate', ()
 	};
 
 	it.each([false, true])(
-		'delivery %s recreation — the new block keeps only bob',
+		'delivery %s the refused recreation — the block shows carol’s text, alice created it',
 		async (deliverBeforeRecreate) => {
 			const { a, b, c, unwire } = scenario(deliverBeforeRecreate);
 
-			// Bob's block content is untouched by the old-incarnation edit.
-			expect(b.facade.blockText('shared')).toBe('new');
-			const attr = b.attribution.block('shared');
-			expect(attr?.createdBy).toBe('bob');
-			expect(attr?.contributors).toEqual(new Set(['bob']));
-			expect(attr?.lastChangedBy).toBe('bob');
+			for (const doc of [a, b]) {
+				expect(doc.facade.blockText('shared')).toBe('carol');
+				const attr = doc.attribution.block('shared');
+				expect(attr?.createdBy).toBe('alice');
+				expect(attr?.contributors).toEqual(new Set(['alice', 'carol']));
+				expect(attr?.lastChangedBy).toBe('carol');
+			}
 
 			unwire.forEach((off) => off());
 			a.destroy();
@@ -193,13 +205,13 @@ describe('P1-5 — delayed writes to a recycled block id cannot contaminate', ()
 		}
 	);
 
-	it('save/load keeps the recreated block insulated', () => {
+	it('save/load keeps the withdrawn block with carol’s text and record', () => {
 		const { b, unwire, a, c } = scenario(false);
 		const restored = createDocument({ actor: carol });
 		applyUpdate(restored.doc, b.encode());
 		restored.sync();
-		expect(restored.attribution.block('shared')?.contributors).toEqual(new Set(['bob']));
-		expect(restored.facade.blockText('shared')).toBe('new');
+		expect(restored.attribution.block('shared')?.contributors).toEqual(new Set(['alice', 'carol']));
+		expect(restored.facade.blockText('shared')).toBe('carol');
 		restored.destroy();
 		unwire.forEach((off) => off());
 		a.destroy();

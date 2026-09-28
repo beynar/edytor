@@ -24,6 +24,7 @@ export class StackItem {
  * @property {Doc} [doc] The document that this UndoManager operates on. Only needed if typeScope is empty.
  * @property {function(Item,StackItem):boolean} [restoreFilter] Whether popping the stack item may re-create the deleted item (default: always). // P11
  * @property {function(Transaction,StackItem):void} [onApply] Called inside the undo/redo transaction once the stack item is applied; its writes join the step. // P11
+ * @property {function(Item,StackItem,Transaction):boolean} [withdraw] Asked for every item a popped stack item would delete; `true` keeps it (the hook may write in its place, in the transaction) and counts as a change (default: never). // P12
  */
 /**
  * @typedef {Object} StackItemEvent
@@ -54,7 +55,7 @@ export class UndoManager extends ObservableV2<{
      * @param {Doc|YNode|Array<YNode>} typeScope Limits the scope of the UndoManager. If this is set to a ydoc instance, all changes on that ydoc will be undone. If set to a specific type, only changes on that type or its children will be undone. Also accepts an array of types.
      * @param {UndoManagerOptions} options
      */
-    constructor(typeScope: Doc | YNode | Array<YNode>, { captureTimeout, captureTransaction, deleteFilter, trackedOrigins, ignoreRemoteAttributeChanges, restoreFilter, onApply, doc }?: UndoManagerOptions);
+    constructor(typeScope: Doc | YNode | Array<YNode>, { captureTimeout, captureTransaction, deleteFilter, trackedOrigins, ignoreRemoteAttributeChanges, restoreFilter, onApply, withdraw, doc }?: UndoManagerOptions);
     /**
      * @type {Array<YNode | Doc>}
      */
@@ -63,6 +64,7 @@ export class UndoManager extends ObservableV2<{
     deleteFilter: (arg0: Item) => boolean;
     restoreFilter: (arg0: Item, arg1: StackItem) => boolean;
     onApply: (arg0: Transaction, arg1: StackItem) => void;
+    withdraw: (arg0: Item, arg1: StackItem, arg2: Transaction) => boolean;
     trackedOrigins: Set<any>;
     captureTransaction: (arg0: Transaction) => boolean;
     /**
@@ -186,6 +188,10 @@ export type UndoManagerOptions = {
      * Called inside the undo/redo transaction once the stack item is applied; its writes join the step. // P11
      */
     onApply?: ((arg0: Transaction, arg1: StackItem) => void) | undefined;
+    /**
+     * Asked for every item a popped stack item would delete; `true` keeps it (the hook may write in its place, in the transaction) and counts as a change (default: never). // P12
+     */
+    withdraw?: ((arg0: Item, arg1: StackItem, arg2: Transaction) => boolean) | undefined;
 };
 export type StackItemEvent = {
     stackItem: StackItem;

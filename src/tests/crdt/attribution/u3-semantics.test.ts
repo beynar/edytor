@@ -239,33 +239,33 @@ describe('local undo/redo', () => {
 		b.history.undo();
 		expect(a.attribution.block('b2')?.lastChangedBy).toBe('alice');
 
-		// Undo alice's INSERT (a's local op): the block dies, its `l` item
-		// dies with it — but the `b/` record keeps createdBy AND the full
-		// contributor union (bob contributed while it lived).
+		// Undo alice's INSERT (a's local op): the block is withdrawn
+		// (hist.undo.withdraw) — alice's text goes, bob's edit is already
+		// undone, so it holds nothing and hides. Its node and `l` item stay;
+		// the `b/` record keeps createdBy AND the full contributor union (bob
+		// contributed while it lived).
 		a.history.undo();
-		expect(a.facade.hasBlock('b2')).toBe(false);
+		expect(a.facade.isVisibleBlock('b2')).toBe(false);
 		const dead = a.attribution.block('b2');
 		expect(dead?.createdBy).toBe('alice');
 		expect(dead?.contributors).toEqual(new Set(['alice', 'bob']));
-		expect(dead?.lastChangedBy).toBeUndefined();
+		expect(dead?.lastChangedBy).toBe('alice');
 		expect(b.attribution.block('b2')).toEqual(dead);
 
-		// Redo the insert: block + alice's `l` item resurrect together.
+		// Redo the insert: the withdraw mark goes, alice's text returns.
 		a.history.redo();
-		expect(a.facade.hasBlock('b2')).toBe(true);
+		expect(a.facade.isVisibleBlock('b2')).toBe(true);
 		expect(a.attribution.block('b2')?.lastChangedBy).toBe('alice');
 		// Redo bob's edit: bob's `l` item resurrects as a fresh clone — the
 		// engine's undo/redo resurrects deleted items via redone-clones, so
 		// under interleaved undo/redo chains several live `l` items can
 		// coexist and resolve by deterministic item order rather than
-		// chronological order. Note bob's redone text stays invisible: the
-		// resurrected item reparents to the pre-redo block subtree, which
-		// a's redo had replaced with fresh clones — an inherent vendored
-		// UndoManager boundary (convergent, no corruption). Pin what the
-		// contract guarantees: convergent, actor-valid, union exact.
+		// chronological order. The block node was never replaced (an undone
+		// creation withdraws it), so bob's redone text lands in it again.
+		// Pin what the contract guarantees: convergent, actor-valid, union exact.
 		b.history.redo();
-		expect(a.facade.blockText('b2')).toBe('two');
-		expect(b.facade.blockText('b2')).toBe('two'); // convergent
+		expect(a.facade.blockText('b2')).toBe('two!');
+		expect(b.facade.blockText('b2')).toBe('two!'); // convergent
 		const attrAfterRedo = a.attribution.block('b2');
 		expect(b.attribution.block('b2')).toEqual(attrAfterRedo); // convergent
 		expect(['alice', 'bob']).toContain(attrAfterRedo?.lastChangedBy);

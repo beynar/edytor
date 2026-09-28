@@ -561,6 +561,36 @@ upstream suite pass unchanged.
 
 Vendor delta: +9 xloc in `src/` (census `--vendor`: 5,769 → 5,778).
 
+### P12 — UndoManager `withdraw`: the document keeps an item an undo would delete (`src/utils/UndoManager.js`)
+
+Reason: the engine undoes an insert by deleting the inserted items, and a
+deleted type deletes everything inside it. Undoing a block's creation
+therefore deleted the block node with the text another writer had typed into
+it, before or after the undo (arch-v2 contract `hist.undo.withdraw`,
+2026-09-28: an undo removes only the undoer's own contributions). Edytor keeps
+the node and writes a per-writer withdraw mark instead
+(`src/lib/crdt/placement/model.ts` `withdrawOnUndo`); the document index shows
+a withdrawn block while it holds another writer's content.
+
+Patch (hunk delimited by `// P12 begin` / `// P12 end`, option lines marked
+`// P12`):
+
+- `UndoManagerOptions.withdraw(item, stackItem, transaction) → boolean`
+  (default never): asked for every item a popped stack item would delete,
+  before `deleteFilter`. `true` keeps the item — the hook may write in its
+  place, inside the transaction, and its writes are part of the step the
+  other stack captures — and counts as a change, so a step whose only effect
+  was kept is consumed instead of skipped for the next one (like P11's
+  withheld restore).
+
+Oracle: `src/tests/crdt/p12-undo-withdraw.test.ts` — the hook rows run on the
+patched tree and on the tree with the P12 hunk stripped (which ignores the
+option); a differential replays 30 seeded programs × 100 map and nested-text
+operations with undo/redo on both trees with no option and requires
+byte-identical `encodeStateAsUpdate` for both peers after every operation.
+
+Vendor delta: +6 xloc in `src/`.
+
 ## Generated declarations (`dts/`)
 
 `svelte-package` copies JS verbatim but emits no `.d.ts` for JS inputs, so

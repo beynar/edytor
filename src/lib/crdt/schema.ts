@@ -54,6 +54,15 @@ export const NONCE = 'n';
 export const DEL_PREFIX = 'del.';
 export const hasDeleteMark = (node: { attrKeys(): IterableIterator<string> }): boolean =>
 	[...node.attrKeys()].some((key) => key.startsWith(DEL_PREFIX));
+/**
+ * Per-writer withdraw marks (`hist.undo.withdraw`): `wd.<writer>: true`, what
+ * an undo of the block's creation writes instead of deleting the node. A
+ * withdrawn block without a delete mark is visible while it holds content
+ * (a live unit in its stream, or a visible child), hidden otherwise.
+ */
+export const WITHDRAW_PREFIX = 'wd.';
+export const hasWithdrawMark = (node: { attrKeys(): IterableIterator<string> }): boolean =>
+	[...node.attrKeys()].some((key) => key.startsWith(WITHDRAW_PREFIX));
 /** U1 `lastChangedBy` LWW attr (`SCHEMA.blockAttrs.lastChanged`). */
 export const LAST_CHANGED_ATTR = 'l';
 export const CONTENT = 'content';

@@ -79,6 +79,7 @@ import {
 	protectItems,
 	readClaims,
 	scanText,
+	type Claim,
 	type Owner,
 	type Ownership,
 	type RangeReadStats,
@@ -91,6 +92,7 @@ import {
 	CONTENT,
 	DATA,
 	hasDeleteMark,
+	hasWithdrawMark,
 	ID,
 	LAST_CHANGED_ATTR,
 	NONCE,
@@ -341,6 +343,8 @@ export const bindRuns = (Y: EngineApi) => {
 
 		// ── the replicated-state index ──────────────────────────────────
 		const blocks = new Map<BlockId, BlockRec>();
+		/** Withdrawn blocks without a delete mark (`hist.undo.withdraw`), see {@link settle}. */
+		const shells = new Set<BlockId>();
 		/** Union-ever claim targets per holder (never shrinks: a dropped claim still invalidates). */
 		const effects = new Map<BlockId, Set<BlockId>>();
 		/** Forward dependencies of cached runs: backing text (by home) / walked block → consumers. */
@@ -525,6 +529,13 @@ export const bindRuns = (Y: EngineApi) => {
 			if (!isNodeLike(node)) blocks.delete(id);
 			else blocks.set(id, buildRec(id, node));
 			noteEffects(id, blocks.get(id));
+			noteShell(id);
+		};
+		/** A withdrawn block without a delete mark: its `deleted` is settled after each fold. */
+		const noteShell = (id: BlockId): void => {
+			const rec = blocks.get(id);
+			if (rec !== undefined && !rec.deleted && hasWithdrawMark(rec.node)) shells.add(id);
+			else shells.delete(id);
 		};
 		const ensureRec = (id: BlockId): void => {
 			if (!blocks.has(id)) updateBlockRec(id);
@@ -694,6 +705,19 @@ export const bindRuns = (Y: EngineApi) => {
 			table: boolean;
 			structure: boolean;
 			placement: boolean;
+			/** The winning parents, before and after, of the blocks the fold touched. */
+			parents: Set<BlockId>;
+		};
+		const parentOf = (id: BlockId): BlockId | null | undefined => blocks.get(id)?.cands[0]?.p;
+		/** A structural change of `id`: its readers, and the blocks it claims, re-read. */
+		const invalidateBlock = (id: BlockId, ctx: FoldCtx, claimsBefore: Claim[] = []): void => {
+			ctx.structure = ctx.placement = true;
+			ctx.invalidated.add(id);
+			for (const c of listConsumers.get(id) ?? []) ctx.invalidated.add(c);
+			for (const m of new Set([...(effects.get(id) ?? []), ...claimsBefore.map((c) => c.m)])) {
+				ctx.invalidated.add(m);
+				for (const c of listConsumers.get(m) ?? []) ctx.invalidated.add(c);
+			}
 		};
 
 		/** Fold one block's changed facets (`spans`: its text's edited spans, `null` = opaque). */
@@ -705,24 +729,17 @@ export const bindRuns = (Y: EngineApi) => {
 		): void => {
 			const kinds = new Set<Facet | 'entry'>();
 			for (const f of facets) kinds.add(f === ENTRY_FACET ? 'entry' : facetOf(f));
+			const parentBefore = parentOf(id);
+			if (typeof parentBefore === 'string') ctx.parents.add(parentBefore);
 			if (kinds.has('entry') || kinds.has('structure')) {
 				const claimsBefore = blocks.get(id)?.claims;
 				updateBlockRec(id);
-				ctx.structure = ctx.placement = true;
 				// A new entry, a nonce or an own text can move streams (R2).
 				if (kinds.has('entry') || facets.has(NONCE) || facets.has(CONTENT_ATTR)) {
 					ctx.table = true;
 					ctx.texts.set(id, null);
 				}
-				ctx.invalidated.add(id);
-				for (const c of listConsumers.get(id) ?? []) ctx.invalidated.add(c);
-				for (const m of new Set([
-					...(effects.get(id) ?? []),
-					...(claimsBefore ?? []).map((c) => c.m)
-				])) {
-					ctx.invalidated.add(m);
-					for (const c of listConsumers.get(m) ?? []) ctx.invalidated.add(c);
-				}
+				invalidateBlock(id, ctx, claimsBefore);
 			} else {
 				if (kinds.has('at')) {
 					ensureRec(id);
@@ -741,6 +758,8 @@ export const bindRuns = (Y: EngineApi) => {
 				}
 				ensureRec(id);
 			}
+			const parentAfter = parentOf(id);
+			if (typeof parentAfter === 'string') ctx.parents.add(parentAfter);
 			if (kinds.has('content') && ctx.texts.get(id) !== null) {
 				ctx.texts.set(id, spans === null ? null : [...(ctx.texts.get(id) ?? []), ...spans]);
 			}
@@ -765,6 +784,58 @@ export const bindRuns = (Y: EngineApi) => {
 					const owner = ownerOf(s.block);
 					if (typeof owner === 'string') ctx.invalidated.add(owner);
 				}
+			}
+		};
+
+		/** The blocks whose stream lies in a text the fold edited. */
+		const editedStreams = (ctx: FoldCtx): BlockId[] =>
+			[...ctx.texts.keys()].flatMap((home) => (inText.get(home) ?? []).map((s) => s.block));
+		/** A live unit in `id`'s stream (boundaries excepted). */
+		const streamHolds = (id: BlockId): boolean => {
+			const s = streams.get(id);
+			return s !== undefined && s.end - s.start > s.inert.length;
+		};
+
+		/**
+		 * Settle the withdrawn blocks (`hist.undo.withdraw`): a shell is deleted
+		 * iff it holds nothing — no live unit in its stream and no child (a
+		 * block whose winning candidate names it) that is itself not deleted.
+		 * The least fixpoint, computed over every shell whenever an `affected`
+		 * one may flip (one whose stream still holds a unit keeps its answer),
+		 * so every replica settles the same whatever the fold order. A flip is
+		 * a structural change of the shell.
+		 */
+		const settle = (affected: Iterable<BlockId>, ctx: FoldCtx | null): void => {
+			if (shells.size === 0) return;
+			let quiet = true;
+			for (const id of affected) {
+				if (!shells.has(id)) continue;
+				if (blocks.get(id)?.deleted !== false || !streamHolds(id)) quiet = false;
+			}
+			if (quiet) return;
+			const alive = new Set<BlockId>();
+			const up: BlockId[] = [];
+			const hold = (id: BlockId): void => {
+				if (alive.has(id)) return;
+				alive.add(id);
+				up.push(id);
+			};
+			for (const id of shells) if (streamHolds(id)) hold(id);
+			for (const [id, rec] of blocks) {
+				const p = rec.cands[0]?.p;
+				if (!shells.has(id) && !rec.deleted && typeof p === 'string' && shells.has(p)) hold(p);
+			}
+			for (let id = up.pop(); id !== undefined; id = up.pop()) {
+				const p = parentOf(id);
+				if (typeof p === 'string' && shells.has(p)) hold(p);
+			}
+			for (const id of shells) {
+				const rec = blocks.get(id)!;
+				if (rec.deleted === !alive.has(id)) continue;
+				rec.deleted = !alive.has(id);
+				if (ctx === null) continue;
+				structureVersion++;
+				invalidateBlock(id, ctx);
 			}
 		};
 
@@ -825,7 +896,8 @@ export const bindRuns = (Y: EngineApi) => {
 				texts: new Map(),
 				table: false,
 				structure: false,
-				placement: false
+				placement: false,
+				parents: new Set()
 			};
 			let derived = false;
 			for (const [id, facets] of touched) {
@@ -834,6 +906,7 @@ export const bindRuns = (Y: EngineApi) => {
 			}
 			if (ctx.structure) structureVersion++;
 			foldTexts(ctx);
+			settle(ctx.table ? shells : [...touched.keys(), ...ctx.parents, ...editedStreams(ctx)], ctx);
 			if (ctx.placement) placementVersion++;
 			for (const b of ctx.invalidated) dirty.add(b);
 			if (derived) version++;
@@ -1075,9 +1148,11 @@ export const bindRuns = (Y: EngineApi) => {
 			if (!isNodeLike(v)) return;
 			blocks.set(id, buildRec(id, v));
 			noteEffects(id, blocks.get(id));
+			noteShell(id);
 			rescan(id);
 		});
 		rebuildTable(new Set());
+		settle(shells, null);
 
 		const observer = (e: EngineDeepEvent): void => onCommit(e);
 		registry.observeDeep(observer);

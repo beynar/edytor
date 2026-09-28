@@ -1224,9 +1224,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			});
 			// Text delete marks (P11): the marks are in scope (an undo removes the
 			// undoer's own), and the history restores text only as the marks allow.
+			// An undone creation withdraws the block instead of deleting it (P12).
 			const um: YUndoManager = new Y.UndoManager(
 				[M.registryOf(doc), D.scope(doc)] as unknown as YNode[],
-				{ ...opts, ...D.history(doc, () => um) } as never
+				{ ...opts, ...D.history(doc, () => um), withdraw: M.withdrawOnUndo(doc) } as never
 			) as YUndoManager;
 			// A streamless block's own text (R2) is shared by every replica that
 			// typed into it first: no history step captures it, so undoing the

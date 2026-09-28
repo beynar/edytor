@@ -223,7 +223,7 @@ describe('F-U9 (lineage half) — one update per undo and per redo with lineage 
 	}
 });
 
-describe('F7 / O23 — the incarnation is the replicated nonce; redo copies carry it', () => {
+describe('F7 / O23 — the incarnation is the replicated nonce; an undo/redo keeps it', () => {
 	const nonceOf = (doc, id) => doc.get('blocks').getAttr(id)?.getAttr('n');
 
 	for (const ids of CLIENT_IDS) {
@@ -234,8 +234,9 @@ describe('F7 / O23 — the incarnation is the replicated nonce; redo copies carr
 				const B = replica(base, ids.b, bob);
 				const um = A.ed.createUndoManager({ captureTimeout: 0 });
 
-				// Alice creates `x`, undoes the creation, then redoes it: the
-				// engine re-creates the registry node as a NEW item.
+				// Alice creates `x`, undoes the creation, then redoes it. Since
+				// `hist.undo.withdraw` the undo withdraws the node (it stays) and the
+				// redo lifts the mark: the incarnation is the same node.
 				const created = step(A.doc, () =>
 					A.ed.insertBlock(
 						{ parent: null, index: 1 },
@@ -245,12 +246,12 @@ describe('F7 / O23 — the incarnation is the replicated nonce; redo copies carr
 				const n = nonceOf(A.doc, 'x');
 				expect(n).not.toBe(undefined);
 				const undo = step(A.doc, () => expect(um.undo()).not.toBe(null));
-				expect(A.ed.hasBlock('x')).toBe(false);
+				expect(A.ed.isVisibleBlock('x')).toBe(false);
 				const redo = step(A.doc, () => expect(um.redo()).not.toBe(null));
 				expect(A.ed.blockText('x')).toBe('x');
 				for (const u of [created, undo, redo]) deliver(B.doc, u.bytes);
 
-				// The redo copy carries the nonce on both replicas.
+				// The nonce is the same on both replicas.
 				expect(nonceOf(A.doc, 'x')).toBe(n);
 				expect(nonceOf(B.doc, 'x')).toBe(n);
 				const born = { createdBy: 'alice', contributors: ['alice'], l: 'alice' };
@@ -279,16 +280,18 @@ describe('F7 / O23 — the incarnation is the replicated nonce; redo copies carr
 		}
 	}
 
-	it('a recycled id is a new incarnation: a fresh nonce and a fresh record', () => {
+	it('an undone creation is not a recycled id: its incarnation and record stay, a re-creation is refused', () => {
 		const A = replica(seeded(), 7, alice);
 		const um = A.ed.createUndoManager({ captureTimeout: 0 });
 		A.ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' });
 		const first = nonceOf(A.doc, 'x');
 		um.undo();
 		const B = replica(Y.encodeStateAsUpdate(A.doc), 3, bob);
-		B.ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' });
-		expect(nonceOf(B.doc, 'x')).not.toBe(first);
-		expect(attr(B.ed, 'x')).toEqual({ createdBy: 'bob', contributors: ['bob'], l: 'bob' });
+		expect(
+			B.ed.insertBlock({ parent: null, index: 1 }, { id: 'x', type: 'paragraph' }).status
+		).toBe('refused');
+		expect(nonceOf(B.doc, 'x')).toBe(first);
+		expect(attr(B.ed, 'x')).toEqual({ createdBy: 'alice', contributors: ['alice'], l: 'alice' });
 	});
 
 	it('seeded nonces derive from the seed: identical seeds agree, different seeds differ', () => {

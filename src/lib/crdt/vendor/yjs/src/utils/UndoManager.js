@@ -105,6 +105,13 @@ const popStackItem = (undoManager, stack, eventType) => {
       // parents, so we have more information available when items are filtered.
       for (let i = itemsToDelete.length - 1; i >= 0; i--) {
         const item = itemsToDelete[i]
+        // P12 begin
+        if (undoManager.withdraw(item, stackItem, transaction)) {
+          // kept (the document may have written in its place): the step still applies
+          performedChange = true
+          continue
+        }
+        // P12 end
         if (undoManager.deleteFilter(item)) {
           item.delete(transaction)
           performedChange = true
@@ -143,6 +150,7 @@ const popStackItem = (undoManager, stack, eventType) => {
  * @property {Doc} [doc] The document that this UndoManager operates on. Only needed if typeScope is empty.
  * @property {function(Item,StackItem):boolean} [restoreFilter] Whether popping the stack item may re-create the deleted item (default: always). // P11
  * @property {function(Transaction,StackItem):void} [onApply] Called inside the undo/redo transaction once the stack item is applied; its writes join the step. // P11
+ * @property {function(Item,StackItem,Transaction):boolean} [withdraw] Asked for every item a popped stack item would delete; `true` keeps it (the hook may write in its place, in the transaction) and counts as a change (default: never). // P12
  */
 
 /**
@@ -175,6 +183,7 @@ export class UndoManager extends ObservableV2 {
     ignoreRemoteAttributeChanges = false,
     restoreFilter = () => true, // P11
     onApply = () => {}, // P11
+    withdraw = () => false, // P12
     doc = /** @type {Doc} */ (array.isArray(typeScope) ? typeScope[0].doc : typeScope instanceof Doc ? typeScope : typeScope.doc)
   } = {}) {
     super()
@@ -187,6 +196,7 @@ export class UndoManager extends ObservableV2 {
     this.deleteFilter = deleteFilter
     this.restoreFilter = restoreFilter // P11
     this.onApply = onApply // P11
+    this.withdraw = withdraw // P12
     trackedOrigins.add(this)
     this.trackedOrigins = trackedOrigins
     this.captureTransaction = captureTransaction

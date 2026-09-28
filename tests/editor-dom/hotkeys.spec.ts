@@ -96,17 +96,22 @@ test.describe('browser hotkey behavior', () => {
 
 		await page.keyboard.press('Backspace');
 
+		// The document is empty; the editable fallback is the view's virtual
+		// paragraph (`doc.empty.virtual`), which nothing writes.
 		await expect
 			.poll(async () => {
 				const value = await readJsonByTestId<{
 					children: Array<{ content?: Array<{ text?: string }> }>;
 				}>(page, 'value');
-				return value.children.map(
-					(child) => child.content?.map((part) => part.text ?? '').join('') ?? ''
-				);
+				return value.children.length;
 			})
-			.toEqual(['']);
+			.toBe(0);
 		await expect(page.locator('[data-edytor-block="true"]')).toHaveCount(1);
+		expect(
+			await page.evaluate(() =>
+				(window as Window & { __EDYTOR__?: any }).__EDYTOR__.facade.virtual()
+			)
+		).toMatch(/^v_/);
 		await expectSelection(page, {
 			startBlockPath: [0],
 			endBlockPath: [0],

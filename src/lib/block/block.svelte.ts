@@ -351,11 +351,11 @@ export class Block {
 		});
 	};
 
-	/** Delete `length` visible children from `index` (a document delete). */
+	/** Delete `length` visible children from `index`, each with its subtree (a document delete). */
 	deleteChildren = (index: number, length = 1): void => {
 		const ids = this.edytor.facade.childrenIds(this.isRoot ? null : this.id);
 		for (const id of ids.slice(index, index + length).reverse())
-			this.edytor.facade.block(id).delete();
+			this.edytor.facade.block(id).delete({ keepChildren: false });
 	};
 
 	/**

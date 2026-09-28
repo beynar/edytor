@@ -137,11 +137,13 @@ test.describe('structural key behavior', () => {
 		await page.keyboard.press(`${modKey}+A`);
 		await expect.poll(async () => (await readSelection(page)).selectedBlockPaths).toEqual([[0, 0]]);
 
-		// Stage 3: all root blocks.
+		// Stage 3: every block, nested ones included (a block selection is exactly its members).
 		await page.keyboard.press(`${modKey}+A`);
 		await expect
-			.poll(async () => (await readSelection(page)).selectedBlockPaths)
-			.toEqual([[0], [1]]);
+			.poll(async () =>
+				(await readSelection(page)).selectedBlockPaths.map((path) => path.join('.')).sort()
+			)
+			.toEqual(['0', '0.0', '1']);
 
 		issues.assertClean();
 	});

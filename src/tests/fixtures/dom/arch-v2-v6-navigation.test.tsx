@@ -540,3 +540,46 @@ describe('vertical extension walks the same displayable blocks (O44)', () => {
 		expect(sel(edytor)).toMatchObject({ start: [0, 5], end: [2, 5], reversed: true });
 	});
 });
+
+/**
+ * Past a soft break the caret has two DOM positions (the break's node end, the
+ * next line's start): Firefox's native forward step trades one for the other
+ * and moves nothing (DST seed 29, `move-produced-no-effect`). A forward
+ * grapheme step from right after a `\n` is the editor's; the engine rows are in
+ * `tests/editor-dom/arch-v2-v6-navigation.spec.ts`.
+ */
+describe('a forward grapheme step after a soft break is the editor’s', () => {
+	const doc: JSONDoc = {
+		children: [
+			{ type: 'paragraph', content: [{ text: 'A\n' }, { text: '.x', marks: { italic: true } }] }
+		]
+	};
+
+	row('ArrowRight after the break moves one grapheme', async () => {
+		const { edytor, editor, blocks } = await mount(doc);
+		await place(edytor, blocks()[0], 2);
+		const { defaultPrevented } = await press(editor, 'ArrowRight');
+		expect(defaultPrevented).toBe(true);
+		expect(sel(edytor)).toMatchObject(caretAt(0, 3));
+	});
+
+	row('Shift+ArrowRight after the break extends one grapheme', async () => {
+		const { edytor, editor, blocks } = await mount(doc);
+		await place(edytor, blocks()[0], 2);
+		const { defaultPrevented } = await press(editor, 'ArrowRight', { shift: true });
+		expect(defaultPrevented).toBe(true);
+		expect(sel(edytor)).toMatchObject({
+			kind: 'text',
+			start: [0, 2],
+			end: [0, 3],
+			reversed: false
+		});
+	});
+
+	pin('a step toward the break inside its text stays native', async () => {
+		const { edytor, editor, blocks } = await mount(doc);
+		await place(edytor, blocks()[0], 2);
+		const { defaultPrevented } = await press(editor, 'ArrowLeft', { shift: true });
+		expect(defaultPrevented).toBe(false);
+	});
+});

@@ -188,3 +188,53 @@ test.describe('V6 follow-up — focus-moving vertical extension, anchored atom s
 			issues.assertClean();
 		});
 });
+
+/**
+ * A soft break (`\n`) that ends a mark run (DST seed 29, Firefox
+ * `move-produced-no-effect`): the caret after it sits at the end of the break's
+ * DOM text node, and the next run starts the next line in another node. Both
+ * DOM positions are the same visual caret, so a native step from there only
+ * changes node and the key moves nothing. The K9 contract holds on every
+ * engine: an arrow moves the caret one grapheme, its Shift variant moves the
+ * focus one grapheme and keeps the anchor.
+ */
+test.describe('V6 — a grapheme step after a soft break that ends a mark run', () => {
+	// One text `A\n.x` (display offsets 0–4): `A\n` plain, `.x` italic.
+	const BREAK = [
+		{
+			type: 'paragraph',
+			content: [{ text: 'A\n' }, { text: '.x', marks: { italic: true } }]
+		}
+	];
+
+	test('Shift+ArrowRight extends past the first character of the next line', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page, BREAK);
+		await setSelectionByTextIndex(page, 0, 2);
+		await expectStops(page, caretAt(0, 2));
+		await page.keyboard.press('Shift+ArrowRight');
+		await expectStops(page, { kind: 'text', start: [0, 2], end: [0, 3], reversed: false });
+		await page.keyboard.press('Shift+ArrowRight');
+		await expectStops(page, { kind: 'text', start: [0, 2], end: [0, 4], reversed: false });
+		await page.keyboard.press('Shift+ArrowLeft');
+		await page.keyboard.press('Shift+ArrowLeft');
+		await expectStops(page, caretAt(0, 2));
+		await page.keyboard.press('Shift+ArrowLeft');
+		await expectStops(page, { kind: 'text', start: [0, 1], end: [0, 2], reversed: true });
+		issues.assertClean();
+	});
+
+	test('ArrowRight moves past the first character of the next line', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page, BREAK);
+		await setSelectionByTextIndex(page, 0, 2);
+		await expectStops(page, caretAt(0, 2));
+		await page.keyboard.press('ArrowRight');
+		await expectStops(page, caretAt(0, 3));
+		await page.keyboard.press('ArrowLeft');
+		await expectStops(page, caretAt(0, 2));
+		await page.keyboard.press('ArrowLeft');
+		await expectStops(page, caretAt(0, 1));
+		issues.assertClean();
+	});
+});

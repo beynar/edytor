@@ -15,7 +15,8 @@
  * keeps the anchor; a range that covers exactly one atom is that atom's
  * selection. A grapheme step inside the focus's own text is left to the
  * browser (it moves visually under bidi) unless the selection came from a
- * node-bound native range, whose extension engines disagree on (K10).
+ * node-bound native range, whose extension engines disagree on (K10), or the
+ * step starts right after a soft break (Firefox moves nothing there).
  * Vertical extension (Shift+ArrowUp/Down) crosses blocks through the same
  * displayable walk; plain vertical motion stays native, unless the browser
  * lands it on no caret stop (`landed`).
@@ -139,8 +140,12 @@ export const move = (
 						return block && edge(block, dir);
 					})()
 				: step(edytor, focus, dir, unit);
-	if (unit === 'char' && !nodeBound && to?.text === focus.text && value.kind === 'text')
-		return false;
+	// Past a soft break the caret has two DOM positions (the break's node end,
+	// the next line's start): Firefox's forward step only trades one for the
+	// other, so that step is the editor's (a logical step: bidi never reorders
+	// across a line break).
+	const native = unit === 'char' && !nodeBound && to?.text === focus.text && value.kind === 'text';
+	if (native && !(dir > 0 && focus.text.stringContent[focus.offset - 1] === '\n')) return false;
 	// K10: a forward node-bound extension never rests on another block's first
 	// stop (a derive maps that end back onto the previous block's end).
 	while (

@@ -100,7 +100,20 @@
 	}
 
 	:global([data-edytor-drop-indicator][data-position='inside']) {
-		border: 2px solid var(--edytor-drop-indicator-color, #2383e2);
+		border-left: 2px solid var(--edytor-drop-indicator-color, #2383e2);
+		border-bottom: 2px solid var(--edytor-drop-indicator-color, #2383e2);
+		border-bottom-left-radius: 4px;
 		background: transparent;
+	}
+
+	:global([data-edytor-drop-indicator][data-position='inside']::after) {
+		position: absolute;
+		right: -4px;
+		bottom: -5px;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--edytor-drop-indicator-color, #2383e2);
+		content: '';
 	}
 </style>

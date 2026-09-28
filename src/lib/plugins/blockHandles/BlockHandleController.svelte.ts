@@ -42,6 +42,18 @@ const getOwnRowBottom = (node: HTMLElement) => {
 		: rect.bottom;
 };
 
+/** The first line of a block's own text (not a child's), or the block's box. */
+const ownTextRow = (node: HTMLElement) => {
+	const text = Array.from(node.querySelectorAll<HTMLElement>('[data-edytor-text="true"]')).find(
+		(element) => element.closest('[data-edytor-block="true"]') === node
+	);
+	const row = text?.getClientRects()[0];
+	return row && row.height > 0 ? row : node.getBoundingClientRect();
+};
+
+/** A nested child's indent when the target has no visible child to measure. */
+const NEST_INDENT = 24;
+
 const getDropPlacement = (
 	target: Block,
 	node: HTMLElement,
@@ -354,8 +366,21 @@ export class BlockHandleController {
 			if (height !== undefined) overlay.style.height = `${height}px`;
 		};
 		if (placement.position === 'inside') {
-			const height = Math.max(2, getOwnRowBottom(placement.node) - rect.top);
-			return place(rect.left, rect.width, rect.top, height);
+			// An elbow beside the parent's first line, down to where the child lands (the
+			// gap after its last visible child, else after its own row) and right to the
+			// child's indent, ending in a dot.
+			const row = ownTextRow(placement.node);
+			const { target } = placement;
+			const lastNode = target.children.at(-1)?.node;
+			const last = lastNode?.getBoundingClientRect();
+			const shown = last && last.height > 0 ? last : null;
+			const next = target.parent?.children[target.index + 1]?.node?.getBoundingClientRect();
+			const end = shown ? shown.bottom : getOwnRowBottom(placement.node);
+			const land = next && next.top >= end ? (end + next.top) / 2 : end + 4;
+			const left = row.left - 10;
+			const top = row.top + row.height / 2;
+			const right = shown && lastNode ? ownTextRow(lastNode).left : row.left + NEST_INDENT;
+			return place(left, Math.max(16, right - left), top, Math.max(12, land - top + 1));
 		}
 
 		const siblings = placement.target.parent?.children;

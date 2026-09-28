@@ -27,9 +27,10 @@
  *   (the watermark is those sets' lengths).
  * - An edited backing text is rescanned for its boundary items; the stream
  *   table is rebuilt only when a boundary set, a nonce or a registry entry
- *   changed. Every cached block records which texts and which claim lists
- *   its display walked; an edit invalidates the display owners of the
- *   streams it touched (or every reader of the text when it cannot say).
+ *   changed. Every cached block records which texts its display walked and
+ *   which blocks it walked or read a claim on (a skipped claim included); an
+ *   edit invalidates the display owners of the streams it touched (or every
+ *   reader of the text when it cannot say).
  *
  * Publication is COMMIT-BOUND (R5): a mid-transaction read refreshes the
  * cache for read-your-writes, but the change report observes committed
@@ -170,7 +171,11 @@ const EMPTY_RUNS = Object.freeze([]) as readonly ContentRun[];
 /** Shared frozen empty child list for a report's emptied-parent `order` entries. */
 const EMPTY_IDS = Object.freeze([]) as readonly BlockId[];
 
-/** What a cached display walked: the homes of the texts it read, the blocks whose claims it followed. */
+/**
+ * What a cached display read: the homes of the texts it walked, and the blocks
+ * it walked or whose claim it read (followed or skipped) — any structural
+ * change to one of them invalidates the display.
+ */
 type Deps = { texts: Set<BlockId>; lists: Set<BlockId> };
 
 type Cached = { runs: readonly ContentRun[]; deps: Deps };
@@ -583,6 +588,10 @@ export const bindRuns = (Y: EngineApi) => {
 				displayOf(b, blocks, ownShim, (x, home) => {
 					deps.lists.add(x);
 					if (home !== undefined) deps.texts.add(home);
+					// Every claim on a walked list is read, followed or not: a claim
+					// skipped for a dead target or a higher claimer becomes effective
+					// when that target revives or its winning claim goes away.
+					for (const c of blocks.get(x)?.claims ?? []) deps.lists.add(c.m);
 				}) ?? [];
 			const fresh: ContentRun[] = [];
 			for (const item of T.readSegs(segs, rangeStats)) {
@@ -1013,13 +1022,12 @@ export const bindRuns = (Y: EngineApi) => {
 						if (o.parent !== n.parent || o.index !== n.index) r.moved.add(id);
 					}
 				}
-				// Removed subtree ROOTS: an id whose before-ancestor also left is
-				// covered by that ancestor's removal.
+				// Removed subtree ROOTS: a removed id whose before-parent stays
+				// visible (or is the root). One under a removed parent leaves with
+				// it; one under a surviving child of a removed subtree does not.
 				for (const [id, o] of before.nodes) {
 					if (after.nodes.has(id)) continue;
-					let p = o.parent;
-					while (p !== null && after.nodes.has(p)) p = before.nodes.get(p)!.parent;
-					if (p === null) r.removed.add(id);
+					if (o.parent === null || after.nodes.has(o.parent)) r.removed.add(id);
 				}
 			}
 			for (const id of candidates) {

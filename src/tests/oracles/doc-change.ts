@@ -86,20 +86,13 @@ export const diffSnaps = (
 			if (ko !== kn) content.set(id, n.contentRef);
 		}
 	}
-	// Pass 3: removed subtree ROOTS (an id whose BEFORE ancestor is also gone
-	// is covered by that ancestor's removal).
+	// Pass 3: removed subtree ROOTS — a removed id whose BEFORE parent is still
+	// visible (or the root). An id whose before-parent is also gone leaves
+	// with it; a surviving child of a removed subtree does not cover its own
+	// removed descendants (P2.8 fix, R1 seed 2999).
 	for (const [id, o] of before.nodes) {
 		if (after.nodes.has(id)) continue;
-		let coveredByRemoved = false;
-		let p = o.parent;
-		while (p !== null) {
-			if (!after.nodes.has(p)) {
-				coveredByRemoved = true;
-				break;
-			}
-			p = before.nodes.get(p)?.parent ?? null;
-		}
-		if (!coveredByRemoved) removed.add(id);
+		if (o.parent === null || after.nodes.has(o.parent)) removed.add(id);
 	}
 	// Pass 4: child-order changes. A parent's new list is authoritative.
 	for (const [parent, ids] of after.order) {

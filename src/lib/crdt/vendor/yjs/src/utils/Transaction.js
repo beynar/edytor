@@ -357,6 +357,18 @@ const cleanupTransactions = (transactionCleanups, i) => {
  *
  * @param {Transaction} transaction
  */
+// P10 begin
+/**
+ * Origin of the formatting cleanup that follows a remote transaction. The
+ * cleanup is a write this document makes on its own (it deletes format items
+ * a remote change made redundant): providers must still broadcast it, like
+ * any local write, but no UndoManager tracks it — an origin nobody tracks
+ * instead of `null`, the untyped-local origin every default undo manager
+ * captures.
+ */
+const formattingCleanupOrigin = Symbol('yjs.formatting-cleanup')
+// P10 end
+
 export const cleanupYTextAfterTransaction = transaction => {
   /**
    * @type {Set<YNode>}
@@ -392,7 +404,7 @@ export const cleanupYTextAfterTransaction = transaction => {
     for (const yText of needFullCleanup) {
       cleanupYTextFormatting(yText)
     }
-  })
+  }, formattingCleanupOrigin) // P10
 }
 
 /**

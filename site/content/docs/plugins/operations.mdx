@@ -1,0 +1,195 @@
+---
+title: Operations
+description: How onBeforeOperation sees every edit as a command and its planned steps, and how to veto, replace or rewrite edits and react after them.
+icon: git-branch
+---
+
+Every edit, whether typed, pasted, dragged or called from code, runs as a command through one dispatcher. Before anything is written, the dispatcher shows the command to every plugin's `onBeforeOperation`, then shows each step the command plans. Any plugin can refuse it, replace it with its own logic, or rewrite its payload. Use these hooks to enforce rules on the document (protected blocks, schema constraints) or to turn one edit into another (auto-pairing, mentions on `@`).
+
+## The change payload
+
+`onBeforeOperation` receives one object per command and per step:
+
+<TypeTable
+  type={{
+    operation: {
+      type: "string",
+      required: true,
+      description: "The operation name, such as 'insertText' or 'mergeBlockBackward'. Narrows payload.",
+    },
+    payload: {
+      type: "object",
+      required: true,
+      description: "The operation's arguments. Its shape depends on operation (table below).",
+    },
+    block: {
+      type: "Block",
+      required: true,
+      description: "The block the operation is about.",
+    },
+    text: {
+      type: "Text",
+      description: "The text segment, on text operations and text steps.",
+    },
+    effect: {
+      type: "PlanEffect",
+      description: "What the command would do. Present on a command that is one document plan; absent on steps and on text-level operations.",
+    },
+    prevent: {
+      type: "(cb?: () => void) => void",
+      required: true,
+      description: "Refuse the whole command, optionally running cb in its place.",
+    },
+  }}
+/>
+
+## Commands and steps
+
+A command is shown first, under its own name. If it is one document plan, each planned step is then shown under its documented operation name. A few examples:
+
+| Gesture                                   | Command                        | Steps shown after it                                         |
+| ----------------------------------------- | ------------------------------ | ------------------------------------------------------------ |
+| Typing                                    | `insertText`                   | none                                                         |
+| <kbd>Enter</kbd>                          | `splitBlock`, `insertBlockAfter` or `insertBlockBefore` | the steps it plans |
+| <kbd>Backspace</kbd> at a block start     | `mergeBlockBackward`           | the child moves it plans                                     |
+| <kbd>Tab</kbd>, <kbd>Shift</kbd> + <kbd>Tab</kbd> | `nestBlock`, `unNestBlock` | the move it plans                                            |
+| Deleting a range across blocks            | `deleteContentWithinSelection` | `deleteContentAtRange`, `removeBlock`, `mergeBlockBackward`  |
+| Deleting a block selection                | `deleteBlocks`                 | one `removeBlock` per selected block                         |
+| Paste or drop                             | `insertFlow`                   | `splitBlock`, `insertText`, `addChildBlocks`                 |
+| Markdown shortcut or slash command        | `setBlock`                     | `deleteContentAtRange` for the removed trigger text          |
+| Formatting                                | `markText`                     | none                                                         |
+| Block handle or arrow-move                | `moveBlock` or `moveBlocks`    | none                                                         |
+
+The step names are `addChildBlocks`, `moveBlock`, `moveBlocks`, `removeBlock`, `splitBlock`, `mergeBlockBackward`, `setBlock`, `insertText`, `addInlineBlock` and `deleteContentAtRange`. Work an operation does internally, such as normalization, is part of it and is not shown separately.
+
+A command the document itself refuses is still shown, without steps, so a plugin can replace it.
+
+## Refusing an edit
+
+Call `prevent()` on the command or on any of its steps to refuse the whole command. Nothing is written and no undo step is recorded.
+
+```ts
+import type { Plugin } from 'edytor';
+
+/** Blocks with data.locked cannot be deleted or merged away. */
+export const lockedBlocksPlugin: Plugin = (edytor) => ({
+	onBeforeOperation: ({ effect, prevent }) => {
+		if (!effect) return;
+		const leaving = [...effect.removes, ...effect.merges.map(([from]) => from)];
+		if (leaving.some((id) => edytor.idToBlock.get(id)?.data.locked)) prevent();
+	}
+});
+```
+
+Because steps are shown too, this catches every path that would remove a locked block: <kbd>Backspace</kbd>, a range deletion, a cut, a block-selection delete.
+
+`effect` describes the whole plan:
+
+<TypeTable
+  type={{
+    creates: { type: "string[]", description: "Ids of blocks the command creates." },
+    removes: { type: "string[]", description: "Ids of blocks that leave the document." },
+    merges: { type: "[from: string, into: string][]", description: "Blocks merged into another." },
+    moves: { type: "string[]", description: "Blocks given a new place." },
+    meta: { type: "string[]", description: "Blocks whose type or data changes." },
+    textRanges: { type: "{ block, offset, length }[]", description: "Text ranges written." },
+  }}
+/>
+
+A step's veto refuses the command it belongs to, so check the operation name before you veto a step that many commands share, such as `insertText` or `deleteContentAtRange`.
+
+## Replacing an edit
+
+`prevent(cb)` refuses the command and runs `cb` instead. This replaces a typed `@` with an inline atom, as the [mention reference plugin](/docs/plugins/mention-and-image) does:
+
+```ts
+onBeforeOperation: ({ operation, payload, block, prevent }) => {
+	if (operation === 'insertText' && payload.value === '@') {
+		const { yStart, startText } = edytor.selection.state;
+		if (!startText) return;
+		prevent(() => {
+			const after = block.addInlineBlock({
+				index: yStart,
+				text: startText,
+				block: { type: 'mention', data: {} }
+			});
+			if (after) edytor.selection.setAtTextOffset(after, 0);
+		});
+	}
+}
+```
+
+The callback is a command of its own. If another plugin refuses one of the operations it issues, that operation writes nothing and the callback carries on. Each plugin replaces a given command at most once: while your callback runs, your own `prevent(cb)` on the operations it issues is ignored, so the callback can call the operation it replaced without recursing.
+
+## Rewriting the payload
+
+Return a new payload from `onBeforeOperation` to replace the command's arguments. The code plugin auto-pairs brackets this way:
+
+```ts
+onBeforeOperation: ({ operation, payload, block }) => {
+	if (block.type === 'codeLine' && operation === 'insertText' && payload.value === '(') {
+		return { ...payload, value: '()' };
+	}
+}
+```
+
+The replacement is prepared again and shown to every plugin from the start. Each plugin rewrites a command at most once. A payload returned for a step is ignored, with a warning in development.
+
+## After an edit
+
+`onAfterOperation` runs once per command, after its transaction, with the original payload. It does not run for steps or for refused commands, and it has no `prevent`.
+
+```ts
+onAfterOperation: ({ operation, block }) => {
+	if (operation === 'setBlock') console.log(block.id, 'is now', block.type);
+}
+```
+
+## Reading the result
+
+`edytor.dispatcher.last` holds the result of the last operation:
+
+```ts
+block.mergeBlockBackward();
+if (edytor.dispatcher.last?.status === 'refused') {
+	// A plugin, a readonly editor or the document refused it.
+}
+```
+
+`status` is `'applied'` (it wrote), `'noop'` (it ran and changed nothing), `'refused'` (a plugin, the readonly state or the document refused it) or `'failed'` (it threw; the error is rethrown and kept in `error`). A refusal is reported, never thrown.
+
+A readonly editor, or a document that has become read-only, refuses every command that would write. An error thrown by a hook is not swallowed: it surfaces to the caller.
+
+## Operation reference
+
+Text operations carry `text`. Block operations run on `block`.
+
+| Operation                      | Payload                                                     |
+| ------------------------------ | ----------------------------------------------------------- |
+| `insertText`                   | `{ value, start?, end?, marks? }`                           |
+| `deleteText`                   | `{ direction: 'BACKWARD' or 'FORWARD', length }`            |
+| `splitText`                    | `{ index? }`                                                |
+| `setText`                      | `{ value: JSONText[] }`                                     |
+| `markText`                     | `{ mark, start?, end?, value?, toggle? }`                   |
+| `removeMarksFromText`          | `{ start?, end? }`                                          |
+| `splitBlock`                   | `{ index, text }`                                           |
+| `insertBlockAfter`, `insertBlockBefore` | `{ block: JSONBlock }`                             |
+| `addChildBlock`                | `{ block: JSONBlock, index }`                               |
+| `addChildBlocks`               | `{ blocks: JSONBlock[], index }`                            |
+| `removeBlock`                  | `{ keepChildren? }`                                         |
+| `deleteBlocks`                 | `{ blocks: Block[] }`                                       |
+| `mergeBlockBackward`, `mergeBlockForward` | `{}`                                             |
+| `nestBlock`, `unNestBlock`     | `{}`                                                        |
+| `setBlock`                     | `{ value: Partial<JSONBlock> }`                             |
+| `moveBlock`                    | `{ path: number[] }`                                        |
+| `moveBlocks`                   | `{ blocks: Block[], path: number[] }`                       |
+| `addInlineBlock`               | `{ index, text, block: JSONInlineBlock }`                   |
+| `removeInlineBlock`            | `{ index }`                                                 |
+| `deleteContentAtRange`         | `{ start: [part, offset], end: [part, offset] }`            |
+| `deleteContentWithinSelection` | `{ replace? }`                                              |
+| `insertFlow`                   | `{ flow, target }`                                          |
+| `insertDivider`                | `{}`                                                        |
+| `suggestText`                  | `{ value }`                                                 |
+| `acceptSuggestedText`          | `{}`                                                        |
+
+In `deleteContentAtRange`, `part` is an index into `block.content` and `offset` an offset inside that text.

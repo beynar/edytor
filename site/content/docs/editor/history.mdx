@@ -1,0 +1,73 @@
+---
+title: Undo and redo
+description: How Edytor groups edits into undo steps, the undo and redo APIs, and how undo behaves when several people edit the same document.
+icon: undo-2
+---
+
+Every document has one local history. Undo reverts your own edits only, never a collaborator's, and restores the selection you had. This page covers the shortcuts and APIs, what one undo step contains, and the rules that apply when others edit at the same time.
+
+## Undo and redo
+
+| Action | Keys |
+| --- | --- |
+| Undo | <kbd>Mod</kbd>+<kbd>Z</kbd> |
+| Redo | <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>, or <kbd>Ctrl</kbd>+<kbd>Y</kbd> on Windows and Linux |
+
+`Mod` is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere. Undo and redo from the browser's Edit menu or a context menu go through the same history.
+
+From code, call the view's methods:
+
+```svelte
+<button onclick={() => edytor?.historyUndo()}>Undo</button>
+<button onclick={() => edytor?.historyRedo()}>Redo</button>
+```
+
+`historyUndo()` restores the selection this view had before the step; `historyRedo()` restores the one it had after. If a collaborator deleted the place a recorded caret pointed to, the view keeps its current selection instead.
+
+Without a view, use the document's history directly. It restores no selection:
+
+```ts
+document.history.undo();
+document.history.redo();
+document.history.canUndo(); // Yjs UndoManager API
+document.clearHistory(); // drop both stacks
+```
+
+All views of one document share its history. An edit made in one view can be undone from another; only the view that issues the undo restores its selection.
+
+## What one step contains
+
+Edytor groups edits the way a text editor does:
+
+- **Typing** at the caret joins the previous step if it continues where that step left the caret, and follows it within the capture window (500 ms by default). Moving the caret and typing again starts a new step, however short the pause.
+- **Deletions** (Backspace, Delete, cut, deleting a selection or blocks) start a new step.
+- **Enter** is a step of its own.
+- **Paste** and **drop** each start a new step.
+- **Structural edits** (inserting, nesting, unnesting and moving blocks, formatting) start a new step.
+- **An IME composition** (Japanese, Chinese, Korean input, and so on) is one step with its commit.
+- **Copy** records nothing.
+
+A command that plugins refuse records nothing. One `edytor.transact` call is never split across steps.
+
+Set the capture window when you create the document. `0` makes every commit its own step:
+
+```ts
+import { createDocument } from 'edytor';
+
+const document = createDocument({ value, history: { captureTimeout: 300 } });
+```
+
+History stacks are not trimmed automatically. For long sessions, call `document.clearHistory()` at points where undo no longer makes sense, such as after a save.
+
+## Undo with collaborators
+
+Remote edits never enter your history, and your undo only takes back what you did. When edits overlap, these rules apply:
+
+- **Your undo removes only your own contributions.** If you create a block (or press Enter) and a collaborator types into it, undoing your creation leaves the block with their text, even if their text arrives after your undo. A block stays while it holds another person's text or a child.
+- **Undoing a split** puts the text of the second half back into the first line, including anything a collaborator typed there.
+- **Concurrent deletes.** Each person's delete of a piece of text is their own. If two people delete the same text at the same time and one of them undoes, the text stays deleted until the other undoes too; then it comes back once, not twice.
+- **Explicit deletes win.** When you delete a block while someone types into it, the block stays deleted.
+- **Deleting a selected parent** moves its unselected children into its place; undo puts them back under it, with any edits collaborators made to them meanwhile.
+- **An emptied document** shows a local empty paragraph when concurrent edits delete every block. Nothing is written for it until someone types, so undo never has to remove it, and two people typing into an emptied document each keep their line.
+
+[Concurrent editing](/docs/collaboration/concurrent-editing) explains these rules in detail.

@@ -1,0 +1,186 @@
+---
+title: Example plugin
+description: A complete plugin in one Svelte file, with a note block kind that has data and chrome, a keyboard mark, a hotkey, presets and an operation hook.
+icon: puzzle
+---
+
+This page builds a note plugin from start to finish. It adds:
+
+- a `note` block kind with a `tone` in its data (`info` or `warning`), a clickable icon to switch it, and nested children;
+- a `keyboard` mark that renders as `<kbd>` and gets a toolbar button;
+- a <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>K</kbd> hotkey that toggles the mark;
+- presets, so the slash menu, markdown shortcuts and block menus can create notes;
+- an operation hook: <kbd>Enter</kbd> in an empty note turns it back into a paragraph.
+
+It uses the snippet types from [Typing snippets](/docs/plugins/writing-plugins#typing-snippets).
+
+## The plugin file
+
+```svelte title="src/lib/NotePlugin.svelte"
+<script module lang="ts">
+	import type { Block, Plugin } from 'edytor';
+	import type { BlockSnippetPayload, EdytorInstance } from 'edytor';
+	import './note.css';
+
+	const toneOf = (data: Record<string, unknown>) => (data.tone === 'warning' ? 'warning' : 'info');
+
+	/** Switch a note between info and warning. */
+	const cycleTone = (note: Block) => {
+		const tone = toneOf(note.data) === 'info' ? 'warning' : 'info';
+		note.setBlock({ value: { data: { ...note.data, tone } } });
+	};
+
+	/** Toggle the keyboard mark over the selection, or stage it for the next character typed. */
+	const toggleKeyboard = (edytor: EdytorInstance) => {
+		const { texts, startText, endText, yStart, yEnd, isCollapsed, isReversed } =
+			edytor.selection.state;
+		if (!startText || !endText) return;
+		if (isCollapsed) {
+			startText.markText({ mark: 'keyboard', toggle: true, start: yStart, end: yStart });
+			return;
+		}
+		texts.forEach((text, index) =>
+			text.markText({
+				mark: 'keyboard',
+				toggle: true,
+				start: index === 0 ? yStart : 0,
+				end: index === texts.length - 1 ? yEnd : text.length
+			})
+		);
+		edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
+	};
+
+	export const notePlugin: Plugin = (edytor) => ({
+		blocks: {
+			note: {
+				snippet: note,
+				// The core renders <aside data-tone="…">; the snippet renders inside it.
+				element: (data) => ({ tag: 'aside', attributes: { 'data-tone': toneOf(data) } }),
+				presets: [
+					{
+						label: 'Note',
+						icon: 'ℹ',
+						keywords: ['info', 'aside'],
+						data: { tone: 'info' },
+						markdown: ['!! ']
+					},
+					{ label: 'Warning', icon: '⚠', keywords: ['caution'], data: { tone: 'warning' } }
+				],
+				// Clipboard: export as <aside data-tone>, and read it back on paste.
+				html: (block, content, children) =>
+					`<aside data-tone="${toneOf(block.data ?? {})}">${content}${children}</aside>`,
+				parse: (element) =>
+					element.localName === 'aside'
+						? { tone: element.dataset.tone === 'warning' ? 'warning' : 'info' }
+						: undefined
+			}
+		},
+		marks: {
+			keyboard: { tag: 'kbd', toolbar: { label: 'Keyboard', icon: '⌨' } }
+		},
+		hotkeys: {
+			'mod+shift+k': ({ prevent }) => prevent(() => toggleKeyboard(edytor))
+		},
+		onBeforeOperation: ({ operation, block, prevent }) => {
+			// Enter in an empty note inserts a block after it. Leave the note instead.
+			if (operation === 'insertBlockAfter' && block.type === 'note' && block.isEmpty) {
+				prevent(() => {
+					block.setBlock({ value: { type: 'paragraph', data: {} } });
+				});
+			}
+		}
+	});
+</script>
+
+{#snippet note({ block, content, children }: BlockSnippetPayload)}
+	<button
+		type="button"
+		class="note-icon"
+		use:block.void
+		aria-label="Switch note tone"
+		onclick={() => cycleTone(block.handle)}
+	>
+		{toneOf(block.data) === 'warning' ? '⚠' : 'ℹ'}
+	</button>
+	<div class="note-body">{@render content()}</div>
+	{#if children}
+		<div class="note-children">{@render children()}</div>
+	{/if}
+{/snippet}
+```
+
+A few things to note:
+
+- The snippet renders only the inside of the block. The core renders the `<aside>` from `element`, with the editor's data attributes on it.
+- `use:block.void` marks the icon button as non-editable chrome, so the caret never lands in it. The button is a native control, so its click is its own.
+- `block.data` in the snippet is reactive: switching the tone re-renders the icon and, through `element`, the `data-tone` attribute. Commands go through `block.handle`, the block's handle.
+- `setBlock` replaces `data` as a whole, so `cycleTone` spreads the current data.
+- The note has two presets, so its commands are `block.note1` and `block.note2`. Typing `!! ` at the start of an empty block converts it, with the markdown shortcuts plugin.
+- The hook refuses `insertBlockAfter` only for an empty note. Other edits pass through.
+- The paragraph conversion assumes the rich text plugin defines `paragraph`.
+
+## The styles
+
+Style the block through its stable attributes. Put nested blocks in a separate grid row so they start below the note's text:
+
+```css title="src/lib/note.css"
+[data-edytor-type='note'] {
+	display: grid;
+	grid-template-columns: 24px minmax(0, 1fr);
+	column-gap: 10px;
+	margin: 12px 0;
+	padding: 12px 14px;
+	border-radius: 6px;
+	background: #eef4ff;
+}
+[data-edytor-type='note'][data-tone='warning'] {
+	background: #fff4e5;
+}
+[data-edytor-type='note'] > .note-body,
+[data-edytor-type='note'] > .note-children {
+	grid-column: 2;
+	min-width: 0;
+}
+.note-icon {
+	cursor: pointer;
+}
+kbd[data-edytor-mark='keyboard'] {
+	padding: 1px 5px;
+	border: 1px solid #d4d4d4;
+	border-radius: 4px;
+	font-size: 0.85em;
+}
+```
+
+## Using it
+
+Pass it with the bundled plugins. None of its names overlap theirs, so order does not matter here; listing your own plugins first lets them override bundled definitions later.
+
+```svelte
+<script lang="ts">
+	import {
+		Edytor,
+		richTextPlugin,
+		slashMenuPlugin,
+		toolbarPlugin,
+		markdownShortcutsPlugin
+	} from 'edytor';
+	import { notePlugin } from '$lib/NotePlugin.svelte';
+
+	const plugins = [notePlugin, markdownShortcutsPlugin, slashMenuPlugin, toolbarPlugin, richTextPlugin];
+
+	const value = {
+		children: [
+			{
+				type: 'note',
+				data: { tone: 'warning' },
+				content: [{ text: 'Press ' }, { text: 'Mod+S', marks: { keyboard: true } }, { text: ' to save.' }]
+			}
+		]
+	};
+</script>
+
+<Edytor {plugins} {value} />
+```
+
+Type `/note` to insert a note from the slash menu, select text and press <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>K</kbd> or the toolbar's ⌨ button to mark it, and click the icon to switch the tone.

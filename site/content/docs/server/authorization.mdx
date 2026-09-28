@@ -1,0 +1,139 @@
+---
+title: Authorization
+description: Decide who may open a document with authorize, bind client ids to users, and grant read-only access.
+icon: shield-check
+---
+
+The room enforces identity, but it does not know your users. You tell it who is connecting in `authorize`, a function `routeDocumentSocket` calls before it opens a socket. This page covers what `authorize` returns, how identity reaches the room, and how the room ties every edit to a user.
+
+## `authorize`
+
+```ts
+type AuthorizeDocumentSocket = (
+  request: Request,
+  documentId: string
+) => DocumentIdentity | null | Promise<DocumentIdentity | null>;
+
+type DocumentIdentity = {
+  userId: string;
+  replica?: number | null;
+  readOnly?: boolean;
+};
+```
+
+`authorize` receives the client's original upgrade request (with its query string and cookies) and the document id you passed to `routeDocumentSocket`. Return `null` to refuse; the client gets a 403 and no socket is opened.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `userId` | `string` | The verified user, 1 to 256 characters. The room binds every client id this socket writes under to this user. |
+| `replica` | `number \| null` | The client's CRDT client id (`document.clientID`), usually read with `requestedReplica(request)`. When omitted, the socket's first presence message binds it. |
+| `readOnly` | `boolean` | Refuse every write on this socket. Reads and presence still work. |
+
+`routeDocumentSocket` answers without calling the room when the request is not a WebSocket upgrade (426), when the document id is empty or longer than 256 characters (400), or when `authorize` returns `null` or an invalid identity (403).
+
+## Example: a signed token
+
+Browsers cannot set headers on a WebSocket, so send a token as a query parameter (or rely on a cookie). This example verifies a JWT with [`jose`](https://github.com/panva/jose) and looks up the user's access to the document in your own data:
+
+```ts src/worker.ts
+import { jwtVerify } from 'jose';
+import { DocumentRoom, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
+
+export { DocumentRoom };
+
+type Env = {
+  ROOMS: DurableObjectNamespace<DocumentRoom>;
+  JWT_SECRET: string;
+};
+
+// Your permission model: 'edit', 'view', or null.
+declare function accessTo(env: Env, userId: string, documentId: string): Promise<'edit' | 'view' | null>;
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const match = /^\/rooms\/([^/]+)$/.exec(new URL(request.url).pathname);
+    if (!match) return new Response('not found', { status: 404 });
+
+    return routeDocumentSocket(request, env.ROOMS, decodeURIComponent(match[1]), async (request, documentId) => {
+      const token = new URL(request.url).searchParams.get('token');
+      if (!token) return null;
+      try {
+        const { payload } = await jwtVerify(token, new TextEncoder().encode(env.JWT_SECRET));
+        if (typeof payload.sub !== 'string') return null;
+        const access = await accessTo(env, payload.sub, documentId);
+        if (!access) return null;
+        return {
+          userId: payload.sub,
+          replica: requestedReplica(request),
+          readOnly: access === 'view'
+        };
+      } catch {
+        return null; // expired or forged token
+      }
+    });
+  }
+} satisfies ExportedHandler<Env>;
+```
+
+The client sends the token; the provider adds its replica id (`?replica=<clientID>`) at every dial:
+
+```ts
+createWebsocketSync({
+  serverUrl: 'wss://rooms.example.com/rooms',
+  roomName: documentId,
+  params: { token },
+  persistName: `${userId}:${documentId}`
+});
+```
+
+`params` is read at every reconnect; update the object to refresh an expiring token (see [WebSocket options](/docs/collaboration/websocket#options)). With a session cookie instead, read `request.headers.get('Cookie')` in `authorize` and look the session up; the cookie is sent with the upgrade when the Worker is on the same site.
+
+## How identity reaches the room
+
+After `authorize` succeeds, `routeDocumentSocket` builds a new request for the room that carries only the verified identity:
+
+| Header | Value |
+| --- | --- |
+| `X-Edytor-User` | `userId` |
+| `X-Edytor-Replica` | `replica`, when known |
+| `X-Edytor-Access` | `read` or `write` |
+
+Every header the client sent is dropped, cookies and tokens included, and so are forged `X-Edytor-*` headers. The room trusts these three headers without checking anything else, and refuses a request without them (401).
+
+:::danger
+Reach the room only through `routeDocumentSocket`. If your Worker forwards requests to the Durable Object any other way, a client could send its own `X-Edytor-*` headers and write as anyone. The names are exported as `IDENTITY_HEADERS` if you need to reference them.
+:::
+
+## Replicas
+
+Every browser tab has a CRDT client id (`document.clientID`, the *replica*), and every piece of content records the client id that wrote it. The room makes sure nobody writes under a client id that is not theirs:
+
+- Each client id is registered to the user who first wrote under it. The registration is stored with the document.
+- The replica from `authorize` is registered when the socket opens. A replica another user already owns is refused with a 403.
+- An update that adds content under a client id another user owns, or under an unregistered id that already has content in the room, is refused: the socket is closed with code `1008` and reason `refused: replica`.
+- A user may write under every id they own. A reloaded page gets a new client id, and the edits its earlier id made offline are still delivered on reconnect.
+- Edits restored from a local copy were written under earlier client ids of the same user; unregistered ids are registered to the user who delivers them first.
+
+`requestedReplica(request, param = 'replica')` reads the replica from the query string and returns `null` when it is missing or not a valid client id. Without a replica from `authorize`, the socket's first presence entry binds it.
+
+Because client ids belong to users, a browser profile's local copy and cross-tab channel should belong to one user. See [one user per browser profile](/docs/collaboration/persistence#one-user-per-browser-profile).
+
+## Read-only sockets
+
+When `authorize` returns `readOnly: true`:
+
+- the client catches up with the document and receives live edits;
+- it shares presence, so others see its caret;
+- the room never asks it for its state, and every edit it sends is dropped with a `permission-denied` reply (`read-only`). The socket stays open, and the provider emits `'permission-denied'`.
+
+Render read-only users with a read-only view. A `readonly` view does not attach its `sync` prop, so attach the sync to the document yourself:
+
+```ts
+const document = createDocument({ actor: { id: userId } });
+document.attachSync(createWebsocketSync({ serverUrl, roomName: documentId, params }));
+// <Edytor {document} readonly />
+```
+
+## What edytor does not do
+
+Edytor ships no user accounts, sessions, sharing model or permission rules. `authorize` is where your application decides who may open which document and whether they may edit it; the room enforces that decision and nothing more.

@@ -1,0 +1,118 @@
+---
+title: Plugins
+description: What an Edytor plugin is, how to pass plugins to the editor, how plugin order decides conflicts, and which plugins ship with the package.
+icon: plug
+---
+
+Everything the editor knows about content comes from plugins: block kinds, marks, inline atoms, key bindings, and hooks that can inspect or veto every edit. The core ships no block kinds of its own, so a useful editor always passes at least the rich text plugin.
+
+## What a plugin is
+
+A plugin is a function of the editor that returns definitions and hooks:
+
+```ts
+import type { Plugin } from 'edytor';
+
+export const loggerPlugin: Plugin = (edytor) => ({
+	onBeforeOperation: ({ operation }) => {
+		console.log('about to run', operation);
+	},
+	onChange: (value) => {
+		console.log('document now has', value.children?.length, 'top-level blocks');
+	}
+});
+```
+
+The function runs once, when the editor is created. It receives the `Edytor` instance, so it can keep state in its closure and call editor methods from its hooks. Everything it returns is optional:
+
+| Field                        | What it contributes                                                         |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| `blocks`                     | Block kinds, see [Blocks](/docs/customization/blocks)                       |
+| `marks`                      | Text marks, see [Marks](/docs/customization/marks)                          |
+| `inlineBlocks`               | Inline atoms, see [Inline blocks](/docs/customization/inline-blocks)        |
+| `hotkeys`                    | Key bindings, see [Hotkeys](/docs/customization/hotkeys)                    |
+| `commands`                   | Named commands for menus such as the slash menu                             |
+| `placeholder`                | Text for empty blocks, see [Placeholder](/docs/customization/placeholder)   |
+| `onBeforeOperation` and more | Hooks into every edit, the DOM and the clipboard                            |
+
+[Writing plugins](/docs/plugins/writing-plugins) documents every field and hook.
+
+## Passing plugins to the editor
+
+Pass an array to the `plugins` prop of `<Edytor>`:
+
+```svelte
+<script lang="ts">
+	import {
+		Edytor,
+		richTextPlugin,
+		codePlugin,
+		slashMenuPlugin,
+		toolbarPlugin,
+		markdownShortcutsPlugin,
+		arrowMovePlugin
+	} from 'edytor';
+
+	const plugins = [
+		codePlugin,
+		markdownShortcutsPlugin,
+		slashMenuPlugin,
+		toolbarPlugin,
+		arrowMovePlugin,
+		richTextPlugin
+	];
+</script>
+
+<Edytor {plugins} />
+```
+
+Plugins are read once, when the component mounts. Changing the array afterwards has no effect.
+
+Block handles are the one plugin you do not list: `<Edytor>` adds them unless you pass `blockHandles={false}`. See [Block handles](/docs/plugins/block-handles).
+
+## Plugin order
+
+The array order is the precedence order. Two rules follow from it:
+
+- **Definitions: first wins.** When two plugins define the same block kind, mark, inline atom or command id, the one listed first is used and the later one is ignored. To replace a definition from a bundled plugin, list your plugin before it.
+- **Prevention: first wins.** Hooks and key bindings run in list order. The first plugin that calls `prevent()` stops the operation or claims the key, and the plugins after it are not asked.
+
+Order therefore matters whenever two plugins touch the same thing: the same kind name, the same chord, or the same operation. A plugin that overrides or refuses something a bundled plugin does goes before it in the list.
+
+One exception: two plugins that declare different `defaultChild` values for the same block kind are an error, whatever their order. The editor throws when it is created.
+
+## Why plugins are Svelte files
+
+Block, mark and inline atom definitions render through Svelte snippets. A snippet can only be declared in a `.svelte` file, and a component's `<script module>` block can reference the snippets declared in its markup. So a plugin that renders anything is usually a `.svelte` file that exports the plugin from `<script module>`:
+
+```svelte title="HighlightPlugin.svelte"
+<script module lang="ts">
+	import type { Snippet } from 'svelte';
+	import type { Plugin } from 'edytor';
+
+	export const highlightPlugin: Plugin = () => ({
+		marks: { marker: { snippet: marker } }
+	});
+</script>
+
+{#snippet marker({ content }: { content: Snippet })}
+	<mark class="marker">{@render content()}</mark>
+{/snippet}
+```
+
+Import it like any other module: `import { highlightPlugin } from './HighlightPlugin.svelte'`. A plugin that only adds hooks or key bindings can be a plain `.ts` file.
+
+## Bundled plugins
+
+| Plugin                                            | Export                    | What it adds                                                                              |
+| ------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------- |
+| [Rich text](/docs/plugins/rich-text)              | `richTextPlugin`          | Paragraphs, headings, lists, to-dos, quotes, toggles, callouts, dividers and ten marks    |
+| [Code](/docs/plugins/code)                        | `codePlugin`              | Code blocks with syntax highlighting                                                      |
+| [Block handles](/docs/plugins/block-handles)      | `blockHandlesPlugin`      | Drag handles, drag and drop, keyboard moves. On by default                                |
+| [Slash menu](/docs/plugins/slash-menu)            | `slashMenuPlugin`         | A command menu opened by typing `/`                                                       |
+| [Toolbar](/docs/plugins/toolbar)                  | `toolbarPlugin`           | A floating formatting toolbar over text selections                                        |
+| [Markdown shortcuts](/docs/plugins/markdown-shortcuts) | `markdownShortcutsPlugin` | Block conversion by typing prefixes such as `# ` or `- `                             |
+| [Arrow move](/docs/plugins/arrow-move)            | `arrowMovePlugin`         | <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves selected blocks                          |
+| [Mention and image](/docs/plugins/mention-and-image) | (not exported)         | Reference implementations of an inline atom and a void block                              |
+
+All exports come from the package root, `edytor`.

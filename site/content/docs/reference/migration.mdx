@@ -1,0 +1,123 @@
+---
+title: Migration
+description: Import documents stored by the v13 (yjs) engine, and upgrade code written for edytor 0.0.11.
+icon: circle-arrow-up
+---
+
+This page covers two upgrades: moving stored v13 (`yjs`) documents to the current engine, and updating application code written for edytor 0.0.11. Edytor is 0.0.x: no release keeps compatibility shims.
+
+## Importing v13 documents
+
+The v13 engine and the current one cannot share a live document, a database or a room. Migration is a **one-way, non-destructive import** of each document's content into a new store.
+
+| Survives | Does not survive |
+| --- | --- |
+| The block tree, nesting and order | CRDT identity: the imported document is new |
+| Text, marks, inline blocks and block `data` | Edit history and undo stacks |
+| Block and inline block ids (they are data) | Updates still pending on an offline v13 device |
+| | Presence |
+
+The migrator reads a browser's v13 IndexedDB database named `<name>` and writes the import into the store `createIndexeddbSync(name)` opens. It never writes the v13 database, so the old build keeps working on its data and rollback stays possible.
+
+### Boot recipe
+
+Migrate first, then open the document. Running it at every start is safe: when there is nothing to import, it only marks the store as migrated.
+
+```ts src/lib/migrate.ts
+import * as Y from 'edytor/crdt';
+import { bindCrdt } from 'edytor';
+
+const { migration } = bindCrdt(Y);
+
+export async function prepareDocument(name: string): Promise<void> {
+  const record = await migration.status(name);
+  if (record.status === 'none' || record.status === 'failed') {
+    const result = await migration.migrate(name);
+    if (result.status === 'failed') console.error('migration failed', result.error);
+  } else if (record.status === 'pending') {
+    await migration.waitForSettled(name); // another tab is migrating
+  }
+  // 'rolledback' is an operator decision: never migrate over it automatically.
+}
+```
+
+```svelte
+<script lang="ts">
+  import { Edytor, createIndexeddbSync, richTextPlugin } from 'edytor';
+  import { prepareDocument } from '$lib/migrate';
+
+  let { name }: { name: string } = $props();
+</script>
+
+{#await prepareDocument(name) then}
+  <Edytor sync={createIndexeddbSync(name)} plugins={[richTextPlugin]} />
+{/await}
+```
+
+- Tabs migrating the same document take turns through a browser lock; only one imports. `migrate(name, { wait: false })` returns `{ status: 'busy' }` instead of waiting.
+- `migrate` verifies the import against the v13 content, ids included, before committing it, and commits it atomically. An interrupted import leaves nothing behind and runs again next time.
+- `result.update` holds the migrated state; `loadDocument(result.update)` opens it headlessly, and `result.json` holds the content for comparison with a v13 export.
+- To import into another store, such as the local copy of a WebSocket document, pass the v13 name as the source: `migrate(sync.persistName, { sourceName: 'doc-42' })`. For a shared document, import once, on one client, and let the room distribute it.
+
+| Status | Meaning |
+| --- | --- |
+| `none` | Never migrated. |
+| `pending` | A tab is importing right now (reported by `status`, never stored). |
+| `active` | Imported, or nothing to import. |
+| `failed` | Refused: the source is not a v13 edytor document, or it holds updates whose dependencies never arrived (a device that went offline). Retry once that device has synced; do not force. |
+| `rolledback` | Rolled back by an operator. `migrate` refuses unless `{ force: true }`. |
+
+### Rollback and re-import
+
+`migration.rollback(name)` marks the store rolled back and empties it; the v13 database is untouched, so pointing the old build at it again is the rollback. `clearDocument(name)` deletes the new store entirely.
+
+`migrate(name, { force: true })` re-reads the v13 database and restores it in place: every v13 block gets back its type, data, position and content, and blocks created since are deleted. It replaces rather than merges, so use it to recover edits from a v13 device that came back online after the cutover, during a quiet window.
+
+### Rooms and servers
+
+- v13 and current clients never exchange edits: each drops the other's frames. Ship the new build to every client before announcing the cutover, and use different room names if both versions share a relay.
+- A v13 device that stays offline through the cutover keeps its edits in its own v13 database. They do not appear in the new document unless you re-import them with `force`.
+- The migrator reads browser IndexedDB only. For v13 documents stored elsewhere (on a server), export their JSON with your v13 build and create the new documents with `createDocument({ value })`. `loadDocument` refuses v13 bytes with `UnsupportedDocError` (reason `legacy`), and `isLegacyDoc(doc)` detects a v13 document.
+
+## Upgrading from 0.0.11
+
+The current release rewrites the editor's internals. The main breaking changes, grouped:
+
+### Stored documents
+
+- Documents, IndexedDB stores and peers from earlier development builds of the v14 engine are refused (`GenerationMismatchError`, `'schema-mismatch'`): re-import them from JSON. v13 documents import as described above.
+- Seeding a `value` is deterministic, so replicas seeding the same template converge. `BOOTSTRAP_BLOCK_ID` is gone, and seeded blocks have no `createdBy`.
+
+### Document API
+
+- Every facade operation returns an [`OpResult`](/docs/reference/document-api#results) (`applied`, `noop` or `refused`) instead of a boolean. Operations on deleted or missing blocks are refused.
+- Operations have a two-phase form: `facade.prepare.<op>()`, `facade.apply(plan)`, `facade.compose(...plans)`. New operations: `deleteRange`, `replaceRange`, `deleteBlocks`, `insertFlow`, `insertBlocks`.
+- New queries: `order`, `compare`, `next`, `previous`, `canPlace`, `canMerge`, `defaultChild`.
+- `facade.onChange` reports one `DocChange` per commit. The per-block subscription API (`subscribeBlock`, `subscribe`, `blockVersion`, `snapshot`), `decorateRuns` and the `bind*` building blocks are no longer exported: use `onChange` with `runs(id)`, a block kind's `transformText` for decorations, and `bindCrdt(Y)` for engine injection.
+- `deleteBlock(id)` and `deleteBlocks(ids)` delete only the named blocks; children take their place. Pass `{ keepChildren: false }` for the old whole-subtree delete.
+- Undoing a block's creation keeps the block while it holds another person's content; `hasBlock(id)` stays `true`, and re-creating an undone id is refused.
+- Selection anchors are `{ b, a }`; `toJSON()` gives inline blocks `data: {}` when they have none.
+
+### Editor and plugins
+
+- `Block`, `Text` and `InlineBlock` are non-reactive handles over the document, and their constructors are gone. Selection is a value set with `selection.select()`, `setAtRange` or `setAtTextOffset`.
+- Plugin hooks run on the prepared command before anything is written; a veto refuses the whole command. Several operation names changed, errors are reported as `refused` instead of thrown, and the first definition of a kind wins.
+- Block kinds declare `defaultChild` (the `defaultBlock` hook is gone). Marks render by `tag` (`<strong data-edytor-mark="bold">`), which changes CSS selectors. `placeholder` is a string or a function. HTML paste is built in.
+- A block selection holds exactly its members, and an emptied document shows a [virtual paragraph](/docs/collaboration/concurrent-editing#an-emptied-document-shows-a-virtual-paragraph).
+
+See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sections for the current APIs.
+
+### Collaboration and providers
+
+- `attachDocumentSync` is removed: use `document.attachSync`. The presence format changed (one entry per view in `selections`), so old and new clients do not see each other's carets.
+- `createWebsocketSync` keeps a local IndexedDB copy by default (`persist`, `persistName`) and syncs tabs by default (`disableBc`). It no longer takes `connect`, `protocols` or `resyncInterval`; pass tokens in `params`.
+- `WebsocketProvider` lost the `protocols` option, the `sync` event (use `synced`) and `wsconnecting` (use the `status` event). It gained `saved`, `unsaved` and the `'saved'` event.
+- `IndexeddbPersistence` lost `get`, `set` and `del`.
+- The document decides readiness itself: `syncFailed`, `onSyncSettled` and `EdytorDocSyncPendingError` are gone; see [readiness](/docs/collaboration/documents#readiness). A document keeps one provider per target.
+- Content with a foreign schema makes the document read-only (`document.writable`) instead of throwing on every edit.
+- `edytor/cloudflare` is new: the [Durable Object room](/docs/server/quick-start) replaces a coordinator you wrote yourself.
+
+### Migration API
+
+- `MigrationRecord` no longer has `owner` or `leaseUntil`, and is never stored as `pending`. The `leaseMs`, `owner`, `pollMs` and `waitMs` options are accepted and ignored.
+- `force` restores the v13 content in place instead of overwriting, and a store of another generation makes `migrate` throw `GenerationMismatchError`.

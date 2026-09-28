@@ -1,0 +1,114 @@
+---
+title: Entry points
+description: The four package entry points of edytor, what each exports, and where each can run, from the browser to Node and Cloudflare Workers.
+icon: package
+---
+
+The `edytor` package has four entry points. Only the root contains Svelte components; the CRDT entries have no Svelte in their import graph and run in Node and in Cloudflare Workers.
+
+| Import | Contains | Runs in |
+| --- | --- | --- |
+| `edytor` | The `<Edytor>` component, bundled plugins, handles, the document API, sync factories | A Svelte bundler (SvelteKit, Vite) |
+| `edytor/crdt/edytor` | The document API and its types, `bindCrdt`, awareness, the wire protocol helpers | Browser, Node 22+, Workers |
+| `edytor/crdt` | The vendored CRDT engine itself (Yjs v14 fork) | Browser, Node 22+, Workers |
+| `edytor/cloudflare` | `DocumentRoom` (a Durable Object) and `routeDocumentSocket` | Cloudflare Workers only |
+
+No other path is exported. Imports such as `edytor/dist/...` or `edytor/crdt/vendor/...` fail with `ERR_PACKAGE_PATH_NOT_EXPORTED`.
+
+## `edytor`
+
+The root entry is what a Svelte app imports:
+
+```ts
+import {
+	Edytor, // the component
+	useEdytor, // the editor instance from inside the component tree
+	Block, Text, InlineBlock, // handle classes
+	richTextPlugin, codePlugin, markdownShortcutsPlugin, slashMenuPlugin,
+	toolbarPlugin, arrowMovePlugin, blockHandlesPlugin, createBlockHandlesPlugin,
+	richTextOperations, convertToKind,
+	createDocument, loadDocument, attachDocument, // the document API
+	createIndexeddbSync, createWebsocketSync, clearDocument, // sync factories
+	IndexeddbPersistence, WebsocketProvider // provider classes
+} from 'edytor';
+```
+
+It also re-exports everything from `edytor/crdt/edytor`, so a Svelte app never needs a second import for the document API or its types (`JSONDoc`, `JSONBlock`, `OpResult`, `DocChange`, …).
+
+Because it contains `.svelte` files, the root entry needs a bundler that compiles Svelte. Plain Node cannot import it.
+
+## `edytor/crdt/edytor`
+
+The same document surface without Svelte. Use it on a server, in a script, in a worker or anywhere the component cannot load:
+
+```ts
+import { createDocument, loadDocument } from 'edytor/crdt/edytor';
+
+const document = createDocument({
+	value: { children: [{ type: 'paragraph', content: [{ text: 'hello' }] }] },
+	actor: { id: 'user-42', name: 'Ada' }
+});
+
+const [block] = document.facade.project().children;
+document.transact(() => document.facade.insertText(block.id, 5, ' world'));
+
+const saved = document.encode(); // Uint8Array
+const restored = loadDocument(saved);
+console.log(restored.facade.toJSON());
+```
+
+It exports:
+
+- `createDocument`, `loadDocument`, `attachDocument` and the `EdytorDocument` class. See [the document reference](/docs/reference/document-api).
+- The JSON and facade types: `JSONDoc`, `JSONBlock`, `JSONText`, `JSONInlineBlock`, `BlockSpec`, `Destination`, `OpResult`, `DocChange`, `DocAnchor`, `EdytorDoc`.
+- `Awareness`, the sync and provider types (`EdytorSync`, `WebsocketProviderOptions`, …), admission checks, attribution types and the v13 migration types.
+- `bindCrdt(Y)`, which binds the providers, migration and sync protocol to an engine you pass in.
+- The frame and message helpers a server coordinator needs.
+
+The ready-made sync factories (`createIndexeddbSync`, `createWebsocketSync`) and the provider classes are exported from the root only. Outside Svelte, reach the providers through `bindCrdt`:
+
+```ts
+import * as Y from 'edytor/crdt';
+import { bindCrdt } from 'edytor/crdt/edytor';
+
+const crdt = bindCrdt(Y);
+const doc = crdt.createDoc();
+const awareness = new crdt.Awareness(doc);
+const provider = new crdt.providers.IndexeddbPersistence('document-id', doc, { awareness });
+await provider.whenSynced;
+```
+
+## `edytor/crdt`
+
+The raw engine: Edytor's own fork of Yjs v14, pruned to what Edytor uses (documents, nodes, transactions, `UndoManager`, update encoding and merging, state vectors, relative positions).
+
+```ts
+import * as Y from 'edytor/crdt';
+
+const merged = Y.mergeUpdates([updateA, updateB]);
+```
+
+You rarely need it directly. Reach for it when you pass the engine to `bindCrdt`, or when you handle raw updates (merging, state vectors) yourself.
+
+:::warning
+Keep one engine in your app. The `yjs` package on npm is v13 and its updates are not compatible with this engine. Do not create Yjs documents from `yjs` and hand them to Edytor.
+:::
+
+## `edytor/cloudflare`
+
+The server room for real-time collaboration: `DocumentRoom`, a Durable Object that coordinates one document, and `routeDocumentSocket`, which authorizes a client before its WebSocket upgrade.
+
+```ts title="src/worker.ts"
+import { DocumentRoom, routeDocumentSocket, requestedReplica } from 'edytor/cloudflare';
+
+export { DocumentRoom };
+```
+
+It imports `cloudflare:workers`, so it loads only inside a Worker. It is built on the Worker-safe CRDT entries and has no Svelte or DOM code. Setup is covered in [Server quick start](/docs/server/quick-start).
+
+## Choosing an entry
+
+- Rendering an editor: `edytor`.
+- Reading, converting or editing a document in Node, a SvelteKit server route or a Worker: `edytor/crdt/edytor`.
+- Handling raw updates, or passing the engine to `bindCrdt`: `edytor/crdt`.
+- Hosting collaboration on Cloudflare: `edytor/cloudflare`.

@@ -1,0 +1,94 @@
+---
+title: Placeholder
+description: Show placeholder text in empty blocks with a string or a function of the block, and style it through the data-placeholder attribute.
+icon: text-cursor
+---
+
+A placeholder is hint text shown in an empty block, such as "Type '/' for commands". It is never part of the document: the editor renders it with CSS from a `data-placeholder` attribute.
+
+## Setting a placeholder
+
+Pass `placeholder` to `<Edytor>`:
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin } from 'edytor';
+</script>
+
+<Edytor plugins={[richTextPlugin]} placeholder="Start writing…" />
+```
+
+A string shows in every empty block. A function decides per block:
+
+```svelte
+<Edytor
+	plugins={[richTextPlugin]}
+	placeholder={({ type, data, focused }) => {
+		if (type === 'heading') return `Heading ${String(data.level ?? 'h1').slice(1)}`;
+		if (type === 'todo-item') return 'To-do';
+		return focused ? "Type '/' for commands" : null;
+	}}
+/>
+```
+
+The function receives a view of the empty block and returns the text, or `null` for none:
+
+<TypeTable
+  type={{
+    type: { type: "string", description: "The block's kind." },
+    data: { type: "object", description: "The block's data." },
+    focused: { type: "boolean", description: "The caret is in the block." },
+    empty: { type: "boolean", description: "Always true: the function is only asked for empty blocks." },
+  }}
+/>
+
+The function re-runs when the block's kind, data or focus changes, so a placeholder can follow the caret. The prop itself is read once, when the editor mounts.
+
+A plugin can supply the placeholder instead, with the same string or function:
+
+```ts
+import type { Plugin } from 'edytor';
+
+export const hintsPlugin: Plugin = () => ({
+	placeholder: ({ focused }) => (focused ? 'Press / for blocks, @ to mention' : null)
+});
+```
+
+The `<Edytor>` prop wins over plugins; among plugins, the first one that declares a placeholder wins.
+
+## When it shows
+
+A block shows its placeholder when its content is a single empty text: no characters and no inline atoms. Its children do not count. It is withheld while an IME composition is in progress in the block, so the hint never overlaps composed text. Kinds that render no content (list containers, dividers) never show one.
+
+## Styling
+
+The placeholder is an attribute on the empty text element:
+
+```html
+<span data-edytor-text="true" data-placeholder="Start writing…">​</span>
+```
+
+The editor ships one rule that draws it:
+
+```css
+[data-edytor-text][data-placeholder]::before {
+	content: attr(data-placeholder);
+	position: absolute;
+	white-space: nowrap;
+	pointer-events: none;
+	user-select: none;
+	opacity: 0.45;
+}
+```
+
+It is positioned out of flow, so the caret stays at the start of the line and clicks go to the text. Override the look with your own rule:
+
+```css
+[data-edytor] [data-placeholder]::before {
+	color: #b6b4af;
+	opacity: 1;
+	font-style: italic;
+}
+```
+
+To style by kind, go through the block element: `[data-edytor-type='heading'] [data-placeholder]::before`.

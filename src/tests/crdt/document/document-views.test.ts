@@ -170,7 +170,17 @@ describe('views sharing one document', () => {
 		expect(
 			() => new Edytor({ document, awareness: undefined, doc: new Y.Doc(), plugins: [] })
 		).toThrowError(/cannot be combined/);
+		expect(() => new Edytor({ document, actor: { id: 'u1' }, plugins: [] })).toThrowError(
+			/cannot be combined/
+		);
 		document.destroy();
+	});
+
+	it('an owned document takes the view `actor` (identity + presence profile)', () => {
+		const view = new Edytor({ actor: { id: 'u1', name: 'Ada' }, plugins: [richTextPlugin] });
+		expect(view.document.actor.id).toBe('u1');
+		expect(view.document.awareness.getLocalState()?.user?.name).toBe('Ada');
+		view.destroy();
 	});
 });
 

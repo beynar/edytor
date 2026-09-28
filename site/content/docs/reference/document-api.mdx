@@ -1,0 +1,205 @@
+---
+title: Document API
+description: Reference for the document facade, its operations and results, order and capability queries, change events and attribution.
+icon: file-code
+---
+
+`document.facade` is the one read and write surface of a document: every structural and text edit, and every read of the tree, goes through it. It is the same whether you use it headlessly or from a view. For the document object itself (history, providers, readiness), see [Documents](/docs/collaboration/documents); for the tree model, see [the document model](/docs/concepts/document-model).
+
+```ts
+import { createDocument } from 'edytor';
+
+const { facade } = createDocument({
+  value: { children: [{ type: 'paragraph', id: 'p1', content: [{ text: 'hello' }] }] }
+});
+
+facade.insertText('p1', 5, ' world'); // { status: 'applied', ids: ['p1'] }
+facade.insertText('p1', 0, ''); // { status: 'noop', ids: [] }
+facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' });
+facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' }); // refused: id taken
+```
+
+## Shapes
+
+| Type | Shape |
+| --- | --- |
+| `BlockId` | `string`, chosen by the caller and never reused. |
+| `Destination` | `{ parent: BlockId \| null, index: number }`. `null` is the root. |
+| `BlockSpec` | `{ id, type, data?, content?: ContentItem[], children?: BlockSpec[] }` |
+| `ContentItem` | `{ kind: 'text', text, marks? }` or `{ kind: 'inline', id, type, data? }` |
+| `InlineSpec` | `{ id, type, data? }` |
+| `DocPosition` | `{ block: BlockId, offset: number }` |
+
+Offsets count what the block displays: one per UTF-16 text unit and one per inline block. Offsets out of range are clamped.
+
+## Results
+
+Every operation returns an `OpResult`:
+
+```ts
+type OpResult = {
+  status: 'applied' | 'noop' | 'refused';
+  ids: readonly BlockId[]; // what the op is about; empty unless applied
+  reason?: string; // e.g. 'id-collision'
+};
+```
+
+- `applied`: the operation wrote to the document.
+- `noop`: nothing to do (inserting `''`, an empty range, formatting with the value already there, `moveBlocks([])`). Nothing is written.
+- `refused`: the operation is not allowed here (a missing or deleted block, an id already taken, a move into an island). Nothing is written.
+
+## Block operations
+
+| Operation | `ids` when applied | Notes |
+| --- | --- | --- |
+| `insertBlock(dest, spec)` | the new block | Refused when `dest.parent` is missing, deleted or void, or any id in the spec is taken (by a live or deleted block). |
+| `insertBlocks(dest, specs)` | the new roots | All or nothing. |
+| `moveBlock(id, dest)` | the block | Keeps the block's identity. Refused exactly when `canPlace([id], dest.parent)` is `false`. |
+| `moveBlocks(ids, dest)` | the blocks, in request order | One step; placed consecutively at `dest.index`. |
+| `nestBlock(id, parent)` | the block | Moves it to the end of `parent`'s children. |
+| `unNestBlock(id)` | the block | Moves it right after its parent. |
+| `splitBlock(id, offset, newId, tail?)` | `newId` | The text after `offset` and the children move to the new sibling. `tail` is `{ type, data? }`; default: the source's. Refused on void blocks. |
+| `mergeBlocks(from, into)` | `into` | `from`'s content joins `into`, and its children become `into`'s last children. |
+| `mergeBackward(id)` | the surviving block | Merges `id` into the previous block in document order; its children take its place. |
+| `mergeForward(id)` | `id` | Pulls the next block in document order into `id`. |
+| `deleteBlock(id, { keepChildren? })` | `id` | Children take the block's place unless `keepChildren: false`. Refused when the block is not live. |
+| `deleteBlocks(ids)` | the deleted roots | Deletes exactly these blocks; their unselected children take their places. |
+| `setBlock(id, { type?, data?, content?, children? })` | `id` | `type` and `data` update in place; `content` and `children` replace everything (new children need unused ids, or `reason: 'id-collision'`). |
+| `setBlockType(id, type)` | `id` | |
+| `setBlockData(id, data)` | `id` | Replaces the whole `data` object. |
+| `duplicateBlock(id, freshId)` | the copy | Copies the subtree after `id`; `freshId(oldId)` names each copied block. |
+
+## Text operations
+
+| Operation | Notes |
+| --- | --- |
+| `insertText(id, offset, text, marks?)` | `marks` like `{ bold: true }`. |
+| `deleteText(id, offset, length)` | |
+| `formatRange(id, offset, length, marks)` | Sets several marks; a `null` value removes that mark. |
+| `setMark(id, offset, length, name, value)` | One mark. |
+| `unsetMark(id, offset, length, name)` | |
+| `clearMarks(id, offset, length)` | Removes every mark present in the range. |
+| `insertInline(id, offset, atom)` | `atom` is an `InlineSpec`. |
+| `removeInline(id, inlineId)` | |
+| `setInlineData(id, inlineId, data)` | |
+
+Text operations also work inside void blocks, which may hold a caption.
+
+## Ranges and flows
+
+| Operation | Notes |
+| --- | --- |
+| `deleteRange(from, to)` | Deletes between two `DocPosition`s across blocks, following the editor's range-deletion rules. Keeps the first block when nothing else would remain. |
+| `replaceRange(from, to)` | Like `deleteRange`, but always keeps the first block, ready for replacement content. |
+| `insertFlow(target, flow)` | Paste-style insertion. `target` is a `DocPosition` or `{ replace: BlockId[] }`; `flow` is `{ lines, whole? }`, where each line is a `BlockSpec` whose `type` may be omitted for plain inline content. |
+
+The prepared plan of these operations carries `at`, the `DocPosition` where the caret should land.
+
+## Prepare, apply, compose
+
+Every operation also exists in two phases. `facade.prepare.<op>(…)` checks it and returns a plan without writing; `facade.apply(plan)` writes it in one transaction. Calling `facade.<op>(…)` is `apply(prepare.<op>(…))`.
+
+```ts
+const plan = facade.prepare.splitBlock('p1', 5, 'p1b');
+if ('writes' in plan) {
+  plan.effect; // { creates: ['p1b'], removes: [], merges: [], moves: [], meta: [], textRanges: [...] }
+  facade.apply(plan); // { status: 'applied', ids: ['p1b'] }
+}
+
+// Independent edits as one plan, one transaction, one undo step:
+facade.apply(
+  facade.compose(
+    facade.prepare.setBlockType('p2', 'heading'),
+    facade.prepare.setBlockData('p2', { level: 2 })
+  )
+);
+```
+
+A plan is `{ ids, writes, effect, version, at? }`; a refusal is returned as its `OpResult`. A plan is valid only at the version it was prepared against and in the same synchronous turn: applying it after the document changed throws. `compose(...plans)` joins plans prepared at the same version whose steps do not depend on each other.
+
+## Reads
+
+| Read | Returns |
+| --- | --- |
+| `toJSON()` | The document as `JSONDoc` (`{ children: JSONBlock[] }`). |
+| `project()` | The visible tree as `{ children: ProjectedBlock[] }` with `ContentItem` content. |
+| `blockJSON(id)` | One block's subtree as `JSONBlock`. |
+| `childrenIds(parent)` | Visible child ids; `null` for the root. |
+| `parentOf(id)`, `ancestorsOf(id)` | The display parent (`null` at the root), and the ancestors, nearest first. |
+| `positionOf(id)`, `pathOf(id)` | `{ parent, index }`, and the index path from the root; `null` when not visible. |
+| `blockTypeOf(id)`, `blockDataOf(id)`, `blockText(id)` | Type, data, and plain text (`null` for a block that is not live). |
+| `contentItems(id)`, `displayLength(id)` | Content items and display length, including writes made earlier in the current transaction. |
+| `runs(id)` | The block's content runs as of the last commit: frozen arrays, shared between reads. |
+| `hasBlock(id)`, `isVisibleBlock(id)` | Registered at all (even deleted or merged away), and shown in the tree. |
+| `isVoid(id)`, `isIsland(id)`, `islandOf(id)`, `insideIsland(id)` | Structural roles. |
+| `listBlockIds()` | Every visible block id, in document order. |
+| `version` | A counter that changes on every write that changed the tree. |
+
+## Order and capability
+
+| Query | Returns |
+| --- | --- |
+| `order()` | All visible block ids in document order (a depth-first walk). |
+| `compare(a, b)` | Negative when `a` comes first. Blocks that are not visible sort last. |
+| `next(id, policy?)`, `previous(id, policy?)` | The neighbor in document order, or `null`. With `{ sealed: true }`, the walk never enters an island it did not start in. |
+| `canPlace(ids, parent?)` | Whether the blocks may be moved under `parent` (`null` for the root). Without `parent`: whether they may move at all. |
+| `canMerge(from, into)` | Whether `from`'s content may merge into `into`: both live, neither void, same side of an island boundary. |
+| `defaultChild(parentId)` | The block type a new child of `parentId` gets (`null` for the root). |
+
+Whether a block type renders its own content is a document-level question: `document.rendersContent(type)`.
+
+## Changes
+
+`facade.onChange(callback)` calls back once per committed transaction that changed the visible document, local or remote, and returns an unsubscribe function.
+
+```ts
+const off = facade.onChange((change) => {
+  if (!change.local) console.log('remote edit in', [...change.content.keys()]);
+});
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `added` | `Map<BlockId, ProjectedBlock>` | Newly visible blocks, with their subtree. |
+| `removed` | `Set<BlockId>` | Blocks no longer visible (deleted, merged away, or under a deleted parent). |
+| `moved` | `Set<BlockId>` | Blocks whose parent or position changed. |
+| `meta` | `Map<BlockId, { type, data? }>` | Blocks whose type or data changed. |
+| `content` | `Map<BlockId, readonly ContentRun[]>` | Blocks whose visible content changed, with the new runs. |
+| `order` | `Map<BlockId \| null, readonly BlockId[]>` | Parents whose child list changed, with the new order. |
+| `origin`, `local` | `unknown`, `boolean` | The transaction's origin, and `false` for edits that came from a provider. |
+| `version` | `number` | Increases with every change event. |
+
+`transact(fn, origin?)` groups several operations into one transaction and one change event. Prefer `document.transact(fn)`, which also makes it one undo step.
+
+## Block handles
+
+`facade.block(id)` returns a handle over one block, with the same operations bound to that id. Handles are cached per id and safe on missing ids (operations are `refused`).
+
+```ts
+const block = facade.block('p1');
+block.insertText(0, '> ');
+block.items; // ContentItem[]
+block.split(2, 'p1-tail');
+block.delete(); // children take its place; delete({ keepChildren: false }) removes them too
+```
+
+Members: `id`, `attribution`, `items`, `runs`, `length`, `childIds()`, `insertText`, `deleteText`, `format`, `setMark`, `unsetMark`, `clearMarks`, `insertInline`, `removeInline`, `setInlineData`, `insertChild(index, spec)`, `moveTo({ parent, index })`, `nestUnder(parent)`, `unNest()`, `split(offset, newId, tail?)`, `mergeBackward()`, `mergeForward()`, `mergeFrom(other)`, `delete(opts?)`, `setType`, `setData`, `set(value)`, `duplicate(freshId)`.
+
+## Attribution
+
+Each block records who created it and who changed it, as actor ids (`actor.id` from `createDocument`):
+
+```ts
+document.attribution.block('p3');
+// { createdBy: 'user-42', contributors: Set { 'user-42' }, lastChangedBy: 'user-42' }
+facade.blockAttribution('p3'); // the same record
+document.attribution.actors.get('user-42'); // { name: 'Ada', color: '#7559ee' }
+```
+
+| Field | Description |
+| --- | --- |
+| `createdBy` | The actor who created the block. Absent on blocks from a seeded `value`. |
+| `lastChangedBy` | The actor of the block's last content change. Deletes and moves do not change it. |
+| `contributors` | Every actor who edited this block id, including through splits and merges. It describes the block's history, not who wrote the text visible now: do not present it as "written by". |
+
+`attribution.actorOf(clientID)` maps a CRDT client id to its actor, `attribution.setProfile({ name, color })` republishes the local actor's profile, and `attribution.history(id)` returns earlier versions of a block when the document was created with `lineage: { depth }`.

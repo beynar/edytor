@@ -1,0 +1,149 @@
+---
+title: Document model
+description: The JSON shape of an Edytor document, with blocks, content, children, marks, inline blocks, ids and the rules the editor applies to them.
+icon: file-json
+---
+
+An Edytor document is a tree of blocks, stored as JSON. You pass it in as `value`, read it back from `edytor.value` or `onChange`, and store it wherever you like. This page describes that shape and what the editor guarantees about it.
+
+## The types
+
+All four types are exported from `edytor` and `edytor/crdt/edytor`:
+
+```ts
+type JSONDoc = {
+	children: JSONBlock[];
+};
+
+type JSONBlock = {
+	type: string;
+	id?: string;
+	data?: Record<string, SerializableContent>;
+	content?: (JSONText | JSONInlineBlock)[];
+	children?: JSONBlock[];
+};
+
+type JSONText = {
+	text: string;
+	marks?: Record<string, SerializableContent>;
+};
+
+type JSONInlineBlock = {
+	type: string;
+	id?: string;
+	data?: any;
+};
+```
+
+`SerializableContent` is any JSON value: a string, number, boolean, `null`, or an object of them.
+
+## Blocks: content and children
+
+A block has two separate slots:
+
+- **`content`** is the block's own inline content: text runs and inline blocks, in order.
+- **`children`** are nested blocks. They render inside the parent (a toggle's body, a list item's sub-list) and can nest to any depth.
+
+```json
+{
+	"children": [
+		{
+			"type": "toggle",
+			"content": [{ "text": "Details" }],
+			"children": [
+				{ "type": "paragraph", "content": [{ "text": "Hidden until opened." }] },
+				{
+					"type": "bulleted-list-item",
+					"content": [{ "text": "Nested items work too" }],
+					"children": [{ "type": "bulleted-list-item", "content": [{ "text": "Deeper" }] }]
+				}
+			]
+		}
+	]
+}
+```
+
+`type` names a block kind registered by a plugin (`paragraph`, `heading`, …). `data` holds the kind's settings: a heading's `{ level: 'h2' }`, a to-do's `{ checked: true }`. See [Blocks](/docs/concepts/blocks) for the kinds, nesting rules and default children.
+
+The document itself (`JSONDoc`) is the root's `children`. `edytor.value` and `onChange` wrap them in a root block: `{ type: 'root', children }`.
+
+## Text and marks
+
+Text is a list of runs. Each run carries the marks that apply to all of its characters:
+
+```json
+{
+	"type": "paragraph",
+	"content": [
+		{ "text": "Read the " },
+		{ "text": "docs", "marks": { "bold": true, "link": { "href": "https://example.com" } } },
+		{ "text": " first." }
+	]
+}
+```
+
+A mark is a key in `marks`. Simple marks use `true`. Valued marks carry their value: a link `{ href, target? }`, a color or highlight a CSS color string. The rich text plugin defines `bold`, `italic`, `underline`, `strike`, `code`, `link`, `superscript`, `subscript`, `color` and `highlight`.
+
+A mark renders only when a plugin defines it (otherwise its text shows unformatted). When several marks apply, they wrap each other in registration order, the first registered innermost.
+
+## Inline blocks
+
+An inline block is a non-editable element inside the text: a mention, a footnote, an equation. It has a `type`, an optional `id` and optional `data`:
+
+```json
+{
+	"type": "paragraph",
+	"content": [
+		{ "text": "Ask " },
+		{ "type": "mention", "data": { "userId": "u_42", "label": "Ada" } },
+		{ "text": " about it." }
+	]
+}
+```
+
+The plugin that defines the inline block type renders it from `data`. In the editor it counts as one character of the block's content: Backspace or Delete next to it removes it whole, and clicking it selects it.
+
+## Ids
+
+Block and inline block ids are optional in the input:
+
+- Ids you provide are kept. Use them when something outside the document refers to a block (a link to `#block-<id>`, comments, analytics).
+- Missing ids are generated. For the initial `value`, they are derived from a hash of the value, so two clients that seed the same template get the same ids and merge into one document.
+- The output always has ids.
+- Ids must be unique. An insert that reuses a live block's id is refused.
+- Pasted content always gets fresh ids, even when it was copied from the same document.
+
+## What you get back
+
+The JSON the editor returns is normalized. Compare an input:
+
+```json
+{ "type": "paragraph", "content": [{ "text": "Hel" }, { "text": "lo" }, { "text": "" }] }
+```
+
+with what `edytor.value` returns for it:
+
+```json
+{ "type": "paragraph", "id": "b1uj9mz7.0", "data": {}, "content": [{ "text": "Hello" }] }
+```
+
+- `id` and `data` are always present (`data` is `{}` when empty). Inline blocks always carry `id` and `data` too.
+- Adjacent text runs with equal marks are merged into one run.
+- Empty text runs are dropped. An empty block has no `content` key.
+- `children` is omitted when a block has none.
+
+Don't compare stored JSON with `edytor.value` by deep equality right after loading it; compare after one round trip.
+
+## Invariants you can rely on
+
+- **Every block type is known.** A block whose `type` no plugin defines cannot render: the view throws `Block type <type> is not defined`. Load documents with the same plugins that wrote them.
+- **A block renders as text around inline blocks.** However its `content` is stored, the editor shows it as a text segment first and last, and exactly one text segment between two inline blocks (possibly empty). That is where the caret goes before, between and after inline blocks.
+- **An empty document shows one block.** A new document with no children is seeded with one empty block of the default type (`paragraph`). A document that becomes empty later, for example when collaborators delete every block, shows a local empty paragraph that is only written once someone types in it.
+- **Values are JSON.** `data` and mark values cross the network and storage as JSON. Non-JSON values are coerced (a `Date` becomes a string, a `Map` becomes `{}`, `undefined` keys are dropped, `NaN` becomes `null`) and a warning is logged in development. Serialize richer values yourself.
+- **Strings are well-formed.** Unpaired UTF-16 surrogates in text, ids and data become `U+FFFD`, so every replica stores the same string.
+
+## Next
+
+- [Blocks](/docs/concepts/blocks): kinds, nesting, void and island blocks, default children.
+- [The editor instance](/docs/concepts/editor-instance): reading and changing the document from code.
+- [Custom blocks](/docs/customization/blocks): defining your own kinds.

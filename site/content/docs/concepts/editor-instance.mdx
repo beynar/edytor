@@ -1,0 +1,128 @@
+---
+title: The editor instance
+description: The runtime Edytor object behind every view, its members, the Block, Text and InlineBlock handles, and how to read state reactively.
+icon: box
+---
+
+Each `<Edytor>` view creates one runtime object, the editor instance. It holds the document the view renders, the selection, the plugins and the command dispatcher. You need it to read or change content from code, or to build UI around the editor (toolbars, menus, status bars).
+
+## Getting the instance
+
+From the parent, bind it:
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin, type EdytorInstance } from 'edytor';
+
+	let edytor = $state<EdytorInstance>();
+</script>
+
+<Edytor plugins={[richTextPlugin]} bind:edytor />
+<button onclick={() => edytor?.historyUndo()}>Undo</button>
+```
+
+From a component rendered inside the editor (a block snippet, an inline block, a plugin's UI), call `useEdytor()`. It reads the instance from Svelte context and throws `No Edytor found` outside an editor:
+
+```svelte
+<script lang="ts">
+	import { useEdytor } from 'edytor';
+
+	const edytor = useEdytor();
+</script>
+```
+
+The instance exists as soon as the component is created, but `edytor.root` stays `undefined` until the document is ready (`edytor.synced` is then `true`). With a `sync` provider that can take a moment.
+
+## Members
+
+| Member | Type | What it is |
+| --- | --- | --- |
+| `value` | `JSONBlock` | The whole document as JSON, `{ type: 'root', children }`. Reactive. |
+| `root` | `Block \| undefined` | The handle of the root block. `root.children` are the top-level blocks. |
+| `synced` | `boolean` | The view is bound to a ready document. |
+| `document` | `EdytorDocument` | The document this view renders: shared by every view of it, and usable without a view. |
+| `facade` | `EdytorDoc` | The document operations, as this view sees them (see below). |
+| `selection` | `EdytorSelection` | The selection value and its setters. See [Selection](/docs/editor/selection). |
+| `transact(fn)` | `<T>(fn: () => T) => T` | Run several changes as one transaction and one update. |
+| `dispatcher` | `Dispatcher` | Runs every command. `dispatcher.last` is the last command's result. |
+| `idToBlock` | `Handles` | Handle lookup: `get(id)` (live blocks only), `block(id)`, `has(id)`. |
+| `canMoveBlocks(req)`, `moveBlocks(req)` | | Relative block moves. See [Commands](/docs/editor/commands#moving-blocks). |
+| `historyUndo()`, `historyRedo()` | `() => void` | Undo and redo, restoring this view's selection. See [History](/docs/editor/history). |
+| `readonly` | `boolean` | Whether the view refuses edits. Follows the `readonly` prop. |
+| `node` | `HTMLElement \| undefined` | The editable root element, once mounted. |
+| `blocks`, `marks`, `inlineBlocks` | `Map<string, Definition>` | The registered definitions, by type. |
+| `kinds` | `KindRow[]` | The kind catalogue. See [Blocks](/docs/concepts/blocks#kinds-and-presets). |
+| `commands`, `runCommand(id)` | | Registered commands (`block.heading2`, …) and an async runner that resolves to `false` when the command is missing or disabled. |
+| `defaultChild(parent)` | `(parent: Block) => string` | The type a new child of `parent` takes. |
+| `awareness` | `Awareness` | The document's presence channel. See [Collaboration](/docs/collaboration). |
+| `cells` | `Cells` | The reactive render state, one cell per visible block (below). |
+| `clear()` | `() => void` | Replace the whole document with one empty block and put the caret in it. |
+
+### `edytor.facade` and `edytor.document`
+
+`edytor.document` is the `EdytorDocument`: it owns the CRDT document, the shared history, awareness and the facade. Several views can render one document; see [Collaboration](/docs/collaboration).
+
+`edytor.facade` is the document's facade seen through this view. It has every document operation (`insertText`, `formatRange`, `insertBlock`, `moveBlocks`, …) and read (`toJSON`, `childrenIds`, `blockTypeOf`, …). It differs from `edytor.document.facade` in one way: while the document has no block, the view shows a local empty paragraph, and `edytor.facade.virtual()` returns its id. An operation you issue on that id through `edytor.facade` creates the block first. The JSON (`edytor.value`) never contains it.
+
+Facade operations are document writes: they skip plugin hooks and normalization. Handle methods go through the dispatcher and do both. [Commands](/docs/editor/commands) compares them.
+
+## Handles
+
+`Block`, `Text` and `InlineBlock` are handles: small objects that name a piece of the document by id and read the current state from the document each time you access a getter.
+
+```ts
+const block = edytor.idToBlock.get('page-title'); // undefined if not live
+if (block) {
+	block.type; // 'heading'
+	block.data; // { level: 'h1' }
+	block.children; // Block[]
+	block.firstText?.stringContent; // 'A calmer place to think'
+	block.value; // this block's JSONBlock
+}
+```
+
+Handles are not reactive. A template that reads `block.type` does not update when the type changes. Read handles in event handlers and commands, and use the reactive sources below in templates.
+
+| Handle | Identity | Useful members |
+| --- | --- | --- |
+| `Block` | One per block id: the same object for as long as the block exists. | `id`, `type`, `data`, `parent`, `children`, `content`, `index`, `depth`, `firstText`, `lastText`, `value`, `isInTree`, `movable`, `convertible`, `node`, `textAtOffset(offset)`, `setData(data)` and the block commands (`insertBlockAfter`, `splitBlock`, `setBlock`, `removeBlock`, `nestBlock`, `unNestBlock`, …). |
+| `Text` | A text segment of a block: the `ordinal`-th segment between inline blocks. It has no identity beyond that position. | `parent`, `ordinal`, `stringContent`, `length`, `value` (runs), `isInDocument`, `node`, and the text commands (`insertText`, `deleteText`, `markText`, `removeMarksFromText`, `setText`). |
+| `InlineBlock` | One per inline block id. | `id`, `type`, `data`, `parent`, `value`, `selected`, `isInDocument`, `setData(data)`. |
+
+Because a `Text` is a position, don't keep one across edits to find "the same text" later. Keep the block id and an offset, or a selection anchor.
+
+A handle can outlive what it names. Check `block.isInTree`, `text.isInDocument` or `atom.isInDocument` before acting on one you stored; `idToBlock.get(id)` returns `undefined` for a block that is gone.
+
+Inside a command, handle getters see the command's own earlier writes, so a normalizer or a plugin can read the state its operation produced.
+
+## Reading state reactively
+
+Use these in templates, `$derived` and `$effect`:
+
+- **Block snippets** receive a view object, `block`, whose `type`, `data`, `selected` and `focused` are reactive. `block.handle` is the non-reactive handle for commands.
+
+  ```svelte
+  {#snippet callout({ block, content })}
+  	<span>{block.data.icon}</span>
+  	{@render content()}
+  	{#if block.selected}<small>selected</small>{/if}
+  {/snippet}
+  ```
+
+- **`edytor.cells`** is the render state: `cells.rootIds` (the top-level ids) and `cells.get(id)`, a frozen `{ id, type, data, childIds, runs }` that is replaced whenever the block changes. Both are reactive:
+
+  ```svelte
+  <script lang="ts">
+  	const outline = $derived(
+  		(edytor?.cells?.rootIds ?? [])
+  			.map((id) => edytor!.cells!.get(id))
+  			.filter((cell) => cell?.type === 'heading')
+  	);
+  </script>
+  ```
+
+- **`edytor.value`** is reactive and recomputes the whole JSON after each change. Fine for a word count or a save button; use `cells` for anything per block.
+
+- **`edytor.selection.value`**, `selection.state` and `selection.projection` are reactive, as are `selection.selectedBlocks` and `selection.focusedBlocks`.
+
+Everything else, including handles, `facade` reads and definitions, is imperative: read it when you need it.

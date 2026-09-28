@@ -1,0 +1,63 @@
+---
+title: Readonly mode
+description: Render a document without editing, what still works in a readonly view, and how to switch between readonly and editable.
+icon: eye
+---
+
+A readonly view renders the same block tree as an editable one, with the same plugins, snippets and styles, but refuses every edit. Use it to display documents, to lock an editor while saving, or to show a document to people without write access.
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin } from 'edytor';
+
+	let { value } = $props();
+</script>
+
+<Edytor readonly {value} plugins={[richTextPlugin]} />
+```
+
+There is no separate renderer: readonly is the editable editor with `contenteditable="false"` on its root and `aria-readonly="true"`. It is also the way to [server-render a document](/docs/getting-started/sveltekit#readonly-pages).
+
+## What still works
+
+- **Selecting text** with the mouse. The selection is tracked as in an editable view: `edytor.selection.value` and `onSelectionChange` follow it.
+- **Copying.** <kbd>Mod</kbd>+<kbd>C</kbd> writes the same clipboard formats as an editable view (Edytor's own format, HTML and plain text). See [Clipboard](/docs/editor/clipboard).
+- **Keys the browser handles**: arrows, <kbd>Home</kbd>/<kbd>End</kbd>, <kbd>PageUp</kbd>/<kbd>PageDown</kbd>, <kbd>Escape</kbd>, <kbd>Mod</kbd>+<kbd>A</kbd> and <kbd>Mod</kbd>+<kbd>C</kbd> keep their native behavior.
+- **Live updates.** The view re-renders when the document changes: collaborators' edits, and facade operations your code runs on the document.
+- **Controls inside blocks** (links, buttons and inputs a snippet renders) stay interactive.
+
+## What is turned off
+
+- Typing, <kbd>Backspace</kbd>, <kbd>Delete</kbd>, <kbd>Enter</kbd> and <kbd>Tab</kbd> are blocked.
+- Hotkeys don't run, neither the built-in ones (undo, select-all ladder, nesting) nor the plugins' (<kbd>Mod</kbd>+<kbd>B</kbd>, …).
+- Cut, paste and drop are ignored.
+- Every handle command is refused: after a call, `edytor.dispatcher.last.status` is `'refused'`. `canMoveBlocks` answers `false`.
+- Block handles are hidden and dragging is disabled. The slash menu and the selection toolbar stay closed.
+- A `sync` prop is not attached. To show collaborative content read-only, pass a `document` that has its sync attached (see [Collaboration](/docs/collaboration)).
+
+Facade operations are document writes and are not affected by the view's `readonly`: code can still change the document, and every view shows the change.
+
+When a document that collaborators emptied is shown, a readonly view displays an empty paragraph without writing one.
+
+## Switching at runtime
+
+`readonly` is one of the few props that follow updates. Toggling it keeps the same instance, document and selection:
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin } from 'edytor';
+
+	let editing = $state(false);
+</script>
+
+<button onclick={() => (editing = !editing)}>{editing ? 'Done' : 'Edit'}</button>
+<Edytor readonly={!editing} plugins={[richTextPlugin]} />
+```
+
+`edytor.readonly` reflects the prop; change the prop rather than the instance field. Block handles appear and disappear with it.
+
+A view created readonly never attaches its `sync`, even after you switch it to editable. If a view can become editable, create the document yourself and pass it as `document`.
+
+## Read-only documents
+
+Separately from the view's `readonly`, a document can be read-only: for example when it received content it could not admit. Commands then refuse in every view of it. `document.writable` tells you which state it is in; see [Collaboration](/docs/collaboration).

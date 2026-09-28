@@ -1,0 +1,127 @@
+---
+title: Presence
+description: Show who is editing, with names, colors, remote carets and selections, through the document's awareness.
+icon: mouse-pointer-2
+---
+
+Presence is the short-lived state peers share while connected: who they are, and where their caret or selection is. Edytor keeps it in the document's `awareness` instance, publishes each view's selection there, and draws remote carets in every view. Presence is never stored in the document.
+
+## Name and color
+
+The simplest way is the document's `actor`: its `name` and `color` are published as the presence `user` field, which remote carets read.
+
+```svelte
+<Edytor {sync} actor={{ id: 'user-42', name: 'Ada', color: '#dc2626' }} plugins={[richTextPlugin]} />
+```
+
+A shared document takes it at creation instead: `createDocument({ actor: { … } })`.
+
+To set or change it later, write the `user` field yourself. `edytor.awareness` (on a view) and `document.awareness` are the same instance:
+
+```ts
+document.awareness.setLocalStateField('user', { name: 'Ada', color: '#dc2626' });
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | The label drawn above the caret. No label when absent. |
+| `color` | `string` | A hex color, `#rgb` to `#rrggbbaa`. Anything else falls back to `#2563eb`. |
+
+`actor.id` is published too, as the `actor` field, and is the id stored in [attribution](/docs/reference/document-api#attribution). `user` is display-only: changing the name never rewrites authorship.
+
+## Remote carets and selections
+
+Every mounted `<Edytor>` view draws the other clients' selections, with no setup:
+
+- one caret per client, with its name label, in the client's color;
+- a translucent highlight over the text a client has selected;
+- nothing for the local client.
+
+Carets are bound to positions in the CRDT, not to pixel offsets, so they follow the text as anyone edits it. A caret whose anchor cannot be resolved (its text was deleted, for example) is not drawn.
+
+Only text selections are drawn. Block selections and selected inline blocks are published, so you can read them, but the view draws no caret for them. When one client has several views of the document open, peers see the caret of the view whose selection changed last.
+
+The carets live in the editor's overlay layer, next to the editable host, so they never enter the document or the editable DOM:
+
+```html
+<div data-edytor-remote-presence>
+  <span data-edytor-remote-selection data-client-id="1234"></span>
+  <span data-edytor-remote-cursor data-client-id="1234">
+    <span data-edytor-remote-cursor-label>Ada</span>
+  </span>
+</div>
+```
+
+Target these attributes from your stylesheet to restyle them. Positions and colors are set inline.
+
+## Who is online
+
+`awareness.getStates()` returns every client's state, keyed by client id. The `change` event fires when a client joins, leaves or changes its state:
+
+```ts
+const awareness = document.awareness;
+
+const online = () =>
+  [...awareness.getStates()]
+    .filter(([clientId]) => clientId !== awareness.clientID)
+    .map(([clientId, state]) => ({ clientId, ...(state.user as { name?: string; color?: string }) }));
+
+awareness.on('change', () => console.log(online()));
+```
+
+In Svelte, wrap it in a rune so the list updates:
+
+```svelte
+<script lang="ts">
+  import type { EdytorDocument } from 'edytor';
+
+  let { document }: { document: EdytorDocument } = $props();
+  let people = $state<{ id: number; name?: string; color?: string }[]>([]);
+
+  $effect(() => {
+    const awareness = document.awareness;
+    const update = () => {
+      people = [...awareness.getStates()]
+        .filter(([id]) => id !== awareness.clientID)
+        .map(([id, state]) => ({ id, ...(state.user as { name?: string; color?: string }) }));
+    };
+    update();
+    awareness.on('change', update);
+    return () => awareness.off('change', update);
+  });
+</script>
+
+{#each people as person (person.id)}
+  <span style:background={person.color}>{person.name ?? 'Anonymous'}</span>
+{/each}
+```
+
+## What the presence wire carries
+
+Each client publishes one JSON state:
+
+```ts
+type PresenceState = {
+  actor?: { id: string; name?: string; color?: string };
+  user?: { name?: string; color?: string };
+  selections?: Record<string, ViewSelection & { t: number }>; // one entry per view
+};
+
+type ViewSelection =
+  | { start: DocAnchor; end: DocAnchor; collapsed: boolean; reversed: boolean } // text
+  | { blocks: string[] } // a block selection
+  | { atom: string; block: string }; // a selected inline block
+```
+
+- Each view writes only its own key in `selections`, when its selection changes, and removes it when it is destroyed. `t` orders the entries of one client by recency.
+- A text selection is two anchors (`DocAnchor`, `{ b, a }`: a block id and a CRDT relative position) in document order, plus whether it is collapsed and whether the user selected backwards. No offsets or DOM data travel.
+- You may add your own fields with `setLocalStateField` (an "away" status, for example). Keep them small: every change is sent to every peer.
+
+## Lifetime
+
+- A client re-publishes its state every 15 seconds. A peer that stays silent for 30 seconds is dropped.
+- Closing a page or destroying the document announces the client's departure. When a socket drops without a goodbye, the edytor room announces it for the client.
+- Presence crosses tabs of the same browser over the same `BroadcastChannel` as the document.
+- A lost WebSocket connection clears the remote states on that client until it reconnects.
+
+Presence is relayed, not stored: the room keeps the latest entry of each connected client in memory only, and accepts entries from a socket only for that socket's own client id. See [the room](/docs/server/room#identity-and-presence).

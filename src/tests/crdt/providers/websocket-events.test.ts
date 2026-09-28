@@ -52,8 +52,8 @@ class FakeWebSocket {
 		FakeWebSocket.instances.push(this);
 		setTimeout(() => {
 			if (this.readyState !== 0) return;
-			let room = FakeWebSocket.rooms.get(this.url);
-			if (!room) FakeWebSocket.rooms.set(this.url, (room = new Set()));
+			let room = FakeWebSocket.rooms.get(this.url.split('?')[0]);
+			if (!room) FakeWebSocket.rooms.set(this.url.split('?')[0], (room = new Set()));
 			room.add(this);
 			this.readyState = 1;
 			this.onopen?.({ type: 'open' });
@@ -61,7 +61,7 @@ class FakeWebSocket {
 	}
 
 	send(data) {
-		const room = FakeWebSocket.rooms.get(this.url);
+		const room = FakeWebSocket.rooms.get(this.url.split('?')[0]);
 		if (!room) return;
 		const copy = data instanceof Uint8Array ? data.slice().buffer : data;
 		setTimeout(() => {
@@ -76,7 +76,7 @@ class FakeWebSocket {
 	close() {
 		if (this.readyState === 3) return;
 		this.readyState = 3;
-		FakeWebSocket.rooms.get(this.url)?.delete(this);
+		FakeWebSocket.rooms.get(this.url.split('?')[0])?.delete(this);
 		this.onclose?.({});
 	}
 }
@@ -118,7 +118,8 @@ describe('websocket options + socket events', () => {
 		const url = uniqueUrl();
 		FakeWebSocket.instances = [];
 		const statuses = [];
-		const p = new providers.WebsocketProvider(url, 'room', new Y.Doc(), {
+		const doc = new Y.Doc();
+		const p = new providers.WebsocketProvider(url, 'room', doc, {
 			// Deferred: 'connecting' is emitted synchronously inside setupWS —
 			// attach the listener first so the order is observable.
 			connect: false,
@@ -127,10 +128,12 @@ describe('websocket options + socket events', () => {
 		});
 		p.on('status', (s) => statuses.push(s.status));
 
-		expect(p.url).toBe(`${url}/room?token=abc&region=eu`);
+		expect(p.url).toBe(`${url}/room?replica=${doc.clientID}&token=abc&region=eu`);
 		p.connect();
 		await until(() => p.wsconnected, 4000);
-		expect(FakeWebSocket.instances.at(-1).url).toBe(`${url}/room?token=abc&region=eu`);
+		expect(FakeWebSocket.instances.at(-1).url).toBe(
+			`${url}/room?replica=${doc.clientID}&token=abc&region=eu`
+		);
 		expect(statuses).toEqual(['connecting', 'connected']);
 		p.destroy();
 	});

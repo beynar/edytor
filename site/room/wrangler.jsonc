@@ -1,0 +1,17 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	// The public collaboration room behind the docs' live editor.
+	"name": "edytor-room",
+	"account_id": "6886250e2aff0047919a1ed731a55c64",
+	"main": "src/worker.ts",
+	"compatibility_date": "2026-09-26",
+	"durable_objects": {
+		"bindings": [{ "name": "ROOMS", "class_name": "DocumentRoom" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["DocumentRoom"] }],
+	"vars": {
+		// Origins allowed to open a socket, besides localhost.
+		"ALLOWED_ORIGINS": "https://edytor-docs.beynar.workers.dev"
+	},
+	"observability": { "enabled": true }
+}

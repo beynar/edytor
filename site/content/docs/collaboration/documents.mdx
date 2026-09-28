@@ -1,0 +1,178 @@
+---
+title: Documents
+description: Create, load, share and destroy an EdytorDocument, and understand when it is ready to edit.
+icon: file-text
+---
+
+An `EdytorDocument` is the thing views render and providers sync. Create one yourself when you want to share it between views, edit it without a view, attach a provider from code, or control its lifetime.
+
+## Create a document
+
+```ts
+import { createDocument } from 'edytor';
+
+const document = createDocument({
+  value: { children: [{ type: 'paragraph', id: 'p1', content: [{ text: 'hello' }] }] },
+  actor: { id: 'user-42', name: 'Ada', color: '#7559ee' }
+});
+
+document.readiness; // 'local'
+document.transact(() => document.facade.insertText('p1', 5, ' world'));
+document.facade.blockText('p1'); // 'hello world'
+document.history.undo(); // 'hello' again; the seed itself is never an undo step
+```
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `value` | `JSONDoc` | Initial content. With it, the document is ready at once. Without it, the document stays `pending` until a provider or `sync()` decides. |
+| `actor` | `{ id, name?, color? }` | The local author. `id` is stored in attribution; `name` and `color` are published as presence. Defaults to an anonymous `anon-<uuid>`. |
+| `awareness` | `Awareness` | Use an existing awareness instance instead of creating one. The document does not destroy a borrowed instance. |
+| `history` | `{ captureTimeout?: number }` | Edits closer together than this many milliseconds merge into one undo step. Engine default: 500. `0` makes every commit its own step. |
+| `semantics` | `DocumentSemanticsConfig` | Block roles, default child types and the default block type, when you edit without plugins. Views contribute these from their plugins. |
+| `lineage` | `{ depth?: number }` | Keep up to `depth` earlier versions of each block, captured when another author, a delete or an undo replaces it. Off by default; read them with `attribution.history(id)`. |
+
+## Load saved bytes
+
+`document.encode()` returns the full replicated state as a `Uint8Array`. `loadDocument` restores it as a fresh replica with a new client id:
+
+```ts
+import { loadDocument } from 'edytor';
+
+const bytes = document.encode(); // store or send it
+const copy = loadDocument(bytes); // readiness 'hydrated'
+copy.facade.toJSON(); // same JSON as the source
+```
+
+`loadDocument` checks the bytes on a scratch copy first. Corrupt bytes throw `UndecodableUpdateError`, a schema this build cannot own throws `SchemaMismatchError`, and a v13 (`yjs`) document throws `UnsupportedDocError` with reason `legacy`; see [Migration](/docs/reference/migration). Your bytes are never modified.
+
+## The document object
+
+| Member | Description |
+| --- | --- |
+| `facade` | The document API: reads, operations, order queries and `onChange`. See the [document API reference](/docs/reference/document-api). |
+| `history` | The shared undo manager (`undo()`, `redo()`, `stopCapturing()`). Throws `DocumentNotReadyError` while the document is `pending`. |
+| `clearHistory()` | Empty the undo and redo stacks. Stacks are otherwise unbounded. |
+| `awareness` | The one presence instance for every view and provider. See [Presence](/docs/collaboration/presence). |
+| `actor` | The local author identity. |
+| `attribution` | Per-block authorship: `block(id)` returns `createdBy`, `contributors` and `lastChangedBy`. |
+| `transact(fn)` | Run several edits as one transaction and one undo step. |
+| `encode()` | The full state as bytes, for `loadDocument`. |
+| `attachSync(sync, { value? })` | Attach a provider to the document. Returns its cleanup. |
+| `ready`, `readiness`, `onReady(fn)` | Whether the content has been decided, and how. See below. |
+| `sync(value?)` | Decide a `pending` document now: seed `value` if it is empty, adopt its content otherwise. |
+| `writable`, `onWritableChange(fn)` | `false` while the document holds content from a schema this build cannot own. Every write is refused and providers stop persisting and sending until it heals. |
+| `clientID` | This replica's CRDT client id (`doc.clientID`). |
+| `doc` | The underlying CRDT document, for providers and advanced code. |
+| `destroy()` | Release the document: providers, history, awareness and the CRDT document. |
+
+## Readiness
+
+A document created without a `value` might be about to receive content from a provider, so it does not seed anything until that question is settled.
+
+| `readiness` | Meaning | What works |
+| --- | --- | --- |
+| `pending` | Undecided: a provider may still bring content. | Reads, `attachSync`, `sync()`, `destroy()`. `history` throws. |
+| `local` | This replica seeded the content. | Everything. |
+| `hydrated` | The content came from a provider or from `loadDocument`. | Everything. |
+
+With providers attached, the rule is *settle or bound*:
+
+- A document that already holds content becomes `hydrated` as soon as any provider settles.
+- An empty document seeds its `value` only once every attached provider has settled, failed, been removed, or reached its bound.
+- IndexedDB always settles, so it has no bound. A WebSocket alone in a new room may never hear from anyone, so it gets `DEFAULT_READINESS_BOUND` (1000 ms).
+
+```ts
+if (!document.ready) {
+  const off = document.onReady(() => console.log(document.readiness));
+}
+```
+
+`onReady` fires once, at the transition; it is never called for a document that is already ready.
+
+## Attach a provider
+
+`attachSync` takes the same factories as the `<Edytor sync>` prop. The document keeps one provider per target (one IndexedDB name, one server and room), so attaching the same target twice does nothing.
+
+```ts
+import { createDocument, createWebsocketSync } from 'edytor';
+
+const document = createDocument({ actor: { id: 'user-42' } }); // pending
+document.attachSync(
+  createWebsocketSync({ serverUrl: 'wss://rooms.example.com/rooms', roomName: 'doc-42' }),
+  { value: { children: [] } } // seeded only if the room turns out empty
+);
+```
+
+`document.destroy()` runs every attached provider's cleanup. Calling the returned cleanup yourself detaches that one provider.
+
+## One document, several views
+
+Pass the same document to several `<Edytor>` views. They share one document API, one undo history and one awareness; undo restores the caret in the view that issued it.
+
+```svelte
+<script lang="ts">
+  import { onDestroy } from 'svelte';
+  import { Edytor, createDocument, createIndexeddbSync, richTextPlugin } from 'edytor';
+
+  const document = createDocument();
+  document.attachSync(createIndexeddbSync('notes/today'));
+  onDestroy(() => document.destroy());
+
+  const plugins = [richTextPlugin];
+</script>
+
+<Edytor {document} {plugins} />
+<Edytor {document} {plugins} readonly />
+```
+
+A view never destroys a document you passed in: you created it, you destroy it. Views contribute the structural rules of their plugins (void and island blocks, default children) to the document. Two views whose plugins disagree on a rule throw `SemanticConflictError`. See [the Edytor component](/docs/editor/edytor-component) for the view's props.
+
+## Headless use (Node and SSR)
+
+Import from `edytor/crdt/edytor` in code that cannot load Svelte components. It exports the same document API as `edytor`, without the component:
+
+```ts
+import { createDocument, loadDocument } from 'edytor/crdt/edytor';
+
+export function appendLine(saved: Uint8Array, text: string): Uint8Array {
+  const document = loadDocument(saved, { actor: { id: 'server-bot' } });
+  const facade = document.facade;
+  const index = facade.childrenIds(null).length; // append at the root
+  facade.insertBlock({ parent: null, index }, {
+    id: crypto.randomUUID(),
+    type: 'paragraph',
+    content: [{ kind: 'text', text }]
+  });
+  const bytes = document.encode();
+  document.destroy();
+  return bytes;
+}
+```
+
+:::warning
+Do not create an `EdytorDocument` on the document a sync server holds. See [writing your own server](/docs/server/protocol#never-attach-a-document-on-the-server).
+:::
+
+## Deterministic seeds
+
+Seeding a `value` is deterministic: the seed is written under a writer id hashed from the value, and blocks without an `id` get ids derived from the same hash. Two replicas that seed the same template write the same data, so their seeds merge into one copy instead of two, and a late identical seed never erases an edit.
+
+```ts
+const template = { children: [{ type: 'paragraph', content: [{ text: 'Agenda' }] }] };
+const a = createDocument({ value: template });
+const b = createDocument({ value: template });
+// Merging a and b shows one "Agenda" paragraph, not two.
+```
+
+Seeds are not undo steps and carry no author (`createdBy` is absent on seeded blocks). Seeds of different values merge as a union, so give a template new block ids when its content changes.
+
+## Errors
+
+| Error | When |
+| --- | --- |
+| `DocumentNotReadyError` | `history` used while the document is `pending`. |
+| `DocumentDestroyedError` | The document is used after `destroy()`, or `attachSync` runs on a destroyed document. |
+| `SemanticConflictError` | A view or option declares a block rule that contradicts one the document already adopted. |
+| `UndecodableUpdateError` | `loadDocument` bytes cannot be decoded. |
+| `UnsupportedDocError` | A foreign object, or a v13 document (reason `legacy`). |
+| `SchemaMismatchError` | The content claims a schema this build cannot own. |

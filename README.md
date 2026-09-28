@@ -356,19 +356,22 @@ export default {
 }
 ```
 
-**3. The client.** Dial `wss://<host>/rooms` with the document id as the room, and send the replica (and your token) as parameters. The local copy is on by default; name it per user, since the room refuses one user's socket delivering another user's edits:
+**3. The client.** Dial `wss://<host>/rooms` with the document id as the room and your token as a parameter; the provider adds this document's client id as `replica` at each dial. The local copy is on by default; name it per user, since the room refuses one user's socket delivering another user's edits:
 
-```ts
-const document = createDocument({ actor: { id: userId } });
-document.attachSync(
-	createWebsocketSync({
+```svelte
+<Edytor
+	plugins={[richTextPlugin]}
+	actor={{ id: userId }}
+	sync={createWebsocketSync({
 		serverUrl: 'wss://example.com/rooms',
 		roomName: documentId,
-		params: { token, replica: String(document.doc.clientID) },
+		params: { token },
 		persistName: `${userId}:${documentId}`
-	})
-);
+	})}
+/>
 ```
+
+With a shared `document` (several views), pass the same `sync` to `document.attachSync(…)` and the actor to `createDocument({ actor })`.
 
 Edits restored from the local copy were written under earlier client ids of the same user: the room registers an id it has never seen to the user who first writes under it, so a page reloaded offline delivers them on reconnect.
 
@@ -662,7 +665,7 @@ The next release is a rewrite of the editor's internals around one owner per fac
 - **`transformText`** receives declared values `{text: {stringContent, value}, block: {id, type, data}, content}`, not handles.
 - **Marks at insertion** follow one rule (explicit → a replaced range's common marks → pending → the neighbour → the mark's `edge`); `insertText` without marks resolves them by that rule; plain paste inherits the caret's marks; the rich-text plugin no longer intercepts `insertText` for links; Mod+B at the start of a bold run toggles bold off.
 - **Suggestions.** `Block.suggestions` is plain JSON parts (`rawSuggestions` and the readonly Proxy wrappers are removed); `suggestText` stores `[atom, [text runs]]` groups.
-- **HTML import is core.** The HTML paste plugin (never exported) and its hand-written parser are gone; external HTML paste and drop are imported by the core through the browser's parser and the records (`parse` hooks on kind and mark records; see the clipboard contract). A plugin's `onPaste` still runs first. The code plugin sets `Prism.manual = true`: Prism never highlights the page on its own.
+- **HTML import is core.** The HTML paste plugin (never exported) and its hand-written parser are gone; external HTML paste and drop are imported by the core through the browser's parser and the records (`parse` hooks on kind and mark records; see the clipboard contract). A plugin's `onPaste` still runs first. The code plugin highlights through TanStack Highlight, and the package declares `sideEffects` so it (and its CSS) ships only in apps that import `codePlugin`.
 - Other: the slash menu claims Enter only with a match; the code plugin's Shift+Enter runs `insertParagraph` as an intent and its auto-pair is a returned payload (after-hooks see the typed character).
 
 ### Rendering, placeholder and chrome

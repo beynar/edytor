@@ -1,0 +1,72 @@
+---
+import Icon from "blume/components/Icon.astro";
+
+const features = [
+  {
+    description:
+      "Blocks, marks, and inline atoms render through your own Svelte snippets. The core owns the text; you own the markup around it.",
+    icon: "blocks",
+    title: "Your components, every block",
+  },
+  {
+    description:
+      "Every command is prepared before it writes. Plugins see each planned step and can veto, replace, or extend it.",
+    icon: "plug",
+    title: "Plugins that can veto anything",
+  },
+  {
+    description:
+      "One shared document for any number of views and peers, with presence cursors and conflict-free merges of moves, splits, and joins.",
+    icon: "users",
+    title: "Real-time collaboration",
+  },
+  {
+    description:
+      "A local copy in IndexedDB and a BroadcastChannel between tabs: edits made offline survive reloads and sync on reconnect.",
+    icon: "wifi-off",
+    title: "Offline first, cross-tab",
+  },
+  {
+    description:
+      "edytor/cloudflare ships the room: SQLite storage, store-before-ack, identity binding, and hibernation without timers.",
+    icon: "server",
+    title: "A Durable Object server",
+  },
+  {
+    description:
+      "Nesting, islands, voids, drag and drop, slash menu, markdown shortcuts, and undo that only removes your own edits.",
+    icon: "layers",
+    title: "Notion-style editing",
+  },
+];
+---
+
+<section>
+  <div class="mx-auto max-w-2xl text-center">
+    <p class="font-medium text-accent text-sm">Built for real documents</p>
+    <h2 class="mt-3 text-balance font-medium text-3xl tracking-tight sm:text-5xl">
+      A small editing engine, not a black box.
+    </h2>
+    <p class="mx-auto mt-5 max-w-xl text-balance text-muted-foreground leading-relaxed">
+      A readable JSON block model on a CRDT, commands you can intercept, and a
+      rendering layer you control — from a single textarea replacement to a
+      collaborative workspace.
+    </p>
+  </div>
+
+  <div class="mt-12 grid overflow-hidden rounded-blume border border-border sm:grid-cols-2 lg:grid-cols-3">
+    {
+      features.map((feature) => (
+        <article class="group border-border border-b p-7 last:border-b-0 sm:border-r sm:[&:nth-child(2n)]:border-r-0 lg:[&:nth-child(2n)]:border-r lg:[&:nth-child(3n)]:border-r-0 lg:[&:nth-last-child(-n+3)]:border-b-0">
+          <span class="inline-flex size-10 items-center justify-center rounded-blume bg-muted text-accent transition-transform group-hover:-translate-y-0.5">
+            <Icon name={feature.icon} size={19} />
+          </span>
+          <h3 class="mt-6 font-medium text-lg tracking-tight">{feature.title}</h3>
+          <p class="mt-2 text-muted-foreground text-sm leading-relaxed">
+            {feature.description}
+          </p>
+        </article>
+      ))
+    }
+  </div>
+</section>

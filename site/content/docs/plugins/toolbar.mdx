@@ -1,0 +1,54 @@
+---
+title: Toolbar
+description: The toolbar plugin shows a floating formatting toolbar over text selections, with a button for every mark that declares one and a link field.
+icon: bold
+---
+
+`toolbarPlugin` shows a formatting toolbar above a text selection. Its buttons come from the mark definitions: every mark with a `toolbar` entry gets one.
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin, toolbarPlugin } from 'edytor';
+</script>
+
+<Edytor plugins={[toolbarPlugin, richTextPlugin]} />
+```
+
+It takes no options. It formats through [`richTextOperations`](/docs/plugins/rich-text#formatting-from-code), so use it with the rich text plugin, or with your own plugin that defines the `link` mark if you want the link field to work.
+
+## What it shows
+
+From left to right:
+
+1. A "Text" label.
+2. One button per mark whose definition has `toolbar: { label, icon }`, in registration order. With the rich text plugin: bold, italic, underline, strike and code. A button toggles its mark over the selection.
+3. A link field showing the selection's current link, an apply button (↗) that links the selection to the typed URL, and a remove button (×). Applying an empty field removes the link.
+
+Add a button for your own mark by declaring `toolbar` on it:
+
+```ts
+marks: {
+	keyboard: { tag: 'kbd', toolbar: { label: 'Keyboard', icon: '⌨' } }
+}
+```
+
+The `icon` is text: a letter, a symbol or an emoji.
+
+## When it shows
+
+The toolbar shows when all of these hold:
+
+- the editor is not readonly;
+- the selection is a non-collapsed text range;
+- no whole block and no inline atom is selected;
+- the selection is not inside a void or an island block (such as a code block).
+
+It follows the selection as it changes, and repositions on scroll, resize and edits. Buttons keep the selection: clicking one does not move the caret, and the selection is restored after the format is applied.
+
+A URL typed in the link field goes through the same sanitization as every link: a `javascript:` or other unsafe scheme is ignored.
+
+## Placement and styling
+
+The toolbar mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-toolbar-host` and `z-index: 60`. It is centered above the selection, or placed below it when there is no room above, and kept inside the viewport.
+
+Its markup and styles are built in. Each mark button has the class `mark-<name>` and a `data-testid` of `toolbar-<name>`. For a different design, write your own toolbar plugin with `onSelectionChange`, `onAfterOperation`, the overlay (`edytor.overlay`) and `richTextOperations`; that is all this plugin uses.

@@ -5,3 +5,4 @@ package-lock.json
 svelte-app/dist
 svelte-app/dist-ssr
 edytor.src-sha256
+svelte-app/dist-code

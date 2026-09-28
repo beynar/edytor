@@ -31,7 +31,23 @@ export { Block } from './block/block.svelte.js';
 export type { BlockMoveDirection, BlockMovePosition, BlockMoveRequest } from './session/moves.js';
 export { InlineBlock } from './block/inlineBlock.svelte.js';
 export { Text } from './text/text.svelte.js';
-export { type Plugin, type KindPreset } from './plugins.js';
+export type {
+	Plugin,
+	KindPreset,
+	BlockDefinition,
+	MarkDefinition,
+	InlineBlockDefinition,
+	BlockSnippetPayload,
+	MarkSnippetPayload,
+	InlineBlockSnippetPayload,
+	Placeholder,
+	PlaceholderView,
+	ChangePayload
+} from './plugins.js';
+/** The editor instance plugins, hotkeys and `bind:edytor` receive (`Edytor` names the component). */
+export type { Edytor as EdytorInstance } from './edytor.svelte.js';
+export type { HotKey, HotKeyCombination } from './session/keymap.js';
+export type { EdytorSelection } from './selection/selection.svelte.js';
 export { convertToKind, type KindRow } from './kinds.js';
 export * from './plugins/index.js';
 export * from './crdt/index.js';

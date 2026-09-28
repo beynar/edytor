@@ -67,8 +67,8 @@ class Relay {
 		Relay.sockets.push(this);
 		setTimeout(() => {
 			if (this.readyState !== 0) return;
-			let room = Relay.rooms.get(this.url);
-			if (!room) Relay.rooms.set(this.url, (room = new Set()));
+			let room = Relay.rooms.get(this.url.split('?')[0]);
+			if (!room) Relay.rooms.set(this.url.split('?')[0], (room = new Set()));
 			room.add(this);
 			this.readyState = 1;
 			this.onopen?.({ type: 'open' });
@@ -78,7 +78,7 @@ class Relay {
 	send(data) {
 		const bytes = data instanceof Uint8Array ? data.slice() : new Uint8Array(data);
 		this.sent.push(bytes);
-		const room = Relay.rooms.get(this.url);
+		const room = Relay.rooms.get(this.url.split('?')[0]);
 		if (!room) return;
 		setTimeout(() => {
 			for (const peer of room) {
@@ -92,7 +92,7 @@ class Relay {
 	drop() {
 		if (this.readyState === 3) return;
 		this.readyState = 3;
-		Relay.rooms.get(this.url)?.delete(this);
+		Relay.rooms.get(this.url.split('?')[0])?.delete(this);
 		this.onclose?.({});
 	}
 
@@ -103,6 +103,8 @@ class Relay {
 
 let counter = 0;
 const uniqueUrl = () => `ws://g-e/${counter++}`;
+/** A dial URL without the default `replica` param. */
+const noReplica = (u) => u.replace(/replica=\d+&?/, '').replace(/\?$/, '');
 const socketsOf = (url) => Relay.sockets.filter((s) => s.url.startsWith(url));
 const until = async (cond, timeout = 4000) => {
 	const start = Date.now();
@@ -181,7 +183,7 @@ describe('G-e retained surface — status, backoff, liveness, auth, the socket s
 			WebSocketPolyfill: Relay
 		});
 		await until(() => p.wsconnected);
-		expect(p.ws.url).toBe(`${url}/room?token=a`);
+		expect(noReplica(p.ws.url)).toBe(`${url}/room?token=a`);
 		p.params = { token: 'b' }; // a refreshed token
 		p.ws.drop();
 		await until(() => p.wsconnected && p.ws.url.endsWith('token=b'));
@@ -239,7 +241,7 @@ describe('G-e retained surface — status, backoff, liveness, auth, the socket s
 		const doc = new Y.Doc();
 		const cleanup = sync({ doc, awareness: new Awareness(doc), synced: () => {} });
 		await until(() => socketsOf(url).length === 1);
-		expect(socketsOf(url)[0].url).toBe(`${url}/r?token=t`);
+		expect(noReplica(socketsOf(url)[0].url)).toBe(`${url}/r?token=t`);
 		cleanup();
 	});
 });
@@ -252,7 +254,7 @@ describe('G-e retired surface (D-24)', () => {
 			WebSocketPolyfill: Relay
 		});
 		await until(() => p.wsconnected);
-		expect(p.ws.args).toEqual([`${url}/room`]);
+		expect(p.ws.args.map(noReplica)).toEqual([`${url}/room`]);
 		expect('protocols' in p).toBe(false);
 		p.destroy();
 	});
@@ -405,7 +407,7 @@ describe('G-e retired surface (D-24)', () => {
 		const cleanup = sync({ doc, awareness: new Awareness(doc), synced: () => {} });
 		await until(() => socketsOf(url).length === 1 && socketsOf(url)[0].readyState === 1, 1000);
 		const [socket] = socketsOf(url);
-		expect(socket.args).toEqual([`${url}/r`]);
+		expect(socket.args.map(noReplica)).toEqual([`${url}/r`]);
 		await wait(120);
 		expect(step1Count(socket)).toBe(1);
 		cleanup();

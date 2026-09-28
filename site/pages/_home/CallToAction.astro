@@ -1,0 +1,31 @@
+---
+import Icon from "blume/components/Icon.astro";
+---
+
+<section class="overflow-hidden rounded-[2rem] border border-border bg-muted/45 px-6 py-16 text-center sm:px-12 sm:py-20">
+  <span class="mx-auto inline-flex size-12 items-center justify-center rounded-blume bg-background text-accent shadow-sm">
+    <Icon name="pen-line" size={22} />
+  </span>
+  <h2 class="mx-auto mt-6 max-w-2xl text-balance font-medium text-3xl tracking-tight sm:text-5xl">
+    Start with one paragraph. Grow into a workspace.
+  </h2>
+  <p class="mx-auto mt-5 max-w-lg text-balance text-muted-foreground leading-relaxed">
+    Drop the component into a SvelteKit page, then add plugins, your own
+    blocks, and a collaboration room when you need them.
+  </p>
+  <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+    <a
+      class="inline-flex h-10 items-center gap-2 rounded-full bg-foreground px-5 font-medium text-background text-sm transition-opacity hover:opacity-85"
+      href="/docs/getting-started/quick-start"
+    >
+      Read the quick start
+      <Icon name="arrow-right" size={15} />
+    </a>
+    <a
+      class="inline-flex h-10 items-center gap-2 rounded-full border border-border bg-background px-5 font-medium text-sm transition-colors hover:bg-muted"
+      href="/docs/server/quick-start"
+    >
+      Deploy the server
+    </a>
+  </div>
+</section>

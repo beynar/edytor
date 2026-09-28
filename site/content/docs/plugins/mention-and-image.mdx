@@ -1,0 +1,63 @@
+---
+title: Mention and image
+description: The mention and image plugins in the repository are reference implementations of an inline atom and a void block, not exports of the package.
+icon: at-sign
+---
+
+The repository contains two more plugins, `mentionPlugin` and `imagePlugin`. They are **not exported** from `edytor`, and the package does not expose their files, so you cannot import them. They are demo-grade reference code: read them, then copy what you need into your own plugin.
+
+- `src/lib/plugins/mention/MentionPlugin.svelte` in the [repository](https://github.com/beynar/edytor)
+- `src/lib/plugins/image/ImagePlugin.svelte` in the same folder tree
+
+## Mention
+
+The mention plugin shows the two halves of an inline atom: a definition and an operation hook that inserts it.
+
+- It defines one inline block, `mention`, with a snippet and a `plain` form. `plain` exports the atom as `@` followed by the first of `data.label`, `data.name`, `data.title` or `data.id`, or `@mention` when none is set.
+- Its `onBeforeOperation` refuses an `insertText` of `@` and, in its place, inserts a `mention` atom (with empty data) at the caret and puts the caret right after it.
+
+The snippet in the repository renders placeholder text (`@mention`) and its selected state for debugging. It does not open a picker or store who was mentioned. [Inline blocks](/docs/customization/inline-blocks) builds a usable version with a label in its data.
+
+## Image
+
+The image plugin shows a void block with an editable caption.
+
+- It defines one block kind, `image`: `void: true`, rendered as a `<figure>`.
+- Its snippet renders a fixed placeholder image, then the block's content inside a `<figcaption>`. In a void block the rendered text stays editable, which is what makes the caption work.
+- It exports to the clipboard as `<figure><figcaption>…</figcaption></figure>`.
+
+It has no presets, so it does not appear in the slash menu, and it does not read an image URL from its data, upload files or handle pasted images (the snippet also contains a demo button and input). Pasted and dropped files reach plugins through `onPaste`; see [Writing plugins](/docs/plugins/writing-plugins#input-and-clipboard-hooks).
+
+A minimal image kind that reads its source from `data`:
+
+```svelte title="src/lib/ImagePlugin.svelte"
+<script module lang="ts">
+	import type { Plugin } from 'edytor';
+	import type { BlockSnippetPayload } from 'edytor';
+
+	export const imagePlugin: Plugin = () => ({
+		blocks: {
+			image: {
+				snippet: image,
+				void: true,
+				element: 'figure',
+				presets: [{ label: 'Image', icon: '🖼', keywords: ['picture', 'photo'], data: { src: '', alt: '' } }],
+				html: (_block, caption) => `<figure><figcaption>${caption}</figcaption></figure>`
+			}
+		}
+	});
+</script>
+
+{#snippet image({ block, content }: BlockSnippetPayload)}
+	{#if block.data.src}
+		<img src={block.data.src} alt={block.data.alt ?? ''} />
+	{:else}
+		<div class="image-empty">No image yet</div>
+	{/if}
+	<!-- The core renders the <figure> around this markup. -->
+	<!-- svelte-ignore a11y_figcaption_parent -->
+	<figcaption>{@render content()}</figcaption>
+{/snippet}
+```
+
+The kind declares no `empty` shape, so converting a paragraph into it keeps the paragraph's text, which becomes the caption. Set the source with `block.setBlock({ value: { data: { ...block.data, src } } })` once you have a URL, for example from an upload in your own `onPaste` hook.

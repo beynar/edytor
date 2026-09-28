@@ -1,0 +1,159 @@
+---
+title: Hotkeys
+description: The default keymap, the chord syntax for plugin and app hotkeys, precedence, and how to override or disable a default binding.
+icon: keyboard
+---
+
+Every key the editor handles goes through one keymap: your app's bindings, then each plugin's in list order, then the built-in ones. This page lists the defaults and shows how to add, override and disable bindings.
+
+In the tables, <kbd>Mod</kbd> is <kbd>Cmd</kbd> on macOS and iOS and <kbd>Ctrl</kbd> elsewhere.
+
+## Default keymap
+
+### Editing and history
+
+| Keys                                          | Action                                                                                   | Where                         |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------- |
+| <kbd>Enter</kbd>                              | Split the block, or add a block before or after it. A new sibling takes its parent's default child kind | Text                |
+| <kbd>Shift</kbd> + <kbd>Enter</kbd>             | Insert a soft line break                                                                 | Text                          |
+| <kbd>Mod</kbd> + <kbd>Enter</kbd>               | Start a new block below, splitting at the end of the caret's text                        | Text                          |
+| <kbd>Tab</kbd>                                | Nest the block into its previous sibling                                                 | Text, or one selected block   |
+| <kbd>Shift</kbd> + <kbd>Tab</kbd>               | Move the block out one level                                                             | Text, or one selected block   |
+| <kbd>Backspace</kbd>, <kbd>Delete</kbd>       | Delete the selected blocks or the selected atom; otherwise delete text                   | Anywhere                      |
+| <kbd>Mod</kbd> + <kbd>Z</kbd>                   | Undo                                                                                     | Anywhere                      |
+| <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd>  | Redo                                                                                     | Anywhere                      |
+| <kbd>Mod</kbd> + <kbd>Y</kbd>                   | Redo                                                                                     | Windows and Linux             |
+
+### Selection
+
+| Keys                                          | Action                                                                                   | Where                         |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------- |
+| <kbd>Mod</kbd> + <kbd>A</kbd>                   | Select the block's text; press again to select the block, then every block               | Anywhere                      |
+| <kbd>↑</kbd>, <kbd>↓</kbd>                    | Select the previous or next block                                                        | One selected block            |
+| <kbd>Shift</kbd> + <kbd>↑</kbd>, <kbd>Shift</kbd> + <kbd>↓</kbd> | Add the next block to the selection, or remove the last one when moving back | Block selection               |
+| <kbd>Shift</kbd> + <kbd>↑</kbd>, <kbd>Shift</kbd> + <kbd>↓</kbd> | Extend the text selection one line; at the end of a block, <kbd>Shift</kbd> + <kbd>↓</kbd> selects a following void block | Text |
+| <kbd>Escape</kbd>                             | Leave the block selection, caret at the end of the first selected block                  | Block selection               |
+
+Arrow keys that walk a block selection do not enter an island (such as a code block) from outside.
+
+### Navigation
+
+Every navigation key also has a <kbd>Shift</kbd> variant that extends the selection instead of moving the caret.
+
+| Keys                                                   | Moves to                                   | Where              |
+| ------------------------------------------------------ | ------------------------------------------ | ------------------ |
+| <kbd>←</kbd>, <kbd>→</kbd>                             | The previous or next character, across blocks and atoms | Text  |
+| <kbd>Alt</kbd> + <kbd>←</kbd>, <kbd>Alt</kbd> + <kbd>→</kbd> | The previous or next word                | macOS              |
+| <kbd>Mod</kbd> + <kbd>←</kbd>, <kbd>Mod</kbd> + <kbd>→</kbd> | The previous or next word                | Windows and Linux  |
+| <kbd>Home</kbd>, <kbd>End</kbd>                        | The start or end of the block              | Text               |
+| <kbd>PageUp</kbd>, <kbd>PageDown</kbd>                 | The start or end of the document           | Text               |
+| <kbd>Mod</kbd> + <kbd>↑</kbd>, <kbd>Mod</kbd> + <kbd>↓</kbd> | The start or end of the document         | Text               |
+| <kbd>↑</kbd>, <kbd>↓</kbd>                             | The previous or next line (native)         | Text               |
+
+Left, right and word keys follow the visual direction of right-to-left text, and they skip the body of a closed toggle.
+
+### macOS text bindings
+
+On macOS the Emacs-style <kbd>Ctrl</kbd> keys work as in native text fields:
+
+| Keys                              | Action                                                      |
+| --------------------------------- | ----------------------------------------------------------- |
+| <kbd>Ctrl</kbd> + <kbd>A</kbd>, <kbd>Ctrl</kbd> + <kbd>E</kbd> | Start or end of the block              |
+| <kbd>Ctrl</kbd> + <kbd>B</kbd>, <kbd>Ctrl</kbd> + <kbd>F</kbd> | Previous or next character             |
+| <kbd>Ctrl</kbd> + <kbd>P</kbd>, <kbd>Ctrl</kbd> + <kbd>N</kbd> | Like <kbd>↑</kbd> and <kbd>↓</kbd>     |
+| <kbd>Ctrl</kbd> + <kbd>H</kbd>, <kbd>Ctrl</kbd> + <kbd>D</kbd> | Delete backward or forward             |
+| <kbd>Ctrl</kbd> + <kbd>K</kbd>      | Delete to the end of the block; at the end, join the next block |
+| <kbd>Ctrl</kbd> + <kbd>O</kbd>      | Insert a line break, keeping the caret before it            |
+
+### Plugin keys
+
+| Keys                                               | Action                                           | Plugin, where                            |
+| -------------------------------------------------- | ------------------------------------------------ | ---------------------------------------- |
+| <kbd>Mod</kbd> + <kbd>B</kbd>, <kbd>I</kbd>, <kbd>U</kbd>, <kbd>E</kbd> | Bold, italic, underline, inline code | [Rich text](/docs/plugins/rich-text)     |
+| <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd>       | Strikethrough                                    | Rich text                                |
+| <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd>       | Red text color                                   | Rich text                                |
+| <kbd>Tab</kbd>                                     | Insert a tab, or accept a suggestion             | [Code](/docs/plugins/code), in a code line |
+| <kbd>Shift</kbd> + <kbd>Enter</kbd>                  | New code line                                    | Code, in a code line                     |
+| <kbd>Mod</kbd> + <kbd>A</kbd>                        | Select the whole code block's text               | Code, in a non-empty code line           |
+| <kbd>Escape</kbd>                                  | Dismiss a suggestion                             | Code, in a code line                     |
+| <kbd>↑</kbd>, <kbd>↓</kbd>, <kbd>Enter</kbd>, <kbd>Escape</kbd> | Navigate, run, close                | [Slash menu](/docs/plugins/slash-menu), while open |
+| <kbd>Mod</kbd> + <kbd>↑</kbd>, <kbd>Mod</kbd> + <kbd>↓</kbd> | Move the selected blocks up or down        | [Arrow move](/docs/plugins/arrow-move), block selection |
+| <kbd>Alt</kbd> + <kbd>↑</kbd> <kbd>↓</kbd> <kbd>→</kbd> <kbd>←</kbd> | Move the block up, down, in, out | [Block handles](/docs/plugins/block-handles), handle focused |
+
+A plugin key only claims the key in the situation listed. Otherwise the key falls through to the next binding, for example <kbd>Mod</kbd> + <kbd>↓</kbd> to the document end when no block is selected.
+
+## Adding hotkeys
+
+A plugin declares bindings in `hotkeys`. The app can pass its own with the `hotKeys` prop of `<Edytor>`. Both take the same functions:
+
+```ts
+import type { Plugin } from 'edytor';
+
+export const savePlugin: Plugin = () => ({
+	hotkeys: {
+		'mod+s': ({ edytor, prevent }) => {
+			prevent(() => {
+				localStorage.setItem('doc', JSON.stringify(edytor.value));
+			});
+		}
+	}
+});
+```
+
+A binding receives `{ edytor, prevent, event? }`:
+
+- `prevent()` claims the key: later bindings do not run, and the browser's default action and propagation are stopped. `prevent(cb)` claims it and runs `cb`. Like every `prevent`, it throws, so code after it does not run.
+- A binding that does not call `prevent` leaves the key to the next binding, and finally to the browser.
+- `event` is the `KeyboardEvent`. It is absent when the key arrived only as an input event, as with some virtual keyboards on Android.
+
+The `hotKeys` prop is read once, when the editor mounts.
+
+### Chord syntax
+
+A chord is lowercase modifiers and one key, joined with `+`:
+
+- **Modifiers**: `mod`, `alt`, `ctrl`, `shift`. Their order does not matter: `shift+mod+k` and `mod+shift+k` are the same chord.
+- **Keys**: the letters `a` to `z`, `arrowup`, `arrowdown`, `arrowleft`, `arrowright`, `tab`, `enter`, `backspace`, `delete`, `escape`, `home`, `end`, `pageup`, `pagedown`.
+- `mod` is <kbd>Cmd</kbd> on Apple platforms and <kbd>Ctrl</kbd> elsewhere. `ctrl` matches the <kbd>Ctrl</kbd> key only on Apple platforms; elsewhere <kbd>Ctrl</kbd> is always `mod`.
+- On non-Latin keyboard layouts, a <kbd>Mod</kbd> chord also matches by physical key: <kbd>Mod</kbd> + <kbd>Б</kbd> on a Russian layout runs `mod+b`.
+- <kbd>AltGr</kbd> combinations and dead keys produce text and never run a binding.
+
+A plugin's `hotkeys` keys are type-checked against this syntax.
+
+<kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd>, <kbd>Backspace</kbd> and <kbd>Delete</kbd> reach bindings too, so a plugin can claim them, as the slash menu does with <kbd>Enter</kbd>. Each key press runs its bindings once.
+
+## Precedence
+
+For each chord, the bindings run in this order until one calls `prevent`:
+
+1. the `hotKeys` prop of `<Edytor>`;
+2. each plugin's `hotkeys`, in the order of the `plugins` array;
+3. the built-in bindings.
+
+## Overriding and disabling defaults
+
+To override a default, bind the same chord in the `hotKeys` prop or in a plugin, and call `prevent`:
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin } from 'edytor';
+
+	let saved = $state(0);
+</script>
+
+<Edytor
+	plugins={[richTextPlugin]}
+	hotKeys={{
+		// Mod+Enter saves instead of starting a new block.
+		'mod+enter': ({ prevent }) => prevent(() => saved++),
+		// Tab never nests: claim it and do nothing.
+		tab: ({ prevent }) => prevent(),
+		// Mod+B does nothing in headings; elsewhere the rich text binding runs.
+		'mod+b': ({ edytor, prevent }) => {
+			if (edytor.selection.state.startBlock?.type === 'heading') prevent();
+		}
+	}}
+/>
+```
+
+`prevent()` without a callback disables the key in the editor. It also prevents the browser's default, so a disabled <kbd>Tab</kbd> does not move focus out of the editor either. There is no way to remove a built-in binding and hand the key back to the browser.

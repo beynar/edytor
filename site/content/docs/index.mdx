@@ -1,0 +1,60 @@
+---
+title: Introduction
+description: Edytor is a collaborative block editor for Svelte 5 with a plugin system, a Yjs v14 engine, and a Durable Object server.
+icon: book-open
+---
+
+Edytor is a rich text editor for Svelte 5 built around blocks: paragraphs, headings, lists, to-dos, callouts, code, and any kind you define. It aims to give Svelte what Slate gives React — a small editing engine you can shape completely — with real-time collaboration built in.
+
+```svelte title="Editor.svelte"
+<script lang="ts">
+  import { Edytor, richTextPlugin } from "edytor";
+
+  const value = {
+    children: [{ type: "paragraph", content: [{ text: "Hello, world!" }] }],
+  };
+</script>
+
+<Edytor {value} plugins={[richTextPlugin]} onChange={(next) => console.log(next)} />
+```
+
+:::note
+Edytor is in early development (`0.0.x`). The API is stabilizing, but expect breaking changes between releases.
+:::
+
+## Four ideas
+
+**A readable block model.** A document is JSON: blocks with inline `content` (text with marks, and inline atoms) and nested `children`. The same shape goes in as `value`, comes out of `onChange`, and is what you store. See [Document model](/docs/concepts/document-model).
+
+**Your markup, the editor's text.** Blocks, marks, and inline atoms render through Svelte snippets you write. The core owns the editable text and the selection; you own the markup around it. See [Custom blocks](/docs/customization/blocks).
+
+**Plugins can intercept every edit.** Each edit is a command that is planned before it writes. Plugins see the command and every step it plans, and can veto it, replace it, or add their own blocks, marks, hotkeys, and UI. See [Plugins](/docs/plugins).
+
+**Collaboration is the default.** Every editor runs on a shared CRDT document (an owned fork of Yjs v14). The same document can back several views, sync across tabs, persist offline in IndexedDB, and meet other people in a Cloudflare Durable Object room that ships with the package. See [Collaboration](/docs/collaboration).
+
+:::tip
+The editor on the [home page](/) is live: open it in two windows and edit together. It runs on the setup described in the [server quick start](/docs/server/quick-start).
+:::
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/docs/getting-started/quick-start">
+    Install the package and render your first editor.
+  </Card>
+  <Card title="The Edytor component" icon="square-pen" href="/docs/editor/edytor-component">
+    Every prop, event, and binding of `<Edytor>`.
+  </Card>
+  <Card title="Plugins" icon="plug" href="/docs/plugins">
+    Use the bundled plugins or write your own.
+  </Card>
+  <Card title="Custom blocks" icon="blocks" href="/docs/customization/blocks">
+    Define block kinds, marks, and inline atoms.
+  </Card>
+  <Card title="Hotkeys" icon="keyboard" href="/docs/customization/hotkeys">
+    The default keymap and how to change it.
+  </Card>
+  <Card title="Durable Object server" icon="server" href="/docs/server/quick-start">
+    Deploy a collaboration room on Cloudflare.
+  </Card>
+</CardGroup>

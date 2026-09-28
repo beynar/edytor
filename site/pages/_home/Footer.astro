@@ -1,0 +1,21 @@
+---
+import Icon from "blume/components/Icon.astro";
+---
+
+<footer class="border-border border-t px-6 py-10">
+  <div class="mx-auto flex max-w-[1400px] flex-col gap-6 text-muted-foreground text-sm sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex items-center gap-2 font-medium text-foreground">
+      <span class="inline-flex size-7 items-center justify-center rounded-lg bg-foreground text-background">
+        <Icon name="pen-line" size={14} />
+      </span>
+      Edytor
+    </div>
+    <nav class="flex flex-wrap items-center gap-x-6 gap-y-2">
+      <a class="transition-colors hover:text-foreground" href="/docs">Documentation</a>
+      <a class="transition-colors hover:text-foreground" href="/docs/plugins">Plugins</a>
+      <a class="transition-colors hover:text-foreground" href="/docs/server/quick-start">Server</a>
+      <a class="transition-colors hover:text-foreground" href="https://github.com/beynar/edytor" rel="noreferrer" target="_blank">GitHub</a>
+    </nav>
+    <p>Open source under the MIT license.</p>
+  </div>
+</footer>

@@ -1,0 +1,86 @@
+---
+title: Installation
+description: Install the edytor package in a Svelte 5 project and check the requirements for the editor, the CRDT entries and the server room.
+icon: download
+---
+
+Edytor ships as one npm package, `edytor`. It contains the `<Edytor>` component, the bundled plugins, the collaborative document API and its CRDT engine, and a Cloudflare Durable Object room.
+
+:::warning[Early development]
+Edytor is at version 0.0.x and is not ready for production. The API can change between releases without a compatibility layer.
+
+These docs describe the upcoming release. The `edytor@0.0.11` currently on npm predates it and uses a different API. Until the new version is published, build the package from the [GitHub repository](https://github.com/beynar/edytor) (see [Build from source](#build-from-source)).
+:::
+
+## Requirements
+
+- **Svelte 5.** `svelte` is a peer dependency (`^5.0.0`). The editor uses runes and snippets, so Svelte 4 is not supported.
+- **A Svelte-aware bundler.** The root entry ships `.svelte` files. SvelteKit, or Vite with `@sveltejs/vite-plugin-svelte`, compiles them for you.
+- **Node.js 22 or later** (the package's `engines` field).
+
+## Install
+
+```package-install
+npm i edytor
+```
+
+If your project does not have Svelte yet, add it too:
+
+```package-install
+npm i -D svelte
+```
+
+Do not install `yjs` for Edytor. The collaboration engine (a fork of Yjs v14) is vendored inside the package and is available as [`edytor/crdt`](/docs/getting-started/entry-points). The `yjs` package on npm is v13, which cannot exchange updates with v14.
+
+The package pulls in a few runtime dependencies on its own: Atlassian's Pragmatic Drag and Drop (block handles), TanStack Highlight (code block highlighting) and `lib0`.
+
+## Build from source
+
+Until the release is on npm, pack the package from the repository and install the tarball:
+
+```bash
+git clone https://github.com/beynar/edytor.git
+cd edytor
+pnpm install
+pnpm package   # builds dist/
+pnpm pack      # writes edytor-<version>.tgz
+```
+
+Then, in your project:
+
+```package-install
+npm i ../edytor/edytor-0.0.11.tgz
+```
+
+Use the file name `pnpm pack` printed.
+
+## Verify the install
+
+Render an editor with the rich text plugin. It needs no other setup:
+
+```svelte title="src/routes/+page.svelte"
+<script lang="ts">
+	import { Edytor, richTextPlugin } from 'edytor';
+</script>
+
+<Edytor plugins={[richTextPlugin]} />
+```
+
+You should see one empty paragraph with a block handle beside it. An empty document always starts with one block of the default type (`paragraph`).
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quick start" href="/docs/getting-started/quick-start" icon="zap">
+    Build a full editor with the bundled plugins, content and change handling.
+  </Card>
+  <Card title="SvelteKit" href="/docs/getting-started/sveltekit" icon="server">
+    Server rendering, readonly output and client-only mounting.
+  </Card>
+  <Card title="Entry points" href="/docs/getting-started/entry-points" icon="package">
+    What `edytor`, `edytor/crdt`, `edytor/crdt/edytor` and `edytor/cloudflare` contain.
+  </Card>
+  <Card title="Document model" href="/docs/concepts/document-model" icon="file-json">
+    The JSON shape of a document.
+  </Card>
+</CardGroup>

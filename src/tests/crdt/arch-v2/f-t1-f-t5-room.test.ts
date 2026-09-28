@@ -51,8 +51,8 @@ class Relay {
 		this.url = url;
 		setTimeout(() => {
 			if (this.readyState !== 0) return;
-			let room = Relay.rooms.get(url);
-			if (!room) Relay.rooms.set(url, (room = new Set()));
+			let room = Relay.rooms.get(url.split('?')[0]);
+			if (!room) Relay.rooms.set(url.split('?')[0], (room = new Set()));
 			room.add(this);
 			this.readyState = 1;
 			this.onopen?.({ type: 'open' });
@@ -60,7 +60,7 @@ class Relay {
 	}
 
 	send(data) {
-		const room = Relay.rooms.get(this.url);
+		const room = Relay.rooms.get(this.url.split('?')[0]);
 		if (!room) return;
 		const bytes = data instanceof Uint8Array ? data.slice() : new Uint8Array(data);
 		setTimeout(() => {
@@ -74,7 +74,7 @@ class Relay {
 	close() {
 		if (this.readyState === 3) return;
 		this.readyState = 3;
-		Relay.rooms.get(this.url)?.delete(this);
+		Relay.rooms.get(this.url.split('?')[0])?.delete(this);
 		this.onclose?.({});
 	}
 }

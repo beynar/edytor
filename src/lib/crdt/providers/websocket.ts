@@ -372,8 +372,16 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			}
 		}
 
+		/**
+		 * The dial URL. `params` are read at every dial (a refreshed token reaches
+		 * the next connection), with `replica` = this document's client id unless
+		 * `params` names one: the room binds the socket's writes to it.
+		 */
 		get url(): string {
-			const encodedParams = url.encodeQueryParams(this.params);
+			const encodedParams = url.encodeQueryParams({
+				replica: String(this.doc.clientID),
+				...this.params
+			});
 			return (
 				this.serverUrl +
 				'/' +

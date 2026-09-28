@@ -1,0 +1,145 @@
+---
+title: Inline blocks
+description: Define inline atoms such as mentions, render them with snippets, insert and remove them from code, and export them as plain text.
+icon: at-sign
+---
+
+An inline block, or atom, is a non-editable element inside a block's text: a mention, a date chip, a footnote marker. It sits between text runs, moves with the text, and is selected, copied and deleted as one unit. Atoms live in a plugin's `inlineBlocks` map.
+
+In the document an atom is a part of the block's content, with a type and data:
+
+```json
+{
+	"type": "paragraph",
+	"content": [{ "text": "Thanks " }, { "type": "mention", "data": { "label": "Ada" } }, { "text": "!" }]
+}
+```
+
+Content always starts and ends with text, and text runs separate atoms; the editor inserts empty text runs where needed.
+
+## Definition
+
+<TypeTable
+  type={{
+    snippet: {
+      type: "Snippet<[InlineBlockSnippetPayload]>",
+      required: true,
+      description: "The atom's markup.",
+    },
+    plain: {
+      type: "(data) => string",
+      description: "The atom's plain-text form on copy. Without one, it copies as nothing.",
+    },
+  }}
+/>
+
+The snippet receives `{ block }`, a view of the atom:
+
+<TypeTable
+  type={{
+    id: { type: "string", description: "The atom's id." },
+    type: { type: "string", description: "The atom's type." },
+    data: { type: "object", description: "The atom's data. Reactive." },
+    selected: { type: "boolean", description: "The atom is selected. Reactive. Always false for a suggested atom." },
+    handle: { type: "InlineBlock | undefined", description: "The atom's handle, for commands. undefined for an atom shown in an inline suggestion." },
+  }}
+/>
+
+The core wraps the snippet in `<span data-edytor-inline-block="<type>" data-edytor-id="<id>" contenteditable="false">`. In HTML copied to the clipboard an atom is an empty span with the same `data-edytor-inline-block` attribute; content pasted into an Edytor keeps its atoms through the editor's own clipboard format.
+
+## A mention atom
+
+This plugin replaces a typed `@` with a mention atom. It takes a `pick` function as a parameter, so the host app decides how to choose the person:
+
+```svelte title="MentionPlugin.svelte"
+<script module lang="ts">
+	import type { Plugin } from 'edytor';
+	import type { InlineBlockSnippetPayload } from 'edytor';
+
+	export const createMentionPlugin =
+		(pick: () => string | null): Plugin =>
+		(edytor) => ({
+			inlineBlocks: {
+				mention: {
+					snippet: mention,
+					plain: (data) => `@${data?.label ?? ''}`
+				}
+			},
+			onBeforeOperation: ({ operation, payload, block, prevent }) => {
+				if (operation === 'insertText' && payload.value === '@') {
+					const { startText, yStart } = edytor.selection.state;
+					if (!startText) return;
+					const label = pick();
+					if (!label) return; // Nobody picked: the @ is typed as text.
+					prevent(() => {
+						const after = block.addInlineBlock({
+							index: yStart,
+							text: startText,
+							block: { type: 'mention', data: { label } }
+						});
+						if (after) edytor.selection.setAtTextOffset(after, 0);
+					});
+				}
+			}
+		});
+</script>
+
+{#snippet mention({ block }: InlineBlockSnippetPayload)}
+	<span class="mention" class:selected={block.selected}>@{block.data.label}</span>
+{/snippet}
+```
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin } from 'edytor';
+	import { createMentionPlugin } from './MentionPlugin.svelte';
+
+	const plugins = [createMentionPlugin(() => prompt('Mention who?')), richTextPlugin];
+</script>
+
+<Edytor {plugins} />
+```
+
+A real app would open a picker instead of `prompt`, then insert the atom when the user chooses.
+
+```css
+.mention {
+	padding: 0 3px;
+	border-radius: 3px;
+	background: #eef3ff;
+	color: #2f5bd3;
+}
+.mention.selected {
+	outline: 2px solid #2f5bd3;
+}
+```
+
+## Inserting, updating and removing atoms
+
+Insert an atom with `addInlineBlock` on the block, at an offset of one of its text segments:
+
+```ts
+const { startBlock, startText, yStart } = edytor.selection.state;
+if (startBlock && startText) {
+	const after = startBlock.addInlineBlock({
+		index: yStart, // offset inside startText
+		text: startText,
+		block: { type: 'mention', data: { label: 'Ada' } }
+	});
+	// after is the text segment right after the atom: put the caret there.
+	if (after) edytor.selection.setAtTextOffset(after, 0);
+}
+```
+
+It is an `addInlineBlock` operation, visible to plugins. An atom's id is generated when you leave `id` out.
+
+An atom's handle is an `InlineBlock`: `atom.data` reads its data, `atom.setData(data)` replaces it, `atom.parent` is its block and `atom.index` its position in `block.content`. Remove it with a `removeInlineBlock` operation on its block:
+
+```ts
+const atom = block.content.find((part) => part.id === atomId);
+if (atom) block.removeInlineBlock({ index: atom.index });
+```
+
+Users select an atom with the arrow keys or a click; <kbd>Backspace</kbd> or <kbd>Delete</kbd> removes a selected atom, and typing replaces it.
+
+Atoms can also be part of the initial value, as in the JSON at the top of this page.

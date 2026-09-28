@@ -1,0 +1,170 @@
+---
+title: Marks
+description: Define text marks with a tag or a snippet, give them values with sanitized attributes, and toggle marks and pending marks from code.
+icon: highlighter
+---
+
+A mark is formatting on a run of text: bold, a link, a color. Marks live in a plugin's `marks` map, keyed by name. In the document a text run carries its marks as values: `true` for a plain mark, any JSON value for a valued one.
+
+```json
+{ "text": "Edytor", "marks": { "bold": true, "link": { "href": "https://example.com" } } }
+```
+
+## Options
+
+<TypeTable
+  type={{
+    tag: {
+      type: "string",
+      description: "The mark's element. The core renders <tag data-edytor-mark=\"name\">, the clipboard exports the same tag, and pasted HTML with this tag gets the mark.",
+    },
+    attributes: {
+      type: "(value) => Record<string, string | undefined>",
+      description: "The element's attributes, from the mark's value. Sanitize here. undefined omits an attribute.",
+    },
+    snippet: {
+      type: "Snippet<[MarkSnippetPayload]>",
+      description: "Custom markup, rendered inside a core <span data-edytor-mark=\"name\">. Wins over tag for rendering; tag is still used for copying.",
+    },
+    edge: {
+      type: "'inclusive' | 'exclusive' | 'side-dependent'",
+      default: "'inclusive'",
+      description: "Whether text typed at the mark's edge takes the mark.",
+    },
+    toolbar: {
+      type: "{ label: string; icon: string }",
+      description: "A toggle button in the toolbar plugin.",
+    },
+    parse: {
+      type: "(element: HTMLElement) => value | undefined",
+      description: "HTML import: the mark's value when a pasted element carries it. Checked before the bare tag.",
+    },
+    void: {
+      type: "boolean",
+      description: "Render the mark's element with contenteditable=\"false\".",
+    },
+  }}
+/>
+
+A mark with neither `tag` nor `snippet` renders its text with no element and copies as plain text.
+
+When a run has several marks, they nest in registration order, the first registered innermost. The same order applies to rendering and to the copied HTML.
+
+## A tag mark
+
+The simplest mark is a tag:
+
+```ts
+import type { Plugin } from 'edytor';
+
+export const markerPlugin: Plugin = () => ({
+	marks: {
+		marker: { tag: 'mark', toolbar: { label: 'Highlight', icon: '🖍' } }
+	}
+});
+```
+
+It renders `<mark data-edytor-mark="marker">…</mark>`, copies as `<mark>`, and a pasted `<mark>` element gets the mark with the value `true`. A mark without `attributes` matches its bare tag on paste; one with `attributes` is imported only through `parse`.
+
+## A valued mark
+
+A valued mark stores a value and turns it into attributes. Values come from collaborators and from pasted HTML too, so treat them as untrusted: check their type and shape in `attributes`, and return `undefined` to drop an attribute.
+
+```ts
+import type { Plugin } from 'edytor';
+
+const LANGS = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+
+export const languagePlugin: Plugin = () => ({
+	marks: {
+		// { text: 'bonjour', marks: { lang: 'fr' } } renders <span lang="fr">
+		lang: {
+			tag: 'span',
+			attributes: (value) => ({ lang: typeof value === 'string' && LANGS.test(value) ? value : undefined }),
+			parse: (element) => (element.localName === 'span' && element.lang) || undefined
+		}
+	}
+});
+```
+
+For URLs and CSS the stakes are higher: the rich text `link` mark drops any `href` whose scheme is not `http:`, `https:`, `mailto:` or `tel:`, and its `color` mark drops a value containing `;`, braces, quotes or `url(`. Do the same in your own marks.
+
+## A snippet mark
+
+When a tag cannot express the markup, declare a snippet. It receives `{ content, mark, text }`: `content` renders the marked text (and the marks nested inside), `mark` is the value, `text` the text segment's handle.
+
+```svelte title="SpoilerPlugin.svelte"
+<script module lang="ts">
+	import type { Plugin } from 'edytor';
+	import type { MarkSnippetPayload } from 'edytor';
+
+	export const spoilerPlugin: Plugin = () => ({
+		marks: {
+			spoiler: { snippet: spoiler }
+		}
+	});
+</script>
+
+{#snippet spoiler({ content }: MarkSnippetPayload)}
+	<span class="spoiler">{@render content()}</span>
+{/snippet}
+```
+
+The core renders `<span data-edytor-mark="spoiler"><span class="spoiler">…</span></span>`. Without a `tag` the mark copies as plain text; declare one to copy it as an element (the snippet still renders). Keep the markup inline, and render the marked text only through `content()`.
+
+## Edges
+
+`edge` decides whether a character typed at the start or end of a marked run takes the mark:
+
+- `inclusive` (default): it does. Typing after bold text continues in bold.
+- `exclusive`: it does not.
+- `side-dependent`: at the start of the run it does; at the end, only when the caret is inside the run. The rich text `link` mark uses this, so text typed right after a link is not linked unless the caret was placed inside it.
+
+## Toggling marks from code
+
+The rich text plugin exports its helpers. They act on the current selection and handle every text segment the selection spans:
+
+```ts
+import { richTextOperations } from 'edytor';
+
+richTextOperations(edytor).setMarkAtRange('bold'); // toggle over the selection
+richTextOperations(edytor).setMarkValueAtRange('color', '#d44c47'); // set a value
+richTextOperations(edytor).removeAllMarksAtRange();
+```
+
+`setMarkAtRange` is typed for the rich text marks. For any mark, call `markText` on each text segment of the selection:
+
+```ts
+import type { EdytorInstance } from 'edytor';
+
+export const toggleMark = (edytor: EdytorInstance, mark: string, value: string | true = true) => {
+	const { texts, startText, endText, yStart, yEnd, isCollapsed, isReversed } = edytor.selection.state;
+	if (!startText || !endText) return;
+	if (isCollapsed) {
+		startText.markText({ mark, value, toggle: true, start: yStart, end: yStart });
+		return;
+	}
+	texts.forEach((text, index) =>
+		text.markText({
+			mark,
+			value,
+			toggle: true,
+			start: index === 0 ? yStart : 0,
+			end: index === texts.length - 1 ? yEnd : text.length
+		})
+	);
+	edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
+};
+```
+
+`text.markText({ mark, value, toggle, start, end })` formats `start` to `end` of one text segment. With `toggle: true` it removes the mark when every part of the range already has it, and sets it otherwise. A `value` of `null` removes the mark. `text.removeMarksFromText({ start, end })` removes every mark.
+
+Each call is a `markText` operation that plugins see in `onBeforeOperation`.
+
+## Pending marks
+
+At a collapsed caret there is no text to format. `markText` with `start` equal to `end` stages the mark instead: the next characters typed at that caret take it. This is what <kbd>Mod</kbd> + <kbd>B</kbd> does before you type.
+
+Staged marks are `edytor.selection.pending`, the full set of marks the next insertion carries (`null` for a mark switched off). Set them directly with `edytor.selection.stage(marks)`, or clear them with `edytor.selection.stage(undefined)`. Moving the caret clears them; typing at the caret consumes them.
+
+Text inserted without explicit marks takes, in order of precedence: the common marks of the range it replaces, the pending marks, then the marks of its neighbor, filtered by each mark's `edge`.

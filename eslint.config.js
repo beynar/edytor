@@ -167,6 +167,9 @@ const repoConfig = [
 			// generated consumer build output (tests/packed-consumer/svelte-app)
 			'**/dist/**',
 			'**/dist-ssr/**',
+			'**/dist-code/**',
+			// the docs site is its own package (Blume)
+			'site/**',
 			'node_modules/**',
 			'package/**',
 			'package-lock.json',

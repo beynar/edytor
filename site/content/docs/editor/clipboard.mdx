@@ -1,0 +1,135 @@
+---
+title: Clipboard
+description: How Edytor copies, cuts and pastes, the clipboard formats it writes, how pasted HTML becomes blocks and marks, and where plugins can step in.
+icon: clipboard
+---
+
+Edytor handles copy, cut, paste and drop from its document model instead of letting the browser copy rendered HTML. Copies between Edytor editors keep every block, mark and inline block; copies to other apps get clean HTML and plain text; pasted HTML is mapped onto your block kinds and marks.
+
+## Copy and cut
+
+Copy and cut write three formats:
+
+| Format | Content |
+| --- | --- |
+| `application/x-edytor-fragment` | The copied content as Edytor JSON. |
+| `text/html` | HTML built from your kinds and marks, with the same JSON embedded in a `data-edytor-fragment` attribute. |
+| `text/plain` | The text, one line per block. |
+
+The embedded copy lets a paste into another Edytor editor keep full fidelity even when the clipboard drops the custom format, which some browsers and apps do.
+
+What gets copied:
+
+- A text range inside one block copies that text with its marks and inline blocks.
+- A text range across blocks copies the blocks it touches, cut at the range's ends.
+- A block selection copies exactly the selected blocks, as whole blocks. A selected parent's unselected children are left out.
+
+Copy works in [readonly mode](/docs/editor/readonly) and never creates an undo step. Cut is one undo step and is ignored in readonly mode.
+
+### How content is exported
+
+The HTML and plain text come from the definitions, so exporting a kind looks like rendering it:
+
+- A block kind's `html` form: a tag name that wraps the content then the children (the rich text plugin uses `blockquote` for quotes, `li` for list items), or a function of the block and its serialized content and children. The default is `<p>` around the content.
+- A block kind's `plain` form, a function; the default is the content, then the children, one per line.
+- A mark's `tag` and `attributes`: bold exports `<strong>`, a link `<a href>`, a color `<span style="color: …">`. A mark without a tag exports its text only.
+- An inline block's `plain` function; by default an inline block exports nothing to plain text.
+
+See [Custom blocks](/docs/customization/blocks) for declaring these forms.
+
+## Paste
+
+A paste is handled by the first rule that applies:
+
+1. **An Edytor fragment**, from the custom format or embedded in the HTML. Pasted with full fidelity.
+2. **A plugin's `onPaste` hook**, if one calls `prevent()`.
+3. **Files** (an image from the clipboard, say): ignored unless a plugin's `onPaste` handled them.
+4. **External `text/html`**, imported as blocks and marks (below).
+5. **`text/plain`**, one block per line.
+
+<kbd>Shift</kbd>+paste (<kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd>) pastes the plain text only and skips rules 1 to 4, plugin hooks included. Plain text takes the marks at the caret.
+
+Paste is one undo step and is ignored in readonly mode. Dropping content from outside the editor follows the same rules.
+
+### Where pasted content goes
+
+The same placement applies to Edytor fragments, HTML and multi-line text:
+
+- **One line** joins the text at the caret.
+- **Several lines** split the block at the caret: the first line joins the text before the caret, the last line takes the text after it, and the others go between. Pasting the lines `X` and `Y` into `Hello|World` gives `HelloX` and `YWorld`.
+- **Blocks copied from a block selection** are inserted as whole blocks after the caret's block, replacing it when it is empty.
+- With **blocks selected**, the pasted content replaces them.
+- A pasted range replaces the selected text first.
+
+Pasted blocks and inline blocks always get new ids, so pasting twice never creates duplicates. Their marks, data, children and order are kept.
+
+## HTML import
+
+External HTML, from a web page, Google Docs or a word processor, is parsed by the browser's `DOMParser`. Parsing is inert: no script runs and nothing loads. The import walks the result and maps elements onto the registered definitions.
+
+**Blocks.** An element becomes a block kind when:
+
+- a kind's `parse(element)` hook returns data for it (checked first), or
+- its tag is the one a kind exports or renders for one of its presets.
+
+With the rich text plugin, that maps `h1`–`h3` to headings, `h4`–`h6` to `h3` headings, `blockquote` to quotes, `li` to bulleted items, `li` inside `ol` to numbered items, `hr` to dividers, `details` to toggles and `pre` to code blocks (one line per text line, with the code plugin).
+
+**Marks.** Text takes a mark when:
+
+- the mark's `parse(element)` returns a value (checked first), or
+- the element's tag equals the mark's `tag`, for marks without a value.
+
+The rich text plugin maps `strong`/`b`, `em`/`i`, `u`, `s`/`strike`/`del`, `code`, `sup` and `sub`, links (`a` with a safe `href`), text colors, backgrounds and `mark` highlights, and the bold, italic, underline and strikethrough styles Google Docs writes on spans.
+
+**Everything else:**
+
+- Unknown elements become paragraphs (block-level) or plain text (inline).
+- Whitespace collapses the way the browser renders it; `<br>` is a line break inside the block.
+- `script`, `style`, `template`, media, form controls and other non-text elements are skipped.
+- HTML that yields nothing (only a comment or empty elements) falls through to `text/plain`.
+
+Your own kinds and marks take part in the import the same way. A value-less mark with a `tag` is matched by that tag; a mark with a value needs a `parse` hook:
+
+```ts
+import type { Plugin } from 'edytor';
+
+export const inlineExtrasPlugin: Plugin = () => ({
+	marks: {
+		// Rendered as <kbd>, exported as <kbd>, and pasted <kbd> elements take it.
+		kbd: { tag: 'kbd' },
+		// Rendered and exported as <abbr title="…">; pasted <abbr> keeps its title.
+		abbr: {
+			tag: 'abbr',
+			attributes: (title) => ({ title: typeof title === 'string' ? title : undefined }),
+			parse: (el) => (el.localName === 'abbr' ? (el.getAttribute('title') ?? '') : undefined)
+		}
+	}
+});
+```
+
+A block kind's `parse(element)` works the same way and returns the new block's `data`. Definitions are first-wins, so add hooks to kinds you define rather than redefining a bundled one. See [Custom blocks](/docs/customization/blocks).
+
+## Plugin hooks
+
+`onCopy`, `onCut` and `onPaste` run before Edytor handles the event. Call `prevent()` to take over; the browser's default is prevented too:
+
+```ts
+import type { Plugin } from 'edytor';
+
+export const imagePastePlugin: Plugin = (edytor) => ({
+	onPaste: ({ e, prevent }) => {
+		const file = e.clipboardData?.files[0];
+		if (!file?.type.startsWith('image/')) return;
+		prevent(async () => {
+			const url = await upload(file); // your upload
+			// Insert a link to the uploaded file at the caret.
+			edytor.selection.state.startText?.insertText({
+				value: file.name,
+				marks: { link: { href: url } }
+			});
+		});
+	}
+});
+```
+
+`onPaste` runs after the Edytor-fragment check, so it sees pastes from other apps, not copies between Edytor editors. It does not run for <kbd>Shift</kbd>+paste. The first plugin (in plugin order) that prevents wins. See [Plugins](/docs/plugins).

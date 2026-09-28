@@ -1,0 +1,32 @@
+{
+  "name": "edytor-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pack:edytor": "sh scripts/pack-edytor.sh",
+    "dev": "blume dev --port 3002",
+    "build": "blume build",
+    "preview": "blume preview",
+    "check": "blume check",
+    "validate": "blume validate",
+    "doctor": "blume doctor",
+    "deploy": "blume build && wrangler deploy"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "blume": "^2.0.3",
+    "edytor": "file:vendor/edytor.tgz",
+    "svelte": "^5.55.1"
+  },
+  "devDependencies": {
+    "@astrojs/cloudflare": "^14.1.7",
+    "@astrojs/svelte": "^9.0.0",
+    "astro": "^7.3.2",
+    "wrangler": "^4.119.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp", "workerd"]
+  }
+}

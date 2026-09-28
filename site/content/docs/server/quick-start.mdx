@@ -1,0 +1,127 @@
+---
+title: Server quick start
+description: Deploy the edytor Durable Object room on Cloudflare and connect your editor to it in a few steps.
+icon: rocket
+---
+
+Edytor ships its sync server as a Cloudflare Durable Object: `DocumentRoom` coordinates one document, and `routeDocumentSocket` is the Worker-side door that authorizes each connection before it reaches the room. You deploy both on your own Cloudflare account. This page takes you from an empty folder to a running room.
+
+<Steps>
+<Step title="Create a Worker project">
+
+Create a TypeScript Worker (for example with `pnpm create cloudflare@latest edytor-room`, choosing the "Hello World" Worker template), then add edytor:
+
+```package-install
+npm i edytor
+```
+
+The room only imports `edytor/cloudflare`, which runs in Workers: no Svelte, no DOM.
+
+</Step>
+<Step title="Declare the Durable Object">
+
+The room stores the document in SQLite, so declare it as a SQLite class in `wrangler.jsonc`:
+
+```jsonc wrangler.jsonc
+{
+  "name": "edytor-room",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-26",
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "DocumentRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DocumentRoom"] }]
+}
+```
+
+</Step>
+<Step title="Write the Worker">
+
+Export the room class and route WebSocket upgrades through `routeDocumentSocket`. Each document id gets its own room.
+
+```ts src/worker.ts
+import { DocumentRoom, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
+
+export { DocumentRoom };
+
+type Env = { ROOMS: DurableObjectNamespace<DocumentRoom> };
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const match = /^\/rooms\/([^/]+)$/.exec(new URL(request.url).pathname);
+    if (!match) return new Response('not found', { status: 404 });
+
+    return routeDocumentSocket(request, env.ROOMS, decodeURIComponent(match[1]), (request) => {
+      // Development only: trusts whoever says they are `?user=…`.
+      const userId = new URL(request.url).searchParams.get('user');
+      if (!userId) return null; // → 403, no socket
+      return { userId, replica: requestedReplica(request) };
+    });
+  }
+} satisfies ExportedHandler<Env>;
+```
+
+:::warning
+This `authorize` accepts any user id from the URL. Replace it with a real session or token check before you deploy anything people use; see [Authorization](/docs/server/authorization).
+:::
+
+</Step>
+<Step title="Run it locally">
+
+```bash
+npx wrangler dev
+```
+
+The room is now at `ws://localhost:8787/rooms/<documentId>`. Wrangler runs the Durable Object and its SQLite storage locally.
+
+</Step>
+<Step title="Connect the editor">
+
+Point `createWebsocketSync` at `/rooms`, use the document id as the room, and send the user as a parameter (the provider adds the replica id itself). Name the local copy per user.
+
+```svelte src/lib/Editor.svelte
+<script lang="ts">
+  import { Edytor, createWebsocketSync, richTextPlugin } from 'edytor';
+
+  let { userId, documentId }: { userId: string; documentId: string } = $props();
+</script>
+
+<Edytor
+  plugins={[richTextPlugin]}
+  actor={{ id: userId, name: userId }}
+  sync={createWebsocketSync({
+    serverUrl: 'ws://localhost:8787/rooms',
+    roomName: documentId,
+    params: { user: userId },
+    persistName: `${userId}:${documentId}`
+  })}
+/>
+```
+
+Open the page in two browsers with different users: edits, carets and selections appear in both. In production, send a token instead of the user id (`params: { token }`) and derive the user from it in `authorize`.
+
+</Step>
+<Step title="Deploy">
+
+```bash
+npx wrangler deploy
+```
+
+Then switch `serverUrl` to `wss://<your-worker-host>/rooms`.
+
+</Step>
+</Steps>
+
+## What you get
+
+- **Real-time sync** between every client of a document, with offline edits merged on reconnect.
+- **Durable storage**: every update is written to the room's SQLite storage before it is acknowledged, so the provider's [saved state](/docs/collaboration/websocket#saved-state) means "stored on the server".
+- **Identity**: each client id is bound to the user who first wrote under it; nobody can write in someone else's name.
+- **Read-only access** when `authorize` returns `readOnly: true`.
+- **Hibernation**: the room holds no timers, so idle rooms hibernate with their sockets still connected.
+
+The room does not decide who may open a document; your `authorize` does. See [Authorization](/docs/server/authorization) and [the room](/docs/server/room).
+
+## See it live
+
+The live editor on the [edytor home page](/) runs on exactly this setup: a room Worker deployed at `edytor-room.beynar.workers.dev` with `DocumentRoom` and `routeDocumentSocket`. Its `authorize` admits guests by an id their browser keeps, it opens one room per UTC day so the shared document resets daily, and it only accepts sockets from the docs' origins. Open the home page in two windows to watch them sync, and read its [source](https://github.com/beynar/edytor/tree/main/site/room) for a complete, deployed example.

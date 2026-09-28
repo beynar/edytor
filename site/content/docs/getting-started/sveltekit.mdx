@@ -1,0 +1,119 @@
+---
+title: SvelteKit
+description: Use Edytor in SvelteKit, with readonly server rendering, client-only editable editors and headless document work on the server.
+icon: server
+---
+
+Edytor works in SvelteKit with no extra configuration: SvelteKit's Vite plugin compiles the `.svelte` files the package ships. This page covers what the component renders during server-side rendering (SSR) and how to mount an editable editor in the browser only.
+
+## What renders on the server
+
+`<Edytor>` renders its block tree only once its document has content. During SSR that depends on the props:
+
+| Props | Server output |
+| --- | --- |
+| `readonly` with a `value` | The full document: every block element, its text and marks, with `contenteditable="false"` and `aria-readonly="true"`. |
+| `sync` (editable) | Nothing. The provider attaches only in the browser, and the document stays pending until it answers. |
+| `document` that is not ready yet | Nothing, for the same reason. |
+| `value` only (editable) | The block tree, with `contenteditable="true"`. This path is not tested; mount editable editors in the browser (below). |
+
+Some things never run on the server: event listeners, the selection, block handles, menus and the overlay layer, remote carets and plugins' `onEdytorAttached` / `onBlockAttached` hooks. They start when the component mounts in the browser. The server HTML therefore has no handles. It does carry the root, block and mark attributes (`data-edytor`, `data-edytor-type`, `data-edytor-id`, `data-edytor-mark`), so styles that target them apply before hydration; `data-edytor-text` on text segments is added on mount.
+
+## Readonly pages
+
+A readonly editor is the supported way to server-render a document. Load the JSON on the server and pass it as `value`:
+
+```ts title="src/routes/notes/[id]/+page.server.ts"
+import type { JSONDoc } from 'edytor';
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = async ({ params }) => {
+	const value: JSONDoc = await loadNote(params.id); // your storage
+	return { value };
+};
+```
+
+```svelte title="src/routes/notes/[id]/+page.svelte"
+<script lang="ts">
+	import { Edytor, richTextPlugin, codePlugin } from 'edytor';
+
+	let { data } = $props();
+</script>
+
+<Edytor readonly value={data.value} plugins={[codePlugin, richTextPlugin]} />
+```
+
+Pass the same plugins you use to edit. Every block type in the document must be defined by a plugin, or rendering throws `Block type <type> is not defined`.
+
+A readonly view that is given `sync` does not attach it: it shows `value` (or the `document` you pass) and never loads content from a provider. To show live collaborative content read-only, create the document yourself, attach the sync to it, and pass `document` with `readonly`. See [Collaboration](/docs/collaboration).
+
+See [Readonly mode](/docs/editor/readonly) for what still works in the browser.
+
+## Editable editors: mount after hydration
+
+The demo app renders its editable editor only after the page has mounted:
+
+```svelte title="src/routes/+page.svelte"
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { Edytor, createIndexeddbSync, richTextPlugin } from 'edytor';
+
+	const sync = createIndexeddbSync('my-note');
+	let isMounted = $state(false);
+
+	onMount(() => {
+		isMounted = true;
+	});
+</script>
+
+<div class="page">
+	{#if isMounted}
+		<Edytor {sync} plugins={[richTextPlugin]} />
+	{/if}
+</div>
+```
+
+Why:
+
+- An editable editor's content is decided in the browser. With `sync`, IndexedDB or the server has the latest state, not your server render.
+- The live editor creates state that belongs to one browser view: its presence entry, its overlay layer after the root, its provider connection. Rendering it after hydration keeps the server HTML and the first client render identical, so Svelte hydrates the rest of the page without mismatches.
+- The page shell around the editor still server-renders, so layout and headings show immediately.
+
+You can also turn SSR off for an editor route with `export const ssr = false;` in its `+page.ts`. The `onMount` pattern keeps SSR for the rest of the page.
+
+## Working with documents on the server
+
+Load and change documents on the server without the component through [`edytor/crdt/edytor`](/docs/getting-started/entry-points). It has no Svelte in its import graph, so it runs in `+page.server.ts`, `+server.ts` and hooks:
+
+```ts title="src/routes/api/notes/[id]/+server.ts"
+import { json } from '@sveltejs/kit';
+import { loadDocument } from 'edytor/crdt/edytor';
+import type { RequestHandler } from './$types';
+
+export const GET: RequestHandler = async ({ params }) => {
+	const bytes: Uint8Array = await readStoredUpdate(params.id); // your storage
+	const document = loadDocument(bytes);
+	const value = document.facade.toJSON();
+	document.destroy();
+	return json(value);
+};
+```
+
+`document.encode()` gives the bytes to store; `loadDocument(bytes)` restores them. The document API is described in [the document reference](/docs/reference/document-api).
+
+## Other Vite setups
+
+In a plain Vite app with its own SSR build, tell Vite to compile the package instead of importing it at runtime, as SvelteKit does for you:
+
+```ts title="vite.config.ts"
+import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+	plugins: [svelte()],
+	resolve: { dedupe: ['svelte'] },
+	ssr: { noExternal: ['edytor'] }
+});
+```
+
+Plain Node cannot import `edytor` at all (the root entry contains `.svelte` files). Use `edytor/crdt/edytor` there.

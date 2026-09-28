@@ -1,0 +1,129 @@
+---
+title: Protocol
+description: The edytor wire format and the helpers edytor/crdt/edytor exports for writing your own sync client or server.
+icon: binary
+---
+
+The shipped provider and room speak a small binary protocol over WebSocket (and over `BroadcastChannel` between tabs). Read this page if you are writing your own server, a relay on another platform, or a client in another environment. Everything you need is exported from `edytor/crdt/edytor`, which runs in Node and Workers.
+
+## Frames
+
+Every frame is three parts, written with lib0 variable-length integers:
+
+```
+varuint GENERATION | varuint messageType | payload
+```
+
+`GENERATION` names the engine, the wire protocol and the document schema together: `PROTOCOL_VERSION * 1000 + SCHEMA_VERSION`, which is `14004` in this release (`generationWord(SCHEMA_VERSION)`). Check it before decoding anything else and drop frames of any other generation: a v13 `yjs` peer's first word is its message type (0 to 3), and another edytor schema writes `14000 + schema`. `readProtocolVersion(decoder)` reads and checks it.
+
+| Type | Constant | Direction | Payload |
+| --- | --- | --- | --- |
+| `0` | `messageSync` | both | A sync subtype, then a `varUint8Array`. See below. |
+| `1` | `messageAwareness` | both | A `varUint8Array` holding an awareness update. |
+| `2` | `messageAuth` | server to client | Subtype `0` (`messagePermissionDenied`), then a `varString` reason. |
+| `3` | `messageQueryAwareness` | client to server | None. Asks for everyone's presence. |
+| `4` | `messageSaved` | server to client | The server's state vector (`varUint8Array`), then optionally the acknowledged deletes. |
+| `5` | `messageChunk` | server to client | One piece of a frame too large to send whole. |
+
+### Sync
+
+| Subtype | Constant | Payload | Meaning |
+| --- | --- | --- | --- |
+| `0` | `messageYjsSyncStep1` | state vector | "This is what I have." |
+| `1` | `messageYjsSyncStep2` | update | "Here is what you lack." |
+| `2` | `messageYjsUpdate` | update | A live edit. |
+
+The handshake is symmetric. On connect, each side sends Step 1. A side that receives Step 1 answers with Step 2 and, if the other side holds something it lacks, with its own Step 1. After one exchange each way both hold the same state, so no periodic resync is needed. Updates are Yjs v14 V1 updates.
+
+### Awareness
+
+An awareness update is a count, then for each entry a `varuint` client id, a `varuint` clock and a JSON string state (`null` means the client left). `readAwarenessEntries` and `writeAwarenessEntries` convert between bytes and `{ clientID, clock, state }` arrays without an `Awareness` instance, which matters on a server that must not hold timers.
+
+### Saved
+
+A server sends `messageSaved` after it has durably stored what a sync message brought. The body is the server's state vector and, when the acknowledged message carried deletes, an update with no structs holding the deletes the server now has. Write it with `sync.writeSaved(encoder, doc, deletes)` and read it with `sync.readSaved(decoder)`. A client that knows only the state vector ignores the second field.
+
+### Chunks
+
+A chunk sequence is a `start` frame (`0`, then the total length), any number of `part` frames (`1`, then a `varUint8Array`), and an `end` frame (`2`). `chunkFrame(bytes, maxFrameBytes?)` splits one complete frame (it returns the frame itself when it fits); `createChunkReader()` returns a per-connection reader that you feed each chunk body and that returns the whole frame on `end`, `null` before. The default limit is `MAX_FRAME_BYTES` (32 MiB).
+
+## Exported helpers
+
+| Export | Use |
+| --- | --- |
+| `bindCrdt(Y).sync` | `writeSyncStep1`, `writeSyncStep2`, `readSyncStep1`, `readSyncStep2`, `writeUpdate`, `readUpdate`, `readSyncMessage`, `lacks(doc, stateVector)`, `applyRemote(doc, update, origin)`, `writeSaved`, `readSaved`. |
+| `frame(type, write)` | Build a frame: the generation word, the type, then whatever `write(encoder)` writes. |
+| `GENERATION`, `generationWord`, `PROTOCOL_VERSION`, `SCHEMA_VERSION`, `readProtocolVersion` | The generation gate. |
+| `messageSync`, `messageAwareness`, `messageAuth`, `messageQueryAwareness`, `messageSaved`, `messageChunk` | Message types. |
+| `messageYjsSyncStep1`, `messageYjsSyncStep2`, `messageYjsUpdate` | Sync subtypes. |
+| `messagePermissionDenied`, `writePermissionDenied(encoder, reason)` | The auth reply. |
+| `readAwarenessEntries`, `writeAwarenessEntries`, `applyAwarenessUpdate`, `encodeAwarenessUpdate`, `modifyAwarenessUpdate` | The awareness codec. |
+| `chunkFrame`, `createChunkReader`, `MAX_FRAME_BYTES` | Chunked frames. |
+| `createDecoder`, `readVarUint`, `readVarUint8Array`, `writeVarUint8Array` | The lib0 helpers for frame bodies. |
+| `GENERATION_RECORD`, `GenerationMismatchError` | Tag and check stored containers of this generation. |
+
+`applyRemote` applies an update unless it writes a foreign schema stamp. It returns `{ applied, problem, discarded? }`: refuse the frame when `problem` is set.
+
+## A minimal server loop
+
+This is the core of a relay that stores and acknowledges, for any platform with WebSockets. Authorization, identity checks and persistence are yours to add; the shipped [`DocumentRoom`](/docs/server/room) does all of them.
+
+```ts
+import * as Y from 'edytor/crdt';
+import {
+  bindCrdt, frame, readProtocolVersion, createDecoder, readVarUint, readVarUint8Array,
+  writeVarUint8Array, readAwarenessEntries, writeAwarenessEntries,
+  messageSync, messageAwareness, messageSaved, messageYjsSyncStep1
+} from 'edytor/crdt/edytor';
+
+const { sync, createDoc } = bindCrdt(Y);
+const doc = createDoc(); // restore it from your storage: Y.applyUpdate(doc, stored)
+const sockets = new Set<WebSocket>();
+
+doc.on('update', (update: Uint8Array, origin: unknown) => {
+  // Store `update` durably here, then relay it.
+  const out = frame(messageSync, (e) => sync.writeUpdate(e, update));
+  for (const ws of sockets) if (ws !== origin) ws.send(out);
+});
+
+export function onOpen(ws: WebSocket) {
+  sockets.add(ws);
+  ws.send(frame(messageSync, (e) => sync.writeSyncStep1(e, doc)));
+}
+
+export function onMessage(ws: WebSocket, bytes: Uint8Array) {
+  const decoder = createDecoder(bytes);
+  if (!readProtocolVersion(decoder)) return ws.close(1008, 'generation');
+  const type = readVarUint(decoder);
+  if (type === messageSync) {
+    const subtype = readVarUint(decoder);
+    const payload = readVarUint8Array(decoder);
+    if (subtype === messageYjsSyncStep1) {
+      ws.send(frame(messageSync, (e) => sync.writeSyncStep2(e, doc, payload)));
+      if (sync.lacks(doc, payload)) ws.send(frame(messageSync, (e) => sync.writeSyncStep1(e, doc)));
+      return ws.send(frame(messageSaved, (e) => sync.writeSaved(e, doc)));
+    }
+    const { applied, problem } = sync.applyRemote(doc, payload, ws);
+    if (!applied || problem) return ws.close(1008, 'refused');
+    ws.send(frame(messageSaved, (e) => sync.writeSaved(e, doc, Y.decodeUpdate(payload).ds)));
+  } else if (type === messageAwareness) {
+    const entries = readAwarenessEntries(readVarUint8Array(decoder));
+    const out = frame(messageAwareness, (e) => writeVarUint8Array(e, writeAwarenessEntries(entries)));
+    for (const other of sockets) if (other !== ws) other.send(out);
+  }
+}
+```
+
+Send large frames through `chunkFrame` if your platform limits message size, and remember the latest presence entry per client to greet newcomers, as the shipped room does.
+
+## Never attach a document on the server
+
+Do not call `createDocument`, `loadDocument` or `attachDocument` on the document a server holds. They publish the local author into the document's replicated attribution data, so the server would appear as an author in every client. A server works on the raw CRDT document (`bindCrdt(Y).createDoc()` or `new Y.Doc()`) and the sync helpers only.
+
+To read or edit the content server-side (for indexing, exports or bots), load a separate copy from the stored bytes with `loadDocument` and send your edits through a normal client connection, or apply them to that copy and send its update like any other client.
+
+## Compatibility
+
+- Peers of different generations never exchange edits: each side drops the other's frames and reports `'protocol-mismatch'`.
+- A v13 `yjs` peer or `y-websocket` server cannot join a room. An opaque relay that forwards frames byte for byte without decoding them works, but it cannot acknowledge saves or chunk frames.
+- Clients that predate `messageSaved` and `messageChunk` report them through `'message-error'` and otherwise sync small documents normally.

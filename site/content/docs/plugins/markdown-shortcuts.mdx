@@ -1,0 +1,61 @@
+---
+title: Markdown shortcuts
+description: The markdown shortcuts plugin converts a block when you type a prefix such as "# " or "- " at its start, using the prefixes the block kinds declare.
+icon: hash
+---
+
+`markdownShortcutsPlugin` converts a block as you type a markdown prefix at its start: `# ` makes a heading, `- ` a bulleted list item, ` ``` ` a code block. It has no list of its own: the prefixes come from the `markdown` field of each block kind's presets.
+
+```svelte
+<script lang="ts">
+	import { Edytor, markdownShortcutsPlugin, richTextPlugin, codePlugin } from 'edytor';
+</script>
+
+<Edytor plugins={[codePlugin, markdownShortcutsPlugin, richTextPlugin]} />
+```
+
+It takes no options.
+
+## Prefixes
+
+With the rich text and code plugins:
+
+| Type             | Converts to                        |
+| ---------------- | ---------------------------------- |
+| `# `             | Heading 1                          |
+| `## `            | Heading 2                          |
+| `### `           | Heading 3                          |
+| `> `             | Quote                              |
+| `- ` or `* `     | Bulleted list item                 |
+| `1. `            | Numbered list item                 |
+| `[ ] ` or `[] `  | To-do                              |
+| `---`            | Divider                            |
+| ` ``` `          | Code block (code plugin)           |
+
+## How it triggers
+
+A conversion happens when the character you type completes a prefix, and all of these hold:
+
+- the caret is collapsed at the end of the block's first text;
+- the text before the caret plus the typed character equals the prefix exactly (so `# ` works in an empty block, not after other words);
+- the block is convertible (not a void or island block, and not inside one);
+- the typed input is one character.
+
+Removing the prefix and converting the block are one operation (`setBlock`, with a `deleteContentAtRange` step for the prefix): a plugin that refuses either refuses both. When the conversion is refused, the character is inserted as normal text instead. After the conversion the caret is at the start of the converted block, or of its first child when the kind starts with one (a code block's first line).
+
+A kind with an `empty` shape, such as the divider, replaces the block's content and children. Other kinds keep them.
+
+## Adding a prefix
+
+Declare `markdown` on a preset of your block kind:
+
+```ts
+blocks: {
+	note: {
+		snippet: note,
+		presets: [{ label: 'Note', icon: 'ℹ', data: { tone: 'info' }, markdown: ['!! '] }]
+	}
+}
+```
+
+The last character of a prefix triggers it. A prefix without a trailing space, such as `---`, converts as soon as it is complete. See [Blocks](/docs/customization/blocks#presets) for presets and the [example plugin](/docs/plugins/example-plugin) for a full kind.

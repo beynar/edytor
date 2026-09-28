@@ -3,7 +3,7 @@
 	// (the component + its bindable instance type) — an unaliased import
 	// collides there (TS2440 for bundler-resolution consumers).
 	import { Edytor as EdytorClass, useEdytor, type Snippets } from '../edytor.svelte.js';
-	import type { Awareness, EdytorDocument, YDoc } from '../crdt/index.js';
+	import type { Awareness, DocumentActor, EdytorDocument, YDoc } from '../crdt/index.js';
 	import type { EdytorSync } from '$lib/collaboration/index.js';
 	export { EdytorClass as EdytorContext, useEdytor };
 	import type { Placeholder, Plugin } from '$lib/plugins.js';
@@ -33,6 +33,8 @@
 		document?: EdytorDocument;
 		doc?: YDoc;
 		awareness?: Awareness;
+		/** The local author (id, name, color) of the document this view owns: history lineage and presence. */
+		actor?: DocumentActor;
 		readonly?: boolean;
 		hotKeys?: Record<string, HotKey>;
 		onChange?: (value: JSONBlock) => void;
@@ -75,6 +77,7 @@
 		hotKeys,
 		sync,
 		awareness,
+		actor,
 		onChange,
 		onSelectionChange,
 		placeholder,
@@ -107,6 +110,7 @@
 		document: edytorDocument,
 		doc,
 		awareness,
+		actor,
 		hotKeys,
 		onSelectionChange,
 		onChange,

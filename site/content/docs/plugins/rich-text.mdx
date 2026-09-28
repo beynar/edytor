@@ -1,0 +1,125 @@
+---
+title: Rich text
+description: The rich text plugin's block kinds, marks, hotkeys and formatting helpers, including link and color sanitization.
+icon: type
+---
+
+`richTextPlugin` defines the everyday document: paragraphs, headings, lists, to-dos, quotes, toggles, callouts, dividers, and ten marks. Almost every editor needs it, since the core defines no block kinds.
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin } from 'edytor';
+</script>
+
+<Edytor plugins={[richTextPlugin]} />
+```
+
+It takes no options. To change one of its kinds, define a kind with the same name in a plugin listed before it, or override only its snippet (see [Blocks](/docs/customization/blocks#override-a-snippet)).
+
+## Block kinds
+
+| Kind                 | Element                    | Data                           | Presets (markdown)                                         |
+| -------------------- | -------------------------- | ------------------------------ | ---------------------------------------------------------- |
+| `paragraph`          | `div` with a `p` inside    | none                           | Text                                                       |
+| `heading`            | `h1` to `h6` from `level`  | `{ level: 'h1' }`              | Heading 1 (`# `), Heading 2 (`## `), Heading 3 (`### `)    |
+| `quote`              | `blockquote`               | none                           | Quote (`> `)                                               |
+| `bulleted-list-item` | `li`                       | none                           | Bulleted list (`- `, `* `)                                 |
+| `numbered-list-item` | `li`                       | none                           | Numbered list (`1. `)                                      |
+| `todo-item`          | `div` with a checkbox      | `{ checked: boolean }`         | To-do list (`[ ] `, `[] `)                                 |
+| `toggle`             | `details`, content in `summary` | none                      | Toggle list                                                |
+| `callout`            | `div` with an icon         | `{ icon: string }`             | Callout (icon `!`)                                         |
+| `divider`            | `hr`, void, no content     | none                           | Divider (`---`)                                            |
+
+Presets feed the [slash menu](/docs/plugins/slash-menu), [markdown shortcuts](/docs/plugins/markdown-shortcuts) and block menus. Their command ids are `block.paragraph`, `block.heading1` to `block.heading3`, `block.quote`, `block.bulleted-list-item`, `block.numbered-list-item`, `block.todo-item`, `block.toggle`, `block.callout` and `block.divider`.
+
+The plugin also defines kinds without presets, for content that arrives by paste or from stored documents:
+
+- `ordered-list` and `unordered-list`: `ol` and `ul` containers that render only their children. A new child takes the `list-item` kind.
+- `list-item`: an `li`.
+- `details`: the same as `toggle`.
+- `horizontalRule`: the same as `divider`.
+
+Behavior worth knowing:
+
+- A `heading`'s element follows `data.level`, `h1` to `h6`; any other value renders `h1`. Copying exports `h1` to `h3`, and pasting `h4` to `h6` gives a level `h3` heading.
+- A `toggle` is a native `<details>`. The browser owns its `open` attribute, so opening and closing it is not an edit and is never reverted. Arrow keys skip the body of a closed toggle.
+- The `todo-item` checkbox shows `data.checked`, but the plugin does not write it when clicked. See [Toggling a to-do](#toggling-a-to-do).
+- Pasted `ol > li` becomes a numbered item and other `li` a bulleted item.
+
+## Marks
+
+| Mark          | Element                      | Value                          | Toolbar button |
+| ------------- | ---------------------------- | ------------------------------ | -------------- |
+| `bold`        | `strong`                     | `true`                         | B              |
+| `italic`      | `em`                         | `true`                         | I              |
+| `underline`   | `u`                          | `true`                         | U              |
+| `strike`      | `s`                          | `true`                         | S              |
+| `code`        | `code`                       | `true`                         | `</>`          |
+| `link`        | `a` with `href` and `target` | `{ href, target? }`            | link field     |
+| `superscript` | `sup`                        | `true`                         |                |
+| `subscript`   | `sub`                        | `true`                         |                |
+| `color`       | `span` with `color`          | a CSS color                    |                |
+| `highlight`   | `span` with `background-color` | a CSS color                  |                |
+
+Marks nest in this order, `bold` innermost. Typing at the end of a link extends it only when the caret is inside the link; typing at the edge of any other mark extends it.
+
+Values are sanitized when rendered and copied. A link `href` keeps only `http:`, `https:`, `mailto:`, `tel:` and scheme-less URLs; any other scheme, such as `javascript:`, drops the `href` and leaves the text. A color that could inject CSS (it contains `;`, braces, quotes, `url(` and similar) drops the `style`.
+
+Pasted HTML maps `b`, `i`, `u`, `strike` and `del` to their marks, reads Google Docs' styled spans for bold, italic, underline, strike, color and highlight, and turns `mark` into a yellow highlight.
+
+## Hotkeys
+
+| Keys                                           | Action                        |
+| ---------------------------------------------- | ----------------------------- |
+| <kbd>Mod</kbd> + <kbd>B</kbd>                    | Toggle bold                   |
+| <kbd>Mod</kbd> + <kbd>I</kbd>                    | Toggle italic                 |
+| <kbd>Mod</kbd> + <kbd>U</kbd>                    | Toggle underline              |
+| <kbd>Mod</kbd> + <kbd>E</kbd>                    | Toggle inline code            |
+| <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd>   | Toggle strikethrough          |
+| <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd>   | Toggle red text color         |
+
+With a collapsed caret, a mark hotkey sets the mark for the next characters you type instead.
+
+The plugin also handles the formatting input types browsers send from their own menus and from iOS: bold, italic, underline, strikethrough, superscript, subscript, remove formatting, text and background color, insert link, ordered and unordered list (converts the block), and horizontal rule (inserts a divider at the caret, splitting the block when the caret is inside it).
+
+## Formatting from code
+
+`richTextOperations(edytor)` returns the helpers the hotkeys and the toolbar use. They act on the current selection:
+
+```ts
+import { richTextOperations } from 'edytor';
+
+const format = richTextOperations(edytor);
+
+format.setMarkAtRange('bold'); // toggle, or stage at a caret
+format.setMarkValueAtRange('highlight', '#fff3a3'); // set, never toggle
+format.setLinkAtRange({ href: 'https://svelte.dev', target: '_blank' });
+format.removeLinkAtRange();
+format.removeAllMarksAtRange();
+format.insertDividerAtSelection();
+```
+
+`setLinkAtRange` ignores an unsafe `href`. `setMarkValueAtRange` ignores an unsafe color.
+
+## Toggling a to-do
+
+A plugin can write `checked` when the checkbox is clicked. The listener checks the type on every click, because converting a block to a to-do keeps its element:
+
+```ts
+import type { Plugin } from 'edytor';
+
+export const todoCheckboxPlugin: Plugin = () => ({
+	onBlockAttached: ({ node, block }) => {
+		const onClick = (event: MouseEvent) => {
+			const target = event.target as HTMLElement;
+			if (block.type !== 'todo-item' || target.parentElement !== node || target.localName !== 'input')
+				return;
+			block.setBlock({ value: { data: { ...block.data, checked: !block.data.checked } } });
+		};
+		node.addEventListener('click', onClick);
+		return () => node.removeEventListener('click', onClick);
+	}
+});
+```
+
+The `target.parentElement !== node` check ignores checkboxes of nested to-dos, which their own block handles.

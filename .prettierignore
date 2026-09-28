@@ -18,3 +18,7 @@ src/tests/crdt/random/failures
 
 # generated architecture planning artifacts
 docs/architecture-v2/
+
+# the docs site is its own package (Blume)
+site
+dist-code

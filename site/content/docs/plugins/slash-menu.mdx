@@ -1,0 +1,55 @@
+---
+title: Slash menu
+description: The slash menu plugin opens a filtered command menu when you type a slash, listing every block kind preset and every plugin command.
+icon: square-slash
+---
+
+`slashMenuPlugin` opens a command menu at the caret when you type `/`. Typing after the slash filters it; <kbd>Enter</kbd> runs the highlighted command and removes the `/query` text.
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin, slashMenuPlugin } from 'edytor';
+</script>
+
+<Edytor plugins={[slashMenuPlugin, richTextPlugin]} />
+```
+
+It takes no options.
+
+## What it lists
+
+The menu lists `edytor.commands`:
+
+- one command per block kind preset, such as `block.heading2` "Heading 2" (see [Blocks](/docs/customization/blocks#presets));
+- every command a plugin declares in `commands` (see [Writing plugins](/docs/plugins/writing-plugins#commands)).
+
+A command whose `isEnabled(edytor)` answers `false` is hidden. Block kind commands are enabled when the caret's block is convertible, which excludes void blocks, island blocks and blocks inside them.
+
+The query matches, case-insensitively, anywhere in a command's id, label or keywords. `/h2`, `/heading` and `/subtitle` all find "Heading 2".
+
+## Keys
+
+While the menu is open:
+
+| Keys                                   | Action                                     |
+| -------------------------------------- | ------------------------------------------ |
+| <kbd>↑</kbd>, <kbd>↓</kbd>             | Move the highlight (wraps around)          |
+| <kbd>Enter</kbd>                       | Run the highlighted command                |
+| <kbd>Escape</kbd>                      | Close the menu, keep the typed text        |
+| Click                                  | Run that command                           |
+
+<kbd>Enter</kbd> is claimed only when at least one command matches. With no match it inserts a new block as usual.
+
+## Behavior
+
+- The menu opens when `/` is typed at a collapsed caret in a convertible block, anywhere in its text. An IME that commits `/` together with more text (`/h`) opens it with that query.
+- It closes when the caret leaves the query, the selection expands, or the `/` is deleted. It does not open in a readonly editor.
+- The query range is anchored in the document, so a collaborator's edits elsewhere in the text do not break it.
+- Running a command removes the `/query` text in the same step as the command, so one undo restores both. If the command is refused, the trigger text stays.
+- After a conversion the caret goes back to where the `/` was. A command that moves the caret elsewhere, such as the code block conversion, keeps its own caret.
+
+## Placement and styling
+
+The menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-slash-menu-host` and `z-index: 50`. It opens below the caret, or above it when there is no room, and stays inside the viewport while you scroll.
+
+The menu's markup and styles are built in: a search line showing `/query`, a "Basic blocks" heading, one button per command showing its `icon` and `label`, and a footer with key hints. Each item carries `data-command-id` and `data-selected`. To change the look beyond overriding those styles, write your own menu plugin: the controller logic uses only public editor APIs (`edytor.commands`, `edytor.runCommand`, `onAfterOperation`, `onSelectionChange` and the overlay).

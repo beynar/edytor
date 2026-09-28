@@ -1,0 +1,183 @@
+---
+title: WebSocket
+description: Connect a document to the edytor room with createWebsocketSync, and follow connection, saved state and refusals.
+icon: radio-tower
+---
+
+`createWebsocketSync` connects a document to a sync server over a WebSocket, keeps a local IndexedDB copy, and syncs open tabs. It is built for the edytor [Durable Object room](/docs/server/quick-start); any server that speaks the [edytor protocol](/docs/server/protocol) works too.
+
+## Connect
+
+```svelte
+<script lang="ts">
+  import { Edytor, createWebsocketSync, richTextPlugin } from 'edytor';
+
+  let { userId, documentId, token }: { userId: string; documentId: string; token: string } = $props();
+</script>
+
+<Edytor
+  plugins={[richTextPlugin]}
+  actor={{ id: userId }}
+  sync={createWebsocketSync({
+    serverUrl: 'wss://rooms.example.com/rooms',
+    roomName: documentId,
+    params: { token },
+    persistName: `${userId}:${documentId}`
+  })}
+/>
+```
+
+The provider dials `<serverUrl>/<roomName>?replica=<clientID>&<params>`, here `wss://rooms.example.com/rooms/doc-42?replica=…&token=…`. `replica` is the document's client id, added at every dial so the room can bind it to the user at connection time; see [Authorization](/docs/server/authorization#replicas). A `replica` in `params` overrides it.
+
+To share one document between several views, create it yourself and attach the same factory: `createDocument({ actor })`, then `document.attachSync(createWebsocketSync(…))`, then `<Edytor {document} />` in each view.
+
+## Options
+
+<TypeTable
+  type={{
+    serverUrl: {
+      type: "string",
+      required: true,
+      description: "The server's base URL (ws:// or wss://). Trailing slashes are removed.",
+    },
+    roomName: {
+      type: "string",
+      required: true,
+      description: "The document's room, appended to serverUrl as a path segment.",
+    },
+    params: {
+      type: "Record<string, string>",
+      description: "Query parameters such as a token. Read at every dial; `replica` defaults to the document's client id.",
+    },
+    maxBackoffTime: {
+      type: "number",
+      default: "2500",
+      description: "Upper bound, in ms, of the exponential reconnect delay.",
+    },
+    disableBc: {
+      type: "boolean",
+      default: "false",
+      description: "Turn off cross-tab sync over BroadcastChannel, for both the socket and the local copy.",
+    },
+    persist: {
+      type: "boolean",
+      default: "true",
+      description: "Keep a local IndexedDB copy. Skipped where there is no indexedDB.",
+    },
+    persistName: {
+      type: "string",
+      default: '"edytor:<serverUrl>/<roomName>"',
+      description: "Name of the local copy. Also returned on the sync as sync.persistName, for clearDocument.",
+    },
+    WebSocketPolyfill: {
+      type: "typeof WebSocket",
+      description: "A WebSocket implementation for environments without a global one.",
+    },
+  }}
+/>
+
+`params` is kept by reference and read each time the provider dials, so you can refresh a short-lived token by updating the object you passed:
+
+```ts
+const params = { token: await getToken() };
+const sync = createWebsocketSync({ serverUrl, roomName, params });
+setInterval(async () => (params.token = await getToken()), 10 * 60_000);
+```
+
+Browsers cannot set headers on a WebSocket, so tokens travel in `params` (or in cookies your `authorize` reads).
+
+## Reconnects
+
+- On a lost connection the provider reconnects with exponential backoff: `100 ms × 2ⁿ`, capped at `maxBackoffTime`.
+- A connection that receives nothing for 30 seconds is treated as dead and reopened. Clients renew their presence every 15 seconds, so a healthy room is never silent that long.
+- Each (re)connection starts with a handshake in which both sides send what the other lacks. Nothing is replayed by hand and no periodic resync is needed.
+- While disconnected, other people's carets disappear; edits keep going to the local copy.
+
+## Provider events and state
+
+`createWebsocketSync` creates the provider internally. To observe it, write a sync factory around the exported `WebsocketProvider`; this one behaves like `createWebsocketSync` (socket, local copy, one channel) and reports its state:
+
+```ts
+import {
+  WebsocketProvider,
+  createIndexeddbSync,
+  type EdytorSync,
+  type EdytorSyncPayload
+} from 'edytor';
+
+export const observedSync = (
+  serverUrl: string,
+  roomName: string,
+  params: Record<string, string>,
+  onState: (state: { status: string; saved: boolean; unsaved: number }) => void
+): EdytorSync =>
+  Object.assign(
+    ({ doc, awareness, synced, failed, attach }: EdytorSyncPayload) => {
+      // The local copy carries the cross-tab channel, so the socket's is off.
+      const local = attach?.(createIndexeddbSync(`edytor:${serverUrl}/${roomName}`));
+      const provider = new WebsocketProvider(serverUrl, roomName, doc, {
+        awareness,
+        params,
+        disableBc: true
+      });
+      let status = 'connecting';
+      const report = () => onState({ status, saved: provider.saved, unsaved: provider.unsaved });
+      provider.on('status', (event) => {
+        status = event.status;
+        report();
+      });
+      provider.on('saved', report);
+      provider.on('synced', (isSynced) => isSynced && synced(provider));
+      provider.on('failed', (error) => failed?.(error, provider));
+      provider.on('permission-denied', (reason) => console.warn('denied:', reason));
+      provider.on('schema-mismatch', (detail) => console.warn('refused content', detail));
+      return () => {
+        provider.destroy();
+        return local?.();
+      };
+    },
+    { target: `websocket:${serverUrl}/${roomName}` }
+  );
+```
+
+| Event | Payload | When |
+| --- | --- | --- |
+| `status` | `{ status: 'connecting' \| 'connected' \| 'disconnected' }` | The socket's state changed. |
+| `synced` | `boolean` | This connection has (`true`) or has lost (`false`) the room's state. Resets with every connection. |
+| `saved` | `({ saved, unsaved }, provider)` | The number of local updates the room has not stored yet changed. |
+| `permission-denied` | `(reason, provider)` | The server refused a write; the edytor room sends `read-only` to read-only sockets. |
+| `schema-mismatch` | `(detail, provider)` | An update carrying a foreign schema stamp was refused and not applied. |
+| `protocol-mismatch` | `(mismatch, provider)` | A frame of another edytor generation arrived and was dropped. |
+| `failed` | `(error, provider)` | Terminal: the provider never synced (destroyed first, or denied). Emitted at most once. |
+| `connection-close`, `connection-error` | the socket event | The socket closed or errored. The provider reconnects on its own. |
+| `message-error` | `(error, provider)` | A frame could not be read or applied; it was dropped. |
+
+| Property | Description |
+| --- | --- |
+| `synced` | The current connection holds the room's state. |
+| `hasSynced`, `whenSynced` | The provider has synced at least once, and a promise for it. |
+| `saved` | `true` when the room has stored every local update. |
+| `unsaved` | How many local updates the room has not stored yet, offline edits included. |
+| `wsconnected` | The socket is open. |
+| `connect()`, `disconnect()`, `destroy()` | Control the connection. `destroy()` also announces your departure to peers. |
+
+## Saved state
+
+The edytor room stores every update in SQLite before it acknowledges it. The provider compares those acknowledgements with what this replica wrote:
+
+- `unsaved` counts local updates the room has not confirmed, including edits restored from the local copy after an offline reload.
+- `saved` is `true` once every local update is confirmed. A delete that adds no new data (undoing a block deletion, for example) stays unsaved until the room confirms that exact delete.
+- The `'saved'` event fires with `{ saved, unsaved }` whenever either changes.
+
+Use it for a "Saving… / Saved" indicator or to warn before closing a tab. A server that sends no acknowledgements (another relay, for example) leaves `unsaved` counting forever.
+
+## Refusals
+
+| What happens | Cause | What the client sees |
+| --- | --- | --- |
+| HTTP 403 before the upgrade | `authorize` returned `null`, or the replica belongs to another user. | The provider keeps retrying with backoff. |
+| `permission-denied` with `read-only` | A read-only socket sent an edit. | The socket stays open; the edit is not stored. |
+| Close `1008` `refused: <reason>` | A frame of another generation, a write under another user's client id, a foreign schema stamp, or a malformed frame. | The provider reconnects. |
+| Close `1011` | The room could not store an update. | The provider reconnects and the handshake resends the edit. |
+
+See [Authorization](/docs/server/authorization) and [the room](/docs/server/room) for the server side.

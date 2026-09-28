@@ -42,6 +42,7 @@ import {
 	type Awareness,
 	type Crdt,
 	type DocChange,
+	type DocumentActor,
 	type EdytorDoc,
 	type EdytorDocument,
 	type OrderPolicy,
@@ -126,6 +127,8 @@ export type EdytorOptions = {
 	document?: EdytorDocument;
 	doc?: YDoc;
 	awareness?: Awareness;
+	/** The local author of a view-owned document (with `document`, set it there). */
+	actor?: DocumentActor;
 	sync?: boolean;
 	value?: JSONDoc;
 	onChange?: (value: JSONBlock) => void;
@@ -329,6 +332,7 @@ export class Edytor {
 		document,
 		doc,
 		awareness,
+		actor,
 		sync,
 		value,
 		onSelectionChange,
@@ -336,9 +340,9 @@ export class Edytor {
 		onChange
 	}: EdytorOptions) {
 		if (document !== undefined) {
-			if (doc !== undefined || awareness !== undefined) {
+			if (doc !== undefined || awareness !== undefined || actor !== undefined) {
 				throw new Error(
-					'EdytorOptions: `document` cannot be combined with `doc`/`awareness` — ' +
+					'EdytorOptions: `document` cannot be combined with `doc`/`awareness`/`actor` — ' +
 						'the document owns them (compose them via attachDocument first).'
 				);
 			}
@@ -346,7 +350,7 @@ export class Edytor {
 		} else {
 			// Legacy path — the view internally owns a document composed
 			// around the injected (or a fresh) doc/awareness.
-			this.document = attachDocument(doc ?? new Y.Doc(), { awareness });
+			this.document = attachDocument(doc ?? new Y.Doc(), { awareness, actor });
 			this.ownsDocument = true;
 		}
 		this.readonly = readonly || false;

@@ -1,0 +1,290 @@
+---
+title: Blocks
+description: Define block kinds with a BlockDefinition, render them with snippets, mark chrome as void, and declare presets for menus and markdown shortcuts.
+icon: blocks
+---
+
+A block kind is a named definition in a plugin's `blocks` map. It decides the element the core renders, the markup inside it, how the kind behaves structurally, how it is created from menus, and how it is copied and pasted. For what blocks, content and children are, see [Blocks](/docs/concepts/blocks).
+
+## A block kind
+
+```svelte title="CalloutPlugin.svelte"
+<script module lang="ts">
+	import type { Plugin } from 'edytor';
+	import type { BlockSnippetPayload } from 'edytor';
+
+	export const calloutPlugin: Plugin = () => ({
+		blocks: {
+			tip: {
+				snippet: tip,
+				element: 'aside',
+				presets: [{ label: 'Tip', icon: '💡', keywords: ['hint'] }]
+			}
+		}
+	});
+</script>
+
+{#snippet tip({ content, children }: BlockSnippetPayload)}
+	<div class="tip-text">{@render content()}</div>
+	{#if children}
+		<div class="tip-children">{@render children()}</div>
+	{/if}
+{/snippet}
+```
+
+The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the snippet renders inside it. A bare snippet is shorthand for a definition with only `snippet`: `blocks: { tip }`.
+
+## Options
+
+<TypeTable
+  type={{
+    snippet: {
+      type: "Snippet<[BlockSnippetPayload]>",
+      description: "The markup inside the block element. Without one, the element renders empty. Never rendered for elements that take no content (hr, img, input, br).",
+    },
+    element: {
+      type: "string | { tag, attributes? } | ((data) => …)",
+      default: "'div'",
+      description: "The element the core renders: a tag, a tag with attributes, or a function of the block's data.",
+    },
+    viewState: {
+      type: "string[]",
+      description: "Attributes of the element the browser or the user own, such as 'open' on a details element. The editor never reverts them.",
+    },
+    rendersContent: {
+      type: "boolean",
+      default: "true",
+      description: "false for a container that renders only its children (a list). Its content slot gets no caret. A development warning fires if the snippet disagrees.",
+    },
+    defaultChild: {
+      type: "string",
+      description: "The kind a new child of this block takes: Enter inside a child, a split, an island merged out into it.",
+    },
+    void: {
+      type: "boolean",
+      default: "false",
+      description: "Not editable as a whole and never merged. Takes no children. Text it renders (a caption) stays editable.",
+    },
+    island: {
+      type: "boolean",
+      default: "false",
+      description: "Editable, but structurally sealed: nothing merges across its edge, and blocks cannot be moved in or out.",
+    },
+    presets: {
+      type: "KindPreset[]",
+      description: "One entry per way to create the kind. Feeds the slash menu, markdown shortcuts and block menus.",
+    },
+    empty: {
+      type: "{ content?, children? }",
+      description: "What a conversion into this kind replaces the block's content and children with. Without it, a conversion keeps them.",
+    },
+    html: {
+      type: "string | ((block, content, children) => string)",
+      description: "Clipboard HTML. A tag wraps the content then the children. Default: <p>content</p> then children.",
+    },
+    plain: {
+      type: "(block, content, children) => string",
+      description: "Clipboard plain text. Default: the content, then the children, one per line.",
+    },
+    parse: {
+      type: "(element: HTMLElement) => data | undefined",
+      description: "HTML import: this kind's data when a pasted element is this kind. Checked before tag matching.",
+    },
+    transformText: {
+      type: "({ text, block, content }) => JSONText[]",
+      description: "Decorate text on render (syntax highlighting). The result is never stored.",
+    },
+    onFocus: { type: "({ block }) => void", description: "The text selection entered the block." },
+    onBlur: { type: "({ block }) => void", description: "The text selection left the block, or it left a block selection." },
+    onSelect: { type: "({ block }) => void", description: "The block joined a block selection." },
+    onDeselect: { type: "({ block }) => void", description: "The block left a block selection." },
+    normalizeContent: {
+      type: "({ block }) => (() => void) | void",
+      description: "Fix the block's content at the end of an operation that rewrote it.",
+    },
+    normalizeChildren: {
+      type: "({ block }) => (() => void) | void",
+      description: "Fix the block's children at the end of an operation that changed them.",
+    },
+  }}
+/>
+
+The roles (`void`, `island`, `rendersContent`, `defaultChild`) belong to the document once an editor adopts them. Two plugins that declare different `defaultChild` values for one kind make the editor throw at creation.
+
+## The snippet payload
+
+A block snippet receives `{ block, content, children }`:
+
+<TypeTable
+  type={{
+    "block.id": { type: "string", description: "The block's id." },
+    "block.type": { type: "string", description: "The kind name." },
+    "block.data": { type: "object", description: "The block's data. Reactive." },
+    "block.selected": { type: "boolean", description: "Part of a block selection. Reactive." },
+    "block.focused": { type: "boolean", description: "Holds the caret or part of a text selection, and is not block-selected. Reactive." },
+    "block.handle": { type: "Block", description: "The block's handle, for commands and document reads. Not reactive." },
+    "block.void": { type: "action", description: "use:block.void marks an element as non-editable chrome." },
+    content: { type: "Snippet", description: "Renders the block's inline content: text, marks and inline atoms." },
+    children: { type: "Snippet | null", description: "Renders the nested blocks, or null when there are none." },
+  }}
+/>
+
+Read values from `block` in the template, they update on every change. Run commands through `block.handle`, for example `block.handle.setBlock(...)`; its getters read the document at call time and do not trigger re-renders.
+
+Render `content()` once, unless the kind declares `rendersContent: false`. Render `children()` in its own element, so nested blocks start on a new row:
+
+```svelte
+{#snippet item({ content, children }: BlockSnippetPayload)}
+	<div class="text">{@render content()}</div>
+	{#if children}
+		<div class="nested">{@render children()}</div>
+	{/if}
+{/snippet}
+```
+
+## Chrome with use:block.void
+
+Anything a snippet renders besides `content()` and `children()` is chrome: icons, headers, buttons, checkboxes. Mark it with `use:block.void` so it is non-editable and the caret never enters it:
+
+```svelte
+{#snippet section({ block, content, children }: BlockSnippetPayload)}
+	<header use:block.void>
+		<span>Section</span>
+		<button type="button" onclick={() => block.handle.removeBlock()}>Remove</button>
+	</header>
+	<div>{@render content()}</div>
+	{@render children?.()}
+{/snippet}
+```
+
+The action sets `contenteditable="false"`, `data-edytor-void="true"` and `user-select: none` on the element. Native controls inside chrome (buttons, inputs, links) keep their own clicks. The block handle of an island aligns with a direct child marked this way.
+
+## Presets
+
+A preset is one way to create the kind. Each preset becomes a row of the kind catalogue, `edytor.kinds`, which the slash menu, the markdown shortcuts plugin and block menus read.
+
+<TypeTable
+  type={{
+    label: { type: "string", required: true, description: "The menu label." },
+    icon: { type: "string", description: "A short text icon." },
+    keywords: { type: "string[]", description: "Extra search terms for menus." },
+    data: { type: "object", description: "The new block's data." },
+    markdown: { type: "string[]", description: "Prefixes that convert a block when typed at its start. The last character triggers." },
+  }}
+/>
+
+Each row gets a command id: `block.<type>`, or `block.<type>1`, `block.<type>2` and so on when the kind has several presets. The rich text heading has three presets, so its commands are `block.heading1` to `block.heading3`.
+
+Convert a block from code with `convertToKind`, or run the row's command:
+
+```ts
+import { convertToKind } from 'edytor';
+
+const row = edytor.kinds.find((kind) => kind.id === 'block.heading2');
+const block = edytor.selection.state.startBlock;
+if (row && convertToKind(edytor, block, row)) {
+	// converted
+}
+
+// Or, on the block holding the caret:
+await edytor.runCommand('block.heading2');
+```
+
+A row has the preset's fields plus `id`, `value` (the JSON the block is converted to) and `replaces` (`true` when the kind has an `empty` shape). `convertToKind` applies only to convertible blocks, those that are neither void nor island nor inside an island, and returns whether it applied. When the conversion replaces the content, the caret moves to the start of the converted block, or of its first child. For a menu of conversions that keep the text, filter out `row.replaces`.
+
+## Normalization
+
+`normalizeContent` and `normalizeChildren` run at the end of an operation's transaction, inside it, for the blocks the operation touched. `normalizeContent` runs after operations that rewrite a block's content (`setBlock`, adding or removing an inline atom, `deleteContentAtRange`, a soft line break); plain typing does not trigger it. `normalizeChildren` runs on the parents whose children changed.
+
+Write directly, or return a function: it runs in the same transaction, and the normalizer runs again on the block until it returns nothing (at most 50 more passes). The work is part of the same undo step, and peers never see the unnormalized state.
+
+## Override a snippet
+
+To change only how an existing kind renders, pass a snippet prop named `<type>Block` to `<Edytor>`. The kind keeps every other option:
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin } from 'edytor';
+	import type { BlockSnippetPayload } from 'edytor';
+</script>
+
+<Edytor plugins={[richTextPlugin]}>
+	{#snippet quoteBlock({ content, children }: BlockSnippetPayload)}
+		<div class="my-quote">{@render content()}</div>
+		{@render children?.()}
+	{/snippet}
+</Edytor>
+```
+
+The same works for marks (`<name>Mark`) and inline atoms (`<type>InlineBlock`). A kind name that is not a valid identifier, such as `todo-item`, can be passed with a spread: `<Edytor {...{ 'todo-itemBlock': todoItem }} />`, where `todoItem` is a snippet declared at the top level of your component.
+
+To replace a kind completely, define a kind with the same name in a plugin listed before the one that defines it.
+
+## Complete example: a task kind
+
+A task with a checkbox that writes `data.done`, a markdown prefix, clipboard forms, and a normalizer that keeps its text on one line:
+
+```svelte title="TaskPlugin.svelte"
+<script module lang="ts">
+	import type { Block, Plugin } from 'edytor';
+	import type { BlockSnippetPayload } from 'edytor';
+
+	const toggle = (task: Block) =>
+		task.setBlock({ value: { data: { ...task.data, done: !task.data.done } } });
+
+	export const taskPlugin: Plugin = () => ({
+		blocks: {
+			task: {
+				snippet: task,
+				element: (data) => ({ tag: 'div', attributes: { 'data-done': data.done ? 'true' : undefined } }),
+				presets: [
+					{ label: 'Task', icon: '☐', keywords: ['todo', 'check'], data: { done: false }, markdown: ['+ '] }
+				],
+				html: (block, content, children) =>
+					`<li><input type="checkbox"${block.data?.done === true ? ' checked' : ''}>${content}${children}</li>`,
+				plain: (block, content, children) =>
+					[`${block.data?.done === true ? '[x]' : '[ ]'} ${content}`, children].filter(Boolean).join('\n'),
+				parse: (element) => {
+					const box = element.querySelector<HTMLInputElement>(':scope > input[type="checkbox"]');
+					return element.localName === 'li' && box ? { done: box.checked } : undefined;
+				},
+				// A task is one line: a line break typed with Shift+Enter is removed.
+				normalizeContent: ({ block }) => {
+					const text = block.firstText;
+					const at = text?.stringContent.indexOf('\n') ?? -1;
+					if (text && at !== -1) return () => text.deleteAt(at, 1);
+				}
+			}
+		}
+	});
+</script>
+
+{#snippet task({ block, content, children }: BlockSnippetPayload)}
+	<input
+		type="checkbox"
+		checked={Boolean(block.data.done)}
+		use:block.void
+		onchange={() => toggle(block.handle)}
+	/>
+	<div class="task-text">{@render content()}</div>
+	{#if children}
+		<div class="task-children">{@render children()}</div>
+	{/if}
+{/snippet}
+```
+
+```css
+[data-edytor-type='task'] {
+	display: grid;
+	grid-template-columns: 18px minmax(0, 1fr);
+	column-gap: 8px;
+}
+[data-edytor-type='task'] > .task-text,
+[data-edytor-type='task'] > .task-children {
+	grid-column: 2;
+}
+[data-edytor-type='task'][data-done='true'] > .task-text {
+	text-decoration: line-through;
+	opacity: 0.6;
+}
+```

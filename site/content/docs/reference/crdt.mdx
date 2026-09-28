@@ -1,0 +1,96 @@
+---
+title: CRDT entry points
+description: What edytor/crdt and edytor/crdt/edytor export, what bindCrdt(Y) returns, and when you need them instead of the document API.
+icon: cpu
+---
+
+Most apps never import the CRDT engine: `createDocument`, the sync factories and the `<Edytor>` component cover documents, persistence and collaboration. Reach for these entry points when you run edytor where Svelte cannot load, manage raw CRDT documents yourself, or build your own server or provider.
+
+## Entry points
+
+| Import | Contents | Runs in |
+| --- | --- | --- |
+| `edytor` | The `<Edytor>` component, plugins, and everything in `edytor/crdt/edytor`, plus the sync factories and provider classes. | A Svelte bundler |
+| `edytor/crdt/edytor` | The document API (`createDocument`, `loadDocument`, `attachDocument`), its types, `bindCrdt`, migration, the admission checks and the protocol helpers. No Svelte. | Browser, Node, SSR, Workers |
+| `edytor/crdt` | The CRDT engine itself: edytor's fork of Yjs v14. Import it as a namespace. | Anywhere |
+| `edytor/cloudflare` | `DocumentRoom` and `routeDocumentSocket`. See [the server](/docs/server/quick-start). | Cloudflare Workers |
+
+Import the engine only through `edytor/crdt`, so your app holds exactly one engine instance.
+
+## `edytor/crdt`: the engine
+
+```ts
+import * as Y from 'edytor/crdt';
+
+const doc = new Y.Doc();
+Y.applyUpdate(doc, stored);
+const merged = Y.mergeUpdates([a, b, c]);
+const missing = Y.encodeStateAsUpdate(doc, Y.encodeStateVector(otherDoc));
+```
+
+`edytor/crdt` is edytor's own fork of Yjs v14, based on `@y/y` 14.0.0-rc.26. It is not the `yjs` package from npm: v13 documents and peers are not compatible with it (see [migration](/docs/reference/migration)), and you should not install `yjs` next to it expecting the two to share documents.
+
+**What it ships:**
+
+- documents (`Doc`), nodes, transactions and `UndoManager`;
+- the V1 and V2 update codecs: `applyUpdate`, `encodeStateAsUpdate`, `mergeUpdates`, `decodeUpdate`, `diffUpdateV2`, `encodeStateVector`, `decodeStateVector` and their V2 forms;
+- relative positions in JSON form (`createRelativePositionFromTypeIndex`, `relativePositionToJSON`, `createRelativePositionFromJSON`, `createAbsolutePositionFromRelativePosition`);
+- id sets and id maps with their codecs, and `RangeCursor`;
+- the renderer interface (`AbstractRenderer`, `$renderer`) for a renderer you write yourself.
+
+**What was pruned:** the concrete renderers, snapshots, the update logging, diffing and obfuscation helpers, the binary relative-position codec, id-set algebra beyond the basics, and the content-id helpers. Edytor never used them. A document built from an update is `new Y.Doc()` followed by `Y.applyUpdate(doc, update)`.
+
+**What was added:** undo hooks that let the document decide how deleted text comes back and keep a block a peer wrote into when its creation is undone. They are what make [concurrent undo](/docs/collaboration/concurrent-editing) behave; an `UndoManager` you create yourself over a document does not follow those rules, so use `document.history`.
+
+## `edytor/crdt/edytor`
+
+The same document surface as `edytor`, safe to import in Node, SSR and Workers:
+
+```ts
+import { createDocument, loadDocument, attachDocument, bindCrdt } from 'edytor/crdt/edytor';
+```
+
+It exports the document factories and errors, the document vocabulary types (`BlockSpec`, `Destination`, `ProjectedDoc`, `DocChange`, `OpResult`, `DocAnchor`, `JSONDoc`, …), `Awareness`, the provider and sync types, the admission checks (`assertAdmission`, `inspectAdmission`, `SchemaMismatchError`, `UnsupportedDocError`, …), `isLegacyDoc`, `bindCrdt`, and the [protocol helpers](/docs/server/protocol#exported-helpers). The document factories are already bound to the engine: you do not need `bindCrdt` to create, load or edit documents.
+
+`attachDocument(doc, options?)` builds an `EdytorDocument` around a raw CRDT document you own. It starts `pending` and never seeds; `destroy()` releases the document services but leaves your `doc` alive. Attaching the same raw document twice returns the same `EdytorDocument` (each attach needs its own `destroy()`).
+
+## `bindCrdt(Y)`
+
+`bindCrdt` binds edytor's CRDT services to an engine namespace. Use it when you need the provider classes, migration or the sync protocol on documents you manage yourself.
+
+```ts
+import * as Y from 'edytor/crdt';
+import { bindCrdt } from 'edytor/crdt/edytor';
+
+const crdt = bindCrdt(Y);
+const doc = crdt.createDoc();
+const awareness = new crdt.Awareness(doc);
+const provider = new crdt.providers.IndexeddbPersistence('notes/today', doc, { awareness });
+await provider.whenSynced;
+```
+
+| Member | Contents |
+| --- | --- |
+| `createDoc(options?)` | `new Y.Doc(options)` on the bound engine. |
+| `Awareness` | The presence class. |
+| `.doc` | The document-model layer over a raw doc: `create(doc, config?)` returns a bare facade with no history and no attribution, plus `init`, `seed`, `restore`, `isInitialized`, `schemaVersion`, `checkSchema`, `assertSchema` and the schema constants. |
+| `.providers` | `IndexeddbPersistence`, `WebsocketProvider`, `createIndexeddbSync`, `createWebsocketSync`, `clearDocument`, `storeState`. |
+| `.migration` | `migrate`, `status`, `waitForSettled`, `rollback`. See [migration](/docs/reference/migration). |
+| `.sync` | The sync protocol readers and writers, `applyRemote`, `lacks`, `writeSaved`, `readSaved`. See [the protocol](/docs/server/protocol). |
+| `.admission` | `admitUpdate(update, name?)`: decode bytes onto a scratch document, check them, and return the document, or throw. |
+| `.attribution` | The attribution service that documents attach automatically. |
+
+## When you need which
+
+| You want to | Use |
+| --- | --- |
+| Edit documents in the browser | `edytor`: `<Edytor>` and `createDocument`. |
+| Read or write documents in Node, SSR or a Worker | `edytor/crdt/edytor`: `createDocument`, `loadDocument`. |
+| Persist or sync a raw doc outside the document API | `bindCrdt(Y).providers`. |
+| Store, merge or inspect updates on a server | `edytor/crdt` (`mergeUpdates`, `encodeStateVector`, …) with `bindCrdt(Y).sync`. |
+| Run the collaboration server | `edytor/cloudflare`, or the [protocol](/docs/server/protocol) for another platform. |
+| Import v13 documents | `bindCrdt(Y).migration`. |
+
+:::warning
+Do not create an `EdytorDocument` (`createDocument`, `loadDocument`, `attachDocument`) on the document a sync server holds; it would record the server as an author. See [the protocol](/docs/server/protocol#never-attach-a-document-on-the-server).
+:::

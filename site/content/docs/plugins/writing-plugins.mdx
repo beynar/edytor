@@ -1,0 +1,246 @@
+---
+title: Writing plugins
+description: The full plugin contract, every definition field and hook with its payload, and how to type snippets in your own plugins.
+icon: wrench
+---
+
+This page lists everything a plugin can return and when each hook runs. The operation hooks, which see and can veto every edit, have their own page: [Operations](/docs/plugins/operations). For a complete plugin built from these pieces, see [Example plugin](/docs/plugins/example-plugin).
+
+## The contract
+
+```ts
+import type { Plugin } from 'edytor';
+
+export const myPlugin: Plugin = (edytor) => {
+	// Runs once, when the editor is created. Keep plugin state here.
+	return {
+		blocks: {},
+		marks: {},
+		inlineBlocks: {},
+		hotkeys: {},
+		commands: [],
+		onBeforeOperation: (change) => {},
+		onChange: (value) => {}
+	};
+};
+```
+
+### Definitions
+
+<TypeTable
+  type={{
+    blocks: {
+      type: "Record<string, BlockDefinition | Snippet>",
+      description: "Block kinds by type name. A bare snippet is shorthand for { snippet }. See Blocks.",
+      typeDescriptionLink: "/docs/customization/blocks",
+    },
+    marks: {
+      type: "Record<string, MarkDefinition | Snippet>",
+      description: "Text marks by name. A bare snippet is shorthand for { snippet }. See Marks.",
+      typeDescriptionLink: "/docs/customization/marks",
+    },
+    inlineBlocks: {
+      type: "Record<string, InlineBlockDefinition | Snippet>",
+      description: "Inline atoms by type name. See Inline blocks.",
+      typeDescriptionLink: "/docs/customization/inline-blocks",
+    },
+    hotkeys: {
+      type: "Partial<Record<HotKeyCombination, HotKey>>",
+      description: "Key bindings such as 'mod+shift+k'. See Hotkeys.",
+      typeDescriptionLink: "/docs/customization/hotkeys",
+    },
+    commands: {
+      type: "EditorCommand[]",
+      description: "Named commands. The slash menu lists them next to the block kinds.",
+    },
+    placeholder: {
+      type: "string | ((view) => string | null)",
+      description: "Text shown in empty blocks. The <Edytor> prop wins over a plugin's. See Placeholder.",
+      typeDescriptionLink: "/docs/customization/placeholder",
+    },
+  }}
+/>
+
+### Hooks
+
+<TypeTable
+  type={{
+    onBeforeOperation: {
+      type: "(change) => payload | void",
+      description: "Before every edit, on the command and each step it plans. Can veto, replace or rewrite it.",
+      typeDescriptionLink: "/docs/plugins/operations",
+    },
+    onAfterOperation: {
+      type: "(change) => void",
+      description: "Once per command, after it was written.",
+      typeDescriptionLink: "/docs/plugins/operations",
+    },
+    onChange: {
+      type: "(value: JSONBlock) => void",
+      description: "After every commit that changed the visible document.",
+    },
+    onSelectionChange: {
+      type: "(selection: EdytorSelection) => void",
+      description: "After the selection value changed.",
+    },
+    onEdytorAttached: {
+      type: "({ node }) => () => void",
+      description: "When the editor element mounts. Returns a cleanup.",
+    },
+    onBlockAttached: {
+      type: "({ node, block }) => () => void",
+      description: "When a block element mounts. Returns a cleanup.",
+    },
+    onTextAttached: {
+      type: "({ node, text }) => () => void",
+      description: "When a text segment element mounts. Returns a cleanup.",
+    },
+    onBeforeInput: {
+      type: "({ e, prevent }) => void",
+      description: "Before the editor performs a beforeinput it handles itself.",
+    },
+    onCopy: {
+      type: "({ e, prevent }) => void",
+      description: "Before the editor writes the clipboard on copy.",
+    },
+    onCut: {
+      type: "({ e, prevent }) => void",
+      description: "Before the editor writes the clipboard and deletes on cut.",
+    },
+    onPaste: {
+      type: "({ e, prevent }) => void",
+      description: "Before the editor imports external clipboard data or dropped files.",
+    },
+    onDeleteSelectedBlocks: {
+      type: "({ selectedBlocks, prevent }) => void",
+      description: "Before Backspace or Delete removes a block selection.",
+    },
+  }}
+/>
+
+## The prevent function
+
+Every hook whose payload has `prevent` can stop what the editor was about to do. Hotkeys use the same function:
+
+- `prevent()` stops the default behavior. Nothing is written.
+- `prevent(() => { ... })` stops it and runs your callback in its place.
+
+`prevent` works by throwing, so code after it in the same hook does not run. The first plugin in list order that calls it wins; later plugins are not asked. The callback runs as a command of its own: if one of its edits is refused by another plugin, that edit is skipped and the callback continues.
+
+## Lifecycle hooks
+
+`onEdytorAttached`, `onBlockAttached` and `onTextAttached` run when the element mounts and must return a cleanup function, called when it unmounts. Use them to attach listeners or third-party libraries to the DOM.
+
+```ts
+import type { Plugin } from 'edytor';
+
+export const anchorsPlugin: Plugin = () => ({
+	// Give every block element an id so it can be linked to.
+	onBlockAttached: ({ node, block }) => {
+		node.id = `block-${block.id}`;
+		return () => node.removeAttribute('id');
+	}
+});
+```
+
+- `onEdytorAttached({ node })` receives the contenteditable root. The overlay layer for your own chrome exists at this point as `edytor.overlay.layer`.
+- `onBlockAttached({ node, block })` runs once per block element. An element is re-created when its tag changes or the block moves, and the hook runs again for the new one.
+- `onTextAttached({ node, text })` runs for each text segment element, the span that holds a run of text between inline atoms.
+
+Attributes you add to a block element are left alone. Do not add or remove nodes inside the text elements: the editor restores the DOM it owns. See [Styling](/docs/customization/styling).
+
+## Change and selection hooks
+
+```ts
+import type { Plugin } from 'edytor';
+
+export const statsPlugin: Plugin = () => ({
+	onChange: (value) => {
+		// value is the whole document: { type: 'root', children: [...] }
+		localStorage.setItem('draft', JSON.stringify(value.children));
+	},
+	onSelectionChange: (selection) => {
+		console.log(selection.value.kind); // 'none' | 'text' | 'atom' | 'blocks'
+	}
+});
+```
+
+- `onChange(value)` runs after every commit that changed the visible document: local edits, remote edits and undo or redo. `value` is the full JSON export, computed only when an `onChange` consumer exists. It is the same value the `<Edytor onChange>` prop receives.
+- `onSelectionChange(selection)` runs after the selection value changed. A remote edit that only shifts where the selection is drawn does not trigger it. `selection` is the editor's `EdytorSelection`: `selection.value` is the value, `selection.state` the resolved texts and offsets.
+
+## Input and clipboard hooks
+
+These hooks receive the DOM event as `e` and a `prevent` function.
+
+**`onBeforeInput`** runs for the `beforeinput` events the editor performs itself instead of letting the browser apply them: <kbd>Enter</kbd> and <kbd>Shift</kbd> + <kbd>Enter</kbd>, deletions that are not a simple edit inside one text, the formatting input types (`formatBold` and the others that browser menus and iOS send), `insertLink`, `insertOrderedList`, `insertUnorderedList` and `insertHorizontalRule`. It runs after the key bindings and before the editor's own handling. The event's default is already prevented, so `prevent()` means nothing happens unless your callback does something. Plain typing that the browser performs is not seen here: it reaches `onBeforeOperation` as an `insertText` operation. Paste and drop do not reach this hook; use `onPaste`.
+
+**`onCopy` and `onCut`** run before the editor writes its clipboard data. `prevent()` stops the editor from writing anything and prevents the event's default; write your own data in the callback with `e.clipboardData.setData(...)`. A prevented cut also deletes nothing. Cut does not run in a readonly editor.
+
+**`onPaste`** runs after the editor checked for its own fragment format (content copied from an Edytor pastes without asking plugins), and before it imports external HTML or plain text. Pasted files reach the editor only through this hook: unclaimed files insert nothing. The hook also runs for dropped files and HTML, with an `e` that carries only `clipboardData`. A Shift-paste of plain text skips it.
+
+```ts
+import type { Plugin } from 'edytor';
+
+export const noFilesPlugin: Plugin = () => ({
+	onPaste: ({ e, prevent }) => {
+		if (e.clipboardData?.files.length) {
+			prevent(() => alert('Upload files with the media button.'));
+		}
+	}
+});
+```
+
+**`onDeleteSelectedBlocks`** runs when <kbd>Backspace</kbd> or <kbd>Delete</kbd> removes a block selection, with the blocks in document order. `prevent()` keeps them.
+
+For the clipboard formats and paste rules, see [Clipboard](/docs/editor/clipboard).
+
+## Commands
+
+`commands` adds named actions that menus can list and run. The slash menu shows every command next to the block kinds.
+
+```ts
+import type { Plugin } from 'edytor';
+
+export const todoCommandsPlugin: Plugin = () => ({
+	commands: [
+		{
+			id: 'todo.toggle',
+			label: 'Toggle to-do',
+			icon: '☑',
+			keywords: ['check', 'done'],
+			isEnabled: (edytor) => edytor.selection.state.startBlock?.type === 'todo-item',
+			run: (edytor) => {
+				const block = edytor.selection.state.startBlock;
+				block?.setBlock({ value: { data: { ...block.data, checked: !block.data.checked } } });
+			}
+		}
+	]
+});
+```
+
+<TypeTable
+  type={{
+    id: { type: "string", required: true, description: "Unique id. The first plugin to register an id wins." },
+    label: { type: "string", required: true, description: "Shown in menus." },
+    icon: { type: "string", description: "A short text icon." },
+    keywords: { type: "string[]", description: "Extra search terms." },
+    group: { type: "string", description: "A group name for menus that group commands." },
+    isEnabled: { type: "(edytor) => boolean", description: "Hide or disable the command." },
+    run: { type: "(edytor) => unknown", required: true, description: "The action. May be async." },
+  }}
+/>
+
+Run a command by id with `edytor.runCommand(id)`. Block kinds with presets generate commands too, see [Blocks](/docs/customization/blocks#presets). See also [Commands](/docs/editor/commands).
+
+## Typing snippets
+
+The package exports the payload and instance types:
+
+```ts
+import type {
+	BlockSnippetPayload,
+	MarkSnippetPayload,
+	InlineBlockSnippetPayload,
+	EdytorInstance // the editor a plugin, hotkey or `bind:edytor` receives
+} from 'edytor';
+```

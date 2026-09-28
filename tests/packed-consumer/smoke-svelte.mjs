@@ -43,6 +43,25 @@ const indexHtml = readFileSync(new URL('./svelte-app/dist/index.html', import.me
 assert.ok(indexHtml.includes('type="module"'), 'dist index.html must reference the bundle');
 console.log('    client build emitted:', distAssets.join(', '));
 
+// Plugins ship only when imported: this app uses richTextPlugin alone, so
+// the code block (CodePlugin + TanStack Highlight + code.css) must not be
+// in it. `th-code` is the code plugin's markup/CSS class; the positive
+// control below proves the marker survives minification.
+const shipped = (dir) =>
+	readdirSync(new URL(`./svelte-app/${dir}/assets/`, import.meta.url))
+		.map((file) =>
+			readFileSync(new URL(`./svelte-app/${dir}/assets/${file}`, import.meta.url), 'utf8')
+		)
+		.join('\n');
+assert.ok(!shipped('dist').includes('th-code'), 'an app without codePlugin must not ship it');
+console.log('==> svelte consumer: vite build (codePlugin entry, positive control)');
+await build({
+	root: appDir,
+	logLevel: 'warn',
+	build: { outDir: 'dist-code', emptyOutDir: true, rollupOptions: { input: 'code-entry.js' } }
+});
+assert.ok(shipped('dist-code').includes('th-code'), 'an app importing codePlugin ships it');
+
 console.log('==> svelte consumer: vite build --ssr (readonly editor render)');
 await build({
 	root: appDir,
@@ -170,7 +189,8 @@ if (!chromium) {
 		const identity = await page.evaluate(() => {
 			const s = window.__EDYTOR_PACKED_SHARED__;
 			return {
-				sameFacade: s.viewA.facade === s.document.facade && s.viewB.facade === s.document.facade,
+				// A view reads through its virtual-paragraph lens; the document underneath is one.
+				sameFacade: s.viewA.document === s.document && s.viewB.document === s.document,
 				sameAwareness:
 					s.viewA.awareness === s.document.awareness && s.viewB.awareness === s.document.awareness,
 				sameHistory:

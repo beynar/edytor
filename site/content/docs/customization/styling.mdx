@@ -1,0 +1,138 @@
+---
+title: Styling
+description: The DOM the editor renders, the stable data attributes to style it with, the overlay layer for chrome, and how to lay out nested blocks.
+icon: paintbrush
+---
+
+Edytor ships almost no visual styles: you style the document with your own CSS, through stable data attributes on the elements the core renders. This page lists those attributes, the overlay layer that holds handles and menus, and the rules to follow so styling never fights the editor.
+
+## The rendered DOM
+
+For a paragraph with bold text and a mention, followed by the overlay:
+
+```html
+<div class="my-editor" data-edytor contenteditable="true" role="textbox" aria-multiline="true">
+	<div class="rounded bg-opacity-25 p-1 my-1" data-edytor-block="true" data-edytor-id="b1" data-edytor-type="paragraph">
+		<p>
+			<span data-edytor-text="true" data-edytor-id="t:b1:0" data-edytor-text-empty="false">
+				Hello <strong data-edytor-mark="bold">world</strong>
+			</span>
+			<span data-edytor-inline-block="mention" data-edytor-id="i1" contenteditable="false">…</span>
+			<span data-edytor-text="true" data-edytor-id="t:b1:1" data-edytor-text-empty="true">​</span>
+		</p>
+	</div>
+</div>
+<div data-edytor-overlay style="position: absolute; width: 0; height: 0">…</div>
+```
+
+The block element (`div` here, with the rich text paragraph's utility classes) comes from the kind's `element`; the markup inside it (`p`) from the kind's snippet. The `class` prop of `<Edytor>` goes on the root.
+
+## Attributes
+
+| Attribute                          | On                         | Meaning                                                                  |
+| ---------------------------------- | -------------------------- | ------------------------------------------------------------------------ |
+| `data-edytor`                      | the root                   | The editable root. `contenteditable` is `false` when readonly.           |
+| `data-edytor-block="true"`         | every block element        | A block.                                                                 |
+| `data-edytor-id`                   | blocks, texts, atoms       | The block's, text segment's or atom's id.                                |
+| `data-edytor-type`                 | blocks                     | The block's kind, such as `heading` or `todo-item`.                      |
+| `data-edytor-void="true"`          | void blocks and chrome     | Non-editable: a void kind, or an element marked `use:block.void`.        |
+| `data-edytor-selected="true"`      | blocks                     | The block is part of a block selection.                                  |
+| `data-edytor-focused="true"`       | blocks                     | The caret or a text selection is in the block.                           |
+| `data-edytor-text="true"`          | text segments              | A run of editable text between inline atoms.                             |
+| `data-edytor-text-empty`           | text segments              | `"true"` when the segment has no characters.                             |
+| `data-placeholder`                 | empty text segments        | The placeholder text, see [Placeholder](/docs/customization/placeholder). |
+| `data-edytor-mark="<name>"`        | mark elements              | A mark: the mark's `tag`, or a `span` around a snippet mark.             |
+| `data-edytor-inline-block="<type>"`| inline atoms               | An atom, non-editable.                                                   |
+
+Block attributes are rendered with the element, so they are also present in server-rendered HTML. A kind's own attributes (from `element`) sit beside them, and the rich text heading renders as `<h2 data-edytor-block … data-edytor-type="heading">`.
+
+Some useful selectors:
+
+```css
+/* A kind */
+[data-edytor-type='quote'] { border-left: 3px solid currentColor; padding-left: 14px; }
+/* A kind's data, when its element exposes it */
+h2[data-edytor-type='heading'] { font-size: 1.6rem; }
+/* A mark */
+a[data-edytor-mark='link'] { color: #2383e2; }
+/* Selected blocks */
+[data-edytor-selected] { background: #e8e6df; border-radius: 3px; }
+/* The block holding the caret */
+[data-edytor-focused] { background: transparent; }
+```
+
+A block selection is exactly its members: a selected parent does not select its children. Nested blocks render inside their parent's element, so a background on a selected parent paints under its unselected children too. The demo paints them back:
+
+```css
+[data-edytor-selected] [data-edytor-block]:not([data-edytor-selected]) {
+	background: #fff;
+}
+```
+
+## Nested blocks
+
+Children render inside the parent's element, wherever the kind's snippet renders `children()`. Keep a block's own content and its children in separate elements, then lay them out in a grid so a nested block starts on a new row, in the text column:
+
+```css
+[data-edytor-type='bulleted-list-item'] {
+	list-style: none;
+	display: grid;
+	grid-template-columns: 16px minmax(0, 1fr);
+	column-gap: 10px;
+}
+[data-edytor-type='bulleted-list-item']::before {
+	content: '•';
+	text-align: center;
+}
+[data-edytor-type='bulleted-list-item'] > div {
+	grid-column: 2;
+	min-width: 0;
+}
+```
+
+The rich text list items, to-dos and callouts render their content and their children in two direct `div` children, which this rule puts in column 2. A flex row would instead place a nested block beside its parent's text.
+
+For numbered items, count with CSS counters on the editor root:
+
+```css
+[data-edytor] { counter-reset: numbered; }
+[data-edytor-type='numbered-list-item'] { counter-increment: numbered; }
+[data-edytor-type='numbered-list-item']::before { content: counter(numbered) '.'; }
+```
+
+## The overlay
+
+Chrome never lives inside the editable root. The editor adds a sibling right after it, `[data-edytor-overlay]`, an absolutely positioned, zero-size layer. Block handles, the drop indicator, the slash menu, the toolbar and collaborators' carets are rendered there and positioned against the blocks once per frame, following scrolls, resizes and edits.
+
+| Element                                | Selector                                                         |
+| -------------------------------------- | ---------------------------------------------------------------- |
+| Block handle host                      | `[data-edytor-block-handle-host]`, with `data-block-id` and `data-visible` |
+| Block handle button                    | `button.edytor-block-handle`                                     |
+| Drop indicator                         | `[data-edytor-drop-indicator]`, with `data-position` `before`, `after` or `inside` |
+| Slash menu host                        | `[data-edytor-slash-menu-host]`                                  |
+| Toolbar host                           | `[data-edytor-toolbar-host]`                                     |
+
+The layer sits at its natural place right after the root and positions chrome relative to itself, so chrome follows the editor through page and container scrolls. Since it is a sibling of the root, scope overlay styles with the overlay selector, not the root's. To override the handle's built-in styles, use a selector at least as specific as `[data-edytor-overlay] button.edytor-block-handle`.
+
+### CSS variables
+
+| Variable                          | Default   | Effect                                                            |
+| --------------------------------- | --------- | ----------------------------------------------------------------- |
+| `--edytor-drop-indicator-color`   | `#2383e2` | The drop indicator's line, elbow and dots. Read from the target block, so set it on the root or any ancestor. |
+
+```css
+[data-edytor] {
+	--edytor-drop-indicator-color: #2eaadc;
+}
+```
+
+## Style with CSS, not by mutating the DOM
+
+The editor compares the DOM it rendered with the document and restores what it owns. If a script changes the editor's DOM:
+
+- a node added inside a text segment is removed;
+- a node added beside the segments, inside a block's markup, is left alone;
+- text added inside a block's content is read as typed text and becomes part of the document;
+- attributes the core does not own, such as an `id` a plugin sets on a block element or `open` on a toggle, are never reverted.
+
+So style with CSS selectors on the attributes above, add attributes from a plugin's `onBlockAttached` if you need them, and render extra markup from a kind's snippet (marked `use:block.void`) or in the overlay. Do not insert elements into text or rewrite text nodes to decorate them; use a kind's `transformText` or a mark instead.

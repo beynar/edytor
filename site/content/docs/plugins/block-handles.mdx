@@ -1,0 +1,137 @@
+---
+title: Block handles
+description: The block handles plugin adds a drag handle beside each block, with drag and drop, keyboard moves, a drop indicator and an activation callback for block menus.
+icon: grip-vertical
+---
+
+Block handles are the six-dot buttons beside each block. Drag one to reorder, nest or outdent a block; focus one and use <kbd>Alt</kbd> with the arrow keys to move it; click one to select the block and open your own block menu. `<Edytor>` includes them by default.
+
+## Enabling and configuring
+
+The `blockHandles` prop of `<Edytor>` controls the plugin:
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin, type BlockHandleActivation } from 'edytor';
+
+	const openMenu = ({ block, anchor }: BlockHandleActivation) => {
+		console.log('open a menu for', block.id, 'next to', anchor);
+	};
+</script>
+
+<!-- Default: handles with drag and drop. -->
+<Edytor plugins={[richTextPlugin]} />
+
+<!-- No handles at all. -->
+<Edytor plugins={[richTextPlugin]} blockHandles={false} />
+
+<!-- Handles and keyboard moves, no pointer drag, and a click callback. -->
+<Edytor plugins={[richTextPlugin]} blockHandles={{ draggable: false, onActivate: openMenu }} />
+```
+
+<TypeTable
+  type={{
+    blockHandles: {
+      type: "boolean | BlockHandlesOptions",
+      default: "true",
+      description: "false omits the handles. An object configures them.",
+    },
+    draggable: {
+      type: "boolean",
+      default: "true",
+      description: "false keeps the handle and its keyboard moves, but disables pointer dragging and drop targets.",
+    },
+    onActivate: {
+      type: "({ block, anchor }: BlockHandleActivation) => void",
+      description: "Called when a handle is clicked, after the block is selected. anchor is the handle element, to position a menu against.",
+    },
+  }}
+/>
+
+The configuration is read when the editor mounts. `blockDnd={false}` is a deprecated alias of `blockHandles={false}`; `blockHandles` wins when both are set.
+
+You can also build the plugin yourself and list it in `plugins`: `blockHandlesPlugin` is the default, `createBlockHandlesPlugin(options)` takes the same options as the prop. The editor recognizes either one and does not add a second set of handles. When `blockHandles` is an object, it replaces any handle plugin in the list.
+
+## Handles
+
+A handle sits in the editor's overlay layer, left of its block, aligned with the block's first line of text. For an island block it aligns with the block's header (a direct child marked `use:block.void`, such as the code block's header), and for a void block with the top of the block. Handles follow layout changes, moves and scrolling.
+
+- A handle exists only for blocks that can move, and is hidden while the editor is readonly.
+- Handles mount lazily, for blocks within about one screen of the viewport and for blocks that are hovered, selected, focused or being dragged. Large documents do not pay for a handle per block.
+- A handle is transparent until you hover its block. On touch devices (no hover), handles are always visible.
+
+## Drag and drop
+
+Drag and drop uses Atlassian's Pragmatic drag and drop. While you drag, each block is a drop target split in three bands by the height of its own row (not its children):
+
+| Pointer position            | Drop                                |
+| --------------------------- | ----------------------------------- |
+| Top quarter                 | Before the block                    |
+| Middle                      | Inside it, as its last child        |
+| Bottom quarter              | After the block                     |
+| Left edge of a nested block (20px) | Beside its parent, one level out |
+
+Only placements the document allows are offered: when "inside" is not allowed, the block splits between before and after. A short gap between blocks keeps the last valid placement, so the indicator does not flicker.
+
+Dragging the handle of a block that is part of a block selection of siblings moves the whole group, in document order. After a drop, the moved blocks are selected. Each drop is one undo step.
+
+### The drop indicator
+
+The indicator is drawn in the overlay, not on the block, so rounded or padded block styles cannot bend it:
+
+- **Before or after**: a horizontal line with a dot at its left end. Between two siblings it is centered in the gap and spans both blocks, so hovering the bottom of one block and the top of the next shows the same line.
+- **Inside**: an elbow that starts beside the target's first line, runs down to where the new child will land, turns right to the child indent, and ends in a dot.
+
+Set its color with `--edytor-drop-indicator-color` on the editor or any ancestor of the blocks (the default is `#2383e2`):
+
+```css
+[data-edytor] {
+	--edytor-drop-indicator-color: #2eaadc;
+}
+```
+
+## Keyboard moves
+
+While a handle has focus, <kbd>Alt</kbd> with an arrow key moves its block:
+
+| Keys                           | Move                                                                 |
+| ------------------------------ | -------------------------------------------------------------------- |
+| <kbd>Alt</kbd> + <kbd>↑</kbd>    | Up: before the previous sibling, or before the parent from a first child |
+| <kbd>Alt</kbd> + <kbd>↓</kbd>    | Down: after the next sibling, or after the parent from a last child  |
+| <kbd>Alt</kbd> + <kbd>→</kbd>    | In: the last child of the previous sibling                           |
+| <kbd>Alt</kbd> + <kbd>←</kbd>    | Out: after the parent                                                |
+
+The handle claims every <kbd>Alt</kbd>+arrow while it has focus, and the moved block stays selected. To move selected blocks while the caret is in the text, see [Arrow move](/docs/plugins/arrow-move).
+
+## Building a block menu
+
+`onActivate` gives you the block and the handle element. The click has already selected the block. A typical menu converts or moves the block with the editor's commands and then returns the caret to the text:
+
+```ts
+import { convertToKind, type BlockHandleActivation } from 'edytor';
+
+const onActivate = ({ block, anchor }: BlockHandleActivation) => {
+	const { edytor } = block;
+	const rect = anchor.getBoundingClientRect();
+	// Show your menu at rect.right, rect.top, listing edytor.kinds and move actions.
+	// For example, "Turn into heading 2":
+	const row = edytor.kinds.find((kind) => kind.id === 'block.heading2');
+	if (row) convertToKind(edytor, block, row);
+	// Or "Move down":
+	if (edytor.canMoveBlocks({ blocks: [block], direction: 'down' })) {
+		edytor.moveBlocks({ blocks: [block], direction: 'down' });
+	}
+};
+```
+
+The same `edytor.moveBlocks` and `edytor.canMoveBlocks` calls move blocks from anywhere, with `direction` (`up`, `down`, `in`, `out`) or with a `target` and `position` (`before`, `after`, `inside`). See [Commands](/docs/editor/commands).
+
+A click leaves a block selection behind. To put the caret back in the block after a menu action, set it on the block's first text and focus the editor:
+
+```ts
+const text = block.firstEditableText;
+if (text) {
+	edytor.selection.setAtTextOffset(text, 0);
+	edytor.node?.focus({ preventScroll: true });
+}
+```

@@ -1,0 +1,156 @@
+---
+title: Selection
+description: Read and set the editor selection, a value that is a caret or range, one inline block, or a set of blocks, and stage pending marks.
+icon: text-cursor
+---
+
+The selection is a value stored on `edytor.selection`. It is independent from the browser's DOM selection: the editor derives it from what the user does, and draws it back into the page after each render. Read it to build toolbars and menus; set it to move the caret from code.
+
+## The selection value
+
+`edytor.selection.value` is one of four shapes:
+
+```ts
+type SelectionValue =
+	| { kind: 'none' }
+	| { kind: 'text'; anchor: DocAnchor; focus: DocAnchor; pending?: Record<string, unknown> }
+	| { kind: 'atom'; blockId: string; atomId: string; from: 'before' | 'after' }
+	| { kind: 'blocks'; ids: readonly string[] };
+```
+
+| Kind | When |
+| --- | --- |
+| `none` | Nothing is selected. |
+| `text` | A caret (anchor equals focus) or a text range, possibly across blocks. `anchor` is where it started, `focus` where it ends. |
+| `atom` | One inline block is selected, for example after clicking a mention. `from` is the side the selection was made from. |
+| `blocks` | Whole blocks are selected, for example after clicking a block handle or pressing <kbd>Mod</kbd>+<kbd>A</kbd> repeatedly. |
+
+Text anchors (`DocAnchor`) are bound to characters, not to numeric offsets. When a collaborator types before your caret, your caret stays next to the same character. They are plain JSON, so you can store or send them.
+
+The value is reactive, so `$derived(edytor.selection.value.kind)` updates with the selection.
+
+## Reading positions: `state` and `projection`
+
+Anchors are not offsets. For offsets, read one of the two views computed from the value at the current document version. Both are reactive and read-only.
+
+`selection.projection` speaks in block ids and block offsets:
+
+| Field | Meaning |
+| --- | --- |
+| `start`, `end` | `{ block, offset }` in document order, or `null`. An inline block counts as 1 in the offset. |
+| `isCollapsed`, `isReversed` | A caret; a selection made backwards. |
+| `blocks` | Ids of the blocks from start to end, in document order. For a block selection this spans the whole range; use `state.blocks` for exactly the selected blocks. |
+| `isAtStartOfBlock`, `isAtEndOfBlock`, `isAtStartOfText`, `isAtEndOfText` | Edge checks for the start point. |
+| `isTextSpanning`, `isBlockSpanning` | The range crosses text segments; crosses blocks. |
+| `islandRoot`, `voidRoot` | The id of the island or void block the selection is in, or `null`. |
+| `marks` | The marks at the caret (those of the character before it), or at the start of a range. |
+| `content` | The selected text, as a string. |
+
+`selection.state` speaks in handles, which is what handle commands take:
+
+| Field | Meaning |
+| --- | --- |
+| `startBlock`, `endBlock` | `Block` handles at each end. |
+| `startText`, `endText` | `Text` handles at each end. |
+| `yStart`, `yEnd` | Offsets inside `startText` and `endText`. |
+| `texts`, `blocks` | Every text segment and block the selection covers. For a `blocks` value, `blocks` are exactly the selected blocks. |
+| `isCollapsed`, `isReversed`, `isBlockSpanning` | As in `projection`. |
+
+```ts
+const { startText, yStart, isCollapsed } = edytor.selection.state;
+if (isCollapsed && startText) startText.insertText({ value: '→ ', start: yStart, end: yStart });
+
+const bold = edytor.selection.projection.marks.bold === true;
+```
+
+## Setting the selection
+
+The setters take handles and offsets inside a text segment:
+
+```ts
+const block = edytor.idToBlock.get('intro');
+
+// A caret at the end of the block's text.
+const text = block?.lastText;
+if (text) edytor.selection.setAtTextOffset(text, text.length);
+
+// A range over the whole block, or part of it.
+edytor.selection.setAtBlockRange(block);
+edytor.selection.setAtBlockRange(block, 0, 5);
+
+// A range between two texts, possibly in different blocks.
+edytor.selection.setAtRange(startText, 2, endText, 4, { isReversed: false });
+
+// Whole blocks; with no argument, leave block selection for a text range.
+edytor.selection.selectBlocks(blockA, blockB);
+edytor.selection.addBlockToSelection(blockC);
+edytor.selection.removeBlockFromSelection(blockA);
+```
+
+`selection.select(value)` sets any value directly. Build text anchors with `edytor.facade.anchorAt(blockId, offset, affinity)`. Bind a range start to the `'right'` and its end or a caret to the `'left'`, so text typed at the boundary stays outside the range:
+
+```ts
+const anchor = edytor.facade.anchorAt(blockId, 0, 'right');
+const focus = edytor.facade.anchorAt(blockId, 5, 'left');
+if (anchor && focus) edytor.selection.select({ kind: 'text', anchor, focus });
+
+edytor.selection.select({ kind: 'blocks', ids: [blockId] });
+edytor.selection.select({ kind: 'none' });
+```
+
+### Showing it
+
+Setters change the value immediately. The browser selection is drawn after the next render, and only when the editor has focus (or nothing else does). When you set the selection from outside the editor, such as a menu button, focus the editor too:
+
+```ts
+edytor.selection.setAtTextOffset(text, 0);
+edytor.node?.focus({ preventScroll: true });
+```
+
+## Block selection
+
+A block selection is exactly its members:
+
+- Clicking a block handle selects that block, not its children.
+- <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> from a selected block adds each block it passes, nested blocks included.
+- <kbd>Mod</kbd>+<kbd>A</kbd> selects the text of the current block, then the block, then every block in the document.
+- <kbd>Escape</kbd> leaves block selection and puts the caret at the end of the first selected block.
+- Deleting a selection removes only the selected blocks. A selected parent's unselected children move into its place (undo puts them back).
+- Copying a block selection copies only the selected blocks.
+
+Selected blocks have the `data-edytor-selected` attribute. `edytor.selection.selectedBlocks` is a reactive `Set<Block>`; `focusedBlocks` holds the blocks a text selection is in (`data-edytor-focused`).
+
+## Pending marks
+
+With a caret, formatting has nothing to apply to yet. The marks you toggle are staged on the caret as **pending marks**, and the next text typed there takes them:
+
+```ts
+edytor.selection.pending; // e.g. { bold: true, color: 'red' }, or undefined
+
+// Stage the complete set of marks the next insertion gets.
+edytor.selection.stage({ ...edytor.selection.projection.marks, italic: true });
+
+// Clear them.
+edytor.selection.stage(undefined);
+```
+
+- Pending marks are the full set the next insertion takes, values included (links, colors), not a diff.
+- Moving the caret clears them; inserting text at the caret consumes them.
+- `stage` only applies to a `text` value.
+
+With the rich text plugin, <kbd>Mod</kbd>+<kbd>B</kbd> at a caret stages bold this way. `richTextOperations(edytor).setMarkAtRange('bold')` does the same from code.
+
+## Reacting to changes
+
+`onSelectionChange` (on the component or in a plugin) runs when the value changes. A remote edit that shifts where your selection is shown does not change the value, so it does not fire:
+
+```svelte
+<Edytor
+	plugins={[richTextPlugin]}
+	onSelectionChange={(selection) => {
+		toolbarVisible = selection.value.kind === 'text' && !selection.projection.isCollapsed;
+	}}
+/>
+```
+
+Each view publishes its selection to the document's awareness, and other people's selections render as colored carets and highlights. See [Collaboration](/docs/collaboration).

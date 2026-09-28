@@ -1,0 +1,49 @@
+---
+title: Limitations
+description: What edytor does not provide, what is not finished, and the known edge cases of collaborative editing.
+icon: triangle-alert
+---
+
+Edytor's collaboration stack is proven by its test suites across Chromium, Firefox and WebKit, but it has no production track record yet. This page lists what is out of scope, what is not built, and the edge cases you may meet.
+
+## Not provided
+
+- **No hosted infrastructure.** Edytor ships the [Durable Object room](/docs/server/quick-start); you deploy and operate it on your own Cloudflare account. There is no edytor cloud.
+- **No authentication or permission rules.** No accounts, sessions, sharing model or roles. The room calls your [`authorize`](/docs/server/authorization) and enforces what it returns (user, replica, read-only), nothing more.
+- **No backups or document management.** The room stores one document in its Durable Object's SQLite storage. Listing, exporting, backing up and deleting documents are up to your application (`document.encode()` and `facade.toJSON()` give you the content).
+- **IndexedDB is not durability.** The local copy lives in the browser and can be cleared by the user or the browser. Durable storage is the room's.
+
+## Not finished
+
+- **Block suggestions.** Inline text suggestions (for AI completions) work; suggesting whole blocks does not exist yet.
+- **Reactive block data.** Block and inline block `data` is replaced as a whole value (`setBlockData`); there is no fine-grained reactive property model for it yet.
+
+## Mixed-version peers
+
+- Clients of different document generations never exchange edits: providers and the room refuse the other's frames and report `'protocol-mismatch'` or `'schema-mismatch'`. Deploy one version to every client.
+- Older clients of the **same** generation ignore the per-person delete and undo records. They show a block whose creation was undone (empty, or with another person's text); their own undo still deletes a block outright; and a text deleted by two people and undone by both can appear twice on them. A current client may also bring back text it held back after an old client deleted it, since an old client's delete carries no record.
+- Clients that predate the saved and chunk messages report them through `'message-error'` and otherwise sync small documents normally.
+- A server that never sends saved acknowledgements leaves the provider's `unsaved` count growing; one that acknowledges only state vectors leaves delete-only updates unsaved.
+
+## Offline first visit
+
+A device whose first visit to a document happens offline seeds the `value` you passed (after the readiness bound) and keeps that seed. When it reconnects, the seed merges into the room's content. Seeds are deterministic, so pass the same `value` everywhere (or none) and equal seeds merge into one; a different `value` adds its blocks next to the room's.
+
+## Known edge cases
+
+- **Undo of text deleted twice.** When two people delete the same text, it comes back only when both undo. If one of them has closed their session, their replica no longer hides a concurrent restoration, although their delete still holds back later undos.
+- **Text typed and deleted within one undo step** leaves nothing to restore.
+- **Two splits at the same position.** Both new lines exist; the text goes to one and the other stays empty.
+- **Undoing a split** joins the halves again, even if someone typed in the second half. See [concurrent editing](/docs/collaboration/concurrent-editing#undoing-a-new-block-keeps-a-peers-text).
+- **Contributors are block lineage, not authorship.** `attribution.block(id).contributors` lists who edited that block id (through splits and merges too), not who wrote the text shown now.
+- **Your own `UndoManager`.** An undo manager created directly with `new Y.UndoManager` over the document does not follow edytor's undo rules. Use `document.history`.
+- **Read-only views and `sync`.** A `readonly` view ignores its `sync` prop; attach the sync to the document.
+- **One user per browser profile.** The local copy and the cross-tab channel are shared by every tab of a profile; see [persistence](/docs/collaboration/persistence#one-user-per-browser-profile).
+
+## Size and platform limits
+
+- A single client-to-room message is capped at 32 MiB by Cloudflare. Clients do not split what they send, so an edit or offline backlog larger than that cannot be delivered. Messages from the room are chunked.
+- Document ids and user ids are at most 256 characters.
+- After a room wakes from hibernation, presence refills as clients renew it, within 15 seconds.
+- Deleted content stays in the document so undo and offline peers keep working: a withdrawn block keeps its node (about 100 bytes), and each text delete adds about 12 bytes to the stored document. Compacting the room's rows merges them; it does not drop deleted content.
+- With `lineage` enabled, history entries trimmed from a block's ring leave small tombstones in storage.

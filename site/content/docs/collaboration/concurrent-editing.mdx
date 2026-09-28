@@ -1,0 +1,116 @@
+---
+title: Concurrent editing
+description: What people see when they delete, undo, split, merge and move the same content at the same time.
+icon: git-merge
+---
+
+Edytor merges concurrent edits without conflicts, and it follows one principle when two people touch the same content: keep what nobody removed, and never duplicate what both did. This page lists the rules users run into, each with a short Alice and Bob example. "At the same time" means before either has seen the other's edit, whether because of latency or because one of them was offline.
+
+## Undo is your own
+
+Undo and redo revert only your own edits. When Alice deletes a block, Bob edits another one, and Alice undoes, her block comes back and Bob's edit stays. See [History](/docs/editor/history) for undo steps in the editor.
+
+## Concurrent deletes and undo
+
+Each person's delete of a piece of text is recorded as theirs. A character is visible only while no one's delete of it is in effect.
+
+| | Alice | Bob |
+| --- | --- | --- |
+| 1 | Deletes " world" from "hello world". | Deletes " world" from "hello world". |
+| 2 | Undoes. The text stays deleted: Bob's delete still holds. | |
+| 3 | | Undoes. " world" comes back, once. |
+
+Both see `hello` after step 2 and `hello world` after step 3, never `hello world world`.
+
+- A restoration made before a peer's concurrent delete arrived is hidden as soon as that delete arrives. It becomes part of the peer's delete, and the peer's undo brings it back.
+- Text typed and deleted within one undo step leaves no trace; no undo can bring it back.
+
+## Deleting a block keeps its children
+
+Deleting a block removes only that block. A block selection holds exactly the blocks selected: clicking a block's handle selects that block, not its children.
+
+| | Alice | Bob |
+| --- | --- | --- |
+| 1 | Selects the "Tasks" block by its handle and deletes it. | Types in "Buy milk", a child of "Tasks". |
+| 2 | "Buy milk" and its sibling take the place of "Tasks", with their own children. | Bob's typing is kept in "Buy milk". |
+| 3 | Undoes: "Tasks" returns with both children nested under it. | |
+
+To delete a whole subtree from code, pass `keepChildren: false`:
+
+```ts
+document.facade.deleteBlock('tasks', { keepChildren: false });
+```
+
+## Undoing a new block keeps a peer's text
+
+Undoing the creation of a block (inserting it, pasting it, pressing Enter at the end of a line) removes your part only. The block stays while it holds someone else's text or a child.
+
+| | Alice | Bob |
+| --- | --- | --- |
+| 1 | Presses Enter at the end of "Agenda", creating an empty line. | |
+| 2 | | Types "Budget review" in the new line. |
+| 3 | Undoes. The line stays, with Bob's "Budget review". | |
+
+This holds even when Bob's text arrives after Alice's undo. If Bob later deletes his text, the empty line goes away; Alice's redo brings her part back beside Bob's.
+
+**The exception: undoing a split.** When a line is split in two, the second half is text that moved, not text that was typed, so undoing the split joins the halves again, whoever typed in the second half:
+
+| | Alice | Bob |
+| --- | --- | --- |
+| 1 | Splits "hello world" after "hello". | |
+| 2 | | Types "!" at the end of " world". |
+| 3 | Undoes. One line: "hello world!". | |
+
+## An explicit delete wins over concurrent typing
+
+| | Alice | Bob |
+| --- | --- | --- |
+| 1 | Deletes the "Draft" block. | Types " v2" in "Draft", without having seen the delete. |
+| 2 | "Draft" is gone. | "Draft" is gone, with " v2"; Bob's caret moves to where the block was. |
+
+This applies to deletes only. Undoing a block's creation is not a delete (see above).
+
+## An emptied document shows a virtual paragraph
+
+A document can end up with no blocks, for example when two people delete its last two blocks at the same time. Each view then shows one empty paragraph with the caret in it. Nothing is written for it.
+
+| | Alice | Bob |
+| --- | --- | --- |
+| 1 | Deletes block A (a block selection). | Deletes block B, the only other block. |
+| 2 | Sees an empty paragraph; types "Hi". | Sees an empty paragraph; types "Hello". |
+| 3 | Two lines: "Hi" and "Hello". | The same two lines. |
+
+The first edit in the virtual paragraph (typing, pasting, Enter, turning it into a heading) creates a real block in the same update. Nobody writes a placeholder block for having seen an empty document, so no empty paragraphs are duplicated. A read-only view shows the virtual paragraph but cannot create it. In a view, `edytor.facade.virtual()` names it while the document is empty.
+
+## Deleting everything keeps the first block
+
+Selecting all the text and deleting it keeps the first block, emptied, with its id, type and data: a heading stays a heading.
+
+| | Alice | Bob |
+| --- | --- | --- |
+| 1 | Selects all text and deletes. | Selects all text and deletes. |
+| 2 | One empty block. | The same one empty block. |
+
+Two people clearing the document converge on one block, not two. Typing that Bob did in the first block at the same time survives in it; typing in any other block goes with that block. Each person's delete holds on its own: the first undo leaves the other's delete in effect, the second brings the document back.
+
+## Moves, splits and merges keep identity
+
+A block keeps its id and its CRDT identity when it is moved, nested, split or merged. Edits made concurrently to it land where the block, or its text, ends up.
+
+| | Alice | Bob | Both see |
+| --- | --- | --- | --- |
+| Move | Moves "Notes" to the end. | Types "!" in "Notes". | "Notes!" at the end. |
+| Same block moved twice | Nests "Notes" under "Ideas". | Moves "Notes" to the top. | One placement, chosen the same way on every replica. "Notes" is never duplicated. |
+| Split | Splits "hello world" after "hello". | Types "!" after "world". | "hello" and " world!". |
+| Merge | Joins "world" into the line above, "hello". | Types "!" after "world". | "helloworld!". |
+| Same split twice | Splits "hello world" after "hello". | Splits it at the same place. | Both new lines exist; the text goes to one and the other stays empty. |
+
+Moving a block into its own subtree is refused, and concurrent moves that would form a cycle are resolved the same way on every replica: no block becomes unreachable.
+
+## Island blocks
+
+An island block (the code plugin's code block, for example) seals its content: range deletions and merges never cross its boundary, and blocks cannot be moved into or out of it. See [the document model](/docs/concepts/document-model).
+
+## Mixed versions
+
+Clients must run compatible edytor versions. A client of another document generation is refused by the providers and the room. Older clients of the same generation ignore the per-person delete and undo records described above and fall back to plain undo; see [Limitations](/docs/reference/limitations#mixed-version-peers).

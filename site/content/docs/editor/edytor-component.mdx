@@ -1,0 +1,109 @@
+---
+title: The Edytor component
+description: Every prop of the Edytor component, with types and defaults, plus the snippet overrides for blocks, marks and inline blocks.
+icon: square-pen
+---
+
+`<Edytor>` renders one editable (or readonly) view of a document. This page lists every prop it accepts and the snippets you can pass to replace how a kind renders.
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin } from 'edytor';
+</script>
+
+<Edytor
+	plugins={[richTextPlugin]}
+	value={{ children: [{ type: 'paragraph', content: [{ text: 'Hello' }] }] }}
+	placeholder="Write something…"
+	onChange={(root) => save(root.children)}
+/>
+```
+
+## Props
+
+Most props are read once, when the component is created. Changing them later has no effect; recreate the component (for example with `{#key}`) to apply new ones. The **Live** column marks the props that follow updates.
+
+| Prop | Type | Default | Live | Description |
+| --- | --- | --- | --- | --- |
+| `plugins` | `Plugin[]` | `[]` | | Block kinds, marks, inline blocks, hotkeys and hooks. Order matters: the first definition of a type wins. See [Plugins](/docs/plugins). |
+| `value` | `JSONDoc` | `{ children: [] }` | | The initial content. Used only to seed a document that has none; an empty value seeds one paragraph. See [Document model](/docs/concepts/document-model). |
+| `document` | `EdytorDocument` | | | A document created with `createDocument`, `loadDocument` or `attachDocument`. Several views can share one. The view does not destroy it on unmount. |
+| `sync` | `EdytorSync` | | | A provider factory such as `createIndexeddbSync(name)` or `createWebsocketSync(options)`. Attached in the browser when the view is editable; the view renders once the document is ready. See [Collaboration](/docs/collaboration). |
+| `actor` | `DocumentActor` | anonymous | | The local author `{ id, name?, color? }` of the view's own document: undo lineage, per-block attribution and the presence profile peers see. Cannot be combined with `document` (set it in `createDocument`). |
+| `readonly` | `boolean` | `false` | Yes | Render the document without editing. See [Readonly mode](/docs/editor/readonly). |
+| `placeholder` | `string \| (view) => string \| null` | | | Text shown in an empty block. A function receives `{ type, data, focused, empty }` and returns the text or `null`. Falls back to the first plugin that declares a `placeholder`. |
+| `blockHandles` | `boolean \| { draggable?: boolean; onActivate?: (a) => void }` | `true` | | Show a handle beside each block. `draggable: false` keeps the handle and its keyboard moves without pointer dragging. `onActivate({ block, anchor })` runs when the handle is clicked. |
+| `blockDnd` | `boolean` | `true` | | **Deprecated.** `false` hides the handles. `blockHandles` wins when both are set. |
+| `hotKeys` | `Record<string, HotKey>` | | | Key bindings (`'mod+s'`, `'alt+shift+arrowup'`, …) checked before the plugins' and the built-in ones. See [Hotkeys](/docs/customization/hotkeys). |
+| `onChange` | `(value: JSONBlock) => void` | | | Called after every committed change, local or remote, with the document as a root block `{ type: 'root', children }`. |
+| `onSelectionChange` | `(selection: EdytorSelection) => void` | | | Called when the selection value changes. See [Selection](/docs/editor/selection). |
+| `edytor` | `Edytor` | | Bindable | The editor instance. Use `bind:edytor`. See [The editor instance](/docs/concepts/editor-instance). |
+| `class` | `string` | | Yes | Class on the editable root element. |
+| `spellcheck` | `boolean` | `true` | Yes | The root's `spellcheck` attribute. |
+| `autocorrect` | `'on' \| 'off'` | `'off'` | Yes | The root's `autocorrect` attribute. |
+| `autocomplete` | `'on' \| 'off'` | `'off'` | Yes | The root's `autocomplete` attribute. |
+| `autocapitalize` | `'off' \| 'none' \| 'on' \| 'sentences' \| 'words' \| 'characters'` | `'none'` | Yes | The root's `autocapitalize` attribute. |
+| `inputmode` | `'none' \| 'text' \| 'decimal' \| 'numeric' \| 'tel' \| 'search' \| 'email' \| 'url'` | unset | Yes | Virtual keyboard hint. Omitted from the DOM when unset. |
+| `enterkeyhint` | `'enter' \| 'done' \| 'go' \| 'next' \| 'previous' \| 'search' \| 'send'` | unset | Yes | Label of the virtual keyboard's action key. Omitted when unset. |
+| `translate` | `'yes' \| 'no'` | `'no'` | Yes | The root's `translate` attribute. `'no'` keeps page translators from rewriting the editable text. |
+| `doc` | `YDoc` | | | Advanced: build the view's own document around an existing engine document. Cannot be combined with `document`. |
+| `awareness` | `Awareness` | | | Advanced: the presence instance for the view's own document. Cannot be combined with `document`. |
+
+`value` is declared bindable, but the component never writes it back: `bind:value` does not follow edits. Read changes with `onChange` or `edytor.value`.
+
+### `document`, `sync` and `value` together
+
+- **Only `value`**: the view creates its own document, seeds it, and destroys it on unmount.
+- **`sync`**: the view creates its own document and attaches the provider. Stored or remote content wins; `value` seeds the document only when the provider has nothing, after it answered or timed out.
+- **`document`**: the view renders that document once it is ready. If the document is still waiting for content and no provider is attached to it, the editable view seeds it with `value` when it mounts. Passing `document` together with `doc`, `awareness` or `actor` throws.
+
+A readonly view never attaches `sync`: it shows `value`, or the `document` you pass.
+
+### Block handles
+
+Handles are on unless you turn them off. To open your own block menu from a handle instead of only dragging:
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin, type BlockHandleActivation } from 'edytor';
+
+	let menu = $state<{ blockId: string; anchor: HTMLElement } | null>(null);
+	const onActivate = ({ block, anchor }: BlockHandleActivation) => {
+		menu = { blockId: block.id, anchor };
+	};
+</script>
+
+<Edytor plugins={[richTextPlugin]} blockHandles={{ onActivate }} />
+```
+
+A focused handle moves its block with <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> and nests or outdents it with <kbd>Alt</kbd>+<kbd>→</kbd>/<kbd>←</kbd>. Set the drop indicator color with the `--edytor-drop-indicator-color` custom property. More in [Plugins](/docs/plugins).
+
+## Snippets
+
+Pass a snippet named `<type>Block`, `<type>Mark` or `<type>InlineBlock` to replace how one kind renders. The override replaces only the snippet: the kind's element, `void` and `island` flags, hooks and clipboard forms stay as the plugin defined them.
+
+```svelte
+<Edytor plugins={[richTextPlugin]}>
+	{#snippet quoteBlock({ block, content, children })}
+		<span class="quote-mark" contenteditable="false">“</span>
+		{@render content()}
+		{#if children}<div class="quote-children">{@render children()}</div>{/if}
+	{/snippet}
+
+	{#snippet boldMark({ content })}
+		<span class="font-semibold">{@render content()}</span>
+	{/snippet}
+</Edytor>
+```
+
+| Snippet name | Receives |
+| --- | --- |
+| `<type>Block` | `{ block, content, children }`. `block` is a reactive view (`id`, `type`, `data`, `selected`, `focused`, `handle`); render `content()` for the block's text and `children()` (or `null` when it has none) for nested blocks. |
+| `<type>Mark` | `{ content, mark, text }`. `mark` is the mark's value. The snippet renders inside a `<span data-edytor-mark>` instead of the mark's tag. |
+| `<type>InlineBlock` | `{ block }`, a reactive view with `id`, `type`, `data`, `selected` and `handle`. |
+
+The core renders the block element itself (the kind's `element`, a `div` by default), so a block snippet renders only the markup inside it. Mark non-editable chrome inside a block with `contenteditable="false"`, or with the `use:block.void` action.
+
+For a type that is not a valid identifier, such as `todo-item`, spread the snippet under its name: `<Edytor {...{ 'todo-itemBlock': todo }} />`.
+
+Content placed inside `<Edytor>` other than these snippets is ignored. To define a new kind rather than restyle one, write a plugin: see [Custom blocks](/docs/customization/blocks).

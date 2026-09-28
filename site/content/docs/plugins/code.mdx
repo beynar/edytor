@@ -1,0 +1,88 @@
+---
+title: Code
+description: The code plugin adds code blocks made of editable lines, highlighted with TanStack Highlight, with tab, auto-pairing and copy.
+icon: code
+---
+
+`codePlugin` adds code blocks. A code block is an island that holds one `codeLine` child per line of code; each line is highlighted as JSX with TanStack Highlight (`@tanstack/highlight`, a dependency of `edytor`).
+
+```svelte
+<script lang="ts">
+	import { Edytor, codePlugin, richTextPlugin } from 'edytor';
+</script>
+
+<Edytor plugins={[codePlugin, richTextPlugin]} />
+```
+
+It takes no options. Importing it also imports its stylesheet, which colors the tokens.
+
+## What it adds
+
+| Definition | Kind  | Details                                                                                          |
+| ---------- | ----- | ------------------------------------------------------------------------------------------------ |
+| `code`     | block | An island that renders only its children. Header with a language label and a Copy button.        |
+| `codeLine` | block | One line of code. The default child of `code`.                                                   |
+| `codeToken`| mark  | A highlighting token, rendered as `<span class="th-…">`. Computed on render, never stored.       |
+
+A code block has one preset, "Code", with the command id `block.code` and the markdown shortcut ` ``` ` (three backticks typed at the start of an empty block). Converting a block into a code block replaces its content with one empty line.
+
+A stored code block looks like this:
+
+```json
+{
+	"type": "code",
+	"children": [
+		{ "type": "codeLine", "content": [{ "text": "const idea = \"start somewhere\";" }] },
+		{ "type": "codeLine", "content": [{ "text": "console.log(idea);" }] }
+	]
+}
+```
+
+## Highlighting
+
+Each `codeLine` declares a `transformText` that tokenizes its text with a highlighter built from `createHighlighter({ languages: [jsx] })`. Tokens become `codeToken` marks carrying the token's class name. For `const idea = "x";` the tokenizer answers a `keyword` token, plain text, a `string` token and plain text, rendered as:
+
+```html
+<span data-edytor-mark="codeToken"><span class="th-keyword">const</span></span> idea = <span data-edytor-mark="codeToken"><span class="th-string">"x"</span></span>;
+```
+
+The tokens are decorations: they exist only in the rendered DOM, never in the document, so collaborators and the clipboard see plain text. The language is always JSX (which also covers JavaScript), and the header label reads "JavaScript".
+
+The bundled stylesheet targets `pre.th-code` and the `th-*` classes (`th-keyword`, `th-string`, `th-comment`, `th-function` and so on) with a palette made for a dark background. Override those classes to theme it.
+
+## Editing
+
+Inside a code line:
+
+| Keys                                   | Action                                                                             |
+| -------------------------------------- | ---------------------------------------------------------------------------------- |
+| <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd> | Start a new line                                                      |
+| <kbd>Tab</kbd>                         | Insert a tab character, or accept an inline suggestion                             |
+| <kbd>Mod</kbd> + <kbd>A</kbd>            | From a non-empty line, select the text of the whole code block                     |
+| <kbd>Escape</kbd>                      | Dismiss an inline suggestion                                                       |
+
+- Typing `(`, `[`, `{`, `"` or `'` at a caret also inserts the closing character.
+- A line break inside a line splits it: each code line holds exactly one line of text.
+- <kbd>Backspace</kbd> at the start of the first line and <kbd>Delete</kbd> at the end of the last line do nothing: a line never merges out of its block.
+- <kbd>Delete</kbd> at the end of the block right before a code block removes that block if it is empty, and does nothing otherwise.
+- The Copy button writes the block's text, lines joined with newlines, to the clipboard.
+
+A code block is an island: merges never cross its edge, and a block selection walked with the arrow keys does not enter it from outside. It is also not convertible, so the slash menu and markdown shortcuts do not apply inside it.
+
+## Styling
+
+The block element carries utility classes (`grid gap-2 rounded bg-neutral-600 p-1`) that only take effect if your app uses Tailwind. Style it through its attributes instead:
+
+```css
+[data-edytor-type='code'] {
+	background: #f7f7f5;
+	border-radius: 6px;
+	padding: 8px 14px;
+}
+[data-edytor-type='code'] pre.th-code {
+	color: #37352f;
+	font-size: 14px;
+}
+```
+
+The header is marked void chrome, so the caret never enters it.

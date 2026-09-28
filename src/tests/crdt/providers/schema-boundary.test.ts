@@ -211,8 +211,8 @@ class FakeWebSocket {
 		this.url = url;
 		setTimeout(() => {
 			if (this.readyState !== 0) return;
-			let room = FakeWebSocket.rooms.get(url);
-			if (!room) FakeWebSocket.rooms.set(url, (room = new Set()));
+			let room = FakeWebSocket.rooms.get(url.split('?')[0]);
+			if (!room) FakeWebSocket.rooms.set(url.split('?')[0], (room = new Set()));
 			room.add(this);
 			this.readyState = 1;
 			this.onopen?.({ type: 'open' });
@@ -221,7 +221,7 @@ class FakeWebSocket {
 
 	send(data) {
 		FakeWebSocket.sentLog.push(data.slice ? data.slice() : data);
-		const room = FakeWebSocket.rooms.get(this.url);
+		const room = FakeWebSocket.rooms.get(this.url.split('?')[0]);
 		if (!room) return;
 		const copy = data instanceof Uint8Array ? data.slice().buffer : data;
 		setTimeout(() => {
@@ -236,7 +236,7 @@ class FakeWebSocket {
 	close() {
 		if (this.readyState === 3) return;
 		this.readyState = 3;
-		FakeWebSocket.rooms.get(this.url)?.delete(this);
+		FakeWebSocket.rooms.get(this.url.split('?')[0])?.delete(this);
 		this.onclose?.({});
 	}
 }

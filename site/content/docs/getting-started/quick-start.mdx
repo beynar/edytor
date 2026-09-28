@@ -1,0 +1,178 @@
+---
+title: Quick start
+description: Build a working Edytor editor with the bundled plugins, an initial document, change handling and your own styles.
+icon: zap
+---
+
+This page builds a complete editor: rich text blocks and marks, code blocks, markdown shortcuts, a slash menu, a selection toolbar and block handles. It then reads the document as it changes and styles the result.
+
+<Steps>
+  <Step title="Pick the plugins">
+    Every block kind and mark comes from a plugin. `richTextPlugin` provides paragraphs, headings, lists, quotes, to-dos, toggles, callouts, dividers and the text marks. The others add behavior on top of it.
+  </Step>
+  <Step title="Give it a document">
+    Pass the initial content as `value`, a JSON tree of blocks.
+  </Step>
+  <Step title="Read the changes">
+    Use `onChange`, or bind the editor instance with `bind:edytor` and read `edytor.value`.
+  </Step>
+  <Step title="Style it">
+    Target the `data-edytor-*` attributes the editor renders.
+  </Step>
+</Steps>
+
+## The editor
+
+```svelte title="src/lib/Editor.svelte"
+<script lang="ts">
+	import {
+		Edytor,
+		arrowMovePlugin,
+		codePlugin,
+		markdownShortcutsPlugin,
+		richTextPlugin,
+		slashMenuPlugin,
+		toolbarPlugin,
+		type EdytorInstance,
+		type JSONBlock,
+		type JSONDoc
+	} from 'edytor';
+
+	const plugins = [
+		arrowMovePlugin,
+		codePlugin,
+		markdownShortcutsPlugin,
+		slashMenuPlugin,
+		toolbarPlugin,
+		richTextPlugin
+	];
+
+	const value: JSONDoc = {
+		children: [
+			{ type: 'heading', data: { level: 'h1' }, content: [{ text: 'Meeting notes' }] },
+			{
+				type: 'paragraph',
+				content: [
+					{ text: 'Type ' },
+					{ text: '/', marks: { code: true } },
+					{ text: ' to turn a line into another block.' }
+				]
+			},
+			{ type: 'todo-item', data: { checked: false }, content: [{ text: 'Send the recap' }] }
+		]
+	};
+
+	let edytor = $state<EdytorInstance>();
+
+	const onChange = (root: JSONBlock) => {
+		console.log('changed', root.children);
+	};
+</script>
+
+<Edytor
+	{plugins}
+	{value}
+	{onChange}
+	bind:edytor
+	class="editor"
+	placeholder={(view) => (view.focused ? "Type '/' for commands" : null)}
+/>
+```
+
+Block handles are on by default, so the editor has drag handles and the block keyboard moves without an extra plugin. Pass `blockHandles={false}` to remove them.
+
+What each plugin adds:
+
+| Plugin | Adds |
+| --- | --- |
+| `richTextPlugin` | The rich text block kinds and marks, their keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>I</kbd>, …) and HTML import rules. |
+| `codePlugin` | A `code` block (an island of `codeLine` children) with syntax highlighting. |
+| `markdownShortcutsPlugin` | Typing `# `, `- `, `1. `, `> `, `[] `, `---` or ```` ``` ```` at the start of a block converts it. |
+| `slashMenuPlugin` | A menu of block kinds, opened by typing `/`. |
+| `toolbarPlugin` | A floating toolbar over a text selection, with a button per mark that declares one. |
+| `arrowMovePlugin` | <kbd>Mod</kbd>+<kbd>↑</kbd> / <kbd>Mod</kbd>+<kbd>↓</kbd> move the selected blocks. |
+
+Plugin order matters: when two plugins define the same block kind, mark or command, the first one wins. See [Plugins](/docs/plugins).
+
+:::note
+The demo app in the repository also uses a mention plugin and an image plugin. Neither is exported from the package yet.
+:::
+
+## Read the document
+
+`onChange` receives the whole document after every committed change: local edits, remote edits and undo. Its argument is the root block, `{ type: 'root', children }`.
+
+With the instance bound, `edytor.value` returns the same JSON and is reactive, so it works in `$derived`:
+
+```svelte
+<script lang="ts">
+	// …the editor from above
+	const blockCount = $derived(edytor?.value.children?.length ?? 0);
+</script>
+
+<p>{blockCount} blocks</p>
+```
+
+`edytor.value` returns the same object until the next change. Clone it before you mutate it. Computing it serializes the whole document, so prefer `onChange` (or a debounced save) over reading it in many places.
+
+`value` is the initial content only. Updating the prop later does not replace the document, and `bind:value` is not written back. To change content after mount, use [commands](/docs/editor/commands).
+
+## Style the editor
+
+The editor renders a `div` with `data-edytor` (and your `class`). Each block is an element with data attributes you can target:
+
+| Selector | Matches |
+| --- | --- |
+| `[data-edytor]` | The editable root. |
+| `[data-edytor-block]` | Every block element. |
+| `[data-edytor-type="heading"]` | Blocks of one kind. `data-edytor-id` holds the block id. |
+| `[data-edytor-selected]` | Blocks in a block selection. |
+| `[data-edytor-focused]` | Blocks the text selection is in. |
+| `[data-edytor-void]` | Void blocks, and chrome marked non-editable. |
+| `[data-edytor-text]` | Text segments. `data-edytor-text-empty="true"` when empty. |
+| `[data-edytor-mark="bold"]` | A mark element (`<strong>`, `<em>`, `<a>`, …). |
+| `[data-edytor-inline-block]` | Inline blocks. |
+| `[data-placeholder]::before` | The placeholder of an empty block. |
+| `[data-edytor-overlay]` | The layer after the root that holds handles, menus and remote carets. |
+
+The block element's tag comes from its kind: a `heading` renders `h1`–`h3`, a `quote` renders `blockquote`, list items render `li`. A few styles to start from:
+
+```css title="src/app.css"
+.editor {
+	outline: none;
+	line-height: 1.6;
+	--edytor-drop-indicator-color: #2eaadc;
+}
+.editor p {
+	margin: 0;
+}
+.editor [data-edytor-type='quote'] {
+	border-left: 3px solid currentColor;
+	padding-left: 12px;
+}
+.editor [data-edytor-selected] {
+	background: #e8e6df;
+	border-radius: 3px;
+}
+```
+
+The placeholder is drawn by a `::before` rule the library ships, at 45% opacity. Override `[data-edytor-text][data-placeholder]::before` to restyle it.
+
+To change a kind's markup rather than its styles, override its snippet (see [the component page](/docs/editor/edytor-component#snippets)) or define your own kind in [Custom blocks](/docs/customization/blocks).
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="The Edytor component" href="/docs/editor/edytor-component" icon="square-pen">
+    Every prop, with types and defaults.
+  </Card>
+  <Card title="Editing programmatically" href="/docs/editor/commands" icon="terminal">
+    Insert text, change blocks and move them from code.
+  </Card>
+  <Card title="Collaboration" href="/docs/collaboration" icon="users">
+    Share one document between tabs, devices and people.
+  </Card>
+  <Card title="Plugins" href="/docs/plugins" icon="plug">
+    What each bundled plugin does and how to write one.
+  </Card>
+</CardGroup>

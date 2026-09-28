@@ -1,0 +1,51 @@
+---
+import CodeBlock from "blume/components/content/CodeBlock.astro";
+
+const clientCode = `<script lang="ts">
+  import { Edytor, createWebsocketSync, richTextPlugin } from "edytor";
+</script>
+
+<Edytor
+  plugins={[richTextPlugin]}
+  actor={{ id: userId, name: userName }}
+  sync={createWebsocketSync({
+    serverUrl: "wss://rooms.example.com/rooms",
+    roomName: documentId,
+    params: { token },
+  })}
+/>`;
+
+const serverCode = `import {
+  DocumentRoom, requestedReplica, routeDocumentSocket
+} from "edytor/cloudflare";
+
+export { DocumentRoom };
+
+export default {
+  fetch(request, env) {
+    const id = new URL(request.url).pathname.split("/").pop();
+    return routeDocumentSocket(request, env.ROOMS, id, async (req) => {
+      const user = await verify(req); // your auth
+      return user && { userId: user.id, replica: requestedReplica(req) };
+    });
+  },
+};`;
+---
+
+<section>
+  <div class="mx-auto max-w-2xl text-center">
+    <h2 class="text-balance font-medium text-3xl tracking-tight sm:text-5xl">
+      One component. One Worker.
+    </h2>
+    <p class="mx-auto mt-4 max-w-xl text-balance text-muted-foreground">
+      The same setup that runs the live editor above: a Svelte view and a
+      Durable Object room you deploy on your own Cloudflare account.
+    </p>
+  </div>
+  <div class="mt-12 rounded-[2rem] bg-muted/50 p-3 sm:p-8 lg:p-12">
+    <div class="grid gap-5 lg:grid-cols-2 [&_pre]:my-0! [&_pre]:h-full">
+      <CodeBlock code={clientCode} icons lang="svelte" title="Editor.svelte" />
+      <CodeBlock code={serverCode} icons lang="ts" title="worker.ts" />
+    </div>
+  </div>
+</section>

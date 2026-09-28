@@ -50,8 +50,8 @@ class FakeWebSocket {
 		this.url = url;
 		setTimeout(() => {
 			if (this.readyState !== 0) return;
-			let room = FakeWebSocket.rooms.get(url);
-			if (!room) FakeWebSocket.rooms.set(url, (room = new Set()));
+			let room = FakeWebSocket.rooms.get(url.split('?')[0]);
+			if (!room) FakeWebSocket.rooms.set(url.split('?')[0], (room = new Set()));
 			room.add(this);
 			this.readyState = 1;
 			this.onopen?.({ type: 'open' });
@@ -60,7 +60,7 @@ class FakeWebSocket {
 
 	send(data) {
 		FakeWebSocket.sentLog.push(data.slice ? data.slice() : data);
-		const room = FakeWebSocket.rooms.get(this.url);
+		const room = FakeWebSocket.rooms.get(this.url.split('?')[0]);
 		if (!room) return;
 		// Structured-clone semantics: receivers get their own bytes.
 		const copy = data instanceof Uint8Array ? data.slice().buffer : data;
@@ -76,7 +76,7 @@ class FakeWebSocket {
 	close() {
 		if (this.readyState === 3) return;
 		this.readyState = 3;
-		FakeWebSocket.rooms.get(this.url)?.delete(this);
+		FakeWebSocket.rooms.get(this.url.split('?')[0])?.delete(this);
 		this.onclose?.({});
 	}
 }
@@ -294,5 +294,24 @@ describe('SY01-WS: websocket provider over an opaque relay', () => {
 		expect(docB.get('content').getAttr('x')).toBe('a-1');
 		pA.destroy();
 		pB.destroy();
+	});
+});
+
+describe('dial url', () => {
+	test('names this replica by default; params win and are read at each dial', () => {
+		const doc = new Y.Doc();
+		const params = { token: 't1' };
+		const p = new providers.WebsocketProvider('ws://x/rooms', 'r', doc, {
+			connect: false,
+			params,
+			WebSocketPolyfill: FakeWebSocket,
+			disableBc: true
+		});
+		expect(p.url).toBe(`ws://x/rooms/r?replica=${doc.clientID}&token=t1`);
+		params.token = 't2';
+		expect(p.url).toContain('token=t2');
+		p.params = { replica: 'mine' };
+		expect(p.url).toBe('ws://x/rooms/r?replica=mine');
+		p.destroy();
 	});
 });

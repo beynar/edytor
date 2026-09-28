@@ -1,0 +1,125 @@
+---
+title: Persistence
+description: Keep documents in the browser with IndexedDB, work offline, sync open tabs, and clear the local copy.
+icon: hard-drive
+---
+
+Edytor persists documents in the browser's IndexedDB. Use `createIndexeddbSync` for a local-only document, or rely on the local copy that `createWebsocketSync` keeps by default. This page covers both, plus offline behavior and cross-tab sync.
+
+## Local-only documents
+
+`createIndexeddbSync(name)` stores the document under `name` and restores it on the next visit:
+
+```svelte
+<script lang="ts">
+  import { Edytor, createIndexeddbSync, richTextPlugin } from 'edytor';
+
+  const sync = createIndexeddbSync('notes/today');
+  const value = { children: [{ type: 'paragraph', content: [{ text: 'First note' }] }] };
+</script>
+
+<Edytor {sync} {value} plugins={[richTextPlugin]} />
+```
+
+`value` is the content of a brand-new document only. When the store already holds the document, the stored content wins and `value` is ignored. The same works without a view:
+
+```ts
+import { createDocument, createIndexeddbSync } from 'edytor';
+
+const document = createDocument();
+document.attachSync(createIndexeddbSync('notes/today'), { value });
+```
+
+Every edit is written as it happens. Past 500 stored updates, the provider writes one compacted snapshot and drops the rows it replaces. The browser database is named `edytor-v14:<name>`.
+
+## The local copy of a WebSocket document
+
+`createWebsocketSync` attaches an IndexedDB store beside the socket, so a synced document also survives reloads:
+
+```ts
+import { createWebsocketSync } from 'edytor';
+
+const sync = createWebsocketSync({
+  serverUrl: 'wss://rooms.example.com/rooms',
+  roomName: 'doc-42',
+  persistName: `${userId}:doc-42` // optional; see "One user per browser profile"
+});
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `persist` | `true` | Keep a local copy. `false` makes the sync the socket alone. |
+| `persistName` | `edytor:<serverUrl>/<roomName>` | The local store's name. Trailing slashes are removed from `serverUrl`. |
+
+Where there is no `indexedDB` (Node, Workers, SSR), the store is skipped and the sync is the socket alone.
+
+## Offline behavior
+
+- **Starting offline.** When the local copy holds the document, the document is ready at once from it, with no server. When the store is empty, the document waits for the store's answer, then for the server's answer or the readiness bound (1 s), before it seeds `value`.
+- **Editing offline.** Every edit is written to the local copy. Closing every tab loses nothing.
+- **Reconnecting.** On every connection the client and the room exchange what the other lacks, so edits made offline, including those restored from the local copy after a reload, reach the room without any replay logic on your side.
+- **Knowing it is saved.** The WebSocket provider reports when the room has stored your edits; see [saved state](/docs/collaboration/websocket#saved-state).
+
+:::warning
+A first visit made offline seeds `value` locally and keeps that seed. When the device reconnects, the seed merges into the room's content. Seeds are deterministic, so if every client seeds the same `value`, the copies merge into one; a different `value` adds its blocks next to the room's.
+:::
+
+## Cross-tab sync
+
+Tabs of the same document sync with each other over a `BroadcastChannel`, with or without a server:
+
+- `createIndexeddbSync` tabs sync through the store's channel.
+- With `createWebsocketSync`, the local store carries the channel. An edit heard from another tab is relayed to the server on this tab's socket, so an offline tab's edits are saved as soon as any tab of the room is online.
+- Without a local store (`persist: false`, or no IndexedDB), the socket provider opens the channel itself.
+
+`disableBc: true` on `createWebsocketSync` turns cross-tab sync off for both the socket and the store. Presence is shared across tabs too; a tab that closes announces its departure.
+
+## Clear the local copy
+
+`clearDocument(name)` deletes a stored document. Destroy the document (or unmount the view that owns it) first, so no provider holds the database open:
+
+```ts
+import { clearDocument, createWebsocketSync } from 'edytor';
+
+const sync = createWebsocketSync({ serverUrl, roomName: documentId });
+// ...later, at sign-out, after the editor is gone:
+if (sync.persistName) await clearDocument(sync.persistName);
+```
+
+For `createIndexeddbSync(name)`, pass the same `name`. `sync.persistName` is `undefined` when the sync keeps no local copy.
+
+## One user per browser profile
+
+IndexedDB and `BroadcastChannel` are shared by every tab of a browser profile. Treat the local copy and the channel as belonging to one user:
+
+- With the [edytor room](/docs/server/room), each CRDT client id belongs to the user who first wrote under it. A socket that delivers edits under an id another user owns is refused, and edits under an id the room has never seen are registered to whoever delivers them first.
+- If one browser profile hosts several accounts, give each user their own `persistName`, and a distinct `roomName` or `disableBc: true` so tabs of different users don't share the channel. Or clear the local copy at sign-out.
+
+## Advanced: the provider class
+
+`IndexeddbPersistence` is exported for code that manages a CRDT document itself:
+
+```ts
+import * as Y from 'edytor/crdt';
+import { bindCrdt } from 'edytor/crdt/edytor';
+
+const crdt = bindCrdt(Y);
+const doc = crdt.createDoc();
+const provider = new crdt.providers.IndexeddbPersistence('notes/today', doc, {
+  awareness: new crdt.Awareness(doc),
+  disableBc: false
+});
+provider.on('load-error', (error) => console.error(error));
+await provider.whenSynced;
+```
+
+| Event | Payload | When |
+| --- | --- | --- |
+| `synced` | `(provider)` | Stored content has been applied. |
+| `load-error` | `(error, provider)` | The store belongs to another generation or failed to load; `whenSynced` rejects. |
+| `failed` | `(error, provider)` | The provider can never sync (for example, destroyed before loading). |
+| `schema-mismatch` | `(detail, provider)` | Content with a foreign schema stamp was refused. |
+| `protocol-mismatch` | `(mismatch, provider)` | A tab of another edytor generation sent a message; it was dropped. |
+| `message-error` | `(error, provider)` | A message could not be read or a write failed. |
+
+`provider.destroy()` closes the database without deleting it. Most apps never need this class: prefer `createIndexeddbSync` with a document.

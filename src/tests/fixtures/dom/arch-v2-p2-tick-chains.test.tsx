@@ -122,6 +122,20 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 		expect(caret(edytor)).toEqual({ text: 'hel\nlo', offset: 4, isCollapsed: true });
 	});
 
+	// Coverage, not timing: jsdom cannot tell a render tick from the microtasks
+	// around it; the browser lanes pin the timing of this site.
+	test('onInput: an input-only insertion over a range replaces it and selects after', async () => {
+		const { edytor, editor } = await one('hello world');
+		const text = edytor.root!.children[0]!.firstText!;
+		edytor.selection.setAtRange(text, 0, text, 5);
+		await flushDomUpdates();
+		editor.dispatchEvent(
+			new InputEvent('input', { bubbles: true, inputType: 'insertText', data: 'X' })
+		);
+		await flushDomUpdates();
+		expect(caret(edytor)).toEqual({ text: 'X world', offset: 1, isCollapsed: true });
+	});
+
 	// Red until its site lands (P2.3 is one site per commit).
 	test.fails('edytor.clear focuses the editor in the turn', async () => {
 		const { edytor } = await one('hello');

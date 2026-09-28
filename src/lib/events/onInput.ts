@@ -195,7 +195,7 @@ const getExpandedSelectionInputText = (edytor: Edytor, event: Event) =>
 		? event.data
 		: null;
 
-const replaceExpandedSelectionFromInputOnlyText = async (edytor: Edytor, value: string) => {
+const replaceExpandedSelectionFromInputOnlyText = (edytor: Edytor, value: string) => {
 	const target = replaceSelectionWithCollapsedTarget(edytor);
 	if (!target) {
 		return false;
@@ -208,7 +208,6 @@ const replaceExpandedSelectionFromInputOnlyText = async (edytor: Edytor, value: 
 		end: target.offset
 	});
 	target.text.refreshFromModel();
-	await tick();
 	edytor.selection.setAtTextOffset(target.text, target.offset + value.length);
 	return true;
 };
@@ -303,7 +302,7 @@ export async function onInput(this: Edytor, event: Event) {
 
 		const expandedSelectionInputText = getExpandedSelectionInputText(this, event);
 		if (expandedSelectionInputText) {
-			if (await replaceExpandedSelectionFromInputOnlyText(this, expandedSelectionInputText)) {
+			if (replaceExpandedSelectionFromInputOnlyText(this, expandedSelectionInputText)) {
 				return;
 			}
 		}

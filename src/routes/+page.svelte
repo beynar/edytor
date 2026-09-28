@@ -15,6 +15,7 @@
 	import { convertToKind, type KindRow } from '$lib/kinds.js';
 	import type { BlockHandleActivation } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 	import type { Plugin } from '$lib/plugins.js';
+	import { page } from '$app/state';
 	import './demo.css';
 
 	let edytor = $state<EdytorContext>();
@@ -378,6 +379,21 @@
 			window.removeEventListener('keydown', closeOnEscape);
 		};
 	});
+
+	// `?blocks=5000`: the demo content repeated (ids stripped) to that many top-level blocks.
+	const withoutIds = ({ id: _, children, ...block }: JSONBlock): JSONBlock => ({
+		...block,
+		...(children && { children: children.map(withoutIds) })
+	});
+	const bigValue = (doc: JSONDoc, count: number): JSONDoc =>
+		count > 0
+			? {
+					children: Array.from({ length: count }, (_, i) =>
+						withoutIds(doc.children[i % doc.children.length]!)
+					)
+				}
+			: doc;
+	const initialValue = bigValue(demoValue, Number(page.url.searchParams.get('blocks')));
 </script>
 
 <svelte:head>
@@ -434,9 +450,11 @@
 					{#if isMounted}
 						<Edytor
 							{plugins}
-							value={demoValue}
+							value={initialValue}
 							class="demo-edytor"
-							blockHandles={{ onActivate: openBlockMenu }}
+							blockHandles={page.url.searchParams.get('handles') === '0'
+								? false
+								: { onActivate: openBlockMenu }}
 							placeholder={(view) => (view.focused ? "Type '/' for commands" : null)}
 							bind:edytor
 						/>

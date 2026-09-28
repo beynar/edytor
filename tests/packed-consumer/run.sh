@@ -6,6 +6,11 @@
 #   3. node smoke.js  — runtime: engine via `edytor/crdt`, the full consumer
 #      story via `edytor/crdt/edytor`, encapsulation rejects, and the
 #      no-v13-engine install audit.
+#      node smoke-worker.mjs — a room Durable Object (`worker.js`) built on
+#      `edytor/crdt` + `edytor/crdt/edytor` only: esbuild Worker bundle with
+#      no Svelte/DOM module, run in Miniflare (SQLite storage) for `/health`
+#      and one sync round trip over WebSocket upgrades. Needs the repo's
+#      `@cloudflare/vitest-plugin` devDependency (esbuild + Miniflare).
 #   4. tsc -p tsconfig.json         — node-safe surface under `nodenext`.
 #      tsc -p tsconfig.bundler.json — full surface under `bundler` (the real
 #      Svelte-consumer posture). Both strict, skipLibCheck OFF on purpose.
@@ -40,6 +45,9 @@ pnpm install --ignore-workspace 2>/dev/null || npm install --no-audit --no-fund
 
 echo "==> runtime smoke (node)"
 node smoke.js
+
+echo "==> worker smoke (Worker bundle + Miniflare Durable Object round trip)"
+node smoke-worker.mjs
 
 echo "==> svelte consumer smoke (vite build + SSR + browser mount)"
 node smoke-svelte.mjs

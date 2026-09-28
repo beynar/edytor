@@ -1,14 +1,16 @@
 /**
  * arch-v2 R7 — the truth invariant (plan §8.7 F-O10, R12; §12.5 BI2-9): after
- * a settle, every block's content equals its cell's current text, every
- * strict container (the root, text elements) holds only what the cells
- * render, and every registered element is connected — except the live
- * composition host, and read-only text divergence until the flip back.
+ * a settle, every block's content equals its cell's current text (a nonempty
+ * content its kind renders keeps its text elements), every strict container
+ * (the root, text elements) holds only what the cells render, and every
+ * registered element is connected — except the live composition host, and
+ * read-only text divergence until the flip back.
  *
- * Test-side and implementation-free: it reads the host DOM and the view's
- * cells only, never the observer. Self-contained (no imports, no closures) so
- * the browser lanes can hand it to `page.evaluate`. Returns one line per
- * divergence; empty when the host is the projection of its cells.
+ * Test-side and implementation-free: it reads the host DOM, the view's cells
+ * and the declared kind records only, never the observer. Self-contained (no
+ * imports, no closures) so the browser lanes can hand it to `page.evaluate`.
+ * Returns one line per divergence; empty when the host is the projection of
+ * its cells.
  */
 export const truthOf = (edytor: any): string[] => {
 	const out: string[] = [];
@@ -59,7 +61,15 @@ export const truthOf = (edytor: any): string[] => {
 					.map((run: { kind: string; text?: string }) => (run.kind === 'text' ? run.text : ATOM))
 					.join('')
 			);
-			// A content its kind does not display (a collapsed toggle) shows no text element.
+			// A kind that declares no content of its own (`rendersContent: false`: a list,
+			// a divider) and a void block show no text element; every other kind renders
+			// one text element per segment, so a nonempty cell with no content element in
+			// the DOM lost its text hosts (review 2026-09-29).
+			const renders =
+				edytor.blocks?.get?.(cell.type)?.rendersContent !== false &&
+				element.getAttribute('data-edytor-void') !== 'true';
+			if (!parts.length && want && renders)
+				out.push(`${id}: no text element for cell ${JSON.stringify(want)}`);
 			if (parts.length) {
 				const text = parts
 					.map((part) =>

@@ -4,7 +4,7 @@
  * Both providers speak the same enveloped protocol
  * (`protocols/envelope.ts`) — the IndexedDB provider on one
  * BroadcastChannel room per document, the websocket provider on its
- * socket (its BroadcastChannel leg is retired, D-24 G-e): the generation word,
+ * socket plus the same BroadcastChannel room (cross-tab, on by default): the generation word,
  * the message-type dispatch, the sync handler, and the awareness
  * publish/query flow are identical between them — this module is their
  * ONE owner. It owns:
@@ -30,8 +30,11 @@
  * class; the returned handle takes the provider instance on every call.
  * Real per-provider differences stay in the behavior hooks:
  *
- * - `broadcast` — ws sends room traffic on its socket; idb's on the BC
- *   channel (`roomChannel`, idb only).
+ * - `broadcast` — ws sends room traffic on its socket and the BC channel;
+ *   idb's on the BC channel (`roomChannel`).
+ * - `tabOrigin` — ws applies an update heard from another tab under its own
+ *   origin, so it can relay that update to the server (idb skips it: the
+ *   other tab stored it in the same database).
  * - `heard` — ws claims its connection's `synced` when it holds a member's
  *   state (an applied Step2, or a Step1 it covers, received on the
  *   socket); idb's `synced` is its local-hydration claim.
@@ -259,7 +262,7 @@ export type RoomProvider<P> = LifecycleHost & {
 	emit?(event: 'failed', args: [unknown, unknown]): void;
 };
 
-/** A provider that joins the BroadcastChannel room (idb). */
+/** A provider that joins the BroadcastChannel room. */
 export type BcMember = {
 	bcconnected: boolean;
 	_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
@@ -269,10 +272,12 @@ export type BcMember = {
 export type RoomBehavior<P> = {
 	/** Logical document/room name for `SchemaMismatchDetail` + errors. */
 	docName(provider: P): string;
-	/** The BroadcastChannel room the provider syncs on (idb only). */
+	/** The BroadcastChannel room the provider syncs on. */
 	roomChannel?(provider: P): string;
-	/** Provider-originated room traffic: ws sends on the socket; idb publishes on the BC channel. */
+	/** Provider-originated room traffic: ws sends on the socket and the BC channel; idb on the BC channel. */
 	broadcast(provider: P, buf: Uint8Array): void;
+	/** The transaction origin of an update heard on the BC channel (default: the provider). */
+	tabOrigin?(provider: P): unknown;
 	/** Extra dispatch entries beyond sync/query-awareness/awareness (ws: auth). */
 	handlers?: Record<number, RoomMessageHandler<P>>;
 	/**
@@ -321,7 +326,7 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 				const { applied, problem } = syncProtocol.applyRemote(
 					provider.doc,
 					decoding.readVarUint8Array(decoder),
-					provider,
+					emitSynced ? provider : (behavior.tabOrigin?.(provider) ?? provider),
 					(error) => provider.emit?.('message-error', [error, provider])
 				);
 				if (problem !== null) {
@@ -411,9 +416,15 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 		};
 	};
 
-	/** Local awareness change → room publish (`behavior.broadcast` picks the transports). */
+	/**
+	 * Awareness change → room publish (`behavior.broadcast` picks the
+	 * transports) — never a change this provider just heard: echoing a
+	 * departing peer's removal back to it makes that peer re-announce itself
+	 * (the awareness "still alive" rule), so its presence never leaves.
+	 */
 	const awarenessUpdateHandler = (provider: P) => {
-		return ({ added, updated, removed }: AwarenessUpdate, _origin: unknown): void => {
+		return ({ added, updated, removed }: AwarenessUpdate, origin: unknown): void => {
+			if (origin === provider) return;
 			const changed = added.concat(updated).concat(removed);
 			behavior.broadcast(
 				provider,
@@ -426,11 +437,16 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 
 	/**
 	 * Encode a local doc update as a sync message and broadcast it to the
-	 * room — unless the document is read-only (outbound quarantine).
+	 * room (or on `via` alone) — unless the document is read-only (outbound
+	 * quarantine).
 	 */
-	const broadcastUpdate = (provider: P, update: Uint8Array): void => {
+	const broadcastUpdate = (
+		provider: P,
+		update: Uint8Array,
+		via: (provider: P, buf: Uint8Array) => void = behavior.broadcast
+	): void => {
 		if (quarantined(provider.doc)) return;
-		behavior.broadcast(
+		via(
 			provider,
 			frame(messageSync, (e) => syncProtocol.writeUpdate(e, update))
 		);

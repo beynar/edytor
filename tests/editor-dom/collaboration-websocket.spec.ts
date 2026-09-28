@@ -113,7 +113,7 @@ const getCollabProvider = (page: Page) =>
 		}
 		return {
 			wsconnected: collab.provider.wsconnected,
-			// No BroadcastChannel leg (D-24 G-e).
+			// The cross-tab leg exists (on by default); separate contexts never share it.
 			bcLeg: 'bcconnected' in collab.provider,
 			synced: collab.provider.synced
 		};
@@ -204,9 +204,10 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 			const issuesB = trackPageIssues(pageB);
 
 			// Both providers reached `synced` through the socket handshake —
-			// the provider has no BroadcastChannel leg, so there is no other path.
-			await expectProviderState(pageA, { wsconnected: true, synced: true, bcLeg: false });
-			await expectProviderState(pageB, { wsconnected: true, synced: true, bcLeg: false });
+			// separate browser contexts share no BroadcastChannel (the cross-tab leg
+			// exists but reaches only this context's tabs), so there is no other path.
+			await expectProviderState(pageA, { wsconnected: true, synced: true, bcLeg: true });
+			await expectProviderState(pageB, { wsconnected: true, synced: true, bcLeg: true });
 
 			// Deterministic same-id seed dedupes to exactly three blocks.
 			const seed = await expectConverged(pageA, pageB);
@@ -391,6 +392,56 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 		} finally {
 			await clients?.contextA.close();
 			await clients?.contextB.close();
+			await relay.close();
+		}
+	});
+
+	test('two tabs of one browser sync over the BroadcastChannel while the server is down (cross-tab by default)', async ({
+		browser
+	}) => {
+		const relay = await startOpaqueRelay();
+		const room = roomName();
+		const context = await browser.newContext();
+		try {
+			const pageA = await context.newPage();
+			const pageB = await context.newPage();
+			const issuesA = trackPageIssues(pageA, {
+				ignoreConsoleErrors: WS_RECONNECT_NOISE,
+				ignorePageErrors: WS_RECONNECT_NOISE
+			});
+			const issuesB = trackPageIssues(pageB, {
+				ignoreConsoleErrors: WS_RECONNECT_NOISE,
+				ignorePageErrors: WS_RECONNECT_NOISE
+			});
+			await openSocketPage(pageA, room, relay);
+			await openSocketPage(pageB, room, relay);
+			await expectConverged(pageA, pageB);
+
+			// The server goes away: the tabs still reach each other.
+			await relay.stop();
+			await expectProviderState(pageA, { wsconnected: false });
+			await expectProviderState(pageB, { wsconnected: false });
+			await insertViaFacade(pageA, { blockId: 'collab-b1', offset: 0, text: 'TA>' });
+			await insertViaFacade(pageB, { blockId: 'collab-b3', offset: 0, text: 'TB>' });
+			const offline = await expectConverged(pageA, pageB);
+			expect(offline.children.map(blockText)[0]).toBe('TA>alpha');
+			expect(offline.children.map(blockText)[2]).toBe('TB>gamma');
+
+			// Back online: both reconnect and the server holds both tabs' edits.
+			await relay.start();
+			await expectProviderState(pageA, { wsconnected: true, synced: true });
+			await expectProviderState(pageB, { wsconnected: true, synced: true });
+			const pageC = await (await browser.newContext()).newPage();
+			await openSocketPage(pageC, room, relay);
+			const joined = await expectConverged(pageA, pageC);
+			expect(joined.children.map(blockText)[0]).toBe('TA>alpha');
+			expect(joined.children.map(blockText)[2]).toBe('TB>gamma');
+			await pageC.context().close();
+
+			issuesA.assertClean();
+			issuesB.assertClean();
+		} finally {
+			await context.close();
 			await relay.close();
 		}
 	});

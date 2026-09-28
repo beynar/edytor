@@ -7,9 +7,15 @@
  * `connect()`/`disconnect()`, awareness injection, auth `params` (read at
  * every dial, so a refreshed token reaches the next connection),
  * `WebSocketPolyfill`, exponential-backoff reconnect (`maxBackoffTime`),
- * liveness, and `resyncInterval`. Retired: `protocols`, the `sync` alias,
- * `wsconnecting`, and the BroadcastChannel leg with `disableBc` (cross-tab
- * sync is the IndexedDB provider's).
+ * liveness, `resyncInterval`, and the BroadcastChannel leg (cross-tab
+ * sync, on by default; `disableBc` opts out). Retired: `protocols`, the
+ * `sync` alias, `wsconnecting`.
+ *
+ * Cross-tab: tabs of one room share a BroadcastChannel named after the
+ * server URL and room, so they sync with each other with or without the
+ * socket. An update heard from another tab is relayed to the server on
+ * this tab's socket (never back to the channel): an offline tab's edits
+ * reach the server as soon as any tab of the room is online.
  *
  * The generation gate (`protocols/envelope.ts`, R13): every websocket
  * frame is tagged `varuint GENERATION | messageType | payload`. Inbound
@@ -32,6 +38,7 @@
  * re-sends a Step1 on the live socket for harnesses that drop frames
  * there (TCP never does).
  */
+import * as bc from 'lib0-v14/broadcastchannel';
 import * as time from 'lib0-v14/time';
 import * as decoding from 'lib0-v14/decoding';
 import { ObservableV2 } from 'lib0-v14/observable';
@@ -111,6 +118,8 @@ export type WebsocketProviderOptions = {
 	resyncInterval?: number;
 	/** Max reconnect backoff (exponential backoff is used). */
 	maxBackoffTime?: number;
+	/** Opt out of cross-tab sync over the BroadcastChannel (on by default). */
+	disableBc?: boolean;
 };
 
 export type WebsocketProviderApi = InstanceType<
@@ -125,10 +134,16 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 
 	type Provider = WebsocketProvider;
 
-	/** Room traffic goes out on the socket while it is open. */
+	/** Traffic for the server goes out on the socket while it is open. */
 	const send = (provider: Provider, buf: Uint8Array) => {
 		const ws = provider.ws;
 		if (provider.wsconnected && ws && ws.readyState === ws.OPEN) ws.send(buf);
+	};
+
+	/** Room traffic goes to the server and to the other tabs. */
+	const broadcast = (provider: Provider, buf: Uint8Array) => {
+		send(provider, buf);
+		if (provider.bcconnected) bc.publish(provider.bcChannel, buf, provider);
 	};
 
 	/**
@@ -138,7 +153,9 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 	 */
 	const room = bindRoomProtocol<Provider>(syncProtocol, {
 		docName: (provider) => provider.roomname,
-		broadcast: send,
+		roomChannel: (provider) => provider.bcChannel,
+		broadcast,
+		tabOrigin: (provider) => provider._fromTab,
 		handlers: {
 			[messageAuth]: (_encoder, decoder, provider) => {
 				const authType = readAuthMessage(decoder, provider.doc, (_ydoc, reason) => {
@@ -263,6 +280,13 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		shouldConnect: boolean;
 		ws: WebSocket | null = null;
 		wsconnected = false;
+		/** The BroadcastChannel room shared by this room's tabs. */
+		bcChannel: string;
+		bcconnected = false;
+		disableBc: boolean;
+		_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
+		/** The transaction origin of updates heard from another tab. */
+		_fromTab = {};
 		wsUnsuccessfulReconnects = 0;
 		wsLastMessageReceived = 0;
 		_synced = false;
@@ -298,12 +322,15 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				params = {},
 				WebSocketPolyfill = WebSocket as unknown as WebsocketPolyfill,
 				resyncInterval = 0,
-				maxBackoffTime = 2500
+				maxBackoffTime = 2500,
+				disableBc = false
 			}: WebsocketProviderOptions = {}
 		) {
 			super();
 			this.serverUrl = serverUrl.replace(/\/+$/, '');
 			this.roomname = roomname;
+			this.bcChannel = this.serverUrl + '/' + roomname;
+			this.disableBc = disableBc;
 			this.doc = doc;
 			this.awareness = awareness;
 			this.params = params;
@@ -314,11 +341,12 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			if (resyncInterval > 0) {
 				this._resync = setInterval(() => send(this, room.step1(this)), resyncInterval);
 			}
-			// Local doc updates go to the room (`broadcastUpdate` quarantines
-			// a read-only document).
+			this._bcSubscriber = room.bcSubscriber(this);
+			// Local doc updates go to the room; another tab's go to the server
+			// only (`broadcastUpdate` quarantines a read-only document).
 			this._updateHandler = (update, origin) => {
 				if (origin === this) return;
-				room.broadcastUpdate(this, update);
+				room.broadcastUpdate(this, update, origin === this._fromTab ? send : broadcast);
 				this._track();
 			};
 			// What the doc already holds is unsaved until the room covers it.
@@ -406,17 +434,16 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 
 		disconnect(): void {
 			this.shouldConnect = false;
-			if (this.ws !== null) {
-				// The departure announcement, then the socket closes.
-				send(this, room.goodbye(this));
-				closeWebsocketConnection(this, this.ws, null);
-			}
+			// The departure announcement (socket and tabs), then both close.
+			if (this.ws !== null || this.bcconnected) room.disconnectBc(this);
+			if (this.ws !== null) closeWebsocketConnection(this, this.ws, null);
 		}
 
 		connect(): void {
 			this.shouldConnect = true;
 			if (!this.wsconnected && this.ws === null) {
 				setupWS(this);
+				if (!this.disableBc) room.connectBc(this);
 			}
 		}
 	}

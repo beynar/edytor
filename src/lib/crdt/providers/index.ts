@@ -48,7 +48,7 @@ export type IndexeddbSyncOptions = {
 
 /**
  * The factory-owned provider always dials (D-24 G-e retired `connect`,
- * `protocols`, `resyncInterval` and `disableBc` here).
+ * `protocols` and `resyncInterval` here). Cross-tab sync is on by default.
  */
 export type WebsocketSyncOptions = {
 	serverUrl: string;
@@ -57,6 +57,8 @@ export type WebsocketSyncOptions = {
 	params?: Record<string, string>;
 	WebSocketPolyfill?: import('./websocket.js').WebsocketPolyfill;
 	maxBackoffTime?: number;
+	/** Opt out of cross-tab sync over the BroadcastChannel (on by default). */
+	disableBc?: boolean;
 };
 
 export type ProviderStack = ReturnType<typeof bindProviders>;
@@ -80,12 +82,14 @@ export const bindProviders = (Y: EngineApi) => {
 	const createWebsocketSync = (options: WebsocketSyncOptions): EdytorSync =>
 		Object.assign(
 			({ doc, awareness, synced, failed }: EdytorSyncPayload) => {
-				const { serverUrl, roomName, params, WebSocketPolyfill, maxBackoffTime } = options;
+				const { serverUrl, roomName, params, WebSocketPolyfill, maxBackoffTime, disableBc } =
+					options;
 				const provider = new ws.WebsocketProvider(serverUrl, roomName, doc, {
 					awareness,
 					params,
 					WebSocketPolyfill,
-					maxBackoffTime
+					maxBackoffTime,
+					disableBc
 				});
 				provider.on('synced', (isSynced) => {
 					if (isSynced) synced(provider);

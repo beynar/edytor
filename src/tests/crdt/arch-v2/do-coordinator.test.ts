@@ -520,7 +520,9 @@ const connect = (document, room: string) =>
 		crdt.providers.createWebsocketSync({
 			serverUrl: SERVER,
 			roomName: room,
-			WebSocketPolyfill: ClientSocket
+			WebSocketPolyfill: ClientSocket,
+			// Each client stands for another machine: no cross-tab channel between them.
+			disableBc: true
 		})
 	);
 

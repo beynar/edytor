@@ -268,9 +268,10 @@ test.describe('three-client collaboration over a real websocket relay', () => {
 			const issuesC = trackPageIssues(pageC);
 
 			// All three providers reached `synced` through the socket handshake —
-			// the provider has no BroadcastChannel leg, so there is no other path.
+			// separate browser contexts share no BroadcastChannel (the cross-tab leg
+			// exists but reaches only this context's tabs), so there is no other path.
 			for (const page of [pageA, pageB, pageC]) {
-				await expectProviderState(page, { wsconnected: true, synced: true, bcLeg: false });
+				await expectProviderState(page, { wsconnected: true, synced: true, bcLeg: true });
 			}
 			expect(relay.socketCount(room)).toBe(3);
 

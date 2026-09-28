@@ -550,6 +550,9 @@ describe('room Durable Object — the shipped headless client path', () => {
 			expect(shape(b.facade.toJSON())).toEqual(expected);
 		});
 		expect(b.facade.toJSON()).toEqual(a.facade.toJSON());
+		// The room stored both edits (the clients may converge with each other first,
+		// over the cross-tab channel they share in this isolate).
+		await vi.waitFor(async () => expect(shape(await serverJSON(room))).toEqual(expected));
 
 		b.awareness.setLocalStateField('user', { name: 'Bob' });
 		await vi.waitFor(() =>

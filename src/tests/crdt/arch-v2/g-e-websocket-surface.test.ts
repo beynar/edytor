@@ -15,11 +15,13 @@
  *
  * Retired (no docs, demo or test consumer for real behavior): the
  * `protocols` option, the `sync` alias of `synced`, the `wsconnecting`
- * flag (the `status` event carries it), the provider's BroadcastChannel
- * leg with `disableBc` (every consumer switched it off; cross-tab sync is
- * the IndexedDB provider's), and on `createWebsocketSync` the `connect`,
+ * flag (the `status` event carries it), and on `createWebsocketSync` the `connect`,
  * `protocols` and `resyncInterval` options (a factory-owned provider with
  * `connect: false` could never be connected).
+ *
+ * Restored after G-e: the BroadcastChannel leg (cross-tab sync, on by
+ * default, `disableBc` opts out), with a relay of other tabs' edits to the
+ * server.
  *
  * Expectations come from the plan row (§7.3 G-e) and the retained-surface
  * list, never from provider output.
@@ -279,8 +281,8 @@ describe('G-e retired surface (D-24)', () => {
 		p.destroy();
 	});
 
-	it('no BroadcastChannel leg: two same-room providers with no socket do not sync in-process', async () => {
-		// A socket that never opens: only a BroadcastChannel could carry the edit.
+	it('cross-tab by default: two same-room providers with no socket sync over the BroadcastChannel', async () => {
+		// A socket that never opens: only the BroadcastChannel can carry the edit.
 		class Silent extends Relay {
 			constructor(...args) {
 				super(...args);
@@ -293,10 +295,98 @@ describe('G-e retired surface (D-24)', () => {
 		const a = new ws.WebsocketProvider(url, 'room', docA, { WebSocketPolyfill: Silent });
 		const b = new ws.WebsocketProvider(url, 'room', docB, { WebSocketPolyfill: Silent });
 		docA.get('content').setAttr('k', 'from-a');
+		await until(() => docB.get('content').getAttr('k') === 'from-a', 1000);
+		a.destroy();
+		b.destroy();
+	});
+
+	it("a leaving tab's presence leaves the other tab (no re-announce from an echoed removal)", async () => {
+		class Silent extends Relay {
+			constructor(...args) {
+				super(...args);
+				this.readyState = 2;
+			}
+		}
+		const url = uniqueUrl();
+		const docA = new Y.Doc();
+		const docB = new Y.Doc();
+		const awarenessA = new Awareness(docA);
+		const awarenessB = new Awareness(docB);
+		const a = new ws.WebsocketProvider(url, 'room', docA, {
+			WebSocketPolyfill: Silent,
+			awareness: awarenessA
+		});
+		const b = new ws.WebsocketProvider(url, 'room', docB, {
+			WebSocketPolyfill: Silent,
+			awareness: awarenessB
+		});
+		awarenessB.setLocalStateField('user', { name: 'Bob' });
+		await until(() => awarenessA.getStates().get(docB.clientID)?.user?.name === 'Bob', 1000);
+		b.destroy();
+		await wait(100);
+		expect(awarenessA.getStates().has(docB.clientID)).toBe(false);
+		a.destroy();
+	});
+
+	it("IndexedDB tabs: a leaving tab's presence leaves the other tab", async () => {
+		const name = `g-e-idb-${counter++}`;
+		const docA = new Y.Doc();
+		const docB = new Y.Doc();
+		const awarenessA = new Awareness(docA);
+		const awarenessB = new Awareness(docB);
+		const a = new providers.IndexeddbPersistence(name, docA, { awareness: awarenessA });
+		const b = new providers.IndexeddbPersistence(name, docB, { awareness: awarenessB });
+		await Promise.all([a.whenSynced, b.whenSynced]);
+		awarenessB.setLocalStateField('user', { name: 'Bob' });
+		await until(() => awarenessA.getStates().get(docB.clientID)?.user?.name === 'Bob', 1000);
+		await b.destroy();
+		await wait(100);
+		expect(awarenessA.getStates().has(docB.clientID)).toBe(false);
+		await a.destroy();
+	});
+
+	it('disableBc opts out: same-room providers with no socket do not sync in-process', async () => {
+		class Silent extends Relay {
+			constructor(...args) {
+				super(...args);
+				this.readyState = 2;
+			}
+		}
+		const url = uniqueUrl();
+		const docA = new Y.Doc();
+		const docB = new Y.Doc();
+		const opts = { WebSocketPolyfill: Silent, disableBc: true };
+		const a = new ws.WebsocketProvider(url, 'room', docA, opts);
+		const b = new ws.WebsocketProvider(url, 'room', docB, opts);
+		docA.get('content').setAttr('k', 'from-a');
 		await wait(150);
 		expect(docB.get('content').getAttr('k')).toBeUndefined();
-		expect('bcconnected' in a).toBe(false);
-		expect('disableBc' in a).toBe(false);
+		a.destroy();
+		b.destroy();
+	});
+
+	it("another tab's edit is relayed to the server on this tab's socket, not echoed to the channel", async () => {
+		// Tab A has no socket (offline); tab B is online. A's edit reaches B over the
+		// channel, and B sends it to the server.
+		class Silent extends Relay {
+			constructor(...args) {
+				super(...args);
+				this.readyState = 2;
+			}
+		}
+		const url = uniqueUrl();
+		const docA = new Y.Doc();
+		const docB = new Y.Doc();
+		const a = new ws.WebsocketProvider(url, 'room', docA, { WebSocketPolyfill: Silent });
+		const b = new ws.WebsocketProvider(url, 'room', docB, { WebSocketPolyfill: Relay });
+		await until(() => b.wsconnected, 1000);
+		const [socket] = socketsOf(url).filter((s) => s.readyState === 1);
+		const before = socket.sent.length;
+		docA.get('content').setAttr('k', 'offline-edit');
+		await until(() => docB.get('content').getAttr('k') === 'offline-edit', 1000);
+		await until(() => socket.sent.length > before, 1000);
+		const relayed = socket.sent.slice(before).map(frameOf);
+		expect(relayed.some((f) => f.type === 0 && f.syncType === 2)).toBe(true);
 		a.destroy();
 		b.destroy();
 	});

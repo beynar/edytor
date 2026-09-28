@@ -22,7 +22,7 @@
  */
 import { SvelteMap, createSubscriber } from 'svelte/reactivity';
 import type { BlockId, ContentRun, DocChange, ProjectedBlock } from '../crdt/index.js';
-import type { JSONText } from '../utils/json.js';
+import { sameIds, type JSONText } from '../utils/json.js';
 
 type Data = Readonly<Record<string, unknown>> | undefined;
 
@@ -70,9 +70,6 @@ const cellOf = (node: ProjectedBlock): Cell =>
 		childIds: Object.freeze(node.children.map((child) => child.id)),
 		runs: node.content
 	});
-
-const sameIds = (a: readonly BlockId[], b: readonly BlockId[]) =>
-	a.length === b.length && a.every((id, i) => id === b[i]);
 
 /**
  * The cells of `source`'s visible tree, patched from each of its change

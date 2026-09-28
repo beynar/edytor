@@ -96,7 +96,7 @@ import {
 	TYPE
 } from '../schema.js';
 import { walkIdSetStructs, type IdSetLike, type StoreStruct } from '../structs.js';
-import { cloneJsonSafe } from '../../utils/json.js';
+import { cloneJsonSafe, sameIds } from '../../utils/json.js';
 
 /**
  * One visible run of a block — the maintained form of `ContentItem`.
@@ -971,8 +971,6 @@ export const bindRuns = (Y: EngineApi) => {
 				return JSON.stringify(cloneJsonSafe(v ?? null));
 			}
 		};
-		const sameIds = (a: readonly BlockId[], b: readonly BlockId[]): boolean =>
-			a.length === b.length && a.every((id, i) => id === b[i]);
 
 		/** Build the commit's report and advance the published index to it. */
 		const report = (): IndexReport | null => {
@@ -1104,7 +1102,7 @@ export const bindRuns = (Y: EngineApi) => {
 							marks?: Record<string, unknown>;
 						} = { text: r.text };
 						if (r.marks !== undefined) {
-							out.marks = JSON.parse(JSON.stringify(r.marks)) as Record<string, unknown>;
+							out.marks = cloneJsonSafe(r.marks);
 						}
 						return out;
 					}
@@ -1114,7 +1112,7 @@ export const bindRuns = (Y: EngineApi) => {
 					return {
 						id: inl.id,
 						type: inl.type,
-						data: inl.data === undefined ? {} : (JSON.parse(JSON.stringify(inl.data)) as unknown)
+						data: inl.data === undefined ? {} : cloneJsonSafe(inl.data)
 					};
 				}),
 			view: (tr?: unknown): ModelView => {

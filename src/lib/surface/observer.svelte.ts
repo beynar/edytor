@@ -39,9 +39,9 @@ import type { DocAnchor, YTransaction } from '../crdt/index.js';
 import type { Edytor } from '../edytor.svelte.js';
 import type { Text } from '../text/text.svelte.js';
 import { diffText } from '../utils/diffText.js';
+import { jsonEquals } from '../utils/json.js';
 import { activeMarks } from '../session/editing/text.js';
 import { INTENTS } from '../session/attempt.js';
-import { jsonValuesEqual } from '../collaboration/awarenessSelection.js';
 import {
 	getCollapsedDomTextSelection,
 	handleNativeLineBreakTextValue,
@@ -884,7 +884,7 @@ export const adopt = async (
 	// A deletion of uniformly marked text keeps its marks pending.
 	const removed = insert ? [] : text.getMarksAtRange(at, at + remove);
 	const marks = activeMarks(removed[0]?.marks);
-	const same = removed.every((part) => jsonValuesEqual(activeMarks(part.marks), marks));
+	const same = removed.every((part) => jsonEquals(activeMarks(part.marks), marks));
 	edytor.dispatcher.run(attempt?.inputType || (insert ? 'insertText' : 'deleteContent'), () =>
 		insert
 			? text.insertText({ value: insert, start: at, end: at + remove })

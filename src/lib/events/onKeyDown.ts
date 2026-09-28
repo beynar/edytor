@@ -9,20 +9,7 @@ import {
 } from './nativeInteractiveControl.js';
 import { replaceSelectedAtom } from '$lib/session/bindings.js';
 import { admitKeyAttempt } from './onBeforeInput.js';
-
-const getRootSelection = (node: HTMLElement) => {
-	const root = node.getRootNode();
-	if (
-		typeof ShadowRoot !== 'undefined' &&
-		root instanceof ShadowRoot &&
-		'getSelection' in root &&
-		typeof root.getSelection === 'function'
-	) {
-		return root.getSelection() as Selection | null;
-	}
-
-	return window.getSelection();
-};
+import { getDomSelection } from '$lib/selection/domSelection.js';
 
 const isEventFromEditor = (edytor: Edytor, event: KeyboardEvent) => {
 	if (!edytor.node) {
@@ -68,7 +55,7 @@ const isEventFromEditor = (edytor: Edytor, event: KeyboardEvent) => {
 		return true;
 	}
 
-	const selection = getRootSelection(edytor.node);
+	const selection = getDomSelection(edytor.node);
 	return Boolean(
 		selection?.anchorNode &&
 		(edytor.node.contains(selection.anchorNode) ||
@@ -228,7 +215,7 @@ const isBackspaceFromTrailingNewlineMarker = (edytor: Edytor) => {
 		return false;
 	}
 
-	const selection = getRootSelection(startText.node);
+	const selection = getDomSelection(startText.node);
 	const anchorNode = selection?.anchorNode;
 	return Boolean(anchorNode && isInsideTrailingNewlineMarker(anchorNode));
 };

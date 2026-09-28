@@ -1,18 +1,14 @@
-import { mount, unmount } from 'svelte';
-
 import type { Plugin } from '$lib/plugins.js';
 import Toolbar from './Toolbar.svelte';
 import { ToolbarController } from './ToolbarController.svelte.js';
 
 export const toolbarPlugin: Plugin = (edytor) => {
 	const controller = new ToolbarController(edytor);
-	let toolbarHost: HTMLDivElement | null = null;
 
 	/** Above the selection, kept in the viewport; run by the overlay's frame (R11). */
-	const positionToolbar = () => {
-		const host = toolbarHost;
+	const positionToolbar = (host: HTMLElement) => {
 		const editor = edytor.node;
-		if (!host || !editor || !controller.isVisible) return;
+		if (!editor || !controller.isVisible) return;
 		const view = editor.ownerDocument.defaultView;
 		const selection = editor.ownerDocument.getSelection();
 		if (!view || !selection?.rangeCount || !editor.contains(selection.anchorNode)) return;
@@ -37,26 +33,7 @@ export const toolbarPlugin: Plugin = (edytor) => {
 			controller.updateFromSelection(selection);
 			schedulePosition();
 		},
-		onEdytorAttached: ({ node }) => {
-			const host = node.ownerDocument.createElement('div');
-			host.dataset.edytorToolbarHost = 'true';
-			host.style.position = 'fixed';
-			host.style.zIndex = '60';
-			edytor.overlay.layer?.append(host);
-			toolbarHost = host;
-
-			const component = mount(Toolbar, {
-				target: host,
-				props: { controller }
-			});
-			const off = edytor.overlay.add(() => positionToolbar);
-
-			return () => {
-				off();
-				toolbarHost = null;
-				unmount(component);
-				host.remove();
-			};
-		}
+		onEdytorAttached: () =>
+			edytor.overlay.mount(Toolbar, { controller }, 'edytor-toolbar-host', 60, positionToolbar)
 	};
 };

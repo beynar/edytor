@@ -2,6 +2,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { TextAnchor } from '$lib/selection/selection.svelte.js';
 import type { PresenceSelection } from '$lib/session/selection.js';
+import { isRecord, jsonEquals } from '$lib/utils/json.js';
 
 /**
  * Presence (L10, R1): one entry per view key, `selections[viewKey] =
@@ -60,40 +61,6 @@ type AwarenessLike = {
 	setLocalState: (state: Record<string, unknown> | null) => void;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === 'object' && value !== null;
-
-/**
- * JSON-value structural equality — the presence write's dedupe compare
- * (also used for mark sets). Mirrors stringify equivalence without
- * serializing: object key order is ignored and `undefined`-valued keys are
- * skipped, so two payloads compare equal exactly when peers could not tell
- * the resulting states apart.
- */
-export const jsonValuesEqual = (a: unknown, b: unknown): boolean => {
-	if (a === b) {
-		return true;
-	}
-	if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) {
-		return false;
-	}
-	if (Array.isArray(a) || Array.isArray(b)) {
-		return (
-			Array.isArray(a) &&
-			Array.isArray(b) &&
-			a.length === b.length &&
-			a.every((value, index) => jsonValuesEqual(value, (b as unknown[])[index]))
-		);
-	}
-	const aEntries = Object.entries(a).filter(([, value]) => value !== undefined);
-	const bRecord = b as Record<string, unknown>;
-	const bKeys = Object.keys(bRecord).filter((key) => bRecord[key] !== undefined);
-	return (
-		aEntries.length === bKeys.length &&
-		aEntries.every(([key, value]) => jsonValuesEqual(value, bRecord[key]))
-	);
-};
-
 let presenceKeys = 0;
 /** A client-local presence key, minted once by the view that owns the entry. */
 export const mintPresenceKey = (): string => `view-${++presenceKeys}`;
@@ -122,7 +89,7 @@ export const publishPresence = (
 	if (
 		payload === null
 			? previous === undefined
-			: previous !== undefined && jsonValuesEqual({ ...previous, t: undefined }, payload)
+			: previous !== undefined && jsonEquals({ ...previous, t: undefined }, payload)
 	) {
 		return;
 	}

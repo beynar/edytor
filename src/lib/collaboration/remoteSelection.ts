@@ -6,6 +6,7 @@ import {
 	type PresencePoint
 } from './awarenessSelection.js';
 import { domPointOf } from '$lib/surface/projector.svelte.js';
+import { isRecord } from '$lib/utils/json.js';
 
 export type RemoteSelectionRect = {
 	left: number;
@@ -29,9 +30,6 @@ type DomPoint = {
 };
 
 const DEFAULT_REMOTE_COLOR = '#2563eb';
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === 'object' && value !== null;
 
 const normalizeColor = (value: unknown) =>
 	typeof value === 'string' && /^#[0-9a-f]{3,8}$/i.test(value.trim())

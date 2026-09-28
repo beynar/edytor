@@ -16,6 +16,7 @@
  */
 import type { BlockId, ContentItem } from '$lib/crdt/index.js';
 import type { DocAnchor, EdytorDoc } from '$lib/crdt/edytor-doc.js';
+import { jsonEquals } from '$lib/utils/json.js';
 
 export type Marks = Record<string, unknown>;
 
@@ -342,8 +343,7 @@ const sameAnchor = (a: DocAnchor, b: DocAnchor) =>
 		a.a.a === b.a.a &&
 		(a.a.i === b.a.i || (a.a.i?.c === b.a.i?.c && a.a.i?.k === b.a.i?.k)));
 
-const sameMarks = (a: Marks | undefined, b: Marks | undefined) =>
-	a === b || JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+const sameMarks = (a: Marks | undefined, b: Marks | undefined) => jsonEquals(a ?? null, b ?? null);
 
 /** Value equality: kind, anchors (item + side), ids, pending marks. */
 export const sameValue = (a: SelectionValue, b: SelectionValue): boolean => {

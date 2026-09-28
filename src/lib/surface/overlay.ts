@@ -10,6 +10,7 @@
  * origin, so positions are layer-relative and follow the host through page
  * and container scrolls) and return their writes, which run after every read.
  */
+import { mount, unmount, type Component } from 'svelte';
 
 /** Reads layout with the layer's origin; returns the writes to apply after every read. */
 export type Measure = (origin: DOMRect) => (() => void) | void;
@@ -44,6 +45,30 @@ export class Overlay {
 		if (!origin) return;
 		const writes = Array.from(this.#measures, (measure) => measure(origin));
 		for (const write of writes) write?.();
+	};
+
+	/**
+	 * Mount `component` in a fixed host of the layer (`data-<name>`), placed by
+	 * `place` on every invalidated frame; answers the teardown.
+	 */
+	mount = <Props extends Record<string, unknown>>(
+		component: Component<Props>,
+		props: Props,
+		name: string,
+		zIndex: number,
+		place: (host: HTMLElement) => void
+	) => {
+		const host = (this.layer?.ownerDocument ?? document).createElement('div');
+		host.setAttribute(`data-${name}`, 'true');
+		host.style.cssText = `position: fixed; z-index: ${zIndex}`;
+		this.layer?.append(host);
+		const instance = mount(component, { target: host, props });
+		const off = this.add(() => () => place(host));
+		return () => {
+			off();
+			void unmount(instance);
+			host.remove();
+		};
 	};
 
 	/** Create the layer after `host`; invalidated by resizes and by scrolls of any container. */

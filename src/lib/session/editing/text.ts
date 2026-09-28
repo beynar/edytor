@@ -9,9 +9,8 @@
  * after → each mark record's edge policy (O69), which reads the admitted
  * edge side (R4) and never the DOM.
  */
-import { jsonValuesEqual as same } from '$lib/collaboration/awarenessSelection.js';
 import type { Text } from '$lib/text/text.svelte.js';
-import type { JSONText, SerializableContent } from '$lib/utils/json.js';
+import { jsonEquals as same, type JSONText, type SerializableContent } from '$lib/utils/json.js';
 
 /**
  * R4: at a collapsed caret, whether the DOM point lay inside the mark

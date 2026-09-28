@@ -307,17 +307,27 @@ export const sanitizeWireJson = <T>(value: T): T => {
 	return walk(cloneJson(value)) as T;
 };
 
+/** A non-null object (a record to read fields from). */
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === 'object' && value !== null;
+
+/** Two id lists hold the same ids in the same order. */
+export const sameIds = (a: readonly string[], b: readonly string[]): boolean =>
+	a.length === b.length && a.every((id, i) => id === b[i]);
+
 /**
- * Order-insensitive JSON structural equality — the same-value guard
- * of attr writes (`setIfChanged`). Total: non-JSON values compare `false`
+ * Order-insensitive JSON structural equality: the same-value guard of attr
+ * writes (`setIfChanged`), the presence dedupe and mark-set compares. Mirrors
+ * stringify equivalence without serializing: key order is ignored and
+ * `undefined`-valued keys are skipped. Total: non-JSON values compare `false`
  * rather than throwing.
  */
 export const jsonEquals = (a: unknown, b: unknown): boolean => {
 	if (a === b) return true;
-	if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+	if (!isRecord(a) || !isRecord(b)) return false;
 	if (Array.isArray(a) !== Array.isArray(b)) return false;
 	if (Array.isArray(a)) {
-		const bb = b as unknown[];
+		const bb = b as unknown as unknown[];
 		return a.length === bb.length && a.every((x, i) => jsonEquals(x, bb[i]));
 	}
 	// Non-plain-object leaves (Date, engine nodes, class instances — only
@@ -329,11 +339,9 @@ export const jsonEquals = (a: unknown, b: unknown): boolean => {
 	if ((ap !== Object.prototype && ap !== null) || (bp !== Object.prototype && bp !== null)) {
 		return false;
 	}
-	const ao = a as Record<string, unknown>;
-	const bo = b as Record<string, unknown>;
-	const ak = Object.keys(ao);
-	if (ak.length !== Object.keys(bo).length) return false;
-	return ak.every((k) => jsonEquals(ao[k], bo[k]));
+	const keys = (o: Record<string, unknown>) => Object.keys(o).filter((k) => o[k] !== undefined);
+	const ak = keys(a);
+	return ak.length === keys(b).length && ak.every((k) => jsonEquals(a[k], b[k]));
 };
 
 /**

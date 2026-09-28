@@ -1,12 +1,8 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
-import type { SerializableContent } from '$lib/utils/json.js';
+import { isRecord, type SerializableContent } from '$lib/utils/json.js';
 import { richTextOperations, type RichTextMark } from '$lib/plugins/richtext/richTextOperations.js';
-
-const isRecord = (
-	value: SerializableContent | undefined
-): value is Record<string, SerializableContent> => typeof value === 'object' && value !== null;
 
 const getLinkHref = (value: SerializableContent | undefined) => {
 	if (!isRecord(value)) {

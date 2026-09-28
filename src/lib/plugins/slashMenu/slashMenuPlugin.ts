@@ -1,5 +1,3 @@
-import { mount, unmount } from 'svelte';
-
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import type { Text } from '$lib/text/text.svelte.js';
@@ -8,13 +6,11 @@ import { SlashMenuController } from './SlashMenuController.svelte.js';
 
 export const slashMenuPlugin: Plugin = (edytor) => {
 	const controller = new SlashMenuController(edytor);
-	let menuHost: HTMLDivElement | null = null;
 
 	/** Beside the caret, kept in the viewport; run by the overlay's frame (R11). */
-	const positionMenu = () => {
-		const host = menuHost;
+	const positionMenu = (host: HTMLElement) => {
 		const editor = edytor.node;
-		if (!host || !editor || !controller.isOpen) return;
+		if (!editor || !controller.isOpen) return;
 		const view = editor.ownerDocument.defaultView;
 		if (!view) return;
 		const selection = editor.ownerDocument.getSelection();
@@ -81,26 +77,7 @@ export const slashMenuPlugin: Plugin = (edytor) => {
 			controller.reconcileSelection();
 			schedulePosition();
 		},
-		onEdytorAttached: ({ node }) => {
-			const host = node.ownerDocument.createElement('div');
-			host.dataset.edytorSlashMenuHost = 'true';
-			host.style.position = 'fixed';
-			host.style.zIndex = '50';
-			edytor.overlay.layer?.append(host);
-			menuHost = host;
-
-			const component = mount(SlashMenu, {
-				target: host,
-				props: { controller }
-			});
-			const off = edytor.overlay.add(() => positionMenu);
-
-			return () => {
-				off();
-				menuHost = null;
-				unmount(component);
-				host.remove();
-			};
-		}
+		onEdytorAttached: () =>
+			edytor.overlay.mount(SlashMenu, { controller }, 'edytor-slash-menu-host', 50, positionMenu)
 	};
 };

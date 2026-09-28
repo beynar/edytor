@@ -7,7 +7,7 @@
  *    never rendered. The legacy mirror is gone (D-16); the one
  *    validated-winner helper is what a peer renders.
  *  - S12: presence dedupe compared `JSON.stringify` snapshots per
- *    publish; the structural `jsonValuesEqual` compare must agree
+ *    publish; the structural `jsonEquals` compare must agree
  *    with stringify semantics on the cases that matter (key order is
  *    not a difference, `undefined`-valued keys are invisible).
  */
@@ -15,14 +15,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { createDocument, type EdytorDocument } from '../../lib/crdt/index.js';
 import {
 	freshestPublishedSelection,
-	jsonValuesEqual,
 	normalizeAwarenessSelection,
 	publishPresence
 } from '../../lib/collaboration/awarenessSelection.js';
 import { Edytor } from '../../lib/edytor.svelte.js';
 import { serialize } from '../../lib/session/selection.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
-import type { JSONDoc } from '../../lib/utils/json.js';
+import { jsonEquals, type JSONDoc } from '../../lib/utils/json.js';
 
 const docValue = (text = 'shared'): JSONDoc => ({
 	children: [{ type: 'paragraph', content: [{ text }] }]
@@ -149,25 +148,25 @@ describe('normalizeAwarenessSelection — the shared validity gate', () => {
 	});
 });
 
-describe('S12 — jsonValuesEqual matches stringify semantics where they matter', () => {
+describe('S12 — jsonEquals matches stringify semantics where they matter', () => {
 	it('treats key order and undefined-valued keys as no difference', () => {
-		expect(jsonValuesEqual({ a: 1, b: 2 }, { b: 2, a: 1 })).toBe(true);
-		expect(jsonValuesEqual({ a: 1, b: undefined }, { a: 1 })).toBe(true);
-		expect(jsonValuesEqual({ a: 1 }, { a: 1, b: 2 })).toBe(false);
-		expect(jsonValuesEqual({ a: 1 }, { a: 2 })).toBe(false);
-		expect(jsonValuesEqual({ a: null }, {})).toBe(false); // null is a real JSON value
+		expect(jsonEquals({ a: 1, b: 2 }, { b: 2, a: 1 })).toBe(true);
+		expect(jsonEquals({ a: 1, b: undefined }, { a: 1 })).toBe(true);
+		expect(jsonEquals({ a: 1 }, { a: 1, b: 2 })).toBe(false);
+		expect(jsonEquals({ a: 1 }, { a: 2 })).toBe(false);
+		expect(jsonEquals({ a: null }, {})).toBe(false); // null is a real JSON value
 	});
 
 	it('compares nested structures and arrays deeply', () => {
 		expect(
-			jsonValuesEqual(
+			jsonEquals(
 				{ b: 'blk', a: { i: { c: 3, k: 7 }, a: -1 } },
 				{ a: { a: -1, i: { k: 7, c: 3 } }, b: 'blk' }
 			)
 		).toBe(true);
-		expect(jsonValuesEqual([1, [2, { x: 'y' }]], [1, [2, { x: 'y' }]])).toBe(true);
-		expect(jsonValuesEqual([1, 2], [2, 1])).toBe(false);
-		expect(jsonValuesEqual({ a: { i: null } }, { a: {} })).toBe(false);
+		expect(jsonEquals([1, [2, { x: 'y' }]], [1, [2, { x: 'y' }]])).toBe(true);
+		expect(jsonEquals([1, 2], [2, 1])).toBe(false);
+		expect(jsonEquals({ a: { i: null } }, { a: {} })).toBe(false);
 	});
 
 	it('publish dedupe still holds — identical republish does not broadcast', () => {

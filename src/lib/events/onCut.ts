@@ -12,7 +12,10 @@ import {
 } from '$lib/selection/replaceSelection.js';
 import { isNestedForeignEditableTarget } from './nativeInteractiveControl.js';
 
-const deleteSelectedContent = (edytor: Edytor) => replaceSelectionWithCollapsedTarget(edytor);
+const deleteSelectedContent = (edytor: Edytor) => {
+	const target = replaceSelectionWithCollapsedTarget(edytor);
+	if (target) edytor.selection.setAtTextOffset(target.text, target.offset);
+};
 
 export async function onCut(this: Edytor, e: ClipboardEvent) {
 	if (this.readonly || this.selection.state.isVoidEditableElement) {

@@ -11,9 +11,9 @@ const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: Attemp
 	Boolean(snapshot.startText && edytor.composition.covers(snapshot.startText, snapshot.yStart));
 
 /** A non-collapsed selection: the document's range deletion, then its caret (`del.range.*`). */
-const deleteSelectedRange = async (edytor: Edytor, snapshot: Attempt) => {
+const deleteSelectedRange = (edytor: Edytor, snapshot: Attempt) => {
 	const [text, offset] = edytor.deleteContentWithinSelection({ selection: snapshot }) ?? [];
-	if (text) await edytor.selection.setAtTextOffset(text, offset!);
+	if (text) edytor.selection.setAtTextOffset(text, offset!);
 };
 
 const deleteContentForward = async (edytor: Edytor, snapshot: Attempt) => {
@@ -23,14 +23,14 @@ const deleteContentForward = async (edytor: Edytor, snapshot: Attempt) => {
 	}
 
 	if (isForwardDeleteInsideActiveComposition(edytor, snapshot)) {
-		await edytor.selection.setAtTextOffset(startText, yStart);
+		edytor.selection.setAtTextOffset(startText, yStart);
 		return;
 	}
 
 	if (snapshot.isAtEndOfBlock) {
 		const currentBlock = startText.parent;
 		if (currentBlock.definition.void) {
-			await edytor.selection.setAtTextOffset(startText, yStart);
+			edytor.selection.setAtTextOffset(startText, yStart);
 			return;
 		}
 
@@ -42,27 +42,27 @@ const deleteContentForward = async (edytor: Edytor, snapshot: Attempt) => {
 
 		currentBlock.mergeBlockForward();
 		edytor.attempts.caret(startText, yStart);
-		await edytor.selection.setAtTextOffset(startText, yStart);
+		edytor.selection.setAtTextOffset(startText, yStart);
 		return;
 	}
 
 	if (snapshot.isAtEndOfText) {
 		const index = startText.parent.content.indexOf(startText) + 1;
 		startText.parent.removeInlineBlock({ index });
-		await edytor.selection.setAtTextOffset(startText, yStart);
+		edytor.selection.setAtTextOffset(startText, yStart);
 		return;
 	}
 
 	startText.deleteText({ direction: 'FORWARD', length: 1 });
 	await tick();
-	await edytor.selection.setAtTextOffset(startText, yStart);
+	edytor.selection.setAtTextOffset(startText, yStart);
 };
 
 const deleteContentBackward = async (edytor: Edytor, snapshot: Attempt) => {
 	const { startText, yStart } = snapshot;
 
 	if (snapshot.isAtStartOfBlock && snapshot.isFirstChildOfDocument && startText?.parent.isEmpty) {
-		await edytor.selection.setAtTextOffset(startText, 0);
+		edytor.selection.setAtTextOffset(startText, 0);
 		return;
 	}
 
@@ -74,7 +74,7 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: Attempt) => {
 		if (snapshot.isNested && snapshot.isLastChild && !snapshot.islandRoot) {
 			const newBlock = startText.parent.unNestBlock();
 			if (newBlock) {
-				await edytor.selection.setAtTextOffset(newBlock.firstText, 0);
+				edytor.selection.setAtTextOffset(newBlock.firstText, 0);
 			}
 			return;
 		}
@@ -103,7 +103,7 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: Attempt) => {
 		startText.parent.mergeBlockBackward();
 		if (previousText && typeof offset === 'number') {
 			edytor.attempts.caret(previousText, offset);
-			await edytor.selection.setAtTextOffset(previousText, offset);
+			edytor.selection.setAtTextOffset(previousText, offset);
 		}
 		return;
 	}
@@ -115,14 +115,14 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: Attempt) => {
 		const offset = hasPreviousText ? previousText.length : 0;
 		startText.parent.removeInlineBlock({ index });
 		if (hasPreviousText) {
-			await edytor.selection.setAtTextOffset(previousText, offset);
+			edytor.selection.setAtTextOffset(previousText, offset);
 		}
 		return;
 	}
 
 	const deletion = startText.deleteText({ direction: 'BACKWARD', length: 1 });
 	await tick();
-	await edytor.selection.setAtTextOffset(startText, deletion?.start ?? yStart - 1);
+	edytor.selection.setAtTextOffset(startText, deletion?.start ?? yStart - 1);
 };
 
 /**
@@ -130,7 +130,7 @@ const deleteContentBackward = async (edytor: Edytor, snapshot: Attempt) => {
  * run from the caret's own text, or the block's line to either side, or all
  * of it — deleted as one range; the caret lands at its start.
  */
-const deleteCollapsedUnit = async (edytor: Edytor, snapshot: Attempt) => {
+const deleteCollapsedUnit = (edytor: Edytor, snapshot: Attempt) => {
 	const { startText: text, yStart, inputType } = snapshot;
 	if (!text) return;
 	const [first, last] = [text.parent.firstText!, text.parent.lastText!];
@@ -160,7 +160,7 @@ const deleteCollapsedUnit = async (edytor: Edytor, snapshot: Attempt) => {
 								[last, last.length]
 							];
 	text.parent.deleteContentAtRange({ start: [from[0].index, from[1]], end: [to[0].index, to[1]] });
-	await edytor.selection.setAtTextOffset(...from);
+	edytor.selection.setAtTextOffset(...from);
 };
 
 export const runBeforeInputDeleteCommand = (edytor: Edytor, snapshot: Attempt) => {

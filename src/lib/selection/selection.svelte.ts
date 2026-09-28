@@ -753,7 +753,7 @@ export class EdytorSelection {
 		event.preventDefault();
 		this.edytor.expectInternalFocus();
 		this.edytor.node?.focus({ preventScroll: true });
-		void this.setAtTextOffset(targetText, 0);
+		this.setAtTextOffset(targetText, 0);
 	};
 
 	private normalizeTextRangePoints = (
@@ -883,7 +883,7 @@ export class EdytorSelection {
 		return closestOffset;
 	};
 	setTextSelectionFromPointer = (text: Text, clientX: number, clientY: number) => {
-		void this.setAtTextOffset(text, this.getTextOffsetFromClientPoint(text, clientX, clientY));
+		this.setAtTextOffset(text, this.getTextOffsetFromClientPoint(text, clientX, clientY));
 	};
 
 	capturePointerDragStart = (event: PointerEvent) => {
@@ -907,7 +907,7 @@ export class EdytorSelection {
 			return;
 		}
 
-		void this.setAtTextOffset(point.text, point.offset);
+		this.setAtTextOffset(point.text, point.offset);
 	};
 
 	restoreInlineAtomDragRange = (event: PointerEvent) => {
@@ -952,13 +952,11 @@ export class EdytorSelection {
 			const isReversed = startIndex > endIndex;
 			const rangeStart = isReversed ? dragEnd : dragStart;
 			const rangeEnd = isReversed ? dragStart : dragEnd;
-			void (async () => {
-				this.clearInlineBlockSelection();
-				await this.setAtRange(rangeStart.text, rangeStart.offset, rangeEnd.text, rangeEnd.offset, {
-					isReversed
-				});
-				this.clearInlineBlockSelection();
-			})();
+			this.clearInlineBlockSelection();
+			this.setAtRange(rangeStart.text, rangeStart.offset, rangeEnd.text, rangeEnd.offset, {
+				isReversed
+			});
+			this.clearInlineBlockSelection();
 		});
 	};
 
@@ -1154,7 +1152,7 @@ export class EdytorSelection {
 		});
 		this.edytor.projector.observe();
 		if (shouldRestoreNormalizedDomRange && options.restoreNormalizedDomRange !== false && endText) {
-			void this.setAtRange(startText, yStart, endText, yEnd, { isReversed });
+			this.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 		}
 
 		// Remember when the derived selection came from a node-bound
@@ -1409,7 +1407,7 @@ export class EdytorSelection {
 	 * the flush (R10). The value is minted now (R4): a text that dies before the
 	 * display is followed through its atoms, else the seam of its block.
 	 */
-	setAtTextOffset = async (
+	setAtTextOffset = (
 		text: Text | undefined | null,
 		textOffset: number | null | undefined = this.state.yStart
 	) => {
@@ -1434,11 +1432,12 @@ export class EdytorSelection {
 	};
 
 	/** Select the whole content from `startText` to `endText` (the code block's select-all). */
-	setAtTextsRange = async (startText: Text, endText: Text) =>
+	setAtTextsRange = (startText: Text, endText: Text) => {
 		this.setRangeStateAtTextOffsets(startText, 0, endText, endText.length);
+	};
 
 	/** Select a text range; the projector displays it after the flush (R10). */
-	setAtRange = async (
+	setAtRange = (
 		startText: Text | undefined | null,
 		startOffset: number | undefined | null,
 		endText: Text | undefined | null,
@@ -1480,7 +1479,7 @@ export class EdytorSelection {
 	};
 
 	/** Select `block`'s content (the whole of it by default); displayed after the flush. */
-	setAtBlockRange = async (block?: Block | null, startOffset = 0, endOffset?: number) => {
+	setAtBlockRange = (block?: Block | null, startOffset = 0, endOffset?: number) => {
 		if (!block) return;
 		const last = edgeText(block, 'last');
 		const end = endOffset || last.length;

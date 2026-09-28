@@ -82,7 +82,7 @@ const compare = (a: Stop, b: Stop, edytor: Edytor) =>
 /** Select `anchor` → `focus`: a caret, the one atom the range covers, or the range. */
 const select = (edytor: Edytor, anchor: Stop, focus: Stop) => {
 	const order = compare(anchor, focus, edytor);
-	if (order === 0) return void edytor.selection.setAtTextOffset(focus.text, focus.offset);
+	if (order === 0) return edytor.selection.setAtTextOffset(focus.text, focus.offset);
 	const [start, end] = order < 0 ? [anchor, focus] : [focus, anchor];
 	const { content } = start.text.parent;
 	const index = content.indexOf(start.text);
@@ -94,7 +94,7 @@ const select = (edytor: Edytor, anchor: Stop, focus: Stop) => {
 		end.offset === 0
 	)
 		return edytor.selection.selectInlineBlock(atom, order > 0 ? 'after' : 'before');
-	void edytor.selection.setAtRange(start.text, start.offset, end.text, end.offset, {
+	edytor.selection.setAtRange(start.text, start.offset, end.text, end.offset, {
 		isReversed: order > 0
 	});
 };

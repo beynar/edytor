@@ -357,7 +357,7 @@ const androidNoOpBackspaceDeadline = (edytor: Edytor, attempt: Attempt) => {
 		attempt.phase = 'applied';
 		edytor.attempts.drift(attempt, 'refresh', 0);
 		const deletion = text.deleteText({ direction: 'BACKWARD', length: 1 });
-		void edytor.selection.setAtTextOffset(text, deletion?.start ?? attempt.yStart - 1);
+		edytor.selection.setAtTextOffset(text, deletion?.start ?? attempt.yStart - 1);
 	}, NATIVE_INPUT_REPAIR_WINDOW_MS);
 };
 
@@ -391,7 +391,7 @@ const refreshSelectionTextFromModel = async (edytor: Edytor, forceDomRefresh = f
 	const offset = edytor.selection.state.yStart;
 	if (forceDomRefresh) text.refreshFromModel();
 	await tick();
-	await edytor.selection.setAtTextOffset(text, Math.min(offset, text.length));
+	edytor.selection.setAtTextOffset(text, Math.min(offset, text.length));
 };
 
 /** The pre-admission extension hook: an extension may claim a browser `beforeinput`. */
@@ -438,7 +438,7 @@ const perform = (edytor: Edytor, attempt: Attempt, offered: string | null) =>
 			attempt.inputType !== 'insertLineBreak' &&
 			edytor.selection.state.startText
 		) {
-			await edytor.selection.setAtTextOffset(
+			edytor.selection.setAtTextOffset(
 				edytor.selection.state.startText,
 				edytor.selection.state.yStart
 			);
@@ -523,9 +523,8 @@ const runKeyAttempt = async (edytor: Edytor, attempt: Attempt) => {
 	if (selectedBlocks.size > 0) {
 		edytor.selection.selectBlocks(...selectedBlocks);
 	} else if (state.startText && state.endText) {
-		await (state.isCollapsed
-			? edytor.selection.setAtTextOffset(state.startText, state.yStart)
-			: edytor.selection.setAtRange(state.startText, state.yStart, state.endText, state.yEnd));
+		if (state.isCollapsed) edytor.selection.setAtTextOffset(state.startText, state.yStart);
+		else edytor.selection.setAtRange(state.startText, state.yStart, state.endText, state.yEnd);
 	} else {
 		// Its target is gone (a remote delete): a named no-op.
 		edytor.attempts.close(attempt);

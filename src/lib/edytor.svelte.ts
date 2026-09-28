@@ -746,7 +746,7 @@ export class Edytor {
 	 * render lands) and arm the IME post-commit jump rule — a move right after
 	 * the commit with no gesture since is displayed back (`surface/projector`).
 	 */
-	stabilizeCompositionSelection = async (text: Text, offset: number) => {
+	stabilizeCompositionSelection = (text: Text, offset: number) => {
 		if (this.readonly || this.isComposing || !text.isInDocument) return;
 		const active = getActiveElement(this.node);
 		const selection = getDomSelection(this.node);
@@ -762,7 +762,7 @@ export class Edytor {
 		)
 			return;
 		this.projector.committed();
-		await this.selection.setAtTextOffset(text, Math.min(offset, text.length));
+		this.selection.setAtTextOffset(text, Math.min(offset, text.length));
 	};
 	/** An event of this view's own composition (not a native control's, not a nested island's). */
 	private ownComposition = (event?: Event) =>
@@ -825,7 +825,7 @@ export class Edytor {
 			root.insertChildren(0, [block]);
 			return this.idToBlock.block(block.id);
 		});
-		void this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
+		this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
 		void tick().then(() => {
 			this.expectInternalFocus();
 			this.node?.focus({ preventScroll: true });
@@ -924,7 +924,7 @@ export class Edytor {
 				this.selection.applySelectionSnapshot(selection);
 				return true;
 			};
-			const restore = async () => {
+			const restore = () => {
 				if (getActiveElement(node) !== node) {
 					return;
 				}
@@ -951,12 +951,10 @@ export class Edytor {
 					return;
 				}
 
-				await this.selection.setAtTextOffset(targetText, Math.min(targetOffset, targetText.length));
+				this.selection.setAtTextOffset(targetText, Math.min(targetOffset, targetText.length));
 			};
 
-			queueMicrotask(() => {
-				void restore();
-			});
+			queueMicrotask(restore);
 		};
 
 		const handlePointerDown = (event: PointerEvent) => {

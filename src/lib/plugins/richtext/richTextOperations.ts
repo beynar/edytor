@@ -105,7 +105,7 @@ const formatSelectedTextRange = (
 		});
 	});
 	edytor.selection.setRangeStateAtTextOffsets(startText, yStart, endText, yEnd, { isReversed });
-	void edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
+	edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 };
 
 const normalizeLink = (link: RichTextLink): Record<string, SerializableContent> => {
@@ -220,7 +220,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 					...marksForInsertion(startText, yStart, { pending: edytor.selection.pending }),
 					[mark]: safeValue
 				});
-				void edytor.selection.setAtTextOffset(startText, yStart);
+				edytor.selection.setAtTextOffset(startText, yStart);
 			}
 			return;
 		}

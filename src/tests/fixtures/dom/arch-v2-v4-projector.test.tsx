@@ -532,7 +532,7 @@ describe('F-O1 (timer half) — no selection-display timer is left once a progra
 		};
 	};
 
-	const programs: [string, (edytor: Edytor, editor: HTMLElement) => Promise<unknown>][] = [
+	const programs: [string, (edytor: Edytor, editor: HTMLElement) => unknown][] = [
 		[
 			'a caret write',
 			(edytor) => edytor.selection.setAtTextOffset(edytor.root!.children[1]!.firstText!, 2)

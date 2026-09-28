@@ -198,7 +198,7 @@ const scheduleNativeNavigationSelectionSync = (edytor: Edytor, event: KeyboardEv
 			return;
 		}
 
-		void edytor.selection.setAtTextOffset(originalText, fallbackOffset);
+		edytor.selection.setAtTextOffset(originalText, fallbackOffset);
 	}, 30);
 };
 

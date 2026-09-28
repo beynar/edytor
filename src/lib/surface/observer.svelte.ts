@@ -900,7 +900,7 @@ export const adopt = async (
 	await tick();
 	const end = caret ?? (attempt ? at + insert.length : undefined);
 	if (adopted && end !== undefined)
-		await edytor.selection.setAtTextOffset(text, Math.min(end, text.length));
+		edytor.selection.setAtTextOffset(text, Math.min(end, text.length));
 	// A deletion of uniformly marked text keeps its marks pending at the caret.
 	if (adopted && same && Object.keys(marks).length > 0 && edytor.selection.state.startText === text)
 		edytor.selection.stage(marks);

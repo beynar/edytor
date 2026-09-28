@@ -37,7 +37,7 @@ export const getClosestUnselectedBlock = (
 	return current;
 };
 
-export const replaceSelectionWithCollapsedTargetSync = (
+export const replaceSelectionWithCollapsedTarget = (
 	edytor: Edytor,
 	state: SelectionReplacementState = getSelectionReplacementState(edytor)
 ): SelectionInsertionTarget | null => {
@@ -48,17 +48,6 @@ export const replaceSelectionWithCollapsedTargetSync = (
 	const [text, offset] =
 		edytor.deleteContentWithinSelection({ replace: true, selection: state }) ?? [];
 	return text ? { text, offset: offset! } : null;
-};
-
-export const replaceSelectionWithCollapsedTarget = async (
-	edytor: Edytor,
-	state: SelectionReplacementState = getSelectionReplacementState(edytor)
-): Promise<SelectionInsertionTarget | null> => {
-	const target = replaceSelectionWithCollapsedTargetSync(edytor, state);
-	if (target) {
-		await edytor.selection.setAtTextOffset(target.text, target.offset);
-	}
-	return target;
 };
 
 export const removeSelectedBlocksForReplacement = (

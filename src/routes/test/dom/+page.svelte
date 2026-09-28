@@ -943,7 +943,7 @@
 			}
 
 			text.insertText({ value, start: offset, end: offset });
-			void edytor.selection.setAtTextOffset(text, offset + value.length);
+			edytor.selection.setAtTextOffset(text, offset + value.length);
 		};
 
 		if (data.enterHotkey) {

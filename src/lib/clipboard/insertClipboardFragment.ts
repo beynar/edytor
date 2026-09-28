@@ -2,7 +2,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Flow, FlowLine } from '$lib/crdt/flow.js';
 import type { JSONContentPart } from '$lib/block/contentRange.js';
 import {
-	replaceSelectionWithCollapsedTargetSync,
+	replaceSelectionWithCollapsedTarget,
 	type SelectionInsertionTarget,
 	type SelectionReplacementState
 } from '$lib/selection/replaceSelection.js';
@@ -31,16 +31,14 @@ export const flowOfFragment = (fragment: EdytorClipboardFragment): Flow =>
  * Place `flow` (`flow.*`) at `at`, over the selected blocks, or over the
  * selection (`selection`, default: the live one) replaced first; then the caret.
  */
-export const pasteFlow = async (
+export const pasteFlow = (
 	edytor: Edytor,
 	flow: Flow,
 	{ at, selection }: { at?: SelectionInsertionTarget; selection?: SelectionReplacementState } = {}
 ) => {
 	if (flow.lines.length === 0) return;
 	const replace = at ? [] : [...edytor.selection.selectedBlocks].map((block) => block.id);
-	const p = replace.length
-		? null
-		: (at ?? replaceSelectionWithCollapsedTargetSync(edytor, selection));
+	const p = replace.length ? null : (at ?? replaceSelectionWithCollapsedTarget(edytor, selection));
 	const block = p?.text.parent;
 	if (!replace.length && !block) return;
 	const target = block ? { block: block.id, offset: p!.text.segStart + p!.offset } : { replace };
@@ -48,7 +46,7 @@ export const pasteFlow = async (
 	if (replace.length) edytor.selection.selectBlocks();
 	if (!text) return;
 	edytor.attempts.caret(text, offset);
-	await edytor.selection.setAtTextOffset(text, offset);
+	edytor.selection.setAtTextOffset(text, offset);
 };
 
 /** Programmatic insertion: the fragment is untrusted input, validated here. */

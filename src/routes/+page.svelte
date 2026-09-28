@@ -175,7 +175,7 @@
 		if (!text) return;
 		// Clear any atomic block selection before the DOM caret write.
 		edytor.selection.setCollapsedStateAtTextOffset(text, 0);
-		await edytor.selection.setAtTextOffset(text, 0);
+		edytor.selection.setAtTextOffset(text, 0);
 		edytor.node?.focus({ preventScroll: true });
 	};
 	const addBlockBelow = async () => {

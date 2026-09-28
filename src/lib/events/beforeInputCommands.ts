@@ -1,8 +1,7 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import {
 	replaceSelectedBlocksWithEmptyBlockTargetSync,
-	replaceSelectionWithCollapsedTarget,
-	replaceSelectionWithCollapsedTargetSync
+	replaceSelectionWithCollapsedTarget
 } from '$lib/selection/replaceSelection.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
@@ -41,7 +40,7 @@ const replaceSelectionBeforeTextInsertion = (edytor: Edytor, snapshot: Attempt) 
 		return replaceSelectedBlocksWithEmptyBlockTargetSync(edytor);
 	}
 
-	return replaceSelectionWithCollapsedTargetSync(edytor, snapshot);
+	return replaceSelectionWithCollapsedTarget(edytor, snapshot);
 };
 
 /** The marks of text inserted at the snapshot's selection (O29), read before it is replaced. */
@@ -87,14 +86,14 @@ const insertText = async (edytor: Edytor, snapshot: Attempt) => {
 			isAutoDot: true
 		});
 		edytor.attempts.caret(target.text, target.offset + 1);
-		await edytor.selection.setAtTextOffset(target.text, target.offset + 1);
+		edytor.selection.setAtTextOffset(target.text, target.offset + 1);
 		await tick();
 		return;
 	}
 
 	target.text.insertText({ value: data, start: target.offset, end: target.offset, marks });
 	edytor.attempts.caret(target.text, target.offset + data.length);
-	await edytor.selection.setAtTextOffset(target.text, target.offset + data.length);
+	edytor.selection.setAtTextOffset(target.text, target.offset + data.length);
 	await tick();
 };
 
@@ -103,7 +102,7 @@ const insertText = async (edytor: Edytor, snapshot: Attempt) => {
  * When normalization splits the block on the break (code lines), "after" is
  * the new block's start and "before" the source block's trailing edge.
  */
-export const insertLineBreak = async (
+export const insertLineBreak = (
 	edytor: Edytor,
 	snapshot: Attempt,
 	caret: 'after' | 'before' = 'after'
@@ -134,7 +133,7 @@ export const insertLineBreak = async (
 			: normalizedNextBlock.firstText!;
 	const offset = !split ? target.offset + (before ? 0 : 1) : before ? text.length : 0;
 	edytor.attempts.caret(text, offset);
-	await edytor.selection.setAtTextOffset(text, offset);
+	edytor.selection.setAtTextOffset(text, offset);
 };
 
 const getLinkMarksForUri = (edytor: Edytor, uri: string) =>
@@ -227,11 +226,12 @@ const liftContent = (block: Block, text: Text): Block | null => {
 	return plan && (block.edytor.idToBlock.get(plan.ids[0]!) ?? null);
 };
 
-const insertParagraph = async (edytor: Edytor, snapshot: Attempt) => {
-	const target = await replaceSelectionWithCollapsedTarget(edytor, snapshot);
+const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
+	const target = replaceSelectionWithCollapsedTarget(edytor, snapshot);
 	if (!target) {
 		return;
 	}
+	edytor.selection.setAtTextOffset(target.text, target.offset);
 
 	const { startText, isCollapsed, isAtEndOfBlock, isAtStartOfBlock, yStart } =
 		edytor.selection.state;
@@ -251,7 +251,7 @@ const insertParagraph = async (edytor: Edytor, snapshot: Attempt) => {
 			const text = lifted?.firstText;
 			if (text) {
 				edytor.attempts.caret(text, 0);
-				await edytor.selection.setAtTextOffset(text, 0);
+				edytor.selection.setAtTextOffset(text, 0);
 			}
 			return;
 		}
@@ -264,7 +264,7 @@ const insertParagraph = async (edytor: Edytor, snapshot: Attempt) => {
 		const text = newBlock?.firstText;
 		if (text) {
 			edytor.attempts.caret(text, text.length);
-			await edytor.selection.setAtTextOffset(text, text.length);
+			edytor.selection.setAtTextOffset(text, text.length);
 		}
 		return;
 	}
@@ -276,7 +276,7 @@ const insertParagraph = async (edytor: Edytor, snapshot: Attempt) => {
 			}
 		});
 		edytor.attempts.caret(startText, 0);
-		await edytor.selection.setAtTextOffset(startText, 0);
+		edytor.selection.setAtTextOffset(startText, 0);
 		return;
 	}
 
@@ -287,7 +287,7 @@ const insertParagraph = async (edytor: Edytor, snapshot: Attempt) => {
 	const text = newBlock?.firstText;
 	if (text) {
 		edytor.attempts.caret(text, 0);
-		await edytor.selection.setAtTextOffset(text, 0);
+		edytor.selection.setAtTextOffset(text, 0);
 	}
 };
 

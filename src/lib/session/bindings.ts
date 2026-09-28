@@ -72,7 +72,7 @@ const suppressHotkeyDomDrift = (edytor: Edytor, window: number) => {
  */
 const restoreStructuralHotkeyCaret = (edytor: Edytor, text: Text, offset: number) => {
 	edytor.attempts.caret(text, offset);
-	void edytor.selection.setAtTextOffset(text, offset);
+	edytor.selection.setAtTextOffset(text, offset);
 };
 
 const restoreStructuralHotkeyBlockSelection = (edytor: Edytor, block: Block) => {

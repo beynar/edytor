@@ -48,7 +48,7 @@ import type { Text } from '$lib/text/text.svelte.js';
 import { insertionMarks } from '$lib/events/beforeInputCommands.js';
 import {
 	replaceSelectedBlocksWithEmptyBlockTargetSync,
-	replaceSelectionWithCollapsedTargetSync
+	replaceSelectionWithCollapsedTarget
 } from '$lib/selection/replaceSelection.js';
 import { attemptOf, intentSnapshot, kindOf, type Attempt } from './attempt.js';
 import type { SelectionValue } from './selection.js';
@@ -271,7 +271,7 @@ export class Composition {
 				() =>
 					selection.selectedBlocks.size
 						? replaceSelectedBlocksWithEmptyBlockTargetSync(edytor)
-						: replaceSelectionWithCollapsedTargetSync(edytor),
+						: replaceSelectionWithCollapsedTarget(edytor),
 				() => (this.#refused = true)
 			)
 		);

@@ -171,7 +171,7 @@ export const handleNativeLineBreakTextValue = async (edytor: Edytor, text: Text,
 			: 'insertParagraph';
 	text.refreshFromModel();
 	await tick();
-	await edytor.selection.setAtTextOffset(text, insertionIndex);
+	edytor.selection.setAtTextOffset(text, insertionIndex);
 	await runOccurrence(edytor, { inputType, cancelable: false });
 	return true;
 };
@@ -197,10 +197,11 @@ const getExpandedSelectionInputText = (edytor: Edytor, event: Event) =>
 		: null;
 
 const replaceExpandedSelectionFromInputOnlyText = async (edytor: Edytor, value: string) => {
-	const target = await replaceSelectionWithCollapsedTarget(edytor);
+	const target = replaceSelectionWithCollapsedTarget(edytor);
 	if (!target) {
 		return false;
 	}
+	edytor.selection.setAtTextOffset(target.text, target.offset);
 
 	target.text.insertText({
 		value,
@@ -209,7 +210,7 @@ const replaceExpandedSelectionFromInputOnlyText = async (edytor: Edytor, value: 
 	});
 	target.text.refreshFromModel();
 	await tick();
-	await edytor.selection.setAtTextOffset(target.text, target.offset + value.length);
+	edytor.selection.setAtTextOffset(target.text, target.offset + value.length);
 	return true;
 };
 
@@ -244,7 +245,7 @@ const repairDrift = async (
 	target.text.refreshFromModel();
 	await tick();
 	// The attempt decided the caret; `select()` it — the projector displays it (V4).
-	await edytor.selection.setAtTextOffset(target.text, Math.min(target.offset, target.text.length));
+	edytor.selection.setAtTextOffset(target.text, Math.min(target.offset, target.text.length));
 };
 
 /**

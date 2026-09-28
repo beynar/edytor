@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest';
 
 import {
 	getSelectionReplacementState,
-	replaceSelectionWithCollapsedTargetSync
+	replaceSelectionWithCollapsedTarget
 } from '$lib/selection/replaceSelection.js';
 import { createOperationEdytor } from './test.utils.js';
 
@@ -22,7 +22,7 @@ describe('selection replacement snapshots', () => {
 		const driftTarget = edytor.root!.children[2]!.firstText;
 
 		await edytor.selection.setAtTextOffset(driftTarget, 3);
-		const target = replaceSelectionWithCollapsedTargetSync(edytor, replacementState);
+		const target = replaceSelectionWithCollapsedTarget(edytor, replacementState);
 
 		expect(target).toEqual({ text: originalStartText, offset: 2 });
 		expect(

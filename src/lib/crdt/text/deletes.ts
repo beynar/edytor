@@ -1,0 +1,600 @@
+/**
+ * Per-writer text delete marks — D54 applied to text (fork patch P11).
+ *
+ * Deleting text tombstones its engine items, and the engine's undo brings
+ * text back as COPIES (new items). The engine records no writer for a
+ * delete, so two writers who deleted the same character concurrently could
+ * not tell each other's delete from their own: one undo brought it back
+ * although the other writer's delete still held it, and the second undo
+ * brought a second copy. A mark names the writer: every text delete writes
+ * one record (its engine client is the writer) listing the characters it
+ * deleted. Records sit in the history's scope — an undo deletes the undoer's
+ * own record and a redo writes a copy of it — so a live record is exactly
+ * "this writer's delete is in effect".
+ *
+ * The rule: a character is visible iff no writer's delete of it is in
+ * effect, and at most one copy of it is visible. A character keeps one
+ * identity across copies, its ROOT (the original item): every restoration
+ * writes a record naming, for each copy, the member it copied and the root
+ * (never removed). A character is restored by copying its newest member —
+ * the leaf of that lineage, where its neighbours' copies are — so restored
+ * text keeps its order whoever restores it. Every decision is made by the
+ * replica whose fact it is, never on another replica's stale state:
+ *
+ * - restoring (the undoing history): the engine hands every text unit of a
+ *   popped step to `restoreFilter`, which withholds it, and `onApply`
+ *   restores each character of the step no other live mark holds and no
+ *   copy shows, once. A character another mark holds stays PENDING on that
+ *   history, which restores it once no mark holds it and no copy shows (two
+ *   writers undid a double delete concurrently, each withheld by the other);
+ * - holding (the mark's writer): a copy that appears while the writer's
+ *   mark holds its character — a peer undid without having seen the delete
+ *   — is deleted by that writer, as part of the marked step (so its undo
+ *   brings the character back). A delete, and a redo that writes its mark
+ *   again, hide the character's other visible copies in the same step;
+ * - deduplicating (the copy's writer): a replica deletes its own copy when a
+ *   copy with a smaller id shows the same character (concurrent
+ *   restorations; the smaller one wins).
+ *
+ * Writes a local step needs join it (`onApply`, the facade's delete), so an
+ * undo stays one update. Writes a REMOTE change calls for run in one
+ * follow-up transaction under an origin no history tracks, like the
+ * engine's formatting cleanup (P10). Pending characters, holding and
+ * deduplication are session facts: a writer whose history ended no longer
+ * hides a concurrent restoration, though its live mark still withholds every
+ * later undo.
+ */
+import * as decoding from 'lib0-v14/decoding';
+import * as encoding from 'lib0-v14/encoding';
+import type { EngineApi, EngineDoc, EngineNode, YUndoManager } from '../engine-api.js';
+import { CONTENT_NODE, INLINE_NODE, RESTORED_ROOT, TEXT_DELETES_ROOT } from '../schema.js';
+import {
+	clientsOf,
+	dropSearchMarkers,
+	structAt,
+	walkIdSetStructs,
+	type IdSetLike,
+	type StoreStruct
+} from '../structs.js';
+
+/** Engine ids `c:k … c:k+n-1`. */
+export type Span = { c: number; k: number; n: number };
+/** Copy `c:k…` of member `oc:ok…`, whose root characters are `rc:rk…` (`n` of them). */
+type Copy = Span & { rc: number; rk: number; oc: number; ok: number };
+/** A piece of one member (root or copy) of some characters: ids `c:k…`, root characters from `rk`. */
+type Member = Span & { rk: number };
+/** A record (one element of a records list), by engine id. */
+type Rec = { client: number; clock: number };
+
+type Unit = StoreStruct & {
+	parent: EngineNode & { name?: string };
+	content: { getContent(): unknown[]; str?: string; type?: { name?: string } };
+	delete(tr: unknown): void;
+};
+type IdSet = IdSetLike & {
+	add(c: number, k: number, n: number): void;
+	intersects(c: number, k: number, n: number): boolean;
+};
+type Tr = { local: boolean; insertSet: IdSet; deleteSet: IdSet; changed: Map<unknown, unknown> };
+type Step = { inserts: IdSet; deletes: IdSet };
+
+type Policy = {
+	um: () => YUndoManager;
+	/**
+	 * Root spans this session answers for: characters an undo skipped (held,
+	 * or shown by another copy) and copies it removed as duplicates. Each is
+	 * restored whenever nothing shows it and no mark holds it.
+	 */
+	watch: Span[];
+	/** The text units of the step being popped (its transaction). */
+	tr: unknown;
+	units: Span[];
+};
+
+type State = {
+	doc: EngineDoc & { clientID: number; _transaction: Tr | null };
+	marks: EngineNode;
+	restored: EngineNode;
+	/** Marks by root client: the root spans each holds (and by mark key). */
+	held: Map<number, { k: number; n: number; mark: Rec }[]>;
+	holds: Map<string, Span[]>;
+	/** Copies by copy client, root client and origin client. */
+	copies: Map<number, Copy[]>;
+	byRoot: Map<number, Copy[]>;
+	byOrigin: Map<number, Copy[]>;
+	copyKeys: Set<string>;
+	policies: Set<Policy>;
+};
+
+const REACT = Symbol('edytor.text-deletes');
+const states = new WeakMap<EngineDoc, State>();
+
+const overlaps = (a: { k: number; n: number }, b: { k: number; n: number }): boolean =>
+	a.k < b.k + b.n && b.k < a.k + a.n;
+const push = <T>(map: Map<number, T[]>, key: number, v: T): void => {
+	const list = map.get(key);
+	if (list === undefined) map.set(key, [v]);
+	else list.push(v);
+};
+const keyOf = (r: Rec): string => `${r.client}:${r.clock}`;
+/** `m` narrowed to root characters `[lo, hi)`. */
+const clip = (m: Member, lo: number, hi: number): Member => ({
+	c: m.c,
+	k: m.k + lo - m.rk,
+	n: hi - lo,
+	rk: lo
+});
+
+const encode = (rows: number[][]): Uint8Array => {
+	const e = encoding.createEncoder();
+	encoding.writeVarUint(e, rows.length);
+	for (const row of rows) for (const v of row) encoding.writeVarUint(e, v);
+	return encoding.toUint8Array(e);
+};
+const decode = (bytes: Uint8Array, width: number): number[][] => {
+	const d = decoding.createDecoder(bytes);
+	const rows: number[][] = [];
+	for (let i = decoding.readVarUint(d); i > 0; i--) {
+		const row: number[] = [];
+		for (let j = 0; j < width; j++) row.push(decoding.readVarUint(d));
+		rows.push(row);
+	}
+	return rows;
+};
+
+export const bindDeletes = (Y: EngineApi) => {
+	const idSet = (spans: readonly Span[]): IdSet => {
+		const set = Y.createIdSet() as unknown as IdSet;
+		for (const sp of spans) set.add(sp.c, sp.k, sp.n);
+		return set;
+	};
+	/** Each item of `spans`, split at their edges. */
+	const each = (tr: Tr, spans: readonly Span[], fn: (it: Unit) => void): void =>
+		Y.iterateStructsByIdSet(tr as never, idSet(spans) as never, fn as never);
+
+	// ── the index ──────────────────────────────────────────────────────
+
+	/** `sp` as the root spans of its characters, in order (its own ids where it is no copy). */
+	const rootSpans = (s: State, sp: Span): Span[] => {
+		const out: Span[] = [];
+		let k = sp.k;
+		const end = sp.k + sp.n;
+		const copies = (s.copies.get(sp.c) ?? []).filter((e) => overlaps(e, sp));
+		for (const e of copies.sort((a, b) => a.k - b.k)) {
+			const lo = Math.max(k, e.k);
+			const hi = Math.min(end, e.k + e.n);
+			if (lo > k) out.push({ c: sp.c, k, n: lo - k });
+			out.push({ c: e.rc, k: e.rk + lo - e.k, n: hi - lo });
+			k = hi;
+		}
+		if (end > k) out.push({ c: sp.c, k, n: end - k });
+		return out;
+	};
+
+	/** Every member of root span `r`'s characters: the root itself and each copy. */
+	const members = (s: State, r: Span): Member[] => [
+		{ ...r, rk: r.k },
+		...(s.byRoot.get(r.c) ?? [])
+			.filter((e) => overlaps({ k: e.rk, n: e.n }, r))
+			.map((e) => clip({ c: e.c, k: e.k, n: e.n, rk: e.rk }, Math.max(r.k, e.rk), Math.min(r.k + r.n, e.rk + e.n)))
+	];
+
+	/** The live parts of member `m`, in root coordinates. */
+	const liveRoots = (s: State, m: Member): Span[] => {
+		const out: Span[] = [];
+		walkIdSetStructs(Y, s.doc, idSet([m]), (st) => {
+			if (st.deleted) return;
+			const lo = Math.max(m.k, st.id.clock);
+			const hi = Math.min(m.k + m.n, st.id.clock + st.length);
+			if (hi > lo) out.push({ c: m.c, k: m.rk + lo - m.k, n: hi - lo });
+		});
+		return out;
+	};
+	/** The live ids showing root spans `roots`. */
+	const shown = (s: State, roots: readonly Span[]): Span[] =>
+		roots.flatMap((r) =>
+			members(s, r).flatMap((m) => liveRoots(s, m).map((p) => clip(m, p.k, p.k + p.n)))
+		);
+
+	/** The newest members of root span `r`: each character's lineage followed to its leaf. */
+	const leaves = (s: State, r: Span): Member[] => {
+		const out: Member[] = [];
+		const walk = (m: Member): void => {
+			// the copies of `m`; the smallest id first where two copied the same member
+			const kids = (s.byOrigin.get(m.c) ?? [])
+				.filter((e) => overlaps({ k: e.ok, n: e.n }, m))
+				.sort((a, b) => a.c - b.c || a.k - b.k);
+			for (let at = m.rk; at < m.rk + m.n; ) {
+				const id = m.k + at - m.rk;
+				const kid = kids.find((e) => e.ok <= id && id < e.ok + e.n);
+				if (kid === undefined) {
+					const next = kids
+						.map((e) => m.rk + e.ok - m.k)
+						.filter((x) => x > at)
+						.reduce((a, b) => Math.min(a, b), m.rk + m.n);
+					out.push(clip(m, at, next));
+					at = next;
+				} else {
+					const hi = Math.min(m.rk + m.n, m.rk + kid.ok + kid.n - m.k);
+					walk(clip({ c: kid.c, k: kid.k, n: kid.n, rk: m.rk + kid.ok - m.k }, at, hi));
+					at = hi;
+				}
+			}
+		};
+		walk({ ...r, rk: r.k });
+		return out;
+	};
+
+	/** Whether the record `r` is live (the struct holding it is not deleted). */
+	const alive = (s: State, r: Rec): boolean =>
+		structAt(Y, clientsOf(s.doc).get(r.client) ?? [], r.clock)?.deleted === false;
+
+	/** Live marks holding any character of `r`, except those `skip` names. */
+	const holders = (s: State, r: Span, skip?: (mark: Rec) => boolean): Rec[] =>
+		(s.held.get(r.c) ?? [])
+			.filter((h) => overlaps(h, r) && !skip?.(h.mark) && alive(s, h.mark))
+			.map((h) => h.mark);
+
+	/** `r` cut where a live hold or a shown copy starts or ends: parts of one status each. */
+	const parts = (s: State, r: Span): Span[] => {
+		const cuts = new Set([r.k, r.k + r.n]);
+		const edge = (k: number) => k > r.k && k < r.k + r.n && cuts.add(k);
+		for (const h of s.held.get(r.c) ?? [])
+			if (overlaps(h, r) && alive(s, h.mark)) [h.k, h.k + h.n].forEach(edge);
+		for (const m of members(s, r)) for (const p of liveRoots(s, m)) [p.k, p.k + p.n].forEach(edge);
+		const at = [...cuts].sort((a, b) => a - b);
+		return at.slice(1).map((hi, i) => ({ c: r.c, k: at[i], n: hi - at[i] }));
+	};
+
+	/** Index `copies`; the ones that were new. */
+	const addCopies = (s: State, copies: readonly Copy[]): Copy[] =>
+		copies.filter((e) => {
+			const key = `${e.c}:${e.k}`;
+			if (s.copyKeys.has(key)) return false;
+			s.copyKeys.add(key);
+			push(s.copies, e.c, e);
+			push(s.byRoot, e.rc, e);
+			push(s.byOrigin, e.oc, e);
+			return true;
+		});
+	const indexRecord = (s: State, rec: Rec, bytes: Uint8Array): Copy[] =>
+		addCopies(
+			s,
+			decode(bytes, 6).map(([k, n, rc, rk, oc, ok]) => ({ c: rec.client, k, n, rc, rk, oc, ok }))
+		);
+	const indexMark = (s: State, mark: Rec, bytes: Uint8Array): boolean => {
+		const key = keyOf(mark);
+		if (s.holds.has(key)) return false;
+		const roots = decode(bytes, 3).flatMap(([c, k, n]) => rootSpans(s, { c, k, n }));
+		s.holds.set(key, roots);
+		for (const r of roots) push(s.held, r.c, { k: r.k, n: r.n, mark });
+		return true;
+	};
+	const dropMark = (s: State, mark: Rec): boolean => {
+		const key = keyOf(mark);
+		const roots = s.holds.get(key);
+		if (roots === undefined) return false;
+		for (const r of roots)
+			s.held.set(
+				r.c,
+				(s.held.get(r.c) ?? []).filter((h) => keyOf(h.mark) !== key)
+			);
+		s.holds.delete(key);
+		return true;
+	};
+	/** The records `st` (a struct of a records list) holds that `ids` names, with their bytes. */
+	const recordsIn = (st: StoreStruct, ids: IdSetLike | null): [Rec, Uint8Array][] => {
+		const content = (st as Unit).content?.getContent?.() ?? [];
+		const out: [Rec, Uint8Array][] = [];
+		for (let j = 0; j < st.length; j++) {
+			const r = { client: st.id.client, clock: st.id.clock + j };
+			if (ids === null || ids.has(r.client, r.clock)) out.push([r, content[j] as Uint8Array]);
+		}
+		return out;
+	};
+
+	/** Index the records `tr` wrote (restorations first: a mark's roots may need them). */
+	const sync = (s: State, tr: Tr) => {
+		const fresh = { copies: [] as Copy[], marks: [] as Rec[], released: false };
+		if (!tr.changed.has(s.marks) && !tr.changed.has(s.restored)) return fresh;
+		const inserted: StoreStruct[] = [];
+		walkIdSetStructs(Y, s.doc, tr.insertSet, (st) => {
+			if (st.parent === s.restored || st.parent === s.marks) inserted.push(st);
+		});
+		for (const st of inserted)
+			if (st.parent === s.restored)
+				for (const [r, bytes] of recordsIn(st, tr.insertSet))
+					fresh.copies.push(...indexRecord(s, r, bytes));
+		for (const st of inserted)
+			if (st.parent === s.marks && !st.deleted)
+				for (const [r, bytes] of recordsIn(st, tr.insertSet))
+					if (indexMark(s, r, bytes)) fresh.marks.push(r);
+		walkIdSetStructs(Y, s.doc, tr.deleteSet, (st) => {
+			if (st.parent === s.marks)
+				for (const [r] of recordsIn(st, tr.deleteSet))
+					fresh.released = dropMark(s, r) || fresh.released;
+		});
+		return fresh;
+	};
+
+	const attach = (doc: EngineDoc): State => {
+		let s = states.get(doc);
+		if (s !== undefined) return s;
+		s = {
+			doc: doc as State['doc'],
+			marks: doc.get(TEXT_DELETES_ROOT),
+			restored: doc.get(RESTORED_ROOT),
+			held: new Map(),
+			holds: new Map(),
+			copies: new Map(),
+			byRoot: new Map(),
+			byOrigin: new Map(),
+			copyKeys: new Set(),
+			policies: new Set()
+		};
+		states.set(doc, s);
+		const st = s;
+		const records = (node: EngineNode, fn: (r: Rec, bytes: Uint8Array) => unknown): void => {
+			for (let it = (node as unknown as { _start: Unit | null })._start; it; it = it.right as Unit)
+				if (!it.deleted) for (const [r, bytes] of recordsIn(it, null)) fn(r, bytes);
+		};
+		records(st.restored, (r, bytes) => indexRecord(st, r, bytes));
+		records(st.marks, (r, bytes) => indexMark(st, r, bytes));
+		// A deleted copy may have to be copied again by any replica (holds,
+		// duplicates, pending characters): garbage collection keeps its content.
+		const d = doc as unknown as { gcFilter: (it: Unit) => boolean };
+		const gc = d.gcFilter;
+		d.gcFilter = (it) =>
+			gc(it) && !(st.copies.get(it.id.client) ?? []).some((e) => overlaps(e, { k: it.id.clock, n: it.length }));
+		(doc as unknown as { on(e: string, f: (tr: Tr) => void): void }).on('afterTransaction', (tr) =>
+			react(st, tr)
+		);
+		return st;
+	};
+
+	// ── the writes ─────────────────────────────────────────────────────
+
+	/** Delete the live ids `live` (split at their edges); `into` a step, kept for its undo. */
+	const remove = (tr: Tr, live: readonly Span[], into?: Step, keep = into !== undefined): void => {
+		if (live.length === 0) return;
+		each(tr, live, (it) => {
+			if (it.deleted) return;
+			it.delete(tr);
+			dropSearchMarkers(it.parent);
+			if (keep) (it as { keep?: boolean }).keep = true;
+		});
+		if (into !== undefined) Y.insertIntoIdSet(into.deletes as never, idSet(live) as never);
+	};
+
+	/** Restore root span `r` by copying its leaves; writes the restoration record. */
+	const restore = (s: State, p: Policy, tr: Tr, r: Span): void => {
+		const rows: number[][] = [];
+		const copies: Copy[] = [];
+		for (const leaf of leaves(s, r)) {
+			const items: Unit[] = [];
+			each(tr, [leaf], (it) => void (it.deleted && items.push(it)));
+			for (const it of items) {
+				// A leaf has no copy: a local `redone` link left by an earlier
+				// restoration points at a copy this lineage no longer shows.
+				(it as { redone: unknown }).redone = null;
+				const copy = Y.redoItem(
+					tr as never,
+					it as never,
+					new Set([it]) as never,
+					Y.createIdSet(),
+					false,
+					p.um()
+				) as unknown as Unit | null;
+				if (copy === null) continue;
+				dropSearchMarkers(copy.parent);
+				const e = {
+					c: copy.id.client,
+					k: copy.id.clock,
+					n: it.length,
+					rc: r.c,
+					rk: leaf.rk + it.id.clock - leaf.k,
+					oc: it.id.client,
+					ok: it.id.clock
+				};
+				rows.push([e.k, e.n, e.rc, e.rk, e.oc, e.ok]);
+				copies.push(e);
+			}
+		}
+		if (rows.length === 0) return;
+		s.restored.insert(s.restored.length, [encode(rows)]);
+		addCopies(s, copies);
+	};
+
+	/**
+	 * Keep root spans `roots` visible for `p`: restore what nothing shows and
+	 * no mark (but those `skip` names) holds; return the rest, which `p`
+	 * watches — unless this replica's own copy shows it. `done` collects what
+	 * this pass restored (once per character).
+	 */
+	const settle = (
+		s: State,
+		p: Policy,
+		tr: Tr,
+		roots: readonly Span[],
+		skip?: (mark: Rec) => boolean,
+		done: Span[] = []
+	): Span[] => {
+		const watch: Span[] = [];
+		for (const part of roots.flatMap((r) => parts(s, r))) {
+			if (done.some((d) => d.c === part.c && overlaps(d, part))) continue;
+			const live = shown(s, [part]);
+			(globalThis as any).__TD_DEBUG__?.(s.doc.clientID, 'settle', part, 'live', live, 'held', holders(s, part, skip));
+			if (live.length > 0) {
+				if (live.some((l) => l.c !== s.doc.clientID)) watch.push(part);
+			} else if (holders(s, part, skip).length > 0) watch.push(part);
+			else {
+				restore(s, p, tr, part);
+				done.push(part);
+			}
+		}
+		return watch;
+	};
+
+	/** The undo step of this replica that wrote `mark`. */
+	const stepOf = (s: State, mark: Rec): Step | undefined => {
+		for (const p of s.policies)
+			for (const step of p.um().undoStack as unknown as Step[])
+				if (step.inserts.has(mark.client, mark.clock)) return step;
+		return undefined;
+	};
+
+	/** This replica's live marks hide what the copies `copies` show, in their steps. */
+	const hold = (s: State, tr: Tr, copies: readonly Copy[]): void => {
+		for (const e of copies) {
+			const r = { c: e.rc, k: e.rk, n: e.n };
+			for (const mark of holders(s, r, (m) => m.client !== s.doc.clientID)) {
+				const roots = (s.holds.get(keyOf(mark)) ?? []).flatMap((h) => {
+					const lo = Math.max(h.k, r.k);
+					const hi = Math.min(h.k + h.n, r.k + r.n);
+					return h.c === r.c && hi > lo ? [{ c: r.c, k: lo, n: hi - lo }] : [];
+				});
+				(globalThis as any).__TD_DEBUG__?.(s.doc.clientID, 'hold', mark, shown(s, roots), !!stepOf(s, mark));
+				remove(tr, shown(s, roots), stepOf(s, mark));
+			}
+		}
+	};
+
+	/** The live index of id `c:k` in its text (YATA order: the same on every replica). */
+	const indexOf = (s: State, c: number, k: number): number =>
+		Y.createAbsolutePositionFromRelativePosition(
+			Y.createRelativePositionFromJSON({ item: { client: c, clock: k }, assoc: 0 }),
+			s.doc as never,
+			false
+		)?.index ?? Infinity;
+
+	/**
+	 * Delete this replica's copies of characters another copy shows further
+	 * left (and watch them). The leftmost copy wins: a copy sits right before
+	 * the member it restored, so keeping the leftmost keeps restored text in
+	 * order whichever restorations overlapped.
+	 */
+	const dedupe = (s: State, tr: Tr, copies: readonly Copy[]): void => {
+		const doomed: Span[] = [];
+		for (const e of copies) {
+			const ms = members(s, { c: e.rc, k: e.rk, n: e.n });
+			const live = ms.flatMap((m) => liveRoots(s, m).map((p) => clip(m, p.k, p.k + p.n)));
+			for (const o of live) {
+				if (o.c !== s.doc.clientID) continue;
+				for (let rk = o.rk; rk < o.rk + o.n; rk++) {
+					const k = o.k + rk - o.rk;
+					const at = indexOf(s, o.c, k);
+					const left = live.some(
+						(m) => m !== o && m.rk <= rk && rk < m.rk + m.n && indexOf(s, m.c, m.k + rk - m.rk) < at
+					);
+					if (left) doomed.push({ c: o.c, k, n: 1 });
+				}
+			}
+		}
+		(globalThis as any).__TD_DEBUG__?.(s.doc.clientID, 'dedupe', doomed);
+		remove(tr, doomed, undefined, true);
+		const [p] = s.policies;
+		for (const d of doomed) p.watch.push(...rootSpans(s, d));
+	};
+
+	/** Whether `tr` deleted a member of a character some history watches. */
+	const watchedDied = (s: State, tr: Tr): boolean =>
+		[...s.policies].some((p) =>
+			p.watch.some((w) =>
+				members(s, w).some((m) => tr.deleteSet.intersects(m.c, m.k, m.n))
+			)
+		);
+
+	/** After every commit: index its records; after a remote one, keep this replica's facts. */
+	const react = (s: State, tr: Tr): void => {
+		const fresh = sync(s, tr);
+		if (tr.local || s.policies.size === 0) return;
+		if (fresh.copies.length === 0 && !fresh.released && !watchedDied(s, tr)) return;
+		s.doc.transact((t) => {
+			hold(s, t as Tr, fresh.copies);
+			dedupe(s, t as Tr, fresh.copies);
+			for (const p of s.policies) p.watch = settle(s, p, t as Tr, p.watch);
+		}, REACT);
+	};
+
+	/** The text units `ids` names, as spans. */
+	const unitsIn = (s: State, ids: IdSet): Span[] => {
+		const out: Span[] = [];
+		ids.clients.forEach((ranges, c) => {
+			for (const r of ranges.getIds())
+				walkIdSetStructs(Y, s.doc, idSet([{ c, k: r.clock, n: r.len }]), (st) => {
+					const lo = Math.max(r.clock, st.id.clock);
+					const hi = Math.min(r.clock + r.len, st.id.clock + st.length);
+					if (hi > lo && isUnit(st as Unit)) out.push({ c, k: lo, n: hi - lo });
+				});
+		});
+		return out;
+	};
+
+	/** A text unit a mark can hold: a character or inline atom of a backing text. */
+	const isUnit = (it: Unit): boolean =>
+		it.parentSub === null &&
+		it.parent?.name === CONTENT_NODE &&
+		(typeof it.content?.str === 'string' || it.content?.type?.name === INLINE_NODE);
+
+	return {
+		/** The history's extra scope: the marks (an undo removes its own). */
+		scope: (doc: EngineDoc): EngineNode => attach(doc).marks,
+
+		/**
+		 * Mark `spans` (the characters a text delete just deleted, inside its
+		 * transaction) as this writer's, and hide their other visible copies.
+		 */
+		markDeleted: (doc: EngineDoc, spans: readonly Span[]): void => {
+			if (spans.length === 0) return;
+			const s = attach(doc);
+			s.marks.insert(s.marks.length, [encode(spans.map((sp) => [sp.c, sp.k, sp.n]))]);
+			const tr = s.doc._transaction;
+			if (tr !== null) remove(tr, shown(s, spans.flatMap((sp) => rootSpans(s, sp))));
+		},
+
+		/** The `restoreFilter` and `onApply` options of a history on `doc` (P11). */
+		history: (doc: EngineDoc, um: () => YUndoManager) => {
+			const s = attach(doc);
+			const p: Policy = { um, watch: [], tr: null, units: [] };
+			s.policies.add(p);
+			const current = (): Policy => {
+				const tr = s.doc._transaction;
+				if (p.tr !== tr) Object.assign(p, { tr, units: [] });
+				return p;
+			};
+			return {
+				/** Text units are restored by `onApply`, character by character. */
+				restoreFilter: (item: unknown): boolean => {
+					const it = item as Unit;
+					if (!isUnit(it)) return true;
+					current().units.push({ c: it.id.client, k: it.id.clock, n: it.length });
+					return false;
+				},
+				onApply: (transaction: unknown, stackItem: unknown): void => {
+					const tr = transaction as Tr;
+					const q = current();
+					const step = stackItem as Step;
+					const fresh = sync(s, tr);
+					const roots = q.units.flatMap((u) => rootSpans(s, u));
+					const ours = (m: Rec) => step.inserts.has(m.client, m.clock);
+					q.watch.push(...settle(s, q, tr, roots, ours));
+					// A redo writes its marks again: they hide what shows their characters.
+					const held = fresh.marks.flatMap((m) => s.holds.get(keyOf(m)) ?? []);
+					(globalThis as any).__TD_DEBUG__?.(s.doc.clientID, 'redo-hide', shown(s, held));
+					remove(tr, shown(s, held));
+					// Text the step deleted that no mark of it holds (an undo of typing) is
+					// this writer's delete too.
+					const bare = unitsIn(s, tr.deleteSet).filter((u) =>
+						rootSpans(s, u).some(
+							(r) => !held.some((h) => h.c === r.c && h.k <= r.k && r.k + r.n <= h.k + h.n)
+						)
+					);
+					if (bare.length > 0) s.marks.insert(s.marks.length, [encode(bare.map((u) => [u.c, u.k, u.n]))]);
+					q.units = [];
+				}
+			};
+		}
+	};
+};
+
+export type TextDeletes = ReturnType<typeof bindDeletes>;

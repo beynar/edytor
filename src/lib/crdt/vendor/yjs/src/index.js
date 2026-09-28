@@ -15,6 +15,7 @@ export { createRelativePositionFromTypeIndex, createRelativePositionFromJSON, cr
 export { findIndexSS, getItemCleanStart, getItemCleanEnd } from './utils/transaction-helpers.js'
 export { Transaction, transact, cleanupYTextFormatting } from './utils/Transaction.js'
 export { UndoManager } from './utils/UndoManager.js'
+export { redoItem } from './utils/UndoManager.js' // P11
 export { decodeUpdate, decodeUpdateV2, convertUpdateFormatV2ToV1 } from './utils/updates.js'
 export { YEvent } from './utils/YEvent.js'
 export { AbstractRenderer, $renderer } from './utils/renderer-helpers.js'

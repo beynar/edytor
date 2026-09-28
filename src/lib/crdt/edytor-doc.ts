@@ -119,6 +119,7 @@ import {
 	type SplitTail
 } from './placement/model.js';
 import { bindText, DEAD, displayOf, locate, ownedLength, type Anchor } from './text/model.js';
+import { bindDeletes } from './text/deletes.js';
 import {
 	bindRuns,
 	CONTENT_ATTR,
@@ -648,6 +649,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 	const R = bindRuns(Y);
 	const M = bindModel(Y);
 	const T = bindText(Y);
+	const D = bindDeletes(Y);
 	// U1 — compact per-block attribution writes (`attribution/block.ts`).
 	// One bound instance per engine binding; its suppression memory is
 	// per-doc (WeakMap-keyed), so facades on the same doc share it.
@@ -1220,7 +1222,12 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			write(() => {
 				if (!isInitialized(doc)) init(doc);
 			});
-			const um = new Y.UndoManager(M.registryOf(doc) as unknown as YNode, opts) as YUndoManager;
+			// Text delete marks (P11): the marks are in scope (an undo removes the
+			// undoer's own), and the history restores text only as the marks allow.
+			const um: YUndoManager = new Y.UndoManager(
+				[M.registryOf(doc), D.scope(doc)] as unknown as YNode[],
+				{ ...opts, ...D.history(doc, () => um) } as never
+			) as YUndoManager;
 			// A streamless block's own text (R2) is shared by every replica that
 			// typed into it first: no history step captures it, so undoing the
 			// first typing removes the typing and keeps the text (and nonce).

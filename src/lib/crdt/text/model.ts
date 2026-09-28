@@ -30,6 +30,7 @@
 import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode } from '../engine-api.js';
 import { CONTENT, CONTENT_NODE, DATA, ID, NONCE, SCHEMA, TYPE } from '../schema.js';
 import { hash32 } from '../rand.js';
+import { bindDeletes, type Span } from './deletes.js';
 
 export type BlockId = string;
 
@@ -487,6 +488,7 @@ const plain = <T>(text: EngineNode, f: () => T): T => {
 };
 
 export const bindText = (Y: EngineApi) => {
+	const D = bindDeletes(Y);
 	const newNode = (name: string): EngineNode => new Y.Node(name) as unknown as EngineNode;
 
 	/** Anchor → live index in `text`, or `null` when its item is not integrated here. */
@@ -616,9 +618,14 @@ export const bindText = (Y: EngineApi) => {
 		offset: number,
 		length: number
 	): void => {
-		void doc;
-		for (const r of rangesOf(flatten(b, blocks, own), offset, offset + length))
+		const spans: Span[] = [];
+		for (const r of rangesOf(flatten(b, blocks, own), offset, offset + length)) {
+			for (const p of openRangeCursor(r.text).read(r.a, r.b))
+				if (!p.deleted && p.len > 0 && (p.content.str !== undefined || 'type' in p.content))
+					spans.push({ c: p.id.client, k: p.id.clock, n: p.len });
 			plain(r.text, () => r.text.delete(r.a, r.b - r.a));
+		}
+		D.markDeleted(doc, spans);
 	};
 
 	const formatRangeIn = (

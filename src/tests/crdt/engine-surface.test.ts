@@ -36,7 +36,11 @@ const SYMBOLS = {
 	decodeContentMap: 1,
 	// used by the Durable Object room (P5): compaction and struct checks
 	mergeUpdates: 1,
-	Skip: 1
+	Skip: 1,
+	// text delete marks (P11)
+	iterateStructsByIdSet: 1,
+	getItemCleanStart: 1,
+	redoItem: 1
 } satisfies Record<EngineSymbol, 1>;
 
 describe('engine object (named imports)', () => {

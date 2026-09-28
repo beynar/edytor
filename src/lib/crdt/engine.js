@@ -37,5 +37,9 @@ export const Y = {
 	createIdMap: V.createIdMap,
 	insertIntoIdMap: V.insertIntoIdMap,
 	createContentMap: V.createContentMap,
-	decodeContentMap: V.decodeContentMap
+	decodeContentMap: V.decodeContentMap,
+	// text delete marks (`text/deletes.ts`, fork patch P11)
+	iterateStructsByIdSet: V.iterateStructsByIdSet,
+	getItemCleanStart: V.getItemCleanStart,
+	redoItem: V.redoItem
 };

@@ -26,6 +26,9 @@ export type EngineSymbol =
 	| 'createIdMap'
 	| 'insertIntoIdMap'
 	| 'createContentMap'
-	| 'decodeContentMap';
+	| 'decodeContentMap'
+	| 'iterateStructsByIdSet'
+	| 'getItemCleanStart'
+	| 'redoItem';
 
 export declare const Y: Pick<typeof V, EngineSymbol>;

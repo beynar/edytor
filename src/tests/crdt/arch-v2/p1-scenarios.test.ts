@@ -374,27 +374,25 @@ describe('5. undo with collaboration (conc.undo.actor-local)', () => {
 	});
 });
 
-describe('5x. OPEN — concurrent double delete of text (contract program history.concurrent-double-delete)', () => {
-	// A real defect found by the P1.3 contract programs, left open for a
-	// decision (see the ledger): text deletion has no per-writer mark (blocks
-	// do: D54, F-D18), so each peer's undo integrates its own copy of the
-	// character both deleted. `it.fails` until fixed — then flip it to `it`.
-	it.fails(
-		'A and B delete the same character; both undo → `abc`, never a duplicated character',
-		() => {
-			for (const o of converge([{ id: 'p', text: 'abc' }], 2, ([a, b]) => {
-				a.ed.deleteText('p', 1, 1);
-				b.ed.deleteText('p', 1, 1);
-				a.receiveAll(b.log);
-				b.receiveAll(a.log);
-				b.receiveAll(a.capture(() => a.undo()));
-				a.receiveAll(b.capture(() => b.undo()));
-			})) {
-				expect(o.problems).toEqual([]);
-				expect(o.ed.blockText('p')).toBe('abc');
-			}
+describe('5x. concurrent double delete of text (contract program history.concurrent-double-delete)', () => {
+	// Found by the P1.3 contract programs: text deletion had no per-writer
+	// mark (blocks do: D54, F-D18), so each peer's undo integrated its own
+	// copy of the character both deleted. Fixed by per-writer text delete
+	// marks (`text/deletes.ts`, fork patch P11); the delivery-order variants
+	// are rows in `text-delete-marks.test.ts`.
+	it('A and B delete the same character; both undo → `abc`, never a duplicated character', () => {
+		for (const o of converge([{ id: 'p', text: 'abc' }], 2, ([a, b]) => {
+			a.ed.deleteText('p', 1, 1);
+			b.ed.deleteText('p', 1, 1);
+			a.receiveAll(b.log);
+			b.receiveAll(a.log);
+			b.receiveAll(a.capture(() => a.undo()));
+			a.receiveAll(b.capture(() => b.undo()));
+		})) {
+			expect(o.problems).toEqual([]);
+			expect(o.ed.blockText('p')).toBe('abc');
 		}
-	);
+	});
 });
 
 describe('6. concurrent moves', () => {

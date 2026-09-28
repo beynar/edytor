@@ -3,13 +3,13 @@
  * (`programs.ts`, `adapter.ts`: copied verbatim from
  * `src/tests/native/contracts/` of `bey-native-foundation-prototype`) run
  * against arch-v2 through `arch-v2-adapter.ts`. Their literal expectations
- * are an independent cross-check; 10 of 12 hold on arch-v2 as written —
+ * are an independent cross-check; 11 of 12 hold on arch-v2 as written —
  * including `transport.three-author-held-release`, the program the native
  * prototype itself violates.
  *
- * Two programs meet a different arch-v2 answer. They stay here unchanged,
- * run as `it.fails` (they flip red the day arch-v2 meets them), next to a
- * row that states what arch-v2 does instead:
+ * One program meets a different arch-v2 answer. It stays here unchanged,
+ * runs as `it.fails` (it flips red the day arch-v2 meets it), next to a row
+ * that states what arch-v2 does instead:
  *
  * - `split.range-one-undo` — PINNED DIVERGENCE. The native engine restores
  *   the deleted characters with their original identities. arch-v2 restores
@@ -17,21 +17,20 @@
  *   the stream that displayed them) and bridges identity for anchors on the
  *   undoing replica (`followUndo`). The text, the blocks and the one undo
  *   step hold; only the unit identities differ.
- * - `history.concurrent-double-delete` — OPEN (a real defect, not a
- *   contract): A and B delete the same character concurrently; A's undo
- *   brings it back although B deleted it too, and B's undo then brings a
- *   second copy (`abbc`). Blocks do not have this (per-writer delete marks,
- *   D54, F-D18); text deletion has no per-writer mark. The fix needs a
- *   decision (a D54 for text, or redo-copy deduplication in the owned
- *   engine) — recorded in the ledger; the doc-level row is
- *   `p1-scenarios.test.ts` › "OPEN — concurrent double delete of text".
+ *
+ * `history.concurrent-double-delete` (A and B delete the same character
+ * concurrently, each undoes) was a real defect until per-writer text delete
+ * marks (`text/deletes.ts`, fork patch P11): A's undo brought the character
+ * back although B still deleted it, and B's undo brought a second copy
+ * (`abbc`). It now holds as written; its delivery-order variants are
+ * `text-delete-marks.test.ts`.
  */
 import { describe, expect, it } from 'vitest';
 import { archV2Adapter } from './arch-v2-adapter.js';
 import { block, tree } from './adapter.js';
 import { candidatePrograms } from './programs.js';
 
-const DIVERGING = new Set(['split.range-one-undo', 'history.concurrent-double-delete']);
+const DIVERGING = new Set(['split.range-one-undo']);
 
 describe('native contract programs on arch-v2 (gem 7)', () => {
 	for (const program of candidatePrograms) {

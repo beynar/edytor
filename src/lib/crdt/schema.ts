@@ -13,6 +13,18 @@ export const META_ROOT_KEY = 'meta';
 export const ATTRIBUTION_ROOT = 'attribution';
 /** U1 per-block attribution root — `b/<blockId>` records (`SCHEMA.roots.blockAttribution`). */
 export const BLOCK_ATTR_ROOT = 'blockattr';
+/**
+ * Per-writer text delete marks (`text/deletes.ts`): one record per text
+ * delete, naming the characters it deleted; its writer is the record's
+ * engine client. In the history's scope, so an undo removes the undoer's
+ * own mark and a redo writes it again.
+ */
+export const TEXT_DELETES_ROOT = 'textdel';
+/**
+ * Restoration records (`text/deletes.ts`): which characters an undo's copies
+ * restore. Outside the history's scope: a record is never removed.
+ */
+export const RESTORED_ROOT = 'restored';
 
 /** Named node roles (`SCHEMA.nodes`). */
 export const BLOCK_NODE = 'block';

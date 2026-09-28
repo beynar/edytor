@@ -351,12 +351,6 @@ const cleanupTransactions = (transactionCleanups, i) => {
   }
 }
 
-/**
- * This will be called by the transaction once the event handlers are called to potentially cleanup
- * formats.
- *
- * @param {Transaction} transaction
- */
 // P10 begin
 /**
  * Origin of the formatting cleanup that follows a remote transaction. The
@@ -369,6 +363,12 @@ const cleanupTransactions = (transactionCleanups, i) => {
 const formattingCleanupOrigin = Symbol('yjs.formatting-cleanup')
 // P10 end
 
+/**
+ * This will be called by the transaction once the event handlers are called to potentially cleanup
+ * formats.
+ *
+ * @param {Transaction} transaction
+ */
 export const cleanupYTextAfterTransaction = transaction => {
   /**
    * @type {Set<YNode>}

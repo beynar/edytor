@@ -143,3 +143,14 @@ export const followRedone = (
 		at = { client: struct.redone.client, clock: struct.redone.clock + at.clock - struct.id.clock };
 	}
 };
+
+/**
+ * Forget `node`'s search markers (vendor-internal `_searchMarker`, P4): a
+ * write made through items directly (a delete or `redoItem`, not the node's
+ * own insert/delete methods) leaves their indices stale — the engine's undo
+ * drops them the same way after a pop.
+ */
+export const dropSearchMarkers = (node: unknown): void => {
+	const markers = (node as { _searchMarker?: unknown[] | null } | null)?._searchMarker;
+	if (markers) markers.length = 0;
+};

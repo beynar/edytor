@@ -2,7 +2,6 @@
 export { Doc } from "./utils/Doc.js";
 export { $doc } from "./utils/schemas.js";
 export { isParentOf } from "./utils/isParentOf.js";
-export { UndoManager } from "./utils/UndoManager.js";
 export { YEvent } from "./utils/YEvent.js";
 export { RangeCursor } from "./utils/RangeCursor.js";
 export { AbstractStruct } from "./structs/AbstractStruct.js";
@@ -19,6 +18,7 @@ export { ID, createID, compareIDs, findRootTypeKey } from "./utils/ID.js";
 export { createRelativePositionFromTypeIndex, createRelativePositionFromJSON, createAbsolutePositionFromRelativePosition, AbsolutePosition, RelativePosition, relativePositionToJSON } from "./utils/RelativePosition.js";
 export { findIndexSS, getItemCleanStart, getItemCleanEnd } from "./utils/transaction-helpers.js";
 export { Transaction, transact, cleanupYTextFormatting } from "./utils/Transaction.js";
+export { UndoManager, redoItem } from "./utils/UndoManager.js";
 export { decodeUpdate, decodeUpdateV2, convertUpdateFormatV2ToV1 } from "./utils/updates.js";
 export { AbstractRenderer, $renderer } from "./utils/renderer-helpers.js";
 export { YNode as Node, $nodeAny } from "./ynode.js";

@@ -1467,7 +1467,14 @@ export const domRepairSignature = (snapshot: DstBrowserSnapshot): string =>
 	JSON.stringify({
 		blockTypes: snapshot.dom.blockTypeAttrs,
 		marks: snapshot.dom.markAttrs,
-		foreign: snapshot.dom.foreignResidual
+		foreign: {
+			nodes: snapshot.dom.foreignResidual.nodes,
+			// A foreign attribute on a mark element is tolerated, never repaired
+			// (F-O13 (c)): whether it survives is the engine's native editing (Firefox
+			// re-creates the element around typed text, Chromium keeps it), not a
+			// repair decision, so it is not compared across engines.
+			attrs: snapshot.dom.foreignResidual.attrs.filter((entry) => !entry.startsWith('mark:'))
+		}
 	});
 
 export const selectionSignature = (snapshot: DstBrowserSnapshot): string | null =>

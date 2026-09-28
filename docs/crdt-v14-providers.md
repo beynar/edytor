@@ -420,7 +420,15 @@ knob for harnesses that drop frames on a live socket — the join rule needs
 no timer). Leaving announces the presence removal on the socket.
 
 `createWebsocketSync({ serverUrl, roomName, params?, WebSocketPolyfill?,
-maxBackoffTime? })` — the factory-owned provider always dials.
+maxBackoffTime?, disableBc?, persist?, persistName? })` — the factory-owned
+provider always dials. By default it also attaches a local IndexedDB store
+(`edytor:<serverUrl>/<roomName>`, or `persistName`; `persist: false` opts
+out; skipped without `indexedDB`) as its own provider on the document
+(`EdytorSyncPayload.attach`): stored content decides readiness offline, an
+empty store holds the seed until it answered, and restored edits reach the
+server by the join rule. While the store exists it carries the cross-tab
+channel and the socket's BroadcastChannel leg (restored after G-e, on by
+default) is off; `disableBc` turns both off.
 
 **Retired in G-e** (0.0.x API change, release notes C1): the `protocols`
 option (WebSocket subprotocols — pass tokens in `params`), the `sync` event

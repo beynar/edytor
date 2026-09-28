@@ -271,7 +271,17 @@ Websocket provider setup:
 <Edytor {sync} />
 ```
 
-`createWebsocketSync` also takes `params` (query parameters such as an auth token, read at every dial), `maxBackoffTime` (the reconnect backoff cap) and `disableBc`. Tabs of the same room sync with each other over a BroadcastChannel by default, with or without the server; an edit heard from another tab is relayed to the server on this tab's socket, so an offline tab's edits are saved as soon as any tab of the room is online. `disableBc: true` opts out. The channel is shared by every tab of the browser profile, so its tabs should be the same user: with the `edytor/cloudflare` room, a tab holding another user's edits that the room lacks is refused until that user's tab delivers them (use `disableBc` or a per-user `roomName` if one browser profile hosts several accounts). For offline persistence across reloads, stack `createIndexeddbSync` beside it (`document.attachSync` both).
+`createWebsocketSync` keeps a local copy of the document in IndexedDB by default, so edits made offline survive closing every tab and reloading, and reach the server when it is back (each (re)connect exchanges what either side lacks). The database is named `edytor:<serverUrl>/<roomName>`; `persistName` sets another name and `persist: false` turns the local copy off. Where there is no `indexedDB` (Node, Workers, SSR) the sync is the socket alone. Readiness is local-first: stored content makes the document ready at once, offline included; an empty store never lets the document seed its `value` before the store answered, and then the server's answer, or the readiness bound (`DEFAULT_READINESS_BOUND`) when the server says nothing, decides as for a socket alone. Destroying the document (or the view that owns it) closes the socket and the database. To delete the local copy (at sign-out, say), pass the sync's `persistName` to `clearDocument`:
+
+```ts
+import { clearDocument, createWebsocketSync } from 'edytor';
+
+const sync = createWebsocketSync({ serverUrl, roomName: documentId });
+// …after the editor is gone:
+await clearDocument(sync.persistName!);
+```
+
+It also takes `params` (query parameters such as an auth token, read at every dial), `maxBackoffTime` (the reconnect backoff cap) and `disableBc`. Tabs of the same room sync with each other over a BroadcastChannel by default, with or without the server (the local store's channel while there is one, the socket's otherwise); an edit heard from another tab is relayed to the server on this tab's socket, so an offline tab's edits are saved as soon as any tab of the room is online. `disableBc: true` opts out. The channel and the local copy are shared by every tab of the browser profile, so they should belong to one user: with the `edytor/cloudflare` room, this user's socket is refused when it delivers edits under client ids another user owns, and edits under ids the room has never seen are registered to whichever user delivers them first. If one browser profile hosts several accounts, give each user its own `persistName` (and `roomName` or `disableBc` for the channel), or clear the local copy at sign-out.
 
 The sync helpers pass Edytor's `awareness` instance into the provider. Set local user metadata on the editor awareness state:
 
@@ -288,7 +298,7 @@ Unsupported collaboration surfaces:
 
 - Edytor does not provide authentication or permission rules: the `edytor/cloudflare` room calls your `authorize` and enforces what it returns (user, replica, read-only).
 - Edytor ships a Durable Object room (below), not hosted infrastructure: you deploy it on your own Cloudflare account.
-- IndexedDB persistence is local browser storage; the room's durability is the Durable Object's SQLite storage.
+- IndexedDB persistence (`createIndexeddbSync`, and `createWebsocketSync`'s default local copy) is local browser storage; the room's durability is the Durable Object's SQLite storage. A first visit made offline seeds the document's `value` locally (after the readiness bound) and keeps that seed: seed with the same `value` everywhere (seeds are deterministic, so equal seeds merge into one), or the seed joins the room's content on reconnect.
 
 ### Server coordinator (Cloudflare Durable Object)
 
@@ -338,7 +348,7 @@ export default {
 }
 ```
 
-**3. The client.** Dial `wss://<host>/rooms` with the document id as the room, and send the replica (and your token) as parameters:
+**3. The client.** Dial `wss://<host>/rooms` with the document id as the room, and send the replica (and your token) as parameters. The local copy is on by default; name it per user, since the room refuses one user's socket delivering another user's edits:
 
 ```ts
 const document = createDocument({ actor: { id: userId } });
@@ -346,10 +356,13 @@ document.attachSync(
 	createWebsocketSync({
 		serverUrl: 'wss://example.com/rooms',
 		roomName: documentId,
-		params: { token, replica: String(document.doc.clientID) }
+		params: { token, replica: String(document.doc.clientID) },
+		persistName: `${userId}:${documentId}`
 	})
 );
 ```
+
+Edits restored from the local copy were written under earlier client ids of the same user: the room registers an id it has never seen to the user who first writes under it, so a page reloaded offline delivers them on reconnect.
 
 **`authorize`** runs before the upgrade and returns `{ userId, replica?, readOnly? }` or `null` (403). `routeDocumentSocket` then forwards a fresh request that carries only the verified identity (`X-Edytor-User`, `X-Edytor-Replica`, `X-Edytor-Access`); every header the client sent, including forged `X-Edytor-*` values, is dropped. The room trusts those headers, so reach it only through `routeDocumentSocket` (a direct request without them is refused 401).
 
@@ -653,6 +666,7 @@ The next release is a rewrite of the editor's internals around one owner per fac
 
 - **Presence wire (D-16).** `selections[viewKey] = {start, end, collapsed, reversed, t}` for text (`DocAnchor`s), `{blocks, t}` for a block set, `{atom, block, t}` for an atom; the legacy `selection` mirror, `startTextId`/`yStart` fields and numeric fallbacks are gone. A view writes only its own key and clears it on destroy. `publishPresence` replaces `createAwarenessSelection`/`publishAwarenessSelection`/`clearAwarenessSelection`; `attachDocumentSync` is removed (use `document.attachSync`).
 - **`WebsocketProvider`**: removed the `protocols` option and field (pass tokens in `params`, read at every dial), the `sync` event (use `synced`), `wsconnecting` (the `status` event carries it), and the settle window (`syncSettleMs`). `resyncInterval` stays a provider option only. The BroadcastChannel leg stays and is on by default (`disableBc` opts out); it now relays other tabs' edits to the server, and a provider no longer rebroadcasts presence it just heard (a departing tab's presence used to come back). `createWebsocketSync` takes `serverUrl`, `roomName`, `params`, `maxBackoffTime`, `WebSocketPolyfill`, `disableBc` (`connect`, `protocols`, `resyncInterval` removed).
+- **`createWebsocketSync` persists locally by default.** It attaches an IndexedDB store beside the socket (`persist: false` opts out, `persistName` renames it from `edytor:<serverUrl>/<roomName>`; the returned sync's `persistName` is the name to pass to `clearDocument`), skipped where there is no `indexedDB`. The store is its own provider on the document, attached through the new `EdytorSyncPayload.attach` (a sync attaching a companion). While the store exists it carries the cross-tab channel and the socket's BroadcastChannel leg is off; `disableBc` turns both off (`IndexeddbPersistence` gains a `disableBc` option). Stacking `createIndexeddbSync` beside `createWebsocketSync` is no longer needed.
 - **`edytor/cloudflare` (new).** `DocumentRoom` (the Durable Object room, one per document) and `routeDocumentSocket(request, namespace, documentId, authorize)` replace the coordinator you wrote yourself (README "Server coordinator"). The room binds `{user, replica, readOnly}` to each socket and refuses updates under another user's client ids.
 - **Store-before-ack and chunked catch-up.** `WebsocketProvider` gains `saved`, `unsaved` and a `'saved'` event (the room's `messageSaved` acknowledgements), and reassembles `messageChunk` sequences (frames above 32 MiB). A server that sends neither leaves `unsaved` counting; older clients report the two new message types through `'message-error'` and are otherwise unaffected on small documents.
 - **`IndexeddbPersistence`**: `get`/`set`/`del` are removed (the `custom` store holds only the generation record).

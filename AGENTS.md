@@ -73,7 +73,7 @@ Each fact has exactly one writer. When a fix seems to need a second writer, the 
 
 - Every frame is `varuint GENERATION | varuint messageType | payload`; `GENERATION = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION` (schema generation 4). Anything else is refused before decode; `applyRemote` refuses updates that forge the schema stamp.
 - One room lifecycle and join rule (`providers/room.ts`): hello = Step1 + presence; a Step1 is answered with Step2, plus our own Step1 when the asker holds something we lack.
-- `createIndexeddbSync(name)` / `createWebsocketSync({serverUrl, roomName, params?, maxBackoffTime?})` are `EdytorSync` factories for `<Edytor {sync}>` or `document.attachSync`; the document keeps one provider per transport target. The websocket provider has no BroadcastChannel leg: stack IndexedDB for cross-tab sync.
+- `createIndexeddbSync(name)` / `createWebsocketSync({serverUrl, roomName, params?, maxBackoffTime?, disableBc?, persist?, persistName?})` are `EdytorSync` factories for `<Edytor {sync}>` or `document.attachSync`; the document keeps one provider per transport target. `createWebsocketSync` attaches a local IndexedDB store by default (`edytor:<serverUrl>/<roomName>`, skipped without `indexedDB`) as a provider of its own through the payload's `attach`, so the document's readiness rules apply to each leg unchanged; while the store exists it carries the cross-tab channel (the socket's BroadcastChannel leg is off).
 - Seeds are deterministic (a hashed writer id), so two replicas seeding the same value converge.
 - Presence: `selections[viewKey] = serialize(value) + t`. A view writes only its own key. Remote carets resolve the freshest valid text entry per client.
 

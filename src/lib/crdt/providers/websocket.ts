@@ -40,13 +40,12 @@
  */
 import * as bc from 'lib0-v14/broadcastchannel';
 import * as time from 'lib0-v14/time';
-import * as decoding from 'lib0-v14/decoding';
 import { ObservableV2 } from 'lib0-v14/observable';
 import * as math from 'lib0-v14/math';
 import * as url from 'lib0-v14/url';
 import { Awareness, removeAwarenessStates } from '../protocols/awareness.js';
 import { messagePermissionDenied, readAuthMessage } from '../protocols/auth.js';
-import { bindSync, type SyncProtocol } from '../protocols/sync.js';
+import { bindSync, type IdSet, type SyncProtocol } from '../protocols/sync.js';
 import {
 	beginDestroy,
 	bindRoomProtocol,
@@ -180,14 +179,18 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 	});
 	// The room's acknowledgement and its bounded catch-up (a frame too large
 	// for one message arrives as chunks and is read only once complete).
-	room.messageHandlers[messageSaved] = (_encoder, decoder, provider) =>
-		provider._acknowledge(decoding.readVarUint8Array(decoder));
+	room.messageHandlers[messageSaved] = (_encoder, decoder, provider) => {
+		const { stateVector, deletes } = syncProtocol.readSaved(decoder);
+		provider._acknowledge(stateVector, deletes);
+	};
 	room.messageHandlers[messageChunk] = (_encoder, decoder, provider, emitSynced) => {
 		const whole = provider._chunks(decoder);
 		if (whole !== null) room.readMessage(provider, whole, emitSynced, (buf) => send(provider, buf));
 	};
 
 	type StateVector = Map<number, number>;
+	/** A local update the room has not acknowledged: the state vector after it, and its deletes still unacknowledged. */
+	type Unsaved = { sv: StateVector; deletes: IdSet };
 	const stateVector = (doc: YDoc): StateVector => Y.decodeStateVector(Y.encodeStateVector(doc));
 	const covers = (acked: StateVector, sv: StateVector) => {
 		for (const [client, clock] of sv) if ((acked.get(client) ?? 0) < clock) return false;
@@ -292,8 +295,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		_synced = false;
 		/** Reassembles this socket's chunked frames (reset per connection). */
 		_chunks = createChunkReader();
-		/** The doc's state vector after each local update not yet acknowledged (monotone). */
-		_pending: StateVector[] = [];
+		/** Each local update not yet acknowledged: its state vector (monotone) and unacknowledged deletes. */
+		_pending: Unsaved[] = [];
 		/** The room's last acknowledged state vector. */
 		_acked: StateVector = new Map();
 		messageHandlers: Record<number, RoomMessageHandler<WebsocketProvider>> = room.messageHandlers;
@@ -347,10 +350,10 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			this._updateHandler = (update, origin) => {
 				if (origin === this) return;
 				room.broadcastUpdate(this, update, origin === this._fromTab ? send : broadcast);
-				this._track();
+				this._track(Y.decodeUpdate(update).ds);
 			};
 			// What the doc already holds is unsaved until the room covers it.
-			this._track();
+			this._track(this.doc.store.ds);
 			this.doc.on('update', this._updateHandler);
 			this._awarenessUpdateHandler = room.awarenessUpdateHandler(this);
 			awareness.on('update', this._awarenessUpdateHandler);
@@ -384,23 +387,35 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			return this._pending.length;
 		}
 
-		/** The room has persisted everything this replica wrote (store-before-ack). */
+		/**
+		 * The room has persisted everything this replica wrote
+		 * (store-before-ack): every local update's structs are under an
+		 * acknowledged state vector and its deletes were acknowledged by id.
+		 */
 		get saved(): boolean {
 			return this._pending.length === 0;
 		}
 
-		_track(): void {
+		/** Track a local update (its `deletes`) unless the room already covers it. */
+		_track(deletes: IdSet): void {
 			const sv = stateVector(this.doc);
-			if (covers(this._acked, sv)) return;
-			this._pending.push(sv);
+			if (covers(this._acked, sv) && deletes.isEmpty()) return;
+			this._pending.push({ sv, deletes });
 			this.emit('saved', [{ saved: false, unsaved: this._pending.length }, this]);
 		}
 
-		/** A `messageSaved` frame: the room stored everything under `sv`. */
-		_acknowledge(sv: Uint8Array): void {
+		/**
+		 * A `messageSaved` frame: the room stored everything under `sv`, and
+		 * `deletes` (the deletes it holds of the message it answers).
+		 */
+		_acknowledge(sv: Uint8Array, deletes: IdSet | null = null): void {
 			this._acked = Y.decodeStateVector(sv);
 			const before = this._pending.length;
-			this._pending = this._pending.filter((entry) => !covers(this._acked, entry));
+			this._pending = this._pending.filter((entry) => {
+				if (deletes && !entry.deletes.isEmpty())
+					entry.deletes = Y.diffIdSet(entry.deletes, deletes);
+				return !(covers(this._acked, entry.sv) && entry.deletes.isEmpty());
+			});
 			if (this._pending.length !== before) {
 				this.emit('saved', [{ saved: this.saved, unsaved: this._pending.length }, this]);
 			}

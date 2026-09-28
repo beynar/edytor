@@ -18,15 +18,23 @@
  *   identity: a read-only socket's Step2/Update is refused (permission
  *   denied, the socket stays), and an update writing new structs under a
  *   client id its user does not own is refused (1008) — no attribution
- *   spoofing. Then the inbound schema refusal (`sync.applyRemote`). A
- *   refused frame is never applied, stored or relayed. Every sync message
- *   is answered with `messageSaved` + the room's state vector, sent after
- *   the write (store-before-ack). Presence is relayed through the
- *   instance-free codec, only for the socket's own replica.
+ *   spoofing. Then the inbound schema refusal (`sync.applyRemote`, which
+ *   also judges what the engine holds pending: a pending forged stamp the
+ *   update would release is discarded, never integrated). A refused frame
+ *   is never applied, stored or relayed. Every sync message is answered
+ *   with `messageSaved` (the room's state vector, and the deletes of the
+ *   message it holds), sent after the write (store-before-ack). Presence
+ *   is relayed through the instance-free codec, only for the socket's own
+ *   replica.
  * - every INTEGRATED update is appended to SQLite as one record split into
  *   rows ≤ `maxRowBytes` (2 MB row cap) in one `transactionSync`, then
  *   broadcast; after `compactAfter` update records the rows are merged
- *   (`mergeUpdates`) into one snapshot record.
+ *   (`mergeUpdates`) into one snapshot record. Memory never runs ahead of
+ *   storage: when an append fails, nothing is relayed or acknowledged, the
+ *   live doc is rebuilt from the stored rows and the sender's socket is
+ *   closed (1011) so its provider reconnects and resends.
+ * - a Step2 serves the STORED state: the engine's pending structs (waiting
+ *   for a dependency, never stored) are not served.
  * - a frame larger than `maxFrameBytes` (32 MiB) goes out as chunks the
  *   client applies only when complete (`chunkFrame`).
  * - `webSocketClose`/`webSocketError`: the departure the client may not
@@ -87,7 +95,8 @@ export type Refusal = {
 		| 'container'
 		| 'identity'
 		| 'replica'
-		| 'read-only';
+		| 'read-only'
+		| 'storage';
 	detail: unknown;
 };
 
@@ -151,15 +160,31 @@ const isGenerationRecord = (found: unknown) => {
 const stateVector = (doc: YDoc): Map<number, number> =>
 	Y.decodeStateVector(Y.encodeStateVector(doc));
 
-/** The client ids `update` writes structs under that `sv` does not hold yet. */
-const newWriters = (update: Uint8Array, sv: Map<number, number>): Set<number> => {
+/** The client ids a decoded update writes structs under that `sv` does not hold yet. */
+const newWriters = (
+	{ structs }: ReturnType<typeof Y.decodeUpdate>,
+	sv: Map<number, number>
+): Set<number> => {
 	const writers = new Set<number>();
-	for (const struct of Y.decodeUpdate(update).structs) {
+	for (const struct of structs) {
 		if (struct instanceof Y.Skip) continue;
 		const { client, clock } = struct.id;
 		if (clock + struct.length > (sv.get(client) ?? 0)) writers.add(client);
 	}
 	return writers;
+};
+
+/** A Step2 of what the room STORED: the engine's pending store (never stored) is left out. */
+const storedStep2 = (doc: YDoc, sv: Uint8Array): Uint8Array => {
+	const { store } = doc;
+	const held = [store.pendingStructs, store.pendingDs] as const;
+	store.pendingStructs = null;
+	store.pendingDs = null;
+	try {
+		return E.frame(E.messageSync, (e) => sync.writeSyncStep2(e, doc, sv));
+	} finally {
+		[store.pendingStructs, store.pendingDs] = held;
+	}
 };
 
 export class DocumentRoom<
@@ -180,6 +205,8 @@ export class DocumentRoom<
 	origin: { kind: 'fresh' } | { kind: 'restored'; records: number } = { kind: 'fresh' };
 	private nextRecord = 0;
 	private updates = 0;
+	/** A failed append: the live doc holds what storage does not, until it is rebuilt. */
+	private unstored: unknown = null;
 	private readonly sql: SqlStorage;
 
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -297,6 +324,28 @@ export class DocumentRoom<
 		});
 	}
 
+	/**
+	 * After a failed append: the live doc is rebuilt from the stored rows
+	 * alone (as a restart would), so nothing unstored is ever served or
+	 * acknowledged, and the sender's socket is closed (1011) — its
+	 * provider reconnects, the join rule finds what the room lacks, and
+	 * the edit is resent and stored.
+	 */
+	private recover(ws: WebSocket) {
+		this.refusals.push({ reason: 'storage', detail: String(this.unstored) });
+		const stale = this.doc;
+		this.doc = null;
+		this.unstored = null;
+		this.load();
+		stale?.destroy();
+		this.depart(ws);
+		try {
+			ws.close(1011, 'storage failure');
+		} catch {
+			// already closing
+		}
+	}
+
 	private requireDoc(): YDoc {
 		if (this.doc === null) throw this.failure ?? new Error('room has no document');
 		return this.doc;
@@ -306,8 +355,15 @@ export class DocumentRoom<
 		this.doc = doc;
 		// Every INTEGRATED update is persisted first, then relayed to
 		// everyone but its sender (the socket is the transaction origin).
+		// A failed append relays nothing; the sender's handler rebuilds.
 		doc.on('update', (update: Uint8Array, origin: unknown) => {
-			this.ctx.storage.transactionSync(() => this.insert('update', update));
+			if (this.unstored !== null) return;
+			try {
+				this.ctx.storage.transactionSync(() => this.insert('update', update));
+			} catch (error) {
+				this.unstored = error;
+				return;
+			}
 			this.broadcast(
 				E.frame(E.messageSync, (e) => sync.writeUpdate(e, update)),
 				origin
@@ -453,10 +509,7 @@ export class DocumentRoom<
 		const syncType = E.readVarUint(decoder);
 		if (syncType === E.messageYjsSyncStep1) {
 			const sv = E.readVarUint8Array(decoder);
-			this.send(
-				ws,
-				E.frame(E.messageSync, (e) => sync.writeSyncStep2(e, doc, sv))
-			);
+			this.send(ws, storedStep2(doc, sv));
 			if (!attachment.readOnly && sync.lacks(doc, sv)) {
 				this.send(
 					ws,
@@ -478,22 +531,30 @@ export class DocumentRoom<
 			);
 		}
 		// 3 · Attribution: new structs only under client ids this user owns.
+		const decoded = Y.decodeUpdate(update);
 		const sv = stateVector(doc);
-		const refused = this.claim(attachment.user, newWriters(update, sv), sv, true);
+		const refused = this.claim(attachment.user, newWriters(decoded, sv), sv, true);
 		if (refused !== null) return this.refuse(ws, { reason: 'replica', detail: refused });
-		// 4 · Schema: the inbound refusal of a foreign stamp. Integrating
-		// persists (the doc's update handler) before the ack below.
-		const { applied, problem } = sync.applyRemote(doc, update, ws);
+		// 4 · Schema: the inbound refusal of a foreign stamp (the update's,
+		// or a pending one it would release — discarded, the sender kept).
+		// Integrating persists (the doc's update handler) before the ack.
+		const { applied, problem, discarded } = sync.applyRemote(doc, update, ws);
+		if (this.unstored !== null) return this.recover(ws);
 		if (problem !== null) return this.refuse(ws, { reason: 'schema', detail: problem });
 		if (!applied) return this.refuse(ws, { reason: 'malformed', detail: 'undecodable update' });
-		this.acknowledge(ws, doc);
+		if (discarded) this.refusals.push({ reason: 'schema', detail: { discarded } });
+		this.acknowledge(ws, doc, decoded.ds);
 	}
 
-	/** Store-before-ack: everything under the room's state vector is persisted. */
-	private acknowledge(ws: WebSocket, doc: YDoc) {
+	/**
+	 * Store-before-ack: everything under the room's state vector is
+	 * persisted, and so are the acknowledged deletes (`deletes`, the
+	 * message's, less those the engine holds pending).
+	 */
+	private acknowledge(ws: WebSocket, doc: YDoc, deletes?: ReturnType<typeof Y.decodeUpdate>['ds']) {
 		this.send(
 			ws,
-			E.frame(E.messageSaved, (e) => E.writeVarUint8Array(e, Y.encodeStateVector(doc)))
+			E.frame(E.messageSaved, (e) => sync.writeSaved(e, doc, deletes))
 		);
 	}
 

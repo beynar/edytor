@@ -323,16 +323,19 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 				// Inbound refusal: an update writing a foreign stamp never
 				// integrates and is reported once. A corrupt payload inside a
 				// valid envelope surfaces through 'message-error'.
-				const { applied, problem } = syncProtocol.applyRemote(
+				// A pending forged stamp this update would release is discarded
+				// (`discarded`) and reported the same way.
+				const { applied, problem, discarded } = syncProtocol.applyRemote(
 					provider.doc,
 					decoding.readVarUint8Array(decoder),
 					emitSynced ? provider : (behavior.tabOrigin?.(provider) ?? provider),
 					(error) => provider.emit?.('message-error', [error, provider])
 				);
-				if (problem !== null) {
+				const refused = problem ?? discarded;
+				if (refused) {
 					const docName = behavior.docName(provider);
-					provider.emit?.('schema-mismatch', [{ docName, problem }, provider]);
-					provider.emit?.('message-error', [new SchemaMismatchError(docName, problem), provider]);
+					provider.emit?.('schema-mismatch', [{ docName, problem: refused }, provider]);
+					provider.emit?.('message-error', [new SchemaMismatchError(docName, refused), provider]);
 				}
 				// Only an ACCEPTED Step2 is a held member state — a refused
 				// one never claims the handshake.

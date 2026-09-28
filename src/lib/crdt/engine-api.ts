@@ -131,10 +131,11 @@ export interface EngineDoc {
 	on(name: 'destroy', f: () => void): void;
 	off(name: 'destroy', f: () => void): void;
 	/**
-	 * The doc's struct store — present on a real engine doc. Read-only from
-	 * this layer; used by migration to detect PENDING state (update rows whose
-	 * CRDT dependencies never landed — `pendingStructs`/`pendingDs` are
-	 * non-null while deps are missing).
+	 * The doc's struct store — present on a real engine doc. Migration reads
+	 * it to detect PENDING state (update rows whose CRDT dependencies never
+	 * landed — `pendingStructs`/`pendingDs` are non-null while deps are
+	 * missing); the inbound refusal (`protocols/sync.ts` `applyRemote`)
+	 * judges the pending store and discards it when it holds a forged stamp.
 	 */
 	readonly store?: {
 		pendingStructs: null | { missing: Map<number, number>; update: Uint8Array };

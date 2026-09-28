@@ -38,9 +38,11 @@
  *                                                                      `pending`, doc preserved
  *   provider frames/rows      generation word / container record;     foreign generation: dropped
  *                             inbound refusal of a foreign stamp      before decode; forged stamp:
- *                             (`protocols/sync.ts` `applyRemote`)     refused + reported; a stamp
- *                                                                      that got in anyway makes the
- *                                                                      doc read-only (`writable`)
+ *                             (`protocols/sync.ts` `applyRemote`),    refused + reported; a pending
+ *                             judged with what the update releases    one the update releases:
+ *                             from the engine's pending store         pending store discarded; a
+ *                                                                      stamp that got in anyway (raw
+ *                                                                      apply) makes the doc read-only
  *   v13 migration             `bindLegacyReader` gate → rebuild via    legacy DB byte-identical; no
  *                             document-level `init` → `loadDocument`   v14 generation activated
  *

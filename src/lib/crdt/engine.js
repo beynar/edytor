@@ -24,6 +24,11 @@ export const Y = {
 	encodeStateVector: V.encodeStateVector,
 	decodeStateVector: V.decodeStateVector,
 	decodeUpdate: V.decodeUpdate,
+	// the engine's pending store is V2-encoded (admission of pending structs)
+	decodeUpdateV2: V.decodeUpdateV2,
+	// the store-before-ack body carries the acknowledged deletes (`sync.writeSaved`)
+	UpdateEncoderV1: V.UpdateEncoderV1,
+	writeIdSet: V.writeIdSet,
 	mergeUpdates: V.mergeUpdates,
 	Skip: V.Skip,
 	findIndexSS: V.findIndexSS,

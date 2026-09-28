@@ -12,8 +12,10 @@
  *     overwrite, and a deleted stamp are refused;
  *   - a brand-new peer's SyncStep2 (full state, our stamp) applies;
  *   - a corrupt payload is reported and mutates nothing;
- *   - a forged stamp that slips in through pending resolution leaves the
- *     document read-only (the `writable` guard, O18).
+ *   - a forged stamp pending until its dependency arrives is discarded
+ *     with the pending store, never integrated; one a raw apply integrates
+ *     (no admission) leaves the document read-only (the `writable` guard,
+ *     O18).
  *
  * The keystroke-burst timing is printed, not asserted.
  */
@@ -201,7 +203,11 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 		expect(Y.encodeStateAsUpdate(live)).toEqual(before);
 	});
 
-	it('a forged stamp that slips in through pending resolution leaves the document read-only', () => {
+	// Independent review 2026-09-29: this row used to pin the defect (the
+	// pending forgery integrated when its dependency arrived). Admission now
+	// judges what the engine holds pending together with the update that
+	// releases it: the forgery is discarded, never integrated.
+	it('a forged stamp pending until its dependency arrives is discarded, never integrated', () => {
 		const document = createDocument({
 			value: { children: [{ id: 'p', type: 'paragraph', content: [{ text: 'x' }] }] }
 		});
@@ -216,8 +222,38 @@ describe('gateF1 WU3b — inbound refusal (applyRemote)', () => {
 		const [uMid, uLate] = captured;
 		const signals: boolean[] = [];
 		document.onWritableChange((w) => signals.push(w));
-		S.applyRemote(live, uLate, 'bench'); // pends: not judgeable
-		expect(S.applyRemote(live, uMid, 'bench').applied).toBe(true); // legit; resolves uLate
+		expect(S.applyRemote(live, uLate, 'bench')).toEqual({ applied: true, problem: null }); // pends
+		expect(S.applyRemote(live, uMid, 'bench')).toEqual({
+			applied: true,
+			problem: null,
+			discarded: { kind: 'unsupported', version: 99 }
+		});
+		expect(E.schemaVersion(live)).toBe(SCHEMA_VERSION);
+		expect(live.store.pendingStructs).toBeNull();
+		expect(live.store.pendingDs).toBeNull();
+		expect(document.writable).toBe(true);
+		expect(signals).toEqual([]);
+		expect(document.transact(() => document.facade.insertText('p', 0, '!')).status).toBe('applied');
+		document.destroy();
+	});
+
+	it('a forged stamp that a raw apply (no admission) integrates leaves the document read-only', () => {
+		const document = createDocument({
+			value: { children: [{ id: 'p', type: 'paragraph', content: [{ text: 'x' }] }] }
+		});
+		const live = document.doc;
+		const peer = new Y.Doc();
+		peer.clientID = Number.MAX_SAFE_INTEGER;
+		Y.applyUpdate(peer, Y.encodeStateAsUpdate(live));
+		const captured: Uint8Array[] = [];
+		peer.on('update', (u: Uint8Array) => captured.push(u));
+		peer.transact(() => peer.get('meta').setAttr('v', SCHEMA_VERSION));
+		peer.transact(() => peer.get('meta').setAttr('v', 99));
+		const [uMid, uLate] = captured;
+		const signals: boolean[] = [];
+		document.onWritableChange((w) => signals.push(w));
+		Y.applyUpdate(live, uLate, 'bench'); // the bypass: nothing judges it
+		Y.applyUpdate(live, uMid, 'bench');
 		expect(E.schemaVersion(live)).toBe(99);
 		expect(document.writable).toBe(false);
 		expect(signals).toEqual([false]);

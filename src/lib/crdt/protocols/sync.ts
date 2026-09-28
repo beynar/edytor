@@ -47,6 +47,13 @@ import type { EngineApi, EngineDoc, YDoc } from '../engine-api.js';
 
 export type SyncProtocol = ReturnType<typeof bindSync>;
 
+type Id = { client: number; clock: number };
+type Attr = { id: Id; deleted: boolean; parentSub?: string | null; left?: Attr | null };
+/** A decoded update: its structs and its delete set. */
+type Decoded = ReturnType<EngineApi['decodeUpdate']>;
+/** An engine id set (a delete set). */
+export type IdSet = Decoded['ds'];
+
 /**
  * Fallback transaction origin for inbound remote applies when the caller
  * does not stamp one (the {@link bindSync} `transactionOrigin` parameter
@@ -132,32 +139,32 @@ export const bindSync = (Y: EngineApi) => {
 	const readUpdate = readSyncStep2;
 
 	/**
-	 * Inbound refusal (R13, F8): the schema problem `update` would write, or
-	 * `null`. The frame already proved its generation; this catches a
-	 * same-generation writer forging the stamp — an attr item under the
-	 * `meta` root whose value is not this build's (`v`, `schema`; any other
-	 * key is foreign), or a delete of a live stamp the update does not
-	 * rewrite. An attr overwrite is parentless on the wire: its key is its
-	 * origin's (the item it overwrites — in the store, or earlier in the
-	 * update). An item whose origin is unknown pends in the engine and is not
-	 * judged here; if it later lands a foreign stamp the document turns
-	 * read-only (O18).
+	 * Inbound refusal (R13, F8): the schema problem `parts` (decoded updates,
+	 * judged together) would write, or `null`. The frame already proved its
+	 * generation; this catches a same-generation writer forging the stamp —
+	 * an attr item under the `meta` root whose value is not this build's
+	 * (`v`, `schema`; any other key is foreign), or a stamp left without a
+	 * live value: a live stamp deleted and not rewritten, or a new one
+	 * written only deleted. An attr overwrite is parentless on the wire: its
+	 * key is its origin's (the item it overwrites — in the store, or in
+	 * `parts`). An item whose origin is in neither cannot integrate yet and
+	 * is judged when it can (see {@link applyRemote}).
 	 */
-	const foreignStamp = (doc: YDoc, update: Uint8Array): SchemaProblem | null => {
-		type Id = { client: number; clock: number };
-		type Attr = { id: Id; deleted: boolean; parentSub?: string | null; left?: Attr | null };
-		const { structs, ds } = Y.decodeUpdate(update);
+	const foreignStamp = (doc: YDoc, parts: Decoded[]): SchemaProblem | null => {
 		const meta = (doc as unknown as EngineDoc).get(SCHEMA.roots.meta) as unknown as {
 			_map: Map<string, Attr>;
 		};
 		const at = ({ client, clock }: Id) => `${client}:${clock}`;
+		const deleted = ({ client, clock }: Id) => parts.some((p) => p.ds.has(client, clock));
 		const keyOf = new Map<string, unknown>();
 		for (const item of meta._map.values()) {
 			for (let it: Attr | null | undefined = item; it; it = it.left)
 				keyOf.set(at(it.id), it.parentSub);
 		}
 		const { version, schema } = SCHEMA.metaAttrs;
+		const written = new Set<unknown>();
 		const rewritten = new Set<unknown>();
+		const structs = parts.flatMap((part) => part.structs);
 		for (let grew = true; grew; ) {
 			grew = false;
 			for (const s of structs) {
@@ -167,7 +174,8 @@ export const bindSync = (Y: EngineApi) => {
 				if (key == null) continue;
 				keyOf.set(at(s.id), key);
 				grew = true;
-				if (ds.has(s.id.client, s.id.clock)) continue;
+				written.add(key);
+				if (deleted(s.id)) continue;
 				const value = (s.content as { arr?: unknown[] }).arr?.[0];
 				if (key === version && value !== SCHEMA_VERSION) {
 					return { kind: 'unsupported', version: value as number };
@@ -178,8 +186,12 @@ export const bindSync = (Y: EngineApi) => {
 				rewritten.add(key);
 			}
 		}
-		for (const [key, item] of meta._map) {
-			if (!item.deleted && !rewritten.has(key) && ds.has(item.id.client, item.id.clock)) {
+		// A key that held or gets a stamp must keep a live one.
+		for (const key of new Set([...meta._map.keys(), ...written])) {
+			const item = meta._map.get(key as string);
+			const live = item !== undefined && !item.deleted;
+			const kept = live && !deleted(item.id);
+			if ((live || written.has(key)) && !kept && !rewritten.has(key)) {
 				return key === version
 					? { kind: 'unversioned' }
 					: { kind: 'foreign', version: SCHEMA_VERSION };
@@ -188,10 +200,25 @@ export const bindSync = (Y: EngineApi) => {
 		return null;
 	};
 
+	/** What the engine holds pending on `doc` (structs and deletes waiting for a dependency). */
+	const held = (doc: YDoc): Decoded[] => {
+		const pending = [doc.store.pendingStructs?.update, doc.store.pendingDs];
+		return pending.flatMap((bytes) => (bytes ? [Y.decodeUpdateV2(bytes)] : []));
+	};
+
 	/**
 	 * Apply one inbound update (SyncStep2 / Update payload) to the live doc
 	 * under a non-null remote origin — unless it writes a foreign schema
 	 * stamp, which is refused before integration and returned as `problem`.
+	 *
+	 * Admission covers everything the apply can integrate: the update, and
+	 * what the engine holds pending that the update may release. An update
+	 * that passes alone but releases a pending forged stamp (a write that
+	 * arrived before the item it overwrites) is applied after the pending
+	 * store is discarded — structs and deletes, never integrated; their
+	 * writers' honest parts come back on their next sync, as the state
+	 * vector never covered them. The discarded problem is `discarded`.
+	 *
 	 * `applied === false` with no problem means the payload could not be
 	 * decoded or integrated (reported through `errorHandler` + the console).
 	 */
@@ -200,18 +227,59 @@ export const bindSync = (Y: EngineApi) => {
 		update: Uint8Array,
 		transactionOrigin: unknown,
 		errorHandler?: (error: Error) => unknown
-	): { applied: boolean; problem: SchemaProblem | null } => {
+	): { applied: boolean; problem: SchemaProblem | null; discarded?: SchemaProblem } => {
 		try {
-			const problem = foreignStamp(doc, update);
+			const own = Y.decodeUpdate(update);
+			const problem = foreignStamp(doc, [own]);
 			if (problem !== null) return { applied: false, problem };
+			const pending = held(doc);
+			const discarded = pending.length > 0 ? foreignStamp(doc, [own, ...pending]) : null;
+			if (discarded !== null) {
+				const store = doc.store;
+				store.pendingStructs = null;
+				store.pendingDs = null;
+			}
 			Y.applyUpdate(doc, update, transactionOrigin ?? remoteApplyOrigin);
-			return { applied: true, problem: null };
+			return discarded === null
+				? { applied: true, problem: null }
+				: { applied: true, problem: null, discarded };
 		} catch (error) {
 			if (errorHandler != null) errorHandler(error as Error);
 			console.error('Caught error while handling a Yjs update', error);
 			return { applied: false, problem: null };
 		}
 	};
+
+	/**
+	 * The store-before-ack body (`messageSaved`): `doc`'s state vector, then
+	 * — when the acknowledged message carried deletes — the part of
+	 * `deletes` that `doc` holds (applied, not pending), as an update with no
+	 * structs. A server writes it only after it stored what `doc` integrated,
+	 * so it acknowledges structs by state vector and deletes by id, and a
+	 * deletion that advanced no clock is acknowledged too. A reader of the
+	 * state vector alone ignores the second field; a body without it
+	 * acknowledges no deletes.
+	 */
+	const writeSaved = (encoder: encoding.Encoder, doc: YDoc, deletes?: IdSet): void => {
+		encoding.writeVarUint8Array(encoder, Y.encodeStateVector(doc));
+		const pending = doc.store.pendingDs;
+		const held = deletes && pending ? Y.diffIdSet(deletes, Y.decodeUpdateV2(pending).ds) : deletes;
+		if (!held || held.isEmpty()) return;
+		const body = new Y.UpdateEncoderV1();
+		encoding.writeVarUint(body.restEncoder, 0); // no structs
+		Y.writeIdSet(body, held);
+		encoding.writeVarUint8Array(encoder, body.toUint8Array());
+	};
+
+	/** Read a {@link writeSaved} body: the state vector, and the acknowledged deletes (`null`: none). */
+	const readSaved = (
+		decoder: decoding.Decoder
+	): { stateVector: Uint8Array; deletes: IdSet | null } => ({
+		stateVector: decoding.readVarUint8Array(decoder),
+		deletes: decoding.hasContent(decoder)
+			? Y.decodeUpdate(decoding.readVarUint8Array(decoder)).ds
+			: null
+	});
 
 	/**
 	 * Read a sync message from `decoder`; writes any reply (SyncStep2) into
@@ -258,6 +326,8 @@ export const bindSync = (Y: EngineApi) => {
 		readUpdate,
 		readSyncMessage,
 		applyRemote,
-		lacks
+		lacks,
+		writeSaved,
+		readSaved
 	};
 };

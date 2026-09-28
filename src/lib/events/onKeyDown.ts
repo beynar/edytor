@@ -243,7 +243,7 @@ const getStructuralFallbackInputType = (
 
 	const key = event.key.toLowerCase();
 	const { isCollapsed, isAtStartOfBlock, isAtStartOfText, isAtEndOfBlock, isAtEndOfText } =
-		edytor.selection.state;
+		edytor.selection.projection;
 
 	if (key === 'enter') {
 		return event.shiftKey ? 'insertLineBreak' : 'insertParagraph';

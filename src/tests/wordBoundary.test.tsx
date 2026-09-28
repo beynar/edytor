@@ -79,7 +79,7 @@ describe('moveByWord reversed selection', () => {
 			</root>
 		);
 		const { startText, yStart, endText, yEnd } = edytor.selection.state;
-		edytor.selection.setRangeStateAtTextOffsets(startText!, yStart, endText!, yEnd, {
+		edytor.selection.setAtRange(startText!, yStart, endText!, yEnd, {
 			isReversed: true
 		});
 
@@ -97,7 +97,7 @@ describe('moveByWord reversed selection', () => {
 			</root>
 		);
 		const { startText, yStart, endText, yEnd } = edytor.selection.state;
-		edytor.selection.setRangeStateAtTextOffsets(startText!, yStart, endText!, yEnd, {
+		edytor.selection.setAtRange(startText!, yStart, endText!, yEnd, {
 			isReversed: true
 		});
 

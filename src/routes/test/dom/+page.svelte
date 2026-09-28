@@ -31,6 +31,7 @@
 	import type { Text } from '$lib/text/text.svelte.js';
 	import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 	import type { HotKey } from '$lib/session/keymap.js';
+	import { anchorsInOrder } from '$lib/session/selection.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -449,6 +450,12 @@
 			// needs no model access.
 			const owner = edytor?.document === document ? edytor : undefined;
 			const selectionState = owner?.selection?.state ?? null;
+			const selectionValue = owner?.selection.value;
+			// The endpoints' relative anchors in document order (`end` only for a range).
+			const [startAnchor, endAnchor] =
+				owner && selectionValue?.kind === 'text'
+					? anchorsInOrder(selectionValue, owner.selection.projection)
+					: [null, null];
 			const selectedBlockIds = owner
 				? [...owner.selection.selectedBlocks].map((block) => block.id)
 				: [];
@@ -604,9 +611,9 @@
 							// the runner's exact check compares the landed position
 							// to this resolution (or to the repair seam when the
 							// anchor is unresolvable).
-							startAnchor: selectionState.relativePosition ?? null,
-							endAnchor: selectionState.endPosition ?? null,
-							// `relativePosition`/`endPosition` are only production's
+							startAnchor,
+							endAnchor: selectionState.isCollapsed ? null : endAnchor,
+							// The anchors are only production's
 							// recovery input when the remote update touched the
 							// endpoint — and can lag the absolute position (the
 							// caret's last write may predate the anchor's). An
@@ -614,13 +621,13 @@
 							// HERE to the dumped endpoint position right now.
 							startAnchorOk: anchorConsistent(
 								owner,
-								selectionState.relativePosition,
+								startAnchor,
 								selectionState.startText,
 								selectionState.yStart
 							),
 							endAnchorOk: anchorConsistent(
 								owner,
-								selectionState.endPosition,
+								selectionState.isCollapsed ? null : endAnchor,
 								selectionState.endText,
 								selectionState.yEnd
 							),

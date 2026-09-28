@@ -145,7 +145,7 @@ describe('P2-6 — async range writes include direction in the staleness guard',
 		// The older write awaits endpoint nodes; while it is in flight a
 		// newer BACKWARD write over the same endpoints lands.
 		const staleWrite = selection.setAtRange(text, 1, text, 3, { isReversed: false });
-		selection.setRangeStateAtTextOffsets(text, 1, text, 3, { isReversed: true });
+		selection.setAtRange(text, 1, text, 3, { isReversed: true });
 		await staleWrite;
 		await flushDomUpdates();
 

@@ -56,7 +56,7 @@ const selectFirstTextRange = async (edytor: Edytor, endOffset: number) => {
 		throw new Error('Expected first text for toolbar fixture selection');
 	}
 
-	edytor.selection.setRangeStateAtTextOffsets(text, 0, text, endOffset);
+	edytor.selection.setAtRange(text, 0, text, endOffset);
 	await flushDomUpdates();
 };
 

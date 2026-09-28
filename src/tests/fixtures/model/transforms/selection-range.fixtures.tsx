@@ -17,10 +17,10 @@ export const fixtures = defineFixtures([
 		run: () => null,
 		assert: ({ edytor }) => {
 			expect(edytor.selection.state.isCollapsed).toBe(false);
-			expect(edytor.selection.state.isTextSpanning).toBe(false);
-			expect(edytor.selection.state.isBlockSpanning).toBe(false);
-			expect(edytor.selection.state.length).toBe(5);
-			expect(edytor.selection.state.content).toBe('world');
+			expect(edytor.selection.projection.isTextSpanning).toBe(false);
+			expect(edytor.selection.projection.isBlockSpanning).toBe(false);
+			expect(edytor.selection.projection.content.length).toBe(5);
+			expect(edytor.selection.projection.content).toBe('world');
 		}
 	}),
 	defineModelTransformFixture({

@@ -113,7 +113,7 @@ export class InlineBlock {
 			}
 
 			if (boundaryText) {
-				this.edytor.selection.setCollapsedStateAtTextOffset(boundaryText, boundaryOffset);
+				this.edytor.selection.setAtTextOffset(boundaryText, boundaryOffset);
 				this.edytor.selection.setAtTextOffset(boundaryText, boundaryOffset);
 				return;
 			}

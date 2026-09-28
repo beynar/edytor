@@ -181,7 +181,7 @@ const resolveDropPoint = (edytor: Edytor, snapshot: Attempt) => {
 		0,
 		Math.min(getYIndex(text, range!.startContainer, range!.startOffset), text.length)
 	);
-	selection.setCollapsedStateAtTextOffset(text, offset);
+	selection.setAtTextOffset(text, offset);
 	return { text, offset };
 };
 
@@ -230,8 +230,8 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	}
 	edytor.selection.setAtTextOffset(target.text, target.offset);
 
-	const { startText, isCollapsed, isAtEndOfBlock, isAtStartOfBlock, yStart } =
-		edytor.selection.state;
+	const { startText, isCollapsed, yStart } = edytor.selection.state;
+	const { isAtEndOfBlock, isAtStartOfBlock } = edytor.selection.projection;
 
 	if (!isCollapsed || !startText?.parent.parent) {
 		return;

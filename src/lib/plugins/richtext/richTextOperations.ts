@@ -104,7 +104,6 @@ const formatSelectedTextRange = (
 			end: isLast ? yEnd : text.length
 		});
 	});
-	edytor.selection.setRangeStateAtTextOffsets(startText, yStart, endText, yEnd, { isReversed });
 	edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 };
 
@@ -179,9 +178,6 @@ export const richTextOperations = (edytor: Edytor) => ({
 				text.removeMarksFromText({ start, end });
 			}
 		});
-		if (startText) {
-			edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
-		}
 	},
 	setLinkAtRange: (link: RichTextLink) => {
 		// Reject scriptable/empty hrefs at the write boundary — the model

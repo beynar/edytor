@@ -281,7 +281,7 @@ describe('V2 — suggestions are session state (F-P18, session half)', () => {
 		);
 		const [hello, world] = edytor.root!.children;
 		hello!.suggestions = [[{ text: ' there' }]];
-		edytor.selection.setCollapsedStateAtTextOffset(world!.firstText!, 2);
+		edytor.selection.setAtTextOffset(world!.firstText!, 2);
 		expect(hello!.suggestions).toBeNull();
 	});
 

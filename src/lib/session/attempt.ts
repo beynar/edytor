@@ -78,7 +78,7 @@ export const intentOf = (reported: string, data: string | null, keyIntent?: stri
 
 /** The target's facts a command reads, projected when the attempt runs. */
 const facts = (edytor: Edytor) => {
-	const { state } = edytor.selection;
+	const { state, projection } = edytor.selection;
 	const { startText } = state;
 	return {
 		startText,
@@ -88,15 +88,14 @@ const facts = (edytor: Edytor) => {
 		yEnd: state.yEnd,
 		/** The admitted mark-edge side of a caret (R4). */
 		edge: state.edge as EdgeSide | undefined,
-		length: state.length,
 		isCollapsed: state.isCollapsed,
-		isTextSpanning: state.isTextSpanning,
-		isBlockSpanning: state.isBlockSpanning,
-		isAtStartOfBlock: Boolean(state.isAtStartOfBlock),
-		isAtEndOfBlock: Boolean(state.isAtEndOfBlock),
-		isAtStartOfText: Boolean(state.isAtStartOfText),
-		isAtEndOfText: Boolean(state.isAtEndOfText),
-		islandRoot: state.islandRoot,
+		isTextSpanning: projection.isTextSpanning,
+		isBlockSpanning: projection.isBlockSpanning,
+		isAtStartOfBlock: projection.isAtStartOfBlock,
+		isAtEndOfBlock: projection.isAtEndOfBlock,
+		isAtStartOfText: projection.isAtStartOfText,
+		isAtEndOfText: projection.isAtEndOfText,
+		islandRoot: edytor.idToBlock.get(projection.islandRoot ?? '') ?? null,
 		isVoidEditableElement: state.isVoidEditableElement,
 		isFirstChildOfDocument: startText?.parent === edytor.root?.children.at(0),
 		isNested: Boolean(startText && startText.parent.parent !== edytor.root),

@@ -370,8 +370,6 @@ export class Projector {
 		this.#seen = this.#flushes;
 		this.#serial = edytor.intentSerial;
 		selection.observed({
-			startNode: start[0],
-			endNode: end[0],
 			edge: isCollapsed ? getMarkEdgeSide(startText, start[0], yStart) : undefined
 		});
 		return true;

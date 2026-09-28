@@ -305,11 +305,11 @@ describe('V1/V2 — every writer commits a value; the state is its projection', 
 		const sel = edytor.selection;
 		expect(sel.value).toEqual(noSelection);
 
-		sel.setCollapsedStateAtTextOffset(text(edytor, 'a'), 3);
+		sel.setAtTextOffset(text(edytor, 'a'), 3);
 		const caret = edytor.facade.anchorAt('a', 3, 'left');
 		expect(sel.value).toEqual(textSelection(caret));
 
-		sel.setRangeStateAtTextOffsets(text(edytor, 'a'), 1, edytor.idToBlock.get('b').lastText, 1, {
+		sel.setAtRange(text(edytor, 'a'), 1, edytor.idToBlock.get('b').lastText, 1, {
 			isReversed: true
 		});
 		// reversed: the anchor is the end (bound left), the focus the start (bound right)
@@ -328,17 +328,18 @@ describe('V1/V2 — every writer commits a value; the state is its projection', 
 		const { project } = S();
 		const edytor = view();
 		const sel = edytor.selection;
-		sel.setRangeStateAtTextOffsets(text(edytor, 'a'), 1, edytor.idToBlock.get('b').lastText, 1);
+		sel.setAtRange(text(edytor, 'a'), 1, edytor.idToBlock.get('b').lastText, 1);
 		const v = project(sel.value, edytor.facade);
 		const s = sel.state;
 		expect(v.start).toEqual({ block: 'a', offset: s.startText.segStart + s.yStart });
 		expect(v.end).toEqual({ block: 'b', offset: s.endText.segStart + s.yEnd });
-		expect([v.isCollapsed, v.isReversed, v.blocks, v.content, v.marks]).toEqual([
+		// D3: the state keeps the wrapper fields; content and marks are the projection's.
+		expect([v.isCollapsed, v.isReversed, v.blocks, v.isBlockSpanning]).toEqual([
 			s.isCollapsed,
 			s.isReversed,
 			s.blocks.map((b) => b.id),
-			s.content,
-			s.currentMarks
+			s.isBlockSpanning
 		]);
+		expect(sel.projection).toBe(v);
 	});
 });

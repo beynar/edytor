@@ -622,7 +622,7 @@ describe('post-repair caret restore', () => {
 });
 
 describe('selection emission dedupe', () => {
-	test('setCollapsedStateAtTextOffset emits once for a repeated identical write', async () => {
+	test('setAtTextOffset emits once for a repeated identical write', async () => {
 		const onSelectionChange = vi.fn();
 		const { edytor } = await renderDomEdytor(
 			<root>
@@ -633,8 +633,8 @@ describe('selection emission dedupe', () => {
 		const text = firstText(edytor);
 		onSelectionChange.mockClear();
 
-		edytor.selection.setCollapsedStateAtTextOffset(text, 2);
-		edytor.selection.setCollapsedStateAtTextOffset(text, 2);
+		edytor.selection.setAtTextOffset(text, 2);
+		edytor.selection.setAtTextOffset(text, 2);
 
 		expect(onSelectionChange).toHaveBeenCalledTimes(1);
 	});

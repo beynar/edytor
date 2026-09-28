@@ -129,7 +129,7 @@ export class SlashMenuController {
 			const { text, triggerStart, queryEnd } = range;
 			const end = Math.min(queryEnd, text.length);
 			this.close();
-			edytor.selection.setCollapsedStateAtTextOffset(text, triggerStart);
+			edytor.selection.setAtTextOffset(text, triggerStart);
 			// The trigger's removal leads the command's first operation (one plan:
 			// refusing the command keeps the trigger); a command that plans
 			// nothing synchronously runs after it.

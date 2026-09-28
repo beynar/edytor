@@ -293,7 +293,8 @@ export const fixtures = defineFixtures([
 		assert: async ({ edytor }) => {
 			const block = edytor.root!.children[0]!;
 			const tail = block.lastText!;
-			const anchor = edytor.selection.state.relativePosition;
+			const { value } = edytor.selection;
+			const anchor = value.kind === 'text' ? value.anchor : null;
 			// The selection state's caret anchor is a backing-text anchor —
 			// {b: home block id of the backing text, a: {i, a}}.
 			if (!anchor || typeof anchor.b !== 'string' || typeof anchor.a?.a !== 'number') {

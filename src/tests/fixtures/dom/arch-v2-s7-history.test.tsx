@@ -223,7 +223,7 @@ describe('S7 — history restores the issuing view’s recorded selection', () =
 				});
 				const block1 = v1.edytor.root!.children[0]!;
 				const block2 = v2.edytor.root!.children[0]!;
-				v2.edytor.selection.setCollapsedStateAtTextOffset(block2.firstText!, 11);
+				v2.edytor.selection.setAtTextOffset(block2.firstText!, 11);
 				// The user then clicks into V1: its host takes focus (jsdom does not
 				// move focus with a selection; since V4 V2's caret is displayed).
 				await flushDomUpdates();

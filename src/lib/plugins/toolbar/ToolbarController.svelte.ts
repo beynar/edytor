@@ -86,8 +86,8 @@ export class ToolbarController {
 			state.texts.length > 0 &&
 			selection.selectedBlocks.size === 0 &&
 			selection.selectedInlineBlock.size === 0 &&
-			!state.isVoid &&
-			!state.isIsland
+			selection.projection.voidRoot === null &&
+			selection.projection.islandRoot === null
 		);
 	}
 

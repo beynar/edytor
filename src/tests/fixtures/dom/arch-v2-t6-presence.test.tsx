@@ -42,7 +42,7 @@ const entries = (document: EdytorDocument): Entries =>
 
 /** A model caret in the first paragraph — `select()` publishes it. */
 const caret = (edytor: Edytor, offset: number) =>
-	edytor.selection.setCollapsedStateAtTextOffset(edytor.root!.children[0]!.firstText!, offset);
+	edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, offset);
 
 /** Two mounted views of one document, each with a published caret; returns their keys. */
 const siblings = async () => {

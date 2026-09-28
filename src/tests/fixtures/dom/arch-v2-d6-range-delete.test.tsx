@@ -111,7 +111,7 @@ describe('D6 follow-up — seam delete and undo selection (dom)', () => {
 		const note = edytor.root!.children[1]!.firstText!;
 		const tail = edytor.root!.children[2]!.firstText!;
 		// The model range the Shift+ArrowRight extension hands the command.
-		edytor.selection.setRangeStateAtTextOffsets(note!, 4, tail!, 0);
+		edytor.selection.setAtRange(note!, 4, tail!, 0);
 		await backspace(edytor);
 		await flushDomUpdates();
 		expect(texts(edytor)).toEqual(['', 'notetail']);

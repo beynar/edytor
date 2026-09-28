@@ -40,7 +40,6 @@ import {
 	segmentsOf,
 	serialize,
 	textSelection,
-	anchorsInOrder,
 	type AtomSide,
 	type Marks,
 	type SelectCause,
@@ -63,48 +62,26 @@ import { getTextPath } from '$lib/events/events.utils.js';
  */
 export type TextAnchor = { b: string; a: Anchor };
 
+/**
+ * The public read-only view (D3): the projection's endpoints as wrappers
+ * (`startText`/`yStart`… offsets inside text segments). Projection facts —
+ * `content`, `marks`, the `isAt…`/`is…Spanning` flags, `islandRoot`,
+ * `voidRoot` — are read from `selection.projection`.
+ */
 type SelectionState = {
 	yStart: number;
 	yEnd: number;
-	length: number;
-	content: string;
 	isCollapsed: boolean;
 	isReversed: boolean;
-	// If the selection is at the start of the block
-	isAtStartOfBlock?: boolean;
-	// If the selection is at the end of the block
-	isAtEndOfBlock?: boolean;
-	// If the selection is at the start of the text
-	isAtStartOfText?: boolean;
-	// If the selection is at the end of the text
-	isAtEndOfText?: boolean;
 	startText: Text | null;
 	endText: Text | null;
 	startBlock: Block | null;
 	endBlock: Block | null;
 	texts: Text[];
-	contentParts: (Text | InlineBlock)[];
 	blocks: Block[];
-	startNode: Node | null;
-	endNode: Node | null;
-	isTextSpanning: boolean;
 	isBlockSpanning: boolean;
-	isVoid: boolean;
-	voidRoot: Block | null;
+	/** Focus is in a void block's own `input`/`textarea`. */
 	isVoidEditableElement: boolean;
-	isIsland: boolean;
-	islandRoot: Block | null;
-	relativePosition: TextAnchor | null;
-	/**
-	 * The range END's backing-text anchor — the `relativePosition` twin.
-	 * `null` for collapsed carets (the end IS the start) and for states
-	 * with no text endpoint; populated on non-collapsed derives so remote
-	 * edits landing inside the end text re-map the end instead of leaving
-	 * `yEnd` stale. Bound 'left' — concurrent inserts at the end boundary
-	 * stay outside the range (the awareness `end` convention).
-	 */
-	endPosition: TextAnchor | null;
-	currentMarks: JSONText['marks'];
 	/** R4 admission: the mark-edge side of a DOM-derived caret (`marksForInsertion`). */
 	edge?: EdgeSide;
 };
@@ -116,33 +93,16 @@ export type SuggestionParts = (JSONText[] | JSONInlineBlock)[];
 const EMPTY_STATE: SelectionState = Object.freeze({
 	yStart: 0,
 	yEnd: 0,
-	length: 0,
-	content: '',
 	isCollapsed: true,
 	isReversed: false,
 	texts: [],
 	blocks: [],
-	contentParts: [],
-	isAtStartOfBlock: false,
-	isAtEndOfBlock: false,
-	isAtStartOfText: false,
-	isAtEndOfText: false,
-	startNode: null,
-	endNode: null,
 	startText: null,
 	endText: null,
 	startBlock: null,
 	endBlock: null,
-	isTextSpanning: false,
 	isBlockSpanning: false,
-	isVoid: false,
-	isIsland: false,
-	islandRoot: null,
-	isVoidEditableElement: false,
-	voidRoot: null,
-	relativePosition: null,
-	endPosition: null,
-	currentMarks: {}
+	isVoidEditableElement: false
 }) as SelectionState;
 
 /**
@@ -312,12 +272,8 @@ export class EdytorSelection {
 	 */
 	suggestions = new SvelteMap<string, SuggestionParts>();
 	/** DOM fields (Surface) observed with the value they describe. */
-	#surface: {
-		value: SelectionValue;
-		startNode: Node | null;
-		endNode: Node | null;
-		edge?: EdgeSide;
-	} | null = null;
+	/** The mark-edge side a display or a DOM derive observed the value with. */
+	#surface: { value: SelectionValue; edge?: EdgeSide } | null = null;
 	/** Blocks holding the last selection's endpoints: a suggestion there is cleared when they are left. */
 	#edges: string[] = [];
 	#compat = new WeakMap<SelectionProjection, { surface: unknown; state: SelectionState }>();
@@ -336,17 +292,16 @@ export class EdytorSelection {
 	}
 
 	/**
-	 * Compatibility view of the projection in today's wrapper vocabulary
-	 * (`startText`/`yStart`/… offsets inside text segments). Every field is a
-	 * projection of (value, document version); the DOM fields come from the
-	 * Surface for the value they were observed with.
+	 * The read-only wrapper view of the projection (D3): every field is a
+	 * projection of (value, document version); `edge` comes from the Surface
+	 * for the value it was observed with.
 	 */
 	get state(): SelectionState {
 		const projection = this.projection;
 		const surface = this.#surface?.value === this.value ? this.#surface : null;
 		const hit = this.#compat.get(projection);
 		if (hit && hit.surface === surface) return hit.state;
-		const state = this.#compatState(this.value, projection, surface);
+		const state = this.#view(this.value, projection, surface?.edge);
 		this.#compat.set(projection, { surface, state });
 		return state;
 	}
@@ -356,10 +311,10 @@ export class EdytorSelection {
 		return this.edytor.idToBlock.text(block.id, segment.segOrd);
 	};
 
-	#compatState = (
+	#view = (
 		value: SelectionValue,
 		projection: SelectionProjection,
-		surface: { startNode: Node | null; endNode: Node | null; edge?: EdgeSide } | null
+		edge: EdgeSide | undefined
 	): SelectionState => {
 		const { start, end } = projection;
 		const blockOf = (id: string) => this.edytor.idToBlock.get(id) ?? null;
@@ -372,18 +327,14 @@ export class EdytorSelection {
 			const index = all.findIndex((part) => part.kind === 'inline' && part.id === value.atomId);
 			parts = all.slice(index - 1, index + 2);
 		}
-		const texts = parts.filter((part) => part.kind === 'text');
-		const startSegment = texts[0];
-		const endSegment = texts[texts.length - 1];
+		const segments = parts.filter((part) => part.kind === 'text');
+		const [startSegment, endSegment] = [segments[0], segments.at(-1)];
 		const startText = this.#textOf(startBlock, startSegment);
 		const endText = this.#textOf(endBlock, endSegment);
 		if (!startText || !endText || !startSegment || !endSegment) return EMPTY_STATE;
-		const contentParts = parts.flatMap((part): (Text | InlineBlock)[] => {
+		const texts = segments.flatMap((part) => {
 			const block = blockOf(part.block);
-			if (!block) return [];
-			if (part.kind === 'text') return [this.#textOf(block, part) ?? []].flat();
-			const atom = block.content.find((c) => c instanceof InlineBlock && c.id === part.id);
-			return atom instanceof InlineBlock ? [atom] : [];
+			return (block && this.#textOf(block, part)) ?? [];
 		});
 		const blocks =
 			value.kind === 'blocks'
@@ -392,51 +343,28 @@ export class EdytorSelection {
 						.sort((a, b) => this.edytor.facade.compare(a, b))
 						.flatMap((id) => blockOf(id) ?? [])
 				: projection.blocks.flatMap((id) => blockOf(id) ?? []);
-		const [anchorStart, anchorEnd] =
-			value.kind === 'text' ? anchorsInOrder(value, projection) : [null, null];
-		const voidRoot = projection.voidRoot ? blockOf(projection.voidRoot) : null;
-		const edytor = this.edytor;
-		return Object.defineProperties(
+		const node = this.edytor.node;
+		return Object.defineProperty(
 			{
 				yStart: start.offset - startSegment.start,
 				yEnd: end.offset - endSegment.start,
 				isCollapsed: projection.isCollapsed,
 				isReversed: projection.isReversed,
-				texts: contentParts.filter((part): part is Text => part instanceof Text),
-				contentParts,
+				isBlockSpanning: projection.isBlockSpanning,
+				texts,
 				blocks,
-				isAtStartOfBlock: projection.isAtStartOfBlock,
-				isAtEndOfBlock: projection.isAtEndOfBlock,
-				isAtStartOfText: projection.isAtStartOfText,
-				isAtEndOfText: projection.isAtEndOfText,
-				startNode: surface?.startNode ?? null,
-				endNode: surface?.endNode ?? null,
-				edge: surface?.edge,
+				edge,
 				startText,
 				endText,
 				startBlock,
-				endBlock,
-				isTextSpanning: projection.isTextSpanning,
-				isBlockSpanning: projection.isBlockSpanning,
-				isVoid: voidRoot !== null,
-				voidRoot,
-				isIsland: projection.islandRoot !== null,
-				islandRoot: projection.islandRoot ? blockOf(projection.islandRoot) : null,
-				relativePosition: anchorStart,
-				endPosition: projection.isCollapsed ? null : anchorEnd
+				endBlock
 			},
+			'isVoidEditableElement',
 			{
-				content: { enumerable: true, get: () => projection.content },
-				length: { enumerable: true, get: () => projection.content.length },
-				currentMarks: { enumerable: true, get: () => projection.marks },
-				isVoidEditableElement: {
-					enumerable: true,
-					get: () =>
-						voidRoot !== null &&
-						['INPUT', 'TEXTAREA'].includes(
-							getActiveElement(edytor.node)?.tagName.toUpperCase() ?? ''
-						)
-				}
+				enumerable: true,
+				get: () =>
+					projection.voidRoot !== null &&
+					['INPUT', 'TEXTAREA'].includes(getActiveElement(node)?.tagName.toUpperCase() ?? '')
 			}
 		) as SelectionState;
 	};
@@ -446,13 +374,9 @@ export class EdytorSelection {
 	 * applies every side effect once — the selected, atom and focused sets
 	 * (hooks and attributes), clearing suggestions whose block the selection
 	 * left, and, when the value changed, presence and `onSelectionChange`.
-	 * `surface` carries the DOM nodes the value was observed from.
+	 * `surface` carries the mark-edge side the value was observed with.
 	 */
-	select = (
-		next: SelectionValue,
-		cause: SelectCause = 'model',
-		surface?: { startNode: Node | null; endNode: Node | null; edge?: EdgeSide }
-	) => {
+	select = (next: SelectionValue, cause: SelectCause = 'model', surface?: { edge?: EdgeSide }) => {
 		next = this.#keepPending(next);
 		const changed = !sameValue(this.value, next);
 		if (changed) this.value = next;
@@ -604,8 +528,8 @@ export class EdytorSelection {
 		this.request++;
 	};
 
-	/** The DOM nodes a display showed the current value with (DOM-derived fields). */
-	observed = (surface: { startNode: Node | null; endNode: Node | null; edge?: EdgeSide }) => {
+	/** The mark-edge side a display showed the current value with. */
+	observed = (surface: { edge?: EdgeSide }) => {
 		this.#surface = { value: this.value, ...surface };
 	};
 
@@ -1146,8 +1070,6 @@ export class EdytorSelection {
 		}
 
 		this.select(this.textValue(startText, yStart, endText ?? startText, yEnd, isReversed), 'dom', {
-			startNode,
-			endNode,
 			edge: isCollapsed ? getMarkEdgeSide(startText, startNode, yStart) : undefined
 		});
 		this.edytor.projector.observe();
@@ -1372,38 +1294,12 @@ export class EdytorSelection {
 		if (ids.includes(block.id)) this.select(blockSelection(ids.filter((id) => id !== block.id)));
 	};
 
-	setRangeStateAtTextOffsets = (
-		startText: Text,
-		startOffset: number,
-		endText: Text,
-		endOffset: number,
-		options: { isReversed?: boolean } = {}
-	) => {
-		const range = this.normalizeTextRangePoints(
-			startText,
-			startOffset,
-			endText,
-			endOffset,
-			options.isReversed ?? false
-		);
-		this.select(
-			this.textValue(
-				range.startText,
-				range.startOffset,
-				range.endText,
-				range.endOffset,
-				range.isReversed
-			)
-		);
-	};
-
-	setCollapsedStateAtTextOffset = (text: Text | undefined, offset: number) => {
-		this.clearModelSelectionPreservation();
-		if (text) this.select(this.textValue(text, Math.min(Math.max(offset, 0), text.length)));
-	};
+	/** @deprecated `setAtTextOffset` (kept for P4's `onPaste` until that track merges). */
+	setCollapsedStateAtTextOffset = (text: Text | undefined, offset: number) =>
+		this.setAtTextOffset(text, offset);
 
 	/**
-	 * Select a caret at `offset` of `textOrId`; the projector displays it after
+	 * Select a caret at `offset` of `text`; the projector displays it after
 	 * the flush (R10). The value is minted now (R4): a text that dies before the
 	 * display is followed through its atoms, else the seam of its block.
 	 */
@@ -1433,7 +1329,7 @@ export class EdytorSelection {
 
 	/** Select the whole content from `startText` to `endText` (the code block's select-all). */
 	setAtTextsRange = (startText: Text, endText: Text) => {
-		this.setRangeStateAtTextOffsets(startText, 0, endText, endText.length);
+		this.setAtRange(startText, 0, endText, endText.length);
 	};
 
 	/** Select a text range; the projector displays it after the flush (R10). */
@@ -1484,7 +1380,7 @@ export class EdytorSelection {
 		const last = edgeText(block, 'last');
 		const end = endOffset || last.length;
 		if (!startOffset && end === last.length) this.setStateFromBlockContentRange(block);
-		else this.setRangeStateAtTextOffsets(edgeText(block, 'first'), startOffset, last, end);
+		else this.setAtRange(edgeText(block, 'first'), startOffset, last, end);
 	};
 
 	/**

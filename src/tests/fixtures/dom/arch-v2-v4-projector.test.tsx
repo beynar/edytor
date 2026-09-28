@@ -274,7 +274,7 @@ describe('F-S6 — a node-bound focus keeps the native direction', () => {
 		document.dispatchEvent(new Event('selectionchange'));
 		await flushDomUpdates();
 		expect(range(edytor)).toMatchObject({ start: 1, end: 11, isReversed: false });
-		expect(edytor.selection.state.content).toBe('ello world');
+		expect(edytor.selection.projection.content).toBe('ello world');
 	});
 });
 

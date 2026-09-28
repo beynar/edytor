@@ -379,75 +379,15 @@ export const createTestEdytor = (
 		const { path: endPath, offset: endOffset } = end ?? { path: startPath, offset: startOffset };
 		const { text: startText } = findBlockAndTextAtFixturePath(edytor, value, startPath);
 		const { text: endText } = findBlockAndTextAtFixturePath(edytor, value, endPath);
-		edytor.selection.setRangeStateAtTextOffsets(startText, startOffset, endText, endOffset);
+		edytor.selection.setAtRange(startText, startOffset, endText, endOffset);
 	}
 
 	return { edytor, expect: expectEdytorValue(edytor) };
 };
 
-const setSelectionState = (
-	edytor: Edytor,
-	startText: Text,
-	startOffset: number,
-	endText: Text = startText,
-	endOffset: number = startOffset,
-	isReversed = false
-) =>
-	edytor.selection.setRangeStateAtTextOffsets(startText, startOffset, endText, endOffset, {
-		isReversed
-	});
-
-const patchOperationSelectionApis = (edytor: Edytor) => {
-	edytor.selection.setAtTextOffset = async (
-		textOrId,
-		textOffset = edytor.selection.state.yStart
-	) => {
-		if (!textOrId || typeof textOffset !== 'number') {
-			return;
-		}
-
-		const text = textOrId instanceof Text ? textOrId : edytor.idToBlock.textById(textOrId);
-		if (!text) {
-			return;
-		}
-
-		setSelectionState(edytor, text, Math.max(0, Math.min(textOffset, text.length)));
-	};
-
-	edytor.selection.setAtTextsRange = async (startText, endText) => {
-		setSelectionState(edytor, startText, 0, endText, endText.length);
-	};
-
-	edytor.selection.setAtBlockRange = async (
-		block,
-		startOffset = 0,
-		endOffset = block?.lastText!.length
-	) => {
-		if (!block) {
-			return;
-		}
-
-		setSelectionState(edytor, block.firstText!, startOffset, block.lastText!, endOffset);
-	};
-
-	edytor.selection.setAtRange = async (startText, startOffset, endText, endOffset, options) => {
-		if (
-			!startText ||
-			!endText ||
-			typeof startOffset !== 'number' ||
-			typeof endOffset !== 'number'
-		) {
-			return;
-		}
-
-		setSelectionState(edytor, startText, startOffset, endText, endOffset, options?.isReversed);
-	};
-};
-
 export const createOperationEdytor = (jsx: RenderedNode, options: TestEdytorOptions = {}) => {
 	const testEdytor = createTestEdytor(jsx, options);
 
-	patchOperationSelectionApis(testEdytor.edytor);
 	testEdytor.edytor.selection.init();
 
 	return testEdytor;
@@ -630,19 +570,19 @@ export const expectSelection = (edytor: Edytor, expected: SelectionExpectation) 
 		expect(state.yEnd).toBe(expected.yEnd);
 	}
 	if (expected.length !== undefined) {
-		expect(state.length).toBe(expected.length);
+		expect(edytor.selection.projection.content.length).toBe(expected.length);
 	}
 	if (expected.content !== undefined) {
-		expect(state.content).toBe(expected.content);
+		expect(edytor.selection.projection.content).toBe(expected.content);
 	}
 	if (expected.isCollapsed !== undefined) {
 		expect(state.isCollapsed).toBe(expected.isCollapsed);
 	}
 	if (expected.isTextSpanning !== undefined) {
-		expect(state.isTextSpanning).toBe(expected.isTextSpanning);
+		expect(edytor.selection.projection.isTextSpanning).toBe(expected.isTextSpanning);
 	}
 	if (expected.isBlockSpanning !== undefined) {
-		expect(state.isBlockSpanning).toBe(expected.isBlockSpanning);
+		expect(edytor.selection.projection.isBlockSpanning).toBe(expected.isBlockSpanning);
 	}
 };
 

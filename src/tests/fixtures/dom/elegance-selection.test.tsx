@@ -45,20 +45,20 @@ describe('D3 — caret-local currentMarks on native derives', () => {
 		// (getMarksAtRange(0, yEnd)) unioned the whole prefix → {bold}.
 		await setNativeSelection(edytor, text, 3);
 		expect(edytor.selection.state.isCollapsed).toBe(true);
-		expect(edytor.selection.state.currentMarks?.bold).toBeUndefined();
+		expect(edytor.selection.projection.marks.bold).toBeUndefined();
 
 		await setNativeSelection(edytor, text, 4);
-		expect(edytor.selection.state.currentMarks?.bold).toBeUndefined();
+		expect(edytor.selection.projection.marks.bold).toBeUndefined();
 
 		// Char-before-caret convention: the caret right after the bold run
 		// still inherits bold (typed text continues the bold run) — the
-		// same answer `setCollapsedStateAtTextOffset` gives.
+		// same answer `setAtTextOffset` gives.
 		await setNativeSelection(edytor, text, 2);
-		expect(edytor.selection.state.currentMarks?.bold).toBe(true);
+		expect(edytor.selection.projection.marks.bold).toBe(true);
 
 		// Caret inside the bold run keeps it.
 		await setNativeSelection(edytor, text, 1);
-		expect(edytor.selection.state.currentMarks?.bold).toBe(true);
+		expect(edytor.selection.projection.marks.bold).toBe(true);
 	});
 
 	test('a non-collapsed range reports marks at its start edge, like the model writers', async () => {
@@ -77,11 +77,11 @@ describe('D3 — caret-local currentMarks on native derives', () => {
 		// ('c'), not the union of the range.
 		await setNativeSelection(edytor, text, 2, text, 4);
 		expect(edytor.selection.state.isCollapsed).toBe(false);
-		expect(edytor.selection.state.currentMarks?.bold).toBeUndefined();
+		expect(edytor.selection.projection.marks.bold).toBeUndefined();
 
 		// Range starting inside the bold run reports bold.
 		await setNativeSelection(edytor, text, 0, text, 3);
-		expect(edytor.selection.state.currentMarks?.bold).toBe(true);
+		expect(edytor.selection.projection.marks.bold).toBe(true);
 	});
 });
 
@@ -191,7 +191,7 @@ describe('D7 — aligned guards on the DOM writers', () => {
 		expect(state.endText).toBe(text);
 		expect(state.yStart).toBe(1);
 		expect(state.yEnd).toBe(4);
-		expect(state.content).toBe('ell');
+		expect(edytor.selection.projection.content).toBe('ell');
 	});
 
 	test('setAtBlockRange writes the model in its turn', async () => {

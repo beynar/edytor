@@ -181,12 +181,12 @@ const deleteSelection: HotKey = ({ edytor, prevent }) => {
 
 /** An Emacs kill (ctrl+h/d/k): a delete intent, or the owned selection's delete. */
 const kill =
-	(inputType: (state: Edytor['selection']['state']) => string): HotKey =>
+	(inputType: (projection: Edytor['selection']['projection']) => string): HotKey =>
 	(payload) => {
 		const { edytor, prevent } = payload;
 		if (ownsDeleteSelection(edytor)) return deleteSelection(payload);
-		const { state } = edytor.selection;
-		if (state.startText) prevent(() => runIntent(edytor, inputType(state)));
+		const { state, projection } = edytor.selection;
+		if (state.startText) prevent(() => runIntent(edytor, inputType(projection)));
 	};
 
 /**
@@ -200,8 +200,8 @@ const emacs: Record<string, HotKey> = {
 	'ctrl+h': kill(() => 'deleteContentBackward'),
 	'ctrl+d': kill(() => 'deleteContentForward'),
 	// Kill-line deletes to the paragraph end; at the end it joins the next block.
-	'ctrl+k': kill((state) =>
-		state.isCollapsed && state.isAtEndOfBlock ? 'deleteContentForward' : 'deleteHardLineForward'
+	'ctrl+k': kill((at) =>
+		at.isCollapsed && at.isAtEndOfBlock ? 'deleteContentForward' : 'deleteHardLineForward'
 	),
 	// Open-line: a soft break with the caret kept before it.
 	'ctrl+o': ({ edytor, prevent }) => {
@@ -234,13 +234,13 @@ export const builtInBindings: Record<string, HotKey> = {
 	// The select-all ladder: the block's text, then the block, then every block.
 	'mod+a': ({ edytor, prevent }) => {
 		prevent(() => {
-			const { startText, startBlock, islandRoot, isIsland, isAtStartOfBlock, isAtEndOfBlock } =
-				edytor.selection.state;
+			const { startText, startBlock } = edytor.selection.state;
+			const { islandRoot, isAtStartOfBlock, isAtEndOfBlock } = edytor.selection.projection;
 			if (!startText) return;
 			if (edytor.selection.selectedBlocks.size) {
 				edytor.selection.selectBlocks(...edytor.root!.children);
 			} else if (isAtStartOfBlock && isAtEndOfBlock) {
-				edytor.selection.selectBlocks(isIsland ? islandRoot! : startText.parent);
+				edytor.selection.selectBlocks(edytor.idToBlock.get(islandRoot ?? '') ?? startText.parent);
 			} else {
 				edytor.selection.setAtBlockRange(startBlock);
 			}

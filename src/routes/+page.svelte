@@ -174,7 +174,7 @@
 		const text = block.firstEditableText ?? (block.definition.void ? undefined : block.firstText);
 		if (!text) return;
 		// Clear any atomic block selection before the DOM caret write.
-		edytor.selection.setCollapsedStateAtTextOffset(text, 0);
+		edytor.selection.setAtTextOffset(text, 0);
 		edytor.selection.setAtTextOffset(text, 0);
 		edytor.node?.focus({ preventScroll: true });
 	};
@@ -258,7 +258,7 @@
 
 	const openBlockMenu = ({ block, anchor }: BlockHandleActivation) => {
 		const text = block.firstEditableText ?? block.firstText;
-		if (text) edytor?.selection.setCollapsedStateAtTextOffset(text, 0);
+		if (text) edytor?.selection.setAtTextOffset(text, 0);
 		else edytor?.selection.selectBlocks();
 		blockMenuTrigger = anchor;
 		blockMenu = { blockId: block.id };

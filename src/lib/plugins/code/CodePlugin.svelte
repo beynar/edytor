@@ -54,8 +54,13 @@
 		return {
 			hotkeys: {
 				'mod+a': ({ prevent }) => {
-					const { islandRoot, startBlock, isAtEndOfBlock, isAtStartOfBlock } =
-						edytor.selection.state;
+					const { startBlock } = edytor.selection.state;
+					const {
+						islandRoot: root,
+						isAtEndOfBlock,
+						isAtStartOfBlock
+					} = edytor.selection.projection;
+					const islandRoot = edytor.idToBlock.get(root ?? '');
 					if (
 						startBlock?.type === 'codeLine' &&
 						!edytor.selection.selectedBlocks.size &&

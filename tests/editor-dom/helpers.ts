@@ -961,7 +961,7 @@ export const dispatchPasteAtCaret = async (
 				`content[${contentIndex}] of block ${blockIndex} is not a Text (got ${part?.constructor?.name})`
 			);
 		}
-		edytor.selection.setCollapsedStateAtTextOffset(part, yStart);
+		edytor.selection.setAtTextOffset(part, yStart);
 
 		const event = new Event('paste', {
 			bubbles: true,

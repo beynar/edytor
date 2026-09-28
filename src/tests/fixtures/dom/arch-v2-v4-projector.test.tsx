@@ -404,6 +404,41 @@ describe('F-S11 (d) — an unobserved native move is admitted after the apply co
 		}
 	);
 
+	row(
+		'a transaction opened inside a remote commit mints nothing from the DOM that commit left behind',
+		async () => {
+			// Contract (anchor contract, "deleted atoms resolve to the gap where
+			// they lived"): the caret sits in `hello wo|rld`, bound left to the
+			// `o`. A peer deletes `llo wor` (display 2..9) out of the italic text,
+			// so the local apply is followed by the engine's formatting cleanup —
+			// a second transaction opened while the apply still commits. The DOM
+			// still shows the old text there; nothing may be minted from it. The
+			// caret follows its anchor to the gap: `he|ld`, offset 2.
+			const { edytor } = await renderDomEdytor(
+				<root>
+					<paragraph>
+						<italic>hello wo|rld</italic>
+					</paragraph>
+				</root>
+			);
+			const [first] = edytor.root!.children;
+			expect(range(edytor)).toMatchObject({ block: first!.id, start: 8, isCollapsed: true });
+			const origins: unknown[] = [];
+			edytor.doc.on('beforeTransaction', (transaction: { origin: unknown }) =>
+				origins.push(transaction.origin)
+			);
+			const remote = peer(edytor);
+			remote.facade.deleteText(first!.id, 2, 7);
+			await remote.push();
+			// The fixture exercises the nested transaction the row names.
+			expect(origins.map(String)).toEqual(['peer', 'Symbol(yjs.formatting-cleanup)']);
+			expect(edytor.value.children![0]!.content).toEqual([
+				{ text: 'held', marks: { italic: true } }
+			]);
+			expect(range(edytor)).toMatchObject({ block: first!.id, start: 2, isCollapsed: true });
+		}
+	);
+
 	pin('an undo that restores a selection runs the hook outside its transaction', async () => {
 		const hook: boolean[] = [];
 		let edytor!: Edytor;

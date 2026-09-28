@@ -100,6 +100,8 @@ export class Projector {
 	#flushes = 0;
 	#seen = -1;
 	#minted: { value: SelectionValue; transaction: Transaction } | null = null;
+	/** The next transaction opens a batch: no earlier commit of it is still to report. */
+	#opening = false;
 	/** The gesture serial at the last observation (a display or an adopted `selectionchange`). */
 	#serial = -1;
 	/** The named rules' evidence: the last model-owned delete and the last IME commit. */
@@ -445,14 +447,26 @@ export class Projector {
 		return requested;
 	};
 
+	/** `beforeAllTransactions`: the engine opens a batch of transactions. */
+	opening = () => {
+		this.#opening = true;
+	};
+
 	/**
 	 * `beforeTransaction`: before the first transaction after a settled render
 	 * that this view did not issue, mint anchors from an unobserved native move.
+	 * Only a transaction that opens a batch: one opened while another commits
+	 * (the engine's formatting cleanup after a remote delete, a subscriber's
+	 * write) follows a commit that has not reported yet, so the render key is
+	 * still settled while the DOM already shows an older document.
 	 */
 	before = (transaction: Transaction) => {
+		const opening = this.#opening;
+		this.#opening = false;
 		const { edytor } = this;
 		const origin = transaction.origin;
-		if (origin === edytor.transaction || origin === edytor.undoManager || this.#minted) return;
+		if (!opening || origin === edytor.transaction || origin === edytor.undoManager || this.#minted)
+			return;
 		const node = edytor.node;
 		if (!node || edytor.composition.live || edytor.isHandlingUserInput) return;
 		// Only when the last pass answered every render and display request: then

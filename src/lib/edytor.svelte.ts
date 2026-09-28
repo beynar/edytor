@@ -926,10 +926,12 @@ export class Edytor {
 		this.node = node;
 		this.container = node;
 		this.selection.init();
+		this.doc.on('beforeAllTransactions', this.projector.opening);
 		this.doc.on('beforeTransaction', this.surface.before);
 		this.doc.on('beforeTransaction', this.projector.before);
 		this.doc.on('afterTransaction', this.projector.after);
 		this.off.push(() => {
+			this.doc.off('beforeAllTransactions', this.projector.opening);
 			this.doc.off('beforeTransaction', this.surface.before);
 			this.doc.off('beforeTransaction', this.projector.before);
 			this.doc.off('afterTransaction', this.projector.after);

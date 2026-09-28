@@ -488,6 +488,13 @@ of the own text its first typing creates (`{b: block, a: {i: null}}`).
   its own turn, and the projector writes the **current** value after the
   Svelte flush, so an older request can never overwrite a newer gesture
   (including one that picks the same numeric offset).
+- Three named writes still select after a wait, and each checks the gesture
+  serial after it, on every exit, yielding to any gesture since
+  (independent review 2026-09-29): the observer's adoption caret after its
+  render tick (`surface/observer` `adopt`, the P2.3 pin), the observer's
+  next-task redisplay after a root heal (`#refocus`), and the drift
+  repair's caret after its discard wait (`events/onInput` `repairDrift`).
+  A new deferred write needs the same check and a row here.
 - While a requested display has not landed, a `selectionchange` with no
   intent gesture since the request is not adopted. The one gesture serial
   is `Edytor.intentSerial` (pointer, focus, key, `beforeinput`, cut,

@@ -225,6 +225,7 @@ const repairDrift = async (
 		edytor.attempts.arm(attempt, 50);
 		return;
 	}
+	const serial = edytor.intentSerial;
 	if (expect.mode === 'discard') {
 		await waitForSuppressedObservedMutationRepair();
 	}
@@ -237,7 +238,9 @@ const repairDrift = async (
 		eventTarget.text.refreshFromModel();
 	}
 	target.text.refreshFromModel();
-	// The attempt decided the caret; `select()` it — the projector displays it (V4).
+	// The attempt decided the caret; `select()` it — the projector displays it (V4) —
+	// unless a gesture came during the wait: the selection is then the user's.
+	if (edytor.intentSerial !== serial) return;
 	edytor.selection.setAtTextOffset(target.text, Math.min(target.offset, target.text.length));
 };
 

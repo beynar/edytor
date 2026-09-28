@@ -820,10 +820,12 @@ export class SurfaceObserver {
 	 * A heal of the root (a foreign `contenteditable` removal blurs it): the
 	 * projector displays the current value again, now and — the engine drops
 	 * the range a task after the blur — once more on the next task, unless the
-	 * last gesture landed outside the editor (the selection is the user's).
+	 * last gesture landed outside the editor or any gesture came since (the
+	 * selection is the user's: a deferred display checks the gesture serial).
 	 */
 	#refocus = () => {
 		const { edytor } = this;
+		const serial = edytor.intentSerial;
 		const again = () => {
 			if (edytor.lastUserGestureOutsideEditor || edytor.destroyed) return false;
 			edytor.selection.display();
@@ -831,6 +833,7 @@ export class SurfaceObserver {
 		};
 		if (again())
 			setTimeout(() => {
+				if (edytor.intentSerial !== serial) return;
 				if (!edytor.node?.ownerDocument.getSelection()?.rangeCount) again();
 			});
 	};
@@ -882,7 +885,7 @@ const modelMarks = (edytor: Edytor, text: Text, at: number) =>
  * `before`), and its expected text wins over a model-owned attempt's drift on
  * the host. A vetoed or replaced change re-renders the text from the model.
  * The caret lands where the browser put it (`domCaret`), else, for an
- * attempt, where the change ends.
+ * attempt, where the change ends — unless a gesture came since.
  */
 export const adopt = async (
 	edytor: Edytor,
@@ -892,6 +895,7 @@ export const adopt = async (
 	prefer?: number
 ) => {
 	if (!text.isInDocument) return false;
+	const serial = edytor.intentSerial;
 	const attempt = edytor.attempts.on(text);
 	const after = attempt?.expect?.kind === 'change' ? attempt.expect.after : null;
 	const drifted = after !== null && dom !== after && edytor.attempts.drifting(text);
@@ -933,7 +937,12 @@ export const adopt = async (
 	// node the browser wrote, that node keeps its copy — re-render.
 	const moved = adopted && insert !== '' && shown !== modelMarks(edytor, text, at);
 	if (!adopted || drifted || moved) text.refreshFromModel();
+	// Deferred past the re-render (the P2.3 pin: selecting in the turn left the
+	// native caret at 0), so it checks the gesture serial: a gesture since the
+	// adoption owns the selection, and its caret and pending marks stand
+	// (review 2026-09-29).
 	await tick();
+	if (edytor.intentSerial !== serial) return true;
 	const end = caret ?? (attempt ? at + insert.length : undefined);
 	if (adopted && end !== undefined)
 		edytor.selection.setAtTextOffset(text, Math.min(end, text.length));

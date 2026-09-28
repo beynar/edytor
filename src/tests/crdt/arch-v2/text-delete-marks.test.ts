@@ -29,6 +29,7 @@ import {
 	converge,
 	permutations,
 	quiesce,
+	reloadCanonical,
 	replica,
 	seedUpdate,
 	type Replica
@@ -51,6 +52,34 @@ const all = (reps: Replica[], expected: string) =>
 	expect(reps.map(text)).toEqual(reps.map(() => expected));
 
 const ABC = [{ id: 'p', text: 'abc' }];
+
+describe('text delete marks — the reviewer’s reproduction (intermediate state)', () => {
+	it('A and B delete `b`; A undoes → still `ac` everywhere; B undoes → `abc` once; no problems, nothing pending, reloads agree', () => {
+		const seed = seedUpdate(ABC);
+		const a = replica('A', seed, 20);
+		const b = replica('B', seed, 30);
+		const reps = [a, b];
+		const clean = (expected: string) => {
+			for (const r of reps) {
+				expect(r.problems).toEqual([]);
+				expect(r.pending()).toBe(false);
+				expect(reloadCanonical(r)).toBe(r.canonical());
+				expect(text(r)).toBe(expected);
+			}
+		};
+		a.ed.deleteText('p', 1, 1);
+		b.ed.deleteText('p', 1, 1);
+		quiesce(reps);
+		clean('ac');
+		a.undo();
+		quiesce(reps);
+		clean('ac');
+		b.undo();
+		quiesce(reps);
+		clean('abc');
+		for (const r of reps) r.destroy();
+	});
+});
 
 describe('text delete marks — two writers', () => {
 	it('A undoes after seeing B’s delete → `ac` (B still holds `b`); B undoes → `abc`', () => {

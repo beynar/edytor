@@ -110,10 +110,10 @@ export const noTimers = <T>(fn: () => T): T => {
 	}
 };
 
-/** A uint32 Yjs client id, or `null`. */
+/** A Yjs client id (a non-negative safe integer), or `null`. */
 export const parseReplica = (raw: unknown): number | null => {
-	const n = typeof raw === 'string' && /^\d{1,10}$/.test(raw) ? Number(raw) : raw;
-	return typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 0xffffffff ? n : null;
+	const n = typeof raw === 'string' && /^\d{1,16}$/.test(raw) ? Number(raw) : raw;
+	return typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 ? n : null;
 };
 
 const readIdentity = (headers: Headers): SocketIdentity | null => {

@@ -4,6 +4,32 @@ Branch `arch-v2` in worktree `/Users/arnaud/code/edytor-arch-v2`, based on commi
 (snapshot of `feat/crdt-v14-engine` = d9b7de0 + its uncommitted working tree on 2026-09-26).
 The plan is `docs/architecture-v2/plan.md`; its §9 defines the checkpoints and discipline.
 
+## Results (phase 2 close, b8da7c8)
+
+Final state of `arch-v2` after phase 2 (`docs/architecture-v2/phase2-plan.md`). Same counter (sha c15490d2…), same bundle method as the C1 table below (vite lib build, svelte/prismjs/@atlaskit external, minified, gzip -9).
+
+| Measure | Baseline (a7337c5 / ref-g0) | At C1 | Phase 2 close | Against the phase-2 plan |
+|---|---|---|---|---|
+| xloc `src/lib` | 29,109 | 19,409 | **19,674 (−32.4 %)** | plan ≈ 19,150–19,400 after P4 + P5: **+274 to +524 over**. The overrun is the room (+566 vs ≈ +305 planned for P5.1 + P5.2), HTML import (+196 vs ≈ +130) and P2.5 / P2.8 short of plan (−84 vs −150, −4 vs −55). |
+| xloc `src/lib` without the features added in phase 2 (room 566, HTML import 196) | 29,109 | 19,409 | **≈ 18,912 (−35.0 %)** | plan ≈ 18,800–19,000 after P2 + P3: inside the range |
+| Vendor (owned fork, `--vendor`) | 7,125 (G0) | 7,152 | **5,769** (P8 −1,391 → 5,761, then P9 + P10 +8), 33 → 28 files | plan ≈ 5,870 |
+| `src/lib` + vendor | 36,234 | 26,561 | **25,443 (−29.8 %)** | — |
+| Type-body lines (counted by xloc) | 827 | 917 | 945 | reported, not subtracted |
+| Package `dist/` (all files / non-`.d.ts`) | 2,569,604 / 1,959,272 B | 2,073,614 / 1,473,395 B | **2,009,089 / 1,417,158 B** | −21.8 % / −27.7 % vs baseline |
+| Main entry `dist/index.js`, bundled | 717,220 B, 179,629 B gzip | 599,271 B, 161,517 B gzip | **569,398 B, 155,184 B gzip** | −20.6 % / −13.6 % gzip vs baseline (HTML import included) |
+| CRDT entry `dist/crdt/index.js`, bundled | 351,804 B, 91,676 B gzip | 326,480 B, 86,966 B gzip | **298,660 B, 80,287 B gzip** | −15.1 % / −12.4 % gzip vs baseline; the engine object (P3.1) and the prune (P8) |
+| `bench:crdt` keystroke, 1k blocks, facade p50 | 0.749 ms (D9 before) | 0.519 ms | 0.616 ms (write 0.078 + commit 0.044), 37 B, load average 7.3 | the P2.8-fix row measured 0.547 → 0.527 ms on the same load; this run is noise, not a regression |
+| Census | — | — | `setTimeout` 12 · `requestAnimationFrame` 1 · `await tick()` 1 · `flushMirror` 0 · `stopCapturing` 1 · `PreventionError` 1 · `ignoreNextSelectionChange` 0 · `MutationObserver` 1 · `flushSync` 0 | — |
+| Browser known reds | 28 | 6 | **0** | P1.2 fixed the last two specs |
+
+Lanes on b8da7c8: six Playwright projects (chromium, firefox, webkit, mobile-chromium, mobile-webkit, cdp) 1,764 passed, 11 skipped, **0 failed** · DST 68/68 · `test:hosted` (Miniflare room, three browsers) 25 passed, 2 skipped · closing rerun (sequential): `check` 0/0 · `lint` clean · `check:worker` OK · both test typechecks 0/0 · `vitest --run` 2,806 passed, 3 expected-fail, 3 skipped, 11 todo · `test:crdt` 2,680 passed, 3 expected-fail, 9 skipped (seed-37/59 json restored) · `test:dom` 785 passed, 1 expected-fail, 33 skipped · `test:do` 23/23 · `tests/packed-consumer/run.sh` OK.
+
+Features: nothing deleted. Added back: HTML paste import (P4.1, `DOMParser` into a `Flow`, tag tables from kind/mark records). Added: `edytor/cloudflare` Durable Object room with auth binding, client-id enforcement, store-before-ack (`saved`) and chunked catch-up (P5). Kept retired: the websocket BroadcastChannel leg (D2; IndexedDB covers cross-tab).
+
+Bugs fixed in phase 2: two upstream Yjs bugs in the fork (P9 pending structs lose stacked dependencies; P10 formatting cleanup after a remote change was tracked by undo), the index invalidation (skipped claims and removed roots, 33/1,500 seeds), the observer flush after destroy, and the two known-red input specs (P1.2).
+
+Open: concurrent double delete of the same text, then undo on both peers, duplicates the character. That is upstream Yjs behavior; it is pinned as an `it.fails` row and documented. The 40 % line is not reached without deleting features.
+
 ## Results (at C1)
 
 Final state of `arch-v2` after C1 (the plan's §9.3 close). Details in the C1 row below.

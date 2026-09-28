@@ -1,5 +1,4 @@
 import type { Edytor } from '../edytor.svelte.js';
-import { tick } from 'svelte';
 import { diffText } from '$lib/utils/diffText.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
@@ -225,9 +224,6 @@ const repairDrift = async (
 		expect.input = false;
 		edytor.attempts.arm(attempt, 50);
 		return;
-	}
-	if (repair) {
-		await tick();
 	}
 	if (expect.mode === 'discard') {
 		await waitForSuppressedObservedMutationRepair();

@@ -22,7 +22,8 @@ export const BLOCK_ATTR_ROOT = 'blockattr';
 export const TEXT_DELETES_ROOT = 'textdel';
 /**
  * Restoration records (`text/deletes.ts`): which characters an undo's copies
- * restore. Outside the history's scope: a record is never removed.
+ * restore, one attr per record (keyed by its writer and clock). Outside the
+ * history's scope: a record is never removed.
  */
 export const RESTORED_ROOT = 'restored';
 

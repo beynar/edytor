@@ -25,7 +25,14 @@
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
-import { converge, permutations, quiesce, replica, seedUpdate, type Replica } from './p1-harness.js';
+import {
+	converge,
+	permutations,
+	quiesce,
+	replica,
+	seedUpdate,
+	type Replica
+} from './p1-harness.js';
 import { mulberry32 } from '../harness/rng.js';
 
 const one = (outcomes) => {
@@ -43,18 +50,6 @@ const all = (reps: Replica[], expected: string) =>
 	expect(reps.map(text)).toEqual(reps.map(() => expected));
 
 const ABC = [{ id: 'p', text: 'abc' }];
-
-/** `p`'s backing text as items (`~` deleted), for traces. */
-const items = (r: Replica): string => {
-	let node;
-	r.doc.get('blocks').forEachAttr((n, id) => {
-		if (id === 'p') node = n.getAttr('content');
-	});
-	const out: string[] = [];
-	for (let it = node._start; it; it = it.right)
-		out.push(`${it.deleted ? '~' : ''}${typeof it.content.str === 'string' ? it.content.str : '·'}@${it.id.client}:${it.id.clock}`);
-	return out.join(' ');
-};
 
 describe('text delete marks — two writers', () => {
 	it('A undoes after seeing B’s delete → `ac` (B still holds `b`); B undoes → `abc`', () => {
@@ -348,7 +343,7 @@ describe('text delete marks — random programs', () => {
 	const SEEDS = Number(process.env.TEXT_DELETE_SEEDS ?? 150);
 	type Mode = { writers: number; steps: number; typing: boolean };
 
-	const run = (seed: number, mode: Mode, trace?: (line: string) => void) => {
+	const run = (seed: number, mode: Mode) => {
 		const rand = mulberry32(seed);
 		const pick = (n: number) => Math.floor(rand() * n);
 		const seedBytes = seedUpdate([{ id: 'p', text: LETTERS }]);
@@ -377,45 +372,39 @@ describe('text delete marks — random programs', () => {
 				r.ed.deleteText('p', at, len);
 				undo[i].push([...view.slice(at, at + len)]);
 				redo[i] = [];
-				trace?.(`${r.name} delete ${view.slice(at, at + len)} → ${reps.map(text)}`);
 			} else if (mode.typing && op < 0.45) {
 				const ch = String.fromCharCode(0x41 + (typed++ % 26));
 				r.ed.insertText('p', pick(text(r).length + 1), ch);
-				trace?.(`${r.name} type ${ch} → ${reps.map(text)}`);
 			} else if (op < 0.6) {
 				if (mode.typing ? !r.document.history.canUndo() : undo[i].length === 0) continue;
 				r.undo();
 				if (!mode.typing) redo[i].push(undo[i].pop()!);
-				trace?.(`${r.name} undo → ${reps.map(text)}`);
 			} else if (op < 0.7) {
 				if (mode.typing ? !r.document.history.canRedo() : redo[i].length === 0) continue;
 				r.redo();
 				if (!mode.typing) undo[i].push(redo[i].pop()!);
-				trace?.(`${r.name} redo → ${reps.map(text)}`);
 			} else {
 				// deliver the next updates one peer sent, in its order
 				const j = (i + 1 + pick(n - 1)) % n;
 				const from = reps[j].log;
 				const to = Math.min(from.length, sent[j][i] + 1 + pick(3));
 				r.receiveAll(from.slice(sent[j][i], to));
-				trace?.(`${r.name} ← ${reps[j].name} [${sent[j][i]}, ${to}) → ${reps.map(text)}`);
 				sent[j][i] = to;
 			}
 		}
 		quiesce(reps);
 		const mid = mode.typing ? null : expected();
 		const midTexts = reps.map(text);
-		trace?.(`settled → ${midTexts} expected ${mid}`);
 		for (const r of reps)
 			while (r.document.history.canUndo()) {
 				r.undo();
-				trace?.(`${r.name} undo → ${reps.map(text)}`);
 			}
 		quiesce(reps);
 		const end = reps.map(text);
-		trace?.(`settled → ${end}`);
-		if (trace) for (const r of reps) trace(`${r.name}#${r.doc.clientID} ${items(r)}`);
-		const problems = reps.flatMap((r) => [...r.problems, ...(r.pending() ? [`${r.name} pending`] : [])]);
+		const problems = reps.flatMap((r) => [
+			...r.problems,
+			...(r.pending() ? [`${r.name} pending`] : [])
+		]);
 		for (const r of reps) r.destroy();
 		return { mid, midTexts, end, problems };
 	};
@@ -434,20 +423,11 @@ describe('text delete marks — random programs', () => {
 				if (new Set(t).size !== t.length) failures.push(`${at}: a letter shows twice in ${t}`);
 			const original = [...o.end[0]].filter((l) => LETTERS.includes(l)).join('');
 			if (original !== LETTERS) failures.push(`${at}: after every undo ${o.end[0]}`);
-			if (!mode.typing && o.end[0] !== LETTERS) failures.push(`${at}: after every undo ${o.end[0]}`);
+			if (!mode.typing && o.end[0] !== LETTERS)
+				failures.push(`${at}: after every undo ${o.end[0]}`);
 		}
 		return failures;
 	};
-
-	it.skipIf(!process.env.TEXT_DELETE_TRACE)('trace one seed', () => {
-		const lines: string[] = [];
-		globalThis.__TD_DEBUG__ = (...a) => lines.push('    ' + a.map((x) => (typeof x === 'object' ? JSON.stringify(x) : x)).join(' '));
-		const [seed, writers = '3', typing = ''] = process.env.TEXT_DELETE_TRACE!.split(':');
-		run(Number(seed), { writers: Number(writers), steps: Number(writers) === 4 ? 24 : typing === 'typing' ? 18 : 14, typing: typing === 'typing' }, (l) =>
-			lines.push(l)
-		);
-		process.stdout.write(lines.join('\n') + '\n');
-	});
 
 	it(`${SEEDS} seeds, three writers deleting: after delivery the in-effect deletes; after every undo the original`, () => {
 		expect(check({ writers: 3, steps: 14, typing: false })).toEqual([]);

@@ -154,3 +154,10 @@ export const dropSearchMarkers = (node: unknown): void => {
 	const markers = (node as { _searchMarker?: unknown[] | null } | null)?._searchMarker;
 	if (markers) markers.length = 0;
 };
+
+/** The clock `client`'s next struct gets in `doc`. */
+export const nextClock = (doc: EngineDoc, client: number): number => {
+	const structs = clientsOf(doc).get(client);
+	const last = structs?.[structs.length - 1];
+	return last === undefined ? 0 : last.id.clock + last.length;
+};

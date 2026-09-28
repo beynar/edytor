@@ -51,6 +51,7 @@ import { CONTENT_NODE, INLINE_NODE, RESTORED_ROOT, TEXT_DELETES_ROOT } from '../
 import {
 	clientsOf,
 	dropSearchMarkers,
+	nextClock,
 	structAt,
 	walkIdSetStructs,
 	type IdSetLike,
@@ -176,7 +177,13 @@ export const bindDeletes = (Y: EngineApi) => {
 		{ ...r, rk: r.k },
 		...(s.byRoot.get(r.c) ?? [])
 			.filter((e) => overlaps({ k: e.rk, n: e.n }, r))
-			.map((e) => clip({ c: e.c, k: e.k, n: e.n, rk: e.rk }, Math.max(r.k, e.rk), Math.min(r.k + r.n, e.rk + e.n)))
+			.map((e) =>
+				clip(
+					{ c: e.c, k: e.k, n: e.n, rk: e.rk },
+					Math.max(r.k, e.rk),
+					Math.min(r.k + r.n, e.rk + e.n)
+				)
+			)
 	];
 
 	/** The live parts of member `m`, in root coordinates. */
@@ -196,32 +203,94 @@ export const bindDeletes = (Y: EngineApi) => {
 			members(s, r).flatMap((m) => liveRoots(s, m).map((p) => clip(m, p.k, p.k + p.n)))
 		);
 
-	/** The newest members of root span `r`: each character's lineage followed to its leaf. */
+	/** The live index of id `c:k` in its text (YATA order: the same on every replica). */
+	const indexOf = (s: State, c: number, k: number): number =>
+		Y.createAbsolutePositionFromRelativePosition(
+			Y.createRelativePositionFromJSON({ item: { client: c, clock: k }, assoc: 0 }),
+			s.doc as never,
+			false
+		)?.index ?? Infinity;
+
+	/**
+	 * List order of ids `a` and `b` of one text (negative: `a` first): their
+	 * live indices, and where no live unit separates them, the walk from one
+	 * to the other through the dead run between them.
+	 */
+	const order = (s: State, a: { c: number; k: number }, b: { c: number; k: number }): number => {
+		const d = indexOf(s, a.c, a.k) - indexOf(s, b.c, b.k);
+		if (d !== 0 || (a.c === b.c && a.k === b.k)) return d;
+		const find = (x: { c: number; k: number }) =>
+			structAt(Y, clientsOf(s.doc).get(x.c) ?? [], x.k) as (Unit & { right: Unit | null }) | null;
+		const [sa, sb] = [find(a), find(b)];
+		if (sa === sb) return a.k - b.k;
+		for (let it = sa?.right ?? null; it !== null; it = it.right as typeof it) {
+			if (it === sb) return -1;
+			if (!it.deleted && it.countable !== false) break;
+		}
+		return 1;
+	};
+
+	/** Whether id `c:k` is a deleted text unit that still holds its content here. */
+	const intact = (s: State, c: number, k: number): boolean => {
+		const st = structAt(Y, clientsOf(s.doc).get(c) ?? [], k) as Unit | null;
+		return (
+			st !== null &&
+			st.deleted &&
+			(typeof st.content?.str === 'string' || st.content?.type !== undefined)
+		);
+	};
+
+	/**
+	 * What restores root span `r`: per character, the leftmost leaf of its
+	 * lineage (a member no copy was made of). A copy sits right before what it
+	 * copied, so leaves are the newest incarnations, and the leftmost one is
+	 * where the leftmost-wins deduplication keeps its neighbours.
+	 */
 	const leaves = (s: State, r: Span): Member[] => {
-		const out: Member[] = [];
-		const walk = (m: Member): void => {
-			// the copies of `m`; the smallest id first where two copied the same member
-			const kids = (s.byOrigin.get(m.c) ?? [])
-				.filter((e) => overlaps({ k: e.ok, n: e.n }, m))
-				.sort((a, b) => a.c - b.c || a.k - b.k);
-			for (let at = m.rk; at < m.rk + m.n; ) {
-				const id = m.k + at - m.rk;
-				const kid = kids.find((e) => e.ok <= id && id < e.ok + e.n);
-				if (kid === undefined) {
-					const next = kids
-						.map((e) => m.rk + e.ok - m.k)
-						.filter((x) => x > at)
-						.reduce((a, b) => Math.min(a, b), m.rk + m.n);
-					out.push(clip(m, at, next));
-					at = next;
-				} else {
-					const hi = Math.min(m.rk + m.n, m.rk + kid.ok + kid.n - m.k);
-					walk(clip({ c: kid.c, k: kid.k, n: kid.n, rk: m.rk + kid.ok - m.k }, at, hi));
-					at = hi;
-				}
-			}
+		const ms = members(s, r);
+		if (ms.length === 1) return ms;
+		const copied = (m: Member, rk: number): boolean => {
+			const id = m.k + rk - m.rk;
+			return (s.byOrigin.get(m.c) ?? []).some((e) => e.ok <= id && id < e.ok + e.n);
 		};
-		walk({ ...r, rk: r.k });
+		// A leaf beside a shown neighbour of the same copy puts the character back
+		// among the neighbours it was restored with.
+		const beside = (m: Member, rk: number): boolean => {
+			const id = m.k + rk - m.rk;
+			const e = (s.copies.get(m.c) ?? []).find((x) => x.k <= id && id < x.k + x.n);
+			const lo = e?.k ?? -Infinity;
+			const hi = e === undefined ? Infinity : e.k + e.n;
+			return [id - 1, id + 1].some(
+				(k) =>
+					k >= lo && k < hi && structAt(Y, clientsOf(s.doc).get(m.c) ?? [], k)?.deleted === false
+			);
+		};
+		const out: Member[] = [];
+		for (let rk = r.k; rk < r.k + r.n; rk++) {
+			let best: Member | null = null;
+			let near = false;
+			for (const m of ms) {
+				if (rk < m.rk || rk >= m.rk + m.n || copied(m, rk)) continue;
+				const id = { c: m.c, k: m.k + rk - m.rk };
+				const b = beside(m, rk);
+				if (
+					best === null ||
+					(b && !near) ||
+					(b === near && order(s, id, { c: best.c, k: best.k + rk - best.rk }) < 0)
+				)
+					[best, near] = [m, b];
+			}
+			if (best === null) continue;
+			const last = out[out.length - 1];
+			if (
+				last !== undefined &&
+				last.c === best.c &&
+				last.rk + last.n === rk &&
+				last.k + last.n === best.k + rk - best.rk
+			)
+				last.n++;
+			else out.push(clip(best, rk, rk + 1));
+		}
 		return out;
 	};
 
@@ -234,6 +303,21 @@ export const bindDeletes = (Y: EngineApi) => {
 		(s.held.get(r.c) ?? [])
 			.filter((h) => overlaps(h, r) && !skip?.(h.mark) && alive(s, h.mark))
 			.map((h) => h.mark);
+
+	/** `r` without the spans `done`. */
+	const minus = (r: Span, done: readonly Span[]): Span[] => {
+		let out = [r];
+		for (const d of done)
+			if (d.c === r.c)
+				out = out.flatMap((x) => {
+					if (!overlaps(x, d)) return [x];
+					const keep: Span[] = [];
+					if (d.k > x.k) keep.push({ c: x.c, k: x.k, n: d.k - x.k });
+					if (d.k + d.n < x.k + x.n) keep.push({ c: x.c, k: d.k + d.n, n: x.k + x.n - d.k - d.n });
+					return keep;
+				});
+		return out;
+	};
 
 	/** `r` cut where a live hold or a shown copy starts or ends: parts of one status each. */
 	const parts = (s: State, r: Span): Span[] => {
@@ -338,14 +422,19 @@ export const bindDeletes = (Y: EngineApi) => {
 			for (let it = (node as unknown as { _start: Unit | null })._start; it; it = it.right as Unit)
 				if (!it.deleted) for (const [r, bytes] of recordsIn(it, null)) fn(r, bytes);
 		};
-		records(st.restored, (r, bytes) => indexRecord(st, r, bytes));
+		(st.restored as unknown as { _map: Map<string, Unit> })._map.forEach((it) => {
+			for (const [r, bytes] of recordsIn(it, null)) indexRecord(st, r, bytes);
+		});
 		records(st.marks, (r, bytes) => indexMark(st, r, bytes));
 		// A deleted copy may have to be copied again by any replica (holds,
 		// duplicates, pending characters): garbage collection keeps its content.
 		const d = doc as unknown as { gcFilter: (it: Unit) => boolean };
 		const gc = d.gcFilter;
 		d.gcFilter = (it) =>
-			gc(it) && !(st.copies.get(it.id.client) ?? []).some((e) => overlaps(e, { k: it.id.clock, n: it.length }));
+			gc(it) &&
+			!(st.copies.get(it.id.client) ?? []).some((e) =>
+				overlaps(e, { k: it.id.clock, n: it.length })
+			);
 		(doc as unknown as { on(e: string, f: (tr: Tr) => void): void }).on('afterTransaction', (tr) =>
 			react(st, tr)
 		);
@@ -401,7 +490,10 @@ export const bindDeletes = (Y: EngineApi) => {
 			}
 		}
 		if (rows.length === 0) return;
-		s.restored.insert(s.restored.length, [encode(rows)]);
+		// One key per record (its own id): a map entry depends on nothing, so
+		// the record integrates with the copies it names, before collection.
+		const next = nextClock(s.doc, s.doc.clientID);
+		s.restored.setAttr(`${s.doc.clientID.toString(36)}.${next.toString(36)}`, encode(rows));
 		addCopies(s, copies);
 	};
 
@@ -420,18 +512,17 @@ export const bindDeletes = (Y: EngineApi) => {
 		done: Span[] = []
 	): Span[] => {
 		const watch: Span[] = [];
-		for (const part of roots.flatMap((r) => parts(s, r))) {
-			if (done.some((d) => d.c === part.c && overlaps(d, part))) continue;
-			const live = shown(s, [part]);
-			(globalThis as any).__TD_DEBUG__?.(s.doc.clientID, 'settle', part, 'live', live, 'held', holders(s, part, skip));
-			if (live.length > 0) {
-				if (live.some((l) => l.c !== s.doc.clientID)) watch.push(part);
-			} else if (holders(s, part, skip).length > 0) watch.push(part);
-			else {
-				restore(s, p, tr, part);
-				done.push(part);
+		for (const r of roots)
+			for (const part of minus(r, done).flatMap((x) => parts(s, x))) {
+				const live = shown(s, [part]);
+				if (live.length > 0) {
+					if (live.some((l) => l.c !== s.doc.clientID)) watch.push(part);
+				} else if (holders(s, part, skip).length > 0) watch.push(part);
+				else {
+					restore(s, p, tr, part);
+					done.push(part);
+				}
 			}
-		}
 		return watch;
 	};
 
@@ -453,19 +544,10 @@ export const bindDeletes = (Y: EngineApi) => {
 					const hi = Math.min(h.k + h.n, r.k + r.n);
 					return h.c === r.c && hi > lo ? [{ c: r.c, k: lo, n: hi - lo }] : [];
 				});
-				(globalThis as any).__TD_DEBUG__?.(s.doc.clientID, 'hold', mark, shown(s, roots), !!stepOf(s, mark));
 				remove(tr, shown(s, roots), stepOf(s, mark));
 			}
 		}
 	};
-
-	/** The live index of id `c:k` in its text (YATA order: the same on every replica). */
-	const indexOf = (s: State, c: number, k: number): number =>
-		Y.createAbsolutePositionFromRelativePosition(
-			Y.createRelativePositionFromJSON({ item: { client: c, clock: k }, assoc: 0 }),
-			s.doc as never,
-			false
-		)?.index ?? Infinity;
 
 	/**
 	 * Delete this replica's copies of characters another copy shows further
@@ -490,7 +572,6 @@ export const bindDeletes = (Y: EngineApi) => {
 				}
 			}
 		}
-		(globalThis as any).__TD_DEBUG__?.(s.doc.clientID, 'dedupe', doomed);
 		remove(tr, doomed, undefined, true);
 		const [p] = s.policies;
 		for (const d of doomed) p.watch.push(...rootSpans(s, d));
@@ -499,9 +580,7 @@ export const bindDeletes = (Y: EngineApi) => {
 	/** Whether `tr` deleted a member of a character some history watches. */
 	const watchedDied = (s: State, tr: Tr): boolean =>
 		[...s.policies].some((p) =>
-			p.watch.some((w) =>
-				members(s, w).some((m) => tr.deleteSet.intersects(m.c, m.k, m.n))
-			)
+			p.watch.some((w) => members(s, w).some((m) => tr.deleteSet.intersects(m.c, m.k, m.n)))
 		);
 
 	/** After every commit: index its records; after a remote one, keep this replica's facts. */
@@ -549,7 +628,14 @@ export const bindDeletes = (Y: EngineApi) => {
 			const s = attach(doc);
 			s.marks.insert(s.marks.length, [encode(spans.map((sp) => [sp.c, sp.k, sp.n]))]);
 			const tr = s.doc._transaction;
-			if (tr !== null) remove(tr, shown(s, spans.flatMap((sp) => rootSpans(s, sp))));
+			if (tr !== null)
+				remove(
+					tr,
+					shown(
+						s,
+						spans.flatMap((sp) => rootSpans(s, sp))
+					)
+				);
 		},
 
 		/** The `restoreFilter` and `onApply` options of a history on `doc` (P11). */
@@ -580,7 +666,6 @@ export const bindDeletes = (Y: EngineApi) => {
 					q.watch.push(...settle(s, q, tr, roots, ours));
 					// A redo writes its marks again: they hide what shows their characters.
 					const held = fresh.marks.flatMap((m) => s.holds.get(keyOf(m)) ?? []);
-					(globalThis as any).__TD_DEBUG__?.(s.doc.clientID, 'redo-hide', shown(s, held));
 					remove(tr, shown(s, held));
 					// Text the step deleted that no mark of it holds (an undo of typing) is
 					// this writer's delete too.
@@ -589,7 +674,8 @@ export const bindDeletes = (Y: EngineApi) => {
 							(r) => !held.some((h) => h.c === r.c && h.k <= r.k && r.k + r.n <= h.k + h.n)
 						)
 					);
-					if (bare.length > 0) s.marks.insert(s.marks.length, [encode(bare.map((u) => [u.c, u.k, u.n]))]);
+					if (bare.length > 0)
+						s.marks.insert(s.marks.length, [encode(bare.map((u) => [u.c, u.k, u.n]))]);
 					q.units = [];
 				}
 			};

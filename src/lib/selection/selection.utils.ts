@@ -5,6 +5,7 @@ import { Edytor } from '$lib/edytor.svelte.js';
 import type { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import type { DomSelectionSnapshot } from './domSelection.js';
 import type { EdgeSide } from '$lib/session/editing/text.js';
+import { getTextContentOffsetAtPoint } from '$lib/events/domTextOffset.js';
 
 const TRAILING_NEWLINE_SELECTOR = '[data-edytor-trailing-newline]';
 const SYNTHETIC_TEXT_OVERLAY_SELECTOR = '[data-edytor-text-suggestion]';
@@ -428,68 +429,7 @@ export const getYIndex = (text: Text | null, node: Node | null, _start: number) 
 		return boundaryOffset;
 	}
 
-	const getChildTextLengthBeforeOffset = (element: Node, offset: number) => {
-		let length = 0;
-		const end = Math.min(offset, element.childNodes.length);
-		for (let index = 0; index < end; index++) {
-			// Svelte's hydration comments carry data, never text.
-			const child = element.childNodes[index];
-			if (child.nodeType !== Node.COMMENT_NODE) length += child.textContent?.length ?? 0;
-		}
-		return length;
-	};
-
-	const getTextOffsetInsideParent = () => {
-		let offset = 0;
-		let resolved = false;
-
-		const visit = (current: Node): boolean => {
-			if (current === node) {
-				if (current.nodeType === Node.TEXT_NODE) {
-					offset += Math.min(_start, current.textContent?.length ?? 0);
-				} else {
-					offset += getChildTextLengthBeforeOffset(current, _start);
-				}
-				resolved = true;
-				return true;
-			}
-
-			if (current.nodeType === Node.TEXT_NODE) {
-				offset += current.textContent?.length ?? 0;
-				return false;
-			}
-
-			for (const child of current.childNodes) {
-				if (visit(child)) {
-					return true;
-				}
-			}
-			return false;
-		};
-
-		visit(parent);
-		return resolved ? offset : null;
-	};
-
-	let start: number;
-	if (parent === node || parent.contains(node)) {
-		start = getTextOffsetInsideParent() ?? _start;
-	} else {
-		// The endpoint resolved to `text` through a stray/boundary node that
-		// lives outside the text element (see getTextOfNode). Map the point
-		// to the nearest edge of the text by document position: a node
-		// following the element clamps to its end, a preceding one to its
-		// start. Ancestor/descendant relations keep the raw offset.
-		const position = parent.compareDocumentPosition(node);
-		if (
-			position & Node.DOCUMENT_POSITION_CONTAINS ||
-			position & Node.DOCUMENT_POSITION_DISCONNECTED
-		) {
-			start = _start;
-		} else {
-			start = position & Node.DOCUMENT_POSITION_FOLLOWING ? text.length : 0;
-		}
-	}
+	const start = getTextContentOffsetAtPoint(parent, node, _start);
 	if ((start === 0 || start === 1) && isEmpty) {
 		return 0;
 	}

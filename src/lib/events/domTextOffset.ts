@@ -11,8 +11,9 @@ const getChildTextLengthBeforeOffset = (element: Node, offset: number) => {
 
 /**
  * Character offset of the DOM point `(node, offset)` inside `textNode`,
- * counting text content in document order — the same point→offset rule
- * `getYIndex` (selection.utils.ts) applies. Two point shapes exist: a
+ * counting text content in document order — the one DOM→model point
+ * mapper (`getYIndex` adds the editor's marker, boundary and filler rules
+ * on top; `domPointOf` is its inverse). Two point shapes exist: a
  * text-node anchor carries a character offset; an element anchor
  * (Firefox's node-bound caret shape) carries a CHILD INDEX, so the text
  * content of the children before that index is counted instead. Points

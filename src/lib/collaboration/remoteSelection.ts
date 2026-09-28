@@ -5,6 +5,7 @@ import {
 	type EdytorAwarenessUser,
 	type PresencePoint
 } from './awarenessSelection.js';
+import { domPointOf } from '$lib/surface/projector.svelte.js';
 
 export type RemoteSelectionRect = {
 	left: number;
@@ -48,34 +49,9 @@ const getUser = (state: unknown): EdytorAwarenessUser => {
 };
 
 const findDomPoint = ({ text, offset }: PresencePoint): DomPoint | null => {
-	const node = text.node;
-	if (!node) {
-		return null;
-	}
-
-	const treeWalker = node.ownerDocument.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-	let currentNode = treeWalker.nextNode();
-	let currentOffset = 0;
-
-	while (currentNode) {
-		const length = currentNode.textContent?.length ?? 0;
-		const endOffset = currentOffset + length;
-		if (offset >= currentOffset && offset <= endOffset) {
-			return {
-				node: currentNode,
-				offset: offset - currentOffset,
-				text
-			};
-		}
-		currentOffset = endOffset;
-		currentNode = treeWalker.nextNode();
-	}
-
-	return {
-		node,
-		offset: Math.min(offset, node.childNodes.length),
-		text
-	};
+	if (!text.node) return null;
+	const [node, at] = domPointOf(text.node, offset);
+	return { node, offset: at, text };
 };
 
 /** A viewport rect made relative to the overlay layer's origin (the caret follows its anchor). */

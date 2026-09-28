@@ -1,7 +1,6 @@
 import type { Text } from './text/text.svelte.js';
 import type { Block } from './block/block.svelte.js';
 import type { Edytor } from './edytor.svelte.js';
-import { id } from './utils.js';
 import type { Flow, FlowTarget } from './crdt/flow.js';
 import type { Prepared } from './crdt/edytor-doc.js';
 import { normalizeChildren, normalizeContent } from './block/block.utils.js';
@@ -48,7 +47,7 @@ export function prepareDeleteContent(this: Edytor, { replace = false, selection 
 		offset: text.segStart + offset
 	});
 	const prepare = replace ? this.facade.prepare.replaceRange : this.facade.prepare.deleteRange;
-	return prepare(at(startText, yStart), at(endText, yEnd), id('b'));
+	return prepare(at(startText, yStart), at(endText, yEnd));
 }
 
 /**

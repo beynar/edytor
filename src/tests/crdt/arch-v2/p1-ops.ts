@@ -139,7 +139,7 @@ export const apply = (r: Replica, action: string, a: unknown[]) => {
 				return ed.insertText(a[0], a[1], a[3]);
 			});
 		case 'deleteRange':
-			return ed.deleteRange({ block: a[0], offset: a[1] }, { block: a[2], offset: a[3] }, a[4]);
+			return ed.deleteRange({ block: a[0], offset: a[1] }, { block: a[2], offset: a[3] });
 		case 'format':
 			return ed.setMark(a[0], a[1], a[2], a[3], a[4]);
 		case 'split':

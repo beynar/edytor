@@ -569,17 +569,11 @@ const removeInlinePart = (block: OBlock, partIndex: number) => {
 };
 
 /** Root re-population — `normalizeChildren` inserts a fresh default block. */
-const normalizeRoot = (
-	root: OBlock,
-	defaultType: string | null,
-	freshIds: Set<string>,
-	/** Insert even into a non-empty root, here (a range delete left nothing to hold the caret). */
-	at?: number
-) => {
-	if (root.children.length === 0 || at !== undefined) {
+const normalizeRoot = (root: OBlock, defaultType: string | null, freshIds: Set<string>) => {
+	if (root.children.length === 0) {
 		const id = `__fresh_${freshIds.size}__`;
 		freshIds.add(id);
-		root.children.splice(at ?? 0, 0, {
+		root.children.splice(0, 0, {
 			id,
 			type: defaultType ?? 'paragraph',
 			data: {},
@@ -1227,8 +1221,9 @@ const describeDeleteInner = (
 	 * suffix merges into a surviving head when the island seal allows (an
 	 * end at the tail's start included: the seam is deleted); what follows the range end
 	 * takes the topmost dying container's slot unless that crosses an island;
-	 * containers that show no text and lose every child die; a document left
-	 * with nothing to hold the caret gets one fresh block.
+	 * containers that show no text and lose every child die; when nothing
+	 * else would be left to hold the caret the head is kept, emptied, with its
+	 * id, type and data (`del.range.whole-doc`).
 	 */
 	const deleteWithinSelection = (): void => {
 		const shows = (block: OBlock) => before.model.rendersContent?.[block.type] !== false;
@@ -1246,40 +1241,45 @@ const describeDeleteInner = (
 		const chain: OBlock[] = [];
 		for (let a = E.parent; a && !a.isRoot; a = a.parent) chain.push(a);
 		const between = order.slice(order.indexOf(S) + 1, order.indexOf(E));
-		const headDies = s === 0;
-		const tailDies = e === blockAtomLength(E);
-		const sameSide = islandOf(E) === islandOf(S) || S === islandOf(E);
-		const merges = !headDies && !tailDies && !E.void && !S.void && sameSide;
-		const tailGone = tailDies || merges;
-		const partial = chain.filter((a) => (headDies && a === S) || between.includes(a));
-		const top = partial.at(-1);
-		const sealed =
-			top !== undefined && chain.slice(0, chain.indexOf(top) + 1).some((a) => a.island);
-		const doomed = new Set(between.filter((b) => !chain.includes(b)));
-		if (!sealed) partial.forEach((a) => doomed.add(a));
-		if (headDies && !(sealed && chain.includes(S))) doomed.add(S);
-		if (tailDies) doomed.add(E);
-		const home = sealed || top === undefined ? (tailGone ? E : undefined) : top;
-		const rescued = home === undefined ? [] : tailGone ? [...E.children] : [E];
-		for (let cur = E; home !== undefined && cur !== home; cur = cur.parent!) {
-			rescued.push(...cur.parent!.children.slice(indexOf(cur) + 1));
-		}
-		const destParent = rescued.length > 0 ? home!.parent! : null;
-		const gone = (b: OBlock) => doomed.has(b) || (merges && b === E);
-		const emptied = (b: OBlock | null): void => {
-			if (!b || b.isRoot || gone(b) || shows(b) || b === destParent) return;
-			if (!b.children.every(gone)) return;
-			doomed.add(b);
-			emptied(b.parent);
+		const plan = (headDies: boolean) => {
+			const tailDies = e === blockAtomLength(E);
+			const sameSide = islandOf(E) === islandOf(S) || S === islandOf(E);
+			const merges = !headDies && !tailDies && !E.void && !S.void && sameSide;
+			const tailGone = tailDies || merges;
+			const partial = chain.filter((a) => (headDies && a === S) || between.includes(a));
+			const top = partial.at(-1);
+			const sealed =
+				top !== undefined && chain.slice(0, chain.indexOf(top) + 1).some((a) => a.island);
+			const doomed = new Set(between.filter((b) => !chain.includes(b)));
+			if (!sealed) partial.forEach((a) => doomed.add(a));
+			if (headDies && !(sealed && chain.includes(S))) doomed.add(S);
+			if (tailDies) doomed.add(E);
+			const home = sealed || top === undefined ? (tailGone ? E : undefined) : top;
+			const rescued = home === undefined ? [] : tailGone ? [...E.children] : [E];
+			for (let cur = E; home !== undefined && cur !== home; cur = cur.parent!) {
+				rescued.push(...cur.parent!.children.slice(indexOf(cur) + 1));
+			}
+			const destParent = rescued.length > 0 ? home!.parent! : null;
+			const gone = (b: OBlock) => doomed.has(b) || (merges && b === E);
+			const emptied = (b: OBlock | null): void => {
+				if (!b || b.isRoot || gone(b) || shows(b) || b === destParent) return;
+				if (!b.children.every(gone)) return;
+				doomed.add(b);
+				emptied(b.parent);
+			};
+			[...doomed, ...(merges ? [E] : [])].forEach((b) => emptied(b.parent));
+			const survives = (b: OBlock | null): boolean =>
+				!b || b.isRoot || rescued.includes(b) || (!gone(b) && survives(b.parent));
+			const caretHome =
+				!doomed.has(S) ||
+				!gone(E) ||
+				order.some((b) => b !== S && b !== E && survives(b) && shows(b));
+			return { merges, tailGone, doomed, home, rescued, destParent, caretHome };
 		};
-		[...doomed, ...(merges ? [E] : [])].forEach((b) => emptied(b.parent));
-		const survives = (b: OBlock | null): boolean =>
-			!b || b.isRoot || rescued.includes(b) || (!gone(b) && survives(b.parent));
-		const caretHome =
-			!doomed.has(S) ||
-			!gone(E) ||
-			order.some((b) => b !== S && b !== E && survives(b) && shows(b));
-		const survivorIndex = Math.max(0, root.children.findIndex(gone));
+		const first = plan(s === 0);
+		const { merges, tailGone, doomed, home, rescued, destParent } = first.caretHome
+			? first
+			: plan(false);
 		const tailKids = [...E.children];
 
 		if (!doomed.has(S)) deleteAtomRange(S, s, blockAtomLength(S));
@@ -1295,9 +1295,6 @@ const describeDeleteInner = (
 			removeSubtree(E);
 		}
 		for (const block of doomed) removeSubtree(block);
-		if (!caretHome) {
-			normalizeRoot(root, rootDefaultType, freshIds, survivorIndex);
-		}
 	};
 
 	const contentBackward = (): DeleteExpectation => {

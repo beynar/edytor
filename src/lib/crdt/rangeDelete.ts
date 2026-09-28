@@ -6,7 +6,10 @@
  * - the head keeps `[0, start)`, the tail keeps `[end, len)`, and every
  *   block strictly between them in document order dies;
  * - the head dies iff its prefix is empty (never for a replacement,
- *   `del.range.replace`) and the tail then keeps its id; the tail dies iff
+ *   `del.range.replace`, nor when nothing else would be left to hold the
+ *   caret, `del.range.whole-doc`: the head is kept, emptied, with its id,
+ *   type and data, so peers deleting the same range keep the same block)
+ *   and the tail then keeps its id; the tail dies iff
  *   its suffix is empty; otherwise the tail's suffix merges into the head
  *   when `canMerge(tail, head)` allows it (`del.range.island-seal`) — an end
  *   at the tail's start included: the seam between them is deleted;
@@ -15,8 +18,7 @@
  *   topmost such container's slot, unless that would cross an island seal —
  *   then those containers stay (`del.range.outside-survives`);
  * - a container that renders no content and loses every child dies too
- *   (`del.range.empty-container`); a document left with nothing to hold the
- *   caret gets one survivor (`del.range.whole-doc`);
+ *   (`del.range.empty-container`);
  * - the plan's `at` is where the caret lands (`del.range.caret`).
  */
 import type { BlockId, Destination } from './placement/model.js';
@@ -45,14 +47,13 @@ export type RangeDeleteContext = {
 	move: (ids: BlockId[], parent: BlockId | null, index: number) => PlanStep[];
 	retype: (id: BlockId, type: string) => PlanStep[];
 	remove: (id: BlockId, kept: readonly BlockId[]) => PlanStep;
-	insertBlocks: (dest: Destination, specs: { id: BlockId; type: string }[]) => Prepared;
 };
 
 /** `deleteRange` and `replaceRange` (the head kept), prepared. */
 export const rangeDeleteOps = (c: RangeDeleteContext) => {
 	const prepare =
 		(keepHead: boolean) =>
-		(from: DocPosition, to: DocPosition, newId: BlockId): Prepared => {
+		(from: DocPosition, to: DocPosition): Prepared => {
 			// A position names shown text: a live block that renders its own content.
 			const holds = (id: BlockId) => c.contentTarget(id) && c.rendersContent(id);
 			const pos = (p: DocPosition): DocPosition => {
@@ -134,7 +135,7 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 			const kept = [...rescued, ...(merges ? [E] : [])];
 			for (const id of doomed) if (!doomed.has(parent(id)!)) writes.push(c.remove(id, kept));
 
-			const caret = ((): DocPosition => {
+			const caret = ((): DocPosition | null => {
 				if (!doomed.has(S)) return s;
 				if (!gone(E)) return { block: E, offset: 0 };
 				const survives = (id: BlockId | null): boolean =>
@@ -143,17 +144,11 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 				// Before the tail: blocks a sealed rescue spared between S and E count too.
 				const prev = ids.slice(0, at.get(E)).findLast(shown);
 				if (prev !== undefined) return { block: prev, offset: c.displayLength(prev) };
-				return { block: ids.slice(at.get(E)! + 1).find(shown) ?? newId, offset: 0 };
+				const next = ids.slice(at.get(E)! + 1).find(shown);
+				return next === undefined ? null : { block: next, offset: 0 };
 			})();
-			if (caret.block === newId) {
-				// Nothing left can hold the caret: one survivor where the range was (whole-doc).
-				const index = Math.max(0, c.childrenIds(null).findIndex(gone));
-				const add = c.insertBlocks({ parent: null, index }, [
-					{ id: newId, type: c.defaultChild(null) }
-				]);
-				if (!('writes' in add)) return c.refused;
-				writes.push(...add.writes);
-			}
+			// Nothing else left to hold the caret: the head stays, emptied (whole-doc).
+			if (caret === null) return prepare(true)(from, to);
 			return { ...c.plan([caret.block], writes), at: caret };
 		};
 	return { deleteRange: prepare(false), replaceRange: prepare(true) };

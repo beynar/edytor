@@ -104,7 +104,7 @@ describe('P1 scale — document work at 1k / 5k blocks (review-probes/scale)', (
 			);
 			record(`${n}: local bold median ms`, med(fm));
 			const [, rd] = time(() =>
-				ed.deleteRange({ block: `b${300}`, offset: 2 }, { block: `b${340}`, offset: 2 }, 'rd')
+				ed.deleteRange({ block: `b${300}`, offset: 2 }, { block: `b${340}`, offset: 2 })
 			);
 			record(`${n}: range delete across 40 blocks ms`, rd);
 			const mergedKs = (() => {

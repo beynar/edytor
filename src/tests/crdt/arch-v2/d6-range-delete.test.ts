@@ -69,7 +69,7 @@ const tree = (f) => shape(f.toJSON().children);
 
 /** Prepare the range delete, apply it, return `{result, at}`. */
 const del = (f, [sb, so], [eb, eo], op = 'deleteRange') => {
-	const plan = f.prepare[op]({ block: sb, offset: so }, { block: eb, offset: eo }, 'fresh');
+	const plan = f.prepare[op]({ block: sb, offset: so }, { block: eb, offset: eo });
 	const result = f.apply(plan);
 	return { result, at: plan.at };
 };
@@ -194,12 +194,28 @@ describe('del.range.flat.head-empty / tail-empty / whole-doc', () => {
 		expect(at).toEqual({ block: 'a', offset: 2 });
 	});
 
-	row('whole-doc: exactly one empty block survives (the synthesized one)', () => {
+	row('whole-doc: the head survives, emptied (no block is written)', () => {
 		const f = threeFlat();
-		const { result, at } = del(f, ['a', 0], ['c', 2]);
-		expect(result.status).toBe('applied');
-		expect(tree(f)).toEqual([P('fresh', '')]);
-		expect(at).toEqual({ block: 'fresh', offset: 0 });
+		const plan = f.prepare.deleteRange({ block: 'a', offset: 0 }, { block: 'c', offset: 2 });
+		expect(plan.effect.creates).toEqual([]);
+		expect(f.apply(plan).status).toBe('applied');
+		expect(tree(f)).toEqual([P('a', '')]);
+		expect(plan.at).toEqual({ block: 'a', offset: 0 });
+	});
+
+	row('whole-doc from a nested head: the head keeps its container and type', () => {
+		const f = make([
+			b(
+				'ol',
+				'',
+				[b('i1', 'one', undefined, 'list-item'), b('i2', 'two', undefined, 'list-item')],
+				'ordered-list'
+			),
+			b('z', 'zed')
+		]);
+		const { at } = del(f, ['i1', 0], ['z', 3]);
+		expect(tree(f)).toEqual([['ol', 'ordered-list', '', [['i1', 'list-item', '']]]]);
+		expect(at).toEqual({ block: 'i1', offset: 0 });
 	});
 });
 
@@ -407,14 +423,14 @@ describe('del.range.replace — the head is kept for the replacement', () => {
 describe('prepared op (R6)', () => {
 	row('one plan, named steps, one undo step; the refusal writes nothing', () => {
 		const f = threeFlat();
-		const plan = f.prepare.deleteRange({ block: 'a', offset: 1 }, { block: 'c', offset: 1 }, 'n');
+		const plan = f.prepare.deleteRange({ block: 'a', offset: 1 }, { block: 'c', offset: 1 });
 		expect(plan.writes.map((w) => w.op).sort()).toEqual(
 			['deleteText', 'deleteText', 'deleteBlock', 'mergeBlocks'].sort()
 		);
 		expect(plan.effect.removes).toEqual(['b']);
 		expect(plan.effect.merges).toEqual([['c', 'a']]);
 		expect(
-			f.prepare.deleteRange({ block: 'ghost', offset: 0 }, { block: 'c', offset: 1 }, 'n').status
+			f.prepare.deleteRange({ block: 'ghost', offset: 0 }, { block: 'c', offset: 1 }).status
 		).toBe('refused');
 	});
 });
@@ -468,7 +484,7 @@ describe('F-O11 — the range delete plan changes exactly its effect', () => {
 				const prepare =
 					op === 'deleteBlocks'
 						? () => f.prepare.deleteBlocks([pick(f.listBlockIds()), pick(f.listBlockIds())])
-						: () => f.prepare[op](at(), at(), freshId());
+						: () => f.prepare[op](at(), at());
 				const emptyLists = () =>
 					f
 						.listBlockIds()
@@ -508,7 +524,7 @@ describe('F-O5 — range delete and selected-block delete over 1,000 paragraphs'
 		const f = many();
 		f.toJSON(); // warm the derived view
 		const ms = time(() =>
-			f.apply(f.prepare.deleteRange({ block: 'p0', offset: 1 }, { block: 'p999', offset: 1 }, 'n'))
+			f.apply(f.prepare.deleteRange({ block: 'p0', offset: 1 }, { block: 'p999', offset: 1 }))
 		);
 		expect(f.toJSON().children).toHaveLength(1);
 		expect(ms).toBeLessThan(50);

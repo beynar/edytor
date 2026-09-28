@@ -306,12 +306,9 @@ describe('headless command simulation (U2)', () => {
 		assertCanonicalTree(a.edytor, [p('alphaX'), p('ZHello')]);
 	});
 
-	it('remote whole-document deletion recovers B’s caret onto the mounting replacement (F2)', async () => {
-		// A deletes EVERYTHING; normalization mints a fresh empty paragraph
-		// on both sides. On B the paragraph's text wrapper exists in the
-		// model before its DOM node mounts — the dead-endpoint recovery that
-		// ran with the commit's mirror patch found no mounted editable text and armed
-		// the post-mount retry instead of leaving the caret on dead beta.
+	it('remote whole-document deletion recovers B’s caret onto the kept head (F2, del.range.whole-doc)', async () => {
+		// A deletes EVERYTHING; the head (alpha) is kept, emptied, and beta
+		// dies. B's caret on dead beta lands at the seam: the kept head's end.
 		const a = await renderDomEdytor(seed, { autoSelectFixture: false });
 		const b = await mountReplicaPeer(a, seed);
 
@@ -330,15 +327,15 @@ describe('headless command simulation (U2)', () => {
 		await flushDomUpdates();
 		assertCanonicalTree(a.edytor, [p('')]);
 
+		const head = a.edytor.root!.children[0]!.id;
 		await deliver(a, b);
-		assertCanonicalTree(b.edytor, [p('')]);
+		assertCanonicalTree(b.edytor, [{ ...p(''), id: head }]);
 
-		// The replacement paragraph is mounted AND the selection owns a
-		// live endpoint on it — no 80ms grace period required.
+		// The selection owns a live endpoint on the kept head.
 		await waitFor(() => expect(b.edytor.selection.state.startText?.isInDocument).toBe(true));
 		expect(selectionInfo(b.edytor)).toEqual({ text: '', yStart: 0, yEnd: 0, live: true });
 
-		// Follow-up input reaches the replacement paragraph.
+		// Follow-up input reaches the kept head.
 		await runCommand(b.edytor, 'insertText', 'Z');
 		await flushDomUpdates();
 		assertCanonicalTree(b.edytor, [p('Z')]);

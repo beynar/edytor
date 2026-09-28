@@ -140,15 +140,16 @@ describe('golden command programs — flat range deletion (del.range.flat)', () 
 		});
 	});
 
-	it('whole document leaves one empty block (del.range.whole-doc)', async () => {
+	it('whole document keeps the head, emptied (del.range.whole-doc)', async () => {
+		let head = '';
 		const { edytor } = await program(threeFlat, {
-			select: (e) => [at(e, 0), 0, at(e, 2), 2],
+			select: (e) => ((head = e.root!.children[0]!.id), [at(e, 0), 0, at(e, 2), 2]),
 			expectTree: [p('')],
 			expectCaret: { text: '', at: 0 },
 			follow: 'X',
 			expectAfterFollow: [p('X')]
 		});
-		expect(edytor.value.children).toHaveLength(1);
+		assertCanonicalTree(edytor, [p('X', { id: head })]);
 	});
 
 	it('whole-text forward delete empties the block but keeps it', async () => {

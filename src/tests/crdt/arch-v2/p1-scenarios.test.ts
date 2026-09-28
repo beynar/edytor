@@ -150,7 +150,7 @@ describe('3. delete wins the block (conc.delete-wins-block)', () => {
 	it('3c range delete b0@2 → b2@1 ‖ type inside b1 → `zewo`; the insert dies with b1 (del.range.flat)', () => {
 		for (const o of one(
 			converge(seeds, 2, ([a, b]) => {
-				a.ed.deleteRange({ block: 'b0', offset: 2 }, { block: 'b2', offset: 1 }, 'fresh');
+				a.ed.deleteRange({ block: 'b0', offset: 2 }, { block: 'b2', offset: 1 });
 				b.ed.insertText('b1', 1, 'XX');
 			})
 		)) {

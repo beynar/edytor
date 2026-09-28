@@ -34,6 +34,7 @@ export type FlowContext = RangeDeleteContext & {
 	ranksFor: (parent: BlockId | null, index: number, count: number) => string[];
 	redata: (id: BlockId, data: Record<string, unknown>) => PlanStep[];
 	deleteBlocks: (ids: readonly BlockId[]) => Prepared;
+	insertBlocks: (dest: Destination, specs: readonly BlockSpec[]) => Prepared;
 };
 
 const lengthOf = (l: FlowLine) =>

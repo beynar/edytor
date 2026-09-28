@@ -25,8 +25,9 @@ Rule (verified across the endpoint matrix in
 text `[yEnd, len)`, interior blocks die — then:
 
 - **tail cut (`yEnd > 0`, or the seam covered):** tail suffix merges **into the head block**
-  (head type/id wins). Head dies iff its prefix is empty; tail dies iff
-  its suffix is empty. `[a@1→b@1] → "ab"`, `[a@1→c@1] nonadjacent → "ac"`,
+  (head type/id wins). Head dies iff its prefix is empty (unless nothing
+  else would be left to hold the caret, `del.range.whole-doc`); tail dies
+  iff its suffix is empty. `[a@1→b@1] → "ab"`, `[a@1→c@1] nonadjacent → "ac"`,
   `[a@0→b@1] → "eta"` (head dies), `[a@1→b@2] → "a","cc"` (tail dies).
 - **`yEnd == 0` (range ends on the tail's start boundary):** the
   selection presents such a range, when the block before the tail shows
@@ -66,10 +67,30 @@ only its prefix).
 
 ### `del.range.whole-doc` — everything selected
 
-`a@0 → c@2` over three flat blocks → `[paragraph ""]` — when every
-endpoint dies the document still retains exactly one empty block
-(`del.range.flat` applied to the limits: head dies on empty prefix, tail
-dies on empty suffix, and the model synthesizes a survivor).
+`a@0 → c@2` over three flat blocks → `[a ""]`: when the range would leave
+no block that can hold the caret (every block it covers dies and nothing
+outside it shows text), the **head is kept**, emptied — its id, type and
+data (a heading stays a heading, a list item stays in its list), its atoms
+and marks deleted with its text, its children dying with the range as
+covered blocks do. It is `del.range.replace`'s rule applied to this one
+case; no block is written. Backspace, Delete and cut agree, in either
+selection direction; the caret lands at `head@0`; one undo step restores
+everything.
+
+Concurrency (the user's contract: never let peers create duplicates just
+by performing the same action): two peers deleting the whole document keep
+the same block, so they converge to one empty block. A peer's concurrent
+typing in the head survives in it (it was not in the range the other peer
+deleted); typing in any other block dies with that block
+(`conc.delete-wins-block`); a concurrent delete of every block (a block
+selection) empties the document (`doc.empty.virtual`). Each writer's delete
+holds on its own: the first undo leaves the other writer's delete in
+effect, the second brings the document back. _(Before 2026-09-28 the op
+wrote a fresh paragraph, so two peers kept two.)_ Pins:
+`contracts-whole-delete.test.ts` (facade, three client-id assignments),
+`contracts-whole-delete.test.tsx` (command dispatch, two mounted peers),
+`contracts-whole-delete.spec.ts` (three engines, two contexts over the
+websocket relay), `d6-range-delete.test.ts`.
 
 ### `del.range.nested-tail` — head flat, tail nested
 
@@ -128,16 +149,16 @@ kept**: the head block survives even when its prefix is empty (the
 replacement lands at `yStart` inside it), and the tail's suffix merges
 into it under the same `canMerge` rule. `alpha@0 → beta@2` replaced →
 `[paragraph(alpha) "ta"]`, insertion point `alpha@0`. Every other rule of
-this section is unchanged. (Whole-document replacement therefore keeps
-the head instead of synthesizing a survivor.)
+this section is unchanged. (Whole-document replacement keeps the head, as a
+whole-document delete does, `del.range.whole-doc`.)
 
 ### `del.range.caret` — where the caret lands
 
 The head survives → `head@yStart`; else the tail survives → `tail@0`
 (`sel.seam.next-sibling`: the block that slid into the head's place);
 else the nearest surviving block before the tail that renders content
-(an island a sealed rescue kept inside the range counts), at its end; else the nearest one after it, at its start; else the
-survivor `del.range.whole-doc` synthesizes, at 0.
+(an island a sealed rescue kept inside the range counts), at its end; else the nearest one after it, at its start; when there is none the head
+is kept (`del.range.whole-doc`) and the caret is `head@yStart`.
 
 ### `del.range.nested-subtree` — range covers a whole subtree
 
@@ -373,7 +394,8 @@ empty, and two replicas typing into their own virtual paragraphs keep both
 lines. Readonly views show it and refuse the edit at admission. A peer's
 caret in its own (unwritten) virtual paragraph shows in this view's. The
 seed of a fresh document (`D-3`) is unchanged; a whole-document range
-delete still keeps its survivor (`del.range.whole-doc`). Pins:
+delete keeps its head block (`del.range.whole-doc`), so it never empties
+the document. Pins:
 `contracts-virtual-paragraph.test.tsx`, `contracts-virtual-paragraph.spec.ts`,
 the collab DST schedule seed 11.
 
@@ -744,25 +766,25 @@ Each row names the crossed boundary and the pin that carries it. Two
 replicas for every conflict row; the three-peer and history rows are
 separate pinned programs.
 
-| Boundary crossed                               | Pin                                                                                                                                                                                                                              |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| block-start ownership × adjacent remote insert | `a split-start caret stays in its block through an adjacent-block append` (anchors.test.ts) + mounted-replica pin (command-simulation.test.tsx: caret at `Hello@0`, remote `X` append to `alpha`, local `Z` → `alphaX`/`ZHello`) |
-| block-start ownership × same-gap remote insert | `a split-start caret keeps left insert-affinity` — remote insert lands to the caret's right                                                                                                                                      |
-| block-start ownership × composition            | `replaces intermediate composition text at a fresh split block start` — `alpha\|Hello` split, compose `n`→`に`, result `にHello`                                                                                                 |
-| block-start ownership × remote merge           | `…follows its facet into a remote merge` (backward) and `…through a remote mergeForward` — the bound boundary's stream now displays in the claimer                                                                               |
-| block-start ownership × predecessor deletion   | `…survives deletion of the predecessor's last atom` and `…of the whole predecessor block`                                                                                                                                        |
-| block-start ownership × block move             | `…stays in its block when the block is moved`                                                                                                                                                                                    |
-| block-start ownership × empty-in-place         | `…lands in its own block when the destination empties in place` — live block, no atoms → `{block, 0}`, no neighbor migration                                                                                                     |
-| block-start ownership × serialization          | `a split-start anchor binds its boundary item and survives JSON round-trip` (`{b, a}` only)                                                                                                                                      |
-| recovery topology × nested/non-editable        | `list(divider, gamma)` → caret in `gamma`; container ending in divider → previous editable end (command-simulation.test.tsx)                                                                                                     |
-| recovery topology × whole-document deletion    | remote whole-doc delete → replacement paragraph mounts → pending recovery lands; `insertText("Z")` reaches it (command-simulation.test.tsx)                                                                                      |
-| range recovery × one dead endpoint             | joint-shape oracle: collapse to the resolvable survivor (selectionOracle.ts + browser-state-oracle.spec.ts)                                                                                                                      |
-| range recovery × both dead                     | seam walk on the start block's live/dead status → root first-editable fallback                                                                                                                                                   |
-| display ownership × newer gesture              | the projector writes the current value after the flush; a later `select()` in the same turn wins (arch-v2-v4-projector F-S1, elegance-selection D7)                                                                              |
-| display ownership × unmounted destination      | the value waits; the pass after the flush that mounts the text displays it (arch-v2-v4-projector F-S9, arch-v2-v3-seam)                                                                                                          |
-| affinity × character identity                  | `remote insert AT the caret respects affinity`, `deleted atoms resolve to the gap`                                                                                                                                               |
-| three-peer held release                        | command-simulation.test.tsx three-peer program: B holds selection, A deletes the destination, C edits unrelated content; both legal release orders preserve C's content and B's continuation                                     |
-| history independence                           | `a seam caret behaves identically whether its block was split or built directly` — equivalent structures via different histories, explicit identity mapping, sequential edits, semantic comparison                               |
+| Boundary crossed                               | Pin                                                                                                                                                                                                                                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| block-start ownership × adjacent remote insert | `a split-start caret stays in its block through an adjacent-block append` (anchors.test.ts) + mounted-replica pin (command-simulation.test.tsx: caret at `Hello@0`, remote `X` append to `alpha`, local `Z` → `alphaX`/`ZHello`)                                    |
+| block-start ownership × same-gap remote insert | `a split-start caret keeps left insert-affinity` — remote insert lands to the caret's right                                                                                                                                                                         |
+| block-start ownership × composition            | `replaces intermediate composition text at a fresh split block start` — `alpha\|Hello` split, compose `n`→`に`, result `にHello`                                                                                                                                    |
+| block-start ownership × remote merge           | `…follows its facet into a remote merge` (backward) and `…through a remote mergeForward` — the bound boundary's stream now displays in the claimer                                                                                                                  |
+| block-start ownership × predecessor deletion   | `…survives deletion of the predecessor's last atom` and `…of the whole predecessor block`                                                                                                                                                                           |
+| block-start ownership × block move             | `…stays in its block when the block is moved`                                                                                                                                                                                                                       |
+| block-start ownership × empty-in-place         | `…lands in its own block when the destination empties in place` — live block, no atoms → `{block, 0}`, no neighbor migration                                                                                                                                        |
+| block-start ownership × serialization          | `a split-start anchor binds its boundary item and survives JSON round-trip` (`{b, a}` only)                                                                                                                                                                         |
+| recovery topology × nested/non-editable        | `list(divider, gamma)` → caret in `gamma`; container ending in divider → previous editable end (command-simulation.test.tsx)                                                                                                                                        |
+| recovery topology × whole-document deletion    | remote whole-doc delete → the kept head is the seam; the caret on dead `beta` lands in it, `insertText("Z")` reaches it (command-simulation.test.tsx F2); a destination that mounts after the flush is the virtual paragraph (contracts-virtual-paragraph.test.tsx) |
+| range recovery × one dead endpoint             | joint-shape oracle: collapse to the resolvable survivor (selectionOracle.ts + browser-state-oracle.spec.ts)                                                                                                                                                         |
+| range recovery × both dead                     | seam walk on the start block's live/dead status → root first-editable fallback                                                                                                                                                                                      |
+| display ownership × newer gesture              | the projector writes the current value after the flush; a later `select()` in the same turn wins (arch-v2-v4-projector F-S1, elegance-selection D7)                                                                                                                 |
+| display ownership × unmounted destination      | the value waits; the pass after the flush that mounts the text displays it (arch-v2-v4-projector F-S9, arch-v2-v3-seam)                                                                                                                                             |
+| affinity × character identity                  | `remote insert AT the caret respects affinity`, `deleted atoms resolve to the gap`                                                                                                                                                                                  |
+| three-peer held release                        | command-simulation.test.tsx three-peer program: B holds selection, A deletes the destination, C edits unrelated content; both legal release orders preserve C's content and B's continuation                                                                        |
+| history independence                           | `a seam caret behaves identically whether its block was split or built directly` — equivalent structures via different histories, explicit identity mapping, sequential edits, semantic comparison                                                                  |
 
 Stale-length, dead-textId, mismatched-parent-claim, phantom-target, and
 lost-selection corruptions are rejected by canaries in

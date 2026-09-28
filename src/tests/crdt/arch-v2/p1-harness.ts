@@ -33,13 +33,17 @@ export type SeedBlock = {
 	id: string;
 	text?: string;
 	type?: string;
+	data?: Record<string, unknown>;
+	/** Raw JSON content (inline atoms); `text` otherwise. */
+	content?: unknown[];
 	children?: SeedBlock[];
 };
 
 const jsonBlock = (s: SeedBlock) => ({
 	id: s.id,
 	type: s.type ?? 'paragraph',
-	content: s.text ? [{ text: s.text }] : [],
+	...(s.data ? { data: s.data } : {}),
+	content: s.content ?? (s.text ? [{ text: s.text }] : []),
 	...(s.children?.length ? { children: s.children.map(jsonBlock) } : {})
 });
 

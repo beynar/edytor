@@ -780,6 +780,33 @@ test.describe('DST v3 effect oracle', () => {
 		);
 	});
 
+	test('a whole-document range delete keeps the head, emptied (del.range.whole-doc)', () => {
+		const all = twoBlockSnapshot({
+			startTextIndex: 0,
+			endTextIndex: 1,
+			yStart: 0,
+			yEnd: 5,
+			isCollapsed: false
+		});
+		for (const action of [{ kind: 'backspace' }, { kind: 'delete' }] as DstAction[]) {
+			const kept = twoBlockSnapshot({ yStart: 0, yEnd: 0 });
+			kept.value.children = [{ type: 'paragraph', id: 'b0', content: [] }];
+			expect(() => assertActionEffect('chromium', action, all, kept)).not.toThrow();
+			// A written survivor (the answer before 2026-09-28) duplicates across peers: wrong.
+			const written = twoBlockSnapshot({ yStart: 0, yEnd: 0 });
+			written.value.children = [{ type: 'paragraph', id: 'b_fresh', content: [] }];
+			expect(() => assertActionEffect('chromium', action, all, written)).toThrow(
+				/delete-result-mismatch/
+			);
+			// The tail kept instead of the head: wrong.
+			const tail = twoBlockSnapshot({ yStart: 0, yEnd: 0 });
+			tail.value.children = [{ type: 'paragraph', id: 'b1', content: [] }];
+			expect(() => assertActionEffect('chromium', action, all, tail)).toThrow(
+				/delete-result-mismatch/
+			);
+		}
+	});
+
 	test('delete oracle asserts inline-atom boundary deletes', () => {
 		// 'a' | [mention] | 'b' — caret at the start of 'b' (the part after
 		// the inline) → backspace removes the atom, 'ab' remains.

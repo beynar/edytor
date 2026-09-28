@@ -85,6 +85,13 @@ export const domPointOf = (element: HTMLElement, offset: number): Point => {
 
 const samePoint = (a: Point, node: Node | null, offset: number) => a[0] === node && a[1] === offset;
 
+/** `node` is a point a display of `text` writes: one of its leaves (its element when it has none). */
+const shown = (text: Text, node: Node) => {
+	const element = text.node;
+	if (!element?.contains(node)) return false;
+	return node.nodeType === Node.TEXT_NODE || domPointOf(element, 0)[0] === element;
+};
+
 export class Projector {
 	/** What the last display left in the DOM, and the selection epoch it showed. */
 	#displayed: (Points & { epoch: number }) | null = null;
@@ -388,13 +395,14 @@ export class Projector {
 		const [first, last] = isReversed
 			? [[dom.focusNode, dom.focusOffset] as const, [dom.anchorNode, dom.anchorOffset] as const]
 			: [[dom.anchorNode, dom.anchorOffset] as const, [dom.focusNode, dom.focusOffset] as const];
-		// Only points inside the texts' own elements show the value: an element
-		// boundary (a re-parented block's old parent, R2; a caret left after a
-		// text) is written again, whichever text a boundary walk would map it to.
+		// Only points in the texts' own leaves show the value (where a display
+		// writes it): an element boundary (a re-parented block's old parent, R2;
+		// a caret left after a text; WebKit's point on the text element after a
+		// render removed its node, whose range disagrees) is written again.
 		return (
 			dom.isCollapsed === collapsed &&
-			!!startText.node?.contains(first[0]) &&
-			!!endText.node?.contains(last[0]) &&
+			shown(startText, first[0]) &&
+			shown(endText, last[0]) &&
 			getYIndex(startText, first[0], first[1]) === yStart &&
 			getYIndex(endText, last[0], last[1]) === yEnd
 		);

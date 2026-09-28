@@ -11,7 +11,17 @@
  * 8 ms.
  */
 import { expect, test } from './editorTest';
-import { b, caret, domSelection, model, open, openRoom, selection, texts } from './p1-helpers';
+import {
+	b,
+	caret,
+	domSelection,
+	model,
+	open,
+	openRoom,
+	selection,
+	setDom,
+	texts
+} from './p1-helpers';
 
 const BASIC = [b('b0', 'first'), b('b1', 'note'), b('b2', 'tail')];
 
@@ -129,4 +139,48 @@ test.describe('P1 — selection races under remote traffic (review-probes/collab
 			await room.close();
 		}
 	});
+});
+
+/**
+ * The projector displays a value only at the points it writes (text leaves).
+ * Typing over a reversed range that ends in a run the render removes leaves
+ * WebKit's selection on the text element itself, its `getRangeAt(0)` still
+ * spanning from the text's start (DST seeds 24 and 34,
+ * `selection-model-dom-mismatch`): that is not the caret, so it is written
+ * again. Three engines; the range the engine reports must equal the value.
+ */
+test('typing over a reversed range across a removed mark run leaves the DOM caret at the value', async ({
+	page
+}) => {
+	await open(page, [
+		{
+			id: 'b0',
+			type: 'paragraph',
+			content: [{ text: 'x' }, { text: 'alph', marks: { highlight: 'yellow' } }, { text: 'él' }]
+		}
+	]);
+	await setDom(page, ['b0', 7], ['b0', 1]);
+	await expect.poll(() => selection(page)).toMatchObject({ range: 'b0@1-b0@7', collapsed: false });
+	await page.keyboard.insertText('é');
+	await expect.poll(() => texts(page)).toEqual(['xé']);
+	await expect.poll(() => selection(page)).toMatchObject({ range: 'b0@2-b0@2', collapsed: true });
+	// The engine's range (what it edits at), not only anchor/focus.
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const range = window.getSelection()!.getRangeAt(0);
+				const text = document.querySelector('[data-edytor-id="b0"] [data-edytor-text="true"]')!;
+				const at = (node: Node, offset: number) => {
+					const r = document.createRange();
+					r.selectNodeContents(text);
+					r.setEnd(node, offset);
+					return r.toString().length;
+				};
+				return [
+					at(range.startContainer, range.startOffset),
+					at(range.endContainer, range.endOffset)
+				];
+			})
+		)
+		.toEqual([2, 2]);
 });

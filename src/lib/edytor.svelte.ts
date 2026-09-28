@@ -1,13 +1,4 @@
-import {
-	getContext,
-	hasContext,
-	setContext,
-	tick,
-	type Snippet,
-	onMount,
-	mount,
-	unmount
-} from 'svelte';
+import { getContext, hasContext, setContext, type Snippet, onMount, mount, unmount } from 'svelte';
 import { onBeforeInput } from './events/onBeforeInput.js';
 import { onCopy } from './events/onCopy.js';
 import { onCut } from './events/onCut.js';
@@ -826,11 +817,8 @@ export class Edytor {
 			return this.idToBlock.block(block.id);
 		});
 		this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
-		void tick().then(() => {
-			this.expectInternalFocus();
-			this.node?.focus({ preventScroll: true });
-			this.selection.display();
-		});
+		this.expectInternalFocus();
+		this.node?.focus({ preventScroll: true });
 	};
 
 	attach = (node: HTMLDivElement) => {

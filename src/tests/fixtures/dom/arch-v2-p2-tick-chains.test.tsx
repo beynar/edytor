@@ -17,6 +17,7 @@ import { renderDomEdytor, flushDomUpdates, canonicalTree } from '../../dom/test.
 import { runBeforeInputCommand } from '$lib/events/beforeInputCommands.js';
 import { handleNativeLineBreakTextValue } from '$lib/events/onInput.js';
 import { attemptOf } from '$lib/session/attempt.js';
+import { adopt } from '$lib/surface/observer.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 
 const beforeInput = (target: HTMLElement, inputType: string, data: string | null = null) => {
@@ -136,8 +137,23 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 		expect(caret(edytor)).toEqual({ text: 'X world', offset: 1, isCollapsed: true });
 	});
 
-	// Red until its site lands (P2.3 is one site per commit).
-	test.fails('edytor.clear focuses the editor in the turn', async () => {
+	// Kept deferred: `adopt` selects after a render tick. Selecting in the turn
+	// writes the caret before the adopted text's re-render, which drops the
+	// native caret to 0 in every engine (beforeinput-fallback, dom-mutation,
+	// input and mobile-beforeinput specs); see the P2.3 ledger row.
+	test.fails(
+		'observer: an adopted browser change selects where the browser put the caret',
+		async () => {
+			const { edytor } = await one('hello');
+			const text = edytor.root!.children[0]!.firstText!;
+			edytor.selection.setAtTextOffset(text, 5);
+			await flushDomUpdates();
+			void adopt(edytor, text, 'hexllo', 3);
+			expect(caret(edytor)).toEqual({ text: 'hexllo', offset: 3, isCollapsed: true });
+		}
+	);
+
+	test('edytor.clear focuses the editor in the turn', async () => {
 		const { edytor } = await one('hello');
 		edytor.clear();
 		expect(document.activeElement).toBe(edytor.node);

@@ -134,6 +134,7 @@ export {
 	type EdytorSyncPayload,
 	type EdytorSyncCleanup,
 	type IndexeddbSyncOptions,
+	type WebsocketSync,
 	type WebsocketSyncOptions,
 	type ProviderStack
 } from './providers/index.js';

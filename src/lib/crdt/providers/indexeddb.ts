@@ -79,6 +79,8 @@ type IdbPersistenceLike = {
 
 export type IndexeddbPersistenceOptions = {
 	awareness?: Awareness;
+	/** Stay off the BroadcastChannel room (no cross-tab sync): storage only. */
+	disableBc?: boolean;
 };
 
 export type IndexeddbProvider = ReturnType<typeof bindIndexeddbProvider>;
@@ -254,6 +256,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 		_storeUpdate: (update: Uint8Array, origin: unknown) => void;
 		awareness: Awareness;
 		bcconnected = false;
+		disableBc: boolean;
 		_ownsAwareness: boolean;
 		_bcSubscriber: (data: ArrayBuffer, origin: unknown) => void;
 		_awarenessUpdateHandler: (
@@ -271,6 +274,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			this.db = null;
 			this.awareness = options.awareness ?? new Awareness(doc);
 			this._ownsAwareness = !options.awareness;
+			this.disableBc = options.disableBc === true;
 
 			this._db = openContainer(this.dbName);
 
@@ -305,7 +309,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 					// Hydrated: join the room and claim `synced` (lifetime).
 					const afterApplyUpdatesCallback = () => {
 						if (this._destroyed) return;
-						this.connectBc();
+						if (!this.disableBc) this.connectBc();
 						if (markSynced(this)) this.emit('synced', [this]);
 					};
 					// Deferred call: a synchronous fetchUpdates throw (closed

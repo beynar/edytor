@@ -21,7 +21,8 @@ import {
 	webkit,
 	type Browser,
 	type BrowserContext,
-	type Page
+	type Page,
+	type WebSocketRoute
 } from '@playwright/test';
 import * as E from '../../src/lib/crdt/index.js';
 import type { EngineApi } from '../../src/lib/crdt/index.js';
@@ -372,6 +373,46 @@ test.describe('hosted room Durable Object — real browsers over real WebSockets
 		for (const marker of ['off1', 'off2>', 'B1>', 'B2>', '+C1']) {
 			expect(occurrences(texts, marker), marker).toBe(1);
 		}
+		for (const issue of issues) issue.assertClean();
+	});
+
+	test('the library sync (createWebsocketSync): an offline edit survives a reload while offline and reaches the room on reconnect', async ({
+		browser
+	}, testInfo) => {
+		const room = roomName('persist', testInfo.project.name);
+		const baseURL = testInfo.project.use.baseURL;
+		const b = await openPeer(browser, room, baseURL);
+		peers = [b];
+		const issues = [trackPageIssues(b.page)];
+		// A mounts the factory (`wssync=factory`): the socket and its default
+		// local store. "Offline" = its sockets to the room are refused.
+		const context = await browser.newContext({ baseURL });
+		const page = await context.newPage();
+		peers.push({ context, page });
+		let online = true;
+		let socket: WebSocketRoute | undefined;
+		await page.routeWebSocket(`${WS_SERVER}/${room}`, (route) => {
+			socket = route;
+			if (online) route.connectToServer();
+			else void route.close();
+		});
+		await gotoEditorRoute(page, `${peerPath(room)}&wssync=factory`, { requireRuntime: true });
+		expect(await expectConverged([page, b.page])).toEqual(SEED);
+
+		online = false;
+		await socket?.close();
+		await insertViaFacade(page, 'collab-b1', 0, 'OFF>');
+		await page.waitForTimeout(300); // let the IndexedDB write land
+		await page.reload({ waitUntil: 'domcontentloaded' });
+		await waitForEditorReady(page, { requireRuntime: true });
+		expect(await readTexts(page)).toEqual(['OFF>alpha', 'beta', 'gamma']);
+		expect(await readTexts(b.page)).toEqual(SEED);
+
+		online = true;
+		const texts = await expectConverged([page, b.page]);
+		expect(texts).toEqual(['OFF>alpha', 'beta', 'gamma']);
+		expect(occurrences(texts, 'OFF>')).toBe(1);
+		expect(await readIds(b.page)).toEqual(IDS);
 		for (const issue of issues) issue.assertClean();
 	});
 

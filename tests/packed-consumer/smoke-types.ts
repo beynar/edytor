@@ -25,6 +25,7 @@ import {
 	type DocumentReadiness,
 	type EdytorDocument,
 	type EdytorSync,
+	type WebsocketSync,
 	type JSONDoc,
 	type Plugin,
 	type ProjectedDoc
@@ -97,6 +98,20 @@ const wsSync: EdytorSync = createWebsocketSync({
 	serverUrl: 'wss://example.com',
 	roomName: 'doc-id'
 });
+// Local persistence is on by default; its database name is on the sync.
+const persisted: WebsocketSync = createWebsocketSync({
+	serverUrl: 'wss://example.com',
+	roomName: 'doc-id',
+	persistName: 'user-1:doc-id'
+});
+const persistName: string | undefined = persisted.persistName;
+const socketOnly: WebsocketSync = createWebsocketSync({
+	serverUrl: 'wss://example.com',
+	roomName: 'doc-id',
+	persist: false
+});
+void persistName;
+void socketOnly;
 const IdbProvider: typeof IndexeddbPersistence = IndexeddbPersistence;
 const WsProvider: typeof WebsocketProvider = WebsocketProvider;
 const clearDoc: typeof clearDocument = clearDocument;

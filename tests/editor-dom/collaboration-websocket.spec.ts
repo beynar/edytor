@@ -4,7 +4,8 @@ import {
 	gotoEditorRoute,
 	readJsonByTestId,
 	setSelectionByTextIndex,
-	trackPageIssues
+	trackPageIssues,
+	waitForEditorReady
 } from './helpers';
 import { startOpaqueRelay, type OpaqueRelay } from './ws-relay';
 import * as decoding from 'lib0-v14/decoding';
@@ -442,6 +443,60 @@ test.describe('multi-client collaboration over a real websocket relay', () => {
 			issuesB.assertClean();
 		} finally {
 			await context.close();
+			await relay.close();
+		}
+	});
+
+	test('createWebsocketSync keeps offline edits by default: a reload while offline shows them, a fresh client gets them once back online', async ({
+		browser
+	}, testInfo) => {
+		const relay = await startOpaqueRelay();
+		const room = roomName();
+		const baseURL = testInfo.project.use.baseURL;
+		// The library factory (`wssync=factory`): the socket plus its default local store.
+		const path =
+			`/test/dom?scenario=collab&collabws=${room}&wsserver=${encodeURIComponent(relay.url)}` +
+			`&wsbackoff=400&wssync=factory`;
+		const contextA = await browser.newContext({ baseURL });
+		const contextB = await browser.newContext({ baseURL });
+		try {
+			const pageA = await contextA.newPage();
+			const issuesA = trackPageIssues(pageA, {
+				ignoreConsoleErrors: WS_RECONNECT_NOISE,
+				ignorePageErrors: WS_RECONNECT_NOISE
+			});
+			await gotoEditorRoute(pageA, path, { requireRuntime: true });
+			expect(await readBlockTexts(pageA)).toEqual(['alpha', 'beta', 'gamma']);
+			await expect.poll(() => relay.socketCount(room)).toBe(1);
+
+			// The server goes away; the edit exists only in this browser.
+			await relay.stop();
+			await insertViaFacade(pageA, { blockId: 'collab-b1', offset: 0, text: 'OFF>' });
+			await pageA.waitForTimeout(300); // let the IndexedDB write land
+			await pageA.reload({ waitUntil: 'domcontentloaded' });
+			await waitForEditorReady(pageA, { requireRuntime: true });
+			expect(await readBlockTexts(pageA)).toEqual(['OFF>alpha', 'beta', 'gamma']);
+			expect(relay.socketCount(room)).toBe(0);
+
+			// Back online: the reloaded page redials and a fresh client in another
+			// context (its own empty store) converges to include the edit.
+			await relay.start();
+			await expect.poll(() => relay.socketCount(room)).toBe(1);
+			const pageB = await contextB.newPage();
+			const issuesB = trackPageIssues(pageB);
+			await gotoEditorRoute(pageB, path, { requireRuntime: true });
+			const converged = await expectConverged(pageA, pageB);
+			expect(converged.children.map(blockText)).toEqual(['OFF>alpha', 'beta', 'gamma']);
+			expect(converged.children.map((block) => block.id)).toEqual([
+				'collab-b1',
+				'collab-b2',
+				'collab-b3'
+			]);
+			issuesA.assertClean();
+			issuesB.assertClean();
+		} finally {
+			await contextA.close();
+			await contextB.close();
 			await relay.close();
 		}
 	});

@@ -13,6 +13,7 @@
 		IndexeddbPersistence,
 		WebsocketProvider,
 		clearDocument,
+		createWebsocketSync,
 		storeState,
 		type EdytorSync
 	} from '$lib/collaboration/index.js';
@@ -703,7 +704,7 @@
 	 */
 	// `data` is a static load() payload for this navigation, so the initial
 	// `data.collab`/`data.collabws` reads are intentionally untracked.
-	const collabSync: EdytorSync | undefined = untrack(
+	const handBuiltSync: EdytorSync | undefined = untrack(
 		() => data.collab || (data.collabws && data.wsserver)
 	)
 		? ({ doc, awareness, synced }) => {
@@ -825,6 +826,19 @@
 				};
 			}
 		: undefined;
+
+	// `?wssync=factory` swaps the hand-built stack for the library's
+	// `createWebsocketSync` (its default local store; `wspersist=off` opts out).
+	const collabSync: EdytorSync | undefined = untrack(() =>
+		data.wssync === 'factory' && data.collabws && data.wsserver
+			? createWebsocketSync({
+					serverUrl: data.wsserver,
+					roomName: data.collabws,
+					maxBackoffTime: data.wsbackoff,
+					persist: data.wspersist !== 'off'
+				})
+			: handBuiltSync
+	);
 
 	let edytor = $state<EdytorContext>();
 	let secondaryEdytor = $state<EdytorContext>();

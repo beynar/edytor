@@ -31,6 +31,11 @@ export const load: PageLoad = ({ url }) => {
 		// resync timer only heals deliberate harness loss (dropped frames).
 		wsresync: Number(url.searchParams.get('wsresync')) || undefined,
 		wsbackoff: Number(url.searchParams.get('wsbackoff')) || 500,
+		// `wssync=factory` mounts the library's `createWebsocketSync` (its
+		// default local store included; `wspersist=off` opts out) instead of
+		// the hand-built provider stack the collab specs and DST drive.
+		wssync: url.searchParams.get('wssync'),
+		wspersist: url.searchParams.get('wspersist'),
 		// Collaboration DST knobs: `actor` pins the document's local actor
 		// identity (deterministic per peer) and `lineagedepth` opts the
 		// document into the attribution history ring — both consumed only

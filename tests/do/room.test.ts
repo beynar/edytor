@@ -700,6 +700,38 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 		first.destroy();
 	});
 
+	it('a replica the room never saw: local-only edits restored under a new client id are accepted on reconnect', async () => {
+		const room = 'identity-local-only';
+		const ada = seeded([para('p1', 'hello')], 'ada');
+		const ca = await RawClient.connect(room, ada.doc, { user: 'ada', replica: ada.doc.clientID });
+		await vi.waitFor(async () =>
+			expect(shape(await serverJSON(room)).children[0]?.text).toBe('hello')
+		);
+		// Bob's whole first session is offline: the same deterministic seed,
+		// then an edit under a client id the room has never seen.
+		const offline = seeded([para('p1', 'hello')], 'bob');
+		applied(offline.transact(() => offline.facade.insertText('p1', 0, 'bob: ')));
+		// The page reloads, still offline (the local store's role), then dials
+		// on the shipped client path under a new client id.
+		const reloaded = E.loadDocument(offline.encode(), { actor: { id: 'bob' } });
+		expect(reloaded.doc.clientID).not.toBe(offline.doc.clientID);
+		const release = reloaded.attachSync(
+			crdt.providers.createWebsocketSync({
+				serverUrl: `${ORIGIN.replace('https', 'wss')}/rooms`,
+				roomName: room,
+				params: { user: 'bob', replica: String(reloaded.doc.clientID) },
+				WebSocketPolyfill: SelfWebSocket as unknown as typeof WebSocket
+			})
+		);
+		const expected = { children: [{ id: 'p1', type: 'paragraph', text: 'bob: hello' }] };
+		await vi.waitFor(async () => expect(shape(await serverJSON(room))).toEqual(expected));
+		await vi.waitFor(() => expect(shape(ca.json())).toEqual(expected));
+		expect(await refusalsOf(room)).toEqual([]);
+		release?.();
+		ca.close();
+		for (const document of [ada, offline, reloaded]) document.destroy();
+	});
+
 	it("presence is relayed only for the socket's own replica; a presence-bound replica is its user's", async () => {
 		const room = 'identity-presence';
 		const ca = await RawClient.connect(room, undefined, { user: 'ada', replica: 11 });

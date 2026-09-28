@@ -14,13 +14,14 @@ import {
 	type EdytorSyncPayload,
 	type IndexeddbSyncOptions as CrdtIndexeddbSyncOptions,
 	type ProviderStack,
+	type WebsocketSync,
 	type WebsocketSyncOptions as CrdtWebsocketSyncOptions,
 	type YDoc
 } from '$lib/crdt/index.js';
 
 const providers = bindProviders(Y);
 
-export type { EdytorSync, EdytorSyncCleanup, EdytorSyncPayload, Awareness, YDoc };
+export type { EdytorSync, EdytorSyncCleanup, EdytorSyncPayload, WebsocketSync, Awareness, YDoc };
 
 export type IndexeddbSyncOptions = CrdtIndexeddbSyncOptions;
 
@@ -32,7 +33,7 @@ export const createIndexeddbSync: (name: string) => EdytorSync = providers.creat
 
 export const createWebsocketSync = providers.createWebsocketSync as (
 	options: WebsocketSyncOptions
-) => EdytorSync;
+) => WebsocketSync;
 
 // `ProviderStack[...]` annotations keep the emitted `.d.ts` referencing the
 // bound types through `../crdt/index.js` — without them the declaration

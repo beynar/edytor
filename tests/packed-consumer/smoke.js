@@ -120,6 +120,13 @@ assert.equal(typeof crdt.sync.readSyncMessage, 'function');
 // the same wiring is reachable without the component root.
 assert.equal(typeof crdt.providers.createIndexeddbSync, 'function');
 assert.equal(typeof crdt.providers.createWebsocketSync, 'function');
+// Local persistence by default, named after the server and room (skipped
+// at runtime here: Node has no indexedDB).
+assert.equal(
+	crdt.providers.createWebsocketSync({ serverUrl: 'wss://example.com/', roomName: 'r' })
+		.persistName,
+	'edytor:wss://example.com/r'
+);
 
 // ── the real consumer story (U12/PK01) ───────────────────────────────────
 // Doc + Awareness via public exports → `bindCrdt(Y).doc` facade → init →

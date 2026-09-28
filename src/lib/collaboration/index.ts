@@ -18,5 +18,6 @@ export {
 	type EdytorSyncCleanup,
 	type EdytorSyncPayload,
 	type IndexeddbSyncOptions,
+	type WebsocketSync,
 	type WebsocketSyncOptions
 } from './providers.js';

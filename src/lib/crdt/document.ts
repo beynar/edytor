@@ -871,7 +871,9 @@ export class EdytorDocument {
 	 * error propagates and it decides nothing. A transport target
 	 * (`sync.target`, else the factory) already attached is a no-op: the
 	 * document keeps one provider per target. The returned cleanup is also
-	 * tracked: {@link destroy} runs it; it frees the target.
+	 * tracked: {@link destroy} runs it; it frees the target. A sync attaches
+	 * a companion (the websocket sync's local store) through the payload's
+	 * `attach`: a provider of its own, under the same rules.
 	 */
 	attachSync = (sync: EdytorSync, opts: { value?: JSONDoc } = {}): EdytorSyncCleanup | void => {
 		if (this._destroyed) {
@@ -900,7 +902,8 @@ export class EdytorDocument {
 					settle();
 					this._decide(opts.value, true);
 				},
-				failed: decide
+				failed: decide,
+				attach: (companion) => this.attachSync(companion, opts)
 			});
 		} catch (error) {
 			settle();

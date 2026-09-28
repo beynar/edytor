@@ -184,3 +184,35 @@ test('typing over a reversed range across a removed mark run leaves the DOM care
 		)
 		.toEqual([2, 2]);
 });
+
+/**
+ * A pointer drag is the user's gesture: nothing writes the DOM selection
+ * under it (R10, O57). Starting in an empty block, the engine's first range
+ * covers only the empty text's filler and reads as a caret; displaying that
+ * caret mid-drag reset the drag's anchor (WebKit, Firefox) or made it follow
+ * the pointer (Chromium) — DST seed 35, `cross-browser-selection-divergence`.
+ * Dragging from an empty block into the next one selects across both.
+ */
+test('a drag from an empty block into the next selects across both', async ({ page }) => {
+	await open(page, [b('b0', ''), b('b1', 'note')]);
+	const edge = (id: string, side: 'left' | 'right') =>
+		page.evaluate(
+			({ id, side }) => {
+				const text = document.querySelector(`[data-edytor-id="${id}"] [data-edytor-text="true"]`)!;
+				const rect = text.getBoundingClientRect();
+				return {
+					x: side === 'left' ? rect.left + 1 : rect.right - 1,
+					y: rect.top + rect.height / 2
+				};
+			},
+			{ id, side }
+		);
+	const from = await edge('b0', 'left');
+	const to = await edge('b1', 'right');
+	await page.mouse.move(from.x, from.y);
+	await page.mouse.down();
+	await page.mouse.move(to.x, to.y, { steps: 8 });
+	await page.mouse.up();
+	await expect.poll(() => selection(page)).toMatchObject({ range: 'b0@0-b1@4', collapsed: false });
+	await expect.poll(() => domSelection(page)).toEqual({ dom: 'b0@0->b1@4', collapsed: false });
+});

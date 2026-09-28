@@ -821,6 +821,15 @@ export class EdytorSelection {
 	};
 	clearPointerDragStart = () => {
 		this.pointerDragStart = null;
+		this.#dropped();
+	};
+	/** A normalization a pointer drag held back (the gesture is the user's, O57). */
+	#held = false;
+	/** The drag ended: the DOM selection it left is derived again, now normalized. */
+	#dropped = () => {
+		if (!this.#held) return;
+		this.#held = false;
+		this.applySelectionSnapshot(getDomSelectionSnapshot(this.edytor.node));
 	};
 	collapseSelectedBlocksAtPointer = (event: PointerEvent) => {
 		if (event.button !== 0 || this.selectedBlocks.size === 0) {
@@ -838,6 +847,7 @@ export class EdytorSelection {
 	restoreInlineAtomDragRange = (event: PointerEvent) => {
 		const dragStart = this.pointerDragStart;
 		this.pointerDragStart = null;
+		this.#dropped();
 
 		if (!dragStart || event.button !== 0) {
 			return;
@@ -1083,7 +1093,9 @@ export class EdytorSelection {
 		});
 		this.edytor.projector.observe();
 		if (shouldRestoreNormalizedDomRange && options.restoreNormalizedDomRange !== false && endText) {
-			this.setAtRange(startText, yStart, endText, yEnd, { isReversed });
+			// Writing the DOM under a pointer drag would reset its anchor: after it.
+			if (this.dragging) this.#held = true;
+			else this.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 		}
 
 		// Remember when the derived selection came from a node-bound

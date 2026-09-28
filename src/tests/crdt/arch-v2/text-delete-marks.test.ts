@@ -192,6 +192,30 @@ describe('text delete marks — two writers', () => {
 	});
 });
 
+describe('text delete marks — inline atoms', () => {
+	it('A and B remove the same inline atom; A undoes → still gone; B undoes → back once, with its id, type and data', () => {
+		const atom = (r: Replica) =>
+			(r.ed.blockJSON('p').content ?? []).filter((c) => c.text === undefined);
+		one(
+			converge(ABC, 2, (reps) => {
+				const [a, b] = reps;
+				a.ed.insertInline('p', 1, { type: 'mention', id: 'm1', data: { name: 'x' } });
+				settle(reps);
+				a.ed.removeInline('p', 'm1');
+				b.ed.removeInline('p', 'm1');
+				settle(reps);
+				a.undo();
+				settle(reps);
+				expect(reps.map(atom)).toEqual([[], []]);
+				b.undo();
+				settle(reps);
+				for (const r of reps)
+					expect(atom(r)).toEqual([{ type: 'mention', id: 'm1', data: { name: 'x' } }]);
+			})
+		);
+	});
+});
+
 describe('text delete marks — redo and repeated undo', () => {
 	it('redo puts the writer’s delete back in effect, whoever restored the character', () => {
 		one(

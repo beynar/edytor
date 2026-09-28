@@ -69,7 +69,11 @@ type Rec = { client: number; clock: number };
 
 type Unit = StoreStruct & {
 	parent: EngineNode & { name?: string };
-	content: { getContent(): unknown[]; str?: string; type?: { name?: string } };
+	content: {
+		getContent(): unknown[];
+		str?: string;
+		type?: { name?: string; _map?: Map<string, Unit> };
+	};
 	delete(tr: unknown): void;
 };
 type IdSet = IdSetLike & {
@@ -430,11 +434,16 @@ export const bindDeletes = (Y: EngineApi) => {
 		// duplicates, pending characters): garbage collection keeps its content.
 		const d = doc as unknown as { gcFilter: (it: Unit) => boolean };
 		const gc = d.gcFilter;
-		d.gcFilter = (it) =>
-			gc(it) &&
-			!(st.copies.get(it.id.client) ?? []).some((e) =>
+		const copy = (it: StoreStruct | null | undefined): boolean =>
+			it != null &&
+			(st.copies.get(it.id.client) ?? []).some((e) =>
 				overlaps(e, { k: it.id.clock, n: it.length })
 			);
+		// (an inline atom copy keeps its attributes too)
+		d.gcFilter = (it) =>
+			gc(it) &&
+			!copy(it) &&
+			!copy((it.parent as { _item?: StoreStruct | null } | undefined)?._item);
 		(doc as unknown as { on(e: string, f: (tr: Tr) => void): void }).on('afterTransaction', (tr) =>
 			react(st, tr)
 		);
@@ -476,6 +485,21 @@ export const bindDeletes = (Y: EngineApi) => {
 				) as unknown as Unit | null;
 				if (copy === null) continue;
 				dropSearchMarkers(copy.parent);
+				// An inline atom comes back with its attributes: they were deleted with
+				// it and are re-created into the copy (their parent's `redone`).
+				const attrs = it.content.type?._map;
+				if (attrs !== undefined) {
+					const kids = [...attrs.values()].filter((c) => c.deleted);
+					for (const kid of kids)
+						Y.redoItem(
+							tr as never,
+							kid as never,
+							new Set(kids) as never,
+							Y.createIdSet(),
+							false,
+							p.um()
+						);
+				}
 				const e = {
 					c: copy.id.client,
 					k: copy.id.clock,

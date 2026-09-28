@@ -17,8 +17,4 @@ export class ID {
 }
 export function compareIDs(a: ID | null, b: ID | null): boolean;
 export function createID(client: number, clock: number): ID;
-export function writeID(encoder: encoding.Encoder, id: ID): void;
-export function readID(decoder: decoding.Decoder): ID;
 export function findRootTypeKey(type: YNode<any>): string;
-import * as encoding from 'lib0-v14/encoding';
-import * as decoding from 'lib0-v14/decoding';

@@ -6,12 +6,10 @@ export function replaceStruct(tr: Transaction, struct: GC | Item, newStruct: GC 
 export function iterateStructs(transaction: Transaction, structs: Array<Item | GC>, clockStart: number, len: number, f: (arg0: GC | Item) => void): void;
 export function iterateStructsWithoutSplits(structs: Array<Item | GC>, clockStart: number, len: number, f: (struct: GC | Item | Skip, offset: number, len: number) => void): void;
 export function splitStruct(transaction: Transaction | null, leftStruct: Item | GC | Skip, diff: number): GC | Item | Skip;
-export function nextID(transaction: Transaction): import("./ID.js").ID;
 export function addChangedTypeToTransaction(transaction: Transaction, type: YNode, parentSub: string | null): void;
 export function tryToMergeWithLefts(structs: Array<GC | Item | Skip>, pos: number): number;
 export function tryGcDeleteSet(tr: Transaction, ds: IdSet, gcFilter: (arg0: Item) => boolean): void;
 export function tryMerge(ds: IdSet, store: StructStore): void;
-export function tryGc(tr: Transaction, idset: IdSet, gcFilter: (arg0: Item) => boolean): void;
 export function cleanupContextlessFormattingGap(transaction: Transaction, item: Item | null): 0 | undefined;
 export function updateCurrentFormats(currentFormats: Map<string, any>, { key, value }: ContentFormat): void;
 export function cleanupFormattingGap(transaction: Transaction, start: Item, curr: Item | null, startFormats: Map<string, any>, currFormats: Map<string, any>): number;

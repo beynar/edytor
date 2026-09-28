@@ -11,10 +11,10 @@
 #   2. A `/// <reference path="./global.d.ts" />` is prepended to
 #      `dts/index.d.ts` so consumers of `edytor/crdt` get the ambient types.
 #
-# Expected caveat: tsc reports one `TS2589: Type instantiation is excessively
-# deep` in `utils/delta-helpers.js` — an expression-level inference limit that
-# does not block declaration emit (the emitted delta-helpers.d.ts is complete).
-# The same diagnostic appears upstream when running plain `tsc` there.
+# tsc runs clean since patch P8 (UPSTREAM.md) pruned `utils/delta-helpers.js`,
+# the one module that tripped `TS2589: Type instantiation is excessively deep`
+# upstream. The P7 declarations (`insertAtGapEnd*`) are emitted from their
+# JSDoc like everything else — nothing in dts/ is hand-edited.
 #
 # Usage: scripts/regen-crdt-vendor-types.sh   (from repo root)
 set -euo pipefail
@@ -25,7 +25,8 @@ VENDOR=src/lib/crdt/vendor/yjs
 rm -rf "$VENDOR/dts"
 pnpm exec tsc -p tsconfig.vendor-dts.json || {
 	code=$?
-	echo "tsc exited $code — TS2589 in delta-helpers.js is expected; verify emitted output below" >&2
+	echo "tsc exited $code — declarations may be incomplete; fix the JSDoc error above" >&2
+	exit $code
 }
 
 # Fixup 1: ambient globals resolve against emitted d.ts, not JS sources.

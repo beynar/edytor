@@ -38,16 +38,21 @@ export const encV1 = {
   encodeStateAsUpdate: Y.encodeStateAsUpdate,
   mergeUpdates: Y.mergeUpdates,
   applyUpdate: Y.applyUpdate,
-  logUpdate: Y.logUpdate,
+  logUpdate: () => {}, // P8: the update loggers are pruned
   updateEventName: /** @type {'update'} */ ('update'),
-  diffUpdate: Y.diffUpdate
+  /**
+   * P8: the V1 `diffUpdate` wrapper is pruned; the V2 core it wrapped is kept.
+   * @param {Uint8Array} update
+   * @param {Uint8Array} sv
+   */
+  diffUpdate: (update, sv) => Y.diffUpdateV2(update, sv, Y.UpdateDecoderV1, Y.UpdateEncoderV1)
 }
 
 export const encV2 = {
   encodeStateAsUpdate: Y.encodeStateAsUpdateV2,
   mergeUpdates: Y.mergeUpdatesV2,
   applyUpdate: Y.applyUpdateV2,
-  logUpdate: Y.logUpdateV2,
+  logUpdate: () => {}, // P8: the update loggers are pruned
   updateEventName: /** @type {'updateV2'} */ ('updateV2'),
   diffUpdate: Y.diffUpdateV2
 }
@@ -491,12 +496,23 @@ export const compare = users => {
     t.compare(Y.encodeStateVector(users[i]), Y.encodeStateVector(users[i + 1]))
     Y.equalIdSets(Y.createDeleteSetFromStructStore(users[i].store), Y.createDeleteSetFromStructStore(users[i + 1].store))
     compareStructStores(users[i].store, users[i + 1].store)
-    t.compare(Y.encodeSnapshot(Y.snapshot(users[i])), Y.encodeSnapshot(Y.snapshot(users[i + 1])))
+    // P8: snapshots are pruned — a snapshot is (state vector, delete set); the state vectors are
+    // compared above, so compare the encoded delete sets.
+    t.compare(encodeDeleteSet(users[i].store), encodeDeleteSet(users[i + 1].store))
   }
   users.forEach(user => {
     compareIdSets(user.store.ds, Y.createDeleteSetFromStructStore(user.store))
   })
   users.map(u => u.destroy())
+}
+
+/**
+ * @param {Y.StructStore} store
+ */
+const encodeDeleteSet = store => {
+  const encoder = new Y.UpdateEncoderV1()
+  Y.writeIdSet(encoder, Y.createDeleteSetFromStructStore(store))
+  return encoder.toUint8Array()
 }
 
 /**

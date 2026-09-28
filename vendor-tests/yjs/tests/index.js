@@ -8,7 +8,6 @@ import * as encoding from './encoding.tests.js'
 import * as undoredo from './undo-redo.tests.js'
 import * as compatibility from './compatibility.tests.js'
 import * as doc from './doc.tests.js'
-import * as snapshot from './snapshot.tests.js'
 import * as updates from './updates.tests.js'
 import * as relativePositions from './relativePositions.tests.js'
 import * as idset from './IdSet.tests.js'
@@ -26,7 +25,7 @@ if (isBrowser) {
 }
 
 const tests = {
-  doc, map, array, text, xml, encoding, undoredo, compatibility, snapshot, updates, relativePositions, idset, idmap, attribution, delta, schema
+  doc, map, array, text, xml, encoding, undoredo, compatibility, updates, relativePositions, idset, idmap, attribution, delta, schema
 }
 
 const run = async () => {

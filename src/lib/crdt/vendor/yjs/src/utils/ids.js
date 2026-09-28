@@ -8,7 +8,7 @@ import * as array from 'lib0-v14/array'
 import * as map from 'lib0-v14/map'
 import * as s from 'lib0-v14/schema'
 
-import { iterateStructs, findIndexSS, iterateStructsWithoutSplits, tryGc } from './transaction-helpers.js'
+import { iterateStructs, findIndexSS, iterateStructsWithoutSplits } from './transaction-helpers.js'
 import { UpdateEncoderV2, IdSetEncoderV2 } from './UpdateEncoder.js'
 import { IdSetDecoderV2 } from './UpdateDecoder.js'
 
@@ -470,27 +470,6 @@ export const iterateStructsByIdSet = (transaction, ds, f) =>
   })
 
 /**
- * Garbage-collect the deleted content referenced by `ids` on `doc`.
- *
- * This is useful to retroactively reclaim memory on a document created with `gc: false`
- * (e.g. once a snapshot, or an UndoManager StackItem, that referenced this content is no
- * longer needed) - without enabling gc for the whole document. Ids that reference live
- * (non-deleted) content, already-collected structs, items flagged with `keep`, or items
- * rejected by `gcFilter` are skipped.
- *
- * @param {Doc} doc
- * @param {IdSet} ids
- * @param {function(Item):boolean} [gcFilter]
- */
-export const gcIdSet = (doc, ids, gcFilter = doc.gcFilter) =>
-  doc.transact(tr => {
-    // Split structs exactly at the IdSet boundaries so that only the referenced content is
-    // collected - an arbitrary IdSet need not align with struct boundaries.
-    iterateStructsByIdSet(tr, ids, () => {})
-    tryGc(tr, ids, gcFilter)
-  })
-
-/**
  * Iterate over all structs that are mentioned by the IdSet, without spliting the items.
  *
  * @param {StructStore} store
@@ -809,48 +788,6 @@ export const createDeleteSetFromStructStore = ss => {
 }
 
 /**
- * @param {Array<GC | Item | Skip>} structs
- * @param {boolean} filterDeleted
- *
- */
-export const _createInsertSliceFromStructs = (structs, filterDeleted) => {
-  /**
-   * @type {Array<IdRange>}
-   */
-  const iditems = []
-  for (let i = 0; i < structs.length; i++) {
-    const struct = structs[i]
-    if (!(filterDeleted && struct.deleted)) {
-      const clock = struct.id.clock
-      let len = struct.length
-      if (i + 1 < structs.length) {
-        // eslint-disable-next-line
-        for (let next = structs[i + 1]; i + 1 < structs.length && !(filterDeleted && next.deleted); next = structs[++i + 1]) {
-          len += next.length
-        }
-      }
-      iditems.push(new IdRange(clock, len))
-    }
-  }
-  return iditems
-}
-
-/**
- * @param {StructStore} ss
- * @param {boolean} filterDeleted
- */
-export const createInsertSetFromStructStore = (ss, filterDeleted) => {
-  const idset = createIdSet()
-  ss.clients.forEach((structs, client) => {
-    const iditems = _createInsertSliceFromStructs(structs, filterDeleted)
-    if (iditems.length !== 0) {
-      idset.clients.set(client, new IdRanges(iditems))
-    }
-  })
-  return idset
-}
-
-/**
  * @param {IdSetEncoderV1 | IdSetEncoderV2} encoder
  * @param {IdSet} idSet
  *
@@ -903,22 +840,6 @@ export const readIdSet = decoder => {
   }
   return ds
 }
-
-/**
- * @param {IdSet} idSet
- * @return {Uint8Array<ArrayBuffer>}
- */
-export const encodeIdSet = idSet => {
-  const encoder = new IdSetEncoderV2()
-  writeIdSet(encoder, idSet)
-  return encoder.toUint8Array()
-}
-
-/**
- * @param {Uint8Array} data
- * @return {IdSet}
- */
-export const decodeIdSet = data => readIdSet(new IdSetDecoderV2(decoding.createDecoder(data)))
 
 /**
  * @todo YDecoder also contains references to String and other Decoders. Would make sense to exchange YDecoder.toUint8Array for YDecoder.DsToUint8Array()..
@@ -1411,88 +1332,6 @@ const idmapAttrsHas = (attrs, attr) => attrs.find(a => a === attr)
 export const idmapAttrsEqual = (a, b) => a.length === b.length && a.every(v => idmapAttrsHas(b, v))
 
 /**
- * Merge multiple idmaps. Ensures that there are no redundant attribution definitions (two
- * Attributions that describe the same thing).
- *
- * @template T
- * @param {Array<IdMap<T>>} ams
- * @return {IdMap<T>} A fresh IdSet
- */
-export const mergeIdMaps = ams => {
-  /**
-   * Maps attribution to the attribution of the merged idmap.
-   *
-   * @type {Map<ContentAttribute<any>,ContentAttribute<any>>}
-   */
-  const attrMapper = new Map()
-  const merged = createIdMap()
-  for (let amsI = 0; amsI < ams.length; amsI++) {
-    ams[amsI].clients.forEach((rangesLeft, client) => {
-      if (!merged.clients.has(client)) {
-        // Write all missing keys from current set and all following.
-        // If merged already contains `client` current ds has already been added.
-        let ids = rangesLeft.getIds().slice()
-        for (let i = amsI + 1; i < ams.length; i++) {
-          const nextIds = ams[i].clients.get(client)
-          if (nextIds) {
-            array.appendTo(ids, nextIds.getIds())
-          }
-        }
-        ids = ids.map(id => new AttrRange(id.clock, id.len, id.attrs.map(attr =>
-          map.setIfUndefined(attrMapper, attr, () =>
-            _ensureAttrs(merged, [attr])[0]
-          )
-        )))
-        merged.clients.set(client, new AttrRanges(ids))
-      }
-    })
-  }
-  return merged
-}
-
-/**
- * @param {IdSet} idset
- * @param {Array<ContentAttribute<any>>} attrs
- */
-export const createIdMapFromIdSet = (idset, attrs) => {
-  const idmap = createIdMap()
-  // map attrs to idmap
-  attrs = _ensureAttrs(idmap, attrs)
-  // filter out duplicates
-  /**
-   * @type {Array<ContentAttribute<any>>}
-   */
-  const checkedAttrs = []
-  attrs.forEach(attr => {
-    if (!idmapAttrsHas(checkedAttrs, attr)) {
-      checkedAttrs.push(attr)
-    }
-  })
-  idset.clients.forEach((ranges, client) => {
-    const attrRanges = new AttrRanges(ranges.getIds().map(range => new AttrRange(range.clock, range.len, checkedAttrs)))
-    attrRanges.sorted = true // is sorted because idset is sorted
-    idmap.clients.set(client, attrRanges)
-  })
-  return idmap
-}
-
-/**
- * Create an IdSet from an IdMap by stripping the attributes.
- *
- * @param {IdMap<any>} idmap
- * @return {IdSet}
- */
-export const createIdSetFromIdMap = idmap => {
-  const idset = createIdSet()
-  idmap.clients.forEach((ranges, client) => {
-    const idRanges = new IdRanges([])
-    ranges.getIds().forEach(range => idRanges.add(range.clock, range.len))
-    idset.clients.set(client, idRanges)
-  })
-  return idset
-}
-
-/**
  * Efficiently encodes IdMap to a binary form. Ensures that information is de-duplicated when
  * written. Attribute.names are referenced by id. Attributes themselfs are also referenced by id.
  *
@@ -1649,63 +1488,6 @@ const _ensureAttrs = (idmap, attrs) => attrs.map(attr =>
 export const createIdMap = () => new IdMap()
 
 /**
- * Remove all ranges from `exclude` from `ds`. The result is a fresh IdMap containing all ranges from `idSet` that are not
- * in `exclude`.
- *
- * @todo this should be called "excludeIdMap"
- *
- * @todo the `instanceof IdSet` dispatch this relies on lives in `_diffSet` - see the `$idMapAny`
- * note there. Separately, the `attrs`/`attrsH` aliasing below leaves a *stale* index on an emptied
- * result. {@link $idMap} is unaffected: it reads the ranges, which are authoritative.
- *
- * @template {IdMap<any>} ISet
- * @param {ISet} set
- * @param {IdSet | IdMap<any>} exclude
- * @return {ISet}
- */
-export const diffIdMap = (set, exclude) => {
-  const diffed = _diffSet(set, exclude)
-  diffed.attrs = set.attrs
-  diffed.attrsH = set.attrsH
-  return diffed
-}
-
-export const intersectMaps = _intersectSets
-
-/**
- * Filter attributes in an IdMap based on a predicate function.
- * Returns a new IdMap containing idranges that match the predicate.
- *
- * @template Attrs
- * @param {IdMap<Attrs>} idmap
- * @param {(attr: Array<ContentAttribute<Attrs>>) => boolean} predicate
- * @return {IdMap<Attrs>}
- */
-export const filterIdMap = (idmap, predicate) => {
-  const filtered = createIdMap()
-  idmap.clients.forEach((ranges, client) => {
-    /**
-     * @type {Array<AttrRange<Attrs>>}
-     */
-    const attrRanges = []
-    ranges.getIds().forEach((range) => {
-      if (predicate(range.attrs)) {
-        const rangeCpy = range.copyWith(range.clock, range.len)
-        attrRanges.push(rangeCpy)
-        rangeCpy.attrs.forEach(attr => {
-          filtered.attrs.add(attr)
-          filtered.attrsH.set(attr.hash(), attr)
-        })
-      }
-    })
-    if (attrRanges.length > 0) {
-      filtered.clients.set(client, new AttrRanges(attrRanges))
-    }
-  })
-  return filtered
-}
-
-/**
  * Schema of an {@link IdSet}.
  *
  * Nominal: `check` is a single identity compare against the globally interned `y:idSet` tag, so it
@@ -1720,33 +1502,3 @@ export const $idSet = IdSet.prototype.$type = s.$type('y:idSet', IdSet)
  */
 export const $idMapAny = /** @type {s.Schema<IdMap<any>>} */ (IdMap.prototype.$type = s.$type('y:idMap', IdMap))
 
-/**
- * Schema of an {@link IdMap} whose mapped values ({@link ContentAttribute#val}) all match `$attrs`.
- *
- * True iff the value carries the nominal `y:idMap` tag **and** every attribute reachable through
- * `clients` satisfies `$attrs`. Those ranges are the authoritative content - exactly what
- * {@link writeIdMap} serializes. An empty map holds no values, so it satisfies every `$attrs`.
- *
- * This deliberately ignores `attrs` / `attrsH`: that pair is a hash-interning cache for `===`
- * comparison (see `_ensureAttrs`), and it drifts from the ranges in *both* directions today -
- * {@link diffIdMap} aliases a stale index onto an emptied result, while {@link intersectMaps} and
- * {@link insertIntoIdMap} never rebuild it, so most real maps carry an empty index while holding
- * values. An index-based check would therefore validate nothing for the common case.
- *
- * Like every container schema this is a *snapshot*: an `IdMap` is mutable, so a later `add()` can
- * invalidate a previously-passing check.
- *
- * Allocates a fresh schema per call - hoist it rather than calling it in a hot loop. For a cheap
- * nominal gate use {@link $idMapAny} (one identity compare).
- *
- * @template Attrs
- * @param {s.Schema<Attrs>} $attrs - schema of the mapped values
- * @return {s.Schema<IdMap<Attrs>>}
- */
-export const $idMap = $attrs => s.$custom(o => {
-  if (!$idMapAny.check(o)) return false
-  for (const ranges of o.clients.values()) {
-    if (!ranges.everyAttr(attr => $attrs.check(attr.val))) return false
-  }
-  return true
-})

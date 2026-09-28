@@ -132,20 +132,3 @@ export const getStateVector = store => {
   return sm
 }
 
-/**
- * @param {StructStore} store
- *
- * @private
- * @function
- */
-export const integrityCheck = store => {
-  store.clients.forEach(structs => {
-    for (let i = 1; i < structs.length; i++) {
-      const l = structs[i - 1]
-      const r = structs[i]
-      if (l.id.clock + l.length !== r.id.clock) {
-        throw new Error('StructStore failed integrity check')
-      }
-    }
-  })
-}

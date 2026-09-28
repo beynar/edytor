@@ -14,8 +14,8 @@
  */
 // @ts-nocheck -- drives the vendored engine JS directly (excluded lane).
 import { describe, expect, it } from 'vitest';
-import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { createPeerSet } from '../harness/peer-set.js';
+import { ContentMapRenderer, contentMapOfDoc } from '../harness/content-map-renderer.js';
 import { createModelOps } from '../harness/ops/model-ops.js';
 import * as S_ from '../harness/streams.js';
 import { isBoundary } from '../../../lib/crdt/text/model.js';
@@ -90,16 +90,14 @@ const undoCounted = (peer) => {
 	peer.doc.off('update', h);
 	return n;
 };
-/** An attribution renderer that renders every deleted item (non-zero length) on every backing text. */
+/**
+ * An attribution renderer that renders every deleted item (non-zero length) on every backing
+ * text: every struct present at install time is attributed (the test port of the pruned
+ * `AttributionsRenderer`, `harness/content-map-renderer.js`).
+ */
 const installRenderers = (set) => {
 	for (const p of set.peers) {
-		const ids = Y.createContentIdsFromDoc(p.doc, true);
-		const map = Y.createContentMapFromContentIds(
-			ids,
-			[Y.createContentAttribute('insert', 'x')],
-			[Y.createContentAttribute('delete', 'x')]
-		);
-		const r = Y.createAttributionsRenderer(map);
+		const r = new ContentMapRenderer(contentMapOfDoc(p.doc, 'x'));
 		for (const [t] of S().view(p.doc).texts) t.useRenderer(r);
 	}
 };

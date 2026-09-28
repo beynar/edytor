@@ -1,5 +1,3 @@
-import * as decoding from 'lib0-v14/decoding'
-import * as encoding from 'lib0-v14/encoding'
 import * as error from 'lib0-v14/error'
 
 export class ID {
@@ -38,32 +36,6 @@ export const compareIDs = (a, b) => a === b || (a !== null && b !== null && a.cl
  * @function
  */
 export const createID = (client, clock) => new ID(client, clock)
-
-/**
- * @param {encoding.Encoder} encoder
- * @param {ID} id
- *
- * @private
- * @function
- */
-export const writeID = (encoder, id) => {
-  encoding.writeVarUint(encoder, id.client)
-  encoding.writeVarUint(encoder, id.clock)
-}
-
-/**
- * Read ID.
- * * If first varUint read is 0xFFFFFF a RootID is returned.
- * * Otherwise an ID is returned
- *
- * @param {decoding.Decoder} decoder
- * @return {ID}
- *
- * @private
- * @function
- */
-export const readID = decoder =>
-  createID(decoding.readVarUint(decoder), decoding.readVarUint(decoder))
 
 /**
  * The top types are mapped from y.share.get(keyname) => type.

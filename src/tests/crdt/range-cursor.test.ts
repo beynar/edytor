@@ -10,7 +10,8 @@
  *   boundary clips, surrogates, live inline atoms, tombstoned content and
  *   tombstoned format markers — because both sides consume the same
  *   `readItemPieces` physical-sequence interpretation.
- * - ATTRIBUTION: under an `AttributionsRenderer` the pieces carry the same
+ * - ATTRIBUTION: under an attribution renderer (the test port of the pruned
+ *   `AttributionsRenderer`, `harness/content-map-renderer.js`) the pieces carry the same
  *   native attribution inputs (`attrs`/`deleted`) that the toDelta render
  *   turns into op-level `attribution`.
  * - READ PURITY: reads produce no updates, split no items, change no undo
@@ -31,6 +32,7 @@ import {
 	ArraySearchMarker,
 	createAttributionFromAttributionItems
 } from '../../lib/crdt/vendor/yjs/src/ynode.js';
+import { ContentMapRenderer, allIds, idMapOf, nodeItems } from './harness/content-map-renderer.js';
 
 const newDoc = () => {
 	const doc = new Y.Doc();
@@ -258,12 +260,11 @@ describe('RangeCursor — renderer + native attribution', () => {
 		const text = doc.get('t');
 		apply(doc, text, delta.create().insert('abcdef', { b: true }).insert('ghi'));
 		// Attribute every inserted id to 'alice'.
-		const inserts = Y.createInsertSetFromStructStore(doc.store, false);
 		const attributions = {
-			inserts: Y.createIdMapFromIdSet(inserts, [Y.createContentAttribute('insert', 'alice')]),
+			inserts: idMapOf(allIds(doc), [Y.createContentAttribute('insert', 'alice')]),
 			deletes: Y.createIdMap()
 		};
-		return { doc, text, renderer: Y.createAttributionsRenderer(attributions) };
+		return { doc, text, renderer: new ContentMapRenderer(attributions) };
 	};
 
 	it('attributed pieces carry the same attribution inputs as the toDelta render', () => {
@@ -307,7 +308,7 @@ describe('RangeCursor — integration scenarios', () => {
 		// After the parity walk, the pool has populated — a targeted read is bounded.
 		const stats = { items: 0, markers: 0 };
 		new Y.RangeCursor(dtext).read(10, 14, stats);
-		const wholeItems = Y.getNodeChildren(dtext).length;
+		const wholeItems = nodeItems(dtext).length;
 		expect(stats.items).toBeLessThan(wholeItems);
 	});
 
@@ -375,7 +376,7 @@ describe('RangeCursor — read purity', () => {
 		const um = new Y.UndoManager(text);
 		apply(doc, text, delta.create().retain(2).insert('X'));
 		const updatesBefore = Y.encodeStateAsUpdate(doc);
-		const itemsBefore = Y.getNodeChildren(text).length;
+		const itemsBefore = nodeItems(text).length;
 		const stackBefore = um.undoStack.length + um.redoStack.length;
 		const rendererBefore = text._renderer;
 		// Reads across the whole text, seeded and cold.
@@ -387,7 +388,7 @@ describe('RangeCursor — read purity', () => {
 		cur.read(20, 26);
 		cur.read(0, 5);
 		expect(Y.encodeStateAsUpdate(doc)).toEqual(updatesBefore);
-		expect(Y.getNodeChildren(text).length).toBe(itemsBefore);
+		expect(nodeItems(text).length).toBe(itemsBefore);
 		expect(um.undoStack.length + um.redoStack.length).toBe(stackBefore);
 		expect(text._renderer).toBe(rendererBefore);
 	});
@@ -434,7 +435,7 @@ describe('RangeCursor — traversal bounds', () => {
 			}
 			text.applyDelta(d);
 		});
-		const wholeItems = Y.getNodeChildren(text).length;
+		const wholeItems = nodeItems(text).length;
 		expect(wholeItems).toBeGreaterThanOrEqual(1000);
 		// Cold sweep of 25 disjoint 200-char ranges — each plants sparse
 		// checkpoints; later passes then stay range-sized.
@@ -480,7 +481,7 @@ describe('RangeCursor — read seed vs mutation seed (counterexample)', () => {
 		apply(doc, text, delta.create().insert('a').insert('b', { b: true }).insert('c'));
 		return { doc, text };
 	};
-	const findItem = (text, str) => Y.getNodeChildren(text).find((it) => it.content.str === str);
+	const findItem = (text, str) => nodeItems(text).find((it) => it.content.str === str);
 
 	it('a marker anchored after same-index non-countable items seeds reads but not mutations', () => {
 		const { doc, text } = counterDoc();

@@ -327,19 +327,6 @@ export const readUpdateV2 = (decoder, ydoc, transactionOrigin, structDecoder = n
   }, transactionOrigin, false)
 
 /**
- * Read and apply a document update.
- *
- * This function has the same effect as `applyUpdate` but accepts a decoder.
- *
- * @param {decoding.Decoder} decoder
- * @param {Doc} ydoc
- * @param {any} [transactionOrigin] This will be stored on `transaction.origin` and `.on('update', (update, origin))`
- *
- * @function
- */
-export const readUpdate = (decoder, ydoc, transactionOrigin) => readUpdateV2(decoder, ydoc, transactionOrigin, new UpdateDecoderV1(decoder))
-
-/**
  * Apply a document update created by, for example, `y.on('update', update => ..)` or `update = encodeStateAsUpdate()`.
  *
  * This function has the same effect as `readUpdate` but accepts an Uint8Array instead of a Decoder.
@@ -531,15 +518,6 @@ export const diffUpdateV2 = (update, sv, YDecoder = UpdateDecoderV2, YEncoder = 
 }
 
 /**
- * @deprecated
- * @todo remove this in favor of intersectupdate
- *
- * @param {Uint8Array<ArrayBuffer>} update
- * @param {Uint8Array<ArrayBuffer>} sv
- */
-export const diffUpdate = (update, sv) => diffUpdateV2(update, sv, UpdateDecoderV1, UpdateEncoderV1)
-
-/**
  * Read decodedState and return State as Map.
  *
  * @param {Uint8Array} decodedState
@@ -666,32 +644,3 @@ const getMissing = (struct, transaction, store) => {
   return null
 }
 
-/**
- * @param {Uint8Array} update
- * @param {import('./Doc.js').DocOpts} opts
- */
-export const createDocFromUpdate = (update, opts = {}) => {
-  const ydoc = new Doc(opts)
-  applyUpdate(ydoc, update)
-  return ydoc
-}
-
-/**
- * @param {Uint8Array} update
- * @param {import('./Doc.js').DocOpts} opts
- */
-export const createDocFromUpdateV2 = (update, opts = {}) => {
-  const ydoc = new Doc(opts)
-  applyUpdateV2(ydoc, update)
-  return ydoc
-}
-
-/**
- * @param {Doc} ydoc
- * @param {import('./Doc.js').DocOpts} [opts]
- */
-export const cloneDoc = (ydoc, opts) => {
-  const clone = new Doc(opts)
-  applyUpdate(clone, encodeStateAsUpdate(ydoc))
-  return clone
-}

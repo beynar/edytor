@@ -872,23 +872,6 @@ export const updateMarkerChanges = (searchMarker, index, len) => {
 }
 
 /**
- * Accumulate all (list) children of a type and return them as an Array.
- *
- * @param {YNode} t
- * @return {Array<Item>}
- */
-export const getNodeChildren = t => {
-  t.doc ?? warnPrematureAccess()
-  let s = t._start
-  const arr = []
-  while (s) {
-    arr.push(s)
-    s = s.right
-  }
-  return arr
-}
-
-/**
  * Call event listeners with an event. This will also add an event to all
  * parents (for `.observeDeep` handlers).
  *
@@ -2128,13 +2111,12 @@ export class YNode extends ObservableV2 {
   /**
    * Returns all attribute name/value pairs in a JSON Object.
    *
-   * @param {Snapshot} [snapshot]
    * @return {{ [Key in Extract<keyof delta.DeltaConfGetAttrs<DConf>,string>]?: delta.DeltaConfGetAttrs<DConf>[Key]}} A JSON Object that describes the attributes.
    *
    * @public
    */
-  getAttrs (snapshot) {
-    return /** @type {any} */ (snapshot ? nodeMapGetAllSnapshot(this, snapshot) : nodeMapGetAll(this))
+  getAttrs () {
+    return /** @type {any} */ (nodeMapGetAll(this))
   }
 
   /**
@@ -2437,38 +2419,6 @@ export class YNode extends ObservableV2 {
 export const $nodeAny = /** @type {s.Schema<YNode<any>>} */ (YNode.prototype.$type = s.$type('y:node', YNode))
 
 /**
- * Schema of a {@link YNode} with a specific delta configuration.
- *
- * **Checked at runtime:** the nominal type, and the node's `name`. `name` is assigned once in the
- * constructor and never reassigned, so the check is stable for the node's lifetime.
- *
- * **Not checked at runtime:** `attrs`, `children`, `text`, `formats`. A node does not carry its
- * `DConf` - `name` is its only runtime residue, which is why {@link YNode#$delta} returns
- * `$deltaAny`. Those parts are a type-level assertion, and they could not be checked soundly
- * anyway: a node is a *concurrently* mutable container, so a check of its content would hold only
- * for the instant it ran - a remote update can violate it immediately after, with no local code
- * involved. To validate content, validate the immutable value instead:
- * `delta.$delta(conf).check(node.toDelta())`.
- *
- * This is stricter than lib0's `$Delta.check`, which *skips* the name check when `name == null`.
- * That is right for a delta (a nameless delta asserts nothing about the name) and wrong for a node
- * (a nameless node is definitively a fragment). So `$node({ name: 'p' })` rejects `ydoc.get('key')`,
- * whose `name` is `null` unless a name was passed as the *second* argument.
- *
- * Allocates a fresh schema per call - hoist it rather than calling it in a hot loop. For a cheap
- * nominal gate use {@link $nodeAny} (one identity compare).
- *
- * @template {delta.ReadableDeltaConf} DConf
- * @param {DConf} dconf
- * @return {s.Schema<YNode<delta.ReadDeltaConf<DConf>>>}
- */
-export const $node = dconf => {
-  // the same coercion lib0's `$delta` applies to `conf.name`
-  const $name = dconf.name == null ? s.$any : s.$(dconf.name)
-  return s.$custom(o => $nodeAny.check(o) && $name.check(o.name))
-}
-
-/**
  * @param {StructStore} store
  * @param {IdSet} items
  */
@@ -2607,196 +2557,6 @@ export const typeListGet = (type, index) => {
       }
       index -= n.length
     }
-  }
-}
-
-/**
- * @todo this is a duplicate. use the unified insert function and remove this.
- *
- * @param {Transaction} transaction
- * @param {YNode} parent
- * @param {Item?} referenceItem
- * @param {Array<YValue>} content
- *
- * @private
- * @function
- */
-export const typeListInsertGenericsAfter = (transaction, parent, referenceItem, content) => {
-  let left = referenceItem
-  const doc = transaction.doc
-  const ownClientId = doc.clientID
-  const store = doc.store
-  const right = referenceItem === null ? parent._start : referenceItem.right
-  /**
-   * @type {Array<Object|Array<any>|number|null>}
-   */
-  let jsonContent = []
-  const packJsonContent = () => {
-    if (jsonContent.length > 0) {
-      left = new Item(createID(ownClientId, store.getClock(ownClientId)), left, left && left.lastId, right, right && right.id, parent, null, new ContentAny(jsonContent))
-      left.integrate(transaction, 0)
-      jsonContent = []
-    }
-  }
-  content.forEach(c => {
-    if (c === null) {
-      jsonContent.push(c)
-    } else {
-      switch (c.constructor) {
-        case Number:
-        case Object:
-        case undefined:
-        case Boolean:
-        case Array:
-        case String:
-        case BigInt:
-        case Date:
-          jsonContent.push(c)
-          break
-        default:
-          packJsonContent()
-          switch (c.constructor) {
-            case Uint8Array:
-            case ArrayBuffer:
-              left = new Item(createID(ownClientId, store.getClock(ownClientId)), left, left && left.lastId, right, right && right.id, parent, null, new ContentBinary(new Uint8Array(/** @type {Uint8Array} */ (c))))
-              left.integrate(transaction, 0)
-              break
-            default:
-              if ($doc.check(c)) {
-                left = new Item(createID(ownClientId, store.getClock(ownClientId)), left, left && left.lastId, right, right && right.id, parent, null, createContentDocFromDoc(/** @type {Doc} */ (c)))
-                left.integrate(transaction, 0)
-              } else if (c instanceof YNode) {
-                left = new Item(createID(ownClientId, store.getClock(ownClientId)), left, left && left.lastId, right, right && right.id, parent, null, new ContentType(/** @type {any} */ (c)))
-                left.integrate(transaction, 0)
-              } else {
-                throw new Error('Unexpected content type in insert operation')
-              }
-          }
-      }
-    }
-  })
-  packJsonContent()
-}
-
-const lengthExceeded = () => error.create('Length exceeded!')
-
-/**
- * @param {Transaction} transaction
- * @param {YNode} parent
- * @param {number} index
- * @param {Array<Object<string,any>|Array<any>|number|null|string|Uint8Array>} content
- *
- * @private
- * @function
- */
-export const typeListInsertGenerics = (transaction, parent, index, content) => {
-  if (index > parent._length) {
-    throw lengthExceeded()
-  }
-  if (index === 0) {
-    if (parent._searchMarker) {
-      updateMarkerChanges(parent._searchMarker, index, content.length)
-    }
-    return typeListInsertGenericsAfter(transaction, parent, null, content)
-  }
-  const startIndex = index
-  const marker = findMarker(parent, index)
-  let n = parent._start
-  if (marker !== null) {
-    n = marker.p
-    index -= marker.index
-    // we need to iterate one to the left so that the algorithm works
-    if (index === 0) {
-      // @todo refactor this as it actually doesn't consider formats
-      n = n.prev // important! get the left undeleted item so that we can actually decrease index
-      index += (n && n.countable && !n.deleted) ? n.length : 0
-    }
-  }
-  for (; n !== null; n = n.right) {
-    if (!n.deleted && n.countable) {
-      if (index <= n.length) {
-        if (index < n.length) {
-          // insert in-between
-          getItemCleanStart(transaction, createID(n.id.client, n.id.clock + index))
-        }
-        break
-      }
-      index -= n.length
-    }
-  }
-  if (parent._searchMarker) {
-    updateMarkerChanges(parent._searchMarker, startIndex, content.length)
-  }
-  return typeListInsertGenericsAfter(transaction, parent, n, content)
-}
-
-/**
- * Pushing content is special as we generally want to push after the last item. So we don't have to update
- * the search marker.
- *
- * @param {Transaction} transaction
- * @param {YNode} parent
- * @param {Array<Object<string,any>|Array<any>|number|null|string|Uint8Array>} content
- *
- * @private
- * @function
- */
-export const typeListPushGenerics = (transaction, parent, content) => {
-  // Use the marker with the highest index and iterate to the right.
-  const marker = (parent._searchMarker || []).reduce((maxMarker, currMarker) => currMarker.index > maxMarker.index ? currMarker : maxMarker, { index: 0, p: parent._start })
-  let n = marker.p
-  if (n) {
-    while (n.right) {
-      n = n.right
-    }
-  }
-  return typeListInsertGenericsAfter(transaction, parent, n, content)
-}
-
-/**
- * @param {Transaction} transaction
- * @param {YNode} parent
- * @param {number} index
- * @param {number} length
- *
- * @private
- * @function
- */
-export const typeListDelete = (transaction, parent, index, length) => {
-  if (length === 0) { return }
-  const startIndex = index
-  const startLength = length
-  const marker = findMarker(parent, index)
-  let n = parent._start
-  if (marker !== null) {
-    n = marker.p
-    index -= marker.index
-  }
-  // compute the first item to be deleted
-  for (; n !== null && index > 0; n = n.right) {
-    if (!n.deleted && n.countable) {
-      if (index < n.length) {
-        getItemCleanStart(transaction, createID(n.id.client, n.id.clock + index))
-      }
-      index -= n.length
-    }
-  }
-  // delete all items until done
-  while (length > 0 && n !== null) {
-    if (!n.deleted) {
-      if (length < n.length) {
-        getItemCleanStart(transaction, createID(n.id.client, n.id.clock + length))
-      }
-      n.delete(transaction)
-      length -= n.length
-    }
-    n = n.right
-  }
-  if (length > 0) {
-    throw lengthExceeded()
-  }
-  if (parent._searchMarker) {
-    updateMarkerChanges(parent._searchMarker, startIndex, -startLength + length /* in case we remove the above exception */)
   }
 }
 
@@ -2998,62 +2758,6 @@ export const nodeMapHas = (parent, key) => {
   parent.doc ?? warnPrematureAccess()
   const val = parent._map.get(key)
   return val !== undefined && !val.deleted
-}
-
-/**
- * @param {Item} item
- * @param {Snapshot|undefined} snapshot
- *
- * @protected
- * @function
- */
-export const isVisible = (item, snapshot) => snapshot === undefined
-  ? !item.deleted
-  : snapshot.sv.has(item.id.client) && (snapshot.sv.get(item.id.client) || 0) > item.id.clock && !snapshot.ds.hasId(item.id)
-
-/**
- * @param {YNode<any>} parent
- * @param {string} key
- * @param {Snapshot} snapshot
- * @return {Object<string,any>|number|null|Array<any>|string|Uint8Array|YNode<any>|undefined}
- *
- * @private
- * @function
- */
-export const nodeMapGetSnapshot = (parent, key, snapshot) => {
-  let v = parent._map.get(key) || null
-  while (v !== null && (!snapshot.sv.has(v.id.client) || v.id.clock >= (snapshot.sv.get(v.id.client) || 0))) {
-    v = v.left
-  }
-  return v !== null && isVisible(v, snapshot) ? v.content.getContent()[v.length - 1] : undefined
-}
-
-/**
- * @param {YNode<any>} parent
- * @param {Snapshot} snapshot
- * @return {Object<string,Object<string,any>|number|null|Array<any>|string|Uint8Array|YNode<any>|undefined>}
- *
- * @private
- * @function
- */
-export const nodeMapGetAllSnapshot = (parent, snapshot) => {
-  /**
-   * @type {Object<string,any>}
-   */
-  const res = {}
-  parent._map.forEach((value, key) => {
-    /**
-     * @type {Item|null}
-     */
-    let v = value
-    while (v !== null && (!snapshot.sv.has(v.id.client) || v.id.clock >= (snapshot.sv.get(v.id.client) || 0))) {
-      v = v.left
-    }
-    if (v !== null && isVisible(v, snapshot)) {
-      res[key] = v.content.getContent()[v.length - 1]
-    }
-  })
-  return res
 }
 
 /**

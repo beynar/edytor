@@ -1,8 +1,22 @@
 # Vendored Yjs v14 — API notes for Edytor (U01 probe record)
 
 Executable evidence: `src/tests/crdt/v14-smoke.test.ts` (every claim below is
-asserted there) and the upstream suite `vendor-tests/yjs/` (331 tests green).
+asserted there) and the upstream suite `vendor-tests/yjs/` (331 tests green at
+the probe; 222 after P8).
 Source of truth: `src/index.js` exports + JSDoc in `src/ynode.js`.
+
+> **Since patch P8 (`UPSTREAM.md`) this fork no longer ships** the renderers
+> (`AttributionsRenderer`, `DiffRenderer`, `SnapshotRenderer` and their
+> factories — `AbstractRenderer` stays), snapshots, `diffDocsToDelta`, the
+> delta-position helpers, `encodeRelativePosition`/`decodeRelativePosition`/
+> `compareRelativePositions`, the update loggers/obfuscators,
+> `diffUpdate`/`readUpdate`/`createDocFromUpdate[V2]`/`cloneDoc`,
+> `encodeStateVectorFromUpdate[V2]`, `createContentIdsFromUpdate[V2]`,
+> `intersectUpdateWithContentIds[V2]`, `convertUpdateFormatV1ToV2`, the id-map
+> algebra (`mergeIdMaps`, `diffIdMap`, `intersectMaps`, `filterIdMap`, …), the
+> content-id helpers, `$node`, `getNodeChildren`, `getPathTo`, `tryGc`,
+> `undoContentIds` and `logNode`. The table below is the rc.26 probe record;
+> read it against that list.
 
 ## v13 → v14 name map (what's gone, what's renamed)
 

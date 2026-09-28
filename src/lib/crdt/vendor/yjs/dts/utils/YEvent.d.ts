@@ -91,4 +91,3 @@ export class YEvent<DConf extends DeltaConf> {
      */
     public get deltaDeep(): Delta<DConf>;
 }
-export function getPathTo(parent: YNode, child: YNode, renderer?: AbstractRenderer | null): Array<string | number>;

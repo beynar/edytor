@@ -1,30 +1,16 @@
 import * as binary from 'lib0-v14/binary'
 import * as decoding from 'lib0-v14/decoding'
 import * as encoding from 'lib0-v14/encoding'
-import * as error from 'lib0-v14/error'
 import * as f from 'lib0-v14/function'
-import * as logging from 'lib0-v14/logging'
-import * as map from 'lib0-v14/map'
 import * as string from 'lib0-v14/string'
 
-import { readIdSet, writeIdSet, createIdSet, intersectSets } from './ids.js'
+import { readIdSet, writeIdSet } from './ids.js'
 
 import { createID } from './ID.js'
-import { IdSetEncoderV1, IdSetEncoderV2, UpdateEncoderV1, UpdateEncoderV2 } from './UpdateEncoder.js'
+import { UpdateEncoderV1, UpdateEncoderV2 } from './UpdateEncoder.js'
 import { UpdateDecoderV1, UpdateDecoderV2 } from './UpdateDecoder.js'
 import { GC } from '../structs/GC.js'
-import {
-  Item,
-  ContentAny,
-  ContentBinary,
-  ContentDeleted,
-  ContentDoc,
-  ContentEmbed,
-  ContentFormat,
-  ContentJSON,
-  ContentString,
-  ContentType
-} from '../structs/Item.js'
+import { Item } from '../structs/Item.js'
 import {
   readItemContent
 } from '../ynode.js'
@@ -105,27 +91,6 @@ export class LazyStructReader {
 /**
  * @param {Uint8Array} update
  */
-export const logUpdate = update => logUpdateV2(update, UpdateDecoderV1)
-
-/**
- * @param {Uint8Array} update
- * @param {typeof UpdateDecoderV2 | typeof UpdateDecoderV1} [YDecoder]
- */
-export const logUpdateV2 = (update, YDecoder = UpdateDecoderV2) => {
-  const structs = []
-  const updateDecoder = new YDecoder(decoding.createDecoder(update))
-  const lazyDecoder = new LazyStructReader(updateDecoder, false)
-  for (let curr = lazyDecoder.curr; curr !== null; curr = lazyDecoder.next()) {
-    structs.push(curr)
-  }
-  logging.print('Structs: ', structs)
-  const ds = readIdSet(updateDecoder)
-  logging.print('DeleteSet: ', ds)
-}
-
-/**
- * @param {Uint8Array} update
- */
 export const decodeUpdate = (update) => decodeUpdateV2(update, UpdateDecoderV1)
 
 /**
@@ -168,105 +133,6 @@ export class LazyStructWriter {
     this.clientStructs = []
   }
 }
-
-/**
- * @param {Uint8Array} update
- * @param {typeof IdSetEncoderV1 | typeof IdSetEncoderV2} YEncoder
- * @param {typeof UpdateDecoderV1 | typeof UpdateDecoderV2} YDecoder
- * @return {Uint8Array<ArrayBuffer>}
- */
-export const encodeStateVectorFromUpdateV2 = (update, YEncoder = IdSetEncoderV2, YDecoder = UpdateDecoderV2) => {
-  const encoder = new YEncoder()
-  const updateDecoder = new LazyStructReader(new YDecoder(decoding.createDecoder(update)), false)
-  let curr = updateDecoder.curr
-  if (curr !== null) {
-    let size = 0
-    let currClient = curr.id.client
-    let stopCounting = curr.id.clock !== 0 // must start at 0
-    let currClock = stopCounting ? 0 : curr.id.clock + curr.length
-    for (; curr !== null; curr = updateDecoder.next()) {
-      if (currClient !== curr.id.client) {
-        if (currClock !== 0) {
-          size++
-          // We found a new client
-          // write what we have to the encoder
-          encoding.writeVarUint(encoder.restEncoder, currClient)
-          encoding.writeVarUint(encoder.restEncoder, currClock)
-        }
-        currClient = curr.id.client
-        currClock = 0
-        stopCounting = curr.id.clock !== 0
-      }
-      // we ignore skips
-      if (curr.constructor === Skip) {
-        stopCounting = true
-      }
-      if (!stopCounting) {
-        currClock = curr.id.clock + curr.length
-      }
-    }
-    // write what we have
-    if (currClock !== 0) {
-      size++
-      encoding.writeVarUint(encoder.restEncoder, currClient)
-      encoding.writeVarUint(encoder.restEncoder, currClock)
-    }
-    // prepend the size of the state vector
-    const enc = encoding.createEncoder()
-    encoding.writeVarUint(enc, size)
-    encoding.writeBinaryEncoder(enc, encoder.restEncoder)
-    encoder.restEncoder = enc
-    return encoder.toUint8Array()
-  } else {
-    encoding.writeVarUint(encoder.restEncoder, 0)
-    return encoder.toUint8Array()
-  }
-}
-
-/**
- * @param {Uint8Array} update
- * @return {Uint8Array<ArrayBuffer>}
- */
-export const encodeStateVectorFromUpdate = update => encodeStateVectorFromUpdateV2(update, IdSetEncoderV1, UpdateDecoderV1)
-
-/**
- * @param {Uint8Array} update
- * @param {typeof UpdateDecoderV2 | typeof UpdateDecoderV1} [YDecoder]
- * @return {ContentIds}
- */
-export const createContentIdsFromUpdateV2 = (update, YDecoder = UpdateDecoderV2) => {
-  const updateDecoder = new YDecoder(decoding.createDecoder(update))
-  const lazyDecoder = new LazyStructReader(updateDecoder, true)
-  const inserts = createIdSet()
-  let lastClientId = -1
-  let lastClock = 0
-  let lastLen = 0
-  for (let curr = lazyDecoder.curr; curr !== null; curr = lazyDecoder.next()) {
-    const currId = curr.id
-    if (lastClientId === currId.client && lastClock + lastLen === currId.clock) {
-      // default case: extend prev entry
-      lastLen += curr.length
-    } else {
-      if (lastClientId >= 0) {
-        inserts.add(lastClientId, lastClock, lastLen)
-      }
-      lastClientId = currId.client
-      lastClock = currId.clock
-      lastLen = curr.length
-    }
-  }
-  if (lastClientId >= 0) {
-    inserts.add(lastClientId, lastClock, lastLen)
-  }
-  const deletes = readIdSet(updateDecoder)
-  return { inserts, deletes }
-}
-
-/**
- * @param {Uint8Array} update
- * @return {ContentIds}
- */
-export const createContentIdsFromUpdate = update => createContentIdsFromUpdateV2(update, UpdateDecoderV1)
 
 /**
  * This method is intended to slice any kind of struct and retrieve the right part.
@@ -392,185 +258,7 @@ export const convertUpdateFormat = (update, blockTransformer, YDecoder, YEncoder
  */
 
 /**
- * @param {ObfuscatorOptions} obfuscator
- */
-const createObfuscator = ({ formatting = true, subdocs = true, name = true } = {}) => {
-  let i = 0
-  const mapKeyCache = map.create()
-  const nodeNameCache = map.create()
-  const formattingKeyCache = map.create()
-  const formattingValueCache = map.create()
-  formattingValueCache.set(null, null) // end of a formatting range should always be the end of a formatting range
-  /**
-   * @param {Item|GC|Skip} block
-   * @return {Item|GC|Skip}
-   */
-  return block => {
-    switch (block.constructor) {
-      case GC:
-      case Skip:
-        return block
-      case Item: {
-        const item = /** @type {Item} */ (block)
-        const content = item.content
-        switch (content.constructor) {
-          case ContentDeleted:
-            break
-          case ContentType: {
-            if (name) {
-              const type = /** @type {ContentType} */ (content).type
-              if (type.name != null) {
-                type.name = map.setIfUndefined(nodeNameCache, type.name, () => 'typename-' + i)
-              }
-            }
-            break
-          }
-          case ContentAny: {
-            const c = /** @type {ContentAny} */ (content)
-            c.arr = c.arr.map(() => i)
-            break
-          }
-          case ContentBinary: {
-            const c = /** @type {ContentBinary} */ (content)
-            c.content = new Uint8Array([i])
-            break
-          }
-          case ContentDoc: {
-            const c = /** @type {ContentDoc} */ (content)
-            if (subdocs) {
-              c.opts = {}
-              c.guid = i + ''
-            }
-            break
-          }
-          case ContentEmbed: {
-            const c = /** @type {ContentEmbed} */ (content)
-            c.embed = {}
-            break
-          }
-          case ContentFormat: {
-            const c = /** @type {ContentFormat} */ (content)
-            if (formatting) {
-              c.key = map.setIfUndefined(formattingKeyCache, c.key, () => i + '')
-              c.value = map.setIfUndefined(formattingValueCache, c.value, () => ({ i }))
-            }
-            break
-          }
-          case ContentJSON: {
-            const c = /** @type {ContentJSON} */ (content)
-            c.arr = c.arr.map(() => i)
-            break
-          }
-          case ContentString: {
-            const c = /** @type {ContentString} */ (content)
-            c.str = string.repeat((i % 10) + '', c.str.length)
-            break
-          }
-          default:
-            // unknown content type
-            error.unexpectedCase()
-        }
-        if (item.parentSub) {
-          item.parentSub = map.setIfUndefined(mapKeyCache, item.parentSub, () => i + '')
-        }
-        i++
-        return block
-      }
-      default:
-        // unknown block-type
-        error.unexpectedCase()
-    }
-  }
-}
-
-/**
- * This function obfuscates the content of a Yjs update. This is useful to share
- * buggy Yjs documents while significantly limiting the possibility that a
- * developer can on the user. Note that it might still be possible to deduce
- * some information by analyzing the "structure" of the document or by analyzing
- * the typing behavior using the CRDT-related metadata that is still kept fully
- * intact.
- *
- * @param {Uint8Array} update
- * @param {ObfuscatorOptions} [opts]
- */
-export const obfuscateUpdate = (update, opts) => convertUpdateFormat(update, createObfuscator(opts), UpdateDecoderV1, UpdateEncoderV1)
-
-/**
- * @param {Uint8Array} update
- * @param {ObfuscatorOptions} [opts]
- */
-export const obfuscateUpdateV2 = (update, opts) => convertUpdateFormat(update, createObfuscator(opts), UpdateDecoderV2, UpdateEncoderV2)
-
-/**
- * @param {Uint8Array} update
- */
-export const convertUpdateFormatV1ToV2 = update => convertUpdateFormat(update, f.id, UpdateDecoderV1, UpdateEncoderV2)
-
-/**
  * @param {Uint8Array} update
  */
 export const convertUpdateFormatV2ToV1 = update => convertUpdateFormat(update, f.id, UpdateDecoderV2, UpdateEncoderV1)
 
-/**
- * Filter an update to only include content specified by a ContentIds pattern.
- *
- * This function extracts a subset of an update, keeping only the structs whose IDs
- * are present in `contentIds.inserts` and only the delete set entries that are
- * present in `contentIds.deletes`.
- *
- * Note: If a struct partially overlaps with the contentIds pattern, only the
- * overlapping portion is included in the result.
- *
- * @param {Uint8Array} update
- * @param {ContentIds} contentIds - Pattern specifying which content to include
- * @param {typeof UpdateDecoderV1 | typeof UpdateDecoderV2} [YDecoder]
- * @param {typeof UpdateEncoderV1 | typeof UpdateEncoderV2} [YEncoder]
- * @return {Uint8Array<ArrayBuffer>}
- */
-export const intersectUpdateWithContentIdsV2 = (update, contentIds, YDecoder = UpdateDecoderV2, YEncoder = UpdateEncoderV2) => {
-  const { inserts, deletes } = contentIds
-  const encoder = new YEncoder()
-  const lazyStructWriter = new LazyStructWriter(encoder)
-  const decoder = new YDecoder(decoding.createDecoder(update))
-  const reader = new LazyStructReader(decoder, true)
-
-  while (reader.curr) {
-    const currClientId = reader.curr.id.client
-    let nextClock = reader.curr.id.clock
-    let firstWrite = false
-    while (reader.curr != null && reader.curr.id.client === currClientId) {
-      const curr = reader.curr
-      for (const slice of inserts.slice(currClientId, curr.id.clock, curr.length)) {
-        if (slice.exists) {
-          const skipLen = slice.clock - nextClock
-          if (skipLen > 0 && firstWrite) {
-            // write missing skip
-            writeStructToLazyStructWriter(lazyStructWriter, new Skip(createID(currClientId, nextClock), skipLen), 0, 0)
-          }
-          // write sliced content
-          writeStructToLazyStructWriter(lazyStructWriter, curr, slice.clock - curr.id.clock, (curr.id.clock + curr.length) - (slice.clock + slice.len))
-          nextClock = slice.clock + slice.len
-          firstWrite = true
-        }
-      }
-      reader.next()
-    }
-  }
-  finishLazyStructWriting(lazyStructWriter)
-  // Filter the delete set to only include entries in contentIds.deletes
-  const ds = readIdSet(decoder)
-  const filteredDs = intersectSets(ds, deletes)
-  writeIdSet(encoder, filteredDs)
-  return encoder.toUint8Array()
-}
-
-/**
- * Filter an update (V1 format) to only include content specified by a ContentIds pattern.
- *
- * @param {Uint8Array} update
- * @param {ContentIds} contentIds - Pattern specifying which content to include
- * @return {Uint8Array<ArrayBuffer>}
- */
-export const intersectUpdateWithContentIds = (update, contentIds) =>
-  intersectUpdateWithContentIdsV2(update, contentIds, UpdateDecoderV1, UpdateEncoderV1)

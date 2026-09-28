@@ -502,7 +502,7 @@ test.describe('browser input behavior', () => {
 				{ text: ' tail' }
 			]);
 		await expect(getTextLocators(page).first()).toHaveText('Link! tail');
-		await expect(page.locator('[data-edytor-mark="link"] a')).toHaveText('Link!');
+		await expect(page.locator('a[data-edytor-mark="link"]')).toHaveText('Link!');
 		await expectSelection(page, {
 			startBlockPath: [0],
 			endBlockPath: [0],

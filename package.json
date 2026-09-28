@@ -52,6 +52,10 @@
 		"./crdt/edytor": {
 			"types": "./dist/crdt/index.d.ts",
 			"default": "./dist/crdt/index.js"
+		},
+		"./cloudflare": {
+			"types": "./dist/cloudflare/index.d.ts",
+			"default": "./dist/cloudflare/index.js"
 		}
 	},
 	"engines": {

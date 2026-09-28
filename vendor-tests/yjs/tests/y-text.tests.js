@@ -3,10 +3,20 @@ import * as t from 'lib0-v14/testing'
 import * as prng from 'lib0-v14/prng'
 import * as math from 'lib0-v14/math'
 import * as delta from 'lib0-v14/delta'
-import { createIdMapFromIdSet } from '../../../src/lib/crdt/vendor/yjs/src/utils/ids.js'
-import { AttributionsRenderer, createSnapshotRenderer } from '../../../src/lib/crdt/vendor/yjs/src/utils/Renderer.js'
 
 const { init, compare } = Y
+
+/**
+ * The items of `node`'s list (P8 pruned `Y.getNodeChildren`).
+ *
+ * @param {Y.Node<any>} node
+ * @return {Array<Y.Item>}
+ */
+const nodeItems = node => {
+  const arr = []
+  for (let s = node._start; s !== null; s = s.right) arr.push(s)
+  return arr
+}
 
 /**
  * https://github.com/yjs/yjs/issues/474
@@ -1459,63 +1469,6 @@ export const testTypesAsEmbed = tc => {
 /**
  * @param {t.TestCase} tc
  */
-export const testSnapshot = tc => {
-  const { text0 } = init(tc, { users: 1 })
-  const doc0 = /** @type {Y.Doc} */ (text0.doc)
-  doc0.gc = false
-  text0.applyDelta(delta.create().insert('abcd').done())
-  const snapshot1 = Y.snapshot(doc0)
-  text0.applyDelta(delta.create()
-    .retain(1)
-    .insert('x')
-    .delete(1))
-  const snapshot2 = Y.snapshot(doc0)
-  text0.applyDelta(delta.create()
-    .retain(2)
-    .delete(3)
-    .insert('x')
-    .delete(1)
-  )
-  const state1 = text0.toDelta({ renderer: createSnapshotRenderer(snapshot1) })
-  t.compare(state1, delta.create().insert('abcd').done())
-  const state2 = text0.toDelta({ renderer: createSnapshotRenderer(snapshot2) })
-  t.compare(state2, delta.create().insert('axcd').done())
-  const state2Diff = text0.toDelta({ renderer: createSnapshotRenderer(snapshot1, snapshot2) })
-  t.compare(
-    state2Diff,
-    delta.create()
-      .insert('a')
-      .insert('x', null, { insert: [] })
-      .insert('b', null, { delete: [] })
-      .insert('cd')
-      .done()
-  )
-}
-
-/**
- * @param {t.TestCase} tc
- */
-export const testSnapshotDeleteAfter = tc => {
-  const { text0 } = init(tc, { users: 1 })
-  const doc0 = /** @type {Y.Doc} */ (text0.doc)
-  doc0.gc = false
-  text0.applyDelta(delta.create()
-    .insert('abcd')
-    .done()
-  )
-  const snapshot1 = Y.snapshot(doc0)
-  text0.applyDelta(delta.create()
-    .retain(4)
-    .insert('e')
-    .done()
-  )
-  const state1 = text0.toDelta({ renderer: createSnapshotRenderer(snapshot1) })
-  t.compare(state1, delta.create().insert('abcd').done())
-}
-
-/**
- * @param {t.TestCase} tc
- */
 export const testDeltaCompare = tc => {
   const { text0 } = init(tc, { users: 1 })
   text0.insert(0, 'abc', { bold: true })
@@ -1567,7 +1520,7 @@ export const testFormattingRemoved = tc => {
   text0.insert(0, 'ab', { bold: true })
   text0.delete(0, 2)
   // @ts-ignore
-  t.assert(Y.getNodeChildren(text0).length === 1)
+  t.assert(nodeItems(text0).length === 1)
 }
 
 /**
@@ -1578,7 +1531,7 @@ export const testFormattingRemovedInMidText = tc => {
   text0.insert(0, '1234')
   text0.insert(2, 'ab', { bold: true })
   text0.delete(2, 2)
-  t.assert(Y.getNodeChildren(text0).length === 3)
+  t.assert(nodeItems(text0).length === 3)
 }
 
 /**
@@ -1893,113 +1846,6 @@ export const testDeleteFormatting = _tc => {
   t.compare(text2.toDelta(), expected)
 }
 
-/**
- * @param {t.TestCase} _tc
- */
-export const testAttributedContent = _tc => {
-  const ydoc = new Y.Doc({ gc: false })
-  const ytext = ydoc.get()
-  ytext.insert(0, 'Hello World!')
-  let renderer = /** @type {AbstractRenderer?} */ (null)
-
-  ydoc.on('afterTransaction', tr => {
-    // renderer = new AttributionsRenderer(createIdMapFromIdSet(tr.insertSet, [new Y.Attribution('insertAt', 42), new Y.Attribution('insert', 'kevin')]), createIdMapFromIdSet(tr.deleteSet, [new Y.Attribution('delete', 'kevin')]))
-    renderer = new AttributionsRenderer(Y.createContentMap(createIdMapFromIdSet(tr.insertSet, []), createIdMapFromIdSet(tr.deleteSet, [])))
-  })
-  t.group('insert / delete / format', () => {
-    ytext.applyDelta(delta.create().retain(4, { italic: true }).retain(2).delete(5).insert('attributions').done())
-    const expectedContent = delta.create().insert('Hell', { italic: true }, { format: { italic: [] } }).insert('o ').insert('World', {}, { delete: [] }).insert('attributions', {}, { insert: [] }).insert('!')
-    const attributedContent = ytext.toDelta({ renderer })
-    console.log(attributedContent.toJSON())
-    t.assert(attributedContent.equals(expectedContent))
-  })
-  t.group('unformat', () => {
-    ytext.applyDelta(delta.create().retain(5, { italic: null }))
-    const expectedContent = delta.create().insert('Hell', null, { format: { italic: [] } }).insert('o attributions!')
-    const attributedContent = ytext.toDelta({ renderer })
-    console.log(attributedContent.toJSON())
-    t.assert(attributedContent.equals(expectedContent))
-  })
-}
-
-/**
- * @param {t.TestCase} _tc
- */
-export const testAttributedDiffing = _tc => {
-  const ydocVersion0 = new Y.Doc({ gc: false })
-  ydocVersion0.clientID = 0
-  ydocVersion0.get().insert(0, 'Hello World!')
-  const ydoc = new Y.Doc({ gc: false })
-  ydoc.clientID = 1
-  Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(ydocVersion0))
-  const ytext = ydoc.get()
-  ytext.applyDelta(delta.create().retain(4, { italic: true }).retain(2).delete(5).insert('attributions').done())
-  // this represents to all insertions of ydoc
-  const insertionSet = Y.createInsertSetFromStructStore(ydoc.store, false)
-  const deleteSet = Y.createDeleteSetFromStructStore(ydoc.store)
-  // exclude the changes from `ydocVersion0`
-  const insertionSetDiff = Y.diffIdSet(insertionSet, Y.createInsertSetFromStructStore(ydocVersion0.store, false))
-  const deleteSetDiff = Y.diffIdSet(deleteSet, Y.createDeleteSetFromStructStore(ydocVersion0.store))
-  // assign attributes to the diff
-  const attributedInsertions = createIdMapFromIdSet(insertionSetDiff, [Y.createContentAttribute('insert', 'Bob')])
-  const attributedDeletions = createIdMapFromIdSet(deleteSetDiff, [Y.createContentAttribute('delete', 'Bob')])
-  // now we can define an attribution manager that maps these changes to output. One of the
-  // implementations is the AttributionsRenderer
-  const renderer = new AttributionsRenderer(Y.createContentMap(attributedInsertions, attributedDeletions))
-  // we render the attributed content with the renderer
-  const attributedContent = ytext.toDelta({ renderer })
-  console.log(JSON.stringify(attributedContent.toJSON(), null, 2))
-  const expectedContent = delta.create().insert('Hell', { italic: true }, { format: { italic: ['Bob'] } }).insert('o ').insert('World', {}, { delete: ['Bob'] }).insert('attributions', {}, { insert: ['Bob'] }).insert('!')
-  t.assert(attributedContent.equals(expectedContent))
-  console.log(Y.encodeIdMap(attributedInsertions).length)
-}
-
-/**
- * The `renderedContent` option decouples "what is visible" from the doc's deleted state and from
- * attributions: content in `renderedContent` renders normally (even if deleted → "restore"), alive
- * content omitted from it is hidden, and attributions always render (even outside it).
- *
- * @param {t.TestCase} _tc
- */
-export const testAttributionsRendererRenderedContent = _tc => {
-  const ydoc = new Y.Doc({ gc: false }) // restore requires gc:false (no rehydration of gc'd content)
-  ydoc.clientID = 1
-  const ytext = ydoc.get()
-  ytext.insert(0, 'Hello World!')
-  ytext.delete(5, 6) // delete ' World' (clock 5..10) → the visible doc is 'Hello!'
-  t.compare(ytext.toDelta().toJSON(), delta.create().insert('Hello!').done().toJSON()) // sanity: default hides the deletion
-
-  const emptyAttributions = Y.createContentMap()
-  const aliveSet = Y.createInsertSetFromStructStore(ydoc.store, true) // {0..4, 11}
-
-  t.group('restore: deleted content in renderedContent renders normally', () => {
-    const renderedContent = Y.createInsertSetFromStructStore(ydoc.store, false) // all content incl. deleted
-    const renderer = new AttributionsRenderer(emptyAttributions, { renderedContent })
-    const expected = delta.create().insert('Hello World!')
-    const rendered = ytext.toDelta({ renderer })
-    t.assert(rendered.equals(expected))
-  })
-
-  t.group('hide: alive content omitted from renderedContent renders as nothing', () => {
-    const hidden = Y.createIdSet()
-    hidden.add(1, 1, 4) // hide 'ello' (clock 1..4)
-    const renderer = new AttributionsRenderer(emptyAttributions, { renderedContent: Y.diffIdSet(aliveSet, hidden) })
-    const expected = delta.create().insert('H!')
-    const rendered = ytext.toDelta({ renderer })
-    t.assert(rendered.equals(expected))
-  })
-
-  t.group('attributions always render, even outside renderedContent', () => {
-    const deletedRange = Y.createIdSet()
-    deletedRange.add(1, 5, 6) // ' World'
-    const attributions = Y.createContentMap(Y.createIdMap(), createIdMapFromIdSet(deletedRange, [Y.createContentAttribute('delete', 'bob')]))
-    const renderer = new AttributionsRenderer(attributions, { renderedContent: aliveSet })
-    const expected = delta.create().insert('Hello').insert(' World', {}, { delete: ['bob'] }).insert('!')
-    const rendered = ytext.toDelta({ renderer })
-    t.assert(rendered.equals(expected))
-  })
-}
-
 // RANDOM TESTS
 
 let charCounter = 0
@@ -2261,54 +2107,6 @@ export const testRendererDefaultPerformance = tc => {
   t.measureTime(`toDelta(renderer) performance <executed ${M} times>`, () => {
     for (let i = 0; i < M; i++) {
       ytext.toDelta()
-    }
-  })
-}
-
-/**
- * Benchmark the generic fast path (default / no renderer) against an {@link AttributionsRenderer}
- * configured with *no* attributions (an empty {@link ContentMap}) and a custom `renderedContent`
- * set to the doc's full insert set. Since the insert set also contains the ids of deleted content,
- * the renderer *restores* every deletion — rendering the whole document normally, without
- * attributions — while alive content (fully covered by `renderedContent`) still takes the generic
- * fast path. This measures the renderer's restore path (`hasItem`'s restore branch, `readContent`'s
- * custom-`renderedContent` path, and `contentLength` via `coveredLength`) against the default.
- *
- * @param {t.TestCase} tc
- */
-export const testRendererAttributionsPerformance = tc => {
-  const N = 10000
-  const MaxDeletionLength = 5 // 25% chance of deletion
-  const MaxInsertionLength = 5
-  const ydoc = new Y.Doc({ gc: false }) // keep deleted content so the delete set renders real content
-  const ytext = ydoc.get()
-  for (let i = 0; i < N; i++) {
-    if (prng.bool(tc.prng) && prng.bool(tc.prng) && ytext.length > 0) {
-      const index = prng.int31(tc.prng, 0, ytext.length - 1)
-      const len = prng.int31(tc.prng, 0, math.min(ytext.length - index, MaxDeletionLength))
-      ytext.delete(index, len)
-    } else {
-      const index = prng.int31(tc.prng, 0, ytext.length)
-      const content = prng.utf16String(tc.prng, MaxInsertionLength)
-      ytext.insert(index, content)
-    }
-  }
-  // no attributions; renderedContent = the full insert set, which also covers deleted ids, so every
-  // deletion is restored and rendered normally
-  const insertSet = Y.createInsertSetFromStructStore(ydoc.store, false)
-  // const deleteSet = Y.createDeleteSetFromStructStore(ydoc.store)
-  const renderer = new AttributionsRenderer(Y.createContentMap(), { renderedContent: insertSet })
-  t.info(`number of changes: ${N / 1000}k`)
-  t.info(`length of visible text: ${ytext.length}`)
-  const M = 10
-  t.measureTime(`default renderer (fast path): toDelta() <executed ${M} times>`, () => {
-    for (let i = 0; i < M; i++) {
-      ytext.toDelta()
-    }
-  })
-  t.measureTime(`AttributionsRenderer (no attributions, renderedContent = insert set): toDelta({ renderer }) <executed ${M} times>`, () => {
-    for (let i = 0; i < M; i++) {
-      ytext.toDelta({ renderer })
     }
   })
 }

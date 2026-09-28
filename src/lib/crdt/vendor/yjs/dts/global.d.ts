@@ -50,4 +50,3 @@ declare type AbstractRenderer = import('./utils/renderer-helpers.js').AbstractRe
 declare type Attribution = import('./utils/renderer-helpers.js').Attribution
 declare type AttributedContent<T = any> = import('./utils/renderer-helpers.js').AttributedContent<T>
 
-declare type Snapshot = import('./utils/Snapshot.js').Snapshot

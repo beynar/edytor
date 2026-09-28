@@ -2161,14 +2161,17 @@ export const assertActionEffect = (
 		return;
 	}
 	if (action.kind === 'paste') {
-		// Paste is real: onPaste places edytor fragments as a flow and
+		// Paste is real: onPaste places edytor fragments and external
+		// text/html (imported through the records, P4.1) as a flow, and
 		// plain text through a synthetic insertFromPaste beforeinput.
-		// External text/html has no importer (D-24 G-a): it falls back to
-		// text/plain. An empty payload is a legitimate uniform no-op.
-		const hasPayload = Boolean(action.text) || action.fragment != null;
+		// An empty payload is a legitimate uniform no-op.
+		const hasPayload = Boolean(action.text) || Boolean(action.html) || action.fragment != null;
 		if (selection) {
 			const replaced = selectedText(before, selection);
-			if (hasPayload && (action.fragment != null || action.text !== replaced)) {
+			if (
+				hasPayload &&
+				(Boolean(action.html) || action.fragment != null || action.text !== replaced)
+			) {
 				requireSemanticChange('paste did not change the editable selection');
 			}
 		} else if (nodeSelection && hasPayload) {

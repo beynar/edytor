@@ -736,7 +736,7 @@ test.describe('browser DOM mutation reconciliation', () => {
 						marks: part.marks ?? null
 					})),
 					flippedDomCount: await page.locator('[data-test-browser-flipped-link-bold]').count(),
-					canonicalLinkText: await page.locator('[data-edytor-mark="link"] a').textContent(),
+					canonicalLinkText: await page.locator('a[data-edytor-mark="link"]').textContent(),
 					boldMarkCount: await page.locator('[data-edytor-mark="bold"]').count(),
 					linkMarkCount: await page.locator('[data-edytor-mark="link"]').count()
 				};
@@ -757,7 +757,7 @@ test.describe('browser DOM mutation reconciliation', () => {
 				boldMarkCount: 1,
 				linkMarkCount: 1
 			});
-		await expect(page.locator('[data-edytor-mark="bold"] [data-edytor-mark="link"] a')).toHaveText(
+		await expect(page.locator('[data-edytor-mark="bold"] a[data-edytor-mark="link"]')).toHaveText(
 			'Link'
 		);
 		await expect(getTextLocators(page).first()).toHaveText('Link tail');

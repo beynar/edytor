@@ -1,7 +1,8 @@
 # Vendored Yjs v14 — provenance & patch manifest
 
-This directory vendors the **unmodified** Yjs v14 engine source plus the exact
-local patches applied on top. Do not edit files under `src/` by hand — apply a
+This directory vendors the Yjs v14 engine source plus the exact local patches
+applied on top — an owned fork (arch-v2 decision D1): P8 prunes everything
+edytor does not run on. Do not edit files under `src/` by hand — apply a
 recorded patch and document it here.
 
 ## Pinned source
@@ -28,15 +29,16 @@ recorded patch and document it here.
 ## Layout
 
 ```text
-src/        upstream src/ verbatim, plus patch P1 (import specifier rewrite)
-global.d.ts upstream global.d.ts verbatim, plus patch P1
+src/        upstream src/, plus patches P1 (import specifiers), P4, P5, P7 and P8 (pruning)
+global.d.ts upstream global.d.ts, plus patches P1 and P8
 dts/        generated TypeScript declarations (not upstream source — see below)
 LICENSE     upstream MIT license, verbatim
 UPSTREAM.md this file
 ```
 
 Upstream test suite is vendored **outside** `src/lib` at
-`vendor-tests/yjs/tests/` so it never ships in `dist`.
+`vendor-tests/yjs/tests/` so it never ships in `dist`; since P8 it is pruned to
+the kept surface.
 
 ## Local patches
 
@@ -260,7 +262,7 @@ Correctness oracle: `src/tests/crdt/range-cursor.test.ts` — bounded
 output vs the whole-node `toDelta` reference over every range (marks
 inherited across boundaries, null clears, surrogate/code-unit clipping,
 inline atoms, tombstoned content+markers, attribution via
-`AttributionsRenderer`, remote `applyUpdate`, undo/redo,
+`AttributionsRenderer` (since P8: its test port `ContentMapRenderer`), remote `applyUpdate`, undo/redo,
 open-transaction reads, forward/backward/repeated cursor reuse), read
 purity (no updates/splits/undo/renderer changes; marker perturbation
 invisible to mutations), traversal bounds, and the
@@ -301,7 +303,12 @@ would land on a different item in the same-index run), so that workload
 stays ~1.0 ms/op; the win is position-dependent by design, never a
 regression.
 
-### P6 — side-correct current-state attribution rendering
+### P6 — side-correct current-state attribution rendering (REMOVED by P8)
+
+> P8 deleted `src/utils/Renderer.js`, the file this patch lived in; the text
+> below is kept as history. The side-correct semantics survive as the
+> test-only `ContentMapRenderer` (`src/tests/crdt/harness/content-map-renderer.js`),
+> which the renderer-plumbing tests install.
 
 Reason: `AttributionsRenderer` merged insertion and deletion maps before
 rendering every item. After undo/redo, a deleted original format marker still
@@ -357,7 +364,8 @@ Patch (`src/ynode.js`, both hunks delimited by `// P7 begin` / `// P7 end`):
   with `new ContentAny(content)` (an array of JSON values, one countable unit
   each). Throws on a detached node.
 - `dts/ynode.d.ts`: the two declarations added by hand (same shapes the
-  generator emits for the JSDoc).
+  generator emits for the JSDoc). Since P8 the generator runs clean and emits
+  them from the JSDoc — nothing in `dts/` is hand-edited any more.
 
 Nothing else changes: P7 adds a path and touches no existing function.
 
@@ -384,6 +392,88 @@ Correctness oracle: `src/tests/crdt/p7-gap-end.test.ts`.
 Vendor delta: +27 xloc in `src/` (census `--vendor`), plus 9 declaration lines
 in `dts/`.
 
+### P8 — prune the fork to the surface edytor runs on (arch-v2 P3, decision D1)
+
+Reason: `crdt/engine.js` (P3.1) hands every `bind*` a 23-symbol engine
+object, so consumer bundles already tree-shake the rest — but the shipped
+source, its declarations, the `edytor/crdt` namespace and the upstream suite
+still carried ≈1,400 execution lines edytor never runs: concrete renderers,
+snapshots, update diff/log/obfuscate helpers, delta-position mapping, id-map
+algebra and content-id helpers. D1: an owned fork keeps what it uses.
+
+Kept surface (the rule): every declaration reachable from the engine object
+in `src/lib/crdt/engine.js` plus `mergeUpdates` (server coordinators compact
+with it), the IdMap/ContentMap codec pair (`encodeIdMap`/`decodeIdMap`,
+`writeIdMap`, `encodeContentMap`/`writeContentMap` — the inverse of the
+`readIdMap`/`decodeContentMap` that read legacy `a/` attribution records) and
+`createContentAttribute`. Also kept though unreachable: the duplicate-import
+guard in `index.js`, `AbstractContent` (the content interface) and the XML
+type-ref ids in `structs/Item.js` (wire format). Every surviving upstream
+export stays exported; the renderer INTERFACE stays (`AbstractRenderer`,
+`$renderer`, `useRenderer`, `toDelta({renderer})`, `RangeCursor`'s
+renderer-aware reads, `renderer-helpers.js`), so P4, P5 and P7 are untouched.
+
+Deleted files: `utils/Renderer.js` (and with it P6), `utils/Snapshot.js`,
+`utils/position-helpers.js`, `utils/delta-helpers.js`, `utils/logging.js`.
+
+Deleted declarations (with their JSDoc):
+
+| File | Declarations |
+| ---- | ------------ |
+| `utils/EventHandler.js` | `removeAllEventHandlerListeners` |
+| `utils/ID.js` | `writeID`, `readID` |
+| `utils/RelativePosition.js` | `writeRelativePosition`, `encodeRelativePosition`, `readRelativePosition`, `decodeRelativePosition`, `compareRelativePositions` |
+| `utils/StructStore.js` | `integrityCheck` |
+| `utils/UndoManager.js` | `undoContentIds` |
+| `utils/YEvent.js` | `getPathTo` |
+| `utils/encoding.js` | `readUpdate`, `diffUpdate`, `createDocFromUpdate`, `createDocFromUpdateV2`, `cloneDoc` |
+| `utils/ids.js` | `gcIdSet`, `_createInsertSliceFromStructs`, `createInsertSetFromStructStore`, `encodeIdSet`, `decodeIdSet`, `mergeIdMaps`, `createIdMapFromIdSet`, `createIdSetFromIdMap`, `diffIdMap`, `intersectMaps`, `filterIdMap`, `$idMap` |
+| `utils/meta.js` | `createContentIds`, `createContentIdsFromContentMap`, `createContentIdsFromDoc`, `createContentIdsFromDocDiff`, `excludeContentIds`, `excludeContentMap`, `mergeContentMaps`, `mergeContentIds`, `createContentMapFromContentIds`, `writeContentIds`, `encodeContentIds`, `readContentIds`, `decodeContentIds`, `intersectContentMap`, `intersectContentIds`, `filterContentMap` |
+| `utils/transaction-helpers.js` | `nextID`, `tryGc` |
+| `utils/updates.js` | `logUpdate`, `logUpdateV2`, `encodeStateVectorFromUpdateV2`, `encodeStateVectorFromUpdate`, `createContentIdsFromUpdateV2`, `createContentIdsFromUpdate`, `createObfuscator`, `obfuscateUpdate`, `obfuscateUpdateV2`, `convertUpdateFormatV1ToV2`, `intersectUpdateWithContentIdsV2`, `intersectUpdateWithContentIds` |
+| `ynode.js` | `getNodeChildren`, `$node`, `typeListInsertGenericsAfter`, `lengthExceeded`, `typeListInsertGenerics`, `typeListPushGenerics`, `typeListDelete`, `nodeMapGetSnapshot`, `nodeMapGetAllSnapshot`, `isVisible` |
+
+Hand edits beyond deletion: `YNode#getAttrs()` loses its `snapshot`
+argument; `index.js` drops the deleted names and re-exports `AbstractRenderer`
+and `$renderer` from `utils/renderer-helpers.js` (they came through
+`Renderer.js`); `global.d.ts` drops the `Snapshot` alias; two JSDoc types in
+`utils/RelativePosition.js` point at `./renderer-helpers.js`; imports that
+became unused are removed. `dts/` is regenerated
+(`scripts/regen-crdt-vendor-types.sh`, which now runs tsc clean).
+
+Measured: vendored execution lines (`node scripts/xloc.mjs
+src/lib/crdt/vendor --vendor`) 7,152 → 5,761 (−1,391), 33 → 28 files;
+`edytor/crdt` exports 161 → 85.
+
+Upstream suite (`vendor-tests/yjs/`) rewritten to the kept surface: tests
+whose subject is a deleted subsystem are removed (`snapshot.tests.js`, the
+renderer/diff/suggestion tests of `attribution.tests.js`, the delta-position
+and gc-id-set tests, obfuscate/intersect/state-vector-from-update, id-map
+algebra, `$node`/`$idMap` schemas); tests of kept behaviour stay, with
+test-side ports where a helper went (`testHelper.js` compares encoded delete
+sets instead of snapshots and wraps `diffUpdateV2` for V1; `updates.tests.js`
+ports `createContentIdsFromUpdate`/`encodeStateVectorFromUpdate` over the
+kept `decodeUpdate(V2)`; relative positions resolve in memory; the IdMap
+diffing tests keep their codec roundtrip). 331 → 222 tests (221 upstream
+tests kept, 110 removed, 1 codec roundtrip replacing two).
+
+Correctness oracle:
+- `src/tests/crdt/p8-surface.test.ts` pins `edytor/crdt`'s exports and
+  proves closure: rolldown-bundling the engine object + the keep list keeps
+  every top-level vendored declaration outside the allowlist above.
+- `bench/lib/mk-baseline.sh` now materializes the PRISTINE upstream engine
+  (`@y/y@14.0.0-rc.26`, installed as the `@y/protocols` peer, + P1), and the
+  baseline leg of `src/tests/crdt/hardening/r1-p4-format.test.ts` (patched vs
+  upstream, per-op `toDelta` + byte-identical `encodeStateAsUpdate`) and
+  `bench/lib/interop.mjs` pass against it; the P4/P7 differentials
+  (`r1-p4-format`, `marker-seed`, `p7-gap-end`) stay green.
+
+Re-syncing with upstream: take the new upstream `src/`, apply P1, re-apply
+the P4/P5/P7 hunks (diff this tree against the pinned upstream as in
+"Diffing against upstream"), then run `pnpm exec vitest --config
+./vitest.crdt.config.ts --run src/tests/crdt/p8-surface.test.ts` — its
+closure failure lists exactly the declarations to delete (update `KEPT` for
+deliberate export changes), and regenerate `dts/`.
 ### P9 — pending structs record every stacked dependency (`src/utils/encoding.js`)
 
 (P8 is reserved for the phase-2 P3 fork pruning.)
@@ -447,9 +537,8 @@ Emits `dts/**/*.d.ts` mirroring `src/` layout, plus `dts/global.d.ts` with
 `/// <reference path="./global.d.ts" />` prepended to `dts/index.d.ts`.
 Emitted types reference `lib0-v14/*` — resolved via the real dependency.
 
-Known emit-time diagnostic (also present upstream): one `TS2589` ("type
-instantiation excessively deep") in `utils/delta-helpers.js`; the emitted
-`delta-helpers.d.ts` is still complete.
+Emit runs clean since P8 (the upstream `TS2589` came from the deleted
+`utils/delta-helpers.js`).
 
 ## Diffing against upstream
 
@@ -461,14 +550,15 @@ shasum -a 256 /tmp/yjs.tgz   # expect 4b5ad410…8d7b85
 tar -xzf /tmp/yjs.tgz -C /tmp
 UP=/tmp/yjs-96c96e1fcb1ef6ce866d5264b3f97f7f77b11f64
 
-# engine source: normalize P1 away, then diff — must print nothing
+# engine source: normalize P1 away, then diff — prints exactly the P4–P8 hunks
+# (the pinned tarball's src/ equals node_modules/@y/y@14.0.0-rc.26/src)
 mkdir -p /tmp/yjs-normalized && cp -R src/lib/crdt/vendor/yjs/src /tmp/yjs-normalized/
 find /tmp/yjs-normalized -name '*.js' -exec sed -i '' 's|lib0-v14|lib0|g' {} +
 diff -r "$UP/src" /tmp/yjs-normalized/src
 diff "$UP/global.d.ts" <(sed 's|lib0-v14|lib0|g' src/lib/crdt/vendor/yjs/global.d.ts)
 diff "$UP/LICENSE" src/lib/crdt/vendor/yjs/LICENSE
 
-# tests: reverse P2 specifiers, then diff
+# tests: reverse P2 specifiers, then diff (prints the P8 test pruning)
 cp -R vendor-tests/yjs/tests /tmp/yjs-tests-normalized
 cd /tmp/yjs-tests-normalized && rm -f sync-shim.js && find . -name '*.js' -exec sed -i '' \
   -e "s|from 'lib0-v14/|from 'lib0/|g" -e "s|import('lib0-v14/|import('lib0/|g" \
@@ -483,11 +573,12 @@ diff -r "$UP/tests" /tmp/yjs-tests-normalized
 Runner: `vendor-tests/yjs/upstream.test.js` registers every `testXxx(tc)`
 export as a vitest test with a real `lib0-v14/testing` `TestCase`.
 
-- `pnpm test:crdt` — **325 pass / 6 skipped / 0 failed** (upstream standard
-  tier; the 6 skips are upstream's own `t.skip(!t.production)` extensive-tier
-  gates: 3× y-array, 3× y-map random stress tests).
-- `pnpm test:crdt:extensive` (`PRODUCTION=1`) — **331 pass / 0 skip / 0 fail**
-  (~200 s; includes the 30 000-op randomized stress test).
+- `pnpm test:crdt` — **216 pass / 6 skipped / 0 failed** since P8 (was 325/6
+  before; upstream standard tier; the 6 skips are upstream's own
+  `t.skip(!t.production)` extensive-tier gates: 3× y-array, 3× y-map random
+  stress tests).
+- `pnpm test:crdt:extensive` (`PRODUCTION=1`) — 331 pass before P8 (~200 s;
+  includes the 30 000-op randomized stress test); 222 tests since P8.
 - Reproduce a seed: `YJS_TEST_SEED=<n> pnpm test:crdt`.
 - Vitest runs each test once; upstream's `runTests` repeats `testRepeat*`
   cases for `--repetition-time` ms — that repetition loop is not replicated.

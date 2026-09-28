@@ -58,5 +58,4 @@ export class StructStore {
     };
 }
 export function getStateVector(store: StructStore): Map<number, number>;
-export function integrityCheck(store: StructStore): void;
 import { Skip } from '../structs/Skip.js';

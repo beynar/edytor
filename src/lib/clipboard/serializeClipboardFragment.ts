@@ -13,14 +13,18 @@ export const encodeClipboardJson = (value: unknown) =>
 const escapeHtml = (value: string) =>
 	value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/** A tag form wraps `inner`. */
-const tag = (name: string, inner: string) => `<${name}>${inner}</${name}>`;
+/** A tag form wraps `inner`; attributes left `undefined` are omitted. */
+const tag = (name: string, inner: string, attributes: Record<string, string | undefined> = {}) =>
+	`<${name}${Object.entries(attributes)
+		.map(([key, value]) => (value === undefined ? '' : ` ${key}="${escapeHtml(value)}"`))
+		.join('')}>${inner}</${name}>`;
 
+/** A mark exports the element it renders (P2.7): its `tag` and `attributes`. */
 const textHtml = (part: JSONText, kinds: ExportKinds) => {
 	let html = escapeHtml(part.text).replace(/\n/g, '<br>');
-	for (const [name, { html: form }] of kinds.marks) {
+	for (const [name, mark] of kinds.marks) {
 		const value = part.marks?.[name];
-		if (form && value) html = typeof form === 'string' ? tag(form, html) : form(html, value);
+		if (mark.tag && value) html = tag(mark.tag, html, mark.attributes?.(value));
 	}
 	return html;
 };

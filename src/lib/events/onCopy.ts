@@ -8,34 +8,33 @@ import { observeInternalDragSources } from './onDrop.js';
 import { observeShiftPasteModifier } from './onPaste.js';
 import { isNestedForeignEditableTarget } from './nativeInteractiveControl.js';
 
-export function onCopy(this: Edytor, e: ClipboardEvent) {
-	if (this.selection.state.isVoidEditableElement) {
-		return;
-	}
-
+/**
+ * Copy (and the first half of cut): the guards, the extensions' `hook`, then
+ * the selection's fragment written to the clipboard. Answers whether it wrote.
+ */
+export const copySelection = (edytor: Edytor, e: ClipboardEvent, hook: 'onCopy' | 'onCut') => {
 	// A copy inside a nested `contenteditable` island belongs to the
 	// island — overriding it would clobber the clipboard with the stale
 	// model selection's fragment.
-	if (isNestedForeignEditableTarget(this.node, e.target)) {
-		return;
-	}
-
-	observeInternalDragSources(this.node?.getRootNode());
-	observeShiftPasteModifier(this.node?.getRootNode());
-
 	if (
-		this.dispatcher.intercept(
-			(plugin) => plugin.onCopy?.({ prevent, e }),
-			() => e.preventDefault()
-		)
+		edytor.selection.state.isVoidEditableElement ||
+		isNestedForeignEditableTarget(edytor.node, e.target)
 	)
-		return;
+		return false;
 
-	const fragment = createEdytorClipboardFragment(this);
-	if (!fragment) {
-		return;
-	}
+	observeInternalDragSources(edytor.node?.getRootNode());
+	observeShiftPasteModifier(edytor.node?.getRootNode());
 
+	const claimed = (plugin: Edytor['plugins'][number]) => plugin[hook]?.({ prevent, e });
+	if (edytor.dispatcher.intercept(claimed, () => e.preventDefault())) return false;
+
+	const fragment = createEdytorClipboardFragment(edytor);
+	if (!fragment) return false;
 	e.preventDefault();
-	writeEdytorClipboardData(e.clipboardData, fragment, this);
+	writeEdytorClipboardData(e.clipboardData, fragment, edytor);
+	return true;
+};
+
+export function onCopy(this: Edytor, e: ClipboardEvent) {
+	copySelection(this, e, 'onCopy');
 }

@@ -2,7 +2,6 @@ import * as map from 'lib0-v14/map'
 import * as set from 'lib0-v14/set'
 
 import { diffIdSet, intersectSets, mergeIdSets } from './ids.js'
-import { createAbsolutePositionFromRelativePosition, createRelativePosition } from './RelativePosition.js'
 
 /**
  * @template {DeltaConf} DConf
@@ -157,38 +156,3 @@ export class YEvent {
   }
 }
 
-/**
- * Compute the path from this type to the specified target.
- *
- * @example
- *   // `child` should be accessible via `type.get(path[0]).get(path[1])..`
- *   const path = type.getPathTo(child)
- *   // assuming `type instanceof YArray`
- *   console.log(path) // might look like => [2, 'key1']
- *   child === type.get(path[0]).get(path[1])
- *
- * @param {YNode} parent
- * @param {YNode} child target
- * @param {AbstractRenderer?} renderer
- * @return {Array<string|number>} Path to the target
- *
- * @private
- * @function
- */
-export const getPathTo = (parent, child, renderer = null) => {
-  const path = []
-  const doc = /** @type {Doc} */ (parent.doc)
-  while (child._item !== null && child !== parent) {
-    if (child._item.parentSub !== null) {
-      // parent is map-ish
-      path.unshift(child._item.parentSub)
-    } else {
-      const parent = /** @type {import('../ynode.js').YNode} */ (child._item.parent)
-      // parent is array-ish
-      const apos = /** @type {import('../utils/RelativePosition.js').AbsolutePosition} */ (createAbsolutePositionFromRelativePosition(createRelativePosition(parent, child._item.id), doc, false, renderer))
-      path.unshift(apos.index)
-    }
-    child = /** @type {YNode} */ (child._item.parent)
-  }
-  return path
-}

@@ -1,7 +1,9 @@
 /**
- * The hosted lane's server: bundle `tests/hosted/worker.ts` (the `tests/do`
- * room + a test-only eviction hook) with esbuild and serve it from Miniflare
- * on 127.0.0.1:4195 — ROOM Durable Object on SQLite storage, `/health`.
+ * The hosted lane's server: bundle `tests/hosted/worker.ts` (the shipped
+ * `edytor/cloudflare` room behind the `tests/do` route + a test-only
+ * eviction hook) with esbuild and serve it from Miniflare on 127.0.0.1:4195
+ * — ROOM Durable Object on SQLite storage, `/health`. The outgoing frame
+ * limit is lowered to 16 KiB so a large document's catch-up is chunked.
  * esbuild and Miniflare are the versions `@cloudflare/vitest-plugin` owns.
  *
  * Usage (from the repo root): node tests/hosted/start.mjs
@@ -15,6 +17,7 @@ const { Miniflare } = pluginRequire('miniflare');
 const { build } = pluginRequire('esbuild');
 
 export const HOSTED_PORT = Number(process.env.EDYTOR_HOSTED_PORT ?? 4195);
+export const HOSTED_FRAME_BYTES = 16384;
 
 const bundle = await build({
 	entryPoints: [fileURLToPath(new URL('./worker.ts', import.meta.url))],
@@ -45,9 +48,10 @@ const miniflare = new Miniflare({
 					modules: { 'index.mjs': { type: 'esm', contents: bundle.outputFiles[0].text } }
 				},
 				env: {
-					ROOM: { type: 'durable-object', worker: 'edytor-hosted', exportName: 'Room' }
+					ROOM: { type: 'durable-object', worker: 'edytor-hosted', exportName: 'DocumentRoom' },
+					EDYTOR_MAX_FRAME_BYTES: { type: 'text', value: String(HOSTED_FRAME_BYTES) }
 				},
-				exports: { Room: { type: 'durable-object', storage: 'sqlite' } }
+				exports: { DocumentRoom: { type: 'durable-object', storage: 'sqlite' } }
 			}
 		}
 	]

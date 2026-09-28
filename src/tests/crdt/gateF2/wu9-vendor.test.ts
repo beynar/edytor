@@ -23,6 +23,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
+import { ContentMapRenderer, contentMapOfDoc } from '../harness/content-map-renderer.js';
 import * as Y13 from 'yjs';
 import * as delta from 'lib0-v14/delta';
 
@@ -206,15 +207,12 @@ describe('gateF2/WU9 — seed gates', () => {
 		const ta = buildFragmented(a, 't', 150);
 		const tb = buildFragmented(b, 't', 150);
 		tb._searchMarker = null;
-		// A DiffRenderer over (empty → current) makes every item attributed —
-		// the seed gate (renderer === null) must hold and plantMarker must
-		// skip (its call is gated `renderer === null` in applyDelta).
-		const prevA = new Y.Doc();
-		prevA.clientID = 1;
-		const prevB = new Y.Doc();
-		prevB.clientID = 1;
-		const ra = new Y.DiffRenderer(prevA, a);
-		const rb = new Y.DiffRenderer(prevB, b);
+		// A renderer attributing every existing item (the test port of the
+		// pruned AttributionsRenderer) — the seed gate (renderer === null)
+		// must hold and plantMarker must skip (its call is gated
+		// `renderer === null` in applyDelta).
+		const ra = new ContentMapRenderer(contentMapOfDoc(a, 'x'));
+		const rb = new ContentMapRenderer(contentMapOfDoc(b, 'x'));
 		const ops = [
 			delta.create().retain(100).insert('P'),
 			delta.create().retain(80).delete(10),

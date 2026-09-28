@@ -226,8 +226,8 @@ const COMPOSITION_SAMPLES: ReadonlyArray<{ updates: string[]; commit: string }> 
 
 /**
  * Synthetic clipboard paste payloads. Plain-text and multi-line entries
- * exercise the `insertFromPaste` path; html entries check that external
- * HTML falls back to its `text/plain` (D-24 G-a); the `fragment` entry carries a real
+ * exercise the `insertFromPaste` path; html entries exercise the core HTML
+ * import (P4.1, `clipboard/htmlFlow.ts`); the `fragment` entry carries a real
  * `application/x-edytor-fragment` payload (`{version:1, source:'edytor',
  * kind:'content', ...}` encoded as btoa(encodeURIComponent(json)) — see
  * src/lib/clipboard/fragmentData.ts) to cover `insertEdytorClipboardFragment`.

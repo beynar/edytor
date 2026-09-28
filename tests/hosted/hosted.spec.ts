@@ -1,6 +1,6 @@
 /**
  * Hosted lane: two or three real browser contexts editing ONE document
- * through the room Durable Object (tests/do/room.ts) hosted by Miniflare,
+ * through the shipped room Durable Object (`edytor/cloudflare`) hosted by Miniflare,
  * over real WebSockets — no relay, no BroadcastChannel (each context has
  * its own storage and the websocket provider has no BC leg).
  *
@@ -23,6 +23,9 @@ import {
 	type BrowserContext,
 	type Page
 } from '@playwright/test';
+import * as E from '../../src/lib/crdt/index.js';
+import type { EngineApi } from '../../src/lib/crdt/index.js';
+import * as RawY from '../../src/lib/crdt/vendor/yjs/src/index.js';
 import {
 	gotoEditorRoute,
 	readJsonByTestId,
@@ -155,6 +158,73 @@ const evictRoom = async (room: string, sockets: 'hibernate' | 'close' = 'hiberna
 		method: 'POST'
 	});
 	return (await response.json()) as { evicted: boolean; webSockets?: string; error?: string };
+};
+
+const Y = RawY as unknown as EngineApi;
+const crdt = E.bindCrdt(Y);
+
+/** Frame limit the hosted room sends with (tests/hosted/start.mjs HOSTED_FRAME_BYTES). */
+const FRAME_BYTES = 16384;
+
+/** The message type of a frame (after the generation word), `null` for another generation. */
+const typeOf = (bytes: Uint8Array) => {
+	const decoder = E.createDecoder(bytes);
+	return E.readProtocolVersion(decoder) ? E.readVarUint(decoder) : null;
+};
+
+/** Record the sizes and message types of every websocket frame `page` receives from the room. */
+const recordFrames = (page: Page) => {
+	const frames: Array<{ size: number; type: number | null }> = [];
+	page.on('websocket', (socket) => {
+		if (!socket.url().startsWith(WS_SERVER)) return;
+		socket.on('framereceived', ({ payload }) => {
+			if (typeof payload === 'string') return;
+			const bytes = new Uint8Array(payload);
+			frames.push({ size: bytes.length, type: typeOf(bytes) });
+		});
+	});
+	return frames;
+};
+
+/**
+ * A raw Node socket to the room — the attacker's side of the identity rows.
+ * It speaks frames directly (reassembling chunked ones) on a plain engine doc.
+ */
+const rawPeer = async (room: string, query: string) => {
+	const ws = new WebSocket(`${WS_SERVER}/${room}?${query}`);
+	ws.binaryType = 'arraybuffer';
+	const doc = crdt.createDoc();
+	const chunks = E.createChunkReader();
+	const state = { synced: false, closed: null as { code: number; reason: string } | null };
+	const read = (bytes: Uint8Array) => {
+		const decoder = E.createDecoder(bytes);
+		if (!E.readProtocolVersion(decoder)) return;
+		const type = E.readVarUint(decoder);
+		if (type === E.messageChunk) {
+			const whole = chunks(decoder);
+			if (whole) read(whole);
+			return;
+		}
+		if (type !== E.messageSync) return;
+		const syncType = E.readVarUint(decoder);
+		const payload = E.readVarUint8Array(decoder);
+		if (syncType === E.messageYjsSyncStep1) return;
+		crdt.sync.applyRemote(doc, payload, 'room');
+		if (syncType === E.messageYjsSyncStep2) state.synced = true;
+	};
+	ws.addEventListener('message', (event) => read(new Uint8Array(event.data as ArrayBuffer)));
+	const closed = new Promise<{ code: number; reason: string }>((resolve) =>
+		ws.addEventListener('close', (event) => {
+			state.closed = { code: event.code, reason: event.reason };
+			resolve(state.closed);
+		})
+	);
+	const opened = await new Promise<boolean>((resolve) => {
+		ws.addEventListener('open', () => resolve(true));
+		ws.addEventListener('error', () => resolve(false));
+	});
+	if (opened) ws.send(E.frame(E.messageSync, (e) => crdt.sync.writeSyncStep1(e, doc)));
+	return { ws, doc, state, opened, closed };
 };
 
 const occurrences = (texts: string[], marker: string) => texts.join('\n').split(marker).length - 1;
@@ -422,6 +492,124 @@ test.describe('hosted room Durable Object — real browsers over real WebSockets
 		peers = [d];
 		expect(await readTexts(d.page)).toEqual(['pre>alpha', 'beta+late', 'gamma!']);
 		expect(await readIds(d.page)).toEqual(IDS);
+		for (const issue of issues) issue.assertClean();
+	});
+	test('auth: a socket writing under a browser replica is refused (1008) and never reaches the pages', async ({
+		browser
+	}, testInfo) => {
+		const room = roomName('forged', testInfo.project.name);
+		const baseURL = testInfo.project.use.baseURL;
+		const a = await openPeer(browser, room, baseURL);
+		const b = await openPeer(browser, room, baseURL);
+		peers = [a, b];
+		const issues = peers.map((peer) => trackPageIssues(peer.page));
+		expect(await expectConverged([a.page, b.page])).toEqual(SEED);
+		await insertViaFacade(a.page, 'collab-b1', 5, '+a');
+		expect(await expectConverged([a.page, b.page])).toEqual(['alpha+a', 'beta', 'gamma']);
+		const idA = await clientIdOf(a.page);
+
+		// Mallory syncs the room, then continues A's clock: structs attributed to A.
+		const mallory = await rawPeer(room, 'user=mallory');
+		expect(mallory.opened).toBe(true);
+		await expect.poll(() => mallory.state.synced).toBe(true);
+		mallory.doc.clientID = idA;
+		const forged: Uint8Array[] = [];
+		mallory.doc.on('update', (update: Uint8Array) => forged.push(update));
+		const document = E.attachDocument(mallory.doc, { actor: { id: 'mallory' } });
+		document.facade.insertText('collab-b1', 0, 'FORGED ');
+		document.destroy();
+		mallory.ws.send(
+			E.frame(E.messageSync, (e) =>
+				crdt.sync.writeUpdate(e, Y.mergeUpdates(forged as Uint8Array<ArrayBuffer>[]))
+			)
+		);
+		expect(await mallory.closed).toEqual({ code: 1008, reason: 'refused: replica' });
+		// Nor may Mallory dial as A's replica: refused before the upgrade.
+		const impostor = await rawPeer(room, `user=mallory&replica=${idA}`);
+		expect(impostor.opened).toBe(false);
+
+		// The pages never saw the forged text and keep editing.
+		await a.page.waitForTimeout(300);
+		expect(await expectConverged([a.page, b.page])).toEqual(['alpha+a', 'beta', 'gamma']);
+		await setSelectionByTextIndex(b.page, 2, 'gamma'.length);
+		await b.page.keyboard.type('+b');
+		expect(await expectConverged([a.page, b.page])).toEqual(['alpha+a', 'beta', 'gamma+b']);
+		for (const issue of issues) issue.assertClean();
+	});
+
+	test('store-before-ack: offline edits are unsaved until the room acknowledges them; acknowledged edits survive an eviction', async ({
+		browser
+	}, testInfo) => {
+		const room = roomName('saved', testInfo.project.name);
+		const baseURL = testInfo.project.use.baseURL;
+		const a = await openPeer(browser, room, baseURL);
+		peers = [a];
+		const issues = [trackPageIssues(a.page)];
+		const saved = () =>
+			a.page.evaluate(() => {
+				const provider = (window as any).__EDYTOR_COLLAB__.provider;
+				return { saved: provider.saved as boolean, unsaved: provider.unsaved as number };
+			});
+		await expect.poll(saved).toEqual({ saved: true, unsaved: 0 });
+
+		await setOnline(a.page, false);
+		await expectProvider(a.page, { wsconnected: false });
+		await setSelectionByTextIndex(a.page, 1, 'beta'.length);
+		await a.page.keyboard.type('+off');
+		const offline = await saved();
+		expect(offline.saved).toBe(false);
+		expect(offline.unsaved).toBeGreaterThanOrEqual(1);
+
+		await setOnline(a.page, true);
+		await expectProvider(a.page, { wsconnected: true, synced: true });
+		await expect.poll(saved).toEqual({ saved: true, unsaved: 0 });
+		expect(await readTexts(a.page)).toEqual(['alpha', 'beta+off', 'gamma']);
+
+		// Acknowledged means stored: memory gone, every socket closed, a
+		// fresh context loads the edit from the room's storage alone.
+		expect(await evictRoom(room, 'close')).toEqual({ evicted: true, webSockets: 'close' });
+		await a.context.close();
+		peers = [];
+		const d = await openPeer(browser, room, baseURL);
+		peers = [d];
+		expect(await readTexts(d.page)).toEqual(['alpha', 'beta+off', 'gamma']);
+		for (const issue of issues) issue.assertClean();
+	});
+
+	test('bounded catch-up: a document larger than one frame reaches a live peer and a late joiner in chunks', async ({
+		browser
+	}, testInfo) => {
+		const room = roomName('chunked', testInfo.project.name);
+		const baseURL = testInfo.project.use.baseURL;
+		/** A peer whose room frames are recorded from its first one. */
+		const recordedPeer = async () => {
+			const context = await browser.newContext({ baseURL });
+			const page = await context.newPage();
+			const frames = recordFrames(page);
+			peers.push({ context, page });
+			await gotoEditorRoute(page, peerPath(room), { requireRuntime: true });
+			await expectProvider(page, { wsconnected: true, synced: true });
+			return { page, frames };
+		};
+		const a = await openPeer(browser, room, baseURL);
+		peers = [a];
+		const b = await recordedPeer();
+		const issues = [a.page, b.page].map((page) => trackPageIssues(page));
+		expect(await expectConverged([a.page, b.page])).toEqual(SEED);
+		const beforeLive = b.frames.length;
+		const big = 'lorem ipsum dolor sit amet '.repeat(2000); // 54 000 chars in one update
+		await insertViaFacade(a.page, 'collab-b2', 4, big);
+		const expected = ['alpha', `beta${big}`, 'gamma'];
+		expect(await expectConverged([a.page, b.page], 30_000)).toEqual(expected);
+		const live = b.frames.slice(beforeLive);
+		expect(live.filter((f) => f.type === E.messageChunk).length).toBeGreaterThan(2);
+		expect(Math.max(...b.frames.map((f) => f.size))).toBeLessThanOrEqual(FRAME_BYTES);
+
+		// A late joiner: its catch-up Step2 arrives chunked, applied when complete.
+		const c = await recordedPeer();
+		expect(await expectConverged([a.page, c.page], 30_000)).toEqual(expected);
+		expect(c.frames.filter((f) => f.type === E.messageChunk).length).toBeGreaterThan(2);
+		expect(Math.max(...c.frames.map((f) => f.size))).toBeLessThanOrEqual(FRAME_BYTES);
 		for (const issue of issues) issue.assertClean();
 	});
 });

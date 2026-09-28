@@ -11,30 +11,11 @@ import {
 	type ExportKinds
 } from './serializeClipboardFragment.js';
 
-const decodeJson = <T>(value: string): T => JSON.parse(decodeURIComponent(atob(value))) as T;
-
+/** A plain object (arrays are not records here: fragment validation rejects them). */
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-const isSerializableValue = (value: unknown): boolean => {
-	if (value === null) {
-		return true;
-	}
-
-	if (['string', 'number', 'boolean'].includes(typeof value)) {
-		return true;
-	}
-
-	if (Array.isArray(value)) {
-		return value.every(isSerializableValue);
-	}
-
-	if (isRecord(value)) {
-		return Object.values(value).every(isSerializableValue);
-	}
-
-	return false;
-};
+const decodeJson = <T>(value: string): T => JSON.parse(decodeURIComponent(atob(value))) as T;
 
 const isValidTextPart = (value: unknown) => {
 	if (!isRecord(value) || typeof value.text !== 'string') {
@@ -44,23 +25,15 @@ const isValidTextPart = (value: unknown) => {
 	return value.marks === undefined || isRecord(value.marks);
 };
 
-const isValidInlineBlockPart = (value: unknown) => {
-	if (!isRecord(value) || typeof value.type !== 'string' || value.type.length === 0) {
-		return false;
-	}
-
-	return value.data === undefined || isSerializableValue(value.data);
-};
+// Input is JSON (a parsed payload, or `cloneJsonSafe` on the programmatic path): no value walk.
+const isValidInlineBlockPart = (value: unknown) =>
+	isRecord(value) && typeof value.type === 'string' && value.type.length > 0;
 
 const isValidContentPart = (value: unknown) =>
 	isValidTextPart(value) || isValidInlineBlockPart(value);
 
 const isValidBlock = (value: unknown): boolean => {
 	if (!isRecord(value) || typeof value.type !== 'string' || value.type.length === 0) {
-		return false;
-	}
-
-	if (value.data !== undefined && !isSerializableValue(value.data)) {
 		return false;
 	}
 
@@ -116,44 +89,18 @@ const parseEncodedFragment = (encoded: string) => {
 	}
 };
 
-const extractEmbeddedFragmentWithDom = (html: string) => {
-	if (typeof DOMParser === 'undefined') {
-		return null;
-	}
+/** The HTML-embedded fragment (carries internal paste through clipboards that strip custom MIME types). */
+const EMBEDDED = new RegExp(`${EDYTOR_FRAGMENT_ATTRIBUTE}\\s*=\\s*(['"])([A-Za-z0-9+/=]*)\\1`, 'i');
 
-	const document = new DOMParser().parseFromString(html, 'text/html');
-	const node = document.querySelector(`[${EDYTOR_FRAGMENT_ATTRIBUTE}]`);
-	const encoded = node?.getAttribute(EDYTOR_FRAGMENT_ATTRIBUTE);
-	return encoded ? parseEncodedFragment(encoded) : null;
-};
-
-const extractEmbeddedFragment = (html: string) => {
-	const fragment = extractEmbeddedFragmentWithDom(html);
-	if (fragment) {
-		return fragment;
-	}
-
-	const match = html.match(new RegExp(`${EDYTOR_FRAGMENT_ATTRIBUTE}\\s*=\\s*(['"])(.*?)\\1`, 'i'));
-	return match?.[2] ? parseEncodedFragment(match[2]) : null;
-};
-
+/** The private MIME first, then the fragment embedded in the HTML flavour. */
 export const readEdytorClipboardFragment = (
 	data: Pick<DataTransfer, 'getData'> | null | undefined
 ) => {
-	if (!data) {
-		return null;
-	}
-
-	const direct = data.getData(EDYTOR_FRAGMENT_MIME);
-	if (direct) {
-		const fragment = parseEncodedFragment(direct);
-		if (fragment) {
-			return fragment;
-		}
-	}
-
-	const html = data.getData('text/html');
-	return html ? extractEmbeddedFragment(html) : null;
+	const direct = data?.getData(EDYTOR_FRAGMENT_MIME);
+	const embedded = data?.getData('text/html')?.match(EMBEDDED)?.[2];
+	return (
+		(direct && parseEncodedFragment(direct)) || (embedded && parseEncodedFragment(embedded)) || null
+	);
 };
 
 export const writeEdytorClipboardData = (

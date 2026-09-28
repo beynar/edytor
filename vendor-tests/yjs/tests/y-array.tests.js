@@ -1,4 +1,4 @@
-import { init, compare, applyRandomTests, Doc } from './testHelper.js' // eslint-disable-line
+import { init, compare, applyRandomTests } from './testHelper.js' // eslint-disable-line
 import * as Y from '../../../src/lib/crdt/vendor/yjs/src/index.js'
 import * as t from 'lib0-v14/testing'
 import * as prng from 'lib0-v14/prng'
@@ -455,34 +455,6 @@ export const testIteratingArrayContainingTypes = _tc => {
     t.assert(item.getAttr('value') === cnt++, 'value is correct')
   }
   y.destroy()
-}
-
-/**
- * @param {t.TestCase} _tc
- */
-export const testAttributedContent = _tc => {
-  const ydoc = new Y.Doc({ gc: false })
-  /**
-   * @type {Y.Node<{ children: number }>}
-   */
-  const yarray = ydoc.get()
-  yarray.insert(0, [1, 2])
-  let renderer = /** @type {AbstractRenderer?} */ (null)
-
-  ydoc.on('afterTransaction', tr => {
-    // renderer = new AttributionsRenderer(createIdMapFromIdSet(tr.insertSet, [new Y.Attribution('insertAt', 42), new Y.Attribution('insert', 'kevin')]), createIdMapFromIdSet(tr.deleteSet, [new Y.Attribution('delete', 'kevin')]))
-    renderer = new Y.AttributionsRenderer(Y.createContentMap(Y.createIdMapFromIdSet(tr.insertSet, []), Y.createIdMapFromIdSet(tr.deleteSet, [])))
-  })
-  t.group('insert / delete', () => {
-    ydoc.transact(() => {
-      yarray.delete(0, 1)
-      yarray.insert(1, [42])
-    })
-    const expectedContent = delta.create().insert([1], null, { delete: [] }).insert([2]).insert([42], null, { insert: [] })
-    const attributedContent = yarray.toDelta({ renderer })
-    console.log(attributedContent.toJSON())
-    t.assert(attributedContent.equals(expectedContent))
-  })
 }
 
 let _uniqueNumber = 0

@@ -7,7 +7,6 @@ import { UpdateDecoderV2 } from '../../../src/lib/crdt/vendor/yjs/src/utils/Upda
 import { UpdateEncoderV2 } from '../../../src/lib/crdt/vendor/yjs/src/utils/UpdateEncoder.js'
 import * as encoding from 'lib0-v14/encoding'
 import * as decoding from 'lib0-v14/decoding'
-import * as object from 'lib0-v14/object'
 import * as delta from 'lib0-v14/delta'
 import * as array from 'lib0-v14/array'
 
@@ -26,19 +25,80 @@ import * as array from 'lib0-v14/array'
  */
 
 /**
+ * P8 pruned `createContentIdsFromUpdate(V2)` and `encodeStateVectorFromUpdate(V2)` from the
+ * engine (edytor never calls them). These test-side ports (same algorithms, over the kept
+ * `decodeUpdate(V2)`) keep the merge/diff assertions below.
+ *
+ * @param {function(Uint8Array):{structs:Array<Y.Item|Y.GC|Y.Skip>,ds:Y.IdSet}} decode
+ * @return {function(Uint8Array):{deletes:Y.IdSet,inserts:Y.IdSet}}
+ */
+const contentIdsFromUpdate = decode => update => {
+  const { structs, ds } = decode(update)
+  const inserts = Y.createIdSet()
+  let lastClientId = -1
+  let lastClock = 0
+  let lastLen = 0
+  for (const curr of structs) {
+    if (curr instanceof Y.Skip) continue
+    if (lastClientId === curr.id.client && lastClock + lastLen === curr.id.clock) {
+      lastLen += curr.length
+    } else {
+      if (lastClientId >= 0) inserts.add(lastClientId, lastClock, lastLen)
+      lastClientId = curr.id.client
+      lastClock = curr.id.clock
+      lastLen = curr.length
+    }
+  }
+  if (lastClientId >= 0) inserts.add(lastClientId, lastClock, lastLen)
+  return { inserts, deletes: ds }
+}
+
+/**
+ * @param {function(Uint8Array):{structs:Array<Y.Item|Y.GC|Y.Skip>,ds:Y.IdSet}} decode
+ * @return {function(Uint8Array):Uint8Array<ArrayBuffer>}
+ */
+const stateVectorFromUpdate = decode => update => {
+  /** @type {Array<[number, number]>} */
+  const sv = []
+  let currClient = -1
+  let currClock = 0
+  let stopCounting = false
+  for (const curr of decode(update).structs) {
+    if (currClient !== curr.id.client) {
+      if (currClient !== -1 && currClock !== 0) sv.push([currClient, currClock])
+      currClient = curr.id.client
+      currClock = 0
+      stopCounting = curr.id.clock !== 0 // must start at 0
+    }
+    if (curr instanceof Y.Skip) stopCounting = true // we ignore skips
+    if (!stopCounting) currClock = curr.id.clock + curr.length
+  }
+  if (currClient !== -1 && currClock !== 0) sv.push([currClient, currClock])
+  const encoder = encoding.createEncoder()
+  encoding.writeVarUint(encoder, sv.length)
+  sv.forEach(([client, clock]) => {
+    encoding.writeVarUint(encoder, client)
+    encoding.writeVarUint(encoder, clock)
+  })
+  return encoding.toUint8Array(encoder)
+}
+
+const noLog = () => {}
+
+/**
  * @type {Enc}
  */
 const encV1 = {
   mergeUpdates: Y.mergeUpdates,
   encodeStateAsUpdate: Y.encodeStateAsUpdate,
   applyUpdate: Y.applyUpdate,
-  logUpdate: Y.logUpdate,
-  readUpdateToContentIds: Y.createContentIdsFromUpdate,
-  encodeStateVectorFromUpdate: Y.encodeStateVectorFromUpdate,
+  logUpdate: noLog,
+  readUpdateToContentIds: contentIdsFromUpdate(Y.decodeUpdate),
+  encodeStateVectorFromUpdate: stateVectorFromUpdate(Y.decodeUpdate),
   encodeStateVector: Y.encodeStateVector,
   updateEventName: 'update',
   description: 'V1',
-  diffUpdate: Y.diffUpdate
+  diffUpdate: (update, sv) => Y.diffUpdateV2(update, sv, Y.UpdateDecoderV1, Y.UpdateEncoderV1)
 }
 
 /**
@@ -48,9 +108,9 @@ const encV2 = {
   mergeUpdates: Y.mergeUpdatesV2,
   encodeStateAsUpdate: Y.encodeStateAsUpdateV2,
   applyUpdate: Y.applyUpdateV2,
-  logUpdate: Y.logUpdateV2,
-  readUpdateToContentIds: Y.createContentIdsFromUpdateV2,
-  encodeStateVectorFromUpdate: Y.encodeStateVectorFromUpdateV2,
+  logUpdate: noLog,
+  readUpdateToContentIds: contentIdsFromUpdate(Y.decodeUpdateV2),
+  encodeStateVectorFromUpdate: stateVectorFromUpdate(Y.decodeUpdateV2),
   encodeStateVector: Y.encodeStateVector,
   updateEventName: 'updateV2',
   description: 'V2',
@@ -70,9 +130,9 @@ const encDoc = {
   },
   encodeStateAsUpdate: Y.encodeStateAsUpdateV2,
   applyUpdate: Y.applyUpdateV2,
-  logUpdate: Y.logUpdateV2,
-  readUpdateToContentIds: Y.createContentIdsFromUpdateV2,
-  encodeStateVectorFromUpdate: Y.encodeStateVectorFromUpdateV2,
+  logUpdate: noLog,
+  readUpdateToContentIds: contentIdsFromUpdate(Y.decodeUpdateV2),
+  encodeStateVectorFromUpdate: stateVectorFromUpdate(Y.decodeUpdateV2),
   encodeStateVector: Y.encodeStateVector,
   updateEventName: 'updateV2',
   description: 'Merge via Y.Doc',
@@ -342,120 +402,3 @@ export const testMergePendingUpdates = _tc => {
   t.compareStrings(yText5.toString(), 'nenor')
 }
 
-/**
- * @param {t.TestCase} _tc
- */
-export const testObfuscateUpdates = _tc => {
-  const ydoc = new Y.Doc()
-  const ytext = ydoc.get('text')
-  const ymap = ydoc.get('map')
-  const yarray = ydoc.get('array')
-  // test ytext
-  ytext.applyDelta(delta.create().insert('text', { bold: true }).insert([{ href: 'supersecreturl' }]).done())
-  // test ymap
-  ymap.setAttr('key', 'secret1')
-  ymap.setAttr('key', 'secret2')
-  // test yarray with subtype & subdoc
-  const subtype = new Y.Node('secretnodename')
-  const subdoc = new Y.Doc({ guid: 'secret' })
-  subtype.setAttr('attr', 'val')
-  yarray.insert(0, ['teststring', 42, subtype, subdoc])
-  // obfuscate the content and put it into a new document
-  const obfuscatedUpdate = Y.obfuscateUpdate(Y.encodeStateAsUpdate(ydoc))
-  const odoc = new Y.Doc()
-  Y.applyUpdate(odoc, obfuscatedUpdate)
-  const otext = odoc.get('text')
-  const omap = odoc.get('map')
-  const oarray = odoc.get('array')
-  // test ytext
-  const d = /** @type {any} */ (otext.toDelta().toJSON().children)
-  t.assert(d.length === 2)
-  t.assert(d[0].insert !== 'text' && d[0].insert.length === 4)
-  t.assert(object.length(d[0].format) === 1)
-  t.assert(!object.hasProperty(d[0].format, 'bold'))
-  t.assert(object.length(d[1].insert) === 1)
-  t.assert(object.hasProperty(d[1], 'insert'))
-  // test ymap
-  t.assert(omap.attrSize === 1)
-  t.assert(!omap.hasAttr('key'))
-  // test yarray with subtype & subdoc
-  const result = oarray.toArray()
-  t.assert(result.length === 4)
-  t.assert(result[0] !== 'teststring')
-  t.assert(result[1] !== 42)
-  const osubtype = /** @type {Y.Node} */ (result[2])
-  const osubdoc = result[3]
-  // test subtype
-  t.assert(osubtype.name !== subtype.name)
-  t.assert(object.length(osubtype.getAttrs()) === 1)
-  t.assert(osubtype.getAttr('attr') === undefined)
-  // test subdoc
-  t.assert(osubdoc.guid !== subdoc.guid)
-}
-
-export const testIntersectDoc = () => {
-  const ydoc = new Y.Doc()
-  ydoc.get().setAttr('k', 1)
-  const c1 = Y.createContentIdsFromDoc(ydoc, true)
-  ydoc.get().setAttr('k', 2)
-
-  const v1 = Y.intersectUpdateWithContentIds(Y.encodeStateAsUpdate(ydoc), c1)
-  const y1 = new Y.Doc()
-  Y.applyUpdate(y1, v1)
-  t.assert(ydoc.get().getAttr('k'))
-}
-
-/**
- * Selecting a sparse mid-stream range of content-ids must not drop the selection
- * just because earlier structs of the same client were not selected.
- *
- * @see https://github.com/yjs/yjs/issues/781
- */
-export const testIntersectSparseContentIds = () => {
-  const src = new Y.Doc()
-  src.transact(() => {
-    const m = src.get('m')
-    for (let i = 0; i < 10; i++) m.setAttr(`k${i}`, i) // clocks 0..9, single client
-  })
-  const update = Y.encodeStateAsUpdate(src)
-  const cids = Y.createContentIdsFromUpdate(update)
-  /**
-   * @type {number}
-   */
-  let client = 0
-  cids.inserts.clients.forEach((_r, c) => { client = c })
-
-  // Select ONLY clocks [5, 7) — a mid-stream range.
-  const sel = Y.createIdSet()
-  sel.add(client, 5, 2)
-  const chunk = Y.intersectUpdateWithContentIds(update, {
-    inserts: sel,
-    deletes: Y.createIdSet()
-  })
-  // Each map key is a separate length-1 item, so clocks [5,7) yield two structs.
-  const structs = Y.decodeUpdate(chunk).structs.filter(s => !(s instanceof Y.Skip))
-  t.assert(structs.every(s => s.id.client === client))
-  t.compare(structs.map(s => [s.id.clock, s.length]), [[5, 1], [6, 1]])
-
-  // A selection split across a gap must round-trip both ranges with a Skip in between.
-  const sel2 = Y.createIdSet()
-  sel2.add(client, 1, 2) // clocks 1,2
-  sel2.add(client, 7, 1) // clock 7
-  const chunk2 = Y.intersectUpdateWithContentIds(update, {
-    inserts: sel2,
-    deletes: Y.createIdSet()
-  })
-  const structs2 = Y.decodeUpdate(chunk2).structs.filter(s => !(s instanceof Y.Skip))
-  t.compare(structs2.map(s => [s.id.clock, s.length]), [[1, 1], [2, 1], [7, 1]])
-
-  // A full-coverage selection must round-trip byte-identically to the source update.
-  const selAll = Y.createIdSet()
-  cids.inserts.clients.forEach((ranges, c) => {
-    ranges.getIds().forEach(r => selAll.add(c, r.clock, r.len))
-  })
-  const chunkAll = Y.intersectUpdateWithContentIds(update, {
-    inserts: selAll,
-    deletes: Y.createIdSet()
-  })
-  t.compare(chunkAll, update)
-}

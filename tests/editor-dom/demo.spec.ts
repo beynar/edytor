@@ -198,7 +198,7 @@ test.describe('document demo', () => {
 		await setSelectionByTextIndex(page, textIndex, 0, textIndex, 5);
 		await expect(page.getByTestId('selection-toolbar')).toBeVisible();
 		await page.getByTestId('toolbar-bold').click();
-		await expect(page.locator('[data-edytor-id="page-section-intro"] b')).toHaveCount(1);
+		await expect(page.locator('[data-edytor-id="page-section-intro"] strong')).toHaveCount(1);
 
 		expect(hydrationWarnings).toEqual([]);
 		issues.assertClean();

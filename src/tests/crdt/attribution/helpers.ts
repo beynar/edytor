@@ -3,7 +3,7 @@
  * document surface to the content node's item sequence, the actor
  * dictionary, and the merged read of any legacy `a/` records.
  */
-import { Y } from '../../../lib/crdt/engine.js';
+import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import type {
 	CreateDocumentOptions,
 	DocumentActor,
@@ -113,16 +113,6 @@ export const deleteCovered = (document: EdytorDocument, actor: string): number =
 	return covered;
 };
 
-/** The attributed delta of a block's content — native `toDelta` under the legacy map's renderer. */
-export const attributedDelta = (document: EdytorDocument, blockId: string) => {
-	const map = legacyMap(document);
-	if (map === null) throw new Error('no legacy attribution records on this document');
-	const content = contentNodeOf(document, blockId) as unknown as {
-		toDelta(opts?: unknown): { toJSON(): { children?: unknown[] } };
-	};
-	return content.toDelta({ renderer: Y.createAttributionsRenderer(map) }).toJSON();
-};
-
 /** All record keys on the doc's attribution root matching `prefix` (default `a/`). */
 export const recordKeys = (document: EdytorDocument, prefix = 'a/'): string[] => {
 	const root = document.doc.get('attribution');
@@ -155,11 +145,9 @@ export const legacyMapFor = (
 	actor: string,
 	side: 'inserts' | 'deletes' = 'inserts'
 ): Engine.ContentMap => {
-	const set = Y.createIdSet();
-	for (const it of items) set.add(it.id.client, it.id.clock, it.length);
-	const idmap = Y.createIdMapFromIdSet(set, [
-		Y.createContentAttribute(side === 'inserts' ? 'insert' : 'delete', actor)
-	]);
+	const idmap = Y.createIdMap();
+	const attrs = [Y.createContentAttribute(side === 'inserts' ? 'insert' : 'delete', actor)];
+	for (const it of items) idmap.add(it.id.client, it.id.clock, it.length, attrs);
 	return side === 'inserts'
 		? Y.createContentMap(idmap, Y.createIdMap())
 		: Y.createContentMap(Y.createIdMap(), idmap);

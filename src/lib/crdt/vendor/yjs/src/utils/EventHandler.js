@@ -60,18 +60,6 @@ export const removeEventHandlerListener = (eventHandler, f) => {
 }
 
 /**
- * Removes all event listeners.
- * @template ARG0,ARG1
- * @param {EventHandler<ARG0,ARG1>} eventHandler
- *
- * @private
- * @function
- */
-export const removeAllEventHandlerListeners = eventHandler => {
-  eventHandler.l.length = 0
-}
-
-/**
  * Call all event listeners that were added via
  * {@link EventHandler#addEventListener}.
  *

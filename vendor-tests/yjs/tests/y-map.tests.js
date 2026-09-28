@@ -1,7 +1,5 @@
 import * as Y from '../../../src/lib/crdt/vendor/yjs/src/index.js'
-import { init, compare, applyRandomTests, Doc } from './testHelper.js' // eslint-disable-line
-import { AttributionsRenderer } from '../../../src/lib/crdt/vendor/yjs/src/utils/Renderer.js'
-import { createIdMapFromIdSet } from '../../../src/lib/crdt/vendor/yjs/src/utils/ids.js'
+import { init, compare, applyRandomTests } from './testHelper.js' // eslint-disable-line
 import * as t from 'lib0-v14/testing'
 import * as prng from 'lib0-v14/prng'
 import * as delta from 'lib0-v14/delta'
@@ -544,46 +542,6 @@ export const testYmapEventHasCorrectValueWhenSettingAPrimitiveFromOtherUser = tc
   testConnector.flushAllMessages()
   t.compare(event.value, event.target.get(event.name))
   compare(users)
-}
-
-/**
- * @param {t.TestCase} _tc
- */
-export const testAttributedContent = _tc => {
-  const ydoc = new Y.Doc({ gc: false })
-  const ymap = ydoc.get()
-  let renderer = /** @type {AbstractRenderer?} */ (null)
-
-  ydoc.on('afterTransaction', tr => {
-    // renderer = new AttributionsRenderer(createIdMapFromIdSet(tr.insertSet, [new Y.Attribution('insertAt', 42), new Y.Attribution('insert', 'kevin')]), createIdMapFromIdSet(tr.deleteSet, [new Y.Attribution('delete', 'kevin')]))
-    renderer = new AttributionsRenderer(Y.createContentMap(createIdMapFromIdSet(tr.insertSet, []), createIdMapFromIdSet(tr.deleteSet, [])))
-  })
-  t.group('initial value', () => {
-    ymap.setAttr('test', 42)
-    const expectedContent = { test: delta.$deltaMapChangeJson.expect({ type: 'insert', value: 42, attribution: { insert: [] } }) }
-    const attributedContent = ymap.toDelta({ renderer })
-    console.log(attributedContent.toJSON())
-    t.compare(expectedContent, attributedContent.toJSON().attrs)
-  })
-  t.group('overwrite value', () => {
-    ymap.setAttr('test', 'fourtytwo')
-    const expectedContent = { test: delta.$deltaMapChangeJson.expect({ type: 'insert', value: 'fourtytwo', attribution: { insert: [] } }) }
-    const attributedContent = ymap.toDelta({ renderer })
-    console.log(attributedContent)
-    t.compare(expectedContent, attributedContent.toJSON().attrs)
-  })
-  t.group('delete value', () => {
-    ymap.deleteAttr('test')
-    // Snapshot-mode `toDelta(renderer)` (no `itemsToRender` opt) must not emit
-    // `DeleteAttrOp`. An attribute deleted under attribution is still
-    // observable in the rendered state with its prior value and a `delete`
-    // attribution marker - symmetric with how soft-deleted content children
-    // surface as `InsertOp` with `{ delete: [] }` rather than `DeleteOp`.
-    const expectedContent = { test: delta.$deltaMapChangeJson.expect({ type: 'insert', value: 'fourtytwo', attribution: { delete: [] } }) }
-    const attributedContent = ymap.toDelta({ renderer })
-    console.log(attributedContent.toJSON())
-    t.compare(expectedContent, attributedContent.toJSON().attrs)
-  })
 }
 
 /**

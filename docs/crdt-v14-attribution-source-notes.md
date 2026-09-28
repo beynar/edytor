@@ -2,6 +2,8 @@
 
 Date: 2026-09-21. Research only; no runtime changes.
 
+> **Superseded surface (arch-v2 P3, UPSTREAM.md P8):** the fork no longer ships the concrete renderers (`AttributionsRenderer`, `DiffRenderer`, `SnapshotRenderer`), `diffDocsToDelta`, snapshots or the content-id/id-map helpers this note cites; edytor never called them (U2 retired per-edit attribution). The renderer interface (`AbstractRenderer`, `toDelta({renderer})`, `useRenderer`) and the `ContentMap`/`IdMap` codecs remain. Source links below point at the pre-P8 tree.
+
 ## Conclusion
 
 **Attribution is already a v14 feature. Edytor should connect the existing APIs, not implement another attribution algorithm.** The pinned engine supplies item-range metadata, compact encoding, attributed deltas, renderer-aware events/positions, and document diffs. Edytor must supply the actor identity, retain/transport that metadata, and expose it through its own projected runs. These are integration responsibilities. Accept/reject UI and a new history system are outside this proposal.

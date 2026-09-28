@@ -17,12 +17,15 @@ Svelte consumer (`smoke-svelte.mjs`), and typechecks both postures (below).
 
 ## Worker consumer (`smoke-worker.mjs` + `worker.js`)
 
-`worker.js` is a minimal room Durable Object importing ONLY `edytor/crdt` +
-`edytor/crdt/edytor` (a compact copy of the `tests/do/room.ts` fixture).
-`smoke-worker.mjs` bundles it with esbuild for a Worker target, asserts the
-bundle holds the CRDT dist and no Svelte/DOM view module, then runs it in
-Miniflare (SQLite storage, no port): `/health`, a writer pushes a seeded
-document over a WebSocket upgrade, a second socket syncs it back, and a
+`worker.js` is the documented deployment: it re-exports the packed
+`edytor/cloudflare` `DocumentRoom` as its Durable Object class and routes
+`/rooms/<name>` through `routeDocumentSocket` (a smoke `authorize` reading
+`?user=`). `smoke-worker.mjs` bundles it with esbuild for a Worker target,
+asserts the bundle holds the cloudflare and CRDT dist and no Svelte/DOM view
+module, then runs it in Miniflare (SQLite storage, no port): `/health`, an
+authorize refusal (403), a writer pushes a seeded document and receives the
+room's saved acknowledgement covering it, a second socket syncs it back,
+another user's update under the writer's client id is refused (1008), and a
 frame without this generation's word is refused (1008). esbuild and
 Miniflare come from the repo's `@cloudflare/vitest-plugin` devDependency.
 

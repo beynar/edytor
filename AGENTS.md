@@ -31,7 +31,9 @@ The CRDT engine and the sync layer also run server-side in a Cloudflare Durable 
 - never import `svelte`, `$app/*`, `*.svelte(.ts|.js)` or a view layer (`components`, `selection`, `surface`, `session`, `events`, `block`, `text`, `plugins`, `clipboard`, `collaboration`, `edytor*.ts`) from there;
 - feature-detect browser APIs (IndexedDB, `navigator.locks`, `BroadcastChannel`, page events); no module-level timers.
 
-Three checks enforce it: `pnpm lint` (`WORKER_SAFE` + `edytor/worker-safe-imports` in `eslint.config.js`), `pnpm check:worker` (bundles `src/lib/crdt/index.ts` for a Worker target) and `src/tests/crdt/arch-v2/do-coordinator.test.ts` (a reference coordinator with the browser globals removed and timers forbidden). The coordinator's public surface — `bindCrdt(Y)` (`.sync` readers/writers and `applyRemote`, `.admission`, `.doc`), the frame contract, the message types, the lib0 frame helpers and the instance-free awareness codec (`readAwarenessEntries`/`writeAwarenessEntries`) — is section 8 of `src/lib/crdt/index.ts`. Do not remove anything that test imports. README "Server coordinator (Cloudflare Durable Object)" has the contract.
+Three checks enforce it: `pnpm lint` (`WORKER_SAFE` + `edytor/worker-safe-imports` in `eslint.config.js`), `pnpm check:worker` (bundles `src/lib/crdt/index.ts` and `src/lib/cloudflare/index.ts` for a Worker target) and `src/tests/crdt/arch-v2/do-coordinator.test.ts` (a reference coordinator with the browser globals removed and timers forbidden). The coordinator's public surface — `bindCrdt(Y)` (`.sync` readers/writers and `applyRemote`, `.admission`, `.doc`), the frame contract, the message types (incl. `messageSaved`, `messageChunk`), the chunk codec, the lib0 frame helpers and the instance-free awareness codec (`readAwarenessEntries`/`writeAwarenessEntries`) — is section 8 of `src/lib/crdt/index.ts`. Do not remove anything that test or the room imports. README "Server coordinator (Cloudflare Durable Object)" has the contract.
+
+The shipped room is `edytor/cloudflare` (`src/lib/cloudflare/`): `DocumentRoom` (the Durable Object) and `routeDocumentSocket` (authorize before the upgrade, forward only `X-Edytor-User/Replica/Access`). It is in the Worker-safe set and is the only module allowed to import `cloudflare:workers`; `src/cloudflare-workers.d.ts` (outside `src/lib`, never shipped) types that runtime for `pnpm check`, while `tests/do` checks it against `@cloudflare/workers-types`. Rules it owns: identity bound in the socket attachment; a client id belongs to the first user who writes under it (a socket's `replica` is registered at the upgrade), and new structs under another user's id are refused 1008; read-only sockets get `permission-denied` per write and stay; every sync message is answered with `messageSaved` after the write (the provider's `saved`/`unsaved`); frames above `EDYTOR_MAX_FRAME_BYTES` go out as `messageChunk` sequences; compaction is `mergeUpdates` after `EDYTOR_COMPACT_AFTER` records; every entry point runs under `noTimers`.
 
 ## One owner per fact
 
@@ -106,11 +108,11 @@ Each fact has exactly one writer. When a fix seems to need a second writer, the 
 
 `Plugin = (editor) => definitions & operations` (`src/lib/plugins.ts`). A plugin contributes:
 
-- kind records (`blocks`): `snippet`, `element`, `viewState`, `void`, `island`, `rendersContent`, `defaultChild`, `presets` (slash menu, markdown, "turn into"), `empty`, `html`/`plain` export, `transformText`, `normalizeContent`/`normalizeChildren`, focus/select hooks;
-- mark records (`marks`): `snippet`, `void`, `edge` (`inclusive | exclusive | side-dependent`), `html`, `toolbar`; atom records (`inlineBlocks`);
+- kind records (`blocks`): `snippet`, `element`, `viewState`, `void`, `island`, `rendersContent`, `defaultChild`, `presets` (slash menu, markdown, "turn into"), `empty`, `html`/`plain` export, `parse` (HTML import), `transformText`, `normalizeContent`/`normalizeChildren`, focus/select hooks;
+- mark records (`marks`): `tag` + `attributes(value)` (the one element the core renders and the clipboard exports, P2.7), an optional `snippet` (custom markup inside a core span), `parse` (HTML import), `void`, `edge` (`inclusive | exclusive | side-dependent`), `toolbar`; atom records (`inlineBlocks`);
 - `hotkeys`, `commands`, and hooks (`onBeforeOperation`, `onAfterOperation`, `onBeforeInput`, `onCopy`/`onCut`/`onPaste`, `onDeleteSelectedBlocks`, attach hooks, `placeholder`).
 
-Duplicate definitions and commands: **first wins** (an extension that extends another's definition lists itself first). Extensions read the document through handles and view objects, never Yjs types. Bundled: rich text, mention, code (Prism in manual mode; tokens are its `transformText`), image, block handles, slash menu, toolbar, arrow move. HTML import was retired: external HTML paste and drop fall back to `text/plain`; a consumer imports HTML through `onPaste`.
+Duplicate definitions and commands: **first wins** (an extension that extends another's definition lists itself first). Extensions read the document through handles and view objects, never Yjs types. Bundled: rich text, mention, code (Prism in manual mode; tokens are its `transformText`), image, block handles, slash menu, toolbar, arrow move. HTML import (P4.1, `clipboard/htmlFlow.ts`): external `text/html` paste and drop are parsed by the browser (`DOMParser`) into a flow; the tag tables are the kind and mark records inverted (a preset's export/element tag, a mark's `tag`, each record's `parse` hook first) — never a tag switch. Paste order: internal MIME, embedded fragment, a plugin's `onPaste`, HTML import, `text/plain`.
 
 ## Where to fix what
 
@@ -129,14 +131,17 @@ Lanes (all green except the known reds listed in the ledger):
 ```bash
 pnpm check                   # svelte-check, 0/0
 pnpm lint                    # prettier + eslint (worker-safe boundary, BI2-5 host writers)
-pnpm check:worker            # Worker bundle of src/lib/crdt
+pnpm check:worker            # Worker bundles of src/lib/crdt and src/lib/cloudflare
+pnpm test:do                 # the edytor/cloudflare room in workerd (vitest pool: storage, hibernation, identity, ack, chunks)
+pnpm test:do:typecheck
+pnpm test:hosted --project=chromium|firefox|webkit  # real browsers through the room in Miniflare (ports 4195/4196)
 pnpm exec vitest --run       # unit + model fixtures
 pnpm test:crdt               # engine, facade, sync, migration (restore src/tests/crdt/random/failures/seed-37.json and seed-59.json after it; delete stray seed-*.doc.json)
 pnpm test:dom                # jsdom-mounted editors (truth check after every test)
 pnpm test:typecheck; pnpm test:dom:typecheck
 pnpm exec playwright test --project=chromium|firefox|webkit|mobile-chromium|mobile-webkit|cdp
 pnpm test:dst                # deterministic editor-input corpus, solo + collab, three engines
-tests/packed-consumer/run.sh # packed tarball: node smoke, Svelte build/SSR/mount, strict tsc
+tests/packed-consumer/run.sh # packed tarball: node smoke, edytor/cloudflare Worker in Miniflare, Svelte build/SSR/mount, strict tsc
 pnpm bench:crdt; pnpm census; node scripts/xloc.mjs src/lib --dirs
 ```
 

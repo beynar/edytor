@@ -147,16 +147,18 @@ describe('v14 smoke: relative positions', () => {
 		expect(abs.index).toBe(6);
 	});
 
-	test('encoded relative position resolves after remote sync', () => {
+	test('a serialized relative position follows a later insert before it', () => {
 		const doc = new Y.Doc();
 		const node = new Y.Node('paragraph');
 		doc.get('content').insert(0, [node]);
 		node.insert(0, 'abc');
-		const encoded = Y.encodeRelativePosition(Y.createRelativePositionFromTypeIndex(node, 2));
+		const stored = JSON.stringify(
+			Y.relativePositionToJSON(Y.createRelativePositionFromTypeIndex(node, 2))
+		);
 		// insert before the anchored position → resolved index shifts
 		node.insert(0, 'ZZ');
 		const abs = Y.createAbsolutePositionFromRelativePosition(
-			Y.decodeRelativePosition(encoded),
+			Y.createRelativePositionFromJSON(JSON.parse(stored)),
 			doc
 		);
 		expect(abs.index).toBe(4);

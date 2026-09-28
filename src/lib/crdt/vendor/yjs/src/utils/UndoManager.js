@@ -3,7 +3,7 @@ import * as array from 'lib0-v14/array'
 import * as logging from 'lib0-v14/logging'
 import { ObservableV2 } from 'lib0-v14/observable'
 
-import { mergeIdSets, iterateStructsByIdSet, diffIdSet } from './ids.js'
+import { mergeIdSets, iterateStructsByIdSet } from './ids.js'
 import { Item, followRedone } from '../structs/Item.js'
 
 import { transact } from './Transaction.js'
@@ -385,21 +385,6 @@ export class UndoManager extends ObservableV2 {
     this.doc.off('destroy', this.destroy)
     super.destroy()
   }
-}
-
-/**
- * @experimental
- *
- * This is not guaranteed to work on documents with gc enabled!
- *
- * @param {Doc} ydoc
- * @param {ContentIds} contentIds
- * @param {UndoManagerOptions} opts
- */
-export const undoContentIds = (ydoc, contentIds, opts = {}) => {
-  const um = new UndoManager(ydoc, opts)
-  um.undoStack.push(new StackItem(diffIdSet(contentIds.inserts, contentIds.deletes), diffIdSet(contentIds.deletes, contentIds.inserts)))
-  um.undo()
 }
 
 /**

@@ -140,7 +140,7 @@ test.describe('demo route editing regressions', () => {
 		await page.keyboard.press('Enter');
 		await expect(blocks).toHaveCount(before + 1);
 		await expect(textInBlock(page, 'page-intro')).toHaveText(intro);
-		await expect(page.locator('[data-edytor-id="page-intro"] b')).toHaveText('Select text');
+		await expect(page.locator('[data-edytor-id="page-intro"] strong')).toHaveText('Select text');
 		issues.assertClean();
 	});
 
@@ -157,7 +157,7 @@ test.describe('demo route editing regressions', () => {
 		await expect(textInBlock(page, 'page-intro')).toHaveText(intro);
 		await page.keyboard.press(`${modKey}+Shift+Z`);
 		await expect(textInBlock(page, 'page-intro')).toHaveText(`EU${intro.slice(1)}`);
-		await expect(page.locator('[data-edytor-id="page-intro"] b')).toHaveText('Select text');
+		await expect(page.locator('[data-edytor-id="page-intro"] strong')).toHaveText('Select text');
 		issues.assertClean();
 	});
 
@@ -169,7 +169,7 @@ test.describe('demo route editing regressions', () => {
 		await selectTextInBlock(page, 'page-section-intro', 0, 5);
 		await page.keyboard.press(`${modKey}+B`);
 		await expect(textInBlock(page, 'page-section-intro')).toHaveText(value);
-		await expect(page.locator('[data-edytor-id="page-section-intro"] b')).toHaveText('Start');
+		await expect(page.locator('[data-edytor-id="page-section-intro"] strong')).toHaveText('Start');
 		issues.assertClean();
 	});
 
@@ -197,7 +197,7 @@ test.describe('demo route editing regressions', () => {
 		await page.keyboard.press('Space');
 		await page.keyboard.press('Backspace');
 		await expect(textInBlock(page, 'page-end')).toHaveText('OneTwo ');
-		await expect(page.locator('[data-edytor-id="page-end"] b')).toHaveText('Two');
+		await expect(page.locator('[data-edytor-id="page-end"] strong')).toHaveText('Two');
 		issues.assertClean();
 	});
 
@@ -214,7 +214,7 @@ test.describe('demo route editing regressions', () => {
 		await page.keyboard.press(`${modKey}+Z`);
 		await page.keyboard.press('Tab');
 		await expect(textInBlock(page, 'page-end')).toHaveText('OneTwo  ');
-		await expect(page.locator('[data-edytor-id="page-end"] b')).toHaveText('Two');
+		await expect(page.locator('[data-edytor-id="page-end"] strong')).toHaveText('Two');
 		issues.assertClean();
 	});
 

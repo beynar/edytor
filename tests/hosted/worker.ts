@@ -1,5 +1,7 @@
 /**
- * TEST FIXTURE — the hosted lane's Worker: the `tests/do` room route plus
+ * TEST FIXTURE — the hosted lane's Worker: the shipped room
+ * (`edytor/cloudflare`) behind the `tests/do` route (`routeDocumentSocket`
+ * with its query-string test `authorize`), plus
  * ONE test-only hook, `POST /rooms/<name>/evict`, which evicts the room's
  * Durable Object through `workerd:unsafe` (the same primitive
  * `@cloudflare/vitest-plugin`'s `evictDurableObject` uses). By default the
@@ -9,10 +11,9 @@
  */
 // @ts-ignore -- workerd-internal module, available under the `unsafe_module` flag
 import workerdUnsafe from 'workerd:unsafe';
-import { Room } from '../do/room';
-import { routeRoom, type Env } from '../do/worker';
+import { DocumentRoom, routeRoom, type Env } from '../do/worker';
 
-export { Room };
+export { DocumentRoom };
 
 const EVICT_ROUTE = /^\/rooms\/([^/]+)\/evict\/?$/;
 

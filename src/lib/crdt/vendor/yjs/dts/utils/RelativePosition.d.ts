@@ -76,12 +76,5 @@ export class AbsolutePosition {
 }
 export function createAbsolutePosition(type: YNode<any>, index: number, assoc?: number): AbsolutePosition;
 export function createRelativePosition(type: YNode<any>, item: ID | null, assoc?: number): RelativePosition;
-export function createRelativePositionFromTypeIndex(type: YNode, index: number, assoc?: number, renderer?: import("../utils/Renderer.js").AbstractRenderer | null): RelativePosition;
-export function writeRelativePosition(encoder: encoding.Encoder, rpos: RelativePosition): encoding.Encoder;
-export function encodeRelativePosition(rpos: RelativePosition): Uint8Array;
-export function readRelativePosition(decoder: decoding.Decoder): RelativePosition;
-export function decodeRelativePosition(uint8Array: Uint8Array): RelativePosition;
-export function createAbsolutePositionFromRelativePosition(rpos: RelativePosition, doc: Doc, followUndoneDeletions?: boolean, renderer?: import("../utils/Renderer.js").AbstractRenderer | null): AbsolutePosition | null;
-export function compareRelativePositions(a: RelativePosition | null, b: RelativePosition | null): boolean;
-import * as encoding from 'lib0-v14/encoding';
-import * as decoding from 'lib0-v14/decoding';
+export function createRelativePositionFromTypeIndex(type: YNode, index: number, assoc?: number, renderer?: import("./renderer-helpers.js").AbstractRenderer | null): RelativePosition;
+export function createAbsolutePositionFromRelativePosition(rpos: RelativePosition, doc: Doc, followUndoneDeletions?: boolean, renderer?: import("./renderer-helpers.js").AbstractRenderer | null): AbsolutePosition | null;

@@ -1,5 +1,5 @@
 <script module lang="ts">
-	import type { Plugin, MarkSnippetPayload, BlockSnippetPayload } from '$lib/plugins.js';
+	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { SerializableContent } from '$lib/utils/json.js';
 	import type { HotKey } from '$lib/session/keymap.js';
 	import {
@@ -30,6 +30,39 @@
 	/** A native disclosure: the browser owns `open` (declared view state). */
 	const disclosure = { element: 'details', viewState: ['open'] };
 	const HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+	/** An unsafe scheme drops the href (and its target): an inert anchor still carries the text. */
+	const linkAttributes = (mark: { href?: unknown; target?: string }) => {
+		const href = sanitizeLinkHref(mark?.href) ?? undefined;
+		return { href, target: href && mark.target };
+	};
+	/** A hostile color value (a `;` payload would inject declarations) drops the style. */
+	const styled = (property: string) => (value: unknown) => {
+		const safe = sanitizeCssColorValue(value);
+		return { style: safe ? `${property}: ${safe};` : undefined };
+	};
+	/**
+	 * HTML import (P4.1): a pasted color, sanitized, unless it is the page's
+	 * default (Google Docs writes black text and transparent backgrounds on
+	 * every span: they are no mark, and a black mark is unreadable in dark mode).
+	 */
+	const colorOf = (value: string, none: RegExp) =>
+		none.test(value.replace(/\s+/g, '').toLowerCase())
+			? undefined
+			: (sanitizeCssColorValue(value) ?? undefined);
+	const INHERITED = 'initial|inherit|unset|revert|currentcolor';
+	const NO_COLOR = new RegExp(
+		`^(${INHERITED}|black|windowtext|#000|#000000|rgba?\\(0,0,0(,1)?\\))$`
+	);
+	const NO_HIGHLIGHT = new RegExp(
+		`^(${INHERITED}|transparent|rgba\\(\\d+,\\d+,\\d+,0\\)|white|#fff|#ffffff|rgba?\\(255,255,255(,1)?\\))$`
+	);
+	/** HTML import: a tag alias (unless its own style says otherwise) or a style (Google Docs). */
+	const alias =
+		(tags: RegExp, property: 'fontWeight' | 'fontStyle' | 'textDecoration', value: RegExp) =>
+		(el: HTMLElement) =>
+			(tags.test(el.localName) && !el.style[property]) ||
+			value.test(el.style[property]) ||
+			undefined;
 
 	export const richTextPlugin: Plugin = (edytor) => {
 		const setMarkAndSelect =
@@ -105,17 +138,54 @@
 			},
 			// Toolbar buttons and export wrapping follow this order (first innermost).
 			marks: {
-				bold: { snippet: bold, html: 'strong', toolbar: { label: 'Bold', icon: 'B' } },
-				italic: { snippet: italic, html: 'em', toolbar: { label: 'Italic', icon: 'I' } },
-				underline: { snippet: underline, html: 'u', toolbar: { label: 'Underline', icon: 'U' } },
-				strike: { snippet: strike, html: 's', toolbar: { label: 'Strike', icon: 'S' } },
-				code: { snippet: code, html: 'code', toolbar: { label: 'Code', icon: '</>' } },
+				bold: {
+					tag: 'strong',
+					toolbar: { label: 'Bold', icon: 'B' },
+					parse: alias(/^b$/, 'fontWeight', /^(bold|[6-9]00)$/)
+				},
+				italic: {
+					tag: 'em',
+					toolbar: { label: 'Italic', icon: 'I' },
+					parse: alias(/^i$/, 'fontStyle', /italic/)
+				},
+				underline: {
+					tag: 'u',
+					toolbar: { label: 'Underline', icon: 'U' },
+					parse: alias(/^u$/, 'textDecoration', /underline/)
+				},
+				strike: {
+					tag: 's',
+					toolbar: { label: 'Strike', icon: 'S' },
+					parse: alias(/^(strike|del)$/, 'textDecoration', /line-through/)
+				},
+				code: { tag: 'code', toolbar: { label: 'Code', icon: '</>' } },
 				// FP-8: typing at a link's trailing edge extends it only from inside the anchor.
-				link: { snippet: link, edge: 'side-dependent' },
-				superscript,
-				subscript,
-				color,
-				highlight
+				link: {
+					tag: 'a',
+					attributes: linkAttributes,
+					edge: 'side-dependent',
+					parse: (el) => {
+						const href = el.localName === 'a' && sanitizeLinkHref(el.getAttribute('href'));
+						const target = el.getAttribute('target');
+						return href ? { href, ...(target ? { target } : {}) } : undefined;
+					}
+				},
+				superscript: { tag: 'sup' },
+				subscript: { tag: 'sub' },
+				color: {
+					tag: 'span',
+					attributes: styled('color'),
+					parse: (el) => colorOf(el.style.color, NO_COLOR)
+				},
+				highlight: {
+					tag: 'span',
+					attributes: styled('background-color'),
+					parse: (el) => {
+						const background = el.style.backgroundColor;
+						if (background) return colorOf(background, NO_HIGHLIGHT);
+						return el.localName === 'mark' ? 'yellow' : undefined;
+					}
+				}
 			},
 			blocks: {
 				paragraph: {
@@ -149,6 +219,8 @@
 							markdown: ['### ']
 						}
 					],
+					// HTML import: h1–h3 come from the presets; h4–h6 read as h3.
+					parse: (el) => (/^h[4-6]$/.test(el.localName) ? { level: 'h3' } : undefined),
 					html: (block, content, children) => {
 						const level = String(block.data?.level);
 						const tag = ['h1', 'h2', 'h3'].includes(level) ? level : 'h1';
@@ -180,7 +252,10 @@
 					presets: [
 						{ label: 'Numbered list', icon: '1.', keywords: ['number', 'ol'], markdown: ['1. '] }
 					],
-					html: 'li'
+					html: 'li',
+					// HTML import: an `li` is a bulleted item (the first `li` kind) unless its list is ordered.
+					parse: (el) =>
+						el.localName === 'li' && el.parentElement?.localName === 'ol' ? {} : undefined
 				},
 				'todo-item': {
 					snippet: todoItem,
@@ -245,73 +320,6 @@
 		};
 	};
 </script>
-
-{#snippet bold({ content }: MarkSnippetPayload)}
-	<b>
-		{@render content()}
-	</b>
-{/snippet}
-
-{#snippet italic({ content }: MarkSnippetPayload)}
-	<i>
-		{@render content()}
-	</i>
-{/snippet}
-
-{#snippet underline({ content }: MarkSnippetPayload)}
-	<u>
-		{@render content()}
-	</u>
-{/snippet}
-
-{#snippet code({ content }: MarkSnippetPayload)}
-	<code>
-		{@render content()}
-	</code>
-{/snippet}
-
-{#snippet link({ mark, content }: MarkSnippetPayload<{ href: string; target?: string }>)}
-	{@const href = sanitizeLinkHref(mark.href)}
-	<!-- href omitted when the scheme is unsafe — an inert anchor still
-	     carries the text; a poisoned mark never reaches the DOM. -->
-	<a href={href ?? undefined} target={href ? mark.target : undefined}>
-		{@render content()}
-	</a>
-{/snippet}
-
-{#snippet strike({ content }: MarkSnippetPayload)}
-	<s>
-		{@render content()}
-	</s>
-{/snippet}
-
-{#snippet superscript({ content }: MarkSnippetPayload)}
-	<sup>
-		{@render content()}
-	</sup>
-{/snippet}
-
-{#snippet subscript({ content }: MarkSnippetPayload)}
-	<sub>
-		{@render content()}
-	</sub>
-{/snippet}
-
-{#snippet color({ mark, content }: MarkSnippetPayload<{ color: string }>)}
-	{@const safe = sanitizeCssColorValue(mark)}
-	<!-- style omitted on hostile values — a `;` payload would inject
-	     arbitrary declarations. The mark still wraps content harmlessly. -->
-	<span style={safe ? `color: ${safe}` : undefined}>
-		{@render content()}
-	</span>
-{/snippet}
-
-{#snippet highlight({ mark, content }: MarkSnippetPayload<string>)}
-	{@const safe = sanitizeCssColorValue(mark)}
-	<span style={safe ? `background-color: ${safe}` : undefined}>
-		{@render content()}
-	</span>
-{/snippet}
 
 {#snippet paragraph({ content, children }: BlockSnippetPayload)}
 	<p>

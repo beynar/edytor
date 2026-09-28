@@ -150,7 +150,6 @@ export class UndoManager extends ObservableV2<{
      */
     canRedo(): boolean;
 }
-export function undoContentIds(ydoc: Doc, contentIds: ContentIds, opts?: UndoManagerOptions): void;
 export function redoItem(transaction: Transaction, item: Item, redoitems: Set<Item>, itemsToDelete: IdSet, ignoreRemoteAttributeChanges: boolean, um: import("../utils/UndoManager.js").UndoManager): Item | null;
 export function keepItem(item: Item | null, keep: boolean): void;
 export type UndoManagerOptions = {

@@ -1,10 +1,8 @@
-import * as encoding from 'lib0-v14/encoding'
-import * as decoding from 'lib0-v14/decoding'
 import * as error from 'lib0-v14/error'
 
 import { Item, followRedone, ContentType } from '../structs/Item.js'
 import { findMarker } from '../ynode.js'
-import { writeID, readID, compareIDs, findRootTypeKey, createID } from './ID.js'
+import { findRootTypeKey, createID } from './ID.js'
 import { rendererContentLength } from './renderer-helpers.js'
 
 /**
@@ -147,7 +145,7 @@ export const createRelativePosition = (type, item, assoc) => {
  * @param {YNode} type The base type (e.g. YText or YArray).
  * @param {number} index The absolute position.
  * @param {number} [assoc]
- * @param {import('../utils/Renderer.js').AbstractRenderer?} renderer
+ * @param {import('./renderer-helpers.js').AbstractRenderer?} renderer
  * @return {RelativePosition}
  *
  * @function
@@ -189,76 +187,6 @@ export const createRelativePositionFromTypeIndex = (type, index, assoc = 0, rend
 }
 
 /**
- * @param {encoding.Encoder} encoder
- * @param {RelativePosition} rpos
- *
- * @function
- */
-export const writeRelativePosition = (encoder, rpos) => {
-  const { type, tname, item, assoc } = rpos
-  if (item !== null) {
-    encoding.writeVarUint(encoder, 0)
-    writeID(encoder, item)
-  } else if (tname !== null) {
-    // case 2: found position at the end of the list and type is stored in y.share
-    encoding.writeUint8(encoder, 1)
-    encoding.writeVarString(encoder, tname)
-  } else if (type !== null) {
-    // case 3: found position at the end of the list and type is attached to an item
-    encoding.writeUint8(encoder, 2)
-    writeID(encoder, type)
-  } else {
-    throw error.unexpectedCase()
-  }
-  encoding.writeVarInt(encoder, assoc)
-  return encoder
-}
-
-/**
- * @param {RelativePosition} rpos
- * @return {Uint8Array}
- */
-export const encodeRelativePosition = rpos => {
-  const encoder = encoding.createEncoder()
-  writeRelativePosition(encoder, rpos)
-  return encoding.toUint8Array(encoder)
-}
-
-/**
- * @param {decoding.Decoder} decoder
- * @return {RelativePosition}
- *
- * @function
- */
-export const readRelativePosition = decoder => {
-  let type = null
-  let tname = null
-  let itemID = null
-  switch (decoding.readVarUint(decoder)) {
-    case 0:
-      // case 1: found position somewhere in the linked list
-      itemID = readID(decoder)
-      break
-    case 1:
-      // case 2: found position at the end of the list and type is stored in y.share
-      tname = decoding.readVarString(decoder)
-      break
-    case 2: {
-      // case 3: found position at the end of the list and type is attached to an item
-      type = readID(decoder)
-    }
-  }
-  const assoc = decoding.hasContent(decoder) ? decoding.readVarInt(decoder) : 0
-  return new RelativePosition(type, tname, itemID, assoc)
-}
-
-/**
- * @param {Uint8Array} uint8Array
- * @return {RelativePosition}
- */
-export const decodeRelativePosition = uint8Array => readRelativePosition(decoding.createDecoder(uint8Array))
-
-/**
  * @param {StructStore} store
  * @param {ID} id
  */
@@ -284,7 +212,7 @@ const getItemWithOffset = (store, id) => {
  * @param {RelativePosition} rpos
  * @param {Doc} doc
  * @param {boolean} followUndoneDeletions - whether to follow undone deletions - see https://github.com/yjs/yjs/issues/638
- * @param {import('../utils/Renderer.js').AbstractRenderer?} renderer
+ * @param {import('./renderer-helpers.js').AbstractRenderer?} renderer
  * @return {AbsolutePosition|null}
  *
  * @function
@@ -371,13 +299,3 @@ export const createAbsolutePositionFromRelativePosition = (rpos, doc, followUndo
   return createAbsolutePosition(type, index, rpos.assoc)
 }
 
-/**
- * @param {RelativePosition|null} a
- * @param {RelativePosition|null} b
- * @return {boolean}
- *
- * @function
- */
-export const compareRelativePositions = (a, b) => a === b || (
-  a !== null && b !== null && a.tname === b.tname && compareIDs(a.item, b.item) && compareIDs(a.type, b.type) && a.assoc === b.assoc
-)

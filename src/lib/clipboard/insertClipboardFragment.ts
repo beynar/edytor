@@ -6,7 +6,12 @@ import {
 	type SelectionInsertionTarget,
 	type SelectionReplacementState
 } from '$lib/selection/replaceSelection.js';
-import { jsonBlockToSpec, jsonContentToItems, type JSONText } from '$lib/utils/json.js';
+import {
+	cloneJsonSafe,
+	jsonBlockToSpec,
+	jsonContentToItems,
+	type JSONText
+} from '$lib/utils/json.js';
 import { id } from '$lib/utils.js';
 import { isValidEdytorClipboardFragment } from './fragmentData.js';
 import type { EdytorClipboardFragment } from './types.js';
@@ -49,10 +54,11 @@ export const pasteFlow = (
 	edytor.selection.setAtTextOffset(text, offset);
 };
 
-/** Programmatic insertion: the fragment is untrusted input, validated here. */
+/** Programmatic insertion: the fragment is untrusted input, projected to JSON and validated here. */
 export const insertEdytorClipboardFragment = async (
 	edytor: Edytor,
 	fragment: EdytorClipboardFragment
 ) => {
-	if (isValidEdytorClipboardFragment(fragment)) await pasteFlow(edytor, flowOfFragment(fragment));
+	const json = cloneJsonSafe(fragment);
+	if (isValidEdytorClipboardFragment(json)) await pasteFlow(edytor, flowOfFragment(json));
 };

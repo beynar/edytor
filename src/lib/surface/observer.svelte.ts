@@ -673,7 +673,10 @@ export class SurfaceObserver {
 				const node = nodes[i];
 				const chain = delta.marks
 					.map(([name]) => name)
-					.filter((name) => this.edytor.marks.get(name)?.snippet);
+					.filter((name) => {
+						const mark = this.edytor.marks.get(name);
+						return mark?.snippet || mark?.tag;
+					});
 				if (!chain.length) {
 					if (node.nodeType !== Node.TEXT_NODE) return 'foreign-child';
 					continue;

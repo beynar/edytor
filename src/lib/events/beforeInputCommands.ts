@@ -6,6 +6,7 @@ import {
 import type { Text } from '$lib/text/text.svelte.js';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { flowOfFragment, flowOfText, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
+import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
 import { cloneJson, type JSONText } from '$lib/utils/json.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
 import { id, prevent } from '$lib/utils.js';
@@ -190,7 +191,8 @@ const resolveDropPoint = (edytor: Edytor, snapshot: Attempt) => {
  * fragment round-trips (cross-editor drags), files and html route through the
  * plugin `onPaste` hook (claimed via `prevent`, which throws out of this
  * function and is caught by the beforeinput caller), `text/uri-list` becomes
- * a link when a `link` mark is registered, and `text/plain` inserts as text.
+ * a link when a `link` mark is registered, unclaimed `text/html` is imported
+ * (P4.1), and `text/plain` inserts as text.
  * Unclaimed files insert nothing rather than degrading to file-name text.
  */
 const insertFromDataTransfer = async (edytor: Edytor, snapshot: Attempt) => {
@@ -207,7 +209,8 @@ const insertFromDataTransfer = async (edytor: Edytor, snapshot: Attempt) => {
 	}
 	const flow = fragment
 		? flowOfFragment(fragment)
-		: textFlow(edytor, dataTransfer, snapshot.data ?? '');
+		: (flowOfHtml(edytor, dataTransfer?.getData('text/html')) ??
+			textFlow(edytor, dataTransfer, snapshot.data ?? ''));
 	const at = flow ? resolveDropPoint(edytor, snapshot) : null;
 	if (flow && at !== null) await pasteFlow(edytor, flow, { at, selection: snapshot });
 };

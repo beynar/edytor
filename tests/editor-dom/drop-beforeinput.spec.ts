@@ -134,8 +134,8 @@ test.describe('browser drop behavior', () => {
 		issues.assertClean();
 	});
 
-	// D-24 G-a: no HTML import plugin — a foreign HTML drop places its text/plain.
-	test('places a foreign text/html drop as its text/plain', async ({ page }) => {
+	// P4.1: HTML import is restored (D8 had a foreign HTML drop place its text/plain).
+	test('routes a foreign text/html drop through the html import', async ({ page }) => {
 		const issues = trackPageIssues(page);
 
 		await gotoEditorRoute(page, '/test/dom?scenario=basic&empty=last');
@@ -151,7 +151,9 @@ test.describe('browser drop behavior', () => {
 		});
 
 		expect(result).toEqual({ dragoverPrevented: true, dropPrevented: true });
-		await expect.poll(() => readBlockContent(page, 1)).toEqual([{ text: 'noBoldte' }]);
+		await expect
+			.poll(() => readBlockContent(page, 1))
+			.toEqual([{ text: 'no' }, { text: 'Bold', marks: { bold: true } }, { text: 'te' }]);
 
 		issues.assertClean();
 	});

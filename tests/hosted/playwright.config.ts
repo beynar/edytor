@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 /**
  * `pnpm test:hosted` — real browsers editing one document through the room
- * Durable Object (tests/do/room.ts) hosted by Miniflare on 127.0.0.1:4195,
+ * Durable Object (`edytor/cloudflare`, src/lib/cloudflare) hosted by Miniflare on 127.0.0.1:4195,
  * over real WebSockets. The app is the SvelteKit dev server on 4196 serving
  * the `/test/dom?scenario=collab&collabws=…` route (real `WebsocketProvider`
  * + IndexedDB persistence). Run one engine at a time:

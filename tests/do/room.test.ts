@@ -1,14 +1,15 @@
 /**
- * `pnpm test:do` — the room Durable Object (tests/do/room.ts) in the real
- * Workers runtime: SQLite storage, hibernatable sockets, eviction through
- * `evictDurableObject`. Clients dial the Worker route over real WebSocket
- * upgrades (`SELF.fetch`). Expected values are hand-authored from the edits
- * each test performs.
+ * `pnpm test:do` — the SHIPPED room Durable Object (`edytor/cloudflare`,
+ * `src/lib/cloudflare`) in the real Workers runtime: SQLite storage,
+ * hibernatable sockets, eviction through `evictDurableObject`. Clients dial
+ * the Worker route (`routeDocumentSocket`) over real WebSocket upgrades
+ * (`SELF.fetch`). Expected values are hand-authored from the edits each
+ * test performs.
  */
 import { env } from 'cloudflare:workers';
 import { SELF, evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
-import { noTimers, type Room } from './room';
+import { noTimers, type DocumentRoom as Room } from '../../src/lib/cloudflare/index.js';
 import {
 	E,
 	ORIGIN,
@@ -16,8 +17,10 @@ import {
 	SelfWebSocket,
 	Y,
 	crdt,
+	dialResponse,
 	readFacade,
 	para,
+	presenceFrame,
 	shape,
 	updateFrameWithWord
 } from './client';
@@ -30,7 +33,10 @@ declare global {
 	}
 }
 
-const ROW_BYTES = 4096; // tests/do/vitest.config.ts EDYTOR_MAX_ROW_BYTES
+// tests/do/vitest.config.ts
+const ROW_BYTES = 4096; // EDYTOR_MAX_ROW_BYTES
+const FRAME_BYTES = 16384; // EDYTOR_MAX_FRAME_BYTES
+const COMPACT_AFTER = 40; // EDYTOR_COMPACT_AFTER
 
 const stubOf = (room: string) => env.ROOM.getByName(room);
 
@@ -560,5 +566,386 @@ describe('room Durable Object — the shipped headless client path', () => {
 			).toBe(0)
 		);
 		expect(shape(await serverJSON(room))).toEqual(expected);
+	});
+});
+
+describe('room Durable Object — identity (routeDocumentSocket + the bound socket)', () => {
+	/** Updates `write` produces on a doc holding `source`'s state, written as client `clientID`. */
+	const forged = (
+		source: ReturnType<typeof crdt.createDoc>,
+		clientID: number,
+		write: (document: ReturnType<typeof E.attachDocument>) => void
+	) => {
+		const doc = crdt.createDoc();
+		Y.applyUpdate(doc, Y.encodeStateAsUpdate(source));
+		doc.clientID = clientID;
+		const out: Uint8Array[] = [];
+		doc.on('update', (u: Uint8Array) => out.push(u));
+		const document = E.attachDocument(doc, { actor: { id: 'eve' } });
+		write(document);
+		document.destroy();
+		return Y.mergeUpdates(out as Uint8Array<ArrayBuffer>[]);
+	};
+
+	const attachmentsOf = (room: string) =>
+		runInDurableObject(stubOf(room), (_r: Room, state) =>
+			state.getWebSockets().map((ws) => ws.deserializeAttachment())
+		);
+
+	it('authorizes before the upgrade (403 / 426, no socket) and forwards only the verified identity', async () => {
+		const room = 'identity-route';
+		const denied = await dialResponse(room, { user: 'denied' });
+		expect([denied.status, denied.webSocket]).toEqual([403, null]);
+		const plain = await SELF.fetch(`${ORIGIN}/rooms/${room}`);
+		expect([plain.status, plain.webSocket]).toEqual([426, null]);
+
+		// The client forges the room's identity headers; the router drops them.
+		const response = await dialResponse(
+			room,
+			{ user: 'eve', access: 'read' },
+			{ 'X-Edytor-User': 'ada', 'X-Edytor-Access': 'write', 'X-Edytor-Replica': '7' }
+		);
+		expect(response.status).toBe(101);
+		response.webSocket!.accept();
+		expect(await attachmentsOf(room)).toEqual([
+			{ user: 'eve', replica: null, readOnly: true, clock: null }
+		]);
+		// The room itself refuses a request without the router's headers.
+		const direct = await stubOf(room).fetch(`${ORIGIN}/rooms/${room}`, {
+			headers: { Upgrade: 'websocket' }
+		});
+		expect(direct.status).toBe(401);
+		response.webSocket!.close();
+	});
+
+	it("refuses an update writing structs under another user's client id (1008): never applied, stored or relayed", async () => {
+		const room = 'identity-forged-client';
+		const a = seeded([para('p1', 'hello')], 'ada');
+		const ada = a.doc.clientID;
+		const ca = await RawClient.connect(room, a.doc, { user: 'ada', replica: ada });
+		const cb = await RawClient.connect(room, undefined, { user: 'bob' });
+		await vi.waitFor(() => expect(shape(cb.json()).children[0]?.text).toBe('hello'));
+		await settle();
+		const rowsBefore = await rowsOf(room);
+		const receivedBefore = cb.received.length;
+		const jsonBefore = JSON.stringify(ca.json());
+
+		// Eve continues Ada's clock: new structs attributed to Ada's client id.
+		const eve = await RawClient.bare(room, { user: 'eve' });
+		eve.send(
+			E.frame(E.messageSync, (e) =>
+				crdt.sync.writeUpdate(
+					e,
+					forged(a.doc, ada, (d) => d.facade.insertText('p1', 0, 'FORGED '))
+				)
+			)
+		);
+		await vi.waitFor(() => expect(eve.closed).toEqual({ code: 1008, reason: 'refused: replica' }));
+		// …and cannot bind Ada's replica to her socket either.
+		const claim = await dialResponse(room, { user: 'eve', replica: ada });
+		expect([claim.status, claim.webSocket]).toEqual([403, null]);
+
+		await settle();
+		expect(await rowsOf(room)).toEqual(rowsBefore);
+		expect(cb.received.length).toBe(receivedBefore);
+		expect(JSON.stringify(await serverJSON(room))).toBe(jsonBefore);
+		expect(JSON.stringify(cb.json())).toBe(jsonBefore);
+		expect((await refusalsOf(room)).map((r) => [r.reason, r.detail])).toEqual([
+			['replica', ada],
+			['replica', ada]
+		]);
+		// Ada keeps writing under her id.
+		expect(ca.closed).toBeNull();
+		applied(a.transact(() => a.facade.insertText('p1', 5, '!')));
+		await vi.waitFor(() => expect(shape(cb.json()).children[0].text).toBe('hello!'));
+		ca.close();
+		cb.close();
+		a.destroy();
+	});
+
+	it('a user writes under every client id they own: a reloaded replica replays its offline edits', async () => {
+		const room = 'identity-reload';
+		const first = seeded([para('p1', 'hello')], 'ada');
+		const c1 = await RawClient.connect(room, first.doc, {
+			user: 'ada',
+			replica: first.doc.clientID
+		});
+		await vi.waitFor(async () =>
+			expect(shape(await serverJSON(room)).children[0]?.text).toBe('hello')
+		);
+		c1.close();
+		// Offline, under the first replica's id; then the page reloads: a new
+		// client id holding the old one's unsent edit (IndexedDB's role).
+		applied(first.transact(() => first.facade.insertText('p1', 5, ' offline')));
+		const reloaded = crdt.createDoc();
+		Y.applyUpdate(reloaded, Y.encodeStateAsUpdate(first.doc));
+		expect(reloaded.clientID).not.toBe(first.doc.clientID);
+
+		// Another user holding the same bytes may not deliver them.
+		const mallory = await RawClient.connect(room, reloaded, { user: 'mallory' });
+		await vi.waitFor(() =>
+			expect(mallory.closed).toEqual({ code: 1008, reason: 'refused: replica' })
+		);
+		expect(shape(await serverJSON(room)).children[0].text).toBe('hello');
+
+		const c2 = await RawClient.connect(room, reloaded, { user: 'ada', replica: reloaded.clientID });
+		await vi.waitFor(async () =>
+			expect(shape(await serverJSON(room)).children[0]?.text).toBe('hello offline')
+		);
+		expect(c2.closed).toBeNull();
+		c2.close();
+		first.destroy();
+	});
+
+	it("presence is relayed only for the socket's own replica; a presence-bound replica is its user's", async () => {
+		const room = 'identity-presence';
+		const ca = await RawClient.connect(room, undefined, { user: 'ada', replica: 11 });
+		const cb = await RawClient.connect(room, undefined, { user: 'bob' });
+		ca.setPresence(11, 1, { user: { name: 'Ada' } });
+		await vi.waitFor(() => expect(cb.presence.get(11)?.state).toEqual({ user: { name: 'Ada' } }));
+		// An entry for another replica (a re-sent peer entry, or a spoof) is dropped.
+		ca.setPresence(22, 1, { user: { name: 'Not Ada' } });
+		// Bob's socket binds its replica with its first entry…
+		cb.setPresence(33, 1, { user: { name: 'Bob' } });
+		await vi.waitFor(() => expect(ca.presence.get(33)?.state).toEqual({ user: { name: 'Bob' } }));
+		expect(cb.presence.has(22)).toBe(false);
+		expect((await attachmentsOf(room)).map((a: any) => [a.user, a.replica]).sort()).toEqual([
+			['ada', 11],
+			['bob', 33]
+		]);
+		// …which another user cannot take, by presence or by the dial.
+		const eve = await RawClient.connect(room, undefined, { user: 'eve' });
+		eve.setPresence(33, 9, { user: { name: 'Fake Bob' } });
+		await vi.waitFor(() => expect(eve.closed).toEqual({ code: 1008, reason: 'refused: replica' }));
+		expect(ca.presence.get(33)?.state).toEqual({ user: { name: 'Bob' } });
+		expect((await dialResponse(room, { user: 'eve', replica: 11 })).status).toBe(403);
+		ca.close();
+		cb.close();
+	});
+
+	it('a read-only socket catches up and shares presence; its writes are refused, never stored or relayed', async () => {
+		const room = 'identity-read-only';
+		const a = seeded([para('p1', 'hello')], 'ada');
+		const ca = await RawClient.connect(room, a.doc, { user: 'ada' });
+		await vi.waitFor(async () =>
+			expect(shape(await serverJSON(room)).children[0]?.text).toBe('hello')
+		);
+		const viewer = await RawClient.connect(room, undefined, { user: 'viv', access: 'read' });
+		await vi.waitFor(() => expect(viewer.synced).toBe(true));
+		expect(shape(viewer.json()).children[0].text).toBe('hello');
+		expect(viewer.step1s).toBe(0); // the room never asks a viewer for its state
+		await settle();
+		const rowsBefore = await rowsOf(room);
+		const receivedBefore = ca.received.length;
+
+		const v = E.attachDocument(viewer.doc, { actor: { id: 'viv' } });
+		applied(v.transact(() => v.facade.insertText('p1', 0, 'VIEWER ')));
+		await vi.waitFor(() => expect(viewer.denied.length).toBeGreaterThan(0));
+		await settle();
+		// One denial per write frame (the edit, and the actor record attaching wrote).
+		const refusals = (await refusalsOf(room)).map((r) => r.reason);
+		expect(new Set(refusals)).toEqual(new Set(['read-only']));
+		expect(viewer.denied).toEqual(refusals.map(() => 'read-only'));
+		expect(viewer.closed).toBeNull();
+		expect(await rowsOf(room)).toEqual(rowsBefore);
+		expect(ca.received.length).toBe(receivedBefore);
+		expect(shape(await serverJSON(room)).children[0].text).toBe('hello');
+
+		// Presence is not a write: the viewer's caret reaches Ada.
+		viewer.setPresence(viewer.doc.clientID, 1, { user: { name: 'Viv' } });
+		await vi.waitFor(() =>
+			expect(ca.presence.get(viewer.doc.clientID)?.state).toEqual({ user: { name: 'Viv' } })
+		);
+		// Ada's edits still reach the viewer (its own refused edit stays local).
+		applied(a.transact(() => a.facade.insertText('p1', 5, '!')));
+		await vi.waitFor(() => expect(shape(viewer.json()).children[0].text).toBe('VIEWER hello!'));
+		await vi.waitFor(async () =>
+			expect(shape(await serverJSON(room)).children[0].text).toBe('hello!')
+		);
+		ca.close();
+		viewer.close();
+		v.destroy();
+		a.destroy();
+	});
+});
+
+describe('room Durable Object — store-before-ack', () => {
+	it("saved/unsaved follow the room's acknowledgements; an acknowledged edit is in storage", async () => {
+		const room = 'saved-signal';
+		const a = seeded([para('p1', 'hello')], 'ada');
+		const provider = new crdt.providers.WebsocketProvider(
+			`${ORIGIN.replace('https', 'wss')}/rooms`,
+			room,
+			a.doc,
+			{ awareness: a.awareness, WebSocketPolyfill: SelfWebSocket as unknown as typeof WebSocket }
+		);
+		const events: Array<{ saved: boolean; unsaved: number }> = [];
+		provider.on('saved', (state) => events.push(state));
+		// The seed is held locally and not yet in the room.
+		expect([provider.saved, provider.unsaved]).toEqual([false, 1]);
+		await vi.waitFor(() => expect(provider.saved).toBe(true));
+		expect(events).toEqual([{ saved: true, unsaved: 0 }]);
+		expect(shape(await serverJSON(room)).children[0].text).toBe('hello');
+
+		// Offline: each local update is unsaved.
+		provider.disconnect();
+		applied(a.transact(() => a.facade.insertText('p1', 5, ' one')));
+		applied(a.transact(() => a.facade.insertText('p1', 9, ' two')));
+		applied(a.transact(() => a.facade.insertText('p1', 13, ' three')));
+		expect([provider.saved, provider.unsaved]).toEqual([false, 3]);
+		expect(events.slice(1)).toEqual([
+			{ saved: false, unsaved: 1 },
+			{ saved: false, unsaved: 2 },
+			{ saved: false, unsaved: 3 }
+		]);
+		await settle();
+		expect(shape(await serverJSON(room)).children[0].text).toBe('hello');
+
+		provider.connect();
+		await vi.waitFor(() => expect(provider.saved).toBe(true));
+		expect(events.at(-1)).toEqual({ saved: true, unsaved: 0 });
+		// What the room acknowledged is in its rows: a restore from storage
+		// alone (memory gone, sockets kept) holds it.
+		await evictDurableObject(stubOf(room));
+		expect(shape(await serverJSON(room)).children[0].text).toBe('hello one two three');
+		expect(await runInDurableObject(stubOf(room), (r: Room) => r.origin.kind)).toBe('restored');
+
+		// Online: an edit is unsaved until its acknowledgement arrives.
+		applied(a.transact(() => a.facade.insertText('p1', 0, '> ')));
+		expect(provider.unsaved).toBe(1);
+		await vi.waitFor(() => expect(provider.saved).toBe(true));
+		provider.destroy();
+		a.destroy();
+	});
+
+	it('every sync message is answered with the room state vector, after the write', async () => {
+		const room = 'saved-raw';
+		const a = seeded([para('p1', 'hello')], 'ada');
+		const ca = await RawClient.connect(room, a.doc);
+		await vi.waitFor(() => expect(ca.acks.length).toBeGreaterThanOrEqual(2));
+		applied(a.transact(() => a.facade.insertText('p1', 5, '?')));
+		const own = a.doc.clientID;
+		const clock = Y.decodeStateVector(Y.encodeStateVector(a.doc)).get(own)!;
+		await vi.waitFor(() => expect(ca.acks.at(-1)?.get(own)).toBe(clock));
+		// The stored records alone, rebuilt into a fresh doc (P8 pruned `createDocFromUpdate`).
+		const stored = await runInDurableObject(stubOf(room), (r: Room) => {
+			const rebuilt = crdt.createDoc();
+			Y.applyUpdate(
+				rebuilt,
+				Y.mergeUpdates(
+					r
+						.records()
+						.slice(1)
+						.map((x) => x.bytes)
+				)
+			);
+			return Y.decodeStateVector(Y.encodeStateVector(rebuilt)).get(own);
+		});
+		expect(stored).toBe(clock);
+		ca.close();
+		a.destroy();
+	});
+});
+
+describe('room Durable Object — bounded catch-up', () => {
+	const big = (n: number) => 'lorem ipsum dolor sit amet '.repeat(n);
+
+	it('the chunk codec: small frames pass whole; a sequence reads only when complete', () => {
+		const small = E.frame(E.messageSync, (e) => crdt.sync.writeUpdate(e, new Uint8Array(10)));
+		expect(E.chunkFrame(small, 64)).toEqual([small]);
+		const whole = E.frame(E.messageSync, (e) =>
+			crdt.sync.writeUpdate(e, new Uint8Array(500).fill(7))
+		);
+		const pieces = E.chunkFrame(whole, 64);
+		expect(pieces.length).toBeGreaterThan(2);
+		expect(pieces.every((p) => p.length <= 64)).toBe(true);
+		const body = (piece: Uint8Array) => {
+			const decoder = E.createDecoder(piece);
+			expect(E.readProtocolVersion(decoder)).toBe(true);
+			expect(E.readVarUint(decoder)).toBe(E.messageChunk);
+			return decoder;
+		};
+		const read = E.createChunkReader();
+		const out = pieces.map((piece) => read(body(piece)));
+		expect(out.slice(0, -1).every((x) => x === null)).toBe(true);
+		expect(out.at(-1)).toEqual(whole);
+		// Truncated (end before every part) and orphaned parts throw.
+		const truncated = E.createChunkReader();
+		truncated(body(pieces[0]));
+		truncated(body(pieces[1]));
+		expect(() => truncated(body(pieces.at(-1)!))).toThrow('incomplete chunked frame');
+		expect(() => E.createChunkReader()(body(pieces[1]))).toThrow('without a start');
+	});
+
+	it('a document larger than one frame reaches late joiners as chunks, applied once complete', async () => {
+		const room = 'catch-up-chunked';
+		const a = seeded([para('p1', 'head'), para('p2', big(3000))], 'ada'); // ~81 KB
+		const ca = await RawClient.connect(room, a.doc);
+		await vi.waitFor(async () =>
+			expect(shape(await serverJSON(room)).children[0]?.text).toBe('head')
+		);
+
+		// A raw late joiner: every frame within the limit, the Step2 reassembled.
+		const cb = await RawClient.connect(room);
+		await vi.waitFor(() => expect(cb.synced).toBe(true));
+		expect(cb.received.every((frame) => frame.length <= FRAME_BYTES)).toBe(true);
+		expect(cb.reassembled.length).toBeGreaterThanOrEqual(1);
+		expect(cb.reassembled[0].length).toBeGreaterThan(FRAME_BYTES);
+		expect(cb.json()).toEqual(a.facade.toJSON());
+
+		// The shipped provider path catches up the same way.
+		const b = E.createDocument({ actor: { id: 'bob' }, history: { captureTimeout: 0 } });
+		const release = b.attachSync(
+			crdt.providers.createWebsocketSync({
+				serverUrl: `${ORIGIN.replace('https', 'wss')}/rooms`,
+				roomName: room,
+				WebSocketPolyfill: SelfWebSocket as unknown as typeof WebSocket
+			})
+		);
+		await vi.waitFor(() => expect(b.ready).toBe(true));
+		expect(b.facade.toJSON()).toEqual(a.facade.toJSON());
+
+		// A live update larger than one frame is broadcast in chunks too.
+		const before = cb.reassembled.length;
+		applied(a.transact(() => a.facade.insertText('p1', 4, big(1500))));
+		await vi.waitFor(() => {
+			expect(cb.json()).toEqual(a.facade.toJSON());
+			expect(b.facade.toJSON()).toEqual(a.facade.toJSON());
+		});
+		expect(cb.reassembled.length).toBeGreaterThan(before);
+		expect(cb.received.every((frame) => frame.length <= FRAME_BYTES)).toBe(true);
+		release?.();
+		b.destroy();
+		ca.close();
+		cb.close();
+		a.destroy();
+	});
+});
+
+describe('room Durable Object — automatic compaction', () => {
+	it(`after ${COMPACT_AFTER} update records the rows are merged into one snapshot; a restore rebuilds the doc`, async () => {
+		const room = 'compaction-auto';
+		const a = seeded([para('p1', '')], 'ada');
+		const ca = await RawClient.connect(room, a.doc);
+		await vi.waitFor(() => expect(ca.synced).toBe(true));
+		for (let i = 0; i < COMPACT_AFTER + 5; i++) {
+			applied(a.transact(() => a.facade.insertText('p1', i, String(i % 10))));
+		}
+		const text = Array.from({ length: COMPACT_AFTER + 5 }, (_, i) => String(i % 10)).join('');
+		await vi.waitFor(async () =>
+			expect(shape(await serverJSON(room)).children[0]?.text).toBe(text)
+		);
+		const rows = await rowsOf(room);
+		expect(rows[0]).toMatchObject({ kind: 'generation' });
+		expect(rows.filter((r) => r.kind === 'snapshot').length).toBeGreaterThanOrEqual(1);
+		expect(rows.filter((r) => r.kind === 'update').length).toBeLessThan(COMPACT_AFTER);
+		ca.close();
+		await settle();
+		await evictDurableObject(stubOf(room));
+		const cc = await RawClient.connect(room);
+		await vi.waitFor(() => expect(cc.synced).toBe(true));
+		expect(cc.json()).toEqual(a.facade.toJSON());
+		cc.close();
+		a.destroy();
 	});
 });

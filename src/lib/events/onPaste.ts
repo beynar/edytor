@@ -2,6 +2,7 @@ import type { Edytor } from '../edytor.svelte.js';
 import { prevent } from '$lib/utils.js';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { flowOfFragment, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
+import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
 import { Block } from '$lib/block/block.svelte.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
@@ -128,6 +129,13 @@ export async function onPaste(this: Edytor, e: ClipboardEvent) {
 		if ((e.clipboardData?.files?.length ?? 0) > 0) {
 			e.preventDefault();
 			return;
+		}
+
+		// External HTML (P4.1); HTML that carries nothing falls through to text/plain.
+		const flow = flowOfHtml(this, e.clipboardData?.getData('text/html'));
+		if (flow) {
+			e.preventDefault();
+			return this.dispatcher.run('insertFromPaste', () => pasteFlow(this, flow));
 		}
 	}
 

@@ -240,6 +240,8 @@ const provider = new crdt.providers.IndexeddbPersistence('document-id', doc, { a
 await provider.whenSynced;
 ```
 
+`edytor/crdt` is edytor's owned fork of the engine, pruned to what edytor runs on (`UPSTREAM.md` patch P8): documents, nodes, transactions, undo, the V1/V2 update codecs (`applyUpdate`, `encodeStateAsUpdate`, `mergeUpdates`, `decodeUpdate`, state vectors), relative positions (JSON form), id sets/maps with their codecs, and `RangeCursor`. The concrete renderers, snapshots and the update diff/log/obfuscate helpers are not shipped (see "Migrating from 0.0.11"); the renderer interface (`AbstractRenderer`, `useRenderer`, `toDelta({renderer})`) stays for your own renderer. The document factories bind the 23-symbol engine object in `src/lib/crdt/engine.js`, so an app that never imports `edytor/crdt` bundles only what those symbols reach; `bindCrdt(Y)` with the whole namespace keeps the whole (pruned) engine.
+
 Upgrading a deployment that has v13 (`yjs`) persisted documents? Read [`docs/crdt-v14-migration.md`](docs/crdt-v14-migration.md) — it's a one-way, non-destructive import with an explicit operator recipe and rollback.
 
 Local IndexedDB persistence:
@@ -284,60 +286,90 @@ Remote cursor and expanded selection overlays render from awareness `selection` 
 
 Unsupported collaboration surfaces:
 
-- Edytor does not provide authentication.
-- Edytor does not provide document permissions or authorization rules.
-- Edytor does not provide hosted websocket infrastructure.
-- Edytor does not guarantee hosted persistence durability; IndexedDB persistence is local browser storage.
+- Edytor does not provide authentication or permission rules: the `edytor/cloudflare` room calls your `authorize` and enforces what it returns (user, replica, read-only).
+- Edytor ships a Durable Object room (below), not hosted infrastructure: you deploy it on your own Cloudflare account.
+- IndexedDB persistence is local browser storage; the room's durability is the Durable Object's SQLite storage.
 
 ### Server coordinator (Cloudflare Durable Object)
 
-The CRDT engine and its sync layer run server-side too: a Cloudflare Durable Object (one per document) is the central coordinator every client's `createWebsocketSync` dials. That layer is **Worker-safe** — no Svelte, no browser globals — and this is enforced by `pnpm lint` (an import-boundary rule on `src/lib/crdt/**`), `pnpm check:worker` (bundles the entry for a Worker target and fails on any Svelte/view module) and the coordinator test [`src/tests/crdt/arch-v2/do-coordinator.test.ts`](src/tests/crdt/arch-v2/do-coordinator.test.ts), a runnable reference coordinator.
+Edytor ships the server room: `edytor/cloudflare` exports `DocumentRoom`, a Durable Object that coordinates one document (deploy one object per document), and `routeDocumentSocket`, the Worker-side door that authorizes a client before its WebSocket upgrade. Clients are the ordinary `createWebsocketSync` / `WebsocketProvider`. The module is Worker-only (it imports `cloudflare:workers`) and is built on the Worker-safe CRDT entry: `pnpm lint` (an import-boundary rule on `src/lib/crdt/**` and `src/lib/cloudflare/**`) and `pnpm check:worker` (bundles both entries for a Worker target) keep Svelte and the view layers out of it.
 
-**Import only**
+**1. The Worker.** Export the class and route sockets through `routeDocumentSocket(request, namespace, documentId, authorize)`:
 
-- `edytor/crdt` — the vendored v14 engine (`import * as Y from 'edytor/crdt'`);
-- `edytor/crdt/edytor`, which gives you:
-  - `bindCrdt(Y)` (`.createDoc`, `.sync`, `.admission`, `.doc`);
-  - the frame contract: `GENERATION`, `generationWord`, `frame`, `readProtocolVersion`, `GENERATION_RECORD` and `GenerationMismatchError`;
-  - the message types: `messageSync`, `messageAwareness`, `messageAuth`, `messageQueryAwareness`, and the sync subtypes `messageYjsSyncStep1`, `messageYjsSyncStep2` and `messageYjsUpdate`;
-  - the wire read helpers: `createDecoder`, `readVarUint`, `readVarUint8Array`, and `writeVarUint8Array` for a `frame` body;
-  - the instance-free awareness codec: `readAwarenessEntries` and `writeAwarenessEntries`.
+```ts
+// src/worker.ts
+import { DocumentRoom, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
 
-A coordinator needs **no direct lib0 dependency** for framing.
+export { DocumentRoom };
 
-Never import the package root `edytor` (it re-exports the Svelte components) or any `.svelte`/view module.
+type Env = { ROOMS: DurableObjectNamespace<DocumentRoom> };
 
-**Read the room with `bindCrdt(Y).doc.create(doc).toJSON()`, then `.dispose()`.** This writes nothing. Never call `attachDocument` (or `createDocument`/`loadDocument`) on the server's doc. Doing so makes the server an actor, so it writes its client id into the replicated attribution dictionary, and every client receives that write.
+export default {
+	async fetch(request: Request, env: Env): Promise<Response> {
+		const match = /^\/rooms\/([^/]+)$/.exec(new URL(request.url).pathname);
+		if (!match) return new Response('not found', { status: 404 });
+		return routeDocumentSocket(
+			request,
+			env.ROOMS,
+			decodeURIComponent(match[1]),
+			async (request, documentId) => {
+				const session = await verifySession(request); // your authentication
+				const access = session && (await accessTo(session.userId, documentId)); // your permissions
+				if (!access) return null; // → 403, no socket
+				return {
+					userId: session.userId,
+					replica: requestedReplica(request), // the client's doc.clientID, from ?replica=
+					readOnly: access === 'view'
+				};
+			}
+		);
+	}
+} satisfies ExportedHandler<Env>;
+```
 
-**Frame contract.** Every frame is `varuint GENERATION | varuint messageType | payload`, with `GENERATION = generationWord(SCHEMA_VERSION) = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION` (14003 at schema 3). Build one with `frame(type, (encoder) => …)`, for example `frame(messageSync, (e) => crdt.sync.writeUpdate(e, update))`. Read one with `createDecoder(bytes)`, then `readProtocolVersion`, then `readVarUint` for the type and subtype, then `readVarUint8Array` for the payload. The message types are:
+**2. The binding** (`wrangler.jsonc`). The room stores in SQLite, so it must be declared a SQLite class:
 
-- `0` sync, with subtypes `0` Step1 (state vector), `1` Step2 (update) and `2` Update;
-- `1` awareness (the y-protocols v1 awareness update);
-- `2` auth (server → client permission denied);
-- `3` query awareness.
+```jsonc
+{
+	"main": "src/worker.ts",
+	"compatibility_date": "2026-09-26",
+	"durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "DocumentRoom" }] },
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["DocumentRoom"] }]
+}
+```
 
-A v13 peer's first word is its message type, so it never matches.
+**3. The client.** Dial `wss://<host>/rooms` with the document id as the room, and send the replica (and your token) as parameters:
 
-**The coordinator must**
+```ts
+const document = createDocument({ actor: { id: userId } });
+document.attachSync(
+	createWebsocketSync({
+		serverUrl: 'wss://example.com/rooms',
+		roomName: documentId,
+		params: { token, replica: String(document.doc.clientID) }
+	})
+);
+```
 
-1. **Admit** every frame. Check the generation word first, with `readProtocolVersion(decoder)`. A mismatch is refused before anything is decoded. Then apply Step2/Update payloads through `crdt.sync.applyRemote(doc, update, ws)`, which refuses an update that writes a foreign schema stamp (`problem !== null`). A refused frame is never applied, stored or relayed. Close the socket (1008).
-2. **Sync** by the join rule. Answer Step1 with `writeSyncStep2(doc, sv)`, plus your own Step1 when `crdt.sync.lacks(doc, sv)`. Send a Step1 on accept.
-3. **Persist append-only** from `doc.on('update')`, which gives you the integrated bytes rather than the raw payload. Write before you broadcast. Keep the generation record as the container's first row. When you rebuild, verify that record, then run `crdt.admission.admitUpdate(Y.mergeUpdates(rows))`.
-4. **Compact** from an alarm. Atomically replace the rows with the generation record plus a snapshot, `Y.encodeStateAsUpdate(doc)`.
-5. **Broadcast** each integrated update to every other socket.
-6. **Relay awareness** as frames, without an `Awareness` instance:
-   - Forward each frame verbatim to the other sockets.
-   - Decode its payload with `readAwarenessEntries` (`{clientID, clock, state}`, where `state: null` means removed). Keep the latest entry per client id (the newest clock wins) so that a joiner gets everyone present: `writeAwarenessEntries([...])` inside a `frame(messageAwareness, …)`.
-   - Record each socket's `[clientID, clock]` pairs in its attachment.
-   - When a socket closes, announce those clients as removed with `{clientID, clock: clock + 1, state: null}`.
+**`authorize`** runs before the upgrade and returns `{ userId, replica?, readOnly? }` or `null` (403). `routeDocumentSocket` then forwards a fresh request that carries only the verified identity (`X-Edytor-User`, `X-Edytor-Replica`, `X-Edytor-Access`); every header the client sent, including forged `X-Edytor-*` values, is dropped. The room trusts those headers, so reach it only through `routeDocumentSocket` (a direct request without them is refused 401).
 
-**Durable Object facts that shape this**
+**What the room enforces**
 
-- A SQLite-backed object stores up to 10 GB, but one row/BLOB/string is capped at **2 MB**. Split every record (updates and snapshots) into parts and write them in one `transactionSync`. A compacted snapshot of a large document will exceed one row.
-- Received WebSocket messages can be up to 32 MiB, so a single client update can also exceed a row.
-- Use the hibernation API (`ctx.acceptWebSocket`, `webSocketMessage`, `webSocketClose`). A hibernated object loses its in-memory `Y.Doc` and rebuilds it from rows in its constructor (`blockConcurrencyWhile`).
-- An object with a pending `setTimeout`/`setInterval` never hibernates. Do **not** hold an `Awareness` instance on the server, because its constructor starts a 3 s sweep interval. Use the instance-free codec instead. The reference test runs every coordinator entry point with timers forbidden.
-- A socket attachment (`serializeAttachment`, max 16 KiB) survives hibernation. Keep a connection's awareness client ids and clocks there so that a close after a wake can still announce them as removed. The in-memory join snapshot is lost on hibernation and refills as clients renew, every 15 s. The reference test covers a wake followed by a drop with no goodbye frame.
+- **Identity is bound to the socket.** `{user, replica, readOnly}` lives in the socket's attachment, so it survives hibernation. Each Yjs client id is registered to the user who first wrote under it (the socket's `replica` is registered at the upgrade). An update that writes new structs under a client id another user owns, or under an unregistered id that already has content, is refused (close 1008 `refused: replica`): nobody can write in someone else's name. A user may write under every id they own, so a reloaded page (a new `doc.clientID`) still delivers the offline edits its previous id made. A `replica` another user owns is refused at the upgrade (403). Without a `replica` from `authorize`, the socket's first presence entry binds it.
+- **Read-only sockets write nothing.** They catch up and share presence; the room never asks them for their state, and each Step2/Update they send is dropped with a `permission-denied` reply (the provider emits `'permission-denied'`); the socket stays open.
+- **Admission.** A frame of another generation is refused before it is decoded; an update writing a foreign schema stamp is refused (`sync.applyRemote`). A refused frame is never applied, stored or relayed.
+- **Presence** is relayed through the instance-free awareness codec (no `Awareness` instance: its sweep timer would block hibernation), only for the socket's own replica. A joiner gets every present peer; a socket that leaves without a goodbye is announced gone, also after a hibernation wake.
+
+**Storage, acknowledgement and catch-up**
+
+- Every integrated update is appended to SQLite as one record split into rows under the 2 MB row cap, in one `transactionSync`, then broadcast. After `EDYTOR_COMPACT_AFTER` update records (default 500) the rows are replaced by one snapshot, `Y.mergeUpdates` of every record, atomically. `compact()` is also callable over RPC. A woken object rebuilds from its rows under `blockConcurrencyWhile`; a container of another generation refuses every socket (1011).
+- **Store-before-ack.** Every sync message a client sends is answered, after the write, with a `messageSaved` frame carrying the room's state vector. The provider's `saved` (boolean) and `unsaved` (the count of local updates the room has not acknowledged, offline edits included) follow those acknowledgements, and it emits `'saved'` with `{ saved, unsaved }` when they change. No timer is involved.
+- **Bounded catch-up.** A frame larger than `EDYTOR_MAX_FRAME_BYTES` (default 32 MiB, the WebSocket message limit) is sent as `messageChunk` start/part/end frames that the provider applies only once the sequence is complete. Smaller frames are unchanged, so a client without chunk support still syncs small documents.
+- **No timers.** Every entry point runs under `noTimers`, which throws if anything schedules one: an object with a pending timer never hibernates.
+
+Optional `vars`: `EDYTOR_MAX_ROW_BYTES`, `EDYTOR_MAX_FRAME_BYTES`, `EDYTOR_COMPACT_AFTER` (they only lower the defaults). Limits: a single client → room message is still capped at 32 MiB by the platform (clients do not chunk); the in-memory presence snapshot refills as clients renew (every 15 s) after a wake.
+
+**Writing your own client or server.** Every frame is `varuint GENERATION | varuint messageType | payload`, with `GENERATION = generationWord(SCHEMA_VERSION) = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION` (14003 at schema 3); build one with `frame(type, (encoder) => …)` from `edytor/crdt/edytor`. The message types are `0` sync (subtypes `0` Step1, `1` Step2, `2` Update), `1` awareness, `2` auth (permission denied), `3` query awareness, `4` saved (the room's state vector) and `5` chunk (`chunkFrame`/`createChunkReader`). `edytor/crdt/edytor` also exports the sync readers/writers (`bindCrdt(Y).sync`), `readAwarenessEntries`/`writeAwarenessEntries`, and the lib0 read helpers. Never call `attachDocument` (or `createDocument`/`loadDocument`) on a server's doc: it would write the server into the replicated attribution dictionary.
 
 ## 📦 Plugins
 
@@ -402,6 +434,7 @@ Blocks are the fundamental building blocks of the editor. They can be paragraphs
 | `presets`           | `Array`                          | Ways to create the kind: `{label, icon?, keywords?, data?, markdown?}` each; the slash menu, markdown shortcuts and block menus (`edytor.kinds`) are generated from them (command id `block.<type>`, numbered from 1 with several presets) | `{ label: 'Heading 2', data: { level: 'h2' }, markdown: ['## '] }` |
 | `empty`             | `object`                         | Content and children a conversion into the kind replaces the block's own with                                                                                                                                                              | A code block starting with one empty code line                     |
 | `html` / `plain`    | `string` / `Function`            | Clipboard export forms (a tag wrapping content then children, or a function of the block and its serialized content and children); default `<p>` and text lines                                                                            | `html: 'blockquote'`                                               |
+| `parse`             | `(element) => data \| undefined` | HTML import: the block's data when a pasted element is this kind (checked before the tag tables, which come from `presets` and `html`/`element`)                                                                                           | `(el) => el.matches('ol > li') ? {} : undefined`                   |
 | `transformText`     | `Function`                       | Transform text content within the block                                                                                                                                                                                                    | Adding syntax highlighting to code blocks in real-time             |
 | `onFocus`           | `Function`                       | Called when block receives focus                                                                                                                                                                                                           | Showing a toolbar when focusing a heading block                    |
 | `onBlur`            | `Function`                       | Called when block loses focus                                                                                                                                                                                                              | Make an indicator disapear                                         |
@@ -414,12 +447,14 @@ Blocks are the fundamental building blocks of the editor. They can be paragraphs
 
 Marks are used for text formatting like bold, italic, or custom formatting.
 
-| Option    | Type                                             | Description                                                                                                                         | Example Use Case                                          |
-| --------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `snippet` | `Snippet`                                        | Svelte snippet for rendering the mark                                                                                               | Rendering highlighted text with a custom background color |
-| `edge`    | `'inclusive' \| 'exclusive' \| 'side-dependent'` | Whether typing at the mark's edge extends it (default inclusive; a link is side-dependent)                                          | `edge: 'exclusive'`                                       |
-| `html`    | `string \| Function`                             | Clipboard HTML form: a tag, or a function of the inner HTML and the mark's value; marks wrap in registration order, first innermost | `html: 'strong'`                                          |
-| `toolbar` | `{label, icon}`                                  | A selection-toolbar button toggling the mark                                                                                        | `{ label: 'Bold', icon: 'B' }`                            |
+| Option       | Type                                             | Description                                                                                                                                             | Example Use Case                              |
+| ------------ | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `tag`        | `string`                                         | The mark's element: the core renders `<tag data-edytor-mark>` and the clipboard exports the same tag; marks wrap in registration order, first innermost | `tag: 'strong'`                               |
+| `attributes` | `(value) => Record<string, string \| undefined>` | The element's attributes from the mark's value (sanitize here); used for render and export alike                                                        | `(v) => ({ href: safe(v.href) })`             |
+| `snippet`    | `Snippet`                                        | Custom markup, rendered inside a core `<span data-edytor-mark>` (wins over `tag` for rendering)                                                         | Rendering a code token with its own classes   |
+| `edge`       | `'inclusive' \| 'exclusive' \| 'side-dependent'` | Whether typing at the mark's edge extends it (default inclusive; a link is side-dependent)                                                              | `edge: 'exclusive'`                           |
+| `toolbar`    | `{label, icon}`                                  | A selection-toolbar button toggling the mark                                                                                                            | `{ label: 'Bold', icon: 'B' }`                |
+| `parse`      | `(element) => value \| undefined`                | HTML import: the mark's value when a pasted element carries it (checked before the bare `tag`, which only value-less marks match)                       | `(el) => el.localName === 'b' \|\| undefined` |
 
 ### Plugin Operations
 
@@ -447,13 +482,13 @@ Edytor handles clipboard operations from the model, not by cloning rendered DOM.
 
 - Copy and cut write `application/x-edytor-fragment`, `text/html`, and `text/plain`.
 - The internal fragment is also mirrored into HTML as `data-edytor-fragment` so same-editor round trips survive clipboard implementations that strip custom MIME types.
-- Paste precedence is internal MIME, embedded internal HTML fragment, a plugin's `onPaste`, then `text/plain`.
-- HTML import was retired: external `text/html` pastes and drops as its `text/plain`. Handle `onPaste` to import HTML.
+- Paste precedence is internal MIME, embedded internal HTML fragment, a plugin's `onPaste`, external `text/html`, then `text/plain` (Shift-paste is plain text).
+- External HTML (paste and drop) is parsed by the browser (`DOMParser`: inert, no script runs, nothing loads) and imported through the records, not a tag table: an element is a kind when a catalogue kind's export form or element writes its tag for a preset (`h1`–`h3` → heading level, `blockquote` → quote, `li` → bulleted item, `hr` → divider, `details` → toggle; a content-less container takes its default child's tag, so `pre` → a code block, one line per text line) or when a kind's `parse(element)` returns its data (`ol > li` → numbered item, `h4`–`h6` → `h3`); text takes a mark when the mark's `tag` matches (value-less marks) or its `parse(element)` returns a value (`b`/`i`/`del` aliases, Google Docs' styled spans, sanitized link `href`s and colors). Unknown elements degrade to paragraphs and text; whitespace collapses as the browser renders it (`<br>` is a line break inside the block). HTML that carries nothing (a comment, a `<script>`, empty elements) falls through to `text/plain`, or changes nothing without one.
 - Pasted internal fragments never preserve copied block or inline-block IDs; IDs are regenerated while marks, data, children, and relative order are preserved.
 - Paste, drop and programmatic fragment insertion place content with one rule (`flow.*` in `docs/editor-delete-contract.md`): one line joins the text at the caret; several lines split the block, the first joining the text before the caret and the last the text after it (`Hello|World` + `X`, `Y` → `HelloX`, `YWorld`, for internal, HTML and multi-line plain text alike); a copy of selected blocks pastes as whole blocks after the caret block.
 - Copy is allowed in readonly mode. Cut and paste are ignored in readonly mode.
 - Copy does not create a history entry. Cut and paste each create one undoable mutation.
-- The HTML and plain flavours come from the records: each block kind's `html`/`plain`, each mark's `html`, each inline block's `plain`; a kind without one exports as `<p>` and its text.
+- The HTML and plain flavours come from the records: each block kind's `html`/`plain`, each mark's `tag` and `attributes` (the element it renders), each inline block's `plain`; a kind without one exports as `<p>` and its text.
 
 ### Prevention in Plugin Operations
 
@@ -518,28 +553,24 @@ This system allows plugins to:
 ### Example: Simple Bold Mark Plugin
 
 ```svelte
-
 <script module>
 	export const boldPlugin = (editor: Edytor) => ({
+		// The core renders <strong data-edytor-mark="bold"> and copies it as <strong>.
 		marks: {
-			bold: {
-			snippet: bold
+			bold: { tag: 'strong' }
+		},
+		hotkeys: {
+			'mod+b': ({ prevent }) => {
+				prevent(() => {
+					// Do something
+				});
+			}
 		}
-	},
-	hotkeys: {
-		'mod+b': ({prevent}) => {
-			prevent(()=>{
-				// Do something
-			});
-		}
-	}
-});
+	});
 </script>
-
-{#snippet bold({content}: MarkSnippetPayload)}
-	<strong>{@render content()}</strong>
-{/snippet}
 ```
+
+A mark whose markup a tag cannot express declares a `snippet` instead; the core renders it inside `<span data-edytor-mark>`.
 
 ### Using Plugins
 
@@ -574,7 +605,8 @@ The next release is a rewrite of the editor's internals around one owner per fac
 - **Order and capability.** New `facade.order()`, `compare(a, b)`, `next(id, policy?)`, `previous(id, policy?)` (one document order; `{sealed: true}` never enters an island it did not start in), `canPlace(ids, parent?)`, `canMerge(from, into)`, `defaultChild(parentId)`, `rendersContent(type)`.
 - **Change report.** `facade.onChange(cb)` delivers one `DocChange` per commit that changed the visible document: `{added, removed, moved, meta, content, order, origin, local, version}`. A block that moves into a subtree added in the same commit is reported in `moved`/`meta`/`content`, not folded into the subtree.
 - **Retired exports (D-15).** The per-block subscriber API (`subscribeBlock`, `subscribe`, `blockVersion`, `snapshot` on the facade and the index), `decorateRuns` and its types (`LocalDecoration`, `DecoratedRun`), and the "advanced internals" tier: `bindEdytorDoc`, `bindDocument`, `bindNodes`, `bindModel`, `bindRuns`, `bindIndexeddbProvider`, `bindWebsocketProvider`, `bindProviders`, `bindSync`, `bindAdmission`, `bindAttribution`, `bindBlockAttribution`, `bindMigration`, `bindLegacyReader`, `setDocRand`/`randOf`, the rank functions, `REGISTRY_KEY`, `SCHEMA`, `SCHEMA_NAME`, the attribution root constants, `migrationBcRoom`, `PREFERRED_TRIM_SIZE`, `GENERATION_PREFIX`, `generationDbName`, `GENERATION_KEY`, `writeProtocolVersion`, `removeAwarenessStates`, `outdatedTimeout`, `readAuthMessage`, and their types. Use `bindCrdt(Y)` (`.doc`, `.providers`, `.migration`, `.sync`, `.admission`, `.attribution`) for engine injection, `facade.onChange` + `facade.runs(id)` for reads, and a kind's `transformText` for local decorations.
-- **Kept for a server coordinator** (a Cloudflare Durable Object, README "Server coordinator"): `bindCrdt(Y)`, `SCHEMA_VERSION`, `META_KEY`, `GENERATION`, `generationWord`, `frame`, `PROTOCOL_VERSION`, `readProtocolVersion`, `GENERATION_RECORD`, `GenerationMismatchError`, the message types, the lib0 frame helpers, the awareness codec (`readAwarenessEntries`, `writeAwarenessEntries`, `applyAwarenessUpdate`, `encodeAwarenessUpdate`, `modifyAwarenessUpdate`) and `messagePermissionDenied`/`writePermissionDenied`.
+- **Kept for a server coordinator** (README "Server coordinator"; `edytor/cloudflare` is built on them): `bindCrdt(Y)`, `SCHEMA_VERSION`, `META_KEY`, `GENERATION`, `generationWord`, `frame`, `PROTOCOL_VERSION`, `readProtocolVersion`, `GENERATION_RECORD`, `GenerationMismatchError`, the message types, the lib0 frame helpers, the awareness codec (`readAwarenessEntries`, `writeAwarenessEntries`, `applyAwarenessUpdate`, `encodeAwarenessUpdate`, `modifyAwarenessUpdate`) and `messagePermissionDenied`/`writePermissionDenied`. New: `messageSaved`, `messageChunk`, `MAX_FRAME_BYTES`, `chunkFrame`, `createChunkReader`.
+- **Raw engine exports pruned (`edytor/crdt`, `UPSTREAM.md` P8).** Edytor never called these; they are removed from the vendored engine: the renderers (`AttributionsRenderer`, `createAttributionsRenderer`, `DiffRenderer`, `createDiffRenderer`, `SnapshotRenderer`, `createSnapshotRenderer`; `AbstractRenderer` and `$renderer` stay), snapshots (`Snapshot`, `snapshot`, `createSnapshot`, `emptySnapshot`, `createDocFromSnapshot`, `encodeSnapshot(V2)`, `decodeSnapshot(V2)`, `equalSnapshots`, `snapshotContainsUpdate`, `nodeMapGetSnapshot`, `nodeMapGetAllSnapshot`, and the `snapshot` argument of `node.getAttrs`), update helpers (`logUpdate(V2)`, `obfuscateUpdate(V2)`, `diffUpdate` — `diffUpdateV2` stays —, `encodeStateVectorFromUpdate(V2)`, `convertUpdateFormatV1ToV2`, `createContentIdsFromUpdate(V2)`, `intersectUpdateWithContentIds(V2)`, `readUpdate`, `createDocFromUpdate(V2)`, `cloneDoc`, `diffDocsToDelta`, `logNode`), the delta-position helpers (`createRelativePositionsFromDeltaPositions`, `createDeltaPositionsFromRelativePositions`, `createRelativePositionFromDeltaPosition`, `createDeltaPositionFromRelativePosition`), the binary relative-position codec and comparison (`encodeRelativePosition`, `decodeRelativePosition`, `compareRelativePositions`; use `relativePositionToJSON`/`createRelativePositionFromJSON`), id-set/id-map algebra (`gcIdSet`, `createInsertSetFromStructStore`, `encodeIdSet`, `decodeIdSet`, `mergeIdMaps`, `diffIdMap`, `intersectMaps`, `filterIdMap`, `createIdMapFromIdSet`, `createIdSetFromIdMap`, `$idMap`), content-id helpers (`createContentIds`, `createContentIdsFromContentMap`, `createContentIdsFromDoc`, `createContentIdsFromDocDiff`, `excludeContentIds`, `excludeContentMap`, `mergeContentIds`, `mergeContentMaps`, `createContentMapFromContentIds`, `intersectContentIds`, `intersectContentMap`, `filterContentMap`, `writeContentIds`, `readContentIds`, `encodeContentIds`, `decodeContentIds`), and `getNodeChildren`, `$node`, `getPathTo`, `tryGc`, `undoContentIds`. A document built with `createDocFromUpdate(u)` is `new Y.Doc()` + `Y.applyUpdate(doc, u)`; `attribution.legacy()` still returns a `ContentMap` (`encodeContentMap`/`decodeContentMap`, `encodeIdMap`/`decodeIdMap` stay) for a renderer you supply.
 - **Anchors** are `{b, a}`: the `o` owner facet and the `a: -2` form are gone from the selection value, the presence wire and history entries.
 - **Attribution.** Undo and redo keep a block's record (`createdBy` survives an undo/redo of its creation on every replica). A forced re-migration (`force`) gives a block whose stream started at a boundary a new nonce without moving its record, so its `createdBy` is replaced at the next attributed write.
 - `facade.toJSON()` inline atoms carry `data: {}` when they have no data (the shape `edytor.value` already had).
@@ -600,12 +632,12 @@ The next release is a rewrite of the editor's internals around one owner per fac
 - **Errors.** Top-level operations report `refused` (`edytor.dispatcher.last.status`) instead of throwing `PreventionError`; text operations refuse in readonly; a read-only (quarantined) document refuses instead of throwing `SchemaMismatchError`; async handler errors are reported, not swallowed.
 - **Normalization** (`normalizeContent`/`normalizeChildren`) runs at the end of the command's transaction, inside it, with handles that read the command's writes (at most 51 passes per normalizer and block); its work is part of the same update and undo step.
 - **Definitions: first wins** (was last): an extension that extends another's definition lists itself first.
-- **Kind records.** `BlockDefinition` gains `element`, `viewState`, `rendersContent`, `defaultChild`, `presets`, `empty`, `html`, `plain`; `snippet` is optional. `MarkDefinition` gains `edge`, `html`, `toolbar`; `InlineBlockDefinition` gains `plain`. `convertToKind`, `KindRow`, `KindPreset` are exported; `edytor.kinds` is the catalogue the slash menu, markdown shortcuts and menus read. One label per kind (`Text`, `To-do list`, `Toggle list`).
+- **Kind records.** `BlockDefinition` gains `element`, `viewState`, `rendersContent`, `defaultChild`, `presets`, `empty`, `html`, `plain`; `snippet` is optional. `MarkDefinition` gains `edge`, `toolbar` (and `tag`/`attributes`, phase 2); `InlineBlockDefinition` gains `plain`. `convertToKind`, `KindRow`, `KindPreset` are exported; `edytor.kinds` is the catalogue the slash menu, markdown shortcuts and menus read. One label per kind (`Text`, `To-do list`, `Toggle list`).
 - **Snippets render inner markup.** The core renders, registers and marks void the block element (`use:block.attach` and `BlockView.attach`/`InlineBlockView.attach` are removed; `use:block.void` still marks inner chrome). Block snippets receive `block: BlockView` = `{id, type, data, selected, focused, handle, void}`; inline-atom snippets `block: InlineBlockView` = `{id, type, data, selected, handle}` (`handle` is `undefined` for a suggested atom). Commands and document reads go through `block.handle`. `onBlockAttached` runs once per element. Identity attributes are declarative (present in server-rendered HTML).
 - **`transformText`** receives declared values `{text: {stringContent, value}, block: {id, type, data}, content}`, not handles.
 - **Marks at insertion** follow one rule (explicit → a replaced range's common marks → pending → the neighbour → the mark's `edge`); `insertText` without marks resolves them by that rule; plain paste inherits the caret's marks; the rich-text plugin no longer intercepts `insertText` for links; Mod+B at the start of a bold run toggles bold off.
 - **Suggestions.** `Block.suggestions` is plain JSON parts (`rawSuggestions` and the readonly Proxy wrappers are removed); `suggestText` stores `[atom, [text runs]]` groups.
-- **HTML import retired.** The HTML paste plugin (never exported) is gone; external HTML pastes and drops as its `text/plain`; handle `onPaste` to import HTML. The code plugin sets `Prism.manual = true`: Prism never highlights the page on its own.
+- **HTML import is core.** The HTML paste plugin (never exported) and its hand-written parser are gone; external HTML paste and drop are imported by the core through the browser's parser and the records (`parse` hooks on kind and mark records; see the clipboard contract). A plugin's `onPaste` still runs first. The code plugin sets `Prism.manual = true`: Prism never highlights the page on its own.
 - Other: the slash menu claims Enter only with a match; the code plugin's Shift+Enter runs `insertParagraph` as an intent and its auto-pair is a returned payload (after-hooks see the typed character).
 
 ### Rendering, placeholder and chrome
@@ -615,11 +647,14 @@ The next release is a rewrite of the editor's internals around one owner per fac
 - Typing, formatting, Tab and block moves never remount the element under the caret; a moved block's element is re-created where it moved. `edytor.cells`, `edytor.pin`, `edytor.surface` (the DOM observer), `edytor.projector`, `textAt`, `atomAt`, `segmentOf`, `deltasOf` are new; `refreshEditorDom`/`editorDomRevision` are removed.
 - The DOM observer restores what the editor owns and leaves an extension's markup around the slots alone (D-25): a foreign node inside a block's text run is removed, a node beside it stays; foreign text inside a content is adopted; attributes the core does not own (an extension's `id` on a block element, `open` on a toggle) are never reverted.
 - A "`[data-edytor-block]` exists" check no longer means hydrated; wait for a registered text element.
+- **Marks by tag (phase 2, P2.7).** A mark record declares `tag` (and `attributes` from its value); the core renders the tag itself as the mark element (`<strong data-edytor-mark="bold">`, was `<span data-edytor-mark="bold"><b>`), and the clipboard exports the same element. `MarkDefinition.html` is replaced by `tag`/`attributes`; `snippet` is optional (a snippet still renders inside a core `<span data-edytor-mark>`). Built-ins: bold `strong`, italic `em`, underline `u`, strike `s`, code `code`, link `a` (sanitized `href`, `target`), superscript `sup`, subscript `sub`, color and highlight `span` with a sanitized `style`; links, colors and highlights now export their element (they exported text only). Selectors such as `[data-edytor-mark="link"] a` become `a[data-edytor-mark="link"]`.
 
 ### Collaboration and providers
 
 - **Presence wire (D-16).** `selections[viewKey] = {start, end, collapsed, reversed, t}` for text (`DocAnchor`s), `{blocks, t}` for a block set, `{atom, block, t}` for an atom; the legacy `selection` mirror, `startTextId`/`yStart` fields and numeric fallbacks are gone. A view writes only its own key and clears it on destroy. `publishPresence` replaces `createAwarenessSelection`/`publishAwarenessSelection`/`clearAwarenessSelection`; `attachDocumentSync` is removed (use `document.attachSync`).
 - **`WebsocketProvider`**: removed the `protocols` option and field (pass tokens in `params`, read at every dial), the `sync` event (use `synced`), `wsconnecting` (the `status` event carries it), the BroadcastChannel leg (`disableBc`, `bcconnected`, `bcChannel`, `connectBc()`, `disconnectBc()`) — stack `createIndexeddbSync` for cross-tab sync — and the settle window (`syncSettleMs`). `resyncInterval` stays a provider option only. `createWebsocketSync` takes `serverUrl`, `roomName`, `params`, `maxBackoffTime`, `WebSocketPolyfill` (`connect`, `protocols`, `resyncInterval`, `disableBc` removed).
+- **`edytor/cloudflare` (new).** `DocumentRoom` (the Durable Object room, one per document) and `routeDocumentSocket(request, namespace, documentId, authorize)` replace the coordinator you wrote yourself (README "Server coordinator"). The room binds `{user, replica, readOnly}` to each socket and refuses updates under another user's client ids.
+- **Store-before-ack and chunked catch-up.** `WebsocketProvider` gains `saved`, `unsaved` and a `'saved'` event (the room's `messageSaved` acknowledgements), and reassembles `messageChunk` sequences (frames above 32 MiB). A server that sends neither leaves `unsaved` counting; older clients report the two new message types through `'message-error'` and are otherwise unaffected on small documents.
 - **`IndexeddbPersistence`**: `get`/`set`/`del` are removed (the `custom` store holds only the generation record).
 - **Readiness.** The document decides readiness itself: `syncFailed`, `onSyncSettled` and `EdytorDocSyncPendingError` are gone; a lone first client is ready after `DEFAULT_READINESS_BOUND` (1 s, per factory `EdytorSync.bound`; IndexedDB always settles); `history` refuses while `pending`. `whenSynced` exists on both providers and `synced` is the lifetime claim.
 - **One provider per target.** `EdytorSync.target` (`indexeddb:<name>`, `websocket:<server>/<room>`); attaching a target already attached is a no-op returning nothing; attaching on a destroyed document throws `DocumentDestroyedError`.

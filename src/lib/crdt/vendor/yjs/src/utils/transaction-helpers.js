@@ -3,7 +3,6 @@ import * as error from 'lib0-v14/error'
 import * as map from 'lib0-v14/map'
 import * as set from 'lib0-v14/set'
 
-import { createID } from './ID.js'
 
 /**
  * These modules don't require any imports.
@@ -190,17 +189,6 @@ export const splitStruct = (transaction, leftStruct, diff) => {
 }
 
 /**
- * @param {Transaction} transaction
- *
- * @private
- * @function
- */
-export const nextID = transaction => {
-  const y = transaction.doc
-  return createID(y.clientID, y.store.getClock(y.clientID))
-}
-
-/**
  * If `type.parent` was added in current transaction, `type` technically
  * did not change, it was just added and we should not fire events for `type`.
  *
@@ -295,16 +283,6 @@ export const tryMerge = (ds, store) => {
       }
     }
   })
-}
-
-/**
- * @param {Transaction} tr
- * @param {IdSet} idset
- * @param {function(Item):boolean} gcFilter
- */
-export const tryGc = (tr, idset, gcFilter) => {
-  tryGcDeleteSet(tr, idset, gcFilter)
-  tryMerge(idset, tr.doc.store)
 }
 
 /**

@@ -77,7 +77,6 @@ export class ArraySearchMarker {
 export function plantSearchMarker(parent: YNode<any>, p: Item, index: number, formats: Map<string, any>): void;
 export function findMarker(yarray: YNode, index: number): ArraySearchMarker | null;
 export function updateMarkerChanges(searchMarker: Array<ArraySearchMarker>, index: number, len: number): void;
-export function getNodeChildren(t: YNode): Array<Item>;
 export function callTypeObservers(type: YNode, transaction: Transaction, event: YEvent<any>): void;
 /**
  * Abstract Yjs Type class.
@@ -412,12 +411,11 @@ export class YNode<DConf extends delta.DeltaConf = any> extends ObservableV2<{
     /**
      * Returns all attribute name/value pairs in a JSON Object.
      *
-     * @param {Snapshot} [snapshot]
      * @return {{ [Key in Extract<keyof delta.DeltaConfGetAttrs<DConf>,string>]?: delta.DeltaConfGetAttrs<DConf>[Key]}} A JSON Object that describes the attributes.
      *
      * @public
      */
-    public getAttrs(snapshot?: Snapshot): { [Key in Extract<keyof delta.DeltaConfGetAttrs<DConf>, string>]?: delta.DeltaConfGetAttrs<DConf>[Key]; };
+    public getAttrs(): { [Key in Extract<keyof delta.DeltaConfGetAttrs<DConf>, string>]?: delta.DeltaConfGetAttrs<DConf>[Key]; };
     /**
      * Inserts new content at an index.
      *
@@ -437,8 +435,9 @@ export class YNode<DConf extends delta.DeltaConf = any> extends ObservableV2<{
      */
     insert(index: number, content: Array<delta.DeltaConfGetChildren<DConf>> | delta.DeltaConfGetText<DConf>, format?: delta.Formats): void;
     /**
-     * P7 (edytor fork): insert `content` at the end of the gap at live index `index` — after every
-     * deleted item and every format item before the next live content item, no format item added.
+     * Insert `content` (an array of JSON values, one countable unit each) at the end of the gap at
+     * live index `index`: after every deleted item and every format item that precedes the next live
+     * content item, with the formats in effect there and no format item added.
      *
      * @param {number} index
      * @param {Array<any>} content
@@ -594,20 +593,11 @@ export class YNode<DConf extends delta.DeltaConf = any> extends ObservableV2<{
  * lives - {@link $node} builds on it. Mirrors lib0's `$deltaAny` / `$delta` split.
  */
 export const $nodeAny: s.Schema<YNode<any>>;
-export function $node<DConf extends delta.ReadableDeltaConf>(dconf: DConf): s.Schema<YNode<delta.ReadDeltaConf<DConf>>>;
 export function computeModifiedFromItems(store: StructStore, items: IdSet): Map<YNode<any>, Set<string | null>>;
 export function typeApplyRendererChange(type: YNode<any>, changes: IdSet, origin: any): void;
 export function equalFormats(a: any, b: any): boolean;
 export function typeListSlice(type: YNode<any>, start: number, end: number): Array<any>;
 export function typeListGet(type: YNode, index: number): any;
-export function typeListInsertGenericsAfter(transaction: Transaction, parent: YNode, referenceItem: Item | null, content: Array<YValue>): void;
-export function typeListInsertGenerics(transaction: Transaction, parent: YNode, index: number, content: Array<{
-    [x: string]: any;
-} | Array<any> | number | null | string | Uint8Array>): void;
-export function typeListPushGenerics(transaction: Transaction, parent: YNode, content: Array<{
-    [x: string]: any;
-} | Array<any> | number | null | string | Uint8Array>): void;
-export function typeListDelete(transaction: Transaction, parent: YNode, index: number, length: number): void;
 export function nodeMapDelete(transaction: Transaction, parent: YNode, key: string): void;
 export function nodeMapSet(transaction: Transaction, parent: YNode, key: string, value: YValue): void;
 export function nodeMapGet(parent: YNode<any>, key: string): {
@@ -620,15 +610,6 @@ export function nodeMapGetAll(parent: YNode<any>): {
 };
 export function nodeMapGetDelta<TypeDelta extends delta.DeltaBuilderAny>(d: TypeDelta, parent: YNode, attrsToRender: Set<string | null> | null, renderer: AbstractRenderer | null, deep: boolean, modified?: Set<YNode> | Map<YNode, any> | null, itemsToRender?: IdSet | null, opts?: any, optsAll?: any): void;
 export function nodeMapHas(parent: YNode<any>, key: string): boolean;
-export function isVisible(item: Item, snapshot: Snapshot | undefined): boolean;
-export function nodeMapGetSnapshot(parent: YNode<any>, key: string, snapshot: Snapshot): {
-    [x: string]: any;
-} | number | null | Array<any> | string | Uint8Array | YNode<any> | undefined;
-export function nodeMapGetAllSnapshot(parent: YNode<any>, snapshot: Snapshot): {
-    [x: string]: string | number | any[] | YNode<any> | Uint8Array<ArrayBufferLike> | {
-        [x: string]: any;
-    } | null | undefined;
-};
 export function createMapIterator(type: YNode<any> & {
     _map: Map<string, Item>;
 }): IterableIterator<Array<any>>;

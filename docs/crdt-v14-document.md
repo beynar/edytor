@@ -207,8 +207,9 @@ replicated `u/`/`c/` actor dictionary travels inside `encode()` output.
 
 Documents saved by pre-U2 builds keep their `a/` per-edit records
 verbatim — preserved through `encode()`/sync and decoded on demand by
-`attribution.legacy()` (feed it to the engine's `createAttributionsRenderer`
-for a rendered history view). This build never appends `a/` records; old
+`attribution.legacy()` (a `ContentMap`; for a rendered history view pass
+your own `AbstractRenderer` over it to `toDelta({renderer})` — the fork
+ships no concrete renderer since UPSTREAM.md P8). This build never appends `a/` records; old
 replicas that still do merge cleanly. Full contract:
 `src/lib/crdt/attribution/attribution.ts` + the U2 ledger entry.
 

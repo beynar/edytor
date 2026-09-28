@@ -2363,9 +2363,10 @@ test.describe('browser selection behavior', () => {
 
 			await gotoSelectionFixture(page, '/test/dom?scenario=selection');
 
+			// P2.7: the mark element is the tag itself; an anchor past its last child is after its text.
 			await setSelectionAtMarkElement(page, {
 				markIndex: 0,
-				startOffset: 1
+				startOffset: Number.MAX_SAFE_INTEGER
 			});
 			await expectSelection(page, {
 				startBlockPath: [1],
@@ -2380,7 +2381,7 @@ test.describe('browser selection behavior', () => {
 			await setSelectionAtMarkElement(page, {
 				markIndex: 0,
 				startOffset: 0,
-				endOffset: 1
+				endOffset: Number.MAX_SAFE_INTEGER
 			});
 			await expectSelection(page, {
 				startBlockPath: [1],

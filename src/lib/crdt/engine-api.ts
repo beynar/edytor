@@ -1,22 +1,28 @@
 /**
  * Engine-facing types for the placement model.
  *
- * The vendored v14 engine is plain JS that is deliberately excluded from
- * `tsconfig.json` type-checking (pulling it into the program surfaces an
- * upstream TS2589 in `utils/delta-helpers.js`). Its emitted declarations
+ * The vendored v14 engine is plain JSDoc-typed JS that is deliberately
+ * excluded from `tsconfig.json` type-checking. Its emitted declarations
  * (`vendor/yjs/dts`) parameterize `YNode` on a delta-config generic that
  * collapses to `never` when instantiated with `any` — unusable as an
  * ergonomic call surface.
  *
  * So the model works against the STRUCTURAL interfaces below — the exact
  * subset of the v14 Node/Doc surface it uses — and receives the engine
- * module by injection (`bindModel(Y)`). Nothing in `src/lib` imports vendor
- * `.js`, so `pnpm check` never traverses vendored sources.
+ * module by injection (`bindModel(Y)`). Only `engine.js` (declared by
+ * `engine.d.ts`) imports vendor `.js`, so `pnpm check` never traverses
+ * vendored sources.
  */
 import type * as Y from './vendor/yjs/dts/index.js';
+import type { Y as Engine } from './engine.js';
 
-/** The vendored v14 module surface (`import * as Y`). */
-export type EngineApi = typeof Y;
+/**
+ * The engine surface every `bind*` receives: the object in `engine.js`
+ * (exactly the symbols edytor calls, so consumer bundles tree-shake the
+ * rest). The full namespace `import * as Y from 'edytor/crdt'` is a
+ * superset and satisfies it.
+ */
+export type EngineApi = typeof Engine;
 
 export type YDoc = InstanceType<typeof Y.Doc>;
 export type YNode = InstanceType<typeof Y.Node>;

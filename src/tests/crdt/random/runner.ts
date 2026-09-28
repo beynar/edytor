@@ -238,11 +238,11 @@ const pendingItemRanges = (p: Peer): IdRange[] => {
 	const ps = p.doc.store.pendingStructs;
 	if (ps) {
 		try {
-			const { inserts } = Y.createContentIdsFromUpdateV2(ps.update);
-			for (const [client, ranges] of inserts.clients) {
-				for (const r of ranges.getIds()) {
-					out.push({ client, start: r.clock, len: r.len });
-				}
+			// The update's struct id ranges (skips excluded) — what the
+			// pruned `createContentIdsFromUpdateV2` returned as `inserts`.
+			for (const s of Y.decodeUpdateV2(ps.update).structs) {
+				if (s instanceof Y.Skip) continue;
+				out.push({ client: s.id.client, start: s.id.clock, len: s.length });
 			}
 		} catch {
 			// Undecodable pending blob → no ranges captured (conservative).

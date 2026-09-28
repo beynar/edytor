@@ -178,7 +178,6 @@ export class IdSet implements traits.EqualityTrait {
 export function equalIdSets(ds1: IdSet, ds2: IdSet): boolean;
 export function _deleteRangeFromIdSet(set: IdSet | IdMap<any>, client: number, clock: number, len: number): void;
 export function iterateStructsByIdSet(transaction: Transaction, ds: IdSet, f: (arg0: GC | Item) => void): void;
-export function gcIdSet(doc: Doc, ids: IdSet, gcFilter?: (arg0: Item) => boolean): void;
 export function iterateStructsByIdSetWithoutSplits(store: StructStore, ds: IdSet, f: (struct: GC | Item | Skip, offset: number, len: number) => void): void;
 export function findIndexInIdRanges(dis: Array<IdRange>, clock: number): number | null;
 export function findRangeStartInIdRanges(dis: Array<IdRange>, clock: number): number | null;
@@ -208,12 +207,8 @@ export function _intersectSets<SetA extends IdSet | IdMap<any>, SetB extends IdS
 export function intersectSets<SetA extends IdSet | IdMap<any>, SetB extends IdSet | IdMap<any>>(setA: SetA, setB: SetB): SetA extends IdMap<infer A> ? (SetB extends IdMap<infer B> ? IdMap<A | B> : IdMap<A>) : IdSet;
 export function createIdSet(): IdSet;
 export function createDeleteSetFromStructStore(ss: StructStore): IdSet;
-export function _createInsertSliceFromStructs(structs: Array<GC | Item | Skip>, filterDeleted: boolean): IdRange[];
-export function createInsertSetFromStructStore(ss: StructStore, filterDeleted: boolean): IdSet;
 export function writeIdSet(encoder: IdSetEncoderV1 | IdSetEncoderV2, idSet: IdSet): void;
 export function readIdSet(decoder: IdSetDecoderV1 | IdSetDecoderV2): IdSet;
-export function encodeIdSet(idSet: IdSet): Uint8Array<ArrayBuffer>;
-export function decodeIdSet(data: Uint8Array): IdSet;
 export function readAndApplyDeleteSet(decoder: IdSetDecoderV1 | IdSetDecoderV2, transaction: Transaction, store: StructStore): Uint8Array<ArrayBuffer> | null;
 /**
  * @template Attrs
@@ -375,17 +370,11 @@ export class IdMap<Attrs> {
     $type: s.Schema<IdMap<any>>;
 }
 export function idmapAttrsEqual<T>(a: Array<T>, b: Array<T>): boolean;
-export function mergeIdMaps<T>(ams: Array<IdMap<T>>): IdMap<T>;
-export function createIdMapFromIdSet(idset: IdSet, attrs: Array<ContentAttribute<any>>): IdMap<any>;
-export function createIdSetFromIdMap(idmap: IdMap<any>): IdSet;
 export function writeIdMap<Attr>(encoder: IdSetEncoderV1 | IdSetEncoderV2, idmap: IdMap<Attr>): void;
 export function encodeIdMap(idmap: IdMap<any>): Uint8Array<ArrayBuffer>;
 export function readIdMap(decoder: IdSetDecoderV1 | IdSetDecoderV2): IdMap<any>;
 export function decodeIdMap(data: Uint8Array): IdMap<any>;
 export function createIdMap(): IdMap<any>;
-export function diffIdMap<ISet extends IdMap<any>>(set: ISet, exclude: IdSet | IdMap<any>): ISet;
-export function intersectMaps<SetA extends IdSet | IdMap<any>, SetB extends IdSet | IdMap<any>>(setA: SetA, setB: SetB): SetA extends IdMap<infer A> ? (SetB extends IdMap<infer B> ? IdMap<A | B> : IdMap<A>) : IdSet;
-export function filterIdMap<Attrs>(idmap: IdMap<Attrs>, predicate: (attr: Array<ContentAttribute<Attrs>>) => boolean): IdMap<Attrs>;
 /**
  * Schema of an {@link IdSet}.
  *
@@ -399,7 +388,6 @@ export const $idSet: s.Schema<IdSet>;
  * lives - {@link $idMap} builds on it. Mirrors lib0's `$deltaAny` / `$delta` split.
  */
 export const $idMapAny: s.Schema<IdMap<any>>;
-export function $idMap<Attrs>($attrs: s.Schema<Attrs>): s.Schema<IdMap<Attrs>>;
 export type ContentIds = {
     inserts: IdSet;
     deletes: IdSet;

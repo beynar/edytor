@@ -163,11 +163,15 @@ once, at ingress): a line with a kind is a block (`type`, `data`,
 `content`, `children`); a line without one is an **inline run** (content
 only). Sources: plain text → one run per line (`\n`, `\r\n`); a URI →
 one run carrying the link mark; an internal same-block copy → one run; an
-internal cross-block copy and parsed HTML → kinded lines (HTML inline runs
-stay runs); an internal copy of a **block selection** → kinded lines marked
-`whole` (`flow.whole`). A flow with no lines (an empty payload; HTML with
-only a comment, a `<script>` or an empty `<span>`) changes nothing and adds
-no undo step (F-P10). A taken id refuses the op before any write.
+internal cross-block copy → kinded lines; external HTML (parsed by the
+browser, P4.1) → a kinded line per element a kind record claims (its tag
+per preset, or its `parse` hook), an inline run per unclaimed block element
+or text between blocks; an internal copy of a **block selection** → kinded
+lines marked `whole` (`flow.whole`). A flow with no lines (an empty payload;
+HTML that carries no text, atom, child or void kind — only a comment, a
+`<script>`, empty elements) changes nothing and adds no undo step (F-P10);
+such HTML falls through to the clipboard's `text/plain` when it has one. A
+taken id refuses the op before any write.
 
 ### `flow.inline` — one line joins the text
 

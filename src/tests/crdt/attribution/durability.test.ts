@@ -10,7 +10,7 @@
  */
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
-import { Y } from '../../../lib/crdt/engine.js';
+import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindIndexeddbProvider } from '../../../lib/crdt/providers/indexeddb.js';
 import {
 	applyUpdate,
@@ -247,14 +247,10 @@ describe('legacy compat — retention / GC', () => {
 		const x = itemsOf(contentNodeOf(a, block.id))[0]!;
 		writeLegacyRecord(a.doc, 'a/legacy0/0', legacyMapFor([x], 'alice'));
 		writeLegacyRecord(a.doc, 'a/legacy0/1', legacyMapFor([x], 'alice', 'deletes'));
-		a.transact(() => a.facade.deleteText(block.id, 0, 1));
-		// The tombstone is `keep`-marked while it sits in the undo stack —
-		// clearing history releases it for collection.
+		// Delete outside the tracked history: an untracked tombstone is not
+		// `keep`-marked, so the delete transaction's cleanup collects its payload.
 		a.clearHistory();
-
-		const set = Y.createIdSet();
-		set.add(x.id.client, x.id.clock, x.length);
-		Y.gcIdSet(a.doc as never, set);
+		a.doc.transact(() => a.facade.deleteText(block.id, 0, 1), 'untracked-gc');
 		// The payload is unrecoverable — the struct's content was replaced
 		// by a deleted-marker (the id range itself remains as tombstone
 		// metadata; full GC replacement happens when the parent dies).

@@ -2,7 +2,7 @@ import * as t from 'lib0-v14/testing'
 import * as ids from '../../../src/lib/crdt/vendor/yjs/src/utils/ids.js'
 import * as prng from 'lib0-v14/prng'
 import * as math from 'lib0-v14/math'
-import { compareIdmaps as compareIdMaps, createIdMap, ID, createRandomIdSet, createRandomIdMap, createContentAttribute } from './testHelper.js'
+import { compareIdmaps as compareIdMaps, createIdMap, createRandomIdMap, createContentAttribute } from './testHelper.js'
 import * as YY from '../../../src/lib/crdt/vendor/yjs/src/index.js'
 import * as time from 'lib0-v14/time'
 
@@ -74,73 +74,16 @@ export const testAmMerge = _tc => {
 }
 
 /**
+ * P8 keeps the IdMap wire codec (the inverse of the `readIdMap` that decodes legacy
+ * attribution records) and prunes the IdMap set algebra (`mergeIdMaps`, `diffIdMap`,
+ * `intersectMaps`): the codec roundtrip of upstream's diffing tests stays.
+ *
  * @param {t.TestCase} tc
  */
-export const testRepeatMergingMultipleIdMaps = tc => {
-  const clients = 4
-  const clockRange = 5
-  /**
-   * @type {Array<IdMap<number>>}
-   */
-  const sets = []
-  for (let i = 0; i < 3; i++) {
-    sets.push(createRandomIdMap(tc.prng, clients, clockRange, [1, 2, 3]))
-  }
-  const merged = ids.mergeIdMaps(sets)
-  const mergedReverse = ids.mergeIdMaps(sets.reverse())
-  compareIdMaps(merged, mergedReverse)
-  const composed = ids.createIdMap()
-  for (let iclient = 0; iclient < clients; iclient++) {
-    for (let iclock = 0; iclock < clockRange + 42; iclock++) {
-      const mergedHas = merged.hasId(new ID(iclient, iclock))
-      const oneHas = sets.some(ids => ids.hasId(new ID(iclient, iclock)))
-      t.assert(mergedHas === oneHas)
-      const mergedAttrs = merged.sliceId(new ID(iclient, iclock), 1)
-      mergedAttrs.forEach(a => {
-        if (a.attrs != null) {
-          composed.add(iclient, a.clock, a.len, a.attrs)
-        }
-      })
-    }
-  }
-  compareIdMaps(merged, composed)
-}
-
-/**
- * @param {t.TestCase} tc
- */
-export const testRepeatRandomDiffing = tc => {
-  const clients = 4
-  const clockRange = 100
-  const attrs = [1, 2, 3]
-  const idset1 = createRandomIdMap(tc.prng, clients, clockRange, attrs)
-  const idset2 = createRandomIdMap(tc.prng, clients, clockRange, attrs)
-  const merged = ids.mergeIdMaps([idset1, idset2])
-  const e1 = ids.diffIdMap(idset1, idset2)
-  const e2 = ids.diffIdMap(merged, idset2)
-  compareIdMaps(e1, e2)
-  const copy = YY.decodeIdMap(YY.encodeIdMap(e1))
-  compareIdMaps(e1, copy)
-}
-
-/**
- * @param {t.TestCase} tc
- */
-export const testRepeatRandomDiffing2 = tc => {
-  const clients = 4
-  const clockRange = 100
-  const attrs = [1, 2, 3]
-  const idmap1 = createRandomIdMap(tc.prng, clients, clockRange, attrs)
-  const idmap2 = createRandomIdMap(tc.prng, clients, clockRange, attrs)
-  const idsExclude = createRandomIdSet(tc.prng, clients, clockRange)
-  const merged = ids.mergeIdMaps([idmap1, idmap2])
-  const mergedExcluded = ids.diffIdMap(merged, idsExclude)
-  const e1 = ids.diffIdMap(idmap1, idsExclude)
-  const e2 = ids.diffIdMap(idmap2, idsExclude)
-  const excludedMerged = ids.mergeIdMaps([e1, e2])
-  compareIdMaps(mergedExcluded, excludedMerged)
-  const copy = YY.decodeIdMap(YY.encodeIdMap(mergedExcluded))
-  compareIdMaps(mergedExcluded, copy)
+export const testRepeatRandomIdMapEncoding = tc => {
+  const idmap = createRandomIdMap(tc.prng, 4, 100, [1, 2, 3])
+  const copy = YY.decodeIdMap(YY.encodeIdMap(idmap))
+  compareIdMaps(idmap, copy)
 }
 
 /**
@@ -153,47 +96,12 @@ export const testRepeatRandomDeletes = tc => {
   const client = Array.from(idset.clients.keys())[0]
   const clock = prng.int31(tc.prng, 0, clockRange)
   const len = prng.int31(tc.prng, 0, math.round((clockRange - clock) * 1.2)) // allow exceeding range to cover more edge cases
-  const idsetOfDeletes = ids.createIdMap()
-  idsetOfDeletes.add(client, clock, len, [])
-  const diffed = ids.diffIdMap(idset, idsetOfDeletes)
+  // P8: `diffIdMap` is pruned — compare against membership taken before the delete instead
+  const before = Array.from({ length: clockRange * 2 }, (_, c) => idset.has(client, c))
   idset.delete(client, clock, len)
-  for (let i = 0; i < len; i++) {
-    t.assert(!idset.has(client, clock + i))
+  for (let c = 0; c < before.length; c++) {
+    t.assert(idset.has(client, c) === (before[c] && (c < clock || c >= clock + len)))
   }
-  compareIdMaps(idset, diffed)
-}
-
-/**
- * @param {t.TestCase} tc
- */
-export const testRepeatRandomIntersects = tc => {
-  const clients = 4
-  const clockRange = 100
-  const ids1 = createRandomIdMap(tc.prng, clients, clockRange, [1])
-  const ids2 = createRandomIdMap(tc.prng, clients, clockRange, ['two'])
-  const intersected = ids.intersectMaps(ids1, ids2)
-  for (let client = 0; client < clients; client++) {
-    for (let clock = 0; clock < clockRange; clock++) {
-      t.assert((ids1.has(client, clock) && ids2.has(client, clock)) === intersected.has(client, clock))
-      /**
-       * @type {Array<any>?}
-       */
-      const slice1 = ids1.slice(client, clock, 1)[0].attrs
-      /**
-       * @type {Array<any>?}
-       */
-      const slice2 = ids2.slice(client, clock, 1)[0].attrs
-      /**
-       * @type {Array<any>?}
-       */
-      const expectedAttrs = (slice1 != null && slice2 != null) ? slice1.concat(slice2) : null
-      const attrs = intersected.slice(client, clock, 1)[0].attrs
-      t.assert(attrs?.length === expectedAttrs?.length)
-    }
-  }
-  const diffed1 = ids.diffIdMap(ids1, ids2)
-  const altDiffed1 = ids.diffIdMap(ids1, intersected)
-  compareIdMaps(diffed1, altDiffed1)
 }
 
 /**
@@ -209,8 +117,9 @@ export const testUserAttributionEncodingBenchmark = tc => {
   const currentTime = time.getUnixTime()
   const ydoc = new YY.Doc()
   ydoc.on('afterTransaction', tr => {
-    ids.insertIntoIdMap(attributions, ids.createIdMapFromIdSet(tr.insertSet, [createContentAttribute('insert', 'userX'), createContentAttribute('insertAt', currentTime)]))
-    ids.insertIntoIdMap(attributions, ids.createIdMapFromIdSet(tr.deleteSet, [createContentAttribute('delete', 'userX'), createContentAttribute('deleteAt', currentTime)]))
+    // P8: `createIdMapFromIdSet` is pruned — add the ranges directly
+    tr.insertSet.forEach((r, client) => attributions.add(client, r.clock, r.len, [createContentAttribute('insert', 'userX'), createContentAttribute('insertAt', currentTime)]))
+    tr.deleteSet.forEach((r, client) => attributions.add(client, r.clock, r.len, [createContentAttribute('delete', 'userX'), createContentAttribute('deleteAt', currentTime)]))
   })
   const ytext = ydoc.get()
   const N = 10000

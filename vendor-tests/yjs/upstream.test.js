@@ -32,7 +32,6 @@ import * as encoding from './tests/encoding.tests.js'
 import * as undoredo from './tests/undo-redo.tests.js'
 import * as compatibility from './tests/compatibility.tests.js'
 import * as doc from './tests/doc.tests.js'
-import * as snapshot from './tests/snapshot.tests.js'
 import * as updates from './tests/updates.tests.js'
 import * as relativePositions from './tests/relativePositions.tests.js'
 import * as idset from './tests/IdSet.tests.js'
@@ -51,7 +50,6 @@ const modules = {
 	encoding,
 	'undo-redo': undoredo,
 	compatibility,
-	snapshot,
 	updates,
 	relativePositions,
 	IdSet: idset,

@@ -33,9 +33,10 @@
  *
  *   RETENTION — `a/` state is retained as long as it exists in the
  *   document (no GC of the records themselves); `live()`/renderer
- *   projections are gone — consumers that need a rendered view over
- *   legacy records can feed `legacy()` into the engine's own
- *   `createAttributionsRenderer`/`intersectContentMap` (`edytor/crdt`).
+ *   projections are gone, and the engine no longer ships concrete
+ *   renderers (UPSTREAM.md P8) — consumers that need a rendered view over
+ *   legacy records implement the engine's `AbstractRenderer` over the
+ *   `ContentMap` `legacy()` returns and pass it to `toDelta({renderer})`.
  */
 import type { EngineApi, EngineDoc } from '../engine-api.js';
 import type * as Engine from '../vendor/yjs/dts/index.js';
@@ -95,10 +96,10 @@ export type DocumentAttribution = {
 	 * U2 — merged read over the pre-existing `a/` records written by the
 	 * retired per-edit capture pipeline: `{inserts, deletes}` IdMaps in
 	 * the native ContentMap shape, decoded fresh per call. Returns `null`
-	 * when the document carries no legacy records. Feed it to the
-	 * engine's `createAttributionsRenderer`/`intersectContentMap` for a
-	 * rendered history view; the ordinary runs/projection surface does
-	 * not consult it.
+	 * when the document carries no legacy records. For a rendered history
+	 * view, implement the engine's `AbstractRenderer` over it (the engine
+	 * ships no concrete renderer — UPSTREAM.md P8); the ordinary
+	 * runs/projection surface does not consult it.
 	 */
 	legacy(): Engine.ContentMap | null;
 	/**

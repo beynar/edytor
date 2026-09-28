@@ -106,89 +106,6 @@ const isReadonlyNavigationKey = (event: KeyboardEvent) =>
 		'escape'
 	].includes(event.key.toLowerCase());
 
-const nativeSelectionNavigationKeys = new Set([
-	'arrowleft',
-	'arrowright',
-	'arrowup',
-	'arrowdown',
-	'home',
-	'end',
-	'pageup',
-	'pagedown'
-]);
-
-const shouldSyncAfterNativeNavigation = (event: KeyboardEvent) =>
-	nativeSelectionNavigationKeys.has(event.key.toLowerCase()) &&
-	!event.defaultPrevented &&
-	!isNativeInteractiveEvent(event);
-
-const getHorizontalFallbackOffset = (event: KeyboardEvent, offset: number, textLength: number) => {
-	if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
-		return null;
-	}
-
-	const key = event.key.toLowerCase();
-	if (key === 'arrowleft' && offset > 0) {
-		return offset - 1;
-	}
-
-	if (key === 'arrowright' && offset < textLength) {
-		return offset + 1;
-	}
-
-	return null;
-};
-
-const scheduleNativeNavigationSelectionSync = (edytor: Edytor, event: KeyboardEvent) => {
-	const syncSelection = () => edytor.selection.onSelectionChange();
-	const ownerDocument = edytor.node?.ownerDocument ?? document;
-	const originalText = edytor.selection.state.startText;
-	const originalOffset = edytor.selection.state.yStart;
-	const fallbackOffset =
-		originalText && edytor.selection.state.isCollapsed
-			? getHorizontalFallbackOffset(event, originalOffset, originalText.length)
-			: null;
-
-	ownerDocument.addEventListener('keyup', syncSelection, { once: true, capture: true });
-
-	setTimeout(syncSelection, 0);
-
-	if (typeof window !== 'undefined') {
-		window.requestAnimationFrame(syncSelection);
-	}
-
-	if (fallbackOffset === null || !originalText) {
-		return;
-	}
-
-	let isFallbackCanceled = false;
-	const cancelFallback = () => {
-		isFallbackCanceled = true;
-	};
-	ownerDocument.addEventListener('keydown', cancelFallback, { once: true, capture: true });
-
-	setTimeout(() => {
-		ownerDocument.removeEventListener('keydown', cancelFallback, { capture: true });
-		if (isFallbackCanceled) {
-			return;
-		}
-
-		syncSelection();
-		const { startText, endText, yStart, yEnd, isCollapsed } = edytor.selection.state;
-		if (
-			!isCollapsed ||
-			startText !== originalText ||
-			endText !== originalText ||
-			yStart !== originalOffset ||
-			yEnd !== originalOffset
-		) {
-			return;
-		}
-
-		edytor.selection.setAtTextOffset(originalText, fallbackOffset);
-	}, 30);
-};
-
 const shouldPreventReadonlyMutationKey = (event: KeyboardEvent) => {
 	if (isNativeTextControlEvent(event)) {
 		return false;
@@ -316,10 +233,6 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 			e.preventDefault();
 			e.stopPropagation();
 			return;
-		}
-
-		if (shouldSyncAfterNativeNavigation(e)) {
-			scheduleNativeNavigationSelectionSync(this, e);
 		}
 
 		const fallbackInputType = getStructuralFallbackInputType(this, e);

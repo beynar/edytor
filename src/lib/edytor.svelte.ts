@@ -846,26 +846,6 @@ export class Edytor {
 			}
 		};
 
-		const handleFocusOut = (event: FocusEvent) => {
-			if (event.relatedTarget instanceof Node && node.contains(event.relatedTarget)) {
-				return;
-			}
-			// Focus leaving abandons a live composition: the browser committed what it shows.
-			this.composition.abandon();
-			setTimeout(clearNativeSelectionAfterExternalFocus);
-		};
-
-		const clearAttachedNativeState = () => {
-			if (selectionIsInsideEditor()) {
-				clearDomSelection(node);
-			}
-
-			const activeElement = getActiveElement(node);
-			if (activeElement instanceof HTMLElement && node.contains(activeElement)) {
-				activeElement.blur();
-			}
-		};
-
 		const restoreCachedSelectionAfterKeyboardFocus = (event: FocusEvent) => {
 			if (this.readonly || event.target !== node) {
 				return;
@@ -931,10 +911,8 @@ export class Edytor {
 				if (!s.isCollapsed || !s.startText) {
 					return;
 				}
-				const unchanged = s.startText === text && s.yStart === offset;
 				const focusReset = s.startText === this.root?.firstEditableText && s.yStart === 0;
-				const targetText = unchanged || focusReset ? text : s.startText;
-				const targetOffset = unchanged || focusReset ? offset : s.yStart;
+				const [targetText, targetOffset] = focusReset ? [text, offset] : [s.startText, s.yStart];
 				if (!targetText?.node?.isConnected) {
 					return;
 				}
@@ -943,18 +921,6 @@ export class Edytor {
 			};
 
 			queueMicrotask(restore);
-		};
-
-		const handlePointerDown = (event: PointerEvent) => {
-			lastPointerDownInsideEditorAt = getEventTimeStamp(event);
-			this.selection.clearModelSelectionPreservation();
-			this.selection.capturePointerDragStart(event);
-			this.selection.clearInlineBlockSelection();
-			this.selection.collapseSelectedBlocksAtPointer(event);
-		};
-
-		const handlePointerUp = (event: PointerEvent) => {
-			this.selection.restoreInlineAtomDragRange(event);
 		};
 
 		this.node = node;
@@ -1000,15 +966,19 @@ export class Edytor {
 				},
 				{ capture: true }
 			),
+			// The document's capture listener already marked the gesture.
 			on(node, 'pointerdown', (event: PointerEvent) => {
-				this.markUserGesture();
 				// A pointer gesture abandons a live composition (D-7).
 				this.composition.abandon();
-				handlePointerDown(event);
+				lastPointerDownInsideEditorAt = getEventTimeStamp(event);
+				this.selection.clearModelSelectionPreservation();
+				this.selection.capturePointerDragStart(event);
+				this.selection.clearInlineBlockSelection();
+				this.selection.collapseSelectedBlocksAtPointer(event);
 			}),
 			on(node, 'pointerup', (event: PointerEvent) => {
 				this.markUserGesture();
-				handlePointerUp(event);
+				this.selection.restoreInlineAtomDragRange(event);
 			}),
 			// A drag released OUTSIDE the editor never reaches the node-level
 			// pointerup — without this `pointerDragStart` stays armed forever
@@ -1069,11 +1039,14 @@ export class Edytor {
 				// blur (restoring a caret in a blurred editor is harmless —
 				// the selection holds until focus returns). Outside clicks
 				// were already marked by the pointerdown capture listener.
-				if (event.relatedTarget instanceof Node && !node.contains(event.relatedTarget)) {
+				if (event.relatedTarget instanceof Node && node.contains(event.relatedTarget)) return;
+				if (event.relatedTarget instanceof Node) {
 					this.markUserGesture();
 					this.lastUserGestureOutsideEditor = true;
 				}
-				handleFocusOut(event);
+				// Focus leaving abandons a live composition: the browser committed what it shows.
+				this.composition.abandon();
+				setTimeout(clearNativeSelectionAfterExternalFocus);
 			}),
 			on(node, 'compositionstart', this.onCompositionStart),
 			on(node, 'compositionend', this.onCompositionEnd),
@@ -1094,7 +1067,9 @@ export class Edytor {
 
 		return {
 			destroy: () => {
-				clearAttachedNativeState();
+				if (selectionIsInsideEditor()) clearDomSelection(node);
+				const active = getActiveElement(node);
+				if (active instanceof HTMLElement && node.contains(active)) active.blur();
 				this.selection.destroy();
 				this.attempts.clear();
 				this.composition.reset();

@@ -13,12 +13,13 @@
  * result selection) until a newer gesture, transaction or history command.
  * The replay's own item inherits the entry, so undo and redo alternate
  * between the two. One restorer — this view's, only for the commands it
- * issues — selects the recorded value; other views and a headless
- * `document.history` call restore nothing (their carets ride the change, as
- * for a remote undo).
+ * issues — selects the recorded value (unless a peer deleted a recorded
+ * caret's place: the view then keeps its own, repaired selection); other
+ * views and a headless `document.history` call restore nothing (their
+ * carets ride the change, as for a remote undo).
  */
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { textSelection, type SelectionValue } from './selection.js';
+import { project, textSelection, type SelectionValue } from './selection.js';
 
 type Entry = { before: SelectionValue; after?: SelectionValue };
 type StackItem = { meta: Map<string, unknown> };
@@ -109,11 +110,17 @@ export class History {
 		// Anchors recorded before a delete bind items the replay re-created.
 		const follow = facade.followUndo;
 		const anchor = value.kind === 'text' ? follow(value.anchor) : null;
-		selection.select(
+		const restored =
 			value.kind === 'text'
 				? textSelection(anchor!, value.focus === value.anchor ? anchor! : follow(value.focus))
-				: value,
-			'history'
-		);
+				: value;
+		// A peer deleted the recorded caret's place: the view keeps its own
+		// selection, repaired as after any commit (the replay held that repair
+		// back). A dead text value has no block of its own to seam from.
+		if (restored.kind === 'text' && !project(restored, facade).start) {
+			selection.restoreDeadSelectionEndpoints();
+			return;
+		}
+		selection.select(restored, 'history');
 	}
 }

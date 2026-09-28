@@ -293,6 +293,38 @@ describe('S7 — history restores the issuing view’s recorded selection', () =
 			}
 		);
 
+		row('S7-vanished', channel)(
+			`S7-vanished (${channel}): undo whose recorded caret a peer deleted keeps a live caret`,
+			async () => {
+				// `sel.seam.next-sibling`: a caret whose block died lands at the
+				// previous sibling's end when the dead block was last. The undo's
+				// recorded `before` (@3 of `two`) is in a block a peer deleted; the
+				// undo still selects a caret the view can type at: `one`'s end.
+				const { edytor, editor } = await renderDomEdytor(
+					<root>
+						<paragraph>one</paragraph>
+						<paragraph>two|</paragraph>
+					</root>
+				);
+				const [first, second] = edytor.root!.children;
+				edytor.undoManager.stopCapturing();
+				await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'y' });
+				await setNativeSelection(edytor, first!.firstText!, 3);
+				await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'x' });
+				expect(plainText(edytor, 0)).toBe('onex');
+				expect(plainText(edytor, 1)).toBe('twoy');
+
+				const remote = peer(edytor);
+				remote.facade.deleteBlock(second!.id);
+				await remote.push();
+				expect(edytor.value.children).toHaveLength(1);
+
+				await history(channel, edytor, editor, 'undo');
+				expect(plainText(edytor, 0)).toBe('one');
+				expect(caret(edytor)).toEqual({ block: first!.id, offset: 3, isCollapsed: true });
+			}
+		);
+
 		row('S7-after', channel)(
 			`S7-after (${channel}): redo returns the caret to where the command left it`,
 			async () => {

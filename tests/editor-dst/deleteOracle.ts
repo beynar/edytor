@@ -1042,11 +1042,26 @@ const describeDeleteInner = (
 				// plausibility — anchored at the caret, at most one
 				// complete contract word-run, never a truncated run.
 				const backward = backwardDelete;
+				// The recorded offsets count the filler an EMPTY text part
+				// renders (one ZWSP): its end is DOM offset 1 but model
+				// offset 0 — production's position mapping strips fillers.
+				// The delivery is judged in that filler-free geometry: only
+				// the one filler unit of an empty part is forgiven (WebKit
+				// ends a word unit inside the next empty block's filler);
+				// anything else past a part's length stays out of model.
+				const fillerFree = (textIndex: number, y: number) => {
+					const loc = partAtTextIndex(textIndex);
+					const part = loc?.block.parts[loc.partIndex] as (Part & { kind: 'text' }) | undefined;
+					return y === 1 && part && textPartLength(part) === 0 ? 0 : y;
+				};
+				const span = {
+					...deliveredRange,
+					yStart: fillerFree(deliveredRange.startTextIndex, deliveredRange.yStart),
+					yEnd: fillerFree(deliveredRange.endTextIndex, deliveredRange.yEnd)
+				};
 				const anchored = backward
-					? deliveredRange.endTextIndex === selection.endTextIndex &&
-						deliveredRange.yEnd === selection.yStart
-					: deliveredRange.startTextIndex === selection.startTextIndex &&
-						deliveredRange.yStart === selection.yStart;
+					? span.endTextIndex === selection.endTextIndex && span.yEnd === selection.yStart
+					: span.startTextIndex === selection.startTextIndex && span.yStart === selection.yStart;
 				if (!deliveredRange.collapsed) {
 					// The bound only applies over a collapsed caret — a word
 					// chord over a live selection legitimately delivers a span
@@ -1075,41 +1090,23 @@ const describeDeleteInner = (
 							deliveredRange.startTextIndex === selection.startTextIndex &&
 							deliveredRange.endTextIndex === selection.startTextIndex;
 						// The delivered offsets address PER-PART model
-						// space — a span reaching past its part's length is
-						// not a model unit. The ONE observed phantom is
-						// WebKit delivering the ZWSP placeholder of an EMPTY
-						// text part as a single-unit "word": empty caret
-						// part + a ≤1-unit span. Anything else out of bounds
-						// is a defect, ASCII or not.
-						const startLoc = caretLoc;
-						const endLoc = partAtTextIndex(deliveredRange.endTextIndex);
-						const endPartLen = endLoc
-							? textPartLength(
-									endLoc.block.parts[endLoc.partIndex] as Part & {
-										kind: 'text';
-									}
-								)
-							: 0;
-						const startPartLen = startLoc
-							? textPartLength(
-									startLoc.block.parts[startLoc.partIndex] as Part & {
-										kind: 'text';
-									}
-								)
-							: 0;
-						const spanInModel =
-							deliveredRange.yStart <= startPartLen && deliveredRange.yEnd <= endPartLen;
-						const phantomSpan =
-							samePart &&
-							caretContent.length === 0 &&
-							deliveredRange.yEnd - deliveredRange.yStart <= 1;
-						if (!spanInModel && !phantomSpan) {
+						// space — a span reaching past its part's length
+						// (fillers stripped) is not a model unit, ASCII or not.
+						const partLen = (textIndex: number) => {
+							const loc = partAtTextIndex(textIndex);
+							return loc
+								? textPartLength(loc.block.parts[loc.partIndex] as Part & { kind: 'text' })
+								: 0;
+						};
+						const startPartLen = partLen(span.startTextIndex);
+						const endPartLen = partLen(span.endTextIndex);
+						if (span.yStart > startPartLen || span.yEnd > endPartLen) {
 							return invalid(
 								`${deliveredType} delivered an out-of-model span ` +
 									`[${deliveredRange.startTextIndex}@${deliveredRange.yStart}, ` +
 									`${deliveredRange.endTextIndex}@${deliveredRange.yEnd}) — ` +
-									`part bounds are [.. <=${startPartLen}@${selection.startTextIndex}, ` +
-									`.. <=${endPartLen}@${deliveredRange.endTextIndex}]`
+									`part bounds are [.. <=${startPartLen}@${span.startTextIndex}, ` +
+									`.. <=${endPartLen}@${span.endTextIndex}]`
 							);
 						}
 						const inModelSpan =
@@ -1121,7 +1118,7 @@ const describeDeleteInner = (
 							// delivered span must equal a contract-legal unit.
 							const legal = legalWordSpans(backward);
 							const hit = legal.some(
-								(span) => span.yStart === deliveredRange.yStart && span.yEnd === deliveredRange.yEnd
+								(unit) => unit.yStart === deliveredRange.yStart && unit.yEnd === deliveredRange.yEnd
 							);
 							if (!hit) {
 								return invalid(
@@ -1134,7 +1131,7 @@ const describeDeleteInner = (
 						} else {
 							// Non-ASCII or cross-part span: platform segmentation
 							// is legitimately platform-owned — bound plausibility.
-							const runs = wordRunsInRange(deliveredRange);
+							const runs = wordRunsInRange(span);
 							if (runs > 1) {
 								return invalid(
 									`${deliveredType} delivered an oversized range ` +
@@ -1143,7 +1140,7 @@ const describeDeleteInner = (
 										`${runs} contract word-runs — one word delete removes at most one`
 								);
 							}
-							if (truncatesWordRun(deliveredRange, backward)) {
+							if (truncatesWordRun(span, backward)) {
 								return invalid(
 									`${deliveredType} delivered a range that truncates a word ` +
 										`run at its ${backward ? 'start' : 'end'} edge: ` +

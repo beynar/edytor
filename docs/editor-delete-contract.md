@@ -328,7 +328,12 @@ caret it must be anchored at the caret in the delete direction, and a
 that fails either check is `delete-range-implausible` (e.g.
 `alpha bravo|` → `""` covers two word-runs — not a word unit). A
 delivered range covering a live (non-collapsed) selection is unanchored
-by design — the selection is the unit — and skips the anchor bound.
+by design — the selection is the unit — and skips the anchor bound. The
+delivered offsets are judged in filler-free geometry, as production maps
+them: an empty text renders one zero-width filler, so offset 1 inside an
+empty text is its offset 0 (WebKit ends a word unit from an empty block's
+end inside the next empty block's filler, DST seed 39); any other offset
+past a text's length stays `delete-range-implausible`.
 
 Fragment deletes (`deleteByCut`/`deleteByDrag`/`deleteByComposition`),
 generic `deleteContent`, and `deleteEntireSoftLine` still adopt the

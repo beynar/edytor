@@ -1122,6 +1122,61 @@ test.describe('DST v3 effect oracle', () => {
 		);
 	});
 
+	test('a word unit ending inside the next empty block’s filler is judged filler-free (seed 39, WebKit)', () => {
+		const wordForward: DstAction = { kind: 'wordDelete', direction: 'forward' };
+		/** Caret in an empty first block; the second holds `second` (empty: its filler only). */
+		const emptyThen = (second: string): DstBrowserSnapshot => {
+			const snap = twoBlockSnapshot({ yStart: 0, yEnd: 0 });
+			snap.value.children[0].content = [];
+			snap.model.blocks[0].parts = [{ kind: 'text', id: 't0', runs: [] }];
+			snap.value.children[1].content = second ? [{ text: second }] : [];
+			snap.model.blocks[1].parts = [
+				{ kind: 'text', id: 't1', runs: second ? [{ text: second, marks: null }] : [] }
+			];
+			snap.model.texts = ['', second];
+			snap.model.renderedTexts = ['', second];
+			return snap;
+		};
+		const delivered = (endOffset: number, yEnd: number): DstEvent[] => [
+			{
+				type: 'beforeinput',
+				isTrusted: true,
+				cancelable: true,
+				inputType: 'deleteWordForward',
+				targetRange: {
+					collapsed: false,
+					startOffset: 0,
+					endOffset,
+					startTextIndex: 0,
+					endTextIndex: 1,
+					yStart: 0,
+					yEnd
+				}
+			}
+		];
+		// WebKit's delivery: [0@0, 1@1) — the end of the empty next block's
+		// ZWSP. Filler-free it is [0@0, 0@1): no model character. The unit
+		// is the neighbour (`del.unit.neighbour`): the next block merges in.
+		const merged = emptyThen('');
+		merged.value.children = [{ type: 'paragraph', id: 'b0', content: [] }];
+		merged.events = delivered(1, 1);
+		expect(() => assertActionEffect('webkit', wordForward, emptyThen(''), merged)).not.toThrow();
+		// Sensitivity: two units past an empty part is no filler — out of model.
+		const past = structuredClone(merged);
+		past.events = delivered(2, 2);
+		expect(() => assertActionEffect('webkit', wordForward, emptyThen(''), past)).toThrow(
+			/delete-range-implausible/
+		);
+		// Sensitivity: offset 1 of a NON-empty part is a model character, not a
+		// filler — ending there truncates the word `world`.
+		const truncated = emptyThen('world');
+		truncated.value.children = [{ type: 'paragraph', id: 'b0', content: [{ text: 'world' }] }];
+		truncated.events = delivered(1, 1);
+		expect(() => assertActionEffect('webkit', wordForward, emptyThen('world'), truncated)).toThrow(
+			/delete-range-implausible/
+		);
+	});
+
 	test('a run never crosses a block boundary OR an inline atom — both directions of the bound', () => {
 		const wordBackward: DstAction = { kind: 'wordDelete', direction: 'backward' };
 		const rangeEvent = (

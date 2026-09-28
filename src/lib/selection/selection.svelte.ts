@@ -1194,7 +1194,8 @@ export class EdytorSelection {
 	 * Post-mirror-flush repair of the endpoints this view did not author
 	 * (R9: a command that declared its result selection authors its own), through
 	 * `select()`. Text endpoints follow their anchors by projection; what is
-	 * repaired is a value that no longer resolves: a block set keeps its live
+	 * repaired is a range whose content died (a caret at that point) and a
+	 * value that no longer resolves: a block set keeps its live
 	 * members, an atom that vanished leaves a caret at its block's start, and
 	 * otherwise the selection lands at the seam of the block it last resolved in
 	 * (`doc/anchors`: the replicated slot, displayable stops only). The model is
@@ -1233,6 +1234,16 @@ export class EdytorSelection {
 			dead = value.blockId;
 		} else if (value.kind === 'text') {
 			const state = this.state;
+			const { start, isCollapsed } = this.projection;
+			if (state.startText && start && isCollapsed && value.anchor !== value.focus) {
+				// A range whose content died is a caret at the seam (`sel.seam.covered-atom`):
+				// its two anchors would re-open around text re-inserted there.
+				const caret = facade.anchorAt(start.block, start.offset, 'left');
+				if (caret) {
+					this.#land(textSelection(caret));
+					return;
+				}
+			}
 			if (state.startText) {
 				// The text it was displayed in died while its anchor moved on: display again.
 				if (this.#lastText !== null && !this.#lastText.isInDocument) this.display();

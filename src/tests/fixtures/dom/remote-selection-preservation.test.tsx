@@ -6,6 +6,7 @@ import { Y } from '$lib/crdt/engine.js';
 import { attachDocument } from '$lib/crdt/document.js';
 import { flushDomUpdates, renderDomEdytor, setNativeSelection } from '../../dom/test.utils.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { richTextOperations } from '$lib/plugins/richtext/richTextOperations.js';
 
 const input = (
 	<root>
@@ -121,6 +122,51 @@ describe('remote edits vs local selection', () => {
 
 		// Caret's atoms are gone → lands at the deletion seam (offset 0).
 		await waitFor(() => expect(edytor.selection.state.yStart).toBe(0));
+	});
+
+	it('a range whose content a remote delete removed is a caret: a remote undo does not re-open it', async () => {
+		// `sel.seam.covered-atom`: every atom of the range dies → the selection
+		// lands at the deletion seam as a caret. A passive caret stays a caret
+		// (remote edits repair, never expand), and it binds left: the peer's
+		// undo re-inserts the text at the caret, after it (`sel.ride.insert`).
+		// The range was formatted first, so its anchors bind the mark's
+		// boundary items, as a toolbar format leaves them.
+		const { edytor } = await renderDomEdytor(
+			<root>
+				<paragraph>quoted words</paragraph>
+			</root>,
+			{ autoSelectFixture: false }
+		);
+		const block = edytor.root!.children[0]!;
+		await setNativeSelection(edytor, block.firstText, 1, block.firstText, 11);
+		richTextOperations(edytor).setMarkAtRange('code');
+		await flushDomUpdates();
+		expect(edytor.selection.projection).toMatchObject({
+			start: { offset: 1 },
+			end: { offset: 11 },
+			isCollapsed: false
+		});
+
+		const { remote, push } = await createRemotePeer(edytor);
+		remote.sync();
+		const history = remote.history;
+		history.stopCapturing();
+		remote.facade.deleteText(block.id, 0, 12);
+		await push();
+		expect(edytor.selection.projection).toMatchObject({
+			start: { block: block.id, offset: 0 },
+			isCollapsed: true
+		});
+
+		history.undo();
+		await push();
+		expect(
+			edytor.value.children?.[0]?.content?.map((p) => ('text' in p ? p.text : '')).join('')
+		).toBe('quoted words');
+		expect(edytor.selection.projection).toMatchObject({
+			start: { block: block.id, offset: 0 },
+			isCollapsed: true
+		});
 	});
 
 	it('remote delete of the caret block lands at the deletion seam', async () => {

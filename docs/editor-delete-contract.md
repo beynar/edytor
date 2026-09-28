@@ -320,7 +320,10 @@ the command path (`command-simulation.test.tsx`).
 ### `sel.seam.covered-atom` — caret's atom deleted in-place
 
 Remote `deleteText` covering the caret's atom → caret lands at the deletion
-seam (offset of the removed run).
+seam (offset of the removed run). A range whose every atom died is a caret
+there too — a fresh left-bound caret, not the two range anchors: text
+re-inserted at the seam (a peer's undo) lands after it and never re-opens
+the range. Pinned: `remote-selection-preservation.test.tsx`.
 
 ### `sel.seam.next-sibling` — caret's block deleted
 

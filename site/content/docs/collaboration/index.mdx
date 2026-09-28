@@ -56,35 +56,30 @@ When two replicas meet, whether a tab and the server or two tabs, each tells the
 
 ### IndexedDB
 
+`room` alone names a local copy:
+
 ```svelte
-<script lang="ts">
-  import { Edytor, createIndexeddbSync, richTextPlugin } from 'edytor';
-
-  const sync = createIndexeddbSync('notes/today');
-</script>
-
-<Edytor {sync} plugins={[richTextPlugin]} />
+<Edytor room="notes/today" plugins={[richTextPlugin]} />
 ```
 
 ### WebSocket room
 
+Add a `server`, and the view joins the room `<server>/<room>`:
+
 ```svelte
-<script lang="ts">
-  import { Edytor, createWebsocketSync, richTextPlugin } from 'edytor';
-
-  const sync = createWebsocketSync({
-    serverUrl: 'wss://rooms.example.com/rooms',
-    roomName: 'doc-42'
-  });
-</script>
-
-<Edytor {sync} plugins={[richTextPlugin]} />
+<Edytor
+  server="wss://rooms.example.com/rooms"
+  room="doc-42"
+  params={{ token }}
+  actor={{ id: userId, name: 'Ada' }}
+  plugins={[richTextPlugin]}
+/>
 ```
 
-The WebSocket sync keeps a local IndexedDB copy by default, so the third setup also covers the second. A real deployment also sends a token; see the [server quick start](/docs/server/quick-start).
+The room keeps a local IndexedDB copy too, so the third setup also covers the second. `params` travel with each connection (see the [server quick start](/docs/server/quick-start)); `actor` names the author for undo, attribution and presence.
 
 :::note
-The `sync` prop is read once, when the view mounts, and only by editable views. A `readonly` view does not attach its `sync`; attach it to the document instead (see [Documents](/docs/collaboration/documents#attach-a-provider)).
+`room` and `server` are read once, when the view mounts, and only by editable views; wrap the view in `{#key documentId}` to switch documents. A `readonly` view connects nothing; attach the sync to a shared document instead (see [Documents](/docs/collaboration/documents#attach-a-provider)). For a custom provider, pass a factory as `sync`.
 :::
 
 ## In this section

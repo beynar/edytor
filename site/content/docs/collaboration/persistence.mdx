@@ -8,17 +8,16 @@ Edytor persists documents in the browser's IndexedDB. Use `createIndexeddbSync` 
 
 ## Local-only documents
 
-`createIndexeddbSync(name)` stores the document under `name` and restores it on the next visit:
+A view with a `room` and no `server` stores the document under that name and restores it on the next visit:
 
 ```svelte
 <script lang="ts">
-  import { Edytor, createIndexeddbSync, richTextPlugin } from 'edytor';
+  import { Edytor, richTextPlugin } from 'edytor';
 
-  const sync = createIndexeddbSync('notes/today');
   const value = { children: [{ type: 'paragraph', content: [{ text: 'First note' }] }] };
 </script>
 
-<Edytor {sync} {value} plugins={[richTextPlugin]} />
+<Edytor room="notes/today" {value} plugins={[richTextPlugin]} />
 ```
 
 `value` is the content of a brand-new document only. When the store already holds the document, the stored content wins and `value` is ignored. The same works without a view:
@@ -34,7 +33,7 @@ Every edit is written as it happens. Past 500 stored updates, the provider write
 
 ## The local copy of a WebSocket document
 
-`createWebsocketSync` attaches an IndexedDB store beside the socket, so a synced document also survives reloads:
+A view with a `server` keeps an IndexedDB store beside the socket, so a synced document also survives reloads. With an `actor`, the view names it `edytor:<actor.id>@<server>/<room>`. The factory form sets the name yourself:
 
 ```ts
 import { createWebsocketSync } from 'edytor';

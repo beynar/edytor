@@ -9,27 +9,18 @@ icon: radio-tower
 ## Connect
 
 ```svelte
-<script lang="ts">
-  import { Edytor, createWebsocketSync, richTextPlugin } from 'edytor';
-
-  let { userId, documentId, token }: { userId: string; documentId: string; token: string } = $props();
-</script>
-
 <Edytor
   plugins={[richTextPlugin]}
+  server="wss://rooms.example.com/rooms"
+  room={documentId}
+  params={{ token }}
   actor={{ id: userId }}
-  sync={createWebsocketSync({
-    serverUrl: 'wss://rooms.example.com/rooms',
-    roomName: documentId,
-    params: { token },
-    persistName: `${userId}:${documentId}`
-  })}
 />
 ```
 
-The provider dials `<serverUrl>/<roomName>?replica=<clientID>&<params>`, here `wss://rooms.example.com/rooms/doc-42?replica=…&token=…`. `replica` is the document's client id, added at every dial so the room can bind it to the user at connection time; see [Authorization](/docs/server/authorization#replicas). A `replica` in `params` overrides it.
+The view dials `<server>/<room>?replica=<clientID>&<params>`, here `wss://rooms.example.com/rooms/doc-42?replica=…&token=…`. `replica` is the document's client id, added at every dial so the room can bind it to the user at connection time; see [Authorization](/docs/server/authorization#replicas). A `replica` in `params` overrides it. `params` is read at every dial, so a refreshed token reaches the next reconnect.
 
-To share one document between several views, create it yourself and attach the same factory: `createDocument({ actor })`, then `document.attachSync(createWebsocketSync(…))`, then `<Edytor {document} />` in each view.
+The props build a `createWebsocketSync` for you. Use the factory directly for the options below, or to share one document between several views: `createDocument({ actor })`, then `document.attachSync(createWebsocketSync(…))`, then `<Edytor {document} />` in each view.
 
 ## Options
 

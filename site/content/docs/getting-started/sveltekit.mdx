@@ -56,9 +56,8 @@ The demo app renders its editable editor only after the page has mounted:
 ```svelte title="src/routes/+page.svelte"
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Edytor, createIndexeddbSync, richTextPlugin } from 'edytor';
+	import { Edytor, richTextPlugin } from 'edytor';
 
-	const sync = createIndexeddbSync('my-note');
 	let isMounted = $state(false);
 
 	onMount(() => {
@@ -68,7 +67,7 @@ The demo app renders its editable editor only after the page has mounted:
 
 <div class="page">
 	{#if isMounted}
-		<Edytor {sync} plugins={[richTextPlugin]} />
+		<Edytor room="my-note" plugins={[richTextPlugin]} />
 	{/if}
 </div>
 ```

@@ -2,17 +2,15 @@
 import CodeBlock from "blume/components/content/CodeBlock.astro";
 
 const clientCode = `<script lang="ts">
-  import { Edytor, createWebsocketSync, richTextPlugin } from "edytor";
+  import { Edytor, richTextPlugin } from "edytor";
 </script>
 
 <Edytor
   plugins={[richTextPlugin]}
+  server="wss://rooms.example.com/rooms"
+  room={documentId}
+  params={{ token }}
   actor={{ id: userId, name: userName }}
-  sync={createWebsocketSync({
-    serverUrl: "wss://rooms.example.com/rooms",
-    roomName: documentId,
-    params: { token },
-  })}
 />`;
 
 const serverCode = `import {

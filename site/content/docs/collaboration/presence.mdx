@@ -11,7 +11,7 @@ Presence is the short-lived state peers share while connected: who they are, and
 The simplest way is the document's `actor`: its `name` and `color` are published as the presence `user` field, which remote carets read.
 
 ```svelte
-<Edytor {sync} actor={{ id: 'user-42', name: 'Ada', color: '#dc2626' }} plugins={[richTextPlugin]} />
+<Edytor {server} {room} actor={{ id: 'user-42', name: 'Ada', color: '#dc2626' }} plugins={[richTextPlugin]} />
 ```
 
 A shared document takes it at creation instead: `createDocument({ actor: { … } })`.

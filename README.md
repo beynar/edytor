@@ -244,32 +244,24 @@ await provider.whenSynced;
 
 Upgrading a deployment that has v13 (`yjs`) persisted documents? Read [`docs/crdt-v14-migration.md`](docs/crdt-v14-migration.md) — it's a one-way, non-destructive import with an explicit operator recipe and rollback.
 
-Local IndexedDB persistence:
+Local IndexedDB persistence: `room` alone names the local copy.
 
 ```svelte
-<script lang="ts">
-	import { Edytor, createIndexeddbSync } from 'edytor';
-
-	const sync = createIndexeddbSync('document-id');
-</script>
-
-<Edytor {sync} />
+<Edytor room="document-id" />
 ```
 
-Websocket provider setup:
+Real-time collaboration: add the sync `server`; the view dials `<server>/<room>`, with `params` (an auth token) and the document's client id as `replica`.
 
 ```svelte
-<script lang="ts">
-	import { Edytor, createWebsocketSync } from 'edytor';
-
-	const sync = createWebsocketSync({
-		serverUrl: 'wss://collaboration.example.com',
-		roomName: 'document-id'
-	});
-</script>
-
-<Edytor {sync} />
+<Edytor
+	server="wss://collaboration.example.com"
+	room="document-id"
+	params={{ token }}
+	actor={{ id: userId, name: 'Ada' }}
+/>
 ```
+
+`room` and `server` are read once (wrap the view in `{#key documentId}` to switch documents); `params` updates reach the next reconnect. With an `actor`, the local copy is named per author (`edytor:<actor.id>@<server>/<room>`). For a custom provider, or one `document` shared by several views, use the factories below: `sync={createWebsocketSync({ serverUrl, roomName, … })}` on a view, or `document.attachSync(…)`.
 
 `createWebsocketSync` keeps a local copy of the document in IndexedDB by default, so edits made offline survive closing every tab and reloading, and reach the server when it is back (each (re)connect exchanges what either side lacks). The database is named `edytor:<serverUrl>/<roomName>`; `persistName` sets another name and `persist: false` turns the local copy off. Where there is no `indexedDB` (Node, Workers, SSR) the sync is the socket alone. Readiness is local-first: stored content makes the document ready at once, offline included; an empty store never lets the document seed its `value` before the store answered, and then the server's answer, or the readiness bound (`DEFAULT_READINESS_BOUND`) when the server says nothing, decides as for a socket alone. Destroying the document (or the view that owns it) closes the socket and the database. To delete the local copy (at sign-out, say), pass the sync's `persistName` to `clearDocument`:
 
@@ -356,22 +348,19 @@ export default {
 }
 ```
 
-**3. The client.** Dial `wss://<host>/rooms` with the document id as the room and your token as a parameter; the provider adds this document's client id as `replica` at each dial. The local copy is on by default; name it per user, since the room refuses one user's socket delivering another user's edits:
+**3. The client.** Dial `wss://<host>/rooms` with the document id as the room and your token as a parameter; the provider adds this document's client id as `replica` at each dial. The local copy is on by default and, with an `actor`, named per user, since the room refuses one user's socket delivering another user's edits:
 
 ```svelte
 <Edytor
 	plugins={[richTextPlugin]}
+	server="wss://example.com/rooms"
+	room={documentId}
+	params={{ token }}
 	actor={{ id: userId }}
-	sync={createWebsocketSync({
-		serverUrl: 'wss://example.com/rooms',
-		roomName: documentId,
-		params: { token },
-		persistName: `${userId}:${documentId}`
-	})}
 />
 ```
 
-With a shared `document` (several views), pass the same `sync` to `document.attachSync(…)` and the actor to `createDocument({ actor })`.
+With a shared `document` (several views), attach `createWebsocketSync({ serverUrl, roomName, params, persistName })` to it with `document.attachSync(…)` and set the actor in `createDocument({ actor })`.
 
 Edits restored from the local copy were written under earlier client ids of the same user: the room registers an id it has never seen to the user who first writes under it, so a page reloaded offline delivers them on reconnect.
 

@@ -77,16 +77,11 @@ export default {
 
 The client sends the token; the provider adds its replica id (`?replica=<clientID>`) at every dial:
 
-```ts
-createWebsocketSync({
-  serverUrl: 'wss://rooms.example.com/rooms',
-  roomName: documentId,
-  params: { token },
-  persistName: `${userId}:${documentId}`
-});
+```svelte
+<Edytor server="wss://rooms.example.com/rooms" room={documentId} params={{ token }} actor={{ id: userId }} />
 ```
 
-`params` is read at every reconnect; update the object to refresh an expiring token (see [WebSocket options](/docs/collaboration/websocket#options)). With a session cookie instead, read `request.headers.get('Cookie')` in `authorize` and look the session up; the cookie is sent with the upgrade when the Worker is on the same site.
+`params` is read at every reconnect; pass a new `token` to refresh an expiring one (see [WebSocket options](/docs/collaboration/websocket#options)). With a session cookie instead, read `request.headers.get('Cookie')` in `authorize` and look the session up; the cookie is sent with the upgrade when the Worker is on the same site.
 
 ## How identity reaches the room
 

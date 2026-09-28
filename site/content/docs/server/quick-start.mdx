@@ -77,24 +77,21 @@ The room is now at `ws://localhost:8787/rooms/<documentId>`. Wrangler runs the D
 </Step>
 <Step title="Connect the editor">
 
-Point `createWebsocketSync` at `/rooms`, use the document id as the room, and send the user as a parameter (the provider adds the replica id itself). Name the local copy per user.
+Point the view at `/rooms`, use the document id as the room, and send the user as a parameter.
 
 ```svelte src/lib/Editor.svelte
 <script lang="ts">
-  import { Edytor, createWebsocketSync, richTextPlugin } from 'edytor';
+  import { Edytor, richTextPlugin } from 'edytor';
 
   let { userId, documentId }: { userId: string; documentId: string } = $props();
 </script>
 
 <Edytor
   plugins={[richTextPlugin]}
+  server="ws://localhost:8787/rooms"
+  room={documentId}
+  params={{ user: userId }}
   actor={{ id: userId, name: userId }}
-  sync={createWebsocketSync({
-    serverUrl: 'ws://localhost:8787/rooms',
-    roomName: documentId,
-    params: { user: userId },
-    persistName: `${userId}:${documentId}`
-  })}
 />
 ```
 
@@ -107,7 +104,7 @@ Open the page in two browsers with different users: edits, carets and selections
 npx wrangler deploy
 ```
 
-Then switch `serverUrl` to `wss://<your-worker-host>/rooms`.
+Then switch `server` to `wss://<your-worker-host>/rooms`.
 
 </Step>
 </Steps>

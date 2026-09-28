@@ -5,6 +5,7 @@
 	import { Edytor as EdytorClass, useEdytor, type Snippets } from '../edytor.svelte.js';
 	import type { Awareness, DocumentActor, EdytorDocument, YDoc } from '../crdt/index.js';
 	import type { EdytorSync } from '$lib/collaboration/index.js';
+	import { createIndexeddbSync, createWebsocketSync } from '$lib/collaboration/providers.js';
 	export { EdytorClass as EdytorContext, useEdytor };
 	import type { Placeholder, Plugin } from '$lib/plugins.js';
 	import {
@@ -52,6 +53,16 @@
 		/** Virtual-keyboard action-key label — forwarded to the root
 		 *  `enterkeyhint` attribute; omitted from the DOM when unset. */
 		enterkeyhint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
+		/**
+		 * The document's id. Alone: a local IndexedDB copy under that name. With
+		 * `server`: the room on that server, plus the local copy. Read once.
+		 */
+		room?: string;
+		/** The sync server's base URL (`wss://…/rooms`); the view dials `<server>/<room>`. Read once. */
+		server?: string;
+		/** Query parameters sent with each dial (auth token…). Updates reach the next reconnect. */
+		params?: Record<string, string>;
+		/** Advanced: a custom sync factory. Overrides `room`/`server`. */
 		sync?: EdytorSync;
 	};
 </script>
@@ -76,6 +87,9 @@
 		value = $bindable(defaultValue),
 		hotKeys,
 		sync,
+		room,
+		server,
+		params,
 		awareness,
 		actor,
 		onChange,
@@ -114,7 +128,7 @@
 		hotKeys,
 		onSelectionChange,
 		onChange,
-		sync: !!sync,
+		sync: !!sync || room !== undefined,
 		value,
 		placeholder
 	}));
@@ -128,7 +142,23 @@
 	// flight before any view decides on mount. A view-owned document still
 	// dies with the component: `edytor.destroy()` runs `document.destroy()`,
 	// which runs the tracked cleanup.
-	const initialSync = untrack(() => sync);
+	// Live query params: the provider reads this object at every dial.
+	const dialParams: Record<string, string> = untrack(() => ({ ...params }));
+	$effect(() => {
+		for (const key of Object.keys(dialParams)) delete dialParams[key];
+		Object.assign(dialParams, params);
+	});
+	const initialSync = untrack((): EdytorSync | undefined => {
+		if (sync || room === undefined) return sync;
+		if (server === undefined) return createIndexeddbSync(room);
+		return createWebsocketSync({
+			serverUrl: server,
+			roomName: room,
+			params: dialParams,
+			// Per author: the room refuses one user's socket delivering another's edits.
+			...(actor ? { persistName: `edytor:${actor.id}@${server}/${room}` } : {})
+		});
+	});
 	if (typeof window !== 'undefined' && !initialEdytorOptions.readonly && initialSync) {
 		edytor.document.attachSync(initialSync, { value: initialEdytorOptions.value });
 	}

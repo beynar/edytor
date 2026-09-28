@@ -8,7 +8,6 @@
 		Edytor,
 		arrowMovePlugin,
 		codePlugin,
-		createWebsocketSync,
 		markdownShortcutsPlugin,
 		richTextPlugin,
 		slashMenuPlugin,
@@ -76,13 +75,6 @@
 
 	const guest = guestId();
 	const actor = { id: guest, name: `${pick(NAMES)} (guest)`, color: pick(COLORS) };
-	const sync = createWebsocketSync({
-		serverUrl: SERVER,
-		roomName: room,
-		params: { guest },
-		persistName: `edytor-demo:${room}`
-	});
-
 	let edytor = $state<EdytorInstance>();
 	let people = $state(1);
 	$effect(() => {
@@ -115,7 +107,9 @@
 			bind:edytor
 			{value}
 			{actor}
-			{sync}
+			server={SERVER}
+			{room}
+			params={{ guest }}
 			{plugins}
 			placeholder={(view) => (view.focused ? "Type '/' for commands" : null)} />
 	</div>

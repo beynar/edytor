@@ -13,12 +13,24 @@
  * insertion may coalesce with it. The region the
  * previews occupy is two anchors, written only by the session: its start is
  * bound to the atom before it, its end to the preview's last atom, so a
- * peer's edit outside the region moves it and one inside is absorbed.
+ * peer's edit outside the region moves it.
+ *
+ * The preview is its own units, not the region (review 2026-09-29): the
+ * session records the id of every unit its last preview inserted, and an
+ * update or an ending deletes only those that are still live. A peer's text
+ * that landed inside the region is foreign and stays; a peer's delete of a
+ * preview unit stands until the next write replaces the preview anyway. The
+ * replacement takes the preview's place — the position of its first live
+ * unit, else the region start — like any range replacement: foreign content
+ * before that unit stays before the new text, content after it (inside the
+ * preview or at its end) follows it, in its order, and the caret lands after
+ * the new text. `abにXほんcd` committing `日本` gives `ab日本Xcd`;
+ * `abXにほんcd` gives `abX日本cd`.
  *
  * A session ends exactly once:
  * - `commit(value)` — the final value (`insertFromComposition`, a text
  *   insertion while composing, `compositionend`): one user-origin command that
- *   deletes the live preview items per stream and inserts at the region start,
+ *   deletes the live preview units per stream and inserts in their place,
  *   the insertion shown to hooks;
  * - `cancel()` — an explicit cancel (an empty final value): the preview is
  *   deleted inside the capture group;
@@ -83,6 +95,8 @@ export class Composition {
 	#start: SelectionValue | null = null;
 	/** The region: its start bound to the atom before it, its end to the preview's last atom. */
 	#region: { start: TextAnchor; end: TextAnchor } | null = null;
+	/** The ids (`client:clock`) of the units the last preview inserted: all the session ever deletes. */
+	#own = new Set<string>();
 	/** The start target's replacement was refused: the session writes nothing. */
 	#refused = false;
 	/** A model command moved the caret during the session: the ending keeps it. */
@@ -127,6 +141,7 @@ export class Composition {
 		const { startText, endText, yStart, yEnd } = selection.state;
 		this.phase = 'live';
 		this.#tail = this.#caret = this.#region = null;
+		this.#own.clear();
 		this.#start = selection.value;
 		this.preview = '';
 		this.#interrupted = this.native = false;
@@ -319,36 +334,67 @@ export class Composition {
 		});
 	}
 
-	/** The region start while the preview is live and whole in one visible block (not deleted with it). */
+	/** The preview's position while it is live and whole in one visible block (not deleted with it). */
 	#kept() {
 		const { facade } = this.edytor;
 		const [start, end] = [this.#region?.start, this.#region?.end].map(
 			(a) => a && facade.resolveAnchor(a)
 		);
 		const whole = start && end?.blockId === start.blockId && facade.isVisibleBlock(start.blockId);
-		return whole && end.offset - start.offset === this.preview.length ? this.#at() : null;
+		return whole && this.#units().length === this.preview.length ? this.#at() : null;
 	}
 
-	/** The region start as a text position. */
+	/** The preview's place: its first live unit, else the region start. */
+	#slot() {
+		const region = this.#region;
+		return this.#units()[0] ?? (region && this.edytor.facade.resolveAnchor(region.start));
+	}
+
+	/** The preview's place as a text position. */
 	#at() {
-		return this.#region && this.edytor.selection.resolveTextAnchor(this.#region.start);
+		const slot = this.#slot();
+		return slot
+			? (this.edytor.idToBlock.get(slot.blockId)?.textAtOffset(slot.offset) ?? null)
+			: null;
 	}
 
-	/** Delete the live items between the region's anchors, per stream. */
-	#erase() {
+	/** The id of the unit at `offset` of `blockId` (a character or an atom). */
+	#unit(blockId: string, offset: number) {
+		const i = this.edytor.facade.anchorAt(blockId, offset, 'right')?.a.i;
+		return i ? `${i.c}:${i.k}` : '';
+	}
+
+	/** The preview's live units in the region, in order, per stream (a peer split inside it). */
+	#units() {
 		const { facade } = this.edytor;
 		const start = this.#region && facade.resolveAnchor(this.#region.start);
 		const end = this.#region && facade.resolveAnchor(this.#region.end);
-		if (!start || !end) return;
-		if (start.blockId === end.blockId) {
-			if (end.offset > start.offset)
-				facade.deleteText(start.blockId, start.offset, end.offset - start.offset);
-			return;
+		if (!start || !end || !this.#own.size) return [];
+		const spans =
+			start.blockId === end.blockId
+				? [{ blockId: start.blockId, from: start.offset, to: end.offset }]
+				: [
+						{ blockId: start.blockId, from: start.offset, to: facade.displayLength(start.blockId) },
+						{ blockId: end.blockId, from: 0, to: end.offset }
+					];
+		const units: { blockId: string; offset: number }[] = [];
+		for (const { blockId, from, to } of spans)
+			for (let offset = from; offset < to; offset++)
+				if (this.#own.has(this.#unit(blockId, offset))) units.push({ blockId, offset });
+		return units;
+	}
+
+	/** Delete the preview's live units through the facade's text delete, one run each, last first; foreign units stay. */
+	#erase() {
+		const runs: { blockId: string; offset: number; length: number }[] = [];
+		for (const { blockId, offset } of this.#units()) {
+			const run = runs.at(-1);
+			if (run?.blockId === blockId && run.offset + run.length === offset) run.length++;
+			else runs.push({ blockId, offset, length: 1 });
 		}
-		// A peer split inside the region: its streams keep their own tails.
-		const length = facade.displayLength(start.blockId) - start.offset;
-		if (length > 0) facade.deleteText(start.blockId, start.offset, length);
-		if (end.offset > 0) facade.deleteText(end.blockId, 0, end.offset);
+		for (const { blockId, offset, length } of runs.reverse())
+			this.edytor.facade.deleteText(blockId, offset, length);
+		this.#own.clear();
 	}
 
 	/** Pin the host's cell and segment: the renderer never rewrites the IME's node (`surface/pin`). */
@@ -369,12 +415,14 @@ export class Composition {
 		const { facade } = edytor;
 		this.#tracked(() =>
 			edytor.transact(() => {
+				// Only this preview's own units at and after its place go: the place stands.
+				const at = this.#slot();
 				this.#erase();
-				const start = this.#region && facade.resolveAnchor(this.#region.start);
-				if (!start || !this.#region) return;
-				if (value) facade.insertText(start.blockId, start.offset, value, this.marks);
+				if (!at || !this.#region) return;
+				if (value) facade.insertText(at.blockId, at.offset, value, this.marks);
+				for (let i = 0; i < value.length; i++) this.#own.add(this.#unit(at.blockId, at.offset + i));
 				this.#region.end =
-					facade.anchorAt(start.blockId, start.offset + value.length, 'left') ?? this.#region.start;
+					facade.anchorAt(at.blockId, at.offset + value.length, 'left') ?? this.#region.start;
 			})
 		);
 	}
@@ -451,6 +499,7 @@ export class Composition {
 	#release() {
 		this.host = null;
 		this.#region = null;
+		this.#own.clear();
 		this.edytor.pin.release();
 	}
 }

@@ -106,7 +106,7 @@ const vendorModules = (mods) =>
 const EXTERNALS = [
 	/^svelte(\/.*)?$/,
 	/^esm-env$/,
-	/^prismjs$/,
+	/^@tanstack\/highlight/,
 	/^@atlaskit\//,
 	/^lib0-v14$/ // the engine pulls lib0-v14/* subpaths — those stay bundled below
 ];

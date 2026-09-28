@@ -1,0 +1,50 @@
+/* Code blocks: TanStack Highlight token classes (`th-*`), atom-dark palette. */
+pre.th-code {
+	overflow: auto;
+	color: #c5c8c6;
+	font-family: Inconsolata, Monaco, Consolas, 'Courier New', Courier, monospace;
+	font-size: 12px;
+	line-height: 1.5;
+	text-align: left;
+	white-space: pre;
+	word-break: normal;
+	tab-size: 4;
+	hyphens: none;
+}
+.th-comment,
+.th-meta {
+	color: #7c7c7c;
+}
+.th-keyword,
+.th-tag,
+.th-property,
+.th-link {
+	color: #96cbfe;
+}
+.th-type {
+	color: #ffffb6;
+}
+.th-literal {
+	color: #99cc99;
+}
+.th-deleted {
+	color: #f92672;
+}
+.th-number {
+	color: #ff73fd;
+}
+.th-attr,
+.th-selector,
+.th-string,
+.th-inserted {
+	color: #a8ff60;
+}
+.th-variable {
+	color: #c6c5fe;
+}
+.th-operator {
+	color: #ededed;
+}
+.th-function {
+	color: #dad085;
+}

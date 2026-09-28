@@ -320,13 +320,13 @@
 .page-editor [data-edytor-type='toggle'] > div {
 	padding-left: 24px;
 }
-.page-editor [data-edytor] div:has(> pre.language-jsx) {
+.page-editor [data-edytor] div:has(> pre.th-code) {
 	background: #f7f7f5;
 	border-radius: 5px;
 	margin: 20px 0;
 	padding: 8px 15px;
 }
-.page-editor [data-edytor] pre.language-jsx {
+.page-editor [data-edytor] pre.th-code {
 	background: transparent;
 	padding: 10px 5px;
 	overflow-x: auto;

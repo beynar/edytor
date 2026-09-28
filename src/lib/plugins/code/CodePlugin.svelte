@@ -1,6 +1,7 @@
 <script module lang="ts">
-	import Prism from 'prismjs';
-	import './prism.css';
+	import { createHighlighter } from '@tanstack/highlight/core';
+	import { jsx } from '@tanstack/highlight/languages/jsx';
+	import './code.css';
 	import type { Plugin, MarkSnippetPayload, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { JSONText } from '$lib/utils/json.js';
 	import { id, prevent } from '$lib/utils.js';
@@ -8,19 +9,11 @@
 	import { Block } from '$lib/block/block.svelte.js';
 	import { runIntent } from '$lib/events/beforeInputCommands.js';
 
-	// Never auto-highlight: Prism's `highlightAll` (DOMContentLoaded / next
-	// frame) would rewrite the editor's code DOM, which only the renderer
-	// writes. The code kind tokenizes through `transformText` instead.
-	Prism.manual = true;
-	(globalThis as typeof globalThis & { Prism?: typeof Prism }).Prism = Prism;
+	// The code kind tokenizes through `transformText`; only the renderer writes the DOM.
+	const highlighter = createHighlighter({ languages: [jsx] });
 
 	/** Auto-pairs typed at a collapsed caret in a code line. */
 	const PAIRS: Record<string, string> = { '{': '}', '[': ']', '(': ')', '"': '"', "'": "'" };
-
-	type PrismTokenLike = {
-		type: string;
-		content: unknown;
-	};
 
 	const getCodeText = (block: Block) =>
 		block.children
@@ -28,27 +21,6 @@
 				line.content.map((part) => (part instanceof Text ? part.stringContent : '')).join('')
 			)
 			.join('\n');
-
-	const isPrismToken = (value: unknown): value is PrismTokenLike =>
-		Boolean(value && typeof value === 'object' && 'type' in value && 'content' in value);
-
-	const getPrismTokenText = (content: unknown): string => {
-		if (typeof content === 'string') {
-			return content;
-		}
-		if (Array.isArray(content)) {
-			return content.map(getPrismTokenText).join('');
-		}
-		if (isPrismToken(content)) {
-			return getPrismTokenText(content.content);
-		}
-		return '';
-	};
-
-	await Promise.all([
-		import('prismjs/components/prism-jsx'),
-		import('prismjs/components/prism-css')
-	]);
 
 	export const codePlugin: Plugin = (edytor) => {
 		return {
@@ -145,20 +117,13 @@
 					snippet: codeLine,
 					element: { tag: 'div', attributes: { style: 'tab-size: 7px' } },
 					html: (_, content) => `<pre><code>${content}</code></pre>`,
-					transformText: ({ text }) => {
-						const tokens = Prism.tokenize(text.stringContent, Prism.languages['jsx']);
-						return tokens.map((token) => {
-							if (typeof token === 'string') {
-								return {
-									text: token
-								};
-							}
-							return {
-								marks: { codeToken: token.type },
-								text: getPrismTokenText(token.content)
-							};
-						}) as JSONText[];
-					},
+					transformText: ({ text }) =>
+						highlighter
+							.tokenize(text.stringContent, { lang: 'jsx' })
+							.tokens.map(
+								({ className, value }): JSONText =>
+									className ? { text: value, marks: { codeToken: className } } : { text: value }
+							),
 					normalizeContent: ({ block }) => {
 						// here we need to check if the code line has soft line breaks and if so, we need to insert a new code line after the current one.
 						const firstText = block.content.at(0);
@@ -207,7 +172,7 @@
 			</button>
 		</div>
 	</div>
-	<pre class="language-jsx"><code class="language-jsx">{@render children?.()}</code></pre>
+	<pre class="th-code"><code>{@render children?.()}</code></pre>
 {/snippet}
 
 {#snippet codeLine({ content }: BlockSnippetPayload)}
@@ -215,5 +180,5 @@
 {/snippet}
 
 {#snippet codeToken({ content, mark }: MarkSnippetPayload)}
-	<span class="token {mark}">{@render content()}</span>
+	<span class="th-{mark}">{@render content()}</span>
 {/snippet}

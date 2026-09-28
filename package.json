@@ -82,7 +82,6 @@
 		"@tailwindcss/vite": "^4.2.4",
 		"@testing-library/svelte": "^5.3.1",
 		"@types/eslint": "9.6.1",
-		"@types/prismjs": "^1.26.6",
 		"@typescript-eslint/eslint-plugin": "^8.58.0",
 		"@typescript-eslint/parser": "^8.58.0",
 		"@vitest/ui": "^4.1.2",
@@ -129,8 +128,8 @@
 	},
 	"dependencies": {
 		"@atlaskit/pragmatic-drag-and-drop": "1.7.10",
+		"@tanstack/highlight": "^0.1.0",
 		"esm-env": "^1.2.2",
-		"lib0-v14": "npm:lib0@1.0.0-rc.32",
-		"prismjs": "^1.30.0"
+		"lib0-v14": "npm:lib0@1.0.0-rc.32"
 	}
 }

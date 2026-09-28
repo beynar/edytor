@@ -89,7 +89,7 @@ export function getMarksAtRange(this: Text, yStart: number, yEnd: number) {
 	let entered = false;
 
 	// Iterate the MODEL runs (`this.value`), never `this.children` — the
-	// children getter applies the block's `transformText` (e.g. Prism code
+	// children getter applies the block's `transformText` (e.g. code
 	// tokens), whose marks are local decorations. Reading them here leaked
 	// `codeToken` into persisted marks: typed/composed text inside a code
 	// line inherited the decoration, splitting the serialized content.

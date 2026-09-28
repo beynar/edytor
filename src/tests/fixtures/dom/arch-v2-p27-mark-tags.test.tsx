@@ -119,7 +119,7 @@ describe('P2.7 — custom markup keeps its snippet', () => {
 		await flushDomUpdates();
 		const token = editor.querySelector('[data-edytor-mark="codeToken"]')!;
 		expect(token.localName).toBe('span');
-		expect(token.firstElementChild?.className).toBe('token keyword');
+		expect(token.firstElementChild?.className).toBe('th-keyword');
 		expect(truthOf(edytor)).toEqual([]);
 	});
 });

@@ -846,6 +846,32 @@ export class SurfaceObserver {
 	};
 }
 
+/** The rendered marks (a tag or a snippet) the browser shows at `at` of `text`: the element chain of its node there. */
+const shownMarks = (text: Text, at: number) => {
+	const element = text.node;
+	if (!element) return null;
+	const walker = element.ownerDocument.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+	let offset = 0;
+	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+		offset += (node as globalThis.Text).data.replace(ZWSP, '').length;
+		if (offset <= at) continue;
+		const names: string[] = [];
+		for (let el = node.parentElement; el && el !== element; el = el.parentElement) {
+			const name = el.getAttribute('data-edytor-mark');
+			if (name) names.push(name);
+		}
+		return names.sort().join();
+	}
+	return null;
+};
+
+/** The rendered marks the model gives the character at `at` of `text`. */
+const modelMarks = (edytor: Edytor, text: Text, at: number) =>
+	Object.keys(activeMarks(text.getMarksAtRange(at, at + 1)[0]?.marks))
+		.filter((name) => edytor.marks.get(name)?.tag || edytor.marks.get(name)?.snippet)
+		.sort()
+		.join();
+
 /**
  * Adopt what the browser made of `text` (R8, O59) — the only adopter: one
  * user command through the dispatcher (hooks, undo policy — a change no input
@@ -889,6 +915,7 @@ export const adopt = async (
 	const removed = insert ? [] : text.getMarksAtRange(at, at + remove);
 	const marks = activeMarks(removed[0]?.marks);
 	const same = removed.every((part) => jsonEquals(activeMarks(part.marks), marks));
+	const shown = insert && shownMarks(text, at);
 	const kind = attempt ? attempt.inputType || (insert ? 'insertText' : 'deleteContent') : null;
 	edytor.dispatcher.run(kind ?? 'foreignChange', () =>
 		insert
@@ -901,7 +928,11 @@ export const adopt = async (
 	const adopted = text.isInDocument && text.stringContent === value;
 	if (attempt) attempt.phase = adopted ? 'applied' : 'failed';
 	if (!text.isInDocument) return true;
-	if (!adopted || drifted) text.refreshFromModel();
+	// The render patches only the runs the command changed: when the one
+	// insertion rule (`marksForInsertion`) gave the text other marks than the
+	// node the browser wrote, that node keeps its copy — re-render.
+	const moved = adopted && insert !== '' && shown !== modelMarks(edytor, text, at);
+	if (!adopted || drifted || moved) text.refreshFromModel();
 	await tick();
 	const end = caret ?? (attempt ? at + insert.length : undefined);
 	if (adopted && end !== undefined)

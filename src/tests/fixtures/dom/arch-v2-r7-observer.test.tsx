@@ -538,6 +538,28 @@ describe('F-O10 — after a settle every content equals its cell (the truth inva
 		}
 	);
 
+	// DST seed 40 (`browser-error`, effect_update_depth_exceeded): foreign text
+	// typed at the end of a plain run right before a bold run. The one
+	// insertion rule (`marksForInsertion`) places it in the bold run, so the
+	// render patches the bold node and never rewrites the plain one, which
+	// still holds the browser's copy: the next compare adopted it again, forever.
+	// The edit is adopted once and the host ends equal to its cell (R12).
+	row(
+		'foreign text typed before a mark run is adopted once; the host equals its cell',
+		async () => {
+			const { edytor } = await mount({
+				children: [
+					{ type: 'paragraph', content: [{ text: 'x' }, { text: 'b', marks: { bold: true } }] }
+				]
+			});
+			browserEdit(edytor, 0, 'xab');
+			expect(await settled(edytor)).toEqual([]);
+			expect(modelText(edytor, 0)).toBe('xabb');
+			expect(domText(edytor, 0)).toBe('xabb');
+			expect(edytor.undoManager.undoStack.length).toBe(1);
+		}
+	);
+
 	row('a foreign root child is removed; the model is unchanged', async () => {
 		const { edytor } = await mount({ children: [paragraph('Hello'), paragraph('world')] });
 		const intruder = document.createElement('div');

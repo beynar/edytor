@@ -76,8 +76,7 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 		expect(caret(edytor)).toEqual({ text: 'helo', offset: 3, isCollapsed: true });
 	});
 
-	// Red until its site lands (P2.3 is one site per commit).
-	test.fails('beforeInputCommands: typing finishes in the turn it selects', async () => {
+	test('beforeInputCommands: typing finishes in the turn it selects', async () => {
 		const { edytor } = await one('hello');
 		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 5);
 		const result = command(edytor, 'insertText', 'x');
@@ -85,8 +84,7 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 		expect(caret(edytor)).toEqual({ text: 'hellox', offset: 6, isCollapsed: true });
 	});
 
-	// Red until its site lands (P2.3 is one site per commit).
-	test.fails('beforeInputCommands: the auto-dot finishes in the turn it selects', async () => {
+	test('beforeInputCommands: the auto-dot finishes in the turn it selects', async () => {
 		const { edytor } = await one('end ');
 		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 4);
 		const result = command(edytor, 'insertText', '. ');

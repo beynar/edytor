@@ -12,7 +12,6 @@ import { id, prevent } from '$lib/utils.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
-import { tick } from 'svelte';
 import { runBeforeInputDeleteCommand } from './beforeInputDeleteCommands.js';
 import { firstUriListEntry } from './dataTransferPayload.js';
 import { INTENTS, intentSnapshot, kindOf, type Attempt } from '$lib/session/attempt.js';
@@ -57,7 +56,7 @@ export const insertionMarks = (edytor: Edytor, snapshot: Attempt) => {
 	});
 };
 
-const insertText = async (edytor: Edytor, snapshot: Attempt) => {
+const insertText = (edytor: Edytor, snapshot: Attempt) => {
 	const { data } = snapshot;
 	// A text insertion while composing is the session's commit.
 	if (snapshot.inputType === 'insertText' && edytor.composition.commit(data ?? '')) return;
@@ -87,14 +86,12 @@ const insertText = async (edytor: Edytor, snapshot: Attempt) => {
 		});
 		edytor.attempts.caret(target.text, target.offset + 1);
 		edytor.selection.setAtTextOffset(target.text, target.offset + 1);
-		await tick();
 		return;
 	}
 
 	target.text.insertText({ value: data, start: target.offset, end: target.offset, marks });
 	edytor.attempts.caret(target.text, target.offset + data.length);
 	edytor.selection.setAtTextOffset(target.text, target.offset + data.length);
-	await tick();
 };
 
 /**

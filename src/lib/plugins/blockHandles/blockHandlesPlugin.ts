@@ -24,10 +24,14 @@ const registerBlockHandlesPlugin = (plugin: Plugin): Plugin => {
 	return plugin;
 };
 
+/** A handle for a block within about one screen of the viewport. */
+const NEAR_MARGIN = '100% 0px';
+
 /**
- * Block handles in the overlay (R11, L50): every registered movable block
- * gets one, shown while the pointer is over the block; the block element is
- * the drop target.
+ * Block handles in the overlay (R11, L50), created lazily: a handle mounts
+ * for a block near the viewport (every block without IntersectionObserver),
+ * under the pointer, selected, focused or dragged; drop targets exist only
+ * during our own drag. Hover is one delegated listener on the editor.
  */
 export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plugin =>
 	registerBlockHandlesPlugin((edytor) => {
@@ -36,30 +40,82 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 			onActivate: options.onActivate
 		});
 		const blocks = new SvelteMap<string, Block>();
+		const near = new SvelteSet<string>();
 		const hovered = new SvelteSet<string>();
+		const ids = new WeakMap<Element, string>();
+		const observer =
+			typeof IntersectionObserver === 'undefined'
+				? null
+				: new IntersectionObserver(
+						(entries) => {
+							for (const {
+								target,
+								isIntersecting,
+								boundingClientRect: at,
+								rootBounds
+							} of entries) {
+								const id = ids.get(target);
+								if (!id) continue;
+								// Near: intersecting, or its unclipped box in the band (an inner scroll
+								// container may clip a near block). A hidden block (collapsed toggle
+								// child) has an empty box and is not.
+								const inBand =
+									at.height > 0 &&
+									(!rootBounds || (at.bottom >= rootBounds.top && at.top <= rootBounds.bottom));
+								if (isIntersecting || inBand) near.add(id);
+								else near.delete(id);
+							}
+						},
+						{ rootMargin: NEAR_MARGIN }
+					);
+		/** The movable blocks under the pointer: the hovered block and its movable ancestors. */
+		const hover = (event: PointerEvent) => {
+			const next = new Set<string>();
+			for (
+				let node = (event.target as Element | null)?.closest?.('[data-edytor-block="true"]');
+				node;
+				node = node.parentElement?.closest('[data-edytor-block="true"]')
+			) {
+				const id = ids.get(node);
+				if (id) next.add(id);
+			}
+			for (const id of hovered) if (!next.has(id)) hovered.delete(id);
+			for (const id of next) hovered.add(id);
+		};
+		const unhover = () => hovered.clear();
 
 		return {
-			onEdytorAttached: () => {
+			onEdytorAttached: ({ node }) => {
+				node.addEventListener('pointerover', hover);
+				node.addEventListener('pointerleave', unhover);
 				const component = mount(BlockHandles, {
 					target: edytor.overlay.layer!,
-					props: { edytor, controller, blocks, hovered }
+					props: { edytor, controller, blocks, near, hovered }
 				});
-				return () => void unmount(component);
+				return () => {
+					node.removeEventListener('pointerover', hover);
+					node.removeEventListener('pointerleave', unhover);
+					observer?.disconnect();
+					void unmount(component);
+				};
 			},
 			onBlockAttached: ({ node, block }) => {
 				if (!block.movable) return () => {};
-				const show = () => hovered.add(block.id);
-				const hide = () => hovered.delete(block.id);
-				node.addEventListener('pointerenter', show);
-				node.addEventListener('pointerleave', hide);
+				ids.set(node, block.id);
 				blocks.set(block.id, block);
-				const cleanupDropTarget = controller.registerDropTarget(node, block);
+				if (!observer) near.add(block.id);
+				else {
+					observer.observe(node);
+				}
+				const offDropTarget = controller.addDropTarget(node, block);
 				return () => {
-					node.removeEventListener('pointerenter', show);
-					node.removeEventListener('pointerleave', hide);
-					hide();
-					if (block.node === node || block.node === undefined) blocks.delete(block.id);
-					cleanupDropTarget();
+					observer?.unobserve(node);
+					offDropTarget();
+					if (block.node === node || block.node === undefined) {
+						blocks.delete(block.id);
+						near.delete(block.id);
+						hovered.delete(block.id);
+					}
 				};
 			}
 		};

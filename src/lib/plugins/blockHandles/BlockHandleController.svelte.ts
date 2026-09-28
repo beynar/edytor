@@ -72,6 +72,11 @@ export class BlockHandleController {
 	private activePlacement: DropPlacement | null = null;
 	/** The indicator's measure in the overlay, while one is shown. */
 	private offIndicator: (() => void) | null = null;
+	/** Candidate drop targets; registered with the drag library only during our drag. */
+	private readonly targets = new Map<HTMLElement, Block>();
+	private readonly registered = new Map<HTMLElement, () => void>();
+	/** The block whose handle is the source of the drag in progress (its handle stays mounted). */
+	dragging = $state<string | null>(null);
 
 	constructor(
 		private edytor: Edytor,
@@ -111,21 +116,47 @@ export class BlockHandleController {
 			canDrag: () => !this.edytor.readonly && block.movable,
 			getInitialData: () => ({ owner: this.owner, blockId: block.id }),
 			getInitialDataForExternal: () => ({ [blockDragMimeType]: block.id }),
+			// Drop targets exist from the start of our drag (before any target is looked up).
+			onGenerateDragPreview: () => {
+				this.dragging = block.id;
+				for (const [node, target] of this.targets) this.registerDropTarget(node, target);
+			},
 			onDragStart: () => {
 				if (!this.edytor.selection.selectedBlocks.has(block)) {
 					this.selectBlock(block);
 				}
 			},
 			// PDD notifies the source before drop targets. Keep the shown
-			// placement until the target has committed its move.
-			onDrop: () => queueMicrotask(() => this.clearIndicator())
+			// placement and the targets until the target has committed its move.
+			onDrop: () =>
+				queueMicrotask(() => {
+					this.clearIndicator();
+					for (const off of this.registered.values()) off();
+					this.registered.clear();
+					this.dragging = null;
+				})
 		});
 	}
 
-	registerDropTarget(node: HTMLElement, target: Block) {
+	/** A candidate drop target; registered at once when our drag is in progress. */
+	addDropTarget(node: HTMLElement, target: Block) {
 		if (!this.options.draggable) {
 			return () => {};
 		}
+		this.targets.set(node, target);
+		if (this.dragging) this.registerDropTarget(node, target);
+		return () => {
+			if (this.targets.get(node) === target) this.targets.delete(node);
+			this.registered.get(node)?.();
+			this.registered.delete(node);
+			if (this.activeDropTarget === node) {
+				this.clearIndicator();
+			}
+		};
+	}
+
+	private registerDropTarget(node: HTMLElement, target: Block) {
+		if (this.registered.has(node)) return;
 		const cleanup = dropTargetForElements({
 			element: node,
 			canDrop: ({ source, input }) => {
@@ -179,12 +210,7 @@ export class BlockHandleController {
 				}
 			}
 		});
-		return () => {
-			if (this.activeDropTarget === node) {
-				this.clearIndicator();
-			}
-			cleanup();
-		};
+		this.registered.set(node, cleanup);
 	}
 
 	handleKeyDown(event: KeyboardEvent, block: Block) {

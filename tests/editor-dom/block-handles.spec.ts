@@ -23,6 +23,19 @@ const stripBlock = (block: SerializedBlock): SerializedBlock => {
 	return stripped;
 };
 
+/** Handles mount once the viewport observer reports: wait until every visible block has one. */
+const settleHandles = (page: Page) =>
+	expect
+		.poll(() =>
+			page.evaluate(() => {
+				const blocks = Array.from(
+					document.querySelectorAll<HTMLElement>('[data-edytor-block="true"]')
+				).filter((block) => block.getBoundingClientRect().height > 0);
+				return document.querySelectorAll('[data-testid="block-handle"]').length === blocks.length;
+			})
+		)
+		.toBe(true);
+
 const readBlocks = async (page: Page) => {
 	const value = await readJsonByTestId<SerializedValue>(page, 'value');
 	return value.children.map(stripBlock);
@@ -101,6 +114,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=basic&empty=last&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		await dragHandleToBlock(page, 1, 0, 0.05);
 
 		await expect.poll(() => readRootTexts(page)).toEqual(['note', 'lead', '']);
@@ -114,6 +128,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=basic&empty=last&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		await dragHandleToBlock(page, 0, 1, 0.95);
 
 		await expect.poll(() => readRootTexts(page)).toEqual(['note', 'lead', '']);
@@ -126,6 +141,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=nested&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		await dragHandleToBlock(page, 3, 0, 0.5);
 
 		await expect
@@ -153,6 +169,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=nested&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		const parentRow = page.locator('[data-edytor-block="true"]').first().locator('p').first();
 		await page
 			.getByTestId('block-handle')
@@ -175,6 +192,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=nested&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 			edytor.root.children[0].setBlock({ value: { type: 'toggle' } });
@@ -202,6 +220,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=nested&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		await dragHandleToBlock(page, 1, 3, 0.05);
 
 		await expect.poll(() => readRootTexts(page)).toEqual(['Hello', 'Nested child', 'After']);
@@ -217,6 +236,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=nested&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		await page.evaluate(() => {
 			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
 			edytor.root.children[1].moveBlock({ path: [0, 2] });
@@ -240,6 +260,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=nested&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		const nestedHandle = page.getByTestId('block-handle').nth(1);
 		await nestedHandle.focus();
 		await nestedHandle.press('Alt+ArrowLeft');
@@ -264,6 +285,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=basic&empty=last&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		await page
 			.locator('[data-edytor-block="true"]')
 			.first()
@@ -313,6 +335,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=basic&empty=last&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		await page
 			.locator('[data-edytor-block="true"]')
 			.nth(1)
@@ -357,6 +380,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=basic&empty=last&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		await page
 			.locator('[data-edytor-block="true"]')
 			.nth(1)
@@ -398,6 +422,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=basic&empty=last&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		await selectRootBlocks(page, [0, 1]);
 		await dragHandleToBlock(page, 0, 2, 0.95);
 
@@ -411,6 +436,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=nested&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		await dragHandleToBlock(page, 0, 1, 0.5, { force: true });
 
 		await expect.poll(() => readRootTexts(page)).toEqual(['Hello', 'After']);
@@ -424,6 +450,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=divider&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		await page.locator('[data-edytor-type="divider"]').evaluate((node) => {
 			(node as HTMLElement).style.height = '32px';
 		});
@@ -438,6 +465,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.goto('/test/dom?scenario=divider&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
 		await page.locator('[data-edytor-type="divider"]').evaluate((node) => {
 			(node as HTMLElement).style.height = '32px';
 		});

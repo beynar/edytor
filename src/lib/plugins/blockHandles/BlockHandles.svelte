@@ -7,23 +7,30 @@
 	import type { BlockHandleController } from './BlockHandleController.svelte.js';
 
 	/**
-	 * The handles, in the overlay (R11): one per registered movable block, in
-	 * document order, each beside its block's first text row (the header row
-	 * for an island), measured by the overlay once per frame.
+	 * The handles, in the overlay (R11): one per registered movable block that
+	 * is near the viewport, hovered, selected, focused or dragged, in document
+	 * order, each beside its block's first text row (the header row for an
+	 * island), measured by the overlay once per frame.
 	 */
 	let {
 		edytor,
 		controller,
 		blocks,
+		near,
 		hovered
 	}: {
 		edytor: Edytor;
 		controller: BlockHandleController;
 		/** Registered movable blocks, by id (`onBlockAttached`); reactive. */
 		blocks: ReadonlyMap<string, Block>;
+		/** Blocks near the viewport; reactive. */
+		near: ReadonlySet<string>;
 		/** Blocks under the pointer; reactive. */
 		hovered: ReadonlySet<string>;
 	} = $props();
+
+	/** The block whose handle holds focus: its handle stays while focused. */
+	let focused = $state<string | null>(null);
 
 	/** Bumped by commits that change the tree: the handles' order follows it. */
 	let structure = $state(0);
@@ -34,7 +41,18 @@
 	);
 	const ids = $derived.by(() => {
 		void structure;
-		return edytor.facade.order().filter((id) => blocks.has(id));
+		const selected = edytor.selection.selectedBlocks;
+		return edytor.facade
+			.order()
+			.filter(
+				(id) =>
+					blocks.has(id) &&
+					(near.has(id) ||
+						hovered.has(id) ||
+						id === focused ||
+						id === controller.dragging ||
+						selected.has(blocks.get(id)!))
+			);
 	});
 
 	const firstRowCenter = (node: HTMLElement, block: Block): number => {
@@ -86,7 +104,10 @@
 		data-edytor-block-handle-host
 		data-block-id={id}
 		data-visible={hovered.has(id) ? 'true' : undefined}
-		use:place={id}><BlockHandle block={blocks.get(id)!} {controller} /></span
+		use:place={id}
+		onfocusin={() => (focused = id)}
+		onfocusout={() => focused === id && (focused = null)}
+		><BlockHandle block={blocks.get(id)!} {controller} /></span
 	>
 {/each}
 

@@ -40,7 +40,7 @@ export const virtualLens = (
 	let vid = id('v');
 	/** The document shows no block: the virtual paragraph is shown (a fresh id once the last one was written). */
 	const active = (): boolean => {
-		if (!ready() || base.childrenIds(null).length > 0) return false;
+		if (!ready() || base.childSlots(null).length > 0) return false;
 		if (base.hasBlock(vid)) vid = id('v');
 		return true;
 	};

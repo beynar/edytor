@@ -1,4 +1,9 @@
-/** Independent review at 5e21dad. Expectations are the user's fixed contracts. */
+/**
+ * Independent review at 5e21dad. Expectations are the user's fixed contracts.
+ * Kept as permanent regression rows for `del.blocks.promote` and
+ * `hist.undo.withdraw` (docs/editor-delete-contract.md); the contracts' own
+ * rows are in `contracts-preserve.test.ts`.
+ */
 import { afterEach, describe, expect, it } from 'vitest';
 import { replica, seedUpdate, quiesce, reloadCanonical, type Replica } from './p1-harness.js';
 

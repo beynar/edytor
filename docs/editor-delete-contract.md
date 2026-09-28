@@ -142,7 +142,9 @@ survivor `del.range.whole-doc` synthesizes, at 0.
 ### `del.range.nested-subtree` — range covers a whole subtree
 
 `alpha@0 → beta@4` (whole nested item) → `[paragraph "omega"]` — the
-container and all its children die with the range.
+container and all its children die with the range (a text range selects
+every block it covers; a block selection selects only its members,
+`del.blocks.promote`).
 
 ### `del.range.text-only` — within one text
 
@@ -204,16 +206,55 @@ last placed block's own content.
 
 ### `flow.slot` — over selected blocks
 
-Over a block selection the selected blocks are deleted (`deleteBlocks`) and
-the lines are placed as blocks in the first one's slot, in the same plan
-(runs take the slot's default child). Caret: the end of the last placed
-block's own content.
+Over a block selection the selected blocks are deleted (`deleteBlocks`,
+`del.blocks.promote`: their unselected children stay, after the placed
+lines) and the lines are placed as blocks in the first one's slot, in the
+same plan (runs take the slot's default child). Caret: the end of the last
+placed block's own content.
 
 ### `flow.void` — a block that cannot split
 
 A void block (its caption) is never split: at a position inside one, the
 lines' content joins into one run separated by `\n`; their children are
 not placed.
+
+## Block deletion (a block selection, a block's delete action)
+
+The user's contract (2026-09-28): preserve content the user did not remove.
+
+### `sel.blocks.exact` — a block selection is exactly its members
+
+A block selection `{blocks: ids}` covers exactly its ids. A parent and its
+children are separate members: a handle click, and the select-all ladder's
+block step, select one block; `data-edytor-selected` marks the members only
+(the demo paints a nested non-member over its parent's highlight).
+Shift+↑/↓ adds each block it passes in document order — reaching a parent
+from its first child adds the parent and keeps the child; from a parent it
+adds the first child. Select-all (the ladder's third step) selects every
+block, nested ones included. Copy and cut of a block selection carry the
+members only, nested as in the document (what a cut copies is what it
+deletes). Pins: `contracts-block-selection.test.tsx`,
+`contracts-block-selection.spec.ts`.
+
+### `del.blocks.promote` — only the selected blocks leave
+
+`deleteBlocks(ids)` (a block selection's Backspace/Delete/cut,
+`flow.slot`) and `deleteBlock(id)` (`Block.removeBlock()`, a node's
+`delete()`) mark every member with this writer's delete mark (and what it
+displays through merge claims). Each member's unselected children — with
+their own subtrees — take its slot in its parent, in order; a member under
+an unselected child of another member takes its own slot there. A deleted
+island's children take the default child type of the slot's parent (as an
+island merge does). One plan, one undo step: undo removes the marks and the
+children's new placements, so the parent comes back with its children under
+it. `deleteBlock(id, { keepChildren: false })` is the explicit whole-subtree
+delete. Concurrency: the promoted children keep their identity, so a peer's
+concurrent edits inside them survive; a child a peer adds to (or moves
+into) the deleted block without having seen the delete hides with it
+(`conc.delete-wins-block`); a concurrent move of a promoted child is
+settled by the placement's last-writer-wins. Pins:
+`contracts-preserve.test.ts`, `review-20260929-core.test.ts`,
+`p1-scenarios.test.ts` §9.
 
 ## Collapsed caret deletion
 
@@ -316,6 +357,26 @@ projector's pass after the flush displays the current value, running
 `restoreDeadSelectionEndpoints` (the seam repair) when it no longer
 projects (arch-v2 V4).
 
+### `doc.empty.virtual` — an emptied document shows a virtual paragraph
+
+When the document is ready and has no visible block (concurrent deletes of
+the last blocks, an undo, a block-selection delete of everything), every
+view shows one local, virtual empty paragraph of the root's default type
+(`session/virtual.ts`, id `v_…`) and places the caret in it: a view with no
+selection or a dead endpoint lands there (it is the only seam stop). It is
+never written; the document JSON has no block. The first edit in it
+(typing, an atom, paste, Enter at its end, a block-kind command) is
+prepared as the creation of a real block with that id, the edit folded in:
+one plan, one transaction, one update. An emptied root writes no
+replacement block, so no replica writes one for having seen the document
+empty, and two replicas typing into their own virtual paragraphs keep both
+lines. Readonly views show it and refuse the edit at admission. A peer's
+caret in its own (unwritten) virtual paragraph shows in this view's. The
+seed of a fresh document (`D-3`) is unchanged; a whole-document range
+delete still keeps its survivor (`del.range.whole-doc`). Pins:
+`contracts-virtual-paragraph.test.tsx`, `contracts-virtual-paragraph.spec.ts`,
+the collab DST schedule seed 11.
+
 ### `sel.ride.insert` — caret rides remote inserts
 
 Caret inside a text, remote insert before it → caret shifts by the insert
@@ -416,6 +477,37 @@ subtree. After heal: the concurrent insert **dies with the block** —
 with it, even though the authoring peer had not seen the delete. Verified
 through held delivery in `command-simulation.test.tsx` ("B types inside a
 block A deletes"). B's caret lands at the deletion seam (`sel.seam.*`).
+This holds for EXPLICIT deletes only; undoing a block's creation is not a
+delete (`hist.undo.withdraw`).
+
+### `hist.undo.withdraw` — undoing a creation keeps what others put in the block
+
+An undo removes only the undoing writer's own contributions. Undoing a step
+that created a block (insert, paste, Enter at a line's end, a split's new
+block) never deletes the block node: the history's `withdraw` hook (fork
+patch P12, `placement/model.ts` `withdrawOnUndo`) keeps the node, its
+placement and its content and claims nodes, and writes the undoer's
+withdraw mark `wd.<writer>`; what the step wrote inside the content and
+claims nodes (the undoer's text, atoms, boundaries, claims) is deleted as
+before. A withdrawn block without a delete mark is visible while it holds
+content — a live unit in its stream, or a child that is not deleted — and
+hidden otherwise; the index settles it after every fold, as a least
+fixpoint over the withdrawn blocks, so every replica agrees whatever the
+delivery order. So: B types into A's new block and A undoes → the block
+stays with B's text (also when B's text arrives after A's undo); B nests a
+child in it → the block stays, empty, holding the child; B later deletes
+its text → the block goes (B's undo brings it back); A's redo lifts the
+mark and brings A's text back beside B's. A split's undo removes its
+boundary as before: the tail's text — another writer's typing included —
+rides back into the source block (authorship cannot tell text typed into
+the tail after the split from text the split moved, and a boundary deleted
+by the undo cannot come back for a late arrival, so keeping the tail for
+foreign text would make the outcome depend on delivery order); the tail
+block stays only while it holds a child. An undone creation keeps its id
+(like a deleted block's): re-creating it is refused. Controls: an explicit
+delete still wins over an unseen insertion (`conc.delete-wins-block`).
+Pins: `contracts-preserve.test.ts`, `contracts-undo-withdraw.test.tsx`,
+`p12-undo-withdraw.test.ts`, `p1-scenarios.test.ts` 5d/5f.
 
 ### `conc.undo.actor-local` — undo after remote edits
 

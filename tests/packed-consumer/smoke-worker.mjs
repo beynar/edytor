@@ -1,14 +1,16 @@
 /**
  * Worker smoke for the packed package (run by run.sh after the node smoke):
  *
- * 1. esbuild-bundle `worker.js` — a room Durable Object importing ONLY the
- *    installed `edytor/crdt` + `edytor/crdt/edytor` — for a Worker target,
- *    and assert the bundle reaches the CRDT dist and no Svelte / DOM view
- *    module (`dist/components/`, `*.svelte`, the `edytor` component root…).
+ * 1. esbuild-bundle `worker.js` — the installed `edytor/cloudflare` room
+ *    (`DocumentRoom` + `routeDocumentSocket`) — for a Worker target, and
+ *    assert the bundle reaches the cloudflare and CRDT dist and no Svelte /
+ *    DOM view module (`dist/components/`, `*.svelte`, the component root…).
  * 2. Run it in Miniflare (no port: `dispatchFetch`) with the room on SQLite
- *    storage: `/health`, then one sync round trip over WebSocket upgrades —
- *    a writer pushes a seeded document, a second socket syncs it back —
- *    and a frame of another generation is refused (1008).
+ *    storage: `/health`, a refused authorization (403), then one sync round
+ *    trip over WebSocket upgrades — a writer pushes a seeded document and
+ *    gets the room's store-before-ack state vector, a second socket syncs
+ *    it back — an update under the writer's client id from another user is
+ *    refused (1008), and a frame of another generation is refused (1008).
  *
  * esbuild and Miniflare are the versions the repo's
  * `@cloudflare/vitest-plugin` devDependency owns (resolved from the repo
@@ -47,6 +49,10 @@ const bundle = await build({
 const inputs = Object.keys(bundle.metafile.inputs);
 const edytorInputs = inputs.filter((path) => path.includes('node_modules/edytor/'));
 assert.ok(
+	edytorInputs.some((path) => path.endsWith('/dist/cloudflare/index.js')),
+	'the Worker bundle must include edytor/cloudflare (dist/cloudflare/index.js)'
+);
+assert.ok(
 	edytorInputs.some((path) => path.endsWith('/dist/crdt/index.js')),
 	'the Worker bundle must include edytor/crdt/edytor (dist/crdt/index.js)'
 );
@@ -57,7 +63,7 @@ assert.ok(
 const VIEW =
 	/\/dist\/(components|plugins|selection|surface|session|events|block|text|hotkeys|clipboard|collaboration|dnd)\/|\/dist\/index\.js$|\/dist\/edytor[^/]*$|\.svelte(\.[jt]s)?$/;
 // The Worker-safe module set (WORKER_SAFE in the repo's eslint.config.js).
-const WORKER_SAFE = /\/dist\/(crdt\/.*|utils\/json\.js|utils\.js|constants\.js)$/;
+const WORKER_SAFE = /\/dist\/(crdt\/.*|cloudflare\/.*|utils\/json\.js|utils\.js|constants\.js)$/;
 const breaches = inputs.filter(
 	(path) =>
 		VIEW.test(path) ||
@@ -85,9 +91,9 @@ const miniflare = new Miniflare({
 					modules: { 'index.mjs': { type: 'esm', contents: bundle.outputFiles[0].text } }
 				},
 				env: {
-					ROOM: { type: 'durable-object', worker: 'packed-edytor-room', exportName: 'Room' }
+					ROOM: { type: 'durable-object', worker: 'packed-edytor-room', exportName: 'DocumentRoom' }
 				},
-				exports: { Room: { type: 'durable-object', storage: 'sqlite' } }
+				exports: { DocumentRoom: { type: 'durable-object', storage: 'sqlite' } }
 			}
 		}
 	]
@@ -96,9 +102,9 @@ const miniflare = new Miniflare({
 const crdt = E.bindCrdt(Y);
 const sync = crdt.sync;
 
-/** Open a socket to `room` and collect its frames / close event. */
-const dial = async (room) => {
-	const response = await miniflare.dispatchFetch(`http://local/rooms/${room}`, {
+/** Open a socket to `room` (as `query`'s user) and collect its frames / close event. */
+const dial = async (room, query = '') => {
+	const response = await miniflare.dispatchFetch(`http://local/rooms/${room}${query}`, {
 		headers: { Upgrade: 'websocket' }
 	});
 	const ws = response.webSocket;
@@ -123,17 +129,34 @@ try {
 	await miniflare.ready;
 	const health = await miniflare.dispatchFetch('http://local/health');
 	assert.equal(await health.text(), 'ready');
+	const denied = await miniflare.dispatchFetch('http://local/rooms/smoke?user=denied', {
+		headers: { Upgrade: 'websocket' }
+	});
+	assert.equal(denied.status, 403, 'authorize refuses before the upgrade');
 
 	// Writer: a seeded headless document pushed as one Update frame.
 	const writer = E.createDocument({
 		value: { children: [{ id: 'p1', type: 'paragraph', content: [{ text: 'packed Worker' }] }] },
 		actor: { id: 'packed-writer' }
 	});
-	const a = await dial('smoke');
+	const a = await dial('smoke', `?user=writer&replica=${writer.doc.clientID}`);
 	await until(() => a.frames.length > 0, 'the room SyncStep1');
 	const first = E.createDecoder(a.frames[0]);
 	assert.equal(E.readProtocolVersion(first), true, 'the room speaks this generation');
 	a.ws.send(E.frame(E.messageSync, (e) => sync.writeUpdate(e, Y.encodeStateAsUpdate(writer.doc))));
+	// Store-before-ack: the room answers with its state vector, covering the write.
+	const own = writer.doc.clientID;
+	const clock = Y.decodeStateVector(Y.encodeStateVector(writer.doc)).get(own);
+	await until(
+		() =>
+			a.frames.some((bytes) => {
+				const decoder = E.createDecoder(bytes);
+				if (!E.readProtocolVersion(decoder) || E.readVarUint(decoder) !== E.messageSaved)
+					return false;
+				return Y.decodeStateVector(E.readVarUint8Array(decoder)).get(own) === clock;
+			}),
+		'the saved acknowledgement'
+	);
 
 	// Reader: a fresh engine doc syncs the room's state back.
 	const b = await dial('smoke');
@@ -157,6 +180,20 @@ try {
 	assert.equal(facade.blockText('p1'), 'packed Worker');
 	assert.deepEqual(facade.toJSON(), writer.facade.toJSON());
 	facade.dispose();
+
+	// Another user writing under the writer's client id is refused.
+	const forgedDoc = crdt.createDoc();
+	Y.applyUpdate(forgedDoc, Y.encodeStateAsUpdate(writer.doc));
+	forgedDoc.clientID = own;
+	const forged = [];
+	forgedDoc.on('update', (u) => forged.push(u));
+	const forger = E.attachDocument(forgedDoc, { actor: { id: 'mallory' } });
+	forger.facade.insertText('p1', 0, 'FORGED ');
+	forger.destroy();
+	const mallory = await dial('smoke', '?user=mallory');
+	mallory.ws.send(E.frame(E.messageSync, (e) => sync.writeUpdate(e, Y.mergeUpdates(forged))));
+	await until(() => mallory.closed() !== null, 'the forged-client refusal');
+	assert.deepEqual(mallory.closed(), { code: 1008, reason: 'refused: replica' });
 
 	// A v13-era frame (no generation word: `messageSync, messageYjsUpdate, …`) is refused.
 	const rogue = await dial('smoke');

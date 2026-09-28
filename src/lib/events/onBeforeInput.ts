@@ -481,9 +481,9 @@ export const runOccurrence = (edytor: Edytor, occurrence: Occurrence) => {
  * attempt at the keydown's anchored target, run at the missing-`beforeinput`
  * deadline unless a `beforeinput` of the same occurrence confirms it first.
  */
-export const admitKeyAttempt = (edytor: Edytor, inputType: string) => {
+export const admitKeyAttempt = (edytor: Edytor, inputType: string, data?: string) => {
 	const attempt = edytor.attempts.admit(
-		attemptOf(edytor, { inputType, cancelable: false }, inputType),
+		attemptOf(edytor, { inputType, cancelable: false, data }, inputType),
 		'model'
 	);
 	edytor.attempts.drift(attempt, 'refresh', 50);

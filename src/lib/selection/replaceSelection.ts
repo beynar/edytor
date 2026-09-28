@@ -2,6 +2,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { RangeEndpoints } from '$lib/edytor.utils.js';
+import { id } from '$lib/utils.js';
 
 export type SelectionInsertionTarget = {
 	text: Text;
@@ -81,24 +82,23 @@ export const deleteSelectedBlocks = (edytor: Edytor): Text | null => {
 	return removed ? (text ?? null) : null;
 };
 
+/**
+ * Typing over a block selection (`flow.slot`): the selected blocks go and one
+ * empty block takes the first one's slot, in ONE plan — deleting them first
+ * would let the emptied parent normalize in a survivor beside the new block.
+ */
 export const replaceSelectedBlocksWithEmptyBlockTargetSync = (
 	edytor: Edytor,
 	blockType?: string
 ): SelectionInsertionTarget | null => {
-	const removed = removeSelectedBlocksForReplacement(edytor);
-	if (!removed) {
-		return null;
-	}
-	edytor.selection.selectBlocks();
-
-	const [insertedBlock] = removed.parent.addChildBlocks({
-		blocks: [{ type: blockType ?? edytor.defaultChild(removed.parent) }],
-		index: removed.index
+	const selected = getSelectedBlocksInDocumentOrder(edytor);
+	const parent = selected[0]?.parent;
+	if (!parent) return null;
+	const [text, offset] = edytor.insertFlow({
+		flow: { lines: [{ id: id('b'), type: blockType ?? edytor.defaultChild(parent) }] },
+		target: { replace: selected.map((block) => block.id) }
 	});
-	const text = insertedBlock?.firstText;
-	if (!text) {
-		return null;
-	}
-
-	return { text, offset: 0 };
+	if (!text) return null;
+	edytor.selection.selectBlocks();
+	return { text, offset };
 };

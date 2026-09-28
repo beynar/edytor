@@ -1,0 +1,132 @@
+/**
+ * arch-v2 phase 2 P1.2 — selection races from the native review's browser
+ * probes (`review-probes/browser/selection.probe.ts`, `collab.probe.ts`),
+ * re-targeted at arch-v2's test route (three engines).
+ *
+ * Contracts (docs/editor-delete-contract.md "Selection ownership and
+ * lifecycle", plan §8.3 F-S4 / F-S11): a selection the page's own script
+ * sets is adopted, not reverted by a render that lands in the same task; a
+ * caret move the browser performs is never lost to a model update that
+ * arrives before its `selectionchange`, locally or from a peer typing every
+ * 8 ms.
+ */
+import { expect, test } from './editorTest';
+import { b, caret, domSelection, model, open, openRoom, selection, texts } from './p1-helpers';
+
+const BASIC = [b('b0', 'first'), b('b1', 'note'), b('b2', 'tail')];
+
+test.describe('P1 — selection races (review-probes/selection)', () => {
+	test('a script selection racing a render in the same task is adopted (F-S11c, local)', async ({
+		page
+	}) => {
+		await open(page, BASIC);
+		await caret(page, 'b1', 1);
+		await page.evaluate(() => {
+			const host = document.querySelector('[data-edytor-id="b2"] [data-edytor-text="true"]')!;
+			const node = document.createTreeWalker(host, NodeFilter.SHOW_TEXT).nextNode()!;
+			window.getSelection()!.setBaseAndExtent(node, 1, node, 3);
+			// A model change (and its render) in the same task, before selectionchange.
+			(window as Window & { __EDYTOR__?: any }).__EDYTOR__.facade.insertText('b0', 0, 'R');
+		});
+		await expect.poll(() => texts(page)).toEqual(['Rfirst', 'note', 'tail']);
+		await expect
+			.poll(() => selection(page))
+			.toMatchObject({ range: 'b2@1-b2@3', collapsed: false });
+		expect((await domSelection(page))?.dom).toBe('b2@1->b2@3');
+		await page.keyboard.type('Z');
+		await expect.poll(() => texts(page)).toEqual(['Rfirst', 'note', 'tZl']);
+	});
+
+	test('ArrowRight with a model update applied before its selectionchange keeps the move (F-S11a, local)', async ({
+		page
+	}) => {
+		await open(page, BASIC);
+		await caret(page, 'b1', 1);
+		await page.evaluate(() => {
+			document.addEventListener(
+				'keydown',
+				() =>
+					setTimeout(() =>
+						(window as Window & { __EDYTOR__?: any }).__EDYTOR__.facade.insertText('b0', 0, 'R')
+					),
+				{ capture: true, once: true }
+			);
+		});
+		await page.keyboard.press('ArrowRight');
+		await expect.poll(() => texts(page)).toEqual(['Rfirst', 'note', 'tail']);
+		await expect.poll(() => selection(page)).toMatchObject({ range: 'b1@2-b1@2', collapsed: true });
+		expect((await domSelection(page))?.dom).toBe('b1@2->b1@2');
+		await page.keyboard.type('Z');
+		await expect.poll(() => texts(page)).toEqual(['Rfirst', 'noZte', 'tail']);
+	});
+});
+
+test.describe('P1 — selection races under remote traffic (review-probes/collab)', () => {
+	test('a remote apply racing a page-script selection keeps the user selection (F-S11c, remote)', async ({
+		browser
+	}, info) => {
+		const room = await openRoom(browser, info.project.use.baseURL, [
+			b('c1', 'alpha'),
+			b('c2', 'beta'),
+			b('c3', 'gamma')
+		]);
+		const [a, peer] = room.pages;
+		try {
+			await caret(a, 'c1', 1);
+			const results: string[] = [];
+			for (let i = 0; i < 5; i++) {
+				await peer.evaluate(() =>
+					(window as Window & { __EDYTOR__?: any }).__EDYTOR__.facade.insertText('c3', 0, 'P')
+				);
+				// A new selection while the peer's update is in flight.
+				await a.evaluate(() => {
+					const host = document.querySelector('[data-edytor-id="c2"] [data-edytor-text="true"]')!;
+					const node = document.createTreeWalker(host, NodeFilter.SHOW_TEXT).nextNode()!;
+					window.getSelection()!.setBaseAndExtent(node, 1, node, 3);
+				});
+				await expect.poll(async () => (await model(a))[2].text).toBe(`${'P'.repeat(i + 1)}gamma`);
+				await a.waitForTimeout(150);
+				results.push(`${(await domSelection(a))?.dom} ${(await selection(a)).range}`);
+				await caret(a, 'c1', 1);
+			}
+			expect(results).toEqual(Array(5).fill('c2@1->c2@3 c2@1-c2@3'));
+		} finally {
+			await room.close();
+		}
+	});
+
+	test('arrow keys while a peer types every 8 ms never lose a caret move (F-S11a, remote)', async ({
+		browser
+	}, info) => {
+		const room = await openRoom(browser, info.project.use.baseURL, [
+			b('c1', 'abcdefghijklmnopqrstuvwxyz'),
+			b('c2', 'beta'),
+			b('c3', 'gamma')
+		]);
+		const [a, peer] = room.pages;
+		try {
+			await peer.evaluate(() => {
+				const w = window as Window & { __EDYTOR__?: any; __p1Timer?: number };
+				w.__p1Timer = window.setInterval(() => w.__EDYTOR__.facade.insertText('c3', 0, 'p'), 8);
+			});
+			const trials: string[] = [];
+			for (let trial = 0; trial < 6; trial++) {
+				await caret(a, 'c1', 0);
+				for (let i = 0; i < 10; i++) {
+					await a.keyboard.press('ArrowRight');
+					await a.waitForTimeout(15);
+				}
+				await a.waitForTimeout(150);
+				trials.push(`${(await domSelection(a))?.dom} ${(await selection(a)).range}`);
+			}
+			await peer.evaluate(() =>
+				window.clearInterval((window as Window & { __p1Timer?: number }).__p1Timer)
+			);
+			// The peer's traffic really arrived while the keys were pressed.
+			expect((await model(a))[2].text.length).toBeGreaterThan(20);
+			expect(trials).toEqual(Array(6).fill('c1@10->c1@10 c1@10-c1@10'));
+		} finally {
+			await room.close();
+		}
+	});
+});

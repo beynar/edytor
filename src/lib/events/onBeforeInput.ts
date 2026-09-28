@@ -379,7 +379,7 @@ const deleteTrailingSoftBreakBackward = (edytor: Edytor, attempt: Attempt) => {
 		startText.deleteAt(yStart - 1, 1);
 	});
 	startText.refreshFromModel();
-	void tick().then(() => edytor.selection.setAtTextOffset(startText, yStart - 1));
+	edytor.selection.setAtTextOffset(startText, yStart - 1);
 	return true;
 };
 

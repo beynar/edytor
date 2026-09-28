@@ -338,6 +338,11 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 		const fallbackInputType = getStructuralFallbackInputType(this, e);
 		if (fallbackInputType) {
 			admitKeyAttempt(this, fallbackInputType);
+		} else if (isPrintableReplacementKey(e) && this.selection.selectedBlocks.size > 0) {
+			// A printable key over a block selection: the native selection is
+			// empty, and Firefox and WebKit announce no `beforeinput` without
+			// one — the deadline types it over the blocks (`flow.slot`).
+			admitKeyAttempt(this, 'insertText', e.key);
 		}
 	});
 }

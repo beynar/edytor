@@ -84,7 +84,15 @@ try {
 	} else if (build.code !== 0) {
 		process.exitCode = build.code ?? 1;
 	} else {
-		const preview = await run(['exec', 'vite', 'preview', '--host', '127.0.0.1', '--port', '4183']);
+		const preview = await run([
+			'exec',
+			'vite',
+			'preview',
+			'--host',
+			'127.0.0.1',
+			'--port',
+			process.env.DST_PORT ?? '4183'
+		]);
 		process.exitCode = requestedSignal || preview.signal ? 0 : (preview.code ?? 0);
 	}
 } finally {

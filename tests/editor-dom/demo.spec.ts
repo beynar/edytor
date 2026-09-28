@@ -117,7 +117,8 @@ test.describe('document demo', () => {
 			['quote', 'page-quote', 'page-section-intro'],
 			['numbered list', 'page-bullet-one', 'page-section-intro']
 		]) {
-			await page.goto('/');
+			// A fresh local document per case: the demo persists, so `/` would keep the last move.
+			await page.goto(`/?doc=nested-${name.replace(/\s/g, '-')}`);
 			if (name === 'numbered list') {
 				await openBlockMenu(page, blockId);
 				await page.getByRole('menuitem', { name: /Numbered list/ }).click();

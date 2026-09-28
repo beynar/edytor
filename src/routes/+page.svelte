@@ -16,6 +16,7 @@
 	import type { BlockHandleActivation } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 	import type { Plugin } from '$lib/plugins.js';
 	import { page } from '$app/state';
+	import { createIndexeddbSync } from '$lib/collaboration/providers.js';
 	import './demo.css';
 
 	let edytor = $state<EdytorContext>();
@@ -394,6 +395,10 @@
 				}
 			: doc;
 	const initialValue = bigValue(demoValue, Number(page.url.searchParams.get('blocks')));
+	// One local document per `?doc=` (or per `?blocks=` variant): its tabs sync
+	// (IndexedDB + BroadcastChannel) and it persists across reloads.
+	const docName = page.url.searchParams.get('doc') ?? page.url.searchParams.get('blocks') ?? 'page';
+	const sync = createIndexeddbSync(`edytor-demo-${docName}`);
 </script>
 
 <svelte:head>
@@ -451,6 +456,7 @@
 						<Edytor
 							{plugins}
 							value={initialValue}
+							{sync}
 							class="demo-edytor"
 							blockHandles={page.url.searchParams.get('handles') === '0'
 								? false

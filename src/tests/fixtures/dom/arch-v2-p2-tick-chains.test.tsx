@@ -90,32 +90,28 @@ describe('P2.3 — the caret is selected in the turn of the edit', () => {
 		expect(caret(edytor).offset).toBe(5);
 	});
 
-	// Red until its site lands (P2.3 is one site per commit).
-	test.fails(
-		'onBeforeInput: a model-owned command is not re-selected after the render',
-		async () => {
-			const { edytor, editor } = await one('hello');
-			const text = edytor.root!.children[0]!.firstText!;
-			edytor.selection.setAtTextOffset(text, 5);
+	test('onBeforeInput: a model-owned command is not re-selected after the render', async () => {
+		const { edytor, editor } = await one('hello');
+		const text = edytor.root!.children[0]!.firstText!;
+		edytor.selection.setAtTextOffset(text, 5);
+		await flushDomUpdates();
+		const writes: number[] = [];
+		const select = edytor.selection.select;
+		edytor.selection.select = (...args) => {
+			writes.push(edytor.selection.epoch);
+			return select(...args);
+		};
+		try {
+			beforeInput(editor, 'insertText', 'x');
+			const inTurn = writes.length;
+			expect(caret(edytor)).toEqual({ text: 'hellox', offset: 6, isCollapsed: true });
 			await flushDomUpdates();
-			const writes: number[] = [];
-			const select = edytor.selection.select;
-			edytor.selection.select = (...args) => {
-				writes.push(edytor.selection.epoch);
-				return select(...args);
-			};
-			try {
-				beforeInput(editor, 'insertText', 'x');
-				const inTurn = writes.length;
-				expect(caret(edytor)).toEqual({ text: 'hellox', offset: 6, isCollapsed: true });
-				await flushDomUpdates();
-				expect(writes.length).toBe(inTurn);
-				expect(caret(edytor)).toEqual({ text: 'hellox', offset: 6, isCollapsed: true });
-			} finally {
-				edytor.selection.select = select;
-			}
+			expect(writes.length).toBe(inTurn);
+			expect(caret(edytor)).toEqual({ text: 'hellox', offset: 6, isCollapsed: true });
+		} finally {
+			edytor.selection.select = select;
 		}
-	);
+	});
 
 	// Red until its site lands (P2.3 is one site per commit).
 	test.fails('onInput: a native line break runs its intent in the turn', async () => {

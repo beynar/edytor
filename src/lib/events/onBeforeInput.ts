@@ -382,16 +382,6 @@ const deleteTrailingSoftBreakBackward = (edytor: Edytor, attempt: Attempt) => {
 	return true;
 };
 
-const refreshSelectionTextFromModel = (edytor: Edytor, forceDomRefresh = false) => {
-	const text = edytor.selection.state.startText;
-	if (!text?.node?.isConnected) {
-		return;
-	}
-	const offset = edytor.selection.state.yStart;
-	if (forceDomRefresh) text.refreshFromModel();
-	edytor.selection.setAtTextOffset(text, Math.min(offset, text.length));
-};
-
 /** The pre-admission extension hook: an extension may claim a browser `beforeinput`. */
 const runBeforeInputPlugins = (edytor: Edytor, event: InputEvent) => {
 	edytor.plugins.forEach((plugin) => {
@@ -431,19 +421,9 @@ const perform = (edytor: Edytor, attempt: Attempt, offered: string | null) =>
 			throw error;
 		}
 		if (mode !== 'refresh') edytor.attempts.arm(attempt, window);
-		if (
-			mode === 'discard' &&
-			attempt.inputType !== 'insertLineBreak' &&
-			edytor.selection.state.startText
-		) {
-			edytor.selection.setAtTextOffset(
-				edytor.selection.state.startText,
-				edytor.selection.state.yStart
-			);
-		}
-		if (kind === 'text' || kind === 'payload') {
-			refreshSelectionTextFromModel(edytor, attempt.inputType === 'insertFromPaste');
-		}
+		// The command selected its caret; a paste re-renders the text it landed in.
+		const text = edytor.selection.state.startText;
+		if (attempt.inputType === 'insertFromPaste' && text?.node?.isConnected) text.refreshFromModel();
 		if (kind !== 'composition') edytor.composition.interrupt();
 	});
 

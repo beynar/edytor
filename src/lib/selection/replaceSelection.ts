@@ -113,14 +113,3 @@ export const replaceSelectedBlocksWithEmptyBlockTargetSync = (
 
 	return { text, offset: 0 };
 };
-
-export const replaceSelectedBlocksWithEmptyBlockTarget = async (
-	edytor: Edytor,
-	blockType?: string
-): Promise<SelectionInsertionTarget | null> => {
-	const target = replaceSelectedBlocksWithEmptyBlockTargetSync(edytor, blockType);
-	if (target) {
-		await edytor.selection.setAtTextOffset(target.text, target.offset);
-	}
-	return target;
-};

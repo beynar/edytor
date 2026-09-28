@@ -522,8 +522,8 @@ const remoteApplyCount = (page: Page) =>
 const guardSwallowCount = (page: Page) =>
 	page.evaluate(
 		() =>
-			(window as Window & { __EDYTOR__?: { postCompositionGuardSwallows?: number } }).__EDYTOR__
-				?.postCompositionGuardSwallows ?? 0
+			(window as Window & { __EDYTOR__?: { composition?: { swallows?: number } } }).__EDYTOR__
+				?.composition?.swallows ?? 0
 	);
 
 /**
@@ -748,7 +748,7 @@ const remoteOverlayStaleness = (page: Page) =>
 		const w = window as Window & {
 			__EDYTOR__?: {
 				awareness?: { getStates?: () => Map<number, Record<string, unknown>> };
-				idToText?: { get: (id: string) => { isInDocument?: boolean } | undefined };
+				idToBlock?: { textById: (id: string) => { isInDocument?: boolean } | undefined };
 				selection?: {
 					resolveTextAnchor?: (anchor: unknown) => {
 						text: { isInDocument?: boolean; parent?: { id?: string } | null };
@@ -816,7 +816,7 @@ const remoteOverlayStaleness = (page: Page) =>
 			}
 			if (!text && typeof textId === 'string') {
 				try {
-					text = edytor.idToText?.get(textId);
+					text = edytor.idToBlock?.textById(textId);
 				} catch {
 					text = null;
 				}

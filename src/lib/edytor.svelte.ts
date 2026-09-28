@@ -183,8 +183,6 @@ export class Edytor {
 	/** The view's handles (R4): one id-only `Block` per live id, texts and atoms by position and id. */
 	idToBlock: Handles = new Handles(this);
 	nodeToInlineBlock = new SvelteMap<Node, InlineBlock>();
-	/** The text whose id is `t:<block>:<ordinal>`, while its segment exists. */
-	idToText = { get: (id: string) => this.idToBlock.textById(id) };
 	nodeToText = new SvelteMap<Node, Text>();
 	transaction = new TRANSACTION();
 	hotKeys: Keymap;
@@ -256,16 +254,6 @@ export class Edytor {
 	blockBefore = (block: Block, policy?: OrderPolicy): Block | null =>
 		this.idToBlock.get(this.facade.previous(block.id, policy) ?? '') ?? null;
 	compareBlocks = (a: Block, b: Block): number => this.facade.compare(a.id, b.id);
-	/** `start`, `end` and every block between them in document order (no `end`: to the last). */
-	blocksBetween = (start: Block, end: Block | null): Block[] => {
-		const ids = this.facade.order();
-		const from = ids.indexOf(start.id);
-		if (from < 0) return [start];
-		const to = end ? ids.indexOf(end.id, from) : -1;
-		return ids
-			.slice(from, to < 0 ? undefined : to + 1)
-			.flatMap((id) => this.idToBlock.get(id) ?? []);
-	};
 	get awareness(): Awareness {
 		return this.document.awareness;
 	}
@@ -794,11 +782,6 @@ export class Edytor {
 		if (value) this.composition.commit(value);
 		else this.composition.cancel();
 	};
-
-	/** Phantom structural keys the composition tail swallowed (a test oracle). */
-	get postCompositionGuardSwallows() {
-		return this.composition.swallows;
-	}
 
 	deleteContentWithinSelection = batch(
 		'deleteContentWithinSelection',

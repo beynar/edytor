@@ -94,9 +94,6 @@ export type BlockOperations = {
 	pushContentIntoBlock: {
 		value: (Text | InlineBlock)[];
 	};
-	deleteContentForward: {
-		text: Text;
-	};
 	normalizeContent: {};
 	normalizeChildren: {};
 	suggestText: {

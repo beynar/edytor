@@ -41,8 +41,6 @@ const Y_TEXT_REF = 2;
 
 /** v13 root key for the document tree. */
 export const LEGACY_ROOT_KEY = 'content';
-/** v13 init marker root (`doc.getText('INITIALIZED')`). */
-export const LEGACY_INITIALIZED_KEY = 'INITIALIZED';
 
 /**
  * Raised when legacy update rows carry structs whose CRDT dependencies are

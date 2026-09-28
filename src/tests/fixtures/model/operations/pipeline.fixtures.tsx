@@ -347,7 +347,7 @@ export const fixtures = defineFixtures([
 
 			expect(block.content).toHaveLength(1);
 			expect((block.content[0] as Text).stringContent).toBe('abc');
-			expect(edytor.idToText.get(`t:${block.id}:1`)).toBeUndefined();
+			expect(edytor.idToBlock.textById(`t:${block.id}:1`)).toBeUndefined();
 		}
 	}),
 	defineModelOperationFixture({

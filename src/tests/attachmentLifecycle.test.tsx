@@ -21,7 +21,7 @@ describe('attachment lifecycle maps', () => {
 		staleAttachment.destroy();
 
 		expect(text.node).toBe(currentNode);
-		expect(edytor.idToText.get(text.id)).toBe(text);
+		expect(edytor.idToBlock.textById(text.id)).toBe(text);
 		expect(edytor.nodeToText.get(currentNode)).toBe(text);
 		expect(edytor.nodeToText.has(staleNode)).toBe(false);
 
@@ -29,7 +29,7 @@ describe('attachment lifecycle maps', () => {
 
 		// A live segment resolves by its id without an element (R4: handles read the index).
 		expect(text.node).toBeUndefined();
-		expect(edytor.idToText.get(text.id)).toBe(text);
+		expect(edytor.idToBlock.textById(text.id)).toBe(text);
 		expect(edytor.nodeToText.has(currentNode)).toBe(false);
 	});
 

@@ -455,7 +455,7 @@ export const captureBrowserSnapshot = (page: Page): Promise<DstBrowserSnapshot> 
 				};
 			};
 			defaultChild?: (parent?: unknown) => string;
-			idToText: Map<string, BrowserPart>;
+			idToBlock: { textById: (id: string) => BrowserPart | undefined };
 			nodeToText: Map<Node, BrowserPart>;
 			root?: { children: BrowserBlock[] };
 			undoManager?: {
@@ -764,7 +764,7 @@ export const captureBrowserSnapshot = (page: Page): Promise<DstBrowserSnapshot> 
 				textBindings: textElements.map((textElement) => {
 					const dataId = textElement.dataset.edytorId ?? '';
 					const byNode = edytor.nodeToText.get(textElement);
-					const byId = edytor.idToText.get(dataId);
+					const byId = edytor.idToBlock.textById(dataId);
 					return {
 						dataId,
 						nodeMapId: byNode?.id ?? null,

@@ -15,7 +15,7 @@
  *   pass (`{ sealed: true }`): a walk never enters an island it did not
  *   start in, so leaving `box` from inside it still reaches `Y`;
  * - the view: `Block.closestNextBlock` / `closestPreviousBlock` handles,
- *   `edytor.blockAfter`, and the block-range walk `edytor.blocksBetween`.
+ *   `edytor.blockAfter`, and the block-range walk (the tests' `blocksBetween` over `facade.order()`).
  */
 // @ts-nocheck -- tests drive the vendored engine JS directly (excluded lane).
 import { describe, expect, test } from 'vitest';
@@ -24,6 +24,7 @@ import { attachDocument } from '../../../lib/crdt/index.js';
 import { bindEdytorDoc } from '../../../lib/crdt/edytor-doc.js';
 import { Edytor } from '../../../lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { blocksBetween } from '../../order.helpers.js';
 
 const E = bindEdytorDoc(Y);
 const REMOTE = { remote: true };
@@ -102,7 +103,7 @@ describe('F-D2 — order is one answer', () => {
 		expect(Yb?.closestPreviousBlock?.id).toBe('A');
 		expect(edytor.blockAfter(A)?.id).toBe('Y');
 		expect(edytor.blockAfter(A, { sealed: true })?.id).toBe('Y');
-		expect(edytor.blocksBetween(A, Yb).map((b) => b.id)).toEqual(['A', 'Y']);
+		expect(blocksBetween(edytor, A, Yb).map((b) => b.id)).toEqual(['A', 'Y']);
 		expect(edytor.compareBlocks(A, Yb)).toBeLessThan(0);
 		expect(edytor.facade.next('A')).toBe('Y');
 	});

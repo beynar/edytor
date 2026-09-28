@@ -115,13 +115,6 @@ export const encodeRank = (segs: readonly RankSeg[]): string => {
 	return out;
 };
 
-/**
- * Ordering on rank strings. The encoding is fixed-width and order-preserving
- * per segment, so plain string comparison is the segment-wise `(v,t)` order
- * with prefix < extension.
- */
-export const compareRank = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
-
 const segLess = (a: RankSeg, b: RankSeg): number => a.v - b.v || a.t - b.t;
 
 /**
@@ -219,6 +212,3 @@ export const rankBetween = (
 		path.push(lSeg);
 	}
 };
-
-/** The smallest rank — first key when a list is empty. */
-export const initialRank = (clientId: number): string => encodeRank([{ v: 0, t: clientId }]);

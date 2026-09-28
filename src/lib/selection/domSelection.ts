@@ -61,33 +61,6 @@ export const createDomRange = (node: Node): Range => {
 	return ownerDocument.createRange();
 };
 
-/**
- * U8a — true when the live selection already covers
- * `(startNode, startOffset) → (endNode, endOffset)` INCLUDING direction:
- * a backward selection carries anchor=end/focus=start, so an
- * `isReversed` target must compare against the swapped endpoints — a
- * plain boundary match would silently flip a backward range to forward.
- */
-export const domSelectionCoversRange = (
-	selection: Selection | null,
-	startNode: Node,
-	startOffset: number,
-	endNode: Node,
-	endOffset: number,
-	isReversed = false
-): boolean =>
-	selection !== null &&
-	selection.rangeCount <= 1 &&
-	(isReversed
-		? selection.anchorNode === endNode &&
-			selection.anchorOffset === endOffset &&
-			selection.focusNode === startNode &&
-			selection.focusOffset === startOffset
-		: selection.anchorNode === startNode &&
-			selection.anchorOffset === startOffset &&
-			selection.focusNode === endNode &&
-			selection.focusOffset === endOffset);
-
 const isSelectionCollapsed = (selection: Selection) =>
 	selection.anchorNode === selection.focusNode && selection.anchorOffset === selection.focusOffset;
 
@@ -133,11 +106,6 @@ const createRangeFromStaticRange = (staticRange: StaticRange) => {
 	range.setEnd(staticRange.endContainer, staticRange.endOffset);
 	return range;
 };
-
-export const createDomSelectionSnapshotFromStaticRange = (
-	staticRange: StaticRange,
-	nativeSelection: Selection | null = null
-) => createDomSelectionSnapshotFromRange(createRangeFromStaticRange(staticRange), nativeSelection);
 
 const isNodeInside = (root: Node, target: Node) => root === target || root.contains(target);
 

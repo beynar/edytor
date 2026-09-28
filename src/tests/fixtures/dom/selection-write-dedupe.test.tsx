@@ -22,7 +22,6 @@ import {
 	dragSelection,
 	expectNativeSelection
 } from '../../dom/test.utils.js';
-import { getDomSelection } from '$lib/selection/domSelection.js';
 
 const selectionSpies = () => {
 	const selection = document.getSelection() ?? window.getSelection();
@@ -202,39 +201,5 @@ describe('U8a — native selection write dedupe', () => {
 		// A real move notifies once more.
 		await setNativeSelection(edytor, text, 8);
 		expect(onSelectionChange.mock.calls.length).toBeGreaterThan(afterFirst);
-	});
-});
-
-describe('U8a — domSelection helpers', () => {
-	test('domSelectionCoversRange matches only exact selections', async () => {
-		const { domSelectionCoversRange } = await import('$lib/selection/domSelection.js');
-		const rendered = await renderDomEdytor(
-			<root>
-				<paragraph>hello world</paragraph>
-			</root>,
-			{ autoSelectFixture: false }
-		);
-		const { edytor } = rendered;
-		const text = edytor.root!.children[0]!.firstText!;
-		await setNativeSelection(edytor, text, 4);
-		const selection = getDomSelection(edytor.node)!;
-		const leaf = edytor.selection.state.startNode!;
-		expect(domSelectionCoversRange(selection, leaf, 4, leaf, 4, false)).toBe(true);
-		expect(domSelectionCoversRange(selection, leaf, 3, leaf, 4, false)).toBe(false);
-		// A COLLAPSED selection has no direction — a reversed target at the
-		// same point is legitimately "already there" (anchor==focus, nothing
-		// to flip).
-		expect(domSelectionCoversRange(selection, leaf, 4, leaf, 4, true)).toBe(true);
-
-		// Non-collapsed: direction is part of the match — a forward live
-		// selection does NOT satisfy a reversed target over the same range.
-		await setNativeSelection(edytor, text, 2, text, 7);
-		const rangeSel = getDomSelection(edytor.node)!;
-		expect(
-			domSelectionCoversRange(rangeSel, rangeSel.anchorNode!, 2, rangeSel.focusNode!, 7, false)
-		).toBe(true);
-		expect(
-			domSelectionCoversRange(rangeSel, rangeSel.anchorNode!, 2, rangeSel.focusNode!, 7, true)
-		).toBe(false);
 	});
 });

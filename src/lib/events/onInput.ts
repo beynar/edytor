@@ -176,16 +176,15 @@ export const handleNativeLineBreakTextValue = async (edytor: Edytor, text: Text,
 	return true;
 };
 
-export const handleNativeLineBreakTextMutation = async (edytor: Edytor, text: Text) =>
-	handleNativeLineBreakTextValue(edytor, text, readDomText(text));
-
 const handleNativeLineBreakTextInput = async (edytor: Edytor, event: Event) => {
 	if (!isNativeLineBreakTextInput(event)) {
 		return false;
 	}
 
 	const target = getCollapsedDomTextSelection(edytor) ?? getEventTextRepairTarget(edytor, event);
-	return target ? handleNativeLineBreakTextMutation(edytor, target.text) : false;
+	return target
+		? handleNativeLineBreakTextValue(edytor, target.text, readDomText(target.text))
+		: false;
 };
 
 const getExpandedSelectionInputText = (edytor: Edytor, event: Event) =>

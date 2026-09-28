@@ -143,19 +143,3 @@ export const followRedone = (
 		at = { client: struct.redone.client, clock: struct.redone.clock + at.clock - struct.id.clock };
 	}
 };
-
-/** This replica's next clock — it advances exactly when the replica writes an item. */
-export const clockOf = (doc: EngineDoc): number => {
-	const own = clientsOf(doc).get(doc.clientID);
-	const last = own?.[own.length - 1];
-	return last === undefined ? 0 : last.id.clock + last.length;
-};
-
-/** How many items the transaction has deleted so far (its delete set's length). */
-export const deletedLen = (tr: unknown): number => {
-	let n = 0;
-	(tr as { deleteSet: IdSetLike }).deleteSet.clients.forEach((ranges) => {
-		for (const r of ranges.getIds()) n += r.len;
-	});
-	return n;
-};

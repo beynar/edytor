@@ -20,6 +20,7 @@ import type { Plugin } from '$lib/plugins.js';
 import type { SerializableContent } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import type { Awareness, YDoc } from '$lib/crdt/index.js';
+import { blocksBetween } from './order.helpers.js';
 
 type CursorPosition = {
 	path: number[];
@@ -319,7 +320,7 @@ const getSelectedContent = (
 };
 
 const getBlocksInSelection = (startBlock: Block, endBlock: Block) => {
-	const blocks = startBlock.edytor.blocksBetween(startBlock, endBlock);
+	const blocks = blocksBetween(startBlock.edytor, startBlock, endBlock);
 	if (blocks.at(-1) !== endBlock) {
 		throw new Error('Failed to resolve block range from JSX DSL fixture');
 	}
@@ -405,7 +406,7 @@ const patchOperationSelectionApis = (edytor: Edytor) => {
 			return;
 		}
 
-		const text = textOrId instanceof Text ? textOrId : edytor.idToText.get(textOrId);
+		const text = textOrId instanceof Text ? textOrId : edytor.idToBlock.textById(textOrId);
 		if (!text) {
 			return;
 		}

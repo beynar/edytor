@@ -17,14 +17,17 @@ import { describe, expect, it } from 'vitest';
 import {
 	decodeRank,
 	encodeRank,
-	compareRank,
 	rankBetween,
-	initialRank,
 	RANK_VMIN,
 	RANK_VMAX,
 	RankSpaceExhausted
 } from '../../../lib/crdt/placement/rank.js';
 import { mulberry32 } from '../harness/rng.js';
+
+/** Rank order is plain string order (the encoding is order-preserving). */
+const compareRank = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+/** The smallest rank a client can mint — the first key of an empty list. */
+const initialRank = (clientId: number): string => encodeRank([{ v: 0, t: clientId }]);
 
 const C1 = 11;
 const C2 = 22;

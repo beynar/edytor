@@ -241,7 +241,6 @@ const repairDrift = async (
 		eventTarget.text.refreshFromModel();
 	}
 	target.text.refreshFromModel();
-	await tick();
 	// The attempt decided the caret; `select()` it — the projector displays it (V4).
 	edytor.selection.setAtTextOffset(target.text, Math.min(target.offset, target.text.length));
 };

@@ -38,16 +38,14 @@ export const createToolbarPlugin =
 			return () => Object.assign(host.style, { left, top });
 		};
 
-		const schedulePosition = () => edytor.overlay.invalidate();
-
 		return {
 			onAfterOperation: () => {
 				controller.updateFromSelection();
-				schedulePosition();
+				edytor.overlay.invalidate();
 			},
 			onSelectionChange: (selection) => {
 				controller.updateFromSelection(selection);
-				schedulePosition();
+				edytor.overlay.invalidate();
 			},
 			onEdytorAttached: () =>
 				edytor.overlay.mount(

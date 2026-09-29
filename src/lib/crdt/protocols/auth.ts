@@ -14,6 +14,9 @@ import * as decoding from 'lib0-v14/decoding';
 
 export const messagePermissionDenied = 0;
 
+/** The denial of a read-only socket's write: that socket still syncs (not a terminal refusal). */
+export const READ_ONLY_DENIAL = 'read-only';
+
 export const writePermissionDenied = (encoder: encoding.Encoder, reason: string): void => {
 	encoding.writeVarUint(encoder, messagePermissionDenied);
 	encoding.writeVarString(encoder, reason);

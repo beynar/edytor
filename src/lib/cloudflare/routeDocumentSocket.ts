@@ -13,6 +13,7 @@
  * with its `params` read again, so a refreshed token gets in. A document
  * id the room cannot have (empty, over 256 characters) is closed `4400`.
  */
+import { CLOSE } from '../crdt/providers/room.js';
 import { IDENTITY_HEADERS, closedSocket, parseReplica } from './DocumentRoom.js';
 
 /** A namespace whose objects host a document (`DocumentRoom`, or any object with `attachDocument`). */
@@ -56,13 +57,6 @@ export type AuthorizeDocumentSocket = (
 export const requestedReplica = (request: Request, param = 'replica'): number | null =>
 	parseReplica(new URL(request.url).searchParams.get(param));
 
-/** The close a denied dial gets: terminal for the provider (`refused`). */
-const DENIED_CLOSE = { code: 4403, reason: 'document access denied' } as const;
-/** The close of a document id the room cannot have (empty, over 256 characters): terminal. */
-const INVALID_CLOSE = { code: 4400, reason: 'invalid document id' } as const;
-/** The close an expired credential gets: the provider redials with fresh `params`. */
-const EXPIRED_CLOSE = { code: 4401, reason: 'expired' } as const;
-
 export async function routeDocumentSocket(
 	request: Request,
 	rooms: DocumentNamespace,
@@ -73,11 +67,11 @@ export async function routeDocumentSocket(
 		return new Response('WebSocket upgrade required', { status: 426 });
 	}
 	if (!documentId || documentId.length > 256) {
-		return closedSocket(INVALID_CLOSE.code, INVALID_CLOSE.reason);
+		return closedSocket(CLOSE.invalidDocument, 'invalid document id');
 	}
 	const decision = await authorize(request, documentId);
 	if (decision && 'expired' in decision && decision.expired === true) {
-		return closedSocket(EXPIRED_CLOSE.code, EXPIRED_CLOSE.reason);
+		return closedSocket(CLOSE.expired, 'expired');
 	}
 	const identity = decision && 'userId' in decision ? decision : null;
 	const replica = identity?.replica ?? null;
@@ -88,7 +82,7 @@ export async function routeDocumentSocket(
 		identity.userId.length > 256 ||
 		(replica !== null && parseReplica(replica) === null)
 	) {
-		return closedSocket(DENIED_CLOSE.code, DENIED_CLOSE.reason);
+		return closedSocket(CLOSE.denied, 'document access denied');
 	}
 	const headers = new Headers({
 		Upgrade: 'websocket',

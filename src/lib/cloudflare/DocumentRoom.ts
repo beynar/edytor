@@ -87,6 +87,9 @@ import { DurableObject } from 'cloudflare:workers';
 import * as encoding from 'lib0-v14/encoding';
 import { Y } from '../crdt/engine.js';
 import * as E from '../crdt/index.js';
+import { READ_ONLY_DENIAL } from '../crdt/protocols/auth.js';
+import { isGenerationRecord } from '../crdt/protocols/envelope.js';
+import { CLOSE } from '../crdt/providers/room.js';
 import type {
 	AwarenessEntry,
 	DocumentSemanticsConfig,
@@ -200,15 +203,13 @@ export type Refusal = {
 type RowKind = 'generation' | 'update' | 'snapshot' | 'pending';
 type Row = { kind: RowKind; record: number; part: number; parts: number; bytes: ArrayBuffer };
 
-/** The dial of a replica another user owns: terminal for the provider (`4xxx`). */
-const REPLICA_TAKEN_CLOSE = { code: 4409, reason: 'replica bound to another user' } as const;
-
 /**
  * An upgrade accepted and closed at once, so the client reads `code`: a
  * browser sees an HTTP error at the upgrade only as `1006`, which a
  * provider cannot tell from a network failure. Refuse a dial your Worker
  * turns away itself with it: the provider stops at `1008` or `4xxx`
- * (except `4401`, redialed), and redials after anything else.
+ * (except `4401`, redialed), and redials after anything else (`CLOSE`,
+ * `isRefusal` in `crdt/providers/room.ts`).
  */
 export const closedSocket = (code: number, reason: string): Response => {
 	const [client, server] = Object.values(new WebSocketPair());
@@ -296,16 +297,25 @@ const encodeJSON = (value: unknown) => new TextEncoder().encode(JSON.stringify(v
 export const presenceFrame = (entries: AwarenessEntry[]): Uint8Array =>
 	E.frame(E.messageAwareness, (e) => E.writeVarUint8Array(e, E.writeAwarenessEntries(entries)));
 
-const isGenerationRecord = (found: unknown) => {
-	const record = found as Partial<E.GenerationRecord> | null;
-	return (
-		record !== null &&
-		typeof record === 'object' &&
-		record.engine === E.GENERATION_RECORD.engine &&
-		record.protocol === E.GENERATION_RECORD.protocol &&
-		record.schema === E.GENERATION_RECORD.schema
-	);
-};
+/**
+ * The store-before-ack frame, sent only once what `doc` holds is stored:
+ * its state vector, and the message's `deletes` it holds (not pending).
+ */
+const savedFrame = (doc: YDoc, deletes?: Decoded['ds']): Uint8Array =>
+	E.frame(E.messageSaved, (e) => sync.writeSaved(e, doc, deletes));
+
+const step1Frame = (doc: YDoc): Uint8Array =>
+	E.frame(E.messageSync, (e) => sync.writeSyncStep1(e, doc));
+
+const updateFrame = (update: Uint8Array): Uint8Array =>
+	E.frame(E.messageSync, (e) => sync.writeUpdate(e, update));
+
+/** The read-only notice at the join: a state, not a refusal. */
+const readOnlyFrame = (): Uint8Array => E.frame(E.messageAuth, (e) => E.writeReadOnly(e));
+
+/** The denial of a read-only socket's write: it stays, and still syncs. */
+const readOnlyDenialFrame = (): Uint8Array =>
+	E.frame(E.messageAuth, (e) => E.writePermissionDenied(e, READ_ONLY_DENIAL));
 
 const stateVector = (doc: YDoc): Map<number, number> =>
 	Y.decodeStateVector(Y.encodeStateVector(doc));
@@ -471,6 +481,16 @@ const withoutClients = (
 	return encoder.toUint8Array();
 };
 
+/** The next clock per client of `structs`, less `stripped` clients'. */
+const carriedClocks = (structs: Struct[], stripped: Set<number>): Map<number, number> => {
+	const carried = new Map<number, number>();
+	for (const { id, length } of structs) {
+		if (stripped.has(id.client)) continue;
+		carried.set(id.client, Math.max(carried.get(id.client) ?? 0, id.clock + length));
+	}
+	return carried;
+};
+
 /**
  * Of `ds`, the deletes of items neither the room (`sv`) nor the frame's
  * own structs (less `stripped` clients') hold: they would wait.
@@ -480,11 +500,7 @@ const unheldDeletes = (
 	stripped: Set<number>,
 	sv: Map<number, number>
 ): Decoded['ds'] => {
-	const carried = new Map<number, number>();
-	for (const { id, length } of structs) {
-		if (stripped.has(id.client)) continue;
-		carried.set(id.client, Math.max(carried.get(id.client) ?? 0, id.clock + length));
-	}
+	const carried = carriedClocks(structs, stripped);
 	const unheld = Y.createIdSet();
 	for (const [client, ranges] of ds.clients) {
 		const held = Math.max(sv.get(client) ?? 0, carried.get(client) ?? 0);
@@ -514,11 +530,7 @@ const releasedWaiting = (
 	before: Map<number, number>,
 	after: Map<number, number>
 ): boolean => {
-	const carried = new Map<number, number>();
-	for (const { id, length } of structs) {
-		if (stripped.has(id.client)) continue;
-		carried.set(id.client, Math.max(carried.get(id.client) ?? 0, id.clock + length));
-	}
+	const carried = carriedClocks(structs, stripped);
 	for (const [client, clock] of after) {
 		if (clock > Math.max(before.get(client) ?? 0, carried.get(client) ?? 0)) return true;
 	}
@@ -697,6 +709,14 @@ export class AttachedDocument {
 		}
 	}
 
+	/** A read of the rows or `onLoad` failed (storage was down): start again. */
+	private async retryStart() {
+		if (this.doc !== null || !this.retryable) return;
+		await this.ctx.blockConcurrencyWhile(async () => {
+			if (this.doc === null && this.retryable) await this.start();
+		});
+	}
+
 	private fail(error: unknown, retryable: boolean) {
 		this.failure = error instanceof Error ? error : new Error(String(error));
 		this.retryable = retryable;
@@ -762,11 +782,7 @@ export class AttachedDocument {
 	 */
 	async alarm(): Promise<void> {
 		if (!this.options.onSave) return;
-		if (this.doc === null && this.retryable) {
-			await this.ctx.blockConcurrencyWhile(async () => {
-				if (this.doc === null && this.retryable) await this.start();
-			});
-		}
+		await this.retryStart();
 		// Set after `start()`, which reads the alarm this handler is running.
 		this.saveScheduled = false;
 		if (this.doc === null) {
@@ -785,6 +801,13 @@ export class AttachedDocument {
 				.toArray()
 		};
 		await this.options.onSave(saved);
+	}
+
+	/** The first unsaved change arms the save alarm; a wake keeps one already armed (`start`). */
+	private scheduleSave() {
+		if (this.saveScheduled || !this.options.onSave) return;
+		this.saveScheduled = true;
+		void this.ctx.storage.setAlarm(Date.now() + this.saveAfter);
 	}
 
 	/**
@@ -860,12 +883,6 @@ export class AttachedDocument {
 			this.doc?.destroy();
 			this.adopt(doc);
 		});
-	}
-
-	private scheduleSave() {
-		if (this.saveScheduled || !this.options.onSave) return;
-		this.saveScheduled = true;
-		void this.ctx.storage.setAlarm(Date.now() + this.saveAfter);
 	}
 
 	// ── Storage ──────────────────────────────────────────────────────────
@@ -1022,33 +1039,28 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * After a failed append: the live doc is rebuilt from the stored rows
-	 * alone (as a restart would), so nothing unstored is ever served or
-	 * acknowledged, and the sender's socket is closed (1011) — its
-	 * provider reconnects, the join rule finds what the room lacks, and
-	 * the edit is resent and stored.
-	 */
-	private recover(ws: WebSocket) {
-		this.note({ reason: 'storage', detail: String(this.unstored) });
-		this.rebuild();
-		this.depart(ws);
-		this.close(ws, 1011, STORAGE_FAILURE);
-	}
-
-	/**
-	 * A fault of the room while it handled `ws`'s frame — a registry write
-	 * (`storage`), the engine or a send (`internal`): never the client's
-	 * doing, so never a refusal. An engine fault may leave the live doc
-	 * holding what storage does not: it is rebuilt from the stored rows.
-	 * The socket is closed 1011; its provider redials and resends.
+	 * A fault of the room while it handled `ws`'s frame, never the client's
+	 * doing (so never a refusal): a failed append (`unstored`) or registry
+	 * write (`storage`), the engine or a send (`internal`). After a failed
+	 * append or an engine fault the live doc may hold what storage does
+	 * not: it is rebuilt from the stored rows alone (as a restart would),
+	 * so nothing unstored is ever served or acknowledged. The socket is
+	 * closed 1011: its provider redials, the join rule finds what the room
+	 * lacks, and the edit is resent and stored.
 	 */
 	private fault(ws: WebSocket, error: unknown) {
-		if (this.unstored !== null) return this.recover(ws);
-		const storage = error instanceof StorageFault;
-		this.note({ reason: storage ? 'storage' : 'internal', detail: String(error) });
-		if (!storage && this.doc !== null) this.rebuild();
+		// A failed append outranks whatever surfaced it.
+		const append = this.unstored !== null;
+		const registry = !append && error instanceof StorageFault;
+		const storage = append || registry;
+		this.note({
+			reason: storage ? 'storage' : 'internal',
+			detail: String(append ? this.unstored : error)
+		});
+		// Only a registry fault leaves the live doc as stored.
+		if (!registry && this.doc !== null) this.rebuild();
 		this.depart(ws);
-		this.close(ws, 1011, storage ? STORAGE_FAILURE : 'internal error');
+		this.close(ws, CLOSE.fault, storage ? STORAGE_FAILURE : 'internal error');
 	}
 
 	/**
@@ -1097,10 +1109,7 @@ export class AttachedDocument {
 			try {
 				this.ctx.storage.transactionSync(() => this.insert('update', update));
 				this.updates++;
-				this.broadcast(
-					E.frame(E.messageSync, (e) => sync.writeUpdate(e, update)),
-					origin
-				);
+				this.broadcast(updateFrame(update), origin);
 				this.scheduleSave();
 			} catch (error) {
 				this.unstored = error;
@@ -1221,12 +1230,7 @@ export class AttachedDocument {
 		}
 		const identity = readIdentity(request.headers);
 		if (identity === null) return new Response('verified identity required', { status: 401 });
-		// A read of the rows or `onLoad` failed (storage was down): start again before refusing.
-		if (this.doc === null && this.retryable) {
-			await this.ctx.blockConcurrencyWhile(async () => {
-				if (this.doc === null && this.retryable) await this.start();
-			});
-		}
+		await this.retryStart();
 		return noTimers(() => {
 			const doc = this.doc;
 			if (doc !== null && identity.replica !== null) {
@@ -1236,11 +1240,11 @@ export class AttachedDocument {
 				} catch (error) {
 					if (!(error instanceof StorageFault)) throw error;
 					this.note({ reason: 'storage', detail: String(error) });
-					return closedSocket(1011, STORAGE_FAILURE);
+					return closedSocket(CLOSE.fault, STORAGE_FAILURE);
 				}
 				if (!bound) {
 					this.note({ reason: 'replica', detail: identity.replica });
-					return closedSocket(REPLICA_TAKEN_CLOSE.code, REPLICA_TAKEN_CLOSE.reason);
+					return closedSocket(CLOSE.replicaTaken, 'replica bound to another user');
 				}
 			}
 			const pair = new WebSocketPair();
@@ -1253,12 +1257,7 @@ export class AttachedDocument {
 				// A read-only socket is never asked for its state: it has nothing
 				// to give. It gets the read-only notice instead (not a refusal),
 				// so its provider tracks nothing.
-				this.send(
-					server,
-					identity.readOnly
-						? E.frame(E.messageAuth, (e) => E.writeReadOnly(e))
-						: E.frame(E.messageSync, (e) => sync.writeSyncStep1(e, doc))
-				);
+				this.send(server, identity.readOnly ? readOnlyFrame() : step1Frame(doc));
 				if (this.presence.size > 0) this.send(server, presenceFrame([...this.presence.values()]));
 			}
 			return new Response(null, { status: 101, webSocket: client });
@@ -1353,13 +1352,8 @@ export class AttachedDocument {
 				return sv;
 			});
 			this.send(ws, storedStep2(doc, sv));
-			if (!attachment.readOnly && sync.lacks(doc, sv)) {
-				this.send(
-					ws,
-					E.frame(E.messageSync, (e) => sync.writeSyncStep1(e, doc))
-				);
-			}
-			return this.acknowledge(ws, doc);
+			if (!attachment.readOnly && sync.lacks(doc, sv)) this.send(ws, step1Frame(doc));
+			return this.send(ws, savedFrame(doc));
 		}
 		if (syncType !== E.messageYjsSyncStep2 && syncType !== E.messageYjsUpdate) {
 			return this.refuse(ws, { reason: 'malformed', detail: `sync type ${syncType}` });
@@ -1368,10 +1362,7 @@ export class AttachedDocument {
 		// 2 · Access: a read-only socket writes nothing (it stays, and is told).
 		if (attachment.readOnly) {
 			this.note({ reason: 'read-only', detail: attachment.user });
-			return this.send(
-				ws,
-				E.frame(E.messageAuth, (e) => E.writePermissionDenied(e, 'read-only'))
-			);
+			return this.send(ws, readOnlyDenialFrame());
 		}
 		// 3 · Attribution: new structs only under client ids this user may
 		// write under; another user's are stripped, the rest applied.
@@ -1380,10 +1371,9 @@ export class AttachedDocument {
 		const stripped = this.attribute(attachment, newWriters(decoded, sv), sv);
 		// Waiting deletes are capped: a frame that would pass the cap has them dropped.
 		const waiting = pendingDeletes(doc);
-		let dropped = decoded.ds.isEmpty() ? null : unheldDeletes(decoded, stripped, sv);
-		if (dropped !== null && rangeCount(waiting) + rangeCount(dropped) <= MAX_WAITING_DELETES) {
-			dropped = null;
-		}
+		const unheld = decoded.ds.isEmpty() ? null : unheldDeletes(decoded, stripped, sv);
+		const dropped =
+			unheld && rangeCount(waiting) + rangeCount(unheld) > MAX_WAITING_DELETES ? unheld : null;
 		if (dropped !== null) {
 			this.note({
 				reason: 'waiting',
@@ -1401,7 +1391,7 @@ export class AttachedDocument {
 		const { applied, problem, discarded } = sync.applyRemote(doc, admitted, ws, (error) => {
 			failure = error;
 		});
-		if (this.unstored !== null) return this.recover(ws);
+		if (this.unstored !== null) return this.fault(ws, this.unstored);
 		if (problem !== null) return this.refuse(ws, { reason: 'schema', detail: problem });
 		// The bytes decoded: an update the engine could not apply is its fault.
 		if (!applied) return this.fault(ws, failure ?? new Error('update not applied'));
@@ -1415,17 +1405,14 @@ export class AttachedDocument {
 						({ id }) => !stripped.has(id.client) && id.clock >= heldClock(doc, id.client)
 					);
 		this.settleDeletes(ws, doc, waiting, stay, discarded !== undefined);
-		if (this.unstored !== null) return this.recover(ws);
+		if (this.unstored !== null) return this.fault(ws, this.unstored);
 		if (discarded) this.note({ reason: 'schema', detail: { discarded } });
 		const deletes = dropped === null ? decoded.ds : Y.diffIdSet(decoded.ds, dropped);
-		this.acknowledge(ws, doc, stripped.size === 0 ? deletes : heldDeletes(doc, deletes));
+		this.send(ws, savedFrame(doc, stripped.size === 0 ? deletes : heldDeletes(doc, deletes)));
 		// Waiting writes the frame released are other sockets' (a relayer's
 		// edit that built on an author's lost one): they are stored now.
 		if (releasedWaiting(decoded.structs, stripped, sv, stateVector(doc))) {
-			this.broadcast(
-				E.frame(E.messageSaved, (e) => sync.writeSaved(e, doc)),
-				ws
-			);
+			this.broadcast(savedFrame(doc), ws);
 		}
 		this.compactIfDue();
 	}
@@ -1464,25 +1451,7 @@ export class AttachedDocument {
 				return;
 			}
 		}
-		if (!released.isEmpty()) {
-			const update = deletesUpdate(released);
-			this.send(
-				ws,
-				E.frame(E.messageSync, (e) => sync.writeUpdate(e, update))
-			);
-		}
-	}
-
-	/**
-	 * Store-before-ack: everything under the room's state vector is
-	 * persisted, and so are the acknowledged deletes (`deletes`, the
-	 * message's, less those the engine holds pending).
-	 */
-	private acknowledge(ws: WebSocket, doc: YDoc, deletes?: ReturnType<typeof Y.decodeUpdate>['ds']) {
-		this.send(
-			ws,
-			E.frame(E.messageSaved, (e) => sync.writeSaved(e, doc, deletes))
-		);
+		if (!released.isEmpty()) this.send(ws, updateFrame(deletesUpdate(released)));
 	}
 
 	/**
@@ -1526,7 +1495,7 @@ export class AttachedDocument {
 	private refuse(ws: WebSocket, refusal: Refusal) {
 		this.note(refusal);
 		this.depart(ws);
-		this.close(ws, 1008, `refused: ${refusal.reason}`);
+		this.close(ws, CLOSE.refused, `refused: ${refusal.reason}`);
 	}
 
 	private close(ws: WebSocket, code: number, reason: string) {
@@ -1547,7 +1516,7 @@ export class AttachedDocument {
 		if (!this.retryable)
 			return this.refuse(ws, { reason: 'container', detail: this.failure?.message });
 		this.note({ reason: 'container', detail: this.failure?.message });
-		this.close(ws, 1011, 'room unavailable');
+		this.close(ws, CLOSE.fault, 'room unavailable');
 	}
 
 	/** Send one frame — as chunks when it exceeds `maxFrameBytes` (bounded catch-up). */

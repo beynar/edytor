@@ -55,46 +55,26 @@
 	 */
 	const FILLER: readonly RenderDelta[] = [{ text: '\u200B', marks: [] }];
 
+	/** A plain click (no drag, no Shift, a single press) places the caret at the pointer. */
 	const restoreTextSelectionFromClick = (node: HTMLElement) => {
 		let pointerStart: { clientX: number; clientY: number } | null = null;
-
-		const handlePointerDown = (event: PointerEvent) => {
-			if (event.button !== 0 || event.shiftKey) {
-				pointerStart = null;
-				return;
-			}
-
-			pointerStart = {
-				clientX: event.clientX,
-				clientY: event.clientY
-			};
+		const pointerdown = ({ button, shiftKey, clientX, clientY }: PointerEvent) => {
+			pointerStart = button !== 0 || shiftKey ? null : { clientX, clientY };
 		};
-
-		const handleClick = (event: MouseEvent) => {
-			if (event.button !== 0 || event.detail !== 1 || event.shiftKey || !pointerStart) {
-				pointerStart = null;
-				return;
-			}
-
-			const movement = Math.hypot(
-				event.clientX - pointerStart.clientX,
-				event.clientY - pointerStart.clientY
-			);
+		const click = (event: MouseEvent) => {
+			const start = pointerStart;
 			pointerStart = null;
-			if (movement >= 4) {
-				return;
-			}
-
-			if (text) edytor.selection.setTextSelectionFromPointer(text, event.clientX, event.clientY);
+			if (event.button !== 0 || event.detail !== 1 || event.shiftKey || !start) return;
+			const movement = Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY);
+			if (movement < 4 && text)
+				edytor.selection.setTextSelectionFromPointer(text, event.clientX, event.clientY);
 		};
-
-		node.addEventListener('pointerdown', handlePointerDown);
-		node.addEventListener('click', handleClick);
-
+		node.addEventListener('pointerdown', pointerdown);
+		node.addEventListener('click', click);
 		return {
 			destroy: () => {
-				node.removeEventListener('pointerdown', handlePointerDown);
-				node.removeEventListener('click', handleClick);
+				node.removeEventListener('pointerdown', pointerdown);
+				node.removeEventListener('click', click);
 			}
 		};
 	};

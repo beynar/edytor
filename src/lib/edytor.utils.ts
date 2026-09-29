@@ -4,6 +4,7 @@ import type { Edytor } from './edytor.svelte.js';
 import type { Flow, FlowTarget } from './crdt/flow.js';
 import type { Prepared } from './crdt/edytor-doc.js';
 import { normalizeChildren, normalizeContent } from './block/block.utils.js';
+import { viewOf } from './selection/visibility.js';
 
 /** The two endpoints of a range, as the selection holds them. */
 export type RangeEndpoints = {
@@ -48,26 +49,6 @@ export function prepareDeleteContent(this: Edytor, { replace = false, selection 
 	});
 	const prepare = replace ? this.facade.prepare.replaceRange : this.facade.prepare.deleteRange;
 	return prepare(at(startText, yStart), at(endText, yEnd), viewOf(this));
-}
-
-/**
- * What the view hides, for the document's range and flow ops
- * (`del.range.hidden-body`): a closed toggle's body is not in a range, and a
- * split of its header leaves it there (`flow.split`). With `removed`,
- * whether a block stays hidden once those blocks go.
- */
-export function viewOf(edytor: Edytor) {
-	const blocks = new WeakMap<ReadonlySet<string>, Set<Block>>();
-	const blocksOf = (ids: ReadonlySet<string>) => {
-		if (!blocks.has(ids))
-			blocks.set(ids, new Set([...ids].flatMap((id) => edytor.idToBlock.get(id) ?? [])));
-		return blocks.get(ids)!;
-	};
-	const hidden = (id: string, removed?: ReadonlySet<string>) => {
-		const block = edytor.idToBlock.get(id);
-		return !!block && edytor.selection.hidden(block, removed && blocksOf(removed));
-	};
-	return { hidden };
 }
 
 /**

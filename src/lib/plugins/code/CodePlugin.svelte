@@ -4,11 +4,12 @@
 	import './code.css';
 	import type { Plugin, MarkSnippetPayload, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { JSONText } from '$lib/utils/json.js';
-	import { id, prevent } from '$lib/utils.js';
+	import { prevent } from '$lib/utils.js';
 	import { Text } from '$lib/text/text.svelte.js';
 	import { Block } from '$lib/block/block.svelte.js';
 	import { runIntent } from '$lib/events/beforeInputCommands.js';
 	import { codeKinds } from '$lib/crdt/semantics.js';
+	import { shown } from '$lib/selection/visibility.js';
 
 	// The code kind tokenizes through `transformText`; only the renderer writes the DOM.
 	const highlighter = createHighlighter({ languages: [jsx] });
@@ -78,30 +79,24 @@
 		return {
 			hotkeys: {
 				'mod+a': ({ prevent }) => {
+					// Select the code block's text (an empty line leaves it to Select all).
 					const { startBlock } = edytor.selection.state;
-					const {
-						islandRoot: root,
-						isAtEndOfBlock,
-						isAtStartOfBlock
-					} = edytor.selection.projection;
-					const islandRoot = edytor.idToBlock.get(root ?? '');
+					const { islandRoot, isAtEndOfBlock, isAtStartOfBlock } = edytor.selection.projection;
 					if (
 						startBlock?.type === 'codeLine' &&
 						!edytor.selection.selectedBlocks.size &&
 						!(isAtEndOfBlock && isAtStartOfBlock)
 					) {
 						prevent(() => {
-							const firstText = islandRoot?.firstEditableText;
-							let lastText = islandRoot?.lastEditableText;
-							if (firstText && lastText && firstText instanceof Text && lastText instanceof Text) {
-								edytor.selection.setAtTextsRange(firstText, lastText);
-							}
+							const code = edytor.idToBlock.get(islandRoot ?? '');
+							const [first, last] = [code?.firstEditableText, code?.lastEditableText];
+							if (first && last) edytor.selection.setAtTextsRange(first, last);
 						});
 					}
 				},
 				escape: () => {
 					const { startBlock } = edytor.selection.state;
-					if (startBlock?.type === 'codeLine' && startBlock?.suggestions) {
+					if (startBlock?.type === 'codeLine' && startBlock.suggestions) {
 						startBlock.suggestions = null;
 					}
 				},
@@ -125,23 +120,20 @@
 				'shift+tab': ({ prevent }) => {
 					if (touchedLines()) prevent(() => indent(-1));
 				},
-				'shift+enter': () => {
-					const { startText } = edytor.selection.state;
-					if (startText?.parent.type === 'codeLine') {
+				'shift+enter': ({ prevent }) => {
+					if (edytor.selection.state.startText?.parent.type === 'codeLine')
 						prevent(() => runIntent(edytor, 'insertParagraph'));
-					}
 				}
 			},
 			onBeforeOperation: ({ operation, payload, block }) => {
 				// Delete before a code block: an empty block is removed, the caret at
 				// the end of the text before it (else the start of the code); any other
 				// is refused.
-				const code =
-					operation === 'mergeBlockForward' ? edytor.selection.shown(block, 'blockAfter') : null;
+				const code = operation === 'mergeBlockForward' ? shown(block, 'blockAfter') : null;
 				if (code?.type === 'code') {
 					if (!block.isEmpty) prevent();
 					prevent(() => {
-						const before = edytor.selection.shown(block, 'blockBefore')?.lastEditableText;
+						const before = shown(block, 'blockBefore')?.lastEditableText;
 						block.removeBlock();
 						const text = before ?? code.firstEditableText;
 						edytor.dispatcher.caret(text, before?.length ?? 0);
@@ -151,7 +143,7 @@
 				// caret goes to the end of the code (the merge would be refused).
 				const previous =
 					operation === 'mergeBlockBackward' && block.type !== 'codeLine' && block.isEmpty
-						? edytor.selection.shown(block, 'blockBefore')
+						? shown(block, 'blockBefore')
 						: null;
 				if (previous?.type === 'codeLine') {
 					prevent(() => {
@@ -207,29 +199,18 @@
 								({ className, value }): JSONText =>
 									className ? { text: value, marks: { codeToken: className } } : { text: value }
 							),
+					// A line holding newlines keeps its first line; each other becomes a code line after it.
 					normalizeContent: ({ block }) => {
-						// here we need to check if the code line has soft line breaks and if so, we need to insert a new code line after the current one.
-						const firstText = block.content.at(0);
-						if (!(firstText instanceof Text)) return;
-
-						const content = firstText.stringContent;
-						const lines = content.split('\n');
-
-						if (lines.length > 1) {
-							// Remove the current content
-							firstText.deleteAt(0, content.length);
-							// Insert the first line back
-							firstText.insertAt(0, lines[0]);
-							// Create new code lines for each remaining line
-							for (let i = 1; i < lines.length; i++) {
-								if (!block.parent) {
-									return;
-								}
-								block.parent.insertChildren(block.index + i, [
-									{ type: 'codeLine', content: [{ text: lines[i]! }] }
-								]);
-							}
-						}
+						const text = block.content.at(0);
+						if (!(text instanceof Text)) return;
+						const [first, ...rest] = text.stringContent.split('\n');
+						if (!rest.length) return;
+						text.deleteAt(0, text.stringContent.length);
+						text.insertAt(0, first!);
+						block.parent?.insertChildren(
+							block.index + 1,
+							rest.map((line) => ({ type: 'codeLine', content: [{ text: line }] }))
+						);
 					}
 				}
 			},

@@ -209,17 +209,11 @@ export class Block {
 	}
 
 	get nextBlock(): Block | null {
-		if (!this.parent) {
-			return null;
-		}
-		return this.parent.children[this.index + 1];
+		return this.parent ? this.parent.children[this.index + 1] : null;
 	}
 
 	get previousBlock(): Block | null {
-		if (!this.parent) {
-			return null;
-		}
-		return this.parent.children[this.index - 1];
+		return this.parent ? this.parent.children[this.index - 1] : null;
 	}
 
 	get closestPreviousBlock(): Block | null {
@@ -235,9 +229,7 @@ export class Block {
 	}
 
 	get hasContent(): boolean {
-		return (
-			this.content.length > 0 && this.content.some((part) => part instanceof Text && !part.isEmpty)
-		);
+		return this.content.some((part) => part instanceof Text && !part.isEmpty);
 	}
 
 	get isEmpty(): boolean {
@@ -256,13 +248,8 @@ export class Block {
 	}
 
 	isChildOf(block: Block): boolean {
-		let parent = this.parent;
-		while (parent) {
-			if (parent === block) {
-				return true;
-			}
-			parent = parent.parent;
-		}
+		for (let parent = this.parent; parent; parent = parent.parent)
+			if (parent === block) return true;
 		return false;
 	}
 
@@ -403,14 +390,10 @@ export class Block {
 			if (names.includes(name)) node.setAttribute(name, value);
 		this.node = node;
 		const release = this.edytor.surface.register(node, 'block', this.id);
-		const onDestroy = this.edytor.plugins.reduce(
-			(acc, plugin) => {
-				const action = plugin.onBlockAttached?.({ node, block: this });
-				if (typeof action === 'function') acc.push(action);
-				return acc;
-			},
-			[] as (() => void)[]
-		);
+		const onDestroy = this.edytor.plugins.flatMap((plugin) => {
+			const action = plugin.onBlockAttached?.({ node, block: this });
+			return typeof action === 'function' ? [action] : [];
+		});
 		return {
 			destroy: () => {
 				this.#viewState = read(node);

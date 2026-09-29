@@ -13,6 +13,7 @@ import {
 	type JSONText
 } from '$lib/utils/json.js';
 import { id } from '$lib/utils.js';
+import { caretAt } from '$lib/session/attempt.js';
 import { isValidEdytorClipboardFragment } from './fragmentData.js';
 import type { EdytorClipboardFragment } from './types.js';
 
@@ -49,9 +50,7 @@ export const pasteFlow = (
 	const target = block ? { block: block.id, offset: p!.text.segStart + p!.offset } : { replace };
 	const [text, offset] = edytor.insertFlow({ flow, target });
 	if (replace.length) edytor.selection.selectBlocks();
-	if (!text) return;
-	edytor.attempts.caret(text, offset);
-	edytor.selection.setAtTextOffset(text, offset);
+	caretAt(edytor, text, offset);
 };
 
 /** Programmatic insertion: the fragment is untrusted input, projected to JSON and validated here. */

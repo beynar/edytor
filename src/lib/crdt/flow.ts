@@ -28,6 +28,8 @@ export type FlowTarget = DocPosition | { replace: readonly BlockId[] };
 
 /** What flow placement reads beyond range deletion's context. */
 export type FlowContext = RangeDeleteContext & {
+	defaultChild: (parent: BlockId | null) => string;
+	retype: (id: BlockId, type: string) => PlanStep[];
 	sanitize: (spec: BlockSpec) => BlockSpec;
 	collides: (specs: readonly BlockSpec[]) => boolean;
 	isVoid: (id: BlockId) => boolean;

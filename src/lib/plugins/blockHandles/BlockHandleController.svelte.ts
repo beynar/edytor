@@ -30,7 +30,7 @@ type DropPlacement = { target: Block; node: HTMLElement; position: BlockMovePosi
 
 type BlockHandleControllerOptions = {
 	draggable: boolean;
-	onActivate?: (payload: { block: Block; anchor: HTMLElement }) => void;
+	onActivate?: (activation: BlockActivation) => void;
 };
 
 const getOwnRowBottom = (node: HTMLElement) => {
@@ -112,11 +112,7 @@ export class BlockHandleController {
 	}
 
 	selectBlock(block: Block) {
-		if (this.edytor.readonly || !block.movable) {
-			return;
-		}
-
-		this.edytor.selection.selectBlocks(block);
+		if (!this.edytor.readonly && block.movable) this.edytor.selection.selectBlocks(block);
 	}
 
 	/**
@@ -147,9 +143,7 @@ export class BlockHandleController {
 
 	/** Select the block (a block selection holding it stays) and open its menu. */
 	activateBlock(block: Block, anchor: HTMLElement) {
-		if (this.edytor.readonly || !block.movable) {
-			return;
-		}
+		if (this.edytor.readonly || !block.movable) return;
 		if (!this.edytor.selection.selectedBlocks.has(block)) this.selectBlock(block);
 		if (this.options.onActivate) this.options.onActivate({ block, anchor });
 		// Without a callback, a block menu plugin may answer the activation.
@@ -188,9 +182,7 @@ export class BlockHandleController {
 	}
 
 	registerHandle(element: HTMLElement, block: Block) {
-		if (!this.options.draggable) {
-			return () => {};
-		}
+		if (!this.options.draggable) return () => {};
 		return draggable({
 			element,
 			canDrag: () => !this.edytor.readonly && block.movable,
@@ -202,9 +194,7 @@ export class BlockHandleController {
 				for (const [node, target] of this.targets) this.registerDropTarget(node, target);
 			},
 			onDragStart: () => {
-				if (!this.edytor.selection.selectedBlocks.has(block)) {
-					this.selectBlock(block);
-				}
+				if (!this.edytor.selection.selectedBlocks.has(block)) this.selectBlock(block);
 			},
 			// PDD notifies the source before drop targets. Keep the shown
 			// placement and the targets until the target has committed its move.
@@ -220,18 +210,14 @@ export class BlockHandleController {
 
 	/** A candidate drop target; registered at once when our drag is in progress. */
 	addDropTarget(node: HTMLElement, target: Block) {
-		if (!this.options.draggable) {
-			return () => {};
-		}
+		if (!this.options.draggable) return () => {};
 		this.targets.set(node, target);
 		if (this.dragging) this.registerDropTarget(node, target);
 		return () => {
 			if (this.targets.get(node) === target) this.targets.delete(node);
 			this.registered.get(node)?.();
 			this.registered.delete(node);
-			if (this.activeDropTarget === node) {
-				this.clearIndicator();
-			}
+			if (this.activeDropTarget === node) this.clearIndicator();
 		};
 	}
 
@@ -248,9 +234,7 @@ export class BlockHandleController {
 			},
 			getIsSticky: ({ source, input }) => {
 				const dragSource = this.getDragSource(source.data);
-				if (!dragSource || this.edytor.readonly || this.activeDropTarget !== node) {
-					return false;
-				}
+				if (!dragSource || this.edytor.readonly || this.activeDropTarget !== node) return false;
 				const rect = node.getBoundingClientRect();
 				return (
 					input.clientX >= rect.left - 20 &&
@@ -263,14 +247,10 @@ export class BlockHandleController {
 				this.showIndicator(node, target, location, source.data),
 			onDrag: ({ location, source }) => this.showIndicator(node, target, location, source.data),
 			onDragLeave: () => {
-				if (this.activeDropTarget === node) {
-					this.clearIndicator();
-				}
+				if (this.activeDropTarget === node) this.clearIndicator();
 			},
 			onDrop: ({ location, source }) => {
-				if (location.current.dropTargets[0]?.element !== node) {
-					return;
-				}
+				if (location.current.dropTargets[0]?.element !== node) return;
 				const dragSource = this.getDragSource(source.data);
 				const placement =
 					this.activeDropTarget === node && this.activePlacement
@@ -336,38 +316,24 @@ export class BlockHandleController {
 		input: { clientX: number; clientY: number }
 	): DropPlacement | null {
 		const positions: BlockMovePosition[] = ['before', 'inside', 'after'];
-		const available = positions
-			.map((position) => getDropPlacement(target, node, input, position))
-			.filter((placement) => this.canDrop(source, placement.target, placement.position));
-		if (!available.length) {
-			return null;
-		}
-
+		const [before, inside, after] = positions.map((position) => {
+			const placement = getDropPlacement(target, node, input, position);
+			return this.canDrop(source, placement.target, placement.position) ? placement : undefined;
+		});
+		if (!before && !inside && !after) return null;
+		// The row's top quarter places before, its bottom quarter after, the
+		// middle inside; without `inside`, each edge takes its half.
 		const rect = node.getBoundingClientRect();
 		const rowHeight = Math.max(0, getOwnRowBottom(node) - rect.top);
 		const offset = rowHeight ? (input.clientY - rect.top) / rowHeight : 0.5;
-		if (available.length === 1) {
-			return available[0];
-		}
-		if (available.length === 3) {
-			if (offset < 0.25) {
-				return available[0];
-			}
-			return offset > 0.75 ? available[2] : available[1];
-		}
-		if (available[0].position === 'before' && available[1].position === 'after') {
-			return offset < 0.5 ? available[0] : available[1];
-		}
-		if (available[0].position === 'before') {
-			return offset < 0.25 ? available[0] : available[1];
-		}
-		return offset > 0.75 ? available[1] : available[0];
+		const edge = inside ? 0.25 : 0.5;
+		if (before && offset < edge) return before;
+		if (after && offset > 1 - edge) return after;
+		return inside ?? after ?? before ?? null;
 	}
 
 	private getDragSource(data: Record<string, unknown>) {
-		if (data.owner !== this.owner || typeof data.blockId !== 'string') {
-			return null;
-		}
+		if (data.owner !== this.owner || typeof data.blockId !== 'string') return null;
 		return this.edytor.idToBlock.get(data.blockId) ?? null;
 	}
 
@@ -377,17 +343,11 @@ export class BlockHandleController {
 		location: DragLocation,
 		data: Record<string, unknown>
 	) {
-		if (location.current.dropTargets[0]?.element !== node) {
-			return;
-		}
-		if (location.current.dropTargets[0].isActiveDueToStickiness) {
-			return;
-		}
+		const [current] = location.current.dropTargets;
+		if (current?.element !== node || current.isActiveDueToStickiness) return;
 		const source = this.getDragSource(data);
 		const placement = source && this.resolvePlacement(source, target, node, location.current.input);
-		if (!placement) {
-			return;
-		}
+		if (!placement) return;
 		if (
 			this.activeDropTarget === node &&
 			this.indicatorNode === placement.node &&
@@ -431,9 +391,7 @@ export class BlockHandleController {
 	private positionIndicator(origin: DOMRect) {
 		const placement = this.activePlacement;
 		const overlay = this.indicatorOverlay;
-		if (!placement || !overlay) {
-			return;
-		}
+		if (!placement || !overlay) return;
 		const rect = placement.node.getBoundingClientRect();
 		const place = (left: number, width: number, center: number) => () => {
 			overlay.style.left = `${left - origin.left}px`;

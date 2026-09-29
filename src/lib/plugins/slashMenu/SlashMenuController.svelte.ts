@@ -8,7 +8,7 @@ import { matchesQuery } from '$lib/kinds.js';
 /** The trigger `/` and the query's end, held as anchors so peers' edits move them (L52). */
 type ActiveSlashRange = { trigger: TextAnchor; end: TextAnchor };
 
-type TextInsertionPayload = {
+export type TextInsertionPayload = {
 	value: string;
 	start?: number;
 	end?: number;
@@ -45,69 +45,46 @@ export class SlashMenuController {
 	}
 
 	handleTextInsertion(text: Text, block: Block, payload: TextInsertionPayload) {
-		if (this.edytor.readonly) {
-			this.close();
-			return;
-		}
-
 		const start = payload.start ?? this.edytor.selection.state.yStart;
 		const end = payload.end ?? this.edytor.selection.state.yEnd;
+		if (this.edytor.readonly) this.close();
 		// A trigger typed alone, or committed by an IME with its query (`/h`).
-		if (
+		else if (
 			payload.value.startsWith('/') &&
 			start === end &&
 			block.convertible &&
 			startsTrigger(text, start)
-		) {
+		)
 			this.open(text, start, start + payload.value.length);
-			return;
+		// Typing at the query's end extends it; typing anywhere else closes the menu.
+		else if (this.activeRange) {
+			const range = this.range;
+			if (text === range?.text && start === range.queryEnd)
+				this.setEnd(text, start + payload.value.length);
+			else this.close();
 		}
-
-		const range = this.range;
-		if (!this.activeRange) {
-			return;
-		}
-
-		if (text !== range?.text || start !== range.queryEnd) {
-			this.close();
-			return;
-		}
-
-		this.setEnd(text, start + payload.value.length);
 	}
 
 	reconcileSelection() {
-		if (!this.activeRange || this.isExecutingCommand) {
-			return;
-		}
-
+		if (!this.activeRange || this.isExecutingCommand) return;
 		const range = this.range;
 		const { startText, yStart, isCollapsed } = this.edytor.selection.state;
+		// The caret stays after the trigger, in its text: it marks the query's end.
 		if (
-			!range ||
-			!isCollapsed ||
-			startText !== range.text ||
-			yStart <= range.triggerStart ||
-			range.text.stringContent.at(range.triggerStart) !== '/'
-		) {
-			this.close();
-			return;
-		}
-
-		this.setEnd(range.text, yStart);
+			range &&
+			isCollapsed &&
+			startText === range.text &&
+			yStart > range.triggerStart &&
+			range.text.stringContent.at(range.triggerStart) === '/'
+		)
+			this.setEnd(range.text, yStart);
+		else this.close();
 	}
 
 	moveSelection(delta: number) {
-		if (!this.isOpen) {
-			return false;
-		}
-
 		// Nothing to move through: the arrows stay the caret's.
-		const commands = this.commands;
-		if (commands.length === 0) {
-			return false;
-		}
-
+		const commands = this.isOpen ? this.commands : [];
+		if (!commands.length) return false;
 		this.selectedIndex = (this.selectedIndex + delta + commands.length) % commands.length;
 		return true;
 	}
@@ -125,10 +102,7 @@ export class SlashMenuController {
 
 	async run(command: EditorCommand | undefined) {
 		const range = this.range;
-		if (!range || !command) {
-			return false;
-		}
-
+		if (!range || !command) return false;
 		this.isExecutingCommand = true;
 		try {
 			const { edytor } = this;
@@ -142,7 +116,10 @@ export class SlashMenuController {
 			const at = text.segStart + triggerStart;
 			const trigger = edytor.facade.prepare.deleteText(text.parent.id, at, end - triggerStart);
 			const run = edytor.dispatcher.lead(trigger, () => edytor.runCommand(command.id));
-			if (!run.taken) this.removeTriggerText(text, triggerStart, end);
+			// Nothing took the lead: the trigger goes on its own.
+			const index = text.index;
+			if (!run.taken && index !== -1)
+				text.parent.deleteContentAtRange({ start: [index, triggerStart], end: [index, end] });
 			const refused = run.taken && edytor.dispatcher.last?.status === 'refused';
 			const didRun = await run.out;
 			// Commands that replace the block (for example, Code) choose their own
@@ -183,10 +160,7 @@ export class SlashMenuController {
 
 	private syncQueryFromText() {
 		const range = this.range;
-		if (!range) {
-			return;
-		}
-
+		if (!range) return;
 		const { text, triggerStart, queryEnd } = range;
 		const query = text.stringContent.slice(triggerStart + 1, queryEnd);
 		// A new query highlights its first match again (Notion).
@@ -196,25 +170,8 @@ export class SlashMenuController {
 		// A query no command matches is prose (a URL, a path), and so is one
 		// that opens with whitespace (`yes / no`) or holds only hyphens (`/-`):
 		// the menu closes. Words after a space keep it open (`/to do`).
-		if (
-			this.query &&
-			(commandCount === 0 || /^\s/.test(this.query) || !/[^-\s]/.test(this.query))
-		) {
+		if (this.query && (commandCount === 0 || /^\s/.test(this.query) || !/[^-\s]/.test(this.query)))
 			this.close();
-			return;
-		}
-		this.selectedIndex = commandCount === 0 ? 0 : Math.min(this.selectedIndex, commandCount - 1);
-	}
-
-	private removeTriggerText(text: Text, triggerStart: number, queryEnd: number) {
-		const contentIndex = text.parent.content.indexOf(text);
-		if (contentIndex === -1) {
-			return;
-		}
-
-		text.parent.deleteContentAtRange({
-			start: [contentIndex, triggerStart],
-			end: [contentIndex, Math.min(queryEnd, text.length)]
-		});
+		else this.selectedIndex = Math.max(0, Math.min(this.selectedIndex, commandCount - 1));
 	}
 }

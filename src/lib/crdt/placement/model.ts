@@ -65,6 +65,7 @@ import {
 	CLAIMS,
 	CLAIMS_NODE,
 	INLINE_NODE,
+	isNodeLike,
 	NONCE,
 	REGISTRY_KEY,
 	TYPE,
@@ -193,19 +194,25 @@ export type ResolvedPlacement = {
 };
 
 /**
- * Ownership as the display reads it. `childless(b)`: the live block `b` is
- * of a kind that displays no children (a void role, UW-21b) — its children
- * take its slot like a deleted parent's ({@link displaySlotOf}). `island(b)`:
- * the block `b` (live or deleted) is of an island kind — a block promoted
- * or merged out of it keeps no container-only kind (`reset`). Absent: no
- * roles (pure engine behavior). `lined(b)`: the island `b` is declared
- * `lines` — each of its direct children is a line, and a line holds no
- * children ({@link displaySlotOf}).
+ * Ownership as the display reads it, with the role table's answer for each
+ * block's stored kind (`text/runs.ts` `DisplayRoles`). Absent: no roles
+ * (pure engine behavior).
  */
 export type DisplayOwnership = Ownership & {
+	/**
+	 * The live block `b` displays no children (a void role, UW-21b): they
+	 * take its slot like a deleted parent's ({@link displaySlotOf}).
+	 */
 	childless?: (b: BlockId) => boolean;
+	/**
+	 * `b` (live or deleted) is an island: a block promoted or merged out of
+	 * it keeps no container-only kind (`reset`).
+	 */
 	island?: (b: BlockId) => boolean;
-	/** The island `b` is declared `lines`: its lines hold no children (FW-01, XW-03). */
+	/**
+	 * The island `b` is declared `lines`: each direct child is a line, and a
+	 * line holds no children (FW-01, XW-03, {@link displaySlotOf}).
+	 */
 	lined?: (b: BlockId) => boolean;
 };
 
@@ -258,9 +265,6 @@ export const displayIndex = (
 	}
 	return by;
 };
-
-const isNodeLike = (v: unknown): v is EngineNode =>
-	v != null && typeof (v as { getAttr?: unknown }).getAttr === 'function';
 
 /** Parse the `at` map of a block node into sorted candidates. */
 export const candidatesOf = (node: EngineNode): PlacementCand[] => {
@@ -329,7 +333,6 @@ export const resolvePlacements = (
 	const accepted = new Map<BlockId, ResolvedPlacement>();
 	for (const cand of ordered) {
 		if (accepted.has(cand.blockId)) continue;
-		const rec = blocks.get(cand.blockId)!;
 		let p = cand.p;
 		if (p !== null && !blocks.has(p)) p = null; // parent never integrated → root
 		if (p !== null) {

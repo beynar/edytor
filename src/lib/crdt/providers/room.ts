@@ -50,6 +50,7 @@ import {
 	applyAwarenessUpdate,
 	encodeAwarenessUpdate,
 	type Awareness,
+	type AwarenessStates,
 	type AwarenessUpdate
 } from '../protocols/awareness.js';
 import type { SyncProtocol } from '../protocols/sync.js';
@@ -156,6 +157,12 @@ export type ProtocolMismatch = { expected: number; found: number | null };
  */
 export type SchemaMismatchDetail = { docName: string; problem: SchemaProblem };
 
+/** An awareness frame carrying `clients`' entries of `states` (default: their current ones). */
+const awarenessFrame = (awareness: Awareness, clients: number[], states?: AwarenessStates) =>
+	frame(messageAwareness, (e) =>
+		encoding.writeVarUint8Array(e, encodeAwarenessUpdate(awareness, clients, states))
+	);
+
 /** The outbound quarantine: a read-only document does not spread. */
 export const quarantined = (doc: YDoc): boolean =>
 	checkSchema(doc as unknown as EngineDoc) !== null;
@@ -239,10 +246,34 @@ export const emitFailed = (host: LifecycleHost, error: unknown): void => {
 };
 
 /**
+ * The close codes of the edytor room (`edytor/cloudflare`) and its router,
+ * as the websocket provider reads them. Only `expired` and `fault` are
+ * redialed; every other code here is a {@link isRefusal refusal}.
+ */
+export const CLOSE = {
+	/** A refused frame or container (policy violation). */
+	refused: 1008,
+	/** A fault of the room (storage, engine): redialed, backed off until the room saves again. */
+	fault: 1011,
+	/** A document id the room cannot have (empty, over 256 characters). */
+	invalidDocument: 4400,
+	/** Expired credentials: redialed once `params` carries a fresh token. */
+	expired: 4401,
+	/** The host's authorization denied the dial. */
+	denied: 4403,
+	/** The dialed replica is bound to another user. */
+	replicaTaken: 4409
+} as const;
+
+/** A close code that refuses this client for good: policy (`1008`) or an application code (`4xxx`) but `expired`. */
+export const isRefusal = (code: number): boolean =>
+	code === CLOSE.refused || (code >= 4000 && code < 5000 && code !== CLOSE.expired);
+
+/**
  * A terminal refusal: the server closed the socket with a policy code
- * (`1008`, or an application code `4000`–`4999`), so the next dial would
- * be refused the same way (a stale generation, another user's replica, a
- * foreign stamp). The provider stops dialing and the document does not seed.
+ * ({@link isRefusal}), so the next dial would be refused the same way (a
+ * stale generation, another user's replica, a foreign stamp). The provider
+ * stops dialing and the document does not seed.
  */
 export class SyncRefusedError extends Error {
 	/** The close code. */
@@ -470,12 +501,7 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 		return ({ added, updated, removed }: AwarenessUpdate, origin: unknown): void => {
 			if (origin === provider || origin === LOCAL_PRESENCE_LOSS) return;
 			const changed = added.concat(updated).concat(removed);
-			behavior.broadcast(
-				provider,
-				frame(messageAwareness, (e) =>
-					encoding.writeVarUint8Array(e, encodeAwarenessUpdate(provider.awareness, changed))
-				)
-			);
+			behavior.broadcast(provider, awarenessFrame(provider.awareness, changed));
 		};
 	};
 
@@ -502,22 +528,8 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 	 */
 	const hello = (provider: P): Uint8Array[] => [
 		step1(provider),
-		frame(messageAwareness, (e) =>
-			encoding.writeVarUint8Array(
-				e,
-				encodeAwarenessUpdate(provider.awareness, [provider.doc.clientID])
-			)
-		)
+		awarenessFrame(provider.awareness, [provider.doc.clientID])
 	];
-
-	/** The departure announcement: our presence, removed. */
-	const goodbye = (provider: P): Uint8Array =>
-		frame(messageAwareness, (e) =>
-			encoding.writeVarUint8Array(
-				e,
-				encodeAwarenessUpdate(provider.awareness, [provider.doc.clientID], new Map())
-			)
-		);
 
 	/** Join the BroadcastChannel room: hello, and ask the tabs for their presence. */
 	const connectBc = (provider: P & BcMember): void => {
@@ -532,8 +544,12 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 		}
 	};
 
-	/** The departure announcement, on every transport the provider speaks. */
-	const depart = (provider: P): void => behavior.broadcast(provider, goodbye(provider));
+	/** The departure announcement — our presence, removed — on every transport the provider speaks. */
+	const depart = (provider: P): void =>
+		behavior.broadcast(
+			provider,
+			awarenessFrame(provider.awareness, [provider.doc.clientID], new Map())
+		);
 
 	/** Leave the room: announce the presence removal, then unsubscribe the BC channel. */
 	const disconnectBc = (provider: P & BcMember): void => {
@@ -552,7 +568,6 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 		broadcastUpdate,
 		step1,
 		hello,
-		goodbye,
 		depart,
 		connectBc,
 		disconnectBc

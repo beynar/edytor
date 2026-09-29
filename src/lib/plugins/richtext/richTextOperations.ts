@@ -1,4 +1,3 @@
-import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { SerializableContent } from '$lib/utils/json.js';
 import type { Prepared } from '$lib/crdt/edytor-doc.js';
@@ -6,8 +5,7 @@ import type { BlockSpec } from '$lib/crdt/index.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
 import { id } from '$lib/utils.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
-import { selectedTextSpans } from '$lib/text/text.utils.js';
-import { viewOf } from '$lib/edytor.utils.js';
+import { selectedTextSpans, viewOf } from '$lib/selection/visibility.js';
 
 export type RichTextMark =
 	| 'bold'
@@ -29,15 +27,6 @@ export type RichTextLink = {
 const SAFE_LINK_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
 
 /**
- * Scheme allowlist for link hrefs. `javascript:`/`data:`/`vbscript:`
- * payloads can arrive through native `insertLink`, pasted HTML, or a
- * malicious collaborator — and Svelte renders `href` verbatim. The URL
- * parser is used rather than a regex so whitespace/case obfuscation
- * (`java\tscript:`) can't slip through. Scheme-less hrefs (relative
- * paths, anchors, queries, protocol-relative) are not scriptable and
- * pass through.
- */
-/**
  * CSS-color sanitizer for `color`/`highlight` marks. The value lands in
  * `style="color: {value}"` — a `;`/`{`/`}` payload escapes the property
  * and injects arbitrary declarations (`url()` exfil, `position:fixed`
@@ -46,35 +35,34 @@ const SAFE_LINK_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', 'tel:']);
  * (`#hex`, `rgb()/hsl()/oklch()/color-mix()/var()`, named colors) pass.
  */
 export const sanitizeCssColorValue = (value: unknown): string | null => {
-	if (typeof value !== 'string') {
-		return null;
-	}
+	if (typeof value !== 'string') return null;
 	const trimmed = value.trim();
-	if (!trimmed || trimmed.length > 128) {
-		return null;
-	}
+	if (!trimmed || trimmed.length > 128) return null;
 	if (/[;{}<>\\'"`]/.test(trimmed) || /url\s*\(|expression\s*\(|\/\*|\*\//i.test(trimmed)) {
 		return null;
 	}
 	return trimmed;
 };
 
+/**
+ * Scheme allowlist for link hrefs. `javascript:`/`data:`/`vbscript:`
+ * payloads can arrive through native `insertLink`, pasted HTML, or a
+ * malicious collaborator — and Svelte renders `href` verbatim. The URL
+ * parser is used rather than a regex so whitespace/case obfuscation
+ * (`java\tscript:`) can't slip through. Scheme-less hrefs (relative
+ * paths, anchors, queries, protocol-relative) are not scriptable and
+ * pass through.
+ */
 export const sanitizeLinkHref = (href: unknown): string | null => {
 	// Marks arrive from untrusted sources too (synced peers, paste) —
 	// reject non-strings outright instead of throwing on `.replace`.
-	if (typeof href !== 'string') {
-		return null;
-	}
+	if (typeof href !== 'string') return null;
 	// WHATWG URL preprocessing removes tab/newline/CR before parsing —
 	// doing it here too means `java\tscript:` collapses back to a
 	// detectable scheme instead of slipping through as "scheme-less".
 	const trimmed = href.replace(/[\t\n\r]/g, '').trim();
-	if (!trimmed) {
-		return null;
-	}
-	if (!/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)) {
-		return trimmed;
-	}
+	if (!trimmed) return null;
+	if (!/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)) return trimmed;
 	try {
 		return SAFE_LINK_PROTOCOLS.has(new URL(trimmed).protocol) ? trimmed : null;
 	} catch {
@@ -89,9 +77,7 @@ const formatSelectedTextRange = (
 	toggle: boolean
 ) => {
 	const { yStart, yEnd, startText, endText, isCollapsed, isReversed } = edytor.selection.state;
-	if (isCollapsed || !startText || !endText) {
-		return;
-	}
+	if (isCollapsed || !startText || !endText) return;
 	const spans = selectedTextSpans(edytor).filter(({ start, end }) => end > start);
 	// One decision for the whole range (Notion): a toggle removes the mark only
 	// when every selected character has it, else it marks all of them.
@@ -104,14 +90,6 @@ const formatSelectedTextRange = (
 		spans.forEach(({ text, start, end }) => text.markText({ mark, value: next, start, end }))
 	);
 	edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
-};
-
-const normalizeLink = (link: RichTextLink): Record<string, SerializableContent> => {
-	const value: Record<string, SerializableContent> = { href: link.href };
-	if (link.target) {
-		value.target = link.target;
-	}
-	return value;
 };
 
 export const richTextOperations = (edytor: Edytor) => ({
@@ -177,14 +155,21 @@ export const richTextOperations = (edytor: Edytor) => ({
 		// Reject scriptable/empty hrefs at the write boundary — the model
 		// never stores a poisoned link. (The render boundary sanitizes too
 		// for marks arriving via paste or sync.)
-		const safeHref = sanitizeLinkHref(link.href);
-		if (safeHref === null) {
-			return;
-		}
-		formatSelectedTextRange(edytor, 'link', normalizeLink({ ...link, href: safeHref }), false);
+		const href = sanitizeLinkHref(link.href);
+		if (href === null) return;
+		formatSelectedTextRange(
+			edytor,
+			'link',
+			{ href, ...(link.target ? { target: link.target } : {}) },
+			false
+		);
 	},
 	removeLinkAtRange: () => {
 		formatSelectedTextRange(edytor, 'link', null, false);
+	},
+	/** Remove one mark (a color, a highlight…) from the selected range. */
+	removeMarkAtRange: (mark: RichTextMark) => {
+		if (!edytor.selection.state.isCollapsed) formatSelectedTextRange(edytor, mark, null, false);
 	},
 	/**
 	 * Non-toggle valued-mark write — native `formatFontColor`/
@@ -192,19 +177,13 @@ export const richTextOperations = (edytor: Edytor) => ({
 	 * the same color must set, never remove. A collapsed caret stages the
 	 * mark for the next insert (mirroring `removeAllMarksAtRange`).
 	 */
-	/** Remove one mark (a color, a highlight…) from the selected range. */
-	removeMarkAtRange: (mark: RichTextMark) => {
-		if (!edytor.selection.state.isCollapsed) formatSelectedTextRange(edytor, mark, null, false);
-	},
 	setMarkValueAtRange: (mark: RichTextMark, value: SerializableContent) => {
 		// `color`/`highlight` values render inside `style="..."` —
 		// sanitize at the write boundary so a hostile payload (native
 		// command `data`, programmatic calls) never reaches the model.
 		const safeValue =
 			mark === 'color' || mark === 'highlight' ? sanitizeCssColorValue(value) : value;
-		if (safeValue === null) {
-			return;
-		}
+		if (safeValue === null) return;
 		const { isCollapsed, startText, yStart } = edytor.selection.state;
 		if (isCollapsed) {
 			if (startText) {
@@ -222,7 +201,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 		formatSelectedTextRange(edytor, mark, safeValue, false);
 	},
 	setMarkAtRange: (mark: RichTextMark, value?: SerializableContent) => {
-		const { yStart, yEnd, startText, endText, texts, isCollapsed } = edytor.selection.state;
+		const { yStart, yEnd, startText, endText, isCollapsed } = edytor.selection.state;
 		if (isCollapsed) {
 			if (startText) {
 				edytor.dispatcher.run('format', () =>

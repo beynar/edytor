@@ -32,8 +32,6 @@
  */
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
-import type { Edytor } from '$lib/edytor.svelte.js';
-import type { ChangePayload } from '$lib/plugins.js';
 import type { Flow, FlowTarget } from '$lib/crdt/flow.js';
 import type { Plan, Prepared } from '$lib/crdt/edytor-doc.js';
 import { id } from '$lib/utils.js';
@@ -197,30 +195,18 @@ export const dispatchPlan = <O extends keyof BlockOperations>(
 		prepare
 	) ?? null;
 
-export function addChildBlock(
-	this: Block,
-	{ block, index = this.children.length }: BlockOperations['addChildBlock']
-) {
-	if (index < 0) {
-		index = 0;
-	} else if (index > this.children.length) {
-		index = this.children.length;
-	}
-	const spec = { ...(block || { type: this.edytor.defaultChild(this) }), id: block?.id ?? id('b') };
-	this.insertChildren(index, [spec]);
-	this.normalizeChildren();
-	return this.edytor.idToBlock.block(spec.id);
+/** One child at `index` (a default-kind block without `block`); see {@link addChildBlocks}. */
+export function addChildBlock(this: Block, { block, index }: BlockOperations['addChildBlock']) {
+	const blocks = [block || { type: this.edytor.defaultChild(this) }];
+	return addChildBlocks.call(this, { blocks, index })[0]!;
 }
 
+/** Children at `index`, clamped to the child list (at its end by default); ids kept or minted. */
 export function addChildBlocks(
 	this: Block,
 	{ blocks, index = this.children.length }: BlockOperations['addChildBlocks']
 ) {
-	if (index < 0) {
-		index = 0;
-	} else if (index > this.children.length) {
-		index = this.children.length;
-	}
+	index = Math.max(0, Math.min(index, this.children.length));
 	const specs = blocks.map((block) => ({ ...block, id: block.id ?? id('b') }));
 	this.insertChildren(index, specs);
 	this.normalizeChildren();
@@ -495,24 +481,14 @@ export function pushContentIntoBlock(
 	{ value }: BlockOperations['pushContentIntoBlock']
 ) {
 	const model = this.model;
-	if (!model) {
-		return;
-	}
+	if (!model) return;
 	for (const part of value) {
-		const offset = model.length;
 		if (part instanceof InlineBlock) {
-			model.insertInline(offset, {
-				id: part.id,
-				type: part.type,
-				...(part.data ? { data: cloneJson(part.data) } : {})
-			});
+			const { id, type, data } = part;
+			model.insertInline(model.length, { id, type, ...(data ? { data: cloneJson(data) } : {}) });
 		} else {
-			for (const item of part.value) {
-				const at = model.length;
-				if (item.text.length) {
-					model.insertText(at, item.text, item.marks as Record<string, unknown>);
-				}
-			}
+			for (const { text, marks } of part.value)
+				if (text.length) model.insertText(model.length, text, marks as Record<string, unknown>);
 		}
 	}
 	this.normalizeContent();

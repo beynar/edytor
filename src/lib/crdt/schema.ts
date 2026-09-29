@@ -4,6 +4,11 @@
  * dependency-free leaf, so every model layer reads it without importing the
  * facade module.
  */
+import type { EngineNode } from './engine-api.js';
+
+/** A replicated value that is a node (a block, its content, claims or `at` map, an atom). */
+export const isNodeLike = (v: unknown): v is EngineNode =>
+	v != null && typeof (v as { getAttr?: unknown }).getAttr === 'function';
 
 /** Flat block registry root: blockId → node('block') (`SCHEMA.roots.registry`). */
 export const REGISTRY_KEY = 'blocks';

@@ -4,7 +4,7 @@
  * (`c/<client>` → actor id), plus seeds; never another actor's content nor
  * the dictionary records themselves.
  *
- * The room is simulated by acknowledgements (`_acknowledge`) carrying the
+ * The room is simulated by acknowledgements (`_writes.acknowledge`) carrying the
  * state vector of a room document, as a `messageSaved` frame does. Bob's
  * reload is a fresh document whose local copy is replayed after the
  * provider started, under a foreign origin (the store's).
@@ -26,7 +26,7 @@ const offline = (doc) =>
 		disableBc: true
 	});
 const exchange = (from, to) => Y.applyUpdate(to.doc, from.encode(), 'remote');
-const ack = (provider, roomDoc) => provider._acknowledge(Y.encodeStateVector(roomDoc));
+const ack = (provider, roomDoc) => provider._writes.acknowledge(Y.encodeStateVector(roomDoc));
 
 describe('saved counts the actor’s own writes', () => {
 	it("after a reload, a peer's lost text and its deletion never hold saved", () => {

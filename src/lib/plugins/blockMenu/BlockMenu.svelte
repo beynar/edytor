@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { iconOf } from '../icons.js';
+	import { keepInView } from '../keepInView.js';
 	import type { BlockMenuController } from './BlockMenuController.svelte.js';
 
 	import type { Snippet } from 'svelte';
@@ -17,54 +18,44 @@
 		node.focus({ preventScroll: true });
 	};
 
-	/** Keep the keyboard's row in view. */
-	const selected = (node: HTMLElement, isSelected: boolean) => {
-		const reveal = (value: boolean) => value && node.scrollIntoView?.({ block: 'nearest' });
-		reveal(isSelected);
-		return { update: reveal };
-	};
-
 	const onkeydown = (event: KeyboardEvent) => {
+		const { key } = event;
 		const count = rows.length;
-		if (event.key === 'Escape') {
+		const arrow = key === 'ArrowDown' || key === 'ArrowUp';
+		/** One arrow step through `length` rows, wrapping. */
+		const step = (index: number, length: number) =>
+			(index + (key === 'ArrowDown' ? 1 : length - 1)) % length;
+		if (key === 'Escape') {
 			event.preventDefault();
 			if (controller.flyout) controller.flyout = false;
 			else controller.close();
-		} else if (controller.flyout && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+		} else if (controller.flyout && arrow) {
 			// In the flyout, the arrows walk its kinds.
 			event.preventDefault();
-			const kinds = controller.kinds.length;
-			controller.flyoutIndex =
-				(controller.flyoutIndex + (event.key === 'ArrowDown' ? 1 : kinds - 1)) % kinds;
-		} else if (controller.flyout && event.key === 'Enter') {
+			controller.flyoutIndex = step(controller.flyoutIndex, controller.kinds.length);
+		} else if (controller.flyout && key === 'Enter') {
 			event.preventDefault();
 			const kind = controller.kinds[controller.flyoutIndex];
 			if (kind) controller.turnInto(kind);
-		} else if (event.key === 'Delete' && !controller.query) {
+		} else if (key === 'Delete' && !controller.query) {
 			event.preventDefault();
 			controller.remove();
-		} else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+		} else if (arrow) {
 			event.preventDefault();
-			if (count)
-				controller.selectedIndex =
-					(controller.selectedIndex + (event.key === 'ArrowDown' ? 1 : count - 1)) % count;
+			if (count) controller.selectedIndex = step(controller.selectedIndex, count);
 			controller.flyout = false;
-		} else if ((event.key === 'Home' || event.key === 'End') && count) {
+		} else if ((key === 'Home' || key === 'End') && count) {
 			event.preventDefault();
-			controller.selectedIndex = event.key === 'Home' ? 0 : count - 1;
+			controller.selectedIndex = key === 'Home' ? 0 : count - 1;
 			controller.flyout = false;
-		} else if (
-			event.key === 'ArrowRight' &&
-			rows[controller.selectedIndex] &&
-			'submenu' in rows[controller.selectedIndex]!
-		) {
+		} else if (key === 'ArrowRight' && 'submenu' in (rows[controller.selectedIndex] ?? {})) {
 			event.preventDefault();
 			controller.flyout = true;
 			controller.flyoutIndex = 0;
-		} else if (event.key === 'ArrowLeft' && controller.flyout) {
+		} else if (key === 'ArrowLeft' && controller.flyout) {
 			event.preventDefault();
 			controller.flyout = false;
-		} else if (event.key === 'Enter') {
+		} else if (key === 'Enter') {
 			event.preventDefault();
 			controller.runSelected();
 		}
@@ -111,7 +102,7 @@
 							role="menuitem"
 							class="block-menu-row"
 							data-selected={index === controller.selectedIndex}
-							use:selected={index === controller.selectedIndex}
+							use:keepInView={index === controller.selectedIndex}
 							style:--block-menu-icon={iconOf(row.id)}
 							onmousedown={(event) => event.preventDefault()}
 							onmousemove={() => (controller.selectedIndex = index)}
@@ -127,7 +118,7 @@
 							class="block-menu-row"
 							class:danger={row.danger}
 							data-selected={index === controller.selectedIndex}
-							use:selected={index === controller.selectedIndex}
+							use:keepInView={index === controller.selectedIndex}
 							data-hint={row.submenu ? undefined : row.hint}
 							data-submenu={row.submenu ? 'true' : undefined}
 							data-testid={`block-menu-${row.id}`}

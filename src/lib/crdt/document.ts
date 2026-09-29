@@ -327,6 +327,21 @@ const normalizeRole = (role: BlockRole | undefined): NormalizedRole => ({
 	lines: role?.lines === true
 });
 
+/** Run each of `listeners` with `args`, in isolation: one that throws is logged, the rest still run. */
+const notifyEach = <A extends unknown[]>(
+	kind: string,
+	listeners: readonly ((...args: A) => void)[],
+	...args: A
+): void => {
+	for (const listener of listeners) {
+		try {
+			listener(...args);
+		} catch (err) {
+			console.error(`[edytor-document] ${kind} listener failed; continuing`, err);
+		}
+	}
+};
+
 const anonymousActor = (): DocumentActor => ({
 	id: `anon-${crypto.randomUUID()}`
 });
@@ -729,13 +744,7 @@ export class EdytorDocument {
 		// throwing waiter must not starve the rest or break `sync()`.
 		const listeners = Array.from(this._readyListeners);
 		this._readyListeners.clear();
-		for (const listener of listeners) {
-			try {
-				listener();
-			} catch (err) {
-				console.error('[edytor-document] ready listener failed; continuing', err);
-			}
-		}
+		notifyEach('ready', listeners);
 	};
 
 	/**
@@ -973,13 +982,7 @@ export class EdytorDocument {
 			if (this._destroyed) return;
 			this._refusals.delete(target);
 			this._refusals.set(target, error);
-			for (const listener of Array.from(this._refusalListeners)) {
-				try {
-					listener(error);
-				} catch (err) {
-					console.error('[edytor-document] refusal listener failed; continuing', err);
-				}
-			}
+			notifyEach('refusal', Array.from(this._refusalListeners), error);
 			// A document that already holds content is decided (hydrated); an
 			// empty one stays pending while the refusal stands.
 			this._decide(opts.value);

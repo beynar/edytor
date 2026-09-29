@@ -77,7 +77,7 @@ describe('independent review: transport boundaries', () => {
 		});
 		document.transact(() => document.facade.insertText('p', 5, '!'));
 		const acknowledged = Y.encodeStateVector(document.doc);
-		provider._acknowledge(acknowledged);
+		provider._writes.acknowledge(acknowledged);
 		expect(provider.saved).toBe(true);
 		document.history.undo();
 		const observed = {
@@ -193,7 +193,7 @@ describe('independent review: transport boundaries', () => {
 					sync.writeSaved(e, room, update && Y.decodeUpdate(update).ds)
 				);
 				const { stateVector, deletes } = sync.readSaved(decoding.createDecoder(body));
-				provider._acknowledge(stateVector, deletes);
+				provider._writes.acknowledge(stateVector, deletes);
 			};
 			deliver(document.encode());
 			const vector = () => Array.from(Y.encodeStateVector(document.doc)).join();
@@ -256,7 +256,7 @@ describe('independent review: transport boundaries', () => {
 			// The room's state vector covers the undo's structs, but the ack names none of its deletes.
 			const roomLike = new Y.Doc();
 			Y.applyUpdate(roomLike, Y.encodeStateAsUpdate(document.doc));
-			provider._acknowledge(Y.encodeStateVector(roomLike));
+			provider._writes.acknowledge(Y.encodeStateVector(roomLike));
 			roomLike.destroy();
 			const clockOnly = provider.saved;
 			deliver(undo);

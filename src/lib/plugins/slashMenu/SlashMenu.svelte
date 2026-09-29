@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { iconOf } from '../icons.js';
+	import { keepInView } from '../keepInView.js';
 	import type { Snippet } from 'svelte';
 	import type { SlashMenuController } from './SlashMenuController.svelte.js';
 	import type { SlashMenuItem } from './slashMenuPlugin.js';
@@ -18,13 +19,6 @@
 	$effect(() => {
 		if (controller.isOpen && controller.readonly) controller.close();
 	});
-
-	/** Keep the keyboard's row in view. */
-	const selected = (node: HTMLElement, isSelected: boolean) => {
-		const reveal = (value: boolean) => value && node.scrollIntoView?.({ block: 'nearest' });
-		reveal(isSelected);
-		return { update: reveal };
-	};
 </script>
 
 {#if controller.isOpen && menu}
@@ -63,7 +57,7 @@
 						data-testid="slash-menu-item"
 						role="option"
 						aria-selected={index === controller.selectedIndex}
-						use:selected={index === controller.selectedIndex}
+						use:keepInView={index === controller.selectedIndex}
 						onmousedown={(event) => event.preventDefault()}
 						onmousemove={() => (controller.selectedIndex = index)}
 						onclick={() => {

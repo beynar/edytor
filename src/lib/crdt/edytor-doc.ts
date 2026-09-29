@@ -61,8 +61,10 @@
  *
  * ── Island/void enforcement (operation-layer, not stored) ──────────────
  *
- * Roles are resolved operation-time via `config.roleOf(type)` — the editor
- * derives them from plugin block definitions, exactly like the baseline's
+ * Roles are resolved operation-time via `config.roleOf(type)`, through one
+ * role table (`DisplayRoles`) that the index's display and every guard
+ * below ask of a block's shown kind — the editor derives them from plugin
+ * block definitions, exactly like the baseline's
  * `block.definition.island/void`. They are deliberately NOT replicated block
  * data: the schema stays policy-free, and a replica with different plugins
  * reads the same document. Enforced rules (baseline semantics, see
@@ -104,15 +106,15 @@
  */
 import { DEV } from 'esm-env';
 import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode, YUndoManager } from './engine-api.js';
-import { hash32, setDocRand } from './rand.js';
+import { hash32, randOf, setDocRand } from './rand.js';
 import {
 	AT,
 	BLOCK_NODE,
-	CONTENT_NODE,
 	DATA,
 	DEL_PREFIX,
 	ID,
 	INLINE_NODE,
+	isNodeLike,
 	LAST_CHANGED_ATTR,
 	TYPE,
 	SCHEMA
@@ -132,11 +134,19 @@ import {
 	type ProjectedBlock,
 	type SplitTail
 } from './placement/model.js';
-import { bindText, DEAD, displayOf, locate, ownedLength, type Anchor } from './text/model.js';
+import {
+	bindText,
+	DEAD,
+	displayOf,
+	locate,
+	ownedLength,
+	ownTextIds,
+	type Anchor
+} from './text/model.js';
 import { bindDeletes } from './text/deletes.js';
 import {
 	bindRuns,
-	CONTENT_ATTR,
+	callEach,
 	ENTRY_FACET,
 	type ContentRun,
 	type DisplayRoles,
@@ -146,7 +156,6 @@ import {
 } from './text/runs.js';
 import { bindNodes, type DocBlock } from './nodes.js';
 import { followRedone, holdsPending, walkIdSetStructs, type IdSetLike } from './structs.js';
-import { ownTextIds } from './text/model.js';
 import {
 	bindBlockAttribution,
 	blockAttributionOf,
@@ -154,14 +163,13 @@ import {
 } from './attribution/block.js';
 import type { AttributionActor } from './attribution/index.js';
 import { isLegacyDoc } from './migration/legacy-schema.js';
-import { randOf } from './rand.js';
 import { rangeDeleteOps, type DocPosition } from './rangeDelete.js';
 import { flowOps, type FlowContext } from './flow.js';
-import { jsonEquals } from '../utils/json.js';
 import { id as newId } from '../utils.js';
 import {
 	cloneJsonSafe,
 	jsonBlockToSpec,
+	jsonEquals,
 	sanitizeSpec,
 	sanitizeWireJson,
 	sanitizeWireString,
@@ -644,12 +652,6 @@ const effectOf = (writes: readonly PlanStep[]): PlanEffect => {
  */
 const ref = <I extends string | null>(id: I): I => (id === null ? id : sanitizeWireString(id)) as I;
 
-/** Replacement content for `setBlock`. */
-type SetBlockContent = (
-	| { kind: 'text'; text: string; marks?: Record<string, unknown> }
-	| { kind: 'inline'; id: string; type: string; data?: Record<string, unknown> }
-)[];
-
 /**
  * The lineage ring depth, validated — `NaN`/`Infinity`/fractional/negative
  * values would silently disable the ring's trim bound. The one check every
@@ -662,9 +664,6 @@ export const lineageDepthOf = (depth: number | undefined): number => {
 	}
 	return d;
 };
-
-const isNodeLike = (v: unknown): v is EngineNode =>
-	v != null && typeof (v as { getAttr?: unknown }).getAttr === 'function';
 
 /**
  * Bind the assembled model to a concrete engine surface. `Y` must be the
@@ -810,27 +809,26 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const defaultType = config.defaultType ?? 'paragraph';
 		const defaultChildOf = config.defaultChildOf ?? (() => undefined);
 		const rendersContentOf = config.rendersContent ?? (() => true);
-		/** The line kind of an island kind declared `lines` (FW-01, XW-03), else undefined. */
-		const lineKindOf = (type: string): string | undefined => {
-			const role = roleOf(type);
-			return role?.island === true && role.lines === true ? defaultChildOf(type) : undefined;
-		};
 		const runsView: RunView = R.attach(doc);
-		// UW-21b: a void kind displays no children — the index sheds them
-		// into its slot at read time, so a child a peer nests or splits under
-		// a block another peer retypes to a void shows on every replica.
-		// A block promoted out of an island displays as its display parent's
-		// default child, as a delete of the island retypes the ones it saw.
-		// An island declared `lines` holds only lines (FW-01, XW-03).
-		const displayRoles: DisplayRoles = {
-			childless: (type: string): boolean => roleOf(type)?.void === true,
-			island: (type: string): boolean => roleOf(type)?.island === true,
-			defaultChild: (type: string | null): string =>
-				(type !== null ? defaultChildOf(type) : undefined) ?? defaultType,
-			line: lineKindOf,
-			lineKinds: () => [...(config.kinds?.() ?? [])].flatMap((type) => lineKindOf(type) ?? [])
+		// The role table — the display and every guard below ask it. UW-21b:
+		// a void kind displays no children — the index sheds them into its
+		// slot at read time, so a child a peer nests or splits under a block
+		// another peer retypes to a void shows on every replica. A block
+		// promoted out of an island displays as its display parent's default
+		// child, as a delete of the island retypes the ones it saw. An island
+		// declared `lines` holds only lines of its `defaultChild` kind
+		// (FW-01, XW-03).
+		const roles: DisplayRoles = {
+			childless: (type) => roleOf(type)?.void === true,
+			island: (type) => roleOf(type)?.island === true,
+			defaultChild: (type) => (type !== null ? defaultChildOf(type) : undefined) ?? defaultType,
+			line: (type) => {
+				const role = roleOf(type);
+				return role?.island === true && role.lines === true ? defaultChildOf(type) : undefined;
+			},
+			lineKinds: () => [...(config.kinds?.() ?? [])].flatMap((type) => roles.line(type) ?? [])
 		};
-		if (config.roleOf) runsView.roles(displayRoles);
+		if (config.roleOf) runsView.roles(roles);
 
 		/**
 		 * Terminal flag — set by `dispose()`. Mutating ops funnel through
@@ -1104,12 +1102,13 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 
 		// ── roles (island/void) ───────────────────────────────────────────
 
-		const roleOfId = (id: BlockId): BlockRole => {
+		/** The role table's answer for `id`'s shown kind (`false` without one). */
+		const is = (id: BlockId, role: (type: string) => boolean): boolean => {
 			const t = blockTypeOf(id);
-			return t !== undefined ? (roleOf(t) ?? {}) : {};
+			return t !== undefined && role(t);
 		};
-		const isVoid = (id: BlockId): boolean => roleOfId(id).void === true;
-		const isIsland = (id: BlockId): boolean => roleOfId(id).island === true;
+		const isVoid = (id: BlockId): boolean => is(id, roles.childless);
+		const isIsland = (id: BlockId): boolean => is(id, roles.island);
 		/** Nearest island-typed display ancestor of `id`, or null. */
 		const islandOf = (id: BlockId, v: View = view()): BlockId | null =>
 			ancestorsOf(id, v).find((a) => isIsland(a)) ?? null;
@@ -1117,9 +1116,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const insideIsland = (id: BlockId, v?: View): boolean => islandOf(id, v) !== null;
 		/** `id` is a line — directly in an island declared `lines` — and holds no children (FW-01). */
 		const isLine = (id: BlockId): boolean => {
-			const parent = positionOf(id)?.parent ?? null;
-			const type = parent === null ? undefined : blockTypeOf(parent);
-			return type !== undefined && lineKindOf(type) !== undefined;
+			const parent = positionOf(id)?.parent;
+			return parent != null && is(parent, (type) => roles.line(type) !== undefined);
 		};
 
 		// ── structural capability (R5, O8): one answer in advance and at execution ──
@@ -1154,17 +1152,18 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const v = view();
 			if (fromId === intoId || !isLiveIn(v, fromId) || !isLiveIn(v, intoId)) return false;
 			if (isVoid(fromId) || isVoid(intoId)) return false;
-			if (!rendersContentOf(blockTypeOf(intoId) ?? '')) return false;
+			if (!rendersContent(intoId)) return false;
 			const islandFrom = islandOf(fromId, v);
 			if (intoId === islandFrom) return true;
 			return islandFrom === islandOf(intoId, v) && !isIsland(intoId);
 		};
 
+		/** `id`'s shown kind renders its content (R5, O22). */
+		const rendersContent = (id: BlockId): boolean => rendersContentOf(blockTypeOf(id) ?? '');
+
 		/** The adopted default child type under `parent` (`null` = the root). */
-		const defaultChild = (parent: BlockId | null): string => {
-			const t = parent === null ? undefined : blockTypeOf(parent);
-			return (t !== undefined ? defaultChildOf(t) : undefined) ?? defaultType;
-		};
+		const defaultChild = (parent: BlockId | null): string =>
+			roles.defaultChild(parent === null ? null : (blockTypeOf(parent) ?? null));
 		/**
 		 * The kind a new block copies from `id` (a split tail, a flow's tail,
 		 * a duplicate and each of its descendants). A type a peer's retype is
@@ -1218,24 +1217,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const subs = new Set<(change: DocChange) => void>();
 		let unsubscribe: (() => void) | null = null;
 		/** One `DocChange` per commit, from the index's change report (the fold). */
-		const publish = (report: IndexReport, origin: unknown, local: boolean): void => {
-			const change: DocChange = { origin, local, version: ++changeVersion, ...report };
-			// R5 listener isolation (callAll convention): a throwing subscriber
-			// must not starve later subscribers — invoke all, then rethrow the
-			// first error to the committer.
-			let firstErr: unknown;
-			let threw = false;
-			for (const cb of [...subs]) {
-				try {
-					cb(change);
-				} catch (e) {
-					if (!threw) {
-						threw = true;
-						firstErr = e;
-					}
-				}
-			}
-			if (threw) throw firstErr;
+		const emitChange = (report: IndexReport, origin: unknown, local: boolean): void => {
+			// R5 listener isolation: a throwing subscriber never starves the rest.
+			callEach([...subs], { origin, local, version: ++changeVersion, ...report });
 		};
 
 		/**
@@ -1251,7 +1235,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 */
 		const onChange = (cb: (change: DocChange) => void): (() => void) => {
 			subs.add(cb);
-			unsubscribe ??= runsView.onReport(publish);
+			unsubscribe ??= runsView.onReport(emitChange);
 			return () => {
 				subs.delete(cb);
 				if (subs.size === 0) {
@@ -1386,11 +1370,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 						const touched = new Set<BlockId>();
 						for (const idSet of [item.inserts, item.deletes]) {
 							walkIdSetStructs(Y, doc, idSet as IdSetLike, (s) => {
-								let n = s.parent as EngineNode | null;
-								while (n !== null && typeof n?.getAttr === 'function') {
+								let n: unknown = s.parent;
+								while (isNodeLike(n)) {
 									const bid = n.name === BLOCK_NODE ? n.getAttr(ID) : undefined;
 									if (typeof bid === 'string') return void touched.add(bid);
-									n = (n._item?.parent ?? null) as EngineNode | null;
+									n = n._item?.parent;
 								}
 							});
 						}
@@ -1427,17 +1411,16 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * the public boundary, so callers can't mutate engine state through
 		 * the snapshot. Item wrappers and the array stay fresh and mutable.
 		 */
-		const contentItems = (id: BlockId): ContentItem[] => {
-			// The maintained view's canonical item read — interned payloads,
-			// transaction-aware via the same `modelCtx` view() consults.
-			return runsView.contentItems(id);
-		};
+		const contentItems = (id: BlockId): ContentItem[] => runsView.contentItems(id);
 
 		/** Registry membership — the block exists (may be delete-marked or merged away). */
 		const hasBlock = (id: BlockId): boolean => M.blockNodeOf(doc, id) !== null;
 
-		/** The one liveness answer ({@link isLiveIn}): `id` renders in `project()`. O(depth). */
-		const isVisibleBlock = (id: BlockId): boolean => M.isLive(doc, id);
+		/** The one liveness answer (`M.isLive`): `id` renders in `project()`. O(depth). */
+		const live = (id: BlockId): boolean => M.isLive(doc, id);
+		/** A live block that can hold content: it has a claims list (a streamless block gets its own text on first write). */
+		const contentTarget = (id: BlockId): boolean =>
+			live(id) && view().blocks.get(id)?.claimsNode !== undefined;
 
 		// ── anchors (R4) ─────────────────────────────────────────────────
 		// An anchor is the home text id plus a relative position; the stream
@@ -1513,7 +1496,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 
 		/** A replacement content item normalized at ingress. */
-		const sanitizeItem = (item: SetBlockContent[number]): SetBlockContent[number] =>
+		const sanitizeItem = (item: ContentItem): ContentItem =>
 			item.kind === 'text'
 				? {
 						kind: 'text',
@@ -1543,12 +1526,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			effect: effectOf(writes),
 			version: runsView.version()
 		});
-		const live = (id: BlockId): boolean => isLiveIn(view(), id);
-		/** A live block that can hold content: it has a claims list (a streamless block gets its own text on first write). */
-		const contentTarget = (id: BlockId): boolean => {
-			const rec = view().blocks.get(id);
-			return live(id) && rec?.claimsNode !== undefined;
-		};
 
 		/** `count` ranks at `index` among `parent`'s children, the moving `exclude` left out. */
 		const ranksFor = (
@@ -1562,29 +1539,30 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return M.ranksAt(sibs, at, count, doc.clientID, randOf(doc));
 		};
 		/**
-		 * The type steps that keep what re-homed blocks show: one displayed
-		 * out of an island as another kind than its stored one (`displayType`)
-		 * gets that kind written, so leaving the island's slot never brings the
-		 * island's child kind back (RW-01). Every planned move carries them.
+		 * Move `ids` to `ranks` under `parent` (`index`: the slot hooks see).
+		 * Every planned move carries the type steps that keep what the moved
+		 * blocks show: one displayed out of an island as another kind than its
+		 * stored one (`displayType`) gets that kind written, so leaving the
+		 * island's slot never brings the island's child kind back (RW-01).
 		 */
-		const keepShown = (ids: readonly BlockId[]): PlanStep[] =>
-			ids.flatMap((id) => {
-				const shown = runsView.displayType(id);
-				return shown === undefined ? [] : attr(id, TYPE, shown);
-			});
-		const move = (ids: BlockId[], parent: BlockId | null, index: number): PlanStep[] =>
+		const moveTo = (
+			ids: BlockId[],
+			parent: BlockId | null,
+			index: number,
+			ranks: string[]
+		): PlanStep[] =>
 			ids.length === 0
 				? []
 				: [
-						{
-							op: 'moveBlocks',
-							ids,
-							parent,
-							index,
-							ranks: ranksFor(parent, index, ids.length, ids)
-						},
-						...keepShown(ids)
+						{ op: 'moveBlocks', ids, parent, index, ranks },
+						...ids.flatMap((id) => {
+							const shown = runsView.displayType(id);
+							return shown === undefined ? [] : attr(id, TYPE, shown);
+						})
 					];
+		/** Move `ids` to `index` among `parent`'s children. */
+		const move = (ids: BlockId[], parent: BlockId | null, index: number): PlanStep[] =>
+			moveTo(ids, parent, index, ranksFor(parent, index, ids.length, ids));
 		/** A type/data step, planned only when the value differs (the one same-value guard). */
 		const attr = (id: BlockId, key: typeof TYPE | typeof DATA, value: unknown): PlanStep[] => {
 			if (jsonEquals(M.blockNodeOf(doc, id)!.getAttr(key), value)) return [];
@@ -1595,10 +1573,25 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			];
 		};
 		/**
-		 * Delete (R3): `id` and its subtree leave, `kept` children aside. Every
-		 * member is marked with what it displays — an unmarked one would be
-		 * promoted into the deleted slot (`displaySlotOf`).
+		 * The island-merge rule: the children `kids` of `island` that leave it
+		 * take the default child of `parent`, their new slot's parent.
 		 */
+		const leaveIsland = (
+			island: BlockId,
+			kids: readonly BlockId[],
+			parent: BlockId | null
+		): PlanStep[] =>
+			isIsland(island) ? kids.flatMap((kid) => attr(kid, TYPE, defaultChild(parent))) : [];
+		/**
+		 * Delete (R3): `removes` leave. Every one is marked with what it
+		 * displays — an unmarked one would be promoted into the deleted slot
+		 * (`displaySlotOf`).
+		 */
+		const deleting = (id: BlockId, removes: BlockId[]): PlanStep => {
+			const marks = [...new Set(removes.flatMap((b) => view().displays(b)))];
+			return { op: 'deleteBlock', id, marks, removes };
+		};
+		/** Delete `id` and its subtree, `kept` children aside. */
 		const remove = (id: BlockId, kept: readonly BlockId[] = []): PlanStep => {
 			const removes: BlockId[] = [];
 			const walk = (b: BlockId): void => {
@@ -1606,8 +1599,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				for (const kid of childrenIds(b)) if (!kept.includes(kid)) walk(kid);
 			};
 			walk(id);
-			const marks = [...new Set(removes.flatMap((b) => view().displays(b)))];
-			return { op: 'deleteBlock', id, marks, removes };
+			return deleting(id, removes);
 		};
 		const merge = (from: BlockId, into: BlockId): PlanStep => ({
 			op: 'mergeBlocks',
@@ -1749,23 +1741,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const from = ref(fromId);
 			const into = ref(intoId);
 			const v = view();
-			if (!canMerge(from, into) || !v.blocks.get(into)?.claimsNode) return REFUSED;
+			if (!canMerge(from, into) || !contentTarget(into)) return REFUSED;
 			if (M.isSelfOrDescendant(v.placements, v.own, into, from)) return REFUSED;
 			const kids = childrenIds(from);
-			const reset = isIsland(from) ? defaultChild(into) : null;
-			const retype = reset === null ? [] : kids.flatMap((kid) => attr(kid, TYPE, reset));
-			const adopt: PlanStep[] = kids.length
-				? [
-						{
-							op: 'moveBlocks',
-							ids: kids,
-							parent: from,
-							index: kids.length,
-							ranks: ranksFor(into, Infinity, kids.length, kids)
-						},
-						...keepShown(kids)
-					]
-				: [];
+			const retype = leaveIsland(from, kids, into);
+			const adopt = moveTo(kids, from, kids.length, ranksFor(into, Infinity, kids.length, kids));
 			return plan([into], [merge(from, into), ...adopt, ...retype]);
 		};
 
@@ -1779,10 +1759,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 */
 		const mergeUnnesting = (from: BlockId, into: BlockId): Prepared => {
 			const pos = canMerge(from, into) ? positionOf(from) : null;
-			if (pos === null || !view().blocks.get(into)?.claimsNode) return REFUSED;
+			if (pos === null || !contentTarget(into)) return REFUSED;
 			const kids = childrenIds(from);
-			const reset = isIsland(from) ? defaultChild(pos.parent) : null;
-			const retype = reset === null ? [] : kids.flatMap((kid) => attr(kid, TYPE, reset));
+			const retype = leaveIsland(from, kids, pos.parent);
 			return plan([into], [...move(kids, pos.parent, pos.index + 1), ...retype, merge(from, into)]);
 		};
 
@@ -1793,7 +1772,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 */
 		const mergeBackward = (id: BlockId): Prepared => {
 			id = ref(id);
-			const prev = isVoid(id) ? undefined : previous(id);
+			const prev = previous(id);
 			if (prev === null && childrenIds(id).length === 0 && displayLength(id) === 0) {
 				return mergeForward(id);
 			}
@@ -1803,7 +1782,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/** Baseline `mergeBlockForward`: pull the next block in document order into `id`. */
 		const mergeForward = (id: BlockId): Prepared => {
 			id = ref(id);
-			const after = isVoid(id) ? null : next(id);
+			const after = next(id);
 			return after ? mergeUnnesting(after, id) : REFUSED;
 		};
 
@@ -1826,44 +1805,33 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				);
 			}
 			const roots = [...set].filter((id) => !set.has(positionOf(id)!.parent!));
-			const slots = view().kids;
+			const { kids } = view();
 			const writes = roots.flatMap((root) => {
 				const pos = positionOf(root)!;
 				const chunk: BlockId[] = [];
-				const kids: { id: BlockId; from: BlockId; rank: string }[] = [];
+				const kept: { id: BlockId; from: BlockId; rank: string }[] = [];
 				// Each kept child moves to the rank read-time promotion gives it
 				// (`promotedRank`), so a block a peer puts under a member meanwhile
 				// takes the slot in the member's order among them. Right after the
 				// root: a flow placed in the root's slot precedes them.
-				const walk = (b: BlockId, slot: string): void => {
+				const walk = (b: BlockId, slotRank: string): void => {
 					chunk.push(b);
-					for (const kid of slots.get(b) ?? []) {
-						const rank = promotedRank(slot, kid.rank);
+					for (const kid of kids.get(b) ?? []) {
+						const rank = promotedRank(slotRank, kid.rank);
 						if (set.has(kid.id)) walk(kid.id, rank);
-						else kids.push({ id: kid.id, from: b, rank });
+						else kept.push({ id: kid.id, from: b, rank });
 					}
 				};
-				walk(root, slots.get(pos.parent)![pos.index]!.rank);
-				const reset = defaultChild(pos.parent);
-				const retype = kids.flatMap((k) => (isIsland(k.from) ? attr(k.id, TYPE, reset) : []));
-				const marks = [...new Set(chunk.flatMap((b) => view().displays(b)))];
-				const moved: PlanStep[] =
-					kids.length === 0
-						? []
-						: [
-								{
-									op: 'moveBlocks',
-									ids: kids.map((k) => k.id),
-									parent: pos.parent,
-									index: pos.index + 1,
-									ranks: kids.map((k) => k.rank)
-								}
-							];
+				walk(root, kids.get(pos.parent)![pos.index]!.rank);
 				return [
-					...moved,
-					...keepShown(kids.map((k) => k.id)),
-					...retype,
-					{ op: 'deleteBlock', id: root, marks, removes: chunk } as PlanStep
+					...moveTo(
+						kept.map((k) => k.id),
+						pos.parent,
+						pos.index + 1,
+						kept.map((k) => k.rank)
+					),
+					...kept.flatMap((k) => leaveIsland(k.from, [k.id], pos.parent)),
+					deleting(root, chunk)
 				];
 			});
 			return plan(roots, writes);
@@ -1889,25 +1857,22 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const steps = attr(id, TYPE, type);
 			const moved = kids.get(id) ?? [];
 			// An island retyped to an ordinary kind keeps its lines as that kind's children.
-			if (isIsland(id) && roleOf(type)?.island !== true && roleOf(type)?.void !== true) {
-				const child = defaultChildOf(type) ?? defaultType;
+			if (isIsland(id) && !roles.island(type) && !roles.childless(type)) {
+				const child = roles.defaultChild(type);
 				return [...steps, ...moved.flatMap((k) => attr(k.id, TYPE, child))];
 			}
-			if (roleOf(type)?.void !== true || moved.length === 0 || pos === null) return steps;
-			const slot = kids.get(pos.parent)![pos.index]!.rank;
+			if (!roles.childless(type) || moved.length === 0 || pos === null) return steps;
+			const slotRank = kids.get(pos.parent)![pos.index]!.rank;
 			const ids = moved.map((k) => k.id);
-			const reset = isIsland(id) ? defaultChild(pos.parent) : null;
 			return [
 				...steps,
-				{
-					op: 'moveBlocks',
+				...moveTo(
 					ids,
-					parent: pos.parent,
-					index: pos.index + 1,
-					ranks: moved.map((k) => promotedRank(slot, k.rank))
-				},
-				...keepShown(ids),
-				...(reset === null ? [] : ids.flatMap((kid) => attr(kid, TYPE, reset)))
+					pos.parent,
+					pos.index + 1,
+					moved.map((k) => promotedRank(slotRank, k.rank))
+				),
+				...leaveIsland(id, ids, pos.parent)
 			];
 		};
 
@@ -1939,7 +1904,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			value: {
 				type?: string;
 				data?: Record<string, unknown>;
-				content?: SetBlockContent;
+				content?: ContentItem[];
 				children?: BlockSpec[];
 			}
 		): Prepared => {
@@ -1948,7 +1913,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const children = value.children?.map(sanitizeSpec);
 			if (!live(id) || (content !== undefined && !contentTarget(id))) return REFUSED;
 			const type = value.type === undefined ? undefined : ref(value.type);
-			const toVoid = type === undefined ? isVoid(id) : roleOf(type)?.void === true;
+			const toVoid = type === undefined ? isVoid(id) : roles.childless(type);
 			if (children?.length && toVoid) return REFUSED;
 			if (children !== undefined && M.collides(doc, children)) return refused('id-collision');
 			const writes: PlanStep[] = [
@@ -2128,12 +2093,13 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			childrenIds,
 			displayLength,
 			contentTarget,
-			rendersContent: (id) => rendersContentOf(blockTypeOf(id) ?? ''),
+			rendersContent,
 			canMerge,
 			isIsland,
 			defaultChild,
 			move,
 			retype: (id, type) => attr(id, TYPE, type),
+			leaveIsland,
 			remove,
 			insertBlocks,
 			sanitize: sanitizeSpec,
@@ -2215,18 +2181,18 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 
 		// ── facade object ─────────────────────────────────────────────────
 
-		/**
-		 * The typed-node surface (`document.block(id)` handles — see
-		 * `nodes.ts`). Created lazily on first use; `bindNodes` caches one
-		 * handle per block id, so repeated `facade.block(id)` calls return
-		 * the same instance.
-		 */
 		/** A read taking an id first: the id normalizes at ingress (O1). */
 		const byRef =
 			<I extends BlockId | null, A extends unknown[], R>(f: (id: I, ...rest: A) => R) =>
 			(id: I, ...rest: A): R =>
 				f(ref(id), ...rest);
 
+		/**
+		 * The typed-node surface (`document.block(id)` handles — see
+		 * `nodes.ts`). Created lazily on first use; `bindNodes` caches one
+		 * handle per block id, so repeated `facade.block(id)` calls return
+		 * the same instance.
+		 */
 		let nodeApi: ReturnType<typeof bindNodes> | undefined;
 		const nodes = () => (nodeApi ??= bindNodes(facade));
 
@@ -2277,7 +2243,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			displayLength: byRef(displayLength),
 			contentItems: byRef(contentItems),
 			hasBlock: byRef(hasBlock),
-			isVisibleBlock: byRef(isVisibleBlock),
+			isVisibleBlock: byRef(live),
 			order,
 			compare: (a: BlockId, b: BlockId) => compare(ref(a), ref(b)),
 			next: byRef(next),
@@ -2288,7 +2254,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			followUndo,
 			// roles
 			/** Re-read the roles after `roleOf` answers differently (roles adopted later). */
-			rolesChanged: () => runsView.roles(displayRoles),
+			rolesChanged: () => runsView.roles(roles),
 			isVoid: byRef(isVoid),
 			isIsland: byRef(isIsland),
 			islandOf: byRef((id: BlockId) => islandOf(id)),

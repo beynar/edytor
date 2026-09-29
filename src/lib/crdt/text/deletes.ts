@@ -234,16 +234,6 @@ export const bindDeletes = (Y: EngineApi) => {
 		return 1;
 	};
 
-	/** Whether id `c:k` is a deleted text unit that still holds its content here. */
-	const intact = (s: State, c: number, k: number): boolean => {
-		const st = structAt(Y, clientsOf(s.doc).get(c) ?? [], k) as Unit | null;
-		return (
-			st !== null &&
-			st.deleted &&
-			(typeof st.content?.str === 'string' || st.content?.type !== undefined)
-		);
-	};
-
 	/**
 	 * What restores root span `r`: per character, the leftmost leaf of its
 	 * lineage (a member no copy was made of). A copy sits right before what it

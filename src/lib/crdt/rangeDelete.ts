@@ -47,9 +47,9 @@ export type RangeDeleteContext = {
 	rendersContent: (id: BlockId) => boolean;
 	canMerge: (from: BlockId, into: BlockId) => boolean;
 	isIsland: (id: BlockId) => boolean;
-	defaultChild: (parent: BlockId | null) => string;
 	move: (ids: BlockId[], parent: BlockId | null, index: number) => PlanStep[];
-	retype: (id: BlockId, type: string) => PlanStep[];
+	/** The island-merge rule: `island`'s children `kids` leaving it take `parent`'s default child. */
+	leaveIsland: (island: BlockId, kids: readonly BlockId[], parent: BlockId | null) => PlanStep[];
 	remove: (id: BlockId, kept: readonly BlockId[]) => PlanStep;
 };
 
@@ -142,10 +142,7 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 				writes.push({ op: 'deleteText', id: E, offset: 0, length: e.offset });
 			if (dest !== null) {
 				writes.push(...c.move(rescued, dest.parent, dest.index + 1));
-				if (tailGone && c.isIsland(E)) {
-					const type = c.defaultChild(dest.parent);
-					c.childrenIds(E).forEach((kid) => writes.push(...c.retype(kid, type)));
-				}
+				if (tailGone) writes.push(...c.leaveIsland(E, c.childrenIds(E), dest.parent));
 			}
 			if (merges) {
 				// The whole tail merges, then its cut prefix goes: E's own text is never written.

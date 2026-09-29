@@ -35,6 +35,16 @@
 		...(plugins.some(isImagePlugin) ? [] : [imagePlugin]),
 		...(plugins.includes(richTextPlugin) ? [] : [richTextPlugin])
 	];
+	/**
+	 * The handles: none with `false`, the configured ones (replacing any
+	 * listed) with options, else the listed ones or the default, first.
+	 */
+	const withHandles = (plugins: Plugin[] | undefined, handles: boolean | BlockHandlesOptions) => {
+		const others = plugins?.filter((plugin) => !isBlockHandlesPlugin(plugin));
+		if (handles === false) return others;
+		if (typeof handles === 'object') return [createBlockHandlesPlugin(handles), ...(others ?? [])];
+		return plugins?.some(isBlockHandlesPlugin) ? plugins : [blockHandlesPlugin, ...(plugins ?? [])];
+	};
 	const defaultValue: JSONDoc = {
 		// Empty document — the facade seeds the canonical bootstrap block of
 		// the document's `defaultType` on `sync()` (D1). No block types are
@@ -146,20 +156,10 @@
 	const initialEdytorOptions = untrack(() => ({
 		snippets,
 		readonly,
-		plugins: (() => {
-			const plugins = defaultPlugins ? withDefaults(userPlugins) : userPlugins;
-			const handles = blockHandles ?? blockDnd;
-			const withoutDefaultHandles = plugins?.filter((plugin) => !isBlockHandlesPlugin(plugin));
-			if (handles === false) {
-				return withoutDefaultHandles;
-			}
-			if (typeof handles === 'object') {
-				return [createBlockHandlesPlugin(handles), ...(withoutDefaultHandles ?? [])];
-			}
-			return plugins?.some(isBlockHandlesPlugin)
-				? plugins
-				: [blockHandlesPlugin, ...(plugins ?? [])];
-		})(),
+		plugins: withHandles(
+			defaultPlugins ? withDefaults(userPlugins) : userPlugins,
+			blockHandles ?? blockDnd
+		),
 		document: edytorDocument,
 		doc,
 		awareness,
@@ -255,15 +255,6 @@
 	$effect(edytor.surface.post);
 	$effect(edytor.projector.post);
 
-	type EditableRootBrowserAttributes = {
-		spellcheck: boolean;
-		autocorrect: 'on' | 'off';
-		autocomplete: 'on' | 'off';
-		autocapitalize: 'off' | 'none' | 'on' | 'sentences' | 'words' | 'characters';
-		inputmode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url';
-		enterkeyhint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
-	};
-
 	const browserMutationGuardAttributes = $derived({
 		spellcheck,
 		autocorrect,
@@ -273,51 +264,37 @@
 		enterkeyhint
 	});
 
+	/**
+	 * The root's browser attributes. Optional hints (`inputmode`,
+	 * `enterkeyhint`) stay absent when unset — emitting a guessed default
+	 * would override the browser/UA's own choice.
+	 */
 	const editableRootBrowserAttributes = (
 		node: HTMLElement,
-		attributes: EditableRootBrowserAttributes
+		attributes: typeof browserMutationGuardAttributes
 	) => {
-		const apply = (nextAttributes: EditableRootBrowserAttributes) => {
-			node.setAttribute('spellcheck', String(nextAttributes.spellcheck));
-			node.setAttribute('autocorrect', nextAttributes.autocorrect);
-			node.setAttribute('autocomplete', nextAttributes.autocomplete);
-			node.setAttribute('autocapitalize', nextAttributes.autocapitalize);
-			// Optional hints stay absent when unset — emitting a guessed
-			// default would override the browser/UA's own choice.
-			if (nextAttributes.inputmode === undefined) {
-				node.removeAttribute('inputmode');
-			} else {
-				node.setAttribute('inputmode', nextAttributes.inputmode);
-			}
-			if (nextAttributes.enterkeyhint === undefined) {
-				node.removeAttribute('enterkeyhint');
-			} else {
-				node.setAttribute('enterkeyhint', nextAttributes.enterkeyhint);
-			}
+		const apply = (next: typeof attributes) => {
+			for (const [name, value] of Object.entries(next))
+				if (value === undefined) node.removeAttribute(name);
+				else node.setAttribute(name, String(value));
 		};
-
 		apply(attributes);
-
-		return {
-			update: apply
-		};
+		return { update: apply };
 	};
 
 	const nonNativeEditableBlockChromeSelection = (node: HTMLElement) => {
-		const handlePointerDown = (event: PointerEvent) => {
-			edytor.selection.handleNonNativeEditableBlockChromePointerDown(event);
-		};
-
-		node.addEventListener('pointerdown', handlePointerDown, true);
+		const { selection } = edytor;
+		const pointerdown = (event: PointerEvent) =>
+			selection.handleNonNativeEditableBlockChromePointerDown(event);
+		node.addEventListener('pointerdown', pointerdown, true);
 		// `selectstart` is the only event fired before a drag-selection
 		// begins — the guard keeps one from starting on non-editable
 		// chrome (markers, void/island chrome, plugin UI).
-		node.addEventListener('selectstart', edytor.selection.onSelectStart);
-
+		node.addEventListener('selectstart', selection.onSelectStart);
 		return {
 			destroy: () => {
-				node.removeEventListener('pointerdown', handlePointerDown, true);
-				node.removeEventListener('selectstart', edytor.selection.onSelectStart);
+				node.removeEventListener('pointerdown', pointerdown, true);
+				node.removeEventListener('selectstart', selection.onSelectStart);
 			}
 		};
 	};

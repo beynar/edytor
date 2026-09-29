@@ -1,6 +1,8 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import { convertToKind, type KindRow } from '$lib/kinds.js';
 import type { Plugin } from '$lib/plugins.js';
+import type { Text } from '$lib/text/text.svelte.js';
+import type { TextOperations } from '$lib/text/text.utils.js';
 
 /**
  * Convert `block`, the shortcut's prefix removal leading the conversion: one
@@ -41,12 +43,21 @@ const inlineMarkdown = (before: string, typed: string) => {
 export const markdownShortcutsPlugin: Plugin = (edytor) => {
 	/** The typed text landing as typed after a refused conversion. */
 	let fallback = false;
+	/** Refused: the character lands as typed, the caret after it. */
+	const typeAsIs = (text: Text, payload: TextOperations['insertText'], at: number) => {
+		fallback = true;
+		try {
+			text.insertText(payload);
+		} finally {
+			fallback = false;
+		}
+		edytor.dispatcher.caret(text, at + payload.value.length);
+	};
 	return {
 		onBeforeOperation: ({ operation, payload, block, prevent }) => {
 			if (fallback || operation !== 'insertText' || block !== edytor.selection.state.startBlock) {
 				return;
 			}
-
 			const { startText, yStart, isCollapsed } = edytor.selection.state;
 
 			// Inline: a closing marker typed after marked-up text (not in code lines).
@@ -74,17 +85,7 @@ export const markdownShortcutsPlugin: Plugin = (edytor) => {
 						(_p, prepared = plan()) => ('writes' in prepared ? facade.apply(prepared) : null),
 						plan
 					);
-					if (!applied) {
-						// Refused: the character lands as typed (as for a block prefix).
-						fallback = true;
-						try {
-							startText!.insertText(payload);
-						} finally {
-							fallback = false;
-						}
-						edytor.dispatcher.caret(startText!, yStart + payload.value.length);
-						return;
-					}
+					if (!applied) return typeAsIs(startText!, payload, yStart);
 					// Typing after the shortcut continues without the mark.
 					edytor.selection.stage({});
 					edytor.dispatcher.caret(startText!, inline.start + inline.content);
@@ -105,14 +106,8 @@ export const markdownShortcutsPlugin: Plugin = (edytor) => {
 			if (row.replaces && !alone) return;
 
 			prevent(() => {
-				if (applyShortcut(block, row, prefix.length)) return;
-				fallback = true;
-				try {
-					startText.insertText(payload);
-				} finally {
-					fallback = false;
-				}
-				edytor.dispatcher.caret(startText, (payload.start ?? yStart) + payload.value.length);
+				if (!applyShortcut(block, row, prefix.length))
+					typeAsIs(startText, payload, payload.start ?? yStart);
 			});
 		}
 	};

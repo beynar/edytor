@@ -164,7 +164,7 @@ passes its hidden blocks (`prepare.deleteRange(from, to, { hidden })`, and
 without them (headless) document order decides. Backspace/Delete next to a
 closed toggle is this rule's seam `T@end → P@0`, replaced: one plan
 (XW-09). A range covers a hidden block exactly when its delete removes it
-(`rangeCovers`, `src/lib/text/text.utils.ts`): copy puts it in the fragment
+(`rangeCovers`, `src/lib/selection/visibility.ts`): copy puts it in the fragment
 and marks reach it then, never otherwise, so copy then Backspace, and cut,
 neither lose nor duplicate a body (DR-delete-1/3). A replacement keeps the
 head's body (`replace`), and a multi-line paste that splits the head leaves

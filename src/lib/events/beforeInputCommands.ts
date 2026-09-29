@@ -1,6 +1,6 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import {
-	replaceSelectedBlocksWithEmptyBlockTargetSync,
+	replaceSelectionForInsertion,
 	replaceSelectionWithCollapsedTarget
 } from '$lib/selection/replaceSelection.js';
 import type { Text } from '$lib/text/text.svelte.js';
@@ -9,14 +9,14 @@ import { flowOfFragment, flowOfText, pasteFlow } from '$lib/clipboard/insertClip
 import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
 import { cloneJson, type JSONText } from '$lib/utils/json.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
-import { selectedTextSpans } from '$lib/text/text.utils.js';
+import { selectedTextSpans } from '$lib/selection/visibility.js';
 import { id, prevent } from '$lib/utils.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { dispatchPlan, prepareSplitKeepingChildren } from '$lib/block/block.utils.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
 import { runBeforeInputDeleteCommand } from './beforeInputDeleteCommands.js';
 import { firstUriListEntry } from './dataTransferPayload.js';
-import { INTENTS, intentSnapshot, kindOf, type Attempt } from '$lib/session/attempt.js';
+import { INTENTS, caretAt, intentSnapshot, kindOf, type Attempt } from '$lib/session/attempt.js';
 
 /**
  * Offer an intent's key to the bindings once per occurrence (the key it stands
@@ -34,14 +34,6 @@ export const runBeforeInputHotkeyBridge = (
 			? 'tab'
 			: INTENTS[snapshot.inputType]?.key;
 	return Boolean(key && key !== offered && edytor.hotKeys.run(key));
-};
-
-const replaceSelectionBeforeTextInsertion = (edytor: Edytor, snapshot: Attempt) => {
-	if (edytor.selection.selectedBlocks.size > 0) {
-		return replaceSelectedBlocksWithEmptyBlockTargetSync(edytor);
-	}
-
-	return replaceSelectionWithCollapsedTarget(edytor, snapshot);
 };
 
 /** The marks of text inserted at the snapshot's selection (O29), read before it is replaced. */
@@ -68,7 +60,7 @@ const insertText = (edytor: Edytor, snapshot: Attempt) => {
 	}
 
 	const marks = insertionMarks(edytor, snapshot);
-	const target = replaceSelectionBeforeTextInsertion(edytor, snapshot);
+	const target = replaceSelectionForInsertion(edytor, snapshot);
 	if (!target) {
 		return;
 	}
@@ -87,14 +79,12 @@ const insertText = (edytor: Edytor, snapshot: Attempt) => {
 			marks,
 			isAutoDot: true
 		});
-		edytor.attempts.caret(target.text, target.offset + 1);
-		edytor.selection.setAtTextOffset(target.text, target.offset + 1);
+		caretAt(edytor, target.text, target.offset + 1);
 		return;
 	}
 
 	target.text.insertText({ value: data, start: target.offset, end: target.offset, marks });
-	edytor.attempts.caret(target.text, target.offset + data.length);
-	edytor.selection.setAtTextOffset(target.text, target.offset + data.length);
+	caretAt(edytor, target.text, target.offset + data.length);
 };
 
 /**
@@ -108,7 +98,7 @@ export const insertLineBreak = (
 	caret: 'after' | 'before' = 'after'
 ) => {
 	const marks = insertionMarks(edytor, snapshot);
-	const target = replaceSelectionBeforeTextInsertion(edytor, snapshot);
+	const target = replaceSelectionForInsertion(edytor, snapshot);
 	if (!target) {
 		return;
 	}
@@ -132,8 +122,7 @@ export const insertLineBreak = (
 			? (sourceBlock.lastText ?? target.text)
 			: normalizedNextBlock.firstText!;
 	const offset = !split ? target.offset + (before ? 0 : 1) : before ? text.length : 0;
-	edytor.attempts.caret(text, offset);
-	edytor.selection.setAtTextOffset(text, offset);
+	caretAt(edytor, text, offset);
 };
 
 const getLinkMarksForUri = (edytor: Edytor, uri: string) =>
@@ -273,20 +262,15 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	const sibling = continues
 		? { type: current.type, data: { ...(presets?.[0]?.data ?? {}) } }
 		: { type: defaultBlock };
-	const caretAt = (text: Text | undefined, offset: number) => {
-		if (!text) return;
-		edytor.attempts.caret(text, offset);
-		edytor.selection.setAtTextOffset(text, offset);
-	};
 
 	// Enter in an empty list-like block ends the run (Notion): out one level
 	// when nested in another list-like block, else — at the top level or in a
 	// container such as a callout — the parent's default kind, in place.
 	if (continues && isAtEndOfBlock && isAtStartOfBlock && !current.hasChildren) {
 		if (current.parent?.definition.continues && current.unNestBlock())
-			return caretAt(current.firstText, 0);
+			return caretAt(edytor, current.firstText, 0);
 		current.setBlock({ value: { type: defaultBlock, data: {} } });
-		return caretAt(current.firstText, 0);
+		return caretAt(edytor, current.firstText, 0);
 	}
 
 	// A container's header (toggle, callout, quote) with children, or an open
@@ -301,45 +285,30 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 				open === false
 					? current.insertBlockAfter({ block: sibling })
 					: current.addChildBlock({ block: { type: edytor.defaultChild(current) }, index: 0 });
-			return caretAt(opened?.firstText, 0);
+			return caretAt(edytor, opened?.firstText, 0);
 		}
 		const currentBlock = startText.parent;
 		if (currentBlock.hasChildren && currentBlock.hasContent) {
 			// Lift the content above the children: one split at the end whose
 			// tail keeps the kind and takes the children.
-			const lifted = liftContent(currentBlock, startText);
-			const text = lifted?.firstText;
-			if (text) {
-				edytor.attempts.caret(text, 0);
-				edytor.selection.setAtTextOffset(text, 0);
-			}
-			return;
+			return caretAt(edytor, liftContent(currentBlock, startText)?.firstText, 0);
 		}
 
 		const newBlock = currentBlock.insertBlockAfter({ block: sibling });
 		const text = newBlock?.firstText;
-		if (text) {
-			edytor.attempts.caret(text, text.length);
-			edytor.selection.setAtTextOffset(text, text.length);
-		}
-		return;
+		return caretAt(edytor, text, text?.length ?? 0);
 	}
 
 	if (isAtStartOfBlock) {
 		startText.parent.insertBlockBefore({ block: sibling });
-		edytor.attempts.caret(startText, 0);
-		edytor.selection.setAtTextOffset(startText, 0);
+		caretAt(edytor, startText, 0);
 		return;
 	}
 
 	const newBlock = header
 		? splitHeader(current, startText, yStart, open)
 		: current.splitBlock({ index: yStart, text: startText });
-	const text = newBlock?.firstText;
-	if (text) {
-		edytor.attempts.caret(text, 0);
-		edytor.selection.setAtTextOffset(text, 0);
-	}
+	caretAt(edytor, newBlock?.firstText, 0);
 };
 
 /** The model command for a `beforeinput`, run as one user command (undo policy, prevention scope). */

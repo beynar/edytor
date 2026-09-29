@@ -86,6 +86,9 @@
 		return focused ? "Type '/' for commands" : null;
 	};
 
+	const toggleTodo = (block: Block) =>
+		block.setData({ ...block.data, checked: !block.data.checked });
+
 	/** Notion's "turn into" chords: Mod+Alt+0 text … 8 code (`block.<type>` command ids). */
 	const TURN_INTO: Record<string, string> = {
 		'mod+alt+0': 'block.paragraph',
@@ -100,15 +103,11 @@
 	};
 
 	export const richTextPlugin: Plugin = (edytor) => {
-		const toggleTodo = (block: Block) =>
-			block.setData({ ...block.data, checked: !block.data.checked });
+		const operations = richTextOperations(edytor);
 		const setMarkAndSelect =
 			(mark: RichTextMark, value?: SerializableContent): HotKey =>
-			({ prevent }) => {
-				prevent(() => {
-					richTextOperations(edytor).setMarkAtRange(mark, value);
-				});
-			};
+			({ prevent }) =>
+				prevent(() => operations.setMarkAtRange(mark, value));
 		return {
 			hotkeys: {
 				'mod+b': setMarkAndSelect('bold'),
@@ -133,58 +132,29 @@
 				)
 			},
 			onBeforeInput: ({ e, prevent }) => {
-				if (isNativeFormatInputType(e.inputType)) {
-					const mark = nativeFormatMarks[e.inputType];
-					prevent(() => {
-						richTextOperations(edytor).setMarkAtRange(mark);
-					});
-					return;
-				}
-
-				if (e.inputType === 'formatRemove') {
-					prevent(() => {
-						richTextOperations(edytor).removeAllMarksAtRange();
-					});
-					return;
-				}
-
-				if (e.inputType === 'formatFontColor' || e.inputType === 'formatBackColor') {
-					// Native color commands carry the CSS color in `data` and
-					// are set-semantics — they map onto the color/highlight
-					// marks through the non-toggle op.
-					const mark = e.inputType === 'formatFontColor' ? 'color' : 'highlight';
-					if (e.data) {
-						prevent(() => {
-							richTextOperations(edytor).setMarkValueAtRange(mark, e.data!);
-						});
-					}
-					return;
-				}
-
-				if (e.inputType === 'insertLink') {
+				const { inputType, data } = e;
+				if (isNativeFormatInputType(inputType)) {
+					const mark = nativeFormatMarks[inputType];
+					prevent(() => operations.setMarkAtRange(mark));
+				} else if (inputType === 'formatRemove') {
+					prevent(() => operations.removeAllMarksAtRange());
+				} else if (inputType === 'formatFontColor' || inputType === 'formatBackColor') {
+					// Native color commands carry the CSS color in `data` and are
+					// set-semantics: the color/highlight marks' non-toggle op.
+					const mark = inputType === 'formatFontColor' ? 'color' : 'highlight';
+					if (data) prevent(() => operations.setMarkValueAtRange(mark, data));
+				} else if (inputType === 'insertLink') {
 					const href =
-						e.data ??
+						data ??
 						firstUriListEntry(e.dataTransfer?.getData('text/uri-list')) ??
 						e.dataTransfer?.getData('text/plain');
-					if (href) {
-						prevent(() => {
-							richTextOperations(edytor).setLinkAtRange({ href });
-						});
-					}
-					return;
-				}
-
-				if (e.inputType === 'insertOrderedList' || e.inputType === 'insertUnorderedList') {
+					if (href) prevent(() => operations.setLinkAtRange({ href }));
+				} else if (inputType === 'insertOrderedList' || inputType === 'insertUnorderedList') {
 					const type =
-						e.inputType === 'insertOrderedList' ? 'numbered-list-item' : 'bulleted-list-item';
+						inputType === 'insertOrderedList' ? 'numbered-list-item' : 'bulleted-list-item';
 					prevent(() => void edytor.runCommand(`block.${type}`));
-					return;
-				}
-
-				if (e.inputType === 'insertHorizontalRule') {
-					prevent(() => {
-						richTextOperations(edytor).insertDividerAtSelection();
-					});
+				} else if (inputType === 'insertHorizontalRule') {
+					prevent(() => void operations.insertDividerAtSelection());
 				}
 			},
 			// Toolbar buttons and export wrapping follow this order (first innermost).
@@ -244,7 +214,7 @@
 					presets: [{ label: 'Text', icon: 'T', keywords: ['paragraph', 'plain'] }]
 				},
 				heading: {
-					snippet: heading,
+					snippet: textThenChildren,
 					element: (data) => headingLevel(data.level),
 					presets: [
 						{
@@ -344,7 +314,7 @@
 				},
 				quote: {
 					container: true,
-					snippet: quote,
+					snippet: textThenChildren,
 					element: 'blockquote',
 					// Notion: `"` + space is a quote; `>` + space is a toggle.
 					presets: [{ label: 'Quote', icon: '❝', markdown: ['" '] }],
@@ -401,16 +371,8 @@
 	{/if}
 {/snippet}
 
-{#snippet heading({ content, children }: BlockSnippetPayload)}
-	{@render content()}
-	{#if children}
-		<div>
-			{@render children()}
-		</div>
-	{/if}
-{/snippet}
-
-{#snippet quote({ content, children }: BlockSnippetPayload)}
+<!-- A heading's or quote's text, its children below. -->
+{#snippet textThenChildren({ content, children }: BlockSnippetPayload)}
 	{@render content()}
 	{#if children}
 		<div>
@@ -441,8 +403,7 @@
 		onmousedown={(event) => event.preventDefault()}
 		onclick={(event) => {
 			event.preventDefault();
-			const target = block.handle;
-			target.setData({ ...target.data, checked: !target.data.checked });
+			toggleTodo(block.handle);
 		}}
 	/>
 	<div>

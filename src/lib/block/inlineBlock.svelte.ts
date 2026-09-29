@@ -85,39 +85,22 @@ export class InlineBlock {
 		const release = this.edytor.surface.register(node, 'atom', this.blockId);
 
 		const selectInlineBlock = (event: PointerEvent) => {
-			if (event.button !== 0) {
-				return;
-			}
-
+			if (event.button !== 0) return;
 			event.preventDefault();
 			event.stopPropagation();
 			this.edytor.expectInternalFocus();
 			this.edytor.node?.focus();
+			// A press on the atom's edge places the caret beside it; elsewhere it selects the atom.
 			const rect = node.getBoundingClientRect();
-			const contentIndex = this.parent.content.indexOf(this);
-			const previousPart = this.parent.content[contentIndex - 1];
-			const nextPart = this.parent.content[contentIndex + 1];
-			const isBeforeEdge = event.clientX <= rect.left + INLINE_EDGE_CARET_THRESHOLD_PX;
-			const isAfterEdge = event.clientX >= rect.right - INLINE_EDGE_CARET_THRESHOLD_PX;
-			let boundaryText: Text | null = null;
-			let boundaryOffset = 0;
-
-			if (isBeforeEdge && isTextPart(previousPart)) {
-				boundaryText = previousPart;
-				boundaryOffset = previousPart.length;
-			}
-
-			if (!boundaryText && isAfterEdge && isTextPart(nextPart)) {
-				boundaryText = nextPart;
-				boundaryOffset = 0;
-			}
-
-			if (boundaryText) {
-				this.edytor.selection.setAtTextOffset(boundaryText, boundaryOffset);
-				return;
-			}
-
-			this.edytor.selection.selectInlineBlock(this);
+			const { content } = this.parent;
+			const index = content.indexOf(this);
+			const [before, after] = [content[index - 1], content[index + 1]];
+			const { selection } = this.edytor;
+			if (event.clientX <= rect.left + INLINE_EDGE_CARET_THRESHOLD_PX && isTextPart(before))
+				return selection.setAtTextOffset(before, before.length);
+			if (event.clientX >= rect.right - INLINE_EDGE_CARET_THRESHOLD_PX && isTextPart(after))
+				return selection.setAtTextOffset(after, 0);
+			selection.selectInlineBlock(this);
 			clearDomSelection(this.edytor.node);
 		};
 		node.addEventListener('pointerdown', selectInlineBlock);

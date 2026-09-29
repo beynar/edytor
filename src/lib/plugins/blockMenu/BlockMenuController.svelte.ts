@@ -10,6 +10,7 @@ import {
 	type KindRow
 } from '$lib/kinds.js';
 import { getSelectedBlocksInDocumentOrder, outermost } from '$lib/selection/replaceSelection.js';
+import { shown } from '$lib/selection/visibility.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -75,7 +76,7 @@ export class BlockMenuController {
 	get actions(): BlockMenuAction[] {
 		const { block, blocks } = this;
 		if (!block) return [];
-		const move = (direction: 'up' | 'down') => () =>
+		const canMove = (direction: 'up' | 'down') => () =>
 			this.edytor.canMoveBlocks({ blocks: outermost(blocks), direction });
 		const [mod, shift] = this.edytor.hotKeys.isMac ? ['⌘', '⇧'] : ['Ctrl+', 'Shift+'];
 		const all: BlockMenuAction[] = [
@@ -108,7 +109,7 @@ export class BlockMenuController {
 				label: 'Move up',
 				icon: 'action.up',
 				hint: `${mod}${shift}↑`,
-				isEnabled: move('up'),
+				isEnabled: canMove('up'),
 				run: () => this.move('up')
 			},
 			{
@@ -116,7 +117,7 @@ export class BlockMenuController {
 				label: 'Move down',
 				icon: 'action.down',
 				hint: `${mod}${shift}↓`,
-				isEnabled: move('down'),
+				isEnabled: canMove('down'),
 				run: () => this.move('down')
 			},
 			{
@@ -179,7 +180,7 @@ export class BlockMenuController {
 	 * (refused: the caret returns).
 	 */
 	turnInto(kind: KindRow) {
-		const [block, blocks] = [this.block, this.blocks];
+		const { block, blocks } = this;
 		this.close(false);
 		if (blocks.length > 1) {
 			convertBlocks(this.edytor, blocks, kind);
@@ -213,13 +214,12 @@ export class BlockMenuController {
 	 * caret or the selection returns).
 	 */
 	remove() {
-		const blocks = this.blocks;
-		if (!blocks.length) return;
+		const { blocks } = this;
+		const [first] = blocks;
+		if (!first) return;
 		const skip = new Set(blocks);
-		const [after, before] = [
-			this.editable(blocks[0]!, 'blockAfter', 'firstEditableText', skip),
-			this.editable(blocks[0]!, 'blockBefore', 'lastEditableText', skip)
-		];
+		const after = this.editable(first, 'blockAfter', 'firstEditableText', skip);
+		const before = this.editable(first, 'blockBefore', 'lastEditableText', skip);
 		this.edytor.dispatcher.run('removeBlock', () => {
 			for (const block of blocks) block.removeBlock();
 		});
@@ -230,9 +230,8 @@ export class BlockMenuController {
 	}
 
 	async copyLink() {
-		const block = this.block;
-		if (block && this.options.linkTo)
-			await navigator.clipboard?.writeText(this.options.linkTo(block));
+		const { block, options } = this;
+		if (block && options.linkTo) await navigator.clipboard?.writeText(options.linkTo(block));
 		this.close();
 	}
 
@@ -278,7 +277,6 @@ export class BlockMenuController {
 		edge: 'firstEditableText' | 'lastEditableText',
 		removed: Set<Block>
 	) {
-		const { shown } = this.edytor.selection;
 		for (let next = shown(block, step, { removed }); next; next = shown(next, step, { removed })) {
 			const text = next[edge];
 			if (text) return text;

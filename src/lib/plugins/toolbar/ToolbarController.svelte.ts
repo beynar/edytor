@@ -3,7 +3,7 @@ import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { isRecord, type SerializableContent } from '$lib/utils/json.js';
 import { richTextOperations, type RichTextMark } from '$lib/plugins/richtext/richTextOperations.js';
-import { selectedTextSpans } from '$lib/text/text.utils.js';
+import { selectedTextSpans } from '$lib/selection/visibility.js';
 import {
 	convertBlocks,
 	convertibleKinds,
@@ -26,12 +26,8 @@ export const TOOLBAR_COLORS = [
 	{ name: 'Red', text: '#cf5148', background: '#fce9e7' }
 ] as const;
 
-const getLinkHref = (value: SerializableContent | undefined) => {
-	if (!isRecord(value)) {
-		return null;
-	}
-	return typeof value.href === 'string' ? value.href : null;
-};
+const getLinkHref = (value: SerializableContent | undefined) =>
+	isRecord(value) && typeof value.href === 'string' ? value.href : null;
 
 export class ToolbarController {
 	/** Shown for the current selection; hidden while the editor is readonly. */
@@ -59,9 +55,7 @@ export class ToolbarController {
 		}
 
 		this.shown = true;
-		if (!this.isRestoringSelection) {
-			this.linkUrl = this.getSelectedLinkUrl(selection);
-		}
+		if (!this.isRestoringSelection) this.linkUrl = this.getSelectedLinkUrl(selection);
 		this.selectionSnapshot = selection.value.kind === 'text' ? selection.value : null;
 	}
 
@@ -122,15 +116,12 @@ export class ToolbarController {
 
 	applyLink() {
 		const href = this.linkUrl.trim();
-		if (!href) {
-			this.removeLink();
-			return;
-		}
-
-		this.runWithSelection(() => {
-			richTextOperations(this.edytor).setLinkAtRange({ href });
-			this.linkUrl = href;
-		});
+		if (!href) this.removeLink();
+		else
+			this.runWithSelection(() => {
+				richTextOperations(this.edytor).setLinkAtRange({ href });
+				this.linkUrl = href;
+			});
 	}
 
 	removeLink() {
@@ -158,22 +149,16 @@ export class ToolbarController {
 		for (const { text, start, end } of selectedTextSpans(this.edytor, selection.state)) {
 			for (const segment of text.getMarksAtRange(start, end)) {
 				const href = getLinkHref(segment.marks?.link);
-				if (href) {
-					return href;
-				}
+				if (href) return href;
 			}
 		}
-
 		return '';
 	}
 
 	/** Act on the held selection, then select it again (the projector displays it). */
 	private runWithSelection(callback: () => void) {
 		const snapshot = this.selectionSnapshot;
-		if (!this.isVisible || !snapshot) {
-			return;
-		}
-
+		if (!this.isVisible || !snapshot) return;
 		this.restoreSelection(snapshot);
 		callback();
 		this.restoreSelection(snapshot);

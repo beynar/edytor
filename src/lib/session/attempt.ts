@@ -177,6 +177,13 @@ export const attemptOf = (edytor: Edytor, occurrence: Occurrence, keyIntent?: st
 export const intentSnapshot = (edytor: Edytor, inputType: string) =>
 	attemptOf(edytor, { inputType, cancelable: true });
 
+/** A model-performed command's caret: selected now, and where drift repair puts it back. */
+export const caretAt = (edytor: Edytor, text: Text | null | undefined, offset: number) => {
+	if (!text) return;
+	edytor.attempts.caret(text, offset);
+	edytor.selection.setAtTextOffset(text, offset);
+};
+
 /** Re-project an attempt's anchored target when it runs later than its admission. */
 export const reproject = (edytor: Edytor, attempt: Attempt) =>
 	Object.assign(attempt, facts(edytor));

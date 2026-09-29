@@ -1,4 +1,4 @@
-import { getContext, hasContext, setContext, type Snippet, onMount, mount, unmount } from 'svelte';
+import { getContext, hasContext, type Snippet, mount, unmount } from 'svelte';
 import { DEV } from 'esm-env';
 import { onBeforeInput } from './events/onBeforeInput.js';
 import { onCopy } from './events/onCopy.js';
@@ -44,7 +44,6 @@ import {
 	type Crdt,
 	type DocChange,
 	type DocumentActor,
-	type EdytorDoc,
 	type EdytorDocument,
 	type OrderPolicy,
 	type YDoc,
@@ -86,7 +85,6 @@ import {
 } from './edytor.utils.js';
 import { Dispatcher } from './session/commands.js';
 import { History } from './session/history.js';
-import type { SelectionValue } from './session/selection.js';
 import { kindCatalogue, kindCommand, type KindRow } from './kinds.js';
 import {
 	clearDomSelection,
@@ -388,38 +386,22 @@ export class Edytor {
 				return initializedPlugin;
 			});
 
-			// We set the custom snippets after plugins are initialized in order to be able to override the plugins snippets.
-			// Keys are `{type}Mark` / `{type}Block` / `{type}InlineBlock` — the
-			// definition maps are keyed by the BARE type name, so the suffix
-			// comes off here (`*InlineBlock` is checked before `*Block`:
-			// `mentionInlineBlock` matches both). The override merges with
-			// the plugin definition so `void`/`island`/`transformText`/
-			// lifecycle hooks survive — the snippet is the only thing
-			// replaced.
-			Object.entries(snippets || {}).forEach(([key, snippet]) => {
-				const isMark = key.endsWith('Mark');
-				const isInlineBlock = key.endsWith('InlineBlock');
-				const isBlock = key.endsWith('Block');
-				if (isMark) {
-					const name = key.slice(0, -'Mark'.length);
-					this.marks.set(name, {
-						...this.marks.get(name),
-						snippet: snippet as Snippet<[MarkSnippetPayload]>
-					});
-				} else if (isInlineBlock) {
-					const name = key.slice(0, -'InlineBlock'.length);
-					this.inlineBlocks.set(name, {
-						...this.inlineBlocks.get(name),
-						snippet: snippet as Snippet<[InlineBlockSnippetPayload]>
-					});
-				} else if (isBlock) {
-					const name = key.slice(0, -'Block'.length);
-					this.blocks.set(name, {
-						...this.blocks.get(name),
-						snippet: snippet as Snippet<[BlockSnippetPayload]>
-					});
-				}
-			});
+			// The app's snippets override the plugins' after they register: keys are
+			// `{type}{suffix}` over maps keyed by the bare type, suffixes tried in
+			// this order (`mentionInlineBlock` also ends in `Block`). Only the
+			// snippet is replaced: the definition's roles, `transformText` and hooks survive.
+			const overrides = [
+				['Mark', this.marks],
+				['InlineBlock', this.inlineBlocks],
+				['Block', this.blocks]
+			] as const;
+			for (const [key, snippet] of Object.entries(snippets || {})) {
+				const override = overrides.find(([suffix]) => key.endsWith(suffix));
+				if (!override) continue;
+				const [suffix, into] = override;
+				const name = key.slice(0, -suffix.length);
+				(into as Map<string, object>).set(name, { ...into.get(name), snippet });
+			}
 
 			// Kind records generate their commands; an extension's own command id wins.
 			this.kinds = kindCatalogue(this.blocks);
@@ -522,32 +504,18 @@ export class Edytor {
 	/**
 	 * Full-document JSON export — memoized on `facade.version` (the
 	 * model-state token the facade bumps on every write and every
-	 * committed update) + the root wrapper identity. Wrapper state only
-	 * changes through a facade write (a version bump) or the mirror
-	 * reconcile that follows a commit, so a version match guarantees the
-	 * cached export is current — repeated reads inside one version share
-	 * the one computed tree instead of re-serializing per call.
+	 * committed update) + the root wrapper identity, so repeated reads
+	 * inside one version share the one computed tree.
 	 *
-	 * `valueRevision` participates in the cache key and is read purely
-	 * for reactivity: it is a `$state` counter bumped on every committed
-	 * transaction, so `$derived`/`$effect` consumers of `edytor.value`
-	 * re-run per commit even though `facade.version` itself is not a
-	 * tracked source. Without it a reactive consumer can freeze on the
-	 * first cached export (the wrapper fields it happened to track are
-	 * not guaranteed to re-fire once the memo key stops changing).
+	 * `valueRevision` participates in the cache key and is read for
+	 * reactivity: `facade.version` is not a tracked source, so without it a
+	 * `$derived`/`$effect` consumer of `edytor.value` could freeze on the
+	 * first cached export while the model keeps advancing.
 	 *
 	 * Callers receive the SAME object until the next version bump — code
-	 * that needs an owned copy must clone it (same caveat as the runs /
-	 * projected publication boundaries).
+	 * that needs an owned copy must clone it.
 	 */
 	get value(): JSONBlock {
-		// `valueRevision` is the reactive invalidation source: a `$state`
-		// counter bumped on every committed change, read here so tracked
-		// consumers (`$derived`/`$effect` on `edytor.value`) re-run per
-		// commit. `facade.version` — the freshness key — is NOT reactive,
-		// so without this read a consumer's subscription depends on
-		// incidental wrapper-field tracking and can freeze on a stale
-		// export while the model keeps advancing.
 		const revision = this.valueRevision;
 		const version = this.facade.version;
 		const root = this.root;
@@ -567,10 +535,7 @@ export class Edytor {
 
 	runCommand = async (id: string) => {
 		const command = this.commands.get(id);
-		if (!command || command.isEnabled?.(this) === false) {
-			return false;
-		}
-
+		if (!command || command.isEnabled?.(this) === false) return false;
 		await command.run(this);
 		return true;
 	};
@@ -583,10 +548,7 @@ export class Edytor {
 	private _readinessRelease: (() => void) | undefined;
 
 	sync = ({ children = [] }: JSONDoc = { children: [] }) => {
-		if (this.synced) {
-			return;
-		}
-
+		if (this.synced) return;
 		// The document owns the content decision: `assertSchema` on an
 		// already-initialized (hydrated) doc, `init` on a still-fresh one,
 		// then history attaches — the same deferral this method enforced
@@ -633,9 +595,7 @@ export class Edytor {
 		if (this.onChange || this.plugins.some((plugin) => plugin.onChange)) {
 			const value = this.value;
 			this.onChange?.(value);
-			this.plugins.forEach((plugin) => {
-				plugin.onChange?.(value);
-			});
+			for (const plugin of this.plugins) plugin.onChange?.(value);
 		}
 	};
 
@@ -964,9 +924,7 @@ export class Edytor {
 	/** The key of this view's presence entry — minted here, written only by this view (R1). */
 	readonly presenceKey = mintPresenceKey();
 	destroy = () => {
-		if (this.destroyed) {
-			return;
-		}
+		if (this.destroyed) return;
 		this.destroyed = true;
 		// This view's presence entry — its own key, cleared by its own teardown (R1).
 		publishPresence(this.awareness, this.presenceKey, null);
@@ -1015,10 +973,6 @@ export class Edytor {
 }
 
 export const useEdytor = () => {
-	const hasEdytorContext = hasContext('edytor');
-
-	if (hasEdytorContext) {
-		return getContext<Edytor>('edytor');
-	}
-	throw new Error('No Edytor found');
+	if (!hasContext('edytor')) throw new Error('No Edytor found');
+	return getContext<Edytor>('edytor');
 };

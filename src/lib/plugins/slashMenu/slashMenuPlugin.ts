@@ -3,7 +3,7 @@ import type { Snippet } from 'svelte';
 import type { EditorCommand, Plugin } from '$lib/plugins.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import SlashMenu from './SlashMenu.svelte';
-import { SlashMenuController } from './SlashMenuController.svelte.js';
+import { SlashMenuController, type TextInsertionPayload } from './SlashMenuController.svelte.js';
 
 /** One row, for an `item` snippet. */
 export type SlashMenuItem = {
@@ -57,50 +57,34 @@ export const createSlashMenuPlugin =
 			return () => Object.assign(host.style, { left, top });
 		};
 
-		const schedulePosition = () => edytor.overlay.invalidate();
-
 		return {
 			hotkeys: {
 				arrowdown: ({ prevent }) => {
-					if (controller.moveSelection(1)) {
-						prevent();
-					}
+					if (controller.moveSelection(1)) prevent();
 				},
 				arrowup: ({ prevent }) => {
-					if (controller.moveSelection(-1)) {
-						prevent();
-					}
+					if (controller.moveSelection(-1)) prevent();
 				},
 				enter: ({ prevent }) => {
-					if (controller.isOpen && controller.commands.length) {
-						prevent(() => {
-							void controller.runSelected();
-						});
-					}
+					if (controller.isOpen && controller.commands.length)
+						prevent(() => void controller.runSelected());
 				},
 				escape: ({ prevent }) => {
-					if (controller.isOpen) {
-						prevent(() => {
-							controller.close();
-						});
-					}
+					if (controller.isOpen) prevent(() => controller.close());
 				}
 			},
 			onAfterOperation: (change) => {
-				if (change.operation !== 'insertText' || !('text' in change)) {
-					return;
-				}
-
+				if (change.operation !== 'insertText' || !('text' in change)) return;
 				controller.handleTextInsertion(
 					change.text as Text,
 					change.block as Block,
-					change.payload as { value: string; start?: number; end?: number }
+					change.payload as TextInsertionPayload
 				);
-				schedulePosition();
+				edytor.overlay.invalidate();
 			},
 			onSelectionChange: () => {
 				controller.reconcileSelection();
-				schedulePosition();
+				edytor.overlay.invalidate();
 			},
 			onEdytorAttached: () =>
 				edytor.overlay.mount(

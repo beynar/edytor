@@ -59,10 +59,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { TextAnchor } from '$lib/selection/selection.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { insertionMarks } from '$lib/events/beforeInputCommands.js';
-import {
-	replaceSelectedBlocksWithEmptyBlockTargetSync,
-	replaceSelectionWithCollapsedTarget
-} from '$lib/selection/replaceSelection.js';
+import { replaceSelectionForInsertion } from '$lib/selection/replaceSelection.js';
 import { attemptOf, intentSnapshot, kindOf, type Attempt } from './attempt.js';
 import type { SelectionValue } from './selection.js';
 
@@ -289,10 +286,7 @@ export class Composition {
 		const target = this.#tracked(() =>
 			dispatcher.run('insertFromComposition', () =>
 				dispatcher.scope(
-					() =>
-						selection.selectedBlocks.size
-							? replaceSelectedBlocksWithEmptyBlockTargetSync(edytor)
-							: replaceSelectionWithCollapsedTarget(edytor),
+					() => replaceSelectionForInsertion(edytor),
 					() => (this.#refused = true)
 				)
 			)

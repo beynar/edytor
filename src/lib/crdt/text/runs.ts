@@ -95,6 +95,7 @@ import {
 	hasDeleteMark,
 	hasWithdrawMark,
 	ID,
+	isNodeLike,
 	LAST_CHANGED_ATTR,
 	NONCE,
 	TYPE
@@ -123,13 +124,6 @@ export type ContentRun =
 			data?: Record<string, unknown>;
 	  };
 
-const isNodeLike = (v: unknown): v is EngineNode =>
-	v != null && typeof (v as { getAttr?: unknown }).getAttr === 'function';
-
-// Schema attr names come from `../schema.js` (the shared leaf — S10).
-// `DEAD` is imported from ./model.js — the shared unique-symbol sentinel
-// (a literal 'dead' string collided with the valid caller block id).
-
 /**
  * The facet name of a block's registry entry itself (inserted or removed) —
  * every other facet is named by the block attr it entered through.
@@ -157,6 +151,16 @@ const facetOf = (attr: string): Facet => {
 	return 'structure';
 };
 
+/** A record's `data` as the projection publishes it: a total JSON clone, `undefined` when absent. */
+const dataOf = (rec: BlockRec): Record<string, unknown> | undefined =>
+	rec.data == null ? undefined : (cloneJsonSafe(rec.data) as Record<string, unknown>);
+
+/** A block node's stored kind (`'unknown'` when the attr is missing or not a string). */
+const typeAttr = (node: EngineNode): string => {
+	const type = node.getAttr(TYPE);
+	return typeof type === 'string' ? type : 'unknown';
+};
+
 const runEquals = (a: ContentRun, b: ContentRun): boolean => {
 	if (a === b) return true;
 	if (a.kind !== b.kind) return false;
@@ -173,6 +177,26 @@ const runEquals = (a: ContentRun, b: ContentRun): boolean => {
 const EMPTY_RUNS = Object.freeze([]) as readonly ContentRun[];
 /** Shared frozen empty child list for a report's emptied-parent `order` entries. */
 const EMPTY_IDS = Object.freeze([]) as readonly BlockId[];
+
+/**
+ * lib0 `callAll` semantics: every listener runs, THEN the first thrown
+ * error propagates (R5 — a throwing listener never starves the rest).
+ */
+export const callEach = <A extends unknown[]>(cbs: Iterable<(...args: A) => void>, ...args: A) => {
+	let threw = false;
+	let firstErr: unknown;
+	for (const cb of cbs) {
+		try {
+			cb(...args);
+		} catch (e) {
+			if (!threw) {
+				threw = true;
+				firstErr = e;
+			}
+		}
+	}
+	if (threw) throw firstErr;
+};
 
 /**
  * What a cached display read: the homes of the texts it walked, and the blocks
@@ -288,9 +312,10 @@ export type RunView = {
 };
 
 /**
- * The block roles the display reads. `childless`: kinds that display no
- * children (void roles, UW-21b) — a child of such a block displays in its
- * slot. `island`: a block promoted out of an island kind displays as
+ * The role table — one answer per kind, which the display and the
+ * document's guards both ask. `childless`: kinds that display no children
+ * (void roles, UW-21b) — a child of such a block displays in its slot.
+ * `island`: a block promoted out of an island kind displays as
  * `defaultChild` of its display parent's kind (`null`: the root). `line`:
  * an island declared `lines` holds only lines — each direct child displays
  * as its line kind and holds no children (FW-01, XW-03).
@@ -300,10 +325,21 @@ export type DisplayRoles = {
 	island: (type: string) => boolean;
 	defaultChild: (parentType: string | null) => string;
 	/** The line kind of an island kind declared `lines` (its `defaultChild`), if any. */
-	line?: (islandType: string) => string | undefined;
+	line: (islandType: string) => string | undefined;
 	/** Every line kind the roles declare, present in the document or not (XW-11). */
-	lineKinds?: () => Iterable<string>;
+	lineKinds: () => Iterable<string>;
 };
+
+/**
+ * Whether two kinds shape the display alike — both show children or
+ * neither, both seal an island or neither, and both hold the same lines.
+ * A retype between kinds of different shape re-places (and re-kinds) the
+ * block's children.
+ */
+const sameShape = (roles: DisplayRoles, a: string, b: string): boolean =>
+	roles.childless(a) === roles.childless(b) &&
+	roles.island(a) === roles.island(b) &&
+	roles.line(a) === roles.line(b);
 
 /** One index per engine doc, shared by every binding (the doc's lifetime). */
 const indexes = new WeakMap<EngineDoc, RunView>();
@@ -444,24 +480,22 @@ export const bindRuns = (Y: EngineApi) => {
 			}
 		};
 
-		/** The roles the display reads; `null` → none. */
+		/** The role table the display reads; `null` → none. */
 		let roles: DisplayRoles | null = null;
 		/** A stored kind changed since the last report: derived kinds may follow it (XW-08). */
 		let retyped = false;
-		const kindIs = (b: BlockId, role: 'childless' | 'island') => {
+		/** `ask` of `b`'s stored kind; `undefined` without roles or a record. */
+		const role = <T>(b: BlockId, ask: (r: DisplayRoles, type: string) => T): T | undefined => {
 			const type = blocks.get(b)?.type;
-			return roles !== null && type !== undefined && roles[role](type);
+			return roles === null || type === undefined ? undefined : ask(roles, type);
 		};
 		/** The line kind of `b` when it is an island declared `lines`. */
-		const lineKind = (b: BlockId): string | undefined => {
-			const type = blocks.get(b)?.type;
-			return type !== undefined && roles?.island(type) ? roles.line?.(type) : undefined;
-		};
+		const lineKind = (b: BlockId): string | undefined => role(b, (r, type) => r.line(type));
 		const ownShim: DisplayOwnership = {
 			ownerOf,
 			hidden: (b) => ownerOf(b) !== b,
-			childless: (b) => kindIs(b, 'childless'),
-			island: (b) => kindIs(b, 'island'),
+			childless: (b) => role(b, (r, type) => r.childless(type)) === true,
+			island: (b) => role(b, (r, type) => r.island(type)) === true,
 			lined: (b) => lineKind(b) !== undefined,
 			top: (m) => {
 				ensureOwners();
@@ -490,14 +524,16 @@ export const bindRuns = (Y: EngineApi) => {
 		// keystroke keeps the resolved placements and children index verbatim.
 		let placementsMap: Map<BlockId, ResolvedPlacement> | null = null;
 		let kidsMap: Map<BlockId | null, ChildSlot[]> | null = null;
-		/** Blocks displayed out of an island → their display parent and the island (`reset` slots). */
-		let promoted = new Map<BlockId, { under: BlockId | null; island: BlockId }>();
-		/** Each visible block's display parent — the line rules read it (FW-01). */
-		let underOf = new Map<BlockId, BlockId | null>();
+		/** Each visible block's display parent, and the island it displays out of (`reset`). */
+		let slots = new Map<BlockId, { under: BlockId | null; reset?: BlockId }>();
 		/** The line kinds the roles declare, and those of the lines islands the document holds. */
 		let lineKinds = new Set<string>();
-		/** Blocks whose shown kind may follow their parent: in a lined island, or of a line kind. */
-		let recast: BlockId[] = [];
+		/**
+		 * The blocks whose shown kind follows their slot — displayed out of
+		 * an island, then in a lined island or of a line kind — which the
+		 * report re-reads after a retype.
+		 */
+		let following: BlockId[] = [];
 		let orderCache: DocOrder | null = null;
 		let placementsBuiltAt = -1;
 		let placementVersion = 0;
@@ -506,50 +542,49 @@ export const bindRuns = (Y: EngineApi) => {
 			ensureOwners();
 			placementsMap = resolvePlacements(blocks, ownerOf);
 			kidsMap = childrenIndex(placementsMap, ownShim);
-			promoted = new Map();
-			underOf = new Map();
-			lineKinds = new Set(roles?.lineKinds?.());
-			recast = [];
+			slots = new Map();
+			lineKinds = new Set(roles?.lineKinds());
 			for (const b of blocks.keys()) {
 				const line = lineKind(b);
 				if (line !== undefined) lineKinds.add(line);
 			}
-			for (const [parent, kids] of kidsMap) {
-				const lined = parent !== null && lineKind(parent) !== undefined;
-				for (const kid of kids) {
-					underOf.set(kid.id, parent);
-					if (kid.reset !== undefined) promoted.set(kid.id, { under: parent, island: kid.reset });
-					if (lined || lineKinds.has(blocks.get(kid.id)?.type ?? '')) recast.push(kid.id);
+			const out: BlockId[] = [];
+			const lines: BlockId[] = [];
+			for (const [under, kids] of kidsMap) {
+				const lined = under !== null && lineKind(under) !== undefined;
+				for (const { id, reset } of kids) {
+					slots.set(id, { under, reset });
+					if (reset !== undefined) out.push(id);
+					if (lined || lineKinds.has(blocks.get(id)?.type ?? '')) lines.push(id);
 				}
 			}
+			following = [...out, ...lines];
 			orderCache = null;
 			placementsBuiltAt = placementVersion;
 		};
 
 		/**
-		 * The kind `id` displays as. A block directly in an island declared
-		 * `lines` shows its line kind; a block of a line kind
-		 * anywhere else shows its display parent's default child — an undo
-		 * can put a line a peer retyped back in its island, or leave one a
-		 * peer moved away outside it (FW-01 sweep). A block displayed out of
-		 * an island that still has the island's default child kind shows its
-		 * display parent's default child (RW-01); any other, its stored kind
-		 * (a retype shows). Read from the stored kinds at call time: a retype
-		 * rebuilds no placement.
+		 * The kind `id` displays as — THE shown-kind rule, read from its slot
+		 * and the role table. A block directly in an island declared `lines`
+		 * shows its line kind. A block of a line kind anywhere else shows its
+		 * display parent's default child — an undo can put a line a peer
+		 * retyped back in its island, or leave one a peer moved away outside
+		 * it (FW-01 sweep) — and so does a block displayed out of an island
+		 * that still has the island's default child kind (RW-01). Any other
+		 * shows its stored kind (a retype shows). Read from the stored kinds
+		 * at call time: a retype rebuilds no placement.
 		 */
 		const typeOf = (id: BlockId): string => {
 			const stored = blocks.get(id)?.type ?? 'unknown';
-			if (roles === null) return stored;
-			if (lineKinds.size > 0 && underOf.has(id)) {
-				const under = underOf.get(id)!;
-				const line = under === null ? undefined : lineKind(under);
-				if (line !== undefined) return line;
-				if (lineKinds.has(stored)) return roles.defaultChild(under === null ? null : typeOf(under));
-			}
-			const out = promoted.get(id);
-			if (out === undefined) return stored;
-			if (stored !== roles.defaultChild(blocks.get(out.island)?.type ?? null)) return stored;
-			return roles.defaultChild(out.under === null ? null : typeOf(out.under));
+			const slot = slots.get(id);
+			if (roles === null || slot === undefined) return stored;
+			const { under, reset } = slot;
+			const line = under === null || lineKinds.size === 0 ? undefined : lineKind(under);
+			if (line !== undefined) return line;
+			const follows =
+				lineKinds.has(stored) ||
+				(reset !== undefined && stored === roles.defaultChild(blocks.get(reset)?.type ?? null));
+			return follows ? roles.defaultChild(under === null ? null : typeOf(under)) : stored;
 		};
 
 		const rangeStats: RangeReadStats = { items: 0, markers: 0 };
@@ -597,11 +632,10 @@ export const bindRuns = (Y: EngineApi) => {
 			const list = node.getAttr(CLAIMS);
 			const claimsNode = isNodeLike(list) ? list : undefined;
 			const content = node.getAttr(CONTENT);
-			const type = node.getAttr(TYPE);
 			return {
 				id,
 				node,
-				type: typeof type === 'string' ? type : 'unknown',
+				type: typeAttr(node),
 				data: node.getAttr(DATA),
 				n: node.getAttr(NONCE),
 				deleted: hasDeleteMark(node),
@@ -753,26 +787,6 @@ export const bindRuns = (Y: EngineApi) => {
 
 		// ── recompute ────────────────────────────────────────────────────
 
-		/**
-		 * lib0 `callAll` semantics: every listener runs, THEN the first thrown
-		 * error propagates (R5 — a throwing listener never starves the rest).
-		 */
-		const callEach = <A>(cbs: Iterable<(arg: A) => void>, arg: A): void => {
-			let threw = false;
-			let firstErr: unknown;
-			for (const cb of cbs) {
-				try {
-					cb(arg);
-				} catch (e) {
-					if (!threw) {
-						threw = true;
-						firstErr = e;
-					}
-				}
-			}
-			if (threw) throw firstErr;
-		};
-
 		const computeRuns = (b: BlockId): void => {
 			const old = cache.get(b);
 			const { fresh, deps } = computeFresh(b);
@@ -836,33 +850,21 @@ export const bindRuns = (Y: EngineApi) => {
 				}
 				invalidateBlock(id, ctx, claimsBefore);
 			} else {
+				ensureRec(id);
+				const rec = blocks.get(id);
 				if (kinds.has('at')) {
-					ensureRec(id);
-					const rec = blocks.get(id);
 					if (rec) rec.cands = candidatesOf(rec.node);
 					ctx.placement = true;
 				}
-				if (kinds.has('meta')) {
-					ensureRec(id);
-					const rec = blocks.get(id);
-					if (rec) {
-						const was = rec.type;
-						const type = rec.node.getAttr(TYPE);
-						rec.type = typeof type === 'string' ? type : 'unknown';
-						rec.data = rec.node.getAttr(DATA);
-						if (rec.type !== was) retyped = true;
-						// A retype into or out of a childless (island, lines) kind
-						// re-parents (or re-kinds) its children.
-						if (
-							roles !== null &&
-							(roles.childless(was) !== roles.childless(rec.type) ||
-								roles.island(was) !== roles.island(rec.type) ||
-								roles.line?.(was) !== roles.line?.(rec.type))
-						)
-							ctx.placement = true;
-					}
+				if (kinds.has('meta') && rec) {
+					const was = rec.type;
+					rec.type = typeAttr(rec.node);
+					rec.data = rec.node.getAttr(DATA);
+					if (rec.type !== was) retyped = true;
+					// A retype that changes the kind's display shape re-parents
+					// (or re-kinds) its children.
+					if (roles !== null && !sameShape(roles, was, rec.type)) ctx.placement = true;
 				}
-				ensureRec(id);
 			}
 			const parentAfter = parentOf(id);
 			if (typeof parentAfter === 'string') ctx.parents.add(parentAfter);
@@ -1096,10 +1098,7 @@ export const bindRuns = (Y: EngineApi) => {
 			const projected: ProjectedBlock = {
 				id,
 				type: typeOf(id),
-				data:
-					rec.data === undefined || rec.data === null
-						? undefined
-						: (cloneJsonSafe(rec.data) as Record<string, unknown>),
+				data: dataOf(rec),
 				content: itemsOf(id),
 				children: []
 			};
@@ -1160,8 +1159,8 @@ export const bindRuns = (Y: EngineApi) => {
 			}
 		};
 
-		/** The blocks the last report saw displaying a kind other than their stored one. */
-		let shownBefore: BlockId[] = [];
+		/** The blocks whose shown kind followed their slot at the last report. */
+		let followingBefore: BlockId[] = [];
 		/** Build the commit's report and advance the published index to it. */
 		const report = (): IndexReport | null => {
 			const before = published!;
@@ -1214,13 +1213,7 @@ export const bindRuns = (Y: EngineApi) => {
 			const meta = (id: BlockId, n: NonNullable<ReturnType<typeof after.nodes.get>>) => {
 				const rec = blocks.get(id)!;
 				const type = typeOf(id);
-				r.meta.set(id, {
-					type,
-					data:
-						rec.data === undefined || rec.data === null
-							? undefined
-							: (cloneJsonSafe(rec.data) as Record<string, unknown>)
-				});
+				r.meta.set(id, { type, data: dataOf(rec) });
 				n.type = type;
 				n.data = rec.data;
 			};
@@ -1238,20 +1231,18 @@ export const bindRuns = (Y: EngineApi) => {
 				}
 			}
 			// A block that starts or stops displaying a kind other than its
-			// stored one moved, sits under a promoted one, or sits in (or
-			// sat in) an island: its kind is news. Without a placement
-			// change, only a retype changes a shown kind — the retyped
-			// block's (a candidate) and the kinds derived from it: a
-			// promoted or stray line shows its display parent's default
-			// child (XW-08).
+			// stored one moved, or its kind follows (or followed) its slot:
+			// its kind is news. Without a placement change, only a retype
+			// changes a shown kind — the retyped block's (a candidate) and the
+			// kinds derived from it: a promoted or stray line shows its display
+			// parent's default child (XW-08).
 			if (after !== before || retyped) {
-				const shown = [...promoted.keys(), ...recast];
-				for (const id of [...r.moved, ...shown, ...shownBefore]) {
+				for (const id of [...r.moved, ...following, ...followingBefore]) {
 					const n = after.nodes.get(id);
 					if (n !== undefined && !candidates.has(id) && !covered.has(id) && typeOf(id) !== n.type)
 						meta(id, n);
 				}
-				shownBefore = shown;
+				followingBefore = following;
 			}
 			retyped = false;
 			candidates.clear();
@@ -1261,22 +1252,18 @@ export const bindRuns = (Y: EngineApi) => {
 			return empty === 0 ? null : r;
 		};
 
-		const onUpdate = (_u: Uint8Array, origin: unknown, _d: EngineDoc, tr: unknown): void => {
+		/** Report the commit (or role change) to every subscriber, when it changed the visible document. */
+		const publish = (origin: unknown, local: boolean): void => {
 			const r = report();
-			if (r === null) return;
-			const local = (tr as { local?: boolean }).local === true;
-			callEach(
-				[...reportSubs].map((cb) => () => cb(r, origin, local)),
-				undefined
-			);
+			if (r !== null) callEach([...reportSubs], r, origin, local);
 		};
+		const onUpdate = (_u: Uint8Array, origin: unknown, _d: EngineDoc, tr: unknown): void =>
+			publish(origin, (tr as { local?: boolean }).local === true);
 
 		// ── initial scan: index every existing block ────────────────────
 		registry.forEachAttr((v: unknown, id: string) => {
 			if (!isNodeLike(v)) return;
-			blocks.set(id, buildRec(id, v));
-			noteEffects(id, blocks.get(id));
-			noteShell(id);
+			updateBlockRec(id);
 			rescan(id);
 		});
 		rebuildTable(new Set());
@@ -1305,27 +1292,14 @@ export const bindRuns = (Y: EngineApi) => {
 				syncPending(openTx());
 				return blocks.get(b)?.deleted === false ? itemsOf(b) : [];
 			},
+			// Inline atoms always carry `data` (`{}` when absent) — the public
+			// `JSONInlineBlock` shape of `edytor.value`.
 			contentJSON: (b: BlockId) =>
-				runs(b).map((r) => {
-					if (r.kind === 'text') {
-						const out: {
-							text: string;
-							marks?: Record<string, unknown>;
-						} = { text: r.text };
-						if (r.marks !== undefined) {
-							out.marks = cloneJsonSafe(r.marks);
-						}
-						return out;
-					}
-					// Inline atoms always carry `data` (`{}` when absent) — the
-					// public `JSONInlineBlock` shape of `edytor.value`.
-					const inl = r as { id: string; type: string; data?: unknown };
-					return {
-						id: inl.id,
-						type: inl.type,
-						data: inl.data === undefined ? {} : cloneJsonSafe(inl.data)
-					};
-				}),
+				runs(b).map((r) =>
+					r.kind === 'text'
+						? { text: r.text, ...(r.marks !== undefined && { marks: cloneJsonSafe(r.marks) }) }
+						: { id: r.id, type: r.type, data: r.data === undefined ? {} : cloneJsonSafe(r.data) }
+				),
 			view: (tr?: unknown): ModelView => {
 				syncPending((tr as Tx | undefined) ?? openTx());
 				return ctx;
@@ -1350,13 +1324,7 @@ export const bindRuns = (Y: EngineApi) => {
 				version++;
 				// No commit carries a role change: report it now (not inside a
 				// transaction, whose commit reports it), so every view follows.
-				if (reportSubs.size === 0 || openTx()) return;
-				const r = report();
-				if (r !== null)
-					callEach(
-						[...reportSubs].map((cb) => () => cb(r, null, false)),
-						undefined
-					);
+				if (reportSubs.size > 0 && !openTx()) publish(null, false);
 			},
 			track: () => {
 				syncPending(openTx());

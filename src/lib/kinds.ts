@@ -5,6 +5,7 @@ import { jsonBlockToSpec, jsonEquals, type JSONBlock } from './utils/json.js';
 import { dispatchPlan, prepareSet } from './block/block.utils.js';
 import { id } from './utils.js';
 import { getSelectionBlocks } from './selection/replaceSelection.js';
+import { hidden } from './selection/visibility.js';
 
 /**
  * The kind catalogue (§2.4): one row per preset of each registered kind
@@ -170,7 +171,7 @@ export const selectionBlocks = (edytor: Edytor): Block[] => {
  */
 export const convertBlocks = (edytor: Edytor, blocks: Iterable<Block>, row: KindRow) => {
 	const selection = edytor.selection.value;
-	const shown = [...blocks].filter((block) => !edytor.selection.hidden(block));
+	const shown = [...blocks].filter((block) => !hidden(block));
 	const applied = edytor.dispatcher.run('setBlock', () =>
 		shown.map((block) => convertToKind(edytor, block, row, false))
 	);

@@ -201,13 +201,13 @@ export const bindProviders = (Y: EngineApi) => {
 					armedOffline = false;
 					arm();
 				});
-				const offline = () => {
+				const armOffline = () => {
 					if (armedOffline) return;
 					armedOffline = true;
 					arm();
 				};
-				provider.on('connection-close', offline);
-				provider.on('connection-error', offline);
+				provider.on('connection-close', armOffline);
+				provider.on('connection-error', armOffline);
 				provider.on('expired', () => {
 					if (provider.hasSynced) return;
 					held = true;

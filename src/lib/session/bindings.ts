@@ -10,7 +10,7 @@ import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { extendVertically, navigationBindings, vertical } from './navigation.js';
 import { insertLineBreak, runIntent } from '$lib/events/beforeInputCommands.js';
-import { attemptOf, intentSnapshot } from './attempt.js';
+import { attemptOf, caretAt, intentSnapshot } from './attempt.js';
 import {
 	getSelectedBlocksInDocumentOrder,
 	getSelectionBlocks,
@@ -18,6 +18,7 @@ import {
 	outermost,
 	revealing
 } from '$lib/selection/replaceSelection.js';
+import { shown } from '$lib/selection/visibility.js';
 import type { HotKey } from './keymap.js';
 
 const STRUCTURAL_HOTKEY_DOM_REPAIR_WINDOW_MS = 500;
@@ -52,7 +53,7 @@ const selectNextVoidBlockFromCaret = (edytor: Edytor) => {
 		return false;
 	}
 
-	const nextBlock = edytor.selection.shown(startText.parent, 'blockAfter');
+	const nextBlock = shown(startText.parent, 'blockAfter');
 	if (!nextBlock?.definition.void) {
 		return false;
 	}
@@ -65,20 +66,6 @@ const selectNextVoidBlockFromCaret = (edytor: Edytor) => {
 const suppressHotkeyDomDrift = (edytor: Edytor, window: number) => {
 	const attempt = attemptOf(edytor, { inputType: 'hotkey', cancelable: true });
 	edytor.attempts.drift(edytor.attempts.admit(attempt, 'model'), 'discard', window);
-};
-
-/**
- * After a structural hotkey the cells re-parent only what moved (R2, F-P9);
- * the selection is selected at once and the projector displays it after that
- * flush (R10).
- */
-const restoreStructuralHotkeyCaret = (edytor: Edytor, text: Text, offset: number) => {
-	edytor.attempts.caret(text, offset);
-	edytor.selection.setAtTextOffset(text, offset);
-};
-
-const restoreStructuralHotkeyBlockSelection = (edytor: Edytor, block: Block) => {
-	edytor.selection.selectBlocks(block);
 };
 
 const ownsDeleteSelection = (edytor: Edytor) =>
@@ -106,11 +93,7 @@ const moveBlockSelection =
 		const selectedBlocks = edytor.selection.selectedBlocks;
 		if (selectedBlocks.size === 1) {
 			prevent(() => {
-				const target = edytor.selection.shown(
-					selectedBlocks.values().next().value as Block,
-					step,
-					SEALED
-				);
+				const target = shown(selectedBlocks.values().next().value as Block, step, SEALED);
 				if (target) {
 					edytor.selection.selectBlocks(target);
 				}
@@ -138,8 +121,8 @@ const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void =>
 	const sorted = members.toSorted(edytor.compareBlocks);
 	const next =
 		direction === 'up'
-			? edytor.selection.shown(sorted[0]!, 'blockBefore', SEALED)
-			: edytor.selection.shown(sorted.at(-1)!, 'blockAfter', SEALED);
+			? shown(sorted[0]!, 'blockBefore', SEALED)
+			: shown(sorted.at(-1)!, 'blockAfter', SEALED);
 	if (next) edytor.selection.addBlockToSelection(next);
 };
 
@@ -174,17 +157,13 @@ const nest =
 			suppressHotkeyDomDrift(edytor, STRUCTURAL_HOTKEY_DOM_REPAIR_WINDOW_MS);
 			const selectedBlocks = edytor.selection.selectedBlocks;
 			const direction = operation === 'nestBlock' ? 'in' : 'out';
-			if (selectedBlocks.size > 1) {
+			const blocks = getSelectionBlocks(edytor);
+			if (blocks.length > 1) {
 				const members = [...selectedBlocks];
-				const blocks = getSelectedBlocksInDocumentOrder(edytor);
-				if (moveRoots(edytor, blocks, direction).length) edytor.selection.selectBlocks(...members);
-				return;
-			}
-			const spanned = selectedBlocks.size ? [] : getSelectionBlocks(edytor);
-			if (spanned.length > 1) {
 				const { startText, endText, yStart, yEnd, isReversed } = edytor.selection.state;
-				const moved = moveRoots(edytor, spanned, direction);
-				if (moved.length && startText && endText)
+				if (!moveRoots(edytor, blocks, direction).length) return;
+				if (members.length) edytor.selection.selectBlocks(...members);
+				else if (startText && endText)
 					edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 				return;
 			}
@@ -197,9 +176,8 @@ const nest =
 						[target[operation]()].filter((moved): moved is Block => moved != null)
 					)
 				: [];
-			if (block && selectedBlock) restoreStructuralHotkeyBlockSelection(edytor, block);
-			else if (block && index !== undefined)
-				restoreStructuralHotkeyCaret(edytor, block.content[index] as Text, yStart);
+			if (block && selectedBlock) edytor.selection.selectBlocks(block);
+			else if (block && index !== undefined) caretAt(edytor, block.content[index] as Text, yStart);
 		});
 
 /**

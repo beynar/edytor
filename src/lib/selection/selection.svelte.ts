@@ -51,6 +51,7 @@ import {
 import { seam } from '$lib/crdt/anchors.js';
 import { getTextPath } from '$lib/events/events.utils.js';
 import { landed } from '$lib/session/navigation.js';
+import * as visibility from './visibility.js';
 
 /**
  * CRDT-stable anchor for a text position — `{b}` is the home block id of
@@ -132,8 +133,6 @@ export const isBackward = (selection: {
 };
 
 const SYNTHETIC_TEXT_OVERLAY_SELECTOR = '[data-edytor-text-suggestion]';
-/** Content hidden by view state: a collapsed toggle's body, a `hidden` subtree. */
-const HIDDEN = '[hidden], details:not([open]) > :not(summary)';
 
 const getElementFromNode = (node: Node | null) => {
 	if (!node || typeof Element === 'undefined') {
@@ -1060,7 +1059,7 @@ export class EdytorSelection {
 			yEnd === 0
 		) {
 			// The shown block before: a closed toggle's header, not its hidden body.
-			const previousEndText = this.shown(endText.parent, 'blockBefore')?.lastText ?? null;
+			const previousEndText = visibility.shown(endText.parent, 'blockBefore')?.lastText ?? null;
 			if (previousEndText?.node?.isConnected) {
 				endText = previousEndText;
 				yEnd = previousEndText.length;
@@ -1198,40 +1197,12 @@ export class EdytorSelection {
 		const node = this.edytor.idToBlock
 			.get(id)
 			?.content.find((part): part is Text => part instanceof Text && part.node != null)?.node;
-		return !!node && !node.closest(HIDDEN);
+		return !!node && !node.closest(visibility.HIDDEN);
 	};
 
-	/**
-	 * Hidden by view state (a Surface fact): the block sits in a collapsed
-	 * toggle's body or a `hidden` subtree. With `removed`, whether it stays
-	 * hidden once those blocks are deleted: a deleted closed toggle's
-	 * children take its place, shown.
-	 */
-	hidden = (block: Block, removed?: ReadonlySet<Block>): boolean => {
-		const hider = block.node?.closest(HIDDEN);
-		if (!hider || !removed?.size) return !!hider;
-		let owner: Block | undefined = block;
-		while (owner && !owner.node?.contains(hider)) owner = owner.parent;
-		return !owner || !removed.has(owner) || this.hidden(owner, removed);
-	};
-
-	/**
-	 * The nearest block before or after `block` in document order that is not
-	 * hidden: a collapsed toggle is one unit (Notion) — before the block after
-	 * it comes its header; after its header, the block after it. `removed`
-	 * blocks are skipped, and read as gone (see {@link hidden}).
-	 */
-	shown = (
-		block: Block,
-		step: 'blockBefore' | 'blockAfter',
-		{ sealed, removed }: { sealed?: boolean; removed?: ReadonlySet<Block> } = {}
-	) => {
-		const policy = sealed ? { sealed } : undefined;
-		let next = this.edytor[step](block, policy);
-		while (next && (removed?.has(next) || this.hidden(next, removed)))
-			next = this.edytor[step](next, policy);
-		return next;
-	};
+	/** The view's visibility rule (`selection/visibility.ts`), for extensions: hidden by view state, and the shown neighbour. */
+	hidden = visibility.hidden;
+	shown = visibility.shown;
 
 	/** The text's computed direction (a Surface fact): arrow and word keys are visual. */
 	rtl = (text: Text) => !!text.node?.isConnected && getComputedStyle(text.node).direction === 'rtl';

@@ -3,6 +3,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { RangeEndpoints } from '$lib/edytor.utils.js';
 import { id } from '$lib/utils.js';
+import { hidden, shown } from './visibility.js';
 
 export type SelectionInsertionTarget = {
 	text: Text;
@@ -10,12 +11,6 @@ export type SelectionInsertionTarget = {
 };
 
 export type SelectionReplacementState = RangeEndpoints & { isCollapsed: boolean };
-
-export type RemovedSelectedBlocks = {
-	parent: Block;
-	index: number;
-	selectedBlocks: Block[];
-};
 
 export const getSelectionReplacementState = (edytor: Edytor): SelectionReplacementState => {
 	const { startText, endText, yStart, yEnd, isCollapsed } = edytor.selection.state;
@@ -33,7 +28,7 @@ export const getSelectedBlocksInDocumentOrder = (edytor: Edytor) =>
  * commands and Tab read it.
  */
 export const getSelectionBlocks = (edytor: Edytor): Block[] => {
-	const { selectedBlocks, state, hidden } = edytor.selection;
+	const { selectedBlocks, state } = edytor.selection;
 	if (selectedBlocks.size) return getSelectedBlocksInDocumentOrder(edytor);
 	if (state.isCollapsed) return state.startBlock ? [state.startBlock] : [];
 	return state.blocks.filter((block) => !hidden(block));
@@ -69,23 +64,6 @@ export const revealing = (blocks: Block[], move: () => Block[]) => {
 	return moved;
 };
 
-/**
- * The nearest block before/after `block` in document order that is not in
- * `excluded` and is displayed once they are deleted (a collapsed toggle's
- * body is skipped, unless the toggle is among them: its children take its
- * place).
- */
-export const getClosestUnselectedBlock = (
-	block: Block | undefined,
-	excluded: Set<Block>,
-	direction: 'previous' | 'next'
-): Block | null =>
-	block
-		? block.edytor.selection.shown(block, direction === 'previous' ? 'blockBefore' : 'blockAfter', {
-				removed: excluded
-			})
-		: null;
-
 export const replaceSelectionWithCollapsedTarget = (
 	edytor: Edytor,
 	state: SelectionReplacementState = getSelectionReplacementState(edytor)
@@ -99,17 +77,6 @@ export const replaceSelectionWithCollapsedTarget = (
 	return text ? { text, offset: offset! } : null;
 };
 
-export const removeSelectedBlocksForReplacement = (
-	edytor: Edytor
-): RemovedSelectedBlocks | null => {
-	const selectedBlocks = getSelectedBlocksInDocumentOrder(edytor);
-	const parent = selectedBlocks[0]?.parent;
-	const index = selectedBlocks[0]?.index ?? 0;
-	if (!parent) return null;
-	if (!edytor.deleteBlocks({ blocks: selectedBlocks })) return null;
-	return { parent, index, selectedBlocks };
-};
-
 /**
  * Delete (or cut) the selected blocks. The command authors its result
  * selection (FP-7, R9): a caret at the end of the first editable text of the
@@ -118,16 +85,25 @@ export const removeSelectedBlocksForReplacement = (
  * Answers the caret's text.
  */
 export const deleteSelectedBlocks = (edytor: Edytor): Text | null => {
-	const selectedBlocks = getSelectedBlocksInDocumentOrder(edytor);
-	const set = new Set(selectedBlocks);
+	const blocks = getSelectedBlocksInDocumentOrder(edytor);
+	if (!blocks[0]?.parent) return null;
+	const removed = new Set(blocks);
 	const text = (
-		getClosestUnselectedBlock(selectedBlocks[0], set, 'previous') ||
-		getClosestUnselectedBlock(selectedBlocks.at(-1), set, 'next')
+		shown(blocks[0], 'blockBefore', { removed }) || shown(blocks.at(-1)!, 'blockAfter', { removed })
 	)?.firstEditableText;
-	const removed = edytor.dispatcher.caret(text, text?.length ?? 0, () =>
-		removeSelectedBlocksForReplacement(edytor)
+	const deleted = edytor.dispatcher.caret(text, text?.length ?? 0, () =>
+		edytor.deleteBlocks({ blocks })
 	);
-	return removed ? (text ?? null) : null;
+	return deleted ? (text ?? null) : null;
+};
+
+/** Delete the selected range (or `selection`) as Backspace does (`del.range.*`), then its caret. */
+export const deleteSelectedRange = (
+	edytor: Edytor,
+	payload: { selection?: RangeEndpoints } = {}
+) => {
+	const [text, offset] = edytor.deleteContentWithinSelection(payload) ?? [];
+	if (text) edytor.selection.setAtTextOffset(text, offset!);
 };
 
 /**
@@ -135,18 +111,21 @@ export const deleteSelectedBlocks = (edytor: Edytor): Text | null => {
  * empty block takes the first one's slot, in ONE plan — deleting them first
  * would let the emptied parent normalize in a survivor beside the new block.
  */
-export const replaceSelectedBlocksWithEmptyBlockTargetSync = (
-	edytor: Edytor,
-	blockType?: string
-): SelectionInsertionTarget | null => {
+const replaceSelectedBlocksWithEmptyBlock = (edytor: Edytor): SelectionInsertionTarget | null => {
 	const selected = getSelectedBlocksInDocumentOrder(edytor);
 	const parent = selected[0]?.parent;
 	if (!parent) return null;
 	const [text, offset] = edytor.insertFlow({
-		flow: { lines: [{ id: id('b'), type: blockType ?? edytor.defaultChild(parent) }] },
+		flow: { lines: [{ id: id('b'), type: edytor.defaultChild(parent) }] },
 		target: { replace: selected.map((block) => block.id) }
 	});
 	if (!text) return null;
 	edytor.selection.selectBlocks();
 	return { text, offset };
 };
+
+/** Where typed text lands: over selected blocks, one empty block in their place; else the range replaced. */
+export const replaceSelectionForInsertion = (edytor: Edytor, state?: SelectionReplacementState) =>
+	edytor.selection.selectedBlocks.size
+		? replaceSelectedBlocksWithEmptyBlock(edytor)
+		: replaceSelectionWithCollapsedTarget(edytor, state);

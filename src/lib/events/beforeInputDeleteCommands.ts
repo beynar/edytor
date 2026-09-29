@@ -3,7 +3,9 @@ import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
 import { prepareDeleteContent } from '$lib/edytor.utils.js';
-import type { Attempt } from '$lib/session/attempt.js';
+import { deleteSelectedRange } from '$lib/selection/replaceSelection.js';
+import { shown } from '$lib/selection/visibility.js';
+import { caretAt, type Attempt } from '$lib/session/attempt.js';
 import { getNextWordEndOffset, getPreviousWordStartOffset } from './wordBoundary.js';
 
 /** A forward delete at a live composition's region keeps the preview (the IME owns it). */
@@ -28,12 +30,6 @@ const mergeIntoHeader = (edytor: Edytor, from: Block, into: Block, backward: boo
 	else dispatchPlan(into, 'mergeBlockForward', {}, plan, [from.parent]);
 };
 
-/** A non-collapsed selection: the document's range deletion, then its caret (`del.range.*`). */
-const deleteSelectedRange = (edytor: Edytor, snapshot: Attempt) => {
-	const [text, offset] = edytor.deleteContentWithinSelection({ selection: snapshot }) ?? [];
-	if (text) edytor.selection.setAtTextOffset(text, offset!);
-};
-
 const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
 	const { startText, yStart } = snapshot;
 	if (!startText) {
@@ -52,7 +48,7 @@ const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
 			return;
 		}
 
-		const nextBlock = edytor.selection.shown(currentBlock, 'blockAfter');
+		const nextBlock = shown(currentBlock, 'blockAfter');
 		if (nextBlock?.definition.void) {
 			edytor.selection.selectBlocks(nextBlock);
 			return;
@@ -60,8 +56,7 @@ const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
 
 		if (nextBlock === currentBlock.closestNextBlock) currentBlock.mergeBlockForward();
 		else if (nextBlock) mergeIntoHeader(edytor, nextBlock, currentBlock, false);
-		edytor.attempts.caret(startText, yStart);
-		edytor.selection.setAtTextOffset(startText, yStart);
+		caretAt(edytor, startText, yStart);
 		return;
 	}
 
@@ -91,11 +86,7 @@ const resetKindAtStart = (edytor: Edytor, snapshot: Attempt) => {
 		return false;
 	}
 	block.setBlock({ value: { type, data: {} } });
-	const text = block.firstText;
-	if (text) {
-		edytor.attempts.caret(text, 0);
-		edytor.selection.setAtTextOffset(text, 0);
-	}
+	caretAt(edytor, block.firstText, 0);
 	return true;
 };
 
@@ -136,7 +127,7 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 		}
 
 		const block = startText.parent;
-		const previousBlock = edytor.selection.shown(block, 'blockBefore');
+		const previousBlock = shown(block, 'blockBefore');
 		if (previousBlock?.definition.void) {
 			edytor.selection.selectBlocks(previousBlock);
 			return;
@@ -146,10 +137,7 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 		const offset = previousText?.length;
 		if (previousBlock === block.closestPreviousBlock) block.mergeBlockBackward();
 		else if (previousBlock) mergeIntoHeader(edytor, block, previousBlock, true);
-		if (previousText && typeof offset === 'number') {
-			edytor.attempts.caret(previousText, offset);
-			edytor.selection.setAtTextOffset(previousText, offset);
-		}
+		if (typeof offset === 'number') caretAt(edytor, previousText, offset);
 		return;
 	}
 
@@ -240,7 +228,8 @@ export const runBeforeInputDeleteCommand = (edytor: Edytor, snapshot: Attempt) =
 	const forward = /Forward$|^deleteContent$|^deleteEntireSoftLine$/.test(inputType);
 	// A selection: the document's range deletion (a forward one needs its text).
 	if (!snapshot.isCollapsed) {
-		return forward && !snapshot.startText ? undefined : deleteSelectedRange(edytor, snapshot);
+		if (!forward || snapshot.startText) deleteSelectedRange(edytor, { selection: snapshot });
+		return;
 	}
 	if (inputType === 'deleteContentBackward') return deleteContentBackward(edytor, snapshot);
 	if (inputType === 'deleteContentForward' || inputType === 'deleteContent')

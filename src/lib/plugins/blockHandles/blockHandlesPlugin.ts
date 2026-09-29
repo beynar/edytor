@@ -33,11 +33,6 @@ const handlePlugins = new WeakSet<Plugin>();
 /** Recognize both the default and configured handle plugins during component composition. */
 export const isBlockHandlesPlugin = (plugin: Plugin) => handlePlugins.has(plugin);
 
-const registerBlockHandlesPlugin = (plugin: Plugin): Plugin => {
-	handlePlugins.add(plugin);
-	return plugin;
-};
-
 /** A handle for a block within about one screen of the viewport. */
 const NEAR_MARGIN = '100% 0px';
 
@@ -47,8 +42,8 @@ const NEAR_MARGIN = '100% 0px';
  * under the pointer, selected, focused or dragged; drop targets exist only
  * during our own drag. Hover is one delegated listener on the editor.
  */
-export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plugin =>
-	registerBlockHandlesPlugin((edytor) => {
+export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plugin => {
+	const plugin: Plugin = (edytor) => {
 		const controller = new BlockHandleController(edytor, {
 			draggable: options.draggable !== false,
 			onActivate: options.onActivate
@@ -117,10 +112,8 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				if (!block.movable) return;
 				ids.set(node, block.id);
 				blocks.set(block.id, block);
-				if (!observer) near.add(block.id);
-				else {
-					observer.observe(node);
-				}
+				if (observer) observer.observe(node);
+				else near.add(block.id);
 				const offDropTarget = controller.addDropTarget(node, block);
 				return () => {
 					observer?.unobserve(node);
@@ -133,7 +126,10 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				};
 			}
 		};
-	});
+	};
+	handlePlugins.add(plugin);
+	return plugin;
+};
 
 /** Default handles for consumers that add the plugin directly. */
 export const blockHandlesPlugin = createBlockHandlesPlugin();

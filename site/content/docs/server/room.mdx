@@ -16,10 +16,12 @@ Every frame a socket sends is checked in this order. A refused frame is never ap
 
 1. **Generation.** The frame's first word must be this build's generation (see [the protocol](/docs/server/protocol#frames)). A client of another edytor generation is refused before anything is decoded.
 2. **Access.** An edit from a read-only socket is dropped with a `permission-denied` reply. The socket stays open.
-3. **Identity.** An update that adds content under a client id owned by another user, or under an unregistered id that already has content, is refused. See [replicas](/docs/server/authorization#replicas).
+3. **Identity.** Content an update adds under a client id owned by another user, or under an unregistered id that already has content, is stripped from the frame, and the rest of the frame is applied: the sender stays connected. See [replicas](/docs/server/authorization#replicas).
 4. **Schema.** An update that writes a foreign schema stamp is refused. The same check covers updates waiting for a missing dependency: when an update would release a waiting one that carries a forged stamp, the waiting updates are discarded, the new update is applied, and its sender stays connected. Honest updates discarded this way come back at their writer's next sync.
 
-A refused socket is closed with code `1008` and reason `refused: <reason>` (`generation`, `replica`, `schema`, `malformed`, `identity`, `container`). A malformed frame, a text frame other than the keepalive `ping`, or an unknown message type counts as `malformed`. A refusal is final: the provider stops dialing instead of reconnecting. A dial `authorize` denies never reaches the room: `routeDocumentSocket` closes it with `4403` (see [authorization](/docs/server/authorization#authorize)), which is final too.
+A refused socket is closed with code `1008` and reason `refused: <reason>` (`generation`, `replica`, `schema`, `malformed`, `identity`, `container`). Only bytes the room cannot decode, a text frame other than the keepalive `ping`, or an unknown message type count as `malformed`. A refusal is final: the provider stops dialing instead of reconnecting. A dial `authorize` denies never reaches the room: `routeDocumentSocket` closes it with `4403` (see [authorization](/docs/server/authorization#authorize)), which is final too. A dial with a replica another user owns is accepted, then closed with `4409` (`replica bound to another user`), also final.
+
+A fault of the room itself is never a refusal. A storage error (writing a client-id registration, say) closes the socket with `1011` and reason `storage failure`; an error of the CRDT engine or of a send closes it with `1011` and reason `internal error`, after the live document is rebuilt from the stored rows. The provider redials, and the handshake resends what the room does not hold.
 
 ## Identity and presence
 
@@ -36,7 +38,7 @@ The room stores the document in its own SQLite tables:
 
 - Every integrated update is appended as one record, split into rows under the platform's 2 MB row limit, in one transaction. Only then is it broadcast to the other sockets.
 - After `EDYTOR_COMPACT_AFTER` update records (500 by default), the room replaces all rows with one merged snapshot, atomically, once the message that made it due is acknowledged. A compaction that fails is logged as a `storage` refusal and retried later; the edit is already stored and nobody is disconnected.
-- Memory never runs ahead of storage. If an append fails, nothing is relayed or acknowledged, the live document is rebuilt from the stored rows as a restart would, and the sender's socket is closed with `1011`. Its provider reconnects and the handshake resends the edit.
+- Memory never runs ahead of storage. If an append fails, nothing is relayed or acknowledged, the live document is rebuilt from the stored rows as a restart would, and the sender's socket is closed with `1011`. Its provider reconnects and the handshake resends the edit. If reading the rows fails during that rebuild, the room has no document until the next dial reads them again: sockets are closed with `1011` (`room unavailable`), and their providers redial.
 - A woken room rebuilds the document from its rows before it accepts any message. A room whose storage cannot be restored (another edytor generation, a torn record) refuses every socket with `1008` and reason `refused: container`, and the object keeps answering. See [generation cutover](#generation-cutover).
 - The client-id registrations used for [identity](/docs/server/authorization#replicas) are stored next to the document, and handed to [`onSave`](/docs/server/extending#save) with it. Compaction drops the registrations of ids that hold no content and belong to no open socket (a page that loaded and never wrote); such an id registers again at its next dial or write.
 
@@ -89,7 +91,7 @@ Compaction merges every stored update into one snapshot. It does not discard his
 
 ## Diagnostics
 
-`refusals` holds the newest 100 refusals (`MAX_REFUSALS`) of the running instance, each with its `reason` and `detail`; `refusalCounts` counts every refusal by reason. Both live in memory and restart empty; read them inside the object, or return them from an RPC method of your own. A `storage` entry is a failed append or compaction; an `orphan` entry is not a refusal but an id claimed after a [restore without a registry](/docs/server/extending#load).
+`refusals` holds the newest 100 refusals (`MAX_REFUSALS`) of the running instance, each with its `reason` and `detail`; `refusalCounts` counts every refusal by reason. Both live in memory and restart empty; read them inside the object, or return them from an RPC method of your own. A `storage` entry is a failed append, compaction or registration, and an `internal` entry an error of the engine or a send. Two entries are not refusals: `orphan` is an unowned id claimed by its dial (after a [restore without a registry](/docs/server/extending#load), or a relay), and `relayed` is content under an id the room held nothing of, delivered by another replica and kept unowned (see [replicas](/docs/server/authorization#replicas)).
 
 ## Generation cutover
 

@@ -195,10 +195,18 @@ export type ResolvedPlacement = {
 /**
  * Ownership as the display reads it. `childless(b)`: the live block `b` is
  * of a kind that displays no children (a void role, UW-21b) — its children
- * take its slot like a deleted parent's ({@link displaySlotOf}). Absent: no
- * roles (pure engine behavior).
+ * take its slot like a deleted parent's ({@link displaySlotOf}). `island(b)`:
+ * the block `b` (live or deleted) is of an island kind — a block promoted
+ * out of it keeps no container-only kind (`reset`). Absent: no roles (pure
+ * engine behavior).
  */
-export type DisplayOwnership = Ownership & { childless?: (b: BlockId) => boolean };
+export type DisplayOwnership = Ownership & {
+	childless?: (b: BlockId) => boolean;
+	island?: (b: BlockId) => boolean;
+};
+
+/** One entry of a children list: `reset` — promoted out of an island ({@link displaySlotOf}). */
+export type ChildSlot = { id: BlockId; rank: string; reset?: true };
 
 /**
  * The document index as one consistent replicated-state view — the shared
@@ -211,7 +219,7 @@ export type ModelView = {
 	blocks: Map<BlockId, BlockRec>;
 	own: DisplayOwnership;
 	placements: Map<BlockId, ResolvedPlacement>;
-	kids: Map<BlockId | null, { id: BlockId; rank: string }[]>;
+	kids: Map<BlockId | null, ChildSlot[]>;
 	/** Document order over `kids` — lazy, like `kids`. */
 	order: DocOrder;
 	/**
@@ -429,24 +437,31 @@ export const promotedRank = (slot: string, rank: string): string => slot + PROMO
  * void kind, `own.childless`) sheds its children the same way (UW-21b): a
  * block a peer nests or splits under a block another peer retypes to a void
  * kind takes the void's slot on every replica, and returns under it if the
- * retype is undone. `DEAD` only when the placement chain never reaches a
- * live parent (an unknown block).
+ * retype is undone. A block promoted out of an island (`reset`) displays
+ * as its display parent's default child, as a delete of the island retypes
+ * the children it saw: a code line a peer adds under a code block another
+ * peer deletes shows as a paragraph, not as a code line outside its code
+ * block. `DEAD` only when the placement chain never reaches a live parent
+ * (an unknown block).
  */
 export const displaySlotOf = (
 	own: DisplayOwnership,
 	placements: ReadonlyMap<BlockId, ResolvedPlacement>,
 	pl: ResolvedPlacement
-): { parent: Owner | null; rank: string } => {
+): { parent: Owner | null; rank: string; reset: boolean } => {
 	let { parent, rank } = pl;
+	let reset = false;
 	for (let hops = 0; parent !== null; hops++) {
 		const owner = own.ownerOf(parent);
-		if (owner !== DEAD && own.childless?.(owner) !== true) return { parent: owner, rank };
-		const up = placements.get(owner === DEAD ? parent : owner);
-		if (up === undefined || hops > placements.size) return { parent: DEAD, rank };
+		if (owner !== DEAD && own.childless?.(owner) !== true) return { parent: owner, rank, reset };
+		const out = owner === DEAD ? parent : owner;
+		const up = placements.get(out);
+		if (up === undefined || hops > placements.size) return { parent: DEAD, rank, reset };
+		reset ||= own.island?.(out) === true;
 		rank = promotedRank(up.rank, rank);
 		parent = up.parent;
 	}
-	return { parent: null, rank };
+	return { parent: null, rank, reset };
 };
 
 /** The parent under which a placement DISPLAYS ({@link displaySlotOf}). */
@@ -465,15 +480,16 @@ export const displayParentOf = (
 export const childrenIndex = (
 	placements: Map<BlockId, ResolvedPlacement>,
 	own: DisplayOwnership
-): Map<BlockId | null, { id: BlockId; rank: string }[]> => {
-	const index = new Map<BlockId | null, { id: BlockId; rank: string }[]>();
+): Map<BlockId | null, ChildSlot[]> => {
+	const index = new Map<BlockId | null, ChildSlot[]>();
 	for (const [id, pl] of placements) {
 		if (own.hidden(id)) continue;
-		const { parent, rank } = displaySlotOf(own, placements, pl);
+		const { parent, rank, reset } = displaySlotOf(own, placements, pl);
 		if (parent === DEAD) continue;
+		const slot: ChildSlot = reset ? { id, rank, reset } : { id, rank };
 		const bucket = index.get(parent);
-		if (bucket) bucket.push({ id, rank });
-		else index.set(parent, [{ id, rank }]);
+		if (bucket) bucket.push(slot);
+		else index.set(parent, [slot]);
 	}
 	for (const bucket of index.values()) {
 		bucket.sort((a, b) =>

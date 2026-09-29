@@ -9,8 +9,10 @@
  * A denied dial is accepted, then closed with `4403` and a reason: a
  * browser sees an HTTP 403 at the upgrade only as `1006`, which the
  * provider cannot tell from a network failure; `4403` stops it dialing.
+ * An expired credential is closed `4401` (`expired`): the provider redials
+ * with its `params` read again, so a refreshed token gets in.
  */
-import { IDENTITY_HEADERS, parseReplica } from './DocumentRoom.js';
+import { IDENTITY_HEADERS, closedSocket, parseReplica } from './DocumentRoom.js';
 
 /** A namespace whose objects host a document (`DocumentRoom`, or any object with `attachDocument`). */
 export type DocumentNamespace = {
@@ -29,11 +31,25 @@ export type DocumentIdentity = {
 	readOnly?: boolean;
 };
 
-/** The host's decision: an identity, or `null` to refuse (close `4403`). */
+/**
+ * A credential that was valid but has expired: the dial is closed `4401`,
+ * which the provider retries with its `params` read again.
+ */
+export type ExpiredCredential = { expired: true };
+
+/**
+ * The host's decision: an identity, `null` to refuse (close `4403`,
+ * terminal), or `{ expired: true }` for an expired credential (close
+ * `4401`, retried).
+ */
 export type AuthorizeDocumentSocket = (
 	request: Request,
 	documentId: string
-) => DocumentIdentity | null | Promise<DocumentIdentity | null>;
+) =>
+	| DocumentIdentity
+	| ExpiredCredential
+	| null
+	| Promise<DocumentIdentity | ExpiredCredential | null>;
 
 /** The replica a client asked for in `?replica=<doc.clientID>` (or `param`), or `null`. */
 export const requestedReplica = (request: Request, param = 'replica'): number | null =>
@@ -41,14 +57,8 @@ export const requestedReplica = (request: Request, param = 'replica'): number | 
 
 /** The close a denied dial gets: terminal for the provider (`refused`). */
 const DENIED_CLOSE = { code: 4403, reason: 'document access denied' } as const;
-
-/** Accept the upgrade and close it at once: the client reads the code, not a `1006`. */
-const deny = (): Response => {
-	const [client, server] = Object.values(new WebSocketPair());
-	server.accept();
-	server.close(DENIED_CLOSE.code, DENIED_CLOSE.reason);
-	return new Response(null, { status: 101, webSocket: client });
-};
+/** The close an expired credential gets: the provider redials with fresh `params`. */
+const EXPIRED_CLOSE = { code: 4401, reason: 'expired' } as const;
 
 export async function routeDocumentSocket(
 	request: Request,
@@ -62,7 +72,11 @@ export async function routeDocumentSocket(
 	if (!documentId || documentId.length > 256) {
 		return new Response('Invalid document identity', { status: 400 });
 	}
-	const identity = await authorize(request, documentId);
+	const decision = await authorize(request, documentId);
+	if (decision && 'expired' in decision && decision.expired === true) {
+		return closedSocket(EXPIRED_CLOSE.code, EXPIRED_CLOSE.reason);
+	}
+	const identity = decision && 'userId' in decision ? decision : null;
 	const replica = identity?.replica ?? null;
 	if (
 		!identity ||
@@ -71,7 +85,7 @@ export async function routeDocumentSocket(
 		identity.userId.length > 256 ||
 		(replica !== null && parseReplica(replica) === null)
 	) {
-		return deny();
+		return closedSocket(DENIED_CLOSE.code, DENIED_CLOSE.reason);
 	}
 	const headers = new Headers({
 		Upgrade: 'websocket',

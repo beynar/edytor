@@ -189,6 +189,51 @@ describe('lists on Enter', () => {
 		expect(canonicalTree(edytor)[1]).toMatchObject({ type: 'todo-item', data: { checked: false } });
 	});
 
+	it('Enter at the end of a checked to-do with children lifts it: the new to-do is unchecked', async () => {
+		const { edytor, editor } = await render([], {
+			children: [
+				{
+					type: 'todo-item',
+					data: { checked: true },
+					content: [{ text: 'done' }],
+					children: [{ type: 'paragraph', content: [{ text: 'body' }] }]
+				}
+			]
+		});
+		await enterAt(edytor, editor, edytor.root!.children[0]!, 'end');
+		expect(canonicalTree(edytor)).toEqual([
+			{ type: 'todo-item', data: { checked: true }, content: [{ text: 'done' }] },
+			{
+				type: 'todo-item',
+				data: { checked: false },
+				children: [{ type: 'paragraph', content: [{ text: 'body' }] }]
+			}
+		]);
+		expect(edytor.selection.state.startBlock?.index).toBe(1);
+	});
+
+	it('Enter at the end of a heading with children lifts it: the new heading keeps the level', async () => {
+		const { edytor, editor } = await render([], {
+			children: [
+				{
+					type: 'heading',
+					data: { level: 'h2' },
+					content: [{ text: 'Title' }],
+					children: [{ type: 'paragraph', content: [{ text: 'body' }] }]
+				}
+			]
+		});
+		await enterAt(edytor, editor, edytor.root!.children[0]!, 'end');
+		expect(canonicalTree(edytor)).toEqual([
+			{ type: 'heading', data: { level: 'h2' }, content: [{ text: 'Title' }] },
+			{
+				type: 'heading',
+				data: { level: 'h2' },
+				children: [{ type: 'paragraph', content: [{ text: 'body' }] }]
+			}
+		]);
+	});
+
 	it('Enter in the middle of a to-do splits it into two unchecked to-dos', async () => {
 		const { edytor, editor } = await render([], {
 			children: [{ type: 'todo-item', data: { checked: true }, content: [{ text: 'onetwo' }] }]
@@ -404,6 +449,63 @@ describe('containers on Enter', () => {
 		expect([caret.type, caret.parent?.isRoot, caret.index]).toEqual(['toggle', true, 1]);
 	});
 
+	/** Enter between "ti" and "tle" of the first block's header. */
+	const enterMid = async (
+		edytor: Awaited<ReturnType<typeof render>>['edytor'],
+		editor: HTMLElement
+	) => {
+		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 2);
+		await flushDomUpdates();
+		await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
+	};
+	const undo = () => dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
+
+	it.each([['callout', { icon: '💡' }], ['quote'], ['toggle']] as [string, Data?][])(
+		'Enter in the middle of a %s header (open) makes the tail its first child; the body stays',
+		async (type, data) => {
+			const { edytor, editor } = await render([], withBody(type, data));
+			const node = edytor.root!.children[0]!.node as HTMLDetailsElement;
+			if (type === 'toggle') node.open = true;
+			await enterMid(edytor, editor);
+			expect(shape(edytor)).toEqual([
+				[
+					type,
+					'ti',
+					[
+						['paragraph', 'tle'],
+						['paragraph', 'body']
+					]
+				]
+			]);
+			const caret = edytor.selection.state;
+			expect([caret.startBlock?.parent?.type, caret.startBlock?.index, caret.yStart]).toEqual([
+				type,
+				0,
+				0
+			]);
+			await undo();
+			expect(shape(edytor)).toEqual([[type, 'title', [['paragraph', 'body']]]]);
+		}
+	);
+
+	it('Enter in the middle of a closed toggle header puts the tail in a toggle after it; the body stays', async () => {
+		const { edytor, editor } = await render([], withBody('toggle'));
+		expect((edytor.root!.children[0]!.node as HTMLDetailsElement).open).toBe(false);
+		await enterMid(edytor, editor);
+		expect(shape(edytor)).toEqual([
+			['toggle', 'ti', [['paragraph', 'body']]],
+			['toggle', 'tle', []]
+		]);
+		const caret = edytor.selection.state;
+		expect([caret.startBlock?.parent?.isRoot, caret.startBlock?.index, caret.yStart]).toEqual([
+			true,
+			1,
+			0
+		]);
+		await undo();
+		expect(shape(edytor)).toEqual([['toggle', 'title', [['paragraph', 'body']]]]);
+	});
+
 	it('Enter at the end of a callout without children starts a paragraph after it', async () => {
 		const { edytor, editor } = await render([], {
 			children: [{ type: 'callout', data: { icon: '💡' }, content: [{ text: 'note' }] }]
@@ -604,6 +706,63 @@ describe('code auto-pairs', () => {
 	])('typing %j leaves %j with the caret at %i', async (typed, text, offset) => {
 		expect(await typeInCode(typed)).toEqual([text, offset]);
 	});
+});
+
+describe('the slash menu in prose', () => {
+	/** The Enter key: the menu's command when it holds one, else the paragraph intent. */
+	const pressEnter = () => dispatchDomKeyDown(document, { key: 'Enter' });
+	const menu = () => document.querySelector('[data-testid="slash-menu"]');
+	const labels = () =>
+		[...document.querySelectorAll('[data-testid="slash-menu-item"]')].map((i) => i.textContent);
+
+	it.each(['see 1/2', 'a/b', 'and/or', 'w/o'])(
+		'%j + Enter keeps the text and starts a paragraph (a slash inside a word opens no menu)',
+		async (typed) => {
+			const { edytor, editor } = await render([codePlugin, slashMenuPlugin]);
+			await type(editor, typed);
+			expect(menu()).toBeNull();
+			await pressEnter();
+			expect(canonicalTree(edytor)).toEqual([
+				{ type: 'paragraph', content: [{ text: typed }] },
+				{ type: 'paragraph' }
+			]);
+			expect(menu()).toBeNull();
+		}
+	);
+
+	it('a slash after a space opens the menu', async () => {
+		const { edytor, editor } = await render([slashMenuPlugin]);
+		await type(editor, 'hi /h2');
+		expect(labels()).toEqual(['Heading 2']);
+		await pressEnter();
+		expect(canonicalTree(edytor)).toEqual([
+			{ type: 'heading', data: { level: 'h2' }, content: [{ text: 'hi ' }] }
+		]);
+	});
+
+	it.each([
+		['/list', ['Bulleted list', 'Numbered list', 'To-do list', 'Toggle list']],
+		['/todo', ['To-do list']],
+		['/head', ['Heading 1', 'Heading 2', 'Heading 3']]
+	])('%j matches labels and keywords by word prefix', async (typed, expected) => {
+		const { editor } = await render([slashMenuPlugin]);
+		await type(editor, typed);
+		expect(labels()).toEqual(expected);
+	});
+
+	it.each(['/eading', '/block', '/ist'])(
+		'%j matches no word start (nor a command id): the menu closes',
+		async (typed) => {
+			const { edytor, editor } = await render([slashMenuPlugin]);
+			await type(editor, typed);
+			expect(menu()).toBeNull();
+			await pressEnter();
+			expect(canonicalTree(edytor)).toEqual([
+				{ type: 'paragraph', content: [{ text: typed }] },
+				{ type: 'paragraph' }
+			]);
+		}
+	);
 });
 
 describe('menus', () => {

@@ -7,9 +7,9 @@ icon: download
 Edytor ships as one npm package, `edytor`. It contains the `<Edytor>` component, the bundled plugins, the collaborative document API and its CRDT engine, and a Cloudflare Durable Object room.
 
 :::warning[Early development]
-Edytor is at version 0.0.x and is not ready for production. The API can change between releases without a compatibility layer.
+Edytor is a pre-release (`0.1.0-next.0`) and is not ready for production. The API can change between releases without a compatibility layer.
 
-These docs describe the upcoming release. The `edytor@0.0.11` currently on npm predates it and uses a different API; [Migration](/docs/reference/migration) lists every change. Until the new version is published, build the package from the [GitHub repository](https://github.com/beynar/edytor) (see [Build from source](#build-from-source)).
+These docs describe that release. The `edytor@0.0.11` that npm installs without a tag predates it and uses a different API; [Migration](/docs/reference/migration) lists every change. Until the pre-release is published, build the package from the [GitHub repository](https://github.com/beynar/edytor) (see [Build from source](#build-from-source)).
 :::
 
 ## Requirements
@@ -21,8 +21,10 @@ These docs describe the upcoming release. The `edytor@0.0.11` currently on npm p
 ## Install
 
 ```package-install
-npm i edytor
+npm i edytor@next
 ```
+
+The pre-release goes out under the `next` tag, so name it: a bare `edytor` resolves to the old `0.0.11`. Until it is published, `edytor@next` does not resolve; install the tarball from [Build from source](#build-from-source) instead.
 
 If your project does not have Svelte yet, add it too:
 
@@ -36,7 +38,7 @@ The package pulls in a few runtime dependencies on its own: Atlassian's Pragmati
 
 ## Build from source
 
-Until the release is on npm, pack the package from the repository and install the tarball:
+Until the pre-release is on npm, pack the package from the repository and install the tarball:
 
 ```bash
 git clone https://github.com/beynar/edytor.git
@@ -58,7 +60,7 @@ Use the file name `pnpm pack` printed.
 
 Render an editor. It needs no setup:
 
-```svelte title="src/routes/+page.svelte"
+```svelte title="src/routes/+page.svelte" check
 <script lang="ts">
 	import { Edytor } from 'edytor';
 </script>

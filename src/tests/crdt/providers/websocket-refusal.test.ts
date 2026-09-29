@@ -5,6 +5,11 @@
  * - A close with `1008` or an application code (`4xxx`) is terminal: one
  *   dial, a `refused` event carrying a `SyncRefusedError` (code, reason),
  *   `failed` once, and no redial.
+ * - Except `4401` (expired credentials): the provider emits `expired` and
+ *   redials after the backoff, reading the refreshed `params`. No
+ *   `refused`, no `failed`, no `unreachable`.
+ * - A dial that neither opens nor fails is closed after 10 s like a failed
+ *   one: `connection-close`, `unreachable`, and a redial after the backoff.
  * - Any other close (`1006`: server down, or an HTTP 403 as a browser sees
  *   it) keeps dialing, reading `params` at every dial. Dials that never
  *   synced count in a row — an opened-then-closed socket too — and each
@@ -38,8 +43,8 @@ const ws = bindWebsocketProvider(Y);
 const sync = bindSync(Y);
 
 /**
- * A scripted server. `server.accept` decides each dial: `'open'`, or a
- * `{ code, reason }` to close with before opening; `server.onFrame(socket,
+ * A scripted server. `server.accept` decides each dial: `'open'`, `'hang'`
+ * (never opens nor fails), or a `{ code, reason }` to close with before opening; `server.onFrame(socket,
  * type, payload)` sees every binary frame of an open socket, `server.onText(socket,
  * text)` every text frame (recorded in `server.texts`).
  */
@@ -67,6 +72,7 @@ const createServer = () => {
 			setTimeout(() => {
 				if (this.readyState !== 0) return;
 				const verdict = server.accept(this);
+				if (verdict === 'hang') return;
 				if (verdict !== 'open') return this.close(verdict.code, verdict.reason);
 				this.readyState = 1;
 				this.onopen?.({});
@@ -183,6 +189,103 @@ describe('refusal closes are terminal', () => {
 		await wait(300);
 		expect(events.refused.map((r) => r.code)).toEqual([1008]);
 		expect(events.failed).toEqual([]);
+		expect(server.sockets).toHaveLength(1);
+		p.destroy();
+	});
+});
+
+describe('4401: expired credentials redial', () => {
+	it('4401 before the open: expired fires, the redial reads the refreshed params and syncs', async () => {
+		const server = createServer();
+		server.accept = (socket) =>
+			socket.url.endsWith('token=fresh') ? 'open' : { code: 4401, reason: 'token expired' };
+		server.onFrame = answerStep1;
+		const p = provider(server, { params: { token: 'stale' }, maxBackoffTime: 10 });
+		const events = record(p);
+		const expired = [];
+		p.on('expired', (state, from) => {
+			expired.push(state);
+			expect(from).toBe(p);
+			if (expired.length === 2) p.params = { token: 'fresh' };
+		});
+		await until(() => p.synced);
+		expect(expired).toEqual([
+			{ reason: 'token expired', attempts: 1, nextRetryMs: 10 },
+			{ reason: 'token expired', attempts: 2, nextRetryMs: 10 }
+		]);
+		expect(server.sockets.map((s) => s.url.split('token=')[1])).toEqual([
+			'stale',
+			'stale',
+			'fresh'
+		]);
+		expect(events.refused).toEqual([]);
+		expect(events.failed).toEqual([]);
+		expect(events.unreachable).toEqual([]);
+		p.destroy();
+	});
+
+	it('4401 after a sync: expired fires and the provider redials in 100 ms', async () => {
+		const server = createServer();
+		server.onFrame = answerStep1;
+		const p = provider(server);
+		const events = record(p);
+		const expired = [];
+		p.on('expired', (state) => expired.push(state));
+		await until(() => p.synced);
+		server.sockets[0].close(4401, 'token expired');
+		await until(() => server.sockets.length === 2 && p.synced);
+		expect(expired).toEqual([{ reason: 'token expired', attempts: 0, nextRetryMs: 100 }]);
+		expect(events.refused).toEqual([]);
+		p.destroy();
+	});
+
+	it('4403 stays terminal', async () => {
+		const server = createServer();
+		server.accept = () => ({ code: 4403, reason: 'document access denied' });
+		const p = provider(server, { maxBackoffTime: 10 });
+		const events = record(p);
+		const expired = [];
+		p.on('expired', (state) => expired.push(state));
+		await until(() => events.refused.length === 1);
+		await wait(200);
+		expect(server.sockets).toHaveLength(1);
+		expect(expired).toEqual([]);
+		p.destroy();
+	});
+});
+
+describe('a dial that neither opens nor fails times out', () => {
+	it('after 10 s it is closed like a failed dial: unreachable, then a redial', async () => {
+		vi.useFakeTimers();
+		const server = createServer();
+		server.accept = () => 'hang';
+		const p = provider(server);
+		const events = record(p);
+		await vi.advanceTimersByTimeAsync(9_999);
+		expect(events.closes).toEqual([]);
+		expect(events.unreachable).toEqual([]);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(events.closes).toEqual([null]);
+		expect(events.unreachable).toEqual([{ attempts: 1, nextRetryMs: 200 }]);
+		expect(server.sockets[0].readyState).toBe(3);
+		await vi.advanceTimersByTimeAsync(200);
+		expect(server.sockets).toHaveLength(2);
+		p.destroy();
+		// Destroyed while dialing: the second dial's timer is gone with it.
+		await vi.advanceTimersByTimeAsync(20_000);
+		expect(events.unreachable).toHaveLength(1);
+		expect(server.sockets).toHaveLength(2);
+	});
+
+	it('a dial that opens in time clears its timer', async () => {
+		vi.useFakeTimers();
+		const server = createServer();
+		server.onFrame = answerStep1;
+		const p = provider(server);
+		const events = record(p);
+		await vi.advanceTimersByTimeAsync(12_000);
+		expect(p.synced).toBe(true);
+		expect(events.closes).toEqual([]);
 		expect(server.sockets).toHaveLength(1);
 		p.destroy();
 	});

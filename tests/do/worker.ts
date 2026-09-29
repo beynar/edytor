@@ -1,6 +1,6 @@
 /**
  * The Worker in front of the SHIPPED room (`edytor/cloudflare`, from
- * source): the deployment shape README "Server coordinator" documents.
+ * source): the deployment shape the site's server quick start documents.
  *
  * - `GET /health` → `ready`
  * - `/rooms/<name>` (WebSocket upgrade) → `routeDocumentSocket` to the
@@ -24,7 +24,12 @@ import {
 	type SavedDocument
 } from '../../src/lib/cloudflare/index.js';
 import { Y } from '../../src/lib/crdt/engine.js';
-import { bindCrdt, type JSONDoc } from '../../src/lib/crdt/index.js';
+import {
+	bindCrdt,
+	defaultSemantics,
+	type DocumentSemanticsConfig,
+	type JSONDoc
+} from '../../src/lib/crdt/index.js';
 
 export { DocumentRoom };
 
@@ -92,6 +97,17 @@ export class HookedRoom extends DocumentRoom<Env> {
 	}
 }
 
+/**
+ * `semantics()` returns a subclass field (rooms `fields-*`): the room must
+ * read it once the subclass's fields exist, not in its own constructor.
+ */
+export class FieldRoom extends DocumentRoom<Env> {
+	private readonly roles: DocumentSemanticsConfig = { ...defaultSemantics, defaultType: 'heading' };
+	protected override semantics(): DocumentSemanticsConfig {
+		return this.roles;
+	}
+}
+
 /** Any Durable Object: `attachDocument` installs every handler (rooms `plain-*`). */
 export class PlainObject extends DurableObject<Env> {
 	document = attachDocument(this, { onLoad: () => LOADED });
@@ -129,6 +145,7 @@ export type Env = DocumentRoomEnv & {
 	HOOKED: DurableObjectNamespace<HookedRoom>;
 	PLAIN: DurableObjectNamespace<PlainObject>;
 	HOST: DurableObjectNamespace<HostObject>;
+	FIELDS: DurableObjectNamespace<FieldRoom>;
 };
 
 export const ROOM_ROUTE = /^\/rooms\/([^/]+)(\/compact)?\/?$/;
@@ -137,6 +154,7 @@ export const authorizeFromQuery: AuthorizeDocumentSocket = (request) => {
 	const query = new URL(request.url).searchParams;
 	const userId = query.get('user') ?? 'anon';
 	if (userId === 'denied') return null;
+	if (userId === 'expired') return { expired: true };
 	return {
 		userId,
 		replica: requestedReplica(request),

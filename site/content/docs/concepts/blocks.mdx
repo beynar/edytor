@@ -64,7 +64,7 @@ An island (`island: true`) is editable inside but structurally sealed from the r
 - A range delete that starts inside an island never merges out of it.
 - Extending a block selection with <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> from outside never steps into an island's inner blocks.
 - Slash commands and markdown shortcuts don't convert the island block itself.
-- When an island is deleted, its children take its place and are converted to the default child type of their new parent.
+- When an island is deleted, its children take its place and are converted to the default child type of their new parent. A line a collaborator adds to the island at the same time shows the same way; undoing the delete shows it as a line of the island again.
 
 The difference in one line: a void keeps the editor out, an island keeps the structure in.
 

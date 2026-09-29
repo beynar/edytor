@@ -57,7 +57,7 @@ Without a source, the block shows an "Add an image" button. Clicking it opens a 
 - an "Upload" button, only when `upload` is given. It opens a file picker for images, calls `upload(file)` and embeds the URL it answers;
 - a short error line when the link is not an accepted source.
 
-The panel writes nothing in a readonly editor. The write is a direct `block.setData`, one undo step.
+In a readonly view the block shows a passive placeholder instead, with no button, link field or file picker, so a viewer can never start `upload`. In an editable view the write is a direct `block.setData`, one undo step.
 
 ## Image and caption
 
@@ -80,13 +80,14 @@ The plugin does not handle pasted or dropped files. To turn a pasted image into 
 
 The [Notion theme](/docs/customization/styling#notion-theme) styles the block. Without it, target:
 
-| Selector                     | Matches                                |
-| ---------------------------- | -------------------------------------- |
-| `[data-edytor-type='image']` | The `figure`                           |
-| `[data-edytor-image]`        | The wrapper around the `img`           |
-| `[data-edytor-image-empty]`  | The empty state                        |
-| `[data-edytor-image-add]`    | The "Add an image" button              |
-| `[data-edytor-image-form]`   | The link panel (field, buttons, error) |
-| `[data-edytor-image-upload]` | The Upload button (a `label`)          |
+| Selector                          | Matches                                |
+| --------------------------------- | -------------------------------------- |
+| `[data-edytor-type='image']`      | The `figure`                           |
+| `[data-edytor-image]`             | The wrapper around the `img`           |
+| `[data-edytor-image-empty]`       | The empty state                        |
+| `[data-edytor-image-add]`         | The "Add an image" button              |
+| `[data-edytor-image-placeholder]` | The readonly empty state               |
+| `[data-edytor-image-form]`        | The link panel (field, buttons, error) |
+| `[data-edytor-image-upload]`      | The Upload button (a `label`)          |
 
 To change the markup, override the snippet with an `imageBlock` snippet prop (see [the component page](/docs/editor/edytor-component#snippets)). To replace the kind itself, define an `image` kind in your own plugin: the default image plugin comes after yours, and definitions are first-wins.

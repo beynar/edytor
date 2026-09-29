@@ -49,13 +49,14 @@ type Change = {
  * `captureTimeout` when it continues the step before it (it starts where that
  * step left this view's selection, `history.continues`), else it cuts: an
  * insertion after the caret moved is its own step whatever the pause, so the
- * grouping never depends on timing alone. Only a user command asks that
- * question: a bare operation cuts only by the table. A conversion (a markdown
- * or slash trigger with the kind it completes, `lead`; an inline markdown
- * mark) is its own step, so undo gives the typed trigger back. A composition
- * session groups like an insertion and is one capture group:
- * `session/composition` holds it open between its writes, and no operation
- * cuts while it is live.
+ * grouping never depends on timing alone. Outside a user command only an
+ * insertion (`insertText`, `addInlineBlock`) may continue, by the same
+ * question; every other bare operation is its own step, so a plugin's write
+ * never joins the typing before it. A conversion (a markdown or slash trigger
+ * with the kind it completes, `lead`) is its own step, so undo gives the
+ * typed trigger back. A composition session groups like an insertion and is
+ * one capture group: `session/composition` holds it open between its writes,
+ * and no operation cuts while it is live.
  */
 const CUT: Record<string, 'before' | 'both'> = {
 	insertParagraph: 'both',
@@ -63,32 +64,20 @@ const CUT: Record<string, 'before' | 'both'> = {
 	insertFromPasteAsQuotation: 'before',
 	insertFromDrop: 'before',
 	insertBlock: 'before',
-	replaceInlineBlock: 'before',
 	format: 'before',
-	// Structural operations.
-	insertBlockAfter: 'before',
-	insertBlockBefore: 'before',
-	duplicateBlock: 'before',
-	insertDivider: 'before',
-	insertFlow: 'before',
-	setBlock: 'before',
-	removeBlock: 'before',
-	splitBlock: 'before',
-	mergeBlockBackward: 'before',
-	mergeBlockForward: 'before',
-	moveBlock: 'before',
-	moveBlocks: 'before',
-	nestBlock: 'before',
-	unNestBlock: 'before',
-	removeInlineBlock: 'before',
-	// A conversion: typed markers become a mark.
-	inlineMarkdown: 'before',
 	// A DOM change no input occurrence owns (a foreign script): its own step.
 	foreignChange: 'both'
 };
-const policyOf = (kind: string) =>
+/** The operations that may continue a step outside a user command. */
+const INSERTIONS = new Set(['insertText', 'addInlineBlock']);
+type Policy = 'before' | 'both' | 'continue' | undefined;
+const policyOf = (kind: string, bare = false): Policy =>
 	CUT[kind] ??
-	(kind.includes('Composition') ? undefined : kind.startsWith('delete') ? 'before' : 'continue');
+	(kind.includes('Composition')
+		? undefined
+		: kind.startsWith('delete') || (bare && !INSERTIONS.has(kind))
+			? 'before'
+			: 'continue');
 
 /** The one place a `prevent()` is recognized; anything else propagates. */
 const prevented = (error: unknown): PreventionError => {
@@ -158,18 +147,18 @@ export class Dispatcher {
 
 	constructor(private edytor: Edytor) {}
 
+	/** The plan `lead` holds for the next dispatched operation (a slash trigger's removal), if any. */
+	get pendingLead(): Plan | null {
+		return this.leading;
+	}
+
 	/** Admission: a readonly view or a read-only document refuses every mutating command. */
 	permits = () => !this.edytor.readonly && this.edytor.document.writable;
 
 	/** Apply the undo policy's cut before a `kind` command writes. */
 	cut = (kind: string, phase: 'before' | 'after' = 'before') => {
-		const policy = policyOf(kind);
-		const { history, selection } = this.edytor;
-		if (
-			policy === 'both' ||
-			(phase === 'before' &&
-				(policy === 'before' || (policy === 'continue' && !history.continues(selection.value))))
-		)
+		const policy = this.decide(policyOf(kind));
+		if (policy === 'both' || (phase === 'before' && policy === 'before'))
 			this.edytor.undoManager?.stopCapturing();
 	};
 
@@ -448,16 +437,22 @@ export class Dispatcher {
 	};
 
 	/**
-	 * The cut an operation applies as it writes. Outside a user command it is
-	 * one: the table's cut, never the continuation question. A led operation
-	 * is a conversion: its own step even inside one. None while a composition
-	 * is live (its writes are one group).
+	 * The cut an operation applies as it writes. Inside a user command none
+	 * (the command cut); outside one, its bare policy. A led operation is a
+	 * conversion: its own step even inside one. None while a composition is
+	 * live (its writes are one group).
 	 */
 	private policy(operation: string, lead: Plan | null) {
 		if (this.edytor.composition.live) return undefined;
 		if (lead) return 'before';
-		const policy = this.running ? 'continue' : policyOf(operation);
-		return policy === 'continue' ? undefined : policy;
+		return this.running ? undefined : this.decide(policyOf(operation, true));
+	}
+
+	/** A continuation continues this view's last step, or cuts before it writes. */
+	private decide(policy: Policy) {
+		if (policy !== 'continue') return policy;
+		const { history, selection } = this.edytor;
+		return history.continues(selection.value) ? undefined : 'before';
 	}
 
 	private refuse(operation: string): undefined {

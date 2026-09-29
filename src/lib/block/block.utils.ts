@@ -292,6 +292,35 @@ export function prepareSplit(this: Block, { index, text }: BlockOperations['spli
 	return this.edytor.facade.prepare.splitBlock(this.model.id, offset, id('b'), tail);
 }
 
+/**
+ * A split whose children stay with the block (a container's header): the
+ * tail, of `tail`'s kind, becomes the block's first child (`child`) or its
+ * next sibling. One plan: the document's split step, placed here, without
+ * the move that gives the tail the children.
+ */
+export function prepareSplitKeepingChildren(
+	this: Block,
+	{ index, text }: BlockOperations['splitBlock'],
+	tail: { type: string; data?: Record<string, unknown> },
+	child: boolean
+): Prepared {
+	if (!text || !this.parent || !this.model) return REFUSED;
+	const { facade } = this.edytor;
+	const born = id('b');
+	const split = facade.prepare.splitBlock(this.model.id, text.segStart + index, born, tail);
+	const step = 'writes' in split ? split.writes[0] : undefined;
+	if (step?.op !== 'splitBlock') return REFUSED;
+	if (!child) return facade.compose({ ...(split as Plan), writes: [step] });
+	// The rank of a first child, and the document's answer on placing the kind there.
+	const slot = facade.prepare.insertBlocks({ parent: this.model.id, index: 0 }, [
+		{ id: born, type: tail.type }
+	]);
+	const first = 'writes' in slot ? slot.writes[0] : undefined;
+	if (first?.op !== 'insertBlocks') return REFUSED;
+	const placed = { ...step, parent: this.model.id, rank: first.ranks[0]! };
+	return facade.compose({ ...(split as Plan), writes: [placed] });
+}
+
 export function splitBlock(
 	this: Block,
 	payload: BlockOperations['splitBlock'],

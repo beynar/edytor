@@ -27,7 +27,7 @@ A command whose `isEnabled(edytor)` answers `false` is hidden. Block kind comman
 
 Commands are grouped into sections by their `group`, as in Notion: `Basic blocks` first, then the other groups in the order they first appear. Kind commands take their preset's `group` (default `Basic blocks`; the image and code blocks are under `Media`), and a command without a `group` is listed without a heading. Each row shows the command's `hint` on the right; kind commands use their first markdown prefix, such as `##` for Heading 2.
 
-The query matches, case-insensitively, anywhere in a command's id, label or keywords. `/h2`, `/heading` and `/subtitle` all find "Heading 2".
+The query matches, case-insensitively, the start of a word in a command's label or keywords (hyphens are ignored, so `/todo` finds "To-do list"). `/h2`, `/head` and `/subtitle` all find "Heading 2"; `/eading` finds nothing. The command id (`block.heading2`) is not searched.
 
 ## Keys
 
@@ -45,11 +45,12 @@ While the menu is open:
 
 ## Behavior
 
-- The menu opens when `/` is typed at a collapsed caret in a convertible block, anywhere in its text. An IME that commits `/` together with more text (`/h`) opens it with that query.
+- The menu opens when `/` is typed at a collapsed caret in a convertible block, at the start of a text or after whitespace, as in Notion. A `/` inside a word stays text: `see 1/2`, `a/b` and `and/or` followed by <kbd>Enter</kbd> keep their text and start a new block. An IME that commits `/` together with more text (`/h`) opens it with that query.
 - It closes when the caret leaves the query, the selection expands, the `/` is deleted, or the query matches no command (a `/` in a URL or a path stays text, and <kbd>↑</kbd>/<kbd>↓</kbd> move the caret again). "No results" shows only for a bare `/` when no command is enabled. It does not open in a readonly editor.
 - The query range is anchored in the document, so a collaborator's edits elsewhere in the text do not break it.
 - Running a command removes the `/query` text in the same step as the command, separate from the typing before it, so one undo restores both: `hi /h2` + <kbd>Enter</kbd> undoes to a paragraph `hi /h2`. If the command is refused, the trigger text stays.
 - After a conversion the caret goes back to where the `/` was. A command that moves the caret elsewhere keeps its own caret: the code block conversion puts it in the first line, and `/divider` in a fresh block of the parent's default kind after the divider (a divider renders no content, so it cannot hold the caret).
+- A kind that replaces the block's content (`/divider`, `/code`) converts the block in place only when it holds nothing but the query. In a block with other text or with children, the new block goes after it and the block stays intact: `keep me /divider` + <kbd>Enter</kbd> leaves `keep me ` above a divider. The query's removal and the insertion are one step.
 
 ## Placement and styling
 

@@ -24,14 +24,17 @@
  * - H-G5 (UW-16) — type `a` @5, then a menu action on the block: Duplicate
  *   and Turn into (block menu), Turn into (toolbar), `+`, Remove (of the next
  *   block). The action is its own step, at once and 900 ms later: one undo
- *   leaves `helloa world` as it was typed.
+ *   leaves `helloa world` as it was typed. NW-06: `+` on an empty paragraph
+ *   (it only types `/` there, opening the slash menu) is its own step too.
  * - H-G6 (UW-16) — a markdown or slash conversion inside the capture window
  *   is its own step: `say **b**` then undo gives the typed `say **b*` back as
  *   text, `## ` then undo a paragraph `##`, `hi /h2` + Enter then undo a
  *   paragraph `hi /h2`.
  * - H-G7 (UW-16) — block commands called directly (no user command around
  *   them) cut by the table, one step each; one `edytor.transact` around two
- *   of them is one step.
+ *   of them is one step. NW-06: so do direct `markText`, `addChildBlock` and
+ *   `setInlineData` (outside a user command only an insertion continues);
+ *   `run('format')` around two `markText` calls is one step.
  *
  * The pause is simulated on the undo manager's clock: `lastChange` (a plain
  * field, plan §1.1) moves back by the pause; the rows themselves run well
@@ -265,6 +268,31 @@ const typeAll = async (editor: HTMLElement, value: string) => {
 	for (const data of value) await type(editor, data);
 };
 
+describe('`+` on an empty paragraph after typing is its own step (NW-06)', () => {
+	for (const ms of [0, 900]) {
+		it(`H-G5: + on the empty paragraph takes the \`/\` as its own step (${ms} ms later)`, async () => {
+			const { edytor, editor } = await renderDomEdytor(
+				<root>
+					<paragraph>hello| world</paragraph>
+					<paragraph></paragraph>
+				</root>,
+				{ plugins: [richTextPlugin, mentionPlugin, blockMenuPlugin, slashMenuPlugin] }
+			);
+			edytor.undoManager.stopCapturing();
+			await type(editor, 'a');
+			pause(edytor, ms);
+			await press(document.querySelectorAll('[data-testid="block-add"]')[1]!);
+			expect(blocks(edytor)).toEqual([typed, { type: 'paragraph', text: '/' }]);
+			expect(document.querySelector('[data-testid="slash-menu"]')).not.toBeNull();
+			expect(edytor.undoManager.undoStack.length).toBe(2);
+			edytor.historyUndo();
+			await flushDomUpdates();
+			expect(blocks(edytor)).toEqual([typed, { type: 'paragraph', text: '' }]);
+			expect(edytor.undoManager.undoStack.length).toBe(1);
+		});
+	}
+});
+
 describe('a conversion inside the capture window is its own step (UW-16)', () => {
 	const mountEmpty = async () => {
 		const rendered = await renderDomEdytor(
@@ -344,5 +372,50 @@ describe('direct block commands follow the table (UW-16)', () => {
 		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(blocks(edytor)).toEqual([typed, { type: 'paragraph', text: 'x' }]);
+	});
+
+	it('H-G7 (NW-06): direct markText, addChildBlock and setInlineData each start a step', async () => {
+		const { edytor, editor } = await renderDomEdytor(
+			<root>
+				<paragraph>
+					hello| world
+					<mention />
+				</paragraph>
+			</root>
+		);
+		edytor.undoManager.stopCapturing();
+		await type(editor, 'a');
+		const block = edytor.root!.children[0]!;
+		const atom = edytor.value.children![0]!.content!.find((part) => !('text' in part)) as {
+			id: string;
+		};
+		block.firstText!.markText({ mark: 'bold', start: 0, end: 5 });
+		expect(edytor.undoManager.undoStack.length).toBe(2);
+		block.addChildBlock({ block: { type: 'paragraph', content: [{ text: 'c' }] }, index: 0 });
+		expect(edytor.undoManager.undoStack.length).toBe(3);
+		block.setInlineData({ id: atom.id, data: { name: 'x' } });
+		expect(edytor.undoManager.undoStack.length).toBe(4);
+		for (let i = 0; i < 3; i++) edytor.historyUndo();
+		await flushDomUpdates();
+		expect(canonicalTree(edytor)).toEqual([
+			{
+				type: 'paragraph',
+				content: [{ text: 'helloa world' }, { type: 'mention', data: {} }]
+			}
+		]);
+	});
+
+	it('H-G7 (NW-06): `run("format")` around two markText calls is one step', async () => {
+		const { edytor, editor } = await mount();
+		await type(editor, 'a');
+		const text = edytor.root!.children[0]!.firstText!;
+		edytor.dispatcher.run('format', () => {
+			text.markText({ mark: 'bold', start: 0, end: 2 });
+			text.markText({ mark: 'italic', start: 3, end: 5 });
+		});
+		expect(edytor.undoManager.undoStack.length).toBe(2);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(canonicalTree(edytor)[0]!.content).toEqual([{ text: 'helloa world' }]);
 	});
 });

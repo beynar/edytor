@@ -11,7 +11,7 @@ import { cloneJson, type JSONText } from '$lib/utils/json.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
 import { id, prevent } from '$lib/utils.js';
 import type { Block } from '$lib/block/block.svelte.js';
-import { dispatchPlan } from '$lib/block/block.utils.js';
+import { dispatchPlan, prepareSplitKeepingChildren } from '$lib/block/block.utils.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
 import { runBeforeInputDeleteCommand } from './beforeInputDeleteCommands.js';
 import { firstUriListEntry } from './dataTransferPayload.js';
@@ -215,15 +215,39 @@ const insertFromDataTransfer = async (edytor: Edytor, snapshot: Attempt) => {
 	if (flow && at !== null) await pasteFlow(edytor, flow, { at, selection: snapshot });
 };
 
-/** Enter at the end of a block with content and children: a split whose tail keeps the kind. */
+/**
+ * Enter at the end of a block with content and children: a split whose tail
+ * keeps the kind — a continuing kind's with its first preset's data (a new
+ * to-do is unchecked), any other's with the block's (a heading's level).
+ */
 const liftContent = (block: Block, text: Text): Block | null => {
+	const { continues, presets } = block.definition;
+	const data = continues ? { ...(presets?.[0]?.data ?? {}) } : cloneJson(block.data);
 	const plan = dispatchPlan(block, 'splitBlock', { index: text.length, text }, ({ index, text }) =>
 		block.edytor.facade.prepare.splitBlock(block.id, text.segStart + index, id('b'), {
 			type: block.type,
-			data: cloneJson(block.data)
+			data
 		})
 	);
 	return plan && (block.edytor.idToBlock.get(plan.ids[0]!) ?? null);
+};
+
+/**
+ * Enter in the middle of a container's header: the children stay with it.
+ * The tail becomes its first child (its default child kind); a closed
+ * toggle's goes to a toggle after it instead. One plan.
+ */
+const splitHeader = (block: Block, text: Text, index: number, open: boolean | undefined) => {
+	const edytor = block.edytor;
+	const { presets } = block.definition;
+	const inside = open !== false;
+	const tail = inside
+		? { type: edytor.defaultChild(block), data: {} }
+		: { type: block.type, data: { ...(presets?.[0]?.data ?? {}) } };
+	const plan = dispatchPlan(block, 'splitBlock', { index, text }, (payload) =>
+		prepareSplitKeepingChildren.call(block, payload, tail, inside)
+	);
+	return plan && edytor.idToBlock.get(plan.ids[0]!);
 };
 
 const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
@@ -263,12 +287,14 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 		return caretAt(current.firstText, 0);
 	}
 
+	// A container's header (toggle, callout, quote) with children, or an open
+	// toggle's even without, keeps them: Enter opens a first child (Notion); a
+	// closed toggle's — the browser owns `open` — a sibling after it instead.
+	const open = (current.node as HTMLDetailsElement | undefined)?.open;
+	const header = current.definition.container && (current.hasChildren || open);
+
 	if (isAtEndOfBlock) {
-		// A container's header (toggle, callout, quote) with children, or an open
-		// toggle's even without, opens a first child (Notion); a closed toggle —
-		// the browser owns `open` — a sibling after it instead.
-		const open = (current.node as HTMLDetailsElement | undefined)?.open;
-		if (current.definition.container && (current.hasChildren || open)) {
+		if (header) {
 			const opened =
 				open === false
 					? current.insertBlockAfter({ block: sibling })
@@ -304,10 +330,9 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 		return;
 	}
 
-	const newBlock = startText.parent.splitBlock({
-		index: yStart,
-		text: startText
-	});
+	const newBlock = header
+		? splitHeader(current, startText, yStart, open)
+		: current.splitBlock({ index: yStart, text: startText });
 	const text = newBlock?.firstText;
 	if (text) {
 		edytor.attempts.caret(text, 0);

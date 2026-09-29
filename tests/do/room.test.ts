@@ -13,10 +13,12 @@ import { noTimers, type DocumentRoom as Room } from '../../src/lib/cloudflare/in
 import {
 	E,
 	ORIGIN,
+	REPLICA_TAKEN,
 	RawClient,
 	SelfWebSocket,
 	Y,
 	crdt,
+	dialOutcome,
 	dialResponse,
 	readFacade,
 	para,
@@ -621,7 +623,7 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 		response.webSocket!.close();
 	});
 
-	it("refuses an update writing structs under another user's client id (1008): never applied, stored or relayed", async () => {
+	it("strips an update's structs under another user's client id: never applied, stored or relayed; the sender stays", async () => {
 		const room = 'identity-forged-client';
 		const a = seeded([para('p1', 'hello')], 'ada');
 		const ada = a.doc.clientID;
@@ -643,17 +645,24 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 				)
 			)
 		);
-		await vi.waitFor(() => expect(eve.closed).toEqual({ code: 1008, reason: 'refused: replica' }));
-		// …and cannot bind Ada's replica to her socket either.
-		const claim = await dialResponse(room, { user: 'eve', replica: ada });
-		expect([claim.status, claim.webSocket]).toEqual([403, null]);
+		const refusedAda = async () =>
+			(await refusalsOf(room)).filter((r) => r.reason === 'replica' && r.detail === ada);
+		await vi.waitFor(async () => expect(await refusedAda()).toHaveLength(1));
+		expect(eve.closed).toBeNull();
+		// …and cannot bind Ada's replica to her socket either (4409, terminal).
+		expect(await dialOutcome(room, { user: 'eve', replica: ada })).toEqual(REPLICA_TAKEN);
 
 		await settle();
 		expect(await rowsOf(room)).toEqual(rowsBefore);
 		expect(cb.received.length).toBe(receivedBefore);
 		expect(JSON.stringify(await serverJSON(room))).toBe(jsonBefore);
 		expect(JSON.stringify(cb.json())).toBe(jsonBefore);
+		// Ada's handshake relayed the seed's id (unowned); Eve's forgery and dial were refused.
+		const seedId = [...Y.decodeStateVector(Y.encodeStateVector(a.doc)).keys()].find(
+			(client) => client !== ada
+		);
 		expect((await refusalsOf(room)).map((r) => [r.reason, r.detail])).toEqual([
+			['relayed', { replica: seedId, user: 'ada' }],
 			['replica', ada],
 			['replica', ada]
 		]);
@@ -684,12 +693,17 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 		Y.applyUpdate(reloaded, Y.encodeStateAsUpdate(first.doc));
 		expect(reloaded.clientID).not.toBe(first.doc.clientID);
 
-		// Another user holding the same bytes may not deliver them.
+		// Another user holding the same bytes may not deliver them: stripped, she stays.
 		const mallory = await RawClient.connect(room, reloaded, { user: 'mallory' });
-		await vi.waitFor(() =>
-			expect(mallory.closed).toEqual({ code: 1008, reason: 'refused: replica' })
+		await vi.waitFor(async () =>
+			expect((await refusalsOf(room)).map((r) => [r.reason, r.detail])).toContainEqual([
+				'replica',
+				first.doc.clientID
+			])
 		);
+		expect(mallory.closed).toBeNull();
 		expect(shape(await serverJSON(room)).children[0].text).toBe('hello');
+		mallory.close();
 
 		const c2 = await RawClient.connect(room, reloaded, { user: 'ada', replica: reloaded.clientID });
 		await vi.waitFor(async () =>
@@ -700,7 +714,7 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 		first.destroy();
 	});
 
-	it('a replica the room never saw: local-only edits restored under a new client id are accepted on reconnect', async () => {
+	it('a replica the room never saw: local-only edits restored under a new client id are accepted on reconnect, unowned', async () => {
 		const room = 'identity-local-only';
 		const ada = seeded([para('p1', 'hello')], 'ada');
 		const ca = await RawClient.connect(room, ada.doc, { user: 'ada', replica: ada.doc.clientID });
@@ -726,7 +740,15 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 		const expected = { children: [{ id: 'p1', type: 'paragraph', text: 'bob: hello' }] };
 		await vi.waitFor(async () => expect(shape(await serverJSON(room))).toEqual(expected));
 		await vi.waitFor(() => expect(shape(ca.json())).toEqual(expected));
-		expect(await refusalsOf(room)).toEqual([]);
+		// Delivered by another replica, never claimed by it: the seed's id
+		// (relayed by Ada's first handshake) and Bob's offline one stay unowned.
+		const seedId = [...Y.decodeStateVector(Y.encodeStateVector(offline.doc)).keys()].find(
+			(client) => client !== offline.doc.clientID
+		);
+		expect(await refusalsOf(room)).toEqual([
+			{ reason: 'relayed', detail: { replica: seedId, user: 'ada' } },
+			{ reason: 'relayed', detail: { replica: offline.doc.clientID, user: 'bob' } }
+		]);
 		release?.();
 		ca.close();
 		for (const document of [ada, offline, reloaded]) document.destroy();
@@ -753,7 +775,7 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 		eve.setPresence(33, 9, { user: { name: 'Fake Bob' } });
 		await vi.waitFor(() => expect(eve.closed).toEqual({ code: 1008, reason: 'refused: replica' }));
 		expect(ca.presence.get(33)?.state).toEqual({ user: { name: 'Bob' } });
-		expect((await dialResponse(room, { user: 'eve', replica: 11 })).status).toBe(403);
+		expect(await dialOutcome(room, { user: 'eve', replica: 11 })).toEqual(REPLICA_TAKEN);
 		ca.close();
 		cb.close();
 	});

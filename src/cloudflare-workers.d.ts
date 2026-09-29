@@ -34,6 +34,7 @@ interface DurableObjectState {
 		readonly sql: SqlStorage;
 		transactionSync<T>(closure: () => T): T;
 		setAlarm(scheduledTime: number | Date): Promise<void>;
+		getAlarm(): Promise<number | null>;
 	};
 	acceptWebSocket(ws: WebSocket, tags?: string[]): void;
 	getWebSockets(tag?: string): WebSocket[];

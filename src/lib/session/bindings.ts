@@ -134,9 +134,28 @@ const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void =>
 };
 
 /**
+ * The blocks a text range spanning blocks touches, in document order: from
+ * its start block to its end block, a block inside another of them moving
+ * with it. None for a range in one block.
+ */
+const rangeBlocks = (edytor: Edytor): Block[] => {
+	const { startBlock, endBlock, isCollapsed } = edytor.selection.state;
+	if (isCollapsed || !startBlock || !endBlock || startBlock === endBlock) return [];
+	const order = edytor.facade.order();
+	const [from, to] = [order.indexOf(startBlock.id), order.indexOf(endBlock.id)];
+	const touched = order.slice(Math.min(from, to), Math.max(from, to) + 1);
+	return touched.flatMap((id) => {
+		const block = edytor.idToBlock.get(id);
+		let parent = block?.parent;
+		while (parent && !touched.includes(parent.id)) parent = parent.parent;
+		return block && !parent ? [block] : [];
+	});
+};
+
+/**
  * Tab / Shift+Tab: nest or unnest the selected block, or the caret's block.
  * Several selected siblings move as one (`edytor.moveBlocks`, `in`/`out`)
- * and stay selected.
+ * and stay selected; so do the blocks a text range spans, the range kept.
  */
 const nest =
 	(operation: 'nestBlock' | 'unNestBlock'): HotKey =>
@@ -144,11 +163,18 @@ const nest =
 		prevent(() => {
 			suppressHotkeyDomDrift(edytor, STRUCTURAL_HOTKEY_DOM_REPAIR_WINDOW_MS);
 			const selectedBlocks = edytor.selection.selectedBlocks;
+			const direction = operation === 'nestBlock' ? 'in' : 'out';
 			if (selectedBlocks.size > 1) {
 				const blocks = getSelectedBlocksInDocumentOrder(edytor);
-				const direction = operation === 'nestBlock' ? 'in' : 'out';
 				const moved = edytor.moveBlocks({ blocks, direction });
 				if (moved.length) edytor.selection.selectBlocks(...moved);
+				return;
+			}
+			const spanned = selectedBlocks.size ? [] : rangeBlocks(edytor);
+			if (spanned.length) {
+				const { startText, endText, yStart, yEnd, isReversed } = edytor.selection.state;
+				if (edytor.moveBlocks({ blocks: spanned, direction }).length && startText && endText)
+					edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 				return;
 			}
 			const selectedBlock = selectedBlocks.values().next().value as Block | undefined;

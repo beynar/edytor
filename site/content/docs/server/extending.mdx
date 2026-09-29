@@ -65,7 +65,7 @@ export class Workspace extends DurableObject<Env> {
 }
 ```
 
-A Durable Object has one alarm. The document sets it `saveAfter` ms after an unsaved edit, which replaces a time you set earlier. If your class also uses alarms, re-arm your own schedule from `alarm()`.
+A Durable Object has one alarm. The document sets it `saveAfter` ms after an unsaved edit, which replaces a time you set earlier. An alarm already pending when the object wakes is kept: the document does not move it, so frequent wakes never push `onSave` back. If your class also uses alarms, re-arm your own schedule from `alarm()`, and call `document.alarm()` from it.
 
 ## Options
 
@@ -80,7 +80,7 @@ A Durable Object has one alarm. The document sets it `saveAfter` ms after an uns
 | `tablePrefix` | `'edytor_'` | Prefix of the document's two tables. |
 | `semantics` | `defaultSemantics` | The block roles server edits obey. See [Block roles on the server](#block-roles-on-the-server). |
 
-`DocumentRoom` reads the same settings from `vars` (`EDYTOR_SAVE_AFTER`, `EDYTOR_COMPACT_AFTER`, …; see [the room](/docs/server/room#settings)) and uses the unprefixed tables `rows` and `replicas`. It takes `semantics` from its `semantics()` method.
+`DocumentRoom` reads the same settings from `vars` (`EDYTOR_SAVE_AFTER`, `EDYTOR_COMPACT_AFTER`, …; see [the room](/docs/server/room#settings)) and uses the unprefixed tables `rows` and `replicas`. It takes `semantics` from its `semantics()` method, read at first use, so it may return a field of your subclass.
 
 ## Load
 
@@ -89,7 +89,7 @@ A Durable Object has one alarm. The document sets it `saveAfter` ms after an uns
 | Return | Effect |
 | --- | --- |
 | `{ update, replicas }` | What an earlier `onSave` received: the v14 state and who owns which client id. Restores both. |
-| `Uint8Array` | A bare v14 update. Restores the content but not the owners: each client id that holds content is claimed by the first signed-in writer who uses it (logged as an `orphan` refusal). |
+| `Uint8Array` | A bare v14 update. Restores the content but not the owners: each client id that holds content is unowned until a signed-in writer dials with it as its replica (logged as an `orphan` entry). |
 | `JSONDoc` | Seeded as the document. Seeding is deterministic, so a client that seeds the same value converges with it. |
 | `undefined` / `null` | An empty room; the first client seeds it. |
 
@@ -100,6 +100,8 @@ Nothing is stored until `onLoad` settles, and the result is stored in one transa
 - **A refused payload** (another generation or schema, undecodable bytes, any other shape) sets `failure` and refuses every socket with `1008` (`refused: container`). The object keeps answering.
 
 Once anything is stored, the object restores from its own storage and does not ask again.
+
+A saved copy can be older than the room's last edits (it is written `saveAfter` ms after them). Clients that reconnect after such a restore deliver what the room lacks, including other users' edits they received: nobody is disconnected for it, and nobody takes over another user's client id. See [restoring from an older snapshot](/docs/server/authorization#restoring-from-an-older-snapshot).
 
 ## Save
 
@@ -236,7 +238,7 @@ In a `DocumentRoom` subclass, override `protected semantics()` and return the co
 
 The ready-made room exposes the same hooks as methods:
 
-```ts
+```ts src/room.ts check
 import { DocumentRoom, type ReplicaOwner, type SavedDocument } from 'edytor/cloudflare';
 
 export class Room extends DocumentRoom<Env> {

@@ -13,6 +13,13 @@
  *   refusal, `onSyncRefused` fires once, and the client dials once.
  * - A refusal after the document hydrated: the content stays, the refusal
  *   is still surfaced.
+ * - The refusal belongs to the provider that reported it (NW-08): releasing
+ *   that provider lifts it, and so does its own later sync (`connect()`
+ *   after a refreshed token). Re-attached to an empty room, the document
+ *   then seeds the draft (`local`).
+ * - A dial that neither opens nor fails times out after 10 s (NW-09): it is
+ *   closed like a failed dial, so the bound arms and an empty document is
+ *   decided `DEFAULT_READINESS_BOUND` later.
  *
  * The room here holds a document and speaks the join rule; its open and
  * answer delays and its refusal are set per test. Expected states are
@@ -20,7 +27,7 @@
  */
 // @ts-nocheck -- tests reach raw provider internals (excluded lane).
 import 'fake-indexeddb/auto';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as decoding from 'lib0-v14/decoding';
 import { Y } from '../../../lib/crdt/engine.js';
 import { createDocument, SyncRefusedError } from '../../../lib/crdt/index.js';
@@ -222,6 +229,131 @@ describe('a terminal refusal never seeds', () => {
 		expect(document.readiness).toBe('hydrated');
 		expect(texts(document)).toEqual(['room']);
 		expect(room.dials).toBe(1);
+		document.destroy();
+	});
+});
+
+describe('the refusal belongs to the provider that reported it', () => {
+	const refusing = (url) =>
+		new Room(`${url}/room`, { refuse: { code: 4403, reason: 'document access denied' } });
+	const websocketSync = (url) =>
+		providers.createWebsocketSync({ serverUrl: url, roomName: 'room', WebSocketPolyfill: Socket });
+
+	it('refused, released, re-attached to an empty room: local with the draft seeded', async () => {
+		const url = uniqueUrl();
+		const room = refusing(url);
+		const document = createDocument();
+		const release = document.attachSync(websocketSync(url), { value: draft });
+		await until(() => document.syncRefusal !== undefined);
+		await wait(1200);
+		expect(document.readiness).toBe('pending');
+		release();
+		expect(document.syncRefusal).toBeUndefined();
+		expect(document.readiness).toBe('pending');
+		room.refuse = undefined;
+		document.attachSync(websocketSync(url), { value: draft });
+		await until(() => document.ready);
+		expect(document.readiness).toBe('local');
+		expect(texts(document)).toEqual(['draft']);
+		expect(room.dials).toBe(2);
+		document.destroy();
+	});
+
+	it('refused, then connect() after a refresh reaches an empty room: local with the draft seeded', async () => {
+		const url = uniqueUrl();
+		const room = refusing(url);
+		const document = createDocument();
+		let provider;
+		const sync = Object.assign(
+			({ doc, awareness, synced, failed }) => {
+				provider = new providers.WebsocketProvider(url, 'room', doc, {
+					awareness,
+					WebSocketPolyfill: Socket,
+					disableBc: true
+				});
+				provider.on('synced', (isSynced) => isSynced && synced(provider));
+				provider.on('failed', (error) => failed(error, provider));
+				return () => provider.destroy();
+			},
+			{ bound: Infinity }
+		);
+		document.attachSync(sync, { value: draft });
+		await until(() => document.syncRefusal !== undefined);
+		expect(provider.shouldConnect).toBe(false);
+		room.refuse = undefined;
+		provider.connect();
+		await until(() => document.ready);
+		expect(document.readiness).toBe('local');
+		expect(texts(document)).toEqual(['draft']);
+		expect(document.syncRefusal).toBeUndefined();
+		expect(room.dials).toBe(2);
+		document.destroy();
+	});
+
+	it("another target's sync does not lift it: the empty document stays pending", async () => {
+		const url = uniqueUrl();
+		refusing(url);
+		const other = uniqueUrl();
+		new Room(`${other}/room`);
+		const document = createDocument();
+		document.attachSync(websocketSync(url), { value: draft });
+		await until(() => document.syncRefusal !== undefined);
+		document.attachSync(websocketSync(other), { value: draft });
+		await wait(1500);
+		expect(document.syncPending).toBe(false);
+		expect(document.readiness).toBe('pending');
+		expect(document.syncRefusal?.code).toBe(4403);
+		document.destroy();
+	});
+});
+
+describe('a dial that neither opens nor fails', () => {
+	/** A socket the network silently drops: it never opens, errors or closes on its own. */
+	class Hanging {
+		static OPEN = 1;
+		static dials = 0;
+		OPEN = 1;
+		binaryType = '';
+		readyState = 0;
+		onopen = null;
+		onclose = null;
+		onerror = null;
+		onmessage = null;
+		constructor() {
+			Hanging.dials++;
+		}
+		send() {}
+		close(code = 1005, reason = '') {
+			if (this.readyState === 3) return;
+			this.readyState = 3;
+			this.onclose?.({ code, reason });
+		}
+	}
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it('times out after 10 s: the bound arms and the empty document seeds a bound later', async () => {
+		vi.useFakeTimers();
+		Hanging.dials = 0;
+		const document = createDocument();
+		document.attachSync(
+			providers.createWebsocketSync({
+				serverUrl: uniqueUrl(),
+				roomName: 'room',
+				WebSocketPolyfill: Hanging,
+				persist: false,
+				disableBc: true
+			}),
+			{ value: draft }
+		);
+		await vi.advanceTimersByTimeAsync(10_000 + 999);
+		expect(document.readiness).toBe('pending');
+		expect(Hanging.dials).toBe(2); // the timed-out dial, then the redial 200 ms later
+		await vi.advanceTimersByTimeAsync(1);
+		expect(document.readiness).toBe('local');
+		expect(texts(document)).toEqual(['draft']);
 		document.destroy();
 	});
 });

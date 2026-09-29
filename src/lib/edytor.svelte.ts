@@ -374,7 +374,7 @@ export class Edytor {
 					}
 				}
 
-				// Duplicate definitions: the first extension wins (README, D-11).
+				// Duplicate definitions: the first extension wins (site docs plugins#plugin-order, D-11).
 				define(this.marks, initializedPlugin.marks);
 				define(this.blocks, initializedPlugin.blocks);
 				define(this.inlineBlocks, initializedPlugin.inlineBlocks);

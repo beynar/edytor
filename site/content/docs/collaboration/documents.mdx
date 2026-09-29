@@ -66,7 +66,7 @@ copy.facade.toJSON(); // same JSON as the source
 | `encode()` | The full state as bytes, for `loadDocument`. |
 | `attachSync(sync, { value? })` | Attach a provider to the document. Returns its cleanup. |
 | `ready`, `readiness`, `onReady(fn)` | Whether the content has been decided, and how. See below. |
-| `syncRefusal`, `onSyncRefused(fn)` | The `SyncRefusedError` a provider reported when the server refused this client for good (close `1008` or `4xxx`). |
+| `syncRefusal`, `onSyncRefused(fn)` | The `SyncRefusedError` a provider reported when the server refused this client (close `1008`, or `4xxx` other than `4401`). It lasts until that provider is released or syncs again. |
 | `sync(value?)` | Decide a `pending` document now: seed `value` if it is empty, adopt its content otherwise. |
 | `writable`, `onWritableChange(fn)` | `false` while the document holds content from a schema this build cannot own. Every write is refused and providers stop persisting and sending until it heals. |
 | `clientID` | This replica's CRDT client id (`doc.clientID`). |
@@ -88,7 +88,7 @@ With providers attached, the rule is *settle or bound*:
 - A document that already holds content becomes `hydrated` as soon as any provider settles.
 - An empty document seeds its `value` only once every attached provider has settled, failed, been removed, or reached its bound.
 - IndexedDB always settles, so it has no bound. A WebSocket alone in a new room may never hear from anyone, so it gets `DEFAULT_READINESS_BOUND` (1000 ms), counted from the moment the socket opens or first fails to open: a room that is slow to accept the connection is waited for.
-- A server refusal (`SyncRefusedError`) never seeds: an empty document stays `pending` and reports it in `syncRefusal` and `onSyncRefused`. A document that already has content keeps it.
+- A server refusal (`SyncRefusedError`) never seeds: an empty document stays `pending` and reports it in `syncRefusal` and `onSyncRefused`. A document that already has content keeps it. The refusal belongs to the provider that reported it: once that provider is released (its cleanup ran) or syncs again (`connect()` after a refreshed token), the rule above applies to the providers attached then, and an empty room seeds `value`.
 
 ```ts
 if (!document.ready) {

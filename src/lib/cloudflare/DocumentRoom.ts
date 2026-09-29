@@ -11,21 +11,27 @@
  * engine). Entry point by entry point:
  *
  * - `fetch` (upgrade): read the verified identity, bind the socket's
- *   replica to its user (a replica another user owns is refused 403),
- *   `ctx.acceptWebSocket` with the identity in the attachment, then our
- *   SyncStep1 (write sockets only) and every present peer.
+ *   replica to its user (a replica another user owns is accepted, then
+ *   closed `4409`), `ctx.acceptWebSocket` with the identity in the
+ *   attachment, then our SyncStep1 (write sockets only) and every present
+ *   peer.
  * - `webSocketMessage`: ADMIT first — the generation word, then the
  *   identity: a read-only socket's Step2/Update is refused (permission
- *   denied, the socket stays), and an update writing new structs under a
- *   client id its user does not own is refused (1008) — no attribution
- *   spoofing. Then the inbound schema refusal (`sync.applyRemote`, which
- *   also judges what the engine holds pending: a pending forged stamp the
- *   update would release is discarded, never integrated). A refused frame
+ *   denied, the socket stays), and new structs under a client id its user
+ *   does not own are stripped from the frame (a relay of an id the room
+ *   holds nothing of is kept, unowned) — no attribution spoofing, and the
+ *   sender's own edits still land. Then the inbound schema refusal
+ *   (`sync.applyRemote`, which also judges what the engine holds pending:
+ *   a pending forged stamp the update would release is discarded, never
+ *   integrated). A refused frame
  *   is never applied, stored or relayed. Every sync message is answered
  *   with `messageSaved` (the room's state vector, and the deletes of the
  *   message it holds), sent after the write (store-before-ack). Presence
  *   is relayed through the instance-free codec, only for the socket's own
- *   replica.
+ *   replica. Only bytes that do not decode are refused `malformed`
+ *   (1008); a storage or engine fault closes the socket 1011 (its
+ *   provider redials), after rebuilding the document where it may hold
+ *   what storage does not.
  * - every INTEGRATED update is appended to SQLite as one record split into
  *   rows ≤ `maxRowBytes` (2 MB row cap) in one `transactionSync`, then
  *   broadcast; after `compactAfter` update records the rows are merged
@@ -70,6 +76,7 @@
  *   yours to define).
  */
 import { DurableObject } from 'cloudflare:workers';
+import * as encoding from 'lib0-v14/encoding';
 import { Y } from '../crdt/engine.js';
 import * as E from '../crdt/index.js';
 import type {
@@ -159,13 +166,47 @@ export type Refusal = {
 		| 'replica'
 		| 'read-only'
 		| 'storage'
+		// A fault of the room itself (the engine, a send): the socket is closed 1011.
+		| 'internal'
 		// Not a refusal: an id a registry-less restore left unowned, claimed ({ replica, user }).
-		| 'orphan';
+		| 'orphan'
+		// Not a refusal: structs under an id the room held nothing of, delivered by
+		// another replica ({ replica, user }) and stored unowned.
+		| 'relayed';
 	detail: unknown;
 };
 
 type RowKind = 'generation' | 'update' | 'snapshot';
 type Row = { kind: RowKind; record: number; part: number; parts: number; bytes: ArrayBuffer };
+
+/** The dial of a replica another user owns: terminal for the provider (`4xxx`). */
+const REPLICA_TAKEN_CLOSE = { code: 4409, reason: 'replica bound to another user' } as const;
+
+/**
+ * An upgrade accepted and closed at once, so the client reads `code`: a
+ * browser sees an HTTP error at the upgrade only as `1006`, which a
+ * provider cannot tell from a network failure.
+ */
+export const closedSocket = (code: number, reason: string): Response => {
+	const [client, server] = Object.values(new WebSocketPair());
+	server.accept();
+	server.close(code, reason);
+	return new Response(null, { status: 101, webSocket: client });
+};
+
+/** The client's bytes do not decode: the only `malformed` refusal. */
+class MalformedFrame extends Error {}
+/** A SQLite fault outside the append path (the replica registry). */
+class StorageFault extends Error {}
+
+/** Decode the client's bytes: a throw is theirs (`malformed`), not the room's. */
+const decode = <T>(read: () => T): T => {
+	try {
+		return read();
+	} catch (error) {
+		throw new MalformedFrame(String(error));
+	}
+};
 
 /** Run an entry point with timers forbidden — a pending timer keeps a Durable Object from hibernating. */
 export const noTimers = <T>(fn: () => T): T => {
@@ -280,6 +321,42 @@ const newWriters = (
 	return writers;
 };
 
+type Decoded = ReturnType<typeof Y.decodeUpdate>;
+
+/**
+ * A decoded update without what it carries under `clients`: their structs,
+ * and its deletes of their items (a forged transaction's rewrite of an
+ * entry deletes the entry it replaces). Returns the update and its deletes.
+ */
+const withoutClients = (
+	{ structs, ds }: Decoded,
+	clients: Set<number>
+): { update: Uint8Array; ds: Decoded['ds'] } => {
+	const kept = new Map<number, typeof structs>();
+	for (const struct of structs) {
+		const { client } = struct.id;
+		if (clients.has(client)) continue;
+		const run = kept.get(client) ?? [];
+		run.push(struct);
+		kept.set(client, run);
+	}
+	// The v1 layout: #clients, then per client #structs, client, first clock, structs.
+	const encoder = new Y.UpdateEncoderV1();
+	encoding.writeVarUint(encoder.restEncoder, kept.size);
+	for (const [client, run] of kept) {
+		encoding.writeVarUint(encoder.restEncoder, run.length);
+		encoder.writeClient(client);
+		encoding.writeVarUint(encoder.restEncoder, run[0].id.clock);
+		for (const struct of run) struct.write(encoder, 0, 0);
+	}
+	const deletes = Y.createIdSet();
+	for (const [client, ranges] of ds.clients) {
+		if (!clients.has(client)) deletes.clients.set(client, ranges);
+	}
+	Y.writeIdSet(encoder, deletes);
+	return { update: encoder.toUint8Array(), ds: deletes };
+};
+
 /** A Step2 of what the room STORED: the engine's pending store (never stored) is left out. */
 const storedStep2 = (doc: YDoc, sv: Uint8Array): Uint8Array => {
 	const { store } = doc;
@@ -333,6 +410,9 @@ export type AttachDocumentOptions = {
 /** The tag of the document's sockets: other sockets of the object are left to you. */
 export const SOCKET_TAG = 'edytor';
 
+/** The 1011 close of a storage fault: the provider redials and resends. */
+const STORAGE_FAILURE = 'storage failure';
+
 /** The provider's keepalive text frame, and the room's answer. */
 const PING = 'ping';
 const PONG = 'pong';
@@ -374,7 +454,7 @@ export class AttachedDocument {
 	private readonly options: AttachDocumentOptions;
 	private readonly rowsTable: string;
 	private readonly replicasTable: string;
-	private readonly lookups: ReturnType<typeof lookups>;
+	private _lookups: ReturnType<typeof lookups> | null = null;
 
 	constructor(ctx: DurableObjectState, options: AttachDocumentOptions = {}) {
 		this.ctx = ctx;
@@ -384,7 +464,6 @@ export class AttachedDocument {
 		this.maxFrameBytes = knob(options.maxFrameBytes, E.MAX_FRAME_BYTES);
 		this.compactAfter = knob(options.compactAfter, DEFAULT_COMPACT_AFTER, 1e9);
 		this.saveAfter = knob(options.saveAfter, DEFAULT_SAVE_AFTER, 1e9);
-		this.lookups = lookups(options.semantics ?? E.defaultSemantics);
 		const prefix = options.tablePrefix ?? 'edytor_';
 		if (!/^\w*$/.test(prefix)) throw new Error(`invalid table prefix ${prefix}`);
 		this.rowsTable = `${prefix}rows`;
@@ -402,10 +481,12 @@ export class AttachedDocument {
 	 */
 	private async start() {
 		try {
+			// A wake keeps a pending save: re-arming it would push `onSave` back at every wake.
+			if (this.options.onSave) this.saveScheduled = (await this.ctx.storage.getAlarm()) !== null;
 			noTimers(() => this.load());
 			if (this.origin.kind === 'fresh' && this.doc !== null) await this.seed();
 		} catch (error) {
-			this.fail(error, false);
+			this.fail(error, true);
 		}
 	}
 
@@ -420,6 +501,11 @@ export class AttachedDocument {
 	}
 
 	// ── Server-side access ───────────────────────────────────────────────
+
+	/** The room's block roles, read at first use (a subclass's fields exist by then). */
+	private get lookups(): ReturnType<typeof lookups> {
+		return (this._lookups ??= lookups(this.options.semantics ?? E.defaultSemantics));
+	}
 
 	/** A facade over `doc` obeying the room's block roles (`semantics`). */
 	private facadeOf(doc: YDoc): EdytorDoc {
@@ -444,7 +530,12 @@ export class AttachedDocument {
 			this.facade.transact(() => {
 				result = fn(this.facade);
 			}, ROOM_ORIGIN);
-			if (this.unstored !== null) throw this.rebuild();
+			if (this.unstored !== null) {
+				const error = this.unstored;
+				this.note({ reason: 'storage', detail: String(error) });
+				this.rebuild();
+				throw error;
+			}
 			this.compactIfDue();
 			return result;
 		});
@@ -553,8 +644,12 @@ export class AttachedDocument {
 
 	// ── Storage ──────────────────────────────────────────────────────────
 
-	/** Restore the live doc from the stored rows; a container that cannot be restored is a failure. */
-	private load() {
+	/**
+	 * Restore the live doc from the stored rows; a container that cannot be
+	 * restored is a failure — `retryable` when the rows were readable moments
+	 * ago (a rebuild), so the fault is the storage's, not the container's.
+	 */
+	private load(retryable = false) {
 		this.failure = null;
 		this.retryable = false;
 		try {
@@ -589,7 +684,7 @@ export class AttachedDocument {
 			this.origin = { kind: 'restored', records: rest.length };
 			this.updates = rest.filter((record) => record.kind === 'update').length;
 		} catch (error) {
-			this.fail(error, false);
+			this.fail(error, retryable);
 		}
 	}
 
@@ -691,13 +786,26 @@ export class AttachedDocument {
 	 * the edit is resent and stored.
 	 */
 	private recover(ws: WebSocket) {
+		this.note({ reason: 'storage', detail: String(this.unstored) });
 		this.rebuild();
 		this.depart(ws);
-		try {
-			ws.close(1011, 'storage failure');
-		} catch {
-			// already closing
-		}
+		this.close(ws, 1011, STORAGE_FAILURE);
+	}
+
+	/**
+	 * A fault of the room while it handled `ws`'s frame — a registry write
+	 * (`storage`), the engine or a send (`internal`): never the client's
+	 * doing, so never a refusal. An engine fault may leave the live doc
+	 * holding what storage does not: it is rebuilt from the stored rows.
+	 * The socket is closed 1011; its provider redials and resends.
+	 */
+	private fault(ws: WebSocket, error: unknown) {
+		if (this.unstored !== null) return this.recover(ws);
+		const storage = error instanceof StorageFault;
+		this.note({ reason: storage ? 'storage' : 'internal', detail: String(error) });
+		if (!storage && this.doc !== null) this.rebuild();
+		this.depart(ws);
+		this.close(ws, 1011, storage ? STORAGE_FAILURE : 'internal error');
 	}
 
 	/**
@@ -715,16 +823,16 @@ export class AttachedDocument {
 		}
 	}
 
-	/** Drop the live doc for the stored rows (a failed append); returns the append's error. */
-	private rebuild(): unknown {
-		const error = this.unstored;
-		this.note({ reason: 'storage', detail: String(error) });
+	/**
+	 * Drop the live doc for the stored rows (a failed append, an engine
+	 * fault). A read that fails now is retryable: the next dial loads again.
+	 */
+	private rebuild() {
 		const stale = this.doc;
 		this.doc = null;
 		this.unstored = null;
-		this.load();
+		this.load(true);
 		stale?.destroy();
-		return error;
 	}
 
 	private requireDoc(): YDoc {
@@ -759,47 +867,107 @@ export class AttachedDocument {
 
 	// ── Identity ─────────────────────────────────────────────────────────
 
-	/**
-	 * May `user` bind or write new structs under `clients`? A client id is
-	 * the user's once it is registered to them; an unregistered id with no
-	 * content in the room is registered now, whatever the socket's access
-	 * (so a viewer's id cannot be taken before it is granted edit). An id a
-	 * registry-less restore left unowned is claimed by its first `writer`.
-	 * Anything else — another user's id, or unregistered history — is
-	 * refused. Returns the first refused id, or `null`.
-	 */
-	private claim(
-		user: string,
-		clients: Iterable<number>,
-		sv: Map<number, number>,
-		writer: boolean
-	): number | null {
-		const fresh: number[] = [];
-		const orphans: number[] = [];
-		for (const client of clients) {
-			const owner = this.sql
-				.exec<{ user: string }>(`SELECT user FROM ${this.replicasTable} WHERE replica = ?`, client)
-				.toArray()[0]?.user;
-			if (owner === user) continue;
-			if (owner === '') {
-				if (writer) orphans.push(client);
-				continue;
-			}
-			if (owner !== undefined || (sv.get(client) ?? 0) > 0) return client;
-			fresh.push(client);
+	/** A registry read or write, its SQLite fault tagged (the socket closes 1011, never 1008). */
+	private registry<T>(fn: () => T): T {
+		try {
+			return fn();
+		} catch (error) {
+			throw new StorageFault(String(error));
 		}
-		if (fresh.length + orphans.length === 0) return null;
-		this.ctx.storage.transactionSync(() => {
-			for (const client of [...fresh, ...orphans]) {
-				this.sql.exec(
-					`INSERT OR REPLACE INTO ${this.replicasTable} (replica, user) VALUES (?, ?)`,
-					client,
-					user
-				);
+	}
+
+	/** Who owns `client`: a user, `''` (unowned: its dial claims it), or `undefined` (unregistered). */
+	private ownerOf(client: number): string | undefined {
+		return this.registry(
+			() =>
+				this.sql
+					.exec<{
+						user: string;
+					}>(`SELECT user FROM ${this.replicasTable} WHERE replica = ?`, client)
+					.toArray()[0]?.user
+		);
+	}
+
+	/** Register `owners` in one transaction; an unowned (`''`) row never replaces an owner. */
+	private register(owners: ReplicaOwner[]) {
+		if (owners.length === 0) return;
+		this.registry(() =>
+			this.ctx.storage.transactionSync(() => {
+				for (const { replica, user } of owners) {
+					this.sql.exec(
+						`INSERT ${user ? 'OR REPLACE' : 'OR IGNORE'} INTO ${this.replicasTable} (replica, user) VALUES (?, ?)`,
+						replica,
+						user
+					);
+				}
+			})
+		);
+	}
+
+	/**
+	 * May `user` bind `replica` to a socket (its dial, or its first presence
+	 * entry)? Its own id; an unregistered id with no content in the room,
+	 * registered now whatever the socket's access (so a viewer's id cannot be
+	 * taken before it is granted edit); an unowned id (`''`), which a
+	 * `writer` claims (logged `orphan`). Not another user's id, nor
+	 * unregistered history.
+	 */
+	private bind(user: string, replica: number, sv: Map<number, number>, writer: boolean): boolean {
+		const owner = this.ownerOf(replica);
+		if (owner === user) return true;
+		if (owner === '') {
+			if (!writer) return true;
+			this.register([{ replica, user }]);
+			this.note({ reason: 'orphan', detail: { replica, user } });
+			return true;
+		}
+		if (owner !== undefined || (sv.get(replica) ?? 0) > 0) return false;
+		this.register([{ replica, user }]);
+		return true;
+	}
+
+	/**
+	 * Which new writers of an update a socket may deliver; returns those
+	 * stripped from its frame (the rest of the frame is applied: never
+	 * refused whole). Written: its user's ids, and its own replica (the
+	 * dialed or bound one), which claims an unowned id or a fresh one, as
+	 * `bind` would. A socket with no replica claims fresh ids it writes.
+	 * Any other id is relayed — another replica's structs, which a restore
+	 * from a lagging snapshot may have lost: kept, and left unowned (`''`,
+	 * claimable only by its own dial), when the room holds none of that id's
+	 * clocks and no user owns it; stripped otherwise (logged `replica`).
+	 * Ownership never moves to a relayer.
+	 */
+	private attribute(
+		{ user, replica }: Attachment,
+		writers: Set<number>,
+		sv: Map<number, number>
+	): Set<number> {
+		const claimed: ReplicaOwner[] = [];
+		const orphans: number[] = [];
+		const relayed: number[] = [];
+		const stripped = new Set<number>();
+		for (const client of writers) {
+			const owner = this.ownerOf(client);
+			if (owner === user) continue;
+			const held = (sv.get(client) ?? 0) > 0;
+			const fresh = owner === undefined && !held;
+			if (client === replica ? fresh || owner === '' : replica === null && fresh) {
+				claimed.push({ replica: client, user });
+				if (owner === '') orphans.push(client);
+			} else if ((fresh || owner === '') && !held) {
+				relayed.push(client);
+			} else {
+				stripped.add(client);
 			}
-		});
-		for (const replica of orphans) this.note({ reason: 'orphan', detail: { replica, user } });
-		return null;
+		}
+		this.register([...claimed, ...relayed.map((client) => ({ replica: client, user: '' }))]);
+		for (const client of orphans)
+			this.note({ reason: 'orphan', detail: { replica: client, user } });
+		for (const client of relayed)
+			this.note({ reason: 'relayed', detail: { replica: client, user } });
+		for (const client of stripped) this.note({ reason: 'replica', detail: client });
+		return stripped;
 	}
 
 	// ── Hibernation WebSocket API ────────────────────────────────────────
@@ -819,10 +987,17 @@ export class AttachedDocument {
 		return noTimers(() => {
 			const doc = this.doc;
 			if (doc !== null && identity.replica !== null) {
-				const sv = stateVector(doc);
-				if (this.claim(identity.user, [identity.replica], sv, !identity.readOnly) !== null) {
+				let bound: boolean;
+				try {
+					bound = this.bind(identity.user, identity.replica, stateVector(doc), !identity.readOnly);
+				} catch (error) {
+					if (!(error instanceof StorageFault)) throw error;
+					this.note({ reason: 'storage', detail: String(error) });
+					return closedSocket(1011, STORAGE_FAILURE);
+				}
+				if (!bound) {
 					this.note({ reason: 'replica', detail: identity.replica });
-					return new Response('replica bound to another user', { status: 403 });
+					return closedSocket(REPLICA_TAKEN_CLOSE.code, REPLICA_TAKEN_CLOSE.reason);
 				}
 			}
 			const pair = new WebSocketPair();
@@ -870,17 +1045,23 @@ export class AttachedDocument {
 				return this.refuse(ws, { reason: 'generation', detail: bytes[0] });
 			}
 			try {
-				const type = E.readVarUint(decoder);
+				const type = decode(() => E.readVarUint(decoder));
 				if (type === E.messageSync) return this.onSync(ws, attachment, doc, decoder);
 				if (type === E.messageAwareness) {
-					return this.onPresence(ws, attachment, doc, E.readVarUint8Array(decoder));
+					const entries = decode(() => E.readAwarenessEntries(E.readVarUint8Array(decoder)));
+					return this.onPresence(ws, attachment, doc, entries);
 				}
 				if (type === E.messageQueryAwareness) {
 					return this.send(ws, presenceFrame([...this.presence.values()]));
 				}
 				this.refuse(ws, { reason: 'malformed', detail: `message type ${type}` });
 			} catch (error) {
-				this.refuse(ws, { reason: 'malformed', detail: String(error) });
+				// Only the client's bytes are its fault: the room's own faults close 1011.
+				if (error instanceof MalformedFrame) {
+					this.refuse(ws, { reason: 'malformed', detail: error.message });
+				} else {
+					this.fault(ws, error);
+				}
 			}
 		});
 		return true;
@@ -919,9 +1100,13 @@ export class AttachedDocument {
 	}
 
 	private onSync(ws: WebSocket, attachment: Attachment, doc: YDoc, decoder: E.Decoder) {
-		const syncType = E.readVarUint(decoder);
+		const syncType = decode(() => E.readVarUint(decoder));
 		if (syncType === E.messageYjsSyncStep1) {
-			const sv = E.readVarUint8Array(decoder);
+			const sv = decode(() => {
+				const sv = E.readVarUint8Array(decoder);
+				Y.decodeStateVector(sv);
+				return sv;
+			});
 			this.send(ws, storedStep2(doc, sv));
 			if (!attachment.readOnly && sync.lacks(doc, sv)) {
 				this.send(
@@ -934,7 +1119,7 @@ export class AttachedDocument {
 		if (syncType !== E.messageYjsSyncStep2 && syncType !== E.messageYjsUpdate) {
 			return this.refuse(ws, { reason: 'malformed', detail: `sync type ${syncType}` });
 		}
-		const update = E.readVarUint8Array(decoder);
+		const update = decode(() => E.readVarUint8Array(decoder));
 		// 2 · Access: a read-only socket writes nothing (it stays, and is told).
 		if (attachment.readOnly) {
 			this.note({ reason: 'read-only', detail: attachment.user });
@@ -943,20 +1128,26 @@ export class AttachedDocument {
 				E.frame(E.messageAuth, (e) => E.writePermissionDenied(e, 'read-only'))
 			);
 		}
-		// 3 · Attribution: new structs only under client ids this user owns.
-		const decoded = Y.decodeUpdate(update);
+		// 3 · Attribution: new structs only under client ids this user may
+		// write under; another user's are stripped, the rest applied.
+		const decoded = decode(() => Y.decodeUpdate(update));
 		const sv = stateVector(doc);
-		const refused = this.claim(attachment.user, newWriters(decoded, sv), sv, true);
-		if (refused !== null) return this.refuse(ws, { reason: 'replica', detail: refused });
+		const stripped = this.attribute(attachment, newWriters(decoded, sv), sv);
+		const admitted =
+			stripped.size === 0 ? { update, ds: decoded.ds } : withoutClients(decoded, stripped);
 		// 4 · Schema: the inbound refusal of a foreign stamp (the update's,
 		// or a pending one it would release — discarded, the sender kept).
 		// Integrating persists (the doc's update handler) before the ack.
-		const { applied, problem, discarded } = sync.applyRemote(doc, update, ws);
+		let failure: unknown = null;
+		const { applied, problem, discarded } = sync.applyRemote(doc, admitted.update, ws, (error) => {
+			failure = error;
+		});
 		if (this.unstored !== null) return this.recover(ws);
 		if (problem !== null) return this.refuse(ws, { reason: 'schema', detail: problem });
-		if (!applied) return this.refuse(ws, { reason: 'malformed', detail: 'undecodable update' });
+		// The bytes decoded: an update the engine could not apply is its fault.
+		if (!applied) return this.fault(ws, failure ?? new Error('update not applied'));
 		if (discarded) this.note({ reason: 'schema', detail: { discarded } });
-		this.acknowledge(ws, doc, decoded.ds);
+		this.acknowledge(ws, doc, admitted.ds);
 		this.compactIfDue();
 	}
 
@@ -980,12 +1171,11 @@ export class AttachedDocument {
 	 * room at every renewal and is never torn down as silent.
 	 * Entries for other replicas (a client re-sending what it heard) are dropped.
 	 */
-	private onPresence(ws: WebSocket, attachment: Attachment, doc: YDoc, update: Uint8Array) {
-		const entries = E.readAwarenessEntries(update);
+	private onPresence(ws: WebSocket, attachment: Attachment, doc: YDoc, entries: AwarenessEntry[]) {
 		let replica = attachment.replica;
 		if (replica === null && entries.length > 0) {
 			replica = entries[0].clientID;
-			if (this.claim(attachment.user, [replica], stateVector(doc), !attachment.readOnly) !== null) {
+			if (!this.bind(attachment.user, replica, stateVector(doc), !attachment.readOnly)) {
 				return this.refuse(ws, { reason: 'replica', detail: replica });
 			}
 		}
@@ -1014,8 +1204,12 @@ export class AttachedDocument {
 	private refuse(ws: WebSocket, refusal: Refusal) {
 		this.note(refusal);
 		this.depart(ws);
+		this.close(ws, 1008, `refused: ${refusal.reason}`);
+	}
+
+	private close(ws: WebSocket, code: number, reason: string) {
 		try {
-			ws.close(1008, `refused: ${refusal.reason}`);
+			ws.close(code, reason);
 		} catch {
 			// already closing
 		}
@@ -1030,11 +1224,7 @@ export class AttachedDocument {
 		if (!this.retryable)
 			return this.refuse(ws, { reason: 'container', detail: this.failure?.message });
 		this.note({ reason: 'container', detail: this.failure?.message });
-		try {
-			ws.close(1011, 'room unavailable');
-		} catch {
-			// already closing
-		}
+		this.close(ws, 1011, 'room unavailable');
 	}
 
 	/** Send one frame — as chunks when it exceeds `maxFrameBytes` (bounded catch-up). */
@@ -1099,13 +1289,17 @@ export class DocumentRoom<
 		super(ctx, env);
 		const knobs = env as DocumentRoomEnv;
 		const saves = this.onSave !== DocumentRoom.prototype.onSave;
+		const semantics = () => this.semantics();
 		this.room = new AttachedDocument(ctx, {
 			maxRowBytes: Number(knobs.EDYTOR_MAX_ROW_BYTES),
 			maxFrameBytes: Number(knobs.EDYTOR_MAX_FRAME_BYTES),
 			compactAfter: Number(knobs.EDYTOR_COMPACT_AFTER),
 			saveAfter: Number(knobs.EDYTOR_SAVE_AFTER),
 			tablePrefix: '',
-			semantics: this.semantics(),
+			// A getter: a subclass's fields do not exist yet in this constructor.
+			get semantics() {
+				return semantics();
+			},
 			onLoad: () => this.onLoad(),
 			onSave: saves ? (document) => this.onSave(document) : undefined
 		});
@@ -1119,7 +1313,10 @@ export class DocumentRoom<
 	/** Save — see {@link AttachDocumentOptions.onSave}. Not overridden: no alarm is ever set. */
 	protected async onSave(_document: SavedDocument): Promise<void> {}
 
-	/** Block roles — see {@link AttachDocumentOptions.semantics}. Read once, at construction. */
+	/**
+	 * Block roles — see {@link AttachDocumentOptions.semantics}. Read once,
+	 * at first use (after construction: it may return a subclass field).
+	 */
 	protected semantics(): DocumentSemanticsConfig {
 		return E.defaultSemantics;
 	}

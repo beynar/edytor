@@ -1,7 +1,7 @@
 import type { Block } from './block/block.svelte.js';
 import type { Edytor } from './edytor.svelte.js';
 import type { BlockDefinition, EditorCommand, KindPreset } from './plugins.js';
-import { jsonEquals, type JSONBlock } from './utils/json.js';
+import { jsonBlockToSpec, jsonEquals, type JSONBlock } from './utils/json.js';
 import { dispatchPlan, prepareSet } from './block/block.utils.js';
 import { id } from './utils.js';
 
@@ -36,13 +36,20 @@ export const convertibleKinds = (edytor: Edytor): KindRow[] =>
 /**
  * The row naming `block`: of its kind's rows, the one whose preset data
  * shares the most values with the block's (the first on a tie). A block
- * matching no preset exactly (a checked to-do) still gets its kind's row.
+ * matching no preset exactly (a checked to-do) still gets its kind's row;
+ * among equals, the row drawn with the block's element wins, so a stored
+ * `h5` heading, drawn as an `h3`, is "Heading 3".
  */
-export const kindOf = (edytor: Edytor, block: Block | null | undefined): KindRow | undefined => {
+export const rowOf = (edytor: Edytor, block: Block | null | undefined): KindRow | undefined => {
 	if (!block) return undefined;
 	const data = block.data ?? {};
+	const { element } = block.definition;
+	const drawn = (of: Record<string, unknown>) =>
+		typeof element === 'function' ? JSON.stringify(element(of)) : undefined;
+	const own = drawn(data);
 	const score = ({ value }: KindRow) =>
-		Object.entries(value.data ?? {}).filter(([key, v]) => jsonEquals(data[key], v)).length;
+		2 * Object.entries(value.data ?? {}).filter(([key, v]) => jsonEquals(data[key], v)).length +
+		Number(own !== undefined && drawn(value.data ?? {}) === own);
 	let best: KindRow | undefined;
 	for (const row of edytor.kinds)
 		if (row.value.type === block.type && (!best || score(row) > score(best))) best = row;
@@ -50,12 +57,27 @@ export const kindOf = (edytor: Edytor, block: Block | null | undefined): KindRow
 };
 
 /**
+ * Whether converting `block` loses nothing: it has no children, and no
+ * content but what the pending lead (a slash query) removes with it.
+ */
+const holdsNothing = (edytor: Edytor, block: Block) => {
+	if (block.hasChildren) return false;
+	const removed = (edytor.dispatcher.pendingLead?.writes ?? []).reduce(
+		(sum, w) => sum + (w.op === 'deleteText' && w.id === block.id ? w.length : 0),
+		0
+	);
+	return edytor.facade.displayLength(block.id) <= removed;
+};
+
+/**
  * Convert `block` to a row's kind as one command. With `caret` (by default
  * when the conversion replaces the content) the caret lands at the start of
  * the converted block, or of its first child when the conversion creates one.
- * A kind rendering no content (a divider) holds no caret: a fresh default
- * block after it takes it, in the same plan (one refusal, one undo step).
- * Answers whether it applied.
+ * A replacing kind (a divider, a code block) converts in place only a block
+ * that holds nothing; after text or children it is inserted after the
+ * block instead, which stays intact. A kind rendering no content (a divider)
+ * holds no caret: a fresh default block after it takes it. Each is one plan
+ * (one refusal, one undo step). Answers whether it applied.
  */
 export const convertToKind = (
 	edytor: Edytor,
@@ -66,14 +88,22 @@ export const convertToKind = (
 	if (!block?.convertible) return false;
 	const value = structuredClone(row.value);
 	const { parent } = block;
-	if (parent && !edytor.document.rendersContent(value.type) && !value.children?.length) {
+	const after = row.replaces && !holdsNothing(edytor, block);
+	const bare = !edytor.document.rendersContent(value.type) && !value.children?.length;
+	if (parent && (after || bare)) {
 		const { facade } = edytor;
-		const next = { id: id('b'), type: edytor.defaultChild(parent) };
+		const kind = { ...value, id: id('b') };
+		const next = bare ? [{ id: id('b'), type: edytor.defaultChild(parent) }] : [];
 		const slot = { parent: parent.isRoot ? null : parent.id, index: block.index + 1 };
-		const applied = dispatchPlan(block, 'setBlock', { value }, (payload) =>
-			facade.compose(prepareSet.call(block, payload), facade.prepare.insertBlocks(slot, [next]))
-		);
-		if (applied) edytor.dispatcher.caret(edytor.idToBlock.get(next.id)?.firstText, 0);
+		const applied = after
+			? dispatchPlan(block, 'insertBlockAfter', { block: kind }, (payload) =>
+					facade.prepare.insertBlocks(slot, [jsonBlockToSpec(payload.block), ...next])
+				)
+			: dispatchPlan(block, 'setBlock', { value }, (payload) =>
+					facade.compose(prepareSet.call(block, payload), facade.prepare.insertBlocks(slot, next))
+				);
+		const landing = edytor.idToBlock.get(next[0]?.id ?? kind.id);
+		if (applied) edytor.dispatcher.caret((landing?.children[0] ?? landing)?.firstText, 0);
 		return Boolean(applied);
 	}
 	block.setBlock({ value });

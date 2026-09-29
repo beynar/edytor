@@ -1,7 +1,7 @@
 import type { Snippet } from 'svelte';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { convertibleKinds, convertToKind, kindOf, type KindRow } from '$lib/kinds.js';
+import { convertibleKinds, convertToKind, rowOf, type KindRow } from '$lib/kinds.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -50,7 +50,7 @@ export class BlockMenuController {
 
 	/** The row naming the open block. */
 	get currentKind(): KindRow | undefined {
-		return kindOf(this.edytor, this.block);
+		return rowOf(this.edytor, this.block);
 	}
 
 	get actions(): BlockMenuAction[] {
@@ -167,13 +167,38 @@ export class BlockMenuController {
 		this.caret(copy ?? block);
 	}
 
+	/**
+	 * Duplicate several blocks as one undo step, each copy after its block (a
+	 * block inside another of them is copied with it); the copies are selected.
+	 */
+	duplicateAll(blocks: Block[]) {
+		const inside = (block: Block) => {
+			for (let parent = block.parent; parent; parent = parent.parent)
+				if (blocks.includes(parent)) return true;
+			return false;
+		};
+		const roots = blocks.filter((block) => !inside(block));
+		const copies = this.edytor.dispatcher.run('insertBlock', () =>
+			roots.flatMap((block) => block.duplicateBlock() ?? [])
+		);
+		this.close(false);
+		if (copies?.length) this.edytor.selection.selectBlocks(...copies);
+	}
+
+	/** Delete the open block; the caret goes to the nearest text after it, else before it. */
 	remove() {
 		const block = this.block;
 		if (!block) return;
-		const next = block.nextBlock ?? block.previousBlock;
+		let last = block;
+		while (last.children.length) last = last.children.at(-1)!;
+		const [after, before] = [
+			this.editable(last, 'blockAfter', 'firstEditableText'),
+			this.editable(block, 'blockBefore', 'lastEditableText')
+		];
 		block.removeBlock();
 		this.close(false);
-		this.caret(next);
+		this.edytor.dispatcher.caret(after ?? before, after ? 0 : (before?.length ?? 0));
+		this.focus();
 	}
 
 	async copyLink() {
@@ -200,6 +225,18 @@ export class BlockMenuController {
 	private caret(block: Block | null | undefined) {
 		this.edytor.dispatcher.caret(block?.firstText ?? block?.children[0]?.firstText, 0);
 		this.focus();
+	}
+
+	/** The nearest editable text from `block` in document order, void blocks skipped. */
+	private editable(
+		block: Block,
+		step: 'blockAfter' | 'blockBefore',
+		edge: 'firstEditableText' | 'lastEditableText'
+	) {
+		for (let next = this.edytor[step](block); next; next = this.edytor[step](next)) {
+			const text = next[edge];
+			if (text) return text;
+		}
 	}
 
 	private focus() {

@@ -12,16 +12,24 @@ The room enforces identity, but it does not know your users. You tell it who is 
 type AuthorizeDocumentSocket = (
   request: Request,
   documentId: string
-) => DocumentIdentity | null | Promise<DocumentIdentity | null>;
+) =>
+  | DocumentIdentity
+  | ExpiredCredential
+  | null
+  | Promise<DocumentIdentity | ExpiredCredential | null>;
 
 type DocumentIdentity = {
   userId: string;
   replica?: number | null;
   readOnly?: boolean;
 };
+
+type ExpiredCredential = { expired: true };
 ```
 
 `authorize` receives the client's original upgrade request (with its query string and cookies) and the document id you passed to `routeDocumentSocket`. Return `null` to refuse. The room is never reached: `routeDocumentSocket` accepts the upgrade and closes it at once with code `4403` and reason `document access denied`. A browser reports an HTTP 403 at the upgrade as a bare `1006`, the same as a network failure; the `4403` close lets the provider tell a denial from being offline. The provider treats it as final: it emits `refused` once and stops dialing (see [refusals](/docs/collaboration/websocket#refusals)).
+
+Return `{ expired: true }` when the credential was valid but has expired. The dial is accepted and closed with `4401` and reason `expired`, and the room is never reached. The provider does not stop: it emits `expired`, then redials after its backoff, reading `params` again. Put a fresh token in `params` when `expired` fires and the next dial gets in.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -29,7 +37,13 @@ type DocumentIdentity = {
 | `replica` | `number \| null` | The client's CRDT client id (`document.clientID`), usually read with `requestedReplica(request)`. When omitted, the socket's first presence message binds it. |
 | `readOnly` | `boolean` | Refuse every write on this socket. Reads and presence still work. |
 
-`routeDocumentSocket` answers without calling the room when the request is not a WebSocket upgrade (426), when the document id is empty or longer than 256 characters (400), or when `authorize` returns `null` or an invalid identity (closed `4403`).
+`routeDocumentSocket` answers without calling the room when the request is not a WebSocket upgrade (426), when the document id is empty or longer than 256 characters (400), when `authorize` returns `{ expired: true }` (closed `4401`), or when it returns `null` or an invalid identity (closed `4403`).
+
+| Close | Sent when | The provider |
+| --- | --- | --- |
+| `4401` `expired` | `authorize` returned `{ expired: true }`. | Emits `expired` and redials after its backoff, with `params` read again. |
+| `4403` `document access denied` | `authorize` returned `null` or an invalid identity. | Final: emits `refused` and stops dialing. |
+| `4409` `replica bound to another user` | The room: the dial's replica belongs to another user (see [replicas](#replicas)). | Final: emits `refused` and stops dialing. |
 
 ## Example: a signed token
 
@@ -67,8 +81,9 @@ export default {
           replica: requestedReplica(request),
           readOnly: access === 'view'
         };
-      } catch {
-        return null; // expired or forged token
+      } catch (error) {
+        // An expired token is retried (4401) once `params` holds a fresh one; a forged one is refused (4403).
+        return (error as { code?: string }).code === 'ERR_JWT_EXPIRED' ? { expired: true } : null;
       }
     });
   }
@@ -81,7 +96,7 @@ The client sends the token; the provider adds its replica id (`?replica=<clientI
 <Edytor server="wss://rooms.example.com/rooms" room={documentId} params={{ token }} actor={{ id: userId }} />
 ```
 
-`params` is read at every reconnect; pass a new `token` to refresh an expiring one (see [WebSocket options](/docs/collaboration/websocket#options)). A denied dial stops the provider: once a refused token is refreshed, reload the page, or call `connect()` on a [`WebsocketProvider`](/docs/collaboration/websocket#provider-events-and-state) you created, to dial again. With a session cookie instead, read `request.headers.get('Cookie')` in `authorize` and look the session up; the cookie is sent with the upgrade when the Worker is on the same site.
+`params` is read at every reconnect; pass a new `token` to refresh an expiring one (see [WebSocket options](/docs/collaboration/websocket#options)). An expired token closes the dial with `4401`: the provider emits `expired` and dials again with the `params` it then reads. A denied dial (`4403`) stops the provider: once the permission is fixed, reload the page, or call `connect()` on a [`WebsocketProvider`](/docs/collaboration/websocket#provider-events-and-state) you created, to dial again. With a session cookie instead, read `request.headers.get('Cookie')` in `authorize` and look the session up; the cookie is sent with the upgrade when the Worker is on the same site.
 
 ## How identity reaches the room
 
@@ -103,15 +118,24 @@ Reach the room only through `routeDocumentSocket`. If your Worker forwards reque
 
 Every browser tab has a CRDT client id (`document.clientID`, the *replica*), and every piece of content records the client id that wrote it. The room makes sure nobody writes under a client id that is not theirs:
 
-- Each client id is registered to the user who first wrote under it. The registration is stored in the room beside the document, and [`onSave`](/docs/server/extending#save) receives it as `replicas`: store it with `update` and return both from `onLoad`, or a restored room cannot tell who owns which id.
-- The replica from `authorize` is registered when the socket opens, for read-only sockets too, so nobody can take a viewer's id before it is granted edit. A replica another user already owns is refused with a 403.
-- An update that adds content under a client id another user owns, or under an unregistered id that already has content in the room, is refused: the socket is closed with code `1008` and reason `refused: replica`.
-- A user may write under every id they own. A reloaded page gets a new client id, and the edits its earlier id made offline are still delivered on reconnect.
-- Edits restored from a local copy were written under earlier client ids of the same user; unregistered ids are registered to the user who delivers them first.
+- Each client id is registered to one user. The registration is stored in the room beside the document, and [`onSave`](/docs/server/extending#save) receives it as `replicas`: store it with `update` and return both from `onLoad`, or a restored room cannot tell who owns which id.
+- The socket's own replica (from `authorize`, or bound by its first presence entry) is registered when the socket opens, for read-only sockets too, so nobody can take a viewer's id before it is granted edit. A dial whose replica another user owns is accepted, then closed with `4409` (`replica bound to another user`); the provider treats it as final.
+- A user may write under every id registered to them. A reloaded page gets a new client id, and the edits its earlier id made offline are still delivered on reconnect.
+- Content under a client id another user owns, or under an unregistered id that already has content, is stripped from the update (logged as a `replica` refusal, with the id), and so are the update's deletes of that id's items. The rest of the update is applied: the socket stays connected and its own edits are stored.
+- Content under an id the room holds nothing of, and no user owns, is *relayed* content: another replica's edits, which this client received and passes on (edits restored from a local copy, or edits a room restored from an older snapshot lost). It is stored, logged as `relayed`, and the id stays unowned: only a socket whose own replica is that id claims it (logged as `orphan`). Delivering an id never makes it yours.
 
-`requestedReplica(request, param = 'replica')` reads the replica from the query string and returns `null` when it is missing or not a valid client id. Without a replica from `authorize`, the socket's first presence entry binds it (and registers it, as a dial would).
+`requestedReplica(request, param = 'replica')` reads the replica from the query string and returns `null` when it is missing or not a valid client id. The shipped provider sends it at every dial. Without a replica from `authorize`, the socket's first presence entry binds it (and registers it, as a dial would); until then, the room cannot tell the socket's own id from one it relays, so an unregistered id without content that the socket writes under is registered to its user.
 
-Registrations of ids that hold no content and belong to no open socket are dropped when the room [compacts](/docs/server/room#storage). After a restore from a bare update (no `replicas`), an id that holds content is claimed by the first signed-in writer who dials or writes with it.
+Registrations of ids that hold no content and belong to no open socket are dropped when the room [compacts](/docs/server/room#storage). After a restore from a bare update (no `replicas`), each id that holds content is unowned until a signed-in writer dials with it.
+
+### Restoring from an older snapshot
+
+If the room's storage is lost and `onLoad` returns a snapshot older than the last edits, clients still hold edits the room lacks, including other users' edits they received. Their handshake delivers them:
+
+- Edits under an id another user owns, or under an id the room already holds part of, are stripped. The author's own client delivers them when it reconnects. The relaying client's own edits are stored meanwhile; an edit of its own that builds on stripped content waits in the room's memory until the author's edit arrives.
+- Edits under an id the room holds nothing of are stored as relayed content, and the id stays claimable by its author's dial.
+
+Every author keeps their client ids, and nobody is disconnected for relaying.
 
 Because client ids belong to users, a browser profile's local copy and cross-tab channel should belong to one user. See [one user per browser profile](/docs/collaboration/persistence#one-user-per-browser-profile).
 

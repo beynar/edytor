@@ -55,6 +55,32 @@ const chord = (parts: string[]) => {
 	return [...MODIFIERS.filter((modifier) => lower.includes(modifier)), ...key].join('+');
 };
 
+/** US-layout keys and what Shift makes of them: a keydown reports the character typed. */
+const [BASE, SHIFT] = ["`1234567890-=[]\\;',./", '~!@#$%^&*()_+{}|:"<>?'];
+const SHIFTED = new Map([...BASE].map((base, index) => [base, SHIFT[index]!]));
+/** Characters only Shift types (the numeric keypad types `+` and `*` unshifted). */
+const TYPED_WITH_SHIFT = new Set([...SHIFTED.values()].filter((key) => !'+*'.includes(key)));
+
+/**
+ * Why a well-formed chord still never fires (a development hint), or null:
+ * a character Shift types needs `shift` (`mod+shift+?`), Shift turns a key
+ * into another character (`shift+/` arrives as `?`), and on macOS Option
+ * with a character types text (`alt+b` is `∫`) unless `mod` or `ctrl` holds.
+ */
+const silent = (parts: string[]) => {
+	const lower = parts.map((part) => part.toLowerCase());
+	const key = lower.find((part) => !MODIFIERS.includes(part)) ?? '';
+	const has = (modifier: string) => lower.includes(modifier);
+	if (!has('shift') && TYPED_WITH_SHIFT.has(key))
+		return `"${key}" is typed with Shift: bind "${chord([...lower, 'shift'])}"`;
+	const shifted = SHIFTED.get(key);
+	if (has('shift') && shifted)
+		return `Shift turns "${key}" into "${shifted}": bind "${chord([...lower.filter((part) => part !== key), shifted])}"`;
+	if (has('alt') && !has('mod') && !has('ctrl') && key.length === 1)
+		return `on macOS, Option+${key} types a character; add mod`;
+	return null;
+};
+
 /** AltGr (Windows Ctrl+Alt, `AltGraph`) and dead keys compose text: never a binding. */
 const composesText = (event: KeyboardEvent) =>
 	event.key === 'AltGraph' || event.key === 'Dead' || event.getModifierState?.('AltGraph') === true;
@@ -99,6 +125,8 @@ export class Keymap {
 						`[edytor] hotkey "${keys}" never fires: "${dead}" is neither a modifier ` +
 							'(mod, alt, ctrl, shift) nor a key name.'
 					);
+				const hint = DEV && dead === undefined && silent(parts);
+				if (hint) console.warn(`[edytor] hotkey "${keys}" never fires: ${hint}.`);
 				const at = chord(parts);
 				this.table.set(at, [...(this.table.get(at) ?? []), binding as HotKey]);
 			}

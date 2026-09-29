@@ -203,11 +203,11 @@ if (row && convertToKind(edytor, block, row)) {
 await edytor.runCommand('block.heading2');
 ```
 
-A row has the preset's fields plus `id`, `value` (the JSON the block is converted to) and `replaces` (`true` when the kind has an `empty` shape). `convertToKind` applies only to convertible blocks, those that are neither void nor island nor inside an island, and returns whether it applied. When the conversion replaces the content, the caret moves to the start of the converted block, or of its first child. A kind that renders no content (a divider) cannot hold the caret: the same step adds a block of the parent's default child kind after it, and the caret lands there. For a menu of conversions that keep the text, filter out `row.replaces`.
+A row has the preset's fields plus `id`, `value` (the JSON the block is converted to) and `replaces` (`true` when the kind has an `empty` shape). `convertToKind` applies only to convertible blocks, those that are neither void nor island nor inside an island, and returns whether it applied. When the conversion replaces the content, the caret moves to the start of the converted block, or of its first child. A replacing kind converts in place only a block that holds nothing (no children, no text but a pending slash query); after text or children, the same command inserts the new block after it instead and leaves the block intact. A kind that renders no content (a divider) cannot hold the caret: the same step adds a block of the parent's default child kind after it, and the caret lands there. For a menu of conversions that keep the text, filter out `row.replaces`.
 
 ## Continuing kinds
 
-Set `continues: true` on a list-like kind, as the rich text plugin does for bulleted and numbered items, to-dos and toggles. <kbd>Enter</kbd> then opens another block of the same kind, with the data of the kind's first preset (a new to-do starts unchecked because its first preset's data is `{ checked: false }`), and <kbd>Enter</kbd> in an empty one ends the run. [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role) has the full rules.
+Set `continues: true` on a list-like kind, as the rich text plugin does for bulleted and numbered items, to-dos and toggles. <kbd>Enter</kbd> then opens another block of the same kind, with the data of the kind's first preset (a new to-do starts unchecked because its first preset's data is `{ checked: false }`, also when <kbd>Enter</kbd> at the end of a to-do with children moves them to the new one), and <kbd>Enter</kbd> in an empty one ends the run. [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role) has the full rules.
 
 ```ts
 blocks: {
@@ -221,7 +221,7 @@ blocks: {
 
 ## Containers
 
-Set `container: true` on a kind whose text is a header over its children, as the rich text plugin does for toggles, callouts and quotes. <kbd>Enter</kbd> at the end of one that has children opens a first child of its `defaultChild` kind. A header rendered as `<details>` does so while open, even without children, and adds a sibling while closed; the open state is the browser's (`viewState: ['open']`), read from the block element. See [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role).
+Set `container: true` on a kind whose text is a header over its children, as the rich text plugin does for toggles, callouts and quotes. <kbd>Enter</kbd> at the end of one that has children opens a first child of its `defaultChild` kind, and <kbd>Enter</kbd> in the middle of its header moves the text after the caret into that first child, the children staying with the header. A header rendered as `<details>` does so while open, even without children, and adds a sibling (holding the text after the caret) while closed; the open state is the browser's (`viewState: ['open']`), read from the block element. See [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role).
 
 ## Backspace at the start
 

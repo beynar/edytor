@@ -1,4 +1,3 @@
-import { tick } from 'svelte';
 import type { ElementDropTargetEventPayloadMap } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 
 import type { Block } from '$lib/block/block.svelte.js';
@@ -160,27 +159,30 @@ export class BlockHandleController {
 
 	/**
 	 * Notion's `+`: a new block below (above with Alt) opened on the slash
-	 * menu; an empty block of the default kind takes the `/` itself.
+	 * menu; an empty block of the default kind takes the `/` itself. One user
+	 * command: its own undo step, however soon it follows typing.
 	 */
-	async addBlock(block: Block, above = false) {
+	addBlock(block: Block, above = false) {
 		const { edytor } = this;
-		if (edytor.readonly || !block.parent) return;
-		const type = edytor.defaultChild(block.parent);
-		const spec = { block: { type } };
-		const target =
-			block.type === type && block.isEmpty
-				? block
-				: above
-					? block.insertBlockBefore(spec)
-					: block.insertBlockAfter(spec);
-		// A new block's text mounts on the next tick: the caret needs its node.
-		if (target !== block) await tick();
-		const text = target?.firstEditableText;
-		if (!text) return;
-		edytor.selection.setAtTextOffset(text, 0);
+		const { parent } = block;
+		if (edytor.readonly || !parent) return;
 		edytor.node?.focus({ preventScroll: true });
-		text.insertText({ value: '/' });
-		edytor.selection.setAtTextOffset(text, 1);
+		edytor.dispatcher.run('insertBlock', () => {
+			const type = edytor.defaultChild(parent);
+			const spec = { block: { type } };
+			const target =
+				block.type === type && block.isEmpty
+					? block
+					: above
+						? block.insertBlockBefore(spec)
+						: block.insertBlockAfter(spec);
+			const text = target?.firstText;
+			if (!text) return;
+			// The caret is the model's: the projector shows it once the block mounts.
+			edytor.dispatcher.caret(text, 0);
+			text.insertText({ value: '/', start: 0, end: 0 });
+			edytor.dispatcher.caret(text, 1);
+		});
 	}
 
 	registerHandle(element: HTMLElement, block: Block) {

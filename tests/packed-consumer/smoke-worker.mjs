@@ -10,7 +10,8 @@
  *    trip over WebSocket upgrades — a writer pushes a seeded document and
  *    gets the room's store-before-ack state vector, a second socket syncs
  *    it back — an update under the writer's client id from another user is
- *    refused (1008), and a frame of another generation is refused (1008).
+ *    stripped (never applied; the sender stays connected, NW-01), and a frame
+ *    of another generation is refused (1008).
  *
  * esbuild and Miniflare are the versions the repo's
  * `@cloudflare/vitest-plugin` devDependency owns (resolved from the repo
@@ -184,7 +185,9 @@ try {
 	assert.deepEqual(facade.toJSON(), writer.facade.toJSON());
 	facade.dispose();
 
-	// Another user writing under the writer's client id is refused.
+	// Another user writing under the writer's client id: the room strips those
+	// structs from the frame (never applied or stored) and the sender stays
+	// connected (NW-01 — relayed structs are stripped, not refused).
 	const forgedDoc = crdt.createDoc();
 	Y.applyUpdate(forgedDoc, Y.encodeStateAsUpdate(writer.doc));
 	forgedDoc.clientID = own;
@@ -195,8 +198,28 @@ try {
 	forger.destroy();
 	const mallory = await dial('smoke', '?user=mallory');
 	mallory.ws.send(E.frame(E.messageSync, (e) => sync.writeUpdate(e, Y.mergeUpdates(forged))));
-	await until(() => mallory.closed() !== null, 'the forged-client refusal');
-	assert.deepEqual(mallory.closed(), { code: 1008, reason: 'refused: replica' });
+	// A SyncStep1 on the same socket is answered after the forged frame is handled.
+	const probe = crdt.createDoc();
+	mallory.ws.send(E.frame(E.messageSync, (e) => sync.writeSyncStep1(e, probe)));
+	let probed = false;
+	await until(() => {
+		assert.equal(mallory.closed(), null, 'the forger stays connected');
+		for (const bytes of mallory.frames.splice(0)) {
+			const decoder = E.createDecoder(bytes);
+			if (!E.readProtocolVersion(decoder) || E.readVarUint(decoder) !== E.messageSync) continue;
+			const type = E.readVarUint(decoder);
+			const payload = E.readVarUint8Array(decoder);
+			if (type === E.messageYjsSyncStep1) continue;
+			sync.applyRemote(probe, payload, 'room');
+			probed ||= type === E.messageYjsSyncStep2;
+		}
+		return probed;
+	}, "the room's answer after the forged frame");
+	const probeFacade = crdt.doc.create(probe);
+	assert.equal(probeFacade.blockText('p1'), 'packed Worker', 'the forged structs were not applied');
+	probeFacade.dispose();
+	assert.equal(mallory.closed(), null, 'the forger stays connected');
+	mallory.ws.close(1000, 'done');
 
 	// A v13-era frame (no generation word: `messageSync, messageYjsUpdate, …`) is refused.
 	const rogue = await dial('smoke');

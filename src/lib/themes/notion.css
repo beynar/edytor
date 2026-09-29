@@ -282,7 +282,8 @@
 	flex-direction: column;
 	gap: 8px;
 }
-.edytor-notion [data-edytor-image-add] {
+.edytor-notion [data-edytor-image-add],
+.edytor-notion [data-edytor-image-placeholder] {
 	display: flex;
 	align-items: center;
 	gap: 10px;
@@ -296,6 +297,9 @@
 	text-align: left;
 	cursor: pointer;
 	transition: background-color 80ms ease;
+}
+.edytor-notion [data-edytor-image-placeholder] {
+	cursor: default;
 }
 .edytor-notion [data-edytor-image-add]:hover {
 	background: rgba(33, 27, 23, 0.07);

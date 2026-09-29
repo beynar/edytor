@@ -13,16 +13,19 @@ type TextInsertionPayload = {
 	end?: number;
 };
 
-const normalize = (value: string) => value.trim().toLowerCase();
+/** Lowercase, hyphens dropped (`To-do` reads `todo`), trimmed. */
+const normalize = (value: string) => value.replace(/-/g, '').trim().toLowerCase();
 
-const commandMatchesQuery = (command: EditorCommand, query: string) => {
-	if (!query) {
-		return true;
-	}
+/** The query starts a word of the command's label or keywords (Notion); the id is not searched. */
+const commandMatchesQuery = (command: EditorCommand, query: string) =>
+	!query ||
+	[command.label, ...(command.keywords ?? [])]
+		.map(normalize)
+		.some((value) => value.startsWith(query) || value.includes(` ${query}`));
 
-	const searchable = [command.id, command.label, ...(command.keywords ?? [])].map(normalize);
-	return searchable.some((value) => value.includes(query));
-};
+/** A `/` opens the menu at a text's start or after whitespace, never inside a word (`1/2`, `and/or`). */
+const startsTrigger = (text: Text, offset: number) =>
+	offset === 0 || /\s/.test(text.stringContent[offset - 1] ?? '');
 
 export class SlashMenuController {
 	isOpen = $state(false);
@@ -58,7 +61,12 @@ export class SlashMenuController {
 		const start = payload.start ?? this.edytor.selection.state.yStart;
 		const end = payload.end ?? this.edytor.selection.state.yEnd;
 		// A trigger typed alone, or committed by an IME with its query (`/h`).
-		if (payload.value.startsWith('/') && start === end && block.convertible) {
+		if (
+			payload.value.startsWith('/') &&
+			start === end &&
+			block.convertible &&
+			startsTrigger(text, start)
+		) {
 			this.open(text, start, start + payload.value.length);
 			return;
 		}

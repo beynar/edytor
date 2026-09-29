@@ -117,8 +117,12 @@ export type DocBlock = {
 	setData(data: Record<string, unknown>): OpResult;
 	/** Baseline `setBlock` — type/data update in place; content/children replace (all-or-nothing). */
 	set(value: Parameters<EdytorDoc['setBlock']>[1]): OpResult;
-	/** Fresh-identity copy of this subtree right after it; `ids`: the copy. */
-	duplicate(freshId: (oldId: BlockId) => BlockId): OpResult;
+	/**
+	 * Fresh-identity copy of this subtree right after it; `freshId` names each
+	 * copied block and inline atom (an unanswered atom id is minted, an
+	 * unanswered block id refuses); `ids`: the copy.
+	 */
+	duplicate(freshId: (oldId: string, kind: 'block' | 'inline') => string): OpResult;
 };
 
 /**

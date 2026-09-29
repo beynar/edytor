@@ -1,8 +1,8 @@
 /**
  * `edytor/cloudflare` — the Durable Object room for one edytor document
  * and the host Worker's authorizing router. Worker-only (imports
- * `cloudflare:workers`); built on the Worker-safe CRDT entry. README
- * "Server coordinator (Cloudflare Durable Object)".
+ * `cloudflare:workers`); built on the Worker-safe CRDT entry. Documented in
+ * the site's `server/` section (room, authorization, extending, protocol).
  */
 export {
 	DocumentRoom,
@@ -29,6 +29,7 @@ export {
 	routeDocumentSocket,
 	requestedReplica,
 	type AuthorizeDocumentSocket,
+	type ExpiredCredential,
 	type DocumentNamespace,
 	type DocumentIdentity
 } from './routeDocumentSocket.js';

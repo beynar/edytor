@@ -644,8 +644,10 @@ export class EdytorDocument {
 			const adopted = this._capability[table] as Map<string, unknown>;
 			for (const [type, value] of entries) adopted.set(type, value);
 		}
-		// A newly void kind sheds its children at read time (UW-21b).
-		if (Object.values(config.roles ?? {}).some((role) => role?.void)) this.facade.rolesChanged();
+		// A newly void kind sheds its children at read time (UW-21b); a block
+		// promoted out of a newly island kind displays as a default child.
+		if (Object.values(config.roles ?? {}).some((role) => role?.void || role?.island))
+			this.facade.rolesChanged();
 	};
 
 	/**
@@ -842,16 +844,20 @@ export class EdytorDocument {
 		return this._pendingSyncs > 0;
 	}
 
-	private _syncRefusal: SyncRefusedError | undefined;
+	/** The standing refusal of each attached target that reported one, oldest first. */
+	private _refusals = new Map<unknown, SyncRefusedError>();
 	private _refusalListeners = new Set<(refusal: SyncRefusedError) => void>();
 
 	/**
 	 * The server's refusal of a provider (a `1008`/`4xxx` close — see
-	 * `SyncRefusedError`): that provider stopped for good. An empty
-	 * document stays `pending` rather than seed content the room refused.
+	 * `SyncRefusedError`), the latest still standing: that provider
+	 * stopped. An empty document stays `pending` rather than seed content
+	 * the room refused. A refusal belongs to the provider that reported
+	 * it: releasing that provider, or its own later sync (a `connect()`
+	 * after a refreshed token), lifts it.
 	 */
 	get syncRefusal(): SyncRefusedError | undefined {
-		return this._syncRefusal;
+		return Array.from(this._refusals.values()).at(-1);
 	}
 
 	/**
@@ -868,14 +874,14 @@ export class EdytorDocument {
 	 * The readiness decision (R13, O17): a document with content is decided
 	 * (`hydrated`) as soon as any provider settles; an EMPTY one only once
 	 * every attached provider settled or reached its bound, and then it
-	 * seeds `value` — never after a provider's {@link syncRefusal}. A
+	 * seeds `value` — never while a provider's {@link syncRefusal} stands. A
 	 * refused admission leaves it pending, read-only and quarantined; it
 	 * decides again when it turns writable (the refusal propagates to the
 	 * reporting provider only).
 	 */
 	private _decide = (value: JSONDoc | undefined, report = false): void => {
 		if (this._destroyed || this.ready) return;
-		const waiting = this._pendingSyncs > 0 || this._syncRefusal !== undefined;
+		const waiting = this._pendingSyncs > 0 || this._refusals.size > 0;
 		if (waiting && !isInitialized(this.doc as unknown as EngineDoc)) return;
 		try {
 			this.sync(value);
@@ -899,8 +905,9 @@ export class EdytorDocument {
 	 * settled, or {@link DEFAULT_READINESS_BOUND} from each `armBound()`.
 	 * Each settle runs the readiness decision ({@link _decide}); a
 	 * `SyncRefusedError` settles without deciding and is recorded as the
-	 * {@link syncRefusal}. A factory that throws never attached: its
-	 * error propagates and it decides nothing. A transport target
+	 * target's {@link syncRefusal} until its release or its next `synced`.
+	 * A factory that throws never attached: its error propagates and it
+	 * decides nothing. A transport target
 	 * (`sync.target`, else the factory) already attached is a no-op: the
 	 * document keeps one provider per target. The returned cleanup is also
 	 * tracked: {@link destroy} runs it; it frees the target. A sync attaches
@@ -929,7 +936,8 @@ export class EdytorDocument {
 			if (!(error instanceof SyncRefusedError)) return void decide();
 			settle();
 			if (this._destroyed) return;
-			this._syncRefusal = error;
+			this._refusals.delete(target);
+			this._refusals.set(target, error);
 			for (const listener of Array.from(this._refusalListeners)) {
 				try {
 					listener(error);
@@ -945,6 +953,7 @@ export class EdytorDocument {
 				awareness: this.awareness,
 				synced: () => {
 					settle();
+					this._refusals.delete(target);
 					this._decide(opts.value, true);
 				},
 				failed,
@@ -968,6 +977,7 @@ export class EdytorDocument {
 		const release = (): ReturnType<EdytorSyncCleanup> => {
 			if (this._providers.get(target) !== release) return;
 			this._providers.delete(target);
+			this._refusals.delete(target);
 			decide();
 			return cleanup();
 		};

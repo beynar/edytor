@@ -25,7 +25,7 @@ Some things never run on the server: event listeners, the selection, block handl
 
 A readonly editor is the supported way to server-render a document. Load the JSON on the server and pass it as `value`:
 
-```ts title="src/routes/notes/[id]/+page.server.ts"
+```ts title="src/routes/notes/[id]/+page.server.ts" check
 import type { JSONDoc } from 'edytor';
 import type { PageServerLoad } from './$types';
 
@@ -35,7 +35,7 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 ```
 
-```svelte title="src/routes/notes/[id]/+page.svelte"
+```svelte title="src/routes/notes/[id]/+page.svelte" check
 <script lang="ts">
 	import { Edytor, codePlugin } from 'edytor';
 
@@ -55,7 +55,7 @@ See [Readonly mode](/docs/editor/readonly) for what still works in the browser.
 
 The demo app renders its editable editor only after the page has mounted:
 
-```svelte title="src/routes/+page.svelte"
+```svelte title="src/routes/+page.svelte" check
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Edytor } from 'edytor';
@@ -86,7 +86,7 @@ You can also turn SSR off for an editor route with `export const ssr = false;` i
 
 Load and change documents on the server without the component through [`edytor/crdt/edytor`](/docs/getting-started/entry-points). It has no Svelte in its import graph, so it runs in `+page.server.ts`, `+server.ts` and hooks:
 
-```ts title="src/routes/api/notes/[id]/+server.ts"
+```ts title="src/routes/api/notes/[id]/+server.ts" check
 import { json } from '@sveltejs/kit';
 import { loadDocument } from 'edytor/crdt/edytor';
 import type { RequestHandler } from './$types';
@@ -106,7 +106,7 @@ export const GET: RequestHandler = async ({ params }) => {
 
 In a plain Vite app with its own SSR build, tell Vite to compile the package instead of importing it at runtime, as SvelteKit does for you:
 
-```ts title="vite.config.ts"
+```ts title="vite.config.ts" check
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite';
 

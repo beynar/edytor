@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
-import { kindOf } from '$lib/kinds.js';
+import { rowOf } from '$lib/kinds.js';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
@@ -48,7 +48,7 @@ const blocks: JSONBlock[] = [
 describe('the current kind is the closest preset', () => {
 	it('names each block by the preset sharing the most data', async () => {
 		const { edytor } = await render([], blocks);
-		const label = (id: string) => kindOf(edytor, edytor.idToBlock.get(id)!)?.label;
+		const label = (id: string) => rowOf(edytor, edytor.idToBlock.get(id)!)?.label;
 		expect([label('warn'), label('done'), label('odd')]).toEqual([
 			'Warning note',
 			'To-do list',

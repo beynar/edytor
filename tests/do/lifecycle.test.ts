@@ -17,10 +17,12 @@ import type { HookedRoom } from './worker';
 import {
 	E,
 	ORIGIN,
+	REPLICA_TAKEN,
 	RawClient,
 	SelfWebSocket,
 	Y,
 	crdt,
+	dialOutcome,
 	dialResponse,
 	para,
 	readFacade,
@@ -238,7 +240,7 @@ describe('UW-07 · the replica registry travels with the saved document', () => 
 			{ children: [{ id: 'seed', type: 'paragraph', text: 'ada: from onLoad' }] }
 		]);
 		// The still-open tab redials with its replica: accepted.
-		expect((await dialResponse(room, { user: 'ada', replica: doc.clientID })).status).toBe(101);
+		expect(await dialOutcome(room, { user: 'ada', replica: doc.clientID })).toBe('open');
 		// The same tab edited while offline, under the same id: stored, no refusal.
 		ada.transact(() => ada.facade.insertText('seed', 0, '[offline] '));
 		const back = await RawClient.connect(room, doc, { user: 'ada', replica: doc.clientID });
@@ -249,7 +251,7 @@ describe('UW-07 · the replica registry travels with the saved document', () => 
 		expect(back.closed).toBeNull();
 		expect(await inHooked(room, (r) => r.refusals.map((x) => x.reason))).toEqual([]);
 		// Another user still cannot take Ada's id.
-		expect((await dialResponse(room, { user: 'eve', replica: doc.clientID })).status).toBe(403);
+		expect(await dialOutcome(room, { user: 'eve', replica: doc.clientID })).toEqual(REPLICA_TAKEN);
 		back.close();
 		ada.destroy();
 	});
@@ -268,7 +270,7 @@ describe('UW-07 · the replica registry travels with the saved document', () => 
 		const log = await inHooked(room, (r) => r.refusals);
 		expect(log).toEqual([{ reason: 'orphan', detail: { replica: doc.clientID, user: 'ada' } }]);
 		// Claimed: Ada's now, nobody else's.
-		expect((await dialResponse(room, { user: 'eve', replica: doc.clientID })).status).toBe(403);
+		expect(await dialOutcome(room, { user: 'eve', replica: doc.clientID })).toEqual(REPLICA_TAKEN);
 		back.close();
 		ada.destroy();
 	});
@@ -283,13 +285,13 @@ describe('UW-32 · read-only replicas are registered too', () => {
 			access: 'read'
 		});
 		await vi.waitFor(() => expect(viewer.synced).toBe(true));
-		expect((await dialResponse(room, { user: 'eve', replica: 7001 })).status).toBe(403);
+		expect(await dialOutcome(room, { user: 'eve', replica: 7001 })).toEqual(REPLICA_TAKEN);
 		const bare = await RawClient.connect(room, undefined, { user: 'viv', access: 'read' });
 		bare.setPresence(7002, 1, { user: { name: 'Viv' } });
 		await vi.waitFor(() => expect(bare.presence.get(7002)).toBeDefined());
-		expect((await dialResponse(room, { user: 'eve', replica: 7002 })).status).toBe(403);
+		expect(await dialOutcome(room, { user: 'eve', replica: 7002 })).toEqual(REPLICA_TAKEN);
 		// Viv, granted edit, redials with the same id.
-		expect((await dialResponse(room, { user: 'viv', replica: 7001 })).status).toBe(101);
+		expect(await dialOutcome(room, { user: 'viv', replica: 7001 })).toBe('open');
 		viewer.close();
 		bare.close();
 	});
@@ -329,7 +331,7 @@ describe('UW-33 · compaction prunes registrations without content', () => {
 		expect(await registered()).toEqual([...writers, 8004].sort((a, b) => a - b));
 		expect(writers).toContain(ada.doc.clientID);
 		// A pruned id is free again (it holds no content).
-		expect((await dialResponse(room, { user: 'eve', replica: 8001 })).status).toBe(101);
+		expect(await dialOutcome(room, { user: 'eve', replica: 8001 })).toBe('open');
 		writer.close();
 		open.close();
 		ada.destroy();
@@ -475,7 +477,7 @@ describe('UW-12 · refusals are bounded; a refused provider dials once', () => {
 		client.close();
 	});
 
-	it('the shipped provider refused for a replica dials once and stops', async () => {
+	it("the shipped provider relaying another user's edits stays connected: the relay is stripped", async () => {
 		const room = 'refused-provider';
 		// Ada's offline edits, copied into Eve's document: Eve's handshake writes under Ada's id.
 		const ada = E.createDocument({ value: { children: [para('p', 'hi')] }, actor: { id: 'ada' } });
@@ -503,12 +505,21 @@ describe('UW-12 · refusals are bounded; a refused provider dials once', () => {
 				disableBc: true
 			}
 		);
+		const refused: unknown[] = [];
+		provider.on('refused', (refusal) => refused.push(refusal));
 		await vi.waitFor(async () =>
-			expect(await inRoom(room, (r) => r.refusals.map((x) => x.reason))).toEqual(['replica'])
+			expect(await inRoom(room, (r) => r.refusals.map((x) => x.reason))).toContain('replica')
 		);
 		await new Promise((resolve) => setTimeout(resolve, 1000));
+		// One dial, still open; Ada's "!" is not stored under her id by Eve.
 		expect(dials).toBe(1);
-		expect(await inRoom(room, (r) => r.refusals.length)).toBe(1);
+		expect(provider.wsconnected).toBe(true);
+		expect(refused).toEqual([]);
+		const observed = await inRoom(room, (r) => ({
+			text: readFacade(r.doc!, (f) => f.blockText('p')),
+			reasons: [...new Set(r.refusals.map((x) => [x.reason, x.detail]).map(String))]
+		}));
+		expect(observed).toEqual({ text: 'hi', reasons: [String(['replica', ada.doc.clientID])] });
 		provider.destroy();
 		ada.destroy();
 		eve.destroy();

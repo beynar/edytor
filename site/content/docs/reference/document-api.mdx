@@ -20,6 +20,8 @@ facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' });
 facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' }); // refused: id taken
 ```
 
+`defaultSemantics`, `richTextSemantics`, `codeSemantics` and `imageSemantics` are frozen and shared by every document. To add your own kinds, build a table with `semanticsOf` and spread it: `semanticsOf({ embed: { void: true, rendersContent: false } })` gives `{ roles, rendersContent, defaultChild }`.
+
 ## Shapes
 
 | Type | Shape |
@@ -77,7 +79,7 @@ type OpResult = {
 | `setBlock(id, { type?, data?, content?, children? })` | `id` | `type` and `data` update in place; `content` and `children` replace everything (new children need unused ids, or `reason: 'id-collision'`). Refused with `children` for a void kind. |
 | `setBlockType(id, type)` | `id` | To a void kind, the block's children move out, right after it. |
 | `setBlockData(id, data)` | `id` | Replaces the whole `data` object. |
-| `duplicateBlock(id, freshId)` | the copy | Copies the subtree after `id`; `freshId(oldId)` names each copied block. |
+| `duplicateBlock(id, freshId)` | the copy | Copies the subtree after `id`; `freshId(oldId, kind)` names each copied block (`kind` `'block'`) and inline atom (`'inline'`). An atom it returns no id for gets a fresh one; a block it returns no id for refuses the copy. |
 
 ## Text operations
 
@@ -193,7 +195,7 @@ block.split(2, 'p1-tail');
 block.delete(); // children take its place; delete({ keepChildren: false }) removes them too
 ```
 
-Members: `id`, `attribution`, `items`, `runs`, `length`, `childIds()`, `insertText`, `deleteText`, `format`, `setMark`, `unsetMark`, `clearMarks`, `insertInline`, `removeInline`, `setInlineData`, `insertChild(index, spec)`, `moveTo({ parent, index })`, `nestUnder(parent)`, `unNest()`, `split(offset, newId, tail?)`, `mergeBackward()`, `mergeForward()`, `mergeFrom(other)`, `delete(opts?)`, `setType`, `setData`, `set(value)`, `duplicate(freshId)`.
+Members: `id`, `attribution`, `items`, `runs`, `length`, `childIds()`, `insertText`, `deleteText`, `format`, `setMark`, `unsetMark`, `clearMarks`, `insertInline`, `removeInline`, `setInlineData`, `insertChild(index, spec)`, `moveTo({ parent, index })`, `nestUnder(parent)`, `unNest()`, `split(offset, newId, tail?)`, `mergeBackward()`, `mergeForward()`, `mergeFrom(other)`, `delete(opts?)`, `setType`, `setData`, `set(value)`, `duplicate(freshId)` (the same callback as `duplicateBlock`).
 
 ## Attribution
 

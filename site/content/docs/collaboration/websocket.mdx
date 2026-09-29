@@ -82,10 +82,11 @@ Browsers cannot set headers on a WebSocket, so tokens travel in `params` (or in 
 
 - On a lost connection the provider reconnects with exponential backoff: `100 ms × 2ⁿ`, capped at `maxBackoffTime`. `n` counts the dials in a row that never synced (refused upgrades, sockets that closed before the handshake finished); a dial that synced starts it over.
 - After 8 such dials the cap doubles with each further one, up to 30 s, so an unreachable or denying server is not dialed forever at full rate. Each of these dials emits `unreachable` with `{ attempts, nextRetryMs }`, for a "Reconnecting in 20 s" indicator.
-- A close with a refusal code (`1008`, or `4000`–`4999`) is terminal: the provider stops dialing and emits `refused` (see [refusals](#refusals)).
+- A close with a refusal code (`1008`, or `4000`–`4999`) is terminal: the provider stops dialing and emits `refused` (see [refusals](#refusals)). `4401` is the exception: the credentials expired, so the provider emits `expired` and redials after the backoff, reading `params` again. Put a fresh token in `params` when `expired` fires.
+- A dial that neither opens nor fails within 10 seconds (a connection the network silently drops) is closed and counted like a failed dial: it emits `unreachable`, starts the readiness bound, and redials after the backoff.
 - A connection that receives nothing for 30 seconds is treated as dead and reopened. After 15 seconds of silence the provider sends one text `ping` frame; the edytor room answers `pong` without waking from hibernation, and a text `pong` counts as heard. The room also echoes each presence renewal (every 15 seconds), so even a client alone in its room hears from it in time. A server of your own should answer `ping` with `pong`, or ignore text frames.
 - Each (re)connection starts with a handshake in which both sides send what the other lacks. Nothing is replayed by hand and no periodic resync is needed.
-- While disconnected, other people's carets disappear from this tab; edits keep going to the local copy. Other tabs of the browser keep the carets they still receive.
+- While disconnected, other people's carets disappear from this tab; edits keep going to the local copy. Other tabs of the browser keep the carets they still receive. On reconnect the edytor room sends the peers present in the room, and their carets show at once.
 
 ## Provider events and state
 
@@ -143,7 +144,8 @@ This factory keeps the default readiness bound, counted from the attach. `create
 | `saved` | `({ saved, unsaved }, provider)` | The number of local updates the room has not stored yet changed. |
 | `permission-denied` | `(reason, provider)` | The server refused a write; the edytor room sends `read-only` to read-only sockets. |
 | `refused` | `(refusal, provider)` | The server closed the socket with a refusal code. `refusal` is a `SyncRefusedError` with `code` and `reason`. The provider no longer dials. |
-| `unreachable` | `({ attempts, nextRetryMs }, provider)` | A dial ended before its connection synced: `attempts` in a row, the next one in `nextRetryMs`. |
+| `expired` | `({ reason, attempts, nextRetryMs }, provider)` | The server closed the socket with `4401`. The provider redials in `nextRetryMs` with the current `params`; refresh the token before then. |
+| `unreachable` | `({ attempts, nextRetryMs }, provider)` | A dial ended before its connection synced, or did not open within 10 s: `attempts` in a row, the next one in `nextRetryMs`. |
 | `schema-mismatch` | `(detail, provider)` | An update carrying a foreign schema stamp was refused and not applied. |
 | `protocol-mismatch` | `(mismatch, provider)` | A frame of another edytor generation arrived and was dropped. |
 | `failed` | `(error, provider)` | Terminal: the provider never synced (destroyed first, refused, or denied). Emitted at most once. |
@@ -173,10 +175,11 @@ Use it for a "Saving… / Saved" indicator or to warn before closing a tab. A se
 
 | What happens | Cause | What the client sees |
 | --- | --- | --- |
-| Close `4403` `document access denied` | `authorize` returned `null` (or an invalid identity). | Terminal: `refused` fires once and the provider stops dialing. Refresh the token, then reload (or call `connect()`) to dial again. |
-| HTTP 403 before the upgrade | The replica belongs to another user. | A browser cannot tell this from a network failure (close `1006`): the provider keeps retrying with the growing backoff and emits `unreachable`. |
+| Close `4401` | The credentials expired. | Not terminal: `expired` fires and the provider redials after the backoff, reading `params` again. No `refused`, no `failed`. |
+| Close `4403` `document access denied` | `authorize` returned `null` (or an invalid identity). | Terminal: `refused` fires once and the provider stops dialing. Refresh the token, then reload (or call `connect()`) to dial again. An empty document waits for that dial: it seeds only once the provider syncs or is released. |
+| Close `4409` `replica bound to another user` | The replica belongs to another user. | Terminal: `refused` fires and the provider stops dialing. |
 | `permission-denied` with `read-only` | A read-only socket sent an edit. | The socket stays open; the edit is not stored. |
-| Close `1008` `refused: <reason>`, or a `4xxx` code | A frame of another generation, a write under another user's client id, a foreign schema stamp, or a malformed frame. | Terminal: `refused` fires and the provider stops dialing. A document still empty is not seeded; it stays `pending` and reports the refusal as `document.syncRefusal` / `onSyncRefused`. Reload with a fixed client (a new deploy, a new token) to try again. |
+| Close `1008` `refused: <reason>`, or another `4xxx` code | A frame of another generation, a write under another user's client id, a foreign schema stamp, or a malformed frame. | Terminal: `refused` fires and the provider stops dialing. A document still empty is not seeded; it stays `pending` and reports the refusal as `document.syncRefusal` / `onSyncRefused`. Reload with a fixed client (a new deploy, a new token) to try again. |
 | Close `1011` | The room could not store an update. | The provider reconnects and the handshake resends the edit. |
 
 See [Authorization](/docs/server/authorization) and [the room](/docs/server/room) for the server side.

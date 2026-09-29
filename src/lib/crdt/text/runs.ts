@@ -53,6 +53,7 @@ import type {
 import type {
 	BlockId,
 	BlockRec,
+	ChildSlot,
 	ContentItem,
 	DisplayOwnership,
 	DocOrder,
@@ -262,11 +263,14 @@ export type RunView = {
 	/** The visible tree, or the subtree rooted at `root`, projected. */
 	project: (root?: BlockId) => ProjectedBlock[];
 	/**
-	 * Set the kinds that display no children (void roles, UW-21b): a child
-	 * of such a block displays in its slot. Call again when the answer
-	 * changes for a kind (roles adopted later); the placements rebuild.
+	 * Set the roles the display reads ({@link DisplayRoles}). Call again
+	 * when an answer changes for a kind (roles adopted later); the
+	 * placements rebuild and subscribers get the report at once (origin
+	 * `null`, not local).
 	 */
-	childless: (kinds: (type: string) => boolean) => void;
+	roles: (roles: DisplayRoles) => void;
+	/** The kind a live block displays as when it is not its stored one (promoted out of an island). */
+	displayType: (id: BlockId) => string | undefined;
 	/**
 	 * Track the folds from now on (the write funnel's frame): `end()` folds
 	 * what is pending and returns the facets every fold since `track()` saw
@@ -283,7 +287,18 @@ export type RunView = {
 	debug: RunViewDebug;
 };
 
-/** One index per engine doc, shared by every binding (the doc's lifetime). */
+/**
+ * The block roles the display reads. `childless`: kinds that display no
+ * children (void roles, UW-21b) — a child of such a block displays in its
+ * slot. `island`: a block promoted out of an island kind displays as
+ * `defaultChild` of its display parent's kind (`null`: the root).
+ */
+export type DisplayRoles = {
+	childless: (type: string) => boolean;
+	island: (type: string) => boolean;
+	defaultChild: (parentType: string | null) => string;
+};
+
 /** One index per engine doc, shared by every binding (the doc's lifetime). */
 const indexes = new WeakMap<EngineDoc, RunView>();
 
@@ -423,15 +438,17 @@ export const bindRuns = (Y: EngineApi) => {
 			}
 		};
 
-		/** The kinds that display no children (`childless`); `null` → none. */
-		let childlessKind: ((type: string) => boolean) | null = null;
+		/** The roles the display reads; `null` → none. */
+		let roles: DisplayRoles | null = null;
+		const kindIs = (b: BlockId, role: 'childless' | 'island') => {
+			const type = blocks.get(b)?.type;
+			return roles !== null && type !== undefined && roles[role](type);
+		};
 		const ownShim: DisplayOwnership = {
 			ownerOf,
 			hidden: (b) => ownerOf(b) !== b,
-			childless: (b) => {
-				const type = blocks.get(b)?.type;
-				return childlessKind !== null && type !== undefined && childlessKind(type);
-			},
+			childless: (b) => kindIs(b, 'childless'),
+			island: (b) => kindIs(b, 'island'),
 			top: (m) => {
 				ensureOwners();
 				return tops.get(m);
@@ -458,7 +475,9 @@ export const bindRuns = (Y: EngineApi) => {
 		// display edge is `owner(parent)`) and registry entry churn; a
 		// keystroke keeps the resolved placements and children index verbatim.
 		let placementsMap: Map<BlockId, ResolvedPlacement> | null = null;
-		let kidsMap: Map<BlockId | null, { id: BlockId; rank: string }[]> | null = null;
+		let kidsMap: Map<BlockId | null, ChildSlot[]> | null = null;
+		/** Blocks promoted out of an island → their display parent (`reset` slots). */
+		let promoted = new Map<BlockId, BlockId | null>();
 		let orderCache: DocOrder | null = null;
 		let placementsBuiltAt = -1;
 		let placementVersion = 0;
@@ -467,8 +486,18 @@ export const bindRuns = (Y: EngineApi) => {
 			ensureOwners();
 			placementsMap = resolvePlacements(blocks, ownerOf);
 			kidsMap = childrenIndex(placementsMap, ownShim);
+			promoted = new Map();
+			for (const [parent, kids] of kidsMap)
+				for (const kid of kids) if (kid.reset) promoted.set(kid.id, parent);
 			orderCache = null;
 			placementsBuiltAt = placementVersion;
+		};
+
+		/** The kind `id` displays as: a block promoted out of an island, its display parent's default child. */
+		const typeOf = (id: BlockId): string => {
+			const under = promoted.get(id);
+			if (under === undefined || roles === null) return blocks.get(id)?.type ?? 'unknown';
+			return roles.defaultChild(under === null ? null : typeOf(under));
 		};
 
 		const rangeStats: RangeReadStats = { items: 0, markers: 0 };
@@ -769,8 +798,13 @@ export const bindRuns = (Y: EngineApi) => {
 						const type = rec.node.getAttr(TYPE);
 						rec.type = typeof type === 'string' ? type : 'unknown';
 						rec.data = rec.node.getAttr(DATA);
-						// A retype into or out of a childless kind re-parents its children.
-						if (childlessKind !== null && childlessKind(was) !== childlessKind(rec.type))
+						// A retype into or out of a childless (or island) kind re-parents
+						// (or re-kinds) its children.
+						if (
+							roles !== null &&
+							(roles.childless(was) !== roles.childless(rec.type) ||
+								roles.island(was) !== roles.island(rec.type))
+						)
 							ctx.placement = true;
 					}
 				}
@@ -1007,7 +1041,7 @@ export const bindRuns = (Y: EngineApi) => {
 			const rec = blocks.get(id)!;
 			const projected: ProjectedBlock = {
 				id,
-				type: rec.type,
+				type: typeOf(id),
 				data:
 					rec.data === undefined || rec.data === null
 						? undefined
@@ -1056,7 +1090,7 @@ export const bindRuns = (Y: EngineApi) => {
 					nodes.set(
 						id,
 						old === undefined
-							? { parent, index, type: rec.type, data: rec.data, runs: runs(id) }
+							? { parent, index, type: typeOf(id), data: rec.data, runs: runs(id) }
 							: { ...old, parent, index }
 					);
 				});
@@ -1121,21 +1155,24 @@ export const bindRuns = (Y: EngineApi) => {
 					if (o.parent === null || after.nodes.has(o.parent)) r.removed.add(id);
 				}
 			}
+			const meta = (id: BlockId, n: NonNullable<ReturnType<typeof after.nodes.get>>) => {
+				const rec = blocks.get(id)!;
+				const type = typeOf(id);
+				r.meta.set(id, {
+					type,
+					data:
+						rec.data === undefined || rec.data === null
+							? undefined
+							: (cloneJsonSafe(rec.data) as Record<string, unknown>)
+				});
+				n.type = type;
+				n.data = rec.data;
+			};
 			for (const id of candidates) {
 				const n = after.nodes.get(id);
 				if (n === undefined || covered.has(id)) continue;
 				const rec = blocks.get(id)!;
-				if (rec.type !== n.type || keyOf(rec.data) !== keyOf(n.data)) {
-					r.meta.set(id, {
-						type: rec.type,
-						data:
-							rec.data === undefined || rec.data === null
-								? undefined
-								: (cloneJsonSafe(rec.data) as Record<string, unknown>)
-					});
-					n.type = rec.type;
-					n.data = rec.data;
-				}
+				if (typeOf(id) !== n.type || keyOf(rec.data) !== keyOf(n.data)) meta(id, n);
 				const next = runs(id);
 				if (next !== n.runs) {
 					const key = keyOf(next);
@@ -1143,6 +1180,13 @@ export const bindRuns = (Y: EngineApi) => {
 					n.runs = next;
 					n.key = key;
 				}
+			}
+			// A block that starts or stops displaying a kind other than its
+			// stored one moved, or sits under a promoted one: its kind is news.
+			for (const id of [...r.moved, ...promoted.keys()]) {
+				const n = after.nodes.get(id);
+				if (n !== undefined && !candidates.has(id) && !covered.has(id) && typeOf(id) !== n.type)
+					meta(id, n);
 			}
 			candidates.clear();
 			published = after;
@@ -1220,6 +1264,12 @@ export const bindRuns = (Y: EngineApi) => {
 				syncPending((tr as Tx | undefined) ?? openTx());
 				return ctx;
 			},
+			displayType: (id) => {
+				if (roles === null) return undefined;
+				syncPending(openTx());
+				ensurePlacements();
+				return promoted.has(id) ? typeOf(id) : undefined;
+			},
 			project: (root?: BlockId): ProjectedBlock[] => {
 				syncPending(openTx());
 				ensurePlacements();
@@ -1227,10 +1277,19 @@ export const bindRuns = (Y: EngineApi) => {
 					? (kidsMap!.get(null) ?? []).map((k) => projectBlock(k.id))
 					: [projectBlock(root)];
 			},
-			childless: (kinds) => {
-				childlessKind = kinds;
+			roles: (next) => {
+				roles = next;
 				placementVersion++;
 				version++;
+				// No commit carries a role change: report it now (not inside a
+				// transaction, whose commit reports it), so every view follows.
+				if (reportSubs.size === 0 || openTx()) return;
+				const r = report();
+				if (r !== null)
+					callEach(
+						[...reportSubs].map((cb) => () => cb(r, null, false)),
+						undefined
+					);
 			},
 			track: () => {
 				syncPending(openTx());

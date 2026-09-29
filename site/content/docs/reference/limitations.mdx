@@ -32,7 +32,7 @@ A device whose first visit to a document happens offline seeds the `value` you p
 The WebSocket's bound starts when the socket opens (or first fails to), so a room that is slow to accept the connection is waited for. Two cases remain:
 
 - A server that opens the socket but takes more than 1 s to send its state is treated like an empty room: the `value` is seeded and later merges as above.
-- A dial that neither opens nor fails (a connection the network silently drops) keeps an empty document `pending` until the browser gives up on it.
+- A dial that neither opens nor fails (a connection the network silently drops) is given up after 10 s, so an empty document waits up to 11 s before it seeds.
 
 ## Known edge cases
 

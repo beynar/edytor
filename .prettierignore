@@ -22,3 +22,6 @@ docs/architecture-v2/
 # the docs site is its own package (Blume)
 site
 dist-code
+
+# doc examples extracted by `pnpm check:docs`
+src/routes/__docexamples

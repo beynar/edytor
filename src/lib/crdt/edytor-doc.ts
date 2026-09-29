@@ -151,6 +151,7 @@ import { randOf } from './rand.js';
 import { rangeDeleteOps, type DocPosition } from './rangeDelete.js';
 import { flowOps, type FlowContext } from './flow.js';
 import { jsonEquals } from '../utils/json.js';
+import { id as newId } from '../utils.js';
 import {
 	cloneJsonSafe,
 	jsonBlockToSpec,
@@ -794,8 +795,15 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		// UW-21b: a void kind displays no children — the index sheds them
 		// into its slot at read time, so a child a peer nests or splits under
 		// a block another peer retypes to a void shows on every replica.
-		const voidKind = (type: string): boolean => roleOf(type)?.void === true;
-		if (config.roleOf) runsView.childless(voidKind);
+		// A block promoted out of an island displays as its display parent's
+		// default child, as a delete of the island retypes the ones it saw.
+		const displayRoles = {
+			childless: (type: string): boolean => roleOf(type)?.void === true,
+			island: (type: string): boolean => roleOf(type)?.island === true,
+			defaultChild: (type: string | null): string =>
+				(type !== null ? defaultChildOf(type) : undefined) ?? defaultType
+		};
+		if (config.roleOf) runsView.roles(displayRoles);
 
 		/**
 		 * Terminal flag — set by `dispose()`. Mutating ops funnel through
@@ -1010,7 +1018,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		// ── reads ────────────────────────────────────────────────────────
 
 		const blockTypeOf = (id: BlockId): string | undefined => {
-			const t = M.blockNodeOf(doc, id)?.getAttr(TYPE);
+			const t = runsView.displayType(id) ?? M.blockNodeOf(doc, id)?.getAttr(TYPE);
 			return typeof t === 'string' ? t : undefined;
 		};
 
@@ -1888,8 +1896,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * Explicit fresh-identity copy of a subtree (paste / drag-clone):
 		 * serializes `id`, remaps every block and inline atom id through
 		 * `freshId`, inserts the copy right after `id`. Text atoms get new
-		 * identity too — duplication is a creation op, not a relocation. `ids`:
-		 * the copy's root.
+		 * identity too — duplication is a creation op, not a relocation. An
+		 * inline id `freshId` does not answer (a block-only callback) is
+		 * minted; a block id it does not answer refuses the copy. `ids`: the
+		 * copy's root.
 		 */
 		const duplicateBlock = (
 			id: BlockId,
@@ -1898,19 +1908,27 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			id = ref(id);
 			const pos = positionOf(id);
 			if (pos === null) return REFUSED;
-			const spec = (b: BlockId): BlockSpec => {
+			const spec = (b: BlockId): BlockSpec | null => {
+				const fresh = freshId(b, 'block');
+				if (typeof fresh !== 'string') return null;
+				const content = contentItems(b).map((item) => {
+					if (item.kind !== 'inline') return item;
+					const atom = freshId(item.id, 'inline');
+					return { ...item, id: typeof atom === 'string' ? atom : newId('i') };
+				});
+				const children = childrenIds(b).map(spec);
+				if (children.includes(null)) return null;
 				const data = blockDataOf(b);
 				return {
-					id: freshId(b, 'block'),
+					id: fresh,
 					type: blockTypeOf(b) ?? '',
 					...(data !== undefined && { data }),
-					content: contentItems(b).map((item) =>
-						item.kind === 'inline' ? { ...item, id: freshId(item.id, 'inline') } : item
-					),
-					children: childrenIds(b).map(spec)
+					content,
+					children: children as BlockSpec[]
 				};
 			};
-			return insertBlocks({ parent: pos.parent, index: pos.index + 1 }, [spec(id)]);
+			const copy = spec(id);
+			return copy ? insertBlocks({ parent: pos.parent, index: pos.index + 1 }, [copy]) : REFUSED;
 		};
 
 		// content ops (allowed inside voids — caption contract)
@@ -2180,7 +2198,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			followUndo,
 			// roles
 			/** Re-read the roles after `roleOf` answers differently (roles adopted later). */
-			rolesChanged: () => runsView.childless(voidKind),
+			rolesChanged: () => runsView.roles(displayRoles),
 			isVoid: byRef(isVoid),
 			isIsland: byRef(isIsland),
 			islandOf: byRef((id: BlockId) => islandOf(id)),

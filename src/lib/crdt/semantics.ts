@@ -15,24 +15,37 @@ import type { BlockRole } from './edytor-doc.js';
 /** One kind's structural row — the fields of its `BlockDefinition` a document adopts. */
 export type KindSemantics = BlockRole & { rendersContent?: boolean; defaultChild?: string };
 
+/** Freeze `value` and everything in it: the tables are shared by every document. */
+const frozen = <T>(value: T): T => {
+	if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+		Object.freeze(value);
+		for (const inner of Object.values(value)) frozen(inner);
+	}
+	return value;
+};
+
 /** `richTextPlugin`'s structural rows (its other kinds are plain). */
-export const richTextKinds = {
+export const richTextKinds = frozen({
 	divider: { void: true, rendersContent: false },
 	horizontalRule: { void: true, rendersContent: false },
 	'ordered-list': { rendersContent: false, defaultChild: 'list-item' },
 	'unordered-list': { rendersContent: false, defaultChild: 'list-item' }
-} satisfies Record<string, KindSemantics>;
+} satisfies Record<string, KindSemantics>);
 
 /** `codePlugin`'s structural rows: the code block is an island of `codeLine`s. */
-export const codeKinds = {
+export const codeKinds = frozen({
 	code: { island: true, rendersContent: false, defaultChild: 'codeLine' }
-} satisfies Record<string, KindSemantics>;
+} satisfies Record<string, KindSemantics>);
 
 /** `imagePlugin`'s structural rows: void, its only text is the caption. */
-export const imageKinds = { image: { void: true } } satisfies Record<string, KindSemantics>;
+export const imageKinds = frozen({ image: { void: true } } satisfies Record<string, KindSemantics>);
 
-/** Kind tables (`type → row`) as one {@link DocumentSemanticsConfig}. */
-const semanticsOf = (...tables: Record<string, KindSemantics>[]) => {
+/**
+ * Kind tables (`type → row`) as one {@link DocumentSemanticsConfig}, deeply
+ * frozen: `semanticsOf({ embed: { void: true, rendersContent: false } })`.
+ * Spread it to extend it.
+ */
+export const semanticsOf = (...tables: Record<string, KindSemantics>[]) => {
 	const semantics = {
 		roles: {} as Record<string, BlockRole>,
 		rendersContent: {} as Record<string, boolean>,
@@ -43,7 +56,7 @@ const semanticsOf = (...tables: Record<string, KindSemantics>[]) => {
 		if (rendersContent !== undefined) semantics.rendersContent[type] = rendersContent;
 		if (defaultChild !== undefined) semantics.defaultChild[type] = defaultChild;
 	}
-	return semantics;
+	return frozen(semantics);
 };
 
 /** `richTextPlugin`'s block roles, for `createDocument({ semantics })` and the room. */

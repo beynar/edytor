@@ -50,7 +50,7 @@ Edytor groups edits the way a text editor does:
 
 A command that plugins refuse records nothing. One `edytor.transact` call is never split across steps.
 
-These rules do not depend on how fast you work: a menu action a few milliseconds after typing is still its own step. Block commands you call yourself (`block.insertBlockAfter`, `block.setBlock`, `block.removeBlock` and the other structural commands, and deletions) follow the same table, one step each. To make several of them one step, run them in one `edytor.transact` call.
+These rules do not depend on how fast you work: a menu action a few milliseconds after typing is still its own step, and so is the block handle's <kbd>+</kbd>, even when it only types `/` into an empty block. Commands you call yourself are one step each: block commands (`block.insertBlockAfter`, `block.setBlock`, `block.addChildBlock`, `block.setInlineData`, deletions and the rest) and text commands such as `text.markText`. Only `text.insertText` and `block.addInlineBlock` can join the previous step, and only when they continue at the caret that step left, as typing does. To make several commands one step, run them in one `edytor.transact` call.
 
 Set the capture window when you create the document. `0` makes every commit its own step:
 

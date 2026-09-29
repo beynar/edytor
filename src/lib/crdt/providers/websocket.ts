@@ -11,8 +11,10 @@
  * `ping` after 15 s of silence; a text `pong` counts as heard),
  * `resyncInterval`, and the BroadcastChannel leg (cross-tab sync, on by
  * default; `disableBc` opts out). A refusal close (`1008`, `4xxx`) is
- * terminal: no redial. Retired: `protocols`, the `sync` alias,
- * `wsconnecting`.
+ * terminal: no redial — except `4401` (expired credentials), which emits
+ * `expired` and redials after the backoff with the re-read `params`. A dial
+ * that neither opens nor fails is closed after `connectTimeout`, like a
+ * failed one. Retired: `protocols`, the `sync` alias, `wsconnecting`.
  *
  * Cross-tab: tabs of one room share a BroadcastChannel named after the
  * server URL and room, so they sync with each other with or without the
@@ -76,8 +78,13 @@ const messagePingTimeout = 15000;
 const unreachableAfter = 8;
 /** The backoff cap an unreachable room grows to. */
 const unreachableBackoffTime = 30000;
+/** A dial that has neither opened nor failed after this long is closed like a failed one. */
+const connectTimeout = 10000;
+/** Expired credentials: the room admits this client again once `params` carries a fresh token. */
+const expiredCode = 4401;
 /** A close code that refuses this client for good: policy (`1008`) or an application code (`4xxx`). */
-const isRefusal = (code: number) => code === 1008 || (code >= 4000 && code < 5000);
+const isRefusal = (code: number) =>
+	code === 1008 || (code >= 4000 && code < 5000 && code !== expiredCode);
 
 export type WebsocketProviderEvents = {
 	status: (event: { status: 'connected' | 'disconnected' | 'connecting' }) => void;
@@ -108,8 +115,18 @@ export type WebsocketProviderEvents = {
 	 */
 	refused: (refusal: SyncRefusedError, provider: unknown) => void;
 	/**
+	 * The server closed the socket with `4401`: the credentials expired.
+	 * Put a fresh token in `params` before the redial, due in `nextRetryMs`
+	 * (`attempts`: dials in a row that never synced, as for `unreachable`).
+	 */
+	expired: (
+		state: { reason: string; attempts: number; nextRetryMs: number },
+		provider: unknown
+	) => void;
+	/**
 	 * A dial ended before its connection synced (refused upgrade, dropped
-	 * handshake, server down): `attempts` in a row, the next in `nextRetryMs`.
+	 * handshake, server down, no answer within 10 s): `attempts` in a row,
+	 * the next in `nextRetryMs`.
 	 */
 	unreachable: (state: { attempts: number; nextRetryMs: number }, provider: unknown) => void;
 	/**
@@ -246,6 +263,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		event: CloseEvent | null
 	) => {
 		if (ws === provider.ws) {
+			clearTimeout(provider._connectTimer);
 			provider.emit('connection-close', [event, provider]);
 			provider.ws = null;
 			ws.close();
@@ -255,13 +273,13 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				provider.synced = false;
 				// Every other presence left — for this replica only: the
 				// origin keeps the store from relaying the loss to other tabs.
-				removeAwarenessStates(
-					provider.awareness,
-					Array.from(provider.awareness.getStates().keys()).filter(
-						(client) => client !== provider.doc.clientID
-					),
-					LOCAL_PRESENCE_LOSS
+				// Their clocks go too, so the present peers a room sends on
+				// the next join show at once instead of after each renewal.
+				const peers = Array.from(provider.awareness.getStates().keys()).filter(
+					(client) => client !== provider.doc.clientID
 				);
+				removeAwarenessStates(provider.awareness, peers, LOCAL_PRESENCE_LOSS);
+				for (const client of peers) provider.awareness.meta.delete(client);
 				provider.emit('status', [{ status: 'disconnected' }]);
 			}
 			if (event && isRefusal(event.code)) {
@@ -277,8 +295,10 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			// too, so it cannot redial at once); a synced one starts over.
 			if (!heard) provider.wsUnsuccessfulReconnects++;
 			const nextRetryMs = reconnectDelay(provider);
-			if (!heard) {
-				const attempts = provider.wsUnsuccessfulReconnects;
+			const attempts = provider.wsUnsuccessfulReconnects;
+			if (event?.code === expiredCode) {
+				provider.emit('expired', [{ reason: event.reason, attempts, nextRetryMs }, provider]);
+			} else if (!heard) {
 				provider.emit('unreachable', [{ attempts, nextRetryMs }, provider]);
 			}
 			setTimeout(setupWS, nextRetryMs, provider);
@@ -293,6 +313,11 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			provider.wsconnected = false;
 			provider.synced = false;
 			provider._chunks = createChunkReader();
+			// A dial the network silently drops would wait for the browser's
+			// own timeout (minutes): give up on it like on a failed one.
+			provider._connectTimer = setTimeout(() => {
+				if (!provider.wsconnected) closeWebsocketConnection(provider, websocket, null);
+			}, connectTimeout);
 
 			websocket.onmessage = (event) => {
 				provider.wsLastMessageReceived = time.getUnixTime();
@@ -313,6 +338,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				closeWebsocketConnection(provider, websocket, event);
 			};
 			websocket.onopen = () => {
+				clearTimeout(provider._connectTimer);
 				provider.wsLastMessageReceived = time.getUnixTime();
 				provider.wsconnected = true;
 				provider.emit('status', [{ status: 'connected' }]);
@@ -361,6 +387,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		_settleSynced!: LifecycleHost['_settleSynced'];
 		_leave!: () => void;
 		_resync: ReturnType<typeof setInterval> | undefined;
+		/** Closes the current dial if it has not opened in time. */
+		_connectTimer: ReturnType<typeof setTimeout> | undefined;
 		_checkInterval: ReturnType<typeof setInterval>;
 		_updateHandler: (update: Uint8Array, origin: unknown) => void;
 		_awarenessUpdateHandler: (

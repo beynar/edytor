@@ -784,3 +784,90 @@ describe('capabilities under concurrency (review-probes/capabilities)', () => {
 		);
 	});
 });
+
+/**
+ * Rescore 2026-09-30 low: a promoted block keeps no container-only kind. A
+ * deleted island's children take the slot parent's default child type
+ * (`deleteBlocks`, like an island merge); a child the deleter never saw —
+ * a code line a peer adds concurrently — is promoted at read time and
+ * displays the same way, so no `codeLine` shows outside a code block. The
+ * stored kind is kept: undoing the delete shows it under its island again.
+ * A block promoted out of a block that is not an island keeps its kind.
+ */
+describe('promoted blocks keep no container-only kind (rescore low)', () => {
+	const semantics = {
+		roles: { code: { island: true } },
+		rendersContent: { code: false },
+		defaultChild: { code: 'codeLine' }
+	};
+	const typed = (ed) => {
+		const show = (b) =>
+			`${b.id}:${b.type}${b.children?.length ? `[${b.children.map(show).join(',')}]` : ''}`;
+		return ed.toJSON().children.map(show).join(' ');
+	};
+	const code = [
+		{ id: 'C', type: 'code', text: '', children: [{ id: 'L1', type: 'codeLine', text: 'a' }] },
+		{ id: 'N', text: 'n' }
+	];
+	const addLine = (ed) =>
+		ed.insertBlock(
+			{ parent: 'C', index: 1 },
+			{ id: 'L2', type: 'codeLine', content: [{ kind: 'text', text: 'b' }] }
+		);
+
+	it('delete the code block ‖ the peer adds a code line → both lines display as paragraphs', () => {
+		for (const o of one(
+			converge(
+				code,
+				2,
+				([a, b]) => {
+					a.ed.deleteBlocks(['C']);
+					addLine(b.ed);
+				},
+				{ semantics }
+			)
+		)) {
+			expect(tree(o.ed)).toBe('L1:"a" L2:"b" N:"n"');
+			expect(typed(o.ed)).toBe('L1:paragraph L2:paragraph N:paragraph');
+			expect(o.ed.blockTypeOf('L2')).toBe('paragraph');
+		}
+	});
+
+	it('…then undo of the delete → both lines are code lines in the code block again', () => {
+		for (const o of one(
+			converge(
+				code,
+				2,
+				([a, b]) => {
+					const del = a.capture(() => a.ed.deleteBlocks(['C']));
+					const add = b.capture(() => addLine(b.ed));
+					a.receiveAll(add);
+					b.receiveAll(del);
+					a.undo();
+				},
+				{ semantics }
+			)
+		)) {
+			expect(typed(o.ed)).toBe('C:code[L1:codeLine,L2:codeLine] N:paragraph');
+		}
+	});
+
+	it('delete a plain parent ‖ the peer adds a heading under it → the heading keeps its kind', () => {
+		for (const o of one(
+			converge(
+				[{ id: 'P', text: 'p', children: [{ id: 'K', text: 'k' }] }],
+				2,
+				([a, b]) => {
+					a.ed.deleteBlocks(['P']);
+					b.ed.insertBlock(
+						{ parent: 'P', index: 1 },
+						{ id: 'H', type: 'heading', content: [{ kind: 'text', text: 'h' }] }
+					);
+				},
+				{ semantics }
+			)
+		)) {
+			expect(typed(o.ed)).toBe('K:paragraph H:heading');
+		}
+	});
+});

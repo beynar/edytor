@@ -34,7 +34,7 @@
  *   contract, message types, the lib0 read/write helpers for frame bodies
  *   and the instance-free awareness codec. Nothing else is exported: the
  *   `bind*` building blocks, rank/run/placement plumbing and storage
- *   constants are internal (0.0.x API retirement, D-15).
+ *   constants are internal (pre-1.0 API retirement, D-15).
  *
  * The raw engine itself is only reachable through
  * `import * as Y from 'edytor/crdt'` — this module never re-exports it,
@@ -75,8 +75,15 @@ export {
 // `defaultChild`) for documents no view configures: the room adopts
 // `defaultSemantics`; a headless `createDocument` takes it explicitly
 // (`semantics: defaultSemantics`) — a silent default would conflict with
-// views that redefine those kinds.
-export { defaultSemantics, richTextSemantics, codeSemantics, imageSemantics } from './semantics.js';
+// views that redefine those kinds. Frozen; `semanticsOf` builds another.
+export {
+	defaultSemantics,
+	richTextSemantics,
+	codeSemantics,
+	imageSemantics,
+	semanticsOf,
+	type KindSemantics
+} from './semantics.js';
 
 // The canonical document JSON — `createDocument({value})`,
 // `<Edytor {value}>`, `facade.toJSON()` and `facade.init({content})` all
@@ -299,8 +306,8 @@ export type {
 
 // ── 8 · Server coordinator surface (Worker-safe) ────────────────────────
 //
-// What a server coordinator (`edytor/cloudflare`'s `DocumentRoom` — README
-// "Server coordinator") imports beside `bindCrdt(Y)` (`.sync` readers/writers and
+// What a server coordinator (`edytor/cloudflare`'s `DocumentRoom` — site docs
+// server/room) imports beside `bindCrdt(Y)` (`.sync` readers/writers and
 // `applyRemote`, `.admission`, `.doc`, `.createDoc`): the frame contract
 // `varuint GENERATION | varuint messageType | payload`, the message types,
 // the lib0 helpers that read and write frame bodies, and the awareness

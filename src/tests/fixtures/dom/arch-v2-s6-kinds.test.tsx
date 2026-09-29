@@ -240,6 +240,53 @@ describe('markdown shortcuts: generated from kind records', () => {
 		}
 	);
 
+	// A replacing kind (divider, code) never erases a block holding text or
+	// children: the kind lands after the block, in the same plan as the
+	// trigger's removal (one undo step gives the typed text back).
+	const withChild: JSONBlock[] = [
+		{ type: 'paragraph', children: [{ type: 'paragraph', content: [{ text: 'child' }] }] }
+	];
+	const kept = { type: 'paragraph', content: [{ text: 'keep me ' }] };
+	const parent = {
+		type: 'paragraph',
+		children: [{ type: 'paragraph', content: [{ text: 'child' }] }]
+	};
+	row.each([
+		['"/divider" after text', 'keep me /divider', undefined, kept, 'divider'],
+		['"/code" after text', 'keep me /code', undefined, kept, 'code'],
+		['"/divider" in a block with children', '/divider', withChild, parent, 'divider'],
+		['"/code" in a block with children', '/code', withChild, parent, 'code']
+	] as [string, string, JSONBlock[] | undefined, JSONBlock, string][])(
+		'%s inserts the kind after the block, which stays intact',
+		async (_, typed, children, block, kind) => {
+			const { edytor, editor } = await render(
+				[codePlugin, slashMenuPlugin],
+				children && { children }
+			);
+			if (children) {
+				edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 0);
+				await flushDomUpdates();
+			}
+			await type(editor, typed);
+			await enter();
+			const inserted =
+				kind === 'divider'
+					? [{ type: 'divider' }, { type: 'paragraph' }]
+					: [{ type: 'code', children: [{ type: 'codeLine' }] }];
+			expect(canonicalTree(edytor)).toEqual([block, ...inserted]);
+			const caret = edytor.selection.state.startBlock!;
+			expect(caret.type).toBe(kind === 'divider' ? 'paragraph' : 'codeLine');
+			expect(caret.parent?.isRoot ? caret.index : caret.parent?.index).toBe(
+				1 + Number(kind === 'divider')
+			);
+			await dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
+			const typedBlock = children
+				? { ...parent, content: [{ text: typed }] }
+				: { type: 'paragraph', content: [{ text: typed }] };
+			expect(canonicalTree(edytor)).toEqual([typedBlock]);
+		}
+	);
+
 	pin(
 		'an unregistered kind has no shortcut: "```" without the code extension types text',
 		async () => {

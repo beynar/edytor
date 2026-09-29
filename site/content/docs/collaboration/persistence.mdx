@@ -55,7 +55,7 @@ Where there is no `indexedDB` (Node, Workers, SSR), the store is skipped and the
 ## Offline behavior
 
 - **Starting offline.** When the local copy holds the document, the document is ready at once from it, with no server. When the store is empty, the document waits for the store's answer, then for the server's answer or the readiness bound (1 s), before it seeds `value`. The bound starts when the socket opens or first fails to, so a slow or cold server (one still loading the room when you dial) is waited for and its content hydrates the document instead of racing a seed.
-- **Refused.** A server that refuses the client for good (close `1008` or `4xxx`) never gets a seed: an empty document stays `pending` and reports [`syncRefusal`](/docs/collaboration/documents#readiness).
+- **Refused.** A server that refuses the client (close `1008`, or `4xxx` other than `4401`) never gets a seed: an empty document stays `pending` and reports [`syncRefusal`](/docs/collaboration/documents#readiness) until that provider is released or syncs again.
 - **Editing offline.** Every edit is written to the local copy. Closing every tab loses nothing.
 - **Reconnecting.** On every connection the client and the room exchange what the other lacks, so edits made offline, including those restored from the local copy after a reload, reach the room without any replay logic on your side.
 - **Knowing it is saved.** The WebSocket provider reports when the room has stored your edits; see [saved state](/docs/collaboration/websocket#saved-state).

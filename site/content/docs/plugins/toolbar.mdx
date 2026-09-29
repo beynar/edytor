@@ -20,7 +20,7 @@ icon: bold
 
 From left to right:
 
-1. **The kind button**, labeled with the block's kind ("Heading 2", "Text"…). It opens a "Turn into" panel listing the kinds that keep content, with ✓ on the current one. Picking one converts the block at the start of the selection and keeps the selection.
+1. **The kind button**, labeled with the block's kind ("Heading 2", "Text"…): the preset sharing the most data with the block, or drawn with the same element (a stored `h5` heading, drawn as an `h3`, is "Heading 3"). It opens a "Turn into" panel listing the kinds that keep content, with ✓ on the current one. Picking one converts the block at the start of the selection and keeps the selection.
 2. **Link** opens a link panel: a URL field (`data-testid="toolbar-link-input"`) showing the selection's current link, with Apply and Remove. <kbd>Enter</kbd> in the field applies and closes the panel. Applying an empty field removes the link.
 3. **One button per mark** whose definition has `toolbar: { label, icon }`, in registration order. With the rich text plugin: bold, italic, underline, strike and code. A button toggles its mark over the selection.
 4. **A ⌄** (Color) opens Notion's colors: ten text colors and ten background colors. A text color sets the `color` mark, a background the `highlight` mark, and Default removes that mark. The palette is exported as `TOOLBAR_COLORS` (`{ name, text, background }`).

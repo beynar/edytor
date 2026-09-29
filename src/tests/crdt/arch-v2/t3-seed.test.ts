@@ -452,6 +452,64 @@ describe('UW-03 — a late seed never displaces live content', () => {
 	}
 });
 
+describe('seed over seed — last-writer-wins by writer id is the contract (documents.mdx)', () => {
+	// documents.mdx "A different seed" row: the larger writer id wins,
+	// whichever arrived first; a losing room copy loses its edits since that
+	// seed, on every replica, and undo does not bring them back.
+	const one = { children: [{ type: 'paragraph', id: 'x', content: [{ text: 'one' }] }] };
+	const two = { children: [{ type: 'paragraph', id: 'x', content: [{ text: 'two' }] }] };
+	/** The writer id of `value`'s seed: the only other client of a replica that just seeded it. */
+	const writerOf = (value) => {
+		const probe = documentOn(2 ** 26 + 7);
+		probe.sync(value);
+		const clients = [...Y.decodeStateVector(Y.encodeStateVector(probe.doc)).keys()];
+		probe.destroy();
+		const writers = clients.filter((id) => id !== 2 ** 26 + 7);
+		expect(writers).toHaveLength(1);
+		return writers[0];
+	};
+	const ordered = () => (writerOf(one) < writerOf(two) ? [one, two] : [two, one]);
+	const textOf = (value) => value.children[0].content[0].text;
+	const LIVE = ASSIGNMENTS.map(([a, b]) => [2 ** 26 + a, 2 ** 26 + b]);
+	for (const [a, b] of LIVE) {
+		for (const delivery of DELIVERIES) {
+			it(`a larger seed arriving late replaces the room's block and its edits (A=${a}, B=${b}, ${JSON.stringify(delivery)})`, () => {
+				const [low, high] = ordered();
+				const room = documentOn(a);
+				room.sync(low);
+				room.transact(() => room.facade.insertText('x', 3, '!'));
+				const late = documentOn(b);
+				late.sync(high);
+				exchange([room, late], delivery);
+				expect(json(late)).toEqual(json(room));
+				expect(topIds(room)).toEqual(['x']);
+				expect(room.facade.blockText('x')).toBe(textOf(high));
+				room.history.undo();
+				exchange([room, late], delivery);
+				expect(room.facade.blockText('x')).toBe(textOf(high));
+				expect(late.facade.blockText('x')).toBe(textOf(high));
+				room.destroy();
+				late.destroy();
+			});
+
+			it(`a smaller seed arriving late loses: the room keeps its block and edits (A=${a}, B=${b}, ${JSON.stringify(delivery)})`, () => {
+				const [low, high] = ordered();
+				const room = documentOn(a);
+				room.sync(high);
+				room.transact(() => room.facade.insertText('x', 3, '!'));
+				const late = documentOn(b);
+				late.sync(low);
+				exchange([room, late], delivery);
+				expect(json(late)).toEqual(json(room));
+				expect(topIds(room)).toEqual(['x']);
+				expect(room.facade.blockText('x')).toBe(`${textOf(high)}!`);
+				room.destroy();
+				late.destroy();
+			});
+		}
+	}
+});
+
 describe('§2.1 Seeds — applied with a non-local origin', () => {
 	it('the seed is never an undo step and carries no attribution stamp', () => {
 		const document = createDocument({

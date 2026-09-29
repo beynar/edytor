@@ -12,10 +12,10 @@ Edytor ships its sync server as a Cloudflare Durable Object: `DocumentRoom` coor
 Create a TypeScript Worker (for example with `pnpm create cloudflare@latest edytor-room`, choosing the "Hello World" Worker template), then add edytor:
 
 ```package-install
-npm i edytor
+npm i edytor@next
 ```
 
-The room only imports `edytor/cloudflare`, which runs in Workers: no Svelte, no DOM.
+The pre-release goes out under the `next` tag; until it is published, install the tarball from [Build from source](/docs/getting-started#build-from-source). The room only imports `edytor/cloudflare`, which runs in Workers: no Svelte, no DOM.
 
 </Step>
 <Step title="Declare the Durable Object">
@@ -39,7 +39,7 @@ The room stores the document in SQLite, so declare it as a SQLite class in `wran
 
 Export the room class and route WebSocket upgrades through `routeDocumentSocket`. Each document id gets its own room.
 
-```ts src/worker.ts
+```ts src/worker.ts check
 import { DocumentRoom, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
 
 export { DocumentRoom };
@@ -79,7 +79,7 @@ The room is now at `ws://localhost:8787/rooms/<documentId>`. Wrangler runs the D
 
 Point the view at `/rooms`, use the document id as the room, and send the user as a parameter.
 
-```svelte src/lib/Editor.svelte
+```svelte src/lib/Editor.svelte check
 <script lang="ts">
   import { Edytor } from 'edytor';
 

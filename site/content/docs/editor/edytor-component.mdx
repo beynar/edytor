@@ -57,7 +57,7 @@ Most props are read once, when the component is created. Changing them later has
 ### `document`, `room`/`server`/`sync` and `value` together
 
 - **Only `value`**: the view creates its own document, seeds it, and destroys it on unmount.
-- **`room`, `server` or `sync`**: the view creates its own document and attaches the provider (`sync` overrides `room`/`server`). Stored or remote content wins; `value` seeds the document only when the provider has nothing, after it answered or timed out.
+- **`room`, `server` or `sync`**: the view creates its own document and attaches the provider (`sync` overrides `room`/`server`). Stored or remote content wins; `value` seeds the document only when the provider has nothing, after it answered or timed out. Never pass a changing snapshot (`onChange` output) as `value` beside a room: a late seed of it can replace the room's edits. Pass a fixed template or nothing; see [deterministic seeds](/docs/collaboration/documents#deterministic-seeds).
 - **`document`**: the view renders that document once it is ready. If the document is still waiting for content and no provider is attached to it, the editable view seeds it with `value` when it mounts. Passing `document` together with `doc`, `awareness` or `actor` throws.
 
 A readonly view never connects: it shows `value`, or the `document` you pass.

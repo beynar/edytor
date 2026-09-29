@@ -21,7 +21,7 @@
 	{@render handle({
 		block,
 		grip,
-		add: (above = false) => void controller.addBlock(block, above),
+		add: (above = false) => controller.addBlock(block, above),
 		readonly: controller.readonly,
 		draggable: controller.draggable
 	})}
@@ -40,7 +40,7 @@ Alt-click to add a block above"
 		onclick={(event) => {
 			event.preventDefault();
 			event.stopPropagation();
-			void controller.addBlock(block, event.altKey);
+			controller.addBlock(block, event.altKey);
 		}}
 	>
 		<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">

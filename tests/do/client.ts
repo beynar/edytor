@@ -45,6 +45,27 @@ export const dialResponse = (room: string, dial: Dial = {}, headers: HeadersInit
 export const upgrade = async (room: string, dial: Dial = {}): Promise<WebSocket> =>
 	accept(await dialResponse(room, dial));
 
+/** The close a refused dial gets when its replica belongs to another user. */
+export const REPLICA_TAKEN = { code: 4409, reason: 'replica bound to another user' } as const;
+
+/**
+ * How a write dial ends: `'open'` once the room speaks (its SyncStep1), or
+ * the close it was accepted-then-closed with.
+ */
+export const dialOutcome = async (
+	room: string,
+	dial: Dial = {}
+): Promise<'open' | { code: number; reason: string }> => {
+	const ws = await upgrade(room, dial);
+	return new Promise((resolve) => {
+		ws.addEventListener('close', (event) => resolve({ code: event.code, reason: event.reason }));
+		ws.addEventListener('message', () => {
+			resolve('open');
+			ws.close(1000, 'done');
+		});
+	});
+};
+
 const accept = async (response: Response): Promise<WebSocket> => {
 	const ws = response.webSocket;
 	if (!ws) throw new Error(`upgrade refused: ${response.status} ${await response.text()}`);

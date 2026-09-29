@@ -2,12 +2,15 @@
  * The public demo room behind the live editor on the docs landing page.
  *
  * One room per UTC day (`demo-YYYY-MM-DD`), so the shared document resets
- * daily; any other room is refused. Anyone may edit: `authorize` accepts a
+ * daily: only today's room is open (and yesterday's for the first hour
+ * after midnight, so an open page reconnects); any other room is refused.
+ * Anyone may edit: `authorize` accepts a
  * guest whose id the browser keeps in localStorage and sends as `?guest=`,
  * so a reconnect keeps the identity the room bound its client ids to. Only
  * the docs origins (and localhost) may connect.
  */
 import { DocumentRoom, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
+import { isOpenDemoRoom } from './rooms';
 
 export { DocumentRoom };
 
@@ -16,7 +19,6 @@ type Env = {
 	ALLOWED_ORIGINS: string;
 };
 
-const DEMO_ROOM = /^demo-\d{4}-\d{2}-\d{2}$/;
 const GUEST = /^[a-z0-9-]{8,64}$/;
 
 const originAllowed = (origin: string | null, env: Env) => {
@@ -36,7 +38,7 @@ export default {
 		const match = /^\/rooms\/([^/]+)$/.exec(url.pathname);
 		if (!match) return new Response('not found', { status: 404 });
 		const room = decodeURIComponent(match[1]);
-		if (!DEMO_ROOM.test(room)) return new Response('unknown room', { status: 404 });
+		if (!isOpenDemoRoom(room)) return new Response('unknown room', { status: 404 });
 		if (!originAllowed(request.headers.get('Origin'), env)) {
 			return new Response('origin not allowed', { status: 403 });
 		}

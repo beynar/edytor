@@ -3,6 +3,7 @@ import {
 	BLOCK_ACTIVATE_EVENT,
 	type BlockActivation
 } from '../blockHandles/BlockHandleController.svelte.js';
+import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
 import BlockMenu from './BlockMenu.svelte';
 import { BlockMenuController, type BlockMenuOptions } from './BlockMenuController.svelte.js';
 
@@ -10,7 +11,7 @@ import { BlockMenuController, type BlockMenuOptions } from './BlockMenuControlle
  * Notion's block menu: a handle click (without an `onActivate` of your own)
  * opens it beside the handle — search, Turn into, Duplicate, Move, Delete,
  * and Copy link when `linkTo` is given. Also binds Mod+D (duplicate the
- * caret's block).
+ * selected blocks, or the caret's block).
  */
 export const createBlockMenuPlugin =
 	(options: BlockMenuOptions = {}): Plugin =>
@@ -55,10 +56,11 @@ export const createBlockMenuPlugin =
 		return {
 			hotkeys: {
 				'mod+d': ({ prevent }) => {
-					const block =
-						edytor.selection.selectedBlocks.values().next().value ??
-						edytor.selection.state.startBlock;
-					if (block?.movable && !edytor.readonly) prevent(() => controller.duplicate(block));
+					if (edytor.readonly) return;
+					const selected = getSelectedBlocksInDocumentOrder(edytor).filter((b) => b.movable);
+					if (selected.length) return prevent(() => controller.duplicateAll(selected));
+					const block = edytor.selection.state.startBlock;
+					if (block?.movable) prevent(() => controller.duplicate(block));
 				}
 			},
 			onEdytorAttached: ({ node }) => {

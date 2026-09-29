@@ -53,7 +53,7 @@ export const fixtures = defineFixtures([
 	}),
 	defineModelOperationFixture({
 		description:
-			'runs the divider command as an explicit void conversion that clears subtree content',
+			'runs the divider command after a block holding text and children, which stays intact',
 		plugins: notionPlugins,
 		input: (
 			<root>
@@ -65,9 +65,13 @@ export const fixtures = defineFixtures([
 		),
 		run: ({ edytor }) => edytor.runCommand('block.divider'),
 		// A divider holds no caret: a fresh paragraph after it takes it (Notion).
-		expectSelection: { startBlockPath: [1], yStart: 0, yEnd: 0, isCollapsed: true },
+		expectSelection: { startBlockPath: [2], yStart: 0, yEnd: 0, isCollapsed: true },
 		output: (
 			<root>
+				<paragraph>
+					Hello
+					<paragraph>Nested</paragraph>
+				</paragraph>
 				<divider></divider>
 				<paragraph></paragraph>
 			</root>

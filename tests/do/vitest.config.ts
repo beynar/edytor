@@ -21,7 +21,8 @@ export default defineConfig({
 					ROOM: { className: 'DocumentRoom', useSQLite: true },
 					HOOKED: { className: 'HookedRoom', useSQLite: true },
 					PLAIN: { className: 'PlainObject', useSQLite: true },
-					HOST: { className: 'HostObject', useSQLite: true }
+					HOST: { className: 'HostObject', useSQLite: true },
+					FIELDS: { className: 'FieldRoom', useSQLite: true }
 				}
 			}
 		})

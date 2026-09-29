@@ -514,7 +514,7 @@ describe('F-P3 — the slash menu holds its range as anchors (L52)', () => {
 	row('a peer insert before the query keeps the menu open on quo; Enter runs on /quo', async () => {
 		const rendered = await renderDomEdytor(
 			<root>
-				<paragraph>ab|</paragraph>
+				<paragraph>ab |</paragraph>
 			</root>,
 			{ plugins: [richTextPlugin, mentionPlugin, slashMenuPlugin] }
 		);
@@ -533,7 +533,7 @@ describe('F-P3 — the slash menu holds its range as anchors (L52)', () => {
 		await dispatchDomKeyDown(document, { key: 'Enter', code: 'Enter' });
 		await flushDomUpdates();
 		expect(edytor.value.children!.map((child) => [child.type, child.content])).toEqual([
-			['quote', [{ text: 'ZZab' }]]
+			['quote', [{ text: 'ZZab ' }]]
 		]);
 	});
 });

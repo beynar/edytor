@@ -3,7 +3,7 @@ import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { isRecord, type SerializableContent } from '$lib/utils/json.js';
 import { richTextOperations, type RichTextMark } from '$lib/plugins/richtext/richTextOperations.js';
-import { convertibleKinds, convertToKind, kindOf, type KindRow } from '$lib/kinds.js';
+import { convertibleKinds, convertToKind, rowOf, type KindRow } from '$lib/kinds.js';
 
 /** Notion's palette: text colors and their backgrounds, by name. */
 export const TOOLBAR_COLORS = [
@@ -71,7 +71,7 @@ export class ToolbarController {
 
 	/** The row naming the selection's block, for the kind button's label. */
 	get currentKind(): KindRow | undefined {
-		return kindOf(this.edytor, this.edytor.selection.state.startBlock);
+		return rowOf(this.edytor, this.edytor.selection.state.startBlock);
 	}
 
 	togglePanel(panel: 'turn' | 'link' | 'color') {

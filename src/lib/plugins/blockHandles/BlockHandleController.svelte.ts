@@ -8,7 +8,7 @@ import type {
 } from '$lib/session/moves.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { draggable, dropTargetForElements } from '$lib/dnd/pragmatic.js';
-import { outermost, revealing } from '$lib/selection/replaceSelection.js';
+import { outermost } from '$lib/selection/replaceSelection.js';
 
 const blockDragMimeType = 'application/x-edytor-block-id';
 
@@ -162,6 +162,7 @@ export class BlockHandleController {
 		const { edytor } = this;
 		const { parent } = block;
 		if (edytor.readonly || !parent) return;
+		edytor.expectInternalFocus();
 		edytor.node?.focus({ preventScroll: true });
 		edytor.dispatcher.run('insertBlock', () => {
 			const type = edytor.defaultChild(parent);
@@ -282,7 +283,7 @@ export class BlockHandleController {
 	}
 
 	private moveAndSelect(request: BlockMoveRequest) {
-		const moved = revealing(request.blocks, () => this.edytor.moveBlocks(request));
+		const moved = this.edytor.moveBlocks(request);
 		if (moved.length) this.edytor.selection.selectBlocks(...moved);
 	}
 

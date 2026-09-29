@@ -12,7 +12,7 @@ Edytor ships its sync server as a Cloudflare Durable Object: `DocumentRoom` coor
 Create a TypeScript Worker (for example with `pnpm create cloudflare@latest edytor-room`, choosing the "Hello World" Worker template), then add edytor:
 
 ```package-install
-pnpm add https://edytor-docs.beynar.workers.dev/edytor-0.1.0-next.0.tgz
+pnpm add https://edytor-docs.beynar.workers.dev/edytor-0.1.0-next.1.tgz
 ```
 
 That is the pre-release tarball this site hosts; once it is on npm, install `edytor@next` instead (see [Installation](/docs/getting-started#install)). The room only imports `edytor/cloudflare`, which runs in Workers: no Svelte, no DOM.
@@ -40,7 +40,7 @@ The room stores the document in SQLite, so declare it as a SQLite class in `wran
 Export the room class and route WebSocket upgrades through `routeDocumentSocket`. Each document id gets its own room.
 
 ```ts src/worker.ts check
-import { DocumentRoom, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
+import { DocumentRoom, closedSocket, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
 
 export { DocumentRoom };
 
@@ -50,8 +50,14 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const match = /^\/rooms\/([^/]+)$/.exec(new URL(request.url).pathname);
     if (!match) return new Response('not found', { status: 404 });
+    let documentId: string; // the provider percent-encodes the room id
+    try {
+      documentId = decodeURIComponent(match[1]);
+    } catch {
+      return closedSocket(4400, 'invalid document id');
+    }
 
-    return routeDocumentSocket(request, env.ROOMS, decodeURIComponent(match[1]), (request) => {
+    return routeDocumentSocket(request, env.ROOMS, documentId, (request) => {
       // Development only: trusts whoever says they are `?user=…`.
       const userId = new URL(request.url).searchParams.get('user');
       if (!userId) return null; // → closed 4403, the room is never reached

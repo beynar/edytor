@@ -32,7 +32,7 @@ The WebSocket provider reports how a connection ended through its [events](/docs
 
 | Close | Means | The client |
 | --- | --- | --- |
-| `1006`, or no connection | The server is unreachable, or refused the upgrade with an HTTP error, which a browser cannot tell from a network failure. | Keeps redialing with a growing backoff (up to 30 s) and emits `unreachable` with `{ attempts, nextRetryMs }`. `params` are re-read at each dial, so a refreshed token gets in. If your Worker turns the dial away itself (an unknown document, an origin it does not serve), answer with [`closedSocket`](/docs/server/authorization#authorize) and a `4xxx` code, so the client stops. |
+| `1006`, or no connection | The server is unreachable, or refused the upgrade with an HTTP error, which a browser cannot tell from a network failure (a Worker route that does not match the room path, say: the provider sends the room id as one percent-encoded path segment). | Keeps redialing with a growing backoff (up to 30 s) and emits `unreachable` with `{ attempts, nextRetryMs }`. `params` are re-read at each dial, so a refreshed token gets in. If your Worker turns the dial away itself (an unknown document, an origin it does not serve), answer with [`closedSocket`](/docs/server/authorization#authorize) and a `4xxx` code, so the client stops. |
 | `4400` `invalid document id` | The room name is empty or longer than 256 characters (`routeDocumentSocket` never calls `authorize`). | Terminal, like `4403`. |
 | `4401` `expired` | Your `authorize` returned `{ expired: true }`: the credential expired. | Not a refusal: emits `expired` and redials after the backoff, reading `params` again. Put a fresh token in `params` when `expired` fires (`onSyncExpired` on `<Edytor>`). |
 | `4403` `document access denied` | Your `authorize` returned `null` for this user and document. | Terminal: emits `refused` and stops dialing. An empty document stays `pending`. Fix the permission, then reload. |
@@ -53,7 +53,7 @@ Other provider signals:
 - `schema-mismatch`: an update carrying a foreign schema stamp was dropped; the connection stays.
 - `protocol-mismatch`: a frame of another generation arrived and was dropped.
 - `document.writable === false`: the document holds content from a schema this build cannot own. Every write is refused and providers stop sending until it heals.
-- `unsaved` never reaches `0`: the server sends no store acknowledgements (a relay that is not the edytor room).
+- `unsaved` never reaches `0`: the server sends no store acknowledgements (a relay that is not the edytor room). Or it stays above `0` after deleting text a restore lost: the room holds its limit of waiting deletes and dropped this one (a `waiting` entry in the room's `refusals`); the next connection resends it (see [the room's storage](/docs/server/room#storage)). If the limit stays full, `dropWaitingDeletes()` on the room empties it.
 
 ## Refused commands
 

@@ -56,7 +56,7 @@ Paste is one undo step and is ignored in readonly mode. Dropping content from ou
 The same placement applies to Edytor fragments, HTML and multi-line text:
 
 - **One line** joins the text at the caret.
-- **Several lines** split the block at the caret: the first line joins the text before the caret, the last line takes the text after it, and the others go between. Pasting the lines `X` and `Y` into `Hello|World` gives `HelloX` and `YWorld`.
+- **Several lines** split the block at the caret: the first line joins the text before the caret, the last line takes the text after it, and the others go between. Pasting the lines `X` and `Y` into `Hello|World` gives `HelloX` and `YWorld`. The block's children go with the text after the caret to the last line, also under an open toggle's header (where <kbd>Enter</kbd> opens a first child instead); a closed toggle's hidden body stays with the first line.
 - **Blocks copied from a block selection** are inserted as whole blocks after the caret's block, replacing it when it is empty.
 - With **blocks selected**, the pasted content replaces them.
 - A pasted range replaces the selected text first.

@@ -9,8 +9,11 @@ import {
 	rowOf,
 	type KindRow
 } from '$lib/kinds.js';
-import { getSelectedBlocksInDocumentOrder, outermost } from '$lib/selection/replaceSelection.js';
-import { shown } from '$lib/selection/visibility.js';
+import {
+	caretAfterBlockDelete,
+	getSelectedBlocksInDocumentOrder,
+	outermost
+} from '$lib/selection/replaceSelection.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -209,23 +212,19 @@ export class BlockMenuController {
 
 	/**
 	 * Delete the open blocks as one undo step (unselected children take their
-	 * parent's place); the caret goes to the nearest text after the first,
-	 * a promoted child's when it had children, else before it (refused: the
-	 * caret or the selection returns).
+	 * parent's place); the caret goes where the keyboard's block delete puts
+	 * it, `caretAfterBlockDelete` (refused: the caret or the selection returns).
 	 */
 	remove() {
 		const { blocks } = this;
-		const [first] = blocks;
-		if (!first) return;
-		const skip = new Set(blocks);
-		const after = this.editable(first, 'blockAfter', 'firstEditableText', skip);
-		const before = this.editable(first, 'blockBefore', 'lastEditableText', skip);
+		if (!blocks.length) return;
+		const at = caretAfterBlockDelete(blocks);
 		this.edytor.dispatcher.run('removeBlock', () => {
 			for (const block of blocks) block.removeBlock();
 		});
 		this.close(false);
 		if (blocks.some((block) => block.isInTree)) return this.restore(blocks);
-		this.edytor.dispatcher.caret(after ?? before, after ? 0 : (before?.length ?? 0));
+		this.edytor.dispatcher.caret(at?.text, at?.offset ?? 0);
 		this.focus();
 	}
 
@@ -240,8 +239,13 @@ export class BlockMenuController {
 		const row = this.rows[this.selectedIndex];
 		if (!row) return;
 		if ('value' in row) return this.turnInto(row);
-		if (row.submenu) [this.flyout, this.flyoutIndex] = [true, 0];
+		if (row.submenu) this.openFlyout();
 		else row.run?.();
+	}
+
+	/** Open the "Turn into" flyout on its first kind (keyboard or mouse); an open one stays as it is. */
+	openFlyout() {
+		if (!this.flyout) [this.flyout, this.flyoutIndex] = [true, 0];
 	}
 
 	/** Back to the blocks the menu acted on: the block selection again, or one block's caret. */
@@ -266,24 +270,9 @@ export class BlockMenuController {
 		this.focus();
 	}
 
-	/**
-	 * The nearest editable text from `block` in document order once `removed`
-	 * are deleted: void blocks and a closed toggle's hidden body are skipped
-	 * (its header holds the caret), a removed toggle's children are not.
-	 */
-	private editable(
-		block: Block,
-		step: 'blockAfter' | 'blockBefore',
-		edge: 'firstEditableText' | 'lastEditableText',
-		removed: Set<Block>
-	) {
-		for (let next = shown(block, step, { removed }); next; next = shown(next, step, { removed })) {
-			const text = next[edge];
-			if (text) return text;
-		}
-	}
-
+	/** Back to the editor: its own focus, not a user gesture (as its selection writes). */
 	private focus() {
+		this.edytor.expectInternalFocus();
 		this.edytor.node?.focus({ preventScroll: true });
 	}
 }

@@ -80,16 +80,16 @@ type OpResult = {
 | `insertBlock(dest, spec)` | the new block | Refused when `dest.parent` is missing, deleted or void, or any id in the spec is taken (by a live or deleted block). |
 | `insertBlocks(dest, specs)` | the new roots | All or nothing. |
 | `moveBlock(id, dest)` | the block | Keeps the block's identity. Refused exactly when `canPlace([id], dest.parent)` is `false`. |
-| `moveBlocks(ids, dest)` | the blocks, in request order | One step; placed consecutively at `dest.index`. |
+| `moveBlocks(ids, dest)` | the blocks, in request order | One step; placed consecutively at `dest.index`. A list the move leaves with no item is removed (all the move ops do this). |
 | `nestBlock(id, parent)` | the block | Moves it to the end of `parent`'s children. |
-| `unNestBlock(id)` | the block | Moves it right after its parent; the siblings that followed it become its last children (unless it is void or an island). |
-| `unNestBlocks(ids)` | the blocks | The same for sibling blocks in document order, as one step: the siblings after the last one become its children. |
-| `splitBlock(id, offset, newId, tail?)` | `newId` | The text after `offset` and the children move to the new sibling. `tail` is `{ type, data? }`; default: the source's. Refused on void blocks. |
-| `mergeBlocks(from, into)` | `into` | `from`'s content joins `into`, and its children become `into`'s last children. |
-| `mergeBackward(id)` | the surviving block | Merges `id` into the previous block in document order; its children take its place, ranked right after it. |
-| `mergeForward(id)` | `id` | Pulls the next block in document order into `id`. |
+| `unNestBlock(id)` | the block | Moves it right after its parent; the siblings that followed it become its last children (unless it is void or an island). Out of a list, it becomes its new parent's default child and never takes the items after it: a first item goes before the list, and a middle one splits the list, the items after it forming a new list of the same kind. A list left with no item is removed. |
+| `unNestBlocks(ids)` | the blocks | The same for sibling blocks in document order, as one step: the siblings after the last one become its children (out of a list, they stay a list). |
+| `splitBlock(id, offset, newId, tail?)` | `newId` | The text after `offset` and the children move to the new sibling. `tail` is `{ type, data? }`; default (also for an empty `type`): the source's kind, or its parent's default child while a peer's retype of it is half-delivered. Refused on void blocks and on blocks that render no content. |
+| `mergeBlocks(from, into)` | `into` | `from`'s content joins `into`, and its children become `into`'s last children. A list left with no item is removed. |
+| `mergeBackward(id)` | the surviving block | Merges `id` into the previous block in document order; its children take its place, ranked right after it. The first item of a list (a container that renders no content) moves out of it instead, as its new parent's default child; refused when it would land directly in another container it is no item of (a paragraph in a columns layout). |
+| `mergeForward(id)` | `id` | Pulls the next block in document order into `id`. A list passes the merge to its first item, and is removed if that was its last one. |
 | `deleteBlock(id, { keepChildren? })` | `id` | Children take the block's place unless `keepChildren: false`. Refused when the block is not live. |
-| `deleteBlocks(ids)` | the deleted roots | Deletes exactly these blocks; their unselected children take their places. |
+| `deleteBlocks(ids)` | the deleted roots | Deletes exactly these blocks; their unselected children take their places. A list left with no item is removed too. |
 | `setBlock(id, { type?, data?, content?, children? })` | `id` | `type` and `data` update in place; `content` and `children` replace everything (new children need unused ids, or `reason: 'id-collision'`). Refused with `children` for a void kind. |
 | `setBlockType(id, type)` | `id` | To a void kind, the block's children move out, right after it. |
 | `setBlockData(id, data)` | `id` | Replaces the whole `data` object. |
@@ -115,7 +115,7 @@ Text operations also work inside void blocks, which may hold a caption.
 
 | Operation | Notes |
 | --- | --- |
-| `deleteRange(from, to, view?)` | Deletes between two `DocPosition`s across blocks, following the editor's range-deletion rules. Keeps the first block when nothing else would remain. `view.hidden(id, removed?)` names blocks the view hides, such as a closed toggle's body: they are not in the range and go only with a block that goes. With `removed`, it answers whether the block stays hidden once those blocks go (a removed toggle's body is shown in its place), which picks the caret. The editor passes it; headless, document order decides. |
+| `deleteRange(from, to, view?)` | Deletes between two `DocPosition`s across blocks, following the editor's range-deletion rules. Keeps the first block when nothing else would remain. A list the range only starts before keeps its later items; it goes only when the range empties it. `view.hidden(id, removed?)` names blocks the view hides, such as a closed toggle's body: they are not in the range and go only with a block that goes. With `removed`, it answers whether the block stays hidden once those blocks go (a removed toggle's body is shown in its place), which picks the caret. The editor passes it; headless, document order decides. |
 | `replaceRange(from, to, view?)` | Like `deleteRange`, but always keeps the first block, ready for replacement content. |
 | `insertFlow(target, flow, view?)` | Paste-style insertion. `target` is a `DocPosition` or `{ replace: BlockId[] }`; `flow` is `{ lines, whole? }`, where each line is a `BlockSpec` whose `type` may be omitted for plain inline content. Several lines split the block, and its children go to the last line, except children `view.hidden(id)` names (a closed toggle's body), which stay with the first. The editor passes it; headless, every child goes to the last line. |
 

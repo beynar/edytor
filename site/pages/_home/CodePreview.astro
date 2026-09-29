@@ -13,7 +13,7 @@ const clientCode = `<script lang="ts">
 />`;
 
 const serverCode = `import {
-  DocumentRoom, requestedReplica, routeDocumentSocket
+  DocumentRoom, closedSocket, requestedReplica, routeDocumentSocket
 } from "edytor/cloudflare";
 
 export { DocumentRoom };
@@ -22,8 +22,13 @@ export default {
   fetch(request, env) {
     const match = /^\\/rooms\\/([^/]+)$/.exec(new URL(request.url).pathname);
     if (!match) return new Response("not found", { status: 404 });
-    const room = decodeURIComponent(match[1]);
-    return routeDocumentSocket(request, env.ROOMS, room, async (req) => {
+    let documentId; // the provider percent-encodes the room id
+    try {
+      documentId = decodeURIComponent(match[1]);
+    } catch {
+      return closedSocket(4400, "invalid document id");
+    }
+    return routeDocumentSocket(request, env.ROOMS, documentId, async (req) => {
       const user = await verify(req); // your auth
       return user && { userId: user.id, replica: requestedReplica(req) };
     });

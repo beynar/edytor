@@ -60,11 +60,24 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 	};
 	// One EdytorDoc per underlying doc instance (peer.doc swaps on reload).
 	const facades = new WeakMap<InstanceType<typeof Y.Doc>, ReturnType<typeof E.create>>();
+	/** Per doc: the kinds a view fed only the facade's change reports holds (`report-kind`). */
+	const reported = new WeakMap<InstanceType<typeof Y.Doc>, Map<string, string>>();
 	const ed = (peer: Peer) => {
 		let f = facades.get(peer.doc);
 		if (!f) {
 			f = E.create(peer.doc, config);
 			facades.set(peer.doc, f);
+			const kinds = new Map<string, string>();
+			const take = (b) => {
+				kinds.set(b.id, b.type);
+				for (const c of b.children ?? []) take(c);
+			};
+			f.toJSON().children.forEach(take);
+			f.onChange((c) => {
+				for (const b of c.added.values()) take(b);
+				for (const [id, { type }] of c.meta) kinds.set(id, type);
+			});
+			reported.set(peer.doc, kinds);
 		}
 		return f;
 	};
@@ -95,7 +108,11 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 
 	return {
 		name: roles ? 'edytor-doc+roles' : 'edytor-doc',
-		...(roles && { isVoid: (peer, id) => ed(peer).isVoid(id), islandKinds }),
+		...(roles && {
+			isVoid: (peer, id) => ed(peer).isVoid(id),
+			islandKinds,
+			reportedKind: (peer, id) => (ed(peer), reported.get(peer.doc)!.get(id))
+		}),
 		preservesIdentityOnMove: true,
 		preservesIdentityOnSplitMerge: true,
 

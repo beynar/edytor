@@ -69,7 +69,7 @@ describe('F-D12 — nested, empty container (dom)', () => {
 });
 
 describe('del.range.outside-survives (dom)', () => {
-	row('alpha@2 → beta@2: gamma survives the dying list', async () => {
+	row('alpha@2 → beta@2: the list keeps gamma (DR-crdt-4)', async () => {
 		const { edytor } = await renderDomEdytor(
 			<root>
 				<paragraph>alpha</paragraph>
@@ -88,7 +88,10 @@ describe('del.range.outside-survives (dom)', () => {
 		await flushDomUpdates();
 		assertCanonicalTree(edytor, [
 			{ type: 'paragraph', content: [{ text: 'alta' }] },
-			{ type: 'list-item', content: [{ text: 'gamma' }] },
+			{
+				type: 'ordered-list',
+				children: [{ type: 'list-item', content: [{ text: 'gamma' }] }]
+			},
 			{ type: 'paragraph', content: [{ text: 'omega' }] }
 		]);
 		expect(caret(edytor)).toEqual({ text: 'alta', at: 2, collapsed: true });

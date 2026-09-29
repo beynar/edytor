@@ -301,6 +301,8 @@ export interface CrdtOps {
 	isVoid?(peer: Peer, id: BlockId): boolean;
 	/** Island child kind → island kind (`wellFormed` `island-kind`, settled states). */
 	readonly islandKinds?: ReadonlyMap<string, string>;
+	/** The kind a view fed only the change reports holds for `id` (`wellFormed` `report-kind`). */
+	reportedKind?(peer: Peer, id: BlockId): string | undefined;
 }
 
 /**

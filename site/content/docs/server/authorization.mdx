@@ -37,6 +37,8 @@ Return `{ expired: true }` when the credential was valid but has expired. The di
 | `replica` | `number \| null` | The client's CRDT client id (`document.clientID`), usually read with `requestedReplica(request)`. When omitted, the socket's first presence message binds it. |
 | `readOnly` | `boolean` | Refuse every write on this socket. Reads and presence still work. |
 
+The document id is the room id the client dials: any string of 1 to 256 characters, which the provider percent-encodes into one path segment. Decode it with `decodeURIComponent` before you pass it, and close a segment that does not decode with `4400`, as the [quick start](/docs/server/quick-start) does: no provider sends one.
+
 `routeDocumentSocket` answers without calling the room when the request is not a WebSocket upgrade (426), when the document id is empty or longer than 256 characters (closed `4400`), when `authorize` returns `{ expired: true }` (closed `4401`), or when it returns `null` or an invalid identity (closed `4403`).
 
 | Close | Sent when | The provider |
@@ -58,7 +60,7 @@ Browsers cannot set headers on a WebSocket, so send a token as a query parameter
 
 ```ts src/worker.ts
 import { jwtVerify } from 'jose';
-import { DocumentRoom, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
+import { DocumentRoom, closedSocket, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
 
 export { DocumentRoom };
 
@@ -74,8 +76,14 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const match = /^\/rooms\/([^/]+)$/.exec(new URL(request.url).pathname);
     if (!match) return new Response('not found', { status: 404 });
+    let documentId: string; // the provider percent-encodes the room id
+    try {
+      documentId = decodeURIComponent(match[1]);
+    } catch {
+      return closedSocket(4400, 'invalid document id');
+    }
 
-    return routeDocumentSocket(request, env.ROOMS, decodeURIComponent(match[1]), async (request, documentId) => {
+    return routeDocumentSocket(request, env.ROOMS, documentId, async (request, documentId) => {
       const token = new URL(request.url).searchParams.get('token');
       if (!token) return null;
       try {
@@ -139,10 +147,10 @@ Registrations of ids that hold no content and belong to no open socket are dropp
 
 If the room's storage is lost and `onLoad` returns a snapshot older than the last edits, clients still hold edits the room lacks, including other users' edits they received. Their handshake delivers them:
 
-- Edits under an id another user owns, or under an id the room already holds part of, are stripped. The author's own client delivers them when it reconnects. The relaying client's own edits are stored meanwhile, its deletions of the author's text included. A deletion of text the room lost is stored and waits for it (up to 1,024 waiting ranges per room, see [storage](/docs/server/room#storage)): when the author's client returns with that text, it arrives deleted, for the room, the other clients and the author. An edit of its own that builds on stripped content waits in the room's memory until the author's edit arrives, with its replacement of any attribute value it rewrites. That memory does not survive the room hibernating or being evicted; the edit reaches the room again at that client's next connection (or its next `resyncInterval` handshake). Any edit of a block whose last change was stripped builds on it, since every edit rewrites the block's last-changed-by attribute: that client stays unsaved until the author returns and its own edit is in the room.
+- Edits under an id another user owns, or under an id the room already holds part of, are stripped. The author's own client delivers them when it reconnects. The relaying client's own edits are stored meanwhile, its deletions of the author's text included. A deletion of text the room lost is stored and waits for it (up to 1,024 waiting ranges per room, see [storage](/docs/server/room#storage)): when the author's client returns with that text, it arrives deleted, for the room, the other clients and the author. A deletion past that limit is dropped, and the relaying client stays unsaved until a later connection gets it stored. An edit of its own that builds on stripped content waits in the room's memory until the author's edit arrives, with its replacement of any attribute value it rewrites. That memory does not survive the room hibernating or being evicted; the edit reaches the room again at that client's next connection (or its next `resyncInterval` handshake). Any edit of a block whose last change was stripped builds on it, since every edit rewrites the block's last-changed-by attribute: that client stays unsaved until the author returns and its own edit is in the room.
 - Edits under an id the room holds nothing of are stored as relayed content, and the id stays claimable by its author's dial.
 
-Every author keeps their client ids, and nobody is disconnected for relaying. The relaying client's [`saved`](/docs/collaboration/websocket#saved-state) turns `true` once the room has stored its user's edits (its waiting deletions included, even when other edits wait on its own), after a reload too: it tracks what that user's client ids wrote (the document binds each id to its actor), not the stripped edits of others it received earlier.
+Every author keeps their client ids, and nobody is disconnected for relaying. The relaying client's [`saved`](/docs/collaboration/websocket#saved-state) turns `true` once the room has stored its user's edits (its waiting deletions included, even when other edits wait on its own; never one the room dropped), after a reload too: it tracks what that user's client ids wrote (the document binds each id to its actor), not the stripped edits of others it received earlier.
 
 Because client ids belong to users, a browser profile's local copy and cross-tab channel should belong to one user. See [one user per browser profile](/docs/collaboration/persistence#one-user-per-browser-profile).
 

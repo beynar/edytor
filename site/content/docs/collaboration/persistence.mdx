@@ -70,7 +70,7 @@ A first visit made offline seeds `value` locally and keeps that seed. When the d
 Tabs of the same document sync with each other over a `BroadcastChannel`, with or without a server:
 
 - `createIndexeddbSync` tabs sync through the store's channel.
-- With `createWebsocketSync`, the local store carries the channel. An edit heard from another tab is relayed to the server on this tab's socket, so an offline tab's edits are saved as soon as any tab of the room is online.
+- With `createWebsocketSync`, the local store carries the channel. An edit heard from another tab is relayed to the server on this tab's socket, so an offline tab's edits are saved as soon as any tab of the room is online. A socket the room made read-only relays nothing: it only sends this tab's own edits, which the room denies.
 - Without a local store (`persist: false`, or no IndexedDB), the socket provider opens the channel itself.
 
 `disableBc: true` on `createWebsocketSync` turns cross-tab sync off for both the socket and the store. Presence is shared across tabs too; a tab that closes announces its departure.

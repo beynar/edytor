@@ -1,6 +1,6 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import type { Text } from '$lib/text/text.svelte.js';
+import { Text } from '$lib/text/text.svelte.js';
 import type { RangeEndpoints } from '$lib/edytor.utils.js';
 import { id } from '$lib/utils.js';
 import { hidden, shown } from './visibility.js';
@@ -49,7 +49,8 @@ export const outermost = (blocks: Iterable<Block>): Block[] => {
  * Run a block move that never hides a block the user saw (Notion): a closed
  * toggle a moved block lands in opens, and so does a closed toggle that
  * adopts blocks (Shift+Tab takes the blocks after it). `open` is view state
- * (R11). Tab, the handles' Alt+arrows and drops share it. Answers the moved blocks.
+ * (R11). Every relative move (`edytor.moveBlocks`) and Tab's nest share it.
+ * Answers the moved blocks.
  */
 export const revealing = (blocks: Block[], move: () => Block[]) => {
 	const had = new Map(blocks.map((block) => [block, block.children.length]));
@@ -77,24 +78,78 @@ export const replaceSelectionWithCollapsedTarget = (
 	return text ? { text, offset: offset! } : null;
 };
 
+/** The texts of `block`'s own line (a container's phantom content slot never mounts). */
+export const lineOf = (block: Block): Text[] =>
+	block.content.filter((part): part is Text => part instanceof Text && part.node != null);
+
+/**
+ * The last text of the last line shown in `block`'s subtree: its own line's
+ * with no child shown, else its last shown child's (a closed toggle's
+ * hidden body is passed over).
+ */
+export const lastShownText = (block: Block): Text | undefined => {
+	for (let i = block.children.length - 1; i >= 0; i--) {
+		const child = block.children[i]!;
+		const text = hidden(child) ? undefined : lastShownText(child);
+		if (text) return text;
+	}
+	return lineOf(block).at(-1);
+};
+
+/**
+ * The caret on the nearest line before (at its end) or after (at its start)
+ * `block` once `removed` go: blocks with no line of their own (voids,
+ * containers) and a closed toggle's hidden body are passed over. The
+ * keyboard's and the block menu's block deletes and Escape share it.
+ */
+export const caretBeside = (
+	block: Block,
+	step: 'blockBefore' | 'blockAfter',
+	removed?: ReadonlySet<Block>
+): SelectionInsertionTarget | null => {
+	for (let next = shown(block, step, { removed }); next; next = shown(next, step, { removed })) {
+		const text = step === 'blockBefore' ? lineOf(next).at(-1) : lineOf(next)[0];
+		if (text) return { text, offset: step === 'blockBefore' ? text.length : 0 };
+	}
+	return null;
+};
+
+/**
+ * The caret once `blocks` (document order) are deleted, their unselected
+ * children promoted (`del.blocks.promote`): the start of a child that takes
+ * their place (FW-05), else the end of the nearest line before them, else the
+ * start of the nearest line after. The keyboard's block delete and cut and
+ * the block menu's Delete share it (YW-04).
+ */
+export const caretAfterBlockDelete = (
+	blocks: readonly Block[]
+): SelectionInsertionTarget | null => {
+	const removed = new Set(blocks);
+	const next = caretBeside(blocks[0], 'blockAfter', removed);
+	let promoted = false;
+	for (let up = next?.text.parent.parent; up && !promoted; up = up.parent)
+		promoted = removed.has(up);
+	return (
+		(promoted ? next : null) ??
+		caretBeside(blocks[0], 'blockBefore', removed) ??
+		caretBeside(blocks.at(-1)!, 'blockAfter', removed)
+	);
+};
+
 /**
  * Delete (or cut) the selected blocks. The command authors its result
- * selection (FP-7, R9): a caret at the end of the first editable text of the
- * nearest unselected block before them, else after them — declared before the
- * delete, so the seam never runs for it. With neither, the seam applies.
+ * selection (FP-7, R9) by `caretAfterBlockDelete`, declared before the
+ * delete, so the seam never runs for it. With none, the seam applies.
  * Answers the caret's text.
  */
 export const deleteSelectedBlocks = (edytor: Edytor): Text | null => {
 	const blocks = getSelectedBlocksInDocumentOrder(edytor);
 	if (!blocks[0]?.parent) return null;
-	const removed = new Set(blocks);
-	const text = (
-		shown(blocks[0], 'blockBefore', { removed }) || shown(blocks.at(-1)!, 'blockAfter', { removed })
-	)?.firstEditableText;
-	const deleted = edytor.dispatcher.caret(text, text?.length ?? 0, () =>
+	const at = caretAfterBlockDelete(blocks);
+	const deleted = edytor.dispatcher.caret(at?.text, at?.offset ?? 0, () =>
 		edytor.deleteBlocks({ blocks })
 	);
-	return deleted ? (text ?? null) : null;
+	return deleted ? (at?.text ?? null) : null;
 };
 
 /** Delete the selected range (or `selection`) as Backspace does (`del.range.*`), then its caret. */

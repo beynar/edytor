@@ -1038,7 +1038,8 @@ export const runSchedule = (
 				identityOf: (id) => registryIdentity(p.doc, id),
 				succeeds: (later, earlier) => succeeds(p.doc, later, earlier),
 				identities: seen,
-				hiddenUnderDeleted: () => hiddenUnderDeleted(p.doc)
+				hiddenUnderDeleted: () => hiddenUnderDeleted(p.doc),
+				reportedKind: ops.reportedKind && ((id) => ops.reportedKind!(p, id))
 			}).map((x) => `${p.name}: ${x}`);
 		});
 	let firstIllFormed: { step: number; problems: string[] } | null = null;

@@ -140,9 +140,9 @@ describe('del.blocks.promote — deleting a selected parent keeps its unselected
 			{ ...p('A3'), id: kids[2] },
 			p('B')
 		]);
-		// Caret: nothing unselected before the set → the end of the next unselected block (FP-7).
+		// Caret: nothing unselected before the set → the start of the next line (FP-7, YW-04).
 		expect(edytor.selection.state.startText?.parent.id).toBe(kids[0]);
-		expect(edytor.selection.state.yStart).toBe(2);
+		expect(edytor.selection.state.yStart).toBe(0);
 
 		await mod('z');
 		expect(edytor.value).toEqual(before);

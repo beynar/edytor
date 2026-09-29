@@ -821,6 +821,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const roles: DisplayRoles = {
 			childless: (type) => roleOf(type)?.void === true,
 			island: (type) => roleOf(type)?.island === true,
+			container: (type) =>
+				!rendersContentOf(type) && roleOf(type)?.void !== true && roleOf(type)?.island !== true,
+			rendersContent: (type) => rendersContentOf(type),
 			defaultChild: (type) => (type !== null ? defaultChildOf(type) : undefined) ?? defaultType,
 			line: (type) => {
 				const role = roleOf(type);
@@ -1144,15 +1147,17 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * May `fromId`'s content merge into `intoId`? Both live and distinct,
 		 * neither void, `intoId` renders its content (a list, a table row or a
 		 * code block shows none, so a first item, cell or line never merges
-		 * into it — XW-12, DR-crdt-2), and the merge stays on one side of an
-		 * island boundary (a block may merge into its own island root — that
-		 * stays inside — but nothing from outside merges into an island).
+		 * into it — XW-12, DR-crdt-2), `fromId` renders its own unless it is
+		 * an island (a list or a row never merges as a whole: its items would
+		 * leave it — YW-02), and the merge stays on one side of an island
+		 * boundary (a block may merge into its own island root — that stays
+		 * inside — but nothing from outside merges into an island).
 		 */
 		const canMerge = (fromId: BlockId, intoId: BlockId): boolean => {
 			const v = view();
 			if (fromId === intoId || !isLiveIn(v, fromId) || !isLiveIn(v, intoId)) return false;
 			if (isVoid(fromId) || isVoid(intoId)) return false;
-			if (!rendersContent(intoId)) return false;
+			if (!rendersContent(intoId) || !(rendersContent(fromId) || isIsland(fromId))) return false;
 			const islandFrom = islandOf(fromId, v);
 			if (intoId === islandFrom) return true;
 			return islandFrom === islandOf(intoId, v) && !isIsland(intoId);
@@ -1583,6 +1588,75 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		): PlanStep[] =>
 			isIsland(island) ? kids.flatMap((kid) => attr(kid, TYPE, defaultChild(parent))) : [];
 		/**
+		 * A container: a block that shows only its children — no content of
+		 * its own, neither void nor an island (a list, a table row). Its items
+		 * hold what it shows (YW-02).
+		 */
+		const isContainer = (id: BlockId): boolean =>
+			!rendersContent(id) && !isVoid(id) && !isIsland(id);
+		/**
+		 * The container rule (YW-02), `leaveIsland`'s sibling: the kind `kid`
+		 * of container `from` shows once it leaves it for `parent`. An item
+		 * (the container's default child) takes the default child of
+		 * `parent`, its new slot's parent — an item never shows outside its
+		 * list — unless it stays inside an outer list of that kind (a nested
+		 * list), or that kind renders no content (a column in a columns
+		 * layout: its text would vanish, DR-crdt-1).
+		 */
+		const leftKind = (from: BlockId, kid: BlockId, parent: BlockId | null): string | undefined => {
+			const kind = blockTypeOf(kid);
+			if (!isContainer(from) || kind !== defaultChild(from)) return kind;
+			const within = parent === null ? [] : [parent, ...ancestorsOf(parent)];
+			if (within.some((a) => isContainer(a) && defaultChild(a) === kind)) return kind;
+			const to = defaultChild(parent);
+			return rendersContentOf(to) ? to : kind;
+		};
+		/** The container rule's type steps for the `kids` of `from` leaving it for `parent`. */
+		const leaveContainer = (
+			from: BlockId,
+			kids: readonly BlockId[],
+			parent: BlockId | null
+		): PlanStep[] =>
+			kids.flatMap((kid) => {
+				const kind = leftKind(from, kid, parent);
+				return kind === undefined || kind === blockTypeOf(kid) ? [] : attr(kid, TYPE, kind);
+			});
+		/**
+		 * The kids of `from` fit `parent` once they leave it: a container
+		 * holds only its own items (a paragraph never lands directly in a
+		 * columns layout).
+		 */
+		const fits = (from: BlockId, kids: readonly BlockId[], parent: BlockId | null): boolean =>
+			parent === null ||
+			!isContainer(parent) ||
+			kids.every((kid) => leftKind(from, kid, parent) === defaultChild(parent));
+		/** `parent` and its display ancestors: where blocks landing under `parent` keep alive. */
+		const landing = (parent: BlockId | null): Set<BlockId | null> =>
+			new Set(parent === null ? [] : [parent, ...ancestorsOf(parent)]);
+		/**
+		 * `writes`, then `container` removed when they leave it no child but
+		 * `leaving` (`del.range.empty-container`), and so on upward — never
+		 * one of `kept`. A container holding text of its own (hidden: it
+		 * renders none) stays.
+		 */
+		const emptying = (
+			container: BlockId,
+			leaving: readonly BlockId[],
+			writes: readonly PlanStep[],
+			kept: ReadonlySet<BlockId | null> = new Set()
+		): PlanStep[] => {
+			let [top, gone]: [BlockId | null, ReadonlySet<BlockId>] = [null, new Set(leaving)];
+			for (
+				let c: BlockId | null = container;
+				c !== null && !kept.has(c) && isContainer(c) && displayLength(c) === 0;
+				c = positionOf(c)!.parent
+			) {
+				if (!childrenIds(c).every((kid) => gone.has(kid))) break;
+				[top, gone] = [c, new Set([c])];
+			}
+			return top === null ? [...writes] : [...writes, remove(top, leaving)];
+		};
+		/**
 		 * Delete (R3): `removes` leave. Every one is marked with what it
 		 * displays — an unmarked one would be promoted into the deleted slot
 		 * (`displaySlotOf`).
@@ -1594,9 +1668,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/** Delete `id` and its subtree, `kept` children aside. */
 		const remove = (id: BlockId, kept: readonly BlockId[] = []): PlanStep => {
 			const removes: BlockId[] = [];
+			const skip = new Set(kept);
 			const walk = (b: BlockId): void => {
 				removes.push(b);
-				for (const kid of childrenIds(b)) if (!kept.includes(kid)) walk(kid);
+				for (const kid of childrenIds(b)) if (!skip.has(kid)) walk(kid);
 			};
 			walk(id);
 			return deleting(id, removes);
@@ -1664,13 +1739,21 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const moved = ids.map(ref);
 			const parent = ref(dest.parent);
 			if (moved.length === 0) return plan([], []);
-			return canPlace(moved, parent) ? plan(moved, move(moved, parent, dest.index)) : REFUSED;
+			if (!canPlace(moved, parent)) return REFUSED;
+			// A list the move leaves with no item goes (not one it moves or lands in).
+			const into = new Set([...moved, ...landing(parent)]);
+			return plan(moved, emptied(moved, move(moved, parent, dest.index), into));
 		};
 		/**
 		 * Outdent (UW-23): move sibling blocks `ids` (document order) right
 		 * after their parent, and hand the siblings that followed the last of
 		 * them to it as its last children — every outliner's Shift+Tab. A last
 		 * block that cannot adopt (void, island) leaves them with the parent.
+		 * Items leaving a container follow the container rule
+		 * (`leaveContainer`) and never take the items after them (DR-crdt-3):
+		 * the list splits around them, Notion's way — its first items go
+		 * before it, others after it, and the items that followed stay a list
+		 * of its kind (a new one). A container left with no child goes (YW-02).
 		 * One plan; refused as the move is. `ids`: the moved blocks.
 		 */
 		const unNestBlocks = (ids: readonly BlockId[]): Prepared => {
@@ -1679,10 +1762,40 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const pos = last === undefined ? null : positionOf(last);
 			const ppos = pos?.parent != null ? positionOf(pos.parent) : null;
 			if (!ppos || moved.some((id) => positionOf(id)?.parent !== pos!.parent)) return REFUSED;
-			const out = moveBlocks(moved, { parent: ppos.parent, index: ppos.index + 1 });
-			const after = childrenIds(pos!.parent).slice(pos!.index + 1);
-			if (!('writes' in out) || after.length === 0 || isVoid(last!) || isIsland(last!)) return out;
-			return plan(moved, [...out.writes, ...move(after, last!, Infinity)]);
+			if (!canPlace(moved, ppos.parent)) return REFUSED;
+			const from = pos!.parent!;
+			const after = childrenIds(from).slice(pos!.index + 1);
+			const retype = leaveContainer(from, moved, ppos.parent);
+			if (isContainer(from)) {
+				const lead = childrenIds(from)
+					.slice(0, moved.length)
+					.every((id, i) => id === moved[i]);
+				const at = ppos.index + (lead ? 0 : 1);
+				if (lead || after.length === 0) {
+					const writes = [...move(moved, ppos.parent, at), ...retype];
+					return plan(moved, emptying(from, moved, writes, landing(ppos.parent)));
+				}
+				// The items after them stay a list: a new one of its kind, right after them.
+				const rest = newId('b');
+				const ranks = ranksFor(ppos.parent, at, moved.length + 1, moved);
+				const spec = { id: rest, type: kindToCopy(from), data: blockDataOf(from) ?? {} };
+				return plan(moved, [
+					...moveTo(moved, ppos.parent, at, ranks.slice(0, -1)),
+					...retype,
+					{
+						op: 'insertBlocks',
+						parent: ppos.parent,
+						index: at + moved.length,
+						specs: [sanitizeSpec(spec)],
+						ranks: ranks.slice(-1)
+					},
+					...move(after, rest, 0)
+				]);
+			}
+			const writes = [...move(moved, ppos.parent, ppos.index + 1), ...retype];
+			const adopts = after.length > 0 && !isVoid(last!) && !isIsland(last!);
+			if (adopts) writes.push(...move(after, last!, Infinity));
+			return plan(moved, writes);
 		};
 		/** Outdent one block (`unNestBlocks`). */
 		const unNestBlock = (id: BlockId): Prepared => unNestBlocks([id]);
@@ -1691,8 +1804,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * Split `id` at content `offset` into a new sibling `newId` (one boundary
 		 * item and the claims that follow it, no text copied; children follow).
 		 * `tail` decides the sibling's type/data once (default: the source's —
-		 * the kind it displays, RW-01).
-		 * Refused on `void` blocks. `ids`: the new block.
+		 * the kind it displays, RW-01; an empty `tail.type` is the default too).
+		 * Refused on `void` blocks and on blocks that render no content (a
+		 * list, a code block: nothing to split, SW8-roles-3). `ids`: the new
+		 * block.
 		 */
 		const splitBlock = (
 			id: BlockId,
@@ -1704,13 +1819,14 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const born = ref(newId);
 			const pos = positionOf(id);
 			const rec = view().blocks.get(id);
-			if (pos === null || isVoid(id) || !rec?.claimsNode || M.blockNodeOf(doc, born) !== null) {
-				return REFUSED;
-			}
+			if (pos === null || isVoid(id) || !rendersContent(id) || !rec?.claimsNode) return REFUSED;
+			if (M.blockNodeOf(doc, born) !== null) return REFUSED;
 			const [at] = clamp(id, offset, 0);
+			// An empty tail type is the one a view reads mid-retype: copy the kind (YW-07).
+			const type = tail?.type ? ref(tail.type) : kindToCopy(id);
 			const t = tail
-				? { type: ref(tail.type), data: tail.data && sanitizeWireJson(tail.data) }
-				: { type: kindToCopy(id), data: rec.node.getAttr(DATA) as JsonObj };
+				? { type, data: tail.data && sanitizeWireJson(tail.data) }
+				: { type, data: rec.node.getAttr(DATA) as JsonObj };
 			const [rank] = ranksFor(pos.parent, pos.index + 1, 1);
 			const length = displayLength(id) - at;
 			const split: PlanStep = {
@@ -1746,7 +1862,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const kids = childrenIds(from);
 			const retype = leaveIsland(from, kids, into);
 			const adopt = moveTo(kids, from, kids.length, ranksFor(into, Infinity, kids.length, kids));
-			return plan([into], [merge(from, into), ...adopt, ...retype]);
+			// A list its only item leaves goes, as with every sibling op (DR-crdt-5).
+			return plan([into], emptied([from], [merge(from, into), ...adopt, ...retype], landing(into)));
 		};
 
 		/**
@@ -1765,10 +1882,21 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return plan([into], [...move(kids, pos.parent, pos.index + 1), ...retype, merge(from, into)]);
 		};
 
+		/** Remove `container`, left empty, for the key at `id` (refused if it holds text). */
+		const gone = (id: BlockId, container: BlockId): Prepared => {
+			const writes = emptying(container, [], []);
+			return writes.length > 0 ? plan([id], writes) : REFUSED;
+		};
+
 		/**
 		 * Baseline `mergeBlockBackward`: merge `id` into the previous block in
 		 * document order. No previous block → an empty block merges forward,
-		 * else refused. `ids`: the surviving block.
+		 * else refused. The first item of a container (`isContainer`) outside
+		 * any island lifts out of it instead (YW-02, Notion): it takes the
+		 * container's slot, as its new parent's default child, with its
+		 * children (a first cell stays: nothing leaves an island; a block that
+		 * would land directly in a container it is no item of stays too,
+		 * DR-crdt-1). `ids`: the surviving block.
 		 */
 		const mergeBackward = (id: BlockId): Prepared => {
 			id = ref(id);
@@ -1776,23 +1904,69 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			if (prev === null && childrenIds(id).length === 0 && displayLength(id) === 0) {
 				return mergeForward(id);
 			}
+			// A container a concurrent edit left empty shows nothing: the key removes it.
+			if (prev !== null && isContainer(prev) && childrenIds(prev).length === 0)
+				return gone(id, prev);
+			if (
+				prev !== null &&
+				prev === positionOf(id)?.parent &&
+				isContainer(prev) &&
+				!insideIsland(prev)
+			) {
+				// It lands only where it fits: never directly in a container it is no item of.
+				const slot = positionOf(prev)!;
+				if (!fits(prev, [id], slot.parent)) return REFUSED;
+				const lift = [
+					...move([id], slot.parent, slot.index),
+					...leaveContainer(prev, [id], slot.parent)
+				];
+				return plan([id], emptying(prev, [id], lift, landing(slot.parent)));
+			}
 			return prev ? mergeUnnesting(id, prev) : REFUSED;
 		};
 
-		/** Baseline `mergeBlockForward`: pull the next block in document order into `id`. */
+		/**
+		 * Baseline `mergeBlockForward`: pull the next block in document order
+		 * into `id`. A container passes the merge to its first item (YW-02:
+		 * Delete above a list pulls the item's text up and the list keeps the
+		 * rest, or goes when that was its only item). A container left
+		 * empty (by concurrent edits) is removed instead, by either key.
+		 */
 		const mergeForward = (id: BlockId): Prepared => {
 			id = ref(id);
-			const after = next(id);
-			return after ? mergeUnnesting(after, id) : REFUSED;
+			let after = next(id);
+			while (after !== null && isContainer(after)) {
+				const first = childrenIds(after)[0];
+				// A container a concurrent edit left empty shows nothing: the key removes it.
+				if (first === undefined) return gone(id, after);
+				after = first;
+			}
+			const out = after ? mergeUnnesting(after, id) : REFUSED;
+			const parent = after && positionOf(after)?.parent;
+			if (!('writes' in out) || !parent || childrenIds(after!).length > 0) return out;
+			return plan(out.ids, emptying(parent, [after!], out.writes));
 		};
 
+		/** `writes`, then every container the `leaving` blocks leave with no child removed. */
+		const emptied = (
+			leaving: readonly BlockId[],
+			writes: PlanStep[],
+			kept?: ReadonlySet<BlockId | null>
+		): PlanStep[] =>
+			[...new Set(leaving.map((id) => positionOf(id)!.parent))].reduce<PlanStep[]>(
+				(out, parent) => (parent === null ? out : emptying(parent, leaving, out, kept)),
+				writes
+			);
 		/**
 		 * Delete a set of blocks (R3, `del.blocks.promote`): this writer's mark on
 		 * every member and on what it displays through merge claims (wins over
 		 * concurrent moves). Only the members leave: the unselected children of a
 		 * deleted block take its slot, in order, with their subtrees (a deleted
 		 * island's children take the slot parent's default child type, like an
-		 * island merge). `subtree` is the explicit whole-subtree delete.
+		 * island merge, and a deleted list's items follow the container rule,
+		 * `leaveContainer`). A container the delete leaves with no child goes too
+		 * (`del.range.empty-container`). `subtree` is the explicit whole-subtree
+		 * delete.
 		 */
 		const deleteBlocks = (ids: readonly BlockId[], subtree = false): Prepared => {
 			const set = new Set(ids.map(ref));
@@ -1801,11 +1975,15 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				const roots = [...set].filter((id) => !ancestorsOf(id).some((a) => set.has(a)));
 				return plan(
 					roots,
-					roots.map((id) => remove(id))
+					emptied(
+						roots,
+						roots.map((id) => remove(id))
+					)
 				);
 			}
 			const roots = [...set].filter((id) => !set.has(positionOf(id)!.parent!));
 			const { kids } = view();
+			const promoting = new Set<BlockId>();
 			const writes = roots.flatMap((root) => {
 				const pos = positionOf(root)!;
 				const chunk: BlockId[] = [];
@@ -1823,6 +2001,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					}
 				};
 				walk(root, kids.get(pos.parent)![pos.index]!.rank);
+				if (kept.length > 0) promoting.add(root);
 				return [
 					...moveTo(
 						kept.map((k) => k.id),
@@ -1830,11 +2009,20 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 						pos.index + 1,
 						kept.map((k) => k.rank)
 					),
-					...kept.flatMap((k) => leaveIsland(k.from, [k.id], pos.parent)),
+					...kept.flatMap((k) => [
+						...leaveIsland(k.from, [k.id], pos.parent),
+						...leaveContainer(k.from, [k.id], pos.parent)
+					]),
 					deleting(root, chunk)
 				];
 			});
-			return plan(roots, writes);
+			return plan(
+				roots,
+				emptied(
+					roots.filter((r) => !promoting.has(r)),
+					writes
+				)
+			);
 		};
 
 		/** Delete `id` — its children take its slot (`keepChildren: false`: the whole subtree). */
@@ -1845,7 +2033,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * The target role decides (UW-21): nothing renders a void's children,
 		 * so a block retyped to a void kind hands them to the slot right after
 		 * it — the island-merge rule (an island's children take the slot
-		 * parent's default child type). Each moves to the rank the read-time
+		 * parent's default child type; a list's items, the container rule's
+		 * kind). Each moves to the rank the read-time
 		 * shedding gives it (`promotedRank`, UW-21b), so a child a peer adds
 		 * meanwhile keeps its place in the void's order among them. An island
 		 * retyped to an ordinary kind keeps its children, each retyped to the
@@ -1872,7 +2061,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					pos.index + 1,
 					moved.map((k) => promotedRank(slotRank, k.rank))
 				),
-				...leaveIsland(id, ids, pos.parent)
+				...leaveIsland(id, ids, pos.parent),
+				...leaveContainer(id, ids, pos.parent)
 			];
 		};
 
@@ -2096,10 +2286,12 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			rendersContent,
 			canMerge,
 			isIsland,
+			isLines: (id) => is(id, (type) => roles.line(type) !== undefined),
 			defaultChild,
 			move,
 			retype: (id, type) => attr(id, TYPE, type),
 			leaveIsland,
+			leaveContainer,
 			remove,
 			insertBlocks,
 			sanitize: sanitizeSpec,

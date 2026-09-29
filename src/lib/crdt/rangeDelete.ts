@@ -17,8 +17,11 @@
  *   later siblings inside every container the range dies through take the
  *   topmost such container's slot, unless that would cross an island seal —
  *   then those containers stay (`del.range.outside-survives`);
- * - a container that renders no content and loses every child dies too
- *   (`del.range.empty-container`);
+ * - a container that renders no content (a list) never dies because the
+ *   range starts before it: it keeps what follows the range end, like the
+ *   keys (`del.merge.container`); it dies only when it loses every child
+ *   (`del.range.empty-container`), except a `lines` island (a code block)
+ *   the range lies in: its head is then kept, emptied (`del.range.island-kept`);
  * - blocks the view hides (a closed toggle's body) are not in the range:
  *   they go only with a block that goes, so a surviving head keeps its
  *   hidden children, unless it is kept only to hold the caret; a dying
@@ -47,9 +50,13 @@ export type RangeDeleteContext = {
 	rendersContent: (id: BlockId) => boolean;
 	canMerge: (from: BlockId, into: BlockId) => boolean;
 	isIsland: (id: BlockId) => boolean;
+	/** An island declared `lines` (a code block): it holds only lines. */
+	isLines: (id: BlockId) => boolean;
 	move: (ids: BlockId[], parent: BlockId | null, index: number) => PlanStep[];
 	/** The island-merge rule: `island`'s children `kids` leaving it take `parent`'s default child. */
 	leaveIsland: (island: BlockId, kids: readonly BlockId[], parent: BlockId | null) => PlanStep[];
+	/** The container rule: a list's items `kids` leaving it for `parent` take the kind they show there. */
+	leaveContainer: (from: BlockId, kids: readonly BlockId[], parent: BlockId | null) => PlanStep[];
 	remove: (id: BlockId, kept: readonly BlockId[]) => PlanStep;
 };
 
@@ -105,7 +112,12 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 			const tailGone = tailDies || merges;
 
 			// E's ancestors the range starts before die unless the rescue would cross an island.
-			const partial = chain.filter((a) => a === (headDies ? S : null) || between.includes(a));
+			// A container (a list) is not one: it dies only when the range empties it, and
+			// keeps its later items like the keys do (`del.merge.container`, DR-crdt-4).
+			const container = (a: BlockId) => !c.rendersContent(a) && !c.isIsland(a);
+			const partial = chain.filter(
+				(a) => (a === (headDies ? S : null) || between.includes(a)) && !container(a)
+			);
 			const top = partial.at(-1);
 			const sealed = top !== undefined && chain.slice(0, chain.indexOf(top) + 1).some(c.isIsland);
 			const spared = new Set(sealed ? chain : []);
@@ -133,6 +145,12 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 				emptied(parent(id));
 			};
 			[...doomed, ...(merges ? [E] : [])].forEach((id) => emptied(parent(id)));
+			// A range inside one `lines` island never removes it: the head stays, emptied
+			// (a code block's Mod+A, `del.range.island-kept`).
+			const island = c.ancestorsOf(S).find(c.isIsland);
+			const linesIsland = island !== undefined && c.isLines(island);
+			if (!keepHead && linesIsland && doomed.has(island) && chain.includes(island))
+				return prepare(true, headDies)(from, to, view);
 
 			const lenS = c.displayLength(S);
 			const writes: PlanStep[] = [];
@@ -143,6 +161,11 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 			if (dest !== null) {
 				writes.push(...c.move(rescued, dest.parent, dest.index + 1));
 				if (tailGone) writes.push(...c.leaveIsland(E, c.childrenIds(E), dest.parent));
+				// Items rescued out of a list show as their new parent's kind (the container rule).
+				for (const id of rescued) {
+					const from = parent(id);
+					if (from !== null) writes.push(...c.leaveContainer(from, [id], dest.parent));
+				}
 			}
 			if (merges) {
 				// The whole tail merges, then its cut prefix goes: E's own text is never written.

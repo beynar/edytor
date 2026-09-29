@@ -223,35 +223,53 @@ describe('del.range.nested-tail / nested-subtree', () => {
 	const nested = (items = [b('beta', 'beta', undefined, 'list-item')]) =>
 		make([b('alpha', 'alpha'), b('ol', '', items, 'ordered-list'), b('omega', 'omega')]);
 
-	row('alpha@0 → beta@2 → [list-item "ta", paragraph "omega"]', () => {
+	// The list is no ancestor the range dies through: it keeps its items (DR-crdt-4).
+	row('alpha@0 → beta@2 → [ordered-list > list-item "ta", paragraph "omega"]', () => {
 		const f = nested();
 		const { at } = del(f, ['alpha', 0], ['beta', 2]);
-		expect(tree(f)).toEqual([['beta', 'list-item', 'ta'], P('omega', 'omega')]);
+		expect(tree(f)).toEqual([
+			['ol', 'ordered-list', '', [['beta', 'list-item', 'ta']]],
+			P('omega', 'omega')
+		]);
 		expect(at).toEqual({ block: 'beta', offset: 0 });
 	});
 
-	row('the later item is rescued with the tail (two items)', () => {
+	row('the later item stays in the list with the tail (two items)', () => {
 		const f = nested([
 			b('beta', 'beta', undefined, 'list-item'),
 			b('gamma', 'gamma', undefined, 'list-item')
 		]);
 		del(f, ['alpha', 0], ['beta', 2]);
 		expect(tree(f)).toEqual([
-			['beta', 'list-item', 'ta'],
-			['gamma', 'list-item', 'gamma'],
+			[
+				'ol',
+				'ordered-list',
+				'',
+				[
+					['beta', 'list-item', 'ta'],
+					['gamma', 'list-item', 'gamma']
+				]
+			],
 			P('omega', 'omega')
 		]);
 	});
 
-	row('an end at an item start: the head dies, the whole tail item survives', () => {
+	row('an end at an item start: the head dies, the whole list survives', () => {
 		const f = nested([
 			b('beta', 'beta', undefined, 'list-item'),
 			b('gamma', 'gamma', undefined, 'list-item')
 		]);
 		del(f, ['alpha', 0], ['beta', 0]);
 		expect(tree(f)).toEqual([
-			['beta', 'list-item', 'beta'],
-			['gamma', 'list-item', 'gamma'],
+			[
+				'ol',
+				'ordered-list',
+				'',
+				[
+					['beta', 'list-item', 'beta'],
+					['gamma', 'list-item', 'gamma']
+				]
+			],
 			P('omega', 'omega')
 		]);
 	});
@@ -276,7 +294,7 @@ describe('del.range.nested-tail / nested-subtree', () => {
 });
 
 describe('del.range.outside-survives — what follows the range end is kept', () => {
-	row('a surviving head: the later item of the container the range dies through survives', () => {
+	row('a surviving head: the list keeps its later item (DR-crdt-4)', () => {
 		const f = make([
 			b('alpha', 'alpha'),
 			b(
@@ -290,10 +308,27 @@ describe('del.range.outside-survives — what follows the range end is kept', ()
 		const { at } = del(f, ['alpha', 2], ['beta', 2]);
 		expect(tree(f)).toEqual([
 			P('alpha', 'alta'),
-			['gamma', 'list-item', 'gamma'],
+			['ol', 'ordered-list', '', [['gamma', 'list-item', 'gamma']]],
 			P('omega', 'omega')
 		]);
 		expect(at).toEqual({ block: 'alpha', offset: 2 });
+	});
+
+	row('an item rescued out of a list under a dying block shows as a paragraph', () => {
+		const f = make([
+			b('alpha', 'alpha'),
+			b('x', 'xx', [
+				b(
+					'ol',
+					'',
+					[b('i', 'ii', undefined, 'list-item'), b('j', 'jj', undefined, 'list-item')],
+					'ordered-list'
+				)
+			]),
+			b('omega', 'omega')
+		]);
+		del(f, ['alpha', 1], ['i', 1]);
+		expect(tree(f)).toEqual([P('alpha', 'ai'), P('j', 'jj'), P('omega', 'omega')]);
 	});
 
 	row("a merging tail's children take its vacated slot", () => {

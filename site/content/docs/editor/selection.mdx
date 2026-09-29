@@ -114,8 +114,9 @@ A block selection is exactly its members:
 - Clicking a block handle selects that block, not its children.
 - <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> from a selected block adds each block it passes, nested blocks included.
 - <kbd>Mod</kbd>+<kbd>A</kbd> selects the text of the current block, then the block, then every block in the document.
-- <kbd>Escape</kbd> leaves block selection and puts the caret at the end of the first selected block.
-- Deleting a selection removes only the selected blocks. A selected parent's unselected children move into its place (undo puts them back).
+- <kbd>Escape</kbd> leaves block selection and puts the caret at the end of the first selected block's line (first in document order; for a list, its last shown line).
+- Deleting a selection removes only the selected blocks. A selected parent's unselected children move into its place (undo puts them back). The caret goes to the start of the first child that takes their place, else to the end of the nearest line before the deleted blocks, or to the start of the nearest line after them when nothing comes before. The block menu's Delete puts it in the same place.
+- In a code block, the first <kbd>Mod</kbd>+<kbd>A</kbd> selects the code's text; deleting or cutting it leaves one empty line in the code block.
 - Copying a block selection copies only the selected blocks.
 
 Selected blocks have the `data-edytor-selected` attribute. `edytor.selection.selectedBlocks` is a reactive `Set<Block>`; `focusedBlocks` holds the blocks a text selection is in (`data-edytor-focused`).

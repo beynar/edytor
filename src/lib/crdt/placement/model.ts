@@ -210,6 +210,12 @@ export type DisplayOwnership = Ownership & {
 	 */
 	island?: (b: BlockId) => boolean;
 	/**
+	 * `b` (live or deleted) is a container — it renders no content and is
+	 * neither void nor an island (a list): a block promoted out of it keeps
+	 * no container-only kind either (`reset`, DR-crdt-2).
+	 */
+	container?: (b: BlockId) => boolean;
+	/**
 	 * The island `b` is declared `lines`: each direct child is a line, and a
 	 * line holds no children (FW-01, XW-03, {@link displaySlotOf}).
 	 */
@@ -448,7 +454,9 @@ export const promotedRank = (slot: string, rank: string): string => slot + PROMO
  * of a deleted one, or under the owner of a merged-away one — names it
  * (`reset`, the innermost): while it still has the island's default child
  * kind it displays as its display parent's default child, as a delete or
- * merge of the island retypes the children it saw. A code line a peer adds
+ * merge of the island retypes the children it saw. A container (a list) is
+ * a `reset` too: an item a peer adds to a list another peer's edit removes
+ * shows as a paragraph, not as a bare item (DR-crdt-2). A code line a peer adds
  * under a code block another peer deletes or merges shows as a paragraph,
  * not as a code line outside its code block. A line of an island declared
  * `lines` holds no children (FW-01): they take the island's
@@ -465,9 +473,10 @@ export const displaySlotOf = (
 ): { parent: Owner | null; rank: string; reset: BlockId | null } => {
 	let { parent, rank } = pl;
 	let reset: BlockId | null = null;
+	const resets = (b: BlockId) => own.island?.(b) === true || own.container?.(b) === true;
 	for (let hops = 0; parent !== null; hops++) {
 		const owner = own.ownerOf(parent);
-		if (reset === null && owner !== parent && own.island?.(parent) === true) reset = parent;
+		if (reset === null && owner !== parent && resets(parent)) reset = parent;
 		const out = owner === DEAD ? parent : owner;
 		const shows = owner !== DEAD && own.childless?.(owner) !== true;
 		// A line holds no children (FW-01) — a deleted or childless one
@@ -487,7 +496,7 @@ export const displaySlotOf = (
 		if (shows) return { parent: owner, rank, reset };
 		const up = placements.get(out);
 		if (up === undefined || hops > placements.size) return { parent: DEAD, rank, reset };
-		if (reset === null && own.island?.(out) === true) reset = out;
+		if (reset === null && resets(out)) reset = out;
 		rank = promotedRank(up.rank, rank);
 		parent = up.parent;
 	}

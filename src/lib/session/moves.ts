@@ -1,6 +1,7 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { revealing } from '$lib/selection/replaceSelection.js';
 
 export type BlockMovePosition = 'before' | 'after' | 'inside';
 
@@ -72,10 +73,21 @@ export const canMoveBlocks = (edytor: Edytor, request: BlockMoveRequest): boolea
  * One move command (`moveBlock` for one block, `moveBlocks` for a group; an
  * `out` step plans the outdent, `unNestBlocks`): identity kept, one undo
  * step (the dispatcher cuts before it, R7); `[]` when refused or vetoed.
+ * A closed toggle the blocks land in, or that adopts blocks, opens
+ * (`revealing`): every caller — keys, drops, menus, the public command —
+ * shows the moved blocks.
  */
-export const moveBlocks = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
+export const moveBlocks = (edytor: Edytor, request: BlockMoveRequest): Block[] =>
+	revealing(request.blocks, () => place(edytor, request));
+
+const place = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
 	const move = destination(edytor, request);
-	if (!move) return [];
+	if (!move) {
+		// Refused before any command ran: `last` still reports it (commands#results).
+		const operation = request.blocks.length > 1 ? 'moveBlocks' : 'moveBlock';
+		edytor.dispatcher.last = { operation, status: request.blocks.length ? 'refused' : 'noop' };
+		return [];
+	}
 	const [first, ...rest] = move.blocks;
 	if ('direction' in request && request.direction === 'out') {
 		// The outdent plan: the siblings after the last block follow it.

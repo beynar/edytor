@@ -354,13 +354,15 @@ describe('DR-collab-1 · waiting deletes are bounded', () => {
 		expect(eve.closed).toBeNull();
 		eve.close();
 		await evictDurableObject(stub);
-		await runInDurableObject(stub, (r: DocumentRoom) => r.compact());
-		await evictDurableObject(stub);
 		expect(await state()).toEqual({
 			waiting: 0,
-			kinds: ['generation', 'snapshot', 'pending'],
+			kinds: ['generation', 'pending', 'pending'],
 			stored: 5
 		});
+		// Compaction reclaims them: no user registered those client ids (YW-11).
+		await runInDurableObject(stub, (r: DocumentRoom) => r.compact());
+		await evictDurableObject(stub);
+		expect(await state()).toEqual({ waiting: 0, kinds: ['generation', 'snapshot'], stored: 0 });
 	});
 });
 

@@ -21,7 +21,8 @@
  * server URL and room, so they sync with each other with or without the
  * socket. An update heard from another tab is relayed to the server on
  * this tab's socket (never back to the channel): an offline tab's edits
- * reach the server as soon as any tab of the room is online.
+ * reach the server as soon as any tab of the room is online. A socket the
+ * room made read-only gets this document's own edits only.
  *
  * The generation gate (`protocols/envelope.ts`, R13): every websocket
  * frame is tagged `varuint GENERATION | messageType | payload`. Inbound
@@ -193,10 +194,15 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		if (provider.wsconnected && ws && ws.readyState === ws.OPEN) ws.send(buf);
 	};
 
+	/** Traffic for the other tabs goes out on the channel. */
+	const toTabs = (provider: Provider, buf: Uint8Array) => {
+		if (provider.bcconnected) bc.publish(provider.bcChannel, buf, provider);
+	};
+
 	/** Room traffic goes to the server and to the other tabs. */
 	const broadcast = (provider: Provider, buf: Uint8Array) => {
 		send(provider, buf);
-		if (provider.bcconnected) bc.publish(provider.bcChannel, buf, provider);
+		toTabs(provider, buf);
 	};
 
 	/**
@@ -330,24 +336,6 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			actorOf(doc, client) === actor;
 	};
 	/**
-	 * Of `deletes`, those of another actor's items the room does not hold
-	 * (`acked`): never acknowledged by id (the edytor room stores them as
-	 * waiting deletes, applied when the items arrive).
-	 */
-	const lacking = (deletes: IdSet, acked: StateVector, own: (client: number) => boolean) => {
-		const out = Y.createIdSet();
-		for (const [client, ranges] of deletes.clients) {
-			if (own(client)) continue;
-			const held = acked.get(client) ?? 0;
-			for (const { clock, len } of ranges.getIds()) {
-				const from = math.max(clock, held);
-				if (from < clock + len) out.add(client, from, clock + len - from);
-			}
-		}
-		return out;
-	};
-
-	/**
 	 * The ledger of this actor's writes the room has not acknowledged as
 	 * stored (store-before-ack): the one owner of `saved`, `unsaved`,
 	 * `readOnly` and the room faults counted against them. `changed` runs
@@ -396,17 +384,15 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 
 		/**
 		 * A `messageSaved` frame: the room stored everything under `sv`, and
-		 * `deletes` (the deletes it holds of the message it answers).
+		 * `deletes` (the deletes of the message it answers that it stored,
+		 * applied or waiting for their items).
 		 */
 		acknowledge(sv: Uint8Array, deletes: IdSet | null = null): void {
 			this.acked = Y.decodeStateVector(sv);
-			const own = ownerOf(this.doc);
 			const before = this.pending.length;
 			this.pending = this.pending.filter((entry) => {
 				if (deletes && !entry.deletes.isEmpty())
 					entry.deletes = Y.diffIdSet(entry.deletes, deletes);
-				if (!entry.deletes.isEmpty())
-					entry.deletes = Y.diffIdSet(entry.deletes, lacking(entry.deletes, this.acked, own));
 				return !(covers(this.acked, entry.sv) && entry.deletes.isEmpty());
 			});
 			// The room saves again: a later fault (1011) redials promptly.
@@ -595,7 +581,12 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		/** Closes the current dial if it has not opened in time. */
 		_connectTimer: ReturnType<typeof setTimeout> | undefined;
 		_checkInterval: ReturnType<typeof setInterval>;
-		_updateHandler: (update: Uint8Array, origin: unknown) => void;
+		_updateHandler: (
+			update: Uint8Array,
+			origin: unknown,
+			doc?: unknown,
+			transaction?: { local: boolean }
+		) => void;
 		_awarenessUpdateHandler: (
 			updates: { added: number[]; updated: number[]; removed: number[] },
 			origin: unknown
@@ -638,10 +629,18 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			}
 			this._bcSubscriber = room.bcSubscriber(this);
 			// Local doc updates go to the room; another tab's go to the server
-			// only (`broadcastUpdate` quarantines a read-only document).
-			this._updateHandler = (update, origin) => {
+			// only (`broadcastUpdate` quarantines a read-only document). A
+			// socket the room made read-only gets this document's own edits
+			// alone (each is denied): what a tab or a store delivered, and the
+			// actor records, would draw denials nobody made.
+			this._updateHandler = (update, origin, _doc, transaction) => {
 				if (origin === this) return;
-				room.broadcastUpdate(this, update, origin === this._fromTab ? send : broadcast);
+				const heard = origin === this._fromTab;
+				if (!this.readOnly) room.broadcastUpdate(this, update, heard ? send : broadcast);
+				else if (!heard) {
+					const own = transaction?.local !== false && origin !== ATTRIBUTION_ORIGIN;
+					room.broadcastUpdate(this, update, own ? broadcast : toTabs);
+				}
 				// The actor dictionary's records are bookkeeping, not content.
 				if (origin === ATTRIBUTION_ORIGIN) return;
 				const decoded = Y.decodeUpdate(update);
@@ -676,13 +675,16 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		}
 
 		/**
-		 * The dial URL. `params` are read at every dial (a refreshed token reaches
-		 * the next connection), with `replica` = this document's client id unless
-		 * `params` names one: the room binds the socket's writes to it.
+		 * The dial URL: the room name as one encoded path segment (any id —
+		 * `/`, `%`, `#`, `?` included — reaches its own room; the server
+		 * decodes it). `params` are read at every dial (a refreshed token
+		 * reaches the next connection), with `replica` = this document's
+		 * client id unless `params` names one: the room binds the socket's
+		 * writes to it.
 		 */
 		get url(): string {
 			const query = url.encodeQueryParams({ replica: String(this.doc.clientID), ...this.params });
-			return `${this.serverUrl}/${this.roomname}?${query}`;
+			return `${this.serverUrl}/${encodeURIComponent(this.roomname)}?${query}`;
 		}
 
 		/** Updates of this document's actor the room has not acknowledged as persisted yet. */

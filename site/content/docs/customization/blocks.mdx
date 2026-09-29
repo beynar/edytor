@@ -54,7 +54,7 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
     rendersContent: {
       type: "boolean",
       default: "true",
-      description: "false for a container that renders only its children (a list). Its content slot gets no caret, and no block merges into it: `mergeBackward` on its first child is refused. A development warning fires if the snippet disagrees.",
+      description: "false for a container that renders only its children (a list). Its content slot gets no caret, no block merges into it, and it never merges as a whole. `mergeBackward` on its first child moves that child out of it (a child of its `defaultChild` kind becomes its new parent's default child), and `mergeForward` from the block above pulls in its first child. A text range across it keeps its later children, and <kbd>Shift+Tab</kbd> on a middle child splits it in two around that child. A container left with no child is removed; a child a collaborator adds to one meanwhile shows as its new parent's default child. No child is ever retyped to a kind that renders no content, so nested containers (columns of columns) keep their text. A development warning fires if the snippet disagrees.",
     },
     defaultChild: {
       type: "string",

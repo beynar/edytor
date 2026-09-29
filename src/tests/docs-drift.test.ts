@@ -59,7 +59,7 @@ const stale: [phrase: string | RegExp, why: string][] = [
 	['Prism', 'the code plugin highlights with TanStack Highlight'],
 	['mention-and-image', 'the mention plugin is not exported; link targets moved'],
 	['14003', 'the generation word is 14004 (schema generation 4)'],
-	['0.0.x', 'the package is 0.1.0-next.0, a pre-release'],
+	['0.0.x', 'the package is a 0.1.0-next pre-release'],
 	[
 		/\b(?:npm i|npm install|pnpm add|yarn add|bun add) edytor(?![@\w/.-])/,
 		'a bare `edytor` installs the incompatible 0.0.11 from npm; install `edytor@next`'
@@ -112,7 +112,7 @@ const stale: [phrase: string | RegExp, why: string][] = [
 	],
 	[
 		/split\(['"]\/['"]\)\.pop\(\)|\.slice\(["']\/rooms\/["']\.length\)/,
-		'route `/rooms/<id>` by a match and decode the id, as the quick start: the client dials the room name unencoded (DR-docs-2)'
+		'route `/rooms/<id>` by a match and decode the id, as the quick start: the client dials the room name percent-encoded (DR-docs-2, YW-05)'
 	]
 ];
 
@@ -181,8 +181,6 @@ describe('docs drift', () => {
 			readFileSync(join(root, 'site/room/wrangler.jsonc'), 'utf8')
 		)?.[1];
 		expect(account).toBeTruthy();
-		expect(deploy).toContain('pack-edytor.sh --deploy');
-		expect(deploy).toContain(`CLOUDFLARE_ACCOUNT_ID=${account} wrangler deploy`);
 		const smoke = readFileSync(join(root, 'site/scripts/smoke.sh'), 'utf8');
 		for (const path of [
 			'/edytor-$VERSION.tgz',
@@ -202,9 +200,20 @@ describe('docs drift', () => {
 		expect(smoke).toMatch(
 			/node site\/scripts\/probe-room\.mjs "\$WSS\/demo-2019-01-01\?guest=smoke-probe-1" "\$SITE" 4404/
 		);
-		expect(deploy).toMatch(
-			/wrangler deploy && pnpm --dir room install && pnpm --dir room run deploy && sh scripts\/smoke\.sh$/
-		);
+		// The site's live editor and the room bundle the edytor pnpm installed,
+		// not vendor/edytor.tgz: both reinstall the new pack and are checked
+		// before the build (YW-15), and the smoke check checks them again.
+		expect(deploy.split(' && ')).toEqual([
+			'sh scripts/pack-edytor.sh --deploy',
+			'pnpm install',
+			'pnpm --dir room install',
+			'sh scripts/installed-edytor.sh',
+			'blume build',
+			`CLOUDFLARE_ACCOUNT_ID=${account} wrangler deploy`,
+			'pnpm --dir room run deploy',
+			'sh scripts/smoke.sh'
+		]);
+		expect(smoke).toContain('sh site/scripts/installed-edytor.sh');
 		// While `master` holds 0.0.11, a link into its tree is a 404 or old code (DR-docs-5).
 		if (/holds 0\.0\.11/.test(config)) {
 			const links = docs.filter((path) =>
@@ -223,6 +232,76 @@ describe('docs drift', () => {
 		expect(tarballs.filter((name) => name !== `edytor-${version}.tgz`)).toEqual([]);
 		// "Edit this page" links built on master would 404.
 		expect(config).not.toMatch(/branch:\s*["']master["']/);
+	});
+
+	it('every pre-release version a doc names is the package version (YW-14)', () => {
+		// A bump must reach the prose too ("a pre-release (`0.1.0-next.N`)"),
+		// not only the tarball names checked above. (The engine's own
+		// `14.0.0-rc.N` is another package.)
+		const mentions = docs.flatMap((path) =>
+			[...pageText(path).matchAll(/\b\d+\.\d+\.\d+-next\.\d+\b/g)].map(
+				([mention]) => `${relative(root, path)}: ${mention}`
+			)
+		);
+		expect(mentions.length).toBeGreaterThan(0);
+		expect(mentions.filter((mention) => !mention.endsWith(`: ${version}`))).toEqual([]);
+	});
+
+	it('every Worker snippet decodes the room id as the quick start does (YW-05)', () => {
+		// The provider percent-encodes the room id; a bare decode throws a
+		// URIError (HTTP 500, a 1006 redialed forever) on a malformed one.
+		const decode = [
+			'try {',
+			'documentId = decodeURIComponent(match[1]);',
+			'} catch {',
+			/return closedSocket\(4400, ["']invalid document id["']\);/
+		];
+		const routes = docs.filter((path) => pageText(path).includes('decodeURIComponent('));
+		expect(routes.map((path) => relative(root, path))).toEqual(
+			expect.arrayContaining([
+				'site/content/docs/server/quick-start.mdx',
+				'site/pages/_home/CodePreview.astro'
+			])
+		);
+		for (const path of routes) {
+			const lines = pageText(path)
+				.split('\n')
+				.map((line) => line.trim());
+			const at = lines.findIndex((line) => line === 'try {');
+			expect(at, relative(root, path)).toBeGreaterThan(-1);
+			decode.forEach((line, i) =>
+				expect(lines[at + i], relative(root, path)).toMatch(
+					typeof line === 'string'
+						? new RegExp(`^${line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`)
+						: line
+				)
+			);
+			expect(pageText(path), relative(root, path)).not.toMatch(
+				/decodeURIComponent\(match\[1\]\)\s*[,)]/
+			);
+		}
+		// The demo room the landing's editor dials decodes the same way.
+		expect(readFileSync(join(root, 'site/room/src/worker.ts'), 'utf8')).toMatch(
+			/try \{\s*return decodeURIComponent\(encoded\);\s*\} catch \{\s*return null;/
+		);
+	});
+
+	it('every `edytor.<member>` a doc names exists, unless the doc says it is gone (SW8-docs-1)', () => {
+		const source = readFileSync(join(root, 'src/lib/edytor.svelte.ts'), 'utf8');
+		const member = (name: string) =>
+			new RegExp(`^\\t(?:readonly |get |set |static )*${name}\\b\\s*[=:(!?<]`, 'm').test(source);
+		const gone = /removed|is gone|are gone|no longer|replaced|→/;
+		const stale = docs.flatMap((path) =>
+			pageText(path)
+				// One claim per clause: `edytor.a` is X; `edytor.b` is removed.
+				.split(/;\s|\.\s|\n/)
+				.flatMap((clause) =>
+					[...clause.matchAll(/(?<![\w/.-])edytor\.(?!(?:sh|svelte|tgz)\b)(\w+)/g)]
+						.filter(([, name]) => !member(name!) && !gone.test(clause))
+						.map(([mention]) => `${relative(root, path)}: ${mention}`)
+				)
+		);
+		expect(stale).toEqual([]);
 	});
 
 	it('the canonical migration list names every prop, sync option and payload hook added since 0.0.11 (FW-15)', () => {
@@ -252,10 +331,38 @@ describe('docs drift', () => {
 		expect(props).toContain('onSyncExpired');
 		expect(options).toContain('connectTimeout');
 		expect(payload).toContain('holdBound');
-		const missing = [...props, ...options, ...payload].filter(
-			(key) => !new RegExp(`[\`.]${key}\\b`).test(migration)
+		// Block definition keys 0.0.11 did not have (YW-16).
+		const oldDefinition = new Set(
+			'snippet void island transformText onFocus onBlur onSelect onDeselect normalizeContent normalizeChildren'.split(
+				' '
+			)
 		);
+		const definition = keys(read('src/lib/plugins.ts'), 'export type BlockDefinition = {').filter(
+			(key) => !oldDefinition.has(key)
+		);
+		expect(definition).toContain('lines');
+		// Provider getters y-websocket did not have (`saved`, `readOnly`, …).
+		const getters = [...read('src/lib/crdt/providers/websocket.ts').matchAll(/^\t\tget (\w+)\(/gm)]
+			.map(([, name]) => name!)
+			.filter((name) => !['url', 'synced'].includes(name));
+		expect(getters).toContain('readOnly');
+		// Everything `edytor/cloudflare` exports is new (YW-16).
+		const cloudflare = [
+			...read('src/lib/cloudflare/index.ts').matchAll(/^\t(?:type )?(\w+),?$/gm)
+		].map(([, name]) => name!);
+		expect(cloudflare).toContain('MAX_WAITING_DELETES');
+		const missing = [
+			...props,
+			...options,
+			...payload,
+			...definition,
+			...getters,
+			...cloudflare
+		].filter((key) => !new RegExp(`[\`.]${key}\\b`).test(migration));
 		expect(missing).toEqual([]);
+		// The facade's range ops take what the view hides (YW-16).
+		for (const op of ['deleteRange', 'replaceRange', 'insertFlow'])
+			expect(migration, op).toMatch(new RegExp(`\`(?:prepare\\.)?${op}\\([^)\`]*view\\?\\)\``));
 		// Close codes a client reacts to, and the provider events that report them.
 		for (const term of [
 			'`4400`',
@@ -543,7 +650,68 @@ describe('the hosted tarballs (site/scripts/stage-tarballs.sh)', () => {
 
 	it('every served version is still listed', () => {
 		expect(existsSync(join(root, 'site/scripts/served-versions.txt'))).toBe(true);
-		expect(servedVersions()).toContain('0.1.0-next.0');
+		expect(servedVersions()).toEqual(expect.arrayContaining(['0.1.0-next.0', '0.1.0-next.1']));
+	});
+});
+
+/**
+ * The site's live editor and the demo room bundle the edytor pnpm installed
+ * from `site/vendor/edytor.tgz` at their last install, not the tarball itself
+ * (YW-15). `installed-edytor.sh` refuses unless both installs hold the packed
+ * bytes; pnpm records their integrity in `node_modules/.pnpm/lock.yaml`.
+ */
+describe('the installed edytor (site/scripts/installed-edytor.sh)', () => {
+	const run = promisify(execFile);
+	const integrity = (bytes: string) =>
+		`sha512-${createHash('sha512').update(bytes).digest('base64')}`;
+	const lock = (bytes: string, tarball: string) =>
+		`packages:\n\n  edytor@${tarball}:\n    resolution: {integrity: ${integrity(bytes)}, tarball: ${tarball}}\n    version: 0.1.0-next.1\n`;
+
+	async function check(installed: { site?: string; room?: string }) {
+		const checkout = mkdtempSync(join(tmpdir(), 'edytor-installed-'));
+		mkdirSync(join(checkout, 'site/scripts'), { recursive: true });
+		mkdirSync(join(checkout, 'site/vendor'));
+		copyFileSync(
+			join(root, 'site/scripts/installed-edytor.sh'),
+			join(checkout, 'site/scripts/installed-edytor.sh')
+		);
+		writeFileSync(join(checkout, 'site/vendor/edytor.tgz'), 'new build');
+		for (const [dir, bytes, tarball] of [
+			['site', installed.site, 'file:vendor/edytor.tgz'],
+			['site/room', installed.room, 'file:../vendor/edytor.tgz']
+		] as const) {
+			if (bytes === undefined) continue;
+			mkdirSync(join(checkout, dir, 'node_modules/.pnpm'), { recursive: true });
+			writeFileSync(join(checkout, dir, 'node_modules/.pnpm/lock.yaml'), lock(bytes, tarball));
+		}
+		try {
+			return await run('sh', ['site/scripts/installed-edytor.sh'], { cwd: checkout }).then(
+				() => 'passed',
+				(error: { stderr: string }) => `refused: ${error.stderr.trim()}`
+			);
+		} finally {
+			rmSync(checkout, { recursive: true, force: true });
+		}
+	}
+
+	it('passes when the site and the room installed the packed bytes', async () => {
+		expect(await check({ site: 'new build', room: 'new build' })).toBe('passed');
+	});
+
+	it('refuses a site that still bundles an earlier pack', async () => {
+		expect(await check({ site: 'old build', room: 'new build' })).toMatch(
+			/^refused: .*site\b.*pnpm install/
+		);
+	});
+
+	it('refuses a room that still bundles an earlier pack', async () => {
+		expect(await check({ site: 'new build', room: 'old build' })).toMatch(
+			/^refused: .*room.*pnpm --dir room install/
+		);
+	});
+
+	it('refuses an install that never happened', async () => {
+		expect(await check({ site: 'new build' })).toMatch(/^refused: .*room/);
 	});
 });
 
@@ -661,5 +829,21 @@ describe('documented command results (editor/commands)', () => {
 		expect(ids(edytor)).toEqual(['c', 'd', 'a', 'b']);
 		edytor.moveBlocks({ blocks: [b!, a!], target: c!, position: 'before' });
 		expect(ids(edytor)).toEqual(['b', 'a', 'c', 'd']);
+	});
+
+	it('a refused move sets `dispatcher.last`, as every command does (SW8-docs-2)', () => {
+		const edytor = view();
+		const [a, b] = ['a', 'b'].map((id) => edytor.idToBlock.get(id)!);
+		edytor.moveBlocks({ blocks: [b!], direction: 'up' });
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlock', status: 'applied' });
+		// No previous sibling to nest under: the move is structurally refused.
+		expect(edytor.moveBlocks({ blocks: [b!], direction: 'in' })).toEqual([]);
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlock', status: 'refused' });
+		edytor.moveBlocks({ blocks: [a!, b!], direction: 'down' });
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlocks', status: 'applied' });
+		edytor.readonly = true;
+		expect(edytor.moveBlocks({ blocks: [a!, b!], direction: 'up' })).toEqual([]);
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'moveBlocks', status: 'refused' });
+		expect(ids(edytor)).toEqual(['c', 'b', 'a', 'd']);
 	});
 });

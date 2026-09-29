@@ -99,15 +99,20 @@ websocket relay), `d6-range-delete.test.ts`.
 Fixture: `paragraph "alpha"`, `ordered-list > list-item "beta"`,
 `paragraph "omega"`. Select `alpha@0 → beta@2`.
 
-Result: `[list-item "ta", paragraph "omega"]`.
+Result: `[ordered-list > list-item "ta", paragraph "omega"]`.
 
 - The head `alpha` **dies** — `alpha@0` puts its entire text inside the
   selected range, and `del.range.flat.head-empty` applies uniformly:
   nesting of the tail does not change the head's fate.
 - The nested tail keeps its suffix `ta`, keeps `list-item` type and id,
-  and is **promoted to root** when its `ordered-list` container dies
-  (the ancestor rescue of the document's range deletion,
-  `prepare.deleteRange`).
+  and stays in its list: a container that renders no content (a list) is
+  not an ancestor the range dies through — it dies only when the range
+  empties it (`del.range.empty-container`), like the keys
+  (`del.merge.container`). _(Changed 2026-09-30, DR-crdt-4: the list used
+  to die and its items were promoted to the root as bare items.)_ An
+  ancestor that renders content (an item over a nested list) still dies
+  through the range and its later blocks are rescued
+  (`del.range.outside-survives`).
 
 Former UNRESOLVED-1 — the asymmetry was a defect: the ancestor-rescue
 branch returned after removing only the container, leaving the doomed
@@ -125,10 +130,14 @@ tail merges into the head, its children take the tail's vacated slot exactly
 as `mergeBackward` places them — right after the vacated block, so a
 concurrent delete of the head that revives the tail shows it above them
 (review 2026-09-29, UW-20) — and an island tail's children take that slot's
-default child type. `[alpha, ordered-list > [beta, gamma], omega]`,
-`alpha@2 → beta@2` → `[paragraph "alta", list-item "gamma", paragraph
-"omega"]`; `[aa, bb > [cc]]`, `aa@1 → bb@2` → `["a", "cc"]`. A rescue
-never carries a block across an island boundary: when it would, the
+default child type. A list's item rescued out of it takes the kind the
+container rule gives it at its new slot (`del.merge.container`): `[alpha,
+x "xx" > [ordered-list > [i, j]], omega]`, `alpha@1 → i@1` → `["ai",
+paragraph "jj", "omega"]`. A list the range only starts before keeps its
+later items: `[alpha, ordered-list > [beta, gamma], omega]`, `alpha@2 →
+beta@2` → `[paragraph "alta", ordered-list > [list-item "gamma"], paragraph
+"omega"]` (DR-crdt-4); `[aa, bb > [cc]]`, `aa@1 → bb@2` → `["a", "cc"]`. A
+rescue never carries a block across an island boundary: when it would, the
 containers the range ends inside stay (with their surviving content).
 
 ### `del.range.island-seal` — the merge is the document's (F-D1)
@@ -145,6 +154,17 @@ A block that renders no content of its own (a list container) and whose
 every child dies with the range dies too, and so on upward (never the
 root). `[ordered-list > [i1 "one", i2 "two"], P "three"]`, `i1@0 → P@2` →
 `[P "ree"]`, caret `P@0`.
+
+### `del.range.island-kept` — a range inside one `lines` island never removes it (YW-03)
+
+When every block the range covers lies inside one island declared `lines`
+(a code block) and the island would die as an emptied container, the head
+is kept instead, emptied, like a replacement. `[P "a", code > [L1 "x", L2
+"y"], P "z"]`, `L1@0 → L2@1` → `[P "a", code > [L1 ""], P "z"]`, caret
+`L1@0` (a code block's Mod+A, then Backspace, Delete or cut). Any other
+island (a table of rows and cells) keeps `del.range.empty-container`: a
+range over all its text removes it, never shrinking it to one emptied
+cell (DR-behavior-2).
 
 ### `del.range.hidden-body` — what the view hides is not in the range (XW-01)
 
@@ -301,7 +321,9 @@ island merge does). One plan, one undo step: undo removes the marks and the
 children's new placements, so the parent comes back with its children under
 it. `deleteBlock(id, { keepChildren: false })` is the explicit whole-subtree
 delete: it marks every member (and what each displays), so nothing in the
-subtree is promoted.
+subtree is promoted. A container (a list, a row) the delete leaves with no
+child goes too, and so on upward (`del.range.empty-container`): deleting a
+one-item list's item, or every item, removes the list (SW8-roles-2).
 
 Promotion is derived when the document is read (UW-08,
 `placement/model.ts` `displaySlotOf`): a block with no delete mark whose
@@ -359,6 +381,63 @@ becomes the empty paragraph. Kinds without presets (`list-item` in a list,
 Caret `beta@0` + Backspace over `[alpha, beta]` → `[paragraph "alphabeta"]`:
 tail content merges into the head block; the tail block dies.
 Verified through the real command path in `command-simulation.test.tsx`.
+
+### `del.merge.container` — a key merge never dissolves a list (YW-02)
+
+A container (a block that renders no content of its own and is neither
+void nor an island: a list, a table row) never merges as a whole
+(`canMerge` refuses it as the source too). Next to one, the keys act on its
+items (Notion):
+
+- Delete at the end of the block above `[unordered-list > [a, b]]` pulls
+  the first item's text up: `[p "pa", unordered-list > [b]]`, caret `p@1`.
+  The item's children stay in the list, in its place. Inside a table
+  island, Delete at the end of a row's last cell pulls the next row's first
+  cell into it the same way.
+- Backspace at the start of a list's first item lifts it out:
+  `[p, unordered-list > [a, b]]` → `[p, paragraph "a", unordered-list > [b]]`,
+  caret `a@0` (the item takes its new parent's default child and keeps its
+  children; an item of a nested list that lands in its parent item stays an
+  item, SW8-roles-4). At the last item it outdents after the list, also as the
+  default child (the unnest); a middle item still merges into the one
+  above. Inside an island nothing leaves: a row's first cell stays.
+- A block never lands directly in a container it is no item of: in a
+  columns layout (`columns > column > paragraph`, both containers), the
+  first paragraph of a column stays (Backspace is refused), and a lifted,
+  outdented or promoted block is never retyped to a kind that renders no
+  content — its text would vanish (DR-crdt-1). An outdented column's last
+  paragraph stays a paragraph.
+- A container either key leaves with no child goes
+  (`del.range.empty-container`); one undo restores it. A container that
+  concurrent edits left with no child (Ada lifts the first item while Bob
+  merges the second into it) is removed by the key that meets it: Delete
+  at the end of the block above, Backspace at the start of the block below.
+  A container holding text of its own (hidden, a peer's retype) is never
+  removed this way. A container never splits (`splitBlock` refuses it).
+- The moves agree: a move (`moveBlocks`: a drag, Alt/Mod+Shift+arrows),
+  an outdent (`unNestBlocks`) or `mergeBlocks` that leaves a container with
+  no child removes it, never one the blocks move within or land in
+  (SW8-roles-5, DR-crdt-5). A moved item keeps its kind.
+- An outdent (Shift+Tab) out of a list never takes the items after it
+  (DR-crdt-3): the list splits around the outdented items, Notion's way.
+  `[p, ul > [a, b, c]]`: Shift+Tab on `a` → `[p, paragraph "a", ul > [b,
+c]]`; on `b` → `[p, ul > [a], paragraph "b", ul' > [c]]`, where `ul'` is
+  a new list of the same kind and data; on `c` → `[p, ul > [a, b],
+paragraph "c"]`. One undo restores the list.
+- Concurrency (DR-crdt-2): an item a peer adds to a list another peer's
+  edit removes (a delete, lift, pull-up or move of its only item, or a
+  delete of the list) is promoted into the list's slot as its new parent's
+  default child, read-time like an island's (`displaySlotOf`'s `reset`, the
+  index's `typeOf`); inside an outer list of its kind it stays an item. A
+  delete of a list retypes the items it promotes the same way. Undo of the
+  removal brings the item back into the list, as an item.
+
+Headless `mergeForward`/`mergeBackward`, `mergeBlocks`, `unNestBlocks`,
+`deleteRange`/`replaceRange` and room `transact` apply the same rules (the
+view's keys and selections call them): a text range across the same seam
+agrees with the Delete key (`del.range.nested-tail`, DR-crdt-4). Pins:
+`rescore5-crdt.test.ts`, `rescore5-crdt-view.test.tsx`,
+`d6-range-delete.test.ts`.
 
 ### `del.caret.one-command` — each branch is one prepared command
 
@@ -531,9 +610,13 @@ deletes, another view's or a headless change, a local operation that
 declared no result. A command that authors its result selection declares
 it before its operations run (`Dispatcher.caret(text, offset, ops)`); the
 repair leaves this view's endpoints to it and the result is selected once
-(`dispatcher.last.selection`). A block-set delete or cut authors a caret at
-the end of the first editable text of the nearest unselected block before
-the set, else after it (F-S13, FP-7).
+(`dispatcher.last.selection`). A block-set delete or cut authors its caret
+by `caretAfterBlockDelete`: the start of a child promoted into the set's
+place (FW-05), else the end of the nearest line before the set, else the
+start of the nearest line after it; a block with no line of its own (a
+void, a container) and a closed toggle's hidden body are passed over. The
+block menu's Delete uses the same helper, so both land on the same caret
+(F-S13, FP-7, YW-04, DR-behavior-1).
 
 ## History
 
@@ -699,7 +782,8 @@ The write side agrees: inserting under a line is refused, nothing merges
 into an island from outside it (`canMerge`), nothing merges into a block
 that renders no content of its own — a code block's first line, a list's
 first item, a table row's first cell (XW-12, DR-crdt-2: the facade, room
-`transact` and the view all refuse it) — a copy (split tail, flow tail,
+`transact` and the view all refuse it), and a container never merges as a
+whole (`del.merge.container`, YW-02) — a copy (split tail, flow tail,
 duplicate) of a block whose type a peer's half-delivered retype left
 missing takes its parent's default child, never an empty type (SW7-crdt-1,
 DR-crdt-1), and a retype of an island to

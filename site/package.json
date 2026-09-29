@@ -10,7 +10,7 @@
     "check": "blume check",
     "validate": "blume validate",
     "doctor": "blume doctor",
-    "deploy": "sh scripts/pack-edytor.sh --deploy && blume build && CLOUDFLARE_ACCOUNT_ID=6886250e2aff0047919a1ed731a55c64 wrangler deploy && pnpm --dir room install && pnpm --dir room run deploy && sh scripts/smoke.sh"
+    "deploy": "sh scripts/pack-edytor.sh --deploy && pnpm install && pnpm --dir room install && sh scripts/installed-edytor.sh && blume build && CLOUDFLARE_ACCOUNT_ID=6886250e2aff0047919a1ed731a55c64 wrangler deploy && pnpm --dir room run deploy && sh scripts/smoke.sh"
   },
   "engines": {
     "node": ">=22.12.0"

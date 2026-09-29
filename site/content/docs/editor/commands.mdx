@@ -178,7 +178,8 @@ const moved = edytor.moveBlocks({ blocks: [...edytor.selection.selectedBlocks], 
 ```
 
 - A group moved by `direction` must be siblings, and keeps its document order. With `target` and `position`, the blocks land in the order you pass them.
-- `moveBlocks` returns the blocks it moved, or `[]` when the move was refused.
+- `moveBlocks` returns the blocks it moved, or `[]` when the move was refused (`dispatcher.last.status` is then `'refused'`, also for a move `canMoveBlocks` rejects).
+- A closed toggle the blocks land in, or that takes blocks as children (`out`), opens, so a moved block is never hidden.
 - `canMoveBlocks` answers whether the move is structurally allowed. It is `false` for a destination inside a void block or an island, for blocks that sit inside an island, and for a destination inside the moved blocks' own subtree. A plugin can still refuse the command.
 
 These are the same moves block handles, <kbd>Alt</kbd>+arrows on a focused handle and <kbd>Mod</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> (`arrowMovePlugin`) perform. The types are exported as `BlockMoveRequest`, `BlockMovePosition` and `BlockMoveDirection`.

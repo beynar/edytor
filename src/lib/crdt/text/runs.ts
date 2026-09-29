@@ -318,11 +318,17 @@ export type RunView = {
  * `island`: a block promoted out of an island kind displays as
  * `defaultChild` of its display parent's kind (`null`: the root). `line`:
  * an island declared `lines` holds only lines — each direct child displays
- * as its line kind and holds no children (FW-01, XW-03).
+ * as its line kind and holds no children (FW-01, XW-03). `container`: a
+ * kind that renders no content and is neither void nor an island (a list)
+ * — a block promoted out of one follows like one promoted out of an island
+ * (DR-crdt-2). `rendersContent`: no block that renders content ever shows
+ * as a kind that does not (its text would vanish, DR-crdt-1).
  */
 export type DisplayRoles = {
 	childless: (type: string) => boolean;
 	island: (type: string) => boolean;
+	container: (type: string) => boolean;
+	rendersContent: (type: string) => boolean;
 	defaultChild: (parentType: string | null) => string;
 	/** The line kind of an island kind declared `lines` (its `defaultChild`), if any. */
 	line: (islandType: string) => string | undefined;
@@ -332,14 +338,22 @@ export type DisplayRoles = {
 
 /**
  * Whether two kinds shape the display alike — both show children or
- * neither, both seal an island or neither, and both hold the same lines.
- * A retype between kinds of different shape re-places (and re-kinds) the
- * block's children.
+ * neither, both seal an island or neither, both hold the same lines, and
+ * both are line kinds or neither (a line kind shows as its slot's kind, so
+ * the block joins or leaves the ones a retype re-reads — YW-08). A retype
+ * between kinds of different shape re-places (and re-kinds) the block and
+ * its children.
  */
-const sameShape = (roles: DisplayRoles, a: string, b: string): boolean =>
-	roles.childless(a) === roles.childless(b) &&
-	roles.island(a) === roles.island(b) &&
-	roles.line(a) === roles.line(b);
+const sameShape = (roles: DisplayRoles, a: string, b: string): boolean => {
+	const lines = new Set(roles.lineKinds());
+	return (
+		roles.childless(a) === roles.childless(b) &&
+		roles.island(a) === roles.island(b) &&
+		roles.container(a) === roles.container(b) &&
+		roles.line(a) === roles.line(b) &&
+		lines.has(a) === lines.has(b)
+	);
+};
 
 /** One index per engine doc, shared by every binding (the doc's lifetime). */
 const indexes = new WeakMap<EngineDoc, RunView>();
@@ -496,6 +510,7 @@ export const bindRuns = (Y: EngineApi) => {
 			hidden: (b) => ownerOf(b) !== b,
 			childless: (b) => role(b, (r, type) => r.childless(type)) === true,
 			island: (b) => role(b, (r, type) => r.island(type)) === true,
+			container: (b) => role(b, (r, type) => r.container(type)) === true,
 			lined: (b) => lineKind(b) !== undefined,
 			top: (m) => {
 				ensureOwners();
@@ -570,7 +585,10 @@ export const bindRuns = (Y: EngineApi) => {
 		 * display parent's default child — an undo can put a line a peer
 		 * retyped back in its island, or leave one a peer moved away outside
 		 * it (FW-01 sweep) — and so does a block displayed out of an island
-		 * that still has the island's default child kind (RW-01). Any other
+		 * or a container (a list, DR-crdt-2) that still has its default child
+		 * kind (RW-01), unless an outer container shows it as one of its
+		 * items (a nested list's item, SW8-roles-4). A block that renders
+		 * content never shows as a kind that does not (DR-crdt-1). Any other
 		 * shows its stored kind (a retype shows). Read from the stored kinds
 		 * at call time: a retype rebuilds no placement.
 		 */
@@ -581,10 +599,17 @@ export const bindRuns = (Y: EngineApi) => {
 			const { under, reset } = slot;
 			const line = under === null || lineKinds.size === 0 ? undefined : lineKind(under);
 			if (line !== undefined) return line;
-			const follows =
-				lineKinds.has(stored) ||
-				(reset !== undefined && stored === roles.defaultChild(blocks.get(reset)?.type ?? null));
-			return follows ? roles.defaultChild(under === null ? null : typeOf(under)) : stored;
+			const lined = lineKinds.has(stored);
+			const from = reset === undefined ? undefined : (blocks.get(reset)?.type ?? null);
+			if (!lined && (from === undefined || stored !== roles.defaultChild(from))) return stored;
+			// Out of a removed list, inside an outer list of its kind: still an item.
+			if (!lined && typeof from === 'string' && roles.container(from))
+				for (let u = under; u !== null; u = slots.get(u)?.under ?? null) {
+					const t = typeOf(u);
+					if (roles.container(t) && roles.defaultChild(t) === stored) return stored;
+				}
+			const kind = roles.defaultChild(under === null ? null : typeOf(under));
+			return roles.rendersContent(kind) || !roles.rendersContent(stored) ? kind : stored;
 		};
 
 		const rangeStats: RangeReadStats = { items: 0, markers: 0 };
@@ -841,8 +866,10 @@ export const bindRuns = (Y: EngineApi) => {
 			const parentBefore = parentOf(id);
 			if (typeof parentBefore === 'string') ctx.parents.add(parentBefore);
 			if (kinds.has('entry') || kinds.has('structure')) {
-				const claimsBefore = blocks.get(id)?.claims;
+				const [claimsBefore, typeBefore] = [blocks.get(id)?.claims, blocks.get(id)?.type];
 				updateBlockRec(id);
+				// A retype that lands with a structure facet is still a retype.
+				if (typeBefore !== undefined && blocks.get(id)?.type !== typeBefore) retyped = true;
 				// A new entry, a nonce or an own text can move streams (R2).
 				if (kinds.has('entry') || facets.has(NONCE) || facets.has(CONTENT_ATTR)) {
 					ctx.table = true;

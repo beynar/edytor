@@ -105,9 +105,9 @@ export type DocBlock = {
 	unNest(): OpResult;
 	/** Split content at display `offset` into a new sibling `newId`; `ids`: the new block. */
 	split(offset: number, newId: BlockId, tail?: SplitTail): OpResult;
-	/** Baseline merge into the previous block in document order; `ids`: the survivor. */
+	/** Baseline merge into the previous block in document order (a list's first item lifts out instead); `ids`: the survivor. */
 	mergeBackward(): OpResult;
-	/** Baseline merge pulling the next block in document order into this. */
+	/** Baseline merge pulling the next block in document order into this (a list passes its first item). */
 	mergeForward(): OpResult;
 	/** Engine merge primitive — `other`'s content+children claim into this. */
 	mergeFrom(other: DocBlock | BlockId): OpResult;

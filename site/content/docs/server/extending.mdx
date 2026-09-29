@@ -8,7 +8,7 @@ icon: puzzle
 
 ```ts src/worker.ts
 import { DurableObject } from 'cloudflare:workers';
-import { attachDocument, routeDocumentSocket } from 'edytor/cloudflare';
+import { attachDocument, closedSocket, routeDocumentSocket } from 'edytor/cloudflare';
 
 export class Notes extends DurableObject<Env> {
   document = attachDocument(this, {
@@ -21,7 +21,13 @@ export default {
   fetch(request, env) {
     const match = /^\/rooms\/([^/]+)$/.exec(new URL(request.url).pathname);
     if (!match) return new Response('not found', { status: 404 });
-    return routeDocumentSocket(request, env.NOTES, decodeURIComponent(match[1]), authorize);
+    let documentId: string; // the provider percent-encodes the room id
+    try {
+      documentId = decodeURIComponent(match[1]);
+    } catch {
+      return closedSocket(4400, 'invalid document id');
+    }
+    return routeDocumentSocket(request, env.NOTES, documentId, authorize);
   }
 } satisfies ExportedHandler<Env>;
 ```
@@ -106,7 +112,7 @@ A saved copy can be older than the room's last edits (it is written `saveAfter` 
 
 ## Save
 
-`onSave({ value, update, replicas })` runs `saveAfter` ms after the first edit it has not saved, on the object's alarm, so it does not keep the object from hibernating. If it throws, the platform retries the alarm with backoff. If the alarm fires while the room cannot read its rows (a storage fault), it reads them again first; if that fails too, the save stays due and the alarm is set again, backing off up to 5 minutes, so `onSave` runs once the room recovers. Without `onSave`, no alarm is ever set.
+`onSave({ value, update, replicas })` runs `saveAfter` ms after the first edit it has not saved (a stored [waiting delete](/docs/server/room#storage) counts), on the object's alarm, so it does not keep the object from hibernating. If it throws, the platform retries the alarm with backoff. If the alarm fires while the room cannot read its rows (a storage fault), it reads them again first; if that fails too, the save stays due and the alarm is set again, backing off up to 5 minutes, so `onSave` runs once the room recovers. Without `onSave`, no alarm is ever set.
 
 | Field | Content |
 | --- | --- |

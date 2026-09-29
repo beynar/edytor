@@ -16,6 +16,7 @@ import { DurableObject } from 'cloudflare:workers';
 import {
 	DocumentRoom,
 	attachDocument,
+	closedSocket,
 	requestedReplica,
 	routeDocumentSocket,
 	type AuthorizeDocumentSocket,
@@ -58,8 +59,9 @@ const lastSaved = (sql: SqlStorage) => {
  * (`hooked-flaky*`), returns undecodable bytes (`hooked-badbytes*`) or a
  * refused JSON shape (`hooked-badjson*`), or loads the last `onSave` back —
  * `{ update, replicas }` (`hooked-restore*`) or the bare update
- * (`hooked-restore-bare*`). Each call is counted in `load_calls`. `onSave`
- * mirrors into a `mirror` table.
+ * (`hooked-restore-bare*`), or nothing at its first call and `LOADED` with
+ * a registry naming client id 7777 unowned after (`hooked-late*`). Each call
+ * is counted in `load_calls`. `onSave` mirrors into a `mirror` table.
  */
 export class HookedRoom extends DocumentRoom<Env> {
 	protected override async onLoad(): Promise<LoadedDocument | null | undefined> {
@@ -70,19 +72,23 @@ export class HookedRoom extends DocumentRoom<Env> {
 		const calls = sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM load_calls').one().n;
 		if (name.startsWith('hooked-empty')) return undefined;
 		if (name.startsWith('hooked-flaky') && calls === 1) throw new Error('store unavailable');
+		if (name.startsWith('hooked-late') && calls === 1) return undefined;
 		if (name.startsWith('hooked-badbytes')) return Uint8Array.of(0xff, 0xff, 0xff, 0x01);
 		if (name.startsWith('hooked-badjson')) return { children: 'x' } as unknown as JSONDoc;
 		if (name.startsWith('hooked-restore')) {
 			const saved = lastSaved(sql);
 			if (saved) return name.startsWith('hooked-restore-bare') ? saved.update : saved;
 		}
-		if (!name.startsWith('hooked-bytes')) return LOADED;
+		if (!name.startsWith('hooked-bytes') && !name.startsWith('hooked-late')) return LOADED;
 		const crdt = bindCrdt(Y);
 		const doc = crdt.createDoc();
 		const facade = crdt.doc.create(doc as never);
 		facade.seed(LOADED.children);
 		facade.dispose();
-		return Y.encodeStateAsUpdate(doc);
+		const update = Y.encodeStateAsUpdate(doc);
+		return name.startsWith('hooked-late')
+			? { update, replicas: [{ replica: 7777, user: '' }] }
+			: update;
 	}
 
 	protected override async onSave({ value, update, replicas }: SavedDocument) {
@@ -162,6 +168,15 @@ export const authorizeFromQuery: AuthorizeDocumentSocket = (request) => {
 	};
 };
 
+/** The room id the provider encoded into the path, or `null` when it does not decode. */
+const roomOf = (encoded: string): string | null => {
+	try {
+		return decodeURIComponent(encoded);
+	} catch {
+		return null;
+	}
+};
+
 export const routeRoom = async (request: Request, env: Env): Promise<Response> => {
 	const url = new URL(request.url);
 	if (url.pathname === '/health') return new Response('ready');
@@ -170,7 +185,8 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 	}
 	const match = ROOM_ROUTE.exec(url.pathname);
 	if (!match) return new Response('not found', { status: 404 });
-	const name = decodeURIComponent(match[1]);
+	const name = roomOf(match[1]);
+	if (name === null) return closedSocket(4400, 'invalid document id');
 	if (match[2]) {
 		if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
 		return Response.json(await env.ROOM.getByName(name).compact());

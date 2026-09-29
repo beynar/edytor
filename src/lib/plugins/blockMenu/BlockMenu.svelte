@@ -50,8 +50,7 @@
 			controller.flyout = false;
 		} else if (key === 'ArrowRight' && 'submenu' in (rows[controller.selectedIndex] ?? {})) {
 			event.preventDefault();
-			controller.flyout = true;
-			controller.flyoutIndex = 0;
+			controller.openFlyout();
 		} else if (key === 'ArrowLeft' && controller.flyout) {
 			event.preventDefault();
 			controller.flyout = false;
@@ -128,9 +127,10 @@
 							onmousedown={(event) => event.preventDefault()}
 							onmouseenter={() => {
 								controller.selectedIndex = index;
-								controller.flyout = Boolean(row.submenu);
+								if (row.submenu) controller.openFlyout();
+								else controller.flyout = false;
 							}}
-							onclick={() => (row.submenu ? (controller.flyout = true) : row.run?.())}
+							onclick={() => (row.submenu ? controller.openFlyout() : row.run?.())}
 							>{row.label}</button
 						>
 					{/if}

@@ -12,6 +12,7 @@
 import { SELF } from 'cloudflare:test';
 import * as E from '../../src/lib/crdt/index.js';
 import type { AwarenessEntry, EngineApi, YDoc } from '../../src/lib/crdt/index.js';
+import { CLOSE } from '../../src/lib/crdt/providers/room.js';
 // @ts-ignore -- untyped JS module; typed through `EngineApi` below
 import * as RawY from '../../src/lib/crdt/vendor/yjs/src/index.js';
 
@@ -46,7 +47,10 @@ export const upgrade = async (room: string, dial: Dial = {}): Promise<WebSocket>
 	accept(await dialResponse(room, dial));
 
 /** The close a refused dial gets when its replica belongs to another user. */
-export const REPLICA_TAKEN = { code: 4409, reason: 'replica bound to another user' } as const;
+export const REPLICA_TAKEN = {
+	code: CLOSE.replicaTaken,
+	reason: 'replica bound to another user'
+} as const;
 
 /**
  * How a write dial ends: `'open'` once the room speaks (its SyncStep1), or
@@ -119,6 +123,8 @@ export class RawClient {
 	readonly reassembled: Uint8Array[] = [];
 	/** The room's `messageSaved` state vectors, in order. */
 	readonly acks: Map<number, number>[] = [];
+	/** How many delete ranges each `messageSaved` names, in order (0: none). */
+	readonly ackedDeletes: number[] = [];
 	/** Permission-denied reasons the room sent (its refusals of writes). */
 	readonly denied: string[] = [];
 	/** The room said, when this socket joined, that it may read but not write. */
@@ -198,7 +204,11 @@ export class RawClient {
 			return;
 		}
 		if (type === E.messageSaved) {
-			this.acks.push(Y.decodeStateVector(E.readVarUint8Array(decoder)));
+			const { stateVector, deletes } = crdt.sync.readSaved(decoder);
+			this.acks.push(Y.decodeStateVector(stateVector));
+			let ranges = 0;
+			for (const ids of deletes?.clients.values() ?? []) ranges += ids.getIds().length;
+			this.ackedDeletes.push(ranges);
 			return;
 		}
 		if (type === E.messageAuth) {

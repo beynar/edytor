@@ -99,12 +99,39 @@ const recordMerges = (ed, merges: P1Merge[]) => {
 			return result;
 		};
 	};
+	// A container passes a forward merge to its first item (YW-02).
+	const forward = (id): [string | null, string] => {
+		let from = ed.next(id);
+		while (from !== null && !ed.canMerge(from, id)) from = ed.childrenIds(from)[0] ?? null;
+		return [from, id];
+	};
 	record('mergeBlocks', (from, into) => [from, into]);
-	record('mergeForward', (id) => [ed.next(id), id]);
+	record('mergeForward', forward);
 	record('mergeBackward', (id) => {
 		const prev = ed.previous(id);
-		return prev !== null ? [id, prev] : [ed.next(id), id];
+		if (prev === null) return forward(id);
+		// A container's first item lifts out of it, an empty one goes: no merge (YW-02).
+		return ed.canMerge(id, prev) ? [id, prev] : [null, null];
 	});
+};
+
+/**
+ * The shown kinds a view that follows only `ed`'s change reports holds:
+ * seeded from `toJSON()`, then fed the `added` subtrees and `meta` kinds
+ * (the `report-kind` input).
+ */
+const reportView = (ed) => {
+	const kinds = new Map<string, string>();
+	const take = (b) => {
+		kinds.set(b.id, b.type);
+		for (const c of b.children ?? []) take(c);
+	};
+	for (const b of ed.toJSON().children) take(b);
+	ed.onChange((c) => {
+		for (const b of c.added.values()) take(b);
+		for (const [id, { type }] of c.meta) kinds.set(id, type);
+	});
+	return (id: string) => kinds.get(id);
 };
 
 /**
@@ -133,11 +160,12 @@ export const replica = (
 	const merges = opts.merges ?? [];
 	recordMerges(ed, merges);
 	const identities = new Map<string, string>();
+	const reported = reportView(ed);
 	const check = (): void => {
 		// Invariants hold on causally closed states: an out-of-order delivery may
 		// apply a delete whose replacement is still pending.
 		if (doc.store.pendingStructs !== null || doc.store.pendingDs !== null) return;
-		for (const p of wellFormed(ed, { doc, merges, identities }))
+		for (const p of wellFormed(ed, { doc, merges, identities, reported }))
 			if (!problems.includes(`${name}: ${p}`)) problems.push(`${name}: ${p}`);
 	};
 	// Held after every facade write, delivery and history step — not from
@@ -302,6 +330,8 @@ export const wellFormed = (
 		merges?: readonly P1Merge[];
 		identities?: Map<string, string>;
 		semantics?: unknown;
+		/** A report-fed view's kinds (`report-kind`). */
+		reported?: (id: string) => string | undefined;
 	} = {}
 ): string[] => {
 	const { doc } = ctx;
@@ -314,7 +344,8 @@ export const wellFormed = (
 		identityOf: doc && ((id: string) => registryIdentity(doc, id)),
 		succeeds: doc && ((later: string, earlier: string) => succeeds(doc, later, earlier)),
 		identities: ctx.identities,
-		hiddenUnderDeleted: doc && (() => hiddenUnderDeleted(doc))
+		hiddenUnderDeleted: doc && (() => hiddenUnderDeleted(doc)),
+		reportedKind: ctx.reported
 	});
 	const ids = new Set<string>();
 	const atoms = new Set<string>();

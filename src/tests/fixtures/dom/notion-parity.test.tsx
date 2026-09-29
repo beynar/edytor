@@ -18,6 +18,7 @@ import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleContr
 import {
 	type CanonicalBlock,
 	canonicalTree,
+	dispatchCut,
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
 	flushDomUpdates,
@@ -856,10 +857,11 @@ describe('menus', () => {
 		await open('two');
 		await click(document.querySelector('[data-testid="block-menu-delete"]')!);
 		expect(canonicalTree(edytor).map((b) => firstTextOf(b))).toEqual(['one', 'three']);
-		// The caret lands at the start of the block after the deleted one.
+		// The caret lands at the end of the block before the deleted one, as
+		// the keyboard's block delete does (DR-behavior-1).
 		expect(edytor.selection.selectedBlocks.size).toBe(0);
-		expect(edytor.selection.state.startBlock?.id).toBe('three');
-		expect(edytor.selection.state.yStart).toBe(0);
+		expect(edytor.selection.state.startBlock?.id).toBe('one');
+		expect(edytor.selection.state.yStart).toBe(3);
 	});
 
 	it('the keyboard reaches the Turn into flyout, and Delete removes the block', async () => {
@@ -1630,5 +1632,202 @@ describe('code keys (FW-04, FW-19)', () => {
 		// The caret moves to the end of the code.
 		expect(range(rendered)).toEqual([0, 1, 0, 1]);
 		expect(edytor.selection.state.startBlock?.type).toBe('codeLine');
+	});
+});
+
+describe('Mod+A in a code block (YW-03)', () => {
+	const doc = () =>
+		render([codePlugin], {
+			children: [
+				{ type: 'paragraph', content: [{ text: 'a' }] },
+				{
+					type: 'code',
+					children: ['x', 'y'].map((text) => ({ type: 'codeLine', content: [{ text }] }))
+				},
+				{ type: 'paragraph', content: [{ text: 'z' }] }
+			]
+		});
+	type Rendered = Awaited<ReturnType<typeof doc>>;
+	const shape = ({ edytor }: Rendered) =>
+		canonicalTree(edytor).map((block) =>
+			block.type === 'code'
+				? ['code', (block.children ?? []).map((line) => firstTextOf(line) ?? '')]
+				: [block.type, firstTextOf(block) ?? '']
+		);
+	const selectAll = () => dispatchDomKeyDown(document, { key: 'a', ctrlKey: true });
+	const caretInLine = async ({ edytor }: Rendered, index: number, offset: number) => {
+		edytor.selection.setAtTextOffset(edytor.root!.children[1]!.children[index]!.firstText!, offset);
+		await flushDomUpdates();
+	};
+
+	it('climbs from the code’s text to the code block, then to every block', async () => {
+		const rendered = await doc();
+		const { edytor } = rendered;
+		await caretInLine(rendered, 1, 1);
+		await selectAll();
+		const { startBlock, endBlock, yStart, yEnd, isCollapsed } = edytor.selection.state;
+		expect([
+			startBlock?.firstText?.stringContent,
+			yStart,
+			endBlock?.firstText?.stringContent,
+			yEnd
+		]).toEqual(['x', 0, 'y', 1]);
+		expect([isCollapsed, edytor.selection.selectedBlocks.size]).toEqual([false, 0]);
+		await selectAll();
+		expect([...edytor.selection.selectedBlocks].map((block) => block.type)).toEqual(['code']);
+		await selectAll();
+		expect(edytor.selection.selectedBlocks.size).toBe(edytor.facade.order().length);
+	});
+
+	it.each([
+		[
+			'Backspace',
+			(r: Rendered) => dispatchDomBeforeInput(r.editor, { inputType: 'deleteContentBackward' })
+		],
+		[
+			'Delete',
+			(r: Rendered) => dispatchDomBeforeInput(r.editor, { inputType: 'deleteContentForward' })
+		],
+		['cut', (r: Rendered) => dispatchCut(r.editor)]
+	] as const)(
+		'then %s empties the code block and keeps it, the caret on its line',
+		async (_, act) => {
+			const rendered = await doc();
+			const { edytor } = rendered;
+			await caretInLine(rendered, 0, 1);
+			await selectAll();
+			await act(rendered);
+			expect(shape(rendered)).toEqual([
+				['paragraph', 'a'],
+				['code', ['']],
+				['paragraph', 'z']
+			]);
+			const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+			expect([startBlock?.type, yStart, isCollapsed]).toEqual(['codeLine', 0, true]);
+			await dispatchDomBeforeInput(rendered.editor, { inputType: 'insertText', data: 'q' });
+			expect(shape(rendered)).toEqual([
+				['paragraph', 'a'],
+				['code', ['q']],
+				['paragraph', 'z']
+			]);
+		}
+	);
+
+	it('from an empty line selects the code’s text first too (SW8-behaviors-1)', async () => {
+		const rendered = await render([codePlugin], {
+			children: [
+				{
+					type: 'code',
+					children: ['x', ''].map((text) => ({ type: 'codeLine', content: [{ text }] }))
+				}
+			]
+		});
+		const { edytor } = rendered;
+		const [x, empty] = edytor.root!.children[0]!.children;
+		edytor.selection.setAtTextOffset(empty!.firstText!, 0);
+		await flushDomUpdates();
+		await selectAll();
+		const { startBlock, endBlock, yStart, yEnd } = edytor.selection.state;
+		expect([startBlock?.id, yStart, endBlock?.id, yEnd]).toEqual([x!.id, 0, empty!.id, 0]);
+		expect(edytor.selection.selectedBlocks.size).toBe(0);
+		await selectAll();
+		expect([...edytor.selection.selectedBlocks].map((block) => block.type)).toEqual(['code']);
+	});
+
+	it('a code block with no text goes straight to the block', async () => {
+		const rendered = await render([codePlugin], {
+			children: [{ type: 'code', children: [{ type: 'codeLine', content: [{ text: '' }] }] }]
+		});
+		const { edytor } = rendered;
+		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.children[0]!.firstText!, 0);
+		await flushDomUpdates();
+		await selectAll();
+		expect([...edytor.selection.selectedBlocks].map((block) => block.type)).toEqual(['code']);
+	});
+
+	it('one undo brings the lines back with the selection', async () => {
+		const rendered = await doc();
+		const { edytor } = rendered;
+		await caretInLine(rendered, 0, 1);
+		await selectAll();
+		await dispatchDomBeforeInput(rendered.editor, { inputType: 'deleteContentBackward' });
+		await dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
+		expect(shape(rendered)).toEqual([
+			['paragraph', 'a'],
+			['code', ['x', 'y']],
+			['paragraph', 'z']
+		]);
+		const { startBlock, endBlock, yStart, yEnd } = edytor.selection.state;
+		expect([
+			startBlock?.firstText?.stringContent,
+			yStart,
+			endBlock?.firstText?.stringContent,
+			yEnd
+		]).toEqual(['x', 0, 'y', 1]);
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'undo', status: 'applied' });
+	});
+
+	it('the code’s text deleted headlessly keeps the code block too', async () => {
+		const rendered = await doc();
+		const { edytor } = rendered;
+		const [first, last] = edytor.root!.children[1]!.children;
+		const { facade } = edytor;
+		edytor.document.transact(() =>
+			facade.apply(
+				facade.prepare.deleteRange({ block: first!.id, offset: 0 }, { block: last!.id, offset: 1 })
+			)
+		);
+		await flushDomUpdates();
+		expect(shape(rendered)).toEqual([
+			['paragraph', 'a'],
+			['code', ['']],
+			['paragraph', 'z']
+		]);
+	});
+});
+
+describe('a relative move never hides the moved block (YW-13)', () => {
+	const toggle = (id: string, children: JSONBlock[] = []): JSONBlock => ({
+		id,
+		type: 'toggle',
+		content: [{ text: id }],
+		children
+	});
+	const para = (id: string, children?: JSONBlock[]): JSONBlock => ({
+		id,
+		type: 'paragraph',
+		content: [{ text: id }],
+		...(children && { children })
+	});
+	const isOpen = (edytor: Awaited<ReturnType<typeof render>>['edytor'], id: string) =>
+		(edytor.idToBlock.get(id)!.node as HTMLDetailsElement).open;
+
+	it('edytor.moveBlocks({ direction: "in" }) beside a closed toggle opens it', async () => {
+		const { edytor } = await render([], { children: [toggle('t', [para('body')]), para('x')] });
+		expect(isOpen(edytor, 't')).toBe(false);
+		const moved = edytor.moveBlocks({ blocks: [edytor.idToBlock.get('x')!], direction: 'in' });
+		await flushDomUpdates();
+		expect(moved.map((block) => block.id)).toEqual(['x']);
+		expect(edytor.idToBlock.get('x')!.parent?.id).toBe('t');
+		expect(isOpen(edytor, 't')).toBe(true);
+		expect(edytor.selection.hidden(edytor.idToBlock.get('x')!)).toBe(false);
+	});
+
+	it('edytor.moveBlocks inside a closed toggle as a target opens it', async () => {
+		const { edytor } = await render([], { children: [toggle('t'), para('x')] });
+		const [t, x] = [edytor.idToBlock.get('t')!, edytor.idToBlock.get('x')!];
+		edytor.moveBlocks({ blocks: [x], target: t, position: 'inside' });
+		await flushDomUpdates();
+		expect(isOpen(edytor, 't')).toBe(true);
+	});
+
+	it('edytor.moveBlocks({ direction: "out" }) of a closed toggle that adopts its siblings opens it', async () => {
+		const { edytor } = await render([], {
+			children: [para('p', [toggle('t', [para('body')]), para('s')])]
+		});
+		edytor.moveBlocks({ blocks: [edytor.idToBlock.get('t')!], direction: 'out' });
+		await flushDomUpdates();
+		expect(edytor.idToBlock.get('s')!.parent?.id).toBe('t');
+		expect(isOpen(edytor, 't')).toBe(true);
 	});
 });

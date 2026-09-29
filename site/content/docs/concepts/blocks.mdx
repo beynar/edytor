@@ -129,7 +129,7 @@ if (row) convertToKind(edytor, block, row); // true when it applied
 await edytor.runCommand('block.heading2'); // converts the caret's block, or every selected or touched block
 ```
 
-A kind's command converts the caret's block, every block of a block selection, or every block a text range touches (a closed toggle's hidden body is not touched), as one undo step. A replacing kind acts only on the block holding the selection's start. See [presets](/docs/customization/blocks#presets).
+A kind's command converts the caret's block, every block of a block selection, or every block a text range touches that shows its own text (a closed toggle's hidden body is not touched, and a list around the items stays a list), as one undo step. A replacing kind acts only on the block holding the selection's start. See [presets](/docs/customization/blocks#presets).
 
 A "Turn into" menu that keeps the block's text lists the rows with `replaces: false`:
 

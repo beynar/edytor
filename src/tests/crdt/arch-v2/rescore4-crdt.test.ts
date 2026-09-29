@@ -634,30 +634,32 @@ describe('DR-crdt-2: nothing merges into a block that renders no content', () =>
 		}
 	];
 	for (const kind of ['unordered-list', 'ordered-list']) {
-		it(`headless (${kind}): mergeBackward and mergeBlocks of the first item → refused`, () => {
+		it(`headless (${kind}): mergeBlocks of the first item → refused; mergeBackward lifts it (YW-02)`, () => {
 			const children = structuredClone(list);
 			children[1]!.type = kind;
 			const document = createDocument({ value: { children }, semantics: defaultSemantics });
 			const ed = document.facade;
 			const before = tree(ed);
 			expect(ed.canMerge('I1', 'U')).toBe(false);
-			expect(ed.mergeBackward('I1').status).toBe('refused');
 			expect(ed.mergeBlocks('I1', 'U').status).toBe('refused');
 			expect(ed.mergeForward('U').status).toBe('refused');
 			expect(tree(ed)).toBe(before);
 			// A second item still merges into the first.
 			expect(ed.mergeBackward('I2').status).toBe('applied');
 			expect(tree(ed)).toBe('P:"p" U:""[I1:"ab"]');
+			// Backspace at the first item leaves the list (YW-02): never into U.
+			expect(ed.mergeBackward('I1').status).toBe('applied');
+			expect(tree(ed)).toBe('P:"p" I1:"ab"');
 			document.destroy();
 		});
 	}
 
-	it('view: block.mergeBlockBackward() on the first list item changes nothing', () => {
+	it('view: block.mergeBlockBackward() on the first list item lifts it out (YW-02)', () => {
 		const document = createDocument({ value: { children: structuredClone(list) } });
 		const view = new Edytor({ document, plugins: [richTextPlugin, codePlugin] });
-		const before = tree(document.facade);
 		view.idToBlock.get('I1')!.mergeBlockBackward();
-		expect(tree(document.facade)).toBe(before);
+		expect(tree(document.facade)).toBe('P:"p" I1:"a" U:""[I2:"b"]');
+		expect(document.facade.toJSON().children[1].type).toBe('paragraph');
 		view.destroy();
 		document.destroy();
 	});

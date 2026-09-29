@@ -60,7 +60,7 @@
  */
 import type { EngineApi, EngineDoc, EngineNode } from '../engine-api.js';
 import { REGISTRY_KEY, type BlockId } from '../placement/model.js';
-import { BLOCK_ATTR_ROOT, LAST_CHANGED_ATTR, NONCE, REC_PREFIX } from '../schema.js';
+import { BLOCK_ATTR_ROOT, isNodeLike, LAST_CHANGED_ATTR, NONCE, REC_PREFIX } from '../schema.js';
 
 /** The durable per-block attribution record a replica sees. */
 export type ActorId = string;
@@ -143,9 +143,6 @@ const CREATED_KEY = 'c';
 const CONTRIBUTOR_PREFIX = 'k/';
 /** Incarnation stamp on a `b/` record: the nonce `n` of the node it belongs to. */
 const INCARNATION_KEY = 'i';
-
-const isNodeLike = (v: unknown): v is EngineNode =>
-	typeof v === 'object' && v !== null && 'getAttr' in (v as EngineNode);
 
 const recKey = (id: BlockId): string => `${REC_PREFIX}${id}`;
 

@@ -253,17 +253,23 @@ export const bindSync = (Y: EngineApi) => {
 	/**
 	 * The store-before-ack body (`messageSaved`): `doc`'s state vector, then
 	 * — when the acknowledged message carried deletes — the part of
-	 * `deletes` that `doc` holds (applied, not pending), as an update with no
-	 * structs. A server writes it only after it stored what `doc` integrated,
-	 * so it acknowledges structs by state vector and deletes by id, and a
-	 * deletion that advanced no clock is acknowledged too. A reader of the
-	 * state vector alone ignores the second field; a body without it
-	 * acknowledges no deletes.
+	 * `deletes` that is stored, as an update with no structs: less
+	 * `unstored`, by default every delete `doc` holds pending (a server that
+	 * stores waiting deletes passes only those it did not store). A server
+	 * writes it only after it stored what `doc` integrated, so it
+	 * acknowledges structs by state vector and deletes by id, and a deletion
+	 * that advanced no clock is acknowledged too. A reader of the state
+	 * vector alone ignores the second field; a body without it acknowledges
+	 * no deletes.
 	 */
-	const writeSaved = (encoder: encoding.Encoder, doc: YDoc, deletes?: IdSet): void => {
+	const writeSaved = (
+		encoder: encoding.Encoder,
+		doc: YDoc,
+		deletes?: IdSet,
+		unstored: IdSet | null = doc.store.pendingDs && Y.decodeUpdateV2(doc.store.pendingDs).ds
+	): void => {
 		encoding.writeVarUint8Array(encoder, Y.encodeStateVector(doc));
-		const pending = doc.store.pendingDs;
-		const held = deletes && pending ? Y.diffIdSet(deletes, Y.decodeUpdateV2(pending).ds) : deletes;
+		const held = deletes && unstored ? Y.diffIdSet(deletes, unstored) : deletes;
 		if (!held || held.isEmpty()) return;
 		const body = new Y.UpdateEncoderV1();
 		encoding.writeVarUint(body.restEncoder, 0); // no structs

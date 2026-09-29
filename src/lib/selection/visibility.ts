@@ -23,8 +23,11 @@ export const HIDDEN = '[hidden], details:not([open]) > :not(summary)';
 export const hidden = (block: Block, removed?: ReadonlySet<Block>): boolean => {
 	const hider = block.node?.closest(HIDDEN);
 	if (!hider || !removed?.size) return !!hider;
+	// What hides: a `hidden` element itself, else the closed `<details>` it sits in
+	// (which a snippet may render children directly under, YW-12).
+	const cause = hider.matches('[hidden]') ? hider : hider.parentElement!;
 	let owner: Block | undefined = block;
-	while (owner && !owner.node?.contains(hider)) owner = owner.parent;
+	while (owner && !owner.node?.contains(cause)) owner = owner.parent;
 	return !owner || !removed.has(owner) || hidden(owner, removed);
 };
 

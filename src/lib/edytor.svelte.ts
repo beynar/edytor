@@ -317,13 +317,18 @@ export class Edytor {
 	 * a view's selection (its recorded `before`/`after`); sibling views and a
 	 * headless `document.history.undo()` restore none (their carets ride the
 	 * change, as for a remote undo). A readonly view or a read-only document
-	 * refuses them, as it refuses every command (`dispatcher.last`).
+	 * refuses them, as it refuses every command. Each call sets
+	 * `dispatcher.last`: `refused`, `noop` (an empty stack) or `applied`.
 	 */
 	historyUndo = (): void => this.#replay('undo');
 	historyRedo = (): void => this.#replay('redo');
 	#replay = (command: 'undo' | 'redo') => {
-		if (this.dispatcher.permits()) this.history[command]();
-		else this.dispatcher.last = { operation: command, status: 'refused' };
+		const status = !this.dispatcher.permits()
+			? 'refused'
+			: this.history[command]()
+				? 'applied'
+				: 'noop';
+		this.dispatcher.last = { operation: command, status };
 	};
 
 	constructor({

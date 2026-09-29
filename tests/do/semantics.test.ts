@@ -52,8 +52,9 @@ const attempt = (room: Pick<AttachedDocument, 'transact'>) => {
 		edit((facade) => facade.moveBlock('line', { parent: null, index: 0 })),
 		// XW-12: a code block renders no content — its first line never merges into it.
 		edit((facade) => facade.mergeBackward('line')),
-		// DR-crdt-2: nor does a list — its first item never merges into it.
-		edit((facade) => facade.mergeBackward('item'))
+		// DR-crdt-2: nor does a list — its first item never merges into it
+		// (Backspace there lifts the item out instead, YW-02).
+		edit((facade) => facade.mergeBlocks('item', 'list'))
 	];
 };
 

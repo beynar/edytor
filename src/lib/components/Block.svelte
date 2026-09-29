@@ -7,7 +7,7 @@
 	const reported = new WeakMap<Edytor, Set<string>>();
 
 	/** A snippet's view object (R4): declared values read from the cell and the selection. */
-	const viewOf = (edytor: Edytor, id: string): BlockView => {
+	const blockViewOf = (edytor: Edytor, id: string): BlockView => {
 		const handle = edytor.idToBlock.block(id);
 		return {
 			id,
@@ -71,7 +71,7 @@
 	const edytor = getContext<Edytor>('edytor');
 	// The structure renders from the cell (R2); the snippet receives a view object (R4).
 	const cell = $derived(edytor.cells?.get(id));
-	const block = $derived(viewOf(edytor, id));
+	const block = $derived(blockViewOf(edytor, id));
 	const definition = $derived(cell && edytor.definitionOf(cell.type));
 	// The core renders the block element from the definition; the snippet renders inside it (R11).
 	const element = $derived(definition && elementOf(definition, cell?.data));

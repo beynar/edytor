@@ -201,28 +201,39 @@ describe('golden command programs — nested boundary deletion (del.range.nested
 		await setNativeSelection(edytor, nestedAt(edytor, 0), 0, nestedAt(edytor, 1, 0), 2);
 		await runCommand(edytor, 'deleteContentBackward');
 		await flushDomUpdates();
+		// The list is no block the range dies through: it keeps its items
+		// (DR-crdt-4), with their identity.
 		assertCanonicalTree(edytor, [
-			{ type: 'list-item', content: [{ text: 'ta' }] },
-			{ type: 'list-item', content: [{ text: 'gamma' }] },
+			{
+				type: 'ordered-list',
+				children: [
+					{ type: 'list-item', content: [{ text: 'ta' }] },
+					{ type: 'list-item', content: [{ text: 'gamma' }] }
+				]
+			},
 			p('omega')
 		]);
-		// The rescued survivors keep identity — tail item and its later
-		// sibling are moved, not re-created.
 		const afterIds = blockIdMap(edytor);
-		expect(afterIds.get('0')).toBe(beforeIds.get('1.0'));
-		expect(afterIds.get('1')).toBe(beforeIds.get('1.1'));
-		expect(afterIds.get('2')).toBe(beforeIds.get('2'));
+		expect(afterIds.get('0')).toBe(beforeIds.get('1'));
+		expect(afterIds.get('0.0')).toBe(beforeIds.get('1.0'));
+		expect(afterIds.get('0.1')).toBe(beforeIds.get('1.1'));
+		expect(afterIds.get('1')).toBe(beforeIds.get('2'));
 		expect(caret(edytor)).toEqual({ text: 'ta', at: 0 });
 		await runCommand(edytor, 'insertText', 'X');
 		await flushDomUpdates();
 		assertCanonicalTree(edytor, [
-			{ type: 'list-item', content: [{ text: 'Xta' }] },
-			{ type: 'list-item', content: [{ text: 'gamma' }] },
+			{
+				type: 'ordered-list',
+				children: [
+					{ type: 'list-item', content: [{ text: 'Xta' }] },
+					{ type: 'list-item', content: [{ text: 'gamma' }] }
+				]
+			},
 			p('omega')
 		]);
 	});
 
-	it('flat head + nested tail at item start: head dies, whole tail item survives', async () => {
+	it('flat head + nested tail at item start: head dies, the whole list survives', async () => {
 		const { edytor } = await renderDomEdytor(nested, { autoSelectFixture: false });
 		// alpha@0 → beta@0: yEnd==0 — tail boundary at text start keeps the
 		// tail item fully intact (del.range.flat.yEnd-zero applied nested).
@@ -230,8 +241,13 @@ describe('golden command programs — nested boundary deletion (del.range.nested
 		await runCommand(edytor, 'deleteContentBackward');
 		await flushDomUpdates();
 		assertCanonicalTree(edytor, [
-			{ type: 'list-item', content: [{ text: 'beta' }] },
-			{ type: 'list-item', content: [{ text: 'gamma' }] },
+			{
+				type: 'ordered-list',
+				children: [
+					{ type: 'list-item', content: [{ text: 'beta' }] },
+					{ type: 'list-item', content: [{ text: 'gamma' }] }
+				]
+			},
 			p('omega')
 		]);
 	});

@@ -768,7 +768,7 @@ const describeDeleteInner = (
 			normalizeRoot(root, rootDefaultType, freshIds);
 			return tree('inline atom removed from its block');
 		}
-		// `removeSelectedBlocksForReplacement` — every selected block and its
+		// `deleteSelectedBlocks` (replaceSelection.ts) — every selected block and its
 		// subtree, in reverse document order.
 		for (const id of [...selection.ids].reverse()) {
 			const node = byId.get(id);
@@ -1220,7 +1220,10 @@ const describeDeleteInner = (
 	 * takes the topmost dying container's slot unless that crosses an island;
 	 * containers that show no text and lose every child die; when nothing
 	 * else would be left to hold the caret the head is kept, emptied, with its
-	 * id, type and data (`del.range.whole-doc`).
+	 * id, type and data (`del.range.whole-doc`), and so is the head of a range
+	 * inside one island that would die (`del.range.island-kept`; the rule
+	 * holds for `lines` islands only, and the corpus's one island, the code
+	 * block, is one).
 	 */
 	const deleteWithinSelection = (): void => {
 		const shows = (block: OBlock) => before.model.rendersContent?.[block.type] !== false;
@@ -1243,7 +1246,10 @@ const describeDeleteInner = (
 			const sameSide = islandOf(E) === islandOf(S) || S === islandOf(E);
 			const merges = !headDies && !tailDies && !E.void && !S.void && sameSide;
 			const tailGone = tailDies || merges;
-			const partial = chain.filter((a) => (headDies && a === S) || between.includes(a));
+			// A container (no text, no island: a list) dies only when emptied (DR-crdt-4).
+			const partial = chain.filter(
+				(a) => ((headDies && a === S) || between.includes(a)) && (shows(a) || a.island)
+			);
 			const top = partial.at(-1);
 			const sealed =
 				top !== undefined && chain.slice(0, chain.indexOf(top) + 1).some((a) => a.island);
@@ -1274,9 +1280,11 @@ const describeDeleteInner = (
 			return { merges, tailGone, doomed, home, rescued, destParent, caretHome };
 		};
 		const first = plan(s === 0);
-		const { merges, tailGone, doomed, home, rescued, destParent } = first.caretHome
-			? first
-			: plan(false);
+		// `del.range.island-kept`: a range inside one island keeps its head, emptied.
+		const island = islandOf(S);
+		const keepsIsland = island !== null && chain.includes(island) && first.doomed.has(island);
+		const { merges, tailGone, doomed, home, rescued, destParent } =
+			first.caretHome && !keepsIsland ? first : plan(false);
 		const tailKids = [...E.children];
 
 		if (!doomed.has(S)) deleteAtomRange(S, s, blockAtomLength(S));

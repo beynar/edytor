@@ -54,11 +54,12 @@ export const markdownShortcutsPlugin: Plugin = (edytor) => {
 		edytor.dispatcher.caret(text, at + payload.value.length);
 	};
 	return {
-		onBeforeOperation: ({ operation, payload, block, prevent }) => {
-			if (fallback || operation !== 'insertText' || block !== edytor.selection.state.startBlock) {
-				return;
-			}
+		onBeforeOperation: (change) => {
+			if (fallback || change.operation !== 'insertText') return;
+			const { payload, block, prevent, text } = change;
 			const { startText, yStart, isCollapsed } = edytor.selection.state;
+			// Only what is typed at the caret: an insertion elsewhere completes no shortcut.
+			if (text !== startText || (payload.start ?? yStart) !== yStart) return;
 
 			// Inline: a closing marker typed after marked-up text (not in code lines).
 			const inline =
@@ -106,8 +107,7 @@ export const markdownShortcutsPlugin: Plugin = (edytor) => {
 			if (row.replaces && !alone) return;
 
 			prevent(() => {
-				if (!applyShortcut(block, row, prefix.length))
-					typeAsIs(startText, payload, payload.start ?? yStart);
+				if (!applyShortcut(block, row, prefix.length)) typeAsIs(startText, payload, yStart);
 			});
 		}
 	};

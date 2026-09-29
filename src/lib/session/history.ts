@@ -106,10 +106,11 @@ export class History {
 		return at(a.start, b.start) && at(a.end, b.end);
 	};
 
+	/** Replay the top undo (redo) item; answers whether one was there to replay. */
 	undo = () => this.#run('undo');
 	redo = () => this.#run('redo');
 
-	#run(command: 'undo' | 'redo') {
+	#run(command: 'undo' | 'redo'): boolean {
 		const { undoManager: um, transaction: key, selection, facade } = this.edytor;
 		this.#open = null;
 		// Other writers (remote-apply and repair restores) stand aside while the
@@ -123,7 +124,7 @@ export class History {
 		}
 		const entry = item && entries(item).get(key);
 		const value = command === 'undo' ? entry?.before : entry?.after;
-		if (!value) return;
+		if (!value) return !!item;
 		// Anchors recorded before a delete bind items the replay re-created.
 		const follow = facade.followUndo;
 		const anchor = value.kind === 'text' ? follow(value.anchor) : null;
@@ -136,8 +137,9 @@ export class History {
 		// back). A dead text value has no block of its own to seam from.
 		if (restored.kind === 'text' && !project(restored, facade).start) {
 			selection.restoreDeadSelectionEndpoints();
-			return;
+			return true;
 		}
 		selection.select(restored, 'history');
+		return true;
 	}
 }

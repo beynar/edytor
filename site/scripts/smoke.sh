@@ -1,10 +1,12 @@
 #!/bin/sh
 # Post-deploy smoke check: every hosted tarball (served-versions.txt: a
 # lockfile may pin any of them), and the pages the install instructions and
-# error messages send readers to, answer 200, and the current tarball is the
-# one this deploy packed.
+# error messages send readers to, answer 200, the current tarball is the one
+# this deploy packed, and the site's live editor and the room were built from
+# it (installed-edytor.sh).
 set -e
 cd "$(dirname "$0")/../.."
+sh site/scripts/installed-edytor.sh
 SITE=$(sed -n 's/.*cloudflare({ *site: *"\([^"]*\)".*/\1/p' site/blume.config.ts)
 VERSION=$(node -p "require('./package.json').version")
 for path in "/edytor-$VERSION.tgz" /docs/reference/troubleshooting /docs/getting-started; do

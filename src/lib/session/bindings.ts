@@ -15,6 +15,8 @@ import {
 	getSelectedBlocksInDocumentOrder,
 	getSelectionBlocks,
 	deleteSelectedBlocks,
+	lastShownText,
+	lineOf,
 	outermost,
 	revealing
 } from '$lib/selection/replaceSelection.js';
@@ -135,12 +137,10 @@ const moveRoots = (edytor: Edytor, blocks: Block[], direction: 'in' | 'out') => 
 	const roots = outermost(blocks);
 	const groups = new Map<Block | undefined, Block[]>();
 	for (const block of roots) groups.set(block.parent, [...(groups.get(block.parent) ?? []), block]);
-	return revealing(
-		roots,
-		() =>
-			edytor.dispatcher.run('moveBlocks', () =>
-				[...groups.values()].flatMap((group) => edytor.moveBlocks({ blocks: group, direction }))
-			) ?? []
+	return (
+		edytor.dispatcher.run('moveBlocks', () =>
+			[...groups.values()].flatMap((group) => edytor.moveBlocks({ blocks: group, direction }))
+		) ?? []
 	);
 };
 
@@ -291,11 +291,12 @@ export const builtInBindings: Record<string, HotKey> = {
 	tab: nest('nestBlock'),
 	'shift+tab': nest('unNestBlock'),
 	escape: ({ edytor, prevent }) => {
-		const first = edytor.selection.selectedBlocks.values().next().value as Block | undefined;
+		const [first] = getSelectedBlocksInDocumentOrder(edytor);
 		if (!first) return;
 		prevent(() => {
 			edytor.selection.selectBlocks();
-			const text = first.firstEditableText;
+			// The end of the first selected block's own line (a container's: of its last shown line).
+			const text = lineOf(first).at(-1) ?? lastShownText(first);
 			if (text) edytor.selection.setAtTextOffset(text, text.length);
 		});
 	},

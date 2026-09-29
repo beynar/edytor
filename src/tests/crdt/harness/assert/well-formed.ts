@@ -26,6 +26,10 @@
  * - `promotion-hidden` — no unmarked block hides under a delete-marked
  *   holder (UW-08: read-time promotion puts it in the holder's slot). On
  *   by default; `DST_PROMOTION_ORACLE=0` turns it off for a local bisect.
+ * - `report-kind` — a view that follows only the change reports (`added`
+ *   subtrees and `meta` kinds) shows every visible block with the kind the
+ *   model shows (XW-08, YW-08: a derived kind the report missed left a
+ *   mounted view on a stale kind).
  *
  * The runner (`random/runner.ts`) and the p1 harness (`arch-v2/p1-harness.ts`)
  * both feed {@link wellFormedProblems}; each backend supplies the inputs it
@@ -58,6 +62,8 @@ export type WellFormedInput = {
 	identities?: Map<string, string>;
 	/** Unmarked, self-owned blocks hidden under a delete-marked holder. */
 	hiddenUnderDeleted?: () => readonly string[];
+	/** The kind a report-fed view holds for `id` (`report-kind`); absent → no such view. */
+	reportedKind?: (id: string) => string | undefined;
 };
 
 type Check = {
@@ -167,6 +173,15 @@ export const WELL_FORMED_CHECKS: Record<string, Check> = {
 		enabled: () => process.env.DST_PROMOTION_ORACLE !== '0',
 		run: ({ hiddenUnderDeleted }) =>
 			(hiddenUnderDeleted?.() ?? []).map((id) => `${id} hidden under a deleted holder`)
+	},
+	'report-kind': {
+		run: ({ reportedKind }, visible) =>
+			reportedKind
+				? [...visible.values()].flatMap((b) => {
+						const view = reportedKind(b.id);
+						return view === b.type ? [] : [`${b.id}: view ${view}, model ${String(b.type)}`];
+					})
+				: []
 	}
 };
 

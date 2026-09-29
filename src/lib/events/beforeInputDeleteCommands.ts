@@ -138,6 +138,8 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 		if (previousBlock === block.closestPreviousBlock) block.mergeBlockBackward();
 		else if (previousBlock) mergeIntoHeader(edytor, block, previousBlock, true);
 		if (typeof offset === 'number') caretAt(edytor, previousText, offset);
+		// A list's first item lifts out of it (YW-02): the caret stays at its start.
+		else if (previousBlock === block.parent) caretAt(edytor, block.firstText, 0);
 		return;
 	}
 

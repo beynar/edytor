@@ -95,10 +95,10 @@ describe('the block menu Delete beside a closed toggle (XW-06)', () => {
 		]);
 	});
 
-	it('of the block after it with a block after that, lands at the start of that block', async () => {
+	it('of the block after it with a block after that, lands at the end of the header, as the keyboard does (DR-behavior-1)', async () => {
 		const view = await render([blockMenuPlugin], [toggle('t', [p('body')]), p('mid'), p('z')]);
 		await remove(view, 'mid');
-		expect(caret(view)).toEqual(['z', 0]);
+		expect(caret(view)).toEqual(['t', 1]);
 	});
 
 	it('of the toggle itself, its body takes its place and holds the caret (FW-05)', async () => {
@@ -224,7 +224,8 @@ describe('the sweep: walkers beside a closed toggle', () => {
 			['paragraph', 'body', []],
 			['paragraph', 'z', []]
 		]);
-		expect(caret(view)).toEqual(['body', 4]);
+		// Nothing before it: the start of the next line, as the block menu's Delete (YW-04).
+		expect(caret(view)).toEqual(['body', 0]);
 	});
 
 	it('Tab over a range across a closed toggle nests the toggle with its body', async () => {
@@ -304,9 +305,18 @@ describe('the sweep: history on a readonly view (SW7-selection-4)', () => {
 		edytor.readonly = false;
 		edytor.historyUndo();
 		expect(canonicalTree(edytor).map(shape)).toEqual([['paragraph', 'a', []]]);
+		// YW-06: an undo that applies reports it; `last` never stays refused.
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'undo', status: 'applied' });
 		edytor.readonly = true;
 		edytor.historyRedo();
 		expect(canonicalTree(edytor).map(shape)).toEqual([['paragraph', 'a', []]]);
 		expect(edytor.dispatcher.last).toEqual({ operation: 'redo', status: 'refused' });
+		edytor.readonly = false;
+		edytor.historyRedo();
+		expect(canonicalTree(edytor).map(shape)).toEqual([['paragraph', 'ax', []]]);
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'redo', status: 'applied' });
+		// An empty stack applies nothing: noop, not refused.
+		edytor.historyRedo();
+		expect(edytor.dispatcher.last).toEqual({ operation: 'redo', status: 'noop' });
 	});
 });

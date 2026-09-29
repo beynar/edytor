@@ -71,7 +71,7 @@ Inside a code line:
 | <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd> | Start a new line                                                      |
 | <kbd>Tab</kbd>                         | At a caret, insert a tab character, or accept an inline suggestion. Over a selection, add a tab at the start of every line it touches, as one undo step; the selection keeps its characters |
 | <kbd>Shift</kbd> + <kbd>Tab</kbd>      | Remove one leading tab, or up to two spaces, from the caret's line or every line the selection touches |
-| <kbd>Mod</kbd> + <kbd>A</kbd>            | From a non-empty line, select the text of the whole code block                     |
+| <kbd>Mod</kbd> + <kbd>A</kbd>            | Select the text of the whole code block; press again to select the code block      |
 | <kbd>Escape</kbd>                      | Dismiss an inline suggestion                                                       |
 
 - Typing `(`, `[`, `{`, `"` or `'` at a caret also inserts the closing character. A quote pairs only at a word boundary: the apostrophe in `don't` stays single.
@@ -80,6 +80,7 @@ Inside a code line:
 - <kbd>Backspace</kbd> at the start of the first line and <kbd>Delete</kbd> at the end of the last line do nothing: a line never merges out of its block.
 - <kbd>Delete</kbd> at the end of the block right before a code block removes that block if it is empty, and does nothing otherwise. The caret goes to the end of the text before the removed block, or to the start of the code when nothing comes before it.
 - <kbd>Backspace</kbd> in an empty block right after a code block removes that block and puts the caret at the end of the last line. In a block with text it moves the caret to the end of the code and merges nothing.
+- Deleting or cutting the whole code text (<kbd>Mod</kbd> + <kbd>A</kbd>, then <kbd>Backspace</kbd>, <kbd>Delete</kbd> or cut) leaves the code block with one empty line and the caret in it.
 - A selection that ends at the start of a line leaves that line out of <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd>, as code editors do.
 - The Copy button, shown while the block is hovered, writes the block's text, lines joined with newlines, to the clipboard, and reads "Copied" for a moment.
 

@@ -22,7 +22,18 @@ describe('wellFormed checks', () => {
 			'island-kind',
 			'sealed-line',
 			'seed-displacement',
-			'promotion-hidden'
+			'promotion-hidden',
+			'report-kind'
+		]);
+	});
+
+	it('report-kind: a report-fed view on another kind fails; without a view it is skipped', () => {
+		const roots = [b('A'), b('B', 'quote')];
+		expect(
+			wellFormedProblems({ roots, reportedKind: (id) => (id === 'A' ? 'paragraph' : 'quote') })
+		).toEqual([]);
+		expect(wellFormedProblems({ roots, reportedKind: () => 'paragraph' })).toEqual([
+			'report-kind: B: view paragraph, model quote'
 		]);
 	});
 

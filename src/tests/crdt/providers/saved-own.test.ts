@@ -29,7 +29,7 @@ const exchange = (from, to) => Y.applyUpdate(to.doc, from.encode(), 'remote');
 const ack = (provider, roomDoc) => provider._writes.acknowledge(Y.encodeStateVector(roomDoc));
 
 describe('saved counts the actor’s own writes', () => {
-	it("after a reload, a peer's lost text and its deletion never hold saved", () => {
+	it("after a reload, a peer's lost text never holds saved; its deletion, until the room stores it", () => {
 		// The room holds the seed and Bob's session; Ada's text, and her
 		// deletion of part of it, only reached Bob before the room lost them.
 		const bob = createDocument({ value, actor: { id: 'bob' } });
@@ -50,7 +50,11 @@ describe('saved counts the actor’s own writes', () => {
 		Y.applyUpdate(reloaded.doc, bob.encode(), STORE);
 		for (const update of heard) Y.applyUpdate(reloaded.doc, update, STORE);
 		expect(reloaded.facade.blockText('p')).toBe('seedda');
+		// Ada's text is not Bob's to save; her delete-only update names no
+		// author, so it counts until the room stores it (waiting for the text).
 		ack(provider, room);
+		expect([provider.saved, provider.unsaved]).toEqual([false, 1]);
+		provider._writes.acknowledge(Y.encodeStateVector(room), Y.decodeUpdate(heard.at(-1)).ds);
 		expect([provider.saved, provider.unsaved]).toEqual([true, 0]);
 		provider.destroy();
 		for (const document of [bob, ada, reloaded]) document.destroy();

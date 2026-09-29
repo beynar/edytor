@@ -7,8 +7,8 @@
  *
  * - F-S13 — `['First block', 'Marked middle', 'lead @ tail']`: select block
  *   `[1]`, then Backspace, Delete or cut: the caret lands at the end of
- *   `[0]`'s first editable text; with `[0]` selected, at the end of the next
- *   block's (FP-7: the command's own previous-then-next rule,
+ *   `[0]`'s line; with `[0]` selected, at the start of the next block's
+ *   (FP-7, YW-04: the command's own previous-then-next rule,
  *   `hotkeys.spec:955-993`, CLIP-07). The command authors that result: it is
  *   the selection in the same turn, and it is the only selection change the
  *   command makes (the seam never runs for this view's own endpoints).
@@ -140,13 +140,13 @@ describe('F-S13 — a block-set delete authors its result selection (FP-7)', () 
 				await setNativeSelection(edytor, first!.firstText!, 2);
 				edytor.selection.selectBlocks(edytor.root!.children[selected]!);
 				await flushDomUpdates();
-				// FP-7: the end of the previous block's first editable text; with
-				// the first block selected, the end of the next block's.
+				// FP-7: the end of the previous block's line; with the first block
+				// selected, the start of the next block's (YW-04).
 				const target = selected === 1 ? first! : middle!;
 				const expected = {
 					kind: 'text',
 					block: target.id,
-					offset: target.firstEditableText!.length,
+					offset: selected === 1 ? target.firstEditableText!.length : 0,
 					isCollapsed: true
 				};
 				const before = record.calls.length;

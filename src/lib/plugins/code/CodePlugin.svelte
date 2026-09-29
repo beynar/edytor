@@ -10,6 +10,7 @@
 	import { runIntent } from '$lib/events/beforeInputCommands.js';
 	import { codeKinds } from '$lib/crdt/semantics.js';
 	import { shown } from '$lib/selection/visibility.js';
+	import { caretBeside } from '$lib/selection/replaceSelection.js';
 
 	// The code kind tokenizes through `transformText`; only the renderer writes the DOM.
 	const highlighter = createHighlighter({ languages: [jsx] });
@@ -79,20 +80,16 @@
 		return {
 			hotkeys: {
 				'mod+a': ({ prevent }) => {
-					// Select the code block's text (an empty line leaves it to Select all).
-					const { startBlock } = edytor.selection.state;
-					const { islandRoot, isAtEndOfBlock, isAtStartOfBlock } = edytor.selection.projection;
-					if (
-						startBlock?.type === 'codeLine' &&
-						!edytor.selection.selectedBlocks.size &&
-						!(isAtEndOfBlock && isAtStartOfBlock)
-					) {
-						prevent(() => {
-							const code = edytor.idToBlock.get(islandRoot ?? '');
-							const [first, last] = [code?.firstEditableText, code?.lastEditableText];
-							if (first && last) edytor.selection.setAtTextsRange(first, last);
-						});
-					}
+					// Select the code block's text; once it is (or when it has none), Select
+					// all takes the next step: the code block.
+					const { startBlock, startText, endText, yStart, yEnd } = edytor.selection.state;
+					if (startBlock?.type !== 'codeLine' || edytor.selection.selectedBlocks.size) return;
+					const code = edytor.idToBlock.get(edytor.selection.projection.islandRoot ?? '');
+					const [first, last] = [code?.firstEditableText, code?.lastEditableText];
+					if (!first || !last) return;
+					const whole =
+						startText === first && yStart === 0 && endText === last && yEnd === last.length;
+					if (!whole) prevent(() => edytor.selection.setAtTextsRange(first, last));
 				},
 				escape: () => {
 					const { startBlock } = edytor.selection.state;
@@ -133,10 +130,9 @@
 				if (code?.type === 'code') {
 					if (!block.isEmpty) prevent();
 					prevent(() => {
-						const before = shown(block, 'blockBefore')?.lastEditableText;
+						const before = caretBeside(block, 'blockBefore', new Set([block]));
 						block.removeBlock();
-						const text = before ?? code.firstEditableText;
-						edytor.dispatcher.caret(text, before?.length ?? 0);
+						edytor.dispatcher.caret(before?.text ?? code.firstEditableText, before?.offset ?? 0);
 					});
 				}
 				// Backspace in an empty block right after a code block removes it; the

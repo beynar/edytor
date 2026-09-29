@@ -3,7 +3,9 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import { Text } from '$lib/text/text.svelte.js';
+	import type { Snippet } from 'svelte';
 	import BlockHandle from './BlockHandle.svelte';
+	import type { BlockHandleSnippetPayload } from './blockHandlesPlugin.js';
 	import type { BlockHandleController } from './BlockHandleController.svelte.js';
 
 	/**
@@ -17,7 +19,8 @@
 		controller,
 		blocks,
 		near,
-		hovered
+		hovered,
+		handle
 	}: {
 		edytor: Edytor;
 		controller: BlockHandleController;
@@ -27,6 +30,8 @@
 		near: ReadonlySet<string>;
 		/** Blocks under the pointer; reactive. */
 		hovered: ReadonlySet<string>;
+		/** A custom handle (`BlockHandlesOptions.handle`). */
+		handle?: Snippet<[BlockHandleSnippetPayload]>;
 	} = $props();
 
 	/** The block whose handle holds focus: its handle stays while focused. */
@@ -107,7 +112,7 @@
 		use:place={id}
 		onfocusin={() => (focused = id)}
 		onfocusout={() => focused === id && (focused = null)}
-		><BlockHandle block={blocks.get(id)!} {controller} /></span
+		><BlockHandle block={blocks.get(id)!} {controller} {handle} /></span
 	>
 {/each}
 

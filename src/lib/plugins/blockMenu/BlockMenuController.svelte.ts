@@ -1,3 +1,4 @@
+import type { Snippet } from 'svelte';
 import { tick } from 'svelte';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -7,6 +8,12 @@ import type { JSONBlock } from '$lib/utils/json.js';
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
 	linkTo?: (block: Block) => string;
+	/**
+	 * Replace the menu; it renders while `controller.isOpen`, placed beside
+	 * the handle (mark your panel `data-edytor-block-menu` for placement).
+	 * The controller runs every action; `close()` returns the caret.
+	 */
+	menu?: Snippet<[BlockMenuController]>;
 };
 
 export type BlockMenuAction = {

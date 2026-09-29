@@ -1,8 +1,18 @@
 <script lang="ts">
 	import { iconOf } from '../icons.js';
+	import type { Snippet } from 'svelte';
 	import type { SlashMenuController } from './SlashMenuController.svelte.js';
+	import type { SlashMenuItem } from './slashMenuPlugin.js';
 
-	let { controller }: { controller: SlashMenuController } = $props();
+	let {
+		controller,
+		menu,
+		item
+	}: {
+		controller: SlashMenuController;
+		menu?: Snippet<[SlashMenuController]>;
+		item?: Snippet<[SlashMenuItem]>;
+	} = $props();
 	const commands = $derived(controller.commands);
 
 	/** Keep the keyboard's row in view. */
@@ -13,7 +23,9 @@
 	};
 </script>
 
-{#if controller.isOpen}
+{#if controller.isOpen && menu}
+	{@render menu(controller)}
+{:else if controller.isOpen}
 	<div class="slash-menu" data-testid="slash-menu" role="listbox" aria-label="Block commands">
 		<div class="slash-query" data-testid="slash-menu-query" aria-live="polite">
 			/{controller.query}
@@ -26,25 +38,35 @@
 				{#if index === 0 || command.group !== commands[index - 1]?.group}
 					{#if command.group}<div class="slash-heading">{command.group}</div>{/if}
 				{/if}
-				<button
-					type="button"
-					class="slash-item"
-					data-command-id={command.id}
-					data-icon={command.icon ?? '⋮'}
-					data-glyph={iconOf(command.id) ? undefined : (command.icon ?? '⋮')}
-					data-hint={command.hint}
-					style:--slash-icon={iconOf(command.id)}
-					data-selected={index === controller.selectedIndex}
-					data-testid="slash-menu-item"
-					role="option"
-					aria-selected={index === controller.selectedIndex}
-					use:selected={index === controller.selectedIndex}
-					onmousedown={(event) => event.preventDefault()}
-					onmousemove={() => (controller.selectedIndex = index)}
-					onclick={() => {
-						void controller.run(command);
-					}}>{command.label}</button
-				>
+				{#if item}
+					{@render item({
+						command,
+						selected: index === controller.selectedIndex,
+						icon: iconOf(command.id),
+						run: () => void controller.run(command),
+						select: () => (controller.selectedIndex = index)
+					})}
+				{:else}
+					<button
+						type="button"
+						class="slash-item"
+						data-command-id={command.id}
+						data-icon={command.icon ?? '⋮'}
+						data-glyph={iconOf(command.id) ? undefined : (command.icon ?? '⋮')}
+						data-hint={command.hint}
+						style:--slash-icon={iconOf(command.id)}
+						data-selected={index === controller.selectedIndex}
+						data-testid="slash-menu-item"
+						role="option"
+						aria-selected={index === controller.selectedIndex}
+						use:selected={index === controller.selectedIndex}
+						onmousedown={(event) => event.preventDefault()}
+						onmousemove={() => (controller.selectedIndex = index)}
+						onclick={() => {
+							void controller.run(command);
+						}}>{command.label}</button
+					>
+				{/if}
 			{/each}
 		</div>
 		<button

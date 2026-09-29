@@ -2,68 +2,78 @@
 	import type { Block } from '$lib/block/block.svelte.js';
 	import type { BlockHandleController } from './BlockHandleController.svelte.js';
 
-	let { block, controller }: { block: Block; controller: BlockHandleController } = $props();
-	const registerHandle = (node: HTMLElement) => ({
-		destroy: controller.registerHandle(node, block)
-	});
+	import type { Snippet } from 'svelte';
+	import type { BlockHandleSnippetPayload } from './blockHandlesPlugin.js';
+
+	let {
+		block,
+		controller,
+		handle
+	}: {
+		block: Block;
+		controller: BlockHandleController;
+		handle?: Snippet<[BlockHandleSnippetPayload]>;
+	} = $props();
+	const grip = $derived(controller.grip(block));
 </script>
 
-<button
-	type="button"
-	class="edytor-block-add"
-	contenteditable="false"
-	hidden={controller.readonly}
-	data-testid="block-add"
-	aria-label="Add a block below (Alt: above)"
-	title="Click to add below
+{#if handle}
+	{@render handle({
+		block,
+		grip,
+		add: (above = false) => void controller.addBlock(block, above),
+		readonly: controller.readonly,
+		draggable: controller.draggable
+	})}
+{:else}
+	<button
+		type="button"
+		class="edytor-block-add"
+		contenteditable="false"
+		hidden={controller.readonly}
+		data-testid="block-add"
+		aria-label="Add a block below (Alt: above)"
+		title="Click to add below
 Alt-click to add a block above"
-	onmousedown={(event) => event.preventDefault()}
-	onpointerdown={(event) => event.stopPropagation()}
-	onclick={(event) => {
-		event.preventDefault();
-		event.stopPropagation();
-		void controller.addBlock(block, event.altKey);
-	}}
->
-	<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-		<path
-			d="M8 2.75v10.5M2.75 8h10.5"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.4"
-			stroke-linecap="round"
-		/>
-	</svg>
-</button><button
-	type="button"
-	class="edytor-block-handle"
-	contenteditable="false"
-	use:registerHandle
-	hidden={controller.readonly}
-	data-testid="block-handle"
-	data-block-id={block.id}
-	aria-label={`Move ${block.type} block`}
-	aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowRight Alt+ArrowLeft"
-	onclick={(event) => {
-		event.preventDefault();
-		event.stopPropagation();
-		controller.activateBlock(block, event.currentTarget);
-	}}
-	onpointerdown={(event) => {
-		event.stopPropagation();
-	}}
-	onkeydown={(event) => controller.handleKeyDown(event, block)}
-	data-draggable={controller.draggable ? 'true' : undefined}
->
-	<svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true" focusable="false">
-		<circle cx="2.5" cy="3" r="1.3" />
-		<circle cx="7.5" cy="3" r="1.3" />
-		<circle cx="2.5" cy="8" r="1.3" />
-		<circle cx="7.5" cy="8" r="1.3" />
-		<circle cx="2.5" cy="13" r="1.3" />
-		<circle cx="7.5" cy="13" r="1.3" />
-	</svg>
-</button>
+		onmousedown={(event) => event.preventDefault()}
+		onpointerdown={(event) => event.stopPropagation()}
+		onclick={(event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			void controller.addBlock(block, event.altKey);
+		}}
+	>
+		<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+			<path
+				d="M8 2.75v10.5M2.75 8h10.5"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="1.4"
+				stroke-linecap="round"
+			/>
+		</svg>
+	</button><button
+		type="button"
+		class="edytor-block-handle"
+		contenteditable="false"
+		use:grip
+		hidden={controller.readonly}
+		data-testid="block-handle"
+		data-block-id={block.id}
+		aria-label={`Move ${block.type} block`}
+		aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+ArrowRight Alt+ArrowLeft"
+		data-draggable={controller.draggable ? 'true' : undefined}
+	>
+		<svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true" focusable="false">
+			<circle cx="2.5" cy="3" r="1.3" />
+			<circle cx="7.5" cy="3" r="1.3" />
+			<circle cx="2.5" cy="8" r="1.3" />
+			<circle cx="7.5" cy="8" r="1.3" />
+			<circle cx="2.5" cy="13" r="1.3" />
+			<circle cx="7.5" cy="13" r="1.3" />
+		</svg>
+	</button>
+{/if}
 
 <style>
 	.edytor-block-handle,

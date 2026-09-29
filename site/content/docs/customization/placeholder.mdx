@@ -12,17 +12,16 @@ Pass `placeholder` to `<Edytor>`:
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin } from 'edytor';
+	import { Edytor } from 'edytor';
 </script>
 
-<Edytor plugins={[richTextPlugin]} placeholder="Start writing…" />
+<Edytor placeholder="Start writing…" />
 ```
 
 A string shows in every empty block. A function decides per block:
 
 ```svelte
 <Edytor
-	plugins={[richTextPlugin]}
 	placeholder={({ type, data, focused }) => {
 		if (type === 'heading') return `Heading ${String(data.level ?? 'h1').slice(1)}`;
 		if (type === 'todo-item') return 'To-do';
@@ -58,14 +57,14 @@ The `<Edytor>` prop wins over plugins; among plugins, the first one that declare
 
 ## Notion placeholders
 
-`richTextPlaceholder` is a ready-made function with Notion's hints for the rich text kinds:
+`richTextPlaceholder` is a ready-made function with Notion's hints for the rich text and image kinds:
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin, richTextPlaceholder } from 'edytor';
+	import { Edytor, richTextPlaceholder } from 'edytor';
 </script>
 
-<Edytor plugins={[richTextPlugin]} placeholder={richTextPlaceholder} />
+<Edytor placeholder={richTextPlaceholder} />
 ```
 
 | Kind                                          | Placeholder                                   |
@@ -76,6 +75,7 @@ The `<Edytor>` prop wins over plugins; among plugins, the first one that declare
 | `toggle`                                      | "Toggle"                                      |
 | `quote`                                       | "Empty quote"                                 |
 | `callout`                                     | "Type something…", only while focused         |
+| `image` (the caption)                         | "Write a caption…", only while focused        |
 | any other kind, such as `paragraph`           | "Type '/' for commands", only while focused   |
 
 To change one case, wrap it: `placeholder={(view) => (view.type === 'quote' ? 'Quote' : richTextPlaceholder(view))}`.

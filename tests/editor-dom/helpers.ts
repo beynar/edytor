@@ -1161,3 +1161,10 @@ export const modKey = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 export const getWordKey = (page: Page) =>
 	page.evaluate(() => (/Mac|iPod|iPhone|iPad/.test(window.navigator.platform) ? 'Alt' : 'Control'));
+
+/** The image block's native link field, opened from "Add an image" when it is closed. */
+export const imageLinkField = async (page: import('@playwright/test').Page) => {
+	const field = page.locator('figure input[aria-label="Image link"]');
+	if (!(await field.count())) await page.locator('figure [data-edytor-image-add]').click();
+	return field;
+};

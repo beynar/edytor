@@ -13,11 +13,35 @@ export {
 	blockHandlesPlugin,
 	createBlockHandlesPlugin,
 	type BlockHandleActivation,
-	type BlockHandlesOptions
+	type BlockHandlesOptions,
+	type BlockHandleSnippetPayload
 } from './blockHandles/blockHandlesPlugin.js';
 export { codePlugin } from './code/CodePlugin.svelte';
 export { markdownShortcutsPlugin } from './markdownShortcuts.js';
-export { slashMenuPlugin } from './slashMenu/slashMenuPlugin.js';
-export { toolbarPlugin } from './toolbar/toolbarPlugin.js';
+export {
+	slashMenuPlugin,
+	createSlashMenuPlugin,
+	type SlashMenuOptions,
+	type SlashMenuItem
+} from './slashMenu/slashMenuPlugin.js';
+export type { SlashMenuController } from './slashMenu/SlashMenuController.svelte.js';
+export {
+	toolbarPlugin,
+	createToolbarPlugin,
+	type ToolbarOptions
+} from './toolbar/toolbarPlugin.js';
+export type { ToolbarController } from './toolbar/ToolbarController.svelte.js';
 export { blockMenuPlugin, createBlockMenuPlugin } from './blockMenu/blockMenuPlugin.js';
-export type { BlockMenuOptions } from './blockMenu/BlockMenuController.svelte.js';
+export type {
+	BlockMenuOptions,
+	BlockMenuController,
+	BlockMenuAction
+} from './blockMenu/BlockMenuController.svelte.js';
+export {
+	imagePlugin,
+	createImagePlugin,
+	isImagePlugin,
+	safeImageSrc,
+	type ImagePluginOptions
+} from './image/ImagePlugin.svelte';
+export type { BlockHandleController } from './blockHandles/BlockHandleController.svelte.js';

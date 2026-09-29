@@ -4,7 +4,7 @@ description: What an Edytor plugin is, how to pass plugins to the editor, how pl
 icon: plug
 ---
 
-Everything the editor knows about content comes from plugins: block kinds, marks, inline atoms, key bindings, and hooks that can inspect or veto every edit. The core ships no block kinds of its own, so a useful editor always passes at least the rich text plugin.
+Everything the editor knows about content comes from plugins: block kinds, marks, inline atoms, key bindings, and hooks that can inspect or veto every edit. The core ships no block kinds of its own; `<Edytor>` adds the rich text, image and arrow move plugins by default, so `<Edytor />` alone is a working rich text editor.
 
 ## What a plugin is
 
@@ -45,24 +45,14 @@ Pass an array to the `plugins` prop of `<Edytor>`:
 <script lang="ts">
 	import {
 		Edytor,
-		richTextPlugin,
 		codePlugin,
 		slashMenuPlugin,
 		toolbarPlugin,
 		markdownShortcutsPlugin,
-		arrowMovePlugin,
 		blockMenuPlugin
 	} from 'edytor';
 
-	const plugins = [
-		codePlugin,
-		markdownShortcutsPlugin,
-		slashMenuPlugin,
-		toolbarPlugin,
-		blockMenuPlugin,
-		arrowMovePlugin,
-		richTextPlugin
-	];
+	const plugins = [codePlugin, markdownShortcutsPlugin, slashMenuPlugin, toolbarPlugin, blockMenuPlugin];
 </script>
 
 <Edytor {plugins} />
@@ -70,7 +60,20 @@ Pass an array to the `plugins` prop of `<Edytor>`:
 
 Plugins are read once, when the component mounts. Changing the array afterwards has no effect.
 
-Block handles are the one plugin you do not list: `<Edytor>` adds them unless you pass `blockHandles={false}`. See [Block handles](/docs/plugins/block-handles).
+### Default plugins
+
+`<Edytor>` completes the list with the plugins every editor needs, after yours so your kinds, marks and keys take precedence, unless the list already has them:
+
+| Plugin | Position | Replaced by |
+| --- | --- | --- |
+| [`arrowMovePlugin`](/docs/plugins/arrow-move) | after yours | `arrowMovePlugin` in your list |
+| [`imagePlugin`](/docs/plugins/image) | after yours | `imagePlugin` or any `createImagePlugin(...)` in your list |
+| [`richTextPlugin`](/docs/plugins/rich-text) | last | `richTextPlugin` in your list |
+| [Block handles](/docs/plugins/block-handles) | first | the `blockHandles` prop, or a handles plugin in your list |
+
+The example above therefore runs arrow move, image, your five plugins and rich text, plus block handles. A default you list yourself stays where you put it, so older code that passes `plugins={[richTextPlugin]}` still works.
+
+Pass `defaultPlugins={false}` to get exactly your list (block handles still follow `blockHandles`). The defaults are added by the `<Edytor>` component, per view; the editor instance underneath has none of its own.
 
 ## Plugin order
 
@@ -79,7 +82,7 @@ The array order is the precedence order. Two rules follow from it:
 - **Definitions: first wins.** When two plugins define the same block kind, mark, inline atom or command id, the one listed first is used and the later one is ignored. To replace a definition from a bundled plugin, list your plugin before it.
 - **Prevention: first wins.** Hooks and key bindings run in list order. The first plugin that calls `prevent()` stops the operation or claims the key, and the plugins after it are not asked.
 
-Order therefore matters whenever two plugins touch the same thing: the same kind name, the same chord, or the same operation. A plugin that overrides or refuses something a bundled plugin does goes before it in the list.
+Order therefore matters whenever two plugins touch the same thing: the same kind name, the same chord, or the same operation. A plugin that overrides or refuses something a bundled plugin does goes before it in the list. Rich text is added after your plugins, so they already come first; arrow move and image are added before them, so to take precedence over those, list them yourself after your plugin.
 
 One exception: two plugins that declare different `defaultChild` values for the same block kind are an error, whatever their order. The editor throws when it is created.
 
@@ -108,14 +111,15 @@ Import it like any other module: `import { highlightPlugin } from './HighlightPl
 
 | Plugin                                                 | Export                    | What it adds                                                                               |
 | ------------------------------------------------------ | ------------------------- | ------------------------------------------------------------------------------------------ |
-| [Rich text](/docs/plugins/rich-text)                   | `richTextPlugin`          | Paragraphs, headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks, and Notion's shortcuts |
+| [Rich text](/docs/plugins/rich-text)                   | `richTextPlugin`          | Paragraphs, headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks, and Notion's shortcuts. On by default |
 | [Code](/docs/plugins/code)                             | `codePlugin`              | Code blocks with syntax highlighting and a Copy button                                     |
-| [Block handles](/docs/plugins/block-handles)           | `blockHandlesPlugin`      | A `+` and a drag grip beside each block, drag and drop, keyboard moves. On by default      |
-| [Block menu](/docs/plugins/block-menu)                 | `blockMenuPlugin`         | Notion's block menu on a grip click: search, Turn into, Duplicate, Move, Delete            |
-| [Slash menu](/docs/plugins/slash-menu)                 | `slashMenuPlugin`         | A sectioned command menu opened by typing `/`                                              |
-| [Toolbar](/docs/plugins/toolbar)                       | `toolbarPlugin`           | A floating toolbar over text selections: Turn into, link, marks and colors                 |
+| [Image](/docs/plugins/image)                           | `imagePlugin`, `createImagePlugin` | Notion's image block: embed from a link or your upload, with an editable caption. On by default |
+| [Block handles](/docs/plugins/block-handles)           | `blockHandlesPlugin`, `createBlockHandlesPlugin` | A `+` and a drag grip beside each block, drag and drop, keyboard moves. On by default |
+| [Block menu](/docs/plugins/block-menu)                 | `blockMenuPlugin`, `createBlockMenuPlugin` | Notion's block menu on a grip click: search, Turn into, Duplicate, Move, Delete |
+| [Slash menu](/docs/plugins/slash-menu)                 | `slashMenuPlugin`, `createSlashMenuPlugin` | A sectioned command menu opened by typing `/`                             |
+| [Toolbar](/docs/plugins/toolbar)                       | `toolbarPlugin`, `createToolbarPlugin` | A floating toolbar over text selections: Turn into, link, marks and colors    |
 | [Markdown shortcuts](/docs/plugins/markdown-shortcuts) | `markdownShortcutsPlugin` | Block prefixes such as `# ` or `- `, and inline `**bold**`, `*italic*`, `` `code` ``, `~strike~` |
-| [Arrow move](/docs/plugins/arrow-move)                 | `arrowMovePlugin`         | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the caret's block; <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves selected blocks |
-| [Mention and image](/docs/plugins/mention-and-image)   | (not exported)            | Reference implementations of an inline atom and a void block                               |
+| [Arrow move](/docs/plugins/arrow-move)                 | `arrowMovePlugin`         | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the caret's block; <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves selected blocks. On by default |
+| [Mention](/docs/plugins/mention)                       | (not exported)            | A reference implementation of an inline atom                                               |
 
-All exports come from the package root, `edytor`. For the matching document look, add the [Notion theme](/docs/customization/styling#notion-theme).
+All exports come from the package root, `edytor`. The `create…` factories take options, including snippets that replace the menus' and handles' markup (see [Menus and handles](/docs/customization/menus)). For the matching document look, add the [Notion theme](/docs/customization/styling#notion-theme).

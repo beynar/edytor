@@ -6,11 +6,9 @@
 <script lang="ts">
 	import {
 		Edytor,
-		arrowMovePlugin,
 		blockMenuPlugin,
 		codePlugin,
 		markdownShortcutsPlugin,
-		richTextPlugin,
 		richTextPlaceholder,
 		slashMenuPlugin,
 		toolbarPlugin,
@@ -95,15 +93,8 @@
 		return () => awareness.off('change', read);
 	});
 
-	const plugins = [
-		arrowMovePlugin,
-		blockMenuPlugin,
-		codePlugin,
-		markdownShortcutsPlugin,
-		slashMenuPlugin,
-		toolbarPlugin,
-		richTextPlugin
-	];
+	// Rich text, images and block moves are defaults.
+	const plugins = [blockMenuPlugin, codePlugin, markdownShortcutsPlugin, slashMenuPlugin, toolbarPlugin];
 </script>
 
 <div class="live-editor-frame edytor-notion">

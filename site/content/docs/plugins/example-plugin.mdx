@@ -154,20 +154,14 @@ kbd[data-edytor-mark='keyboard'] {
 
 ## Using it
 
-Pass it with the bundled plugins. None of its names overlap theirs, so order does not matter here; listing your own plugins first lets them override bundled definitions later.
+Pass it with the bundled plugins (`<Edytor>` adds rich text after them). None of its names overlap theirs, so order does not matter here; listing your own plugins first lets them override bundled definitions later.
 
 ```svelte
 <script lang="ts">
-	import {
-		Edytor,
-		richTextPlugin,
-		slashMenuPlugin,
-		toolbarPlugin,
-		markdownShortcutsPlugin
-	} from 'edytor';
+	import { Edytor, slashMenuPlugin, toolbarPlugin, markdownShortcutsPlugin } from 'edytor';
 	import { notePlugin } from '$lib/NotePlugin.svelte';
 
-	const plugins = [notePlugin, markdownShortcutsPlugin, slashMenuPlugin, toolbarPlugin, richTextPlugin];
+	const plugins = [notePlugin, markdownShortcutsPlugin, slashMenuPlugin, toolbarPlugin];
 
 	const value = {
 		children: [

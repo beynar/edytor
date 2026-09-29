@@ -12,12 +12,12 @@ From the parent, bind it:
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin, type EdytorInstance } from 'edytor';
+	import { Edytor, type EdytorInstance } from 'edytor';
 
 	let edytor = $state<EdytorInstance>();
 </script>
 
-<Edytor plugins={[richTextPlugin]} bind:edytor />
+<Edytor bind:edytor />
 <button onclick={() => edytor?.historyUndo()}>Undo</button>
 ```
 

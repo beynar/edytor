@@ -35,7 +35,8 @@ If you want to submit an issue please share the json value of the document. It w
 - ⚡ **High Performance**: Optimized for large documents, fine grained update at the leaf level thanks to the CRDT substrate and Svelte's reactivity
 - 🔄 **Undo/Redo**: Built-in history management
 - 🖱️ **Block drag and drop**: Reorder, nest, and unnest blocks with built-in handles
-- 🗒️ **Notion-style editing out of the box**: a Notion theme (`edytor/themes/notion.css`), block handles with a `+` and a block menu, a sectioned slash menu, a selection toolbar with Turn into and colors, Notion's markdown shortcuts and hotkeys
+- 🗒️ **Notion-style editing out of the box**: `<Edytor />` alone is a rich text editor with images; add a Notion theme (`edytor/themes/notion.css`), block handles with a `+` and a block menu, a sectioned slash menu, a selection toolbar with Turn into and colors, Notion's markdown shortcuts and hotkeys. Lists, to-dos and toggles continue on Enter
+- 🧩 **Your own menus**: the slash menu, toolbar, block menu and block handles each take a Svelte snippet for their markup while keeping their behavior
 - 📦 **Lightweight**: Relatively small bundle size compared to other rich text editors
 - 📦 **AI copilot ready**: Support inline text suggestions for ai completions.
 
@@ -158,7 +159,7 @@ pnpm add edytor
 
 ```svelte
 <script>
-	import { Edytor, richTextPlugin, richTextPlaceholder } from 'edytor';
+	import { Edytor, richTextPlaceholder } from 'edytor';
 	import 'edytor/themes/notion.css';
 
 	let value = {
@@ -176,31 +177,70 @@ pnpm add edytor
 </script>
 
 <div class="edytor-notion">
-	<Edytor {value} {onChange} plugins={[richTextPlugin]} placeholder={richTextPlaceholder} />
+	<Edytor {value} {onChange} placeholder={richTextPlaceholder} />
 </div>
 ```
 
-The core defines no block kinds: `richTextPlugin` provides them. `edytor/themes/notion.css` styles the document like Notion's light theme under `.edytor-notion` (override its `--notion-*` custom properties to adapt it; a leading Heading 1 is styled as the page title), and `richTextPlaceholder` shows Notion's placeholders.
+The core defines no block kinds. `<Edytor>` adds `arrowMovePlugin`, `imagePlugin` and `richTextPlugin` after your `plugins` (so your kinds and keys win), unless the list already has them (any `createImagePlugin(...)` replaces the default image); `defaultPlugins={false}` renders exactly your list. `edytor/themes/notion.css` styles the document like Notion's light theme under `.edytor-notion` (override its `--notion-*` custom properties to adapt it; a leading Heading 1 is styled as the page title), and `richTextPlaceholder` shows Notion's placeholders.
 
 ### Bundled plugins
 
 All exported from `edytor`:
 
-| Plugin                    | Adds                                                                                                                                                |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `richTextPlugin`          | Text, Heading 1–3, Bulleted, Numbered, To-do (clickable checkbox), Toggle, Callout (`💡`), Quote, Divider; ten marks; Notion hotkeys                |
-| `codePlugin`              | Code blocks (TanStack Highlight, Notion's light syntax theme, Copy button); in the slash menu's `Media` section                                     |
-| `markdownShortcutsPlugin` | Block prefixes and inline `**bold**`, `*italic*`/`_italic_`, `` `code` ``, `~strike~`/`~~strike~~` (completed by the closing marker, one undo step) |
-| `slashMenuPlugin`         | Notion's `/` menu: sections (`Basic blocks` first), line icons, the markdown hint on the right                                                      |
-| `toolbarPlugin`           | `[Kind ⌄] \| Link \| B I U S </> \| A ⌄`: Turn into, a link panel, marks, Notion's 10 text and 10 background colors                                 |
-| `blockMenuPlugin`         | The ⋮⋮ grip's menu: search, Turn into, Copy link (`createBlockMenuPlugin({ linkTo })`), Duplicate, Move up/down, Delete; binds `Mod+D`              |
-| `arrowMovePlugin`         | `Mod+Shift+↑/↓` moves the caret's block; `Mod+↑/↓` moves selected blocks                                                                            |
+| Plugin                    | Adds                                                                                                                                                                   |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `richTextPlugin`          | Default. Text, Heading 1–3, Bulleted, Numbered, To-do (clickable checkbox), Toggle, Callout (`💡`), Quote, Divider; ten marks; Notion hotkeys                          |
+| `imagePlugin`             | Default. Notion's image block: "Add an image" → paste a link (http(s), blob or `data:image/`), editable caption; `createImagePlugin({ upload })` adds an Upload button |
+| `arrowMovePlugin`         | Default. `Mod+Shift+↑/↓` moves the caret's block; `Mod+↑/↓` moves selected blocks                                                                                      |
+| `codePlugin`              | Code blocks (TanStack Highlight, Notion's light syntax theme, Copy button); in the slash menu's `Media` section                                                        |
+| `markdownShortcutsPlugin` | Block prefixes and inline `**bold**`, `*italic*`/`_italic_`, `` `code` ``, `~strike~`/`~~strike~~` (completed by the closing marker, one undo step)                    |
+| `slashMenuPlugin`         | Notion's `/` menu: sections (`Basic blocks` first), line icons, the markdown hint on the right; `createSlashMenuPlugin({ item, menu })`                                |
+| `toolbarPlugin`           | `[Kind ⌄] \| Link \| B I U S </> \| A ⌄`: Turn into, a link panel, marks, Notion's 10 text and 10 background colors; `createToolbarPlugin({ toolbar })`                |
+| `blockMenuPlugin`         | The ⋮⋮ grip's menu: search, Turn into, Copy link (`createBlockMenuPlugin({ linkTo, menu })`), Duplicate, Move up/down, Delete; binds `Mod+D`                           |
 
 Markdown prefixes (Notion's): `# ` `## ` `### ` headings, `- ` `* ` `+ ` bulleted, `1. ` `a. ` `i. ` numbered, `[] ` `[ ] ` to-do, `" ` quote, `> ` toggle, `---` divider, ` ``` ` code.
+
+Enter in a bulleted or numbered item, to-do or toggle (kinds with `continues: true`) opens another of the same kind (a new to-do is unchecked; at the start of the block it goes above); Enter in an empty one without children ends the list: it outdents when nested, else becomes a paragraph. Other kinds start a paragraph.
 
 Rich text hotkeys: `Mod+B/I/U/E` bold, italic, underline, code; `Mod+Shift+S` (or `Mod+Shift+X`) strikethrough; `Mod+Shift+H` red text; `Mod+Enter` checks a to-do; `Mod+Alt+0` text, `1`/`2`/`3` headings, `4` to-do, `5` bulleted, `6` numbered, `7` toggle, `8` code.
 
 Block handles and drag targets are enabled by default. Each handle is a `+` (adds a block of the default kind below, `Alt`-click above, and opens the slash menu) and the ⋮⋮ grip. Drop near a block's top or bottom to reorder, in its middle to nest, or at a nested block's left gutter to outdent. Focus a handle and use `Alt+↑/↓` to reorder or `Alt+→/←` to nest or outdent. Use `blockHandles={false}` to omit the handles. Use `blockHandles={{ draggable: false, onActivate: ({ block, anchor }) => openMenu(block, anchor) }}` to keep the handle and its keyboard actions while disabling pointer drag. The typed callback receives the live block and handle element. Without `onActivate`, a grip click dispatches a DOM `CustomEvent('edytor-block-activate', { detail: { block, anchor } })` on the editor node, which `blockMenuPlugin` answers. `blockDnd={false}` remains a deprecated alias for hiding the handles; `blockHandles` takes precedence when both are set. Handle configuration is read when the editor mounts.
+
+#### Your own markup for menus and handles
+
+The UI plugins take snippets and keep their behavior (opening, keys, placement, commands):
+
+- `createSlashMenuPlugin({ item?, menu? })`: `item` (`Snippet<[SlashMenuItem]>`, `{ command, selected, icon, run, select }`) replaces each row; `menu` (`Snippet<[SlashMenuController]>`: `commands`, `selectedIndex`, `query`, `run(command)`, `close()`) replaces the menu.
+- `createToolbarPlugin({ toolbar })`: `Snippet<[ToolbarController]>` (`marks`, `toggleMark`, `kinds`, `currentKind`, `turnInto`, `setColor`, `linkUrl`, `setLinkUrl`, `applyLink`, `removeLink`, `panel`, `togglePanel`), shown while `isVisible`; mark the bar `data-edytor-toolbar-bar` and `preventDefault` on mousedown.
+- `createBlockMenuPlugin({ linkTo?, menu })`: `Snippet<[BlockMenuController]>` (`block`, `actions`, `kinds`, `turnInto`, `duplicate`, `move`, `remove`, `copyLink`, `close`, `query`, `selectedIndex`, `flyout`), shown while `isOpen`; mark the panel `data-edytor-block-menu`. A custom menu handles its own keys.
+- `blockHandles={{ handle }}` or `createBlockHandlesPlugin({ handle })`: `Snippet<[BlockHandleSnippetPayload]>`, `{ block, grip, add, readonly, draggable }`. `use:grip` makes an element the drag grip, menu button and `Alt+arrow` target; `add(above?)` is the `+`.
+
+Snippets declared at the top level of a component can be passed from its `<script>`:
+
+```svelte
+<script lang="ts">
+	import {
+		Edytor,
+		createSlashMenuPlugin,
+		type SlashMenuItem,
+		type BlockHandleSnippetPayload
+	} from 'edytor';
+	const plugins = [createSlashMenuPlugin({ item })];
+</script>
+
+{#snippet item({ command, selected, run, select }: SlashMenuItem)}
+	<button class:selected onmousedown={(e) => e.preventDefault()} onmousemove={select} onclick={run}>
+		{command.label}
+	</button>
+{/snippet}
+
+{#snippet handle({ block, grip, add }: BlockHandleSnippetPayload)}
+	<button onclick={() => add()}>+</button>
+	<button use:grip aria-label={`Move ${block.type}`}>⠿</button>
+{/snippet}
+
+<Edytor {plugins} blockHandles={{ handle }} />
+```
 
 Relative movement is also available without the handle UI through the editor instance:
 
@@ -376,7 +416,6 @@ export default {
 
 ```svelte
 <Edytor
-	plugins={[richTextPlugin]}
 	server="wss://example.com/rooms"
 	room={documentId}
 	params={{ token }}
@@ -494,7 +533,8 @@ Blocks are the fundamental building blocks of the editor. They can be paragraphs
 | `element`           | `string` / `object` / `Function` | The block element the core renders (`'li'`, `{tag, attributes}`, or a function of `data`; default `div`); the snippet renders inner markup only                                                                                                                                                                | `element: 'blockquote'`                                            |
 | `viewState`         | `string[]`                       | Attributes the browser owns on the block element (never inverted)                                                                                                                                                                                                                                              | `['open']` on a native toggle                                      |
 | `rendersContent`    | `boolean`                        | `false` when the kind renders no content slot (a list container); such a block has no caret stop                                                                                                                                                                                                               | `ordered-list`                                                     |
-| `defaultChild`      | `string`                         | The kind a new child of this block takes (Enter at a list item's end, a merged-out island)                                                                                                                                                                                                                     | `defaultChild: 'list-item'`                                        |
+| `defaultChild`      | `string`                         | The kind a new child of this block takes (Enter inside a child, a split, a merged-out island)                                                                                                                                                                                                                  | `defaultChild: 'list-item'`                                        |
+| `continues`         | `boolean`                        | A list-like kind: Enter at the start or end of a non-empty block opens another of this kind (first preset's data); Enter in an empty one (no children) outdents it, or turns it into the parent's default child                                                                                                | Bulleted, numbered, to-do and toggle items                         |
 | `void`              | `boolean`                        | If true, block is not editable but can have editable captions                                                                                                                                                                                                                                                  | Image blocks with editable captions                                |
 | `island`            | `boolean`                        | If true, block is editable but structurally isolated                                                                                                                                                                                                                                                           | Code blocks that should be merged with other blocks                |
 | `presets`           | `Array`                          | Ways to create the kind: `{label, icon?, keywords?, data?, markdown?, group?}` each (`group` is the slash menu section, default `Basic blocks`); the slash menu, markdown shortcuts and block menus (`edytor.kinds`) are generated from them (command id `block.<type>`, numbered from 1 with several presets) | `{ label: 'Heading 2', data: { level: 'h2' }, markdown: ['## '] }` |
@@ -604,7 +644,7 @@ Operations are dispatched as commands (one dispatcher per editor):
 - `onBeforeOperation` runs before any write, on the command itself and on each step the command plans, under the step's documented operation name. A range deletion, for example, is shown as `deleteContentWithinSelection`, then as the `deleteContentAtRange`, `removeBlock` and `mergeBlockBackward` steps it plans; a paste or drop as `insertFlow`, then its `splitBlock`, `insertText` and `addChildBlocks` steps; a block-selection deletion as `deleteBlocks`, then one `removeBlock` per selected block.
 - A `prevent()` on any of them refuses the whole command: nothing is written and no undo step is recorded. `prevent(() => …)` also runs the callback in its place. The callback is a command of its own: an operation it issues that another plugin refuses returns without writing (`edytor.dispatcher.last.status === 'refused'`), and the callback carries on.
 - A command that is one document plan carries its `effect` (blocks created, removed, merged, moved, retyped, and text ranges written), so a plugin can refuse a command by what it would do, e.g. `effect?.removes.includes(protectedId)`.
-- Structural editing commands are one plan each: Enter (`splitBlock`, `insertBlockAfter`, `insertBlockBefore`), Backspace/Delete merges (`mergeBlockBackward`, `mergeBlockForward`, with the children moves they plan), `nestBlock`, `unNestBlock`, `removeBlock`, `removeInlineBlock`, `deleteContentAtRange`, `setBlock` (a markdown or slash trigger removal leads the conversion in the same plan) and `insertDivider`. A command the document refuses is still shown (without steps), so a plugin can replace it.
+- Structural editing commands are one plan each: Enter (`splitBlock`, `insertBlockAfter`, `insertBlockBefore`; `unNestBlock` or `setBlock` in an empty continuing block), Backspace/Delete merges (`mergeBlockBackward`, `mergeBlockForward`, with the children moves they plan), `nestBlock`, `unNestBlock`, `removeBlock`, `removeInlineBlock`, `deleteContentAtRange`, `setBlock` (a markdown or slash trigger removal leads the conversion in the same plan) and `insertDivider`. A command the document refuses is still shown (without steps), so a plugin can replace it.
 - A payload returned for the command replaces it: the replacement is prepared again and shown to every plugin. Each plugin replaces a command at most once. A payload returned for a planned step is ignored (with a warning in development).
 - Operations an operation performs internally (normalization, nested structural calls) are part of it and are not shown separately. `onAfterOperation` runs once per command, after its transaction, with the original payload.
 - A readonly editor, or a document that turned read-only, refuses every mutating command. An error thrown by a hook surfaces; it is never reported as handled.
@@ -640,7 +680,7 @@ A mark whose markup a tag cannot express declares a `snippet` instead; the core 
 
 ### Using Plugins
 
-To use plugins, pass them to the Edytor component. The order of the plugins is important because the plugins are executed in the order they are passed. So if two plugins are trying to render the same block, the first plugin will win. If two pluggins defined the same hotkey and prevent it, the second plugin will not be executed.
+To use plugins, pass them to the Edytor component. The order of the plugins is important because the plugins are executed in the order they are passed. So if two plugins are trying to render the same block, the first plugin will win. If two pluggins defined the same hotkey and prevent it, the second plugin will not be executed. The default plugins take their places around your list: arrow move and image before it, rich text after it (see Basic Usage).
 
 ```svelte
 <script>
@@ -685,7 +725,7 @@ The next release is a rewrite of the editor's internals around one owner per fac
 - **Op results inside transactions.** `splitBlock`, `insertBlockAfter/Before`, `mergeBlock*`, `addInlineBlock` and `addChildBlock(s)` answer handles of what they created, also inside an outer `edytor.transact`. A vetoed `insertFlow` answers `[null, 0]`.
 - **Selection is a value.** `selection.value` (`none`, `text {anchor, focus, pending?}`, `atom {blockId, atomId, from}`, `blocks {ids}`), `selection.select(value, cause)` (the only writer), `projection`, `epoch`, `cause`, `textValue`, `stage(marks)`/`pending`. `selection.state` is a read-only wrapper view of the projection (assigning it fails; use `setAtRange`, `setAtTextOffset` or `select`): `startText`, `endText`, `yStart`, `yEnd` (offsets inside the text segments), `startBlock`, `endBlock`, `texts`, `blocks` (a block set's are the selected ids), `isCollapsed`, `isReversed`, `isBlockSpanning`, `isVoidEditableElement` and `edge` (new). K5: the projection facts moved to `selection.projection` — `content` (and its `length`), `marks` (was `state.currentMarks`), `isAtStartOfText`/`isAtEndOfText`/`isAtStartOfBlock`/`isAtEndOfBlock`, `isTextSpanning`, `islandRoot`/`voidRoot` (block ids; `isIsland`/`isVoid` are `!== null`); the caret anchors are the value's (`relativePosition`/`endPosition` → `selection.value.anchor`/`focus`); `contentParts`, `startNode` and `endNode` are gone. `yTextContent` is gone. The setter families merged: `setRangeStateAtTextOffsets` → `setAtRange` (same arguments); `setCollapsedStateAtTextOffset` → `setAtTextOffset` (the old name remains as a deprecated alias). Removed: `hasSelectedAll`, `focusBlocks`, `deadEndpointRecoveryPending`, `notifyTextMounted`, `Edytor.getTextNode`, `ignoreNextSelectionChange`, `Edytor.mirrorRevision`. `setAtTextOffset` takes a `Text` (not an id) and selects in the caller's turn; the projector displays after the flush. `onSelectionChange` fires only when the value changed (a remote edit that moves the projection does not emit).
 - **Pending marks** are `selection.pending` / `selection.stage(marks)` (`Text.markOnNextInsert` is gone); a move clears them, an insertion at the caret consumes them, and they hold valued marks (links, colors) as a full set.
-- **Default children (D-13).** The plugin `defaultBlock` hook, `Edytor.getDefaultBlock` and `Edytor.defaultType` are removed: a kind declares `defaultChild`; `edytor.defaultChild(parent)` answers. Enter at a list item's start or end and a merged-out island take the parent's default child.
+- **Default children (D-13).** The plugin `defaultBlock` hook, `Edytor.getDefaultBlock` and `Edytor.defaultType` are removed: a kind declares `defaultChild`; `edytor.defaultChild(parent)` answers. Enter at a block's start or end and a merged-out island take the parent's default child, except in a kind with `continues` (below).
 - **Deletion and paste** follow one rule each (`del.range.*`, `flow.*` in `docs/editor-delete-contract.md`): blocks after the range end inside a dying container, and a dying tail's children, survive; an emptied list container dies; a range from inside an island never merges out of it; multi-line plain paste and drop split the block per line; copied fragments keep their ids and paste always mints fresh ones.
 - **Moves.** `BlockMoveRequest` is `{blocks} & ({target, position} | {direction: 'up' | 'down' | 'in' | 'out'})`; `BlockMoveDirection` and the move types come from the package root (`block/blockMove.js` is deleted). A move is its own undo step. Arrow-move never nests; `Mod+↑` moves a selected group; the handle claims every `Alt+arrow`.
 - **Keymap.** `hotkeys.ts` is deleted: types move to `session/keymap` (`HotKey`, `HotKeyCombination`; `HotKeyModifier`, `Single/DoubleModifierCombination` removed); `HotKeys` → `Keymap` (`isHotkey` → `handle`, `run(chord)`, `offered`; no `init`). A `HotKey` payload's `event` is optional. Chords are canonical in any modifier order; `space` matches the space bar. A key binding runs once per occurrence.
@@ -709,6 +749,10 @@ The next release is a rewrite of the editor's internals around one owner per fac
 - **Suggestions.** `Block.suggestions` is plain JSON parts (`rawSuggestions` and the readonly Proxy wrappers are removed); `suggestText` stores `[atom, [text runs]]` groups.
 - **HTML import is core.** The HTML paste plugin (never exported) and its hand-written parser are gone; external HTML paste and drop are imported by the core through the browser's parser and the records (`parse` hooks on kind and mark records; see the clipboard contract). A plugin's `onPaste` still runs first. The code plugin highlights through TanStack Highlight, and the package declares `sideEffects` so it (and its CSS) ships only in apps that import `codePlugin`.
 - **Notion parity.** Markdown `> ` now makes a toggle and `" ` a quote; `+ `, `a. `, `i. ` and inline markdown are new. The to-do checkbox writes `data.checked` (drop any click plugin of your own). The callout's default icon is `💡` (was `!`). The paragraph and code block elements no longer carry Tailwind classes. `KindPreset.group` and `EditorCommand.hint` are new; `richTextOperations(edytor).removeMarkAtRange(mark)` is new.
+- **Default plugins.** `<Edytor>` adds `arrowMovePlugin`, `imagePlugin` and `richTextPlugin` after `plugins` unless the list has them; `defaultPlugins={false}` opts out. Passing `plugins={[richTextPlugin]}` still works. The defaults placed before your plugins win over them (first wins): an app with its own `image` kind, or its own `Mod+Shift+↑/↓` binding in a plugin, sets `defaultPlugins={false}` or lists `arrowMovePlugin`/an image plugin after its own.
+- **Lists continue on Enter.** `BlockDefinition.continues` is new and set on `bulleted-list-item`, `numbered-list-item`, `todo-item` and `toggle`: Enter at the start or end of one opens another of the same kind (was a paragraph); Enter in an empty one outdents it or turns it into a paragraph. The command runs `unNestBlock` or `setBlock` in that case.
+- **Image plugin.** `imagePlugin`, `createImagePlugin({ upload })` and `ImagePluginOptions` are exported (the demo plugin was not). The `image` kind stores `data.src`, has an "Image" preset in the `Media` group, and exports/imports `<figure><img><figcaption>`.
+- **UI snippets.** `createSlashMenuPlugin({ item, menu })`, `createToolbarPlugin({ toolbar })`, `createBlockMenuPlugin({ menu })` and `BlockHandlesOptions.handle` are new, with the types `SlashMenuOptions`, `SlashMenuItem`, `SlashMenuController`, `ToolbarOptions`, `ToolbarController`, `BlockMenuController`, `BlockMenuAction`, `BlockHandleSnippetPayload` and `BlockHandleController`. The toolbar and block menu now place the element marked `data-edytor-toolbar-bar` / `data-edytor-block-menu` (was their `data-testid`).
 - Other: the slash menu claims Enter only with a match; the code plugin's Shift+Enter runs `insertParagraph` as an intent and its auto-pair is a returned payload (after-hooks see the typed character).
 
 ### Rendering, placeholder and chrome

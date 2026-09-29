@@ -46,12 +46,12 @@ When two replicas meet, whether a tab and the server or two tabs, each tells the
 
 ```svelte
 <script lang="ts">
-  import { Edytor, richTextPlugin } from 'edytor';
+  import { Edytor } from 'edytor';
 
   const value = { children: [{ type: 'paragraph', content: [{ text: 'Hello' }] }] };
 </script>
 
-<Edytor {value} plugins={[richTextPlugin]} />
+<Edytor {value} />
 ```
 
 ### IndexedDB
@@ -59,7 +59,7 @@ When two replicas meet, whether a tab and the server or two tabs, each tells the
 `room` alone names a local copy:
 
 ```svelte
-<Edytor room="notes/today" plugins={[richTextPlugin]} />
+<Edytor room="notes/today" />
 ```
 
 ### WebSocket room
@@ -72,7 +72,6 @@ Add a `server`, and the view joins the room `<server>/<room>`:
   room="doc-42"
   params={{ token }}
   actor={{ id: userId, name: 'Ada' }}
-  plugins={[richTextPlugin]}
 />
 ```
 

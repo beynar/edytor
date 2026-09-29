@@ -8,13 +8,13 @@ icon: square-slash
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin, slashMenuPlugin } from 'edytor';
+	import { Edytor, slashMenuPlugin } from 'edytor';
 </script>
 
-<Edytor plugins={[slashMenuPlugin, richTextPlugin]} />
+<Edytor plugins={[slashMenuPlugin]} />
 ```
 
-It takes no options.
+`slashMenuPlugin` is the menu with its built-in markup. `createSlashMenuPlugin(options)` builds one that renders your markup (see [Custom markup](#custom-markup)).
 
 ## What it lists
 
@@ -25,7 +25,7 @@ The menu lists `edytor.commands`:
 
 A command whose `isEnabled(edytor)` answers `false` is hidden. Block kind commands are enabled when the caret's block is convertible, which excludes void blocks, island blocks and blocks inside them.
 
-Commands are grouped into sections by their `group`, as in Notion: `Basic blocks` first, then the other groups in the order they first appear. Kind commands take their preset's `group` (default `Basic blocks`; the code block is under `Media`), and a command without a `group` is listed without a heading. Each row shows the command's `hint` on the right; kind commands use their first markdown prefix, such as `##` for Heading 2.
+Commands are grouped into sections by their `group`, as in Notion: `Basic blocks` first, then the other groups in the order they first appear. Kind commands take their preset's `group` (default `Basic blocks`; the image and code blocks are under `Media`), and a command without a `group` is listed without a heading. Each row shows the command's `hint` on the right; kind commands use their first markdown prefix, such as `##` for Heading 2.
 
 The query matches, case-insensitively, anywhere in a command's id, label or keywords. `/h2`, `/heading` and `/subtitle` all find "Heading 2".
 
@@ -57,4 +57,57 @@ The menu mounts in the editor's overlay, in a `position: fixed` host with the at
 
 The menu's markup and styles are built in, after Notion's: sections with a heading, 28px rows with a line icon for the built-in kinds (a command's text `icon` otherwise), the `hint` on the right, "No results" when nothing matches, and a "Close menu · esc" footer that closes it on click. It fades and scales in over 140ms, and the highlighted row scrolls into view. The typed query is not shown: it stays in a visually hidden element with `data-testid="slash-menu-query"` for screen readers and tests. Each item carries `data-command-id`, `data-selected` and `data-hint`.
 
-To change the look beyond overriding those styles, write your own menu plugin: the controller logic uses only public editor APIs (`edytor.commands`, `edytor.runCommand`, `onAfterOperation`, `onSelectionChange` and the overlay).
+## Custom markup
+
+`createSlashMenuPlugin` takes snippets that replace the menu's markup. The plugin keeps everything else: opening on `/`, the query, the filtering, <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd>, and the placement.
+
+<TypeTable
+  type={{
+    item: {
+      type: "Snippet<[SlashMenuItem]>",
+      description: "Replaces each row of the built-in menu. The sections, headings, empty state and footer stay.",
+    },
+    menu: {
+      type: "Snippet<[SlashMenuController]>",
+      description: "Replaces the whole menu. Rendered while controller.isOpen. Wins over item.",
+    },
+  }}
+/>
+
+An `item` snippet receives a `SlashMenuItem`:
+
+<TypeTable
+  type={{
+    command: { type: "EditorCommand", description: "The command: id, label, icon, hint, group, keywords." },
+    selected: { type: "boolean", description: "It is the keyboard's row." },
+    icon: { type: "string | undefined", description: "The built-in line icon as a CSS mask-image value, for the commands that have one." },
+    run: { type: "() => void", description: "Run the command; the /query text is removed in the same step." },
+    select: { type: "() => void", description: "Make it the keyboard's row, for hover." },
+  }}
+/>
+
+A `menu` snippet receives the `SlashMenuController`. Read `controller.commands` (the filtered, enabled commands in menu order), `controller.selectedIndex` and `controller.query`; call `controller.run(command)` to run one and `controller.close()` to close the menu and keep the typed text.
+
+```svelte title="Editor.svelte"
+<script lang="ts">
+	import { Edytor, createSlashMenuPlugin, type SlashMenuItem } from 'edytor';
+
+	const plugins = [createSlashMenuPlugin({ item })];
+</script>
+
+{#snippet item({ command, selected, run, select }: SlashMenuItem)}
+	<button
+		class="row"
+		class:selected
+		onmousedown={(event) => event.preventDefault()}
+		onmousemove={select}
+		onclick={run}
+	>
+		{command.icon} {command.label}
+	</button>
+{/snippet}
+
+<Edytor {plugins} />
+```
+
+Keep `preventDefault` on `mousedown`, so a click does not move the caret out of the query. Your markup renders in the same fixed host, so the built-in styles no longer apply. See [Menus and handles](/docs/customization/menus) for the other menus.

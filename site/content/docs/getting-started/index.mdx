@@ -56,17 +56,17 @@ Use the file name `pnpm pack` printed.
 
 ## Verify the install
 
-Render an editor with the rich text plugin. It needs no other setup:
+Render an editor. It needs no setup:
 
 ```svelte title="src/routes/+page.svelte"
 <script lang="ts">
-	import { Edytor, richTextPlugin } from 'edytor';
+	import { Edytor } from 'edytor';
 </script>
 
-<Edytor plugins={[richTextPlugin]} />
+<Edytor />
 ```
 
-You should see one empty paragraph with a block handle beside it. An empty document always starts with one block of the default type (`paragraph`).
+You should see one empty paragraph with a block handle beside it. An empty document always starts with one block of the default type (`paragraph`). `<Edytor>` includes the rich text, image and arrow move plugins by default, so this is already a working rich text editor.
 
 ## Next steps
 

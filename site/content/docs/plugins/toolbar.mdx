@@ -8,13 +8,13 @@ icon: bold
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin, toolbarPlugin } from 'edytor';
+	import { Edytor, toolbarPlugin } from 'edytor';
 </script>
 
-<Edytor plugins={[toolbarPlugin, richTextPlugin]} />
+<Edytor plugins={[toolbarPlugin]} />
 ```
 
-It takes no options. It formats through [`richTextOperations`](/docs/plugins/rich-text#formatting-from-code), so use it with the rich text plugin, or with your own plugin that defines the `link`, `color` and `highlight` marks if you want the link and color panels to work.
+`createToolbarPlugin({ toolbar })` builds one that renders your markup (see [Custom markup](#custom-markup)). It formats through [`richTextOperations`](/docs/plugins/rich-text#formatting-from-code), so it relies on the rich text plugin (on by default), or on your own plugin that defines the `link`, `color` and `highlight` marks if you want the link and color panels to work.
 
 ## What it shows
 
@@ -69,4 +69,58 @@ A URL typed in the link panel goes through the same sanitization as every link: 
 
 The toolbar mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-toolbar-host` and `z-index: 60`. It is centered above the selection, or placed below it when there is no room above, and kept inside the viewport.
 
-Its markup and styles are built in, after Notion's. The bar has `data-testid="selection-toolbar"`, the Link button `toolbar-link`, the link panel's buttons `toolbar-link-apply` and `toolbar-link-remove`, and each mark button the class `mark-<name>` and a `data-testid` of `toolbar-<name>`. For a different design, write your own toolbar plugin with `onSelectionChange`, `onAfterOperation`, the overlay (`edytor.overlay`) and `richTextOperations`; that is all this plugin uses.
+Its markup and styles are built in, after Notion's. The bar has `data-edytor-toolbar-bar` and `data-testid="selection-toolbar"`, the Link button `toolbar-link`, the link panel's buttons `toolbar-link-apply` and `toolbar-link-remove`, and each mark button the class `mark-<name>` and a `data-testid` of `toolbar-<name>`.
+
+## Custom markup
+
+`createToolbarPlugin` takes a `toolbar` snippet that replaces the whole bar. The plugin keeps deciding when it shows (the rules above), follows the selection and places it.
+
+<TypeTable
+  type={{
+    toolbar: {
+      type: "Snippet<[ToolbarController]>",
+      description: "Replaces the toolbar. Rendered while controller.isVisible, centered above the selection.",
+    },
+  }}
+/>
+
+The snippet receives the `ToolbarController`. Every action keeps and restores the selection:
+
+<TypeTable
+  type={{
+    marks: { type: "{ mark, label, icon }[]", description: "The marks that declare a toolbar button, in registration order." },
+    "toggleMark(mark)": { type: "(mark: string) => void", description: "Toggle a mark over the selection." },
+    kinds: { type: "KindRow[]", description: "The kinds the block may turn into while keeping its content." },
+    currentKind: { type: "KindRow | undefined", description: "The row naming the selection's block." },
+    "turnInto(kind)": { type: "(kind: KindRow) => void", description: "Convert the block at the start of the selection." },
+    "setColor(mark, value)": { type: "('color' | 'highlight', value: string | null) => void", description: "Set the text or background color; null removes it." },
+    linkUrl: { type: "string", description: "The selection's current link, or the URL being typed." },
+    "setLinkUrl(value)": { type: "(value: string) => void", description: "Update linkUrl, for a link field." },
+    "applyLink()": { type: "() => void", description: "Link the selection to linkUrl; an empty URL removes the link." },
+    "removeLink()": { type: "() => void", description: "Remove the link from the selection." },
+    panel: { type: "'turn' | 'link' | 'color' | null", description: "The open panel, for your own panels." },
+    "togglePanel(panel)": { type: "(panel: 'turn' | 'link' | 'color') => void", description: "Open a panel, or close it when it is open." },
+  }}
+/>
+
+```svelte title="Editor.svelte"
+<script lang="ts">
+	import { Edytor, createToolbarPlugin, type ToolbarController } from 'edytor';
+
+	const plugins = [createToolbarPlugin({ toolbar })];
+	const keep = (event: MouseEvent) => event.preventDefault();
+</script>
+
+{#snippet toolbar(controller: ToolbarController)}
+	<div class="bar" data-edytor-toolbar-bar>
+		{#each controller.marks as { mark, label, icon } (mark)}
+			<button title={label} onmousedown={keep} onclick={() => controller.toggleMark(mark)}>{icon}</button>
+		{/each}
+		<button onmousedown={keep} onclick={() => controller.setColor('highlight', '#fbf3db')}>Highlight</button>
+	</div>
+{/snippet}
+
+<Edytor {plugins} />
+```
+
+Call `preventDefault` on `mousedown` in every button, or the click moves the selection before the action runs. The plugin places the host by the element marked `data-edytor-toolbar-bar` (else your snippet's first element), so a panel that opens below the bar does not push the bar up. `TOOLBAR_COLORS` holds Notion's palette for your own color panel. See [Menus and handles](/docs/customization/menus) for the other menus.

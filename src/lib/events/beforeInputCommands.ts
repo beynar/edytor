@@ -241,6 +241,25 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	}
 	// The new sibling's actual parent decides its type (G5, O9).
 	const defaultBlock = edytor.defaultChild(startText.parent.parent);
+	const current = startText.parent;
+	const { continues, presets } = current.definition;
+	/** A list-like kind continues itself (a fresh to-do is unchecked); others start the default. */
+	const sibling = continues
+		? { type: current.type, data: { ...(presets?.[0]?.data ?? {}) } }
+		: { type: defaultBlock };
+	const caretAt = (text: Text | undefined, offset: number) => {
+		if (!text) return;
+		edytor.attempts.caret(text, offset);
+		edytor.selection.setAtTextOffset(text, offset);
+	};
+
+	// Enter in an empty list-like block ends the run (Notion): out one level
+	// when nested, else the parent's default kind.
+	if (continues && isAtEndOfBlock && isAtStartOfBlock && !current.hasChildren) {
+		if (!current.parent?.isRoot && current.unNestBlock()) return caretAt(current.firstText, 0);
+		current.setBlock({ value: { type: defaultBlock, data: {} } });
+		return caretAt(current.firstText, 0);
+	}
 
 	if (isAtEndOfBlock) {
 		const currentBlock = startText.parent;
@@ -256,11 +275,7 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 			return;
 		}
 
-		const newBlock = currentBlock.insertBlockAfter({
-			block: {
-				type: defaultBlock
-			}
-		});
+		const newBlock = currentBlock.insertBlockAfter({ block: sibling });
 		const text = newBlock?.firstText;
 		if (text) {
 			edytor.attempts.caret(text, text.length);
@@ -270,11 +285,7 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	}
 
 	if (isAtStartOfBlock) {
-		startText.parent.insertBlockBefore({
-			block: {
-				type: defaultBlock
-			}
-		});
+		startText.parent.insertBlockBefore({ block: sibling });
 		edytor.attempts.caret(startText, 0);
 		edytor.selection.setAtTextOffset(startText, 0);
 		return;

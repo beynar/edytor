@@ -1075,6 +1075,7 @@
 		<Edytor
 			bind:edytor
 			{plugins}
+			defaultPlugins={false}
 			blockDnd={data.handles}
 			document={injectedDocument}
 			{value}
@@ -1095,6 +1096,7 @@
 			<Edytor
 				bind:edytor={secondaryEdytor}
 				{plugins}
+				defaultPlugins={false}
 				blockDnd={data.handles}
 				value={secondaryValue}
 				{translate}

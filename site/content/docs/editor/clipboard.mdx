@@ -72,7 +72,7 @@ External HTML, from a web page, Google Docs or a word processor, is parsed by th
 - a kind's `parse(element)` hook returns data for it (checked first), or
 - its tag is the one a kind exports or renders for one of its presets.
 
-With the rich text plugin, that maps `h1`–`h3` to headings, `h4`–`h6` to `h3` headings, `blockquote` to quotes, `li` to bulleted items, `li` inside `ol` to numbered items, `hr` to dividers, `details` to toggles and `pre` to code blocks (one line per text line, with the code plugin).
+With the rich text plugin, that maps `h1`–`h3` to headings, `h4`–`h6` to `h3` headings, `blockquote` to quotes, `li` to bulleted items, `li` inside `ol` to numbered items, `hr` to dividers, `details` to toggles and `pre` to code blocks (one line per text line, with the code plugin). The image plugin maps a `figure` holding an `img` with a safe `src` to an image block.
 
 **Marks.** Text takes a mark when:
 
@@ -121,11 +121,10 @@ export const imagePastePlugin: Plugin = (edytor) => ({
 		const file = e.clipboardData?.files[0];
 		if (!file?.type.startsWith('image/')) return;
 		prevent(async () => {
-			const url = await upload(file); // your upload
-			// Insert a link to the uploaded file at the caret.
-			edytor.selection.state.startText?.insertText({
-				value: file.name,
-				marks: { link: { href: url } }
+			const src = await upload(file); // your upload
+			// Add an image block (the bundled image plugin) after the caret's block.
+			edytor.selection.state.startBlock?.insertBlockAfter({
+				block: { type: 'image', data: { src } }
 			});
 		});
 	}

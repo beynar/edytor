@@ -81,13 +81,12 @@ Point the view at `/rooms`, use the document id as the room, and send the user a
 
 ```svelte src/lib/Editor.svelte
 <script lang="ts">
-  import { Edytor, richTextPlugin } from 'edytor';
+  import { Edytor } from 'edytor';
 
   let { userId, documentId }: { userId: string; documentId: string } = $props();
 </script>
 
 <Edytor
-  plugins={[richTextPlugin]}
   server="ws://localhost:8787/rooms"
   room={documentId}
   params={{ user: userId }}

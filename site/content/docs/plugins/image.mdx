@@ -1,0 +1,92 @@
+---
+title: Image
+description: The image plugin adds Notion's image block, a void figure with an editable caption, embedded from a link or an upload you provide. It is on by default.
+icon: image
+---
+
+`imagePlugin` adds Notion's image block: an "Add an image" panel until the block has a source, then the image with an editable caption. `<Edytor>` includes it by default, so the slash menu lists "Image" under `Media` without any setup.
+
+```svelte
+<script lang="ts">
+	import { Edytor, createImagePlugin } from 'edytor';
+
+	// Optional: add an Upload button next to the link field.
+	const image = createImagePlugin({
+		upload: async (file) => {
+			const body = new FormData();
+			body.append('file', file);
+			const response = await fetch('/api/uploads', { method: 'POST', body });
+			return (await response.json()).url;
+		}
+	});
+</script>
+
+<Edytor plugins={[image]} />
+```
+
+An image plugin you list (`imagePlugin` or any `createImagePlugin(...)`) replaces the default one. `imagePlugin` is the plugin without options: links only.
+
+## Options
+
+`createImagePlugin(options)` takes an `ImagePluginOptions`:
+
+<TypeTable
+  type={{
+    upload: {
+      type: "(file: File) => Promise<string>",
+      description: "Upload a picked file and answer its URL. Adds an Upload button to the empty block. Without it, images are embedded from links only.",
+    },
+  }}
+/>
+
+## The kind
+
+| Kind    | Element  | Data              | Preset                                                        |
+| ------- | -------- | ----------------- | ------------------------------------------------------------- |
+| `image` | `figure` | `{ src: string }` | Image (🖼, group `Media`, keywords `picture`, `photo`, `img`) |
+
+The block is void: it is not part of the text flow, takes no children and is never merged. Its only text is the caption, which stays editable. The command id is `block.image`. The kind declares no `empty` shape, so turning a paragraph into an image keeps the paragraph's text as the caption.
+
+A source is accepted only when it is an `http:` or `https:` URL, a `blob:` URL or an inline `data:image/…` URL. Any other value, in the document or typed in the panel, is treated as no source. The check is exported as `safeImageSrc(value)` (the accepted source, or `null`), and `isImagePlugin(plugin)` tells whether a plugin is an image plugin. A failed `upload` shows the panel's error instead of an image.
+
+## Empty block
+
+Without a source, the block shows an "Add an image" button. Clicking it opens a panel with:
+
+- a link field ("Paste the image link…"); <kbd>Enter</kbd> or the "Embed image" button sets `data.src`;
+- an "Upload" button, only when `upload` is given. It opens a file picker for images, calls `upload(file)` and embeds the URL it answers;
+- a short error line when the link is not an accepted source.
+
+The panel writes nothing in a readonly editor. The write is a direct `block.setData`, one undo step.
+
+## Image and caption
+
+With a source, the block renders the image (`alt=""`, not draggable), then the caption in a `<figcaption>`. With [`richTextPlaceholder`](/docs/customization/placeholder#notion-placeholders), an empty caption shows "Write a caption…" while focused.
+
+To set the source from code:
+
+```ts
+block.setData({ ...block.data, src: 'https://example.com/photo.jpg' });
+```
+
+The plugin does not handle pasted or dropped files. To turn a pasted image into an image block, upload it in an `onPaste` hook (see [Clipboard](/docs/editor/clipboard#plugin-hooks)).
+
+## Clipboard
+
+- Copying exports `<figure><img src="…" alt=""><figcaption>caption</figcaption></figure>` (no `img` without a source).
+- Pasting HTML imports a `figure` that contains an `img` with an accepted `src` as an image block with that source.
+
+## Styling
+
+The [Notion theme](/docs/customization/styling#notion-theme) styles the block. Without it, target:
+
+| Selector                     | Matches                                |
+| ---------------------------- | -------------------------------------- |
+| `[data-edytor-type='image']` | The `figure`                           |
+| `[data-edytor-image]`        | The wrapper around the `img`           |
+| `[data-edytor-image-empty]`  | The empty state                        |
+| `[data-edytor-image-add]`    | The "Add an image" button              |
+| `[data-edytor-image-form]`   | The link panel (field, buttons, error) |
+| `[data-edytor-image-upload]` | The Upload button (a `label`)          |
+
+To change the markup, override the snippet with an `imageBlock` snippet prop (see [the component page](/docs/editor/edytor-component#snippets)). To replace the kind itself, define an `image` kind in your own plugin: the default image plugin comes after yours, and definitions are first-wins.

@@ -25,9 +25,10 @@ import {
 	Edytor, // the component
 	useEdytor, // the editor instance from inside the component tree
 	Block, Text, InlineBlock, // handle classes
-	richTextPlugin, codePlugin, markdownShortcutsPlugin, slashMenuPlugin,
-	toolbarPlugin, arrowMovePlugin, blockHandlesPlugin, createBlockHandlesPlugin,
-	blockMenuPlugin, createBlockMenuPlugin,
+	richTextPlugin, imagePlugin, arrowMovePlugin, // the default plugins
+	codePlugin, markdownShortcutsPlugin, createImagePlugin,
+	slashMenuPlugin, createSlashMenuPlugin, toolbarPlugin, createToolbarPlugin,
+	blockMenuPlugin, createBlockMenuPlugin, blockHandlesPlugin, createBlockHandlesPlugin,
 	richTextOperations, richTextPlaceholder, convertToKind,
 	createDocument, loadDocument, attachDocument, // the document API
 	createIndexeddbSync, createWebsocketSync, clearDocument, // sync factories

@@ -91,10 +91,10 @@ This plugin replaces a typed `@` with a mention atom. It takes a `pick` function
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin } from 'edytor';
+	import { Edytor } from 'edytor';
 	import { createMentionPlugin } from './MentionPlugin.svelte';
 
-	const plugins = [createMentionPlugin(() => prompt('Mention who?')), richTextPlugin];
+	const plugins = [createMentionPlugin(() => prompt('Mention who?'))];
 </script>
 
 <Edytor {plugins} />

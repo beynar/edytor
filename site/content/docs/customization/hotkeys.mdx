@@ -14,7 +14,7 @@ In the tables, <kbd>Mod</kbd> is <kbd>Cmd</kbd> on macOS and iOS and <kbd>Ctrl</
 
 | Keys                                          | Action                                                                                   | Where                         |
 | --------------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------- |
-| <kbd>Enter</kbd>                              | Split the block, or add a block before or after it. A new sibling takes its parent's default child kind | Text                |
+| <kbd>Enter</kbd>                              | Split the block, or add a block before or after it. A new sibling takes its parent's default child kind; a list item, to-do or toggle continues its own kind, and an empty one ends the list ([continuing kinds](/docs/customization/blocks#continuing-kinds)) | Text                |
 | <kbd>Shift</kbd> + <kbd>Enter</kbd>             | Insert a soft line break                                                                 | Text                          |
 | <kbd>Mod</kbd> + <kbd>Enter</kbd>               | Start a new block below, splitting at the end of the caret's text                        | Text                          |
 | <kbd>Tab</kbd>                                | Nest the block into its previous sibling                                                 | Text, or one selected block   |
@@ -67,6 +67,8 @@ On macOS the Emacs-style <kbd>Ctrl</kbd> keys work as in native text fields:
 
 ### Plugin keys
 
+Rich text, arrow move and block handles are on by default in `<Edytor>`; the others apply when you list their plugin.
+
 | Keys                                               | Action                                           | Plugin, where                            |
 | -------------------------------------------------- | ------------------------------------------------ | ---------------------------------------- |
 | <kbd>Mod</kbd> + <kbd>B</kbd>, <kbd>I</kbd>, <kbd>U</kbd>, <kbd>E</kbd> | Bold, italic, underline, inline code | [Rich text](/docs/plugins/rich-text)     |
@@ -86,7 +88,7 @@ On macOS the Emacs-style <kbd>Ctrl</kbd> keys work as in native text fields:
 
 The <kbd>Mod</kbd> + <kbd>Alt</kbd> digits follow Notion's numbering and run the kind's `block.*` command, so <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>8</kbd> needs the code plugin. The block menu's own keys (arrows, <kbd>Enter</kbd>, <kbd>Escape</kbd>) belong to its search field, see [Block menu](/docs/plugins/block-menu#keys).
 
-A plugin key only claims the key in the situation listed. Otherwise the key falls through to the next binding, for example <kbd>Mod</kbd> + <kbd>↓</kbd> to the document end when no block is selected, or <kbd>Mod</kbd> + <kbd>Enter</kbd> to the built-in new block outside a to-do. With the arrow move plugin, <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves a movable block instead of extending the selection to the document edge.
+A plugin key only claims the key in the situation listed. Otherwise the key falls through to the next binding, for example <kbd>Mod</kbd> + <kbd>↓</kbd> to the document end when no block is selected, or <kbd>Mod</kbd> + <kbd>Enter</kbd> to the built-in new block outside a to-do. With the arrow move plugin (a default), <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves a movable block instead of extending the selection to the document edge.
 
 ## Adding hotkeys
 
@@ -142,13 +144,12 @@ To override a default, bind the same chord in the `hotKeys` prop or in a plugin,
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin } from 'edytor';
+	import { Edytor } from 'edytor';
 
 	let saved = $state(0);
 </script>
 
 <Edytor
-	plugins={[richTextPlugin]}
 	hotKeys={{
 		// Mod+Enter saves instead of starting a new block.
 		'mod+enter': ({ prevent }) => prevent(() => saved++),

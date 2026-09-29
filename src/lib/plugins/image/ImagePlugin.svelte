@@ -1,31 +1,82 @@
 <script module lang="ts">
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
-	// File paste/drop payloads (`clipboardData.files` / `dataTransfer.files`)
-	// already route through the plugin `onPaste` hook — claiming is done via
-	// `prevent`. The image upload/insert consumer is intentionally not wired
-	// yet: add `onPaste: ({ prevent, e }) => { const files = e.clipboardData?.files; ... }`
-	// here (or in a dedicated upload plugin) when it is.
-	export const imagePlugin: Plugin = (edytor) => {
-		return {
+	import type { Block } from '$lib/block/block.svelte.js';
+	import ImageEmpty from './ImageEmpty.svelte';
+	import { safeImageSrc } from './image.js';
+
+	export { safeImageSrc };
+
+	export type ImagePluginOptions = {
+		/** Upload a picked file and answer its URL; without it only links are embedded. */
+		upload?: (file: File) => Promise<string>;
+	};
+
+	const escape = (value: string) => value.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+
+	const options = new WeakMap<Block, ImagePluginOptions>();
+	const imagePlugins = new WeakSet<Plugin>();
+
+	/** Recognize any image plugin instance (the component's default yields to yours). */
+	export const isImagePlugin = (plugin: Plugin) => imagePlugins.has(plugin);
+
+	/**
+	 * Notion's image block: an "Add an image" panel until it has a source (a
+	 * pasted link, or an upload when `upload` is given), then the image with
+	 * an editable caption. Void: its only text is the caption.
+	 */
+	export const createImagePlugin = (pluginOptions: ImagePluginOptions = {}): Plugin => {
+		const plugin: Plugin = () => ({
+			onBlockAttached: ({ block }) => {
+				options.set(block, pluginOptions);
+				return () => options.delete(block);
+			},
 			blocks: {
 				image: {
 					void: true,
 					snippet: image,
-					element: { tag: 'figure', attributes: { class: 'flex flex-col gap-1' } },
-					html: (_, caption) => `<figure><figcaption>${caption}</figcaption></figure>`
+					element: 'figure',
+					presets: [
+						{
+							label: 'Image',
+							icon: '🖼',
+							keywords: ['picture', 'photo', 'img'],
+							group: 'Media'
+						}
+					],
+					html: (block, caption) => {
+						const src = safeImageSrc(block.data?.src);
+						return `<figure>${src ? `<img src="${escape(src)}" alt="">` : ''}<figcaption>${caption}</figcaption></figure>`;
+					},
+					parse: (el) => {
+						const src =
+							el.localName === 'figure' &&
+							safeImageSrc(el.querySelector('img')?.getAttribute('src'));
+						return src ? { src } : undefined;
+					}
 				}
 			}
-		};
+		});
+
+		imagePlugins.add(plugin);
+		return plugin;
 	};
+
+	/** The image block, links only. */
+	export const imagePlugin = createImagePlugin();
 </script>
 
-{#snippet image({ content }: BlockSnippetPayload)}
-	<button type="button">click me</button>
-	<input type="text" />
-	<img src={'https://placehold.co/600x400'} alt="" />
+{#snippet image({ block, content }: BlockSnippetPayload<{ src?: string }>)}
+	{@const src = safeImageSrc(block.data.src)}
+	{#if src}
+		<div use:block.void data-edytor-image>
+			<img {src} alt="" draggable="false" />
+		</div>
+	{:else}
+		<div use:block.void data-edytor-image-empty>
+			<ImageEmpty block={block.handle} upload={options.get(block.handle)?.upload} />
+		</div>
+	{/if}
 	<!-- The core renders the kind's <figure> around this markup. -->
 	<!-- svelte-ignore a11y_figcaption_parent -->
-	<figcaption class="text-sm block">
-		{@render content()}
-	</figcaption>
+	<figcaption>{@render content()}</figcaption>
 {/snippet}

@@ -8,7 +8,8 @@ import {
 	readJsonByTestId,
 	setSelectionByTextIndex,
 	trackPageIssues,
-	waitForEditorReady
+	waitForEditorReady,
+	imageLinkField
 } from './helpers';
 
 const stripIds = <T>(value: T): T => {
@@ -347,8 +348,8 @@ test.describe('browser feature-route parity', () => {
 
 		await page.goto('/test/dom?scenario=void');
 		await waitForEditorReady(page);
-		await page.locator('figure input').click();
-		await page.locator('figure input').fill('caption updated');
+		await (await imageLinkField(page)).click();
+		await (await imageLinkField(page)).fill('caption updated');
 		await setSelectionByTextIndex(page, 0, 7);
 		await page.keyboard.type('!');
 
@@ -374,7 +375,7 @@ test.describe('browser feature-route parity', () => {
 		await waitForEditorReady(page);
 		await setSelectionByTextIndex(page, 0, 7);
 
-		const control = page.locator('figure input');
+		const control = await imageLinkField(page);
 		await control.click();
 		await page.keyboard.type('abc');
 		await page.keyboard.press('Backspace');
@@ -410,7 +411,7 @@ test.describe('browser feature-route parity', () => {
 		await waitForEditorReady(page);
 		await setSelectionByTextIndex(page, 0, 7);
 
-		const control = page.locator('figure input');
+		const control = await imageLinkField(page);
 		await control.click();
 		await page.evaluate(() => {
 			const control = document.querySelector<HTMLInputElement>('figure input');

@@ -260,8 +260,12 @@ export function insertBlockBefore(
 
 export function prepareSplit(this: Block, { index, text }: BlockOperations['splitBlock']) {
 	if (!text || !this.parent || !this.model) return REFUSED;
-	// G5: the sibling takes its parent's default child type and no data.
-	const tail = { type: this.edytor.defaultChild(this.parent), data: {} };
+	// G5: the sibling takes its parent's default child type and no data — a
+	// list-like kind (`continues`) keeps its own, with its first preset's data.
+	const { continues, presets } = this.definition;
+	const tail = continues
+		? { type: this.type, data: { ...(presets?.[0]?.data ?? {}) } }
+		: { type: this.edytor.defaultChild(this.parent), data: {} };
 	const offset = text.segStart + index;
 	return this.edytor.facade.prepare.splitBlock(this.model.id, offset, id('b'), tail);
 }

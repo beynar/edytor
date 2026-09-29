@@ -60,6 +60,11 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
       type: "string",
       description: "The kind a new child of this block takes: Enter inside a child, a split, an island merged out into it.",
     },
+    continues: {
+      type: "boolean",
+      default: "false",
+      description: "A list-like kind: Enter at the start or end of a non-empty block opens another block of this kind, and Enter in an empty one ends the run. See Continuing kinds below.",
+    },
     void: {
       type: "boolean",
       default: "false",
@@ -170,7 +175,7 @@ A preset is one way to create the kind. Each preset becomes a row of the kind ca
     keywords: { type: "string[]", description: "Extra search terms for menus." },
     data: { type: "object", description: "The new block's data." },
     markdown: { type: "string[]", description: "Prefixes that convert a block when typed at its start. The last character triggers. The first one is shown as the slash menu hint." },
-    group: { type: "string", default: "'Basic blocks'", description: "The slash menu section. The code preset uses 'Media'." },
+    group: { type: "string", default: "'Basic blocks'", description: "The slash menu section. The image and code presets use 'Media'." },
   }}
 />
 
@@ -195,6 +200,26 @@ await edytor.runCommand('block.heading2');
 
 A row has the preset's fields plus `id`, `value` (the JSON the block is converted to) and `replaces` (`true` when the kind has an `empty` shape). `convertToKind` applies only to convertible blocks, those that are neither void nor island nor inside an island, and returns whether it applied. When the conversion replaces the content, the caret moves to the start of the converted block, or of its first child. For a menu of conversions that keep the text, filter out `row.replaces`.
 
+## Continuing kinds
+
+Set `continues: true` on a list-like kind, as the rich text plugin does for bulleted and numbered items, to-dos and toggles. <kbd>Enter</kbd> then behaves as in Notion:
+
+- **At the end of a non-empty block**, it inserts a block of the same kind after it, with the data of the kind's first preset. A new to-do starts unchecked because its first preset's data is `{ checked: false }`, whatever the current one holds.
+- **At the start of a non-empty block**, it inserts that block above and keeps the caret in the current one.
+- **In an empty block without children**, it ends the run: the block moves out one level when it is nested (`unNestBlock`), or else turns into its parent's default child (a paragraph at the top level).
+
+<kbd>Enter</kbd> in the middle of the text splits the block, and the second half keeps the kind (with the first preset's data). A block with both text and children is still split at its end so the new block keeps the kind and the children. Kinds without `continues` start their parent's default child at the start or end.
+
+```ts
+blocks: {
+	step: {
+		snippet: step,
+		continues: true,
+		presets: [{ label: 'Step', data: { done: false } }]
+	}
+}
+```
+
 ## Normalization
 
 `normalizeContent` and `normalizeChildren` run at the end of an operation's transaction, inside it, for the blocks the operation touched. `normalizeContent` runs after operations that rewrite a block's content (`setBlock`, adding or removing an inline atom, `deleteContentAtRange`, a soft line break); plain typing does not trigger it. `normalizeChildren` runs on the parents whose children changed.
@@ -207,11 +232,11 @@ To change only how an existing kind renders, pass a snippet prop named `<type>Bl
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin } from 'edytor';
+	import { Edytor } from 'edytor';
 	import type { BlockSnippetPayload } from 'edytor';
 </script>
 
-<Edytor plugins={[richTextPlugin]}>
+<Edytor>
 	{#snippet quoteBlock({ content, children }: BlockSnippetPayload)}
 		<div class="my-quote">{@render content()}</div>
 		{@render children?.()}

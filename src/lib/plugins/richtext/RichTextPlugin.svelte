@@ -76,6 +76,7 @@
 		if (type === 'toggle') return 'Toggle';
 		if (type === 'quote') return 'Empty quote';
 		if (type === 'callout') return focused ? 'Type something…' : null;
+		if (type === 'image') return focused ? 'Write a caption…' : null;
 		return focused ? "Type '/' for commands" : null;
 	};
 
@@ -273,6 +274,7 @@
 					}
 				},
 				'bulleted-list-item': {
+					continues: true,
 					snippet: listItem,
 					element: 'li',
 					presets: [
@@ -286,6 +288,7 @@
 					html: 'li'
 				},
 				'numbered-list-item': {
+					continues: true,
 					snippet: listItem,
 					element: 'li',
 					presets: [
@@ -302,6 +305,7 @@
 						el.localName === 'li' && el.parentElement?.localName === 'ol' ? {} : undefined
 				},
 				'todo-item': {
+					continues: true,
 					snippet: todoItem,
 					presets: [
 						{
@@ -320,6 +324,7 @@
 							.join('\n')
 				},
 				toggle: {
+					continues: true,
 					snippet: details,
 					...disclosure,
 					presets: [

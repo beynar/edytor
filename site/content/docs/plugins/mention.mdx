@@ -1,0 +1,16 @@
+---
+title: Mention
+description: The mention plugin in the repository is a reference implementation of an inline atom inserted by an operation hook, not an export of the package.
+icon: at-sign
+---
+
+The repository contains a `mentionPlugin` in `src/lib/plugins/mention/MentionPlugin.svelte` ([GitHub](https://github.com/beynar/edytor)). It is **not exported** from `edytor`, and the package does not expose its file, so you cannot import it. It is demo-grade reference code: read it, then copy what you need into your own plugin.
+
+It shows the two halves of an inline atom: a definition and an operation hook that inserts it.
+
+- It defines one inline block, `mention`, with a snippet and a `plain` form. `plain` exports the atom as `@` followed by the first of `data.label`, `data.name`, `data.title` or `data.id`, or `@mention` when none is set.
+- Its `onBeforeOperation` refuses an `insertText` of `@` and, in its place, inserts a `mention` atom (with empty data) at the caret and puts the caret right after it.
+
+The snippet renders placeholder text (`@mention`) and its selected state for debugging. It does not open a picker or store who was mentioned. [Inline blocks](/docs/customization/inline-blocks#a-mention-atom) builds a usable version with a label in its data, and [Operations](/docs/plugins/operations) explains the `prevent(cb)` pattern it uses.
+
+For a void block with an editable caption, the other reference shape, see the [image plugin](/docs/plugins/image), which is exported and on by default.

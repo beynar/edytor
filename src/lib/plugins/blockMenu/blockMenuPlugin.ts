@@ -27,7 +27,9 @@ export const createBlockMenuPlugin =
 			if (!controller.isOpen) return;
 			if (!anchor?.isConnected) return controller.close(false);
 			const view = host.ownerDocument.defaultView;
-			const menu = host.querySelector<HTMLElement>('[data-testid="block-menu"]');
+			const menu =
+				host.querySelector<HTMLElement>('[data-edytor-block-menu]') ??
+				(host.firstElementChild as HTMLElement | null);
 			if (!view || !menu) return;
 			const [gap, edge] = [8, 8];
 			const rect = anchor.getBoundingClientRect();
@@ -68,7 +70,7 @@ export const createBlockMenuPlugin =
 					const target = event.target as Element | null;
 					if (
 						controller.isOpen &&
-						!target?.closest?.('[data-edytor-block-menu-host], [data-testid="block-handle"]')
+						!target?.closest?.('[data-edytor-block-menu-host], [data-edytor-block-handle-host]')
 					)
 						controller.close(false);
 				};
@@ -76,7 +78,7 @@ export const createBlockMenuPlugin =
 				node.ownerDocument.addEventListener('pointerdown', outside, true);
 				const unmount = edytor.overlay.mount(
 					BlockMenu,
-					{ controller },
+					{ controller, menu: options.menu },
 					'edytor-block-menu-host',
 					70,
 					place

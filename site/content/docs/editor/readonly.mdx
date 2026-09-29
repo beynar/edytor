@@ -8,12 +8,12 @@ A readonly view renders the same block tree as an editable one, with the same pl
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin } from 'edytor';
+	import { Edytor } from 'edytor';
 
 	let { value } = $props();
 </script>
 
-<Edytor readonly {value} plugins={[richTextPlugin]} />
+<Edytor readonly {value} />
 ```
 
 There is no separate renderer: readonly is the editable editor with `contenteditable="false"` on its root and `aria-readonly="true"`. It is also the way to [server-render a document](/docs/getting-started/sveltekit#readonly-pages).
@@ -45,13 +45,13 @@ When a document that collaborators emptied is shown, a readonly view displays an
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin } from 'edytor';
+	import { Edytor } from 'edytor';
 
 	let editing = $state(false);
 </script>
 
 <button onclick={() => (editing = !editing)}>{editing ? 'Done' : 'Edit'}</button>
-<Edytor readonly={!editing} plugins={[richTextPlugin]} />
+<Edytor readonly={!editing} />
 ```
 
 `edytor.readonly` reflects the prop; change the prop rather than the instance field. Block handles appear and disappear with it.

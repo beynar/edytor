@@ -146,7 +146,6 @@ With the rich text plugin, <kbd>Mod</kbd>+<kbd>B</kbd> at a caret stages bold th
 
 ```svelte
 <Edytor
-	plugins={[richTextPlugin]}
 	onSelectionChange={(selection) => {
 		toolbarVisible = selection.value.kind === 'text' && !selection.projection.isCollapsed;
 	}}

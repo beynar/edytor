@@ -8,16 +8,16 @@ The core ships almost no visual styles: you style the document with CSS, through
 
 ## Notion theme
 
-`edytor/themes/notion.css` styles every rich text and code kind like Notion's light theme. Import it once and put the `edytor-notion` class on an element around `<Edytor>` (or on the editor itself, with its `class` prop):
+`edytor/themes/notion.css` styles every rich text, image and code kind like Notion's light theme. Import it once and put the `edytor-notion` class on an element around `<Edytor>` (or on the editor itself, with its `class` prop):
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin, richTextPlaceholder } from 'edytor';
+	import { Edytor, richTextPlaceholder } from 'edytor';
 	import 'edytor/themes/notion.css';
 </script>
 
 <div class="edytor-notion">
-	<Edytor plugins={[richTextPlugin]} placeholder={richTextPlaceholder} />
+	<Edytor placeholder={richTextPlaceholder} />
 </div>
 ```
 
@@ -28,23 +28,24 @@ What it sets:
 - a 24px marker column for lists and to-dos: bullets `•` `◦` `▪` by depth, numbers `1.` `a.` `i.` by depth, with a run of numbered items sharing one counter;
 - Notion's blue to-do checkbox, with done text struck through and muted;
 - a toggle caret that rotates as the toggle opens, a 3px quote bar, a 10px-rounded callout panel, a thin divider and the code panel;
+- images with rounded corners and a muted caption, and the empty image's gray "Add an image" panel with its link field and blue buttons;
 - inline code in red on a light tint, links underlined at 0.7 opacity, and blue text and block selections.
 
-It styles the document only. The block handles, menus and toolbar carry their own Notion look. Pair it with [`richTextPlaceholder`](/docs/customization/placeholder#notion-placeholders) for Notion's placeholders.
+It styles the document only. The block handles, menus and toolbar carry their own Notion look, unless you replace their markup (see [Menus and handles](/docs/customization/menus)). Pair it with [`richTextPlaceholder`](/docs/customization/placeholder#notion-placeholders) for Notion's placeholders.
 
 Adapt it by overriding its custom properties on `.edytor-notion`:
 
 | Property                     | Default                        | Used for                                         |
 | ---------------------------- | ------------------------------ | ------------------------------------------------ |
 | `--notion-text`              | `#2c2c2b`                      | Text, caret, list markers, the quote bar, the to-do box |
-| `--notion-text-secondary`    | `#7d7a75`                      | Done to-do text                                  |
+| `--notion-text-secondary`    | `#7d7a75`                      | Done to-do text, image captions and the empty image panel |
 | `--notion-placeholder`       | `rgba(44, 44, 43, 0.4)`        | Placeholders                                     |
 | `--notion-border`            | `rgba(28, 19, 1, 0.11)`        | The divider                                      |
 | `--notion-hover`             | `rgba(33, 27, 23, 0.05)`       | The checkbox hover                               |
 | `--notion-panel`             | `#f9f8f7`                      | The callout background                           |
 | `--notion-code-panel`        | `#f7f6f3`                      | The code block background                        |
 | `--notion-inline-code`       | `#cf5148`                      | Inline code text                                 |
-| `--notion-blue`              | `#2783de`                      | The checked to-do box                            |
+| `--notion-blue`              | `#2783de`                      | The checked to-do box, the image panel's buttons |
 | `--notion-text-selection`    | `rgba(35, 131, 226, 0.28)`     | Text selection                                   |
 | `--notion-block-selection`   | `rgba(35, 131, 226, 0.14)`     | Selected blocks                                  |
 | `--notion-font`              | Notion's system sans stack     | Body text                                        |
@@ -93,6 +94,7 @@ The block element (`div` here, the default) comes from the kind's `element`; the
 | `data-edytor-callout-icon`         | the callout icon           | The rich text callout's icon `span`.                                     |
 | `data-edytor-code-header`          | the code block header      | The void header holding the language and the Copy button.               |
 | `data-edytor-code-language`        | the code block language    | The language label inside the header.                                    |
+| `data-edytor-image`, `data-edytor-image-empty` | the image block | The wrapper of the `img`, or of the empty state; see [Image](/docs/plugins/image#styling). |
 
 Block attributes are rendered with the element, so they are also present in server-rendered HTML. A kind's own attributes (from `element`) sit beside them, and the rich text heading renders as `<h2 data-edytor-block … data-edytor-type="heading">`.
 

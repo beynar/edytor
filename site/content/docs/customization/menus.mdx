@@ -1,0 +1,103 @@
+---
+title: Menus and handles
+description: Replace the markup of the slash menu, the selection toolbar, the block menu and the block handles with your own Svelte snippets, while the plugins keep the behavior.
+icon: panels-top-left
+---
+
+The slash menu, the toolbar, the block menu and the block handles ship with Notion's look. Each one also takes a snippet that renders your markup instead. The plugin keeps the behavior: when the UI opens, where it is placed, the keys it claims, and the commands it runs. Your snippet receives a controller (or a payload) to read state from and call actions on.
+
+| UI | Factory | Snippet | Receives |
+| --- | --- | --- | --- |
+| [Slash menu](/docs/plugins/slash-menu#custom-markup) | `createSlashMenuPlugin` | `item` (one row) or `menu` (the whole menu) | `SlashMenuItem` or `SlashMenuController` |
+| [Toolbar](/docs/plugins/toolbar#custom-markup) | `createToolbarPlugin` | `toolbar` | `ToolbarController` |
+| [Block menu](/docs/plugins/block-menu#custom-markup) | `createBlockMenuPlugin` | `menu` | `BlockMenuController` |
+| [Block handle](/docs/plugins/block-handles#custom-handle) | `createBlockHandlesPlugin`, or the `blockHandles` prop | `handle` | `BlockHandleSnippetPayload` |
+
+All the factories and types are exported from `edytor`. `slashMenuPlugin`, `toolbarPlugin`, `blockMenuPlugin` and `blockHandlesPlugin` are the same plugins with the built-in markup.
+
+## Passing a snippet
+
+A snippet declared at the top level of a component's markup can be used in its `<script>`, so you can build the plugins there. This editor draws its own slash menu rows and block handles:
+
+```svelte title="Editor.svelte"
+<script lang="ts">
+	import {
+		Edytor,
+		createSlashMenuPlugin,
+		type BlockHandleSnippetPayload,
+		type SlashMenuItem
+	} from 'edytor';
+
+	const plugins = [createSlashMenuPlugin({ item })];
+	const keep = (event: MouseEvent) => event.preventDefault();
+</script>
+
+{#snippet item({ command, selected, icon, run, select }: SlashMenuItem)}
+	<button class="row" class:selected onmousedown={keep} onmousemove={select} onclick={run}>
+		{#if icon}<span class="icon" style:mask-image={icon}></span>{:else}<span>{command.icon}</span>{/if}
+		{command.label}
+		{#if command.hint}<kbd>{command.hint}</kbd>{/if}
+	</button>
+{/snippet}
+
+{#snippet handle({ block, grip, add, readonly }: BlockHandleSnippetPayload)}
+	{#if !readonly}
+		<button class="add" onmousedown={keep} onclick={(event) => add(event.altKey)}>+</button>
+		<button class="grip" use:grip aria-label={`Move ${block.type} block`}>⠿</button>
+	{/if}
+{/snippet}
+
+<Edytor {plugins} blockHandles={{ handle }} />
+
+<style>
+	.row {
+		display: flex;
+		gap: 8px;
+		width: 100%;
+	}
+	.row.selected {
+		background: #f1f1ef;
+	}
+	.icon {
+		width: 18px;
+		height: 18px;
+		background: currentColor;
+		mask-size: contain;
+	}
+</style>
+```
+
+The row's `icon` is the built-in line icon as a CSS `mask-image` value, so a `currentColor` box masked with it draws the icon; commands without one fall back to their text `command.icon`. Your markup renders in the plugin's host without the built-in styles.
+
+Two rules apply to every snippet:
+
+- **Keep the selection.** Call `preventDefault` on `mousedown` in buttons that act on the text: slash rows, toolbar buttons, the `+`. Otherwise the click moves the caret before the action runs.
+- **Mark the element to place.** The toolbar measures `[data-edytor-toolbar-bar]` and the block menu `[data-edytor-block-menu]` when your markup has them, else the snippet's first element.
+
+## Slash menu
+
+`item` replaces each row and keeps the built-in sections, empty state and footer. `menu` replaces everything; read `controller.commands`, `controller.selectedIndex` and `controller.query`, and call `controller.run(command)` or `controller.close()`. The arrow keys, <kbd>Enter</kbd> and <kbd>Escape</kbd> stay the plugin's either way. See [Slash menu](/docs/plugins/slash-menu#custom-markup).
+
+```ts
+const slash = createSlashMenuPlugin({ menu }); // or { item }
+```
+
+## Toolbar
+
+`toolbar` renders while `controller.isVisible`, above the selection. The controller toggles marks (`marks`, `toggleMark`), converts the block (`kinds`, `currentKind`, `turnInto`), colors (`setColor`) and links (`linkUrl`, `setLinkUrl`, `applyLink`, `removeLink`), and tracks one open `panel`. See [Toolbar](/docs/plugins/toolbar#custom-markup).
+
+```ts
+const toolbar = createToolbarPlugin({ toolbar: bar });
+```
+
+## Block menu
+
+`menu` renders while `controller.isOpen`, beside the grip that opened it. The controller has the `block`, its `actions`, the `kinds` it can turn into, and `turnInto`, `duplicate`, `move`, `remove`, `copyLink` and `close`. The built-in keys belong to the built-in search field, so a custom menu handles its own. See [Block menu](/docs/plugins/block-menu#custom-markup).
+
+```ts
+const blockMenu = createBlockMenuPlugin({ menu, linkTo: (block) => `#${block.id}` });
+```
+
+## Block handle
+
+`handle` replaces the `+` and the grip. `use:grip` gives any element the grip's behavior: dragging, a click that selects the block and opens the block menu (or calls `onActivate`), and the <kbd>Alt</kbd>+arrow moves. `add(above?)` is what the `+` does. Placement beside the block's first line and the hover fade stay the plugin's. Pass it with `blockHandles={{ handle }}`, alongside `draggable` and `onActivate`, or with `createBlockHandlesPlugin({ handle })`. See [Block handles](/docs/plugins/block-handles#custom-handle).

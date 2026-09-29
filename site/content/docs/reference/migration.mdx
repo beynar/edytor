@@ -43,14 +43,14 @@ export async function prepareDocument(name: string): Promise<void> {
 
 ```svelte
 <script lang="ts">
-  import { Edytor, richTextPlugin } from 'edytor';
+  import { Edytor } from 'edytor';
   import { prepareDocument } from '$lib/migrate';
 
   let { name }: { name: string } = $props();
 </script>
 
 {#await prepareDocument(name) then}
-  <Edytor room={name} plugins={[richTextPlugin]} />
+  <Edytor room={name} />
 {/await}
 ```
 

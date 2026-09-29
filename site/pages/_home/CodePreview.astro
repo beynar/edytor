@@ -2,11 +2,10 @@
 import CodeBlock from "blume/components/content/CodeBlock.astro";
 
 const clientCode = `<script lang="ts">
-  import { Edytor, richTextPlugin } from "edytor";
+  import { Edytor } from "edytor";
 </script>
 
 <Edytor
-  plugins={[richTextPlugin]}
   server="wss://rooms.example.com/rooms"
   room={documentId}
   params={{ token }}

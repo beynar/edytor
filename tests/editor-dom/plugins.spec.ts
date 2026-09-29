@@ -7,7 +7,8 @@ import {
 	readJsonByTestId,
 	setSelectionByTextIndex,
 	trackPageIssues,
-	waitForEditorReady
+	waitForEditorReady,
+	imageLinkField
 } from './helpers';
 
 const stripIds = <T>(value: T): T => {
@@ -102,7 +103,7 @@ test.describe('browser plugin semantics', () => {
 		await page.goto('/test/dom?scenario=void');
 		await waitForEditorReady(page);
 
-		const control = page.locator('figure input');
+		const control = await imageLinkField(page);
 		await control.click();
 		await page.keyboard.type('abc');
 		await expect(control).toHaveValue('abc');

@@ -8,17 +8,17 @@ icon: menu
 
 ```svelte
 <script lang="ts">
-	import { Edytor, blockMenuPlugin, richTextPlugin } from 'edytor';
+	import { Edytor, blockMenuPlugin } from 'edytor';
 </script>
 
-<Edytor plugins={[blockMenuPlugin, richTextPlugin]} />
+<Edytor plugins={[blockMenuPlugin]} />
 ```
 
 The menu opens from [block handles](/docs/plugins/block-handles), which `<Edytor>` adds by default. Pass no `onActivate` to them: a handle with an `onActivate` callback calls it instead, and the menu never opens.
 
 ## Options
 
-`blockMenuPlugin` has no block link. `createBlockMenuPlugin(options)` builds one with options:
+`blockMenuPlugin` has no block link and the built-in markup. `createBlockMenuPlugin(options)` builds one with options:
 
 ```ts
 import { createBlockMenuPlugin } from 'edytor';
@@ -33,6 +33,10 @@ const blockMenu = createBlockMenuPlugin({
     linkTo: {
       type: "(block: Block) => string",
       description: "A URL for the block. Adds a 'Copy link to block' row that writes it to the clipboard. Without it, the row is hidden.",
+    },
+    menu: {
+      type: "Snippet<[BlockMenuController]>",
+      description: "Replaces the menu's markup. See Custom markup below.",
     },
   }}
 />
@@ -98,6 +102,53 @@ import { BLOCK_ACTIVATE_EVENT, type BlockActivation } from 'edytor';
 
 ## Placement and styling
 
-The menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-block-menu-host` and `z-index: 70`. Its markup and styles are built in: a 265px panel with line icons for the built-in kinds and actions, the kind flyout beside it, and a 140ms fade and scale-in. The panel has `data-testid="block-menu"`, and each action row `data-testid="block-menu-<id>"`, with ids `turn`, `link`, `duplicate`, `up`, `down` and `delete`.
+The menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-block-menu-host` and `z-index: 70`. Its markup and styles are built in: a 265px panel with line icons for the built-in kinds and actions, the kind flyout beside it, and a 140ms fade and scale-in. The panel has `data-edytor-block-menu` and `data-testid="block-menu"`, and each action row `data-testid="block-menu-<id>"`, with ids `turn`, `link`, `duplicate`, `up`, `down` and `delete`.
 
-For a different design, write your own menu: listen for `edytor-block-activate`, or pass `onActivate` to the block handles (see [Building a block menu](/docs/plugins/block-handles#building-a-block-menu)).
+## Custom markup
+
+A `menu` snippet replaces the panel. It renders while `controller.isOpen`, in the same host, placed beside the grip by the element marked `data-edytor-block-menu` (else your snippet's first element). The plugin keeps opening it on a grip click, closing it on a press outside, placing it, and <kbd>Mod</kbd> + <kbd>D</kbd>. The keys in the table above belong to the built-in search field: a custom menu handles its own keys.
+
+The snippet receives the `BlockMenuController`:
+
+<TypeTable
+  type={{
+    block: { type: "Block | null", description: "The block the menu is open for." },
+    actions: { type: "BlockMenuAction[]", description: "The rows that apply, filtered by query: { id, label, icon, hint?, danger?, submenu?, run? }. Turn into has submenu: true and no run." },
+    kinds: { type: "KindRow[]", description: "The kinds the block may turn into while keeping its content." },
+    currentKind: { type: "KindRow | undefined", description: "The row naming the block's kind." },
+    "turnInto(kind)": { type: "(kind: KindRow) => void", description: "Convert the block." },
+    "duplicate(block)": { type: "(block: Block) => void", description: "Insert a copy after the block." },
+    "move(direction)": { type: "('up' | 'down') => void", description: "Move the block one step." },
+    "remove()": { type: "() => void", description: "Delete the block." },
+    "copyLink()": { type: "() => Promise<void>", description: "Write linkTo(block) to the clipboard." },
+    "close()": { type: "(restoreCaret?: boolean) => void", description: "Close the menu; the caret returns to the block unless restoreCaret is false." },
+    query: { type: "string", description: "The search text. Writable: actions filter by it." },
+    selectedIndex: { type: "number", description: "The keyboard's row. Writable." },
+    flyout: { type: "boolean", description: "Whether the Turn into flyout is open. Writable." },
+  }}
+/>
+
+Every action closes the menu and returns the caret, as in the built-in menu.
+
+```svelte title="Editor.svelte"
+<script lang="ts">
+	import { Edytor, createBlockMenuPlugin, type BlockMenuController } from 'edytor';
+
+	const plugins = [createBlockMenuPlugin({ menu })];
+</script>
+
+{#snippet menu(controller: BlockMenuController)}
+	<div class="menu" data-edytor-block-menu role="menu">
+		{#each controller.actions.filter((action) => action.run) as action (action.id)}
+			<button role="menuitem" onclick={() => action.run?.()}>{action.label}</button>
+		{/each}
+		{#each controller.kinds as kind (kind.id)}
+			<button role="menuitem" onclick={() => controller.turnInto(kind)}>{kind.label}</button>
+		{/each}
+	</div>
+{/snippet}
+
+<Edytor {plugins} />
+```
+
+To open a different menu without this plugin, listen for `edytor-block-activate`, or pass `onActivate` to the block handles (see [Building a block menu](/docs/plugins/block-handles#building-a-block-menu)). [Menus and handles](/docs/customization/menus) shows the other snippets.

@@ -62,6 +62,7 @@
 	bind:edytor
 	{value}
 	{plugins}
+	defaultPlugins={false}
 	{readonly}
 	{placeholder}
 	{translate}

@@ -1,3 +1,4 @@
+import type { Snippet } from 'svelte';
 import { mount, unmount } from 'svelte';
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
@@ -8,10 +9,23 @@ import { BlockHandleController } from './BlockHandleController.svelte.js';
 
 export type BlockHandleActivation = { block: Block; anchor: HTMLElement };
 
+/** What a `handle` snippet receives. */
+export type BlockHandleSnippetPayload = {
+	block: Block;
+	/** An action: `use:grip` makes an element the drag grip, menu button and Alt+arrow target. */
+	grip: (node: HTMLElement) => { destroy(): void };
+	/** Notion's `+`: a new block below (above with `true`), opened on the slash menu. */
+	add: (above?: boolean) => void;
+	readonly: boolean;
+	draggable: boolean;
+};
+
 export type BlockHandlesOptions = {
 	/** Keep the handle and its keyboard actions, but omit pointer dragging and drop targets. */
 	draggable?: boolean;
 	onActivate?: (activation: BlockHandleActivation) => void;
+	/** Replace the `+` and ⋮⋮ beside each block; placement and hover stay the plugin's. */
+	handle?: Snippet<[BlockHandleSnippetPayload]>;
 };
 
 const handlePlugins = new WeakSet<Plugin>();
@@ -90,7 +104,7 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				node.addEventListener('pointerleave', unhover);
 				const component = mount(BlockHandles, {
 					target: edytor.overlay.layer!,
-					props: { edytor, controller, blocks, near, hovered }
+					props: { edytor, controller, blocks, near, hovered, handle: options.handle }
 				});
 				return () => {
 					node.removeEventListener('pointerover', hover);

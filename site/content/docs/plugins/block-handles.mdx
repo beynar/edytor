@@ -12,7 +12,7 @@ The `blockHandles` prop of `<Edytor>` controls the plugin:
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin, type BlockHandleActivation } from 'edytor';
+	import { Edytor, type BlockHandleActivation } from 'edytor';
 
 	const openMenu = ({ block, anchor }: BlockHandleActivation) => {
 		console.log('open a menu for', block.id, 'next to', anchor);
@@ -20,13 +20,13 @@ The `blockHandles` prop of `<Edytor>` controls the plugin:
 </script>
 
 <!-- Default: handles with drag and drop. -->
-<Edytor plugins={[richTextPlugin]} />
+<Edytor />
 
 <!-- No handles at all. -->
-<Edytor plugins={[richTextPlugin]} blockHandles={false} />
+<Edytor blockHandles={false} />
 
 <!-- Handles and keyboard moves, no pointer drag, and a click callback. -->
-<Edytor plugins={[richTextPlugin]} blockHandles={{ draggable: false, onActivate: openMenu }} />
+<Edytor blockHandles={{ draggable: false, onActivate: openMenu }} />
 ```
 
 <TypeTable
@@ -44,6 +44,10 @@ The `blockHandles` prop of `<Edytor>` controls the plugin:
     onActivate: {
       type: "({ block, anchor }: BlockHandleActivation) => void",
       description: "Called when a grip is clicked, after the block is selected. anchor is the grip element, to position a menu against. Without it, the click dispatches an edytor-block-activate event instead (see below).",
+    },
+    handle: {
+      type: "Snippet<[BlockHandleSnippetPayload]>",
+      description: "Replaces the + and the grip with your markup. See Custom handle below.",
     },
   }}
 />
@@ -64,6 +68,37 @@ A handle sits in the editor's overlay layer, left of its block, aligned with the
 ### The + button
 
 Clicking `+` inserts a new block of the parent's default kind below the block (above with <kbd>Alt</kbd>), puts the caret in it and types `/`, so the [slash menu](/docs/plugins/slash-menu) opens there. When the block is already an empty block of that default kind, it takes the `/` itself instead of adding another. The button does nothing in a readonly editor.
+
+### Custom handle
+
+A `handle` snippet replaces the `+` and the grip of every handle. The plugin keeps placing it beside the block's first line, showing it on hover and mounting it lazily. The snippet receives a `BlockHandleSnippetPayload`:
+
+<TypeTable
+  type={{
+    block: { type: "Block", description: "The block's handle." },
+    grip: { type: "action", description: "use:grip makes an element the grip: dragging (when draggable), a click that selects the block and opens its menu, and the Alt+arrow moves while it has focus." },
+    add: { type: "(above?: boolean) => void", description: "What + does: a new block below (above with true), opened on the slash menu." },
+    readonly: { type: "boolean", description: "The editor is readonly: hide your buttons." },
+    draggable: { type: "boolean", description: "Pointer dragging is on." },
+  }}
+/>
+
+```svelte title="Editor.svelte"
+<script lang="ts">
+	import { Edytor, type BlockHandleSnippetPayload } from 'edytor';
+</script>
+
+{#snippet handle({ block, grip, add, readonly }: BlockHandleSnippetPayload)}
+	{#if !readonly}
+		<button onmousedown={(event) => event.preventDefault()} onclick={(event) => add(event.altKey)}>+</button>
+		<button use:grip aria-label={`Move ${block.type} block`}>⠿</button>
+	{/if}
+{/snippet}
+
+<Edytor blockHandles={{ handle }} />
+```
+
+The same snippet works with `createBlockHandlesPlugin({ handle })` in `plugins`. Your markup renders inside the handle's host, `[data-edytor-block-handle-host]` (a flex row right-aligned to the block's left edge, which carries the hover fade), without the buttons' built-in styles. Keep `preventDefault` on the `+` button's `mousedown`, so the click does not move the caret first.
 
 ## Drag and drop
 

@@ -6,15 +6,7 @@ icon: arrow-up-down
 
 `arrowMovePlugin` moves blocks with the keyboard. <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the block holding the caret one step, as in Notion; <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the selected blocks. <kbd>Mod</kbd> is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere.
 
-```svelte
-<script lang="ts">
-	import { Edytor, arrowMovePlugin, richTextPlugin } from 'edytor';
-</script>
-
-<Edytor plugins={[arrowMovePlugin, richTextPlugin]} />
-```
-
-It takes no options.
+`<Edytor>` includes it by default, after your plugins. List `arrowMovePlugin` yourself to put it elsewhere in the order, or pass `defaultPlugins={false}` to leave it out (see [Default plugins](/docs/plugins#default-plugins)). It takes no options.
 
 ## Behavior
 

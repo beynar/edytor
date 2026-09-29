@@ -34,6 +34,7 @@ export { Text } from './text/text.svelte.js';
 export type {
 	Plugin,
 	KindPreset,
+	EditorCommand,
 	BlockDefinition,
 	MarkDefinition,
 	InlineBlockDefinition,

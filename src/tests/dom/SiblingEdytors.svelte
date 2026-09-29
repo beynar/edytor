@@ -26,9 +26,23 @@
 </script>
 
 {#if syncFirst}
-	<EdytorComponent bind:edytor={carrier} {value} {plugins} {document} {sync} />
-	<EdytorComponent bind:edytor={sibling} {value} {plugins} {document} />
+	<EdytorComponent
+		bind:edytor={carrier}
+		{value}
+		{plugins}
+		defaultPlugins={false}
+		{document}
+		{sync}
+	/>
+	<EdytorComponent bind:edytor={sibling} {value} {plugins} defaultPlugins={false} {document} />
 {:else}
-	<EdytorComponent bind:edytor={sibling} {value} {plugins} {document} />
-	<EdytorComponent bind:edytor={carrier} {value} {plugins} {document} {sync} />
+	<EdytorComponent bind:edytor={sibling} {value} {plugins} defaultPlugins={false} {document} />
+	<EdytorComponent
+		bind:edytor={carrier}
+		{value}
+		{plugins}
+		defaultPlugins={false}
+		{document}
+		{sync}
+	/>
 {/if}

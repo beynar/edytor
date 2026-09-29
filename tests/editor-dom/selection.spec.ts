@@ -21,7 +21,8 @@ import {
 	readJsonByTestId,
 	setSelectionAtInlineElementBoundary,
 	setSelectionByTextIndex,
-	trackPageIssues
+	trackPageIssues,
+	imageLinkField
 } from './helpers';
 
 const gotoSelectionFixture = async (page: Page, path: string) => {
@@ -2600,8 +2601,8 @@ test.describe('browser selection behavior', () => {
 
 		await gotoSelectionFixture(page, '/test/dom?scenario=void');
 
-		await page.locator('figure input').click();
-		await expect(page.locator('figure input')).toBeFocused();
+		await (await imageLinkField(page)).click();
+		await expect(await imageLinkField(page)).toBeFocused();
 
 		await getTextLocators(page).nth(0).click();
 		await expectSelection(page, {

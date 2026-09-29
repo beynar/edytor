@@ -1,16 +1,23 @@
 <script lang="ts">
 	import { iconOf } from '../icons.js';
 	import { TOOLBAR_COLORS, type ToolbarController } from './ToolbarController.svelte.js';
-	let { controller }: { controller: ToolbarController } = $props();
+	import type { Snippet } from 'svelte';
+	let {
+		controller,
+		toolbar
+	}: { controller: ToolbarController; toolbar?: Snippet<[ToolbarController]> } = $props();
 
 	const keep = (event: MouseEvent) => event.preventDefault();
 </script>
 
-{#if controller.isVisible}
+{#if controller.isVisible && toolbar}
+	{@render toolbar(controller)}
+{:else if controller.isVisible}
 	<div class="selection-toolbar-frame">
 		<div
 			class="selection-toolbar"
 			data-testid="selection-toolbar"
+			data-edytor-toolbar-bar
 			role="toolbar"
 			aria-label="Text formatting"
 		>

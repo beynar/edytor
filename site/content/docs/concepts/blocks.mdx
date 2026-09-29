@@ -8,22 +8,24 @@ Every block has a kind, its `type`. Kinds come from plugins: each plugin's `bloc
 
 ## Bundled kinds
 
-`richTextPlugin` provides:
+`<Edytor>` includes `richTextPlugin` and `imagePlugin` by default. `richTextPlugin` provides:
 
 | Type | Renders | `data` | Notes |
 | --- | --- | --- | --- |
 | `paragraph` | `div` > `p` | | The default block type. |
 | `heading` | `h1`–`h3` | `level: 'h1' \| 'h2' \| 'h3'` | |
-| `bulleted-list-item` | `li` | | |
-| `numbered-list-item` | `li` | | |
-| `todo-item` | `div` with a checkbox | `checked: boolean` | Clicking the checkbox writes `checked`. |
-| `toggle` | `details` | | Children form the collapsible body. |
+| `bulleted-list-item` | `li` | | Continues on <kbd>Enter</kbd>. |
+| `numbered-list-item` | `li` | | Continues on <kbd>Enter</kbd>. |
+| `todo-item` | `div` with a checkbox | `checked: boolean` | Clicking the checkbox writes `checked`. Continues on <kbd>Enter</kbd>. |
+| `toggle` | `details` | | Children form the collapsible body. Continues on <kbd>Enter</kbd>. |
 | `callout` | `div` | `icon: string` | The icon defaults to `💡`. |
 | `quote` | `blockquote` | | |
 | `divider` | `hr` | | Void, no content. |
 | `ordered-list`, `unordered-list` | `ol`, `ul` | | Containers: children only, default child `list-item`. |
 | `list-item` | `li` | | |
 | `details`, `horizontalRule` | `details`, `hr` | | Not offered in menus (they have no presets). |
+
+`imagePlugin` provides `image`, a void `figure` with an image from `data.src` and an editable caption (see [Image](/docs/plugins/image)).
 
 `codePlugin` provides `code`, an island whose children are `codeLine` blocks (default child `codeLine`), highlighted as you type.
 
@@ -70,9 +72,12 @@ A kind that declares `rendersContent: false` has no text of its own. It only ren
 
 ## Default children
 
-When the editor creates a block next to the caret, the new block takes its parent's **default child** type. This covers <kbd>Enter</kbd> at the start or end of a block, the second half of a block split with <kbd>Enter</kbd>, and the lines of an island that merges out. At the root, pressing <kbd>Enter</kbd> at the end of a heading or a list item therefore creates a paragraph; inside an `ordered-list`, it creates a `list-item`.
+When the editor creates a block next to the caret, the new block takes its parent's **default child** type. This covers <kbd>Enter</kbd> at the start or end of a block, the second half of a block split with <kbd>Enter</kbd>, and the lines of an island that merges out. At the root, pressing <kbd>Enter</kbd> at the end of a heading or a quote therefore creates a paragraph; inside an `ordered-list`, it creates a `list-item`.
 
-The one exception: <kbd>Enter</kbd> at the end of a block that has both text and children splits it so the new block keeps the kind and takes the children.
+Two exceptions:
+
+- A kind that declares `continues` (bulleted and numbered items, to-dos and toggles) continues itself: <kbd>Enter</kbd> at the start or end of a non-empty one creates another block of the same kind, with its first preset's data (a new to-do is unchecked). <kbd>Enter</kbd> in an empty one without children ends the run: it moves out one level when nested, or else turns into the parent's default child. See [Blocks](/docs/customization/blocks#continuing-kinds).
+- <kbd>Enter</kbd> at the end of a block that has both text and children splits it so the new block keeps the kind and takes the children.
 
 Where the type comes from:
 

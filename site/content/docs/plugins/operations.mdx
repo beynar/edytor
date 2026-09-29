@@ -50,7 +50,7 @@ A command is shown first, under its own name. If it is one document plan, each p
 | Gesture                                   | Command                        | Steps shown after it                                         |
 | ----------------------------------------- | ------------------------------ | ------------------------------------------------------------ |
 | Typing                                    | `insertText`                   | none                                                         |
-| <kbd>Enter</kbd>                          | `splitBlock`, `insertBlockAfter` or `insertBlockBefore` | the steps it plans |
+| <kbd>Enter</kbd>                          | `splitBlock`, `insertBlockAfter` or `insertBlockBefore`; in an empty list item, `unNestBlock` or `setBlock` | the steps it plans |
 | <kbd>Backspace</kbd> at a block start     | `mergeBlockBackward`           | the child moves it plans                                     |
 | <kbd>Tab</kbd>, <kbd>Shift</kbd> + <kbd>Tab</kbd> | `nestBlock`, `unNestBlock` | the move it plans                                            |
 | Deleting a range across blocks            | `deleteContentWithinSelection` | `deleteContentAtRange`, `removeBlock`, `mergeBlockBackward`  |
@@ -100,7 +100,7 @@ A step's veto refuses the command it belongs to, so check the operation name bef
 
 ## Replacing an edit
 
-`prevent(cb)` refuses the command and runs `cb` instead. This replaces a typed `@` with an inline atom, as the [mention reference plugin](/docs/plugins/mention-and-image) does:
+`prevent(cb)` refuses the command and runs `cb` instead. This replaces a typed `@` with an inline atom, as the [mention reference plugin](/docs/plugins/mention) does:
 
 ```ts
 onBeforeOperation: ({ operation, payload, block, prevent }) => {

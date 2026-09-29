@@ -8,11 +8,10 @@ icon: square-pen
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin } from 'edytor';
+	import { Edytor } from 'edytor';
 </script>
 
 <Edytor
-	plugins={[richTextPlugin]}
 	value={{ children: [{ type: 'paragraph', content: [{ text: 'Hello' }] }] }}
 	placeholder="Write something…"
 	onChange={(root) => save(root.children)}
@@ -25,7 +24,8 @@ Most props are read once, when the component is created. Changing them later has
 
 | Prop | Type | Default | Live | Description |
 | --- | --- | --- | --- | --- |
-| `plugins` | `Plugin[]` | `[]` | | Block kinds, marks, inline blocks, hotkeys and hooks. Order matters: the first definition of a type wins. See [Plugins](/docs/plugins). |
+| `plugins` | `Plugin[]` | `[]` | | Block kinds, marks, inline blocks, hotkeys and hooks. Order matters: the first definition of a type wins. The view adds the rich text, image and arrow move plugins unless the list has them. See [Plugins](/docs/plugins#default-plugins). |
+| `defaultPlugins` | `boolean` | `true` | | `false` renders exactly `plugins`, without the default rich text, image and arrow move plugins. Block handles still follow `blockHandles`. |
 | `value` | `JSONDoc` | `{ children: [] }` | | The initial content. Used only to seed a document that has none; an empty value seeds one paragraph. See [Document model](/docs/concepts/document-model). |
 | `document` | `EdytorDocument` | | | A document created with `createDocument`, `loadDocument` or `attachDocument`. Several views can share one. The view does not destroy it on unmount. |
 | `server` | `string` | | | The sync server's base URL (`wss://…/rooms`). With `room`, the view joins `<server>/<room>` over a WebSocket and keeps a local copy. Read once. See [WebSocket](/docs/collaboration/websocket). |
@@ -35,7 +35,7 @@ Most props are read once, when the component is created. Changing them later has
 | `actor` | `DocumentActor` | anonymous | | The local author `{ id, name?, color? }` of the view's own document: undo lineage, per-block attribution and the presence profile peers see. Cannot be combined with `document` (set it in `createDocument`). |
 | `readonly` | `boolean` | `false` | Yes | Render the document without editing. See [Readonly mode](/docs/editor/readonly). |
 | `placeholder` | `string \| (view) => string \| null` | | | Text shown in an empty block. A function receives `{ type, data, focused, empty }` and returns the text or `null`. Falls back to the first plugin that declares a `placeholder`. |
-| `blockHandles` | `boolean \| { draggable?: boolean; onActivate?: (a) => void }` | `true` | | Show a handle beside each block. `draggable: false` keeps the handle and its keyboard moves without pointer dragging. `onActivate({ block, anchor })` runs when the handle is clicked. |
+| `blockHandles` | `boolean \| BlockHandlesOptions` | `true` | | Show a handle beside each block. `draggable: false` keeps the handle and its keyboard moves without pointer dragging. `onActivate({ block, anchor })` runs when the handle is clicked. `handle` is a snippet that replaces the handle's markup. See [Block handles](/docs/plugins/block-handles). |
 | `blockDnd` | `boolean` | `true` | | **Deprecated.** `false` hides the handles. `blockHandles` wins when both are set. |
 | `hotKeys` | `Record<string, HotKey>` | | | Key bindings (`'mod+s'`, `'alt+shift+arrowup'`, …) checked before the plugins' and the built-in ones. See [Hotkeys](/docs/customization/hotkeys). |
 | `onChange` | `(value: JSONBlock) => void` | | | Called after every committed change, local or remote, with the document as a root block `{ type: 'root', children }`. |
@@ -68,7 +68,7 @@ Handles are on unless you turn them off: a `+` that adds a block and a drag grip
 
 ```svelte
 <script lang="ts">
-	import { Edytor, richTextPlugin, type BlockHandleActivation } from 'edytor';
+	import { Edytor, type BlockHandleActivation } from 'edytor';
 
 	let menu = $state<{ blockId: string; anchor: HTMLElement } | null>(null);
 	const onActivate = ({ block, anchor }: BlockHandleActivation) => {
@@ -76,17 +76,17 @@ Handles are on unless you turn them off: a `+` that adds a block and a drag grip
 	};
 </script>
 
-<Edytor plugins={[richTextPlugin]} blockHandles={{ onActivate }} />
+<Edytor blockHandles={{ onActivate }} />
 ```
 
-A focused handle moves its block with <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> and nests or outdents it with <kbd>Alt</kbd>+<kbd>→</kbd>/<kbd>←</kbd>. Set the drop indicator color with the `--edytor-drop-indicator-color` custom property. More in [Plugins](/docs/plugins).
+A focused handle moves its block with <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> and nests or outdents it with <kbd>Alt</kbd>+<kbd>→</kbd>/<kbd>←</kbd>. Set the drop indicator color with the `--edytor-drop-indicator-color` custom property. To draw your own `+` and grip, pass a `handle` snippet: `blockHandles={{ handle }}` (see [Menus and handles](/docs/customization/menus#block-handle)).
 
 ## Snippets
 
 Pass a snippet named `<type>Block`, `<type>Mark` or `<type>InlineBlock` to replace how one kind renders. The override replaces only the snippet: the kind's element, `void` and `island` flags, hooks and clipboard forms stay as the plugin defined them.
 
 ```svelte
-<Edytor plugins={[richTextPlugin]}>
+<Edytor>
 	{#snippet quoteBlock({ block, content, children })}
 		<span class="quote-mark" contenteditable="false">“</span>
 		{@render content()}
@@ -109,4 +109,4 @@ The core renders the block element itself (the kind's `element`, a `div` by defa
 
 For a type that is not a valid identifier, such as `todo-item`, spread the snippet under its name: `<Edytor {...{ 'todo-itemBlock': todo }} />`.
 
-Content placed inside `<Edytor>` other than these snippets is ignored. To define a new kind rather than restyle one, write a plugin: see [Custom blocks](/docs/customization/blocks).
+Content placed inside `<Edytor>` other than these snippets is ignored. To define a new kind rather than restyle one, write a plugin: see [Custom blocks](/docs/customization/blocks). To replace the slash menu, toolbar, block menu or block handle markup, pass snippets to their plugins: see [Menus and handles](/docs/customization/menus).

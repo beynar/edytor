@@ -12,12 +12,12 @@ A view with a `room` and no `server` stores the document under that name and res
 
 ```svelte
 <script lang="ts">
-  import { Edytor, richTextPlugin } from 'edytor';
+  import { Edytor } from 'edytor';
 
   const value = { children: [{ type: 'paragraph', content: [{ text: 'First note' }] }] };
 </script>
 
-<Edytor room="notes/today" {value} plugins={[richTextPlugin]} />
+<Edytor room="notes/today" {value} />
 ```
 
 `value` is the content of a brand-new document only. When the store already holds the document, the stored content wins and `value` is ignored. The same works without a view:

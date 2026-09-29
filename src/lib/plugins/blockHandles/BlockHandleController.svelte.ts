@@ -119,6 +119,32 @@ export class BlockHandleController {
 		this.edytor.selection.selectBlocks(block);
 	}
 
+	/**
+	 * Make `node` the block's grip: dragging (when draggable), a click that
+	 * selects the block and opens its menu, and the Alt+arrow moves.
+	 */
+	grip = (block: Block) => (node: HTMLElement) => {
+		const click = (event: MouseEvent) => {
+			event.preventDefault();
+			event.stopPropagation();
+			this.activateBlock(block, node);
+		};
+		const pointerdown = (event: PointerEvent) => event.stopPropagation();
+		const keydown = (event: KeyboardEvent) => this.handleKeyDown(event, block);
+		node.addEventListener('click', click);
+		node.addEventListener('pointerdown', pointerdown);
+		node.addEventListener('keydown', keydown);
+		const unregister = this.registerHandle(node, block);
+		return {
+			destroy: () => {
+				node.removeEventListener('click', click);
+				node.removeEventListener('pointerdown', pointerdown);
+				node.removeEventListener('keydown', keydown);
+				unregister();
+			}
+		};
+	};
+
 	activateBlock(block: Block, anchor: HTMLElement) {
 		if (this.edytor.readonly || !block.movable) {
 			return;

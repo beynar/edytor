@@ -144,6 +144,111 @@ describe('shortcuts', () => {
 	});
 });
 
+describe('lists on Enter', () => {
+	const enterAt = async (
+		edytor: Awaited<ReturnType<typeof render>>['edytor'],
+		editor: HTMLElement,
+		block: { firstText: unknown },
+		where: 'start' | 'end'
+	) => {
+		const text = block.firstText as Parameters<typeof edytor.selection.setAtTextOffset>[0];
+		edytor.selection.setAtTextOffset(text, where === 'end' ? text!.length : 0);
+		await flushDomUpdates();
+		await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
+	};
+	const kinds = (edytor: Awaited<ReturnType<typeof render>>['edytor']) =>
+		canonicalTree(edytor).map((b) => [b.type, b.content?.[0]?.text ?? '']);
+
+	it.each(['bulleted-list-item', 'numbered-list-item', 'toggle'])(
+		'Enter at the end of a non-empty %s adds another',
+		async (type) => {
+			const { edytor, editor } = await render([], {
+				children: [{ type, content: [{ text: 'one' }] }]
+			});
+			await enterAt(edytor, editor, edytor.root!.children[0]!, 'end');
+			expect(kinds(edytor)).toEqual([
+				[type, 'one'],
+				[type, '']
+			]);
+		}
+	);
+
+	it('a new to-do starts unchecked', async () => {
+		const { edytor, editor } = await render([], {
+			children: [{ type: 'todo-item', data: { checked: true }, content: [{ text: 'done' }] }]
+		});
+		await enterAt(edytor, editor, edytor.root!.children[0]!, 'end');
+		expect(canonicalTree(edytor)[1]).toMatchObject({ type: 'todo-item', data: { checked: false } });
+	});
+
+	it('Enter in the middle of a to-do splits it into two unchecked to-dos', async () => {
+		const { edytor, editor } = await render([], {
+			children: [{ type: 'todo-item', data: { checked: true }, content: [{ text: 'onetwo' }] }]
+		});
+		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 3);
+		await flushDomUpdates();
+		await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
+		expect(canonicalTree(edytor)).toMatchObject([
+			{ type: 'todo-item', data: { checked: true }, content: [{ text: 'one' }] },
+			{ type: 'todo-item', data: { checked: false }, content: [{ text: 'two' }] }
+		]);
+	});
+
+	it('Enter at the start of a list item adds an empty one above', async () => {
+		const { edytor, editor } = await render([], {
+			children: [{ type: 'bulleted-list-item', content: [{ text: 'one' }] }]
+		});
+		await enterAt(edytor, editor, edytor.root!.children[0]!, 'start');
+		expect(kinds(edytor)).toEqual([
+			['bulleted-list-item', ''],
+			['bulleted-list-item', 'one']
+		]);
+	});
+
+	it('Enter in an empty top-level list item makes it a paragraph', async () => {
+		const { edytor, editor } = await render([], {
+			children: [
+				{ type: 'bulleted-list-item', content: [{ text: 'one' }] },
+				{ type: 'bulleted-list-item', content: [{ text: '' }] }
+			]
+		});
+		await enterAt(edytor, editor, edytor.root!.children[1]!, 'end');
+		expect(kinds(edytor)).toEqual([
+			['bulleted-list-item', 'one'],
+			['paragraph', '']
+		]);
+		expect(edytor.selection.state.startBlock?.type).toBe('paragraph');
+	});
+
+	it('Enter in an empty nested list item outdents it', async () => {
+		const { edytor, editor } = await render([], {
+			children: [
+				{
+					type: 'bulleted-list-item',
+					content: [{ text: 'one' }],
+					children: [{ type: 'bulleted-list-item', content: [{ text: '' }] }]
+				}
+			]
+		});
+		await enterAt(edytor, editor, edytor.root!.children[0]!.children[0]!, 'end');
+		expect(canonicalTree(edytor).map((b) => [b.type, b.children?.length ?? 0])).toEqual([
+			['bulleted-list-item', 0],
+			['bulleted-list-item', 0]
+		]);
+	});
+
+	it('Enter at the end of a heading still starts a paragraph', async () => {
+		const { edytor, editor } = await render([], {
+			children: [{ type: 'heading', data: { level: 'h2' }, content: [{ text: 'Title' }] }]
+		});
+		await enterAt(edytor, editor, edytor.root!.children[0]!, 'end');
+		expect(kinds(edytor)).toEqual([
+			['heading', 'Title'],
+			['paragraph', '']
+		]);
+	});
+});
+
 describe('menus', () => {
 	it('the slash menu shows Notion sections and markdown hints', async () => {
 		const { editor } = await render([codePlugin, slashMenuPlugin]);

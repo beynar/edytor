@@ -206,6 +206,13 @@ export type BlockDefinition = {
 	 */
 	rendersContent?: boolean;
 	/**
+	 * A list-like kind (Notion's bullets, numbers, to-dos, toggles): Enter at
+	 * the start or end of a non-empty block opens another block of this kind
+	 * (with its first preset's data), and Enter in an empty one ends the run —
+	 * it outdents when nested, else turns into the parent's default child.
+	 */
+	continues?: boolean;
+	/**
 	 * The type a new child of this block takes by default (Enter inside a
 	 * child, a split, an island merged out into it). Adopted by the
 	 * document; two extensions declaring different values is an error.

@@ -8,10 +8,10 @@ icon: code
 
 ```svelte
 <script lang="ts">
-	import { Edytor, codePlugin, richTextPlugin } from 'edytor';
+	import { Edytor, codePlugin } from 'edytor';
 </script>
 
-<Edytor plugins={[codePlugin, richTextPlugin]} />
+<Edytor plugins={[codePlugin]} />
 ```
 
 It takes no options. Importing it also imports its stylesheet, which gives code blocks Notion's look.
@@ -24,7 +24,7 @@ It takes no options. Importing it also imports its stylesheet, which gives code 
 | `codeLine` | block | One line of code. The default child of `code`.                                                   |
 | `codeToken`| mark  | A highlighting token, rendered as `<span class="th-…">`. Computed on render, never stored.       |
 
-A code block has one preset, "Code", with the command id `block.code`, the markdown shortcut ` ``` ` (three backticks typed at the start of an empty block) and the slash menu section `Media`. <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>8</kbd> converts to it when the rich text plugin is also listed. Converting a block into a code block replaces its content with one empty line.
+A code block has one preset, "Code", with the command id `block.code`, the markdown shortcut ` ``` ` (three backticks typed at the start of an empty block) and the slash menu section `Media`. <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>8</kbd> converts to it when the rich text plugin is loaded, as it is by default. Converting a block into a code block replaces its content with one empty line.
 
 A stored code block looks like this:
 

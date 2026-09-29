@@ -4,11 +4,11 @@ description: Build a working Edytor editor with the bundled plugins, an initial 
 icon: zap
 ---
 
-This page builds a complete Notion-style editor: rich text blocks and marks, code blocks, markdown shortcuts, a slash menu, a selection toolbar, block handles with a block menu, and the Notion theme. It then reads the document as it changes and styles the result.
+This page builds a complete Notion-style editor: rich text blocks and marks, images, code blocks, markdown shortcuts, a slash menu, a selection toolbar, block handles with a block menu, and the Notion theme. It then reads the document as it changes and styles the result.
 
 <Steps>
   <Step title="Pick the plugins">
-    Every block kind and mark comes from a plugin. `richTextPlugin` provides paragraphs, headings, lists, quotes, to-dos, toggles, callouts, dividers and the text marks. The others add behavior on top of it.
+    Every block kind and mark comes from a plugin. `<Edytor>` already includes rich text (paragraphs, headings, lists, to-dos, toggles, callouts, quotes, dividers and the text marks), images and keyboard block moves. Add the others for menus, code and shortcuts.
   </Step>
   <Step title="Give it a document">
     Pass the initial content as `value`, a JSON tree of blocks.
@@ -27,11 +27,9 @@ This page builds a complete Notion-style editor: rich text blocks and marks, cod
 <script lang="ts">
 	import {
 		Edytor,
-		arrowMovePlugin,
 		blockMenuPlugin,
 		codePlugin,
 		markdownShortcutsPlugin,
-		richTextPlugin,
 		richTextPlaceholder,
 		slashMenuPlugin,
 		toolbarPlugin,
@@ -41,15 +39,8 @@ This page builds a complete Notion-style editor: rich text blocks and marks, cod
 	} from 'edytor';
 	import 'edytor/themes/notion.css';
 
-	const plugins = [
-		arrowMovePlugin,
-		codePlugin,
-		markdownShortcutsPlugin,
-		slashMenuPlugin,
-		toolbarPlugin,
-		blockMenuPlugin,
-		richTextPlugin
-	];
+	// Rich text, images and arrow moves are included by default.
+	const plugins = [codePlugin, markdownShortcutsPlugin, slashMenuPlugin, toolbarPlugin, blockMenuPlugin];
 
 	const value: JSONDoc = {
 		children: [
@@ -84,19 +75,18 @@ What each plugin adds:
 
 | Plugin | Adds |
 | --- | --- |
-| `richTextPlugin` | The rich text block kinds and marks, their keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, …) and HTML import rules. |
+| `richTextPlugin` (default) | The rich text block kinds and marks, their keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, …) and HTML import rules. List, to-do and toggle items continue on <kbd>Enter</kbd>. |
+| `imagePlugin` (default) | An image block: embed from a link (or your upload, with `createImagePlugin({ upload })`), with an editable caption. |
+| `arrowMovePlugin` (default) | <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move the caret's block; <kbd>Mod</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move selected blocks. |
 | `codePlugin` | A `code` block (an island of `codeLine` children) with syntax highlighting. |
 | `markdownShortcutsPlugin` | Typing `# `, `- `, `1. `, `[] `, `" `, `> `, `---` or ```` ``` ```` at the start of a block converts it; `**bold**`, `*italic*` and friends format inline. |
 | `slashMenuPlugin` | A menu of block kinds, opened by typing `/`. |
 | `toolbarPlugin` | A floating toolbar over a text selection: Turn into, link, marks and colors. |
 | `blockMenuPlugin` | The menu of a block handle's grip: Turn into, Duplicate, Move, Delete. |
-| `arrowMovePlugin` | <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move the caret's block; <kbd>Mod</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move selected blocks. |
 
-Plugin order matters: when two plugins define the same block kind, mark or command, the first one wins. See [Plugins](/docs/plugins).
+Plugin order matters: when two plugins define the same block kind, mark or command, the first one wins. Rich text is added after your plugins so they can override it; `defaultPlugins={false}` turns the defaults off. See [Plugins](/docs/plugins#default-plugins).
 
-:::note
-The demo app in the repository also uses a mention plugin and an image plugin. Neither is exported from the package yet.
-:::
+The slash menu, the toolbar, the block menu and the block handles each take a snippet to render your own markup while keeping their behavior. See [Menus and handles](/docs/customization/menus).
 
 ## Read the document
 

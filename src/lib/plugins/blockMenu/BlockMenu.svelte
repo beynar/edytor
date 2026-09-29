@@ -2,7 +2,11 @@
 	import { iconOf } from '../icons.js';
 	import type { BlockMenuController } from './BlockMenuController.svelte.js';
 
-	let { controller }: { controller: BlockMenuController } = $props();
+	import type { Snippet } from 'svelte';
+	let {
+		controller,
+		menu
+	}: { controller: BlockMenuController; menu?: Snippet<[BlockMenuController]> } = $props();
 	const rows = $derived(controller.rows);
 
 	const focusOnMount = (node: HTMLInputElement) => {
@@ -63,13 +67,16 @@
 	};
 </script>
 
-{#if controller.isOpen}
+{#if controller.isOpen && menu}
+	{@render menu(controller)}
+{:else if controller.isOpen}
 	<div class="block-menu-frame">
 		<div
 			class="block-menu"
 			role="menu"
 			aria-label="Block actions"
 			data-testid="block-menu"
+			data-edytor-block-menu
 			tabindex="-1"
 		>
 			<div class="block-menu-search">

@@ -14,6 +14,21 @@
 		isBlockHandlesPlugin,
 		type BlockHandlesOptions
 	} from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
+	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
+	import { imagePlugin, isImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
+
+	/**
+	 * The plugins every view has unless it lists its own (or sets
+	 * `defaultPlugins={false}`), after the app's so its kinds and keys win:
+	 * block moves, the image kind, then rich text.
+	 */
+	const withDefaults = (plugins: Plugin[] = []): Plugin[] => [
+		...plugins,
+		...(plugins.includes(arrowMovePlugin) ? [] : [arrowMovePlugin]),
+		...(plugins.some(isImagePlugin) ? [] : [imagePlugin]),
+		...(plugins.includes(richTextPlugin) ? [] : [richTextPlugin])
+	];
 	const defaultValue: JSONDoc = {
 		// Empty document — the facade seeds the canonical bootstrap block of
 		// the document's `defaultType` on `sync()` (D1). No block types are
@@ -26,6 +41,8 @@
 		plugins?: Plugin[];
 		/** Show built-in block handles, with optional pointer dragging and activation callback. */
 		blockHandles?: boolean | BlockHandlesOptions;
+		/** Add rich text, arrow moves and images unless `plugins` lists them (default `true`). */
+		defaultPlugins?: boolean;
 		/** @deprecated Use `blockHandles`; `false` also hides the built-in handles. */
 		blockDnd?: boolean;
 		class?: string;
@@ -75,8 +92,9 @@
 	import Block from './Block.svelte';
 
 	let {
-		plugins,
+		plugins: userPlugins,
 		blockHandles,
+		defaultPlugins = true,
 		blockDnd = true,
 		class: className,
 		edytor = $bindable(),
@@ -109,6 +127,7 @@
 		snippets,
 		readonly,
 		plugins: (() => {
+			const plugins = defaultPlugins ? withDefaults(userPlugins) : userPlugins;
 			const handles = blockHandles ?? blockDnd;
 			const withoutDefaultHandles = plugins?.filter((plugin) => !isBlockHandlesPlugin(plugin));
 			if (handles === false) {

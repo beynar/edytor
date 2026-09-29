@@ -112,17 +112,15 @@ Pass the same document to several `<Edytor>` views. They share one document API,
 ```svelte
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { Edytor, createDocument, createIndexeddbSync, richTextPlugin } from 'edytor';
+  import { Edytor, createDocument, createIndexeddbSync } from 'edytor';
 
   const document = createDocument();
   document.attachSync(createIndexeddbSync('notes/today'));
   onDestroy(() => document.destroy());
-
-  const plugins = [richTextPlugin];
 </script>
 
-<Edytor {document} {plugins} />
-<Edytor {document} {plugins} readonly />
+<Edytor {document} />
+<Edytor {document} readonly />
 ```
 
 A view never destroys a document you passed in: you created it, you destroy it. Views contribute the structural rules of their plugins (void and island blocks, default children) to the document. Two views whose plugins disagree on a rule throw `SemanticConflictError`. See [the Edytor component](/docs/editor/edytor-component) for the view's props.

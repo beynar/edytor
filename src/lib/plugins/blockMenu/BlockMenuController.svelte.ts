@@ -3,6 +3,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import {
 	convertBlocks,
+	convertedBlocks,
 	convertibleKinds,
 	convertToKind,
 	matchesQuery,
@@ -88,7 +89,7 @@ export class BlockMenuController {
 				label: 'Turn into',
 				icon: 'action.turn',
 				submenu: true,
-				isEnabled: () => blocks.some((b) => b.convertible)
+				isEnabled: () => convertedBlocks(blocks).length > 0
 			},
 			...(this.options.linkTo && blocks.length === 1
 				? [
@@ -142,7 +143,7 @@ export class BlockMenuController {
 	 * results), matched as the slash menu matches them (`matchesQuery`).
 	 */
 	get matchingKinds(): KindRow[] {
-		if (!this.query.trim() || !this.blocks.some((b) => b.convertible)) return [];
+		if (!this.query.trim() || !convertedBlocks(this.blocks).length) return [];
 		return this.kinds.filter((kind) => matchesQuery(kind, this.query));
 	}
 

@@ -255,7 +255,7 @@ export const CLOSE = {
 	refused: 1008,
 	/** A fault of the room (storage, engine): redialed, backed off until the room saves again. */
 	fault: 1011,
-	/** A document id the room cannot have (empty, over 256 characters). */
+	/** A document id the room cannot have (empty, `.`/`..`, over 256 characters). */
 	invalidDocument: 4400,
 	/** Expired credentials: redialed once `params` carries a fresh token. */
 	expired: 4401,
@@ -264,6 +264,24 @@ export const CLOSE = {
 	/** The dialed replica is bound to another user. */
 	replicaTaken: 4409
 } as const;
+
+/**
+ * Whether a room (document) id can reach its own room: 1–256 characters,
+ * not `.` or `..` — URL parsing collapses a dot segment (`%2E` included),
+ * so the dial would reach another path — and no lone surrogate, which
+ * `encodeURIComponent` cannot encode. The provider refuses any other id at
+ * construction; `routeDocumentSocket` closes it `4400`.
+ */
+export const validRoomId = (id: string): boolean =>
+	id.length > 0 && id.length <= 256 && id !== '.' && id !== '..' && !/\p{Cs}/u.test(id);
+
+/** Throw a clear error for a room id no dial can carry ({@link validRoomId}). */
+export const assertRoomId = (id: string): void => {
+	if (validRoomId(id)) return;
+	throw new TypeError(
+		`room id ${JSON.stringify(id)} cannot be dialed: it must be 1-256 characters, not "." or ".." (a URL collapses those path segments), with no lone surrogate`
+	);
+};
 
 /** A close code that refuses this client for good: policy (`1008`) or an application code (`4xxx`) but `expired`. */
 export const isRefusal = (code: number): boolean =>

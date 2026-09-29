@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import type { JSONBlock } from '$lib/utils/json.js';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
 import {
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
@@ -252,4 +253,154 @@ describe.each(['unordered-list', 'ordered-list'])('DR-crdt-4 seam range above a 
 			const joined = name === 'typing' ? 'pxa' : 'pa';
 			expect(shape(edytor)).toEqual([`paragraph "${joined}"`, [`${kind} ""`, ['list-item "b"']]]);
 		});
+});
+
+/**
+ * ZW-01 (re-score 6): nothing but an item lands directly in a list. A block
+ * a key sheds into a list becomes its item; Tab after a list nests under
+ * its last item (Notion). Hand-authored from the unit's "Done when".
+ */
+describe('ZW-01: the keys never leave a non-item directly in a list', () => {
+	const li = (value: string, children?: JSONBlock[]): JSONBlock => ({
+		type: 'list-item',
+		content: text(value),
+		...(children && { children })
+	});
+	const p = (value: string, children?: JSONBlock[]): JSONBlock => ({
+		type: 'paragraph',
+		content: text(value),
+		...(children && { children })
+	});
+	const ul = (...items: JSONBlock[]): JSONBlock => ({ type: 'unordered-list', children: items });
+
+	it('Delete above a list whose first item has a paragraph child → the child is an item', async () => {
+		const { edytor, editor } = await render([p('p'), ul(li('a', [p('child')]), li('b'))]);
+		await at(edytor, [0], true);
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentForward' });
+		expect(shape(edytor)).toEqual([
+			'paragraph "pa"',
+			['unordered-list ""', ['list-item "child"', 'list-item "b"']]
+		]);
+	});
+
+	it('…and above a one-item list → the list keeps the child as its item', async () => {
+		const { edytor, editor } = await render([p('p'), ul(li('a', [p('child')]))]);
+		await at(edytor, [0], true);
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentForward' });
+		expect(shape(edytor)).toEqual(['paragraph "pa"', ['unordered-list ""', ['list-item "child"']]]);
+	});
+
+	it('Backspace at a middle item with a paragraph child → the child is an item', async () => {
+		const { edytor, editor } = await render([p('p'), ul(li('a'), li('b', [p('child')]), li('c'))]);
+		await at(edytor, [1, 1], false);
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
+		expect(shape(edytor)).toEqual([
+			'paragraph "p"',
+			['unordered-list ""', ['list-item "ab"', 'list-item "child"', 'list-item "c"']]
+		]);
+	});
+
+	it('Backspace at a paragraph nested last under the last item → an item of the list', async () => {
+		const { edytor, editor } = await render([p('p'), ul(li('a', [p('x')]))]);
+		await at(edytor, [1, 0, 0], false);
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
+		expect(shape(edytor)).toEqual([
+			'paragraph "p"',
+			['unordered-list ""', ['list-item "a"', 'list-item "x"']]
+		]);
+	});
+
+	it('Tab on a paragraph after a list → it nests under the last item; one undo restores', async () => {
+		const { edytor } = await render([p('p'), ul(li('a'), li('b')), p('q')]);
+		const before = shape(edytor);
+		await at(edytor, [2], false);
+		await dispatchDomKeyDown(document, { key: 'Tab', code: 'Tab' });
+		expect(shape(edytor)).toEqual([
+			'paragraph "p"',
+			['unordered-list ""', ['list-item "a"', ['list-item "b"', ['paragraph "q"']]]]
+		]);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(shape(edytor)).toEqual(before);
+	});
+
+	it('Tab over two paragraphs after a list → both nest under the last item', async () => {
+		const { edytor } = await render([p('p'), ul(li('a'), li('b')), p('q'), p('r')]);
+		const [q, r] = edytor.root!.children.slice(2);
+		edytor.selection.setAtRange(q!.firstText!, 0, r!.firstText!, 1);
+		await flushDomUpdates();
+		await dispatchDomKeyDown(document, { key: 'Tab', code: 'Tab' });
+		expect(shape(edytor)).toEqual([
+			'paragraph "p"',
+			[
+				'unordered-list ""',
+				['list-item "a"', ['list-item "b"', ['paragraph "q"', 'paragraph "r"']]]
+			]
+		]);
+	});
+});
+
+/**
+ * DR-crdt-1/2 (follow-up review of ZW-01): the outdent's answer is one —
+ * the move command's `out` step (a text range plus Shift+Tab, the block
+ * handle's Alt+ArrowLeft, `canMoveBlocks`) asks the outdent plan itself, so
+ * a paragraph under an item outdents into the list as its item on every
+ * path. An image nested under a bullet stays an image when a key sheds it
+ * into the list. Hand-authored.
+ */
+describe('DR-crdt-1/2: outdent and shed blocks next to a list, on every path', () => {
+	const li = (value: string, children?: JSONBlock[]): JSONBlock => ({
+		type: 'list-item',
+		content: text(value),
+		...(children && { children })
+	});
+	const p = (value: string): JSONBlock => ({ type: 'paragraph', content: text(value) });
+	const ul = (...items: JSONBlock[]): JSONBlock => ({ type: 'unordered-list', children: items });
+	const outdented = [
+		'paragraph "p"',
+		['unordered-list ""', ['list-item "a"', 'list-item "x"', 'list-item "y"']]
+	];
+
+	it('Shift+Tab over two paragraphs under an item → both are items of the list', async () => {
+		const { edytor } = await render([p('p'), ul(li('a', [p('x'), p('y')]))]);
+		const [x, y] = edytor.root!.children[1]!.children[0]!.children;
+		edytor.selection.setAtRange(x!.firstText!, 0, y!.firstText!, 1);
+		await flushDomUpdates();
+		await dispatchDomKeyDown(document, { key: 'Tab', code: 'Tab', shiftKey: true });
+		expect(shape(edytor)).toEqual(outdented);
+	});
+
+	it('canMoveBlocks/moveBlocks `out` agree with Shift+Tab on one such paragraph', async () => {
+		const { edytor } = await render([p('p'), ul(li('a', [p('x')]))]);
+		const x = edytor.root!.children[1]!.children[0]!.children[0]!;
+		expect(edytor.canMoveBlocks({ blocks: [x], direction: 'out' })).toBe(true);
+		expect(edytor.moveBlocks({ blocks: [x], direction: 'out' })).toHaveLength(1);
+		await flushDomUpdates();
+		expect(shape(edytor)).toEqual([
+			'paragraph "p"',
+			['unordered-list ""', ['list-item "a"', 'list-item "x"']]
+		]);
+	});
+
+	it('Backspace at a bullet with an image child → the image still renders', async () => {
+		const { edytor, editor } = await renderDomEdytor(empty, {
+			plugins: [richTextPlugin, mentionPlugin, imagePlugin],
+			value: {
+				children: [
+					p('p'),
+					ul(li('a'), li('b', [{ type: 'image', data: { src: 'https://x.test/a.png' } }]), li('c'))
+				]
+			}
+		});
+		expect(editor.querySelectorAll('[data-edytor-image]')).toHaveLength(1);
+		await at(edytor, [1, 1], false);
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
+		expect(shape(edytor)).toEqual([
+			'paragraph "p"',
+			['unordered-list ""', ['list-item "ab"', 'image ""', 'list-item "c"']]
+		]);
+		expect(editor.querySelectorAll('[data-edytor-image]')).toHaveLength(1);
+		const image = edytor.root!.children[1]!.children[1]!;
+		expect(image.value.data).toEqual({ src: 'https://x.test/a.png' });
+	});
 });

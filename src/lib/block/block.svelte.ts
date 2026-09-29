@@ -48,6 +48,7 @@ import { jsonBlockToSpec, jsonContentToItems } from '$lib/utils/json.js';
 import type { BlockDefinition } from '$lib/plugins.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
 import type { DocBlock } from '$lib/crdt/index.js';
+import { revealed } from '$lib/selection/replaceSelection.js';
 
 /**
  * An id-only block handle (§2.4 "Handles", R4): every getter reads the
@@ -138,11 +139,15 @@ export class Block {
 
 	/**
 	 * May text-level structural commands (convert, markdown shortcut, slash
-	 * menu) apply: the block is movable and has no role of its own.
+	 * menu) apply: the block is movable, has no role of its own and renders
+	 * its own content — a container (a list) is never converted, its items
+	 * are (ZW-02).
 	 */
 	get convertible(): boolean {
 		const { facade } = this.edytor;
-		return this.movable && !facade.isVoid(this.id) && !facade.isIsland(this.id);
+		return (
+			this.movable && this.rendersContent && !facade.isVoid(this.id) && !facade.isIsland(this.id)
+		);
 	}
 
 	get firstEditableText(): Text | undefined {
@@ -259,6 +264,41 @@ export class Block {
 	}
 
 	/**
+	 * A container: it shows only its children (a list), neither void nor an
+	 * island — the document's container rule (YW-02). Its items hold what it
+	 * shows; it is never converted (`convertible`).
+	 */
+	get isContainer(): boolean {
+		const { facade } = this.edytor;
+		return !this.rendersContent && !facade.isVoid(this.id) && !facade.isIsland(this.id);
+	}
+
+	/**
+	 * An item of a list: its parent is a container whose items are a kind of
+	 * their own (a `list-item` in an `unordered-list`), not the document's
+	 * default — a column of paragraphs is no list. Turned into another kind,
+	 * an item leaves its list; <kbd>Enter</kbd> in an empty one ends it.
+	 */
+	get isListItem(): boolean {
+		const { parent, edytor } = this;
+		if (!parent?.isContainer) return false;
+		const item = edytor.defaultChild(parent);
+		return this.type === item && item !== edytor.document.defaultChild(null);
+	}
+
+	/**
+	 * The list this block shows in: its container when it is an item
+	 * (`isListItem`), or — an item outdented out of a nested list into the
+	 * item holding it (SW8-roles-4) — the list of the items of its kind it
+	 * sits under. <kbd>Enter</kbd> in an empty one outdents it; the menus
+	 * name it by the list's `itemKind`.
+	 */
+	get list(): Block | undefined {
+		if (this.isListItem) return this.parent ?? undefined;
+		return this.parent?.type === this.type ? this.parent.list : undefined;
+	}
+
+	/**
 	 * The first text of this block's own content — none for a kind that
 	 * does not render its content (a list container, a divider): its slot
 	 * is never displayed, so no caret or endpoint may land there. A block
@@ -282,7 +322,7 @@ export class Block {
 	splitBlock = batch('splitBlock', splitBlock, prepareSplit, blockOf);
 	duplicateBlock = batch('duplicateBlock', duplicateBlock, prepareDuplicate, blockOf);
 	removeBlock = batch('removeBlock', removeBlock, prepareRemove);
-	unNestBlock = batch('unNestBlock', unNestBlock, prepareUnNest);
+	unNestBlock = revealed(batch('unNestBlock', unNestBlock, prepareUnNest));
 	mergeBlockBackward = batch(
 		'mergeBlockBackward',
 		mergeBlockBackward,
@@ -290,10 +330,10 @@ export class Block {
 		blockOf
 	);
 	mergeBlockForward = batch('mergeBlockForward', mergeBlockForward, prepareMergeForward, blockOf);
-	nestBlock = batch('nestBlock', nestBlock, prepareNest);
+	nestBlock = revealed(batch('nestBlock', nestBlock, prepareNest));
 	setBlock = batch('setBlock', setBlock, prepareSet);
-	moveBlock = batch('moveBlock', moveBlock, prepareMove);
-	moveBlocks = batch('moveBlocks', moveBlocks, prepareMoves);
+	moveBlock = revealed(batch('moveBlock', moveBlock, prepareMove));
+	moveBlocks = revealed(batch('moveBlocks', moveBlocks, prepareMoves));
 	pushContentIntoBlock = batch('pushContentIntoBlock', pushContentIntoBlock);
 	removeInlineBlock = batch('removeInlineBlock', removeInlineBlock, prepareRemoveInline);
 	setInlineData = batch('setInlineData', setInlineData, prepareSetInline);

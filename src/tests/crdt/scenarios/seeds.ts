@@ -91,7 +91,8 @@ export const MODEL_BASE_SEED: SeedUpdate = modelSpecSeed([
 /**
  * The roles lane's seed (RW-01): {@link MODEL_BASE_SEED}'s blocks plus a
  * code island with its lines and a void divider, so island merges, deletes
- * and promotions and void shedding are fuzzed (`ROLES` in `doc-ops`).
+ * and promotions and void shedding are fuzzed, and (ZW-11) a list, columns
+ * of columns and a table, so the container rules are (`ROLES` in `doc-ops`).
  */
 export const ROLES_BASE_SEED: SeedUpdate = modelSpecSeed([
 	{ id: 'b1', type: 'paragraph', content: [{ kind: 'text', text: 'hello world' }] },
@@ -110,6 +111,58 @@ export const ROLES_BASE_SEED: SeedUpdate = modelSpecSeed([
 		type: 'list',
 		content: [{ kind: 'text', text: 'parent' }],
 		children: [{ id: 'b3a', type: 'paragraph', content: [{ kind: 'text', text: 'child a' }] }]
+	},
+	// ZW-11: container kinds — a list of items (one with a paragraph child), columns of
+	// columns, and a table island of rows of cells.
+	{
+		id: 'u1',
+		type: 'unordered-list',
+		content: [],
+		children: [
+			{
+				id: 'u1a',
+				type: 'list-item',
+				content: [{ kind: 'text', text: 'item a' }],
+				children: [{ id: 'u1a1', type: 'paragraph', content: [{ kind: 'text', text: 'under a' }] }]
+			},
+			{ id: 'u1b', type: 'list-item', content: [{ kind: 'text', text: 'item b' }] },
+			{ id: 'u1c', type: 'list-item', content: [{ kind: 'text', text: 'item c' }] }
+		]
+	},
+	{
+		id: 'k1',
+		type: 'columns',
+		content: [],
+		children: [
+			{
+				id: 'k1a',
+				type: 'column',
+				content: [],
+				children: [{ id: 'k1a1', type: 'paragraph', content: [{ kind: 'text', text: 'left' }] }]
+			},
+			{
+				id: 'k1b',
+				type: 'column',
+				content: [],
+				children: [{ id: 'k1b1', type: 'paragraph', content: [{ kind: 'text', text: 'right' }] }]
+			}
+		]
+	},
+	{
+		id: 't1',
+		type: 'table',
+		content: [],
+		children: [
+			{
+				id: 't1r',
+				type: 'row',
+				content: [],
+				children: [
+					{ id: 't1c1', type: 'cell', content: [{ kind: 'text', text: 'one' }] },
+					{ id: 't1c2', type: 'cell', content: [{ kind: 'text', text: 'two' }] }
+				]
+			}
+		]
 	}
 ]);
 

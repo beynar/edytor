@@ -390,6 +390,8 @@ type IntentEnvelope = {
 	/** Claim stamps that may transition any direction (history ops). */
 	claimsAny?: ReadonlySet<string>;
 	blocksCreate?: ReadonlySet<string>;
+	/** How many blocks of ids the runner cannot know (minted by the op) it may create. */
+	blocksMinted?: number;
 	blocksRemove?: ReadonlySet<string>;
 	delSet?: ReadonlySet<string>;
 	delClear?: ReadonlySet<string>;
@@ -530,8 +532,12 @@ const checkEnvelope = (diff: OpDiff, env: IntentEnvelope, post: OpState): string
 	for (const s of diff.claimsRevived) {
 		if (!env.claimsAny?.has(s)) bad.push(`revived claim ${s}`);
 	}
+	let minted = env.blocksMinted ?? 0;
+	const mintedIds = new Set<string>();
 	for (const id of diff.blocksNew) {
-		if (!env.blocksCreate?.has(id)) bad.push(`created block '${id}'`);
+		if (env.blocksCreate?.has(id)) continue;
+		if (minted-- > 0) mintedIds.add(id);
+		else bad.push(`created block '${id}'`);
 	}
 	for (const id of diff.blocksGone) {
 		if (!env.blocksRemove?.has(id)) bad.push(`removed block '${id}'`);
@@ -543,7 +549,7 @@ const checkEnvelope = (diff: OpDiff, env: IntentEnvelope, post: OpState): string
 		if (!(env.delClear?.has(id) || env.delAny?.has(id))) bad.push(`cleared delete on '${id}'`);
 	}
 	for (const id of diff.placementsChanged) {
-		if (!env.placements?.has(id)) bad.push(`reparented block '${id}'`);
+		if (!env.placements?.has(id) && !mintedIds.has(id)) bad.push(`reparented block '${id}'`);
 	}
 	return bad;
 };
@@ -1084,6 +1090,27 @@ export const runSchedule = (
 	 * A resolved-but-invisible target yields an EMPTY envelope: the op must
 	 * produce no state change at all.
 	 */
+	/**
+	 * The container rules' side effects widen a structural op's envelope
+	 * (ZW-11, adapters with `containerSlack`): a container above `id` the op
+	 * leaves with no child may go, and an outdent out of a container may
+	 * split it — one new list, taking the items before `id`.
+	 */
+	const slack = (peer: Peer, id: string, env: IntentEnvelope, outdent = false): IntentEnvelope => {
+		const extra = ops.containerSlack?.(peer, id);
+		if (!extra) return env;
+		return {
+			...env,
+			delSet: new Set([...(env.delSet ?? []), ...extra.containers]),
+			...(outdent && extra.split.length > 0
+				? {
+						placements: new Set([...(env.placements ?? []), ...extra.split]),
+						blocksMinted: 1
+					}
+				: {})
+		};
+	};
+
 	const planIntent = (
 		peer: Peer,
 		op: DocOp,
@@ -1128,14 +1155,17 @@ export const runSchedule = (
 					for (const h of t?.holders ?? []) del.add(h);
 					members.push(...(t?.children ?? []));
 				}
-				return { env: { delSet: del }, exec: () => ops.deleteBlock(peer, id) };
+				return {
+					env: slack(peer, id, { delSet: del }),
+					exec: () => ops.deleteBlock(peer, id)
+				};
 			}
 			case 'moveBlock': {
 				const id = resolveId(peer, op.idIndex);
 				if (id === undefined) return null;
 				const parent = resolveParent(peer, op.parentIndex);
 				return {
-					env: { placements: new Set([id]) },
+					env: slack(peer, id, { placements: new Set([id]) }),
 					exec: () => ops.moveBlock(peer, id, { parent, index: op.destIndex })
 				};
 			}
@@ -1143,14 +1173,17 @@ export const runSchedule = (
 				const id = resolveId(peer, op.idIndex);
 				const parent = resolveId(peer, op.parentIndex);
 				if (id === undefined || parent === undefined || parent === id) return null;
-				return { env: { placements: new Set([id]) }, exec: () => ops.nestBlock(peer, id, parent) };
+				return {
+					env: slack(peer, id, { placements: new Set([id]) }),
+					exec: () => ops.nestBlock(peer, id, parent)
+				};
 			}
 			case 'unNest': {
 				const id = resolveId(peer, op.idIndex);
 				if (id === undefined) return null;
 				// The outdent may hand the siblings after `id` to it (UW-23).
 				return {
-					env: { placements: new Set([id, ...followersOf(peer, id)]) },
+					env: slack(peer, id, { placements: new Set([id, ...followersOf(peer, id)]) }, true),
 					exec: () => ops.unNestBlock(peer, id)
 				};
 			}
@@ -1195,13 +1228,13 @@ export const runSchedule = (
 				const tgtFrom = ops.opTarget!(peer, from);
 				if (tgtFrom === null) return { env: EMPTY, exec: () => ops.mergeBlocks(peer, from, into) };
 				return {
-					env: {
+					env: slack(peer, from, {
 						// The merge claim lands on `into`'s list; `from`'s children
 						// reparent onto `into`.
 						placements: new Set(tgtFrom.children),
 						claimsWrite: (c) => c.holder === into && c.kind === 'merge' && c.m === from,
 						touchedTexts: tgtFrom.texts
-					},
+					}),
 					exec: () => ops.mergeBlocks(peer, from, into),
 					merge: { from, into, kids: [...tgtFrom.children] }
 				};

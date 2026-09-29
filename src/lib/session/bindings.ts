@@ -17,8 +17,7 @@ import {
 	deleteSelectedBlocks,
 	lastShownText,
 	lineOf,
-	outermost,
-	revealing
+	outermost
 } from '$lib/selection/replaceSelection.js';
 import { shown } from '$lib/selection/visibility.js';
 import type { HotKey } from './keymap.js';
@@ -170,12 +169,8 @@ const nest =
 			const selectedBlock = selectedBlocks.values().next().value as Block | undefined;
 			const { yStart, startText, startBlock } = edytor.selection.state;
 			const index = startText?.index;
-			const target = selectedBlock || startBlock;
-			const [block] = target
-				? revealing([target], () =>
-						[target[operation]()].filter((moved): moved is Block => moved != null)
-					)
-				: [];
+			// The block's command reveals a closed toggle it lands in or that adopts (ZW-09).
+			const block = (selectedBlock || startBlock)?.[operation]();
 			if (block && selectedBlock) edytor.selection.selectBlocks(block);
 			else if (block && index !== undefined) caretAt(edytor, block.content[index] as Text, yStart);
 		});

@@ -43,7 +43,7 @@ A conversion happens when the character you type completes a prefix, and all of 
 
 - the caret is collapsed in the block's first text;
 - the text from the block's start to the caret plus the typed character equals the prefix exactly (so `# ` works at the start of a block, not after other words);
-- the block is convertible (not a void or island block, and not inside one);
+- the block is convertible (not a void or island block, and not inside one); in a list's item, the new kind takes the item out of the list ([Containers](/docs/concepts/blocks#containers));
 - the typed input is one character.
 
 Removing the prefix and converting the block are one operation (`setBlock`, with a `deleteContentAtRange` step for the prefix): a plugin that refuses either refuses both. When the conversion is refused, the character is inserted as normal text instead. The conversion is its own undo step, separate from the typing before it: undo after `## ` leaves a paragraph `##`. After the conversion the caret is at the start of the converted block, or of its first child when the kind starts with one (a code block's first line).

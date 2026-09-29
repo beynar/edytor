@@ -70,14 +70,21 @@ export const convertibleKinds = (edytor: Edytor): KindRow[] =>
 	edytor.kinds.filter((kind) => !kind.replaces);
 
 /**
- * The row naming `block`: of its kind's rows, the one whose preset data
- * shares the most values with the block's (the first on a tie). A block
+ * The kind `block` shows as: its own, or an item's list's `itemKind` (a
+ * `list-item` of an `ordered-list` is a numbered item, DR-behavior-3).
+ */
+const shownKind = (block: Block) => block.list?.definition.itemKind ?? block.type;
+
+/**
+ * The row naming `block` (by the kind it shows as, `shownKind`): of its
+ * kind's rows, the one whose preset data shares the most values with the block's (the first on a tie). A block
  * matching no preset exactly (a checked to-do) still gets its kind's row;
  * among equals, the row drawn with the block's element wins, so a stored
  * `h5` heading, drawn as an `h3`, is "Heading 3".
  */
 export const rowOf = (edytor: Edytor, block: Block | null | undefined): KindRow | undefined => {
 	if (!block) return undefined;
+	const type = shownKind(block);
 	const data = block.data ?? {};
 	const { element } = block.definition;
 	const drawn = (of: Record<string, unknown>) =>
@@ -88,7 +95,7 @@ export const rowOf = (edytor: Edytor, block: Block | null | undefined): KindRow 
 		Number(own !== undefined && drawn(value.data ?? {}) === own);
 	let best: KindRow | undefined;
 	for (const row of edytor.kinds)
-		if (row.value.type === block.type && (!best || score(row) > score(best))) best = row;
+		if (row.value.type === type && (!best || score(row) > score(best))) best = row;
 	return best;
 };
 
@@ -112,8 +119,10 @@ const holdsNothing = (edytor: Edytor, block: Block) => {
  * A replacing kind (a divider, a code block) converts in place only a block
  * that holds nothing; after text or children it is inserted after the
  * block instead, which stays intact. A kind rendering no content (a divider)
- * holds no caret: a fresh default block after it takes it. Each is one plan
- * (one refusal, one undo step). Answers whether it applied.
+ * holds no caret: a fresh default block after it takes it. A list's item
+ * (`isListItem`) leaves the list, as a bullet turned into a heading stops
+ * being a bullet in Notion. Each is one plan (one refusal, one undo
+ * step). Answers whether it applied.
  */
 export const convertToKind = (
 	edytor: Edytor,
@@ -123,6 +132,8 @@ export const convertToKind = (
 ) => {
 	if (!block?.convertible) return false;
 	const value = structuredClone(row.value);
+	// The kind an item already shows as keeps it in its list (DR-behavior-3).
+	if (value.type === shownKind(block)) value.type = block.type;
 	const { parent } = block;
 	const after = row.replaces && !holdsNothing(edytor, block);
 	const bare = !edytor.document.rendersContent(value.type) && !value.children?.length;
@@ -142,8 +153,35 @@ export const convertToKind = (
 		if (applied) edytor.dispatcher.caret((landing?.children[0] ?? landing)?.firstText, 0);
 		return Boolean(applied);
 	}
-	block.setBlock({ value });
-	if (edytor.dispatcher.last?.status !== 'applied') return false;
+	let applied = false;
+	if (block.isListItem && value.type !== block.type) {
+		// A list holds only items: the item leaves it where Shift+Tab lifts it,
+		// the last lift and the conversion in one plan (a veto or a refusal
+		// keeps the item). Out of a list nested right in a list, it first
+		// leaves the inner ones, as Shift+Tab does (DR-behavior-2).
+		const { facade, dispatcher } = edytor;
+		const inner = () => {
+			const outer = block.parent?.parent;
+			return Boolean(outer?.isContainer && edytor.defaultChild(outer) === block.type);
+		};
+		dispatcher.run('setBlock', () => {
+			while (block.isListItem && inner()) if (!block.unNestBlock()) return;
+			const touched = [block.parent, block.parent?.parent, block];
+			dispatchPlan(
+				block,
+				'setBlock',
+				{ value },
+				(payload) =>
+					facade.compose(facade.prepare.unNestBlock(block.id), prepareSet.call(block, payload)),
+				touched
+			);
+			applied = dispatcher.last?.status === 'applied';
+		});
+	} else {
+		block.setBlock({ value });
+		applied = edytor.dispatcher.last?.status === 'applied';
+	}
+	if (!applied) return false;
 	if (caret) {
 		const target = row.value.children?.length ? block.children[0] : block;
 		edytor.dispatcher.caret(target?.firstText, 0);
@@ -152,28 +190,24 @@ export const convertToKind = (
 };
 
 /**
- * The blocks a conversion of the selection applies to, in document order:
- * the blocks the selection touches (`getSelectionBlocks`: a closed toggle's
- * hidden body is not touched); of a text range, those rendering their own
- * content (a list container is not converted).
+ * The blocks a Turn into over `blocks` converts, in document order: the
+ * convertible ones. A list container is not, whether a text range, a block
+ * selection or its grip names it: the items selected with it convert
+ * (ZW-02). A closed toggle's hidden body is skipped (Select all selects it).
  */
-export const selectionBlocks = (edytor: Edytor): Block[] => {
-	const blocks = getSelectionBlocks(edytor);
-	if (edytor.selection.selectedBlocks.size || blocks.length < 2) return blocks;
-	return blocks.filter((block) => edytor.document.rendersContent(block.type));
-};
+export const convertedBlocks = (blocks: Iterable<Block>): Block[] =>
+	[...blocks].filter((block) => block.convertible && !hidden(block));
 
 /**
- * Convert several blocks to a row's kind as one undo step, keeping the
- * selection (Notion's Turn into over several blocks); blocks that are not
- * convertible are skipped, and so is a closed toggle's hidden body (Select
- * all selects it). Answers whether any conversion applied.
+ * Convert several blocks (`convertedBlocks`) to a row's kind as one undo
+ * step, keeping the selection (Notion's Turn into over several blocks).
+ * Answers whether any conversion applied.
  */
 export const convertBlocks = (edytor: Edytor, blocks: Iterable<Block>, row: KindRow) => {
 	const selection = edytor.selection.value;
-	const shown = [...blocks].filter((block) => !hidden(block));
+	const targets = convertedBlocks(blocks);
 	const applied = edytor.dispatcher.run('setBlock', () =>
-		shown.map((block) => convertToKind(edytor, block, row, false))
+		targets.map((block) => convertToKind(edytor, block, row, false))
 	);
 	edytor.selection.select(selection);
 	return Boolean(applied?.some(Boolean));
@@ -181,8 +215,8 @@ export const convertBlocks = (edytor: Edytor, blocks: Iterable<Block>, row: Kind
 
 /**
  * A row as a command on the selection: the caret's block, or every block
- * of a block selection or of a text range (a kind that replaces content
- * converts only the block holding the selection's start).
+ * of a block selection or of a text range (`convertedBlocks`; a kind that
+ * replaces content converts only the block holding the selection's start).
  */
 export const kindCommand = (edytor: Edytor, row: KindRow): EditorCommand => ({
 	id: row.id,
@@ -191,10 +225,13 @@ export const kindCommand = (edytor: Edytor, row: KindRow): EditorCommand => ({
 	keywords: row.keywords,
 	group: row.group ?? 'Basic blocks',
 	hint: row.markdown?.[0]?.trim(),
-	isEnabled: () => Boolean(edytor.selection.state.startBlock?.convertible),
+	isEnabled: () =>
+		row.replaces
+			? Boolean(edytor.selection.state.startBlock?.convertible)
+			: convertedBlocks(getSelectionBlocks(edytor)).length > 0,
 	run: () => {
-		const blocks = row.replaces ? [] : selectionBlocks(edytor);
-		return blocks.length > 1
+		const blocks = row.replaces ? [] : getSelectionBlocks(edytor);
+		return blocks.length > 1 || (blocks[0] && !blocks[0].convertible)
 			? convertBlocks(edytor, blocks, row)
 			: convertToKind(edytor, edytor.selection.state.startBlock, row);
 	}

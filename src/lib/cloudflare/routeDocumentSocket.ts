@@ -11,9 +11,10 @@
  * provider cannot tell from a network failure; `4403` stops it dialing.
  * An expired credential is closed `4401` (`expired`): the provider redials
  * with its `params` read again, so a refreshed token gets in. A document
- * id the room cannot have (empty, over 256 characters) is closed `4400`.
+ * id the room cannot have (empty, `.` or `..`, over 256 characters) is
+ * closed `4400`.
  */
-import { CLOSE } from '../crdt/providers/room.js';
+import { CLOSE, validRoomId } from '../crdt/providers/room.js';
 import { IDENTITY_HEADERS, closedSocket, parseReplica } from './DocumentRoom.js';
 
 /** A namespace whose objects host a document (`DocumentRoom`, or any object with `attachDocument`). */
@@ -66,7 +67,7 @@ export async function routeDocumentSocket(
 	if (request.method !== 'GET' || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
 		return new Response('WebSocket upgrade required', { status: 426 });
 	}
-	if (!documentId || documentId.length > 256) {
+	if (!validRoomId(documentId)) {
 		return closedSocket(CLOSE.invalidDocument, 'invalid document id');
 	}
 	const decision = await authorize(request, documentId);

@@ -39,24 +39,30 @@ const placement = (edytor: Edytor, request: BlockMoveRequest) => {
 /**
  * The move op's payload, or `null` when refused: a well-formed request, then
  * the document's one structural answer (`canPlace`, R5 — the predicate the
- * move op applies at execution). Extensions may still veto the command.
+ * move op applies at execution; an `out` step asks the outdent plan, which
+ * places the blocks as the kind they take there: a paragraph outdented into
+ * a list is its item, DR-crdt-2). Extensions may still veto the command.
  */
 const destination = (edytor: Edytor, request: BlockMoveRequest) => {
 	const move = placement(edytor, request);
 	if (!move || edytor.readonly || !['before', 'after', 'inside'].includes(move.position))
 		return null;
 	const { blocks, target, position } = move;
-	const parent = position === 'inside' ? target : target.parent;
+	const ids = blocks.map((block) => block.id);
+	// Inside a container they are no items of: under its last item (Tab after a list, ZW-01).
+	const nest = () => edytor.idToBlock.get(edytor.facade.nestParent(ids, target.id));
+	const parent = position === 'inside' ? (nest() ?? target) : target.parent;
+	const placeable = (to: Block) =>
+		'direction' in request && request.direction === 'out'
+			? 'writes' in edytor.facade.prepare.unNestBlocks(ids)
+			: edytor.facade.canPlace(ids, to.isRoot ? null : to.id);
 	if (
 		!parent ||
 		target.edytor !== edytor ||
 		!target.isInTree ||
 		target.isRoot ||
 		blocks.some((block) => block.edytor !== edytor || block === target) ||
-		!edytor.facade.canPlace(
-			blocks.map((block) => block.id),
-			parent.isRoot ? null : parent.id
-		)
+		!placeable(parent)
 	)
 		return null;
 	const at =

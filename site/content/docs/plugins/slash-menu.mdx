@@ -23,7 +23,7 @@ The menu lists `edytor.commands`:
 - one command per block kind preset, such as `block.heading2` "Heading 2" (see [Blocks](/docs/customization/blocks#presets));
 - every command a plugin declares in `commands` (see [Writing plugins](/docs/plugins/writing-plugins#commands)).
 
-A command whose `isEnabled(edytor)` answers `false` is hidden. Block kind commands are enabled when the caret's block is convertible, which excludes void blocks, island blocks and blocks inside them.
+A command whose `isEnabled(edytor)` answers `false` is hidden. Block kind commands are enabled when the caret's block is convertible, which excludes void blocks, island blocks and blocks inside them. A kind picked in a list's item takes the item out of the list ([Containers](/docs/concepts/blocks#containers)).
 
 Commands are grouped into sections by their `group`, as in Notion: `Basic blocks` first, then the other groups in the order they first appear. Kind commands take their preset's `group` (default `Basic blocks`; the image and code blocks are under `Media`), and a command without a `group` is listed without a heading. Each row shows the command's `hint` on the right; kind commands use their first markdown prefix, such as `##` for Heading 2.
 

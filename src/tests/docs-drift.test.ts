@@ -238,11 +238,23 @@ describe('docs drift', () => {
 		// A bump must reach the prose too ("a pre-release (`0.1.0-next.N`)"),
 		// not only the tarball names checked above. (The engine's own
 		// `14.0.0-rc.N` is another package.)
-		const mentions = docs.flatMap((path) =>
-			[...pageText(path).matchAll(/\b\d+\.\d+\.\d+-next\.\d+\b/g)].map(
-				([mention]) => `${relative(root, path)}: ${mention}`
-			)
-		);
+		// Except the migration page's upgrade notes between pre-releases,
+		// which may name any version the site served (ZW-15).
+		const upgrades = /\n## Upgrading between pre-releases\n[\s\S]*?(?=\n## )/;
+		const migration = join(root, 'site/content/docs/reference/migration.mdx');
+		const notes = upgrades.exec(pageText(migration))?.[0] ?? '';
+		expect(notes).toMatch(/### From 0\.1\.0-next\.0\n/);
+		// Decoding unifies the two forms only without these four (DR-sync-3).
+		expect(notes).toContain('an id with no `/`, `%`, `?` or `#`');
+		const named = (text: string) =>
+			[...text.matchAll(/\b\d+\.\d+\.\d+-next\.\d+\b/g)].map(([mention]) => mention);
+		expect(named(notes).filter((mention) => !servedVersions().includes(mention))).toEqual([]);
+		const mentions = docs.flatMap((path) => {
+			const text = pageText(path);
+			return named(path === migration ? text.replace(upgrades, '') : text).map(
+				(mention) => `${relative(root, path)}: ${mention}`
+			);
+		});
 		expect(mentions.length).toBeGreaterThan(0);
 		expect(mentions.filter((mention) => !mention.endsWith(`: ${version}`))).toEqual([]);
 	});
@@ -284,6 +296,47 @@ describe('docs drift', () => {
 		expect(readFileSync(join(root, 'site/room/src/worker.ts'), 'utf8')).toMatch(
 			/try \{\s*return decodeURIComponent\(encoded\);\s*\} catch \{\s*return null;/
 		);
+	});
+
+	it('every page that says a room id may hold any character names the `.`/`..` exception (ZW-10)', () => {
+		for (const page of [
+			'collaboration/websocket.mdx',
+			'server/authorization.mdx',
+			'reference/limitations.mdx',
+			'editor/edytor-component.mdx'
+		])
+			expect(pageText(join(root, 'site/content/docs', page)), page).toMatch(
+				/`\.` (?:and|or) `\.\.`/
+			);
+	});
+
+	it('the attachDocument pages list every method the document and the room expose (ZW-16)', () => {
+		const source = readFileSync(join(root, 'src/lib/cloudflare/DocumentRoom.ts'), 'utf8');
+		const methods = (name: string) => {
+			const body = new RegExp(`\\nexport (?:abstract )?class ${name}\\b[\\s\\S]*?\\n\\}\\n`).exec(
+				source
+			)![0];
+			const handlers = /^(?:fetch|alarm|webSocket\w+)$/;
+			return [...body.matchAll(/^\t(?:async )?(\w+)(?:<\w+>)?\(/gm)]
+				.map(([, method]) => method)
+				.filter((method) => method !== 'constructor' && !handlers.test(method));
+		};
+		const extending = pageText(join(root, 'site/content/docs/server/extending.mdx'));
+		const attached = /^- \*\*Return value\.\*\* .*$/m.exec(extending)![0];
+		expect(methods('AttachedDocument')).toEqual(
+			expect.arrayContaining(['transact', 'compact', 'dropWaitingDeletes', 'reset', 'owns'])
+		);
+		for (const method of methods('AttachedDocument'))
+			expect(attached, method).toContain(`\`${method}`);
+		const own = /^Bind and migrate the subclass .*$/m.exec(extending)![0];
+		for (const method of ['transact', 'read', 'compact', 'dropWaitingDeletes', 'reset'])
+			expect(methods('DocumentRoom'), method).toContain(method);
+		for (const method of methods('DocumentRoom').filter((m) => m !== 'records'))
+			expect(own, method).toContain(`\`${method}\``);
+		const migration = pageText(join(root, 'site/content/docs/reference/migration.mdx'));
+		const entry = /`AttachedDocument` \(what `attachDocument` returns[^)]*\)/.exec(migration)![0];
+		for (const method of ['transact', 'read', 'compact', 'dropWaitingDeletes', 'reset'])
+			expect(entry, method).toContain(`\`${method}\``);
 	});
 
 	it('every `edytor.<member>` a doc names exists, unless the doc says it is gone (SW8-docs-1)', () => {

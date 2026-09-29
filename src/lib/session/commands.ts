@@ -140,6 +140,8 @@ export class Dispatcher {
 	private active = false;
 	/** A user command's synchronous part is running: nested commands are its steps. */
 	private running = false;
+	/** The running user command's last step that applied. */
+	private applied: CommandResult | null = null;
 	/** Open prevention scopes: a veto inside one aborts it. */
 	private depth = 0;
 	/** Extensions whose replacement is running (a command is replaced at most once per extension). */
@@ -203,11 +205,17 @@ export class Dispatcher {
 		return hit;
 	};
 
-	/** A user command: admission, the undo policy around it, and one prevention scope. */
+	/**
+	 * A user command: admission, the undo policy around it, and one
+	 * prevention scope. Its result is its steps': one that applied is not
+	 * overwritten by a later step refused or changing nothing (a Tab over
+	 * several sibling groups where one cannot move, ZW-07).
+	 */
 	run = <T>(kind: string, body: () => T): T | undefined => {
 		if (this.running) return body();
 		if (!this.permits()) return this.refuse(kind);
 		this.cut(kind);
+		this.applied = null;
 		const out = this.scope(() => {
 			this.running = true;
 			try {
@@ -216,6 +224,9 @@ export class Dispatcher {
 				this.running = false;
 			}
 		});
+		if (this.applied && this.last?.status !== 'applied' && this.last?.status !== 'failed')
+			this.last = this.applied;
+		this.applied = null;
 		const after = () => this.cut(kind, 'after');
 		if (out instanceof Promise) return out.finally(after) as T;
 		after();
@@ -320,6 +331,7 @@ export class Dispatcher {
 			operation,
 			status: this.edytor.facade.version === version ? 'noop' : 'applied'
 		};
+		if (this.running && this.last.status === 'applied') this.applied = this.last;
 		const change = { operation, payload: original, ...context } as Omit<ChangePayload, 'prevent'>;
 		for (const plugin of this.edytor.plugins) plugin.onAfterOperation?.(change);
 		return result;

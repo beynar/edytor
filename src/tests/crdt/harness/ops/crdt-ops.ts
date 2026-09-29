@@ -303,6 +303,13 @@ export interface CrdtOps {
 	readonly islandKinds?: ReadonlyMap<string, string>;
 	/** The kind a view fed only the change reports holds for `id` (`wellFormed` `report-kind`). */
 	reportedKind?(peer: Peer, id: BlockId): string | undefined;
+	/**
+	 * The container rules' side effects an op on `id` may have (ZW-11): the
+	 * display ancestors of `id` that are containers (a structural op removes
+	 * one it leaves with no child), and, for an outdent out of a container,
+	 * the siblings that go to the new list it splits off (`split`).
+	 */
+	containerSlack?(peer: Peer, id: BlockId): { containers: BlockId[]; split: BlockId[] };
 }
 
 /**

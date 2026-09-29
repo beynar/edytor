@@ -42,14 +42,15 @@
  *   live doc is rebuilt from the stored rows and the sender's socket is
  *   closed (1011) so its provider reconnects and resends.
  * - a delete of an item the room lacks waits in the engine and is stored
- *   as a `pending` record (not when its frame left structs waiting: those
- *   deletes wait with them, in memory); compaction keeps the pending
- *   records apart, and rewrites them as the deletes still waiting; a frame
- *   that discards a forged stamp drops them. At most
- *   {@link MAX_WAITING_DELETES} ranges wait: a frame that would pass it has
- *   its waiting deletes dropped (refusal `waiting`, left out of the ack),
- *   the rest applied. Compaction reclaims the waiting deletes of client
- *   ids no user registered and no socket holds.
+ *   as a `pending` record (not the entries its frame's waiting rewrites
+ *   replace: those deletes wait with them, in memory); compaction keeps
+ *   the pending records apart, and rewrites them as the deletes still
+ *   waiting; a frame that discards a forged stamp drops them. At most
+ *   {@link MAX_WAITING_DELETES} ranges wait, stored or in memory: a frame
+ *   that would pass it has its waiting deletes dropped (refusal `waiting`,
+ *   left out of the ack), the rest applied. Compaction reclaims the
+ *   waiting deletes of client ids no user registered and no socket holds;
+ *   `dropWaitingDeletes()` every one.
  * - a Step2 serves the STORED state: the engine's pending structs (waiting
  *   for a dependency, never stored) are not served.
  * - a frame larger than `maxFrameBytes` (32 MiB) goes out as chunks the
@@ -1080,8 +1081,9 @@ export class AttachedDocument {
 			const known = new Set([...registered, ...sockets]);
 			// Waiting deletes stay apart (a discarded forgery drops them,
 			// `settleDeletes`): the stored ones the engine still holds waiting.
+			const all = pendingDeletes(doc);
 			const stored = storedPending(records);
-			const waiting = Y.diffIdSet(stored, Y.diffIdSet(stored, pendingDeletes(doc)));
+			const waiting = Y.diffIdSet(stored, Y.diffIdSet(stored, all));
 			const still = addIds(Y.createIdSet(), waiting, (client) => known.has(client));
 			// Memory never runs ahead of storage: the live state vector is the stored one.
 			const kept = new Set([...stateVector(doc).keys(), ...sockets, ...still.clients.keys()]);
@@ -1098,7 +1100,11 @@ export class AttachedDocument {
 			});
 			this.updates = 0;
 			this.storedWaiting = still;
-			forgetWaiting(doc, Y.diffIdSet(waiting, still));
+			// Unknown ids' deletes go, the ones waiting in memory with a rewrite too.
+			forgetWaiting(
+				doc,
+				addIds(Y.createIdSet(), all, (client) => !known.has(client))
+			);
 			return {
 				rows: this.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${this.rowsTable}`).one().n
 			};
@@ -1106,19 +1112,17 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * Drop every stored waiting delete, in memory too (callable over RPC):
+	 * Drop every waiting delete, stored or in memory (callable over RPC):
 	 * the way out when a writer filled {@link MAX_WAITING_DELETES} with
 	 * deletes of registered ids' items, which compaction keeps. A dropped
-	 * delete's item shows if it ever arrives. The deletes waiting in memory
-	 * with a rewrite stay. Returns how many ranges were dropped.
+	 * delete's item shows if it ever arrives — but for an entry a waiting
+	 * rewrite replaces, which that rewrite deletes should it integrate.
+	 * Returns how many ranges were dropped.
 	 */
 	dropWaitingDeletes(): { ranges: number } {
 		return noTimers(() => {
 			const doc = this.requireDoc();
-			const dropped = Y.diffIdSet(
-				this.storedWaiting,
-				Y.diffIdSet(this.storedWaiting, pendingDeletes(doc))
-			);
+			const dropped = pendingDeletes(doc);
 			this.ctx.storage.transactionSync(() => {
 				this.sql.exec(`DELETE FROM ${this.rowsTable} WHERE kind = 'pending'`);
 			});
@@ -1495,7 +1499,14 @@ export class AttachedDocument {
 						decoded.structs,
 						({ id }) => !stripped.has(id.client) && storedStruct(doc, id.client, id.clock) === null
 					);
-		const released = this.settleDeletes(ws, doc, waiting, stay, discarded !== undefined);
+		const released = this.settleDeletes(
+			ws,
+			attachment.user,
+			doc,
+			waiting,
+			stay,
+			discarded !== undefined
+		);
 		if (this.unstored !== null) return this.fault(ws, this.unstored);
 		if (discarded) this.note({ reason: 'schema', detail: { discarded } });
 		// A dropped delete is not acknowledged: its sender stays unsaved.
@@ -1519,16 +1530,29 @@ export class AttachedDocument {
 	 * that released a pending forged stamp discarded every waiting delete
 	 * (`applyRemote`): the stored ones go too. The deletes the frame applied
 	 * from the waiting ones go back to its sender, whom the relay of the
-	 * update skips; they are returned.
+	 * update skips; they are returned. The cap holds here too: deletes of
+	 * the frame's own structs that wait for an origin (stored, or kept in
+	 * memory with its rewrites) pass the check before applying; when the
+	 * frame's new waiting deletes take the room past
+	 * {@link MAX_WAITING_DELETES}, they are all dropped (refusal `waiting`,
+	 * the sender's), unstored and unacknowledged. A replaced entry is
+	 * deleted by its rewrite anyway, should that integrate.
 	 */
 	private settleDeletes(
 		ws: WebSocket,
+		user: string,
 		doc: YDoc,
 		waiting: Decoded['ds'],
 		stay: Decoded['ds'],
 		discarded: boolean
 	): Decoded['ds'] {
-		const now = pendingDeletes(doc);
+		let now = pendingDeletes(doc);
+		const fresh = discarded ? now : Y.diffIdSet(now, waiting);
+		if (!fresh.isEmpty() && rangeCount(now) > MAX_WAITING_DELETES) {
+			this.note({ reason: 'waiting', detail: { user, ranges: rangeCount(fresh) } });
+			forgetWaiting(doc, fresh);
+			now = pendingDeletes(doc);
+		}
 		const added = Y.diffIdSet(discarded ? now : Y.diffIdSet(now, waiting), stay);
 		const released = heldDeletes(doc, Y.diffIdSet(waiting, now));
 		if (discarded || !added.isEmpty()) {

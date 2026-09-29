@@ -13,7 +13,11 @@
  *   hides (a closed toggle's body) stay with the head, as Enter keeps them;
  * - a `whole` flow (a block-selection copy) goes after the block, replacing
  *   it when empty (`flow.whole`); over selected blocks the lines take their
- *   slot (`flow.slot`); a void takes one run (`flow.void`).
+ *   slot (`flow.slot`); a void takes one run (`flow.void`);
+ * - a plain line that lands directly in a container takes its item kind
+ *   (the document's `fitted`: a pasted paragraph in a list is its item,
+ *   ZW-01); any other kind keeps its kind and data (a pasted image stays an
+ *   image, DR-crdt-1).
  */
 import type { BlockId, BlockSpec, Destination, SplitTail } from './placement/model.js';
 import type { PlanStep, Prepared } from './edytor-doc.js';
@@ -29,6 +33,8 @@ export type FlowTarget = DocPosition | { replace: readonly BlockId[] };
 /** What flow placement reads beyond range deletion's context. */
 export type FlowContext = RangeDeleteContext & {
 	defaultChild: (parent: BlockId | null) => string;
+	/** `kind`, or `parent`'s item where it does not fit there (the container rule). */
+	fitted: (parent: BlockId | null, kind: string | undefined) => string | undefined;
 	retype: (id: BlockId, type: string) => PlanStep[];
 	sanitize: (spec: BlockSpec) => BlockSpec;
 	collides: (specs: readonly BlockSpec[]) => boolean;
@@ -52,7 +58,7 @@ export const flowOps = (c: FlowContext) => ({
 			.map((s) => ({ ...s, type: s.type || undefined }));
 		if (lines.length === 0) return c.plan([], []);
 		const specs = (parent: BlockId | null): BlockSpec[] =>
-			lines.map((l) => ({ ...l, type: l.type ?? c.defaultChild(parent) }));
+			lines.map((l) => ({ ...l, type: c.fitted(parent, l.type) ?? c.defaultChild(parent) }));
 		const last = () => lines.at(-1)!;
 		/** Whole blocks at a slot, after `pre`; the caret ends the last one's content. */
 		const atSlot = (dest: Destination, pre: PlanStep[]): Prepared => {
@@ -102,14 +108,16 @@ export const flowOps = (c: FlowContext) => ({
 				writes.push({ op: 'moveBlocks', ids: moved, parent: to, index: k, ranks: ranks.slice(k) });
 		};
 		const head = text(B, o, first);
-		if (len === 0 && first.type)
-			writes.push(...c.retype(B, first.type), ...c.redata(B, first.data ?? {}));
+		const firstType = first.type && c.fitted(parent, first.type);
+		if (len === 0 && firstType && firstType === first.type)
+			writes.push(...c.retype(B, firstType), ...c.redata(B, first.data ?? {}));
 		kids(B, first);
 		if (lines.length === 1) return { ...c.plan([B], writes), at: { block: B, offset: head } };
 
 		const middle = specs(parent).slice(1, -1);
 		const ranks = c.ranksFor(parent, index + 1, middle.length + 1);
-		const tail = last().type ? { type: last().type!, data: last().data } : c.tailOf(B);
+		const lastType = last().type && c.fitted(parent, last().type);
+		const tail = lastType ? { type: lastType, data: last().data } : c.tailOf(B);
 		const rank = ranks.pop()!;
 		const moved = c.childrenIds(B).filter((id) => !view.hidden?.(id));
 		const length = len - o;

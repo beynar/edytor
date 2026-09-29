@@ -10,6 +10,7 @@
 import type { EngineApi, YDoc } from '../engine-api.js';
 import type { Awareness } from '../protocols/awareness.js';
 import { bindIndexeddbProvider, type IndexeddbProvider } from './indexeddb.js';
+import { assertRoomId } from './room.js';
 import { bindWebsocketProvider, type WebsocketProviderEvents } from './websocket.js';
 
 /**
@@ -160,6 +161,7 @@ export const bindProviders = (Y: EngineApi) => {
 	const createWebsocketSync = (options: WebsocketSyncOptions): WebsocketSync => {
 		const [server, roomName] =
 			'server' in options ? [options.server, options.room] : [options.serverUrl, options.roomName];
+		assertRoomId(roomName);
 		const serverUrl = server.replace(/\/+$/, '');
 		const room = `${serverUrl}/${roomName}`;
 		const persistName =

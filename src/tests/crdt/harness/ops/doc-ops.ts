@@ -44,19 +44,49 @@ export type DocOpsRoles = {
 	roles: Record<string, { island?: boolean; lines?: boolean; void?: boolean }>;
 	/** Parent kind → its default child kind. */
 	defaultChild: Record<string, string>;
+	/** Kinds that render no content of their own (containers, islands, voids). */
+	rendersContent?: Record<string, boolean>;
 };
 
-/** The roles lane's table: `code` is an island of `codeLine`s (`lines`), `divider` a void. */
+/**
+ * The roles lane's table: `code` is an island of `codeLine`s (`lines`),
+ * `divider` a void, `table` an island of rows of cells; `unordered-list`
+ * a container of `list-item`s and `columns` one of `column`s (a column
+ * holds any block) — the container rules are fuzzed (ZW-11).
+ */
 export const ROLES: DocOpsRoles = {
-	roles: { code: { island: true, lines: true }, divider: { void: true } },
-	defaultChild: { code: 'codeLine' }
+	roles: {
+		code: { island: true, lines: true },
+		divider: { void: true },
+		table: { island: true },
+		'unordered-list': {},
+		columns: {},
+		column: {}
+	},
+	defaultChild: {
+		code: 'codeLine',
+		table: 'row',
+		row: 'cell',
+		'unordered-list': 'list-item',
+		columns: 'column'
+	},
+	rendersContent: {
+		code: false,
+		divider: false,
+		table: false,
+		row: false,
+		'unordered-list': false,
+		columns: false,
+		column: false
+	}
 };
 
 export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 	const config = roles && {
 		roleOf: (type: string) => roles.roles[type],
 		kinds: () => Object.keys(roles.roles),
-		defaultChildOf: (type: string) => roles.defaultChild[type]
+		defaultChildOf: (type: string) => roles.defaultChild[type],
+		rendersContent: (type: string) => roles.rendersContent?.[type] ?? true
 	};
 	// One EdytorDoc per underlying doc instance (peer.doc swaps on reload).
 	const facades = new WeakMap<InstanceType<typeof Y.Doc>, ReturnType<typeof E.create>>();
@@ -111,7 +141,20 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 		...(roles && {
 			isVoid: (peer, id) => ed(peer).isVoid(id),
 			islandKinds,
-			reportedKind: (peer, id) => (ed(peer), reported.get(peer.doc)!.get(id))
+			reportedKind: (peer, id) => (ed(peer), reported.get(peer.doc)!.get(id)),
+			containerSlack: (peer, id) => {
+				const f = ed(peer);
+				const container = (b: string) => {
+					const type = f.blockTypeOf(b) ?? '';
+					const role = roles.roles[type];
+					return roles.rendersContent?.[type] === false && !role?.void && !role?.island;
+				};
+				const parent = f.parentOf(id);
+				return {
+					containers: f.ancestorsOf(id).filter(container),
+					split: parent !== null && container(parent) ? f.childrenIds(parent) : []
+				};
+			}
 		}),
 		preservesIdentityOnMove: true,
 		preservesIdentityOnSplitMerge: true,

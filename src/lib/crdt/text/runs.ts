@@ -588,7 +588,8 @@ export const bindRuns = (Y: EngineApi) => {
 		 * or a container (a list, DR-crdt-2) that still has its default child
 		 * kind (RW-01), unless an outer container shows it as one of its
 		 * items (a nested list's item, SW8-roles-4). A block that renders
-		 * content never shows as a kind that does not (DR-crdt-1). Any other
+		 * content never shows as a kind that does not (DR-crdt-1): a line kind
+		 * then shows the document's default kind (ZW-06). Any other
 		 * shows its stored kind (a retype shows). Read from the stored kinds
 		 * at call time: a retype rebuilds no placement.
 		 */
@@ -609,7 +610,9 @@ export const bindRuns = (Y: EngineApi) => {
 					if (roles.container(t) && roles.defaultChild(t) === stored) return stored;
 				}
 			const kind = roles.defaultChild(under === null ? null : typeOf(under));
-			return roles.rendersContent(kind) || !roles.rendersContent(stored) ? kind : stored;
+			if (roles.rendersContent(kind) || !roles.rendersContent(stored)) return kind;
+			// Never a line kind outside its island, even where the slot's kind shows nothing (ZW-06).
+			return lined ? roles.defaultChild(null) : stored;
 		};
 
 		const rangeStats: RangeReadStats = { items: 0, markers: 0 };

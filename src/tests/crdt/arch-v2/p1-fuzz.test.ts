@@ -56,7 +56,114 @@ const SEEDS = [
 	{ id: 'D', text: 'delta' }
 ];
 const SEMANTICS = { roles: { callout: { island: true }, divider: { void: true } } };
-const SEED = seedUpdate(SEEDS, SEMANTICS);
+
+/** A campaign's document: its seed, its roles, the kinds a retype picks. */
+type Lane = { seed: Uint8Array; semantics: unknown; kinds?: string[] };
+const PLAIN: Lane = { seed: seedUpdate(SEEDS, SEMANTICS), semantics: SEMANTICS };
+
+/**
+ * ZW-11: the container lane — lists of items (one with a paragraph child,
+ * one nested), columns of columns (a column holds any block), a table
+ * island of rows of cells and a code island of lines; retypes pick list,
+ * line and container kinds too. Held to `wellFormed` with its roles
+ * (`island-kind`: never a line kind outside its island).
+ */
+const item = (id: string, text: string, children = []) => ({
+	id,
+	type: 'list-item',
+	text,
+	children
+});
+const CONTAINERS: Lane = (() => {
+	const semantics = {
+		roles: {
+			callout: { island: true },
+			divider: { void: true },
+			code: { island: true, lines: true },
+			table: { island: true }
+		},
+		rendersContent: {
+			divider: false,
+			code: false,
+			table: false,
+			row: false,
+			'unordered-list': false,
+			'ordered-list': false,
+			columns: false,
+			column: false
+		},
+		defaultChild: {
+			code: 'codeLine',
+			table: 'row',
+			row: 'cell',
+			'unordered-list': 'list-item',
+			'ordered-list': 'list-item',
+			columns: 'column'
+		}
+	};
+	const seeds = [
+		{ id: 'A', text: 'alpha' },
+		{
+			id: 'U',
+			type: 'unordered-list',
+			children: [
+				item('U1', 'one', [{ id: 'U1p', text: 'under' }]),
+				item('U2', 'two', [
+					{ id: 'O', type: 'ordered-list', children: [item('O1', 'first'), item('O2', 'second')] }
+				]),
+				// DR-crdt-1: a void and an island under an item keep their kinds when shed.
+				item('U3', 'three', [
+					{ id: 'U3d', type: 'divider' },
+					{ id: 'U3c', type: 'code', children: [{ id: 'U3cl', type: 'codeLine', text: 'let y' }] }
+				])
+			]
+		},
+		{
+			id: 'K',
+			type: 'columns',
+			children: [
+				{ id: 'K1', type: 'column', children: [{ id: 'K1a', text: 'left' }] },
+				{
+					id: 'K2',
+					type: 'column',
+					children: [
+						{ id: 'K2a', text: 'right' },
+						{ id: 'K2b', text: 'more' }
+					]
+				}
+			]
+		},
+		{
+			id: 'T',
+			type: 'table',
+			children: [
+				{
+					id: 'T1',
+					type: 'row',
+					children: [
+						{ id: 'T1a', type: 'cell', text: 'c1' },
+						{ id: 'T1b', type: 'cell', text: 'c2' }
+					]
+				}
+			]
+		},
+		{ id: 'C', type: 'code', children: [{ id: 'C1', type: 'codeLine', text: 'let x' }] },
+		{ id: 'D', text: 'delta' }
+	];
+	return {
+		seed: seedUpdate(seeds, semantics),
+		semantics,
+		kinds: [
+			'paragraph',
+			'list-item',
+			'unordered-list',
+			'ordered-list',
+			'codeLine',
+			'divider',
+			'column'
+		]
+	};
+})();
 
 type Step =
 	| { t: 'op'; r: number; action: string; args: unknown[] }
@@ -68,12 +175,13 @@ type Failure = { kind: string; detail: string };
 /** Outcome counts per action (`insert:applied`, `undo:item`, …) — the campaign's coverage. */
 const STATS = new Map<string, number>();
 
-type World = { reps: Replica[]; sentTo: number[][]; online: boolean[] };
+type World = { reps: Replica[]; sentTo: number[][]; online: boolean[]; lane: Lane };
 
-const world = (n: number, seed: number): World => ({
+const world = (n: number, seed: number, lane: Lane): World => ({
+	lane,
 	reps: Array.from({ length: n }, (_, i) =>
-		replica(`R${i}`, SEED, 1 + ((seed * 31 + i * 7) % 5000) + i * 5000, {
-			semantics: SEMANTICS,
+		replica(`R${i}`, lane.seed, 1 + ((seed * 31 + i * 7) % 5000) + i * 5000, {
+			semantics: lane.semantics,
 			salt: seed
 		})
 	),
@@ -130,7 +238,8 @@ const verdict = (w: World, failures: Failure[]) => {
 	// An observer fed every update in reverse order, each twice: nothing may
 	// stay pending once it holds every update.
 	const all = w.reps.flatMap((r) => r.log).reverse();
-	const obs = replica('obs', SEED, 7777, { semantics: SEMANTICS });
+	const { seed, semantics } = w.lane;
+	const obs = replica('obs', seed, 7777, { semantics });
 	for (const u of all) {
 		obs.receive(u);
 		obs.receive(u);
@@ -150,19 +259,19 @@ const verdict = (w: World, failures: Failure[]) => {
 		failures.push({ kind: 'observer-diverge', detail: obs.canonical() });
 	for (const r of w.reps) {
 		// The same roles as the replica: a void's children display by them (UW-21b).
-		const reloaded = reloadCanonical(r, undefined, { semantics: SEMANTICS });
+		const reloaded = reloadCanonical(r, undefined, { semantics });
 		if (reloaded !== canon[0]) failures.push({ kind: 'reload', detail: `${r.name}: ${reloaded}` });
 	}
 	obs.destroy();
-	for (const p of wellFormed(w.reps[0].ed))
+	for (const p of wellFormed(w.reps[0].ed, w.lane === PLAIN ? {} : { semantics }))
 		failures.push({ kind: p.startsWith('duplicate atom') ? 'dup-atom' : 'tree', detail: p });
 	for (const r of w.reps) r.destroy();
 };
 
 /** Generate and run one program; returns the recorded (replayable) steps and failures. */
-const generate = (seed: number, n: number, length: number) => {
+const generate = (seed: number, n: number, length: number, lane: Lane) => {
 	const next = rngOf(seed);
-	const w = world(n, seed);
+	const w = world(n, seed, lane);
 	const counter = { n: 0 };
 	const steps: Step[] = [];
 	const failures: Failure[] = [];
@@ -171,7 +280,7 @@ const generate = (seed: number, n: number, length: number) => {
 		let step: Step | null = null;
 		if (roll < 13) {
 			const r = next(n);
-			const a = genAction(w.reps[r], next, counter);
+			const a = genAction(w.reps[r], next, counter, undefined, lane.kinds);
 			if (a) step = { t: 'op', r, ...a };
 		} else if (roll < 17) {
 			const to = next(n);
@@ -197,8 +306,8 @@ const generate = (seed: number, n: number, length: number) => {
 	return { steps, failures };
 };
 
-const replay = (seed: number, n: number, steps: Step[]) => {
-	const w = world(n, seed);
+const replay = (seed: number, n: number, steps: Step[], lane: Lane) => {
+	const w = world(n, seed, lane);
 	const failures: Failure[] = [];
 	for (const s of steps) execute(w, s, failures);
 	verdict(w, failures);
@@ -206,9 +315,9 @@ const replay = (seed: number, n: number, steps: Step[]) => {
 };
 
 /** Delta-debug `steps` down to a minimal program that still fails with `kind`. */
-const shrink = (seed: number, n: number, steps: Step[], kind: string) => {
+const shrink = (seed: number, n: number, steps: Step[], kind: string, lane: Lane) => {
 	let cur = steps;
-	const fails = (s: Step[]) => replay(seed, n, s).some((f) => f.kind === kind);
+	const fails = (s: Step[]) => replay(seed, n, s, lane).some((f) => f.kind === kind);
 	for (let chunk = Math.max(1, cur.length >> 1); chunk >= 1; chunk >>= 1) {
 		for (let i = 0; i + chunk <= cur.length; ) {
 			const cand = [...cur.slice(0, i), ...cur.slice(i + chunk)];
@@ -219,10 +328,10 @@ const shrink = (seed: number, n: number, steps: Step[], kind: string) => {
 	return cur;
 };
 
-const campaign = (n: number, seeds: number, start: number, length: number) => {
+const campaign = (n: number, seeds: number, start: number, length: number, lane = PLAIN) => {
 	const byKind = new Map<string, { seed: number; detail: string }[]>();
 	for (let seed = start; seed < start + seeds; seed++) {
-		const failures = generate(seed, n, length).failures;
+		const failures = generate(seed, n, length, lane).failures;
 		for (const k of new Set(failures.map((f) => f.kind))) {
 			const list = byKind.get(k) ?? [];
 			list.push({ seed, detail: failures.find((f) => f.kind === k)!.detail });
@@ -232,12 +341,12 @@ const campaign = (n: number, seeds: number, start: number, length: number) => {
 	const report: Record<string, unknown> = {};
 	for (const [kind, list] of byKind) {
 		const first = list[0];
-		const { steps } = generate(first.seed, n, length);
+		const { steps } = generate(first.seed, n, length, lane);
 		report[kind] = {
 			seeds: list.map((x) => x.seed).slice(0, 15),
 			count: list.length,
 			detail: first.detail.slice(0, 2000),
-			minimal: shrink(first.seed, n, steps, kind)
+			minimal: shrink(first.seed, n, steps, kind, lane)
 		};
 	}
 	return report;
@@ -261,6 +370,67 @@ describe('P1 fuzz — multi-replica campaign through the facade (review-probes/f
 
 	it(`5 replicas × ${env('P1_FUZZ_WIDE', 40)} seeds × ${LEN + 20} steps, offline churn`, () => {
 		const report = campaign(5, env('P1_FUZZ_WIDE', 40), START + 5000, LEN + 20);
+		expect(report, JSON.stringify(report, null, 1)).toEqual({});
+	});
+
+	/**
+	 * ZW-01/ZW-11: one replica, structural ops only (no explicit retype or
+	 * insert, which place what they are told): after every op, every list
+	 * holds no plain block (a paragraph) and at least one child — the
+	 * container rule (`fits`) on every placement path — and every void and
+	 * island keeps its kind (DR-crdt-1: a shed one is never refitted).
+	 */
+	it(`containers: structural ops never leave a paragraph or no item in a list, nor retype a void or island (${env('P1_FUZZ_SEEDS', 200)} seeds)`, () => {
+		const lists = new Set(['unordered-list', 'ordered-list']);
+		const sealed = new Set(['divider', 'code', 'table', 'callout']);
+		const kinds = new Map<string, string>();
+		const broken = (ed) => {
+			const out: string[] = [];
+			const visit = (b) => {
+				if (sealed.has(kinds.get(b.id) ?? '') && b.type !== kinds.get(b.id))
+					out.push(`${b.id}:${kinds.get(b.id)} became ${b.type}`);
+				if (lists.has(b.type)) {
+					for (const c of b.children ?? [])
+						// Only a plain block is refitted: any other kind keeps its kind (DR-crdt-1).
+						if (c.type === 'paragraph') out.push(`${c.id}:${c.type} in ${b.id}`);
+					if (!b.children?.length && !b.content?.length) out.push(`${b.id} has no item`);
+				}
+				(b.children ?? []).forEach(visit);
+			};
+			ed.toJSON().children.forEach(visit);
+			return out;
+		};
+		const actions = ACTIONS.filter((a) => !['create', 'retype'].includes(a));
+		const TEXT = new Set(['insert', 'deleteText', 'replaceText', 'format', 'inline']);
+		const CONTAINER = new Set([...lists, 'columns', 'column', 'row']);
+		const failures: string[] = [];
+		for (let seed = START + 12000; seed < START + 12000 + env('P1_FUZZ_SEEDS', 200); seed++) {
+			const r = replica('R', CONTAINERS.seed, 1000 + seed, {
+				semantics: CONTAINERS.semantics,
+				salt: seed
+			});
+			const next = rngOf(seed);
+			const counter = { n: 0 };
+			const trail: string[] = [];
+			kinds.clear();
+			for (const id of r.ed.order()) kinds.set(id, r.ed.blockTypeOf(id));
+			for (let i = 0; i < LEN && failures.length === 0; i++) {
+				const a = genAction(r, next, counter, actions);
+				// Text written into a list's own (hidden) slot is an explicit write too.
+				if (!a || (TEXT.has(a.action) && CONTAINER.has(r.ed.blockTypeOf(a.args[0])))) continue;
+				apply(r, a.action, structuredClone(a.args));
+				trail.push(`${a.action}(${JSON.stringify(a.args)})`);
+				const bad = broken(r.ed);
+				if (bad.length) failures.push(`seed ${seed}: ${bad.join('; ')} after ${trail.join(' ')}`);
+			}
+			r.destroy();
+		}
+		expect(failures).toEqual([]);
+	});
+
+	// ZW-11: pinned seeds over lists, columns of columns, a table and a code island.
+	it(`containers: 3 replicas × ${env('P1_FUZZ_SEEDS', 200)} seeds × ${LEN} steps`, () => {
+		const report = campaign(3, env('P1_FUZZ_SEEDS', 200), START + 9000, LEN, CONTAINERS);
 		expect(report, JSON.stringify(report, null, 1)).toEqual({});
 	});
 });

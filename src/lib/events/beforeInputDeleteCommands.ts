@@ -30,6 +30,17 @@ const mergeIntoHeader = (edytor: Edytor, from: Block, into: Block, backward: boo
 	else dispatchPlan(into, 'mergeBlockForward', {}, plan, [from.parent]);
 };
 
+/**
+ * The line a forward merge into a collapsed toggle's header joins: `block`,
+ * or for a container (a list) its first item's, descending as the
+ * document's `mergeForward` does; the seam range then removes a container
+ * left with no item (ZW-08).
+ */
+const firstLine = (block: Block): Block => {
+	while (block.isContainer && block.children[0]) block = block.children[0];
+	return block;
+};
+
 const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
 	const { startText, yStart } = snapshot;
 	if (!startText) {
@@ -55,7 +66,7 @@ const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
 		}
 
 		if (nextBlock === currentBlock.closestNextBlock) currentBlock.mergeBlockForward();
-		else if (nextBlock) mergeIntoHeader(edytor, nextBlock, currentBlock, false);
+		else if (nextBlock) mergeIntoHeader(edytor, firstLine(nextBlock), currentBlock, false);
 		caretAt(edytor, startText, yStart);
 		return;
 	}

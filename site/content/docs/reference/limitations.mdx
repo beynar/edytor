@@ -49,7 +49,7 @@ The WebSocket's bound starts when the socket opens (or first fails to), so a roo
 ## Size and platform limits
 
 - A single client-to-room message is capped at 32 MiB by Cloudflare. Clients do not split what they send, so an edit or offline backlog larger than that cannot be delivered. Messages from the room are chunked.
-- Document ids and user ids are 1 to 256 characters. A document id may hold any character: the provider percent-encodes it into one path segment, and your Worker decodes it (see [the quick start](/docs/server/quick-start)).
+- Document ids and user ids are 1 to 256 characters. A document id may hold any character: the provider percent-encodes it into one path segment, and your Worker decodes it (see [the quick start](/docs/server/quick-start)). The ids `.` and `..` are the exception: a URL collapses those segments (`%2E` too), so the provider throws for them and `routeDocumentSocket` closes them `4400`.
 - After a room wakes from hibernation, presence refills as clients renew it, within 15 seconds.
 - Deleted content stays in the document so undo and offline peers keep working: a withdrawn block keeps its node (about 100 bytes), and each text delete adds about 12 bytes to the stored document. Compacting the room's rows merges them; it does not drop deleted content.
 - With `lineage` enabled, history entries trimmed from a block's ring leave small tombstones in storage.

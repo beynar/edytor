@@ -37,13 +37,13 @@ Return `{ expired: true }` when the credential was valid but has expired. The di
 | `replica` | `number \| null` | The client's CRDT client id (`document.clientID`), usually read with `requestedReplica(request)`. When omitted, the socket's first presence message binds it. |
 | `readOnly` | `boolean` | Refuse every write on this socket. Reads and presence still work. |
 
-The document id is the room id the client dials: any string of 1 to 256 characters, which the provider percent-encodes into one path segment. Decode it with `decodeURIComponent` before you pass it, and close a segment that does not decode with `4400`, as the [quick start](/docs/server/quick-start) does: no provider sends one.
+The document id is the room id the client dials: any string of 1 to 256 characters except `.` and `..` (a URL collapses those segments, so the provider refuses them), which the provider percent-encodes into one path segment. Decode it with `decodeURIComponent` before you pass it, and close a segment that does not decode with `4400`, as the [quick start](/docs/server/quick-start) does: no provider sends one.
 
-`routeDocumentSocket` answers without calling the room when the request is not a WebSocket upgrade (426), when the document id is empty or longer than 256 characters (closed `4400`), when `authorize` returns `{ expired: true }` (closed `4401`), or when it returns `null` or an invalid identity (closed `4403`).
+`routeDocumentSocket` answers without calling the room when the request is not a WebSocket upgrade (426), when the document id is empty, `.`, `..` or longer than 256 characters (closed `4400`), when `authorize` returns `{ expired: true }` (closed `4401`), or when it returns `null` or an invalid identity (closed `4403`).
 
 | Close | Sent when | The provider |
 | --- | --- | --- |
-| `4400` `invalid document id` | The document id is empty or longer than 256 characters; `authorize` is not called. | Final: emits `refused` and stops dialing. |
+| `4400` `invalid document id` | The document id is empty, `.`, `..` or longer than 256 characters; `authorize` is not called. | Final: emits `refused` and stops dialing. |
 | `4401` `expired` | `authorize` returned `{ expired: true }`. | Emits `expired` and redials after its backoff, with `params` read again. |
 | `4403` `document access denied` | `authorize` returned `null` or an invalid identity. | Final: emits `refused` and stops dialing. |
 | `4409` `replica bound to another user` | The room: the dial's replica belongs to another user (see [replicas](#replicas)). | Final: emits `refused` and stops dialing. |

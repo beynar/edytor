@@ -781,17 +781,14 @@ describe('DR-crdt-1: nested custom containers never hide a lifted block’s text
 			expect(typed(o.ed)).toBe(before);
 	});
 
-	it('Backspace/Shift+Tab at a column’s last paragraph (unNestBlock) → it stays a paragraph', () => {
+	// Re-decided in ZW-14: nothing but a column lands directly in a columns layout.
+	it('Backspace/Shift+Tab at a column’s last paragraph (unNestBlock) → refused (ZW-14)', () => {
 		for (const o of one(
-			converge(seed, 1, ([a]) => expect(a.ed.unNestBlock('A2').status).toBe('applied'), {
+			converge(seed, 1, ([a]) => expect(a.ed.unNestBlock('A2').status).toBe('refused'), {
 				semantics: columns
 			})
-		)) {
-			expect(typed(o.ed)).toBe(
-				'P:paragraph C:columns[K1:column[A:paragraph],A2:paragraph,K2:column[B:paragraph]]'
-			);
-			expect(tree(o.ed)).toContain('A2:"a2"');
-		}
+		))
+			expect(typed(o.ed)).toBe(before);
 	});
 
 	it('a list inside a column still lifts its first item into the column, as a paragraph', () => {
@@ -981,10 +978,10 @@ describe('DR-crdt-3: an item outdented out of its list never takes the items aft
 				`P:paragraph I1:paragraph I2:paragraph U:${kind}[I3:list-item]`
 			],
 			[
-				'a middle item (the list splits)',
+				'a middle item (the list splits; it keeps the items after it, ZW-03)',
 				(ed) => ed.unNestBlock('I2'),
-				'P:"p" U:""[I1:"a"] I2:"b" NEW:""[I3:"c"]',
-				`P:paragraph U:${kind}[I1:list-item] I2:paragraph NEW:${kind}[I3:list-item]`
+				'P:"p" NEW:""[I1:"a"] I2:"b" U:""[I3:"c"]',
+				`P:paragraph NEW:${kind}[I1:list-item] I2:paragraph U:${kind}[I3:list-item]`
 			],
 			[
 				'the last item',
@@ -1016,7 +1013,7 @@ describe('DR-crdt-3: an item outdented out of its list never takes the items aft
 			});
 	}
 
-	it('Ada outdents a middle item ‖ Bob types in the next one → his text is in the new list', () => {
+	it('Ada outdents a middle item ‖ Bob types in the next one → his text stays in the list', () => {
 		for (const o of one(
 			converge(
 				listOf('ordered-list', item('I1', 'a'), item('I2', 'b'), item('I3', 'c')),
@@ -1029,10 +1026,10 @@ describe('DR-crdt-3: an item outdented out of its list never takes the items aft
 			)
 		)) {
 			expect(tree(o.ed).replace(/\bb_[A-Za-z0-9_-]+/g, 'NEW')).toBe(
-				'P:"p" U:""[I1:"a"] I2:"b" NEW:""[I3:"cx"]'
+				'P:"p" NEW:""[I1:"a"] I2:"b" U:""[I3:"cx"]'
 			);
 			expect(typedFresh(o.ed)).toBe(
-				'P:paragraph U:ordered-list[I1:list-item] I2:paragraph NEW:ordered-list[I3:list-item]'
+				'P:paragraph NEW:ordered-list[I1:list-item] I2:paragraph U:ordered-list[I3:list-item]'
 			);
 		}
 	});

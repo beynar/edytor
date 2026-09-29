@@ -235,6 +235,12 @@ export type BlockDefinition = {
 	 */
 	defaultChild?: string;
 	/**
+	 * A list container's flat counterpart (`numbered-list-item` for an
+	 * `ordered-list`): its items show as this kind, so the menus name them by
+	 * it and turning one into it keeps it in the list.
+	 */
+	itemKind?: string;
+	/**
 	 * Catalogue rows (O68): one per way to create this kind — the slash menu,
 	 * markdown shortcuts and block menus are generated from them
 	 * (`edytor.kinds`). Command ids are `block.<type>`, numbered from 1 when

@@ -46,7 +46,8 @@ export const genAction = (
 	r: Replica,
 	next: (n: number) => number,
 	counter: { n: number },
-	actions: readonly string[] = ACTIONS
+	actions: readonly string[] = ACTIONS,
+	kinds: readonly string[] = ['paragraph', 'heading', 'quote', 'callout', 'divider']
 ) => {
 	const ed = r.ed;
 	const order: string[] = [...ed.order()];
@@ -116,7 +117,7 @@ export const genAction = (
 		case 'redo':
 			return { action, args: [] };
 		case 'retype':
-			return { action, args: [blk, pick(['paragraph', 'heading', 'quote', 'callout', 'divider'])] };
+			return { action, args: [blk, pick(kinds)] };
 		case 'inline':
 			return { action, args: [blk, off, `${r.name}i${counter.n++}`] };
 	}

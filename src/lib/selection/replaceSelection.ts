@@ -49,8 +49,8 @@ export const outermost = (blocks: Iterable<Block>): Block[] => {
  * Run a block move that never hides a block the user saw (Notion): a closed
  * toggle a moved block lands in opens, and so does a closed toggle that
  * adopts blocks (Shift+Tab takes the blocks after it). `open` is view state
- * (R11). Every relative move (`edytor.moveBlocks`) and Tab's nest share it.
- * Answers the moved blocks.
+ * (R11). Every relative move (`edytor.moveBlocks`) and every block move
+ * command (`revealed`) share it. Answers the moved blocks.
  */
 export const revealing = (blocks: Block[], move: () => Block[]) => {
 	const had = new Map(blocks.map((block) => [block, block.children.length]));
@@ -64,6 +64,23 @@ export const revealing = (blocks: Block[], move: () => Block[]) => {
 	}
 	return moved;
 };
+
+/**
+ * A block's move command (`nestBlock`, `unNestBlock`, `moveBlock`,
+ * `moveBlocks`) that reveals what it moved (`revealing`), as the keys and
+ * `edytor.moveBlocks` do (ZW-09). A remote peer's move, an undo or a redo
+ * opens nothing: `open` is this view's state, and history restores it as
+ * it was.
+ */
+export const revealed = <A extends unknown[], R extends Block | Block[] | null | undefined>(
+	command: (...args: A) => R
+) =>
+	function (this: Block, ...args: A): R {
+		let out!: R;
+		const moving = (args[0] as { blocks?: Block[] } | undefined)?.blocks ?? [this];
+		revealing(moving, () => [(out = command.apply(this, args)) ?? []].flat());
+		return out;
+	};
 
 export const replaceSelectionWithCollapsedTarget = (
 	edytor: Edytor,

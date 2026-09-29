@@ -60,6 +60,7 @@ import {
 } from '../protocols/auth.js';
 import { bindSync, type IdSet, type SyncProtocol } from '../protocols/sync.js';
 import {
+	assertRoomId,
 	beginDestroy,
 	bindRoomProtocol,
 	CLOSE,
@@ -607,6 +608,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				disableBc = false
 			}: WebsocketProviderOptions = {}
 		) {
+			assertRoomId(roomname);
 			super();
 			this.serverUrl = serverUrl.replace(/\/+$/, '');
 			this.roomname = roomname;
@@ -677,7 +679,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		/**
 		 * The dial URL: the room name as one encoded path segment (any id —
 		 * `/`, `%`, `#`, `?` included — reaches its own room; the server
-		 * decodes it). `params` are read at every dial (a refreshed token
+		 * decodes it). `''`, `.` and `..` are refused at construction: a URL
+		 * collapses a dot segment. `params` are read at every dial (a refreshed token
 		 * reaches the next connection), with `replica` = this document's
 		 * client id unless `params` names one: the room binds the socket's
 		 * writes to it.

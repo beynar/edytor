@@ -265,10 +265,15 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 
 	// Enter in an empty list-like block ends the run (Notion): out one level
 	// when nested in another list-like block, else — at the top level or in a
-	// container such as a callout — the parent's default kind, in place.
-	if (continues && isAtEndOfBlock && isAtStartOfBlock && !current.hasChildren) {
-		if (current.parent?.definition.continues && current.unNestBlock())
+	// container such as a callout — the parent's default kind, in place. An
+	// empty item of a list leaves it, where Shift+Tab lifts it (SW9-lists-1):
+	// out of a nested list into the item holding it, then out of that item,
+	// then out of the list (DR-behavior-1).
+	const item = Boolean(current.list);
+	if ((continues || item) && isAtEndOfBlock && isAtStartOfBlock && !current.hasChildren) {
+		if ((item || current.parent?.definition.continues) && current.unNestBlock())
 			return caretAt(edytor, current.firstText, 0);
+		if (item) return;
 		current.setBlock({ value: { type: defaultBlock, data: {} } });
 		return caretAt(edytor, current.firstText, 0);
 	}

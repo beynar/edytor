@@ -4,13 +4,8 @@ import type { SelectionValue } from '$lib/session/selection.js';
 import { isRecord, type SerializableContent } from '$lib/utils/json.js';
 import { richTextOperations, type RichTextMark } from '$lib/plugins/richtext/richTextOperations.js';
 import { selectedTextSpans } from '$lib/selection/visibility.js';
-import {
-	convertBlocks,
-	convertibleKinds,
-	rowOf,
-	selectionBlocks,
-	type KindRow
-} from '$lib/kinds.js';
+import { convertBlocks, convertibleKinds, rowOf, type KindRow } from '$lib/kinds.js';
+import { getSelectionBlocks } from '$lib/selection/replaceSelection.js';
 
 /** Notion's palette: text colors and their backgrounds, by name. */
 export const TOOLBAR_COLORS = [
@@ -95,7 +90,7 @@ export class ToolbarController {
 	/** Convert every block the selection touches (Notion), as one undo step. */
 	turnInto(kind: KindRow) {
 		this.panel = null;
-		this.runWithSelection(() => convertBlocks(this.edytor, selectionBlocks(this.edytor), kind));
+		this.runWithSelection(() => convertBlocks(this.edytor, getSelectionBlocks(this.edytor), kind));
 	}
 
 	/** Set (or clear, with `null`) the text color or background of the selection. */

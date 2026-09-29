@@ -39,6 +39,7 @@ block.type = 'quote'; // also `setBlock`
 // Structure.
 block.nestBlock(); // last child of the previous sibling
 block.unNestBlock(); // after its parent; the siblings after it become its children
+// (a list's item leaves the list instead, see concepts/blocks#containers)
 block.mergeBlockBackward(); // join into the previous block
 block.addChildBlock({ block: { type: 'paragraph' }, index: 0 });
 block.removeBlock(); // children take its place
@@ -92,7 +93,7 @@ const { operation, status } = edytor.dispatcher.last!;
 
 | Status | Meaning |
 | --- | --- |
-| `applied` | The command changed the document. |
+| `applied` | The command changed the document. A command of several steps (a <kbd>Tab</kbd> over several sibling groups, Turn into over several blocks) is `applied` when any step applied. |
 | `noop` | It ran and changed nothing. |
 | `refused` | The view is readonly, the document is read-only, the document refused it (for example merging into a void block), or a plugin prevented it. Nothing was written and no undo step was recorded. |
 | `failed` | It threw. The error is in `last.error` and is rethrown. |
@@ -170,8 +171,8 @@ Or describe one relative step with `direction`:
 | --- | --- |
 | `up` | Before the previous sibling. From the first child, before the parent. |
 | `down` | After the next sibling, never inside its children. From the last child, after the parent. |
-| `in` | Last child of the previous sibling. |
-| `out` | After the parent. The siblings after the last moved block become its children (an outdent). |
+| `in` | Last child of the previous sibling; of its last item when it is a list the blocks are no items of (a `position: 'inside'` drop too). |
+| `out` | After the parent. The siblings after the last moved block become its children (an outdent). An item of a list container leaves the list instead: before it, after it, or between its two halves, without the items after it ([Containers](/docs/concepts/blocks#containers)). |
 
 ```ts
 const moved = edytor.moveBlocks({ blocks: [...edytor.selection.selectedBlocks], direction: 'down' });
@@ -179,7 +180,7 @@ const moved = edytor.moveBlocks({ blocks: [...edytor.selection.selectedBlocks], 
 
 - A group moved by `direction` must be siblings, and keeps its document order. With `target` and `position`, the blocks land in the order you pass them.
 - `moveBlocks` returns the blocks it moved, or `[]` when the move was refused (`dispatcher.last.status` is then `'refused'`, also for a move `canMoveBlocks` rejects).
-- A closed toggle the blocks land in, or that takes blocks as children (`out`), opens, so a moved block is never hidden.
-- `canMoveBlocks` answers whether the move is structurally allowed. It is `false` for a destination inside a void block or an island, for blocks that sit inside an island, and for a destination inside the moved blocks' own subtree. A plugin can still refuse the command.
+- A closed toggle the blocks land in, or that takes blocks as children (`out`), opens, so a moved block is never hidden. The block commands `nestBlock`, `unNestBlock`, `moveBlock` and `moveBlocks` open it too.
+- `canMoveBlocks` answers whether the move is structurally allowed. It is `false` for a destination inside a void block or an island, for blocks that sit inside an island, for a destination inside the moved blocks' own subtree, and directly inside a list for a block that is not a list item (a move keeps kinds; see [Containers](/docs/concepts/blocks#containers)). Direction `out` answers as <kbd>Shift+Tab</kbd> does: a paragraph under a list item outdents into the list as a list item, and an image, a code block or a heading there is refused. A plugin can still refuse the command.
 
 These are the same moves block handles, <kbd>Alt</kbd>+arrows on a focused handle and <kbd>Mod</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> (`arrowMovePlugin`) perform. The types are exported as `BlockMoveRequest`, `BlockMovePosition` and `BlockMoveDirection`.

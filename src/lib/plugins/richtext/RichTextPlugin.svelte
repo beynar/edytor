@@ -332,12 +332,14 @@
 				details: { snippet: details, ...disclosure },
 				'ordered-list': {
 					...richTextKinds['ordered-list'],
+					itemKind: 'numbered-list-item',
 					snippet: list,
 					element: 'ol',
 					html: 'ol'
 				},
 				'unordered-list': {
 					...richTextKinds['unordered-list'],
+					itemKind: 'bulleted-list-item',
 					snippet: list,
 					element: 'ul',
 					html: 'ul'

@@ -456,7 +456,9 @@ export const promotedRank = (slot: string, rank: string): string => slot + PROMO
  * kind it displays as its display parent's default child, as a delete or
  * merge of the island retypes the children it saw. A container (a list) is
  * a `reset` too: an item a peer adds to a list another peer's edit removes
- * shows as a paragraph, not as a bare item (DR-crdt-2). A code line a peer adds
+ * shows as a paragraph, not as a bare item (DR-crdt-2); a block promoted
+ * INTO a container names the block it is promoted out of, so it shows as
+ * the container's item as a delete's write makes it (SW9-containers-3). A code line a peer adds
  * under a code block another peer deletes or merges shows as a paragraph,
  * not as a code line outside its code block. A line of an island declared
  * `lines` holds no children (FW-01): they take the island's
@@ -473,6 +475,8 @@ export const displaySlotOf = (
 ): { parent: Owner | null; rank: string; reset: BlockId | null } => {
 	let { parent, rank } = pl;
 	let reset: BlockId | null = null;
+	/** The first parent it is promoted out of (a deleted or childless one). */
+	let promoted: BlockId | null = null;
 	const resets = (b: BlockId) => own.island?.(b) === true || own.container?.(b) === true;
 	for (let hops = 0; parent !== null; hops++) {
 		const owner = own.ownerOf(parent);
@@ -493,7 +497,11 @@ export const displaySlotOf = (
 				reset: reset ?? line.parent
 			};
 		}
+		// Promoted into a container: it shows as one of its items (SW9-containers-3).
+		if (shows && reset === null && promoted !== null && own.container?.(owner) === true)
+			reset = promoted;
 		if (shows) return { parent: owner, rank, reset };
+		promoted ??= out;
 		const up = placements.get(out);
 		if (up === undefined || hops > placements.size) return { parent: DEAD, rank, reset };
 		if (reset === null && resets(out)) reset = out;

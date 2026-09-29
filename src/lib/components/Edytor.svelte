@@ -3,13 +3,14 @@
 	// (the component + its bindable instance type) — an unaliased import
 	// collides there (TS2440 for bundler-resolution consumers).
 	import { Edytor as EdytorClass, useEdytor, type Snippets } from '../edytor.svelte.js';
-	import type {
-		Awareness,
-		DocumentActor,
-		EdytorDocument,
+	import {
 		SyncRefusedError,
-		YDoc
+		type Awareness,
+		type DocumentActor,
+		type EdytorDocument,
+		type YDoc
 	} from '../crdt/index.js';
+	import { CLOSE, validRoomId } from '../crdt/providers/room.js';
 	import type { EdytorSync, WebsocketSyncOptions } from '$lib/collaboration/index.js';
 	import { createIndexeddbSync, createWebsocketSync } from '$lib/collaboration/providers.js';
 	export { EdytorClass as EdytorContext, useEdytor };
@@ -45,6 +46,21 @@
 		if (typeof handles === 'object') return [createBlockHandlesPlugin(handles), ...(others ?? [])];
 		return plugins?.some(isBlockHandlesPlugin) ? plugins : [blockHandlesPlugin, ...(plugins ?? [])];
 	};
+	/**
+	 * The sync of a room id no dial can carry (`validRoomId`): no socket, the
+	 * refusal `routeDocumentSocket` would give (`4400`), and the local copy
+	 * where there is IndexedDB (as `createWebsocketSync` keeps one).
+	 */
+	const invalidRoom = (persistName: string): EdytorSync =>
+		Object.assign(
+			({ failed, attach }: Parameters<EdytorSync>[0]) => {
+				const release =
+					typeof indexedDB === 'undefined' ? undefined : attach?.(createIndexeddbSync(persistName));
+				failed?.(new SyncRefusedError(CLOSE.invalidDocument, 'invalid document id'), undefined);
+				return release ?? undefined;
+			},
+			{ bound: Infinity }
+		);
 	const defaultValue: JSONDoc = {
 		// Empty document — the facade seeds the canonical bootstrap block of
 		// the document's `defaultType` on `sync()` (D1). No block types are
@@ -90,7 +106,9 @@
 		enterkeyhint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
 		/**
 		 * The document's id. Alone: a local IndexedDB copy under that name. With
-		 * `server`: the room on that server, plus the local copy. Read once.
+		 * `server`: the room on that server, plus the local copy (1 to 256
+		 * characters, not `.` or `..`: another id is refused `4400` through
+		 * `onSyncRefused`, never dialed). Read once.
 		 */
 		room?: string;
 		/** The sync server's base URL (`wss://…/rooms`); the view dials `<server>/<room>`. Read once. */
@@ -188,20 +206,26 @@
 		Object.assign(dialParams, params);
 	});
 	const initialSync = untrack((): EdytorSync | undefined => {
+		// Only a view that attaches builds a provider: never a readonly view or the server render.
+		if (typeof window === 'undefined' || initialEdytorOptions.readonly) return undefined;
 		if (sync || room === undefined) return sync;
 		if (server === undefined) return createIndexeddbSync(room);
+		// Per author: the room refuses one user's socket delivering another's edits.
+		const persistName = actor
+			? `edytor:${actor.id}@${server}/${room}`
+			: `edytor:${server.replace(/\/+$/, '')}/${room}`;
+		// An id no dial can carry is refused as the router would (4400), never thrown
+		// from the view; its local copy is kept, as the socket's companion would be.
+		if (!validRoomId(room)) return invalidRoom(persistName);
 		return createWebsocketSync({
 			server,
 			room,
 			params: dialParams,
 			onExpired: (state) => onSyncExpired?.(state),
-			// Per author: the room refuses one user's socket delivering another's edits.
-			...(actor ? { persistName: `edytor:${actor.id}@${server}/${room}` } : {})
+			persistName
 		});
 	});
-	if (typeof window !== 'undefined' && !initialEdytorOptions.readonly && initialSync) {
-		edytor.document.attachSync(initialSync, { value: initialEdytorOptions.value });
-	}
+	if (initialSync) edytor.document.attachSync(initialSync, { value: initialEdytorOptions.value });
 
 	let offRefused: (() => void) | undefined;
 	onMount(() => {

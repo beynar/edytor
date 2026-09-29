@@ -54,11 +54,11 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
     rendersContent: {
       type: "boolean",
       default: "true",
-      description: "false for a container that renders only its children (a list). Its content slot gets no caret. A development warning fires if the snippet disagrees.",
+      description: "false for a container that renders only its children (a list). Its content slot gets no caret, and no block merges into it: `mergeBackward` on its first child is refused. A development warning fires if the snippet disagrees.",
     },
     defaultChild: {
       type: "string",
-      description: "The kind a new child of this block takes: Enter inside a child, a split, an island merged out into it.",
+      description: "The kind a new child of this block takes: Enter inside a child, a split, an island merged out into it. On an island it does not flatten the children; only `lines` does that.",
     },
     continues: {
       type: "boolean",
@@ -78,7 +78,12 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
     island: {
       type: "boolean",
       default: "false",
-      description: "Editable, but structurally sealed: nothing merges across its edge, and blocks cannot be moved in or out.",
+      description: "Editable, but structurally sealed: nothing merges across its edge, and blocks cannot be moved in or out. Its children keep their kinds and nesting (a table of rows of cells, a callout).",
+    },
+    lines: {
+      type: "boolean",
+      default: "false",
+      description: "An island of lines, like the code block. Every direct child shows as `defaultChild` and holds no children, even after an undo or a peer's edit. Needs `island` and `defaultChild`; a development warning fires if either is missing. Give the lines a kind of their own: outside such an island a block of that kind shows as its parent's default child. Its first line never merges into it when `rendersContent` is false.",
     },
     presets: {
       type: "KindPreset[]",
@@ -86,7 +91,7 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
     },
     empty: {
       type: "{ content?, children? }",
-      description: "What a conversion into this kind replaces the block's content and children with. Without it, a conversion keeps them.",
+      description: "The content and children a conversion into this kind creates. With it, a conversion turns only a block that holds nothing into this kind; a block with text or children stays intact and the new block is inserted after it. Without it, a conversion keeps the block's content and children.",
     },
     html: {
       type: "string | ((block, content, children) => string)",
@@ -119,7 +124,7 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
   }}
 />
 
-The roles (`void`, `island`, `rendersContent`, `defaultChild`) belong to the document once an editor adopts them. Two plugins that declare different `defaultChild` values for one kind make the editor throw at creation.
+The roles (`void`, `island`, `lines`, `rendersContent`, `defaultChild`) belong to the document once an editor adopts them. Two plugins that declare different `defaultChild` values for one kind make the editor throw at creation.
 
 ## The snippet payload
 

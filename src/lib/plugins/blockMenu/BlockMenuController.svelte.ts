@@ -9,8 +9,7 @@ import {
 	rowOf,
 	type KindRow
 } from '$lib/kinds.js';
-import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
-import { outermost } from '../blockHandles/BlockHandleController.svelte.js';
+import { getSelectedBlocksInDocumentOrder, outermost } from '$lib/selection/replaceSelection.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -268,15 +267,20 @@ export class BlockMenuController {
 		this.focus();
 	}
 
-	/** The nearest editable text from `block` in document order, void and `skip` blocks skipped. */
+	/**
+	 * The nearest editable text from `block` in document order once `removed`
+	 * are deleted: void blocks and a closed toggle's hidden body are skipped
+	 * (its header holds the caret), a removed toggle's children are not.
+	 */
 	private editable(
 		block: Block,
 		step: 'blockAfter' | 'blockBefore',
 		edge: 'firstEditableText' | 'lastEditableText',
-		skip: Set<Block>
+		removed: Set<Block>
 	) {
-		for (let next = this.edytor[step](block); next; next = this.edytor[step](next)) {
-			const text = !skip.has(next) && next[edge];
+		const { shown } = this.edytor.selection;
+		for (let next = shown(block, step, { removed }); next; next = shown(next, step, { removed })) {
+			const text = next[edge];
 			if (text) return text;
 		}
 	}

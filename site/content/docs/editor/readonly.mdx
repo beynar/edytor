@@ -31,9 +31,9 @@ There is no separate renderer: readonly is the editable editor with `contentedit
 - Typing, <kbd>Backspace</kbd>, <kbd>Delete</kbd>, <kbd>Enter</kbd> and <kbd>Tab</kbd> are blocked.
 - Hotkeys don't run, neither the built-in ones (undo, select-all ladder, nesting) nor the plugins' (<kbd>Mod</kbd>+<kbd>B</kbd>, …).
 - Cut, paste and drop are ignored.
-- Every handle command is refused: after a call, `edytor.dispatcher.last.status` is `'refused'`. That includes `block.setData`, assigning `block.type` and `atom.setData`, so a control's document write needs no readonly check. The refusal covers only the write: a control that does something else first, such as uploading a file or calling your server, must check `edytor.readonly` itself. The image plugin shows a passive placeholder in a readonly view for this reason. `canMoveBlocks` answers `false`.
+- Every handle command is refused: after a call, `edytor.dispatcher.last.status` is `'refused'`. That includes `block.setData`, assigning `block.type`, `atom.setData`, `edytor.clear()`, `historyUndo()` and `historyRedo()`, so a control's document write needs no readonly check. The refusal covers only the write: a control that does something else first, such as uploading a file or calling your server, must check `edytor.readonly` itself. The image plugin shows a passive placeholder in a readonly view for this reason. `canMoveBlocks` answers `false`.
 - Block handles (the `+` and the grip) are hidden and dragging is disabled, so the block menu cannot open. The slash menu and the selection toolbar stay closed, and to-do checkboxes do not toggle.
-- A `sync` prop is not attached. To show collaborative content read-only, pass a `document` that has its sync attached (see [Collaboration](/docs/collaboration)).
+- No sync is attached: neither a `sync` prop nor the one `room` and `server` would create. To show collaborative content read-only, pass a `document` that has its sync attached (see [Collaboration](/docs/collaboration)).
 
 Facade operations are document writes and are not affected by the view's `readonly`: code can still change the document, and every view shows the change.
 
@@ -56,7 +56,7 @@ When a document that collaborators emptied is shown, a readonly view displays an
 
 `edytor.readonly` reflects the prop; change the prop rather than the instance field. Block handles appear and disappear with it.
 
-A view created readonly never attaches its `sync`, even after you switch it to editable. If a view can become editable, create the document yourself and pass it as `document`.
+A view created readonly never attaches its `sync` (or the sync its `room` and `server` would create), even after you switch it to editable. If a view can become editable, create the document yourself and pass it as `document`.
 
 ## Read-only documents
 

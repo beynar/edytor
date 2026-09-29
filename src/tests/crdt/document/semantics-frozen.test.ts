@@ -54,9 +54,21 @@ describe('semantics tables (API low)', () => {
 				defaultChild: { ...defaultSemantics.defaultChild, ...semantics.defaultChild }
 			}
 		});
-		expect(document.semantics.roles.get('embed')).toEqual({ void: true, island: false });
-		expect(document.semantics.roles.get('divider')).toEqual({ void: true, island: false });
-		expect(document.semantics.roles.get('code')).toEqual({ void: false, island: true });
+		expect(document.semantics.roles.get('embed')).toEqual({
+			void: true,
+			island: false,
+			lines: false
+		});
+		expect(document.semantics.roles.get('divider')).toEqual({
+			void: true,
+			island: false,
+			lines: false
+		});
+		expect(document.semantics.roles.get('code')).toEqual({
+			void: false,
+			island: true,
+			lines: true
+		});
 		expect(document.semantics.rendersContent.get('embed')).toBe(false);
 		expect(document.semantics.rendersContent.get('divider')).toBe(false);
 		expect(document.semantics.defaultChild.get('code')).toBe('codeLine');

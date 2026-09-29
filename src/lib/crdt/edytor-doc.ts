@@ -76,11 +76,13 @@
  *   a block inside an island (`insideIsland`) cannot be moved, nested,
  *   unnested, or merged across the island boundary. Merges INSIDE one
  *   island are allowed; merging an island child into the island itself is
- *   allowed. Moving or merging INTO an island subtree is rejected. An
- *   island that declares its line kind (`defaultChild`) holds only lines,
- *   and a line holds no children (FW-01: the display enforces it against
- *   undo, `insertBlocks` refuses a line parent). `canPlace` and
- *   `canMerge` are the one answer, asked in advance or by the ops (R5).
+ *   allowed when the island renders its content (XW-12). Moving or merging
+ *   INTO an island subtree is rejected. An island declared `lines` (code)
+ *   holds only lines of its `defaultChild` kind, and a line holds no
+ *   children (FW-01, XW-03: the display enforces it against undo,
+ *   `insertBlocks` refuses a line parent); any other island keeps its
+ *   structure. `canPlace` and `canMerge` are the one answer, asked in
+ *   advance or by the ops (R5).
  * - Island merge: when an island block itself is merged (backward or
  *   forward), its children are unnested to the vacated sibling slot and
  *   reset to the default child of that slot's parent (`defaultChild`).
@@ -137,6 +139,7 @@ import {
 	CONTENT_ATTR,
 	ENTRY_FACET,
 	type ContentRun,
+	type DisplayRoles,
 	type Folded,
 	type IndexReport,
 	type RunView
@@ -348,6 +351,12 @@ export type BlockRole = {
 	void?: boolean;
 	/** Editable, but its subtree is structurally sealed from outside blocks. */
 	island?: boolean;
+	/**
+	 * An island of lines (code): each direct child displays as its
+	 * `defaultChild` kind and holds no children (FW-01, XW-03). Needs
+	 * `island` and a `defaultChild`; other islands keep their structure.
+	 */
+	lines?: boolean;
 };
 
 /** Island-sealing policy for a walk in document order (R5; see `next`). */
@@ -374,6 +383,12 @@ export type EdytorDocConfig = {
 	defaultChildOf?: (parentType: string) => string | undefined;
 	/** The adopted `rendersContent` per kind (R5, O22); undeclared kinds render theirs. */
 	rendersContent?: (type: string) => boolean;
+	/**
+	 * The kinds `roleOf` answers for — the display reads the line kinds of
+	 * the `lines` islands from them, present in the document or not
+	 * (XW-11). Absent: only the kinds of the blocks the document holds.
+	 */
+	kinds?: () => Iterable<string>;
 	/**
 	 * U1 — the local actor getter for compact per-block attribution
 	 * (`attribution/block.ts`). Read lazily per op so the document can
@@ -795,19 +810,25 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const defaultType = config.defaultType ?? 'paragraph';
 		const defaultChildOf = config.defaultChildOf ?? (() => undefined);
 		const rendersContentOf = config.rendersContent ?? (() => true);
+		/** The line kind of an island kind declared `lines` (FW-01, XW-03), else undefined. */
+		const lineKindOf = (type: string): string | undefined => {
+			const role = roleOf(type);
+			return role?.island === true && role.lines === true ? defaultChildOf(type) : undefined;
+		};
 		const runsView: RunView = R.attach(doc);
 		// UW-21b: a void kind displays no children — the index sheds them
 		// into its slot at read time, so a child a peer nests or splits under
 		// a block another peer retypes to a void shows on every replica.
 		// A block promoted out of an island displays as its display parent's
 		// default child, as a delete of the island retypes the ones it saw.
-		// An island that declares its line kind holds only lines (FW-01).
-		const displayRoles = {
+		// An island declared `lines` holds only lines (FW-01, XW-03).
+		const displayRoles: DisplayRoles = {
 			childless: (type: string): boolean => roleOf(type)?.void === true,
 			island: (type: string): boolean => roleOf(type)?.island === true,
 			defaultChild: (type: string | null): string =>
 				(type !== null ? defaultChildOf(type) : undefined) ?? defaultType,
-			line: (type: string): string | undefined => defaultChildOf(type)
+			line: lineKindOf,
+			lineKinds: () => [...(config.kinds?.() ?? [])].flatMap((type) => lineKindOf(type) ?? [])
 		};
 		if (config.roleOf) runsView.roles(displayRoles);
 
@@ -1094,11 +1115,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			ancestorsOf(id, v).find((a) => isIsland(a)) ?? null;
 		/** True iff `id` sits strictly inside an island subtree. */
 		const insideIsland = (id: BlockId, v?: View): boolean => islandOf(id, v) !== null;
-		/** `id` is a line — directly in an island that declares its line kind — and holds no children (FW-01). */
+		/** `id` is a line — directly in an island declared `lines` — and holds no children (FW-01). */
 		const isLine = (id: BlockId): boolean => {
 			const parent = positionOf(id)?.parent ?? null;
 			const type = parent === null ? undefined : blockTypeOf(parent);
-			return type !== undefined && isIsland(parent!) && defaultChildOf(type) !== undefined;
+			return type !== undefined && lineKindOf(type) !== undefined;
 		};
 
 		// ── structural capability (R5, O8): one answer in advance and at execution ──
@@ -1123,14 +1144,17 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 
 		/**
 		 * May `fromId`'s content merge into `intoId`? Both live and distinct,
-		 * neither void, and the merge stays on one side of an island boundary
-		 * (a block may merge into its own island root — that stays inside —
-		 * but nothing from outside merges into an island).
+		 * neither void, `intoId` renders its content (a list, a table row or a
+		 * code block shows none, so a first item, cell or line never merges
+		 * into it — XW-12, DR-crdt-2), and the merge stays on one side of an
+		 * island boundary (a block may merge into its own island root — that
+		 * stays inside — but nothing from outside merges into an island).
 		 */
 		const canMerge = (fromId: BlockId, intoId: BlockId): boolean => {
 			const v = view();
 			if (fromId === intoId || !isLiveIn(v, fromId) || !isLiveIn(v, intoId)) return false;
 			if (isVoid(fromId) || isVoid(intoId)) return false;
+			if (!rendersContentOf(blockTypeOf(intoId) ?? '')) return false;
 			const islandFrom = islandOf(fromId, v);
 			if (intoId === islandFrom) return true;
 			return islandFrom === islandOf(intoId, v) && !isIsland(intoId);
@@ -1141,6 +1165,15 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const t = parent === null ? undefined : blockTypeOf(parent);
 			return (t !== undefined ? defaultChildOf(t) : undefined) ?? defaultType;
 		};
+		/**
+		 * The kind a new block copies from `id` (a split tail, a flow's tail,
+		 * a duplicate and each of its descendants). A type a peer's retype is
+		 * replacing can be missing while its new value is pending: the copy
+		 * then takes its parent's default child, never a missing type
+		 * (SW7-crdt-1, DR-crdt-1: it showed as `unknown` everywhere, for good).
+		 */
+		const kindToCopy = (id: BlockId): string =>
+			blockTypeOf(id) ?? defaultChild(positionOf(id)?.parent ?? null);
 
 		// ── document order (O7): one pre-order over visible blocks ────────
 
@@ -1685,7 +1718,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const [at] = clamp(id, offset, 0);
 			const t = tail
 				? { type: ref(tail.type), data: tail.data && sanitizeWireJson(tail.data) }
-				: { type: blockTypeOf(id)!, data: rec.node.getAttr(DATA) as JsonObj };
+				: { type: kindToCopy(id), data: rec.node.getAttr(DATA) as JsonObj };
 			const [rank] = ranksFor(pos.parent, pos.index + 1, 1);
 			const length = displayLength(id) - at;
 			const split: PlanStep = {
@@ -1978,7 +2011,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				const data = blockDataOf(b);
 				return {
 					id: fresh,
-					type: blockTypeOf(b) ?? '',
+					type: kindToCopy(b),
 					...(data !== undefined && { data }),
 					content,
 					children: children as BlockSpec[]
@@ -2106,7 +2139,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			sanitize: sanitizeSpec,
 			collides: (specs) => M.collides(doc, specs),
 			isVoid,
-			tailOf: (id) => ({ type: blockTypeOf(id)!, data: blockDataOf(id) }),
+			tailOf: (id) => ({ type: kindToCopy(id), data: blockDataOf(id) }),
 			ranksFor,
 			redata: (id, data) => attr(id, DATA, data),
 			deleteBlocks: (ids) => prepare.deleteBlocks(ids)

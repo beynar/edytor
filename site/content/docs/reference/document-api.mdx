@@ -115,9 +115,9 @@ Text operations also work inside void blocks, which may hold a caption.
 
 | Operation | Notes |
 | --- | --- |
-| `deleteRange(from, to)` | Deletes between two `DocPosition`s across blocks, following the editor's range-deletion rules. Keeps the first block when nothing else would remain. |
-| `replaceRange(from, to)` | Like `deleteRange`, but always keeps the first block, ready for replacement content. |
-| `insertFlow(target, flow)` | Paste-style insertion. `target` is a `DocPosition` or `{ replace: BlockId[] }`; `flow` is `{ lines, whole? }`, where each line is a `BlockSpec` whose `type` may be omitted for plain inline content. |
+| `deleteRange(from, to, view?)` | Deletes between two `DocPosition`s across blocks, following the editor's range-deletion rules. Keeps the first block when nothing else would remain. `view.hidden(id, removed?)` names blocks the view hides, such as a closed toggle's body: they are not in the range and go only with a block that goes. With `removed`, it answers whether the block stays hidden once those blocks go (a removed toggle's body is shown in its place), which picks the caret. The editor passes it; headless, document order decides. |
+| `replaceRange(from, to, view?)` | Like `deleteRange`, but always keeps the first block, ready for replacement content. |
+| `insertFlow(target, flow, view?)` | Paste-style insertion. `target` is a `DocPosition` or `{ replace: BlockId[] }`; `flow` is `{ lines, whole? }`, where each line is a `BlockSpec` whose `type` may be omitted for plain inline content. Several lines split the block, and its children go to the last line, except children `view.hidden(id)` names (a closed toggle's body), which stay with the first. The editor passes it; headless, every child goes to the last line. |
 
 The prepared plan of these operations carries `at`, the `DocPosition` where the caret should land.
 
@@ -169,7 +169,7 @@ A plan is `{ ids, writes, effect, version, at? }`; a refusal is returned as its 
 | `compare(a, b)` | Negative when `a` comes first. Blocks that are not visible sort last. |
 | `next(id, policy?)`, `previous(id, policy?)` | The neighbor in document order, or `null`. With `{ sealed: true }`, the walk never enters an island it did not start in. |
 | `canPlace(ids, parent?)` | Whether the blocks may be moved under `parent` (`null` for the root). Without `parent`: whether they may move at all. |
-| `canMerge(from, into)` | Whether `from`'s content may merge into `into`: both live, neither void, same side of an island boundary. |
+| `canMerge(from, into)` | Whether `from`'s content may merge into `into`: both live, neither void, `into` renders its content (never a list, a row or a code block), same side of an island boundary. |
 | `defaultChild(parentId)` | The block type a new child of `parentId` gets (`null` for the root). |
 
 Whether a block type renders its own content is a document-level question: `document.rendersContent(type)`.

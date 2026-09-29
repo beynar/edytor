@@ -13,7 +13,10 @@ import { insertLineBreak, runIntent } from '$lib/events/beforeInputCommands.js';
 import { attemptOf, intentSnapshot } from './attempt.js';
 import {
 	getSelectedBlocksInDocumentOrder,
-	deleteSelectedBlocks
+	getSelectionBlocks,
+	deleteSelectedBlocks,
+	outermost,
+	revealing
 } from '$lib/selection/replaceSelection.js';
 import type { HotKey } from './keymap.js';
 
@@ -141,49 +144,12 @@ const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void =>
 };
 
 /**
- * The blocks a text range spanning blocks touches, in document order: from
- * its start block to its end block, a block inside another of them moving
- * with it. None for a range in one block.
- */
-const rangeBlocks = (edytor: Edytor): Block[] => {
-	const { startBlock, endBlock, isCollapsed } = edytor.selection.state;
-	if (isCollapsed || !startBlock || !endBlock || startBlock === endBlock) return [];
-	const order = edytor.facade.order();
-	const [from, to] = [order.indexOf(startBlock.id), order.indexOf(endBlock.id)];
-	const touched = order.slice(Math.min(from, to), Math.max(from, to) + 1);
-	return touched.flatMap((id) => {
-		const block = edytor.idToBlock.get(id);
-		let parent = block?.parent;
-		while (parent && !touched.includes(parent.id)) parent = parent.parent;
-		return block && !parent ? [block] : [];
-	});
-};
-
-/**
- * Tab and Shift+Tab never hide a block the user saw (Notion): a closed
- * toggle a block moves into opens, and so does a closed toggle that adopts
- * the blocks after it on Shift+Tab (`open` is view state, R11).
- */
-const revealing = (blocks: Block[], move: () => Block[]) => {
-	const had = new Map(blocks.map((block) => [block, block.children.length]));
-	const moved = move();
-	const open = (block: Block) => {
-		if (block.node?.tagName === 'DETAILS') (block.node as HTMLDetailsElement).open = true;
-	};
-	for (const block of moved) {
-		for (let parent = block.parent; parent; parent = parent.parent) open(parent);
-		if (block.children.length > (had.get(block) ?? Infinity)) open(block);
-	}
-	return moved;
-};
-
-/**
  * Move `blocks` one level, one group of siblings at a time (Notion: over
  * several nesting levels, each group that can move does), as one command.
  * A block inside another of them moves with it. Answers the moved blocks.
  */
 const moveRoots = (edytor: Edytor, blocks: Block[], direction: 'in' | 'out') => {
-	const roots = blocks.filter((block) => !blocks.some((other) => block.isChildOf(other)));
+	const roots = outermost(blocks);
 	const groups = new Map<Block | undefined, Block[]>();
 	for (const block of roots) groups.set(block.parent, [...(groups.get(block.parent) ?? []), block]);
 	return revealing(
@@ -214,8 +180,8 @@ const nest =
 				if (moveRoots(edytor, blocks, direction).length) edytor.selection.selectBlocks(...members);
 				return;
 			}
-			const spanned = selectedBlocks.size ? [] : rangeBlocks(edytor);
-			if (spanned.length) {
+			const spanned = selectedBlocks.size ? [] : getSelectionBlocks(edytor);
+			if (spanned.length > 1) {
 				const { startText, endText, yStart, yEnd, isReversed } = edytor.selection.state;
 				const moved = moveRoots(edytor, spanned, direction);
 				if (moved.length && startText && endText)

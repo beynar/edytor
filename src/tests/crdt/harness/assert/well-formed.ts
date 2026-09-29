@@ -20,6 +20,9 @@
  *   An island holds only its default child kind, and that kind holds no
  *   children (FW-01: undo of an island delete once sealed a peer's block
  *   under a code line, where nothing renders or reaches it).
+ * - `sealed-line` — a block shows in a `lines` island only when it is
+ *   stored there (XW-10: deleting a line once pulled the block the FW-01
+ *   rule had displaced back into the island, as a line nothing could move).
  * - `promotion-hidden` — no unmarked block hides under a delete-marked
  *   holder (UW-08: read-time promotion puts it in the holder's slot). On
  *   by default; `DST_PROMOTION_ORACLE=0` turns it off for a local bisect.
@@ -41,8 +44,10 @@ export type WellFormedInput = {
 	registered?: ReadonlySet<string>;
 	/** The role answer for void kinds; absent → no roles configured. */
 	isVoid?: (id: string) => boolean;
-	/** Island child kind → the island kind whose children it is (`island-kind`); absent → no islands. */
+	/** Line kind → the `lines` island kind whose children it is (`island-kind`); absent → no such islands. */
 	islandKinds?: ReadonlyMap<string, string>;
+	/** The display owner of `id`'s stored parent (`sealed-line`); absent → the backend has no registry. */
+	storedParentOf?: (id: string) => string | null;
 	/** Merges whose order still holds (the caller drops ones a later move made moot). */
 	merges?: readonly MergeRecord[];
 	/** Registry-node identity of `id`; absent → the backend has no registry. */
@@ -123,6 +128,24 @@ export const WELL_FORMED_CHECKS: Record<string, Check> = {
 			};
 			for (const b of roots) visit(b, null);
 			return out;
+		}
+	},
+	'sealed-line': {
+		run: ({ islandKinds, storedParentOf }, visible) => {
+			if (!islandKinds?.size || !storedParentOf) return [];
+			const lined = new Set(islandKinds.values());
+			return [...visible.values()].flatMap((island) =>
+				typeof island.type === 'string' && lined.has(island.type)
+					? (island.children ?? []).flatMap((b) => {
+							const stored = storedParentOf(b.id);
+							return stored === island.id
+								? []
+								: [
+										`${b.id} shows in the ${island.type} ${island.id} but is stored under ${stored}`
+									];
+						})
+					: []
+			);
 		}
 	},
 	'seed-displacement': {

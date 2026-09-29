@@ -3,7 +3,6 @@
 
 <p>A collaborative block editor for Svelte 5, on a Yjs v14 engine</p>
 
-[![npm version](https://badge.fury.io/js/edytor.svg)](https://badge.fury.io/js/edytor)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Svelte v5](https://img.shields.io/badge/Svelte-v5-FF3E00.svg)](https://svelte.dev)
 

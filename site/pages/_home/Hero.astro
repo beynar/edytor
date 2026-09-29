@@ -1,7 +1,10 @@
 ---
 import Icon from "blume/components/Icon.astro";
+import { version } from "../../../package.json";
 
-const installCommand = "pnpm add edytor";
+// npm's `edytor` is the incompatible 0.0.11: install the pre-release tarball
+// this site hosts (scripts/pack-edytor.sh), as the install page does.
+const installCommand = `pnpm add https://edytor-docs.beynar.workers.dev/edytor-${version}.tgz`;
 const phrases = [
   "Slate's flexibility, Svelte's ergonomics",
   "Notion-style blocks, your components",
@@ -40,9 +43,9 @@ const phraseScript = `(()=>{const phrases=${JSON.stringify(phrases)};const text=
     tabs — on a Yjs v14 engine with a Durable Object server.
   </p>
 
-  <div class="mx-auto mt-9 flex max-w-md items-center rounded-full border border-border bg-background p-1.5 pl-5 shadow-lg shadow-foreground/[0.04]">
+  <div class="mx-auto mt-9 flex max-w-xl items-center rounded-full border border-border bg-background p-1.5 pl-5 shadow-lg shadow-foreground/[0.04]">
     <span class="mr-3 select-none font-mono text-muted-foreground text-sm">$</span>
-    <code class="min-w-0 flex-1 text-left font-mono text-sm">{installCommand}</code>
+    <code class="min-w-0 flex-1 truncate text-left font-mono text-sm" title={installCommand}>{installCommand}</code>
     <button
       class="inline-flex h-9 cursor-pointer items-center gap-2 rounded-full bg-foreground px-4 font-medium text-background text-sm transition-opacity hover:opacity-85"
       data-copy-install={installCommand}

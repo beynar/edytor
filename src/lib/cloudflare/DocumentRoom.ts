@@ -13,8 +13,8 @@
  * - `fetch` (upgrade): read the verified identity, bind the socket's
  *   replica to its user (a replica another user owns is accepted, then
  *   closed `4409`), `ctx.acceptWebSocket` with the identity in the
- *   attachment, then our SyncStep1 (write sockets only) and every present
- *   peer.
+ *   attachment, then our SyncStep1 (a read-only socket gets the
+ *   read-only notice instead) and every present peer.
  * - `webSocketMessage`: ADMIT first — the generation word, then the
  *   identity: a read-only socket's Step2/Update is refused (permission
  *   denied, the socket stays), and new structs under a client id its user
@@ -41,6 +41,13 @@
  *   storage: when an append fails, nothing is relayed or acknowledged, the
  *   live doc is rebuilt from the stored rows and the sender's socket is
  *   closed (1011) so its provider reconnects and resends.
+ * - a delete of an item the room lacks waits in the engine and is stored
+ *   as a `pending` record (not when its frame left structs waiting: those
+ *   deletes wait with them, in memory); compaction keeps the pending
+ *   records apart, and rewrites them as the deletes still waiting; a frame
+ *   that discards a forged stamp drops them. At most
+ *   {@link MAX_WAITING_DELETES} ranges wait: a frame that would pass it has
+ *   its waiting deletes dropped (refusal `waiting`), the rest applied.
  * - a Step2 serves the STORED state: the engine's pending structs (waiting
  *   for a dependency, never stored) are not served.
  * - a frame larger than `maxFrameBytes` (32 MiB) goes out as chunks the
@@ -99,6 +106,13 @@ export const DEFAULT_COMPACT_AFTER = 500;
 export const DEFAULT_SAVE_AFTER = 2000;
 /** Longest wait between the save alarms of a room that cannot read its rows. */
 const MAX_SAVE_RETRY = 5 * 60_000;
+
+/**
+ * Delete ranges the room keeps waiting for items it does not hold (a
+ * relayer's delete of an author's edit a restore lost). Every update the
+ * engine applies re-reads them, so they are capped.
+ */
+export const MAX_WAITING_DELETES = 1024;
 
 /** Refusals kept in `refusals` (the newest); `refusalCounts` counts every one. */
 export const MAX_REFUSALS = 100;
@@ -168,6 +182,9 @@ export type Refusal = {
 		| 'identity'
 		| 'replica'
 		| 'read-only'
+		// A frame's deletes of items the room lacks, dropped: they would pass
+		// MAX_WAITING_DELETES ({ user, ranges }). The rest of the frame applies.
+		| 'waiting'
 		| 'storage'
 		// A fault of the room itself (the engine, a send): the socket is closed 1011.
 		| 'internal'
@@ -179,7 +196,8 @@ export type Refusal = {
 	detail: unknown;
 };
 
-type RowKind = 'generation' | 'update' | 'snapshot';
+/** `pending`: deletes of items the room does not hold yet (they wait for them). */
+type RowKind = 'generation' | 'update' | 'snapshot' | 'pending';
 type Row = { kind: RowKind; record: number; part: number; parts: number; bytes: ArrayBuffer };
 
 /** The dial of a replica another user owns: terminal for the provider (`4xxx`). */
@@ -265,6 +283,7 @@ const lookups = (semantics: DocumentSemanticsConfig) => {
 	const rendersContent = own(semantics.rendersContent);
 	return {
 		roleOf: own(semantics.roles),
+		kinds: () => Object.keys(semantics.roles ?? {}),
 		defaultChildOf: own(semantics.defaultChild),
 		rendersContent: (type: string) => rendersContent(type) ?? true,
 		defaultType: semantics.defaultType
@@ -347,29 +366,94 @@ const storedStruct = (doc: YDoc, client: number, clock: number) => {
 	return structs[Y.findIndexSS(structs, clock)];
 };
 
+type Struct = Decoded['structs'][number];
+type Item = InstanceType<typeof Y.Item>;
+
+/** The struct of `run` (one client's, in clock order) at `clock`, or `undefined`. */
+const structAt = (run: Struct[], clock: number): Struct | undefined => {
+	for (let lo = 0, hi = run.length - 1; lo <= hi; ) {
+		const mid = (lo + hi) >> 1;
+		const { id, length } = run[mid];
+		if (clock < id.clock) hi = mid - 1;
+		else if (clock >= id.clock + length) lo = mid + 1;
+		else return run[mid];
+	}
+	return undefined;
+};
+
 /**
- * A decoded update without what it carries under `clients`: their structs,
- * the deletes of their clocks the room does not hold, and the deletes of
- * the map entries their structs replace (a rewrite deletes the entry it
- * replaces: storing the delete without the rewrite would empty the key).
- * Deletes of their items the room holds are kept: whoever may write may
- * delete.
+ * The map entries that the rewrites among `structs` which `pick` selects
+ * replace (a rewrite deletes the entry it replaces: storing that delete
+ * without the rewrite would empty the key). A rewrite is an item with a
+ * left origin alone, and replaces its origin when that is an entry. The
+ * room's record of the origin says; else the frame's — an encoded item
+ * names its key only without origins, so one with a left origin alone is
+ * of its origin's kind, followed origin to origin. What neither holds,
+ * or the frame holds collected, may be an entry.
  */
-const withoutClients = ({ structs, ds }: Decoded, clients: Set<number>, doc: YDoc): Uint8Array => {
-	const kept = new Map<number, typeof structs>();
+const replacedEntries = (doc: YDoc, structs: Struct[], pick: (item: Item) => boolean) => {
+	const frame = new Map<number, Struct[]>();
+	for (const struct of structs) {
+		const run = frame.get(struct.id.client) ?? [];
+		run.push(struct);
+		frame.set(struct.id.client, run);
+	}
+	const known = new Map<Struct, boolean>();
+	const isEntry = (id: { client: number; clock: number }): boolean => {
+		const chain = new Set<Struct>();
+		let entry = true;
+		for (let at: typeof id | null = id; at !== null; ) {
+			const held = storedStruct(doc, at.client, at.clock);
+			if (held) {
+				entry = held instanceof Y.Item && held.parentSub !== null;
+				break;
+			}
+			const struct = structAt(frame.get(at.client) ?? [], at.clock);
+			if (!(struct instanceof Y.Item) || chain.has(struct)) break;
+			if (known.has(struct)) {
+				entry = known.get(struct)!;
+				break;
+			}
+			chain.add(struct);
+			if (struct.parentSub !== null) break;
+			if (struct.rightOrigin !== null || struct.origin === null) {
+				entry = false;
+				break;
+			}
+			at = struct.origin;
+		}
+		for (const struct of chain) known.set(struct, entry);
+		return entry;
+	};
 	const replaced = Y.createIdSet();
 	for (const struct of structs) {
-		const { client } = struct.id;
-		if (clients.has(client)) {
-			// An encoded item names its parent only without an origin: the entry
-			// it replaces is its origin, when the room holds that as a map entry.
-			const origin = struct instanceof Y.Item ? struct.origin : null;
-			const entry = origin && storedStruct(doc, origin.client, origin.clock);
-			if (entry instanceof Y.Item && entry.parentSub !== null) {
-				replaced.add(origin!.client, origin!.clock, 1);
-			}
-			continue;
+		if (!(struct instanceof Y.Item) || !pick(struct)) continue;
+		const { origin, rightOrigin } = struct;
+		if (origin !== null && rightOrigin === null && isEntry(origin)) {
+			replaced.add(origin.client, origin.clock, 1);
 		}
+	}
+	return replaced;
+};
+
+/**
+ * A decoded update without what it carries under `clients`: their structs,
+ * and the deletes of the map entries their structs replace, held by the
+ * room or not ({@link replacedEntries}). Their other deletes are kept —
+ * whoever may write may delete —, of items the room lacks too: those wait
+ * for the items (see {@link pendingDeletes}). Less `dropped` deletes.
+ */
+const withoutClients = (
+	{ structs, ds }: Decoded,
+	clients: Set<number>,
+	doc: YDoc,
+	dropped: Decoded['ds'] = Y.createIdSet()
+): Uint8Array => {
+	const kept = new Map<number, typeof structs>();
+	const replaced = replacedEntries(doc, structs, (item) => clients.has(item.id.client));
+	for (const struct of structs) {
+		const { client } = struct.id;
+		if (clients.has(client)) continue;
 		const run = kept.get(client) ?? [];
 		run.push(struct);
 		kept.set(client, run);
@@ -383,14 +467,73 @@ const withoutClients = ({ structs, ds }: Decoded, clients: Set<number>, doc: YDo
 		encoding.writeVarUint(encoder.restEncoder, run[0].id.clock);
 		for (const struct of run) struct.write(encoder, 0, 0);
 	}
-	const deletes = Y.createIdSet();
+	Y.writeIdSet(encoder, Y.diffIdSet(Y.diffIdSet(ds, replaced), dropped));
+	return encoder.toUint8Array();
+};
+
+/**
+ * Of `ds`, the deletes of items neither the room (`sv`) nor the frame's
+ * own structs (less `stripped` clients') hold: they would wait.
+ */
+const unheldDeletes = (
+	{ structs, ds }: Decoded,
+	stripped: Set<number>,
+	sv: Map<number, number>
+): Decoded['ds'] => {
+	const carried = new Map<number, number>();
+	for (const { id, length } of structs) {
+		if (stripped.has(id.client)) continue;
+		carried.set(id.client, Math.max(carried.get(id.client) ?? 0, id.clock + length));
+	}
+	const unheld = Y.createIdSet();
 	for (const [client, ranges] of ds.clients) {
-		const held = clients.has(client) ? heldClock(doc, client) : Infinity;
+		const held = Math.max(sv.get(client) ?? 0, carried.get(client) ?? 0);
 		for (const { clock, len } of ranges.getIds()) {
-			if (clock < held) deletes.add(client, clock, Math.min(len, held - clock));
+			const from = Math.max(clock, held);
+			if (from < clock + len) unheld.add(client, from, clock + len - from);
 		}
 	}
-	Y.writeIdSet(encoder, Y.diffIdSet(deletes, replaced));
+	return unheld;
+};
+
+/** How many ranges `ids` holds. */
+const rangeCount = (ids: Decoded['ds']): number => {
+	let count = 0;
+	for (const ranges of ids.clients.values()) count += ranges.getIds().length;
+	return count;
+};
+
+/**
+ * Whether applying `structs` (less `stripped` clients') took the state
+ * vector from `before` to `after` past what they carry: waiting structs
+ * they released.
+ */
+const releasedWaiting = (
+	structs: Struct[],
+	stripped: Set<number>,
+	before: Map<number, number>,
+	after: Map<number, number>
+): boolean => {
+	const carried = new Map<number, number>();
+	for (const { id, length } of structs) {
+		if (stripped.has(id.client)) continue;
+		carried.set(id.client, Math.max(carried.get(id.client) ?? 0, id.clock + length));
+	}
+	for (const [client, clock] of after) {
+		if (clock > Math.max(before.get(client) ?? 0, carried.get(client) ?? 0)) return true;
+	}
+	return false;
+};
+
+/** The deletes `doc`'s engine holds pending: of items it does not hold yet. */
+const pendingDeletes = (doc: YDoc): Decoded['ds'] =>
+	doc.store.pendingDs ? Y.decodeUpdateV2(doc.store.pendingDs).ds : Y.createIdSet();
+
+/** A V1 update carrying only `deletes`. */
+const deletesUpdate = (deletes: Decoded['ds']): Uint8Array => {
+	const encoder = new Y.UpdateEncoderV1();
+	encoding.writeVarUint(encoder.restEncoder, 0); // no structs
+	Y.writeIdSet(encoder, deletes);
 	return encoder.toUint8Array();
 };
 
@@ -772,7 +915,7 @@ export class AttachedDocument {
 			const merged = Y.mergeUpdates(rest.map((record) => record.bytes));
 			this.adopt(crdt.admission.admitUpdate(merged, `room ${this.ctx.id}`));
 			this.origin = { kind: 'restored', records: rest.length };
-			this.updates = rest.filter((record) => record.kind === 'update').length;
+			this.updates = rest.filter((record) => record.kind !== 'snapshot').length;
 		} catch (error) {
 			this.fail(error, false);
 		}
@@ -837,11 +980,20 @@ export class AttachedDocument {
 	compact(): { rows: number } {
 		return noTimers(() => {
 			const doc = this.requireDoc();
+			const records = this.records().slice(1);
 			const merged = Y.mergeUpdates(
-				this.records()
-					.slice(1)
-					.map((record) => record.bytes)
+				records.filter((record) => record.kind !== 'pending').map((record) => record.bytes)
 			);
+			// Waiting deletes stay apart (a discarded forgery drops them,
+			// `settleDeletes`): the stored ones the engine still holds waiting.
+			const pending = records.filter((record) => record.kind === 'pending');
+			let waiting: Uint8Array | null = null;
+			if (pending.length > 0) {
+				const stored = Y.decodeUpdate(Y.mergeUpdates(pending.map((record) => record.bytes))).ds;
+				const applied = Y.diffIdSet(stored, pendingDeletes(doc));
+				const still = Y.diffIdSet(stored, applied);
+				if (!still.isEmpty()) waiting = deletesUpdate(still);
+			}
 			// Memory never runs ahead of storage: the live state vector is the stored one.
 			const kept = new Set(stateVector(doc).keys());
 			for (const ws of this.ctx.getWebSockets(SOCKET_TAG)) {
@@ -855,6 +1007,7 @@ export class AttachedDocument {
 				this.sql.exec(`DELETE FROM ${this.rowsTable}`);
 				this.insert('generation', encodeJSON(E.GENERATION_RECORD));
 				this.insert('snapshot', merged);
+				if (waiting !== null) this.insert('pending', waiting);
 				for (const { replica } of registered) {
 					if (!kept.has(replica)) {
 						this.sql.exec(`DELETE FROM ${this.replicasTable} WHERE replica = ?`, replica);
@@ -1097,13 +1250,15 @@ export class AttachedDocument {
 			if (doc === null) {
 				this.refuseContainer(server);
 			} else {
-				// A read-only socket is never asked for its state: it has nothing to give.
-				if (!identity.readOnly) {
-					this.send(
-						server,
-						E.frame(E.messageSync, (e) => sync.writeSyncStep1(e, doc))
-					);
-				}
+				// A read-only socket is never asked for its state: it has nothing
+				// to give. It gets the read-only notice instead (not a refusal),
+				// so its provider tracks nothing.
+				this.send(
+					server,
+					identity.readOnly
+						? E.frame(E.messageAuth, (e) => E.writeReadOnly(e))
+						: E.frame(E.messageSync, (e) => sync.writeSyncStep1(e, doc))
+				);
 				if (this.presence.size > 0) this.send(server, presenceFrame([...this.presence.values()]));
 			}
 			return new Response(null, { status: 101, webSocket: client });
@@ -1223,7 +1378,22 @@ export class AttachedDocument {
 		const decoded = decode(() => Y.decodeUpdate(update));
 		const sv = stateVector(doc);
 		const stripped = this.attribute(attachment, newWriters(decoded, sv), sv);
-		const admitted = stripped.size === 0 ? update : withoutClients(decoded, stripped, doc);
+		// Waiting deletes are capped: a frame that would pass the cap has them dropped.
+		const waiting = pendingDeletes(doc);
+		let dropped = decoded.ds.isEmpty() ? null : unheldDeletes(decoded, stripped, sv);
+		if (dropped !== null && rangeCount(waiting) + rangeCount(dropped) <= MAX_WAITING_DELETES) {
+			dropped = null;
+		}
+		if (dropped !== null) {
+			this.note({
+				reason: 'waiting',
+				detail: { user: attachment.user, ranges: rangeCount(dropped) }
+			});
+		}
+		const admitted =
+			stripped.size === 0 && dropped === null
+				? update
+				: withoutClients(decoded, stripped, doc, dropped ?? undefined);
 		// 4 · Schema: the inbound refusal of a foreign stamp (the update's,
 		// or a pending one it would release — discarded, the sender kept).
 		// Integrating persists (the doc's update handler) before the ack.
@@ -1235,9 +1405,72 @@ export class AttachedDocument {
 		if (problem !== null) return this.refuse(ws, { reason: 'schema', detail: problem });
 		// The bytes decoded: an update the engine could not apply is its fault.
 		if (!applied) return this.fault(ws, failure ?? new Error('update not applied'));
+		// The entries the frame's own still-waiting rewrites replace.
+		const stay =
+			doc.store.pendingStructs === null
+				? Y.createIdSet()
+				: replacedEntries(
+						doc,
+						decoded.structs,
+						({ id }) => !stripped.has(id.client) && id.clock >= heldClock(doc, id.client)
+					);
+		this.settleDeletes(ws, doc, waiting, stay, discarded !== undefined);
+		if (this.unstored !== null) return this.recover(ws);
 		if (discarded) this.note({ reason: 'schema', detail: { discarded } });
-		this.acknowledge(ws, doc, stripped.size === 0 ? decoded.ds : heldDeletes(doc, decoded.ds));
+		const deletes = dropped === null ? decoded.ds : Y.diffIdSet(decoded.ds, dropped);
+		this.acknowledge(ws, doc, stripped.size === 0 ? deletes : heldDeletes(doc, deletes));
+		// Waiting writes the frame released are other sockets' (a relayer's
+		// edit that built on an author's lost one): they are stored now.
+		if (releasedWaiting(decoded.structs, stripped, sv, stateVector(doc))) {
+			this.broadcast(
+				E.frame(E.messageSaved, (e) => sync.writeSaved(e, doc)),
+				ws
+			);
+		}
 		this.compactIfDue();
+	}
+
+	/**
+	 * A delete of items the room does not hold (a relayer's delete of an
+	 * author's edit a restore lost) waits in the engine for them: it is
+	 * stored as it arrives, so it survives eviction and compaction and
+	 * applies when the author's edit returns. Except the entries the frame's
+	 * own still-waiting rewrites replace (`stay`): those deletes wait with
+	 * the rewrites in memory, as the rewrites may never integrate. A frame
+	 * that released a pending forged stamp discarded every waiting delete
+	 * (`applyRemote`): the stored ones go too. The deletes the frame applied
+	 * from the waiting ones go back to its sender, whom the relay of the
+	 * update skips.
+	 */
+	private settleDeletes(
+		ws: WebSocket,
+		doc: YDoc,
+		waiting: Decoded['ds'],
+		stay: Decoded['ds'],
+		discarded: boolean
+	) {
+		const now = pendingDeletes(doc);
+		const added = Y.diffIdSet(discarded ? now : Y.diffIdSet(now, waiting), stay);
+		const released = heldDeletes(doc, Y.diffIdSet(waiting, now));
+		if (discarded || !added.isEmpty()) {
+			try {
+				this.ctx.storage.transactionSync(() => {
+					if (discarded) this.sql.exec(`DELETE FROM ${this.rowsTable} WHERE kind = 'pending'`);
+					if (!added.isEmpty()) this.insert('pending', deletesUpdate(added));
+				});
+				this.updates++;
+			} catch (error) {
+				this.unstored = error;
+				return;
+			}
+		}
+		if (!released.isEmpty()) {
+			const update = deletesUpdate(released);
+			this.send(
+				ws,
+				E.frame(E.messageSync, (e) => sync.writeUpdate(e, update))
+			);
+		}
 	}
 
 	/**

@@ -481,8 +481,8 @@ packages:
     resolution: {integrity: sha512-sPAT4pztbu6586/hrhOnMKS17IJrvg12mXiSPSS3W5qDeN2RGgvZ0diZCm31dBbnevfVmujNO3IM2wrS4Y2Rhg==}
 
   edytor@file:../vendor/edytor.tgz:
-    resolution: {integrity: sha512-jOIfjTu5aNg4GRTlMiGvUGgpPLBZzPb+33ZflE21h1zzyFuXZe7Mvlq5jH2iUnDyrUeBIjyF8AeTI8fma067og==, tarball: file:../vendor/edytor.tgz}
-    version: 0.0.11
+    resolution: {integrity: sha512-ijS+NCdw/HD0fcZIBwC6+kObpbt73sWw+nASrpDmNX0k0QkcRh945Dwg++9NbZoyVeJlnhMRy9j0baZwM6gJdQ==, tarball: file:../vendor/edytor.tgz}
+    version: 0.1.0-next.0
     engines: {node: '>=22.0.0'}
     peerDependencies:
       svelte: ^5.0.0

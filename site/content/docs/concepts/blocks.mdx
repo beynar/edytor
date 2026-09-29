@@ -66,6 +66,12 @@ An island (`island: true`) is editable inside but structurally sealed from the r
 - Slash commands and markdown shortcuts don't convert the island block itself.
 - When an island is deleted, its children take its place and are converted to the default child type of their new parent. A line a collaborator adds to the island at the same time shows the same way; undoing the delete shows it as a line of the island again.
 
+An island keeps whatever structure its interior builds: a table island of rows of cells, or a callout island holding a heading and nested paragraphs, keeps its kinds and nesting. An island that also declares `lines: true` is an island of lines, like the code block:
+
+- Every direct child shows as the island's `defaultChild` (a `codeLine`) and holds no children, even when an undo or a collaborator's edit puts another kind or a nested block there. A block nested under a line shows right after the island instead, and stays movable.
+- Inserting under a line is refused, and a block of the line kind outside such an island shows as its parent's default child.
+- The first line never merges into the island's own content when the island renders none (`rendersContent: false`).
+
 The difference in one line: a void keeps the editor out, an island keeps the structure in.
 
 These roles come from the plugins of the views attached to a document. A document edited with no view (a headless `createDocument`, a script) takes them from its `semantics` option instead: pass `defaultSemantics` for the bundled kinds (see [Documents](/docs/collaboration/documents#create-a-document)). The server room applies `defaultSemantics` itself (see [the room](/docs/server/room#block-roles)).
@@ -109,7 +115,7 @@ Each row has the preset's `label`, `icon`, `keywords`, `data`, `markdown` prefix
 | --- | --- |
 | `id` | The command id: `block.<type>`, numbered from 1 when a kind has several presets (`block.heading2`). |
 | `value` | The conversion: type, the preset's data, and the kind's `empty` shape if it has one. |
-| `replaces` | `true` when converting replaces the block's content and children (a divider, a code block). |
+| `replaces` | `true` when the kind has an `empty` shape (a divider, a code block). It converts in place only a block that holds nothing; a block with text or children stays intact and the new block is inserted after it. See [presets](/docs/customization/blocks#presets). |
 
 Convert a block with `convertToKind`, or run the row's command by id:
 
@@ -120,8 +126,10 @@ const row = edytor.kinds.find((kind) => kind.id === 'block.quote');
 const block = edytor.selection.state.startBlock;
 if (row) convertToKind(edytor, block, row); // true when it applied
 
-await edytor.runCommand('block.heading2'); // converts the block holding the selection
+await edytor.runCommand('block.heading2'); // converts the caret's block, or every selected or touched block
 ```
+
+A kind's command converts the caret's block, every block of a block selection, or every block a text range touches (a closed toggle's hidden body is not touched), as one undo step. A replacing kind acts only on the block holding the selection's start. See [presets](/docs/customization/blocks#presets).
 
 A "Turn into" menu that keeps the block's text lists the rows with `replaces: false`:
 

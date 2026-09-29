@@ -348,7 +348,12 @@ export {
 	type SyncProtocol
 } from './protocols/sync.js';
 
-export { messagePermissionDenied, writePermissionDenied } from './protocols/auth.js';
+export {
+	messagePermissionDenied,
+	messageReadOnly,
+	writePermissionDenied,
+	writeReadOnly
+} from './protocols/auth.js';
 
 export {
 	applyAwarenessUpdate,

@@ -1059,7 +1059,8 @@ export class EdytorSelection {
 			endText === endText.parent.firstText &&
 			yEnd === 0
 		) {
-			const previousEndText = endText.parent.closestPreviousBlock?.lastText ?? null;
+			// The shown block before: a closed toggle's header, not its hidden body.
+			const previousEndText = this.shown(endText.parent, 'blockBefore')?.lastText ?? null;
 			if (previousEndText?.node?.isConnected) {
 				endText = previousEndText;
 				yEnd = previousEndText.length;
@@ -1200,17 +1201,35 @@ export class EdytorSelection {
 		return !!node && !node.closest(HIDDEN);
 	};
 
-	/** Hidden by view state (a Surface fact): the block sits in a collapsed toggle's body or a `hidden` subtree. */
-	hidden = (block: Block) => !!block.node?.closest(HIDDEN);
+	/**
+	 * Hidden by view state (a Surface fact): the block sits in a collapsed
+	 * toggle's body or a `hidden` subtree. With `removed`, whether it stays
+	 * hidden once those blocks are deleted: a deleted closed toggle's
+	 * children take its place, shown.
+	 */
+	hidden = (block: Block, removed?: ReadonlySet<Block>): boolean => {
+		const hider = block.node?.closest(HIDDEN);
+		if (!hider || !removed?.size) return !!hider;
+		let owner: Block | undefined = block;
+		while (owner && !owner.node?.contains(hider)) owner = owner.parent;
+		return !owner || !removed.has(owner) || this.hidden(owner, removed);
+	};
 
 	/**
 	 * The nearest block before or after `block` in document order that is not
 	 * hidden: a collapsed toggle is one unit (Notion) — before the block after
-	 * it comes its header; after its header, the block after it.
+	 * it comes its header; after its header, the block after it. `removed`
+	 * blocks are skipped, and read as gone (see {@link hidden}).
 	 */
-	shown = (block: Block, step: 'blockBefore' | 'blockAfter', policy?: { sealed?: boolean }) => {
+	shown = (
+		block: Block,
+		step: 'blockBefore' | 'blockAfter',
+		{ sealed, removed }: { sealed?: boolean; removed?: ReadonlySet<Block> } = {}
+	) => {
+		const policy = sealed ? { sealed } : undefined;
 		let next = this.edytor[step](block, policy);
-		while (next && this.hidden(next)) next = this.edytor[step](next, policy);
+		while (next && (removed?.has(next) || this.hidden(next, removed)))
+			next = this.edytor[step](next, policy);
 		return next;
 	};
 

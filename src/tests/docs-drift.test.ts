@@ -4,8 +4,23 @@
  * AGENTS.md link to it. These phrases are the known fan-out misses: each one
  * is a rule or fact that changed while a copy kept the old wording.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import {
+	copyFileSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync
+} from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import type { JSONDoc } from '$lib/utils/json.js';
 import { Edytor } from '$lib/edytor.svelte.js';
@@ -14,17 +29,29 @@ import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 
 const root = join(import.meta.dirname, '../..');
 
-const files = (dir: string): string[] =>
+const files = (dir: string, extension = /\.mdx?$/): string[] =>
 	readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
 		const path = join(dir, entry.name);
-		return entry.isDirectory() ? files(path) : /\.mdx?$/.test(entry.name) ? [path] : [];
+		return entry.isDirectory() ? files(path, extension) : extension.test(entry.name) ? [path] : [];
 	});
 
 const docs = [
 	join(root, 'README.md'),
 	join(root, 'AGENTS.md'),
-	...files(join(root, 'site/content/docs'))
+	...files(join(root, 'site/content/docs')),
+	// The landing page is documentation too: its Copy install button is the
+	// first command a reader runs (XW-05).
+	...files(join(root, 'site/pages'), /\.astro$/)
 ];
+
+const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+	version: string;
+};
+/** A page's text; an Astro page's `${version}` is the package version it renders. */
+const pageText = (path: string) => {
+	const text = readFileSync(path, 'utf8');
+	return path.endsWith('.astro') ? text.replaceAll('${version}', version) : text;
+};
 
 const stale: [phrase: string | RegExp, why: string][] = [
 	['another list item', 'Enter ends a run under a continuing kind, not only a list item'],
@@ -58,6 +85,34 @@ const stale: [phrase: string | RegExp, why: string][] = [
 	[
 		/`1008` or `4xxx` close, after which/,
 		'`4401` is retried: only `1008` and the other `4xxx` codes are terminal (FW-15)'
+	],
+	[
+		'converts the block holding the selection',
+		'a kind command converts every selected or touched block; a replacing kind only the start block (XW-16)'
+	],
+	[
+		/when converting replaces the block's content and children|conversion into this kind replaces the block's/,
+		'a replacing kind converts only a block that holds nothing; after content it is inserted after the block (XW-16, DR-docs-6)'
+	],
+	[
+		'Mod+Shift+↑/↓ and Shift+↑/↓ move the focus',
+		'the default arrow move plugin claims Mod+Shift+↑/↓ to move a movable block (DR-docs-7)'
+	],
+	[
+		'badge.fury.io/js/edytor',
+		"npm's latest is the incompatible 0.0.11 until the pre-release is published (DR-docs-8)"
+	],
+	[
+		'Install the URL your lockfile names again',
+		'`pnpm add` of the same URL keeps the pinned hash and fails again; remove the package first (DR-docs-3)'
+	],
+	[
+		'bound to the user who first wrote under it',
+		'a client id belongs to the user whose socket dials or binds it; relayed ids stay unowned (NW-01)'
+	],
+	[
+		/split\(['"]\/['"]\)\.pop\(\)|\.slice\(["']\/rooms\/["']\.length\)/,
+		'route `/rooms/<id>` by a match and decode the id, as the quick start: the client dials the room name unencoded (DR-docs-2)'
 	]
 ];
 
@@ -74,20 +129,19 @@ const sources = (dir: string): string[] =>
 describe('docs drift', () => {
 	it.each(stale)('no doc says "%s" (%s)', (phrase) => {
 		const hits = docs
-			.filter((path) => has(readFileSync(path, 'utf8'), phrase))
+			.filter((path) => has(pageText(path), phrase))
 			.map((path) => relative(root, path));
 		expect(hits).toEqual([]);
 	});
 
 	it('while the version is a pre-release, every install names the tarball the site hosts (FW-03)', () => {
-		const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 		if (!version.includes('-')) return;
 		const config = readFileSync(join(root, 'site/blume.config.ts'), 'utf8');
 		const site = /cloudflare\(\{\s*site:\s*["']([^"']+)["']/.exec(config)?.[1];
 		expect(site).toBeTruthy();
 		const hosted = `${site}/edytor-${version}.tgz`;
 		const lines = (path: string) =>
-			readFileSync(path, 'utf8')
+			pageText(path)
 				.split('\n')
 				.map((line) => [`${relative(root, path)}: ${line.trim()}`, line] as const);
 		// Every install of edytor: the hosted tarball, a local build of it, or the tag.
@@ -105,21 +159,66 @@ describe('docs drift', () => {
 		for (const page of [
 			'README.md',
 			'site/content/docs/getting-started/index.mdx',
-			'site/content/docs/server/quick-start.mdx'
+			'site/content/docs/server/quick-start.mdx',
+			// The landing page's Copy install button (XW-05).
+			'site/pages/_home/Hero.astro'
 		])
-			expect(readFileSync(join(root, page), 'utf8'), page).toContain(`pnpm add ${hosted}`);
-		// The site serves public/ at its root: the pack script must put the
-		// tarball there under the documented name.
-		expect(readFileSync(join(root, 'site/scripts/pack-edytor.sh'), 'utf8')).toMatch(
+			expect(pageText(join(root, page)), page).toContain(`pnpm add ${hosted}`);
+		// The site serves public/ at its root: the pack stages the tarball there
+		// under the documented name, beside every version it served before
+		// (XW-15, DR-docs-1; the behavior is pinned in 'the hosted tarballs').
+		const pack = readFileSync(join(root, 'site/scripts/pack-edytor.sh'), 'utf8');
+		expect(pack).toMatch(/sh site\/scripts\/stage-tarballs\.sh "\$@"/);
+		expect(readFileSync(join(root, 'site/scripts/stage-tarballs.sh'), 'utf8')).toMatch(
 			/cp site\/vendor\/edytor\.tgz "site\/public\/edytor-\$VERSION\.tgz"/
 		);
+		expect(servedVersions()).toContain(version);
+		// The deploy packs with the guard, targets the account the room uses
+		// (several accounts are logged in) and smokes the live URLs (XW-04).
+		const deploy = JSON.parse(readFileSync(join(root, 'site/package.json'), 'utf8')).scripts
+			.deploy as string;
+		const account = /"account_id":\s*"(\w+)"/.exec(
+			readFileSync(join(root, 'site/room/wrangler.jsonc'), 'utf8')
+		)?.[1];
+		expect(account).toBeTruthy();
+		expect(deploy).toContain('pack-edytor.sh --deploy');
+		expect(deploy).toContain(`CLOUDFLARE_ACCOUNT_ID=${account} wrangler deploy`);
+		const smoke = readFileSync(join(root, 'site/scripts/smoke.sh'), 'utf8');
+		for (const path of [
+			'/edytor-$VERSION.tgz',
+			'/docs/reference/troubleshooting',
+			'/docs/getting-started'
+		])
+			expect(smoke, path).toContain(path);
+		// Every tarball a lockfile may pin still answers after the deploy.
+		expect(smoke).toContain('served-versions.txt');
+		expect(smoke).toMatch(/"\$SITE\/edytor-\$v\.tgz"/);
+		// The demo room answers, and a WebSocket dial of a closed day's room from
+		// the docs origin gets a 4404 close, which only the current build sends:
+		// a plain GET answers 404 on every build (XW-04, DR-docs-4). The deploy
+		// redeploys the room, which runs the same packed edytor/cloudflare.
+		for (const path of ['/health', 'site/islands/LiveEditor.svelte'])
+			expect(smoke, path).toContain(path);
+		expect(smoke).toMatch(
+			/node site\/scripts\/probe-room\.mjs "\$WSS\/demo-2019-01-01\?guest=smoke-probe-1" "\$SITE" 4404/
+		);
+		expect(deploy).toMatch(
+			/wrangler deploy && pnpm --dir room install && pnpm --dir room run deploy && sh scripts\/smoke\.sh$/
+		);
+		// While `master` holds 0.0.11, a link into its tree is a 404 or old code (DR-docs-5).
+		if (/holds 0\.0\.11/.test(config)) {
+			const links = docs.filter((path) =>
+				/github\.com\/beynar\/edytor\/(?:tree|blob)\//.test(readFileSync(path, 'utf8'))
+			);
+			expect(links.map((path) => relative(root, path))).toEqual([]);
+		}
 		// A clone of master builds 0.0.11: any clone line must name its branch.
 		const clones = docs
 			.flatMap(lines)
 			.filter(([, line]) => /git clone .*github\.com\/beynar\/edytor/.test(line));
 		expect(clones.filter(([, line]) => !/ -b \S+/.test(line))).toEqual([]);
 		const tarballs = docs.flatMap((path) =>
-			[...readFileSync(path, 'utf8').matchAll(/edytor-[\w.<>-]+\.tgz/g)].map(([name]) => name)
+			[...pageText(path).matchAll(/edytor-[\w.<>-]+\.tgz/g)].map(([name]) => name)
 		);
 		expect(tarballs.filter((name) => name !== `edytor-${version}.tgz`)).toEqual([]);
 		// "Edit this page" links built on master would 404.
@@ -158,10 +257,59 @@ describe('docs drift', () => {
 		);
 		expect(missing).toEqual([]);
 		// Close codes a client reacts to, and the provider events that report them.
-		for (const term of ['`4401`', '`4403`', '`4409`', '`1011`', '`expired`', '`unreachable`'])
+		for (const term of [
+			'`4400`',
+			'`4401`',
+			'`4403`',
+			'`4409`',
+			'`1011`',
+			'`closedSocket',
+			'`expired`',
+			'`unreachable`'
+		])
 			expect(migration, term).toContain(term);
+		// The room page lists every close a dial can receive (XW-17).
+		const room = read('site/content/docs/server/room.mdx');
+		for (const term of [
+			'`4400`',
+			'`4401`',
+			'`4403`',
+			'`4409`',
+			'`1008`',
+			'`1011`',
+			'`closedSocket'
+		])
+			expect(room, term).toContain(term);
+		// The entry-point row names every function `edytor/cloudflare` documents.
+		const row = read('site/content/docs/getting-started/entry-points.mdx')
+			.split('\n')
+			.find((line) => line.startsWith('| `edytor/cloudflare`'));
+		for (const name of [
+			'DocumentRoom',
+			'attachDocument',
+			'routeDocumentSocket',
+			'requestedReplica',
+			'closedSocket'
+		])
+			expect(row, name).toContain(`\`${name}\``);
 		// Only 4401 among the 4xxx codes is retried.
 		expect(migration).not.toMatch(/`1008` or `4xxx` close,/);
+	});
+
+	it("the server quick start's demo-room excerpt is the deployed Worker's code (XW-18)", () => {
+		const page = readFileSync(join(root, 'site/content/docs/server/quick-start.mdx'), 'utf8');
+		const excerpt = /```ts site\/room\/src\/worker\.ts\n([\s\S]*?)```/.exec(page)?.[1];
+		expect(excerpt).toBeTruthy();
+		const source = new Set(
+			readFileSync(join(root, 'site/room/src/worker.ts'), 'utf8')
+				.split('\n')
+				.map((line) => line.trim())
+		);
+		const lines = excerpt!
+			.split('\n')
+			.map((line) => line.trim())
+			.filter(Boolean);
+		expect(lines.filter((line) => !source.has(line))).toEqual([]);
 	});
 
 	it('the operations page has a payload row for every dispatched operation', () => {
@@ -191,6 +339,30 @@ describe('docs drift', () => {
 		expect(hits).toEqual([]);
 	});
 
+	it('no source comment says a replacing conversion replaces the content (XW-16, DR-docs-6)', () => {
+		const hits = sources(join(root, 'src/lib'))
+			.filter((path) =>
+				/conversion into this kind replaces the\s+(?:\*\s+)?block's/.test(
+					readFileSync(path, 'utf8')
+				)
+			)
+			.map((path) => relative(root, path));
+		expect(hits).toEqual([]);
+	});
+
+	it('troubleshooting gives an integrity recovery that works (DR-docs-3)', () => {
+		// Checked against pnpm 10.32 and npm 11.19 with the bytes swapped under a
+		// URL: `pnpm add` of the same URL keeps the pinned hash and fails again;
+		// removing the package first works with both.
+		const page = readFileSync(
+			join(root, 'site/content/docs/reference/troubleshooting.mdx'),
+			'utf8'
+		);
+		const row = page.split('\n').find((line) => line.includes('ERR_PNPM_TARBALL_INTEGRITY'));
+		expect(row).toContain('`pnpm remove edytor && pnpm add <that URL>`');
+		expect(row).toContain('`npm uninstall edytor && npm install <that URL>`');
+	});
+
 	it('no source comment cites a README section (the README is a landing page)', () => {
 		const hits = sources(join(root, 'src/lib'))
 			.filter((path) => readFileSync(path, 'utf8').includes('README'))
@@ -199,10 +371,254 @@ describe('docs drift', () => {
 	});
 });
 
+/** The versions the site has served, from `site/scripts/served-versions.txt`. */
+function servedVersions() {
+	return readFileSync(join(root, 'site/scripts/served-versions.txt'), 'utf8')
+		.split('\n')
+		.map((line) => line.replace(/#.*/, '').trim())
+		.filter(Boolean);
+}
+
+/**
+ * The hosted tarball URL is permanent (getting-started#install): a lockfile
+ * pins its integrity, so a deploy neither changes the bytes under a served
+ * version (XW-15) nor drops an earlier version (DR-docs-1). These run
+ * `stage-tarballs.sh` in a scratch checkout against a local stand-in for the
+ * live site.
+ */
+describe('the hosted tarballs (site/scripts/stage-tarballs.sh)', () => {
+	const run = promisify(execFile);
+
+	async function stage(options: {
+		version: string;
+		served: string[];
+		packed: string;
+		live: Record<string, string | number>;
+		local?: Record<string, string>;
+		force?: boolean;
+	}) {
+		const checkout = mkdtempSync(join(tmpdir(), 'edytor-stage-'));
+		mkdirSync(join(checkout, 'site/scripts'), { recursive: true });
+		mkdirSync(join(checkout, 'site/vendor'));
+		mkdirSync(join(checkout, 'site/public'));
+		copyFileSync(
+			join(root, 'site/scripts/stage-tarballs.sh'),
+			join(checkout, 'site/scripts/stage-tarballs.sh')
+		);
+		writeFileSync(join(checkout, 'package.json'), JSON.stringify({ version: options.version }));
+		writeFileSync(
+			join(checkout, 'site/scripts/served-versions.txt'),
+			`# served\n${options.served.join('\n')}\n`
+		);
+		writeFileSync(join(checkout, 'site/vendor/edytor.tgz'), options.packed);
+		for (const [name, bytes] of Object.entries(options.local ?? {}))
+			writeFileSync(join(checkout, 'site/public', name), bytes);
+		const server = createServer((request, response) => {
+			const body = options.live[request.url ?? ''];
+			if (typeof body === 'string') return response.end(body);
+			response.statusCode = body ?? 404;
+			response.end();
+		});
+		await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+		const site = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+		try {
+			const result = await run('sh', ['site/scripts/stage-tarballs.sh', '--deploy'], {
+				cwd: checkout,
+				env: { ...process.env, SITE: site, FORCE: options.force ? '1' : '' }
+			}).then(
+				() => 'staged',
+				(error: { stderr: string }) => `refused: ${error.stderr}`
+			);
+			const publicDir = join(checkout, 'site/public');
+			const served = Object.fromEntries(
+				readdirSync(publicDir)
+					.sort()
+					.map((name) => [name, readFileSync(join(publicDir, name), 'utf8')])
+			);
+			return { result, served };
+		} finally {
+			server.close();
+			rmSync(checkout, { recursive: true, force: true });
+		}
+	}
+
+	it('a bump keeps serving the earlier version, with its live bytes', async () => {
+		const { result, served } = await stage({
+			version: '0.1.0-next.1',
+			served: ['0.1.0-next.0', '0.1.0-next.1'],
+			packed: 'new build',
+			live: { '/edytor-0.1.0-next.0.tgz': 'next.0 bytes' },
+			// A fresh clone has no local copy; a stale one differs from the live bytes.
+			local: { 'edytor-0.1.0-next.0.tgz': 'a local rebuild' }
+		});
+		expect(result).toBe('staged');
+		expect(served).toEqual({
+			'edytor-0.1.0-next.0.tgz': 'next.0 bytes',
+			'edytor-0.1.0-next.1.tgz': 'new build'
+		});
+	});
+
+	it('a fresh clone downloads the earlier versions it does not have', async () => {
+		const { result, served } = await stage({
+			version: '0.1.0-next.2',
+			served: ['0.1.0-next.0', '0.1.0-next.1', '0.1.0-next.2'],
+			packed: 'new build',
+			live: { '/edytor-0.1.0-next.0.tgz': 'zero', '/edytor-0.1.0-next.1.tgz': 'one' }
+		});
+		expect(result).toBe('staged');
+		expect(served).toEqual({
+			'edytor-0.1.0-next.0.tgz': 'zero',
+			'edytor-0.1.0-next.1.tgz': 'one',
+			'edytor-0.1.0-next.2.tgz': 'new build'
+		});
+	});
+
+	it('new bytes under a served version are refused, and nothing is staged', async () => {
+		const { result, served } = await stage({
+			version: '0.1.0-next.0',
+			served: ['0.1.0-next.0'],
+			packed: 'new build',
+			live: { '/edytor-0.1.0-next.0.tgz': 'next.0 bytes' },
+			local: { 'edytor-0.1.0-next.0.tgz': 'next.0 bytes' }
+		});
+		expect(result).toMatch(/^refused: .*already serves different bytes/);
+		expect(served).toEqual({ 'edytor-0.1.0-next.0.tgz': 'next.0 bytes' });
+	});
+
+	it('the same bytes redeploy', async () => {
+		const { result, served } = await stage({
+			version: '0.1.0-next.0',
+			served: ['0.1.0-next.0'],
+			packed: 'next.0 bytes',
+			live: { '/edytor-0.1.0-next.0.tgz': 'next.0 bytes' }
+		});
+		expect(result).toBe('staged');
+		expect(served).toEqual({ 'edytor-0.1.0-next.0.tgz': 'next.0 bytes' });
+	});
+
+	it('an earlier version the site cannot serve right now refuses the deploy', async () => {
+		const { result, served } = await stage({
+			version: '0.1.0-next.1',
+			served: ['0.1.0-next.0', '0.1.0-next.1'],
+			packed: 'new build',
+			live: { '/edytor-0.1.0-next.0.tgz': 503 }
+		});
+		expect(result).toMatch(/^refused: .*edytor-0\.1\.0-next\.0\.tgz/);
+		expect(served).toEqual({});
+	});
+
+	it('a version missing from served-versions.txt is refused (the next deploy would drop it)', async () => {
+		const { result } = await stage({
+			version: '0.1.0-next.1',
+			served: ['0.1.0-next.0'],
+			packed: 'new build',
+			live: { '/edytor-0.1.0-next.0.tgz': 'zero' }
+		});
+		expect(result).toMatch(/^refused: .*served-versions\.txt/);
+	});
+
+	it('a tarball of an unlisted version is not deployed', async () => {
+		const { result, served } = await stage({
+			version: '0.1.0-next.0',
+			served: ['0.1.0-next.0'],
+			packed: 'next.0 bytes',
+			live: {},
+			local: { 'edytor-0.0.99-dev.tgz': 'dev' }
+		});
+		expect(result).toBe('staged');
+		expect(served).toEqual({ 'edytor-0.1.0-next.0.tgz': 'next.0 bytes' });
+	});
+
+	it('FORCE=1 replaces the bytes under a served version', async () => {
+		const { result, served } = await stage({
+			version: '0.1.0-next.0',
+			served: ['0.1.0-next.0'],
+			packed: 'new build',
+			live: { '/edytor-0.1.0-next.0.tgz': 'next.0 bytes' },
+			force: true
+		});
+		expect(result).toBe('staged');
+		expect(served).toEqual({ 'edytor-0.1.0-next.0.tgz': 'new build' });
+	});
+
+	it('every served version is still listed', () => {
+		expect(existsSync(join(root, 'site/scripts/served-versions.txt'))).toBe(true);
+		expect(servedVersions()).toContain('0.1.0-next.0');
+	});
+});
+
 /**
  * Claims the docs make about behavior, pinned where a reader would act on
  * them. Expected values are the documented ones (`editor/commands`).
  */
+/**
+ * The smoke check's demo-room probe (DR-docs-4): it dials like the landing
+ * page's editor, with the docs Origin, and passes only on the expected close
+ * code. A stand-in room answers the upgrade the way each build did.
+ */
+describe('the demo-room probe (site/scripts/probe-room.mjs)', () => {
+	const run = promisify(execFile);
+
+	async function probe(answer: { status: number } | { close: number }) {
+		let origin: string | undefined;
+		const server = createServer((_, response) => {
+			response.statusCode = 404;
+			response.end();
+		});
+		server.on('upgrade', (request, socket) => {
+			origin = request.headers.origin;
+			if ('status' in answer) {
+				socket.end(`HTTP/1.1 ${answer.status} Not Found\r\nContent-Length: 0\r\n\r\n`);
+				return;
+			}
+			const accept = createHash('sha1')
+				.update(`${request.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+				.digest('base64');
+			socket.write(
+				'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' +
+					`Sec-WebSocket-Accept: ${accept}\r\n\r\n`
+			);
+			const reason = Buffer.from('unknown room');
+			socket.end(
+				Buffer.concat([
+					Buffer.from([0x88, 2 + reason.length, answer.close >> 8, answer.close & 0xff]),
+					reason
+				])
+			);
+		});
+		await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+		const url = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/rooms/demo-2019-01-01?guest=smoke-probe-1`;
+		try {
+			const result = await run(
+				'node',
+				['site/scripts/probe-room.mjs', url, 'https://docs.example', '4404'],
+				{ cwd: root }
+			).then(
+				() => 'passed',
+				(error: { stderr: string }) => `failed: ${error.stderr.trim()}`
+			);
+			return { result, origin };
+		} finally {
+			server.close();
+		}
+	}
+
+	it('passes on a 4404 close, and dials with the docs Origin', async () => {
+		expect(await probe({ close: 4404 })).toEqual({
+			result: 'passed',
+			origin: 'https://docs.example'
+		});
+	});
+
+	it('fails on an HTTP 404 at the upgrade (a build before closedSocket)', async () => {
+		expect((await probe({ status: 404 })).result).toMatch(/^failed: .*1006.*4404/);
+	});
+
+	it('fails on another close code', async () => {
+		expect((await probe({ close: 4403 })).result).toMatch(/^failed: .*4403.*4404/);
+	});
+});
+
 describe('documented command results (editor/commands)', () => {
 	const value: JSONDoc = {
 		children: ['a', 'b', 'c', 'd'].map((id) => ({

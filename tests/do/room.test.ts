@@ -791,6 +791,8 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 		await vi.waitFor(() => expect(viewer.synced).toBe(true));
 		expect(shape(viewer.json()).children[0].text).toBe('hello');
 		expect(viewer.step1s).toBe(0); // the room never asks a viewer for its state
+		// It tells it instead, when it joins — a notice, not a refused write.
+		expect([viewer.readOnly, viewer.denied]).toEqual([true, []]);
 		await settle();
 		const rowsBefore = await rowsOf(room);
 		const receivedBefore = ca.received.length;

@@ -47,7 +47,27 @@ export function prepareDeleteContent(this: Edytor, { replace = false, selection 
 		offset: text.segStart + offset
 	});
 	const prepare = replace ? this.facade.prepare.replaceRange : this.facade.prepare.deleteRange;
-	return prepare(at(startText, yStart), at(endText, yEnd));
+	return prepare(at(startText, yStart), at(endText, yEnd), viewOf(this));
+}
+
+/**
+ * What the view hides, for the document's range and flow ops
+ * (`del.range.hidden-body`): a closed toggle's body is not in a range, and a
+ * split of its header leaves it there (`flow.split`). With `removed`,
+ * whether a block stays hidden once those blocks go.
+ */
+export function viewOf(edytor: Edytor) {
+	const blocks = new WeakMap<ReadonlySet<string>, Set<Block>>();
+	const blocksOf = (ids: ReadonlySet<string>) => {
+		if (!blocks.has(ids))
+			blocks.set(ids, new Set([...ids].flatMap((id) => edytor.idToBlock.get(id) ?? [])));
+		return blocks.get(ids)!;
+	};
+	const hidden = (id: string, removed?: ReadonlySet<string>) => {
+		const block = edytor.idToBlock.get(id);
+		return !!block && edytor.selection.hidden(block, removed && blocksOf(removed));
+	};
+	return { hidden };
 }
 
 /**
@@ -72,7 +92,7 @@ export function rangeCaret(this: Edytor, at: At | null | undefined, payload: Ran
 type FlowInsert = { flow: Flow; target: FlowTarget };
 
 export function prepareFlow(this: Edytor, { flow, target }: FlowInsert) {
-	return this.facade.prepare.insertFlow(target, flow);
+	return this.facade.prepare.insertFlow(target, flow, viewOf(this));
 }
 
 /** Place an admitted flow at `target` (`flow.*`) and answer the caret the op decided. */

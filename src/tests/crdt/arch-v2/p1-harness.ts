@@ -23,7 +23,12 @@ import { bindCrdt, createDocument, loadDocument } from '../../../lib/crdt/index.
 import { setDocRand } from '../../../lib/crdt/rand.js';
 import { mulberry32 } from '../harness/rng.js';
 import { wellFormedProblems, type MergeRecord } from '../harness/assert/well-formed.js';
-import { hiddenUnderDeleted, registryIdentity, succeeds } from '../harness/ops/model-ops.js';
+import {
+	hiddenUnderDeleted,
+	registryIdentity,
+	storedParentOf,
+	succeeds
+} from '../harness/ops/model-ops.js';
 
 export const crdt = bindCrdt(Y);
 
@@ -267,7 +272,8 @@ export const reloadCanonical = (
 };
 
 /**
- * Island child kind → island kind, from a semantics table (`island-kind`).
+ * Line kind → its `lines` island kind, from a semantics table
+ * (`island-kind`; XW-03: an island without `lines` keeps its structure).
  * Held on settled states only (after the exchange, and on reloads): a
  * delivery out of causal order can apply a move of a line before the
  * retype that preceded it.
@@ -275,7 +281,10 @@ export const reloadCanonical = (
 const islandKindsOf = (semantics): Map<string, string> =>
 	new Map(
 		Object.entries(semantics?.defaultChild ?? {})
-			.filter(([parent]) => semantics.roles?.[parent]?.island === true)
+			.filter(([parent]) => {
+				const role = semantics.roles?.[parent];
+				return role?.island === true && role.lines === true;
+			})
 			.map(([parent, child]) => [child as string, parent])
 	);
 
@@ -300,6 +309,7 @@ export const wellFormed = (
 		roots: ed.toJSON().children,
 		isVoid: ed.isVoid,
 		islandKinds: islandKindsOf(ctx.semantics),
+		storedParentOf: doc && storedParentOf(doc),
 		merges: liveMerges(ed, ctx.merges),
 		identityOf: doc && ((id: string) => registryIdentity(doc, id)),
 		succeeds: doc && ((later: string, earlier: string) => succeeds(doc, later, earlier)),

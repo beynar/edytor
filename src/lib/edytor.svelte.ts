@@ -318,10 +318,15 @@ export class Edytor {
 	 * Undo/redo through THIS view: the only history entry points that restore
 	 * a view's selection (its recorded `before`/`after`); sibling views and a
 	 * headless `document.history.undo()` restore none (their carets ride the
-	 * change, as for a remote undo).
+	 * change, as for a remote undo). A readonly view or a read-only document
+	 * refuses them, as it refuses every command (`dispatcher.last`).
 	 */
-	historyUndo = (): void => this.history.undo();
-	historyRedo = (): void => this.history.redo();
+	historyUndo = (): void => this.#replay('undo');
+	historyRedo = (): void => this.#replay('redo');
+	#replay = (command: 'undo' | 'redo') => {
+		if (this.dispatcher.permits()) this.history[command]();
+		else this.dispatcher.last = { operation: command, status: 'refused' };
+	};
 
 	constructor({
 		snippets,
@@ -433,7 +438,7 @@ export class Edytor {
 			const blocks = Array.from(this.blocks);
 			this.document.adoptSemantics({
 				roles: Object.fromEntries(
-					blocks.map(([type, { void: v, island }]) => [type, { void: v, island }])
+					blocks.map(([type, { void: v, island, lines }]) => [type, { void: v, island, lines }])
 				),
 				rendersContent: Object.fromEntries(
 					blocks.map(([type, definition]) => [type, definition.rendersContent !== false])
@@ -833,17 +838,27 @@ export class Edytor {
 	/** The handle of inline atom `atom`, shown in block `id`. */
 	atomAt = (id: string, atom: string): InlineBlock => this.idToBlock.atom(id, atom);
 
-	clear = () => {
-		const newBlock = this.transact(() => {
-			const root = this.root!;
-			root.deleteChildren(0, root.children.length);
-			const block = { id: id('b'), type: this.defaultChild(root) };
-			root.insertChildren(0, [block]);
-			return this.idToBlock.block(block.id);
-		});
+	/**
+	 * Replace the whole document with one empty block and put the caret in it,
+	 * as one undo step. A readonly view or a read-only document refuses it
+	 * (`dispatcher.last` reads `refused`). Answers whether it applied.
+	 */
+	clear = (): boolean => {
+		const newBlock = this.dispatcher.run('clear', () =>
+			this.transact(() => {
+				const root = this.root!;
+				root.deleteChildren(0, root.children.length);
+				const block = { id: id('b'), type: this.defaultChild(root) };
+				root.insertChildren(0, [block]);
+				return this.idToBlock.block(block.id);
+			})
+		);
+		if (!newBlock) return false;
+		this.dispatcher.last = { operation: 'clear', status: 'applied' };
 		this.selection.setAtTextOffset(newBlock.firstText ?? this.root?.children[0]?.firstText, 0);
 		this.expectInternalFocus();
 		this.node?.focus({ preventScroll: true });
+		return true;
 	};
 
 	attach = (node: HTMLDivElement) => {

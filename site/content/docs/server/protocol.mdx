@@ -20,7 +20,7 @@ varuint GENERATION | varuint messageType | payload
 | --- | --- | --- | --- |
 | `0` | `messageSync` | both | A sync subtype, then a `varUint8Array`. See below. |
 | `1` | `messageAwareness` | both | A `varUint8Array` holding an awareness update. |
-| `2` | `messageAuth` | server to client | Subtype `0` (`messagePermissionDenied`), then a `varString` reason. |
+| `2` | `messageAuth` | server to client | Subtype `0` (`messagePermissionDenied`), then a `varString` reason: a refused write. The reason `read-only` is not terminal: send it for each write of a read-only socket you drop; the provider emits `permission-denied`, keeps syncing and stops counting unsaved updates. Any other reason fails a provider that has not synced. Subtype `1` (`messageReadOnly`, no payload) is the read-only notice: send it when a read-only socket joins; the provider sets `readOnly` and stops counting, without an event. A provider older than this subtype reports it on `message-error` and keeps going. |
 | `3` | `messageQueryAwareness` | client to server | None. Asks for everyone's presence. |
 | `4` | `messageSaved` | server to client | The server's state vector (`varUint8Array`), then optionally the acknowledged deletes. |
 | `5` | `messageChunk` | server to client | One piece of a frame too large to send whole. |
@@ -41,7 +41,7 @@ An awareness update is a count, then for each entry a `varuint` client id, a `va
 
 ### Saved
 
-A server sends `messageSaved` after it has durably stored what a sync message brought. The body is the server's state vector and, when the acknowledged message carried deletes, an update with no structs holding the deletes the server now has. Write it with `sync.writeSaved(encoder, doc, deletes)` and read it with `sync.readSaved(decoder)`. A client that knows only the state vector ignores the second field.
+A server sends `messageSaved` after it has durably stored what a sync message brought. The body is the server's state vector and, when the acknowledged message carried deletes, an update with no structs holding the deletes the server now has. Write it with `sync.writeSaved(encoder, doc, deletes)` and read it with `sync.readSaved(decoder)`. A client that knows only the state vector ignores the second field. The edytor room also sends a bare `messageSaved` (state vector only) to the other sockets when a message releases updates that were waiting for a missing dependency, so the clients that wrote them see them stored; a client should accept one at any time.
 
 ### Chunks
 
@@ -56,7 +56,8 @@ A chunk sequence is a `start` frame (`0`, then the total length), any number of 
 | `GENERATION`, `generationWord`, `PROTOCOL_VERSION`, `SCHEMA_VERSION`, `readProtocolVersion` | The generation gate. |
 | `messageSync`, `messageAwareness`, `messageAuth`, `messageQueryAwareness`, `messageSaved`, `messageChunk` | Message types. |
 | `messageYjsSyncStep1`, `messageYjsSyncStep2`, `messageYjsUpdate` | Sync subtypes. |
-| `messagePermissionDenied`, `writePermissionDenied(encoder, reason)` | The auth reply. |
+| `messagePermissionDenied`, `writePermissionDenied(encoder, reason)` | The auth reply to a refused write. |
+| `messageReadOnly`, `writeReadOnly(encoder)` | The read-only notice at the join. |
 | `readAwarenessEntries`, `writeAwarenessEntries`, `applyAwarenessUpdate`, `encodeAwarenessUpdate`, `modifyAwarenessUpdate` | The awareness codec. |
 | `chunkFrame`, `createChunkReader`, `MAX_FRAME_BYTES` | Chunked frames. |
 | `createDecoder`, `readVarUint`, `readVarUint8Array`, `writeVarUint8Array` | The lib0 helpers for frame bodies. |

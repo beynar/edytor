@@ -160,14 +160,16 @@ Deleting or merging away an island turns its children into ordinary blocks: each
 | 3 | Turns "let b" into a heading, moves it, or presses Enter or Tab in it. It stays a heading or a paragraph, never a code line outside a code block. | |
 | 4 | Undoes back to the delete. The code block is back with both lines as code lines. | |
 
-A code line holds no nested blocks, and a code block holds only code lines. When Alice's undo brings a code block back while Bob has changed one of its former lines, both rules keep Bob's work visible:
+A code line holds no nested blocks, and a code block holds only code lines: the code kind declares `lines: true` ([block options](/docs/customization/blocks)). Other islands, such as a table of rows of cells, keep their nesting. When Alice's undo brings a code block back while Bob has changed one of its former lines, both rules keep Bob's work visible:
 
 | Bob, after the delete and before Alice's undo | After Alice's undo |
 | --- | --- |
 | Nests the paragraph below under "let a" (Tab) | The paragraph shows right after the code block, where it can be edited and moved. |
 | Turns "let a" into a heading | "let a" shows as a code line in the code block. If Alice redoes, it is a heading again. |
 
-Nothing merges into a code block from outside it: `mergeFrom` refuses the merge and `canMerge` answers `false`.
+If someone later deletes "let a", the paragraph Bob nested under it stays right after the code block; it never moves into the code block as a code line. And when Bob turns a code block into a paragraph while Alice adds a line to it, both lines show as paragraphs under it, whether or not another code block exists in the document.
+
+Nothing merges into a code block from outside it: `mergeFrom` refuses the merge and `canMerge` answers `false`. Its first line does not merge into it either, because a code block shows no text of its own. The rule holds for every block that renders no content: the first item of a list and the first cell of a table row never merge into their container. `mergeBackward` on them is refused by the editor, a headless document and the room's `transact`.
 
 ## Mixed versions
 

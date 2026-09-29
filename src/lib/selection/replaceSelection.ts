@@ -26,20 +26,65 @@ export const getSelectedBlocksInDocumentOrder = (edytor: Edytor) =>
 	Array.from(edytor.selection.selectedBlocks).sort(edytor.compareBlocks);
 
 /**
+ * The blocks the selection touches, in document order: the selected blocks;
+ * for a text range, every shown block from its start block to its end block
+ * (Notion: a collapsed toggle's hidden body is not touched, an open
+ * toggle's children are); else the caret's block. Menus, the toolbar, kind
+ * commands and Tab read it.
+ */
+export const getSelectionBlocks = (edytor: Edytor): Block[] => {
+	const { selectedBlocks, state, hidden } = edytor.selection;
+	if (selectedBlocks.size) return getSelectedBlocksInDocumentOrder(edytor);
+	if (state.isCollapsed) return state.startBlock ? [state.startBlock] : [];
+	return state.blocks.filter((block) => !hidden(block));
+};
+
+/** The blocks not inside another of them: a block's descendants among them move with it. */
+export const outermost = (blocks: Iterable<Block>): Block[] => {
+	const all = new Set(blocks);
+	const inside = (block: Block) => {
+		for (let parent = block.parent; parent; parent = parent.parent)
+			if (all.has(parent)) return true;
+		return false;
+	};
+	return [...all].filter((block) => !inside(block));
+};
+
+/**
+ * Run a block move that never hides a block the user saw (Notion): a closed
+ * toggle a moved block lands in opens, and so does a closed toggle that
+ * adopts blocks (Shift+Tab takes the blocks after it). `open` is view state
+ * (R11). Tab, the handles' Alt+arrows and drops share it. Answers the moved blocks.
+ */
+export const revealing = (blocks: Block[], move: () => Block[]) => {
+	const had = new Map(blocks.map((block) => [block, block.children.length]));
+	const moved = move();
+	const open = (block: Block) => {
+		if (block.node?.tagName === 'DETAILS') (block.node as HTMLDetailsElement).open = true;
+	};
+	for (const block of moved) {
+		for (let parent = block.parent; parent; parent = parent.parent) open(parent);
+		if (block.children.length > (had.get(block) ?? Infinity)) open(block);
+	}
+	return moved;
+};
+
+/**
  * The nearest block before/after `block` in document order that is not in
- * `excluded` and is displayed (a collapsed toggle's body is skipped).
+ * `excluded` and is displayed once they are deleted (a collapsed toggle's
+ * body is skipped, unless the toggle is among them: its children take its
+ * place).
  */
 export const getClosestUnselectedBlock = (
 	block: Block | undefined,
 	excluded: Set<Block>,
 	direction: 'previous' | 'next'
-): Block | null => {
-	const step = (b: Block) =>
-		b.edytor.selection.shown(b, direction === 'previous' ? 'blockBefore' : 'blockAfter');
-	let current = block ? step(block) : null;
-	while (current && excluded.has(current)) current = step(current);
-	return current;
-};
+): Block | null =>
+	block
+		? block.edytor.selection.shown(block, direction === 'previous' ? 'blockBefore' : 'blockAfter', {
+				removed: excluded
+			})
+		: null;
 
 export const replaceSelectionWithCollapsedTarget = (
 	edytor: Edytor,

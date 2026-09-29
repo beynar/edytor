@@ -20,7 +20,7 @@ import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindWebsocketProvider } from '../../../lib/crdt/providers/websocket.js';
 import { bindSync } from '../../../lib/crdt/protocols/sync.js';
-import { writePermissionDenied } from '../../../lib/crdt/protocols/auth.js';
+import { writePermissionDenied, writeReadOnly } from '../../../lib/crdt/protocols/auth.js';
 import { writeProtocolVersion } from '../../../lib/crdt/protocols/envelope.js';
 import * as encoding from 'lib0-v14/encoding';
 
@@ -227,6 +227,70 @@ describe('auth replies', () => {
 		forge('still-denied');
 		expect(denied.length).toBe(2);
 		expect(failed.length).toBe(1);
+		p.destroy();
+	});
+
+	test("a 'read-only' denial is not a failure: the socket still syncs, and nothing is tracked (XW-02)", async () => {
+		const url = uniqueUrl();
+		const doc = new Y.Doc();
+		const p = new providers.WebsocketProvider(url, 'room', doc, {
+			WebSocketPolyfill: FakeWebSocket
+		});
+		const denied = [];
+		const failed = [];
+		const saved = [];
+		p.on('permission-denied', (reason) => denied.push(reason));
+		p.on('failed', (e) => failed.push(e));
+		p.on('saved', (state) => saved.push(state));
+		doc.get('t').insert(0, 'a');
+		expect([p.saved, p.unsaved]).toEqual([false, 1]);
+		await until(() => p.wsconnected, 4000);
+		const e = encoding.createEncoder();
+		writeProtocolVersion(e);
+		encoding.writeVarUint(e, 2); // messageAuth
+		writePermissionDenied(e, 'read-only');
+		deliverTo(p, encoding.toUint8Array(e));
+		doc.get('t').insert(0, 'b');
+		expect({ denied, failed, saved: p.saved, unsaved: p.unsaved, events: saved }).toEqual({
+			denied: ['read-only'],
+			failed: [],
+			saved: true,
+			unsaved: 0,
+			events: [
+				{ saved: false, unsaved: 1 },
+				{ saved: true, unsaved: 0 }
+			]
+		});
+		p.destroy();
+	});
+
+	test('the read-only notice (a join, no edit) sets readOnly and signals nothing warning-worthy (DR-collab-2)', async () => {
+		const url = uniqueUrl();
+		const doc = new Y.Doc();
+		const p = new providers.WebsocketProvider(url, 'room', doc, {
+			WebSocketPolyfill: FakeWebSocket
+		});
+		const denied = [];
+		const failed = [];
+		const errors = [];
+		p.on('permission-denied', (reason) => denied.push(reason));
+		p.on('failed', (e) => failed.push(e));
+		p.on('message-error', (e) => errors.push(e));
+		await until(() => p.wsconnected, 4000);
+		expect(p.readOnly).toBe(false);
+		const e = encoding.createEncoder();
+		writeProtocolVersion(e);
+		encoding.writeVarUint(e, 2); // messageAuth
+		writeReadOnly(e);
+		deliverTo(p, encoding.toUint8Array(e));
+		doc.get('t').insert(0, 'b');
+		expect({ denied, failed, errors, readOnly: p.readOnly, saved: p.saved }).toEqual({
+			denied: [],
+			failed: [],
+			errors: [],
+			readOnly: true,
+			saved: true
+		});
 		p.destroy();
 	});
 

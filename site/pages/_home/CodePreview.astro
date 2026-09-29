@@ -20,8 +20,10 @@ export { DocumentRoom };
 
 export default {
   fetch(request, env) {
-    const id = new URL(request.url).pathname.split("/").pop();
-    return routeDocumentSocket(request, env.ROOMS, id, async (req) => {
+    const match = /^\\/rooms\\/([^/]+)$/.exec(new URL(request.url).pathname);
+    if (!match) return new Response("not found", { status: 404 });
+    const room = decodeURIComponent(match[1]);
+    return routeDocumentSocket(request, env.ROOMS, room, async (req) => {
       const user = await verify(req); // your auth
       return user && { userId: user.id, replica: requestedReplica(req) };
     });

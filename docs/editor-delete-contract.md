@@ -72,7 +72,9 @@ no block that can hold the caret (every block it covers dies and nothing
 outside it shows text), the **head is kept**, emptied — its id, type and
 data (a heading stays a heading, a list item stays in its list), its atoms
 and marks deleted with its text, its children dying with the range as
-covered blocks do. It is `del.range.replace`'s rule applied to this one
+covered blocks do — a closed toggle head's hidden body too:
+`[T(closed) "title" > [B "body"], P "after"]`, `T@0 → P@5` deleted →
+`[T ""]` (`del.range.hidden-body`). It is `del.range.replace`'s rule applied to this one
 case; no block is written. Backspace, Delete and cut agree, in either
 selection direction; the caret lands at `head@0`; one undo step restores
 everything.
@@ -144,6 +146,31 @@ every child dies with the range dies too, and so on upward (never the
 root). `[ordered-list > [i1 "one", i2 "two"], P "three"]`, `i1@0 → P@2` →
 `[P "ree"]`, caret `P@0`.
 
+### `del.range.hidden-body` — what the view hides is not in the range (XW-01)
+
+A closed toggle is one unit: a block the view hides (a closed toggle's
+body, a `hidden` subtree) is not part of a text range even when document
+order puts it between the endpoints. It goes only with a block that goes.
+`[T(closed) "title" > [B "body"], P "after"]`, `T@2 → P@3` →
+`[T "tier" > [B "body"]]`, caret `T@2`; cut (a delete) and replaced
+(typing, paste, Enter) the same. `T@0 → P@3` deleted (Backspace, Delete,
+cut) → `[P "er"]`: the head dies, and the body with it — also when the head is kept only to hold the caret
+(`del.range.whole-doc`: `T@0 → P@5` → `[T ""]`). A toggle wholly inside the
+range dies with its body. A dying closed tail's body takes its place, shown
+(`del.range.outside-survives`), and the caret may land in it:
+`[A "a", T(closed) > [B], P]`, `A@0 → T@5` → `[B, P]`, caret `B@0`. The view
+passes its hidden blocks (`prepare.deleteRange(from, to, { hidden })`, and
+`hidden(id, removed)` answers whether a block stays hidden once `removed` go);
+without them (headless) document order decides. Backspace/Delete next to a
+closed toggle is this rule's seam `T@end → P@0`, replaced: one plan
+(XW-09). A range covers a hidden block exactly when its delete removes it
+(`rangeCovers`, `src/lib/text/text.utils.ts`): copy puts it in the fragment
+and marks reach it then, never otherwise, so copy then Backspace, and cut,
+neither lose nor duplicate a body (DR-delete-1/3). A replacement keeps the
+head's body (`replace`), and a multi-line paste that splits the head leaves
+it there (`flow.split`, DR-delete-2): `T@2 → P@3` pasted `A\nB` →
+`[T "tiA" > [B], T "Ber"]`.
+
 ### `del.range.replace` — the deletion half of a replacement
 
 Typing, pasting or composing over a range deletes it with the **head
@@ -211,7 +238,9 @@ the inserted content.
 
 `B` splits at `o`. The first line's content joins the head (`B`, text
 `[0, o)`), the last line's content joins the tail (text `[o, len)`, with
-`B`'s children, which come after the caret), and the lines between are
+`B`'s children, which come after the caret — but not those the view hides:
+a closed toggle's body stays with the head, as Enter keeps it,
+`del.range.hidden-body`), and the lines between are
 placed as blocks between the two, in order. The tail is the last line's
 block: its id, and its kind and data when it is kinded (a run keeps `B`'s,
 as a split does). The head keeps `B`'s kind unless `B` showed no text
@@ -633,35 +662,53 @@ kept, so undo of the delete or merge shows it under the island again as a
   shows.
 
 Pins: `p1-scenarios.test.ts` ("promoted blocks keep no container-only
-kind", RW-01 rows), and the `island-kind` well-formed check, held on
+kind", RW-01 rows), and the `island-kind` well-formed check (over
+`lines` islands, whose line kind belongs nowhere else), held on
 settled states by the p1 harness and the corpus's `roles` lane (a delivery
 out of causal order may show a moved line before the retype that preceded
 it).
 
-### `conc.island-lines` — an island that declares its line kind holds only lines
+### `conc.island-lines` — an island declared `lines` holds only lines
 
-An island whose kind declares a default child (`code` → `codeLine`) holds
-lines only, and a line holds no children. Undo can break both from outside
-the island: A deletes or merges away `C:code > [L1]`, B edits the plain
-paragraph `L1` has become, A undoes. The display keeps them (FW-01,
-`displaySlotOf` and the index's `typeOf`, derived when the document is
-read, so every replica agrees without a repair write):
+The line rule is opt-in (XW-03). An island kind whose role says
+`lines: true` (the bundled `code`, with `defaultChild: 'codeLine'`) holds
+lines only, and a line holds no children. Any other island (a table of
+rows of cells, a callout with a heading and nested paragraphs) keeps the
+structure its interior builds, even when it declares a `defaultChild`.
+Undo can break the line rule from outside the island: A deletes or merges
+away `C:code > [L1]`, B edits the plain paragraph `L1` has become, A
+undoes. The display keeps it (FW-01, `displaySlotOf` and the index's
+`typeOf`, derived when the document is read, so every replica agrees
+without a repair write):
 
 - a block B nested under `L1` shows right after the code block, ranked in
   the line's order, visible and movable (it was sealed inside a line that
-  renders no children);
+  renders no children). It stays there when `L1` is deleted later: a dead
+  line's children take the island's slot too, never the island (XW-10);
 - a kind B gave `L1` shows as `codeLine` while `L1` is in the code block,
   and again once it leaves it;
 - a line B moved away keeps B's placement and shows as its new parent's
-  default child, never as a `codeLine` outside a code block.
+  default child, never as a `codeLine` outside a code block. The line
+  kinds come from the roles, not from the code blocks the document happens
+  to hold (XW-11): a line a peer adds to a code block another peer retypes
+  to a paragraph shows as a paragraph either way;
+- a view follows every kind it derives: a retype reports the shown kinds
+  of the promoted and stray lines under the retyped block (XW-08).
 
 The write side agrees: inserting under a line is refused, nothing merges
-into an island from outside it (`canMerge`), and a retype of an island to
-an ordinary kind retypes its children to that kind's default child. An
-island that declares no default child keeps whatever structure its
-interior builds. Pins: `rescore3-crdt.test.ts` (FW-01, SW-crdt rows) and
-the `island-kind` check, which also flags a child under a line and another
-kind directly in such an island.
+into an island from outside it (`canMerge`), nothing merges into a block
+that renders no content of its own — a code block's first line, a list's
+first item, a table row's first cell (XW-12, DR-crdt-2: the facade, room
+`transact` and the view all refuse it) — a copy (split tail, flow tail,
+duplicate) of a block whose type a peer's half-delivered retype left
+missing takes its parent's default child, never an empty type (SW7-crdt-1,
+DR-crdt-1), and a retype of an island to
+an ordinary kind retypes its children to that kind's default child. Pins:
+`rescore3-crdt.test.ts` (FW-01, SW-crdt rows), `rescore4-crdt.test.ts`
+(XW-03, 08, 10, 11, 12, DR-crdt-1, 2), the `island-kind` check, which also flags a child
+under a line and another kind directly in such an island, and the
+`sealed-line` check, which flags a block shown in a `lines` island that is
+not stored there.
 
 ### `conc.merge-adopt` — `mergeBlocks` (`mergeFrom`) keeps the source's children with it
 

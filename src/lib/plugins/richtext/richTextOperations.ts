@@ -6,6 +6,8 @@ import type { BlockSpec } from '$lib/crdt/index.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
 import { id } from '$lib/utils.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
+import { selectedTextSpans } from '$lib/text/text.utils.js';
+import { viewOf } from '$lib/edytor.utils.js';
 
 export type RichTextMark =
 	| 'bold'
@@ -86,24 +88,20 @@ const formatSelectedTextRange = (
 	value: SerializableContent | null | undefined,
 	toggle: boolean
 ) => {
-	const { yStart, yEnd, startText, endText, texts, isCollapsed, isReversed } =
-		edytor.selection.state;
+	const { yStart, yEnd, startText, endText, isCollapsed, isReversed } = edytor.selection.state;
 	if (isCollapsed || !startText || !endText) {
 		return;
 	}
+	const spans = selectedTextSpans(edytor).filter(({ start, end }) => end > start);
+	// One decision for the whole range (Notion): a toggle removes the mark only
+	// when every selected character has it, else it marks all of them.
+	const on = spans.every(({ text, start, end }) =>
+		text.getMarksAtRange(start, end).every(({ marks }) => marks && mark in marks)
+	);
+	const next = toggle && on ? null : value;
 
 	edytor.dispatcher.run('format', () =>
-		texts.forEach((text, index) => {
-			const isFirst = index === 0;
-			const isLast = index === texts.length - 1;
-			text.markText({
-				mark,
-				value,
-				toggle,
-				start: isFirst ? yStart : 0,
-				end: isLast ? yEnd : text.length
-			});
-		})
+		spans.forEach(({ text, start, end }) => text.markText({ mark, value: next, start, end }))
 	);
 	edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 };
@@ -148,7 +146,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 		} else if (startText && yStart < startText.length) {
 			// Split at the caret with the divider between: one flow.
 			const lines = [{ id: id('b'), content: [] }, divider, { ...paragraph, content: [] }];
-			prepare = () => facade.prepare.insertFlow({ block: self, offset }, { lines });
+			prepare = () => facade.prepare.insertFlow({ block: self, offset }, { lines }, viewOf(edytor));
 		} else {
 			// At the end — continue after the divider, in the next block or a fresh paragraph.
 			caret = next?.id ?? paragraph.id;
@@ -160,8 +158,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 		return block;
 	},
 	removeAllMarksAtRange: () => {
-		const { yStart, yEnd, startText, endText, texts, isCollapsed, isReversed } =
-			edytor.selection.state;
+		const { yStart, startText, isCollapsed } = edytor.selection.state;
 		if (isCollapsed) {
 			if (startText) {
 				edytor.selection.stage({});
@@ -171,14 +168,8 @@ export const richTextOperations = (edytor: Edytor) => ({
 		}
 
 		edytor.dispatcher.run('format', () =>
-			texts.forEach((text, index) => {
-				const isFirst = index === 0;
-				const isLast = index === texts.length - 1;
-				const start = isFirst ? yStart : 0;
-				const end = isLast ? yEnd : text.length;
-				if (end > start) {
-					text.removeMarksFromText({ start, end });
-				}
+			selectedTextSpans(edytor).forEach(({ text, start, end }) => {
+				if (end > start) text.removeMarksFromText({ start, end });
 			})
 		);
 	},

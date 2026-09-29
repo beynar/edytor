@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { converge, tree } from './p1-harness.js';
 
 const semantics = {
-	roles: { code: { island: true }, divider: { void: true } },
+	roles: { code: { island: true, lines: true }, divider: { void: true } },
 	rendersContent: { code: false },
 	defaultChild: { code: 'codeLine' }
 };
@@ -167,9 +167,10 @@ describe('SW-crdt-2: a merge into an island from outside it is refused', () => {
 		}
 	});
 
-	it('a line still merges into its own code block, and the code block into a paragraph', () => {
+	it('the code block merges into a paragraph; its first line never merges into it (XW-12)', () => {
 		const ed = converge(seed, 1, () => {}, { semantics })[0].ed;
-		expect(ed.canMerge('L1', 'C')).toBe(true);
+		// A code block renders no content of its own: the line's text would vanish.
+		expect(ed.canMerge('L1', 'C')).toBe(false);
 		expect(ed.canMerge('C', 'N')).toBe(true);
 	});
 });

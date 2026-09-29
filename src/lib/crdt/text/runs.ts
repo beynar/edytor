@@ -292,15 +292,17 @@ export type RunView = {
  * children (void roles, UW-21b) — a child of such a block displays in its
  * slot. `island`: a block promoted out of an island kind displays as
  * `defaultChild` of its display parent's kind (`null`: the root). `line`:
- * an island that declares its line kind holds only lines — each direct
- * child displays as that kind and holds no children (FW-01).
+ * an island declared `lines` holds only lines — each direct child displays
+ * as its line kind and holds no children (FW-01, XW-03).
  */
 export type DisplayRoles = {
 	childless: (type: string) => boolean;
 	island: (type: string) => boolean;
 	defaultChild: (parentType: string | null) => string;
-	/** The line kind an island kind declares (its `defaultChild`), if any. */
+	/** The line kind of an island kind declared `lines` (its `defaultChild`), if any. */
 	line?: (islandType: string) => string | undefined;
+	/** Every line kind the roles declare, present in the document or not (XW-11). */
+	lineKinds?: () => Iterable<string>;
 };
 
 /** One index per engine doc, shared by every binding (the doc's lifetime). */
@@ -444,11 +446,13 @@ export const bindRuns = (Y: EngineApi) => {
 
 		/** The roles the display reads; `null` → none. */
 		let roles: DisplayRoles | null = null;
+		/** A stored kind changed since the last report: derived kinds may follow it (XW-08). */
+		let retyped = false;
 		const kindIs = (b: BlockId, role: 'childless' | 'island') => {
 			const type = blocks.get(b)?.type;
 			return roles !== null && type !== undefined && roles[role](type);
 		};
-		/** The line kind the island `b` declares, if `b` is one that does. */
+		/** The line kind of `b` when it is an island declared `lines`. */
 		const lineKind = (b: BlockId): string | undefined => {
 			const type = blocks.get(b)?.type;
 			return type !== undefined && roles?.island(type) ? roles.line?.(type) : undefined;
@@ -490,7 +494,7 @@ export const bindRuns = (Y: EngineApi) => {
 		let promoted = new Map<BlockId, { under: BlockId | null; island: BlockId }>();
 		/** Each visible block's display parent — the line rules read it (FW-01). */
 		let underOf = new Map<BlockId, BlockId | null>();
-		/** The line kinds the island kinds of this document declare. */
+		/** The line kinds the roles declare, and those of the lines islands the document holds. */
 		let lineKinds = new Set<string>();
 		/** Blocks whose shown kind may follow their parent: in a lined island, or of a line kind. */
 		let recast: BlockId[] = [];
@@ -504,7 +508,7 @@ export const bindRuns = (Y: EngineApi) => {
 			kidsMap = childrenIndex(placementsMap, ownShim);
 			promoted = new Map();
 			underOf = new Map();
-			lineKinds = new Set();
+			lineKinds = new Set(roles?.lineKinds?.());
 			recast = [];
 			for (const b of blocks.keys()) {
 				const line = lineKind(b);
@@ -523,8 +527,8 @@ export const bindRuns = (Y: EngineApi) => {
 		};
 
 		/**
-		 * The kind `id` displays as. A block directly in an island that
-		 * declares its line kind shows that kind; a block of a line kind
+		 * The kind `id` displays as. A block directly in an island declared
+		 * `lines` shows its line kind; a block of a line kind
 		 * anywhere else shows its display parent's default child — an undo
 		 * can put a line a peer retyped back in its island, or leave one a
 		 * peer moved away outside it (FW-01 sweep). A block displayed out of
@@ -846,12 +850,14 @@ export const bindRuns = (Y: EngineApi) => {
 						const type = rec.node.getAttr(TYPE);
 						rec.type = typeof type === 'string' ? type : 'unknown';
 						rec.data = rec.node.getAttr(DATA);
-						// A retype into or out of a childless (or island) kind re-parents
-						// (or re-kinds) its children.
+						if (rec.type !== was) retyped = true;
+						// A retype into or out of a childless (island, lines) kind
+						// re-parents (or re-kinds) its children.
 						if (
 							roles !== null &&
 							(roles.childless(was) !== roles.childless(rec.type) ||
-								roles.island(was) !== roles.island(rec.type))
+								roles.island(was) !== roles.island(rec.type) ||
+								roles.line?.(was) !== roles.line?.(rec.type))
 						)
 							ctx.placement = true;
 					}
@@ -1234,8 +1240,11 @@ export const bindRuns = (Y: EngineApi) => {
 			// A block that starts or stops displaying a kind other than its
 			// stored one moved, sits under a promoted one, or sits in (or
 			// sat in) an island: its kind is news. Without a placement
-			// change, only a retype (a candidate) changes a shown kind.
-			if (after !== before) {
+			// change, only a retype changes a shown kind — the retyped
+			// block's (a candidate) and the kinds derived from it: a
+			// promoted or stray line shows its display parent's default
+			// child (XW-08).
+			if (after !== before || retyped) {
 				const shown = [...promoted.keys(), ...recast];
 				for (const id of [...r.moved, ...shown, ...shownBefore]) {
 					const n = after.nodes.get(id);
@@ -1244,6 +1253,7 @@ export const bindRuns = (Y: EngineApi) => {
 				}
 				shownBefore = shown;
 			}
+			retyped = false;
 			candidates.clear();
 			published = after;
 			const empty =

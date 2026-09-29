@@ -7,6 +7,7 @@ import type { EdytorClipboardFragment } from './types.js';
 import { sliceTextValue } from '$lib/block/contentRange.js';
 import { cloneJson, type JSONBlock } from '$lib/utils/json.js';
 import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
+import { rangeCovers } from '$lib/text/text.utils.js';
 
 const extractContentRange = (
 	block: Block,
@@ -62,8 +63,12 @@ const extractBlockRange = (edytor: Edytor) => {
 	if (!startBlock || !endBlock || !startText || !endText || blocks.length === 0) {
 		return null;
 	}
+	// A hidden block (a closed toggle's body) is copied exactly when the range's
+	// delete removes it, so a cut, or a copy then Backspace, never loses or
+	// duplicates it (`del.range.hidden-body`).
+	const copied = blocks.filter(rangeCovers(edytor));
 	// `block.value` is the document's serializer output: fresh JSON, no clone.
-	return nestMembers(blocks, (block) => {
+	return nestMembers(copied, (block) => {
 		const value = block.value;
 		if (block === startBlock) {
 			value.content = extractContentRange(

@@ -796,7 +796,7 @@ describe('capabilities under concurrency (review-probes/capabilities)', () => {
  */
 describe('promoted blocks keep no container-only kind (rescore low)', () => {
 	const semantics = {
-		roles: { code: { island: true }, divider: { void: true } },
+		roles: { code: { island: true, lines: true }, divider: { void: true } },
 		rendersContent: { code: false },
 		defaultChild: { code: 'codeLine' }
 	};

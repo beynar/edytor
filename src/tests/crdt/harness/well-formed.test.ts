@@ -20,6 +20,7 @@ describe('wellFormed checks', () => {
 			'merge-order',
 			'void-children',
 			'island-kind',
+			'sealed-line',
 			'seed-displacement',
 			'promotion-hidden'
 		]);
@@ -84,6 +85,17 @@ describe('wellFormed checks', () => {
 		expect(
 			wellFormedProblems({ roots: [b('C', 'code', [b('H', 'heading')])], islandKinds })
 		).toEqual(['island-kind: H shows heading inside a code']);
+	});
+
+	it('sealed-line: a block shown in a lines island that is not stored there fails (XW-10)', () => {
+		const islandKinds = new Map([['codeLine', 'code']]);
+		const line = (id: string) => b(id, 'codeLine');
+		const roots = [b('C', 'code', [line('L0'), line('N')])];
+		const stored = { L0: 'C', N: 'L1' };
+		expect(
+			wellFormedProblems({ roots, islandKinds, storedParentOf: (id) => stored[id] ?? null })
+		).toEqual(['sealed-line: N shows in the code C but is stored under L1']);
+		expect(wellFormedProblems({ roots, islandKinds, storedParentOf: () => 'C' })).toEqual([]);
 	});
 
 	it('seed-displacement: an id changing registry node fails unless the new node succeeds it', () => {

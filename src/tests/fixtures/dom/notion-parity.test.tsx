@@ -1219,6 +1219,280 @@ describe('next to a collapsed toggle (FW-02)', () => {
 	});
 });
 
+describe('a text range from a collapsed toggle header (XW-01)', () => {
+	type Rendered = Awaited<ReturnType<typeof render>>;
+	/** `[p 'before', toggle 'title' -> [p 'body'], p 'after']`, the toggle closed. */
+	const collapsed = (plugins: Plugin[] = []) =>
+		render(plugins, {
+			children: [
+				{ id: 'before', type: 'paragraph', content: [{ text: 'before' }] },
+				{
+					id: 'toggle',
+					type: 'toggle',
+					content: [{ text: 'title' }],
+					children: [{ id: 'body', type: 'paragraph', content: [{ text: 'body' }] }]
+				},
+				{ id: 'after', type: 'paragraph', content: [{ text: 'after' }] }
+			]
+		});
+	const text = ({ edytor }: Rendered, id: string) => edytor.idToBlock.get(id)!.firstText!;
+	const select = async (r: Rendered, [a, x]: [string, number], [b, y]: [string, number]) => {
+		r.edytor.selection.setAtRange(text(r, a), x, text(r, b), y);
+		await flushDomUpdates();
+		r.edytor.undoManager.stopCapturing();
+	};
+	const caret = ({ edytor }: Rendered) => {
+		const { startBlock, yStart, isCollapsed } = edytor.selection.state;
+		return [startBlock?.id, yStart, isCollapsed];
+	};
+	const undo = () => dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
+	const initial = [
+		{ type: 'paragraph', content: [{ text: 'before' }] },
+		{
+			type: 'toggle',
+			content: [{ text: 'title' }],
+			children: [{ type: 'paragraph', content: [{ text: 'body' }] }]
+		},
+		{ type: 'paragraph', content: [{ text: 'after' }] }
+	];
+	/** The toggle with `title` as its header, its hidden body kept. */
+	const kept = (title: string) => [initial[0], { ...initial[1]!, content: [{ text: title }] }];
+
+	it('Shift+→ at the end of the header selects up to the block after it', async () => {
+		const r = await collapsed();
+		await select(r, ['toggle', 5], ['toggle', 5]);
+		await dispatchDomKeyDown(document, { key: 'ArrowRight', shiftKey: true });
+		const { startBlock, endBlock, yStart, yEnd } = r.edytor.selection.state;
+		expect([startBlock?.id, yStart, endBlock?.id, yEnd]).toEqual(['toggle', 5, 'after', 0]);
+	});
+
+	it.each([
+		['Backspace', 'deleteContentBackward'],
+		['Delete', 'deleteContentForward']
+	])('Shift+→ then %s joins the block after it; the hidden body stays', async (_, inputType) => {
+		const r = await collapsed();
+		await select(r, ['toggle', 5], ['toggle', 5]);
+		await dispatchDomKeyDown(document, { key: 'ArrowRight', shiftKey: true });
+		await dispatchDomBeforeInput(r.editor, { inputType });
+		expect(canonicalTree(r.edytor)).toEqual(kept('titleafter'));
+		expect(caret(r)).toEqual(['toggle', 5, true]);
+		await undo();
+		expect(canonicalTree(r.edytor)).toEqual(initial);
+	});
+
+	it('Shift+→ then typing joins the block after it; the hidden body stays', async () => {
+		const r = await collapsed();
+		await select(r, ['toggle', 5], ['toggle', 5]);
+		await dispatchDomKeyDown(document, { key: 'ArrowRight', shiftKey: true });
+		await type(r.editor, 'X');
+		expect(canonicalTree(r.edytor)).toEqual(kept('titleXafter'));
+		expect(caret(r)).toEqual(['toggle', 6, true]);
+	});
+
+	it.each([
+		['Backspace', 'deleteContentBackward'],
+		['Delete', 'deleteContentForward'],
+		['a cut', 'deleteByCut']
+	])('%s over mid-header to mid-after keeps the hidden body', async (_, inputType) => {
+		const r = await collapsed();
+		await select(r, ['toggle', 2], ['after', 3]);
+		await dispatchDomBeforeInput(r.editor, { inputType });
+		expect(canonicalTree(r.edytor)).toEqual(kept('tier'));
+		expect(caret(r)).toEqual(['toggle', 2, true]);
+		await undo();
+		expect(canonicalTree(r.edytor)).toEqual(initial);
+	});
+
+	it('typing over mid-header to mid-after keeps the hidden body', async () => {
+		const r = await collapsed();
+		await select(r, ['toggle', 2], ['after', 3]);
+		await type(r.editor, 'X');
+		expect(canonicalTree(r.edytor)).toEqual(kept('tiXer'));
+	});
+
+	it('pasting over mid-header to mid-after keeps the hidden body', async () => {
+		const r = await collapsed();
+		await select(r, ['toggle', 2], ['after', 3]);
+		await dispatchDomBeforeInput(r.editor, { inputType: 'insertFromPaste', text: 'P' });
+		expect(canonicalTree(r.edytor)).toEqual(kept('tiPer'));
+	});
+
+	it('Enter over mid-header to mid-after keeps the hidden body; the tail becomes a toggle after it', async () => {
+		const r = await collapsed();
+		await select(r, ['toggle', 2], ['after', 3]);
+		await dispatchDomBeforeInput(r.editor, { inputType: 'insertParagraph' });
+		const tree = canonicalTree(r.edytor);
+		expect(tree.slice(0, 2)).toEqual(kept('ti'));
+		expect(tree[2]).toMatchObject({ type: 'toggle', content: [{ text: 'er' }] });
+		expect(tree).toHaveLength(3);
+	});
+
+	it('a range covering the whole header deletes the toggle as one unit, body included', async () => {
+		const r = await collapsed();
+		await select(r, ['toggle', 0], ['after', 3]);
+		await dispatchDomBeforeInput(r.editor, { inputType: 'deleteContentBackward' });
+		expect(canonicalTree(r.edytor)).toEqual([
+			initial[0],
+			{ type: 'paragraph', content: [{ text: 'er' }] }
+		]);
+	});
+
+	it('a range across the whole toggle deletes it as one unit, body included', async () => {
+		const r = await collapsed();
+		await select(r, ['before', 3], ['after', 2]);
+		await dispatchDomBeforeInput(r.editor, { inputType: 'deleteContentBackward' });
+		expect(canonicalTree(r.edytor)).toEqual([{ type: 'paragraph', content: [{ text: 'befter' }] }]);
+	});
+
+	it('an open toggle keeps document order: its shown body is in the range', async () => {
+		const r = await collapsed();
+		(r.edytor.idToBlock.get('toggle')!.node as HTMLDetailsElement).open = true;
+		await select(r, ['toggle', 2], ['after', 3]);
+		await dispatchDomBeforeInput(r.editor, { inputType: 'deleteContentBackward' });
+		expect(canonicalTree(r.edytor)).toEqual([
+			initial[0],
+			{ type: 'toggle', content: [{ text: 'tier' }] }
+		]);
+	});
+
+	/** `blocks` rendered with `toggle` closed over its `body`. */
+	const tree = (...blocks: ('before' | 'toggle' | 'after')[]) =>
+		render([], {
+			children: blocks.map((id) =>
+				id === 'toggle'
+					? {
+							id,
+							type: 'toggle',
+							content: [{ text: 'title' }],
+							children: [{ id: 'body', type: 'paragraph', content: [{ text: 'body' }] }]
+						}
+					: { id, type: 'paragraph', content: [{ text: id }] }
+			)
+		});
+	const deletes = [
+		['Backspace', 'deleteContentBackward'],
+		['Delete', 'deleteContentForward']
+	];
+
+	it.each(deletes)(
+		'%s over a whole document opening with the toggle leaves an empty toggle, body gone (DR-delete-1)',
+		async (_, inputType) => {
+			const r = await tree('toggle', 'after');
+			await select(r, ['toggle', 0], ['after', 5]);
+			await dispatchDomBeforeInput(r.editor, { inputType });
+			expect(canonicalTree(r.edytor)).toEqual([{ type: 'toggle' }]);
+			expect(caret(r)).toEqual(['toggle', 0, true]);
+			await undo();
+			expect(canonicalTree(r.edytor)).toEqual(initial.slice(1));
+		}
+	);
+
+	it('typing over a whole document opening with the toggle keeps the head and its body', async () => {
+		const r = await tree('toggle', 'after');
+		await select(r, ['toggle', 0], ['after', 5]);
+		await type(r.editor, 'X');
+		expect(canonicalTree(r.edytor)).toEqual([{ ...initial[1]!, content: [{ text: 'X' }] }]);
+	});
+
+	it.each(deletes)(
+		'%s from the block before through the header lands on the revealed body (DR-delete-2)',
+		async (_, inputType) => {
+			const r = await tree('before', 'toggle', 'after');
+			await select(r, ['before', 0], ['toggle', 5]);
+			await dispatchDomBeforeInput(r.editor, { inputType });
+			expect(canonicalTree(r.edytor)).toEqual([initial[1]!.children![0], initial[2]]);
+			expect(caret(r)).toEqual(['body', 0, true]);
+		}
+	);
+
+	it.each(deletes)(
+		'%s from the block before through the last header keeps no extra empty head (DR-delete-2)',
+		async (_, inputType) => {
+			const r = await tree('before', 'toggle');
+			await select(r, ['before', 0], ['toggle', 5]);
+			await dispatchDomBeforeInput(r.editor, { inputType });
+			expect(canonicalTree(r.edytor)).toEqual([initial[1]!.children![0]]);
+			expect(caret(r)).toEqual(['body', 0, true]);
+			await undo();
+			expect(canonicalTree(r.edytor)).toEqual(initial.slice(0, 2));
+		}
+	);
+
+	it('a whole-document Backspace selected backward agrees (DR-delete-1)', async () => {
+		const r = await tree('toggle', 'after');
+		await select(r, ['after', 5], ['toggle', 0]);
+		await dispatchDomBeforeInput(r.editor, { inputType: 'deleteContentBackward' });
+		expect(canonicalTree(r.edytor)).toEqual([{ type: 'toggle' }]);
+	});
+
+	it('a revealed body keeps a closed toggle inside it closed: the caret lands on its header (DR-delete-2)', async () => {
+		const inner = {
+			id: 'inner',
+			type: 'toggle',
+			content: [{ text: 'inner' }],
+			children: [{ id: 'deep', type: 'paragraph', content: [{ text: 'deep' }] }]
+		};
+		const r = await render([], {
+			children: [
+				{ id: 'before', type: 'paragraph', content: [{ text: 'before' }] },
+				{ id: 'toggle', type: 'toggle', content: [{ text: 'title' }], children: [inner] }
+			]
+		});
+		await select(r, ['before', 0], ['toggle', 5]);
+		await dispatchDomBeforeInput(r.editor, { inputType: 'deleteContentBackward' });
+		expect(canonicalTree(r.edytor)).toEqual([
+			{
+				type: 'toggle',
+				content: [{ text: 'inner' }],
+				children: [{ type: 'paragraph', content: [{ text: 'deep' }] }]
+			}
+		]);
+		expect(caret(r)).toEqual(['inner', 0, true]);
+	});
+});
+
+describe('merging next to a collapsed toggle is one command (XW-09)', () => {
+	/** The documented `lockedBlocksPlugin` (plugins/operations.mdx). */
+	const lockedBlocksPlugin: Plugin = (edytor) => ({
+		onBeforeOperation: ({ effect, prevent }) => {
+			if (!effect) return;
+			const leaving = [...effect.removes, ...effect.merges.map(([from]) => from)];
+			if (leaving.some((id) => edytor.idToBlock.get(id)?.data.locked)) prevent();
+		}
+	});
+	/** `[toggle 'title' -> [p 'body'] (closed), p{locked} 'locked' -> [p 'kid']]`. */
+	const locked = () =>
+		render([lockedBlocksPlugin], {
+			children: [
+				{
+					id: 'toggle',
+					type: 'toggle',
+					content: [{ text: 'title' }],
+					children: [{ id: 'body', type: 'paragraph', content: [{ text: 'body' }] }]
+				},
+				{
+					id: 'locked',
+					type: 'paragraph',
+					data: { locked: true },
+					content: [{ text: 'locked' }],
+					children: [{ id: 'kid', type: 'paragraph', content: [{ text: 'kid' }] }]
+				}
+			]
+		});
+
+	it.each([
+		['Backspace at the start of the locked block', 'locked', 0, 'deleteContentBackward'],
+		['Delete at the end of the header', 'toggle', 5, 'deleteContentForward']
+	])('%s: a vetoed merge leaves the tree unchanged', async (_, id, offset, inputType) => {
+		const { edytor, editor } = await locked();
+		const before = canonicalTree(edytor);
+		edytor.selection.setAtTextOffset(edytor.idToBlock.get(id)!.firstText!, offset);
+		await flushDomUpdates();
+		await dispatchDomBeforeInput(editor, { inputType });
+		expect(canonicalTree(edytor)).toEqual(before);
+	});
+});
+
 describe('code keys (FW-04, FW-19)', () => {
 	const inCode = (lines: string[], after: JSONBlock[] = []) =>
 		render([codePlugin], {

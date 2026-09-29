@@ -134,6 +134,35 @@ describe('a view mounted after a refusal (RW-05)', () => {
 		view.unmount();
 		document.destroy();
 	});
+
+	it('an onSyncRefused that throws on the standing refusal still receives the later ones (XW-14)', async () => {
+		const document = createDocument();
+		document.attachSync(refusedSync(4409, 'replica bound to another user'));
+		const refusals: number[] = [];
+		const logged: unknown[] = [];
+		const error = console.error;
+		console.error = (...args: unknown[]) => void logged.push(args[0]);
+		try {
+			const view = render(Edytor, {
+				props: {
+					document,
+					plugins: [richTextPlugin],
+					onSyncRefused: (refusal: SyncRefusedError) => {
+						refusals.push(refusal.code);
+						if (refusal.code === 4409) throw new Error('app bug');
+					}
+				}
+			});
+			await tick();
+			document.attachSync(refusedSync(4403, 'document access denied'));
+			expect(refusals).toEqual([4409, 4403]);
+			expect(logged.length).toBe(1);
+			view.unmount();
+		} finally {
+			console.error = error;
+			document.destroy();
+		}
+	});
 });
 
 describe('<Edytor server room params> sync events (RW-19)', () => {

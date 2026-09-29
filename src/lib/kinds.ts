@@ -4,6 +4,7 @@ import type { BlockDefinition, EditorCommand, KindPreset } from './plugins.js';
 import { jsonBlockToSpec, jsonEquals, type JSONBlock } from './utils/json.js';
 import { dispatchPlan, prepareSet } from './block/block.utils.js';
 import { id } from './utils.js';
+import { getSelectionBlocks } from './selection/replaceSelection.js';
 
 /**
  * The kind catalogue (§2.4): one row per preset of each registered kind
@@ -15,7 +16,10 @@ export type KindRow = KindPreset & {
 	id: string;
 	/** The conversion: the kind, the preset's data, the kind's empty shape. */
 	value: JSONBlock;
-	/** Whether converting replaces the block's content and children. */
+	/**
+	 * Whether the kind has an `empty` shape: it converts in place only a
+	 * block that holds nothing, and is inserted after any other block.
+	 */
 	replaces: boolean;
 };
 
@@ -148,25 +152,27 @@ export const convertToKind = (
 
 /**
  * The blocks a conversion of the selection applies to, in document order:
- * the selected blocks, or every block a text range touches (Notion), else
- * the caret's block.
+ * the blocks the selection touches (`getSelectionBlocks`: a closed toggle's
+ * hidden body is not touched); of a text range, those rendering their own
+ * content (a list container is not converted).
  */
 export const selectionBlocks = (edytor: Edytor): Block[] => {
-	const { selectedBlocks, state } = edytor.selection;
-	if (selectedBlocks.size) return [...selectedBlocks].sort(edytor.compareBlocks);
-	if (state.isCollapsed || !state.texts.length) return state.startBlock ? [state.startBlock] : [];
-	return [...new Set(state.texts.map((text) => text.parent))];
+	const blocks = getSelectionBlocks(edytor);
+	if (edytor.selection.selectedBlocks.size || blocks.length < 2) return blocks;
+	return blocks.filter((block) => edytor.document.rendersContent(block.type));
 };
 
 /**
  * Convert several blocks to a row's kind as one undo step, keeping the
  * selection (Notion's Turn into over several blocks); blocks that are not
- * convertible are skipped. Answers whether any conversion applied.
+ * convertible are skipped, and so is a closed toggle's hidden body (Select
+ * all selects it). Answers whether any conversion applied.
  */
 export const convertBlocks = (edytor: Edytor, blocks: Iterable<Block>, row: KindRow) => {
 	const selection = edytor.selection.value;
+	const shown = [...blocks].filter((block) => !edytor.selection.hidden(block));
 	const applied = edytor.dispatcher.run('setBlock', () =>
-		[...blocks].map((block) => convertToKind(edytor, block, row, false))
+		shown.map((block) => convertToKind(edytor, block, row, false))
 	);
 	edytor.selection.select(selection);
 	return Boolean(applied?.some(Boolean));

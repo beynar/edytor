@@ -26,7 +26,7 @@ The pre-release is not on npm yet. This site hosts its tarball; install it by UR
 pnpm add https://edytor-docs.beynar.workers.dev/edytor-0.1.0-next.0.tgz
 ```
 
-The tarball is the package exactly as it will be published (`pnpm pack` of this release). Once the pre-release is on npm, install it by its tag instead: `pnpm add edytor@next`. Name the tag: a bare `edytor` resolves to the old `0.0.11`.
+The tarball is the package exactly as it will be published (`pnpm pack` of this release). The bytes under a URL never change, and every earlier pre-release URL keeps answering: a new build ships as a new pre-release version with its own URL, so a lockfile's URL and integrity hash stay valid. Once the pre-release is on npm, install it by its tag instead: `pnpm add edytor@next`. Name the tag: a bare `edytor` resolves to the old `0.0.11`.
 
 If your project does not have Svelte yet, add it too:
 

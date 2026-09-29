@@ -213,8 +213,16 @@
 		if (!initialEdytorOptions.readonly && !initialSync && !document.syncPending && !refusal) {
 			document.sync(initialEdytorOptions.value);
 		}
-		if (refusal) onSyncRefused?.(refusal);
+		// Subscribe first, then replay the standing refusal isolated like the
+		// later ones: a throwing callback still hears the next refusal.
 		offRefused = document.onSyncRefused((next) => onSyncRefused?.(next));
+		if (refusal) {
+			try {
+				onSyncRefused?.(refusal);
+			} catch (error) {
+				console.error('[edytor] onSyncRefused failed; continuing', error);
+			}
+		}
 	});
 
 	// The component owns the Edytor — release its doc/awareness/facade/

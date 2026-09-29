@@ -45,12 +45,13 @@
  * there (TCP never does).
  */
 import * as bc from 'lib0-v14/broadcastchannel';
+import * as decoding from 'lib0-v14/decoding';
 import * as time from 'lib0-v14/time';
 import * as math from 'lib0-v14/math';
 import * as url from 'lib0-v14/url';
 import { Awareness, removeAwarenessStates } from '../protocols/awareness.js';
 import { IsolatedObservable } from '../protocols/observable.js';
-import { messagePermissionDenied, readAuthMessage } from '../protocols/auth.js';
+import { messagePermissionDenied, messageReadOnly, readAuthMessage } from '../protocols/auth.js';
 import { bindSync, type IdSet, type SyncProtocol } from '../protocols/sync.js';
 import {
 	beginDestroy,
@@ -63,6 +64,7 @@ import {
 	messageAuth,
 	messageChunk,
 	messageSaved,
+	messageSync,
 	SyncRefusedError,
 	type LifecycleHost,
 	type ProtocolMismatch,
@@ -85,6 +87,8 @@ const unreachableBackoffTime = 30000;
 const defaultConnectTimeout = 10000;
 /** Expired credentials: the room admits this client again once `params` carries a fresh token. */
 const expiredCode = 4401;
+/** The denial a room sends when it refuses a write of a socket that may read but not write. */
+const readOnlyReason = 'read-only';
 /** A fault of the room (storage, engine): transient, but backed off until the room saves again. */
 const roomFaultCode = 1011;
 /** A close code that refuses this client for good: policy (`1008`) or an application code (`4xxx`). */
@@ -131,7 +135,9 @@ export type WebsocketProviderEvents = {
 	/**
 	 * A dial ended before its connection synced (refused upgrade, dropped
 	 * handshake, server down, not open within `connectTimeout`): `attempts`
-	 * in a row, the next in `nextRetryMs`.
+	 * in a row, the next in `nextRetryMs`. Also a room fault (`1011`) after
+	 * a sync: `attempts` counts the faults since the room last stored every
+	 * local update.
 	 */
 	unreachable: (state: { attempts: number; nextRetryMs: number }, provider: unknown) => void;
 	/**
@@ -207,13 +213,24 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		tabOrigin: (provider) => provider._fromTab,
 		handlers: {
 			[messageAuth]: (_encoder, decoder, provider) => {
-				const authType = readAuthMessage(decoder, provider.doc, (_ydoc, reason) => {
-					// Observable, and a terminal sync failure (D4): a denied
-					// provider can never reach `synced` — reported at most once.
-					provider.emit('permission-denied', [reason, provider]);
-					emitFailed(provider, new Error(`permission denied: ${reason}`));
-				});
-				if (authType !== messagePermissionDenied) {
+				const authType = readAuthMessage(
+					decoder,
+					provider.doc,
+					(_ydoc, reason) => {
+						// Observable: a refused write. A read-only socket still syncs:
+						// nothing it writes can be stored, so nothing is tracked. Any
+						// other denial is a terminal sync failure (D4), reported at
+						// most once.
+						if (reason === readOnlyReason) provider._readOnly();
+						provider.emit('permission-denied', [reason, provider]);
+						if (reason !== readOnlyReason) {
+							emitFailed(provider, new Error(`permission denied: ${reason}`));
+						}
+					},
+					// The room's notice at the join: a state, not a refusal (no event).
+					() => provider._readOnly()
+				);
+				if (authType !== messagePermissionDenied && authType !== messageReadOnly) {
 					// An auth type we do not speak inside a valid v14 envelope is
 					// protocol skew — reported, never dropped silently.
 					provider.emit('message-error', [
@@ -233,6 +250,18 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 	room.messageHandlers[messageSaved] = (_encoder, decoder, provider) => {
 		const { stateVector, deletes } = syncProtocol.readSaved(decoder);
 		provider._acknowledge(stateVector, deletes);
+	};
+	// The room asks a socket that may write for its state (a Step1): after
+	// a read-only connection, what this actor wrote counts again.
+	const syncHandler = room.messageHandlers[messageSync];
+	room.messageHandlers[messageSync] = (encoder, decoder, provider, emitSynced) => {
+		if (
+			emitSynced &&
+			provider._denied &&
+			decoding.peekVarUint(decoder) === syncProtocol.messageYjsSyncStep1
+		)
+			provider._writable();
+		return syncHandler(encoder, decoder, provider, emitSynced);
 	};
 	room.messageHandlers[messageChunk] = (_encoder, decoder, provider, emitSynced) => {
 		const whole = provider._chunks(decoder);
@@ -261,15 +290,25 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		return sv;
 	};
 	/**
-	 * The clocks an update writes, per client — not the whole document's:
-	 * structs heard from the room that it later lost (a restore from a
-	 * lagging snapshot) are not this replica's to save.
+	 * The clocks an update `doc` integrated writes, per client — not the
+	 * whole document's: structs heard from the room that it later lost (a
+	 * restore from a lagging snapshot) are not this replica's to save. The
+	 * actor dictionary's records are bookkeeping (as in {@link contentState}),
+	 * whatever the origin: a local copy replays an earlier session's.
 	 */
-	const written = ({ structs }: ReturnType<typeof Y.decodeUpdate>): StateVector => {
+	const written = (doc: YDoc, { structs }: ReturnType<typeof Y.decodeUpdate>): StateVector => {
+		const dictionary = doc.share.get(ATTRIBUTION_ROOT);
 		const sv: StateVector = new Map();
 		for (const struct of structs) {
 			if (struct instanceof Y.Skip) continue;
 			const { client, clock } = struct.id;
+			const stored = doc.store.clients.get(client);
+			const end = stored?.at(-1);
+			const item =
+				stored && end && clock < end.id.clock + end.length
+					? stored[Y.findIndexSS(stored, clock)]
+					: null;
+			if (item instanceof Y.Item && item.parent === dictionary) continue;
 			sv.set(client, math.max(sv.get(client) ?? 0, clock + struct.length));
 		}
 		return sv;
@@ -299,7 +338,11 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			client < seedBand ||
 			actorOf(doc, client) === actor;
 	};
-	/** Of `deletes`, those of another actor's items the room does not hold (`acked`): never storable here. */
+	/**
+	 * Of `deletes`, those of another actor's items the room does not hold
+	 * (`acked`): never acknowledged by id (the edytor room stores them as
+	 * waiting deletes, applied when the items arrive).
+	 */
 	const lacking = (deletes: IdSet, acked: StateVector, own: (client: number) => boolean) => {
 		const out = Y.createIdSet();
 		for (const [client, ranges] of deletes.clients) {
@@ -378,6 +421,9 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				provider.emit('expired', [{ reason: event.reason, attempts, nextRetryMs }, provider]);
 			} else if (!heard) {
 				provider.emit('unreachable', [{ attempts, nextRetryMs }, provider]);
+			} else if (event?.code === roomFaultCode) {
+				// Reachable, but not storing: the faults in a row since it last saved everything.
+				provider.emit('unreachable', [{ attempts: provider._faults, nextRetryMs }, provider]);
 			}
 			setTimeout(setupWS, nextRetryMs, provider);
 		}
@@ -462,6 +508,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		_pending: Unsaved[] = [];
 		/** The room's last acknowledged state vector. */
 		_acked: StateVector = new Map();
+		/** The room said this socket may not write: nothing is tracked. */
+		_denied = false;
 		messageHandlers: Record<number, RoomMessageHandler<WebsocketProvider>> = room.messageHandlers;
 		// The room lifecycle (O74) — installed by `initLifecycle`.
 		hasSynced!: boolean;
@@ -524,7 +572,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				// The actor dictionary's records are bookkeeping, not content.
 				if (origin === ATTRIBUTION_ORIGIN) return;
 				const decoded = Y.decodeUpdate(update);
-				this._track(written(decoded), decoded.ds);
+				this._track(written(this.doc, decoded), decoded.ds);
 			};
 			// What this actor already wrote is unsaved until the room covers it.
 			this._track(contentState(this.doc), this.doc.store.ds);
@@ -591,6 +639,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		 * actor's structs (a peer's edit replayed from the local store).
 		 */
 		_track(sv: StateVector, deletes: IdSet): void {
+			if (this._denied) return;
 			const own = ownerOf(this.doc);
 			const mine: StateVector = new Map([...sv].filter(([client]) => own(client)));
 			if (mine.size < sv.size) deletes = Y.createIdSet();
@@ -619,6 +668,33 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			if (this._pending.length !== before) {
 				this.emit('saved', [{ saved: this.saved, unsaved: this._pending.length }, this]);
 			}
+		}
+
+		/**
+		 * The room refuses this socket's writes (its read-only notice, or a
+		 * refused write): none can be stored, so none is pending — `saved`.
+		 */
+		_readOnly(): void {
+			this._denied = true;
+			this._faults = 0;
+			if (this._pending.length === 0) return;
+			this._pending = [];
+			this.emit('saved', [{ saved: true, unsaved: 0 }, this]);
+		}
+
+		/** The room asks for this socket's state again: what this actor wrote is unsaved until stored. */
+		_writable(): void {
+			this._denied = false;
+			this._track(contentState(this.doc), this.doc.store.ds);
+		}
+
+		/**
+		 * The room said this connection may read but not write (its notice
+		 * at the join, or a refused write): nothing this actor writes counts
+		 * as unsaved. `false` again once a dial may write.
+		 */
+		get readOnly(): boolean {
+			return this._denied;
 		}
 
 		/** This connection has held a room member's state (transient). */

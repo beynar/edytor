@@ -120,7 +120,12 @@ import {
 } from '../harness/assert/convergence.js';
 import { BLOCK_TYPES, type Schedule, type Step, type DocOp, type NetOp } from './generator.js';
 import { wellFormedProblems, type MergeRecord } from '../harness/assert/well-formed.js';
-import { hiddenUnderDeleted, registryIdentity, succeeds } from '../harness/ops/model-ops.js';
+import {
+	hiddenUnderDeleted,
+	registryIdentity,
+	storedParentOf,
+	succeeds
+} from '../harness/ops/model-ops.js';
 
 export type RunResult = {
 	ok: boolean;
@@ -955,6 +960,17 @@ export const runSchedule = (
 	// ranges (or the post-barrier stranded set); an unrelated lossy reload
 	// elsewhere in the run excuses nothing.
 	const lostRanges: IdRange[] = [];
+	/**
+	 * Per peer, the ranges a reload dropped (pending items, or a regressed
+	 * tail) that it has not received again. Until it does, the peer is
+	 * causally incomplete like a peer with pending structs: a dropped
+	 * attribute write's delete of the old value was integrated, its new
+	 * value was not (seed 497: a type attr missing until the next sync),
+	 * and a snapshot taken in that window restores it (`droppedAtPersist`).
+	 * The step check skips such a peer; the barrier does not.
+	 */
+	const droppedBy = new Map<string, IdRange[]>();
+	const droppedAtPersist = new Map<string, IdRange[]>();
 	let firstError: { step: number; engineInternal: boolean; message: string } | null = null;
 	let executed = 0;
 
@@ -1004,14 +1020,20 @@ export const runSchedule = (
 			// Causally closed states only: a reordered delivery may apply a
 			// delete whose replacement is still pending.
 			if (p.doc.store.pendingStructs !== null || p.doc.store.pendingDs !== null) return [];
+			const sv = Y.decodeStateVector(p.stateVector());
+			const dropped = (droppedBy.get(p.name) ?? []).filter(
+				(r) => (sv.get(r.client) ?? 0) < r.start + r.len
+			);
+			droppedBy.set(p.name, dropped);
+			if (!settled && dropped.length > 0) return [];
 			let seen = identities.get(p.name);
 			if (!seen) identities.set(p.name, (seen = new Map()));
-			const sv = Y.decodeStateVector(p.stateVector());
 			return wellFormedProblems({
 				roots: ops.project(p).children,
 				registered,
 				isVoid: ops.isVoid && ((id) => ops.isVoid!(p, id)),
 				islandKinds: settled ? ops.islandKinds : undefined,
+				storedParentOf: settled && ops.islandKinds?.size ? storedParentOf(p.doc) : undefined,
 				merges: merges.filter((m) => (sv.get(m.client) ?? 0) >= m.clock),
 				identityOf: (id) => registryIdentity(p.doc, id),
 				succeeds: (later, earlier) => succeeds(p.doc, later, earlier),
@@ -1633,6 +1655,7 @@ export const runSchedule = (
 				break;
 			case 'persist':
 				set.peer(a).persist();
+				droppedAtPersist.set(set.peer(a).name, droppedBy.get(set.peer(a).name) ?? []);
 				break;
 			case 'reloadSnap':
 			case 'reloadLog': {
@@ -1650,6 +1673,14 @@ export const runSchedule = (
 				// restore — a harness-injected loss, not an engine defect).
 				if (hadPending) sawPendingDrop = true;
 				lostRanges.push(...droppedPending);
+				// A snapshot restores the window it was taken in; a log replay
+				// keeps the current one. Either way, the dropped pending joins it.
+				const window =
+					op.action === 'reloadSnap'
+						? (droppedAtPersist.get(p.name) ?? [])
+						: (droppedBy.get(p.name) ?? []);
+				droppedBy.set(p.name, [...window, ...droppedPending]);
+				droppedAtPersist.set(p.name, droppedBy.get(p.name)!);
 				for (const [client, clock] of before) {
 					const afterClock = after.get(client) ?? 0;
 					if (afterClock < clock) {

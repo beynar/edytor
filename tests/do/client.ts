@@ -119,8 +119,10 @@ export class RawClient {
 	readonly reassembled: Uint8Array[] = [];
 	/** The room's `messageSaved` state vectors, in order. */
 	readonly acks: Map<number, number>[] = [];
-	/** Permission-denied reasons the room sent. */
+	/** Permission-denied reasons the room sent (its refusals of writes). */
 	readonly denied: string[] = [];
+	/** The room said, when this socket joined, that it may read but not write. */
+	readOnly = false;
 	/** Step1 frames the room sent (it asks write sockets only). */
 	step1s = 0;
 	synced = false;
@@ -200,7 +202,10 @@ export class RawClient {
 			return;
 		}
 		if (type === E.messageAuth) {
-			E.readVarUint(decoder); // messagePermissionDenied
+			if (E.readVarUint(decoder) === E.messageReadOnly) {
+				this.readOnly = true;
+				return;
+			}
 			this.denied.push(new TextDecoder().decode(E.readVarUint8Array(decoder)));
 			return;
 		}

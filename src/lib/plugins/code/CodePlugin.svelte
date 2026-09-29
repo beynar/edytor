@@ -175,9 +175,10 @@
 						return { ...payload, value: value + PAIRS[value] };
 					}
 				}
-				// A code line never merges out of its island's first or last slot.
+				// A code line never merges out of its island's first or last slot
+				// (the code block renders no content of its own, XW-12).
 				const siblings = block.parent?.children.length ?? 0;
-				if (operation === 'mergeBlockBackward' && siblings === 1) prevent();
+				if (operation === 'mergeBlockBackward' && block.index === 0) prevent();
 				if (operation === 'mergeBlockForward' && block.index === siblings - 1) prevent();
 			},
 

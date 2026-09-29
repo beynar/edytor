@@ -84,6 +84,8 @@ export const lockedBlocksPlugin: Plugin = (edytor) => ({
 
 Because steps are shown too, this catches every path that would remove a locked block: <kbd>Backspace</kbd>, a range deletion, a cut, a block-selection delete.
 
+Typing, <kbd>Enter</kbd> or a paste over a text range runs two commands: `deleteContentWithinSelection` removes the range, then the insertion (`insertText`, `splitBlock`, `insertFlow`) runs at the caret it leaves. Refusing the insertion alone leaves the range deleted; to keep the range, refuse `deleteContentWithinSelection` or one of its steps.
+
 `effect` describes the whole plan:
 
 <TypeTable

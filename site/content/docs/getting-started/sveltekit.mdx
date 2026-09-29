@@ -47,7 +47,7 @@ export const load: PageServerLoad = async ({ params }) => {
 
 Pass the same plugins you use to edit. A block type no plugin defines renders as a plain block (its text and children) and logs a warning in development.
 
-A readonly view that is given `sync` does not attach it: it shows `value` (or the `document` you pass) and never loads content from a provider. To show live collaborative content read-only, create the document yourself, attach the sync to it, and pass `document` with `readonly`. See [Collaboration](/docs/collaboration).
+A readonly view that is given `sync` (or `room` and `server`) does not attach it: it shows `value` (or the `document` you pass) and never loads content from a provider. To show live collaborative content read-only, create the document yourself, attach the sync to it, and pass `document` with `readonly`. See [Collaboration](/docs/collaboration).
 
 See [Readonly mode](/docs/editor/readonly) for what still works in the browser.
 

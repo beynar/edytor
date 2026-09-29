@@ -8,15 +8,16 @@
  * - one line joins the text at the position; an empty block takes a kinded
  *   line's kind (`flow.inline`);
  * - several lines split the block: the first joins the head, the last is the
- *   tail's block and takes the text after the position, the rest go between
- *   (`flow.split`, D-4);
+ *   tail's block and takes the text after the position and the block's
+ *   children, the rest go between (`flow.split`, D-4) — children the view
+ *   hides (a closed toggle's body) stay with the head, as Enter keeps them;
  * - a `whole` flow (a block-selection copy) goes after the block, replacing
  *   it when empty (`flow.whole`); over selected blocks the lines take their
  *   slot (`flow.slot`); a void takes one run (`flow.void`).
  */
 import type { BlockId, BlockSpec, Destination, SplitTail } from './placement/model.js';
 import type { PlanStep, Prepared } from './edytor-doc.js';
-import type { DocPosition, RangeDeleteContext } from './rangeDelete.js';
+import type { DocPosition, RangeDeleteContext, RangeView } from './rangeDelete.js';
 
 /** One line of a flow: a kinded block, or an inline run when it has no `type`. */
 export type FlowLine = Omit<BlockSpec, 'type'> & { type?: string };
@@ -42,7 +43,7 @@ const lengthOf = (l: FlowLine) =>
 
 /** `insertFlow`, prepared. */
 export const flowOps = (c: FlowContext) => ({
-	insertFlow: (target: FlowTarget, flow: Flow): Prepared => {
+	insertFlow: (target: FlowTarget, flow: Flow, view: RangeView = {}): Prepared => {
 		// Ingress (O1): a run carries a placeholder kind through the spec sanitizer.
 		let lines: FlowLine[] = flow.lines
 			.map((l) => c.sanitize({ ...l, type: l.type ?? '' }))
@@ -108,7 +109,7 @@ export const flowOps = (c: FlowContext) => ({
 		const ranks = c.ranksFor(parent, index + 1, middle.length + 1);
 		const tail = last().type ? { type: last().type!, data: last().data } : c.tailOf(B);
 		const rank = ranks.pop()!;
-		const moved = c.childrenIds(B);
+		const moved = c.childrenIds(B).filter((id) => !view.hidden?.(id));
 		const length = len - o;
 		writes.push({ op: 'splitBlock', id: B, offset: head, length, newId: T, tail, parent, rank });
 		kids(T, last(), moved);

@@ -4,7 +4,7 @@
  * Views adopt roles from their plugins' block definitions; a document no
  * view configures — a headless `createDocument`, the Durable Object room —
  * needs them as data. Each table below is the structural row of the kinds a
- * bundled plugin defines (`void`/`island`, `rendersContent`,
+ * bundled plugin defines (`void`/`island`/`lines`, `rendersContent`,
  * `defaultChild`): the `.svelte` plugin spreads its row into the kind's
  * definition, so the view and a document without one read the same facts.
  * Worker-safe: the room imports it.
@@ -32,9 +32,9 @@ export const richTextKinds = frozen({
 	'unordered-list': { rendersContent: false, defaultChild: 'list-item' }
 } satisfies Record<string, KindSemantics>);
 
-/** `codePlugin`'s structural rows: the code block is an island of `codeLine`s. */
+/** `codePlugin`'s structural rows: the code block is an island of `codeLine`s (`lines`). */
 export const codeKinds = frozen({
-	code: { island: true, rendersContent: false, defaultChild: 'codeLine' }
+	code: { island: true, lines: true, rendersContent: false, defaultChild: 'codeLine' }
 } satisfies Record<string, KindSemantics>);
 
 /** `imagePlugin`'s structural rows: void, its only text is the caption. */

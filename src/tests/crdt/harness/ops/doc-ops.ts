@@ -40,21 +40,22 @@ const ok = (r: { status: string }): boolean => r.status !== 'refused';
  * own child kind, and a void kind. Absent: the pure-engine lane.
  */
 export type DocOpsRoles = {
-	/** Kind → role (`island` / `void`). */
-	roles: Record<string, { island?: boolean; void?: boolean }>;
+	/** Kind → role (`island` / `lines` / `void`). */
+	roles: Record<string, { island?: boolean; lines?: boolean; void?: boolean }>;
 	/** Parent kind → its default child kind. */
 	defaultChild: Record<string, string>;
 };
 
-/** The roles lane's table: `code` is an island of `codeLine`s, `divider` a void. */
+/** The roles lane's table: `code` is an island of `codeLine`s (`lines`), `divider` a void. */
 export const ROLES: DocOpsRoles = {
-	roles: { code: { island: true }, divider: { void: true } },
+	roles: { code: { island: true, lines: true }, divider: { void: true } },
 	defaultChild: { code: 'codeLine' }
 };
 
 export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 	const config = roles && {
 		roleOf: (type: string) => roles.roles[type],
+		kinds: () => Object.keys(roles.roles),
 		defaultChildOf: (type: string) => roles.defaultChild[type]
 	};
 	// One EdytorDoc per underlying doc instance (peer.doc swaps on reload).
@@ -88,7 +89,7 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 
 	const islandKinds = new Map(
 		Object.entries(roles?.defaultChild ?? {})
-			.filter(([parent]) => roles!.roles[parent]?.island === true)
+			.filter(([parent]) => roles!.roles[parent]?.island && roles!.roles[parent]?.lines)
 			.map(([parent, child]) => [child, parent])
 	);
 

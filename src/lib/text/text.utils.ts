@@ -1,6 +1,8 @@
 import type { JSONText, SerializableContent } from '$lib/utils/json.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
 import type { Text } from './text.svelte.js';
+import type { Edytor } from '$lib/edytor.svelte.js';
+import type { Block } from '$lib/block/block.svelte.js';
 
 export type TextOperations = {
 	insertText: {
@@ -31,6 +33,62 @@ export type TextOperations = {
 		start?: number;
 		end?: number;
 	};
+};
+
+/** A text range's endpoints and texts, as the selection (or an attempt's snapshot) holds them. */
+type TextRange = Pick<
+	Edytor['selection']['state'],
+	'texts' | 'startText' | 'endText' | 'yStart' | 'yEnd'
+>;
+
+/**
+ * Whether a text range covers `block` (`del.range.hidden-body`): a block the
+ * view shows does; a hidden one (a closed toggle's body) exactly when
+ * deleting the range deletes it — with the range member that hides it, any
+ * member but the head, and the head too when the range starts at its start
+ * (it dies with the range). A replacement (`replace`) keeps the head and its
+ * body. Copy, cut, delete, marks and the toolbar share this one answer.
+ */
+export const rangeCovers = (
+	edytor: Edytor,
+	range: TextRange = edytor.selection.state,
+	{ replace = false } = {}
+) => {
+	const { hidden } = edytor.selection;
+	const members = new Set(range.texts.map((text) => text.parent));
+	const head = range.startText?.parent;
+	const headDies = !replace && range.startText?.segStart === 0 && range.yStart === 0;
+	return (block: Block) => {
+		if (!hidden(block)) return true;
+		let hider = block.parent;
+		while (hider && hidden(hider)) hider = hider.parent;
+		return !!hider && members.has(hider) && (hider !== head || headDies);
+	};
+};
+
+/**
+ * The selected span of each text a range covers ({@link rangeCovers}), in
+ * document order: a collapsed toggle's hidden body is selected only when the
+ * range deletes it, so marks, the toolbar's state and the marks typing over
+ * a range inherits (`replace`) reach what the range's delete would.
+ */
+export const selectedTextSpans = (
+	edytor: Edytor,
+	range: TextRange = edytor.selection.state,
+	options: { replace?: boolean } = {}
+) => {
+	const covers = rangeCovers(edytor, range, options);
+	return range.texts.flatMap((text) =>
+		covers(text.parent)
+			? [
+					{
+						text,
+						start: text === range.startText ? range.yStart : 0,
+						end: text === range.endText ? range.yEnd : text.length
+					}
+				]
+			: []
+	);
 };
 
 export function batch<T extends (...args: any[]) => any, O extends keyof TextOperations>(

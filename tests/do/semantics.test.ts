@@ -33,6 +33,11 @@ const blocks: BlockSpec[] = [
 		id: 'code',
 		type: 'code',
 		children: [{ id: 'line', type: 'codeLine', content: [{ kind: 'text', text: 'a' }] }]
+	},
+	{
+		id: 'list',
+		type: 'unordered-list',
+		children: [{ id: 'item', type: 'list-item', content: [{ kind: 'text', text: 'b' }] }]
 	}
 ];
 
@@ -44,11 +49,15 @@ const attempt = (room: Pick<AttachedDocument, 'transact'>) => {
 		seeded,
 		edit((facade) => facade.mergeBackward('p')),
 		edit((facade) => facade.splitBlock('img', 1, 'img2')),
-		edit((facade) => facade.moveBlock('line', { parent: null, index: 0 }))
+		edit((facade) => facade.moveBlock('line', { parent: null, index: 0 })),
+		// XW-12: a code block renders no content — its first line never merges into it.
+		edit((facade) => facade.mergeBackward('line')),
+		// DR-crdt-2: nor does a list — its first item never merges into it.
+		edit((facade) => facade.mergeBackward('item'))
 	];
 };
 
-const REFUSED = ['applied', 'refused', 'refused', 'refused'];
+const REFUSED = ['applied', 'refused', 'refused', 'refused', 'refused', 'refused'];
 
 describe('the room adopts defaultSemantics', () => {
 	it('DocumentRoom.transact refuses edits no view could produce', async () => {

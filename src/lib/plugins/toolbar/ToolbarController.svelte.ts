@@ -3,6 +3,7 @@ import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { isRecord, type SerializableContent } from '$lib/utils/json.js';
 import { richTextOperations, type RichTextMark } from '$lib/plugins/richtext/richTextOperations.js';
+import { selectedTextSpans } from '$lib/text/text.utils.js';
 import {
 	convertBlocks,
 	convertibleKinds,
@@ -77,11 +78,8 @@ export class ToolbarController {
 
 	/** Whether `mark` covers every character of the selection (its button shows pressed). */
 	isActive(mark: string) {
-		const { texts, yStart, yEnd } = this.edytor.selection.state;
-		const runs = texts
-			.flatMap((text, index) =>
-				text.getMarksAtRange(index ? 0 : yStart, index < texts.length - 1 ? text.length : yEnd)
-			)
+		const runs = selectedTextSpans(this.edytor)
+			.flatMap(({ text, start, end }) => text.getMarksAtRange(start, end))
 			.filter((run) => run.text);
 		return runs.length > 0 && runs.every((run) => Boolean(run.marks?.[mark]));
 	}
@@ -157,14 +155,7 @@ export class ToolbarController {
 	}
 
 	private getSelectedLinkUrl(selection: EdytorSelection) {
-		const { texts, yStart, yEnd } = selection.state;
-
-		for (const [index, text] of texts.entries()) {
-			const isFirst = index === 0;
-			const isLast = index === texts.length - 1;
-			const start = isFirst ? yStart : 0;
-			const end = isLast ? yEnd : text.length;
-
+		for (const { text, start, end } of selectedTextSpans(this.edytor, selection.state)) {
 			for (const segment of text.getMarksAtRange(start, end)) {
 				const href = getLinkHref(segment.marks?.link);
 				if (href) {

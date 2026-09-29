@@ -112,7 +112,7 @@ Then switch `server` to `wss://<your-worker-host>/rooms`.
 
 - **Real-time sync** between every client of a document, with offline edits merged on reconnect.
 - **Durable storage**: every update is written to the room's SQLite storage before it is acknowledged, so the provider's [saved state](/docs/collaboration/websocket#saved-state) means "stored on the server".
-- **Identity**: each client id is bound to the user who first wrote under it; nobody can write in someone else's name.
+- **Identity**: each client id is registered to the user whose socket dials with it, and content under another user's id is stripped, so nobody can write in someone else's name. See [replicas](/docs/server/authorization#replicas).
 - **Read-only access** when `authorize` returns `readOnly: true`.
 - **Hibernation**: the room holds no timers, so idle rooms hibernate with their sockets still connected.
 
@@ -124,4 +124,41 @@ Already have a Durable Object, or want the document in R2, KV or D1 too? Call `a
 
 ## See it live
 
-The live editor on the [edytor home page](/) runs on exactly this setup: a room Worker deployed at `edytor-room.beynar.workers.dev` with `DocumentRoom` and `routeDocumentSocket`. Its `authorize` admits guests by an id their browser keeps, it opens one room per UTC day so the shared document resets daily, and it only accepts sockets from the docs' origins. It turns the other dials away with [`closedSocket`](/docs/server/authorization#authorize) (`4404` for a closed room, `4403` for another origin), so a page left open past the reset stops dialing instead of retrying forever. Open the home page in two windows to watch them sync, and read its [source](https://github.com/beynar/edytor/tree/master/site/room) for a complete, deployed example.
+The live editor on the [edytor home page](/) runs on exactly this setup: a room Worker deployed at `edytor-room.beynar.workers.dev` with `DocumentRoom` and `routeDocumentSocket`. Its `authorize` admits guests by an id their browser keeps, it opens one room per UTC day so the shared document resets daily, and it only accepts sockets from the docs' origins. It turns the other dials away with [`closedSocket`](/docs/server/authorization#authorize) (`4404` for a closed room, `4403` for another origin), so a page left open past the reset stops dialing instead of retrying forever. Open the home page in two windows to watch them sync.
+
+Its Worker, with the `Env` type, the `/health` route and three helpers left out: `roomOf` decodes the room name, `isOpenDemoRoom` accepts only today's `demo-YYYY-MM-DD` room (and yesterday's for an hour after midnight), and `originAllowed` checks the `Origin` header against `ALLOWED_ORIGINS`:
+
+```ts site/room/src/worker.ts
+import { DocumentRoom, closedSocket, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
+import { isOpenDemoRoom } from './rooms';
+
+export { DocumentRoom };
+
+const GUEST = /^[a-z0-9-]{8,64}$/;
+
+/** A refusal: a final close for a WebSocket upgrade, the HTTP `status` otherwise. */
+const refuse = (request: Request, status: 403 | 404, reason: string): Response =>
+	request.headers.get('Upgrade')?.toLowerCase() === 'websocket'
+		? closedSocket(4000 + status, reason)
+		: new Response(reason, { status });
+
+export default {
+	async fetch(request: Request, env: Env): Promise<Response> {
+		const url = new URL(request.url);
+		const match = /^\/rooms\/([^/]+)$/.exec(url.pathname);
+		if (!match) return refuse(request, 404, 'not found');
+		const room = roomOf(match[1]);
+		if (room === null || !isOpenDemoRoom(room)) return refuse(request, 404, 'unknown room');
+		if (!originAllowed(request.headers.get('Origin'), env)) {
+			return refuse(request, 403, 'origin not allowed');
+		}
+		return routeDocumentSocket(request, env.ROOMS, room, async (request) => {
+			const guest = new URL(request.url).searchParams.get('guest') ?? '';
+			if (!GUEST.test(guest)) return null;
+			return { userId: `guest:${guest}`, replica: requestedReplica(request) };
+		});
+	}
+} satisfies ExportedHandler<Env>;
+```
+
+The whole Worker and its `wrangler.jsonc` are in the `site/room` folder of the source tree this pre-release is built from. GitHub's `master` branch does not have them yet: it still holds 0.0.11.

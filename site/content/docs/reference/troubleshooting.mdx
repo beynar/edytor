@@ -39,10 +39,10 @@ The WebSocket provider reports how a connection ended through its [events](/docs
 | `4409` `replica bound to another user` | The client dialed with a client id another user owns (a browser profile shared by two users). | Terminal, like `4403`. See [replicas](/docs/server/authorization#replicas). |
 | `1008` `refused: <reason>` | The room refused this client for good; the reason is one of `generation` (a build of another schema generation), `replica` (a presence entry for a client id another user owns), `schema` (a foreign schema stamp), `identity`, `malformed` (bytes the room cannot decode), or `container` (the room's stored container is of another generation, torn, or its `onLoad` returned content it cannot use). Content an update adds under another user's client id is not a refusal: it is stripped and the socket stays. | Terminal, like `4403`. Every socket of a room with a `container` refusal is refused until an operator fixes the storage (for a generation mismatch, [`reset()`](/docs/server/room#generation-cutover)). |
 | Any other `4xxx` | An application refusal from your own server. | Terminal, like `4403`. |
-| `1011` `storage failure` | The room could not store an update or a client-id registration. | Redials; the handshake resends the edit. While the fault repeats, each `1011` doubles the backoff until the room acknowledges the edits. |
+| `1011` `storage failure` | The room could not store an update or a client-id registration. | Redials; the handshake resends the edit. While the fault repeats, each `1011` doubles the backoff and emits `unreachable`, until the room acknowledges the edits. |
 | `1011` `internal error` | The room's CRDT engine or a send failed; the room rebuilt its document from storage. | Redials, backing off the same way; the handshake resends the edit. |
 | `1011` `room unavailable` | The room's `onLoad` threw, or the room could not read its rows (when it started, or after a storage failure). | Redials; the room loads again at the next dial. |
-| `permission-denied` message | A read-only socket sent an edit. | The socket stays open; the edit is not stored. |
+| `permission-denied` message (`read-only`) | The read-only socket sent an edit (joining alone sends a notice that sets `provider.readOnly`, not this event). | The socket stays open and syncs; the edit is not stored. Render read-only users with a read-only view. |
 
 Before a document has content, a terminal refusal never seeds its `value`: the document stays `pending` and `document.syncRefusal` holds the `SyncRefusedError` (`code`, `reason`). A document that already has content keeps it and stays editable offline.
 
@@ -74,3 +74,10 @@ Check `last.status` after a command you issue when the next step depends on it:
 block.setData({ ...block.data, checked: true });
 if (edytor.dispatcher.last?.status === 'refused') showReadonlyNotice();
 ```
+
+## Installing the pre-release
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `ERR_PNPM_TARBALL_INTEGRITY` or `EINTEGRITY` on an install of the hosted tarball | Your lockfile pins the hash of other bytes than the ones served at that URL. The site never replaces a tarball under the same version (a new build gets a new pre-release version and URL), so this means the lockfile entry came from elsewhere, or from a forced redeploy. | Remove the package, then install the URL again, which records the served hash: `pnpm remove edytor && pnpm add <that URL>` (npm: `npm uninstall edytor && npm install <that URL>`). With pnpm, installing the same URL without removing it first keeps the pinned hash and fails the same way. Commit the lockfile. To move to a newer pre-release, install its URL from [Install](/docs/getting-started#install). |
+| `ERR_PNPM_FETCH_404` (or npm's `404 Not Found`) on a hosted tarball URL | The site never hosted that version: a typo in the URL, or a version from a local build. Every pre-release it has served keeps answering. | Install the URL from [Install](/docs/getting-started#install). |

@@ -9,6 +9,7 @@ import { flowOfFragment, flowOfText, pasteFlow } from '$lib/clipboard/insertClip
 import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
 import { cloneJson, type JSONText } from '$lib/utils/json.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
+import { selectedTextSpans } from '$lib/text/text.utils.js';
 import { id, prevent } from '$lib/utils.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { dispatchPlan, prepareSplitKeepingChildren } from '$lib/block/block.utils.js';
@@ -45,10 +46,11 @@ const replaceSelectionBeforeTextInsertion = (edytor: Edytor, snapshot: Attempt) 
 
 /** The marks of text inserted at the snapshot's selection (O29), read before it is replaced. */
 export const insertionMarks = (edytor: Edytor, snapshot: Attempt) => {
-	const { startText, endText, yStart, yEnd, isCollapsed } = snapshot;
+	const { startText, yStart, isCollapsed } = snapshot;
 	if (!startText || edytor.selection.selectedBlocks.size > 0) return {};
-	const replaced = (snapshot.texts.length ? snapshot.texts : [startText]).flatMap((text) =>
-		text.getMarksAtRange(text === startText ? yStart : 0, text === endText ? yEnd : text.length)
+	const texts = snapshot.texts.length ? snapshot.texts : [startText];
+	const replaced = selectedTextSpans(edytor, { ...snapshot, texts }, { replace: true }).flatMap(
+		({ text, start, end }) => text.getMarksAtRange(start, end)
 	);
 	return marksForInsertion(startText, yStart, {
 		replaced: isCollapsed ? undefined : replaced,

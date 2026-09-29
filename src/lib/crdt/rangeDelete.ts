@@ -19,6 +19,10 @@
  *   then those containers stay (`del.range.outside-survives`);
  * - a container that renders no content and loses every child dies too
  *   (`del.range.empty-container`);
+ * - blocks the view hides (a closed toggle's body) are not in the range:
+ *   they go only with a block that goes, so a surviving head keeps its
+ *   hidden children, unless it is kept only to hold the caret; a dying
+ *   closed tail's body takes its place, shown (`del.range.hidden-body`);
  * - the plan's `at` is where the caret lands (`del.range.caret`).
  */
 import type { BlockId, Destination } from './placement/model.js';
@@ -49,11 +53,19 @@ export type RangeDeleteContext = {
 	remove: (id: BlockId, kept: readonly BlockId[]) => PlanStep;
 };
 
+/**
+ * What the view knows of a range (view state the document does not hold):
+ * whether it hides a block, and, given `removed`, whether the block stays
+ * hidden once those go (a removed closed toggle's children take its place, shown).
+ */
+export type RangeView = { hidden?: (id: BlockId, removed?: ReadonlySet<BlockId>) => boolean };
+
 /** `deleteRange` and `replaceRange` (the head kept), prepared. */
 export const rangeDeleteOps = (c: RangeDeleteContext) => {
+	// `headSpent`: a whole-doc retry keeps the head, but what it hid goes as if it went.
 	const prepare =
-		(keepHead: boolean) =>
-		(from: DocPosition, to: DocPosition): Prepared => {
+		(keepHead: boolean, headSpent = false) =>
+		(from: DocPosition, to: DocPosition, view: RangeView = {}): Prepared => {
 			// A position names shown text: a live block that renders its own content.
 			const holds = (id: BlockId) => c.contentTarget(id) && c.rendersContent(id);
 			const pos = (p: DocPosition): DocPosition => {
@@ -77,8 +89,16 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 
 			const parent = (id: BlockId) => c.ancestorsOf(id)[0] ?? null;
 			const chain = c.ancestorsOf(E);
-			const between = ids.slice(at.get(S)! + 1, at.get(E)!);
+			// What the view hides once `removed` go (nothing: as it is now).
+			const hiddenOnce = (removed: readonly BlockId[]) => {
+				const set = new Set(removed);
+				return (id: BlockId) => !!view.hidden?.(id, set);
+			};
 			const headDies = !keepHead && s.offset === 0;
+			// What the view hides is not in the range: it goes only with a block that goes,
+			// a dying head's body included.
+			const hidden = hiddenOnce(headDies || headSpent ? [S] : []);
+			const between = ids.slice(at.get(S)! + 1, at.get(E)!).filter((id) => !hidden(id));
 			const lenE = c.displayLength(E);
 			const tailDies = e.offset === lenE;
 			const merges = !headDies && !tailDies && c.canMerge(E, S);
@@ -141,7 +161,9 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 				if (!gone(E)) return { block: E, offset: 0 };
 				const survives = (id: BlockId | null): boolean =>
 					id === null || rescued.includes(id) || (!gone(id) && survives(parent(id)));
-				const shown = (id: BlockId) => survives(id) && holds(id);
+				// Shown once the plan runs: a dying closed tail's rescued body is.
+				const hiddenAfter = hiddenOnce([...doomed, ...(merges ? [E] : [])]);
+				const shown = (id: BlockId) => survives(id) && holds(id) && !hiddenAfter(id);
 				// Before the tail: blocks a sealed rescue spared between S and E count too.
 				const prev = ids.slice(0, at.get(E)).findLast(shown);
 				if (prev !== undefined) return { block: prev, offset: c.displayLength(prev) };
@@ -149,7 +171,7 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 				return next === undefined ? null : { block: next, offset: 0 };
 			})();
 			// Nothing else left to hold the caret: the head stays, emptied (whole-doc).
-			if (caret === null) return prepare(true)(from, to);
+			if (caret === null) return prepare(true, headDies)(from, to, view);
 			return { ...c.plan([caret.block], writes), at: caret };
 		};
 	return { deleteRange: prepare(false), replaceRange: prepare(true) };

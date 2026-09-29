@@ -21,7 +21,7 @@ The embedded copy lets a paste into another Edytor editor keep full fidelity eve
 What gets copied:
 
 - A text range inside one block copies that text with its marks and inline blocks.
-- A text range across blocks copies the blocks it touches, cut at the range's ends.
+- A text range across blocks copies the blocks it touches, cut at the range's ends. A closed toggle's hidden body is copied exactly when deleting the range would delete it: with a toggle the range covers, or starts at the header of. Cut deletes the range as <kbd>Backspace</kbd> does, so a cut, or a copy followed by <kbd>Backspace</kbd>, never loses or duplicates it.
 - A block selection copies exactly the selected blocks, as whole blocks. A selected parent's unselected children are left out.
 
 Copy works in [readonly mode](/docs/editor/readonly) and never creates an undo step. Cut is one undo step and is ignored in readonly mode.

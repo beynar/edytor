@@ -160,6 +160,9 @@ describe('RW-09 · a persistent append fault does not make the provider redial e
 		const refused: unknown[] = [];
 		const { provider, dials } = dialingProvider(room, document.doc, { user: 'dan' });
 		provider.on('refused', (refusal: unknown) => refused.push(refusal));
+		// Each fault after a sync is reported (the RW-09 gap): the faults in a row, the next dial.
+		const unreachable: { attempts: number; nextRetryMs: number }[] = [];
+		provider.on('unreachable', (state) => unreachable.push(state));
 		// Every dial syncs, sends the edit, and is closed 1011 when its append
 		// fails. Backing off from 100 ms (200, 400, 800, 1600 ms…), four
 		// seconds hold at most six dials; redialing every 100 ms, dozens.
@@ -169,6 +172,12 @@ describe('RW-09 · a persistent append fault does not make the provider redial e
 		expect(during).toBeGreaterThanOrEqual(3);
 		expect(during).toBeLessThanOrEqual(6);
 		expect(faults).toBeLessThanOrEqual(during);
+		expect(unreachable.length).toBeGreaterThanOrEqual(during - 1);
+		expect(unreachable.slice(0, 3)).toEqual([
+			{ attempts: 1, nextRetryMs: 200 },
+			{ attempts: 2, nextRetryMs: 400 },
+			{ attempts: 3, nextRetryMs: 800 }
+		]);
 
 		await inRoom(room, (_r, state) => state.storage.sql.exec('DROP TRIGGER fail_append'));
 		await vi.waitFor(() => expect(provider.saved).toBe(true), { timeout: 10_000 });

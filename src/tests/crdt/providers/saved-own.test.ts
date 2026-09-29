@@ -89,6 +89,25 @@ describe('saved counts the actor’s own writes', () => {
 		seeded.destroy();
 	});
 
+	it('an earlier session’s actor record replayed from the local copy is not unsaved (SW7)', () => {
+		// The previous session held a room document it only read, and its record.
+		const room = createDocument({ value, actor: { id: 'ada' } });
+		const before = createDocument({ actor: { id: 'viv' } });
+		exchange(room, before);
+		before.sync();
+		const copy = before.encode();
+
+		const reloaded = createDocument({ actor: { id: 'viv' } });
+		const provider = offline(reloaded.doc);
+		Y.applyUpdate(reloaded.doc, copy, STORE);
+		expect(reloaded.facade.blockText('p')).toBe('seed');
+		// The seed counts until the room covers it; the record never does.
+		ack(provider, room.doc);
+		expect([provider.saved, provider.unsaved]).toEqual([true, 0]);
+		provider.destroy();
+		for (const document of [room, before, reloaded]) document.destroy();
+	});
+
 	it('a bare engine doc, with no actor binding, counts everything it holds', () => {
 		const source = createDocument({ value, actor: { id: 'ada' } });
 		const doc = new Y.Doc();

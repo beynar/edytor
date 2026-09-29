@@ -199,6 +199,14 @@ export type BlockDefinition = {
 	 */
 	island?: boolean;
 	/**
+	 * An island of lines (the code block): each direct child shows as this
+	 * kind's `defaultChild` and holds no children, even when an undo or a
+	 * peer's edit puts another kind or a nested block there. Needs `island`
+	 * and `defaultChild`. Leave it off for an island with structure (a table
+	 * of rows of cells, a callout): its children keep their kinds and nesting.
+	 */
+	lines?: boolean;
+	/**
 	 * Whether the snippet renders the block's own content (`content()`).
 	 * Defaults to `true`; containers that render only their children
 	 * declare `false` so no caret or endpoint lands in the unrendered slot.
@@ -234,8 +242,10 @@ export type BlockDefinition = {
 	 */
 	presets?: KindPreset[];
 	/**
-	 * The content and children a conversion into this kind replaces the
-	 * block's own with (a void has none; an island starts with a first child).
+	 * The content and children a conversion into this kind creates (a void
+	 * has none; an island starts with a first child). With it, a conversion
+	 * turns only a block that holds nothing into this kind; a block with text
+	 * or children stays intact and the new block is inserted after it.
 	 * Without it a conversion keeps content and children.
 	 */
 	empty?: Pick<JSONBlock, 'content' | 'children'>;

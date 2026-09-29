@@ -120,6 +120,22 @@ export const hiddenUnderDeleted = (doc: Peer['doc']): string[] => {
 	return out;
 };
 
+/**
+ * The `sealed-line` oracle input (XW-10): the display owner of each block's
+ * stored parent (`DEAD` → `'dead'`), read from the registry once per call.
+ */
+export const storedParentOf = (doc: Peer['doc']): ((id: string) => string | null) => {
+	const blocks = M.collectBlocks(doc);
+	const own = T.computeOwnership(doc, blocks);
+	const placements = M.resolvePlacements(blocks, own.ownerOf);
+	return (id) => {
+		const parent = placements.get(id)?.parent ?? null;
+		if (parent === null) return null;
+		const owner = own.ownerOf(parent);
+		return owner === DEAD ? 'dead' : owner;
+	};
+};
+
 /** The `seed-displacement` oracle input: the engine id of `id`'s registry node. */
 export const registryIdentity = (doc: Peer['doc'], id: string): string | null => {
 	const item = M.blockNodeOf(doc, id)?._item;

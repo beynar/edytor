@@ -8,23 +8,13 @@ import type {
 } from '$lib/session/moves.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { draggable, dropTargetForElements } from '$lib/dnd/pragmatic.js';
+import { outermost, revealing } from '$lib/selection/replaceSelection.js';
 
 const blockDragMimeType = 'application/x-edytor-block-id';
 
 /** The DOM event a handle click dispatches on the editor when no `onActivate` is set. */
 export const BLOCK_ACTIVATE_EVENT = 'edytor-block-activate';
 export type BlockActivation = { block: Block; anchor: HTMLElement };
-
-/** The blocks not inside another of them (a selected block's selected descendants ride with it). */
-export const outermost = (blocks: Iterable<Block>): Block[] => {
-	const all = new Set(blocks);
-	const inside = (block: Block) => {
-		for (let parent = block.parent; parent; parent = parent.parent)
-			if (all.has(parent)) return true;
-		return false;
-	};
-	return [...all].filter((block) => !inside(block));
-};
 
 /** Alt+arrow on a handle: one relative step. */
 const keyMoves: Record<string, BlockMoveDirection> = {
@@ -312,7 +302,7 @@ export class BlockHandleController {
 	}
 
 	private moveAndSelect(request: BlockMoveRequest) {
-		const moved = this.edytor.moveBlocks(request);
+		const moved = revealing(request.blocks, () => this.edytor.moveBlocks(request));
 		if (moved.length) this.edytor.selection.selectBlocks(...moved);
 	}
 

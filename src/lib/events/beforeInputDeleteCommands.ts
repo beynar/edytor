@@ -2,6 +2,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
+import { prepareDeleteContent } from '$lib/edytor.utils.js';
 import type { Attempt } from '$lib/session/attempt.js';
 import { getNextWordEndOffset, getPreviousWordStartOffset } from './wordBoundary.js';
 
@@ -12,18 +13,19 @@ const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: Attemp
 	Boolean(snapshot.startText && edytor.composition.covers(snapshot.startText, snapshot.yStart));
 
 /**
- * Merge `from` into a collapsed toggle's header `into` (one command, named as
- * the key's merge): its children first take its slot, so they stay
- * displayed, then its content joins the header. Nothing when the document
- * refuses the merge (an island).
+ * Merge `from` into a collapsed toggle's header `into`, as the key's merge:
+ * one plan that deletes the seam from the header's end to `from`'s start,
+ * the hidden body outside it (`del.range.hidden-body`). `from`'s children
+ * take its slot, still displayed, and its content joins the header; a veto
+ * refuses all of it. Nothing when the document refuses the merge (an island).
  */
 const mergeIntoHeader = (edytor: Edytor, from: Block, into: Block, backward: boolean) => {
-	const merge = () => edytor.facade.prepare.mergeBlocks(from.id, into.id);
-	if (!('writes' in merge())) return;
-	if (from.children.length)
-		edytor.moveBlocks({ blocks: [...from.children], target: from, position: 'after' });
-	if (backward) dispatchPlan(from, 'mergeBlockBackward', {}, merge, [from.parent]);
-	else dispatchPlan(into, 'mergeBlockForward', {}, merge, [from.parent]);
+	const [end, start] = [into.lastText, from.firstText];
+	if (!end || !start || !('writes' in edytor.facade.prepare.mergeBlocks(from.id, into.id))) return;
+	const seam = { startText: end, yStart: end.length, endText: start, yEnd: 0 };
+	const plan = () => prepareDeleteContent.call(edytor, { replace: true, selection: seam });
+	if (backward) dispatchPlan(from, 'mergeBlockBackward', {}, plan, [from.parent]);
+	else dispatchPlan(into, 'mergeBlockForward', {}, plan, [from.parent]);
 };
 
 /** A non-collapsed selection: the document's range deletion, then its caret (`del.range.*`). */

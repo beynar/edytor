@@ -323,6 +323,8 @@ export type KindPreset = {
 	data?: Record<string, SerializableContent>;
 	/** Typed at the start of a block's first text, each converts it (the last character triggers). */
 	markdown?: string[];
+	/** The slash menu section (default `Basic blocks`). */
+	group?: string;
 };
 
 export type EditorCommand = {
@@ -331,6 +333,8 @@ export type EditorCommand = {
 	icon?: string;
 	keywords?: string[];
 	group?: string;
+	/** A shortcut shown beside the label (a markdown prefix such as `##`). */
+	hint?: string;
 	isEnabled?: (edytor: Edytor) => boolean;
 	run: (edytor: Edytor) => unknown | Promise<unknown>;
 };

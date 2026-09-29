@@ -198,6 +198,10 @@ export const richTextOperations = (edytor: Edytor) => ({
 	 * the same color must set, never remove. A collapsed caret stages the
 	 * mark for the next insert (mirroring `removeAllMarksAtRange`).
 	 */
+	/** Remove one mark (a color, a highlight…) from the selected range. */
+	removeMarkAtRange: (mark: RichTextMark) => {
+		if (!edytor.selection.state.isCollapsed) formatSelectedTextRange(edytor, mark, null, false);
+	},
 	setMarkValueAtRange: (mark: RichTextMark, value: SerializableContent) => {
 		// `color`/`highlight` values render inside `style="..."` —
 		// sanitize at the write boundary so a hostile payload (native

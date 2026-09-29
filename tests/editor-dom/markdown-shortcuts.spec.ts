@@ -68,7 +68,7 @@ test.describe('browser markdown shortcuts', () => {
 			},
 			{
 				name: 'quote',
-				keys: '> Quote',
+				keys: '" Quote',
 				expected: { checked: undefined, level: undefined, text: 'Quote', type: 'quote' },
 				selector: '[data-edytor-type="quote"]'
 			}

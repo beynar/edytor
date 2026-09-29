@@ -1,10 +1,10 @@
 ---
 title: Entry points
-description: The four package entry points of edytor, what each exports, and where each can run, from the browser to Node and Cloudflare Workers.
+description: The package entry points of edytor, what each exports, and where each can run, from the browser to Node and Cloudflare Workers, plus the Notion theme stylesheet.
 icon: package
 ---
 
-The `edytor` package has four entry points. Only the root contains Svelte components; the CRDT entries have no Svelte in their import graph and run in Node and in Cloudflare Workers.
+The `edytor` package has four code entry points and one stylesheet. Only the root contains Svelte components; the CRDT entries have no Svelte in their import graph and run in Node and in Cloudflare Workers.
 
 | Import | Contains | Runs in |
 | --- | --- | --- |
@@ -12,6 +12,7 @@ The `edytor` package has four entry points. Only the root contains Svelte compon
 | `edytor/crdt/edytor` | The document API and its types, `bindCrdt`, awareness, the wire protocol helpers | Browser, Node 22+, Workers |
 | `edytor/crdt` | The vendored CRDT engine itself (Yjs v14 fork) | Browser, Node 22+, Workers |
 | `edytor/cloudflare` | `DocumentRoom` (a Durable Object), `attachDocument` (for your own Durable Object) and `routeDocumentSocket` | Cloudflare Workers only |
+| `edytor/themes/notion.css` | The [Notion theme](/docs/customization/styling#notion-theme) stylesheet | Any bundler that imports CSS |
 
 No other path is exported. Imports such as `edytor/dist/...` or `edytor/crdt/vendor/...` fail with `ERR_PACKAGE_PATH_NOT_EXPORTED`.
 
@@ -26,7 +27,8 @@ import {
 	Block, Text, InlineBlock, // handle classes
 	richTextPlugin, codePlugin, markdownShortcutsPlugin, slashMenuPlugin,
 	toolbarPlugin, arrowMovePlugin, blockHandlesPlugin, createBlockHandlesPlugin,
-	richTextOperations, convertToKind,
+	blockMenuPlugin, createBlockMenuPlugin,
+	richTextOperations, richTextPlaceholder, convertToKind,
 	createDocument, loadDocument, attachDocument, // the document API
 	createIndexeddbSync, createWebsocketSync, clearDocument, // sync factories
 	IndexeddbPersistence, WebsocketProvider // provider classes
@@ -112,3 +114,4 @@ It imports `cloudflare:workers`, so it loads only inside a Worker. It is built o
 - Reading, converting or editing a document in Node, a SvelteKit server route or a Worker: `edytor/crdt/edytor`.
 - Handling raw updates, or passing the engine to `bindCrdt`: `edytor/crdt`.
 - Hosting collaboration on Cloudflare: `edytor/cloudflare`.
+- Notion's look for the document: `import 'edytor/themes/notion.css'`.

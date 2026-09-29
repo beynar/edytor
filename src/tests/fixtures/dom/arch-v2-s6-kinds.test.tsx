@@ -134,12 +134,12 @@ describe('slash menu: generated from kind records', () => {
 			'block.heading1 H₁',
 			'block.heading2 H₂',
 			'block.heading3 H₃',
-			'block.quote ❝',
 			'block.bulleted-list-item •',
 			'block.numbered-list-item 1.',
 			'block.todo-item ☐',
 			'block.toggle ▸',
 			'block.callout ✦',
+			'block.quote ❝',
 			'block.divider —'
 		]);
 	});
@@ -168,12 +168,12 @@ describe('slash menu: generated from kind records', () => {
 			'Heading 1',
 			'Heading 2',
 			'Heading 3',
-			'Quote',
 			'Bulleted list',
 			'Numbered list',
 			'To-do list',
 			'Toggle list',
 			'Callout',
+			'Quote',
 			'Divider'
 		]);
 	});
@@ -193,7 +193,7 @@ describe('slash menu: generated from kind records', () => {
 		await enter();
 		await type(editor, '/to');
 		expect(items().map((item) => item.split(' ')[0])).toContain('block.todo-item');
-		expect(canonicalTree(edytor)[0]).toMatchObject({ type: 'callout', data: { icon: '!' } });
+		expect(canonicalTree(edytor)[0]).toMatchObject({ type: 'callout', data: { icon: '💡' } });
 	});
 });
 
@@ -204,10 +204,14 @@ describe('markdown shortcuts: generated from kind records', () => {
 		['### ', { type: 'heading', data: { level: 'h3' } }],
 		['- ', { type: 'bulleted-list-item' }],
 		['* ', { type: 'bulleted-list-item' }],
+		['+ ', { type: 'bulleted-list-item' }],
 		['1. ', { type: 'numbered-list-item' }],
+		['a. ', { type: 'numbered-list-item' }],
 		['[ ] ', { type: 'todo-item', data: { checked: false } }],
 		['[] ', { type: 'todo-item', data: { checked: false } }],
-		['> ', { type: 'quote' }],
+		// Notion: `"` + space is a quote, `>` + space a toggle.
+		['" ', { type: 'quote' }],
+		['> ', { type: 'toggle' }],
 		['---', { type: 'divider' }],
 		['```', { type: 'code', children: [{ type: 'codeLine' }] }]
 	])('"%s" converts to %o', async (typed, expected) => {

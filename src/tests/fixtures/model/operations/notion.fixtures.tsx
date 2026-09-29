@@ -249,11 +249,12 @@ export const fixtures = defineFixtures([
 		)
 	}),
 	defineModelOperationFixture({
+		// Notion: `"` + space is a quote (`>` + space is a toggle).
 		description: 'converts markdown quote shortcut to a quote block',
 		plugins: notionPlugins,
 		input: (
 			<root>
-				<paragraph>{'>'}|</paragraph>
+				<paragraph>{'"'}|</paragraph>
 			</root>
 		),
 		run: ({ edytor }) => runBeforeInput(edytor, { inputType: 'insertText', data: ' ' }),
@@ -261,6 +262,21 @@ export const fixtures = defineFixtures([
 		output: (
 			<root>
 				<quote></quote>
+			</root>
+		)
+	}),
+	defineModelOperationFixture({
+		description: 'converts the markdown toggle shortcut to a toggle',
+		plugins: notionPlugins,
+		input: (
+			<root>
+				<paragraph>{'>'}|</paragraph>
+			</root>
+		),
+		run: ({ edytor }) => runBeforeInput(edytor, { inputType: 'insertText', data: ' ' }),
+		output: (
+			<root>
+				<toggle></toggle>
 			</root>
 		)
 	}),

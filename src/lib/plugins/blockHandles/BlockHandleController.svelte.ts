@@ -1,3 +1,4 @@
+import { tick } from 'svelte';
 import type { ElementDropTargetEventPayloadMap } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 
 import type { Block } from '$lib/block/block.svelte.js';
@@ -10,6 +11,10 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { draggable, dropTargetForElements } from '$lib/dnd/pragmatic.js';
 
 const blockDragMimeType = 'application/x-edytor-block-id';
+
+/** The DOM event a handle click dispatches on the editor when no `onActivate` is set. */
+export const BLOCK_ACTIVATE_EVENT = 'edytor-block-activate';
+export type BlockActivation = { block: Block; anchor: HTMLElement };
 
 /** Alt+arrow on a handle: one relative step. */
 const keyMoves: Record<string, BlockMoveDirection> = {
@@ -116,7 +121,38 @@ export class BlockHandleController {
 			return;
 		}
 		this.selectBlock(block);
-		this.options.onActivate?.({ block, anchor });
+		if (this.options.onActivate) this.options.onActivate({ block, anchor });
+		// Without a callback, a block menu plugin may answer the activation.
+		else
+			this.edytor.node?.dispatchEvent(
+				new CustomEvent<BlockActivation>(BLOCK_ACTIVATE_EVENT, { detail: { block, anchor } })
+			);
+	}
+
+	/**
+	 * Notion's `+`: a new block below (above with Alt) opened on the slash
+	 * menu; an empty block of the default kind takes the `/` itself.
+	 */
+	async addBlock(block: Block, above = false) {
+		const { edytor } = this;
+		if (edytor.readonly || !block.parent) return;
+		const type = edytor.defaultChild(block.parent);
+		const spec = { block: { type } };
+		const target =
+			block.type === type && block.isEmpty
+				? block
+				: above
+					? block.insertBlockBefore(spec)
+					: block.insertBlockAfter(spec);
+		// A new block's text mounts on the next tick: the caret needs its node.
+		if (target !== block) await tick();
+		const text = target?.firstEditableText;
+		if (!text) return;
+		edytor.selection.setCollapsedStateAtTextOffset(text, 0);
+		edytor.selection.setAtTextOffset(text, 0);
+		edytor.node?.focus({ preventScroll: true });
+		text.insertText({ value: '/' });
+		edytor.selection.setAtTextOffset(text, 1);
 	}
 
 	registerHandle(element: HTMLElement, block: Block) {

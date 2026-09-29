@@ -32,7 +32,7 @@ There is no separate renderer: readonly is the editable editor with `contentedit
 - Hotkeys don't run, neither the built-in ones (undo, select-all ladder, nesting) nor the plugins' (<kbd>Mod</kbd>+<kbd>B</kbd>, …).
 - Cut, paste and drop are ignored.
 - Every handle command is refused: after a call, `edytor.dispatcher.last.status` is `'refused'`. `canMoveBlocks` answers `false`.
-- Block handles are hidden and dragging is disabled. The slash menu and the selection toolbar stay closed.
+- Block handles (the `+` and the grip) are hidden and dragging is disabled, so the block menu cannot open. The slash menu and the selection toolbar stay closed, and to-do checkboxes do not toggle.
 - A `sync` prop is not attached. To show collaborative content read-only, pass a `document` that has its sync attached (see [Collaboration](/docs/collaboration)).
 
 Facade operations are document writes and are not affected by the view's `readonly`: code can still change the document, and every view shows the change.

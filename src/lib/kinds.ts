@@ -55,7 +55,8 @@ export const kindCommand = (edytor: Edytor, row: KindRow): EditorCommand => ({
 	label: row.label,
 	icon: row.icon,
 	keywords: row.keywords,
-	group: 'Blocks',
+	group: row.group ?? 'Basic blocks',
+	hint: row.markdown?.[0]?.trim(),
 	isEnabled: () => Boolean(edytor.selection.state.startBlock?.convertible),
 	run: () => convertToKind(edytor, edytor.selection.state.startBlock, row)
 });

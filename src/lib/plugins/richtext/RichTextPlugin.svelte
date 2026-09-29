@@ -1,5 +1,6 @@
 <script module lang="ts">
-	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
+	import type { Plugin, BlockSnippetPayload, PlaceholderView } from '$lib/plugins.js';
+	import type { Block } from '$lib/block/block.svelte.js';
 	import type { SerializableContent } from '$lib/utils/json.js';
 	import type { HotKey } from '$lib/session/keymap.js';
 	import {
@@ -64,7 +65,38 @@
 			value.test(el.style[property]) ||
 			undefined;
 
+	/**
+	 * Notion's placeholders: headings, lists, to-dos, toggles and quotes name
+	 * their kind while empty; a paragraph invites a command only while focused.
+	 */
+	export const richTextPlaceholder = ({ type, data, focused }: PlaceholderView): string | null => {
+		if (type === 'heading') return `Heading ${String(data.level ?? 'h1').slice(1)}`;
+		if (type === 'bulleted-list-item' || type === 'numbered-list-item') return 'List';
+		if (type === 'todo-item') return 'To-do';
+		if (type === 'toggle') return 'Toggle';
+		if (type === 'quote') return 'Empty quote';
+		if (type === 'callout') return focused ? 'Type something…' : null;
+		return focused ? "Type '/' for commands" : null;
+	};
+
+	/** Notion's "turn into" chords: Mod+Alt+0 text … 8 code (`block.<type>` command ids). */
+	const TURN_INTO: Record<string, string> = {
+		'mod+alt+0': 'block.paragraph',
+		'mod+alt+1': 'block.heading1',
+		'mod+alt+2': 'block.heading2',
+		'mod+alt+3': 'block.heading3',
+		'mod+alt+4': 'block.todo-item',
+		'mod+alt+5': 'block.bulleted-list-item',
+		'mod+alt+6': 'block.numbered-list-item',
+		'mod+alt+7': 'block.toggle',
+		'mod+alt+8': 'block.code'
+	};
+
 	export const richTextPlugin: Plugin = (edytor) => {
+		const toggleTodo = (block: Block) => {
+			if (edytor.readonly) return;
+			block.setData({ ...block.data, checked: !block.data.checked });
+		};
 		const setMarkAndSelect =
 			(mark: RichTextMark, value?: SerializableContent): HotKey =>
 			({ prevent }) => {
@@ -78,8 +110,22 @@
 				'mod+i': setMarkAndSelect('italic'),
 				'mod+u': setMarkAndSelect('underline'),
 				'mod+e': setMarkAndSelect('code'),
+				'mod+shift+s': setMarkAndSelect('strike'),
 				'mod+shift+x': setMarkAndSelect('strike'),
-				'mod+shift+h': setMarkAndSelect('color', 'red')
+				'mod+shift+h': setMarkAndSelect('color', 'red'),
+				// Mod+Enter checks a to-do (Notion); elsewhere the built-in split runs.
+				'mod+enter': ({ prevent }) => {
+					const block = edytor.selection.state.startBlock;
+					if (block?.type === 'todo-item') prevent(() => toggleTodo(block));
+				},
+				...Object.fromEntries(
+					Object.entries(TURN_INTO).map(([chord, id]): [string, HotKey] => [
+						chord,
+						({ prevent }) => {
+							if (edytor.commands.has(id)) prevent(() => void edytor.runCommand(id));
+						}
+					])
+				)
 			},
 			onBeforeInput: ({ e, prevent }) => {
 				if (isNativeFormatInputType(e.inputType)) {
@@ -190,8 +236,7 @@
 			blocks: {
 				paragraph: {
 					snippet: paragraph,
-					element: { tag: 'div', attributes: { class: 'rounded bg-opacity-25 p-1 my-1' } },
-					presets: [{ label: 'Text', icon: 'T' }]
+					presets: [{ label: 'Text', icon: 'T', keywords: ['paragraph', 'plain'] }]
 				},
 				heading: {
 					snippet: heading,
@@ -227,12 +272,6 @@
 						return `<${tag}>${content}</${tag}>${children}`;
 					}
 				},
-				quote: {
-					snippet: quote,
-					element: 'blockquote',
-					presets: [{ label: 'Quote', icon: '❝', markdown: ['> '] }],
-					html: 'blockquote'
-				},
 				'bulleted-list-item': {
 					snippet: listItem,
 					element: 'li',
@@ -241,7 +280,7 @@
 							label: 'Bulleted list',
 							icon: '•',
 							keywords: ['bullet', 'ul'],
-							markdown: ['- ', '* ']
+							markdown: ['- ', '* ', '+ ']
 						}
 					],
 					html: 'li'
@@ -250,7 +289,12 @@
 					snippet: listItem,
 					element: 'li',
 					presets: [
-						{ label: 'Numbered list', icon: '1.', keywords: ['number', 'ol'], markdown: ['1. '] }
+						{
+							label: 'Numbered list',
+							icon: '1.',
+							keywords: ['number', 'ol'],
+							markdown: ['1. ', 'a. ', 'i. ']
+						}
 					],
 					html: 'li',
 					// HTML import: an `li` is a bulleted item (the first `li` kind) unless its list is ordered.
@@ -278,11 +322,22 @@
 				toggle: {
 					snippet: details,
 					...disclosure,
-					presets: [{ label: 'Toggle list', icon: '▸' }]
+					presets: [
+						{ label: 'Toggle list', icon: '▸', keywords: ['details', 'expand'], markdown: ['> '] }
+					]
 				},
 				callout: {
 					snippet: callout,
-					presets: [{ label: 'Callout', icon: '✦', data: { icon: '!' } }]
+					presets: [
+						{ label: 'Callout', icon: '✦', keywords: ['note', 'tip'], data: { icon: '💡' } }
+					]
+				},
+				quote: {
+					snippet: quote,
+					element: 'blockquote',
+					// Notion: `"` + space is a quote; `>` + space is a toggle.
+					presets: [{ label: 'Quote', icon: '❝', markdown: ['" '] }],
+					html: 'blockquote'
 				},
 				divider: {
 					element: 'hr',
@@ -358,7 +413,7 @@
 {/snippet}
 
 {#snippet callout({ block, content, children }: BlockSnippetPayload<{ icon?: string }>)}
-	<span contenteditable="false">{block.data.icon || '!'}</span>
+	<span contenteditable="false" data-edytor-callout-icon>{block.data.icon || '💡'}</span>
 	<div>
 		{@render content()}
 	</div>
@@ -370,7 +425,20 @@
 {/snippet}
 
 {#snippet todoItem({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}
-	<input type="checkbox" checked={Boolean(block.data.checked)} contenteditable="false" readonly />
+	<input
+		type="checkbox"
+		checked={Boolean(block.data.checked)}
+		contenteditable="false"
+		aria-label="Done"
+		data-edytor-todo-checkbox
+		onmousedown={(event) => event.preventDefault()}
+		onclick={(event) => {
+			event.preventDefault();
+			const target = block.handle;
+			if (target.edytor.readonly) return;
+			target.setData({ ...target.data, checked: !target.data.checked });
+		}}
+	/>
 	<div>
 		{@render content()}
 	</div>

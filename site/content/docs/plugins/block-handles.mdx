@@ -1,10 +1,10 @@
 ---
 title: Block handles
-description: The block handles plugin adds a drag handle beside each block, with drag and drop, keyboard moves, a drop indicator and an activation callback for block menus.
+description: The block handles plugin adds a + button and a drag grip beside each block, with drag and drop, keyboard moves, a drop indicator and an activation hook for block menus.
 icon: grip-vertical
 ---
 
-Block handles are the six-dot buttons beside each block. Drag one to reorder, nest or outdent a block; focus one and use <kbd>Alt</kbd> with the arrow keys to move it; click one to select the block and open your own block menu. `<Edytor>` includes them by default.
+Block handles are the two buttons left of each block, as in Notion: a `+` that adds a block, then the ⋮⋮ grip. Drag the grip to reorder, nest or outdent a block; focus it and use <kbd>Alt</kbd> with the arrow keys to move it; click it to select the block and open a block menu, such as the bundled [block menu](/docs/plugins/block-menu). `<Edytor>` includes them by default.
 
 ## Enabling and configuring
 
@@ -43,7 +43,7 @@ The `blockHandles` prop of `<Edytor>` controls the plugin:
     },
     onActivate: {
       type: "({ block, anchor }: BlockHandleActivation) => void",
-      description: "Called when a handle is clicked, after the block is selected. anchor is the handle element, to position a menu against.",
+      description: "Called when a grip is clicked, after the block is selected. anchor is the grip element, to position a menu against. Without it, the click dispatches an edytor-block-activate event instead (see below).",
     },
   }}
 />
@@ -59,6 +59,11 @@ A handle sits in the editor's overlay layer, left of its block, aligned with the
 - A handle exists only for blocks that can move, and is hidden while the editor is readonly.
 - Handles mount lazily, for blocks within about one screen of the viewport and for blocks that are hovered, selected, focused or being dragged. Large documents do not pay for a handle per block.
 - A handle is transparent until you hover its block. On touch devices (no hover), handles are always visible.
+- The buttons are gray (`#ada9a3`) with a 6px-rounded hover background.
+
+### The + button
+
+Clicking `+` inserts a new block of the parent's default kind below the block (above with <kbd>Alt</kbd>), puts the caret in it and types `/`, so the [slash menu](/docs/plugins/slash-menu) opens there. When the block is already an empty block of that default kind, it takes the `/` itself instead of adding another. The button does nothing in a readonly editor.
 
 ## Drag and drop
 
@@ -101,11 +106,28 @@ While a handle has focus, <kbd>Alt</kbd> with an arrow key moves its block:
 | <kbd>Alt</kbd> + <kbd>→</kbd>    | In: the last child of the previous sibling                           |
 | <kbd>Alt</kbd> + <kbd>←</kbd>    | Out: after the parent                                                |
 
-The handle claims every <kbd>Alt</kbd>+arrow while it has focus, and the moved block stays selected. To move selected blocks while the caret is in the text, see [Arrow move](/docs/plugins/arrow-move).
+The handle claims every <kbd>Alt</kbd>+arrow while it has focus, and the moved block stays selected. To move the caret's block from the text, or a block selection, see [Arrow move](/docs/plugins/arrow-move).
 
 ## Building a block menu
 
-`onActivate` gives you the block and the handle element. The click has already selected the block. A typical menu converts or moves the block with the editor's commands and then returns the caret to the text:
+The [block menu plugin](/docs/plugins/block-menu) is a complete Notion-style menu: list `blockMenuPlugin` and leave `onActivate` unset. When no `onActivate` is passed, a grip click dispatches a DOM event on the editor's root, which that plugin (or your own) listens for:
+
+```ts
+import { BLOCK_ACTIVATE_EVENT, type BlockActivation, type Plugin } from 'edytor';
+
+export const myMenuPlugin: Plugin = () => ({
+	onEdytorAttached: ({ node }) => {
+		const open = (event: Event) => {
+			const { block, anchor } = (event as CustomEvent<BlockActivation>).detail;
+			// Open a menu for block, next to anchor.
+		};
+		node.addEventListener(BLOCK_ACTIVATE_EVENT, open);
+		return () => node.removeEventListener(BLOCK_ACTIVATE_EVENT, open);
+	}
+});
+```
+
+To build your own menu instead, pass `onActivate`. It gives you the block and the grip element; the click has already selected the block. A typical menu converts or moves the block with the editor's commands and then returns the caret to the text:
 
 ```ts
 import { convertToKind, type BlockHandleActivation } from 'edytor';
@@ -126,11 +148,12 @@ const onActivate = ({ block, anchor }: BlockHandleActivation) => {
 
 The same `edytor.moveBlocks` and `edytor.canMoveBlocks` calls move blocks from anywhere, with `direction` (`up`, `down`, `in`, `out`) or with a `target` and `position` (`before`, `after`, `inside`). See [Commands](/docs/editor/commands).
 
-A click leaves a block selection behind. To put the caret back in the block after a menu action, set it on the block's first text and focus the editor:
+A click leaves a block selection behind, and a DOM range alone does not replace it. To put the caret back in the block after a menu action, set the model caret first (which clears the block selection), then the DOM caret, and focus the editor:
 
 ```ts
 const text = block.firstEditableText;
 if (text) {
+	edytor.selection.setCollapsedStateAtTextOffset(text, 0);
 	edytor.selection.setAtTextOffset(text, 0);
 	edytor.node?.focus({ preventScroll: true });
 }

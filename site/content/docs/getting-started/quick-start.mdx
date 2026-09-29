@@ -4,7 +4,7 @@ description: Build a working Edytor editor with the bundled plugins, an initial 
 icon: zap
 ---
 
-This page builds a complete editor: rich text blocks and marks, code blocks, markdown shortcuts, a slash menu, a selection toolbar and block handles. It then reads the document as it changes and styles the result.
+This page builds a complete Notion-style editor: rich text blocks and marks, code blocks, markdown shortcuts, a slash menu, a selection toolbar, block handles with a block menu, and the Notion theme. It then reads the document as it changes and styles the result.
 
 <Steps>
   <Step title="Pick the plugins">
@@ -17,7 +17,7 @@ This page builds a complete editor: rich text blocks and marks, code blocks, mar
     Use `onChange`, or bind the editor instance with `bind:edytor` and read `edytor.value`.
   </Step>
   <Step title="Style it">
-    Target the `data-edytor-*` attributes the editor renders.
+    Import the Notion theme, or target the `data-edytor-*` attributes the editor renders.
   </Step>
 </Steps>
 
@@ -28,15 +28,18 @@ This page builds a complete editor: rich text blocks and marks, code blocks, mar
 	import {
 		Edytor,
 		arrowMovePlugin,
+		blockMenuPlugin,
 		codePlugin,
 		markdownShortcutsPlugin,
 		richTextPlugin,
+		richTextPlaceholder,
 		slashMenuPlugin,
 		toolbarPlugin,
 		type EdytorInstance,
 		type JSONBlock,
 		type JSONDoc
 	} from 'edytor';
+	import 'edytor/themes/notion.css';
 
 	const plugins = [
 		arrowMovePlugin,
@@ -44,6 +47,7 @@ This page builds a complete editor: rich text blocks and marks, code blocks, mar
 		markdownShortcutsPlugin,
 		slashMenuPlugin,
 		toolbarPlugin,
+		blockMenuPlugin,
 		richTextPlugin
 	];
 
@@ -69,28 +73,24 @@ This page builds a complete editor: rich text blocks and marks, code blocks, mar
 	};
 </script>
 
-<Edytor
-	{plugins}
-	{value}
-	{onChange}
-	bind:edytor
-	class="editor"
-	placeholder={(view) => (view.focused ? "Type '/' for commands" : null)}
-/>
+<div class="edytor-notion">
+	<Edytor {plugins} {value} {onChange} bind:edytor class="editor" placeholder={richTextPlaceholder} />
+</div>
 ```
 
-Block handles are on by default, so the editor has drag handles and the block keyboard moves without an extra plugin. Pass `blockHandles={false}` to remove them.
+The `edytor-notion` class applies the imported theme, and `richTextPlaceholder` shows Notion's placeholders ("Heading 1", "To-do", "Type '/' for commands"…). Block handles are on by default, so each block has a `+` and a drag grip without an extra plugin; `blockMenuPlugin` opens its menu when you click the grip. Pass `blockHandles={false}` to remove them.
 
 What each plugin adds:
 
 | Plugin | Adds |
 | --- | --- |
-| `richTextPlugin` | The rich text block kinds and marks, their keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>I</kbd>, …) and HTML import rules. |
+| `richTextPlugin` | The rich text block kinds and marks, their keyboard shortcuts (<kbd>Mod</kbd>+<kbd>B</kbd>, <kbd>Mod</kbd>+<kbd>Alt</kbd>+<kbd>1</kbd>, …) and HTML import rules. |
 | `codePlugin` | A `code` block (an island of `codeLine` children) with syntax highlighting. |
-| `markdownShortcutsPlugin` | Typing `# `, `- `, `1. `, `> `, `[] `, `---` or ```` ``` ```` at the start of a block converts it. |
+| `markdownShortcutsPlugin` | Typing `# `, `- `, `1. `, `[] `, `" `, `> `, `---` or ```` ``` ```` at the start of a block converts it; `**bold**`, `*italic*` and friends format inline. |
 | `slashMenuPlugin` | A menu of block kinds, opened by typing `/`. |
-| `toolbarPlugin` | A floating toolbar over a text selection, with a button per mark that declares one. |
-| `arrowMovePlugin` | <kbd>Mod</kbd>+<kbd>↑</kbd> / <kbd>Mod</kbd>+<kbd>↓</kbd> move the selected blocks. |
+| `toolbarPlugin` | A floating toolbar over a text selection: Turn into, link, marks and colors. |
+| `blockMenuPlugin` | The menu of a block handle's grip: Turn into, Duplicate, Move, Delete. |
+| `arrowMovePlugin` | <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move the caret's block; <kbd>Mod</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> move selected blocks. |
 
 Plugin order matters: when two plugins define the same block kind, mark or command, the first one wins. See [Plugins](/docs/plugins).
 
@@ -118,6 +118,8 @@ With the instance bound, `edytor.value` returns the same JSON and is reactive, s
 `value` is the initial content only. Updating the prop later does not replace the document, and `bind:value` is not written back. To change content after mount, use [commands](/docs/editor/commands).
 
 ## Style the editor
+
+The Notion theme above styles every bundled kind; its colors and fonts are custom properties you can override (see [Styling](/docs/customization/styling#notion-theme)). To style the editor yourself instead, drop the import and the `edytor-notion` class.
 
 The editor renders a `div` with `data-edytor` (and your `class`). Each block is an element with data attributes you can target:
 

@@ -11,6 +11,7 @@ export default defineMeta({
     "rich-text",
     "code",
     "block-handles",
+    "block-menu",
     "slash-menu",
     "toolbar",
     "markdown-shortcuts",

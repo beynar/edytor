@@ -3,6 +3,21 @@ import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { isRecord, type SerializableContent } from '$lib/utils/json.js';
 import { richTextOperations, type RichTextMark } from '$lib/plugins/richtext/richTextOperations.js';
+import { convertToKind, type KindRow } from '$lib/kinds.js';
+
+/** Notion's palette: text colors and their backgrounds, by name. */
+export const TOOLBAR_COLORS = [
+	{ name: 'Default', text: null, background: null },
+	{ name: 'Gray', text: '#7d7a75', background: '#f0efed' },
+	{ name: 'Brown', text: '#9f765a', background: '#f5ede9' },
+	{ name: 'Orange', text: '#d27b2d', background: '#fbebde' },
+	{ name: 'Yellow', text: '#cb9434', background: '#f9f3dc' },
+	{ name: 'Green', text: '#50946e', background: '#e8f1ec' },
+	{ name: 'Blue', text: '#387dc9', background: '#e5f2fc' },
+	{ name: 'Purple', text: '#9a6bb4', background: '#f3ebf9' },
+	{ name: 'Pink', text: '#c14c8a', background: '#fae9f1' },
+	{ name: 'Red', text: '#cf5148', background: '#fce9e7' }
+] as const;
 
 const getLinkHref = (value: SerializableContent | undefined) => {
 	if (!isRecord(value)) {
@@ -14,6 +29,8 @@ const getLinkHref = (value: SerializableContent | undefined) => {
 export class ToolbarController {
 	isVisible = $state(false);
 	linkUrl = $state('');
+	/** The open panel: the kind menu, the link field or the colors. */
+	panel = $state<null | 'turn' | 'link' | 'color'>(null);
 	/** The selection the toolbar acts on: a value (anchors), so peers' edits move it (L52). */
 	private selectionSnapshot: SelectionValue | null = null;
 	private isRestoringSelection = false;
@@ -24,6 +41,7 @@ export class ToolbarController {
 		if (!this.canShowForSelection(selection)) {
 			this.isVisible = false;
 			this.linkUrl = '';
+			this.panel = null;
 			this.selectionSnapshot = null;
 			return;
 		}
@@ -44,6 +62,43 @@ export class ToolbarController {
 		return [...this.edytor.marks].flatMap(([mark, { toolbar }]) =>
 			toolbar ? [{ mark, ...toolbar }] : []
 		);
+	}
+
+	/** The kinds the selection's block may turn into (conversions that keep its content). */
+	get kinds(): KindRow[] {
+		return this.edytor.kinds.filter((kind) => !kind.replaces);
+	}
+
+	/** The row naming the selection's block, for the kind button's label. */
+	get currentKind(): KindRow | undefined {
+		const block = this.edytor.selection.state.startBlock;
+		if (!block) return undefined;
+		const level = block.data?.level;
+		return this.kinds.find(
+			(kind) =>
+				kind.value.type === block.type && (level === undefined || kind.value.data?.level === level)
+		);
+	}
+
+	togglePanel(panel: 'turn' | 'link' | 'color') {
+		this.panel = this.panel === panel ? null : panel;
+	}
+
+	turnInto(kind: KindRow) {
+		this.panel = null;
+		this.runWithSelection(() => {
+			convertToKind(this.edytor, this.edytor.selection.state.startBlock, kind, false);
+		});
+	}
+
+	/** Set (or clear, with `null`) the text color or background of the selection. */
+	setColor(mark: 'color' | 'highlight', value: string | null) {
+		this.panel = null;
+		this.runWithSelection(() => {
+			const operations = richTextOperations(this.edytor);
+			if (value) operations.setMarkValueAtRange(mark, value);
+			else operations.removeMarkAtRange(mark);
+		});
 	}
 
 	toggleMark(mark: string) {

@@ -1,10 +1,8 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
-	import type { Block } from '$lib/block/block.svelte.js';
-	import type { BlockMoveDirection } from '$lib/session/moves.js';
 	import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
-	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+	import { richTextPlugin, richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 	import { imagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
@@ -12,22 +10,17 @@
 	import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
 	import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
-	import { convertToKind, type KindRow } from '$lib/kinds.js';
-	import type { BlockHandleActivation } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
+	import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 	import type { Plugin } from '$lib/plugins.js';
 	import { page } from '$app/state';
 	import { createIndexeddbSync } from '$lib/collaboration/providers.js';
+	import '$lib/themes/notion.css';
 	import './demo.css';
 
 	let edytor = $state<EdytorContext>();
 	let isMounted = $state(false);
-	let blockMenuNode = $state<HTMLDivElement>();
-	let blockMenuTrigger: HTMLElement | null = null;
-	let repositionBlockMenu: (() => void) | null = null;
-	let blockMenu = $state<{ blockId: string } | null>(null);
-	let copiedBlockId = $state<string | null>(null);
-	let copyFailed = $state(false);
 
+	/** `#block-<id>` anchors: a copied block link scrolls to its block. */
 	const demoPagePlugin: Plugin = () => ({
 		onBlockAttached: ({ node, block }) => {
 			const anchor = `block-${block.id}`;
@@ -52,6 +45,9 @@
 		mentionPlugin,
 		slashMenuPlugin,
 		toolbarPlugin,
+		createBlockMenuPlugin({
+			linkTo: (block) => `${location.origin}${location.pathname}#block-${block.id}`
+		}),
 		demoPagePlugin,
 		richTextPlugin
 	];
@@ -77,7 +73,7 @@
 			{
 				id: 'page-callout',
 				type: 'callout',
-				data: { icon: '✦' },
+				data: { icon: '💡' },
 				content: [
 					{ text: 'Everything here is editable. ' },
 					{ text: 'Grab the six-dot handle', marks: { bold: true } },
@@ -150,235 +146,10 @@
 		]
 	};
 
-	// "Turn into" rows: the kind catalogue's conversions that keep the block's content.
-	const blockChoices = $derived(edytor?.kinds.filter((kind) => !kind.replaces) ?? []);
-	const activeBlock = $derived(
-		blockMenu && edytor ? edytor.idToBlock.get(blockMenu.blockId) : undefined
-	);
-
-	const copyWithoutIds = (value: JSONBlock): JSONBlock => ({
-		type: value.type,
-		...(value.data ? { data: value.data } : {}),
-		...(value.content
-			? {
-					content: value.content.map((part) =>
-						'text' in part
-							? { text: part.text, ...(part.marks ? { marks: part.marks } : {}) }
-							: { type: part.type, ...(part.data ? { data: part.data } : {}) }
-					)
-				}
-			: {}),
-		...(value.children ? { children: value.children.map(copyWithoutIds) } : {})
-	});
-	const restoreCaret = async (block: Block | null | undefined) => {
-		if (!edytor || !block) return;
-		await tick();
-		const text = block.firstEditableText ?? (block.definition.void ? undefined : block.firstText);
-		if (!text) return;
-		// Clear any atomic block selection before the DOM caret write.
-		edytor.selection.setAtTextOffset(text, 0);
-		edytor.selection.setAtTextOffset(text, 0);
-		edytor.node?.focus({ preventScroll: true });
-	};
-	const addBlockBelow = async () => {
-		const added = activeBlock?.insertBlockAfter({ block: { type: 'paragraph' } });
-		blockMenu = null;
-		await restoreCaret(added);
-	};
-	const duplicateBlock = async () => {
-		const duplicate = activeBlock?.insertBlockAfter({ block: copyWithoutIds(activeBlock.value) });
-		blockMenu = null;
-		await restoreCaret(duplicate);
-	};
-	const deleteBlock = () => {
-		const block = activeBlock;
-		if (!block) return;
-		const next = block.nextBlock ?? block.previousBlock;
-		block.removeBlock();
-		blockMenu = null;
-		void restoreCaret(next);
-	};
-	const transformBlock = (choice: KindRow) => {
-		const block = activeBlock;
-		if (edytor) convertToKind(edytor, block, choice);
-		blockMenu = null;
-		void restoreCaret(block);
-	};
-	const canMove = (direction: BlockMoveDirection) =>
-		!!activeBlock && !!edytor?.canMoveBlocks({ blocks: [activeBlock], direction });
-	const moveBlock = (direction: BlockMoveDirection) => {
-		const block = activeBlock;
-		if (!block || !edytor) return;
-		edytor.moveBlocks({ blocks: [block], direction });
-		blockMenu = null;
-		void restoreCaret(block);
-	};
-	const copyBlockLink = async () => {
-		const block = activeBlock;
-		if (!block) return;
-		const anchor = `block-${block.id}`;
-		try {
-			await navigator.clipboard.writeText(`${location.origin}${location.pathname}#${anchor}`);
-			copiedBlockId = block.id;
-			copyFailed = false;
-		} catch {
-			copyFailed = true;
-		}
-	};
-	const closeBlockMenu = (restoreFocus = false) => {
-		blockMenu = null;
-		if (restoreFocus && blockMenuTrigger?.isConnected) {
-			blockMenuTrigger.focus({ preventScroll: true });
-		}
-	};
-	const handleBlockMenuKeyDown = (event: KeyboardEvent) => {
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			event.stopPropagation();
-			closeBlockMenu(true);
-			return;
-		}
-		if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-		if (!blockMenuNode) return;
-		const items = Array.from(
-			blockMenuNode.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
-		);
-		if (!items.length) return;
-		event.preventDefault();
-		const current = items.findIndex((item) => item === document.activeElement);
-		const next =
-			event.key === 'Home'
-				? 0
-				: event.key === 'End'
-					? items.length - 1
-					: event.key === 'ArrowDown'
-						? (current + 1) % items.length
-						: (current - 1 + items.length) % items.length;
-		items[next]?.focus({ preventScroll: true });
-		items[next]?.scrollIntoView({ block: 'nearest' });
-	};
-
-	const openBlockMenu = ({ block, anchor }: BlockHandleActivation) => {
-		const text = block.firstEditableText ?? block.firstText;
-		if (text) edytor?.selection.setAtTextOffset(text, 0);
-		else edytor?.selection.selectBlocks();
-		blockMenuTrigger = anchor;
-		blockMenu = { blockId: block.id };
-		copiedBlockId = null;
-		copyFailed = false;
-		void tick().then(() => {
-			repositionBlockMenu?.();
-			blockMenuNode
-				?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
-				?.focus({ preventScroll: true });
-		});
-	};
-	const positionBlockMenu = (node: HTMLDivElement) => {
-		const gap = 8;
-		const edge = 8;
-		let frame = 0;
-		let placeAbove = false;
-		let hasPlacement = false;
-		let observedAnchor: HTMLElement | null = null;
-		const position = () => {
-			frame = 0;
-			const anchor = blockMenuTrigger;
-			if (!anchor?.isConnected) {
-				blockMenu = null;
-				return;
-			}
-			if (anchor !== observedAnchor) {
-				if (observedAnchor) observer.unobserve(observedAnchor);
-				observer.observe(anchor);
-				observedAnchor = anchor;
-				hasPlacement = false;
-			}
-
-			const anchorRect = anchor.getBoundingClientRect();
-			const menuWidth = node.getBoundingClientRect().width;
-			const viewportWidth = window.innerWidth;
-			const viewportHeight = window.innerHeight;
-			if (
-				anchorRect.bottom < 0 ||
-				anchorRect.top > viewportHeight ||
-				anchorRect.right < 0 ||
-				anchorRect.left > viewportWidth
-			) {
-				blockMenu = null;
-				return;
-			}
-			const right = anchorRect.right + gap;
-			const left = anchorRect.left - gap - menuWidth;
-			const x =
-				right + menuWidth <= viewportWidth - edge
-					? right
-					: left >= edge
-						? left
-						: Math.max(edge, Math.min(right, viewportWidth - edge - menuWidth));
-
-			const contentHeight = Math.min(node.scrollHeight, 520);
-			const below = Math.max(0, viewportHeight - edge - anchorRect.top);
-			const visibleAnchorBottom = Math.min(anchorRect.bottom, viewportHeight - edge);
-			const above = Math.max(0, visibleAnchorBottom - edge);
-			if (!hasPlacement) {
-				placeAbove = below < contentHeight / 2 && above > below;
-				hasPlacement = true;
-			} else if (placeAbove && above < contentHeight / 2 && below > above) {
-				placeAbove = false;
-			} else if (!placeAbove && below < contentHeight / 2 && above > below) {
-				placeAbove = true;
-			}
-			node.style.maxHeight = `${Math.min(contentHeight, placeAbove ? above : below)}px`;
-			const menuHeight = node.getBoundingClientRect().height;
-			const y = placeAbove
-				? Math.max(edge, visibleAnchorBottom - menuHeight)
-				: Math.max(edge, Math.min(anchorRect.top, viewportHeight - edge - menuHeight));
-			node.style.left = `${x}px`;
-			node.style.top = `${y}px`;
-			node.style.visibility = 'visible';
-		};
-		const schedule = () => {
-			if (!frame) frame = window.requestAnimationFrame(position);
-		};
-		const observer = new ResizeObserver(schedule);
-		observer.observe(node);
-		if (edytor?.node) observer.observe(edytor.node);
-		window.addEventListener('scroll', schedule, true);
-		window.addEventListener('resize', schedule);
-		repositionBlockMenu = position;
-		position();
-		return {
-			destroy() {
-				if (repositionBlockMenu === position) repositionBlockMenu = null;
-				window.cancelAnimationFrame(frame);
-				observer.disconnect();
-				window.removeEventListener('scroll', schedule, true);
-				window.removeEventListener('resize', schedule);
-			}
-		};
-	};
-
 	onMount(() => {
 		// The live editor creates per-view DOM state; mount it after the static
 		// workspace shell hydrates so server/client markup stays identical.
 		isMounted = true;
-		const closeOnOutsidePointer = (event: PointerEvent) => {
-			const target = event.target;
-			if (
-				target instanceof Element &&
-				!target.closest('[data-demo-block-menu], [data-testid="block-handle"]')
-			)
-				blockMenu = null;
-		};
-		const closeOnEscape = (event: KeyboardEvent) => {
-			if (event.key === 'Escape' && blockMenu) closeBlockMenu(true);
-		};
-		window.addEventListener('pointerdown', closeOnOutsidePointer, true);
-		window.addEventListener('keydown', closeOnEscape);
-		return () => {
-			window.removeEventListener('pointerdown', closeOnOutsidePointer, true);
-			window.removeEventListener('keydown', closeOnEscape);
-		};
 	});
 
 	// `?blocks=5000`: the demo content repeated (ids stripped) to that many top-level blocks.
@@ -409,36 +180,38 @@
 	/>
 </svelte:head>
 
-<div class="demo-shell">
+<div class="demo-shell edytor-notion">
 	<aside class="demo-sidebar" aria-label="Workspace">
 		<div class="workspace-switcher">
-			<span class="workspace-avatar">e</span><span class="workspace-name">Edytor workspace</span
+			<span class="workspace-avatar">E</span><span class="workspace-name">Edytor workspace</span
 			><span class="workspace-chevron">⌄</span>
+		</div>
+		<div class="sidebar-section">
+			<div class="sidebar-row"><span class="sidebar-icon">⌕</span><span>Search</span></div>
+			<div class="sidebar-row"><span class="sidebar-icon">⌂</span><span>Home</span></div>
 		</div>
 		<div class="sidebar-section">
 			<div class="sidebar-heading">Private</div>
 			<div class="sidebar-row sidebar-row-active">
-				<span class="sidebar-icon">✦</span><span>A calmer place to think</span>
+				<span class="sidebar-icon">🌱</span><span>A calmer place to think</span>
 			</div>
 		</div>
 		<div class="sidebar-section">
-			<div class="sidebar-heading">Quick start</div>
+			<div class="sidebar-heading">Try</div>
 			<p class="sidebar-note">
-				Select words to format them. Type / on a line for blocks. Grab ⋮⋮ to move, nest, or open the
-				block menu.
+				Type <kbd>/</kbd> for blocks, select text to format, drag <kbd>⋮⋮</kbd> to move, and click
+				it for the block menu. Markdown works too: <kbd>#</kbd>, <kbd>-</kbd>,
+				<kbd>[]</kbd>, <kbd>&gt;</kbd>, <kbd>**bold**</kbd>.
 			</p>
 		</div>
-		<div class="sidebar-bottom"><span>Edytor playground</span></div>
 	</aside>
 	<div class="demo-workspace">
 		<header class="demo-topbar">
 			<div class="demo-breadcrumbs">
-				<span class="breadcrumb-icon">✦</span><span>A calmer place to think</span><span
-					class="breadcrumb-chevron">⌄</span
-				>
+				<span class="breadcrumb-icon">🌱</span><span>A calmer place to think</span>
 			</div>
 			<div class="topbar-actions">
-				<span class="demo-indicator"><span></span> Demo document</span>
+				<span class="demo-indicator">Edited just now</span>
 				<button type="button" title="Undo" aria-label="Undo" onclick={() => edytor?.historyUndo()}
 					>↶</button
 				>
@@ -449,8 +222,7 @@
 		</header>
 		<main class="demo-main">
 			<div class="document-page">
-				<div class="page-icon" aria-hidden="true">✦</div>
-				<div class="page-kicker">YOUR SPACE TO MAKE SOMETHING</div>
+				<div class="page-icon" aria-hidden="true">🌱</div>
 				<div class="page-editor">
 					{#if isMounted}
 						<Edytor
@@ -458,84 +230,13 @@
 							value={initialValue}
 							{sync}
 							class="demo-edytor"
-							blockHandles={page.url.searchParams.get('handles') === '0'
-								? false
-								: { onActivate: openBlockMenu }}
-							placeholder={(view) => (view.focused ? "Type '/' for commands" : null)}
+							blockHandles={page.url.searchParams.get('handles') === '0' ? false : undefined}
+							placeholder={richTextPlaceholder}
 							bind:edytor
 						/>
 					{/if}
 				</div>
-				<div class="page-footer"><span>✦</span> A blank page is an invitation. Keep writing.</div>
 			</div>
 		</main>
 	</div>
-	{#if blockMenu && activeBlock}
-		<div
-			class="demo-block-menu"
-			data-demo-block-menu
-			role="menu"
-			tabindex="-1"
-			aria-label="Block actions"
-			use:positionBlockMenu
-			bind:this={blockMenuNode}
-			onkeydown={handleBlockMenuKeyDown}
-		>
-			<div class="block-menu-heading">Turn into</div>
-			<div class="block-menu-types">
-				{#each blockChoices as choice (choice.id)}
-					<button type="button" role="menuitem" onclick={() => transformBlock(choice)}
-						><span class="block-menu-icon">{choice.icon}</span><span>{choice.label}</span></button
-					>
-				{/each}
-			</div>
-			<div class="block-menu-divider"></div>
-			<button
-				type="button"
-				role="menuitem"
-				onclick={() => moveBlock('up')}
-				disabled={!canMove('up')}><span class="block-menu-icon">↑</span><span>Move up</span></button
-			>
-			<button
-				type="button"
-				role="menuitem"
-				onclick={() => moveBlock('down')}
-				disabled={!canMove('down')}
-				><span class="block-menu-icon">↓</span><span>Move down</span></button
-			>
-			<button
-				type="button"
-				role="menuitem"
-				onclick={() => moveBlock('in')}
-				disabled={!canMove('in')}><span class="block-menu-icon">→</span><span>Indent</span></button
-			>
-			<button
-				type="button"
-				role="menuitem"
-				onclick={() => moveBlock('out')}
-				disabled={!canMove('out')}
-				><span class="block-menu-icon">←</span><span>Outdent</span></button
-			>
-			<div class="block-menu-divider"></div>
-			<button type="button" role="menuitem" onclick={addBlockBelow}
-				><span class="block-menu-icon">＋</span><span>Add block below</span></button
-			>
-			<button type="button" role="menuitem" onclick={duplicateBlock}
-				><span class="block-menu-icon">⧉</span><span>Duplicate</span></button
-			>
-			<button type="button" role="menuitem" onclick={copyBlockLink}
-				><span class="block-menu-icon">↗</span><span
-					>{copyFailed
-						? 'Copy failed'
-						: copiedBlockId === activeBlock.id
-							? 'Copied link'
-							: 'Copy link to block'}</span
-				></button
-			>
-			<div class="block-menu-divider"></div>
-			<button type="button" role="menuitem" class="block-menu-danger" onclick={deleteBlock}
-				><span class="block-menu-icon">⌫</span><span>Delete</span></button
-			>
-		</div>
-	{/if}
 </div>

@@ -56,7 +56,8 @@
 		"./cloudflare": {
 			"types": "./dist/cloudflare/index.d.ts",
 			"default": "./dist/cloudflare/index.js"
-		}
+		},
+		"./themes/notion.css": "./dist/themes/notion.css"
 	},
 	"engines": {
 		"node": ">=22.0.0"

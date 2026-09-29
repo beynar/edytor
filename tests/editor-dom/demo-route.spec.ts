@@ -280,8 +280,15 @@ test.describe('demo route editing regressions', () => {
 		await createTextInEndBlock(page, 'One');
 		await page.keyboard.press('Enter');
 		await page.keyboard.press(`${modKey}+Z`);
-		await page.locator('[data-testid="block-handle"][data-block-id="page-end"]').click();
-		await page.getByRole('menuitem', { name: /Add block below/ }).click();
+		// Notion's `+`: a block below, opened on the slash menu (drop its `/`).
+		await page.locator('[data-edytor-id="page-end"]').hover();
+		await page
+			.locator(
+				'[data-edytor-block-handle-host][data-block-id="page-end"] [data-testid="block-add"]'
+			)
+			.click();
+		await expect(page.getByTestId('slash-menu')).toBeVisible();
+		await page.keyboard.press('Backspace');
 		await expect
 			.poll(() =>
 				page.evaluate(() => {

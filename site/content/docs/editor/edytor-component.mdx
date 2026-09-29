@@ -64,7 +64,7 @@ A readonly view never connects: it shows `value`, or the `document` you pass.
 
 ### Block handles
 
-Handles are on unless you turn them off. To open your own block menu from a handle instead of only dragging:
+Handles are on unless you turn them off: a `+` that adds a block and a drag grip. List [`blockMenuPlugin`](/docs/plugins/block-menu) to open Notion's block menu on a grip click, or pass `onActivate` to open your own:
 
 ```svelte
 <script lang="ts">

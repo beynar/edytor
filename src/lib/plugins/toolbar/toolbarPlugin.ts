@@ -15,7 +15,8 @@ export const toolbarPlugin: Plugin = (edytor) => {
 		const range = selection.getRangeAt(0);
 		if (typeof range.getBoundingClientRect !== 'function') return;
 		const rect = range.getBoundingClientRect();
-		const toolbar = host.firstElementChild;
+		// The bar, not its open panel: panels drop over the text below it.
+		const toolbar = host.querySelector('[data-testid="selection-toolbar"]');
 		const width = toolbar?.getBoundingClientRect().width || 460;
 		const height = toolbar?.getBoundingClientRect().height || 40;
 		host.style.left = `${Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, view.innerWidth - width - 8))}px`;

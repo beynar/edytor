@@ -25,7 +25,7 @@ export type HotKey = (payload: {
 
 type Chars<S extends string> = S extends `${infer C}${infer R}` ? C | Chars<R> : never;
 // prettier-ignore
-type Key = Chars<'abcdefghijklmnopqrstuvwxyz'> | `arrow${'up' | 'down' | 'left' | 'right'}` | 'tab' | 'enter' | 'backspace' | 'delete' | 'space' | 'escape' | 'home' | 'end' | 'pageup' | 'pagedown';
+type Key = Chars<'abcdefghijklmnopqrstuvwxyz0123456789'> | `arrow${'up' | 'down' | 'left' | 'right'}` | 'tab' | 'enter' | 'backspace' | 'delete' | 'space' | 'escape' | 'home' | 'end' | 'pageup' | 'pagedown';
 // prettier-ignore
 type Modifiers = 'mod' | 'alt' | 'ctrl' | 'shift' | 'mod+alt' | 'mod+ctrl' | 'mod+shift' | 'alt+ctrl' | 'alt+shift' | 'ctrl+shift';
 export type HotKeyCombination = Key | `${Modifiers}+${Key}`;
@@ -83,9 +83,10 @@ export class Keymap {
 
 	/**
 	 * A keyboard event's chord: `mod` is Cmd on Apple and Ctrl elsewhere; on
-	 * Apple bare Ctrl stays `ctrl` (the Emacs rows); a reverse tab is Shift+Tab.
+	 * Apple bare Ctrl stays `ctrl` (the Emacs rows); a reverse tab is Shift+Tab;
+	 * the space bar is `space`.
 	 */
-	chordOf = (event: KeyboardEvent, key = event.key.toLowerCase()) => {
+	chordOf = (event: KeyboardEvent, key = event.key === ' ' ? 'space' : event.key.toLowerCase()) => {
 		const back = key === 'iso_left_tab' || key === 'backtab';
 		const mac = this.isMac;
 		return chord([

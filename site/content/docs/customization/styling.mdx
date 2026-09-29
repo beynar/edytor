@@ -1,10 +1,56 @@
 ---
 title: Styling
-description: The DOM the editor renders, the stable data attributes to style it with, the overlay layer for chrome, and how to lay out nested blocks.
+description: The Notion theme, the DOM the editor renders, the stable data attributes to style it with, the overlay layer for chrome, and how to lay out nested blocks.
 icon: paintbrush
 ---
 
-Edytor ships almost no visual styles: you style the document with your own CSS, through stable data attributes on the elements the core renders. This page lists those attributes, the overlay layer that holds handles and menus, and the rules to follow so styling never fights the editor.
+The core ships almost no visual styles: you style the document with CSS, through stable data attributes on the elements it renders. For a finished look, import the optional Notion theme. This page covers the theme, those attributes, the overlay layer that holds handles and menus, and the rules to follow so styling never fights the editor.
+
+## Notion theme
+
+`edytor/themes/notion.css` styles every rich text and code kind like Notion's light theme. Import it once and put the `edytor-notion` class on an element around `<Edytor>` (or on the editor itself, with its `class` prop):
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin, richTextPlaceholder } from 'edytor';
+	import 'edytor/themes/notion.css';
+</script>
+
+<div class="edytor-notion">
+	<Edytor plugins={[richTextPlugin]} placeholder={richTextPlaceholder} />
+</div>
+```
+
+What it sets:
+
+- 16px text at a 1.5 line height in Notion's text color, and blocks as 3px/2px-padded rows 1px apart;
+- headings at 1.875em, 1.5em and 1.25em, weight 600. A leading top-level Heading 1 is the page title: 40px, weight 700;
+- a 24px marker column for lists and to-dos: bullets `•` `◦` `▪` by depth, numbers `1.` `a.` `i.` by depth, with a run of numbered items sharing one counter;
+- Notion's blue to-do checkbox, with done text struck through and muted;
+- a toggle caret that rotates as the toggle opens, a 3px quote bar, a 10px-rounded callout panel, a thin divider and the code panel;
+- inline code in red on a light tint, links underlined at 0.7 opacity, and blue text and block selections.
+
+It styles the document only. The block handles, menus and toolbar carry their own Notion look. Pair it with [`richTextPlaceholder`](/docs/customization/placeholder#notion-placeholders) for Notion's placeholders.
+
+Adapt it by overriding its custom properties on `.edytor-notion`:
+
+| Property                     | Default                        | Used for                                         |
+| ---------------------------- | ------------------------------ | ------------------------------------------------ |
+| `--notion-text`              | `#2c2c2b`                      | Text, caret, list markers, the quote bar, the to-do box |
+| `--notion-text-secondary`    | `#7d7a75`                      | Done to-do text                                  |
+| `--notion-placeholder`       | `rgba(44, 44, 43, 0.4)`        | Placeholders                                     |
+| `--notion-border`            | `rgba(28, 19, 1, 0.11)`        | The divider                                      |
+| `--notion-hover`             | `rgba(33, 27, 23, 0.05)`       | The checkbox hover                               |
+| `--notion-panel`             | `#f9f8f7`                      | The callout background                           |
+| `--notion-code-panel`        | `#f7f6f3`                      | The code block background                        |
+| `--notion-inline-code`       | `#cf5148`                      | Inline code text                                 |
+| `--notion-blue`              | `#2783de`                      | The checked to-do box                            |
+| `--notion-text-selection`    | `rgba(35, 131, 226, 0.28)`     | Text selection                                   |
+| `--notion-block-selection`   | `rgba(35, 131, 226, 0.14)`     | Selected blocks                                  |
+| `--notion-font`              | Notion's system sans stack     | Body text                                        |
+| `--notion-mono`              | `'SFMono-Regular', Menlo, …`   | Inline code                                      |
+
+The theme also sets `--edytor-drop-indicator-color` to `#2383e2`. Its rules are scoped under `.edytor-notion`: to override one, use a more specific selector, or the same selector in a stylesheet loaded after it.
 
 ## The rendered DOM
 
@@ -12,7 +58,7 @@ For a paragraph with bold text and a mention, followed by the overlay:
 
 ```html
 <div class="my-editor" data-edytor contenteditable="true" role="textbox" aria-multiline="true">
-	<div class="rounded bg-opacity-25 p-1 my-1" data-edytor-block="true" data-edytor-id="b1" data-edytor-type="paragraph">
+	<div data-edytor-block="true" data-edytor-id="b1" data-edytor-type="paragraph">
 		<p>
 			<span data-edytor-text="true" data-edytor-id="t:b1:0" data-edytor-text-empty="false">
 				Hello <strong data-edytor-mark="bold">world</strong>
@@ -25,7 +71,7 @@ For a paragraph with bold text and a mention, followed by the overlay:
 <div data-edytor-overlay style="position: absolute; width: 0; height: 0">…</div>
 ```
 
-The block element (`div` here, with the rich text paragraph's utility classes) comes from the kind's `element`; the markup inside it (`p`) from the kind's snippet. The `class` prop of `<Edytor>` goes on the root.
+The block element (`div` here, the default) comes from the kind's `element`; the markup inside it (`p`) from the kind's snippet. The `class` prop of `<Edytor>` goes on the root.
 
 ## Attributes
 
@@ -43,6 +89,10 @@ The block element (`div` here, with the rich text paragraph's utility classes) c
 | `data-placeholder`                 | empty text segments        | The placeholder text, see [Placeholder](/docs/customization/placeholder). |
 | `data-edytor-mark="<name>"`        | mark elements              | A mark: the mark's `tag`, or a `span` around a snippet mark.             |
 | `data-edytor-inline-block="<type>"`| inline atoms               | An atom, non-editable.                                                   |
+| `data-edytor-todo-checkbox`        | the to-do checkbox         | The rich text to-do's `input`, a direct child of the block.              |
+| `data-edytor-callout-icon`         | the callout icon           | The rich text callout's icon `span`.                                     |
+| `data-edytor-code-header`          | the code block header      | The void header holding the language and the Copy button.               |
+| `data-edytor-code-language`        | the code block language    | The language label inside the header.                                    |
 
 Block attributes are rendered with the element, so they are also present in server-rendered HTML. A kind's own attributes (from `element`) sit beside them, and the rich text heading renders as `<h2 data-edytor-block … data-edytor-type="heading">`.
 
@@ -102,17 +152,18 @@ For numbered items, count with CSS counters on the editor root:
 
 ## The overlay
 
-Chrome never lives inside the editable root. The editor adds a sibling right after it, `[data-edytor-overlay]`, an absolutely positioned, zero-size layer. Block handles, the drop indicator, the slash menu, the toolbar and collaborators' carets are rendered there and positioned against the blocks once per frame, following scrolls, resizes and edits.
+Chrome never lives inside the editable root. The editor adds a sibling right after it, `[data-edytor-overlay]`, an absolutely positioned, zero-size layer. Block handles, the drop indicator, the slash menu, the toolbar, the block menu and collaborators' carets are rendered there and positioned against the blocks once per frame, following scrolls, resizes and edits.
 
 | Element                                | Selector                                                         |
 | -------------------------------------- | ---------------------------------------------------------------- |
 | Block handle host                      | `[data-edytor-block-handle-host]`, with `data-block-id` and `data-visible` |
-| Block handle button                    | `button.edytor-block-handle`                                     |
+| Block handle buttons                   | `button.edytor-block-add` (the `+`) and `button.edytor-block-handle` (the grip) |
 | Drop indicator                         | `[data-edytor-drop-indicator]`, with `data-position` `before`, `after` or `inside` |
 | Slash menu host                        | `[data-edytor-slash-menu-host]`                                  |
 | Toolbar host                           | `[data-edytor-toolbar-host]`                                     |
+| Block menu host                        | `[data-edytor-block-menu-host]`                                  |
 
-The layer sits at its natural place right after the root and positions chrome relative to itself, so chrome follows the editor through page and container scrolls. Since it is a sibling of the root, scope overlay styles with the overlay selector, not the root's. To override the handle's built-in styles, use a selector at least as specific as `[data-edytor-overlay] button.edytor-block-handle`.
+The layer sits at its natural place right after the root and positions chrome relative to itself, so chrome follows the editor through page and container scrolls. Since it is a sibling of the root, scope overlay styles with the overlay selector, not the root's. To override the handles' built-in styles, use a selector at least as specific as `[data-edytor-overlay] button.edytor-block-handle`.
 
 ### CSS variables
 

@@ -7,14 +7,17 @@
 	import {
 		Edytor,
 		arrowMovePlugin,
+		blockMenuPlugin,
 		codePlugin,
 		markdownShortcutsPlugin,
 		richTextPlugin,
+		richTextPlaceholder,
 		slashMenuPlugin,
 		toolbarPlugin,
 		type EdytorInstance,
 		type JSONDoc
 	} from 'edytor';
+	import 'edytor/themes/notion.css';
 	import './live-editor.css';
 
 	/** The public demo room (site/room): one shared document per UTC day. */
@@ -53,7 +56,7 @@
 			{
 				id: 'tip',
 				type: 'callout',
-				data: { icon: '✦' },
+				data: { icon: '💡' },
 				content: [
 					{ text: 'Type ' },
 					{ text: '/', marks: { code: true } },
@@ -76,18 +79,25 @@
 	const guest = guestId();
 	const actor = { id: guest, name: `${pick(NAMES)} (guest)`, color: pick(COLORS) };
 	let edytor = $state<EdytorInstance>();
-	let people = $state(1);
+	/** Everyone here, from presence: Notion's avatar stack. */
+	let people = $state<Array<{ id: number; name: string; color: string }>>([]);
 	$effect(() => {
 		const awareness = edytor?.document.awareness;
 		if (!awareness) return;
-		const count = () => (people = Math.max(1, awareness.getStates().size));
-		count();
-		awareness.on('change', count);
-		return () => awareness.off('change', count);
+		const read = () =>
+			(people = [...awareness.getStates()].map(([id, state]) => ({
+				id,
+				name: String(state.user?.name ?? 'Guest'),
+				color: String(state.user?.color ?? '#a19e99')
+			})));
+		read();
+		awareness.on('change', read);
+		return () => awareness.off('change', read);
 	});
 
 	const plugins = [
 		arrowMovePlugin,
+		blockMenuPlugin,
 		codePlugin,
 		markdownShortcutsPlugin,
 		slashMenuPlugin,
@@ -96,11 +106,20 @@
 	];
 </script>
 
-<div class="live-editor-frame">
+<div class="live-editor-frame edytor-notion">
 	<div class="live-editor-bar">
-		<span class="live-dot"></span>
-		<span>Live · {people} {people === 1 ? 'person' : 'people'} editing</span>
-		<span class="live-room">{room}</span>
+		<span class="live-crumb">🌱 Edit this page with everyone</span>
+		<span class="live-room" title="One shared page per day">{room}</span>
+		<span class="live-people">
+			{#each people.slice(0, 5) as person (person.id)}
+				<span class="live-avatar" style:background={person.color} title={person.name}
+					>{person.name.slice(0, 1)}</span
+				>
+			{/each}
+		</span>
+		<span class="live-count"
+			>Live · {Math.max(1, people.length)} {people.length > 1 ? 'people' : 'person'} editing</span
+		>
 	</div>
 	<div class="live-editor">
 		<Edytor
@@ -111,7 +130,8 @@
 			{room}
 			params={{ guest }}
 			{plugins}
-			placeholder={(view) => (view.focused ? "Type '/' for commands" : null)} />
+			placeholder={richTextPlaceholder}
+		/>
 	</div>
 </div>
 
@@ -120,7 +140,6 @@
 		overflow: hidden;
 		border-radius: 1.25rem;
 		background: #fff;
-		color: #37352f;
 		box-shadow:
 			0 1px 2px rgb(0 0 0 / 0.06),
 			0 12px 40px -12px rgb(0 0 0 / 0.18);
@@ -129,39 +148,54 @@
 	.live-editor-bar {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.75rem 1.25rem;
-		border-bottom: 1px solid #efeee9;
-		font-size: 0.8rem;
-		color: #787774;
+		gap: 10px;
+		height: 44px;
+		padding: 0 12px 0 16px;
+		font-size: 14px;
+		color: #2c2c2b;
 	}
-	.live-dot {
-		width: 0.5rem;
-		height: 0.5rem;
-		border-radius: 999px;
-		background: #16a34a;
-		box-shadow: 0 0 0 3px rgb(22 163 74 / 0.18);
+	.live-crumb {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.live-room {
+		color: #a19e99;
+		font-size: 12px;
+	}
+	.live-people {
+		display: flex;
 		margin-left: auto;
-		font-family: ui-monospace, monospace;
-		font-size: 0.75rem;
-		color: #b6b4af;
+		padding-left: 5px;
+	}
+	.live-avatar {
+		display: grid;
+		place-items: center;
+		width: 22px;
+		height: 22px;
+		margin-left: -5px;
+		border-radius: 999px;
+		box-shadow: 0 0 0 2px #fff;
+		color: #fff;
+		font-size: 11px;
+		font-weight: 600;
+	}
+	.live-count {
+		color: #a19e99;
+		white-space: nowrap;
 	}
 	.live-editor {
-		padding: 2rem 2.5rem 1.5rem 3.5rem;
-		max-height: 34rem;
+		max-height: 36rem;
 		overflow-y: auto;
-		font-family:
-			ui-sans-serif,
-			-apple-system,
-			BlinkMacSystemFont,
-			'Segoe UI',
-			sans-serif;
+		padding: 36px 56px 40px 72px;
 	}
 	@media (max-width: 640px) {
+		.live-room,
+		.live-crumb {
+			display: none;
+		}
 		.live-editor {
-			padding: 1.25rem 1rem 1rem 2.25rem;
+			padding: 20px 16px 24px 52px;
 		}
 	}
 </style>

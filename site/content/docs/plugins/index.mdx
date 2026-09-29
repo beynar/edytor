@@ -50,7 +50,8 @@ Pass an array to the `plugins` prop of `<Edytor>`:
 		slashMenuPlugin,
 		toolbarPlugin,
 		markdownShortcutsPlugin,
-		arrowMovePlugin
+		arrowMovePlugin,
+		blockMenuPlugin
 	} from 'edytor';
 
 	const plugins = [
@@ -58,6 +59,7 @@ Pass an array to the `plugins` prop of `<Edytor>`:
 		markdownShortcutsPlugin,
 		slashMenuPlugin,
 		toolbarPlugin,
+		blockMenuPlugin,
 		arrowMovePlugin,
 		richTextPlugin
 	];
@@ -104,15 +106,16 @@ Import it like any other module: `import { highlightPlugin } from './HighlightPl
 
 ## Bundled plugins
 
-| Plugin                                            | Export                    | What it adds                                                                              |
-| ------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------- |
-| [Rich text](/docs/plugins/rich-text)              | `richTextPlugin`          | Paragraphs, headings, lists, to-dos, quotes, toggles, callouts, dividers and ten marks    |
-| [Code](/docs/plugins/code)                        | `codePlugin`              | Code blocks with syntax highlighting                                                      |
-| [Block handles](/docs/plugins/block-handles)      | `blockHandlesPlugin`      | Drag handles, drag and drop, keyboard moves. On by default                                |
-| [Slash menu](/docs/plugins/slash-menu)            | `slashMenuPlugin`         | A command menu opened by typing `/`                                                       |
-| [Toolbar](/docs/plugins/toolbar)                  | `toolbarPlugin`           | A floating formatting toolbar over text selections                                        |
-| [Markdown shortcuts](/docs/plugins/markdown-shortcuts) | `markdownShortcutsPlugin` | Block conversion by typing prefixes such as `# ` or `- `                             |
-| [Arrow move](/docs/plugins/arrow-move)            | `arrowMovePlugin`         | <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves selected blocks                          |
-| [Mention and image](/docs/plugins/mention-and-image) | (not exported)         | Reference implementations of an inline atom and a void block                              |
+| Plugin                                                 | Export                    | What it adds                                                                               |
+| ------------------------------------------------------ | ------------------------- | ------------------------------------------------------------------------------------------ |
+| [Rich text](/docs/plugins/rich-text)                   | `richTextPlugin`          | Paragraphs, headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks, and Notion's shortcuts |
+| [Code](/docs/plugins/code)                             | `codePlugin`              | Code blocks with syntax highlighting and a Copy button                                     |
+| [Block handles](/docs/plugins/block-handles)           | `blockHandlesPlugin`      | A `+` and a drag grip beside each block, drag and drop, keyboard moves. On by default      |
+| [Block menu](/docs/plugins/block-menu)                 | `blockMenuPlugin`         | Notion's block menu on a grip click: search, Turn into, Duplicate, Move, Delete            |
+| [Slash menu](/docs/plugins/slash-menu)                 | `slashMenuPlugin`         | A sectioned command menu opened by typing `/`                                              |
+| [Toolbar](/docs/plugins/toolbar)                       | `toolbarPlugin`           | A floating toolbar over text selections: Turn into, link, marks and colors                 |
+| [Markdown shortcuts](/docs/plugins/markdown-shortcuts) | `markdownShortcutsPlugin` | Block prefixes such as `# ` or `- `, and inline `**bold**`, `*italic*`, `` `code` ``, `~strike~` |
+| [Arrow move](/docs/plugins/arrow-move)                 | `arrowMovePlugin`         | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the caret's block; <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves selected blocks |
+| [Mention and image](/docs/plugins/mention-and-image)   | (not exported)            | Reference implementations of an inline atom and a void block                               |
 
-All exports come from the package root, `edytor`.
+All exports come from the package root, `edytor`. For the matching document look, add the [Notion theme](/docs/customization/styling#notion-theme).

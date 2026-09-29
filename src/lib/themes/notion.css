@@ -1,0 +1,324 @@
+/*
+ * edytor/themes/notion.css — Notion's page look for the rich text kinds.
+ *
+ * Put `class="edytor-notion"` on an element around <Edytor> (or on the
+ * editor itself). Values follow Notion's 2025 light theme: its text and
+ * palette colors, 16px/1.5 text on a 24px row, 2px block gutters, 10px
+ * rounded panels. A leading Heading 1 is styled as the page title.
+ * Override the custom properties to adapt it.
+ */
+.edytor-notion {
+	--notion-text: #2c2c2b;
+	--notion-text-secondary: #7d7a75;
+	--notion-placeholder: rgba(44, 44, 43, 0.4);
+	--notion-border: rgba(28, 19, 1, 0.11);
+	--notion-hover: rgba(33, 27, 23, 0.05);
+	--notion-panel: #f9f8f7;
+	--notion-code-panel: #f7f6f3;
+	--notion-inline-code: #cf5148;
+	--notion-blue: #2783de;
+	--notion-text-selection: rgba(35, 131, 226, 0.28);
+	--notion-block-selection: rgba(35, 131, 226, 0.14);
+	--notion-font:
+		ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Display', 'Segoe UI',
+		Helvetica, 'Apple Color Emoji', Arial, sans-serif, 'Segoe UI Emoji', 'Segoe UI Symbol';
+	--notion-mono:
+		'SFMono-Regular', Menlo, Consolas, 'PT Mono', 'Liberation Mono', Courier, monospace;
+	--edytor-drop-indicator-color: #2383e2;
+	color: var(--notion-text);
+	font-family: var(--notion-font);
+	-webkit-font-smoothing: auto;
+}
+
+.edytor-notion [data-edytor] {
+	outline: 0;
+	font-size: 16px;
+	line-height: 1.5;
+	caret-color: var(--notion-text);
+	word-break: break-word;
+}
+.edytor-notion [data-edytor] ::selection {
+	background: var(--notion-text-selection);
+}
+
+/* ── Rhythm: every block is a 2px-gutter row, 1px apart ─────────────── */
+.edytor-notion [data-edytor-block] {
+	position: relative;
+	margin: 1px 0;
+	padding: 3px 2px;
+	border-radius: 6px;
+}
+.edytor-notion [data-edytor-block] [data-edytor-block] {
+	margin-inline: 0;
+}
+.edytor-notion [data-edytor] p {
+	margin: 0;
+}
+.edytor-notion [data-edytor-type='paragraph'] {
+	padding: 3px 2px;
+}
+.edytor-notion [data-edytor-type='paragraph'] > p + div {
+	margin-top: 2px;
+}
+
+/* ── Headings ───────────────────────────────────────────────────────── */
+.edytor-notion [data-edytor-type='heading'] {
+	margin: 0;
+	font-weight: 600;
+	line-height: 1.3;
+}
+.edytor-notion h1[data-edytor-type='heading'] {
+	margin-top: 32px;
+	font-size: 1.875em;
+}
+.edytor-notion h2[data-edytor-type='heading'] {
+	margin-top: 22px;
+	font-size: 1.5em;
+}
+.edytor-notion h3[data-edytor-type='heading'] {
+	margin-top: 16px;
+	font-size: 1.25em;
+}
+.edytor-notion [data-edytor-type='heading'] > div {
+	font-size: 16px;
+	font-weight: 400;
+	line-height: 1.5;
+}
+/* A leading Heading 1 is the page title. */
+.edytor-notion [data-edytor] > h1[data-edytor-type='heading']:first-child {
+	margin: 0 0 12px;
+	padding: 3px 2px;
+	font-size: 40px;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+/* ── Lists, to-dos, toggles: a 24px marker column ───────────────────── */
+.edytor-notion [data-edytor-type='bulleted-list-item'],
+.edytor-notion [data-edytor-type='numbered-list-item'],
+.edytor-notion [data-edytor-type='todo-item'] {
+	display: grid;
+	grid-template-columns: 24px minmax(0, 1fr);
+	align-items: start;
+	list-style: none;
+	padding-inline-start: 2px;
+}
+.edytor-notion [data-edytor-type='bulleted-list-item'] > div,
+.edytor-notion [data-edytor-type='numbered-list-item'] > div,
+.edytor-notion [data-edytor-type='todo-item'] > div {
+	grid-column: 2;
+	min-width: 0;
+}
+.edytor-notion [data-edytor-type='bulleted-list-item']::before {
+	content: '•';
+	grid-row: 1;
+	width: 24px;
+	font-family: Arial, sans-serif;
+	font-size: 1.5em;
+	line-height: 1;
+	text-align: center;
+	padding-top: 1px;
+}
+.edytor-notion
+	[data-edytor-type='bulleted-list-item']
+	[data-edytor-type='bulleted-list-item']::before {
+	content: '◦';
+}
+.edytor-notion
+	[data-edytor-type='bulleted-list-item']
+	[data-edytor-type='bulleted-list-item']
+	[data-edytor-type='bulleted-list-item']::before {
+	content: '▪';
+	font-size: 1em;
+	line-height: 1.5;
+}
+/* A run of numbered items shares one counter; any other block restarts it. */
+.edytor-notion [data-edytor-type='numbered-list-item'] {
+	counter-increment: notion-list;
+}
+.edytor-notion
+	:not([data-edytor-type='numbered-list-item'])
+	+ [data-edytor-type='numbered-list-item'],
+.edytor-notion [data-edytor-type='numbered-list-item']:first-child {
+	counter-reset: notion-list;
+	counter-increment: notion-list;
+}
+.edytor-notion [data-edytor-type='numbered-list-item']::before {
+	content: counter(notion-list) '.';
+	grid-row: 1;
+	width: 24px;
+	text-align: center;
+	white-space: nowrap;
+}
+.edytor-notion
+	[data-edytor-type='numbered-list-item']
+	[data-edytor-type='numbered-list-item']::before {
+	content: counter(notion-list, lower-alpha) '.';
+}
+.edytor-notion
+	[data-edytor-type='numbered-list-item']
+	[data-edytor-type='numbered-list-item']
+	[data-edytor-type='numbered-list-item']::before {
+	content: counter(notion-list, lower-roman) '.';
+}
+
+/* To-do: Notion's square, blue when done; done text is struck and muted. */
+.edytor-notion [data-edytor-todo-checkbox] {
+	appearance: none;
+	grid-row: 1;
+	justify-self: center;
+	width: 16px;
+	height: 16px;
+	margin: 4px 0 0;
+	border-radius: 3px;
+	box-shadow: inset 0 0 0 1.5px var(--notion-text);
+	background: transparent center / 14px no-repeat;
+	cursor: pointer;
+	transition: background-color 120ms ease;
+}
+.edytor-notion [data-edytor-todo-checkbox]:hover {
+	background-color: var(--notion-hover);
+}
+.edytor-notion [data-edytor-todo-checkbox]:checked {
+	box-shadow: none;
+	background-color: var(--notion-blue);
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='white' d='M11.62 3.18a.876.876 0 0 1 1.5.9l-5.244 8.74a.876.876 0 0 1-1.414.12L2.966 8.86a.875.875 0 1 1 1.328-1.138L7 10.879z'/%3E%3C/svg%3E");
+}
+.edytor-notion
+	[data-edytor-type='todo-item']:has(> [data-edytor-todo-checkbox]:checked)
+	> div:first-of-type {
+	color: var(--notion-text-secondary);
+	text-decoration: line-through;
+	text-decoration-color: rgba(44, 44, 43, 0.25);
+}
+
+/* Toggle: a caret that turns as the toggle opens; children indent under it. */
+.edytor-notion [data-edytor-type='toggle'] > summary {
+	position: relative;
+	display: block;
+	padding-inline-start: 26px;
+	list-style: none;
+	cursor: text;
+}
+.edytor-notion [data-edytor-type='toggle'] > summary::-webkit-details-marker {
+	display: none;
+}
+.edytor-notion [data-edytor-type='toggle'] > summary::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 24px;
+	height: 24px;
+	border-radius: 6px;
+	background: currentColor;
+	-webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8.5 8.8h7a.5.5 0 0 1 .4.8l-3.5 4.7a.5.5 0 0 1-.8 0L8.1 9.6a.5.5 0 0 1 .4-.8z'/%3E%3C/svg%3E")
+		center / 24px no-repeat;
+	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8.5 8.8h7a.5.5 0 0 1 .4.8l-3.5 4.7a.5.5 0 0 1-.8 0L8.1 9.6a.5.5 0 0 1 .4-.8z'/%3E%3C/svg%3E")
+		center / 24px no-repeat;
+	transform: rotate(-90deg);
+	transition: transform 200ms ease-out;
+	cursor: pointer;
+}
+.edytor-notion [data-edytor-type='toggle'][open] > summary::before {
+	transform: rotate(0deg);
+}
+.edytor-notion [data-edytor-type='toggle'] > div {
+	padding-inline-start: 26px;
+}
+
+/* ── Quote, callout, divider ────────────────────────────────────────── */
+.edytor-notion [data-edytor-type='quote'] {
+	margin: 4px 0;
+	padding: 3px 2px 3px 14px;
+	border-radius: 0;
+	border-inline-start: 3px solid currentColor;
+}
+.edytor-notion [data-edytor-type='callout'] {
+	display: grid;
+	grid-template-columns: 24px minmax(0, 1fr);
+	column-gap: 8px;
+	margin: 4px 0;
+	padding: 12px 12px 12px 12px;
+	border: 1px solid transparent;
+	border-radius: 10px;
+	background: var(--notion-panel);
+}
+.edytor-notion [data-edytor-callout-icon] {
+	grid-row: 1;
+	display: grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	font-size: 18px;
+	line-height: 1;
+	user-select: none;
+}
+.edytor-notion [data-edytor-type='callout'] > div {
+	grid-column: 2;
+	min-width: 0;
+}
+.edytor-notion [data-edytor-type='divider'],
+.edytor-notion hr[data-edytor-block] {
+	height: 1px;
+	margin: 6px 2px;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: var(--notion-border);
+}
+
+/* ── Code ───────────────────────────────────────────────────────────── */
+.edytor-notion [data-edytor-type='code'] {
+	margin: 4px 0;
+	padding: 34px 16px 32px 32px;
+	border-radius: 10px;
+	background: var(--notion-code-panel);
+}
+.edytor-notion [data-edytor-type='codeLine'] {
+	margin: 0;
+	padding: 0;
+	border-radius: 0;
+}
+
+/* ── Marks ──────────────────────────────────────────────────────────── */
+.edytor-notion [data-edytor] strong {
+	font-weight: 600;
+}
+.edytor-notion [data-edytor] code:not(pre code) {
+	position: relative;
+	bottom: 0.065em;
+	padding: 0.2em 0.4em;
+	border-radius: 4px;
+	background: rgba(33, 27, 23, 0.05);
+	color: var(--notion-inline-code);
+	font-family: var(--notion-mono);
+	font-size: 85%;
+	line-height: normal;
+}
+.edytor-notion [data-edytor] a {
+	color: inherit;
+	text-decoration: underline;
+	text-decoration-color: rgba(44, 44, 43, 0.4);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 2px;
+	opacity: 0.7;
+	cursor: pointer;
+}
+
+/* ── Placeholder, selection, focus ──────────────────────────────────── */
+.edytor-notion [data-edytor-text][data-placeholder]::before {
+	color: var(--notion-placeholder);
+	opacity: 1;
+}
+.edytor-notion [data-edytor-selected] {
+	background: var(--notion-block-selection);
+}
+.edytor-notion [data-edytor-selected] [data-edytor-selected] {
+	background: transparent;
+}
+/* A block selection is exactly its members: an unselected child of a
+   selected block keeps the page background. */
+.edytor-notion [data-edytor-selected] [data-edytor-block]:not([data-edytor-selected]) {
+	background: var(--notion-page, #fff);
+}

@@ -33,14 +33,20 @@ export class SlashMenuController {
 
 	constructor(private edytor: Edytor) {}
 
+	/** Matching commands, grouped (groups in first-seen order): the menu's rows and keyboard order. */
 	get commands() {
 		const query = normalize(this.query);
-		return Array.from(this.edytor.commands.values()).filter((command) => {
+		const matching = Array.from(this.edytor.commands.values()).filter((command) => {
 			if (command.isEnabled?.(this.edytor) === false) {
 				return false;
 			}
 			return commandMatchesQuery(command, query);
 		});
+		// Groups in first-seen order, Notion's "Basic blocks" first.
+		const groups = [...new Set(matching.map((command) => command.group ?? ''))].sort(
+			(a, b) => Number(b === 'Basic blocks') - Number(a === 'Basic blocks')
+		);
+		return matching.sort((a, b) => groups.indexOf(a.group ?? '') - groups.indexOf(b.group ?? ''));
 	}
 
 	handleTextInsertion(text: Text, block: Block, payload: TextInsertionPayload) {

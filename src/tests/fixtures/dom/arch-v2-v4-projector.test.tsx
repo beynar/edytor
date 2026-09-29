@@ -485,6 +485,10 @@ describe('F-P2 — the toolbar holds the selection as a value (L52)', () => {
 		const block = edytor.root!.children[0]!;
 		const text = block.firstText!;
 		await setNativeSelection(edytor, text, 6, text, 11);
+		const open = rendered.getByTestId('toolbar-link');
+		open.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+		open.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+		await flushDomUpdates();
 		const input = rendered.getByTestId('toolbar-link-input') as HTMLInputElement;
 		input.focus();
 		input.value = 'https://example.com';

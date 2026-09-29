@@ -30,6 +30,13 @@ const clickToolbarControl = async (element: HTMLElement) => {
 	await flushDomUpdates();
 };
 
+/** The link field sits behind the toolbar's Link button (Notion); opening is idempotent. */
+const openLinkPanel = async (getByTestId: (id: string) => HTMLElement) => {
+	if (!document.querySelector('[data-testid="toolbar-link-input"]')) {
+		await clickToolbarControl(getByTestId('toolbar-link'));
+	}
+};
+
 const setLinkInput = async (element: HTMLElement, value: string) => {
 	if (!(element instanceof HTMLInputElement)) {
 		throw new Error('Expected toolbar link input');
@@ -99,8 +106,11 @@ export const fixtures = defineFixtures([
 			expect(getByTestId('toolbar-underline')).toBeTruthy();
 			expect(getByTestId('toolbar-strike')).toBeTruthy();
 			expect(getByTestId('toolbar-code')).toBeTruthy();
+			await openLinkPanel(getByTestId);
 			expect(getByTestId('toolbar-link-input')).toBeTruthy();
+			await openLinkPanel(getByTestId);
 			expect(getByTestId('toolbar-link-apply')).toBeTruthy();
+			await openLinkPanel(getByTestId);
 			expect(getByTestId('toolbar-link-remove')).toBeTruthy();
 		}
 	}),
@@ -137,7 +147,9 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ getByTestId }) => {
+			await openLinkPanel(getByTestId);
 			await setLinkInput(getByTestId('toolbar-link-input'), newUrl);
+			await openLinkPanel(getByTestId);
 			await clickToolbarControl(getByTestId('toolbar-link-apply'));
 		},
 		assert: async ({ edytor }) => {
@@ -165,9 +177,11 @@ export const fixtures = defineFixtures([
 		autoSelectFixture: false,
 		run: async ({ edytor, getByTestId }) => {
 			await selectFirstTextRange(edytor, 4);
+			await openLinkPanel(getByTestId);
 			const input = getByTestId('toolbar-link-input');
 			expect((input as HTMLInputElement).value).toBe(oldUrl);
 			await setLinkInput(input, newUrl);
+			await openLinkPanel(getByTestId);
 			await clickToolbarControl(getByTestId('toolbar-link-apply'));
 		},
 		assert: async ({ edytor }) => {
@@ -195,6 +209,7 @@ export const fixtures = defineFixtures([
 		autoSelectFixture: false,
 		run: async ({ edytor, getByTestId }) => {
 			await selectFirstTextRange(edytor, 4);
+			await openLinkPanel(getByTestId);
 			await clickToolbarControl(getByTestId('toolbar-link-remove'));
 		},
 		assert: async ({ edytor }) => {
@@ -222,7 +237,9 @@ export const fixtures = defineFixtures([
 		autoSelectFixture: false,
 		run: async ({ edytor, getByTestId }) => {
 			await selectFirstTextRange(edytor, 4);
+			await openLinkPanel(getByTestId);
 			await setLinkInput(getByTestId('toolbar-link-input'), '');
+			await openLinkPanel(getByTestId);
 			await clickToolbarControl(getByTestId('toolbar-link-apply'));
 		},
 		assert: async ({ edytor }) => {
@@ -244,7 +261,9 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: async ({ getByTestId }) => {
+			await openLinkPanel(getByTestId);
 			await setLinkInput(getByTestId('toolbar-link-input'), '');
+			await openLinkPanel(getByTestId);
 			await clickToolbarControl(getByTestId('toolbar-link-apply'));
 		},
 		assert: async ({ edytor }) => {

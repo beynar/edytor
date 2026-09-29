@@ -9,6 +9,16 @@ const openBlockMenu = async (page: Page, id: string) => {
 	await expect(page.getByRole('menu', { name: 'Block actions' })).toBeVisible();
 };
 
+/** Notion's "Turn into": the block menu's flyout. */
+const turnInto = async (page: Page, id: string, label: string) => {
+	await openBlockMenu(page, id);
+	await page.getByTestId('block-menu-turn').hover();
+	await page
+		.getByRole('menu', { name: 'Turn into' })
+		.getByRole('menuitem', { name: label, exact: true })
+		.click();
+};
+
 const rootOrder = (page: Page) =>
 	page
 		.locator('[data-edytor] > [data-edytor-block="true"]')
@@ -28,27 +38,25 @@ test.describe('document demo', () => {
 		issues.assertClean();
 	});
 
-	test('opens the block menu and returns to text without a full-row selection', async ({
-		page
-	}) => {
+	test('the block menu keeps its block selected, then returns to text', async ({ page }) => {
 		const issues = trackPageIssues(page);
 		await page.goto('/');
 		const block = page.locator('[data-edytor-id="page-section-intro"]');
+		// Notion: the block stays highlighted while its menu is open…
 		await openBlockMenu(page, 'page-section-intro');
-		await expect(block).not.toHaveAttribute('data-edytor-selected', 'true');
-		await page.getByRole('menuitem', { name: /Heading 3/ }).click();
+		await expect(block).toHaveAttribute('data-edytor-selected', 'true');
+		await page.getByTestId('block-menu-turn').hover();
+		await page
+			.getByRole('menu', { name: 'Turn into' })
+			.getByRole('menuitem', { name: 'Heading 3', exact: true })
+			.click();
+		// …and an action returns to a text caret in it.
 		await expect(block).not.toHaveAttribute('data-edytor-selected', 'true');
 		await expect
 			.poll(() =>
 				block.evaluate((node) => node.contains(window.getSelection()?.anchorNode ?? null))
 			)
 			.toBe(true);
-		const emptyBlock = page.locator('[data-edytor-id="page-end"]');
-		await openBlockMenu(page, 'page-end');
-		await expect(emptyBlock).not.toHaveAttribute('data-edytor-selected', 'true');
-		await expect
-			.poll(() => emptyBlock.evaluate((node) => getComputedStyle(node).backgroundColor))
-			.toBe('rgba(0, 0, 0, 0)');
 		issues.assertClean();
 	});
 
@@ -119,10 +127,7 @@ test.describe('document demo', () => {
 		]) {
 			// A fresh local document per case: the demo persists, so `/` would keep the last move.
 			await page.goto(`/?doc=nested-${name.replace(/\s/g, '-')}`);
-			if (name === 'numbered list') {
-				await openBlockMenu(page, blockId);
-				await page.getByRole('menuitem', { name: /Numbered list/ }).click();
-			}
+			if (name === 'numbered list') await turnInto(page, blockId, 'Numbered list');
 			const target = page.locator(`[data-edytor-id="${blockId}"]`);
 			const targetBox = await target.boundingBox();
 			if (!targetBox) throw new Error(`Missing ${name} target`);
@@ -235,8 +240,7 @@ test.describe('document demo', () => {
 		await page.goto('/');
 		await expect(handle(page, 'page-callout')).toBeVisible();
 
-		await openBlockMenu(page, 'page-section-intro');
-		await page.getByRole('menuitem', { name: /Heading 3/ }).click();
+		await turnInto(page, 'page-section-intro', 'Heading 3');
 		await expect(page.locator('h3[data-edytor-id="page-section-intro"]')).toHaveText(
 			'Start with a thought. Give it structure when you need it.'
 		);
@@ -252,7 +256,7 @@ test.describe('document demo', () => {
 		issues.assertClean();
 	});
 
-	test('moves and nests blocks from the handle menu', async ({ page }) => {
+	test('moves blocks from the handle menu and nests them with Tab', async ({ page }) => {
 		const issues = trackPageIssues(page);
 		await page.goto('/');
 		await expect(handle(page, 'page-callout')).toBeVisible();
@@ -264,33 +268,48 @@ test.describe('document demo', () => {
 			.poll(async () => (await rootOrder(page)).indexOf('page-callout'))
 			.toBe(originalOrder.indexOf('page-callout') - 1);
 
-		await openBlockMenu(page, 'page-task-two');
-		await page.getByRole('menuitem', { name: /Indent/ }).click();
+		// Notion nests from the keyboard: Tab, then Shift+Tab.
+		await page.locator('[data-edytor-id="page-task-two"] [data-edytor-text]').first().click();
+		await page.keyboard.press('Tab');
 		await expect(
 			page.locator('[data-edytor] > [data-edytor-block="true"][data-edytor-id="page-task-two"]')
 		).toHaveCount(0);
 		await expect(handle(page, 'page-task-two')).toHaveCount(1);
 
-		await openBlockMenu(page, 'page-task-two');
-		await page.getByRole('menuitem', { name: /Outdent/ }).click();
+		await page.keyboard.press('Shift+Tab');
 		await expect(
 			page.locator('[data-edytor] > [data-edytor-block="true"][data-edytor-id="page-task-two"]')
 		).toHaveCount(1);
 		issues.assertClean();
 	});
 
-	test('supports keyboard navigation and returns focus to the handle', async ({ page }) => {
+	test('searches actions from the keyboard, and Escape returns to the text', async ({ page }) => {
 		const issues = trackPageIssues(page);
-		await page.goto('/');
+		await page.goto('/?doc=block-menu-keys');
 		await openBlockMenu(page, 'page-callout');
-		await expect(page.getByRole('menuitem', { name: /^T Text$/ })).toBeFocused();
+		const search = page.getByRole('textbox', { name: 'Search actions' });
+		await expect(search).toBeFocused();
+		await page.keyboard.type('dup');
+		await expect(
+			page.getByRole('menu', { name: 'Block actions' }).getByRole('menuitem')
+		).toHaveText(['Duplicate']);
+		await page.keyboard.press('Enter');
+		await expect(page.locator('[data-edytor-type="callout"]')).toHaveCount(2);
+
+		await openBlockMenu(page, 'page-section-intro');
 		await page.keyboard.press('ArrowDown');
-		await expect(page.getByRole('menuitem', { name: /Heading 1/ })).toBeFocused();
-		await page.keyboard.press('End');
-		await expect(page.getByRole('menuitem', { name: /Delete/ })).toBeFocused();
+		await expect(
+			page.getByRole('menu', { name: 'Block actions' }).locator('[data-selected="true"]')
+		).toHaveCount(1);
 		await page.keyboard.press('Escape');
 		await expect(page.getByRole('menu', { name: 'Block actions' })).toHaveCount(0);
-		await expect(handle(page, 'page-callout')).toBeFocused();
+		await expect
+			.poll(() =>
+				page
+					.locator('[data-edytor-id="page-section-intro"]')
+					.evaluate((node) => node.contains(window.getSelection()?.anchorNode ?? null))
+			)
+			.toBe(true);
 		issues.assertClean();
 	});
 

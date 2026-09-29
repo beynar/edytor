@@ -14,12 +14,12 @@ Every block has a kind, its `type`. Kinds come from plugins: each plugin's `bloc
 | --- | --- | --- | --- |
 | `paragraph` | `div` > `p` | | The default block type. |
 | `heading` | `h1`–`h3` | `level: 'h1' \| 'h2' \| 'h3'` | |
-| `quote` | `blockquote` | | |
 | `bulleted-list-item` | `li` | | |
 | `numbered-list-item` | `li` | | |
-| `todo-item` | `div` with a checkbox | `checked: boolean` | |
+| `todo-item` | `div` with a checkbox | `checked: boolean` | Clicking the checkbox writes `checked`. |
 | `toggle` | `details` | | Children form the collapsible body. |
-| `callout` | `div` | `icon: string` | |
+| `callout` | `div` | `icon: string` | The icon defaults to `💡`. |
+| `quote` | `blockquote` | | |
 | `divider` | `hr` | | Void, no content. |
 | `ordered-list`, `unordered-list` | `ol`, `ul` | | Containers: children only, default child `list-item`. |
 | `list-item` | `li` | | |
@@ -89,7 +89,7 @@ A kind lists the ways to create it as `presets`. Each preset is a row in the kin
 ```ts
 edytor.kinds;
 // [
-//   { id: 'block.paragraph', label: 'Text', icon: 'T', value: { type: 'paragraph', data: {} }, replaces: false },
+//   { id: 'block.paragraph', label: 'Text', icon: 'T', keywords: ['paragraph', 'plain'], value: { type: 'paragraph', data: {} }, replaces: false },
 //   { id: 'block.heading1', label: 'Heading 1', markdown: ['# '], value: { type: 'heading', data: { level: 'h1' } }, replaces: false },
 //   { id: 'block.heading2', label: 'Heading 2', … },
 //   { id: 'block.code', label: 'Code', markdown: ['```'], replaces: true, … },
@@ -97,7 +97,7 @@ edytor.kinds;
 // ]
 ```
 
-Each row has the preset's `label`, `icon`, `keywords`, `data` and `markdown` prefixes, plus:
+Each row has the preset's `label`, `icon`, `keywords`, `data`, `markdown` prefixes and slash menu `group`, plus:
 
 | Field | Meaning |
 | --- | --- |

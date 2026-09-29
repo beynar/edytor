@@ -115,9 +115,11 @@
 	[data-edytor-block-handle-host] {
 		position: absolute;
 		z-index: 5;
-		transform: translate(calc(-100% - 6px), -50%);
+		display: flex;
+		align-items: center;
+		transform: translate(calc(-100% - 4px), -50%);
 		opacity: 0;
-		transition: opacity 100ms ease;
+		transition: opacity 150ms ease;
 	}
 
 	[data-edytor-block-handle-host][data-visible='true'],

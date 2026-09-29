@@ -1,0 +1,103 @@
+---
+title: Block menu
+description: The block menu plugin opens Notion's block menu when you click a block handle's grip, with search, Turn into, Duplicate, Move and Delete, and binds Mod+D to duplicate.
+icon: menu
+---
+
+`blockMenuPlugin` opens a menu when you click a block handle's ⋮⋮ grip: a search field, Turn into, Duplicate, Move up, Move down and Delete, as in Notion. It also binds <kbd>Mod</kbd> + <kbd>D</kbd> to duplicate a block.
+
+```svelte
+<script lang="ts">
+	import { Edytor, blockMenuPlugin, richTextPlugin } from 'edytor';
+</script>
+
+<Edytor plugins={[blockMenuPlugin, richTextPlugin]} />
+```
+
+The menu opens from [block handles](/docs/plugins/block-handles), which `<Edytor>` adds by default. Pass no `onActivate` to them: a handle with an `onActivate` callback calls it instead, and the menu never opens.
+
+## Options
+
+`blockMenuPlugin` has no block link. `createBlockMenuPlugin(options)` builds one with options:
+
+```ts
+import { createBlockMenuPlugin } from 'edytor';
+
+const blockMenu = createBlockMenuPlugin({
+	linkTo: (block) => `${location.origin}${location.pathname}#block-${block.id}`
+});
+```
+
+<TypeTable
+  type={{
+    linkTo: {
+      type: "(block: Block) => string",
+      description: "A URL for the block. Adds a 'Copy link to block' row that writes it to the clipboard. Without it, the row is hidden.",
+    },
+  }}
+/>
+
+The options type is `BlockMenuOptions`.
+
+## What it shows
+
+The menu opens beside the grip, top-aligned 8px to its right (to its left when the right has no room, flipped up when the space below is short), follows scrolling and resizing, and closes when the grip leaves the view. From top to bottom:
+
+1. A "Search actions…" field, focused.
+2. A heading naming the block's kind, such as "Heading 2".
+3. The actions:
+
+| Row                | Hint                                              | Does                                                                   |
+| ------------------ | ------------------------------------------------- | ---------------------------------------------------------------------- |
+| Turn into ›        |                                                   | Opens a flyout of the kinds that keep content, with ✓ on the current one |
+| Copy link to block |                                                   | Writes `linkTo(block)` to the clipboard. Only with `linkTo`            |
+| Duplicate          | <kbd>Mod</kbd> + <kbd>D</kbd>                     | Inserts a copy after the block, with fresh ids for it, its children and its atoms |
+| Move up            | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>  | Moves the block one step up                                            |
+| Move down          | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↓</kbd>  | Moves the block one step down                                          |
+| Delete             | <kbd>Del</kbd>                                    | Removes the block                                                      |
+
+A row that cannot apply is hidden: Turn into for a block that is not convertible (void, island or inside one), Move up or Move down when `edytor.canMoveBlocks` refuses the step. The hints show the matching shortcuts; <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> need the [arrow move](/docs/plugins/arrow-move) plugin.
+
+Typing in the field filters the actions by label, and lists the kinds whose label or keywords match under a "Turn into" heading: type `head` and pick "Heading 2" without opening the flyout. With nothing left, the menu shows "No results".
+
+## Keys
+
+While the menu is open, its search field takes the keys:
+
+| Keys                        | Action                                                          |
+| --------------------------- | --------------------------------------------------------------- |
+| <kbd>↑</kbd>, <kbd>↓</kbd>  | Move the highlight (wraps around); in the flyout, walk its kinds |
+| <kbd>Home</kbd>, <kbd>End</kbd> | Highlight the first or last row                             |
+| <kbd>→</kbd>                | Open the Turn into flyout from its row                          |
+| <kbd>←</kbd>                | Close the flyout                                                |
+| <kbd>Enter</kbd>            | Run the highlighted row, open the flyout from Turn into, or convert to the flyout's highlighted kind |
+| <kbd>Delete</kbd>           | Delete the block (with an empty search)                         |
+| <kbd>Escape</kbd>           | Close the flyout, then the menu                                 |
+
+Hovering a row highlights it, in the menu and in the flyout.
+
+## Behavior
+
+- The handle click selects the block, and it stays selected while the menu is open.
+- Every action closes the menu and returns a text caret: at the start of the converted or moved block, of the copy after Duplicate, or of the next block (the previous one at the end) after Delete. <kbd>Escape</kbd> also returns the caret to the block.
+- A pointer press outside the menu and the handles closes it without moving the caret.
+- Each action is one undo step, through the same commands as the rest of the editor (`convertToKind`, `insertBlockAfter`, `edytor.moveBlocks`, `removeBlock`), so plugins can refuse them.
+
+<kbd>Mod</kbd> + <kbd>D</kbd> duplicates the first selected block, or else the block holding the caret, and puts the caret in the copy. It is claimed only for a block that can move, and never in a readonly editor.
+
+## How it opens
+
+When a handle is clicked and no `onActivate` is set, block handles dispatch a DOM event on the editor's root:
+
+```ts
+import { BLOCK_ACTIVATE_EVENT, type BlockActivation } from 'edytor';
+// 'edytor-block-activate', detail: { block, anchor }
+```
+
+`block` is the clicked block and `anchor` the grip element. The block menu listens for it. A plugin of your own can listen for the same event in `onEdytorAttached` to open a different menu, or to add behavior next to this one.
+
+## Placement and styling
+
+The menu mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-block-menu-host` and `z-index: 70`. Its markup and styles are built in: a 265px panel with line icons for the built-in kinds and actions, the kind flyout beside it, and a 140ms fade and scale-in. The panel has `data-testid="block-menu"`, and each action row `data-testid="block-menu-<id>"`, with ids `turn`, `link`, `duplicate`, `up`, `down` and `delete`.
+
+For a different design, write your own menu: listen for `edytor-block-activate`, or pass `onActivate` to the block handles (see [Building a block menu](/docs/plugins/block-handles#building-a-block-menu)).

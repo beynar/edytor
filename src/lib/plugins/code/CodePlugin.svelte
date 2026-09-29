@@ -104,18 +104,22 @@
 			blocks: {
 				code: {
 					snippet: code,
-					element: { tag: 'div', attributes: { class: 'grid gap-2 rounded bg-neutral-600 p-1' } },
 					island: true,
 					rendersContent: false,
 					defaultChild: 'codeLine',
 					presets: [
-						{ label: 'Code', icon: '</>', keywords: ['code block', 'snippet'], markdown: ['```'] }
+						{
+							label: 'Code',
+							icon: '</>',
+							keywords: ['code block', 'snippet'],
+							markdown: ['```'],
+							group: 'Media'
+						}
 					],
 					empty: { content: [], children: [{ type: 'codeLine', content: [{ text: '' }] }] }
 				},
 				codeLine: {
 					snippet: codeLine,
-					element: { tag: 'div', attributes: { style: 'tab-size: 7px' } },
 					html: (_, content) => `<pre><code>${content}</code></pre>`,
 					transformText: ({ text }) =>
 						highlighter
@@ -158,19 +162,20 @@
 </script>
 
 {#snippet code({ block, children }: BlockSnippetPayload)}
-	<div use:block.void class="text-xs flex justify-between">
-		<code>JavaScript</code>
-		<div>
-			<button
-				onclick={async (e) => {
-					e.preventDefault();
-					e.stopPropagation();
-					await navigator.clipboard.writeText(getCodeText(block.handle));
-				}}
-			>
-				Copy
-			</button>
-		</div>
+	<div use:block.void data-edytor-code-header>
+		<span data-edytor-code-language>JavaScript</span>
+		<button
+			type="button"
+			onmousedown={(e) => e.preventDefault()}
+			onclick={async (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				const button = e.currentTarget;
+				await navigator.clipboard.writeText(getCodeText(block.handle));
+				button.textContent = 'Copied';
+				setTimeout(() => (button.textContent = 'Copy'), 1200);
+			}}>Copy</button
+		>
 	</div>
 	<pre class="th-code"><code>{@render children?.()}</code></pre>
 {/snippet}

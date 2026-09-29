@@ -1,10 +1,10 @@
 ---
 title: Markdown shortcuts
-description: The markdown shortcuts plugin converts a block when you type a prefix such as "# " or "- " at its start, using the prefixes the block kinds declare.
+description: The markdown shortcuts plugin converts a block when you type a prefix such as "# " or "- " at its start, and formats text typed as **bold**, *italic*, `code` or ~strike~, as in Notion.
 icon: hash
 ---
 
-`markdownShortcutsPlugin` converts a block as you type a markdown prefix at its start: `# ` makes a heading, `- ` a bulleted list item, ` ``` ` a code block. It has no list of its own: the prefixes come from the `markdown` field of each block kind's presets.
+`markdownShortcutsPlugin` brings Notion's markdown as you type. A prefix at the start of a block converts it: `# ` makes a heading, `- ` a bulleted list item, ` ``` ` a code block. The prefixes come from the `markdown` field of each block kind's presets, so the plugin has no list of its own. Inline, `**bold**`, `*italic*` and the others apply their mark when you type the closing marker.
 
 ```svelte
 <script lang="ts">
@@ -18,19 +18,24 @@ It takes no options.
 
 ## Prefixes
 
-With the rich text and code plugins:
+With the rich text and code plugins, the prefixes are Notion's:
 
-| Type             | Converts to                        |
-| ---------------- | ---------------------------------- |
-| `# `             | Heading 1                          |
-| `## `            | Heading 2                          |
-| `### `           | Heading 3                          |
-| `> `             | Quote                              |
-| `- ` or `* `     | Bulleted list item                 |
-| `1. `            | Numbered list item                 |
-| `[ ] ` or `[] `  | To-do                              |
-| `---`            | Divider                            |
-| ` ``` `          | Code block (code plugin)           |
+| Type                        | Converts to                        |
+| --------------------------- | ---------------------------------- |
+| `# `                        | Heading 1                          |
+| `## `                       | Heading 2                          |
+| `### `                      | Heading 3                          |
+| `- `, `* ` or `+ `          | Bulleted list item                 |
+| `1. `, `a. ` or `i. `       | Numbered list item                 |
+| `[] ` or `[ ] `             | To-do                              |
+| `" `                        | Quote                              |
+| `> `                        | Toggle                             |
+| `---`                       | Divider                            |
+| ` ``` `                     | Code block (code plugin)           |
+
+:::note
+As in Notion, `> ` makes a toggle and `" ` a quote.
+:::
 
 ## How it triggers
 
@@ -44,6 +49,22 @@ A conversion happens when the character you type completes a prefix, and all of 
 Removing the prefix and converting the block are one operation (`setBlock`, with a `deleteContentAtRange` step for the prefix): a plugin that refuses either refuses both. When the conversion is refused, the character is inserted as normal text instead. After the conversion the caret is at the start of the converted block, or of its first child when the kind starts with one (a code block's first line).
 
 A kind with an `empty` shape, such as the divider, replaces the block's content and children. Other kinds keep them.
+
+## Inline markdown
+
+Typing the closing marker after marked-up text applies the mark and removes both markers:
+
+| Type                         | Mark          |
+| ---------------------------- | ------------- |
+| `**bold**`                   | `bold`        |
+| `*italic*` or `_italic_`     | `italic`      |
+| `` `code` ``                 | `code`        |
+| `~strike~` or `~~strike~~`   | `strike`      |
+
+- The text between the markers must be non-empty and not start or end with a space: `* a*` and `** **` stay text.
+- Removing the markers and applying the mark are one undo step; undo brings the markers back as text. The step runs as an `inlineMarkdown` operation, visible to `onBeforeOperation`. A plugin that refuses it leaves the closing character typed as text.
+- Typing continues without the mark.
+- It works anywhere in a text, at a collapsed caret, except in code lines, and only for marks the editor defines.
 
 ## Adding a prefix
 

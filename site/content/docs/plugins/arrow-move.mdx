@@ -1,10 +1,10 @@
 ---
 title: Arrow move
-description: The arrow move plugin moves the selected blocks up or down one step with Mod and the arrow keys, keeping them selected.
+description: The arrow move plugin moves the caret's block with Mod+Shift and the arrow keys, as in Notion, and the selected blocks with Mod and the arrow keys.
 icon: arrow-up-down
 ---
 
-`arrowMovePlugin` moves a block selection with the keyboard: <kbd>Mod</kbd> + <kbd>↑</kbd> moves the selected blocks up one step, <kbd>Mod</kbd> + <kbd>↓</kbd> down one step. <kbd>Mod</kbd> is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere.
+`arrowMovePlugin` moves blocks with the keyboard. <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the block holding the caret one step, as in Notion; <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves the selected blocks. <kbd>Mod</kbd> is <kbd>Cmd</kbd> on macOS and <kbd>Ctrl</kbd> elsewhere.
 
 ```svelte
 <script lang="ts">
@@ -18,15 +18,23 @@ It takes no options.
 
 ## Behavior
 
-The keys act only while whole blocks are selected, for example after clicking a block handle or pressing <kbd>Mod</kbd> + <kbd>A</kbd> until the block is selected. With a text caret they keep their default meaning: moving the caret to the start or end of the document.
+| Keys                                                   | Moves                                         | When                          |
+| ------------------------------------------------------ | --------------------------------------------- | ----------------------------- |
+| <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> | The selected blocks, or else the block where the selection starts | A caret, text or block selection |
+| <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd>             | The selected blocks                           | A block selection             |
 
-| Keys                          | Move                                                                       |
-| ----------------------------- | -------------------------------------------------------------------------- |
-| <kbd>Mod</kbd> + <kbd>↑</kbd>   | Before the previous sibling; from a first child, before the parent         |
-| <kbd>Mod</kbd> + <kbd>↓</kbd>   | After the next sibling (never into its children); from a last child, after the parent |
+One step is:
 
+| Direction | Move                                                                                 |
+| --------- | ------------------------------------------------------------------------------------ |
+| Up        | Before the previous sibling; from a first child, before the parent                   |
+| Down      | After the next sibling (never into its children); from a last child, after the parent |
+
+A key is claimed only when a block can take the step. Otherwise it keeps its default meaning: <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> move the caret to the start or end of the document, and with <kbd>Shift</kbd> extend the selection there.
+
+- Moving the caret's block keeps the caret in it, at the same offset.
 - A group of selected siblings moves together, in document order. Selected blocks that are not siblings do not move.
-- The moved blocks stay selected, so you can press the key again.
+- Moved selected blocks stay selected, so you can press the key again.
 - A move never nests a block. To nest or outdent, use <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd>, or a block handle's <kbd>Alt</kbd> + <kbd>→</kbd> and <kbd>Alt</kbd> + <kbd>←</kbd> (see [Block handles](/docs/plugins/block-handles#keyboard-moves)).
 - Each move is one undo step, and it runs as a `moveBlock` or `moveBlocks` operation that plugins can refuse.
 

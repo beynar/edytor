@@ -70,17 +70,23 @@ On macOS the Emacs-style <kbd>Ctrl</kbd> keys work as in native text fields:
 | Keys                                               | Action                                           | Plugin, where                            |
 | -------------------------------------------------- | ------------------------------------------------ | ---------------------------------------- |
 | <kbd>Mod</kbd> + <kbd>B</kbd>, <kbd>I</kbd>, <kbd>U</kbd>, <kbd>E</kbd> | Bold, italic, underline, inline code | [Rich text](/docs/plugins/rich-text)     |
-| <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd>       | Strikethrough                                    | Rich text                                |
+| <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>, <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd> | Strikethrough              | Rich text                                |
 | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd>       | Red text color                                   | Rich text                                |
+| <kbd>Mod</kbd> + <kbd>Enter</kbd>                    | Check or uncheck the to-do                       | Rich text, in a to-do                    |
+| <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>0</kbd> to <kbd>8</kbd> | Turn into text, heading 1 to 3, to-do, bulleted list, numbered list, toggle, code | Rich text, when that kind's command exists |
 | <kbd>Tab</kbd>                                     | Insert a tab, or accept a suggestion             | [Code](/docs/plugins/code), in a code line |
 | <kbd>Shift</kbd> + <kbd>Enter</kbd>                  | New code line                                    | Code, in a code line                     |
 | <kbd>Mod</kbd> + <kbd>A</kbd>                        | Select the whole code block's text               | Code, in a non-empty code line           |
 | <kbd>Escape</kbd>                                  | Dismiss a suggestion                             | Code, in a code line                     |
 | <kbd>↑</kbd>, <kbd>↓</kbd>, <kbd>Enter</kbd>, <kbd>Escape</kbd> | Navigate, run, close                | [Slash menu](/docs/plugins/slash-menu), while open |
 | <kbd>Mod</kbd> + <kbd>↑</kbd>, <kbd>Mod</kbd> + <kbd>↓</kbd> | Move the selected blocks up or down        | [Arrow move](/docs/plugins/arrow-move), block selection |
+| <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>, <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↓</kbd> | Move the caret's block (or the selected blocks) up or down | Arrow move, text or block selection |
+| <kbd>Mod</kbd> + <kbd>D</kbd>                        | Duplicate the selected block (the first one), or else the caret's block | [Block menu](/docs/plugins/block-menu)   |
 | <kbd>Alt</kbd> + <kbd>↑</kbd> <kbd>↓</kbd> <kbd>→</kbd> <kbd>←</kbd> | Move the block up, down, in, out | [Block handles](/docs/plugins/block-handles), handle focused |
 
-A plugin key only claims the key in the situation listed. Otherwise the key falls through to the next binding, for example <kbd>Mod</kbd> + <kbd>↓</kbd> to the document end when no block is selected.
+The <kbd>Mod</kbd> + <kbd>Alt</kbd> digits follow Notion's numbering and run the kind's `block.*` command, so <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>8</kbd> needs the code plugin. The block menu's own keys (arrows, <kbd>Enter</kbd>, <kbd>Escape</kbd>) belong to its search field, see [Block menu](/docs/plugins/block-menu#keys).
+
+A plugin key only claims the key in the situation listed. Otherwise the key falls through to the next binding, for example <kbd>Mod</kbd> + <kbd>↓</kbd> to the document end when no block is selected, or <kbd>Mod</kbd> + <kbd>Enter</kbd> to the built-in new block outside a to-do. With the arrow move plugin, <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves a movable block instead of extending the selection to the document edge.
 
 ## Adding hotkeys
 
@@ -113,7 +119,7 @@ The `hotKeys` prop is read once, when the editor mounts.
 A chord is lowercase modifiers and one key, joined with `+`:
 
 - **Modifiers**: `mod`, `alt`, `ctrl`, `shift`. Their order does not matter: `shift+mod+k` and `mod+shift+k` are the same chord.
-- **Keys**: the letters `a` to `z`, `arrowup`, `arrowdown`, `arrowleft`, `arrowright`, `tab`, `enter`, `backspace`, `delete`, `escape`, `home`, `end`, `pageup`, `pagedown`.
+- **Keys**: the letters `a` to `z`, the digits `0` to `9`, `arrowup`, `arrowdown`, `arrowleft`, `arrowright`, `tab`, `enter`, `backspace`, `delete`, `space`, `escape`, `home`, `end`, `pageup`, `pagedown`. `space` is the space bar.
 - `mod` is <kbd>Cmd</kbd> on Apple platforms and <kbd>Ctrl</kbd> elsewhere. `ctrl` matches the <kbd>Ctrl</kbd> key only on Apple platforms; elsewhere <kbd>Ctrl</kbd> is always `mod`.
 - On non-Latin keyboard layouts, a <kbd>Mod</kbd> chord also matches by physical key: <kbd>Mod</kbd> + <kbd>Б</kbd> on a Russian layout runs `mod+b`.
 - <kbd>AltGr</kbd> combinations and dead keys produce text and never run a binding.

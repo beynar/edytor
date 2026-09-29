@@ -66,7 +66,7 @@ const readMenuGeometry = (page: Page, blockId: string) =>
 		const handle = document.querySelector<HTMLElement>(
 			`[data-testid="block-handle"][data-block-id="${id}"]`
 		);
-		const menu = document.querySelector<HTMLElement>('[data-demo-block-menu]');
+		const menu = document.querySelector<HTMLElement>('[data-testid="block-menu"]');
 		if (!handle || !menu) throw new Error(`Missing handle or menu for ${id}`);
 		const handleRect = handle.getBoundingClientRect();
 		const menuRect = menu.getBoundingClientRect();
@@ -204,7 +204,7 @@ test.describe('demo block handle alignment', () => {
 		issues.assertClean();
 	});
 
-	test('keeps a flipped menu in a narrow viewport and scrolls focused actions into view', async ({
+	test('keeps a flipped menu in a narrow viewport and keeps the keyboard row in view', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -216,9 +216,10 @@ test.describe('demo block handle alignment', () => {
 		await expect
 			.poll(() =>
 				page.evaluate(() => {
-					const menu = document.querySelector<HTMLElement>('[data-demo-block-menu]');
-					const focused = document.activeElement;
-					if (!menu || !(focused instanceof HTMLElement)) return false;
+					const menu = document.querySelector<HTMLElement>('[data-testid="block-menu"]');
+					// The keyboard's row (the search field keeps the focus, as in Notion).
+					const focused = menu?.querySelector<HTMLElement>('[data-selected="true"]');
+					if (!menu || !focused) return false;
 					const menuRect = menu.getBoundingClientRect();
 					const focusedRect = focused.getBoundingClientRect();
 					return (
@@ -228,8 +229,7 @@ test.describe('demo block handle alignment', () => {
 						menuRect.bottom <= innerHeight - 7 &&
 						focused.textContent?.includes('Delete') &&
 						focusedRect.top >= menuRect.top &&
-						focusedRect.bottom <= menuRect.bottom &&
-						menu.scrollTop > 0
+						focusedRect.bottom <= menuRect.bottom
 					);
 				})
 			)

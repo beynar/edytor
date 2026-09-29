@@ -1,50 +1,92 @@
-/* Code blocks: TanStack Highlight token classes (`th-*`), atom-dark palette. */
-pre.th-code {
-	overflow: auto;
-	color: #c5c8c6;
-	font-family: Inconsolata, Monaco, Consolas, 'Courier New', Courier, monospace;
+/*
+ * Code blocks, Notion style: a warm gray panel, the language at the top
+ * left, Copy on hover, and Notion's light syntax theme (Prism's palette)
+ * over TanStack Highlight's `th-*` token classes.
+ */
+[data-edytor-type='code'] {
+	position: relative;
+	margin: 4px 0;
+	padding: 34px 16px 32px 32px;
+	border-radius: 10px;
+	background: #f7f6f3;
+	color: #2c2c2b;
+}
+[data-edytor-code-header] {
+	position: absolute;
+	top: 6px;
+	left: 10px;
+	right: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
 	font-size: 12px;
+	line-height: 20px;
+	color: #7d7a75;
+	user-select: none;
+}
+[data-edytor-code-header] button {
+	padding: 0 6px;
+	border-radius: 6px;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 150ms ease;
+}
+[data-edytor-type='code']:hover [data-edytor-code-header] button,
+[data-edytor-code-header] button:focus-visible {
+	opacity: 1;
+}
+[data-edytor-code-header] button:hover {
+	background: rgba(33, 27, 23, 0.06);
+}
+pre.th-code {
+	margin: 0;
+	overflow-x: auto;
+	color: inherit;
+	font-family: 'SFMono-Regular', Menlo, Consolas, 'PT Mono', 'Liberation Mono', Courier, monospace;
+	font-size: 85%;
 	line-height: 1.5;
 	text-align: left;
 	white-space: pre;
 	word-break: normal;
-	tab-size: 4;
+	tab-size: 2;
 	hyphens: none;
+}
+pre.th-code code {
+	font: inherit;
+	background: none;
+	color: inherit;
+	padding: 0;
 }
 .th-comment,
 .th-meta {
-	color: #7c7c7c;
+	color: #708090;
 }
 .th-keyword,
-.th-tag,
-.th-property,
 .th-link {
-	color: #96cbfe;
+	color: #0077aa;
 }
-.th-type {
-	color: #ffffb6;
-}
-.th-literal {
-	color: #99cc99;
-}
-.th-deleted {
-	color: #f92672;
-}
-.th-number {
-	color: #ff73fd;
-}
+.th-string,
 .th-attr,
 .th-selector,
-.th-string,
 .th-inserted {
-	color: #a8ff60;
+	color: #669900;
+}
+.th-function,
+.th-type {
+	color: #dd4a68;
+}
+.th-number,
+.th-literal,
+.th-tag,
+.th-property,
+.th-deleted {
+	color: #990055;
 }
 .th-variable {
-	color: #c6c5fe;
+	color: #ee9900;
 }
 .th-operator {
-	color: #ededed;
-}
-.th-function {
-	color: #dad085;
+	color: #9a6e3a;
 }

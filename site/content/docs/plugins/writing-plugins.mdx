@@ -196,7 +196,7 @@ For the clipboard formats and paste rules, see [Clipboard](/docs/editor/clipboar
 
 ## Commands
 
-`commands` adds named actions that menus can list and run. The slash menu shows every command next to the block kinds.
+`commands` adds named actions that menus can list and run. The slash menu shows every command next to the block kinds, sectioned by `group`.
 
 ```ts
 import type { Plugin } from 'edytor';
@@ -224,7 +224,8 @@ export const todoCommandsPlugin: Plugin = () => ({
     label: { type: "string", required: true, description: "Shown in menus." },
     icon: { type: "string", description: "A short text icon." },
     keywords: { type: "string[]", description: "Extra search terms." },
-    group: { type: "string", description: "A group name for menus that group commands." },
+    group: { type: "string", description: "The menu section. The slash menu lists 'Basic blocks' first, then groups in first-seen order; a command without one gets no heading." },
+    hint: { type: "string", description: "A shortcut shown right-aligned in the slash menu row, such as '##' or '⌘D'." },
     isEnabled: { type: "(edytor) => boolean", description: "Hide or disable the command." },
     run: { type: "(edytor) => unknown", required: true, description: "The action. May be async." },
   }}

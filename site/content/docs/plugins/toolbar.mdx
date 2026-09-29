@@ -1,10 +1,10 @@
 ---
 title: Toolbar
-description: The toolbar plugin shows a floating formatting toolbar over text selections, with a button for every mark that declares one and a link field.
+description: The toolbar plugin shows Notion's floating toolbar over text selections, with Turn into, a link panel, a button for every mark that declares one, and text and background colors.
 icon: bold
 ---
 
-`toolbarPlugin` shows a formatting toolbar above a text selection. Its buttons come from the mark definitions: every mark with a `toolbar` entry gets one.
+`toolbarPlugin` shows Notion's formatting toolbar above a text selection: `[Kind ⌄] | Link | B I U S </> | A ⌄`. The mark buttons come from the mark definitions: every mark with a `toolbar` entry gets one.
 
 ```svelte
 <script lang="ts">
@@ -14,15 +14,33 @@ icon: bold
 <Edytor plugins={[toolbarPlugin, richTextPlugin]} />
 ```
 
-It takes no options. It formats through [`richTextOperations`](/docs/plugins/rich-text#formatting-from-code), so use it with the rich text plugin, or with your own plugin that defines the `link` mark if you want the link field to work.
+It takes no options. It formats through [`richTextOperations`](/docs/plugins/rich-text#formatting-from-code), so use it with the rich text plugin, or with your own plugin that defines the `link`, `color` and `highlight` marks if you want the link and color panels to work.
 
 ## What it shows
 
 From left to right:
 
-1. A "Text" label.
-2. One button per mark whose definition has `toolbar: { label, icon }`, in registration order. With the rich text plugin: bold, italic, underline, strike and code. A button toggles its mark over the selection.
-3. A link field showing the selection's current link, an apply button (↗) that links the selection to the typed URL, and a remove button (×). Applying an empty field removes the link.
+1. **The kind button**, labeled with the block's kind ("Heading 2", "Text"…). It opens a "Turn into" panel listing the kinds that keep content, with ✓ on the current one. Picking one converts the block at the start of the selection and keeps the selection.
+2. **Link** opens a link panel: a URL field (`data-testid="toolbar-link-input"`) showing the selection's current link, with Apply and Remove. <kbd>Enter</kbd> in the field applies and closes the panel. Applying an empty field removes the link.
+3. **One button per mark** whose definition has `toolbar: { label, icon }`, in registration order. With the rich text plugin: bold, italic, underline, strike and code. A button toggles its mark over the selection.
+4. **A ⌄** (Color) opens Notion's colors: ten text colors and ten background colors. A text color sets the `color` mark, a background the `highlight` mark, and Default removes that mark. The palette is exported as `TOOLBAR_COLORS` (`{ name, text, background }`).
+
+One panel is open at a time; clicking its button again closes it. Panels drop below the bar, over the text.
+
+| Color   | Text      | Background |
+| ------- | --------- | ---------- |
+| Default | none      | none       |
+| Gray    | `#7d7a75` | `#f0efed`  |
+| Brown   | `#9f765a` | `#f5ede9`  |
+| Orange  | `#d27b2d` | `#fbebde`  |
+| Yellow  | `#cb9434` | `#f9f3dc`  |
+| Green   | `#50946e` | `#e8f1ec`  |
+| Blue    | `#387dc9` | `#e5f2fc`  |
+| Purple  | `#9a6bb4` | `#f3ebf9`  |
+| Pink    | `#c14c8a` | `#fae9f1`  |
+| Red     | `#cf5148` | `#fce9e7`  |
+
+The values are stored in the marks as written, so documents keep them if you restyle the editor.
 
 Add a button for your own mark by declaring `toolbar` on it:
 
@@ -45,10 +63,10 @@ The toolbar shows when all of these hold:
 
 It follows the selection as it changes, and repositions on scroll, resize and edits. Buttons keep the selection: clicking one does not move the caret, and the selection is restored after the format is applied.
 
-A URL typed in the link field goes through the same sanitization as every link: a `javascript:` or other unsafe scheme is ignored.
+A URL typed in the link panel goes through the same sanitization as every link: a `javascript:` or other unsafe scheme is ignored. Colors go through `setMarkValueAtRange` and `removeMarkAtRange` (see [Formatting from code](/docs/plugins/rich-text#formatting-from-code)).
 
 ## Placement and styling
 
 The toolbar mounts in the editor's overlay, in a `position: fixed` host with the attribute `data-edytor-toolbar-host` and `z-index: 60`. It is centered above the selection, or placed below it when there is no room above, and kept inside the viewport.
 
-Its markup and styles are built in. Each mark button has the class `mark-<name>` and a `data-testid` of `toolbar-<name>`. For a different design, write your own toolbar plugin with `onSelectionChange`, `onAfterOperation`, the overlay (`edytor.overlay`) and `richTextOperations`; that is all this plugin uses.
+Its markup and styles are built in, after Notion's. The bar has `data-testid="selection-toolbar"`, the Link button `toolbar-link`, the link panel's buttons `toolbar-link-apply` and `toolbar-link-remove`, and each mark button the class `mark-<name>` and a `data-testid` of `toolbar-<name>`. For a different design, write your own toolbar plugin with `onSelectionChange`, `onAfterOperation`, the overlay (`edytor.overlay`) and `richTextOperations`; that is all this plugin uses.

@@ -49,6 +49,7 @@ test.describe('browser toolbar and link editing', () => {
 			isCollapsed: false
 		});
 
+		await page.getByTestId('toolbar-link').click();
 		await page.getByTestId('toolbar-link-input').fill('https://example.com');
 		await page.getByTestId('toolbar-link-apply').click();
 		await expect

@@ -89,7 +89,7 @@ test.describe('sel.blocks.exact + del.blocks.promote', () => {
 			page
 				.locator(`[data-edytor-id="${id}"]`)
 				.evaluate((node) => getComputedStyle(node).backgroundColor);
-		expect(await background('page-bullet-one')).toBe('rgb(232, 230, 223)');
+		expect(await background('page-bullet-one')).toBe('rgba(35, 131, 226, 0.14)');
 		expect(await background('page-bullet-two')).toBe('rgb(255, 255, 255)');
 		await page.keyboard.press('Backspace');
 		await expect(one).toHaveCount(0);

@@ -1,10 +1,10 @@
 ---
 title: Rich text
-description: The rich text plugin's block kinds, marks, hotkeys and formatting helpers, including link and color sanitization.
+description: The rich text plugin's block kinds, marks, Notion hotkeys, placeholders and formatting helpers, including link and color sanitization.
 icon: type
 ---
 
-`richTextPlugin` defines the everyday document: paragraphs, headings, lists, to-dos, quotes, toggles, callouts, dividers, and ten marks. Almost every editor needs it, since the core defines no block kinds.
+`richTextPlugin` defines the everyday document: paragraphs, headings, lists, to-dos, toggles, callouts, quotes, dividers, and ten marks, with Notion's shortcuts. Almost every editor needs it, since the core defines no block kinds.
 
 ```svelte
 <script lang="ts">
@@ -22,15 +22,15 @@ It takes no options. To change one of its kinds, define a kind with the same nam
 | -------------------- | -------------------------- | ------------------------------ | ---------------------------------------------------------- |
 | `paragraph`          | `div` with a `p` inside    | none                           | Text                                                       |
 | `heading`            | `h1` to `h6` from `level`  | `{ level: 'h1' }`              | Heading 1 (`# `), Heading 2 (`## `), Heading 3 (`### `)    |
-| `quote`              | `blockquote`               | none                           | Quote (`> `)                                               |
-| `bulleted-list-item` | `li`                       | none                           | Bulleted list (`- `, `* `)                                 |
-| `numbered-list-item` | `li`                       | none                           | Numbered list (`1. `)                                      |
+| `bulleted-list-item` | `li`                       | none                           | Bulleted list (`- `, `* `, `+ `)                           |
+| `numbered-list-item` | `li`                       | none                           | Numbered list (`1. `, `a. `, `i. `)                        |
 | `todo-item`          | `div` with a checkbox      | `{ checked: boolean }`         | To-do list (`[ ] `, `[] `)                                 |
-| `toggle`             | `details`, content in `summary` | none                      | Toggle list                                                |
-| `callout`            | `div` with an icon         | `{ icon: string }`             | Callout (icon `!`)                                         |
+| `toggle`             | `details`, content in `summary` | none                      | Toggle list (`> `)                                         |
+| `callout`            | `div` with an icon         | `{ icon: string }`             | Callout (icon `💡`)                                        |
+| `quote`              | `blockquote`               | none                           | Quote (`" `)                                               |
 | `divider`            | `hr`, void, no content     | none                           | Divider (`---`)                                            |
 
-Presets feed the [slash menu](/docs/plugins/slash-menu), [markdown shortcuts](/docs/plugins/markdown-shortcuts) and block menus. Their command ids are `block.paragraph`, `block.heading1` to `block.heading3`, `block.quote`, `block.bulleted-list-item`, `block.numbered-list-item`, `block.todo-item`, `block.toggle`, `block.callout` and `block.divider`.
+The kinds are listed in catalogue order, which the menus follow. Presets feed the [slash menu](/docs/plugins/slash-menu) (all under `Basic blocks`), [markdown shortcuts](/docs/plugins/markdown-shortcuts) and block menus. Their command ids are `block.paragraph`, `block.heading1` to `block.heading3`, `block.bulleted-list-item`, `block.numbered-list-item`, `block.todo-item`, `block.toggle`, `block.callout`, `block.quote` and `block.divider`.
 
 The plugin also defines kinds without presets, for content that arrives by paste or from stored documents:
 
@@ -43,7 +43,9 @@ Behavior worth knowing:
 
 - A `heading`'s element follows `data.level`, `h1` to `h6`; any other value renders `h1`. Copying exports `h1` to `h3`, and pasting `h4` to `h6` gives a level `h3` heading.
 - A `toggle` is a native `<details>`. The browser owns its `open` attribute, so opening and closing it is not an edit and is never reverted. Arrow keys skip the body of a closed toggle.
-- The `todo-item` checkbox shows `data.checked`, but the plugin does not write it when clicked. See [Toggling a to-do](#toggling-a-to-do).
+- The `todo-item` checkbox (`data-edytor-todo-checkbox`) shows `data.checked`. Clicking it, or <kbd>Mod</kbd> + <kbd>Enter</kbd> in the to-do, flips `checked` as one undo step. It does not change in a readonly editor.
+- A `callout` shows `data.icon` in a `data-edytor-callout-icon` span, `💡` when it has none.
+- The `paragraph` element carries no classes of its own: style it through `[data-edytor-type='paragraph']`.
 - Pasted `ol > li` becomes a numbered item and other `li` a bulleted item.
 
 ## Marks
@@ -55,11 +57,11 @@ Behavior worth knowing:
 | `underline`   | `u`                          | `true`                         | U              |
 | `strike`      | `s`                          | `true`                         | S              |
 | `code`        | `code`                       | `true`                         | `</>`          |
-| `link`        | `a` with `href` and `target` | `{ href, target? }`            | link field     |
+| `link`        | `a` with `href` and `target` | `{ href, target? }`            | Link panel     |
 | `superscript` | `sup`                        | `true`                         |                |
 | `subscript`   | `sub`                        | `true`                         |                |
-| `color`       | `span` with `color`          | a CSS color                    |                |
-| `highlight`   | `span` with `background-color` | a CSS color                  |                |
+| `color`       | `span` with `color`          | a CSS color                    | A ⌄ (text)     |
+| `highlight`   | `span` with `background-color` | a CSS color                  | A ⌄ (background) |
 
 Marks nest in this order, `bold` innermost. Typing at the end of a link extends it only when the caret is inside the link; typing at the edge of any other mark extends it.
 
@@ -75,10 +77,27 @@ Pasted HTML maps `b`, `i`, `u`, `strike` and `del` to their marks, reads Google 
 | <kbd>Mod</kbd> + <kbd>I</kbd>                    | Toggle italic                 |
 | <kbd>Mod</kbd> + <kbd>U</kbd>                    | Toggle underline              |
 | <kbd>Mod</kbd> + <kbd>E</kbd>                    | Toggle inline code            |
-| <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd>   | Toggle strikethrough          |
+| <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>, <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd> | Toggle strikethrough |
 | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd>   | Toggle red text color         |
+| <kbd>Mod</kbd> + <kbd>Enter</kbd>                  | Check or uncheck the to-do (in a to-do only) |
 
 With a collapsed caret, a mark hotkey sets the mark for the next characters you type instead.
+
+Notion's "turn into" chords convert the block holding the caret:
+
+| Keys                                              | Turns into      |
+| ------------------------------------------------- | --------------- |
+| <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>0</kbd>    | Text            |
+| <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>1</kbd>    | Heading 1       |
+| <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>2</kbd>    | Heading 2       |
+| <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>3</kbd>    | Heading 3       |
+| <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>4</kbd>    | To-do list      |
+| <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>5</kbd>    | Bulleted list   |
+| <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>6</kbd>    | Numbered list   |
+| <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>7</kbd>    | Toggle list     |
+| <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>8</kbd>    | Code (with the [code plugin](/docs/plugins/code)) |
+
+Each runs the kind's command (`block.paragraph`, `block.heading1`, …, `block.code`) and is claimed only when that command is registered.
 
 The plugin also handles the formatting input types browsers send from their own menus and from iOS: bold, italic, underline, strikethrough, superscript, subscript, remove formatting, text and background color, insert link, ordered and unordered list (converts the block), and horizontal rule (inserts a divider at the caret, splitting the block when the caret is inside it).
 
@@ -93,33 +112,15 @@ const format = richTextOperations(edytor);
 
 format.setMarkAtRange('bold'); // toggle, or stage at a caret
 format.setMarkValueAtRange('highlight', '#fff3a3'); // set, never toggle
+format.removeMarkAtRange('highlight'); // remove one mark
 format.setLinkAtRange({ href: 'https://svelte.dev', target: '_blank' });
 format.removeLinkAtRange();
 format.removeAllMarksAtRange();
 format.insertDividerAtSelection();
 ```
 
-`setLinkAtRange` ignores an unsafe `href`. `setMarkValueAtRange` ignores an unsafe color.
+`setLinkAtRange` ignores an unsafe `href`. `setMarkValueAtRange` ignores an unsafe color. `removeMarkAtRange` does nothing at a collapsed caret.
 
-## Toggling a to-do
+## Placeholders
 
-A plugin can write `checked` when the checkbox is clicked. The listener checks the type on every click, because converting a block to a to-do keeps its element:
-
-```ts
-import type { Plugin } from 'edytor';
-
-export const todoCheckboxPlugin: Plugin = () => ({
-	onBlockAttached: ({ node, block }) => {
-		const onClick = (event: MouseEvent) => {
-			const target = event.target as HTMLElement;
-			if (block.type !== 'todo-item' || target.parentElement !== node || target.localName !== 'input')
-				return;
-			block.setBlock({ value: { data: { ...block.data, checked: !block.data.checked } } });
-		};
-		node.addEventListener('click', onClick);
-		return () => node.removeEventListener('click', onClick);
-	}
-});
-```
-
-The `target.parentElement !== node` check ignores checkboxes of nested to-dos, which their own block handles.
+`richTextPlaceholder` gives the kinds Notion's placeholders ("Heading 1", "List", "To-do", "Type '/' for commands" in a focused paragraph…). Pass it to `<Edytor placeholder={richTextPlaceholder} />`. See [Placeholder](/docs/customization/placeholder#notion-placeholders).

@@ -169,11 +169,14 @@ A preset is one way to create the kind. Each preset becomes a row of the kind ca
     icon: { type: "string", description: "A short text icon." },
     keywords: { type: "string[]", description: "Extra search terms for menus." },
     data: { type: "object", description: "The new block's data." },
-    markdown: { type: "string[]", description: "Prefixes that convert a block when typed at its start. The last character triggers." },
+    markdown: { type: "string[]", description: "Prefixes that convert a block when typed at its start. The last character triggers. The first one is shown as the slash menu hint." },
+    group: { type: "string", default: "'Basic blocks'", description: "The slash menu section. The code preset uses 'Media'." },
   }}
 />
 
 Each row gets a command id: `block.<type>`, or `block.<type>1`, `block.<type>2` and so on when the kind has several presets. The rich text heading has three presets, so its commands are `block.heading1` to `block.heading3`.
+
+Rows keep registration order: plugins in list order, kinds in the order a plugin declares them, presets in array order. The slash menu shows them in that order, grouped by `group`, with `Basic blocks` first.
 
 Convert a block from code with `convertToKind`, or run the row's command:
 
@@ -238,7 +241,7 @@ A task with a checkbox that writes `data.done`, a markdown prefix, clipboard for
 				snippet: task,
 				element: (data) => ({ tag: 'div', attributes: { 'data-done': data.done ? 'true' : undefined } }),
 				presets: [
-					{ label: 'Task', icon: '☐', keywords: ['todo', 'check'], data: { done: false }, markdown: ['+ '] }
+					{ label: 'Task', icon: '☐', keywords: ['todo', 'check'], data: { done: false }, markdown: ['>> '] }
 				],
 				html: (block, content, children) =>
 					`<li><input type="checkbox"${block.data?.done === true ? ' checked' : ''}>${content}${children}</li>`,

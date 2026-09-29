@@ -1,6 +1,6 @@
 ---
 title: Placeholder
-description: Show placeholder text in empty blocks with a string or a function of the block, and style it through the data-placeholder attribute.
+description: Show placeholder text in empty blocks with a string, a function of the block or the bundled Notion placeholders, and style it through the data-placeholder attribute.
 icon: text-cursor
 ---
 
@@ -55,6 +55,30 @@ export const hintsPlugin: Plugin = () => ({
 ```
 
 The `<Edytor>` prop wins over plugins; among plugins, the first one that declares a placeholder wins.
+
+## Notion placeholders
+
+`richTextPlaceholder` is a ready-made function with Notion's hints for the rich text kinds:
+
+```svelte
+<script lang="ts">
+	import { Edytor, richTextPlugin, richTextPlaceholder } from 'edytor';
+</script>
+
+<Edytor plugins={[richTextPlugin]} placeholder={richTextPlaceholder} />
+```
+
+| Kind                                          | Placeholder                                   |
+| --------------------------------------------- | --------------------------------------------- |
+| `heading`                                     | "Heading 1", "Heading 2" or "Heading 3"       |
+| `bulleted-list-item`, `numbered-list-item`    | "List"                                        |
+| `todo-item`                                   | "To-do"                                       |
+| `toggle`                                      | "Toggle"                                      |
+| `quote`                                       | "Empty quote"                                 |
+| `callout`                                     | "Type something…", only while focused         |
+| any other kind, such as `paragraph`           | "Type '/' for commands", only while focused   |
+
+To change one case, wrap it: `placeholder={(view) => (view.type === 'quote' ? 'Quote' : richTextPlaceholder(view))}`.
 
 ## When it shows
 

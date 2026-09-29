@@ -50,7 +50,7 @@ Adapt it by overriding its custom properties on `.edytor-notion`:
 | `--notion-font`              | Notion's system sans stack     | Body text                                        |
 | `--notion-mono`              | `'SFMono-Regular', Menlo, …`   | Inline code                                      |
 
-The theme also sets `--edytor-drop-indicator-color` to `#2383e2`. Its rules are scoped under `.edytor-notion`: to override one, use a more specific selector, or the same selector in a stylesheet loaded after it.
+The theme also sets `--edytor-drop-indicator-color` to Notion's `rgba(35, 131, 226, 0.43)`. Its rules are scoped under `.edytor-notion`: to override one, use a more specific selector, or the same selector in a stylesheet loaded after it.
 
 ## The rendered DOM
 
@@ -169,7 +169,7 @@ The layer sits at its natural place right after the root and positions chrome re
 
 | Variable                          | Default   | Effect                                                            |
 | --------------------------------- | --------- | ----------------------------------------------------------------- |
-| `--edytor-drop-indicator-color`   | `#2383e2` | The drop indicator's line, elbow and dots. Read from the target block, so set it on the root or any ancestor. |
+| `--edytor-drop-indicator-color`   | `rgba(35, 131, 226, 0.43)` | The drop indicator's bar. Read from the target block, so set it on the root or any ancestor. |
 
 ```css
 [data-edytor] {

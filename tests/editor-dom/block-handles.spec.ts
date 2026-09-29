@@ -309,7 +309,7 @@ test.describe('browser block handles and DnD', () => {
 				height: node.getBoundingClientRect().height,
 				radius: getComputedStyle(node).borderRadius
 			}));
-			expect(height).toBe(2);
+			expect(height).toBe(4);
 			expect(radius).toBe('0px');
 		};
 

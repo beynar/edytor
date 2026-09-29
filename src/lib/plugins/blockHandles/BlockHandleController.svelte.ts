@@ -58,6 +58,9 @@ const ownTextRow = (node: HTMLElement) => {
 
 /** A nested child's indent when the target has no visible child to measure. */
 const NEST_INDENT = 24;
+/** Notion's drop bar: 4px of translucent blue. */
+const DROP_INDICATOR_COLOR = 'rgba(35, 131, 226, 0.43)';
+const BAR = 4;
 
 const getDropPlacement = (
 	target: Block,
@@ -378,7 +381,7 @@ export class BlockHandleController {
 			?.getComputedStyle(placement.node)
 			.getPropertyValue('--edytor-drop-indicator-color')
 			.trim();
-		overlay.style.setProperty('--edytor-drop-indicator-color', color || '#2383e2');
+		overlay.style.setProperty('--edytor-drop-indicator-color', color || DROP_INDICATOR_COLOR);
 		const layer = this.edytor.overlay.layer;
 		layer?.append(overlay);
 		this.indicatorOverlay = overlay;
@@ -387,7 +390,11 @@ export class BlockHandleController {
 		this.offIndicator = this.edytor.overlay.add((origin) => this.positionIndicator(origin));
 	}
 
-	/** Layer-relative geometry (R11): between the two siblings of the slot, or inside the target. */
+	/**
+	 * Layer-relative geometry (R11) of Notion's plain bar: centered between the
+	 * two siblings of the slot, or — inside the target — where the child lands,
+	 * indented to the child's column.
+	 */
 	private positionIndicator(origin: DOMRect) {
 		const placement = this.activePlacement;
 		const overlay = this.indicatorOverlay;
@@ -395,16 +402,14 @@ export class BlockHandleController {
 			return;
 		}
 		const rect = placement.node.getBoundingClientRect();
-		const place = (left: number, width: number, top: number, height?: number) => () => {
+		const place = (left: number, width: number, center: number) => () => {
 			overlay.style.left = `${left - origin.left}px`;
 			overlay.style.width = `${width}px`;
-			overlay.style.top = `${top - origin.top}px`;
-			if (height !== undefined) overlay.style.height = `${height}px`;
+			overlay.style.top = `${center - BAR / 2 - origin.top}px`;
 		};
 		if (placement.position === 'inside') {
-			// An elbow beside the parent's first line, down to where the child lands (the
-			// gap after its last visible child, else after its own row) and right to the
-			// child's indent, ending in a dot.
+			// Where the child lands (the gap after the last visible child, else after
+			// the target's own row), from the child's indent to the target's right edge.
 			const row = ownTextRow(placement.node);
 			const { target } = placement;
 			const lastNode = target.children.at(-1)?.node;
@@ -413,10 +418,8 @@ export class BlockHandleController {
 			const next = target.parent?.children[target.index + 1]?.node?.getBoundingClientRect();
 			const end = shown ? shown.bottom : getOwnRowBottom(placement.node);
 			const land = next && next.top >= end ? (end + next.top) / 2 : end + 4;
-			const left = row.left - 10;
-			const top = row.top + row.height / 2;
-			const right = shown && lastNode ? ownTextRow(lastNode).left : row.left + NEST_INDENT;
-			return place(left, Math.max(16, right - left), top, Math.max(12, land - top + 1));
+			const left = shown && lastNode ? ownTextRow(lastNode).left : row.left + NEST_INDENT;
+			return place(left, Math.max(16, rect.right - left), land);
 		}
 
 		const siblings = placement.target.parent?.children;
@@ -426,10 +429,10 @@ export class BlockHandleController {
 		if (previous && next && previous.bottom <= next.top) {
 			const left = Math.min(previous.left, next.left);
 			const width = Math.max(previous.right, next.right) - left;
-			return place(left, width, (previous.bottom + next.top) / 2 - 1);
+			return place(left, width, (previous.bottom + next.top) / 2);
 		}
-		const top = placement.position === 'before' ? rect.top - 1 : rect.bottom - 1;
-		return place(rect.left, rect.width, top);
+		const edge = placement.position === 'before' ? rect.top : rect.bottom;
+		return place(rect.left, rect.width, edge);
 	}
 
 	private clearIndicator() {

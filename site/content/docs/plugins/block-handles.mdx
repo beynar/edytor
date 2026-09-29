@@ -82,12 +82,12 @@ Dragging the handle of a block that is part of a block selection of siblings mov
 
 ### The drop indicator
 
-The indicator is drawn in the overlay, not on the block, so rounded or padded block styles cannot bend it:
+The indicator is Notion's plain 4px bar, drawn in the overlay rather than on the block, so rounded or padded block styles cannot bend it:
 
-- **Before or after**: a horizontal line with a dot at its left end. Between two siblings it is centered in the gap and spans both blocks, so hovering the bottom of one block and the top of the next shows the same line.
-- **Inside**: an elbow that starts beside the target's first line, runs down to where the new child will land, turns right to the child indent, and ends in a dot.
+- **Before or after**: the bar spans the blocks at the drop slot. Between two siblings it is centered in the gap and spans both blocks, so hovering the bottom of one block and the top of the next shows the same bar.
+- **Inside**: the same bar where the new child will land (after the target's last visible child, else after its own row), indented to the child's column and running to the target's right edge.
 
-Set its color with `--edytor-drop-indicator-color` on the editor or any ancestor of the blocks (the default is `#2383e2`):
+Set its color with `--edytor-drop-indicator-color` on the editor or any ancestor of the blocks (the default is Notion's `rgba(35, 131, 226, 0.43)`):
 
 ```css
 [data-edytor] {

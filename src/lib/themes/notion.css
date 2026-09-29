@@ -24,7 +24,7 @@
 		Helvetica, 'Apple Color Emoji', Arial, sans-serif, 'Segoe UI Emoji', 'Segoe UI Symbol';
 	--notion-mono:
 		'SFMono-Regular', Menlo, Consolas, 'PT Mono', 'Liberation Mono', Courier, monospace;
-	--edytor-drop-indicator-color: #2383e2;
+	--edytor-drop-indicator-color: rgba(35, 131, 226, 0.43);
 	color: var(--notion-text);
 	font-family: var(--notion-font);
 	-webkit-font-smoothing: auto;

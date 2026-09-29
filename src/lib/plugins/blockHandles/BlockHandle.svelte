@@ -111,44 +111,15 @@ Alt-click to add a block above"
 		fill: currentColor;
 	}
 
+	/* Notion's drop bar: plain, 4px, indented when the block nests. */
 	:global([data-edytor-drop-indicator]) {
 		position: absolute;
 		z-index: 100;
 		box-sizing: border-box;
-		height: 2px;
+		height: 4px;
 		border: 0;
 		border-radius: 0;
-		background: var(--edytor-drop-indicator-color, #2383e2);
+		background: var(--edytor-drop-indicator-color, rgba(35, 131, 226, 0.43));
 		pointer-events: none;
-	}
-
-	:global([data-edytor-drop-indicator][data-position='before']::before),
-	:global([data-edytor-drop-indicator][data-position='after']::before) {
-		position: absolute;
-		left: -4px;
-		top: -3px;
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: var(--edytor-drop-indicator-color, #2383e2);
-		content: '';
-	}
-
-	:global([data-edytor-drop-indicator][data-position='inside']) {
-		border-left: 2px solid var(--edytor-drop-indicator-color, #2383e2);
-		border-bottom: 2px solid var(--edytor-drop-indicator-color, #2383e2);
-		border-bottom-left-radius: 4px;
-		background: transparent;
-	}
-
-	:global([data-edytor-drop-indicator][data-position='inside']::after) {
-		position: absolute;
-		right: -4px;
-		bottom: -5px;
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: var(--edytor-drop-indicator-color, #2383e2);
-		content: '';
 	}
 </style>

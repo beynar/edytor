@@ -172,31 +172,22 @@ test.describe('document demo', () => {
 			'data-position',
 			'inside'
 		);
-		// The nesting indicator is an elbow (left + bottom edge) ending in a dot, beside the
-		// target's first line: never a box around the target.
-		const elbow = await page.locator('[data-edytor-drop-indicator]').evaluate((node) => {
+		// Notion's nesting bar: plain (no border, no dot), below the target's row and
+		// indented one column (24px) past its text: never a box around the target.
+		const bar = await page.locator('[data-edytor-drop-indicator]').evaluate((node) => {
 			const style = getComputedStyle(node);
-			const dot = getComputedStyle(node, '::after');
 			const box = node.getBoundingClientRect();
 			return {
-				left: style.borderLeftWidth,
-				bottom: style.borderBottomWidth,
-				top: style.borderTopWidth,
-				right: style.borderRightWidth,
-				dot: dot.content !== 'none' && dot.borderRadius === '50%',
+				border: style.borderLeftWidth,
+				dot: getComputedStyle(node, '::after').content,
+				height: box.height,
 				x: box.left,
 				y: box.top
 			};
 		});
-		expect(elbow).toMatchObject({
-			left: '2px',
-			bottom: '2px',
-			top: '0px',
-			right: '0px',
-			dot: true
-		});
-		expect(elbow.x).toBeLessThan(target.x + 80);
-		expect(elbow.y).toBeGreaterThan(target.y);
+		expect(bar).toMatchObject({ border: '0px', dot: 'none', height: 4 });
+		expect(bar.x).toBeGreaterThanOrEqual(target.x + 20);
+		expect(bar.y).toBeGreaterThan(target.y + target.height / 2);
 		await page.mouse.up();
 		const toggle = page.locator('[data-edytor-id="page-toggle"]');
 		const nested = toggle.locator('[data-edytor-id="page-quote"]');

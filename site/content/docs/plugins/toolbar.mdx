@@ -91,7 +91,7 @@ The snippet receives the `ToolbarController`. Every action keeps and restores th
     marks: { type: "{ mark, label, icon }[]", description: "The marks that declare a toolbar button, in registration order." },
     "toggleMark(mark)": { type: "(mark: string) => void", description: "Toggle a mark over the selection." },
     kinds: { type: "KindRow[]", description: "The kinds the block may turn into while keeping its content." },
-    currentKind: { type: "KindRow | undefined", description: "The row naming the selection's block." },
+    currentKind: { type: "KindRow | undefined", description: "The row naming the selection's block: of its kind's rows, the one whose preset data shares the most values with the block's (the first on a tie)." },
     "turnInto(kind)": { type: "(kind: KindRow) => void", description: "Convert the block at the start of the selection." },
     "setColor(mark, value)": { type: "('color' | 'highlight', value: string | null) => void", description: "Set the text or background color; null removes it." },
     linkUrl: { type: "string", description: "The selection's current link, or the URL being typed." },

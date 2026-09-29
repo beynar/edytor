@@ -74,6 +74,8 @@ export type BlockOperations = {
 		index: number;
 		text: Text;
 	};
+	/** A copy of the block and its subtree right after it, under fresh ids. */
+	duplicateBlock: {};
 	/** The children take the block's slot unless `keepChildren: false` (the whole subtree). */
 	removeBlock: {
 		keepChildren?: boolean;
@@ -259,6 +261,21 @@ export function insertBlockBefore(
 	this: Block,
 	payload: BlockOperations['insertBlockBefore'],
 	plan = prepareInsertBefore.call(this, payload)
+): string | null {
+	return resultOf.call(this, plan);
+}
+
+export function prepareDuplicate(this: Block) {
+	if (!this.parent || !this.isInTree) return REFUSED;
+	return this.edytor.facade.prepare.duplicateBlock(this.id, (_, kind) =>
+		id(kind === 'block' ? 'b' : 'i')
+	);
+}
+
+export function duplicateBlock(
+	this: Block,
+	_: BlockOperations['duplicateBlock'] = {},
+	plan = prepareDuplicate.call(this)
 ): string | null {
 	return resultOf.call(this, plan);
 }

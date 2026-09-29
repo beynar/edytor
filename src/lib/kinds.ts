@@ -1,7 +1,7 @@
 import type { Block } from './block/block.svelte.js';
 import type { Edytor } from './edytor.svelte.js';
 import type { BlockDefinition, EditorCommand, KindPreset } from './plugins.js';
-import type { JSONBlock } from './utils/json.js';
+import { jsonEquals, type JSONBlock } from './utils/json.js';
 import { dispatchPlan, prepareSet } from './block/block.utils.js';
 import { id } from './utils.js';
 
@@ -28,6 +28,26 @@ export const kindCatalogue = (blocks: Map<string, BlockDefinition>): KindRow[] =
 			replaces: empty !== undefined
 		}))
 	);
+
+/** The rows a block may turn into while keeping its content and children (the menus' list). */
+export const convertibleKinds = (edytor: Edytor): KindRow[] =>
+	edytor.kinds.filter((kind) => !kind.replaces);
+
+/**
+ * The row naming `block`: of its kind's rows, the one whose preset data
+ * shares the most values with the block's (the first on a tie). A block
+ * matching no preset exactly (a checked to-do) still gets its kind's row.
+ */
+export const kindOf = (edytor: Edytor, block: Block | null | undefined): KindRow | undefined => {
+	if (!block) return undefined;
+	const data = block.data ?? {};
+	const score = ({ value }: KindRow) =>
+		Object.entries(value.data ?? {}).filter(([key, v]) => jsonEquals(data[key], v)).length;
+	let best: KindRow | undefined;
+	for (const row of edytor.kinds)
+		if (row.value.type === block.type && (!best || score(row) > score(best))) best = row;
+	return best;
+};
 
 /**
  * Convert `block` to a row's kind as one command. With `caret` (by default

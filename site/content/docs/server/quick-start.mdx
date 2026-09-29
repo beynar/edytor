@@ -54,7 +54,7 @@ export default {
     return routeDocumentSocket(request, env.ROOMS, decodeURIComponent(match[1]), (request) => {
       // Development only: trusts whoever says they are `?user=…`.
       const userId = new URL(request.url).searchParams.get('user');
-      if (!userId) return null; // → 403, no socket
+      if (!userId) return null; // → closed 4403, the room is never reached
       return { userId, replica: requestedReplica(request) };
     });
   }

@@ -9,7 +9,7 @@ Edytor ships as one npm package, `edytor`. It contains the `<Edytor>` component,
 :::warning[Early development]
 Edytor is at version 0.0.x and is not ready for production. The API can change between releases without a compatibility layer.
 
-These docs describe the upcoming release. The `edytor@0.0.11` currently on npm predates it and uses a different API. Until the new version is published, build the package from the [GitHub repository](https://github.com/beynar/edytor) (see [Build from source](#build-from-source)).
+These docs describe the upcoming release. The `edytor@0.0.11` currently on npm predates it and uses a different API; [Migration](/docs/reference/migration) lists every change. Until the new version is published, build the package from the [GitHub repository](https://github.com/beynar/edytor) (see [Build from source](#build-from-source)).
 :::
 
 ## Requirements
@@ -49,7 +49,7 @@ pnpm pack      # writes edytor-<version>.tgz
 Then, in your project:
 
 ```package-install
-npm i ../edytor/edytor-0.0.11.tgz
+npm i ../edytor/edytor-0.1.0-next.0.tgz
 ```
 
 Use the file name `pnpm pack` printed.
@@ -66,7 +66,7 @@ Render an editor. It needs no setup:
 <Edytor />
 ```
 
-You should see one empty paragraph with a block handle beside it. An empty document always starts with one block of the default type (`paragraph`). `<Edytor>` includes the rich text, image and arrow move plugins by default, so this is already a working rich text editor.
+You should see one empty paragraph. Hover it to reveal its block handle (touch devices always show it). An empty document always starts with one block of the default type (`paragraph`). `<Edytor>` includes the rich text, image and arrow move plugins by default, so this is already a working rich text editor.
 
 ## Next steps
 

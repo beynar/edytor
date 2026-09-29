@@ -85,7 +85,7 @@ Hovering a row highlights it, in the menu and in the flyout.
 - The handle click selects the block, and it stays selected while the menu is open.
 - Every action closes the menu and returns a text caret: at the start of the converted or moved block, of the copy after Duplicate, or of the next block (the previous one at the end) after Delete. <kbd>Escape</kbd> also returns the caret to the block.
 - A pointer press outside the menu and the handles closes it without moving the caret.
-- Each action is one undo step, separate from the typing before it however soon it follows, through the same commands as the rest of the editor (`convertToKind`, `insertBlockAfter`, `edytor.moveBlocks`, `removeBlock`), so plugins can refuse them.
+- Each action is one undo step, separate from the typing before it however soon it follows, through the same commands as the rest of the editor (`convertToKind`, `duplicateBlock`, `edytor.moveBlocks`, `removeBlock`), so plugins can refuse them.
 
 <kbd>Mod</kbd> + <kbd>D</kbd> duplicates the first selected block, or else the block holding the caret, and puts the caret in the copy. It is claimed only for a block that can move, and never in a readonly editor.
 
@@ -115,9 +115,9 @@ The snippet receives the `BlockMenuController`:
     block: { type: "Block | null", description: "The block the menu is open for." },
     actions: { type: "BlockMenuAction[]", description: "The rows that apply, filtered by query: { id, label, icon, hint?, danger?, submenu?, run? }. Turn into has submenu: true and no run." },
     kinds: { type: "KindRow[]", description: "The kinds the block may turn into while keeping its content." },
-    currentKind: { type: "KindRow | undefined", description: "The row naming the block's kind." },
+    currentKind: { type: "KindRow | undefined", description: "The row naming the block: of its kind's rows, the one whose preset data shares the most values with the block's (the first on a tie), so a checked to-do is still To-do list." },
     "turnInto(kind)": { type: "(kind: KindRow) => void", description: "Convert the block." },
-    "duplicate(block)": { type: "(block: Block) => void", description: "Insert a copy after the block." },
+    "duplicate(block)": { type: "(block: Block) => void", description: "Insert a copy after the block (block.duplicateBlock(): fresh ids, one undo step)." },
     "move(direction)": { type: "('up' | 'down') => void", description: "Move the block one step." },
     "remove()": { type: "() => void", description: "Delete the block." },
     "copyLink()": { type: "() => Promise<void>", description: "Write linkTo(block) to the clipboard." },
@@ -128,7 +128,7 @@ The snippet receives the `BlockMenuController`:
   }}
 />
 
-Every action closes the menu and returns the caret, as in the built-in menu.
+Every action closes the menu and returns the caret, as in the built-in menu: it replaces the block selection the grip click left, and the projector draws it after the flush.
 
 ```svelte title="Editor.svelte"
 <script lang="ts">

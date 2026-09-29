@@ -21,7 +21,7 @@ type DocumentIdentity = {
 };
 ```
 
-`authorize` receives the client's original upgrade request (with its query string and cookies) and the document id you passed to `routeDocumentSocket`. Return `null` to refuse; the client gets a 403 and no socket is opened.
+`authorize` receives the client's original upgrade request (with its query string and cookies) and the document id you passed to `routeDocumentSocket`. Return `null` to refuse. The room is never reached: `routeDocumentSocket` accepts the upgrade and closes it at once with code `4403` and reason `document access denied`. A browser reports an HTTP 403 at the upgrade as a bare `1006`, the same as a network failure; the `4403` close lets the provider tell a denial from being offline. The provider treats it as final: it emits `refused` once and stops dialing (see [refusals](/docs/collaboration/websocket#refusals)).
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ type DocumentIdentity = {
 | `replica` | `number \| null` | The client's CRDT client id (`document.clientID`), usually read with `requestedReplica(request)`. When omitted, the socket's first presence message binds it. |
 | `readOnly` | `boolean` | Refuse every write on this socket. Reads and presence still work. |
 
-`routeDocumentSocket` answers without calling the room when the request is not a WebSocket upgrade (426), when the document id is empty or longer than 256 characters (400), or when `authorize` returns `null` or an invalid identity (403).
+`routeDocumentSocket` answers without calling the room when the request is not a WebSocket upgrade (426), when the document id is empty or longer than 256 characters (400), or when `authorize` returns `null` or an invalid identity (closed `4403`).
 
 ## Example: a signed token
 
@@ -81,7 +81,7 @@ The client sends the token; the provider adds its replica id (`?replica=<clientI
 <Edytor server="wss://rooms.example.com/rooms" room={documentId} params={{ token }} actor={{ id: userId }} />
 ```
 
-`params` is read at every reconnect; pass a new `token` to refresh an expiring one (see [WebSocket options](/docs/collaboration/websocket#options)). With a session cookie instead, read `request.headers.get('Cookie')` in `authorize` and look the session up; the cookie is sent with the upgrade when the Worker is on the same site.
+`params` is read at every reconnect; pass a new `token` to refresh an expiring one (see [WebSocket options](/docs/collaboration/websocket#options)). A denied dial stops the provider: once a refused token is refreshed, reload the page, or call `connect()` on a [`WebsocketProvider`](/docs/collaboration/websocket#provider-events-and-state) you created, to dial again. With a session cookie instead, read `request.headers.get('Cookie')` in `authorize` and look the session up; the cookie is sent with the upgrade when the Worker is on the same site.
 
 ## How identity reaches the room
 
@@ -127,7 +127,7 @@ Render read-only users with a read-only view. A `readonly` view does not attach 
 
 ```ts
 const document = createDocument({ actor: { id: userId } });
-document.attachSync(createWebsocketSync({ serverUrl, roomName: documentId, params }));
+document.attachSync(createWebsocketSync({ server: serverUrl, room: documentId, params }));
 // <Edytor {document} readonly />
 ```
 

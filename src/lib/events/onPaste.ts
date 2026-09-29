@@ -79,7 +79,7 @@ const syncCollapsedDomCaretForPaste = (edytor: Edytor) => {
 		return;
 	}
 
-	edytor.selection.setCollapsedStateAtTextOffset(
+	edytor.selection.setAtTextOffset(
 		targetText,
 		getYIndex(targetText, selection.anchorNode, selection.anchorOffset)
 	);

@@ -39,6 +39,14 @@ interface DurableObjectState {
 	getWebSockets(tag?: string): WebSocket[];
 	getTags(ws: WebSocket): string[];
 	blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
+	setWebSocketAutoResponse?(pair?: WebSocketRequestResponsePair): void;
+	getWebSocketAutoResponse?(): WebSocketRequestResponsePair | null;
+}
+
+declare class WebSocketRequestResponsePair {
+	constructor(request: string, response: string);
+	readonly request: string;
+	readonly response: string;
 }
 
 interface DurableObjectNamespace<T = undefined> {

@@ -1,9 +1,7 @@
 import type { Snippet } from 'svelte';
-import { tick } from 'svelte';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { convertToKind, type KindRow } from '$lib/kinds.js';
-import type { JSONBlock } from '$lib/utils/json.js';
+import { convertibleKinds, convertToKind, kindOf, type KindRow } from '$lib/kinds.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -28,19 +26,6 @@ export type BlockMenuAction = {
 	run?: () => unknown;
 };
 
-/** A block's JSON without ids: a duplicate gets fresh ones. */
-const withoutIds = ({ id: _, children, content, ...block }: JSONBlock): JSONBlock => ({
-	...block,
-	...(content && {
-		content: content.map((part) => {
-			if ('text' in part) return part;
-			const { id: __, ...inline } = part as { id?: string };
-			return inline as typeof part;
-		})
-	}),
-	...(children && { children: children.map(withoutIds) })
-});
-
 export class BlockMenuController {
 	block = $state<Block | null>(null);
 	anchor: HTMLElement | null = null;
@@ -60,18 +45,12 @@ export class BlockMenuController {
 	}
 
 	get kinds(): KindRow[] {
-		return this.edytor.kinds.filter((kind) => !kind.replaces);
+		return convertibleKinds(this.edytor);
 	}
 
 	/** The row naming the open block. */
 	get currentKind(): KindRow | undefined {
-		const block = this.block;
-		if (!block) return undefined;
-		const level = block.data?.level;
-		return this.kinds.find(
-			(kind) =>
-				kind.value.type === block.type && (level === undefined || kind.value.data?.level === level)
-		);
+		return kindOf(this.edytor, this.block);
 	}
 
 	get actions(): BlockMenuAction[] {
@@ -164,7 +143,7 @@ export class BlockMenuController {
 		this.block = null;
 		this.anchor = null;
 		this.flyout = false;
-		if (restoreCaret && block?.node?.isConnected) void this.caret(block);
+		if (restoreCaret && block?.node?.isConnected) this.caret(block);
 	}
 
 	move(direction: 'up' | 'down') {
@@ -174,17 +153,18 @@ export class BlockMenuController {
 		this.close();
 	}
 
+	/** Convert the open block; the conversion places the caret (refused: the caret returns). */
 	turnInto(kind: KindRow) {
 		const block = this.block;
 		this.close(false);
-		if (block) convertToKind(this.edytor, block, kind, false);
-		void this.caret(block);
+		if (convertToKind(this.edytor, block, kind, true)) this.focus();
+		else this.caret(block);
 	}
 
 	duplicate(block: Block) {
-		const copy = block.insertBlockAfter({ block: withoutIds(block.value) });
+		const copy = block.duplicateBlock();
 		this.close(false);
-		void this.caret(copy ?? block);
+		this.caret(copy ?? block);
 	}
 
 	remove() {
@@ -193,7 +173,7 @@ export class BlockMenuController {
 		const next = block.nextBlock ?? block.previousBlock;
 		block.removeBlock();
 		this.close(false);
-		void this.caret(next);
+		this.caret(next);
 	}
 
 	async copyLink() {
@@ -212,13 +192,17 @@ export class BlockMenuController {
 		else row.run?.();
 	}
 
-	/** A caret at the start of `block`: clears the atomic block selection first (AGENTS). */
-	private async caret(block: Block | null | undefined) {
-		await tick();
-		const text = block?.firstEditableText;
-		if (!text) return;
-		this.edytor.selection.setCollapsedStateAtTextOffset(text, 0);
-		this.edytor.selection.setAtTextOffset(text, 0);
+	/**
+	 * A caret at the start of `block` (of its first child when its own content
+	 * is not displayed): it replaces the block selection, and the projector
+	 * draws it after the flush.
+	 */
+	private caret(block: Block | null | undefined) {
+		this.edytor.dispatcher.caret(block?.firstText ?? block?.children[0]?.firstText, 0);
+		this.focus();
+	}
+
+	private focus() {
 		this.edytor.node?.focus({ preventScroll: true });
 	}
 }

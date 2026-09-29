@@ -628,7 +628,8 @@ describe('menus', () => {
 		const { edytor, editor } = await render([blockMenuPlugin], {
 			children: [
 				{ id: 'one', type: 'paragraph', content: [{ text: 'one' }] },
-				{ id: 'two', type: 'paragraph', content: [{ text: 'two' }] }
+				{ id: 'two', type: 'paragraph', content: [{ text: 'two' }] },
+				{ id: 'three', type: 'paragraph', content: [{ text: 'three' }] }
 			]
 		});
 		const open = async (id: string) => {
@@ -647,10 +648,17 @@ describe('menus', () => {
 		await click(heading);
 		expect(canonicalTree(edytor)[0]).toMatchObject({ type: 'heading', data: { level: 'h2' } });
 		expect(document.querySelector('[data-testid="block-menu"]')).toBeNull();
+		// The caret returns to the converted block (the block selection is gone).
+		expect(edytor.selection.selectedBlocks.size).toBe(0);
+		expect(edytor.selection.state.startBlock?.id).toBe('one');
 
 		await open('two');
 		await click(document.querySelector('[data-testid="block-menu-delete"]')!);
-		expect(canonicalTree(edytor).map((b) => firstTextOf(b))).toEqual(['one']);
+		expect(canonicalTree(edytor).map((b) => firstTextOf(b))).toEqual(['one', 'three']);
+		// The caret lands at the start of the block after the deleted one.
+		expect(edytor.selection.selectedBlocks.size).toBe(0);
+		expect(edytor.selection.state.startBlock?.id).toBe('three');
+		expect(edytor.selection.state.yStart).toBe(0);
 	});
 
 	it('the keyboard reaches the Turn into flyout, and Delete removes the block', async () => {

@@ -92,7 +92,7 @@ const toolbar = createToolbarPlugin({ toolbar: bar });
 
 ## Block menu
 
-`menu` renders while `controller.isOpen`, beside the grip that opened it. The controller has the `block`, its `actions`, the `kinds` it can turn into, and `turnInto`, `duplicate`, `move`, `remove`, `copyLink` and `close`. The built-in keys belong to the built-in search field, so a custom menu handles its own. See [Block menu](/docs/plugins/block-menu#custom-markup).
+`menu` renders while `controller.isOpen`, beside the grip that opened it. The controller has the `block`, its `actions`, the `kinds` it can turn into, and `turnInto`, `duplicate`, `move`, `remove`, `copyLink` and `close`. Each action, and `close()`, returns a text caret to the block: it replaces the block selection the grip click left. The built-in keys belong to the built-in search field, so a custom menu handles its own. See [Block menu](/docs/plugins/block-menu#custom-markup).
 
 ```ts
 const blockMenu = createBlockMenuPlugin({ menu, linkTo: (block) => `#${block.id}` });

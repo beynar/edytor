@@ -1886,21 +1886,27 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 
 		/**
 		 * Explicit fresh-identity copy of a subtree (paste / drag-clone):
-		 * serializes `id`, remaps every block id through `freshId`, inserts the
-		 * copy right after `id`. Text atoms get new identity too — duplication
-		 * is a creation op, not a relocation. `ids`: the copy's root.
+		 * serializes `id`, remaps every block and inline atom id through
+		 * `freshId`, inserts the copy right after `id`. Text atoms get new
+		 * identity too — duplication is a creation op, not a relocation. `ids`:
+		 * the copy's root.
 		 */
-		const duplicateBlock = (id: BlockId, freshId: (oldId: BlockId) => BlockId): Prepared => {
+		const duplicateBlock = (
+			id: BlockId,
+			freshId: (oldId: string, kind: 'block' | 'inline') => string
+		): Prepared => {
 			id = ref(id);
 			const pos = positionOf(id);
 			if (pos === null) return REFUSED;
 			const spec = (b: BlockId): BlockSpec => {
 				const data = blockDataOf(b);
 				return {
-					id: freshId(b),
+					id: freshId(b, 'block'),
 					type: blockTypeOf(b) ?? '',
 					...(data !== undefined && { data }),
-					content: contentItems(b),
+					content: contentItems(b).map((item) =>
+						item.kind === 'inline' ? { ...item, id: freshId(item.id, 'inline') } : item
+					),
 					children: childrenIds(b).map(spec)
 				};
 			};

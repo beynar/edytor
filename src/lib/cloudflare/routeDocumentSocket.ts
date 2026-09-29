@@ -5,6 +5,10 @@
  * identity — every header the client sent (cookies, tokens, forged
  * `X-Edytor-*` values) is dropped. The room trusts these headers, so it
  * must be reachable only through this function.
+ *
+ * A denied dial is accepted, then closed with `4403` and a reason: a
+ * browser sees an HTTP 403 at the upgrade only as `1006`, which the
+ * provider cannot tell from a network failure; `4403` stops it dialing.
  */
 import { IDENTITY_HEADERS, parseReplica } from './DocumentRoom.js';
 
@@ -25,7 +29,7 @@ export type DocumentIdentity = {
 	readOnly?: boolean;
 };
 
-/** The host's decision: an identity, or `null` to refuse (403). */
+/** The host's decision: an identity, or `null` to refuse (close `4403`). */
 export type AuthorizeDocumentSocket = (
 	request: Request,
 	documentId: string
@@ -34,6 +38,17 @@ export type AuthorizeDocumentSocket = (
 /** The replica a client asked for in `?replica=<doc.clientID>` (or `param`), or `null`. */
 export const requestedReplica = (request: Request, param = 'replica'): number | null =>
 	parseReplica(new URL(request.url).searchParams.get(param));
+
+/** The close a denied dial gets: terminal for the provider (`refused`). */
+const DENIED_CLOSE = { code: 4403, reason: 'document access denied' } as const;
+
+/** Accept the upgrade and close it at once: the client reads the code, not a `1006`. */
+const deny = (): Response => {
+	const [client, server] = Object.values(new WebSocketPair());
+	server.accept();
+	server.close(DENIED_CLOSE.code, DENIED_CLOSE.reason);
+	return new Response(null, { status: 101, webSocket: client });
+};
 
 export async function routeDocumentSocket(
 	request: Request,
@@ -56,7 +71,7 @@ export async function routeDocumentSocket(
 		identity.userId.length > 256 ||
 		(replica !== null && parseReplica(replica) === null)
 	) {
-		return new Response('Document access denied', { status: 403 });
+		return deny();
 	}
 	const headers = new Headers({
 		Upgrade: 'websocket',

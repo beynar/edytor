@@ -25,15 +25,15 @@ The props build a `createWebsocketSync` for you. Use the factory directly for th
 
 <TypeTable
   type={{
-    serverUrl: {
+    server: {
       type: "string",
       required: true,
-      description: "The server's base URL (ws:// or wss://). Trailing slashes are removed.",
+      description: "The server's base URL (ws:// or wss://), as the `server` prop. Trailing slashes are removed.",
     },
-    roomName: {
+    room: {
       type: "string",
       required: true,
-      description: "The document's room, appended to serverUrl as a path segment.",
+      description: "The document's room, appended to server as a path segment, as the `room` prop.",
     },
     params: {
       type: "Record<string, string>",
@@ -56,7 +56,7 @@ The props build a `createWebsocketSync` for you. Use the factory directly for th
     },
     persistName: {
       type: "string",
-      default: '"edytor:<serverUrl>/<roomName>"',
+      default: '"edytor:<server>/<room>"',
       description: "Name of the local copy. Also returned on the sync as sync.persistName, for clearDocument.",
     },
     WebSocketPolyfill: {
@@ -66,11 +66,13 @@ The props build a `createWebsocketSync` for you. Use the factory directly for th
   }}
 />
 
+`serverUrl` and `roomName`, the names of earlier releases, still work in place of `server` and `room`.
+
 `params` is kept by reference and read each time the provider dials, so you can refresh a short-lived token by updating the object you passed:
 
 ```ts
 const params = { token: await getToken() };
-const sync = createWebsocketSync({ serverUrl, roomName, params });
+const sync = createWebsocketSync({ server, room, params });
 setInterval(async () => (params.token = await getToken()), 10 * 60_000);
 ```
 
@@ -81,7 +83,7 @@ Browsers cannot set headers on a WebSocket, so tokens travel in `params` (or in 
 - On a lost connection the provider reconnects with exponential backoff: `100 ms × 2ⁿ`, capped at `maxBackoffTime`. `n` counts the dials in a row that never synced (refused upgrades, sockets that closed before the handshake finished); a dial that synced starts it over.
 - After 8 such dials the cap doubles with each further one, up to 30 s, so an unreachable or denying server is not dialed forever at full rate. Each of these dials emits `unreachable` with `{ attempts, nextRetryMs }`, for a "Reconnecting in 20 s" indicator.
 - A close with a refusal code (`1008`, or `4000`–`4999`) is terminal: the provider stops dialing and emits `refused` (see [refusals](#refusals)).
-- A connection that receives nothing for 30 seconds is treated as dead and reopened. Clients renew their presence every 15 seconds and the edytor room echoes it back, so even a client alone in its room hears from it in time. A text `pong` frame (a server's keepalive auto-response) also counts.
+- A connection that receives nothing for 30 seconds is treated as dead and reopened. After 15 seconds of silence the provider sends one text `ping` frame; the edytor room answers `pong` without waking from hibernation, and a text `pong` counts as heard. The room also echoes each presence renewal (every 15 seconds), so even a client alone in its room hears from it in time. A server of your own should answer `ping` with `pong`, or ignore text frames.
 - Each (re)connection starts with a handshake in which both sides send what the other lacks. Nothing is replayed by hand and no periodic resync is needed.
 - While disconnected, other people's carets disappear from this tab; edits keep going to the local copy. Other tabs of the browser keep the carets they still receive.
 
@@ -98,16 +100,16 @@ import {
 } from 'edytor';
 
 export const observedSync = (
-  serverUrl: string,
-  roomName: string,
+  server: string,
+  room: string,
   params: Record<string, string>,
   onState: (state: { status: string; saved: boolean; unsaved: number }) => void
 ): EdytorSync =>
   Object.assign(
     ({ doc, awareness, synced, failed, attach }: EdytorSyncPayload) => {
       // The local copy carries the cross-tab channel, so the socket's is off.
-      const local = attach?.(createIndexeddbSync(`edytor:${serverUrl}/${roomName}`));
-      const provider = new WebsocketProvider(serverUrl, roomName, doc, {
+      const local = attach?.(createIndexeddbSync(`edytor:${server}/${room}`));
+      const provider = new WebsocketProvider(server, room, doc, {
         awareness,
         params,
         disableBc: true
@@ -128,7 +130,7 @@ export const observedSync = (
         return local?.();
       };
     },
-    { target: `websocket:${serverUrl}/${roomName}` }
+    { target: `websocket:${server}/${room}` }
   );
 ```
 
@@ -171,7 +173,8 @@ Use it for a "Saving… / Saved" indicator or to warn before closing a tab. A se
 
 | What happens | Cause | What the client sees |
 | --- | --- | --- |
-| HTTP 403 before the upgrade | `authorize` returned `null`, or the replica belongs to another user. | A browser cannot tell this from a network failure (close `1006`): the provider keeps retrying with the growing backoff and emits `unreachable`. `params` are read at each dial, so a refreshed token gets in. |
+| Close `4403` `document access denied` | `authorize` returned `null` (or an invalid identity). | Terminal: `refused` fires once and the provider stops dialing. Refresh the token, then reload (or call `connect()`) to dial again. |
+| HTTP 403 before the upgrade | The replica belongs to another user. | A browser cannot tell this from a network failure (close `1006`): the provider keeps retrying with the growing backoff and emits `unreachable`. |
 | `permission-denied` with `read-only` | A read-only socket sent an edit. | The socket stays open; the edit is not stored. |
 | Close `1008` `refused: <reason>`, or a `4xxx` code | A frame of another generation, a write under another user's client id, a foreign schema stamp, or a malformed frame. | Terminal: `refused` fires and the provider stops dialing. A document still empty is not seeded; it stays `pending` and reports the refusal as `document.syncRefusal` / `onSyncRefused`. Reload with a fixed client (a new deploy, a new token) to try again. |
 | Close `1011` | The room could not store an update. | The provider reconnects and the handshake resends the edit. |

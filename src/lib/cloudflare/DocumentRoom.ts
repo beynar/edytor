@@ -49,7 +49,10 @@
  *   every request).
  *
  * No entry point schedules a timer: each runs under {@link noTimers}
- * (a Durable Object with a pending timer never hibernates).
+ * (a Durable Object with a pending timer never hibernates). Keepalive is
+ * the runtime's: a text `ping` is answered `pong` without waking the
+ * object (`ctx.setWebSocketAutoResponse`, installed unless the host set
+ * its own pair; `webSocketMessage` answers it otherwise).
  *
  * Extending (subclass it, export the subclass):
  *
@@ -330,6 +333,10 @@ export type AttachDocumentOptions = {
 /** The tag of the document's sockets: other sockets of the object are left to you. */
 export const SOCKET_TAG = 'edytor';
 
+/** The provider's keepalive text frame, and the room's answer. */
+const PING = 'ping';
+const PONG = 'pong';
+
 /**
  * One edytor document living in a Durable Object's storage: the room
  * logic, independent of the class that hosts it. Create it with
@@ -382,6 +389,10 @@ export class AttachedDocument {
 		if (!/^\w*$/.test(prefix)) throw new Error(`invalid table prefix ${prefix}`);
 		this.rowsTable = `${prefix}rows`;
 		this.replicasTable = `${prefix}replicas`;
+		// The provider pings a silent socket: answer without waking the object.
+		if (ctx.setWebSocketAutoResponse && !ctx.getWebSocketAutoResponse?.()) {
+			ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING, PONG));
+		}
 		void ctx.blockConcurrencyWhile(() => this.start());
 	}
 
@@ -844,6 +855,7 @@ export class AttachedDocument {
 		noTimers(() => {
 			// A refused socket is closing: frames it had in flight are dropped unread.
 			if (ws.readyState !== WebSocket.OPEN) return;
+			if (message === PING) return ws.send(PONG);
 			if (typeof message === 'string') {
 				return this.refuse(ws, { reason: 'malformed', detail: 'text frame' });
 			}

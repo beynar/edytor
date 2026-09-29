@@ -1329,10 +1329,6 @@ export class EdytorSelection {
 		if (ids.includes(block.id)) this.select(blockSelection(ids.filter((id) => id !== block.id)));
 	};
 
-	/** @deprecated `setAtTextOffset` (kept for P4's `onPaste` until that track merges). */
-	setCollapsedStateAtTextOffset = (text: Text | undefined, offset: number) =>
-		this.setAtTextOffset(text, offset);
-
 	/**
 	 * Select a caret at `offset` of `text`; the projector displays it after
 	 * the flush (R10). The value is minted now (R4): a text that dies before the

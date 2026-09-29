@@ -11,9 +11,11 @@
  *   emits `unreachable({ attempts, nextRetryMs })`: `100 ms × 2ⁿ` capped at
  *   `maxBackoffTime`, the cap doubling past 8 such dials, up to 30 s. A
  *   dial that synced starts the count over.
- * - A text `pong` (a server's keepalive auto-response) proves liveness and
- *   is not an error; a lone provider whose server echoes its presence
- *   stays connected past the 30 s liveness window.
+ * - Keepalive: a socket silent for 15 s is sent one text `ping`; a text
+ *   `pong` (a server's keepalive auto-response) proves liveness and is not
+ *   an error. A lone provider whose server echoes its presence, or answers
+ *   the ping, stays connected past the 30 s liveness window; one whose
+ *   server does neither is torn down.
  *
  * The expected delays are computed by hand from the rule above.
  */
@@ -38,13 +40,16 @@ const sync = bindSync(Y);
 /**
  * A scripted server. `server.accept` decides each dial: `'open'`, or a
  * `{ code, reason }` to close with before opening; `server.onFrame(socket,
- * type, payload)` sees every frame of an open socket.
+ * type, payload)` sees every binary frame of an open socket, `server.onText(socket,
+ * text)` every text frame (recorded in `server.texts`).
  */
 const createServer = () => {
 	const server = {
 		sockets: [],
+		texts: [],
 		accept: () => 'open',
-		onFrame: () => {}
+		onFrame: () => {},
+		onText: () => {}
 	};
 	class Socket {
 		static OPEN = 1;
@@ -69,6 +74,11 @@ const createServer = () => {
 		}
 
 		send(data) {
+			if (typeof data === 'string') {
+				server.texts.push(data);
+				setTimeout(() => this.readyState === 1 && server.onText(this, data));
+				return;
+			}
 			const bytes = new Uint8Array(data).slice();
 			setTimeout(() => {
 				if (this.readyState !== 1) return;
@@ -273,25 +283,52 @@ describe('keepalive', () => {
 		p.destroy();
 	});
 
-	/** A lone provider for 37 s of fake time; `echo` sends its presence frames back. */
-	const lone = async (echo) => {
+	/**
+	 * A lone provider for 37 s of fake time; `echo` sends its presence frames
+	 * back, `pong` answers its pings.
+	 */
+	const lone = async ({ echo = false, pong = false } = {}) => {
 		vi.useFakeTimers();
 		const server = createServer();
 		if (echo) server.onFrame = (socket, type, bytes) => type === 1 && socket.deliver(bytes.buffer);
+		if (pong) server.onText = (socket, text) => text === 'ping' && socket.deliver('pong');
 		const p = provider(server);
 		const events = record(p);
 		await vi.advanceTimersByTimeAsync(37_000);
-		const result = { closes: events.closes.length, dials: server.sockets.length };
+		const result = {
+			closes: events.closes.length,
+			dials: server.sockets.length,
+			pings: server.texts.filter((t) => t === 'ping').length
+		};
 		p.destroy();
 		return result;
 	};
 
 	it('a lone provider whose server echoes its presence stays connected past 36 s', async () => {
-		expect(await lone(true)).toEqual({ closes: 0, dials: 1 });
+		expect(await lone({ echo: true })).toMatchObject({ closes: 0, dials: 1 });
 	});
 
-	it('without the echo the same provider is torn down by the liveness check (control)', async () => {
-		const { closes } = await lone(false);
+	it('a silent socket is pinged after 15 s; a pong keeps it connected past 36 s', async () => {
+		// Pinged at 15 s, answered; silent again, pinged at 30 s, answered.
+		expect(await lone({ pong: true })).toEqual({ closes: 0, dials: 1, pings: 2 });
+	});
+
+	it('one ping per silence: an unanswered ping is not repeated before the teardown', async () => {
+		vi.useFakeTimers();
+		const server = createServer();
+		const p = provider(server);
+		const events = record(p);
+		await vi.advanceTimersByTimeAsync(14_000);
+		expect(server.texts).toEqual([]);
+		await vi.advanceTimersByTimeAsync(19_000);
+		expect(server.texts).toEqual(['ping']);
+		expect(events.closes).toHaveLength(1);
+		p.destroy();
+	});
+
+	it('without an echo or a pong the provider is torn down by the liveness check (control)', async () => {
+		const { closes, pings } = await lone();
 		expect(closes).toBeGreaterThanOrEqual(1);
+		expect(pings).toBeGreaterThanOrEqual(1);
 	});
 });

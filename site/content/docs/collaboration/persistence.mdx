@@ -39,8 +39,8 @@ A view with a `server` keeps an IndexedDB store beside the socket, so a synced d
 import { createWebsocketSync } from 'edytor';
 
 const sync = createWebsocketSync({
-  serverUrl: 'wss://rooms.example.com/rooms',
-  roomName: 'doc-42',
+  server: 'wss://rooms.example.com/rooms',
+  room: 'doc-42',
   persistName: `${userId}:doc-42` // optional; see "One user per browser profile"
 });
 ```
@@ -48,7 +48,7 @@ const sync = createWebsocketSync({
 | Option | Default | Description |
 | --- | --- | --- |
 | `persist` | `true` | Keep a local copy. `false` makes the sync the socket alone. |
-| `persistName` | `edytor:<serverUrl>/<roomName>` | The local store's name. Trailing slashes are removed from `serverUrl`. |
+| `persistName` | `edytor:<server>/<room>` | The local store's name. Trailing slashes are removed from `server`. |
 
 Where there is no `indexedDB` (Node, Workers, SSR), the store is skipped and the sync is the socket alone.
 
@@ -81,7 +81,7 @@ Tabs of the same document sync with each other over a `BroadcastChannel`, with o
 ```ts
 import { clearDocument, createWebsocketSync } from 'edytor';
 
-const sync = createWebsocketSync({ serverUrl, roomName: documentId });
+const sync = createWebsocketSync({ server, room: documentId });
 // ...later, at sign-out, after the editor is gone:
 if (sync.persistName) await clearDocument(sync.persistName);
 ```
@@ -93,7 +93,7 @@ For `createIndexeddbSync(name)`, pass the same `name`. `sync.persistName` is `un
 IndexedDB and `BroadcastChannel` are shared by every tab of a browser profile. Treat the local copy and the channel as belonging to one user:
 
 - With the [edytor room](/docs/server/room), each CRDT client id belongs to the user who first wrote under it. A socket that delivers edits under an id another user owns is refused, and edits under an id the room has never seen are registered to whoever delivers them first.
-- If one browser profile hosts several accounts, give each user their own `persistName`, and a distinct `roomName` or `disableBc: true` so tabs of different users don't share the channel. Or clear the local copy at sign-out.
+- If one browser profile hosts several accounts, give each user their own `persistName`, and a distinct `room` or `disableBc: true` so tabs of different users don't share the channel. Or clear the local copy at sign-out.
 
 ## Advanced: the provider class
 

@@ -593,10 +593,12 @@ describe('room Durable Object — identity (routeDocumentSocket + the bound sock
 			state.getWebSockets().map((ws) => ws.deserializeAttachment())
 		);
 
-	it('authorizes before the upgrade (403 / 426, no socket) and forwards only the verified identity', async () => {
+	it('authorizes before reaching the room (denied: closed 4403; 426) and forwards only the verified identity', async () => {
 		const room = 'identity-route';
 		const denied = await dialResponse(room, { user: 'denied' });
-		expect([denied.status, denied.webSocket]).toEqual([403, null]);
+		expect(denied.status).toBe(101);
+		denied.webSocket!.accept();
+		expect(await attachmentsOf(room)).toEqual([]);
 		const plain = await SELF.fetch(`${ORIGIN}/rooms/${room}`);
 		expect([plain.status, plain.webSocket]).toEqual([426, null]);
 

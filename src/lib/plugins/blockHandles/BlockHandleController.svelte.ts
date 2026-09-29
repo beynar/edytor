@@ -177,7 +177,6 @@ export class BlockHandleController {
 		if (target !== block) await tick();
 		const text = target?.firstEditableText;
 		if (!text) return;
-		edytor.selection.setCollapsedStateAtTextOffset(text, 0);
 		edytor.selection.setAtTextOffset(text, 0);
 		edytor.node?.focus({ preventScroll: true });
 		text.insertText({ value: '/' });

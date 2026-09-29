@@ -249,7 +249,7 @@ export class SelfWebSocket {
 			);
 	}
 
-	send(data: ArrayBuffer | Uint8Array) {
+	send(data: string | ArrayBuffer | Uint8Array) {
 		if (this.readyState === 1) this.socket?.send(data);
 	}
 

@@ -17,6 +17,8 @@ Edytor works in SvelteKit with no extra configuration: SvelteKit's Vite plugin c
 | `document` that is not ready yet | Nothing, for the same reason. |
 | `value` only (editable) | The block tree, with `contenteditable="true"`. This path is not tested; mount editable editors in the browser (below). |
 
+A view releases the document it created when the server render ends, so a server-rendered editor keeps no document or presence timer alive after the request.
+
 Some things never run on the server: event listeners, the selection, block handles, menus and the overlay layer, remote carets and plugins' `onEdytorAttached` / `onBlockAttached` hooks. They start when the component mounts in the browser. The server HTML therefore has no handles. It does carry the root, block and mark attributes (`data-edytor`, `data-edytor-type`, `data-edytor-id`, `data-edytor-mark`), so styles that target them apply before hydration; `data-edytor-text` on text segments is added on mount.
 
 ## Readonly pages

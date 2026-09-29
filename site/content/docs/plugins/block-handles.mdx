@@ -172,8 +172,9 @@ const onActivate = ({ block, anchor }: BlockHandleActivation) => {
 	const rect = anchor.getBoundingClientRect();
 	// Show your menu at rect.right, rect.top, listing edytor.kinds and move actions.
 	// For example, "Turn into heading 2":
+	// `true` puts the caret at the start of the converted block.
 	const row = edytor.kinds.find((kind) => kind.id === 'block.heading2');
-	if (row) convertToKind(edytor, block, row);
+	if (row) convertToKind(edytor, block, row, true);
 	// Or "Move down":
 	if (edytor.canMoveBlocks({ blocks: [block], direction: 'down' })) {
 		edytor.moveBlocks({ blocks: [block], direction: 'down' });
@@ -183,12 +184,11 @@ const onActivate = ({ block, anchor }: BlockHandleActivation) => {
 
 The same `edytor.moveBlocks` and `edytor.canMoveBlocks` calls move blocks from anywhere, with `direction` (`up`, `down`, `in`, `out`) or with a `target` and `position` (`before`, `after`, `inside`). See [Commands](/docs/editor/commands).
 
-A click leaves a block selection behind, and a DOM range alone does not replace it. To put the caret back in the block after a menu action, set the model caret first (which clears the block selection), then the DOM caret, and focus the editor:
+A click leaves a block selection behind, and a DOM range alone does not replace it. To put the caret back in the block after a menu action, call `setAtTextOffset` once — it replaces the block selection and the projector draws it after the flush — then focus the editor. A kind whose own content is not displayed (a list container) takes the caret in its first child:
 
 ```ts
-const text = block.firstEditableText;
+const text = block.firstText ?? block.children[0]?.firstText;
 if (text) {
-	edytor.selection.setCollapsedStateAtTextOffset(text, 0);
 	edytor.selection.setAtTextOffset(text, 0);
 	edytor.node?.focus({ preventScroll: true });
 }

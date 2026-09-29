@@ -4,8 +4,8 @@
  * update observer, the restore path (`onLoad` settles before anything is
  * stored; a refused payload refuses sockets instead of crash-looping; the
  * replica registry travels with `SavedDocument`), read-only replicas,
- * registry pruning, the generation cutover `reset()`, the presence echo
- * and the capped refusal log. Faults are injected with SQLite `RAISE(ABORT)`
+ * registry pruning, the generation cutover `reset()`, the presence echo,
+ * the ping/pong keepalive, the capped refusal log and the 4403 denial. Faults are injected with SQLite `RAISE(ABORT)`
  * triggers and `HookedRoom` name prefixes (tests/do/worker.ts). Expected
  * values are hand-authored from the edits each test performs.
  */
@@ -24,7 +24,8 @@ import {
 	dialResponse,
 	para,
 	readFacade,
-	shape
+	shape,
+	upgrade
 } from './client';
 
 const COMPACT_AFTER = 40; // tests/do/vitest.config.ts EDYTOR_COMPACT_AFTER
@@ -392,6 +393,72 @@ describe('UW-11 · a lone socket is not torn down', () => {
 		provider.destroy();
 		document.destroy();
 	}, 45_000);
+
+	/** Send `ping` on a fresh socket of `room`: the texts heard back and the close code, if any. */
+	const ping = async (room: string) => {
+		const ws = await upgrade(room, { user: 'ada' });
+		const texts: string[] = [];
+		let closed: number | null = null;
+		ws.addEventListener('message', (e) => {
+			if (typeof e.data === 'string') texts.push(e.data);
+		});
+		ws.addEventListener('close', (e) => {
+			closed = e.code;
+		});
+		ws.send('ping');
+		await vi.waitFor(() => expect(texts).toEqual(['pong']));
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		ws.close();
+		return { texts, closed };
+	};
+
+	it('the room answers a text ping with pong (auto-response); the socket stays open', async () => {
+		const room = 'keepalive-raw';
+		expect(await ping(room)).toEqual({ texts: ['pong'], closed: null });
+		expect(await inRoom(room, (_r, state) => state.getWebSocketAutoResponse()?.request)).toBe(
+			'ping'
+		);
+		expect(await inRoom(room, (r) => r.refusals)).toEqual([]);
+	});
+
+	it('without the auto-response (a host pair replaced it) the message handler answers', async () => {
+		const room = 'keepalive-handler';
+		await inRoom(room, (_r, state) => state.setWebSocketAutoResponse());
+		expect(await ping(room)).toEqual({ texts: ['pong'], closed: null });
+		expect(await inRoom(room, (r) => r.refusals)).toEqual([]);
+	});
+
+	it('a lone provider with no presence to echo is kept alive by ping/pong past 36 s', async () => {
+		const room = 'keepalive-lone';
+		const document = E.createDocument({ value: { children: [para('p', 'hi')] } });
+		// No presence: nothing to renew, so nothing is echoed — only the pings are answered.
+		document.awareness.setLocalState(null);
+		const provider = new crdt.providers.WebsocketProvider(
+			`${ORIGIN.replace('https', 'wss')}/rooms`,
+			room,
+			document.doc,
+			{
+				awareness: document.awareness,
+				WebSocketPolyfill: SelfWebSocket as unknown as typeof WebSocket,
+				disableBc: true
+			}
+		);
+		const closes: unknown[] = [];
+		provider.on('connection-close', (event: unknown) => closes.push(event));
+		await vi.waitFor(() => expect(provider.synced).toBe(true));
+		let pongs = 0;
+		const ws = provider.ws!;
+		const read = ws.onmessage!.bind(ws);
+		ws.onmessage = (event) => {
+			if (event.data === 'pong') pongs++;
+			read(event);
+		};
+		await new Promise((resolve) => setTimeout(resolve, 36_000));
+		expect(closes).toEqual([]);
+		expect(pongs).toBeGreaterThanOrEqual(1);
+		provider.destroy();
+		document.destroy();
+	}, 45_000);
 });
 
 describe('UW-12 · refusals are bounded; a refused provider dials once', () => {
@@ -445,5 +512,47 @@ describe('UW-12 · refusals are bounded; a refused provider dials once', () => {
 		provider.destroy();
 		ada.destroy();
 		eve.destroy();
+	});
+
+	it('a dial authorize denies is accepted, then closed 4403 with a reason', async () => {
+		const response = await dialResponse('denied-close', { user: 'denied' });
+		expect(response.status).toBe(101);
+		const ws = response.webSocket!;
+		const closed = new Promise<[number, string]>((resolve) =>
+			ws.addEventListener('close', (e) => resolve([e.code, e.reason]))
+		);
+		ws.accept();
+		expect(await closed).toEqual([4403, 'document access denied']);
+	});
+
+	it('the shipped provider denied by authorize emits refused once and stops dialing', async () => {
+		const document = E.createDocument();
+		let dials = 0;
+		class Counted extends SelfWebSocket {
+			constructor(url: string) {
+				super(url);
+				dials++;
+			}
+		}
+		const provider = new crdt.providers.WebsocketProvider(
+			`${ORIGIN.replace('https', 'wss')}/rooms`,
+			'denied-provider',
+			document.doc,
+			{
+				awareness: document.awareness,
+				params: { user: 'denied' },
+				WebSocketPolyfill: Counted as unknown as typeof WebSocket,
+				disableBc: true
+			}
+		);
+		const refused: Array<{ code: number; reason: string }> = [];
+		provider.on('refused', (r) => refused.push({ code: r.code, reason: r.reason }));
+		await vi.waitFor(() => expect(refused).toHaveLength(1));
+		await new Promise((resolve) => setTimeout(resolve, 1000));
+		expect(refused).toEqual([{ code: 4403, reason: 'document access denied' }]);
+		expect(dials).toBe(1);
+		expect(provider.shouldConnect).toBe(false);
+		provider.destroy();
+		document.destroy();
 	});
 });

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Edytor, { type EdytorContext } from '$lib/components/Edytor.svelte';
-	import type { JSONBlock, JSONDoc } from '$lib/utils/json.js';
+	import type { JSONDoc } from '$lib/utils/json.js';
 	import { richTextPlugin, richTextPlaceholder } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 	import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
@@ -152,18 +152,16 @@
 		isMounted = true;
 	});
 
-	// `?blocks=5000`: the demo content repeated (ids stripped) to that many top-level blocks.
-	const withoutIds = ({ id: _, children, ...block }: JSONBlock): JSONBlock => ({
-		...block,
-		...(children && { children: children.map(withoutIds) })
-	});
+	// `?blocks=5000`: the demo content repeated to that many top-level blocks.
+	// The copies drop every id (the editor mints fresh ones).
 	const bigValue = (doc: JSONDoc, count: number): JSONDoc =>
 		count > 0
-			? {
-					children: Array.from({ length: count }, (_, i) =>
-						withoutIds(doc.children[i % doc.children.length]!)
-					)
-				}
+			? JSON.parse(
+					JSON.stringify({
+						children: Array.from({ length: count }, (_, i) => doc.children[i % doc.children.length])
+					}),
+					(key, value) => (key === 'id' ? undefined : value)
+				)
 			: doc;
 	const initialValue = bigValue(demoValue, Number(page.url.searchParams.get('blocks')));
 	// One local document per `?doc=` (or per `?blocks=` variant): its tabs sync

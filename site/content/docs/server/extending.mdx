@@ -195,15 +195,18 @@ A D1 row holds at most 2 MB; use R2 for larger documents.
 `transact(fn)` runs `fn` with the document's [facade](/docs/reference/document-api) in one transaction, stores the edit and broadcasts it to every connected socket, like a client's edit. It returns what `fn` returns. Expose it through your own RPC methods:
 
 ```ts
+import { toBlockSpec } from 'edytor/crdt/edytor';
+
 export class Notes extends DurableObject<Env> {
   document = attachDocument(this);
 
   appendNote(text: string) {
-    return this.document.transact((doc) => {
-      const id = crypto.randomUUID();
-      doc.insertBlock({ parent: null, index: doc.childrenIds(null).length }, { id, type: 'paragraph' });
-      return doc.insertText(id, 0, text);
-    });
+    return this.document.transact((doc) =>
+      doc.insertBlock(
+        { parent: null, index: doc.childrenIds(null).length },
+        toBlockSpec({ type: 'paragraph', content: [{ text }] })
+      )
+    );
   }
 }
 

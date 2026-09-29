@@ -68,6 +68,7 @@ const CUT: Record<string, 'before' | 'both'> = {
 	// Structural operations.
 	insertBlockAfter: 'before',
 	insertBlockBefore: 'before',
+	duplicateBlock: 'before',
 	insertDivider: 'before',
 	insertFlow: 'before',
 	setBlock: 'before',

@@ -107,7 +107,7 @@ import { createDocument, createWebsocketSync } from 'edytor';
 
 const document = createDocument({ actor: { id: 'user-42' } }); // pending
 document.attachSync(
-  createWebsocketSync({ serverUrl: 'wss://rooms.example.com/rooms', roomName: 'doc-42' }),
+  createWebsocketSync({ server: 'wss://rooms.example.com/rooms', room: 'doc-42' }),
   { value: { children: [] } } // seeded only if the room turns out empty
 );
 ```
@@ -139,17 +139,13 @@ A view never destroys a document you passed in: you created it, you destroy it. 
 Import from `edytor/crdt/edytor` in code that cannot load Svelte components. It exports the same document API as `edytor`, without the component:
 
 ```ts
-import { createDocument, loadDocument } from 'edytor/crdt/edytor';
+import { loadDocument, toBlockSpec } from 'edytor/crdt/edytor';
 
 export function appendLine(saved: Uint8Array, text: string): Uint8Array {
   const document = loadDocument(saved, { actor: { id: 'server-bot' } });
   const facade = document.facade;
   const index = facade.childrenIds(null).length; // append at the root
-  facade.insertBlock({ parent: null, index }, {
-    id: crypto.randomUUID(),
-    type: 'paragraph',
-    content: [{ kind: 'text', text }]
-  });
+  facade.insertBlock({ parent: null, index }, toBlockSpec({ type: 'paragraph', content: [{ text }] }));
   const bytes = document.encode();
   document.destroy();
   return bytes;

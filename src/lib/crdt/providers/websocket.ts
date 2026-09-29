@@ -7,7 +7,8 @@
  * `connect()`/`disconnect()`, awareness injection, auth `params` (read at
  * every dial, so a refreshed token reaches the next connection),
  * `WebSocketPolyfill`, exponential-backoff reconnect (`maxBackoffTime`,
- * growing to 30 s for a room that stays unreachable), liveness,
+ * growing to 30 s for a room that stays unreachable), liveness (a text
+ * `ping` after 15 s of silence; a text `pong` counts as heard),
  * `resyncInterval`, and the BroadcastChannel leg (cross-tab sync, on by
  * default; `disableBc` opts out). A refusal close (`1008`, `4xxx`) is
  * terminal: no redial. Retired: `protocols`, the `sync` alias,
@@ -69,6 +70,8 @@ import type { EngineApi, YDoc } from '../engine-api.js';
 
 // @todo - this should depend on awareness.outdatedTime
 const messageReconnectTimeout = 30000;
+/** Silence after which the socket is sent one text `ping` (a room auto-answers `pong`). */
+const messagePingTimeout = 15000;
 /** Consecutive dials that never synced before the backoff cap starts to grow. */
 const unreachableAfter = 8;
 /** The backoff cap an unreachable room grows to. */
@@ -154,7 +157,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 	type Provider = WebsocketProvider;
 
 	/** Traffic for the server goes out on the socket while it is open. */
-	const send = (provider: Provider, buf: Uint8Array) => {
+	const send = (provider: Provider, buf: Uint8Array | string) => {
 		const ws = provider.ws;
 		if (provider.wsconnected && ws && ws.readyState === ws.OPEN) ws.send(buf);
 	};
@@ -340,6 +343,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		_fromTab = {};
 		wsUnsuccessfulReconnects = 0;
 		wsLastMessageReceived = 0;
+		/** When this silence was pinged (one ping per silence). */
+		wsLastPingSent = 0;
 		_synced = false;
 		/** Reassembles this socket's chunked frames (reset per connection). */
 		_chunks = createChunkReader();
@@ -406,13 +411,19 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			this._awarenessUpdateHandler = room.awarenessUpdateHandler(this);
 			awareness.on('update', this._awarenessUpdateHandler);
 			this._checkInterval = setInterval(() => {
-				if (
-					this.wsconnected &&
-					messageReconnectTimeout < time.getUnixTime() - this.wsLastMessageReceived
-				) {
-					// no message received in a long time - not even our own awareness
-					// updates (which are updated every 15 seconds)
+				if (!this.wsconnected) return;
+				const now = time.getUnixTime();
+				const silence = now - this.wsLastMessageReceived;
+				if (messageReconnectTimeout < silence) {
+					// no message received in a long time - not even the answer to
+					// our ping, nor the echo of our presence (renewed every 15 s)
 					closeWebsocketConnection(this, this.ws as WebSocket, null);
+				} else if (
+					messagePingTimeout <= silence &&
+					this.wsLastPingSent <= this.wsLastMessageReceived
+				) {
+					this.wsLastPingSent = now;
+					send(this, 'ping');
 				}
 			}, messageReconnectTimeout / 10);
 			if (connect) {

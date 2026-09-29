@@ -14,6 +14,8 @@ import {
 	setBlock,
 	splitBlock,
 	prepareSplit,
+	duplicateBlock,
+	prepareDuplicate,
 	prepareSet,
 	prepareMove,
 	prepareMoves,
@@ -291,6 +293,7 @@ export class Block {
 	insertBlockAfter = batch('insertBlockAfter', insertBlockAfter, prepareInsertAfter, blockOf);
 	insertBlockBefore = batch('insertBlockBefore', insertBlockBefore, prepareInsertBefore, blockOf);
 	splitBlock = batch('splitBlock', splitBlock, prepareSplit, blockOf);
+	duplicateBlock = batch('duplicateBlock', duplicateBlock, prepareDuplicate, blockOf);
 	removeBlock = batch('removeBlock', removeBlock, prepareRemove);
 	unNestBlock = batch('unNestBlock', unNestBlock, prepareUnNest);
 	mergeBlockBackward = batch(

@@ -110,6 +110,13 @@ export { DocumentRoom };
 
 It imports `cloudflare:workers`, so it loads only inside a Worker. It is built on the Worker-safe CRDT entries and has no Svelte or DOM code. Setup is covered in [Server quick start](/docs/server/quick-start) and [Your own Durable Object](/docs/server/extending). Its `attachDocument` is unrelated to the `attachDocument` of `edytor`, which wraps an engine document on the client.
 
+## Bundle size and tree-shaking
+
+- **Import what you render.** Every JavaScript module in the package is free of side effects (`sideEffects` lists only CSS), so a bundler drops the plugins you never import. The code plugin, with TanStack Highlight and its stylesheet, ships only in apps that import `codePlugin`.
+- **The engine is pruned.** `edytor/crdt` is Edytor's fork of Yjs v14, cut down to what Edytor runs on. The document API reaches the engine through one fixed object of the symbols it calls, so an app that never imports `edytor/crdt` itself bundles only what those symbols reach. `bindCrdt(Y)` with the whole namespace (`import * as Y from 'edytor/crdt'`) keeps the whole pruned engine.
+- **Headless code stays small.** `edytor/crdt/edytor` has no Svelte and no view code: a server route or Worker that reads and edits documents does not pull in the editor.
+- **One engine.** Never add the `yjs` package next to Edytor: it is a second, incompatible engine.
+
 ## Choosing an entry
 
 - Rendering an editor: `edytor`.

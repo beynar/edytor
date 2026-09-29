@@ -3,7 +3,7 @@ import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { isRecord, type SerializableContent } from '$lib/utils/json.js';
 import { richTextOperations, type RichTextMark } from '$lib/plugins/richtext/richTextOperations.js';
-import { convertToKind, type KindRow } from '$lib/kinds.js';
+import { convertibleKinds, convertToKind, kindOf, type KindRow } from '$lib/kinds.js';
 
 /** Notion's palette: text colors and their backgrounds, by name. */
 export const TOOLBAR_COLORS = [
@@ -66,18 +66,12 @@ export class ToolbarController {
 
 	/** The kinds the selection's block may turn into (conversions that keep its content). */
 	get kinds(): KindRow[] {
-		return this.edytor.kinds.filter((kind) => !kind.replaces);
+		return convertibleKinds(this.edytor);
 	}
 
 	/** The row naming the selection's block, for the kind button's label. */
 	get currentKind(): KindRow | undefined {
-		const block = this.edytor.selection.state.startBlock;
-		if (!block) return undefined;
-		const level = block.data?.level;
-		return this.kinds.find(
-			(kind) =>
-				kind.value.type === block.type && (level === undefined || kind.value.data?.level === level)
-		);
+		return kindOf(this.edytor, this.edytor.selection.state.startBlock);
 	}
 
 	togglePanel(panel: 'turn' | 'link' | 'color') {

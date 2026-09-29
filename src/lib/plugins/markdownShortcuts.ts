@@ -9,7 +9,7 @@ import type { Plugin } from '$lib/plugins.js';
  */
 const applyShortcut = (block: Block, row: KindRow, prefixLength: number) => {
 	const { edytor } = block;
-	const prefix = edytor.facade.prepare.deleteText(block.model!.id, 0, prefixLength);
+	const prefix = edytor.facade.prepare.deleteText(block.id, 0, prefixLength);
 	return edytor.dispatcher.lead(prefix, () => convertToKind(edytor, block, row, true)).out === true;
 };
 
@@ -54,8 +54,8 @@ export const markdownShortcutsPlugin: Plugin = (edytor) => {
 				isCollapsed && startText && payload.value.length === 1 && block.type !== 'codeLine'
 					? inlineMarkdown(startText.stringContent.slice(0, yStart), payload.value)
 					: null;
-			if (inline && edytor.marks.has(inline.mark) && block.model) {
-				const id = block.model.id;
+			if (inline && edytor.marks.has(inline.mark)) {
+				const { id } = block;
 				const at = startText!.segStart + inline.start;
 				const { facade } = edytor;
 				const plan = () =>

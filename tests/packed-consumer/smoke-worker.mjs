@@ -6,7 +6,7 @@
  *    assert the bundle reaches the cloudflare and CRDT dist and no Svelte /
  *    DOM view module (`dist/components/`, `*.svelte`, the component root…).
  * 2. Run it in Miniflare (no port: `dispatchFetch`) with the room on SQLite
- *    storage: `/health`, a refused authorization (403), then one sync round
+ *    storage: `/health`, a refused authorization (closed 4403), then one sync round
  *    trip over WebSocket upgrades — a writer pushes a seeded document and
  *    gets the room's store-before-ack state vector, a second socket syncs
  *    it back — an update under the writer's client id from another user is
@@ -129,10 +129,13 @@ try {
 	await miniflare.ready;
 	const health = await miniflare.dispatchFetch('http://local/health');
 	assert.equal(await health.text(), 'ready');
-	const denied = await miniflare.dispatchFetch('http://local/rooms/smoke?user=denied', {
-		headers: { Upgrade: 'websocket' }
-	});
-	assert.equal(denied.status, 403, 'authorize refuses before the upgrade');
+	const denied = await dial('smoke', '?user=denied');
+	await until(() => denied.closed() !== null, 'the denial close');
+	assert.deepEqual(
+		denied.closed(),
+		{ code: 4403, reason: 'document access denied' },
+		'authorize refuses before the room'
+	);
 
 	// Writer: a seeded headless document pushed as one Update frame.
 	const writer = E.createDocument({

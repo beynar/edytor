@@ -50,8 +50,8 @@ A command is shown first, under its own name. If it is one document plan, each p
 | Gesture                                   | Command                        | Steps shown after it                                         |
 | ----------------------------------------- | ------------------------------ | ------------------------------------------------------------ |
 | Typing                                    | `insertText`                   | none                                                         |
-| <kbd>Enter</kbd>                          | `splitBlock`, `insertBlockAfter` or `insertBlockBefore`; at the end of an open container header, `addChildBlock`; in an empty list item, `unNestBlock` or `setBlock` | the steps it plans |
-| <kbd>Backspace</kbd> at a block start     | `setBlock` on a kind other than the parent's default child (it turns into that default first); else `mergeBlockBackward` or `unNestBlock` | the child moves it plans |
+| <kbd>Enter</kbd>                          | `splitBlock`, `insertBlockAfter`, `insertBlockBefore`, `addChildBlock`, `unNestBlock` or `setBlock`, by the block's [role](/docs/customization/hotkeys#enter-and-backspace-by-role) | the steps it plans |
+| <kbd>Backspace</kbd> at a block start     | `setBlock`, `unNestBlock` or `mergeBlockBackward`, by the block's [role](/docs/customization/hotkeys#enter-and-backspace-by-role) | the child moves it plans |
 | <kbd>Tab</kbd>, <kbd>Shift</kbd> + <kbd>Tab</kbd> | `nestBlock`, `unNestBlock`; over several selected blocks, `moveBlocks` | the moves it plans                                           |
 | Deleting a range across blocks            | `deleteContentWithinSelection` | `deleteContentAtRange`, `removeBlock`, `mergeBlockBackward`  |
 | Deleting a block selection                | `deleteBlocks`                 | one `removeBlock` per selected block                         |
@@ -59,6 +59,7 @@ A command is shown first, under its own name. If it is one document plan, each p
 | Markdown shortcut or slash command        | `setBlock`                     | `deleteContentAtRange` for the removed trigger text          |
 | Formatting                                | `markText`                     | none                                                         |
 | Block handle or arrow-move                | `moveBlock` or `moveBlocks`    | none                                                         |
+| Duplicate (block menu, <kbd>Mod</kbd> + <kbd>D</kbd>) | `duplicateBlock`   | `addChildBlocks` on the parent                               |
 
 The step names are `addChildBlocks`, `moveBlock`, `moveBlocks`, `removeBlock`, `splitBlock`, `mergeBlockBackward`, `setBlock`, `insertText`, `addInlineBlock` and `deleteContentAtRange`. Work an operation does internally, such as normalization, is part of it and is not shown separately.
 
@@ -212,6 +213,7 @@ Text operations carry `text`. Block operations run on `block`.
 | `removeMarksFromText`          | `{ start?, end? }`                                          |
 | `splitBlock`                   | `{ index, text }`                                           |
 | `insertBlockAfter`, `insertBlockBefore` | `{ block: JSONBlock }`                             |
+| `duplicateBlock`               | `{}` (a copy of the block and its subtree after it, under fresh ids) |
 | `addChildBlock`                | `{ block: JSONBlock, index }`                               |
 | `addChildBlocks`               | `{ blocks: JSONBlock[], index }`                            |
 | `removeBlock`                  | `{ keepChildren? }`                                         |

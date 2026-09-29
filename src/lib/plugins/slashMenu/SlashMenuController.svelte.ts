@@ -140,11 +140,7 @@ export class SlashMenuController {
 			// refusing the command keeps the trigger); a command that plans
 			// nothing synchronously runs after it.
 			const at = text.segStart + triggerStart;
-			const trigger = edytor.facade.prepare.deleteText(
-				text.parent.model!.id,
-				at,
-				end - triggerStart
-			);
+			const trigger = edytor.facade.prepare.deleteText(text.parent.id, at, end - triggerStart);
 			const run = edytor.dispatcher.lead(trigger, () => edytor.runCommand(command.id));
 			if (!run.taken) this.removeTriggerText(text, triggerStart, end);
 			const refused = run.taken && edytor.dispatcher.last?.status === 'refused';

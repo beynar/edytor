@@ -10,3 +10,6 @@ import ReadonlyApp from './ReadonlyApp.svelte';
 const result = render(ReadonlyApp);
 
 export const html = result.body ?? result.html ?? '';
+
+/** One more server render, read to completion (`render()` is lazy): the leak check repeats it. */
+export const renderOnce = () => render(ReadonlyApp).body;

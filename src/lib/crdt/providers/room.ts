@@ -227,6 +227,34 @@ export const emitFailed = (host: LifecycleHost, error: unknown): void => {
 };
 
 /**
+ * A terminal refusal: the server closed the socket with a policy code
+ * (`1008`, or an application code `4000`–`4999`), so the next dial would
+ * be refused the same way (a stale generation, another user's replica, a
+ * foreign stamp). The provider stops dialing and the document does not seed.
+ */
+export class SyncRefusedError extends Error {
+	/** The close code. */
+	code: number;
+	/** The close reason the server gave, e.g. `refused: generation`. */
+	reason: string;
+
+	constructor(code: number, reason = '') {
+		super(`sync refused (${code})${reason ? `: ${reason}` : ''}`);
+		this.name = 'SyncRefusedError';
+		this.code = code;
+		this.reason = reason;
+	}
+}
+
+/**
+ * The awareness origin of presences dropped because this replica lost its
+ * transport (a closed socket, a destroyed provider). They are gone for this
+ * replica only: no provider relays the removal, so sibling tabs sharing the
+ * store's channel keep the peers they still hear.
+ */
+export const LOCAL_PRESENCE_LOSS = Symbol('local presence loss');
+
+/**
  * The destroy guard: `false` when already destroyed; otherwise marks the
  * provider destroyed, drops the departure hook, and reports the terminal
  * failure of a provider that never synced.
@@ -423,11 +451,12 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 	 * Awareness change → room publish (`behavior.broadcast` picks the
 	 * transports) — never a change this provider just heard: echoing a
 	 * departing peer's removal back to it makes that peer re-announce itself
-	 * (the awareness "still alive" rule), so its presence never leaves.
+	 * (the awareness "still alive" rule), so its presence never leaves —
+	 * nor a {@link LOCAL_PRESENCE_LOSS}, which is true for this replica only.
 	 */
 	const awarenessUpdateHandler = (provider: P) => {
 		return ({ added, updated, removed }: AwarenessUpdate, origin: unknown): void => {
-			if (origin === provider) return;
+			if (origin === provider || origin === LOCAL_PRESENCE_LOSS) return;
 			const changed = added.concat(updated).concat(removed);
 			behavior.broadcast(
 				provider,

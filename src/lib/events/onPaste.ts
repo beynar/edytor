@@ -58,7 +58,7 @@ const syncCollapsedDomCaretForPaste = (edytor: Edytor) => {
 	}
 
 	const selection = getDomSelectionSnapshot(edytor.node);
-	const container = edytor.container;
+	const container = edytor.node;
 	if (
 		!selection?.isCollapsed ||
 		!selection.anchorNode ||

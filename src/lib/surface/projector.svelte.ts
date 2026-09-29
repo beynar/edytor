@@ -341,8 +341,12 @@ export class Projector {
 		if (!dom) return true;
 		if (value.kind !== 'text') {
 			// A block set or an atom shows as selected elements, not a range.
-			if (dom.anchorNode && node.contains(dom.anchorNode) && this.#ours(requested)) {
-				clearDomSelection(node);
+			// Displayed even when the DOM already holds no range (the atom's
+			// own pointerdown cleared it): a caret the browser parks later
+			// without a gesture (focusing the host) is then drift, not intent.
+			const inside = Boolean(dom.anchorNode && node.contains(dom.anchorNode));
+			if ((inside || dom.rangeCount === 0) && this.#ours(requested)) {
+				if (inside) clearDomSelection(node);
 				this.#displayed = null;
 				this.#serial = edytor.intentSerial;
 			}

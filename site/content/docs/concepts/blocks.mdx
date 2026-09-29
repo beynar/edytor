@@ -17,10 +17,10 @@ Every block has a kind, its `type`. Kinds come from plugins: each plugin's `bloc
 | `bulleted-list-item` | `li` | | Continues on <kbd>Enter</kbd>. |
 | `numbered-list-item` | `li` | | Continues on <kbd>Enter</kbd>. |
 | `todo-item` | `div` with a checkbox | `checked: boolean` | Clicking the checkbox writes `checked`. Continues on <kbd>Enter</kbd>. |
-| `toggle` | `details` | | Children form the collapsible body. Continues on <kbd>Enter</kbd>. |
-| `callout` | `div` | `icon: string` | The icon defaults to `💡`. |
-| `quote` | `blockquote` | | |
-| `divider` | `hr` | | Void, no content. |
+| `toggle` | `details` | | Children form the collapsible body. Continues on <kbd>Enter</kbd>; with children, <kbd>Enter</kbd> at the end of an open toggle adds a first child. |
+| `callout` | `div` | `icon: string` | The icon defaults to `💡`. With children, <kbd>Enter</kbd> at its end adds a first child. |
+| `quote` | `blockquote` | | With children, <kbd>Enter</kbd> at its end adds a first child. |
+| `divider` | `hr` | | Void, no content. Converting a block to it adds a paragraph after it for the caret. |
 | `ordered-list`, `unordered-list` | `ol`, `ul` | | Containers: children only, default child `list-item`. |
 | `list-item` | `li` | | |
 | `details`, `horizontalRule` | `details`, `hr` | | Not offered in menus (they have no presets). |
@@ -35,8 +35,8 @@ Any block can hold `children` unless its kind is void. Children render inside th
 
 In the editor:
 
-- <kbd>Tab</kbd> nests the current block under the block before it. <kbd>Shift</kbd>+<kbd>Tab</kbd> moves it out, after its parent.
-- Backspace at the start of a nested block that is its parent's last child moves it out one level instead of merging.
+- <kbd>Tab</kbd> nests the current block under the block before it. <kbd>Shift</kbd>+<kbd>Tab</kbd> moves it out, after its parent; the blocks nested after it follow as its children, as in any outliner. Over a selection of sibling blocks, both keys move them together and keep them selected.
+- Backspace at the start of a block of any menu kind other than its parent's default child (a heading, list item, to-do, toggle, quote) first turns it into that default, a paragraph, keeping its text and children. Once it is the default kind, Backspace at the start of a nested block that is its parent's last child moves it out one level instead of merging.
 - Block handles drag blocks before, after or inside other blocks.
 - `edytor.moveBlocks` and `edytor.canMoveBlocks` do the same from code (see [Commands](/docs/editor/commands#moving-blocks)).
 
@@ -47,7 +47,7 @@ Deleting a block, or a block selection, does not delete the children that were n
 A void block (`void: true`) is a self-contained unit, such as a divider, an image or an embed. It is not part of the text flow:
 
 - Its element is `contenteditable="false"`; the editor does not edit its markup. Controls inside it (buttons, inputs) keep working.
-- It cannot receive children. Nothing can be inserted, moved or dropped into it.
+- It cannot receive children. Nothing can be inserted, moved or dropped into it. Turning a block with children into a void kind (`setBlockType`, `setBlock`, a menu conversion) moves the children out, right after it; they take the default type of that slot when they came from an island. `setBlock` with `children` for a void kind is refused.
 - It never merges with a neighbor. Backspace at the start of the block after it selects the void block; a second Backspace deletes it.
 - Slash commands and markdown shortcuts don't convert it.
 

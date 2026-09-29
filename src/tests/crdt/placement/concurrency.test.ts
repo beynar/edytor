@@ -206,7 +206,7 @@ describe('placement model — concurrency (MV01–MV10)', () => {
 		expect(ops.listBlockIds(A)).toEqual(['b1', 'b3', 'b3a', 'b3b']);
 	});
 
-	it('move into a deleted parent hides the child with the subtree', () => {
+	it('move into a deleted parent: the child takes the parent’s slot (read-time promotion)', () => {
 		const set = createPeerPair(MODEL_BASE_SEED);
 		const { A, B } = set;
 		ops.deleteBlock(A, 'b3');
@@ -214,13 +214,10 @@ describe('placement model — concurrency (MV01–MV10)', () => {
 		set.deliverAll();
 		set.syncAll();
 		assertConverged(set, ops);
-		// Documented policy: hidden-with-subtree — b1 is under a deleted
-		// parent → hidden; it is NOT deleted itself (no del flag) and would
-		// resurface if the parent were ever restored by undo.
-		expect(ops.listBlockIds(A)).toEqual(['b2']);
-		expect(find(A, 'b1')).toBeUndefined();
-		// b1's payload is intact in the registry — it is hidden, not deleted.
-		expect(M.blockNodeOf(A.doc, 'b1')).not.toBeNull();
+		// UW-08: b1 carries no delete mark, so it displays in b3's slot;
+		// its placement still names b3 (undo of the delete puts it back under).
+		expect(ops.listBlockIds(A)).toEqual(['b2', 'b1']);
+		expect(ops.positionOf(A, 'b1')).toEqual({ parent: null, index: 1 });
 		expect(M.liveNodeOf(A.doc, 'b1')).not.toBeNull();
 	});
 

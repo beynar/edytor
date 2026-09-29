@@ -463,8 +463,8 @@ export class Dispatcher {
 	 * operation names. A step that is the command itself (same name, same
 	 * block) is not repeated; a write into a block the plan creates is part
 	 * of that creation. (A `removeInline` step is only ever its own command,
-	 * `removeInlineBlock`; `formatRange` and `setInlineData` steps belong to no
-	 * dispatched plan yet: they have no mapping.)
+	 * `removeInlineBlock`, and a `setInlineData` step `setInlineData`;
+	 * `formatRange` steps belong to no dispatched plan yet: no mapping.)
 	 */
 	private steps(
 		writes: readonly PlanStep[],

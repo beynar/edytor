@@ -82,6 +82,8 @@ export type {
 	JSONInlineBlock,
 	SerializableContent
 } from '../utils/json.js';
+/** Canonical JSON → the `BlockSpec` `facade.insertBlock` takes (ids kept or minted). */
+export { toBlockSpec } from '../utils/json.js';
 
 // ── 2 · The document's vocabulary ──────────────────────────────────────
 //
@@ -151,6 +153,8 @@ export {
 	type WebsocketProviderEvents,
 	type WebsocketPolyfill
 } from './providers/websocket.js';
+
+export { SyncRefusedError } from './providers/room.js';
 
 export {
 	Awareness,

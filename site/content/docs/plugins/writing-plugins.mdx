@@ -84,16 +84,16 @@ export const myPlugin: Plugin = (edytor) => {
       description: "After the selection value changed.",
     },
     onEdytorAttached: {
-      type: "({ node }) => () => void",
-      description: "When the editor element mounts. Returns a cleanup.",
+      type: "({ node }) => (() => void) | void",
+      description: "When the editor element mounts. May return a cleanup.",
     },
     onBlockAttached: {
-      type: "({ node, block }) => () => void",
-      description: "When a block element mounts. Returns a cleanup.",
+      type: "({ node, block }) => (() => void) | void",
+      description: "When a block element mounts. May return a cleanup.",
     },
     onTextAttached: {
-      type: "({ node, text }) => () => void",
-      description: "When a text segment element mounts. Returns a cleanup.",
+      type: "({ node, text }) => (() => void) | void",
+      description: "When a text segment element mounts. May return a cleanup.",
     },
     onBeforeInput: {
       type: "({ e, prevent }) => void",
@@ -129,7 +129,7 @@ Every hook whose payload has `prevent` can stop what the editor was about to do.
 
 ## Lifecycle hooks
 
-`onEdytorAttached`, `onBlockAttached` and `onTextAttached` run when the element mounts and must return a cleanup function, called when it unmounts. Use them to attach listeners or third-party libraries to the DOM.
+`onEdytorAttached`, `onBlockAttached` and `onTextAttached` run when the element mounts and may return a cleanup function, called when it unmounts. Anything else they return (nothing, a promise) is ignored. Use them to attach listeners or third-party libraries to the DOM.
 
 ```ts
 import type { Plugin } from 'edytor';

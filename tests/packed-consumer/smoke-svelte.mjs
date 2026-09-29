@@ -7,7 +7,9 @@
  *      boundary: bundler required, plain node can't — smoke.js pins that).
  *   2. `vite build --ssr` + `render()` — the supported SSR path: a readonly
  *      Edytor server-renders to markup (plain node importing .svelte stays an
- *      expected failure; this is the meaningful SSR check).
+ *      expected failure; this is the meaningful SSR check). Repeated renders
+ *      clear every interval they start: a view-owned document is released
+ *      after the render, never leaked per request.
  *   3. Browser mount — the built app is served (vite preview) and driven in a
  *      real browser via the repo's playwright: the packed component mounts,
  *      renders the supported plugin surface (richTextPlugin blocks + marks),
@@ -72,6 +74,20 @@ await build({
 const ssrAssets = readdirSync(new URL('./svelte-app/dist-ssr/', import.meta.url));
 const ssrBundle = ssrAssets.find((file) => file.endsWith('.js') || file.endsWith('.mjs'));
 assert.ok(ssrBundle, 'SSR build must emit a node bundle');
+// Count every interval the renders start and clear: a view-owned document
+// (its awareness sweep) must not outlive the request that rendered it.
+const intervals = { set: 0, cleared: new Set(), live: new Set() };
+const { setInterval: realSetInterval, clearInterval: realClearInterval } = globalThis;
+globalThis.setInterval = (...args) => {
+	const handle = realSetInterval(...args);
+	intervals.set++;
+	intervals.live.add(handle);
+	return handle;
+};
+globalThis.clearInterval = (handle) => {
+	if (intervals.live.delete(handle)) intervals.cleared.add(handle);
+	return realClearInterval(handle);
+};
 const ssrModule = await import(new URL(`./svelte-app/dist-ssr/${ssrBundle}`, import.meta.url));
 const ssrHtml = ssrModule.html;
 assert.ok(typeof ssrHtml === 'string' && ssrHtml.length > 0, 'SSR render must produce html');
@@ -80,6 +96,25 @@ assert.ok(ssrHtml.includes('rendered'), 'SSR html must contain the marked text')
 assert.ok(ssrHtml.includes('data-edytor'), 'SSR html must contain edytor markup');
 assert.ok(!ssrHtml.includes('contenteditable="true"'), 'readonly SSR must not be editable');
 console.log('    SSR render OK —', ssrHtml.length, 'bytes of markup');
+
+const renders = 20;
+for (let i = 0; i < renders; i++) {
+	assert.ok(
+		ssrModule.renderOnce().includes('rendered'),
+		'every SSR render must produce the markup'
+	);
+}
+globalThis.setInterval = realSetInterval;
+globalThis.clearInterval = realClearInterval;
+assert.ok(intervals.set > renders, 'the renders must start the intervals counted here');
+assert.equal(
+	intervals.cleared.size,
+	intervals.set,
+	`every SSR render must clear what it started (${intervals.live.size} left running)`
+);
+console.log(
+	`    SSR teardown OK — ${renders + 1} renders, ${intervals.set} intervals, all cleared`
+);
 
 // ── browser mount / edit / readonly / teardown ───────────────────────────
 let chromium;

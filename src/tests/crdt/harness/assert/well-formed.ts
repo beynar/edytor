@@ -1,0 +1,127 @@
+/**
+ * `wellFormed` — the named semantic invariants a replica must hold after
+ * every step (review 2026-09-29, oracle wave). Convergence alone cannot see
+ * a *convergent-but-wrong* state; each check here names one such state:
+ *
+ * - `registered-type` — every visible block has a defined type the schema
+ *   registers (never `''`, never `'unknown'`; UW-01: undo of a raced retype
+ *   left the attr undefined and bricked rendering).
+ * - `merge-order` — a merge's survivor (the target, or the source when a
+ *   concurrent delete of the target revived it) is ranked before the
+ *   source's former children (UW-20).
+ * - `void-children` — no void kind has visible children: nothing renders
+ *   them (UW-21).
+ * - `seed-displacement` — a block id keeps the registry node it was first
+ *   seen with: a seed never displaces pre-existing content (UW-03).
+ * - `promotion-hidden` — no unmarked block hides under a delete-marked
+ *   holder (UW-08). Opt-in with `DST_PROMOTION_ORACLE=1` until read-time
+ *   promotion lands; the gate turns it on.
+ *
+ * The runner (`random/runner.ts`) and the p1 harness (`arch-v2/p1-harness.ts`)
+ * both feed {@link wellFormedProblems}; each backend supplies the inputs it
+ * can answer, and a check whose input is absent is skipped.
+ */
+
+export type WfBlock = { id: string; type?: unknown; children?: readonly WfBlock[] };
+
+/** One applied merge: `from`'s content went to `into`; `kids` were `from`'s children. */
+export type MergeRecord = { from: string; into: string; kids: readonly string[] };
+
+export type WellFormedInput = {
+	/** The visible tree (a projection or `toJSON().children`). */
+	roots: readonly WfBlock[];
+	/** Registered block types; absent → any non-empty type but `'unknown'`. */
+	registered?: ReadonlySet<string>;
+	/** The role answer for void kinds; absent → no roles configured. */
+	isVoid?: (id: string) => boolean;
+	/** Merges whose order still holds (the caller drops ones a later move made moot). */
+	merges?: readonly MergeRecord[];
+	/** Registry-node identity of `id`; absent → the backend has no registry. */
+	identityOf?: (id: string) => string | null;
+	/** Whether node `later` was written after node `earlier` on the id's key (a redo). */
+	succeeds?: (later: string, earlier: string) => boolean;
+	/** First identity seen per id — the check records into it. */
+	identities?: Map<string, string>;
+	/** Unmarked, self-owned blocks hidden under a delete-marked holder. */
+	hiddenUnderDeleted?: () => readonly string[];
+};
+
+type Check = {
+	enabled?: () => boolean;
+	run: (input: WellFormedInput, visible: ReadonlyMap<string, WfBlock>) => string[];
+};
+
+/** Pre-order index of every visible block. */
+const indexTree = (roots: readonly WfBlock[]): Map<string, WfBlock> => {
+	const out = new Map<string, WfBlock>();
+	const visit = (b: WfBlock) => {
+		out.set(b.id, b);
+		for (const c of b.children ?? []) visit(c);
+	};
+	for (const b of roots) visit(b);
+	return out;
+};
+
+export const WELL_FORMED_CHECKS: Record<string, Check> = {
+	'registered-type': {
+		run: ({ registered }, visible) =>
+			[...visible.values()].flatMap((b) =>
+				typeof b.type !== 'string' ||
+				b.type === '' ||
+				(registered ? !registered.has(b.type) : b.type === 'unknown')
+					? [`${b.id} has type ${JSON.stringify(b.type)}`]
+					: []
+			)
+	},
+	'merge-order': {
+		run: ({ merges }, visible) => {
+			if (!merges) return [];
+			const at = new Map([...visible.keys()].map((id, i) => [id, i]));
+			return merges.flatMap(({ from, into, kids }) => {
+				const survivor = at.has(into) ? into : at.has(from) ? from : null;
+				if (survivor === null) return [];
+				return kids.flatMap((kid) =>
+					at.has(kid) && at.get(kid)! < at.get(survivor)!
+						? [`${kid} (child of merged ${from}) ranks before ${survivor}`]
+						: []
+				);
+			});
+		}
+	},
+	'void-children': {
+		run: ({ isVoid }, visible) =>
+			isVoid
+				? [...visible.values()].flatMap((b) =>
+						b.children?.length && isVoid(b.id) ? [`void ${b.id} has visible children`] : []
+					)
+				: []
+	},
+	'seed-displacement': {
+		run: ({ identityOf, identities, succeeds = () => false }, visible) => {
+			if (!identityOf || !identities) return [];
+			const out: string[] = [];
+			for (const id of visible.keys()) {
+				const now = identityOf(id);
+				if (now === null) continue;
+				const first = identities.get(id);
+				if (first === undefined) identities.set(id, now);
+				else if (first !== now && !succeeds(now, first))
+					out.push(`${id} was node ${first}, now ${now}`);
+			}
+			return out;
+		}
+	},
+	'promotion-hidden': {
+		enabled: () => process.env.DST_PROMOTION_ORACLE === '1',
+		run: ({ hiddenUnderDeleted }) =>
+			(hiddenUnderDeleted?.() ?? []).map((id) => `${id} hidden under a deleted holder`)
+	}
+};
+
+/** Every enabled check's problems, each prefixed with the check's name. */
+export const wellFormedProblems = (input: WellFormedInput): string[] => {
+	const visible = indexTree(input.roots);
+	return Object.entries(WELL_FORMED_CHECKS).flatMap(([name, check]) =>
+		check.enabled && !check.enabled() ? [] : check.run(input, visible).map((p) => `${name}: ${p}`)
+	);
+};

@@ -311,7 +311,7 @@ export function getTextOfNode(this: EdytorSelection, node: Node | null, offset?:
 		// blocks, the render anchor, a non-editable gap) — resolve it to the
 		// nearest text element at that boundary so open-ended selections
 		// still map to a model text position.
-		const strayTextElement = getStrayBoundaryTextElement(node, this.edytor.container);
+		const strayTextElement = getStrayBoundaryTextElement(node, this.edytor.node);
 		if (strayTextElement) {
 			text = this.edytor.nodeToText.get(strayTextElement) || null;
 		}
@@ -324,7 +324,7 @@ export function getInlineBlockOfNode(this: EdytorSelection, node: Node | null) {
 
 	const element = getElementFromNode(node);
 	const inlineElement = element?.closest('[data-edytor-inline-block]');
-	if (inlineElement instanceof Element && this.edytor.container?.contains(inlineElement)) {
+	if (inlineElement instanceof Element && this.edytor.node?.contains(inlineElement)) {
 		return this.edytor.nodeToInlineBlock.get(inlineElement) || null;
 	}
 

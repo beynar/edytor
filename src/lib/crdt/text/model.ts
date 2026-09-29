@@ -29,7 +29,8 @@
  */
 import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode } from '../engine-api.js';
 import { CONTENT, CONTENT_NODE, DATA, ID, NONCE, SCHEMA, TYPE } from '../schema.js';
-import { hash32 } from '../rand.js';
+import { DEV } from 'esm-env';
+import { hash32, hash53 } from '../rand.js';
 import { bindDeletes, type Span } from './deletes.js';
 
 export type BlockId = string;
@@ -727,8 +728,13 @@ export const bindText = (Y: EngineApi) => {
 			idOf(map.get(NONCE)),
 			idOf(map.get(CONTENT))
 		].join('|');
-		const writer = hash32(seed) || 1;
+		const writer = hash53(seed) || 1;
 		const to = hash32(`${seed}|n`);
+		const store = (doc as unknown as { store: { getClock(c: number): number } }).store;
+		// The derivation is fresh per incarnation: a writer that already wrote
+		// here is another block's (a hash collision — R13's residual class).
+		if (DEV && store.getClock(writer) !== 0)
+			console.warn(`[edytor] own-text writer ${writer} of block ${rec.id} collides`);
 		const local = doc.clientID;
 		doc.clientID = writer;
 		try {
@@ -739,9 +745,7 @@ export const bindText = (Y: EngineApi) => {
 		}
 		const ids = ownTextIds.get(doc) ?? Y.createIdSet();
 		ownTextIds.set(doc, ids);
-		const clock = (doc as unknown as { store: { getClock(c: number): number } }).store.getClock(
-			writer
-		);
+		const clock = store.getClock(writer);
 		(ids as unknown as { add(c: number, k: number, l: number): void }).add(writer, clock - 2, 2);
 		return { from: rec.n, to };
 	};

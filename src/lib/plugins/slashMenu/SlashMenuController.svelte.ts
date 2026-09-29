@@ -102,10 +102,10 @@ export class SlashMenuController {
 			return false;
 		}
 
+		// Nothing to move through: the arrows stay the caret's.
 		const commands = this.commands;
 		if (commands.length === 0) {
-			this.selectedIndex = 0;
-			return true;
+			return false;
 		}
 
 		this.selectedIndex = (this.selectedIndex + delta + commands.length) % commands.length;
@@ -194,6 +194,11 @@ export class SlashMenuController {
 		const { text, triggerStart, queryEnd } = range;
 		this.query = text.stringContent.slice(triggerStart + 1, queryEnd);
 		const commandCount = this.commands.length;
+		// A query no command matches is prose (a URL, a path): the menu closes.
+		if (this.query && commandCount === 0) {
+			this.close();
+			return;
+		}
 		this.selectedIndex = commandCount === 0 ? 0 : Math.min(this.selectedIndex, commandCount - 1);
 	}
 

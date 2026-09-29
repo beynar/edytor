@@ -141,7 +141,7 @@ export class Text {
 		let pluginDestroy = this.edytor.plugins.reduce(
 			(acc, plugin) => {
 				const action = plugin.onTextAttached?.({ node, text: this });
-				action && acc.push(action);
+				if (typeof action === 'function') acc.push(action);
 				return acc;
 			},
 			[] as (() => void)[]

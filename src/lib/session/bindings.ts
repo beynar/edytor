@@ -134,15 +134,25 @@ const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void =>
 	if (next) edytor.selection.addBlockToSelection(next);
 };
 
-/** Tab / Shift+Tab: nest or unnest the selected block, or the caret's block. */
+/**
+ * Tab / Shift+Tab: nest or unnest the selected block, or the caret's block.
+ * Several selected siblings move as one (`edytor.moveBlocks`, `in`/`out`)
+ * and stay selected.
+ */
 const nest =
 	(operation: 'nestBlock' | 'unNestBlock'): HotKey =>
 	({ edytor, prevent }) =>
 		prevent(() => {
 			suppressHotkeyDomDrift(edytor, STRUCTURAL_HOTKEY_DOM_REPAIR_WINDOW_MS);
-			edytor.dispatcher.cut(operation);
 			const selectedBlocks = edytor.selection.selectedBlocks;
-			if (selectedBlocks.size > 1) return;
+			if (selectedBlocks.size > 1) {
+				const blocks = getSelectedBlocksInDocumentOrder(edytor);
+				const direction = operation === 'nestBlock' ? 'in' : 'out';
+				const moved = edytor.moveBlocks({ blocks, direction });
+				if (moved.length) edytor.selection.selectBlocks(...moved);
+				return;
+			}
+			edytor.dispatcher.cut(operation);
 			const selectedBlock = selectedBlocks.values().next().value as Block | undefined;
 			const { yStart, startText, startBlock } = edytor.selection.state;
 			const index = startText?.index;

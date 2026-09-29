@@ -85,9 +85,9 @@ Handles are not reactive. A template that reads `block.type` does not update whe
 
 | Handle | Identity | Useful members |
 | --- | --- | --- |
-| `Block` | One per block id: the same object for as long as the block exists. | `id`, `type`, `data`, `parent`, `children`, `content`, `index`, `depth`, `firstText`, `lastText`, `value`, `isInTree`, `movable`, `convertible`, `node`, `textAtOffset(offset)`, `setData(data)` and the block commands (`insertBlockAfter`, `splitBlock`, `setBlock`, `removeBlock`, `nestBlock`, `unNestBlock`, …). |
+| `Block` | One per block id: the same object for as long as the block exists. | `id`, `type`, `data`, `parent`, `children`, `content`, `index`, `depth`, `firstText`, `lastText`, `value`, `isInTree`, `movable`, `convertible`, `node`, `textAtOffset(offset)`, `setData(data)` and the block commands (`insertBlockAfter`, `splitBlock`, `setBlock`, `removeBlock`, `nestBlock`, `unNestBlock`, …). `setData(data)` and assigning `type` run `setBlock`. |
 | `Text` | A text segment of a block: the `ordinal`-th segment between inline blocks. It has no identity beyond that position. | `parent`, `ordinal`, `stringContent`, `length`, `value` (runs), `isInDocument`, `node`, and the text commands (`insertText`, `deleteText`, `markText`, `removeMarksFromText`, `setText`). |
-| `InlineBlock` | One per inline block id. | `id`, `type`, `data`, `parent`, `value`, `selected`, `isInDocument`, `setData(data)`. |
+| `InlineBlock` | One per inline block id. | `id`, `type`, `data`, `parent`, `value`, `selected`, `isInDocument`, `setData(data)` (its block's `setInlineData` command). |
 
 Because a `Text` is a position, don't keep one across edits to find "the same text" later. Keep the block id and an offset, or a selection anchor.
 

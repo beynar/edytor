@@ -420,6 +420,38 @@ describe('F-T17 — two different templates seeded concurrently', () => {
 	}
 });
 
+describe('UW-03 — a late seed never displaces live content', () => {
+	// Replica ids are random uint53 in production; a seed's writer lives in
+	// a low band (below 2^26) so it loses every registry race to one. Pinned
+	// ids stay above the band, as a live id is but for ~2^-27.
+	const LIVE = ASSIGNMENTS.map(([a, b]) => [2 ** 26 + a, 2 ** 26 + b]);
+	for (const [a, b] of LIVE) {
+		for (const delivery of DELIVERIES) {
+			it(`a snapshot seeded late keeps the room's later edits (A=${a}, B=${b}, ${JSON.stringify(delivery)})`, () => {
+				const room = documentOn(a);
+				room.sync();
+				room.transact(() =>
+					room.facade.insertBlock(
+						{ parent: null, index: 1 },
+						{ id: 'x', type: 'paragraph', content: [{ kind: 'text', text: 'hello' }] }
+					)
+				);
+				const snapshot = json(room);
+				room.transact(() => room.facade.insertText('x', 5, ' world'));
+				// A client whose readiness bound elapsed before it heard the room.
+				const late = documentOn(b);
+				late.sync(snapshot);
+				exchange([room, late], delivery);
+				expect(json(late)).toEqual(json(room));
+				expect(room.facade.blockText('x')).toBe('hello world');
+				expect(topIds(room)).toHaveLength(2);
+				room.destroy();
+				late.destroy();
+			});
+		}
+	}
+});
+
 describe('§2.1 Seeds — applied with a non-local origin', () => {
 	it('the seed is never an undo step and carries no attribution stamp', () => {
 		const document = createDocument({

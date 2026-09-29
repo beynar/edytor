@@ -475,7 +475,7 @@ describe('room Durable Object — storage', () => {
 		a.destroy();
 	});
 
-	it('a container of another generation never rebuilds: every socket is refused', async () => {
+	it('a container of another generation never rebuilds: every socket is refused for good (1008)', async () => {
 		const room = 'storage-tampered';
 		const a = seeded([para('p1', 'hello')], 'ada');
 		const ca = await RawClient.connect(room, a.doc);
@@ -492,9 +492,7 @@ describe('room Durable Object — storage', () => {
 		});
 		await evictDurableObject(stubOf(room));
 		const cc = await RawClient.connect(room);
-		await vi.waitFor(() =>
-			expect(cc.closed).toEqual({ code: 1011, reason: 'room container refused' })
-		);
+		await vi.waitFor(() => expect(cc.closed).toEqual({ code: 1008, reason: 'refused: container' }));
 		const state = await runInDurableObject(stubOf(room), (r: Room) => ({
 			doc: r.doc,
 			failure: r.failure?.name,

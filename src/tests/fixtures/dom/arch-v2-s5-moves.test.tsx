@@ -9,7 +9,8 @@
  * - The same meaning for up (before the previous sibling, never into its
  *   children), at a parent's ends (past the first/last sibling the block
  *   leaves its parent: before/after it), for in (last child of the previous
- *   sibling) and out (after the parent), for a selected group of siblings.
+ *   sibling) and out (after the parent, the siblings after it following as
+ *   its children — the outdent, UW-23), for a selected group of siblings.
  * - Capability is the same predicate: `canMoveBlocks` answers exactly when
  *   `moveBlocks` moves.
  * - A move vetoed by an extension is a cancel on every path; a move is one
@@ -202,15 +203,15 @@ describe('the same relative meaning on every path', () => {
 		await move(edytor, 'consumer', 'in', 'B');
 		expect(tree(edytor)).toBe('A{A1, A2, B}');
 	});
-	pin('handle out: A1 → after A', async () => {
+	row('handle out: A1 → after A, A2 follows as its child (UW-23)', async () => {
 		const { edytor } = await render(nested);
 		await move(edytor, 'handle', 'out', 'A1');
-		expect(tree(edytor)).toBe('A{A2}, A1, B');
+		expect(tree(edytor)).toBe('A, A1{A2}, B');
 	});
-	row('consumer out: A1 → after A', async () => {
+	row('consumer out: A1 → after A, A2 follows as its child (UW-23)', async () => {
 		const { edytor } = await render(nested);
 		await move(edytor, 'consumer', 'out', 'A1');
-		expect(tree(edytor)).toBe('A{A2}, A1, B');
+		expect(tree(edytor)).toBe('A, A1{A2}, B');
 	});
 
 	// A selected group of siblings moves as one.

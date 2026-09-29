@@ -156,23 +156,65 @@ describe('del.blocks.promote — only the selected blocks leave', () => {
 		}
 	);
 
+	// UW-08: promotion is derived when the document is read, so what a peer
+	// wrote under the deleted parent without seeing the delete takes the
+	// parent's slot too, in its own order among the promoted children.
+	each('a child a peer adds under the deleted parent takes the parent’s slot too', (ids) => {
+		const [a, b] = peers(FAMILY, ids);
+		expect(a.ed.deleteBlocks(['P']).status).toBe('applied');
+		expect(b.ed.insertBlock({ parent: 'P', index: 2 }, { id: 'N', type: 'paragraph' }).status).toBe(
+			'applied'
+		);
+		settle([a, b], 'C:"child"[G:"grand"] D:"second" N:"" Z:"after"');
+	});
+
 	each(
-		'control: a child a peer adds under the deleted parent, unseen by the deleter, hides with it',
+		'a peer’s Enter inside a promoted child: the tail and the grandchild it carries stay visible',
 		(ids) => {
 			const [a, b] = peers(FAMILY, ids);
 			expect(a.ed.deleteBlocks(['P']).status).toBe('applied');
-			expect(
-				b.ed.insertBlock({ parent: 'P', index: 2 }, { id: 'N', type: 'paragraph' }).status
-			).toBe('applied');
-			settle([a, b], 'C:"child"[G:"grand"] D:"second" Z:"after"');
+			expect(b.ed.splitBlock('C', 2, 'T').status).toBe('applied');
+			settle([a, b], 'C:"ch" T:"ild"[G:"grand"] D:"second" Z:"after"');
 		}
 	);
 
-	each('control: explicit keepChildren: false still removes the whole subtree', (ids) => {
+	each('typing into the split tail survives, and the tail is live for the deleter', (ids) => {
+		const [a, b] = peers(FAMILY, ids);
+		expect(a.ed.deleteBlocks(['P']).status).toBe('applied');
+		expect(b.ed.splitBlock('C', 2, 'T').status).toBe('applied');
+		expect(b.ed.insertText('T', 3, '!').status).toBe('applied');
+		settle([a, b], 'C:"ch" T:"ild!"[G:"grand"] D:"second" Z:"after"');
+		expect(a.ed.insertText('T', 0, '>').status).toBe('applied');
+		settle([a, b], 'C:"ch" T:">ild!"[G:"grand"] D:"second" Z:"after"');
+	});
+
+	each(
+		'nested promote-deletes: the parent and its child deleted by two peers — the grandchild stays',
+		(ids) => {
+			const [a, b] = peers(FAMILY, ids);
+			expect(a.ed.deleteBlocks(['P']).status).toBe('applied');
+			expect(b.ed.deleteBlocks(['C']).status).toBe('applied');
+			settle([a, b], 'G:"grand" D:"second" Z:"after"');
+		}
+	);
+
+	each('explicit keepChildren: false removes the whole subtree', (ids) => {
 		const [a, b] = peers(FAMILY, ids);
 		expect(a.ed.deleteBlock('P', { keepChildren: false }).status).toBe('applied');
 		settle([a, b], 'Z:"after"');
 	});
+
+	each(
+		'a whole-subtree delete marks every member: a child added concurrently under one takes the subtree’s slot',
+		(ids) => {
+			const [a, b] = peers(FAMILY, ids);
+			expect(a.ed.deleteBlock('P', { keepChildren: false }).status).toBe('applied');
+			expect(
+				b.ed.insertBlock({ parent: 'G', index: 0 }, { id: 'N', type: 'paragraph' }).status
+			).toBe('applied');
+			settle([a, b], 'N:"" Z:"after"');
+		}
+	);
 
 	it('a deleted island’s children take the default child type of the slot’s parent', () => {
 		const semantics = {

@@ -169,6 +169,13 @@ describe('rankBetween allocation', () => {
 		expect(() => rankBetween(undefined, floor, C1)).toThrow(RankSpaceExhausted);
 	});
 
+	it('a VMIN segment inside the right bound is descended, not exhausted (promoted slots, UW-08)', () => {
+		const slot = encodeRank([{ v: 3, t: C1 }]);
+		const promoted = slot + encodeRank([{ v: RANK_VMIN, t: 0 }]) + encodeRank([{ v: 0, t: C2 }]);
+		const r = rankBetween(slot, promoted, C3);
+		expect(slot < r && r < promoted).toBe(true);
+	});
+
 	it('property: 2000 random pairs always produce a strictly-between key', () => {
 		const rng = mulberry32(7);
 		const keys = [initialRank(C1)];

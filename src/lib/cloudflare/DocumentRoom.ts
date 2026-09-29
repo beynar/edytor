@@ -29,7 +29,9 @@
  * - every INTEGRATED update is appended to SQLite as one record split into
  *   rows ≤ `maxRowBytes` (2 MB row cap) in one `transactionSync`, then
  *   broadcast; after `compactAfter` update records the rows are merged
- *   (`mergeUpdates`) into one snapshot record. Memory never runs ahead of
+ *   (`mergeUpdates`) into one snapshot record, after the message is
+ *   acknowledged — never inside the engine's `update` observer, where one
+ *   throw would silence every later emit. Memory never runs ahead of
  *   storage: when an append fails, nothing is relayed or acknowledged, the
  *   live doc is rebuilt from the stored rows and the sender's socket is
  *   closed (1011) so its provider reconnects and resends.
@@ -41,7 +43,10 @@
  *   have announced, read from the attachment (survives hibernation).
  * - constructor: restore from SQLite alone under `blockConcurrencyWhile`
  *   (verify the generation record, merge, `admission.admitUpdate`); a
- *   container of another generation refuses every socket.
+ *   container that cannot be restored (another generation, a torn record,
+ *   a refused `onLoad` payload) refuses every socket (1008), and never
+ *   throws out of the constructor (the platform would reset the object on
+ *   every request).
  *
  * No entry point schedules a timer: each runs under {@link noTimers}
  * (a Durable Object with a pending timer never hibernates).
@@ -49,7 +54,9 @@
  * Extending (subclass it, export the subclass):
  *
  * - `onLoad()` — retrieve: seed a room that stores nothing yet from your
- *   own store (JSON, or a v14 update). Runs before any socket is served.
+ *   own store (JSON, a v14 update, or `{ update, replicas }` from
+ *   `onSave`). Runs before any socket is served; nothing is stored until
+ *   it settles.
  * - `onSave(document)` — save: mirror the document to your own store,
  *   `saveAfter` ms after the first unsaved change (a Durable Object alarm,
  *   so hibernation is unaffected; a throw is retried by the platform).
@@ -74,13 +81,32 @@ export const DEFAULT_COMPACT_AFTER = 500;
 /** ms between the first unsaved change and `onSave`. */
 export const DEFAULT_SAVE_AFTER = 2000;
 
+/** Refusals kept in `refusals` (the newest); `refusalCounts` counts every one. */
+export const MAX_REFUSALS = 100;
+
+/**
+ * A client id and the user who owns it (the room's replica registry). An
+ * empty `user` marks an id a restore without a registry left unowned: its
+ * first authenticated writer claims it.
+ */
+export type ReplicaOwner = { replica: number; user: string };
+
 /** The document as `onSave` receives it. */
 export type SavedDocument = {
 	/** The document as JSON. */
 	value: JSONDoc;
-	/** The full v14 state (`onLoad` takes it back as is). */
+	/** The full v14 state (`onLoad` takes it back). */
 	update: Uint8Array;
+	/**
+	 * Who owns each client id, read with `update`. Store it beside `update`
+	 * and return both from `onLoad`: without it, a restored room cannot
+	 * tell which user wrote under which id.
+	 */
+	replicas: ReplicaOwner[];
 };
+
+/** What `onLoad` may return: JSON, a bare v14 update, or `{ update, replicas }` (a `SavedDocument`). */
+export type LoadedDocument = JSONDoc | Uint8Array | Pick<SavedDocument, 'update' | 'replicas'>;
 
 /** The transaction origin of the room's own edits (`transact`, `onLoad` seeds). */
 export const ROOM_ORIGIN = Symbol('edytor-room');
@@ -123,7 +149,9 @@ export type Refusal = {
 		| 'identity'
 		| 'replica'
 		| 'read-only'
-		| 'storage';
+		| 'storage'
+		// Not a refusal: an id a registry-less restore left unowned, claimed ({ replica, user }).
+		| 'orphan';
 	detail: unknown;
 };
 
@@ -187,6 +215,33 @@ const isGenerationRecord = (found: unknown) => {
 const stateVector = (doc: YDoc): Map<number, number> =>
 	Y.decodeStateVector(Y.encodeStateVector(doc));
 
+/**
+ * What `onLoad` returned, as one update and its registry (`null`: none
+ * came with it). JSON is seeded into a scratch doc. Any other shape is
+ * refused (TypeError) — it would otherwise seed an empty document that
+ * `onSave` later writes over the real one.
+ */
+const loadedUpdate = (
+	found: LoadedDocument,
+	seed: (children: JSONDoc['children']) => Uint8Array
+): { update: Uint8Array; replicas: ReplicaOwner[] | null } => {
+	if (found instanceof Uint8Array) return { update: found, replicas: null };
+	if (typeof found === 'object' && found !== null) {
+		if ('update' in found && found.update instanceof Uint8Array) {
+			const replicas = found.replicas;
+			const valid = (owner: ReplicaOwner) =>
+				parseReplica(owner?.replica) !== null &&
+				typeof owner.user === 'string' &&
+				owner.user.length <= 256;
+			if (Array.isArray(replicas) && replicas.every(valid))
+				return { update: found.update, replicas };
+		} else if ('children' in found && Array.isArray(found.children)) {
+			return { update: seed(found.children), replicas: [] };
+		}
+	}
+	throw new TypeError('onLoad returned neither a JSONDoc, a v14 update nor { update, replicas }');
+};
+
 /** The client ids a decoded update writes structs under that `sv` does not hold yet. */
 const newWriters = (
 	{ structs }: ReturnType<typeof Y.decodeUpdate>,
@@ -217,17 +272,15 @@ const storedStep2 = (doc: YDoc, sv: Uint8Array): Uint8Array => {
 /** What {@link attachDocument} (and `DocumentRoom`) takes. */
 export type AttachDocumentOptions = {
 	/**
-	 * Retrieve: the document for a room that stores nothing yet (asked again
-	 * at each start until something is stored). Return JSON, a v14 update
-	 * (`SavedDocument.update`), or nothing for an empty room. A throw
-	 * refuses every socket until the next start.
+	 * Retrieve: the document for a room that stores nothing yet. Return
+	 * JSON, `{ update, replicas }` from `onSave` (a bare `update` restores
+	 * the content, but not who owns which client id), or nothing for an
+	 * empty room. Nothing is stored until it settles, so it is asked again
+	 * at each start (and after a throw, at the next dial) until something
+	 * is stored. A payload the room refuses (another generation or schema,
+	 * undecodable bytes, another shape) refuses every socket (1008).
 	 */
-	onLoad?: () =>
-		| Promise<JSONDoc | Uint8Array | null | undefined>
-		| JSONDoc
-		| Uint8Array
-		| null
-		| undefined;
+	onLoad?: () => Promise<LoadedDocument | null | undefined> | LoadedDocument | null | undefined;
 	/**
 	 * Save: mirror the document to your own store, `saveAfter` ms after the
 	 * first unsaved change, on the object's alarm (a throw is retried by the
@@ -264,18 +317,22 @@ export class AttachedDocument {
 	readonly saveAfter: number;
 	/** The live document; `null` when the stored container was refused. */
 	doc: YDoc | null = null;
-	/** Why the stored container was refused (another generation, a torn record…). */
+	/** Why the stored container was refused (another generation, a torn record, `onLoad`…). */
 	failure: Error | null = null;
 	/** Latest presence entry per replica, for join snapshots (memory: refills after a wake). */
 	presence = new Map<number, AwarenessEntry>();
-	/** Refusals since this instance started (diagnostics; memory only). */
+	/** The newest {@link MAX_REFUSALS} refusals since this instance started (diagnostics; memory only). */
 	refusals: Refusal[] = [];
+	/** Every refusal since this instance started, by reason. */
+	refusalCounts: Partial<Record<Refusal['reason'], number>> = {};
 	/** How this instance came to be: a fresh container, or a restore of N stored records. */
 	origin: { kind: 'fresh' } | { kind: 'restored'; records: number } = { kind: 'fresh' };
 	private nextRecord = 0;
 	private updates = 0;
 	/** A failed append: the live doc holds what storage does not, until it is rebuilt. */
 	private unstored: unknown = null;
+	/** The failure is `onLoad`'s own (its store was down): the next dial asks again. */
+	private retryable = false;
 	private readonly sql: SqlStorage;
 	private _facade: EdytorDoc | null = null;
 	private saveScheduled = false;
@@ -295,17 +352,42 @@ export class AttachedDocument {
 		if (!/^\w*$/.test(prefix)) throw new Error(`invalid table prefix ${prefix}`);
 		this.rowsTable = `${prefix}rows`;
 		this.replicasTable = `${prefix}replicas`;
-		void ctx.blockConcurrencyWhile(async () => {
+		void ctx.blockConcurrencyWhile(() => this.start());
+	}
+
+	/**
+	 * Restore from storage, or seed from `onLoad`. Never throws: a throw
+	 * out of `blockConcurrencyWhile` resets the object on every request.
+	 */
+	private async start() {
+		try {
 			noTimers(() => this.load());
 			if (this.origin.kind === 'fresh' && this.doc !== null) await this.seed();
-		});
+		} catch (error) {
+			this.fail(error, false);
+		}
+	}
+
+	private fail(error: unknown, retryable: boolean) {
+		this.failure = error instanceof Error ? error : new Error(String(error));
+		this.retryable = retryable;
+		this.unstored = null;
+		this._facade?.dispose();
+		this._facade = null;
+		this.doc?.destroy();
+		this.doc = null;
 	}
 
 	// ── Server-side access ───────────────────────────────────────────────
 
-	/** The facade over the live document (roles unknown: no plugin definitions on the server). */
+	/** A facade over `doc` (roles unknown: no plugin definitions on the server). */
+	private facadeOf(doc: YDoc): EdytorDoc {
+		return crdt.doc.create(doc as never) as EdytorDoc;
+	}
+
+	/** The facade over the live document. */
 	get facade(): EdytorDoc {
-		return (this._facade ??= crdt.doc.create(this.requireDoc() as never) as EdytorDoc);
+		return (this._facade ??= this.facadeOf(this.requireDoc()));
 	}
 
 	/**
@@ -322,6 +404,7 @@ export class AttachedDocument {
 				result = fn(this.facade);
 			}, ROOM_ORIGIN);
 			if (this.unstored !== null) throw this.rebuild();
+			this.compactIfDue();
 			return result;
 		});
 	}
@@ -335,31 +418,89 @@ export class AttachedDocument {
 	async alarm(): Promise<void> {
 		this.saveScheduled = false;
 		if (this.doc === null || !this.options.onSave) return;
-		await this.options.onSave({ value: this.read(), update: Y.encodeStateAsUpdate(this.doc) });
+		// One synchronous read: the registry matches the state it is saved with.
+		const saved = {
+			value: this.read(),
+			update: Y.encodeStateAsUpdate(this.doc),
+			replicas: this.sql
+				.exec<ReplicaOwner>(`SELECT replica, user FROM ${this.replicasTable} ORDER BY replica`)
+				.toArray()
+		};
+		await this.options.onSave(saved);
 	}
 
+	/**
+	 * Generation cutover: drop the stored document (both tables) of a room
+	 * whose storage belongs to another edytor generation, and start again
+	 * from `onLoad` — reseed it from JSON. Refused for any other room.
+	 */
+	async reset(): Promise<void> {
+		if (!(this.failure instanceof E.GenerationMismatchError)) {
+			throw new Error('reset() only replaces a container of another generation');
+		}
+		await this.ctx.blockConcurrencyWhile(async () => {
+			this.ctx.storage.transactionSync(() => {
+				this.sql.exec(`DELETE FROM ${this.rowsTable}`);
+				this.sql.exec(`DELETE FROM ${this.replicasTable}`);
+			});
+			this.presence.clear();
+			await this.start();
+		});
+	}
+
+	/**
+	 * Seed a fresh room from `onLoad`. Nothing is stored before it settles:
+	 * a throw or nothing leaves the room fresh, asked again at the next
+	 * start (after a throw, also at the next dial). The payload is admitted
+	 * like a stored container, then stored as one snapshot record with its
+	 * registry, atomically.
+	 */
 	private async seed() {
-		let found: JSONDoc | Uint8Array | null | undefined;
+		let found: LoadedDocument | null | undefined;
 		try {
 			found = await this.options.onLoad?.();
 		} catch (error) {
-			this.failure = error as Error;
-			this.doc?.destroy();
-			this.doc = null;
-			return;
+			return this.fail(error, true);
 		}
 		if (found == null) return;
 		noTimers(() => {
-			if (found instanceof Uint8Array) {
-				// Admitted like a stored container, then stored as one snapshot record.
-				const doc = crdt.admission.admitUpdate(found, `room ${this.ctx.id} onLoad`);
-				this.ctx.storage.transactionSync(() => this.insert('snapshot', Y.encodeStateAsUpdate(doc)));
-				this.doc?.destroy();
-				this.adopt(doc);
-			} else {
-				// Deterministic: a client seeding the same value writes the same update.
-				this.facade.seed((found as JSONDoc).children);
+			let doc: YDoc;
+			let replicas: ReplicaOwner[] | null;
+			try {
+				// JSON is seeded deterministically: a client seeding the same value writes the same update.
+				const loaded = loadedUpdate(found, (children) => {
+					const scratch = crdt.createDoc();
+					const facade = this.facadeOf(scratch);
+					facade.seed(children);
+					facade.dispose();
+					const update = Y.encodeStateAsUpdate(scratch);
+					scratch.destroy();
+					return update;
+				});
+				doc = crdt.admission.admitUpdate(loaded.update, `room ${this.ctx.id} onLoad`);
+				replicas = loaded.replicas;
+			} catch (error) {
+				return this.fail(error, false);
 			}
+			try {
+				this.ctx.storage.transactionSync(() => {
+					this.insert('snapshot', Y.encodeStateAsUpdate(doc));
+					// Without a registry, every id with content is left claimable (user '').
+					const owners =
+						replicas ?? [...stateVector(doc).keys()].map((replica) => ({ replica, user: '' }));
+					for (const { replica, user } of owners) {
+						this.sql.exec(
+							`INSERT ${replicas ? 'OR REPLACE' : 'OR IGNORE'} INTO ${this.replicasTable} (replica, user) VALUES (?, ?)`,
+							replica,
+							user
+						);
+					}
+				});
+			} catch (error) {
+				return this.fail(error, true);
+			}
+			this.doc?.destroy();
+			this.adopt(doc);
 		});
 	}
 
@@ -371,30 +512,32 @@ export class AttachedDocument {
 
 	// ── Storage ──────────────────────────────────────────────────────────
 
+	/** Restore the live doc from the stored rows; a container that cannot be restored is a failure. */
 	private load() {
-		this.sql.exec(
-			`CREATE TABLE IF NOT EXISTS ${this.rowsTable} (
-				seq INTEGER PRIMARY KEY AUTOINCREMENT,
-				kind TEXT NOT NULL,
-				record INTEGER NOT NULL,
-				part INTEGER NOT NULL,
-				parts INTEGER NOT NULL,
-				bytes BLOB NOT NULL
-			)`
-		);
-		this.sql.exec(
-			`CREATE TABLE IF NOT EXISTS ${this.replicasTable} (replica INTEGER PRIMARY KEY, user TEXT NOT NULL)`
-		);
-		const records = this.records();
-		if (records.length === 0) {
-			// A fresh room: the generation record is the container's first row.
-			this.ctx.storage.transactionSync(() =>
-				this.insert('generation', encodeJSON(E.GENERATION_RECORD))
-			);
-			this.adopt(crdt.createDoc());
-			return;
-		}
+		this.failure = null;
+		this.retryable = false;
 		try {
+			this.sql.exec(
+				`CREATE TABLE IF NOT EXISTS ${this.rowsTable} (
+					seq INTEGER PRIMARY KEY AUTOINCREMENT,
+					kind TEXT NOT NULL,
+					record INTEGER NOT NULL,
+					part INTEGER NOT NULL,
+					parts INTEGER NOT NULL,
+					bytes BLOB NOT NULL
+				)`
+			);
+			this.sql.exec(
+				`CREATE TABLE IF NOT EXISTS ${this.replicasTable} (replica INTEGER PRIMARY KEY, user TEXT NOT NULL)`
+			);
+			this.nextRecord = 0;
+			const records = this.records();
+			if (records.length === 0) {
+				// A fresh room: the generation record is written with the first stored record.
+				this.origin = { kind: 'fresh' };
+				this.adopt(crdt.createDoc());
+				return;
+			}
 			const [generation, ...rest] = records;
 			const found = JSON.parse(new TextDecoder().decode(generation.bytes));
 			if (generation.kind !== 'generation' || !isGenerationRecord(found)) {
@@ -405,7 +548,7 @@ export class AttachedDocument {
 			this.origin = { kind: 'restored', records: rest.length };
 			this.updates = rest.filter((record) => record.kind === 'update').length;
 		} catch (error) {
-			this.failure = error as Error;
+			this.fail(error, false);
 		}
 	}
 
@@ -433,8 +576,15 @@ export class AttachedDocument {
 		});
 	}
 
-	/** One logical record split into rows ≤ `maxRowBytes` (callers run it in a transaction). */
+	/**
+	 * One logical record split into rows ≤ `maxRowBytes` (callers run it in
+	 * a transaction). The first record of an empty container brings the
+	 * generation record with it.
+	 */
 	private insert(kind: RowKind, bytes: Uint8Array) {
+		if (this.nextRecord === 0 && kind !== 'generation') {
+			this.insert('generation', encodeJSON(E.GENERATION_RECORD));
+		}
 		const record = this.nextRecord++;
 		const parts = Math.max(1, Math.ceil(bytes.length / this.maxRowBytes));
 		for (let part = 0; part < parts; part++) {
@@ -451,22 +601,39 @@ export class AttachedDocument {
 
 	/**
 	 * Compaction: the rows become the generation record + one chunked
-	 * snapshot, `mergeUpdates` of every stored record, atomically. Runs by
-	 * itself after `compactAfter` update records; callable over RPC (e.g.
-	 * from the host's own alarm).
+	 * snapshot, `mergeUpdates` of every stored record, atomically. The
+	 * registry keeps the ids holding content and those bound to an open
+	 * socket; the others (page loads that never wrote) are dropped, and
+	 * re-register at their next dial or write. Runs by itself after
+	 * `compactAfter` update records; callable over RPC (e.g. from the
+	 * host's own alarm).
 	 */
 	compact(): { rows: number } {
 		return noTimers(() => {
-			this.requireDoc();
+			const doc = this.requireDoc();
 			const merged = Y.mergeUpdates(
 				this.records()
 					.slice(1)
 					.map((record) => record.bytes)
 			);
+			// Memory never runs ahead of storage: the live state vector is the stored one.
+			const kept = new Set(stateVector(doc).keys());
+			for (const ws of this.ctx.getWebSockets(SOCKET_TAG)) {
+				const replica = (ws.deserializeAttachment() as Attachment | null)?.replica;
+				if (replica != null) kept.add(replica);
+			}
+			const registered = this.sql
+				.exec<{ replica: number }>(`SELECT replica FROM ${this.replicasTable}`)
+				.toArray();
 			this.ctx.storage.transactionSync(() => {
 				this.sql.exec(`DELETE FROM ${this.rowsTable}`);
 				this.insert('generation', encodeJSON(E.GENERATION_RECORD));
 				this.insert('snapshot', merged);
+				for (const { replica } of registered) {
+					if (!kept.has(replica)) {
+						this.sql.exec(`DELETE FROM ${this.replicasTable} WHERE replica = ?`, replica);
+					}
+				}
 			});
 			this.updates = 0;
 			return {
@@ -492,10 +659,25 @@ export class AttachedDocument {
 		}
 	}
 
+	/**
+	 * Automatic compaction, once the message that made it due is
+	 * acknowledged. A failure is logged and retried after half the
+	 * threshold; the edit is already stored and nobody is closed.
+	 */
+	private compactIfDue() {
+		if (this.updates < this.compactAfter || this.doc === null) return;
+		try {
+			this.compact();
+		} catch (error) {
+			this.note({ reason: 'storage', detail: `compaction: ${String(error)}` });
+			this.updates = Math.floor(this.compactAfter / 2);
+		}
+	}
+
 	/** Drop the live doc for the stored rows (a failed append); returns the append's error. */
 	private rebuild(): unknown {
 		const error = this.unstored;
-		this.refusals.push({ reason: 'storage', detail: String(error) });
+		this.note({ reason: 'storage', detail: String(error) });
 		const stale = this.doc;
 		this.doc = null;
 		this.unstored = null;
@@ -516,58 +698,66 @@ export class AttachedDocument {
 		// Every INTEGRATED update is persisted first, then relayed to
 		// everyone but its sender (the socket is the transaction origin).
 		// A failed append relays nothing; the sender's handler rebuilds.
+		// Nothing may throw out of here: the engine would never emit
+		// `update` again (compaction runs later, in `compactIfDue`).
 		doc.on('update', (update: Uint8Array, origin: unknown) => {
 			if (this.unstored !== null) return;
 			try {
 				this.ctx.storage.transactionSync(() => this.insert('update', update));
+				this.updates++;
+				this.broadcast(
+					E.frame(E.messageSync, (e) => sync.writeUpdate(e, update)),
+					origin
+				);
+				this.scheduleSave();
 			} catch (error) {
 				this.unstored = error;
-				return;
 			}
-			this.broadcast(
-				E.frame(E.messageSync, (e) => sync.writeUpdate(e, update)),
-				origin
-			);
-			this.scheduleSave();
-			if (++this.updates >= this.compactAfter) this.compact();
 		});
 	}
 
 	// ── Identity ─────────────────────────────────────────────────────────
 
 	/**
-	 * May `user` write new structs under `clients`? A client id is the
-	 * user's once it is registered to them; an unregistered id with no
-	 * content in the room is registered now (when `register`); anything
-	 * else — another user's id, or unregistered history — is refused.
-	 * Returns the first refused id, or `null`.
+	 * May `user` bind or write new structs under `clients`? A client id is
+	 * the user's once it is registered to them; an unregistered id with no
+	 * content in the room is registered now, whatever the socket's access
+	 * (so a viewer's id cannot be taken before it is granted edit). An id a
+	 * registry-less restore left unowned is claimed by its first `writer`.
+	 * Anything else — another user's id, or unregistered history — is
+	 * refused. Returns the first refused id, or `null`.
 	 */
 	private claim(
 		user: string,
 		clients: Iterable<number>,
 		sv: Map<number, number>,
-		register: boolean
+		writer: boolean
 	): number | null {
 		const fresh: number[] = [];
+		const orphans: number[] = [];
 		for (const client of clients) {
 			const owner = this.sql
 				.exec<{ user: string }>(`SELECT user FROM ${this.replicasTable} WHERE replica = ?`, client)
 				.toArray()[0]?.user;
 			if (owner === user) continue;
+			if (owner === '') {
+				if (writer) orphans.push(client);
+				continue;
+			}
 			if (owner !== undefined || (sv.get(client) ?? 0) > 0) return client;
 			fresh.push(client);
 		}
-		if (register && fresh.length > 0) {
-			this.ctx.storage.transactionSync(() => {
-				for (const client of fresh) {
-					this.sql.exec(
-						`INSERT INTO ${this.replicasTable} (replica, user) VALUES (?, ?)`,
-						client,
-						user
-					);
-				}
-			});
-		}
+		if (fresh.length + orphans.length === 0) return null;
+		this.ctx.storage.transactionSync(() => {
+			for (const client of [...fresh, ...orphans]) {
+				this.sql.exec(
+					`INSERT OR REPLACE INTO ${this.replicasTable} (replica, user) VALUES (?, ?)`,
+					client,
+					user
+				);
+			}
+		});
+		for (const replica of orphans) this.note({ reason: 'orphan', detail: { replica, user } });
 		return null;
 	}
 
@@ -579,12 +769,18 @@ export class AttachedDocument {
 		}
 		const identity = readIdentity(request.headers);
 		if (identity === null) return new Response('verified identity required', { status: 401 });
+		// `onLoad` failed (its store was down): ask again before refusing.
+		if (this.doc === null && this.retryable) {
+			await this.ctx.blockConcurrencyWhile(async () => {
+				if (this.doc === null && this.retryable) await this.start();
+			});
+		}
 		return noTimers(() => {
 			const doc = this.doc;
 			if (doc !== null && identity.replica !== null) {
 				const sv = stateVector(doc);
 				if (this.claim(identity.user, [identity.replica], sv, !identity.readOnly) !== null) {
-					this.refusals.push({ reason: 'replica', detail: identity.replica });
+					this.note({ reason: 'replica', detail: identity.replica });
 					return new Response('replica bound to another user', { status: 403 });
 				}
 			}
@@ -593,8 +789,7 @@ export class AttachedDocument {
 			this.ctx.acceptWebSocket(server, [SOCKET_TAG]);
 			server.serializeAttachment({ ...identity, clock: null } satisfies Attachment);
 			if (doc === null) {
-				this.refusals.push({ reason: 'container', detail: this.failure?.message });
-				server.close(1011, 'room container refused');
+				this.refuseContainer(server);
 			} else {
 				// A read-only socket is never asked for its state: it has nothing to give.
 				if (!identity.readOnly) {
@@ -623,7 +818,7 @@ export class AttachedDocument {
 				return this.refuse(ws, { reason: 'malformed', detail: 'text frame' });
 			}
 			const doc = this.doc;
-			if (doc === null) return this.refuse(ws, { reason: 'container', detail: null });
+			if (doc === null) return this.refuseContainer(ws);
 			const attachment = ws.deserializeAttachment() as Attachment | null;
 			if (!attachment?.user) return this.refuse(ws, { reason: 'identity', detail: null });
 			const bytes = new Uint8Array(message);
@@ -700,7 +895,7 @@ export class AttachedDocument {
 		const update = E.readVarUint8Array(decoder);
 		// 2 · Access: a read-only socket writes nothing (it stays, and is told).
 		if (attachment.readOnly) {
-			this.refusals.push({ reason: 'read-only', detail: attachment.user });
+			this.note({ reason: 'read-only', detail: attachment.user });
 			return this.send(
 				ws,
 				E.frame(E.messageAuth, (e) => E.writePermissionDenied(e, 'read-only'))
@@ -718,8 +913,9 @@ export class AttachedDocument {
 		if (this.unstored !== null) return this.recover(ws);
 		if (problem !== null) return this.refuse(ws, { reason: 'schema', detail: problem });
 		if (!applied) return this.refuse(ws, { reason: 'malformed', detail: 'undecodable update' });
-		if (discarded) this.refusals.push({ reason: 'schema', detail: { discarded } });
+		if (discarded) this.note({ reason: 'schema', detail: { discarded } });
 		this.acknowledge(ws, doc, decoded.ds);
+		this.compactIfDue();
 	}
 
 	/**
@@ -737,7 +933,9 @@ export class AttachedDocument {
 	/**
 	 * Presence through the instance-free codec, for the socket's own replica
 	 * only (bound by `authorize`, else by its first entry): the newest clock
-	 * wins, the attachment records the clock, the accepted entry is relayed.
+	 * wins, the attachment records the clock, the accepted entry is relayed
+	 * — to its sender too (a no-op for it), so a lone socket hears from the
+	 * room at every renewal and is never torn down as silent.
 	 * Entries for other replicas (a client re-sending what it heard) are dropped.
 	 */
 	private onPresence(ws: WebSocket, attachment: Attachment, doc: YDoc, update: Uint8Array) {
@@ -760,15 +958,38 @@ export class AttachedDocument {
 			replica,
 			clock: entry.state === null ? null : entry.clock
 		} satisfies Attachment);
-		this.broadcast(presenceFrame([entry]), ws);
+		this.broadcast(presenceFrame([entry]), entry.state === null ? ws : null);
+	}
+
+	/** Log a refusal: the newest {@link MAX_REFUSALS} are kept, every reason is counted. */
+	private note(refusal: Refusal) {
+		this.refusals.push(refusal);
+		if (this.refusals.length > MAX_REFUSALS) this.refusals.shift();
+		this.refusalCounts[refusal.reason] = (this.refusalCounts[refusal.reason] ?? 0) + 1;
 	}
 
 	/** A refused frame is dropped whole and its socket closed (1008 policy violation). */
 	private refuse(ws: WebSocket, refusal: Refusal) {
-		this.refusals.push(refusal);
+		this.note(refusal);
 		this.depart(ws);
 		try {
 			ws.close(1008, `refused: ${refusal.reason}`);
+		} catch {
+			// already closing
+		}
+	}
+
+	/**
+	 * No document to serve: a container that cannot be restored is
+	 * refused for good (1008, the provider stops dialing); an `onLoad`
+	 * that threw is retried at the next dial (1011, the provider redials).
+	 */
+	private refuseContainer(ws: WebSocket) {
+		if (!this.retryable)
+			return this.refuse(ws, { reason: 'container', detail: this.failure?.message });
+		this.note({ reason: 'container', detail: this.failure?.message });
+		try {
+			ws.close(1011, 'room unavailable');
 		} catch {
 			// already closing
 		}
@@ -848,7 +1069,7 @@ export class DocumentRoom<
 	}
 
 	/** Retrieve — see {@link AttachDocumentOptions.onLoad}. */
-	protected async onLoad(): Promise<JSONDoc | Uint8Array | null | undefined> {
+	protected async onLoad(): Promise<LoadedDocument | null | undefined> {
 		return undefined;
 	}
 
@@ -876,6 +1097,10 @@ export class DocumentRoom<
 	compact(): { rows: number } {
 		return this.room.compact();
 	}
+	/** Generation cutover, also over RPC — see {@link AttachedDocument.reset}. */
+	reset(): Promise<void> {
+		return this.room.reset();
+	}
 	/** Server-side edit — see {@link AttachedDocument.transact}. */
 	transact<T>(fn: (facade: EdytorDoc) => T): T {
 		return this.room.transact(fn);
@@ -895,6 +1120,9 @@ export class DocumentRoom<
 	}
 	get refusals(): Refusal[] {
 		return this.room.refusals;
+	}
+	get refusalCounts(): AttachedDocument['refusalCounts'] {
+		return this.room.refusalCounts;
 	}
 	get presence(): Map<number, AwarenessEntry> {
 		return this.room.presence;

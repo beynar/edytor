@@ -118,10 +118,12 @@ Blocks after the range end are outside the range and never die with it:
 the tail's children, and the later siblings of the tail (and of each of
 its ancestors) inside a container the range dies through. They take that
 container's slot, in document order (the rescue of `del.range.nested-tail`
-applies whether the head survives or not). When the tail merges into the
-head, its children take the tail's vacated slot exactly as
-`mergeBackward` places them (an island tail's children take that slot's
-default child type). `[alpha, ordered-list > [beta, gamma], omega]`,
+applies whether the head survives or not), ranked right after it. When the
+tail merges into the head, its children take the tail's vacated slot exactly
+as `mergeBackward` places them — right after the vacated block, so a
+concurrent delete of the head that revives the tail shows it above them
+(review 2026-09-29, UW-20) — and an island tail's children take that slot's
+default child type. `[alpha, ordered-list > [beta, gamma], omega]`,
 `alpha@2 → beta@2` → `[paragraph "alta", list-item "gamma", paragraph
 "omega"]`; `[aa, bb > [cc]]`, `aa@1 → bb@2` → `["a", "cc"]`. A rescue
 never carries a block across an island boundary: when it would, the
@@ -269,13 +271,32 @@ island's children take the default child type of the slot's parent (as an
 island merge does). One plan, one undo step: undo removes the marks and the
 children's new placements, so the parent comes back with its children under
 it. `deleteBlock(id, { keepChildren: false })` is the explicit whole-subtree
-delete. Concurrency: the promoted children keep their identity, so a peer's
-concurrent edits inside them survive; a child a peer adds to (or moves
-into) the deleted block without having seen the delete hides with it
-(`conc.delete-wins-block`); a concurrent move of a promoted child is
-settled by the placement's last-writer-wins. Pins:
-`contracts-preserve.test.ts`, `review-20260929-core.test.ts`,
-`p1-scenarios.test.ts` §9.
+delete: it marks every member (and what each displays), so nothing in the
+subtree is promoted.
+
+Promotion is derived when the document is read (UW-08,
+`placement/model.ts` `displaySlotOf`): a block with no delete mark whose
+parent carries one displays in that parent's slot, ranked just after it,
+in its own order, recursively (`promotedRank` — the planned moves above
+write the same rank, so the deleter's own view and a peer's agree).
+Concurrency follows from that rule, not from what the deleter saw: the
+promoted children keep their identity, so a peer's concurrent typing
+inside them survives; a peer's Enter in a promoted child keeps the tail
+and the grandchildren it carries, after the head; a child a peer adds to,
+or moves into, the deleted block takes its slot too (**MV06b**, changed
+2026-09-29 — it used to hide with the block); two peers promote-deleting a
+parent and its child keep the grandchild in the parent's slot; a tail
+split off concurrently from a deleted child is rescued (ST02a) and, its
+parent deleted too, takes the parent's slot (9c). A concurrent move of a
+promoted child is settled by the placement's last-writer-wins. Undo of the
+delete removes the marks: everything placed under the block comes back
+under it. Pins: `contracts-preserve.test.ts` (split of a promoted child
+with its grandchild, typing into the tail, nested promote-deletes, a
+concurrent child, the whole-subtree control), `p1-scenarios.test.ts` §9
+(9a-9d) and 6b, `scenarios/active-model.ts` MV06b,
+`scenarios/active-text.ts` ST02d, `review-20260929-core.test.ts`; the
+corpus oracle `promotion-hidden` (`DST_PROMOTION_ORACLE=1`) flags an
+unmarked block hidden under a deleted holder.
 
 ## Collapsed caret deletion
 
@@ -289,6 +310,19 @@ Caret `beta@4` + Backspace → `"bet"`. Grapheme clusters delete as units
 
 Caret `alpha@0` + Backspace → **named no-op** (`noop.doc-start`): document
 unchanged. Expected no-ops are contract results, not skipped tests.
+
+### `del.start.kind` — Backspace at the start of a non-default kind
+
+Caret `item@0` + Backspace over `[paragraph "para", bulleted-list-item "item"]`
+→ `[paragraph "para", paragraph "item"]`, caret `item@0`. A block whose kind
+the catalogue offers (it has presets) and that is not its parent's default
+child turns into that default first — one `setBlock`, data reset, text and
+children kept — before the doc-start no-op, the unnest and the merge
+(Notion). The next Backspace merges (`del.merge.backward-head`) or unnests.
+A nested last-child bullet becomes a nested paragraph; an empty only bullet
+becomes the empty paragraph. Kinds without presets (`list-item` in a list,
+`codeLine`) keep the structural path. Pinned in `notion-parity.test.tsx`
+("lists on Backspace").
 
 ### `del.merge.backward-head` — Backspace at a block's head
 
@@ -505,7 +539,9 @@ with it, even though the authoring peer had not seen the delete. Verified
 through held delivery in `command-simulation.test.tsx` ("B types inside a
 block A deletes"). B's caret lands at the deletion seam (`sel.seam.*`).
 This holds for EXPLICIT deletes only; undoing a block's creation is not a
-delete (`hist.undo.withdraw`).
+delete (`hist.undo.withdraw`). A block is not text in the deleted one: a block B
+adds under the subtree, moves into it or splits off inside it takes the
+subtree's slot (`del.blocks.promote`).
 
 ### `hist.undo.withdraw` — undoing a creation keeps what others put in the block
 
@@ -535,6 +571,25 @@ block stays only while it holds a child. An undone creation keeps its id
 delete still wins over an unseen insertion (`conc.delete-wins-block`).
 Pins: `contracts-preserve.test.ts`, `contracts-undo-withdraw.test.tsx`,
 `p12-undo-withdraw.test.ts`, `p1-scenarios.test.ts` 5d/5f.
+
+### `conc.seed.late` — a seed that meets existing content
+
+A document seeds `value` only when it is empty after its providers settled
+or the readiness bound elapsed (R13): one deterministic update written by a
+writer derived from the value's hash, so an identical late seed is a no-op
+and different values union. When a late seed shares a block id with the
+content it meets, the registry entry is last-writer-wins by client id. The
+seed writer lives in a low band (below 2^26, UW-03) and live replicas draw
+uint53 ids, so the seed loses to a block a live replica wrote and the
+room's edits since the snapshot survive. Residual: against a block another
+_seed_ wrote, the larger hash wins and can replace it with everything
+edited inside since — not undoable (a seed is no undo step). So never pass
+a changing snapshot (an `onChange` copy) as `value` beside a room, and
+never combine `createDocument({ value })` (it seeds immediately) with
+`attachSync` to a room that may hold those ids. Version boundary: an
+id-less template seeded late into a document an older build seeded (full
+32-bit writer) mints new ids and shows twice, once. Pins:
+`t3-seed.test.ts` (UW-03 rows, F-T11/F-T12/F-T17).
 
 ### `conc.undo.actor-local` — undo after remote edits
 

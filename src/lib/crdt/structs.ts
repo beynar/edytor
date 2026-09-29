@@ -161,3 +161,14 @@ export const nextClock = (doc: EngineDoc, client: number): number => {
 	const last = structs?.[structs.length - 1];
 	return last === undefined ? 0 : last.id.clock + last.length;
 };
+
+/**
+ * Whether `doc` holds updates it cannot integrate yet (vendor-internal
+ * `store.pendingStructs`/`pendingDs`): an out-of-order delivery can apply
+ * a delete whose replacement is still pending, so an attr may read
+ * undefined until the missing update arrives.
+ */
+export const holdsPending = (doc: EngineDoc): boolean => {
+	const store = (doc as { store?: { pendingStructs?: unknown; pendingDs?: unknown } }).store;
+	return (store?.pendingStructs ?? null) !== null || (store?.pendingDs ?? null) !== null;
+};

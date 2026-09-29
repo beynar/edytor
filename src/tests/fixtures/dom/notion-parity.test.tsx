@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
-import type { JSONBlock } from '$lib/utils/json.js';
+import type { JSONBlock, SerializableContent } from '$lib/utils/json.js';
 import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
 import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
@@ -16,12 +16,17 @@ import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
 import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import {
+	type CanonicalBlock,
 	canonicalTree,
 	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
 	flushDomUpdates,
 	renderDomEdytor
 } from '../../dom/test.utils.js';
+
+/** The text a block's content opens with (it may open with an atom: undefined). */
+const firstTextOf = (block: { content?: unknown[] }) =>
+	(block.content?.[0] as { text?: string } | undefined)?.text;
 
 const empty = (
 	<root>
@@ -45,6 +50,8 @@ const caretIn = async (edytor: Awaited<ReturnType<typeof render>>['edytor'], ind
 	edytor.selection.setAtTextOffset(text, 0);
 	await flushDomUpdates();
 };
+
+type Data = Record<string, SerializableContent>;
 
 const click = async (element: Element) => {
 	element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
@@ -77,7 +84,8 @@ describe('inline markdown refused', () => {
 	it('a plugin refusing the shortcut leaves the character as typed', async () => {
 		const refuse: Plugin = () => ({
 			onBeforeOperation: ({ operation, prevent }) => {
-				if (operation === 'inlineMarkdown') prevent();
+				// The shortcut dispatches under its own name, outside the operation union.
+				if ((operation as string) === 'inlineMarkdown') prevent();
 			}
 		});
 		const { edytor, editor } = await render([refuse, markdownShortcutsPlugin]);
@@ -123,7 +131,7 @@ describe('shortcuts', () => {
 		});
 		await caretIn(edytor);
 		await dispatchDomKeyDown(document, { key: 'ArrowDown', ctrlKey: true, shiftKey: true });
-		expect(canonicalTree(edytor).map((b) => b.content?.[0]?.text)).toEqual(['b', 'a']);
+		expect(canonicalTree(edytor).map((b) => firstTextOf(b))).toEqual(['b', 'a']);
 	});
 
 	it('Mod+D duplicates the caret block', async () => {
@@ -132,7 +140,7 @@ describe('shortcuts', () => {
 		});
 		await caretIn(edytor);
 		await dispatchDomKeyDown(document, { key: 'd', ctrlKey: true });
-		expect(canonicalTree(edytor).map((b) => b.content?.[0]?.text)).toEqual(['twice', 'twice']);
+		expect(canonicalTree(edytor).map((b) => firstTextOf(b))).toEqual(['twice', 'twice']);
 	});
 
 	it('a "space" binding fires on the space bar', async () => {
@@ -157,7 +165,7 @@ describe('lists on Enter', () => {
 		await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
 	};
 	const kinds = (edytor: Awaited<ReturnType<typeof render>>['edytor']) =>
-		canonicalTree(edytor).map((b) => [b.type, b.content?.[0]?.text ?? '']);
+		canonicalTree(edytor).map((b) => [b.type, firstTextOf(b) ?? '']);
 
 	it.each(['bulleted-list-item', 'numbered-list-item', 'toggle'])(
 		'Enter at the end of a non-empty %s adds another',
@@ -237,6 +245,28 @@ describe('lists on Enter', () => {
 		]);
 	});
 
+	it('Enter in an empty middle nested item outdents it; the items after it follow as its children', async () => {
+		const item = (text: string, children?: JSONBlock[]): JSONBlock => ({
+			type: 'bulleted-list-item',
+			content: [{ text }],
+			...(children && { children })
+		});
+		const { edytor, editor } = await render([], {
+			children: [item('one', [item('a'), item(''), item('c')])]
+		});
+		await enterAt(edytor, editor, edytor.root!.children[0]!.children[1]!, 'end');
+		type Shape = [string, Shape[]];
+		const shape = (b: CanonicalBlock): Shape => [
+			firstTextOf(b) ?? '',
+			(b.children ?? []).map(shape)
+		];
+		expect(canonicalTree(edytor).map(shape)).toEqual([
+			['one', [['a', []]]],
+			['', [['c', []]]]
+		]);
+		expect(edytor.selection.state.startBlock?.index).toBe(1);
+	});
+
 	it('Enter in an empty to-do inside a callout makes it text in the callout', async () => {
 		const { edytor, editor } = await render([], {
 			children: [
@@ -267,6 +297,287 @@ describe('lists on Enter', () => {
 			['heading', 'Title'],
 			['paragraph', '']
 		]);
+	});
+});
+
+describe('containers on Enter', () => {
+	const textOf = (block: { content?: unknown[] }) =>
+		(block.content?.[0] as { text?: string } | undefined)?.text ?? '';
+	/** Top-level blocks as `[type, text, children]` (children as `[type, text]`). */
+	const shape = (edytor: Awaited<ReturnType<typeof render>>['edytor']) =>
+		canonicalTree(edytor).map((b) => [
+			b.type,
+			textOf(b),
+			(b.children ?? []).map((c) => [c.type, textOf(c)])
+		]);
+	const enterAtEnd = async (
+		edytor: Awaited<ReturnType<typeof render>>['edytor'],
+		editor: HTMLElement
+	) => {
+		const text = edytor.root!.children[0]!.firstText!;
+		edytor.selection.setAtTextOffset(text, text.length);
+		await flushDomUpdates();
+		await dispatchDomBeforeInput(editor, { inputType: 'insertParagraph' });
+	};
+	const withBody = (type: string, data?: Data) => ({
+		children: [
+			{
+				type,
+				...(data && { data }),
+				content: [{ text: 'title' }],
+				children: [{ type: 'paragraph', content: [{ text: 'body' }] }]
+			}
+		]
+	});
+
+	it.each([['callout', { icon: '💡' }], ['quote']] as [string, Data?][])(
+		'Enter at the end of a %s header with children opens a first child',
+		async (type, data) => {
+			const { edytor, editor } = await render([], withBody(type, data));
+			await enterAtEnd(edytor, editor);
+			expect(shape(edytor)).toEqual([
+				[
+					type,
+					'title',
+					[
+						['paragraph', ''],
+						['paragraph', 'body']
+					]
+				]
+			]);
+			const caret = edytor.selection.state.startBlock!;
+			expect([caret.type, caret.parent?.type, caret.index]).toEqual(['paragraph', type, 0]);
+		}
+	);
+
+	it('Enter at the end of an open toggle with children opens a first child', async () => {
+		const { edytor, editor } = await render([], withBody('toggle'));
+		(edytor.root!.children[0]!.node as HTMLDetailsElement).open = true;
+		await enterAtEnd(edytor, editor);
+		expect(shape(edytor)).toEqual([
+			[
+				'toggle',
+				'title',
+				[
+					['paragraph', ''],
+					['paragraph', 'body']
+				]
+			]
+		]);
+		expect(edytor.selection.state.startBlock?.parent?.type).toBe('toggle');
+	});
+
+	it('Enter at the end of a closed toggle opens a sibling toggle; the children stay', async () => {
+		const { edytor, editor } = await render([], withBody('toggle'));
+		expect((edytor.root!.children[0]!.node as HTMLDetailsElement).open).toBe(false);
+		await enterAtEnd(edytor, editor);
+		expect(shape(edytor)).toEqual([
+			['toggle', 'title', [['paragraph', 'body']]],
+			['toggle', '', []]
+		]);
+		const caret = edytor.selection.state.startBlock!;
+		expect([caret.type, caret.parent?.isRoot, caret.index]).toEqual(['toggle', true, 1]);
+	});
+
+	it('Enter at the end of a callout without children starts a paragraph after it', async () => {
+		const { edytor, editor } = await render([], {
+			children: [{ type: 'callout', data: { icon: '💡' }, content: [{ text: 'note' }] }]
+		});
+		await enterAtEnd(edytor, editor);
+		expect(shape(edytor)).toEqual([
+			['callout', 'note', []],
+			['paragraph', '', []]
+		]);
+		expect(edytor.selection.state.startBlock?.index).toBe(1);
+	});
+});
+
+describe('lists on Backspace', () => {
+	const backspaceAtStartOf = async (
+		edytor: Awaited<ReturnType<typeof render>>['edytor'],
+		editor: HTMLElement,
+		path: number[]
+	) => {
+		let block = edytor.root!;
+		for (const index of path) block = block.children[index]!;
+		edytor.selection.setAtTextOffset(block.firstText!, 0);
+		await flushDomUpdates();
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
+	};
+	const caret = (edytor: Awaited<ReturnType<typeof render>>['edytor']) => {
+		const { startBlock, yStart } = edytor.selection.state;
+		return [startBlock?.type, startBlock?.firstText?.stringContent, yStart];
+	};
+
+	it('a bullet after a paragraph turns into text first, then merges', async () => {
+		const { edytor, editor } = await render([], {
+			children: [
+				{ type: 'paragraph', content: [{ text: 'para' }] },
+				{ type: 'bulleted-list-item', content: [{ text: 'item' }] }
+			]
+		});
+		await backspaceAtStartOf(edytor, editor, [1]);
+		expect(canonicalTree(edytor)).toEqual([
+			{ type: 'paragraph', content: [{ text: 'para' }] },
+			{ type: 'paragraph', content: [{ text: 'item' }] }
+		]);
+		expect(caret(edytor)).toEqual(['paragraph', 'item', 0]);
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
+		expect(canonicalTree(edytor)).toEqual([{ type: 'paragraph', content: [{ text: 'paraitem' }] }]);
+	});
+
+	it('a bullet after a bullet leaves the list', async () => {
+		const { edytor, editor } = await render([], {
+			children: [
+				{ type: 'bulleted-list-item', content: [{ text: 'one' }] },
+				{ type: 'bulleted-list-item', content: [{ text: 'two' }] }
+			]
+		});
+		await backspaceAtStartOf(edytor, editor, [1]);
+		expect(canonicalTree(edytor)).toEqual([
+			{ type: 'bulleted-list-item', content: [{ text: 'one' }] },
+			{ type: 'paragraph', content: [{ text: 'two' }] }
+		]);
+	});
+
+	it('a checked to-do after a to-do turns into text without its checked state', async () => {
+		const { edytor, editor } = await render([], {
+			children: [
+				{ type: 'todo-item', data: { checked: false }, content: [{ text: 'one' }] },
+				{ type: 'todo-item', data: { checked: true }, content: [{ text: 'two' }] }
+			]
+		});
+		await backspaceAtStartOf(edytor, editor, [1]);
+		expect(canonicalTree(edytor)).toEqual([
+			{ type: 'todo-item', data: { checked: false }, content: [{ text: 'one' }] },
+			{ type: 'paragraph', content: [{ text: 'two' }] }
+		]);
+	});
+
+	it.each([
+		['heading', { level: 'h2' }],
+		['quote', undefined],
+		['toggle', undefined]
+	] as [string, Data | undefined][])(
+		'a %s after a paragraph turns into text first',
+		async (type, data) => {
+			const { edytor, editor } = await render([], {
+				children: [
+					{ type: 'paragraph', content: [{ text: 'para' }] },
+					{ type, ...(data && { data }), content: [{ text: 'kind' }] }
+				]
+			});
+			await backspaceAtStartOf(edytor, editor, [1]);
+			expect(canonicalTree(edytor)).toEqual([
+				{ type: 'paragraph', content: [{ text: 'para' }] },
+				{ type: 'paragraph', content: [{ text: 'kind' }] }
+			]);
+			expect(caret(edytor)).toEqual(['paragraph', 'kind', 0]);
+		}
+	);
+
+	it('a non-empty first heading turns into text', async () => {
+		const { edytor, editor } = await render([], {
+			children: [{ type: 'heading', data: { level: 'h1' }, content: [{ text: 'Title' }] }]
+		});
+		await backspaceAtStartOf(edytor, editor, [0]);
+		expect(canonicalTree(edytor)).toEqual([{ type: 'paragraph', content: [{ text: 'Title' }] }]);
+	});
+
+	it('an empty only bullet turns into text and gets the text placeholder back', async () => {
+		const { edytor, editor } = await renderDomEdytor(empty, {
+			plugins: [richTextPlugin, mentionPlugin],
+			// The harness types the prop as a string; `<Edytor>` takes a function too.
+			placeholder: richTextPlaceholder as unknown as string,
+			value: { children: [{ type: 'bulleted-list-item', content: [{ text: '' }] }] }
+		});
+		await backspaceAtStartOf(edytor, editor, [0]);
+		expect(canonicalTree(edytor)).toEqual([{ type: 'paragraph' }]);
+		expect(caret(edytor)).toEqual(['paragraph', '', 0]);
+		await flushDomUpdates();
+		expect(
+			edytor.root!.children[0]!.firstText!.node?.getAttribute('data-placeholder') ?? null
+		).not.toBe('List');
+	});
+
+	it('a nested last-child bullet turns into text and stays nested', async () => {
+		const { edytor, editor } = await render([], {
+			children: [
+				{
+					type: 'bulleted-list-item',
+					content: [{ text: 'one' }],
+					children: [{ type: 'bulleted-list-item', content: [{ text: 'two' }] }]
+				}
+			]
+		});
+		await backspaceAtStartOf(edytor, editor, [0, 0]);
+		expect(canonicalTree(edytor)).toEqual([
+			{
+				type: 'bulleted-list-item',
+				content: [{ text: 'one' }],
+				children: [{ type: 'paragraph', content: [{ text: 'two' }] }]
+			}
+		]);
+		expect(caret(edytor)).toEqual(['paragraph', 'two', 0]);
+	});
+
+	it('a structural kind outside the catalogue keeps the unnest (a nested list-item)', async () => {
+		const { edytor, editor } = await render([], {
+			children: [
+				{
+					type: 'ordered-list',
+					children: [
+						{
+							type: 'list-item',
+							content: [{ text: 'First' }],
+							children: [{ type: 'list-item', content: [{ text: 'Second' }] }]
+						}
+					]
+				}
+			]
+		});
+		await backspaceAtStartOf(edytor, editor, [0, 0, 0]);
+		expect(canonicalTree(edytor)).toEqual([
+			{
+				type: 'ordered-list',
+				children: [
+					{ type: 'list-item', content: [{ text: 'First' }] },
+					{ type: 'list-item', content: [{ text: 'Second' }] }
+				]
+			}
+		]);
+		expect(caret(edytor)).toEqual(['list-item', 'Second', 0]);
+	});
+});
+
+describe('code auto-pairs', () => {
+	const inCode = () =>
+		render([codePlugin], {
+			children: [{ type: 'code', children: [{ type: 'codeLine', content: [{ text: '' }] }] }]
+		});
+	const line = (edytor: Awaited<ReturnType<typeof render>>['edytor']) =>
+		edytor.root!.children[0]!.children[0]!.firstText!;
+	const typeInCode = async (typed: string) => {
+		const { edytor, editor } = await inCode();
+		edytor.selection.setAtTextOffset(line(edytor), 0);
+		await flushDomUpdates();
+		await type(editor, typed);
+		return [line(edytor).stringContent, edytor.selection.state.yStart];
+	};
+
+	it.each([
+		['()', '()', 2],
+		['[]', '[]', 2],
+		['{}', '{}', 2],
+		['""', '""', 2],
+		["''", "''", 2],
+		['f(a)', 'f(a)', 4],
+		["don't", "don't", 5],
+		['it"s', 'it"s', 4],
+		['(', '()', 1],
+		['x = "', 'x = ""', 5]
+	])('typing %j leaves %j with the caret at %i', async (typed, text, offset) => {
+		expect(await typeInCode(typed)).toEqual([text, offset]);
 	});
 });
 
@@ -314,7 +625,7 @@ describe('menus', () => {
 
 		await open('two');
 		await click(document.querySelector('[data-testid="block-menu-delete"]')!);
-		expect(canonicalTree(edytor).map((b) => b.content?.[0]?.text)).toEqual(['one']);
+		expect(canonicalTree(edytor).map((b) => firstTextOf(b))).toEqual(['one']);
 	});
 
 	it('the keyboard reaches the Turn into flyout, and Delete removes the block', async () => {

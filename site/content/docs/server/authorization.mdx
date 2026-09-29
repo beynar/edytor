@@ -103,13 +103,15 @@ Reach the room only through `routeDocumentSocket`. If your Worker forwards reque
 
 Every browser tab has a CRDT client id (`document.clientID`, the *replica*), and every piece of content records the client id that wrote it. The room makes sure nobody writes under a client id that is not theirs:
 
-- Each client id is registered to the user who first wrote under it. The registration is stored with the document.
-- The replica from `authorize` is registered when the socket opens. A replica another user already owns is refused with a 403.
+- Each client id is registered to the user who first wrote under it. The registration is stored in the room beside the document, and [`onSave`](/docs/server/extending#save) receives it as `replicas`: store it with `update` and return both from `onLoad`, or a restored room cannot tell who owns which id.
+- The replica from `authorize` is registered when the socket opens, for read-only sockets too, so nobody can take a viewer's id before it is granted edit. A replica another user already owns is refused with a 403.
 - An update that adds content under a client id another user owns, or under an unregistered id that already has content in the room, is refused: the socket is closed with code `1008` and reason `refused: replica`.
 - A user may write under every id they own. A reloaded page gets a new client id, and the edits its earlier id made offline are still delivered on reconnect.
 - Edits restored from a local copy were written under earlier client ids of the same user; unregistered ids are registered to the user who delivers them first.
 
-`requestedReplica(request, param = 'replica')` reads the replica from the query string and returns `null` when it is missing or not a valid client id. Without a replica from `authorize`, the socket's first presence entry binds it.
+`requestedReplica(request, param = 'replica')` reads the replica from the query string and returns `null` when it is missing or not a valid client id. Without a replica from `authorize`, the socket's first presence entry binds it (and registers it, as a dial would).
+
+Registrations of ids that hold no content and belong to no open socket are dropped when the room [compacts](/docs/server/room#storage). After a restore from a bare update (no `replicas`), an id that holds content is claimed by the first signed-in writer who dials or writes with it.
 
 Because client ids belong to users, a browser profile's local copy and cross-tab channel should belong to one user. See [one user per browser profile](/docs/collaboration/persistence#one-user-per-browser-profile).
 

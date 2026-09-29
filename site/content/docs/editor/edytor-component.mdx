@@ -37,7 +37,7 @@ Most props are read once, when the component is created. Changing them later has
 | `placeholder` | `string \| (view) => string \| null` | | | Text shown in an empty block. A function receives `{ type, data, focused, empty }` and returns the text or `null`. Falls back to the first plugin that declares a `placeholder`. |
 | `blockHandles` | `boolean \| BlockHandlesOptions` | `true` | | Show a handle beside each block. `draggable: false` keeps the handle and its keyboard moves without pointer dragging. `onActivate({ block, anchor })` runs when the handle is clicked. `handle` is a snippet that replaces the handle's markup. See [Block handles](/docs/plugins/block-handles). |
 | `blockDnd` | `boolean` | `true` | | **Deprecated.** `false` hides the handles. `blockHandles` wins when both are set. |
-| `hotKeys` | `Record<string, HotKey>` | | | Key bindings (`'mod+s'`, `'alt+shift+arrowup'`, …) checked before the plugins' and the built-in ones. See [Hotkeys](/docs/customization/hotkeys). |
+| `hotKeys` | `Partial<Record<HotKeyCombination, HotKey>>` | | | Key bindings (`'mod+s'`, `'alt+shift+arrowup'`, …) checked before the plugins' and the built-in ones. See [Hotkeys](/docs/customization/hotkeys#chord-syntax). |
 | `onChange` | `(value: JSONBlock) => void` | | | Called after every committed change, local or remote, with the document as a root block `{ type: 'root', children }`. |
 | `onSelectionChange` | `(selection: EdytorSelection) => void` | | | Called when the selection value changes. See [Selection](/docs/editor/selection). |
 | `edytor` | `Edytor` | | Bindable | The editor instance. Use `bind:edytor`. See [The editor instance](/docs/concepts/editor-instance). |
@@ -52,7 +52,7 @@ Most props are read once, when the component is created. Changing them later has
 | `doc` | `YDoc` | | | Advanced: build the view's own document around an existing engine document. Cannot be combined with `document`. |
 | `awareness` | `Awareness` | | | Advanced: the presence instance for the view's own document. Cannot be combined with `document`. |
 
-`value` is declared bindable, but the component never writes it back: `bind:value` does not follow edits. Read changes with `onChange` or `edytor.value`.
+`value` is the initial content, not a binding: `bind:value` fails type-checking. Read changes with `onChange` or `edytor.value`.
 
 ### `document`, `room`/`server`/`sync` and `value` together
 

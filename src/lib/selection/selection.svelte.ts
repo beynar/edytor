@@ -956,7 +956,7 @@ export class EdytorSelection {
 	) => {
 		if (this.selectedBlocks.size > 0) return;
 
-		const container = this.edytor.container;
+		const container = this.edytor.node;
 		if (
 			!selection?.anchorNode ||
 			!selection.focusNode ||

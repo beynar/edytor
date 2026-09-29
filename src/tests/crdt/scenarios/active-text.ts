@@ -729,7 +729,7 @@ export const textScenarios: Scenario[] = [
 	{
 		id: 'ST02d',
 		requirement: 'ST02',
-		title: 'delete ancestor vs split inside it — sibling hides with the subtree',
+		title: 'delete ancestor vs split inside it — the split-off sibling takes the subtree’s slot',
 		run: () => {
 			bothOrders(
 				(set) => {
@@ -737,12 +737,14 @@ export const textScenarios: Scenario[] = [
 					ops.splitBlock(set.B, 'b3a', 3, 'sA');
 				},
 				(set) => {
-					// The sibling's placement points at the deleted b3 —
-					// hidden-with-subtree applies to it exactly as to b3a.
+					// The sibling's placement points at the deleted b3, but it
+					// carries no mark: read-time promotion shows it in b3's slot
+					// with its rescued tail (ST02a, UW-08).
 					expect(ops.positionOf(set.A, 'b3')).toBeNull();
 					expect(ops.positionOf(set.A, 'b3a')).toBeNull();
-					expect(ops.positionOf(set.A, 'sA')).toBeNull();
-					expect(ops.listBlockIds(set.A)).toEqual(['b1', 'b2']);
+					expect(ops.positionOf(set.A, 'sA')).toEqual({ parent: null, index: 2 });
+					expect(ops.blockText(set.A, 'sA')).toBe('ld a');
+					expect(ops.listBlockIds(set.A)).toEqual(['b1', 'b2', 'sA']);
 				}
 			);
 		}

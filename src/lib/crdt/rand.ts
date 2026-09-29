@@ -26,3 +26,11 @@ export const hash32 = (text: string): number => {
 	for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
 	return h >>> 0;
 };
+
+/**
+ * A 53-bit hash (two FNV-1a passes: 32 high bits, 21 low) — a derived writer
+ * id spans the engine's whole clientID space, so two concurrent derivations
+ * collide at ~2^-53, not ~2^-32 (UW-31). Integer in `[0, 2^53)`.
+ */
+export const hash53 = (text: string): number =>
+	hash32(text) * 2 ** 21 + (hash32(`${text}\u0000`) >>> 11);

@@ -1,6 +1,6 @@
 <script module lang="ts">
 	import { DEV } from 'esm-env';
-	import type { Edytor } from '../edytor.svelte.js';
+	import { UNKNOWN_KIND, type Edytor } from '../edytor.svelte.js';
 	import type { Block as BlockHandle } from '../block/block.svelte.js';
 	import type { BlockDefinition, BlockView } from '../plugins.js';
 
@@ -72,7 +72,7 @@
 	// The structure renders from the cell (R2); the snippet receives a view object (R4).
 	const cell = $derived(edytor.cells?.get(id));
 	const block = $derived(viewOf(edytor, id));
-	const definition = $derived(cell && edytor.getBlockDefinition('block', cell.type));
+	const definition = $derived(cell && edytor.definitionOf(cell.type));
 	// The core renders the block element from the definition; the snippet renders inside it (R11).
 	const element = $derived(definition && elementOf(definition, cell?.data));
 	/** Registers the block element (O45): one element per block, re-registered when the tag changes. */
@@ -125,6 +125,9 @@
 					children: cell.childIds.length ? children : null
 				}
 			)}<!--
+	-->{:else if definition === UNKNOWN_KIND}<!--
+		A kind this view does not register: a plain block, its text and children.
+	-->{@render content()}{@render children()}<!--
 	-->{/if}<!--
 --></svelte:element
 	><!--

@@ -192,7 +192,7 @@ export const modelScenarios: Scenario[] = [
 	{
 		id: 'MV06b',
 		requirement: 'MV06',
-		title: 'delete destination parent — child hides with subtree (payload retained)',
+		title: 'delete destination parent — the moved child takes its slot (UW-08 read-time promotion)',
 		run: () => {
 			const set = createPeerPair(MODEL_BASE_SEED);
 			const { A, B } = set;
@@ -202,9 +202,8 @@ export const modelScenarios: Scenario[] = [
 			set.syncAll();
 			assertConverged(set, ops);
 			assertAllStructurallyValid(set, ops);
-			expect(ops.listBlockIds(A)).toEqual(['b2']);
-			// b1 hidden, not deleted — payload intact in the registry.
-			expect(model.blockNodeOf(A.doc, 'b1')).not.toBeNull();
+			// b1 is not deleted (no mark): it displays in b3's slot.
+			expect(ops.listBlockIds(A)).toEqual(['b2', 'b1']);
 			expect(model.liveNodeOf(A.doc, 'b1')).not.toBeNull();
 		}
 	},

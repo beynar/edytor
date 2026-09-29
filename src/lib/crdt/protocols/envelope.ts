@@ -76,9 +76,9 @@ export class GenerationMismatchError extends Error {
 		public readonly found: unknown
 	) {
 		super(
-			`IndexedDB "${dbName}" is not a v14 document generation (found ${JSON.stringify(
+			`Stored document "${dbName}" is not a v14 document generation of this schema (found ${JSON.stringify(
 				found
-			)}). Legacy v13 generations are never applied to a v14 doc — run the migration path instead.`
+			)}). It is never applied — run the migration path, or re-import the document from JSON.`
 		);
 		this.name = 'GenerationMismatchError';
 	}

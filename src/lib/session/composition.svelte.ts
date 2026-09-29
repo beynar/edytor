@@ -402,7 +402,7 @@ export class Composition {
 		const { edytor } = this;
 		const at = edytor.segmentOf(host);
 		if (!at) return;
-		const transform = edytor.getBlockDefinition('block', at.cell.type).transformText;
+		const transform = edytor.definitionOf(at.cell.type).transformText;
 		edytor.pin.acquire(at.cell, at.segment, transform, from, to, host.node ?? null);
 	}
 

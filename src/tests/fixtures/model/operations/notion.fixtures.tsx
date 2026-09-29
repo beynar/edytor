@@ -64,9 +64,12 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) => edytor.runCommand('block.divider'),
+		// A divider holds no caret: a fresh paragraph after it takes it (Notion).
+		expectSelection: { startBlockPath: [1], yStart: 0, yEnd: 0, isCollapsed: true },
 		output: (
 			<root>
 				<divider></divider>
+				<paragraph></paragraph>
 			</root>
 		)
 	}),
@@ -280,6 +283,56 @@ export const fixtures = defineFixtures([
 			</root>
 		)
 	}),
+	// Notion: a prefix typed at the start of a block with text converts it,
+	// keeping the text (the caret stays at the start).
+	defineModelOperationFixture({
+		description: 'converts a dash prefix typed before existing text, keeping the text',
+		plugins: notionPlugins,
+		input: (
+			<root>
+				<paragraph>-|hello</paragraph>
+			</root>
+		),
+		run: ({ edytor }) => runBeforeInput(edytor, { inputType: 'insertText', data: ' ' }),
+		expectSelection: { startBlockPath: [0], yStart: 0, yEnd: 0, isCollapsed: true },
+		output: (
+			<root>
+				<bulleted-list-item>hello</bulleted-list-item>
+			</root>
+		)
+	}),
+	defineModelOperationFixture({
+		description: 'converts a heading prefix typed before existing text, keeping the text',
+		plugins: notionPlugins,
+		input: (
+			<root>
+				<paragraph>#|hello</paragraph>
+			</root>
+		),
+		run: ({ edytor }) => runBeforeInput(edytor, { inputType: 'insertText', data: ' ' }),
+		expectSelection: { startBlockPath: [0], yStart: 0, yEnd: 0, isCollapsed: true },
+		output: (
+			<root>
+				<heading level="h1">hello</heading>
+			</root>
+		)
+	}),
+	defineModelOperationFixture({
+		description:
+			'a replacing kind (divider) never converts a block that holds more than its prefix',
+		plugins: notionPlugins,
+		input: (
+			<root>
+				<paragraph>--|hello</paragraph>
+			</root>
+		),
+		run: ({ edytor }) => runBeforeInput(edytor, { inputType: 'insertText', data: '-' }),
+		output: (
+			<root>
+				<paragraph>---hello</paragraph>
+			</root>
+		)
+	}),
 	defineModelOperationFixture({
 		description: 'does not trigger markdown shortcuts away from the start of a block',
 		plugins: notionPlugins,
@@ -411,9 +464,11 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) => runBeforeInput(edytor, { inputType: 'insertText', data: '-' }),
+		expectSelection: { startBlockPath: [1], yStart: 0, yEnd: 0, isCollapsed: true },
 		output: (
 			<root>
 				<divider></divider>
+				<paragraph></paragraph>
 			</root>
 		)
 	}),

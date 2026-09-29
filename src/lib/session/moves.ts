@@ -1,4 +1,5 @@
 import type { Block } from '$lib/block/block.svelte.js';
+import { dispatchPlan } from '$lib/block/block.utils.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 
 export type BlockMovePosition = 'before' | 'after' | 'inside';
@@ -7,7 +8,8 @@ export type BlockMovePosition = 'before' | 'after' | 'inside';
  * One relative step (D-5): `up`/`down` pass the previous/next sibling, never
  * entering its children, and past the first/last sibling leave the parent
  * (before/after it); `in` = last child of the previous sibling; `out` =
- * after the parent.
+ * after the parent, the siblings after the last moved block becoming its
+ * children (the document's outdent, `unNestBlocks`).
  */
 export type BlockMoveDirection = 'up' | 'down' | 'in' | 'out';
 
@@ -67,14 +69,25 @@ export const canMoveBlocks = (edytor: Edytor, request: BlockMoveRequest): boolea
 	destination(edytor, request) !== null;
 
 /**
- * One move command (`moveBlock` for one block, `moveBlocks` for a group):
- * identity kept, one undo step (cut before, R7); `[]` when refused or vetoed.
+ * One move command (`moveBlock` for one block, `moveBlocks` for a group; an
+ * `out` step plans the outdent, `unNestBlocks`): identity kept, one undo
+ * step (cut before, R7); `[]` when refused or vetoed.
  */
 export const moveBlocks = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
 	const move = destination(edytor, request);
 	if (!move) return [];
 	edytor.dispatcher.cut('moveBlocks');
 	const [first, ...rest] = move.blocks;
+	if ('direction' in request && request.direction === 'out') {
+		// The outdent plan: the siblings after the last block follow it.
+		const ids = move.blocks.map((block) => block.id);
+		const outdent = () => edytor.facade.prepare.unNestBlocks(ids);
+		const touched = [first!.parent, first!.parent?.parent, move.blocks.at(-1)];
+		const applied = rest.length
+			? dispatchPlan(first!, 'moveBlocks', move, outdent, touched)
+			: dispatchPlan(first!, 'moveBlock', { path: move.path }, outdent, touched);
+		return applied ? move.blocks : [];
+	}
 	if (rest.length) return first!.moveBlocks(move) ?? [];
 	const moved = first!.moveBlock(move);
 	return moved ? [moved] : [];

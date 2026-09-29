@@ -153,6 +153,9 @@ export const rankBetween = (
 	// `locked` = the emitted prefix already guarantees result < right because a
 	// copied left segment was strictly less than the right segment at its level.
 	let locked = false;
+	// `floor` = right segments at the digit minimum were copied past the left
+	// bound's end (a promoted slot's separator): the result equals right so far.
+	let floor = false;
 	for (let i = 0; ; i++) {
 		const lSeg = L[i] as RankSeg | undefined;
 		const rSeg = rightOpen ? undefined : (R[i] as RankSeg | undefined);
@@ -160,12 +163,19 @@ export const rankBetween = (
 			// Left bound exhausted (or absent): extending its prefix already makes
 			// the result > left. Only the right bound constrains the emitted digit.
 			if (rSeg === undefined) {
+				if (floor) throw new RankSpaceExhausted();
 				// Open right (or, unreachable under valid inputs, both bounds
 				// exhausted while equal): the canonical extension digit.
 				path.push({ v: 0, t: clientId });
 				return encodeRank(path);
 			}
-			if (rSeg.v <= RANK_VMIN) throw new RankSpaceExhausted();
+			if (rSeg.v <= RANK_VMIN) {
+				// No digit below: copy it and descend — below a promoted block
+				// (`slot + separator + rank`) there is room under its own rank.
+				floor = true;
+				path.push(rSeg);
+				continue;
+			}
 			path.push({ v: rSeg.v - 1, t: clientId });
 			return encodeRank(path);
 		}

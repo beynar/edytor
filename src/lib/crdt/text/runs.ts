@@ -488,11 +488,13 @@ export const bindRuns = (Y: EngineApi) => {
 		// ── interning / freezing ─────────────────────────────────────────
 		// `cloneJsonSafe` is total even against hostile replicated payloads,
 		// and interning the normalized form keys it by its own canonical shape.
+		// The shared instance is built FROM that key (sorted keys): it must not
+		// remember the key order its first reader happened to fold, or
+		// `toJSON` would depend on when the view was read.
 		const intern = <T>(v: T): T => {
-			const canon = deepFreeze(cloneJsonSafe(v));
-			const key = canonKey(canon);
+			const key = canonKey(cloneJsonSafe(v));
 			let f = internMap.get(key) as T | undefined;
-			if (f === undefined) internMap.set(key, (f = canon));
+			if (f === undefined) internMap.set(key, (f = deepFreeze(JSON.parse(key)) as T));
 			return f;
 		};
 

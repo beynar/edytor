@@ -92,7 +92,7 @@ export const getCollapsedDomTextSelection = (edytor: Edytor) => {
 		return null;
 	}
 
-	if (!edytor.container?.contains(selection.anchorNode)) {
+	if (!edytor.node?.contains(selection.anchorNode)) {
 		return null;
 	}
 

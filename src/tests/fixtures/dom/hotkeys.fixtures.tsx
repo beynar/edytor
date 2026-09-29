@@ -70,6 +70,101 @@ export const fixtures = defineFixtures([
 		}
 	}),
 	defineDomFixture({
+		description: 'tab over a selection of sibling blocks nests them all and keeps them selected',
+		input: (
+			<root>
+				<paragraph>First</paragraph>
+				<paragraph>Se|cond</paragraph>
+				<paragraph>Third</paragraph>
+			</root>
+		),
+		run: async () => {
+			await dispatchDomKeyDown(document, { key: 'a', code: 'KeyA', metaKey: true });
+			await dispatchDomKeyDown(document, { key: 'a', code: 'KeyA', metaKey: true });
+			await dispatchDomKeyDown(document, { key: 'ArrowDown', code: 'ArrowDown', shiftKey: true });
+			return dispatchDomKeyDown(document, { key: 'Tab', code: 'Tab' });
+		},
+		output: (
+			<root>
+				<paragraph>
+					First
+					<paragraph>Second</paragraph>
+					<paragraph>Third</paragraph>
+				</paragraph>
+			</root>
+		),
+		expectSelection: {
+			selectedBlockPaths: [
+				[0, 0],
+				[0, 1]
+			]
+		}
+	}),
+	defineDomFixture({
+		description:
+			'shift+tab over selected sibling blocks outdents them; the siblings after them follow the last',
+		input: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>First</paragraph>
+					<paragraph>Se|cond</paragraph>
+					<paragraph>Third</paragraph>
+					<paragraph>Fourth</paragraph>
+				</paragraph>
+			</root>
+		),
+		run: async () => {
+			await dispatchDomKeyDown(document, { key: 'a', code: 'KeyA', metaKey: true });
+			await dispatchDomKeyDown(document, { key: 'a', code: 'KeyA', metaKey: true });
+			await dispatchDomKeyDown(document, { key: 'ArrowDown', code: 'ArrowDown', shiftKey: true });
+			return dispatchDomKeyDown(document, { key: 'Tab', code: 'Tab', shiftKey: true });
+		},
+		output: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>First</paragraph>
+				</paragraph>
+				<paragraph>Second</paragraph>
+				<paragraph>
+					Third
+					<paragraph>Fourth</paragraph>
+				</paragraph>
+			</root>
+		),
+		expectSelection: { selectedBlockPaths: [[1], [2]] }
+	}),
+	defineDomFixture({
+		description: 'shift+tab on a middle nested item takes its following siblings along',
+		input: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>First</paragraph>
+					<paragraph>Se|cond</paragraph>
+					<paragraph>Third</paragraph>
+				</paragraph>
+				<paragraph>Tail</paragraph>
+			</root>
+		),
+		run: () => dispatchDomKeyDown(document, { key: 'Tab', code: 'Tab', shiftKey: true }),
+		output: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>First</paragraph>
+				</paragraph>
+				<paragraph>
+					Second
+					<paragraph>Third</paragraph>
+				</paragraph>
+				<paragraph>Tail</paragraph>
+			</root>
+		),
+		expectSelection: { startBlockPath: [1], yStart: 2, isCollapsed: true }
+	}),
+	defineDomFixture({
 		description:
 			'grows block selection with shift+arrowdown and collapses it back to a caret on escape',
 		input: (

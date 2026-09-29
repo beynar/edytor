@@ -14,6 +14,8 @@
 
 	/** Auto-pairs typed at a collapsed caret in a code line. */
 	const PAIRS: Record<string, string> = { '{': '}', '[': ']', '(': ')', '"': '"', "'": "'" };
+	const CLOSERS = new Set(Object.values(PAIRS));
+	const QUOTES = new Set(['"', "'"]);
 
 	const getCodeText = (block: Block) =>
 		block.children
@@ -88,12 +90,19 @@
 					});
 				}
 				if (block.type !== 'codeLine') return;
-				if (
-					operation === 'insertText' &&
-					edytor.selection.state.isCollapsed &&
-					Object.hasOwn(PAIRS, payload.value)
-				) {
-					return { ...payload, value: payload.value + PAIRS[payload.value] };
+				const { startText, yStart, isCollapsed } = edytor.selection.state;
+				if (operation === 'insertText' && isCollapsed && startText) {
+					const { value } = payload;
+					const [at, line] = [payload.start ?? yStart, startText.stringContent];
+					// A closer typed before the same character steps over it.
+					if (CLOSERS.has(value) && line[at] === value) {
+						prevent(() => edytor.dispatcher.caret(startText, at + 1));
+					}
+					// Quotes pair only at a word boundary: the apostrophe in `don't` stays single.
+					const inWord = QUOTES.has(value) && /\w/.test((line[at - 1] ?? '') + (line[at] ?? ''));
+					if (Object.hasOwn(PAIRS, value) && !inWord) {
+						return { ...payload, value: value + PAIRS[value] };
+					}
 				}
 				// A code line never merges out of its island's first or last slot.
 				const siblings = block.parent?.children.length ?? 0;

@@ -430,3 +430,11 @@ export const jsonBlockToSpec = (
 		? { children: block.children.map((c) => jsonBlockToSpec(c, freshIds, mint)) }
 		: {})
 });
+
+/**
+ * A canonical `JSONBlock` (from `facade.toJSON()`/`blockJSON`, a template, an
+ * import) as the `BlockSpec` `facade.insertBlock` takes: ids are kept, and
+ * minted where missing; `freshIds` mints every id (a duplicate).
+ */
+export const toBlockSpec = (block: JSONBlock, { freshIds = false } = {}): BlockSpec =>
+	jsonBlockToSpec(block, freshIds);

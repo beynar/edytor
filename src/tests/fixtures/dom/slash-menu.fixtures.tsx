@@ -86,6 +86,52 @@ export const fixtures = defineFixtures([
 		}
 	}),
 	defineDomFixture({
+		description: 'closes on a query no command matches and leaves the arrows to the caret',
+		plugins: slashMenuPlugins,
+		input: (
+			<root>
+				<paragraph>|</paragraph>
+			</root>
+		),
+		run: async ({ editor }) => {
+			await typeText(editor, '/zzqq');
+			return dispatchDomKeyDown(document, { key: 'ArrowDown', code: 'ArrowDown' });
+		},
+		output: (
+			<root>
+				<paragraph>/zzqq</paragraph>
+			</root>
+		),
+		assert: async ({ queryByTestId, result }) => {
+			expect(queryByTestId('slash-menu')).toBeNull();
+			expect((result as { defaultPrevented?: boolean }).defaultPrevented).toBe(false);
+		}
+	}),
+	defineDomFixture({
+		description: 'a slash inside a URL does not hold the menu open for the rest of the line',
+		plugins: slashMenuPlugins,
+		input: (
+			<root>
+				<paragraph>first</paragraph>
+				<paragraph>|</paragraph>
+			</root>
+		),
+		run: async ({ editor }) => {
+			await typeText(editor, 'see http://x.com/zzqq and more');
+			return dispatchDomKeyDown(document, { key: 'ArrowUp', code: 'ArrowUp' });
+		},
+		output: (
+			<root>
+				<paragraph>first</paragraph>
+				<paragraph>see http://x.com/zzqq and more</paragraph>
+			</root>
+		),
+		assert: async ({ queryByTestId, result }) => {
+			expect(queryByTestId('slash-menu')).toBeNull();
+			expect((result as { defaultPrevented?: boolean }).defaultPrevented).toBe(false);
+		}
+	}),
+	defineDomFixture({
 		description: 'runs a slash command from mouse selection',
 		plugins: slashMenuPlugins,
 		input: (

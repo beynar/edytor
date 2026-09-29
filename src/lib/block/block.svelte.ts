@@ -1,6 +1,6 @@
 import { Text } from '../text/text.svelte.js';
 import { Edytor } from '../edytor.svelte.js';
-import { cloneJson, type JSONBlock, type JSONText, type JSONInlineBlock } from '$lib/utils/json.js';
+import type { JSONBlock, JSONText, JSONInlineBlock } from '$lib/utils/json.js';
 import {
 	batch,
 	removeInlineBlock,
@@ -25,6 +25,8 @@ import {
 	prepareUnNest,
 	prepareNest,
 	prepareRemoveInline,
+	prepareSetInline,
+	setInlineData,
 	prepareDeleteRange,
 	addChildBlocks,
 	pushContentIntoBlock,
@@ -98,8 +100,9 @@ export class Block {
 	get type(): string {
 		return this.isRoot ? 'root' : (this.edytor.facade.blockTypeOf(this.id) ?? '');
 	}
+	/** Retype the block — the `setBlock` command (readonly, hooks, `dispatcher.last`). */
 	set type(value: string) {
-		this.model?.setType(value);
+		this.setBlock({ value: { type: value } });
 	}
 
 	get data(): Record<string, any> {
@@ -107,12 +110,16 @@ export class Block {
 	}
 
 	get definition(): BlockDefinition {
-		return this.edytor.blocks.get(this.type) ?? ({} as BlockDefinition);
+		return this.edytor.definitionOf(this.type);
 	}
 
-	/** Write the block's `data` payload. */
+	/**
+	 * Replace the block's `data` — the `setBlock` command (readonly, hooks,
+	 * `dispatcher.last`); `block.model.setData` is the raw document write.
+	 */
 	setData = (data: Record<string, unknown>): void => {
-		this.model?.setData(cloneJson(data));
+		// Non-JSON values are coerced at the document boundary (`sanitizeSpec`).
+		this.setBlock({ value: { data: data as JSONBlock['data'] } });
 	};
 
 	get selected() {
@@ -299,6 +306,7 @@ export class Block {
 	moveBlocks = batch('moveBlocks', moveBlocks, prepareMoves);
 	pushContentIntoBlock = batch('pushContentIntoBlock', pushContentIntoBlock);
 	removeInlineBlock = batch('removeInlineBlock', removeInlineBlock, prepareRemoveInline);
+	setInlineData = batch('setInlineData', setInlineData, prepareSetInline);
 	addInlineBlock = batch('addInlineBlock', addInlineBlock, undefined, textAfterAtom);
 	normalizeContent = batch('normalizeContent', normalizeContent);
 	normalizeChildren = batch('normalizeChildren', normalizeChildren);
@@ -383,7 +391,7 @@ export class Block {
 		const onDestroy = this.edytor.plugins.reduce(
 			(acc, plugin) => {
 				const action = plugin.onBlockAttached?.({ node, block: this });
-				action && acc.push(action);
+				if (typeof action === 'function') acc.push(action);
 				return acc;
 			},
 			[] as (() => void)[]

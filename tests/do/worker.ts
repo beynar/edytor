@@ -20,6 +20,7 @@ import {
 	routeDocumentSocket,
 	type AuthorizeDocumentSocket,
 	type DocumentRoomEnv,
+	type LoadedDocument,
 	type SavedDocument
 } from '../../src/lib/cloudflare/index.js';
 import { Y } from '../../src/lib/crdt/engine.js';
@@ -31,15 +32,45 @@ export const LOADED: JSONDoc = {
 	children: [{ id: 'seed', type: 'paragraph', content: [{ text: 'from onLoad' }] }]
 };
 
+/** The newest `onSave` mirror (`hooked-restore*` rooms load it back), or `undefined`. */
+const lastSaved = (sql: SqlStorage) => {
+	sql.exec(
+		'CREATE TABLE IF NOT EXISTS mirror (json TEXT, size INTEGER, bytes BLOB, replicas TEXT)'
+	);
+	const row = sql
+		.exec<{
+			bytes: ArrayBuffer;
+			replicas: string;
+		}>('SELECT bytes, replicas FROM mirror ORDER BY rowid DESC LIMIT 1')
+		.toArray()[0];
+	return row && { update: new Uint8Array(row.bytes), replicas: JSON.parse(row.replicas) };
+};
+
 /**
  * The extension points under test (rooms named `hooked-*`): `onLoad` seeds
- * `LOADED` as JSON (as a v14 update for `hooked-bytes*`, nothing for
- * `hooked-empty*`); `onSave` mirrors into a `mirror` table.
+ * `LOADED` as JSON; by name prefix it instead returns a v14 update
+ * (`hooked-bytes*`), nothing (`hooked-empty*`), throws at its first call
+ * (`hooked-flaky*`), returns undecodable bytes (`hooked-badbytes*`) or a
+ * refused JSON shape (`hooked-badjson*`), or loads the last `onSave` back —
+ * `{ update, replicas }` (`hooked-restore*`) or the bare update
+ * (`hooked-restore-bare*`). Each call is counted in `load_calls`. `onSave`
+ * mirrors into a `mirror` table.
  */
 export class HookedRoom extends DocumentRoom<Env> {
-	protected override async onLoad() {
+	protected override async onLoad(): Promise<LoadedDocument | null | undefined> {
 		const name = this.ctx.id.name ?? '';
+		const sql = this.ctx.storage.sql;
+		sql.exec('CREATE TABLE IF NOT EXISTS load_calls (at INTEGER)');
+		sql.exec('INSERT INTO load_calls VALUES (?)', Date.now());
+		const calls = sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM load_calls').one().n;
 		if (name.startsWith('hooked-empty')) return undefined;
+		if (name.startsWith('hooked-flaky') && calls === 1) throw new Error('store unavailable');
+		if (name.startsWith('hooked-badbytes')) return Uint8Array.of(0xff, 0xff, 0xff, 0x01);
+		if (name.startsWith('hooked-badjson')) return { children: 'x' } as unknown as JSONDoc;
+		if (name.startsWith('hooked-restore')) {
+			const saved = lastSaved(sql);
+			if (saved) return name.startsWith('hooked-restore-bare') ? saved.update : saved;
+		}
 		if (!name.startsWith('hooked-bytes')) return LOADED;
 		const crdt = bindCrdt(Y);
 		const doc = crdt.createDoc();
@@ -49,12 +80,14 @@ export class HookedRoom extends DocumentRoom<Env> {
 		return Y.encodeStateAsUpdate(doc);
 	}
 
-	protected override async onSave({ value, update }: SavedDocument) {
-		this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS mirror (json TEXT, size INTEGER)');
+	protected override async onSave({ value, update, replicas }: SavedDocument) {
+		lastSaved(this.ctx.storage.sql);
 		this.ctx.storage.sql.exec(
-			'INSERT INTO mirror VALUES (?, ?)',
+			'INSERT INTO mirror VALUES (?, ?, ?, ?)',
 			JSON.stringify(value),
-			update.length
+			update.length,
+			update,
+			JSON.stringify(replicas)
 		);
 	}
 }

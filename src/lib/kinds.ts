@@ -2,6 +2,8 @@ import type { Block } from './block/block.svelte.js';
 import type { Edytor } from './edytor.svelte.js';
 import type { BlockDefinition, EditorCommand, KindPreset } from './plugins.js';
 import type { JSONBlock } from './utils/json.js';
+import { dispatchPlan, prepareSet } from './block/block.utils.js';
+import { id } from './utils.js';
 
 /**
  * The kind catalogue (§2.4): one row per preset of each registered kind
@@ -31,6 +33,8 @@ export const kindCatalogue = (blocks: Map<string, BlockDefinition>): KindRow[] =
  * Convert `block` to a row's kind as one command. With `caret` (by default
  * when the conversion replaces the content) the caret lands at the start of
  * the converted block, or of its first child when the conversion creates one.
+ * A kind rendering no content (a divider) holds no caret: a fresh default
+ * block after it takes it, in the same plan (one refusal, one undo step).
  * Answers whether it applied.
  */
 export const convertToKind = (
@@ -40,7 +44,19 @@ export const convertToKind = (
 	caret = row.replaces
 ) => {
 	if (!block?.convertible) return false;
-	block.setBlock({ value: structuredClone(row.value) });
+	const value = structuredClone(row.value);
+	const { parent } = block;
+	if (parent && !edytor.document.rendersContent(value.type) && !value.children?.length) {
+		const { facade } = edytor;
+		const next = { id: id('b'), type: edytor.defaultChild(parent) };
+		const slot = { parent: parent.isRoot ? null : parent.id, index: block.index + 1 };
+		const applied = dispatchPlan(block, 'setBlock', { value }, (payload) =>
+			facade.compose(prepareSet.call(block, payload), facade.prepare.insertBlocks(slot, [next]))
+		);
+		if (applied) edytor.dispatcher.caret(edytor.idToBlock.get(next.id)?.firstText, 0);
+		return Boolean(applied);
+	}
+	block.setBlock({ value });
 	if (edytor.dispatcher.last?.status !== 'applied') return false;
 	if (caret) {
 		const target = row.value.children?.length ? block.children[0] : block;

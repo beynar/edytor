@@ -24,7 +24,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Snippet } from 'svelte';
-import { Edytor } from '$lib/edytor.svelte.js';
+import { Edytor, type EdytorOptions } from '$lib/edytor.svelte.js';
 import type { HotKey } from '$lib/session/keymap.js';
 import type { Plugin } from '$lib/plugins.js';
 import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
@@ -357,8 +357,11 @@ describe('O36 — one precedence rule for bindings', () => {
 
 	pin('registration chords are canonical: modifier order and case do not matter', () => {
 		const calls: string[] = [];
+		const run: HotKey = ({ prevent }) => prevent(() => calls.push('x'));
+		// The type spells chords in lower case (UW-26); the runtime still takes any case.
+		const hotKeys = { 'Shift+Alt+Mod+X': run } as unknown as EdytorOptions['hotKeys'];
 		const edytor = new Edytor({
-			hotKeys: { 'Shift+Alt+Mod+X': ({ prevent }) => prevent(() => calls.push('x')) },
+			hotKeys,
 			plugins: [richTextPlugin]
 		});
 		expect(

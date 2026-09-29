@@ -33,11 +33,12 @@ block.insertBlockBefore({ block: { type: 'heading', data: { level: 'h2' } } });
 
 // Change its kind, data, content or children in one step.
 block.setBlock({ value: { type: 'quote' } });
-block.setData({ ...block.data, icon: '✦' }); // a direct write: no plugin hooks
+block.setData({ ...block.data, icon: '✦' }); // the same `setBlock` command, for `data`
+block.type = 'quote'; // also `setBlock`
 
 // Structure.
 block.nestBlock(); // last child of the previous sibling
-block.unNestBlock(); // after its parent
+block.unNestBlock(); // after its parent; the siblings after it become its children
 block.mergeBlockBackward(); // join into the previous block
 block.addChildBlock({ block: { type: 'paragraph' }, index: 0 });
 block.removeBlock(); // children take its place
@@ -126,7 +127,15 @@ facade.setBlockType(id, 'quote');
 facade.deleteBlock(id); // { keepChildren: false } removes the subtree
 ```
 
-Facade inserts take a `BlockSpec`, not a `JSONBlock`: an `id` is required and content items carry a `kind` (`{ kind: 'text', text, marks? }` or `{ kind: 'inline', id, type, data? }`). An empty operation (`insertText(id, 0, '')`) is `noop`; an unknown or deleted target is `refused`.
+Facade inserts take a `BlockSpec`, not a `JSONBlock`: an `id` is required and content items carry a `kind` (`{ kind: 'text', text, marks? }` or `{ kind: 'inline', id, type, data? }`). `toBlockSpec(json)` converts canonical JSON, minting the ids it leaves out (`{ freshIds: true }` mints all of them, for a copy):
+
+```ts
+import { toBlockSpec } from 'edytor';
+
+facade.insertBlock({ parent: null, index: 1 }, toBlockSpec(facade.blockJSON('title'), { freshIds: true }));
+```
+
+`block.model` is a block's node on the facade: `block.model.setData(data)` writes `data` directly, with no plugin hooks and regardless of `readonly`. An empty operation (`insertText(id, 0, '')`) is `noop`; an unknown or deleted target is `refused`.
 
 The full list (`splitBlock`, `mergeBlocks`, `deleteBlocks`, `deleteRange`, `insertFlow`, `insertInline`, `duplicateBlock`, the `prepare`/`apply` two-phase form, …) is in [the document API reference](/docs/reference/document-api).
 
@@ -162,7 +171,7 @@ Or describe one relative step with `direction`:
 | `up` | Before the previous sibling. From the first child, before the parent. |
 | `down` | After the next sibling, never inside its children. From the last child, after the parent. |
 | `in` | Last child of the previous sibling. |
-| `out` | After the parent. |
+| `out` | After the parent. The siblings after the last moved block become its children (an outdent). |
 
 ```ts
 const moved = edytor.moveBlocks({ blocks: [...edytor.selection.selectedBlocks], direction: 'down' });

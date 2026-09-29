@@ -94,10 +94,8 @@
 	};
 
 	export const richTextPlugin: Plugin = (edytor) => {
-		const toggleTodo = (block: Block) => {
-			if (edytor.readonly) return;
+		const toggleTodo = (block: Block) =>
 			block.setData({ ...block.data, checked: !block.data.checked });
-		};
 		const setMarkAndSelect =
 			(mark: RichTextMark, value?: SerializableContent): HotKey =>
 			({ prevent }) => {
@@ -325,6 +323,7 @@
 				},
 				toggle: {
 					continues: true,
+					container: true,
 					snippet: details,
 					...disclosure,
 					presets: [
@@ -332,12 +331,14 @@
 					]
 				},
 				callout: {
+					container: true,
 					snippet: callout,
 					presets: [
 						{ label: 'Callout', icon: '✦', keywords: ['note', 'tip'], data: { icon: '💡' } }
 					]
 				},
 				quote: {
+					container: true,
 					snippet: quote,
 					element: 'blockquote',
 					// Notion: `"` + space is a quote; `>` + space is a toggle.
@@ -440,7 +441,6 @@
 		onclick={(event) => {
 			event.preventDefault();
 			const target = block.handle;
-			if (target.edytor.readonly) return;
 			target.setData({ ...target.data, checked: !target.data.checked });
 		}}
 	/>

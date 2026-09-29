@@ -24,12 +24,16 @@ document.history.undo(); // 'hello' again; the seed itself is never an undo step
 
 | Option | Type | Description |
 | --- | --- | --- |
-| `value` | `JSONDoc` | Initial content. With it, the document is ready at once. Without it, the document stays `pending` until a provider or `sync()` decides. |
+| `value` | `JSONDoc` | Initial content, seeded immediately: the document is ready at once. Without it, the document stays `pending` until a provider or `sync()` decides. To seed only when a room turns out empty, pass `value` to `attachSync` instead (see the warning below). |
 | `actor` | `{ id, name?, color? }` | The local author. `id` is stored in attribution; `name` and `color` are published as presence. Defaults to an anonymous `anon-<uuid>`. |
 | `awareness` | `Awareness` | Use an existing awareness instance instead of creating one. The document does not destroy a borrowed instance. |
 | `history` | `{ captureTimeout?: number }` | Edits closer together than this many milliseconds merge into one undo step. Engine default: 500. `0` makes every commit its own step. |
 | `semantics` | `DocumentSemanticsConfig` | Block roles, default child types and the default block type, when you edit without plugins. Views contribute these from their plugins. |
 | `lineage` | `{ depth?: number }` | Keep up to `depth` earlier versions of each block, captured when another author, a delete or an undo replaces it. Off by default; read them with `attribution.history(id)`. |
+
+:::warning
+`createDocument({ value })` seeds before any provider is attached. Do not follow it with `attachSync` to a room that may already hold blocks with the same ids: the two copies meet as described in [Deterministic seeds](#deterministic-seeds), and an earlier seed's block edited since can be replaced. Create the document without `value` and pass `value` to `attachSync`, which seeds only when the room turns out empty.
+:::
 
 ## Load saved bytes
 
@@ -59,6 +63,7 @@ copy.facade.toJSON(); // same JSON as the source
 | `encode()` | The full state as bytes, for `loadDocument`. |
 | `attachSync(sync, { value? })` | Attach a provider to the document. Returns its cleanup. |
 | `ready`, `readiness`, `onReady(fn)` | Whether the content has been decided, and how. See below. |
+| `syncRefusal`, `onSyncRefused(fn)` | The `SyncRefusedError` a provider reported when the server refused this client for good (close `1008` or `4xxx`). |
 | `sync(value?)` | Decide a `pending` document now: seed `value` if it is empty, adopt its content otherwise. |
 | `writable`, `onWritableChange(fn)` | `false` while the document holds content from a schema this build cannot own. Every write is refused and providers stop persisting and sending until it heals. |
 | `clientID` | This replica's CRDT client id (`doc.clientID`). |
@@ -79,7 +84,8 @@ With providers attached, the rule is *settle or bound*:
 
 - A document that already holds content becomes `hydrated` as soon as any provider settles.
 - An empty document seeds its `value` only once every attached provider has settled, failed, been removed, or reached its bound.
-- IndexedDB always settles, so it has no bound. A WebSocket alone in a new room may never hear from anyone, so it gets `DEFAULT_READINESS_BOUND` (1000 ms).
+- IndexedDB always settles, so it has no bound. A WebSocket alone in a new room may never hear from anyone, so it gets `DEFAULT_READINESS_BOUND` (1000 ms), counted from the moment the socket opens or first fails to open: a room that is slow to accept the connection is waited for.
+- A server refusal (`SyncRefusedError`) never seeds: an empty document stays `pending` and reports it in `syncRefusal` and `onSyncRefused`. A document that already has content keeps it.
 
 ```ts
 if (!document.ready) {
@@ -162,7 +168,21 @@ const b = createDocument({ value: template });
 // Merging a and b shows one "Agenda" paragraph, not two.
 ```
 
-Seeds are not undo steps and carry no author (`createdBy` is absent on seeded blocks). Seeds of different values merge as a union, so give a template new block ids when its content changes.
+Seeds are not undo steps and carry no author (`createdBy` is absent on seeded blocks). Seeds of different values merge as a union: blocks with different ids all show, so give a template new block ids when its content changes.
+
+When a seed shares a block id with content it meets, one version of that block wins, last-writer-wins by writer id:
+
+| The block was written by | Result |
+| --- | --- |
+| A person editing (a live replica) | The seed loses. Seed writer ids sit below 2^26 and live ones are random 53-bit ids, so the block and every edit in it stay. |
+| The same seed | Nothing changes: it is the same data. |
+| A different seed | The larger writer id wins, whichever arrived first. If the loser is the room's copy, its edits since that seed are replaced, on every replica, and no undo brings them back. |
+
+So never pass a snapshot that changes (a copy of `onChange` output) as `value` beside a room: a client that seeds it late, because it could not reach the room before its readiness bound, puts that snapshot in the last row. Pass a fixed template, or no `value` at all.
+
+:::note
+Documents seeded by an older build used a full 32-bit writer id. A template without block ids that a new build seeds late into such a document gets new derived ids, so it shows twice, once. Templates with ids are unaffected.
+:::
 
 ## Errors
 

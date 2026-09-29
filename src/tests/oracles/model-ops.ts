@@ -38,12 +38,19 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 		});
 	};
 
+	/** The whole-subtree delete: every member is marked (an unmarked one would be promoted, UW-08). */
 	const deleteBlock = (doc, id) => {
 		const v = M.view(doc);
 		if (!isLiveIn(v, id)) return false;
+		const members = new Set<string>();
+		const walk = (b: string) => {
+			members.add(b);
+			for (const k of v.kids.get(b) ?? []) walk(k.id);
+		};
+		walk(id);
 		return doc.transact(() => {
 			for (const [b, rec] of v.blocks) {
-				if (v.own.ownerOf(b) === id) rec.node.setAttr(DEL_PREFIX + doc.clientID, true);
+				if (members.has(v.own.ownerOf(b))) rec.node.setAttr(DEL_PREFIX + doc.clientID, true);
 			}
 			return true;
 		});

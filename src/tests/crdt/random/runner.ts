@@ -73,6 +73,11 @@
  *   adapter exposes `expectedProjectedIds`; the silent-loss class the
  *   composed display-parent-cycle fix exists to eliminate. Never expected
  *   → hard failure on every adapter that provides the oracle.
+ * - `ill-formed` — a replica broke a named `wellFormed` invariant
+ *   (`harness/assert/well-formed.ts`: registered type, merge order, void
+ *   children, seed displacement, and — with `DST_PROMOTION_ORACLE=1` —
+ *   promotion). Checked on EVERY replica after EVERY step and at the
+ *   barrier, on the strict lane only. Never expected → hard failure.
  * - `crash` / `divergence` / `unknown` — never expected → hard failure.
  *
  * OPERATION INTENT (U5, review §R6): adapters exposing `captureOpState` +
@@ -113,7 +118,9 @@ import {
 	snapshotIdentities,
 	diffIdentities
 } from '../harness/assert/convergence.js';
-import type { Schedule, Step, DocOp, NetOp } from './generator.js';
+import { BLOCK_TYPES, type Schedule, type Step, type DocOp, type NetOp } from './generator.js';
+import { wellFormedProblems, type MergeRecord } from '../harness/assert/well-formed.js';
+import { hiddenUnderDeleted, registryIdentity, succeeds } from '../harness/ops/model-ops.js';
 
 export type RunResult = {
 	ok: boolean;
@@ -951,6 +958,59 @@ export const runSchedule = (
 	let firstError: { step: number; engineInternal: boolean; message: string } | null = null;
 	let executed = 0;
 
+	// ── wellFormed oracle (strict lane) ─────────────────────────────────
+	// Every replica after every step. The corpus configures no roles, so
+	// `void-children` has no input here (the p1 harness covers it).
+	const wfOn = !!ops.classifyTagAtoms;
+	const registered = new Set<string>(BLOCK_TYPES);
+	const collectTypes = (bs: readonly ProjectedBlock[]): void =>
+		bs.forEach((b) => (registered.add(b.type), collectTypes(b.children)));
+	if (wfOn) collectTypes(ops.project(peers[0]).children);
+	const identities = new Map<string, Map<string, string>>();
+	/**
+	 * Merges whose order the check may hold: dropped once any executed op
+	 * (any peer, concurrent or later) may move one of their blocks, and
+	 * never recorded after a history op (a replayed move is unnamed).
+	 */
+	const merges: MergeRecord[] = [];
+	const movedEver = new Set<string>();
+	let historySeen = false;
+	const trackMerges = (
+		plan: { env: IntentEnvelope; history?: boolean; merge?: MergeRecord },
+		result: unknown
+	): void => {
+		if (plan.history) {
+			historySeen = true;
+			merges.length = 0;
+			return;
+		}
+		const moved = plan.env.placements ?? new Set<string>();
+		const named = (m: MergeRecord) => [m.from, m.into, ...m.kids];
+		for (let k = merges.length - 1; k >= 0; k--)
+			if (named(merges[k]).some((id) => moved.has(id))) merges.splice(k, 1);
+		const m = plan.merge;
+		if (m && result && !historySeen && !named(m).some((id) => movedEver.has(id))) merges.push(m);
+		for (const id of moved) movedEver.add(id);
+	};
+	const illFormed = (): string[] =>
+		peers.flatMap((p) => {
+			// Causally closed states only: a reordered delivery may apply a
+			// delete whose replacement is still pending.
+			if (p.doc.store.pendingStructs !== null || p.doc.store.pendingDs !== null) return [];
+			let seen = identities.get(p.name);
+			if (!seen) identities.set(p.name, (seen = new Map()));
+			return wellFormedProblems({
+				roots: ops.project(p).children,
+				registered,
+				merges,
+				identityOf: (id) => registryIdentity(p.doc, id),
+				succeeds: (later, earlier) => succeeds(p.doc, later, earlier),
+				identities: seen,
+				hiddenUnderDeleted: () => hiddenUnderDeleted(p.doc)
+			}).map((x) => `${p.name}: ${x}`);
+		});
+	let firstIllFormed: { step: number; problems: string[] } | null = null;
+
 	const ids = (peer: Peer) => ops.listBlockIds(peer);
 	const resolveId = (peer: Peer, idx: number): string | undefined => {
 		const list = ids(peer);
@@ -960,6 +1020,20 @@ export const runSchedule = (
 		const list = ids(peer);
 		// idx === list.length → root
 		return idx >= list.length ? null : list[idx];
+	};
+
+	/** The visible siblings after `id` under its parent, on `peer` (none at the root). */
+	const followersOf = (peer: Peer, id: string): string[] => {
+		const find = (bs: readonly ProjectedBlock[]): string[] | null => {
+			for (const b of bs) {
+				const at = b.children.findIndex((k) => k.id === id);
+				if (at >= 0) return b.children.slice(at + 1).map((k) => k.id);
+				const deeper = find(b.children);
+				if (deeper) return deeper;
+			}
+			return null;
+		};
+		return find(ops.project(peer).children) ?? [];
 	};
 
 	/** The displayed-atom range an op may touch — mirrors the model's own
@@ -987,6 +1061,7 @@ export const runSchedule = (
 		exec: () => unknown;
 		history?: boolean;
 		after?: (result: unknown, diff: OpDiff, post: OpState) => void;
+		merge?: MergeRecord;
 	} | null => {
 		const EMPTY: IntentEnvelope = {};
 		switch (op.kind) {
@@ -1008,9 +1083,18 @@ export const runSchedule = (
 			case 'deleteBlock': {
 				const id = resolveId(peer, op.idIndex);
 				if (id === undefined) return null;
-				// D-14: a delete marks the target and every block it displays
-				// through merge claims (the holders routing to it).
-				const del = new Set([id, ...(ops.opTarget?.(peer, id)?.holders ?? [])]);
+				// D-14: the adapters' delete is the whole-subtree one — it marks
+				// every member and every block a member displays through merge
+				// claims (the holders routing to it; UW-08: an unmarked member
+				// would be promoted).
+				const del = new Set<string>();
+				const members = [id];
+				for (let i = 0; i < members.length; i++) {
+					const t = ops.opTarget?.(peer, members[i]);
+					del.add(members[i]);
+					for (const h of t?.holders ?? []) del.add(h);
+					members.push(...(t?.children ?? []));
+				}
 				return { env: { delSet: del }, exec: () => ops.deleteBlock(peer, id) };
 			}
 			case 'moveBlock': {
@@ -1031,7 +1115,11 @@ export const runSchedule = (
 			case 'unNest': {
 				const id = resolveId(peer, op.idIndex);
 				if (id === undefined) return null;
-				return { env: { placements: new Set([id]) }, exec: () => ops.unNestBlock(peer, id) };
+				// The outdent may hand the siblings after `id` to it (UW-23).
+				return {
+					env: { placements: new Set([id, ...followersOf(peer, id)]) },
+					exec: () => ops.unNestBlock(peer, id)
+				};
 			}
 			case 'split': {
 				const id = resolveId(peer, op.idIndex);
@@ -1081,7 +1169,8 @@ export const runSchedule = (
 						claimsWrite: (c) => c.holder === into && c.kind === 'merge' && c.m === from,
 						touchedTexts: tgtFrom.texts
 					},
-					exec: () => ops.mergeBlocks(peer, from, into)
+					exec: () => ops.mergeBlocks(peer, from, into),
+					merge: { from, into, kids: [...tgtFrom.children] }
 				};
 			}
 			case 'insertText': {
@@ -1489,6 +1578,7 @@ export const runSchedule = (
 		}
 		recordEffects(diff, plan.env, pre, post, peer.index, plan.history === true);
 		plan.after?.(result, diff, post);
+		if (wfOn) trackMerges(plan, result);
 	};
 
 	const runNetOp = (op: NetOp) => {
@@ -1613,6 +1703,11 @@ export const runSchedule = (
 				runNetOp(step.op);
 			} else runDocOp(peer, step.op, i);
 			executed++;
+			const problems = wfOn ? illFormed() : [];
+			if (problems.length > 0) {
+				firstIllFormed = { step: i, problems };
+				break;
+			}
 		} catch (err) {
 			firstError = {
 				step: i,
@@ -1663,6 +1758,10 @@ export const runSchedule = (
 		// set, so the same frame lands in `violations` and fails the seed.
 		const kind = firstError.engineInternal ? 'upstream-engine-crash' : 'crash';
 		return aborted(`step ${firstError.step} threw: ${firstError.message}`, kind);
+	}
+	if (firstIllFormed) {
+		const { step, problems } = firstIllFormed;
+		return aborted(`step ${step} ill-formed: ${problems.slice(0, 6).join('; ')}`, 'ill-formed');
 	}
 
 	// ── barrier: heal everything, flush, full sync ───────────────────────
@@ -1724,6 +1823,12 @@ export const runSchedule = (
 			if (res) return res;
 			break;
 		}
+	}
+
+	if (wfOn) {
+		const problems = illFormed();
+		if (problems.length > 0)
+			return aborted(`barrier ill-formed: ${problems.slice(0, 6).join('; ')}`, 'ill-formed');
 	}
 
 	// Structural validity → classified evidence (or hard fail on unknowns).

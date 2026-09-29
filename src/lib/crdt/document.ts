@@ -159,6 +159,7 @@ import {
 import { assertAdmission, assertSchema, bindAdmission, checkSchema } from './admission.js';
 import { Awareness } from './protocols/awareness.js';
 import type { EdytorSync, EdytorSyncCleanup, EdytorSyncPayload } from './providers/index.js';
+import { SyncRefusedError } from './providers/room.js';
 import { TRANSACTION } from '../constants.js';
 import type { JSONDoc } from '../utils/json.js';
 
@@ -310,8 +311,10 @@ export type DocumentReadiness = 'pending' | 'local' | 'hydrated';
 /**
  * How long (ms) an empty document waits for a provider that has not
  * settled before it decides without it (R13 settle-or-bound) — the bound a
- * provider that cannot report "settled" (an opaque websocket relay in an
- * empty room) gets. A factory sets its own with `sync.bound`.
+ * provider that cannot report "settled" gets, counted from its attach. A
+ * factory sets its own with `sync.bound`, or arms it from transport state
+ * (`bound: Infinity` + the payload's `armBound`, as the websocket sync
+ * does: from the socket's open, so a slow dial never counts).
  */
 export const DEFAULT_READINESS_BOUND = 1000;
 
@@ -837,17 +840,41 @@ export class EdytorDocument {
 		return this._pendingSyncs > 0;
 	}
 
+	private _syncRefusal: SyncRefusedError | undefined;
+	private _refusalListeners = new Set<(refusal: SyncRefusedError) => void>();
+
+	/**
+	 * The server's refusal of a provider (a `1008`/`4xxx` close — see
+	 * `SyncRefusedError`): that provider stopped for good. An empty
+	 * document stays `pending` rather than seed content the room refused.
+	 */
+	get syncRefusal(): SyncRefusedError | undefined {
+		return this._syncRefusal;
+	}
+
+	/**
+	 * Subscribe to provider refusals ({@link syncRefusal}). A listener
+	 * registered after one is not called for it. Returns the unsubscribe.
+	 */
+	onSyncRefused = (listener: (refusal: SyncRefusedError) => void): (() => void) => {
+		if (this._destroyed) return () => {};
+		this._refusalListeners.add(listener);
+		return () => this._refusalListeners.delete(listener);
+	};
+
 	/**
 	 * The readiness decision (R13, O17): a document with content is decided
 	 * (`hydrated`) as soon as any provider settles; an EMPTY one only once
 	 * every attached provider settled or reached its bound, and then it
-	 * seeds `value`. A refused admission leaves it pending, read-only and
-	 * quarantined; it decides again when it turns writable (the refusal
-	 * propagates to the reporting provider only).
+	 * seeds `value` — never after a provider's {@link syncRefusal}. A
+	 * refused admission leaves it pending, read-only and quarantined; it
+	 * decides again when it turns writable (the refusal propagates to the
+	 * reporting provider only).
 	 */
 	private _decide = (value: JSONDoc | undefined, report = false): void => {
 		if (this._destroyed || this.ready) return;
-		if (this._pendingSyncs > 0 && !isInitialized(this.doc as unknown as EngineDoc)) return;
+		const waiting = this._pendingSyncs > 0 || this._syncRefusal !== undefined;
+		if (waiting && !isInitialized(this.doc as unknown as EngineDoc)) return;
 		try {
 			this.sync(value);
 		} catch (error) {
@@ -865,9 +892,12 @@ export class EdytorDocument {
 	 * Attach a provider sync factory to this document (headless `EdytorSync`
 	 * path — the same contract views use). The provider stays pending until
 	 * it reports `synced` or the terminal `failed` (D4), is torn down, or its
-	 * bound elapses: `sync.bound` ms, {@link DEFAULT_READINESS_BOUND} for a
-	 * provider that cannot report settled. Each settle runs the readiness
-	 * decision ({@link _decide}). A factory that throws never attached: its
+	 * bound elapses: `sync.bound` ms from the attach,
+	 * {@link DEFAULT_READINESS_BOUND} for a provider that cannot report
+	 * settled, or {@link DEFAULT_READINESS_BOUND} from each `armBound()`.
+	 * Each settle runs the readiness decision ({@link _decide}); a
+	 * `SyncRefusedError` settles without deciding and is recorded as the
+	 * {@link syncRefusal}. A factory that throws never attached: its
 	 * error propagates and it decides nothing. A transport target
 	 * (`sync.target`, else the factory) already attached is a no-op: the
 	 * document keeps one provider per target. The returned cleanup is also
@@ -892,7 +922,20 @@ export class EdytorDocument {
 		};
 		const decide = () => settle() && this._decide(opts.value);
 		const ms = sync.bound ?? DEFAULT_READINESS_BOUND;
-		const bound = Number.isFinite(ms) ? setTimeout(decide, ms) : undefined;
+		let bound = Number.isFinite(ms) ? setTimeout(decide, ms) : undefined;
+		const failed = (error: unknown) => {
+			if (!(error instanceof SyncRefusedError)) return void decide();
+			settle();
+			if (this._destroyed) return;
+			this._syncRefusal = error;
+			for (const listener of Array.from(this._refusalListeners)) {
+				try {
+					listener(error);
+				} catch (err) {
+					console.error('[edytor-document] refusal listener failed; continuing', err);
+				}
+			}
+		};
 		let cleanup: ReturnType<EdytorSync>;
 		try {
 			cleanup = sync({
@@ -902,7 +945,12 @@ export class EdytorDocument {
 					settle();
 					this._decide(opts.value, true);
 				},
-				failed: decide,
+				failed,
+				armBound: () => {
+					if (!pending) return;
+					clearTimeout(bound);
+					bound = setTimeout(decide, DEFAULT_READINESS_BOUND);
+				},
 				attach: (companion) => this.attachSync(companion, opts)
 			});
 		} catch (error) {

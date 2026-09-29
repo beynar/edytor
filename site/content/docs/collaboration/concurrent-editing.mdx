@@ -35,7 +35,18 @@ Deleting a block removes only that block. A block selection holds exactly the bl
 | 2 | "Buy milk" and its sibling take the place of "Tasks", with their own children. | Bob's typing is kept in "Buy milk". |
 | 3 | Undoes: "Tasks" returns with both children nested under it. | |
 
-To delete a whole subtree from code, pass `keepChildren: false`:
+The same holds for whatever Bob puts under "Tasks" without having seen the delete: nothing that Alice did not delete is hidden with it.
+
+| Bob, at the same time | Result after both sync |
+| --- | --- |
+| Presses Enter in the middle of "Buy milk", which has children | Both halves of "Buy milk" take the place of "Tasks", in order; the children stay under the second half, as the split put them. |
+| Types in the second half after that Enter | The text is kept. |
+| Adds a new child under "Tasks", or moves a block into it | It takes the place of "Tasks" too, among the children, in the order Bob placed it. |
+| Deletes "Buy milk" (keeping its children) | Both deletes hold; the children of "Buy milk" take the place of "Tasks". |
+
+Alice's undo puts all of it back under "Tasks".
+
+To delete a whole subtree from code, pass `keepChildren: false`. Every block in the subtree is deleted; a block Bob adds inside it at the same time takes the subtree's place:
 
 ```ts
 document.facade.deleteBlock('tasks', { keepChildren: false });
@@ -68,7 +79,7 @@ This holds even when Bob's text arrives after Alice's undo. If Bob later deletes
 | 1 | Deletes the "Draft" block. | Types " v2" in "Draft", without having seen the delete. |
 | 2 | "Draft" is gone. | "Draft" is gone, with " v2"; Bob's caret moves to where the block was. |
 
-This applies to deletes only. Undoing a block's creation is not a delete (see above).
+This applies to text in the deleted block. A block Bob adds under it, or splits off inside it, is kept in its place (see [Deleting a block keeps its children](#deleting-a-block-keeps-its-children)). It also applies to deletes only: undoing a block's creation is not a delete (see above).
 
 ## An emptied document shows a virtual paragraph
 
@@ -104,8 +115,28 @@ A block keeps its id and its CRDT identity when it is moved, nested, split or me
 | Split | Splits "hello world" after "hello". | Types "!" after "world". | "hello" and " world!". |
 | Merge | Joins "world" into the line above, "hello". | Types "!" after "world". | "helloworld!". |
 | Same split twice | Splits "hello world" after "hello". | Splits it at the same place. | Both new lines exist; the text goes to one and the other stays empty. |
+| Merge into a deleted line | Joins "item", which has nested lines, into "hello" above (Backspace at its start). | Deletes "hello". | "item" is back in its place, its former nested lines right after it, in order. |
 
 Moving a block into its own subtree is refused, and concurrent moves that would form a cycle are resolved the same way on every replica: no block becomes unreachable.
+
+## Conflicting type changes
+
+When two people change the same block's type at the same time, one change wins, chosen the same way on every replica. Undo never leaves a block without a type.
+
+| | Alice | Bob |
+| --- | --- | --- |
+| 1 | Turns the paragraph "Plan" into a heading. | Turns it into a quote. |
+| 2 | Both see the same one: say Alice's heading won. | |
+| 3 | Undoes. "Plan" is a paragraph again, the type Alice replaced, for both. | |
+| 4 | Redoes. "Plan" is a heading again. | |
+
+If Bob's quote had won, Alice's undo changes nothing: the quote stays. The same holds for block data (a to-do's `checked`, a heading's level) and for an inline atom's data. `lastChangedBy` follows the same rule: it returns to the author before Alice.
+
+## Void blocks hold no children
+
+Turning a block into a void kind (an image, a divider) moves its nested blocks out, right after it, in order: nothing renders a void block's children. Undo puts them back under the block.
+
+A block that Bob nests or splits under it at the same time, without having seen the change, stays its child and is not shown. This is a known limitation.
 
 ## Island blocks
 

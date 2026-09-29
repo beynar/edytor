@@ -11,7 +11,8 @@
  * - Readiness is local-first: stored content decides the document without
  *   the server (an offline start works). An EMPTY store never lets the
  *   document seed before the store answered; then the server's answer, or
- *   the socket's readiness bound, decides as for a socket alone.
+ *   the socket's readiness bound (armed at its open or first failed
+ *   dial), decides as for a socket alone.
  * - Edits restored from the store reach the server when it comes back (the
  *   join rule exchanges what each side lacks).
  * - Destroying the document releases the socket and the store.
@@ -152,11 +153,15 @@ const wsSync = (serverUrl, options = {}) =>
 		...options
 	});
 
-/** A document whose readiness can only come from its store: the socket's bound is out of reach. */
-const attachWithoutBound = (document, sync, value) => {
-	sync.bound = 60_000;
-	return document.attachSync(sync, { value });
-};
+/** A document whose readiness can only come from its store: the socket never arms its bound. */
+const attachWithoutBound = (document, sync, value) =>
+	document.attachSync(
+		Object.assign((payload) => sync({ ...payload, armBound: undefined }), {
+			bound: Infinity,
+			target: sync.target
+		}),
+		{ value }
+	);
 
 const draft = { children: [{ type: 'paragraph', id: 'p', content: [{ text: 'draft' }] }] };
 const texts = (document) =>

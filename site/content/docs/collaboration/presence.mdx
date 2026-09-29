@@ -122,6 +122,6 @@ type ViewSelection =
 - A client re-publishes its state every 15 seconds. A peer that stays silent for 30 seconds is dropped.
 - Closing a page or destroying the document announces the client's departure. When a socket drops without a goodbye, the edytor room announces it for the client.
 - Presence crosses tabs of the same browser over the same `BroadcastChannel` as the document.
-- A lost WebSocket connection clears the remote states on that client until it reconnects.
+- A lost WebSocket connection clears the remote states on that client until it reconnects. Other tabs of the same browser keep the peers they still hear, whether the tab lost its socket or was closed.
 
 Presence is relayed, not stored: the room keeps the latest entry of each connected client in memory only, and accepts entries from a socket only for that socket's own client id. See [the room](/docs/server/room#identity-and-presence).

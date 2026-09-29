@@ -12,8 +12,8 @@ import { attachDocument, routeDocumentSocket } from 'edytor/cloudflare';
 
 export class Notes extends DurableObject<Env> {
   document = attachDocument(this, {
-    onLoad: () => loadFromMyStore(this.ctx.id.name!),
-    onSave: ({ update }) => saveToMyStore(this.ctx.id.name!, update)
+    onLoad: () => loadFromMyStore(this.ctx.id.name!), // { update, replicas }
+    onSave: ({ update, replicas }) => saveToMyStore(this.ctx.id.name!, { update, replicas })
   });
 }
 
@@ -72,7 +72,7 @@ A Durable Object has one alarm. The document sets it `saveAfter` ms after an uns
 | Option | Default | Description |
 | --- | --- | --- |
 | `onLoad` | | Returns the document for a room that stores nothing yet. See [Load](#load). |
-| `onSave` | | Receives `{ value, update }` after edits. See [Save](#save). |
+| `onSave` | | Receives `{ value, update, replicas }` after edits. See [Save](#save). |
 | `saveAfter` | `2000` | ms between the first unsaved edit and `onSave`. |
 | `compactAfter` | `500` | Stored updates before they are merged into one snapshot. |
 | `maxRowBytes` | 1,995,904 | Largest stored row. Can only be lowered. |
@@ -87,19 +87,27 @@ A Durable Object has one alarm. The document sets it `saveAfter` ms after an uns
 
 | Return | Effect |
 | --- | --- |
-| `Uint8Array` | A v14 update, typically `update` from an earlier `onSave`. Admitted like stored data: another generation or schema is refused. |
+| `{ update, replicas }` | What an earlier `onSave` received: the v14 state and who owns which client id. Restores both. |
+| `Uint8Array` | A bare v14 update. Restores the content but not the owners: each client id that holds content is claimed by the first signed-in writer who uses it (logged as an `orphan` refusal). |
 | `JSONDoc` | Seeded as the document. Seeding is deterministic, so a client that seeds the same value converges with it. |
 | `undefined` / `null` | An empty room; the first client seeds it. |
 
-Once anything is stored, the object restores from its own storage and does not ask again. If `onLoad` throws, every socket is refused until the object's next start.
+Nothing is stored until `onLoad` settles, and the result is stored in one transaction, so the room is never left half-loaded:
+
+- **Nothing returned** is provisional: `onLoad` is asked again at every start until something is stored. A KV read that is not yet visible is retried at the next start.
+- **A throw** refuses sockets with `1011` (their providers retry), and the next dial or start asks `onLoad` again.
+- **A refused payload** (another generation or schema, undecodable bytes, any other shape) sets `failure` and refuses every socket with `1008` (`refused: container`). The object keeps answering.
+
+Once anything is stored, the object restores from its own storage and does not ask again.
 
 ## Save
 
-`onSave({ value, update })` runs `saveAfter` ms after the first edit it has not saved, on the object's alarm, so it does not keep the object from hibernating. If it throws, the platform retries the alarm with backoff. Without `onSave`, no alarm is ever set.
+`onSave({ value, update, replicas })` runs `saveAfter` ms after the first edit it has not saved, on the object's alarm, so it does not keep the object from hibernating. If it throws, the platform retries the alarm with backoff. Without `onSave`, no alarm is ever set.
 
 | Field | Content |
 | --- | --- |
 | `update` | The full CRDT state. Store it to load the document back. |
+| `replicas` | Who owns each client id (`{ replica, user }[]`), read with `update`. Store it beside `update` and return both from `onLoad`, so returning clients can write again after a restore. See [replicas](/docs/server/authorization#replicas). |
 | `value` | The document as JSON, for search, previews or exports. |
 
 :::warning
@@ -116,17 +124,23 @@ The room's name is `this.ctx.id.name`: rooms are opened with `getByName(document
 ```ts
 document = attachDocument(this, {
   onLoad: async () => {
-    const object = await this.env.DOCS.get(`${this.ctx.id.name}.bin`);
-    return object ? new Uint8Array(await object.arrayBuffer()) : undefined;
+    const [object, owners] = await Promise.all([
+      this.env.DOCS.get(`${this.ctx.id.name}.bin`),
+      this.env.DOCS.get(`${this.ctx.id.name}.replicas.json`)
+    ]);
+    if (!object) return undefined;
+    const update = new Uint8Array(await object.arrayBuffer());
+    return owners ? { update, replicas: await owners.json<ReplicaOwner[]>() } : update;
   },
-  onSave: async ({ value, update }) => {
+  onSave: async ({ value, update, replicas }) => {
     await this.env.DOCS.put(`${this.ctx.id.name}.bin`, update);
+    await this.env.DOCS.put(`${this.ctx.id.name}.replicas.json`, JSON.stringify(replicas));
     await this.env.DOCS.put(`${this.ctx.id.name}.json`, JSON.stringify(value)); // optional
   }
 });
 ```
 
-R2 has no practical size limit: the best fit for documents.
+R2 has no practical size limit: the best fit for documents. `ReplicaOwner` is exported by `edytor/cloudflare`; a copy saved before `replicas` existed still loads as a bare update.
 
 </Tab>
 <Tab title="KV">
@@ -134,14 +148,20 @@ R2 has no practical size limit: the best fit for documents.
 ```ts
 document = attachDocument(this, {
   onLoad: async () => {
-    const bytes = await this.env.DOCS_KV.get(this.ctx.id.name!, 'arrayBuffer');
-    return bytes ? new Uint8Array(bytes) : undefined;
+    const name = this.ctx.id.name!;
+    const bytes = await this.env.DOCS_KV.get(name, 'arrayBuffer');
+    const replicas = await this.env.DOCS_KV.get<ReplicaOwner[]>(`${name}:replicas`, 'json');
+    if (!bytes) return undefined;
+    return replicas ? { update: new Uint8Array(bytes), replicas } : new Uint8Array(bytes);
   },
-  onSave: ({ update }) => this.env.DOCS_KV.put(this.ctx.id.name!, update)
+  onSave: async ({ update, replicas }) => {
+    await this.env.DOCS_KV.put(this.ctx.id.name!, update);
+    await this.env.DOCS_KV.put(`${this.ctx.id.name}:replicas`, JSON.stringify(replicas));
+  }
 });
 ```
 
-A KV value holds at most 25 MiB, and other locations may read an old value for a short while. `onLoad` only runs for a room that stores nothing, so that rarely matters here.
+A KV value holds at most 25 MiB, and other locations may read an old value for a short while. `onLoad` only runs for a room that stores nothing, and a missing value is asked again at the next start, so that rarely matters here.
 
 </Tab>
 <Tab title="D1">
@@ -149,16 +169,16 @@ A KV value holds at most 25 MiB, and other locations may read an old value for a
 ```ts
 document = attachDocument(this, {
   onLoad: async () => {
-    const row = await this.env.DB.prepare('SELECT state FROM documents WHERE id = ?')
+    const row = await this.env.DB.prepare('SELECT state, replicas FROM documents WHERE id = ?')
       .bind(this.ctx.id.name)
-      .first<{ state: ArrayBuffer }>();
-    return row ? new Uint8Array(row.state) : undefined;
+      .first<{ state: ArrayBuffer; replicas: string }>();
+    return row ? { update: new Uint8Array(row.state), replicas: JSON.parse(row.replicas) } : undefined;
   },
-  onSave: async ({ value, update }) => {
+  onSave: async ({ value, update, replicas }) => {
     await this.env.DB.prepare(
-      'INSERT OR REPLACE INTO documents (id, state, json) VALUES (?, ?, ?)'
+      'INSERT OR REPLACE INTO documents (id, state, replicas, json) VALUES (?, ?, ?, ?)'
     )
-      .bind(this.ctx.id.name, update, JSON.stringify(value))
+      .bind(this.ctx.id.name, update, JSON.stringify(replicas), JSON.stringify(value))
       .run();
   }
 });
@@ -201,18 +221,25 @@ The server has no plugin definitions, so the facade does not know which block ty
 The ready-made room exposes the same hooks as methods:
 
 ```ts
-import { DocumentRoom, type SavedDocument } from 'edytor/cloudflare';
+import { DocumentRoom, type ReplicaOwner, type SavedDocument } from 'edytor/cloudflare';
 
 export class Room extends DocumentRoom<Env> {
   protected override async onLoad() {
-    const object = await this.env.DOCS.get(`${this.ctx.id.name}.bin`);
-    return object ? new Uint8Array(await object.arrayBuffer()) : undefined;
+    const name = this.ctx.id.name;
+    const [object, owners] = await Promise.all([
+      this.env.DOCS.get(`${name}.bin`),
+      this.env.DOCS.get(`${name}.replicas.json`)
+    ]);
+    if (!object) return undefined;
+    const update = new Uint8Array(await object.arrayBuffer());
+    return owners ? { update, replicas: await owners.json<ReplicaOwner[]>() } : update;
   }
 
-  protected override async onSave({ update }: SavedDocument) {
+  protected override async onSave({ update, replicas }: SavedDocument) {
     await this.env.DOCS.put(`${this.ctx.id.name}.bin`, update);
+    await this.env.DOCS.put(`${this.ctx.id.name}.replicas.json`, JSON.stringify(replicas));
   }
 }
 ```
 
-Bind and migrate the subclass by its own class name (`"class_name": "Room"`, `"new_sqlite_classes": ["Room"]`). If it defines `alarm()`, call `await super.alarm()` from it. `transact`, `read` and `compact` are methods of the room itself.
+Bind and migrate the subclass by its own class name (`"class_name": "Room"`, `"new_sqlite_classes": ["Room"]`). If it defines `alarm()`, call `await super.alarm()` from it. `transact`, `read`, `compact` and `reset` are methods of the room itself.

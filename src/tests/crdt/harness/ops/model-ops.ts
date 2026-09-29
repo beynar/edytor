@@ -25,6 +25,7 @@
 // @ts-nocheck -- vendored upstream source is plain JS; checked structurally, not via types.
 import * as Y from '../../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../../oracles/model-ops.js';
+import { clientsOf, structAt } from '../../../../lib/crdt/structs.js';
 import { bindText, DEAD, canonKey, cmpStamp, isBoundary } from '../../../../lib/crdt/text/model.js';
 import type { Peer } from '../peer-set.js';
 import type {
@@ -51,10 +52,9 @@ const T = bindText(Y);
  * A block on a cyclic display chain still counts as expected — a composed
  * cycle is the bug being guarded against, not a hiding policy — so a
  * regression that reintroduces it is flagged `unreachable-block` instead of
- * silently passing. `dead` chain ends are legitimate (deleted ancestor →
- * hidden-with-subtree, MV06b); a 'dead' verdict against a parent that is
- * NOT actually `del`-flagged is itself counted as expected so the
- * discrepancy surfaces rather than being absorbed.
+ * silently passing. A `del`-flagged ancestor hides nothing: its unmarked
+ * children take its slot (read-time promotion, UW-08), so the chain goes on
+ * through it; only an unintegrated parent ends it (hidden).
  */
 export const expectedProjectedIds = (peer: Peer): Set<string> => {
 	const doc = peer.doc;
@@ -70,14 +70,15 @@ export const expectedProjectedIds = (peer: Peer): Set<string> => {
 		for (;;) {
 			const pl = placements.get(cur);
 			if (pl === undefined || pl.parent === null) break; // reached the root
-			const dp = own.ownerOf(pl.parent);
+			let dp = own.ownerOf(pl.parent);
 			if (dp === DEAD) {
-				// Deleted/unintegrated ancestor — legitimate hiding only when the
-				// parent really is gone or `del`-flagged; a DEAD verdict on a
-				// live parent is an ownership bug, so keep the block expected.
+				// A `del`-flagged holder promotes: walk on from it. A DEAD
+				// verdict on a live parent is an ownership bug, so keep the
+				// block expected; an unintegrated parent hides it.
 				const prec = blocks.get(pl.parent);
-				if (prec === undefined || prec.deleted) legitimatelyHidden = true;
-				break;
+				if (prec === undefined) legitimatelyHidden = true;
+				if (prec === undefined || !prec.deleted) break;
+				dp = pl.parent;
 			}
 			if (seen.has(dp)) break; // composed display cycle → still expected
 			seen.add(dp);
@@ -86,6 +87,61 @@ export const expectedProjectedIds = (peer: Peer): Set<string> => {
 		if (!legitimatelyHidden) expected.add(id);
 	}
 	return expected;
+};
+
+/**
+ * The `promotion-hidden` oracle input (UW-08): live (unmarked), self-owned
+ * blocks with a delete-marked holder on their display-parent chain that the
+ * projection does not show — read-time promotion must put them in the
+ * holder's slot.
+ */
+export const hiddenUnderDeleted = (doc: Peer['doc']): string[] => {
+	const blocks = M.collectBlocks(doc);
+	const own = T.computeOwnership(doc, blocks);
+	const placements = M.resolvePlacements(blocks, own.ownerOf);
+	const shown = new Set(M.listBlockIds(doc));
+	const out: string[] = [];
+	for (const [id, rec] of blocks) {
+		if (rec.deleted || own.hidden(id) || shown.has(id)) continue;
+		const seen = new Set<string>([id]);
+		for (let cur = id; ; ) {
+			const pl = placements.get(cur);
+			if (pl === undefined || pl.parent === null) break;
+			const dp = own.ownerOf(pl.parent);
+			if (dp === DEAD) {
+				if (blocks.get(pl.parent)?.deleted) out.push(id);
+				break;
+			}
+			if (seen.has(dp)) break;
+			seen.add(dp);
+			cur = dp;
+		}
+	}
+	return out;
+};
+
+/** The `seed-displacement` oracle input: the engine id of `id`'s registry node. */
+export const registryIdentity = (doc: Peer['doc'], id: string): string | null => {
+	const item = M.blockNodeOf(doc, id)?._item;
+	return item?.id ? `${item.id.client}:${item.id.clock}` : null;
+};
+
+/**
+ * The `seed-displacement` oracle's causal test: whether registry item
+ * `later` was written after `earlier` on its key (its origin chain reaches
+ * it — a redo re-creating an undone block), rather than concurrently with it
+ * (a seed or a peer racing the key — a displacement).
+ */
+export const succeeds = (doc: Peer['doc'], later: string, earlier: string): boolean => {
+	const clients = clientsOf(doc);
+	const [client, clock] = later.split(':').map(Number);
+	let id: { client: number; clock: number } | null = { client, clock };
+	for (let hops = 0; id !== null && hops < 64; hops++) {
+		if (`${id.client}:${id.clock}` === earlier) return true;
+		const item = structAt(Y, clients.get(id.client) ?? [], id.clock) as { origin?: typeof id };
+		id = item?.origin ?? null;
+	}
+	return false;
 };
 
 const isNodeLike = (v: unknown): v is { getAttr: (k: string) => unknown } =>

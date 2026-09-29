@@ -139,12 +139,12 @@ export type PluginOperations = {
 	onSelectionChange?: (selection: EdytorSelection) => void;
 	/** The placeholder of an empty block (D-8): rendered by a `::before` rule the library ships. */
 	placeholder?: Placeholder;
-	/** Called when the editor is attached to the DOM */
-	onEdytorAttached?: (payload: { node: HTMLElement }) => () => void;
-	/** Called when a block is attached to the DOM */
-	onBlockAttached?: (payload: { node: HTMLElement; block: Block }) => () => void;
-	/** Called when text is attached to the DOM */
-	onTextAttached?: (payload: { node: HTMLElement; text: Text }) => () => void;
+	/** Called when the editor is attached to the DOM; may return a cleanup, run on detach. */
+	onEdytorAttached?: (payload: { node: HTMLElement }) => (() => void) | void;
+	/** Called when a block element is attached to the DOM; may return a cleanup. */
+	onBlockAttached?: (payload: { node: HTMLElement; block: Block }) => (() => void) | void;
+	/** Called when a text element is attached to the DOM; may return a cleanup. */
+	onTextAttached?: (payload: { node: HTMLElement; text: Text }) => (() => void) | void;
 	/** Called when selected blocks are deleted */
 	onDeleteSelectedBlocks?: (payload: { prevent: Prevent; selectedBlocks: Block[] }) => void;
 	/** Called before input is processed */
@@ -213,6 +213,13 @@ export type BlockDefinition = {
 	 * parent's default child in place (at the top level, in a callout).
 	 */
 	continues?: boolean;
+	/**
+	 * A container kind (Notion's toggles, callouts, quotes): its content is a
+	 * header over its children. Enter at the end of a header with children
+	 * opens a first child of `defaultChild`; a closed `details` header (the
+	 * browser owns `open`) opens a sibling after instead, children untouched.
+	 */
+	container?: boolean;
 	/**
 	 * The type a new child of this block takes by default (Enter inside a
 	 * child, a split, an island merged out into it). Adopted by the

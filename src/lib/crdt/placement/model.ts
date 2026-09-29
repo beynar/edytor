@@ -33,10 +33,12 @@
  *   is the COMPOSED one — raw placements are acyclic but merge claims can
  *   redirect a display edge back into the block's own subtree.
  * - Delete marks `del.<writer>` are independent replicated attrs: a marked
- *   block (and thereby its subtree, since children keep pointing at it) is
- *   hidden regardless of which placement candidate wins — explicit deletion
- *   beats concurrent move. Deleting marks the block and every block it
- *   displays through merge claims (R3); undo removes only the undoer's mark.
+ *   block is hidden regardless of which placement candidate wins — explicit
+ *   deletion beats concurrent move. Deleting marks the block and every
+ *   block it displays through merge claims (R3), a whole-subtree delete
+ *   every member; undo removes only the undoer's mark. An unmarked block
+ *   under a marked one is promoted into its slot at read time
+ *   (`displaySlotOf`), so a concurrent child is never hidden with it.
  *
  * Content ownership (R2, `text/model.ts`): a block displays its stream —
  * delimited by boundary items in a backing text — then the displays of the
@@ -278,8 +280,10 @@ export const candidatesOf = (node: EngineNode): PlacementCand[] => {
  * Because the claim-owner map is computed independently of placements
  * (claims live on `claims` lists), the acceptance test composes the
  * two: the candidate's tentative display edge is `ownerOf(p)` — a live
- * self-owned block, `null` (root), or `DEAD` (deleted parent — a sink
- * that hides the subtree and can never close a cycle).
+ * self-owned block or `null` (root). A deleted parent is no sink: its
+ * unmarked children display in its slot (read-time promotion,
+ * {@link displaySlotOf}), so the walk passes through it along its own
+ * accepted placement.
  *
  * `ownerOf` is injectable so callers can share an ownership context they
  * already computed; standalone callers get the map derived from the
@@ -294,9 +298,6 @@ export const resolvePlacements = (
 		const owners = computeOwners(blocks);
 		owner = (b: BlockId): Owner => owners.get(b) ?? DEAD;
 	}
-	/** The display edge an accepted placement installs: `owner(parent)`. */
-	const displayEdge = (pl: ResolvedPlacement): Owner | null =>
-		pl.parent === null ? null : owner!(pl.parent);
 	const ordered: OrderedCand[] = [];
 	for (const [id, rec] of blocks) {
 		for (const c of rec.cands) ordered.push({ ...c, blockId: id });
@@ -311,29 +312,24 @@ export const resolvePlacements = (
 		let p = cand.p;
 		if (p !== null && !blocks.has(p)) p = null; // parent never integrated → root
 		if (p !== null) {
-			const d = owner(p); // the display edge this candidate installs
-			// A DEAD display parent (deleted target) hides the block with
-			// its subtree — a sink, never a cycle member. Otherwise reject
-			// the candidate iff `d` can already reach the block through
-			// accepted display edges — i.e. the block is a display ancestor
-			// of `d`. Because accepted edges are acyclic by induction, the
-			// walk always terminates.
-			if (d !== DEAD) {
-				let cur: BlockId | null = d;
-				let cyclic = false;
-				while (cur !== null) {
-					if (cur === cand.blockId) {
-						cyclic = true;
-						break;
-					}
-					const cp = accepted.get(cur);
-					if (cp === undefined) break; // edge not yet accepted → cannot cycle
-					const e = displayEdge(cp);
-					if (e === DEAD) break;
-					cur = e;
+			// Reject the candidate iff the block already is a display
+			// ancestor of `p` through accepted edges: a live parent's edge
+			// is its owner's, a deleted one is walked itself (its children
+			// take its slot). Accepted edges are acyclic by induction, so
+			// the walk always terminates.
+			let cyclic = false;
+			for (let cur: BlockId | null = p; cur !== null; ) {
+				const o = owner(cur);
+				const at = o === DEAD ? cur : o;
+				if (at === cand.blockId) {
+					cyclic = true;
+					break;
 				}
-				if (cyclic) continue; // try this block's next candidate
+				const cp = accepted.get(at);
+				if (cp === undefined) break; // edge not yet accepted → cannot cycle
+				cur = cp.parent;
 			}
+			if (cyclic) continue; // try this block's next candidate
 		}
 		accepted.set(cand.blockId, { parent: p, rank: cand.r });
 	}
@@ -389,7 +385,7 @@ export const isLiveIn = (v: Pick<ModelView, 'placements' | 'own'>, id: BlockId):
 		if (seen.has(cur) || own.hidden(cur)) return false;
 		seen.add(cur);
 		const pl = placements.get(cur);
-		const dp = pl === undefined ? DEAD : displayParentOf(own, pl);
+		const dp = pl === undefined ? DEAD : displayParentOf(own, pl, placements);
 		if (dp === DEAD) return false;
 		cur = dp;
 	}
@@ -397,28 +393,61 @@ export const isLiveIn = (v: Pick<ModelView, 'placements' | 'own'>, id: BlockId):
 };
 
 /**
- * The parent under which `id` actually DISPLAYS. Normally the resolved
- * placement parent — but when that parent is merged-away (its display
- * is claimed, `owner(parent) !== parent`), the child follows the claim to
- * the merge destination: `owner(parent)`. This prevents hidden orphans in
- * chained/overlapping merges (B+C merged while A+B merged: C's children
- * land on B, B is claimed by A → children display under A).
- *
- * A `del`-flagged (or unreachable) parent resolves to owner `DEAD` → the
- * child stays hidden with its subtree — explicit deletion does NOT
- * promote or rehome descendants (MV06 contract preserved).
+ * The rank separator of a promoted slot: the lowest segment a rank can hold
+ * (`rankBetween` only copies it from a promoted bound), so `slot + PROMOTED + rank` sorts after
+ * `slot` and before every rank the slot's list minted after it — also one
+ * that extends `slot`, as an insert between two adjacent digits does.
  */
-export const displayParentOf = (own: Ownership, pl: ResolvedPlacement): Owner | null => {
-	if (pl.parent === null) return null;
-	// Unclaimed parent → itself; merged-away → the claim owner;
-	// DEAD (deleted/unreachable) → the child is hidden with the subtree.
-	return own.ownerOf(pl.parent);
+const PROMOTED = encodeRank([{ v: RANK_VMIN, t: 0 }]);
+
+/**
+ * The rank of a block promoted into the slot ranked `slot` (read-time
+ * promotion, and a promote-delete's planned moves): a valid rank, so an
+ * insert beside a promoted block ranks against it like any other.
+ */
+export const promotedRank = (slot: string, rank: string): string => slot + PROMOTED + rank;
+
+/**
+ * Where a placement DISPLAYS: its display parent and its rank in that
+ * parent's children list. A live parent shows its children; a merged-away
+ * one resolves to its claim owner, the merge destination (B+C merged while
+ * A+B merged: C's children land on B, B is claimed by A → they display
+ * under A). A delete-marked parent hides no unmarked child — promotion is
+ * derived at read time (`del.blocks.promote`, UW-08): the child takes the
+ * deleted parent's slot, ranked just after it ({@link promotedRank}),
+ * recursively. So whatever a peer split off, inserted or moved under a
+ * block another writer deleted stays in the document. `DEAD` only when the
+ * placement chain never reaches a live parent (an unknown block).
+ */
+export const displaySlotOf = (
+	own: Ownership,
+	placements: ReadonlyMap<BlockId, ResolvedPlacement>,
+	pl: ResolvedPlacement
+): { parent: Owner | null; rank: string } => {
+	let { parent, rank } = pl;
+	for (let hops = 0; parent !== null; hops++) {
+		const owner = own.ownerOf(parent);
+		if (owner !== DEAD) return { parent: owner, rank };
+		const up = placements.get(parent);
+		if (up === undefined || hops > placements.size) return { parent: DEAD, rank };
+		rank = promotedRank(up.rank, rank);
+		parent = up.parent;
+	}
+	return { parent: null, rank };
 };
+
+/** The parent under which a placement DISPLAYS ({@link displaySlotOf}). */
+export const displayParentOf = (
+	own: Ownership,
+	pl: ResolvedPlacement,
+	placements: ReadonlyMap<BlockId, ResolvedPlacement>
+): Owner | null => displaySlotOf(own, placements, pl).parent;
 
 /**
  * All visible children's lists at once: `parent|null → {id, rank}[]` sorted
  * by `(rank, id)` — ONE pass over `placements` plus one sort per list. This
- * is the order the projection emits.
+ * is the order the projection emits; a promoted block's `rank` is its
+ * promoted one ({@link displaySlotOf}).
  */
 export const childrenIndex = (
 	placements: Map<BlockId, ResolvedPlacement>,
@@ -427,12 +456,11 @@ export const childrenIndex = (
 	const index = new Map<BlockId | null, { id: BlockId; rank: string }[]>();
 	for (const [id, pl] of placements) {
 		if (own.hidden(id)) continue;
-		const dp = displayParentOf(own, pl);
-		// Hidden-with-subtree blocks (a DEAD display parent) appear in no list.
-		if (dp === DEAD) continue;
-		const bucket = index.get(dp);
-		if (bucket) bucket.push({ id, rank: pl.rank });
-		else index.set(dp, [{ id, rank: pl.rank }]);
+		const { parent, rank } = displaySlotOf(own, placements, pl);
+		if (parent === DEAD) continue;
+		const bucket = index.get(parent);
+		if (bucket) bucket.push({ id, rank });
+		else index.set(parent, [{ id, rank }]);
 	}
 	for (const bucket of index.values()) {
 		bucket.sort((a, b) =>
@@ -589,8 +617,8 @@ export const bindModel = (Y: EngineApi) => {
 			seen.add(cur);
 			const pl = placements.get(cur);
 			if (pl === undefined) break;
-			const dp = displayParentOf(own, pl);
-			if (dp === DEAD) break; // deleted ancestor sink — subtree hidden, not cyclic
+			const dp = displayParentOf(own, pl, placements);
+			if (dp === DEAD) break; // unknown ancestor — hidden, not cyclic
 			cur = dp;
 		}
 		return false;
@@ -826,16 +854,16 @@ export const bindModel = (Y: EngineApi) => {
 
 	/**
 	 * Canonical projection: pure derivation from replicated state — the
-	 * visible tree of live blocks ordered by `(rank, id)`, children of
-	 * deleted/merged-away/invalid parents pruned (hidden-with-subtree
-	 * policy). Content is each block's display (R2).
+	 * visible tree of live blocks ordered by `(rank, id)`, children of a
+	 * merged-away parent under its owner, those of a deleted parent in its
+	 * slot ({@link displaySlotOf}). Content is each block's display (R2).
 	 */
 	const project = (doc: EngineDoc): ProjectedDoc => ({ children: R.attach(doc).project() });
 
 	/** `positionOf` in a view: the display parent and the index among its visible children. */
 	const positionInView = (v: ModelView, id: BlockId): Destination | null => {
 		if (!isLiveIn(v, id)) return null;
-		const dp = displayParentOf(v.own, v.placements.get(id)!) as BlockId | null;
+		const dp = displayParentOf(v.own, v.placements.get(id)!, v.placements) as BlockId | null;
 		const index = (v.kids.get(dp) ?? []).findIndex((s) => s.id === id);
 		return index < 0 ? null : { parent: dp, index };
 	};

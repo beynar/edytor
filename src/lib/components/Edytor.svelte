@@ -54,9 +54,11 @@
 		/** The local author (id, name, color) of the document this view owns: history lineage and presence. */
 		actor?: DocumentActor;
 		readonly?: boolean;
-		hotKeys?: Record<string, HotKey>;
+		/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. */
+		hotKeys?: Partial<Record<HotKeyCombination, HotKey>>;
 		onChange?: (value: JSONBlock) => void;
 		onSelectionChange?: (selection: EdytorSelection) => void;
+		/** The initial content, read once (not bindable): follow edits with `onChange` or `edytor.value`. */
 		value?: JSONDoc;
 		placeholder?: Placeholder;
 		translate?: 'yes' | 'no';
@@ -86,8 +88,8 @@
 
 <script lang="ts">
 	import type { JSONBlock, JSONDoc } from '../utils/json.js';
-	import { onMount, setContext, untrack } from 'svelte';
-	import type { HotKey } from '$lib/session/keymap.js';
+	import { onDestroy, onMount, setContext, untrack } from 'svelte';
+	import type { HotKey, HotKeyCombination } from '$lib/session/keymap.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 	import Block from './Block.svelte';
 
@@ -102,7 +104,7 @@
 		document: edytorDocument,
 		doc,
 		readonly = false,
-		value = $bindable(defaultValue),
+		value = defaultValue,
 		hotKeys,
 		sync,
 		room,
@@ -171,8 +173,8 @@
 		if (sync || room === undefined) return sync;
 		if (server === undefined) return createIndexeddbSync(room);
 		return createWebsocketSync({
-			serverUrl: server,
-			roomName: room,
+			server,
+			room,
 			params: dialParams,
 			// Per author: the room refuses one user's socket delivering another's edits.
 			...(actor ? { persistName: `edytor:${actor.id}@${server}/${room}` } : {})
@@ -188,13 +190,13 @@
 		if (!initialEdytorOptions.readonly && !initialSync && !edytor.document.syncPending) {
 			edytor.document.sync(initialEdytorOptions.value);
 		}
-
-		return () => {
-			// The component owns the Edytor — release its doc/awareness/facade/
-			// undo-manager listeners so a shared doc doesn't retain dead mounts.
-			edytor.destroy();
-		};
 	});
+
+	// The component owns the Edytor — release its doc/awareness/facade/
+	// undo-manager listeners so a shared doc doesn't retain dead mounts.
+	// `onDestroy` also runs after a server render: a view-owned document
+	// (and its awareness timer) must not outlive the request.
+	onDestroy(() => edytor.destroy());
 
 	$effect(() => {
 		edytor.readonly = readonly;

@@ -17,8 +17,8 @@ In the tables, <kbd>Mod</kbd> is <kbd>Cmd</kbd> on macOS and iOS and <kbd>Ctrl</
 | <kbd>Enter</kbd>                              | Split the block, or add a block before or after it. A new sibling takes its parent's default child kind; a list item, to-do or toggle continues its own kind, and an empty one ends the list ([continuing kinds](/docs/customization/blocks#continuing-kinds)) | Text                |
 | <kbd>Shift</kbd> + <kbd>Enter</kbd>             | Insert a soft line break                                                                 | Text                          |
 | <kbd>Mod</kbd> + <kbd>Enter</kbd>               | Start a new block below, splitting at the end of the caret's text                        | Text                          |
-| <kbd>Tab</kbd>                                | Nest the block into its previous sibling                                                 | Text, or one selected block   |
-| <kbd>Shift</kbd> + <kbd>Tab</kbd>               | Move the block out one level                                                             | Text, or one selected block   |
+| <kbd>Tab</kbd>                                | Nest the block into its previous sibling; selected sibling blocks nest together and stay selected | Text, or selected blocks |
+| <kbd>Shift</kbd> + <kbd>Tab</kbd>               | Move the block out one level, after its parent; the blocks nested after it become its children. Selected sibling blocks move out together | Text, or selected blocks |
 | <kbd>Backspace</kbd>, <kbd>Delete</kbd>       | Delete the selected blocks or the selected atom; otherwise delete text                   | Anywhere                      |
 | <kbd>Mod</kbd> + <kbd>Z</kbd>                   | Undo                                                                                     | Anywhere                      |
 | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd>  | Redo                                                                                     | Anywhere                      |
@@ -120,13 +120,14 @@ The `hotKeys` prop is read once, when the editor mounts.
 
 A chord is lowercase modifiers and one key, joined with `+`:
 
-- **Modifiers**: `mod`, `alt`, `ctrl`, `shift`. Their order does not matter: `shift+mod+k` and `mod+shift+k` are the same chord.
-- **Keys**: the letters `a` to `z`, the digits `0` to `9`, `arrowup`, `arrowdown`, `arrowleft`, `arrowright`, `tab`, `enter`, `backspace`, `delete`, `space`, `escape`, `home`, `end`, `pageup`, `pagedown`. `space` is the space bar.
+- **Modifiers**: `mod`, `alt`, `ctrl`, `shift`, up to three. Their order does not matter: `shift+mod+k` and `mod+shift+k` are the same chord. Case does not matter either at runtime, but the types expect lowercase.
+- **Keys**: the letters `a` to `z`, the digits `0` to `9`, the punctuation keys (`/`, `.`, `[`, `+`, …, as `KeyboardEvent.key` names them), `arrowup`, `arrowdown`, `arrowleft`, `arrowright`, `tab`, `enter`, `backspace`, `delete`, `space`, `escape`, `home`, `end`, `pageup`, `pagedown`, `insert`, `f1` to `f12`. `space` is the space bar.
+- Other names (`cmd`, `meta`, `option`, `esc`, `return`, `del`, `up`…) never match a key press. They fail type-checking, and in development the editor logs a warning naming the chord.
 - `mod` is <kbd>Cmd</kbd> on Apple platforms and <kbd>Ctrl</kbd> elsewhere. `ctrl` matches the <kbd>Ctrl</kbd> key only on Apple platforms; elsewhere <kbd>Ctrl</kbd> is always `mod`.
 - On non-Latin keyboard layouts, a <kbd>Mod</kbd> chord also matches by physical key: <kbd>Mod</kbd> + <kbd>Б</kbd> on a Russian layout runs `mod+b`.
 - <kbd>AltGr</kbd> combinations and dead keys produce text and never run a binding.
 
-A plugin's `hotkeys` keys are type-checked against this syntax.
+A plugin's `hotkeys` and the `hotKeys` prop are type-checked against this syntax (`HotKeyCombination`).
 
 <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd>, <kbd>Backspace</kbd> and <kbd>Delete</kbd> reach bindings too, so a plugin can claim them, as the slash menu does with <kbd>Enter</kbd>. Each key press runs its bindings once.
 

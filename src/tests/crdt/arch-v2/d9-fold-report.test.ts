@@ -374,26 +374,29 @@ describe('D9 — publication: nested once, change-then-revert nothing, every fac
 		expect([...one[1].removed]).toEqual(['b']);
 	});
 
-	red('a block that arrives under a hidden subtree is not reported (visible = reachable)', () => {
-		const { doc, ed } = make();
-		const peerDoc = new Y.Doc();
-		peerDoc.clientID = 12;
-		Y.applyUpdate(peerDoc, Y.encodeStateAsUpdate(doc));
-		const peer = E.create(peerDoc);
-		// Concurrently: A deletes `b` and its subtree; the peer adds a grandchild under `b1`.
-		ed.deleteBlock('b', { keepChildren: false });
-		peer.insertBlocks({ parent: 'b1', index: 0 }, [p('b2', 'grandkid')]);
-		const before = snapOf(ed);
-		const seen = [];
-		ed.onChange((c) => seen.push(c));
-		Y.applyUpdate(doc, Y.encodeStateAsUpdate(peerDoc), 'remote');
-		expect(diffSnaps(before, snapOf(ed), 'remote', false, 0)).toBe(null);
-		expect(seen).toEqual([]);
-		// And an edit inside the hidden subtree publishes nothing either.
-		peer.insertText('b2', 0, 'x');
-		Y.applyUpdate(doc, Y.encodeStateAsUpdate(peerDoc), 'remote');
-		expect(seen).toEqual([]);
-	});
+	red(
+		'a block that arrives under a deleted subtree takes its slot and is reported (visible = reachable, UW-08)',
+		() => {
+			const { doc, ed } = make();
+			const peerDoc = new Y.Doc();
+			peerDoc.clientID = 12;
+			Y.applyUpdate(peerDoc, Y.encodeStateAsUpdate(doc));
+			const peer = E.create(peerDoc);
+			// Concurrently: A deletes `b` and its subtree; the peer adds a grandchild under `b1`.
+			ed.deleteBlock('b', { keepChildren: false });
+			peer.insertBlocks({ parent: 'b1', index: 0 }, [p('b2', 'grandkid')]);
+			const w = watch(ed, doc);
+			Y.applyUpdate(doc, Y.encodeStateAsUpdate(peerDoc), 'remote');
+			expect(ed.project().children.map((b) => b.id)).toEqual(['a', 'b2', 'c']);
+			// And an edit inside the promoted block publishes like any other.
+			peer.insertText('b2', 0, 'x');
+			Y.applyUpdate(doc, Y.encodeStateAsUpdate(peerDoc), 'remote');
+			expect(ed.blockText('b2')).toBe('xgrandkid');
+			expect(w.mismatches).toEqual([]);
+			expect(w.stats().reported).toBe(2);
+			w.stop();
+		}
+	);
 });
 
 // ── F-O9 — mid-transaction reads see every edit (the watermark) ────────────

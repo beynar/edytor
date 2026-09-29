@@ -127,6 +127,13 @@ Children of a deleted (or never-integrated) parent are hidden **with the
 subtree** — no orphan promotion (MV06b). `crdtId`/`positionOf` return null
 for hidden blocks even though their records live on.
 
+> **Superseded 2026-09-29 (UW-08).** An unmarked child of a delete-marked
+> parent is now promoted at read time into the parent's slot
+> (`placement/model.ts` `displaySlotOf`), and a whole-subtree delete marks
+> every member. The cycle check walks a deleted parent instead of treating
+> it as a sink. Normative rows: `del.blocks.promote` in
+> `docs/editor-delete-contract.md`.
+
 ## Cycle policy
 
 The relation the model keeps acyclic is the **composed display-parent

@@ -64,7 +64,7 @@ export type Schedule = {
 };
 
 const MARKS = ['bold', 'italic', 'underline', 'code'];
-const BLOCK_TYPES = ['paragraph', 'list', 'quote'];
+export const BLOCK_TYPES = ['paragraph', 'list', 'quote'];
 const INLINE_TYPES = ['mention', 'chip'];
 
 /** Weighted pick of a document op. */

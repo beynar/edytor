@@ -32,7 +32,7 @@ const LONGHANDS: Record<string, readonly string[]> = {
 /** A text inside a void block is its own editing host (the core sets it at attach). */
 export const insideVoid = (edytor: Edytor, block: string) => {
 	for (let id: string | null = block; id; id = edytor.facade.parentOf(id))
-		if (edytor.getBlockDefinition('block', edytor.cells?.get(id)?.type ?? '')?.void) return true;
+		if (edytor.definitionOf(edytor.cells?.get(id)?.type ?? '').void) return true;
 	return false;
 };
 
@@ -82,7 +82,7 @@ export const ownedOf = (
 		};
 	}
 	const cell = edytor.cells?.get(block);
-	const isVoid = Boolean(cell && edytor.getBlockDefinition('block', cell.type)?.void);
+	const isVoid = Boolean(cell && edytor.definitionOf(cell.type).void);
 	if (entry.kind === 'block') {
 		const handle = edytor.idToBlock.block(block);
 		const { selectedBlocks, focusedBlocks } = edytor.selection;

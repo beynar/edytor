@@ -56,8 +56,33 @@ const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
 	edytor.selection.setAtTextOffset(startText, yStart);
 };
 
+/**
+ * Backspace at the start of a catalogue kind other than its parent's default
+ * (a bullet, a to-do, a heading) turns it into that default first, keeping
+ * its content and children (`del.start.kind`, Notion); the next Backspace
+ * merges or unnests. Structural kinds outside the catalogue (a `list-item`,
+ * a `codeLine`) keep the structural path.
+ */
+const resetKindAtStart = (edytor: Edytor, snapshot: Attempt) => {
+	const block = snapshot.startText?.parent;
+	if (!snapshot.isAtStartOfBlock || !block?.convertible || !block.parent) return false;
+	const type = edytor.defaultChild(block.parent);
+	if (block.type === type || !edytor.kinds.some((row) => row.value.type === block.type)) {
+		return false;
+	}
+	block.setBlock({ value: { type, data: {} } });
+	const text = block.firstText;
+	if (text) {
+		edytor.attempts.caret(text, 0);
+		edytor.selection.setAtTextOffset(text, 0);
+	}
+	return true;
+};
+
 const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 	const { startText, yStart } = snapshot;
+
+	if (resetKindAtStart(edytor, snapshot)) return;
 
 	if (snapshot.isAtStartOfBlock && snapshot.isFirstChildOfDocument && startText?.parent.isEmpty) {
 		edytor.selection.setAtTextOffset(startText, 0);

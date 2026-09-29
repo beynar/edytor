@@ -51,6 +51,11 @@ export type BlockOperations = {
 	removeInlineBlock: {
 		index: number;
 	};
+	/** Replace the `data` of inline atom `id` shown in the block. */
+	setInlineData: {
+		id: string;
+		data: Record<string, unknown>;
+	};
 	addChildBlock: {
 		block: JSONBlock;
 		index: number;
@@ -392,7 +397,7 @@ export function unNestBlock(
 	_: BlockOperations['unNestBlock'] = {},
 	plan = prepareUnNest.call(this)
 ): Block | null {
-	return applyPlan(this, plan, [this.parent, this.parent?.parent]) ? this : null;
+	return applyPlan(this, plan, [this.parent, this.parent?.parent, this]) ? this : null;
 }
 
 /**
@@ -480,6 +485,18 @@ export function removeInlineBlock(
 	plan = prepareRemoveInline.call(this, payload)
 ): void {
 	if (applyPlan(this, plan, [])) this.normalizeContent();
+}
+
+export function prepareSetInline(this: Block, { id, data }: BlockOperations['setInlineData']) {
+	return this.model ? this.edytor.facade.prepare.setInlineData(this.model.id, id, data) : REFUSED;
+}
+
+export function setInlineData(
+	this: Block,
+	payload: BlockOperations['setInlineData'],
+	plan = prepareSetInline.call(this, payload)
+): void {
+	applyPlan(this, plan, []);
 }
 
 /**

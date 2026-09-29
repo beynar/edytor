@@ -17,13 +17,24 @@ import { bindWebsocketProvider } from './websocket.js';
  * the terminal half of the sync lifecycle. A provider that can never reach
  * `synced` (destroyed before syncing, persistence load failure, refused
  * hydration, denied auth) reports it here exactly once; a transient
- * disconnect or a provider that already synced never does.
+ * disconnect or a provider that already synced never does. A
+ * `SyncRefusedError` is the exception: the server refused this
+ * client for good, reported synced or not, and an empty document does not
+ * seed over it.
  */
 export type EdytorSyncPayload = {
 	doc: YDoc;
 	awareness: Awareness;
 	synced: (provider?: unknown) => void;
 	failed?: (error: unknown, provider: unknown) => void;
+	/**
+	 * (Re)start this provider's readiness bound (`DEFAULT_READINESS_BOUND`
+	 * ms from now) — for a factory whose `bound` is `Infinity` because only
+	 * its transport knows when waiting starts to count (the websocket sync:
+	 * from the socket's open, or its first failed dial). A no-op once the
+	 * provider settled.
+	 */
+	armBound?: () => void;
 	/**
 	 * Attach another sync to the same document as its own provider (its own
 	 * target, bound and settle): how a sync brings a companion, e.g. the
@@ -37,7 +48,8 @@ export type EdytorSync = ((payload: EdytorSyncPayload) => void | EdytorSyncClean
 	/**
 	 * ms an empty document waits for this provider to settle before it
 	 * decides without it (R13); `Infinity` for a provider that always
-	 * reports `synced` or `failed`. Default: `DEFAULT_READINESS_BOUND`.
+	 * reports `synced` or `failed`, or arms its bound itself (`armBound`).
+	 * Default: `DEFAULT_READINESS_BOUND`, counted from the attach.
 	 */
 	bound?: number;
 	/**
@@ -56,9 +68,22 @@ export type IndexeddbSyncOptions = {
  * The factory-owned provider always dials (D-24 G-e retired `connect`,
  * `protocols` and `resyncInterval` here). Cross-tab sync is on by default.
  */
-export type WebsocketSyncOptions = {
-	serverUrl: string;
-	roomName: string;
+/** Where the socket dials: `<server>/<room>`, the names `<Edytor server room>` uses. */
+export type WebsocketTarget =
+	| {
+			/** The sync server's base URL (`wss://…/rooms`). */
+			server: string;
+			/** The room (document) id. */
+			room: string;
+	  }
+	| {
+			/** @deprecated Use `server`. */
+			serverUrl: string;
+			/** @deprecated Use `room`. */
+			roomName: string;
+	  };
+
+export type WebsocketSyncOptions = WebsocketTarget & {
 	/** Query parameters (auth tokens), read at every dial. */
 	params?: Record<string, string>;
 	WebSocketPolyfill?: import('./websocket.js').WebsocketPolyfill;
@@ -71,7 +96,7 @@ export type WebsocketSyncOptions = {
 	 * reconnect.
 	 */
 	persist?: boolean;
-	/** The local database name. Default: `edytor:<serverUrl>/<roomName>`. */
+	/** The local database name. Default: `edytor:<server>/<room>`. */
 	persistName?: string;
 };
 
@@ -108,20 +133,26 @@ export const bindProviders = (Y: EngineApi) => {
 	 * applies another tab's edit under the store's origin and relays it to
 	 * the server, without storing it twice. Restored edits reach the server
 	 * by the join rule on every (re)connect.
+	 *
+	 * The socket's bound runs from transport state, not from the attach: a
+	 * dial still in flight (a cold room holds the upgrade) never counts, so
+	 * a slow room hydrates the document instead of racing the seed.
 	 */
 	const createWebsocketSync = (options: WebsocketSyncOptions): WebsocketSync => {
-		const serverUrl = options.serverUrl.replace(/\/+$/, '');
-		const room = `${serverUrl}/${options.roomName}`;
+		const [server, roomName] =
+			'server' in options ? [options.server, options.room] : [options.serverUrl, options.roomName];
+		const serverUrl = server.replace(/\/+$/, '');
+		const room = `${serverUrl}/${roomName}`;
 		const persistName =
 			options.persist === false ? undefined : (options.persistName ?? `edytor:${room}`);
 		const sync = (payload: EdytorSyncPayload) => {
-			const { doc, awareness, synced, failed, attach } = payload;
+			const { doc, awareness, synced, failed, attach, armBound } = payload;
 			const { params, WebSocketPolyfill, maxBackoffTime, disableBc } = options;
 			const local =
 				persistName !== undefined && typeof indexedDB !== 'undefined'
 					? localSync(persistName, { disableBc })
 					: undefined;
-			const provider = new ws.WebsocketProvider(serverUrl, options.roomName, doc, {
+			const provider = new ws.WebsocketProvider(serverUrl, roomName, doc, {
 				awareness,
 				params,
 				WebSocketPolyfill,
@@ -131,7 +162,28 @@ export const bindProviders = (Y: EngineApi) => {
 			provider.on('synced', (isSynced) => {
 				if (isSynced) synced(provider);
 			});
-			if (failed) provider.on('failed', failed);
+			if (failed) {
+				provider.on('failed', failed);
+				// `failed` fires only before a sync; a refusal is terminal after one too.
+				provider.on('refused', (refusal) => provider.hasSynced && failed(refusal, provider));
+			}
+			if (armBound) {
+				// The bound counts from the socket's open, or from the first
+				// failed dial since the last open (offline starts decide as fast).
+				let armedOffline = false;
+				provider.on('status', ({ status }) => {
+					if (status !== 'connected') return;
+					armedOffline = false;
+					armBound();
+				});
+				const offline = () => {
+					if (armedOffline) return;
+					armedOffline = true;
+					armBound();
+				};
+				provider.on('connection-close', offline);
+				provider.on('connection-error', offline);
+			}
 			let release: EdytorSyncCleanup | void = undefined;
 			try {
 				// Called directly (no `attach`), the store only persists: readiness is the socket's.
@@ -145,7 +197,7 @@ export const bindProviders = (Y: EngineApi) => {
 				return release?.();
 			};
 		};
-		return Object.assign(sync, { target: `websocket:${room}`, persistName });
+		return Object.assign(sync, { bound: Infinity, target: `websocket:${room}`, persistName });
 	};
 
 	return {

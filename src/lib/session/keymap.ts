@@ -11,6 +11,7 @@
  * reaches the bindings only when no keydown offered that chord — an Android
  * `Unidentified` keydown, a virtual keyboard.
  */
+import { DEV } from 'esm-env';
 import type { Edytor, EdytorOptions } from '$lib/edytor.svelte.js';
 import type { InitializedPlugin } from '$lib/plugins.js';
 import { prevent } from '$lib/utils.js';
@@ -23,14 +24,29 @@ export type HotKey = (payload: {
 	prevent: (cb?: () => void) => void;
 }) => void;
 
-type Chars<S extends string> = S extends `${infer C}${infer R}` ? C | Chars<R> : never;
+type Chars<S extends string, Acc = never> = S extends `${infer C}${infer R}`
+	? Chars<R, Acc | C>
+	: Acc;
+/** The one-character keys a chord names: `KeyboardEvent.key`, lower case. */
+const CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789`~!@#$%^&*()-_=+[]{}\\|;:\'",.<>/?';
 // prettier-ignore
-type Key = Chars<'abcdefghijklmnopqrstuvwxyz0123456789'> | `arrow${'up' | 'down' | 'left' | 'right'}` | 'tab' | 'enter' | 'backspace' | 'delete' | 'space' | 'escape' | 'home' | 'end' | 'pageup' | 'pagedown';
-// prettier-ignore
-type Modifiers = 'mod' | 'alt' | 'ctrl' | 'shift' | 'mod+alt' | 'mod+ctrl' | 'mod+shift' | 'alt+ctrl' | 'alt+shift' | 'ctrl+shift';
+const NAMED = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'tab', 'enter', 'backspace', 'delete', 'space', 'escape', 'home', 'end', 'pageup', 'pagedown', 'insert', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'f10', 'f11', 'f12'] as const;
+type Key = Chars<typeof CHARS> | (typeof NAMED)[number];
+type Modifier = 'mod' | 'alt' | 'ctrl' | 'shift';
+/** One to three distinct modifiers, in any order. */
+type Modifiers = {
+	[A in Modifier]:
+		| A
+		| {
+				[B in Exclude<Modifier, A>]: `${A}+${B}` | `${A}+${B}+${Exclude<Modifier, A | B>}`;
+		  }[Exclude<Modifier, A>];
+}[Modifier];
+/** A chord: a key, after up to three modifiers in any order (matched case-insensitively). */
 export type HotKeyCombination = Key | `${Modifiers}+${Key}`;
 
 const MODIFIERS = ['mod', 'alt', 'ctrl', 'shift'];
+/** Every token a keydown's chord can carry (`chordOf`). */
+const TOKENS = new Set<string>([...MODIFIERS, ...CHARS, ...NAMED]);
 
 /** The canonical chord: lower case, modifiers in one order, then the key. */
 const chord = (parts: string[]) => {
@@ -76,7 +92,14 @@ export class Keymap {
 			builtInBindings
 		])
 			for (const [keys, binding] of Object.entries(rows ?? {})) {
-				const at = chord(keys.split(/\+(?!$)/));
+				const parts = keys.split(/\+(?!$)/);
+				const dead = parts.find((part) => !TOKENS.has(part.toLowerCase()));
+				if (DEV && dead !== undefined)
+					console.warn(
+						`[edytor] hotkey "${keys}" never fires: "${dead}" is neither a modifier ` +
+							'(mod, alt, ctrl, shift) nor a key name.'
+					);
+				const at = chord(parts);
 				this.table.set(at, [...(this.table.get(at) ?? []), binding as HotKey]);
 			}
 	}

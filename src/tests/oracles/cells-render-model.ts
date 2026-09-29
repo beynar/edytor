@@ -55,7 +55,7 @@ const cellsModel = (edytor: Any, cells: Any): BlockModel[] => {
 		if (!cell) {
 			return { id, type: '(no cell)', data: {}, children: [], parts: [], placeholder: false };
 		}
-		const transform = edytor.getBlockDefinition('block', cell.type)?.transformText;
+		const transform = edytor.definitionOf(cell.type)?.transformText;
 		return {
 			id,
 			type: cell.type,

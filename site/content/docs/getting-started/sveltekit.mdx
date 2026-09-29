@@ -43,7 +43,7 @@ export const load: PageServerLoad = async ({ params }) => {
 <Edytor readonly value={data.value} plugins={[codePlugin]} />
 ```
 
-Pass the same plugins you use to edit. Every block type in the document must be defined by a plugin, or rendering throws `Block type <type> is not defined`.
+Pass the same plugins you use to edit. A block type no plugin defines renders as a plain block (its text and children) and logs a warning in development.
 
 A readonly view that is given `sync` does not attach it: it shows `value` (or the `document` you pass) and never loads content from a provider. To show live collaborative content read-only, create the document yourself, attach the sync to it, and pass `document` with `readonly`. See [Collaboration](/docs/collaboration).
 

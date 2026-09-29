@@ -41,14 +41,18 @@ As in Notion, `> ` makes a toggle and `" ` a quote.
 
 A conversion happens when the character you type completes a prefix, and all of these hold:
 
-- the caret is collapsed at the end of the block's first text;
-- the text before the caret plus the typed character equals the prefix exactly (so `# ` works in an empty block, not after other words);
+- the caret is collapsed in the block's first text;
+- the text from the block's start to the caret plus the typed character equals the prefix exactly (so `# ` works at the start of a block, not after other words);
 - the block is convertible (not a void or island block, and not inside one);
 - the typed input is one character.
 
 Removing the prefix and converting the block are one operation (`setBlock`, with a `deleteContentAtRange` step for the prefix): a plugin that refuses either refuses both. When the conversion is refused, the character is inserted as normal text instead. After the conversion the caret is at the start of the converted block, or of its first child when the kind starts with one (a code block's first line).
 
-A kind with an `empty` shape, such as the divider, replaces the block's content and children. Other kinds keep them.
+As in Notion, text after the caret is kept: typing `- ` at the start of `hello` makes a bulleted item `hello`, with the caret before it.
+
+A kind with an `empty` shape, such as the divider, replaces the block's content and children, so its prefix converts only a block that holds nothing but the prefix: `---` typed before `hello` stays text. Other kinds keep them.
+
+A kind that renders no content, such as the divider, cannot hold the caret: the conversion also adds a fresh block of the parent's default kind after it, in the same step, and the caret lands there. Undo removes both.
 
 ## Inline markdown
 

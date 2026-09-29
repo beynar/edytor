@@ -51,8 +51,8 @@ A command is shown first, under its own name. If it is one document plan, each p
 | ----------------------------------------- | ------------------------------ | ------------------------------------------------------------ |
 | Typing                                    | `insertText`                   | none                                                         |
 | <kbd>Enter</kbd>                          | `splitBlock`, `insertBlockAfter` or `insertBlockBefore`; in an empty list item, `unNestBlock` or `setBlock` | the steps it plans |
-| <kbd>Backspace</kbd> at a block start     | `mergeBlockBackward`           | the child moves it plans                                     |
-| <kbd>Tab</kbd>, <kbd>Shift</kbd> + <kbd>Tab</kbd> | `nestBlock`, `unNestBlock` | the move it plans                                            |
+| <kbd>Backspace</kbd> at a block start     | `setBlock` on a kind other than the parent's default child (it turns into that default first); else `mergeBlockBackward` or `unNestBlock` | the child moves it plans |
+| <kbd>Tab</kbd>, <kbd>Shift</kbd> + <kbd>Tab</kbd> | `nestBlock`, `unNestBlock`; over several selected blocks, `moveBlocks` | the moves it plans                                           |
 | Deleting a range across blocks            | `deleteContentWithinSelection` | `deleteContentAtRange`, `removeBlock`, `mergeBlockBackward`  |
 | Deleting a block selection                | `deleteBlocks`                 | one `removeBlock` per selected block                         |
 | Paste or drop                             | `insertFlow`                   | `splitBlock`, `insertText`, `addChildBlocks`                 |

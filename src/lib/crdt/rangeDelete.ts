@@ -94,7 +94,8 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 			if (headDies && !spared.has(S)) doomed.add(S);
 			if (tailDies) doomed.add(E);
 
-			// Rescue what follows the range end into the topmost dying container's slot.
+			// Rescue what follows the range end right after the topmost dying container's slot
+			// (after, not at it: a concurrent delete of S revives a merged E above them, UW-20).
 			const home = sealed || top === undefined ? (tailGone ? E : undefined) : top;
 			const rescued = home === undefined ? [] : tailGone ? c.childrenIds(E) : [E];
 			for (let cur = E; home !== undefined && cur !== home; cur = parent(cur)!) {
@@ -120,7 +121,7 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 			if (!gone(E) && e.offset > 0)
 				writes.push({ op: 'deleteText', id: E, offset: 0, length: e.offset });
 			if (dest !== null) {
-				writes.push(...c.move(rescued, dest.parent, dest.index));
+				writes.push(...c.move(rescued, dest.parent, dest.index + 1));
 				if (tailGone && c.isIsland(E)) {
 					const type = c.defaultChild(dest.parent);
 					c.childrenIds(E).forEach((kid) => writes.push(...c.retype(kid, type)));

@@ -264,6 +264,15 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	}
 
 	if (isAtEndOfBlock) {
+		// A container's header (toggle, callout, quote) opens a first child (Notion);
+		// a closed toggle — the browser owns `open` — a sibling after it instead.
+		if (current.definition.container && current.hasChildren) {
+			const closed = (current.node as HTMLDetailsElement | undefined)?.open === false;
+			const opened = closed
+				? current.insertBlockAfter({ block: sibling })
+				: current.addChildBlock({ block: { type: edytor.defaultChild(current) }, index: 0 });
+			return caretAt(opened?.firstText, 0);
+		}
 		const currentBlock = startText.parent;
 		if (currentBlock.hasChildren && currentBlock.hasContent) {
 			// Lift the content above the children: one split at the end whose

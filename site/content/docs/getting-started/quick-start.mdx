@@ -105,7 +105,7 @@ With the instance bound, `edytor.value` returns the same JSON and is reactive, s
 
 `edytor.value` returns the same object until the next change. Clone it before you mutate it. Computing it serializes the whole document, so prefer `onChange` (or a debounced save) over reading it in many places.
 
-`value` is the initial content only. Updating the prop later does not replace the document, and `bind:value` is not written back. To change content after mount, use [commands](/docs/editor/commands).
+`value` is the initial content only. Updating the prop later does not replace the document, and `value` is not bindable (`bind:value` fails type-checking). To change content after mount, use [commands](/docs/editor/commands).
 
 ## Style the editor
 

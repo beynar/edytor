@@ -174,6 +174,69 @@ export const fixtures = defineFixtures([
 		} as never
 	}),
 	defineModelOperationFixture({
+		description: 'overtypes a closer typed before the same character in a code line',
+		input: emptyFixture,
+		plugins: [richTextPlugin, mentionPlugin, codePlugin],
+		value: {
+			children: [{ type: 'code', children: [{ type: 'codeLine', content: [{ text: 'f(a|)' }] }] }]
+		},
+		run: ({ edytor }) => runBeforeInput(edytor, { inputType: 'insertText', data: ')' }),
+		expectSelection: { startBlockPath: [0, 0], yStart: 4, yEnd: 4, isCollapsed: true },
+		output: {
+			value: {
+				children: [
+					{
+						type: 'code',
+						data: {},
+						children: [{ type: 'codeLine', data: {}, content: [{ text: 'f(a)' }] }]
+					}
+				]
+			}
+		} as never
+	}),
+	defineModelOperationFixture({
+		description: 'overtypes a closing quote in a code line',
+		input: emptyFixture,
+		plugins: [richTextPlugin, mentionPlugin, codePlugin],
+		value: {
+			children: [{ type: 'code', children: [{ type: 'codeLine', content: [{ text: '"|"' }] }] }]
+		},
+		run: ({ edytor }) => runBeforeInput(edytor, { inputType: 'insertText', data: '"' }),
+		expectSelection: { startBlockPath: [0, 0], yStart: 2, yEnd: 2, isCollapsed: true },
+		output: {
+			value: {
+				children: [
+					{
+						type: 'code',
+						data: {},
+						children: [{ type: 'codeLine', data: {}, content: [{ text: '""' }] }]
+					}
+				]
+			}
+		} as never
+	}),
+	defineModelOperationFixture({
+		description: 'does not pair an apostrophe typed inside a word in a code line',
+		input: emptyFixture,
+		plugins: [richTextPlugin, mentionPlugin, codePlugin],
+		value: {
+			children: [{ type: 'code', children: [{ type: 'codeLine', content: [{ text: 'don|' }] }] }]
+		},
+		run: ({ edytor }) => runBeforeInput(edytor, { inputType: 'insertText', data: "'" }),
+		expectSelection: { startBlockPath: [0, 0], yStart: 4, yEnd: 4, isCollapsed: true },
+		output: {
+			value: {
+				children: [
+					{
+						type: 'code',
+						data: {},
+						children: [{ type: 'codeLine', data: {}, content: [{ text: "don'" }] }]
+					}
+				]
+			}
+		} as never
+	}),
+	defineModelOperationFixture({
 		description: 'uses the auto-dot path without leaving the caret outside the text bounds',
 		input: (
 			<root>

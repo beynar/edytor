@@ -19,13 +19,14 @@ Every frame a socket sends is checked in this order. A refused frame is never ap
 3. **Identity.** An update that adds content under a client id owned by another user, or under an unregistered id that already has content, is refused. See [replicas](/docs/server/authorization#replicas).
 4. **Schema.** An update that writes a foreign schema stamp is refused. The same check covers updates waiting for a missing dependency: when an update would release a waiting one that carries a forged stamp, the waiting updates are discarded, the new update is applied, and its sender stays connected. Honest updates discarded this way come back at their writer's next sync.
 
-A refused socket is closed with code `1008` and reason `refused: <reason>` (`generation`, `replica`, `schema`, `malformed`, `identity`). A malformed frame, a text frame or an unknown message type counts as `malformed`.
+A refused socket is closed with code `1008` and reason `refused: <reason>` (`generation`, `replica`, `schema`, `malformed`, `identity`, `container`). A malformed frame, a text frame or an unknown message type counts as `malformed`. A refusal is final: the provider stops dialing instead of reconnecting.
 
 ## Identity and presence
 
 - The socket's identity (`user`, `replica`, `readOnly`) is saved in the socket's attachment, so it survives hibernation.
 - Presence is relayed without an `Awareness` instance (its timer would keep the object awake). A socket may publish presence only for its own client id; entries for other ids are dropped.
 - A new socket receives the presence of everyone connected. A socket that closes without saying goodbye is announced as gone, also after the room woke from hibernation.
+- An accepted presence entry is also sent back to its sender. A client alone in a room therefore hears from it at every presence renewal and is never closed as silent.
 - The presence snapshot lives in memory. After a wake it refills as clients renew their presence, every 15 seconds.
 
 ## Storage
@@ -33,10 +34,10 @@ A refused socket is closed with code `1008` and reason `refused: <reason>` (`gen
 The room stores the document in its own SQLite tables:
 
 - Every integrated update is appended as one record, split into rows under the platform's 2 MB row limit, in one transaction. Only then is it broadcast to the other sockets.
-- After `EDYTOR_COMPACT_AFTER` update records (500 by default), the room replaces all rows with one merged snapshot, atomically.
+- After `EDYTOR_COMPACT_AFTER` update records (500 by default), the room replaces all rows with one merged snapshot, atomically, once the message that made it due is acknowledged. A compaction that fails is logged as a `storage` refusal and retried later; the edit is already stored and nobody is disconnected.
 - Memory never runs ahead of storage. If an append fails, nothing is relayed or acknowledged, the live document is rebuilt from the stored rows as a restart would, and the sender's socket is closed with `1011`. Its provider reconnects and the handshake resends the edit.
-- A woken room rebuilds the document from its rows before it accepts any message. A room whose storage belongs to another edytor generation refuses every socket (`1011`).
-- The client-id registrations used for [identity](/docs/server/authorization#replicas) are stored next to the document.
+- A woken room rebuilds the document from its rows before it accepts any message. A room whose storage cannot be restored (another edytor generation, a torn record) refuses every socket with `1008` and reason `refused: container`, and the object keeps answering. See [generation cutover](#generation-cutover).
+- The client-id registrations used for [identity](/docs/server/authorization#replicas) are stored next to the document, and handed to [`onSave`](/docs/server/extending#save) with it. Compaction drops the registrations of ids that hold no content and belong to no open socket (a page that loaded and never wrote); such an id registers again at its next dial or write.
 
 ## Store before acknowledge
 
@@ -80,6 +81,25 @@ const { rows } = await env.ROOMS.getByName(documentId).compact();
 ```
 
 Compaction merges every stored update into one snapshot. It does not discard history the CRDT needs, so it never loses an edit.
+
+## Diagnostics
+
+`refusals` holds the newest 100 refusals (`MAX_REFUSALS`) of the running instance, each with its `reason` and `detail`; `refusalCounts` counts every refusal by reason. Both live in memory and restart empty; read them inside the object, or return them from an RPC method of your own. A `storage` entry is a failed append or compaction; an `orphan` entry is not a refusal but an id claimed after a [restore without a registry](/docs/server/extending#load).
+
+## Generation cutover
+
+A room refuses storage written by another edytor generation (see [migration](/docs/reference/migration)); bytes are never converted in place. To move a document across:
+
+1. Before deploying the new version, make sure `onSave` has mirrored the document as JSON (`value`).
+2. Deploy. Rooms of the old generation refuse every socket (`1008`, `refused: container`); `failure` is a `GenerationMismatchError`.
+3. Call `reset()` on the room, for example from an admin route. It deletes both tables in one transaction and starts again from `onLoad`.
+4. Have `onLoad` return the saved JSON. The room seeds it as the new generation's document.
+
+```ts
+await env.ROOMS.getByName(documentId).reset();
+```
+
+`reset()` throws for any other room: it only replaces a container of another generation.
 
 ## Limits
 

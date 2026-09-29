@@ -154,8 +154,8 @@ describe('G-e retained surface — status, backoff, liveness, auth, the socket s
 		});
 		await until(() => p.wsconnected);
 		// Fail the next dials: each unsuccessful reconnect doubles the wait,
-		// the cap keeps it at 50 ms.
-		p.wsUnsuccessfulReconnects = 10;
+		// the cap keeps it at 50 ms (below the 8 in a row past which it grows).
+		p.wsUnsuccessfulReconnects = 5;
 		const before = socketsOf(url).length;
 		const dropped = Date.now();
 		p.ws.drop();

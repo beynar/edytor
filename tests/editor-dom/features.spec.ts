@@ -561,8 +561,12 @@ test.describe('browser feature-route parity', () => {
 					text: child.content?.map((part) => part.text).join('') ?? ''
 				}));
 			})
+			// The click parks the caret at the callout's start, not at the stale
+			// offset 4: no text is deleted. Backspace at the start of a catalogue
+			// kind that is not its parent's default turns it into that default,
+			// text kept (UW-14, contract row `del.start.kind`).
 			.toEqual([
-				{ type: 'callout', text: 'task' },
+				{ type: 'paragraph', text: 'task' },
 				{ type: 'paragraph', text: 'after callout' }
 			]);
 

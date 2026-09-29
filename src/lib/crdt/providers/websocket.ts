@@ -6,10 +6,12 @@
  * Retained surface (D-24 G-e): `status`/`synced`/`connection-*` events,
  * `connect()`/`disconnect()`, awareness injection, auth `params` (read at
  * every dial, so a refreshed token reaches the next connection),
- * `WebSocketPolyfill`, exponential-backoff reconnect (`maxBackoffTime`),
- * liveness, `resyncInterval`, and the BroadcastChannel leg (cross-tab
- * sync, on by default; `disableBc` opts out). Retired: `protocols`, the
- * `sync` alias, `wsconnecting`.
+ * `WebSocketPolyfill`, exponential-backoff reconnect (`maxBackoffTime`,
+ * growing to 30 s for a room that stays unreachable), liveness,
+ * `resyncInterval`, and the BroadcastChannel leg (cross-tab sync, on by
+ * default; `disableBc` opts out). A refusal close (`1008`, `4xxx`) is
+ * terminal: no redial. Retired: `protocols`, the `sync` alias,
+ * `wsconnecting`.
  *
  * Cross-tab: tabs of one room share a BroadcastChannel named after the
  * server URL and room, so they sync with each other with or without the
@@ -52,10 +54,12 @@ import {
 	createChunkReader,
 	emitFailed,
 	initLifecycle,
+	LOCAL_PRESENCE_LOSS,
 	markSynced,
 	messageAuth,
 	messageChunk,
 	messageSaved,
+	SyncRefusedError,
 	type LifecycleHost,
 	type ProtocolMismatch,
 	type RoomMessageHandler,
@@ -65,6 +69,12 @@ import type { EngineApi, YDoc } from '../engine-api.js';
 
 // @todo - this should depend on awareness.outdatedTime
 const messageReconnectTimeout = 30000;
+/** Consecutive dials that never synced before the backoff cap starts to grow. */
+const unreachableAfter = 8;
+/** The backoff cap an unreachable room grows to. */
+const unreachableBackoffTime = 30000;
+/** A close code that refuses this client for good: policy (`1008`) or an application code (`4xxx`). */
+const isRefusal = (code: number) => code === 1008 || (code >= 4000 && code < 5000);
 
 export type WebsocketProviderEvents = {
 	status: (event: { status: 'connected' | 'disconnected' | 'connecting' }) => void;
@@ -90,10 +100,20 @@ export type WebsocketProviderEvents = {
 	/** Server refused access — the auth reply carried a denial reason. */
 	'permission-denied': (reason: string, provider: unknown) => void;
 	/**
+	 * The server closed the socket with a refusal code (`1008`, `4xxx`):
+	 * the provider stopped dialing. Fired once, synced before or not.
+	 */
+	refused: (refusal: SyncRefusedError, provider: unknown) => void;
+	/**
+	 * A dial ended before its connection synced (refused upgrade, dropped
+	 * handshake, server down): `attempts` in a row, the next in `nextRetryMs`.
+	 */
+	unreachable: (state: { attempts: number; nextRetryMs: number }, provider: unknown) => void;
+	/**
 	 * Terminal sync failure (the D4 contract): the provider never synced —
-	 * destroyed before any handshake completed, or the server denied
-	 * permission. Emitted at most once; never once `hasSynced`, never on a
-	 * transient (reconnectable) disconnect.
+	 * destroyed before any handshake completed, refused, or the server
+	 * denied permission. Emitted at most once; never once `hasSynced`, never
+	 * on a transient (reconnectable) disconnect.
 	 */
 	failed: (error: unknown, provider: unknown) => void;
 };
@@ -174,6 +194,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			}
 		},
 		heard: (provider) => {
+			provider.wsUnsuccessfulReconnects = 0;
 			provider.synced = true;
 		}
 	});
@@ -198,6 +219,21 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 	};
 
 	/**
+	 * `100 ms × 2ⁿ` for the n-th dial in a row that never synced, capped at
+	 * `maxBackoffTime`; past `unreachableAfter` such dials the cap itself
+	 * doubles, up to `unreachableBackoffTime`.
+	 */
+	const reconnectDelay = (provider: Provider) => {
+		const n = provider.wsUnsuccessfulReconnects;
+		const grown = provider.maxBackoffTime * math.pow(2, n - unreachableAfter);
+		const cap =
+			n > unreachableAfter
+				? math.max(provider.maxBackoffTime, math.min(unreachableBackoffTime, grown))
+				: provider.maxBackoffTime;
+		return math.min(math.pow(2, n) * 100, cap);
+	};
+
+	/**
 	 * Outsource so a new websocket connection is created immediately —
 	 * `ws.onclose` is not always fired on network issues.
 	 */
@@ -210,28 +246,39 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			provider.emit('connection-close', [event, provider]);
 			provider.ws = null;
 			ws.close();
+			const heard = provider.synced;
 			if (provider.wsconnected) {
 				provider.wsconnected = false;
 				provider.synced = false;
-				// update awareness (all users except local left)
+				// Every other presence left — for this replica only: the
+				// origin keeps the store from relaying the loss to other tabs.
 				removeAwarenessStates(
 					provider.awareness,
 					Array.from(provider.awareness.getStates().keys()).filter(
 						(client) => client !== provider.doc.clientID
 					),
-					provider
+					LOCAL_PRESENCE_LOSS
 				);
 				provider.emit('status', [{ status: 'disconnected' }]);
-			} else {
-				provider.wsUnsuccessfulReconnects++;
 			}
-			// Start with no reconnect timeout and increase by exponential
-			// backoff starting with 100ms.
-			setTimeout(
-				setupWS,
-				math.min(math.pow(2, provider.wsUnsuccessfulReconnects) * 100, provider.maxBackoffTime),
-				provider
-			);
+			if (event && isRefusal(event.code)) {
+				// Terminal: the next dial would be refused the same way.
+				provider.shouldConnect = false;
+				const refusal = new SyncRefusedError(event.code, event.reason);
+				provider.emit('refused', [refusal, provider]);
+				emitFailed(provider, refusal);
+				return;
+			}
+			if (!provider.shouldConnect) return;
+			// A dial that never synced counts (an opened-then-refused socket
+			// too, so it cannot redial at once); a synced one starts over.
+			if (!heard) provider.wsUnsuccessfulReconnects++;
+			const nextRetryMs = reconnectDelay(provider);
+			if (!heard) {
+				const attempts = provider.wsUnsuccessfulReconnects;
+				provider.emit('unreachable', [{ attempts, nextRetryMs }, provider]);
+			}
+			setTimeout(setupWS, nextRetryMs, provider);
 		}
 	};
 
@@ -246,6 +293,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 
 			websocket.onmessage = (event) => {
 				provider.wsLastMessageReceived = time.getUnixTime();
+				// A keepalive reply (a server's text auto-response): liveness only.
+				if (event.data === 'pong') return;
 				try {
 					room.readMessage(provider, new Uint8Array(event.data as ArrayBuffer), true, (buf) =>
 						websocket.send(buf)
@@ -263,7 +312,6 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			websocket.onopen = () => {
 				provider.wsLastMessageReceived = time.getUnixTime();
 				provider.wsconnected = true;
-				provider.wsUnsuccessfulReconnects = 0;
 				provider.emit('status', [{ status: 'connected' }]);
 				// The join rule: say hello; the members answer what we lack.
 				for (const buf of room.hello(provider)) websocket.send(buf);

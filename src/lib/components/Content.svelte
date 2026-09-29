@@ -29,7 +29,7 @@
 	});
 	/** Bumped only by the observer's repair of foreign damage: re-creates the text elements. */
 	const epoch = $derived(edytor.cells?.epoch(id) ?? 0);
-	const transform = $derived(cell && edytor.getBlockDefinition('block', cell.type).transformText);
+	const transform = $derived(cell && edytor.definitionOf(cell.type).transformText);
 	// The placeholder attribute (§2.4): withheld in the block a composition is in.
 	const placeholder = $derived(edytor.placeholderAt(id));
 

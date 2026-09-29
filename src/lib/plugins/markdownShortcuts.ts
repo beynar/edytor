@@ -92,12 +92,17 @@ export const markdownShortcutsPlugin: Plugin = (edytor) => {
 				return;
 			}
 
-			// A collapsed caret at the end of the block's first text, completing a kind's prefix.
+			// A collapsed caret in the block's first text, completing a kind's prefix
+			// typed from the block's start: the text after the caret is kept (Notion).
 			if (!isCollapsed || !startText || startText !== block.firstText) return;
-			if (yStart !== startText.length || payload.value.length !== 1 || !block.convertible) return;
+			if (payload.value.length !== 1 || !block.convertible) return;
 			const prefix = startText.stringContent.slice(0, yStart);
 			const row = edytor.kinds.find((kind) => kind.markdown?.includes(prefix + payload.value));
 			if (!row) return;
+			// A replacing kind (divider, code) would erase the rest: only a block holding just the prefix.
+			const alone =
+				yStart === startText.length && startText === block.lastText && !block.hasChildren;
+			if (row.replaces && !alone) return;
 
 			prevent(() => {
 				if (applyShortcut(block, row, prefix.length)) return;

@@ -32,6 +32,14 @@ facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' });
 
 Offsets count what the block displays: one per UTF-16 text unit and one per inline block. Offsets out of range are clamped.
 
+`toBlockSpec(block, { freshIds? })` (from `edytor` or `edytor/crdt/edytor`) turns a canonical `JSONBlock` (from `toJSON`, `blockJSON`, a template or an import) into a `BlockSpec`: it keeps the ids the JSON carries and mints the missing ones; `freshIds: true` mints every id, so the result can be inserted beside its source.
+
+```ts
+import { toBlockSpec } from 'edytor/crdt/edytor';
+
+facade.insertBlock({ parent: null, index: 1 }, toBlockSpec(facade.blockJSON('p1'), { freshIds: true }));
+```
+
 ## Results
 
 Every operation returns an `OpResult`:
@@ -57,15 +65,16 @@ type OpResult = {
 | `moveBlock(id, dest)` | the block | Keeps the block's identity. Refused exactly when `canPlace([id], dest.parent)` is `false`. |
 | `moveBlocks(ids, dest)` | the blocks, in request order | One step; placed consecutively at `dest.index`. |
 | `nestBlock(id, parent)` | the block | Moves it to the end of `parent`'s children. |
-| `unNestBlock(id)` | the block | Moves it right after its parent. |
+| `unNestBlock(id)` | the block | Moves it right after its parent; the siblings that followed it become its last children (unless it is void or an island). |
+| `unNestBlocks(ids)` | the blocks | The same for sibling blocks in document order, as one step: the siblings after the last one become its children. |
 | `splitBlock(id, offset, newId, tail?)` | `newId` | The text after `offset` and the children move to the new sibling. `tail` is `{ type, data? }`; default: the source's. Refused on void blocks. |
 | `mergeBlocks(from, into)` | `into` | `from`'s content joins `into`, and its children become `into`'s last children. |
-| `mergeBackward(id)` | the surviving block | Merges `id` into the previous block in document order; its children take its place. |
+| `mergeBackward(id)` | the surviving block | Merges `id` into the previous block in document order; its children take its place, ranked right after it. |
 | `mergeForward(id)` | `id` | Pulls the next block in document order into `id`. |
 | `deleteBlock(id, { keepChildren? })` | `id` | Children take the block's place unless `keepChildren: false`. Refused when the block is not live. |
 | `deleteBlocks(ids)` | the deleted roots | Deletes exactly these blocks; their unselected children take their places. |
-| `setBlock(id, { type?, data?, content?, children? })` | `id` | `type` and `data` update in place; `content` and `children` replace everything (new children need unused ids, or `reason: 'id-collision'`). |
-| `setBlockType(id, type)` | `id` | |
+| `setBlock(id, { type?, data?, content?, children? })` | `id` | `type` and `data` update in place; `content` and `children` replace everything (new children need unused ids, or `reason: 'id-collision'`). Refused with `children` for a void kind. |
+| `setBlockType(id, type)` | `id` | To a void kind, the block's children move out, right after it. |
 | `setBlockData(id, data)` | `id` | Replaces the whole `data` object. |
 | `duplicateBlock(id, freshId)` | the copy | Copies the subtree after `id`; `freshId(oldId)` names each copied block. |
 
@@ -161,7 +170,7 @@ const off = facade.onChange((change) => {
 | Field | Type | Description |
 | --- | --- | --- |
 | `added` | `Map<BlockId, ProjectedBlock>` | Newly visible blocks, with their subtree. |
-| `removed` | `Set<BlockId>` | Blocks no longer visible (deleted, merged away, or under a deleted parent). |
+| `removed` | `Set<BlockId>` | Blocks no longer visible (deleted or merged away). A block under a deleted parent is not removed: it takes the parent's place. |
 | `moved` | `Set<BlockId>` | Blocks whose parent or position changed. |
 | `meta` | `Map<BlockId, { type, data? }>` | Blocks whose type or data changed. |
 | `content` | `Map<BlockId, readonly ContentRun[]>` | Blocks whose visible content changed, with the new runs. |

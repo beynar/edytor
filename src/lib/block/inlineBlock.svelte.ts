@@ -1,6 +1,6 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { InlineBlockDefinition } from '$lib/plugins.js';
-import { cloneJson, type JSONInlineBlock } from '$lib/utils/json.js';
+import type { JSONInlineBlock } from '$lib/utils/json.js';
 import type { Block } from './block.svelte.js';
 import { clearDomSelection } from '$lib/selection/domSelection.js';
 import type { Text } from '$lib/text/text.svelte.js';
@@ -61,9 +61,9 @@ export class InlineBlock {
 		return this.parent.content.indexOf(this);
 	}
 
-	/** Write the atom's `data` payload. */
+	/** Replace the atom's `data` — the block's `setInlineData` command (readonly, hooks). */
 	setData = (data: Record<string, unknown>): void => {
-		this.parent.model?.setInlineData(this.id, cloneJson(data));
+		this.parent.setInlineData({ id: this.id, data });
 	};
 
 	/** The atom is shown by a live block. */

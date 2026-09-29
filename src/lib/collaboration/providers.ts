@@ -25,7 +25,9 @@ export type { EdytorSync, EdytorSyncCleanup, EdytorSyncPayload, WebsocketSync, A
 
 export type IndexeddbSyncOptions = CrdtIndexeddbSyncOptions;
 
-export type WebsocketSyncOptions = Omit<CrdtWebsocketSyncOptions, 'WebSocketPolyfill'> & {
+// Distributive: the options are a union over the `{server, room}` / deprecated `{serverUrl, roomName}` names.
+type WithoutPolyfill<O> = O extends unknown ? Omit<O, 'WebSocketPolyfill'> : never;
+export type WebsocketSyncOptions = WithoutPolyfill<CrdtWebsocketSyncOptions> & {
 	WebSocketPolyfill?: typeof WebSocket;
 };
 

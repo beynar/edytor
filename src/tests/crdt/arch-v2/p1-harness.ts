@@ -22,6 +22,8 @@ import { Y } from '../../../lib/crdt/engine.js';
 import { bindCrdt, createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import { setDocRand } from '../../../lib/crdt/rand.js';
 import { mulberry32 } from '../harness/rng.js';
+import { wellFormedProblems, type MergeRecord } from '../harness/assert/well-formed.js';
+import { hiddenUnderDeleted, registryIdentity, succeeds } from '../harness/ops/model-ops.js';
 
 export const crdt = bindCrdt(Y);
 
@@ -58,14 +60,59 @@ export const seedUpdate = (seeds: readonly SeedBlock[], semantics?: unknown): Ui
 export type Replica = ReturnType<typeof replica>;
 
 /**
+ * An applied merge plus the geometry it decided: the resolved slot of every
+ * block it names and of their ancestors. The order it pins holds only while
+ * that geometry does — a later or concurrent move of any of them (or an
+ * undo) makes the record moot, never a violation.
+ */
+export type P1Merge = MergeRecord & { slots: [string, string][] };
+
+const slotKey = (ed, id: string): string => JSON.stringify(ed.slotOf(id));
+
+/** The records whose geometry still holds on `ed`. */
+const liveMerges = (ed, merges: readonly P1Merge[] = []): MergeRecord[] =>
+	merges.filter((m) => m.slots.every(([id, key]) => slotKey(ed, id) === key));
+
+/**
+ * Record every applied facade merge into `merges` (the `merge-order`
+ * oracle input): the survivor, the source and the source's children,
+ * read before the write, and the geometry right after it.
+ */
+const recordMerges = (ed, merges: P1Merge[]) => {
+	const record = (name: string, pick: (...args) => [string | null, string | null]) => {
+		const op = ed[name];
+		ed[name] = (...args) => {
+			const [from, into] = pick(...args);
+			const kids = from === null ? [] : ed.childrenIds(from);
+			const named = from === null ? [] : [from, ...ed.ancestorsOf(from)];
+			const result = op(...args);
+			if (from !== null && into !== null && result.status === 'applied') {
+				for (const id of [into, ...kids]) named.push(id, ...ed.ancestorsOf(id));
+				const slots = [...new Set(named)].map((id): [string, string] => [id, slotKey(ed, id)]);
+				merges.push({ from, into, kids, slots });
+			}
+			return result;
+		};
+	};
+	record('mergeBlocks', (from, into) => [from, into]);
+	record('mergeForward', (id) => [ed.next(id), id]);
+	record('mergeBackward', (id) => {
+		const prev = ed.previous(id);
+		return prev !== null ? [id, prev] : [ed.next(id), id];
+	});
+};
+
+/**
  * A replica: a document loaded from `seed`, a fixed client id, a
  * deterministic rank stream, and the log of every update it authored.
+ * After every transaction (local or remote) the replica's state is held to
+ * the named `wellFormed` invariants; a break lands in `problems`.
  */
 export const replica = (
 	name: string,
 	seed: Uint8Array,
 	clientID: number,
-	opts: { semantics?: unknown; salt?: number } = {}
+	opts: { semantics?: unknown; salt?: number; merges?: P1Merge[] } = {}
 ) => {
 	const document = loadDocument(seed, {
 		actor: { id: name },
@@ -77,10 +124,30 @@ export const replica = (
 	setDocRand(doc, mulberry32(clientID * 7919 + (opts.salt ?? 0)));
 	const log: Uint8Array[] = [];
 	const problems: string[] = [];
+	const ed = document.facade;
+	const merges = opts.merges ?? [];
+	recordMerges(ed, merges);
+	const identities = new Map<string, string>();
+	const check = (): void => {
+		// Invariants hold on causally closed states: an out-of-order delivery may
+		// apply a delete whose replacement is still pending.
+		if (doc.store.pendingStructs !== null || doc.store.pendingDs !== null) return;
+		for (const p of wellFormed(ed, { doc, merges, identities }))
+			if (!problems.includes(`${name}: ${p}`)) problems.push(`${name}: ${p}`);
+	};
+	// Held after every facade write, delivery and history step — not from
+	// the engine's `update` event, which is no read point of the contract.
+	for (const key of [...Object.keys(ed.prepare), 'apply', 'transact']) {
+		const op = ed[key];
+		ed[key] = (...args) => {
+			const result = op(...args);
+			check();
+			return result;
+		};
+	}
 	doc.on('update', (update: Uint8Array, origin: unknown) => {
 		if (origin !== REMOTE) log.push(update);
 	});
-	const ed = document.facade;
 	const r = {
 		name,
 		document,
@@ -94,6 +161,7 @@ export const replica = (
 			const { applied, problem } = crdt.sync.applyRemote(doc, update, REMOTE);
 			if (problem !== null) problems.push(`${name}: admission problem ${JSON.stringify(problem)}`);
 			else if (!applied) problems.push(`${name}: update not applied`);
+			check();
 		},
 		receiveAll(updates: readonly Uint8Array[]) {
 			for (const u of updates) r.receive(u);
@@ -104,8 +172,16 @@ export const replica = (
 			fn();
 			return log.slice(from);
 		},
-		undo: () => document.history.undo(),
-		redo: () => document.history.redo(),
+		undo: () => {
+			const item = document.history.undo();
+			check();
+			return item;
+		},
+		redo: () => {
+			const item = document.history.redo();
+			check();
+			return item;
+		},
 		/** Updates the engine holds back (missing dependencies). */
 		pending: () => doc.store.pendingStructs !== null || doc.store.pendingDs !== null,
 		canonical: () => JSON.stringify(ed.toJSON()),
@@ -165,20 +241,50 @@ export const quiesce = (reps: Replica[], limit = 8) => {
 	throw new Error(`no quiescence after ${limit} rounds`);
 };
 
-/** A fresh document built from `r`'s bytes alone (the binary reload of §8). */
-export const reloadCanonical = (r: Replica): string => {
-	const fresh = loadDocument(Y.encodeStateAsUpdate(r.doc), { actor: { id: `${r.name}-reload` } });
+/**
+ * A fresh document built from `r`'s bytes alone (the binary reload of §8).
+ * With `problems`, the reloaded document is also held to `wellFormed`.
+ */
+export const reloadCanonical = (
+	r: Replica,
+	problems?: string[],
+	ctx: { semantics?: unknown; merges?: readonly P1Merge[] } = {}
+): string => {
+	const fresh = loadDocument(Y.encodeStateAsUpdate(r.doc), {
+		actor: { id: `${r.name}-reload` },
+		semantics: ctx.semantics
+	});
 	const out = JSON.stringify(fresh.facade.toJSON());
+	problems?.push(
+		...wellFormed(fresh.facade, { doc: fresh.doc, merges: ctx.merges }).map(
+			(p) => `${r.name}-reload: ${p}`
+		)
+	);
 	fresh.destroy();
 	return out;
 };
 
 /**
  * Structural well-formedness, checked test-side on the projection: every
- * block id appears once, every visible character's identity once.
+ * block id appears once, every visible character's identity once — plus the
+ * named semantic invariants (`harness/assert/well-formed.ts`) over the
+ * facade's roles, the recorded `merges` and the replica's first-seen
+ * registry identities.
  */
-export const wellFormed = (ed): string[] => {
-	const problems: string[] = [];
+export const wellFormed = (
+	ed,
+	ctx: { doc?: unknown; merges?: readonly P1Merge[]; identities?: Map<string, string> } = {}
+): string[] => {
+	const { doc } = ctx;
+	const problems: string[] = wellFormedProblems({
+		roots: ed.toJSON().children,
+		isVoid: ed.isVoid,
+		merges: liveMerges(ed, ctx.merges),
+		identityOf: doc && ((id: string) => registryIdentity(doc, id)),
+		succeeds: doc && ((later: string, earlier: string) => succeeds(doc, later, earlier)),
+		identities: ctx.identities,
+		hiddenUnderDeleted: doc && (() => hiddenUnderDeleted(doc))
+	});
 	const ids = new Set<string>();
 	const atoms = new Set<string>();
 	const visit = (b, parent: string | null) => {
@@ -253,15 +359,17 @@ export const converge = (
 	const seed = seedUpdate(seeds, opts.semantics);
 	const outcomes: Outcome[] = [];
 	for (const ids of opts.assignments ?? CLIENT_IDS[count] ?? CLIENT_IDS[3]) {
+		// One merge record for every replica: each is held to every peer's merges.
+		const merges: P1Merge[] = [];
 		const reps = ids
 			.slice(0, count)
-			.map((cid, i) => replica(String.fromCharCode(65 + i), seed, cid, opts));
+			.map((cid, i) => replica(String.fromCharCode(65 + i), seed, cid, { ...opts, merges }));
 		program(reps);
 		const all = reps.flatMap((r) => r.log);
 		const results = new Set<string>();
 		const problems: string[] = [];
 		const observers = [all, [...all].reverse()].map((order, i) => {
-			const obs = replica(`observer${i}`, seed, 998 + i, opts);
+			const obs = replica(`observer${i}`, seed, 998 + i, { ...opts, merges });
 			for (const u of order) {
 				obs.receive(u);
 				obs.receive(u);
@@ -278,9 +386,9 @@ export const converge = (
 		for (const r of reps) {
 			if (r.pending()) problems.push(`${r.name}: pending after full delivery`);
 			problems.push(...r.problems);
-			problems.push(...wellFormed(r.ed).map((p) => `${r.name}: ${p}`));
+			problems.push(...wellFormed(r.ed, { doc: r.doc, merges }).map((p) => `${r.name}: ${p}`));
 			results.add(r.canonical());
-			results.add(reloadCanonical(r));
+			results.add(reloadCanonical(r, problems, { semantics: opts.semantics, merges }));
 		}
 		outcomes.push({ results, problems, ed: reps[0].ed, reps });
 	}

@@ -114,7 +114,7 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 				};
 			},
 			onBlockAttached: ({ node, block }) => {
-				if (!block.movable) return () => {};
+				if (!block.movable) return;
 				ids.set(node, block.id);
 				blocks.set(block.id, block);
 				if (!observer) near.add(block.id);

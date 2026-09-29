@@ -140,6 +140,10 @@ const rootDoc: EdytorDocument = createDocument({
 const rootReadiness: DocumentReadiness = rootDoc.readiness;
 const rootProjected: ProjectedDoc = rootDoc.facade.project();
 rootDoc.transact(() => rootDoc.facade.insertText(rootProjected.children[0]!.id, 0, '!'));
+rootDoc.facade.insertBlock(
+	{ parent: null, index: 1 },
+	bindings.toBlockSpec(rootDoc.facade.blockJSON('root-p1'), { freshIds: true })
+);
 rootDoc.history.undo();
 const rootAttribution: DocumentAttribution = rootDoc.attribution;
 const rootUpdate: Uint8Array = rootDoc.encode();

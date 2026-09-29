@@ -212,13 +212,33 @@ describe('markdown shortcuts: generated from kind records', () => {
 		// Notion: `"` + space is a quote, `>` + space a toggle.
 		['" ', { type: 'quote' }],
 		['> ', { type: 'toggle' }],
-		['---', { type: 'divider' }],
 		['```', { type: 'code', children: [{ type: 'codeLine' }] }]
 	])('"%s" converts to %o', async (typed, expected) => {
 		const { edytor, editor } = await render([codePlugin, markdownShortcutsPlugin]);
 		await type(editor, typed);
 		expect(canonicalTree(edytor)).toEqual([expected]);
 	});
+
+	// A divider renders no content: the caret moves to a fresh paragraph after
+	// it (Notion), and typing lands there — never in the divider.
+	row.each([
+		['"---"', [markdownShortcutsPlugin], '---'],
+		['"/divider" + Enter', [slashMenuPlugin], '/divider']
+	] as [string, Plugin[], string][])(
+		'%s converts to a divider with the caret in a paragraph after it',
+		async (_, plugins, typed) => {
+			const { edytor, editor } = await render(plugins);
+			await type(editor, typed);
+			if (typed.startsWith('/')) await enter();
+			expect(canonicalTree(edytor)).toEqual([{ type: 'divider' }, { type: 'paragraph' }]);
+			expect(edytor.selection.state.startBlock?.type).toBe('paragraph');
+			await type(editor, 'x');
+			expect(canonicalTree(edytor)).toEqual([
+				{ type: 'divider' },
+				{ type: 'paragraph', content: [{ text: 'x' }] }
+			]);
+		}
+	);
 
 	pin(
 		'an unregistered kind has no shortcut: "```" without the code extension types text',

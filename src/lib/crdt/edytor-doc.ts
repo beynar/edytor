@@ -36,12 +36,16 @@
  * ── Deterministic seed (R13, D-3) ───────────────────────────────────────
  *
  * `seed(doc, value)` applies ONE update built in a scratch doc whose writer
- * id is a 32-bit hash of (generation, canonical seed JSON): caller ids are
- * kept, missing ids are derived from the hash and position, ranks and
- * incarnation nonces come from the rand seam seeded by the hash. Peers
- * seeding the same value therefore write the SAME items — a late identical
- * seed is a no-op and never erases an edit — while different values union
- * (shared ids resolve by registry LWW). An empty value seeds one `defaultType` block. The update is applied
+ * id is a hash of (generation, canonical seed JSON) in a low band below
+ * 2^26: caller ids are kept, missing ids are derived from the hash and
+ * position, ranks and incarnation nonces come from the rand seam seeded by
+ * the hash. Peers seeding the same value therefore write the SAME items — a
+ * late identical seed is a no-op and never erases an edit — while different
+ * values union. A shared id resolves by registry LWW (the larger client id):
+ * against a block a live replica (uint53 id) wrote, the seed loses; between
+ * two different seeds, the larger hash wins and can replace a block edited
+ * since (UW-03 residual — never seed a changing snapshot beside a room).
+ * An empty value seeds one `defaultType` block. The update is applied
  * with a non-local origin: never an undo step, no attribution stamp.
  * Seeding is explicit: reads never create or normalize state.
  *
@@ -92,6 +96,7 @@
  * the document. Updates that produce no semantic diff (e.g. a losing
  * placement candidate or a meta-only write) are suppressed.
  */
+import { DEV } from 'esm-env';
 import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode, YUndoManager } from './engine-api.js';
 import { hash32, setDocRand } from './rand.js';
 import {
@@ -101,6 +106,7 @@ import {
 	DATA,
 	DEL_PREFIX,
 	ID,
+	INLINE_NODE,
 	LAST_CHANGED_ATTR,
 	TYPE,
 	SCHEMA
@@ -108,7 +114,9 @@ import {
 import {
 	bindModel,
 	displayParentOf,
+	displaySlotOf,
 	isLiveIn,
+	promotedRank,
 	type BlockId,
 	type BlockSpec,
 	type ContentItem,
@@ -130,7 +138,7 @@ import {
 	type RunView
 } from './text/runs.js';
 import { bindNodes, type DocBlock } from './nodes.js';
-import { followRedone, walkIdSetStructs, type IdSetLike } from './structs.js';
+import { followRedone, holdsPending, walkIdSetStructs, type IdSetLike } from './structs.js';
 import { ownTextIds } from './text/model.js';
 import {
 	bindBlockAttribution,
@@ -742,7 +750,15 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const blocks: JSONBlock[] = JSON.parse(
 			JSON.stringify(value.length > 0 ? value : [{ type: defaultType }], sorted)
 		);
-		const writer = hash32(`yjs-v14/${SCHEMA_NAME}@${SCHEMA_VERSION}:${JSON.stringify(blocks)}`);
+		// The writer lives in a low band, [1, 2^26): a registry race is won by
+		// the larger client id and live replicas draw uint53 ids, so a seed
+		// sharing a block id with live content loses to it (UW-03) but for a
+		// live id below the band (~2^-27). Two different seeds collide on one
+		// writer at ~2^-26. The band moved from the full 32 bits: an id-less
+		// template seeded late into a document seeded by an older build
+		// mints new ids and shows twice, once.
+		const writer =
+			hash32(`yjs-v14/${SCHEMA_NAME}@${SCHEMA_VERSION}:${JSON.stringify(blocks)}`) >>> 6 || 1;
 		let n = 0;
 		const mint = (prefix: string) => `${prefix}${writer.toString(36)}.${n++}`;
 		const specs = blocks.map((block) => jsonBlockToSpec(block, false, mint));
@@ -965,8 +981,13 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 
 		/** The one serializer (L14): `id`'s subtree in the public `JSONBlock` shape. */
 		const blockJSON = (id: BlockId): JSONBlock => {
+			const type = blockTypeOf(id);
+			// A registered block always has a type once its updates are all in (UW-01):
+			// `''` is the absent-id shape, or an out-of-order delivery's transient.
+			if (DEV && type === undefined && M.blockNodeOf(doc, id) !== null && !holdsPending(doc))
+				throw new Error(`[edytor-doc] block ${id} has no type`);
 			const block: JSONBlock = {
-				type: blockTypeOf(id) ?? '',
+				type: type ?? '',
 				id,
 				data: (blockDataOf(id) ?? {}) as JSONBlock['data']
 			};
@@ -1020,23 +1041,25 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const ancestorsOf = (id: BlockId, v: View = view()): BlockId[] => {
 			const out: BlockId[] = [];
 			if (!isLiveIn(v, id)) return out;
-			for (let p = displayParentOf(v.own, v.placements.get(id)!); p !== null; ) {
+			for (let p = displayParentOf(v.own, v.placements.get(id)!, v.placements); p !== null; ) {
 				out.push(p as BlockId);
-				p = displayParentOf(v.own, v.placements.get(p as BlockId)!);
+				p = displayParentOf(v.own, v.placements.get(p as BlockId)!, v.placements);
 			}
 			return out;
 		};
 
 		/**
 		 * The replicated slot of any registered block, dead or live (the seam
-		 * of a vanished endpoint, `anchors.seam`): its rank and its display
-		 * parent — the placement parent itself when that one is dead.
+		 * of a vanished endpoint, `anchors.seam`): where it displays, or would
+		 * ({@link displaySlotOf}) — the raw placement when no live parent is
+		 * reachable.
 		 */
 		const slotOf = (id: BlockId): { parent: BlockId | null; rank: string } | null => {
-			const pl = view().placements.get(id);
+			const v = view();
+			const pl = v.placements.get(id);
 			if (!pl) return null;
-			const parent = displayParentOf(view().own, pl);
-			return { parent: parent === DEAD ? pl.parent : (parent as BlockId | null), rank: pl.rank };
+			const slot = displaySlotOf(v.own, v.placements, pl);
+			return slot.parent === DEAD ? pl : (slot as { parent: BlockId | null; rank: string });
 		};
 
 		// ── roles (island/void) ───────────────────────────────────────────
@@ -1213,6 +1236,42 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * trackedOrigins, …) passed through verbatim — callers can add
 		 * origins but should not widen the scope beyond the registry.
 		 */
+		type UndoStep = { inserts: IdSetLike; deletes: IdSetLike };
+		/** The single-value attrs a history step must never leave undefined. */
+		const REPAIRED: Record<string, readonly string[]> = {
+			[BLOCK_NODE]: [TYPE, DATA, LAST_CHANGED_ATTR],
+			[INLINE_NODE]: [TYPE, DATA]
+		};
+		/**
+		 * Undo repair (UW-01), inside the history transaction. A popped step
+		 * deletes its own attr write and re-creates the value that write
+		 * overwrote — unless a concurrent write sits between them, where the
+		 * engine refuses the restore (the peer's value was deleted at
+		 * integration). The attr is then undefined on every replica. For each
+		 * block/atom attr the step overwrote whose tip is now deleted, write
+		 * back the overwritten value from the step's own `deletes`: undo
+		 * reverts to what this writer overwrote (`lastChangedBy` to the
+		 * previous author), and the repair syncs like any write.
+		 */
+		const repairAttrs = (step: UndoStep): void => {
+			const lost = new Map<EngineNode, Map<string, unknown>>();
+			walkIdSetStructs(Y, doc, step.deletes, (s) => {
+				const node = s.parent as EngineNode;
+				const key = s.parentSub;
+				if (key === null || !REPAIRED[node?.name]?.includes(key)) return;
+				if (step.inserts.has(s.id.client, s.id.clock)) return;
+				const values = (s as unknown as { content: { getContent(): unknown[] } }).content;
+				let attrs = lost.get(node);
+				if (attrs === undefined) lost.set(node, (attrs = new Map()));
+				attrs.set(key, values.getContent().at(-1));
+			});
+			for (const [node, attrs] of lost) {
+				if (node._item?.deleted) continue;
+				for (const [key, value] of attrs)
+					if (node.getAttr(key) === undefined) node.setAttr(key, value);
+			}
+		};
+
 		const createUndoManager = (
 			opts: ConstructorParameters<EngineApi['UndoManager']>[1] = {}
 		): YUndoManager => {
@@ -1225,9 +1284,18 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			// Text delete marks (P11): the marks are in scope (an undo removes the
 			// undoer's own), and the history restores text only as the marks allow.
 			// An undone creation withdraws the block instead of deleting it (P12).
+			const marks = D.history(doc, () => um);
 			const um: YUndoManager = new Y.UndoManager(
 				[M.registryOf(doc), D.scope(doc)] as unknown as YNode[],
-				{ ...opts, ...D.history(doc, () => um), withdraw: M.withdrawOnUndo(doc) } as never
+				{
+					...opts,
+					...marks,
+					onApply: (tr: unknown, step: UndoStep) => {
+						marks.onApply(tr, step);
+						repairAttrs(step);
+					},
+					withdraw: M.withdrawOnUndo(doc)
+				} as never
 			) as YUndoManager;
 			// A streamless block's own text (R2) is shared by every replica that
 			// typed into it first: no history step captures it, so undoing the
@@ -1454,7 +1522,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					: { op: 'setBlockData', id, data: value as JsonObj }
 			];
 		};
-		/** Delete (R3): marks on `id` and on what it displays; `id` and its subtree leave, `kept` children aside. */
+		/**
+		 * Delete (R3): `id` and its subtree leave, `kept` children aside. Every
+		 * member is marked with what it displays — an unmarked one would be
+		 * promoted into the deleted slot (`displaySlotOf`).
+		 */
 		const remove = (id: BlockId, kept: readonly BlockId[] = []): PlanStep => {
 			const removes: BlockId[] = [];
 			const walk = (b: BlockId): void => {
@@ -1462,7 +1534,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				for (const kid of childrenIds(b)) if (!kept.includes(kid)) walk(kid);
 			};
 			walk(id);
-			return { op: 'deleteBlock', id, marks: [...view().displays(id)], removes };
+			const marks = [...new Set(removes.flatMap((b) => view().displays(b)))];
+			return { op: 'deleteBlock', id, marks, removes };
 		};
 		const merge = (from: BlockId, into: BlockId): PlanStep => ({
 			op: 'mergeBlocks',
@@ -1528,12 +1601,26 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			if (moved.length === 0) return plan([], []);
 			return canPlace(moved, parent) ? plan(moved, move(moved, parent, dest.index)) : REFUSED;
 		};
-		/** Move `id` beside its parent (index = parent index + 1). */
-		const unNestBlock = (id: BlockId): Prepared => {
-			const pos = positionOf(ref(id));
+		/**
+		 * Outdent (UW-23): move sibling blocks `ids` (document order) right
+		 * after their parent, and hand the siblings that followed the last of
+		 * them to it as its last children — every outliner's Shift+Tab. A last
+		 * block that cannot adopt (void, island) leaves them with the parent.
+		 * One plan; refused as the move is. `ids`: the moved blocks.
+		 */
+		const unNestBlocks = (ids: readonly BlockId[]): Prepared => {
+			const moved = ids.map(ref);
+			const last = moved.at(-1);
+			const pos = last === undefined ? null : positionOf(last);
 			const ppos = pos?.parent != null ? positionOf(pos.parent) : null;
-			return ppos ? moveBlocks([id], { parent: ppos.parent, index: ppos.index + 1 }) : REFUSED;
+			if (!ppos || moved.some((id) => positionOf(id)?.parent !== pos!.parent)) return REFUSED;
+			const out = moveBlocks(moved, { parent: ppos.parent, index: ppos.index + 1 });
+			const after = childrenIds(pos!.parent).slice(pos!.index + 1);
+			if (!('writes' in out) || after.length === 0 || isVoid(last!) || isIsland(last!)) return out;
+			return plan(moved, [...out.writes, ...move(after, last!, Infinity)]);
 		};
+		/** Outdent one block (`unNestBlocks`). */
+		const unNestBlock = (id: BlockId): Prepared => unNestBlocks([id]);
 
 		/**
 		 * Split `id` at content `offset` into a new sibling `newId` (one boundary
@@ -1590,9 +1677,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 
 		/**
 		 * Baseline-shaped merge (both `mergeBackward` and `mergeForward`):
-		 * `from`'s children unnest to `from`'s vacated sibling slot — NOT
-		 * adopted into `into` — and, when `from` is an island, take the default
-		 * child of that slot's parent; then `from`'s content claims into `into`.
+		 * `from`'s children unnest right after `from`'s vacated sibling slot —
+		 * NOT adopted into `into` — and, when `from` is an island, take the
+		 * default child of that slot's parent; then `from`'s content claims
+		 * into `into`. Ranked after `from`, not at it: a concurrent delete of
+		 * `into` revives `from` above its former children (UW-20).
 		 */
 		const mergeUnnesting = (from: BlockId, into: BlockId): Prepared => {
 			const pos = canMerge(from, into) ? positionOf(from) : null;
@@ -1600,7 +1689,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const kids = childrenIds(from);
 			const reset = isIsland(from) ? defaultChild(pos.parent) : null;
 			const retype = reset === null ? [] : kids.flatMap((kid) => attr(kid, TYPE, reset));
-			return plan([into], [...move(kids, pos.parent, pos.index), ...retype, merge(from, into)]);
+			return plan([into], [...move(kids, pos.parent, pos.index + 1), ...retype, merge(from, into)]);
 		};
 
 		/**
@@ -1643,24 +1732,41 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				);
 			}
 			const roots = [...set].filter((id) => !set.has(positionOf(id)!.parent!));
+			const slots = view().kids;
 			const writes = roots.flatMap((root) => {
 				const pos = positionOf(root)!;
 				const chunk: BlockId[] = [];
-				const kids: [BlockId, BlockId][] = [];
-				const walk = (b: BlockId): void => {
+				const kids: { id: BlockId; from: BlockId; rank: string }[] = [];
+				// Each kept child moves to the rank read-time promotion gives it
+				// (`promotedRank`), so a block a peer puts under a member meanwhile
+				// takes the slot in the member's order among them. Right after the
+				// root: a flow placed in the root's slot precedes them.
+				const walk = (b: BlockId, slot: string): void => {
 					chunk.push(b);
-					for (const kid of childrenIds(b)) set.has(kid) ? walk(kid) : kids.push([kid, b]);
+					for (const kid of slots.get(b) ?? []) {
+						const rank = promotedRank(slot, kid.rank);
+						if (set.has(kid.id)) walk(kid.id, rank);
+						else kids.push({ id: kid.id, from: b, rank });
+					}
 				};
-				walk(root);
+				walk(root, slots.get(pos.parent)![pos.index]!.rank);
 				const reset = defaultChild(pos.parent);
-				const retype = kids.flatMap(([kid, from]) =>
-					isIsland(from) ? attr(kid, TYPE, reset) : []
-				);
+				const retype = kids.flatMap((k) => (isIsland(k.from) ? attr(k.id, TYPE, reset) : []));
 				const marks = [...new Set(chunk.flatMap((b) => view().displays(b)))];
-				// Ranked right after the root: a flow placed in the root's slot precedes them.
-				const kidIds = kids.map(([kid]) => kid);
+				const moved: PlanStep[] =
+					kids.length === 0
+						? []
+						: [
+								{
+									op: 'moveBlocks',
+									ids: kids.map((k) => k.id),
+									parent: pos.parent,
+									index: pos.index + 1,
+									ranks: kids.map((k) => k.rank)
+								}
+							];
 				return [
-					...move(kidIds, pos.parent, pos.index + 1),
+					...moved,
 					...retype,
 					{ op: 'deleteBlock', id: root, marks, removes: chunk } as PlanStep
 				];
@@ -1672,10 +1778,29 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const deleteBlock = (id: BlockId, opts: { keepChildren?: boolean } = {}): Prepared =>
 			deleteBlocks([id], opts.keepChildren === false);
 
-		/** Set the block type (attr write — the block keeps its identity). */
+		/**
+		 * The target role decides (UW-21): nothing renders a void's children,
+		 * so a block retyped to a void kind hands them to the slot right after
+		 * it — the island-merge rule (an island's children take the slot
+		 * parent's default child type).
+		 */
+		const retypeSteps = (id: BlockId, type: string): PlanStep[] => {
+			const kids = childrenIds(id);
+			const pos = positionOf(id);
+			const steps = attr(id, TYPE, type);
+			if (roleOf(type)?.void !== true || kids.length === 0 || pos === null) return steps;
+			const reset = isIsland(id) ? defaultChild(pos.parent) : null;
+			return [
+				...steps,
+				...move(kids, pos.parent, pos.index + 1),
+				...(reset === null ? [] : kids.flatMap((kid) => attr(kid, TYPE, reset)))
+			];
+		};
+
+		/** Set the block type (attr write — the block keeps its identity; see `retypeSteps`). */
 		const setBlockType = (id: BlockId, type: string): Prepared => {
 			id = ref(id);
-			return live(id) ? plan([id], attr(id, TYPE, ref(type))) : REFUSED;
+			return live(id) ? plan([id], retypeSteps(id, ref(type))) : REFUSED;
 		};
 
 		/** Replace the block's `data` payload (whole-attr write). */
@@ -1687,8 +1812,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/**
 		 * Baseline `setBlock`: `type`/`data` update the block in place;
 		 * `content`/`children` REPLACE wholesale — explicit replacement is a
-		 * new-identity operation. All-or-nothing (D-12): `children` on a `void`
-		 * block, or a replacement id that is already taken (a live or deleted
+		 * new-identity operation; a retype to a void kind without `children`
+		 * unnests the current ones (`retypeSteps`). All-or-nothing (D-12): children
+		 * for a block that is `void` after the write, or a replacement id that
+		 * is already taken (a live or deleted
 		 * block, the replaced children included, or a duplicate inside the
 		 * replacement), refuses before any write — `id-collision` for the
 		 * latter. A caller wanting a child back re-creates it with a fresh id.
@@ -1706,10 +1833,16 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const content = value.content?.map(sanitizeItem);
 			const children = value.children?.map(sanitizeSpec);
 			if (!live(id) || (content !== undefined && !contentTarget(id))) return REFUSED;
-			if (children !== undefined && isVoid(id)) return REFUSED;
+			const type = value.type === undefined ? undefined : ref(value.type);
+			const toVoid = type === undefined ? isVoid(id) : roleOf(type)?.void === true;
+			if (children?.length && toVoid) return REFUSED;
 			if (children !== undefined && M.collides(doc, children)) return refused('id-collision');
 			const writes: PlanStep[] = [
-				...(value.type === undefined ? [] : attr(id, TYPE, ref(value.type))),
+				...(type === undefined
+					? []
+					: children === undefined
+						? retypeSteps(id, type)
+						: attr(id, TYPE, type)),
 				...(value.data === undefined ? [] : attr(id, DATA, sanitizeWireJson(value.data)))
 			];
 			if (content !== undefined) {
@@ -1893,6 +2026,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			nestBlock: (id: BlockId, parent: BlockId) =>
 				moveBlocks([id], { parent, index: childrenIds(ref(parent)).length }),
 			unNestBlock,
+			unNestBlocks,
 			splitBlock,
 			mergeBlocks,
 			mergeBackward,

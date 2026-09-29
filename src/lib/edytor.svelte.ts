@@ -1,4 +1,5 @@
 import { getContext, hasContext, setContext, type Snippet, onMount, mount, unmount } from 'svelte';
+import { DEV } from 'esm-env';
 import { onBeforeInput } from './events/onBeforeInput.js';
 import { onCopy } from './events/onCopy.js';
 import { onCut } from './events/onCut.js';
@@ -9,6 +10,7 @@ import {
 import { onInput } from './events/onInput.js';
 import { onPaste } from './events/onPaste.js';
 import { preventUnsupportedDrop } from './events/onDrop.js';
+import { attachFocus, selectionIsInside } from './events/onFocus.js';
 import { Attempts } from './session/attempt.js';
 import { Composition } from './session/composition.svelte.js';
 import { type JSONBlock, type JSONDoc } from '$lib/utils/json.js';
@@ -33,7 +35,6 @@ import type { Block } from './block/block.svelte.js';
 import type { Text } from './text/text.svelte.js';
 import { Handles } from './session/handles.js';
 import { id } from './utils.js';
-import { SvelteMap } from 'svelte/reactivity';
 import { Y } from '$lib/crdt/engine.js';
 import {
 	attachDocument,
@@ -70,7 +71,7 @@ import type {
 	Placeholder
 } from './plugins.js';
 import { on } from 'svelte/events';
-import { Keymap, type HotKey } from './session/keymap.js';
+import { Keymap, type HotKey, type HotKeyCombination } from './session/keymap.js';
 import { TRANSACTION } from './constants.js';
 import type { InlineBlock } from './block/inlineBlock.svelte.js';
 import {
@@ -93,7 +94,6 @@ import {
 	getDomSelection,
 	getDomSelectionSnapshot
 } from './selection/domSelection.js';
-import { getYIndex } from './selection/selection.utils.js';
 
 export type Snippets = {
 	// `mentionInlineBlock` satisfies BOTH the `*InlineBlock` and `*Block`
@@ -115,7 +115,7 @@ export type Snippets = {
 export type EdytorOptions = {
 	readonly?: boolean;
 	snippets?: Snippets;
-	hotKeys?: Record<string, HotKey>;
+	hotKeys?: Partial<Record<HotKeyCombination, HotKey>>;
 	plugins?: Plugin[];
 	/**
 	 * The assembled document this view renders — shared facade, history,
@@ -142,9 +142,6 @@ export type RootBlock = Block & {
 	readonly depth: 0;
 };
 
-const getEventTimeStamp = (event: Event | undefined) =>
-	event?.timeStamp || (typeof performance === 'undefined' ? Date.now() : performance.now());
-
 /**
  * One `bindCrdt` binding shared by every `Edytor` — the binding exists for
  * legacy consumers only (peer-facade helpers in tests, migration, provider
@@ -157,6 +154,9 @@ const getEventTimeStamp = (event: Event | undefined) =>
  * tests) stays legitimate.
  */
 const sharedCrdt = bindCrdt(Y);
+
+/** The definition of a kind the view does not register: no roles, no snippet (`definitionOf`). */
+export const UNKNOWN_KIND: BlockDefinition = Object.freeze({});
 
 /** Register definitions a first extension has not: a bare snippet is `{ snippet }`. */
 const define = <T extends object>(into: Map<string, T>, definitions: object = {}) => {
@@ -174,11 +174,10 @@ export class Edytor {
 	/** The kind catalogue: one row per preset of each kind record (slash, markdown, block menus). */
 	kinds: KindRow[] = [];
 	plugins: InitializedPlugin[];
-	container = $state<HTMLDivElement>();
 	/** The view's handles (R4): one id-only `Block` per live id, texts and atoms by position and id. */
 	idToBlock: Handles = new Handles(this);
-	nodeToInlineBlock = new SvelteMap<Node, InlineBlock>();
-	nodeToText = new SvelteMap<Node, Text>();
+	nodeToInlineBlock = new Map<Node, InlineBlock>();
+	nodeToText = new Map<Node, Text>();
 	transaction = new TRANSACTION();
 	hotKeys: Keymap;
 	readonly = $state(false);
@@ -187,7 +186,8 @@ export class Edytor {
 	get synced(): boolean {
 		return this.root !== undefined;
 	}
-	edytor = this;
+	/** `batch` binds operations onto blocks and the view alike: both answer `.edytor`. */
+	readonly edytor = this;
 	selection: EdytorSelection;
 	/** The only writer of the DOM selection (R10, `surface/projector`). */
 	readonly projector: Projector = new Projector(this);
@@ -223,7 +223,6 @@ export class Edytor {
 	 * are maintenance, not typing, and must not move the page.
 	 */
 	suppressCaretScrollDepth = 0;
-	/**
 	/** The view's input attempts (R8, L6): one per user occurrence. */
 	readonly attempts = new Attempts(() => this.surface.signal());
 
@@ -479,18 +478,25 @@ export class Edytor {
 		}
 	}
 
-	getBlockDefinition = <M extends 'inline' | 'block'>(
-		mode: M,
-		type: string
-	): M extends 'block' ? BlockDefinition : InlineBlockDefinition => {
-		const definition = mode === 'block' ? this.blocks.get(type) : this.inlineBlocks.get(type);
-		if (type === 'root') {
-			return {} as any;
+	/** Kinds already reported missing (DEV, once each). */
+	private unknownKinds = new Set<string>();
+
+	/**
+	 * The definition of block kind `type` — the one lookup (render, surface,
+	 * handles). A kind no plugin of this view registers (a rolling deploy, a
+	 * peer's plugin) answers {@link UNKNOWN_KIND}: no roles, rendered as a
+	 * plain block with its text and children; DEV warns once per kind.
+	 */
+	definitionOf = (type: string): BlockDefinition => {
+		const definition = this.blocks.get(type);
+		if (definition) return definition;
+		if (DEV && type && type !== 'root' && !this.unknownKinds.has(type)) {
+			this.unknownKinds.add(type);
+			console.warn(
+				`[edytor] block kind "${type}" is not registered by any plugin: it renders as a plain block.`
+			);
 		}
-		if (!definition) {
-			throw new Error(`Block type ${type} is not defined`);
-		}
-		return definition as M extends 'block' ? BlockDefinition : InlineBlockDefinition;
+		return UNKNOWN_KIND;
 	};
 
 	private _valueCache: {
@@ -725,6 +731,12 @@ export class Edytor {
 			this.expectInternalFocusArmed = false;
 		});
 	};
+	/** A `focusin` consumes the armed flag: `true` when the editor focused itself. */
+	consumeInternalFocus = (): boolean => {
+		const armed = this.expectInternalFocusArmed;
+		this.expectInternalFocusArmed = false;
+		return armed;
+	};
 	/**
 	 * The one gesture serial (Surface bookkeeping, L8): pointer, focus, key,
 	 * `beforeinput`, cut, paste and drop bump it; an `input` does not (it
@@ -814,7 +826,7 @@ export class Edytor {
 		if (!at) return [];
 		const { cell, segment } = at;
 		const pinned = this.pin.render(cell.id, segment.key);
-		const transform = this.getBlockDefinition('block', cell.type).transformText;
+		const transform = this.definitionOf(cell.type).transformText;
 		return pinned?.deltas ?? segmentDeltas(cell, segment, transform);
 	};
 
@@ -835,109 +847,10 @@ export class Edytor {
 	};
 
 	attach = (node: HTMLDivElement) => {
-		let lastPointerDownInsideEditorAt = Number.NEGATIVE_INFINITY;
 		// A remount must not inherit a stale "user is outside" verdict —
 		// ownership is re-derived from live gestures from here on.
 		this.lastUserGestureOutsideEditor = false;
-
-		const selectionIsInsideEditor = () => {
-			const selection = getDomSelection(node);
-			return Boolean(
-				selection?.anchorNode &&
-				(node.contains(selection.anchorNode) ||
-					(selection.focusNode && node.contains(selection.focusNode)))
-			);
-		};
-
-		const clearNativeSelectionAfterExternalFocus = () => {
-			const activeElement = getActiveElement(node);
-			if (activeElement instanceof Node && node.contains(activeElement)) {
-				return;
-			}
-			if (selectionIsInsideEditor()) {
-				clearDomSelection(node);
-			}
-		};
-
-		const restoreCachedSelectionAfterKeyboardFocus = (event: FocusEvent) => {
-			if (this.readonly || event.target !== node) {
-				return;
-			}
-
-			if (event.relatedTarget instanceof Node && node.contains(event.relatedTarget)) {
-				return;
-			}
-
-			if (getEventTimeStamp(event) - lastPointerDownInsideEditorAt < 250) {
-				return;
-			}
-
-			const text = this.selection.state.startText;
-			if (!text) {
-				return;
-			}
-
-			const offset = this.selection.state.yStart;
-			const applyMeaningfulDomSelection = () => {
-				const selection = getDomSelectionSnapshot(node);
-				if (!selection?.anchorNode || !selection.focusNode) {
-					return false;
-				}
-
-				if (!node.contains(selection.anchorNode) || !node.contains(selection.focusNode)) {
-					return false;
-				}
-
-				const anchorText = this.selection.getTextOfNode(selection.anchorNode);
-				const focusText = this.selection.getTextOfNode(selection.focusNode);
-				if (!anchorText || !focusText) {
-					return false;
-				}
-
-				const isBrowserFocusReset =
-					selection.isCollapsed &&
-					anchorText === this.root?.firstEditableText &&
-					getYIndex(anchorText, selection.anchorNode, selection.anchorOffset) === 0;
-				if (isBrowserFocusReset) {
-					return false;
-				}
-
-				this.selection.applySelectionSnapshot(selection);
-				return true;
-			};
-			const restore = () => {
-				if (getActiveElement(node) !== node) {
-					return;
-				}
-
-				if (applyMeaningfulDomSelection()) {
-					return;
-				}
-
-				const s = this.selection.state;
-				// A remote delivery or command may have legitimately moved the
-				// selection since the focus-time capture — the CURRENT state
-				// owns the caret then; writing the cached point would yank it
-				// back to a pre-update position. The cache only wins while the
-				// state still equals it, or when the browser collapsed the
-				// caret to its focus-reset spot (first editable text at 0).
-				if (!s.isCollapsed || !s.startText) {
-					return;
-				}
-				const focusReset = s.startText === this.root?.firstEditableText && s.yStart === 0;
-				const [targetText, targetOffset] = focusReset ? [text, offset] : [s.startText, s.yStart];
-				if (!targetText?.node?.isConnected) {
-					return;
-				}
-
-				this.selection.setAtTextOffset(targetText, Math.min(targetOffset, targetText.length));
-			};
-
-			queueMicrotask(restore);
-		};
-
 		this.node = node;
-		this.container = node;
 		this.selection.init();
 		this.doc.on('beforeAllTransactions', this.projector.opening);
 		this.doc.on('beforeTransaction', this.surface.before);
@@ -964,47 +877,8 @@ export class Edytor {
 			on(node.ownerDocument, 'keydown', (event: KeyboardEvent) => {
 				if (!event.composedPath().includes(node)) keydown(event);
 			}),
-			// Any pointerdown anywhere disarms pending restores — Firefox
-			// can move the DOM selection on outside clicks without
-			// blurring the editor, so node-local marking is not enough. The
-			// target also records where the gesture landed: an outside
-			// pointerdown means the current focus/selection is user-owned
-			// until an inside gesture or focusin returns it.
-			on(
-				node.ownerDocument,
-				'pointerdown',
-				(event: PointerEvent) => {
-					this.markUserGesture();
-					this.lastUserGestureOutsideEditor = Boolean(
-						event.target instanceof Node && !this.node?.contains(event.target)
-					);
-				},
-				{ capture: true }
-			),
-			// The document's capture listener already marked the gesture.
-			on(node, 'pointerdown', (event: PointerEvent) => {
-				// A pointer gesture abandons a live composition (D-7).
-				this.composition.abandon();
-				lastPointerDownInsideEditorAt = getEventTimeStamp(event);
-				this.selection.clearModelSelectionPreservation();
-				this.selection.capturePointerDragStart(event);
-				this.selection.clearInlineBlockSelection();
-				this.selection.collapseSelectedBlocksAtPointer(event);
-			}),
-			on(node, 'pointerup', (event: PointerEvent) => {
-				this.markUserGesture();
-				this.selection.restoreInlineAtomDragRange(event);
-			}),
-			// A drag released OUTSIDE the editor never reaches the node-level
-			// pointerup — without this `pointerDragStart` stays armed forever
-			// and remote-edit restores would stay suppressed.
-			on(node.ownerDocument, 'pointerup', () => {
-				this.markUserGesture();
-				this.selection.clearPointerDragStart();
-			}),
-			on(node.ownerDocument, 'pointercancel', () => {
-				this.selection.clearPointerDragStart();
-			}),
+			// Pointer and focus ownership, and the focus-time caret restore.
+			...attachFocus(this, node),
 			on(node, 'mousedown', this.selection.preventNativeTripleClick),
 			on(node, 'click', this.selection.handleTripleClick),
 			// Settle queued mutation repairs before the native menu opens —
@@ -1025,44 +899,6 @@ export class Edytor {
 				'drop',
 				this.withUserInput((event: DragEvent) => preventUnsupportedDrop(event, this))
 			),
-			on(node, 'focusin', (event: FocusEvent) => {
-				// Focus arriving back inside the editor re-establishes editor
-				// ownership of the selection.
-				this.lastUserGestureOutsideEditor = false;
-				// The editor's own programmatic `focus()` calls (selection
-				// writes refocus the text host) also fire focusin — with a
-				// relatedTarget already inside the editor they're internal
-				// housekeeping, not user gestures. Click-driven focus returns
-				// are already marked by the document-level pointerdown capture.
-				if (this.expectInternalFocusArmed) {
-					// The projector focused the host for its own display: nothing to restore.
-					this.expectInternalFocusArmed = false;
-					return;
-				}
-				if (!(event.relatedTarget instanceof Node && this.node?.contains(event.relatedTarget))) {
-					this.markUserGesture();
-				}
-				restoreCachedSelectionAfterKeyboardFocus(event);
-			}),
-			on(node, 'focusout', (event: FocusEvent) => {
-				// Focus moving to a concrete element outside the editor is the
-				// same user evidence as an outside pointerdown — mark the
-				// gesture. A blur with NO relatedTarget is different: either
-				// the focused node was detached by a render (e.g. the undo's
-				// own DOM update replacing the caret's text — programmatic
-				// churn that must not disarm a pending restore) or an OS/window
-				// blur (restoring a caret in a blurred editor is harmless —
-				// the selection holds until focus returns). Outside clicks
-				// were already marked by the pointerdown capture listener.
-				if (event.relatedTarget instanceof Node && node.contains(event.relatedTarget)) return;
-				if (event.relatedTarget instanceof Node) {
-					this.markUserGesture();
-					this.lastUserGestureOutsideEditor = true;
-				}
-				// Focus leaving abandons a live composition: the browser committed what it shows.
-				this.composition.abandon();
-				setTimeout(clearNativeSelectionAfterExternalFocus);
-			}),
 			on(node, 'compositionstart', this.onCompositionStart),
 			on(node, 'compositionend', this.onCompositionEnd),
 			detachSurface
@@ -1077,12 +913,12 @@ export class Edytor {
 		this.off.push(() => unmount(presence), detachOverlay);
 		this.plugins.forEach((plugin) => {
 			const action = plugin.onEdytorAttached?.({ node });
-			action && this.off.push(action);
+			if (typeof action === 'function') this.off.push(action);
 		});
 
 		return {
 			destroy: () => {
-				if (selectionIsInsideEditor()) clearDomSelection(node);
+				if (selectionIsInside(node)) clearDomSelection(node);
 				const active = getActiveElement(node);
 				if (active instanceof HTMLElement && node.contains(active)) active.blur();
 				this.selection.destroy();
@@ -1096,9 +932,10 @@ export class Edytor {
 
 	/**
 	 * Edytor-lifetime teardown. `Edytor.svelte` owns the instance and calls
-	 * this from its `onMount` cleanup; consumers holding a bare `Edytor`
-	 * (test harnesses, custom mounts, dialogs/tabs/multi-editor views) must
-	 * call it when the editor is discarded.
+	 * this from its `onDestroy` (after a server render too); consumers
+	 * holding a bare `Edytor` (test harnesses, custom mounts,
+	 * dialogs/tabs/multi-editor views) must call it when the editor is
+	 * discarded.
 	 *
 	 * Releases every listener the editor holds on potentially-SHARED objects
 	 * — an injected doc/awareness outlives a single editor, so an
@@ -1143,7 +980,6 @@ export class Edytor {
 		this.nodeToText.clear();
 		this.root = undefined;
 		this.node = undefined;
-		this.container = undefined;
 
 		// Release this view's local-edit origin from the document's
 		// history — the tracked set is consulted live at commit time, so

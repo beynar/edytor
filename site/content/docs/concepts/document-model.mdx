@@ -124,7 +124,7 @@ The JSON the editor returns is normalized. Compare an input:
 with what `edytor.value` returns for it:
 
 ```json
-{ "type": "paragraph", "id": "b1uj9mz7.0", "data": {}, "content": [{ "text": "Hello" }] }
+{ "type": "paragraph", "id": "b6si4c.0", "data": {}, "content": [{ "text": "Hello" }] }
 ```
 
 - `id` and `data` are always present (`data` is `{}` when empty). Inline blocks always carry `id` and `data` too.
@@ -136,7 +136,7 @@ Don't compare stored JSON with `edytor.value` by deep equality right after loadi
 
 ## Invariants you can rely on
 
-- **Every block type is known.** A block whose `type` no plugin defines cannot render: the view throws `Block type <type> is not defined`. Load documents with the same plugins that wrote them.
+- **Unknown block types still render.** A block whose `type` no plugin of the view defines (a peer running another plugin, a rolling deploy) renders as a plain block: its text and its children, with no roles and no custom markup. In development the view logs one warning per unknown type. Load documents with the same plugins that wrote them to render them as intended.
 - **A block renders as text around inline blocks.** However its `content` is stored, the editor shows it as a text segment first and last, and exactly one text segment between two inline blocks (possibly empty). That is where the caret goes before, between and after inline blocks.
 - **An empty document shows one block.** A new document with no children is seeded with one empty block of the default type (`paragraph`). A document that becomes empty later, for example when collaborators delete every block, shows a local empty paragraph that is only written once someone types in it.
 - **Values are JSON.** `data` and mark values cross the network and storage as JSON. Non-JSON values are coerced (a `Date` becomes a string, a `Map` becomes `{}`, `undefined` keys are dropped, `NaN` becomes `null`) and a warning is logged in development. Serialize richer values yourself.

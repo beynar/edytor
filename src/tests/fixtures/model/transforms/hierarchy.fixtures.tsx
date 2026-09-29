@@ -386,7 +386,7 @@ export const fixtures = defineFixtures([
 		)
 	}),
 	defineModelTransformFixture({
-		description: 'preserves the remaining nested sibling order when unnesting a middle child',
+		description: 'unnesting a middle child takes its following siblings along as its children',
 		input: (
 			<root>
 				<ordered-list>
@@ -411,11 +411,105 @@ export const fixtures = defineFixtures([
 					<list-item>
 						Parent
 						<list-item>First child</list-item>
+					</list-item>
+					<list-item>
+						Second child
 						<list-item>Third child</list-item>
 					</list-item>
-					<list-item>Second child</list-item>
 					<list-item>Tail</list-item>
 				</ordered-list>
+			</root>
+		)
+	}),
+	defineModelTransformFixture({
+		description: 'the `out` move of a middle child takes its following siblings along too',
+		input: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>First</paragraph>
+					<paragraph>|Second</paragraph>
+					<paragraph>Third</paragraph>
+				</paragraph>
+				<paragraph>Tail</paragraph>
+			</root>
+		),
+		run: ({ edytor }) => {
+			const { block } = findBlockAndTextAtPath(edytor)([0, 1, 0]);
+			return edytor.moveBlocks({ blocks: [block], direction: 'out' })[0];
+		},
+		result: { kind: 'block', path: [1], type: 'paragraph' },
+		output: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>First</paragraph>
+				</paragraph>
+				<paragraph>
+					Second
+					<paragraph>Third</paragraph>
+				</paragraph>
+				<paragraph>Tail</paragraph>
+			</root>
+		)
+	}),
+	defineModelTransformFixture({
+		description: 'an `out` move of sibling blocks hands the siblings after the last one to it',
+		input: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>First</paragraph>
+					<paragraph>|Second</paragraph>
+					<paragraph>Third</paragraph>
+					<paragraph>Fourth</paragraph>
+				</paragraph>
+			</root>
+		),
+		run: ({ edytor }) => {
+			const find = findBlockAndTextAtPath(edytor);
+			const blocks = [find([0, 1, 0]).block, find([0, 2, 0]).block];
+			return edytor.moveBlocks({ blocks, direction: 'out' }).length;
+		},
+		output: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>First</paragraph>
+				</paragraph>
+				<paragraph>Second</paragraph>
+				<paragraph>
+					Third
+					<paragraph>Fourth</paragraph>
+				</paragraph>
+			</root>
+		)
+	}),
+	defineModelTransformFixture({
+		description: 'a void block cannot adopt: its following siblings stay with the parent',
+		input: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>|First</paragraph>
+					<divider />
+					<paragraph>Third</paragraph>
+				</paragraph>
+			</root>
+		),
+		run: ({ edytor }) => {
+			const { block } = findBlockAndTextAtPath(edytor)([0, 0, 0]);
+			return block.nextBlock?.unNestBlock();
+		},
+		result: { kind: 'block', path: [1], type: 'divider' },
+		output: (
+			<root>
+				<paragraph>
+					Parent
+					<paragraph>First</paragraph>
+					<paragraph>Third</paragraph>
+				</paragraph>
+				<divider />
 			</root>
 		)
 	}),

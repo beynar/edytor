@@ -1,33 +1,184 @@
 ---
-title: Extending the room
-description: Load a document from your own store, mirror it back, and edit it on the server by subclassing DocumentRoom.
+title: Your own Durable Object
+description: Host a document in any Durable Object with attachDocument, load it from and save it to your own storage (R2, KV, D1), and edit it on the server.
 icon: puzzle
 ---
 
-`DocumentRoom` is a class: subclass it to plug in your own storage and server-side logic, and export the subclass instead.
+`DocumentRoom` is a ready-made Durable Object. When you already have one, or want your own storage and server logic, attach the document to it instead:
 
 ```ts src/worker.ts
-import { DocumentRoom, routeDocumentSocket, type SavedDocument } from 'edytor/cloudflare';
+import { DurableObject } from 'cloudflare:workers';
+import { attachDocument, routeDocumentSocket } from 'edytor/cloudflare';
 
-export class Room extends DocumentRoom<Env> {
-  // Retrieve: the first time a room opens.
-  protected override async onLoad() {
-    const row = await this.env.DB.prepare('SELECT json FROM documents WHERE id = ?')
-      .bind(this.ctx.id.name)
-      .first<{ json: string }>();
-    return row ? JSON.parse(row.json) : undefined;
+export class Notes extends DurableObject<Env> {
+  document = attachDocument(this, {
+    onLoad: () => loadFromMyStore(this.ctx.id.name!),
+    onSave: ({ update }) => saveToMyStore(this.ctx.id.name!, update)
+  });
+}
+
+export default {
+  fetch(request, env) {
+    const id = new URL(request.url).pathname.split('/').pop()!;
+    return routeDocumentSocket(request, env.NOTES, id, authorize);
+  }
+} satisfies ExportedHandler<Env>;
+```
+
+That is the whole server. `routeDocumentSocket` works with any namespace whose objects host a document, and [authorization](/docs/server/authorization) is unchanged.
+
+:::note
+This `attachDocument` comes from `edytor/cloudflare` and hosts a document in a Durable Object. The `attachDocument` exported by `edytor` wraps an engine document in the browser or Node. They are different functions.
+:::
+
+## What `attachDocument(this, options)` does
+
+- **Storage.** The document lives in the object's SQLite storage, in two tables named `edytor_rows` and `edytor_replicas`, beside your own tables. Every edit is stored there before it is acknowledged, whatever your hooks do. `tablePrefix` changes the prefix.
+- **Sockets.** The document's sockets carry the tag `edytor` (`SOCKET_TAG`). Other sockets of the object are yours.
+- **Handlers.** Each handler your class does not define is installed on the object: `fetch`, `webSocketMessage`, `webSocketClose`, `webSocketError`, and `alarm` when you pass `onSave`.
+- **Return value.** An `AttachedDocument` with the same handlers, plus `transact`, `read`, `facade` and `compact`.
+
+Call it once, in a field or the constructor.
+
+### Alongside your own handlers
+
+A class that defines a handler keeps it and delegates to the document. The document's socket handlers return `false` for sockets that are not its own:
+
+```ts
+export class Workspace extends DurableObject<Env> {
+  document = attachDocument(this, { onSave: (saved) => this.persist(saved) });
+
+  async fetch(request: Request) {
+    if (new URL(request.url).pathname.startsWith('/events')) return this.openEventStream(request);
+    return this.document.fetch(request); // the document's upgrade
   }
 
-  // Save: a few seconds after edits.
-  protected override async onSave({ value }: SavedDocument) {
-    await this.env.DB.prepare('INSERT OR REPLACE INTO documents (id, json) VALUES (?, ?)')
-      .bind(this.ctx.id.name, JSON.stringify(value))
+  webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+    if (this.document.webSocketMessage(ws, message)) return;
+    // …your own sockets
+  }
+
+  async alarm() {
+    await this.document.alarm(); // runs onSave
+    // …your own scheduled work
+  }
+}
+```
+
+A Durable Object has one alarm. The document sets it `saveAfter` ms after an unsaved edit, which replaces a time you set earlier. If your class also uses alarms, re-arm your own schedule from `alarm()`.
+
+## Options
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `onLoad` | | Returns the document for a room that stores nothing yet. See [Load](#load). |
+| `onSave` | | Receives `{ value, update }` after edits. See [Save](#save). |
+| `saveAfter` | `2000` | ms between the first unsaved edit and `onSave`. |
+| `compactAfter` | `500` | Stored updates before they are merged into one snapshot. |
+| `maxRowBytes` | 1,995,904 | Largest stored row. Can only be lowered. |
+| `maxFrameBytes` | 32 MiB | Largest frame sent whole; larger ones are chunked. Can only be lowered. |
+| `tablePrefix` | `'edytor_'` | Prefix of the document's two tables. |
+
+`DocumentRoom` reads the same settings from `vars` (`EDYTOR_SAVE_AFTER`, `EDYTOR_COMPACT_AFTER`, …; see [the room](/docs/server/room#settings)) and uses the unprefixed tables `rows` and `replicas`.
+
+## Load
+
+`onLoad()` runs when the object starts and stores nothing yet, before any socket is served. It may be async. Return:
+
+| Return | Effect |
+| --- | --- |
+| `Uint8Array` | A v14 update, typically `update` from an earlier `onSave`. Admitted like stored data: another generation or schema is refused. |
+| `JSONDoc` | Seeded as the document. Seeding is deterministic, so a client that seeds the same value converges with it. |
+| `undefined` / `null` | An empty room; the first client seeds it. |
+
+Once anything is stored, the object restores from its own storage and does not ask again. If `onLoad` throws, every socket is refused until the object's next start.
+
+## Save
+
+`onSave({ value, update })` runs `saveAfter` ms after the first edit it has not saved, on the object's alarm, so it does not keep the object from hibernating. If it throws, the platform retries the alarm with backoff. Without `onSave`, no alarm is ever set.
+
+| Field | Content |
+| --- | --- |
+| `update` | The full CRDT state. Store it to load the document back. |
+| `value` | The document as JSON, for search, previews or exports. |
+
+:::warning
+Load from `update`, not from `value`. JSON starts a new document without the shared history: if the room's storage were ever reset and seeded from JSON, a client still holding the old history offline would merge both and could duplicate content.
+:::
+
+## Storage recipes
+
+The room's name is `this.ctx.id.name`: rooms are opened with `getByName(documentId)`, and Cloudflare keeps the name for the object's lifetime, including when an alarm wakes it.
+
+<Tabs>
+<Tab title="R2">
+
+```ts
+document = attachDocument(this, {
+  onLoad: async () => {
+    const object = await this.env.DOCS.get(`${this.ctx.id.name}.bin`);
+    return object ? new Uint8Array(await object.arrayBuffer()) : undefined;
+  },
+  onSave: async ({ value, update }) => {
+    await this.env.DOCS.put(`${this.ctx.id.name}.bin`, update);
+    await this.env.DOCS.put(`${this.ctx.id.name}.json`, JSON.stringify(value)); // optional
+  }
+});
+```
+
+R2 has no practical size limit: the best fit for documents.
+
+</Tab>
+<Tab title="KV">
+
+```ts
+document = attachDocument(this, {
+  onLoad: async () => {
+    const bytes = await this.env.DOCS_KV.get(this.ctx.id.name!, 'arrayBuffer');
+    return bytes ? new Uint8Array(bytes) : undefined;
+  },
+  onSave: ({ update }) => this.env.DOCS_KV.put(this.ctx.id.name!, update)
+});
+```
+
+A KV value holds at most 25 MiB, and other locations may read an old value for a short while. `onLoad` only runs for a room that stores nothing, so that rarely matters here.
+
+</Tab>
+<Tab title="D1">
+
+```ts
+document = attachDocument(this, {
+  onLoad: async () => {
+    const row = await this.env.DB.prepare('SELECT state FROM documents WHERE id = ?')
+      .bind(this.ctx.id.name)
+      .first<{ state: ArrayBuffer }>();
+    return row ? new Uint8Array(row.state) : undefined;
+  },
+  onSave: async ({ value, update }) => {
+    await this.env.DB.prepare(
+      'INSERT OR REPLACE INTO documents (id, state, json) VALUES (?, ?, ?)'
+    )
+      .bind(this.ctx.id.name, update, JSON.stringify(value))
       .run();
   }
+});
+```
 
-  // Manipulate: your own RPC method, editing on the server.
+A D1 row holds at most 2 MB; use R2 for larger documents.
+
+</Tab>
+</Tabs>
+
+## Edit on the server
+
+`transact(fn)` runs `fn` with the document's [facade](/docs/reference/document-api) in one transaction, stores the edit and broadcasts it to every connected socket, like a client's edit. It returns what `fn` returns. Expose it through your own RPC methods:
+
+```ts
+export class Notes extends DurableObject<Env> {
+  document = attachDocument(this);
+
   appendNote(text: string) {
-    return this.transact((doc) => {
+    return this.document.transact((doc) => {
       const id = crypto.randomUUID();
       doc.insertBlock({ parent: null, index: doc.childrenIds(null).length }, { id, type: 'paragraph' });
       return doc.insertText(id, 0, text);
@@ -35,42 +186,8 @@ export class Room extends DocumentRoom<Env> {
   }
 }
 
-export default {
-  fetch(request, env) {
-    const id = new URL(request.url).pathname.split('/').pop()!;
-    return routeDocumentSocket(request, env.ROOMS, id, authorize);
-  }
-} satisfies ExportedHandler<Env>;
-```
-
-Point the binding and the migration at the subclass: `"class_name": "Room"` and `"new_sqlite_classes": ["Room"]`.
-
-The room's SQLite storage stays the source of truth: every edit is stored there before it is acknowledged, whatever your hooks do. The hooks move the document in and out of your own systems.
-
-## Load
-
-`onLoad()` runs when the room starts and stores nothing yet, before any socket is served. Return:
-
-| Return | Effect |
-| --- | --- |
-| `JSONDoc` | Seeded as the document. Seeding is deterministic, so a client that seeds the same value offline converges with it. |
-| `Uint8Array` | A v14 update, such as `SavedDocument.update` from an earlier `onSave`. Admitted like stored data: another generation or schema is refused. |
-| `undefined` / `null` | An empty room; the first client seeds it. |
-
-Once anything is stored, the room restores from its own storage and does not ask again. If `onLoad` throws, the room refuses every socket until its next start.
-
-## Save
-
-`onSave({ value, update })` runs `EDYTOR_SAVE_AFTER` ms (default 2000) after the first edit it has not saved: `value` is the document as JSON, `update` the full CRDT state. It runs on a Durable Object alarm, so it does not keep the room from hibernating. If it throws, the platform retries the alarm with backoff. Rooms that do not override `onSave` never set an alarm.
-
-If your class defines its own `alarm()`, call `await super.alarm()` from it.
-
-## Edit on the server
-
-`transact(fn)` runs `fn` with the document's [facade](/docs/reference/document-api) in one transaction, then stores the edit and broadcasts it to every connected socket, like a client's edit. It returns what `fn` returns. Use it from your own RPC methods, a webhook route, or `onSave`-style jobs:
-
-```ts
-await env.ROOMS.getByName(documentId).appendNote('Deployed v2');
+// From a Worker, a queue consumer, a cron trigger…
+await env.NOTES.getByName(documentId).appendNote('Deployed v2');
 ```
 
 `read()` returns the document as JSON. A room with no document yet is seeded with one empty block before `transact` runs.
@@ -78,3 +195,24 @@ await env.ROOMS.getByName(documentId).appendNote('Deployed v2');
 :::note
 The server has no plugin definitions, so the facade does not know which block types are void or islands. Server edits that depend on those roles (moves into islands, merges) are not checked against them.
 :::
+
+## Subclassing `DocumentRoom`
+
+The ready-made room exposes the same hooks as methods:
+
+```ts
+import { DocumentRoom, type SavedDocument } from 'edytor/cloudflare';
+
+export class Room extends DocumentRoom<Env> {
+  protected override async onLoad() {
+    const object = await this.env.DOCS.get(`${this.ctx.id.name}.bin`);
+    return object ? new Uint8Array(await object.arrayBuffer()) : undefined;
+  }
+
+  protected override async onSave({ update }: SavedDocument) {
+    await this.env.DOCS.put(`${this.ctx.id.name}.bin`, update);
+  }
+}
+```
+
+Bind and migrate the subclass by its own class name (`"class_name": "Room"`, `"new_sqlite_classes": ["Room"]`). If it defines `alarm()`, call `await super.alarm()` from it. `transact`, `read` and `compact` are methods of the room itself.

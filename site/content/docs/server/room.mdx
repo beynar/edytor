@@ -4,7 +4,7 @@ description: What the DocumentRoom Durable Object enforces, how it stores and ac
 icon: server
 ---
 
-`DocumentRoom` is a Durable Object that coordinates one document: deploy one object per document, reached through [`routeDocumentSocket`](/docs/server/authorization). This page describes what the room checks on every message, how it stores the document, and the settings and limits you can tune.
+`DocumentRoom` is a Durable Object that coordinates one document: deploy one object per document, reached through [`routeDocumentSocket`](/docs/server/authorization). Everything on this page also holds for a document attached to your own Durable Object with [`attachDocument`](/docs/server/extending); only its table names differ (`edytor_rows`, `edytor_replicas`). This page describes what the room checks on every message, how it stores the document, and the settings and limits you can tune.
 
 ## One room per document
 
@@ -69,7 +69,7 @@ Set these as `vars` in `wrangler.jsonc`. All are optional.
 }
 ```
 
-Values that are not positive integers are ignored. Pass your own `Env` type to the class if you extend it: `DocumentRoom<Env>`. To load, save or edit the document from your own code, see [Extending the room](/docs/server/extending).
+Values that are not positive integers are ignored. Pass your own `Env` type to the class if you extend it: `DocumentRoom<Env>`. With `attachDocument`, pass the same settings as options. To load, save or edit the document from your own code, see [Your own Durable Object](/docs/server/extending).
 
 ## Compaction over RPC
 

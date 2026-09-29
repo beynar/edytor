@@ -19,7 +19,9 @@ export default defineConfig({
 				},
 				durableObjects: {
 					ROOM: { className: 'DocumentRoom', useSQLite: true },
-					HOOKED: { className: 'HookedRoom', useSQLite: true }
+					HOOKED: { className: 'HookedRoom', useSQLite: true },
+					PLAIN: { className: 'PlainObject', useSQLite: true },
+					HOST: { className: 'HostObject', useSQLite: true }
 				}
 			}
 		})

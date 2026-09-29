@@ -12,8 +12,10 @@
  * `anon`, `denied` is refused —, `?replica=`, `?access=read`). A real host
  * verifies a session or token here.
  */
+import { DurableObject } from 'cloudflare:workers';
 import {
 	DocumentRoom,
+	attachDocument,
 	requestedReplica,
 	routeDocumentSocket,
 	type AuthorizeDocumentSocket,
@@ -57,9 +59,43 @@ export class HookedRoom extends DocumentRoom<Env> {
 	}
 }
 
+/** Any Durable Object: `attachDocument` installs every handler (rooms `plain-*`). */
+export class PlainObject extends DurableObject<Env> {
+	document = attachDocument(this, { onLoad: () => LOADED });
+}
+
+/**
+ * A Durable Object with its own fetch, sockets and message handler beside
+ * the document (rooms `host-*`; `/echo/<name>` opens one of its own sockets).
+ */
+export class HostObject extends DurableObject<Env> {
+	document = attachDocument(this, {
+		onLoad: () => LOADED,
+		onSave: ({ value }) => {
+			this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS mirror (json TEXT)');
+			this.ctx.storage.sql.exec('INSERT INTO mirror VALUES (?)', JSON.stringify(value));
+		}
+	});
+
+	async fetch(request: Request): Promise<Response> {
+		if (new URL(request.url).pathname.startsWith('/echo/')) {
+			const [client, server] = Object.values(new WebSocketPair());
+			this.ctx.acceptWebSocket(server);
+			return new Response(null, { status: 101, webSocket: client });
+		}
+		return this.document.fetch(request);
+	}
+
+	webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+		if (!this.document.webSocketMessage(ws, message)) ws.send(`echo:${String(message)}`);
+	}
+}
+
 export type Env = DocumentRoomEnv & {
 	ROOM: DurableObjectNamespace<DocumentRoom>;
 	HOOKED: DurableObjectNamespace<HookedRoom>;
+	PLAIN: DurableObjectNamespace<PlainObject>;
+	HOST: DurableObjectNamespace<HostObject>;
 };
 
 export const ROOM_ROUTE = /^\/rooms\/([^/]+)(\/compact)?\/?$/;
@@ -78,6 +114,9 @@ export const authorizeFromQuery: AuthorizeDocumentSocket = (request) => {
 export const routeRoom = async (request: Request, env: Env): Promise<Response> => {
 	const url = new URL(request.url);
 	if (url.pathname === '/health') return new Response('ready');
+	if (url.pathname.startsWith('/echo/')) {
+		return env.HOST.getByName(url.pathname.slice('/echo/'.length)).fetch(request);
+	}
 	const match = ROOM_ROUTE.exec(url.pathname);
 	if (!match) return new Response('not found', { status: 404 });
 	const name = decodeURIComponent(match[1]);
@@ -85,9 +124,16 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 		if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
 		return Response.json(await env.ROOM.getByName(name).compact());
 	}
-	return name.startsWith('hooked-')
-		? routeDocumentSocket(request, env.HOOKED, name, authorizeFromQuery)
-		: routeDocumentSocket(request, env.ROOM, name, authorizeFromQuery);
+	if (name.startsWith('hooked-')) {
+		return routeDocumentSocket(request, env.HOOKED, name, authorizeFromQuery);
+	}
+	if (name.startsWith('plain-')) {
+		return routeDocumentSocket(request, env.PLAIN, name, authorizeFromQuery);
+	}
+	if (name.startsWith('host-')) {
+		return routeDocumentSocket(request, env.HOST, name, authorizeFromQuery);
+	}
+	return routeDocumentSocket(request, env.ROOM, name, authorizeFromQuery);
 };
 
 export default {

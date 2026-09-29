@@ -380,21 +380,23 @@ Edits restored from the local copy were written under earlier client ids of the 
 - **Bounded catch-up.** A frame larger than `EDYTOR_MAX_FRAME_BYTES` (default 32 MiB, the WebSocket message limit) is sent as `messageChunk` start/part/end frames that the provider applies only once the sequence is complete. Smaller frames are unchanged, so a client without chunk support still syncs small documents.
 - **No timers.** Every entry point runs under `noTimers`, which throws if anything schedules one: an object with a pending timer never hibernates.
 
-**Extending the room.** Subclass `DocumentRoom` and export the subclass (bind it and migrate it by its own class name):
+**Your own Durable Object.** `attachDocument(this, options)` hosts a document in any Durable Object: its tables (`edytor_rows`, `edytor_replicas`) sit beside yours, its sockets carry the `edytor` tag, and each handler your class does not define (`fetch`, the three socket handlers, `alarm` with `onSave`) is installed; a class that defines one delegates to the returned document (its socket handlers return `false` for sockets that are not its own). `routeDocumentSocket` takes any such namespace.
 
 ```ts
-export class Room extends DocumentRoom<Env> {
-	/** Retrieve: a room that stores nothing yet. JSON, a v14 update, or nothing. */
-	protected override async onLoad() {
-		return loadFromMyDb(this.ctx.id.name);
-	}
-	/** Save: `EDYTOR_SAVE_AFTER` ms (default 2000) after the first unsaved change, on an alarm. */
-	protected override async onSave({ value, update }: SavedDocument) {
-		await saveToMyDb(this.ctx.id.name, value);
-	}
-	/** Manipulate: your RPC method; stored and broadcast like a client edit. */
+export class Notes extends DurableObject<Env> {
+	document = attachDocument(this, {
+		// Retrieve: a room that stores nothing yet. A v14 update, JSON, or nothing.
+		onLoad: async () => {
+			const object = await this.env.DOCS.get(`${this.ctx.id.name}.bin`);
+			return object ? new Uint8Array(await object.arrayBuffer()) : undefined;
+		},
+		// Save: `saveAfter` ms (default 2000) after the first unsaved change, on the alarm.
+		onSave: ({ update }) => this.env.DOCS.put(`${this.ctx.id.name}.bin`, update)
+	});
+
+	// Manipulate: your RPC method; stored and broadcast like a client edit.
 	appendNote(id: string, text: string) {
-		return this.transact((doc) => {
+		return this.document.transact((doc) => {
 			doc.insertBlock(
 				{ parent: null, index: doc.childrenIds(null).length },
 				{ id, type: 'paragraph' }
@@ -405,7 +407,7 @@ export class Room extends DocumentRoom<Env> {
 }
 ```
 
-SQLite stays the source of truth (acks never wait on `onSave`); `onLoad` runs before any socket is served and never again once something is stored; a throwing `onSave` is retried by the platform; `read()` returns the document as JSON. A subclass with its own `alarm()` calls `super.alarm()`. The server has no plugin definitions: `transact` edits are not checked against void/island roles.
+SQLite stays the source of truth (acks never wait on `onSave`); `onLoad` runs before any socket is served and never again once something is stored; a throwing `onSave` is retried by the platform; `read()` returns the document as JSON. Save and reload `update`, not the JSON `value`: a JSON reseed starts a new history that offline clients would merge into duplicates. `DocumentRoom` exposes the same hooks as overridable `onLoad`/`onSave` methods (a subclass with its own `alarm()` calls `super.alarm()`). The server has no plugin definitions: `transact` edits are not checked against void/island roles. `ctx.id.name` is the room name (rooms are opened with `getByName`; Cloudflare keeps the name, alarm wakes included).
 
 Optional `vars`: `EDYTOR_MAX_ROW_BYTES`, `EDYTOR_MAX_FRAME_BYTES`, `EDYTOR_COMPACT_AFTER` (they only lower the defaults), `EDYTOR_SAVE_AFTER`. Limits: a single client → room message is still capped at 32 MiB by the platform (clients do not chunk); the in-memory presence snapshot refills as clients renew (every 15 s) after a wake.
 

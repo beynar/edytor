@@ -1,11 +1,17 @@
 /**
- * The host Worker's door to a {@link DocumentRoom}: authorize BEFORE the
+ * The host Worker's door to a document's Durable Object (a `DocumentRoom`,
+ * or any object with `attachDocument`): authorize BEFORE the
  * upgrade, then forward a fresh request that carries only the verified
  * identity — every header the client sent (cookies, tokens, forged
  * `X-Edytor-*` values) is dropped. The room trusts these headers, so it
  * must be reachable only through this function.
  */
-import { IDENTITY_HEADERS, parseReplica, type DocumentRoom } from './DocumentRoom.js';
+import { IDENTITY_HEADERS, parseReplica } from './DocumentRoom.js';
+
+/** A namespace whose objects host a document (`DocumentRoom`, or any object with `attachDocument`). */
+export type DocumentNamespace = {
+	getByName(name: string): { fetch(request: Request): Promise<Response> };
+};
 
 /**
  * What the host verified. `userId` owns every Yjs client id the socket
@@ -29,10 +35,9 @@ export type AuthorizeDocumentSocket = (
 export const requestedReplica = (request: Request, param = 'replica'): number | null =>
 	parseReplica(new URL(request.url).searchParams.get(param));
 
-export async function routeDocumentSocket<Room extends DocumentRoom<any>>(
+export async function routeDocumentSocket(
 	request: Request,
-	/** The namespace of `DocumentRoom` or of your subclass. */
-	rooms: DurableObjectNamespace<Room>,
+	rooms: DocumentNamespace,
 	documentId: string,
 	authorize: AuthorizeDocumentSocket
 ): Promise<Response> {

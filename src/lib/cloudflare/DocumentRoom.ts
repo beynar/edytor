@@ -214,10 +214,50 @@ const storedStep2 = (doc: YDoc, sv: Uint8Array): Uint8Array => {
 	}
 };
 
-export class DocumentRoom<
-	// Unconstrained: an all-optional constraint would reject an Env naming none of the knobs.
-	Env = DocumentRoomEnv
-> extends DurableObject<Env> {
+/** What {@link attachDocument} (and `DocumentRoom`) takes. */
+export type AttachDocumentOptions = {
+	/**
+	 * Retrieve: the document for a room that stores nothing yet (asked again
+	 * at each start until something is stored). Return JSON, a v14 update
+	 * (`SavedDocument.update`), or nothing for an empty room. A throw
+	 * refuses every socket until the next start.
+	 */
+	onLoad?: () =>
+		| Promise<JSONDoc | Uint8Array | null | undefined>
+		| JSONDoc
+		| Uint8Array
+		| null
+		| undefined;
+	/**
+	 * Save: mirror the document to your own store, `saveAfter` ms after the
+	 * first unsaved change, on the object's alarm (a throw is retried by the
+	 * platform). Without it no alarm is ever set.
+	 */
+	onSave?: (document: SavedDocument) => Promise<void> | void;
+	/** ms between the first unsaved change and `onSave` (default {@link DEFAULT_SAVE_AFTER}). */
+	saveAfter?: number;
+	/** Update records before the rows are merged into one snapshot (default {@link DEFAULT_COMPACT_AFTER}). */
+	compactAfter?: number;
+	/** Largest stored row; can only be lowered (default {@link DEFAULT_MAX_ROW_BYTES}). */
+	maxRowBytes?: number;
+	/** Largest frame sent whole; can only be lowered (default 32 MiB). */
+	maxFrameBytes?: number;
+	/** Prefix of the document's SQL tables, beside your own (default `'edytor_'`). */
+	tablePrefix?: string;
+};
+
+/** The tag of the document's sockets: other sockets of the object are left to you. */
+export const SOCKET_TAG = 'edytor';
+
+/**
+ * One edytor document living in a Durable Object's storage: the room
+ * logic, independent of the class that hosts it. Create it with
+ * {@link attachDocument} (any Durable Object) or extend `DocumentRoom`.
+ * The socket handlers ignore sockets without {@link SOCKET_TAG} and
+ * return `false` for them.
+ */
+export class AttachedDocument {
+	readonly ctx: DurableObjectState;
 	readonly maxRowBytes: number;
 	readonly maxFrameBytes: number;
 	readonly compactAfter: number;
@@ -239,35 +279,29 @@ export class DocumentRoom<
 	private readonly sql: SqlStorage;
 	private _facade: EdytorDoc | null = null;
 	private saveScheduled = false;
+	private readonly options: AttachDocumentOptions;
+	private readonly rowsTable: string;
+	private readonly replicasTable: string;
 
-	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env);
+	constructor(ctx: DurableObjectState, options: AttachDocumentOptions = {}) {
+		this.ctx = ctx;
+		this.options = options;
 		this.sql = ctx.storage.sql;
-		const knobs = env as DocumentRoomEnv;
-		this.maxRowBytes = knob(knobs.EDYTOR_MAX_ROW_BYTES, DEFAULT_MAX_ROW_BYTES);
-		this.maxFrameBytes = knob(knobs.EDYTOR_MAX_FRAME_BYTES, E.MAX_FRAME_BYTES);
-		this.compactAfter = knob(knobs.EDYTOR_COMPACT_AFTER, DEFAULT_COMPACT_AFTER, 1e9);
-		this.saveAfter = knob(knobs.EDYTOR_SAVE_AFTER, DEFAULT_SAVE_AFTER, 1e9);
+		this.maxRowBytes = knob(options.maxRowBytes, DEFAULT_MAX_ROW_BYTES);
+		this.maxFrameBytes = knob(options.maxFrameBytes, E.MAX_FRAME_BYTES);
+		this.compactAfter = knob(options.compactAfter, DEFAULT_COMPACT_AFTER, 1e9);
+		this.saveAfter = knob(options.saveAfter, DEFAULT_SAVE_AFTER, 1e9);
+		const prefix = options.tablePrefix ?? 'edytor_';
+		if (!/^\w*$/.test(prefix)) throw new Error(`invalid table prefix ${prefix}`);
+		this.rowsTable = `${prefix}rows`;
+		this.replicasTable = `${prefix}replicas`;
 		void ctx.blockConcurrencyWhile(async () => {
 			noTimers(() => this.load());
 			if (this.origin.kind === 'fresh' && this.doc !== null) await this.seed();
 		});
 	}
 
-	// ── Extension points ─────────────────────────────────────────────────
-
-	/**
-	 * Retrieve: the document for a room that stores nothing yet (asked again
-	 * at each start until something is stored). Return JSON, a v14 update
-	 * (`SavedDocument.update`), or nothing for an empty room. A throw
-	 * refuses every socket until the next start.
-	 */
-	protected async onLoad(): Promise<JSONDoc | Uint8Array | null | undefined> {
-		return undefined;
-	}
-
-	/** Save: mirror the document to your own store. Not overridden: no alarm is ever set. */
-	protected async onSave(_document: SavedDocument): Promise<void> {}
+	// ── Server-side access ───────────────────────────────────────────────
 
 	/** The facade over the live document (roles unknown: no plugin definitions on the server). */
 	get facade(): EdytorDoc {
@@ -297,17 +331,17 @@ export class DocumentRoom<
 		return this.facade.toJSON();
 	}
 
-	/** Runs `onSave` (the alarm `saveAfter` ms after the first unsaved change). Call `super.alarm()` if you override it. */
+	/** Runs `onSave` — the object's alarm, `saveAfter` ms after the first unsaved change. */
 	async alarm(): Promise<void> {
 		this.saveScheduled = false;
-		if (this.doc === null) return;
-		await this.onSave({ value: this.read(), update: Y.encodeStateAsUpdate(this.doc) });
+		if (this.doc === null || !this.options.onSave) return;
+		await this.options.onSave({ value: this.read(), update: Y.encodeStateAsUpdate(this.doc) });
 	}
 
 	private async seed() {
 		let found: JSONDoc | Uint8Array | null | undefined;
 		try {
-			found = await this.onLoad();
+			found = await this.options.onLoad?.();
 		} catch (error) {
 			this.failure = error as Error;
 			this.doc?.destroy();
@@ -330,7 +364,7 @@ export class DocumentRoom<
 	}
 
 	private scheduleSave() {
-		if (this.saveScheduled || this.onSave === DocumentRoom.prototype.onSave) return;
+		if (this.saveScheduled || !this.options.onSave) return;
 		this.saveScheduled = true;
 		void this.ctx.storage.setAlarm(Date.now() + this.saveAfter);
 	}
@@ -339,7 +373,7 @@ export class DocumentRoom<
 
 	private load() {
 		this.sql.exec(
-			`CREATE TABLE IF NOT EXISTS rows (
+			`CREATE TABLE IF NOT EXISTS ${this.rowsTable} (
 				seq INTEGER PRIMARY KEY AUTOINCREMENT,
 				kind TEXT NOT NULL,
 				record INTEGER NOT NULL,
@@ -349,7 +383,7 @@ export class DocumentRoom<
 			)`
 		);
 		this.sql.exec(
-			'CREATE TABLE IF NOT EXISTS replicas (replica INTEGER PRIMARY KEY, user TEXT NOT NULL)'
+			`CREATE TABLE IF NOT EXISTS ${this.replicasTable} (replica INTEGER PRIMARY KEY, user TEXT NOT NULL)`
 		);
 		const records = this.records();
 		if (records.length === 0) {
@@ -379,7 +413,7 @@ export class DocumentRoom<
 	records(): Array<{ kind: RowKind; bytes: Uint8Array<ArrayBuffer> }> {
 		const byRecord = new Map<number, Row[]>();
 		for (const row of this.sql.exec<Row>(
-			'SELECT kind, record, part, parts, bytes FROM rows ORDER BY seq'
+			`SELECT kind, record, part, parts, bytes FROM ${this.rowsTable} ORDER BY seq`
 		)) {
 			const parts = byRecord.get(row.record) ?? [];
 			parts.push(row);
@@ -405,7 +439,7 @@ export class DocumentRoom<
 		const parts = Math.max(1, Math.ceil(bytes.length / this.maxRowBytes));
 		for (let part = 0; part < parts; part++) {
 			this.sql.exec(
-				'INSERT INTO rows (kind, record, part, parts, bytes) VALUES (?, ?, ?, ?, ?)',
+				`INSERT INTO ${this.rowsTable} (kind, record, part, parts, bytes) VALUES (?, ?, ?, ?, ?)`,
 				kind,
 				record,
 				part,
@@ -430,12 +464,14 @@ export class DocumentRoom<
 					.map((record) => record.bytes)
 			);
 			this.ctx.storage.transactionSync(() => {
-				this.sql.exec('DELETE FROM rows');
+				this.sql.exec(`DELETE FROM ${this.rowsTable}`);
 				this.insert('generation', encodeJSON(E.GENERATION_RECORD));
 				this.insert('snapshot', merged);
 			});
 			this.updates = 0;
-			return { rows: this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM rows').one().n };
+			return {
+				rows: this.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${this.rowsTable}`).one().n
+			};
 		});
 	}
 
@@ -515,7 +551,7 @@ export class DocumentRoom<
 		const fresh: number[] = [];
 		for (const client of clients) {
 			const owner = this.sql
-				.exec<{ user: string }>('SELECT user FROM replicas WHERE replica = ?', client)
+				.exec<{ user: string }>(`SELECT user FROM ${this.replicasTable} WHERE replica = ?`, client)
 				.toArray()[0]?.user;
 			if (owner === user) continue;
 			if (owner !== undefined || (sv.get(client) ?? 0) > 0) return client;
@@ -524,7 +560,11 @@ export class DocumentRoom<
 		if (register && fresh.length > 0) {
 			this.ctx.storage.transactionSync(() => {
 				for (const client of fresh) {
-					this.sql.exec('INSERT INTO replicas (replica, user) VALUES (?, ?)', client, user);
+					this.sql.exec(
+						`INSERT INTO ${this.replicasTable} (replica, user) VALUES (?, ?)`,
+						client,
+						user
+					);
 				}
 			});
 		}
@@ -550,7 +590,7 @@ export class DocumentRoom<
 			}
 			const pair = new WebSocketPair();
 			const [client, server] = [pair[0], pair[1]];
-			this.ctx.acceptWebSocket(server);
+			this.ctx.acceptWebSocket(server, [SOCKET_TAG]);
 			server.serializeAttachment({ ...identity, clock: null } satisfies Attachment);
 			if (doc === null) {
 				this.refusals.push({ reason: 'container', detail: this.failure?.message });
@@ -569,7 +609,13 @@ export class DocumentRoom<
 		});
 	}
 
-	webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+	/** Is `ws` one of this document's sockets? */
+	owns(ws: WebSocket): boolean {
+		return this.ctx.getTags(ws).includes(SOCKET_TAG);
+	}
+
+	webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): boolean {
+		if (!this.owns(ws)) return false;
 		noTimers(() => {
 			// A refused socket is closing: frames it had in flight are dropped unread.
 			if (ws.readyState !== WebSocket.OPEN) return;
@@ -600,9 +646,11 @@ export class DocumentRoom<
 				this.refuse(ws, { reason: 'malformed', detail: String(error) });
 			}
 		});
+		return true;
 	}
 
-	webSocketClose(ws: WebSocket, code: number, reason: string) {
+	webSocketClose(ws: WebSocket, code: number, reason: string): boolean {
+		if (!this.owns(ws)) return false;
 		noTimers(() => this.depart(ws));
 		// Complete the closing handshake (a no-op where the runtime already
 		// auto-replies). 1005/1006 are not sendable codes.
@@ -611,10 +659,13 @@ export class DocumentRoom<
 		} catch {
 			// already closed
 		}
+		return true;
 	}
 
-	webSocketError(ws: WebSocket) {
+	webSocketError(ws: WebSocket): boolean {
+		if (!this.owns(ws)) return false;
 		noTimers(() => this.depart(ws));
+		return true;
 	}
 
 	/** The departure the client may not have announced — from the attachment, so it works after a wake. */
@@ -730,7 +781,7 @@ export class DocumentRoom<
 
 	private broadcast(bytes: Uint8Array, except: unknown) {
 		const pieces = E.chunkFrame(bytes, this.maxFrameBytes);
-		for (const ws of this.ctx.getWebSockets()) {
+		for (const ws of this.ctx.getWebSockets(SOCKET_TAG)) {
 			if (ws === except || ws.readyState !== WebSocket.OPEN) continue;
 			try {
 				for (const piece of pieces) ws.send(piece);
@@ -738,5 +789,120 @@ export class DocumentRoom<
 				// a socket that died mid-broadcast gets its close event
 			}
 		}
+	}
+}
+
+type Handler = 'fetch' | 'webSocketMessage' | 'webSocketClose' | 'webSocketError' | 'alarm';
+
+/**
+ * Attach an edytor document to any Durable Object (`attachDocument(this,
+ * opts)`, in the constructor or a field). Its tables (`edytor_rows`,
+ * `edytor_replicas`) live beside yours and its sockets carry
+ * {@link SOCKET_TAG}. Each handler your class does not define —
+ * `fetch`, `webSocketMessage`, `webSocketClose`, `webSocketError`, and
+ * `alarm` when `onSave` is set — is installed on the object; a class that
+ * defines one delegates to the returned document's method (which returns
+ * `false` for a socket that is not the document's).
+ */
+export const attachDocument = (
+	host: DurableObject<any>,
+	options: AttachDocumentOptions = {}
+): AttachedDocument => {
+	const ctx = (host as unknown as { ctx: DurableObjectState }).ctx;
+	const document = new AttachedDocument(ctx, options);
+	const target = host as unknown as Record<Handler, unknown>;
+	const handlers: Handler[] = ['fetch', 'webSocketMessage', 'webSocketClose', 'webSocketError'];
+	if (options.onSave) handlers.push('alarm');
+	for (const name of handlers) {
+		if (typeof target[name] === 'function') continue;
+		target[name] = (...args: never[]) => (document[name] as (...a: never[]) => unknown)(...args);
+	}
+	return document;
+};
+
+/**
+ * The ready-made room: a Durable Object hosting one document, configured
+ * by `vars` ({@link DocumentRoomEnv}). Subclass it to override `onLoad` and
+ * `onSave`, and add your own RPC methods over `transact`/`read`. Its tables
+ * are `rows` and `replicas` (no prefix).
+ */
+export class DocumentRoom<
+	// Unconstrained: an all-optional constraint would reject an Env naming none of the knobs.
+	Env = DocumentRoomEnv
+> extends DurableObject<Env> {
+	readonly room: AttachedDocument;
+
+	constructor(ctx: DurableObjectState, env: Env) {
+		super(ctx, env);
+		const knobs = env as DocumentRoomEnv;
+		const saves = this.onSave !== DocumentRoom.prototype.onSave;
+		this.room = new AttachedDocument(ctx, {
+			maxRowBytes: Number(knobs.EDYTOR_MAX_ROW_BYTES),
+			maxFrameBytes: Number(knobs.EDYTOR_MAX_FRAME_BYTES),
+			compactAfter: Number(knobs.EDYTOR_COMPACT_AFTER),
+			saveAfter: Number(knobs.EDYTOR_SAVE_AFTER),
+			tablePrefix: '',
+			onLoad: () => this.onLoad(),
+			onSave: saves ? (document) => this.onSave(document) : undefined
+		});
+	}
+
+	/** Retrieve — see {@link AttachDocumentOptions.onLoad}. */
+	protected async onLoad(): Promise<JSONDoc | Uint8Array | null | undefined> {
+		return undefined;
+	}
+
+	/** Save — see {@link AttachDocumentOptions.onSave}. Not overridden: no alarm is ever set. */
+	protected async onSave(_document: SavedDocument): Promise<void> {}
+
+	fetch(request: Request): Promise<Response> {
+		return this.room.fetch(request);
+	}
+	webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+		this.room.webSocketMessage(ws, message);
+	}
+	webSocketClose(ws: WebSocket, code: number, reason: string) {
+		this.room.webSocketClose(ws, code, reason);
+	}
+	webSocketError(ws: WebSocket) {
+		this.room.webSocketError(ws);
+	}
+	/** Runs `onSave`. Call `super.alarm()` if you override it. */
+	alarm(): Promise<void> {
+		return this.room.alarm();
+	}
+
+	/** Compaction, also over RPC. */
+	compact(): { rows: number } {
+		return this.room.compact();
+	}
+	/** Server-side edit — see {@link AttachedDocument.transact}. */
+	transact<T>(fn: (facade: EdytorDoc) => T): T {
+		return this.room.transact(fn);
+	}
+	/** The document as JSON. */
+	read(): JSONDoc {
+		return this.room.read();
+	}
+	get facade(): EdytorDoc {
+		return this.room.facade;
+	}
+	get doc(): YDoc | null {
+		return this.room.doc;
+	}
+	get failure(): Error | null {
+		return this.room.failure;
+	}
+	get refusals(): Refusal[] {
+		return this.room.refusals;
+	}
+	get presence(): Map<number, AwarenessEntry> {
+		return this.room.presence;
+	}
+	get origin(): AttachedDocument['origin'] {
+		return this.room.origin;
+	}
+	records(): ReturnType<AttachedDocument['records']> {
+		return this.room.records();
 	}
 }

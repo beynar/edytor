@@ -85,7 +85,7 @@ The client sends the token; the provider adds its replica id (`?replica=<clientI
 
 ## How identity reaches the room
 
-After `authorize` succeeds, `routeDocumentSocket` builds a new request for the room that carries only the verified identity:
+After `authorize` succeeds, `routeDocumentSocket` builds a new request for the room (`rooms.getByName(documentId)`, a `DocumentRoom` or any object with `attachDocument`) that carries only the verified identity:
 
 | Header | Value |
 | --- | --- |
@@ -96,7 +96,7 @@ After `authorize` succeeds, `routeDocumentSocket` builds a new request for the r
 Every header the client sent is dropped, cookies and tokens included, and so are forged `X-Edytor-*` headers. The room trusts these three headers without checking anything else, and refuses a request without them (401).
 
 :::danger
-Reach the room only through `routeDocumentSocket`. If your Worker forwards requests to the Durable Object any other way, a client could send its own `X-Edytor-*` headers and write as anyone. The names are exported as `IDENTITY_HEADERS` if you need to reference them.
+Reach the room only through `routeDocumentSocket`. If your Worker forwards requests to the Durable Object any other way, a client could send its own `X-Edytor-*` headers and write as anyone. The names are exported as `IDENTITY_HEADERS` if you need to reference them. With [`attachDocument`](/docs/server/extending) in your own Durable Object, the same holds for `document.fetch`: hand it only requests that came through `routeDocumentSocket`.
 :::
 
 ## Replicas

@@ -11,7 +11,7 @@ The `edytor` package has four entry points. Only the root contains Svelte compon
 | `edytor` | The `<Edytor>` component, bundled plugins, handles, the document API, sync factories | A Svelte bundler (SvelteKit, Vite) |
 | `edytor/crdt/edytor` | The document API and its types, `bindCrdt`, awareness, the wire protocol helpers | Browser, Node 22+, Workers |
 | `edytor/crdt` | The vendored CRDT engine itself (Yjs v14 fork) | Browser, Node 22+, Workers |
-| `edytor/cloudflare` | `DocumentRoom` (a Durable Object) and `routeDocumentSocket` | Cloudflare Workers only |
+| `edytor/cloudflare` | `DocumentRoom` (a Durable Object), `attachDocument` (for your own Durable Object) and `routeDocumentSocket` | Cloudflare Workers only |
 
 No other path is exported. Imports such as `edytor/dist/...` or `edytor/crdt/vendor/...` fail with `ERR_PACKAGE_PATH_NOT_EXPORTED`.
 
@@ -96,7 +96,7 @@ Keep one engine in your app. The `yjs` package on npm is v13 and its updates are
 
 ## `edytor/cloudflare`
 
-The server room for real-time collaboration: `DocumentRoom`, a Durable Object that coordinates one document, and `routeDocumentSocket`, which authorizes a client before its WebSocket upgrade.
+The server side of real-time collaboration: `DocumentRoom`, a Durable Object that coordinates one document; `attachDocument(this, options)`, which hosts a document in any Durable Object of yours; and `routeDocumentSocket`, which authorizes a client before its WebSocket upgrade.
 
 ```ts title="src/worker.ts"
 import { DocumentRoom, routeDocumentSocket, requestedReplica } from 'edytor/cloudflare';
@@ -104,7 +104,7 @@ import { DocumentRoom, routeDocumentSocket, requestedReplica } from 'edytor/clou
 export { DocumentRoom };
 ```
 
-It imports `cloudflare:workers`, so it loads only inside a Worker. It is built on the Worker-safe CRDT entries and has no Svelte or DOM code. Setup is covered in [Server quick start](/docs/server/quick-start).
+It imports `cloudflare:workers`, so it loads only inside a Worker. It is built on the Worker-safe CRDT entries and has no Svelte or DOM code. Setup is covered in [Server quick start](/docs/server/quick-start) and [Your own Durable Object](/docs/server/extending). Its `attachDocument` is unrelated to the `attachDocument` of `edytor`, which wraps an engine document on the client.
 
 ## Choosing an entry
 

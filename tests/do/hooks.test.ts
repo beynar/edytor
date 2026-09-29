@@ -4,15 +4,22 @@
  * (on the alarm), `transact` edits on the server, `read` returns JSON.
  */
 import { env } from 'cloudflare:workers';
-import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
+import {
+	SELF,
+	evictDurableObject,
+	runDurableObjectAlarm,
+	runInDurableObject
+} from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
-import type { HookedRoom } from './worker';
-import { RawClient, shape } from './client';
+import type { HookedRoom, HostObject, PlainObject } from './worker';
+import { ORIGIN, RawClient, shape } from './client';
 
 declare global {
 	namespace Cloudflare {
 		interface Env {
 			HOOKED: DurableObjectNamespace<HookedRoom>;
+			PLAIN: DurableObjectNamespace<PlainObject>;
+			HOST: DurableObjectNamespace<HostObject>;
 		}
 	}
 }
@@ -70,5 +77,52 @@ describe('room extension points', () => {
 			return shape(r.read()).children.map((b) => b.text);
 		});
 		expect(text).toEqual(['x']);
+	});
+});
+
+describe('attachDocument in any Durable Object', () => {
+	it('a bare object: every handler installed, tables prefixed beside yours', async () => {
+		const client = await RawClient.connect('plain-a');
+		await vi.waitFor(() => expect(shape(client.json())).toEqual(loaded));
+		const tables = await runInDurableObject(env.PLAIN.getByName('plain-a'), (_o, state) =>
+			state.storage.sql
+				.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")
+				.toArray()
+				.map((t) => t.name)
+		);
+		expect(tables).toEqual(expect.arrayContaining(['edytor_rows', 'edytor_replicas']));
+		expect(tables).not.toContain('rows');
+		client.close();
+	});
+
+	it('an object with its own fetch, sockets and handlers delegates to the document', async () => {
+		const room = 'host-a';
+		const client = await RawClient.connect(room);
+		await vi.waitFor(() => expect(shape(client.json())).toEqual(loaded));
+
+		// The object's own socket, beside the document's: left to its handler.
+		const echo = (await SELF.fetch(`${ORIGIN}/echo/${room}`, { headers: { Upgrade: 'websocket' } }))
+			.webSocket!;
+		echo.accept();
+		const heard = new Promise((resolve) =>
+			echo.addEventListener('message', (e) => resolve(e.data))
+		);
+		echo.send('hi');
+		expect(await heard).toBe('echo:hi');
+
+		const host = env.HOST.getByName(room);
+		await runInDurableObject(host, (o: HostObject) =>
+			o.document.transact((facade) => facade.insertText('seed', 0, 'host: '))
+		);
+		await vi.waitFor(() => expect(shape(client.json()).children[0].text).toBe('host: from onLoad'));
+
+		// `alarm` was installed (the class has none): onSave mirrors.
+		expect(await runDurableObjectAlarm(host)).toBe(true);
+		const mirrored = await runInDurableObject(host, (_o, state) =>
+			state.storage.sql.exec<{ json: string }>('SELECT json FROM mirror').toArray()
+		);
+		expect(shape(JSON.parse(mirrored[0].json)).children[0].text).toBe('host: from onLoad');
+		echo.close();
+		client.close();
 	});
 });

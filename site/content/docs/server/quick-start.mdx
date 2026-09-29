@@ -119,6 +119,10 @@ Then switch `server` to `wss://<your-worker-host>/rooms`.
 
 The room does not decide who may open a document; your `authorize` does. See [Authorization](/docs/server/authorization) and [the room](/docs/server/room).
 
+:::tip
+Already have a Durable Object, or want the document in R2, KV or D1 too? Call `attachDocument(this, { onLoad, onSave })` in your own class instead of deploying `DocumentRoom`. See [Your own Durable Object](/docs/server/extending).
+:::
+
 ## See it live
 
-The live editor on the [edytor home page](/) runs on exactly this setup: a room Worker deployed at `edytor-room.beynar.workers.dev` with `DocumentRoom` and `routeDocumentSocket`. Its `authorize` admits guests by an id their browser keeps, it opens one room per UTC day so the shared document resets daily, and it only accepts sockets from the docs' origins. Open the home page in two windows to watch them sync, and read its [source](https://github.com/beynar/edytor/tree/main/site/room) for a complete, deployed example.
+The live editor on the [edytor home page](/) runs on exactly this setup: a room Worker deployed at `edytor-room.beynar.workers.dev` with `DocumentRoom` and `routeDocumentSocket`. Its `authorize` admits guests by an id their browser keeps, it opens one room per UTC day so the shared document resets daily, and it only accepts sockets from the docs' origins. Open the home page in two windows to watch them sync, and read its [source](https://github.com/beynar/edytor/tree/master/site/room) for a complete, deployed example.

@@ -6,6 +6,10 @@
  */
 export {
 	DocumentRoom,
+	AttachedDocument,
+	attachDocument,
+	SOCKET_TAG,
+	type AttachDocumentOptions,
 	DEFAULT_COMPACT_AFTER,
 	DEFAULT_MAX_ROW_BYTES,
 	DEFAULT_SAVE_AFTER,
@@ -22,5 +26,6 @@ export {
 	routeDocumentSocket,
 	requestedReplica,
 	type AuthorizeDocumentSocket,
+	type DocumentNamespace,
 	type DocumentIdentity
 } from './routeDocumentSocket.js';

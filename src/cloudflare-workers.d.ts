@@ -37,6 +37,7 @@ interface DurableObjectState {
 	};
 	acceptWebSocket(ws: WebSocket, tags?: string[]): void;
 	getWebSockets(tag?: string): WebSocket[];
+	getTags(ws: WebSocket): string[];
 	blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T>;
 }
 

@@ -214,7 +214,7 @@ Every public change since 0.0.11, by area. The rows named in parentheses (`del.b
 - **One provider per target.** `EdytorSync.target` (`indexeddb:<name>`, `websocket:<server>/<room>`); attaching a target already attached is a no-op returning nothing; attaching on a destroyed document throws `DocumentDestroyedError`.
 - **Admission.** Unversioned content is not refused at ingress: the document is read-only and quarantined until admission accepts it (`document.writable`, `onWritableChange`).
 - **`IndexeddbPersistence`**: `get`/`set`/`del` are removed (the `custom` store holds only the generation record).
-- **`edytor/cloudflare` (new).** `DocumentRoom`, `attachDocument` and `routeDocumentSocket(request, namespace, documentId, authorize)` replace the coordinator you wrote yourself; see [the room](/docs/server/room). The room binds `{ user, replica, readOnly }` to each socket, refuses updates under another user's client ids, and applies `defaultSemantics` to server edits.
+- **`edytor/cloudflare` (new).** `DocumentRoom`, `attachDocument` and `routeDocumentSocket(request, namespace, documentId, authorize)` replace the coordinator you wrote yourself; see [the room](/docs/server/room). The room binds `{ user, replica, readOnly }` to each socket, strips the content of updates under another user's client ids, and applies `defaultSemantics` to server edits.
 - **SSR.** `<Edytor>` releases the document it created in `onDestroy`, which also runs after a server render.
 
 ### Migration

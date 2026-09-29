@@ -155,7 +155,9 @@ const rangeBlocks = (edytor: Edytor): Block[] => {
 /**
  * Tab / Shift+Tab: nest or unnest the selected block, or the caret's block.
  * Several selected siblings move as one (`edytor.moveBlocks`, `in`/`out`)
- * and stay selected; so do the blocks a text range spans, the range kept.
+ * and stay selected. The blocks a text range spans move one level per
+ * group of siblings (Notion: over several nesting levels, each group that
+ * can move does), as one command, the range kept.
  */
 const nest =
 	(operation: 'nestBlock' | 'unNestBlock'): HotKey =>
@@ -173,7 +175,13 @@ const nest =
 			const spanned = selectedBlocks.size ? [] : rangeBlocks(edytor);
 			if (spanned.length) {
 				const { startText, endText, yStart, yEnd, isReversed } = edytor.selection.state;
-				if (edytor.moveBlocks({ blocks: spanned, direction }).length && startText && endText)
+				const groups = new Map<Block | undefined, Block[]>();
+				for (const block of spanned)
+					groups.set(block.parent, [...(groups.get(block.parent) ?? []), block]);
+				const moved = edytor.dispatcher.run('moveBlocks', () =>
+					[...groups.values()].flatMap((blocks) => edytor.moveBlocks({ blocks, direction }))
+				);
+				if (moved?.length && startText && endText)
 					edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 				return;
 			}

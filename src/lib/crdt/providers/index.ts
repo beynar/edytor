@@ -10,7 +10,7 @@
 import type { EngineApi, YDoc } from '../engine-api.js';
 import type { Awareness } from '../protocols/awareness.js';
 import { bindIndexeddbProvider, type IndexeddbProvider } from './indexeddb.js';
-import { bindWebsocketProvider } from './websocket.js';
+import { bindWebsocketProvider, type WebsocketProviderEvents } from './websocket.js';
 
 /**
  * Payload a sync factory receives — the v13 contract plus `failed` (D4):
@@ -35,6 +35,12 @@ export type EdytorSyncPayload = {
 	 * provider settled.
 	 */
 	armBound?: () => void;
+	/**
+	 * Stop this provider's readiness bound: an empty document waits for it
+	 * to settle (or for the next `armBound()`), as the websocket sync does
+	 * after expired credentials on a first visit.
+	 */
+	holdBound?: () => void;
 	/**
 	 * Attach another sync to the same document as its own provider (its own
 	 * target, bound and settle): how a sync brings a companion, e.g. the
@@ -88,6 +94,16 @@ export type WebsocketSyncOptions = WebsocketTarget & {
 	params?: Record<string, string>;
 	WebSocketPolyfill?: import('./websocket.js').WebsocketPolyfill;
 	maxBackoffTime?: number;
+	/**
+	 * ms a dial may take to open before it is closed like a failed one, which
+	 * starts the readiness bound (default 10 000; `Infinity`: no limit).
+	 */
+	connectTimeout?: number;
+	/**
+	 * The room closed the socket with `4401` (expired credentials): put a
+	 * fresh token in `params` before the redial, due in `nextRetryMs`.
+	 */
+	onExpired?: (state: Parameters<WebsocketProviderEvents['expired']>[0]) => void;
 	/** Opt out of cross-tab sync over the BroadcastChannel (on by default). */
 	disableBc?: boolean;
 	/**
@@ -136,7 +152,10 @@ export const bindProviders = (Y: EngineApi) => {
 	 *
 	 * The socket's bound runs from transport state, not from the attach: a
 	 * dial still in flight (a cold room holds the upgrade) never counts, so
-	 * a slow room hydrates the document instead of racing the seed.
+	 * a slow room hydrates the document instead of racing the seed, up to
+	 * `connectTimeout`. Expired credentials (`4401`) before the first sync
+	 * hold the bound: the room may hold content, so an empty document waits
+	 * for a dial that gets in.
 	 */
 	const createWebsocketSync = (options: WebsocketSyncOptions): WebsocketSync => {
 		const [server, roomName] =
@@ -146,8 +165,9 @@ export const bindProviders = (Y: EngineApi) => {
 		const persistName =
 			options.persist === false ? undefined : (options.persistName ?? `edytor:${room}`);
 		const sync = (payload: EdytorSyncPayload) => {
-			const { doc, awareness, synced, failed, attach, armBound } = payload;
-			const { params, WebSocketPolyfill, maxBackoffTime, disableBc } = options;
+			const { doc, awareness, synced, failed, attach, armBound, holdBound } = payload;
+			const { params, WebSocketPolyfill, maxBackoffTime, connectTimeout, disableBc, onExpired } =
+				options;
 			const local =
 				persistName !== undefined && typeof indexedDB !== 'undefined'
 					? localSync(persistName, { disableBc })
@@ -157,8 +177,10 @@ export const bindProviders = (Y: EngineApi) => {
 				params,
 				WebSocketPolyfill,
 				maxBackoffTime,
+				connectTimeout,
 				disableBc: disableBc || local !== undefined
 			});
+			if (onExpired) provider.on('expired', (state) => onExpired(state));
 			provider.on('synced', (isSynced) => {
 				if (isSynced) synced(provider);
 			});
@@ -170,19 +192,27 @@ export const bindProviders = (Y: EngineApi) => {
 			if (armBound) {
 				// The bound counts from the socket's open, or from the first
 				// failed dial since the last open (offline starts decide as fast).
+				// Expired credentials before the first sync hold it for good.
 				let armedOffline = false;
+				let held = false;
+				const arm = () => held || armBound();
 				provider.on('status', ({ status }) => {
 					if (status !== 'connected') return;
 					armedOffline = false;
-					armBound();
+					arm();
 				});
 				const offline = () => {
 					if (armedOffline) return;
 					armedOffline = true;
-					armBound();
+					arm();
 				};
 				provider.on('connection-close', offline);
 				provider.on('connection-error', offline);
+				provider.on('expired', () => {
+					if (provider.hasSynced) return;
+					held = true;
+					holdBound?.();
+				});
 			}
 			let release: EdytorSyncCleanup | void = undefined;
 			try {

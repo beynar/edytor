@@ -19,8 +19,8 @@ The **Command** column names the command `onBeforeOperation` sees first (see [co
 | <kbd>Enter</kbd> | Split the block, or add a block before or after it; what it does depends on the block's role, see [Enter and Backspace by role](#enter-and-backspace-by-role) | `splitBlock`, `insertBlockAfter`, `insertBlockBefore`, `addChildBlock`, `unNestBlock` or `setBlock` | Text |
 | <kbd>Shift</kbd> + <kbd>Enter</kbd> | Insert a soft line break | `insertText` | Text |
 | <kbd>Mod</kbd> + <kbd>Enter</kbd> | Start a new block below, splitting at the end of the caret's text | `splitBlock` | Text |
-| <kbd>Tab</kbd> | Nest the block into its previous sibling; selected sibling blocks, or the blocks a text selection spans, nest together and stay selected | `nestBlock`; `moveBlocks` for several | Text, or selected blocks |
-| <kbd>Shift</kbd> + <kbd>Tab</kbd> | Move the block out one level, after its parent; the blocks nested after it become its children. Selected sibling blocks, or the blocks a text selection spans, move out together | `unNestBlock`; `moveBlocks` for several | Text, or selected blocks |
+| <kbd>Tab</kbd> | Nest the block into its previous sibling; selected sibling blocks, or the blocks a text selection spans, nest together and stay selected. A text selection across nesting levels nests each group of sibling blocks one level, as one undo step | `nestBlock`; `moveBlocks` for several | Text, or selected blocks |
+| <kbd>Shift</kbd> + <kbd>Tab</kbd> | Move the block out one level, after its parent; the blocks nested after it become its children. Selected sibling blocks, or the blocks a text selection spans, move out together. Across nesting levels each group of sibling blocks moves out one level; top-level blocks stay | `unNestBlock`; `moveBlocks` for several | Text, or selected blocks |
 | <kbd>Backspace</kbd>, <kbd>Delete</kbd> | Delete the selected blocks, the selected atom, the selected range or one character; at a block edge, see [by role](#enter-and-backspace-by-role) | `deleteBlocks`, `removeInlineBlock`, `deleteContentWithinSelection` or `deleteText` | Anywhere |
 | <kbd>Mod</kbd> + <kbd>Z</kbd> | Undo | none (the [history](/docs/editor/history)) | Anywhere |
 | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> | Redo | none | Anywhere |
@@ -153,6 +153,8 @@ For each chord, the bindings run in this order until one calls `prevent`:
 1. the `hotKeys` prop of `<Edytor>`;
 2. each plugin's `hotkeys`, in the order of the `plugins` array;
 3. the built-in bindings.
+
+A binding that is not a function, such as an optional callback left `undefined` (`'mod+e': onInlineCode`), is skipped: the chord's next binding runs, and in development the editor logs a warning naming the chord. TypeScript accepts `undefined` for these optional keys, so add an optional callback only when it is set: `...(onInlineCode && { 'mod+e': onInlineCode })`.
 
 ## Overriding and disabling defaults
 

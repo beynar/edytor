@@ -13,8 +13,9 @@
  * default; `disableBc` opts out). A refusal close (`1008`, `4xxx`) is
  * terminal: no redial — except `4401` (expired credentials), which emits
  * `expired` and redials after the backoff with the re-read `params`. A dial
- * that neither opens nor fails is closed after `connectTimeout`, like a
- * failed one. Retired: `protocols`, the `sync` alias, `wsconnecting`.
+ * that neither opens nor fails is closed after `connectTimeout` (10 s by
+ * default, `Infinity` waits forever), like a failed one. Retired:
+ * `protocols`, the `sync` alias, `wsconnecting`.
  *
  * Cross-tab: tabs of one room share a BroadcastChannel named after the
  * server URL and room, so they sync with each other with or without the
@@ -79,9 +80,11 @@ const unreachableAfter = 8;
 /** The backoff cap an unreachable room grows to. */
 const unreachableBackoffTime = 30000;
 /** A dial that has neither opened nor failed after this long is closed like a failed one. */
-const connectTimeout = 10000;
+const defaultConnectTimeout = 10000;
 /** Expired credentials: the room admits this client again once `params` carries a fresh token. */
 const expiredCode = 4401;
+/** A fault of the room (storage, engine): transient, but backed off until the room saves again. */
+const roomFaultCode = 1011;
 /** A close code that refuses this client for good: policy (`1008`) or an application code (`4xxx`). */
 const isRefusal = (code: number) =>
 	code === 1008 || (code >= 4000 && code < 5000 && code !== expiredCode);
@@ -125,8 +128,8 @@ export type WebsocketProviderEvents = {
 	) => void;
 	/**
 	 * A dial ended before its connection synced (refused upgrade, dropped
-	 * handshake, server down, no answer within 10 s): `attempts` in a row,
-	 * the next in `nextRetryMs`.
+	 * handshake, server down, not open within `connectTimeout`): `attempts`
+	 * in a row, the next in `nextRetryMs`.
 	 */
 	unreachable: (state: { attempts: number; nextRetryMs: number }, provider: unknown) => void;
 	/**
@@ -157,6 +160,11 @@ export type WebsocketProviderOptions = {
 	resyncInterval?: number;
 	/** Max reconnect backoff (exponential backoff is used). */
 	maxBackoffTime?: number;
+	/**
+	 * ms a dial may take to open before it is closed like a failed one
+	 * (default 10 000; `Infinity` waits for as long as the browser does).
+	 */
+	connectTimeout?: number;
 	/** Opt out of cross-tab sync over the BroadcastChannel (on by default). */
 	disableBc?: boolean;
 };
@@ -230,21 +238,36 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 	};
 
 	type StateVector = Map<number, number>;
-	/** A local update the room has not acknowledged: the state vector after it, and its deletes still unacknowledged. */
+	/** A local update the room has not acknowledged: the clocks it writes, and its deletes still unacknowledged. */
 	type Unsaved = { sv: StateVector; deletes: IdSet };
 	const stateVector = (doc: YDoc): StateVector => Y.decodeStateVector(Y.encodeStateVector(doc));
+	/**
+	 * The clocks an update writes, per client — not the whole document's:
+	 * structs heard from the room that it later lost (a restore from a
+	 * lagging snapshot) are not this replica's to save.
+	 */
+	const written = ({ structs }: ReturnType<typeof Y.decodeUpdate>): StateVector => {
+		const sv: StateVector = new Map();
+		for (const struct of structs) {
+			if (struct instanceof Y.Skip) continue;
+			const { client, clock } = struct.id;
+			sv.set(client, math.max(sv.get(client) ?? 0, clock + struct.length));
+		}
+		return sv;
+	};
 	const covers = (acked: StateVector, sv: StateVector) => {
 		for (const [client, clock] of sv) if ((acked.get(client) ?? 0) < clock) return false;
 		return true;
 	};
 
 	/**
-	 * `100 ms × 2ⁿ` for the n-th dial in a row that never synced, capped at
-	 * `maxBackoffTime`; past `unreachableAfter` such dials the cap itself
-	 * doubles, up to `unreachableBackoffTime`.
+	 * `100 ms × 2ⁿ` for the n-th dial in a row that never synced, or the
+	 * n-th room fault (`1011`) since the room last saved everything; capped
+	 * at `maxBackoffTime`; past `unreachableAfter` the cap itself doubles,
+	 * up to `unreachableBackoffTime`.
 	 */
 	const reconnectDelay = (provider: Provider) => {
-		const n = provider.wsUnsuccessfulReconnects;
+		const n = provider.wsUnsuccessfulReconnects + provider._faults;
 		const grown = provider.maxBackoffTime * math.pow(2, n - unreachableAfter);
 		const cap =
 			n > unreachableAfter
@@ -292,8 +315,10 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			}
 			if (!provider.shouldConnect) return;
 			// A dial that never synced counts (an opened-then-refused socket
-			// too, so it cannot redial at once); a synced one starts over.
+			// too, so it cannot redial at once); a synced one starts over —
+			// unless the room faulted (1011): hearing it proved nothing saves.
 			if (!heard) provider.wsUnsuccessfulReconnects++;
+			else if (event?.code === roomFaultCode) provider._faults++;
 			const nextRetryMs = reconnectDelay(provider);
 			const attempts = provider.wsUnsuccessfulReconnects;
 			if (event?.code === expiredCode) {
@@ -315,9 +340,11 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			provider._chunks = createChunkReader();
 			// A dial the network silently drops would wait for the browser's
 			// own timeout (minutes): give up on it like on a failed one.
-			provider._connectTimer = setTimeout(() => {
-				if (!provider.wsconnected) closeWebsocketConnection(provider, websocket, null);
-			}, connectTimeout);
+			if (Number.isFinite(provider.connectTimeout)) {
+				provider._connectTimer = setTimeout(() => {
+					if (!provider.wsconnected) closeWebsocketConnection(provider, websocket, null);
+				}, provider.connectTimeout);
+			}
 
 			websocket.onmessage = (event) => {
 				provider.wsLastMessageReceived = time.getUnixTime();
@@ -356,6 +383,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		awareness: Awareness;
 		params: Record<string, string>;
 		maxBackoffTime: number;
+		/** ms a dial may take to open (`Infinity`: no limit). */
+		connectTimeout: number;
 		_WS: WebsocketPolyfill;
 		shouldConnect: boolean;
 		ws: WebSocket | null = null;
@@ -368,13 +397,15 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		/** The transaction origin of updates heard from another tab. */
 		_fromTab = {};
 		wsUnsuccessfulReconnects = 0;
+		/** Room faults (`1011`) since the room last covered every local update: they grow the backoff. */
+		_faults = 0;
 		wsLastMessageReceived = 0;
 		/** When this silence was pinged (one ping per silence). */
 		wsLastPingSent = 0;
 		_synced = false;
 		/** Reassembles this socket's chunked frames (reset per connection). */
 		_chunks = createChunkReader();
-		/** Each local update not yet acknowledged: its state vector (monotone) and unacknowledged deletes. */
+		/** Each local update not yet acknowledged: the clocks it writes and its unacknowledged deletes. */
 		_pending: Unsaved[] = [];
 		/** The room's last acknowledged state vector. */
 		_acked: StateVector = new Map();
@@ -407,6 +438,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				WebSocketPolyfill = WebSocket as unknown as WebsocketPolyfill,
 				resyncInterval = 0,
 				maxBackoffTime = 2500,
+				connectTimeout = defaultConnectTimeout,
 				disableBc = false
 			}: WebsocketProviderOptions = {}
 		) {
@@ -419,6 +451,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			this.awareness = awareness;
 			this.params = params;
 			this.maxBackoffTime = maxBackoffTime;
+			this.connectTimeout = connectTimeout;
 			this._WS = WebSocketPolyfill;
 			this.shouldConnect = connect;
 			initLifecycle(this, () => this.destroy());
@@ -431,10 +464,11 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			this._updateHandler = (update, origin) => {
 				if (origin === this) return;
 				room.broadcastUpdate(this, update, origin === this._fromTab ? send : broadcast);
-				this._track(Y.decodeUpdate(update).ds);
+				const decoded = Y.decodeUpdate(update);
+				this._track(written(decoded), decoded.ds);
 			};
 			// What the doc already holds is unsaved until the room covers it.
-			this._track(this.doc.store.ds);
+			this._track(stateVector(this.doc), this.doc.store.ds);
 			this.doc.on('update', this._updateHandler);
 			this._awarenessUpdateHandler = room.awarenessUpdateHandler(this);
 			awareness.on('update', this._awarenessUpdateHandler);
@@ -491,9 +525,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			return this._pending.length === 0;
 		}
 
-		/** Track a local update (its `deletes`) unless the room already covers it. */
-		_track(deletes: IdSet): void {
-			const sv = stateVector(this.doc);
+		/** Track a local update (the clocks it writes, its `deletes`) unless the room already covers it. */
+		_track(sv: StateVector, deletes: IdSet): void {
 			if (covers(this._acked, sv) && deletes.isEmpty()) return;
 			this._pending.push({ sv, deletes });
 			this.emit('saved', [{ saved: false, unsaved: this._pending.length }, this]);
@@ -511,6 +544,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 					entry.deletes = Y.diffIdSet(entry.deletes, deletes);
 				return !(covers(this._acked, entry.sv) && entry.deletes.isEmpty());
 			});
+			// The room saves again: a later fault (1011) redials promptly.
+			if (this.saved) this._faults = 0;
 			if (this._pending.length !== before) {
 				this.emit('saved', [{ saved: this.saved, unsaved: this._pending.length }, this]);
 			}

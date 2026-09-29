@@ -30,10 +30,10 @@ Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable 
 
 ## Install
 
-The pre-release is not on npm yet, and the untagged `edytor` there is the incompatible `0.0.11`. Build the tarball from this repository and install it:
+The pre-release is not on npm yet, and the untagged `edytor` there is the incompatible `0.0.11`. Build the tarball from the `arch-v2` branch (`master` still holds `0.0.11`) and install it:
 
 ```bash
-git clone https://github.com/beynar/edytor.git && cd edytor
+git clone -b arch-v2 https://github.com/beynar/edytor.git && cd edytor
 pnpm install && pnpm package && pnpm pack   # writes edytor-0.1.0-next.0.tgz
 cd ../your-app && pnpm add ../edytor/edytor-0.1.0-next.0.tgz
 ```

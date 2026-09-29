@@ -45,16 +45,15 @@ type Change = {
  * by its kind, and an operation dispatched outside one (a menu action, a
  * plugin, a headless call) by its name. Deletions, paste, drop, formatting
  * and structural operations cut the capture before they write; a paragraph
- * split also cuts after; everything else (insertions) coalesces within
+ * split also cuts after; an insertion (`INSERTIONS`) coalesces within
  * `captureTimeout` when it continues the step before it (it starts where that
  * step left this view's selection, `history.continues`), else it cuts: an
  * insertion after the caret moved is its own step whatever the pause, so the
- * grouping never depends on timing alone. Outside a user command only an
- * insertion (`insertText`, `addInlineBlock`) may continue, by the same
- * question; every other bare operation is its own step, so a plugin's write
- * never joins the typing before it. A conversion (a markdown or slash trigger
- * with the kind it completes, `lead`) is its own step, so undo gives the
- * typed trigger back. A composition session groups like an insertion and is
+ * grouping never depends on timing alone. Every other kind or operation —
+ * one the table does not list included (`run('myConvert')`) — cuts before
+ * it writes, so a plugin's write never joins the typing before it. A
+ * conversion (a markdown or slash trigger with the kind it completes,
+ * `lead`) is its own step, so undo gives the typed trigger back. A composition session groups like an insertion and is
  * one capture group: `session/composition` holds it open between its writes,
  * and no operation cuts while it is live.
  */
@@ -68,16 +67,25 @@ const CUT: Record<string, 'before' | 'both'> = {
 	// A DOM change no input occurrence owns (a foreign script): its own step.
 	foreignChange: 'both'
 };
-/** The operations that may continue a step outside a user command. */
-const INSERTIONS = new Set(['insertText', 'addInlineBlock']);
+/**
+ * The kinds that may continue a step: the insertion operations (`insertText`,
+ * `addInlineBlock`) and the input types that insert text. Any other kind — a
+ * structural or formatting input type, a kind the table does not list
+ * (`run('myConvert')`) — cuts before it writes.
+ */
+const INSERTIONS = new Set([
+	'insertText',
+	'addInlineBlock',
+	'insertReplacementText',
+	'insertLineBreak',
+	'insertFromYank',
+	'insertTranspose',
+	'insertLink'
+]);
 type Policy = 'before' | 'both' | 'continue' | undefined;
-const policyOf = (kind: string, bare = false): Policy =>
+const policyOf = (kind: string): Policy =>
 	CUT[kind] ??
-	(kind.includes('Composition')
-		? undefined
-		: kind.startsWith('delete') || (bare && !INSERTIONS.has(kind))
-			? 'before'
-			: 'continue');
+	(kind.includes('Composition') ? undefined : INSERTIONS.has(kind) ? 'continue' : 'before');
 
 /** The one place a `prevent()` is recognized; anything else propagates. */
 const prevented = (error: unknown): PreventionError => {
@@ -445,7 +453,7 @@ export class Dispatcher {
 	private policy(operation: string, lead: Plan | null) {
 		if (this.edytor.composition.live) return undefined;
 		if (lead) return 'before';
-		return this.running ? undefined : this.decide(policyOf(operation, true));
+		return this.running ? undefined : this.decide(policyOf(operation));
 	}
 
 	/** A continuation continues this view's last step, or cuts before it writes. */

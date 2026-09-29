@@ -959,8 +959,9 @@ export const runSchedule = (
 	let executed = 0;
 
 	// ── wellFormed oracle (strict lane) ─────────────────────────────────
-	// Every replica after every step. The corpus configures no roles, so
-	// `void-children` has no input here (the p1 harness covers it).
+	// Every replica after every step. Only the roles lane configures roles
+	// (`ops.isVoid`/`ops.islandKinds`); the others give `void-children` and
+	// `island-kind` no input.
 	const wfOn = !!ops.classifyTagAtoms;
 	const registered = new Set<string>(BLOCK_TYPES);
 	const collectTypes = (bs: readonly ProjectedBlock[]): void =>
@@ -970,12 +971,14 @@ export const runSchedule = (
 	/**
 	 * Merges whose order the check may hold: dropped once any executed op
 	 * (any peer, concurrent or later) may move one of their blocks, and
-	 * never recorded after a history op (a replayed move is unnamed).
+	 * never recorded after a history op (a replayed move is unnamed). Each
+	 * is held only on a replica that has it: `client`'s clock reached `clock`.
 	 */
-	const merges: MergeRecord[] = [];
+	const merges: (MergeRecord & { client: number; clock: number })[] = [];
 	const movedEver = new Set<string>();
 	let historySeen = false;
 	const trackMerges = (
+		peer: Peer,
 		plan: { env: IntentEnvelope; history?: boolean; merge?: MergeRecord },
 		result: unknown
 	): void => {
@@ -989,20 +992,27 @@ export const runSchedule = (
 		for (let k = merges.length - 1; k >= 0; k--)
 			if (named(merges[k]).some((id) => moved.has(id))) merges.splice(k, 1);
 		const m = plan.merge;
-		if (m && result && !historySeen && !named(m).some((id) => movedEver.has(id))) merges.push(m);
+		if (m && result && !historySeen && !named(m).some((id) => movedEver.has(id))) {
+			const client = peer.doc.clientID;
+			merges.push({ ...m, client, clock: Y.decodeStateVector(peer.stateVector()).get(client)! });
+		}
 		for (const id of moved) movedEver.add(id);
 	};
-	const illFormed = (): string[] =>
+	/** `settled`: at the barrier — `island-kind` holds only once delivery is causal again. */
+	const illFormed = (settled = false): string[] =>
 		peers.flatMap((p) => {
 			// Causally closed states only: a reordered delivery may apply a
 			// delete whose replacement is still pending.
 			if (p.doc.store.pendingStructs !== null || p.doc.store.pendingDs !== null) return [];
 			let seen = identities.get(p.name);
 			if (!seen) identities.set(p.name, (seen = new Map()));
+			const sv = Y.decodeStateVector(p.stateVector());
 			return wellFormedProblems({
 				roots: ops.project(p).children,
 				registered,
-				merges,
+				isVoid: ops.isVoid && ((id) => ops.isVoid!(p, id)),
+				islandKinds: settled ? ops.islandKinds : undefined,
+				merges: merges.filter((m) => (sv.get(m.client) ?? 0) >= m.clock),
 				identityOf: (id) => registryIdentity(p.doc, id),
 				succeeds: (later, earlier) => succeeds(p.doc, later, earlier),
 				identities: seen,
@@ -1578,7 +1588,7 @@ export const runSchedule = (
 		}
 		recordEffects(diff, plan.env, pre, post, peer.index, plan.history === true);
 		plan.after?.(result, diff, post);
-		if (wfOn) trackMerges(plan, result);
+		if (wfOn) trackMerges(peer, plan, result);
 	};
 
 	const runNetOp = (op: NetOp) => {
@@ -1826,7 +1836,7 @@ export const runSchedule = (
 	}
 
 	if (wfOn) {
-		const problems = illFormed();
+		const problems = illFormed(true);
 		if (problems.length > 0)
 			return aborted(`barrier ill-formed: ${problems.slice(0, 6).join('; ')}`, 'ill-formed');
 	}

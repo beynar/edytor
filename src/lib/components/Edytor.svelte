@@ -3,8 +3,14 @@
 	// (the component + its bindable instance type) — an unaliased import
 	// collides there (TS2440 for bundler-resolution consumers).
 	import { Edytor as EdytorClass, useEdytor, type Snippets } from '../edytor.svelte.js';
-	import type { Awareness, DocumentActor, EdytorDocument, YDoc } from '../crdt/index.js';
-	import type { EdytorSync } from '$lib/collaboration/index.js';
+	import type {
+		Awareness,
+		DocumentActor,
+		EdytorDocument,
+		SyncRefusedError,
+		YDoc
+	} from '../crdt/index.js';
+	import type { EdytorSync, WebsocketSyncOptions } from '$lib/collaboration/index.js';
 	import { createIndexeddbSync, createWebsocketSync } from '$lib/collaboration/providers.js';
 	export { EdytorClass as EdytorContext, useEdytor };
 	import type { Placeholder, Plugin } from '$lib/plugins.js';
@@ -81,6 +87,16 @@
 		server?: string;
 		/** Query parameters sent with each dial (auth token…). Updates reach the next reconnect. */
 		params?: Record<string, string>;
+		/**
+		 * With `server`: the room closed the connection with `4401` (expired
+		 * credentials). Pass fresh `params` before the redial, due in `nextRetryMs`.
+		 */
+		onSyncExpired?: WebsocketSyncOptions['onExpired'];
+		/**
+		 * The server refused a provider of this view's document for good (see
+		 * `document.syncRefusal`): a refusal standing at mount, then each new one.
+		 */
+		onSyncRefused?: (refusal: SyncRefusedError) => void;
 		/** Advanced: a custom sync factory. Overrides `room`/`server`. */
 		sync?: EdytorSync;
 	};
@@ -110,6 +126,8 @@
 		room,
 		server,
 		params,
+		onSyncExpired,
+		onSyncRefused,
 		awareness,
 		actor,
 		onChange,
@@ -176,6 +194,7 @@
 			server,
 			room,
 			params: dialParams,
+			onExpired: (state) => onSyncExpired?.(state),
 			// Per author: the room refuses one user's socket delivering another's edits.
 			...(actor ? { persistName: `edytor:${actor.id}@${server}/${room}` } : {})
 		});
@@ -184,19 +203,28 @@
 		edytor.document.attachSync(initialSync, { value: initialEdytorOptions.value });
 	}
 
+	let offRefused: (() => void) | undefined;
 	onMount(() => {
+		const { document } = edytor;
 		// An editable view without a provider decides an injected pending
-		// document only when no sibling's provider is in flight.
-		if (!initialEdytorOptions.readonly && !initialSync && !edytor.document.syncPending) {
-			edytor.document.sync(initialEdytorOptions.value);
+		// document only when no sibling's provider is in flight, and never
+		// over a refusal.
+		const refusal = document.syncRefusal;
+		if (!initialEdytorOptions.readonly && !initialSync && !document.syncPending && !refusal) {
+			document.sync(initialEdytorOptions.value);
 		}
+		if (refusal) onSyncRefused?.(refusal);
+		offRefused = document.onSyncRefused((next) => onSyncRefused?.(next));
 	});
 
 	// The component owns the Edytor — release its doc/awareness/facade/
 	// undo-manager listeners so a shared doc doesn't retain dead mounts.
 	// `onDestroy` also runs after a server render: a view-owned document
 	// (and its awareness timer) must not outlive the request.
-	onDestroy(() => edytor.destroy());
+	onDestroy(() => {
+		offRefused?.();
+		edytor.destroy();
+	});
 
 	$effect(() => {
 		edytor.readonly = readonly;

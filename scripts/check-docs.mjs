@@ -12,10 +12,12 @@
  * block's title, so an untitled `check` fence would be titled "check".
  *
  * Each marked block is written, verbatim, to
- * `src/routes/__docexamples/<app|worker>/<page>/<title>` (a leading
- * `src/routes/` or `src/` is dropped from the title), so SvelteKit
- * generates `./$types` for route files and a page's blocks can import each
- * other. The package's own specifiers resolve to the sources through
+ * `.svelte-kit/docexamples/<app|worker>/<page>/<title>` (a leading
+ * `src/routes/` or `src/` is dropped from the title). That directory is a
+ * SvelteKit project of its own whose routes are `app/`, so `svelte-kit sync`
+ * generates `./$types` for route files without adding a route to this app,
+ * and a page's blocks can import each other. The package's own specifiers
+ * resolve to the sources through
  * `paths`: `edytor` → `src/lib/index.ts`, `edytor/cloudflare`,
  * `edytor/crdt/edytor`, `edytor/crdt` and the theme likewise.
  *
@@ -29,17 +31,19 @@
  * writes), so the rest of each block is checked as written.
  *
  * Errors are reported at their line in the `.mdx` page. The directory is
- * removed afterwards (`--keep` leaves it for inspection); it is ignored by
- * git, prettier and eslint.
+ * removed on exit, including on Ctrl-C (`--keep` leaves it for inspection);
+ * it lies outside `src/`, so a leftover never reaches `pnpm check` or the
+ * build, and `.svelte-kit` is ignored by git, prettier and eslint.
  */
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { constants } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DOCS = path.join(ROOT, 'site/content/docs');
-const OUT = path.join(ROOT, 'src/routes/__docexamples');
+const OUT = path.join(ROOT, '.svelte-kit/docexamples');
 const DECLARATIONS = path.join(ROOT, 'scripts/doc-examples');
 const BIN = path.join(ROOT, 'node_modules/.bin');
 const keep = process.argv.includes('--keep');
@@ -122,99 +126,106 @@ const report = (file, line, column, message) => {
 		failures.push(`${path.relative(ROOT, absolute)}:${line}:${column}: ${message}`);
 };
 
-const run = (command, args) =>
-	spawnSync(path.join(BIN, command), args, { cwd: ROOT, encoding: 'utf8' });
-
-const sync = () => {
-	const result = run('svelte-kit', ['sync']);
-	if (result.status !== 0) throw new Error(`svelte-kit sync failed:\n${result.stderr}`);
+/** Run a local binary; a child killed by a signal (Ctrl-C) ends the run. */
+const run = (command, args, cwd = ROOT) => {
+	const result = spawnSync(path.join(BIN, command), args, { cwd, encoding: 'utf8' });
+	if (result.signal) process.exit(128 + constants.signals[result.signal]);
+	return result;
 };
 
-try {
-	rmSync(OUT, { recursive: true, force: true });
-	for (const { target, code } of examples) {
-		mkdirSync(path.dirname(target), { recursive: true });
-		writeFileSync(target, code.endsWith('\n') ? code : `${code}\n`);
-	}
-	sync();
+const clean = () => {
+	if (!keep) rmSync(OUT, { recursive: true, force: true });
+};
+process.on('exit', clean);
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'])
+	process.on(signal, () => process.exit(128 + constants.signals[signal]));
 
-	// The package's specifiers → its sources, beside SvelteKit's own paths.
-	const kit = JSON.parse(readFileSync(path.join(ROOT, '.svelte-kit/tsconfig.json'), 'utf8'));
-	const paths = Object.fromEntries(
-		Object.entries(kit.compilerOptions.paths).map(([key, targets]) => [
-			key,
-			targets.map((target) => path.resolve(ROOT, '.svelte-kit', target))
-		])
+// Earlier versions wrote the examples into this app's routes.
+for (const legacy of ['src/routes/__docexamples', '.svelte-kit/types/src/routes/__docexamples'])
+	rmSync(path.join(ROOT, legacy), { recursive: true, force: true });
+rmSync(OUT, { recursive: true, force: true });
+for (const { target, code } of examples) {
+	mkdirSync(path.dirname(target), { recursive: true });
+	writeFileSync(target, code.endsWith('\n') ? code : `${code}\n`);
+}
+writeFileSync(
+	path.join(OUT, 'svelte.config.js'),
+	"export default { kit: { files: { routes: 'app' } } };\n"
+);
+const synced = run('svelte-kit', ['sync'], OUT);
+if (synced.status !== 0) throw new Error(`svelte-kit sync failed:\n${synced.stderr}`);
+
+// The package's specifiers → its sources, beside SvelteKit's own paths
+// (with this app's `$lib`, which the sources import).
+const KIT = path.join(OUT, '.svelte-kit');
+const kit = JSON.parse(readFileSync(path.join(KIT, 'tsconfig.json'), 'utf8'));
+const paths = Object.fromEntries(
+	Object.entries(kit.compilerOptions.paths).map(([key, targets]) => [
+		key,
+		targets.map((target) => path.resolve(KIT, target))
+	])
+);
+Object.assign(paths, {
+	$lib: [path.join(ROOT, 'src/lib')],
+	'$lib/*': [path.join(ROOT, 'src/lib/*')],
+	edytor: [path.join(ROOT, 'src/lib/index.ts')],
+	'edytor/cloudflare': [path.join(ROOT, 'src/lib/cloudflare/index.ts')],
+	'edytor/crdt/edytor': [path.join(ROOT, 'src/lib/crdt/index.ts')],
+	'edytor/crdt': [path.join(ROOT, 'src/lib/crdt/vendor/yjs/dts/index.d.ts')],
+	'edytor/themes/notion.css': [path.join(ROOT, 'src/lib/themes/notion.css')]
+});
+
+const app = examples.filter((example) => !example.worker);
+if (app.length) {
+	writeFileSync(
+		path.join(OUT, 'tsconfig.json'),
+		JSON.stringify({
+			extends: path.join(ROOT, 'tsconfig.json'),
+			// `./$types` of a route under `app/` resolves into the project's types.
+			compilerOptions: { paths, rootDirs: [OUT, path.join(KIT, 'types')] },
+			include: [
+				path.join(KIT, 'ambient.d.ts'),
+				path.join(KIT, 'non-ambient.d.ts'),
+				path.join(KIT, 'types/**/$types.d.ts'),
+				path.join(ROOT, 'src/app.d.ts'),
+				path.join(DECLARATIONS, 'app.d.ts'),
+				'app/**/*.ts',
+				'app/**/*.svelte'
+			],
+			exclude: []
+		})
 	);
-	Object.assign(paths, {
-		edytor: [path.join(ROOT, 'src/lib/index.ts')],
-		'edytor/cloudflare': [path.join(ROOT, 'src/lib/cloudflare/index.ts')],
-		'edytor/crdt/edytor': [path.join(ROOT, 'src/lib/crdt/index.ts')],
-		'edytor/crdt': [path.join(ROOT, 'src/lib/crdt/vendor/yjs/dts/index.d.ts')],
-		'edytor/themes/notion.css': [path.join(ROOT, 'src/lib/themes/notion.css')]
-	});
+	const result = run('svelte-check', [
+		'--tsconfig',
+		path.join(OUT, 'tsconfig.json'),
+		'--output',
+		'machine',
+		'--threshold',
+		'error'
+	]);
+	const errors = [...result.stdout.matchAll(/^\d+ ERROR "([^"]+)" (\d+):(\d+) "(.*)"$/gm)];
+	for (const [, file, line, column, message] of errors)
+		report(file, Number(line), Number(column), JSON.parse(`"${message}"`));
+	if (result.status !== 0 && !errors.length)
+		failures.push(`svelte-check exited ${result.status}:\n${result.stdout}${result.stderr}`);
+}
 
-	const app = examples.filter((example) => !example.worker);
-	if (app.length) {
-		writeFileSync(
-			path.join(OUT, 'tsconfig.json'),
-			JSON.stringify({
-				extends: path.join(ROOT, 'tsconfig.json'),
-				compilerOptions: { paths },
-				include: [
-					path.join(ROOT, '.svelte-kit/ambient.d.ts'),
-					path.join(ROOT, '.svelte-kit/non-ambient.d.ts'),
-					path.join(ROOT, '.svelte-kit/types/**/$types.d.ts'),
-					path.join(ROOT, 'src/app.d.ts'),
-					path.join(DECLARATIONS, 'app.d.ts'),
-					'app/**/*.ts',
-					'app/**/*.svelte'
-				],
-				exclude: []
-			})
-		);
-		const result = run('svelte-check', [
-			'--tsconfig',
-			path.join(OUT, 'tsconfig.json'),
-			'--output',
-			'machine',
-			'--threshold',
-			'error'
-		]);
-		const errors = [...result.stdout.matchAll(/^\d+ ERROR "([^"]+)" (\d+):(\d+) "(.*)"$/gm)];
-		for (const [, file, line, column, message] of errors)
-			report(file, Number(line), Number(column), JSON.parse(`"${message}"`));
-		if (result.status !== 0 && !errors.length)
-			failures.push(`svelte-check exited ${result.status}:\n${result.stdout}${result.stderr}`);
-	}
-
-	if (examples.some((example) => example.worker)) {
-		writeFileSync(
-			path.join(OUT, 'tsconfig.worker.json'),
-			JSON.stringify({
-				extends: path.join(ROOT, 'tests/do/tsconfig.json'),
-				compilerOptions: { paths, types: ['@cloudflare/workers-types'] },
-				include: [path.join(DECLARATIONS, 'worker.d.ts'), 'worker/**/*.ts'],
-				exclude: []
-			})
-		);
-		const result = run('tsc', ['-p', path.join(OUT, 'tsconfig.worker.json'), '--pretty', 'false']);
-		const errors = [...result.stdout.matchAll(/^(.+)\((\d+),(\d+)\): error (TS\d+: .*)$/gm)];
-		for (const [, file, line, column, message] of errors)
-			report(file, Number(line), Number(column), message);
-		if (result.status !== 0 && !errors.length)
-			failures.push(`tsc exited ${result.status}:\n${result.stdout}${result.stderr}`);
-	}
-} finally {
-	if (!keep) {
-		// `svelte-kit sync` does not prune the types of deleted routes.
-		rmSync(OUT, { recursive: true, force: true });
-		rmSync(path.join(ROOT, '.svelte-kit/types/src/routes/__docexamples'), {
-			recursive: true,
-			force: true
-		});
-		sync();
-	}
+if (examples.some((example) => example.worker)) {
+	writeFileSync(
+		path.join(OUT, 'tsconfig.worker.json'),
+		JSON.stringify({
+			extends: path.join(ROOT, 'tests/do/tsconfig.json'),
+			compilerOptions: { paths, types: ['@cloudflare/workers-types'] },
+			include: [path.join(DECLARATIONS, 'worker.d.ts'), 'worker/**/*.ts'],
+			exclude: []
+		})
+	);
+	const result = run('tsc', ['-p', path.join(OUT, 'tsconfig.worker.json'), '--pretty', 'false']);
+	const errors = [...result.stdout.matchAll(/^(.+)\((\d+),(\d+)\): error (TS\d+: .*)$/gm)];
+	for (const [, file, line, column, message] of errors)
+		report(file, Number(line), Number(column), message);
+	if (result.status !== 0 && !errors.length)
+		failures.push(`tsc exited ${result.status}:\n${result.stdout}${result.stderr}`);
 }
 
 if (failures.length) {

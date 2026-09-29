@@ -256,13 +256,28 @@ export const reloadCanonical = (
 	});
 	const out = JSON.stringify(fresh.facade.toJSON());
 	problems?.push(
-		...wellFormed(fresh.facade, { doc: fresh.doc, merges: ctx.merges }).map(
-			(p) => `${r.name}-reload: ${p}`
-		)
+		...wellFormed(fresh.facade, {
+			doc: fresh.doc,
+			merges: ctx.merges,
+			semantics: ctx.semantics
+		}).map((p) => `${r.name}-reload: ${p}`)
 	);
 	fresh.destroy();
 	return out;
 };
+
+/**
+ * Island child kind → island kind, from a semantics table (`island-kind`).
+ * Held on settled states only (after the exchange, and on reloads): a
+ * delivery out of causal order can apply a move of a line before the
+ * retype that preceded it.
+ */
+const islandKindsOf = (semantics): Map<string, string> =>
+	new Map(
+		Object.entries(semantics?.defaultChild ?? {})
+			.filter(([parent]) => semantics.roles?.[parent]?.island === true)
+			.map(([parent, child]) => [child as string, parent])
+	);
 
 /**
  * Structural well-formedness, checked test-side on the projection: every
@@ -273,12 +288,18 @@ export const reloadCanonical = (
  */
 export const wellFormed = (
 	ed,
-	ctx: { doc?: unknown; merges?: readonly P1Merge[]; identities?: Map<string, string> } = {}
+	ctx: {
+		doc?: unknown;
+		merges?: readonly P1Merge[];
+		identities?: Map<string, string>;
+		semantics?: unknown;
+	} = {}
 ): string[] => {
 	const { doc } = ctx;
 	const problems: string[] = wellFormedProblems({
 		roots: ed.toJSON().children,
 		isVoid: ed.isVoid,
+		islandKinds: islandKindsOf(ctx.semantics),
 		merges: liveMerges(ed, ctx.merges),
 		identityOf: doc && ((id: string) => registryIdentity(doc, id)),
 		succeeds: doc && ((later: string, earlier: string) => succeeds(doc, later, earlier)),
@@ -318,20 +339,31 @@ export const permutations = <T>(xs: T[]): T[][] =>
 				permutations([...xs.slice(0, i), ...xs.slice(i + 1)]).map((rest) => [x, ...rest])
 			);
 
-/** Client-id assignments per replica count (≥ 3 each; plan §8 multi-replica rule). */
-export const CLIENT_IDS: Record<number, number[][]> = {
-	1: [[11], [900], [55]],
-	2: [
-		[20, 30],
-		[30, 20],
-		[7, 100]
-	],
-	3: [
-		[20, 30, 40],
-		[40, 30, 20],
-		[30, 40, 20]
-	]
-};
+/**
+ * Live replica ids sit above the seed band: a seed's writer lives below
+ * 2^26 (UW-03), as a production replica id is but for ~2^-27.
+ */
+export const LIVE = 2 ** 26;
+
+/**
+ * Client-id assignments per replica count (≥ 3 each; plan §8 multi-replica
+ * rule), `LIVE +` the listed offsets — relative order is what rows cite.
+ */
+export const CLIENT_IDS: Record<number, number[][]> = Object.fromEntries(
+	Object.entries({
+		1: [[11], [900], [55]],
+		2: [
+			[20, 30],
+			[30, 20],
+			[7, 100]
+		],
+		3: [
+			[20, 30, 40],
+			[40, 30, 20],
+			[30, 40, 20]
+		]
+	}).map(([n, sets]) => [n, sets.map((ids) => ids.map((id) => LIVE + id))])
+);
 
 export type Outcome = {
 	/** Canonical JSON of every replica, every observer, every reload — one value when converged. */
@@ -369,7 +401,7 @@ export const converge = (
 		const results = new Set<string>();
 		const problems: string[] = [];
 		const observers = [all, [...all].reverse()].map((order, i) => {
-			const obs = replica(`observer${i}`, seed, 998 + i, { ...opts, merges });
+			const obs = replica(`observer${i}`, seed, LIVE + 998 + i, { ...opts, merges });
 			for (const u of order) {
 				obs.receive(u);
 				obs.receive(u);
@@ -386,7 +418,11 @@ export const converge = (
 		for (const r of reps) {
 			if (r.pending()) problems.push(`${r.name}: pending after full delivery`);
 			problems.push(...r.problems);
-			problems.push(...wellFormed(r.ed, { doc: r.doc, merges }).map((p) => `${r.name}: ${p}`));
+			problems.push(
+				...wellFormed(r.ed, { doc: r.doc, merges, semantics: opts.semantics }).map(
+					(p) => `${r.name}: ${p}`
+				)
+			);
 			results.add(r.canonical());
 			results.add(reloadCanonical(r, problems, { semantics: opts.semantics, merges }));
 		}

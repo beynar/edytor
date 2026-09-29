@@ -13,6 +13,10 @@
  *   them (UW-21; a concurrent child displays in the void's slot, UW-21b).
  * - `seed-displacement` — a block id keeps the registry node it was first
  *   seen with: a seed never displaces pre-existing content (UW-03).
+ * - `island-kind` — an island's default child kind displays only under a
+ *   block of that island kind (RW-01: a code line a peer adds under a code
+ *   block another peer deletes or merges shows as its new parent's default
+ *   child, and keeps doing so when it is retyped, moved, nested or split).
  * - `promotion-hidden` — no unmarked block hides under a delete-marked
  *   holder (UW-08: read-time promotion puts it in the holder's slot). On
  *   by default; `DST_PROMOTION_ORACLE=0` turns it off for a local bisect.
@@ -34,6 +38,8 @@ export type WellFormedInput = {
 	registered?: ReadonlySet<string>;
 	/** The role answer for void kinds; absent → no roles configured. */
 	isVoid?: (id: string) => boolean;
+	/** Island child kind → the island kind whose children it is (`island-kind`); absent → no islands. */
+	islandKinds?: ReadonlyMap<string, string>;
 	/** Merges whose order still holds (the caller drops ones a later move made moot). */
 	merges?: readonly MergeRecord[];
 	/** Registry-node identity of `id`; absent → the backend has no registry. */
@@ -95,6 +101,20 @@ export const WELL_FORMED_CHECKS: Record<string, Check> = {
 						b.children?.length && isVoid(b.id) ? [`void ${b.id} has visible children`] : []
 					)
 				: []
+	},
+	'island-kind': {
+		run: ({ islandKinds, roots }) => {
+			if (!islandKinds?.size) return [];
+			const out: string[] = [];
+			const visit = (b: WfBlock, parent: WfBlock | null) => {
+				const island = typeof b.type === 'string' ? islandKinds.get(b.type) : undefined;
+				if (island !== undefined && parent?.type !== island)
+					out.push(`${b.id} shows ${String(b.type)} outside a ${island}`);
+				for (const c of b.children ?? []) visit(c, b);
+			};
+			for (const b of roots) visit(b, null);
+			return out;
+		}
 	},
 	'seed-displacement': {
 		run: ({ identityOf, identities, succeeds = () => false }, visible) => {

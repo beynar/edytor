@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { Edytor } from '$lib/edytor.svelte.js';
+import type { InitializedPlugin } from '$lib/plugins.js';
 import { Keymap, type HotKey } from '$lib/session/keymap.js';
 import { Dispatcher } from '$lib/session/commands.js';
 
@@ -201,5 +202,27 @@ describe('Keymap non-Latin layout fallback', () => {
 			false
 		);
 		expect(calls).toEqual([]);
+	});
+});
+
+describe('a binding that is not a function (RW-14)', () => {
+	it('is skipped with a development warning: the plugin binding of the chord still runs', () => {
+		const calls: string[] = [];
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const edytor = {} as { dispatcher: Dispatcher };
+		edytor.dispatcher = new Dispatcher(edytor as unknown as Edytor);
+		// An optional callback left undefined (`hotKeys={{ 'mod+b': onBold }}`).
+		const onBold = undefined as unknown as HotKey;
+		const plugin = { hotkeys: { 'mod+b': handled(calls, 'plugin bold') } };
+		const hotKeys = new Keymap(edytor as unknown as Edytor, { 'mod+b': onBold }, [
+			plugin as unknown as InitializedPlugin
+		]);
+		try {
+			expect(hotKeys.handle(createKeydown({ key: 'b', code: 'KeyB', ctrlKey: true }))).toBe(true);
+			expect(calls).toEqual(['plugin bold']);
+			expect(warn).toHaveBeenCalledWith(expect.stringContaining('"mod+b"'));
+		} finally {
+			warn.mockRestore();
+		}
 	});
 });

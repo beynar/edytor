@@ -1514,6 +1514,17 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const at = Math.max(0, Math.min(index, sibs.length));
 			return M.ranksAt(sibs, at, count, doc.clientID, randOf(doc));
 		};
+		/**
+		 * The type steps that keep what re-homed blocks show: one displayed
+		 * out of an island as another kind than its stored one (`displayType`)
+		 * gets that kind written, so leaving the island's slot never brings the
+		 * island's child kind back (RW-01). Every planned move carries them.
+		 */
+		const keepShown = (ids: readonly BlockId[]): PlanStep[] =>
+			ids.flatMap((id) => {
+				const shown = runsView.displayType(id);
+				return shown === undefined ? [] : attr(id, TYPE, shown);
+			});
 		const move = (ids: BlockId[], parent: BlockId | null, index: number): PlanStep[] =>
 			ids.length === 0
 				? []
@@ -1524,7 +1535,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 							parent,
 							index,
 							ranks: ranksFor(parent, index, ids.length, ids)
-						}
+						},
+						...keepShown(ids)
 					];
 		/** A type/data step, planned only when the value differs (the one same-value guard). */
 		const attr = (id: BlockId, key: typeof TYPE | typeof DATA, value: unknown): PlanStep[] => {
@@ -1638,7 +1650,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/**
 		 * Split `id` at content `offset` into a new sibling `newId` (one boundary
 		 * item and the claims that follow it, no text copied; children follow).
-		 * `tail` decides the sibling's type/data once (default: the source's).
+		 * `tail` decides the sibling's type/data once (default: the source's —
+		 * the kind it displays, RW-01).
 		 * Refused on `void` blocks. `ids`: the new block.
 		 */
 		const splitBlock = (
@@ -1657,7 +1670,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const [at] = clamp(id, offset, 0);
 			const t = tail
 				? { type: ref(tail.type), data: tail.data && sanitizeWireJson(tail.data) }
-				: { type: rec.node.getAttr(TYPE) as string, data: rec.node.getAttr(DATA) as JsonObj };
+				: { type: blockTypeOf(id)!, data: rec.node.getAttr(DATA) as JsonObj };
 			const [rank] = ranksFor(pos.parent, pos.index + 1, 1);
 			const length = displayLength(id) - at;
 			const split: PlanStep = {
@@ -1675,7 +1688,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 
 		/**
 		 * Engine merge primitive: `from`'s content is claimed by `into`, its
-		 * children ADOPTED into `into`'s child list, and `from` is hidden via
+		 * children ADOPTED into `into`'s child list — an island's take `into`'s
+		 * default child, like a baseline merge's — and `from` is hidden via
 		 * the claim (undo restores it). Role rules are `canMerge`'s; a merge
 		 * that would close a display cycle is refused. `ids`: `into`.
 		 */
@@ -1685,7 +1699,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const v = view();
 			if (!canMerge(from, into) || !v.blocks.get(into)?.claimsNode) return REFUSED;
 			if (M.isSelfOrDescendant(v.placements, v.own, into, from)) return REFUSED;
-			return plan([into], [merge(from, into), ...move(childrenIds(from), into, Infinity)]);
+			const kids = childrenIds(from);
+			const reset = isIsland(from) ? defaultChild(into) : null;
+			const retype = reset === null ? [] : kids.flatMap((kid) => attr(kid, TYPE, reset));
+			return plan([into], [merge(from, into), ...move(kids, into, Infinity), ...retype]);
 		};
 
 		/**
@@ -1780,6 +1797,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 							];
 				return [
 					...moved,
+					...keepShown(kids.map((k) => k.id)),
 					...retype,
 					{ op: 'deleteBlock', id: root, marks, removes: chunk } as PlanStep
 				];
@@ -1817,6 +1835,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					index: pos.index + 1,
 					ranks: moved.map((k) => promotedRank(slot, k.rank))
 				},
+				...keepShown(ids),
 				...(reset === null ? [] : ids.flatMap((kid) => attr(kid, TYPE, reset)))
 			];
 		};

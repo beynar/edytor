@@ -610,6 +610,34 @@ block: its placement never changed. Pins: `p1-scenarios.test.ts`
 ("capabilities under concurrency"), `review-20260929-units.test.ts`
 (UW-21), `p1-fuzz.test.ts` and the `void-children` well-formed check.
 
+### `conc.island-reset` — no island child kind outside its island
+
+A delete or merge of an island block (`del.blocks.promote`, the island
+merge of `mergeBackward`/`mergeForward`, and the adopting `mergeBlocks`)
+retypes the children it moves out to the default child type of their new
+parent. A child a peer adds to the island concurrently was never seen by
+that write, so the rule is derived when the document is read
+(`placement/model.ts` `displaySlotOf`): a block that displays out of an
+island — promoted out of a deleted one, or under the owner of a merged one
+— and still has the island's default child type (`codeLine` for a code
+block) displays as its display parent's default child. Its stored type is
+kept, so undo of the delete or merge shows it under the island again as a
+`codeLine`. The rule is real, not only drawn (RW-01):
+
+- a retype of such a block shows the new type (the override applies only
+  while the stored type is the island's default child);
+- a move of it — drag, Tab, Shift+Tab, `moveBlocks`, a delete of the parent
+  it was promoted under, a retype of that parent to a void kind — writes
+  the type it shows, so it never shows `codeLine` again outside the island;
+- Enter in it (`splitBlock` without a tail) gives the tail the type it
+  shows.
+
+Pins: `p1-scenarios.test.ts` ("promoted blocks keep no container-only
+kind", RW-01 rows), and the `island-kind` well-formed check, held on
+settled states by the p1 harness and the corpus's `roles` lane (a delivery
+out of causal order may show a moved line before the retype that preceded
+it).
+
 ### `conc.undo.actor-local` — undo after remote edits
 
 A deletes `bb`; B edits survivor `cc`; A undoes → `bb` is restored AND

@@ -96,7 +96,7 @@ The client sends the token; the provider adds its replica id (`?replica=<clientI
 <Edytor server="wss://rooms.example.com/rooms" room={documentId} params={{ token }} actor={{ id: userId }} />
 ```
 
-`params` is read at every reconnect; pass a new `token` to refresh an expiring one (see [WebSocket options](/docs/collaboration/websocket#options)). An expired token closes the dial with `4401`: the provider emits `expired` and dials again with the `params` it then reads. A denied dial (`4403`) stops the provider: once the permission is fixed, reload the page, or call `connect()` on a [`WebsocketProvider`](/docs/collaboration/websocket#provider-events-and-state) you created, to dial again. With a session cookie instead, read `request.headers.get('Cookie')` in `authorize` and look the session up; the cookie is sent with the upgrade when the Worker is on the same site.
+`params` is read at every reconnect; pass a new `token` to refresh an expiring one (see [WebSocket options](/docs/collaboration/websocket#options)). An expired token closes the dial with `4401`: the provider emits `expired` (the view's `onSyncExpired`) and dials again with the `params` it then reads, so refresh `token` there or before it expires. A denied dial (`4403`) stops the provider: once the permission is fixed, reload the page, or call `connect()` on a [`WebsocketProvider`](/docs/collaboration/websocket#provider-events-and-state) you created, to dial again. With a session cookie instead, read `request.headers.get('Cookie')` in `authorize` and look the session up; the cookie is sent with the upgrade when the Worker is on the same site.
 
 ## How identity reaches the room
 
@@ -135,7 +135,7 @@ If the room's storage is lost and `onLoad` returns a snapshot older than the las
 - Edits under an id another user owns, or under an id the room already holds part of, are stripped. The author's own client delivers them when it reconnects. The relaying client's own edits are stored meanwhile; an edit of its own that builds on stripped content waits in the room's memory until the author's edit arrives.
 - Edits under an id the room holds nothing of are stored as relayed content, and the id stays claimable by its author's dial.
 
-Every author keeps their client ids, and nobody is disconnected for relaying.
+Every author keeps their client ids, and nobody is disconnected for relaying. The relaying client's [`saved`](/docs/collaboration/websocket#saved-state) turns `true` once the room has stored its own edits: it tracks what that replica wrote, not the stripped edits it received from the room earlier.
 
 Because client ids belong to users, a browser profile's local copy and cross-tab channel should belong to one user. See [one user per browser profile](/docs/collaboration/persistence#one-user-per-browser-profile).
 

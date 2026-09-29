@@ -19,6 +19,7 @@ describe('wellFormed checks', () => {
 			'registered-type',
 			'merge-order',
 			'void-children',
+			'island-kind',
 			'seed-displacement',
 			'promotion-hidden'
 		]);
@@ -58,6 +59,18 @@ describe('wellFormed checks', () => {
 		);
 		expect(wellFormedProblems({ roots: [b('D', 'divider', [b('K')])], isVoid })).toEqual([
 			'void-children: void D has visible children'
+		]);
+	});
+
+	it('island-kind: an island’s child kind outside a block of that island kind fails (RW-01)', () => {
+		const islandKinds = new Map([['codeLine', 'code']]);
+		const line = (id: string) => b(id, 'codeLine');
+		expect(wellFormedProblems({ roots: [b('C', 'code', [line('L')])], islandKinds })).toEqual([]);
+		expect(
+			wellFormedProblems({ roots: [line('L'), b('P', 'paragraph', [line('K')])], islandKinds })
+		).toEqual([
+			'island-kind: L shows codeLine outside a code',
+			'island-kind: K shows codeLine outside a code'
 		]);
 	});
 

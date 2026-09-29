@@ -796,7 +796,7 @@ describe('capabilities under concurrency (review-probes/capabilities)', () => {
  */
 describe('promoted blocks keep no container-only kind (rescore low)', () => {
 	const semantics = {
-		roles: { code: { island: true } },
+		roles: { code: { island: true }, divider: { void: true } },
 		rendersContent: { code: false },
 		defaultChild: { code: 'codeLine' }
 	};
@@ -849,6 +849,163 @@ describe('promoted blocks keep no container-only kind (rescore low)', () => {
 			)
 		)) {
 			expect(typed(o.ed)).toBe('C:code[L1:codeLine,L2:codeLine] N:paragraph');
+		}
+	});
+
+	/**
+	 * RW-01: the reset is real, not display-only. After Ada's delete and
+	 * Bob's line meet, Ada edits the promoted line; every replica shows the
+	 * kind the edit meant.
+	 */
+	const promotedThen = (seeds, edit: (ed) => unknown) =>
+		converge(
+			seeds,
+			2,
+			([a, b]) => {
+				const del = a.capture(() => a.ed.deleteBlocks(['C']));
+				const add = b.capture(() => addLine(b.ed));
+				a.receiveAll(add);
+				b.receiveAll(del);
+				expect(edit(a.ed).status).toBe('applied');
+			},
+			{ semantics }
+		);
+
+	it('RW-01 retype the promoted line → it shows the new kind', () => {
+		for (const o of one(promotedThen(code, (ed) => ed.setBlockType('L2', 'heading')))) {
+			expect(typed(o.ed)).toBe('L1:paragraph L2:heading N:paragraph');
+		}
+	});
+
+	it('RW-01 move the promoted line → it stays a paragraph', () => {
+		for (const o of one(
+			promotedThen(code, (ed) => ed.moveBlock('L2', { parent: null, index: 0 }))
+		)) {
+			expect(tree(o.ed)).toBe('L2:"b" L1:"a" N:"n"');
+			expect(typed(o.ed)).toBe('L2:paragraph L1:paragraph N:paragraph');
+		}
+	});
+
+	for (const [name, edit] of Object.entries({
+		retype: (ed) => ed.setBlockType('L2', 'heading'),
+		move: (ed) => ed.moveBlock('L2', { parent: null, index: 0 })
+	})) {
+		it(`RW-01 ${name} the promoted line, then undo it and the delete → both code lines are back`, () => {
+			for (const o of one(
+				converge(
+					code,
+					2,
+					([a, b]) => {
+						const del = a.capture(() => a.ed.deleteBlocks(['C']));
+						const add = b.capture(() => addLine(b.ed));
+						a.receiveAll(add);
+						b.receiveAll(del);
+						edit(a.ed);
+						a.undo();
+						a.undo();
+					},
+					{ semantics }
+				)
+			)) {
+				expect(typed(o.ed)).toBe('C:code[L1:codeLine,L2:codeLine] N:paragraph');
+			}
+		});
+	}
+
+	it('RW-01 Tab on the promoted line → it nests as a paragraph', () => {
+		for (const o of one(promotedThen(code, (ed) => ed.nestBlock('L2', 'L1')))) {
+			expect(typed(o.ed)).toBe('L1:paragraph[L2:paragraph] N:paragraph');
+		}
+	});
+
+	it('RW-01 Shift+Tab on a line promoted under a parent → it outdents as the parent’s default child', () => {
+		const nested = [{ id: 'Q', text: 'q', children: code.slice(0, 1) }, code[1]];
+		for (const o of one(promotedThen(nested, (ed) => ed.unNestBlock('L2')))) {
+			expect(tree(o.ed)).toBe('Q:"q"[L1:"a"] L2:"b" N:"n"');
+			expect(typed(o.ed)).toBe('Q:paragraph[L1:paragraph] L2:paragraph N:paragraph');
+		}
+	});
+
+	it('RW-01 split the promoted line → head and tail are paragraphs', () => {
+		for (const o of one(promotedThen(code, (ed) => ed.splitBlock('L2', 1, 'L3')))) {
+			expect(tree(o.ed)).toBe('L1:"a" L2:"b" L3:"" N:"n"');
+			expect(typed(o.ed)).toBe('L1:paragraph L2:paragraph L3:paragraph N:paragraph');
+		}
+	});
+
+	it('RW-01 delete the parent a line was promoted under → the line takes its slot as a paragraph', () => {
+		const nested = [{ id: 'Q', text: 'q', children: code.slice(0, 1) }, code[1]];
+		for (const o of one(promotedThen(nested, (ed) => ed.deleteBlocks(['Q'])))) {
+			expect(tree(o.ed)).toBe('L1:"a" L2:"b" N:"n"');
+			expect(typed(o.ed)).toBe('L1:paragraph L2:paragraph N:paragraph');
+		}
+	});
+
+	it('RW-01 retype the parent a line was promoted under to a void kind → the line is shed as a paragraph', () => {
+		const nested = [{ id: 'Q', text: 'q', children: code.slice(0, 1) }, code[1]];
+		for (const o of one(promotedThen(nested, (ed) => ed.setBlockType('Q', 'divider')))) {
+			expect(tree(o.ed)).toBe('Q:"q" L1:"a" L2:"b" N:"n"');
+			expect(typed(o.ed)).toBe('Q:divider L1:paragraph L2:paragraph N:paragraph');
+		}
+	});
+
+	const merged = [{ id: 'P', text: 'p' }, ...code];
+	const merges = {
+		Backspace: (ed) => ed.mergeBackward('C'),
+		Delete: (ed) => ed.mergeForward('P')
+	};
+	for (const [key, mergeCode] of Object.entries(merges)) {
+		it(`RW-01 merge the code block (${key}) ‖ the peer adds a code line → no code line outside it`, () => {
+			for (const o of one(
+				converge(
+					merged,
+					2,
+					([a, b]) => {
+						mergeCode(a.ed);
+						addLine(b.ed);
+					},
+					{ semantics }
+				)
+			)) {
+				expect(tree(o.ed)).toBe('P:"p"[L2:"b"] L1:"a" N:"n"');
+				expect(typed(o.ed)).toBe('P:paragraph[L2:paragraph] L1:paragraph N:paragraph');
+			}
+		});
+	}
+
+	it('RW-01 engine merge of the code block (children adopt) ‖ the peer adds a code line → the survivor’s default children', () => {
+		for (const o of one(
+			converge(
+				merged,
+				2,
+				([a, b]) => {
+					a.ed.mergeBlocks('C', 'P');
+					addLine(b.ed);
+				},
+				{ semantics }
+			)
+		)) {
+			expect(tree(o.ed)).toBe('P:"p"[L1:"a",L2:"b"] N:"n"');
+			expect(typed(o.ed)).toBe('P:paragraph[L1:paragraph,L2:paragraph] N:paragraph');
+		}
+	});
+
+	it('RW-01 …then undo of the merge → both lines are code lines in the code block again', () => {
+		for (const o of one(
+			converge(
+				merged,
+				2,
+				([a, b]) => {
+					const merge = a.capture(() => a.ed.mergeBackward('C'));
+					const add = b.capture(() => addLine(b.ed));
+					a.receiveAll(add);
+					b.receiveAll(merge);
+					a.undo();
+				},
+				{ semantics }
+			)
+		)) {
+			expect(typed(o.ed)).toBe('P:paragraph C:code[L1:codeLine,L2:codeLine] N:paragraph');
 		}
 	});
 

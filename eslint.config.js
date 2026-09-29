@@ -170,8 +170,6 @@ const repoConfig = [
 			'**/dist-code/**',
 			// the docs site is its own package (Blume)
 			'site/**',
-			// doc examples extracted by `pnpm check:docs`
-			'src/routes/__docexamples/**',
 			'node_modules/**',
 			'package/**',
 			'package-lock.json',

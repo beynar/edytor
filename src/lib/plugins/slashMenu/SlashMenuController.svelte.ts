@@ -13,8 +13,8 @@ type TextInsertionPayload = {
 	end?: number;
 };
 
-/** Lowercase, hyphens dropped (`To-do` reads `todo`), trimmed. */
-const normalize = (value: string) => value.replace(/-/g, '').trim().toLowerCase();
+/** Lowercase, hyphens dropped (`To-do` reads `todo`), trailing whitespace trimmed. */
+const normalize = (value: string) => value.replace(/-/g, '').trimEnd().toLowerCase();
 
 /** The query starts a word of the command's label or keywords (Notion); the id is not searched. */
 const commandMatchesQuery = (command: EditorCommand, query: string) =>
@@ -198,8 +198,10 @@ export class SlashMenuController {
 		const { text, triggerStart, queryEnd } = range;
 		this.query = text.stringContent.slice(triggerStart + 1, queryEnd);
 		const commandCount = this.commands.length;
-		// A query no command matches is prose (a URL, a path): the menu closes.
-		if (this.query && commandCount === 0) {
+		// A query no command matches is prose (a URL, a path), and so is one
+		// that opens with whitespace (`yes / no`) or holds only hyphens (`/-`):
+		// the menu closes.
+		if (this.query && (commandCount === 0 || /^\s/.test(this.query) || !normalize(this.query))) {
 			this.close();
 			return;
 		}

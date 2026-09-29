@@ -47,10 +47,20 @@ describe('semantics tables (API low)', () => {
 		expect(frozenDeep(semantics)).toBe(true);
 		const document = createDocument({
 			value: { children: [{ type: 'paragraph' }] },
-			semantics: { ...defaultSemantics, roles: { ...defaultSemantics.roles, ...semantics.roles } }
+			// The documented merge (reference/document-api): field by field keeps the bundled rows.
+			semantics: {
+				roles: { ...defaultSemantics.roles, ...semantics.roles },
+				rendersContent: { ...defaultSemantics.rendersContent, ...semantics.rendersContent },
+				defaultChild: { ...defaultSemantics.defaultChild, ...semantics.defaultChild }
+			}
 		});
 		expect(document.semantics.roles.get('embed')).toEqual({ void: true, island: false });
 		expect(document.semantics.roles.get('divider')).toEqual({ void: true, island: false });
+		expect(document.semantics.roles.get('code')).toEqual({ void: false, island: true });
+		expect(document.semantics.rendersContent.get('embed')).toBe(false);
+		expect(document.semantics.rendersContent.get('divider')).toBe(false);
+		expect(document.semantics.defaultChild.get('code')).toBe('codeLine');
+		expect(document.semantics.defaultChild.get('board')).toBe('card');
 		document.destroy();
 	});
 });

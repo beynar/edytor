@@ -29,7 +29,9 @@
  *
  * - U03: the corpus is adapter-parametric. `CRDT_ADAPTER` selects
  *   `raw` (RawNodeOps copy semantics — diagnostic lane),
- *   `model` / `doc` (production adapters — strict lane),
+ *   `model` / `doc` (production adapters — strict lane), `roles` (the `doc`
+ *   facade with block roles over a seed holding an island and a void —
+ *   strict lane, RW-01),
  *   or `all` (default). Each adapter seeds from its own schema
  *   (`BASE_SEED` vs `MODEL_BASE_SEED`).
  *
@@ -53,8 +55,8 @@ import { runSchedule, expectedViolations, type RunResult } from './runner.js';
 import { minimizeSchedule, describeSchedule } from './shrink.js';
 import { createRawNodeOps } from '../harness/ops/raw-node-ops.js';
 import { createModelOps } from '../harness/ops/model-ops.js';
-import { createDocOps } from '../harness/ops/doc-ops.js';
-import { BASE_SEED, MODEL_BASE_SEED } from '../scenarios/seeds.js';
+import { createDocOps, ROLES } from '../harness/ops/doc-ops.js';
+import { BASE_SEED, MODEL_BASE_SEED, ROLES_BASE_SEED } from '../scenarios/seeds.js';
 import type { CrdtOps } from '../harness/ops/crdt-ops.js';
 
 const FAILURE_DIR = fileURLToPath(new URL('./failures', import.meta.url));
@@ -89,7 +91,11 @@ const ADAPTERS: Record<string, { make: () => CrdtOps; seed: unknown; suffix: str
 	model: { make: createModelOps, seed: MODEL_BASE_SEED, suffix: '.model' },
 	// U06: the same corpus swept through the unified EdytorDoc facade —
 	// proves the assembled surface preserves the engine semantics.
-	doc: { make: createDocOps, seed: MODEL_BASE_SEED, suffix: '.doc' }
+	doc: { make: createDocOps, seed: MODEL_BASE_SEED, suffix: '.doc' },
+	// RW-01: the facade with block roles over a seed holding a code island
+	// and a void — island merges/deletes/promotions and void shedding, held
+	// to `void-children` and `island-kind`.
+	roles: { make: () => createDocOps(ROLES), seed: ROLES_BASE_SEED, suffix: '.roles' }
 };
 const SELECTED_ADAPTERS = (process.env.CRDT_ADAPTER ?? 'all').split(',').flatMap((s) => {
 	const name = s.trim();
@@ -183,6 +189,15 @@ for (const adapterName of SELECTED_ADAPTERS) {
 		 * signature + a hardening repro test.
 		 */
 		const KNOWN_MODEL_BUGS = new Map<number, RegExp>();
+		/**
+		 * The roles lane's pinned defects (`ill-formed`). Seed 11: the engine
+		 * `mergeBlocks` adopts the source's children into the target, so a
+		 * concurrent delete of the target shows them above the revived source
+		 * (repro: `arch-v2/review-20260929-units.test.ts`, "open:" row).
+		 */
+		const KNOWN_ROLES_BUGS = new Map<number, RegExp>([
+			[11, /merge-order: b3a \(child of merged b3\) ranks before b3/]
+		]);
 
 		/**
 		 * Committed frozen upstream-crash repros (the diagnostic-lane replay
@@ -212,8 +227,13 @@ for (const adapterName of SELECTED_ADAPTERS) {
 					// current corpus state. Frozen diagnostic repros are exempt.
 					rmSync(artifact);
 				}
-				const knownBug =
-					adapterName === 'model' || adapterName === 'doc' ? KNOWN_MODEL_BUGS.get(seed) : undefined;
+				const pinned =
+					adapterName === 'model' || adapterName === 'doc'
+						? { bug: KNOWN_MODEL_BUGS.get(seed), kind: 'crash' }
+						: adapterName === 'roles'
+							? { bug: KNOWN_ROLES_BUGS.get(seed), kind: 'ill-formed' }
+							: undefined;
+				const knownBug = pinned?.bug;
 				if (knownBug !== undefined) {
 					// Pinned defect — persist the fresh repro, then pin the EXACT
 					// crash signature: a different violation is a new bug, and a
@@ -221,9 +241,9 @@ for (const adapterName of SELECTED_ADAPTERS) {
 					if (!result.ok) persistFailure(schedule, result, ops, seedUpdate, suffix);
 					expect(
 						result.ok,
-						`seed ${seed}: pinned model defect expected to keep failing (hardening/u5-min-rank-rehome)`
+						`seed ${seed}: pinned model defect expected to keep failing (see the pin's repro)`
 					).toBe(false);
-					expect(result.violations).toEqual(['crash']);
+					expect(result.violations).toEqual([pinned!.kind]);
 					expect(result.failure).toMatch(knownBug);
 					return;
 				}

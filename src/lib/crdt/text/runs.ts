@@ -476,8 +476,8 @@ export const bindRuns = (Y: EngineApi) => {
 		// keystroke keeps the resolved placements and children index verbatim.
 		let placementsMap: Map<BlockId, ResolvedPlacement> | null = null;
 		let kidsMap: Map<BlockId | null, ChildSlot[]> | null = null;
-		/** Blocks promoted out of an island → their display parent (`reset` slots). */
-		let promoted = new Map<BlockId, BlockId | null>();
+		/** Blocks displayed out of an island → their display parent and the island (`reset` slots). */
+		let promoted = new Map<BlockId, { under: BlockId | null; island: BlockId }>();
 		let orderCache: DocOrder | null = null;
 		let placementsBuiltAt = -1;
 		let placementVersion = 0;
@@ -488,16 +488,23 @@ export const bindRuns = (Y: EngineApi) => {
 			kidsMap = childrenIndex(placementsMap, ownShim);
 			promoted = new Map();
 			for (const [parent, kids] of kidsMap)
-				for (const kid of kids) if (kid.reset) promoted.set(kid.id, parent);
+				for (const kid of kids)
+					if (kid.reset !== undefined) promoted.set(kid.id, { under: parent, island: kid.reset });
 			orderCache = null;
 			placementsBuiltAt = placementVersion;
 		};
 
-		/** The kind `id` displays as: a block promoted out of an island, its display parent's default child. */
+		/**
+		 * The kind `id` displays as: a block displayed out of an island that
+		 * still has the island's default child kind, its display parent's
+		 * default child; any other, its stored kind (a retype shows).
+		 */
 		const typeOf = (id: BlockId): string => {
-			const under = promoted.get(id);
-			if (under === undefined || roles === null) return blocks.get(id)?.type ?? 'unknown';
-			return roles.defaultChild(under === null ? null : typeOf(under));
+			const stored = blocks.get(id)?.type ?? 'unknown';
+			const out = promoted.get(id);
+			if (out === undefined || roles === null) return stored;
+			if (stored !== roles.defaultChild(blocks.get(out.island)?.type ?? null)) return stored;
+			return roles.defaultChild(out.under === null ? null : typeOf(out.under));
 		};
 
 		const rangeStats: RangeReadStats = { items: 0, markers: 0 };
@@ -1268,7 +1275,8 @@ export const bindRuns = (Y: EngineApi) => {
 				if (roles === null) return undefined;
 				syncPending(openTx());
 				ensurePlacements();
-				return promoted.has(id) ? typeOf(id) : undefined;
+				const shown = promoted.has(id) ? typeOf(id) : undefined;
+				return shown === blocks.get(id)?.type ? undefined : shown;
 			},
 			project: (root?: BlockId): ProjectedBlock[] => {
 				syncPending(openTx());

@@ -9,7 +9,7 @@ Edytor ships as one npm package, `edytor`. It contains the `<Edytor>` component,
 :::warning[Early development]
 Edytor is a pre-release (`0.1.0-next.0`) and is not ready for production. The API can change between releases without a compatibility layer.
 
-These docs describe that release. The `edytor@0.0.11` that npm installs without a tag predates it and uses a different API; [Migration](/docs/reference/migration) lists every change. Until the pre-release is published, build the package from the [GitHub repository](https://github.com/beynar/edytor) (see [Build from source](#build-from-source)).
+These docs describe that release. The `edytor@0.0.11` that npm installs without a tag predates it and uses a different API; [Migration](/docs/reference/migration) lists every change. Until the pre-release is published, build the package from the `arch-v2` branch of the [GitHub repository](https://github.com/beynar/edytor) (see [Build from source](#build-from-source)).
 :::
 
 ## Requirements
@@ -38,14 +38,14 @@ The package pulls in a few runtime dependencies on its own: Atlassian's Pragmati
 
 ## Build from source
 
-Until the pre-release is on npm, pack the package from the repository and install the tarball:
+Until the pre-release is on npm, pack the package from the `arch-v2` branch and install the tarball. Name the branch: `master` still holds `0.0.11`.
 
 ```bash
-git clone https://github.com/beynar/edytor.git
+git clone -b arch-v2 https://github.com/beynar/edytor.git
 cd edytor
 pnpm install
 pnpm package   # builds dist/
-pnpm pack      # writes edytor-<version>.tgz
+pnpm pack      # writes edytor-0.1.0-next.0.tgz
 ```
 
 Then, in your project:
@@ -53,8 +53,6 @@ Then, in your project:
 ```package-install
 npm i ../edytor/edytor-0.1.0-next.0.tgz
 ```
-
-Use the file name `pnpm pack` printed.
 
 ## Verify the install
 

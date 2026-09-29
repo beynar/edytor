@@ -88,5 +88,30 @@ export const MODEL_BASE_SEED: SeedUpdate = modelSpecSeed([
 	}
 ]);
 
+/**
+ * The roles lane's seed (RW-01): {@link MODEL_BASE_SEED}'s blocks plus a
+ * code island with its lines and a void divider, so island merges, deletes
+ * and promotions and void shedding are fuzzed (`ROLES` in `doc-ops`).
+ */
+export const ROLES_BASE_SEED: SeedUpdate = modelSpecSeed([
+	{ id: 'b1', type: 'paragraph', content: [{ kind: 'text', text: 'hello world' }] },
+	{
+		id: 'c1',
+		type: 'code',
+		content: [],
+		children: [
+			{ id: 'c1a', type: 'codeLine', content: [{ kind: 'text', text: 'let a' }] },
+			{ id: 'c1b', type: 'codeLine', content: [{ kind: 'text', text: 'let b' }] }
+		]
+	},
+	{ id: 'd1', type: 'divider', content: [] },
+	{
+		id: 'b3',
+		type: 'list',
+		content: [{ kind: 'text', text: 'parent' }],
+		children: [{ id: 'b3a', type: 'paragraph', content: [{ kind: 'text', text: 'child a' }] }]
+	}
+]);
+
 /** Empty document seed (concurrent-bootstrap scenarios). */
 export const EMPTY_SEED: SeedUpdate = () => {};

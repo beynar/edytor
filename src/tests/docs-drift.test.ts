@@ -33,7 +33,20 @@ const stale: [phrase: string | RegExp, why: string][] = [
 		/\b(?:npm i|npm install|pnpm add|yarn add|bun add) edytor(?![@\w/.-])/,
 		'a bare `edytor` installs the incompatible 0.0.11 from npm; install `edytor@next`'
 	],
-	['through the `Keymap`', 'the Keymap class is not exported; bindings go through `hotKeys`']
+	['through the `Keymap`', 'the Keymap class is not exported; bindings go through `hotKeys`'],
+	[
+		'registered to whoever delivers them first',
+		'a dial owns its own client id; relayed ids stay unowned (NW-01)'
+	],
+	[
+		"a write under another user's client id",
+		"the room strips content under another user's id and keeps the socket open (NW-01)"
+	],
+	['refuses updates under another user', 'the room strips those updates; it does not refuse them'],
+	[
+		/\.\.\.semanticsOf\(|build a table with `semanticsOf` and spread it/,
+		'a top-level spread replaces the bundled roles; merge `roles`, `rendersContent` and `defaultChild` one by one'
+	]
 ];
 
 const has = (text: string, phrase: string | RegExp) =>
@@ -52,6 +65,27 @@ describe('docs drift', () => {
 			.filter((path) => has(readFileSync(path, 'utf8'), phrase))
 			.map((path) => relative(root, path));
 		expect(hits).toEqual([]);
+	});
+
+	it('while the version is a pre-release, the source build names its branch and version', () => {
+		const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+		if (!version.includes('-')) return;
+		// master still holds 0.0.11: a clone without `-b` builds the wrong package.
+		const clones = docs.flatMap((path) =>
+			[...readFileSync(path, 'utf8').matchAll(/git clone .*github\.com\/beynar\/edytor.*/g)].map(
+				([line]) => `${relative(root, path)}: ${line}`
+			)
+		);
+		expect(clones.length).toBeGreaterThan(0);
+		expect(clones.filter((line) => !/ -b \S+/.test(line))).toEqual([]);
+		const tarballs = docs.flatMap((path) =>
+			[...readFileSync(path, 'utf8').matchAll(/edytor-[\w.<>-]+\.tgz/g)].map(([name]) => name)
+		);
+		expect(tarballs.filter((name) => name !== `edytor-${version}.tgz`)).toEqual([]);
+		// "Edit this page" links built on master would 404.
+		expect(readFileSync(join(root, 'site/blume.config.ts'), 'utf8')).not.toMatch(
+			/branch:\s*["']master["']/
+		);
 	});
 
 	it('no source comment cites a README section (the README is a landing page)', () => {

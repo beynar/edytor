@@ -902,10 +902,13 @@ export class EdytorDocument {
 	 * it reports `synced` or the terminal `failed` (D4), is torn down, or its
 	 * bound elapses: `sync.bound` ms from the attach,
 	 * {@link DEFAULT_READINESS_BOUND} for a provider that cannot report
-	 * settled, or {@link DEFAULT_READINESS_BOUND} from each `armBound()`.
+	 * settled, or {@link DEFAULT_READINESS_BOUND} from each `armBound()`
+	 * (`holdBound()` stops it until the next arm).
 	 * Each settle runs the readiness decision ({@link _decide}); a
 	 * `SyncRefusedError` settles without deciding and is recorded as the
 	 * target's {@link syncRefusal} until its release or its next `synced`.
+	 * Releasing a refused provider decides with the providers still
+	 * attached; with none, the document stays pending.
 	 * A factory that throws never attached: its error propagates and it
 	 * decides nothing. A transport target
 	 * (`sync.target`, else the factory) already attached is a no-op: the
@@ -962,6 +965,7 @@ export class EdytorDocument {
 					clearTimeout(bound);
 					bound = setTimeout(decide, DEFAULT_READINESS_BOUND);
 				},
+				holdBound: () => clearTimeout(bound),
 				attach: (companion) => this.attachSync(companion, opts)
 			});
 		} catch (error) {
@@ -973,13 +977,18 @@ export class EdytorDocument {
 			return cleanup;
 		}
 		// The returned cleanup runs once and frees the target; tearing down
-		// an unsynced provider settles it like a failure.
+		// an unsynced provider settles it like a failure. A released refusal
+		// lifts its hold: the providers still attached decide (with none, the
+		// next attach or `sync()` does). After the cleanup, which releases
+		// the provider's own companions.
 		const release = (): ReturnType<EdytorSyncCleanup> => {
 			if (this._providers.get(target) !== release) return;
 			this._providers.delete(target);
-			this._refusals.delete(target);
+			const refused = this._refusals.delete(target);
 			decide();
-			return cleanup();
+			const result = cleanup();
+			if (refused && this._providers.size > 0) this._decide(opts.value);
+			return result;
 		};
 		this._providers.set(target, release);
 		return release;

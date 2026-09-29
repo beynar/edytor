@@ -34,7 +34,9 @@
  *   them) cut by the table, one step each; one `edytor.transact` around two
  *   of them is one step. NW-06: so do direct `markText`, `addChildBlock` and
  *   `setInlineData` (outside a user command only an insertion continues);
- *   `run('format')` around two `markText` calls is one step.
+ *   `run('format')` around two `markText` calls is one step. RW-12: `run`
+ *   with a kind the table does not list (`myConvert`) cuts like a bare
+ *   operation: its `setBlock` after typing is its own step.
  *
  * The pause is simulated on the undo manager's clock: `lastChange` (a plain
  * field, plan §1.1) moves back by the pause; the rows themselves run well
@@ -417,5 +419,16 @@ describe('direct block commands follow the table (UW-16)', () => {
 		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(canonicalTree(edytor)[0]!.content).toEqual([{ text: 'helloa world' }]);
+	});
+
+	it('H-G7 (RW-12): `run` with a kind the table does not list is its own step', async () => {
+		const { edytor, editor } = await mount();
+		await type(editor, 'a');
+		const block = edytor.root!.children[0]!;
+		edytor.dispatcher.run('myConvert', () => block.setBlock({ value: { type: 'quote' } }));
+		expect(edytor.undoManager.undoStack.length).toBe(2);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(blocks(edytor)).toEqual([typed]);
 	});
 });

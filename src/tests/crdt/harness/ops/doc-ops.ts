@@ -35,13 +35,34 @@ const E = bindEdytorDoc(Y);
 /** The harness contract is boolean across backends: a facade op that was not refused (D4, R6). */
 const ok = (r: { status: string }): boolean => r.status !== 'refused';
 
-export const createDocOps = (): CrdtOps => {
+/**
+ * Block roles for the corpus's roles lane (RW-01): an island kind with its
+ * own child kind, and a void kind. Absent: the pure-engine lane.
+ */
+export type DocOpsRoles = {
+	/** Kind → role (`island` / `void`). */
+	roles: Record<string, { island?: boolean; void?: boolean }>;
+	/** Parent kind → its default child kind. */
+	defaultChild: Record<string, string>;
+};
+
+/** The roles lane's table: `code` is an island of `codeLine`s, `divider` a void. */
+export const ROLES: DocOpsRoles = {
+	roles: { code: { island: true }, divider: { void: true } },
+	defaultChild: { code: 'codeLine' }
+};
+
+export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
+	const config = roles && {
+		roleOf: (type: string) => roles.roles[type],
+		defaultChildOf: (type: string) => roles.defaultChild[type]
+	};
 	// One EdytorDoc per underlying doc instance (peer.doc swaps on reload).
 	const facades = new WeakMap<InstanceType<typeof Y.Doc>, ReturnType<typeof E.create>>();
 	const ed = (peer: Peer) => {
 		let f = facades.get(peer.doc);
 		if (!f) {
-			f = E.create(peer.doc);
+			f = E.create(peer.doc, config);
 			facades.set(peer.doc, f);
 		}
 		return f;
@@ -65,8 +86,15 @@ export const createDocOps = (): CrdtOps => {
 		return m;
 	};
 
+	const islandKinds = new Map(
+		Object.entries(roles?.defaultChild ?? {})
+			.filter(([parent]) => roles!.roles[parent]?.island === true)
+			.map(([parent, child]) => [child, parent])
+	);
+
 	return {
-		name: 'edytor-doc',
+		name: roles ? 'edytor-doc+roles' : 'edytor-doc',
+		...(roles && { isVoid: (peer, id) => ed(peer).isVoid(id), islandKinds }),
 		preservesIdentityOnMove: true,
 		preservesIdentityOnSplitMerge: true,
 

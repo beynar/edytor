@@ -2,8 +2,9 @@
 /**
  * Editing lows from the 2026-09-30 re-score: Tab over a text range spanning
  * blocks, the row naming a clamped heading, the block-menu caret after
- * Delete beside a void, and Mod+D over a block selection. Expected states
- * are hand-authored from Notion's behavior.
+ * Delete beside a void, and Mod+D over a block selection. Re-score 2: Tab
+ * over a range across nesting levels (RW-13) and a refused block-menu Delete
+ * (RW-11). Expected states are hand-authored from Notion's behavior.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
@@ -82,6 +83,60 @@ describe('Tab over a text range spanning blocks moves every block it touches', (
 			['three', []]
 		]);
 	});
+
+	// RW-13: [a, b→[b1, b2], c], a range from b2 to c (the start block deeper).
+	const spanning = async () => {
+		const rendered = await render([], [p('a'), p('b', [p('b1'), p('b2')]), p('c')]);
+		const { edytor } = rendered;
+		const [b2, c] = [edytor.idToBlock.get('b2')!, edytor.idToBlock.get('c')!];
+		edytor.selection.setAtRange(b2.firstText!, 1, c.firstText!, 1);
+		await flushDomUpdates();
+		edytor.undoManager.stopCapturing();
+		return rendered;
+	};
+	const original: Shape[] = [
+		['a', []],
+		[
+			'b',
+			[
+				['b1', []],
+				['b2', []]
+			]
+		],
+		['c', []]
+	];
+
+	it('Tab over levels nests each touched block one level, as one undo step', async () => {
+		const { edytor } = await spanning();
+		await dispatchDomKeyDown(document, { key: 'Tab' });
+		expect(canonicalTree(edytor).map(shape)).toEqual([
+			['a', []],
+			[
+				'b',
+				[
+					['b1', [['b2', []]]],
+					['c', []]
+				]
+			]
+		]);
+		const { startText, endText, yStart, yEnd } = edytor.selection.state;
+		expect([startText?.parent.id, yStart, endText?.parent.id, yEnd]).toEqual(['b2', 1, 'c', 1]);
+		await dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
+		expect(canonicalTree(edytor).map(shape)).toEqual(original);
+	});
+
+	it('Shift+Tab over levels unnests the nested block; the top-level one stays', async () => {
+		const { edytor } = await spanning();
+		await dispatchDomKeyDown(document, { key: 'Tab', shiftKey: true });
+		expect(canonicalTree(edytor).map(shape)).toEqual([
+			['a', []],
+			['b', [['b1', []]]],
+			['b2', []],
+			['c', []]
+		]);
+		await dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
+		expect(canonicalTree(edytor).map(shape)).toEqual(original);
+	});
 });
 
 describe('the row naming a block', () => {
@@ -136,6 +191,18 @@ describe('the block menu caret after Delete', () => {
 		);
 		await openAndDelete(edytor, editor, 'three');
 		expect(caret(edytor)).toEqual(['one', 3]);
+	});
+
+	it('refused by an extension, the block stays and the caret returns to it (RW-11)', async () => {
+		const keep: Plugin = () => ({
+			onBeforeOperation: ({ operation, prevent }) => {
+				if (operation === 'removeBlock') prevent();
+			}
+		});
+		const { edytor, editor } = await render([blockMenuPlugin, keep], [p('one'), p('two')]);
+		await openAndDelete(edytor, editor, 'one');
+		expect(canonicalTree(edytor).map((b) => shape(b)[0])).toEqual(['one', 'two']);
+		expect(caret(edytor)).toEqual(['one', 0]);
 	});
 });
 

@@ -70,6 +70,38 @@ describe('UW-20: a merge unnests the source’s children after the vacated slot'
 	}
 });
 
+/**
+ * Found by the corpus roles lane (RW-01 wave, seed 11): the engine merge
+ * primitive ADOPTS the source's children into the target, so a concurrent
+ * delete of the target promotes them into the target's slot — above the
+ * source it revives, against `merge-order`. The baseline merges above rank
+ * them after the source instead. Pinned as an expected failure until the
+ * adopt primitive gets the same placement; the roles lane pins seed 11.
+ */
+describe('open: engine mergeBlocks (adopt) ‖ delete the target', () => {
+	it.fails('mergeBlocks X into P ‖ delete P → X:"x" K:"k" K2:"k2" Z:"z"', () => {
+		const seed = [
+			{ id: 'P', text: 'p' },
+			{
+				id: 'X',
+				text: 'x',
+				children: [
+					{ id: 'K', text: 'k' },
+					{ id: 'K2', text: 'k2' }
+				]
+			},
+			{ id: 'Z', text: 'z' }
+		];
+		expectTree(
+			converge(seed, 2, ([a, b]) => {
+				a.ed.mergeBlocks('X', 'P');
+				b.ed.deleteBlock('P');
+			}),
+			'X:"x" K:"k" K2:"k2" Z:"z"'
+		);
+	});
+});
+
 describe('wellFormed oracle finding: toJSON never depends on read history', () => {
 	it('the interner keeps one canonical key order, whichever order it saw first', () => {
 		const r = replica('A', seedUpdate([{ id: 'P', text: 'p' }]), 20);
@@ -82,7 +114,7 @@ describe('wellFormed oracle finding: toJSON never depends on read history', () =
 });
 
 describe('UW-01: undo/redo of a raced type/data write keeps a defined value', () => {
-	// CLIENT_IDS[2] = [[20,30],[30,20],[7,100]]: the larger client id wins a
+	// CLIENT_IDS[2] = LIVE + [[20,30],[30,20],[7,100]]: the larger client id wins a
 	// concurrent attr write, so A (the undoer) wins only in the second order.
 	const AWINS = [false, true, false];
 	/** Both replicas race `write`, sync, then A runs `history` (undo, or undo+redo). */
@@ -147,7 +179,7 @@ describe('UW-01: undo/redo of a raced type/data write keeps a defined value', ()
 	});
 
 	it('lastChangedBy reverts to the previous author when the undoer won LWW', () => {
-		// CLIENT_IDS[3] = [[20,30,40],[40,30,20],[30,40,20]]: A beats B only in the second.
+		// CLIENT_IDS[3] = LIVE + [[20,30,40],[40,30,20],[30,40,20]]: A beats B only in the second.
 		const outcomes = converge(P, 3, ([a, b, c]) => {
 			c.ed.insertText('P', 1, 'c');
 			a.receiveAll(c.log);

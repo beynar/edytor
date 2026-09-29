@@ -44,6 +44,15 @@ The props build a `createWebsocketSync` for you. Use the factory directly for th
       default: "2500",
       description: "Upper bound, in ms, of the exponential reconnect delay. A room that stays unreachable grows it to 30 s.",
     },
+    connectTimeout: {
+      type: "number",
+      default: "10000",
+      description: "How long, in ms, a dial may take to open before it is closed like a failed one, which starts the readiness bound. Raise it for rooms whose load takes longer; `Infinity` waits as long as the browser does.",
+    },
+    onExpired: {
+      type: "({ reason, attempts, nextRetryMs }) => void",
+      description: "The room closed the socket with `4401` (expired credentials). Put a fresh token in `params` before the redial, due in `nextRetryMs`. `<Edytor>` takes it as `onSyncExpired`.",
+    },
     disableBc: {
       type: "boolean",
       default: "false",
@@ -76,14 +85,20 @@ const sync = createWebsocketSync({ server, room, params });
 setInterval(async () => (params.token = await getToken()), 10 * 60_000);
 ```
 
+With `<Edytor>`, refresh when the room reports the expiry: the `params` prop reaches the next dial.
+
+```svelte
+<Edytor {server} {room} params={{ token }} onSyncExpired={async () => (token = await getToken())} />
+```
+
 Browsers cannot set headers on a WebSocket, so tokens travel in `params` (or in cookies your `authorize` reads).
 
 ## Reconnects
 
-- On a lost connection the provider reconnects with exponential backoff: `100 ms × 2ⁿ`, capped at `maxBackoffTime`. `n` counts the dials in a row that never synced (refused upgrades, sockets that closed before the handshake finished); a dial that synced starts it over.
+- On a lost connection the provider reconnects with exponential backoff: `100 ms × 2ⁿ`, capped at `maxBackoffTime`. `n` counts the dials in a row that never synced (refused upgrades, sockets that closed before the handshake finished); a dial that synced starts it over. A room fault (`1011`) after the sync counts too, until the room acknowledges every local update again, so a fault that persists is not redialed every 100 ms.
 - After 8 such dials the cap doubles with each further one, up to 30 s, so an unreachable or denying server is not dialed forever at full rate. Each of these dials emits `unreachable` with `{ attempts, nextRetryMs }`, for a "Reconnecting in 20 s" indicator.
-- A close with a refusal code (`1008`, or `4000`–`4999`) is terminal: the provider stops dialing and emits `refused` (see [refusals](#refusals)). `4401` is the exception: the credentials expired, so the provider emits `expired` and redials after the backoff, reading `params` again. Put a fresh token in `params` when `expired` fires.
-- A dial that neither opens nor fails within 10 seconds (a connection the network silently drops) is closed and counted like a failed dial: it emits `unreachable`, starts the readiness bound, and redials after the backoff.
+- A close with a refusal code (`1008`, or `4000`–`4999`) is terminal: the provider stops dialing and emits `refused` (see [refusals](#refusals)). `4401` is the exception: the credentials expired, so the provider emits `expired` and redials after the backoff, reading `params` again. Put a fresh token in `params` when `expired` fires (`onExpired`, or `onSyncExpired` on `<Edytor>`). Before the first sync, an empty document does not seed meanwhile: it waits for a dial that gets in.
+- A dial that neither opens nor fails within `connectTimeout` (10 seconds by default; a connection the network silently drops, or a room still loading) is closed and counted like a failed dial: it emits `unreachable`, starts the readiness bound, and redials after the backoff.
 - A connection that receives nothing for 30 seconds is treated as dead and reopened. After 15 seconds of silence the provider sends one text `ping` frame; the edytor room answers `pong` without waking from hibernation, and a text `pong` counts as heard. The room also echoes each presence renewal (every 15 seconds), so even a client alone in its room hears from it in time. A server of your own should answer `ping` with `pong`, or ignore text frames.
 - Each (re)connection starts with a handshake in which both sides send what the other lacks. Nothing is replayed by hand and no periodic resync is needed.
 - While disconnected, other people's carets disappear from this tab; edits keep going to the local copy. Other tabs of the browser keep the carets they still receive. On reconnect the edytor room sends the peers present in the room, and their carets show at once.
@@ -135,7 +150,7 @@ export const observedSync = (
   );
 ```
 
-This factory keeps the default readiness bound, counted from the attach. `createWebsocketSync` instead sets `bound: Infinity` and calls the payload's `armBound()` when the socket opens and on its first failed dial, so time spent dialing a slow room never counts (see [readiness](/docs/collaboration/documents#readiness)).
+This factory keeps the default readiness bound, counted from the attach. `createWebsocketSync` instead sets `bound: Infinity` and calls the payload's `armBound()` when the socket opens and on its first failed dial, so time spent dialing a slow room never counts, and `holdBound()` on a `4401` before the first sync (see [readiness](/docs/collaboration/documents#readiness)).
 
 | Event | Payload | When |
 | --- | --- | --- |
@@ -145,7 +160,7 @@ This factory keeps the default readiness bound, counted from the attach. `create
 | `permission-denied` | `(reason, provider)` | The server refused a write; the edytor room sends `read-only` to read-only sockets. |
 | `refused` | `(refusal, provider)` | The server closed the socket with a refusal code. `refusal` is a `SyncRefusedError` with `code` and `reason`. The provider no longer dials. |
 | `expired` | `({ reason, attempts, nextRetryMs }, provider)` | The server closed the socket with `4401`. The provider redials in `nextRetryMs` with the current `params`; refresh the token before then. |
-| `unreachable` | `({ attempts, nextRetryMs }, provider)` | A dial ended before its connection synced, or did not open within 10 s: `attempts` in a row, the next one in `nextRetryMs`. |
+| `unreachable` | `({ attempts, nextRetryMs }, provider)` | A dial ended before its connection synced, or did not open within `connectTimeout`: `attempts` in a row, the next one in `nextRetryMs`. |
 | `schema-mismatch` | `(detail, provider)` | An update carrying a foreign schema stamp was refused and not applied. |
 | `protocol-mismatch` | `(mismatch, provider)` | A frame of another edytor generation arrived and was dropped. |
 | `failed` | `(error, provider)` | Terminal: the provider never synced (destroyed first, refused, or denied). Emitted at most once. |
@@ -166,7 +181,7 @@ This factory keeps the default readiness bound, counted from the attach. `create
 The edytor room stores every update in SQLite before it acknowledges it. The provider compares those acknowledgements with what this replica wrote:
 
 - `unsaved` counts local updates the room has not confirmed, including edits restored from the local copy after an offline reload.
-- `saved` is `true` once every local update is confirmed. A delete that adds no new data (undoing a block deletion, for example) stays unsaved until the room confirms that exact delete.
+- `saved` is `true` once every local update is confirmed: what this replica wrote, not content it received from the room (after a restore from an older snapshot, the room may no longer hold another user's edits it relayed). A delete that adds no new data (undoing a block deletion, for example) stays unsaved until the room confirms that exact delete.
 - The `'saved'` event fires with `{ saved, unsaved }` whenever either changes.
 
 Use it for a "Saving… / Saved" indicator or to warn before closing a tab. A server that sends no acknowledgements (another relay, for example) leaves `unsaved` counting forever.
@@ -175,11 +190,13 @@ Use it for a "Saving… / Saved" indicator or to warn before closing a tab. A se
 
 | What happens | Cause | What the client sees |
 | --- | --- | --- |
-| Close `4401` | The credentials expired. | Not terminal: `expired` fires and the provider redials after the backoff, reading `params` again. No `refused`, no `failed`. |
-| Close `4403` `document access denied` | `authorize` returned `null` (or an invalid identity). | Terminal: `refused` fires once and the provider stops dialing. Refresh the token, then reload (or call `connect()`) to dial again. An empty document waits for that dial: it seeds only once the provider syncs or is released. |
+| Close `4401` | The credentials expired. | Not terminal: `expired` fires and the provider redials after the backoff, reading `params` again. No `refused`, no `failed`. A document still empty is not seeded meanwhile: it waits for a dial that gets in, and stays `pending` while the token is not refreshed. |
+| Close `4403` `document access denied` | `authorize` returned `null` (or an invalid identity). | Terminal: `refused` fires once and the provider stops dialing. Refresh the token, then reload (or call `connect()`) to dial again. An empty document waits for that dial: it seeds only once the provider syncs, or is released while another attached provider has settled. |
 | Close `4409` `replica bound to another user` | The replica belongs to another user. | Terminal: `refused` fires and the provider stops dialing. |
 | `permission-denied` with `read-only` | A read-only socket sent an edit. | The socket stays open; the edit is not stored. |
-| Close `1008` `refused: <reason>`, or another `4xxx` code | A frame of another generation, a write under another user's client id, a foreign schema stamp, or a malformed frame. | Terminal: `refused` fires and the provider stops dialing. A document still empty is not seeded; it stays `pending` and reports the refusal as `document.syncRefusal` / `onSyncRefused`. Reload with a fixed client (a new deploy, a new token) to try again. |
-| Close `1011` | The room could not store an update. | The provider reconnects and the handshake resends the edit. |
+| Close `1008` `refused: <reason>`, or another `4xxx` code | A frame of another generation, a presence entry for a client id another user owns, a foreign schema stamp, or a malformed frame. Content under another user's client id is not a refusal: the room strips it and the socket stays open. | Terminal: `refused` fires and the provider stops dialing. A document still empty is not seeded; it stays `pending` and reports the refusal as `document.syncRefusal` / `onSyncRefused`. Reload with a fixed client (a new deploy, a new token) to try again. |
+| Close `1011` | The room could not store an update. | The provider reconnects and the handshake resends the edit, backing off while the fault repeats. |
+
+`<Edytor>` reports a refusal of its document through `onSyncRefused(refusal)`: one already standing when the view mounts, then each new one.
 
 See [Authorization](/docs/server/authorization) and [the room](/docs/server/room) for the server side.

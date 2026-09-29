@@ -17,9 +17,17 @@
  *   that provider lifts it, and so does its own later sync (`connect()`
  *   after a refreshed token). Re-attached to an empty room, the document
  *   then seeds the draft (`local`).
- * - A dial that neither opens nor fails times out after 10 s (NW-09): it is
- *   closed like a failed dial, so the bound arms and an empty document is
- *   decided `DEFAULT_READINESS_BOUND` later.
+ * - Releasing a refused provider beside a settled one decides the document
+ *   (RW-06): an empty one seeds the draft. With no provider left it stays
+ *   pending until the next attach or `sync()`.
+ * - Expired credentials (`4401`) before the first sync hold the bound
+ *   (RW-04): the empty document waits for a dial that gets in, then
+ *   hydrates with only the room's content.
+ * - A dial that neither opens nor fails times out after `connectTimeout`
+ *   (10 s by default, NW-09, RW-07): it is closed like a failed dial, so the
+ *   bound arms and an empty document is decided `DEFAULT_READINESS_BOUND`
+ *   later. A longer `connectTimeout` waits for a slower room; `Infinity`
+ *   never gives up.
  *
  * The room here holds a document and speaks the join rule; its open and
  * answer delays and its refusal are set per test. Expected states are
@@ -290,6 +298,23 @@ describe('the refusal belongs to the provider that reported it', () => {
 		document.destroy();
 	});
 
+	it('refused beside a settled companion, the refused one released: local with the draft seeded', async () => {
+		const url = uniqueUrl();
+		refusing(url);
+		const document = createDocument();
+		document.attachSync(providers.createIndexeddbSync(`companion:${url}`), { value: draft });
+		const release = document.attachSync(websocketSync(url), { value: draft });
+		await until(() => document.syncRefusal !== undefined);
+		await wait(1200);
+		expect(document.readiness).toBe('pending');
+		expect(document.syncPending).toBe(false);
+		release();
+		expect(document.syncRefusal).toBeUndefined();
+		expect(document.readiness).toBe('local');
+		expect(texts(document)).toEqual(['draft']);
+		document.destroy();
+	});
+
 	it("another target's sync does not lift it: the empty document stays pending", async () => {
 		const url = uniqueUrl();
 		refusing(url);
@@ -303,6 +328,83 @@ describe('the refusal belongs to the provider that reported it', () => {
 		expect(document.syncPending).toBe(false);
 		expect(document.readiness).toBe('pending');
 		expect(document.syncRefusal?.code).toBe(4403);
+		document.destroy();
+	});
+});
+
+describe('expired credentials (4401) on a first visit', () => {
+	it('4401 for 3 s leaves the document pending; an accepted dial then hydrates with only the room', async () => {
+		const url = uniqueUrl();
+		const room = new Room(`${url}/room`, {
+			value: roomValue,
+			refuse: { code: 4401, reason: 'expired' }
+		});
+		const document = open(url);
+		const heard = [];
+		document.onSyncRefused((refusal) => heard.push(refusal));
+		await wait(3000);
+		expect(room.dials).toBeGreaterThan(1);
+		expect(document.readiness).toBe('pending');
+		expect(document.facade.isInitialized()).toBe(false);
+		expect(document.syncRefusal).toBeUndefined();
+		room.refuse = undefined;
+		await until(() => document.ready);
+		expect(document.readiness).toBe('hydrated');
+		await wait(50);
+		expect(texts(document)).toEqual(['room']);
+		expect(heard).toEqual([]);
+		document.destroy();
+	});
+
+	it('without the local store too (persist: false)', async () => {
+		const url = uniqueUrl();
+		const room = new Room(`${url}/room`, {
+			value: roomValue,
+			refuse: { code: 4401, reason: 'expired' }
+		});
+		const document = createDocument();
+		document.attachSync(
+			providers.createWebsocketSync({
+				serverUrl: url,
+				roomName: 'room',
+				WebSocketPolyfill: Socket,
+				persist: false
+			}),
+			{ value: draft }
+		);
+		await wait(3000);
+		expect(document.readiness).toBe('pending');
+		room.refuse = undefined;
+		await until(() => document.ready);
+		expect(document.readiness).toBe('hydrated');
+		expect(texts(document)).toEqual(['room']);
+		document.destroy();
+	});
+
+	it('onExpired reports each 4401 close with the redial delay', async () => {
+		const url = uniqueUrl();
+		const room = new Room(`${url}/room`, {
+			value: roomValue,
+			refuse: { code: 4401, reason: 'expired' }
+		});
+		const expired = [];
+		const document = createDocument();
+		document.attachSync(
+			providers.createWebsocketSync({
+				serverUrl: url,
+				roomName: 'room',
+				WebSocketPolyfill: Socket,
+				persist: false,
+				onExpired: (state) => {
+					expired.push(state);
+					room.refuse = undefined;
+				}
+			}),
+			{ value: draft }
+		);
+		await until(() => document.ready);
+		expect(expired).toEqual([{ reason: 'expired', attempts: 1, nextRetryMs: 200 }]);
+		expect(document.readiness).toBe('hydrated');
 		document.destroy();
 	});
 });
@@ -354,6 +456,52 @@ describe('a dial that neither opens nor fails', () => {
 		await vi.advanceTimersByTimeAsync(1);
 		expect(document.readiness).toBe('local');
 		expect(texts(document)).toEqual(['draft']);
+		document.destroy();
+	});
+
+	it('connectTimeout: 30 s waits for a room that opens after 15 s: hydrated, nothing seeded', async () => {
+		vi.useFakeTimers();
+		const url = uniqueUrl();
+		const room = new Room(`${url}/room`, { value: roomValue, openAfter: 15_000 });
+		const document = createDocument();
+		document.attachSync(
+			providers.createWebsocketSync({
+				serverUrl: url,
+				roomName: 'room',
+				WebSocketPolyfill: Socket,
+				persist: false,
+				disableBc: true,
+				connectTimeout: 30_000
+			}),
+			{ value: draft }
+		);
+		await vi.advanceTimersByTimeAsync(14_999);
+		expect(document.readiness).toBe('pending');
+		await vi.advanceTimersByTimeAsync(100);
+		expect(document.readiness).toBe('hydrated');
+		expect(texts(document)).toEqual(['room']);
+		expect(room.dials).toBe(1);
+		document.destroy();
+	});
+
+	it('connectTimeout: Infinity never gives up on the dial', async () => {
+		vi.useFakeTimers();
+		Hanging.dials = 0;
+		const document = createDocument();
+		document.attachSync(
+			providers.createWebsocketSync({
+				serverUrl: uniqueUrl(),
+				roomName: 'room',
+				WebSocketPolyfill: Hanging,
+				persist: false,
+				disableBc: true,
+				connectTimeout: Infinity
+			}),
+			{ value: draft }
+		);
+		await vi.advanceTimersByTimeAsync(120_000);
+		expect(Hanging.dials).toBe(1);
+		expect(document.readiness).toBe('pending');
 		document.destroy();
 	});
 });

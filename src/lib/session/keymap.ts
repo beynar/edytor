@@ -118,6 +118,11 @@ export class Keymap {
 			builtInBindings
 		])
 			for (const [keys, binding] of Object.entries(rows ?? {})) {
+				// An optional callback left `undefined` binds nothing (lower bindings still run).
+				if (typeof binding !== 'function') {
+					if (DEV) console.warn(`[edytor] hotkey "${keys}" is not a function; it is skipped.`);
+					continue;
+				}
 				const parts = keys.split(/\+(?!$)/);
 				const dead = parts.find((part) => !TOKENS.has(part.toLowerCase()));
 				if (DEV && dead !== undefined)

@@ -185,7 +185,10 @@ export class BlockMenuController {
 		if (copies?.length) this.edytor.selection.selectBlocks(...copies);
 	}
 
-	/** Delete the open block; the caret goes to the nearest text after it, else before it. */
+	/**
+	 * Delete the open block; the caret goes to the nearest text after it, else
+	 * before it (refused: the caret returns to the block).
+	 */
 	remove() {
 		const block = this.block;
 		if (!block) return;
@@ -197,6 +200,7 @@ export class BlockMenuController {
 		];
 		block.removeBlock();
 		this.close(false);
+		if (this.edytor.dispatcher.last?.status !== 'applied') return this.caret(block);
 		this.edytor.dispatcher.caret(after ?? before, after ? 0 : (before?.length ?? 0));
 		this.focus();
 	}

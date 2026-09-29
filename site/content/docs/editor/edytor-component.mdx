@@ -31,6 +31,8 @@ Most props are read once, when the component is created. Changing them later has
 | `server` | `string` | | | The sync server's base URL (`wss://…/rooms`). With `room`, the view joins `<server>/<room>` over a WebSocket and keeps a local copy. Read once. See [WebSocket](/docs/collaboration/websocket). |
 | `room` | `string` | | | The document's id. Alone, it names a local IndexedDB copy; with `server`, the room to join. Read once. |
 | `params` | `Record<string, string>` | | Next dial | Query parameters sent with each connection, such as an auth token. |
+| `onSyncExpired` | `({ reason, attempts, nextRetryMs }) => void` | | Yes | With `server`: the room closed the connection with `4401` (expired credentials). Pass a fresh token in `params` before the redial, due in `nextRetryMs`. Until a dial gets in, an empty document is not seeded. See [WebSocket](/docs/collaboration/websocket#options). |
+| `onSyncRefused` | `(refusal: SyncRefusedError) => void` | | Yes | The server refused a provider of the view's document for good (`4403`, `4409`, `1008`…): called at mount for a refusal already standing, then for each new one. See [refusals](/docs/collaboration/websocket#refusals). |
 | `sync` | `EdytorSync` | | | Advanced: a custom provider factory such as `createIndexeddbSync(name)` or `createWebsocketSync(options)`. Attached in the browser when the view is editable; the view renders once the document is ready. See [Collaboration](/docs/collaboration). |
 | `actor` | `DocumentActor` | anonymous | | The local author `{ id, name?, color? }` of the view's own document: undo lineage, per-block attribution and the presence profile peers see. Cannot be combined with `document` (set it in `createDocument`). |
 | `readonly` | `boolean` | `false` | Yes | Render the document without editing. See [Readonly mode](/docs/editor/readonly). |
@@ -58,7 +60,7 @@ Most props are read once, when the component is created. Changing them later has
 
 - **Only `value`**: the view creates its own document, seeds it, and destroys it on unmount.
 - **`room`, `server` or `sync`**: the view creates its own document and attaches the provider (`sync` overrides `room`/`server`). Stored or remote content wins; `value` seeds the document only when the provider has nothing, after it answered or timed out. Never pass a changing snapshot (`onChange` output) as `value` beside a room: a late seed of it can replace the room's edits. Pass a fixed template or nothing; see [deterministic seeds](/docs/collaboration/documents#deterministic-seeds).
-- **`document`**: the view renders that document once it is ready. If the document is still waiting for content and no provider is attached to it, the editable view seeds it with `value` when it mounts. Passing `document` together with `doc`, `awareness` or `actor` throws.
+- **`document`**: the view renders that document once it is ready. If the document is still waiting for content and no provider is attached to it, the editable view seeds it with `value` when it mounts, unless a server refused it (`document.syncRefusal`): then it stays waiting. Passing `document` together with `doc`, `awareness` or `actor` throws.
 
 A readonly view never connects: it shows `value`, or the `document` you pass.
 

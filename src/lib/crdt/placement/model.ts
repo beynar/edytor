@@ -197,16 +197,16 @@ export type ResolvedPlacement = {
  * of a kind that displays no children (a void role, UW-21b) — its children
  * take its slot like a deleted parent's ({@link displaySlotOf}). `island(b)`:
  * the block `b` (live or deleted) is of an island kind — a block promoted
- * out of it keeps no container-only kind (`reset`). Absent: no roles (pure
- * engine behavior).
+ * or merged out of it keeps no container-only kind (`reset`). Absent: no
+ * roles (pure engine behavior).
  */
 export type DisplayOwnership = Ownership & {
 	childless?: (b: BlockId) => boolean;
 	island?: (b: BlockId) => boolean;
 };
 
-/** One entry of a children list: `reset` — promoted out of an island ({@link displaySlotOf}). */
-export type ChildSlot = { id: BlockId; rank: string; reset?: true };
+/** One entry of a children list: `reset` — the island it displays out of ({@link displaySlotOf}). */
+export type ChildSlot = { id: BlockId; rank: string; reset?: BlockId };
 
 /**
  * The document index as one consistent replicated-state view — the shared
@@ -437,27 +437,30 @@ export const promotedRank = (slot: string, rank: string): string => slot + PROMO
  * void kind, `own.childless`) sheds its children the same way (UW-21b): a
  * block a peer nests or splits under a block another peer retypes to a void
  * kind takes the void's slot on every replica, and returns under it if the
- * retype is undone. A block promoted out of an island (`reset`) displays
- * as its display parent's default child, as a delete of the island retypes
- * the children it saw: a code line a peer adds under a code block another
- * peer deletes shows as a paragraph, not as a code line outside its code
- * block. `DEAD` only when the placement chain never reaches a live parent
- * (an unknown block).
+ * retype is undone. A block that displays out of an island — promoted out
+ * of a deleted one, or under the owner of a merged-away one — names it
+ * (`reset`, the innermost): while it still has the island's default child
+ * kind it displays as its display parent's default child, as a delete or
+ * merge of the island retypes the children it saw. A code line a peer adds
+ * under a code block another peer deletes or merges shows as a paragraph,
+ * not as a code line outside its code block. `DEAD` only when the placement
+ * chain never reaches a live parent (an unknown block).
  */
 export const displaySlotOf = (
 	own: DisplayOwnership,
 	placements: ReadonlyMap<BlockId, ResolvedPlacement>,
 	pl: ResolvedPlacement
-): { parent: Owner | null; rank: string; reset: boolean } => {
+): { parent: Owner | null; rank: string; reset: BlockId | null } => {
 	let { parent, rank } = pl;
-	let reset = false;
+	let reset: BlockId | null = null;
 	for (let hops = 0; parent !== null; hops++) {
 		const owner = own.ownerOf(parent);
+		if (reset === null && owner !== parent && own.island?.(parent) === true) reset = parent;
 		if (owner !== DEAD && own.childless?.(owner) !== true) return { parent: owner, rank, reset };
 		const out = owner === DEAD ? parent : owner;
 		const up = placements.get(out);
 		if (up === undefined || hops > placements.size) return { parent: DEAD, rank, reset };
-		reset ||= own.island?.(out) === true;
+		if (reset === null && own.island?.(out) === true) reset = out;
 		rank = promotedRank(up.rank, rank);
 		parent = up.parent;
 	}
@@ -486,7 +489,7 @@ export const childrenIndex = (
 		if (own.hidden(id)) continue;
 		const { parent, rank, reset } = displaySlotOf(own, placements, pl);
 		if (parent === DEAD) continue;
-		const slot: ChildSlot = reset ? { id, rank, reset } : { id, rank };
+		const slot: ChildSlot = reset === null ? { id, rank } : { id, rank, reset };
 		const bucket = index.get(parent);
 		if (bucket) bucket.push(slot);
 		else index.set(parent, [slot]);

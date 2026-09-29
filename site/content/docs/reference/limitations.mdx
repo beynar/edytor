@@ -29,10 +29,10 @@ Edytor's collaboration stack is proven by its test suites across Chromium, Firef
 
 A device whose first visit to a document happens offline seeds the `value` you passed (after the readiness bound) and keeps that seed. When it reconnects, the seed merges into the room's content. Seeds are deterministic, so pass the same `value` everywhere (or none) and equal seeds merge into one; a different `value` adds its blocks next to the room's.
 
-The WebSocket's bound starts when the socket opens (or first fails to), so a room that is slow to accept the connection is waited for. Two cases remain:
+The WebSocket's bound starts when the socket opens (or first fails to), so a room that is slow to accept the connection is waited for, up to the connect timeout. Two cases remain:
 
 - A server that opens the socket but takes more than 1 s to send its state is treated like an empty room: the `value` is seeded and later merges as above.
-- A dial that neither opens nor fails (a connection the network silently drops) is given up after 10 s, so an empty document waits up to 11 s before it seeds.
+- A dial that neither opens nor fails (a connection the network silently drops, or a room still loading) is given up after `connectTimeout` (10 s by default), so an empty document waits up to 11 s before it seeds. For rooms whose load can take longer, raise `connectTimeout` in `createWebsocketSync`, or set it to `Infinity` to wait as long as the browser does.
 
 ## Known edge cases
 

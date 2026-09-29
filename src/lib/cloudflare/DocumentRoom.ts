@@ -50,9 +50,10 @@
  * - constructor: restore from SQLite alone under `blockConcurrencyWhile`
  *   (verify the generation record, merge, `admission.admitUpdate`); a
  *   container that cannot be restored (another generation, a torn record,
- *   a refused `onLoad` payload) refuses every socket (1008), and never
- *   throws out of the constructor (the platform would reset the object on
- *   every request).
+ *   a refused `onLoad` payload) refuses every socket (1008); a read of the
+ *   rows that fails is the storage's fault, retried at the next dial
+ *   (1011). It never throws out of the constructor (the platform would
+ *   reset the object on every request).
  *
  * No entry point schedules a timer: each runs under {@link noTimers}
  * (a Durable Object with a pending timer never hibernates). Keepalive is
@@ -198,6 +199,12 @@ export const closedSocket = (code: number, reason: string): Response => {
 class MalformedFrame extends Error {}
 /** A SQLite fault outside the append path (the replica registry). */
 class StorageFault extends Error {}
+/** A stored record missing some of its rows: the container is corrupt, not the read. */
+class TornRecord extends Error {
+	constructor() {
+		super('torn record');
+	}
+}
 
 /** Decode the client's bytes: a throw is theirs (`malformed`), not the room's. */
 const decode = <T>(read: () => T): T => {
@@ -326,12 +333,9 @@ type Decoded = ReturnType<typeof Y.decodeUpdate>;
 /**
  * A decoded update without what it carries under `clients`: their structs,
  * and its deletes of their items (a forged transaction's rewrite of an
- * entry deletes the entry it replaces). Returns the update and its deletes.
+ * entry deletes the entry it replaces).
  */
-const withoutClients = (
-	{ structs, ds }: Decoded,
-	clients: Set<number>
-): { update: Uint8Array; ds: Decoded['ds'] } => {
+const withoutClients = ({ structs, ds }: Decoded, clients: Set<number>): Uint8Array => {
 	const kept = new Map<number, typeof structs>();
 	for (const struct of structs) {
 		const { client } = struct.id;
@@ -354,7 +358,33 @@ const withoutClients = (
 		if (!clients.has(client)) deletes.clients.set(client, ranges);
 	}
 	Y.writeIdSet(encoder, deletes);
-	return { update: encoder.toUint8Array(), ds: deletes };
+	return encoder.toUint8Array();
+};
+
+/**
+ * The deletes of `ds` that `doc` holds: their items integrated and deleted.
+ * What a stripped frame's acknowledgement may carry — a relayer's delete
+ * of an item the room holds deleted is stored, even when the delete itself
+ * was stripped (a map entry is deleted by the entry that replaces it).
+ */
+const heldDeletes = (doc: YDoc, ds: Decoded['ds']): Decoded['ds'] => {
+	const held = Y.createIdSet();
+	for (const [client, ranges] of ds.clients) {
+		const structs = doc.store.clients.get(client) ?? [];
+		const last = structs.at(-1);
+		const stored = last ? last.id.clock + last.length : 0;
+		for (const { clock, len } of ranges.getIds()) {
+			if (clock >= stored) continue;
+			for (let i = Y.findIndexSS(structs, clock); i < structs.length; i++) {
+				const struct = structs[i];
+				if (struct.id.clock >= clock + len) break;
+				if (!struct.deleted || struct instanceof Y.Skip) continue;
+				const from = Math.max(clock, struct.id.clock);
+				held.add(client, from, Math.min(clock + len, struct.id.clock + struct.length) - from);
+			}
+		}
+	}
+	return held;
 };
 
 /** A Step2 of what the room STORED: the engine's pending store (never stored) is left out. */
@@ -446,7 +476,7 @@ export class AttachedDocument {
 	private updates = 0;
 	/** A failed append: the live doc holds what storage does not, until it is rebuilt. */
 	private unstored: unknown = null;
-	/** The failure is `onLoad`'s own (its store was down): the next dial asks again. */
+	/** The failure is the storage's (a failed read, `onLoad`'s store down): the next dial starts again. */
 	private retryable = false;
 	private readonly sql: SqlStorage;
 	private _facade: EdytorDoc | null = null;
@@ -645,13 +675,16 @@ export class AttachedDocument {
 	// ── Storage ──────────────────────────────────────────────────────────
 
 	/**
-	 * Restore the live doc from the stored rows; a container that cannot be
-	 * restored is a failure — `retryable` when the rows were readable moments
-	 * ago (a rebuild), so the fault is the storage's, not the container's.
+	 * Restore the live doc from the stored rows. A read of the rows that
+	 * fails is the storage's fault: retryable, the next dial loads again
+	 * (at cold start, at a retry, after a rebuild). A container that reads
+	 * but cannot be restored (a torn record, another generation, bytes the
+	 * engine refuses) is refused for good.
 	 */
-	private load(retryable = false) {
+	private load() {
 		this.failure = null;
 		this.retryable = false;
+		let records: ReturnType<AttachedDocument['records']>;
 		try {
 			this.sql.exec(
 				`CREATE TABLE IF NOT EXISTS ${this.rowsTable} (
@@ -667,7 +700,11 @@ export class AttachedDocument {
 				`CREATE TABLE IF NOT EXISTS ${this.replicasTable} (replica INTEGER PRIMARY KEY, user TEXT NOT NULL)`
 			);
 			this.nextRecord = 0;
-			const records = this.records();
+			records = this.records();
+		} catch (error) {
+			return this.fail(error, !(error instanceof TornRecord));
+		}
+		try {
 			if (records.length === 0) {
 				// A fresh room: the generation record is written with the first stored record.
 				this.origin = { kind: 'fresh' };
@@ -684,7 +721,7 @@ export class AttachedDocument {
 			this.origin = { kind: 'restored', records: rest.length };
 			this.updates = rest.filter((record) => record.kind === 'update').length;
 		} catch (error) {
-			this.fail(error, retryable);
+			this.fail(error, false);
 		}
 	}
 
@@ -700,7 +737,7 @@ export class AttachedDocument {
 			this.nextRecord = Math.max(this.nextRecord, row.record + 1);
 		}
 		return [...byRecord.values()].map((parts) => {
-			if (parts.length !== parts[0].parts) throw new Error('torn record');
+			if (parts.length !== parts[0].parts) throw new TornRecord();
 			parts.sort((a, b) => a.part - b.part);
 			const bytes = new Uint8Array(parts.reduce((n, p) => n + p.bytes.byteLength, 0));
 			let at = 0;
@@ -831,7 +868,7 @@ export class AttachedDocument {
 		const stale = this.doc;
 		this.doc = null;
 		this.unstored = null;
-		this.load(true);
+		this.load();
 		stale?.destroy();
 	}
 
@@ -978,7 +1015,7 @@ export class AttachedDocument {
 		}
 		const identity = readIdentity(request.headers);
 		if (identity === null) return new Response('verified identity required', { status: 401 });
-		// `onLoad` failed (its store was down): ask again before refusing.
+		// A read of the rows or `onLoad` failed (storage was down): start again before refusing.
 		if (this.doc === null && this.retryable) {
 			await this.ctx.blockConcurrencyWhile(async () => {
 				if (this.doc === null && this.retryable) await this.start();
@@ -1133,13 +1170,12 @@ export class AttachedDocument {
 		const decoded = decode(() => Y.decodeUpdate(update));
 		const sv = stateVector(doc);
 		const stripped = this.attribute(attachment, newWriters(decoded, sv), sv);
-		const admitted =
-			stripped.size === 0 ? { update, ds: decoded.ds } : withoutClients(decoded, stripped);
+		const admitted = stripped.size === 0 ? update : withoutClients(decoded, stripped);
 		// 4 · Schema: the inbound refusal of a foreign stamp (the update's,
 		// or a pending one it would release — discarded, the sender kept).
 		// Integrating persists (the doc's update handler) before the ack.
 		let failure: unknown = null;
-		const { applied, problem, discarded } = sync.applyRemote(doc, admitted.update, ws, (error) => {
+		const { applied, problem, discarded } = sync.applyRemote(doc, admitted, ws, (error) => {
 			failure = error;
 		});
 		if (this.unstored !== null) return this.recover(ws);
@@ -1147,7 +1183,7 @@ export class AttachedDocument {
 		// The bytes decoded: an update the engine could not apply is its fault.
 		if (!applied) return this.fault(ws, failure ?? new Error('update not applied'));
 		if (discarded) this.note({ reason: 'schema', detail: { discarded } });
-		this.acknowledge(ws, doc, admitted.ds);
+		this.acknowledge(ws, doc, stripped.size === 0 ? decoded.ds : heldDeletes(doc, decoded.ds));
 		this.compactIfDue();
 	}
 
@@ -1217,8 +1253,9 @@ export class AttachedDocument {
 
 	/**
 	 * No document to serve: a container that cannot be restored is
-	 * refused for good (1008, the provider stops dialing); an `onLoad`
-	 * that threw is retried at the next dial (1011, the provider redials).
+	 * refused for good (1008, the provider stops dialing); a failed read of
+	 * the rows or an `onLoad` that threw is retried at the next dial (1011,
+	 * the provider redials).
 	 */
 	private refuseContainer(ws: WebSocket) {
 		if (!this.retryable)

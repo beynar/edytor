@@ -294,6 +294,13 @@ export interface CrdtOps {
 	undo?(peer: Peer): void;
 	/** Pop the peer's local redo stack. No-op when empty/unsupported. */
 	redo?(peer: Peer): void;
+
+	// ── roles (an adapter configured with block roles) ──────────────────
+
+	/** The role answer for void kinds (`wellFormed` `void-children`). */
+	isVoid?(peer: Peer, id: BlockId): boolean;
+	/** Island child kind → island kind (`wellFormed` `island-kind`, settled states). */
+	readonly islandKinds?: ReadonlyMap<string, string>;
 }
 
 /**

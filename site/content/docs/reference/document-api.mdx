@@ -20,7 +20,21 @@ facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' });
 facade.insertBlock({ parent: null, index: 1 }, { id: 'p2', type: 'paragraph' }); // refused: id taken
 ```
 
-`defaultSemantics`, `richTextSemantics`, `codeSemantics` and `imageSemantics` are frozen and shared by every document. To add your own kinds, build a table with `semanticsOf` and spread it: `semanticsOf({ embed: { void: true, rendersContent: false } })` gives `{ roles, rendersContent, defaultChild }`.
+`defaultSemantics`, `richTextSemantics`, `codeSemantics` and `imageSemantics` are frozen and shared by every document. To add your own kinds, build their config with `semanticsOf` (kind rows in, `{ roles, rendersContent, defaultChild }` out) and merge it into the bundled one field by field. Spreading the two configs at the top level would keep only your `roles`, and drop the divider, image and code rules:
+
+```ts title="src/lib/semantics.ts" check
+import { createDocument, defaultSemantics, semanticsOf } from 'edytor';
+
+const mine = semanticsOf({ embed: { void: true, rendersContent: false } });
+
+export const semantics = {
+  roles: { ...defaultSemantics.roles, ...mine.roles },
+  rendersContent: { ...defaultSemantics.rendersContent, ...mine.rendersContent },
+  defaultChild: { ...defaultSemantics.defaultChild, ...mine.defaultChild }
+};
+
+export const document = createDocument({ semantics }); // divider stays void, code an island
+```
 
 ## Shapes
 

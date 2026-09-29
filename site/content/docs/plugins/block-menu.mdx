@@ -83,7 +83,7 @@ Hovering a row highlights it, in the menu and in the flyout.
 ## Behavior
 
 - The handle click selects the block, and it stays selected while the menu is open.
-- Every action closes the menu and returns a text caret: at the start of the converted or moved block, of the copy after Duplicate, or of the nearest text after the deleted block (else the end of the nearest one before it) after Delete; void blocks such as dividers are skipped. <kbd>Escape</kbd> also returns the caret to the block.
+- Every action closes the menu and returns a text caret: at the start of the converted or moved block, of the copy after Duplicate, or of the nearest text after the deleted block (else the end of the nearest one before it) after Delete; void blocks such as dividers are skipped. When a plugin refuses the conversion or the deletion, the block stays and the caret returns to its start. <kbd>Escape</kbd> also returns the caret to the block.
 - A pointer press outside the menu and the handles closes it without moving the caret.
 - Each action is one undo step, separate from the typing before it however soon it follows, through the same commands as the rest of the editor (`convertToKind`, `duplicateBlock`, `edytor.moveBlocks`, `removeBlock`), so plugins can refuse them.
 

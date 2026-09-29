@@ -87,8 +87,8 @@ With providers attached, the rule is *settle or bound*:
 
 - A document that already holds content becomes `hydrated` as soon as any provider settles.
 - An empty document seeds its `value` only once every attached provider has settled, failed, been removed, or reached its bound.
-- IndexedDB always settles, so it has no bound. A WebSocket alone in a new room may never hear from anyone, so it gets `DEFAULT_READINESS_BOUND` (1000 ms), counted from the moment the socket opens or first fails to open: a room that is slow to accept the connection is waited for.
-- A server refusal (`SyncRefusedError`) never seeds: an empty document stays `pending` and reports it in `syncRefusal` and `onSyncRefused`. A document that already has content keeps it. The refusal belongs to the provider that reported it: once that provider is released (its cleanup ran) or syncs again (`connect()` after a refreshed token), the rule above applies to the providers attached then, and an empty room seeds `value`.
+- IndexedDB always settles, so it has no bound. A WebSocket alone in a new room may never hear from anyone, so it gets `DEFAULT_READINESS_BOUND` (1000 ms), counted from the moment the socket opens or first fails to open: a room that is slow to accept the connection is waited for, up to the socket's `connectTimeout` (10 s by default). Expired credentials (`4401`) before the first sync hold the bound: an empty document waits for a dial that gets in.
+- A server refusal (`SyncRefusedError`) never seeds: an empty document stays `pending` and reports it in `syncRefusal` and `onSyncRefused`. A document that already has content keeps it. The refusal belongs to the provider that reported it: once that provider is released (its cleanup ran) or syncs again (`connect()` after a refreshed token), the rule above applies to the providers still attached, and an empty room seeds `value`. Released with no provider left, the document stays `pending` until the next `attachSync` or `sync()`.
 
 ```ts
 if (!document.ready) {
@@ -138,11 +138,11 @@ A view never destroys a document you passed in: you created it, you destroy it. 
 
 Import from `edytor/crdt/edytor` in code that cannot load Svelte components. It exports the same document API as `edytor`, without the component:
 
-```ts
-import { loadDocument, toBlockSpec } from 'edytor/crdt/edytor';
+```ts title="src/lib/server/append-line.ts" check
+import { defaultSemantics, loadDocument, toBlockSpec } from 'edytor/crdt/edytor';
 
 export function appendLine(saved: Uint8Array, text: string): Uint8Array {
-  const document = loadDocument(saved, { actor: { id: 'server-bot' } });
+  const document = loadDocument(saved, { actor: { id: 'server-bot' }, semantics: defaultSemantics });
   const facade = document.facade;
   const index = facade.childrenIds(null).length; // append at the root
   facade.insertBlock({ parent: null, index }, toBlockSpec({ type: 'paragraph', content: [{ text }] }));

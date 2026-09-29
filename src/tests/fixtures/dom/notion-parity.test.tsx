@@ -730,6 +730,21 @@ describe('the slash menu in prose', () => {
 		}
 	);
 
+	it.each(['yes / no', '1 / 2', 'a / b', 'w / o', 'yes / ', 'x /-'])(
+		'%j + Enter keeps the text and starts a paragraph (a space after the slash, or a query of only hyphens, closes the menu)',
+		async (typed) => {
+			const { edytor, editor } = await render([codePlugin, slashMenuPlugin]);
+			await type(editor, typed);
+			expect(menu()).toBeNull();
+			await pressEnter();
+			expect(canonicalTree(edytor)).toEqual([
+				{ type: 'paragraph', content: [{ text: typed }] },
+				{ type: 'paragraph' }
+			]);
+			expect(menu()).toBeNull();
+		}
+	);
+
 	it('a slash after a space opens the menu', async () => {
 		const { edytor, editor } = await render([slashMenuPlugin]);
 		await type(editor, 'hi /h2');

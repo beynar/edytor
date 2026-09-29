@@ -54,8 +54,9 @@ Where there is no `indexedDB` (Node, Workers, SSR), the store is skipped and the
 
 ## Offline behavior
 
-- **Starting offline.** When the local copy holds the document, the document is ready at once from it, with no server. When the store is empty, the document waits for the store's answer, then for the server's answer or the readiness bound (1 s), before it seeds `value`. The bound starts when the socket opens or first fails to, so a slow or cold server (one still loading the room when you dial) is waited for and its content hydrates the document instead of racing a seed.
+- **Starting offline.** When the local copy holds the document, the document is ready at once from it, with no server. When the store is empty, the document waits for the store's answer, then for the server's answer or the readiness bound (1 s), before it seeds `value`. The bound starts when the socket opens or first fails to, so a slow or cold server (one still loading the room when you dial) is waited for, up to the connect timeout (`connectTimeout`, 10 s by default), and its content hydrates the document instead of racing a seed. Raise `connectTimeout` for rooms that take longer to load.
 - **Refused.** A server that refuses the client (close `1008`, or `4xxx` other than `4401`) never gets a seed: an empty document stays `pending` and reports [`syncRefusal`](/docs/collaboration/documents#readiness) until that provider is released or syncs again.
+- **Expired credentials.** A `4401` before the first sync holds the seed too: the room may hold content, so an empty document waits for a dial that gets in. Refresh the token in `params` (`onSyncExpired` on `<Edytor>`, `onExpired` on `createWebsocketSync`); a token that is never refreshed leaves the document `pending`.
 - **Editing offline.** Every edit is written to the local copy. Closing every tab loses nothing.
 - **Reconnecting.** On every connection the client and the room exchange what the other lacks, so edits made offline, including those restored from the local copy after a reload, reach the room without any replay logic on your side.
 - **Knowing it is saved.** The WebSocket provider reports when the room has stored your edits; see [saved state](/docs/collaboration/websocket#saved-state).
@@ -92,7 +93,7 @@ For `createIndexeddbSync(name)`, pass the same `name`. `sync.persistName` is `un
 
 IndexedDB and `BroadcastChannel` are shared by every tab of a browser profile. Treat the local copy and the channel as belonging to one user:
 
-- With the [edytor room](/docs/server/room), each CRDT client id belongs to the user who first wrote under it. A socket that delivers edits under an id another user owns is refused, and edits under an id the room has never seen are registered to whoever delivers them first.
+- With the [edytor room](/docs/server/room), each CRDT client id belongs to the user whose socket dials with it. Edits a socket delivers under an id another user owns are stripped (the socket stays open), and edits it relays under an id the room has never seen are stored but stay unowned: delivering an id never makes it yours. See [replicas](/docs/server/authorization#replicas).
 - If one browser profile hosts several accounts, give each user their own `persistName`, and a distinct `room` or `disableBc: true` so tabs of different users don't share the channel. Or clear the local copy at sign-out.
 
 ## Advanced: the provider class

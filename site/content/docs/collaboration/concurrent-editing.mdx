@@ -150,6 +150,15 @@ The rule reads the kind's role from the document's semantics, so every replica n
 
 An island block (the code plugin's code block, for example) seals its content: range deletions and merges never cross its boundary, and blocks cannot be moved into or out of it. See [the document model](/docs/concepts/document-model).
 
+Deleting or merging away an island turns its children into ordinary blocks: each takes the default child type of its new parent (a paragraph at the top level). A line Bob adds to the island without having seen the change does the same.
+
+| | Alice | Bob |
+| --- | --- | --- |
+| 1 | Deletes a code block with one line, "let a". | Adds a line "let b" to the code block. |
+| 2 | After both sync: "let a" and "let b" are paragraphs where the code block was, for both. | |
+| 3 | Turns "let b" into a heading, moves it, or presses Enter or Tab in it. It stays a heading or a paragraph, never a code line outside a code block. | |
+| 4 | Undoes back to the delete. The code block is back with both lines as code lines. | |
+
 ## Mixed versions
 
 Clients must run compatible edytor versions. A client of another document generation is refused by the providers and the room. Older clients of the same generation ignore the per-person delete and undo records described above and fall back to plain undo; see [Limitations](/docs/reference/limitations#mixed-version-peers).

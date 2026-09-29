@@ -49,6 +49,7 @@
 					aria-label={item.label}
 					title={item.label}
 					data-testid={`toolbar-${item.mark}`}
+					aria-pressed={controller.isActive(item.mark)}
 					onmousedown={keep}
 					onclick={() => controller.toggleMark(item.mark)}>{item.icon}</button
 				>
@@ -210,6 +211,9 @@
 	button:hover,
 	button[aria-expanded='true'] {
 		background: rgba(33, 27, 23, 0.06);
+	}
+	button[aria-pressed='true'] {
+		color: #2383e2;
 	}
 	.toolbar-type {
 		padding: 0 6px 0 8px;

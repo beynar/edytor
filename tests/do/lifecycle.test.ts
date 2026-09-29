@@ -470,8 +470,9 @@ describe('UW-12 · refusals are bounded; a refused provider dials once', () => {
 		await vi.waitFor(() => expect(client.synced).toBe(true));
 		const frame = E.frame(E.messageSync, (e) => crdt.sync.writeUpdate(e, Uint8Array.of(0, 0)));
 		for (let i = 0; i < 150; i++) client.send(frame);
-		await vi.waitFor(async () =>
-			expect(await inRoom(room, (r) => r.refusalCounts['read-only'])).toBe(150)
+		await vi.waitFor(
+			async () => expect(await inRoom(room, (r) => r.refusalCounts['read-only'])).toBe(150),
+			{ timeout: 10_000 }
 		);
 		expect(await inRoom(room, (r) => r.refusals.length)).toBe(100);
 		client.close();

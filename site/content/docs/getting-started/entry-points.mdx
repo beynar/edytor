@@ -20,7 +20,7 @@ No other path is exported. Imports such as `edytor/dist/...` or `edytor/crdt/ven
 
 The root entry is what a Svelte app imports:
 
-```ts
+```ts title="imports.ts" check
 import {
 	Edytor, // the component
 	useEdytor, // the editor instance from inside the component tree
@@ -44,7 +44,7 @@ Because it contains `.svelte` files, the root entry needs a bundler that compile
 
 The same document surface without Svelte. Use it on a server, in a script, in a worker or anywhere the component cannot load:
 
-```ts
+```ts title="headless.ts" check
 import { createDocument, defaultSemantics, loadDocument } from 'edytor/crdt/edytor';
 
 const document = createDocument({
@@ -71,7 +71,7 @@ It exports:
 
 The ready-made sync factories (`createIndexeddbSync`, `createWebsocketSync`) and the provider classes are exported from the root only. Outside Svelte, reach the providers through `bindCrdt`:
 
-```ts
+```ts title="engine.ts" check
 import * as Y from 'edytor/crdt';
 import { bindCrdt } from 'edytor/crdt/edytor';
 

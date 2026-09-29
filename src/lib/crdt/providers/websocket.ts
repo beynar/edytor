@@ -46,10 +46,10 @@
  */
 import * as bc from 'lib0-v14/broadcastchannel';
 import * as time from 'lib0-v14/time';
-import { ObservableV2 } from 'lib0-v14/observable';
 import * as math from 'lib0-v14/math';
 import * as url from 'lib0-v14/url';
 import { Awareness, removeAwarenessStates } from '../protocols/awareness.js';
+import { IsolatedObservable } from '../protocols/observable.js';
 import { messagePermissionDenied, readAuthMessage } from '../protocols/auth.js';
 import { bindSync, type IdSet, type SyncProtocol } from '../protocols/sync.js';
 import {
@@ -70,6 +70,8 @@ import {
 	type SchemaMismatchDetail
 } from './room.js';
 import type { EngineApi, YDoc } from '../engine-api.js';
+import { ATTRIBUTION_ROOT } from '../schema.js';
+import { ATTRIBUTION_ORIGIN } from '../attribution/attribution.js';
 
 // @todo - this should depend on awareness.outdatedTime
 const messageReconnectTimeout = 30000;
@@ -240,7 +242,24 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 	type StateVector = Map<number, number>;
 	/** A local update the room has not acknowledged: the clocks it writes, and its deletes still unacknowledged. */
 	type Unsaved = { sv: StateVector; deletes: IdSet };
-	const stateVector = (doc: YDoc): StateVector => Y.decodeStateVector(Y.encodeStateVector(doc));
+	/**
+	 * The clocks `doc` holds, less the actor dictionary's records at each
+	 * client's end (bookkeeping, not content: a read-only socket is never
+	 * asked for them, so they would stay unsaved for good).
+	 */
+	const contentState = (doc: YDoc): StateVector => {
+		const dictionary = doc.share.get(ATTRIBUTION_ROOT);
+		const sv: StateVector = new Map();
+		for (const [client, structs] of doc.store.clients) {
+			for (let i = structs.length - 1; i >= 0; i--) {
+				const struct = structs[i];
+				if (struct instanceof Y.Item && struct.parent === dictionary) continue;
+				sv.set(client, struct.id.clock + struct.length);
+				break;
+			}
+		}
+		return sv;
+	};
 	/**
 	 * The clocks an update writes, per client — not the whole document's:
 	 * structs heard from the room that it later lost (a restore from a
@@ -258,6 +277,40 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 	const covers = (acked: StateVector, sv: StateVector) => {
 		for (const [client, clock] of sv) if ((acked.get(client) ?? 0) < clock) return false;
 		return true;
+	};
+	/** The actor a replica id is bound to (`c/<client>`, the document's replicated actor dictionary). */
+	const actorOf = (doc: YDoc, client: number): unknown =>
+		doc.share.get(ATTRIBUTION_ROOT)?.getAttr(`c/${client}` as never);
+	/** Deterministic seeds are written under ids below 2^26 (`seedUpdate` in `edytor-doc.ts`). */
+	const seedBand = 2 ** 26;
+	/**
+	 * Whether a replica id writes for this replica's actor: its own id, every
+	 * id the actor dictionary binds to the same actor (its sessions before a
+	 * reload, its other tabs), and a seed writer (content any replica may
+	 * write, never stripped). Another actor's structs are not this replica's
+	 * to save: a room restored from a lagging snapshot strips them for good.
+	 * A doc without a binding for its own id (a raw doc) owns all.
+	 */
+	const ownerOf = (doc: YDoc) => {
+		const actor = actorOf(doc, doc.clientID);
+		return (client: number) =>
+			actor === undefined ||
+			client === doc.clientID ||
+			client < seedBand ||
+			actorOf(doc, client) === actor;
+	};
+	/** Of `deletes`, those of another actor's items the room does not hold (`acked`): never storable here. */
+	const lacking = (deletes: IdSet, acked: StateVector, own: (client: number) => boolean) => {
+		const out = Y.createIdSet();
+		for (const [client, ranges] of deletes.clients) {
+			if (own(client)) continue;
+			const held = acked.get(client) ?? 0;
+			for (const { clock, len } of ranges.getIds()) {
+				const from = math.max(clock, held);
+				if (from < clock + len) out.add(client, from, clock + len - from);
+			}
+		}
+		return out;
 	};
 
 	/**
@@ -376,7 +429,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		}
 	};
 
-	class WebsocketProvider extends ObservableV2<WebsocketProviderEvents> {
+	class WebsocketProvider extends IsolatedObservable<WebsocketProviderEvents> {
 		serverUrl: string;
 		roomname: string;
 		doc: YDoc;
@@ -454,7 +507,11 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			this.connectTimeout = connectTimeout;
 			this._WS = WebSocketPolyfill;
 			this.shouldConnect = connect;
-			initLifecycle(this, () => this.destroy());
+			initLifecycle(
+				this,
+				() => this.destroy(),
+				() => room.depart(this)
+			);
 			if (resyncInterval > 0) {
 				this._resync = setInterval(() => send(this, room.step1(this)), resyncInterval);
 			}
@@ -464,11 +521,13 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			this._updateHandler = (update, origin) => {
 				if (origin === this) return;
 				room.broadcastUpdate(this, update, origin === this._fromTab ? send : broadcast);
+				// The actor dictionary's records are bookkeeping, not content.
+				if (origin === ATTRIBUTION_ORIGIN) return;
 				const decoded = Y.decodeUpdate(update);
 				this._track(written(decoded), decoded.ds);
 			};
-			// What the doc already holds is unsaved until the room covers it.
-			this._track(stateVector(this.doc), this.doc.store.ds);
+			// What this actor already wrote is unsaved until the room covers it.
+			this._track(contentState(this.doc), this.doc.store.ds);
 			this.doc.on('update', this._updateHandler);
 			this._awarenessUpdateHandler = room.awarenessUpdateHandler(this);
 			awareness.on('update', this._awarenessUpdateHandler);
@@ -511,24 +570,32 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			);
 		}
 
-		/** Local updates the room has not acknowledged as persisted yet. */
+		/** Updates of this document's actor the room has not acknowledged as persisted yet. */
 		get unsaved(): number {
 			return this._pending.length;
 		}
 
 		/**
-		 * The room has persisted everything this replica wrote
-		 * (store-before-ack): every local update's structs are under an
+		 * The room has persisted everything this document's actor wrote
+		 * (store-before-ack): every tracked update's structs are under an
 		 * acknowledged state vector and its deletes were acknowledged by id.
 		 */
 		get saved(): boolean {
 			return this._pending.length === 0;
 		}
 
-		/** Track a local update (the clocks it writes, its `deletes`) unless the room already covers it. */
+		/**
+		 * Track an update (the clocks it writes, its `deletes`) unless the room
+		 * already covers it: only this actor's clocks count, and a delete,
+		 * which names no author, only in an update that writes no other
+		 * actor's structs (a peer's edit replayed from the local store).
+		 */
 		_track(sv: StateVector, deletes: IdSet): void {
-			if (covers(this._acked, sv) && deletes.isEmpty()) return;
-			this._pending.push({ sv, deletes });
+			const own = ownerOf(this.doc);
+			const mine: StateVector = new Map([...sv].filter(([client]) => own(client)));
+			if (mine.size < sv.size) deletes = Y.createIdSet();
+			if (covers(this._acked, mine) && deletes.isEmpty()) return;
+			this._pending.push({ sv: mine, deletes });
 			this.emit('saved', [{ saved: false, unsaved: this._pending.length }, this]);
 		}
 
@@ -538,10 +605,13 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		 */
 		_acknowledge(sv: Uint8Array, deletes: IdSet | null = null): void {
 			this._acked = Y.decodeStateVector(sv);
+			const own = ownerOf(this.doc);
 			const before = this._pending.length;
 			this._pending = this._pending.filter((entry) => {
 				if (deletes && !entry.deletes.isEmpty())
 					entry.deletes = Y.diffIdSet(entry.deletes, deletes);
+				if (!entry.deletes.isEmpty())
+					entry.deletes = Y.diffIdSet(entry.deletes, lacking(entry.deletes, this._acked, own));
 				return !(covers(this._acked, entry.sv) && entry.deletes.isEmpty());
 			});
 			// The room saves again: a later fault (1011) redials promptly.

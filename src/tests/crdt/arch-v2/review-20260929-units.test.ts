@@ -71,33 +71,53 @@ describe('UW-20: a merge unnests the source’s children after the vacated slot'
 });
 
 /**
- * Found by the corpus roles lane (RW-01 wave, seed 11): the engine merge
- * primitive ADOPTS the source's children into the target, so a concurrent
- * delete of the target promotes them into the target's slot — above the
- * source it revives, against `merge-order`. The baseline merges above rank
- * them after the source instead. Pinned as an expected failure until the
- * adopt primitive gets the same placement; the roles lane pins seed 11.
+ * Found by the corpus roles lane (RW-01 wave, seed 11), fixed by FW-12: the
+ * engine merge primitive keeps the source's children under the source,
+ * ranked after the target's children, so they display as the target's last
+ * children through the merge claim. A concurrent delete of the target voids
+ * the claim (ST02b) and the source comes back as it was, children included —
+ * never with its children above it (`merge-order`).
  */
-describe('open: engine mergeBlocks (adopt) ‖ delete the target', () => {
-	it.fails('mergeBlocks X into P ‖ delete P → X:"x" K:"k" K2:"k2" Z:"z"', () => {
-		const seed = [
-			{ id: 'P', text: 'p' },
-			{
-				id: 'X',
-				text: 'x',
-				children: [
-					{ id: 'K', text: 'k' },
-					{ id: 'K2', text: 'k2' }
-				]
-			},
-			{ id: 'Z', text: 'z' }
-		];
+describe('FW-12: engine mergeBlocks (adopt) ‖ delete the target', () => {
+	const seed = [
+		{ id: 'P', text: 'p', children: [{ id: 'Q', text: 'q' }] },
+		{
+			id: 'X',
+			text: 'x',
+			children: [
+				{ id: 'K', text: 'k' },
+				{ id: 'K2', text: 'k2' }
+			]
+		},
+		{ id: 'Z', text: 'z' }
+	];
+
+	it('mergeBlocks X into P → K and K2 are P’s last children', () => {
+		expectTree(
+			converge(seed, 2, ([a]) => {
+				a.ed.mergeBlocks('X', 'P');
+			}),
+			'P:"px"[Q:"q",K:"k",K2:"k2"] Z:"z"'
+		);
+	});
+
+	it('mergeBlocks X into P ‖ delete P → Q:"q" X:"x"[K:"k",K2:"k2"] Z:"z"', () => {
 		expectTree(
 			converge(seed, 2, ([a, b]) => {
 				a.ed.mergeBlocks('X', 'P');
 				b.ed.deleteBlock('P');
 			}),
-			'X:"x" K:"k" K2:"k2" Z:"z"'
+			'Q:"q" X:"x"[K:"k",K2:"k2"] Z:"z"'
+		);
+	});
+
+	it('mergeBlocks X into P, then undo → the seed again', () => {
+		expectTree(
+			converge(seed, 1, ([a]) => {
+				a.ed.mergeBlocks('X', 'P');
+				a.undo();
+			}),
+			'P:"p"[Q:"q"] X:"x"[K:"k",K2:"k2"] Z:"z"'
 		);
 	});
 });

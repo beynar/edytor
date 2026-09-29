@@ -24,7 +24,7 @@ It takes no options. Importing it also imports its stylesheet, which gives code 
 | `codeLine` | block | One line of code. The default child of `code`.                                                   |
 | `codeToken`| mark  | A highlighting token, rendered as `<span class="th-…">`. Computed on render, never stored.       |
 
-A code block has one preset, "Code", with the command id `block.code`, the markdown shortcut ` ``` ` (three backticks typed at the start of an empty block) and the slash menu section `Media`. <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>8</kbd> converts to it when the rich text plugin is loaded, as it is by default. Converting a block into a code block replaces its content with one empty line.
+A code block has one preset, "Code", with the command id `block.code`, the markdown shortcut ` ``` ` (three backticks typed at the start of an empty block) and the slash menu section `Media`. <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>8</kbd> converts to it when the rich text plugin is loaded, as it is by default. An empty block converts in place, into a code block of one empty line. A block with text or children stays as it is: the command (the slash menu, the chord) inserts an empty code block after it instead, and the caret moves to its line. See [Presets](/docs/customization/blocks#presets).
 
 A stored code block looks like this:
 
@@ -69,7 +69,8 @@ Inside a code line:
 | Keys                                   | Action                                                                             |
 | -------------------------------------- | ---------------------------------------------------------------------------------- |
 | <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd> | Start a new line                                                      |
-| <kbd>Tab</kbd>                         | Insert a tab character, or accept an inline suggestion                             |
+| <kbd>Tab</kbd>                         | At a caret, insert a tab character, or accept an inline suggestion. Over a selection, add a tab at the start of every line it touches, as one undo step; the selection keeps its characters |
+| <kbd>Shift</kbd> + <kbd>Tab</kbd>      | Remove one leading tab, or up to two spaces, from the caret's line or every line the selection touches |
 | <kbd>Mod</kbd> + <kbd>A</kbd>            | From a non-empty line, select the text of the whole code block                     |
 | <kbd>Escape</kbd>                      | Dismiss an inline suggestion                                                       |
 
@@ -77,7 +78,9 @@ Inside a code line:
 - Typing a closing character (`)`, `]`, `}`, `"`, `'`) right before the same character steps over it instead of inserting another: `f(a)` types as `f(a)`, not `f(a))`.
 - A line break inside a line splits it: each code line holds exactly one line of text.
 - <kbd>Backspace</kbd> at the start of the first line and <kbd>Delete</kbd> at the end of the last line do nothing: a line never merges out of its block.
-- <kbd>Delete</kbd> at the end of the block right before a code block removes that block if it is empty, and does nothing otherwise.
+- <kbd>Delete</kbd> at the end of the block right before a code block removes that block if it is empty, and does nothing otherwise. The caret goes to the end of the text before the removed block, or to the start of the code when nothing comes before it.
+- <kbd>Backspace</kbd> in an empty block right after a code block removes that block and puts the caret at the end of the last line. In a block with text it moves the caret to the end of the code and merges nothing.
+- A selection that ends at the start of a line leaves that line out of <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd>, as code editors do.
 - The Copy button, shown while the block is hovered, writes the block's text, lines joined with newlines, to the clipboard, and reads "Copied" for a moment.
 
 A code block is an island: merges never cross its edge, and a block selection walked with the arrow keys does not enter it from outside. It is also not convertible, so the slash menu and markdown shortcuts do not apply inside it.

@@ -51,7 +51,7 @@ The core wraps the snippet in `<span data-edytor-inline-block="<type>" data-edyt
 
 This plugin replaces a typed `@` with a mention atom. It takes a `pick` function as a parameter, so the host app decides how to choose the person:
 
-```svelte title="MentionPlugin.svelte"
+```svelte title="MentionPlugin.svelte" check
 <script module lang="ts">
 	import type { Plugin } from 'edytor';
 	import type { InlineBlockSnippetPayload } from 'edytor';

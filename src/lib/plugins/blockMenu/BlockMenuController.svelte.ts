@@ -1,7 +1,16 @@
 import type { Snippet } from 'svelte';
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { convertibleKinds, convertToKind, rowOf, type KindRow } from '$lib/kinds.js';
+import {
+	convertBlocks,
+	convertibleKinds,
+	convertToKind,
+	matchesQuery,
+	rowOf,
+	type KindRow
+} from '$lib/kinds.js';
+import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
+import { outermost } from '../blockHandles/BlockHandleController.svelte.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -27,7 +36,13 @@ export type BlockMenuAction = {
 };
 
 export class BlockMenuController {
+	/** The block whose grip opened the menu. */
 	block = $state<Block | null>(null);
+	/**
+	 * The blocks the actions apply to, in document order: the block selection
+	 * when it holds `block` (Notion), else `block` alone.
+	 */
+	blocks = $state<Block[]>([]);
 	anchor: HTMLElement | null = null;
 	query = $state('');
 	selectedIndex = $state(0);
@@ -44,6 +59,11 @@ export class BlockMenuController {
 		return this.block !== null;
 	}
 
+	/** The editor is readonly: the menu closes. */
+	get readonly() {
+		return this.edytor.readonly;
+	}
+
 	get kinds(): KindRow[] {
 		return convertibleKinds(this.edytor);
 	}
@@ -54,10 +74,10 @@ export class BlockMenuController {
 	}
 
 	get actions(): BlockMenuAction[] {
-		const block = this.block;
+		const { block, blocks } = this;
 		if (!block) return [];
 		const move = (direction: 'up' | 'down') => () =>
-			this.edytor.canMoveBlocks({ blocks: [block], direction });
+			this.edytor.canMoveBlocks({ blocks: outermost(blocks), direction });
 		const [mod, shift] = this.edytor.hotKeys.isMac ? ['⌘', '⇧'] : ['Ctrl+', 'Shift+'];
 		const all: BlockMenuAction[] = [
 			{
@@ -65,9 +85,9 @@ export class BlockMenuController {
 				label: 'Turn into',
 				icon: 'action.turn',
 				submenu: true,
-				isEnabled: () => block.convertible
+				isEnabled: () => blocks.some((b) => b.convertible)
 			},
-			...(this.options.linkTo
+			...(this.options.linkTo && blocks.length === 1
 				? [
 						{
 							id: 'link',
@@ -82,7 +102,7 @@ export class BlockMenuController {
 				label: 'Duplicate',
 				icon: 'action.duplicate',
 				hint: `${mod}D`,
-				run: () => this.duplicate(block)
+				run: () => (blocks.length > 1 ? this.duplicateAll(blocks) : this.duplicate(block))
 			},
 			{
 				id: 'up',
@@ -109,20 +129,18 @@ export class BlockMenuController {
 				run: () => this.remove()
 			}
 		];
-		const query = this.query.trim().toLowerCase();
-		const matching = query
-			? all.filter((action) => action.label.toLowerCase().includes(query))
-			: all;
-		return matching.filter((action) => action.isEnabled?.() !== false);
+		return all.filter(
+			(action) => matchesQuery(action, this.query) && action.isEnabled?.() !== false
+		);
 	}
 
-	/** With a query, the kinds it names join the list (Notion's "Turn into" results). */
+	/**
+	 * With a query, the kinds it names join the list (Notion's "Turn into"
+	 * results), matched as the slash menu matches them (`matchesQuery`).
+	 */
 	get matchingKinds(): KindRow[] {
-		const query = this.query.trim().toLowerCase();
-		if (!query || !this.block?.convertible) return [];
-		return this.kinds.filter((kind) =>
-			[kind.label, ...(kind.keywords ?? [])].some((word) => word.toLowerCase().includes(query))
-		);
+		if (!this.query.trim() || !this.blocks.some((b) => b.convertible)) return [];
+		return this.kinds.filter((kind) => matchesQuery(kind, this.query));
 	}
 
 	/** Every keyboard row: actions, then the matching kinds. */
@@ -131,33 +149,43 @@ export class BlockMenuController {
 	}
 
 	open(block: Block, anchor: HTMLElement) {
+		const selected = getSelectedBlocksInDocumentOrder(this.edytor);
+		this.blocks = selected.length > 1 && selected.includes(block) ? selected : [block];
 		this.block = block;
 		this.anchor = anchor;
 		this.query = '';
 		this.selectedIndex = 0;
 		this.flyout = false;
+		this.flyoutIndex = 0;
 	}
 
 	close(restoreCaret = true) {
-		const block = this.block;
+		const blocks = this.blocks;
 		this.block = null;
+		this.blocks = [];
 		this.anchor = null;
 		this.flyout = false;
-		if (restoreCaret && block?.node?.isConnected) this.caret(block);
+		if (restoreCaret) this.restore(blocks);
 	}
 
 	move(direction: 'up' | 'down') {
-		const block = this.block;
-		if (!block) return;
-		this.edytor.moveBlocks({ blocks: [block], direction });
+		if (!this.blocks.length) return;
+		this.edytor.moveBlocks({ blocks: outermost(this.blocks), direction });
 		this.close();
 	}
 
-	/** Convert the open block; the conversion places the caret (refused: the caret returns). */
+	/**
+	 * Convert the open block, or every block of the selection as one undo
+	 * step (they stay selected); one block's conversion places the caret
+	 * (refused: the caret returns).
+	 */
 	turnInto(kind: KindRow) {
-		const block = this.block;
+		const [block, blocks] = [this.block, this.blocks];
 		this.close(false);
-		if (convertToKind(this.edytor, block, kind, true)) this.focus();
+		if (blocks.length > 1) {
+			convertBlocks(this.edytor, blocks, kind);
+			this.focus();
+		} else if (convertToKind(this.edytor, block, kind, true)) this.focus();
 		else this.caret(block);
 	}
 
@@ -172,35 +200,32 @@ export class BlockMenuController {
 	 * block inside another of them is copied with it); the copies are selected.
 	 */
 	duplicateAll(blocks: Block[]) {
-		const inside = (block: Block) => {
-			for (let parent = block.parent; parent; parent = parent.parent)
-				if (blocks.includes(parent)) return true;
-			return false;
-		};
-		const roots = blocks.filter((block) => !inside(block));
 		const copies = this.edytor.dispatcher.run('insertBlock', () =>
-			roots.flatMap((block) => block.duplicateBlock() ?? [])
+			outermost(blocks).flatMap((block) => block.duplicateBlock() ?? [])
 		);
 		this.close(false);
 		if (copies?.length) this.edytor.selection.selectBlocks(...copies);
 	}
 
 	/**
-	 * Delete the open block; the caret goes to the nearest text after it, else
-	 * before it (refused: the caret returns to the block).
+	 * Delete the open blocks as one undo step (unselected children take their
+	 * parent's place); the caret goes to the nearest text after the first,
+	 * a promoted child's when it had children, else before it (refused: the
+	 * caret or the selection returns).
 	 */
 	remove() {
-		const block = this.block;
-		if (!block) return;
-		let last = block;
-		while (last.children.length) last = last.children.at(-1)!;
+		const blocks = this.blocks;
+		if (!blocks.length) return;
+		const skip = new Set(blocks);
 		const [after, before] = [
-			this.editable(last, 'blockAfter', 'firstEditableText'),
-			this.editable(block, 'blockBefore', 'lastEditableText')
+			this.editable(blocks[0]!, 'blockAfter', 'firstEditableText', skip),
+			this.editable(blocks[0]!, 'blockBefore', 'lastEditableText', skip)
 		];
-		block.removeBlock();
+		this.edytor.dispatcher.run('removeBlock', () => {
+			for (const block of blocks) block.removeBlock();
+		});
 		this.close(false);
-		if (this.edytor.dispatcher.last?.status !== 'applied') return this.caret(block);
+		if (blocks.some((block) => block.isInTree)) return this.restore(blocks);
 		this.edytor.dispatcher.caret(after ?? before, after ? 0 : (before?.length ?? 0));
 		this.focus();
 	}
@@ -217,28 +242,41 @@ export class BlockMenuController {
 		const row = this.rows[this.selectedIndex];
 		if (!row) return;
 		if ('value' in row) return this.turnInto(row);
-		if (row.submenu) this.flyout = true;
+		if (row.submenu) [this.flyout, this.flyoutIndex] = [true, 0];
 		else row.run?.();
+	}
+
+	/** Back to the blocks the menu acted on: the block selection again, or one block's caret. */
+	private restore(blocks: Block[]) {
+		const live = blocks.flatMap((block) => this.edytor.idToBlock.get(block.id) ?? []);
+		if (live.length > 1) {
+			this.edytor.selection.selectBlocks(...live);
+			this.focus();
+		} else if (live[0]?.node?.isConnected) this.caret(live[0]);
 	}
 
 	/**
 	 * A caret at the start of `block` (of its first child when its own content
 	 * is not displayed): it replaces the block selection, and the projector
-	 * draws it after the flush.
+	 * draws it after the flush. A block holding no text (a divider, an image)
+	 * is selected instead.
 	 */
 	private caret(block: Block | null | undefined) {
-		this.edytor.dispatcher.caret(block?.firstText ?? block?.children[0]?.firstText, 0);
+		const text = block?.firstText ?? block?.children[0]?.firstText;
+		if (text || !block?.isInTree) this.edytor.dispatcher.caret(text, 0);
+		else this.edytor.selection.selectBlocks(block);
 		this.focus();
 	}
 
-	/** The nearest editable text from `block` in document order, void blocks skipped. */
+	/** The nearest editable text from `block` in document order, void and `skip` blocks skipped. */
 	private editable(
 		block: Block,
 		step: 'blockAfter' | 'blockBefore',
-		edge: 'firstEditableText' | 'lastEditableText'
+		edge: 'firstEditableText' | 'lastEditableText',
+		skip: Set<Block>
 	) {
 		for (let next = this.edytor[step](block); next; next = this.edytor[step](next)) {
-			const text = next[edge];
+			const text = !skip.has(next) && next[edge];
 			if (text) return text;
 		}
 	}

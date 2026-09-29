@@ -193,6 +193,21 @@ describe('the block menu caret after Delete', () => {
 		expect(caret(edytor)).toEqual(['one', 3]);
 	});
 
+	it.each([
+		['with a block after it', [p('a'), p('b', [p('b1'), p('b2')]), p('c')]],
+		['as the last block', [p('a'), p('b', [p('b1'), p('b2')])]]
+	])(
+		'%s, its children take its place and the caret goes to the first of them (FW-05)',
+		async (_, children) => {
+			const { edytor, editor } = await render([blockMenuPlugin], children);
+			await openAndDelete(edytor, editor, 'b');
+			expect(canonicalTree(edytor).map((b) => shape(b)[0])).toEqual(
+				children.map((b) => b.id).flatMap((id) => (id === 'b' ? ['b1', 'b2'] : [id]))
+			);
+			expect(caret(edytor)).toEqual(['b1', 0]);
+		}
+	);
+
 	it('refused by an extension, the block stays and the caret returns to it (RW-11)', async () => {
 		const keep: Plugin = () => ({
 			onBeforeOperation: ({ operation, prevent }) => {
@@ -220,5 +235,48 @@ describe('Mod+D over a block selection', () => {
 		expect(selected.every(([, id]) => id !== 'a' && id !== 'b')).toBe(true);
 		await dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
 		expect(texts()).toEqual(['a', 'b', 'c']);
+	});
+});
+
+describe('Tab over a block selection holding a parent and its child (FW-06)', () => {
+	const selectDown = async (edytor: Awaited<ReturnType<typeof render>>['edytor']) => {
+		edytor.selection.selectBlocks(edytor.idToBlock.get('b')!);
+		await flushDomUpdates();
+		edytor.undoManager.stopCapturing();
+		for (const _ of [1, 2])
+			await dispatchDomKeyDown(document, { key: 'ArrowDown', shiftKey: true });
+		const ids = [...edytor.selection.selectedBlocks].map((block) => block.id);
+		expect(ids).toEqual(['b', 'b1', 'c']);
+	};
+	const original: Shape[] = [
+		['a', []],
+		['b', [['b1', []]]],
+		['c', []]
+	];
+
+	it('Tab nests the parent (its child with it) and the next block; one Undo reverts', async () => {
+		const { edytor } = await render([], [p('a'), p('b', [p('b1')]), p('c')]);
+		await selectDown(edytor);
+		await dispatchDomKeyDown(document, { key: 'Tab' });
+		expect(canonicalTree(edytor).map(shape)).toEqual([
+			[
+				'a',
+				[
+					['b', [['b1', []]]],
+					['c', []]
+				]
+			]
+		]);
+		expect([...edytor.selection.selectedBlocks].map((block) => block.id)).toEqual(['b', 'b1', 'c']);
+		await dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
+		expect(canonicalTree(edytor).map(shape)).toEqual(original);
+	});
+
+	it('Shift+Tab moves them back out', async () => {
+		const { edytor } = await render([], [p('a'), p('b', [p('b1')]), p('c')]);
+		await selectDown(edytor);
+		await dispatchDomKeyDown(document, { key: 'Tab' });
+		await dispatchDomKeyDown(document, { key: 'Tab', shiftKey: true });
+		expect(canonicalTree(edytor).map(shape)).toEqual(original);
 	});
 });

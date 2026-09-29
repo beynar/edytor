@@ -97,7 +97,7 @@ const { operation, status } = edytor.dispatcher.last!;
 | `refused` | The view is readonly, the document is read-only, the document refused it (for example merging into a void block), or a plugin prevented it. Nothing was written and no undo step was recorded. |
 | `failed` | It threw. The error is in `last.error` and is rethrown. |
 
-Commands that create blocks also return handles (`insertBlockAfter`, `splitBlock`, `mergeBlockBackward` return a `Block`, or `null` when refused).
+Commands that create blocks also return handles: `insertBlockAfter`, `splitBlock` and `mergeBlockBackward` return a `Block`, `null` when the document refuses the command, and `undefined` when it never ran (a readonly view, or a plugin prevented it). Test the result for a falsy value, or read `dispatcher.last.status`.
 
 ## Facade operations
 
@@ -177,7 +177,7 @@ Or describe one relative step with `direction`:
 const moved = edytor.moveBlocks({ blocks: [...edytor.selection.selectedBlocks], direction: 'down' });
 ```
 
-- A group moved by `direction` must be siblings. The blocks keep the order you pass them in.
+- A group moved by `direction` must be siblings, and keeps its document order. With `target` and `position`, the blocks land in the order you pass them.
 - `moveBlocks` returns the blocks it moved, or `[]` when the move was refused.
 - `canMoveBlocks` answers whether the move is structurally allowed. It is `false` for a destination inside a void block or an island, for blocks that sit inside an island, and for a destination inside the moved blocks' own subtree. A plugin can still refuse the command.
 

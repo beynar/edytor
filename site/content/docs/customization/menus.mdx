@@ -84,7 +84,7 @@ const slash = createSlashMenuPlugin({ menu }); // or { item }
 
 ## Toolbar
 
-`toolbar` renders while `controller.isVisible`, above the selection. The controller toggles marks (`marks`, `toggleMark`), converts the block (`kinds`, `currentKind`, `turnInto`), colors (`setColor`) and links (`linkUrl`, `setLinkUrl`, `applyLink`, `removeLink`), and tracks one open `panel`. See [Toolbar](/docs/plugins/toolbar#custom-markup).
+`toolbar` renders while `controller.isVisible`, above the selection. The controller toggles marks (`marks`, `toggleMark`, `isActive` for a pressed state), converts the block (`kinds`, `currentKind`, `turnInto`), colors (`setColor`) and links (`linkUrl`, `setLinkUrl`, `applyLink`, `removeLink`), and tracks one open `panel`. See [Toolbar](/docs/plugins/toolbar#custom-markup).
 
 ```ts
 const toolbar = createToolbarPlugin({ toolbar: bar });
@@ -92,7 +92,7 @@ const toolbar = createToolbarPlugin({ toolbar: bar });
 
 ## Block menu
 
-`menu` renders while `controller.isOpen`, beside the grip that opened it. The controller has the `block`, its `actions`, the `kinds` it can turn into, and `turnInto`, `duplicate`, `move`, `remove`, `copyLink` and `close`. Each action, and `close()`, returns a text caret to the block: it replaces the block selection the grip click left. The built-in keys belong to the built-in search field, so a custom menu handles its own. See [Block menu](/docs/plugins/block-menu#custom-markup).
+`menu` renders while `controller.isOpen`, beside the grip that opened it. The controller has the `block`, the `blocks` its actions apply to (the block selection when it holds `block`), its `actions`, the `kinds` it can turn into, and `turnInto`, `duplicate`, `move`, `remove`, `copyLink` and `close`. Each action, and `close()`, returns a text caret to the block (a block holding no text, such as a divider, stays selected): it replaces the block selection the grip click left. The built-in keys belong to the built-in search field, so a custom menu handles its own. See [Block menu](/docs/plugins/block-menu#custom-markup).
 
 ```ts
 const blockMenu = createBlockMenuPlugin({ menu, linkTo: (block) => `#${block.id}` });

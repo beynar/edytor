@@ -4,3 +4,5 @@ dist
 .wrangler
 .astro
 vendor
+# Written by scripts/pack-edytor.sh; served at the site root
+public/edytor-*.tgz

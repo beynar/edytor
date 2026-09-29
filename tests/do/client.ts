@@ -249,10 +249,13 @@ export class SelfWebSocket {
 	onerror: ((event: unknown) => void) | null = null;
 	onmessage: ((event: { data: unknown }) => void) | null = null;
 	private socket: WebSocket | null = null;
+	/** Who answers the upgrade: the test Worker (`SELF`) unless a subclass names another. */
+	static fetcher = (url: string, init: RequestInit): Promise<Response> => SELF.fetch(url, init);
 
 	constructor(readonly url: string) {
-		// The provider's own URL (its query parameters included), over `SELF`.
-		SELF.fetch(url.replace(/^ws/, 'http'), { headers: { Upgrade: 'websocket' } })
+		// The provider's own URL (its query parameters included).
+		const { fetcher } = this.constructor as typeof SelfWebSocket;
+		fetcher(url.replace(/^ws/, 'http'), { headers: { Upgrade: 'websocket' } })
 			.then(accept)
 			.then(
 				(ws) => {

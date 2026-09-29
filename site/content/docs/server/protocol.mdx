@@ -104,7 +104,8 @@ export function onMessage(ws: WebSocket, bytes: Uint8Array) {
       return ws.send(frame(messageSaved, (e) => sync.writeSaved(e, doc)));
     }
     const { applied, problem } = sync.applyRemote(doc, payload, ws);
-    if (!applied || problem) return ws.close(1008, 'refused');
+    if (problem) return ws.close(1008, 'refused: schema'); // final: the provider stops
+    if (!applied) return ws.close(1011, 'internal error'); // a fault: the provider redials
     ws.send(frame(messageSaved, (e) => sync.writeSaved(e, doc, Y.decodeUpdate(payload).ds)));
   } else if (type === messageAwareness) {
     const entries = readAwarenessEntries(readVarUint8Array(decoder));
@@ -114,7 +115,7 @@ export function onMessage(ws: WebSocket, bytes: Uint8Array) {
 }
 ```
 
-Send large frames through `chunkFrame` if your platform limits message size, and remember the latest presence entry per client to greet newcomers, as the shipped room does.
+Send large frames through `chunkFrame` if your platform limits message size, and remember the latest presence entry per client to greet newcomers, as the shipped room does. Close with `1008` or a `4xxx` code (other than `4401`) only for a refusal the client should not retry: the provider stops dialing. Close with `1011` for a fault of your server, and refuse an upgrade you turn away by accepting it and closing it, not with an HTTP error, which a browser reports as `1006` (unreachable, redialed).
 
 ## Never attach a document on the server
 

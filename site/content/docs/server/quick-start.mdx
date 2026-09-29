@@ -12,10 +12,10 @@ Edytor ships its sync server as a Cloudflare Durable Object: `DocumentRoom` coor
 Create a TypeScript Worker (for example with `pnpm create cloudflare@latest edytor-room`, choosing the "Hello World" Worker template), then add edytor:
 
 ```package-install
-npm i edytor@next
+pnpm add https://edytor-docs.beynar.workers.dev/edytor-0.1.0-next.0.tgz
 ```
 
-The pre-release goes out under the `next` tag; until it is published, install the tarball from [Build from source](/docs/getting-started#build-from-source). The room only imports `edytor/cloudflare`, which runs in Workers: no Svelte, no DOM.
+That is the pre-release tarball this site hosts; once it is on npm, install `edytor@next` instead (see [Installation](/docs/getting-started#install)). The room only imports `edytor/cloudflare`, which runs in Workers: no Svelte, no DOM.
 
 </Step>
 <Step title="Declare the Durable Object">
@@ -124,4 +124,4 @@ Already have a Durable Object, or want the document in R2, KV or D1 too? Call `a
 
 ## See it live
 
-The live editor on the [edytor home page](/) runs on exactly this setup: a room Worker deployed at `edytor-room.beynar.workers.dev` with `DocumentRoom` and `routeDocumentSocket`. Its `authorize` admits guests by an id their browser keeps, it opens one room per UTC day so the shared document resets daily, and it only accepts sockets from the docs' origins. Open the home page in two windows to watch them sync, and read its [source](https://github.com/beynar/edytor/tree/master/site/room) for a complete, deployed example.
+The live editor on the [edytor home page](/) runs on exactly this setup: a room Worker deployed at `edytor-room.beynar.workers.dev` with `DocumentRoom` and `routeDocumentSocket`. Its `authorize` admits guests by an id their browser keeps, it opens one room per UTC day so the shared document resets daily, and it only accepts sockets from the docs' origins. It turns the other dials away with [`closedSocket`](/docs/server/authorization#authorize) (`4404` for a closed room, `4403` for another origin), so a page left open past the reset stops dialing instead of retrying forever. Open the home page in two windows to watch them sync, and read its [source](https://github.com/beynar/edytor/tree/master/site/room) for a complete, deployed example.

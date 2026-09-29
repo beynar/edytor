@@ -6,7 +6,7 @@ icon: file-code
 
 `document.facade` is the one read and write surface of a document: every structural and text edit, and every read of the tree, goes through it. It is the same whether you use it headlessly or from a view. For the document object itself (history, providers, readiness), see [Documents](/docs/collaboration/documents); for the tree model, see [the document model](/docs/concepts/document-model).
 
-```ts
+```ts title="results.ts" check
 import { createDocument, defaultSemantics } from 'edytor';
 
 const { facade } = createDocument({

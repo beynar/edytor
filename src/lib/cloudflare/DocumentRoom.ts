@@ -97,6 +97,8 @@ export const DEFAULT_MAX_ROW_BYTES = 2_000_000 - 4096;
 export const DEFAULT_COMPACT_AFTER = 500;
 /** ms between the first unsaved change and `onSave`. */
 export const DEFAULT_SAVE_AFTER = 2000;
+/** Longest wait between the save alarms of a room that cannot read its rows. */
+const MAX_SAVE_RETRY = 5 * 60_000;
 
 /** Refusals kept in `refusals` (the newest); `refusalCounts` counts every one. */
 export const MAX_REFUSALS = 100;
@@ -186,7 +188,9 @@ const REPLICA_TAKEN_CLOSE = { code: 4409, reason: 'replica bound to another user
 /**
  * An upgrade accepted and closed at once, so the client reads `code`: a
  * browser sees an HTTP error at the upgrade only as `1006`, which a
- * provider cannot tell from a network failure.
+ * provider cannot tell from a network failure. Refuse a dial your Worker
+ * turns away itself with it: the provider stops at `1008` or `4xxx`
+ * (except `4401`, redialed), and redials after anything else.
  */
 export const closedSocket = (code: number, reason: string): Response => {
 	const [client, server] = Object.values(new WebSocketPair());
@@ -330,16 +334,42 @@ const newWriters = (
 
 type Decoded = ReturnType<typeof Y.decodeUpdate>;
 
+/** The next clock of `client` in `doc` (0: it holds none). */
+const heldClock = (doc: YDoc, client: number): number => {
+	const last = doc.store.clients.get(client)?.at(-1);
+	return last ? last.id.clock + last.length : 0;
+};
+
+/** The struct `doc` holds at `client`/`clock`, or `null`. */
+const storedStruct = (doc: YDoc, client: number, clock: number) => {
+	if (clock >= heldClock(doc, client)) return null;
+	const structs = doc.store.clients.get(client)!;
+	return structs[Y.findIndexSS(structs, clock)];
+};
+
 /**
  * A decoded update without what it carries under `clients`: their structs,
- * and its deletes of their items (a forged transaction's rewrite of an
- * entry deletes the entry it replaces).
+ * the deletes of their clocks the room does not hold, and the deletes of
+ * the map entries their structs replace (a rewrite deletes the entry it
+ * replaces: storing the delete without the rewrite would empty the key).
+ * Deletes of their items the room holds are kept: whoever may write may
+ * delete.
  */
-const withoutClients = ({ structs, ds }: Decoded, clients: Set<number>): Uint8Array => {
+const withoutClients = ({ structs, ds }: Decoded, clients: Set<number>, doc: YDoc): Uint8Array => {
 	const kept = new Map<number, typeof structs>();
+	const replaced = Y.createIdSet();
 	for (const struct of structs) {
 		const { client } = struct.id;
-		if (clients.has(client)) continue;
+		if (clients.has(client)) {
+			// An encoded item names its parent only without an origin: the entry
+			// it replaces is its origin, when the room holds that as a map entry.
+			const origin = struct instanceof Y.Item ? struct.origin : null;
+			const entry = origin && storedStruct(doc, origin.client, origin.clock);
+			if (entry instanceof Y.Item && entry.parentSub !== null) {
+				replaced.add(origin!.client, origin!.clock, 1);
+			}
+			continue;
+		}
 		const run = kept.get(client) ?? [];
 		run.push(struct);
 		kept.set(client, run);
@@ -355,9 +385,12 @@ const withoutClients = ({ structs, ds }: Decoded, clients: Set<number>): Uint8Ar
 	}
 	const deletes = Y.createIdSet();
 	for (const [client, ranges] of ds.clients) {
-		if (!clients.has(client)) deletes.clients.set(client, ranges);
+		const held = clients.has(client) ? heldClock(doc, client) : Infinity;
+		for (const { clock, len } of ranges.getIds()) {
+			if (clock < held) deletes.add(client, clock, Math.min(len, held - clock));
+		}
 	}
-	Y.writeIdSet(encoder, deletes);
+	Y.writeIdSet(encoder, Y.diffIdSet(deletes, replaced));
 	return encoder.toUint8Array();
 };
 
@@ -371,8 +404,7 @@ const heldDeletes = (doc: YDoc, ds: Decoded['ds']): Decoded['ds'] => {
 	const held = Y.createIdSet();
 	for (const [client, ranges] of ds.clients) {
 		const structs = doc.store.clients.get(client) ?? [];
-		const last = structs.at(-1);
-		const stored = last ? last.id.clock + last.length : 0;
+		const stored = heldClock(doc, client);
 		for (const { clock, len } of ranges.getIds()) {
 			if (clock >= stored) continue;
 			for (let i = Y.findIndexSS(structs, clock); i < structs.length; i++) {
@@ -481,6 +513,8 @@ export class AttachedDocument {
 	private readonly sql: SqlStorage;
 	private _facade: EdytorDoc | null = null;
 	private saveScheduled = false;
+	/** Alarms in a row that found the rows unreadable: each re-arms later. */
+	private saveRetries = 0;
 	private readonly options: AttachDocumentOptions;
 	private readonly rowsTable: string;
 	private readonly replicasTable: string;
@@ -576,10 +610,29 @@ export class AttachedDocument {
 		return this.facade.toJSON();
 	}
 
-	/** Runs `onSave` — the object's alarm, `saveAfter` ms after the first unsaved change. */
+	/**
+	 * Runs `onSave` — the object's alarm, `saveAfter` ms after the first
+	 * unsaved change. While the rows cannot be read (a retryable failure),
+	 * it starts the room again; if that fails too, the save stays due: the
+	 * alarm is set again, later at each failure (up to 5 minutes), so the
+	 * mirror never silently lags what the room stored.
+	 */
 	async alarm(): Promise<void> {
+		if (!this.options.onSave) return;
+		if (this.doc === null && this.retryable) {
+			await this.ctx.blockConcurrencyWhile(async () => {
+				if (this.doc === null && this.retryable) await this.start();
+			});
+		}
+		// Set after `start()`, which reads the alarm this handler is running.
 		this.saveScheduled = false;
-		if (this.doc === null || !this.options.onSave) return;
+		if (this.doc === null) {
+			if (!this.retryable) return;
+			this.saveScheduled = true;
+			const wait = Math.min(this.saveAfter * 2 ** ++this.saveRetries, MAX_SAVE_RETRY);
+			return this.ctx.storage.setAlarm(Date.now() + wait);
+		}
+		this.saveRetries = 0;
 		// One synchronous read: the registry matches the state it is saved with.
 		const saved = {
 			value: this.read(),
@@ -1170,7 +1223,7 @@ export class AttachedDocument {
 		const decoded = decode(() => Y.decodeUpdate(update));
 		const sv = stateVector(doc);
 		const stripped = this.attribute(attachment, newWriters(decoded, sv), sv);
-		const admitted = stripped.size === 0 ? update : withoutClients(decoded, stripped);
+		const admitted = stripped.size === 0 ? update : withoutClients(decoded, stripped, doc);
 		// 4 · Schema: the inbound refusal of a foreign stamp (the update's,
 		// or a pending one it would release — discarded, the sender kept).
 		// Integrating persists (the doc's update handler) before the ack.
@@ -1298,7 +1351,12 @@ export const attachDocument = (
 	host: DurableObject<any>,
 	options: AttachDocumentOptions = {}
 ): AttachedDocument => {
-	const ctx = (host as unknown as { ctx: DurableObjectState }).ctx;
+	const ctx = (host as unknown as { ctx?: DurableObjectState } | null)?.ctx;
+	if (!ctx?.storage) {
+		throw new TypeError(
+			'attachDocument(this): `this` must be a Durable Object (a class extending DurableObject, after super())'
+		);
+	}
 	const document = new AttachedDocument(ctx, options);
 	const target = host as unknown as Record<Handler, unknown>;
 	const handlers: Handler[] = ['fetch', 'webSocketMessage', 'webSocketClose', 'webSocketError'];

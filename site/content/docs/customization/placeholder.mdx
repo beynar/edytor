@@ -10,7 +10,7 @@ A placeholder is hint text shown in an empty block, such as "Type '/' for comman
 
 Pass `placeholder` to `<Edytor>`:
 
-```svelte
+```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor } from 'edytor';
 </script>
@@ -45,7 +45,7 @@ The function re-runs when the block's kind, data or focus changes, so a placehol
 
 A plugin can supply the placeholder instead, with the same string or function:
 
-```ts
+```ts title="hints.ts" check
 import type { Plugin } from 'edytor';
 
 export const hintsPlugin: Plugin = () => ({
@@ -59,7 +59,7 @@ The `<Edytor>` prop wins over plugins; among plugins, the first one that declare
 
 `richTextPlaceholder` is a ready-made function with Notion's hints for the rich text and image kinds:
 
-```svelte
+```svelte title="RichEditor.svelte" check
 <script lang="ts">
 	import { Edytor, richTextPlaceholder } from 'edytor';
 </script>

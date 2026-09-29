@@ -49,7 +49,7 @@ const selectNextVoidBlockFromCaret = (edytor: Edytor) => {
 		return false;
 	}
 
-	const nextBlock = startText.parent.closestNextBlock;
+	const nextBlock = edytor.selection.shown(startText.parent, 'blockAfter');
 	if (!nextBlock?.definition.void) {
 		return false;
 	}
@@ -90,7 +90,10 @@ const history =
 			else edytor.historyRedo();
 		});
 
-/** Block-selection keys walk the document order with the island seal (R5). */
+/**
+ * Block-selection keys walk the document order with the island seal (R5),
+ * past a collapsed toggle's hidden body.
+ */
 const SEALED = { sealed: true } as const;
 
 /** Move a single block selection to its sealed neighbour in document order. */
@@ -100,7 +103,11 @@ const moveBlockSelection =
 		const selectedBlocks = edytor.selection.selectedBlocks;
 		if (selectedBlocks.size === 1) {
 			prevent(() => {
-				const target = edytor[step](selectedBlocks.values().next().value as Block, SEALED);
+				const target = edytor.selection.shown(
+					selectedBlocks.values().next().value as Block,
+					step,
+					SEALED
+				);
 				if (target) {
 					edytor.selection.selectBlocks(target);
 				}
@@ -128,8 +135,8 @@ const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void =>
 	const sorted = members.toSorted(edytor.compareBlocks);
 	const next =
 		direction === 'up'
-			? edytor.blockBefore(sorted[0]!, SEALED)
-			: edytor.blockAfter(sorted.at(-1)!, SEALED);
+			? edytor.selection.shown(sorted[0]!, 'blockBefore', SEALED)
+			: edytor.selection.shown(sorted.at(-1)!, 'blockAfter', SEALED);
 	if (next) edytor.selection.addBlockToSelection(next);
 };
 
@@ -153,11 +160,46 @@ const rangeBlocks = (edytor: Edytor): Block[] => {
 };
 
 /**
+ * Tab and Shift+Tab never hide a block the user saw (Notion): a closed
+ * toggle a block moves into opens, and so does a closed toggle that adopts
+ * the blocks after it on Shift+Tab (`open` is view state, R11).
+ */
+const revealing = (blocks: Block[], move: () => Block[]) => {
+	const had = new Map(blocks.map((block) => [block, block.children.length]));
+	const moved = move();
+	const open = (block: Block) => {
+		if (block.node?.tagName === 'DETAILS') (block.node as HTMLDetailsElement).open = true;
+	};
+	for (const block of moved) {
+		for (let parent = block.parent; parent; parent = parent.parent) open(parent);
+		if (block.children.length > (had.get(block) ?? Infinity)) open(block);
+	}
+	return moved;
+};
+
+/**
+ * Move `blocks` one level, one group of siblings at a time (Notion: over
+ * several nesting levels, each group that can move does), as one command.
+ * A block inside another of them moves with it. Answers the moved blocks.
+ */
+const moveRoots = (edytor: Edytor, blocks: Block[], direction: 'in' | 'out') => {
+	const roots = blocks.filter((block) => !blocks.some((other) => block.isChildOf(other)));
+	const groups = new Map<Block | undefined, Block[]>();
+	for (const block of roots) groups.set(block.parent, [...(groups.get(block.parent) ?? []), block]);
+	return revealing(
+		roots,
+		() =>
+			edytor.dispatcher.run('moveBlocks', () =>
+				[...groups.values()].flatMap((group) => edytor.moveBlocks({ blocks: group, direction }))
+			) ?? []
+	);
+};
+
+/**
  * Tab / Shift+Tab: nest or unnest the selected block, or the caret's block.
- * Several selected siblings move as one (`edytor.moveBlocks`, `in`/`out`)
- * and stay selected. The blocks a text range spans move one level per
- * group of siblings (Notion: over several nesting levels, each group that
- * can move does), as one command, the range kept.
+ * Selected blocks, or the blocks a text range spans, move one level per
+ * group of siblings, a selected block's selected descendants with it, as
+ * one command; the selection stays.
  */
 const nest =
 	(operation: 'nestBlock' | 'unNestBlock'): HotKey =>
@@ -167,28 +209,28 @@ const nest =
 			const selectedBlocks = edytor.selection.selectedBlocks;
 			const direction = operation === 'nestBlock' ? 'in' : 'out';
 			if (selectedBlocks.size > 1) {
+				const members = [...selectedBlocks];
 				const blocks = getSelectedBlocksInDocumentOrder(edytor);
-				const moved = edytor.moveBlocks({ blocks, direction });
-				if (moved.length) edytor.selection.selectBlocks(...moved);
+				if (moveRoots(edytor, blocks, direction).length) edytor.selection.selectBlocks(...members);
 				return;
 			}
 			const spanned = selectedBlocks.size ? [] : rangeBlocks(edytor);
 			if (spanned.length) {
 				const { startText, endText, yStart, yEnd, isReversed } = edytor.selection.state;
-				const groups = new Map<Block | undefined, Block[]>();
-				for (const block of spanned)
-					groups.set(block.parent, [...(groups.get(block.parent) ?? []), block]);
-				const moved = edytor.dispatcher.run('moveBlocks', () =>
-					[...groups.values()].flatMap((blocks) => edytor.moveBlocks({ blocks, direction }))
-				);
-				if (moved?.length && startText && endText)
+				const moved = moveRoots(edytor, spanned, direction);
+				if (moved.length && startText && endText)
 					edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 				return;
 			}
 			const selectedBlock = selectedBlocks.values().next().value as Block | undefined;
 			const { yStart, startText, startBlock } = edytor.selection.state;
 			const index = startText?.index;
-			const block = (selectedBlock || startBlock)?.[operation]();
+			const target = selectedBlock || startBlock;
+			const [block] = target
+				? revealing([target], () =>
+						[target[operation]()].filter((moved): moved is Block => moved != null)
+					)
+				: [];
 			if (block && selectedBlock) restoreStructuralHotkeyBlockSelection(edytor, block);
 			else if (block && index !== undefined)
 				restoreStructuralHotkeyCaret(edytor, block.content[index] as Text, yStart);
@@ -258,6 +300,12 @@ export const builtInBindings: Record<string, HotKey> = {
 	'mod+enter': ({ edytor, prevent }) => {
 		prevent(() => {
 			const { startText } = edytor.selection.state;
+			// In a toggle's header it opens or closes the toggle (Notion).
+			const node = startText?.parent.node;
+			if (node?.tagName === 'DETAILS') {
+				(node as HTMLDetailsElement).open = !(node as HTMLDetailsElement).open;
+				return;
+			}
 			const newBlock = startText?.parent.splitBlock({ index: startText.length, text: startText });
 			if (newBlock && newBlock.content[0] instanceof Text) {
 				edytor.selection.setAtTextOffset(newBlock.content[0], 0);

@@ -2,7 +2,8 @@
  * Refusals and expired credentials on the component path:
  *
  * - RW-05: a view mounted on a document a provider's server refused does
- *   not seed it — the empty document stays `pending`.
+ *   not seed it — the empty document stays `pending`. A document that
+ *   already holds content hydrates at the refusal and renders (FW-10).
  * - RW-19: `<Edytor server room params>` reports `4401` through
  *   `onSyncExpired`, so the app refreshes `params` before the redial; and
  *   refusals through `onSyncRefused` (a standing one at mount, then each
@@ -19,6 +20,8 @@ import { tick } from 'svelte';
 import Edytor from '$lib/components/Edytor.svelte';
 import ExpiredTokenView from './ExpiredTokenView.svelte';
 import { createDocument, SyncRefusedError } from '$lib/crdt/index.js';
+import { attachDocument } from '$lib/crdt/document.js';
+import { Y } from '$lib/crdt/engine.js';
 import type { EdytorSync } from '$lib/collaboration/index.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 
@@ -89,6 +92,30 @@ describe('a view mounted after a refusal (RW-05)', () => {
 		expect(view.container.querySelector('[data-edytor]')).toBeNull();
 		view.unmount();
 		document.destroy();
+	});
+
+	it('hydrates a refused document that already holds content, and renders it (FW-10)', async () => {
+		const source = createDocument({
+			value: { children: [{ type: 'paragraph', content: [{ text: 'stored' }] }] }
+		});
+		const doc = new Y.Doc();
+		Y.applyUpdate(doc, source.encode());
+		const document = attachDocument(doc);
+		document.attachSync(refusedSync(4403, 'document access denied'));
+		expect(document.syncRefusal?.code).toBe(4403);
+		expect(document.readiness).toBe('hydrated');
+		const view = render(Edytor, {
+			props: {
+				document,
+				plugins: [richTextPlugin],
+				value: { children: [{ type: 'paragraph', content: [{ text: 'draft' }] }] }
+			}
+		});
+		await tick();
+		expect(view.container.querySelector('[data-edytor]')?.textContent?.trim()).toBe('stored');
+		view.unmount();
+		document.destroy();
+		source.destroy();
 	});
 
 	it('onSyncRefused reports the standing refusal at mount', async () => {

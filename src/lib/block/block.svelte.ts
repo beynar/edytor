@@ -387,8 +387,20 @@ export class Block {
 		}
 	};
 
-	/** Register the element the core rendered for this block (O45) and run the attach hooks. */
+	/** The declared view state (`open` on a `details`) the block's last element held. */
+	#viewState: [string, string][] = [];
+
+	/**
+	 * Register the element the core rendered for this block (O45) and run the
+	 * attach hooks. A re-rendered block (moved, re-parented) keeps its declared
+	 * view state (R11): an open toggle stays open.
+	 */
 	attach = (node: HTMLElement) => {
+		const names = this.definition.viewState ?? [];
+		const read = (from: HTMLElement): [string, string][] =>
+			names.flatMap((name) => (from.hasAttribute(name) ? [[name, from.getAttribute(name)!]] : []));
+		for (const [name, value] of this.node ? read(this.node) : this.#viewState)
+			if (names.includes(name)) node.setAttribute(name, value);
 		this.node = node;
 		const release = this.edytor.surface.register(node, 'block', this.id);
 		const onDestroy = this.edytor.plugins.reduce(
@@ -401,6 +413,7 @@ export class Block {
 		);
 		return {
 			destroy: () => {
+				this.#viewState = read(node);
 				if (this.node === node) this.node = undefined;
 				release();
 				onDestroy.forEach((destroy) => destroy());

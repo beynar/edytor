@@ -10,7 +10,7 @@ Each `<Edytor>` view creates one runtime object, the editor instance. It holds t
 
 From the parent, bind it:
 
-```svelte
+```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor, type EdytorInstance } from 'edytor';
 
@@ -23,7 +23,7 @@ From the parent, bind it:
 
 From a component rendered inside the editor (a block snippet, an inline block, a plugin's UI), call `useEdytor()`. It reads the instance from Svelte context and throws `No Edytor found` outside an editor:
 
-```svelte
+```svelte title="BlockToolbar.svelte" check
 <script lang="ts">
 	import { useEdytor } from 'edytor';
 
@@ -57,7 +57,7 @@ The instance exists as soon as the component is created, but `edytor.root` stays
 | `defaultChild(parent)` | `(parent: Block) => string` | The type a new child of `parent` takes. |
 | `awareness` | `Awareness` | The document's presence channel. See [Collaboration](/docs/collaboration). |
 | `cells` | `Cells` | The reactive render state, one cell per visible block (below). |
-| `clear()` | `() => void` | Replace the whole document with one empty block and put the caret in it. |
+| `clear()` | `() => void` | Replace the whole document with one empty block and put the caret in it. It writes through the facade, like a facade operation: plugins do not see it, and a readonly view does not refuse it, so check `edytor.readonly` first. |
 
 ### `edytor.facade` and `edytor.document`
 

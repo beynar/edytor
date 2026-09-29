@@ -120,7 +120,7 @@ type ViewSelection =
 ## Lifetime
 
 - A client re-publishes its state every 15 seconds. A peer that stays silent for 30 seconds is dropped.
-- Closing a page or destroying the document announces the client's departure. When a socket drops without a goodbye, the edytor room announces it for the client.
+- Closing a page or destroying the document announces the client's departure. A `beforeunload` announces it too, but keeps the providers running: when an unsaved-changes prompt keeps the user on the page, editing and syncing go on, and the presence returns with its next renewal (within 15 seconds). When a socket drops without a goodbye, the edytor room announces it for the client.
 - Presence crosses tabs of the same browser over the same `BroadcastChannel` as the document.
 - A lost WebSocket connection clears the remote states on that client until it reconnects. Other tabs of the same browser keep the peers they still hear, whether the tab lost its socket or was closed. On reconnect the room's snapshot of present peers shows them at once.
 

@@ -43,7 +43,11 @@ export const imageKinds = frozen({ image: { void: true } } satisfies Record<stri
 /**
  * Kind tables (`type → row`) as one {@link DocumentSemanticsConfig}, deeply
  * frozen: `semanticsOf({ embed: { void: true, rendersContent: false } })`.
- * Spread it to extend it.
+ * To add kinds to a bundled config, merge `roles`, `rendersContent` and
+ * `defaultChild` field by field
+ * (`roles: { ...defaultSemantics.roles, ...mine.roles }`, and so on): a
+ * top-level spread of two configs keeps only the last one's fields and
+ * drops the bundled void, island and default-child rows.
  */
 export const semanticsOf = (...tables: Record<string, KindSemantics>[]) => {
 	const semantics = {

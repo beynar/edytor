@@ -32,7 +32,8 @@ The WebSocket provider reports how a connection ended through its [events](/docs
 
 | Close | Means | The client |
 | --- | --- | --- |
-| `1006`, or no connection | The server is unreachable, or refused the upgrade with an HTTP error, which a browser cannot tell from a network failure. | Keeps redialing with a growing backoff (up to 30 s) and emits `unreachable` with `{ attempts, nextRetryMs }`. `params` are re-read at each dial, so a refreshed token gets in. |
+| `1006`, or no connection | The server is unreachable, or refused the upgrade with an HTTP error, which a browser cannot tell from a network failure. | Keeps redialing with a growing backoff (up to 30 s) and emits `unreachable` with `{ attempts, nextRetryMs }`. `params` are re-read at each dial, so a refreshed token gets in. If your Worker turns the dial away itself (an unknown document, an origin it does not serve), answer with [`closedSocket`](/docs/server/authorization#authorize) and a `4xxx` code, so the client stops. |
+| `4400` `invalid document id` | The room name is empty or longer than 256 characters (`routeDocumentSocket` never calls `authorize`). | Terminal, like `4403`. |
 | `4401` `expired` | Your `authorize` returned `{ expired: true }`: the credential expired. | Not a refusal: emits `expired` and redials after the backoff, reading `params` again. Put a fresh token in `params` when `expired` fires (`onSyncExpired` on `<Edytor>`). |
 | `4403` `document access denied` | Your `authorize` returned `null` for this user and document. | Terminal: emits `refused` and stops dialing. An empty document stays `pending`. Fix the permission, then reload. |
 | `4409` `replica bound to another user` | The client dialed with a client id another user owns (a browser profile shared by two users). | Terminal, like `4403`. See [replicas](/docs/server/authorization#replicas). |

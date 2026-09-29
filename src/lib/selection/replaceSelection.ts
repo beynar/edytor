@@ -25,14 +25,17 @@ export const getSelectionReplacementState = (edytor: Edytor): SelectionReplaceme
 export const getSelectedBlocksInDocumentOrder = (edytor: Edytor) =>
 	Array.from(edytor.selection.selectedBlocks).sort(edytor.compareBlocks);
 
-/** The nearest block before/after `block` in document order that is not in `excluded`. */
+/**
+ * The nearest block before/after `block` in document order that is not in
+ * `excluded` and is displayed (a collapsed toggle's body is skipped).
+ */
 export const getClosestUnselectedBlock = (
 	block: Block | undefined,
 	excluded: Set<Block>,
 	direction: 'previous' | 'next'
 ): Block | null => {
 	const step = (b: Block) =>
-		direction === 'previous' ? b.edytor.blockBefore(b) : b.edytor.blockAfter(b);
+		b.edytor.selection.shown(b, direction === 'previous' ? 'blockBefore' : 'blockAfter');
 	let current = block ? step(block) : null;
 	while (current && excluded.has(current)) current = step(current);
 	return current;

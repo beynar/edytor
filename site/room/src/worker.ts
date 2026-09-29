@@ -8,8 +8,12 @@
  * guest whose id the browser keeps in localStorage and sends as `?guest=`,
  * so a reconnect keeps the identity the room bound its client ids to. Only
  * the docs origins (and localhost) may connect.
+ *
+ * A refused dial is accepted, then closed (`4404` for a closed room, `4403`
+ * for another origin): a browser sees an HTTP error at the upgrade as a
+ * bare `1006`, and a page left open past the reset would redial forever.
  */
-import { DocumentRoom, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
+import { DocumentRoom, closedSocket, requestedReplica, routeDocumentSocket } from 'edytor/cloudflare';
 import { isOpenDemoRoom } from './rooms';
 
 export { DocumentRoom };
@@ -23,7 +27,12 @@ const GUEST = /^[a-z0-9-]{8,64}$/;
 
 const originAllowed = (origin: string | null, env: Env) => {
 	if (!origin) return false;
-	const { hostname } = new URL(origin);
+	let hostname: string;
+	try {
+		hostname = new URL(origin).hostname;
+	} catch {
+		return false;
+	}
 	if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
 	return env.ALLOWED_ORIGINS.split(',')
 		.map((allowed) => allowed.trim())
@@ -31,16 +40,30 @@ const originAllowed = (origin: string | null, env: Env) => {
 		.includes(origin);
 };
 
+/** A refusal: a final close for a WebSocket upgrade, the HTTP `status` otherwise. */
+const refuse = (request: Request, status: 403 | 404, reason: string): Response =>
+	request.headers.get('Upgrade')?.toLowerCase() === 'websocket'
+		? closedSocket(4000 + status, reason)
+		: new Response(reason, { status });
+
+const roomOf = (encoded: string): string | null => {
+	try {
+		return decodeURIComponent(encoded);
+	} catch {
+		return null;
+	}
+};
+
 export default {
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
 		if (url.pathname === '/health') return new Response('ok');
 		const match = /^\/rooms\/([^/]+)$/.exec(url.pathname);
-		if (!match) return new Response('not found', { status: 404 });
-		const room = decodeURIComponent(match[1]);
-		if (!isOpenDemoRoom(room)) return new Response('unknown room', { status: 404 });
+		if (!match) return refuse(request, 404, 'not found');
+		const room = roomOf(match[1]);
+		if (room === null || !isOpenDemoRoom(room)) return refuse(request, 404, 'unknown room');
 		if (!originAllowed(request.headers.get('Origin'), env)) {
-			return new Response('origin not allowed', { status: 403 });
+			return refuse(request, 403, 'origin not allowed');
 		}
 		return routeDocumentSocket(request, env.ROOMS, room, async (request) => {
 			const guest = new URL(request.url).searchParams.get('guest') ?? '';

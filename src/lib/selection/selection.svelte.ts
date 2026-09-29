@@ -1200,6 +1200,20 @@ export class EdytorSelection {
 		return !!node && !node.closest(HIDDEN);
 	};
 
+	/** Hidden by view state (a Surface fact): the block sits in a collapsed toggle's body or a `hidden` subtree. */
+	hidden = (block: Block) => !!block.node?.closest(HIDDEN);
+
+	/**
+	 * The nearest block before or after `block` in document order that is not
+	 * hidden: a collapsed toggle is one unit (Notion) — before the block after
+	 * it comes its header; after its header, the block after it.
+	 */
+	shown = (block: Block, step: 'blockBefore' | 'blockAfter', policy?: { sealed?: boolean }) => {
+		let next = this.edytor[step](block, policy);
+		while (next && this.hidden(next)) next = this.edytor[step](next, policy);
+		return next;
+	};
+
 	/** The text's computed direction (a Surface fact): arrow and word keys are visual. */
 	rtl = (text: Text) => !!text.node?.isConnected && getComputedStyle(text.node).direction === 'rtl';
 

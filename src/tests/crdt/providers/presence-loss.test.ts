@@ -6,8 +6,11 @@
  * only). When A's socket closes — dropped by the network, or A leaves and
  * its provider is destroyed — A forgets the presences it heard there, but
  * B, whose socket is still open, keeps C. A that left is gone for B.
- * Closing A's tab runs its page-leave hooks in registration order: the
- * socket's provider is destroyed while the store is still live.
+ * Closing A's tab (`pagehide`, not persisted) runs its page-leave hooks in
+ * registration order: the socket's provider is destroyed while the store is
+ * still live. A `beforeunload` only announces the departure: the user may
+ * cancel it (an unsaved-changes prompt), so every provider keeps running, as
+ * for a page kept in the back/forward cache.
  *
  * The server is an opaque relay: every frame reaches every other socket
  * of the room.
@@ -82,10 +85,14 @@ const until = async (cond, timeout = 3000) => {
 const sees = (document, other) => document.awareness.getStates().has(other.clientID);
 
 /**
- * The page-leave hooks (`beforeunload`) each document's providers register,
- * in order — installed on `globalThis` while `room()` builds the documents.
+ * The page hooks each document's providers register, `[type, hook]` in
+ * order — installed on `globalThis` while `room()` builds the documents.
  */
 const leaves = new Map();
+/** Run `document`'s hooks for the page event `type`. */
+const fire = (document, type, event = {}) => {
+	for (const [hooked, hook] of leaves.get(document)) if (hooked === type) hook(event);
+};
 
 /** Two tabs of one browser (A, B) and another machine (C), all present to each other. */
 const room = async () => {
@@ -100,7 +107,7 @@ const room = async () => {
 			...options
 		});
 		const hooks = [];
-		globalThis.addEventListener = (type, hook) => type === 'beforeunload' && hooks.push(hook);
+		globalThis.addEventListener = (type, hook) => hooks.push([type, hook]);
 		globalThis.removeEventListener = () => {};
 		try {
 			document.attachSync(sync);
@@ -131,11 +138,34 @@ describe('a lost socket drops remote presences for its own tab only', () => {
 
 	it("A's tab closes: B still sees C, and A is gone", async () => {
 		const { a, b, c } = await room();
-		expect(leaves.get(a)).toHaveLength(2); // the socket's provider, then the store
-		for (const leave of leaves.get(a)) leave();
+		// The socket's provider, then the store.
+		expect(leaves.get(a).map(([type]) => type)).toEqual([
+			'beforeunload',
+			'pagehide',
+			'beforeunload',
+			'pagehide'
+		]);
+		fire(a, 'pagehide', { persisted: false });
 		await until(() => !sees(b, a));
 		await wait(50);
 		expect(sees(b, c)).toBe(true);
+		for (const document of [a, b, c]) document.destroy();
+	});
+
+	it('A warns before leaving and the user stays: A still syncs, and is present again', async () => {
+		const { a, b, c } = await room();
+		// An app's unsaved-changes prompt: `beforeunload` fires (the departure
+		// is announced), the page stays: A keeps syncing.
+		fire(a, 'beforeunload', { preventDefault() {} });
+		a.facade.insertText('p', 1, '!');
+		await until(() => c.facade.blockText('p') === 'x!');
+		// A's presence returns with its next renewal.
+		a.awareness.setLocalStateField('user', { name: 'A' });
+		await until(() => sees(b, a) && sees(c, a));
+		// Into the back/forward cache: kept, to come back with the page.
+		fire(a, 'pagehide', { persisted: true });
+		a.facade.insertText('p', 2, '?');
+		await until(() => c.facade.blockText('p') === 'x!?');
 		for (const document of [a, b, c]) document.destroy();
 	});
 

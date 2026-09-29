@@ -10,7 +10,7 @@ Everything the editor knows about content comes from plugins: block kinds, marks
 
 A plugin is a function of the editor that returns definitions and hooks:
 
-```ts
+```ts title="logger.ts" check
 import type { Plugin } from 'edytor';
 
 export const loggerPlugin: Plugin = (edytor) => ({
@@ -41,7 +41,7 @@ The function runs once, when the editor is created. It receives the `Edytor` ins
 
 Pass an array to the `plugins` prop of `<Edytor>`:
 
-```svelte
+```svelte title="Editor.svelte" check
 <script lang="ts">
 	import {
 		Edytor,
@@ -90,7 +90,7 @@ One exception: two plugins that declare different `defaultChild` values for the 
 
 Block, mark and inline atom definitions render through Svelte snippets. A snippet can only be declared in a `.svelte` file, and a component's `<script module>` block can reference the snippets declared in its markup. So a plugin that renders anything is usually a `.svelte` file that exports the plugin from `<script module>`:
 
-```svelte title="HighlightPlugin.svelte"
+```svelte title="HighlightPlugin.svelte" check
 <script module lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { Plugin } from 'edytor';

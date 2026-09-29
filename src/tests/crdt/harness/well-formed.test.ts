@@ -74,6 +74,18 @@ describe('wellFormed checks', () => {
 		]);
 	});
 
+	it('island-kind: a line holding children, or another kind directly in an island, fails (FW-01)', () => {
+		const islandKinds = new Map([['codeLine', 'code']]);
+		const line = (id: string, children = []) => b(id, 'codeLine', children);
+		// The sealed shape: a peer's paragraph nested under a code line.
+		expect(
+			wellFormedProblems({ roots: [b('C', 'code', [line('L', [b('N')])])], islandKinds })
+		).toEqual(['island-kind: N sits under the codeLine L']);
+		expect(
+			wellFormedProblems({ roots: [b('C', 'code', [b('H', 'heading')])], islandKinds })
+		).toEqual(['island-kind: H shows heading inside a code']);
+	});
+
 	it('seed-displacement: an id changing registry node fails unless the new node succeeds it', () => {
 		const identities = new Map<string, string>();
 		let node = '1:0';

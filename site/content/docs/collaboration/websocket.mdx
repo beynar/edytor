@@ -167,12 +167,14 @@ This factory keeps the default readiness bound, counted from the attach. `create
 | `connection-close`, `connection-error` | the socket event | The socket closed or errored. The provider reconnects on its own. |
 | `message-error` | `(error, provider)` | A frame could not be read or applied; it was dropped. |
 
+A listener that throws is logged with `console.error`, and the other listeners and the provider keep running: a failing `onExpired` still gets the redial, and the empty document still waits for it.
+
 | Property | Description |
 | --- | --- |
 | `synced` | The current connection holds the room's state. |
 | `hasSynced`, `whenSynced` | The provider has synced at least once, and a promise for it. |
-| `saved` | `true` when the room has stored every local update. |
-| `unsaved` | How many local updates the room has not stored yet, offline edits included. |
+| `saved` | `true` when the room has stored every update this document's actor wrote. |
+| `unsaved` | How many of those updates the room has not stored yet, offline edits included. |
 | `wsconnected` | The socket is open. |
 | `connect()`, `disconnect()`, `destroy()` | Control the connection. `destroy()` also announces your departure to peers. |
 
@@ -180,18 +182,18 @@ This factory keeps the default readiness bound, counted from the attach. `create
 
 The edytor room stores every update in SQLite before it acknowledges it. The provider compares those acknowledgements with what this replica wrote:
 
-- `unsaved` counts local updates the room has not confirmed, including edits restored from the local copy after an offline reload.
-- `saved` is `true` once every local update is confirmed: what this replica wrote, not content it received from the room (after a restore from an older snapshot, the room may no longer hold another user's edits it relayed). A delete that adds no new data (undoing a block deletion, for example) stays unsaved until the room confirms that exact delete.
+- `unsaved` counts updates the room has not confirmed that this document's actor wrote: in this session, in this user's other tabs, and before a reload (edits restored from the local copy). The document binds each client id to its actor, so the provider knows which ids are the user's own. Give the document an `actor`: an anonymous one gets a new id per session, so its edits from before a reload no longer count. A seed this replica wrote counts too. The binding records themselves are bookkeeping and never count, so a read-only socket's provider, which the room never asks for its state, reports `saved` once it caught up. A provider on a bare engine doc, with no actor binding, counts everything the doc holds.
+- `saved` is `true` once all of those are confirmed. Content written by other actors never counts, even when it only reached the room through this client: after a restore from an older snapshot, the room strips another user's edits it no longer holds, and they stay stripped until their author returns. A delete that adds no new data (undoing a block deletion, for example) stays unsaved until the room confirms that exact delete. A delete restored from the local copy counts only if its update wrote no other actor's content, since a delete does not record who made it.
 - The `'saved'` event fires with `{ saved, unsaved }` whenever either changes.
 
-Use it for a "Saving… / Saved" indicator or to warn before closing a tab. A server that sends no acknowledgements (another relay, for example) leaves `unsaved` counting forever.
+Use it for a "Saving… / Saved" indicator or to warn before closing a tab (a `beforeunload` prompt: when the user stays, the providers keep running). A server that sends no acknowledgements (another relay, for example) leaves `unsaved` counting forever.
 
 ## Refusals
 
 | What happens | Cause | What the client sees |
 | --- | --- | --- |
 | Close `4401` | The credentials expired. | Not terminal: `expired` fires and the provider redials after the backoff, reading `params` again. No `refused`, no `failed`. A document still empty is not seeded meanwhile: it waits for a dial that gets in, and stays `pending` while the token is not refreshed. |
-| Close `4403` `document access denied` | `authorize` returned `null` (or an invalid identity). | Terminal: `refused` fires once and the provider stops dialing. Refresh the token, then reload (or call `connect()`) to dial again. An empty document waits for that dial: it seeds only once the provider syncs, or is released while another attached provider has settled. |
+| Close `4403` `document access denied` | `authorize` returned `null` (or an invalid identity). | Terminal: `refused` fires once and the provider stops dialing. Refresh the token, then reload (or call `connect()`) to dial again. An empty document waits for that dial: it seeds only once the provider syncs, or is released while another attached provider has settled. A document that already holds content (a local copy, bytes it was attached over) is decided at the refusal, and a view shows it. |
 | Close `4409` `replica bound to another user` | The replica belongs to another user. | Terminal: `refused` fires and the provider stops dialing. |
 | `permission-denied` with `read-only` | A read-only socket sent an edit. | The socket stays open; the edit is not stored. |
 | Close `1008` `refused: <reason>`, or another `4xxx` code | A frame of another generation, a presence entry for a client id another user owns, a foreign schema stamp, or a malformed frame. Content under another user's client id is not a refusal: the room strips it and the socket stays open. | Terminal: `refused` fires and the provider stops dialing. A document still empty is not seeded; it stays `pending` and reports the refusal as `document.syncRefusal` / `onSyncRefused`. Reload with a fixed client (a new deploy, a new token) to try again. |

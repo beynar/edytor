@@ -43,6 +43,7 @@ The WebSocket's bound starts when the socket opens (or first fails to), so a roo
 - **Contributors are block lineage, not authorship.** `attribution.block(id).contributors` lists who edited that block id (through splits and merges too), not who wrote the text shown now.
 - **Your own `UndoManager`.** An undo manager created directly with `new Y.UndoManager` over the document does not follow edytor's undo rules. Use `document.history`.
 - **Read-only views and `sync`.** A `readonly` view ignores its `sync` prop; attach the sync to the document.
+- **`saved` after a reload.** The provider counts what the document's actor wrote, recognized by the client ids the document binds to that actor. Without an `actor`, the anonymous id changes every session, so edits made before a reload no longer count in `unsaved`. A delete restored from the local copy counts only when its update wrote no other author's content, since a delete does not record who made it.
 - **One user per browser profile.** The local copy and the cross-tab channel are shared by every tab of a profile; see [persistence](/docs/collaboration/persistence#one-user-per-browser-profile).
 
 ## Size and platform limits

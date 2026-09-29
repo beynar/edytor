@@ -407,6 +407,41 @@ describe('expired credentials (4401) on a first visit', () => {
 		expect(document.readiness).toBe('hydrated');
 		document.destroy();
 	});
+
+	it('an onExpired that throws is reported, and the provider still redials and holds (FW-08)', async () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const url = uniqueUrl();
+		const room = new Room(`${url}/room`, {
+			value: roomValue,
+			refuse: { code: 4401, reason: 'expired' }
+		});
+		const document = createDocument();
+		document.attachSync(
+			providers.createWebsocketSync({
+				serverUrl: url,
+				roomName: 'room',
+				WebSocketPolyfill: Socket,
+				persist: false,
+				onExpired: () => {
+					throw new Error('token refresh failed');
+				}
+			}),
+			{ value: draft }
+		);
+		await wait(3000);
+		expect(room.dials).toBeGreaterThan(1);
+		expect(document.readiness).toBe('pending');
+		expect(document.facade.isInitialized()).toBe(false);
+		expect(logged.mock.calls.some((call) => String(call[1]).includes('token refresh failed'))).toBe(
+			true
+		);
+		room.refuse = undefined;
+		await until(() => document.ready);
+		expect(document.readiness).toBe('hydrated');
+		expect(texts(document)).toEqual(['room']);
+		document.destroy();
+		logged.mockRestore();
+	});
 });
 
 describe('a dial that neither opens nor fails', () => {

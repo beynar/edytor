@@ -90,7 +90,7 @@ The rich text plugin maps `strong`/`b`, `em`/`i`, `u`, `s`/`strike`/`del`, `code
 
 Your own kinds and marks take part in the import the same way. A value-less mark with a `tag` is matched by that tag; a mark with a value needs a `parse` hook:
 
-```ts
+```ts title="inlineExtras.ts" check
 import type { Plugin } from 'edytor';
 
 export const inlineExtrasPlugin: Plugin = () => ({

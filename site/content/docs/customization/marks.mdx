@@ -54,7 +54,7 @@ When a run has several marks, they nest in registration order, the first registe
 
 The simplest mark is a tag:
 
-```ts
+```ts title="marker.ts" check
 import type { Plugin } from 'edytor';
 
 export const markerPlugin: Plugin = () => ({
@@ -70,7 +70,7 @@ It renders `<mark data-edytor-mark="marker">…</mark>`, copies as `<mark>`, and
 
 A valued mark stores a value and turns it into attributes. Values come from collaborators and from pasted HTML too, so treat them as untrusted: check their type and shape in `attributes`, and return `undefined` to drop an attribute.
 
-```ts
+```ts title="language.ts" check
 import type { Plugin } from 'edytor';
 
 const LANGS = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
@@ -93,7 +93,7 @@ For URLs and CSS the stakes are higher: the rich text `link` mark drops any `hre
 
 When a tag cannot express the markup, declare a snippet. It receives `{ content, mark, text }`: `content` renders the marked text (and the marks nested inside), `mark` is the value, `text` the text segment's handle.
 
-```svelte title="SpoilerPlugin.svelte"
+```svelte title="SpoilerPlugin.svelte" check
 <script module lang="ts">
 	import type { Plugin } from 'edytor';
 	import type { MarkSnippetPayload } from 'edytor';
@@ -134,7 +134,7 @@ richTextOperations(edytor).removeAllMarksAtRange();
 
 `setMarkAtRange` is typed for the rich text marks. For any mark, call `markText` on each text segment of the selection:
 
-```ts
+```ts title="toggleMark.ts" check
 import type { EdytorInstance } from 'edytor';
 
 export const toggleMark = (edytor: EdytorInstance, mark: string, value: string | true = true) => {

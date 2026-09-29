@@ -10,7 +10,8 @@
  * browser sees an HTTP 403 at the upgrade only as `1006`, which the
  * provider cannot tell from a network failure; `4403` stops it dialing.
  * An expired credential is closed `4401` (`expired`): the provider redials
- * with its `params` read again, so a refreshed token gets in.
+ * with its `params` read again, so a refreshed token gets in. A document
+ * id the room cannot have (empty, over 256 characters) is closed `4400`.
  */
 import { IDENTITY_HEADERS, closedSocket, parseReplica } from './DocumentRoom.js';
 
@@ -57,6 +58,8 @@ export const requestedReplica = (request: Request, param = 'replica'): number | 
 
 /** The close a denied dial gets: terminal for the provider (`refused`). */
 const DENIED_CLOSE = { code: 4403, reason: 'document access denied' } as const;
+/** The close of a document id the room cannot have (empty, over 256 characters): terminal. */
+const INVALID_CLOSE = { code: 4400, reason: 'invalid document id' } as const;
 /** The close an expired credential gets: the provider redials with fresh `params`. */
 const EXPIRED_CLOSE = { code: 4401, reason: 'expired' } as const;
 
@@ -70,7 +73,7 @@ export async function routeDocumentSocket(
 		return new Response('WebSocket upgrade required', { status: 426 });
 	}
 	if (!documentId || documentId.length > 256) {
-		return new Response('Invalid document identity', { status: 400 });
+		return closedSocket(INVALID_CLOSE.code, INVALID_CLOSE.reason);
 	}
 	const decision = await authorize(request, documentId);
 	if (decision && 'expired' in decision && decision.expired === true) {

@@ -27,6 +27,14 @@ export default defineConfig({
 			}
 		})
 	],
+	resolve: {
+		// The site's demo room (site/room) imports the package: read it from source.
+		alias: {
+			'edytor/cloudflare': decodeURIComponent(
+				new URL('../../src/lib/cloudflare/index.ts', import.meta.url).pathname
+			)
+		}
+	},
 	test: {
 		include: ['tests/do/**/*.test.ts'],
 		testTimeout: 20_000

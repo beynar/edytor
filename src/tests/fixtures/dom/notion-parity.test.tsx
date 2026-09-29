@@ -765,6 +765,33 @@ describe('the slash menu in prose', () => {
 		expect(labels()).toEqual(expected);
 	});
 
+	it.each([
+		['/to d', ['To-do list'], 'todo-item'],
+		['/to do', ['To-do list'], 'todo-item'],
+		['/bullet l', ['Bulleted list'], 'bulleted-list-item'],
+		['/bullet list', ['Bulleted list'], 'bulleted-list-item'],
+		['/heading 2', ['Heading 2'], 'heading']
+	])(
+		'%j keeps the menu open: each word starts a word of the label, in order (FW-18)',
+		async (typed, expected, kind) => {
+			const { edytor, editor } = await render([slashMenuPlugin]);
+			await type(editor, typed);
+			expect(labels()).toEqual(expected);
+			await pressEnter();
+			expect(canonicalTree(edytor)).toEqual([expect.objectContaining({ type: kind })]);
+			expect(canonicalTree(edytor)[0]!.content).toBeUndefined();
+		}
+	);
+
+	it.each(['/list bullet', '/to x'])(
+		'%j matches out of order or not at all: the menu closes',
+		async (typed) => {
+			const { editor } = await render([slashMenuPlugin]);
+			await type(editor, typed);
+			expect(menu()).toBeNull();
+		}
+	);
+
 	it.each(['/eading', '/block', '/ist'])(
 		'%j matches no word start (nor a command id): the menu closes',
 		async (typed) => {
@@ -903,5 +930,431 @@ describe('placeholders', () => {
 			null,
 			"Type '/' for commands"
 		]);
+	});
+});
+
+describe('next to a collapsed toggle (FW-02)', () => {
+	/** `[toggle 'title' -> [p 'body'], p 'after']`, the toggle closed (its default). */
+	const collapsed = () =>
+		render([], {
+			children: [
+				{
+					id: 'toggle',
+					type: 'toggle',
+					content: [{ text: 'title' }],
+					children: [{ id: 'body', type: 'paragraph', content: [{ text: 'body' }] }]
+				},
+				{ id: 'after', type: 'paragraph', content: [{ text: 'after' }] }
+			]
+		});
+	const at = async (
+		edytor: Awaited<ReturnType<typeof render>>['edytor'],
+		id: string,
+		offset: 'start' | 'end'
+	) => {
+		const text = edytor.idToBlock.get(id)!.firstText!;
+		edytor.selection.setAtTextOffset(text, offset === 'start' ? 0 : text.length);
+		await flushDomUpdates();
+	};
+	const caret = (edytor: Awaited<ReturnType<typeof render>>['edytor']) => {
+		const { startBlock, yStart } = edytor.selection.state;
+		return [startBlock?.id, yStart];
+	};
+	const undo = () => dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
+	const before = [
+		{
+			type: 'toggle',
+			content: [{ text: 'title' }],
+			children: [{ type: 'paragraph', content: [{ text: 'body' }] }]
+		},
+		{ type: 'paragraph', content: [{ text: 'after' }] }
+	];
+
+	it('Backspace at the start of the block after it merges into the header', async () => {
+		const { edytor, editor } = await collapsed();
+		expect((edytor.idToBlock.get('toggle')!.node as HTMLDetailsElement).open).toBe(false);
+		await at(edytor, 'after', 'start');
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
+		expect(canonicalTree(edytor)).toEqual([
+			{
+				type: 'toggle',
+				content: [{ text: 'titleafter' }],
+				children: [{ type: 'paragraph', content: [{ text: 'body' }] }]
+			}
+		]);
+		expect(caret(edytor)).toEqual(['toggle', 5]);
+		await undo();
+		expect(canonicalTree(edytor)).toEqual(before);
+	});
+
+	it('Backspace in an empty block after it removes the block; the caret ends the header', async () => {
+		const { edytor, editor } = await render([], {
+			children: [
+				{ id: 'toggle', ...before[0]! },
+				{ id: 'after', type: 'paragraph' }
+			]
+		});
+		await at(edytor, 'after', 'start');
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
+		expect(canonicalTree(edytor)).toEqual([before[0]]);
+		expect(caret(edytor)).toEqual(['toggle', 5]);
+	});
+
+	it('Backspace after it keeps the children of the merged block visible, in its place', async () => {
+		const { edytor, editor } = await render([], {
+			children: [
+				{
+					id: 'toggle',
+					type: 'toggle',
+					content: [{ text: 'title' }],
+					children: [{ type: 'paragraph', content: [{ text: 'body' }] }]
+				},
+				{
+					id: 'after',
+					type: 'paragraph',
+					content: [{ text: 'after' }],
+					children: [{ type: 'paragraph', content: [{ text: 'kid' }] }]
+				}
+			]
+		});
+		await at(edytor, 'after', 'start');
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
+		expect(canonicalTree(edytor)).toEqual([
+			{
+				type: 'toggle',
+				content: [{ text: 'titleafter' }],
+				children: [{ type: 'paragraph', content: [{ text: 'body' }] }]
+			},
+			{ type: 'paragraph', content: [{ text: 'kid' }] }
+		]);
+	});
+
+	it('Delete at the end of the header merges the block after the toggle', async () => {
+		const { edytor, editor } = await collapsed();
+		await at(edytor, 'toggle', 'end');
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentForward' });
+		expect(canonicalTree(edytor)).toEqual([
+			{
+				type: 'toggle',
+				content: [{ text: 'titleafter' }],
+				children: [{ type: 'paragraph', content: [{ text: 'body' }] }]
+			}
+		]);
+		expect(caret(edytor)).toEqual(['toggle', 5]);
+		await undo();
+		expect(canonicalTree(edytor)).toEqual(before);
+	});
+
+	it('Delete at the end of the header of the last block does nothing', async () => {
+		const { edytor, editor } = await render([], { children: [before[0]!] });
+		const toggle = edytor.root!.children[0]!;
+		edytor.selection.setAtTextOffset(toggle.firstText!, 5);
+		await flushDomUpdates();
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentForward' });
+		expect(canonicalTree(edytor)).toEqual([before[0]]);
+	});
+
+	it('Tab on the block after it nests the block and opens the toggle', async () => {
+		const { edytor } = await collapsed();
+		await at(edytor, 'after', 'start');
+		await dispatchDomKeyDown(document, { key: 'Tab' });
+		expect(canonicalTree(edytor)).toEqual([
+			{
+				type: 'toggle',
+				content: [{ text: 'title' }],
+				children: [
+					{ type: 'paragraph', content: [{ text: 'body' }] },
+					{ type: 'paragraph', content: [{ text: 'after' }] }
+				]
+			}
+		]);
+		expect((edytor.idToBlock.get('toggle')!.node as HTMLDetailsElement).open).toBe(true);
+		expect(caret(edytor)).toEqual(['after', 0]);
+	});
+
+	it('Tab on a selected block after it opens the toggle too', async () => {
+		const { edytor } = await collapsed();
+		edytor.selection.selectBlocks(edytor.idToBlock.get('after')!);
+		await flushDomUpdates();
+		await dispatchDomKeyDown(document, { key: 'Tab' });
+		expect(edytor.idToBlock.get('after')!.parent?.id).toBe('toggle');
+		expect((edytor.idToBlock.get('toggle')!.node as HTMLDetailsElement).open).toBe(true);
+	});
+
+	const selected = (edytor: Awaited<ReturnType<typeof render>>['edytor']) =>
+		[...edytor.selection.selectedBlocks].map((block) => block.id);
+
+	it('↓ and ↑ over a selected block skip its hidden body (SW-behaviors-2)', async () => {
+		const { edytor } = await collapsed();
+		edytor.selection.selectBlocks(edytor.idToBlock.get('toggle')!);
+		await flushDomUpdates();
+		await dispatchDomKeyDown(document, { key: 'ArrowDown' });
+		expect(selected(edytor)).toEqual(['after']);
+		await dispatchDomKeyDown(document, { key: 'ArrowUp' });
+		expect(selected(edytor)).toEqual(['toggle']);
+	});
+
+	it('Shift+↓ and Shift+↑ extend past its hidden body (SW-behaviors-2)', async () => {
+		const { edytor } = await collapsed();
+		edytor.selection.selectBlocks(edytor.idToBlock.get('toggle')!);
+		await flushDomUpdates();
+		await dispatchDomKeyDown(document, { key: 'ArrowDown', shiftKey: true });
+		expect(selected(edytor)).toEqual(['toggle', 'after']);
+		edytor.selection.selectBlocks(edytor.idToBlock.get('after')!);
+		await flushDomUpdates();
+		await dispatchDomKeyDown(document, { key: 'ArrowUp', shiftKey: true });
+		expect(selected(edytor)).toEqual(['after', 'toggle']);
+	});
+
+	it('Shift+↓ at the end of the header never selects a void block in its hidden body (SW-behaviors-2)', async () => {
+		const { edytor } = await render([], {
+			children: [
+				{
+					id: 'toggle',
+					type: 'toggle',
+					content: [{ text: 'title' }],
+					children: [{ id: 'rule', type: 'divider' }]
+				},
+				{ id: 'after', type: 'paragraph', content: [{ text: 'after' }] }
+			]
+		});
+		await at(edytor, 'toggle', 'end');
+		await dispatchDomKeyDown(document, { key: 'ArrowDown', shiftKey: true });
+		expect(selected(edytor)).not.toContain('rule');
+	});
+
+	it('deleting the selected block after it puts the caret at the end of the header (SW-behaviors-6)', async () => {
+		const { edytor } = await collapsed();
+		edytor.selection.selectBlocks(edytor.idToBlock.get('after')!);
+		await flushDomUpdates();
+		await dispatchDomKeyDown(document, { key: 'Backspace' });
+		expect(canonicalTree(edytor)).toEqual([before[0]]);
+		expect(caret(edytor)).toEqual(['toggle', 5]);
+	});
+
+	it('Shift+Tab on it with blocks after it opens it: they become its children, still displayed (SW-behaviors-7)', async () => {
+		const { edytor } = await render([], {
+			children: [
+				{
+					id: 'par',
+					type: 'paragraph',
+					content: [{ text: 'par' }],
+					children: [
+						{ id: 'toggle', type: 'toggle', content: [{ text: 'title' }] },
+						{ id: 'next', type: 'paragraph', content: [{ text: 'next' }] }
+					]
+				}
+			]
+		});
+		await at(edytor, 'toggle', 'start');
+		await dispatchDomKeyDown(document, { key: 'Tab', shiftKey: true });
+		expect(edytor.idToBlock.get('next')!.parent?.id).toBe('toggle');
+		expect((edytor.idToBlock.get('toggle')!.node as HTMLDetailsElement).open).toBe(true);
+	});
+
+	it('Mod+Enter in the header opens and closes the toggle; the document is unchanged (SW-behaviors-3)', async () => {
+		const { edytor } = await collapsed();
+		const node = edytor.idToBlock.get('toggle')!.node as HTMLDetailsElement;
+		await at(edytor, 'toggle', 'end');
+		await dispatchDomKeyDown(document, { key: 'Enter', ctrlKey: true });
+		expect(node.open).toBe(true);
+		expect(canonicalTree(edytor)).toEqual(before);
+		expect(caret(edytor)).toEqual(['toggle', 5]);
+		await dispatchDomKeyDown(document, { key: 'Enter', ctrlKey: true });
+		expect(node.open).toBe(false);
+		expect(canonicalTree(edytor)).toEqual(before);
+	});
+
+	it('Delete at the end of the header before a code block leaves the code alone (SW-behaviors-5)', async () => {
+		const { edytor, editor } = await render([codePlugin], {
+			children: [
+				{ id: 'toggle', ...before[0]! },
+				{ type: 'code', children: [{ type: 'codeLine', content: [{ text: 'a' }] }] }
+			]
+		});
+		await at(edytor, 'toggle', 'end');
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentForward' });
+		expect(canonicalTree(edytor)).toEqual([
+			before[0],
+			{ type: 'code', children: [{ type: 'codeLine', content: [{ text: 'a' }] }] }
+		]);
+	});
+
+	it('Backspace in an empty block after a toggle hiding a code block joins the header (SW-behaviors-5)', async () => {
+		const { edytor, editor } = await render([codePlugin], {
+			children: [
+				{ type: 'paragraph', content: [{ text: 'a' }] },
+				{
+					type: 'toggle',
+					content: [{ text: 'title' }],
+					children: [{ type: 'code', children: [{ type: 'codeLine', content: [{ text: 'c' }] }] }]
+				},
+				{ id: 'empty', type: 'paragraph' },
+				{ type: 'paragraph', content: [{ text: 'z' }] }
+			]
+		});
+		// Backspace in the empty block after the toggle: it joins the header, not the hidden code.
+		await at(edytor, 'empty', 'start');
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
+		expect(canonicalTree(edytor).map((b) => b.content?.[0])).toEqual([
+			{ text: 'a' },
+			{ text: 'title' },
+			{ text: 'z' }
+		]);
+		expect(edytor.selection.state.startBlock?.type).toBe('toggle');
+	});
+
+	it('an open toggle keeps the document-order rules (Backspace merges into its last child)', async () => {
+		const { edytor, editor } = await collapsed();
+		(edytor.idToBlock.get('toggle')!.node as HTMLDetailsElement).open = true;
+		await at(edytor, 'after', 'start');
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
+		expect(canonicalTree(edytor)).toEqual([
+			{
+				type: 'toggle',
+				content: [{ text: 'title' }],
+				children: [{ type: 'paragraph', content: [{ text: 'bodyafter' }] }]
+			}
+		]);
+	});
+});
+
+describe('code keys (FW-04, FW-19)', () => {
+	const inCode = (lines: string[], after: JSONBlock[] = []) =>
+		render([codePlugin], {
+			children: [
+				{
+					type: 'code',
+					children: lines.map((text) => ({ type: 'codeLine', content: [{ text }] }))
+				},
+				...after
+			]
+		});
+	type Rendered = Awaited<ReturnType<typeof inCode>>;
+	const line = ({ edytor }: Rendered, index: number) =>
+		edytor.root!.children[0]!.children[index]!.firstText!;
+	const lines = ({ edytor }: Rendered) =>
+		edytor.root!.children[0]!.children.map((l) => l.firstText!.stringContent);
+	const select = async (rendered: Rendered, from: [number, number], to = from) => {
+		rendered.edytor.selection.setAtRange(
+			line(rendered, from[0]),
+			from[1],
+			line(rendered, to[0]),
+			to[1]
+		);
+		await flushDomUpdates();
+		rendered.edytor.undoManager.stopCapturing();
+	};
+	/** The selection as `[startLine, startOffset, endLine, endOffset]`. */
+	const range = ({ edytor }: Rendered) => {
+		const { startBlock, endBlock, yStart, yEnd } = edytor.selection.state;
+		return [startBlock?.index, yStart, endBlock?.index, yEnd];
+	};
+	const tab = (shiftKey = false) => dispatchDomKeyDown(document, { key: 'Tab', shiftKey });
+	const program = ['if (a) {', 'run();', '}'];
+
+	it.each([
+		[
+			'from the first line to the last',
+			[0, 0],
+			[2, 1],
+			['\tif (a) {', '\trun();', '\t}'],
+			[0, 1, 2, 2]
+		],
+		['from mid-line to the last', [1, 5], [2, 1], ['if (a) {', '\trun();', '\t}'], [1, 6, 2, 2]],
+		[
+			'ending at a line start (that line stays)',
+			[1, 0],
+			[2, 0],
+			['if (a) {', '\trun();', '}'],
+			[1, 1, 2, 0]
+		],
+		['inside one line', [1, 1], [1, 4], ['if (a) {', '\trun();', '}'], [1, 2, 1, 5]]
+	] as [string, [number, number], [number, number], string[], number[]][])(
+		'Tab over a selection %s indents each line it touches and keeps the selection',
+		async (_, from, to, expected, selection) => {
+			const rendered = await inCode(program);
+			await select(rendered, from, to);
+			await tab();
+			expect(lines(rendered)).toEqual(expected);
+			expect(range(rendered)).toEqual(selection);
+			await dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
+			expect(lines(rendered)).toEqual(program);
+		}
+	);
+
+	it('Tab at a caret inserts a tab there', async () => {
+		const rendered = await inCode(program);
+		await select(rendered, [1, 3]);
+		await tab();
+		expect(lines(rendered)).toEqual(['if (a) {', 'run\t();', '}']);
+		expect(range(rendered)).toEqual([1, 4, 1, 4]);
+	});
+
+	it('Shift+Tab over lines removes one leading tab, or up to two spaces, from each', async () => {
+		const rendered = await inCode(['\tif', '   run', 'x', '\t\ty']);
+		await select(rendered, [0, 2], [3, 3]);
+		await tab(true);
+		expect(lines(rendered)).toEqual(['if', ' run', 'x', '\ty']);
+		expect(range(rendered)).toEqual([0, 1, 3, 2]);
+		await dispatchDomKeyDown(document, { key: 'z', ctrlKey: true });
+		expect(lines(rendered)).toEqual(['\tif', '   run', 'x', '\t\ty']);
+	});
+
+	it('Shift+Tab at a caret dedents its line; the caret stays on its character', async () => {
+		const rendered = await inCode(['\t\trun()']);
+		await select(rendered, [0, 4]);
+		await tab(true);
+		expect(lines(rendered)).toEqual(['\trun()']);
+		expect(range(rendered)).toEqual([0, 3, 0, 3]);
+		// Inside the indentation, the caret moves to the line's new start.
+		await select(rendered, [0, 1]);
+		await tab(true);
+		expect(lines(rendered)).toEqual(['run()']);
+		expect(range(rendered)).toEqual([0, 0, 0, 0]);
+		// Nothing to remove: the key is claimed and nothing changes.
+		const { defaultPrevented } = await tab(true);
+		expect(defaultPrevented).toBe(true);
+		expect(canonicalTree(rendered.edytor)).toHaveLength(1);
+		expect(lines(rendered)).toEqual(['run()']);
+	});
+
+	it('Backspace in an empty block right after a code block removes it; the caret ends the code', async () => {
+		const rendered = await inCode(['a', 'last'], [{ type: 'paragraph' }]);
+		const { edytor, editor } = rendered;
+		edytor.selection.setAtTextOffset(edytor.root!.children[1]!.firstText!, 0);
+		await flushDomUpdates();
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
+		expect(canonicalTree(edytor).map((b) => b.type)).toEqual(['code']);
+		expect(lines(rendered)).toEqual(['a', 'last']);
+		expect(range(rendered)).toEqual([1, 4, 1, 4]);
+		expect(edytor.selection.state.startBlock?.type).toBe('codeLine');
+	});
+
+	it('Delete in an empty first block before a code block removes it; the caret starts the code (SW-behaviors-4)', async () => {
+		const { edytor, editor } = await render([codePlugin], {
+			children: [
+				{ type: 'paragraph' },
+				{ type: 'code', children: [{ type: 'codeLine', content: [{ text: 'a' }] }] }
+			]
+		});
+		edytor.selection.setAtTextOffset(edytor.root!.children[0]!.firstText!, 0);
+		await flushDomUpdates();
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentForward' });
+		expect(canonicalTree(edytor).map((b) => b.type)).toEqual(['code']);
+		const { startBlock, yStart } = edytor.selection.state;
+		expect([startBlock?.type, yStart]).toEqual(['codeLine', 0]);
+	});
+
+	it('Backspace at the start of a block with text after a code block leaves it in place', async () => {
+		const rendered = await inCode(['a'], [{ type: 'paragraph', content: [{ text: 'p' }] }]);
+		const { edytor, editor } = rendered;
+		edytor.selection.setAtTextOffset(edytor.root!.children[1]!.firstText!, 0);
+		await flushDomUpdates();
+		await dispatchDomBeforeInput(editor, { inputType: 'deleteContentBackward' });
+		expect(canonicalTree(edytor).map((b) => b.type)).toEqual(['code', 'paragraph']);
+		// The caret moves to the end of the code.
+		expect(range(rendered)).toEqual([0, 1, 0, 1]);
+		expect(edytor.selection.state.startBlock?.type).toBe('codeLine');
 	});
 });

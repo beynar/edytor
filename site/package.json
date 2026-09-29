@@ -10,7 +10,7 @@
     "check": "blume check",
     "validate": "blume validate",
     "doctor": "blume doctor",
-    "deploy": "blume build && wrangler deploy"
+    "deploy": "sh scripts/pack-edytor.sh && blume build && wrangler deploy"
   },
   "engines": {
     "node": ">=22.12.0"

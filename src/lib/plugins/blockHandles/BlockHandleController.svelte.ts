@@ -15,6 +15,17 @@ const blockDragMimeType = 'application/x-edytor-block-id';
 export const BLOCK_ACTIVATE_EVENT = 'edytor-block-activate';
 export type BlockActivation = { block: Block; anchor: HTMLElement };
 
+/** The blocks not inside another of them (a selected block's selected descendants ride with it). */
+export const outermost = (blocks: Iterable<Block>): Block[] => {
+	const all = new Set(blocks);
+	const inside = (block: Block) => {
+		for (let parent = block.parent; parent; parent = parent.parent)
+			if (all.has(parent)) return true;
+		return false;
+	};
+	return [...all].filter((block) => !inside(block));
+};
+
 /** Alt+arrow on a handle: one relative step. */
 const keyMoves: Record<string, BlockMoveDirection> = {
 	ArrowUp: 'up',
@@ -144,11 +155,12 @@ export class BlockHandleController {
 		};
 	};
 
+	/** Select the block (a block selection holding it stays) and open its menu. */
 	activateBlock(block: Block, anchor: HTMLElement) {
 		if (this.edytor.readonly || !block.movable) {
 			return;
 		}
-		this.selectBlock(block);
+		if (!this.edytor.selection.selectedBlocks.has(block)) this.selectBlock(block);
 		if (this.options.onActivate) this.options.onActivate({ block, anchor });
 		// Without a callback, a block menu plugin may answer the activation.
 		else
@@ -281,7 +293,7 @@ export class BlockHandleController {
 					this.canDrop(dragSource, placement.target, placement.position)
 				) {
 					this.moveAndSelect({
-						blocks: this.getDragBlocks(dragSource),
+						blocks: this.dragBlocks(dragSource),
 						target: placement.target,
 						position: placement.position
 					});
@@ -306,20 +318,24 @@ export class BlockHandleController {
 
 	private canDrop(source: Block, target: Block, position: BlockMovePosition) {
 		return this.edytor.canMoveBlocks({
-			blocks: this.getDragBlocks(source),
+			blocks: this.dragBlocks(source),
 			target,
 			position
 		});
 	}
 
-	private getDragBlocks(source: Block) {
-		const selected = Array.from(this.edytor.selection.selectedBlocks);
-		if (!selected.includes(source) || selected.length <= 1) {
-			return [source];
-		}
-		const parent = selected[0]?.parent;
-		return parent && selected.every((block) => block.parent === parent)
-			? selected.toSorted(this.edytor.compareBlocks)
+	/**
+	 * The blocks a drag from `source` moves: the selection when it holds
+	 * `source` (a selected block's selected descendants ride with it), when
+	 * what remains shares one parent; else `source` alone.
+	 */
+	dragBlocks(source: Block) {
+		const { selectedBlocks } = this.edytor.selection;
+		if (!selectedBlocks.has(source) || selectedBlocks.size <= 1) return [source];
+		const roots = outermost(selectedBlocks);
+		const parent = roots[0]?.parent;
+		return parent && roots.every((block) => block.parent === parent)
+			? roots.toSorted(this.edytor.compareBlocks)
 			: [source];
 	}
 

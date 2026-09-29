@@ -58,11 +58,11 @@ The menu opens beside the grip, top-aligned 8px to its right (to its left when t
 | Duplicate          | <kbd>Mod</kbd> + <kbd>D</kbd>                     | Inserts a copy after the block, with fresh ids for it, its children and its atoms |
 | Move up            | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>  | Moves the block one step up                                            |
 | Move down          | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↓</kbd>  | Moves the block one step down                                          |
-| Delete             | <kbd>Del</kbd>                                    | Removes the block                                                      |
+| Delete             | <kbd>Del</kbd>                                    | Removes the block; its children take its place                         |
 
 A row that cannot apply is hidden: Turn into for a block that is not convertible (void, island or inside one), Move up or Move down when `edytor.canMoveBlocks` refuses the step. The hints show the matching shortcuts; <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> need the [arrow move](/docs/plugins/arrow-move) plugin.
 
-Typing in the field filters the actions by label, and lists the kinds whose label or keywords match under a "Turn into" heading: type `head` and pick "Heading 2" without opening the flyout. With nothing left, the menu shows "No results".
+Typing in the field filters the actions by label, and lists the kinds whose label or keywords match under a "Turn into" heading: type `head` and pick "Heading 2" without opening the flyout. The query matches as in the [slash menu](/docs/plugins/slash-menu#what-it-lists): each word starts a word of the label or of a keyword, hyphens ignored, so `todo` and `to do` find "To-do list", `move` finds Move up and Move down, and a letter inside a word (`o` in "Move") matches nothing. With nothing left, the menu shows "No results".
 
 ## Keys
 
@@ -75,7 +75,7 @@ While the menu is open, its search field takes the keys:
 | <kbd>→</kbd>                | Open the Turn into flyout from its row                          |
 | <kbd>←</kbd>                | Close the flyout                                                |
 | <kbd>Enter</kbd>            | Run the highlighted row, open the flyout from Turn into, or convert to the flyout's highlighted kind |
-| <kbd>Delete</kbd>           | Delete the block (with an empty search)                         |
+| <kbd>Delete</kbd>           | Delete the block, or the selected blocks (with an empty search) |
 | <kbd>Escape</kbd>           | Close the flyout, then the menu                                 |
 
 Hovering a row highlights it, in the menu and in the flyout.
@@ -83,8 +83,9 @@ Hovering a row highlights it, in the menu and in the flyout.
 ## Behavior
 
 - The handle click selects the block, and it stays selected while the menu is open.
-- Every action closes the menu and returns a text caret: at the start of the converted or moved block, of the copy after Duplicate, or of the nearest text after the deleted block (else the end of the nearest one before it) after Delete; void blocks such as dividers are skipped. When a plugin refuses the conversion or the deletion, the block stays and the caret returns to its start. <kbd>Escape</kbd> also returns the caret to the block.
-- A pointer press outside the menu and the handles closes it without moving the caret.
+- A click on the grip of a block inside a block selection keeps the selection, and the actions apply to every selected block, as in Notion: Turn into converts them all, Duplicate copies each one after itself, Move up and Move down move the group, and Delete removes them, each as one undo step. After Turn into, Move and <kbd>Escape</kbd> the blocks stay selected; after Delete the caret goes to the nearest text after the first of them. Copy link to block is hidden for several blocks.
+- Every action closes the menu and returns a text caret: at the start of the converted or moved block, of the copy after Duplicate, or of the nearest text after the deleted block after Delete: its first child when it had children (they take its place), else the next block, else the end of the nearest text before it; void blocks such as dividers are skipped. When a plugin refuses the conversion or the deletion, the block stays and the caret returns to its start. <kbd>Escape</kbd> also returns the caret to the block. A block that holds no text, such as a divider or an image, stays selected instead after Move, Escape or a refusal, and Duplicate selects its copy.
+- A pointer press outside the menu and the handles closes it without moving the caret, and so does the editor turning readonly.
 - Each action is one undo step, separate from the typing before it however soon it follows, through the same commands as the rest of the editor (`convertToKind`, `duplicateBlock`, `edytor.moveBlocks`, `removeBlock`), so plugins can refuse them.
 
 <kbd>Mod</kbd> + <kbd>D</kbd> duplicates every selected block, in document order and as one undo step, each copy after its block, and selects the copies. Without a block selection it duplicates the block holding the caret and puts the caret in the copy. It is claimed only for a block that can move, and never in a readonly editor.
@@ -112,16 +113,18 @@ The snippet receives the `BlockMenuController`:
 
 <TypeTable
   type={{
-    block: { type: "Block | null", description: "The block the menu is open for." },
+    block: { type: "Block | null", description: "The block whose grip opened the menu." },
+    blocks: { type: "Block[]", description: "The blocks the actions apply to, in document order: the block selection when it holds block, else block alone." },
     actions: { type: "BlockMenuAction[]", description: "The rows that apply, filtered by query: { id, label, icon, hint?, danger?, submenu?, run? }. Turn into has submenu: true and no run." },
     kinds: { type: "KindRow[]", description: "The kinds the block may turn into while keeping its content." },
     currentKind: { type: "KindRow | undefined", description: "The row naming the block: of its kind's rows, the one whose preset data shares the most values with the block's (the first on a tie), so a checked to-do is still To-do list." },
-    "turnInto(kind)": { type: "(kind: KindRow) => void", description: "Convert the block." },
+    "turnInto(kind)": { type: "(kind: KindRow) => void", description: "Convert the blocks." },
     "duplicate(block)": { type: "(block: Block) => void", description: "Insert a copy after the block (block.duplicateBlock(): fresh ids, one undo step)." },
-    "move(direction)": { type: "('up' | 'down') => void", description: "Move the block one step." },
-    "remove()": { type: "() => void", description: "Delete the block." },
+    "duplicateAll(blocks)": { type: "(blocks: Block[]) => void", description: "Copy each block after itself as one undo step, and select the copies. The Duplicate action calls it for several blocks." },
+    "move(direction)": { type: "('up' | 'down') => void", description: "Move the blocks one step." },
+    "remove()": { type: "() => void", description: "Delete the blocks; unselected children take their parent's place." },
     "copyLink()": { type: "() => Promise<void>", description: "Write linkTo(block) to the clipboard." },
-    "close()": { type: "(restoreCaret?: boolean) => void", description: "Close the menu; the caret returns to the block unless restoreCaret is false." },
+    "close()": { type: "(restoreCaret?: boolean) => void", description: "Close the menu; the caret returns to the block (several blocks stay selected) unless restoreCaret is false." },
     query: { type: "string", description: "The search text. Writable: actions filter by it." },
     selectedIndex: { type: "number", description: "The keyboard's row. Writable." },
     flyout: { type: "boolean", description: "Whether the Turn into flyout is open. Writable." },

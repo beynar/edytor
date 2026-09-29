@@ -638,6 +638,42 @@ settled states by the p1 harness and the corpus's `roles` lane (a delivery
 out of causal order may show a moved line before the retype that preceded
 it).
 
+### `conc.island-lines` — an island that declares its line kind holds only lines
+
+An island whose kind declares a default child (`code` → `codeLine`) holds
+lines only, and a line holds no children. Undo can break both from outside
+the island: A deletes or merges away `C:code > [L1]`, B edits the plain
+paragraph `L1` has become, A undoes. The display keeps them (FW-01,
+`displaySlotOf` and the index's `typeOf`, derived when the document is
+read, so every replica agrees without a repair write):
+
+- a block B nested under `L1` shows right after the code block, ranked in
+  the line's order, visible and movable (it was sealed inside a line that
+  renders no children);
+- a kind B gave `L1` shows as `codeLine` while `L1` is in the code block,
+  and again once it leaves it;
+- a line B moved away keeps B's placement and shows as its new parent's
+  default child, never as a `codeLine` outside a code block.
+
+The write side agrees: inserting under a line is refused, nothing merges
+into an island from outside it (`canMerge`), and a retype of an island to
+an ordinary kind retypes its children to that kind's default child. An
+island that declares no default child keeps whatever structure its
+interior builds. Pins: `rescore3-crdt.test.ts` (FW-01, SW-crdt rows) and
+the `island-kind` check, which also flags a child under a line and another
+kind directly in such an island.
+
+### `conc.merge-adopt` — `mergeBlocks` (`mergeFrom`) keeps the source's children with it
+
+The engine merge adopts `from`'s children as the last children of `into`
+by keeping them under `from`, ranked after `into`'s children: they display
+under `into` through the merge claim. A concurrent delete of `into` voids
+the claim (ST02b), and `from` comes back with its children under it,
+never below them (FW-12; `P > [Q]`, `X > [K]`, A `mergeBlocks(X, P)` ‖ B
+deletes `P` → `Q X > [K]`). Undo restores the pre-merge tree. Pins:
+`review-20260929-units.test.ts` (FW-12) and the `merge-order` well-formed
+check (corpus seed 11 was its repro).
+
 ### `conc.undo.actor-local` — undo after remote edits
 
 A deletes `bb`; B edits survivor `cc`; A undoes → `bb` is restored AND

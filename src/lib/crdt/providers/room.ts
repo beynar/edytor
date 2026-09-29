@@ -175,16 +175,23 @@ export type LifecycleHost = {
 
 type Listeners = { on?(e: string, f: () => void): void; off?(e: string, f: () => void): void };
 type PageEvents = {
-	addEventListener?(e: string, f: () => void): void;
-	removeEventListener?(e: string, f: () => void): void;
+	addEventListener?(e: string, f: (event: { persisted?: boolean }) => void): void;
+	removeEventListener?(e: string, f: (event: { persisted?: boolean }) => void): void;
 };
 
 /**
  * Install the lifecycle on a provider: `hasSynced`, `whenSynced`, and the
- * departure announcement — leaving the page (`beforeunload`; Node `exit`)
- * destroys the provider, whose teardown announces its presence removal.
+ * departure announcement. `beforeunload` only announces it (`depart`): an
+ * app's unsaved-changes prompt fires it and the user may stay, so the
+ * provider keeps running and its presence returns at the next renewal.
+ * Leaving the page (`pagehide` of a page not kept in the back/forward
+ * cache; Node: `exit`) destroys the provider, whose teardown announces it.
  */
-export const initLifecycle = (host: LifecycleHost, destroy: () => unknown): void => {
+export const initLifecycle = (
+	host: LifecycleHost,
+	destroy: () => unknown,
+	depart: () => void = () => {}
+): void => {
 	host.hasSynced = false;
 	host._destroyed = false;
 	host.whenSynced = promise.create((resolve, reject) => {
@@ -192,12 +199,17 @@ export const initLifecycle = (host: LifecycleHost, destroy: () => unknown): void
 	});
 	// A consumer that never attaches a catch must not crash the process.
 	host.whenSynced.catch(() => {});
-	const leave = () => void destroy();
 	const page = globalThis as PageEvents;
 	if (page.addEventListener) {
-		page.addEventListener('beforeunload', leave);
-		host._leave = () => page.removeEventListener?.('beforeunload', leave);
+		const leave = (event: { persisted?: boolean }) => void (event.persisted || destroy());
+		page.addEventListener('beforeunload', depart);
+		page.addEventListener('pagehide', leave);
+		host._leave = () => {
+			page.removeEventListener?.('beforeunload', depart);
+			page.removeEventListener?.('pagehide', leave);
+		};
 	} else {
+		const leave = () => void destroy();
 		const proc = (env.isNode ? (globalThis as { process?: Listeners }).process : undefined) ?? {};
 		proc.on?.('exit', leave);
 		host._leave = () => proc.off?.('exit', leave);
@@ -520,9 +532,12 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 		}
 	};
 
+	/** The departure announcement, on every transport the provider speaks. */
+	const depart = (provider: P): void => behavior.broadcast(provider, goodbye(provider));
+
 	/** Leave the room: announce the presence removal, then unsubscribe the BC channel. */
 	const disconnectBc = (provider: P & BcMember): void => {
-		behavior.broadcast(provider, goodbye(provider));
+		depart(provider);
 		if (provider.bcconnected) {
 			bc.unsubscribe(channelOf(provider), provider._bcSubscriber);
 			provider.bcconnected = false;
@@ -538,6 +553,7 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 		step1,
 		hello,
 		goodbye,
+		depart,
 		connectBc,
 		disconnectBc
 	};

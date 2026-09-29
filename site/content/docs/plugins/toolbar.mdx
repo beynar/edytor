@@ -20,9 +20,9 @@ icon: bold
 
 From left to right:
 
-1. **The kind button**, labeled with the block's kind ("Heading 2", "Text"…): the preset sharing the most data with the block, or drawn with the same element (a stored `h5` heading, drawn as an `h3`, is "Heading 3"). It opens a "Turn into" panel listing the kinds that keep content, with ✓ on the current one. Picking one converts the block at the start of the selection and keeps the selection.
+1. **The kind button**, labeled with the block's kind ("Heading 2", "Text"…): the preset sharing the most data with the block, or drawn with the same element (a stored `h5` heading, drawn as an `h3`, is "Heading 3"). It opens a "Turn into" panel listing the kinds that keep content, with ✓ on the current one. Picking one converts every block the selection touches, nested ones included, as one undo step, and keeps the selection.
 2. **Link** opens a link panel: a URL field (`data-testid="toolbar-link-input"`) showing the selection's current link, with Apply and Remove. <kbd>Enter</kbd> in the field applies and closes the panel. Applying an empty field removes the link.
-3. **One button per mark** whose definition has `toolbar: { label, icon }`, in registration order. With the rich text plugin: bold, italic, underline, strike and code. A button toggles its mark over the selection.
+3. **One button per mark** whose definition has `toolbar: { label, icon }`, in registration order. With the rich text plugin: bold, italic, underline, strike and code. A button toggles its mark over the selection, and shows pressed (`aria-pressed="true"`, in blue) when the mark covers the whole selection.
 4. **A ⌄** (Color) opens Notion's colors: ten text colors and ten background colors. A text color sets the `color` mark, a background the `highlight` mark, and Default removes that mark. The palette is exported as `TOOLBAR_COLORS` (`{ name, text, background }`).
 
 One panel is open at a time; clicking its button again closes it. Panels drop below the bar, over the text.
@@ -56,7 +56,7 @@ The `icon` is text: a letter, a symbol or an emoji.
 
 The toolbar shows when all of these hold:
 
-- the editor is not readonly;
+- the editor is not readonly (turning it readonly hides the toolbar; it shows again over the same selection when the editor is editable);
 - the selection is a non-collapsed text range;
 - no whole block and no inline atom is selected;
 - the selection is not inside a void or an island block (such as a code block).
@@ -90,9 +90,10 @@ The snippet receives the `ToolbarController`. Every action keeps and restores th
   type={{
     marks: { type: "{ mark, label, icon }[]", description: "The marks that declare a toolbar button, in registration order." },
     "toggleMark(mark)": { type: "(mark: string) => void", description: "Toggle a mark over the selection." },
+    "isActive(mark)": { type: "(mark: string) => boolean", description: "Whether the mark covers every character of the selection, for a pressed state." },
     kinds: { type: "KindRow[]", description: "The kinds the block may turn into while keeping its content." },
     currentKind: { type: "KindRow | undefined", description: "The row naming the selection's block: of its kind's rows, the one whose preset data shares the most values with the block's (the first on a tie)." },
-    "turnInto(kind)": { type: "(kind: KindRow) => void", description: "Convert the block at the start of the selection." },
+    "turnInto(kind)": { type: "(kind: KindRow) => void", description: "Convert every block the selection touches, as one undo step." },
     "setColor(mark, value)": { type: "('color' | 'highlight', value: string | null) => void", description: "Set the text or background color; null removes it." },
     linkUrl: { type: "string", description: "The selection's current link, or the URL being typed." },
     "setLinkUrl(value)": { type: "(value: string) => void", description: "Update linkUrl, for a link field." },

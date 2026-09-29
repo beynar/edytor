@@ -6,7 +6,7 @@ icon: eye
 
 A readonly view renders the same block tree as an editable one, with the same plugins, snippets and styles, but refuses every edit. Use it to display documents, to lock an editor while saving, or to show a document to people without write access.
 
-```svelte
+```svelte title="Viewer.svelte" check
 <script lang="ts">
 	import { Edytor } from 'edytor';
 
@@ -43,7 +43,7 @@ When a document that collaborators emptied is shown, a readonly view displays an
 
 `readonly` is one of the few props that follow updates. Toggling it keeps the same instance, document and selection:
 
-```svelte
+```svelte title="Toggle.svelte" check
 <script lang="ts">
 	import { Edytor } from 'edytor';
 

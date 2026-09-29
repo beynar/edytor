@@ -14,6 +14,10 @@
 		item?: Snippet<[SlashMenuItem]>;
 	} = $props();
 	const commands = $derived(controller.commands);
+	// An editor turning readonly closes the menu (its commands would be refused).
+	$effect(() => {
+		if (controller.isOpen && controller.readonly) controller.close();
+	});
 
 	/** Keep the keyboard's row in view. */
 	const selected = (node: HTMLElement, isSelected: boolean) => {

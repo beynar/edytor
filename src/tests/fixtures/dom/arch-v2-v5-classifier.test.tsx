@@ -290,10 +290,25 @@ const commitComposition = async () => {
 	return { ...rendered, text };
 };
 
-/** Timers and frames scheduled by the post-commit restore that are still pending. */
+/**
+ * Timers and frames scheduled by the post-commit restore that are still pending.
+ * The whole stack is read (V8 keeps 10 frames by default, which hid deep
+ * callers). The overlay's repaint frame is chrome, not a caret restore: the
+ * commit's caret publishes presence, and remote carets reposition (R11).
+ */
 const postCommitSchedule = () => {
 	const pending = new Set<unknown>();
-	const owned = () => /stabilizeCompositionSelection/.test(new Error().stack ?? '');
+	const v8 = Error as ErrorConstructor & { stackTraceLimit: number };
+	const owned = () => {
+		const limit = v8.stackTraceLimit;
+		v8.stackTraceLimit = Infinity;
+		const stack = new Error().stack ?? '';
+		v8.stackTraceLimit = limit;
+		return (
+			/stabilizeCompositionSelection/.test(stack) &&
+			!/Overlay\.invalidate|surface\/overlay\.ts/.test(stack)
+		);
+	};
 	const setTimeoutOriginal = window.setTimeout;
 	const clearTimeoutOriginal = window.clearTimeout;
 	const rafOriginal = window.requestAnimationFrame;

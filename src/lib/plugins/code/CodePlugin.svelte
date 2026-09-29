@@ -26,6 +26,55 @@
 			.join('\n');
 
 	export const codePlugin: Plugin = (edytor) => {
+		/**
+		 * The code lines a selection touches, when both its ends are lines of
+		 * one code block. A range ending at a line's start leaves that line out,
+		 * as code editors do.
+		 */
+		const touchedLines = () => {
+			const { startText, endText, yEnd, isCollapsed } = edytor.selection.state;
+			const [from, to] = [startText?.parent, endText?.parent];
+			if (from?.type !== 'codeLine' || to?.type !== 'codeLine' || from.parent !== to.parent)
+				return null;
+			const lines = from.parent!.children.slice(from.index, to.index + 1);
+			return !isCollapsed && lines.length > 1 && yEnd === 0 ? lines.slice(0, -1) : lines;
+		};
+
+		/**
+		 * Tab (`1`) or Shift+Tab (`-1`) over code lines, as one command: each line
+		 * the selection touches gains a leading tab, or loses one leading tab or
+		 * up to two spaces (the tab size); the selection keeps its characters.
+		 */
+		const indent = (step: 1 | -1) => {
+			const { startText, endText, yStart, yEnd, isReversed } = edytor.selection.state;
+			const shifts = new Map<Text, number>();
+			edytor.dispatcher.run(step > 0 ? 'indentLines' : 'dedentLines', () => {
+				for (const line of touchedLines() ?? []) {
+					const text = line.firstText;
+					if (!text) continue;
+					if (step > 0) {
+						text.insertText({ value: '\t', start: 0, end: 0 });
+						shifts.set(text, 1);
+						continue;
+					}
+					const removed = /^(\t| {1,2})/.exec(text.stringContent)?.[0].length ?? 0;
+					if (!removed) continue;
+					line.deleteContentAtRange({ start: [text.index, 0], end: [text.index, removed] });
+					shifts.set(text, -removed);
+				}
+			});
+			const moved = (text: Text | null, offset: number) =>
+				Math.max(0, offset + (text ? (shifts.get(text) ?? 0) : 0));
+			if (startText && endText)
+				edytor.selection.setAtRange(
+					startText,
+					moved(startText, yStart),
+					endText,
+					moved(endText, yEnd),
+					{ isReversed }
+				);
+		};
+
 		return {
 			hotkeys: {
 				'mod+a': ({ prevent }) => {
@@ -57,20 +106,24 @@
 					}
 				},
 				tab: ({ prevent }) => {
-					const { startText, yStart, startBlock } = edytor.selection.state;
-					if (startText?.parent.type === 'codeLine') {
-						prevent(() => {
-							if (startBlock?.suggestions) {
-								startBlock.acceptSuggestedText();
-								edytor.selection.setAtTextOffset(startText, startText.length);
-							} else {
-								if (startText) {
-									startText.insertText({ value: '\t' });
-									edytor.selection.setAtTextOffset(startText, yStart + 1);
-								}
-							}
+					const { startText, yStart, startBlock, isCollapsed } = edytor.selection.state;
+					if (startText?.parent.type !== 'codeLine') return;
+					if (startBlock?.suggestions) {
+						return prevent(() => {
+							startBlock.acceptSuggestedText();
+							edytor.selection.setAtTextOffset(startText, startText.length);
 						});
 					}
+					if (isCollapsed) {
+						return prevent(() => {
+							startText.insertText({ value: '\t', start: yStart, end: yStart });
+							edytor.selection.setAtTextOffset(startText, yStart + 1);
+						});
+					}
+					if (touchedLines()) prevent(() => indent(1));
+				},
+				'shift+tab': ({ prevent }) => {
+					if (touchedLines()) prevent(() => indent(-1));
 				},
 				'shift+enter': () => {
 					const { startText } = edytor.selection.state;
@@ -80,13 +133,30 @@
 				}
 			},
 			onBeforeOperation: ({ operation, payload, block }) => {
-				// Delete before a code block: an empty block is removed (the command is
-				// replaced by merging it backward), any other is refused.
-				if (operation === 'mergeBlockForward' && block.closestNextBlock?.type === 'code') {
+				// Delete before a code block: an empty block is removed, the caret at
+				// the end of the text before it (else the start of the code); any other
+				// is refused.
+				const code =
+					operation === 'mergeBlockForward' ? edytor.selection.shown(block, 'blockAfter') : null;
+				if (code?.type === 'code') {
 					if (!block.isEmpty) prevent();
 					prevent(() => {
-						const into = block.mergeBlockBackward();
-						const text = into?.lastText;
+						const before = edytor.selection.shown(block, 'blockBefore')?.lastEditableText;
+						block.removeBlock();
+						const text = before ?? code.firstEditableText;
+						edytor.dispatcher.caret(text, before?.length ?? 0);
+					});
+				}
+				// Backspace in an empty block right after a code block removes it; the
+				// caret goes to the end of the code (the merge would be refused).
+				const previous =
+					operation === 'mergeBlockBackward' && block.type !== 'codeLine' && block.isEmpty
+						? edytor.selection.shown(block, 'blockBefore')
+						: null;
+				if (previous?.type === 'codeLine') {
+					prevent(() => {
+						block.removeBlock();
+						const text = previous.lastText;
 						edytor.dispatcher.caret(text, text?.length ?? 0);
 					});
 				}

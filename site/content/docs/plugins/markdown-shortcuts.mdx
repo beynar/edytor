@@ -6,7 +6,7 @@ icon: hash
 
 `markdownShortcutsPlugin` brings Notion's markdown as you type. A prefix at the start of a block converts it: `# ` makes a heading, `- ` a bulleted list item, ` ``` ` a code block. The prefixes come from the `markdown` field of each block kind's presets, so the plugin has no list of its own. Inline, `**bold**`, `*italic*` and the others apply their mark when you type the closing marker.
 
-```svelte
+```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor, markdownShortcutsPlugin, codePlugin } from 'edytor';
 </script>

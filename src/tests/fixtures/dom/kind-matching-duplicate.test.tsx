@@ -137,3 +137,38 @@ describe('duplicate', () => {
 		expect(edytor.selection.state.startBlock?.id).toBe(ids[1]);
 	});
 });
+
+describe('the block menu search matches as the slash menu does (FW-17)', () => {
+	const search = async (query: string) => {
+		const { edytor, editor } = await render(
+			[blockMenuPlugin],
+			['one', 'two', 'three'].map((id) => ({ id, type: 'paragraph', content: [{ text: id }] }))
+		);
+		const block = edytor.idToBlock.get('two')!;
+		editor.dispatchEvent(
+			new CustomEvent(BLOCK_ACTIVATE_EVENT, { detail: { block, anchor: block.node } })
+		);
+		await flushDomUpdates();
+		const input = document.querySelector<HTMLInputElement>('[aria-label="Search actions"]')!;
+		input.value = query;
+		input.dispatchEvent(new Event('input', { bubbles: true }));
+		await flushDomUpdates();
+		return [...document.querySelectorAll('[data-testid="block-menu"] [role="menuitem"]')].map(
+			(row) => row.textContent
+		);
+	};
+
+	it.each([
+		['todo', ['To-do list']],
+		['to do', ['To-do list']],
+		['bullet list', ['Bulleted list']],
+		['head', ['Heading 1', 'Heading 2', 'Heading 3']],
+		['move', ['Move up', 'Move down']],
+		['dup', ['Duplicate']],
+		// A letter inside words (`Move`, `Callout`) is no match; `ol` starts a keyword.
+		['o', ['Numbered list']],
+		['eading', []]
+	])('%j lists the actions and kinds a word of it starts', async (query, expected) => {
+		expect(await search(query)).toEqual(expected);
+	});
+});

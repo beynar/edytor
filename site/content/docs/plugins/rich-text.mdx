@@ -6,7 +6,7 @@ icon: type
 
 `richTextPlugin` defines the everyday document: paragraphs, headings, lists, to-dos, toggles, callouts, quotes, dividers, and ten marks, with Notion's shortcuts. The core defines no block kinds, so `<Edytor>` includes it by default, after your plugins:
 
-```svelte
+```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor } from 'edytor';
 </script>
@@ -85,7 +85,7 @@ Pasted HTML maps `b`, `i`, `u`, `strike` and `del` to their marks, reads Google 
 
 With a collapsed caret, a mark hotkey sets the mark for the next characters you type instead.
 
-Notion's "turn into" chords convert the block holding the caret:
+Notion's "turn into" chords convert the block holding the caret, or, as in Notion, every block of a block selection or of a text range across blocks, as one undo step that keeps the selection (Code converts only the first):
 
 | Keys                                              | Turns into      |
 | ------------------------------------------------- | --------------- |
@@ -97,7 +97,7 @@ Notion's "turn into" chords convert the block holding the caret:
 | <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>5</kbd>    | Bulleted list   |
 | <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>6</kbd>    | Numbered list   |
 | <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>7</kbd>    | Toggle list     |
-| <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>8</kbd>    | Code (with the [code plugin](/docs/plugins/code)) |
+| <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>8</kbd>    | Code (with the [code plugin](/docs/plugins/code)); a block with text or children keeps them, and the code block is inserted after it |
 
 Each runs the kind's command (`block.paragraph`, `block.heading1`, …, `block.code`) and is claimed only when that command is registered.
 

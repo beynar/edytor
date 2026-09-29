@@ -10,7 +10,7 @@ The core ships almost no visual styles: you style the document with CSS, through
 
 `edytor/themes/notion.css` styles every rich text, image and code kind like Notion's light theme. Import it once and put the `edytor-notion` class on an element around `<Edytor>` (or on the editor itself, with its `class` prop):
 
-```svelte
+```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor, richTextPlaceholder } from 'edytor';
 	import 'edytor/themes/notion.css';

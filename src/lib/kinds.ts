@@ -29,6 +29,37 @@ export const kindCatalogue = (blocks: Map<string, BlockDefinition>): KindRow[] =
 		}))
 	);
 
+/** A label's or keyword's words: lowercase, hyphens dropped (`To-do` reads `todo`). */
+const wordsOf = (value: string) =>
+	value.replace(/-/g, '').toLowerCase().split(/\s+/).filter(Boolean);
+
+/**
+ * Whether `query` names a row (a kind, a command, a menu action), as in
+ * Notion: each query word, in order, starts a word of the label or of one
+ * keyword, or continues the word the previous one started (`to do` names
+ * To-do). An empty query names every row; the id is never searched. The
+ * slash menu and the block menu's search share it.
+ */
+export const matchesQuery = (
+	{ label, keywords = [] }: { label: string; keywords?: string[] },
+	query: string
+) => {
+	const wanted = wordsOf(query);
+	const fits = (words: string[]) => {
+		const from = (i: number, j: number, rest: string): boolean =>
+			i === wanted.length ||
+			(rest.startsWith(wanted[i]!) && from(i + 1, j, rest.slice(wanted[i]!.length))) ||
+			words
+				.slice(j)
+				.some(
+					(word, k) =>
+						word.startsWith(wanted[i]!) && from(i + 1, j + k + 1, word.slice(wanted[i]!.length))
+				);
+		return from(0, 0, '');
+	};
+	return [label, ...keywords].some((value) => fits(wordsOf(value)));
+};
+
 /** The rows a block may turn into while keeping its content and children (the menus' list). */
 export const convertibleKinds = (edytor: Edytor): KindRow[] =>
 	edytor.kinds.filter((kind) => !kind.replaces);
@@ -115,7 +146,37 @@ export const convertToKind = (
 	return true;
 };
 
-/** A row as a command on the block holding the selection's start. */
+/**
+ * The blocks a conversion of the selection applies to, in document order:
+ * the selected blocks, or every block a text range touches (Notion), else
+ * the caret's block.
+ */
+export const selectionBlocks = (edytor: Edytor): Block[] => {
+	const { selectedBlocks, state } = edytor.selection;
+	if (selectedBlocks.size) return [...selectedBlocks].sort(edytor.compareBlocks);
+	if (state.isCollapsed || !state.texts.length) return state.startBlock ? [state.startBlock] : [];
+	return [...new Set(state.texts.map((text) => text.parent))];
+};
+
+/**
+ * Convert several blocks to a row's kind as one undo step, keeping the
+ * selection (Notion's Turn into over several blocks); blocks that are not
+ * convertible are skipped. Answers whether any conversion applied.
+ */
+export const convertBlocks = (edytor: Edytor, blocks: Iterable<Block>, row: KindRow) => {
+	const selection = edytor.selection.value;
+	const applied = edytor.dispatcher.run('setBlock', () =>
+		[...blocks].map((block) => convertToKind(edytor, block, row, false))
+	);
+	edytor.selection.select(selection);
+	return Boolean(applied?.some(Boolean));
+};
+
+/**
+ * A row as a command on the selection: the caret's block, or every block
+ * of a block selection or of a text range (a kind that replaces content
+ * converts only the block holding the selection's start).
+ */
 export const kindCommand = (edytor: Edytor, row: KindRow): EditorCommand => ({
 	id: row.id,
 	label: row.label,
@@ -124,5 +185,10 @@ export const kindCommand = (edytor: Edytor, row: KindRow): EditorCommand => ({
 	group: row.group ?? 'Basic blocks',
 	hint: row.markdown?.[0]?.trim(),
 	isEnabled: () => Boolean(edytor.selection.state.startBlock?.convertible),
-	run: () => convertToKind(edytor, edytor.selection.state.startBlock, row)
+	run: () => {
+		const blocks = row.replaces ? [] : selectionBlocks(edytor);
+		return blocks.length > 1
+			? convertBlocks(edytor, blocks, row)
+			: convertToKind(edytor, edytor.selection.state.startBlock, row);
+	}
 });

@@ -190,14 +190,12 @@ for (const adapterName of SELECTED_ADAPTERS) {
 		 */
 		const KNOWN_MODEL_BUGS = new Map<number, RegExp>();
 		/**
-		 * The roles lane's pinned defects (`ill-formed`). Seed 11: the engine
-		 * `mergeBlocks` adopts the source's children into the target, so a
-		 * concurrent delete of the target shows them above the revived source
-		 * (repro: `arch-v2/review-20260929-units.test.ts`, "open:" row).
+		 * The roles lane's pinned defects (`ill-formed`). Currently EMPTY —
+		 * seed 11 (the engine `mergeBlocks` showed adopted children above the
+		 * source a concurrent delete of the target revived) was fixed by FW-12
+		 * (repro: `arch-v2/review-20260929-units.test.ts`). Keep the mechanism.
 		 */
-		const KNOWN_ROLES_BUGS = new Map<number, RegExp>([
-			[11, /merge-order: b3a \(child of merged b3\) ranks before b3/]
-		]);
+		const KNOWN_ROLES_BUGS = new Map<number, RegExp>();
 
 		/**
 		 * Committed frozen upstream-crash repros (the diagnostic-lane replay

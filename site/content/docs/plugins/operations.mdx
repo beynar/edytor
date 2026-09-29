@@ -69,7 +69,7 @@ A command the document itself refuses is still shown, without steps, so a plugin
 
 Call `prevent()` on the command or on any of its steps to refuse the whole command. Nothing is written and no undo step is recorded.
 
-```ts
+```ts title="lockedBlocks.ts" check
 import type { Plugin } from 'edytor';
 
 /** Blocks with data.locked cannot be deleted or merged away. */
@@ -127,12 +127,12 @@ The callback is a command of its own. If another plugin refuses one of the opera
 A trigger plugin (`:smile:` → 😄, `@query` → a mention) removes the text that triggered it and writes its replacement. Issued as two operations, a veto of the second leaves the trigger text already gone. Three dispatcher members make the pair one refusable command, as the slash menu and markdown shortcuts do:
 
 - `edytor.dispatcher.lead(plan, body)` runs `body` with `plan`, prepared now, composed into the first operation `body` dispatches: one plan in one transaction. Hooks see the lead's steps with that operation's; a veto of any of them, or a refusal, writes neither. When that operation is itself one plan, the lead's steps on a block whose whole content the operation replaces are dropped. Otherwise the lead applies first and the operation reads the state it leaves. It answers `{ out, taken }`: `body`'s result, and whether an operation took the lead. When `taken` is `false`, nothing of the lead was written: either `body` dispatched nothing (remove the trigger yourself, as the slash menu does for a command that writes later), or the lead was a refusal and `body` did not run.
-- `edytor.dispatcher.dispatch(operation, payload, { block, text? }, body, prepare?)` dispatches an operation of your own, under your own name: admission, `onBeforeOperation` for the command and, when `prepare` returns a plan, for each of its steps, then `body(payload, plan)` in one transaction, `dispatcher.last` and `onAfterOperation`. With `prepare`, apply the plan you are given (`facade.apply(plan)`), which a rewritten payload re-prepares. It answers `body`'s result, or `undefined` when refused.
+- `edytor.dispatcher.dispatch(operation, payload, { block, text? }, body, prepare?)` dispatches an operation of your own, under your own name: admission, `onBeforeOperation` for the command and, when `prepare` returns a plan, for each of its steps, then `body(payload, plan)` in one transaction, `dispatcher.last` and `onAfterOperation`. With `prepare`, apply the plan you are given (`facade.apply(plan)`), which a rewritten payload re-prepares. It answers `body`'s result, or `undefined` when the view refuses it (readonly, a read-only document) or a plugin prevents it. When the document refuses the plan, `body` still runs, with that refusal as `plan` (`'writes' in plan` is `false`, and `facade.apply(plan)` writes nothing and answers `refused`), and `dispatcher.last.status` is `refused`.
 - `edytor.dispatcher.caret(text, offset, ops?)` is the command's result caret: selected once, recorded on `dispatcher.last.selection`, and shown after the DOM update. With `ops`, the caret is declared before `ops` runs, so it follows the edit, and is written only when `ops` returns a truthy value. A caret inside text the edit deletes does not survive: set it after the edit instead.
 
 `facade.prepare.<op>(…)` returns a `Prepared`: a `Plan`, or the operation's refusal. Both types are exported from `edytor`, and `'writes' in prepared` tells them apart. See [the document API](/docs/reference/document-api).
 
-```ts
+```ts title="emoji.ts" check
 import type { Plugin } from 'edytor';
 
 const EMOJI: Record<string, string> = { smile: '😄' };
@@ -221,6 +221,8 @@ Text operations carry `text`. Block operations run on `block`.
 | `mergeBlockBackward`, `mergeBlockForward` | `{}`                                             |
 | `nestBlock`, `unNestBlock`     | `{}`                                                        |
 | `setBlock`                     | `{ value: Partial<JSONBlock> }`                             |
+| `setInlineData`                | `{ id, data }` (an inline atom's data: `atom.setData`)      |
+| `pushContentIntoBlock`         | `{ value: (Text \| InlineBlock)[] }`                        |
 | `moveBlock`                    | `{ path: number[] }`                                        |
 | `moveBlocks`                   | `{ blocks: Block[], path: number[] }`                       |
 | `addInlineBlock`               | `{ index, text, block: JSONInlineBlock }`                   |

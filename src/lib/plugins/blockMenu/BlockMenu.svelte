@@ -8,6 +8,10 @@
 		menu
 	}: { controller: BlockMenuController; menu?: Snippet<[BlockMenuController]> } = $props();
 	const rows = $derived(controller.rows);
+	// An editor turning readonly closes the menu (its actions would be refused).
+	$effect(() => {
+		if (controller.isOpen && controller.readonly) controller.close(false);
+	});
 
 	const focusOnMount = (node: HTMLInputElement) => {
 		node.focus({ preventScroll: true });

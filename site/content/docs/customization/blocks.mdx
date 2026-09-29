@@ -8,7 +8,7 @@ A block kind is a named definition in a plugin's `blocks` map. It decides the el
 
 ## A block kind
 
-```svelte title="CalloutPlugin.svelte"
+```svelte title="CalloutPlugin.svelte" check
 <script module lang="ts">
 	import type { Plugin } from 'edytor';
 	import type { BlockSnippetPayload } from 'edytor';
@@ -203,6 +203,8 @@ if (row && convertToKind(edytor, block, row)) {
 await edytor.runCommand('block.heading2');
 ```
 
+The command converts every selected block, or every block a text range touches, as one undo step that keeps the selection; a replacing kind converts only the block holding the selection's start.
+
 A row has the preset's fields plus `id`, `value` (the JSON the block is converted to) and `replaces` (`true` when the kind has an `empty` shape). `convertToKind` applies only to convertible blocks, those that are neither void nor island nor inside an island, and returns whether it applied. When the conversion replaces the content, the caret moves to the start of the converted block, or of its first child. A replacing kind converts in place only a block that holds nothing (no children, no text but a pending slash query); after text or children, the same command inserts the new block after it instead and leaves the block intact. A kind that renders no content (a divider) cannot hold the caret: the same step adds a block of the parent's default child kind after it, and the caret lands there. For a menu of conversions that keep the text, filter out `row.replaces`.
 
 ## Continuing kinds
@@ -237,7 +239,7 @@ Write directly, or return a function: it runs in the same transaction, and the n
 
 To change only how an existing kind renders, pass a snippet prop named `<type>Block` to `<Edytor>`. The kind keeps every other option:
 
-```svelte
+```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor } from 'edytor';
 	import type { BlockSnippetPayload } from 'edytor';
@@ -259,7 +261,7 @@ To replace a kind completely, define a kind with the same name in a plugin liste
 
 A task with a checkbox that writes `data.done`, a markdown prefix, clipboard forms, and a normalizer that keeps its text on one line:
 
-```svelte title="TaskPlugin.svelte"
+```svelte title="TaskPlugin.svelte" check
 <script module lang="ts">
 	import type { Block, Plugin } from 'edytor';
 	import type { BlockSnippetPayload } from 'edytor';

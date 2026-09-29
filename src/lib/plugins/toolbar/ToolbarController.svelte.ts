@@ -3,7 +3,13 @@ import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 import type { SelectionValue } from '$lib/session/selection.js';
 import { isRecord, type SerializableContent } from '$lib/utils/json.js';
 import { richTextOperations, type RichTextMark } from '$lib/plugins/richtext/richTextOperations.js';
-import { convertibleKinds, convertToKind, rowOf, type KindRow } from '$lib/kinds.js';
+import {
+	convertBlocks,
+	convertibleKinds,
+	rowOf,
+	selectionBlocks,
+	type KindRow
+} from '$lib/kinds.js';
 
 /** Notion's palette: text colors and their backgrounds, by name. */
 export const TOOLBAR_COLORS = [
@@ -27,7 +33,8 @@ const getLinkHref = (value: SerializableContent | undefined) => {
 };
 
 export class ToolbarController {
-	isVisible = $state(false);
+	/** Shown for the current selection; hidden while the editor is readonly. */
+	private shown = $state(false);
 	linkUrl = $state('');
 	/** The open panel: the kind menu, the link field or the colors. */
 	panel = $state<null | 'turn' | 'link' | 'color'>(null);
@@ -37,16 +44,20 @@ export class ToolbarController {
 
 	constructor(private edytor: Edytor) {}
 
+	get isVisible() {
+		return this.shown && !this.edytor.readonly;
+	}
+
 	updateFromSelection(selection = this.edytor.selection) {
 		if (!this.canShowForSelection(selection)) {
-			this.isVisible = false;
+			this.shown = false;
 			this.linkUrl = '';
 			this.panel = null;
 			this.selectionSnapshot = null;
 			return;
 		}
 
-		this.isVisible = true;
+		this.shown = true;
 		if (!this.isRestoringSelection) {
 			this.linkUrl = this.getSelectedLinkUrl(selection);
 		}
@@ -64,6 +75,17 @@ export class ToolbarController {
 		);
 	}
 
+	/** Whether `mark` covers every character of the selection (its button shows pressed). */
+	isActive(mark: string) {
+		const { texts, yStart, yEnd } = this.edytor.selection.state;
+		const runs = texts
+			.flatMap((text, index) =>
+				text.getMarksAtRange(index ? 0 : yStart, index < texts.length - 1 ? text.length : yEnd)
+			)
+			.filter((run) => run.text);
+		return runs.length > 0 && runs.every((run) => Boolean(run.marks?.[mark]));
+	}
+
 	/** The kinds the selection's block may turn into (conversions that keep its content). */
 	get kinds(): KindRow[] {
 		return convertibleKinds(this.edytor);
@@ -78,11 +100,10 @@ export class ToolbarController {
 		this.panel = this.panel === panel ? null : panel;
 	}
 
+	/** Convert every block the selection touches (Notion), as one undo step. */
 	turnInto(kind: KindRow) {
 		this.panel = null;
-		this.runWithSelection(() => {
-			convertToKind(this.edytor, this.edytor.selection.state.startBlock, kind, false);
-		});
+		this.runWithSelection(() => convertBlocks(this.edytor, selectionBlocks(this.edytor), kind));
 	}
 
 	/** Set (or clear, with `null`) the text color or background of the selection. */
@@ -124,7 +145,6 @@ export class ToolbarController {
 	private canShowForSelection(selection: EdytorSelection) {
 		const { state } = selection;
 		return (
-			!this.edytor.readonly &&
 			!state.isCollapsed &&
 			Boolean(state.startText) &&
 			Boolean(state.endText) &&

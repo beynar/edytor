@@ -9,6 +9,7 @@ export {
 	AttachedDocument,
 	attachDocument,
 	SOCKET_TAG,
+	closedSocket,
 	type AttachDocumentOptions,
 	DEFAULT_COMPACT_AFTER,
 	DEFAULT_MAX_ROW_BYTES,

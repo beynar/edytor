@@ -291,12 +291,16 @@ export type RunView = {
  * The block roles the display reads. `childless`: kinds that display no
  * children (void roles, UW-21b) — a child of such a block displays in its
  * slot. `island`: a block promoted out of an island kind displays as
- * `defaultChild` of its display parent's kind (`null`: the root).
+ * `defaultChild` of its display parent's kind (`null`: the root). `line`:
+ * an island that declares its line kind holds only lines — each direct
+ * child displays as that kind and holds no children (FW-01).
  */
 export type DisplayRoles = {
 	childless: (type: string) => boolean;
 	island: (type: string) => boolean;
 	defaultChild: (parentType: string | null) => string;
+	/** The line kind an island kind declares (its `defaultChild`), if any. */
+	line?: (islandType: string) => string | undefined;
 };
 
 /** One index per engine doc, shared by every binding (the doc's lifetime). */
@@ -444,11 +448,17 @@ export const bindRuns = (Y: EngineApi) => {
 			const type = blocks.get(b)?.type;
 			return roles !== null && type !== undefined && roles[role](type);
 		};
+		/** The line kind the island `b` declares, if `b` is one that does. */
+		const lineKind = (b: BlockId): string | undefined => {
+			const type = blocks.get(b)?.type;
+			return type !== undefined && roles?.island(type) ? roles.line?.(type) : undefined;
+		};
 		const ownShim: DisplayOwnership = {
 			ownerOf,
 			hidden: (b) => ownerOf(b) !== b,
 			childless: (b) => kindIs(b, 'childless'),
 			island: (b) => kindIs(b, 'island'),
+			lined: (b) => lineKind(b) !== undefined,
 			top: (m) => {
 				ensureOwners();
 				return tops.get(m);
@@ -478,6 +488,12 @@ export const bindRuns = (Y: EngineApi) => {
 		let kidsMap: Map<BlockId | null, ChildSlot[]> | null = null;
 		/** Blocks displayed out of an island → their display parent and the island (`reset` slots). */
 		let promoted = new Map<BlockId, { under: BlockId | null; island: BlockId }>();
+		/** Each visible block's display parent — the line rules read it (FW-01). */
+		let underOf = new Map<BlockId, BlockId | null>();
+		/** The line kinds the island kinds of this document declare. */
+		let lineKinds = new Set<string>();
+		/** Blocks whose shown kind may follow their parent: in a lined island, or of a line kind. */
+		let recast: BlockId[] = [];
 		let orderCache: DocOrder | null = null;
 		let placementsBuiltAt = -1;
 		let placementVersion = 0;
@@ -487,22 +503,47 @@ export const bindRuns = (Y: EngineApi) => {
 			placementsMap = resolvePlacements(blocks, ownerOf);
 			kidsMap = childrenIndex(placementsMap, ownShim);
 			promoted = new Map();
-			for (const [parent, kids] of kidsMap)
-				for (const kid of kids)
+			underOf = new Map();
+			lineKinds = new Set();
+			recast = [];
+			for (const b of blocks.keys()) {
+				const line = lineKind(b);
+				if (line !== undefined) lineKinds.add(line);
+			}
+			for (const [parent, kids] of kidsMap) {
+				const lined = parent !== null && lineKind(parent) !== undefined;
+				for (const kid of kids) {
+					underOf.set(kid.id, parent);
 					if (kid.reset !== undefined) promoted.set(kid.id, { under: parent, island: kid.reset });
+					if (lined || lineKinds.has(blocks.get(kid.id)?.type ?? '')) recast.push(kid.id);
+				}
+			}
 			orderCache = null;
 			placementsBuiltAt = placementVersion;
 		};
 
 		/**
-		 * The kind `id` displays as: a block displayed out of an island that
-		 * still has the island's default child kind, its display parent's
-		 * default child; any other, its stored kind (a retype shows).
+		 * The kind `id` displays as. A block directly in an island that
+		 * declares its line kind shows that kind; a block of a line kind
+		 * anywhere else shows its display parent's default child — an undo
+		 * can put a line a peer retyped back in its island, or leave one a
+		 * peer moved away outside it (FW-01 sweep). A block displayed out of
+		 * an island that still has the island's default child kind shows its
+		 * display parent's default child (RW-01); any other, its stored kind
+		 * (a retype shows). Read from the stored kinds at call time: a retype
+		 * rebuilds no placement.
 		 */
 		const typeOf = (id: BlockId): string => {
 			const stored = blocks.get(id)?.type ?? 'unknown';
+			if (roles === null) return stored;
+			if (lineKinds.size > 0 && underOf.has(id)) {
+				const under = underOf.get(id)!;
+				const line = under === null ? undefined : lineKind(under);
+				if (line !== undefined) return line;
+				if (lineKinds.has(stored)) return roles.defaultChild(under === null ? null : typeOf(under));
+			}
 			const out = promoted.get(id);
-			if (out === undefined || roles === null) return stored;
+			if (out === undefined) return stored;
 			if (stored !== roles.defaultChild(blocks.get(out.island)?.type ?? null)) return stored;
 			return roles.defaultChild(out.under === null ? null : typeOf(out.under));
 		};
@@ -1113,6 +1154,8 @@ export const bindRuns = (Y: EngineApi) => {
 			}
 		};
 
+		/** The blocks the last report saw displaying a kind other than their stored one. */
+		let shownBefore: BlockId[] = [];
 		/** Build the commit's report and advance the published index to it. */
 		const report = (): IndexReport | null => {
 			const before = published!;
@@ -1189,11 +1232,17 @@ export const bindRuns = (Y: EngineApi) => {
 				}
 			}
 			// A block that starts or stops displaying a kind other than its
-			// stored one moved, or sits under a promoted one: its kind is news.
-			for (const id of [...r.moved, ...promoted.keys()]) {
-				const n = after.nodes.get(id);
-				if (n !== undefined && !candidates.has(id) && !covered.has(id) && typeOf(id) !== n.type)
-					meta(id, n);
+			// stored one moved, sits under a promoted one, or sits in (or
+			// sat in) an island: its kind is news. Without a placement
+			// change, only a retype (a candidate) changes a shown kind.
+			if (after !== before) {
+				const shown = [...promoted.keys(), ...recast];
+				for (const id of [...r.moved, ...shown, ...shownBefore]) {
+					const n = after.nodes.get(id);
+					if (n !== undefined && !candidates.has(id) && !covered.has(id) && typeOf(id) !== n.type)
+						meta(id, n);
+				}
+				shownBefore = shown;
 			}
 			candidates.clear();
 			published = after;
@@ -1275,7 +1324,7 @@ export const bindRuns = (Y: EngineApi) => {
 				if (roles === null) return undefined;
 				syncPending(openTx());
 				ensurePlacements();
-				const shown = promoted.has(id) ? typeOf(id) : undefined;
+				const shown = blocks.has(id) ? typeOf(id) : undefined;
 				return shown === blocks.get(id)?.type ? undefined : shown;
 			},
 			project: (root?: BlockId): ProjectedBlock[] => {

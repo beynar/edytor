@@ -105,7 +105,7 @@ A saved copy can be older than the room's last edits (it is written `saveAfter` 
 
 ## Save
 
-`onSave({ value, update, replicas })` runs `saveAfter` ms after the first edit it has not saved, on the object's alarm, so it does not keep the object from hibernating. If it throws, the platform retries the alarm with backoff. Without `onSave`, no alarm is ever set.
+`onSave({ value, update, replicas })` runs `saveAfter` ms after the first edit it has not saved, on the object's alarm, so it does not keep the object from hibernating. If it throws, the platform retries the alarm with backoff. If the alarm fires while the room cannot read its rows (a storage fault), it reads them again first; if that fails too, the save stays due and the alarm is set again, backing off up to 5 minutes, so `onSave` runs once the room recovers. Without `onSave`, no alarm is ever set.
 
 | Field | Content |
 | --- | --- |

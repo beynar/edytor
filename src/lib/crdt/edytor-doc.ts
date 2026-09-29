@@ -76,14 +76,18 @@
  *   a block inside an island (`insideIsland`) cannot be moved, nested,
  *   unnested, or merged across the island boundary. Merges INSIDE one
  *   island are allowed; merging an island child into the island itself is
- *   allowed. Moving INTO an island subtree is rejected. `canPlace` and
+ *   allowed. Moving or merging INTO an island subtree is rejected. An
+ *   island that declares its line kind (`defaultChild`) holds only lines,
+ *   and a line holds no children (FW-01: the display enforces it against
+ *   undo, `insertBlocks` refuses a line parent). `canPlace` and
  *   `canMerge` are the one answer, asked in advance or by the ops (R5).
  * - Island merge: when an island block itself is merged (backward or
  *   forward), its children are unnested to the vacated sibling slot and
  *   reset to the default child of that slot's parent (`defaultChild`).
  * - Baseline merges NEVER adopt the merged block's children — they unnest
  *   to the vacated slot. The facade exposes both: `mergeBlocks` is the
- *   engine primitive (children adopt into the target — TX09c contract),
+ *   engine primitive (children adopt into the target — TX09c contract —
+ *   by staying under the source, which the target's claim displays, FW-12),
  *   `mergeBackward`/`mergeForward` reproduce the baseline command shape.
  *
  * ── Change events ──────────────────────────────────────────────────────
@@ -797,11 +801,13 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		// a block another peer retypes to a void shows on every replica.
 		// A block promoted out of an island displays as its display parent's
 		// default child, as a delete of the island retypes the ones it saw.
+		// An island that declares its line kind holds only lines (FW-01).
 		const displayRoles = {
 			childless: (type: string): boolean => roleOf(type)?.void === true,
 			island: (type: string): boolean => roleOf(type)?.island === true,
 			defaultChild: (type: string | null): string =>
-				(type !== null ? defaultChildOf(type) : undefined) ?? defaultType
+				(type !== null ? defaultChildOf(type) : undefined) ?? defaultType,
+			line: (type: string): string | undefined => defaultChildOf(type)
 		};
 		if (config.roleOf) runsView.roles(displayRoles);
 
@@ -1088,6 +1094,12 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			ancestorsOf(id, v).find((a) => isIsland(a)) ?? null;
 		/** True iff `id` sits strictly inside an island subtree. */
 		const insideIsland = (id: BlockId, v?: View): boolean => islandOf(id, v) !== null;
+		/** `id` is a line — directly in an island that declares its line kind — and holds no children (FW-01). */
+		const isLine = (id: BlockId): boolean => {
+			const parent = positionOf(id)?.parent ?? null;
+			const type = parent === null ? undefined : blockTypeOf(parent);
+			return type !== undefined && isIsland(parent!) && defaultChildOf(type) !== undefined;
+		};
 
 		// ── structural capability (R5, O8): one answer in advance and at execution ──
 
@@ -1112,14 +1124,16 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/**
 		 * May `fromId`'s content merge into `intoId`? Both live and distinct,
 		 * neither void, and the merge stays on one side of an island boundary
-		 * (a block may merge into its own island root — that stays inside).
+		 * (a block may merge into its own island root — that stays inside —
+		 * but nothing from outside merges into an island).
 		 */
 		const canMerge = (fromId: BlockId, intoId: BlockId): boolean => {
 			const v = view();
 			if (fromId === intoId || !isLiveIn(v, fromId) || !isLiveIn(v, intoId)) return false;
 			if (isVoid(fromId) || isVoid(intoId)) return false;
 			const islandFrom = islandOf(fromId, v);
-			return islandFrom === islandOf(intoId, v) || intoId === islandFrom;
+			if (intoId === islandFrom) return true;
+			return islandFrom === islandOf(intoId, v) && !isIsland(intoId);
 		};
 
 		/** The adopted default child type under `parent` (`null` = the root). */
@@ -1598,14 +1612,15 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/**
 		 * Insert blocks (specs may carry children/content/data — ids are
 		 * caller-assigned and must be fresh; the batch is all-or-nothing).
-		 * Refused when the parent is not live or is `void`, or any id collides.
+		 * Refused when the parent is not live, is `void` or is an island's
+		 * line (it holds no children), or any id collides.
 		 * Inserting INSIDE an island is allowed — island interiors are built
 		 * this way. `ids`: the inserted roots.
 		 */
 		const insertBlocks = (dest: Destination, specs: readonly BlockSpec[]): Prepared => {
 			const parent = ref(dest.parent);
 			const clean = specs.map(sanitizeSpec);
-			if (parent !== null && isVoid(parent)) return REFUSED;
+			if (parent !== null && (isVoid(parent) || isLine(parent))) return REFUSED;
 			if (clean.length === 0) return plan([], []);
 			if ((parent !== null && !live(parent)) || M.collides(doc, clean)) return REFUSED;
 			const ranks = ranksFor(parent, dest.index, clean.length);
@@ -1688,10 +1703,14 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 
 		/**
 		 * Engine merge primitive: `from`'s content is claimed by `into`, its
-		 * children ADOPTED into `into`'s child list — an island's take `into`'s
-		 * default child, like a baseline merge's — and `from` is hidden via
-		 * the claim (undo restores it). Role rules are `canMerge`'s; a merge
-		 * that would close a display cycle is refused. `ids`: `into`.
+		 * children ADOPTED as `into`'s last children — an island's take
+		 * `into`'s default child, like a baseline merge's — and `from` is
+		 * hidden via the claim (undo restores it). The children stay under
+		 * `from`, ranked after `into`'s children, and display under `into`
+		 * through the claim (FW-12): a concurrent delete of `into` voids the
+		 * claim and `from` comes back with its children, never below them.
+		 * Role rules are `canMerge`'s; a merge that would close a display
+		 * cycle is refused. `ids`: `into`.
 		 */
 		const mergeBlocks = (fromId: BlockId, intoId: BlockId): Prepared => {
 			const from = ref(fromId);
@@ -1702,7 +1721,19 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const kids = childrenIds(from);
 			const reset = isIsland(from) ? defaultChild(into) : null;
 			const retype = reset === null ? [] : kids.flatMap((kid) => attr(kid, TYPE, reset));
-			return plan([into], [merge(from, into), ...move(kids, into, Infinity), ...retype]);
+			const adopt: PlanStep[] = kids.length
+				? [
+						{
+							op: 'moveBlocks',
+							ids: kids,
+							parent: from,
+							index: kids.length,
+							ranks: ranksFor(into, Infinity, kids.length, kids)
+						},
+						...keepShown(kids)
+					]
+				: [];
+			return plan([into], [merge(from, into), ...adopt, ...retype]);
 		};
 
 		/**
@@ -1815,13 +1846,20 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * it — the island-merge rule (an island's children take the slot
 		 * parent's default child type). Each moves to the rank the read-time
 		 * shedding gives it (`promotedRank`, UW-21b), so a child a peer adds
-		 * meanwhile keeps its place in the void's order among them.
+		 * meanwhile keeps its place in the void's order among them. An island
+		 * retyped to an ordinary kind keeps its children, each retyped to the
+		 * new kind's default child: no line kind outside its island.
 		 */
 		const retypeSteps = (id: BlockId, type: string): PlanStep[] => {
 			const { kids } = view();
 			const pos = positionOf(id);
 			const steps = attr(id, TYPE, type);
 			const moved = kids.get(id) ?? [];
+			// An island retyped to an ordinary kind keeps its lines as that kind's children.
+			if (isIsland(id) && roleOf(type)?.island !== true && roleOf(type)?.void !== true) {
+				const child = defaultChildOf(type) ?? defaultType;
+				return [...steps, ...moved.flatMap((k) => attr(k.id, TYPE, child))];
+			}
 			if (roleOf(type)?.void !== true || moved.length === 0 || pos === null) return steps;
 			const slot = kids.get(pos.parent)![pos.index]!.rank;
 			const ids = moved.map((k) => k.id);

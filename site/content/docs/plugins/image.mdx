@@ -6,7 +6,7 @@ icon: image
 
 `imagePlugin` adds Notion's image block: an "Add an image" panel until the block has a source, then the image with an editable caption. `<Edytor>` includes it by default, so the slash menu lists "Image" under `Media` without any setup.
 
-```svelte
+```svelte title="Editor.svelte" check
 <script lang="ts">
 	import { Edytor, createImagePlugin } from 'edytor';
 

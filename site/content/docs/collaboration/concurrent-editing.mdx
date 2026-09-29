@@ -116,6 +116,7 @@ A block keeps its id and its CRDT identity when it is moved, nested, split or me
 | Merge | Joins "world" into the line above, "hello". | Types "!" after "world". | "helloworld!". |
 | Same split twice | Splits "hello world" after "hello". | Splits it at the same place. | Both new lines exist; the text goes to one and the other stays empty. |
 | Merge into a deleted line | Joins "item", which has nested lines, into "hello" above (Backspace at its start). | Deletes "hello". | "item" is back in its place, its former nested lines right after it, in order. |
+| `mergeFrom` into a deleted block | Calls `hello.mergeFrom(item)`: the nested lines of "item" become the last children of "hello". | Deletes "hello". | "item" is back in its place, with its nested lines still under it. |
 
 Moving a block into its own subtree is refused, and concurrent moves that would form a cycle are resolved the same way on every replica: no block becomes unreachable.
 
@@ -158,6 +159,15 @@ Deleting or merging away an island turns its children into ordinary blocks: each
 | 2 | After both sync: "let a" and "let b" are paragraphs where the code block was, for both. | |
 | 3 | Turns "let b" into a heading, moves it, or presses Enter or Tab in it. It stays a heading or a paragraph, never a code line outside a code block. | |
 | 4 | Undoes back to the delete. The code block is back with both lines as code lines. | |
+
+A code line holds no nested blocks, and a code block holds only code lines. When Alice's undo brings a code block back while Bob has changed one of its former lines, both rules keep Bob's work visible:
+
+| Bob, after the delete and before Alice's undo | After Alice's undo |
+| --- | --- |
+| Nests the paragraph below under "let a" (Tab) | The paragraph shows right after the code block, where it can be edited and moved. |
+| Turns "let a" into a heading | "let a" shows as a code line in the code block. If Alice redoes, it is a heading again. |
+
+Nothing merges into a code block from outside it: `mergeFrom` refuses the merge and `canMerge` answers `false`.
 
 ## Mixed versions
 

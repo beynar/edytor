@@ -198,11 +198,15 @@ export type ResolvedPlacement = {
  * take its slot like a deleted parent's ({@link displaySlotOf}). `island(b)`:
  * the block `b` (live or deleted) is of an island kind — a block promoted
  * or merged out of it keeps no container-only kind (`reset`). Absent: no
- * roles (pure engine behavior).
+ * roles (pure engine behavior). `lined(b)`: the island `b` declares its
+ * line kind — each of its direct children is a line, and a line holds no
+ * children ({@link displaySlotOf}).
  */
 export type DisplayOwnership = Ownership & {
 	childless?: (b: BlockId) => boolean;
 	island?: (b: BlockId) => boolean;
+	/** The island `b` declares a line kind (`defaultChild`): its lines hold no children (FW-01). */
+	lined?: (b: BlockId) => boolean;
 };
 
 /** One entry of a children list: `reset` — the island it displays out of ({@link displaySlotOf}). */
@@ -443,8 +447,12 @@ export const promotedRank = (slot: string, rank: string): string => slot + PROMO
  * kind it displays as its display parent's default child, as a delete or
  * merge of the island retypes the children it saw. A code line a peer adds
  * under a code block another peer deletes or merges shows as a paragraph,
- * not as a code line outside its code block. `DEAD` only when the placement
- * chain never reaches a live parent (an unknown block).
+ * not as a code line outside its code block. A line of an island that
+ * declares its line kind holds no children (FW-01): they take the island's
+ * slot, ranked in the line's order, with the island as `reset` — a block a
+ * peer nested under a code line while an undone delete had made it a
+ * paragraph shows right after the code block. `DEAD` only when the
+ * placement chain never reaches a live parent (an unknown block).
  */
 export const displaySlotOf = (
 	own: DisplayOwnership,
@@ -456,7 +464,18 @@ export const displaySlotOf = (
 	for (let hops = 0; parent !== null; hops++) {
 		const owner = own.ownerOf(parent);
 		if (reset === null && owner !== parent && own.island?.(parent) === true) reset = parent;
-		if (owner !== DEAD && own.childless?.(owner) !== true) return { parent: owner, rank, reset };
+		if (owner !== DEAD && own.childless?.(owner) !== true) {
+			const line = own.lined && lineSlotOf(own, placements, owner);
+			if (!line) return { parent: owner, rank, reset };
+			// A line holds no children (FW-01): they take its island's slot.
+			const out = displaySlotOf(own, placements, placements.get(line.parent)!);
+			const inner = promotedRank(line.rank, rank);
+			return {
+				parent: out.parent,
+				rank: promotedRank(out.rank, inner),
+				reset: reset ?? line.parent
+			};
+		}
 		const out = owner === DEAD ? parent : owner;
 		const up = placements.get(out);
 		if (up === undefined || hops > placements.size) return { parent: DEAD, rank, reset };
@@ -465,6 +484,29 @@ export const displaySlotOf = (
 		parent = up.parent;
 	}
 	return { parent: null, rank, reset };
+};
+
+/**
+ * The slot of `b` when it is a line — it displays directly under an island
+ * that declares its line kind ({@link DisplayOwnership.lined}) — else
+ * `null`. A block a peer nests under a line, while an undone delete or merge
+ * of the island had made the line a plain block, displays right after the
+ * island instead: visible, and outside the island's seal.
+ */
+const lineSlotOf = (
+	own: DisplayOwnership,
+	placements: ReadonlyMap<BlockId, ResolvedPlacement>,
+	b: BlockId
+): { parent: BlockId; rank: string } | null => {
+	const pl = placements.get(b);
+	if (pl === undefined || pl.parent === null) return null;
+	// Fast path: a live parent that shows its children and is no lined island.
+	const p = own.ownerOf(pl.parent);
+	if (p === pl.parent && own.childless?.(p) !== true && own.lined?.(p) !== true) return null;
+	const slot = displaySlotOf(own, placements, pl);
+	if (slot.parent === null || slot.parent === DEAD || own.lined?.(slot.parent) !== true)
+		return null;
+	return { parent: slot.parent, rank: slot.rank };
 };
 
 /** The parent under which a placement DISPLAYS ({@link displaySlotOf}). */

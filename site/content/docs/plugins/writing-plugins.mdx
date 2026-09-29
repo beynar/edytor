@@ -8,7 +8,7 @@ This page lists everything a plugin can return and when each hook runs. The oper
 
 ## The contract
 
-```ts
+```ts title="myPlugin.ts" check
 import type { Plugin } from 'edytor';
 
 export const myPlugin: Plugin = (edytor) => {
@@ -131,7 +131,7 @@ Every hook whose payload has `prevent` can stop what the editor was about to do.
 
 `onEdytorAttached`, `onBlockAttached` and `onTextAttached` run when the element mounts and may return a cleanup function, called when it unmounts. Anything else they return (nothing, a promise) is ignored. Use them to attach listeners or third-party libraries to the DOM.
 
-```ts
+```ts title="anchors.ts" check
 import type { Plugin } from 'edytor';
 
 export const anchorsPlugin: Plugin = () => ({
@@ -151,7 +151,7 @@ Attributes you add to a block element are left alone. Do not add or remove nodes
 
 ## Change and selection hooks
 
-```ts
+```ts title="stats.ts" check
 import type { Plugin } from 'edytor';
 
 export const statsPlugin: Plugin = () => ({
@@ -178,7 +178,7 @@ These hooks receive the DOM event as `e` and a `prevent` function.
 
 **`onPaste`** runs after the editor checked for its own fragment format (content copied from an Edytor pastes without asking plugins), and before it imports external HTML or plain text. Pasted files reach the editor only through this hook: unclaimed files insert nothing. The hook also runs for dropped files and HTML, with an `e` that carries only `clipboardData`. A Shift-paste of plain text skips it.
 
-```ts
+```ts title="noFiles.ts" check
 import type { Plugin } from 'edytor';
 
 export const noFilesPlugin: Plugin = () => ({
@@ -198,7 +198,7 @@ For the clipboard formats and paste rules, see [Clipboard](/docs/editor/clipboar
 
 `commands` adds named actions that menus can list and run. The slash menu shows every command next to the block kinds, sectioned by `group`.
 
-```ts
+```ts title="todoCommands.ts" check
 import type { Plugin } from 'edytor';
 
 export const todoCommandsPlugin: Plugin = () => ({
@@ -237,7 +237,7 @@ Run a command by id with `edytor.runCommand(id)`. Block kinds with presets gener
 
 The package exports the payload and instance types:
 
-```ts
+```ts title="types.ts" check
 import type {
 	BlockSnippetPayload,
 	MarkSnippetPayload,

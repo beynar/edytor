@@ -3,6 +3,7 @@ import type { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EditorCommand } from '$lib/plugins.js';
 import type { TextAnchor } from '$lib/selection/selection.svelte.js';
+import { matchesQuery } from '$lib/kinds.js';
 
 /** The trigger `/` and the query's end, held as anchors so peers' edits move them (L52). */
 type ActiveSlashRange = { trigger: TextAnchor; end: TextAnchor };
@@ -12,16 +13,6 @@ type TextInsertionPayload = {
 	start?: number;
 	end?: number;
 };
-
-/** Lowercase, hyphens dropped (`To-do` reads `todo`), trailing whitespace trimmed. */
-const normalize = (value: string) => value.replace(/-/g, '').trimEnd().toLowerCase();
-
-/** The query starts a word of the command's label or keywords (Notion); the id is not searched. */
-const commandMatchesQuery = (command: EditorCommand, query: string) =>
-	!query ||
-	[command.label, ...(command.keywords ?? [])]
-		.map(normalize)
-		.some((value) => value.startsWith(query) || value.includes(` ${query}`));
 
 /** A `/` opens the menu at a text's start or after whitespace, never inside a word (`1/2`, `and/or`). */
 const startsTrigger = (text: Text, offset: number) =>
@@ -36,15 +27,16 @@ export class SlashMenuController {
 
 	constructor(private edytor: Edytor) {}
 
+	/** The editor is readonly: the menu closes. */
+	get readonly() {
+		return this.edytor.readonly;
+	}
+
 	/** Matching commands, grouped (groups in first-seen order): the menu's rows and keyboard order. */
 	get commands() {
-		const query = normalize(this.query);
-		const matching = Array.from(this.edytor.commands.values()).filter((command) => {
-			if (command.isEnabled?.(this.edytor) === false) {
-				return false;
-			}
-			return commandMatchesQuery(command, query);
-		});
+		const matching = Array.from(this.edytor.commands.values()).filter(
+			(command) => command.isEnabled?.(this.edytor) !== false && matchesQuery(command, this.query)
+		);
 		// Groups in first-seen order, Notion's "Basic blocks" first.
 		const groups = [...new Set(matching.map((command) => command.group ?? ''))].sort(
 			(a, b) => Number(b === 'Basic blocks') - Number(a === 'Basic blocks')
@@ -196,12 +188,18 @@ export class SlashMenuController {
 		}
 
 		const { text, triggerStart, queryEnd } = range;
-		this.query = text.stringContent.slice(triggerStart + 1, queryEnd);
+		const query = text.stringContent.slice(triggerStart + 1, queryEnd);
+		// A new query highlights its first match again (Notion).
+		if (query !== this.query) this.selectedIndex = 0;
+		this.query = query;
 		const commandCount = this.commands.length;
 		// A query no command matches is prose (a URL, a path), and so is one
 		// that opens with whitespace (`yes / no`) or holds only hyphens (`/-`):
-		// the menu closes.
-		if (this.query && (commandCount === 0 || /^\s/.test(this.query) || !normalize(this.query))) {
+		// the menu closes. Words after a space keep it open (`/to do`).
+		if (
+			this.query &&
+			(commandCount === 0 || /^\s/.test(this.query) || !/[^-\s]/.test(this.query))
+		) {
 			this.close();
 			return;
 		}

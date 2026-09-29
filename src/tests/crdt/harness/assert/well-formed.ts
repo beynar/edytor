@@ -17,6 +17,9 @@
  *   block of that island kind (RW-01: a code line a peer adds under a code
  *   block another peer deletes or merges shows as its new parent's default
  *   child, and keeps doing so when it is retyped, moved, nested or split).
+ *   An island holds only its default child kind, and that kind holds no
+ *   children (FW-01: undo of an island delete once sealed a peer's block
+ *   under a code line, where nothing renders or reaches it).
  * - `promotion-hidden` — no unmarked block hides under a delete-marked
  *   holder (UW-08: read-time promotion puts it in the holder's slot). On
  *   by default; `DST_PROMOTION_ORACLE=0` turns it off for a local bisect.
@@ -106,10 +109,16 @@ export const WELL_FORMED_CHECKS: Record<string, Check> = {
 		run: ({ islandKinds, roots }) => {
 			if (!islandKinds?.size) return [];
 			const out: string[] = [];
+			const lineOf = new Map([...islandKinds].map(([line, island]) => [island, line]));
 			const visit = (b: WfBlock, parent: WfBlock | null) => {
 				const island = typeof b.type === 'string' ? islandKinds.get(b.type) : undefined;
+				const line = typeof parent?.type === 'string' ? lineOf.get(parent.type) : undefined;
 				if (island !== undefined && parent?.type !== island)
 					out.push(`${b.id} shows ${String(b.type)} outside a ${island}`);
+				if (typeof parent?.type === 'string' && islandKinds.has(parent.type))
+					out.push(`${b.id} sits under the ${parent.type} ${parent.id}`);
+				if (line !== undefined && b.type !== line)
+					out.push(`${b.id} shows ${String(b.type)} inside a ${String(parent!.type)}`);
 				for (const c of b.children ?? []) visit(c, b);
 			};
 			for (const b of roots) visit(b, null);

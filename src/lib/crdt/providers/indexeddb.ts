@@ -17,7 +17,7 @@
  *   rule exchanges what each side lacks (`room.ts`).
  * - `synced`/`whenSynced` (the room lifecycle: `synced` is the lifetime
  *   hydration claim), `bcconnected`, `_ownsAwareness`, idempotent
- *   `destroy()`, departure (`beforeunload`) + doc-`destroy` cleanup.
+ *   `destroy()`, departure (`pagehide`) + doc-`destroy` cleanup.
  *
  * The generation gate (R13, D-2 — see `protocols/envelope.ts`):
  *
@@ -36,10 +36,10 @@
  */
 import * as idb from 'lib0-v14/indexeddb';
 import * as promise from 'lib0-v14/promise';
-import { ObservableV2 } from 'lib0-v14/observable';
 import * as bc from 'lib0-v14/broadcastchannel';
 import * as encoding from 'lib0-v14/encoding';
 import { Awareness } from '../protocols/awareness.js';
+import { IsolatedObservable } from '../protocols/observable.js';
 import { bindSync, type SyncProtocol } from '../protocols/sync.js';
 import { generationDbName } from '../protocols/envelope.js';
 import {
@@ -211,7 +211,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 	 */
 	const clearDocument = (name: string) => idb.deleteDB(generationDbName(name));
 
-	class IndexeddbPersistence extends ObservableV2<{
+	class IndexeddbPersistence extends IsolatedObservable<{
 		synced: (provider: IndexeddbPersistence) => void;
 		'protocol-mismatch': (mismatch: ProtocolMismatch, provider: IndexeddbPersistence) => void;
 		/** Fired when loading persisted state failed (e.g. a generation mismatch). `whenSynced` rejects. */
@@ -279,7 +279,7 @@ export const bindIndexeddbProvider = (Y: EngineApi) => {
 			this._db = openContainer(this.dbName);
 
 			this.destroy = this.destroy.bind(this);
-			initLifecycle(this, this.destroy);
+			initLifecycle(this, this.destroy, () => room.depart(this));
 
 			this._bcSubscriber = room.bcSubscriber(this);
 			this._awarenessUpdateHandler = room.awarenessUpdateHandler(this);

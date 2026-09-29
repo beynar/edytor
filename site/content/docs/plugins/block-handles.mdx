@@ -43,7 +43,7 @@ The `blockHandles` prop of `<Edytor>` controls the plugin:
     },
     onActivate: {
       type: "({ block, anchor }: BlockHandleActivation) => void",
-      description: "Called when a grip is clicked, after the block is selected. anchor is the grip element, to position a menu against. Without it, the click dispatches an edytor-block-activate event instead (see below).",
+      description: "Called when a grip is clicked, after the block is selected (a block selection that already holds it stays). anchor is the grip element, to position a menu against. Without it, the click dispatches an edytor-block-activate event instead (see below).",
     },
     handle: {
       type: "Snippet<[BlockHandleSnippetPayload]>",
@@ -113,7 +113,7 @@ Drag and drop uses Atlassian's Pragmatic drag and drop. While you drag, each blo
 
 Only placements the document allows are offered: when "inside" is not allowed, the block splits between before and after. A short gap between blocks keeps the last valid placement, so the indicator does not flicker.
 
-Dragging the handle of a block that is part of a block selection of siblings moves the whole group, in document order. After a drop, the moved blocks are selected. Each drop is one undo step.
+Dragging the handle of a block that is part of a block selection of siblings moves the whole group, in document order. A selected block's selected descendants (a <kbd>Shift</kbd> + <kbd>↓</kbd> selection past a parent holds its children) ride with it rather than counting as siblings. After a drop, the moved blocks are selected. Each drop is one undo step.
 
 ### The drop indicator
 

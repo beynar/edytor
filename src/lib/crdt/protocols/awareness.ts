@@ -18,8 +18,8 @@ import * as encoding from 'lib0-v14/encoding';
 import * as decoding from 'lib0-v14/decoding';
 import * as time from 'lib0-v14/time';
 import * as math from 'lib0-v14/math';
-import { ObservableV2 } from 'lib0-v14/observable';
 import * as f from 'lib0-v14/function';
+import { IsolatedObservable } from './observable.js';
 
 export const outdatedTimeout = 30000;
 
@@ -59,7 +59,7 @@ type AwarenessEvents = {
  * remote `null` states mark peers offline, local state is re-published when
  * outdated, and remote states expire after {@link outdatedTimeout}.
  */
-export class Awareness extends ObservableV2<AwarenessEvents> {
+export class Awareness extends IsolatedObservable<AwarenessEvents> {
 	doc: AwarenessDoc;
 	clientID: number;
 	/** Maps from client id to client state */

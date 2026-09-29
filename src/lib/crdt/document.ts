@@ -905,8 +905,9 @@ export class EdytorDocument {
 	 * settled, or {@link DEFAULT_READINESS_BOUND} from each `armBound()`
 	 * (`holdBound()` stops it until the next arm).
 	 * Each settle runs the readiness decision ({@link _decide}); a
-	 * `SyncRefusedError` settles without deciding and is recorded as the
-	 * target's {@link syncRefusal} until its release or its next `synced`.
+	 * `SyncRefusedError` is recorded as the target's {@link syncRefusal}
+	 * until its release or its next `synced`, and decides only a document
+	 * that holds content (an empty one never seeds over it).
 	 * Releasing a refused provider decides with the providers still
 	 * attached; with none, the document stays pending.
 	 * A factory that throws never attached: its error propagates and it
@@ -948,6 +949,9 @@ export class EdytorDocument {
 					console.error('[edytor-document] refusal listener failed; continuing', err);
 				}
 			}
+			// A document that already holds content is decided (hydrated); an
+			// empty one stays pending while the refusal stands.
+			this._decide(opts.value);
 		};
 		let cleanup: ReturnType<EdytorSync>;
 		try {

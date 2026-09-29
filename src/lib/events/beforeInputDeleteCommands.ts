@@ -1,5 +1,7 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
+import type { Block } from '$lib/block/block.svelte.js';
+import { dispatchPlan } from '$lib/block/block.utils.js';
 import type { Attempt } from '$lib/session/attempt.js';
 import { getNextWordEndOffset, getPreviousWordStartOffset } from './wordBoundary.js';
 
@@ -8,6 +10,21 @@ const isForwardDeleteInsideActiveComposition = (edytor: Edytor, snapshot: Attemp
 	snapshot.inputType === 'deleteContentForward' &&
 	snapshot.isCollapsed &&
 	Boolean(snapshot.startText && edytor.composition.covers(snapshot.startText, snapshot.yStart));
+
+/**
+ * Merge `from` into a collapsed toggle's header `into` (one command, named as
+ * the key's merge): its children first take its slot, so they stay
+ * displayed, then its content joins the header. Nothing when the document
+ * refuses the merge (an island).
+ */
+const mergeIntoHeader = (edytor: Edytor, from: Block, into: Block, backward: boolean) => {
+	const merge = () => edytor.facade.prepare.mergeBlocks(from.id, into.id);
+	if (!('writes' in merge())) return;
+	if (from.children.length)
+		edytor.moveBlocks({ blocks: [...from.children], target: from, position: 'after' });
+	if (backward) dispatchPlan(from, 'mergeBlockBackward', {}, merge, [from.parent]);
+	else dispatchPlan(into, 'mergeBlockForward', {}, merge, [from.parent]);
+};
 
 /** A non-collapsed selection: the document's range deletion, then its caret (`del.range.*`). */
 const deleteSelectedRange = (edytor: Edytor, snapshot: Attempt) => {
@@ -33,13 +50,14 @@ const deleteContentForward = (edytor: Edytor, snapshot: Attempt) => {
 			return;
 		}
 
-		const nextBlock = currentBlock.closestNextBlock;
+		const nextBlock = edytor.selection.shown(currentBlock, 'blockAfter');
 		if (nextBlock?.definition.void) {
 			edytor.selection.selectBlocks(nextBlock);
 			return;
 		}
 
-		currentBlock.mergeBlockForward();
+		if (nextBlock === currentBlock.closestNextBlock) currentBlock.mergeBlockForward();
+		else if (nextBlock) mergeIntoHeader(edytor, nextBlock, currentBlock, false);
 		edytor.attempts.caret(startText, yStart);
 		edytor.selection.setAtTextOffset(startText, yStart);
 		return;
@@ -115,7 +133,8 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 			return;
 		}
 
-		const previousBlock = startText.parent.closestPreviousBlock;
+		const block = startText.parent;
+		const previousBlock = edytor.selection.shown(block, 'blockBefore');
 		if (previousBlock?.definition.void) {
 			edytor.selection.selectBlocks(previousBlock);
 			return;
@@ -123,7 +142,8 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 
 		const previousText = previousBlock?.lastText;
 		const offset = previousText?.length;
-		startText.parent.mergeBlockBackward();
+		if (previousBlock === block.closestPreviousBlock) block.mergeBlockBackward();
+		else if (previousBlock) mergeIntoHeader(edytor, block, previousBlock, true);
 		if (previousText && typeof offset === 'number') {
 			edytor.attempts.caret(previousText, offset);
 			edytor.selection.setAtTextOffset(previousText, offset);

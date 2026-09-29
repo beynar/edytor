@@ -136,7 +136,15 @@ If Bob's quote had won, Alice's undo changes nothing: the quote stays. The same 
 
 Turning a block into a void kind (an image, a divider) moves its nested blocks out, right after it, in order: nothing renders a void block's children. Undo puts them back under the block.
 
-A block that Bob nests or splits under it at the same time, without having seen the change, stays its child and is not shown. This is a known limitation.
+The same holds for whatever Bob puts under the block without having seen the change: a void block never shows children.
+
+| | Alice | Bob |
+| --- | --- | --- |
+| 1 | Turns "Plan", which has a child "Step 1", into a divider. | Presses Enter in the middle of "Step 1", and nests "Notes" under "Plan". |
+| 2 | After both sync: the divider, then "Step 1", its second half, and "Notes", in that order, for both. | |
+| 3 | Undoes. "Plan" is a paragraph again, with the three blocks nested under it. | |
+
+The rule reads the kind's role from the document's semantics, so every replica needs the same roles: a document with no roles for a kind treats it as any other block and shows its children.
 
 ## Island blocks
 

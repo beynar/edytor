@@ -10,6 +10,7 @@
 		type RichTextMark
 	} from './richTextOperations.js';
 	import { firstUriListEntry } from '$lib/events/dataTransferPayload.js';
+	import { richTextKinds } from '$lib/crdt/semantics.js';
 
 	export { richTextOperations };
 
@@ -30,7 +31,12 @@
 	const rule = { html: () => '<hr>', plain: () => '---' };
 	/** A native disclosure: the browser owns `open` (declared view state). */
 	const disclosure = { element: 'details', viewState: ['open'] };
-	const HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+	/**
+	 * Notion's three heading levels: a missing level is h1, any other (a
+	 * stored `h4`–`h6`, as HTML import reads them) h3.
+	 */
+	const headingLevel = (level: unknown) =>
+		level === 'h1' || level === 'h2' || level === 'h3' ? level : level === undefined ? 'h1' : 'h3';
 	/** An unsafe scheme drops the href (and its target): an inert anchor still carries the text. */
 	const linkAttributes = (mark: { href?: unknown; target?: string }) => {
 		const href = sanitizeLinkHref(mark?.href) ?? undefined;
@@ -70,7 +76,7 @@
 	 * their kind while empty; a paragraph invites a command only while focused.
 	 */
 	export const richTextPlaceholder = ({ type, data, focused }: PlaceholderView): string | null => {
-		if (type === 'heading') return `Heading ${String(data.level ?? 'h1').slice(1)}`;
+		if (type === 'heading') return `Heading ${headingLevel(data.level).slice(1)}`;
 		if (type === 'bulleted-list-item' || type === 'numbered-list-item') return 'List';
 		if (type === 'todo-item') return 'To-do';
 		if (type === 'toggle') return 'Toggle';
@@ -239,7 +245,7 @@
 				},
 				heading: {
 					snippet: heading,
-					element: (data) => (HEADINGS.includes(data.level) ? data.level : 'h1'),
+					element: (data) => headingLevel(data.level),
 					presets: [
 						{
 							label: 'Heading 1',
@@ -266,8 +272,7 @@
 					// HTML import: h1–h3 come from the presets; h4–h6 read as h3.
 					parse: (el) => (/^h[4-6]$/.test(el.localName) ? { level: 'h3' } : undefined),
 					html: (block, content, children) => {
-						const level = String(block.data?.level);
-						const tag = ['h1', 'h2', 'h3'].includes(level) ? level : 'h1';
+						const tag = headingLevel(block.data?.level);
 						return `<${tag}>${content}</${tag}>${children}`;
 					}
 				},
@@ -346,9 +351,8 @@
 					html: 'blockquote'
 				},
 				divider: {
+					...richTextKinds.divider,
 					element: 'hr',
-					void: true,
-					rendersContent: false,
 					presets: [
 						{ label: 'Divider', icon: '—', keywords: ['hr', 'separator'], markdown: ['---'] }
 					],
@@ -357,24 +361,21 @@
 				},
 				details: { snippet: details, ...disclosure },
 				'ordered-list': {
+					...richTextKinds['ordered-list'],
 					snippet: list,
 					element: 'ol',
-					rendersContent: false,
-					defaultChild: 'list-item',
 					html: 'ol'
 				},
 				'unordered-list': {
+					...richTextKinds['unordered-list'],
 					snippet: list,
 					element: 'ul',
-					rendersContent: false,
-					defaultChild: 'list-item',
 					html: 'ul'
 				},
 				'list-item': { snippet: listItem, element: 'li', html: 'li' },
 				horizontalRule: {
+					...richTextKinds.horizontalRule,
 					element: 'hr',
-					void: true,
-					rendersContent: false,
 					...rule
 				}
 			}

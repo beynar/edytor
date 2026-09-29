@@ -19,7 +19,7 @@ export const createToolbarPlugin =
 	(edytor) => {
 		const controller = new ToolbarController(edytor);
 
-		/** Above the selection, kept in the viewport; run by the overlay's frame (R11). */
+		/** Above the selection, kept in the viewport; measured in the overlay's frame, written after (R11). */
 		const positionToolbar = (host: HTMLElement) => {
 			const editor = edytor.node;
 			if (!editor || !controller.isVisible) return;
@@ -33,8 +33,9 @@ export const createToolbarPlugin =
 			const toolbar = host.querySelector('[data-edytor-toolbar-bar]') ?? host.firstElementChild;
 			const width = toolbar?.getBoundingClientRect().width || 460;
 			const height = toolbar?.getBoundingClientRect().height || 40;
-			host.style.left = `${Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, view.innerWidth - width - 8))}px`;
-			host.style.top = `${rect.top - height - 8 >= 8 ? rect.top - height - 8 : rect.bottom + 8}px`;
+			const left = `${Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, view.innerWidth - width - 8))}px`;
+			const top = `${rect.top - height - 8 >= 8 ? rect.top - height - 8 : rect.bottom + 8}px`;
+			return () => Object.assign(host.style, { left, top });
 		};
 
 		const schedulePosition = () => edytor.overlay.invalidate();

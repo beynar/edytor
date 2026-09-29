@@ -46,7 +46,7 @@ A conversion happens when the character you type completes a prefix, and all of 
 - the block is convertible (not a void or island block, and not inside one);
 - the typed input is one character.
 
-Removing the prefix and converting the block are one operation (`setBlock`, with a `deleteContentAtRange` step for the prefix): a plugin that refuses either refuses both. When the conversion is refused, the character is inserted as normal text instead. After the conversion the caret is at the start of the converted block, or of its first child when the kind starts with one (a code block's first line).
+Removing the prefix and converting the block are one operation (`setBlock`, with a `deleteContentAtRange` step for the prefix): a plugin that refuses either refuses both. When the conversion is refused, the character is inserted as normal text instead. The conversion is its own undo step, separate from the typing before it: undo after `## ` leaves a paragraph `##`. After the conversion the caret is at the start of the converted block, or of its first child when the kind starts with one (a code block's first line).
 
 As in Notion, text after the caret is kept: typing `- ` at the start of `hello` makes a bulleted item `hello`, with the caret before it.
 
@@ -66,7 +66,7 @@ Typing the closing marker after marked-up text applies the mark and removes both
 | `~strike~` or `~~strike~~`   | `strike`      |
 
 - The text between the markers must be non-empty and not start or end with a space: `* a*` and `** **` stay text.
-- Removing the markers and applying the mark are one undo step; undo brings the markers back as text. The step runs as an `inlineMarkdown` operation, visible to `onBeforeOperation`. A plugin that refuses it leaves the closing character typed as text.
+- Removing the markers and applying the mark are one undo step, separate from the typing before it; undo brings the markers back as text (`say **b**` undoes to `say **b*`: the closing character was never inserted). The step runs as an `inlineMarkdown` operation, visible to `onBeforeOperation`. A plugin that refuses it leaves the closing character typed as text.
 - Typing continues without the mark.
 - It works anywhere in a text, at a collapsed caret, except in code lines, and only for marks the editor defines.
 

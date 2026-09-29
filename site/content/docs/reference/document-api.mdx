@@ -7,10 +7,11 @@ icon: file-code
 `document.facade` is the one read and write surface of a document: every structural and text edit, and every read of the tree, goes through it. It is the same whether you use it headlessly or from a view. For the document object itself (history, providers, readiness), see [Documents](/docs/collaboration/documents); for the tree model, see [the document model](/docs/concepts/document-model).
 
 ```ts
-import { createDocument } from 'edytor';
+import { createDocument, defaultSemantics } from 'edytor';
 
 const { facade } = createDocument({
-  value: { children: [{ type: 'paragraph', id: 'p1', content: [{ text: 'hello' }] }] }
+  value: { children: [{ type: 'paragraph', id: 'p1', content: [{ text: 'hello' }] }] },
+  semantics: defaultSemantics // the bundled kinds' roles; views add their plugins' own
 });
 
 facade.insertText('p1', 5, ' world'); // { status: 'applied', ids: ['p1'] }
@@ -140,7 +141,7 @@ A plan is `{ ids, writes, effect, version, at? }`; a refusal is returned as its 
 | `contentItems(id)`, `displayLength(id)` | Content items and display length, including writes made earlier in the current transaction. |
 | `runs(id)` | The block's content runs as of the last commit: frozen arrays, shared between reads. |
 | `hasBlock(id)`, `isVisibleBlock(id)` | Registered at all (even deleted or merged away), and shown in the tree. |
-| `isVoid(id)`, `isIsland(id)`, `islandOf(id)`, `insideIsland(id)` | Structural roles. |
+| `isVoid(id)`, `isIsland(id)`, `islandOf(id)`, `insideIsland(id)` | Structural roles, as the document's [`semantics`](/docs/collaboration/documents#create-a-document) declare them. Without a view or `semantics`, no kind is void or an island. |
 | `listBlockIds()` | Every visible block id, in document order. |
 | `version` | A counter that changes on every write that changed the tree. |
 

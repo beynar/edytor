@@ -8,6 +8,7 @@
 	import { Text } from '$lib/text/text.svelte.js';
 	import { Block } from '$lib/block/block.svelte.js';
 	import { runIntent } from '$lib/events/beforeInputCommands.js';
+	import { codeKinds } from '$lib/crdt/semantics.js';
 
 	// The code kind tokenizes through `transformText`; only the renderer writes the DOM.
 	const highlighter = createHighlighter({ languages: [jsx] });
@@ -112,10 +113,8 @@
 
 			blocks: {
 				code: {
+					...codeKinds.code,
 					snippet: code,
-					island: true,
-					rendersContent: false,
-					defaultChild: 'codeLine',
 					presets: [
 						{
 							label: 'Code',

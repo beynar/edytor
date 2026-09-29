@@ -71,6 +71,13 @@ export {
 	type LoadDocumentOptions
 } from './document.js';
 
+// The bundled plugins' block roles (void/island, `rendersContent`,
+// `defaultChild`) for documents no view configures: the room adopts
+// `defaultSemantics`; a headless `createDocument` takes it explicitly
+// (`semantics: defaultSemantics`) — a silent default would conflict with
+// views that redefine those kinds.
+export { defaultSemantics, richTextSemantics, codeSemantics, imageSemantics } from './semantics.js';
+
 // The canonical document JSON — `createDocument({value})`,
 // `<Edytor {value}>`, `facade.toJSON()` and `facade.init({content})` all
 // speak these shapes; consumers must be able to name them, so they are
@@ -96,6 +103,8 @@ export { toBlockSpec } from '../utils/json.js';
 export {
 	type EdytorDoc,
 	type OpResult,
+	type Plan,
+	type Prepared,
 	type DocChange,
 	type BlockRole,
 	type OrderPolicy,

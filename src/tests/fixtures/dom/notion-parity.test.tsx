@@ -367,6 +367,31 @@ describe('containers on Enter', () => {
 		expect(edytor.selection.state.startBlock?.parent?.type).toBe('toggle');
 	});
 
+	it('Enter at the end of an open toggle without children opens a first child', async () => {
+		const { edytor, editor } = await render([], {
+			children: [{ type: 'toggle', content: [{ text: 'title' }] }]
+		});
+		(edytor.root!.children[0]!.node as HTMLDetailsElement).open = true;
+		await enterAtEnd(edytor, editor);
+		expect(shape(edytor)).toEqual([['toggle', 'title', [['paragraph', '']]]]);
+		const caret = edytor.selection.state.startBlock!;
+		expect([caret.type, caret.parent?.type, caret.index]).toEqual(['paragraph', 'toggle', 0]);
+	});
+
+	it('Enter at the end of a closed toggle without children opens a sibling toggle', async () => {
+		const { edytor, editor } = await render([], {
+			children: [{ type: 'toggle', content: [{ text: 'title' }] }]
+		});
+		expect((edytor.root!.children[0]!.node as HTMLDetailsElement).open).toBe(false);
+		await enterAtEnd(edytor, editor);
+		expect(shape(edytor)).toEqual([
+			['toggle', 'title', []],
+			['toggle', '', []]
+		]);
+		const caret = edytor.selection.state.startBlock!;
+		expect([caret.type, caret.parent?.isRoot, caret.index]).toEqual(['toggle', true, 1]);
+	});
+
 	it('Enter at the end of a closed toggle opens a sibling toggle; the children stay', async () => {
 		const { edytor, editor } = await render([], withBody('toggle'));
 		expect((edytor.root!.children[0]!.node as HTMLDetailsElement).open).toBe(false);

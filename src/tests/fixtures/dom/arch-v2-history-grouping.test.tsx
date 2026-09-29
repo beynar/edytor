@@ -21,6 +21,18 @@
  *   its own step, at once and 900 ms later — only a user's own insertion
  *   continues a step.
  *
+ * - H-G5 (UW-16) — type `a` @5, then a menu action on the block: Duplicate
+ *   and Turn into (block menu), Turn into (toolbar), `+`, Remove (of the next
+ *   block). The action is its own step, at once and 900 ms later: one undo
+ *   leaves `helloa world` as it was typed.
+ * - H-G6 (UW-16) — a markdown or slash conversion inside the capture window
+ *   is its own step: `say **b**` then undo gives the typed `say **b*` back as
+ *   text, `## ` then undo a paragraph `##`, `hi /h2` + Enter then undo a
+ *   paragraph `hi /h2`.
+ * - H-G7 (UW-16) — block commands called directly (no user command around
+ *   them) cut by the table, one step each; one `edytor.transact` around two
+ *   of them is one step.
+ *
  * The pause is simulated on the undo manager's clock: `lastChange` (a plain
  * field, plan §1.1) moves back by the pause; the rows themselves run well
  * inside `captureTimeout`.
@@ -28,8 +40,18 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import type { Plugin } from '$lib/plugins.js';
+import { blockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
+import { BLOCK_ACTIVATE_EVENT } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
+import { markdownShortcutsPlugin } from '$lib/plugins/markdownShortcuts.js';
+import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
+import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
+import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 import {
+	canonicalTree,
 	dispatchDomBeforeInput,
+	dispatchDomKeyDown,
 	flushDomUpdates,
 	renderDomEdytor,
 	setNativeSelection
@@ -127,5 +149,200 @@ describe('undo grouping does not depend on timing (R7, O31)', () => {
 		await type(editor, 'b');
 		expect(plainText(edytor)).toBe('helloab world');
 		expect(edytor.undoManager.undoStack.length).toBe(1);
+	});
+});
+
+/** One block per line: its kind and its text. */
+const blocks = (edytor: Edytor) =>
+	canonicalTree(edytor).map(({ type, data, content }) => ({
+		type,
+		...(data && { data }),
+		text: (content ?? []).map((part) => ('text' in part ? part.text : '@')).join('')
+	}));
+
+const press = async (element: Element) => {
+	element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+	element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await flushDomUpdates();
+};
+
+const menuOn = async (edytor: Edytor, editor: HTMLElement, index: number) => {
+	const block = edytor.root!.children[index]!;
+	editor.dispatchEvent(
+		new CustomEvent(BLOCK_ACTIVATE_EVENT, { detail: { block, anchor: block.node } })
+	);
+	await flushDomUpdates();
+};
+
+const turnInto = (label: string) =>
+	[...document.querySelectorAll('[aria-label="Turn into"] button')].find(
+		(button) => button.textContent === label
+	)!;
+
+const typed = { type: 'paragraph', text: 'helloa world' };
+const next = { type: 'paragraph', text: 'two' };
+
+/** Menu actions after typing `a` @5 of `hello world` (then `two`): the action alone, and what undo leaves. */
+const actions: [string, (edytor: Edytor, editor: HTMLElement) => Promise<void>, unknown[]][] = [
+	[
+		'Duplicate (block menu)',
+		async (edytor, editor) => {
+			await menuOn(edytor, editor, 0);
+			await press(document.querySelector('[data-testid="block-menu-duplicate"]')!);
+		},
+		[typed, typed, next]
+	],
+	[
+		'Turn into (block menu)',
+		async (edytor, editor) => {
+			await menuOn(edytor, editor, 0);
+			await press(document.querySelector('[data-testid="block-menu-turn"]')!);
+			await press(turnInto('Heading 2'));
+		},
+		[{ type: 'heading', data: { level: 'h2' }, text: 'helloa world' }, next]
+	],
+	[
+		'Turn into (toolbar)',
+		async (edytor) => {
+			const text = edytor.root!.children[0]!.firstText!;
+			edytor.selection.setAtRange(text, 0, text, 6);
+			await flushDomUpdates();
+			await press(document.querySelector('.toolbar-type')!);
+			await press(turnInto('Quote'));
+		},
+		[{ type: 'quote', text: 'helloa world' }, next]
+	],
+	[
+		'+',
+		async () => {
+			await press(document.querySelector('[data-testid="block-add"]')!);
+		},
+		[typed, { type: 'paragraph', text: '/' }, next]
+	],
+	[
+		'Remove (block menu)',
+		async (edytor, editor) => {
+			await menuOn(edytor, editor, 1);
+			await press(document.querySelector('[data-testid="block-menu-delete"]')!);
+		},
+		[typed]
+	]
+];
+
+describe('a menu action after typing is its own step (UW-16)', () => {
+	for (const [name, act, after] of actions)
+		for (const ms of [0, 900]) {
+			it(`H-G5: ${name} (${ms} ms later)`, async () => {
+				const { edytor, editor } = await renderDomEdytor(
+					<root>
+						<paragraph>hello| world</paragraph>
+						<paragraph>two</paragraph>
+					</root>,
+					{ plugins: [richTextPlugin, mentionPlugin, blockMenuPlugin, toolbarPlugin] }
+				);
+				edytor.undoManager.stopCapturing();
+				await type(editor, 'a');
+				pause(edytor, ms);
+				await act(edytor, editor);
+				expect(blocks(edytor)).toEqual(after);
+				expect(edytor.undoManager.undoStack.length).toBe(2);
+				edytor.historyUndo();
+				await flushDomUpdates();
+				expect(blocks(edytor)).toEqual([typed, next]);
+				expect(edytor.undoManager.undoStack.length).toBe(1);
+			});
+		}
+});
+
+const conversions: Plugin[] = [
+	richTextPlugin,
+	mentionPlugin,
+	markdownShortcutsPlugin,
+	slashMenuPlugin
+];
+
+const typeAll = async (editor: HTMLElement, value: string) => {
+	for (const data of value) await type(editor, data);
+};
+
+describe('a conversion inside the capture window is its own step (UW-16)', () => {
+	const mountEmpty = async () => {
+		const rendered = await renderDomEdytor(
+			<root>
+				<paragraph>|</paragraph>
+			</root>,
+			{ plugins: conversions }
+		);
+		rendered.edytor.undoManager.stopCapturing();
+		return rendered;
+	};
+
+	it('H-G6: `say **b**` then undo gives the typed markers back as text', async () => {
+		const { edytor, editor } = await mountEmpty();
+		await typeAll(editor, 'say **b**');
+		expect(canonicalTree(edytor)[0]!.content).toEqual([
+			{ text: 'say ' },
+			{ text: 'b', marks: { bold: true } }
+		]);
+		expect(edytor.undoManager.undoStack.length).toBe(2);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(blocks(edytor)).toEqual([{ type: 'paragraph', text: 'say **b*' }]);
+		expect(edytor.undoManager.undoStack.length).toBe(1);
+	});
+
+	it('H-G6: `## ` then undo gives a paragraph `##`', async () => {
+		const { edytor, editor } = await mountEmpty();
+		await typeAll(editor, '## ');
+		expect(blocks(edytor)).toEqual([{ type: 'heading', data: { level: 'h2' }, text: '' }]);
+		expect(edytor.undoManager.undoStack.length).toBe(2);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(blocks(edytor)).toEqual([{ type: 'paragraph', text: '##' }]);
+		expect(edytor.undoManager.undoStack.length).toBe(1);
+	});
+
+	it('H-G6: `hi /h2` + Enter then undo gives a paragraph `hi /h2`', async () => {
+		const { edytor, editor } = await mountEmpty();
+		await typeAll(editor, 'hi /h2');
+		await dispatchDomKeyDown(editor, { key: 'Enter' });
+		await flushDomUpdates();
+		expect(blocks(edytor)).toEqual([{ type: 'heading', data: { level: 'h2' }, text: 'hi ' }]);
+		expect(edytor.undoManager.undoStack.length).toBe(2);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(blocks(edytor)).toEqual([{ type: 'paragraph', text: 'hi /h2' }]);
+		expect(edytor.undoManager.undoStack.length).toBe(1);
+	});
+});
+
+describe('direct block commands follow the table (UW-16)', () => {
+	it('H-G7: each is one step; one `edytor.transact` makes them one', async () => {
+		const { edytor, editor } = await renderDomEdytor(
+			<root>
+				<paragraph>hello| world</paragraph>
+				<paragraph>two</paragraph>
+			</root>
+		);
+		edytor.undoManager.stopCapturing();
+		await type(editor, 'a');
+		const [first, second] = edytor.root!.children;
+		first!.insertBlockAfter({ block: { type: 'paragraph', content: [{ text: 'x' }] } });
+		second!.removeBlock();
+		expect(edytor.undoManager.undoStack.length).toBe(3);
+		edytor.transact(() => {
+			first!.insertBlockAfter({ block: { type: 'paragraph', content: [{ text: 'y' }] } });
+			first!.setBlock({ value: { type: 'quote' } });
+		});
+		await flushDomUpdates();
+		expect(blocks(edytor)).toEqual([
+			{ type: 'quote', text: 'helloa world' },
+			{ type: 'paragraph', text: 'y' },
+			{ type: 'paragraph', text: 'x' }
+		]);
+		expect(edytor.undoManager.undoStack.length).toBe(4);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(blocks(edytor)).toEqual([typed, { type: 'paragraph', text: 'x' }]);
 	});
 });

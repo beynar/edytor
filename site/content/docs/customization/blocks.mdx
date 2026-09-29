@@ -68,7 +68,7 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
     container: {
       type: "boolean",
       default: "false",
-      description: "A header over its children (a toggle, callout or quote): Enter at the end of one with children opens a first child. See Containers below.",
+      description: "A header over its children (a toggle, callout or quote): Enter at the end of one with children, or of an open `<details>` header, opens a first child. See Containers below.",
     },
     void: {
       type: "boolean",
@@ -209,7 +209,7 @@ A row has the preset's fields plus `id`, `value` (the JSON the block is converte
 
 Set `continues: true` on a list-like kind, as the rich text plugin does for bulleted and numbered items, to-dos and toggles. <kbd>Enter</kbd> then behaves as in Notion:
 
-- **At the end of a non-empty block**, it inserts a block of the same kind after it, with the data of the kind's first preset. A new to-do starts unchecked because its first preset's data is `{ checked: false }`, whatever the current one holds.
+- **At the end of a non-empty block**, it inserts a block of the same kind after it, with the data of the kind's first preset. A new to-do starts unchecked because its first preset's data is `{ checked: false }`, whatever the current one holds. A [container](#containers) that is also open or has children opens a first child instead.
 - **At the start of a non-empty block**, it inserts that block above and keeps the caret in the current one.
 - **In an empty block without children**, it ends the run: the block moves out one level when its parent is itself a continuing kind (a nested list item, `unNestBlock`); otherwise — at the top level, or inside a container such as a callout — it turns into its parent's default child in place (a paragraph).
 
@@ -227,7 +227,7 @@ blocks: {
 
 ## Containers
 
-Set `container: true` on a kind whose text is a header over its children, as the rich text plugin does for toggles, callouts and quotes. <kbd>Enter</kbd> at the end of such a block that has children inserts an empty block of its `defaultChild` kind (a paragraph by default) as its first child and puts the caret there, as Notion does. A header rendered as a closed `<details>` hides its children, so there <kbd>Enter</kbd> inserts a sibling after it instead (a block of the same kind when it also `continues`) and leaves the children in place. The open state is the browser's (`viewState: ['open']`), read from the block element. Without children, a container behaves like any other kind.
+Set `container: true` on a kind whose text is a header over its children, as the rich text plugin does for toggles, callouts and quotes. <kbd>Enter</kbd> at the end of such a block that has children inserts an empty block of its `defaultChild` kind (a paragraph by default) as its first child and puts the caret there, as Notion does. A header rendered as an open `<details>` does the same even without children: its body is showing, so the new block starts it. A closed `<details>` hides its body, so there <kbd>Enter</kbd> inserts a sibling after it instead (a block of the same kind when it also `continues`) and leaves any children in place. The open state is the browser's (`viewState: ['open']`), read from the block element. Any other container without children behaves like any other kind.
 
 ## Backspace at the start
 

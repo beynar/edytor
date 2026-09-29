@@ -78,8 +78,9 @@ A Durable Object has one alarm. The document sets it `saveAfter` ms after an uns
 | `maxRowBytes` | 1,995,904 | Largest stored row. Can only be lowered. |
 | `maxFrameBytes` | 32 MiB | Largest frame sent whole; larger ones are chunked. Can only be lowered. |
 | `tablePrefix` | `'edytor_'` | Prefix of the document's two tables. |
+| `semantics` | `defaultSemantics` | The block roles server edits obey. See [Block roles on the server](#block-roles-on-the-server). |
 
-`DocumentRoom` reads the same settings from `vars` (`EDYTOR_SAVE_AFTER`, `EDYTOR_COMPACT_AFTER`, …; see [the room](/docs/server/room#settings)) and uses the unprefixed tables `rows` and `replicas`.
+`DocumentRoom` reads the same settings from `vars` (`EDYTOR_SAVE_AFTER`, `EDYTOR_COMPACT_AFTER`, …; see [the room](/docs/server/room#settings)) and uses the unprefixed tables `rows` and `replicas`. It takes `semantics` from its `semantics()` method.
 
 ## Load
 
@@ -212,9 +213,21 @@ await env.NOTES.getByName(documentId).appendNote('Deployed v2');
 
 `read()` returns the document as JSON. A room with no document yet is seeded with one empty block before `transact` runs.
 
-:::note
-The server has no plugin definitions, so the facade does not know which block types are void or islands. Server edits that depend on those roles (moves into islands, merges) are not checked against them.
-:::
+### Block roles on the server
+
+The server has no plugins, so it takes the block roles it checks from `semantics`: which kinds are void or islands, which render no content, and each container's default child. The default, `defaultSemantics` from `edytor/crdt/edytor`, holds the kinds of the bundled rich-text, code and image plugins. Server edits obey them as a view does: merging into a divider, splitting an image or moving a code line out of its code block is `refused`.
+
+If your clients' plugins add void or island kinds, or redefine bundled ones, pass the same rules:
+
+```ts
+import { defaultSemantics } from 'edytor/crdt/edytor';
+
+document = attachDocument(this, {
+  semantics: { ...defaultSemantics, roles: { ...defaultSemantics.roles, embed: { void: true } } }
+});
+```
+
+In a `DocumentRoom` subclass, override `protected semantics()` and return the config. `semantics: {}` checks no roles.
 
 ## Subclassing `DocumentRoom`
 

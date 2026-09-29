@@ -71,12 +71,11 @@ export const canMoveBlocks = (edytor: Edytor, request: BlockMoveRequest): boolea
 /**
  * One move command (`moveBlock` for one block, `moveBlocks` for a group; an
  * `out` step plans the outdent, `unNestBlocks`): identity kept, one undo
- * step (cut before, R7); `[]` when refused or vetoed.
+ * step (the dispatcher cuts before it, R7); `[]` when refused or vetoed.
  */
 export const moveBlocks = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
 	const move = destination(edytor, request);
 	if (!move) return [];
-	edytor.dispatcher.cut('moveBlocks');
 	const [first, ...rest] = move.blocks;
 	if ('direction' in request && request.direction === 'out') {
 		// The outdent plan: the siblings after the last block follow it.

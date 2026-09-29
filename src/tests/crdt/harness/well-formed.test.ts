@@ -78,7 +78,7 @@ describe('wellFormed checks', () => {
 		).toEqual([]);
 	});
 
-	describe('promotion-hidden (opt-in)', () => {
+	describe('promotion-hidden (on by default)', () => {
 		const saved = process.env.DST_PROMOTION_ORACLE;
 		afterEach(() => {
 			if (saved === undefined) delete process.env.DST_PROMOTION_ORACLE;
@@ -86,13 +86,13 @@ describe('wellFormed checks', () => {
 		});
 		const input = { roots: [], hiddenUnderDeleted: () => ['G'] };
 
-		it('is off by default and on with DST_PROMOTION_ORACLE=1', () => {
+		it('is on by default and off with DST_PROMOTION_ORACLE=0', () => {
 			delete process.env.DST_PROMOTION_ORACLE;
-			expect(wellFormedProblems(input)).toEqual([]);
-			process.env.DST_PROMOTION_ORACLE = '1';
 			expect(wellFormedProblems(input)).toEqual([
 				'promotion-hidden: G hidden under a deleted holder'
 			]);
+			process.env.DST_PROMOTION_ORACLE = '0';
+			expect(wellFormedProblems(input)).toEqual([]);
 		});
 	});
 });

@@ -38,7 +38,8 @@
  *   block it displays through merge claims (R3), a whole-subtree delete
  *   every member; undo removes only the undoer's mark. An unmarked block
  *   under a marked one is promoted into its slot at read time
- *   (`displaySlotOf`), so a concurrent child is never hidden with it.
+ *   (`displaySlotOf`), so a concurrent child is never hidden with it; a
+ *   block under a void kind (`DisplayOwnership.childless`) likewise.
  *
  * Content ownership (R2, `text/model.ts`): a block displays its stream —
  * delimited by boundary items in a backing text — then the displays of the
@@ -192,6 +193,14 @@ export type ResolvedPlacement = {
 };
 
 /**
+ * Ownership as the display reads it. `childless(b)`: the live block `b` is
+ * of a kind that displays no children (a void role, UW-21b) — its children
+ * take its slot like a deleted parent's ({@link displaySlotOf}). Absent: no
+ * roles (pure engine behavior).
+ */
+export type DisplayOwnership = Ownership & { childless?: (b: BlockId) => boolean };
+
+/**
  * The document index as one consistent replicated-state view — the shared
  * currency of commands, anchors, projection and the change report.
  * `blocks`/`own` are always current; `placements`, `kids` (the
@@ -200,7 +209,7 @@ export type ResolvedPlacement = {
  */
 export type ModelView = {
 	blocks: Map<BlockId, BlockRec>;
-	own: Ownership;
+	own: DisplayOwnership;
 	placements: Map<BlockId, ResolvedPlacement>;
 	kids: Map<BlockId | null, { id: BlockId; rank: string }[]>;
 	/** Document order over `kids` — lazy, like `kids`. */
@@ -416,19 +425,23 @@ export const promotedRank = (slot: string, rank: string): string => slot + PROMO
  * derived at read time (`del.blocks.promote`, UW-08): the child takes the
  * deleted parent's slot, ranked just after it ({@link promotedRank}),
  * recursively. So whatever a peer split off, inserted or moved under a
- * block another writer deleted stays in the document. `DEAD` only when the
- * placement chain never reaches a live parent (an unknown block).
+ * block another writer deleted stays in the document. A childless owner (a
+ * void kind, `own.childless`) sheds its children the same way (UW-21b): a
+ * block a peer nests or splits under a block another peer retypes to a void
+ * kind takes the void's slot on every replica, and returns under it if the
+ * retype is undone. `DEAD` only when the placement chain never reaches a
+ * live parent (an unknown block).
  */
 export const displaySlotOf = (
-	own: Ownership,
+	own: DisplayOwnership,
 	placements: ReadonlyMap<BlockId, ResolvedPlacement>,
 	pl: ResolvedPlacement
 ): { parent: Owner | null; rank: string } => {
 	let { parent, rank } = pl;
 	for (let hops = 0; parent !== null; hops++) {
 		const owner = own.ownerOf(parent);
-		if (owner !== DEAD) return { parent: owner, rank };
-		const up = placements.get(parent);
+		if (owner !== DEAD && own.childless?.(owner) !== true) return { parent: owner, rank };
+		const up = placements.get(owner === DEAD ? parent : owner);
 		if (up === undefined || hops > placements.size) return { parent: DEAD, rank };
 		rank = promotedRank(up.rank, rank);
 		parent = up.parent;
@@ -438,7 +451,7 @@ export const displaySlotOf = (
 
 /** The parent under which a placement DISPLAYS ({@link displaySlotOf}). */
 export const displayParentOf = (
-	own: Ownership,
+	own: DisplayOwnership,
 	pl: ResolvedPlacement,
 	placements: ReadonlyMap<BlockId, ResolvedPlacement>
 ): Owner | null => displaySlotOf(own, placements, pl).parent;
@@ -451,7 +464,7 @@ export const displayParentOf = (
  */
 export const childrenIndex = (
 	placements: Map<BlockId, ResolvedPlacement>,
-	own: Ownership
+	own: DisplayOwnership
 ): Map<BlockId | null, { id: BlockId; rank: string }[]> => {
 	const index = new Map<BlockId | null, { id: BlockId; rank: string }[]>();
 	for (const [id, pl] of placements) {

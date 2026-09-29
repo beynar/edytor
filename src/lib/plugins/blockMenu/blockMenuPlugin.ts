@@ -21,11 +21,13 @@ export const createBlockMenuPlugin =
 		 * Beside the handle: 8px right of it, top-aligned; left of it when the
 		 * right has no room; flipped up when the space below is short. It
 		 * follows scrolls and resizes, and closes when the handle leaves the view.
+		 * Measured in the overlay's frame; the placement (or the close) is written after.
 		 */
+		const close = () => controller.close(false);
 		const place = (host: HTMLElement) => {
 			const anchor = controller.anchor;
 			if (!controller.isOpen) return;
-			if (!anchor?.isConnected) return controller.close(false);
+			if (!anchor?.isConnected) return close;
 			const view = host.ownerDocument.defaultView;
 			const menu =
 				host.querySelector<HTMLElement>('[data-edytor-block-menu]') ??
@@ -33,7 +35,7 @@ export const createBlockMenuPlugin =
 			if (!view || !menu) return;
 			const [gap, edge] = [8, 8];
 			const rect = anchor.getBoundingClientRect();
-			if (rect.bottom < 0 || rect.top > view.innerHeight) return controller.close(false);
+			if (rect.bottom < 0 || rect.top > view.innerHeight) return close;
 			const { width, height } = menu.getBoundingClientRect();
 			const right = rect.right + gap;
 			const left = rect.left - gap - width;
@@ -47,8 +49,7 @@ export const createBlockMenuPlugin =
 				rect.top + height <= view.innerHeight - edge
 					? rect.top
 					: Math.max(edge, Math.min(rect.bottom, view.innerHeight - edge) - height);
-			host.style.left = `${x}px`;
-			host.style.top = `${y}px`;
+			return () => Object.assign(host.style, { left: `${x}px`, top: `${y}px` });
 		};
 
 		return {

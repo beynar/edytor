@@ -53,6 +53,10 @@ Cloudflare limits a WebSocket message to 32 MiB. A frame the room sends that is 
 
 The room schedules no timers: each entry point runs with `setTimeout` and `setInterval` disabled (the exported `noTimers` helper), because a Durable Object with a pending timer cannot hibernate. Sockets stay connected while the object sleeps; identity comes back from the socket attachments and the document from storage.
 
+## Block roles
+
+Edits the room makes itself ([`transact`](/docs/server/extending#edit-on-the-server)) obey the block roles of the bundled rich-text, code and image plugins (`defaultSemantics`): the same edit a view refuses, such as merging into a divider or moving a code line out of its code block, is refused on the server. Rooms whose clients define other void or island kinds pass their own rules; see [Block roles on the server](/docs/server/extending#block-roles-on-the-server). Client edits are relayed as they come: the room does not check their roles.
+
 ## Settings
 
 Set these as `vars` in `wrangler.jsonc`. All are optional.

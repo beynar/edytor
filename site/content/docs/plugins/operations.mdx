@@ -50,7 +50,7 @@ A command is shown first, under its own name. If it is one document plan, each p
 | Gesture                                   | Command                        | Steps shown after it                                         |
 | ----------------------------------------- | ------------------------------ | ------------------------------------------------------------ |
 | Typing                                    | `insertText`                   | none                                                         |
-| <kbd>Enter</kbd>                          | `splitBlock`, `insertBlockAfter` or `insertBlockBefore`; in an empty list item, `unNestBlock` or `setBlock` | the steps it plans |
+| <kbd>Enter</kbd>                          | `splitBlock`, `insertBlockAfter` or `insertBlockBefore`; at the end of an open container header, `addChildBlock`; in an empty list item, `unNestBlock` or `setBlock` | the steps it plans |
 | <kbd>Backspace</kbd> at a block start     | `setBlock` on a kind other than the parent's default child (it turns into that default first); else `mergeBlockBackward` or `unNestBlock` | the child moves it plans |
 | <kbd>Tab</kbd>, <kbd>Shift</kbd> + <kbd>Tab</kbd> | `nestBlock`, `unNestBlock`; over several selected blocks, `moveBlocks` | the moves it plans                                           |
 | Deleting a range across blocks            | `deleteContentWithinSelection` | `deleteContentAtRange`, `removeBlock`, `mergeBlockBackward`  |
@@ -120,6 +120,44 @@ onBeforeOperation: ({ operation, payload, block, prevent }) => {
 ```
 
 The callback is a command of its own. If another plugin refuses one of the operations it issues, that operation writes nothing and the callback carries on. Each plugin replaces a given command at most once: while your callback runs, your own `prevent(cb)` on the operations it issues is ignored, so the callback can call the operation it replaced without recursing.
+
+## Triggers: one plan
+
+A trigger plugin (`:smile:` → 😄, `@query` → a mention) removes the text that triggered it and writes its replacement. Issued as two operations, a veto of the second leaves the trigger text already gone. Three dispatcher members make the pair one refusable command, as the slash menu and markdown shortcuts do:
+
+- `edytor.dispatcher.lead(plan, body)` runs `body` with `plan`, prepared now, composed into the first operation `body` dispatches: one plan in one transaction. Hooks see the lead's steps with that operation's; a veto of any of them, or a refusal, writes neither. When that operation is itself one plan, the lead's steps on a block whose whole content the operation replaces are dropped. Otherwise the lead applies first and the operation reads the state it leaves. It answers `{ out, taken }`: `body`'s result, and whether an operation took the lead. When `taken` is `false`, nothing of the lead was written: either `body` dispatched nothing (remove the trigger yourself, as the slash menu does for a command that writes later), or the lead was a refusal and `body` did not run.
+- `edytor.dispatcher.dispatch(operation, payload, { block, text? }, body, prepare?)` dispatches an operation of your own, under your own name: admission, `onBeforeOperation` for the command and, when `prepare` returns a plan, for each of its steps, then `body(payload, plan)` in one transaction, `dispatcher.last` and `onAfterOperation`. With `prepare`, apply the plan you are given (`facade.apply(plan)`), which a rewritten payload re-prepares. It answers `body`'s result, or `undefined` when refused.
+- `edytor.dispatcher.caret(text, offset, ops?)` is the command's result caret: selected once, recorded on `dispatcher.last.selection`, and shown after the DOM update. With `ops`, the caret is declared before `ops` runs, so it follows the edit, and is written only when `ops` returns a truthy value. A caret inside text the edit deletes does not survive: set it after the edit instead.
+
+`facade.prepare.<op>(…)` returns a `Prepared`: a `Plan`, or the operation's refusal. Both types are exported from `edytor`, and `'writes' in prepared` tells them apart. See [the document API](/docs/reference/document-api).
+
+```ts
+import type { Plugin } from 'edytor';
+
+const EMOJI: Record<string, string> = { smile: '😄' };
+
+/** Typing the closing `:` of `:smile:` replaces the whole trigger with its emoji. */
+export const emojiPlugin: Plugin = (edytor) => ({
+	onBeforeOperation: ({ operation, payload, block, prevent }) => {
+		if (operation !== 'insertText' || payload.value !== ':') return;
+		const { startText: text, yStart } = edytor.selection.state;
+		if (!text) return;
+		const match = /:(\w+)$/.exec(text.stringContent.slice(0, yStart));
+		const emoji = match && EMOJI[match[1]!];
+		if (!emoji) return;
+		const start = yStart - match[0].length;
+		prevent(() => {
+			const { dispatcher, facade } = edytor;
+			// `text.segStart` maps a segment offset to the block's display offset.
+			const trigger = facade.prepare.deleteText(block.id, text.segStart + start, match[0].length);
+			dispatcher.lead(trigger, () => text.insertText({ value: emoji, start, end: start }));
+			if (dispatcher.last?.status === 'applied') dispatcher.caret(text, start + emoji.length);
+		});
+	}
+});
+```
+
+If another plugin refuses the `insertText`, or the `deleteContentAtRange` step that removes `:smile`, nothing is written and no undo step is recorded: the trigger text stays.
 
 ## Rewriting the payload
 

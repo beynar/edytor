@@ -8,6 +8,7 @@
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
+import { createDocument } from '../../../lib/crdt/index.js';
 import { converge, replica, seedUpdate, tree } from './p1-harness.js';
 
 /** Every outcome converged, well-formed, and shows `expected`. */
@@ -237,5 +238,38 @@ describe('UW-21: a void kind never holds children (the target role decides)', ()
 		);
 		expect(o.problems).toEqual([]);
 		expect(tree(o.ed)).toBe('P:"p" K:"k" Z:"z"');
+	});
+
+	it('UW-21b: a void shows no children by the roles the document holds — adopted late too', () => {
+		const document = createDocument({
+			value: {
+				children: [
+					{
+						id: 'P',
+						type: 'divider',
+						content: [{ text: 'p' }],
+						children: [{ id: 'K', type: 'paragraph', content: [{ text: 'k' }] }]
+					},
+					{ id: 'Z', type: 'paragraph', content: [{ text: 'z' }] }
+				]
+			}
+		});
+		const ed = document.facade;
+		const changes: unknown[] = [];
+		ed.onChange((c) => changes.push(c));
+		// No roles yet: a divider is any kind, its child shows under it.
+		expect(tree(ed)).toBe('P:"p"[K:"k"] Z:"z"');
+		document.adoptSemantics(semantics);
+		expect(tree(ed)).toBe('P:"p" K:"k" Z:"z"');
+		expect([ed.parentOf('K'), ed.childrenIds('P'), ed.order()]).toEqual([
+			null,
+			[],
+			['P', 'K', 'Z']
+		]);
+		// Retyping it back to a kind that holds children shows the child under it again.
+		ed.setBlockType('P', 'paragraph');
+		expect(tree(ed)).toBe('P:"p"[K:"k"] Z:"z"');
+		expect(changes.length).toBeGreaterThan(0);
+		document.destroy();
 	});
 });

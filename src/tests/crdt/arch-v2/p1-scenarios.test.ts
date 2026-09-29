@@ -693,19 +693,81 @@ describe('capabilities under concurrency (review-probes/capabilities)', () => {
 			{ semantics }
 		);
 
-	it('retype to a void kind ‖ the peer nests a block under it → converges (void child: UW-21b)', () => {
-		for (const o of retypeNest()) {
-			// The one known residual: nothing rehomes a child a peer nested concurrently.
-			expect(
-				o.problems.filter((p) => !p.endsWith('void-children: void P has visible children'))
-			).toEqual([]);
-			expect(o.results.size).toBe(1);
+	// UW-21b: a void displays no children — one a peer nests concurrently
+	// takes the void's slot at read time, on every replica.
+	it('retype to a void kind ‖ the peer nests a block under it → P:"p" Q:"q"', () => {
+		for (const o of one(retypeNest())) expect(tree(o.ed)).toBe('P:"p" Q:"q"');
+	});
+
+	it('retype a parent to a void kind ‖ the peer splits its child → the tail follows its head (UW-21b)', () => {
+		for (const o of one(
+			converge(
+				[
+					{ id: 'P', text: 'p', children: [{ id: 'K', text: 'kk' }] },
+					{ id: 'Z', text: 'z' }
+				],
+				2,
+				([a, b]) => {
+					a.ed.setBlockType('P', 'divider');
+					b.ed.splitBlock('K', 1, 'K2');
+				},
+				{ semantics }
+			)
+		)) {
+			expect(tree(o.ed)).toBe('P:"p" K:"k" K2:"k" Z:"z"');
 		}
 	});
 
-	// TODO(UW-21b): post-integration rehoming of a void's children (review 2026-09-29).
-	it.skip('retype to a void kind ‖ the peer nests a block under it → P:"p" Q:"q"', () => {
-		for (const o of one(retypeNest())) expect(tree(o.ed)).toBe('P:"p" Q:"q"');
+	it('retype to a void kind ‖ the peer nests under it, then undo of the retype → the child is back under it (UW-21b)', () => {
+		for (const o of one(
+			converge(
+				[
+					{ id: 'P', text: 'p' },
+					{ id: 'Q', text: 'q' }
+				],
+				2,
+				([a, b]) => {
+					const retype = a.capture(() => a.ed.setBlockType('P', 'divider'));
+					const nest = b.capture(() => b.ed.nestBlock('Q', 'P'));
+					a.receiveAll(nest);
+					b.receiveAll(retype);
+					expect(a.tree()).toBe('P:"p" Q:"q"');
+					expect(b.tree()).toBe('P:"p" Q:"q"');
+					a.undo();
+					expect(a.tree()).toBe('P:"p"[Q:"q"]');
+				},
+				{ semantics }
+			)
+		)) {
+			expect(tree(o.ed)).toBe('P:"p"[Q:"q"]');
+		}
+	});
+
+	it('retype a parent to a void kind ‖ the peer splits its child and nests a block under it, then undo (site table)', () => {
+		for (const o of one(
+			converge(
+				[
+					{ id: 'P', text: 'p', children: [{ id: 'K', text: 'kk' }] },
+					{ id: 'N', text: 'n' }
+				],
+				2,
+				([a, b]) => {
+					const retype = a.capture(() => a.ed.setBlockType('P', 'divider'));
+					const peer = b.capture(() => {
+						b.ed.splitBlock('K', 1, 'K2');
+						b.ed.nestBlock('N', 'P');
+					});
+					a.receiveAll(peer);
+					b.receiveAll(retype);
+					expect(a.tree()).toBe('P:"p" K:"k" K2:"k" N:"n"');
+					expect(b.tree()).toBe('P:"p" K:"k" K2:"k" N:"n"');
+					a.undo();
+				},
+				{ semantics }
+			)
+		)) {
+			expect(tree(o.ed)).toBe('P:"p"[K:"k",K2:"k",N:"n"]');
+		}
 	});
 
 	it('retype to a void kind ‖ the peer splits it → converges', () => {

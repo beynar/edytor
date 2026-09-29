@@ -43,11 +43,14 @@ Edytor groups edits the way a text editor does:
 - **Deletions** (Backspace, Delete, cut, deleting a selection or blocks) start a new step.
 - **Enter** is a step of its own.
 - **Paste** and **drop** each start a new step.
-- **Structural edits** (inserting, nesting, unnesting and moving blocks, formatting) start a new step.
+- **Structural edits** (inserting, duplicating, converting, removing, nesting, unnesting and moving blocks, formatting) start a new step, whether they come from a key, a menu, a toolbar or a plugin calling a block command.
+- **Markdown and slash conversions** are a step of their own. Undo gives back what you typed as text: `## ` becomes a paragraph `##`, `**b**` becomes `**b*`, and `/h2` + <kbd>Enter</kbd> becomes the `/h2` text.
 - **An IME composition** (Japanese, Chinese, Korean input, and so on) is one step with its commit.
 - **Copy** records nothing.
 
 A command that plugins refuse records nothing. One `edytor.transact` call is never split across steps.
+
+These rules do not depend on how fast you work: a menu action a few milliseconds after typing is still its own step. Block commands you call yourself (`block.insertBlockAfter`, `block.setBlock`, `block.removeBlock` and the other structural commands, and deletions) follow the same table, one step each. To make several of them one step, run them in one `edytor.transact` call.
 
 Set the capture window when you create the document. `0` makes every commit its own step:
 

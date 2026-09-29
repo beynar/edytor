@@ -69,7 +69,13 @@
 import { DurableObject } from 'cloudflare:workers';
 import { Y } from '../crdt/engine.js';
 import * as E from '../crdt/index.js';
-import type { AwarenessEntry, EdytorDoc, JSONDoc, YDoc } from '../crdt/index.js';
+import type {
+	AwarenessEntry,
+	DocumentSemanticsConfig,
+	EdytorDoc,
+	JSONDoc,
+	YDoc
+} from '../crdt/index.js';
 
 const crdt = E.bindCrdt(Y);
 const sync = crdt.sync;
@@ -195,6 +201,21 @@ const knob = (value: unknown, fallback: number, max = fallback) => {
 	return Number.isInteger(n) && n > 0 ? Math.min(n, max) : fallback;
 };
 
+/** A semantics config as the facade's lookups — own keys only: block types come off the wire. */
+const lookups = (semantics: DocumentSemanticsConfig) => {
+	const own =
+		<T>(table: Record<string, T> = {}) =>
+		(type: string): T | undefined =>
+			Object.hasOwn(table, type) ? table[type] : undefined;
+	const rendersContent = own(semantics.rendersContent);
+	return {
+		roleOf: own(semantics.roles),
+		defaultChildOf: own(semantics.defaultChild),
+		rendersContent: (type: string) => rendersContent(type) ?? true,
+		defaultType: semantics.defaultType
+	};
+};
+
 const encodeJSON = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 
 /** An awareness frame carrying `entries` — no `Awareness` instance involved. */
@@ -297,6 +318,13 @@ export type AttachDocumentOptions = {
 	maxFrameBytes?: number;
 	/** Prefix of the document's SQL tables, beside your own (default `'edytor_'`). */
 	tablePrefix?: string;
+	/**
+	 * The block roles `transact` edits obey — the document semantics your
+	 * clients' plugins declare (`defaultType` also names the block an empty
+	 * room is seeded with). Default
+	 * {@link E.defaultSemantics} (the bundled rich-text, code and image kinds).
+	 */
+	semantics?: DocumentSemanticsConfig;
 };
 
 /** The tag of the document's sockets: other sockets of the object are left to you. */
@@ -339,6 +367,7 @@ export class AttachedDocument {
 	private readonly options: AttachDocumentOptions;
 	private readonly rowsTable: string;
 	private readonly replicasTable: string;
+	private readonly lookups: ReturnType<typeof lookups>;
 
 	constructor(ctx: DurableObjectState, options: AttachDocumentOptions = {}) {
 		this.ctx = ctx;
@@ -348,6 +377,7 @@ export class AttachedDocument {
 		this.maxFrameBytes = knob(options.maxFrameBytes, E.MAX_FRAME_BYTES);
 		this.compactAfter = knob(options.compactAfter, DEFAULT_COMPACT_AFTER, 1e9);
 		this.saveAfter = knob(options.saveAfter, DEFAULT_SAVE_AFTER, 1e9);
+		this.lookups = lookups(options.semantics ?? E.defaultSemantics);
 		const prefix = options.tablePrefix ?? 'edytor_';
 		if (!/^\w*$/.test(prefix)) throw new Error(`invalid table prefix ${prefix}`);
 		this.rowsTable = `${prefix}rows`;
@@ -380,9 +410,9 @@ export class AttachedDocument {
 
 	// ── Server-side access ───────────────────────────────────────────────
 
-	/** A facade over `doc` (roles unknown: no plugin definitions on the server). */
+	/** A facade over `doc` obeying the room's block roles (`semantics`). */
 	private facadeOf(doc: YDoc): EdytorDoc {
-		return crdt.doc.create(doc as never) as EdytorDoc;
+		return crdt.doc.create(doc as never, this.lookups) as EdytorDoc;
 	}
 
 	/** The facade over the live document. */
@@ -1063,6 +1093,7 @@ export class DocumentRoom<
 			compactAfter: Number(knobs.EDYTOR_COMPACT_AFTER),
 			saveAfter: Number(knobs.EDYTOR_SAVE_AFTER),
 			tablePrefix: '',
+			semantics: this.semantics(),
 			onLoad: () => this.onLoad(),
 			onSave: saves ? (document) => this.onSave(document) : undefined
 		});
@@ -1075,6 +1106,11 @@ export class DocumentRoom<
 
 	/** Save — see {@link AttachDocumentOptions.onSave}. Not overridden: no alarm is ever set. */
 	protected async onSave(_document: SavedDocument): Promise<void> {}
+
+	/** Block roles — see {@link AttachDocumentOptions.semantics}. Read once, at construction. */
+	protected semantics(): DocumentSemanticsConfig {
+		return E.defaultSemantics;
+	}
 
 	fetch(request: Request): Promise<Response> {
 		return this.room.fetch(request);

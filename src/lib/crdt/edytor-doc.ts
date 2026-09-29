@@ -791,6 +791,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const defaultChildOf = config.defaultChildOf ?? (() => undefined);
 		const rendersContentOf = config.rendersContent ?? (() => true);
 		const runsView: RunView = R.attach(doc);
+		// UW-21b: a void kind displays no children — the index sheds them
+		// into its slot at read time, so a child a peer nests or splits under
+		// a block another peer retypes to a void shows on every replica.
+		const voidKind = (type: string): boolean => roleOf(type)?.void === true;
+		if (config.roleOf) runsView.childless(voidKind);
 
 		/**
 		 * Terminal flag — set by `dispose()`. Mutating ops funnel through
@@ -1782,18 +1787,29 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * The target role decides (UW-21): nothing renders a void's children,
 		 * so a block retyped to a void kind hands them to the slot right after
 		 * it — the island-merge rule (an island's children take the slot
-		 * parent's default child type).
+		 * parent's default child type). Each moves to the rank the read-time
+		 * shedding gives it (`promotedRank`, UW-21b), so a child a peer adds
+		 * meanwhile keeps its place in the void's order among them.
 		 */
 		const retypeSteps = (id: BlockId, type: string): PlanStep[] => {
-			const kids = childrenIds(id);
+			const { kids } = view();
 			const pos = positionOf(id);
 			const steps = attr(id, TYPE, type);
-			if (roleOf(type)?.void !== true || kids.length === 0 || pos === null) return steps;
+			const moved = kids.get(id) ?? [];
+			if (roleOf(type)?.void !== true || moved.length === 0 || pos === null) return steps;
+			const slot = kids.get(pos.parent)![pos.index]!.rank;
+			const ids = moved.map((k) => k.id);
 			const reset = isIsland(id) ? defaultChild(pos.parent) : null;
 			return [
 				...steps,
-				...move(kids, pos.parent, pos.index + 1),
-				...(reset === null ? [] : kids.flatMap((kid) => attr(kid, TYPE, reset)))
+				{
+					op: 'moveBlocks',
+					ids,
+					parent: pos.parent,
+					index: pos.index + 1,
+					ranks: moved.map((k) => promotedRank(slot, k.rank))
+				},
+				...(reset === null ? [] : ids.flatMap((kid) => attr(kid, TYPE, reset)))
 			];
 		};
 
@@ -2157,6 +2173,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			resolveAnchor,
 			followUndo,
 			// roles
+			/** Re-read the roles after `roleOf` answers differently (roles adopted later). */
+			rolesChanged: () => runsView.childless(voidKind),
 			isVoid: byRef(isVoid),
 			isIsland: byRef(isIsland),
 			islandOf: byRef((id: BlockId) => islandOf(id)),

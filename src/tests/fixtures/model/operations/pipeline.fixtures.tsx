@@ -256,7 +256,8 @@ export const fixtures = defineFixtures([
 		)
 	}),
 	defineModelOperationFixture({
-		description: 'rejects a relative sibling move whose destination parent is void',
+		description:
+			'a void displays no children — a child placed under one takes its slot — and rejects a move inside it (UW-21b)',
 		input: (
 			<root>
 				<paragraph>source</paragraph>
@@ -266,18 +267,18 @@ export const fixtures = defineFixtures([
 			</root>
 		),
 		run: ({ edytor }) => {
-			const [source, parent] = edytor.root!.children;
-			const target = parent.children[0];
-			const request = { blocks: [source], target, position: 'before' as const };
+			const [source, divider, child] = edytor.root!.children;
+			expect(divider.children).toEqual([]);
+			expect(child.parent).toBe(edytor.root);
+			const request = { blocks: [source], target: divider, position: 'inside' as const };
 			expect(edytor.canMoveBlocks(request)).toBe(false);
 			expect(edytor.moveBlocks(request)).toEqual([]);
 		},
 		output: (
 			<root>
 				<paragraph>source</paragraph>
-				<divider>
-					<paragraph>child</paragraph>
-				</divider>
+				<divider></divider>
+				<paragraph>child</paragraph>
 			</root>
 		)
 	}),

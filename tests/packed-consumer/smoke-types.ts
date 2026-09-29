@@ -135,7 +135,8 @@ const docSeed: JSONDoc = {
 };
 const rootDoc: EdytorDocument = createDocument({
 	value: docSeed,
-	actor: { id: 'root-actor' } satisfies DocumentActor
+	actor: { id: 'root-actor' } satisfies DocumentActor,
+	semantics: bindings.defaultSemantics
 });
 const rootReadiness: DocumentReadiness = rootDoc.readiness;
 const rootProjected: ProjectedDoc = rootDoc.facade.project();

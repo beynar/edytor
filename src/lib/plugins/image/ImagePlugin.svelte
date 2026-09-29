@@ -2,6 +2,7 @@
 	import type { Plugin, BlockSnippetPayload } from '$lib/plugins.js';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import ImageEmpty from './ImageEmpty.svelte';
+	import { imageKinds } from '$lib/crdt/semantics.js';
 	import { safeImageSrc } from './image.js';
 
 	export { safeImageSrc };
@@ -32,7 +33,7 @@
 			},
 			blocks: {
 				image: {
-					void: true,
+					...imageKinds.image,
 					snippet: image,
 					element: 'figure',
 					presets: [

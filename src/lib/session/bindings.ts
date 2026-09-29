@@ -30,7 +30,6 @@ export const replaceSelectedAtom = (edytor: Edytor, value = '') => {
 		edytor.selection.selectedInlineBlock.values().next().value ??
 		edytor.selection.inlineBlockDeletionTarget;
 	if (!selected) return false;
-	edytor.dispatcher.cut(value ? 'replaceInlineBlock' : 'deleteInlineBlock');
 	edytor.selection.clearInlineBlockSelection();
 	const { parent } = selected;
 	const index = parent.content.indexOf(selected);
@@ -152,7 +151,6 @@ const nest =
 				if (moved.length) edytor.selection.selectBlocks(...moved);
 				return;
 			}
-			edytor.dispatcher.cut(operation);
 			const selectedBlock = selectedBlocks.values().next().value as Block | undefined;
 			const { yStart, startText, startBlock } = edytor.selection.state;
 			const index = startText?.index;
@@ -171,7 +169,6 @@ const deleteSelection: HotKey = ({ edytor, prevent }) => {
 		return prevent(() => replaceSelectedAtom(edytor));
 	if (!edytor.selection.selectedBlocks.size) return;
 	prevent(() => {
-		edytor.dispatcher.cut('deleteBlocks');
 		const selectedBlocks = getSelectedBlocksInDocumentOrder(edytor);
 		if (!selectedBlocks.length) return;
 		edytor.plugins.forEach((plugin) =>
@@ -226,7 +223,6 @@ export const builtInBindings: Record<string, HotKey> = {
 	'mod+y': (payload) => (payload.edytor.hotKeys.isMac ? undefined : history('redo')(payload)),
 	'mod+enter': ({ edytor, prevent }) => {
 		prevent(() => {
-			edytor.dispatcher.cut('insertBlock');
 			const { startText } = edytor.selection.state;
 			const newBlock = startText?.parent.splitBlock({ index: startText.length, text: startText });
 			if (newBlock && newBlock.content[0] instanceof Text) {

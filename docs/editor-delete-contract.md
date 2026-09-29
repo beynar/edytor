@@ -295,8 +295,9 @@ with its grandchild, typing into the tail, nested promote-deletes, a
 concurrent child, the whole-subtree control), `p1-scenarios.test.ts` §9
 (9a-9d) and 6b, `scenarios/active-model.ts` MV06b,
 `scenarios/active-text.ts` ST02d, `review-20260929-core.test.ts`; the
-corpus oracle `promotion-hidden` (`DST_PROMOTION_ORACLE=1`) flags an
-unmarked block hidden under a deleted holder.
+corpus and p1 oracle `promotion-hidden` (on by default,
+`DST_PROMOTION_ORACLE=0` turns it off) flags an unmarked block hidden
+under a deleted holder.
 
 ## Collapsed caret deletion
 
@@ -590,6 +591,24 @@ never combine `createDocument({ value })` (it seeds immediately) with
 id-less template seeded late into a document an older build seeded (full
 32-bit writer) mints new ids and shows twice, once. Pins:
 `t3-seed.test.ts` (UW-03 rows, F-T11/F-T12/F-T17).
+
+### `conc.void-children` — a void kind displays no children
+
+Nothing renders a void block's children, so a void never shows any. A
+retype to a void kind (`setBlockType`, `setBlock` without `children`)
+moves the block's children to its slot, right after it, in their order;
+the island-merge rule resets an island's children to the slot parent's
+default child type (UW-21). A child a peer adds concurrently — nested
+under the block, split off one of its children, moved into it — displays
+in the void's slot too: the rule is derived when the document is read
+(UW-21b, `placement/model.ts` `displaySlotOf`, like `del.blocks.promote`),
+from the document's roles, so every replica with the same roles agrees
+without a repair write, and the retype's own moves write the rank the
+read gives (`promotedRank`), so a split tail stays after its head. Undo
+of the retype (A retypes, B nests Q, A undoes) puts Q back under the
+block: its placement never changed. Pins: `p1-scenarios.test.ts`
+("capabilities under concurrency"), `review-20260929-units.test.ts`
+(UW-21), `p1-fuzz.test.ts` and the `void-children` well-formed check.
 
 ### `conc.undo.actor-local` — undo after remote edits
 

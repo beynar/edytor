@@ -10,12 +10,12 @@
  *   concurrent delete of the target revived it) is ranked before the
  *   source's former children (UW-20).
  * - `void-children` — no void kind has visible children: nothing renders
- *   them (UW-21).
+ *   them (UW-21; a concurrent child displays in the void's slot, UW-21b).
  * - `seed-displacement` — a block id keeps the registry node it was first
  *   seen with: a seed never displaces pre-existing content (UW-03).
  * - `promotion-hidden` — no unmarked block hides under a delete-marked
- *   holder (UW-08). Opt-in with `DST_PROMOTION_ORACLE=1` until read-time
- *   promotion lands; the gate turns it on.
+ *   holder (UW-08: read-time promotion puts it in the holder's slot). On
+ *   by default; `DST_PROMOTION_ORACLE=0` turns it off for a local bisect.
  *
  * The runner (`random/runner.ts`) and the p1 harness (`arch-v2/p1-harness.ts`)
  * both feed {@link wellFormedProblems}; each backend supplies the inputs it
@@ -112,7 +112,7 @@ export const WELL_FORMED_CHECKS: Record<string, Check> = {
 		}
 	},
 	'promotion-hidden': {
-		enabled: () => process.env.DST_PROMOTION_ORACLE === '1',
+		enabled: () => process.env.DST_PROMOTION_ORACLE !== '0',
 		run: ({ hiddenUnderDeleted }) =>
 			(hiddenUnderDeleted?.() ?? []).map((id) => `${id} hidden under a deleted holder`)
 	}

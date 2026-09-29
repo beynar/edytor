@@ -54,6 +54,7 @@ import type {
 	BlockId,
 	BlockRec,
 	ContentItem,
+	DisplayOwnership,
 	DocOrder,
 	ModelView,
 	ProjectedBlock,
@@ -81,7 +82,6 @@ import {
 	scanText,
 	type Claim,
 	type Owner,
-	type Ownership,
 	type RangeReadStats,
 	type Stream,
 	type TextRow
@@ -262,6 +262,12 @@ export type RunView = {
 	/** The visible tree, or the subtree rooted at `root`, projected. */
 	project: (root?: BlockId) => ProjectedBlock[];
 	/**
+	 * Set the kinds that display no children (void roles, UW-21b): a child
+	 * of such a block displays in its slot. Call again when the answer
+	 * changes for a kind (roles adopted later); the placements rebuild.
+	 */
+	childless: (kinds: (type: string) => boolean) => void;
+	/**
 	 * Track the folds from now on (the write funnel's frame): `end()` folds
 	 * what is pending and returns the facets every fold since `track()` saw
 	 * per block, and whether the transaction wrote anything meanwhile.
@@ -417,9 +423,15 @@ export const bindRuns = (Y: EngineApi) => {
 			}
 		};
 
-		const ownShim: Ownership = {
+		/** The kinds that display no children (`childless`); `null` → none. */
+		let childlessKind: ((type: string) => boolean) | null = null;
+		const ownShim: DisplayOwnership = {
 			ownerOf,
 			hidden: (b) => ownerOf(b) !== b,
+			childless: (b) => {
+				const type = blocks.get(b)?.type;
+				return childlessKind !== null && type !== undefined && childlessKind(type);
+			},
 			top: (m) => {
 				ensureOwners();
 				return tops.get(m);
@@ -753,9 +765,13 @@ export const bindRuns = (Y: EngineApi) => {
 					ensureRec(id);
 					const rec = blocks.get(id);
 					if (rec) {
+						const was = rec.type;
 						const type = rec.node.getAttr(TYPE);
 						rec.type = typeof type === 'string' ? type : 'unknown';
 						rec.data = rec.node.getAttr(DATA);
+						// A retype into or out of a childless kind re-parents its children.
+						if (childlessKind !== null && childlessKind(was) !== childlessKind(rec.type))
+							ctx.placement = true;
 					}
 				}
 				ensureRec(id);
@@ -1210,6 +1226,11 @@ export const bindRuns = (Y: EngineApi) => {
 				return root === undefined
 					? (kidsMap!.get(null) ?? []).map((k) => projectBlock(k.id))
 					: [projectBlock(root)];
+			},
+			childless: (kinds) => {
+				childlessKind = kinds;
+				placementVersion++;
+				version++;
 			},
 			track: () => {
 				syncPending(openTx());

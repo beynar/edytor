@@ -41,15 +41,21 @@ type Change = {
 };
 
 /**
- * The undo policy (O31, FP-2) — today's grouping: deletions, paste, drop and
- * structural commands cut the capture before they write; a paragraph split
- * also cuts after; everything else (insertions) coalesces within
+ * The undo policy (O31, FP-2), owned here: a user command (`run`) applies it
+ * by its kind, and an operation dispatched outside one (a menu action, a
+ * plugin, a headless call) by its name. Deletions, paste, drop, formatting
+ * and structural operations cut the capture before they write; a paragraph
+ * split also cuts after; everything else (insertions) coalesces within
  * `captureTimeout` when it continues the step before it (it starts where that
  * step left this view's selection, `history.continues`), else it cuts: an
  * insertion after the caret moved is its own step whatever the pause, so the
- * grouping never depends on timing alone. A composition session groups like
- * an insertion and is one capture group: `session/composition` holds it open
- * between its writes.
+ * grouping never depends on timing alone. Only a user command asks that
+ * question: a bare operation cuts only by the table. A conversion (a markdown
+ * or slash trigger with the kind it completes, `lead`; an inline markdown
+ * mark) is its own step, so undo gives the typed trigger back. A composition
+ * session groups like an insertion and is one capture group:
+ * `session/composition` holds it open between its writes, and no operation
+ * cuts while it is live.
  */
 const CUT: Record<string, 'before' | 'both'> = {
 	insertParagraph: 'both',
@@ -58,10 +64,24 @@ const CUT: Record<string, 'before' | 'both'> = {
 	insertFromDrop: 'before',
 	insertBlock: 'before',
 	replaceInlineBlock: 'before',
+	format: 'before',
+	// Structural operations.
+	insertBlockAfter: 'before',
+	insertBlockBefore: 'before',
+	insertDivider: 'before',
+	insertFlow: 'before',
+	setBlock: 'before',
+	removeBlock: 'before',
+	splitBlock: 'before',
+	mergeBlockBackward: 'before',
+	mergeBlockForward: 'before',
+	moveBlock: 'before',
+	moveBlocks: 'before',
 	nestBlock: 'before',
 	unNestBlock: 'before',
-	moveBlocks: 'before',
-	format: 'before',
+	removeInlineBlock: 'before',
+	// A conversion: typed markers become a mark.
+	inlineMarkdown: 'before',
 	// A DOM change no input occurrence owns (a foreign script): its own step.
 	foreignChange: 'both'
 };
@@ -279,6 +299,8 @@ export class Dispatcher {
 			return body(payload, plan);
 		}
 		const version = this.edytor.facade.version;
+		const cut = this.policy(operation, lead);
+		if (cut) this.edytor.undoManager?.stopCapturing();
 		let result: R;
 		try {
 			result = this.edytor.transact(() => {
@@ -295,6 +317,7 @@ export class Dispatcher {
 			this.last = { operation, status: 'failed', error };
 			throw error;
 		}
+		if (cut === 'both') this.edytor.undoManager?.stopCapturing();
 		this.last = {
 			operation,
 			status: this.edytor.facade.version === version ? 'noop' : 'applied'
@@ -422,6 +445,19 @@ export class Dispatcher {
 			this.draining = false;
 		}
 	};
+
+	/**
+	 * The cut an operation applies as it writes. Outside a user command it is
+	 * one: the table's cut, never the continuation question. A led operation
+	 * is a conversion: its own step even inside one. None while a composition
+	 * is live (its writes are one group).
+	 */
+	private policy(operation: string, lead: Plan | null) {
+		if (this.edytor.composition.live) return undefined;
+		if (lead) return 'before';
+		const policy = this.running ? 'continue' : policyOf(operation);
+		return policy === 'continue' ? undefined : policy;
+	}
 
 	private refuse(operation: string): undefined {
 		this.last = { operation, status: 'refused' };

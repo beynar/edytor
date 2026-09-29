@@ -92,18 +92,19 @@ const formatSelectedTextRange = (
 		return;
 	}
 
-	edytor.dispatcher.cut('format');
-	texts.forEach((text, index) => {
-		const isFirst = index === 0;
-		const isLast = index === texts.length - 1;
-		text.markText({
-			mark,
-			value,
-			toggle,
-			start: isFirst ? yStart : 0,
-			end: isLast ? yEnd : text.length
-		});
-	});
+	edytor.dispatcher.run('format', () =>
+		texts.forEach((text, index) => {
+			const isFirst = index === 0;
+			const isLast = index === texts.length - 1;
+			text.markText({
+				mark,
+				value,
+				toggle,
+				start: isFirst ? yStart : 0,
+				end: isLast ? yEnd : text.length
+			});
+		})
+	);
 	edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 };
 
@@ -169,15 +170,17 @@ export const richTextOperations = (edytor: Edytor) => ({
 			return;
 		}
 
-		texts.forEach((text, index) => {
-			const isFirst = index === 0;
-			const isLast = index === texts.length - 1;
-			const start = isFirst ? yStart : 0;
-			const end = isLast ? yEnd : text.length;
-			if (end > start) {
-				text.removeMarksFromText({ start, end });
-			}
-		});
+		edytor.dispatcher.run('format', () =>
+			texts.forEach((text, index) => {
+				const isFirst = index === 0;
+				const isLast = index === texts.length - 1;
+				const start = isFirst ? yStart : 0;
+				const end = isLast ? yEnd : text.length;
+				if (end > start) {
+					text.removeMarksFromText({ start, end });
+				}
+			})
+		);
 	},
 	setLinkAtRange: (link: RichTextLink) => {
 		// Reject scriptable/empty hrefs at the write boundary — the model
@@ -215,11 +218,12 @@ export const richTextOperations = (edytor: Edytor) => ({
 		if (isCollapsed) {
 			if (startText) {
 				// Stage the full set the next insertion carries, values kept (O29).
-				edytor.dispatcher.cut('format');
-				edytor.selection.stage({
-					...marksForInsertion(startText, yStart, { pending: edytor.selection.pending }),
-					[mark]: safeValue
-				});
+				edytor.dispatcher.run('format', () =>
+					edytor.selection.stage({
+						...marksForInsertion(startText, yStart, { pending: edytor.selection.pending }),
+						[mark]: safeValue
+					})
+				);
 				edytor.selection.setAtTextOffset(startText, yStart);
 			}
 			return;
@@ -230,14 +234,15 @@ export const richTextOperations = (edytor: Edytor) => ({
 		const { yStart, yEnd, startText, endText, texts, isCollapsed } = edytor.selection.state;
 		if (isCollapsed) {
 			if (startText) {
-				edytor.dispatcher.cut('format');
-				startText.markText({
-					mark,
-					value,
-					toggle: true,
-					start: yStart,
-					end: yEnd
-				});
+				edytor.dispatcher.run('format', () =>
+					startText.markText({
+						mark,
+						value,
+						toggle: true,
+						start: yStart,
+						end: yEnd
+					})
+				);
 				edytor.selection.setAtRange(startText, yStart, endText, yEnd);
 			}
 			return;

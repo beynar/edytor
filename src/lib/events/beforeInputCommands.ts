@@ -218,7 +218,7 @@ const insertFromDataTransfer = async (edytor: Edytor, snapshot: Attempt) => {
 /** Enter at the end of a block with content and children: a split whose tail keeps the kind. */
 const liftContent = (block: Block, text: Text): Block | null => {
 	const plan = dispatchPlan(block, 'splitBlock', { index: text.length, text }, ({ index, text }) =>
-		block.edytor.facade.prepare.splitBlock(block.model!.id, text.segStart + index, id('b'), {
+		block.edytor.facade.prepare.splitBlock(block.id, text.segStart + index, id('b'), {
 			type: block.type,
 			data: cloneJson(block.data)
 		})
@@ -264,13 +264,15 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	}
 
 	if (isAtEndOfBlock) {
-		// A container's header (toggle, callout, quote) opens a first child (Notion);
-		// a closed toggle — the browser owns `open` — a sibling after it instead.
-		if (current.definition.container && current.hasChildren) {
-			const closed = (current.node as HTMLDetailsElement | undefined)?.open === false;
-			const opened = closed
-				? current.insertBlockAfter({ block: sibling })
-				: current.addChildBlock({ block: { type: edytor.defaultChild(current) }, index: 0 });
+		// A container's header (toggle, callout, quote) with children, or an open
+		// toggle's even without, opens a first child (Notion); a closed toggle —
+		// the browser owns `open` — a sibling after it instead.
+		const open = (current.node as HTMLDetailsElement | undefined)?.open;
+		if (current.definition.container && (current.hasChildren || open)) {
+			const opened =
+				open === false
+					? current.insertBlockAfter({ block: sibling })
+					: current.addChildBlock({ block: { type: edytor.defaultChild(current) }, index: 0 });
 			return caretAt(opened?.firstText, 0);
 		}
 		const currentBlock = startText.parent;

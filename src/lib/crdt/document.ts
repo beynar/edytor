@@ -644,6 +644,8 @@ export class EdytorDocument {
 			const adopted = this._capability[table] as Map<string, unknown>;
 			for (const [type, value] of entries) adopted.set(type, value);
 		}
+		// A newly void kind sheds its children at read time (UW-21b).
+		if (Object.values(config.roles ?? {}).some((role) => role?.void)) this.facade.rolesChanged();
 	};
 
 	/**

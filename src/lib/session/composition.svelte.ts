@@ -283,15 +283,18 @@ export class Composition {
 		// A declared target range re-states where the composition starts.
 		if (this.#start && !attempt?.declared) selection.select(this.#start);
 		// The first write groups like a typed insertion (O31): it continues the
-		// step before it only from where that step left the selection.
+		// step before it only from where that step left the selection. Its
+		// operations are the session's command: they cut nothing of their own.
 		dispatcher.cut('insertText');
 		const target = this.#tracked(() =>
-			dispatcher.scope(
-				() =>
-					selection.selectedBlocks.size
-						? replaceSelectedBlocksWithEmptyBlockTargetSync(edytor)
-						: replaceSelectionWithCollapsedTarget(edytor),
-				() => (this.#refused = true)
+			dispatcher.run('insertFromComposition', () =>
+				dispatcher.scope(
+					() =>
+						selection.selectedBlocks.size
+							? replaceSelectedBlocksWithEmptyBlockTargetSync(edytor)
+							: replaceSelectionWithCollapsedTarget(edytor),
+					() => (this.#refused = true)
+				)
 			)
 		);
 		const start = target && selection.createTextAnchor(target.text, target.offset, 'left');

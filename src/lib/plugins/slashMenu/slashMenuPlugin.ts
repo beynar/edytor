@@ -31,7 +31,7 @@ export const createSlashMenuPlugin =
 	(edytor) => {
 		const controller = new SlashMenuController(edytor);
 
-		/** Beside the caret, kept in the viewport; run by the overlay's frame (R11). */
+		/** Beside the caret, kept in the viewport; measured in the overlay's frame, written after (R11). */
 		const positionMenu = (host: HTMLElement) => {
 			const editor = edytor.node;
 			if (!editor || !controller.isOpen) return;
@@ -52,8 +52,9 @@ export const createSlashMenuPlugin =
 			if (!rect) rect = editor.getBoundingClientRect();
 			const width = host.firstElementChild?.getBoundingClientRect().width || 310;
 			const height = host.firstElementChild?.getBoundingClientRect().height || 350;
-			host.style.left = `${Math.max(8, Math.min(rect.left, view.innerWidth - width - 8))}px`;
-			host.style.top = `${Math.max(8, rect.bottom + height + 8 < view.innerHeight ? rect.bottom + 8 : rect.top - height - 8)}px`;
+			const left = `${Math.max(8, Math.min(rect.left, view.innerWidth - width - 8))}px`;
+			const top = `${Math.max(8, rect.bottom + height + 8 < view.innerHeight ? rect.bottom + 8 : rect.top - height - 8)}px`;
+			return () => Object.assign(host.style, { left, top });
 		};
 
 		const schedulePosition = () => edytor.overlay.invalidate();

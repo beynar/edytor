@@ -49,21 +49,23 @@ export class Overlay {
 
 	/**
 	 * Mount `component` in a fixed host of the layer (`data-<name>`), placed by
-	 * `place` on every invalidated frame; answers the teardown.
+	 * `measure` on every invalidated frame — a measure like any other: it reads
+	 * (the host, the layer's origin) and returns the host's style writes.
+	 * Answers the teardown.
 	 */
 	mount = <Props extends Record<string, unknown>>(
 		component: Component<Props>,
 		props: Props,
 		name: string,
 		zIndex: number,
-		place: (host: HTMLElement) => void
+		measure: (host: HTMLElement, origin: DOMRect) => (() => void) | void
 	) => {
 		const host = (this.layer?.ownerDocument ?? document).createElement('div');
 		host.setAttribute(`data-${name}`, 'true');
 		host.style.cssText = `position: fixed; z-index: ${zIndex}`;
 		this.layer?.append(host);
 		const instance = mount(component, { target: host, props });
-		const off = this.add(() => () => place(host));
+		const off = this.add((origin) => measure(host, origin));
 		return () => {
 			off();
 			void unmount(instance);

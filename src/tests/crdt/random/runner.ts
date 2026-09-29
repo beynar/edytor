@@ -75,8 +75,8 @@
  *   → hard failure on every adapter that provides the oracle.
  * - `ill-formed` — a replica broke a named `wellFormed` invariant
  *   (`harness/assert/well-formed.ts`: registered type, merge order, void
- *   children, seed displacement, and — with `DST_PROMOTION_ORACLE=1` —
- *   promotion). Checked on EVERY replica after EVERY step and at the
+ *   children, seed displacement and promotion — `DST_PROMOTION_ORACLE=0`
+ *   turns the last off). Checked on EVERY replica after EVERY step and at the
  *   barrier, on the strict lane only. Never expected → hard failure.
  * - `crash` / `divergence` / `unknown` — never expected → hard failure.
  *

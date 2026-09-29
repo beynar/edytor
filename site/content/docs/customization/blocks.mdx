@@ -206,7 +206,7 @@ Set `continues: true` on a list-like kind, as the rich text plugin does for bull
 
 - **At the end of a non-empty block**, it inserts a block of the same kind after it, with the data of the kind's first preset. A new to-do starts unchecked because its first preset's data is `{ checked: false }`, whatever the current one holds.
 - **At the start of a non-empty block**, it inserts that block above and keeps the caret in the current one.
-- **In an empty block without children**, it ends the run: the block moves out one level when it is nested (`unNestBlock`), or else turns into its parent's default child (a paragraph at the top level).
+- **In an empty block without children**, it ends the run: the block moves out one level when its parent is itself a continuing kind (a nested list item, `unNestBlock`); otherwise — at the top level, or inside a container such as a callout — it turns into its parent's default child in place (a paragraph).
 
 <kbd>Enter</kbd> in the middle of the text splits the block, and the second half keeps the kind (with the first preset's data). A block with both text and children is still split at its end so the new block keeps the kind and the children. Kinds without `continues` start their parent's default child at the start or end.
 

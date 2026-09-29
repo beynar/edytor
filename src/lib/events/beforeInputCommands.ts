@@ -254,9 +254,11 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 	};
 
 	// Enter in an empty list-like block ends the run (Notion): out one level
-	// when nested, else the parent's default kind.
+	// when nested in another list-like block, else — at the top level or in a
+	// container such as a callout — the parent's default kind, in place.
 	if (continues && isAtEndOfBlock && isAtStartOfBlock && !current.hasChildren) {
-		if (!current.parent?.isRoot && current.unNestBlock()) return caretAt(current.firstText, 0);
+		if (current.parent?.definition.continues && current.unNestBlock())
+			return caretAt(current.firstText, 0);
 		current.setBlock({ value: { type: defaultBlock, data: {} } });
 		return caretAt(current.firstText, 0);
 	}

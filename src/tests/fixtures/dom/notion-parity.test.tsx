@@ -237,6 +237,27 @@ describe('lists on Enter', () => {
 		]);
 	});
 
+	it('Enter in an empty to-do inside a callout makes it text in the callout', async () => {
+		const { edytor, editor } = await render([], {
+			children: [
+				{
+					type: 'callout',
+					content: [{ text: 'note' }],
+					children: [
+						{ type: 'todo-item', data: { checked: false }, content: [{ text: 'e' }] },
+						{ type: 'todo-item', data: { checked: false }, content: [{ text: '' }] }
+					]
+				},
+				{ type: 'bulleted-list-item', content: [{ text: 'after' }] }
+			]
+		});
+		await enterAt(edytor, editor, edytor.root!.children[0]!.children[1]!, 'end');
+		const tree = canonicalTree(edytor);
+		expect(tree.map((b) => b.type)).toEqual(['callout', 'bulleted-list-item']);
+		expect(tree[0]!.children?.map((b) => b.type)).toEqual(['todo-item', 'paragraph']);
+		expect(edytor.selection.state.startBlock?.type).toBe('paragraph');
+	});
+
 	it('Enter at the end of a heading still starts a paragraph', async () => {
 		const { edytor, editor } = await render([], {
 			children: [{ type: 'heading', data: { level: 'h2' }, content: [{ text: 'Title' }] }]

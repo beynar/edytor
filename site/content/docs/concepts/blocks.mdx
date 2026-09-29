@@ -76,7 +76,7 @@ When the editor creates a block next to the caret, the new block takes its paren
 
 Two exceptions:
 
-- A kind that declares `continues` (bulleted and numbered items, to-dos and toggles) continues itself: <kbd>Enter</kbd> at the start or end of a non-empty one creates another block of the same kind, with its first preset's data (a new to-do is unchecked). <kbd>Enter</kbd> in an empty one without children ends the run: it moves out one level when nested, or else turns into the parent's default child. See [Blocks](/docs/customization/blocks#continuing-kinds).
+- A kind that declares `continues` (bulleted and numbered items, to-dos and toggles) continues itself: <kbd>Enter</kbd> at the start or end of a non-empty one creates another block of the same kind, with its first preset's data (a new to-do is unchecked). <kbd>Enter</kbd> in an empty one without children ends the run: it moves out one level when its parent is a list-like block too, or else turns into the parent's default child in place. See [Blocks](/docs/customization/blocks#continuing-kinds).
 - <kbd>Enter</kbd> at the end of a block that has both text and children splits it so the new block keeps the kind and takes the children.
 
 Where the type comes from:

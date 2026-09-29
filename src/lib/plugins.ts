@@ -209,7 +209,8 @@ export type BlockDefinition = {
 	 * A list-like kind (Notion's bullets, numbers, to-dos, toggles): Enter at
 	 * the start or end of a non-empty block opens another block of this kind
 	 * (with its first preset's data), and Enter in an empty one ends the run —
-	 * it outdents when nested, else turns into the parent's default child.
+	 * it outdents under a parent of a continuing kind, else turns into the
+	 * parent's default child in place (at the top level, in a callout).
 	 */
 	continues?: boolean;
 	/**

@@ -10,13 +10,13 @@ sh site/scripts/installed-edytor.sh
 SITE=$(sed -n 's/.*cloudflare({ *site: *"\([^"]*\)".*/\1/p' site/blume.config.ts)
 VERSION=$(node -p "require('./package.json').version")
 for path in "/edytor-$VERSION.tgz" /docs/reference/troubleshooting /docs/getting-started; do
-	curl -fsI "$SITE$path" >/dev/null || {
+	curl -fsI --retry 6 --retry-all-errors --retry-delay 5 "$SITE$path" >/dev/null || {
 		echo "smoke: $SITE$path does not answer 200" >&2
 		exit 1
 	}
 done
 for v in $(sed -e 's/#.*//' -e 's/[[:space:]]//g' -e '/^$/d' site/scripts/served-versions.txt); do
-	curl -fsI "$SITE/edytor-$v.tgz" >/dev/null || {
+	curl -fsI --retry 6 --retry-all-errors --retry-delay 5 "$SITE/edytor-$v.tgz" >/dev/null || {
 		echo "smoke: $SITE/edytor-$v.tgz is gone, and lockfiles may pin it" >&2
 		exit 1
 	}

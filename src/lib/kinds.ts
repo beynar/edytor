@@ -225,14 +225,21 @@ export const convertedBlocks = (blocks: Iterable<Block>): Block[] =>
  * step, keeping the selection (Notion's Turn into over several blocks): one
  * conversion per block, each one plan, so a block the document refuses or
  * an extension vetoes keeps its kind and the others convert (`dispatcher.each`,
- * BW-02). Answers whether any conversion applied.
+ * BW-02). A block selection keeps the converted blocks selected, even once
+ * the list that held them is gone (its items lifted out of it). Answers
+ * whether any conversion applied.
  */
 export const convertBlocks = (edytor: Edytor, blocks: Iterable<Block>, row: KindRow) => {
 	const selection = edytor.selection.value;
-	const applied = edytor.dispatcher.each('setBlock', convertedBlocks(blocks), (block) =>
+	const converted = convertedBlocks(blocks);
+	const applied = edytor.dispatcher.each('setBlock', converted, (block) =>
 		convertToKind(edytor, block, row, false)
 	);
-	edytor.selection.select(selection);
+	if (selection.kind === 'blocks') {
+		const ids = new Set([...selection.ids, ...converted.map((block) => block.id)]);
+		const live = [...ids].flatMap((id) => edytor.idToBlock.get(id) ?? []);
+		edytor.selection.selectBlocks(...live.sort(edytor.compareBlocks));
+	} else edytor.selection.select(selection);
 	return applied.some(Boolean);
 };
 

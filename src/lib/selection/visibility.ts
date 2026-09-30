@@ -10,7 +10,7 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { RangeEndpoints } from '$lib/edytor.utils.js';
-import type { Text } from '$lib/text/text.svelte.js';
+import { Text } from '$lib/text/text.svelte.js';
 
 /** Content hidden by view state: a collapsed toggle's body, a `hidden` subtree. */
 export const HIDDEN = '[hidden], details:not([open]) > :not(summary)';
@@ -73,6 +73,25 @@ export const viewOf = (edytor: Edytor) => {
 	};
 };
 
+/**
+ * The blocks a block selection acts on, in document order: its members, a
+ * selected block that shows only its children (a list its items, a code
+ * block its lines) with its whole subtree, as its highlight shows
+ * (`sel.blocks.exact`, GX-02). Delete, cut, copy, paste and typing over it,
+ * marks and the toolbar read it; marks skip the hidden part of that subtree
+ * ({@link rangeCovers}).
+ */
+export const selectedMembers = (edytor: Edytor): Block[] => {
+	const members = new Set<Block>();
+	const add = (block: Block, whole: boolean) => {
+		members.add(block);
+		if (whole || (!block.rendersContent && !edytor.facade.isVoid(block.id)))
+			for (const child of block.children) add(child, true);
+	};
+	for (const block of edytor.selection.selectedBlocks) add(block, false);
+	return [...members].sort(edytor.compareBlocks);
+};
+
 /** A text range's endpoints and texts, as the selection (or an attempt's snapshot) holds them. */
 type TextRange = RangeEndpoints & { texts: Text[] };
 
@@ -82,8 +101,10 @@ type TextRange = RangeEndpoints & { texts: Text[] };
  * with the range member that hides it, any member but the head, and the head
  * too when the range starts at its start (it dies with the range). A
  * replacement (`replace`) keeps the head and its body. The live block
- * selection covers exactly its members (`sel.blocks.exact`, FX-07): its
- * delete keeps a closed toggle's body. Copy, cut, delete, marks and the
+ * selection covers exactly its members (`sel.blocks.exact`, FX-07; a list
+ * or a code block with its subtree, {@link selectedMembers}), never a
+ * closed toggle's hidden body: its delete keeps that body, and marks on a
+ * selected list leave it as it is. Copy, cut, delete, marks and the
  * toolbar share this one answer.
  */
 export const rangeCovers = (
@@ -92,8 +113,11 @@ export const rangeCovers = (
 	{ replace = false } = {}
 ) => {
 	const { selection } = edytor;
-	if (range === selection.state && selection.value.kind === 'blocks')
-		return (block: Block) => selection.selectedBlocks.has(block);
+	if (range === selection.state && selection.value.kind === 'blocks') {
+		const members = new Set(selectedMembers(edytor));
+		return (block: Block) =>
+			members.has(block) && (selection.selectedBlocks.has(block) || !hidden(block));
+	}
 	const members = new Set(range.texts.map((text) => text.parent));
 	const head = range.startText?.parent;
 	const headDies = !replace && range.startText?.segStart === 0 && range.yStart === 0;
@@ -116,7 +140,14 @@ export const selectedTextSpans = (
 	options: { replace?: boolean } = {}
 ) => {
 	const covers = rangeCovers(edytor, range, options);
-	return range.texts.flatMap((text) =>
+	// A block selection's texts are its members' own lines (a list's items too).
+	const texts =
+		range === edytor.selection.state && edytor.selection.value.kind === 'blocks'
+			? selectedMembers(edytor).flatMap((block) =>
+					block.rendersContent ? block.content.filter((part) => part instanceof Text) : []
+				)
+			: range.texts;
+	return texts.flatMap((text) =>
 		covers(text.parent)
 			? [
 					{

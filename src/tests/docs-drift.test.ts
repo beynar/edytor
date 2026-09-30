@@ -857,6 +857,88 @@ describe('docs drift', () => {
 		expect(room).toContain('nothing resends it');
 		expect(readFileSync(join(root, 'AGENTS.md'), 'utf8')).not.toMatch(/all or nothing: a throw/);
 	});
+
+	it('the editor transact normalizes the writes a throw keeps (GX-07)', () => {
+		const read = (path: string) => readFileSync(join(root, `site/content/docs/${path}`), 'utf8');
+		expect(read('concepts/editor-instance.mdx')).toContain(
+			'does not undo the changes made before it; normalization still runs on them'
+		);
+		expect(read('editor/commands.mdx')).toContain(
+			'a throw from `fn` keeps the writes made before it, and normalization still runs on them'
+		);
+	});
+
+	it('moveBlocks in/out moves runs; one unNestBlocks call gathers (GX-05)', () => {
+		const read = (path: string) => readFileSync(join(root, `site/content/docs/${path}`), 'utf8');
+		expect(read('editor/commands.mdx')).toContain(
+			'siblings that have another block between them move as separate runs of adjacent siblings'
+		);
+		const api = read('reference/document-api.mdx');
+		expect(api).toContain("`unNestBlocks(['a', 'c'])` on a list `a` to `e` reads `b a c d e`");
+		expect(api).not.toMatch(/as `edytor\.moveBlocks` with `direction: 'out'` allows/);
+	});
+
+	it('the block-selection navigation names only the Ctrl keys it binds (GX-06)', () => {
+		const read = (path: string) => readFileSync(join(root, `site/content/docs/${path}`), 'utf8');
+		const selection = read('editor/selection.mdx');
+		expect(selection).not.toContain('the macOS <kbd>Ctrl</kbd> keys) read a block selection');
+		expect(selection).toContain(
+			'(<kbd>Ctrl</kbd>+<kbd>A</kbd>/<kbd>E</kbd> have no <kbd>Shift</kbd> variant)'
+		);
+		expect(read('customization/hotkeys.mdx')).not.toContain(
+			"(a list's items, a code block's lines, never a divider)"
+		);
+	});
+
+	it('AGENTS.md names every file that writes the DOM selection, and the contract names park (GX-10)', () => {
+		const lib = join(root, 'src/lib');
+		const writers = files(lib, /\.(ts|svelte)$/)
+			.filter((path) => !path.includes('/vendor/'))
+			.filter((path) =>
+				/\.(removeAllRanges|addRange|setBaseAndExtent)\(|clearDomSelection\(/.test(
+					readFileSync(path, 'utf8')
+				)
+			)
+			.map((path) => relative(lib, path));
+		expect(writers.length).toBeGreaterThan(1);
+		const agents = readFileSync(join(root, 'AGENTS.md'), 'utf8');
+		const exceptions = agents.split('**DOM selection exceptions.**')[1]!.split('\n')[0]!;
+		for (const path of writers)
+			if (path !== 'surface/projector.svelte.ts') expect(exceptions, path).toContain(`\`${path}\``);
+		expect(exceptions).toContain('`park`');
+		const contract = readFileSync(join(root, 'docs/editor-delete-contract.md'), 'utf8');
+		const ownership = contract.split('## Selection ownership and lifecycle')[1]!.split('\n## ')[0]!;
+		expect(ownership).toContain('`park`');
+		expect(ownership).toContain('`selection/domSelection.ts`');
+		const row = contract.split('\n').find((line) => line.startsWith('| DOM-selection write'));
+		expect(row).toContain('`park`');
+	});
+
+	it('the store name and the failed direct room write are described as they behave (GX-08, GX-09)', () => {
+		const read = (path: string) => readFileSync(join(root, `site/content/docs/${path}`), 'utf8');
+		expect(read('collaboration/persistence.mdx')).toContain(
+			'trailing slashes are removed from `server` in both'
+		);
+		const extending = read('server/extending.mdx');
+		expect(extending).not.toContain('a failed append is only noticed');
+		expect(extending).toContain('a later write through a freshly read `facade` is stored');
+	});
+
+	it('a subscriber defers its room write, a throwing subscriber is logged, and the pinned store keeps its token refresh (DR-rest)', () => {
+		const read = (path: string) => readFileSync(join(root, `site/content/docs/${path}`), 'utf8');
+		const extending = read('server/extending.mdx');
+		expect(extending).not.toContain('may read the room or call `transact`');
+		expect(extending).toContain('throws without writing');
+		expect(extending).toContain('queueMicrotask(() => this.transact(');
+		expect(read('reference/document-api.mdx')).toContain(
+			'A callback that throws is logged; the other callbacks and the document carry on.'
+		);
+		const pinned = read('reference/migration.mdx')
+			.split('\n')
+			.find((line) => line.includes('persistName: `edytor:${actor.id}@'));
+		expect(pinned).toContain('onExpired');
+		expect(pinned).toContain('`onSyncExpired` does not apply');
+	});
 });
 
 /** The versions the site has served, from `site/scripts/served-versions.txt`. */

@@ -253,7 +253,7 @@ keeps its kind, unless `B` shows no text: then it takes a kinded line's
 kind and data (`<blockquote>` pasted into an empty paragraph gives a quote;
 an empty `h2` given a paragraph line becomes a paragraph without the stale
 `level`). The line's children become `B`'s first children. Caret: after
-the inserted content.
+the inserted content. A line that stands apart (`flow.apart`) never joins.
 
 ### `flow.split` — several lines split the block (D-4)
 
@@ -271,11 +271,46 @@ children of the block it joins. `Hello|World` + `X`, `Y` →
 `["HelloX", "YWorld"]` on the internal, HTML, plain and drop paths (F-P5).
 Caret: in the tail, after the last line's content.
 
+### `flow.apart` — a line that joins no text is placed as a block
+
+A line whose kind joins no text — it renders no content of its own (a
+list, a code block), or is a void (a divider, an image) or an island — is
+never joined into `B`: its text would be stored and synced but not shown
+(GX-01). As the first (or only) line it is placed after the head; as the
+last it is placed before the tail, and the text after `o` stays in a shown
+line: a new block of `B`'s kind and data holding `[o, len)` and `B`'s shown
+children, as Enter splits (or, when that line would hold nothing and exists
+only for the caret, a fresh line of the parent's default kind). Nothing is
+left behind as an empty line: at `o = 0` the lines go before `B`, which
+keeps its text (and takes a joining last line's content first), and an
+empty `B` is replaced by them when they end in a shown line; at the end of `B`, with no
+children to carry, no tail is made when the caret has a pasted line to land
+in. `hello| world` + `<p>x</p><hr>` → `["hellox", divider, " world"]`; a
+copy of `hello…two` from `[p hello, ul > [one, two]]` pasted at `keep| this
+tail` → `["keephello", ul > [one, two], " this tail"]`. Caret: after the
+pasted content — the end of the last placed block's last shown line (a
+list's last item, a code block's last line), or, when it shows none (a
+divider), the start of the line after it. Pins:
+`paste-shown-20260930.test.tsx` (every shape on the internal and HTML
+paths, and the no-hidden-content assertion of `fixtures/dom/invariants.ts`).
+
+### `flow.lines` — a code line takes plain lines
+
+At a position inside a line of an island declared `lines` (a code line),
+the flow is placed as plain lines: every line it shows, nested ones
+included (a list's items, a code block's lines, an image's caption), in
+document order, each a run; a line that shows nothing (a divider) is
+dropped, and a flow of only such lines changes nothing. A `whole` flow is
+placed the same way. No block other than a line lands in the island
+(SW16-paste-1). `hello| world` in a code line + `x`, `ul > [one, two]` →
+code lines `["hellox", "one", "two world"]`.
+
 ### `flow.whole` — a block selection's copy is whole blocks
 
 A `whole` flow is placed as blocks right after `B`; `B` is never split. An
 empty `B` (no text, no children) is replaced by them. Caret: the end of the
-last placed block's own content.
+last placed block's last shown line (its own content, or a list's last
+item, `flow.apart`).
 
 ### `flow.slot` — over selected blocks
 
@@ -283,7 +318,7 @@ Over a block selection the selected blocks are deleted (`deleteBlocks`,
 `del.blocks.promote`: their unselected children stay, after the placed
 lines) and the lines are placed as blocks in the first one's slot, in the
 same plan (runs take the slot's default child). Caret: the end of the last
-placed block's own content.
+placed block's last shown line (`flow.whole`).
 
 ### `flow.container` — a line placed in a list is its item
 
@@ -319,8 +354,18 @@ from its first child adds the parent and keeps the child; from a parent it
 adds the first child. Select-all (the ladder's third step) selects every
 block, nested ones included. Copy and cut of a block selection carry the
 members only, nested as in the document (what a cut copies is what it
-deletes). Pins: `contracts-block-selection.test.tsx`,
-`contracts-block-selection.spec.ts`.
+deletes). A selected block that shows only its children (a list its items,
+a code block its lines: it renders no content of its own and is no void)
+stands for its whole subtree, as its highlight shows: delete, cut, copy,
+paste and typing over the selection, Turn into, marks and the toolbar act
+on it with its items (`selectedMembers`, `visibility.ts`; GX-02,
+DR-behavior-2: a grip-selected list's or code block's Backspace removes it
+whole, its cut and paste moves it intact, Mod+B bolds its items). Marks and
+Turn into skip a closed toggle's hidden body inside it (FX-07,
+DR-behavior-4); its delete and cut take the body with the list. Turn into
+keeps the converted blocks selected, even once the list that held them is
+gone (DR-behavior-3). Pins: `contracts-block-selection.test.tsx`,
+`contracts-block-selection.spec.ts`, `selection-shown-20260930.test.tsx`.
 
 ### `del.blocks.promote` — only the selected blocks leave
 
@@ -601,9 +646,9 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
     and keeps the order), and Shift+Tab over selected items with an
     unselected one between them (`moveRoots`: one `unNestBlocks` plan per
     run of adjacent siblings): `a` and `c` ‖ Shift+Tab on `d` → `d` can
-    read before `b` (SW15-crdt-1). One `unNestBlocks` call over
-    non-adjacent siblings (headless, or `edytor.moveBlocks` with
-    `direction: 'out'`) is not covered either: `unNestBlocks([a, c])` ‖ an
+    read before `b` (SW15-crdt-1). One headless `unNestBlocks` call over
+    non-adjacent siblings (`edytor.moveBlocks` with `direction: 'out'`
+    makes one per run, GX-05) is not covered either: `unNestBlocks([a, c])` ‖ an
     outdent of `d` → `p|a|b|c|d|e|q` on some pairs, where the serial result
     is `p|b|a|c|d|e|q` (DR-rest-2);
   - moves (`moveBlocks`, `nestBlock`): a drag, the handle's Alt+↑/↓/→
@@ -754,7 +799,13 @@ selection or a dead endpoint lands there (it is the only seam stop). It is
 never written; the document JSON has no block. The first edit in it
 (typing, an atom, paste, Enter at its end, a block-kind command) is
 prepared as the creation of a real block with that id, the edit folded in:
-one plan, one transaction, one update. An emptied root writes no
+one plan, one transaction, one update (a paste creates its lines as
+blocks, the first taking that id, and ends the caret where the flow does,
+`placedEnd`: the end of the last line's own text — a toggle's header, never
+its hidden body, a paragraph's own line, never a nested child — or of a
+list's last item, a code block's last line; SW16-paste-2, DR-behavior-1;
+lines ending on no line, a divider, get an empty paragraph after them to
+hold it, as `flow.apart` does, SW16-behavior-1). An emptied root writes no
 replacement block, so no replica writes one for having seen the document
 empty, and two replicas typing into their own virtual paragraphs keep both
 lines. Readonly views show it and refuse the edit at admission. A peer's
@@ -1091,7 +1142,13 @@ of the own text its first typing creates (`{b: block, a: {i: null}}`).
 ## Selection ownership and lifecycle
 
 - **The projector is the only DOM-selection writer** (`surface/projector.svelte.ts`,
-  arch-v2 V4). There is no deferred selection write: every writer —
+  arch-v2 V4): `post()` after every flush, and `park`, the one write made
+  while a composition is live (the caret a composition over a block or
+  atom selection gets before the IME writes). The named exceptions are
+  listed in AGENTS.md (Surface, DOM selection exceptions): a snapshot read
+  replaces a multi-range selection (Firefox) with its bounding range
+  (`selection/domSelection.ts`), and a few sites clear it
+  (`clearDomSelection`). There is no deferred selection write: every writer —
   commands, input attempts, history, host code — `select()`s its value in
   its own turn, and the projector writes the **current** value after the
   Svelte flush, so an older request can never overwrite a newer gesture
@@ -1208,7 +1265,7 @@ is the only interpreter of DOM changes.
 | Logical recovery destination      | `selection.restoreDeadSelectionEndpoints` + seam walk (`src/lib/selection/selection.svelte.ts`)                                                        |
 | Editable-destination traversal    | `Block.firstEditableText`/`lastEditableText` (`src/lib/block/block.svelte.ts`)                                                                         |
 | DOM mount readiness → display     | projector pass after the flush that mounts the text; a text mount or the records signal re-runs a waiting pass (`src/lib/surface/projector.svelte.ts`) |
-| DOM-selection write (only writer) | `projector.post()` after every Svelte flush, current value; writers `select()` in their own turn                                                       |
+| DOM-selection write (only writer) | `projector.post()` after every flush, current value; `park` under a live composition; writers `select()` in their own turn; exceptions: AGENTS.md      |
 | Gesture serial (one)              | `Edytor.intentSerial` via `markUserGesture` (not bumped by `input`)                                                                                    |
 | `selectionchange` classification  | projector `classify` (echo / drift / composition / foreign / intent; two named browser rules)                                                          |
 | Unobserved native move            | projector BI-3: mint in `beforeTransaction` of a foreign transaction → `select(…, 'dom')` after commit                                                 |

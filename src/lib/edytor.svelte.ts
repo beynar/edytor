@@ -241,7 +241,11 @@ export class Edytor {
 		return (this.lens ??= virtualLens(
 			this.document.facade,
 			() => this.document.ready,
-			() => this.document.defaultChild(null)
+			() => this.document.defaultChild(null),
+			(kind) => ({
+				void: this.definitionOf(kind).void === true,
+				rendersContent: this.document.rendersContent(kind)
+			})
 		));
 	}
 
@@ -284,20 +288,30 @@ export class Edytor {
 	 * its operations requested at its end, inside the same transaction (S1:
 	 * one transaction, normalization once per touched parent): normalizers read
 	 * handles over the index, so a command is one update and a peer never
-	 * sees its un-normalized state.
+	 * sees its un-normalized state. A throw from `cb` keeps the writes before
+	 * it (a transaction is no rollback), so they are normalized too (GX-07).
+	 * `cb`'s error stays the one thrown: a normalizer that then throws is
+	 * logged (DR-rest-2).
 	 */
 	transact = <T>(cb: () => T): T => {
 		if (this.transacting) return this.doc.transact(cb, this.transaction);
 		this.transacting = true;
 		try {
 			return this.doc.transact(() => {
-				const out = cb();
+				let out: T;
+				try {
+					out = cb();
+				} catch (error) {
+					try {
+						this.dispatcher.drain();
+					} catch (drained) {
+						console.error('[edytor] normalization failed after a throw; continuing', drained);
+					}
+					throw error;
+				}
 				this.dispatcher.drain();
 				return out;
 			}, this.transaction);
-		} catch (error) {
-			this.dispatcher.drain(false);
-			throw error;
 		} finally {
 			this.transacting = false;
 		}

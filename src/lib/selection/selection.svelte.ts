@@ -54,7 +54,7 @@ import { seam } from '$lib/crdt/anchors.js';
 import { getTextPath } from '$lib/events/events.utils.js';
 import { landed } from '$lib/session/navigation.js';
 import * as visibility from './visibility.js';
-import { caretBeside } from './replaceSelection.js';
+import { caretBeside, type SelectionInsertionTarget } from './replaceSelection.js';
 
 /**
  * CRDT-stable anchor for a text position — `{b}` is the home block id of
@@ -210,13 +210,40 @@ type DocumentWithCaretPoint = Document & {
 };
 
 /**
- * A block's text endpoint for block-level selection state. A kind that
- * displays no text (a divider) has none; its own content slot stands in as
- * the model endpoint of the block selection (selection state holds texts
- * until block sets are stored by id).
+ * The first or last text of `block`'s own line, else, for a block with no
+ * line of its own (a list, a code block), of its subtree's first or last
+ * line; none for a void that shows nothing (a divider) or a hidden body.
  */
-const edgeText = (block: Block, edge: 'first' | 'last'): Text =>
-	(edge === 'first' ? block.firstText : block.lastText) ?? (block.content[0] as Text);
+const lineEdge = (block: Block, edge: 'first' | 'last'): Text | undefined => {
+	if (visibility.hidden(block)) return undefined;
+	if (block.rendersContent) return edge === 'first' ? block.firstText : block.lastText;
+	for (const child of edge === 'first' ? block.children : block.children.toReversed()) {
+		const text = lineEdge(child, edge);
+		if (text) return text;
+	}
+	return undefined;
+};
+
+/**
+ * Where a range over `block` starts (`first`) or ends (`last`): its first or
+ * last shown line (a list's items, a code block's lines, GX-03). A block that
+ * shows none (a divider) passes to its neighbours as a caret does, the next
+ * line first; to `cover` it, a start passes to the line before it and an end
+ * to the line after it, so the range still holds it.
+ */
+const rangeEdge = (
+	block: Block,
+	edge: 'first' | 'last',
+	cover = false
+): SelectionInsertionTarget | null => {
+	const text = lineEdge(block, edge);
+	if (text) return { text, offset: edge === 'first' ? 0 : text.length };
+	const before = cover && edge === 'first';
+	return (
+		caretBeside(block, before ? 'blockBefore' : 'blockAfter') ??
+		caretBeside(block, before ? 'blockAfter' : 'blockBefore')
+	);
+};
 
 export class EdytorSelection {
 	edytor: Edytor;
@@ -439,24 +466,30 @@ export class EdytorSelection {
 
 	/**
 	 * No text endpoint rests in a block that renders no content (FX-01): its
-	 * slot never mounts, so typing there is saved and never shown. Such an
-	 * endpoint moves to the nearest shown line — a container's first item,
-	 * else the next line, else the end of the one before (a line just
-	 * created is displayed once it mounts); with none, the value stays as it
+	 * slot never mounts, so typing there is saved and never shown. Such a
+	 * caret moves to the nearest shown line — a container's first item, else
+	 * the next line, else the end of the one before (a line just created is
+	 * displayed once it mounts). A range's start moves to the block's first
+	 * shown line and its end to its last (a list's items, `rangeEdge`, GX-03);
+	 * a void's passes on as a caret does. With none, the value stays as it
 	 * was. Every caret write passes here, and so does the repair after a
 	 * change this view did not make.
 	 */
 	#shown = (next: SelectionValue): SelectionValue => {
 		if (next.kind !== 'text') return next;
 		const { start, end, isReversed } = project(next, this.edytor.facade);
-		const moved = (at: SelectionPoint | null, anchor: TextAnchor) => {
+		const caret = next.focus === next.anchor;
+		const moved = (at: SelectionPoint | null, anchor: TextAnchor, edge: 'first' | 'last') => {
 			const block = at && this.edytor.idToBlock.get(at.block);
 			if (!block || block.rendersContent) return anchor;
-			const to = caretBeside(block, 'blockAfter') ?? caretBeside(block, 'blockBefore');
+			const to = caret
+				? (caretBeside(block, 'blockAfter') ?? caretBeside(block, 'blockBefore'))
+				: rangeEdge(block, edge);
 			return to && this.createTextAnchor(to.text, to.offset);
 		};
-		const anchor = moved(isReversed ? end : start, next.anchor);
-		const focus = next.focus === next.anchor ? anchor : moved(isReversed ? start : end, next.focus);
+		const [first, last] = isReversed ? (['last', 'first'] as const) : (['first', 'last'] as const);
+		const anchor = moved(isReversed ? end : start, next.anchor, first);
+		const focus = caret ? anchor : moved(isReversed ? start : end, next.focus, last);
 		if (anchor === next.anchor && focus === next.focus) return next;
 		return anchor && focus ? textSelection(anchor, focus, next.pending) : this.value;
 	};
@@ -1315,16 +1348,28 @@ export class EdytorSelection {
 	/** Select a repaired caret (the projector displays it). */
 	#land = (target: SelectionValue) => this.select(target, 'repair');
 
-	/** A text range over `first`'s to `last`'s content (the triple-click shape); the start binds left. */
-	#contentRange = (first: Block, last = first) => {
-		const endText = edgeText(last, 'last');
-		return this.textValue(edgeText(first, 'first'), 0, endText, endText.length, false, 'left');
+	/**
+	 * A text range from `first`'s first shown line to `last`'s last (the
+	 * triple-click shape; `rangeEdge`); the start binds left. None when no
+	 * line is shown.
+	 */
+	#contentRange = (first: Block, last = first): SelectionValue | null => {
+		const [from, to] = [rangeEdge(first, 'first', true), rangeEdge(last, 'last', true)];
+		return from && to
+			? this.textValue(from.text, from.offset, to.text, to.offset, false, 'left')
+			: null;
 	};
-	private setStateFromBlockContentRange = (block: Block) => this.select(this.#contentRange(block));
+	/** Select `block`'s content range (the triple-click shape), when it shows a line. */
+	private setStateFromBlockContentRange = (block: Block) => {
+		const range = this.#contentRange(block);
+		if (range) this.select(range);
+	};
 
 	/**
 	 * Select a set of whole blocks. With no block, leave block selection:
-	 * the value becomes the text range the set spanned.
+	 * the value becomes the text range the set showed, from its first shown
+	 * line to its last (a list's items; a divider at an edge stays covered),
+	 * and stays as it is when no line is shown anywhere.
 	 */
 	selectBlocks = (...blocks: Block[]) => {
 		if (blocks.length) {
@@ -1334,7 +1379,8 @@ export class EdytorSelection {
 		const { value } = this;
 		if (value.kind !== 'blocks') return;
 		const [first, last] = [this.state.blocks[0], this.state.blocks.at(-1)];
-		this.select(first && last ? this.#contentRange(first, last) : noSelection);
+		const range = first && last ? this.#contentRange(first, last) : noSelection;
+		if (range) this.select(range);
 	};
 
 	addBlockToSelection = (block: Block) => {
@@ -1423,13 +1469,19 @@ export class EdytorSelection {
 		);
 	};
 
-	/** Select `block`'s content (the whole of it by default); displayed after the flush. */
+	/**
+	 * Select `block`'s content (the whole of it by default): from its first
+	 * shown line to its last (a list's items, a code block's lines, GX-03), the
+	 * offsets in those lines. A block that shows no line (a divider) keeps the
+	 * current value. Displayed after the flush.
+	 */
 	setAtBlockRange = (block?: Block | null, startOffset = 0, endOffset?: number) => {
-		if (!block) return;
-		const last = edgeText(block, 'last');
+		const [first, last] = block ? [lineEdge(block, 'first'), lineEdge(block, 'last')] : [];
+		if (!first || !last) return;
 		const end = endOffset || last.length;
-		if (!startOffset && end === last.length) this.setStateFromBlockContentRange(block);
-		else this.setAtRange(edgeText(block, 'first'), startOffset, last, end);
+		if (!startOffset && end === last.length)
+			this.select(this.textValue(first, 0, last, last.length, false, 'left'));
+		else this.setAtRange(first, startOffset, last, end);
 	};
 
 	/**

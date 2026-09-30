@@ -50,6 +50,25 @@ describe('room props', () => {
 		view.unmount();
 	});
 
+	it('an actor with a trailing-slash server keeps the store of the server without it (GX-08)', async () => {
+		globalThis.WebSocket = StubSocket as unknown as typeof WebSocket;
+		const view = render(Edytor, {
+			props: {
+				plugins: [richTextPlugin],
+				actor: { id: 'u2' },
+				server: 'ws://rooms.test/rooms//',
+				room: 'doc-2'
+			}
+		});
+		await waitFor(() => expect(dials.length).toBe(1));
+		expect(dials[0]).toMatch(/^ws:\/\/rooms\.test\/rooms\/doc-2\?/);
+		await waitFor(async () =>
+			expect(await databases()).toContain('edytor-v14:edytor:u2@ws://rooms.test/rooms/doc-2')
+		);
+		expect(await databases()).not.toContain('edytor-v14:edytor:u2@ws://rooms.test/rooms///doc-2');
+		view.unmount();
+	});
+
 	it('room alone: a local copy under that name, no socket', async () => {
 		globalThis.WebSocket = StubSocket as unknown as typeof WebSocket;
 		const view = render(Edytor, { props: { plugins: [richTextPlugin], room: 'notes/today' } });

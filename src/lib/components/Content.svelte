@@ -57,6 +57,7 @@
 	-->{#if item.part.kind === 'text'}<!--
 		-->{@const shown =
 			view(item.part)}<!--
+		-->{@const rest = edytor.pin.rest(id, item.part.key)}<!--
 --><RenderText
 			text={edytor.textAt(id, item.ordinal)}
 			deltas={shown.deltas}
@@ -64,6 +65,15 @@
 			newline={item.part.text.endsWith('\n')}
 			{placeholder}
 		/><!--
+		-->{#if rest.length}<!--
+			--><RenderText
+				text={undefined}
+				deltas={rest}
+				empty={false}
+				newline={false}
+				rest
+			/><!--
+		-->{/if}<!--
 	-->{:else}<!--
 --><RenderInlineBlock
 			block={edytor.atomAt(id, item.part.id)}

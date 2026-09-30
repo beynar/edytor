@@ -73,6 +73,8 @@ const IDENTITY_ATTRIBUTES = [
 ];
 const IDENTITY = IDENTITY_ATTRIBUTES.map((name) => `[${name}]`).join(',');
 const SUGGESTION = '[data-edytor-text-suggestion]';
+/** The rest a live composition merged into its host, rendered after it (`pin.rest`, GX-04). */
+const REST = '[data-edytor-composition-rest]';
 /** A foreign writer that re-damages every heal: the heals stop for a window (Quill's bound). */
 const BOUND = 100;
 const WINDOW_MS = 250;
@@ -736,12 +738,14 @@ export class SurfaceObserver {
 	 * element claiming a core identity (a clone, removed with its added root),
 	 * and a node inside a content's run between two of its registered elements
 	 * (the run is the core's; the kind's markup around it is the kind's, D-25).
+	 * A live composition's rest element is the core's own (`pin.rest`).
 	 */
 	#clones = () => {
 		const root = this.edytor.node!;
 		for (const node of this.#added) {
 			if (!node.isConnected || !root.contains(node) || isAnchor(node) || this.#holds(node))
 				continue;
+			if (node instanceof Element && node.matches(REST)) continue;
 			const clone =
 				node instanceof Element &&
 				[node, ...node.querySelectorAll(IDENTITY)].some(

@@ -17,13 +17,16 @@
 		deltas,
 		empty,
 		newline,
-		placeholder = null
+		placeholder = null,
+		rest = false
 	}: {
 		text: Text | undefined;
 		deltas: readonly RenderDelta[];
 		empty: boolean;
 		newline: boolean;
 		placeholder?: string | null;
+		/** The rest a live composition merged into its host, shown after it (`pin.rest`). */
+		rest?: boolean;
 	} = $props();
 
 	const edytor = getContext<Edytor>('edytor');
@@ -88,6 +91,7 @@
 	use:restoreTextSelectionFromClick
 	data-edytor-text-empty={empty ? 'true' : 'false'}
 	data-placeholder={placeholder ?? undefined}
+	data-edytor-composition-rest={rest || undefined}
 	style:white-space="break-spaces"
 	><!--
 	-->{#each empty ? FILLER : deltas as delta, index (getDeltaKey(delta, index))}<!--

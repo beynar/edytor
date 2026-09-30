@@ -138,26 +138,29 @@ describe('Turn into over a selection holding a list container (ZW-02)', () => {
 		expect(shape(view)).toEqual(converted);
 	});
 
-	it('the list selected alone is not converted: its grip menu offers no Turn into', async () => {
+	// GX-02 (re-score 13): a selected list stands for its items, as its highlight
+	// shows; the list itself is still never converted (ZW-02), its items are.
+	it('the list selected alone: its grip menu Turn into converts its items (GX-02)', async () => {
 		const view = await render([blockMenuPlugin], seed());
 		expect(get(view, 'u').convertible).toBe(false);
 		view.edytor.selection.selectBlocks(get(view, 'u'));
 		await grip(view, 'u');
-		expect(document.querySelector('[data-testid="block-menu"]')).not.toBeNull();
-		expect(document.querySelector('[data-testid="block-menu-turn"]')).toBeNull();
+		await click(document.querySelector('[data-testid="block-menu-turn"]')!);
+		await pick('Turn into', 'Heading 2');
+		expect(shape(view)).toEqual(['paragraph "a"', 'heading "b"', 'heading "c"']);
+		// The converted items stay selected, the emptied list gone (DR-behavior-3).
+		expect(view.edytor.selection.value).toMatchObject({ kind: 'blocks', ids: ['b', 'c'] });
 	});
 
-	it('Mod+Alt+2 over the list selected alone changes nothing (only what is selected converts)', async () => {
+	it('Mod+Alt+2 over the list selected alone converts its items (GX-02)', async () => {
 		const view = await render([], seed());
 		view.edytor.selection.setAtTextOffset(get(view, 'b').firstText!, 0);
 		await flushDomUpdates();
 		view.edytor.selection.selectBlocks(get(view, 'u'));
 		await flushDomUpdates();
 		await heading2();
-		expect(shape(view)).toEqual([
-			'paragraph "a"',
-			['unordered-list ""', ['list-item "b"', 'list-item "c"']]
-		]);
+		expect(shape(view)).toEqual(['paragraph "a"', 'heading "b"', 'heading "c"']);
+		expect(view.edytor.selection.value).toMatchObject({ kind: 'blocks', ids: ['b', 'c'] });
 	});
 
 	it('convertToKind on the list itself is refused', async () => {

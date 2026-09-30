@@ -419,18 +419,18 @@ export class Dispatcher {
 
 	/**
 	 * Run the requested normalization at the end of the outermost transaction,
-	 * inside it (`run` false: it threw, drop them). A pass reads handles over
-	 * the index, so a normalizer sees what the command (and the previous pass)
-	 * wrote; a pass that asks for its block again runs again, at most
-	 * {@link MAX_PASSES} times.
+	 * inside it, also when the transaction's callback threw: its writes stay
+	 * (GX-07). A pass reads handles over the index, so a normalizer sees what
+	 * the command (and the previous pass) wrote; a pass that asks for its
+	 * block again runs again, at most {@link MAX_PASSES} times.
 	 */
-	drain = (run = true) => {
+	drain = () => {
 		if (this.draining) return;
 		this.draining = true;
 		const passes = new Map<Normalizer, Map<string, number>>();
 		const { edytor } = this;
 		try {
-			for (let i = 0; run && i < this.queue.length; i++) {
+			for (let i = 0; i < this.queue.length; i++) {
 				if (i === 1000) {
 					console.warn('[edytor] normalization is not converging; skipping further passes');
 					break;

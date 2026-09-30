@@ -805,8 +805,13 @@ export class AttachedDocument {
 		return crdt.doc.create(doc as never, this.lookups) as EdytorDoc;
 	}
 
-	/** The facade over the live document. */
+	/**
+	 * The facade over the live document. Read outside `transact`, it first
+	 * drops a direct write whose append failed (`heal`, only while the doc
+	 * is idle), so the next write through it is stored (GX-09).
+	 */
 	get facade(): EdytorDoc {
+		if (!this.transacting) noTimers(() => this.heal());
 		return (this._facade ??= this.facadeOf(this.requireDoc()));
 	}
 
@@ -819,13 +824,21 @@ export class AttachedDocument {
 	 * the append fails, the storage error is thrown instead and nothing is
 	 * kept (the live doc is rebuilt from the stored rows). A nested call
 	 * joins the enclosing one. An empty room is first seeded with one empty
-	 * block, as a client with no `value` would.
+	 * block, as a client with no `value` would. Called inside another
+	 * transaction or its change events (a `facade.onChange` subscriber), it
+	 * throws without writing: the engine would queue the write until that
+	 * one ends, so it could not be stored before returning (DR-rest-1).
 	 */
 	transact<T>(fn: (facade: EdytorDoc) => T): T {
 		if (this.transacting) return fn(this.facade);
 		return noTimers(() => {
 			this.heal();
 			const doc = this.requireDoc();
+			if (doc._transactionCleanups.length > 0) {
+				throw new Error(
+					'room transact inside another transaction or its change events: its write could not be stored before it returns; defer it (queueMicrotask)'
+				);
+			}
 			if (!crdt.doc.isInitialized(doc as never)) this.facade.seed([]);
 			let result!: T;
 			let thrown = null as { error: unknown } | null;
@@ -842,8 +855,7 @@ export class AttachedDocument {
 			// A failed append outranks fn's error: only the stored rows are kept.
 			if (this.unstored !== null) {
 				const error = this.unstored;
-				this.note({ reason: 'storage', detail: String(error) });
-				this.rebuild(true);
+				this.heal();
 				throw error;
 			}
 			this.compactIfDue();
@@ -1236,10 +1248,14 @@ export class AttachedDocument {
 	/**
 	 * A room-side write outside `transact` (straight through `facade`)
 	 * whose append failed left the live doc ahead of storage: rebuild it
-	 * before anything is served, read or acknowledged.
+	 * before anything is served, read or acknowledged. Only while the doc
+	 * is idle: from inside a transaction or its events (a subscriber of a
+	 * frame's commit reading or writing the room), the failure stays for
+	 * the frame's handler, which faults its sender (SW16-room-1).
 	 */
 	private heal() {
 		if (this.unstored === null || this.doc === null) return;
+		if (this.doc._transactionCleanups.length > 0) return;
 		this.note({ reason: 'storage', detail: String(this.unstored) });
 		this.rebuild(true);
 	}

@@ -57,7 +57,10 @@ The same placement applies to Edytor fragments, HTML and multi-line text:
 
 - **One line** joins the text at the caret.
 - **Several lines** split the block at the caret: the first line joins the text before the caret, the last line takes the text after it, and the others go between. Pasting the lines `X` and `Y` into `Hello|World` gives `HelloX` and `YWorld`. The block's children go with the text after the caret to the last line, also under an open toggle's header (where <kbd>Enter</kbd> opens a first child instead); a closed toggle's hidden body stays with the first line.
+- **A list, a code block, a divider or an image** never joins text, since it shows no text line of its own. It is inserted as a block, and the text after the caret moves to a new line of the same kind after it (as <kbd>Enter</kbd> splits). Pasting `x` and a divider into `hello| world` gives `hellox`, the divider, then ` world`. At the start of a block such content goes before it, and it replaces an empty block.
+- **Inside a code block** everything pastes as plain code lines: a list's items, a code block's lines and paragraphs each become one line.
 - **Blocks copied from a block selection** are inserted as whole blocks after the caret's block, replacing it when it is empty.
+- The caret ends after the pasted content: at the end of its last line (a list's last item, a code block's last line), or on the line after a pasted divider.
 - With **blocks selected**, the pasted content replaces them.
 - A pasted range replaces the selected text first.
 

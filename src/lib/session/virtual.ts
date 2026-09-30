@@ -13,9 +13,9 @@
  * their own virtual paragraphs keep both lines. Everything else passes
  * through to the document; its JSON never shows the virtual paragraph.
  */
-import type { BlockId, BlockSpec, ContentItem, DocChange, ProjectedBlock } from '../crdt/index.js';
+import type { BlockId, BlockSpec, DocChange, ProjectedBlock } from '../crdt/index.js';
 import type { DocAnchor, EdytorDoc, Prepared } from '../crdt/edytor-doc.js';
-import type { Flow, FlowTarget } from '../crdt/flow.js';
+import { placedEnd, type Flow, type FlowTarget } from '../crdt/flow.js';
 import { bindNodes } from '../crdt/nodes.js';
 import { id } from '../utils.js';
 
@@ -23,9 +23,6 @@ import { id } from '../utils.js';
 export const isVirtualId = (value: string): boolean => value.startsWith('v_');
 
 const REFUSED: Prepared = Object.freeze({ status: 'refused', ids: [] });
-
-const lengthOf = (items: readonly ContentItem[] = []) =>
-	items.reduce((n, i) => n + (i.kind === 'text' ? i.text.length : 1), 0);
 
 /** The document as a view reads it: `virtual()` names the shown virtual paragraph, if any. */
 export type ViewDoc = EdytorDoc & { virtual: () => BlockId | null };
@@ -35,7 +32,9 @@ export const virtualLens = (
 	/** The document decided its content (a pending document shows nothing). */
 	ready: () => boolean,
 	/** The root's default child type. */
-	type: () => string
+	type: () => string,
+	/** A kind's roles, for where a paste's caret ends (`placedEnd`). */
+	roleOf: (kind: string) => { void: boolean; rendersContent: boolean }
 ): ViewDoc => {
 	let vid = id('v');
 	/** The document shows no block: the virtual paragraph is shown (a fresh id once the last one was written). */
@@ -59,13 +58,22 @@ export const virtualLens = (
 		const last = (ids: readonly BlockId[]) => [...ids.filter((i) => i !== vid), vid];
 		return { ...p, ids: last(p.ids), effect: { ...p.effect, creates: last(p.effect.creates) } };
 	};
-	/** Lines of a flow as blocks; unless `whole`, the first one is the virtual paragraph. */
+	/**
+	 * Lines of a flow as blocks; unless `whole`, the first one is the virtual
+	 * paragraph. The caret ends the last one as the flow places it
+	 * (`placedEnd`): its own line — a toggle's header, never its hidden body —
+	 * or a list's last item, a code block's last line. Lines that end on no
+	 * line (a divider) get an empty one of the root's kind after them to hold
+	 * it, as a paste at the end of a line does (`flow.apart`).
+	 */
 	const flowInto = (flow: Flow, keep: boolean): Prepared => {
 		const lines = flow.lines.map((l) => ({ ...l, type: l.type ?? type() }));
 		if (lines.length === 0) return noop();
+		const endOf = placedEnd(roleOf);
+		if (!endOf(lines.at(-1)!)) lines.push({ id: id('b'), type: type() });
 		if (keep) lines[0] = { ...lines[0]!, id: vid };
-		const last = lines.at(-1)!;
-		return at(create(lines), last.id, lengthOf(last.content));
+		const end = endOf(lines.at(-1)!)!;
+		return at(create(lines), end.block, end.offset);
 	};
 
 	const prepare: EdytorDoc['prepare'] = Object.create(base.prepare);

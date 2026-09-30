@@ -33,7 +33,7 @@ Every edit is written as it happens. Past 500 stored updates, the provider write
 
 ## The local copy of a WebSocket document
 
-A view with a `server` keeps an IndexedDB store beside the socket, so a synced document also survives reloads. With an `actor`, the view names it `edytor:<actor.id>@<server>/<room>`. The factory form sets the name yourself:
+A view with a `server` keeps an IndexedDB store beside the socket, so a synced document also survives reloads. With an `actor`, the view names it `edytor:<actor.id>@<server>/<room>`, and without one `edytor:<server>/<room>`; trailing slashes are removed from `server` in both, so `wss://x/rooms/` and `wss://x/rooms` share one store. The factory form sets the name yourself:
 
 ```ts
 import { createWebsocketSync } from 'edytor';

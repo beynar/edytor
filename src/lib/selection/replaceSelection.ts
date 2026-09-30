@@ -3,7 +3,7 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { RangeEndpoints } from '$lib/edytor.utils.js';
 import { id, prevent } from '$lib/utils.js';
-import { hidden, shown } from './visibility.js';
+import { hidden, selectedMembers, shown } from './visibility.js';
 
 export type SelectionInsertionTarget = {
 	text: Text;
@@ -17,8 +17,8 @@ export const getSelectionReplacementState = (edytor: Edytor): SelectionReplaceme
 	return { startText, endText, yStart, yEnd, isCollapsed };
 };
 
-export const getSelectedBlocksInDocumentOrder = (edytor: Edytor) =>
-	Array.from(edytor.selection.selectedBlocks).sort(edytor.compareBlocks);
+/** The blocks a block selection acts on, in document order (`selectedMembers`: a list with its items). */
+export const getSelectedBlocksInDocumentOrder = (edytor: Edytor) => selectedMembers(edytor);
 
 /**
  * The blocks the selection touches, in document order: the selected blocks;

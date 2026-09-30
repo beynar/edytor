@@ -124,7 +124,7 @@ export const observedSync = (
   Object.assign(
     ({ doc, awareness, synced, failed, attach }: EdytorSyncPayload) => {
       // The local copy carries the cross-tab channel, so the socket's is off.
-      const local = attach?.(createIndexeddbSync(`edytor:${server}/${room}`));
+      const local = attach?.(createIndexeddbSync(`edytor:${server.replace(/\/+$/, '')}/${room}`));
       const provider = new WebsocketProvider(server, room, doc, {
         awareness,
         params,

@@ -1005,16 +1005,22 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				doc.transact(() => {
 					const frame = runsView.track();
 					const f: Frame = { lineage: new Map(), inherit: new Map(), unions: [] };
-					// Lineage captures every target's pre-write state before the
-					// first write; destructive steps capture whoever owns `l`.
-					for (const w of p.writes) {
-						if (w.op === 'deleteBlock') capture(f, w.id, true);
-						else if (w.op === 'mergeBlocks') {
-							capture(f, w.from, true);
-							capture(f, w.into);
-						} else if ('id' in w) capture(f, w.id);
+					try {
+						// Lineage captures every target's pre-write state before the
+						// first write; destructive steps capture whoever owns `l`.
+						for (const w of p.writes) {
+							if (w.op === 'deleteBlock') capture(f, w.id, true);
+							else if (w.op === 'mergeBlocks') {
+								capture(f, w.from, true);
+								capture(f, w.into);
+							} else if ('id' in w) capture(f, w.id);
+						}
+						for (const w of p.writes) writeStep(w, f);
+					} catch (error) {
+						// The frame would otherwise fold every later commit (DR-rest-3).
+						frame.end();
+						throw error;
 					}
-					for (const w of p.writes) writeStep(w, f);
 					const folded = frame.end();
 					close(f, folded);
 					return folded.wrote ? { status: 'applied', ids: p.ids } : NOOP;
@@ -2623,6 +2629,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			sanitize: sanitizeSpec,
 			collides: (specs) => M.collides(doc, specs),
 			isVoid,
+			roleOf: (kind) => ({
+				void: roles.childless(kind),
+				island: roles.island(kind),
+				rendersContent: roles.rendersContent(kind)
+			}),
 			tailOf: (id) => ({ type: kindToCopy(id), data: blockDataOf(id) }),
 			ranksFor,
 			pieceRanks,

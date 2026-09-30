@@ -978,4 +978,47 @@ test.describe('cdp IME — composition over a text range (SW14-ime-1)', () => {
 		await expect.poll(async () => (await line()).trim()).toBe(`fi日本st${mention}end`);
 		issues.assertClean();
 	});
+
+	test('live over a range inside one block across an atom: the text after it stays on screen (GX-04)', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		const doc = {
+			children: [
+				{
+					type: 'paragraph',
+					content: [
+						{ text: 'first' },
+						{ type: 'mention', data: {} },
+						{ text: 'last' },
+						{ type: 'mention', data: {} },
+						{ text: 'end' }
+					]
+				}
+			]
+		};
+		await page.goto(
+			`/test/dom?${new URLSearchParams({ scenario: 'dst', dst: JSON.stringify(doc) })}`
+		);
+		await waitForEditorReady(page, { requireRuntime: true });
+		await setSelectionByTextIndex(page, 0, 2, 1, 2); // fi[rst @ la]st
+		const ime = await openIme(page);
+		const line = () =>
+			page.evaluate(() =>
+				(document.querySelector('[data-edytor-block]')?.textContent ?? '').replace(/\u200B/g, '')
+			);
+		// The atom after the range stays; its text follows it.
+		const mention = await page.evaluate(
+			() => document.querySelectorAll('[data-edytor-inline-block]')[1]?.textContent ?? ''
+		);
+		for (const step of ['に', 'にほ']) {
+			await ime.compose(step);
+			await page.waitForTimeout(KEY_PACE_MS);
+			expect((await line()).trim()).toBe(`fi${step}st${mention}end`);
+		}
+		await ime.commit('日本');
+		await ime.detach();
+		await expect.poll(async () => (await line()).trim()).toBe(`fi日本st${mention}end`);
+		issues.assertClean();
+	});
 });

@@ -102,8 +102,12 @@ export class Composition {
 	#own = new Set<string>();
 	/** The start target's replacement was refused: the session writes nothing. */
 	#refused = false;
-	/** The start target is a range across blocks: its first write merges the rest into the host. */
-	#across = false;
+	/**
+	 * The start target is a range across texts: across blocks, or across an inline
+	 * atom inside one block (`block`, GX-04). Its first write merges the rest into
+	 * the host text.
+	 */
+	#across: false | 'blocks' | 'block' = false;
 	/** That rest, shown in the host once the IME wrote its first preview (FX-08). */
 	#merged: JSONText[] | null = null;
 	/** A model command moved the caret during the session: the ending keeps it. */
@@ -157,7 +161,12 @@ export class Composition {
 		this.#item = null;
 		this.marks = insertionMarks(this.edytor, intentSnapshot(this.edytor, 'insertCompositionText'));
 		const shown = selection.value.kind;
-		this.#across = shown === 'text' && startText?.parent !== endText?.parent;
+		this.#across =
+			shown === 'text' && startText !== endText
+				? startText?.parent === endText?.parent
+					? 'block'
+					: 'blocks'
+				: false;
 		const at =
 			shown === 'blocks' || shown === 'atom'
 				? this.#rangeless()
@@ -252,7 +261,7 @@ export class Composition {
 			// range with it: the screen shows what the document holds (FX-08).
 			const [merged, host] = [this.#merged, this.host];
 			const cell = merged && host && this.edytor.cells?.get(host.parent.id);
-			if (cell) this.edytor.pin.merge(cell, merged);
+			if (cell) this.edytor.pin.merge(cell, merged, this.#across === 'block');
 			this.#merged = null;
 			return 'live';
 		}

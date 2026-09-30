@@ -72,19 +72,48 @@ const destination = (edytor: Edytor, request: BlockMoveRequest) => {
 	return { blocks, path: [...(parent.isRoot ? [] : parent.path), index] };
 };
 
+/**
+ * An `in` or `out` step over siblings as its runs of adjacent ones (GX-05):
+ * siblings with another block between them move apart, as Tab and
+ * Shift+Tab do (DR-behavior-1), so the step never reorders the text. Any
+ * other request is one part.
+ */
+const parts = (edytor: Edytor, request: BlockMoveRequest): BlockMoveRequest[] => {
+	if (!('direction' in request) || !['in', 'out'].includes(request.direction)) return [request];
+	const { blocks, direction } = request;
+	if (blocks.some((block) => block.parent !== blocks[0]!.parent)) return [request];
+	const runs: Block[][] = [];
+	for (const block of [...new Set(blocks)].toSorted(edytor.compareBlocks)) {
+		const run = runs.at(-1);
+		if (run?.at(-1)!.nextBlock === block) run.push(block);
+		else runs.push([block]);
+	}
+	return runs.map((run) => ({ blocks: run, direction }));
+};
+
+/** Whether the move is allowed: for runs (`parts`), whether one of them may move. */
 export const canMoveBlocks = (edytor: Edytor, request: BlockMoveRequest): boolean =>
-	destination(edytor, request) !== null;
+	parts(edytor, request).some((part) => destination(edytor, part) !== null);
 
 /**
  * One move command (`moveBlock` for one block, `moveBlocks` for a group; an
  * `out` step plans the outdent, `unNestBlocks`): identity kept, one undo
  * step (the dispatcher cuts before it, R7); `[]` when refused or vetoed.
- * A closed toggle the blocks land in, or that adopts blocks, opens
- * (`revealing`): every caller — keys, drops, menus, the public command —
- * shows the moved blocks.
+ * Runs (`parts`) move one by one, a run that cannot move staying, as Tab
+ * does (`dispatcher.each`). A closed toggle the blocks land in, or that
+ * adopts blocks, opens (`revealing`): every caller — keys, drops, menus,
+ * the public command — shows the moved blocks.
  */
-export const moveBlocks = (edytor: Edytor, request: BlockMoveRequest): Block[] =>
-	revealing(request.blocks, () => place(edytor, request));
+export const moveBlocks = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
+	const runs = parts(edytor, request);
+	return revealing(request.blocks, () =>
+		runs.length > 1
+			? edytor.dispatcher
+					.each('moveBlocks', runs, (run) => place(edytor, run))
+					.flatMap((moved) => moved ?? [])
+			: place(edytor, runs[0] ?? request)
+	);
+};
 
 const place = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
 	const move = destination(edytor, request);

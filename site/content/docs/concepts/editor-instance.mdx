@@ -43,7 +43,7 @@ The instance exists as soon as the component is created, but `edytor.root` stays
 | `document` | `EdytorDocument` | The document this view renders: shared by every view of it, and usable without a view. |
 | `facade` | `EdytorDoc` | The document operations, as this view sees them (see below). |
 | `selection` | `EdytorSelection` | The selection value and its setters. See [Selection](/docs/editor/selection). |
-| `transact(fn)` | `<T>(fn: () => T) => T` | Run several changes as one transaction and one update. A throw from `fn` does not undo the changes made before it. |
+| `transact(fn)` | `<T>(fn: () => T) => T` | Run several changes as one transaction and one update. A throw from `fn` does not undo the changes made before it; normalization still runs on them, and `fn`'s error is the one thrown (a normalizer that fails then is logged). |
 | `dispatcher` | `Dispatcher` | Runs every command. `dispatcher.last` is the last command's result; a command of several steps (a <kbd>Tab</kbd> over several sibling groups, Turn into over several blocks) reads `applied` when any step applied. `dispatcher.lead(plan, body)`, `dispatcher.dispatch(operation, payload, context, body, prepare?)` and `dispatcher.caret(text, offset, ops?)` let a plugin issue one refusable command of its own. See [Triggers: one plan](/docs/plugins/operations#triggers-one-plan). |
 | `idToBlock` | `Handles` | Handle lookup: `get(id)` (live blocks only), `block(id)`, `has(id)`. |
 | `canMoveBlocks(req)`, `moveBlocks(req)` | | Relative block moves. See [Commands](/docs/editor/commands#moving-blocks). |

@@ -179,23 +179,20 @@ const EMPTY_RUNS = Object.freeze([]) as readonly ContentRun[];
 const EMPTY_IDS = Object.freeze([]) as readonly BlockId[];
 
 /**
- * lib0 `callAll` semantics: every listener runs, THEN the first thrown
- * error propagates (R5 — a throwing listener never starves the rest).
+ * Every listener runs; one that throws is logged, never rethrown (R5 — a
+ * throwing listener never starves the rest). The change report runs inside
+ * the engine's `update` emit: an error escaping it would skip the
+ * transaction cleanup's reset, and no later transaction would ever emit
+ * `update` or report again (SW16-rest-1).
  */
 export const callEach = <A extends unknown[]>(cbs: Iterable<(...args: A) => void>, ...args: A) => {
-	let threw = false;
-	let firstErr: unknown;
 	for (const cb of cbs) {
 		try {
 			cb(...args);
-		} catch (e) {
-			if (!threw) {
-				threw = true;
-				firstErr = e;
-			}
+		} catch (error) {
+			console.error('[edytor-doc] change listener failed; continuing', error);
 		}
 	}
-	if (threw) throw firstErr;
 };
 
 /**
@@ -244,6 +241,8 @@ export type RunViewDebug = {
 	readonly itemsWalked: number;
 	/** Format markers seen inside maintained range reads (subset of `itemsWalked`). */
 	readonly markersWalked: number;
+	/** Fold frames open (`track()` not yet ended): 0 between writes. */
+	readonly frames: number;
 	reset: () => void;
 };
 
@@ -651,6 +650,9 @@ export const bindRuns = (Y: EngineApi) => {
 			},
 			get markersWalked() {
 				return rangeStats.markers;
+			},
+			get frames() {
+				return frames.size;
 			},
 			reset() {
 				debug.recomputes = 0;

@@ -211,9 +211,8 @@
 		if (sync || room === undefined) return sync;
 		if (server === undefined) return createIndexeddbSync(room);
 		// Per author: the room refuses one user's socket delivering another's edits.
-		const persistName = actor
-			? `edytor:${actor.id}@${server}/${room}`
-			: `edytor:${server.replace(/\/+$/, '')}/${room}`;
+		// Named from the server the socket dials (no trailing slash, GX-08).
+		const persistName = `edytor:${actor ? `${actor.id}@` : ''}${server.replace(/\/+$/, '')}/${room}`;
 		// An id no dial can carry is refused as the router would (4400), never thrown
 		// from the view; its local copy is kept, as the socket's companion would be.
 		if (!validRoomId(room)) return invalidRoom(persistName);

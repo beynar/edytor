@@ -562,11 +562,15 @@ export class EdytorDocument {
 	/**
 	 * Subscribe to {@link writable} transitions — the visible signal that
 	 * the document turned read-only (once per transition, not per refused
-	 * edit). Returns the unsubscribe.
+	 * edit). Returns the unsubscribe. A listener that throws is logged: it
+	 * runs inside the engine's `update` emit, which an error must not
+	 * escape (SW16-rest-1).
 	 */
 	onWritableChange = (listener: (writable: boolean) => void): (() => void) => {
 		let last = this.writable;
-		const watch = () => this.writable !== last && listener((last = !last));
+		const watch = () => {
+			if (this.writable !== last) notifyEach('writable', [listener], (last = !last));
+		};
 		this.doc.on('update', watch);
 		return () => this.doc.off('update', watch);
 	};

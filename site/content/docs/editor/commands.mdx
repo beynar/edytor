@@ -143,7 +143,7 @@ The full list (`splitBlock`, `mergeBlocks`, `deleteBlocks`, `deleteRange`, `inse
 
 ## Grouping with `transact`
 
-`edytor.transact(fn)` runs several writes as one transaction: collaborators receive them as one update, normalization runs once at the end, and they are never split across undo steps.
+`edytor.transact(fn)` runs several writes as one transaction: collaborators receive them as one update, normalization runs once at the end, and they are never split across undo steps. It is not a rollback: a throw from `fn` keeps the writes made before it, and normalization still runs on them before the error reaches you; a normalizer that fails then is logged, so the error you get is `fn`'s.
 
 ```ts
 edytor.transact(() => {
@@ -180,6 +180,7 @@ const moved = edytor.moveBlocks({ blocks: [...edytor.selection.selectedBlocks], 
 ```
 
 - A group moved by `direction` must be siblings, and keeps its document order. With `target` and `position`, the blocks land in the order you pass them.
+- With `in` or `out`, siblings that have another block between them move as separate runs of adjacent siblings, as <kbd>Tab</kbd> and <kbd>Shift+Tab</kbd> do, so the text keeps its order: `[a, c]` out of a list `a` to `e` leaves `b` between them. A run that cannot move stays where it is, and the result lists only the blocks that moved; `canMoveBlocks` is `true` when at least one run can move. With `up` or `down` the group moves together.
 - `moveBlocks` returns the blocks it moved, or `[]` when the move was refused (`dispatcher.last.status` is then `'refused'`, also for a move `canMoveBlocks` rejects).
 - A closed toggle the blocks land in, or that takes blocks as children (`out`), opens, so a moved block is never hidden. The block commands `nestBlock`, `unNestBlock`, `moveBlock` and `moveBlocks` open it too.
 - `canMoveBlocks` answers whether the move is structurally allowed. It is `false` for a destination inside a void block or an island, for blocks that sit inside an island, for a destination inside the moved blocks' own subtree, and directly inside a list for a block that is not a list item (a move keeps kinds; see [Containers](/docs/concepts/blocks#containers)). Direction `out` answers as <kbd>Shift+Tab</kbd> does: a paragraph under a list item outdents into the list as a list item, and an image, a code block or a heading there is refused. A plugin can still refuse the command.

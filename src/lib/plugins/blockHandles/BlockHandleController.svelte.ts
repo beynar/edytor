@@ -113,6 +113,13 @@ const overOtherRow = (
 	return input.clientY < getOwnRowBottom(over);
 };
 
+/** Whether no block follows `block` at any level: below it, the document ends. */
+const endsDocument = (block: Block) => {
+	for (let level: Block | undefined = block; level && !level.isRoot; level = level.parent)
+		if (level.nextBlock) return false;
+	return true;
+};
+
 /** A block's own row: its box down to where its first child begins. */
 const ownRow = (node: HTMLElement) => {
 	const rect = node.getBoundingClientRect();
@@ -450,17 +457,21 @@ export class BlockHandleController {
 					}
 				);
 			},
-			// Held across a small gap beside the block, never over another block's own row
-			// (its parent's, which the drag library would otherwise let it keep).
+			// Held while it or a target inside it holds the placement (the drag library
+			// keeps an inner target only while every outer one of its chain sticks),
+			// across a small gap beside the block — below the document's last block, all
+			// the way down (Notion) — never over another block's own row (its parent's,
+			// which the drag library would otherwise let it keep).
 			getIsSticky: ({ source, input }) => {
 				const dragSource = this.getDragSource(source.data);
-				if (!dragSource || this.edytor.readonly || this.activeDropTarget !== node) return false;
+				const active = this.activeDropTarget;
+				if (!dragSource || this.edytor.readonly || !active || !node.contains(active)) return false;
 				const rect = node.getBoundingClientRect();
 				return (
 					input.clientX >= rect.left - 20 &&
 					input.clientX <= rect.right + 20 &&
 					input.clientY >= rect.top - 24 &&
-					input.clientY <= rect.bottom + 24 &&
+					(input.clientY <= rect.bottom + 24 || endsDocument(target)) &&
 					!overOtherRow(
 						node,
 						input,
@@ -470,8 +481,13 @@ export class BlockHandleController {
 			},
 			onDragEnter: ({ location, source }) => this.showIndicator(node, location, source.data),
 			onDrag: ({ location, source }) => this.showIndicator(node, location, source.data),
-			onDragLeave: () => {
-				if (this.activeDropTarget === node) this.clearIndicator();
+			// The target left hands the placement to the innermost one still current (an
+			// outer target of its chain that sticks), before the next move asks it to stick.
+			onDragLeave: ({ location, source }) => {
+				if (this.activeDropTarget !== node) return;
+				this.clearIndicator();
+				const [current] = location.current.dropTargets;
+				if (current) this.showIndicator(current.element as HTMLElement, location, source.data);
 			},
 			onDrop: ({ location, source }) => {
 				const [current] = location.current.dropTargets;

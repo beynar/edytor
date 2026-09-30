@@ -580,6 +580,92 @@ describe('a block whose shown children are all dragged', () => {
 	});
 });
 
+/**
+ * Below the document's last block (Notion): no block is under the pointer,
+ * so no drop target is either; the last placement stays — the last block's
+ * and its ancestors' targets stick — and the pointer's x still picks its
+ * level. Leaving the editor clears it; a row the pointer comes back over
+ * takes its own placement.
+ */
+describe("below the document's last block", () => {
+	/** A pointer move over a raw point of `target` (no block under it). */
+	const move = async (target: EventTarget, clientX: number, clientY: number) => {
+		fire(target, 'dragenter', { clientX, clientY });
+		fire(target, 'dragover', { clientX, clientY });
+		await frame();
+	};
+	const bottom = (edytor: Edytor) =>
+		edytor.idToBlock.get(edytor.value.children.at(-1)!.id!)!.node!.getBoundingClientRect().bottom;
+
+	it.each([
+		// a1's column is 24px, a's (the root) 0px.
+		{ x: 46, level: 'a1', parent: 'a', result: [['a', ['a1', 'x']]] },
+		{ x: 2, level: 'a', parent: undefined, result: [['a', ['a1']], 'x'] }
+	])(
+		'a last block with a nested child: 30px below it, x at $level picks after $level',
+		async ({ x, level, parent, result }) => {
+			const { edytor } = await render([p('x'), p('a', [p('a1')])]);
+			const drag = await startDrag(edytor, 'x');
+			await drag.over('a1', 0.75, NEAR_LEFT);
+			expect([position(), indicated()]).toEqual(['after', 'a1']);
+			const below = bottom(edytor) + 30;
+			// Both levels in turn, then the one picked: the placement stays, x picks its level.
+			for (const [at, id] of [
+				[46, 'a1'],
+				[2, 'a'],
+				[x, level]
+			] as const) {
+				await move(edytor.node!, at, below);
+				expect([position(), indicated()]).toEqual(['after', id]);
+			}
+			expect(backdrop()?.id).toBe(parent);
+			fire(edytor.node!, 'drop', { clientX: x, clientY: below });
+			await flushDomUpdates();
+			await frame();
+			expect(tree(edytor)).toEqual(result);
+		}
+	);
+
+	it('a flat last block: 30px below it, after it', async () => {
+		const { edytor } = await render([p('x'), p('a'), p('b')]);
+		const drag = await startDrag(edytor, 'x');
+		await drag.over('b', 0.75, NEAR_LEFT);
+		expect([position(), indicated()]).toEqual(['after', 'b']);
+		const below = bottom(edytor) + 30;
+		await move(edytor.node!, NEAR_LEFT, below);
+		expect([position(), indicated()]).toEqual(['after', 'b']);
+		expect(backdrop()).toBeNull();
+		fire(edytor.node!, 'drop', { clientX: NEAR_LEFT, clientY: below });
+		await flushDomUpdates();
+		await frame();
+		expect(tree(edytor)).toEqual(['a', 'b', 'x']);
+	});
+
+	it('a row the pointer comes back over takes its placement; leaving the editor clears it', async () => {
+		const { edytor } = await render([p('x'), p('a'), p('b', [p('b1')])]);
+		const drag = await startDrag(edytor, 'x');
+		await drag.over('b1', 0.75, NEAR_LEFT);
+		const below = bottom(edytor) + 30;
+		await move(edytor.node!, 2, below);
+		expect([position(), indicated()]).toEqual(['after', 'b']);
+		// Back over a row: that row's placement.
+		await drag.over('a', 0.25);
+		expect([position(), indicated()]).toEqual(['before', 'a']);
+		await drag.over('b1', 0.75, NEAR_LEFT);
+		await move(edytor.node!, 2, below);
+		expect([position(), indicated()]).toEqual(['after', 'b']);
+		// Out of the editor, right of its column: nothing sticks.
+		await move(document.body, 700, below);
+		expect(indicator()).toBeNull();
+		expect(backdrop()).toBeNull();
+		expect(document.querySelector('[data-edytor-block-drop-position]')).toBeNull();
+		fire(document.body, 'drop', { clientX: 700, clientY: below });
+		await flushDomUpdates();
+		await frame();
+		expect(tree(edytor)).toEqual(['x', 'a', ['b', ['b1']]]);
+	});
+});
+
 describe('a drag released over its own blocks', () => {
 	// The last child of a nested group: every level after it reaches its parent's.
 	it.each([

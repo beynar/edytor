@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.4
+
+- **A drop below the document's last block keeps its placement.** Dragging past the end of the document keeps the last block's "after" placement, and the pointer's x still picks the level; it used to show nothing and drop nowhere.
+
 ### From 0.1.0-next.3
 
 - **Drop zones are built on Atlassian's list-item hitbox.** `@atlaskit/pragmatic-drag-and-drop-hitbox` (1.1.0) is a new dependency. The halves and nesting by x are unchanged.

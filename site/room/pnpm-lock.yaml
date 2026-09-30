@@ -21,6 +21,9 @@ importers:
 
 packages:
 
+  '@atlaskit/pragmatic-drag-and-drop-hitbox@1.1.0':
+    resolution: {integrity: sha512-JWt6eVp6Br2FPHRM8s0dUIHQk/jFInGP1f3ti5CdtM1Ji5/pt8Akm44wDC063Gv2i5RGseixtbW0z/t6RYtbdg==}
+
   '@atlaskit/pragmatic-drag-and-drop@1.7.10':
     resolution: {integrity: sha512-2oHJbThv26CVxM+N8w1X9iyvnts9f8n5+XdCHyG2DtLtqk97rsvbykUyRV2m2llpH06ZdBycycz/+H7eBgRN4A==}
 
@@ -481,8 +484,8 @@ packages:
     resolution: {integrity: sha512-sPAT4pztbu6586/hrhOnMKS17IJrvg12mXiSPSS3W5qDeN2RGgvZ0diZCm31dBbnevfVmujNO3IM2wrS4Y2Rhg==}
 
   edytor@file:../vendor/edytor.tgz:
-    resolution: {integrity: sha512-1LFVWtW4vlO6UXtuwIgq8ySXbEBXIDnsBn2etpppVKxkmR2IYUEORdb+X8KBnDatZw5fqb+Fn9yWIygsyRZPEA==, tarball: file:../vendor/edytor.tgz}
-    version: 0.1.0-next.3
+    resolution: {integrity: sha512-RkKWPwky/VRgWRIWvafVzkcmdh5fOoHK+OrtQsOke4DoY6AJE5JnT6YLDUZc5mMVSGvunSdSNEjZumhIYpITHg==, tarball: file:../vendor/edytor.tgz}
+    version: 0.1.0-next.4
     engines: {node: '>=22.0.0'}
     peerDependencies:
       svelte: ^5.0.0
@@ -611,6 +614,11 @@ packages:
     resolution: {integrity: sha512-msJxIvYDYcoNL+PJsu+7qmpDWsYmAxTY+2TNYXXF0hzBzBk0BMecOqDOG/EckUoKCuKwObfbugIl8QpqHDXeFA==}
 
 snapshots:
+
+  '@atlaskit/pragmatic-drag-and-drop-hitbox@1.1.0':
+    dependencies:
+      '@atlaskit/pragmatic-drag-and-drop': 1.7.10
+      '@babel/runtime': 7.29.7
 
   '@atlaskit/pragmatic-drag-and-drop@1.7.10':
     dependencies:
@@ -907,6 +915,7 @@ snapshots:
   edytor@file:../vendor/edytor.tgz(svelte@5.57.1):
     dependencies:
       '@atlaskit/pragmatic-drag-and-drop': 1.7.10
+      '@atlaskit/pragmatic-drag-and-drop-hitbox': 1.1.0
       '@tanstack/highlight': 0.1.0
       esm-env: 1.2.2
       lib0-v14: lib0@1.0.0-rc.32

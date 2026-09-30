@@ -529,6 +529,79 @@ test.describe('browser block handles and DnD', () => {
 		issues.assertClean();
 	});
 
+	for (const { level, roots, children } of [
+		{ level: 'Only', roots: ['Hello', 'Last'], children: ['Only', 'After'] },
+		{ level: 'Last', roots: ['Hello', 'Last', 'After'], children: ['Only'] }
+	]) {
+		test(`30px below the document's last block (it has an only child), x at ${level}'s column: the placement stays, after ${level}`, async ({
+			page
+		}) => {
+			const issues = trackPageIssues(page);
+
+			await page.goto('/test/dom?scenario=nested&handles=true');
+			await waitForEditorReady(page, { requireRuntime: true });
+			await page.evaluate(() => {
+				const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
+				const block = (text: string, children?: unknown[]) => ({
+					type: 'paragraph',
+					content: [{ text }],
+					...(children && { children })
+				});
+				edytor.root.children.at(-1).insertBlockAfter({ block: block('Last', [block('Only')]) });
+			});
+			await expect.poll(() => readRootTexts(page)).toEqual(['Hello', 'After', 'Last']);
+			await settleHandles(page);
+			const ids = await page.evaluate(() => {
+				const { root } = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
+				const last = root.children.at(-1);
+				return {
+					After: root.children[1].id as string,
+					Last: last.id as string,
+					Only: last.children[0].id as string
+				};
+			});
+			const blockOf = (text: 'Last' | 'Only') =>
+				page.locator(`[data-edytor-block="true"][data-edytor-id="${ids[text]}"]`);
+			const only = (await blockOf('Only').boundingBox())!;
+			const last = (await blockOf('Last').boundingBox())!;
+			const below = last.y + last.height + 30;
+			const source = (await page
+				.locator(`[data-testid="block-handle"][data-block-id="${ids.After}"]`)
+				.boundingBox())!;
+			const indicator = page.locator('[data-edytor-drop-indicator]');
+			const expectAfter = async (text: 'Last' | 'Only') => {
+				await expect(blockOf(text)).toHaveAttribute('data-edytor-block-drop-position', 'after');
+				await expect(indicator).toHaveAttribute('data-position', 'after');
+				// At the end of the document, indented to the level's column.
+				const bar = (await indicator.boundingBox())!;
+				const { blockX } = await textColumn(page, text);
+				expect(Math.abs(bar.x - blockX)).toBeLessThanOrEqual(1);
+				expect(Math.abs(bar.y + bar.height / 2 - (last.y + last.height))).toBeLessThanOrEqual(3);
+			};
+
+			await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+			await page.mouse.down();
+			const onlyColumn = await textColumn(page, 'Only');
+			await page.mouse.move(onlyColumn.x + 2, only.y + only.height * 0.75, { steps: 12 });
+			await expectAfter('Only');
+			// Down below the last block: no block under the pointer, the placement stays.
+			await page.mouse.move(onlyColumn.x + 2, below, { steps: 8 });
+			await expectAfter('Only');
+			// The pointer's x still picks the level there.
+			for (const text of ['Last', level] as const) {
+				const { x } = await textColumn(page, text);
+				await page.mouse.move(x + 2, below, { steps: 8 });
+				await expectAfter(text);
+			}
+			await page.mouse.up();
+
+			await expect.poll(() => readRootTexts(page)).toEqual(roots);
+			expect((await readBlocks(page))[1].children?.map(textOf)).toEqual(children);
+			await expect(indicator).toHaveCount(0);
+			issues.assertClean();
+		});
+	}
+
 	test('the last nested block released over its own row stays put: its levels are not offered there', async ({
 		page
 	}) => {

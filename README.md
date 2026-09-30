@@ -15,7 +15,7 @@
 
 Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable editor with an API to build any kind of collaborative rich text editor.
 
-> **Work in progress.** Edytor is a pre-release (`0.1.0-next.4`) and not ready for production; the API changes between releases without a compatibility layer. The `edytor@0.0.11` on npm predates the current API. Issues and PRs are welcome: when you report a bug, include the document's JSON value.
+> **Work in progress.** Edytor is a pre-release (`0.1.0-next.5`) and not ready for production; the API changes between releases without a compatibility layer. The `edytor@0.0.11` on npm predates the current API. Issues and PRs are welcome: when you report a bug, include the document's JSON value.
 
 ## Features
 
@@ -32,7 +32,7 @@ Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable 
 The pre-release is not on npm yet, and the untagged `edytor` there is the incompatible `0.0.11`. The documentation site hosts the pre-release tarball; install it by URL:
 
 ```bash
-pnpm add https://edytor-docs.beynar.workers.dev/edytor-0.1.0-next.4.tgz
+pnpm add https://edytor-docs.beynar.workers.dev/edytor-0.1.0-next.5.tgz
 ```
 
 Once it is published, install it by its tag: `pnpm add edytor@next`. `svelte@^5` is a peer dependency. Do not install `yjs`: the v14 engine is vendored (`edytor/crdt`). See [installation](https://edytor-docs.beynar.workers.dev/docs/getting-started), which also explains how to build the tarball from the `arch-v2` branch.

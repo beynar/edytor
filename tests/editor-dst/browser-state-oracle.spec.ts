@@ -27,7 +27,9 @@ import {
 	assertDumpSelectionSane,
 	assertPassiveSelectionExact,
 	CollabRunError,
-	type DocumentDump
+	seamExpectation,
+	type DocumentDump,
+	type SlotFacts
 } from './collab-runner.js';
 
 const snapshot = (): DstBrowserSnapshot => ({
@@ -1255,6 +1257,59 @@ test.describe('DST v3 effect oracle', () => {
 		).not.toThrow();
 	});
 
+	test('a platform word boundary inside a contract run is not truncation (seed 26: Han then Latin)', () => {
+		const wordForward: DstAction = { kind: 'wordDelete', direction: 'forward' };
+		const snapshotOf = (text: string, caret: number): DstBrowserSnapshot => {
+			const snap = twoBlockSnapshot({ yStart: caret, yEnd: caret });
+			snap.value.children[0].content = [{ text }];
+			snap.model.blocks[0].parts = [{ kind: 'text', id: 't0', runs: [{ text, marks: null }] }];
+			snap.model.texts = [text];
+			snap.model.renderedTexts = [text];
+			return snap;
+		};
+		const delivered = (text: string, caret: number, s: number, e: number) => {
+			const after = snapshotOf(text, caret);
+			after.events = [
+				{
+					type: 'beforeinput',
+					isTrusted: true,
+					cancelable: true,
+					inputType: 'deleteWordForward',
+					targetRange: {
+						collapsed: false,
+						startOffset: s,
+						endOffset: e,
+						startTextIndex: 0,
+						endTextIndex: 0,
+						yStart: s,
+						yEnd: e
+					}
+				}
+			];
+			return after;
+		};
+		// Chromium's word unit after `b8·|` is the ideograph alone: UAX #29
+		// breaks between Han and Latin, so `[3,4)` ends at a word boundary.
+		// The contract still deletes the whole run `漢ali`.
+		expect(() =>
+			assertActionEffect(
+				'chromium',
+				wordForward,
+				snapshotOf('b8·漢ali', 3),
+				delivered('b8·', 3, 3, 4)
+			)
+		).not.toThrow();
+		// A Latin run has no platform boundary inside it: `é |bra|vo` truncates `bravo`.
+		expect(() =>
+			assertActionEffect(
+				'chromium',
+				wordForward,
+				snapshotOf('é bravo', 2),
+				delivered('é ', 2, 2, 5)
+			)
+		).toThrow(/delete-range-implausible/);
+	});
+
 	test('out-of-model spans are rejected — the phantom allowance is exactly the empty-part ZWSP case', () => {
 		const wordForward: DstAction = { kind: 'wordDelete', direction: 'forward' };
 		const hello = (): DstBrowserSnapshot => {
@@ -1922,7 +1977,9 @@ test.describe('collab sanity gate canaries', () => {
 				evaluate: async (_fn: unknown, arg: unknown) =>
 					typeof arg === 'string'
 						? { updateB64: '', svB64: '', ownClock: 0, providerUpdates }
-						: resolution
+						: arg && typeof arg === 'object' && 'slotsOf' in arg
+							? {}
+							: resolution
 			}
 		}) as never;
 
@@ -2014,5 +2071,102 @@ test.describe('collab sanity gate canaries', () => {
 				)
 			)
 		).resolves.toBe('remote-selection-misplaced');
+	});
+});
+
+test.describe('collab seam expectation (the replicated slot, BW-04)', () => {
+	type Texts = NonNullable<DocumentDump['blockTexts']>[string];
+	const own = (id: string, length: number): Texts => ({
+		firstId: `t:${id}`,
+		firstOwner: id,
+		lastId: `t:${id}`,
+		lastOwner: id,
+		lastLen: length
+	});
+	const dump = (children: DocumentDump['value']['children'], blockTexts: Record<string, Texts>) =>
+		({
+			value: { children },
+			blocks: {},
+			lineage: {},
+			blockTexts,
+			actor: 'peer-1',
+			selection: null
+		}) as DocumentDump;
+	const list = (items: DocumentDump['value']['children']) =>
+		dump(
+			[
+				{ type: 'paragraph', id: 'b0', content: [{ text: 'ab' }] },
+				{ type: 'unordered-list', id: 'l0', content: [{ text: '' }], children: items }
+			],
+			{
+				b0: own('b0', 2),
+				l0: {
+					...own(items[0]!.id!, 5),
+					lastId: `t:${items.at(-1)!.id}`,
+					lastOwner: items.at(-1)!.id!
+				},
+				...Object.fromEntries(items.map((item) => [item.id!, own(item.id!, 5)]))
+			}
+		);
+	const item = (id: string) => ({ type: 'list-item', id, content: [{ text: 'hello' }] });
+
+	test("a dead child with no sibling stop lands at its live parent's content end (seed-18 climb)", () => {
+		// ul[i0 "hello" > c0]; a peer deletes c0. Its parent i0 lives but has
+		// no other child, so the seam climbs one level: no item follows i0,
+		// so i0's own content is the stop before the slot, at its end.
+		const post = list([item('i0')]);
+		const slots: SlotFacts = {
+			b0: { parent: null, rank: 'a0' },
+			l0: { parent: null, rank: 'a1' },
+			i0: { parent: 'l0', rank: 'a0' },
+			c0: { parent: 'i0', rank: 'a0' }
+		};
+		expect(seamExpectation(post, slots, 'c0')).toEqual({
+			blockId: 'i0',
+			textId: 't:i0',
+			offset: 5
+		});
+	});
+
+	test('a promoted child that fills the dead slot is the stop after it (seed-18 promoted)', () => {
+		// ul[i1, D > i2]; a peer deletes D and its child i2 is promoted into
+		// D's slot. The pre-edit tree has nothing after D; the replicated
+		// placement puts i2 after the slot, so the caret starts i2.
+		const post = list([item('i1'), item('i2')]);
+		const slots: SlotFacts = {
+			b0: { parent: null, rank: 'a0' },
+			l0: { parent: null, rank: 'a1' },
+			i1: { parent: 'l0', rank: 'a0' },
+			D: { parent: 'l0', rank: 'a1' },
+			i2: { parent: 'l0', rank: 'a1V' }
+		};
+		expect(seamExpectation(post, slots, 'D')).toEqual({ blockId: 'i2', textId: 't:i2', offset: 0 });
+	});
+
+	test('the slot climbs through dead ancestors and orders equal ranks by id', () => {
+		// D (dead) > E (dead, the endpoint's block); D sat between i1 and i3.
+		const post = list([item('i1'), item('i3')]);
+		const slots: SlotFacts = {
+			b0: { parent: null, rank: 'a0' },
+			l0: { parent: null, rank: 'a1' },
+			i1: { parent: 'l0', rank: 'a0' },
+			D: { parent: 'l0', rank: 'a1' },
+			E: { parent: 'D', rank: 'a0' },
+			i3: { parent: 'l0', rank: 'a1' }
+		};
+		// Equal rank: `D` < `i3`, so i3 follows the slot.
+		expect(seamExpectation(post, slots, 'E')).toEqual({ blockId: 'i3', textId: 't:i3', offset: 0 });
+		// Nothing after the slot: the end of the stop before it.
+		expect(seamExpectation(list([item('i1')]), slots, 'E')).toEqual({
+			blockId: 'i1',
+			textId: 't:i1',
+			offset: 5
+		});
+		// No replicated slot at all: the document's first text.
+		expect(seamExpectation(post, slots, 'unknown')).toEqual({
+			blockId: 'b0',
+			textId: 't:b0',
+			offset: 0
+		});
 	});
 });

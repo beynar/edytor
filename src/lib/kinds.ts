@@ -2,7 +2,6 @@ import type { Block } from './block/block.svelte.js';
 import type { Edytor } from './edytor.svelte.js';
 import type { BlockDefinition, EditorCommand, KindPreset } from './plugins.js';
 import { jsonBlockToSpec, jsonEquals, type JSONBlock } from './utils/json.js';
-import type { BlockSpec } from './crdt/index.js';
 import { dispatchPlan, prepareSet } from './block/block.utils.js';
 import { id } from './utils.js';
 import { getSelectionBlocks } from './selection/replaceSelection.js';
@@ -102,9 +101,10 @@ export const rowOf = (edytor: Edytor, block: Block | null | undefined): KindRow 
 
 /**
  * Whether converting `block` loses nothing: it has no children, and no
- * content but what the pending lead (a slash query) removes with it.
+ * content (text or inline atoms) but what the pending lead (a slash query)
+ * removes with it. Turn into and the horizontal rule share it.
  */
-const holdsNothing = (edytor: Edytor, block: Block) => {
+export const holdsNothing = (edytor: Edytor, block: Block) => {
 	if (block.hasChildren) return false;
 	const removed = (edytor.dispatcher.pendingLead?.writes ?? []).reduce(
 		(sum, w) => sum + (w.op === 'deleteText' && w.id === block.id ? w.length : 0),
@@ -114,38 +114,53 @@ const holdsNothing = (edytor: Edytor, block: Block) => {
 };
 
 /**
- * Where a block of `type` put at `block`'s place lands: `block`'s parent, or
- * the first one up that `type` fits (the document's `fits`: a list holds
- * only its items), and the containers it leaves on the way — what
- * `facade.prepare.liftOut` splits.
+ * The plan putting `payload` (a kind, `block`'s own when it names none) at
+ * `block`'s place: `block` retyped in place or, `after`, the payload
+ * inserted right after it, where its kind fits (the
+ * document's `liftOut`: a list holds only its items, so an item leaves its
+ * list, and a block inserted after one splits the list there). A kind
+ * rendering no content (a divider) holds no caret: block `next`, of the
+ * default kind where it lands, follows it. An emptied document's line
+ * creates them (DR-behavior-2). Turn into and the horizontal rule share it,
+ * and prepare it from the payload hooks leave (BW-03).
  */
-export const landingOf = (block: Block, type: string) => {
-	const lifted: Block[] = [];
-	let parent = block.parent;
-	while (parent && !parent.isRoot && !block.edytor.facade.fits(parent.id, type)) {
-		lifted.push(parent);
-		parent = parent.parent;
-	}
-	return { parent, lifted };
+export const placing = (
+	block: Block,
+	payload: Partial<JSONBlock>,
+	after: boolean,
+	next: string
+) => {
+	const { facade, document } = block.edytor;
+	const value = { ...payload, type: payload.type ?? block.type };
+	const { parent } = facade.landingOf(block.id, value.type, after);
+	const bare = !document.rendersContent(value.type) && !value.children?.length;
+	const tail = bare ? [{ id: next, type: facade.defaultChild(parent) }] : [];
+	const specs = [...(after ? [value] : []), ...tail].map((b) => jsonBlockToSpec(b));
+	if (facade.virtual() === block.id)
+		return tail.length
+			? facade.prepare.insertBlocks({ parent: null, index: 0 }, [jsonBlockToSpec(value), ...specs])
+			: prepareSet.call(block, { value: payload });
+	const lift = facade.prepare.liftOut(block.id, value.type, { keep: after, after: specs });
+	return after ? lift : facade.compose(lift, prepareSet.call(block, { value: payload }));
 };
+
+/** `block` and its ancestors: the blocks a placement may change the children of. */
+export const lineage = (block: Block | undefined): Block[] =>
+	block ? [block, ...lineage(block.parent)] : [];
 
 /**
  * Convert `block` to a row's kind as one command. With `caret` (by default
  * when the conversion replaces the content) the caret lands at the start of
  * the converted block, or of its first child when the conversion creates one.
  * A replacing kind (a divider, a code block) converts in place only a block
- * that holds nothing; after text or children it is inserted after the
- * block instead, which stays intact. A kind rendering no content (a divider)
- * holds no caret: a fresh block of the default kind where it lands, after
- * it, takes it. The kind lands where it fits (the document's `fits`, as
- * every placement asks): a list holds only its items, so a list's item
- * turned into another kind leaves the list — out of every list it sits in
- * directly (a list nested right in a list, DR-behavior-2) — where Shift+Tab
- * lifts it, as a bullet turned into a heading stops being a bullet in
- * Notion, and a kind inserted after an item splits the list there
- * (`liftOut`, AW-01); a block's own kind (only its data changes) never
- * moves it. Each is one plan: one refusal or veto keeps everything, one
- * undo step (AW-03). Answers whether it applied.
+ * that holds nothing (`holdsNothing`); after text, atoms or children it is
+ * inserted after the block instead, which stays intact. The kind lands where
+ * it fits (`placing`): a list's item turned into another kind leaves the
+ * list — out of every list it sits in directly (a list nested right in a
+ * list, DR-behavior-2) — where Shift+Tab lifts it, as a bullet turned into
+ * a heading stops being a bullet in Notion; a block's own kind (only its
+ * data changes) never moves it. Each is one plan: one refusal or veto keeps
+ * everything, one undo step (AW-03). Answers whether it applied.
  */
 export const convertToKind = (
 	edytor: Edytor,
@@ -161,50 +176,37 @@ export const convertToKind = (
 	if (value.type === shownKind(block)) value.type = block.type;
 	else if (holder?.isContainer && value.type === holder.definition.itemKind)
 		value.type = edytor.defaultChild(holder);
-	const { facade, dispatcher } = edytor;
 	const after = row.replaces && !holdsNothing(edytor, block);
-	// Its own kind (a data change, or none) fits where it already is (DR-behavior-3).
-	const { parent, lifted } =
-		value.type === block.type ? { parent: holder, lifted: [] } : landingOf(block, value.type);
-	const bare = !edytor.document.rendersContent(value.type) && !value.children?.length;
-	const next = bare && parent ? [{ id: id('b'), type: edytor.defaultChild(parent) }] : [];
-	const kind = { ...value, id: id('b') };
-	if (!after && !next.length && !lifted.length) block.setBlock({ value });
-	else if (facade.virtual() === block.id) {
-		// An emptied document's line: the kind and the block after it are created (DR-behavior-2).
-		const slot = { parent: null, index: 0 };
-		dispatchPlan(block, 'setBlock', { value }, (payload) =>
-			facade.prepare.insertBlocks(slot, [
-				jsonBlockToSpec({ ...kind, ...payload.value, id: kind.id }),
-				...next.map((b) => jsonBlockToSpec(b))
-			])
+	const [next, touched] = [id('b'), lineage(block)];
+	// The kind as hooks leave it (BW-03): placed, normalized by its kind, and given the caret.
+	let kind: Partial<JSONBlock> & { id: string } = { ...value, id: id('b') };
+	const converted = (payload: Partial<JSONBlock>) => {
+		kind = { ...payload, id: after ? (payload.id ?? kind.id) : block.id };
+		edytor.idToBlock.get(kind.id)?.normalizeContent();
+	};
+	if (after)
+		dispatchPlan(
+			block,
+			'insertBlockAfter',
+			{ block: kind as JSONBlock },
+			(p) => placing(block, { ...p.block, id: p.block.id ?? kind.id }, true, next),
+			touched,
+			(p) => converted(p.block)
 		);
-	} else {
-		const out = next.map((b) => jsonBlockToSpec(b));
-		const lift = (options: { keep?: boolean; after: BlockSpec[] }) =>
-			facade.prepare.liftOut(block.id, value.type, options);
-		const touched = [...lifted, parent, block];
-		if (after)
-			dispatchPlan(
-				block,
-				'insertBlockAfter',
-				{ block: kind },
-				(payload) => lift({ keep: true, after: [jsonBlockToSpec(payload.block), ...out] }),
-				touched
-			);
-		else
-			dispatchPlan(
-				block,
-				'setBlock',
-				{ value },
-				(payload) => facade.compose(lift({ after: out }), prepareSet.call(block, payload)),
-				touched
-			);
-	}
-	if (dispatcher.last?.status !== 'applied') return false;
-	if (caret || after || bare) {
-		const landing = edytor.idToBlock.get(next[0]?.id ?? (after ? kind.id : block.id));
-		dispatcher.caret((value.children?.length ? landing?.children[0] : landing)?.firstText, 0);
+	else
+		dispatchPlan(
+			block,
+			'setBlock',
+			{ value },
+			(p) => placing(block, p.value, false, next),
+			touched,
+			(p) => converted(p.value)
+		);
+	if (edytor.dispatcher.last?.status !== 'applied') return false;
+	const landing = edytor.idToBlock.get(next);
+	if (caret || after || landing) {
+		const at = landing ?? edytor.idToBlock.get(kind.id);
+		edytor.dispatcher.caret((kind.children?.length ? at?.children[0] : at)?.firstText, 0);
 	}
 	return true;
 };
@@ -220,17 +222,18 @@ export const convertedBlocks = (blocks: Iterable<Block>): Block[] =>
 
 /**
  * Convert several blocks (`convertedBlocks`) to a row's kind as one undo
- * step, keeping the selection (Notion's Turn into over several blocks).
- * Answers whether any conversion applied.
+ * step, keeping the selection (Notion's Turn into over several blocks): one
+ * conversion per block, each one plan, so a block the document refuses or
+ * an extension vetoes keeps its kind and the others convert (`dispatcher.each`,
+ * BW-02). Answers whether any conversion applied.
  */
 export const convertBlocks = (edytor: Edytor, blocks: Iterable<Block>, row: KindRow) => {
 	const selection = edytor.selection.value;
-	const targets = convertedBlocks(blocks);
-	const applied = edytor.dispatcher.run('setBlock', () =>
-		targets.map((block) => convertToKind(edytor, block, row, false))
+	const applied = edytor.dispatcher.each('setBlock', convertedBlocks(blocks), (block) =>
+		convertToKind(edytor, block, row, false)
 	);
 	edytor.selection.select(selection);
-	return Boolean(applied?.some(Boolean));
+	return applied.some(Boolean);
 };
 
 /**

@@ -94,7 +94,7 @@ const { operation, status } = edytor.dispatcher.last!;
 
 | Status | Meaning |
 | --- | --- |
-| `applied` | The command changed the document. A command of several steps (a <kbd>Tab</kbd> over several sibling groups, Turn into over several blocks) is `applied` when any step applied. |
+| `applied` | The command changed the document. A gesture that issues one command per part (a <kbd>Tab</kbd> over several sibling groups, Turn into over several blocks) is `applied` when any part applied: a part the document refuses or a plugin vetoes is skipped and the others apply ([Refusing an edit](/docs/plugins/operations#refusing-an-edit)). |
 | `noop` | It ran and changed nothing. |
 | `refused` | The view is readonly, the document is read-only, the document refused it (for example merging into a void block), or a plugin prevented it. Nothing was written and no undo step was recorded. |
 | `failed` | It threw. The error is in `last.error` and is rethrown. |

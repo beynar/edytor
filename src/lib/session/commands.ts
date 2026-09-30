@@ -234,6 +234,16 @@ export class Dispatcher {
 	};
 
 	/**
+	 * A user command over several parts (Turn into over several blocks, Tab
+	 * over several runs of siblings): each part is its own prevention scope,
+	 * so a part the document refuses or an extension vetoes is skipped and
+	 * the others still run (BW-02), as one undo step. Answers each part's
+	 * result (`undefined` when vetoed).
+	 */
+	each = <T, R>(kind: string, parts: readonly T[], part: (item: T) => R): (R | undefined)[] =>
+		this.run(kind, () => parts.map((item) => this.scope(() => part(item)))) ?? [];
+
+	/**
 	 * Dispatch one operation. `prepare` (when the operation is one document
 	 * plan) makes its steps visible to hooks; `body` applies it (with the
 	 * plan) inside the command's one transaction.

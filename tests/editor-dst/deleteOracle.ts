@@ -124,6 +124,23 @@ const nextGraphemeEnd = (value: string, offset: number) => {
 // oracle must detect a production semantics change, not inherit it.
 const WORD_CHARACTER = /[\p{L}\p{N}_]/u;
 
+/**
+ * Whether platform word segmentation puts a boundary at `offset`: UAX #29
+ * with ICU's dictionaries, which every engine uses. It breaks where the
+ * contract's word run does not: between a Han ideograph and a Latin
+ * letter (`漢ali` is `漢` + `ali`) and inside a Han or Thai run. The
+ * non-ASCII plausibility bound accepts such an edge; ASCII text has no
+ * such boundary inside a run, so its exact units are unaffected.
+ */
+const wordSegmenter = new Intl.Segmenter('und', { granularity: 'word' });
+const platformWordBoundary = (value: string, offset: number): boolean => {
+	if (offset <= 0 || offset >= value.length) return true;
+	for (const { index } of wordSegmenter.segment(value)) {
+		if (index >= offset) return index === offset;
+	}
+	return false;
+};
+
 /** The full code-point character ENDING at `offset` (a surrogate pair
  * when the two units before it form one, else the single UTF-16 unit). */
 const codePointBefore = (value: string, offset: number): string | undefined => {
@@ -987,6 +1004,8 @@ const describeDeleteInner = (
 			);
 			const first = codePointAt(content, range.yStart);
 			let before = codePointBefore(content, range.yStart);
+			let joined = content;
+			let edge = range.yStart;
 			if (before === undefined && range.yStart === 0) {
 				// Only an ADJACENT same-block predecessor can continue a
 				// word run — a run never crosses a block boundary or an
@@ -998,13 +1017,16 @@ const describeDeleteInner = (
 						prevLoc.block.parts[prevLoc.partIndex] as Part & { kind: 'text' }
 					);
 					before = codePointBefore(prevContent, prevContent.length);
+					joined = prevContent + content;
+					edge = prevContent.length;
 				}
 			}
 			return (
 				first !== undefined &&
 				WORD_CHARACTER.test(first) &&
 				before !== undefined &&
-				WORD_CHARACTER.test(before)
+				WORD_CHARACTER.test(before) &&
+				!platformWordBoundary(joined, edge)
 			);
 		}
 		const loc = partAtTextIndex(range.endTextIndex);
@@ -1016,6 +1038,7 @@ const describeDeleteInner = (
 		);
 		const last = codePointBefore(content, range.yEnd);
 		let after = codePointAt(content, range.yEnd);
+		let joined = content;
 		if (after === undefined && range.yEnd === content.length) {
 			// Adjacent same-block only — see the backward branch above.
 			const nextLoc = partAtTextIndex(range.endTextIndex + 1);
@@ -1024,13 +1047,15 @@ const describeDeleteInner = (
 					nextLoc.block.parts[nextLoc.partIndex] as Part & { kind: 'text' }
 				);
 				after = codePointAt(nextContent, 0);
+				joined = content + nextContent;
 			}
 		}
 		return (
 			last !== undefined &&
 			WORD_CHARACTER.test(last) &&
 			after !== undefined &&
-			WORD_CHARACTER.test(after)
+			WORD_CHARACTER.test(after) &&
+			!platformWordBoundary(joined, range.yEnd)
 		);
 	};
 	/** The independent legal units for a collapsed-caret word delete on

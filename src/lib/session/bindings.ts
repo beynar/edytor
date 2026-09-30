@@ -129,10 +129,11 @@ const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void =>
 
 /**
  * Move `blocks` one level, one run of adjacent siblings at a time (Notion:
- * over several nesting levels, each group that can move does), as one
- * command. A block inside another of them moves with it; siblings with an
- * unselected block between them move apart, so no key reorders the text
- * (DR-behavior-1). Answers the moved blocks.
+ * over several nesting levels, each group that can move does, a vetoed one
+ * too: `dispatcher.each`), as one undo step. A block inside another of
+ * them moves with it; siblings with an unselected block between them move
+ * apart, so no key reorders the text (DR-behavior-1). Answers the moved
+ * blocks.
  */
 const moveRoots = (edytor: Edytor, blocks: Block[], direction: 'in' | 'out') => {
 	const runs: Block[][] = [];
@@ -141,11 +142,9 @@ const moveRoots = (edytor: Edytor, blocks: Block[], direction: 'in' | 'out') => 
 		if (run) run.push(block);
 		else runs.push([block]);
 	}
-	return (
-		edytor.dispatcher.run('moveBlocks', () =>
-			runs.flatMap((run) => edytor.moveBlocks({ blocks: run, direction }))
-		) ?? []
-	);
+	return edytor.dispatcher
+		.each('moveBlocks', runs, (run) => edytor.moveBlocks({ blocks: run, direction }))
+		.flatMap((moved) => moved ?? []);
 };
 
 /**
@@ -188,15 +187,8 @@ const deleteSelection: HotKey = ({ edytor, prevent }) => {
 	if (edytor.selection.selectedInlineBlock.size || edytor.selection.inlineBlockDeletionTarget)
 		return prevent(() => replaceSelectedAtom(edytor));
 	if (!edytor.selection.selectedBlocks.size) return;
-	prevent(() => {
-		const selectedBlocks = getSelectedBlocksInDocumentOrder(edytor);
-		if (!selectedBlocks.length) return;
-		edytor.plugins.forEach((plugin) =>
-			plugin.onDeleteSelectedBlocks?.({ prevent, selectedBlocks })
-		);
-		// The command authored its caret (FP-7); the projector displays it.
-		deleteSelectedBlocks(edytor);
-	});
+	// The command runs the hooks and authors its caret (FP-7); the projector displays it.
+	prevent(() => deleteSelectedBlocks(edytor));
 };
 
 /** An Emacs kill (ctrl+h/d/k): a delete intent, or the owned selection's delete. */

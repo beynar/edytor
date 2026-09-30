@@ -2,7 +2,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { RangeEndpoints } from '$lib/edytor.utils.js';
-import { id } from '$lib/utils.js';
+import { id, prevent } from '$lib/utils.js';
 import { hidden, shown } from './visibility.js';
 
 export type SelectionInsertionTarget = {
@@ -167,14 +167,22 @@ export const caretAfterBlockDelete = (
 };
 
 /**
- * Delete (or cut) the selected blocks. The command authors its result
- * selection (FP-7, R9) by `caretAfterBlockDelete`, declared before the
- * delete, so the seam never runs for it. With none, the seam applies.
- * Answers the caret's text.
+ * Delete (or cut) the selected blocks (or `blocks`, the block menu's): the
+ * keyboard's block delete, cut and the block menu's Delete share it, so
+ * `onDeleteSelectedBlocks` guards them all (a `prevent()` keeps the blocks).
+ * The command authors its result selection (FP-7, R9) by
+ * `caretAfterBlockDelete`, declared before the delete, so the seam never
+ * runs for it. With none, the seam applies. Answers the caret's text.
  */
-export const deleteSelectedBlocks = (edytor: Edytor): Text | null => {
-	const blocks = getSelectedBlocksInDocumentOrder(edytor);
+export const deleteSelectedBlocks = (
+	edytor: Edytor,
+	blocks: Block[] = getSelectedBlocksInDocumentOrder(edytor)
+): Text | null => {
 	if (!blocks[0]?.parent) return null;
+	const kept = edytor.dispatcher.intercept((plugin) =>
+		plugin.onDeleteSelectedBlocks?.({ prevent, selectedBlocks: blocks })
+	);
+	if (kept) return null;
 	const at = caretAfterBlockDelete(blocks);
 	const deleted = edytor.dispatcher.caret(at?.text, at?.offset ?? 0, () =>
 		edytor.deleteBlocks({ blocks })

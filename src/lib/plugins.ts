@@ -145,7 +145,7 @@ export type PluginOperations = {
 	onBlockAttached?: (payload: { node: HTMLElement; block: Block }) => (() => void) | void;
 	/** Called when a text element is attached to the DOM; may return a cleanup. */
 	onTextAttached?: (payload: { node: HTMLElement; text: Text }) => (() => void) | void;
-	/** Called when selected blocks are deleted */
+	/** Before a block selection is deleted: Backspace, Delete, a cut or the block menu's Delete. */
 	onDeleteSelectedBlocks?: (payload: { prevent: Prevent; selectedBlocks: Block[] }) => void;
 	/** Called before input is processed */
 	onBeforeInput?: (payload: { prevent: Prevent; e: InputEvent }) => void;

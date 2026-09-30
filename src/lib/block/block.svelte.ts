@@ -233,10 +233,12 @@ export class Block {
 		return this.children.length > 0;
 	}
 
+	/** It shows content: text or an inline atom (a block holding only a mention is not empty). */
 	get hasContent(): boolean {
-		return this.content.some((part) => part instanceof Text && !part.isEmpty);
+		return this.content.some((part) => !(part instanceof Text) || !part.isEmpty);
 	}
 
+	/** It holds nothing: no content and no children (the emptiness Turn into reads, `holdsNothing`). */
 	get isEmpty(): boolean {
 		return !this.hasContent && !this.hasChildren;
 	}

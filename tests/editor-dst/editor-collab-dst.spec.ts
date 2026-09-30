@@ -3,6 +3,7 @@ import {
 	existsSync,
 	lstatSync,
 	mkdirSync,
+	readdirSync,
 	readFileSync,
 	readlinkSync,
 	writeFileSync
@@ -45,7 +46,8 @@ import { parseSeedList } from './generator.js';
  *   COLLAB_DST_STEPS=40        edit/net step budget per seed (default 30)
  *   COLLAB_DST_PEERS=2|3       room size (default 3)
  *   COLLAB_DST_ENGINE=firefox  engine for the whole run (default chromium)
- *   COLLAB_DST_REPLAY=<path>   replay one saved artifact's schedule
+ *   COLLAB_DST_REPLAY=<path>   replay one saved artifact's schedule (instead of
+ *                              the seeds and the pinned rows in `replays/`)
  *   COLLAB_DST_SHRINK=0        skip failure minimization
  *   COLLAB_DST_FAILURE_DIR     artifact directory
  */
@@ -102,11 +104,30 @@ const readReplaySchedule = (path: string): CollabSchedule => {
 	return schedule as CollabSchedule;
 };
 
+/**
+ * Pinned replay rows: schedules that once failed, replayed on every run but
+ * a single-artifact replay. Each file is a bare schedule (`replays/*.json`).
+ */
+const replayDirectory = resolve(import.meta.dirname, 'replays');
+const pinnedNames = new Map<CollabSchedule, string>();
+const pinnedSchedules = () =>
+	readdirSync(replayDirectory)
+		.filter((name) => name.endsWith('.json'))
+		.sort()
+		.map((name) => {
+			const schedule = readReplaySchedule(join(replayDirectory, name));
+			pinnedNames.set(schedule, name);
+			return schedule;
+		});
+
 const schedules = process.env.COLLAB_DST_REPLAY
 	? [readReplaySchedule(process.env.COLLAB_DST_REPLAY)]
-	: parseSeedList(process.env.COLLAB_DST_SEEDS ?? '1-6,9').map((seed) =>
-			generateCollabSchedule(seed, stepCount, peerCount, lineageDepth)
-		);
+	: [
+			...parseSeedList(process.env.COLLAB_DST_SEEDS ?? '1-6,9').map((seed) =>
+				generateCollabSchedule(seed, stepCount, peerCount, lineageDepth)
+			),
+			...pinnedSchedules()
+		];
 
 const sourceIdentityExcludedRoots = new Set([
 	'.artifacts',
@@ -212,9 +233,9 @@ test.describe(`generated collaboration DST (${engineName}, ${peerCount} peers)`,
 	});
 
 	for (const schedule of schedules) {
-		test(`seed ${schedule.seed}: ${schedule.shape} (${schedule.steps.length} steps)`, async ({
-			baseURL
-		}, testInfo) => {
+		const pinned = pinnedNames.get(schedule);
+		const title = `seed ${schedule.seed}: ${schedule.shape} (${schedule.steps.length} steps)`;
+		test(pinned ? `replay ${pinned}: ${title}` : title, async ({ baseURL }, testInfo) => {
 			if (!baseURL) throw new Error('collab DST requires the configured preview baseURL');
 			const result = await runCollabSchedule(browser, baseURL, schedule);
 			if (result.ok) {
@@ -284,7 +305,7 @@ test.describe(`generated collaboration DST (${engineName}, ${peerCount} peers)`,
 					`seed=${schedule.seed} step=${result.failure.stepIndex} code=${result.failure.code} ` +
 					`minimized=${minimized.schedule.steps.length} shrinkAttempts=${minimized.attempts}\n` +
 					`artifact=${artifactPath}\n` +
-					`Replay with COLLAB_DST_REPLAY=${artifactPath} pnpm test:dst`
+					`Replay with COLLAB_DST_REPLAY=${artifactPath} pnpm test:dst:collab`
 			);
 		});
 	}

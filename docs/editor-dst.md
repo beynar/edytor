@@ -55,6 +55,8 @@ Run a wider sweep (expands BOTH lanes — solo seeds/steps and collab seeds/step
 pnpm test:dst:extensive
 ```
 
+Its collaboration half is green. Its solo half has two open, deterministic product failures (2026-09-30, reproduced on the wave-10 commit): seed 17 at step 43, where Firefox leaves a second block element after `insertText` over a reversed cross-block range (`dom-block-count`), and seed 98 at step 12, where ArrowRight collapses a reversed range over mixed Hebrew and Latin text to its end in Chromium and to its visual right edge in Firefox (`cross-browser-selection-divergence`).
+
 Target seeds and schedule length:
 
 ```sh
@@ -77,6 +79,8 @@ Dump inventories are derived independently of the selection's own claims: live t
 COLLAB_DST_SEEDS=1-8 COLLAB_DST_STEPS=40 COLLAB_DST_PEERS=3 pnpm test:dst:collab
 COLLAB_DST_REPLAY=/absolute/path/to/artifact.json pnpm test:dst:collab
 ```
+
+Pinned rows: each bare schedule in `tests/editor-dst/replays/` (a failure's `minimized.schedule`, kept once its fix landed) replays on every collab run except a `COLLAB_DST_REPLAY` one. The two `collab-seed-18-*` rows pin the dead-endpoint seam: the passive peer's expected caret comes from the dead block's replicated slot (`facade.slotOf`), not the pre-edit tree, so a promoted child that fills the slot and a climb to the parent's content end are both the contract. The collab minimizer's switch is `COLLAB_DST_SHRINK=0`, not `DST_SHRINK`.
 
 Replay an artifact with:
 

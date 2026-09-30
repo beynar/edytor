@@ -472,10 +472,12 @@ items (Notion):
   The document's explicit kind writes place what they are told:
   `insertBlocks` and `setBlockType`/`setBlock` are not retyped or refused
   (the view's Turn into places the kind where it fits first — `liftOut`:
-  out of every container it does not fit, each split around the block as
-  Shift+Tab splits a list, and a divider or code block inserted after an
-  item splits the list after it; the lifts and the retype are one plan, so
-  a veto keeps all of it, ZW-02, AW-01, AW-03); pasted lines follow
+  out of every container it does not fit, each split around the block by
+  the one split Shift+Tab makes in a list (`splitOut`, BW-06), and a
+  divider or code block inserted after an item splits the list after it;
+  the lifts and the retype are one plan, so a veto keeps all of it, ZW-02,
+  AW-01, AW-03; the kind placed is the one the payload names after hooks,
+  BW-03; its own kind keeps a block in place); pasted lines follow
   `flow.container`. The
   display rule still holds for them: a block stored as the document's
   default kind directly in a list shows as its item (the index's

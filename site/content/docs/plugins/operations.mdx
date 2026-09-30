@@ -52,11 +52,12 @@ A command is shown first, under its own name. If it is one document plan, each p
 | Typing                                    | `insertText`                   | none                                                         |
 | <kbd>Enter</kbd>                          | `splitBlock`, `insertBlockAfter`, `insertBlockBefore`, `addChildBlock`, `unNestBlock` or `setBlock`, by the block's [role](/docs/customization/hotkeys#enter-and-backspace-by-role) | the steps it plans |
 | <kbd>Backspace</kbd> at a block start     | `setBlock`, `unNestBlock` or `mergeBlockBackward`, by the block's [role](/docs/customization/hotkeys#enter-and-backspace-by-role) | the child moves it plans |
-| <kbd>Tab</kbd>, <kbd>Shift</kbd> + <kbd>Tab</kbd> | `nestBlock`, `unNestBlock`; over several selected blocks, `moveBlocks` | the moves it plans                                           |
+| <kbd>Tab</kbd>, <kbd>Shift</kbd> + <kbd>Tab</kbd> | `nestBlock`, `unNestBlock`; over several selected blocks, one `moveBlock` or `moveBlocks` per run of adjacent siblings | the moves it plans |
 | Deleting a range across blocks            | `deleteContentWithinSelection` | `deleteContentAtRange`, `removeBlock`, `mergeBlockBackward`  |
 | Deleting a block selection                | `deleteBlocks`                 | one `removeBlock` per selected block                         |
 | Paste or drop                             | `insertFlow`                   | `splitBlock`, `insertText`, `addChildBlocks`                 |
 | Markdown shortcut or slash command        | `setBlock`                     | `deleteContentAtRange` for the removed trigger text          |
+| Turn into (menus, <kbd>Mod</kbd> + <kbd>Alt</kbd> + digit) | `setBlock`, or `insertBlockAfter` for a kind inserted after the block; over several blocks, one per block | the moves and inserts that place the kind |
 | Formatting                                | `markText`                     | none                                                         |
 | Block handle or arrow-move                | `moveBlock` or `moveBlocks`    | none                                                         |
 | Duplicate (block menu, <kbd>Mod</kbd> + <kbd>D</kbd>) | `duplicateBlock`   | `addChildBlocks` on the parent                               |
@@ -68,6 +69,8 @@ A command the document itself refuses is still shown, without steps, so a plugin
 ## Refusing an edit
 
 Call `prevent()` on the command or on any of its steps to refuse the whole command. Nothing is written and no undo step is recorded.
+
+A gesture over several blocks that issues one command per part refuses only the part you veto, as the document refuses a part it cannot apply: Turn into over several blocks (one command per block), <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd> over several runs of siblings (one per run), formatting across blocks (one `markText` per block) and the block menu's Duplicate. The other parts apply, together one undo step, and `dispatcher.last` reports `applied` when one did. A block-selection delete, from the keyboard or the block menu, is one command: a veto keeps every block. Your own gesture gets the same rule from `edytor.dispatcher.each(kind, parts, part)`.
 
 ```ts title="lockedBlocks.ts" check
 import type { Plugin } from 'edytor';
@@ -174,7 +177,7 @@ onBeforeOperation: ({ operation, payload, block }) => {
 }
 ```
 
-The replacement is prepared again and shown to every plugin from the start. Each plugin rewrites a command at most once. A payload returned for a step is ignored, with a warning in development.
+The replacement is prepared again and shown to every plugin from the start. A Turn into is placed for the kind its replacement names (rewritten to a list's item, it stays in the list; rewritten to a heading, it leaves the list), that kind's `normalizeContent` runs on it, and the caret goes into it. Each plugin rewrites a command at most once. A payload returned for a step is ignored, with a warning in development.
 
 ## After an edit
 

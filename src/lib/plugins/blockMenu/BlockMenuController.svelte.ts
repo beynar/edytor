@@ -11,7 +11,7 @@ import {
 	type KindRow
 } from '$lib/kinds.js';
 import {
-	caretAfterBlockDelete,
+	deleteSelectedBlocks,
 	getSelectedBlocksInDocumentOrder,
 	outermost
 } from '$lib/selection/replaceSelection.js';
@@ -201,31 +201,30 @@ export class BlockMenuController {
 
 	/**
 	 * Duplicate several blocks as one undo step, each copy after its block (a
-	 * block inside another of them is copied with it); the copies are selected.
+	 * block inside another of them is copied with it; a vetoed one is skipped,
+	 * `dispatcher.each`); the copies are selected.
 	 */
 	duplicateAll(blocks: Block[]) {
-		const copies = this.edytor.dispatcher.run('insertBlock', () =>
-			outermost(blocks).flatMap((block) => block.duplicateBlock() ?? [])
-		);
+		const copies = this.edytor.dispatcher
+			.each('insertBlock', outermost(blocks), (block) => block.duplicateBlock())
+			.filter((copy) => copy != null);
 		this.close(false);
-		if (copies?.length) this.edytor.selection.selectBlocks(...copies);
+		if (copies.length) this.edytor.selection.selectBlocks(...copies);
 	}
 
 	/**
-	 * Delete the open blocks as one undo step (unselected children take their
-	 * parent's place); the caret goes where the keyboard's block delete puts
-	 * it, `caretAfterBlockDelete` (refused: the caret or the selection returns).
+	 * Delete the open blocks as the keyboard's block delete does
+	 * (`deleteSelectedBlocks`): `onDeleteSelectedBlocks` may keep them, then
+	 * one command (`deleteBlocks`, one plan, so a veto keeps them all),
+	 * unselected children taking their parent's place, the caret where that
+	 * delete puts it (kept or refused: the caret or the selection returns).
 	 */
 	remove() {
 		const { blocks } = this;
 		if (!blocks.length) return;
-		const at = caretAfterBlockDelete(blocks);
-		this.edytor.dispatcher.run('removeBlock', () => {
-			for (const block of blocks) block.removeBlock();
-		});
+		deleteSelectedBlocks(this.edytor, blocks);
 		this.close(false);
 		if (blocks.some((block) => block.isInTree)) return this.restore(blocks);
-		this.edytor.dispatcher.caret(at?.text, at?.offset ?? 0);
 		this.focus();
 	}
 

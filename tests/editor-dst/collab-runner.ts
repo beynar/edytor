@@ -1119,17 +1119,21 @@ export const assertDumpSelectionSane = (actorId: string, dump: DocumentDump) => 
 // the same anchor resolution production recovery uses. A resolvable
 // anchor defines the exact expected spot (block + text + UTF-16 offset);
 // only when the anchor is unresolvable (its atoms died wholesale) does
-// the dead-endpoint seam rule apply — the topmost dead child's vacated
-// slot under the nearest live ancestor, resolved to the surviving
-// sibling's start (one slid into the slot) or the previous sibling's
-// end (the dead child was last), and ultimately the first child's first
-// text. Anything else is `remote-selection-misplaced`, even when the
-// caret sits live and in-bounds somewhere else.
+// the dead-endpoint seam rule apply (`doc/anchors`): the slot the dead
+// block (or its topmost dead ancestor) occupied under its live parent, as
+// the REPLICATED placement records it, resolved to the start of the first
+// live stop at or after it, else the end of the last one before it, else
+// the same question one level up. Anything else is
+// `remote-selection-misplaced`, even when the caret sits live and
+// in-bounds somewhere else.
 //
 // Scope bound: when neither resolution nor a computable seam exists the
 // check degrades to the liveness+bounds gate rather than guessing.
 
 type SeamSpot = EndpointSpot;
+
+/** A block's replicated slot (`facade.slotOf`): its parent and rank, dead or live. */
+export type SlotFacts = Record<string, { parent: string | null; rank: string } | null>;
 
 const liveBlockIdsOf = (dump: DocumentDump): Set<string> => {
 	const live = new Set<string>();
@@ -1143,80 +1147,101 @@ const liveBlockIdsOf = (dump: DocumentDump): Set<string> => {
 	return live;
 };
 
-/** Path from the root children down to `blockId`, each entry `{id, children}`. */
-const findBlockChain = (
-	children: JSONBlock[],
-	blockId: string,
-	trail: { id: string; children: JSONBlock[] }[] = []
-): { id: string; children: JSONBlock[] }[] | null => {
-	for (const child of children) {
-		if (child.id === blockId) return [...trail, { id: child.id, children: child.children ?? [] }];
-		const found = findBlockChain(child.children ?? [], blockId, [
-			...trail,
-			{ id: child.id, children: child.children ?? [] }
-		]);
-		if (found) return found;
-	}
-	return null;
+/** The live children of `parent` (`null`: the root) in the post dump, in document order. */
+const liveChildrenOf = (post: DocumentDump, parent: string | null): JSONBlock[] => {
+	if (parent === null) return post.value.children;
+	const find = (children: JSONBlock[]): JSONBlock[] | null => {
+		for (const child of children) {
+			if (child.id === parent) return child.children ?? [];
+			const found = find(child.children ?? []);
+			if (found) return found;
+		}
+		return null;
+	};
+	return find(post.value.children) ?? [];
 };
 
 /**
  * The contract landing spot for an endpoint whose block `deadBlockId`
- * died between `pre` and `post`. Mirrors `selection.svelte.ts`'s repair:
- * climb to the topmost dead child under the nearest live ancestor, take
- * the first live sibling at/after its slot (land at its first text) else
- * the last live sibling before it (land at its last text's end), else
- * the root's first child's first text.
+ * died (`sel.seam.next-sibling`, `doc/anchors`). The slot comes from the
+ * replicated placement, not the pre-edit tree: a promoted child
+ * (`del.blocks.promote`) fills the dead block's slot, and a concurrent
+ * move may have re-placed it. Climb while the slot's parent is dead; among
+ * the live parent's children ordered by `(rank, id)`, the first one after
+ * the slot with an editable text lands at its start, else the last one at
+ * or before it lands at its end (a block's own content first, then its
+ * children: the dump's `blockTexts`); with neither, the same question one
+ * level up, where the parent's own content is the stop before the slot.
+ * With no slot at all, the document's first text.
  */
-const seamExpectation = (
-	pre: DocumentDump,
+export const seamExpectation = (
 	post: DocumentDump,
+	slots: SlotFacts,
 	deadBlockId: string
 ): SeamSpot | null => {
 	const postLive = liveBlockIdsOf(post);
-	const chain = findBlockChain(pre.value.children, deadBlockId);
-	if (!chain || chain.length === 0) return null;
-	// Nearest ancestor that survived in post — chain is root→dead, so scan
-	// back from the dead end; everything past it is the dead subtree.
-	let liveAncestorIdx = -1;
-	for (let i = chain.length - 1; i >= 0; i--) {
-		if (postLive.has(chain[i].id)) {
-			liveAncestorIdx = i;
-			break;
-		}
+	const deadSlot = slots[deadBlockId];
+	if (!deadSlot) return rootFallbackSpot(post);
+	let at = { id: deadBlockId, ...deadSlot };
+	while (at.parent !== null && !postLive.has(at.parent)) {
+		const up = slots[at.parent];
+		if (!up) break;
+		at = { id: at.parent, ...up };
 	}
-	const liveAncestor = liveAncestorIdx >= 0 ? chain[liveAncestorIdx] : null;
-	// The vacating child sits one level below the live ancestor — the dead
-	// block itself when its own parent survived.
-	const topDead = chain[liveAncestorIdx + 1];
-	if (!topDead) return null;
-	const siblings = liveAncestor ? liveAncestor.children : (pre.value.children ?? []);
-	const slot = siblings.findIndex((block) => block.id === topDead.id);
-	if (slot < 0) return null;
-	// Mirror production's directional scan: from the dead slot, walk the
-	// PREVIOUS sibling ordering forward (then backward) and take the
-	// first live sibling WITH an editable text — a live-but-textless
-	// sibling (void divider, empty container) is skipped, not a landing.
-	// The dump's blockTexts entries are editable-text ids + owning block.
-	for (let i = slot; i < siblings.length; i++) {
-		const candidate = siblings[i];
-		if (!postLive.has(candidate?.id ?? '')) continue;
-		const texts = candidate?.id ? post.blockTexts?.[candidate.id] : undefined;
-		if (texts?.firstId && texts.firstOwner) {
-			return { blockId: texts.firstOwner, textId: texts.firstId, offset: 0 };
+	for (;;) {
+		const here = at;
+		const after = (id: string) => {
+			const rank = slots[id]?.rank ?? '';
+			return rank === here.rank ? here.id < id : here.rank < rank;
+		};
+		const siblings = liveChildrenOf(post, here.parent);
+		for (const candidate of siblings.filter((block) => after(block.id!))) {
+			const texts = post.blockTexts?.[candidate.id!];
+			if (texts?.firstId && texts.firstOwner) {
+				return { blockId: texts.firstOwner, textId: texts.firstId, offset: 0 };
+			}
 		}
-	}
-	for (let i = slot - 1; i >= 0; i--) {
-		const candidate = siblings[i];
-		if (!postLive.has(candidate?.id ?? '')) continue;
-		const texts = candidate?.id ? post.blockTexts?.[candidate.id] : undefined;
-		if (texts?.lastId && texts.lastOwner) {
-			return { blockId: texts.lastOwner, textId: texts.lastId, offset: texts.lastLen ?? 0 };
+		for (const candidate of siblings.filter((block) => !after(block.id!)).reverse()) {
+			const texts = post.blockTexts?.[candidate.id!];
+			if (texts?.lastId && texts.lastOwner) {
+				return { blockId: texts.lastOwner, textId: texts.lastId, offset: texts.lastLen ?? 0 };
+			}
 		}
+		if (here.parent === null) return null;
+		const up = slots[here.parent];
+		at = { id: here.parent, parent: up?.parent ?? null, rank: up?.rank ?? '' };
 	}
-	// No live sibling under the ancestor — production lands on the root's
-	// first editable text.
-	return rootFallbackSpot(post);
+};
+
+/**
+ * The replicated slots the seam reads, from the peer's own document: every
+ * live block's, the dead block's, and its dead ancestors' up to a live one.
+ */
+const readSlotFacts = async (
+	page: Page,
+	post: DocumentDump,
+	deadBlockId: string
+): Promise<SlotFacts> => {
+	const read = (ids: string[]): Promise<SlotFacts> =>
+		page.evaluate(
+			({ slotsOf }) => {
+				const facade = (
+					window as Window & {
+						__EDYTOR__?: {
+							facade?: { slotOf(id: string): { parent: string | null; rank: string } | null };
+						};
+					}
+				).__EDYTOR__?.facade;
+				return Object.fromEntries(slotsOf.map((id) => [id, facade?.slotOf(id) ?? null]));
+			},
+			{ slotsOf: ids }
+		);
+	const slots = await read([...liveBlockIdsOf(post), deadBlockId]);
+	for (let parent = slots[deadBlockId]?.parent; parent != null && !(parent in slots); ) {
+		Object.assign(slots, await read([parent]));
+		parent = slots[parent]?.parent;
+	}
+	return slots;
 };
 
 /** The root's first editable text spot — production's last-resort
@@ -1388,7 +1413,11 @@ export const assertPassiveSelectionExact = async (
 		// falls through to the root fallback.
 		seam:
 			startBlockDied && pre.selection.startBlockId
-				? seamExpectation(pre, post, pre.selection.startBlockId)
+				? seamExpectation(
+						post,
+						await readSlotFacts(peer.page, post, pre.selection.startBlockId),
+						pre.selection.startBlockId
+					)
 				: null,
 		rootFallback: rootFallbackSpot(post)
 	});

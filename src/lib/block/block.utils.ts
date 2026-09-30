@@ -178,20 +178,26 @@ const ref = (block: Block) => (block.isRoot ? null : block.id);
 /**
  * Dispatch `operation` on `block` as the one plan `prepare` answers (a
  * composed command: hooks see it and each planned step, one transaction).
- * Answers the applied plan, or null when refused.
+ * `then` runs in that transaction once the plan applied, with the payload
+ * hooks left. Answers the applied plan, or null when refused.
  */
 export const dispatchPlan = <O extends keyof BlockOperations>(
 	block: Block,
 	operation: O,
 	payload: BlockOperations[O],
 	prepare: (payload: BlockOperations[O]) => Prepared,
-	touched: (Block | null | undefined)[] = [block.parent]
+	touched: (Block | null | undefined)[] = [block.parent],
+	then?: (payload: BlockOperations[O]) => void
 ): Plan | null =>
 	block.edytor.dispatcher.dispatch(
 		operation,
 		payload,
 		{ block },
-		(p, plan = prepare(p)) => applyPlan(block, plan, touched),
+		(p, plan = prepare(p)) => {
+			const applied = applyPlan(block, plan, touched);
+			if (applied) then?.(p);
+			return applied;
+		},
 		prepare
 	) ?? null;
 

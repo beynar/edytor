@@ -113,7 +113,7 @@ export const myPlugin: Plugin = (edytor) => {
     },
     onDeleteSelectedBlocks: {
       type: "({ selectedBlocks, prevent }) => void",
-      description: "Before Backspace or Delete removes a block selection.",
+      description: "Before Backspace, Delete, a cut or the block menu's Delete removes a block selection.",
     },
   }}
 />
@@ -190,7 +190,7 @@ export const noFilesPlugin: Plugin = () => ({
 });
 ```
 
-**`onDeleteSelectedBlocks`** runs when <kbd>Backspace</kbd> or <kbd>Delete</kbd> removes a block selection, with the blocks in document order. `prevent()` keeps them.
+**`onDeleteSelectedBlocks`** runs when <kbd>Backspace</kbd>, <kbd>Delete</kbd>, a cut or the block menu's Delete removes a block selection, with the blocks in document order. `prevent()` keeps them (a cut still writes the clipboard).
 
 For the clipboard formats and paste rules, see [Clipboard](/docs/editor/clipboard).
 

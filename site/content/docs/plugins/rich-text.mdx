@@ -101,7 +101,7 @@ Notion's "turn into" chords convert the block holding the caret, or, as in Notio
 
 Each runs the kind's command (`block.paragraph`, `block.heading1`, …, `block.code`) and is claimed only when that command is registered.
 
-The plugin also handles the formatting input types browsers send from their own menus and from iOS: bold, italic, underline, strikethrough, superscript, subscript, remove formatting, text and background color, insert link, ordered and unordered list (converts the block), and horizontal rule (inserts a divider at the caret, splitting the block when the caret is inside it; in a list's item, the divider goes out of the list as Turn into puts one: in an empty item's place, else after the item, whose text stays whole; in an emptied document it creates the divider and a paragraph after it). `insertDividerAtSelection()` below does the same.
+The plugin also handles the formatting input types browsers send from their own menus and from iOS: bold, italic, underline, strikethrough, superscript, subscript, remove formatting, text and background color, insert link, ordered and unordered list (converts the block), and horizontal rule (inserts a divider at the caret, splitting the block when the caret is inside it; a block that holds nothing becomes the divider; in a list's item, the divider goes out of the list as Turn into puts one: in the place of an item that holds nothing, else after the item, whose text stays whole; an inline block such as a mention counts as content, so a block holding only one keeps it; in an emptied document it creates the divider and a paragraph after it). `insertDividerAtSelection()` below does the same.
 
 ## Formatting from code
 

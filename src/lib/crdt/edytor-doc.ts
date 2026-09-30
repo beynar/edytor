@@ -1862,8 +1862,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * before it, last ones after it; from the middle, the list keeps the
 		 * items after them and a new list of its kind takes the ones before
 		 * them, so an item a peer appends meanwhile stays with the items it
-		 * follows (ZW-03). A container left with no child goes (YW-02). One
-		 * plan; refused as the move is. `ids`: the moved blocks.
+		 * follows (ZW-03; `splitOut`, the split Turn into's `liftOut` makes). A
+		 * container left with no child goes (YW-02). One plan; refused as the
+		 * move is. `ids`: the moved blocks.
 		 */
 		const unNestBlocks = (ids: readonly BlockId[]): Prepared => {
 			const moved = ids.map(ref);
@@ -1875,32 +1876,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			if (!canPlace(moved, ppos.parent, (id) => settledKind(from, id, ppos.parent))) return REFUSED;
 			const after = childrenIds(from).slice(pos!.index + 1);
 			const retype = settle(from, moved, ppos.parent);
-			if (isContainer(from)) {
-				const before = childrenIds(from)
-					.slice(0, pos!.index)
-					.filter((id) => !moved.includes(id));
-				if (before.length === 0 || after.length === 0) {
-					const at = ppos.index + (before.length === 0 ? 0 : 1);
-					const writes = [...move(moved, ppos.parent, at), ...retype];
-					return plan(moved, emptying(from, moved, writes, landing(ppos.parent)));
-				}
-				// The items before them go to a new list of its kind, right before them.
-				const head = newId('b');
-				const ranks = ranksFor(ppos.parent, ppos.index, moved.length + 1, moved);
-				const spec = { id: head, type: kindToCopy(from), data: blockDataOf(from) ?? {} };
-				return plan(moved, [
-					{
-						op: 'insertBlocks',
-						parent: ppos.parent,
-						index: ppos.index,
-						specs: [sanitizeSpec(spec)],
-						ranks: ranks.slice(0, 1)
-					},
-					...move(before, head, 0),
-					...moveTo(moved, ppos.parent, ppos.index + 1, ranks.slice(1)),
-					...retype
-				]);
-			}
+			if (isContainer(from)) return splitOut(moved, [from], [], false, retype);
 			const writes = [...move(moved, ppos.parent, ppos.index + 1), ...retype];
 			const adopts =
 				after.length > 0 &&
@@ -1914,55 +1890,61 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const unNestBlock = (id: BlockId): Prepared => unNestBlocks([id]);
 
 		/**
-		 * Place `id` where a block of `kind` fits, in one plan (AW-01, AW-03):
-		 * out of every container around it that `kind` does not fit (`fits`:
-		 * a list, and a list holding that list directly, for a heading or a
-		 * divider). Each splits around it as an outdent splits one list
-		 * (ZW-03): the blocks before it go to a new container of its kind —
-		 * which the level above holds the same way — and it keeps the ones
-		 * after it; one left with no child goes. `after` (new blocks) lands
-		 * right after it. With `keep`, `id` stays and only `after` goes out,
-		 * the split right after `id` (a divider inserted after an item). The
-		 * kinds are the caller's: it composes the retype (`setBlock`). Refused
-		 * where `id` may not move there (`canPlace`). `ids`: the placed blocks.
+		 * Where a block of `kind` at `id`'s place lands: `id`'s parent, or the
+		 * first one up that `kind` fits (`fits`: a list holds only its items),
+		 * and the containers it leaves on the way, innermost first (`levels`).
+		 * Its own kind keeps a block where it is (DR-behavior-3), as a reorder
+		 * does (`canPlace`); a block inserted after it (`after`) has no place
+		 * yet.
 		 */
-		const liftOut = (
-			id: BlockId,
-			kind: string,
-			{ keep = false, after = [] }: { keep?: boolean; after?: readonly BlockSpec[] } = {}
-		): Prepared => {
-			id = ref(id);
-			kind = ref(kind);
-			const specs = after.map(sanitizeSpec);
-			const pos = positionOf(id);
-			if (pos === null || M.collides(doc, specs)) return REFUSED;
+		const landingOf = (id: BlockId, kind: string, after = false) => {
 			const levels: BlockId[] = [];
-			let parent = pos.parent;
-			for (; parent !== null && !fits(parent, kind); parent = positionOf(parent)!.parent)
+			let parent = positionOf(id)?.parent ?? null;
+			const own = !after && blockTypeOf(id) === kind;
+			for (; !own && parent !== null && !fits(parent, kind); parent = positionOf(parent)!.parent)
 				levels.push(parent);
-			if (!canPlace([id], parent, () => kind)) return REFUSED;
-			const moved = keep ? [] : [id];
+			return { parent, levels };
+		};
+		/**
+		 * Lift sibling blocks `ids` (document order) out of `levels`, the
+		 * containers around them, innermost first (ZW-03, AW-01): each level
+		 * splits around them as an outdent splits one list — the blocks
+		 * before them go to a new container of its kind, which the level above
+		 * holds the same way, and the level keeps the ones after them, so an
+		 * item a peer appends meanwhile stays with the items it follows; one
+		 * left with no child goes. `specs` (new blocks) land right after them.
+		 * With `keep`, `ids` stay before the split and only `specs` go out.
+		 * `retype` (the caller's kind steps) joins the plan. The one split
+		 * `unNestBlocks` and `liftOut` share. `ids`: the placed blocks.
+		 */
+		const splitOut = (
+			ids: readonly BlockId[],
+			levels: readonly BlockId[],
+			specs: BlockSpec[],
+			keep: boolean,
+			retype: readonly PlanStep[] = []
+		): Plan => {
+			const moved = keep ? [] : [...ids];
 			const placed = [...moved, ...specs.map((s) => s.id)];
 			const insert = (at: BlockId | null, index: number, s: BlockSpec[], ranks: string[]) =>
 				s.length ? [{ op: 'insertBlocks' as const, parent: at, index, specs: s, ranks }] : [];
-			if (levels.length === 0)
-				return plan(
-					placed,
-					insert(parent, pos.index + 1, specs, ranksFor(parent, pos.index + 1, specs.length))
-				);
+			const last = ids.at(-1)!;
+			const { parent, index } = positionOf(levels.at(-1) ?? last)!;
+			if (levels.length === 0) {
+				const ranks = ranksFor(parent, index + 1, specs.length);
+				return plan(placed, [...insert(parent, index + 1, specs, ranks), ...retype]);
+			}
 			// Bottom up: what stays before the split at each level (the level
 			// itself, or a new head holding it), and whether anything follows it.
 			const heads: { spec: BlockSpec; kids: BlockId[]; inner?: BlockSpec }[] = [];
 			let before: { id: BlockId; head?: BlockSpec } | null = null;
 			let follows = false;
-			let child = id;
+			let child = last;
 			for (const level of levels) {
 				const kids = childrenIds(level);
 				const at = kids.indexOf(child);
-				// Before the split: the blocks before `child`, and `id` itself when it stays.
-				const cut = child === id && keep ? at + 1 : at;
 				const lead: BlockId[] = [
-					...kids.slice(0, cut),
+					...kids.slice(0, keep && child === last ? at + 1 : at).filter((k) => !moved.includes(k)),
 					...(before && !before.head ? [before.id] : [])
 				];
 				follows ||= at + 1 < kids.length;
@@ -1977,11 +1959,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				} else before = lead.length > 0 ? { id: level } : null;
 				child = level;
 			}
-			const top = positionOf(levels.at(-1)!)!;
-			const gap = top.index + (before && !before.head ? 1 : 0);
+			let gap = index + (before && !before.head ? 1 : 0);
 			const ranks = ranksFor(parent, gap, (before?.head ? 1 : 0) + placed.length, moved);
 			const writes: PlanStep[] = before?.head
-				? insert(parent, gap, [before.head], ranks.splice(0, 1))
+				? insert(parent, gap++, [before.head], ranks.splice(0, 1))
 				: [];
 			for (const { spec, kids, inner } of heads.reverse()) {
 				const inside = ranksFor(spec.id, 0, kids.length + (inner ? 1 : 0));
@@ -1990,9 +1971,37 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					...(inner ? insert(spec.id, kids.length, [inner], inside.slice(-1)) : [])
 				);
 			}
-			const [mine, theirs] = [ranks.slice(0, moved.length), ranks.slice(moved.length)];
-			writes.push(...moveTo(moved, parent, gap, mine), ...insert(parent, gap, specs, theirs));
+			const mine = ranks.splice(0, moved.length);
+			writes.push(
+				...moveTo(moved, parent, gap, mine),
+				...insert(parent, gap + moved.length, specs, ranks),
+				...retype
+			);
 			return plan(placed, emptying(levels[0]!, moved, writes, landing(parent)));
+		};
+		/**
+		 * Place `id` where a block of `kind` fits, in one plan (AW-01, AW-03):
+		 * out of every container around it that `kind` does not fit
+		 * (`landingOf`: a list, and a list holding that list directly, for a
+		 * heading or a divider), each split around it (`splitOut`). `after`
+		 * (new blocks) lands right after it. With `keep`, `id` stays and only
+		 * `after` goes out, the split right after `id` (a divider inserted
+		 * after an item). Its own kind never moves it. The kinds are the
+		 * caller's: it composes the retype (`setBlock`). Refused where `id`
+		 * may not move there (`canPlace`). `ids`: the placed blocks.
+		 */
+		const liftOut = (
+			id: BlockId,
+			kind: string,
+			{ keep = false, after = [] }: { keep?: boolean; after?: readonly BlockSpec[] } = {}
+		): Prepared => {
+			id = ref(id);
+			kind = ref(kind);
+			const specs = after.map(sanitizeSpec);
+			const { parent, levels } = landingOf(id, kind, keep);
+			if (!positionOf(id) || M.collides(doc, specs) || !canPlace([id], parent, () => kind))
+				return REFUSED;
+			return splitOut([id], levels, specs, keep);
 		};
 
 		/**
@@ -2670,6 +2679,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			/** Where `ids` nest when nested into `parent` (Tab, a drop inside it): `nestParent`. */
 			nestParent: (ids: readonly BlockId[], parent: BlockId) =>
 				nestParent(ids.map(ref), ref(parent)),
+			/** Where a block of `kind` at `id`'s place lands, and the containers it leaves (`liftOut`). */
+			landingOf: (id: BlockId, kind: string, after?: boolean) =>
+				landingOf(ref(id), ref(kind), after),
 			defaultChild: byRef(defaultChild),
 			// maintained runs (U05 surface, bound to this doc)
 			runs: byRef(runsView.runs),

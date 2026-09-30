@@ -357,14 +357,23 @@ describe('docs drift', () => {
 				return null;
 			}
 		};
+		// `lost`: a decoding Worker never routed the old dial to the id. On a
+		// Worker that routes on the raw segment, the old dial reached the id
+		// itself unless the URL rewrote it (`rawLost`), and an upgraded client
+		// reaches another name when encodeURIComponent escapes what the URL
+		// kept (`rawMoved`, `%` included: `50%off` against `50%25off`).
 		const lost: string[] = [];
-		const moved: string[] = [];
+		const rawLost: string[] = [];
+		const rawMoved: string[] = [];
 		for (let code = 0; code < 0x10000; code++) {
 			const char = String.fromCharCode(code);
 			const id = `a${char}b`;
 			if (!validRoomId(id)) continue;
 			if (decoded(id) !== id) lost.push(char);
-			else if (segment(id) !== encodeURIComponent(id)) moved.push(char);
+			const raw = segment(id);
+			const upgraded = segment(encodeURIComponent(id));
+			if (raw === id && upgraded !== id) rawMoved.push(char);
+			else if (raw !== id && raw !== upgraded) rawLost.push(char);
 		}
 		// The URL strips tab, LF and CR; the note names them in words.
 		expect(lost.filter((char) => char < ' ')).toEqual(['\t', '\n', '\r']);
@@ -383,11 +392,15 @@ describe('docs drift', () => {
 		expect(listed(migration, 'to the same room unless it holds ')).toEqual(
 			lost.filter((char) => char >= ' ').sort()
 		);
+		expect(rawLost.filter((char) => char < ' ')).toEqual(['\t', '\n', '\r']);
+		expect(listed(troubleshooting, 'An id holding ')).toEqual(
+			rawLost.filter((char) => char >= ' ').sort()
+		);
 		for (const [text, lead] of [
 			[migration, 'sends an id holding '],
 			[troubleshooting, 'so an id holding ']
 		])
-			expect(listed(text, lead), lead).toEqual(moved.sort());
+			expect(listed(text, lead), lead).toEqual(rawMoved.sort());
 	});
 
 	it('the attachDocument pages list every method the document and the room expose (ZW-16)', () => {
@@ -601,6 +614,82 @@ describe('docs drift', () => {
 		const row = page.split('\n').find((line) => line.includes('ERR_PNPM_TARBALL_INTEGRITY'));
 		expect(row).toContain('`pnpm remove edytor && pnpm add <that URL>`');
 		expect(row).toContain('`npm uninstall edytor && npm install <that URL>`');
+	});
+
+	it('every 4403 row and user-id rule names each identity routeDocumentSocket refuses (BW-07)', () => {
+		// The refusal, pinned against the source: a missing identity, a userId
+		// that is not a string, empty, over 256 characters or with a lone
+		// surrogate, and an invalid replica. A new clause must reach the docs.
+		const source = readFileSync(join(root, 'src/lib/cloudflare/routeDocumentSocket.ts'), 'utf8');
+		const refusal =
+			/if \(\n\t\t!identity \|\|([\s\S]*?)\) \{\n\t\treturn closedSocket\(CLOSE\.denied/.exec(
+				source
+			)?.[1];
+		expect(refusal?.split('||').map((clause) => clause.replace(/\/\/.*|\s+/g, ' ').trim())).toEqual(
+			[
+				"typeof identity.userId !== 'string'",
+				'!identity.userId',
+				'identity.userId.length > 256',
+				'/\\p{Cs}/u.test(identity.userId)',
+				'(replica !== null && parseReplica(replica) === null)'
+			]
+		);
+		const rows = docs.flatMap((path) =>
+			pageText(path)
+				.split('\n')
+				.map((line, i) => [`${relative(root, path)}:${i + 1}`, line] as const)
+				.filter(([, line]) => line.startsWith('|') && line.includes('`4403`'))
+				.filter(([, line]) => line.includes('document access denied'))
+		);
+		expect(rows.length).toBeGreaterThanOrEqual(3);
+		const causes = [/`null`/, /empty/, /256/, /lone surrogate/, /`replica`/];
+		expect(
+			rows.filter(([, line]) => causes.some((cause) => !cause.test(line))).map(([at]) => at)
+		).toEqual([]);
+		// Every page that states the user-id length rule names the surrogate rule too.
+		const userRule = docs.flatMap((path) =>
+			pageText(path)
+				.split('\n')
+				.map((line, i) => [`${relative(root, path)}:${i + 1}`, line] as const)
+				.filter(([, line]) => /user ids? (?:are|is) 1 to 256|`userId`.*1 to 256/.test(line))
+		);
+		expect(userRule.length).toBeGreaterThanOrEqual(2);
+		expect(
+			userRule
+				.filter(([, line]) => !/user ids?[^.]*lone surrogate|`userId`.*lone surrogate/.test(line))
+				.map(([at]) => at)
+		).toEqual([]);
+	});
+
+	it('every view type the document API pages name is exported from edytor/crdt/edytor (BW-08)', () => {
+		// tests/packed-consumer/smoke-types.ts type-checks the import itself.
+		const section = (page: string, heading?: string) => {
+			const text = pageText(join(root, 'site/content/docs', page));
+			if (!heading) return text;
+			const from = text.indexOf(heading);
+			const to = text.indexOf('\n#', from + heading.length);
+			return text.slice(from, to < 0 ? undefined : to);
+		};
+		const named = (text: string) => [...text.matchAll(/`(\w+View)`/g)].map(([, name]) => name);
+		const exported = readFileSync(join(root, 'src/lib/crdt/index.ts'), 'utf8');
+		const pages = [
+			section('reference/migration.mdx', '### Document and CRDT API'),
+			section('reference/document-api.mdx')
+		];
+		expect(pages.flatMap(named)).toEqual(expect.arrayContaining(['RangeView', 'FlowView']));
+		for (const name of pages.flatMap(named))
+			expect(exported, name).toMatch(new RegExp(`type ${name}\\b`));
+	});
+
+	it("AGENTS.md names each Playwright config's port variable (SW11-docs-1)", () => {
+		const agents = readFileSync(join(root, 'AGENTS.md'), 'utf8');
+		for (const config of ['playwright.arch.config.ts', 'playwright.dst.config.ts']) {
+			const port = /process\.env\.(\w+_PORT)/.exec(readFileSync(join(root, config), 'utf8'))?.[1];
+			expect(port, config).toBeDefined();
+			expect(agents, config).toMatch(
+				new RegExp(`\`${config.replaceAll('.', '\\.')}\` takes \`${port}\``)
+			);
+		}
 	});
 
 	it('no source comment cites a README section (the README is a landing page)', () => {

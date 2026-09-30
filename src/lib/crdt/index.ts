@@ -118,7 +118,8 @@ export {
 	type DocAnchor,
 	type AnchorAffinity
 } from './edytor-doc.js';
-export { type DocPosition } from './rangeDelete.js';
+export { type DocPosition, type RangeView } from './rangeDelete.js';
+export { type FlowView } from './flow.js';
 
 export {
 	type BlockId,

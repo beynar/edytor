@@ -1,0 +1,493 @@
+{
+	"schemaVersion": 1,
+	"seed": 18,
+	"shape": "list-containers",
+	"peerCount": 3,
+	"lineageDepth": 5,
+	"document": {
+		"children": [
+			{
+				"type": "paragraph",
+				"id": "dst-18-b0",
+				"content": [
+					{
+						"text": "before"
+					}
+				]
+			},
+			{
+				"type": "unordered-list",
+				"id": "dst-18-l0",
+				"children": [
+					{
+						"type": "list-item",
+						"id": "dst-18-l0-i0",
+						"content": [
+							{
+								"text": "one"
+							}
+						],
+						"children": [
+							{
+								"type": "paragraph",
+								"id": "dst-18-l0-i0-c0",
+								"content": [
+									{
+										"text": "under",
+										"marks": {
+											"italic": true
+										}
+									}
+								]
+							}
+						]
+					},
+					{
+						"type": "list-item",
+						"id": "dst-18-l0-i1",
+						"content": [
+							{
+								"text": "two",
+								"marks": {
+									"bold": true
+								}
+							}
+						],
+						"children": [
+							{
+								"type": "ordered-list",
+								"id": "dst-18-l1",
+								"children": [
+									{
+										"type": "list-item",
+										"id": "dst-18-l1-i0",
+										"content": [
+											{
+												"text": "inner"
+											}
+										]
+									}
+								]
+							}
+						]
+					},
+					{
+						"type": "list-item",
+						"id": "dst-18-l0-i2",
+						"content": [
+							{
+								"text": "three"
+							}
+						]
+					}
+				]
+			},
+			{
+				"type": "ordered-list",
+				"id": "dst-18-l2",
+				"children": [
+					{
+						"type": "list-item",
+						"id": "dst-18-l2-i0",
+						"content": [
+							{
+								"text": "solo"
+							}
+						]
+					}
+				]
+			},
+			{
+				"type": "paragraph",
+				"id": "dst-18-b1",
+				"content": [
+					{
+						"text": "after"
+					}
+				]
+			}
+		]
+	},
+	"steps": [
+		{
+			"kind": "edit",
+			"peer": 1,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 3053248056,
+				"startOffset": 4042261185,
+				"endText": 2792480656,
+				"endOffset": 1267837793,
+				"reversed": false
+			},
+			"action": {
+				"kind": "insertText",
+				"text": "b0·é"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 0,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 1385959653,
+				"startOffset": 3845603775,
+				"endText": 1537824085,
+				"endOffset": 1633972965,
+				"reversed": false
+			},
+			"action": {
+				"kind": "type",
+				"text": "a1·!"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 2,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 3628271028,
+				"startOffset": 3964283497,
+				"endText": 949903760,
+				"endOffset": 3071084690,
+				"reversed": false
+			},
+			"action": {
+				"kind": "delete"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 2,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 3126428959,
+				"startOffset": 269613482,
+				"endText": 3152435906,
+				"endOffset": 4254219565,
+				"reversed": false
+			},
+			"action": {
+				"kind": "type",
+				"text": "c3·ab"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 0,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 2600677838,
+				"startOffset": 145823899,
+				"endText": 2219821993,
+				"endOffset": 3402474118,
+				"reversed": false
+			},
+			"action": {
+				"kind": "enter"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 0,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 977314144,
+				"startOffset": 1717975958,
+				"endText": 0,
+				"endOffset": 0,
+				"reversed": false
+			},
+			"action": {
+				"kind": "type",
+				"text": "a12· "
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 2,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 633776998,
+				"startOffset": 42476435,
+				"endText": 0,
+				"endOffset": 0,
+				"reversed": false
+			},
+			"action": {
+				"kind": "type",
+				"text": "c13·x"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 2,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 661970203,
+				"startOffset": 1830728465,
+				"endText": 2365623131,
+				"endOffset": 3987007990,
+				"reversed": false
+			},
+			"action": {
+				"kind": "insertText",
+				"text": "c14·漢"
+			}
+		},
+		{
+			"kind": "net",
+			"op": {
+				"kind": "release",
+				"permute": false,
+				"duplicates": 1
+			}
+		},
+		{
+			"kind": "net",
+			"op": {
+				"kind": "healBarrier"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 1,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 1078634498,
+				"startOffset": 396722191,
+				"endText": 30134992,
+				"endOffset": 1979057706,
+				"reversed": false
+			},
+			"action": {
+				"kind": "tab"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 1,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 577431094,
+				"startOffset": 1924164889,
+				"endText": 3284448603,
+				"endOffset": 2400299956,
+				"reversed": false
+			},
+			"action": {
+				"kind": "wordDelete",
+				"direction": "forward"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 0,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 1687875620,
+				"startOffset": 2428293899,
+				"endText": 360400546,
+				"endOffset": 1515554898,
+				"reversed": false
+			},
+			"action": {
+				"kind": "type",
+				"text": "a15·x"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 2,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 3493356699,
+				"startOffset": 4261056686,
+				"endText": 2347604838,
+				"endOffset": 2753684861,
+				"reversed": false
+			},
+			"action": {
+				"kind": "type",
+				"text": "c16· "
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 0,
+			"selection": {
+				"kind": "text",
+				"mode": "within-text",
+				"startText": 1127159133,
+				"startOffset": 146808757,
+				"endText": 1300277410,
+				"endOffset": 3443467295,
+				"reversed": false
+			},
+			"action": {
+				"kind": "tab"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 1,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 1065148366,
+				"startOffset": 2241289539,
+				"endText": 3538295903,
+				"endOffset": 2863770304,
+				"reversed": false
+			},
+			"action": {
+				"kind": "move",
+				"key": "End",
+				"extend": false
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 2,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 1873224822,
+				"startOffset": 1541067143,
+				"endText": 239812882,
+				"endOffset": 3799930848,
+				"reversed": false
+			},
+			"action": {
+				"kind": "backspace"
+			}
+		},
+		{
+			"kind": "net",
+			"op": {
+				"kind": "disconnect",
+				"peer": 1
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 1,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 3250199799,
+				"startOffset": 3851535398,
+				"endText": 3616886041,
+				"endOffset": 2648363705,
+				"reversed": false
+			},
+			"action": {
+				"kind": "type",
+				"text": "b20·!"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 2,
+			"selection": {
+				"kind": "block",
+				"index": 4224426208,
+				"reversed": false
+			},
+			"action": {
+				"kind": "backspace"
+			}
+		},
+		{
+			"kind": "net",
+			"op": {
+				"kind": "reconnect",
+				"peer": 1
+			}
+		},
+		{
+			"kind": "net",
+			"op": {
+				"kind": "healBarrier"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 1,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 1994809754,
+				"startOffset": 2018086872,
+				"endText": 904273838,
+				"endOffset": 2558080129,
+				"reversed": false
+			},
+			"action": {
+				"kind": "delete"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 0,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 793414297,
+				"startOffset": 651175738,
+				"endText": 260268376,
+				"endOffset": 4086150158,
+				"reversed": false
+			},
+			"action": {
+				"kind": "enter"
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 1,
+			"selection": {
+				"kind": "text",
+				"mode": "collapsed",
+				"startText": 1147409734,
+				"startOffset": 10317569,
+				"endText": 3832481159,
+				"endOffset": 2886387279,
+				"reversed": false
+			},
+			"action": {
+				"kind": "type",
+				"text": "b23·."
+			}
+		},
+		{
+			"kind": "edit",
+			"peer": 1,
+			"selection": {
+				"kind": "text",
+				"mode": "cross-text",
+				"startText": 1438757539,
+				"startOffset": 132359607,
+				"endText": 440108400,
+				"endOffset": 2780187556,
+				"reversed": false
+			},
+			"action": {
+				"kind": "wordDelete",
+				"direction": "forward"
+			}
+		}
+	]
+}

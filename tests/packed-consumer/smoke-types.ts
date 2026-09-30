@@ -164,3 +164,9 @@ void rootReadiness;
 void rootAttribution;
 void rootLoaded;
 void rootAttached;
+
+// BW-08: the `view` argument types of the range and flow operations.
+const rangeView: bindings.RangeView = { hidden: (id) => id === 'body' };
+const flowView: bindings.FlowView = { ...rangeView, itemKind: () => 'list-item' };
+rootDoc.facade.prepare.deleteRange({ block: 'a', offset: 0 }, { block: 'a', offset: 1 }, rangeView);
+rootDoc.facade.prepare.insertFlow({ block: 'a', offset: 0 }, { lines: [] }, flowView);

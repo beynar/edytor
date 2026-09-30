@@ -45,7 +45,7 @@ Behavior worth knowing:
 - Bulleted and numbered items, to-dos and toggles are [continuing kinds](/docs/customization/blocks#continuing-kinds): <kbd>Enter</kbd> opens another of the same kind (an unchecked to-do), and in an empty one ends the list. Toggles, callouts and quotes are [containers](/docs/customization/blocks#containers): <kbd>Enter</kbd> at the end of one with children, or of an open toggle, opens a first child, and in the middle of the header moves the rest of the text into that first child. <kbd>Backspace</kbd> at the start of any kind but a paragraph turns it into a paragraph first. [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role) has the full rules.
 - Headings have Notion's three levels. A `heading`'s element follows `data.level`, `h1` to `h3`, and so does its copied HTML. Without a level it is `h1`; any other level (a stored `h5`, say) renders and copies as `h3`, as pasting `h4` to `h6` gives a level `h3` heading.
 - A `toggle` is a native `<details>`. The browser owns its `open` attribute, so opening and closing it is not an edit and is never reverted. Arrow keys skip the body of a closed toggle.
-- The `todo-item` checkbox (`data-edytor-todo-checkbox`) shows `data.checked`. Clicking it, or <kbd>Mod</kbd> + <kbd>Enter</kbd> in the to-do, flips `checked` as one undo step. It does not change in a readonly editor.
+- The `todo-item` checkbox (`data-edytor-todo-checkbox`) shows `data.checked`. Clicking it, or <kbd>Mod</kbd> + <kbd>Enter</kbd> in the to-do (or over selected blocks, each shown to-do, while the toggles among them open or close), flips `checked` as one undo step. It does not change in a readonly editor.
 - A `callout` shows `data.icon` in a `data-edytor-callout-icon` span, `💡` when it has none.
 - The `paragraph` element carries no classes of its own: style it through `[data-edytor-type='paragraph']`.
 - Pasted `ol > li` becomes a numbered item and other `li` a bulleted item.
@@ -81,7 +81,7 @@ Pasted HTML maps `b`, `i`, `u`, `strike` and `del` to their marks, reads Google 
 | <kbd>Mod</kbd> + <kbd>E</kbd>                    | Toggle inline code            |
 | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>, <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd> | Toggle strikethrough |
 | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd>   | Toggle red text color         |
-| <kbd>Mod</kbd> + <kbd>Enter</kbd>                  | Check or uncheck the to-do (in a to-do only) |
+| <kbd>Mod</kbd> + <kbd>Enter</kbd>                  | Check or uncheck the to-do (in a to-do, or the selected to-dos) |
 
 With a collapsed caret, a mark hotkey sets the mark for the next characters you type instead.
 

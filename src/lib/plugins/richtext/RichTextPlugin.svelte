@@ -10,6 +10,7 @@
 		type RichTextMark
 	} from './richTextOperations.js';
 	import { firstUriListEntry } from '$lib/events/dataTransferPayload.js';
+	import { flipToggles, shownSelectionBlocks } from '$lib/selection/replaceSelection.js';
 	import { richTextKinds } from '$lib/crdt/semantics.js';
 
 	export { richTextOperations };
@@ -117,10 +118,17 @@
 				'mod+shift+s': setMarkAndSelect('strike'),
 				'mod+shift+x': setMarkAndSelect('strike'),
 				'mod+shift+h': setMarkAndSelect('color', 'red'),
-				// Mod+Enter checks a to-do (Notion); elsewhere the built-in split runs.
+				// Mod+Enter checks or unchecks each shown to-do it is in (Notion): the
+				// selected blocks', else the caret's; the toggles among them open or
+				// close as with the built-in binding, in the same key.
 				'mod+enter': ({ prevent }) => {
-					const block = edytor.selection.state.startBlock;
-					if (block?.type === 'todo-item') prevent(() => toggleTodo(block));
+					const blocks = shownSelectionBlocks(edytor);
+					const todos = blocks.filter((b) => b.type === 'todo-item');
+					if (!todos.length) return;
+					prevent(() => {
+						edytor.dispatcher.each('setBlock', todos, toggleTodo);
+						flipToggles(blocks);
+					});
 				},
 				...Object.fromEntries(
 					Object.entries(TURN_INTO).map(([chord, id]): [string, HotKey] => [

@@ -113,7 +113,7 @@ export const myPlugin: Plugin = (edytor) => {
     },
     onDeleteSelectedBlocks: {
       type: "({ selectedBlocks, prevent }) => void",
-      description: "Before any gesture removes a block selection: Backspace or Delete (a word or line delete too), a cut, the block menu's Delete, or typing, Enter or a paste over it.",
+      description: "Before any gesture removes a block selection: Backspace or Delete (a word or line delete too), a cut, the block menu's Delete, or typing, a composition or a paste over it (Enter, Shift+Enter and a drop remove nothing, so they never run it).",
     },
   }}
 />
@@ -190,7 +190,7 @@ export const noFilesPlugin: Plugin = () => ({
 });
 ```
 
-**`onDeleteSelectedBlocks`** runs before any gesture removes a block selection, with the blocks in document order: <kbd>Backspace</kbd> or <kbd>Delete</kbd> (with <kbd>Alt</kbd>, <kbd>Mod</kbd> or <kbd>Ctrl</kbd> too: a word or line delete removes the blocks as a plain one does), a cut, the block menu's Delete, and typing, <kbd>Enter</kbd>, <kbd>Shift</kbd>+<kbd>Enter</kbd>, a composition or a paste over the selection (each replaces the blocks with what it inserts). `prevent()` keeps them and refuses the gesture: nothing is inserted, a cut still writes the clipboard, and `edytor.dispatcher.last` reports `refused`. A drop over a block selection inserts at the drop point, and <kbd>Enter</kbd> over a selected divider or image inserts a line after it: neither removes anything, so the hook does not run. To guard blocks against every command, including headless ones such as `edytor.deleteBlocks`, veto the operations whose `effect.removes` names them in `onBeforeOperation` ([Refusing an edit](/docs/plugins/operations#refusing-an-edit)).
+**`onDeleteSelectedBlocks`** runs before any gesture removes a block selection, with the blocks in document order: <kbd>Backspace</kbd> or <kbd>Delete</kbd> (with <kbd>Alt</kbd>, <kbd>Mod</kbd> or <kbd>Ctrl</kbd> too: a word or line delete removes the blocks as a plain one does), a cut, the block menu's Delete, and typing, a composition or a paste over the selection (each replaces the blocks with what it inserts). It names the blocks that go: a selected block's unselected children stay, promoted into its place, and only a container that shows no text of its own (a list, a code block) left with nothing in it goes with them. `prevent()` keeps them and refuses the gesture: nothing is inserted, a cut still writes the clipboard, and `edytor.dispatcher.last` reports `refused`. A drop over a block selection inserts at the drop point, and <kbd>Enter</kbd> or <kbd>Shift</kbd>+<kbd>Enter</kbd> leaves the selection for the caret at the end of the first selected block's line, as in Notion (over selected dividers alone, it inserts a line after them): neither removes anything, so the hook does not run. To guard blocks against every command, including headless ones such as `edytor.deleteBlocks`, veto the operations whose `effect.removes` names them in `onBeforeOperation` ([Refusing an edit](/docs/plugins/operations#refusing-an-edit)).
 
 For the clipboard formats and paste rules, see [Clipboard](/docs/editor/clipboard).
 

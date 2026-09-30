@@ -18,7 +18,7 @@ The **Command** column names the command `onBeforeOperation` sees first (see [co
 | --- | --- | --- | --- |
 | <kbd>Enter</kbd> | Split the block, or add a block before or after it; what it does depends on the block's role, see [Enter and Backspace by role](#enter-and-backspace-by-role) | `splitBlock`, `insertBlockAfter`, `insertBlockBefore`, `addChildBlock`, `unNestBlock` or `setBlock` | Text |
 | <kbd>Shift</kbd> + <kbd>Enter</kbd> | Insert a soft line break | `insertText` | Text |
-| <kbd>Mod</kbd> + <kbd>Enter</kbd> | Start a new block below, splitting at the end of the caret's text. In a toggle's header, open or close the toggle instead (Notion); the document does not change | `splitBlock` | Text |
+| <kbd>Mod</kbd> + <kbd>Enter</kbd> | Modify the block it is in, as in Notion: open or close a toggle (the document does not change); with the rich text plugin, check or uncheck a to-do. Over a block selection or a text range it acts on each such block the view shows, toggles and to-dos together; a to-do inside a collapsed toggle is left as it is. Elsewhere it does nothing: it never splits or edits text, and it claims the key, so a browser's own <kbd>Ctrl</kbd> + <kbd>Enter</kbd> paragraph break never runs | none; `setBlock` for a to-do | Text, or selected blocks |
 | <kbd>Tab</kbd> | Nest the block into its previous sibling (after a list, under its last item; nothing happens when the list ends with a block that holds no children, such as an image, as under that block); selected sibling blocks, or the blocks a text selection spans, nest together and stay selected. A text selection spans the blocks holding its text: a list it starts or ends in is not one of them, its items are, so the keys move the same blocks as selecting those rows; a list it runs through moves whole with the blocks around it. Selected blocks with an unselected block between them move apart, so the keys never reorder the text. A selection across nesting levels nests each group of sibling blocks one level, as one undo step; a selected block's selected descendants move with it. A closed toggle a block nests into opens, and a moved toggle keeps its open state | `nestBlock`; `moveBlocks` for several | Text, or selected blocks |
 | <kbd>Shift</kbd> + <kbd>Tab</kbd> | Move the block out one level, after its parent; the blocks nested after it become its children. An item of a list container leaves the list instead and never takes the items after it (see [list items](#enter-and-backspace-by-role)). Selected sibling blocks, or the blocks a text selection spans, move out together. Across nesting levels each group of sibling blocks moves out one level, a selected block's selected descendants with it; top-level blocks stay. A closed toggle that takes the blocks after it as children opens | `unNestBlock`; `moveBlocks` for several | Text, or selected blocks |
 | <kbd>Backspace</kbd>, <kbd>Delete</kbd> | Delete the selected blocks, the selected atom, the selected range or one character; at a block edge, see [by role](#enter-and-backspace-by-role). With <kbd>Alt</kbd>, <kbd>Mod</kbd> or <kbd>Ctrl</kbd> (a word or line delete), selected blocks or a selected atom go exactly as without it, in every browser | `deleteBlocks`, `removeInlineBlock`, `deleteContentWithinSelection` or `deleteText` | Anywhere |
@@ -48,6 +48,7 @@ This table is the reference for what <kbd>Enter</kbd> and <kbd>Backspace</kbd> d
 | <kbd>Shift</kbd> + <kbd>↑</kbd>, <kbd>Shift</kbd> + <kbd>↓</kbd> | Add the next block to the selection, or remove the last one when moving back | Block selection               |
 | <kbd>Shift</kbd> + <kbd>↑</kbd>, <kbd>Shift</kbd> + <kbd>↓</kbd> | Extend the text selection one line; at the end of a block, <kbd>Shift</kbd> + <kbd>↓</kbd> selects a following void block | Text |
 | <kbd>Escape</kbd>                             | Leave the block selection, caret at the end of the first selected block                  | Block selection               |
+| <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd> | Edit the text (Notion): leave the block selection, caret at the end of the first selected block, as <kbd>Escape</kbd> does; nothing is removed and `onDeleteSelectedBlocks` does not run. Over selected dividers alone, a new line after them | Block selection |
 
 Arrow keys that walk a block selection do not enter an island (such as a code block) from outside, and they skip the hidden body of a closed toggle.
 
@@ -91,7 +92,7 @@ Rich text, arrow move and block handles are on by default in `<Edytor>`; the oth
 | <kbd>Mod</kbd> + <kbd>B</kbd>, <kbd>I</kbd>, <kbd>U</kbd>, <kbd>E</kbd> | Bold, italic, underline, inline code | [Rich text](/docs/plugins/rich-text)     |
 | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>, <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd> | Strikethrough              | Rich text                                |
 | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd>       | Red text color                                   | Rich text                                |
-| <kbd>Mod</kbd> + <kbd>Enter</kbd>                    | Check or uncheck the to-do                       | Rich text, in a to-do                    |
+| <kbd>Mod</kbd> + <kbd>Enter</kbd>                    | Check or uncheck the to-dos (one undo step)      | Rich text, a to-do selected or holding the caret |
 | <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>0</kbd> to <kbd>8</kbd> | Turn into text, heading 1 to 3, to-do, bulleted list, numbered list, toggle, code (a block with text or children keeps them, and the code block is inserted after it; after a list's item, outside the list) | Rich text, when that kind's command exists |
 | <kbd>Tab</kbd>                                     | Insert a tab at the caret, indent every line a selection touches, or accept a suggestion | [Code](/docs/plugins/code), in a code line |
 | <kbd>Shift</kbd> + <kbd>Tab</kbd>                    | Remove one leading tab (or up to two spaces) from every line the selection touches | Code, in a code line                     |
@@ -106,7 +107,7 @@ Rich text, arrow move and block handles are on by default in `<Edytor>`; the oth
 
 The <kbd>Mod</kbd> + <kbd>Alt</kbd> digits follow Notion's numbering and run the kind's `block.*` command, so <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>8</kbd> needs the code plugin. The block menu's own keys (arrows, <kbd>Enter</kbd>, <kbd>Escape</kbd>) belong to its search field, see [Block menu](/docs/plugins/block-menu#keys).
 
-A plugin key only claims the key in the situation listed. Otherwise the key falls through to the next binding, for example <kbd>Mod</kbd> + <kbd>↓</kbd> to the document end when no block is selected, or <kbd>Mod</kbd> + <kbd>Enter</kbd> to the built-in new block outside a to-do. With the arrow move plugin (a default), <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves a movable block instead of extending the selection to the document edge.
+A plugin key only claims the key in the situation listed. Otherwise the key falls through to the next binding, for example <kbd>Mod</kbd> + <kbd>↓</kbd> to the document end when no block is selected, or <kbd>Mod</kbd> + <kbd>Enter</kbd> to the built-in binding (a toggle opens or closes, anything else is left alone) outside a to-do. With the arrow move plugin (a default), <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves a movable block instead of extending the selection to the document edge.
 
 ## Adding hotkeys
 
@@ -173,7 +174,7 @@ To override a default, bind the same chord in the `hotKeys` prop or in a plugin,
 
 <Edytor
 	hotKeys={{
-		// Mod+Enter saves instead of starting a new block.
+		// Mod+Enter saves (the default only opens toggles and checks to-dos).
 		'mod+enter': ({ prevent }) => prevent(() => saved++),
 		// Tab never nests: claim it and do nothing.
 		tab: ({ prevent }) => prevent(),

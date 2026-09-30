@@ -40,6 +40,22 @@ export const getSelectionBlocks = (edytor: Edytor): Block[] => {
 	return state.blocks.filter((block) => !hidden(block) && !enters(block));
 };
 
+/**
+ * The blocks <kbd>Mod</kbd>+<kbd>Enter</kbd> modifies (Notion): the
+ * selection's blocks the view shows — a to-do in a closed toggle's body is
+ * not touched. The built-in binding opens or closes their toggles
+ * (`flipToggles`); the rich-text plugin's also checks their to-dos.
+ */
+export const shownSelectionBlocks = (edytor: Edytor): Block[] =>
+	getSelectionBlocks(edytor).filter((block) => !hidden(block));
+
+/** Open or close each toggle (`<details>`) among `blocks`: view state, not the document. */
+export const flipToggles = (blocks: readonly Block[]) => {
+	for (const { node } of blocks)
+		if (node?.tagName === 'DETAILS')
+			(node as HTMLDetailsElement).open = !(node as HTMLDetailsElement).open;
+};
+
 /** Whether `block` is a descendant of `ancestor`. */
 const isInside = (block: Block, ancestor: Block) => {
 	for (let parent = block.parent; parent; parent = parent.parent)
@@ -127,6 +143,17 @@ export const lastShownText = (block: Block): Text | undefined => {
 };
 
 /**
+ * The line a block selection leaves for (Escape, Enter and Shift+Enter:
+ * Notion's Enter edits a selected block's text): the last text of the
+ * first selected block's own line, a container's last shown line; a
+ * selected block with no line (a divider) passes to the next one.
+ */
+export const selectedBlocksLine = (edytor: Edytor): Text | undefined =>
+	getSelectedBlocksInDocumentOrder(edytor)
+		.map((block) => lineOf(block).at(-1) ?? lastShownText(block))
+		.find(Boolean);
+
+/**
  * The caret on the nearest line before (at its end) or after (at its start)
  * `block` once `removed` go: blocks with no line of their own (voids,
  * containers) and a closed toggle's hidden body are passed over. The
@@ -171,9 +198,9 @@ export const caretAfterBlockDelete = (
  * order): then the command removing them is refused. Every gesture that
  * removes a block selection asks first: the keyboard's block delete (any
  * Backspace or Delete chord, and a delete intent's `beforeinput`), cut,
- * the block menu's Delete (`deleteSelectedBlocks`), typing, Shift+Enter or
- * a composition over it (`replaceSelectedBlocksWithEmptyBlock`), Enter over
- * selected text (`insertParagraph`) and a paste (`pasteFlow`).
+ * the block menu's Delete (`deleteSelectedBlocks`), typing or a composition
+ * over it (`replaceSelectedBlocksWithEmptyBlock`) and a paste (`pasteFlow`).
+ * Enter and Shift+Enter remove none (`selectedBlocksLine`), so they never ask.
  */
 export const keepsSelectedBlocks = (edytor: Edytor, blocks: Block[]) => {
 	const kept = edytor.dispatcher.intercept((plugin) =>
@@ -188,8 +215,8 @@ export const keepsSelectedBlocks = (edytor: Edytor, blocks: Block[]) => {
  * keyboard's block delete, cut and the block menu's Delete share it
  * (`keepsSelectedBlocks` first). The command authors its result selection
  * (FP-7, R9) by `caretAfterBlockDelete`, declared before the delete, so the
- * seam never runs for it. With none, the seam applies. Answers the caret's
- * text.
+ * seam never runs for it; with no line left, the virtual paragraph's start
+ * or the block beside them. Answers the caret's text.
  */
 export const deleteSelectedBlocks = (
 	edytor: Edytor,
@@ -197,10 +224,43 @@ export const deleteSelectedBlocks = (
 ): Text | null => {
 	if (!blocks[0]?.parent || keepsSelectedBlocks(edytor, blocks)) return null;
 	const at = caretAfterBlockDelete(blocks);
+	const besides = at
+		? []
+		: [
+				...beside(blocks[0], 'blockBefore', blocks),
+				...beside(blocks.at(-1)!, 'blockAfter', blocks)
+			];
 	const deleted = edytor.dispatcher.caret(at?.text, at?.offset ?? 0, () =>
 		edytor.deleteBlocks({ blocks })
 	);
-	return deleted ? (at?.text ?? null) : null;
+	if (!deleted) return null;
+	if (at) return at.text;
+	// No line is left: the caret rests in an emptied document's virtual
+	// paragraph (`doc.empty.virtual`), else the nearest block beside them that
+	// survives (a divider) is selected, so the next key never lands on the
+	// deleted blocks.
+	const virtual = edytor.facade.virtual();
+	const text = virtual ? edytor.idToBlock.get(virtual)?.firstText : undefined;
+	const survivor = besides.find((block) => block.isInTree);
+	if (text) edytor.dispatcher.caret(text, 0);
+	else if (survivor) edytor.selection.selectBlocks(survivor);
+	return text ?? null;
+};
+
+/**
+ * The shown blocks beside `blocks` in `step`'s direction, nearest first, up
+ * to the first that is no container: a container the delete leaves with no
+ * child (a list whose only items go) goes with them
+ * (`del.range.empty-container`), so a survivor is looked for past it.
+ */
+const beside = (from: Block, step: 'blockBefore' | 'blockAfter', blocks: readonly Block[]) => {
+	const removed = new Set(blocks);
+	const found: Block[] = [];
+	for (let next = shown(from, step, { removed }); next; next = shown(next, step, { removed })) {
+		found.push(next);
+		if (!next.isContainer) break;
+	}
+	return found;
 };
 
 /** Delete the selected range (or `selection`) as Backspace does (`del.range.*`), then its caret. */
@@ -213,7 +273,7 @@ export const deleteSelectedRange = (
 };
 
 /**
- * Typing, Shift+Enter or a composition over a block selection (`flow.slot`),
+ * Typing or a composition over a block selection (`flow.slot`),
  * unless `keepsSelectedBlocks`: the selected blocks go and one
  * empty block takes the first one's slot, in ONE plan — deleting them first
  * would let the emptied parent normalize in a survivor beside the new block.

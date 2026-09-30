@@ -147,8 +147,11 @@ export type PluginOperations = {
 	onTextAttached?: (payload: { node: HTMLElement; text: Text }) => (() => void) | void;
 	/**
 	 * Before a block selection is removed: Backspace or Delete (a word or line
-	 * delete too), a cut, the block menu's Delete, and typing, Enter,
-	 * Shift+Enter, a composition or a paste over it.
+	 * delete too), a cut, the block menu's Delete, and typing, a composition
+	 * or a paste over it. `selectedBlocks` are the blocks that go: unselected
+	 * children are promoted, and only a container that shows no text of its
+	 * own (a list, a code block) left empty goes with them. Enter,
+	 * Shift+Enter and a drop remove nothing, so they never call it.
 	 * `prevent()` keeps the blocks (and refuses the gesture).
 	 */
 	onDeleteSelectedBlocks?: (payload: { prevent: Prevent; selectedBlocks: Block[] }) => void;

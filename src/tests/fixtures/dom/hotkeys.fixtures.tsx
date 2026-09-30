@@ -254,7 +254,8 @@ export const fixtures = defineFixtures([
 		}
 	}),
 	defineDomFixture({
-		description: 'splits the current block at the end on mod+enter',
+		// Notion's Mod+Enter only modifies a to-do or a toggle; it never splits (DW-03).
+		description: 'claims mod+enter in a paragraph without changing it',
 		input: (
 			<root>
 				<paragraph>Hello|</paragraph>
@@ -269,14 +270,13 @@ export const fixtures = defineFixtures([
 		output: (
 			<root>
 				<paragraph>Hello</paragraph>
-				<paragraph></paragraph>
 			</root>
 		),
 		expectSelection: {
-			startBlockPath: [1],
-			endBlockPath: [1],
-			yStart: 0,
-			yEnd: 0,
+			startBlockPath: [0],
+			endBlockPath: [0],
+			yStart: 5,
+			yEnd: 5,
 			isCollapsed: true
 		},
 		assert: async ({ result }) => {

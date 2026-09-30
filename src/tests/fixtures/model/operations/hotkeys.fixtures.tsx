@@ -53,18 +53,18 @@ export const fixtures = defineFixtures([
 		)
 	}),
 	defineModelOperationFixture({
-		description: 'splits the current block at the end with mod+enter',
+		// Notion's Mod+Enter only modifies a to-do or a toggle; it never splits (DW-03).
+		description: 'claims mod+enter in a paragraph without changing it',
 		input: (
 			<root>
 				<paragraph>Hello|</paragraph>
 			</root>
 		),
 		run: ({ edytor }) => runHotkey(edytor, 'mod+enter'),
-		expectSelection: { startBlockPath: [1], yStart: 0, yEnd: 0, isCollapsed: true },
+		expectSelection: { startBlockPath: [0], yStart: 5, yEnd: 5, isCollapsed: true },
 		output: (
 			<root>
 				<paragraph>Hello</paragraph>
-				<paragraph></paragraph>
 			</root>
 		),
 		assert: async ({ result }) => {

@@ -162,7 +162,8 @@ export const rankBetween = (
 		if (lSeg === undefined) {
 			// Left bound exhausted (or absent): extending its prefix already makes
 			// the result > left. Only the right bound constrains the emitted digit.
-			if (rSeg === undefined) {
+			// Locked: the right bound no longer constrains the result.
+			if (rSeg === undefined || locked) {
 				if (floor) throw new RankSpaceExhausted();
 				// Open right (or, unreachable under valid inputs, both bounds
 				// exhausted while equal): the canonical extension digit.

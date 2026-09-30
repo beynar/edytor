@@ -1,9 +1,9 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import {
 	getSelectedBlocksInDocumentOrder,
-	keepsSelectedBlocks,
 	replaceSelectionForInsertion,
-	replaceSelectionWithCollapsedTarget
+	replaceSelectionWithCollapsedTarget,
+	selectedBlocksLine
 } from '$lib/selection/replaceSelection.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
@@ -90,6 +90,25 @@ const insertText = (edytor: Edytor, snapshot: Attempt) => {
 };
 
 /**
+ * Enter or Shift+Enter over a block selection edits the text (Notion): the
+ * caret goes to the end of the first selected block's line and nothing is
+ * removed; over selected voids with no line (dividers), a line after the
+ * last. Answers whether there was a block selection.
+ */
+const editSelectedBlocks = (edytor: Edytor) => {
+	const last = getSelectedBlocksInDocumentOrder(edytor).at(-1);
+	if (!last) return false;
+	const line = selectedBlocksLine(edytor);
+	edytor.selection.selectBlocks();
+	if (line) caretAt(edytor, line, line.length);
+	else {
+		const block = last.insertBlockAfter({ block: { type: edytor.defaultChild(last.parent!) } });
+		caretAt(edytor, block?.firstText, 0);
+	}
+	return true;
+};
+
+/**
  * A soft break; the caret lands after it, or before it (Emacs open-line).
  * When normalization splits the block on the break (code lines), "after" is
  * the new block's start and "before" the source block's trailing edge.
@@ -99,6 +118,7 @@ export const insertLineBreak = (
 	snapshot: Attempt,
 	caret: 'after' | 'before' = 'after'
 ) => {
+	if (editSelectedBlocks(edytor)) return;
 	const marks = insertionMarks(edytor, snapshot);
 	const target = replaceSelectionForInsertion(edytor, snapshot);
 	if (!target) {
@@ -244,12 +264,7 @@ const splitHeader = (block: Block, text: Text, index: number, open: boolean | un
 };
 
 const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
-	// Over a block selection whose text it replaces, `onDeleteSelectedBlocks`
-	// may keep the blocks (over selected voids alone it removes nothing).
-	const selected = getSelectedBlocksInDocumentOrder(edytor);
-	const replaces =
-		!snapshot.isCollapsed && selected.some((block) => !edytor.facade.isVoid(block.id));
-	if (replaces && keepsSelectedBlocks(edytor, selected)) return;
+	if (editSelectedBlocks(edytor)) return;
 	const target = replaceSelectionWithCollapsedTarget(edytor, snapshot);
 	if (!target) {
 		return;

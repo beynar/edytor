@@ -114,6 +114,10 @@ const stale: [phrase: string | RegExp, why: string][] = [
 	[
 		/split\(['"]\/['"]\)\.pop\(\)|\.slice\(["']\/rooms\/["']\.length\)/,
 		'route `/rooms/<id>` by a match and decode the id, as the quick start: the client dials the room name percent-encoded (DR-docs-2, YW-05)'
+	],
+	[
+		/typing, Enter or a paste/,
+		'Enter over a block selection removes nothing, so it never runs onDeleteSelectedBlocks (DR-behavior-3)'
 	]
 ];
 
@@ -245,6 +249,10 @@ describe('docs drift', () => {
 		const migration = join(root, 'site/content/docs/reference/migration.mdx');
 		const notes = upgrades.exec(pageText(migration))?.[0] ?? '';
 		expect(notes).toMatch(/### From 0\.1\.0-next\.0\n/);
+		// "From x" lists what a user of x meets on upgrading to this version,
+		// so x is never the version that ships those changes (DW-06).
+		const from = [...notes.matchAll(/### From (\S+)\n/g)].map(([, v]) => v);
+		expect(from).not.toContain(version);
 		const named = (text: string) =>
 			[...text.matchAll(/\b\d+\.\d+\.\d+-next\.\d+\b/g)].map(([mention]) => mention);
 		expect(named(notes).filter((mention) => !servedVersions().includes(mention))).toEqual([]);

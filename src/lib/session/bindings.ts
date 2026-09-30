@@ -12,12 +12,12 @@ import { extendVertically, navigationBindings, vertical } from './navigation.js'
 import { insertLineBreak, runIntent } from '$lib/events/beforeInputCommands.js';
 import { attemptOf, caretAt, intentSnapshot } from './attempt.js';
 import {
-	getSelectedBlocksInDocumentOrder,
+	flipToggles,
 	getSelectionBlocks,
 	deleteSelectedBlocks,
-	lastShownText,
-	lineOf,
-	outermost
+	outermost,
+	selectedBlocksLine,
+	shownSelectionBlocks
 } from '$lib/selection/replaceSelection.js';
 import { shown } from '$lib/selection/visibility.js';
 import type { HotKey } from './keymap.js';
@@ -249,21 +249,11 @@ export const builtInBindings: Record<string, HotKey> = {
 	'mod+shift+z': history('redo'),
 	// Ctrl+Y redo is the Windows/Linux convention; on Apple Cmd+Y is not redo.
 	'mod+y': (payload) => (payload.edytor.hotKeys.isMac ? undefined : history('redo')(payload)),
-	'mod+enter': ({ edytor, prevent }) => {
-		prevent(() => {
-			const { startText } = edytor.selection.state;
-			// In a toggle's header it opens or closes the toggle (Notion).
-			const node = startText?.parent.node;
-			if (node?.tagName === 'DETAILS') {
-				(node as HTMLDetailsElement).open = !(node as HTMLDetailsElement).open;
-				return;
-			}
-			const newBlock = startText?.parent.splitBlock({ index: startText.length, text: startText });
-			if (newBlock && newBlock.content[0] instanceof Text) {
-				edytor.selection.setAtTextOffset(newBlock.content[0], 0);
-			}
-		});
-	},
+	// Mod+Enter modifies each shown block it is in (Notion): a toggle opens or
+	// closes, a to-do checks (the rich-text plugin's binding, which flips the
+	// toggles among them too). It never edits text or structure, and it claims
+	// the key everywhere: a browser's own Ctrl+Enter is a paragraph break.
+	'mod+enter': ({ edytor, prevent }) => prevent(() => flipToggles(shownSelectionBlocks(edytor))),
 	// The select-all ladder: the block's text, then the block, then every block.
 	'mod+a': ({ edytor, prevent }) => {
 		prevent(() => {
@@ -299,12 +289,10 @@ export const builtInBindings: Record<string, HotKey> = {
 	tab: nest('nestBlock'),
 	'shift+tab': nest('unNestBlock'),
 	escape: ({ edytor, prevent }) => {
-		const [first] = getSelectedBlocksInDocumentOrder(edytor);
-		if (!first) return;
+		if (!edytor.selection.selectedBlocks.size) return;
 		prevent(() => {
+			const text = selectedBlocksLine(edytor);
 			edytor.selection.selectBlocks();
-			// The end of the first selected block's own line (a container's: of its last shown line).
-			const text = lineOf(first).at(-1) ?? lastShownText(first);
 			if (text) edytor.selection.setAtTextOffset(text, text.length);
 		});
 	},

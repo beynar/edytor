@@ -104,16 +104,20 @@ The same snippet works with `createBlockHandlesPlugin({ handle })` in `plugins`.
 
 ## Drag and drop
 
-Drag and drop uses Atlassian's Pragmatic drag and drop. While you drag, each block is a drop target. As in Notion, the height of its own row (not its children) decides before or after, and how far right the pointer is decides whether the drop nests:
+Drag and drop uses Atlassian's [Pragmatic drag and drop](https://atlassian.design/components/pragmatic-drag-and-drop/about), and its drop zones use the [list item hitbox](https://atlassian.design/components/pragmatic-drag-and-drop/optional-packages/hitbox/about) (`@atlaskit/pragmatic-drag-and-drop-hitbox/list-item`), following its tree guidance: each level of the tree is a list, and an expanded item offers no "after" on its own row. While you drag, each block is a drop target. As in Notion, the hitbox splits the block's own row (not its children) into two halves, and the pointer's horizontal position decides nesting and the level:
 
-| Pointer position                                                     | Drop                                |
-| -------------------------------------------------------------------- | ----------------------------------- |
-| Top half of the row                                                  | Before the block                    |
-| Bottom half, left of the nest threshold                              | After the block, as a sibling       |
-| Bottom half, more than one nesting step right of the block's text start | Inside it, as its last child     |
-| Left edge of a nested block (20px), top or bottom half               | Before or after its parent, one level out |
+| Pointer position | Drop |
+| --- | --- |
+| Top half of the row | Before the block |
+| Bottom half, left of the nest threshold | After the block, as a sibling |
+| Bottom half, more than one nesting step right of the block's text start | Inside it, as its last child |
+| Bottom half of a block whose children show (not a closed toggle), one of them not dragged | Before its first child not dragged: the bar under the block's text, indented to that child's column, never below the whole subtree |
+| Bottom half of the last block of a nested group, or the gap below it | After the block or one of the ancestors it ends: the level whose text column is nearest the pointer, one level per nesting step to the left, down to the root |
+| Bottom half of a block every shown child of which is dragged, or the rows those children leave under it | The same levels, from the block's own down to the root: dragging a nested block's only child out below its parent works even when the parent is the last block at every level. Never inside the block when only its children are dragged: they would stay put |
 
-The nest threshold is the block's first text line's start plus one nesting step: `--edytor-nest-indent` in px (see [Nested blocks](/docs/customization/styling#nested-blocks)), else 24px. So in the lower half of a row, move right to nest and back left to drop beside it. Only placements the document allows are offered: a block that cannot hold children (a divider, an image) never nests, and a refused zone gives way to the next one that fits (in the bottom half, after or inside; then before). A short gap between blocks keeps the last valid placement, so the indicator does not flicker; another block's own row never does, so dragging up from a child onto its parent's row targets the parent. A list container has no row of its own, so its padding counts as a gap: overshooting a list's first item keeps "before" that item.
+The nest threshold is the block's first text line's start plus one nesting step: `--edytor-nest-indent` in px (see [Nested blocks](/docs/customization/styling#nested-blocks)), else 24px. So in the lower half of a row, move right to nest and back left to drop beside it; below the last child of a nested group, move left to drop it one, two or more levels out. The bar is indented to the chosen level, and the [nest backdrop](#the-nest-backdrop) shows on that level's parent (none at the root). A closed toggle's children do not show, so its lower half is after it, and moving right nests at the end of its body (the toggle opens on the drop). Nesting never takes a band of the row: the two halves keep the whole height, so the gap between two blocks stays easy to hit. Pointed beside a nested block, over its ancestors' indent, the pointer is on that block's row. While you drag, the other blocks' handles let the pointer through to the blocks under them.
+
+Only placements the document allows are offered: a block that cannot hold children (a divider, an image) never nests, a level where the blocks do not fit gives way to the next nearest, and a half the document refuses entirely is the hitbox's `blocked` operation: the drop takes the other half's placement, and the indicator carries `data-blocked="true"`. The dragged blocks' own rows and their children offer nothing, so letting go over them changes nothing (as in Notion), even for the last block of a nested group, whose levels would otherwise move it out of its parent. The one exception is a parent they leave with no other shown child: their rows are then the gap under that parent's row, and offer its levels. A short gap between blocks keeps the last valid placement (its row and half; the pointer's horizontal position still picks nesting and the level), so the indicator does not flicker; another block's own row never does, so dragging up from a child onto its parent's row targets the parent. A list container has no row of its own, so its padding counts as a gap: overshooting a list's first item keeps "before" that item.
 
 ### Dragging several blocks
 
@@ -141,6 +145,8 @@ Style the ghost through `[data-edytor-drag-preview]`, for instance `[data-edytor
 The indicator is Notion's plain 4px bar, drawn in the overlay rather than on the block, so rounded or padded block styles cannot bend it:
 
 - **Before or after**: the bar spans the blocks at the drop slot. Between two siblings it is centered in the gap and spans both blocks, so hovering the bottom of one block and the top of the next shows the same bar.
+- **Before a first child** (the lower half of a block whose children show): at that child's top, indented to its column.
+- **After an ancestor** (below the last block of a nested group): below that block's row, indented to the ancestor's level.
 - **Inside**: the same bar where the new child will land (after the target's last visible child, else after its own row), indented to the child's column and running to the target's right edge. With no visible child to measure, the column is one nesting step past the target's text: `--edytor-nest-indent` in px (see [Nested blocks](/docs/customization/styling#nested-blocks)), else 24px.
 
 Set its color with `--edytor-drop-indicator-color` on the editor or any ancestor of the blocks (the default is Notion's `rgba(35, 131, 226, 0.43)`):

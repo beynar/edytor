@@ -14,6 +14,9 @@ importers:
       '@atlaskit/pragmatic-drag-and-drop':
         specifier: 1.7.10
         version: 1.7.10
+      '@atlaskit/pragmatic-drag-and-drop-hitbox':
+        specifier: 1.1.0
+        version: 1.1.0
       '@tanstack/highlight':
         specifier: ^0.1.0
         version: 0.1.0
@@ -160,6 +163,9 @@ packages:
 
   '@asamuzakjp/nwsapi@2.3.9':
     resolution: {integrity: sha512-n8GuYSrI9bF7FFZ/SjhwevlHc8xaVlb/7HmHelnc/PZXBD2ZR49NnN9sMMuDdEGPeeRQ5d0hqlSlEpgCX3Wl0Q==}
+
+  '@atlaskit/pragmatic-drag-and-drop-hitbox@1.1.0':
+    resolution: {integrity: sha512-JWt6eVp6Br2FPHRM8s0dUIHQk/jFInGP1f3ti5CdtM1Ji5/pt8Akm44wDC063Gv2i5RGseixtbW0z/t6RYtbdg==}
 
   '@atlaskit/pragmatic-drag-and-drop@1.7.10':
     resolution: {integrity: sha512-2oHJbThv26CVxM+N8w1X9iyvnts9f8n5+XdCHyG2DtLtqk97rsvbykUyRV2m2llpH06ZdBycycz/+H7eBgRN4A==}
@@ -2228,6 +2234,11 @@ snapshots:
       lru-cache: 11.2.7
 
   '@asamuzakjp/nwsapi@2.3.9': {}
+
+  '@atlaskit/pragmatic-drag-and-drop-hitbox@1.1.0':
+    dependencies:
+      '@atlaskit/pragmatic-drag-and-drop': 1.7.10
+      '@babel/runtime': 7.29.2
 
   '@atlaskit/pragmatic-drag-and-drop@1.7.10':
     dependencies:

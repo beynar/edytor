@@ -99,10 +99,11 @@ type Drag = { indicator: HTMLElement | null; image: HTMLElement | null };
 
 /**
  * Drag `source`'s handle onto the row of `target` (`at`: 0 top … 1 bottom),
- * then drop: before in the top half, after in the bottom half. The pointer is
- * 22px right of the target's left edge: past a nested block's 20px outdent
- * gutter, left of the nest threshold (one 24px step past the text start;
- * jsdom has no text rects: the left edge), so a bottom-half drop is a sibling.
+ * then drop: before in the top half, after in the bottom half (the list-item
+ * hitbox's halves). The pointer is 22px right of the target's left edge: at
+ * its own level's column, left of the nest threshold (one 24px step past the
+ * text start; jsdom has no text rects: the left edge), so a bottom-half drop
+ * is a sibling.
  */
 const drag = async (edytor: Edytor, source: string, target: string, at: number): Promise<Drag> => {
 	await flushDomUpdates();

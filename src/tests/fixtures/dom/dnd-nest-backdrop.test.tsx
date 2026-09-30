@@ -117,7 +117,8 @@ const startDrag = async (edytor: Edytor, source: string) => {
 /**
  * Pointer x offsets from a block's left edge. The nest threshold is one step
  * (24px) right of the block's text start (jsdom has no text rects: its left
- * edge); a nested block's first 20px are its outdent gutter.
+ * edge); nearer the left, the lower half is after (at the level whose text
+ * column is nearest, for the last block of a nested group).
  */
 const FAR_RIGHT = 100;
 const NEAR_LEFT = 22;
@@ -131,8 +132,16 @@ const backdrop = () => {
 	const { left, top, width, height } = node.style;
 	return { id: node.dataset.blockId, box: [left, top, width, height] };
 };
-const position = () =>
-	document.querySelector<HTMLElement>('[data-edytor-drop-indicator]')?.dataset.position;
+const indicator = () => document.querySelector<HTMLElement>('[data-edytor-drop-indicator]');
+const position = () => indicator()?.dataset.position;
+/** The block the placement is relative to (`data-edytor-block-drop-position`). */
+const indicated = () =>
+	document.querySelector<HTMLElement>('[data-edytor-block-drop-position]')?.dataset.edytorId;
+/** The bar's layer-relative left and vertical center (the layer sits at 0,0; the bar is 4px). */
+const bar = () => {
+	const { left, top } = indicator()!.style;
+	return { left: parseFloat(left), center: parseFloat(top) + 2 };
+};
 
 const tree = (edytor: Edytor) => {
 	const walk = (children: JSONBlock[] = []): unknown[] =>
@@ -187,14 +196,15 @@ describe('the nest backdrop', () => {
 		expect(tree(edytor)).toEqual([['a', ['x']], 'b', 'c']);
 	});
 
-	it("covers a parent's own row, not its children", async () => {
+	it("covers a parent's own row, not its children (its lower half: its first child's slot)", async () => {
 		const { edytor } = await render([p('a', [p('a1'), p('a2')]), p('x')]);
 		const drag = await startDrag(edytor, 'x');
 		await drag.over('a', 0.5);
-		expect(position()).toBe('inside');
+		expect(position()).toBe('before');
+		expect(indicated()).toBe('a1');
 		expect(backdrop()).toEqual({ id: 'a', box: ['0px', '0px', '600px', '24px'] });
 		await drag.drop('a', 0.5);
-		expect(tree(edytor)).toEqual([['a', ['a1', 'a2', 'x']]]);
+		expect(tree(edytor)).toEqual([['a', ['x', 'a1', 'a2']]]);
 	});
 
 	it("reaches a parent's own row from below: its child's placement does not stick there", async () => {
@@ -211,10 +221,11 @@ describe('the nest backdrop', () => {
 		} finally {
 			document.elementFromPoint = hit;
 		}
-		expect(position()).toBe('inside');
+		expect(position()).toBe('before');
+		expect(indicated()).toBe('a1');
 		expect(backdrop()?.id).toBe('a');
 		await drag.drop('a', 0.5);
-		expect(tree(edytor)).toEqual([['a', ['a1', 'a2', 'x']]]);
+		expect(tree(edytor)).toEqual([['a', ['x', 'a1', 'a2']]]);
 	});
 
 	it("keeps the first item's placement across its list's top padding: a list has no row of its own", async () => {
@@ -232,8 +243,6 @@ describe('the nest backdrop', () => {
 		list.getBoundingClientRect = () => padded;
 		await drag.over('one', 0.05);
 		expect(position()).toBe('before');
-		const indicated = () =>
-			document.querySelector<HTMLElement>('[data-edytor-block-drop-position]')?.dataset.edytorId;
 		expect(indicated()).toBe('one');
 		// Overshooting the first item into the list's padding, where a browser hits the list.
 		const hit = document.elementFromPoint;
@@ -360,5 +369,247 @@ describe("Notion's drop zones: the row's halves, and a nest threshold", () => {
 		expect(backdrop()).toBeNull();
 		await drag.drop('hr', 0.9, FAR_RIGHT);
 		expect(tree(edytor)).toEqual(['a', 'hr', 'x']);
+	});
+});
+
+/**
+ * Atlassian's list-item hitbox decides the half (reorder-before or
+ * reorder-after, `blocked` when the document refuses every placement of
+ * that half), following Pragmatic drag and drop's tree guidance: an
+ * expanded block offers no "after" on its own row, and the last block of a
+ * nested group reparents to the level the pointer's x picks.
+ */
+describe('the tree rules on top of the list-item hitbox', () => {
+	it("an expanded parent's lower half is its first child's slot, the bar at that child, not below the subtree", async () => {
+		const { edytor } = await render([p('a', [p('a1'), p('a2')]), p('b'), p('x')]);
+		const drag = await startDrag(edytor, 'x');
+		for (const x of [NEAR_LEFT, FAR_RIGHT]) {
+			await drag.over('a', 0.75, x);
+			expect(position()).toBe('before');
+			expect(indicated()).toBe('a1');
+			// At a1's top (24px), indented to its column (24px): not at the subtree's end (72px).
+			expect(bar()).toEqual({ left: 24, center: 24 });
+			expect(backdrop()?.id).toBe('a');
+		}
+		// Its top half is still before it.
+		await drag.over('a', 0.25);
+		expect([position(), indicated()]).toEqual(['before', 'a']);
+		await drag.over('a', 0.75, NEAR_LEFT);
+		await drag.drop('a', 0.75, NEAR_LEFT);
+		expect(tree(edytor)).toEqual([['a', ['x', 'a1', 'a2']], 'b']);
+	});
+
+	it('a closed toggle is not expanded: its lower half is after it, below its row', async () => {
+		const { edytor } = await render([
+			{ id: 't', type: 'toggle', content: [{ text: 't' }], children: [p('t1')] },
+			p('b'),
+			p('x')
+		]);
+		await flushDomUpdates();
+		(edytor.idToBlock.get('t')!.node as HTMLDetailsElement).open = false;
+		const drag = await startDrag(edytor, 'x');
+		await drag.over('t', 0.75, NEAR_LEFT);
+		expect([position(), indicated()]).toEqual(['after', 't']);
+		expect(backdrop()).toBeNull();
+		await drag.drop('t', 0.75, NEAR_LEFT);
+		expect(tree(edytor)).toEqual([['t', ['t1']], 'x', 'b']);
+	});
+
+	/** x (a root block) first, then a > b > c > d: d is the last block of every group. */
+	const deep = () => [p('x'), p('a', [p('b', [p('c', [p('d')])])])];
+
+	it.each([
+		// d's text column (72px), then one nest step left per level: c, b, then the root.
+		{ x: 4, level: 'd', parent: 'c', result: [['a', [['b', [['c', ['d', 'x']]]]]]] },
+		{ x: -24, level: 'c', parent: 'b', result: [['a', [['b', [['c', ['d']], 'x']]]]] },
+		{ x: -48, level: 'b', parent: 'a', result: [['a', [['b', [['c', ['d']]]], 'x']]] },
+		{ x: -72, level: 'a', parent: undefined, result: [['a', [['b', [['c', ['d']]]]]], 'x'] }
+	])(
+		"the last nested block, x at $level's column: after $level",
+		async ({ x, level, parent, result }) => {
+			const { edytor } = await render(deep());
+			const drag = await startDrag(edytor, 'x');
+			await drag.over('d', 0.75, x);
+			expect([position(), indicated()]).toEqual(['after', level]);
+			// Below d's row (it ends at 120px), indented to the level's column.
+			const column = edytor.idToBlock.get(level)!.node!.getBoundingClientRect().left;
+			expect(bar()).toEqual({ left: column, center: 120 });
+			expect(backdrop()?.id).toBe(parent);
+			await drag.drop('d', 0.75, x);
+			expect(tree(edytor)).toEqual(result);
+		}
+	);
+
+	it('a level the document refuses gives way to the nearest one that fits', async () => {
+		const item = (id: string): JSONBlock => ({ id, type: 'list-item', content: [{ text: id }] });
+		const { edytor } = await render([
+			p('a', [{ id: 'L', type: 'unordered-list', children: ['one', 'two'].map(item) }]),
+			p('x')
+		]);
+		const drag = await startDrag(edytor, 'x');
+		// Just left of two's text, its own level is nearest; but a paragraph never sits
+		// in a list, so the drop lands at the next nearest level: after the list, in a.
+		await drag.over('two', 0.75, -4);
+		expect([position(), indicated()]).toEqual(['after', 'L']);
+		expect(backdrop()?.id).toBe('a');
+		await drag.drop('two', 0.75, -4);
+		expect(tree(edytor)).toEqual([['a', [['L', ['one', 'two']], 'x']]]);
+	});
+
+	it('marks a refused half blocked and shows the placement it gives way to', async () => {
+		const item = (id: string): JSONBlock => ({ id, type: 'list-item', content: [{ text: id }] });
+		const { edytor } = await render([
+			{ id: 'L', type: 'unordered-list', children: ['one', 'two'].map(item) },
+			p('x')
+		]);
+		const drag = await startDrag(edytor, 'x');
+		// Before an item: a paragraph never sits directly in a list. The lower half nests.
+		await drag.over('one', 0.25, FAR_RIGHT);
+		expect(indicator()?.dataset.blocked).toBe('true');
+		expect([position(), indicated()]).toEqual(['inside', 'one']);
+		await drag.over('one', 0.75, FAR_RIGHT);
+		expect(indicator()?.dataset.blocked).toBeUndefined();
+		expect([position(), indicated()]).toEqual(['inside', 'one']);
+		await drag.drop('one', 0.25, FAR_RIGHT);
+		expect(tree(edytor)).toEqual([['L', [['one', ['x']], 'two']]]);
+	});
+});
+
+describe('the handles during a drag', () => {
+	it('let the pointer through to the blocks under them, the source handle excepted', async () => {
+		const { edytor } = await render([p('a', [p('a1')]), p('x')]);
+		const drag = await startDrag(edytor, 'x');
+		const host = (id: string) =>
+			document.querySelector<HTMLElement>(
+				`[data-edytor-block-handle-host][data-block-id="${id}"]`
+			)!;
+		await flushDomUpdates();
+		// a1's handle sits over a's column: a drop level.
+		expect(host('a1').dataset.dragging).toBe('true');
+		expect(host('a').dataset.dragging).toBe('true');
+		// Chrome cancels a drag whose source stops taking the pointer as it starts.
+		expect(host('x').dataset.dragging).toBeUndefined();
+		await drag.drop('a1', 0.25);
+		await flushDomUpdates();
+		expect(host('a1').dataset.dragging).toBeUndefined();
+	});
+});
+
+describe('a group dragged from under its parent', () => {
+	it("leaves the block before it last: that block's lower half reaches the parent's level", async () => {
+		const { edytor } = await render([p('a', [p('a1'), p('a2')]), p('b')]);
+		const drag = await startDrag(edytor, 'a2');
+		// At a's column (a1 sits at 24px): after a, a2 outdented.
+		await drag.over('a1', 0.75, -24);
+		expect([position(), indicated()]).toEqual(['after', 'a']);
+		expect(backdrop()).toBeNull();
+		await drag.drop('a1', 0.75, -24);
+		expect(tree(edytor)).toEqual([['a', ['a1']], 'a2', 'b']);
+	});
+});
+
+/**
+ * A block every shown child of which is dragged shows none: its own row and
+ * the gap its children leave under it reparent as the last block of a
+ * nested group does, the pointer's x picking the level down to the root.
+ * Inside it, they would stay where they are: never offered.
+ */
+describe('a block whose shown children are all dragged', () => {
+	it("the document's last block: its only child moves out after it, to the root", async () => {
+		const { edytor } = await render([p('z'), p('a', [p('a1')])]);
+		const drag = await startDrag(edytor, 'a1');
+		// Its lower half, near the left or far right: after it, never inside it.
+		for (const x of [NEAR_LEFT, FAR_RIGHT]) {
+			await drag.over('a', 0.75, x);
+			expect([position(), indicated()]).toEqual(['after', 'a']);
+			expect(backdrop()).toBeNull();
+		}
+		// Its top half is still before it.
+		await drag.over('a', 0.25);
+		expect([position(), indicated()]).toEqual(['before', 'a']);
+		// Left of a1 (a's column), on its row, then below it.
+		for (const at of [0.75, 1.2]) {
+			await drag.over('a1', at, -24);
+			expect([position(), indicated()]).toEqual(['after', 'a']);
+			expect(backdrop()).toBeNull();
+		}
+		await drag.drop('a1', 1.2, -24);
+		expect(tree(edytor)).toEqual(['z', 'a', 'a1']);
+	});
+
+	it('a block in the middle of the document: its only child moves out after it', async () => {
+		const { edytor } = await render([p('z'), p('a', [p('a1')]), p('b')]);
+		const drag = await startDrag(edytor, 'a1');
+		await drag.over('a1', 0.75, -24);
+		expect([position(), indicated()]).toEqual(['after', 'a']);
+		expect(backdrop()).toBeNull();
+		await drag.drop('a1', 0.75, -24);
+		expect(tree(edytor)).toEqual(['z', 'a', 'a1', 'b']);
+	});
+
+	it("the only child of an only child: the pointer's x picks each level, down to the root", async () => {
+		const { edytor } = await render([p('z'), p('a', [p('b', [p('c')])])]);
+		const drag = await startDrag(edytor, 'c');
+		// c's row starts at 48px: b's column is 24px left of it, a's (the root) 48px.
+		await drag.over('c', 0.75, -24);
+		expect([position(), indicated()]).toEqual(['after', 'b']);
+		expect(backdrop()?.id).toBe('a');
+		await drag.over('b', 0.75, -24);
+		expect([position(), indicated()]).toEqual(['after', 'a']);
+		expect(backdrop()).toBeNull();
+		await drag.over('c', 0.75, -48);
+		expect([position(), indicated()]).toEqual(['after', 'a']);
+		await drag.drop('c', 0.75, -48);
+		expect(tree(edytor)).toEqual(['z', ['a', ['b']], 'c']);
+	});
+
+	it('a group dragging every child of the last block moves out after it', async () => {
+		const { edytor } = await render([p('z'), p('a', [p('a1'), p('a2')])]);
+		const block = (id: string) => edytor.idToBlock.get(id)!;
+		edytor.selection.selectBlocks(block('a1'), block('a2'));
+		const drag = await startDrag(edytor, 'a1');
+		for (const [target, at, x] of [
+			['a', 0.75, NEAR_LEFT],
+			['a2', 0.75, -24]
+		] as const) {
+			await drag.over(target, at, x);
+			expect([position(), indicated()]).toEqual(['after', 'a']);
+		}
+		await drag.drop('a2', 0.75, -24);
+		expect(tree(edytor)).toEqual(['z', 'a', 'a1', 'a2']);
+	});
+});
+
+describe('a drag released over its own blocks', () => {
+	// The last child of a nested group: every level after it reaches its parent's.
+	it.each([
+		{ at: 0.25, x: FAR_RIGHT },
+		{ at: 0.75, x: FAR_RIGHT },
+		{ at: 0.75, x: NEAR_LEFT },
+		{ at: 0.5, x: 300 },
+		{ at: 0.75, x: -24 }
+	])('offers nothing over its own row ($at, x $x): the drop changes nothing', async ({ at, x }) => {
+		const { edytor } = await render([p('a', [p('a1'), p('a2')]), p('b')]);
+		const drag = await startDrag(edytor, 'a2');
+		await drag.over('a2', at, x);
+		expect(indicator()).toBeNull();
+		expect(backdrop()).toBeNull();
+		await drag.drop('a2', at, x);
+		expect(tree(edytor)).toEqual([['a', ['a1', 'a2']], 'b']);
+	});
+
+	it('offers nothing over its own children: the drop changes nothing', async () => {
+		const { edytor } = await render([p('a', [p('a1'), p('a2', [p('a2x')])]), p('b')]);
+		const drag = await startDrag(edytor, 'a2');
+		for (const [at, x] of [
+			[0.25, FAR_RIGHT],
+			[0.75, FAR_RIGHT],
+			[0.75, -48]
+		]) {
+			await drag.over('a2x', at, x);
+			expect(indicator()).toBeNull();
+		}
+		await drag.drop('a2x', 0.75, -48);
+		expect(tree(edytor)).toEqual([['a', ['a1', ['a2', ['a2x']]]], 'b']);
 	});
 });

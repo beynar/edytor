@@ -131,6 +131,12 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.3
+
+- **Drop zones are built on Atlassian's list-item hitbox.** `@atlaskit/pragmatic-drag-and-drop-hitbox` (1.1.0) is a new dependency. The halves and nesting by x are unchanged.
+- **The lower half of a block with shown children places before its first child**, as Pragmatic drag and drop's tree guidance asks; it used to place after the whole block, with the line under its last descendant. A closed toggle still takes after.
+- **Outdent by x to any level.** Below the last block of a nested group, the pointer's x picks the ancestor level, down to the root; the fixed 20px left strip is gone.
+
 ### From 0.1.0-next.2
 
 - **Nested blocks sit in one indented container.** Every kind that renders children puts them in a `div[data-edytor-children]`, indented by `--edytor-nest-indent` (24px). A block nested under a paragraph, heading or quote is now indented, as in Notion. CSS that indented children itself should target `[data-edytor-children]` or set the variable (see [Styling](/docs/customization/styling)).

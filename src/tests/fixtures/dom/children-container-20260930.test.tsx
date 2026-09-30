@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 const kid = (id: string): JSONBlock => ({ id, type: 'paragraph', content: [{ text: id }] });
-const parent = (type: string, data?: Record<string, unknown>): JSONBlock => ({
+const parent = (type: string, data?: JSONBlock['data']): JSONBlock => ({
 	id: type,
 	type,
 	...(data && { data }),
@@ -25,7 +25,7 @@ const parent = (type: string, data?: Record<string, unknown>): JSONBlock => ({
 	children: [kid(`${type}-child`)]
 });
 
-const KINDS: [string, Record<string, unknown>?][] = [
+const KINDS: [string, JSONBlock['data']?][] = [
 	['paragraph'],
 	['heading', { level: 'h2' }],
 	['quote'],

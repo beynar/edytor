@@ -46,6 +46,16 @@ const textOf = (block: SerializedBlock) =>
 
 const readRootTexts = async (page: Page) => (await readBlocks(page)).map(textOf);
 
+/** Where a block's own text starts (`x`), and its box's left edge (`blockX`). */
+const textColumn = (page: Page, text: string) =>
+	page.evaluate((text) => {
+		const own = Array.from(
+			document.querySelectorAll<HTMLElement>('[data-edytor-text="true"]')
+		).find((node) => node.textContent === text)!;
+		const block = own.closest<HTMLElement>('[data-edytor-block="true"]')!;
+		return { x: own.getClientRects()[0]!.left, blockX: block.getBoundingClientRect().left };
+	}, text);
+
 /** Each handle sits left of its block, on the block's own first text row. */
 const expectHandleHostsAligned = async (page: Page) => {
 	await expect
@@ -167,25 +177,45 @@ test.describe('browser block handles and DnD', () => {
 		issues.assertClean();
 	});
 
-	test('nests into a parent with children from its own text row', async ({ page }) => {
+	test("an expanded parent's lower half places at its first child, the line there, not below its subtree", async ({
+		page
+	}) => {
 		const issues = trackPageIssues(page);
 
 		await page.goto('/test/dom?scenario=nested&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
 		await settleHandles(page);
-		const parentRow = page.locator('[data-edytor-block="true"]').first().locator('p').first();
-		await page
-			.getByTestId('block-handle')
-			.nth(3)
-			.dragTo(parentRow, {
-				targetPosition: { x: 32, y: 12 }
-			});
+		const blocks = page.locator('[data-edytor-block="true"]');
+		const [parent, child, tail] = await Promise.all(
+			[0, 1, 2].map(async (index) => (await blocks.nth(index).boundingBox())!)
+		);
+		const source = (await page.getByTestId('block-handle').nth(3).boundingBox())!;
+		const indicator = page.locator('[data-edytor-drop-indicator]');
+		// The lower half of the parent's own row (its box down to its first child).
+		const lower = parent.y + (child.y - parent.y) * 0.75;
+
+		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+		await page.mouse.down();
+		// The drag library ignores the drag events of the frame the drag starts in.
+		await page.mouse.move(parent.x + 8, lower, { steps: 12 });
+		for (const x of [parent.x + 12, parent.x + 96]) {
+			await page.mouse.move(x, lower, { steps: 6 });
+			await expect(blocks.nth(1)).toHaveAttribute('data-edytor-block-drop-position', 'before');
+			await expect(indicator).toHaveAttribute('data-position', 'before');
+			const bar = (await indicator.boundingBox())!;
+			// At the first child's top, indented to its column; not below the subtree.
+			expect(Math.abs(bar.y + bar.height / 2 - child.y)).toBeLessThanOrEqual(3);
+			expect(Math.abs(bar.x - child.x)).toBeLessThanOrEqual(1);
+			expect(bar.y).toBeLessThan(tail.y);
+			await expect(page.locator('[data-edytor-drop-backdrop][data-shown="true"]')).toHaveCount(1);
+		}
+		await page.mouse.up();
 
 		await expect.poll(() => readRootTexts(page)).toEqual(['Hello']);
 		expect((await readBlocks(page))[0].children?.map(textOf)).toEqual([
+			'After',
 			'Nested child',
-			'Nested tail',
-			'After'
+			'Nested tail'
 		]);
 		issues.assertClean();
 	});
@@ -201,17 +231,21 @@ test.describe('browser block handles and DnD', () => {
 		const parent = page.locator('[data-edytor-block="true"]').first();
 		// Rounded blocks must not bend the backdrop: it is the overlay's, not a block style.
 		await parent.evaluate((node) => ((node as HTMLElement).style.borderRadius = '16px'));
+		const firstChild = page.locator('[data-edytor-block="true"]').nth(1);
 		const row = await parent.locator('p').first().boundingBox();
 		const box = await parent.boundingBox();
+		const childBox = await firstChild.boundingBox();
 		const source = await page.getByTestId('block-handle').nth(3).boundingBox();
-		if (!row || !box || !source) throw new Error('Missing drag source or target');
+		if (!row || !box || !childBox || !source) throw new Error('Missing drag source or target');
 		const shown = page.locator('[data-edytor-drop-backdrop][data-shown="true"]');
+		// The lower half of its own row: its first child's slot (it shows its children).
+		const lower = box.y + (childBox.y - box.y) * 0.75;
 
 		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
 		await page.mouse.down();
-		await page.mouse.move(row.x + 32, row.y + row.height / 2, { steps: 12 });
-		await page.mouse.move(row.x + 64, row.y + row.height / 2, { steps: 5 });
-		await expect(parent).toHaveAttribute('data-edytor-block-drop-position', 'inside');
+		await page.mouse.move(row.x + 32, lower, { steps: 12 });
+		await page.mouse.move(row.x + 64, lower, { steps: 5 });
+		await expect(firstChild).toHaveAttribute('data-edytor-block-drop-position', 'before');
 		await expect(shown).toHaveCount(1);
 		const geometry = await page.evaluate(() => {
 			const backdrop = document.querySelector<HTMLElement>('[data-edytor-drop-backdrop]')!;
@@ -251,16 +285,16 @@ test.describe('browser block handles and DnD', () => {
 		await expect(shown).toHaveCount(0);
 
 		// Back over the parent's row, then dropped: the move it showed is the one committed.
-		await page.mouse.move(row.x + 32, row.y + row.height / 2, { steps: 12 });
-		await page.mouse.move(row.x + 64, row.y + row.height / 2, { steps: 5 });
+		await page.mouse.move(row.x + 32, lower, { steps: 12 });
+		await page.mouse.move(row.x + 64, lower, { steps: 5 });
 		await expect(shown).toHaveCount(1);
 		await page.mouse.up();
 
 		await expect.poll(() => readRootTexts(page)).toEqual(['Hello']);
 		expect((await readBlocks(page))[0].children?.map(textOf)).toEqual([
+			'After',
 			'Nested child',
-			'Nested tail',
-			'After'
+			'Nested tail'
 		]);
 		await expect(page.locator('[data-edytor-drop-backdrop]')).toHaveCount(0);
 		issues.assertClean();
@@ -327,7 +361,7 @@ test.describe('browser block handles and DnD', () => {
 		issues.assertClean();
 	});
 
-	test('outdents at the left gutter even when the parent is the final root block', async ({
+	test("reparents below the last nested block at the level of the pointer's x, even when the parent is the final root block", async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -346,10 +380,184 @@ test.describe('browser block handles and DnD', () => {
 			'After'
 		]);
 
-		await dragHandleToBlock(page, 1, 2, 0.95, { horizontalOffset: 8 });
+		// The lower half of "After", the last child, the pointer at Hello's text column (over
+		// Hello's indent, left of After's box): the root.
+		const hello = await textColumn(page, 'Hello');
+		const last = (await page.locator('[data-edytor-block="true"]').nth(3).boundingBox())!;
+		const source = (await page.getByTestId('block-handle').nth(1).boundingBox())!;
+		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(hello.x + 6, last.y + last.height * 0.9, { steps: 12 });
+		await page.mouse.move(hello.x + 2, last.y + last.height * 0.9, { steps: 4 });
+		await expect(page.locator('[data-edytor-block="true"]').first()).toHaveAttribute(
+			'data-edytor-block-drop-position',
+			'after'
+		);
+		await page.mouse.up();
 		await expect.poll(() => readRootTexts(page)).toEqual(['Hello', 'Nested child']);
 		expect((await readBlocks(page))[0].children?.map(textOf)).toEqual(['Nested tail', 'After']);
 		await expectSelection(page, { selectedBlockPaths: [[1]] });
+		issues.assertClean();
+	});
+
+	test("the last block three levels deep: the pointer's x picks each ancestor's level, down to the root", async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=nested&handles=true');
+		await waitForEditorReady(page, { requireRuntime: true });
+		await page.evaluate(() => {
+			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
+			const block = (text: string, children?: unknown[]) => ({
+				type: 'paragraph',
+				content: [{ text }],
+				...(children && { children })
+			});
+			edytor.root.children[0].insertBlockBefore({
+				block: block('L1', [block('L2', [block('L3', [block('L4')])])])
+			});
+		});
+		await expect.poll(() => readRootTexts(page)).toEqual(['L1', 'Hello', 'After']);
+		await settleHandles(page);
+		const ids = await page.evaluate(() =>
+			Object.fromEntries(
+				Array.from(document.querySelectorAll<HTMLElement>('[data-edytor-text="true"]')).map(
+					(node) => [
+						node.textContent,
+						node.closest<HTMLElement>('[data-edytor-block="true"]')!.dataset.edytorId
+					]
+				)
+			)
+		);
+		const blockOf = (text: string) =>
+			page.locator(`[data-edytor-block="true"][data-edytor-id="${ids[text]}"]`);
+		const deepest = (await blockOf('L4').boundingBox())!;
+		const lower = deepest.y + deepest.height * 0.75;
+		const after = await page.evaluate(
+			() => (window as Window & { __EDYTOR__?: any }).__EDYTOR__.root.children.at(-1).id
+		);
+		const source = (await page
+			.locator(`[data-testid="block-handle"][data-block-id="${after}"]`)
+			.boundingBox())!;
+		const indicator = page.locator('[data-edytor-drop-indicator][data-position="after"]');
+		const backdrop = page.locator('[data-edytor-drop-backdrop][data-shown="true"]');
+
+		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(deepest.x + 40, lower, { steps: 12 });
+		for (const [level, parent] of [
+			['L4', 'L3'],
+			['L3', 'L2'],
+			['L2', 'L1'],
+			['L1', null]
+		] as const) {
+			const { x, blockX } = await textColumn(page, level);
+			await page.mouse.move(x + 2, lower, { steps: 8 });
+			await expect(blockOf(level)).toHaveAttribute('data-edytor-block-drop-position', 'after');
+			const bar = (await indicator.boundingBox())!;
+			// Below L4's row, indented to the level's column.
+			expect(Math.abs(bar.x - blockX)).toBeLessThanOrEqual(1);
+			expect(Math.abs(bar.y + bar.height / 2 - (deepest.y + deepest.height))).toBeLessThanOrEqual(
+				3
+			);
+			if (parent) {
+				const id = await blockOf(parent).getAttribute('data-edytor-id');
+				await expect(backdrop).toHaveAttribute('data-block-id', id!);
+			} else await expect(backdrop).toHaveCount(0);
+		}
+		await page.mouse.up();
+
+		await expect.poll(() => readRootTexts(page)).toEqual(['L1', 'After', 'Hello']);
+		issues.assertClean();
+	});
+
+	test("the only child of the document's last block moves out after it: its parent's row and the gap under it reparent", async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=nested&handles=true');
+		await waitForEditorReady(page, { requireRuntime: true });
+		await page.evaluate(() => {
+			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
+			const block = (text: string, children?: unknown[]) => ({
+				type: 'paragraph',
+				content: [{ text }],
+				...(children && { children })
+			});
+			edytor.root.children.at(-1).insertBlockAfter({ block: block('Last', [block('Only')]) });
+		});
+		await expect.poll(() => readRootTexts(page)).toEqual(['Hello', 'After', 'Last']);
+		await settleHandles(page);
+		const [last, only] = await page.evaluate(() => {
+			const parent = (window as Window & { __EDYTOR__?: any }).__EDYTOR__.root.children.at(-1);
+			return [parent.id as string, parent.children[0].id as string];
+		});
+		const lastBlock = page.locator(`[data-edytor-block="true"][data-edytor-id="${last}"]`);
+		const box = (await page
+			.locator(`[data-edytor-block="true"][data-edytor-id="${only}"]`)
+			.boundingBox())!;
+		const column = await textColumn(page, 'Last');
+		const row = (await lastBlock.locator('p').first().boundingBox())!;
+		const source = (await page
+			.locator(`[data-testid="block-handle"][data-block-id="${only}"]`)
+			.boundingBox())!;
+		const indicator = page.locator('[data-edytor-drop-indicator]');
+
+		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(box.x + 40, box.y + box.height * 0.75, { steps: 12 });
+		for (const [x, y] of [
+			// Last's own row, its lower half, however far right: after it, never inside it.
+			[column.x + 2, row.y + row.height * 0.75],
+			[column.x + 96, row.y + row.height * 0.75],
+			// The gap Only leaves under Last's row: its row, low, at its left edge (its own
+			// handle, left of it, keeps the pointer) and further right.
+			[box.x + 2, box.y + box.height * 0.9],
+			[box.x + 40, box.y + box.height * 0.75]
+		]) {
+			await page.mouse.move(x, y, { steps: 8 });
+			await expect(lastBlock).toHaveAttribute('data-edytor-block-drop-position', 'after');
+			await expect(indicator).toHaveAttribute('data-position', 'after');
+			await expect(page.locator('[data-edytor-drop-backdrop][data-shown="true"]')).toHaveCount(0);
+		}
+		await page.mouse.up();
+
+		await expect.poll(() => readRootTexts(page)).toEqual(['Hello', 'After', 'Last', 'Only']);
+		expect((await readBlocks(page))[2].children ?? []).toEqual([]);
+		issues.assertClean();
+	});
+
+	test('the last nested block released over its own row stays put: its levels are not offered there', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=nested&handles=true');
+		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
+		const before = await readBlocks(page);
+		expect(before[0].children?.map(textOf)).toEqual(['Nested child', 'Nested tail']);
+
+		// "Nested tail" (handle 2) ends Hello's group: at Hello's column, its lower half
+		// would outdent it after Hello, were its own row a drop target.
+		const hello = await textColumn(page, 'Hello');
+		const tail = (await page.locator('[data-edytor-block="true"]').nth(2).boundingBox())!;
+		const source = (await page.getByTestId('block-handle').nth(2).boundingBox())!;
+		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+		await page.mouse.down();
+		for (const [x, y] of [
+			[tail.x + 40, tail.y + tail.height * 0.25],
+			[tail.x + 40, tail.y + tail.height * 0.75],
+			[hello.x + 2, tail.y + tail.height * 0.75]
+		]) {
+			await page.mouse.move(x, y, { steps: 8 });
+			await expect(page.locator('[data-edytor-drop-indicator]')).toHaveCount(0);
+		}
+		await page.mouse.up();
+
+		expect(await readBlocks(page)).toEqual(before);
 		issues.assertClean();
 	});
 
@@ -590,8 +798,10 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
 		await page.mouse.down();
-		// The top half, however far right: before.
-		await page.mouse.move(textLeft + 120, box.y + box.height * 0.25, { steps: 12 });
+		// The top half, however far right: before. (A second move: the drag library
+		// ignores the drag events of the frame the drag starts in.)
+		await page.mouse.move(textLeft + 116, box.y + box.height * 0.25, { steps: 12 });
+		await page.mouse.move(textLeft + 120, box.y + box.height * 0.25, { steps: 4 });
 		await expect(indicator).toHaveAttribute('data-position', 'before');
 		// The lower half near the left: after, as a sibling, no backdrop.
 		await page.mouse.move(textLeft + 8, lower, { steps: 12 });

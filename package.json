@@ -1,6 +1,6 @@
 {
 	"name": "edytor",
-	"version": "0.1.0-next.3",
+	"version": "0.1.0-next.4",
 	"scripts": {
 		"dev": "vite dev",
 		"build:app": "vite build",
@@ -133,6 +133,7 @@
 	},
 	"dependencies": {
 		"@atlaskit/pragmatic-drag-and-drop": "1.7.10",
+		"@atlaskit/pragmatic-drag-and-drop-hitbox": "1.1.0",
 		"@tanstack/highlight": "^0.1.0",
 		"esm-env": "^1.2.2",
 		"lib0-v14": "npm:lib0@1.0.0-rc.32"

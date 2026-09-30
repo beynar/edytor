@@ -10,10 +10,15 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { CommandResult } from '$lib/session/commands.js';
 import { noSelection, project, type SelectionValue } from '$lib/session/selection.js';
 import {
+	attachInstruction,
 	draggable,
 	dropTargetForElements,
-	setCustomNativeDragPreview
+	extractInstruction,
+	setCustomNativeDragPreview,
+	type Availability,
+	type Instruction
 } from '$lib/dnd/pragmatic.js';
+import { HIDDEN, hidden } from '$lib/selection/visibility.js';
 import {
 	getSelectionBlocks,
 	movable,
@@ -60,8 +65,18 @@ const keyMoves: Record<string, BlockMoveDirection> = {
 };
 
 type DragLocation = ElementDropTargetEventPayloadMap['onDrag']['location'];
+type DropTargetRecord = DragLocation['current']['dropTargets'][number];
 
-type DropPlacement = { target: Block; node: HTMLElement; position: BlockMovePosition };
+type DropPlacement = {
+	target: Block;
+	node: HTMLElement;
+	position: BlockMovePosition;
+	/** The pointer's half was refused (the hitbox's `blocked`): this is the placement it gave way to. */
+	blocked?: boolean;
+};
+
+/** The drop target data key of the row the hitbox measured (`rowAt`). */
+const ROW = 'edytorRow';
 
 type BlockHandleControllerOptions = {
 	draggable: boolean;
@@ -98,6 +113,17 @@ const overOtherRow = (
 	return input.clientY < getOwnRowBottom(over);
 };
 
+/** A block's own row: its box down to where its first child begins. */
+const ownRow = (node: HTMLElement) => {
+	const rect = node.getBoundingClientRect();
+	return new DOMRect(
+		rect.left,
+		rect.top,
+		rect.width,
+		Math.max(0, getOwnRowBottom(node) - rect.top)
+	);
+};
+
 /** The first line of a block's own text (not a child's), or the block's box. */
 const ownTextRow = (node: HTMLElement) => {
 	const text = Array.from(node.querySelectorAll<HTMLElement>('[data-edytor-text="true"]')).find(
@@ -106,6 +132,8 @@ const ownTextRow = (node: HTMLElement) => {
 	const row = text?.getClientRects()[0];
 	return row && row.height > 0 ? row : node.getBoundingClientRect();
 };
+/** Where a block's own text starts: its level's column. */
+const column = (block: Block) => ownTextRow(block.node!).left;
 
 /**
  * One nesting step, a nested child's indent when the target has no visible
@@ -158,28 +186,6 @@ const countBadge = (document: Document, count: number) => {
 		textAlign: 'center'
 	});
 	return badge;
-};
-
-const getDropPlacement = (
-	target: Block,
-	node: HTMLElement,
-	input: { clientX: number },
-	position: BlockMovePosition
-): DropPlacement => {
-	const parent = target.parent;
-	// The left gutter at a nested block's edge means "place at my parent's
-	// level". This also gives the last root block an outdent target without
-	// requiring a following root sibling or a separate end-zone element.
-	if (
-		position !== 'inside' &&
-		parent &&
-		!parent.isRoot &&
-		parent.node &&
-		input.clientX <= node.getBoundingClientRect().left + 20
-	) {
-		return { target: parent, node: parent.node, position };
-	}
-	return { target, node, position };
 };
 
 export class BlockHandleController {
@@ -426,10 +432,22 @@ export class BlockHandleController {
 		const cleanup = dropTargetForElements({
 			element: node,
 			canDrop: ({ source, input }) => {
-				const dragSource = this.getDragSource(source.data);
-				return (
-					!this.edytor.readonly &&
-					Boolean(dragSource && this.resolvePlacement(dragSource, target, node, input))
+				const row = this.rowAt(source.data, target, node, input);
+				return Object.values(this.operations(source.data, row, input)).includes('available');
+			},
+			// Atlassian's list-item hitbox splits the row the pointer is on into its
+			// halves (`operations`); nesting is no band of it (combine is
+			// not-available): the pointer's x decides it (`zones`).
+			getData: ({ source, input }) => {
+				const row = this.rowAt(source.data, target, node, input);
+				return attachInstruction(
+					{ [ROW]: row.id },
+					{
+						input,
+						// The hitbox reads only this box: the row's own, not its subtree's.
+						element: { getBoundingClientRect: () => ownRow(row.node!) } as Element,
+						operations: this.operations(source.data, row, input)
+					}
 				);
 			},
 			// Held across a small gap beside the block, never over another block's own row
@@ -450,19 +468,19 @@ export class BlockHandleController {
 					)
 				);
 			},
-			onDragEnter: ({ location, source }) =>
-				this.showIndicator(node, target, location, source.data),
-			onDrag: ({ location, source }) => this.showIndicator(node, target, location, source.data),
+			onDragEnter: ({ location, source }) => this.showIndicator(node, location, source.data),
+			onDrag: ({ location, source }) => this.showIndicator(node, location, source.data),
 			onDragLeave: () => {
 				if (this.activeDropTarget === node) this.clearIndicator();
 			},
 			onDrop: ({ location, source }) => {
-				if (location.current.dropTargets[0]?.element !== node) return;
+				const [current] = location.current.dropTargets;
+				if (current?.element !== node) return;
 				const dragSource = this.getDragSource(source.data);
 				const placement =
 					this.activeDropTarget === node && this.activePlacement
 						? this.activePlacement
-						: dragSource && this.resolvePlacement(dragSource, target, node, location.current.input);
+						: this.placement(current, source.data, location.current.input);
 				this.clearIndicator();
 				if (
 					dragSource &&
@@ -565,28 +583,141 @@ export class BlockHandleController {
 		selection.selectBlocks(...(selection.selectedBlocks.size ? [source] : this.covered(source)));
 	}
 
-	private resolvePlacement(
-		source: Block,
+	/** Whether the drag of `source` may land at a placement. */
+	private fits = (source: Block) => (placement: DropPlacement) =>
+		this.canDrop(source, placement.target, placement.position);
+
+	/**
+	 * The hitbox's operations over `row` for our drag: reorder-before and
+	 * reorder-after, each `blocked` when the document refuses every
+	 * placement of that half (`zones`), none outside our drag.
+	 */
+	private operations(
+		data: Record<string, unknown>,
+		row: Block,
+		input: { clientX: number }
+	): Partial<Record<Instruction['operation'], Availability>> {
+		const source = this.getDragSource(data);
+		if (!source || this.edytor.readonly) return {};
+		const { before, after } = this.zones(source, row, input);
+		const offer = (half: DropPlacement[]) =>
+			half.some(this.fits(source)) ? 'available' : 'blocked';
+		return { 'reorder-before': offer(before), 'reorder-after': offer(after) };
+	}
+
+	/**
+	 * The block whose row the pointer is on over `node`: the last shown drop
+	 * target in it whose row starts at or above the pointer (beside a nested
+	 * block, over its ancestors' indent, the pointer is on that block's
+	 * row), else `target`, over its own row (`emptied`).
+	 */
+	private rowAt(
+		data: Record<string, unknown>,
 		target: Block,
 		node: HTMLElement,
-		input: { clientX: number; clientY: number }
+		{ clientY }: { clientY: number }
+	) {
+		const source = this.getDragSource(data);
+		const lift = (row: Block) => (source ? this.emptied(source, row) : row);
+		if (clientY < getOwnRowBottom(node)) return lift(target);
+		let row = target;
+		// In document order, rows start lower and lower: measure none below the
+		// pointer, and none a closed toggle hides (each read would force a layout).
+		for (const inner of node.querySelectorAll<HTMLElement>('[data-edytor-block="true"]')) {
+			const block = this.targets.get(inner);
+			if (!block || inner.closest(HIDDEN)) continue;
+			const rect = inner.getBoundingClientRect();
+			if (rect.top > clientY) break;
+			if (rect.height > 0) row = block;
+		}
+		return lift(row);
+	}
+
+	/** The children a block shows: none for a closed toggle's, or a container's items. */
+	private shown(block: Block) {
+		return block.isContainer
+			? []
+			: block.children.filter(
+					(child) => child.node && this.targets.has(child.node) && !hidden(child)
+				);
+	}
+
+	/**
+	 * Over a dragged block, the parent it leaves when that parent shows no
+	 * other child: the gap under the parent's own row, which reparents as
+	 * the parent's lower half does (`zones`). Else `row`.
+	 */
+	private emptied(source: Block, row: Block) {
+		const group = this.moving(source);
+		const parent = group.find((moved) => moved === row || row.isChildOf(moved))?.parent;
+		if (!parent?.node || parent.isRoot || !this.targets.has(parent.node)) return row;
+		const shown = this.shown(parent);
+		return shown.length && shown.every((child) => group.includes(child)) ? parent : row;
+	}
+
+	/**
+	 * The placements over `row`, each half's in preference order (a refused
+	 * one gives way to the next, then to the other half's):
+	 * - the top half: before it;
+	 * - the bottom half of a block whose children show (not a closed toggle):
+	 *   its first child's slot. Pragmatic drag and drop's tree rule: an
+	 *   expanded item offers no "after" on its own row;
+	 * - else, after it at the level whose text column is nearest the pointer:
+	 *   the last block of a nested group reparents to any ancestor it ends,
+	 *   down to the root. Past one nesting step right of its text start,
+	 *   inside it (its last child) first. A block every shown child of which
+	 *   is dragged is not expanded: its levels, never inside it when the drag
+	 *   moves only its children (they would stay where they are).
+	 * None over a dragged block's own row or its subtree: released there, the
+	 * drag changes nothing (its levels would outdent it) — unless it empties
+	 * its parent's shown children (`emptied`): that parent's row.
+	 */
+	private zones(source: Block, row: Block, { clientX }: { clientX: number }) {
+		const group = this.moving(source);
+		if (group.some((moved) => moved === row || row.isChildOf(moved)))
+			return { before: [], after: [] };
+		const at = (target: Block | undefined, position: BlockMovePosition): DropPlacement[] =>
+			target?.node ? [{ target, node: target.node, position }] : [];
+		const before = at(row, 'before');
+		const shown = this.shown(row);
+		const first = shown.find((child) => !group.includes(child));
+		if (first) return { before, after: at(first, 'before') };
+		// A group moved out from under its parent leaves the block before it last.
+		const next = (block: Block) => {
+			let next = block.nextBlock;
+			while (next && group.includes(next)) next = next.nextBlock;
+			return next;
+		};
+		const levels = [row];
+		for (let level = row; !next(level) && level.parent?.node && !level.parent.isRoot; )
+			levels.push((level = level.parent));
+		const distance = (level: Block) => Math.abs(column(level) - clientX);
+		const after = levels
+			.sort((a, b) => distance(a) - distance(b))
+			.flatMap((level) => at(level, 'after'));
+		const stays = shown.length > 0 && group.every((moved) => moved.parent === row);
+		const inside = stays ? [] : at(row, 'inside');
+		const nests = clientX > column(row) + nestIndent(row.node!);
+		return { before, after: nests ? [...inside, ...after] : [...after, ...inside] };
+	}
+
+	/**
+	 * The placement a drop target record offers: the row and the half the
+	 * hitbox attached (kept while the target is sticky), the pointer's x live.
+	 */
+	private placement(
+		record: DropTargetRecord,
+		data: Record<string, unknown>,
+		input: { clientX: number }
 	): DropPlacement | null {
-		const positions: BlockMovePosition[] = ['before', 'inside', 'after'];
-		const [before, inside, after] = positions.map((position) => {
-			const placement = getDropPlacement(target, node, input, position);
-			return this.canDrop(source, placement.target, placement.position) ? placement : undefined;
-		});
-		if (!before && !inside && !after) return null;
-		// Notion's zones: the row's top half places before, its bottom half
-		// after — or inside, when the pointer is also more than one nesting
-		// step right of the block's text start. A zone the document refuses
-		// gives way to the next one that fits.
-		const rect = node.getBoundingClientRect();
-		const rowHeight = Math.max(0, getOwnRowBottom(node) - rect.top);
-		const offset = rowHeight ? (input.clientY - rect.top) / rowHeight : 0.5;
-		const nests = Boolean(inside) && input.clientX > ownTextRow(node).left + nestIndent(node);
-		const [lower, other] = nests ? [inside, after] : [after, inside];
-		return (offset < 0.5 ? (before ?? lower ?? other) : (lower ?? other ?? before)) ?? null;
+		const source = this.getDragSource(data);
+		const instruction: Instruction | null = extractInstruction(record.data);
+		const row = this.edytor.idToBlock.get(record.data[ROW] as string);
+		if (!source || !instruction || !row?.node) return null;
+		const { before, after } = this.zones(source, row, input);
+		const halves = instruction.operation === 'reorder-before' ? [before, after] : [after, before];
+		const placement = halves.flat().find(this.fits(source));
+		return placement ? { ...placement, blocked: instruction.blocked } : null;
 	}
 
 	private getDragSource(data: Record<string, unknown>) {
@@ -594,21 +725,17 @@ export class BlockHandleController {
 		return this.edytor.idToBlock.get(data.blockId) ?? null;
 	}
 
-	private showIndicator(
-		node: HTMLElement,
-		target: Block,
-		location: DragLocation,
-		data: Record<string, unknown>
-	) {
+	private showIndicator(node: HTMLElement, location: DragLocation, data: Record<string, unknown>) {
 		const [current] = location.current.dropTargets;
-		if (current?.element !== node || current.isActiveDueToStickiness) return;
-		const source = this.getDragSource(data);
-		const placement = source && this.resolvePlacement(source, target, node, location.current.input);
+		if (current?.element !== node) return;
+		const placement = this.placement(current, data, location.current.input);
 		if (!placement) return;
+		const shown = this.activePlacement;
 		if (
 			this.activeDropTarget === node &&
-			this.indicatorNode === placement.node &&
-			placement.node.dataset.edytorBlockDropPosition === placement.position
+			shown?.target === placement.target &&
+			shown.position === placement.position &&
+			shown.blocked === placement.blocked
 		) {
 			this.edytor.overlay.invalidate();
 			return;
@@ -626,6 +753,7 @@ export class BlockHandleController {
 		const overlay = document.createElement('div');
 		overlay.dataset.edytorDropIndicator = 'true';
 		overlay.dataset.position = placement.position;
+		if (placement.blocked) overlay.dataset.blocked = 'true';
 		overlay.setAttribute('aria-hidden', 'true');
 		const count = this.group.length;
 		if (count > 1) {
@@ -683,8 +811,7 @@ export class BlockHandleController {
 		const parent = this.nestParent(placement);
 		const node = parent?.node;
 		if (!parent || !node?.isConnected) return () => delete backdrop.dataset.shown;
-		const rect = node.getBoundingClientRect();
-		const height = Math.max(0, getOwnRowBottom(node) - rect.top);
+		const rect = ownRow(node);
 		const color = node.ownerDocument.defaultView
 			?.getComputedStyle(node)
 			.getPropertyValue(BACKDROP_COLOR)
@@ -697,7 +824,7 @@ export class BlockHandleController {
 				left: `${rect.left - origin.left}px`,
 				top: `${rect.top - origin.top}px`,
 				width: `${rect.width}px`,
-				height: `${height}px`
+				height: `${rect.height}px`
 			});
 			backdrop.dataset.shown = 'true';
 		};

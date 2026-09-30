@@ -109,6 +109,7 @@
 		data-edytor-block-handle-host
 		data-block-id={id}
 		data-visible={hovered.has(id) ? 'true' : undefined}
+		data-dragging={controller.dragging && controller.dragging !== id ? 'true' : undefined}
 		use:place={id}
 		onfocusin={() => (focused = id)}
 		onfocusout={() => focused === id && (focused = null)}
@@ -125,6 +126,14 @@
 		transform: translate(calc(-100% - 4px), -50%);
 		opacity: 0;
 		transition: opacity 150ms ease;
+	}
+
+	/* While a block drags, the pointer reaches the blocks under the other
+	 * handles: a nested block's handle sits over its ancestors' columns, the
+	 * drop levels. (The source keeps its own: Chrome cancels a drag whose
+	 * source stops taking the pointer as it starts.) */
+	[data-edytor-block-handle-host][data-dragging='true'] {
+		pointer-events: none;
 	}
 
 	[data-edytor-block-handle-host][data-visible='true'],

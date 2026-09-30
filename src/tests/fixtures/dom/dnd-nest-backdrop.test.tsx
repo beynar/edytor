@@ -94,24 +94,33 @@ const startDrag = async (edytor: Edytor, source: string) => {
 	)!;
 	fire(handle, 'dragstart');
 	await frame();
-	const point = (target: string, at: number) => {
+	/** `at`: 0 top … 1 bottom of the row; `x`: px right of the block's left edge. */
+	const point = (target: string, at: number, x: number) => {
 		const rect = edytor.idToBlock.get(target)!.node!.getBoundingClientRect();
-		return { clientX: rect.left + 100, clientY: rect.top + at * ROW };
+		return { clientX: rect.left + x, clientY: rect.top + at * ROW };
 	};
 	return {
-		over: async (target: string, at: number) => {
+		over: async (target: string, at: number, x = FAR_RIGHT) => {
 			const node = edytor.idToBlock.get(target)!.node!;
-			fire(node, 'dragenter', point(target, at));
-			fire(node, 'dragover', point(target, at));
+			fire(node, 'dragenter', point(target, at, x));
+			fire(node, 'dragover', point(target, at, x));
 			await frame();
 		},
-		drop: async (target: string, at: number) => {
-			fire(edytor.idToBlock.get(target)!.node!, 'drop', point(target, at));
+		drop: async (target: string, at: number, x = FAR_RIGHT) => {
+			fire(edytor.idToBlock.get(target)!.node!, 'drop', point(target, at, x));
 			await flushDomUpdates();
 			await frame();
 		}
 	};
 };
+
+/**
+ * Pointer x offsets from a block's left edge. The nest threshold is one step
+ * (24px) right of the block's text start (jsdom has no text rects: its left
+ * edge); a nested block's first 20px are its outdent gutter.
+ */
+const FAR_RIGHT = 100;
+const NEAR_LEFT = 22;
 
 /** The shown backdrop: the future parent's id and its layer-relative box (the layer sits at 0,0). */
 const backdrop = () => {
@@ -155,10 +164,10 @@ describe('the nest backdrop', () => {
 		await drag.over('b', 0.05);
 		expect(position()).toBe('before');
 		expect(backdrop()).toBeNull();
-		await drag.over('c', 0.95);
+		await drag.over('c', 0.95, NEAR_LEFT);
 		expect(position()).toBe('after');
 		expect(backdrop()).toBeNull();
-		await drag.drop('c', 0.95);
+		await drag.drop('c', 0.95, NEAR_LEFT);
 		expect(tree(edytor)).toEqual(['a', 'b', 'c', 'x']);
 	});
 
@@ -250,10 +259,10 @@ describe('the nest backdrop', () => {
 	it('tints the parent a before/after drop brings the blocks into', async () => {
 		const { edytor } = await render([p('a', [p('a1'), p('a2')]), p('x')]);
 		const drag = await startDrag(edytor, 'x');
-		await drag.over('a1', 0.95);
+		await drag.over('a1', 0.95, NEAR_LEFT);
 		expect(position()).toBe('after');
 		expect(backdrop()?.id).toBe('a');
-		await drag.drop('a1', 0.95);
+		await drag.drop('a1', 0.95, NEAR_LEFT);
 		expect(tree(edytor)).toEqual([['a', ['a1', 'x', 'a2']]]);
 	});
 
@@ -296,5 +305,60 @@ describe('the nest backdrop', () => {
 		const node = document.querySelector<HTMLElement>('[data-edytor-drop-backdrop]')!;
 		expect(node.style.getPropertyValue('--edytor-drop-backdrop-color')).toBe('red');
 		await drag.drop('b', 0.5);
+	});
+});
+
+describe("Notion's drop zones: the row's halves, and a nest threshold", () => {
+	it('the lower half near the left places after, as a sibling, with no backdrop', async () => {
+		const { edytor } = await render([p('a'), p('b'), p('x')]);
+		const drag = await startDrag(edytor, 'x');
+		await drag.over('a', 0.55, NEAR_LEFT);
+		expect(position()).toBe('after');
+		expect(backdrop()).toBeNull();
+		await drag.drop('a', 0.55, NEAR_LEFT);
+		expect(tree(edytor)).toEqual(['a', 'x', 'b']);
+	});
+
+	it('the lower half right of the threshold nests, with the backdrop shown', async () => {
+		const { edytor } = await render([p('a'), p('b'), p('x')]);
+		const drag = await startDrag(edytor, 'x');
+		// Just past one step right of the text start: 24px.
+		await drag.over('a', 0.55, 25);
+		expect(position()).toBe('inside');
+		expect(backdrop()?.id).toBe('a');
+		// Back left of it, the same half: a sibling again.
+		await drag.over('a', 0.9, 23);
+		expect(position()).toBe('after');
+		expect(backdrop()).toBeNull();
+		await drag.over('a', 0.9, 40);
+		expect(position()).toBe('inside');
+		await drag.drop('a', 0.9, 40);
+		expect(tree(edytor)).toEqual([['a', ['x']], 'b']);
+	});
+
+	it('the top half places before, however far right', async () => {
+		const { edytor } = await render([p('a'), p('b'), p('x')]);
+		const drag = await startDrag(edytor, 'x');
+		for (const x of [NEAR_LEFT, FAR_RIGHT, 400]) {
+			await drag.over('b', 0.45, x);
+			expect(position()).toBe('before');
+			expect(backdrop()).toBeNull();
+		}
+		await drag.drop('b', 0.45, 400);
+		expect(tree(edytor)).toEqual(['a', 'x', 'b']);
+	});
+
+	it('a block that cannot hold children never nests: past the threshold it is after', async () => {
+		const { edytor } = await render([
+			p('a'),
+			{ id: 'hr', type: 'divider', content: [], children: [] },
+			p('x')
+		]);
+		const drag = await startDrag(edytor, 'x');
+		await drag.over('hr', 0.9, FAR_RIGHT);
+		expect(position()).toBe('after');
+		expect(backdrop()).toBeNull();
+		await drag.drop('hr', 0.9, FAR_RIGHT);
+		expect(tree(edytor)).toEqual(['a', 'hr', 'x']);
 	});
 });

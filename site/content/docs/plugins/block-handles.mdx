@@ -104,16 +104,16 @@ The same snippet works with `createBlockHandlesPlugin({ handle })` in `plugins`.
 
 ## Drag and drop
 
-Drag and drop uses Atlassian's Pragmatic drag and drop. While you drag, each block is a drop target split in three bands by the height of its own row (not its children):
+Drag and drop uses Atlassian's Pragmatic drag and drop. While you drag, each block is a drop target. As in Notion, the height of its own row (not its children) decides before or after, and how far right the pointer is decides whether the drop nests:
 
-| Pointer position            | Drop                                |
-| --------------------------- | ----------------------------------- |
-| Top quarter                 | Before the block                    |
-| Middle                      | Inside it, as its last child        |
-| Bottom quarter              | After the block                     |
-| Left edge of a nested block (20px) | Beside its parent, one level out |
+| Pointer position                                                     | Drop                                |
+| -------------------------------------------------------------------- | ----------------------------------- |
+| Top half of the row                                                  | Before the block                    |
+| Bottom half, left of the nest threshold                              | After the block, as a sibling       |
+| Bottom half, more than one nesting step right of the block's text start | Inside it, as its last child     |
+| Left edge of a nested block (20px), top or bottom half               | Before or after its parent, one level out |
 
-Only placements the document allows are offered: when "inside" is not allowed, the block splits between before and after. A short gap between blocks keeps the last valid placement, so the indicator does not flicker; another block's own row never does, so dragging up from a child onto its parent's row targets the parent. A list container has no row of its own, so its padding counts as a gap: overshooting a list's first item keeps "before" that item.
+The nest threshold is the block's first text line's start plus one nesting step: `--edytor-nest-indent` in px (see [Nested blocks](/docs/customization/styling#nested-blocks)), else 24px. So in the lower half of a row, move right to nest and back left to drop beside it. Only placements the document allows are offered: a block that cannot hold children (a divider, an image) never nests, and a refused zone gives way to the next one that fits (in the bottom half, after or inside; then before). A short gap between blocks keeps the last valid placement, so the indicator does not flicker; another block's own row never does, so dragging up from a child onto its parent's row targets the parent. A list container has no row of its own, so its padding counts as a gap: overshooting a list's first item keeps "before" that item.
 
 ### Dragging several blocks
 
@@ -122,16 +122,26 @@ As in Notion, dragging the handle of a block the selection covers moves every bl
 - **A block selection**: its blocks as clicked (a selected list is one block: dragging one of its items, or pressing <kbd>Alt</kbd> + an arrow on the item's handle, moves that item alone, as with a selected paragraph's child).
 - **A text range across blocks**: every block it spans, as <kbd>Tab</kbd> and Turn into read them (a list the range only enters counts through the items it spans; a code block's lines count as the code block).
 
-The outermost of those blocks move, in document order, wherever they sit: their children, and a closed toggle's hidden body, travel with them. The drag preview stacks their first lines with a count badge, and the drop indicator carries the same count (`data-count` on `[data-edytor-drop-indicator]`, with a `[data-edytor-drag-count]` badge in the gutter). While the drag lasts the moving blocks are block-selected (a text range becomes the block selection of the blocks it covers, and stays so when the drag is cancelled), and after the drop they stay selected (a moved block's selected children too). The drop is one `edytor.moveBlocks` call, one undo step: the document's rules apply to the whole group, so a placement where one of them does not fit (a paragraph directly in a list) is not offered, and a refused or vetoed move moves none of them. A block a collaborator deletes during the drag is left out. Undo puts the blocks back and restores the selection you had before the drag (the text range, or the caret), redo the moved blocks' selection.
+The outermost of those blocks move, in document order, wherever they sit: their children, and a closed toggle's hidden body, travel with them. The [drag preview](#the-drag-preview) shows them all with a count badge, and the drop indicator carries the same count (`data-count` on `[data-edytor-drop-indicator]`, with a `[data-edytor-drag-count]` badge in the gutter). While the drag lasts the moving blocks are block-selected (a text range becomes the block selection of the blocks it covers, and stays so when the drag is cancelled), and after the drop they stay selected (a moved block's selected children too). The drop is one `edytor.moveBlocks` call, one undo step: the document's rules apply to the whole group, so a placement where one of them does not fit (a paragraph directly in a list) is not offered, and a refused or vetoed move moves none of them. A block a collaborator deletes during the drag is left out. Undo puts the blocks back and restores the selection you had before the drag (the text range, or the caret), redo the moved blocks' selection.
 
 Dragging the handle of a block outside the selection moves that block alone and selects it (a parent's handle while only its child is selected: the parent alone). A single drop is one undo step too.
+
+### The drag preview
+
+As in Notion, every handle drag shows a copy of the dragged blocks under the pointer, rendered as they look in the editor, never the grip alone: for one block, one selected block, or every block of a several-block drag in document order with a `[data-edytor-drag-count]` badge in its corner. Each block's rendered element is cloned with its whole subtree (its children, a toggle's shown body) when the drag starts, and removed once the browser has taken its picture, as Pragmatic drag and drop's `setCustomNativeDragPreview` does.
+
+- **Look**: the blocks' own look, only scaled down to 0.8 from the top left: no card, background, shadow, border radius, opacity or fade is added (the browser applies its own drag-image translucency). The blocks are laid out at the editor's content width (at most 600px), the ghost is sized to the scaled box so the browser crops nothing, and content past 300px is cut cleanly. The count badge is the one addition. The pointer keeps its place on the first block, where you grabbed it.
+- **Theme**: the clones sit in a wrapper, `[data-edytor-drag-preview]` (with `data-count`), that carries the editor root's classes and its `data-edytor` attribute inside its ancestors' classes, with the root's text style and CSS variables. Theme rules such as `.edytor-notion [data-edytor-type='quote']` apply to it, and the default nesting indent too. The clones sit one level below that root, so root-child rules (the theme's leading Heading 1 as the page title) do not apply: a dragged title shows as a Heading 1.
+- **Inert**: a clone keeps `data-edytor-type`, `data-edytor-children` and the kinds' own styling attributes, and loses what is editable, focusable or view-only: `contenteditable`, `id`, `tabindex`, the selected-block highlight, placeholders, render anchors, suggestions and peers' carets, and every attribute the editor finds live nodes by (`data-edytor-id`, `data-edytor-block`, `data-edytor-text`, `data-edytor-inline-block`, `data-edytor-mark`, `data-edytor-void`, …). A `[data-edytor-id]` lookup never matches it. A block's own padding and margin, which the theme sets on `[data-edytor-block]`, are copied onto its clone.
+
+Style the ghost through `[data-edytor-drag-preview]`, for instance `[data-edytor-drag-preview] [data-edytor-type='heading'] { … }`. It is mounted under `body`, so scope rules to it rather than to the overlay.
 
 ### The drop indicator
 
 The indicator is Notion's plain 4px bar, drawn in the overlay rather than on the block, so rounded or padded block styles cannot bend it:
 
 - **Before or after**: the bar spans the blocks at the drop slot. Between two siblings it is centered in the gap and spans both blocks, so hovering the bottom of one block and the top of the next shows the same bar.
-- **Inside**: the same bar where the new child will land (after the target's last visible child, else after its own row), indented to the child's column and running to the target's right edge.
+- **Inside**: the same bar where the new child will land (after the target's last visible child, else after its own row), indented to the child's column and running to the target's right edge. With no visible child to measure, the column is one nesting step past the target's text: `--edytor-nest-indent` in px (see [Nested blocks](/docs/customization/styling#nested-blocks)), else 24px.
 
 Set its color with `--edytor-drop-indicator-color` on the editor or any ancestor of the blocks (the default is Notion's `rgba(35, 131, 226, 0.43)`):
 

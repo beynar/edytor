@@ -60,6 +60,8 @@ test.describe('document demo', () => {
 		issues.assertClean();
 	});
 
+	// Nesting drops land in the lower half of the target's row, more than one
+	// nesting step (24px) right of its text start (Notion's zones).
 	test('places a dragged block on a new line inside a bullet', async ({ page }) => {
 		const issues = trackPageIssues(page);
 		await page.goto('/');
@@ -67,7 +69,7 @@ test.describe('document demo', () => {
 		const targetBox = await target.boundingBox();
 		if (!targetBox) throw new Error('Missing bullet target');
 		await handle(page, 'page-section-intro').dragTo(target, {
-			targetPosition: { x: Math.min(80, targetBox.width / 2), y: targetBox.height / 2 }
+			targetPosition: { x: Math.min(80, targetBox.width / 2), y: targetBox.height * 0.75 }
 		});
 		const child = target.locator('[data-edytor-id="page-section-intro"]');
 		await expect(child).toHaveCount(1);
@@ -97,7 +99,7 @@ test.describe('document demo', () => {
 			const targetBox = await target.boundingBox();
 			if (!targetBox) throw new Error(`Missing ${name} target`);
 			await handle(page, 'page-section-intro').dragTo(target, {
-				targetPosition: { x: Math.min(80, targetBox.width / 2), y: targetBox.height / 2 }
+				targetPosition: { x: Math.min(80, targetBox.width / 2), y: targetBox.height * 0.75 }
 			});
 			const child = target.locator('[data-edytor-id="page-section-intro"]');
 			await expect(child).toHaveCount(1);
@@ -132,7 +134,7 @@ test.describe('document demo', () => {
 			const targetBox = await target.boundingBox();
 			if (!targetBox) throw new Error(`Missing ${name} target`);
 			await handle(page, sourceId).dragTo(target, {
-				targetPosition: { x: Math.min(80, targetBox.width / 2), y: targetBox.height / 2 }
+				targetPosition: { x: Math.min(80, targetBox.width / 2), y: targetBox.height * 0.75 }
 			});
 			const parentId = await page
 				.locator(`[data-edytor-id="${sourceId}"]`)

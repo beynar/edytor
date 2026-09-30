@@ -142,7 +142,10 @@ test.describe('browser block handles and DnD', () => {
 		await page.goto('/test/dom?scenario=nested&handles=true');
 		await waitForEditorReady(page, { requireRuntime: true });
 		await settleHandles(page);
-		await dragHandleToBlock(page, 3, 0, 0.5);
+		// Onto the lower half of "Nested child"'s row, more than one nesting step
+		// right of its text: the children sit one step in, so the parent's left
+		// edge is the nested blocks' handle gutter.
+		await dragHandleToBlock(page, 3, 1, 0.75, { horizontalOffset: 64 });
 
 		await expect
 			.poll(() => readBlocks(page))
@@ -413,8 +416,9 @@ test.describe('browser block handles and DnD', () => {
 		await page.mouse.move(target.x + 32, target.y + 2, { steps: 12 });
 		await page.mouse.move(target.x + 64, target.y + 2, { steps: 5 });
 		await expectStraightIndicator('before');
-		await page.mouse.move(target.x + 64, target.y + target.height - 2, { steps: 12 });
-		await page.mouse.move(target.x + 96, target.y + target.height - 2, { steps: 5 });
+		// The bottom half, left of the nest threshold (one step past the text start): after.
+		await page.mouse.move(target.x + 12, target.y + target.height - 2, { steps: 12 });
+		await page.mouse.move(target.x + 16, target.y + target.height - 2, { steps: 5 });
 		await expectStraightIndicator('after');
 		await page.mouse.up();
 
@@ -448,7 +452,7 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
 		await page.mouse.down();
-		await page.mouse.move(first.x + 64, first.y + first.height - 2, { steps: 12 });
+		await page.mouse.move(first.x + 12, first.y + first.height - 2, { steps: 12 });
 		await expect(page.locator('[data-edytor-drop-indicator][data-position="after"]')).toHaveCount(
 			1
 		);
@@ -546,8 +550,8 @@ test.describe('browser block handles and DnD', () => {
 
 		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
 		await page.mouse.down();
-		await page.mouse.move(target.x + 32, target.y + target.height - 2, { steps: 12 });
-		await page.mouse.move(target.x + 64, target.y + target.height - 2, { steps: 5 });
+		await page.mouse.move(target.x + 8, target.y + target.height - 2, { steps: 12 });
+		await page.mouse.move(target.x + 12, target.y + target.height - 2, { steps: 5 });
 		const indicator = page.locator('[data-edytor-drop-indicator][data-position="after"]');
 		await expect(indicator).toHaveAttribute('data-count', '2');
 		await expect(indicator.locator('[data-edytor-drag-count]')).toHaveText('2');
@@ -562,6 +566,49 @@ test.describe('browser block handles and DnD', () => {
 		await expect
 			.poll(() => readRootTexts(page))
 			.toEqual(['Start', 'Parent', 'image caption', 'Finish']);
+		issues.assertClean();
+	});
+
+	test("Notion's zones: the lower half is after near the left, inside past one nesting step", async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=basic&empty=last&handles=true');
+		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
+		const source = (await page.getByTestId('block-handle').nth(1).boundingBox())!;
+		const target = page.locator('[data-edytor-block="true"]').first();
+		const box = (await target.boundingBox())!;
+		const textLeft = await target
+			.locator('[data-edytor-text="true"]')
+			.first()
+			.evaluate((node) => node.getClientRects()[0]!.left);
+		const lower = box.y + box.height * 0.75;
+		const indicator = page.locator('[data-edytor-drop-indicator]');
+		const backdrop = page.locator('[data-edytor-drop-backdrop][data-shown="true"]');
+
+		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+		await page.mouse.down();
+		// The top half, however far right: before.
+		await page.mouse.move(textLeft + 120, box.y + box.height * 0.25, { steps: 12 });
+		await expect(indicator).toHaveAttribute('data-position', 'before');
+		// The lower half near the left: after, as a sibling, no backdrop.
+		await page.mouse.move(textLeft + 8, lower, { steps: 12 });
+		await expect(indicator).toHaveAttribute('data-position', 'after');
+		await expect(backdrop).toHaveCount(0);
+		// The same half, moved right past one nesting step (24px) of the text start: inside.
+		await page.mouse.move(textLeft + 40, lower, { steps: 8 });
+		await expect(indicator).toHaveAttribute('data-position', 'inside');
+		await expect(backdrop).toHaveCount(1);
+		await page.mouse.move(textLeft + 16, lower, { steps: 8 });
+		await expect(indicator).toHaveAttribute('data-position', 'after');
+		await page.mouse.move(textLeft + 48, lower, { steps: 8 });
+		await expect(indicator).toHaveAttribute('data-position', 'inside');
+		await page.mouse.up();
+
+		await expect.poll(() => readRootTexts(page)).toEqual(['lead', '']);
+		expect((await readBlocks(page))[0].children?.map(textOf)).toEqual(['note']);
 		issues.assertClean();
 	});
 

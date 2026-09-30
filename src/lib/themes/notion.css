@@ -4,7 +4,8 @@
  * Put `class="edytor-notion"` on an element around <Edytor> (or on the
  * editor itself). Values follow Notion's 2025 light theme: its text and
  * palette colors, 16px/1.5 text on a 24px row, 2px block gutters, 10px
- * rounded panels. A leading Heading 1 is styled as the page title.
+ * rounded panels, one 24px nesting step. A leading Heading 1 is styled as
+ * the page title.
  * Override the custom properties to adapt it.
  */
 .edytor-notion {
@@ -26,6 +27,7 @@
 		'SFMono-Regular', Menlo, Consolas, 'PT Mono', 'Liberation Mono', Courier, monospace;
 	--edytor-drop-indicator-color: rgba(35, 131, 226, 0.43);
 	--edytor-drop-backdrop-color: rgba(35, 131, 226, 0.14);
+	--edytor-nest-indent: 24px;
 	color: var(--notion-text);
 	font-family: var(--notion-font);
 	-webkit-font-smoothing: auto;
@@ -60,6 +62,10 @@
 }
 .edytor-notion [data-edytor-type='paragraph'] > p + div {
 	margin-top: 2px;
+}
+/* Nesting: a block's children sit one step in, under any kind. */
+.edytor-notion [data-edytor-children] {
+	padding-inline-start: var(--edytor-nest-indent);
 }
 
 /* ── Headings ───────────────────────────────────────────────────────── */
@@ -103,12 +109,12 @@
 	line-height: 1.2;
 }
 
-/* ── Lists, to-dos, toggles: a 24px marker column ───────────────────── */
+/* ── Lists, to-dos, toggles: a marker column one nesting step wide ──── */
 .edytor-notion [data-edytor-type='bulleted-list-item'],
 .edytor-notion [data-edytor-type='numbered-list-item'],
 .edytor-notion [data-edytor-type='todo-item'] {
 	display: grid;
-	grid-template-columns: 24px minmax(0, 1fr);
+	grid-template-columns: var(--edytor-nest-indent) minmax(0, 1fr);
 	align-items: start;
 	list-style: none;
 	padding-inline-start: 2px;
@@ -119,10 +125,20 @@
 	grid-column: 2;
 	min-width: 0;
 }
+/* Their marker column (a callout's icon column) is their children's indent. */
+.edytor-notion
+	:is(
+		[data-edytor-type='bulleted-list-item'],
+		[data-edytor-type='numbered-list-item'],
+		[data-edytor-type='todo-item'],
+		[data-edytor-type='callout']
+	)
+	> [data-edytor-children] {
+	padding-inline-start: 0;
+}
 .edytor-notion [data-edytor-type='bulleted-list-item']::before {
 	content: '•';
 	grid-row: 1;
-	width: 24px;
 	font-family: Arial, sans-serif;
 	font-size: 1.5em;
 	line-height: 1;
@@ -156,7 +172,6 @@
 .edytor-notion [data-edytor-type='numbered-list-item']::before {
 	content: counter(notion-list) '.';
 	grid-row: 1;
-	width: 24px;
 	text-align: center;
 	white-space: nowrap;
 }
@@ -202,11 +217,11 @@
 	text-decoration-color: rgba(44, 44, 43, 0.25);
 }
 
-/* Toggle: a caret that turns as the toggle opens; children indent under it. */
+/* Toggle: a caret that turns as the toggle opens; children align with its text. */
 .edytor-notion [data-edytor-type='toggle'] > summary {
 	position: relative;
 	display: block;
-	padding-inline-start: 26px;
+	padding-inline-start: calc(var(--edytor-nest-indent) + 2px);
 	list-style: none;
 	cursor: text;
 }
@@ -233,8 +248,8 @@
 .edytor-notion [data-edytor-type='toggle'][open] > summary::before {
 	transform: rotate(0deg);
 }
-.edytor-notion [data-edytor-type='toggle'] > div {
-	padding-inline-start: 26px;
+.edytor-notion [data-edytor-type='toggle'] > [data-edytor-children] {
+	padding-inline-start: calc(var(--edytor-nest-indent) + 2px);
 }
 
 /* ── Quote, callout, divider ────────────────────────────────────────── */

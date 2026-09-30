@@ -363,22 +363,31 @@
 	};
 </script>
 
+<!--
+	Every kind that has children renders them in one container marked
+	`data-edytor-children`: the core indents it by one nesting step
+	(`--edytor-nest-indent`), so nesting looks the same under any kind.
+-->
+{#snippet nested(children: BlockSnippetPayload['children'])}
+	{#if children}
+		<div data-edytor-children>
+			{@render children()}
+		</div>
+	{/if}
+{/snippet}
+
 {#snippet paragraph({ content, children }: BlockSnippetPayload)}
 	<p>
 		{@render content()}
 	</p>
-	{@render children?.()}
+	{@render nested(children)}
 {/snippet}
 
 {#snippet details({ content, children }: BlockSnippetPayload)}
 	<summary>
 		{@render content()}
 	</summary>
-	{#if children}
-		<div>
-			{@render children()}
-		</div>
-	{/if}
+	{@render nested(children)}
 {/snippet}
 
 <!--
@@ -388,11 +397,7 @@
 -->
 {#snippet textThenChildren({ content, children }: BlockSnippetPayload)}
 	{@render content()}
-	{#if children}
-		<div>
-			{@render children()}
-		</div>
-	{/if}
+	{@render nested(children)}
 {/snippet}
 
 {#snippet callout({ block, content, children }: BlockSnippetPayload<{ icon?: string }>)}
@@ -400,11 +405,7 @@
 	<div>
 		{@render content()}
 	</div>
-	{#if children}
-		<div>
-			{@render children()}
-		</div>
-	{/if}
+	{@render nested(children)}
 {/snippet}
 
 {#snippet todoItem({ block, content, children }: BlockSnippetPayload<{ checked?: boolean }>)}
@@ -423,22 +424,18 @@
 	<div>
 		{@render content()}
 	</div>
-	{#if children}
-		<div>
-			{@render children()}
-		</div>
-	{/if}
+	{@render nested(children)}
 {/snippet}
 
 {#snippet listItem({ content, children }: BlockSnippetPayload)}
 	<div>{@render content()}</div>
-	{#if children}
-		<div>
-			{@render children()}
-		</div>
-	{/if}
+	{@render nested(children)}
 {/snippet}
 
+<!--
+	A list container (HTML import's `ol`/`ul`) groups its items: they are its
+	rows, not blocks nested under its text, so its wrapper is not indented.
+-->
 {#snippet list({ children }: BlockSnippetPayload)}
 	{#if children}
 		<div>

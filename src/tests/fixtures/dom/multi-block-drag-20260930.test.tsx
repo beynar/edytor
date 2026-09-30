@@ -97,7 +97,13 @@ const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
 type Drag = { indicator: HTMLElement | null; image: HTMLElement | null };
 
-/** Drag `source`'s handle onto the row of `target` (`at`: 0 top … 1 bottom), then drop. */
+/**
+ * Drag `source`'s handle onto the row of `target` (`at`: 0 top … 1 bottom),
+ * then drop: before in the top half, after in the bottom half. The pointer is
+ * 22px right of the target's left edge: past a nested block's 20px outdent
+ * gutter, left of the nest threshold (one 24px step past the text start;
+ * jsdom has no text rects: the left edge), so a bottom-half drop is a sibling.
+ */
 const drag = async (edytor: Edytor, source: string, target: string, at: number): Promise<Drag> => {
 	await flushDomUpdates();
 	layout();
@@ -109,7 +115,7 @@ const drag = async (edytor: Edytor, source: string, target: string, at: number):
 	await frame();
 	const node = edytor.idToBlock.get(target)!.node!;
 	const rect = node.getBoundingClientRect();
-	const point = { clientX: rect.left + 100, clientY: rect.top + at * ROW };
+	const point = { clientX: rect.left + 22, clientY: rect.top + at * ROW };
 	fire(node, 'dragenter', point);
 	fire(node, 'dragover', point);
 	await frame();
@@ -161,7 +167,10 @@ describe('dragging a block selection by one of its handles', () => {
 		expect(tree(edytor)).toEqual(['d', 'a', 'b', 'c', 'e']);
 		expect(selected(edytor)).toEqual(['d']);
 		expect(shown.indicator?.dataset.count).toBeUndefined();
-		expect(shown.image).toBeNull();
+		// The ghost of the one block, without a count; gone once the drag started.
+		expect(shown.image?.dataset.count).toBe('1');
+		expect(shown.image?.textContent).toContain('d');
+		expect(shown.image?.querySelector('[data-edytor-drag-count]')).toBeNull();
 		expect(document.querySelector('[data-edytor-drag-preview]')).toBeNull();
 	});
 

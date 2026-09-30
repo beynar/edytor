@@ -21,6 +21,7 @@ import {
 	selectMoved,
 	shownText
 } from '$lib/selection/replaceSelection.js';
+import { dragPreview } from './dragPreview.js';
 
 const blockDragMimeType = 'application/x-edytor-block-id';
 
@@ -106,52 +107,24 @@ const ownTextRow = (node: HTMLElement) => {
 	return row && row.height > 0 ? row : node.getBoundingClientRect();
 };
 
-/** A nested child's indent when the target has no visible child to measure. */
+/**
+ * One nesting step, a nested child's indent when the target has no visible
+ * child to measure: the `--edytor-nest-indent` the children container is
+ * indented by (in px), else its default.
+ */
 const NEST_INDENT = 24;
+const nestIndent = (node: HTMLElement) => {
+	const value = node.ownerDocument.defaultView
+		?.getComputedStyle(node)
+		.getPropertyValue('--edytor-nest-indent')
+		.trim();
+	return value?.endsWith('px') ? parseFloat(value) : NEST_INDENT;
+};
 /** Notion's drop bar: 4px of translucent blue. */
 const DROP_INDICATOR_COLOR = 'rgba(35, 131, 226, 0.43)';
 /** The nest backdrop's theming variable (its defaults are in `BlockHandle.svelte`). */
 const BACKDROP_COLOR = '--edytor-drop-backdrop-color';
 const BAR = 4;
-/** The rows a several-block drag preview shows before its count. */
-const PREVIEW_ROWS = 3;
-
-/**
- * The drag image of a several-block drag: the first blocks' lines stacked on
- * a card, with the number of blocks that move (`data-count`). Mounted by the
- * drag library for the one frame the browser takes its picture.
- */
-const dragPreview = (document: Document, blocks: Block[]) => {
-	const card = document.createElement('div');
-	card.dataset.edytorDragPreview = 'true';
-	card.dataset.count = String(blocks.length);
-	Object.assign(card.style, {
-		position: 'relative',
-		width: '260px',
-		padding: '6px 10px',
-		background: 'white',
-		color: 'rgb(55, 53, 47)',
-		font: '14px/1.5 system-ui, sans-serif',
-		borderRadius: '6px',
-		opacity: '0.9',
-		// Two cards behind it: several blocks move.
-		boxShadow:
-			'rgba(15, 15, 15, 0.1) 0 0 0 1px, white 4px 4px 0 0, rgba(15, 15, 15, 0.1) 4px 4px 0 1px'
-	});
-	for (const block of blocks.slice(0, PREVIEW_ROWS)) {
-		const row = document.createElement('div');
-		row.textContent = shownText(block, 'first')?.stringContent || block.type;
-		Object.assign(row.style, {
-			overflow: 'hidden',
-			whiteSpace: 'nowrap',
-			textOverflow: 'ellipsis'
-		});
-		card.append(row);
-	}
-	card.append(countBadge(document, blocks.length));
-	return card;
-};
-
 /**
  * Notion's nest backdrop: a soft rounded tint over the future parent's own
  * row, drawn by the overlay layer under the drop line — never a style on the
@@ -389,15 +362,23 @@ export class BlockHandleController {
 			getInitialDataForExternal: () => ({ [blockDragMimeType]: block.id }),
 			// The moved blocks are known, and drop targets exist, from the start of
 			// our drag (before any target is looked up).
-			onGenerateDragPreview: ({ nativeSetDragImage }) => {
+			onGenerateDragPreview: ({ nativeSetDragImage, location }) => {
 				this.dragging = block.id;
 				const group = (this.group = this.dragBlocks(block));
-				if (group.length > 1 && nativeSetDragImage)
+				// A ghost of the moved blocks as they look (Notion), cloned now and
+				// removed with the drag library's container once the drag starts.
+				const root = this.edytor.node;
+				const nodes = group.flatMap((moved) => (moved.node ? [moved.node] : []));
+				if (nativeSetDragImage && root && nodes.length) {
+					const count = group.length;
+					const badge = count > 1 ? countBadge(element.ownerDocument, count) : undefined;
+					const preview = dragPreview(root, nodes, location.current.input, badge);
 					setCustomNativeDragPreview({
 						nativeSetDragImage,
-						getOffset: () => ({ x: 12, y: 12 }),
-						render: ({ container }) => container.append(dragPreview(element.ownerDocument, group))
+						getOffset: preview.offset,
+						render: ({ container }) => container.append(preview.element)
 					});
+				}
 				for (const [node, target] of this.targets) this.registerDropTarget(node, target);
 				this.backdrop?.remove();
 				this.backdrop = backdrop(element.ownerDocument);
@@ -596,15 +577,16 @@ export class BlockHandleController {
 			return this.canDrop(source, placement.target, placement.position) ? placement : undefined;
 		});
 		if (!before && !inside && !after) return null;
-		// The row's top quarter places before, its bottom quarter after, the
-		// middle inside; without `inside`, each edge takes its half.
+		// Notion's zones: the row's top half places before, its bottom half
+		// after — or inside, when the pointer is also more than one nesting
+		// step right of the block's text start. A zone the document refuses
+		// gives way to the next one that fits.
 		const rect = node.getBoundingClientRect();
 		const rowHeight = Math.max(0, getOwnRowBottom(node) - rect.top);
 		const offset = rowHeight ? (input.clientY - rect.top) / rowHeight : 0.5;
-		const edge = inside ? 0.25 : 0.5;
-		if (before && offset < edge) return before;
-		if (after && offset > 1 - edge) return after;
-		return inside ?? after ?? before ?? null;
+		const nests = Boolean(inside) && input.clientX > ownTextRow(node).left + nestIndent(node);
+		const [lower, other] = nests ? [inside, after] : [after, inside];
+		return (offset < 0.5 ? (before ?? lower ?? other) : (lower ?? other ?? before)) ?? null;
 	}
 
 	private getDragSource(data: Record<string, unknown>) {
@@ -747,7 +729,8 @@ export class BlockHandleController {
 			const next = target.parent?.children[target.index + 1]?.node?.getBoundingClientRect();
 			const end = shown ? shown.bottom : getOwnRowBottom(placement.node);
 			const land = next && next.top >= end ? (end + next.top) / 2 : end + 4;
-			const left = shown && lastNode ? ownTextRow(lastNode).left : row.left + NEST_INDENT;
+			const left =
+				shown && lastNode ? ownTextRow(lastNode).left : row.left + nestIndent(placement.node);
 			return place(left, Math.max(16, rect.right - left), land);
 		}
 

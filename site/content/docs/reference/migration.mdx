@@ -131,6 +131,12 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.2
+
+- **Nested blocks sit in one indented container.** Every kind that renders children puts them in a `div[data-edytor-children]`, indented by `--edytor-nest-indent` (24px). A block nested under a paragraph, heading or quote is now indented, as in Notion. CSS that indented children itself should target `[data-edytor-children]` or set the variable (see [Styling](/docs/customization/styling)).
+- **Drop zones follow Notion.** The top half of a block's row drops before it and the bottom half after it; a drop nests only when the pointer is also more than one nest step right of the block's text.
+- **Every drag shows a preview of the blocks it moves**, a scaled-down copy of them as rendered, with a count badge when several move.
+
 ### From 0.1.0-next.1
 
 - **Heading and quote text sits in its own `h1`/`h2`/`h3`/`blockquote`.** The block element is now a `div`, and its nested blocks render beside the heading tag instead of inside it, so a page's heading styles no longer reach them. Selectors written against the old markup (`h2[data-edytor-type='heading']`) now match nothing: target `[data-edytor-type='heading'] > h2` instead (see [Styling](/docs/customization/styling)).

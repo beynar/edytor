@@ -151,10 +151,28 @@
 				})}<!--
 		-->{:else if definition === UNKNOWN_KIND}<!--
 			A kind this view does not register: a plain block, its text and children.
-		-->{@render content()}{@render children()}<!--
+		-->{@render content()}{#if cell.childIds.length}<div
+						data-edytor-children
+					>
+						{@render children()}
+					</div>{/if}<!--
 		-->{/if}<!--
 	--></svelte:element
 		><!--
 -->{/if}<!--
--->{/if}<!--
+-->{/if}
+
+<!--
 -->
+
+<style>
+	/*
+	 * One nesting step (Notion's 24px): a kind's snippet renders its children
+	 * in one `data-edytor-children` container, indented here, so a block
+	 * nested under any kind sits one step in. A theme whose kind indents its
+	 * children another way (a list's marker column) sets its own padding.
+	 */
+	:global([data-edytor-children]) {
+		padding-inline-start: var(--edytor-nest-indent, 24px);
+	}
+</style>

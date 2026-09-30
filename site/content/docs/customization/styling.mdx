@@ -25,7 +25,8 @@ What it sets:
 
 - 16px text at a 1.5 line height in Notion's text color, and blocks as 3px/2px-padded rows 1px apart;
 - headings at 1.875em, 1.5em and 1.25em, weight 600, on the heading's own text only (its nested blocks keep body text), over the page's own `h1`–`h3` and `blockquote` rules (a page rule more specific than the theme's `.edytor-notion [data-edytor-type='heading'] > h2` still wins). A leading top-level Heading 1 is the page title: 40px, weight 700;
-- a 24px marker column for lists and to-dos: bullets `•` `◦` `▪` by depth, numbers `1.` `a.` `i.` by depth, with a run of numbered items sharing one counter;
+- one 24px nesting step: a block nested under a paragraph, heading or quote starts 24px in, and a list item's or to-do's marker column is the same step wide;
+- a marker column for lists and to-dos: bullets `•` `◦` `▪` by depth, numbers `1.` `a.` `i.` by depth, with a run of numbered items sharing one counter;
 - Notion's blue to-do checkbox, with done text struck through and muted;
 - a toggle caret that rotates as the toggle opens, a 3px quote bar, a 10px-rounded callout panel, a thin divider and the code panel;
 - images with rounded corners and a muted caption, and the empty image's gray "Add an image" panel with its link field and blue buttons;
@@ -51,7 +52,7 @@ Adapt it by overriding its custom properties on `.edytor-notion`:
 | `--notion-font`              | Notion's system sans stack     | Body text                                        |
 | `--notion-mono`              | `'SFMono-Regular', Menlo, …`   | Inline code                                      |
 
-The theme also sets `--edytor-drop-indicator-color` to Notion's `rgba(35, 131, 226, 0.43)` and `--edytor-drop-backdrop-color` to its light nest tint, `rgba(35, 131, 226, 0.14)`. Its rules are scoped under `.edytor-notion`: to override one, use a more specific selector, or the same selector in a stylesheet loaded after it.
+The theme also sets `--edytor-drop-indicator-color` to Notion's `rgba(35, 131, 226, 0.43)`, `--edytor-drop-backdrop-color` to its light nest tint, `rgba(35, 131, 226, 0.14)`, and `--edytor-nest-indent` to `24px` (see [Nested blocks](#nested-blocks)). Its rules are scoped under `.edytor-notion`: to override one, use a more specific selector, or the same selector in a stylesheet loaded after it.
 
 ## The rendered DOM
 
@@ -92,6 +93,7 @@ The block element (`div` here, the default) comes from the kind's `element`; the
 | `data-edytor-inline-block="<type>"`| inline atoms               | An atom, non-editable.                                                   |
 | `data-edytor-todo-checkbox`        | the to-do checkbox         | The rich text to-do's `input`, a direct child of the block.              |
 | `data-edytor-callout-icon`         | the callout icon           | The rich text callout's icon `span`.                                     |
+| `data-edytor-children`             | a block's children container | The one element holding a block's nested blocks, indented by one nesting step. See [Nested blocks](#nested-blocks). |
 | `data-edytor-code-header`          | the code block header      | The void header holding the language and the Copy button.               |
 | `data-edytor-code-language`        | the code block language    | The language label inside the header.                                    |
 | `data-edytor-image`, `data-edytor-image-empty` | the image block | The wrapper of the `img`, or of the empty state; see [Image](/docs/plugins/image#styling). |
@@ -123,14 +125,31 @@ A block selection is exactly its members: a selected parent does not select its 
 
 ## Nested blocks
 
-Children render inside the parent's element, wherever the kind's snippet renders `children()`. Keep a block's own content and its children in separate elements, then lay them out in a grid so a nested block starts on a new row, in the text column:
+Children render inside the parent's element, wherever the kind's snippet renders `children()`. Every rich text kind renders them in one container, a direct child of the block element marked `data-edytor-children`, after the block's own content (a heading's children follow its `h2`, a quote's its `blockquote`). As in Notion, a block nested under any kind sits one nesting step in: the core's default style, and the Notion theme, indent that container by `--edytor-nest-indent` (24px by default):
+
+```css
+[data-edytor-children] {
+	padding-inline-start: var(--edytor-nest-indent, 24px);
+}
+```
+
+Change the step on the editor or any ancestor:
+
+```css
+[data-edytor] {
+	--edytor-nest-indent: 32px;
+}
+```
+
+A kind of your own does the same: render its children in one `<div data-edytor-children>` (when `children` is not `null`), and nesting under it looks like nesting under every other kind. The drop indicator reads the same variable (in px) to place an inside drop under a block with no visible children.
+
+A kind that indents its children another way, with a marker column, sets that container's padding to zero so the indent is not doubled. Keep a block's own content and its children container in separate elements, then lay them out in a grid so a nested block starts on a new row, in the text column:
 
 ```css
 [data-edytor-type='bulleted-list-item'] {
 	list-style: none;
 	display: grid;
-	grid-template-columns: 16px minmax(0, 1fr);
-	column-gap: 10px;
+	grid-template-columns: var(--edytor-nest-indent, 24px) minmax(0, 1fr);
 }
 [data-edytor-type='bulleted-list-item']::before {
 	content: '•';
@@ -140,9 +159,13 @@ Children render inside the parent's element, wherever the kind's snippet renders
 	grid-column: 2;
 	min-width: 0;
 }
+/* The marker column already indents the children. */
+[data-edytor-type='bulleted-list-item'] > [data-edytor-children] {
+	padding-inline-start: 0;
+}
 ```
 
-The rich text list items, to-dos and callouts render their content and their children in two direct `div` children, which this rule puts in column 2. A flex row would instead place a nested block beside its parent's text.
+The rich text list items, to-dos and callouts render their content and their children container in two direct `div` children, which this rule puts in column 2. A flex row would instead place a nested block beside its parent's text. The Notion theme does this for lists, to-dos and callouts (whose children align with the text after the icon), and aligns a toggle's children with its text.
 
 For numbered items, count with CSS counters on the editor root:
 
@@ -173,6 +196,7 @@ The layer sits at its natural place right after the root and positions chrome re
 | Variable                          | Default   | Effect                                                            |
 | --------------------------------- | --------- | ----------------------------------------------------------------- |
 | `--edytor-drop-indicator-color`   | `rgba(35, 131, 226, 0.43)` | The drop indicator's bar. Read from the target block, so set it on the root or any ancestor. |
+| `--edytor-nest-indent`            | `24px`    | One nesting step: the `[data-edytor-children]` container's indent, and the drop indicator's inside offset. Set it on the root or any ancestor. |
 | `--edytor-drop-backdrop-color`    | `rgba(35, 131, 226, 0.14)` | The [nest backdrop](/docs/plugins/block-handles#the-nest-backdrop) over the future parent's row. Read from that block, so set it on the root or any ancestor. Use one plain color, not `light-dark()`. |
 
 ```css

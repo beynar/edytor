@@ -46,6 +46,20 @@
 		const menu = event.currentTarget as HTMLElement;
 		if (controller.addition && to instanceof Node && !menu.contains(to)) controller.dismiss(false);
 	};
+	/**
+	 * The `+`'s field is the menu's one keyboard owner: a row or the footer
+	 * that takes focus (a click, a screen reader) hands it back, a row
+	 * becoming the highlighted one, so the keys and the highlight stay in step.
+	 */
+	let field = $state<HTMLInputElement>();
+	const onfocusin = (event: FocusEvent) => {
+		if (!field || event.target === field) return;
+		const index = commands.findIndex(
+			(command) => command.id === (event.target as HTMLElement).dataset.commandId
+		);
+		if (index !== -1) controller.selectedIndex = index;
+		field.focus({ preventScroll: true });
+	};
 	/** A press in the menu keeps the focus where it is (its field, or the editor's caret). */
 	const keepFocus = (event: MouseEvent) => {
 		if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
@@ -77,17 +91,19 @@
 		aria-label="Block commands"
 		tabindex="-1"
 		onmousedown={keepFocus}
+		onkeydown={controller.addition ? onkeydown : undefined}
+		onfocusin={controller.addition ? onfocusin : undefined}
 		{onfocusout}
 	>
 		{#if controller.addition}
 			<input
+				bind:this={field}
 				class="slash-search"
 				placeholder="Type to filter…"
 				aria-label="Filter block commands"
 				value={controller.query}
 				use:focusOnMount
 				oninput={(event) => controller.search(event.currentTarget.value)}
-				{onkeydown}
 			/>
 		{:else}
 			<div class="slash-query" data-testid="slash-menu-query" aria-live="polite">
@@ -122,6 +138,7 @@
 						data-selected={index === controller.selectedIndex}
 						data-testid="slash-menu-item"
 						role="option"
+						tabindex="-1"
 						aria-selected={index === controller.selectedIndex}
 						use:keepInView={index === controller.selectedIndex}
 						onmousedown={(event) => event.preventDefault()}
@@ -136,6 +153,7 @@
 		<button
 			type="button"
 			class="slash-footer"
+			tabindex="-1"
 			onmousedown={(event) => event.preventDefault()}
 			onclick={() => controller.dismiss()}><span>Close menu</span><kbd>esc</kbd></button
 		>

@@ -4,7 +4,7 @@ description: The block handles plugin adds a + button and a drag grip beside eac
 icon: grip-vertical
 ---
 
-Block handles are the two buttons left of each block, as in Notion: a `+` that adds a block, then the ⋮⋮ grip. Drag the grip to reorder, nest or outdent a block; focus it and use <kbd>Alt</kbd> with the arrow keys to move it; click it to select the block and open a block menu, such as the bundled [block menu](/docs/plugins/block-menu). `<Edytor>` includes them by default.
+Block handles are the two buttons left of each block, as in Notion: a `+` that adds a block, then the ⋮⋮ grip. Drag the grip to reorder, nest or outdent a block, or every block the selection covers; focus it and use <kbd>Alt</kbd> with the arrow keys to move it; click it to select the block and open a block menu, such as the bundled [block menu](/docs/plugins/block-menu). `<Edytor>` includes them by default.
 
 ## Enabling and configuring
 
@@ -43,7 +43,7 @@ The `blockHandles` prop of `<Edytor>` controls the plugin:
     },
     onActivate: {
       type: "({ block, anchor }: BlockHandleActivation) => void",
-      description: "Called when a grip is clicked, after the block is selected (a block selection that already holds it stays). anchor is the grip element, to position a menu against. Without it, the click dispatches an edytor-block-activate event instead (see below).",
+      description: "Called when a grip is clicked, after the block is selected (a block selection that already holds it stays; over a text range across blocks, the blocks it covers are selected). anchor is the grip element, to position a menu against. Without it, the click dispatches an edytor-block-activate event instead (see below).",
     },
     handle: {
       type: "Snippet<[BlockHandleSnippetPayload]>",
@@ -67,9 +67,9 @@ A handle sits in the editor's overlay layer, left of its block, aligned with the
 
 ### The + button
 
-Clicking `+` opens the [slash menu](/docs/plugins/slash-menu#from-the-block-handle) below it and adds nothing yet: the menu has its own search field. Picking a kind inserts a block of it below the block (above with <kbd>Alt</kbd>) with the caret in it, as one undo step. Typing filters the menu, never the document. The kind lands where it fits, as the slash menu places it: beside a list's item, a heading splits the list after the item and a list's own kind adds an item; a divider or code block follows the block. <kbd>Escape</kbd> closes it with the document and the undo history unchanged and the caret where it was, and so do a press outside the menu (the press then places the caret), focus leaving the menu and the editor turning readonly. A plugin's veto of the insertion adds nothing, and `edytor.dispatcher.last` reads `refused`. When the block is already an empty block of the parent's default kind, the picked kind converts it instead of adding another. Without the slash menu, `+` inserts an empty block of the default kind at once and puts the caret in it. The button does nothing in a readonly editor.
+Clicking `+` opens the [slash menu](/docs/plugins/slash-menu#from-the-block-handle) below it and adds nothing yet: the menu has its own search field. Picking a kind inserts a block of it below the block (above with <kbd>Alt</kbd>) with the caret in it, as one undo step. Typing filters the menu, never the document. The kind lands where it fits, as the slash menu places it: beside a list's item, a heading splits the list after the item and a list's own kind adds an item; a divider or code block follows the block. <kbd>Escape</kbd> closes it with the document and the undo history unchanged and the caret where it was, and so do a press outside the menu (the press then places the caret), focus leaving the menu and the editor turning readonly. A `+` clicked while the selection is still the block selection a grip click made (its menu open, or closed on a divider) gives back the selection held before the grip was clicked (a text caret when there was none), so <kbd>Escape</kbd> never leaves the grip's block selection for the next key to replace. The menu lists only the commands that can run in the block being added ([From the block handle](/docs/plugins/slash-menu#from-the-block-handle)). A plugin's veto of the insertion adds nothing, and `edytor.dispatcher.last` reads `refused`. When the block is already an empty block of the parent's default kind, the picked kind converts it instead of adding another. Without the slash menu, `+` inserts an empty block of the default kind at once and puts the caret in it. The button does nothing in a readonly editor.
 
-The `+` dispatches `BLOCK_ADD_EVENT` (`'edytor-block-add'`, detail `{ block, anchor, insert }`, a `BlockAddition`) on the editor's root. A menu of your own answers it with `event.preventDefault()`, and calls `insert(then?)` once the user picks: it adds the block, puts the caret in it and runs `then`, as one undo step. When `then` answers `false`, or the command it runs is refused (by the document or an extension's veto) before changing anything, `insert` takes the block back, with its undo step and the selection it moved, and answers `false`.
+The `+` dispatches `BLOCK_ADD_EVENT` (`'edytor-block-add'`, detail `{ block, anchor, insert }`, a `BlockAddition`) on the editor's root. A menu of your own answers it with `event.preventDefault()`, and calls `insert(then?)` once the user picks: it adds the block, puts the caret in it and runs `then`, as one undo step. The addition and `then`'s writes are one transaction. When `then` answers `false`, or the command it runs is refused (by the document or an extension's veto) before changing anything, `insert` takes the block back inside that transaction and answers `false`: the document, its undo and redo steps and the selection are as they were.
 
 ### Custom handle
 
@@ -115,7 +115,16 @@ Drag and drop uses Atlassian's Pragmatic drag and drop. While you drag, each blo
 
 Only placements the document allows are offered: when "inside" is not allowed, the block splits between before and after. A short gap between blocks keeps the last valid placement, so the indicator does not flicker.
 
-Dragging the handle of a block that is part of a block selection of siblings moves the whole group, in document order. A selected block's selected descendants (a <kbd>Shift</kbd> + <kbd>↓</kbd> selection past a parent holds its children) ride with it rather than counting as siblings. After a drop, the moved blocks are selected. Each drop is one undo step.
+### Dragging several blocks
+
+As in Notion, dragging the handle of a block the selection covers moves every block it covers, together:
+
+- **A block selection**: its blocks as clicked (a selected list is one block: dragging one of its items, or pressing <kbd>Alt</kbd> + an arrow on the item's handle, moves that item alone, as with a selected paragraph's child).
+- **A text range across blocks**: every block it spans, as <kbd>Tab</kbd> and Turn into read them (a list the range only enters counts through the items it spans; a code block's lines count as the code block).
+
+The outermost of those blocks move, in document order, wherever they sit: their children, and a closed toggle's hidden body, travel with them. The drag preview stacks their first lines with a count badge, and the drop indicator carries the same count (`data-count` on `[data-edytor-drop-indicator]`, with a `[data-edytor-drag-count]` badge in the gutter). While the drag lasts the moving blocks are block-selected (a text range becomes the block selection of the blocks it covers, and stays so when the drag is cancelled), and after the drop they stay selected (a moved block's selected children too). The drop is one `edytor.moveBlocks` call, one undo step: the document's rules apply to the whole group, so a placement where one of them does not fit (a paragraph directly in a list) is not offered, and a refused or vetoed move moves none of them. A block a collaborator deletes during the drag is left out.
+
+Dragging the handle of a block outside the selection moves that block alone and selects it. A single drop is one undo step too.
 
 ### The drop indicator
 
@@ -143,7 +152,7 @@ While a handle has focus, <kbd>Alt</kbd> with an arrow key moves its block:
 | <kbd>Alt</kbd> + <kbd>→</kbd>    | In: the last child of the previous sibling                           |
 | <kbd>Alt</kbd> + <kbd>←</kbd>    | Out: after the parent (a list's item leaves the list, [as Shift+Tab](/docs/customization/hotkeys#enter-and-backspace-by-role)) |
 
-The handle claims every <kbd>Alt</kbd>+arrow while it has focus, and the moved block stays selected. A move never puts a block directly in a list it is no item of, but a block already there (an image a merge left among the items) moves among them like an item, by key, menu or drag. A move never hides a block you saw: moving a block into a closed toggle, with <kbd>Alt</kbd> + <kbd>→</kbd> or a drop inside it, opens the toggle, as <kbd>Tab</kbd> does. To move the caret's block from the text, or a block selection, see [Arrow move](/docs/plugins/arrow-move).
+The handle claims every <kbd>Alt</kbd>+arrow while it has focus, and the moved block stays selected. A handle of a block the selection covers moves the same blocks a drag of it would ([Dragging several blocks](#dragging-several-blocks)); as a relative step, they must share one parent, else nothing moves. A move never puts a block directly in a list it is no item of, but a block already there (an image a merge left among the items) moves among them like an item, by key, menu or drag. A move never hides a block you saw: moving a block into a closed toggle, with <kbd>Alt</kbd> + <kbd>→</kbd> or a drop inside it, opens the toggle, as <kbd>Tab</kbd> does. To move the caret's block from the text, or a block selection, see [Arrow move](/docs/plugins/arrow-move).
 
 ## Building a block menu
 

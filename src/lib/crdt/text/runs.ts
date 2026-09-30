@@ -102,6 +102,7 @@ import {
 } from '../schema.js';
 import { walkIdSetStructs, type IdSetLike, type StoreStruct } from '../structs.js';
 import { cloneJsonSafe, sameIds } from '../../utils/json.js';
+import { callEach } from '../protocols/observable.js';
 
 /**
  * One visible run of a block — the maintained form of `ContentItem`.
@@ -177,23 +178,6 @@ const runEquals = (a: ContentRun, b: ContentRun): boolean => {
 const EMPTY_RUNS = Object.freeze([]) as readonly ContentRun[];
 /** Shared frozen empty child list for a report's emptied-parent `order` entries. */
 const EMPTY_IDS = Object.freeze([]) as readonly BlockId[];
-
-/**
- * Every listener runs; one that throws is logged, never rethrown (R5 — a
- * throwing listener never starves the rest). The change report runs inside
- * the engine's `update` emit: an error escaping it would skip the
- * transaction cleanup's reset, and no later transaction would ever emit
- * `update` or report again (SW16-rest-1).
- */
-export const callEach = <A extends unknown[]>(cbs: Iterable<(...args: A) => void>, ...args: A) => {
-	for (const cb of cbs) {
-		try {
-			cb(...args);
-		} catch (error) {
-			console.error('[edytor-doc] change listener failed; continuing', error);
-		}
-	}
-};
 
 /**
  * What a cached display read: the homes of the texts it walked, and the blocks
@@ -1315,7 +1299,7 @@ export const bindRuns = (Y: EngineApi) => {
 		/** Report the commit (or role change) to every subscriber, when it changed the visible document. */
 		const publish = (origin: unknown, local: boolean): void => {
 			const r = report();
-			if (r !== null) callEach([...reportSubs], r, origin, local);
+			if (r !== null) callEach('[edytor-doc] change', [...reportSubs], r, origin, local);
 		};
 		const onUpdate = (_u: Uint8Array, origin: unknown, _d: EngineDoc, tr: unknown): void =>
 			publish(origin, (tr as { local?: boolean }).local === true);

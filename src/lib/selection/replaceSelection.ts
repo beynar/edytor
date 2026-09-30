@@ -81,6 +81,33 @@ export const outermost = (blocks: Iterable<Block>): Block[] => {
 };
 
 /**
+ * What a move of `blocks` takes (a handle's drag, Alt+arrow or click,
+ * Mod+Shift+↑/↓ over a range): each one, or its nearest movable ancestor
+ * when it cannot move by itself (a code block's line: an island's interior
+ * moves with the island), once each. A block's descendants among them
+ * travel with it (`outermost`).
+ */
+export const movable = (blocks: Iterable<Block>): Block[] => {
+	const lifted = new Set<Block>();
+	for (const block of blocks) {
+		let at: Block | undefined = block;
+		while (at && !at.isRoot && !at.movable) at = at.parent;
+		if (at && !at.isRoot) lifted.add(at);
+	}
+	return [...lifted];
+};
+
+/**
+ * Select the blocks a move answered (`moved`), and the blocks of `before`
+ * (the block selection it moved) inside them: a moved block's selected
+ * child stays selected, so the next step moves the same selection.
+ */
+export const selectMoved = (edytor: Edytor, moved: Block[], before: Iterable<Block>) => {
+	const kept = [...before].filter((block) => moved.some((root) => isInside(block, root)));
+	edytor.selection.selectBlocks(...moved, ...kept);
+};
+
+/**
  * Run a block move that never hides a block the user saw (Notion): a closed
  * toggle a moved block lands in opens, and so does a closed toggle that
  * adopts blocks (Shift+Tab takes the blocks after it). `open` is view state

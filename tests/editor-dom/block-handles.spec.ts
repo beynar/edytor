@@ -431,6 +431,45 @@ test.describe('browser block handles and DnD', () => {
 		issues.assertClean();
 	});
 
+	test('drags the blocks a text range spans by the first handle, showing their count', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=navigation&handles=true');
+		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
+		// A text range from "Start" into "Nested middle": Start, Parent and its child.
+		await page.evaluate(() => {
+			const edytor = (window as Window & { __EDYTOR__?: any }).__EDYTOR__;
+			const [start, parent] = edytor.root.children;
+			edytor.selection.setAtRange(start.firstText, 1, parent.children[0].firstText, 3);
+		});
+		const source = await page.getByTestId('block-handle').first().boundingBox();
+		const target = await page.locator('[data-edytor-block="true"]').last().boundingBox();
+		if (!source || !target) throw new Error('Missing drag source or target');
+
+		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(target.x + 32, target.y + target.height - 2, { steps: 12 });
+		await page.mouse.move(target.x + 64, target.y + target.height - 2, { steps: 5 });
+		const indicator = page.locator('[data-edytor-drop-indicator][data-position="after"]');
+		await expect(indicator).toHaveAttribute('data-count', '2');
+		await expect(indicator.locator('[data-edytor-drag-count]')).toHaveText('2');
+		await page.mouse.up();
+
+		const blocks = await readBlocks(page);
+		expect(blocks.map(textOf)).toEqual(['image caption', 'Finish', 'Start', 'Parent']);
+		expect(blocks[3]?.children?.map(textOf)).toEqual(['Nested middle']);
+		// The blocks the range covered stay selected, the moved child too.
+		await expectSelection(page, { selectedBlockPaths: [[2], [3], [3, 0]] });
+		await page.evaluate(() => (window as Window & { __EDYTOR__?: any }).__EDYTOR__.history.undo());
+		await expect
+			.poll(() => readRootTexts(page))
+			.toEqual(['Start', 'Parent', 'image caption', 'Finish']);
+		issues.assertClean();
+	});
+
 	test('guards against dropping a block into its own descendant', async ({ page }) => {
 		const issues = trackPageIssues(page);
 

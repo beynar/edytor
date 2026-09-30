@@ -29,6 +29,7 @@ import {
 	setNativeSelection
 } from '../../dom/test.utils.js';
 import { expectNoHiddenContent } from './invariants.js';
+import { hidden } from '$lib/selection/visibility.js';
 
 afterEach(() => {
 	document.body.innerHTML = '';
@@ -171,10 +172,163 @@ describe('HX-10: an open toggle without nested lines', () => {
 		expect(caret(edytor)).toBe('let a@5');
 	});
 
+	// SW18: pasting into an empty toggle header keeps the toggle (Notion), as
+	// clipboard.mdx says; what follows the first line is its first nested line.
+	it('empty: one heading gives it the text only; it stays a toggle', async () => {
+		const edytor = await toggle('', { 'text/html': '<h2>H</h2>' });
+		expect(doc(edytor)).toEqual(['toggle "H"']);
+		expect(caret(edytor)).toBe('H@1');
+	});
+
+	it('empty: a heading then x: it stays a toggle, x is its first nested line', async () => {
+		const edytor = await toggle('', { 'text/html': '<h2>H</h2><p>x</p>' });
+		expect(doc(edytor)).toEqual([['toggle "H"', ['paragraph "x"']]]);
+		expectNoHiddenContent(edytor);
+		expect(caret(edytor)).toBe('x@1');
+	});
+
+	it('empty: plain text lines: the second is its first nested line, not a toggle', async () => {
+		const edytor = await toggle('', { 'text/plain': 'a\nb' });
+		expect(doc(edytor)).toEqual([['toggle "a"', ['paragraph "b"']]]);
+		expect(caret(edytor)).toBe('b@1');
+	});
+
 	it('empty: a code block replaces it, as it replaces any empty block', async () => {
 		const edytor = await toggle('', internal([code]));
 		expect(doc(edytor)).toEqual([['code', ['codeLine "let a"']]]);
 		expect(caret(edytor)).toBe('let a@5');
+	});
+});
+
+// SW18: a closed toggle (a new toggle is closed) keeps its kind too when a
+// paste fills its empty header; its hidden body is not shown under a heading.
+describe("SW18: a paste into a closed toggle's empty header keeps the toggle", () => {
+	const closed = async (
+		body: boolean,
+		data: Record<string, string>,
+		{ type = 'toggle', text = '' } = {}
+	) => {
+		const { edytor, editor } = await renderDomEdytor(
+			<root>
+				<paragraph>|</paragraph>
+			</root>,
+			{
+				plugins: [richTextPlugin, mentionPlugin, codePlugin],
+				value: {
+					children: [
+						{
+							id: 'host',
+							type,
+							content: text ? [{ text }] : [],
+							...(body
+								? { children: [{ id: 'body', type: 'paragraph', content: [{ text: 'body' }] }] }
+								: {})
+						},
+						{ id: 'after', type: 'paragraph', content: [{ text: 'after' }] }
+					]
+				}
+			}
+		);
+		const host = edytor.idToBlock.get('host')!;
+		(host.node as HTMLDetailsElement).open = false;
+		await flushDomUpdates();
+		await setNativeSelection(edytor, host.firstText, text.length);
+		await dispatchClipboardPaste(editor, data);
+		await flushDomUpdates();
+		return edytor;
+	};
+	/** The pasted blocks the view hides (only the host's own body may be). */
+	const hiddenPasted = (edytor: Edytor) => {
+		const all = (blocks: JSONBlock[] = []): JSONBlock[] =>
+			blocks.flatMap((b) => [b, ...all(b.children)]);
+		return all(edytor.value.children)
+			.filter((b) => b.id !== 'body' && hidden(edytor.idToBlock.get(b.id!)!))
+			.map((b) => b.type);
+	};
+
+	it('with a hidden body, one heading: the toggle takes the text; the body stays hidden', async () => {
+		const edytor = await closed(true, { 'text/html': '<h2>H</h2>' });
+		expect(doc(edytor)).toEqual([['toggle "H"', ['paragraph "body"']], 'paragraph "after"']);
+		expect(caret(edytor)).toBe('H@1');
+	});
+
+	it('with a hidden body, a heading then x: x goes after it, as Enter adds a toggle', async () => {
+		const edytor = await closed(true, { 'text/html': '<h2>H</h2><p>x</p>' });
+		expect(doc(edytor)).toEqual([
+			['toggle "H"', ['paragraph "body"']],
+			'toggle "x"',
+			'paragraph "after"'
+		]);
+		expectNoHiddenContent(edytor);
+		expect(caret(edytor)).toBe('x@1');
+	});
+
+	it('without a body, one heading: it stays a toggle', async () => {
+		const edytor = await closed(false, { 'text/html': '<h2>H</h2>' });
+		expect(doc(edytor)).toEqual(['toggle "H"', 'paragraph "after"']);
+		expect(caret(edytor)).toBe('H@1');
+	});
+
+	// DR-crdt-1: a closed toggle shows no children, so a pasted line's nested lines
+	// never land in its hidden body: they go after it, shown, the caret ending them.
+	const nestedHtml = { 'text/html': '<ul><li>a<ul><li>b</li></ul></li></ul>' };
+	const nested: JSONBlock = {
+		type: 'bulleted-list-item',
+		content: [{ text: 'a' }],
+		children: [{ type: 'bulleted-list-item', content: [{ text: 'b' }] }]
+	};
+	const nestedFragment = internal([nested]);
+	for (const [name, data] of [
+		['html', nestedHtml],
+		['fragment', nestedFragment]
+	] as const)
+		it(`DR-crdt-1: without a body, a nested list (${name}): its nested line goes after it`, async () => {
+			const edytor = await closed(false, data);
+			expect(doc(edytor)).toEqual(['toggle "a"', 'bulleted-list-item "b"', 'paragraph "after"']);
+			expect(hiddenPasted(edytor)).toEqual([]);
+			expect(caret(edytor)).toBe('b@1');
+		});
+
+	it('DR-crdt-1: with a hidden body, a nested list: the body stays hidden, b goes after', async () => {
+		const edytor = await closed(true, nestedFragment);
+		expect(doc(edytor)).toEqual([
+			['toggle "a"', ['paragraph "body"']],
+			'bulleted-list-item "b"',
+			'paragraph "after"'
+		]);
+		expect(hiddenPasted(edytor)).toEqual([]);
+		expect(caret(edytor)).toBe('b@1');
+	});
+
+	it('DR-crdt-1: at the end of a closed header with text, a nested list', async () => {
+		const edytor = await closed(true, nestedHtml, { text: 'abc' });
+		expect(doc(edytor)).toEqual([
+			['toggle "abca"', ['paragraph "body"']],
+			'bulleted-list-item "b"',
+			'paragraph "after"'
+		]);
+		expect(hiddenPasted(edytor)).toEqual([]);
+		expect(caret(edytor)).toBe('b@1');
+	});
+
+	it('DR-crdt-1: a code block then a nested list: the toggle takes a, b goes after it', async () => {
+		const edytor = await closed(true, internal([code, nested]));
+		expect(doc(edytor)).toEqual([
+			['code', ['codeLine "let a"']],
+			['toggle "a"', ['paragraph "body"']],
+			'bulleted-list-item "b"',
+			'paragraph "after"'
+		]);
+		expect(hiddenPasted(edytor)).toEqual([]);
+		expect(caret(edytor)).toBe('b@1');
+	});
+
+	// DR-crdt-2: any closed `<details>` hides its body, the legacy `details` kind too.
+	it('DR-crdt-2: a closed `details` block keeps its kind; its body stays hidden', async () => {
+		const edytor = await closed(true, { 'text/html': '<h2>H</h2>' }, { type: 'details' });
+		expect(doc(edytor)).toEqual([['details "H"', ['paragraph "body"']], 'paragraph "after"']);
+		expect(hiddenPasted(edytor)).toEqual([]);
+		expect(caret(edytor)).toBe('H@1');
 	});
 });
 

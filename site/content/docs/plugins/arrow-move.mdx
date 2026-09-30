@@ -12,7 +12,7 @@ icon: arrow-up-down
 
 | Keys                                                   | Moves                                         | When                          |
 | ------------------------------------------------------ | --------------------------------------------- | ----------------------------- |
-| <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> | The selected blocks, or else the block where the selection starts | A caret, text or block selection |
+| <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> | The selected blocks; over a text range, every block it spans (as a [handle drag](/docs/plugins/block-handles#dragging-several-blocks) takes them); else the caret's block | A caret, text or block selection |
 | <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd>             | The selected blocks                           | A block selection             |
 
 One step is:
@@ -24,9 +24,9 @@ One step is:
 
 A key is claimed only when a block can take the step. Otherwise it keeps its default meaning: <kbd>Mod</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> move the caret to the start or end of the document, and with <kbd>Shift</kbd> extend the selection there.
 
-- Moving the caret's block keeps the caret in it, at the same offset.
-- A group of selected siblings moves together, in document order. Selected blocks that are not siblings do not move.
-- Moved selected blocks stay selected, so you can press the key again.
+- Moving the caret's block keeps the caret in it, at the same offset; moving a text range's blocks keeps the range. A code block moves as one block: a caret or a range in its lines moves the code block.
+- A group of selected siblings, or of sibling blocks a text range spans, moves together, in document order (a block's children move with it, selected or not: the block selection a grip click makes over a range holds the children it covers). Blocks that are not siblings do not move.
+- Moved selected blocks stay selected, their selected children too, so you can press the key again.
 - A move never nests a block. To nest or outdent, use <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd>, or a block handle's <kbd>Alt</kbd> + <kbd>→</kbd> and <kbd>Alt</kbd> + <kbd>←</kbd> (see [Block handles](/docs/plugins/block-handles#keyboard-moves)).
 - Each move is one undo step, and it runs as a `moveBlock` or `moveBlocks` operation that plugins can refuse.
 

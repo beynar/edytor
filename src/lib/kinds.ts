@@ -255,10 +255,11 @@ export const kindCommand = (edytor: Edytor, row: KindRow): EditorCommand => ({
 	keywords: row.keywords,
 	group: row.group ?? 'Basic blocks',
 	hint: row.markdown?.[0]?.trim(),
-	isEnabled: () =>
+	// Asked of the view given (a `+`'s menu asks it of the block it adds).
+	isEnabled: (view = edytor) =>
 		row.replaces
-			? Boolean(edytor.selection.state.startBlock?.convertible)
-			: convertedBlocks(getSelectionBlocks(edytor)).length > 0,
+			? Boolean(view.selection.state.startBlock?.convertible)
+			: convertedBlocks(getSelectionBlocks(view)).length > 0,
 	run: () => {
 		const blocks = row.replaces ? [] : getSelectionBlocks(edytor);
 		return blocks.length > 1 || (blocks[0] && !blocks[0].convertible)

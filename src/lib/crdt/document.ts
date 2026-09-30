@@ -159,6 +159,7 @@ import {
 } from './edytor-doc.js';
 import { assertAdmission, assertSchema, bindAdmission, checkSchema } from './admission.js';
 import { Awareness } from './protocols/awareness.js';
+import { callEach } from './protocols/observable.js';
 import type { EdytorSync, EdytorSyncCleanup, EdytorSyncPayload } from './providers/index.js';
 import { SyncRefusedError } from './providers/room.js';
 import { TRANSACTION } from '../constants.js';
@@ -326,21 +327,6 @@ const normalizeRole = (role: BlockRole | undefined): NormalizedRole => ({
 	island: role?.island === true,
 	lines: role?.lines === true
 });
-
-/** Run each of `listeners` with `args`, in isolation: one that throws is logged, the rest still run. */
-const notifyEach = <A extends unknown[]>(
-	kind: string,
-	listeners: readonly ((...args: A) => void)[],
-	...args: A
-): void => {
-	for (const listener of listeners) {
-		try {
-			listener(...args);
-		} catch (err) {
-			console.error(`[edytor-document] ${kind} listener failed; continuing`, err);
-		}
-	}
-};
 
 const anonymousActor = (): DocumentActor => ({
 	id: `anon-${crypto.randomUUID()}`
@@ -569,7 +555,8 @@ export class EdytorDocument {
 	onWritableChange = (listener: (writable: boolean) => void): (() => void) => {
 		let last = this.writable;
 		const watch = () => {
-			if (this.writable !== last) notifyEach('writable', [listener], (last = !last));
+			if (this.writable !== last)
+				callEach('[edytor-document] writable', [listener], (last = !last));
 		};
 		this.doc.on('update', watch);
 		return () => this.doc.off('update', watch);
@@ -748,7 +735,7 @@ export class EdytorDocument {
 		// throwing waiter must not starve the rest or break `sync()`.
 		const listeners = Array.from(this._readyListeners);
 		this._readyListeners.clear();
-		notifyEach('ready', listeners);
+		callEach('[edytor-document] ready', listeners);
 	};
 
 	/**
@@ -986,7 +973,7 @@ export class EdytorDocument {
 			if (this._destroyed) return;
 			this._refusals.delete(target);
 			this._refusals.set(target, error);
-			notifyEach('refusal', Array.from(this._refusalListeners), error);
+			callEach('[edytor-document] refusal', Array.from(this._refusalListeners), error);
 			// A document that already holds content is decided (hydrated); an
 			// empty one stays pending while the refusal stands.
 			this._decide(opts.value);

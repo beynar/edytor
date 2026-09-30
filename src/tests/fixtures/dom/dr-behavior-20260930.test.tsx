@@ -91,18 +91,22 @@ const renderTwo = (extra: Plugin[]) =>
 	);
 
 describe('DR-behavior-1: a refused + pick adds nothing', () => {
-	it('a command disabled on the new block (the documented todo.toggle) leaves all as it was', async () => {
-		const { edytor, editor } = await renderTwo([todoCommandsPlugin]);
+	it('a command disabled on the new block (the documented todo.toggle) is not listed; nothing is added', async () => {
+		const { edytor } = await renderTwo([todoCommandsPlugin]);
 		const [steps, at] = [edytor.undoManager.undoStack.length, caret(edytor)];
 		await plus();
+		// Asked of the block the `+` adds (a paragraph), `isEnabled` answers false (wave-18 low 4).
 		await pick('Toggle to-do');
-		expect(menu()).toBeNull();
+		expect(document.querySelector('[data-testid="slash-menu-empty"]')).not.toBeNull();
 		expect(doc(edytor)).toEqual(['paragraph "a"', 'paragraph "b"']);
 		expect(edytor.undoManager.undoStack.length).toBe(steps);
 		expect(edytor.undoManager.redoStack.length).toBe(0);
+		field().dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+		);
+		await flushDomUpdates();
+		expect(menu()).toBeNull();
 		expect(caret(edytor)).toBe(at);
-		expect(document.activeElement).toBe(editor);
-		expect(edytor.dispatcher.last?.status).toBe('refused');
 	});
 
 	it('a kind an extension vetoes leaves all as it was', async () => {

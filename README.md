@@ -19,7 +19,7 @@ Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable 
 
 ## Features
 
-- **Notion-style editing out of the box.** `<Edytor />` alone is a rich text editor with images: headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks, Notion's markdown shortcuts and hotkeys. Add the Notion theme, block handles with a block menu, a slash menu, a selection toolbar and code blocks.
+- **Notion-style editing out of the box.** `<Edytor />` alone is a rich text editor with images: headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks, Notion's markdown shortcuts and hotkeys. Add the Notion theme, block handles with a block menu (drag one block, or every block the selection covers), a slash menu, a selection toolbar and code blocks.
 - **Your markup.** Blocks, marks and inline atoms render through your Svelte snippets; the slash menu, toolbar, block menu and handles take a snippet and keep their behavior.
 - **Plugins that can veto anything.** Every command is prepared before it writes; plugins see the command and each planned step and can refuse or replace it.
 - **Real-time collaboration.** One `EdytorDocument` shared by any number of views, or none (headless). Presence cursors, identity-preserving moves, splits and merges, and undo that only takes back your own edits.

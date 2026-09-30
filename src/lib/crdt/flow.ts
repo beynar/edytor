@@ -49,8 +49,10 @@ export type FlowView = RangeView & {
 	 * A container's header whose body shows (an open toggle, a callout or
 	 * quote with nested lines): Enter at its end opens a first child, so what
 	 * a flow places at its end leads its children, which stay (`flow.header`).
+	 * `'closed'` (a closed toggle): it goes after, a joined line's children too, so
+	 * none lands in the hidden body. An empty header keeps its kind.
 	 */
-	header?: (id: BlockId) => boolean;
+	header?: (id: BlockId) => boolean | 'closed';
 };
 /** A position, or the blocks the flow replaces (`flow.slot`). */
 export type FlowTarget = DocPosition | { replace: readonly BlockId[] };
@@ -114,8 +116,8 @@ export const flowOps = (c: FlowContext) => ({
 					? c.defaultChild(parent)
 					: kind
 			);
-		const specs = (parent: BlockId | null): BlockSpec[] =>
-			lines.map((l) => ({ ...l, type: fit(parent, l.type) ?? c.defaultChild(parent) }));
+		const specs = (parent: BlockId | null, of: FlowLine[] = lines): BlockSpec[] =>
+			of.map((l) => ({ ...l, type: fit(parent, l.type) ?? c.defaultChild(parent) }));
 		const last = () => lines.at(-1)!;
 		/** `l` and its nested lines as runs, each line that shows its own content one run. */
 		const plain = (l: FlowLine): FlowLine[] => [
@@ -153,10 +155,23 @@ export const flowOps = (c: FlowContext) => ({
 		// shows, nested ones included, in order; no block lands in the island (`flow.lines`).
 		const inLines = parent !== null && c.isLines(parent);
 		if (inLines) lines = lines.flatMap(plain);
+		// A line that joins no text under `under` (`flow.apart`, GX-01): its kind renders
+		// none of its own (a list, a code block), or is a void or an island.
+		const apart = (l: FlowLine, under: BlockId | null) => {
+			const kind = l.type && fit(under, l.type);
+			const role = kind ? c.roleOf(kind) : undefined;
+			return !!role && (!role.rendersContent || role.void || role.island);
+		};
 		// At the end of a container's header whose body shows, what follows the caret
 		// leads its children and the body stays, as Enter opens a first child
-		// (`flow.header`, HX-10); elsewhere it follows `B` among its siblings.
-		const inside = o === len && !empty && !inLines && !flow.whole && !!view.header?.(B);
+		// (`flow.header`, HX-10), unless the first line stands apart and replaces an empty
+		// one (`flow.apart`); elsewhere it follows `B` among its siblings.
+		const header = view.header?.(B);
+		// A closed header shows no children: a line it takes brings none into its hidden
+		// body; they follow it, shown (`flow.header`, DR-crdt-1).
+		const shut = header === 'closed';
+		const inside =
+			o === len && !inLines && !flow.whole && header === true && !(empty && apart(lines[0]!, B));
 		const home = inside ? B : parent;
 		if (lines.length === 0) return { ...c.plan([B], []), at: { block: B, offset: o } };
 		if (flow.whole && !inLines)
@@ -167,18 +182,11 @@ export const flowOps = (c: FlowContext) => ({
 			const content = lines.flatMap((l, i) => [...(i ? [br] : []), ...(l.content ?? [])]);
 			lines = [{ id: lines[0]!.id, content }];
 		}
-		/**
-		 * A line that joins no text (`flow.apart`): its kind renders none of its own, or
-		 * is a void or an island (a list, a code block, a divider, an image). It is placed
-		 * as a block, never joined, so no text lands where the view hides it (GX-01).
-		 */
-		const apart = (l: FlowLine) => {
-			const kind = l.type && fit(home, l.type);
-			const role = kind ? c.roleOf(kind) : undefined;
-			return !!role && (!role.rendersContent || role.void || role.island);
-		};
+		// So a first line it joins leaves its nested lines as lines of the flow after it.
+		if (shut && lines[0]!.children?.length && !apart(lines[0]!, home))
+			lines = [{ ...lines[0]!, children: undefined }, ...lines[0]!.children!, ...lines.slice(1)];
 		const first = lines[0]!;
-		const [joinsHead, joinsTail] = [!apart(first), lines.length > 1 && !apart(last())];
+		const [joinsHead, joinsTail] = [!apart(first, home), lines.length > 1 && !apart(last(), home)];
 		const all = specs(home);
 		const placed = all.slice(joinsHead ? 1 : 0, joinsTail ? -1 : undefined);
 		const ids = placed.map((s) => s.id);
@@ -210,14 +218,14 @@ export const flowOps = (c: FlowContext) => ({
 		};
 		/**
 		 * `l` joins `B` at `at`: its content, its kind when `B` shows no text (a header
-		 * whose body shows keeps its own, as Enter does), its children first.
+		 * keeps its own, as Enter does), its children first.
 		 */
 		const join = (l: FlowLine, at: number, ranks?: string[]): number => {
 			const end = text(B, at, l);
 			const kind = l.type && fit(parent, l.type);
-			if (len === 0 && !inside && kind && kind === l.type)
+			if (len === 0 && !header && kind && kind === l.type)
 				writes.push(...c.retype(B, kind), ...c.redata(B, l.data ?? {}));
-			kids(B, l, [], ranks);
+			if (!shut) kids(B, l, [], ranks);
 			return end;
 		};
 		/** The placed lines at `at` under `home`, `ranks` theirs. */
@@ -238,7 +246,16 @@ export const flowOps = (c: FlowContext) => ({
 			place(index, c.ranksFor(parent, index, placed.length));
 			if (joinsTail) {
 				const at = join(last(), 0);
-				return { ...c.plan([...ids, B], writes), at: { block: B, offset: at } };
+				// A closed header's taken line's nested lines follow it, the caret ending them.
+				const after = shut ? specs(parent, last().children ?? []) : [];
+				if (after.length) {
+					const ranks = c.ranksFor(parent, index + 1, after.length);
+					const slot = index + placed.length + 1;
+					writes.push({ op: 'insertBlocks', parent, index: slot, specs: after, ranks });
+				}
+				const caret = after.length ? endOf(after.at(-1)!) : undefined;
+				const touched = [...ids, B, ...after.map((s) => s.id)];
+				return { ...c.plan(touched, writes), at: caret ?? { block: B, offset: at } };
 			}
 			if (empty && end) return { ...c.plan(ids, [...writes, c.remove(B, [])]), at: end };
 			return { ...c.plan([...ids, B], writes), at: end ?? { block: B, offset: 0 } };

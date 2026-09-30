@@ -148,7 +148,6 @@ import {
 import { bindDeletes } from './text/deletes.js';
 import {
 	bindRuns,
-	callEach,
 	ENTRY_FACET,
 	type ContentRun,
 	type DisplayRoles,
@@ -156,6 +155,7 @@ import {
 	type IndexReport,
 	type RunView
 } from './text/runs.js';
+import { callEach } from './protocols/observable.js';
 import { bindNodes, type DocBlock } from './nodes.js';
 import { followRedone, holdsPending, walkIdSetStructs, type IdSetLike } from './structs.js';
 import {
@@ -1308,7 +1308,12 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/** One `DocChange` per commit, from the index's change report (the fold). */
 		const emitChange = (report: IndexReport, origin: unknown, local: boolean): void => {
 			// R5 listener isolation: a throwing subscriber never starves the rest.
-			callEach([...subs], { origin, local, version: ++changeVersion, ...report });
+			callEach('[edytor-doc] change', [...subs], {
+				origin,
+				local,
+				version: ++changeVersion,
+				...report
+			});
 		};
 
 		/**

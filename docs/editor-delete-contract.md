@@ -252,9 +252,10 @@ At a position `(B, o)`, a single line's content is inserted at `o`. `B`
 keeps its kind, unless `B` shows no text: then it takes a kinded line's
 kind and data (`<blockquote>` pasted into an empty paragraph gives a quote;
 an empty `h2` given a paragraph line becomes a paragraph without the stale
-`level`), except a header whose body shows (`flow.header`), which keeps
-its kind and data. The line's children become `B`'s first children. Caret: after
-the inserted content. A line that stands apart (`flow.apart`) never joins.
+`level`), except a header whose body shows (`flow.header`) or a closed
+toggle, which keeps its kind and data. The line's children become `B`'s first children,
+except under a closed toggle, which shows none: they go after it (`flow.header`). Caret: after
+the inserted content (after its last nested line when those go after `B`). A line that stands apart (`flow.apart`) never joins.
 
 ### `flow.split` — several lines split the block (D-4)
 
@@ -268,7 +269,7 @@ block: its id, and its kind and data when it is kinded (a run keeps `B`'s,
 as a split does). The head keeps `B`'s kind unless `B` showed no text
 (then the first line's, as in `flow.inline`). A run placed as a block takes
 the default child of its parent. A joined line's children become the first
-children of the block it joins. `Hello|World` + `X`, `Y` →
+children of the block it joins, except a closed toggle's (`flow.header`). `Hello|World` + `X`, `Y` →
 `["HelloX", "YWorld"]` on the internal, HTML, plain and drop paths (F-P5).
 Caret: in the tail, after the last line's content.
 
@@ -303,10 +304,12 @@ paths, and the no-hidden-content assertion of `fixtures/dom/invariants.ts`).
 
 At the end of a container's header whose body shows (an open toggle, a
 callout or quote with nested lines: the view's `header`, where Enter opens
-a first child) that is not empty (an empty `B`, with no text and no
-children, is replaced or kept as `flow.apart` says), `B` keeps its kind, its data and its children. A
-header with no text takes a joining first line's text only, never its
-kind, so the body stays under the container (DR-rest-1): `callout "" >
+a first child), `B` keeps its kind, its data and its children, unless it
+is empty (no text, no children: an open toggle with no body yet) and the
+first line stands apart: then it is replaced or kept as `flow.apart` says.
+A header with no text takes a joining first line's text only, never its
+kind, so the body stays under the container (DR-rest-1, SW18): an empty
+open toggle given `<h2>H</h2><p>x</p>` → `toggle "H" > ["x"]`; `callout "" >
 [body]` + `<h2>H</h2><hr>` → `callout "H" > [divider, "", body]`. What `flow.split` and `flow.apart`
 would place after `B` leads them instead, as `B`'s first children, in
 order (a joining first line's children, the placed lines, then the tail:
@@ -314,8 +317,14 @@ the joining last line, or a fresh line of `B`'s default child when the
 caret needs one or the last line is a run). The body stays under `B`, as
 after Enter. `callout "hello" > [body]` + a divider at its end →
 `callout "hello" > [divider, "", body]`. Mid-header, `flow.split` applies
-(the text after the caret takes the body). A closed toggle's body is
-hidden and stays, and the paste goes after the toggle. Headless (no
+(the text after the caret takes the body). A closed `<details>` (a closed
+toggle: the view's `header` answers `'closed'`, whatever its kind) shows no
+children: its body is hidden and stays, and the paste goes after it; a line
+it joins leaves its nested lines after it too, as lines of the flow, so no
+pasted line lands in the hidden body (DR-crdt-1): an empty closed toggle +
+a list item `a` with a sub-item `b` → `toggle "a"`, `"b"` after it, caret
+after `b`. An empty closed toggle keeps its kind as above, so a pasted
+heading never shows its hidden body under a heading (SW18, DR-crdt-2). Headless (no
 `header`), the body moves to the tail as `flow.split` says. The new first
 children take plain ranks, as Enter's (a residual,
 [`order-scope`](../src/tests/crdt/arch-v2/order-scope.test.ts)). HX-10.

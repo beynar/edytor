@@ -16,6 +16,66 @@ export type TextInsertionPayload = {
 	end?: number;
 };
 
+/**
+ * The view a `+`'s menu asks `isEnabled` of: the editor, its selection a
+ * caret at the start of the block the `+` adds, below `block` (a stand-in
+ * over `block`: an empty block of the parent's default kind, at the next
+ * index, since it does not exist yet), or `block` itself when the `+`
+ * reuses it (already an empty block of that kind). Nothing is written.
+ */
+const additionView = (edytor: Edytor, { block }: BlockAddition): Edytor => {
+	const type = block.parent && edytor.defaultChild(block.parent);
+	const reused = block.type === type && block.isEmpty;
+	const index = block.index + 1;
+	const stand: Record<PropertyKey, unknown> = {
+		id: '',
+		type,
+		index,
+		path: [...block.path.slice(0, -1), index],
+		data: {},
+		content: [],
+		children: [],
+		hasChildren: false,
+		isEmpty: true,
+		node: undefined,
+		firstText: undefined,
+		lastText: undefined,
+		movable: true,
+		convertible: true
+	};
+	const through = <T extends object>(target: T, own: Record<PropertyKey, unknown>): T =>
+		new Proxy(target, {
+			get: (object, key) => {
+				if (key in own) return own[key];
+				const value = Reflect.get(object, key, object);
+				return typeof value === 'function' ? value.bind(object) : value;
+			}
+		});
+	const added = reused ? block : through(block, stand);
+	const text = added.firstText ?? null;
+	const state: Edytor['selection']['state'] = {
+		yStart: 0,
+		yEnd: 0,
+		isCollapsed: true,
+		isReversed: false,
+		isBlockSpanning: false,
+		isVoidEditableElement: false,
+		startText: text,
+		endText: text,
+		startBlock: added,
+		endBlock: added,
+		texts: text ? [text] : [],
+		blocks: [added]
+	};
+	const selection = through(edytor.selection, {
+		state,
+		value: { kind: 'none' },
+		selectedBlocks: new Set(),
+		selectedInlineBlock: new Set()
+	});
+	return through(edytor, { selection });
+};
+
 /** A `/` opens the menu at a text's start or after whitespace, never inside a word (`1/2`, `and/or`). */
 const startsTrigger = (text: Text, offset: number) =>
 	offset === 0 || /\s/.test(text.stringContent[offset - 1] ?? '');
@@ -43,17 +103,28 @@ export class SlashMenuController {
 
 	/** Matching commands, grouped (groups in first-seen order): the menu's rows and keyboard order. */
 	get commands() {
+		// A `+`'s rows are the commands that can run in the block it adds.
 		const matching = Array.from(this.edytor.commands.values()).filter(
-			// The block a `+` adds is an empty one of the default kind: every row applies.
-			(command) =>
-				(this.addition || command.isEnabled?.(this.edytor) !== false) &&
-				matchesQuery(command, this.query)
+			(command) => this.enabled(command) && matchesQuery(command, this.query)
 		);
 		// Groups in first-seen order, Notion's "Basic blocks" first.
 		const groups = [...new Set(matching.map((command) => command.group ?? ''))].sort(
 			(a, b) => Number(b === 'Basic blocks') - Number(a === 'Basic blocks')
 		);
 		return matching.sort((a, b) => groups.indexOf(a.group ?? '') - groups.indexOf(b.group ?? ''));
+	}
+
+	/**
+	 * Whether `command` can run here: in a `+`'s menu, in the block it adds
+	 * (`additionView`; an `isEnabled` that throws on that stand-in does not).
+	 */
+	private enabled(command: EditorCommand) {
+		if (!this.addition) return command.isEnabled?.(this.edytor) !== false;
+		try {
+			return command.isEnabled?.(additionView(this.edytor, this.addition)) !== false;
+		} catch {
+			return false;
+		}
 	}
 
 	handleTextInsertion(text: Text, block: Block, payload: TextInsertionPayload) {
@@ -145,6 +216,8 @@ export class SlashMenuController {
 	async run(command: EditorCommand | undefined) {
 		const { addition, range } = this;
 		if (addition && command) {
+			// One that cannot run in the block to add adds nothing (its row is not listed).
+			if (!this.enabled(command)) return false;
 			this.close();
 			// Disabled once the block is added: the addition is taken back.
 			const then = () =>

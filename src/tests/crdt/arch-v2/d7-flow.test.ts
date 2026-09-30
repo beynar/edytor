@@ -421,10 +421,10 @@ describe('flow.lines + flow.slot — over selected lines of a code block (HX-06)
 
 describe('flow.header — at the end of a container header whose body shows (HX-10)', () => {
 	/** A callout `h` with a body, as the editor shows it (`view.header`: Enter opens a first child). */
-	const callout = (text = 'hello') =>
+	const callout = (text = 'hello', body = [b('c1', 'body')]) =>
 		createDocument({
 			value: {
-				children: [b('h', text, [b('c1', 'body')], 'callout', { icon: 'i' }), b('z', 'after')]
+				children: [b('h', text, body, 'callout', { icon: 'i' }), b('z', 'after')]
 			},
 			semantics: {
 				roles: { code: { island: true, lines: true }, divider: { void: true } },
@@ -568,6 +568,79 @@ describe('flow.header — at the end of a container header whose body shows (HX-
 		expect(tree(f)).toEqual([['h', 'callout', 'H', [P('c1', 'body')]], P('z', 'after')]);
 		kept(f);
 		expect(at).toEqual({ block: 'h', offset: 1 });
+	});
+
+	// SW18: an empty header with no body yet (an open toggle: Enter opens a first
+	// child) keeps its kind for a joining first line, as one with a body does.
+	row('an empty header without a body, one heading: it takes the text only', () => {
+		const f = callout('', []);
+		const { at } = put(f, 0, [h2('x', 'H')]);
+		expect(tree(f)).toEqual([['h', 'callout', 'H'], P('z', 'after')]);
+		kept(f);
+		expect(at).toEqual({ block: 'h', offset: 1 });
+	});
+
+	row('an empty header without a body, a heading then y: y is its first line', () => {
+		const f = callout('', []);
+		const { at } = put(f, 0, [h2('x', 'H'), line('y', 'y')]);
+		expect(tree(f)).toEqual([['h', 'callout', 'H', [P('y', 'y')]], P('z', 'after')]);
+		kept(f);
+		expect(at).toEqual({ block: 'y', offset: 1 });
+	});
+
+	row('an empty header without a body: a code block replaces it (`flow.apart`)', () => {
+		const f = callout('', []);
+		const { at } = put(f, 0, [code]);
+		expect(tree(f)).toEqual([['k', 'code', '', [['k1', 'codeLine', 'let a']]], P('z', 'after')]);
+		expect(at).toEqual({ block: 'k1', offset: 5 });
+	});
+
+	row("a closed header ('closed'): an empty one keeps its kind; its hidden body stays", () => {
+		const f = callout('');
+		const view = { header: () => 'closed', hidden: (id: string) => id === 'c1' };
+		const { at } = put(f, 0, [h2('x', 'H'), line('y', 'y')], view);
+		expect(tree(f)).toEqual([
+			['h', 'callout', 'H', [P('c1', 'body')]],
+			P('y', 'y'),
+			P('z', 'after')
+		]);
+		kept(f);
+		expect(at).toEqual({ block: 'y', offset: 1 });
+	});
+
+	// DR-crdt-1: a closed header shows no children, so a joined line's nested lines
+	// never land in its hidden body: they are lines of the flow after it.
+	const shut = { header: () => 'closed' as const, hidden: (id: string) => id === 'c1' };
+	const nested = () => line('a', 'a', 'paragraph', { children: [line('n', 'b')] });
+
+	row("a closed header ('closed'), empty: a joined line's nested lines go after it", () => {
+		const f = callout('', []);
+		const { at } = put(f, 0, [nested()], shut);
+		expect(tree(f)).toEqual([['h', 'callout', 'a'], P('n', 'b'), P('z', 'after')]);
+		expect(at).toEqual({ block: 'n', offset: 1 });
+	});
+
+	row("a closed header ('closed') at its end: nested lines go after it, the body stays", () => {
+		const f = callout();
+		const { at } = put(f, 5, [nested()], shut);
+		expect(tree(f)).toEqual([
+			['h', 'callout', 'helloa', [P('c1', 'body')]],
+			P('n', 'b'),
+			P('z', 'after')
+		]);
+		expect(at).toEqual({ block: 'n', offset: 1 });
+	});
+
+	row("a closed header ('closed') taking the last line: its nested lines go after it", () => {
+		const f = callout('');
+		const { at } = put(f, 0, [code, nested()], shut);
+		expect(tree(f)).toEqual([
+			['k', 'code', '', [['k1', 'codeLine', 'let a']]],
+			['h', 'callout', 'a', [P('c1', 'body')]],
+			P('n', 'b'),
+			P('z', 'after')
+		]);
+		expect(at).toEqual({ block: 'n', offset: 1 });
 	});
 
 	row('mid-header, the text after the caret still takes the body (`flow.split`)', () => {

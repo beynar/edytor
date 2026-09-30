@@ -57,7 +57,7 @@ export const shown = (
  * blocks go), a list's flat item kind (`itemKind`: a pasted numbered
  * item landing in an `ordered-list` is its item, AW-08), and a container's
  * header whose body shows (`header`: a paste at its end leads its body, as
- * Enter opens a first child, HX-10).
+ * Enter opens a first child, HX-10), or `'closed'` for any closed `<details>`.
  */
 export const viewOf = (edytor: Edytor) => {
 	const blocks = new WeakMap<ReadonlySet<string>, Set<Block>>();
@@ -72,11 +72,14 @@ export const viewOf = (edytor: Edytor) => {
 			return !!block && hidden(block, removed && blocksOf(removed));
 		},
 		itemKind: (parent: string) => edytor.idToBlock.get(parent)?.definition.itemKind,
-		// A container's header whose body shows, where Enter opens a first child (`flow.header`).
+		// A container's header whose body shows, where Enter opens a first child, or any
+		// closed `<details>`, which hides its body as `hidden` reads (`flow.header`): either
+		// keeps its kind when a paste fills it.
 		header: (id: string) => {
 			const block = edytor.idToBlock.get(id);
 			const open = (block?.node as HTMLDetailsElement | undefined)?.open;
-			return !!block?.definition.container && open !== false && (block.hasChildren || !!open);
+			if (open === false) return 'closed' as const;
+			return !!block?.definition.container && (block.hasChildren || !!open);
 		}
 	};
 };

@@ -8,8 +8,19 @@ import type {
 } from '$lib/session/moves.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { CommandResult } from '$lib/session/commands.js';
-import { draggable, dropTargetForElements } from '$lib/dnd/pragmatic.js';
-import { outermost } from '$lib/selection/replaceSelection.js';
+import { noSelection, project, type SelectionValue } from '$lib/session/selection.js';
+import {
+	draggable,
+	dropTargetForElements,
+	setCustomNativeDragPreview
+} from '$lib/dnd/pragmatic.js';
+import {
+	getSelectionBlocks,
+	movable,
+	outermost,
+	selectMoved,
+	shownText
+} from '$lib/selection/replaceSelection.js';
 
 const blockDragMimeType = 'application/x-edytor-block-id';
 
@@ -32,9 +43,9 @@ export type BlockAddition = {
 	 * with Alt; an empty block of that kind is reused), put the caret in it
 	 * and run `then`, as one undo step. Answers `then`'s result. When `then`
 	 * answers `false` or its command is refused (by the document or an
-	 * extension's veto) with nothing applied, the addition is taken back:
-	 * the document, its history and the selection are as before, and
-	 * `dispatcher.last` reads `refused`.
+	 * extension's veto) with nothing applied, the addition is taken back in
+	 * the same transaction: the document, its undo and redo steps and the
+	 * selection are as before, and `dispatcher.last` reads `refused`.
 	 */
 	insert: (then?: () => unknown) => unknown;
 };
@@ -84,6 +95,66 @@ const NEST_INDENT = 24;
 /** Notion's drop bar: 4px of translucent blue. */
 const DROP_INDICATOR_COLOR = 'rgba(35, 131, 226, 0.43)';
 const BAR = 4;
+/** The rows a several-block drag preview shows before its count. */
+const PREVIEW_ROWS = 3;
+
+/**
+ * The drag image of a several-block drag: the first blocks' lines stacked on
+ * a card, with the number of blocks that move (`data-count`). Mounted by the
+ * drag library for the one frame the browser takes its picture.
+ */
+const dragPreview = (document: Document, blocks: Block[]) => {
+	const card = document.createElement('div');
+	card.dataset.edytorDragPreview = 'true';
+	card.dataset.count = String(blocks.length);
+	Object.assign(card.style, {
+		position: 'relative',
+		width: '260px',
+		padding: '6px 10px',
+		background: 'white',
+		color: 'rgb(55, 53, 47)',
+		font: '14px/1.5 system-ui, sans-serif',
+		borderRadius: '6px',
+		opacity: '0.9',
+		// Two cards behind it: several blocks move.
+		boxShadow:
+			'rgba(15, 15, 15, 0.1) 0 0 0 1px, white 4px 4px 0 0, rgba(15, 15, 15, 0.1) 4px 4px 0 1px'
+	});
+	for (const block of blocks.slice(0, PREVIEW_ROWS)) {
+		const row = document.createElement('div');
+		row.textContent = shownText(block, 'first')?.stringContent || block.type;
+		Object.assign(row.style, {
+			overflow: 'hidden',
+			whiteSpace: 'nowrap',
+			textOverflow: 'ellipsis'
+		});
+		card.append(row);
+	}
+	card.append(countBadge(document, blocks.length));
+	return card;
+};
+
+/** How many blocks move: the badge on the drag preview and the drop indicator. */
+const countBadge = (document: Document, count: number) => {
+	const badge = document.createElement('span');
+	badge.dataset.edytorDragCount = 'true';
+	badge.textContent = String(count);
+	Object.assign(badge.style, {
+		position: 'absolute',
+		top: '-8px',
+		right: '-8px',
+		minWidth: '18px',
+		height: '18px',
+		padding: '0 5px',
+		boxSizing: 'border-box',
+		borderRadius: '9px',
+		background: 'rgb(35, 131, 226)',
+		color: 'white',
+		font: '600 11px/18px system-ui, sans-serif',
+		textAlign: 'center'
+	});
+	return badge;
+};
 
 const getDropPlacement = (
 	target: Block,
@@ -120,6 +191,10 @@ export class BlockHandleController {
 	private readonly registered = new Map<HTMLElement, () => void>();
 	/** The block whose handle is the source of the drag in progress (its handle stays mounted). */
 	dragging = $state<string | null>(null);
+	/** The blocks the drag in progress moves (`dragBlocks` when it started). */
+	private group: Block[] = [];
+	/** The selection a grip click replaced (`before`), while the one it made (`after`) stands. */
+	private gripped: { before: SelectionValue; after: SelectionValue } | null = null;
 
 	constructor(
 		private edytor: Edytor,
@@ -132,10 +207,6 @@ export class BlockHandleController {
 
 	get draggable() {
 		return this.options.draggable;
-	}
-
-	selectBlock(block: Block) {
-		if (!this.edytor.readonly && block.movable) this.edytor.selection.selectBlocks(block);
 	}
 
 	/**
@@ -164,10 +235,17 @@ export class BlockHandleController {
 		};
 	};
 
-	/** Select the block (a block selection holding it stays) and open its menu. */
+	/**
+	 * Select the block — a block selection holding it stays; over a text
+	 * range across blocks, the blocks it covers (`select`) — and open its
+	 * menu.
+	 */
 	activateBlock(block: Block, anchor: HTMLElement) {
 		if (this.edytor.readonly || !block.movable) return;
-		if (!this.edytor.selection.selectedBlocks.has(block)) this.selectBlock(block);
+		const { selection } = this.edytor;
+		const before = selection.value;
+		if (!selection.selectedBlocks.has(block)) this.select(block);
+		this.gripped = { before, after: selection.value };
 		if (this.options.onActivate) this.options.onActivate({ block, anchor });
 		// Without a callback, a block menu plugin may answer the activation.
 		else
@@ -185,40 +263,52 @@ export class BlockHandleController {
 	addBlock(block: Block, above = false, anchor: HTMLElement | null = block.node ?? null) {
 		const { edytor } = this;
 		if (edytor.readonly || !block.parent) return;
+		this.ungrip();
 		const insert = (then?: () => unknown) => {
-			const { dispatcher, facade, selection } = edytor;
-			const [held, version] = [selection.value, facade.version];
+			const { dispatcher, facade, selection, undoManager: um } = edytor;
+			const held = selection.value;
 			let refused: CommandResult | undefined;
 			edytor.expectInternalFocus();
 			edytor.node?.focus({ preventScroll: true });
-			const out = dispatcher.run('insertBlock', () => {
-				const type = block.parent && edytor.defaultChild(block.parent);
-				if (!type) return;
-				const spec = { block: { type } };
-				const target =
-					block.type === type && block.isEmpty
-						? block
-						: above
-							? block.insertBlockBefore(spec)
-							: block.insertBlockAfter(spec);
-				// The caret is the model's: the projector shows it once the block mounts.
-				if (target?.firstText) dispatcher.caret(target.firstText, 0);
-				if (!target || !then) return;
-				const [added, before] = [facade.version, dispatcher.last];
-				const result = then();
-				// `then`'s own refusal (not one left from before), with nothing applied.
-				const last = dispatcher.last !== before ? dispatcher.last : null;
-				if (facade.version === added && (result === false || last?.status === 'refused'))
-					refused =
-						last?.status === 'refused' ? last : { operation: 'insertBlock', status: 'refused' };
-				return result;
-			});
-			if (!refused) return out;
-			// Refused with nothing applied: the addition goes, with its undo step.
-			if (facade.version !== version) {
-				edytor.history.undo();
-				edytor.undoManager?.clear(false, true);
+			// The addition and `then` are one transaction: one update, one undo
+			// step. Refused with nothing applied, the addition is taken back inside
+			// it, and the history captures nothing (its undo and redo steps stay).
+			const capture = um?.captureTransaction;
+			if (um && capture) um.captureTransaction = (tr) => !refused && capture(tr);
+			let out: unknown;
+			try {
+				out = dispatcher.run('insertBlock', () =>
+					edytor.transact(() => {
+						const type = block.parent && edytor.defaultChild(block.parent);
+						if (!type) return;
+						const spec = { block: { type } };
+						const reused = block.type === type && block.isEmpty;
+						const target = reused
+							? block
+							: above
+								? block.insertBlockBefore(spec)
+								: block.insertBlockAfter(spec);
+						// The caret is the model's: the projector shows it once the block mounts.
+						if (target?.firstText) dispatcher.caret(target.firstText, 0);
+						if (!target || !then) return;
+						const [added, before] = [facade.version, dispatcher.last];
+						const result = then();
+						// `then`'s own refusal (not one left from before), with nothing applied.
+						const last = dispatcher.last !== before ? dispatcher.last : null;
+						if (facade.version !== added || (result !== false && last?.status !== 'refused'))
+							return result;
+						refused =
+							last?.status === 'refused' ? last : { operation: 'insertBlock', status: 'refused' };
+						// The take-back of this command's own uncommitted write, not a user command.
+						if (!reused) facade.apply(facade.prepare.deleteBlocks([target.id]));
+						// Still answered: the command scope settles a vetoed async command's rejection.
+						return result;
+					})
+				);
+			} finally {
+				if (um && capture) um.captureTransaction = capture;
 			}
+			if (!refused) return out;
 			selection.select(held);
 			dispatcher.last = refused;
 			return false;
@@ -228,6 +318,30 @@ export class BlockHandleController {
 		if (edytor.node?.dispatchEvent(event) !== false) insert();
 	}
 
+	/**
+	 * A `+` while the block selection a grip click made still stands (its
+	 * menu open, or closed leaving it, a divider's): that selection was the
+	 * menu's, so the selection held before the grip comes back — for none,
+	 * or a caret whose place is gone, a caret at the start of the grip
+	 * block's first line — and the `+` holds that one (its menu's Escape
+	 * gives it back).
+	 */
+	private ungrip() {
+		const { gripped } = this;
+		this.gripped = null;
+		const { selection, facade } = this.edytor;
+		// Only while the grip's own selection value stands (any other selection write replaced it).
+		if (!gripped || selection.value !== gripped.after || gripped.after.kind !== 'blocks') return;
+		const { before, after } = gripped;
+		if (before === after) return;
+		if (before.kind !== 'none' && project(before, facade).start) return selection.select(before);
+		const grip = this.edytor.idToBlock.get(after.ids[0]!);
+		const text = grip && shownText(grip, 'first');
+		// A block with no text (a divider): no selection, as before the grip.
+		if (text) this.edytor.dispatcher.caret(text, 0);
+		else selection.select(noSelection);
+	}
+
 	registerHandle(element: HTMLElement, block: Block) {
 		if (!this.options.draggable) return () => {};
 		return draggable({
@@ -235,13 +349,23 @@ export class BlockHandleController {
 			canDrag: () => !this.edytor.readonly && block.movable,
 			getInitialData: () => ({ owner: this.owner, blockId: block.id }),
 			getInitialDataForExternal: () => ({ [blockDragMimeType]: block.id }),
-			// Drop targets exist from the start of our drag (before any target is looked up).
-			onGenerateDragPreview: () => {
+			// The moved blocks are known, and drop targets exist, from the start of
+			// our drag (before any target is looked up).
+			onGenerateDragPreview: ({ nativeSetDragImage }) => {
 				this.dragging = block.id;
+				const group = (this.group = this.dragBlocks(block));
+				if (group.length > 1 && nativeSetDragImage)
+					setCustomNativeDragPreview({
+						nativeSetDragImage,
+						getOffset: () => ({ x: 12, y: 12 }),
+						render: ({ container }) => container.append(dragPreview(element.ownerDocument, group))
+					});
 				for (const [node, target] of this.targets) this.registerDropTarget(node, target);
 			},
+			// The moved blocks show selected while they move (a text range becomes their block selection).
 			onDragStart: () => {
-				if (!this.edytor.selection.selectedBlocks.has(block)) this.selectBlock(block);
+				const { selectedBlocks } = this.edytor.selection;
+				if (!this.group.every((moved) => selectedBlocks.has(moved))) this.select(block);
 			},
 			// PDD notifies the source before drop targets. Keep the shown
 			// placement and the targets until the target has committed its move.
@@ -251,6 +375,7 @@ export class BlockHandleController {
 					for (const off of this.registered.values()) off();
 					this.registered.clear();
 					this.dragging = null;
+					this.group = [];
 				})
 		});
 	}
@@ -310,7 +435,7 @@ export class BlockHandleController {
 					this.canDrop(dragSource, placement.target, placement.position)
 				) {
 					this.moveAndSelect({
-						blocks: this.dragBlocks(dragSource),
+						blocks: this.moving(dragSource),
 						target: placement.target,
 						position: placement.position
 					});
@@ -325,35 +450,58 @@ export class BlockHandleController {
 		if (this.edytor.readonly || !direction) return;
 		event.preventDefault();
 		event.stopPropagation();
-		this.moveAndSelect({ blocks: [block], direction });
+		this.moveAndSelect({ blocks: this.dragBlocks(block), direction });
 	}
 
 	private moveAndSelect(request: BlockMoveRequest) {
+		const before = [...this.edytor.selection.selectedBlocks];
 		const moved = this.edytor.moveBlocks(request);
-		if (moved.length) this.edytor.selection.selectBlocks(...moved);
+		if (moved.length) selectMoved(this.edytor, moved, before);
 	}
 
 	private canDrop(source: Block, target: Block, position: BlockMovePosition) {
-		return this.edytor.canMoveBlocks({
-			blocks: this.dragBlocks(source),
-			target,
-			position
-		});
+		return this.edytor.canMoveBlocks({ blocks: this.moving(source), target, position });
+	}
+
+	/** The blocks a drop of `source` moves: the drag's own group, fixed when it started. */
+	private moving(source: Block) {
+		// A member a collaborator deleted meanwhile is left out; the others still move.
+		const group = this.dragging === source.id ? this.group.filter((block) => block.isInTree) : [];
+		return group.length ? group : this.dragBlocks(source);
 	}
 
 	/**
-	 * The blocks a drag from `source` moves: the selection when it holds
-	 * `source` (a selected block's selected descendants ride with it), when
-	 * what remains shares one parent; else `source` alone.
+	 * The blocks the selection covers — a block selection's blocks as
+	 * clicked (a selected list is one block: its item's handle drags the
+	 * item), or the blocks a text range spans (`getSelectionBlocks`, the
+	 * resolver Tab and Turn into read), a code line as its code block
+	 * (`movable`) — when `source` is one of them; else `source` alone.
+	 */
+	private covered(source: Block) {
+		const { selectedBlocks, state } = this.edytor.selection;
+		if (!selectedBlocks.size && state.isCollapsed) return [source];
+		const covered = movable(selectedBlocks.size ? selectedBlocks : getSelectionBlocks(this.edytor));
+		return covered.includes(source) ? covered : [source];
+	}
+
+	/**
+	 * The blocks a drag (or an Alt+arrow) from `source`'s handle moves
+	 * (Notion): the outermost of those the selection covers (`covered`), in
+	 * document order — a block's children and a closed toggle's hidden body
+	 * travel with it; else `source` alone.
 	 */
 	dragBlocks(source: Block) {
-		const { selectedBlocks } = this.edytor.selection;
-		if (!selectedBlocks.has(source) || selectedBlocks.size <= 1) return [source];
-		const roots = outermost(selectedBlocks);
-		const parent = roots[0]?.parent;
-		return parent && roots.every((block) => block.parent === parent)
-			? roots.toSorted(this.edytor.compareBlocks)
-			: [source];
+		return outermost(this.covered(source)).sort(this.edytor.compareBlocks);
+	}
+
+	/**
+	 * Select for a gesture on `source`'s handle: over a text range across
+	 * blocks, every block it covers (children too, as Turn into reads them);
+	 * else `source`.
+	 */
+	private select(source: Block) {
+		const { selection } = this.edytor;
+		selection.selectBlocks(...(selection.selectedBlocks.size ? [source] : this.covered(source)));
 	}
 
 	private resolvePlacement(
@@ -417,6 +565,14 @@ export class BlockHandleController {
 		overlay.dataset.edytorDropIndicator = 'true';
 		overlay.dataset.position = placement.position;
 		overlay.setAttribute('aria-hidden', 'true');
+		const count = this.group.length;
+		if (count > 1) {
+			// The count sits in the gutter at the bar's start, where the handles are.
+			overlay.dataset.count = String(count);
+			const badge = countBadge(document, count);
+			Object.assign(badge.style, { top: `${BAR / 2 - 9}px`, right: 'auto', left: '-26px' });
+			overlay.append(badge);
+		}
 		const color = document.defaultView
 			?.getComputedStyle(placement.node)
 			.getPropertyValue('--edytor-drop-indicator-color')

@@ -4,3 +4,4 @@
 # Add a version before its first deploy; never remove one.
 0.1.0-next.0
 0.1.0-next.1
+0.1.0-next.2

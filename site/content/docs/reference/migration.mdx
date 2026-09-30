@@ -131,6 +131,13 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.1
+
+- **Heading and quote text sits in its own `h1`/`h2`/`h3`/`blockquote`.** The block element is now a `div`, and its nested blocks render beside the heading tag instead of inside it, so a page's heading styles no longer reach them. Selectors written against the old markup (`h2[data-edytor-type='heading']`) now match nothing: target `[data-edytor-type='heading'] > h2` instead (see [Styling](/docs/customization/styling)).
+- **The block handle's <kbd>+</kbd> inserts nothing until a pick.** It opens the insert menu with its own filter field; a block is added only when a row is picked, and <kbd>Escape</kbd> leaves the document and the undo history as they were. Without a slash menu, <kbd>+</kbd> adds an empty block as before.
+- **Dragging a handle moves the whole selection.** When the dragged block is part of a block selection or of a text range across blocks, every block the selection covers moves, as one undo step; a block outside the selection moves alone.
+- **A nest drop tints its future parent.** The backdrop is themed with `--edytor-drop-backdrop-color`.
+
 ### From 0.1.0-next.0
 
 - **`block.isEmpty` and `block.hasContent` count inline atoms.** A block holding only a mention is no longer empty; 0.0.11 and 0.1.0-next.0 counted text only. To test for text only, use `block.content.every((part) => !(part instanceof Text) || part.isEmpty)` (the old `!hasContent`; add `&& !block.children.length` for the old `isEmpty`), with `Text` from `edytor`.

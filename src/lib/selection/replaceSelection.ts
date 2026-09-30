@@ -167,22 +167,35 @@ export const caretAfterBlockDelete = (
 };
 
 /**
+ * Whether a plugin's `onDeleteSelectedBlocks` keeps `blocks` (document
+ * order): then the command removing them is refused. Every gesture that
+ * removes a block selection asks first: the keyboard's block delete (any
+ * Backspace or Delete chord, and a delete intent's `beforeinput`), cut,
+ * the block menu's Delete (`deleteSelectedBlocks`), typing, Shift+Enter or
+ * a composition over it (`replaceSelectedBlocksWithEmptyBlock`), Enter over
+ * selected text (`insertParagraph`) and a paste (`pasteFlow`).
+ */
+export const keepsSelectedBlocks = (edytor: Edytor, blocks: Block[]) => {
+	const kept = edytor.dispatcher.intercept((plugin) =>
+		plugin.onDeleteSelectedBlocks?.({ prevent, selectedBlocks: blocks })
+	);
+	if (kept) edytor.dispatcher.last = { operation: 'deleteSelectedBlocks', status: 'refused' };
+	return kept;
+};
+
+/**
  * Delete (or cut) the selected blocks (or `blocks`, the block menu's): the
- * keyboard's block delete, cut and the block menu's Delete share it, so
- * `onDeleteSelectedBlocks` guards them all (a `prevent()` keeps the blocks).
- * The command authors its result selection (FP-7, R9) by
- * `caretAfterBlockDelete`, declared before the delete, so the seam never
- * runs for it. With none, the seam applies. Answers the caret's text.
+ * keyboard's block delete, cut and the block menu's Delete share it
+ * (`keepsSelectedBlocks` first). The command authors its result selection
+ * (FP-7, R9) by `caretAfterBlockDelete`, declared before the delete, so the
+ * seam never runs for it. With none, the seam applies. Answers the caret's
+ * text.
  */
 export const deleteSelectedBlocks = (
 	edytor: Edytor,
 	blocks: Block[] = getSelectedBlocksInDocumentOrder(edytor)
 ): Text | null => {
-	if (!blocks[0]?.parent) return null;
-	const kept = edytor.dispatcher.intercept((plugin) =>
-		plugin.onDeleteSelectedBlocks?.({ prevent, selectedBlocks: blocks })
-	);
-	if (kept) return null;
+	if (!blocks[0]?.parent || keepsSelectedBlocks(edytor, blocks)) return null;
 	const at = caretAfterBlockDelete(blocks);
 	const deleted = edytor.dispatcher.caret(at?.text, at?.offset ?? 0, () =>
 		edytor.deleteBlocks({ blocks })
@@ -200,14 +213,15 @@ export const deleteSelectedRange = (
 };
 
 /**
- * Typing over a block selection (`flow.slot`): the selected blocks go and one
+ * Typing, Shift+Enter or a composition over a block selection (`flow.slot`),
+ * unless `keepsSelectedBlocks`: the selected blocks go and one
  * empty block takes the first one's slot, in ONE plan — deleting them first
  * would let the emptied parent normalize in a survivor beside the new block.
  */
 const replaceSelectedBlocksWithEmptyBlock = (edytor: Edytor): SelectionInsertionTarget | null => {
 	const selected = getSelectedBlocksInDocumentOrder(edytor);
 	const parent = selected[0]?.parent;
-	if (!parent) return null;
+	if (!parent || keepsSelectedBlocks(edytor, selected)) return null;
 	const [text, offset] = edytor.insertFlow({
 		flow: { lines: [{ id: id('b'), type: edytor.defaultChild(parent) }] },
 		target: { replace: selected.map((block) => block.id) }

@@ -406,6 +406,38 @@ export const CLIENT_IDS: Record<number, number[][]> = Object.fromEntries(
 	}).map(([n, sets]) => [n, sets.map((ids) => ids.map((id) => LIVE + id))])
 );
 
+/**
+ * `n` two-replica client-id assignments for a sweep (CW-01): near and far
+ * pairs, each in both relative orders — a race whose outcome follows the
+ * ids or the rank draws they seed shows on some, where the three fixed
+ * `CLIENT_IDS` pairs can miss it.
+ */
+export const clientPairs = (n: number): number[][] => {
+	const out: number[][] = [];
+	for (let x = 1; out.length < n; x++)
+		for (const y of [x + 1, x + 13, x + 101, x + 7919])
+			out.push([LIVE + x, LIVE + y], [LIVE + y, LIVE + x]);
+	return out.slice(0, n);
+};
+
+/** `n` three-replica assignments: every relative order of spread-out triples. */
+export const clientTriples = (n: number): number[][] => {
+	const out: number[][] = [];
+	const orders = [
+		[0, 1, 2],
+		[0, 2, 1],
+		[1, 0, 2],
+		[1, 2, 0],
+		[2, 0, 1],
+		[2, 1, 0]
+	];
+	for (let x = 1; out.length < n; x++) {
+		const ids = [x, x + 5, x + 211];
+		for (const o of orders) out.push(o.map((k) => LIVE + ids[k]));
+	}
+	return out.slice(0, n);
+};
+
 export type Outcome = {
 	/** Canonical JSON of every replica, every observer, every reload — one value when converged. */
 	results: Set<string>;

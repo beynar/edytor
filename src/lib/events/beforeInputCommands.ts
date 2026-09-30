@@ -1,5 +1,7 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import {
+	getSelectedBlocksInDocumentOrder,
+	keepsSelectedBlocks,
 	replaceSelectionForInsertion,
 	replaceSelectionWithCollapsedTarget
 } from '$lib/selection/replaceSelection.js';
@@ -242,6 +244,12 @@ const splitHeader = (block: Block, text: Text, index: number, open: boolean | un
 };
 
 const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
+	// Over a block selection whose text it replaces, `onDeleteSelectedBlocks`
+	// may keep the blocks (over selected voids alone it removes nothing).
+	const selected = getSelectedBlocksInDocumentOrder(edytor);
+	const replaces =
+		!snapshot.isCollapsed && selected.some((block) => !edytor.facade.isVoid(block.id));
+	if (replaces && keepsSelectedBlocks(edytor, selected)) return;
 	const target = replaceSelectionWithCollapsedTarget(edytor, snapshot);
 	if (!target) {
 		return;

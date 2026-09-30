@@ -510,10 +510,57 @@ c]]`; on `b` → `[p, ul' > [a], paragraph "b", ul > [c]]`, where `ul'` is
   (Enter at the end of `c`) stays after `c`; on `c` → `[p, ul > [a, b],
 paragraph "c"]`. One undo restores the list. Residual: an item a peer
   adds among the items _before_ the outdented ones meanwhile lands in
-  `ul`, after them. When two peers outdent concurrently, the text keeps
-  its order and every replica converges; a list the two splits leave with
-  no item shows nothing and the next key next to it removes it (both
-  outdent `b`: each made a `ul'`, one stays empty).
+  `ul`, after them. When peers outdent, lift (Backspace at the start of a
+  first item) or Turn into items of one list concurrently, the text keeps
+  its order on every client-id assignment and every replica converges
+  (CW-01): a block leaving a list is ranked by where it came from
+  (`sourceRank`: a base every replica computes alike from the gap, then
+  its side of the gap, then its path down the list), never drawn at
+  random in the gap two peers share. The side keeps sources apart
+  (DR-crdt-6): in the gap `(X, Y)`, a split's pieces of `X` first, then
+  the blocks leaving `X` for the gap after it, then those leaving `Y` for
+  the gap before it, as every serial order puts them — Enter in the
+  paragraph above a list ‖ Backspace or Turn into on its first item reads
+  the paragraph's pieces, then the item. A list the two splits leave with no item shows nothing and the
+  next key next to it removes it (both outdent `b`: each made a `ul'`,
+  one stays empty). Residuals, pinned in `cw01-order-sweep.test.ts`:
+  - in a list nested directly in a list, `[ul > [a, ul2 > [b, c, x], d]]`,
+    the two splits can move blocks at different levels, so neither
+    contests the other's: Ada moves `b` into `ul` (Shift+Tab, or
+    Backspace at its start) ‖ Bob lifts the later `x` out of both lists
+    (Turn into a heading, a divider or a code block) → `b` stays in `ul`,
+    after `x`: `[ul' > [a, ul2 > [c]], heading "x", ul > [b, d]]`, whatever
+    the ids; Ada lifts `b` ‖ Bob lifts `x` out of both lists, Bob's client
+    id wins `a` → `b` reads before `a`;
+  - a block inserted after an item (Turn into a divider or a code block on
+    an item with text: the item stays) whose item a peer's concurrent
+    split of a later item takes into its new list, when that peer's id
+    wins it, shows right before that new list — above the item it
+    followed. The text keeps its order.
+- Two peers pressing Enter in one block at once (`splitBlock` at two
+  offsets), or pasting several lines into it (`insertFlow`), keep its
+  pieces in text order on every client-id assignment: the blocks a split
+  creates are ranked by where it splits (SW12-crdt-1, SW12-crdt-4),
+  counted from the end — the text after the split point — so a peer's own
+  edit before its split point (typing, then Enter; a paste over a
+  selection) does not move it (DR-crdt-7). The blocks Shift+Tab moves out
+  of a block that is no list, and the children a merge unnests after the
+  merged block, are ranked by where they came from, as a list's
+  (SW12-crdt-3). Residuals, pinned in `dr-crdt-order.test.ts`:
+  - an unseen edit _after_ one's own split point counts: Ada appends
+    " again" to "hello world" and splits after "hello wo" ‖ Bob splits
+    after "hello" → "hello", "rld again", " wo";
+  - R3, a new block stays behind: the block a split creates right after
+    `s` stays beside `s` in `s`'s parent while a peer moves `s` out of it
+    (an outdent or lift of `s`, a split of its list at a later item whose
+    head list takes `s`, a split of `s`'s parent that takes `s` into the
+    new piece): Enter at the end of the last item ‖ Shift+Tab on it →
+    `[ul > [a, new], paragraph "b"]` — the same residual as an item a
+    peer adds among the items before an outdented one;
+  - R4, a merge into a split block: the merge claim appends to `into`'s
+    claims list, and a concurrent split moved only the claims it saw, so
+    the merged text follows the head: Backspace joins "world" into
+    "hello" ‖ Enter after "he" → "heworld", "llo".
 - Concurrency (DR-crdt-2): an item a peer adds to a list another peer's
   edit removes (a delete, lift, pull-up or move of its only item, or a
   delete of the list) is promoted into the list's slot as its new parent's

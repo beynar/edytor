@@ -180,26 +180,24 @@ export const rankBetween = (
 			return encodeRank(path);
 		}
 		if (rSeg === undefined) {
-			if (rightOpen) {
-				// No right bound: emit within the bounded append window — dense
-				// tail growth, level depth stays 1 even for deep left neighbors.
-				const span = Math.min(APPEND_WINDOW, RANK_VMAX - lSeg.v);
-				if (span <= 0) {
-					path.push(lSeg); // digit space exhausted at this level — descend
-					continue;
-				}
-				const v = lSeg.v + 1 + Math.floor(rand() * span);
-				path.push({ v, t: clientId });
-				return encodeRank(path);
-			}
 			// Right bound ended while left continues: valid only when `locked`
 			// already holds (an earlier copied segment was < the right's). If not,
 			// right is a proper prefix of left — i.e. right < left, caller error.
-			if (!locked) {
+			if (!rightOpen && !locked) {
 				throw new Error(`rankBetween: right bound is a prefix of left (right < left)`);
 			}
-			path.push(lSeg);
-			continue;
+			// No right bound at this level (open, or `locked` below it): emit
+			// within the bounded append window — dense growth, and one more
+			// level per exhausted gap, not one per insert (SW12-crdt-2: copying
+			// every left segment made each insert at a filled seam one longer).
+			const span = Math.min(APPEND_WINDOW, RANK_VMAX - lSeg.v);
+			if (span <= 0) {
+				path.push(lSeg); // digit space exhausted at this level — descend
+				continue;
+			}
+			const v = lSeg.v + 1 + Math.floor(rand() * span);
+			path.push({ v, t: clientId });
+			return encodeRank(path);
 		}
 		if (rSeg.v - lSeg.v > 1) {
 			// Gap at this level: any v in (lv, rv) is > left and < right (the

@@ -2,7 +2,7 @@
   "seed": 59,
   "peers": 3,
   "adapter": "raw-node",
-  "failure": "step 191 threw: Unexpected case\n    at create (file:///Users/arnaud/code/edytor-arch-v2-t/node_modules/.pnpm/lib0@1.0.0-rc.32/node_modules/lib0/src/error.js:12:28)\n    at Module.unexpectedCase (file:///Users/arnaud/code/edytor-arch-v2-t/node_modules/.pnpm/lib0@1.0.0-rc.32/node_modules/lib0/src/error.js:33:9)\n    at findIndexSS (/Users/arnaud/code/edytor-arch-v2-t/src/lib/crdt/vendor/yjs/src/utils/transaction-helpers.js:48:15)\n    at /Users/arnaud/code/edytor-arch-v2-t/src/lib/crdt/vendor/yjs/src/utils/transaction-helpers.js:276:70\n    at Map.forEach (<anonymous>)",
+  "failure": "step 191 threw: Unexpected case\n    at create (file://<repo>/node_modules/.pnpm/lib0@1.0.0-rc.32/node_modules/lib0/src/error.js:12:28)\n    at Module.unexpectedCase (file://<repo>/node_modules/.pnpm/lib0@1.0.0-rc.32/node_modules/lib0/src/error.js:33:9)\n    at findIndexSS (<repo>/src/lib/crdt/vendor/yjs/src/utils/transaction-helpers.js:48:15)\n    at <repo>/src/lib/crdt/vendor/yjs/src/utils/transaction-helpers.js:276:70\n    at Map.forEach (<anonymous>)",
   "violations": [],
   "evidence": [
     "upstream-engine-crash"

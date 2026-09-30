@@ -145,7 +145,12 @@ export type PluginOperations = {
 	onBlockAttached?: (payload: { node: HTMLElement; block: Block }) => (() => void) | void;
 	/** Called when a text element is attached to the DOM; may return a cleanup. */
 	onTextAttached?: (payload: { node: HTMLElement; text: Text }) => (() => void) | void;
-	/** Before a block selection is deleted: Backspace, Delete, a cut or the block menu's Delete. */
+	/**
+	 * Before a block selection is removed: Backspace or Delete (a word or line
+	 * delete too), a cut, the block menu's Delete, and typing, Enter,
+	 * Shift+Enter, a composition or a paste over it.
+	 * `prevent()` keeps the blocks (and refuses the gesture).
+	 */
 	onDeleteSelectedBlocks?: (payload: { prevent: Prevent; selectedBlocks: Block[] }) => void;
 	/** Called before input is processed */
 	onBeforeInput?: (payload: { prevent: Prevent; e: InputEvent }) => void;

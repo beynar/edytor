@@ -98,6 +98,8 @@ type OpResult = {
 | `setBlockData(id, data)` | `id` | Replaces the whole `data` object. |
 | `duplicateBlock(id, freshId)` | the copy | Copies the subtree after `id`; `freshId(oldId, kind)` names each copied block (`kind` `'block'`) and inline atom (`'inline'`). An atom it returns no id for gets a fresh one; a block it returns no id for refuses the copy. |
 
+The blocks `unNestBlock(s)`, `liftOut` and `mergeBackward` move out of a block, and the blocks `splitBlock` and a multi-line `insertFlow` create after one, are ranked by where they came from, not at random in the gap: first by side (a split's pieces, then the blocks leaving the block before the gap, then those leaving the block after it), then by the item's place in its list, or by the text after the split point. Two peers outdenting, lifting or turning into another kind items of one list, or splitting or pasting lines into one block, or one splitting a paragraph while the other lifts the first item of the list below it, at the same time keep the text in its order whatever their client ids. The residuals (in the split of a list, a new line beside a block a peer moves, a merge into a block a peer splits, text typed after one's own split point) are listed in [Concurrent editing](/docs/collaboration/concurrent-editing).
+
 ## Text operations
 
 | Operation | Notes |

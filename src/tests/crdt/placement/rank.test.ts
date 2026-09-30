@@ -144,6 +144,22 @@ describe('rankBetween allocation', () => {
 		}
 	});
 
+	it('inserts after the previous one at a filled seam stay short (SW12-crdt-2)', () => {
+		// Typing lines in the middle of a document: each key goes between the
+		// last one and the same right neighbour. Once the seam's digits run
+		// out, a key extends the left bound once and then has the append
+		// window below the right bound — it used to copy every left segment
+		// and add one, one level longer per line.
+		const R = encodeRank([{ v: 1, t: C1 }]);
+		let lo = encodeRank([{ v: 0, t: C1 }]);
+		for (let i = 0; i < 1000; i++) {
+			const k = rankBetween(lo, R, C2, () => 0.5);
+			expect(lo < k && k < R).toBe(true);
+			lo = k;
+		}
+		expect(decodeRank(lo).length).toBeLessThanOrEqual(3);
+	});
+
 	it('same-client subsequent inserts into one gap are ordered', () => {
 		const L = rankBetween(undefined, undefined, C1);
 		const R = rankBetween(L, undefined, C1);

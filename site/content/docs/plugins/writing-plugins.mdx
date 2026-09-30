@@ -113,7 +113,7 @@ export const myPlugin: Plugin = (edytor) => {
     },
     onDeleteSelectedBlocks: {
       type: "({ selectedBlocks, prevent }) => void",
-      description: "Before Backspace, Delete, a cut or the block menu's Delete removes a block selection.",
+      description: "Before any gesture removes a block selection: Backspace or Delete (a word or line delete too), a cut, the block menu's Delete, or typing, Enter or a paste over it.",
     },
   }}
 />
@@ -190,7 +190,7 @@ export const noFilesPlugin: Plugin = () => ({
 });
 ```
 
-**`onDeleteSelectedBlocks`** runs when <kbd>Backspace</kbd>, <kbd>Delete</kbd>, a cut or the block menu's Delete removes a block selection, with the blocks in document order. `prevent()` keeps them (a cut still writes the clipboard).
+**`onDeleteSelectedBlocks`** runs before any gesture removes a block selection, with the blocks in document order: <kbd>Backspace</kbd> or <kbd>Delete</kbd> (with <kbd>Alt</kbd>, <kbd>Mod</kbd> or <kbd>Ctrl</kbd> too: a word or line delete removes the blocks as a plain one does), a cut, the block menu's Delete, and typing, <kbd>Enter</kbd>, <kbd>Shift</kbd>+<kbd>Enter</kbd>, a composition or a paste over the selection (each replaces the blocks with what it inserts). `prevent()` keeps them and refuses the gesture: nothing is inserted, a cut still writes the clipboard, and `edytor.dispatcher.last` reports `refused`. A drop over a block selection inserts at the drop point, and <kbd>Enter</kbd> over a selected divider or image inserts a line after it: neither removes anything, so the hook does not run. To guard blocks against every command, including headless ones such as `edytor.deleteBlocks`, veto the operations whose `effect.removes` names them in `onBeforeOperation` ([Refusing an edit](/docs/plugins/operations#refusing-an-edit)).
 
 For the clipboard formats and paste rules, see [Clipboard](/docs/editor/clipboard).
 

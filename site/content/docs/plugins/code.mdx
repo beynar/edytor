@@ -82,6 +82,7 @@ Inside a code line:
 - <kbd>Backspace</kbd> in an empty block right after a code block removes that block and puts the caret at the end of the last line. In a block with text it moves the caret to the end of the code and merges nothing.
 - Deleting or cutting the whole code text (<kbd>Mod</kbd> + <kbd>A</kbd>, then <kbd>Backspace</kbd>, <kbd>Delete</kbd> or cut) leaves the code block with one empty line and the caret in it.
 - A selection that ends at the start of a line leaves that line out of <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd>, as code editors do.
+- <kbd>Tab</kbd> and <kbd>Shift</kbd> + <kbd>Tab</kbd> over several lines change each line with its own command (`insertText` or `deleteContentAtRange`): a line a plugin vetoes stays as it is and the others still change, together one undo step ([Refusing an edit](/docs/plugins/operations#refusing-an-edit)).
 - The Copy button, shown while the block is hovered, writes the block's text, lines joined with newlines, to the clipboard, and reads "Copied" for a moment.
 
 A code block is an island: merges never cross its edge, and a block selection walked with the arrow keys does not enter it from outside. It is also not convertible, so the slash menu and markdown shortcuts do not apply inside it.

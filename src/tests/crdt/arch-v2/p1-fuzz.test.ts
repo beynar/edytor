@@ -210,13 +210,26 @@ const STATS = new Map<string, number>();
 
 type World = { reps: Replica[]; sentTo: number[][]; online: boolean[]; lane: Lane };
 
+/**
+ * Replica `i`'s client id: one of `n` bands, the bands shuffled per seed
+ * (CW-01) — with the bands in replica order, `R0` always lost every
+ * concurrent move and a race whose outcome follows the ids was only ever
+ * run one way round.
+ */
+const clientIds = (n: number, seed: number): number[] => {
+	const next = rngOf(seed * 7919 + 17);
+	const bands = Array.from({ length: n }, (_, i) => i);
+	for (let i = n - 1; i > 0; i--) {
+		const j = next(i + 1);
+		[bands[i], bands[j]] = [bands[j], bands[i]];
+	}
+	return bands.map((band, i) => 1 + ((seed * 31 + i * 7) % 5000) + band * 5000);
+};
+
 const world = (n: number, seed: number, lane: Lane): World => ({
 	lane,
-	reps: Array.from({ length: n }, (_, i) =>
-		replica(`R${i}`, lane.seed, 1 + ((seed * 31 + i * 7) % 5000) + i * 5000, {
-			semantics: lane.semantics,
-			salt: seed
-		})
+	reps: clientIds(n, seed).map((id, i) =>
+		replica(`R${i}`, lane.seed, id, { semantics: lane.semantics, salt: seed })
 	),
 	sentTo: Array.from({ length: n }, () => Array(n).fill(0)),
 	online: Array(n).fill(true)

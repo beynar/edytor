@@ -125,6 +125,8 @@ import {
 	displaySlotOf,
 	isLiveIn,
 	promotedRank,
+	sourceRank,
+	SOURCE_SIDE,
 	type BlockId,
 	type BlockSpec,
 	type ContentItem,
@@ -1601,6 +1603,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		// and strings as the wire would deliver them, payloads cloned.
 
 		const REFUSED = refused(null);
+		/** `exitRanks` parts, in their order at one block. */
+		const [HEAD, KEPT, WITH, SELF, AFTER] = [0, 1, 2, 3, 5];
 		const plan = (ids: readonly BlockId[], writes: PlanStep[]): Plan => ({
 			ids,
 			writes,
@@ -1644,6 +1648,90 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/** Move `ids` to `index` among `parent`'s children. */
 		const move = (ids: BlockId[], parent: BlockId | null, index: number): PlanStep[] =>
 			moveTo(ids, parent, index, ranksFor(parent, index, ids.length, ids));
+		/**
+		 * Ranks for blocks leaving `outer` for the gap right before it (`after`:
+		 * right after it), in the order they come from (`sourceRank`, CW-01):
+		 * two peers that split or lift out of the same list at once keep the
+		 * text in its order, whatever their client ids. Each part names the
+		 * block in `outer` it stands at (`at`; one that shows no text of its
+		 * own, a list, stands at its first item) and its `part` there:
+		 * - `HEAD`: a new list holding the items before `at`;
+		 * - `KEPT`, index: a block placed after the items before `at`, which
+		 *   stay (a divider inserted after an item: a peer's head that takes
+		 *   them sorts before it);
+		 * - `WITH`: a new list holding the items before `at` and `at` (`keep`);
+		 * - `SELF`: `at` itself leaving (`SELF + 1` when it stands at its first item);
+		 * - `AFTER`, index: a block placed after it.
+		 * A degenerate gap ranks them as any insert.
+		 */
+		const exitRanks = (
+			outer: BlockId,
+			after: boolean,
+			parts: readonly { at: BlockId; part: readonly number[] }[]
+		): string[] => {
+			const { kids } = view();
+			const { parent, index } = positionOf(outer)!;
+			const sibs = kids.get(parent) ?? [];
+			const gap = after ? index + 1 : index;
+			const ranks: string[] = [];
+			for (let { at, part } of parts) {
+				const own = at;
+				while (!rendersContent(at) && childrenIds(at).length > 0) at = childrenIds(at)[0]!;
+				if (part[0] === SELF && at !== own) part = [SELF + 1];
+				const path: string[] = [];
+				for (let c = at; c !== outer; c = positionOf(c)!.parent!) {
+					const pos = positionOf(c)!;
+					path.unshift(kids.get(pos.parent)![pos.index]!.rank);
+				}
+				const side = after ? SOURCE_SIDE.after : SOURCE_SIDE.before;
+				const rank = sourceRank(
+					sibs[gap - 1]?.rank,
+					sibs[gap]?.rank,
+					side,
+					path,
+					part,
+					doc.clientID
+				);
+				if (rank === null) return ranksFor(parent, gap, parts.length);
+				ranks.push(rank);
+			}
+			return ranks;
+		};
+		/**
+		 * Ranks for the `count` blocks a split of `id` at `at` puts right after
+		 * it (Enter, a paste of several lines), by where it splits
+		 * (SW12-crdt-1, SW12-crdt-4): two peers splitting one block at once
+		 * keep its pieces in text order, whatever their client ids. Counted
+		 * from the end — the text after the split point, most first — so a
+		 * peer's own edit before its split point (typing, then Enter; a paste
+		 * over a selection) does not move it (DR-crdt-7); an unseen edit after
+		 * it does (the residual, in the delete contract).
+		 */
+		const pieceRanks = (id: BlockId, at: number, count: number): string[] => {
+			const { parent, index } = positionOf(id)!;
+			const sibs = view().kids.get(parent) ?? [];
+			const ranks: string[] = [];
+			for (let i = 0; i < count; i++) {
+				const rank = sourceRank(
+					sibs[index]?.rank,
+					sibs[index + 1]?.rank,
+					SOURCE_SIDE.pieces,
+					[],
+					[at - displayLength(id), i],
+					doc.clientID
+				);
+				if (rank === null) return ranksFor(parent, index + 1, count);
+				ranks.push(rank);
+			}
+			return ranks;
+		};
+		/** `exitRanks` for `ids` themselves leaving `outer`. */
+		const leaving = (outer: BlockId, after: boolean, ids: readonly BlockId[]) =>
+			exitRanks(
+				outer,
+				after,
+				ids.map((at) => ({ at, part: [SELF] }))
+			);
 		/**
 		 * A type/data step, planned only when the value differs (the one
 		 * same-value guard). A kind counts as the same only when the block is
@@ -1877,7 +1965,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const after = childrenIds(from).slice(pos!.index + 1);
 			const retype = settle(from, moved, ppos.parent);
 			if (isContainer(from)) return splitOut(moved, [from], [], false, retype);
-			const writes = [...move(moved, ppos.parent, ppos.index + 1), ...retype];
+			const out = leaving(from, true, moved);
+			const writes = [...moveTo(moved, ppos.parent, ppos.index + 1, out), ...retype];
 			const adopts =
 				after.length > 0 &&
 				!isVoid(last!) &&
@@ -1939,6 +2028,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const heads: { spec: BlockSpec; kids: BlockId[]; inner?: BlockSpec }[] = [];
 			let before: { id: BlockId; head?: BlockSpec } | null = null;
 			let follows = false;
+			// The block right after `last` (what the split ends at when `keep`).
+			let next: BlockId | undefined;
 			let child = last;
 			for (const level of levels) {
 				const kids = childrenIds(level);
@@ -1947,7 +2038,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					...kids.slice(0, keep && child === last ? at + 1 : at).filter((k) => !moved.includes(k)),
 					...(before && !before.head ? [before.id] : [])
 				];
-				follows ||= at + 1 < kids.length;
+				if (!follows && at + 1 < kids.length) [follows, next] = [true, kids[at + 1]];
 				if ((lead.length > 0 || before?.head) && follows) {
 					const spec = sanitizeSpec({
 						id: newId('b'),
@@ -1959,8 +2050,20 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				} else before = lead.length > 0 ? { id: level } : null;
 				child = level;
 			}
-			let gap = index + (before && !before.head ? 1 : 0);
-			const ranks = ranksFor(parent, gap, (before?.head ? 1 : 0) + placed.length, moved);
+			// Ranked by where each comes from in the outermost level (CW-01): the
+			// head right before the first block (with `keep`, right before it
+			// leaves), the blocks, then `specs` after the last — with `keep`,
+			// right before the block after it, so a peer's head that takes the
+			// block they follow sorts before them.
+			const outside = before !== null && !before.head;
+			let gap = index + (outside ? 1 : 0);
+			const ranks = exitRanks(levels.at(-1)!, outside, [
+				...(before?.head ? [{ at: ids[0]!, part: [keep ? WITH : HEAD] }] : []),
+				...moved.map((id) => ({ at: id, part: [SELF] })),
+				...specs.map((_, i) =>
+					keep && !outside ? { at: next!, part: [KEPT, i] } : { at: last, part: [AFTER, i] }
+				)
+			]);
 			const writes: PlanStep[] = before?.head
 				? insert(parent, gap++, [before.head], ranks.splice(0, 1))
 				: [];
@@ -2031,7 +2134,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const t = tail
 				? { type, data: tail.data && sanitizeWireJson(tail.data) }
 				: { type, data: rec.node.getAttr(DATA) as JsonObj };
-			const [rank] = ranksFor(pos.parent, pos.index + 1, 1);
+			const [rank] = pieceRanks(id, at, 1);
 			const length = displayLength(id) - at;
 			const split: PlanStep = {
 				op: 'splitBlock',
@@ -2084,7 +2187,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			if (pos === null || !contentTarget(into)) return REFUSED;
 			const kids = childrenIds(from);
 			const retype = settle(from, kids, pos.parent);
-			return plan([into], [...move(kids, pos.parent, pos.index + 1), ...retype, merge(from, into)]);
+			const out = leaving(from, true, kids);
+			return plan(
+				[into],
+				[...moveTo(kids, pos.parent, pos.index + 1, out), ...retype, merge(from, into)]
+			);
 		};
 
 		/** Remove `container`, left empty, for the key at `id` (refused if it holds text). */
@@ -2121,7 +2228,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				// It lands only where it fits: never directly in a container it is no item of.
 				const slot = positionOf(prev)!;
 				if (!fits(slot.parent, settledKind(prev, id, slot.parent))) return REFUSED;
-				const lift = [...move([id], slot.parent, slot.index), ...settle(prev, [id], slot.parent)];
+				const lift = [
+					...moveTo([id], slot.parent, slot.index, leaving(prev, false, [id])),
+					...settle(prev, [id], slot.parent)
+				];
 				return plan([id], emptying(prev, [id], lift, landing(slot.parent)));
 			}
 			return prev ? mergeUnnesting(id, prev) : REFUSED;
@@ -2511,6 +2621,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			isVoid,
 			tailOf: (id) => ({ type: kindToCopy(id), data: blockDataOf(id) }),
 			ranksFor,
+			pieceRanks,
 			redata: (id, data) => attr(id, DATA, data),
 			deleteBlocks: (ids) => prepare.deleteBlocks(ids)
 		};

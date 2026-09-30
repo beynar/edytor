@@ -43,27 +43,27 @@
 		};
 
 		/**
-		 * Tab (`1`) or Shift+Tab (`-1`) over code lines, as one command: each line
-		 * the selection touches gains a leading tab, or loses one leading tab or
-		 * up to two spaces (the tab size); the selection keeps its characters.
+		 * Tab (`1`) or Shift+Tab (`-1`) over code lines, as one command over
+		 * several parts (`dispatcher.each`): each line the selection touches
+		 * gains a leading tab, or loses one leading tab or up to two spaces (the
+		 * tab size); a line a plugin vetoes is skipped and the others still
+		 * move. The selection keeps its characters.
 		 */
 		const indent = (step: 1 | -1) => {
 			const { startText, endText, yStart, yEnd, isReversed } = edytor.selection.state;
 			const shifts = new Map<Text, number>();
-			edytor.dispatcher.run(step > 0 ? 'indentLines' : 'dedentLines', () => {
-				for (const line of touchedLines() ?? []) {
-					const text = line.firstText;
-					if (!text) continue;
-					if (step > 0) {
-						text.insertText({ value: '\t', start: 0, end: 0 });
-						shifts.set(text, 1);
-						continue;
-					}
-					const removed = /^(\t| {1,2})/.exec(text.stringContent)?.[0].length ?? 0;
-					if (!removed) continue;
-					line.deleteContentAtRange({ start: [text.index, 0], end: [text.index, removed] });
-					shifts.set(text, -removed);
+			const kind = step > 0 ? 'indentLines' : 'dedentLines';
+			edytor.dispatcher.each(kind, touchedLines() ?? [], (line) => {
+				const text = line.firstText;
+				if (!text) return;
+				if (step > 0) {
+					text.insertText({ value: '\t', start: 0, end: 0 });
+					return shifts.set(text, 1);
 				}
+				const removed = /^(\t| {1,2})/.exec(text.stringContent)?.[0].length ?? 0;
+				if (!removed) return;
+				line.deleteContentAtRange({ start: [text.index, 0], end: [text.index, removed] });
+				shifts.set(text, -removed);
 			});
 			const moved = (text: Text | null, offset: number) =>
 				Math.max(0, offset + (text ? (shifts.get(text) ?? 0) : 0));

@@ -234,6 +234,7 @@ const isTextLocalDeletion = (edytor: Edytor, attempt: Attempt) => {
 	if (
 		attempt.isStructuralKeyFallback ||
 		attempt.cancelable ||
+		isTrailingSoftBreakBackward(attempt) ||
 		(attempt.inputType !== 'deleteContentBackward' &&
 			attempt.inputType !== 'deleteContentForward') ||
 		!isTextLocal(edytor, attempt)
@@ -360,27 +361,21 @@ const androidNoOpBackspaceDeadline = (edytor: Edytor, attempt: Attempt) => {
 	}, NATIVE_INPUT_REPAIR_WINDOW_MS);
 };
 
-const deleteTrailingSoftBreakBackward = (edytor: Edytor, attempt: Attempt) => {
-	const { startText, yStart } = attempt;
-	const isModelCollapsed = attempt.isCollapsed || attempt.yStart === attempt.yEnd;
-	if (
-		attempt.inputType !== 'deleteContentBackward' ||
-		!isModelCollapsed ||
-		!startText?.stringContent.endsWith('\n') ||
-		yStart !== startText.length
-	) {
-		return false;
-	}
-
-	attempt.event?.preventDefault();
-	edytor.dispatcher.cut(attempt.inputType);
-	edytor.transact(() => {
-		startText.deleteAt(yStart - 1, 1);
-	});
-	startText.refreshFromModel();
-	edytor.selection.setAtTextOffset(startText, yStart - 1);
-	return true;
-};
+/**
+ * Backspace right after a trailing soft break: the browser mishandles the
+ * `<br>` it renders, so the model deletes the break (a command hooks see).
+ */
+const isTrailingSoftBreakBackward = ({
+	inputType,
+	isCollapsed,
+	yStart,
+	yEnd,
+	startText
+}: Attempt) =>
+	inputType === 'deleteContentBackward' &&
+	(isCollapsed || yStart === yEnd) &&
+	Boolean(startText?.stringContent.endsWith('\n')) &&
+	yStart === startText!.length;
 
 /** The pre-admission extension hook: an extension may claim a browser `beforeinput`. */
 const runBeforeInputPlugins = (edytor: Edytor, event: InputEvent) => {
@@ -445,10 +440,7 @@ const occur = (
 	if (kindOf(intent) !== 'composition') edytor.composition.occurred(intent);
 	if (!reuse) syncSelectionFromDeclaredRange(edytor, occurrence, intent);
 	const attempt = reuse ? reproject(edytor, reuse) : attemptOf(edytor, occurrence, key?.inputType);
-	if (
-		shouldIgnoreBeforeInput(edytor, attempt) ||
-		deleteTrailingSoftBreakBackward(edytor, attempt)
-	) {
+	if (shouldIgnoreBeforeInput(edytor, attempt)) {
 		if (reuse) edytor.attempts.close(reuse);
 		return;
 	}

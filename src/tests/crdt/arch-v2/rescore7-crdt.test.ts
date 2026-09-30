@@ -1,7 +1,8 @@
 /**
  * Re-score 7 (`docs/reviews/2026-09-30-rescore-7.md`), CRDT units AW-04 and
  * AW-05. Every `converge` row runs under the plan §8 multi-replica rule
- * (three client-id assignments, both delivery orders, duplicate delivery,
+ * (three client-id assignments — 240 for the two-peer races, `SWEEP` —
+ * both delivery orders, duplicate delivery,
  * binary reload) and every replica is held to `wellFormed` after every
  * write and delivery. Expected trees are hand-authored from Notion's
  * behaviour: a list shows only its items, and no block's text ever
@@ -9,7 +10,13 @@
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
-import { allText, converge, tree } from './p1-harness.js';
+import { allText, clientPairs, converge, tree } from './p1-harness.js';
+
+/**
+ * The two-peer races run on 240 client-id assignments, not only the three
+ * fixed pairs (CW-01): the text order held there by luck of the ids.
+ */
+const SWEEP = clientPairs(240);
 
 /** Lists, code as an island of lines, columns of columns (as rescore6-crdt). */
 const semantics = {
@@ -96,7 +103,7 @@ describe('AW-04: a concurrent outdent never leaves a paragraph showing directly 
 					expect(a.ed.unNestBlock('I2').status).toBe('applied');
 					expect(b.ed.mergeBackward('I1').status).toBe('applied');
 				},
-				{ semantics }
+				{ semantics, assignments: SWEEP }
 			)
 		)) {
 			expect(allText(o.ed)).toBe('pabc');
@@ -114,7 +121,7 @@ describe('AW-04: a concurrent outdent never leaves a paragraph showing directly 
 					expect(a.ed.unNestBlock('I2').status).toBe('applied');
 					expect(b.ed.unNestBlock('I1').status).toBe('applied');
 				},
-				{ semantics }
+				{ semantics, assignments: SWEEP }
 			)
 		)) {
 			expect(allText(o.ed)).toBe('pabc');
@@ -136,7 +143,7 @@ describe('AW-04: a concurrent outdent never leaves a paragraph showing directly 
 					expect(a.ed.unNestBlock('I3').status).toBe('applied');
 					expect(b.ed.unNestBlock('I2').status).toBe('applied');
 				},
-				{ semantics }
+				{ semantics, assignments: SWEEP }
 			)
 		)) {
 			expect(allText(o.ed)).toBe('pabcd');
@@ -156,7 +163,7 @@ describe('AW-04: a concurrent outdent never leaves a paragraph showing directly 
 					expect(a.ed.unNestBlock('I2').status).toBe('applied');
 					expect(b.ed.deleteBlocks(['U']).status).toBe('applied');
 				},
-				{ semantics }
+				{ semantics, assignments: SWEEP }
 			)
 		)) {
 			expect(allText(o.ed)).toBe('pabc');
@@ -173,7 +180,7 @@ describe('AW-04: a concurrent outdent never leaves a paragraph showing directly 
 					expect(a.ed.unNestBlock('I2').status).toBe('applied');
 					expect(b.ed.deleteBlock('U', { keepChildren: false }).status).toBe('applied');
 				},
-				{ semantics }
+				{ semantics, assignments: SWEEP }
 			)
 		))
 			itemsOnly(o.ed);
@@ -424,7 +431,7 @@ describe('DR-crdt-1: Turn into ‖ an outdent — a kind keeps its kind wherever
 							`P:paragraph I1:${kind} U:unordered-list[I2:list-item,I3:list-item]`
 						);
 					},
-					{ semantics }
+					{ semantics, assignments: SWEEP }
 				)
 			)) {
 				expect(allText(o.ed)).toBe('pabc');
@@ -445,7 +452,7 @@ describe('DR-crdt-1: Turn into ‖ an outdent — a kind keeps its kind wherever
 		// Both split U: I1 stays an item; I2 a heading in Ada's new list or at the root; the
 		// list a split leaves empty shows nothing (the next key next to it removes it).
 		const shapes = [
-			'P:paragraph NEW:unordered-list[I1:list-item,I2:heading] I3:paragraph NEW:unordered-list U:unordered-list[I4:list-item]',
+			'P:paragraph NEW:unordered-list NEW:unordered-list[I1:list-item,I2:heading] I3:paragraph U:unordered-list[I4:list-item]',
 			'P:paragraph NEW:unordered-list[I1:list-item] I2:heading NEW:unordered-list I3:paragraph U:unordered-list[I4:list-item]',
 			'P:paragraph NEW:unordered-list NEW:unordered-list[I1:list-item] I2:heading I3:paragraph U:unordered-list[I4:list-item]'
 		];
@@ -457,7 +464,7 @@ describe('DR-crdt-1: Turn into ‖ an outdent — a kind keeps its kind wherever
 					expect(a.ed.unNestBlock('I3').status).toBe('applied');
 					expect(turnInto(b.ed, 'I2', 'heading', { level: 2 }).status).toBe('applied');
 				},
-				{ semantics }
+				{ semantics, assignments: SWEEP }
 			)
 		)) {
 			expect(allText(o.ed)).toBe('pabcd');
@@ -660,7 +667,7 @@ describe('DR-crdt-3: an item stored as a paragraph leaves its list as a paragrap
 					reached = true;
 					expect(a.ed.unNestBlock('I1').status).toBe('applied');
 				},
-				{ semantics }
+				{ semantics, assignments: SWEEP }
 			)
 		))
 			expect([

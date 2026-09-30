@@ -127,7 +127,8 @@ const persistFailure = (
 				seed: schedule.seed,
 				peers: schedule.peers,
 				adapter: ops.name,
-				failure: result.failure,
+				// Stack paths relative to the checkout: a run elsewhere rewrites nothing.
+				failure: result.failure?.split(process.cwd()).join('<repo>'),
 				violations: result.violations,
 				evidence: result.evidence,
 				lostEdits: result.lostEdits,

@@ -2,6 +2,8 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Flow, FlowLine } from '$lib/crdt/flow.js';
 import type { JSONContentPart } from '$lib/block/contentRange.js';
 import {
+	getSelectedBlocksInDocumentOrder,
+	keepsSelectedBlocks,
 	replaceSelectionWithCollapsedTarget,
 	type SelectionInsertionTarget,
 	type SelectionReplacementState
@@ -34,8 +36,9 @@ export const flowOfFragment = (fragment: EdytorClipboardFragment): Flow =>
 			};
 
 /**
- * Place `flow` (`flow.*`) at `at`, over the selected blocks, or over the
- * selection (`selection`, default: the live one) replaced first; then the caret.
+ * Place `flow` (`flow.*`) at `at`, over the selected blocks (unless
+ * `keepsSelectedBlocks`), or over the selection (`selection`, default: the
+ * live one) replaced first; then the caret.
  */
 export const pasteFlow = (
 	edytor: Edytor,
@@ -43,7 +46,9 @@ export const pasteFlow = (
 	{ at, selection }: { at?: SelectionInsertionTarget; selection?: SelectionReplacementState } = {}
 ) => {
 	if (flow.lines.length === 0) return;
-	const replace = at ? [] : [...edytor.selection.selectedBlocks].map((block) => block.id);
+	const selected = at ? [] : getSelectedBlocksInDocumentOrder(edytor);
+	if (selected.length && keepsSelectedBlocks(edytor, selected)) return;
+	const replace = selected.map((block) => block.id);
 	const p = replace.length ? null : (at ?? replaceSelectionWithCollapsedTarget(edytor, selection));
 	const block = p?.text.parent;
 	if (!replace.length && !block) return;

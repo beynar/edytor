@@ -77,6 +77,21 @@
 	const element = $derived(definition && elementOf(definition, cell?.data));
 	/** Registers the block element (O45): one element per block, re-registered when the tag changes. */
 	const register = (node: HTMLElement) => block.handle.attach(node);
+	/** The block element's attributes: the kind's, then the core's. */
+	const attributes = $derived(
+		element && {
+			...element.attributes,
+			'data-edytor-block': 'true',
+			'data-edytor-id': id,
+			'data-edytor-type': cell?.type,
+			'data-edytor-void': definition?.void ? 'true' : undefined,
+			'data-edytor-selected': edytor.selection.selectedBlocks.has(block.handle)
+				? 'true'
+				: undefined,
+			'data-edytor-focused': edytor.selection.focusedBlocks.has(block.handle) ? 'true' : undefined,
+			contenteditable: definition?.void ? ('false' as const) : undefined
+		}
+	);
 
 	// The kind `content()` last rendered under — read after each render.
 	let contentRenderedFor: string | undefined;
@@ -100,36 +115,33 @@
 -->{/each}<!--
 -->{/snippet}<!--
 -->{#if cell && definition && element}<!--
+	A void tag (a divider's `hr`) takes no body: the element alone.
+-->{#if VOID_TAGS.has(element.tag)}<!--
 --><svelte:element
-		this={element.tag}
-		{...element.attributes}
-		data-edytor-block="true"
-		data-edytor-id={id}
-		data-edytor-type={cell.type}
-		data-edytor-void={definition.void ? 'true' : undefined}
-		data-edytor-selected={edytor.selection.selectedBlocks.has(edytor.idToBlock.block(id))
-			? 'true'
-			: undefined}
-		data-edytor-focused={edytor.selection.focusedBlocks.has(edytor.idToBlock.block(id))
-			? 'true'
-			: undefined}
-		contenteditable={definition.void ? 'false' : undefined}
-		style:user-select={definition.void ? 'none' : undefined}
-		use:register
-		><!--
-	-->{#if definition.snippet && !VOID_TAGS.has(element.tag)}<!--
-	-->{@render definition.snippet(
-				{
+			this={element.tag}
+			{...attributes}
+			style:user-select={definition.void ? 'none' : undefined}
+			use:register
+		/><!--
+-->{:else}<!--
+--><svelte:element
+			this={element.tag}
+			{...attributes}
+			style:user-select={definition.void ? 'none' : undefined}
+			use:register
+			><!--
+		-->{#if definition.snippet}<!--
+		-->{@render definition.snippet({
 					block,
 					content,
 					children: cell.childIds.length ? children : null
-				}
-			)}<!--
-	-->{:else if definition === UNKNOWN_KIND}<!--
-		A kind this view does not register: a plain block, its text and children.
-	-->{@render content()}{@render children()}<!--
-	-->{/if}<!--
---></svelte:element
-	><!--
+				})}<!--
+		-->{:else if definition === UNKNOWN_KIND}<!--
+			A kind this view does not register: a plain block, its text and children.
+		-->{@render content()}{@render children()}<!--
+		-->{/if}<!--
+	--></svelte:element
+		><!--
+-->{/if}<!--
 -->{/if}<!--
 -->

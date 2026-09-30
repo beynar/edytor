@@ -9,7 +9,7 @@
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
-import { allText, converge, tree } from './p1-harness.js';
+import { allText, clientPairs, converge, tree } from './p1-harness.js';
 
 const semantics = {
 	roles: { divider: { void: true } },
@@ -128,15 +128,33 @@ describe('liftOut: a kind lands where it fits, every list around it split once (
 });
 
 describe('liftOut under concurrency (AW-03)', () => {
-	const ops = {
-		'an item added after b': (ed) =>
-			ed.insertBlock({ parent: 'U2', index: 1 }, { id: 'N', type: 'list-item' }),
-		'x deleted': (ed) => ed.deleteBlock('x'),
-		'b outdented': (ed) => ed.unNestBlock('b'),
-		'd typed into': (ed) => ed.insertText('d', 1, '!')
+	/**
+	 * The peer's op and the text every outcome reads (hand-authored): in
+	 * order, but for the pinned residuals (`docs/editor-delete-contract.md`,
+	 * CW-01) — `bobWins`: what it reads when Bob's client id wins.
+	 */
+	const ops: Record<string, [(ed) => { status: string }, string, string?]> = {
+		// Residual: an item added among the items before the lifted one stays in
+		// the list the split keeps, after it.
+		'an item added after b': [
+			(ed) =>
+				ed.insertBlock(
+					{ parent: 'U2', index: 1 },
+					{ id: 'N', type: 'list-item', content: [{ kind: 'text', text: 'n' }] }
+				),
+			'bcnxd'
+		],
+		'x deleted': [(ed) => ed.deleteBlock('x'), 'bcd'],
+		// Residual (R1): when Bob's move of b into U wins over the split's, b stays
+		// in U, after the lifted c.
+		'b outdented': [(ed) => ed.unNestBlock('b'), 'bcxd', 'cbxd'],
+		'b turned into a heading': [(ed) => turnInto(ed, 'b', 'heading'), 'bcxd'],
+		'x turned into a heading': [(ed) => turnInto(ed, 'x', 'heading'), 'bcxd'],
+		'd typed into': [(ed) => ed.insertText('d', 1, '!'), 'bcxd!']
 	};
-	for (const [name, op] of Object.entries(ops))
-		it(`c turned into a heading ‖ ${name}: converges, well-formed, no text lost`, () => {
+	// 240 client-id assignments (CW-01): the text order held on the fixed three by luck of the ids.
+	for (const [name, [op, text, bobWins = text]] of Object.entries(ops))
+		it(`c turned into a heading ‖ ${name}: converges, well-formed, the text in order`, () => {
 			for (const o of one(
 				converge(
 					nested(),
@@ -145,11 +163,12 @@ describe('liftOut under concurrency (AW-03)', () => {
 						expect(turnInto(a.ed, 'c', 'heading').status).toBe('applied');
 						expect(op(b.ed).status).toBe('applied');
 					},
-					{ semantics }
+					{ semantics, assignments: clientPairs(240) }
 				)
 			)) {
 				expect(typed(o.ed)).toMatch(/(^| )c:heading( |$)/);
-				for (const text of ['b', 'c', 'd']) expect(allText(o.ed)).toContain(text);
+				const [ada, bob] = o.reps.map((r) => r.doc.clientID);
+				expect(allText(o.ed)).toBe(bob > ada ? bobWins : text);
 			}
 		});
 });

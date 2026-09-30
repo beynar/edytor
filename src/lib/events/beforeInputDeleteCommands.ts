@@ -3,7 +3,7 @@ import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
 import { prepareDeleteContent } from '$lib/edytor.utils.js';
-import { deleteSelectedRange } from '$lib/selection/replaceSelection.js';
+import { deleteSelectedBlocks, deleteSelectedRange } from '$lib/selection/replaceSelection.js';
 import { shown } from '$lib/selection/visibility.js';
 import { caretAt, type Attempt } from '$lib/session/attempt.js';
 import { getNextWordEndOffset, getPreviousWordStartOffset } from './wordBoundary.js';
@@ -239,6 +239,13 @@ export const runBeforeInputDeleteCommand = (edytor: Edytor, snapshot: Attempt) =
 	edytor.projector.deleted(snapshot);
 	const { inputType } = snapshot;
 	const forward = /Forward$|^deleteContent$|^deleteEntireSoftLine$/.test(inputType);
+	// A block selection: every delete key (a word or line chord too) deletes
+	// the blocks as Backspace does — `onDeleteSelectedBlocks` first, children
+	// promoted (a drag or composition fragment is not a key).
+	if (edytor.selection.selectedBlocks.size && !/^delete(ByDrag|ByComposition)$/.test(inputType)) {
+		deleteSelectedBlocks(edytor);
+		return;
+	}
 	// A selection: the document's range deletion (a forward one needs its text).
 	if (!snapshot.isCollapsed) {
 		if (!forward || snapshot.startText) deleteSelectedRange(edytor, { selection: snapshot });

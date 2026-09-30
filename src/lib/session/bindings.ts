@@ -202,6 +202,22 @@ const kill =
 	};
 
 /**
+ * A word or line delete chord (Alt, Mod or Ctrl with Backspace/Delete) over an
+ * editor-owned selection deletes it as Backspace does; over text it stays the
+ * browser's word or line delete. Firefox and WebKit announce no `beforeinput`
+ * without a DOM range, so the chord is claimed at its keydown. Shift+Delete
+ * is not one (the Windows cut).
+ */
+const wordAndLineDeletes: Record<string, HotKey> = Object.fromEntries(
+	['alt', 'mod', 'ctrl'].flatMap((modifier) =>
+		['backspace', 'delete'].map((key): [string, HotKey] => [
+			`${modifier}+${key}`,
+			(payload) => (ownsDeleteSelection(payload.edytor) ? deleteSelection(payload) : undefined)
+		])
+	)
+);
+
+/**
  * macOS Emacs/Cocoa text bindings. Bare `ctrl+` chords only resolve on
  * Apple platforms (the keymap folds Ctrl into `mod` elsewhere), so the table
  * is platform-gated by the chord encoding; its motions (ctrl+a/e/b/f) are
@@ -294,5 +310,6 @@ export const builtInBindings: Record<string, HotKey> = {
 	},
 	backspace: deleteSelection,
 	delete: deleteSelection,
+	...wordAndLineDeletes,
 	...emacs
 };

@@ -48,6 +48,8 @@ export type FlowContext = RangeDeleteContext & {
 	isVoid: (id: BlockId) => boolean;
 	tailOf: (id: BlockId) => SplitTail;
 	ranksFor: (parent: BlockId | null, index: number, count: number) => string[];
+	/** Ranks for the `count` blocks a split of `id` at `at` puts after it, by that offset. */
+	pieceRanks: (id: BlockId, at: number, count: number) => string[];
 	redata: (id: BlockId, data: Record<string, unknown>) => PlanStep[];
 	deleteBlocks: (ids: readonly BlockId[]) => Prepared;
 	insertBlocks: (dest: Destination, specs: readonly BlockSpec[]) => Prepared;
@@ -130,7 +132,8 @@ export const flowOps = (c: FlowContext) => ({
 		if (lines.length === 1) return { ...c.plan([B], writes), at: { block: B, offset: head } };
 
 		const middle = specs(parent).slice(1, -1);
-		const ranks = c.ranksFor(parent, index + 1, middle.length + 1);
+		// By the offset the paste splits `B` at (SW12-crdt-4), as Enter's split.
+		const ranks = c.pieceRanks(B, o, middle.length + 1);
 		const lastType = last().type && fit(parent, last().type);
 		const tail = lastType ? { type: lastType, data: last().data } : c.tailOf(B);
 		const rank = ranks.pop()!;

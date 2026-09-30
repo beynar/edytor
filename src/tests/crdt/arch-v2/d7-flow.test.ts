@@ -348,6 +348,251 @@ describe('flow.slot — over selected blocks', () => {
 	});
 });
 
+describe('flow.lines + flow.slot — over selected lines of a code block (HX-06)', () => {
+	const code = () =>
+		createDocument({
+			value: {
+				children: [
+					b(
+						'c',
+						'',
+						[b('c1', 'x', undefined, 'codeLine'), b('c2', 'y', undefined, 'codeLine')],
+						'code'
+					),
+					b('z', 'after')
+				]
+			},
+			semantics: {
+				roles: { code: { island: true, lines: true }, divider: { void: true } },
+				rendersContent: { code: false, divider: false, 'unordered-list': false },
+				defaultChild: { code: 'codeLine', 'unordered-list': 'list-item' }
+			}
+		}).facade;
+	const list = {
+		id: 'u',
+		type: 'unordered-list',
+		content: [],
+		children: [line('one', 'one', 'list-item')]
+	};
+
+	row('the lines are plain code lines in the slot; no block lands in or after the island', () => {
+		const f = code();
+		const { result, at } = place(
+			f,
+			{ replace: ['c1'] },
+			{ whole: true, lines: [list, line('h', 'H', 'heading')] }
+		);
+		expect(result.status).toBe('applied');
+		expect(tree(f)).toEqual([
+			[
+				'c',
+				'code',
+				'',
+				[
+					['one', 'codeLine', 'one'],
+					['h', 'codeLine', 'H'],
+					['c2', 'codeLine', 'y']
+				]
+			],
+			P('z', 'after')
+		]);
+		expect(at).toEqual({ block: 'h', offset: 1 });
+	});
+
+	row('a flow that shows no line leaves one empty code line in the slot', () => {
+		const f = code();
+		const { result, at } = place(f, { replace: ['c1'] }, { lines: [line('d', '', 'divider')] });
+		expect(result.status).toBe('applied');
+		expect(tree(f)).toEqual([
+			[
+				'c',
+				'code',
+				'',
+				[
+					['d', 'codeLine', ''],
+					['c2', 'codeLine', 'y']
+				]
+			],
+			P('z', 'after')
+		]);
+		expect(at).toEqual({ block: 'd', offset: 0 });
+	});
+});
+
+describe('flow.header — at the end of a container header whose body shows (HX-10)', () => {
+	/** A callout `h` with a body, as the editor shows it (`view.header`: Enter opens a first child). */
+	const callout = (text = 'hello') =>
+		createDocument({
+			value: {
+				children: [b('h', text, [b('c1', 'body')], 'callout', { icon: 'i' }), b('z', 'after')]
+			},
+			semantics: {
+				roles: { code: { island: true, lines: true }, divider: { void: true } },
+				rendersContent: { code: false, divider: false, 'unordered-list': false },
+				defaultChild: { code: 'codeLine', 'unordered-list': 'list-item' }
+			}
+		}).facade;
+	const header = { header: (id: string) => id === 'h' };
+	const put = (f, offset: number, lines, view = header) => {
+		const plan = f.prepare.insertFlow({ block: 'h', offset }, { lines }, view);
+		return { result: f.apply(plan), at: plan.at };
+	};
+	const fresh = expect.any(String);
+	const code = { id: 'k', type: 'code', content: [], children: [line('k1', 'let a', 'codeLine')] };
+
+	row('a divider leads the body; a fresh first line takes the caret; the body stays', () => {
+		const f = callout();
+		const { result, at } = put(f, 5, [line('d', '', 'divider')]);
+		expect(result.status).toBe('applied');
+		expect(tree(f)).toEqual([
+			['h', 'callout', 'hello', [['d', 'divider', ''], [fresh, 'paragraph', ''], P('c1', 'body')]],
+			P('z', 'after')
+		]);
+		expect(at).toEqual({ block: tree(f)[0][3][1][0], offset: 0 });
+	});
+
+	row('a code block leads the body; the caret ends its last line', () => {
+		const f = callout();
+		const { at } = put(f, 5, [code]);
+		expect(tree(f)).toEqual([
+			[
+				'h',
+				'callout',
+				'hello',
+				[['k', 'code', '', [['k1', 'codeLine', 'let a']]], P('c1', 'body')]
+			],
+			P('z', 'after')
+		]);
+		expect(at).toEqual({ block: 'k1', offset: 5 });
+	});
+
+	row('x, a divider: x joins the header, the divider leads the body', () => {
+		const f = callout();
+		put(f, 5, [line('x', 'x'), line('d', '', 'divider')]);
+		expect(tree(f)).toEqual([
+			['h', 'callout', 'hellox', [['d', 'divider', ''], [fresh, 'paragraph', ''], P('c1', 'body')]],
+			P('z', 'after')
+		]);
+	});
+
+	row('a divider, x: x is the first line after it, before the body', () => {
+		const f = callout();
+		const { at } = put(f, 5, [line('d', '', 'divider'), line('x', 'x')]);
+		expect(tree(f)).toEqual([
+			['h', 'callout', 'hello', [['d', 'divider', ''], P('x', 'x'), P('c1', 'body')]],
+			P('z', 'after')
+		]);
+		expect(at).toEqual({ block: 'x', offset: 1 });
+	});
+
+	row("a divider, a run: the run's line is the header's default child, not a callout", () => {
+		const f = callout();
+		put(f, 5, [line('d', '', 'divider'), run('x', 'x')]);
+		expect(tree(f)).toEqual([
+			['h', 'callout', 'hello', [['d', 'divider', ''], P('x', 'x'), P('c1', 'body')]],
+			P('z', 'after')
+		]);
+	});
+
+	row('several joining lines: the last one leads the body, as Enter opens a first child', () => {
+		const f = callout();
+		const { at } = put(f, 5, [line('a', 'a'), line('y', 'y')]);
+		expect(tree(f)).toEqual([
+			['h', 'callout', 'helloa', [P('y', 'y'), P('c1', 'body')]],
+			P('z', 'after')
+		]);
+		expect(at).toEqual({ block: 'y', offset: 1 });
+	});
+
+	row("a joining first line's children come first, then the placed lines, then the body", () => {
+		const f = callout();
+		put(f, 5, [
+			line('a', 'a', 'paragraph', { children: [line('n', 'n')] }),
+			line('d', '', 'divider')
+		]);
+		expect(tree(f)).toEqual([
+			[
+				'h',
+				'callout',
+				'helloa',
+				[P('n', 'n'), ['d', 'divider', ''], [fresh, 'paragraph', ''], P('c1', 'body')]
+			],
+			P('z', 'after')
+		]);
+	});
+
+	row('an empty header: the divider leads the body too (Enter opens a first child)', () => {
+		const f = callout('');
+		put(f, 0, [line('d', '', 'divider')]);
+		expect(tree(f)).toEqual([
+			['h', 'callout', '', [['d', 'divider', ''], [fresh, 'paragraph', ''], P('c1', 'body')]],
+			P('z', 'after')
+		]);
+	});
+
+	// DR-rest-1: an empty header keeps its container kind and data; a typed first
+	// line gives it its text only, so the body stays under the callout, as Enter.
+	const h2 = (id: string, text: string) => line(id, text, 'heading', { data: { level: 'h2' } });
+	const kept = (f) => {
+		const [h] = f.toJSON().children;
+		expect([h.type, h.data]).toEqual(['callout', { icon: 'i' }]);
+	};
+
+	row(
+		'an empty header, a heading then a divider: the header keeps its kind and takes the text',
+		() => {
+			const f = callout('');
+			put(f, 0, [h2('x', 'H'), line('d', '', 'divider')]);
+			expect(tree(f)).toEqual([
+				['h', 'callout', 'H', [['d', 'divider', ''], [fresh, 'paragraph', ''], P('c1', 'body')]],
+				P('z', 'after')
+			]);
+			kept(f);
+		}
+	);
+
+	row('an empty header, a heading then x: x leads the body; the header keeps its kind', () => {
+		const f = callout('');
+		const { at } = put(f, 0, [h2('x', 'H'), line('y', 'y')]);
+		expect(tree(f)).toEqual([
+			['h', 'callout', 'H', [P('y', 'y'), P('c1', 'body')]],
+			P('z', 'after')
+		]);
+		kept(f);
+		expect(at).toEqual({ block: 'y', offset: 1 });
+	});
+
+	row('an empty header, one heading: the header takes its text only', () => {
+		const f = callout('');
+		const { at } = put(f, 0, [h2('x', 'H')]);
+		expect(tree(f)).toEqual([['h', 'callout', 'H', [P('c1', 'body')]], P('z', 'after')]);
+		kept(f);
+		expect(at).toEqual({ block: 'h', offset: 1 });
+	});
+
+	row('mid-header, the text after the caret still takes the body (`flow.split`)', () => {
+		const f = callout();
+		put(f, 3, [line('d', '', 'divider')]);
+		expect(tree(f)).toEqual([
+			['h', 'callout', 'hel'],
+			['d', 'divider', ''],
+			[fresh, 'callout', 'lo', [P('c1', 'body')]],
+			P('z', 'after')
+		]);
+	});
+
+	row('headless (no `view.header`): the body moves to a new line of its kind', () => {
+		const f = callout();
+		put(f, 5, [line('d', '', 'divider')], {});
+		expect(tree(f)).toEqual([
+			['h', 'callout', 'hello'],
+			['d', 'divider', ''],
+			[fresh, 'callout', '', [P('c1', 'body')]],
+			P('z', 'after')
+		]);
+	});
+});
+
 describe('flow.void — a block that cannot split takes one run', () => {
 	row('lines into a void caption join with line breaks; children are not placed', () => {
 		const f = make([b('img', 'cap', undefined, 'img'), b('z', 'after')]);

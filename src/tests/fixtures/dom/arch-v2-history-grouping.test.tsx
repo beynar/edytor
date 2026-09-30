@@ -222,7 +222,8 @@ const actions: [string, (edytor: Edytor, editor: HTMLElement) => Promise<void>, 
 		async () => {
 			await press(document.querySelector('[data-testid="block-add"]')!);
 		},
-		[typed, { type: 'paragraph', text: '/' }, next]
+		// No slash menu: the `+` adds the empty block at once.
+		[typed, { type: 'paragraph', text: '' }, next]
 	],
 	[
 		'Remove (block menu)',
@@ -272,7 +273,7 @@ const typeAll = async (editor: HTMLElement, value: string) => {
 
 describe('`+` on an empty paragraph after typing is its own step (NW-06)', () => {
 	for (const ms of [0, 900]) {
-		it(`H-G5: + on the empty paragraph takes the \`/\` as its own step (${ms} ms later)`, async () => {
+		it(`H-G5: + then a picked kind converts the empty paragraph as its own step (${ms} ms later)`, async () => {
 			const { edytor, editor } = await renderDomEdytor(
 				<root>
 					<paragraph>hello| world</paragraph>
@@ -284,8 +285,14 @@ describe('`+` on an empty paragraph after typing is its own step (NW-06)', () =>
 			await type(editor, 'a');
 			pause(edytor, ms);
 			await press(document.querySelectorAll('[data-testid="block-add"]')[1]!);
-			expect(blocks(edytor)).toEqual([typed, { type: 'paragraph', text: '/' }]);
-			expect(document.querySelector('[data-testid="slash-menu"]')).not.toBeNull();
+			// Nothing is added until a row is picked.
+			expect(blocks(edytor)).toEqual([typed, { type: 'paragraph', text: '' }]);
+			expect(edytor.undoManager.undoStack.length).toBe(1);
+			const row = [...document.querySelectorAll('[data-testid="slash-menu-item"]')].find(
+				(item) => item.textContent === 'Heading 1'
+			)!;
+			await press(row);
+			expect(blocks(edytor)).toEqual([typed, { type: 'heading', data: { level: 'h1' }, text: '' }]);
 			expect(edytor.undoManager.undoStack.length).toBe(2);
 			edytor.historyUndo();
 			await flushDomUpdates();

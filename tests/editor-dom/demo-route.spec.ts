@@ -280,7 +280,8 @@ test.describe('demo route editing regressions', () => {
 		await createTextInEndBlock(page, 'One');
 		await page.keyboard.press('Enter');
 		await page.keyboard.press(`${modKey}+Z`);
-		// Notion's `+`: a block below, opened on the slash menu (drop its `/`).
+		// The `+` opens the slash menu and adds nothing until a row is picked:
+		// Enter picks the first (Text), a paragraph below with the caret.
 		await page.locator('[data-edytor-id="page-end"]').hover();
 		await page
 			.locator(
@@ -288,7 +289,11 @@ test.describe('demo route editing regressions', () => {
 			)
 			.click();
 		await expect(page.getByTestId('slash-menu')).toBeVisible();
-		await page.keyboard.press('Backspace');
+		await expect(page.locator('[data-edytor] > [data-edytor-block="true"]').last()).toHaveAttribute(
+			'data-edytor-id',
+			'page-end'
+		);
+		await page.keyboard.press('Enter');
 		await expect
 			.poll(() =>
 				page.evaluate(() => {
@@ -306,6 +311,28 @@ test.describe('demo route editing regressions', () => {
 				.last()
 				.locator('[data-edytor-text="true"]')
 		).toHaveText('After history');
+		issues.assertClean();
+	});
+
+	test('the + menu closed with Escape adds nothing and keeps the caret', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await page.goto('/');
+		await waitForEditorReady(page);
+		await createTextInEndBlock(page, 'One');
+		const count = await page.locator('[data-edytor] > [data-edytor-block="true"]').count();
+		await page.locator('[data-edytor-id="page-end"]').hover();
+		await page
+			.locator(
+				'[data-edytor-block-handle-host][data-block-id="page-end"] [data-testid="block-add"]'
+			)
+			.click();
+		await expect(page.getByTestId('slash-menu').locator('input')).toBeFocused();
+		await page.keyboard.type('head');
+		await page.keyboard.press('Escape');
+		await expect(page.getByTestId('slash-menu')).toHaveCount(0);
+		await expect(page.locator('[data-edytor] > [data-edytor-block="true"]')).toHaveCount(count);
+		await page.keyboard.type(' two');
+		await expect(textInBlock(page, 'page-end')).toHaveText('One two');
 		issues.assertClean();
 	});
 });

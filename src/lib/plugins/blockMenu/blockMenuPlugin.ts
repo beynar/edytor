@@ -1,6 +1,7 @@
 import type { Plugin } from '$lib/plugins.js';
 import {
 	BLOCK_ACTIVATE_EVENT,
+	BLOCK_ADD_EVENT,
 	type BlockActivation
 } from '../blockHandles/BlockHandleController.svelte.js';
 import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
@@ -77,7 +78,10 @@ export const createBlockMenuPlugin =
 					)
 						controller.close(false);
 				};
+				// A `+` opens its own menu: this one closes.
+				const add = () => controller.close(false);
 				node.addEventListener(BLOCK_ACTIVATE_EVENT, activate);
+				node.addEventListener(BLOCK_ADD_EVENT, add);
 				node.ownerDocument.addEventListener('pointerdown', outside, true);
 				const unmount = edytor.overlay.mount(
 					BlockMenu,
@@ -88,6 +92,7 @@ export const createBlockMenuPlugin =
 				);
 				return () => {
 					node.removeEventListener(BLOCK_ACTIVATE_EVENT, activate);
+					node.removeEventListener(BLOCK_ADD_EVENT, add);
 					node.ownerDocument.removeEventListener('pointerdown', outside, true);
 					unmount();
 				};

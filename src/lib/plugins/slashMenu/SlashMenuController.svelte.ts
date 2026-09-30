@@ -3,7 +3,9 @@ import type { Text } from '$lib/text/text.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { EditorCommand } from '$lib/plugins.js';
 import type { TextAnchor } from '$lib/selection/selection.svelte.js';
+import { project, type SelectionValue } from '$lib/session/selection.js';
 import { matchesQuery } from '$lib/kinds.js';
+import type { BlockAddition } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 
 /** The trigger `/` and the query's end, held as anchors so peers' edits move them (L52). */
 type ActiveSlashRange = { trigger: TextAnchor; end: TextAnchor };
@@ -22,6 +24,13 @@ export class SlashMenuController {
 	isOpen = $state(false);
 	query = $state('');
 	selectedIndex = $state(0);
+	/**
+	 * Opened by a handle's `+` (`BLOCK_ADD_EVENT`): no `/` in the text, the
+	 * query is the menu's own field, and a picked row adds the block first.
+	 */
+	addition = $state<BlockAddition | null>(null);
+	/** The selection when a `+` opened the menu, given back when it closes unpicked. */
+	private held: SelectionValue = { kind: 'none' };
 	private activeRange: ActiveSlashRange | null = null;
 	private isExecutingCommand = false;
 
@@ -35,7 +44,10 @@ export class SlashMenuController {
 	/** Matching commands, grouped (groups in first-seen order): the menu's rows and keyboard order. */
 	get commands() {
 		const matching = Array.from(this.edytor.commands.values()).filter(
-			(command) => command.isEnabled?.(this.edytor) !== false && matchesQuery(command, this.query)
+			// The block a `+` adds is an empty one of the default kind: every row applies.
+			(command) =>
+				(this.addition || command.isEnabled?.(this.edytor) !== false) &&
+				matchesQuery(command, this.query)
 		);
 		// Groups in first-seen order, Notion's "Basic blocks" first.
 		const groups = [...new Set(matching.map((command) => command.group ?? ''))].sort(
@@ -94,6 +106,36 @@ export class SlashMenuController {
 		this.query = '';
 		this.selectedIndex = 0;
 		this.activeRange = null;
+		this.addition = null;
+	}
+
+	/** Open for a `+`: nothing is added until a row is picked. */
+	offer(addition: BlockAddition) {
+		this.close();
+		[this.addition, this.isOpen] = [addition, true];
+		this.held = this.edytor.selection.value;
+	}
+
+	/** The `+`'s menu typed in its own field (a query that matches nothing shows "No results"). */
+	search(query: string) {
+		[this.query, this.selectedIndex] = [query, 0];
+	}
+
+	/**
+	 * Close without picking. A `+`'s menu gives the selection back as it was
+	 * and, with `focus` (Escape, the footer), the editor its focus; a press
+	 * outside, focus moving away or readonly leave the focus where it went.
+	 */
+	dismiss(focus = true) {
+		const { addition, held } = this;
+		this.close();
+		if (!addition) return;
+		// A held place a delete removed (a peer's) gives way to the repaired selection.
+		if (held.kind === 'none' || project(held, this.edytor.facade).start)
+			this.edytor.selection.select(held);
+		if (!focus || this.edytor.readonly) return;
+		this.edytor.expectInternalFocus();
+		this.edytor.node?.focus({ preventScroll: true });
 	}
 
 	runSelected() {
@@ -101,7 +143,14 @@ export class SlashMenuController {
 	}
 
 	async run(command: EditorCommand | undefined) {
-		const range = this.range;
+		const { addition, range } = this;
+		if (addition && command) {
+			this.close();
+			// Disabled once the block is added: the addition is taken back.
+			const then = () =>
+				command.isEnabled?.(this.edytor) !== false && this.edytor.runCommand(command.id);
+			return (await addition.insert(then)) === true;
+		}
 		if (!range || !command) return false;
 		this.isExecutingCommand = true;
 		try {

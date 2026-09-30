@@ -278,7 +278,8 @@ describe('Sweep: one emptiness rule, inline atoms count (SW11-kinds-1..3)', () =
 	it('+ beside a paragraph holding a mention adds a block below it (SW11-kinds-3)', async () => {
 		const view = await render([], [atom('paragraph', 'a'), p('c')]);
 		await press(document.querySelector('[data-testid="block-add"]')!);
-		expect(shape(view)).toEqual(['paragraph "@"', 'paragraph "/"', 'paragraph "c"']);
+		// No slash menu here: the `+` adds the empty block at once.
+		expect(shape(view)).toEqual(['paragraph "@"', 'paragraph ""', 'paragraph "c"']);
 	});
 });
 

@@ -17,11 +17,17 @@ export const getSelectionReplacementState = (edytor: Edytor): SelectionReplaceme
 	return { startText, endText, yStart, yEnd, isCollapsed };
 };
 
-/** The blocks a block selection acts on, in document order (`selectedMembers`: a list with its items). */
-export const getSelectedBlocksInDocumentOrder = (edytor: Edytor) => selectedMembers(edytor);
+/**
+ * The selected blocks as clicked, in document order: a grip-selected list is
+ * one block. What a command over them acts on (a list with its items) is
+ * `selectedMembers`.
+ */
+export const getSelectedBlocksInDocumentOrder = (edytor: Edytor) =>
+	[...edytor.selection.selectedBlocks].sort(edytor.compareBlocks);
 
 /**
- * The blocks the selection touches, in document order: the selected blocks;
+ * The blocks the selection touches, in document order: a block selection's
+ * members (`selectedMembers`: a selected list with its items);
  * for a text range, every shown block from its start block to its end block
  * (Notion: a collapsed toggle's hidden body is not touched, an open
  * toggle's children are) but a container it starts or ends in — a list
@@ -32,7 +38,7 @@ export const getSelectedBlocksInDocumentOrder = (edytor: Edytor) => selectedMemb
  */
 export const getSelectionBlocks = (edytor: Edytor): Block[] => {
 	const { selectedBlocks, state } = edytor.selection;
-	if (selectedBlocks.size) return getSelectedBlocksInDocumentOrder(edytor);
+	if (selectedBlocks.size) return selectedMembers(edytor);
 	if (state.isCollapsed) return state.startBlock ? [state.startBlock] : [];
 	const edges = [state.startBlock, state.endBlock];
 	const enters = (block: Block) =>
@@ -124,33 +130,30 @@ export const replaceSelectionWithCollapsedTarget = (
 	return text ? { text, offset: offset! } : null;
 };
 
-/** The texts of `block`'s own line (a container's phantom content slot never mounts). */
-export const lineOf = (block: Block): Text[] =>
-	block.content.filter((part): part is Text => part instanceof Text && part.node != null);
-
-/** The first or last text shown in `block`'s subtree, in document order (a closed toggle's hidden body passed over). */
-const subtreeText = (block: Block, edge: 'first' | 'last'): Text | undefined => {
+/**
+ * The first or last text `block` shows: its own line's (a block selection is
+ * exactly its members, never their unselected children), else, for a block
+ * with no line of its own (a list, a code block), its subtree's first or
+ * last shown line, nested items included (`whole`: the subtree's, in
+ * document order); none for a void that shows nothing (a divider) or a
+ * closed toggle's hidden body. A line created in the same change counts (it
+ * is displayed once it mounts), as for `caretBeside`. Ranges over blocks
+ * (`setAtBlockRange`, leaving a block selection), the block-selection keys
+ * and Escape read it.
+ */
+export const shownText = (
+	block: Block,
+	edge: 'first' | 'last',
+	whole = false
+): Text | undefined => {
 	if (hidden(block)) return undefined;
-	const line = lineOf(block);
-	if (edge === 'first' && line[0]) return line[0];
+	const own = edge === 'first' ? block.firstText : block.lastText;
+	if (own && (edge === 'first' || !whole)) return own;
 	for (const child of edge === 'first' ? block.children : block.children.toReversed()) {
-		const text = subtreeText(child, edge);
+		const text = shownText(child, edge, true);
 		if (text) return text;
 	}
-	return line.at(-1);
-};
-
-/**
- * The first or last text a selected `block` shows: its own line's (a block
- * selection is exactly its members, never their unselected children), else,
- * for a block with no line (a list container, a code block), its subtree's
- * first or last shown line; none for a void (a divider) or a closed
- * toggle's hidden body.
- */
-export const shownText = (block: Block, edge: 'first' | 'last'): Text | undefined => {
-	if (hidden(block)) return undefined;
-	const line = lineOf(block);
-	return (edge === 'first' ? line[0] : line.at(-1)) ?? subtreeText(block, edge);
+	return own;
 };
 
 /**
@@ -240,7 +243,8 @@ export const keepsSelectedBlocks = (edytor: Edytor, blocks: Block[]) => {
 };
 
 /**
- * Delete (or cut) the selected blocks (or `blocks`, the block menu's): the
+ * Delete (or cut) the selected blocks' members (or `blocks`, the block
+ * menu's): the
  * keyboard's block delete, cut and the block menu's Delete share it
  * (`keepsSelectedBlocks` first). The command authors its result selection
  * (FP-7, R9) by `caretAfterBlockDelete`, declared before the delete, so the
@@ -249,7 +253,7 @@ export const keepsSelectedBlocks = (edytor: Edytor, blocks: Block[]) => {
  */
 export const deleteSelectedBlocks = (
 	edytor: Edytor,
-	blocks: Block[] = getSelectedBlocksInDocumentOrder(edytor)
+	blocks: Block[] = selectedMembers(edytor)
 ): Text | null => {
 	if (!blocks[0]?.parent || keepsSelectedBlocks(edytor, blocks)) return null;
 	const at = caretAfterBlockDelete(blocks);
@@ -308,7 +312,7 @@ export const deleteSelectedRange = (
  * would let the emptied parent normalize in a survivor beside the new block.
  */
 const replaceSelectedBlocksWithEmptyBlock = (edytor: Edytor): SelectionInsertionTarget | null => {
-	const selected = getSelectedBlocksInDocumentOrder(edytor);
+	const selected = selectedMembers(edytor);
 	const parent = selected[0]?.parent;
 	if (!parent || keepsSelectedBlocks(edytor, selected)) return null;
 	const [text, offset] = edytor.insertFlow({

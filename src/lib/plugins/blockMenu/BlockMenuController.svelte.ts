@@ -13,8 +13,10 @@ import {
 import {
 	deleteSelectedBlocks,
 	getSelectedBlocksInDocumentOrder,
-	outermost
+	outermost,
+	shownText
 } from '$lib/selection/replaceSelection.js';
+import { selectedMembers } from '$lib/selection/visibility.js';
 
 export type BlockMenuOptions = {
 	/** A link to the block, for "Copy link to block" (the row is hidden without it). */
@@ -44,7 +46,9 @@ export class BlockMenuController {
 	block = $state<Block | null>(null);
 	/**
 	 * The blocks the actions apply to, in document order: the block selection
-	 * when it holds `block` (Notion), else `block` alone.
+	 * when it holds `block` (Notion), else `block` alone — as clicked, so a
+	 * grip-selected list is one block (Move, Duplicate, Copy link, the caret
+	 * after). Delete and Turn into act on their `members`, its items too.
 	 */
 	blocks = $state<Block[]>([]);
 	anchor: HTMLElement | null = null;
@@ -68,6 +72,11 @@ export class BlockMenuController {
 		return this.edytor.readonly;
 	}
 
+	/** What Delete and Turn into act on: `blocks`, a list or a code block with its subtree (`selectedMembers`). */
+	get members(): Block[] {
+		return selectedMembers(this.edytor, this.blocks);
+	}
+
 	get kinds(): KindRow[] {
 		return convertibleKinds(this.edytor);
 	}
@@ -89,7 +98,7 @@ export class BlockMenuController {
 				label: 'Turn into',
 				icon: 'action.turn',
 				submenu: true,
-				isEnabled: () => convertedBlocks(blocks).length > 0
+				isEnabled: () => convertedBlocks(this.members).length > 0
 			},
 			...(this.options.linkTo && blocks.length === 1
 				? [
@@ -143,7 +152,7 @@ export class BlockMenuController {
 	 * results), matched as the slash menu matches them (`matchesQuery`).
 	 */
 	get matchingKinds(): KindRow[] {
-		if (!this.query.trim() || !convertedBlocks(this.blocks).length) return [];
+		if (!this.query.trim() || !convertedBlocks(this.members).length) return [];
 		return this.kinds.filter((kind) => matchesQuery(kind, this.query));
 	}
 
@@ -179,15 +188,15 @@ export class BlockMenuController {
 	}
 
 	/**
-	 * Convert the open block, or every block of the selection as one undo
+	 * Convert the open block, or every member (a list's items) as one undo
 	 * step (they stay selected); one block's conversion places the caret
 	 * (refused: the caret returns).
 	 */
 	turnInto(kind: KindRow) {
-		const { block, blocks } = this;
+		const { block, members } = this;
 		this.close(false);
-		if (blocks.length > 1) {
-			convertBlocks(this.edytor, blocks, kind);
+		if (members.length > 1) {
+			convertBlocks(this.edytor, members, kind);
 			this.focus();
 		} else if (convertToKind(this.edytor, block, kind, true)) this.focus();
 		else this.caret(block);
@@ -213,8 +222,9 @@ export class BlockMenuController {
 	}
 
 	/**
-	 * Delete the open blocks as the keyboard's block delete does
-	 * (`deleteSelectedBlocks`): `onDeleteSelectedBlocks` may keep them, then
+	 * Delete the open blocks' `members` (a list with its items) as the
+	 * keyboard's block delete does (`deleteSelectedBlocks`):
+	 * `onDeleteSelectedBlocks` may keep them, then
 	 * one command (`deleteBlocks`, one plan, so a veto keeps them all),
 	 * unselected children taking their parent's place, the caret where that
 	 * delete puts it (kept or refused: the caret or the selection returns).
@@ -222,7 +232,7 @@ export class BlockMenuController {
 	remove() {
 		const { blocks } = this;
 		if (!blocks.length) return;
-		deleteSelectedBlocks(this.edytor, blocks);
+		deleteSelectedBlocks(this.edytor, this.members);
 		this.close(false);
 		if (blocks.some((block) => block.isInTree)) return this.restore(blocks);
 		this.focus();
@@ -258,13 +268,13 @@ export class BlockMenuController {
 	}
 
 	/**
-	 * A caret at the start of `block` (of its first child when its own content
-	 * is not displayed): it replaces the block selection, and the projector
-	 * draws it after the flush. A block holding no text (a divider, an image)
-	 * is selected instead.
+	 * A caret at the start of `block`'s first shown line (`shownText`: a
+	 * list's first item): it replaces the block selection, and the projector
+	 * draws it after the flush. A block holding no text (a divider) is
+	 * selected instead.
 	 */
 	private caret(block: Block | null | undefined) {
-		const text = block?.firstText ?? block?.children[0]?.firstText;
+		const text = block && shownText(block, 'first');
 		if (text || !block?.isInTree) this.edytor.dispatcher.caret(text, 0);
 		else this.edytor.selection.selectBlocks(block);
 		this.focus();

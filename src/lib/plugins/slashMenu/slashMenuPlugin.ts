@@ -2,6 +2,11 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Snippet } from 'svelte';
 import type { EditorCommand, Plugin } from '$lib/plugins.js';
 import type { Text } from '$lib/text/text.svelte.js';
+import {
+	BLOCK_ACTIVATE_EVENT,
+	BLOCK_ADD_EVENT,
+	type BlockAddition
+} from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
 import SlashMenu from './SlashMenu.svelte';
 import { SlashMenuController, type TextInsertionPayload } from './SlashMenuController.svelte.js';
 
@@ -31,15 +36,23 @@ export const createSlashMenuPlugin =
 	(edytor) => {
 		const controller = new SlashMenuController(edytor);
 
-		/** Beside the caret, kept in the viewport; measured in the overlay's frame, written after (R11). */
+		/**
+		 * Beside the caret (below a `+` it was opened from), kept in the
+		 * viewport; measured in the overlay's frame, written after (R11), as
+		 * is the close of a `+` menu whose block is gone.
+		 */
 		const positionMenu = (host: HTMLElement) => {
 			const editor = edytor.node;
 			if (!editor || !controller.isOpen) return;
 			const view = editor.ownerDocument.defaultView;
 			if (!view) return;
 			const selection = editor.ownerDocument.getSelection();
-			let rect: DOMRect | undefined;
-			if (selection?.rangeCount && editor.contains(selection.anchorNode)) {
+			const { addition } = controller;
+			// Its block is gone (a peer's or a command's delete): the `+` menu closes, as the block menu does.
+			if (addition && !addition.block.isInTree) return () => controller.dismiss();
+			const anchor = addition?.anchor?.isConnected ? addition.anchor : addition?.block.node;
+			let rect = anchor?.getBoundingClientRect();
+			if (!rect && selection?.rangeCount && editor.contains(selection.anchorNode)) {
 				const range = selection.getRangeAt(0).cloneRange();
 				range.collapse(false);
 				if (typeof range.getBoundingClientRect === 'function') {
@@ -70,7 +83,7 @@ export const createSlashMenuPlugin =
 						prevent(() => void controller.runSelected());
 				},
 				escape: ({ prevent }) => {
-					if (controller.isOpen) prevent(() => controller.close());
+					if (controller.isOpen) prevent(() => controller.dismiss());
 				}
 			},
 			onAfterOperation: (change) => {
@@ -86,14 +99,40 @@ export const createSlashMenuPlugin =
 				controller.reconcileSelection();
 				edytor.overlay.invalidate();
 			},
-			onEdytorAttached: () =>
-				edytor.overlay.mount(
+			onEdytorAttached: ({ node }) => {
+				// A `+` offers its block: nothing is added until a row is picked.
+				const offer = (event: Event) => {
+					event.preventDefault();
+					controller.offer((event as CustomEvent<BlockAddition>).detail);
+					edytor.overlay.invalidate();
+				};
+				const outside = (event: PointerEvent) => {
+					const target = event.target as Element | null;
+					// The selection as it was; a press in the editor then places its caret.
+					if (controller.addition && !target?.closest?.('[data-edytor-slash-menu-host]'))
+						controller.dismiss(false);
+				};
+				// A grip's menu takes over (one menu at a time).
+				const activate = () => {
+					if (controller.addition) controller.close();
+				};
+				node.addEventListener(BLOCK_ADD_EVENT, offer);
+				node.addEventListener(BLOCK_ACTIVATE_EVENT, activate);
+				node.ownerDocument.addEventListener('pointerdown', outside, true);
+				const unmount = edytor.overlay.mount(
 					SlashMenu,
 					{ controller, menu: options.menu, item: options.item },
 					'edytor-slash-menu-host',
 					50,
 					positionMenu
-				)
+				);
+				return () => {
+					node.removeEventListener(BLOCK_ADD_EVENT, offer);
+					node.removeEventListener(BLOCK_ACTIVATE_EVENT, activate);
+					node.ownerDocument.removeEventListener('pointerdown', outside, true);
+					unmount();
+				};
+			}
 		};
 	};
 

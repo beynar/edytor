@@ -54,7 +54,7 @@ import { seam } from '$lib/crdt/anchors.js';
 import { getTextPath } from '$lib/events/events.utils.js';
 import { landed } from '$lib/session/navigation.js';
 import * as visibility from './visibility.js';
-import { caretBeside, type SelectionInsertionTarget } from './replaceSelection.js';
+import { caretBeside, shownText, type SelectionInsertionTarget } from './replaceSelection.js';
 
 /**
  * CRDT-stable anchor for a text position — `{b}` is the home block id of
@@ -210,33 +210,20 @@ type DocumentWithCaretPoint = Document & {
 };
 
 /**
- * The first or last text of `block`'s own line, else, for a block with no
- * line of its own (a list, a code block), of its subtree's first or last
- * line; none for a void that shows nothing (a divider) or a hidden body.
- */
-const lineEdge = (block: Block, edge: 'first' | 'last'): Text | undefined => {
-	if (visibility.hidden(block)) return undefined;
-	if (block.rendersContent) return edge === 'first' ? block.firstText : block.lastText;
-	for (const child of edge === 'first' ? block.children : block.children.toReversed()) {
-		const text = lineEdge(child, edge);
-		if (text) return text;
-	}
-	return undefined;
-};
-
-/**
  * Where a range over `block` starts (`first`) or ends (`last`): its first or
  * last shown line (a list's items, a code block's lines, GX-03). A block that
  * shows none (a divider) passes to its neighbours as a caret does, the next
  * line first; to `cover` it, a start passes to the line before it and an end
- * to the line after it, so the range still holds it.
+ * to the line after it, so the range still holds it — when a line lies on
+ * that side: a divider with none beyond it (it starts or ends the
+ * document, or only dividers follow to that edge) is left out.
  */
 const rangeEdge = (
 	block: Block,
 	edge: 'first' | 'last',
 	cover = false
 ): SelectionInsertionTarget | null => {
-	const text = lineEdge(block, edge);
+	const text = shownText(block, edge);
 	if (text) return { text, offset: edge === 'first' ? 0 : text.length };
 	const before = cover && edge === 'first';
 	return (
@@ -248,7 +235,16 @@ const rangeEdge = (
 export class EdytorSelection {
 	edytor: Edytor;
 	focusedBlocks = new SvelteSet<Block>();
+	/** The selected blocks as clicked: a grip-selected list is one block. */
 	selectedBlocks = new SvelteSet<Block>();
+	/**
+	 * The blocks a command over the block selection acts on, in document
+	 * order: the selected blocks, a selected list or code block with its
+	 * whole subtree (`sel.blocks.exact`). Delete, cut, copy and Turn into read it.
+	 */
+	get selectedMembers(): Block[] {
+		return visibility.selectedMembers(this.edytor);
+	}
 	selectedInlineBlock = new SvelteSet<InlineBlock>();
 	inlineBlockDeletionTarget: InlineBlock | null = null;
 	/**
@@ -1368,8 +1364,9 @@ export class EdytorSelection {
 	/**
 	 * Select a set of whole blocks. With no block, leave block selection:
 	 * the value becomes the text range the set showed, from its first shown
-	 * line to its last (a list's items; a divider at an edge stays covered),
-	 * and stays as it is when no line is shown anywhere.
+	 * line to its last (a list's items; a divider at an edge stays covered
+	 * unless no line lies beyond it, `rangeEdge`), and stays as it is
+	 * when no line is shown anywhere.
 	 */
 	selectBlocks = (...blocks: Block[]) => {
 		if (blocks.length) {
@@ -1476,7 +1473,7 @@ export class EdytorSelection {
 	 * current value. Displayed after the flush.
 	 */
 	setAtBlockRange = (block?: Block | null, startOffset = 0, endOffset?: number) => {
-		const [first, last] = block ? [lineEdge(block, 'first'), lineEdge(block, 'last')] : [];
+		const [first, last] = block ? [shownText(block, 'first'), shownText(block, 'last')] : [];
 		if (!first || !last) return;
 		const end = endOffset || last.length;
 		if (!startOffset && end === last.length)

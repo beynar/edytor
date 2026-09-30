@@ -3,7 +3,6 @@ import { prevent } from '$lib/utils.js';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { flowOfFragment, pasteFlow } from '$lib/clipboard/insertClipboardFragment.js';
 import { flowOfHtml } from '$lib/clipboard/htmlFlow.js';
-import { Block } from '$lib/block/block.svelte.js';
 import { getDomSelectionSnapshot } from '$lib/selection/domSelection.js';
 import { getYIndex } from '$lib/selection/selection.utils.js';
 import { observeInternalDragSources } from './onDrop.js';
@@ -41,48 +40,18 @@ if (typeof document !== 'undefined') {
 	observeShiftPasteModifier(document);
 }
 
-const isInsideSelectedBlock = (block: Block, selectedBlocks: Set<Block>) => {
-	let current: Block | undefined = block;
-	while (current) {
-		if (selectedBlocks.has(current)) {
-			return true;
-		}
-		current = current.parent instanceof Block ? current.parent : undefined;
-	}
-	return false;
-};
-
+/**
+ * A paste over a block selection lands at a collapsed DOM caret the user put
+ * outside the selected blocks, not over them.
+ */
 const syncCollapsedDomCaretForPaste = (edytor: Edytor) => {
-	if (edytor.selection.selectedBlocks.size === 0) {
-		return;
-	}
-
-	const selection = getDomSelectionSnapshot(edytor.node);
-	const container = edytor.node;
-	if (
-		!selection?.isCollapsed ||
-		!selection.anchorNode ||
-		!selection.focusNode ||
-		!container?.contains(selection.anchorNode) ||
-		!container.contains(selection.focusNode)
-	) {
-		return;
-	}
-
-	const targetText = edytor.selection.getTextOfNode(selection.anchorNode, selection.anchorOffset);
-	if (!targetText) {
-		return;
-	}
-
-	const selectedBlocks = new Set(edytor.selection.selectedBlocks);
-	if (isInsideSelectedBlock(targetText.parent, selectedBlocks)) {
-		return;
-	}
-
-	edytor.selection.setAtTextOffset(
-		targetText,
-		getYIndex(targetText, selection.anchorNode, selection.anchorOffset)
-	);
+	const { selectedBlocks } = edytor.selection;
+	const dom = getDomSelectionSnapshot(edytor.node);
+	const node = dom?.isCollapsed && dom.anchorNode;
+	if (!selectedBlocks.size || !dom || !node || !edytor.node?.contains(node)) return;
+	const text = edytor.selection.getTextOfNode(node, dom.anchorOffset);
+	for (let block = text?.parent; block; block = block.parent) if (selectedBlocks.has(block)) return;
+	if (text) edytor.selection.setAtTextOffset(text, getYIndex(text, node, dom.anchorOffset));
 };
 
 export async function onPaste(this: Edytor, e: ClipboardEvent) {

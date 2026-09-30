@@ -43,7 +43,15 @@ export type Flow = { lines: FlowLine[]; whole?: boolean };
  * What the view tells flow placement beyond range deletion's view: a
  * container's flat item kind (`numbered-list-item` for an `ordered-list`).
  */
-export type FlowView = RangeView & { itemKind?: (parent: BlockId) => string | undefined };
+export type FlowView = RangeView & {
+	itemKind?: (parent: BlockId) => string | undefined;
+	/**
+	 * A container's header whose body shows (an open toggle, a callout or
+	 * quote with nested lines): Enter at its end opens a first child, so what
+	 * a flow places at its end leads its children, which stay (`flow.header`).
+	 */
+	header?: (id: BlockId) => boolean;
+};
 /** A position, or the blocks the flow replaces (`flow.slot`). */
 export type FlowTarget = DocPosition | { replace: readonly BlockId[] };
 
@@ -126,7 +134,14 @@ export const flowOps = (c: FlowContext) => ({
 			const del = c.deleteBlocks(target.replace);
 			if (!('writes' in del)) return del;
 			const first = [...del.ids].sort((a, b) => c.order().at.get(a)! - c.order().at.get(b)!)[0];
-			return first === undefined ? c.refused : atSlot(c.positionOf(first)!, [...del.writes]);
+			if (first === undefined) return c.refused;
+			const slot = c.positionOf(first)!;
+			// Over selected code lines, the lines are plain lines too (`flow.lines`, HX-06).
+			if (slot.parent !== null && c.isLines(slot.parent)) {
+				const shown = lines.flatMap(plain);
+				lines = shown.length ? shown : [{ id: lines[0]!.id, content: [] }];
+			}
+			return atSlot(slot, [...del.writes]);
 		}
 		const B = c.ref(target.block);
 		if (!c.contentTarget(B) || !c.rendersContent(B)) return c.refused;
@@ -138,6 +153,11 @@ export const flowOps = (c: FlowContext) => ({
 		// shows, nested ones included, in order; no block lands in the island (`flow.lines`).
 		const inLines = parent !== null && c.isLines(parent);
 		if (inLines) lines = lines.flatMap(plain);
+		// At the end of a container's header whose body shows, what follows the caret
+		// leads its children and the body stays, as Enter opens a first child
+		// (`flow.header`, HX-10); elsewhere it follows `B` among its siblings.
+		const inside = o === len && !empty && !inLines && !flow.whole && !!view.header?.(B);
+		const home = inside ? B : parent;
 		if (lines.length === 0) return { ...c.plan([B], []), at: { block: B, offset: o } };
 		if (flow.whole && !inLines)
 			return atSlot({ parent, index: index + 1 }, empty ? [c.remove(B, [])] : []);
@@ -153,13 +173,13 @@ export const flowOps = (c: FlowContext) => ({
 		 * as a block, never joined, so no text lands where the view hides it (GX-01).
 		 */
 		const apart = (l: FlowLine) => {
-			const kind = l.type && fit(parent, l.type);
+			const kind = l.type && fit(home, l.type);
 			const role = kind ? c.roleOf(kind) : undefined;
 			return !!role && (!role.rendersContent || role.void || role.island);
 		};
 		const first = lines[0]!;
 		const [joinsHead, joinsTail] = [!apart(first), lines.length > 1 && !apart(last())];
-		const all = specs(parent);
+		const all = specs(home);
 		const placed = all.slice(joinsHead ? 1 : 0, joinsTail ? -1 : undefined);
 		const ids = placed.map((s) => s.id);
 		if (c.collides([...(joinsHead ? (first.children ?? []) : []), ...all.slice(joinsHead ? 1 : 0)]))
@@ -177,33 +197,44 @@ export const flowOps = (c: FlowContext) => ({
 			return at;
 		};
 		/** A joined line's children lead the block it joins; `moved` follow them. */
-		const kids = (to: BlockId, l: FlowLine | undefined, moved: BlockId[] = []) => {
+		const kids = (
+			to: BlockId,
+			l: FlowLine | undefined,
+			moved: BlockId[] = [],
+			ranks = c.ranksFor(to, 0, (l?.children?.length ?? 0) + moved.length)
+		) => {
 			const k = l?.children?.length ?? 0;
-			const ranks = c.ranksFor(to, 0, k + moved.length);
 			if (k) writes.push({ op: 'insertBlocks', parent: to, index: 0, specs: l!.children!, ranks });
 			if (moved.length)
 				writes.push({ op: 'moveBlocks', ids: moved, parent: to, index: k, ranks: ranks.slice(k) });
 		};
-		/** `l` joins `B` at `at`: its content, its kind when `B` shows no text, its children first. */
-		const join = (l: FlowLine, at: number): number => {
+		/**
+		 * `l` joins `B` at `at`: its content, its kind when `B` shows no text (a header
+		 * whose body shows keeps its own, as Enter does), its children first.
+		 */
+		const join = (l: FlowLine, at: number, ranks?: string[]): number => {
 			const end = text(B, at, l);
 			const kind = l.type && fit(parent, l.type);
-			if (len === 0 && kind && kind === l.type)
+			if (len === 0 && !inside && kind && kind === l.type)
 				writes.push(...c.retype(B, kind), ...c.redata(B, l.data ?? {}));
-			kids(B, l);
+			kids(B, l, [], ranks);
 			return end;
 		};
-		/** The placed lines at `at` among `B`'s siblings, `ranks` theirs. */
+		/** The placed lines at `at` under `home`, `ranks` theirs. */
 		const place = (at: number, ranks: string[]) => {
 			if (placed.length)
-				writes.push({ op: 'insertBlocks', parent, index: at, specs: placed, ranks });
+				writes.push({ op: 'insertBlocks', parent: home, index: at, specs: placed, ranks });
 		};
+		// Under a header, the first line's children, the placed lines and the rest, in order.
+		const k = joinsHead ? (first.children?.length ?? 0) : 0;
+		const lead = inside ? c.ranksFor(B, 0, k + placed.length + 1) : [];
+		const slot = inside ? 0 : index + 1;
 		// Where the placed lines end the caret: after their last shown line (`flow.apart`).
 		const end = placed.length ? endOf(placed.at(-1)!) : undefined;
 
 		// Nothing before the position and the first line stands apart: the lines go before `B`,
 		// which keeps its text and takes a joining last line, or goes when empty and not needed.
-		if (!joinsHead && o === 0) {
+		if (!joinsHead && o === 0 && !inside) {
 			place(index, c.ranksFor(parent, index, placed.length));
 			if (joinsTail) {
 				const at = join(last(), 0);
@@ -213,33 +244,42 @@ export const flowOps = (c: FlowContext) => ({
 			return { ...c.plan([...ids, B], writes), at: end ?? { block: B, offset: 0 } };
 		}
 
-		const head = joinsHead ? join(first, o) : o;
+		const head = joinsHead ? join(first, o, inside ? lead.slice(0, k) : undefined) : o;
 		if (lines.length === 1 && joinsHead)
 			return { ...c.plan([B], writes), at: { block: B, offset: head } };
-		const moved = c.childrenIds(B).filter((id) => !view.hidden?.(id));
+		const moved = inside ? [] : c.childrenIds(B).filter((id) => !view.hidden?.(id));
 		// Nothing after the position to keep, and the caret has a line: no split.
 		if (!joinsTail && o === len && moved.length === 0 && end) {
-			place(index + 1, c.pieceRanks(B, o, placed.length));
+			place(slot, inside ? lead.slice(k, -1) : c.pieceRanks(B, o, placed.length));
 			return { ...c.plan([B, ...ids], writes), at: end };
 		}
 		// The rest of `B` stays in a shown line: the last line's block when it joins, else
 		// a line of `B`'s kind, as Enter makes; one made only for the caret (after a
-		// divider at the end) is a fresh line of the parent's default kind.
+		// divider at the end) or under a header is a fresh line of its parent's default kind.
 		const T = joinsTail ? last().id : freshId('b');
-		const lastType = joinsTail && last().type && fit(parent, last().type);
+		const lastType = joinsTail && last().type && fit(home, last().type);
 		const bare = !joinsTail && o === len && moved.length === 0;
 		const tail = lastType
 			? { type: lastType, data: last().data }
-			: bare
-				? { type: c.defaultChild(parent), data: {} }
+			: bare || inside
+				? { type: c.defaultChild(home), data: {} }
 				: c.tailOf(B);
 		// By the offset the paste splits `B` at (SW12-crdt-4), as Enter's split.
-		const ranks = c.pieceRanks(B, o, placed.length + 1);
+		const ranks = inside ? lead.slice(k) : c.pieceRanks(B, o, placed.length + 1);
 		const rank = ranks.pop()!;
 		const length = len - o;
-		writes.push({ op: 'splitBlock', id: B, offset: head, length, newId: T, tail, parent, rank });
+		writes.push({
+			op: 'splitBlock',
+			id: B,
+			offset: head,
+			length,
+			newId: T,
+			tail,
+			parent: home,
+			rank
+		});
 		kids(T, joinsTail ? last() : undefined, moved);
-		place(index + 1, ranks);
+		place(slot, ranks);
 		const at = joinsTail
 			? { block: T, offset: text(T, 0, last()) }
 			: (end ?? { block: T, offset: 0 });

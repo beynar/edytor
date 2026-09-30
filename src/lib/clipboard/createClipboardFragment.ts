@@ -6,8 +6,7 @@ import type { JSONContentPart } from './types.js';
 import type { EdytorClipboardFragment } from './types.js';
 import { sliceTextValue } from '$lib/block/contentRange.js';
 import { cloneJson, type JSONBlock } from '$lib/utils/json.js';
-import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
-import { rangeCovers } from '$lib/selection/visibility.js';
+import { rangeCovers, selectedMembers } from '$lib/selection/visibility.js';
 
 const extractContentRange = (
 	block: Block,
@@ -90,7 +89,7 @@ const extractBlockRange = (edytor: Edytor) => {
 };
 
 export const createEdytorClipboardFragment = (edytor: Edytor): EdytorClipboardFragment | null => {
-	const selectedBlocks = getSelectedBlocksInDocumentOrder(edytor);
+	const selectedBlocks = selectedMembers(edytor);
 	if (selectedBlocks.length > 0) {
 		return {
 			version: 1,

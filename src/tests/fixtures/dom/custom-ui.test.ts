@@ -77,11 +77,13 @@ describe('UI snippets', () => {
 		expect(edytor.value.children?.map((b) => b.id)).toEqual(['a']);
 	});
 
-	it("the handle snippet's add opens the slash menu on a new block", async () => {
+	it("the handle snippet's add opens the slash menu; a picked row adds the block", async () => {
 		const { edytor } = await setup();
 		await click(all('custom-add')[0]!);
 		await flushDomUpdates();
-		expect(edytor.value.children).toHaveLength(2);
-		expect(all('custom-slash').length).toBeGreaterThan(0);
+		expect(edytor.value.children).toHaveLength(1);
+		const row = all('custom-slash').find((button) => button.textContent === 'Heading 1')!;
+		await click(row);
+		expect(edytor.value.children?.map((block) => block.type)).toEqual(['paragraph', 'heading']);
 	});
 });

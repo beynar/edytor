@@ -2582,7 +2582,7 @@ packages:
     engines: {node: '>= 0.4'}
 
   edytor@file:vendor/edytor.tgz:
-    resolution: {integrity: sha512-Ey/xvtQuVhBRHc0FjPejt9jICDAlqOaJk6Mr2Zae/B9DcoMEsl7sx3oj1q2Atuj4LCevJZ1TOQgt+326uSGcIg==, tarball: file:vendor/edytor.tgz}
+    resolution: {integrity: sha512-fQXOqv26++O1JX5UvIu2ToFG+axibKzQ6xkCSazHQ+ZN01YA/yQJx2GYew5pEFEovsghwBX69wDH/QokCpbRwA==, tarball: file:vendor/edytor.tgz}
     version: 0.1.0-next.1
     engines: {node: '>=22.0.0'}
     peerDependencies:

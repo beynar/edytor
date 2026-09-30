@@ -14,7 +14,7 @@ export type BlockHandleSnippetPayload = {
 	block: Block;
 	/** An action: `use:grip` makes an element the drag grip, menu button and Alt+arrow target. */
 	grip: (node: HTMLElement) => { destroy(): void };
-	/** Notion's `+`: a new block below (above with `true`), opened on the slash menu. */
+	/** The `+`: the slash menu offers what to add below (above with `true`); nothing is added until a row is picked. */
 	add: (above?: boolean) => void;
 	readonly: boolean;
 	draggable: boolean;

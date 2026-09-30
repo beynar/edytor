@@ -148,9 +148,11 @@ export type PluginOperations = {
 	/**
 	 * Before a block selection is removed: Backspace or Delete (a word or line
 	 * delete too), a cut, the block menu's Delete, and typing, a composition
-	 * or a paste over it. `selectedBlocks` are the selected blocks that go:
-	 * unselected children are promoted. A container that shows no text of its
-	 * own (a list) left with no child goes too but is not listed (read the
+	 * or a paste over it. `selectedBlocks` are the blocks that go, in document
+	 * order (`selection.selectedMembers`): the selected blocks, a selected
+	 * list or code block with its whole subtree; a selected block's other
+	 * unselected children are promoted. An unselected container (a list)
+	 * left with no child goes too but is not listed (read the
 	 * command's `effect.removes` in `onBeforeOperation`); a code block is an
 	 * island and stays even when all its lines go. Enter, Shift+Enter and a
 	 * drop remove nothing, so they never call it. `prevent()` keeps the

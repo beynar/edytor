@@ -7,6 +7,7 @@ import type {
 	BlockMoveRequest
 } from '$lib/session/moves.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import type { CommandResult } from '$lib/session/commands.js';
 import { draggable, dropTargetForElements } from '$lib/dnd/pragmatic.js';
 import { outermost } from '$lib/selection/replaceSelection.js';
 
@@ -15,6 +16,28 @@ const blockDragMimeType = 'application/x-edytor-block-id';
 /** The DOM event a handle click dispatches on the editor when no `onActivate` is set. */
 export const BLOCK_ACTIVATE_EVENT = 'edytor-block-activate';
 export type BlockActivation = { block: Block; anchor: HTMLElement };
+
+/**
+ * The DOM event the `+` dispatches on the editor. A menu answers it with
+ * `preventDefault()` (the slash menu does), adds nothing until a row is
+ * picked, then calls `insert(then)`; unanswered, the `+` inserts at once.
+ */
+export const BLOCK_ADD_EVENT = 'edytor-block-add';
+export type BlockAddition = {
+	block: Block;
+	/** The `+` clicked, else the block's element. */
+	anchor: HTMLElement | null;
+	/**
+	 * Add an empty block of the parent's default kind below `block` (above
+	 * with Alt; an empty block of that kind is reused), put the caret in it
+	 * and run `then`, as one undo step. Answers `then`'s result. When `then`
+	 * answers `false` or its command is refused (by the document or an
+	 * extension's veto) with nothing applied, the addition is taken back:
+	 * the document, its history and the selection are as before, and
+	 * `dispatcher.last` reads `refused`.
+	 */
+	insert: (then?: () => unknown) => unknown;
+};
 
 /** Alt+arrow on a handle: one relative step. */
 const keyMoves: Record<string, BlockMoveDirection> = {
@@ -154,32 +177,55 @@ export class BlockHandleController {
 	}
 
 	/**
-	 * Notion's `+`: a new block below (above with Alt) opened on the slash
-	 * menu; an empty block of the default kind takes the `/` itself. One user
-	 * command: its own undo step, however soon it follows typing.
+	 * The `+`: offers the new block to a menu (`BLOCK_ADD_EVENT`), which adds
+	 * it once the user picks what to insert; with none answering, adds it now
+	 * (`BlockAddition.insert`). A user command: its own undo step, however
+	 * soon it follows typing.
 	 */
-	addBlock(block: Block, above = false) {
+	addBlock(block: Block, above = false, anchor: HTMLElement | null = block.node ?? null) {
 		const { edytor } = this;
-		const { parent } = block;
-		if (edytor.readonly || !parent) return;
-		edytor.expectInternalFocus();
-		edytor.node?.focus({ preventScroll: true });
-		edytor.dispatcher.run('insertBlock', () => {
-			const type = edytor.defaultChild(parent);
-			const spec = { block: { type } };
-			const target =
-				block.type === type && block.isEmpty
-					? block
-					: above
-						? block.insertBlockBefore(spec)
-						: block.insertBlockAfter(spec);
-			const text = target?.firstText;
-			if (!text) return;
-			// The caret is the model's: the projector shows it once the block mounts.
-			edytor.dispatcher.caret(text, 0);
-			text.insertText({ value: '/', start: 0, end: 0 });
-			edytor.dispatcher.caret(text, 1);
-		});
+		if (edytor.readonly || !block.parent) return;
+		const insert = (then?: () => unknown) => {
+			const { dispatcher, facade, selection } = edytor;
+			const [held, version] = [selection.value, facade.version];
+			let refused: CommandResult | undefined;
+			edytor.expectInternalFocus();
+			edytor.node?.focus({ preventScroll: true });
+			const out = dispatcher.run('insertBlock', () => {
+				const type = block.parent && edytor.defaultChild(block.parent);
+				if (!type) return;
+				const spec = { block: { type } };
+				const target =
+					block.type === type && block.isEmpty
+						? block
+						: above
+							? block.insertBlockBefore(spec)
+							: block.insertBlockAfter(spec);
+				// The caret is the model's: the projector shows it once the block mounts.
+				if (target?.firstText) dispatcher.caret(target.firstText, 0);
+				if (!target || !then) return;
+				const [added, before] = [facade.version, dispatcher.last];
+				const result = then();
+				// `then`'s own refusal (not one left from before), with nothing applied.
+				const last = dispatcher.last !== before ? dispatcher.last : null;
+				if (facade.version === added && (result === false || last?.status === 'refused'))
+					refused =
+						last?.status === 'refused' ? last : { operation: 'insertBlock', status: 'refused' };
+				return result;
+			});
+			if (!refused) return out;
+			// Refused with nothing applied: the addition goes, with its undo step.
+			if (facade.version !== version) {
+				edytor.history.undo();
+				edytor.undoManager?.clear(false, true);
+			}
+			selection.select(held);
+			dispatcher.last = refused;
+			return false;
+		};
+		const detail: BlockAddition = { block, anchor, insert };
+		const event = new CustomEvent(BLOCK_ADD_EVENT, { cancelable: true, detail });
+		if (edytor.node?.dispatchEvent(event) !== false) insert();
 	}
 
 	registerHandle(element: HTMLElement, block: Block) {

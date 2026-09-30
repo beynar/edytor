@@ -23,7 +23,7 @@ The menu lists `edytor.commands`:
 - one command per block kind preset, such as `block.heading2` "Heading 2" (see [Blocks](/docs/customization/blocks#presets));
 - every command a plugin declares in `commands` (see [Writing plugins](/docs/plugins/writing-plugins#commands)).
 
-A command whose `isEnabled(edytor)` answers `false` is hidden. Block kind commands are enabled when the caret's block is convertible, which excludes void blocks, island blocks and blocks inside them. A kind picked in a list's item takes the item out of the list ([Containers](/docs/concepts/blocks#containers)).
+A command whose `isEnabled(edytor)` answers `false` is hidden (except in the menu the block handle's `+` opens, below). Block kind commands are enabled when the caret's block is convertible, which excludes void blocks, island blocks and blocks inside them. A kind picked in a list's item takes the item out of the list ([Containers](/docs/concepts/blocks#containers)).
 
 Commands are grouped into sections by their `group`, as in Notion: `Basic blocks` first, then the other groups in the order they first appear. Kind commands take their preset's `group` (default `Basic blocks`; the image and code blocks are under `Media`), and a command without a `group` is listed without a heading. Each row shows the command's `hint` on the right; kind commands use their first markdown prefix, such as `##` for Heading 2.
 
@@ -51,6 +51,10 @@ While the menu is open:
 - Running a command removes the `/query` text in the same step as the command, separate from the typing before it, so one undo restores both: `hi /h2` + <kbd>Enter</kbd> undoes to a paragraph `hi /h2`. If the command is refused, the trigger text stays.
 - After a conversion the caret goes back to where the `/` was. A command that moves the caret elsewhere keeps its own caret: the code block conversion puts it in the first line, and `/divider` in a fresh block of the default kind where the divider lands, after it (a divider renders no content, so it cannot hold the caret).
 - A kind that replaces the block's content (`/divider`, `/code`) converts the block in place only when it holds nothing but the query. In a block with other text or with children, the new block goes after it and the block stays intact: `keep me /divider` + <kbd>Enter</kbd> leaves `keep me ` above a divider. After a list's item, the new block goes outside the list, which splits after the item; in an empty item, the item leaves the list as the new kind. The query's removal and the insertion are one step.
+
+## From the block handle
+
+The block handle's `+` opens the menu too, without typing anything ([Block handles](/docs/plugins/block-handles)). The menu then shows a search field, focused, instead of reading a `/query` from the text, and lists every command. <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd> work in the field as above (not while an IME composes: the <kbd>Enter</kbd> or <kbd>Escape</kbd> that ends a composition is the IME's); a query that matches nothing shows "No results" and keeps the menu open. Picking a command adds an empty block of the default kind below the block (above with <kbd>Alt</kbd>) and runs the command in it, as one undo step; when the block beside the `+` is already an empty block of that kind, the command runs in it instead. The block does not exist yet when the menu opens, so its `isEnabled` cannot be asked then: every command is listed, and one that turns out not to apply adds nothing. When its `isEnabled` answers `false` in the new block, or the document or an extension refuses it before it changes anything, the block is taken back: the document, the undo history and the selection are as they were, and `edytor.dispatcher.last` reads `refused`. The kind lands where it fits, as the slash menu places it on an empty line: beside a list's item, a heading splits the list after the item, and a list's own kind adds an item to it; a divider leaves the caret on an empty line after it. <kbd>Escape</kbd>, the footer, a press outside, focus moving to an element outside the menu or the editor turning readonly close the menu with nothing added and no undo step, and give the selection back as it was; so does activating a block's grip, and so does a delete of the block beside the `+` (a collaborator's, say). <kbd>Escape</kbd> and the footer also give the editor its focus back. The menu opens below the `+`. `controller.addition` is set while it is open this way.
 
 ## Placement and styling
 
@@ -88,6 +92,8 @@ An `item` snippet receives a `SlashMenuItem`:
 />
 
 A `menu` snippet receives the `SlashMenuController`. Read `controller.commands` (the filtered, enabled commands in menu order), `controller.selectedIndex` and `controller.query`; call `controller.run(command)` to run one and `controller.close()` to close the menu and keep the typed text.
+
+When the block handle's `+` opens the menu (`controller.addition` is set), the plugin renders your `menu` inside a focused wrapper that takes the keyboard from the editor: typed characters and <kbd>Backspace</kbd> edit `controller.query`, and <kbd>↑</kbd>/<kbd>↓</kbd>, <kbd>Enter</kbd> and <kbd>Escape</kbd> work as above, so nothing typed reaches the document. A snippet with a search field of its own calls `controller.search(query)` from it; the wrapper's keys still move, pick and close. Call `controller.dismiss()` rather than `close()` to close it: it gives the editor back its focus and selection.
 
 ```svelte title="Editor.svelte"
 <script lang="ts">

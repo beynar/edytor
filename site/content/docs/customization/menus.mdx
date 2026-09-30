@@ -76,7 +76,7 @@ Two rules apply to every snippet:
 
 ## Slash menu
 
-`item` replaces each row and keeps the built-in sections, empty state and footer. `menu` replaces everything; read `controller.commands`, `controller.selectedIndex` and `controller.query`, and call `controller.run(command)` or `controller.close()`. The arrow keys, <kbd>Enter</kbd> and <kbd>Escape</kbd> stay the plugin's either way. See [Slash menu](/docs/plugins/slash-menu#custom-markup).
+`item` replaces each row and keeps the built-in sections, empty state and footer. `menu` replaces everything; read `controller.commands`, `controller.selectedIndex` and `controller.query`, and call `controller.run(command)` or `controller.close()`. The arrow keys, <kbd>Enter</kbd> and <kbd>Escape</kbd> stay the plugin's either way. When the block handle's `+` opens the menu (`controller.addition`), the plugin wraps `menu` in a focused element: typing and <kbd>Backspace</kbd> edit `controller.query`, so the document never receives them; a snippet with its own field calls `controller.search(query)`, and `controller.dismiss()` closes it with the selection given back. See [Slash menu](/docs/plugins/slash-menu#custom-markup).
 
 ```ts
 const slash = createSlashMenuPlugin({ menu }); // or { item }
@@ -100,4 +100,4 @@ const blockMenu = createBlockMenuPlugin({ menu, linkTo: (block) => `#${block.id}
 
 ## Block handle
 
-`handle` replaces the `+` and the grip. `use:grip` gives any element the grip's behavior: dragging, a click that selects the block and opens the block menu (or calls `onActivate`), and the <kbd>Alt</kbd>+arrow moves. `add(above?)` is what the `+` does. Placement beside the block's first line and the hover fade stay the plugin's. Pass it with `blockHandles={{ handle }}`, alongside `draggable` and `onActivate`, or with `createBlockHandlesPlugin({ handle })`. See [Block handles](/docs/plugins/block-handles#custom-handle).
+`handle` replaces the `+` and the grip. `use:grip` gives any element the grip's behavior: dragging, a click that selects the block and opens the block menu (or calls `onActivate`), and the <kbd>Alt</kbd>+arrow moves. `add(above?)` is what the `+` does: it opens the slash menu, and adds nothing until a row is picked. Placement beside the block's first line and the hover fade stay the plugin's. Pass it with `blockHandles={{ handle }}`, alongside `draggable` and `onActivate`, or with `createBlockHandlesPlugin({ handle })`. See [Block handles](/docs/plugins/block-handles#custom-handle).

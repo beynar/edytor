@@ -252,7 +252,8 @@ At a position `(B, o)`, a single line's content is inserted at `o`. `B`
 keeps its kind, unless `B` shows no text: then it takes a kinded line's
 kind and data (`<blockquote>` pasted into an empty paragraph gives a quote;
 an empty `h2` given a paragraph line becomes a paragraph without the stale
-`level`). The line's children become `B`'s first children. Caret: after
+`level`), except a header whose body shows (`flow.header`), which keeps
+its kind and data. The line's children become `B`'s first children. Caret: after
 the inserted content. A line that stands apart (`flow.apart`) never joins.
 
 ### `flow.split` — several lines split the block (D-4)
@@ -279,8 +280,10 @@ never joined into `B`: its text would be stored and synced but not shown
 (GX-01). As the first (or only) line it is placed after the head; as the
 last it is placed before the tail, and the text after `o` stays in a shown
 line: a new block of `B`'s kind and data holding `[o, len)` and `B`'s shown
-children, as Enter splits (or, when that line would hold nothing and exists
-only for the caret, a fresh line of the parent's default kind). Nothing is
+children, as Enter splits a line that is no container's header (at the end
+of a header whose body shows, `flow.header` applies; or, when that line
+would hold nothing and exists only for the caret, a fresh line of the
+parent's default kind). Nothing is
 left behind as an empty line: at `o = 0` the lines go before `B`, which
 keeps its text (and takes a joining last line's content first), and an
 empty `B` is replaced by them when they end in a shown line; at the end of `B`, with no
@@ -289,10 +292,34 @@ in. `hello| world` + `<p>x</p><hr>` → `["hellox", divider, " world"]`; a
 copy of `hello…two` from `[p hello, ul > [one, two]]` pasted at `keep| this
 tail` → `["keephello", ul > [one, two], " this tail"]`. Caret: after the
 pasted content — the end of the last placed block's last shown line (a
-list's last item, a code block's last line), or, when it shows none (a
-divider), the start of the line after it. Pins:
+list's last item, a code block's last line), or, when it shows no line or
+is a void (a divider, an image: its caption is not a line the caret enters
+from a paste), the start of the line after it. A divider or an image never
+replaces an empty `B`: the empty line is kept for that caret. Pins:
 `paste-shown-20260930.test.tsx` (every shape on the internal and HTML
 paths, and the no-hidden-content assertion of `fixtures/dom/invariants.ts`).
+
+### `flow.header` — at the end of a container's header, the body stays
+
+At the end of a container's header whose body shows (an open toggle, a
+callout or quote with nested lines: the view's `header`, where Enter opens
+a first child) that is not empty (an empty `B`, with no text and no
+children, is replaced or kept as `flow.apart` says), `B` keeps its kind, its data and its children. A
+header with no text takes a joining first line's text only, never its
+kind, so the body stays under the container (DR-rest-1): `callout "" >
+[body]` + `<h2>H</h2><hr>` → `callout "H" > [divider, "", body]`. What `flow.split` and `flow.apart`
+would place after `B` leads them instead, as `B`'s first children, in
+order (a joining first line's children, the placed lines, then the tail:
+the joining last line, or a fresh line of `B`'s default child when the
+caret needs one or the last line is a run). The body stays under `B`, as
+after Enter. `callout "hello" > [body]` + a divider at its end →
+`callout "hello" > [divider, "", body]`. Mid-header, `flow.split` applies
+(the text after the caret takes the body). A closed toggle's body is
+hidden and stays, and the paste goes after the toggle. Headless (no
+`header`), the body moves to the tail as `flow.split` says. The new first
+children take plain ranks, as Enter's (a residual,
+[`order-scope`](../src/tests/crdt/arch-v2/order-scope.test.ts)). HX-10.
+Pins: `d7-flow.test.ts` (`flow.header`), `paste-header-20260930.test.tsx`.
 
 ### `flow.lines` — a code line takes plain lines
 
@@ -317,7 +344,10 @@ item, `flow.apart`).
 Over a block selection the selected blocks are deleted (`deleteBlocks`,
 `del.blocks.promote`: their unselected children stay, after the placed
 lines) and the lines are placed as blocks in the first one's slot, in the
-same plan (runs take the slot's default child). Caret: the end of the last
+same plan (runs take the slot's default child). Over selected lines of an
+island declared `lines` (code lines), the lines are plain lines
+(`flow.lines`, HX-06): no block lands in or after the island, and a flow
+that shows no line leaves one empty code line. Caret: the end of the last
 placed block's last shown line (`flow.whole`).
 
 ### `flow.container` — a line placed in a list is its item

@@ -70,7 +70,7 @@ Commands on the selection live on the editor and on `richTextOperations`:
 import { richTextOperations } from 'edytor';
 
 edytor.deleteContentWithinSelection({}); // delete the selected range
-edytor.deleteBlocks({ blocks: [...edytor.selection.selectedBlocks] });
+edytor.deleteBlocks({ blocks: edytor.selection.selectedMembers }); // a selected list with its items
 
 const rich = richTextOperations(edytor);
 rich.setMarkAtRange('bold'); // toggle over the selection, or stage at a caret

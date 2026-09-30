@@ -54,8 +54,10 @@ export const shown = (
  * and flow ops: what it hides (`del.range.hidden-body`: a closed toggle's
  * body is not in a range, and a split of its header leaves it there,
  * `flow.split`; with `removed`, whether a block stays hidden once those
- * blocks go), and a list's flat item kind (`itemKind`: a pasted numbered
- * item landing in an `ordered-list` is its item, AW-08).
+ * blocks go), a list's flat item kind (`itemKind`: a pasted numbered
+ * item landing in an `ordered-list` is its item, AW-08), and a container's
+ * header whose body shows (`header`: a paste at its end leads its body, as
+ * Enter opens a first child, HX-10).
  */
 export const viewOf = (edytor: Edytor) => {
 	const blocks = new WeakMap<ReadonlySet<string>, Set<Block>>();
@@ -69,26 +71,36 @@ export const viewOf = (edytor: Edytor) => {
 			const block = edytor.idToBlock.get(id);
 			return !!block && hidden(block, removed && blocksOf(removed));
 		},
-		itemKind: (parent: string) => edytor.idToBlock.get(parent)?.definition.itemKind
+		itemKind: (parent: string) => edytor.idToBlock.get(parent)?.definition.itemKind,
+		// A container's header whose body shows, where Enter opens a first child (`flow.header`).
+		header: (id: string) => {
+			const block = edytor.idToBlock.get(id);
+			const open = (block?.node as HTMLDetailsElement | undefined)?.open;
+			return !!block?.definition.container && open !== false && (block.hasChildren || !!open);
+		}
 	};
 };
 
 /**
- * The blocks a block selection acts on, in document order: its members, a
- * selected block that shows only its children (a list its items, a code
- * block its lines) with its whole subtree, as its highlight shows
- * (`sel.blocks.exact`, GX-02). Delete, cut, copy, paste and typing over it,
- * marks and the toolbar read it; marks skip the hidden part of that subtree
- * ({@link rangeCovers}).
+ * The blocks a block selection (or `blocks`) acts on, in document order:
+ * its members, a selected block that shows only its children (a list its
+ * items, a code block its lines) with its whole subtree, as its highlight
+ * shows (`sel.blocks.exact`, GX-02). Delete, cut, copy, paste and typing
+ * over it, Turn into, marks and the toolbar read it; marks skip the hidden
+ * part of that subtree ({@link rangeCovers}). The blocks as clicked are
+ * `selection.selectedBlocks`: a grip-selected list is one block to a menu.
  */
-export const selectedMembers = (edytor: Edytor): Block[] => {
+export const selectedMembers = (
+	edytor: Edytor,
+	blocks: Iterable<Block> = edytor.selection.selectedBlocks
+): Block[] => {
 	const members = new Set<Block>();
 	const add = (block: Block, whole: boolean) => {
 		members.add(block);
 		if (whole || (!block.rendersContent && !edytor.facade.isVoid(block.id)))
 			for (const child of block.children) add(child, true);
 	};
-	for (const block of edytor.selection.selectedBlocks) add(block, false);
+	for (const block of blocks) add(block, false);
 	return [...members].sort(edytor.compareBlocks);
 };
 

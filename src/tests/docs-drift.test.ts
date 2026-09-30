@@ -890,6 +890,32 @@ describe('docs drift', () => {
 		);
 	});
 
+	it('a selected list stands for its subtree through selectedMembers; an edge divider is left out (HX-02, HX-07, HX-08)', () => {
+		const read = (path: string) => readFileSync(join(root, `site/content/docs/${path}`), 'utf8');
+		const members = 'a selected list or code block with';
+		expect(read('editor/commands.mdx')).toContain(
+			'edytor.deleteBlocks({ blocks: edytor.selection.selectedMembers });'
+		);
+		expect(read('plugins/block-handles.mdx')).toContain(
+			"await edytor.runCommand('block.heading2');"
+		);
+		for (const page of [
+			'editor/clipboard.mdx',
+			'plugins/writing-plugins.mdx',
+			'editor/selection.mdx'
+		])
+			expect(read(page)).toContain(members);
+		expect(read('plugins/writing-plugins.mdx')).not.toContain(
+			'It names the selected blocks that go'
+		);
+		expect(read('plugins/block-menu.mdx')).toContain(
+			'A list or a code block is one block to the menu'
+		);
+		expect(read('editor/selection.mdx')).toContain(
+			'A divider that starts or ends the document has no line beyond it, so it is left out'
+		);
+	});
+
 	it('AGENTS.md names every file that writes the DOM selection, and the contract names park (GX-10)', () => {
 		const lib = join(root, 'src/lib');
 		const writers = files(lib, /\.(ts|svelte)$/)
@@ -921,7 +947,45 @@ describe('docs drift', () => {
 		);
 		const extending = read('server/extending.mdx');
 		expect(extending).not.toContain('a failed append is only noticed');
-		expect(extending).toContain('a later write through a freshly read `facade` is stored');
+		expect(extending).toContain('a later write through a freshly read `facade` or `doc` is stored');
+	});
+
+	it('wave 17: room reads mid-frame, nested room transact, and paste placement (HX-04/05/06/09/10/11/12)', () => {
+		const read = (path: string) => readFileSync(join(root, path), 'utf8');
+		const docs = (path: string) => read(`site/content/docs/${path}`);
+		const extending = docs('server/extending.mdx');
+		expect(extending).toContain("a `doc.on('afterAllTransactions')` listener may read the room");
+		expect(extending).toContain("comes from the room's own `transact`");
+		expect(extending).toContain('Only a `transact` called inside `fn` itself joins.');
+		expect(extending).toContain('a `transact` there is a change of its own and is stored');
+		expect(extending).not.toContain('(outside a transaction and its change events)');
+		expect(read('AGENTS.md')).toContain('only a call inside `fn` joins');
+		const clipboard = docs('editor/clipboard.mdx');
+		expect(clipboard).not.toContain('since it shows no text line of its own');
+		expect(clipboard).not.toContain('and it replaces an empty block');
+		expect(clipboard).toContain('**List items from HTML**');
+		expect(clipboard).toContain('after a divider or an image, the empty line stays for the caret');
+		expect(clipboard).toContain(
+			'what follows the first pasted line becomes its first nested lines'
+		);
+		// DR-rest-1: an empty header keeps its kind; the first line gives it text only.
+		expect(clipboard).toContain('which keeps its kind and takes the text only');
+		expect(clipboard).toContain("it keeps its kind and takes the first pasted line's text only");
+		const api = docs('reference/document-api.mdx');
+		expect(api).toContain('is placed as a block and never joined');
+		expect(api).toContain('At the end of a block `view.header(id)` names');
+		expect(api).toContain('over selected code lines (`{ replace }`)');
+		expect(api).toContain("an `insertFlow` at a block's start whose first line stands apart");
+		expect(docs('collaboration/concurrent-editing.mdx')).toContain(
+			'a paste at the start of a line whose first pasted line is a list'
+		);
+		const contract = read('docs/editor-delete-contract.md');
+		expect(contract).toContain('### `flow.header`');
+		expect(contract).toContain('is a void (a divider, an image');
+		expect(contract).toContain('`callout "H" > [divider, "", body]`');
+		expect(contract).toContain('except a header whose body shows (`flow.header`)');
+		expect(api).toContain("with no text, it takes a joining first line's text but not its kind");
+		expect(api).toContain('every line when the first stands apart');
 	});
 
 	it('a subscriber defers its room write, a throwing subscriber is logged, and the pinned store keeps its token refresh (DR-rest)', () => {

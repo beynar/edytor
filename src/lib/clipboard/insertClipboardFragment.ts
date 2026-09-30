@@ -2,12 +2,12 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { Flow, FlowLine } from '$lib/crdt/flow.js';
 import type { JSONContentPart } from '$lib/block/contentRange.js';
 import {
-	getSelectedBlocksInDocumentOrder,
 	keepsSelectedBlocks,
 	replaceSelectionWithCollapsedTarget,
 	type SelectionInsertionTarget,
 	type SelectionReplacementState
 } from '$lib/selection/replaceSelection.js';
+import { selectedMembers } from '$lib/selection/visibility.js';
 import {
 	cloneJsonSafe,
 	jsonBlockToSpec,
@@ -46,7 +46,7 @@ export const pasteFlow = (
 	{ at, selection }: { at?: SelectionInsertionTarget; selection?: SelectionReplacementState } = {}
 ) => {
 	if (flow.lines.length === 0) return;
-	const selected = at ? [] : getSelectedBlocksInDocumentOrder(edytor);
+	const selected = at ? [] : selectedMembers(edytor);
 	if (selected.length && keepsSelectedBlocks(edytor, selected)) return;
 	const replace = selected.map((block) => block.id);
 	const p = replace.length ? null : (at ?? replaceSelectionWithCollapsedTarget(edytor, selection));

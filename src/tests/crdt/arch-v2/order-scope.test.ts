@@ -186,6 +186,49 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 			// The serial order reads hello| world|typed.
 		).toEqual(['P|hello| world|typed|Q', 'P|hello|typed| world|Q'].sort()));
 
+	/**
+	 * HX-05: a paste at the start of a line whose first line stands apart
+	 * (a list, a code block, a divider, an image: `flow.apart`) places its
+	 * blocks before the line at a plain rank, as Enter at a line's start
+	 * adds one (`insertBlockBefore`): a peer's split of the line above, or
+	 * its paste at that line's end, sorts beside them by client id.
+	 */
+	const bulleted = (id: string, ...items: string[]) => ({
+		id,
+		type: 'unordered-list',
+		children: items.map((t) => ({ id: t, type: 'list-item', content: [{ kind: 'text', text: t }] }))
+	});
+	const H = [{ id: 'P', text: 'hello world' }, { id: 'B', text: 'body text' }, para('Q')];
+	it('a paste of [list, "x"] at the start of B ‖ Enter in the line above', () =>
+		expect(
+			outcomes(
+				H,
+				[
+					(ed) =>
+						ed.insertFlow(
+							{ block: 'B', offset: 0 },
+							{
+								lines: [
+									bulleted('L', 'one'),
+									{ id: 'x', type: 'paragraph', content: [{ kind: 'text', text: 'x' }] }
+								]
+							}
+						)
+				],
+				[split('P', 5, 'N')]
+			)
+			// The serial order reads hello| world|one|xbody text.
+		).toEqual(['hello| world|one|xbody text|Q', 'hello|one| world|xbody text|Q'].sort()));
+	it('a list pasted at the start of B ‖ a list pasted at the end of the line above', () =>
+		expect(
+			outcomes(
+				H,
+				[(ed) => ed.insertFlow({ block: 'B', offset: 0 }, { lines: [bulleted('L1', 'one')] })],
+				[(ed) => ed.insertFlow({ block: 'P', offset: 11 }, { lines: [bulleted('L2', 'two')] })]
+			)
+			// The serial order reads hello world|two|one|body text.
+		).toEqual(['hello world|one|two|body text|Q', 'hello world|two|one|body text|Q'].sort()));
+
 	it('Tab on y ‖ Enter at the end of the last child of the block above', () =>
 		expect(
 			outcomes(

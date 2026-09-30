@@ -17,17 +17,83 @@
 	const commands = $derived(controller.commands);
 	// An editor turning readonly closes the menu (its commands would be refused).
 	$effect(() => {
-		if (controller.isOpen && controller.readonly) controller.close();
+		if (controller.isOpen && controller.readonly) controller.dismiss(false);
 	});
+
+	/** A `+`'s menu holds the keyboard: its keys are the editor's slash keys. */
+	const onkeydown = (event: KeyboardEvent) => {
+		// A key that ends an IME composition (Enter commits it, Escape cancels it) is the IME's.
+		if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
+		const move = { ArrowDown: 1, ArrowUp: -1 }[event.key];
+		if (move) controller.moveSelection(move);
+		else if (event.key === 'Enter') void controller.runSelected();
+		else if (event.key === 'Escape') controller.dismiss();
+		else return;
+		event.preventDefault();
+	};
+	/** Keys on a `menu` snippet with no field of its own: typing is the query. */
+	const typing = (event: KeyboardEvent) => {
+		const { key, ctrlKey, metaKey, target, currentTarget } = event;
+		if (target !== currentTarget || event.defaultPrevented) return onkeydown(event);
+		if (key === 'Backspace') controller.search(controller.query.slice(0, -1));
+		else if (key.length === 1 && !ctrlKey && !metaKey) controller.search(controller.query + key);
+		else return onkeydown(event);
+		event.preventDefault();
+	};
+	/** Focus leaving the `+`'s menu (Tab, another field) closes it. */
+	const onfocusout = (event: FocusEvent) => {
+		const to = event.relatedTarget;
+		const menu = event.currentTarget as HTMLElement;
+		if (controller.addition && to instanceof Node && !menu.contains(to)) controller.dismiss(false);
+	};
+	/** A press in the menu keeps the focus where it is (its field, or the editor's caret). */
+	const keepFocus = (event: MouseEvent) => {
+		if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+	};
+	const focusOnMount = (node: HTMLElement) => {
+		if (!node.contains(node.ownerDocument.activeElement)) node.focus({ preventScroll: true });
+	};
 </script>
 
-{#if controller.isOpen && menu}
+{#if controller.isOpen && menu && controller.addition}
+	<!-- The `+`'s menu takes the keyboard from the editor: typing filters it, never the document. -->
+	<div
+		class="slash-keys"
+		tabindex="-1"
+		role="presentation"
+		use:focusOnMount
+		onkeydown={typing}
+		{onfocusout}
+	>
+		{@render menu(controller)}
+	</div>
+{:else if controller.isOpen && menu}
 	{@render menu(controller)}
 {:else if controller.isOpen}
-	<div class="slash-menu" data-testid="slash-menu" role="listbox" aria-label="Block commands">
-		<div class="slash-query" data-testid="slash-menu-query" aria-live="polite">
-			/{controller.query}
-		</div>
+	<div
+		class="slash-menu"
+		data-testid="slash-menu"
+		role="listbox"
+		aria-label="Block commands"
+		tabindex="-1"
+		onmousedown={keepFocus}
+		{onfocusout}
+	>
+		{#if controller.addition}
+			<input
+				class="slash-search"
+				placeholder="Type to filter…"
+				aria-label="Filter block commands"
+				value={controller.query}
+				use:focusOnMount
+				oninput={(event) => controller.search(event.currentTarget.value)}
+				{onkeydown}
+			/>
+		{:else}
+			<div class="slash-query" data-testid="slash-menu-query" aria-live="polite">
+				/{controller.query}
+			</div>
+		{/if}
 		<div class="slash-items">
 			{#if commands.length === 0}
 				<div class="slash-empty" data-testid="slash-menu-empty">No results</div>
@@ -71,7 +137,7 @@
 			type="button"
 			class="slash-footer"
 			onmousedown={(event) => event.preventDefault()}
-			onclick={() => controller.close()}><span>Close menu</span><kbd>esc</kbd></button
+			onclick={() => controller.dismiss()}><span>Close menu</span><kbd>esc</kbd></button
 		>
 	</div>
 {/if}
@@ -118,6 +184,19 @@
 		overflow: hidden;
 		clip-path: inset(50%);
 		white-space: nowrap;
+	}
+	.slash-keys {
+		outline: none;
+	}
+	.slash-search {
+		margin: 8px 8px 0;
+		padding: 4px 8px;
+		border-radius: 6px;
+		border: 1px solid rgba(28, 19, 1, 0.12);
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		outline: none;
 	}
 	.slash-items {
 		flex: 1;

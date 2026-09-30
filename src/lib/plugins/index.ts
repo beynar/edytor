@@ -6,7 +6,9 @@ export {
 export { arrowMovePlugin } from './arrowMove/arrowMove.js';
 export {
 	BLOCK_ACTIVATE_EVENT,
-	type BlockActivation
+	BLOCK_ADD_EVENT,
+	type BlockActivation,
+	type BlockAddition
 } from './blockHandles/BlockHandleController.svelte.js';
 export { TOOLBAR_COLORS } from './toolbar/ToolbarController.svelte.js';
 export {

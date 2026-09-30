@@ -709,8 +709,7 @@ export class AttachedDocument {
 	readonly maxFrameBytes: number;
 	readonly compactAfter: number;
 	readonly saveAfter: number;
-	/** The live document; `null` when the stored container was refused. */
-	doc: YDoc | null = null;
+	private live: YDoc | null = null;
 	/** Why the stored container was refused (another generation, a torn record, `onLoad`…). */
 	failure: Error | null = null;
 	/** Latest presence entry per replica, for join snapshots (memory: refills after a wake). */
@@ -725,8 +724,12 @@ export class AttachedDocument {
 	private updates = 0;
 	/** A failed append: the live doc holds what storage does not, until it is rebuilt. */
 	private unstored: unknown = null;
-	/** Inside `transact`: a nested call joins the enclosing transaction. */
+	/** Inside `transact`, its commit included (a nested call is refused but while `fn` runs). */
 	private transacting = false;
+	/** Inside `transact`'s `fn`: a nested call joins the enclosing transaction. */
+	private running = false;
+	/** Inside a client frame's apply, its events included: the frame's handler settles it. */
+	private handling = false;
 	/** The waiting deletes stored as `pending` records (the engine may hold more, in memory). */
 	private storedWaiting: Decoded['ds'] = Y.createIdSet();
 	/** The failure is the storage's (a failed read, `onLoad`'s store down): the next dial starts again. */
@@ -769,7 +772,7 @@ export class AttachedDocument {
 			// A wake keeps a pending save: re-arming it would push `onSave` back at every wake.
 			if (this.options.onSave) this.saveScheduled = (await this.ctx.storage.getAlarm()) !== null;
 			noTimers(() => this.load());
-			if (this.origin.kind === 'fresh' && this.doc !== null) await this.seed();
+			if (this.origin.kind === 'fresh' && this.live !== null) await this.seed();
 		} catch (error) {
 			this.fail(error, true);
 		}
@@ -777,9 +780,9 @@ export class AttachedDocument {
 
 	/** A read of the rows or `onLoad` failed (storage was down): start again. */
 	private async retryStart() {
-		if (this.doc !== null || !this.retryable) return;
+		if (this.live !== null || !this.retryable) return;
 		await this.ctx.blockConcurrencyWhile(async () => {
-			if (this.doc === null && this.retryable) await this.start();
+			if (this.live === null && this.retryable) await this.start();
 		});
 	}
 
@@ -789,8 +792,8 @@ export class AttachedDocument {
 		this.unstored = null;
 		this._facade?.dispose();
 		this._facade = null;
-		this.doc?.destroy();
-		this.doc = null;
+		this.live?.destroy();
+		this.live = null;
 	}
 
 	// ── Server-side access ───────────────────────────────────────────────
@@ -806,13 +809,33 @@ export class AttachedDocument {
 	}
 
 	/**
-	 * The facade over the live document. Read outside `transact`, it first
-	 * drops a direct write whose append failed (`heal`, only while the doc
-	 * is idle), so the next write through it is stored (GX-09).
+	 * The live document; `null` when the stored container was refused.
+	 * Like {@link facade}, reading it first drops a direct write whose
+	 * append failed (`heal`, only while the room is idle), so the next
+	 * write through it is stored (HX-12).
+	 */
+	get doc(): YDoc | null {
+		noTimers(() => this.heal());
+		return this.live;
+	}
+
+	/**
+	 * The facade over the live document. Read while the room is idle, it
+	 * first drops a direct write whose append failed (`heal`), so the next
+	 * write through it is stored (GX-09).
 	 */
 	get facade(): EdytorDoc {
-		if (!this.transacting) noTimers(() => this.heal());
+		noTimers(() => this.heal());
 		return (this._facade ??= this.facadeOf(this.requireDoc()));
+	}
+
+	/**
+	 * Inside a room `transact` (its commit included), a client frame's apply
+	 * or any transaction's events: a write now could not be stored before
+	 * it returns, and a failed append belongs to what is being handled.
+	 */
+	private get busy(): boolean {
+		return this.transacting || this.handling || (this.live?._transactionCleanups.length ?? 0) > 0;
 	}
 
 	/**
@@ -822,30 +845,37 @@ export class AttachedDocument {
 	 * the throw is kept (stored and broadcast) and its error is rethrown —
 	 * validate before writing, or apply one `facade.prepare.*` plan. When
 	 * the append fails, the storage error is thrown instead and nothing is
-	 * kept (the live doc is rebuilt from the stored rows). A nested call
-	 * joins the enclosing one. An empty room is first seeded with one empty
-	 * block, as a client with no `value` would. Called inside another
-	 * transaction or its change events (a `facade.onChange` subscriber), it
-	 * throws without writing: the engine would queue the write until that
-	 * one ends, so it could not be stored before returning (DR-rest-1).
+	 * kept (the live doc is rebuilt from the stored rows). A call inside
+	 * `fn` joins the enclosing one. An empty room is first seeded with one
+	 * empty block, as a client with no `value` would. Called anywhere else
+	 * inside a transaction or its events — a `facade.onChange` subscriber
+	 * (of a client's frame or of the room's own `transact`), a
+	 * `doc.on('afterAllTransactions')` listener during a frame — it throws
+	 * without writing: the engine would queue the write until that one
+	 * ends, so it could not be stored before returning (DR-rest-1, HX-04).
 	 */
 	transact<T>(fn: (facade: EdytorDoc) => T): T {
-		if (this.transacting) return fn(this.facade);
+		if (this.running) return fn(this.facade);
 		return noTimers(() => {
-			this.heal();
-			const doc = this.requireDoc();
-			if (doc._transactionCleanups.length > 0) {
+			if (this.busy) {
 				throw new Error(
 					'room transact inside another transaction or its change events: its write could not be stored before it returns; defer it (queueMicrotask)'
 				);
 			}
+			this.heal();
+			const doc = this.requireDoc();
 			if (!crdt.doc.isInitialized(doc as never)) this.facade.seed([]);
 			let result!: T;
 			let thrown = null as { error: unknown } | null;
 			this.transacting = true;
 			try {
 				this.facade.transact(() => {
-					result = fn(this.facade);
+					this.running = true;
+					try {
+						result = fn(this.facade);
+					} finally {
+						this.running = false;
+					}
 				}, ROOM_ORIGIN);
 			} catch (error) {
 				thrown = { error };
@@ -883,7 +913,7 @@ export class AttachedDocument {
 		noTimers(() => this.heal());
 		// Set after `start()`, which reads the alarm this handler is running.
 		this.saveScheduled = false;
-		if (this.doc === null) {
+		if (this.live === null) {
 			if (!this.retryable) return;
 			this.saveScheduled = true;
 			const wait = Math.min(this.saveAfter * 2 ** ++this.saveRetries, MAX_SAVE_RETRY);
@@ -893,7 +923,7 @@ export class AttachedDocument {
 		// One synchronous read: the registry matches the state it is saved with.
 		const saved = {
 			value: this.read(),
-			update: Y.encodeStateAsUpdate(this.doc),
+			update: Y.encodeStateAsUpdate(this.live),
 			replicas: this.sql
 				.exec<ReplicaOwner>(`SELECT replica, user FROM ${this.replicasTable} ORDER BY replica`)
 				.toArray()
@@ -989,7 +1019,7 @@ export class AttachedDocument {
 			} catch (error) {
 				return this.fail(error, true);
 			}
-			this.doc?.destroy();
+			this.live?.destroy();
 			this.adopt(doc);
 			this.storedWaiting = waiting;
 		});
@@ -1204,7 +1234,7 @@ export class AttachedDocument {
 			detail: String(append ? this.unstored : error)
 		});
 		// Only a registry fault leaves the live doc as stored.
-		if (!registry && this.doc !== null) this.rebuild();
+		if (!registry && this.live !== null) this.rebuild();
 		this.depart(ws);
 		this.close(ws, CLOSE.fault, storage ? STORAGE_FAILURE : 'internal error');
 	}
@@ -1215,7 +1245,7 @@ export class AttachedDocument {
 	 * threshold; the edit is already stored and nobody is closed.
 	 */
 	private compactIfDue() {
-		if (this.updates < this.compactAfter || this.doc === null) return;
+		if (this.updates < this.compactAfter || this.live === null) return;
 		try {
 			this.compact();
 		} catch (error) {
@@ -1233,11 +1263,11 @@ export class AttachedDocument {
 	 * that is carried over, not lost as at a restart.
 	 */
 	private rebuild(waiting = false) {
-		const stale = this.doc;
-		this.doc = null;
+		const stale = this.live;
+		this.live = null;
 		this.unstored = null;
 		this.load();
-		const doc = this.doc as YDoc | null;
+		const doc = this.live as YDoc | null;
 		if (waiting && stale !== null && doc !== null) {
 			doc.store.pendingStructs = stale.store.pendingStructs;
 			doc.store.pendingDs = stale.store.pendingDs;
@@ -1248,27 +1278,38 @@ export class AttachedDocument {
 	/**
 	 * A room-side write outside `transact` (straight through `facade`)
 	 * whose append failed left the live doc ahead of storage: rebuild it
-	 * before anything is served, read or acknowledged. Only while the doc
-	 * is idle: from inside a transaction or its events (a subscriber of a
-	 * frame's commit reading or writing the room), the failure stays for
-	 * the frame's handler, which faults its sender (SW16-room-1).
+	 * before anything is served, read or acknowledged. Only while the room
+	 * is idle (not `busy`): from inside a transaction, a frame's apply or
+	 * their events (a `facade.onChange` subscriber, a
+	 * `doc.on('afterAllTransactions')` listener), the failure stays for
+	 * the handler — a frame's faults its sender, `transact` throws it
+	 * (SW16-room-1, HX-03).
 	 */
 	private heal() {
-		if (this.unstored === null || this.doc === null) return;
-		if (this.doc._transactionCleanups.length > 0) return;
+		if (this.unstored === null || this.live === null || this.busy) return;
 		this.note({ reason: 'storage', detail: String(this.unstored) });
 		this.rebuild(true);
 	}
 
+	/** Run a frame's apply: nothing its listeners do heals it (HX-03). */
+	private handle<T>(fn: () => T): T {
+		this.handling = true;
+		try {
+			return fn();
+		} finally {
+			this.handling = false;
+		}
+	}
+
 	private requireDoc(): YDoc {
-		if (this.doc === null) throw this.failure ?? new Error('room has no document');
-		return this.doc;
+		if (this.live === null) throw this.failure ?? new Error('room has no document');
+		return this.live;
 	}
 
 	private adopt(doc: YDoc) {
 		this._facade?.dispose();
 		this._facade = null;
-		this.doc = doc;
+		this.live = doc;
 		// Every INTEGRATED update is persisted first, then relayed to
 		// everyone but its sender (the socket is the transaction origin).
 		// A failed append relays nothing; the sender's handler rebuilds.
@@ -1403,7 +1444,7 @@ export class AttachedDocument {
 		await this.retryStart();
 		return noTimers(() => {
 			this.heal();
-			const doc = this.doc;
+			const doc = this.live;
 			if (doc !== null && identity.replica !== null) {
 				let bound: boolean;
 				try {
@@ -1450,7 +1491,7 @@ export class AttachedDocument {
 				return this.refuse(ws, { reason: 'malformed', detail: 'text frame' });
 			}
 			this.heal();
-			const doc = this.doc;
+			const doc = this.live;
 			if (doc === null) return this.refuseContainer(ws);
 			const attachment = ws.deserializeAttachment() as Attachment | null;
 			if (!attachment?.user) return this.refuse(ws, { reason: 'identity', detail: null });
@@ -1560,9 +1601,11 @@ export class AttachedDocument {
 		// or a pending one it would release — discarded, the sender kept).
 		// Integrating persists (the doc's update handler) before the ack.
 		let failure: unknown = null;
-		const { applied, problem, discarded } = sync.applyRemote(doc, admitted, ws, (error) => {
-			failure = error;
-		});
+		const { applied, problem, discarded } = this.handle(() =>
+			sync.applyRemote(doc, admitted, ws, (error) => {
+				failure = error;
+			})
+		);
 		if (this.unstored !== null) return this.fault(ws, this.unstored);
 		if (problem !== null) return this.refuse(ws, { reason: 'schema', detail: problem });
 		// The bytes decoded: an update the engine could not apply is its fault.
@@ -1576,13 +1619,8 @@ export class AttachedDocument {
 						decoded.structs,
 						({ id }) => !stripped.has(id.client) && storedStruct(doc, id.client, id.clock) === null
 					);
-		const released = this.settleDeletes(
-			ws,
-			attachment.user,
-			doc,
-			waiting,
-			stay,
-			discarded !== undefined
+		const released = this.handle(() =>
+			this.settleDeletes(ws, attachment.user, doc, waiting, stay, discarded !== undefined)
 		);
 		if (this.unstored !== null) return this.fault(ws, this.unstored);
 		if (discarded) this.note({ reason: 'schema', detail: { discarded } });

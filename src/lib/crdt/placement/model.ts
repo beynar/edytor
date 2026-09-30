@@ -461,7 +461,11 @@ export const SOURCE_SIDE = { pieces: 0, after: 1, before: 2 } as const;
  * then its `part` there (the caller's order among what stands at one
  * block), its first segment tied by `clientId`: two peers' blocks at one
  * part never share a rank (a later insert between two equal ranks could
- * not land between them), and each peer's blocks there stay together.
+ * not land between them), and each peer's blocks there stay together. Its
+ * last segment (a second one, `0`, for a part of one) is tied by `clock`,
+ * the client's own next clock: one client never mints one rank twice in a
+ * gap, even when the block it first minted it for was deleted there and a
+ * peer's undo brings it back (DW-05).
  * `null` on a degenerate gap (`left >= right`): the caller ranks it as any
  * insert.
  */
@@ -471,11 +475,17 @@ export const sourceRank = (
 	side: number,
 	path: readonly string[],
 	part: readonly number[],
-	clientId: number
+	clientId: number,
+	clock: number
 ): string | null => {
 	if (left !== undefined && right !== undefined && left >= right) return null;
 	const closed = path.flatMap((r) => [...decodeRank(r), { v: RANK_VMIN, t: SOURCE_TIE }]);
-	const parts = part.map((v, i) => ({ v, t: i === 0 ? clientId : SOURCE_TIE }));
+	const tied = part.length > 1 ? part : [...part, 0];
+	const last = tied.length - 1;
+	const parts = tied.map((v, i) => ({
+		v,
+		t: i === 0 ? clientId : i === last ? clock : SOURCE_TIE
+	}));
 	const own = [{ v: side, t: SOURCE_TIE }, ...closed, ...parts];
 	return rankBetween(left, right, SOURCE_TIE, () => 0.5) + encodeRank(own);
 };

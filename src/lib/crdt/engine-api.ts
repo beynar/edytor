@@ -140,6 +140,8 @@ export interface EngineDoc {
 	readonly store?: {
 		pendingStructs: null | { missing: Map<number, number>; update: Uint8Array };
 		pendingDs: null | Uint8Array;
+		/** The next clock `client` writes at (a source rank's tie, DW-05). */
+		getClock(client: number): number;
 	};
 	/**
 	 * The engine's CURRENT transaction (`null` outside one) — vendored

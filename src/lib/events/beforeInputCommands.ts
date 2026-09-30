@@ -99,7 +99,7 @@ const editSelectedBlocks = (edytor: Edytor) => {
 	const last = getSelectedBlocksInDocumentOrder(edytor).at(-1);
 	if (!last) return false;
 	const line = selectedBlocksLine(edytor);
-	edytor.selection.selectBlocks();
+	// The caret replaces the block selection; a refused new line keeps it.
 	if (line) caretAt(edytor, line, line.length);
 	else {
 		const block = last.insertBlockAfter({ block: { type: edytor.defaultChild(last.parent!) } });

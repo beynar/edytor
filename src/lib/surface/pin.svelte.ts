@@ -80,7 +80,9 @@ export class Pin {
 			head: cut(frozen, from)[0],
 			tail: cut(frozen, Math.max(from, to))[1],
 			element,
-			preview: { text: '', native: false }
+			// Until the first preview the render stays as the IME found it: a
+			// write now would collapse its DOM range before it replaces it.
+			preview: { text: '', native: true }
 		};
 	};
 

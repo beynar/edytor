@@ -16,7 +16,7 @@ import {
 	getSelectionBlocks,
 	deleteSelectedBlocks,
 	outermost,
-	selectedBlocksLine,
+	selectedBlocksExit,
 	shownSelectionBlocks
 } from '$lib/selection/replaceSelection.js';
 import { shown } from '$lib/selection/visibility.js';
@@ -288,12 +288,13 @@ export const builtInBindings: Record<string, HotKey> = {
 	arrowdown: arrowDown,
 	tab: nest('nestBlock'),
 	'shift+tab': nest('unNestBlock'),
+	// Escape leaves a block selection for a shown line (`selectedBlocksExit`);
+	// voids with no line beside them stay selected.
 	escape: ({ edytor, prevent }) => {
 		if (!edytor.selection.selectedBlocks.size) return;
 		prevent(() => {
-			const text = selectedBlocksLine(edytor);
-			edytor.selection.selectBlocks();
-			if (text) edytor.selection.setAtTextOffset(text, text.length);
+			const at = selectedBlocksExit(edytor);
+			if (at) edytor.selection.setAtTextOffset(at.text, at.offset);
 		});
 	},
 	backspace: deleteSelection,

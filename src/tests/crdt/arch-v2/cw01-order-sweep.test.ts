@@ -205,7 +205,9 @@ describe('SW12-crdt-1: concurrent splits of one block keep its pieces in text or
 	const rows: [string, number, number, string[]][] = [
 		['at 5 ‖ at 2', 5, 2, ['P', 'he', 'llo', ' world', 'Q']],
 		['at 2 ‖ at 9', 2, 9, ['P', 'he', 'llo wor', 'ld', 'Q']],
-		['at 11 ‖ at 5 (Enter at the end ‖ in the middle)', 11, 5, ['P', 'hello', ' world', '', 'Q']]
+		// A split at the end is headless only: the editor's Enter there inserts
+		// a new block, not claimed (order-scope.test.ts).
+		['at 11 ‖ at 5 (a split at the end ‖ in the middle)', 11, 5, ['P', 'hello', ' world', '', 'Q']]
 	];
 	for (const [name, at, bt, want] of rows)
 		it(name, () => {

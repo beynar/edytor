@@ -3,8 +3,9 @@
  *
  * One IME composition is one session. Its start target (the selection at
  * `compositionstart`) is replaced at its first write through an ordinary
- * command (hooks, veto, tracked), and the marks of the composed text are
- * captured once, at the start. Previews are mechanical tracked writes (no
+ * command (hooks, veto, tracked) — over a block or atom selection, which
+ * shows no DOM range, at the start, so the IME writes in its place — and
+ * the marks of the composed text are captured once, at the start. Previews are mechanical tracked writes (no
  * hooks) inside one capture group: the group opens with the session's first
  * write and is held open before each later one (`UndoManager.lastChange`,
  * K15), so the session and its ending are one undo step. Like a typed
@@ -59,7 +60,13 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import type { TextAnchor } from '$lib/selection/selection.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { insertionMarks } from '$lib/events/beforeInputCommands.js';
-import { replaceSelectionForInsertion } from '$lib/selection/replaceSelection.js';
+import { flushSync } from 'svelte';
+import { getDomSelection } from '$lib/selection/domSelection.js';
+import {
+	replaceSelectionForInsertion,
+	selectedBlocksExit
+} from '$lib/selection/replaceSelection.js';
+import { domPointOf } from '$lib/surface/projector.svelte.js';
 import { attemptOf, intentSnapshot, kindOf, type Attempt } from './attempt.js';
 import type { SelectionValue } from './selection.js';
 
@@ -141,14 +148,22 @@ export class Composition {
 		this.#own.clear();
 		this.#start = selection.value;
 		this.preview = '';
-		this.#interrupted = this.native = false;
+		this.#interrupted = this.#announced = this.native = false;
 		// The IME continues a composition whose block was deleted: it writes nothing.
 		this.#refused = resume === 'lost';
 		this.#item = null;
 		this.marks = insertionMarks(this.edytor, intentSnapshot(this.edytor, 'insertCompositionText'));
-		const host = selection.selectedBlocks.size ? null : (startText ?? null);
-		if (host) this.#pin(host, yStart, endText === host ? yEnd : host.length);
-		this.host = host;
+		const shown = selection.value.kind;
+		const at =
+			shown === 'blocks' || shown === 'atom'
+				? this.#rangeless()
+				: startText && {
+						text: startText,
+						from: yStart,
+						to: endText === startText ? yEnd : startText.length
+					};
+		if (at) this.#pin(at.text, at.from, at.to);
+		this.host = at?.text ?? null;
 		this.#where = this.#place();
 		this.#order = this.#siblings();
 	};
@@ -295,6 +310,30 @@ export class Composition {
 		if (this.#refused || !start) return !(this.#refused = true);
 		this.#region = { start, end: start };
 		return true;
+	}
+
+	/**
+	 * A block or atom selection shows no DOM range, so the IME has no caret
+	 * of its own and would write at the editable's start (EW-01). Its start
+	 * target is replaced now (blocks: `flow.slot`, one empty block in their
+	 * place; an atom: removed), the change rendered and the DOM caret put
+	 * where the preview goes before the IME writes. When the replacement is
+	 * refused, the IME writes where Escape leaves for (`selectedBlocksExit`;
+	 * an atom: before it) and the tail restores it: nothing is written.
+	 */
+	#rangeless() {
+		const { edytor } = this;
+		const { selectedBlocks, state } = edytor.selection;
+		const exit = selectedBlocks.size
+			? selectedBlocksExit(edytor)
+			: state.startText && { text: state.startText, offset: state.yStart };
+		const at = this.#open() ? this.#at() : exit;
+		if (!at) return null;
+		flushSync();
+		const node = at.text.node;
+		if (!node) return null;
+		getDomSelection(edytor.node)?.collapse(...domPointOf(node, at.offset));
+		return { text: at.text, from: at.offset, to: at.offset };
 	}
 
 	/** The host's block and its ancestors (none once it is not visible). */
@@ -495,6 +534,10 @@ export class Composition {
 
 	#release() {
 		this.host = null;
+		// No host, no D-20 baseline: a stale one would end the next session
+		// when its start target's replacement commits (`#rangeless`).
+		this.#where = '';
+		this.#order = [];
 		this.#region = null;
 		this.#own.clear();
 		this.edytor.pin.release();

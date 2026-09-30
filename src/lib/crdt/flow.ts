@@ -13,7 +13,9 @@
  *   hides (a closed toggle's body) stay with the head, as Enter keeps them;
  * - a `whole` flow (a block-selection copy) goes after the block, replacing
  *   it when empty (`flow.whole`); over selected blocks the lines take their
- *   slot (`flow.slot`); a void takes one run (`flow.void`);
+ *   slot (`flow.slot`), both at plain ranks (`insertBlocks`: their order
+ *   against a peer's split beside them is not claimed, DR-crdt-1); a void
+ *   takes one run (`flow.void`);
  * - a plain line that lands directly in a container takes its item kind
  *   (the document's `fitted`: a pasted paragraph in a list is its item,
  *   ZW-01), and so does a line of the list's flat item kind (the view's

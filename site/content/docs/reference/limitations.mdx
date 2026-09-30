@@ -39,6 +39,7 @@ The WebSocket's bound starts when the socket opens (or first fails to), so a roo
 - **Undo of text deleted twice.** When two people delete the same text, it comes back only when both undo. If one of them has closed their session, their replica no longer hides a concurrent restoration, although their delete still holds back later undos.
 - **Text typed and deleted within one undo step** leaves nothing to restore.
 - **Two splits at the same position.** Both new lines exist; the text goes to one and the other stays empty.
+- **Line order in some races.** A new line added beside a block (Enter at its start or end, Duplicate, +, a paste of whole blocks or over selected blocks), several structural edits by one person before a sync, and concurrent moves can order lines by client id instead of by the text. See [which races keep the text order](/docs/collaboration/concurrent-editing#which-races-keep-the-text-order).
 - **Undoing a split** joins the halves again, even if someone typed in the second half. See [concurrent editing](/docs/collaboration/concurrent-editing#undoing-a-new-block-keeps-a-peers-text).
 - **Contributors are block lineage, not authorship.** `attribution.block(id).contributors` lists who edited that block id (through splits and merges too), not who wrote the text shown now.
 - **Your own `UndoManager`.** An undo manager created directly with `new Y.UndoManager` over the document does not follow edytor's undo rules. Use `document.history`.

@@ -511,9 +511,10 @@ c]]`; on `b` → `[p, ul' > [a], paragraph "b", ul > [c]]`, where `ul'` is
 paragraph "c"]`. One undo restores the list. Residual: an item a peer
   adds among the items _before_ the outdented ones meanwhile lands in
   `ul`, after them. When peers outdent, lift (Backspace at the start of a
-  first item) or Turn into items of one list concurrently, the text keeps
-  its order on every client-id assignment and every replica converges
-  (CW-01): a block leaving a list is ranked by where it came from
+  first item) or Turn into items of one list concurrently, one gesture
+  each between syncs, the text keeps its order on every client-id pair
+  the sweeps run (`clientPairs`, up to 240 a row) and every replica
+  converges (CW-01): a block leaving a list is ranked by where it came from
   (`sourceRank`: a base every replica computes alike from the gap, then
   its side of the gap, then its path down the list), never drawn at
   random in the gap two peers share. The side keeps sources apart
@@ -538,8 +539,10 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
     wins it, shows right before that new list — above the item it
     followed. The text keeps its order.
 - Two peers pressing Enter in one block at once (`splitBlock` at two
-  offsets), or pasting several lines into it (`insertFlow`), keep its
-  pieces in text order on every client-id assignment: the blocks a split
+  offsets), or pasting several lines of text into it (`insertFlow` at a
+  position; not a `whole` or `replace` flow, below), one gesture
+  each between syncs, keep its pieces in text order on every swept
+  client-id pair: the blocks a split
   creates are ranked by where it splits (SW12-crdt-1, SW12-crdt-4),
   counted from the end — the text after the split point — so a peer's own
   edit before its split point (typing, then Enter; a paste over a
@@ -561,6 +564,43 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
     claims list, and a concurrent split moved only the claims it saw, so
     the merged text follows the head: Backspace joins "world" into
     "hello" ‖ Enter after "he" → "heworld", "llo".
+- Not claimed (EW-05, EW-11; pinned in `order-scope.test.ts`): only the
+  gestures above rank by source (`exitRanks`/`pieceRanks`); every other
+  placement takes a plain rank in the gap (`ranksFor`, `M.ranksAt`), so
+  its order against a peer's concurrent block follows the client ids.
+  Both replicas converge and no text is lost. That covers:
+  - a block inserted beside one (`insertBlocks`): Enter at the start or
+    end of a block (`insertBlockBefore`/`insertBlockAfter`; at the end of
+    a block with children and text, not a container header, Enter splits
+    it, `liftContent`), a container header's new first child
+    (`addChildBlock`) or its text after the caret when Enter splits it
+    (`prepareSplitKeepingChildren`: an open toggle, a callout or quote
+    with children), Duplicate (`duplicateBlock`) and the handle's +
+    button. Enter at the end of X and typing "foo" ‖ Enter after "hello"
+    in X → "foo" can read before " world";
+  - a paste of whole blocks (a block-selection copy, `insertFlow`'s
+    `whole`: after the caret's block) and a paste or typing over selected
+    blocks (`replace`: the first one's slot), both `atSlot` →
+    `insertBlocks` (DR-crdt-1): a whole paste with the caret in X ‖ Enter
+    after "hello" in X → " world" can read between the pasted blocks.
+    Ranking them by source kept the order but grew ranks 5 to 7 times as
+    fast as plain ones under repeated pastes in one place (EW-02);
+  - several structural gestures by one peer before it syncs (text edits
+    before one's split point are fine, DR-crdt-7; one after it is the
+    residual above): two Enters ‖ a first-item lift,
+    a new line or Duplicate after X then a split of X ‖ a split of X;
+  - moves (`moveBlocks`, `nestBlock`): a drag, the handle's Alt+↑/↓/→
+    (Alt+← is the outdent, ranked), Mod+Shift+↑/↓ (arrowMovePlugin), the
+    block menu's Move up/down and Tab (`nestBlock` at the parent's end:
+    Tab on `y` ‖ Enter at the end of the last child of the block above →
+    the new line can read after `y`).
+- One client never mints one source rank twice in a gap: a source rank's
+  last part segment is tied by the client's clock (DW-05), so a line a
+  peer deleted and restores by undo never ties with the line minted there
+  since (`order-scope.test.ts`). `rank-growth.test.ts` bounds the longest
+  rank and the encoded document after 300 Enters mid-document, 300 typed
+  outline items and 3,000 reorders of 20 lines (EW-02); a ranking change
+  keeps within it.
 - Concurrency (DR-crdt-2): an item a peer adds to a list another peer's
   edit removes (a delete, lift, pull-up or move of its only item, or a
   delete of the list) is promoted into the list's slot as its new parent's

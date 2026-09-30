@@ -118,6 +118,14 @@ const stale: [phrase: string | RegExp, why: string][] = [
 	[
 		/typing, Enter or a paste/,
 		'Enter over a block selection removes nothing, so it never runs onDeleteSelectedBlocks (DR-behavior-3)'
+	],
+	[
+		/Shift\+Enter\/composition|Enter over selected text blocks/,
+		'Enter and Shift+Enter over a block selection remove nothing and never ask keepsSelectedBlocks (EW-10)'
+	],
+	[
+		/\(a list, a code block\)/,
+		'a code block is an island: never removed with its lines; an emptied list goes but is not named (EW-08)'
 	]
 ];
 
@@ -705,6 +713,84 @@ describe('docs drift', () => {
 			.filter((path) => readFileSync(path, 'utf8').includes('README'))
 			.map((path) => relative(root, path));
 		expect(hits).toEqual([]);
+	});
+
+	/**
+	 * The text-order promise covers one source-ranked gesture per peer
+	 * between syncs, on the client-id pairs the sweeps run; inserts beside
+	 * a block, several gestures before a sync and moves take plain ranks
+	 * (`order-scope.test.ts` pins them). Wave 13 widened the wording past
+	 * the code (EW-05, EW-11); every page that states the promise names
+	 * what it leaves out.
+	 */
+	it('no ordering promise reaches past the source-ranked gestures (EW-05, EW-11)', () => {
+		const contract = join(root, 'docs/editor-delete-contract.md');
+		const overreach = [
+			/every client-id assignment/i,
+			/several (?:edits|gestures|per peer)[^.]*keep the text/i,
+			/also with several per peer/i,
+			/every (?:insert and move|sibling rank a document operation mints)/i,
+			/(?:inserts?|Duplicate|moves?)[^.]{0,80}ranked by (?:where it goes|source)/i,
+			// Typing counts by position, not time: after one's split point it is a residual.
+			/typed or deleted before the gesture/i,
+			/text edits before (?:a split|it)\b/i
+		];
+		for (const phrase of overreach) {
+			const hits = [...docs, contract, ...sources(join(root, 'src/lib/crdt'))]
+				.filter((path) => has(pageText(path), phrase))
+				.map((path) => relative(root, path));
+			expect(hits, String(phrase)).toEqual([]);
+		}
+		const read = (path: string) => readFileSync(join(root, path), 'utf8');
+		const section = read('site/content/docs/collaboration/concurrent-editing.mdx').split(
+			'## Which races keep the text order'
+		)[1];
+		const notClaimed = read('docs/editor-delete-contract.md').split('- Not claimed')[1];
+		for (const [page, text, names] of [
+			[
+				'concurrent-editing',
+				section,
+				[
+					'Enter</kbd> at the start or end',
+					'callout or quote with nested lines',
+					'Duplicate',
+					'+ button',
+					'paste of whole blocks',
+					'over selected blocks',
+					'Several gestures',
+					'drag'
+				]
+			],
+			[
+				'contract',
+				notClaimed,
+				[
+					'insertBlockBefore',
+					'prepareSplitKeepingChildren',
+					'duplicateBlock',
+					'`whole`',
+					'`replace`',
+					'several structural'
+				]
+			],
+			[
+				'document-api',
+				read('site/content/docs/reference/document-api.mdx'),
+				[
+					'`insertBlock(s)`',
+					'`duplicateBlock`',
+					'`whole`',
+					'`replace`s blocks',
+					'several structural calls',
+					'`nestBlock`'
+				]
+			]
+		] as const)
+			for (const name of [
+				...names,
+				...(page === 'document-api' ? [] : ['Alt+↑', 'Mod+Shift+↑', 'Move up', 'Tab'])
+			])
+				expect(text, `${page} names ${name}`).toContain(name);
 	});
 });
 

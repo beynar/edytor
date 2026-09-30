@@ -658,3 +658,267 @@ test.describe('cdp IME baseline — with a peer in a second browser context', ()
 		});
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Composition over a block selection (EW-01)
+// ---------------------------------------------------------------------------
+
+/**
+ * A block selection shows no DOM range, so the IME has no caret of its own:
+ * the session must write only where the selection's replacement leaves it.
+ * Expected (selection.mdx "Typing, a composition or a paste replaces the
+ * selected blocks", hand-authored): the selected blocks give way to one
+ * paragraph holding the committed text, no other block changes, and one
+ * undo restores the blocks.
+ */
+const composeOverBlocks = async (
+	page: Page,
+	select: () => Promise<void>,
+	expected: string[],
+	prepare?: () => Promise<void>
+) => {
+	const issues = trackPageIssues(page);
+	await page.goto('/test/dom?scenario=divider');
+	await waitForEditorReady(page, { requireRuntime: true });
+	await prepare?.();
+	const before = await readBlockTexts(page);
+	await select();
+	await expect
+		.poll(() => page.evaluate(() => (window as any).__EDYTOR__.selection.selectedBlocks.size))
+		.toBeGreaterThan(0);
+	const ime = await openIme(page);
+	await ime.compose('に');
+	await page.waitForTimeout(KEY_PACE_MS);
+	await ime.compose('にほ');
+	await page.waitForTimeout(KEY_PACE_MS);
+	await ime.commit('日本');
+	await ime.detach();
+	await expect.poll(() => readBlockTexts(page)).toEqual(expected);
+	const at = expected.indexOf('日本');
+	await expect.poll(() => readDomText(page, at === 0 ? 0 : 1)).toBe('日本');
+	await expectSelection(page, { yStart: 2, yEnd: 2, isCollapsed: true });
+	// Nothing else reached the document: a moment later it still holds only that.
+	await page.waitForTimeout(300);
+	expect(await readBlockTexts(page)).toEqual(expected);
+	await page.keyboard.press(`${modKey}+Z`);
+	await expect.poll(() => readBlockTexts(page)).toEqual(before);
+	issues.assertClean();
+};
+
+test.describe('cdp IME — composition over a block selection (EW-01)', () => {
+	test('over the block Mod+A twice selects: the block gives way to the composed text', async ({
+		page
+	}) => {
+		await composeOverBlocks(page, async () => {
+			await setSelectionByTextIndex(page, 1, 3); // aft|er divider
+			await page.keyboard.press(`${modKey}+A`);
+			await page.keyboard.press(`${modKey}+A`);
+		}, ['before divider', '', '日本']);
+	});
+
+	test('over every block (Mod+A three times): one paragraph holds the composed text', async ({
+		page
+	}) => {
+		await composeOverBlocks(page, async () => {
+			await setSelectionByTextIndex(page, 1, 3);
+			await page.keyboard.press(`${modKey}+A`);
+			await page.keyboard.press(`${modKey}+A`);
+			await page.keyboard.press(`${modKey}+A`);
+		}, ['日本']);
+	});
+
+	test('over a divider Backspace selected: the composed text takes its place', async ({ page }) => {
+		await composeOverBlocks(page, async () => {
+			await setSelectionByTextIndex(page, 1, 0); // |after divider
+			await page.keyboard.press('Backspace');
+		}, ['before divider', '日本', 'after divider']);
+	});
+
+	test('a plugin that keeps the blocks refuses the composition: nothing is written anywhere', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await page.goto('/test/dom?scenario=divider');
+		await waitForEditorReady(page, { requireRuntime: true });
+		await page.evaluate(() =>
+			(window as any).__EDYTOR__.plugins.push({
+				onDeleteSelectedBlocks: ({ prevent }: { prevent: () => void }) => prevent()
+			})
+		);
+		await setSelectionByTextIndex(page, 1, 0); // |after divider
+		await page.keyboard.press('Backspace');
+		await expect
+			.poll(() => page.evaluate(() => (window as any).__EDYTOR__.selection.selectedBlocks.size))
+			.toBe(1);
+		const ime = await openIme(page);
+		await ime.compose('に');
+		await page.waitForTimeout(KEY_PACE_MS);
+		await ime.commit('日');
+		await ime.detach();
+		await page.waitForTimeout(300);
+		expect(await readBlockTexts(page)).toEqual(['before divider', '', 'after divider']);
+		await expect.poll(() => readDomText(page, 0)).toBe('before divider');
+		await expect.poll(() => readDomText(page, 1)).toBe('after divider');
+		issues.assertClean();
+	});
+
+	test('over a selected inline atom: the composed text takes its place, no other line changes', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await page.goto('/test/dom?scenario=inline');
+		await waitForEditorReady(page, { requireRuntime: true });
+		const before = await readBlockContent(page, 1);
+		await setSelectionByTextIndex(page, 2, 5); // lead |@ end
+		await page.keyboard.press('Shift+ArrowRight');
+		await expect
+			.poll(() =>
+				page.evaluate(() => (window as any).__EDYTOR__.selection.selectedInlineBlock.size)
+			)
+			.toBe(1);
+		const ime = await openIme(page);
+		await ime.compose('に');
+		await page.waitForTimeout(KEY_PACE_MS);
+		await ime.commit('日本');
+		await ime.detach();
+		await expect.poll(() => readBlockTexts(page)).toEqual(['tail', 'lead 日本 end']);
+		await expect.poll(() => readDomText(page, 2)).toBe('lead 日本 end');
+		await expectSelection(page, { yStart: 7, yEnd: 7, isCollapsed: true });
+		await page.keyboard.press(`${modKey}+Z`);
+		await expect.poll(() => readBlockContent(page, 1)).toEqual(before);
+		expect(await readBlockTexts(page)).toEqual(['tail', 'lead  end']);
+		issues.assertClean();
+	});
+
+	test('over a void Shift+↓ selected: the composed text takes its place', async ({ page }) => {
+		await composeOverBlocks(page, async () => {
+			await setSelectionByTextIndex(page, 0, 'before divider'.length);
+			await page.keyboard.press('Shift+ArrowDown');
+		}, ['before divider', '日本', 'after divider']);
+	});
+});
+
+/**
+ * An ordinary composition at the end of the first line, then past the tail
+ * and the undo capture window: the next session starts after one ended
+ * (DR-behavior-1 — a stale D-20 baseline ended it at its start).
+ */
+const composeEarlier = (page: Page) => async () => {
+	await setSelectionByTextIndex(page, 0, 'before divider'.length);
+	const ime = await openIme(page);
+	await ime.compose('ｋ');
+	await page.waitForTimeout(KEY_PACE_MS);
+	await ime.commit('か');
+	await ime.detach();
+	await expect.poll(() => readDomText(page, 0)).toBe('before dividerか');
+	await page.waitForTimeout(IME_GAP_MS);
+};
+
+test.describe('cdp IME — composition over a block selection after an earlier composition (DR-behavior-1)', () => {
+	test('over a divider Backspace selected: the composed text takes its place', async ({ page }) => {
+		await composeOverBlocks(
+			page,
+			async () => {
+				await setSelectionByTextIndex(page, 1, 0); // |after divider
+				await page.keyboard.press('Backspace');
+			},
+			['before dividerか', '日本', 'after divider'],
+			composeEarlier(page)
+		);
+		// The block renders again: typed text shows on screen.
+		await page.keyboard.press(`${modKey}+Shift+Z`);
+		await expect
+			.poll(() => readBlockTexts(page))
+			.toEqual(['before dividerか', '日本', 'after divider']);
+		await setSelectionByTextIndex(page, 1, 2);
+		await page.keyboard.type('Z');
+		await expect
+			.poll(() => readBlockTexts(page))
+			.toEqual(['before dividerか', '日本Z', 'after divider']);
+		await expect.poll(() => readDomText(page, 1)).toBe('日本Z');
+	});
+
+	test('over every block (Mod+A three times): one paragraph holds the composed text', async ({
+		page
+	}) => {
+		await composeOverBlocks(
+			page,
+			async () => {
+				await setSelectionByTextIndex(page, 1, 3);
+				await page.keyboard.press(`${modKey}+A`);
+				await page.keyboard.press(`${modKey}+A`);
+				await page.keyboard.press(`${modKey}+A`);
+			},
+			['日本'],
+			composeEarlier(page)
+		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Composition over a text range (SW14-ime-1)
+// ---------------------------------------------------------------------------
+
+/**
+ * The IME replaces the DOM range itself. The render must not touch the
+ * host before the first preview: a write then collapses the IME's range to
+ * the node's start, so the preview showed before the untouched text
+ * (`にfirst` for `f[irs]t`) and, over a range across blocks, a cancel left
+ * the line empty on screen while the document held its text. Expected
+ * (hand-authored): what the screen shows equals the document at every step.
+ */
+const threeLines = async (page: Page) => {
+	const doc = {
+		children: ['first', 'second', 'last'].map((text) => ({
+			type: 'paragraph',
+			content: [{ text }]
+		}))
+	};
+	await page.goto(
+		`/test/dom?${new URLSearchParams({ scenario: 'dst', dst: JSON.stringify(doc) })}`
+	);
+	await waitForEditorReady(page, { requireRuntime: true });
+};
+const domTexts = (page: Page) =>
+	page.evaluate(() =>
+		[...document.querySelectorAll('[data-edytor-text="true"]')].map((element) =>
+			(element.textContent ?? '').replace(/\u200B/g, '')
+		)
+	);
+
+test.describe('cdp IME — composition over a text range (SW14-ime-1)', () => {
+	test('over a word: the live preview replaces the word on screen', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await threeLines(page);
+		await setSelectionByTextIndex(page, 0, 1, 0, 4); // f[irs]t
+		const ime = await openIme(page);
+		await ime.compose('に');
+		await page.waitForTimeout(KEY_PACE_MS);
+		expect(await readBlockTexts(page)).toEqual(['fにt', 'second', 'last']);
+		expect(await domTexts(page)).toEqual(['fにt', 'second', 'last']);
+		await ime.commit('日');
+		await ime.detach();
+		await expect.poll(() => readBlockTexts(page)).toEqual(['f日t', 'second', 'last']);
+		await expect.poll(() => domTexts(page)).toEqual(['f日t', 'second', 'last']);
+		issues.assertClean();
+	});
+
+	test('canceled over a range across blocks: the screen shows what the document holds', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await threeLines(page);
+		await setSelectionByTextIndex(page, 0, 2, 2, 2); // fi[rst … la]st
+		const ime = await openIme(page);
+		await ime.compose('に');
+		await page.waitForTimeout(KEY_PACE_MS);
+		await ime.cancel();
+		await ime.detach();
+		await expect.poll(() => readBlockTexts(page)).toEqual(['fist']);
+		await expect.poll(() => domTexts(page)).toEqual(['fist']);
+		await page.keyboard.type('X');
+		await expect.poll(() => readBlockTexts(page)).toEqual(['fiXst']);
+		await expect.poll(() => domTexts(page)).toEqual(['fiXst']);
+		issues.assertClean();
+	});
+});

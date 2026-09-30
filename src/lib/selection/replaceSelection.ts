@@ -172,6 +172,21 @@ export const caretBeside = (
 };
 
 /**
+ * Where the caret goes when a block selection is left without removing
+ * anything (Escape; a composition whose replacement a plugin refused): the
+ * end of `selectedBlocksLine`; over voids alone (a divider has no line),
+ * the start of the nearest shown line after them, else the end of the one
+ * before — never the voids' own phantom text.
+ */
+export const selectedBlocksExit = (edytor: Edytor): SelectionInsertionTarget | null => {
+	const line = selectedBlocksLine(edytor);
+	if (line) return { text: line, offset: line.length };
+	const blocks = getSelectedBlocksInDocumentOrder(edytor);
+	if (!blocks.length) return null;
+	return caretBeside(blocks.at(-1)!, 'blockAfter') ?? caretBeside(blocks[0]!, 'blockBefore');
+};
+
+/**
  * The caret once `blocks` (document order) are deleted, their unselected
  * children promoted (`del.blocks.promote`): the start of a child that takes
  * their place (FW-05), else the end of the nearest line before them, else the

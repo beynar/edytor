@@ -1612,6 +1612,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			version: runsView.version()
 		});
 
+		/** This client's next clock: what its source ranks are tied by (`sourceRank`, DW-05). */
+		const clock = () => doc.store?.getClock(doc.clientID) ?? 0;
 		/** `count` ranks at `index` among `parent`'s children, the moving `exclude` left out. */
 		const ranksFor = (
 			parent: BlockId | null,
@@ -1690,7 +1692,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					side,
 					path,
 					part,
-					doc.clientID
+					doc.clientID,
+					clock()
 				);
 				if (rank === null) return ranksFor(parent, gap, parts.length);
 				ranks.push(rank);
@@ -1718,7 +1721,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					SOURCE_SIDE.pieces,
 					[],
 					[at - displayLength(id), i],
-					doc.clientID
+					doc.clientID,
+					clock()
 				);
 				if (rank === null) return ranksFor(parent, index + 1, count);
 				ranks.push(rank);

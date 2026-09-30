@@ -91,8 +91,16 @@ const formatSelectedTextRange = (
 	edytor.dispatcher.each('format', spans, ({ text, start, end }) =>
 		text.markText({ mark, value: next, start, end })
 	);
-	edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
+	// Selected blocks stay selected (Notion; a divider's phantom text is no range).
+	if (!selectsBlocks(edytor))
+		edytor.selection.setAtRange(startText, yStart, endText, yEnd, { isReversed });
 };
+
+/**
+ * A block selection: formatting keeps it, and it has no caret to stage a
+ * mark at (a lone selected divider's text is a phantom).
+ */
+const selectsBlocks = (edytor: Edytor) => edytor.selection.value.kind === 'blocks';
 
 export const richTextOperations = (edytor: Edytor) => ({
 	/**
@@ -144,7 +152,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 	removeAllMarksAtRange: () => {
 		const { yStart, startText, isCollapsed } = edytor.selection.state;
 		if (isCollapsed) {
-			if (startText) {
+			if (startText && !selectsBlocks(edytor)) {
 				edytor.selection.stage({});
 				edytor.selection.setAtTextOffset(startText, yStart);
 			}
@@ -190,7 +198,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 		if (safeValue === null) return;
 		const { isCollapsed, startText, yStart } = edytor.selection.state;
 		if (isCollapsed) {
-			if (startText) {
+			if (startText && !selectsBlocks(edytor)) {
 				// Stage the full set the next insertion carries, values kept (O29).
 				edytor.dispatcher.run('format', () =>
 					edytor.selection.stage({
@@ -207,7 +215,7 @@ export const richTextOperations = (edytor: Edytor) => ({
 	setMarkAtRange: (mark: RichTextMark, value?: SerializableContent) => {
 		const { yStart, yEnd, startText, endText, isCollapsed } = edytor.selection.state;
 		if (isCollapsed) {
-			if (startText) {
+			if (startText && !selectsBlocks(edytor)) {
 				edytor.dispatcher.run('format', () =>
 					startText.markText({
 						mark,

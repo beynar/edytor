@@ -35,8 +35,13 @@ type Stop = { text: Text; offset: number };
 export type Dir = 1 | -1;
 type Unit = 'char' | 'word' | 'line' | 'doc';
 
-/** A block's stop at its edge in `dir` (its end going forward, its start going backward). */
+/**
+ * A block's stop at its edge in `dir` (its end going forward, its start
+ * going backward); none in a block that shows no content (a divider's
+ * phantom text is no stop: Home over a lone selected divider keeps it).
+ */
 const edge = (block: Block, dir: Dir): Stop | null => {
+	if (!block.rendersContent) return null;
 	const texts = block.content.filter((part): part is Text => part instanceof Text);
 	const text = dir > 0 ? texts.at(-1) : texts[0];
 	return text ? { text, offset: dir > 0 ? text.length : 0 } : null;

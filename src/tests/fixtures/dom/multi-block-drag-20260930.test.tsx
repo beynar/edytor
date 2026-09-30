@@ -475,3 +475,84 @@ describe('Mod+Shift+arrows on the block selection a grip click makes (DR-handles
 		expect(selected(edytor)).toEqual(['a', 'a1', 'b']);
 	});
 });
+
+describe('a handle gesture over a text range, and its undo (wave-18 lows)', () => {
+	const altKey = (id: string, key: string) =>
+		document
+			.querySelector<HTMLElement>(`[data-testid="block-handle"][data-block-id="${id}"]`)!
+			.dispatchEvent(
+				new KeyboardEvent('keydown', { key, altKey: true, bubbles: true, cancelable: true })
+			);
+	const range = (edytor: Edytor) => {
+		const { startText, yStart, endText, yEnd, isCollapsed } = edytor.selection.state;
+		return [startText?.parent.id, yStart, endText?.parent.id, yEnd, isCollapsed];
+	};
+
+	it('undo after a text-range drag restores the range the user had; redo its blocks', async () => {
+		const { edytor } = await render([p('a'), p('b'), p('c'), p('d'), p('e')]);
+		edytor.selection.setAtRange(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
+		await drag(edytor, 'a', 'e', 0.95);
+		expect(selected(edytor)).toEqual(['a', 'b', 'c']);
+
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(tree(edytor)).toEqual(['a', 'b', 'c', 'd', 'e']);
+		expect(selected(edytor)).toEqual([]);
+		expect(range(edytor)).toEqual(['a', 1, 'c', 1, false]);
+
+		edytor.historyRedo();
+		await flushDomUpdates();
+		expect(tree(edytor)).toEqual(['d', 'e', 'a', 'b', 'c']);
+		expect(selected(edytor)).toEqual(['a', 'b', 'c']);
+	});
+
+	it("undo after a drag outside the selection restores the caret the user had, as Alt+arrow's does", async () => {
+		const { edytor } = await render([p('a'), p('b'), p('c')]);
+		edytor.selection.setAtTextOffset(block(edytor, 'a').firstText!, 1);
+		await drag(edytor, 'c', 'a', 0.05);
+		expect(selected(edytor)).toEqual(['c']);
+
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(tree(edytor)).toEqual(['a', 'b', 'c']);
+		expect(range(edytor)).toEqual(['a', 1, 'a', 1, true]);
+	});
+
+	it('Alt+arrow over a text range keeps the range, as Mod+Shift+arrow does', async () => {
+		const { edytor } = await render([p('a'), p('b'), p('c'), p('d')], [arrowMovePlugin]);
+		edytor.selection.setAtRange(block(edytor, 'a').firstText!, 1, block(edytor, 'c').firstText!, 1);
+		await flushDomUpdates();
+		altKey('b', 'ArrowDown');
+		await flushDomUpdates();
+
+		expect(tree(edytor)).toEqual(['d', 'a', 'b', 'c']);
+		expect(selected(edytor)).toEqual([]);
+		expect(range(edytor)).toEqual(['a', 1, 'c', 1, false]);
+
+		await dispatchDomKeyDown(document, { key: 'ArrowUp', ctrlKey: true, shiftKey: true });
+		expect(tree(edytor)).toEqual(['a', 'b', 'c', 'd']);
+		expect(range(edytor)).toEqual(['a', 1, 'c', 1, false]);
+
+		edytor.historyUndo();
+		await flushDomUpdates();
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(tree(edytor)).toEqual(['a', 'b', 'c', 'd']);
+		expect(range(edytor)).toEqual(['a', 1, 'c', 1, false]);
+	});
+
+	it("Alt+arrow on a parent's handle while only its child is selected selects the parent alone, as a drag does", async () => {
+		const { edytor } = await render([p('a', [p('a1')]), p('b'), p('c')]);
+		edytor.selection.selectBlocks(block(edytor, 'a1'));
+		await flushDomUpdates();
+		altKey('a', 'ArrowDown');
+		await flushDomUpdates();
+		expect(tree(edytor)).toEqual(['b', ['a', ['a1']], 'c']);
+		expect(selected(edytor)).toEqual(['a']);
+
+		edytor.selection.selectBlocks(block(edytor, 'a1'));
+		await drag(edytor, 'a', 'c', 0.95);
+		expect(tree(edytor)).toEqual(['b', 'c', ['a', ['a1']]]);
+		expect(selected(edytor)).toEqual(['a']);
+	});
+});

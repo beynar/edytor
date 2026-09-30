@@ -81,11 +81,11 @@ Handles are on unless you turn them off: a `+` that adds a block and a drag grip
 <Edytor blockHandles={{ onActivate }} />
 ```
 
-A focused handle moves its block with <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> and nests or outdents it with <kbd>Alt</kbd>+<kbd>→</kbd>/<kbd>←</kbd>. Set the drop indicator color with the `--edytor-drop-indicator-color` custom property. To draw your own `+` and grip, pass a `handle` snippet: `blockHandles={{ handle }}` (see [Menus and handles](/docs/customization/menus#block-handle)).
+A focused handle moves its block with <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> and nests or outdents it with <kbd>Alt</kbd>+<kbd>→</kbd>/<kbd>←</kbd>. Set the drop indicator color with the `--edytor-drop-indicator-color` custom property, and the nest backdrop's (the tint on the block a drop nests into) with `--edytor-drop-backdrop-color`. To draw your own `+` and grip, pass a `handle` snippet: `blockHandles={{ handle }}` (see [Menus and handles](/docs/customization/menus#block-handle)).
 
 ## Snippets
 
-Pass a snippet named `<type>Block`, `<type>Mark` or `<type>InlineBlock` to replace how one kind renders. The override replaces only the snippet: the kind's element, `void` and `island` flags, hooks and clipboard forms stay as the plugin defined them.
+Pass a snippet named `<type>Block`, `<type>Mark` or `<type>InlineBlock` to replace how one kind renders. The override replaces only the snippet: the kind's element and content element, `void` and `island` flags, hooks and clipboard forms stay as the plugin defined them. A quote's `content()` still renders inside its `blockquote`, a heading's inside its `h1`–`h3`.
 
 ```svelte
 <Edytor>
@@ -107,7 +107,7 @@ Pass a snippet named `<type>Block`, `<type>Mark` or `<type>InlineBlock` to repla
 | `<type>Mark` | `{ content, mark, text }`. `mark` is the mark's value. The snippet renders inside a `<span data-edytor-mark>` instead of the mark's tag. |
 | `<type>InlineBlock` | `{ block }`, a reactive view with `id`, `type`, `data`, `selected` and `handle`. |
 
-The core renders the block element itself (the kind's `element`, a `div` by default), so a block snippet renders only the markup inside it. Mark non-editable chrome inside a block with `contenteditable="false"`, or with the `use:block.void` action.
+The core renders the block element itself (the kind's `element`, a `div` by default) and the element around its text (the kind's `contentElement`, if any), so a block snippet renders only the markup inside the block element. Mark non-editable chrome inside a block with `contenteditable="false"`, or with the `use:block.void` action.
 
 For a type that is not a valid identifier, such as `todo-item`, spread the snippet under its name: `<Edytor {...{ 'todo-itemBlock': todo }} />`.
 

@@ -28,18 +28,21 @@ const BLOCK =
 /** Tags that carry no meaning of their own: a kind rendering one is not found by it. */
 const GENERIC = /^(div|span)$/;
 
-/** The tag a kind writes for `data`: its export form's first tag, else its element's. */
-const tagOf = (type: string, kind: BlockDefinition, data: Values) => {
-	const { html, element } = kind;
+/** The tag a kind writes for `data`: its export form's first tag, else its element's, else its content element's. */
+export const tagOf = (type: string, kind: BlockDefinition, data: Values) => {
+	const { html, element, contentElement } = kind;
 	if (typeof html === 'string') return html;
 	try {
 		if (html) return /^<([a-z][\w-]*)/i.exec(html({ type, data }, '', ''))?.[1]?.toLowerCase();
 	} catch {
 		return undefined;
 	}
-	const form = typeof element === 'function' ? element(data) : element;
-	const tag = typeof form === 'string' ? form : form?.tag;
-	return tag && !GENERIC.test(tag) ? tag : undefined;
+	for (const declared of [element, contentElement]) {
+		const form = typeof declared === 'function' ? declared(data) : declared;
+		const tag = typeof form === 'string' ? form : form?.tag;
+		if (tag && !GENERIC.test(tag)) return tag;
+	}
+	return undefined;
 };
 
 /**

@@ -31,7 +31,7 @@ describe('heading levels: h1 to h3', () => {
 			</root>,
 			{ plugins: [richTextPlugin], value: { children } }
 		);
-		const tags = [...editor.querySelectorAll('[data-edytor-type="heading"]')].map(
+		const tags = [...editor.querySelectorAll('[data-edytor-type="heading"] > :first-child')].map(
 			(heading) => heading.localName
 		);
 		expect(tags).toEqual(['h3', 'h2', 'h1']);

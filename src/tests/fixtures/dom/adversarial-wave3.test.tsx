@@ -422,13 +422,13 @@ describe('placeholder scope with nested children', () => {
 		childText?.append(document.createElement('br'));
 		await flushDomUpdates();
 
-		const placeholder = Array.from(headingElement!.children).find((child) =>
-			child.matches('[data-edytor-text][data-placeholder]')
+		const placeholder = headingElement!.querySelector(
+			':scope > h1 > [data-edytor-text][data-placeholder]'
 		);
 		expect(
 			placeholder,
 			'heading keeps its own placeholder despite non-empty children'
-		).not.toBeUndefined();
+		).not.toBeNull();
 	});
 });
 

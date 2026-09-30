@@ -81,6 +81,22 @@ const getOwnRowBottom = (node: HTMLElement) => {
 		: rect.bottom;
 };
 
+/**
+ * Whether the pointer is over the own row of a block other than `node` and
+ * its descendants. A container (a list) has no row of its own: its padding
+ * above its first item is none (`hasOwnRow`).
+ */
+const overOtherRow = (
+	node: HTMLElement,
+	input: { clientX: number; clientY: number },
+	hasOwnRow: (over: HTMLElement) => boolean
+) => {
+	const hit = node.ownerDocument.elementFromPoint?.(input.clientX, input.clientY);
+	const over = hit?.closest<HTMLElement>('[data-edytor-block="true"]');
+	if (!over || node.contains(over) || !hasOwnRow(over)) return false;
+	return input.clientY < getOwnRowBottom(over);
+};
+
 /** The first line of a block's own text (not a child's), or the block's box. */
 const ownTextRow = (node: HTMLElement) => {
 	const text = Array.from(node.querySelectorAll<HTMLElement>('[data-edytor-text="true"]')).find(
@@ -94,6 +110,8 @@ const ownTextRow = (node: HTMLElement) => {
 const NEST_INDENT = 24;
 /** Notion's drop bar: 4px of translucent blue. */
 const DROP_INDICATOR_COLOR = 'rgba(35, 131, 226, 0.43)';
+/** The nest backdrop's theming variable (its defaults are in `BlockHandle.svelte`). */
+const BACKDROP_COLOR = '--edytor-drop-backdrop-color';
 const BAR = 4;
 /** The rows a several-block drag preview shows before its count. */
 const PREVIEW_ROWS = 3;
@@ -132,6 +150,19 @@ const dragPreview = (document: Document, blocks: Block[]) => {
 	}
 	card.append(countBadge(document, blocks.length));
 	return card;
+};
+
+/**
+ * Notion's nest backdrop: a soft rounded tint over the future parent's own
+ * row, drawn by the overlay layer under the drop line — never a style on the
+ * block, so rounded block styles and nesting cannot bend it. One per drag,
+ * made at its start so it fades in (`data-shown`) and out.
+ */
+const backdrop = (document: Document) => {
+	const node = document.createElement('div');
+	node.dataset.edytorDropBackdrop = 'true';
+	node.setAttribute('aria-hidden', 'true');
+	return node;
 };
 
 /** How many blocks move: the badge on the drag preview and the drop indicator. */
@@ -186,6 +217,11 @@ export class BlockHandleController {
 	private activePlacement: DropPlacement | null = null;
 	/** The indicator's measure in the overlay, while one is shown. */
 	private offIndicator: (() => void) | null = null;
+	/**
+	 * The nest backdrop: one per drag, in the overlay; `data-shown` while the
+	 * placement nests (it fades out in place, then goes with the drag).
+	 */
+	private backdrop: HTMLElement | null = null;
 	/** Candidate drop targets; registered with the drag library only during our drag. */
 	private readonly targets = new Map<HTMLElement, Block>();
 	private readonly registered = new Map<HTMLElement, () => void>();
@@ -193,6 +229,8 @@ export class BlockHandleController {
 	dragging = $state<string | null>(null);
 	/** The blocks the drag in progress moves (`dragBlocks` when it started). */
 	private group: Block[] = [];
+	/** The selection the drag in progress replaced when it started: its undo step restores it. */
+	private held: SelectionValue | null = null;
 	/** The selection a grip click replaced (`before`), while the one it made (`after`) stands. */
 	private gripped: { before: SelectionValue; after: SelectionValue } | null = null;
 
@@ -361,21 +399,30 @@ export class BlockHandleController {
 						render: ({ container }) => container.append(dragPreview(element.ownerDocument, group))
 					});
 				for (const [node, target] of this.targets) this.registerDropTarget(node, target);
+				this.backdrop?.remove();
+				this.backdrop = backdrop(element.ownerDocument);
+				this.edytor.overlay.layer?.prepend(this.backdrop);
 			},
-			// The moved blocks show selected while they move (a text range becomes their block selection).
+			// The moved blocks show selected while they move (a text range becomes their
+			// block selection); the drop's undo step restores the selection held before.
 			onDragStart: () => {
-				const { selectedBlocks } = this.edytor.selection;
-				if (!this.group.every((moved) => selectedBlocks.has(moved))) this.select(block);
+				const { selectedBlocks, value } = this.edytor.selection;
+				if (this.group.every((moved) => selectedBlocks.has(moved))) return;
+				this.held = value;
+				this.select(block);
 			},
 			// PDD notifies the source before drop targets. Keep the shown
 			// placement and the targets until the target has committed its move.
 			onDrop: () =>
 				queueMicrotask(() => {
 					this.clearIndicator();
+					this.backdrop?.remove();
+					this.backdrop = null;
 					for (const off of this.registered.values()) off();
 					this.registered.clear();
 					this.dragging = null;
 					this.group = [];
+					this.held = null;
 				})
 		});
 	}
@@ -404,6 +451,8 @@ export class BlockHandleController {
 					Boolean(dragSource && this.resolvePlacement(dragSource, target, node, input))
 				);
 			},
+			// Held across a small gap beside the block, never over another block's own row
+			// (its parent's, which the drag library would otherwise let it keep).
 			getIsSticky: ({ source, input }) => {
 				const dragSource = this.getDragSource(source.data);
 				if (!dragSource || this.edytor.readonly || this.activeDropTarget !== node) return false;
@@ -412,7 +461,12 @@ export class BlockHandleController {
 					input.clientX >= rect.left - 20 &&
 					input.clientX <= rect.right + 20 &&
 					input.clientY >= rect.top - 24 &&
-					input.clientY <= rect.bottom + 24
+					input.clientY <= rect.bottom + 24 &&
+					!overOtherRow(
+						node,
+						input,
+						(over) => !this.edytor.idToBlock.get(over.dataset.edytorId ?? '')?.isContainer
+					)
 				);
 			},
 			onDragEnter: ({ location, source }) =>
@@ -434,29 +488,45 @@ export class BlockHandleController {
 					placement &&
 					this.canDrop(dragSource, placement.target, placement.position)
 				) {
-					this.moveAndSelect({
+					const moved = this.moveAndSelect({
 						blocks: this.moving(dragSource),
 						target: placement.target,
 						position: placement.position
 					});
+					if (moved.length && this.held) this.edytor.history.began(this.held);
 				}
 			}
 		});
 		this.registered.set(node, cleanup);
 	}
 
+	/**
+	 * Alt+arrow: one step for the blocks a drag of this handle moves. A text
+	 * range over them stays, as Mod+Shift+arrow keeps it; else they end
+	 * selected as after a drop (`moveAndSelect`).
+	 */
 	handleKeyDown(event: KeyboardEvent, block: Block) {
 		const direction = event.altKey ? keyMoves[event.key] : undefined;
 		if (this.edytor.readonly || !direction) return;
 		event.preventDefault();
 		event.stopPropagation();
-		this.moveAndSelect({ blocks: this.dragBlocks(block), direction });
+		const request = { blocks: this.dragBlocks(block), direction };
+		if (this.inRange(block)) this.edytor.moveBlocks(request);
+		else this.moveAndSelect(request);
 	}
 
+	/**
+	 * Move, then select what moved — the drag's rule (`onDragStart`): a group
+	 * the block selection holds keeps it (a moved block's selected children
+	 * too); any other group ends selected alone.
+	 */
 	private moveAndSelect(request: BlockMoveRequest) {
-		const before = [...this.edytor.selection.selectedBlocks];
+		const { selectedBlocks } = this.edytor.selection;
+		const holds = request.blocks.every((block) => selectedBlocks.has(block));
+		const before = holds ? [...selectedBlocks] : [];
 		const moved = this.edytor.moveBlocks(request);
 		if (moved.length) selectMoved(this.edytor, moved, before);
+		return moved;
 	}
 
 	private canDrop(source: Block, target: Block, position: BlockMovePosition) {
@@ -482,6 +552,16 @@ export class BlockHandleController {
 		if (!selectedBlocks.size && state.isCollapsed) return [source];
 		const covered = movable(selectedBlocks.size ? selectedBlocks : getSelectionBlocks(this.edytor));
 		return covered.includes(source) ? covered : [source];
+	}
+
+	/** Whether a text range (no block selection) covers `source` (`covered`). */
+	private inRange(source: Block) {
+		const { selectedBlocks, state } = this.edytor.selection;
+		return (
+			!selectedBlocks.size &&
+			!state.isCollapsed &&
+			movable(getSelectionBlocks(this.edytor)).includes(source)
+		);
 	}
 
 	/**
@@ -581,9 +661,64 @@ export class BlockHandleController {
 		const layer = this.edytor.overlay.layer;
 		layer?.append(overlay);
 		this.indicatorOverlay = overlay;
+		const measure = (origin: DOMRect) => {
+			const writes = [this.positionIndicator(origin), this.positionBackdrop(placement, origin)];
+			return () => writes.forEach((write) => write?.());
+		};
 		// Placed at once (it must not show at the layer's origin for a frame), then per frame.
-		if (layer) this.positionIndicator(layer.getBoundingClientRect())?.();
-		this.offIndicator = this.edytor.overlay.add((origin) => this.positionIndicator(origin));
+		if (layer) measure(layer.getBoundingClientRect())();
+		this.offIndicator = this.edytor.overlay.add(measure);
+	}
+
+	/**
+	 * The block a placement makes the dragged blocks' parent when the drop
+	 * nests them: for `inside`, the target, or the item a container nests
+	 * them under (`nestParent`, as the move does); for before/after, the
+	 * target's parent unless it already holds them all (a plain reorder) or
+	 * is the root. A container shows no row of its own (a list): none.
+	 */
+	private nestParent({ target, position }: DropPlacement) {
+		const { edytor, group } = this;
+		const ids = group.map((block) => block.id);
+		const parent =
+			position === 'inside'
+				? (edytor.idToBlock.get(edytor.facade.nestParent(ids, target.id)) ?? target)
+				: target.parent;
+		if (!parent?.node || parent.isRoot || parent.isContainer) return null;
+		if (position !== 'inside' && group.every((block) => block.parent === parent)) return null;
+		return parent;
+	}
+
+	/**
+	 * Layer-relative geometry of the nest backdrop (`backdrop`): the future
+	 * parent's box (`nestParent`, read per frame: a peer's change may change
+	 * it), down to where its first child begins; hidden when the placement
+	 * does not nest.
+	 */
+	private positionBackdrop(placement: DropPlacement, origin: DOMRect) {
+		const { backdrop } = this;
+		if (!backdrop) return;
+		const parent = this.nestParent(placement);
+		const node = parent?.node;
+		if (!parent || !node?.isConnected) return () => delete backdrop.dataset.shown;
+		const rect = node.getBoundingClientRect();
+		const height = Math.max(0, getOwnRowBottom(node) - rect.top);
+		const color = node.ownerDocument.defaultView
+			?.getComputedStyle(node)
+			.getPropertyValue(BACKDROP_COLOR)
+			.trim();
+		return () => {
+			backdrop.dataset.blockId = parent.id;
+			if (color) backdrop.style.setProperty(BACKDROP_COLOR, color);
+			else backdrop.style.removeProperty(BACKDROP_COLOR);
+			Object.assign(backdrop.style, {
+				left: `${rect.left - origin.left}px`,
+				top: `${rect.top - origin.top}px`,
+				width: `${rect.width}px`,
+				height: `${height}px`
+			});
+			backdrop.dataset.shown = 'true';
+		};
 	}
 
 	/**
@@ -636,6 +771,8 @@ export class BlockHandleController {
 		}
 		this.offIndicator?.();
 		this.offIndicator = null;
+		// Fades out where it was; the next nesting placement shows it again.
+		if (this.backdrop) delete this.backdrop.dataset.shown;
 		this.indicatorOverlay?.remove();
 		this.indicatorOverlay = null;
 		this.activeDropTarget = null;

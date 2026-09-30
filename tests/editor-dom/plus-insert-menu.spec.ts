@@ -38,16 +38,18 @@ test('the + inserts nothing until a kind is picked, then one heading after the b
 	await expect(page.getByTestId('slash-menu')).toHaveCount(0);
 	await expect(topBlocks(page)).toHaveCount(count + 1);
 	const added = page.locator('[data-edytor-id="page-end"] + [data-edytor-block="true"]');
-	await expect(added).toHaveJSProperty('tagName', 'H1');
+	await expect(added).toHaveAttribute('data-edytor-type', 'heading');
+	await expect(added.locator(':scope > h1')).toHaveCount(1);
 
 	// One undo step takes the insertion back; redo gives it back with its caret.
 	await page.keyboard.press(`${modKey}+Z`);
 	await expect(topBlocks(page)).toHaveCount(count);
 	await expect(page.locator('[data-edytor-id="page-end"]')).toHaveText('One');
 	await page.keyboard.press(`${modKey}+Shift+Z`);
-	await expect(added).toHaveJSProperty('tagName', 'H1');
+	await expect(added).toHaveAttribute('data-edytor-type', 'heading');
+	await expect(added.locator(':scope > h1')).toHaveCount(1);
 	await page.keyboard.type('Title');
-	await expect(added).toHaveText('Title');
+	await expect(added.locator(':scope > h1')).toHaveText('Title');
 	await expect(page.locator('[data-edytor-id="page-end"]')).toHaveText('One');
 	issues.assertClean();
 });

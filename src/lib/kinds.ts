@@ -6,6 +6,7 @@ import { dispatchPlan, prepareSet } from './block/block.utils.js';
 import { id } from './utils.js';
 import { getSelectionBlocks } from './selection/replaceSelection.js';
 import { hidden } from './selection/visibility.js';
+import { tagOf } from './clipboard/htmlFlow.js';
 
 /**
  * The kind catalogue (§2.4): one row per preset of each registered kind
@@ -79,20 +80,18 @@ const shownKind = (block: Block) => block.list?.definition.itemKind ?? block.typ
  * The row naming `block` (by the kind it shows as, `shownKind`): of its
  * kind's rows, the one whose preset data shares the most values with the block's (the first on a tie). A block
  * matching no preset exactly (a checked to-do) still gets its kind's row;
- * among equals, the row drawn with the block's element wins, so a stored
- * `h5` heading, drawn as an `h3`, is "Heading 3".
+ * among equals, the row written with the block's tag wins, so a stored
+ * `h5` heading, drawn and copied as an `h3`, is "Heading 3".
  */
 export const rowOf = (edytor: Edytor, block: Block | null | undefined): KindRow | undefined => {
 	if (!block) return undefined;
 	const type = shownKind(block);
 	const data = block.data ?? {};
-	const { element } = block.definition;
-	const drawn = (of: Record<string, unknown>) =>
-		typeof element === 'function' ? JSON.stringify(element(of)) : undefined;
+	const drawn = (of: JSONBlock['data']) => tagOf(block.type, block.definition, of ?? {});
 	const own = drawn(data);
 	const score = ({ value }: KindRow) =>
 		2 * Object.entries(value.data ?? {}).filter(([key, v]) => jsonEquals(data[key], v)).length +
-		Number(own !== undefined && drawn(value.data ?? {}) === own);
+		Number(own !== undefined && drawn(value.data) === own);
 	let best: KindRow | undefined;
 	for (const row of edytor.kinds)
 		if (row.value.type === type && (!best || score(row) > score(best))) best = row;

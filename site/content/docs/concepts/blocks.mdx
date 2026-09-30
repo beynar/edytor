@@ -13,13 +13,13 @@ Every block has a kind, its `type`. Kinds come from plugins: each plugin's `bloc
 | Type | Renders | `data` | Notes |
 | --- | --- | --- | --- |
 | `paragraph` | `div` > `p` | | The default block type. |
-| `heading` | `h1`–`h3` | `level: 'h1' \| 'h2' \| 'h3'` | Without a level, `h1`; any other level renders and copies as `h3`. |
+| `heading` | `div` > `h1`–`h3` | `level: 'h1' \| 'h2' \| 'h3'` | Without a level, `h1`; any other level renders and copies as `h3`. Nested blocks render after the `h1`–`h3`, not inside it. |
 | `bulleted-list-item` | `li` | | Continues on <kbd>Enter</kbd>. |
 | `numbered-list-item` | `li` | | Continues on <kbd>Enter</kbd>. |
 | `todo-item` | `div` with a checkbox | `checked: boolean` | Clicking the checkbox writes `checked`. Continues on <kbd>Enter</kbd>. |
 | `toggle` | `details` | | Children form the collapsible body. Continues on <kbd>Enter</kbd>; a header over its children (`container`). |
 | `callout` | `div` | `icon: string` | The icon defaults to `💡`. A header over its children (`container`). |
-| `quote` | `blockquote` | | A header over its children (`container`). |
+| `quote` | `div` > `blockquote` | | A header over its children (`container`), which render after the `blockquote`. |
 | `divider` | `hr` | | Void, no content. Converting a block to it adds a paragraph after it for the caret. |
 | `ordered-list`, `unordered-list` | `ol`, `ul` | | Containers: children only, default child `list-item`. |
 | `list-item` | `li` | | |

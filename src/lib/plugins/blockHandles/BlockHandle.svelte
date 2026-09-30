@@ -132,4 +132,21 @@ Alt-click to add a block above"
 		background: var(--edytor-drop-indicator-color, rgba(35, 131, 226, 0.43));
 		pointer-events: none;
 	}
+
+	/* Notion's nest backdrop: the future parent's own row, softly tinted. */
+	:global([data-edytor-drop-backdrop]) {
+		position: absolute;
+		z-index: 99;
+		border-radius: 4px;
+		/* One plain color: lightningcss rewrites light-dark() into variables it
+		 * only defines beside a `color-scheme`, voiding the background. */
+		background: var(--edytor-drop-backdrop-color, rgba(35, 131, 226, 0.14));
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 120ms ease;
+	}
+
+	:global([data-edytor-drop-backdrop][data-shown='true']) {
+		opacity: 1;
+	}
 </style>

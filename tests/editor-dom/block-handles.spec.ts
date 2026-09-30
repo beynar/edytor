@@ -187,6 +187,101 @@ test.describe('browser block handles and DnD', () => {
 		issues.assertClean();
 	});
 
+	test("tints the future parent's own row while a drop nests, and commits that nest", async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+
+		await page.goto('/test/dom?scenario=nested&handles=true');
+		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
+		const parent = page.locator('[data-edytor-block="true"]').first();
+		// Rounded blocks must not bend the backdrop: it is the overlay's, not a block style.
+		await parent.evaluate((node) => ((node as HTMLElement).style.borderRadius = '16px'));
+		const row = await parent.locator('p').first().boundingBox();
+		const box = await parent.boundingBox();
+		const source = await page.getByTestId('block-handle').nth(3).boundingBox();
+		if (!row || !box || !source) throw new Error('Missing drag source or target');
+		const shown = page.locator('[data-edytor-drop-backdrop][data-shown="true"]');
+
+		await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+		await page.mouse.down();
+		await page.mouse.move(row.x + 32, row.y + row.height / 2, { steps: 12 });
+		await page.mouse.move(row.x + 64, row.y + row.height / 2, { steps: 5 });
+		await expect(parent).toHaveAttribute('data-edytor-block-drop-position', 'inside');
+		await expect(shown).toHaveCount(1);
+		const geometry = await page.evaluate(() => {
+			const backdrop = document.querySelector<HTMLElement>('[data-edytor-drop-backdrop]')!;
+			const block = document.querySelector<HTMLElement>('[data-edytor-block="true"]')!;
+			const child = block.querySelector<HTMLElement>('[data-edytor-block="true"]')!;
+			const [b, p, c] = [backdrop, block, child].map((node) => node.getBoundingClientRect());
+			return {
+				left: Math.round(b!.left - p!.left),
+				width: Math.round(b!.width - p!.width),
+				top: Math.round(b!.top - p!.top),
+				// Its own row: down to where its first child begins, not its subtree.
+				bottom: Math.round(b!.bottom - c!.top),
+				radius: getComputedStyle(backdrop).borderRadius,
+				blockBackground: getComputedStyle(block).backgroundColor,
+				inOverlay: backdrop.parentElement?.hasAttribute('data-edytor-overlay')
+			};
+		});
+		expect(geometry).toEqual({
+			left: 0,
+			width: 0,
+			top: 0,
+			bottom: 0,
+			radius: '4px',
+			blockBackground: 'rgba(0, 0, 0, 0)',
+			inOverlay: true
+		});
+		await expect(shown).toHaveCSS('opacity', '1');
+		// Painted in the built CSS, not just laid out (a minifier must not void the default).
+		await expect(shown).toHaveCSS('background-color', 'rgba(35, 131, 226, 0.14)');
+
+		// A plain before drop: the backdrop fades out.
+		await page.mouse.move(box.x + 64, box.y + 2, { steps: 12 });
+		await page.mouse.move(box.x + 96, box.y + 2, { steps: 5 });
+		await expect(page.locator('[data-edytor-drop-indicator][data-position="before"]')).toHaveCount(
+			1
+		);
+		await expect(shown).toHaveCount(0);
+
+		// Back over the parent's row, then dropped: the move it showed is the one committed.
+		await page.mouse.move(row.x + 32, row.y + row.height / 2, { steps: 12 });
+		await page.mouse.move(row.x + 64, row.y + row.height / 2, { steps: 5 });
+		await expect(shown).toHaveCount(1);
+		await page.mouse.up();
+
+		await expect.poll(() => readRootTexts(page)).toEqual(['Hello']);
+		expect((await readBlocks(page))[0].children?.map(textOf)).toEqual([
+			'Nested child',
+			'Nested tail',
+			'After'
+		]);
+		await expect(page.locator('[data-edytor-drop-backdrop]')).toHaveCount(0);
+		issues.assertClean();
+	});
+
+	test("the Notion theme's backdrop color survives the build as a valid color", async ({
+		page
+	}) => {
+		await page.goto('/');
+		await waitForEditorReady(page);
+		// The controller copies the variable onto the backdrop, so it must be one color.
+		const painted = await page.evaluate(() => {
+			const theme = document.querySelector<HTMLElement>('.edytor-notion')!;
+			const value = getComputedStyle(theme).getPropertyValue('--edytor-drop-backdrop-color');
+			const probe = document.createElement('div');
+			probe.style.background = value;
+			theme.append(probe);
+			const color = getComputedStyle(probe).backgroundColor;
+			probe.remove();
+			return color;
+		});
+		expect(painted).toBe('rgba(35, 131, 226, 0.14)');
+	});
+
 	test('uses the visible row of a collapsed toggle when reordering', async ({ page }) => {
 		const issues = trackPageIssues(page);
 

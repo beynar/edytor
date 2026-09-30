@@ -25,19 +25,20 @@
 	--notion-mono:
 		'SFMono-Regular', Menlo, Consolas, 'PT Mono', 'Liberation Mono', Courier, monospace;
 	--edytor-drop-indicator-color: rgba(35, 131, 226, 0.43);
+	--edytor-drop-backdrop-color: rgba(35, 131, 226, 0.14);
 	color: var(--notion-text);
 	font-family: var(--notion-font);
 	-webkit-font-smoothing: auto;
 }
 
-.edytor-notion [data-edytor] {
+[data-edytor]:is(.edytor-notion, .edytor-notion *) {
 	outline: 0;
 	font-size: 16px;
 	line-height: 1.5;
 	caret-color: var(--notion-text);
 	word-break: break-word;
 }
-.edytor-notion [data-edytor] ::selection {
+[data-edytor]:is(.edytor-notion, .edytor-notion *) ::selection {
 	background: var(--notion-text-selection);
 }
 
@@ -51,7 +52,7 @@
 .edytor-notion [data-edytor-block] [data-edytor-block] {
 	margin-inline: 0;
 }
-.edytor-notion [data-edytor] p {
+[data-edytor]:is(.edytor-notion, .edytor-notion *) p {
 	margin: 0;
 }
 .edytor-notion [data-edytor-type='paragraph'] {
@@ -62,32 +63,41 @@
 }
 
 /* ── Headings ───────────────────────────────────────────────────────── */
-.edytor-notion [data-edytor-type='heading'] {
-	margin: 0;
+/* The h1–h3 and the quote's blockquote hold the block's own text (its
+   children follow them): the theme's styles, never the page's. */
+.edytor-notion [data-edytor-type='heading'] > :is(h1, h2, h3),
+.edytor-notion [data-edytor-type='quote'] > blockquote {
+	all: unset;
+	display: block;
+}
+.edytor-notion [data-edytor-type='heading'] > :is(h1, h2, h3) {
 	font-weight: 600;
 	line-height: 1.3;
 }
-.edytor-notion h1[data-edytor-type='heading'] {
+.edytor-notion [data-edytor-type='heading']:has(> h1) {
 	margin-top: 32px;
+}
+.edytor-notion [data-edytor-type='heading'] > h1 {
 	font-size: 1.875em;
 }
-.edytor-notion h2[data-edytor-type='heading'] {
+.edytor-notion [data-edytor-type='heading']:has(> h2) {
 	margin-top: 22px;
+}
+.edytor-notion [data-edytor-type='heading'] > h2 {
 	font-size: 1.5em;
 }
-.edytor-notion h3[data-edytor-type='heading'] {
+.edytor-notion [data-edytor-type='heading']:has(> h3) {
 	margin-top: 16px;
+}
+.edytor-notion [data-edytor-type='heading'] > h3 {
 	font-size: 1.25em;
 }
-.edytor-notion [data-edytor-type='heading'] > div {
-	font-size: 16px;
-	font-weight: 400;
-	line-height: 1.5;
-}
 /* A leading Heading 1 is the page title. */
-.edytor-notion [data-edytor] > h1[data-edytor-type='heading']:first-child {
+[data-edytor]:is(.edytor-notion, .edytor-notion *)
+	> [data-edytor-type='heading']:first-child:has(> h1) {
 	margin: 0 0 12px;
-	padding: 3px 2px;
+}
+[data-edytor]:is(.edytor-notion, .edytor-notion *) > [data-edytor-type='heading']:first-child > h1 {
 	font-size: 40px;
 	font-weight: 700;
 	line-height: 1.2;
@@ -358,10 +368,10 @@
 }
 
 /* ── Marks ──────────────────────────────────────────────────────────── */
-.edytor-notion [data-edytor] strong {
+[data-edytor]:is(.edytor-notion, .edytor-notion *) strong {
 	font-weight: 600;
 }
-.edytor-notion [data-edytor] code:not(pre code) {
+[data-edytor]:is(.edytor-notion, .edytor-notion *) code:not(pre code) {
 	position: relative;
 	bottom: 0.065em;
 	padding: 0.2em 0.4em;
@@ -372,7 +382,7 @@
 	font-size: 85%;
 	line-height: normal;
 }
-.edytor-notion [data-edytor] a {
+[data-edytor]:is(.edytor-notion, .edytor-notion *) a {
 	color: inherit;
 	text-decoration: underline;
 	text-decoration-color: rgba(44, 44, 43, 0.4);

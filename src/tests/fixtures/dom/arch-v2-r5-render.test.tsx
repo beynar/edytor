@@ -94,8 +94,9 @@ describe('R5 — the core renders the block element', () => {
 			expect(node.getAttribute('data-edytor-block')).toBe('true');
 			expect(node).toBe(edytor.idToBlock.get(id)?.node);
 		}
-		expect(log.find((entry) => entry.id === ids[1])?.node.tagName).toBe('H2');
-		expect(log.find((entry) => entry.id === ids[2])?.node.tagName).toBe('BLOCKQUOTE');
+		// A heading's or quote's block element is a div; its tag wraps its own text (SW19).
+		const own = (id: string) => log.find((entry) => entry.id === id)?.node.firstElementChild;
+		expect([own(ids[1]!)?.tagName, own(ids[2]!)?.tagName]).toEqual(['H2', 'BLOCKQUOTE']);
 	});
 
 	row(
@@ -161,17 +162,46 @@ describe('R5 — the core renders the block element', () => {
 		expect(element?.getAttribute('contenteditable')).toBe('false');
 	});
 
-	pin('a heading level change re-renders its element under the same id', async () => {
+	pin('an element from data re-renders under the same id when the data changes', async () => {
+		const tagged: Plugin = () => ({
+			blocks: {
+				tagged: {
+					void: true,
+					rendersContent: false,
+					element: (data: Record<string, unknown>) => String(data.tag),
+					snippet: inner('<i></i>')
+				} as never
+			}
+		});
+		const { editor, edytor } = await renderDomEdytor(
+			<root>
+				<paragraph>a</paragraph>
+			</root>,
+			{
+				plugins: [richTextPlugin, tagged],
+				value: { children: [{ id: 't', type: 'tagged', data: { tag: 'section' } }] }
+			}
+		);
+		const block = edytor.idToBlock.get('t')!;
+		block.setBlock({ value: { data: { tag: 'aside' } } });
+		await flushDomUpdates();
+		const element = editor.querySelector('[data-edytor-id="t"]');
+		expect(element?.tagName).toBe('ASIDE');
+		expect(block.node).toBe(element);
+	});
+
+	pin('a heading level change swaps its heading tag inside the same block element', async () => {
 		const { editor, edytor } = await renderDomEdytor(
 			<root>
 				<heading level="h1">Title</heading>
 			</root>
 		);
 		const heading = edytor.root!.children[0]!;
+		const element = editor.querySelector(`[data-edytor-id="${heading.id}"]`);
 		heading.setBlock({ value: { data: { level: 'h2' } } });
 		await flushDomUpdates();
-		const element = editor.querySelector(`[data-edytor-id="${heading.id}"]`);
-		expect(element?.tagName).toBe('H2');
+		expect(editor.querySelector(`[data-edytor-id="${heading.id}"]`)).toBe(element);
+		expect(element?.querySelector(':scope > h2')?.contains(heading.firstText!.node!)).toBe(true);
 		expect(heading.node).toBe(element);
 	});
 

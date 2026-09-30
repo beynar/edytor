@@ -232,7 +232,7 @@ test.describe('document demo', () => {
 		await expect(handle(page, 'page-callout')).toBeVisible();
 
 		await turnInto(page, 'page-section-intro', 'Heading 3');
-		await expect(page.locator('h3[data-edytor-id="page-section-intro"]')).toHaveText(
+		await expect(page.locator('[data-edytor-id="page-section-intro"] > h3')).toHaveText(
 			'Start with a thought. Give it structure when you need it.'
 		);
 

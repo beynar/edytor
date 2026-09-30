@@ -45,7 +45,11 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
     element: {
       type: "string | { tag, attributes? } | ((data) => …)",
       default: "'div'",
-      description: "The element the core renders: a tag, a tag with attributes, or a function of the block's data.",
+      description: "The element the core renders: a tag, a tag with attributes, or a function of the block's data. It wraps the block's children too: a kind that can hold children and wants a heading or text-level tag (h1, p, span) declares it as contentElement instead.",
+    },
+    contentElement: {
+      type: "string | { tag, attributes? } | ((data) => …)",
+      description: "The element the core wraps around the block's own text, where the snippet renders content(): a tag, a tag with attributes, or a function of the block's data. Children stay outside it. The rich text heading's h1–h3 and the quote's blockquote are declared this way, so a snippet override keeps them. HTML import finds the kind by this tag when it has no html form and its element is a div.",
     },
     viewState: {
       type: "string[]",
@@ -246,7 +250,7 @@ Write directly, or return a function: it runs in the same transaction, and the n
 
 ## Override a snippet
 
-To change only how an existing kind renders, pass a snippet prop named `<type>Block` to `<Edytor>`. The kind keeps every other option:
+To change only how an existing kind renders, pass a snippet prop named `<type>Block` to `<Edytor>`. The kind keeps every other option, its `element` and `contentElement` included: below, `content()` still renders the quote's text inside its `blockquote`.
 
 ```svelte title="Editor.svelte" check
 <script lang="ts">

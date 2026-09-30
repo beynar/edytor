@@ -7,7 +7,8 @@
  *
  * Each stack item carries, per view, the selection values around it
  * (`meta: Map<viewKey, {before, after}>`): `before` is this view's value when
- * the item's first transaction began (whichever view or origin wrote it);
+ * the item's first transaction began (whichever view or origin wrote it),
+ * unless a gesture that replaced the selection first rewrites it (`began`);
  * `after` is the selection the item's last transaction left — the view's
  * value at its end, then every `select()` of the same gesture (the command's
  * result selection) until a newer gesture, transaction or history command.
@@ -87,6 +88,18 @@ export class History {
 		if (!open) return;
 		if (open.gesture === this.edytor.intentSerial) open.entry.after = value;
 		else this.#open = null;
+	};
+
+	/**
+	 * This view's top undo step began at `value`: a gesture that replaced the
+	 * selection before its step (a handle drag block-selects the blocks it
+	 * moves) restores the one the user had.
+	 */
+	began = (value: SelectionValue) => {
+		const { undoManager: um, transaction: key } = this.edytor;
+		const item = um?.undoStack.at(-1) as StackItem | undefined;
+		const entry = item && entries(item).get(key);
+		if (entry) entry.before = value;
 	};
 
 	/**

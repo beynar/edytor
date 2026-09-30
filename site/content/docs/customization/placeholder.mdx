@@ -115,4 +115,4 @@ It is positioned out of flow, so the caret stays at the start of the line and cl
 }
 ```
 
-To style by kind, go through the block element: `[data-edytor-type='heading'] [data-placeholder]::before`.
+To style by kind, go through the block element and the element holding its own text: `[data-edytor-type='heading'] > :is(h1, h2, h3) > [data-placeholder]::before`. A bare descendant selector (`[data-edytor-type='heading'] [data-placeholder]`) also reaches the placeholders of the blocks nested in it.

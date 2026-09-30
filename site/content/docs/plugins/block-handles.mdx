@@ -113,7 +113,7 @@ Drag and drop uses Atlassian's Pragmatic drag and drop. While you drag, each blo
 | Bottom quarter              | After the block                     |
 | Left edge of a nested block (20px) | Beside its parent, one level out |
 
-Only placements the document allows are offered: when "inside" is not allowed, the block splits between before and after. A short gap between blocks keeps the last valid placement, so the indicator does not flicker.
+Only placements the document allows are offered: when "inside" is not allowed, the block splits between before and after. A short gap between blocks keeps the last valid placement, so the indicator does not flicker; another block's own row never does, so dragging up from a child onto its parent's row targets the parent. A list container has no row of its own, so its padding counts as a gap: overshooting a list's first item keeps "before" that item.
 
 ### Dragging several blocks
 
@@ -122,9 +122,9 @@ As in Notion, dragging the handle of a block the selection covers moves every bl
 - **A block selection**: its blocks as clicked (a selected list is one block: dragging one of its items, or pressing <kbd>Alt</kbd> + an arrow on the item's handle, moves that item alone, as with a selected paragraph's child).
 - **A text range across blocks**: every block it spans, as <kbd>Tab</kbd> and Turn into read them (a list the range only enters counts through the items it spans; a code block's lines count as the code block).
 
-The outermost of those blocks move, in document order, wherever they sit: their children, and a closed toggle's hidden body, travel with them. The drag preview stacks their first lines with a count badge, and the drop indicator carries the same count (`data-count` on `[data-edytor-drop-indicator]`, with a `[data-edytor-drag-count]` badge in the gutter). While the drag lasts the moving blocks are block-selected (a text range becomes the block selection of the blocks it covers, and stays so when the drag is cancelled), and after the drop they stay selected (a moved block's selected children too). The drop is one `edytor.moveBlocks` call, one undo step: the document's rules apply to the whole group, so a placement where one of them does not fit (a paragraph directly in a list) is not offered, and a refused or vetoed move moves none of them. A block a collaborator deletes during the drag is left out.
+The outermost of those blocks move, in document order, wherever they sit: their children, and a closed toggle's hidden body, travel with them. The drag preview stacks their first lines with a count badge, and the drop indicator carries the same count (`data-count` on `[data-edytor-drop-indicator]`, with a `[data-edytor-drag-count]` badge in the gutter). While the drag lasts the moving blocks are block-selected (a text range becomes the block selection of the blocks it covers, and stays so when the drag is cancelled), and after the drop they stay selected (a moved block's selected children too). The drop is one `edytor.moveBlocks` call, one undo step: the document's rules apply to the whole group, so a placement where one of them does not fit (a paragraph directly in a list) is not offered, and a refused or vetoed move moves none of them. A block a collaborator deletes during the drag is left out. Undo puts the blocks back and restores the selection you had before the drag (the text range, or the caret), redo the moved blocks' selection.
 
-Dragging the handle of a block outside the selection moves that block alone and selects it. A single drop is one undo step too.
+Dragging the handle of a block outside the selection moves that block alone and selects it (a parent's handle while only its child is selected: the parent alone). A single drop is one undo step too.
 
 ### The drop indicator
 
@@ -141,6 +141,20 @@ Set its color with `--edytor-drop-indicator-color` on the editor or any ancestor
 }
 ```
 
+### The nest backdrop
+
+When the drop will nest the dragged blocks in another block, that future parent also gets Notion's soft backdrop: a rounded tint over its own row (its own content, not its children), drawn by the same overlay layer as the bar, so block styles cannot distort it. It shows for an **inside** drop (on the target, or, inside a list, on the last item the blocks nest under), and for a before/after drop among the children of a block that is not already their parent; a before/after drop that keeps the blocks' parent, or lands them at the root, shows the bar alone. It fades in and out as the placement changes, and the drop commits the placement it showed. It is `[data-edytor-drop-backdrop]` in the overlay, with `data-shown="true"` and the parent's `data-block-id` while it applies.
+
+Set its color with `--edytor-drop-backdrop-color` on the editor or any ancestor of the blocks. The default, also set by the [Notion theme](/docs/customization/styling), is Notion's light tint, `rgba(35, 131, 226, 0.14)`. On a dark page, set Notion's dark tint yourself:
+
+```css
+.dark [data-edytor] {
+	--edytor-drop-backdrop-color: rgba(35, 131, 226, 0.2);
+}
+```
+
+Give it one plain color. Avoid `light-dark()`: CSS minifiers such as lightningcss (Vite's default) rewrite it into variables that exist only beside a `color-scheme` declaration, and without one the backdrop paints nothing.
+
 ## Keyboard moves
 
 While a handle has focus, <kbd>Alt</kbd> with an arrow key moves its block:
@@ -152,7 +166,7 @@ While a handle has focus, <kbd>Alt</kbd> with an arrow key moves its block:
 | <kbd>Alt</kbd> + <kbd>→</kbd>    | In: the last child of the previous sibling                           |
 | <kbd>Alt</kbd> + <kbd>←</kbd>    | Out: after the parent (a list's item leaves the list, [as Shift+Tab](/docs/customization/hotkeys#enter-and-backspace-by-role)) |
 
-The handle claims every <kbd>Alt</kbd>+arrow while it has focus, and the moved block stays selected. A handle of a block the selection covers moves the same blocks a drag of it would ([Dragging several blocks](#dragging-several-blocks)); as a relative step, they must share one parent, else nothing moves. A move never puts a block directly in a list it is no item of, but a block already there (an image a merge left among the items) moves among them like an item, by key, menu or drag. A move never hides a block you saw: moving a block into a closed toggle, with <kbd>Alt</kbd> + <kbd>→</kbd> or a drop inside it, opens the toggle, as <kbd>Tab</kbd> does. To move the caret's block from the text, or a block selection, see [Arrow move](/docs/plugins/arrow-move).
+The handle claims every <kbd>Alt</kbd>+arrow while it has focus. A handle of a block the selection covers moves the same blocks a drag of it would ([Dragging several blocks](#dragging-several-blocks)), and they end selected as after a drop: a block selection holding them stays, a text range over them stays as it was (as with <kbd>Mod</kbd>+<kbd>Shift</kbd>+arrow), and a block moved alone is selected alone. Undo restores the selection you had. As a relative step, they must share one parent, else nothing moves. A move never puts a block directly in a list it is no item of, but a block already there (an image a merge left among the items) moves among them like an item, by key, menu or drag. A move never hides a block you saw: moving a block into a closed toggle, with <kbd>Alt</kbd> + <kbd>→</kbd> or a drop inside it, opens the toggle, as <kbd>Tab</kbd> does. To move the caret's block from the text, or a block selection, see [Arrow move](/docs/plugins/arrow-move).
 
 ## Building a block menu
 

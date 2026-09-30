@@ -22,13 +22,13 @@ It takes no options. List it yourself only to place it elsewhere in the order, o
 | Kind                 | Element                    | Data                           | Presets (markdown)                                         |
 | -------------------- | -------------------------- | ------------------------------ | ---------------------------------------------------------- |
 | `paragraph`          | `div` with a `p` inside    | none                           | Text                                                       |
-| `heading`            | `h1` to `h3` from `level`  | `{ level: 'h1' }`              | Heading 1 (`# `), Heading 2 (`## `), Heading 3 (`### `)    |
+| `heading`            | `div` with an `h1` to `h3` | `{ level: 'h1' }`              | Heading 1 (`# `), Heading 2 (`## `), Heading 3 (`### `)    |
 | `bulleted-list-item` | `li`                       | none                           | Bulleted list (`- `, `* `, `+ `)                           |
 | `numbered-list-item` | `li`                       | none                           | Numbered list (`1. `, `a. `, `i. `)                        |
 | `todo-item`          | `div` with a checkbox      | `{ checked: boolean }`         | To-do list (`[ ] `, `[] `)                                 |
 | `toggle`             | `details`, content in `summary` | none                      | Toggle list (`> `)                                         |
 | `callout`            | `div` with an icon         | `{ icon: string }`             | Callout (icon `💡`)                                        |
-| `quote`              | `blockquote`               | none                           | Quote (`" `)                                               |
+| `quote`              | `div` with a `blockquote`  | none                           | Quote (`" `)                                               |
 | `divider`            | `hr`, void, no content     | none                           | Divider (`---`)                                            |
 
 The kinds are listed in catalogue order, which the menus follow. Presets feed the [slash menu](/docs/plugins/slash-menu) (all under `Basic blocks`), [markdown shortcuts](/docs/plugins/markdown-shortcuts) and block menus. Their command ids are `block.paragraph`, `block.heading1` to `block.heading3`, `block.bulleted-list-item`, `block.numbered-list-item`, `block.todo-item`, `block.toggle`, `block.callout`, `block.quote` and `block.divider`.
@@ -43,7 +43,8 @@ The plugin also defines kinds without presets, for content that arrives from sto
 Behavior worth knowing:
 
 - Bulleted and numbered items, to-dos and toggles are [continuing kinds](/docs/customization/blocks#continuing-kinds): <kbd>Enter</kbd> opens another of the same kind (an unchecked to-do), and in an empty one ends the list. Toggles, callouts and quotes are [containers](/docs/customization/blocks#containers): <kbd>Enter</kbd> at the end of one with children, or of an open toggle, opens a first child, and in the middle of the header moves the rest of the text into that first child. <kbd>Backspace</kbd> at the start of any kind but a paragraph turns it into a paragraph first. [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role) has the full rules.
-- Headings have Notion's three levels. A `heading`'s element follows `data.level`, `h1` to `h3`, and so does its copied HTML. Without a level it is `h1`; any other level (a stored `h5`, say) renders and copies as `h3`, as pasting `h4` to `h6` gives a level `h3` heading.
+- Headings have Notion's three levels. A `heading`'s tag follows `data.level`, `h1` to `h3`, and so does its copied HTML. Without a level it is `h1`; any other level (a stored `h5`, say) renders and copies as `h3`, as pasting `h4` to `h6` gives a level `h3` heading.
+- The `h1`–`h3` of a heading and the `blockquote` of a quote wrap the block's own text only. The block element is a `div`, and nested blocks render after the tag, in a sibling `div`: the page's heading styles do not reach them, and a screen reader does not read them as part of the heading. Style the text through `[data-edytor-type='heading'] > h2`, the block through `[data-edytor-type='heading']`. The tag is the kinds' `contentElement`, so a `headingBlock` or `quoteBlock` snippet override keeps it around `content()`.
 - A `toggle` is a native `<details>`. The browser owns its `open` attribute, so opening and closing it is not an edit and is never reverted. Arrow keys skip the body of a closed toggle.
 - The `todo-item` checkbox (`data-edytor-todo-checkbox`) shows `data.checked`. Clicking it, or <kbd>Mod</kbd> + <kbd>Enter</kbd> in the to-do (or over selected blocks, each shown to-do, while the toggles among them open or close), flips `checked` as one undo step. It does not change in a readonly editor.
 - A `callout` shows `data.icon` in a `data-edytor-callout-icon` span, `💡` when it has none.

@@ -181,6 +181,12 @@ export type BlockDefinition = {
 	 */
 	element?: BlockElement | ((data: Record<string, any>) => BlockElement);
 	/**
+	 * The element the core wraps around the block's own text (`content()`),
+	 * possibly from the block's data: a heading's `h1`–`h3`, a quote's
+	 * `blockquote`. Children render outside it, and a snippet override keeps it.
+	 */
+	contentElement?: BlockElement | ((data: Record<string, any>) => BlockElement);
+	/**
 	 * Attributes of the block element the browser or the user own (`open` on a
 	 * `details`): declared view state, never inverted (R11, O60).
 	 */

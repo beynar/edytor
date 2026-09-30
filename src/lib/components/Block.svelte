@@ -32,11 +32,12 @@
 	const VOID_TAGS = new Set(['area', 'br', 'col', 'embed', 'hr', 'img', 'input', 'wbr']);
 
 	/** The element a kind declares (O45): a tag, or tag and attributes, from the block's data. */
-	const elementOf = (definition: BlockDefinition, data: Record<string, unknown> | undefined) => {
-		const spec =
-			typeof definition.element === 'function'
-				? definition.element(data ?? {})
-				: (definition.element ?? 'div');
+	const elementOf = (
+		declared: BlockDefinition['element'],
+		data: Record<string, unknown> | undefined
+	) => {
+		const spec = typeof declared === 'function' ? declared(data ?? {}) : declared;
+		if (spec === undefined) return undefined;
 		return typeof spec === 'string' ? { tag: spec, attributes: {} } : { attributes: {}, ...spec };
 	};
 
@@ -74,7 +75,9 @@
 	const block = $derived(blockViewOf(edytor, id));
 	const definition = $derived(cell && edytor.definitionOf(cell.type));
 	// The core renders the block element from the definition; the snippet renders inside it (R11).
-	const element = $derived(definition && elementOf(definition, cell?.data));
+	const element = $derived(definition && elementOf(definition.element ?? 'div', cell?.data));
+	// The element around the block's own text (a heading's `h2`): the core's, so an override keeps it.
+	const contentElement = $derived(definition && elementOf(definition.contentElement, cell?.data));
 	/** Registers the block element (O45): one element per block, re-registered when the tag changes. */
 	const register = (node: HTMLElement) => block.handle.attach(node);
 	/** The block element's attributes: the kind's, then the core's. */
@@ -101,11 +104,21 @@
 </script>
 
 <!--
--->{#snippet content()}<!--
+-->{#snippet text()}<!--
 --><Content
 		{id}
 		onrender={DEV ? () => (contentRenderedFor = cell?.type) : undefined}
 	/><!--
+-->{/snippet}<!--
+-->{#snippet content()}<!--
+-->{#if contentElement}<!--
+--><svelte:element
+			this={contentElement.tag}
+			{...contentElement.attributes}>{@render text()}</svelte:element
+		><!--
+-->{:else}<!--
+-->{@render text()}<!--
+-->{/if}<!--
 -->{/snippet}<!--
 -->{#snippet children()}<!--
 --->{#each cell?.childIds ?? [] as child (child)}<!--

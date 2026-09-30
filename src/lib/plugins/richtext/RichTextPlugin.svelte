@@ -223,7 +223,7 @@
 				},
 				heading: {
 					snippet: textThenChildren,
-					element: (data) => headingLevel(data.level),
+					contentElement: (data) => headingLevel(data.level),
 					presets: [
 						{
 							label: 'Heading 1',
@@ -323,7 +323,7 @@
 				quote: {
 					container: true,
 					snippet: textThenChildren,
-					element: 'blockquote',
+					contentElement: 'blockquote',
 					// Notion: `"` + space is a quote; `>` + space is a toggle.
 					presets: [{ label: 'Quote', icon: '❝', markdown: ['" '] }],
 					html: 'blockquote'
@@ -381,7 +381,11 @@
 	{/if}
 {/snippet}
 
-<!-- A heading's or quote's text, its children below. -->
+<!--
+	A heading's or quote's text (the core wraps it in the kind's `contentElement`,
+	its `h1`–`h3` or `blockquote`); its children below, outside that tag, so
+	heading styles and the heading's accessible name stop at its own text.
+-->
 {#snippet textThenChildren({ content, children }: BlockSnippetPayload)}
 	{@render content()}
 	{#if children}

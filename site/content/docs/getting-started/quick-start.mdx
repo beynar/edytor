@@ -127,7 +127,7 @@ The editor renders a `div` with `data-edytor` (and your `class`). Each block is 
 | `[data-placeholder]::before` | The placeholder of an empty block. |
 | `[data-edytor-overlay]` | The layer after the root that holds handles, menus and remote carets. |
 
-The block element's tag comes from its kind: a `heading` renders `h1`–`h3`, a `quote` renders `blockquote`, list items render `li`. A few styles to start from:
+The block element's tag comes from its kind: list items render `li`, a toggle `details`. A `heading` is a `div` holding its text in an `h1`–`h3`, and a `quote` holds its text in a `blockquote`; their nested blocks follow that tag. A few styles to start from:
 
 ```css title="src/app.css"
 .editor {
@@ -135,7 +135,7 @@ The block element's tag comes from its kind: a `heading` renders `h1`–`h3`, a 
 	line-height: 1.6;
 	--edytor-drop-indicator-color: #2eaadc;
 }
-.editor p {
+.editor :is(p, blockquote) {
 	margin: 0;
 }
 .editor [data-edytor-type='quote'] {

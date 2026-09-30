@@ -2,6 +2,7 @@ import type { Edytor } from '../edytor.svelte.js';
 import { Text } from '../text/text.svelte.js';
 import {
 	climbDom,
+	getElementFromNode,
 	getInlineBlockOfNode,
 	getInlineBlockInSelectedRange,
 	getRangesFromSelection,
@@ -10,7 +11,8 @@ import {
 	getYIndex,
 	getMarkEdgeSide,
 	isTextBoundSelectionPoint,
-	normalizeUtf16Boundary
+	normalizeUtf16Boundary,
+	SYNTHETIC_TEXT_OVERLAY_SELECTOR
 } from './selection.utils.js';
 import {
 	clearDomSelection,
@@ -52,6 +54,7 @@ import { seam } from '$lib/crdt/anchors.js';
 import { getTextPath } from '$lib/events/events.utils.js';
 import { landed } from '$lib/session/navigation.js';
 import * as visibility from './visibility.js';
+import { caretBeside } from './replaceSelection.js';
 
 /**
  * CRDT-stable anchor for a text position — `{b}` is the home block id of
@@ -130,20 +133,6 @@ export const isBackward = (selection: {
 			anchorNode.compareDocumentPosition(focusNode) & Node.DOCUMENT_POSITION_PRECEDING
 		);
 	}
-};
-
-const SYNTHETIC_TEXT_OVERLAY_SELECTOR = '[data-edytor-text-suggestion]';
-
-const getElementFromNode = (node: Node | null) => {
-	if (!node || typeof Element === 'undefined') {
-		return null;
-	}
-
-	if (node instanceof Element) {
-		return node;
-	}
-
-	return node.nodeType === Node.TEXT_NODE ? node.parentElement : null;
 };
 
 const getSyntheticTextOverlayElement = (node: Node | null, offset: number) => {
@@ -377,7 +366,7 @@ export class EdytorSelection {
 	 * `surface` carries the mark-edge side the value was observed with.
 	 */
 	select = (next: SelectionValue, cause: SelectCause = 'model', surface?: { edge?: EdgeSide }) => {
-		next = this.#keepPending(next);
+		next = this.#keepPending(this.#shown(next));
 		const changed = !sameValue(this.value, next);
 		if (changed) this.value = next;
 		const value = this.value;
@@ -446,6 +435,30 @@ export class EdytorSelection {
 	stage = (pending: Marks | undefined) => {
 		const value = this.value;
 		if (value.kind === 'text') this.select(Object.freeze({ ...value, pending }));
+	};
+
+	/**
+	 * No text endpoint rests in a block that renders no content (FX-01): its
+	 * slot never mounts, so typing there is saved and never shown. Such an
+	 * endpoint moves to the nearest shown line — a container's first item,
+	 * else the next line, else the end of the one before (a line just
+	 * created is displayed once it mounts); with none, the value stays as it
+	 * was. Every caret write passes here, and so does the repair after a
+	 * change this view did not make.
+	 */
+	#shown = (next: SelectionValue): SelectionValue => {
+		if (next.kind !== 'text') return next;
+		const { start, end, isReversed } = project(next, this.edytor.facade);
+		const moved = (at: SelectionPoint | null, anchor: TextAnchor) => {
+			const block = at && this.edytor.idToBlock.get(at.block);
+			if (!block || block.rendersContent) return anchor;
+			const to = caretBeside(block, 'blockAfter') ?? caretBeside(block, 'blockBefore');
+			return to && this.createTextAnchor(to.text, to.offset);
+		};
+		const anchor = moved(isReversed ? end : start, next.anchor);
+		const focus = next.focus === next.anchor ? anchor : moved(isReversed ? start : end, next.focus);
+		if (anchor === next.anchor && focus === next.focus) return next;
+		return anchor && focus ? textSelection(anchor, focus, next.pending) : this.value;
 	};
 
 	/** A caret that did not move keeps its pending marks (L4); a value that names them wins. */
@@ -1258,6 +1271,13 @@ export class EdytorSelection {
 			}
 			dead = value.blockId;
 		} else if (value.kind === 'text') {
+			// A peer or host code turned the block it rests in into one that shows
+			// no content (an empty line into a divider): the nearest shown line.
+			const shown = this.#shown(value);
+			if (shown !== value) {
+				this.#land(shown);
+				return;
+			}
 			const state = this.state;
 			const { start, isCollapsed } = this.projection;
 			if (state.startText && start && isCollapsed && value.anchor !== value.focus) {
@@ -1295,13 +1315,12 @@ export class EdytorSelection {
 	/** Select a repaired caret (the projector displays it). */
 	#land = (target: SelectionValue) => this.select(target, 'repair');
 
-	/** A text range over one block's content (the triple-click shape); the start binds left. */
-	private setStateFromBlockContentRange = (block: Block) => {
-		const endText = edgeText(block, 'last');
-		this.select(
-			this.textValue(edgeText(block, 'first'), 0, endText, endText.length, false, 'left')
-		);
+	/** A text range over `first`'s to `last`'s content (the triple-click shape); the start binds left. */
+	#contentRange = (first: Block, last = first) => {
+		const endText = edgeText(last, 'last');
+		return this.textValue(edgeText(first, 'first'), 0, endText, endText.length, false, 'left');
 	};
+	private setStateFromBlockContentRange = (block: Block) => this.select(this.#contentRange(block));
 
 	/**
 	 * Select a set of whole blocks. With no block, leave block selection:
@@ -1315,12 +1334,7 @@ export class EdytorSelection {
 		const { value } = this;
 		if (value.kind !== 'blocks') return;
 		const [first, last] = [this.state.blocks[0], this.state.blocks.at(-1)];
-		const endText = last && edgeText(last, 'last');
-		this.select(
-			first && endText
-				? this.textValue(edgeText(first, 'first'), 0, endText, endText.length, false, 'left')
-				: noSelection
-		);
+		this.select(first && last ? this.#contentRange(first, last) : noSelection);
 	};
 
 	addBlockToSelection = (block: Block) => {

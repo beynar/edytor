@@ -37,12 +37,14 @@ type Held = {
 	/** The frozen render before and after the start target (the preview goes between). */
 	head: Item[];
 	tail: Item[];
-	/** The element the IME owns, and the session's preview. */
+	/** What the first write merged in after the host's own text (a range across blocks). */
+	merged: Item[];
+	/** The element the IME owns, and the session's preview (none before the first). */
 	element: HTMLElement | null;
-	preview: Preview;
+	preview: Preview | null;
 };
 
-const textOf = (items: readonly Item[]) => items.map((item) => item.text).join('');
+const textOf = (items: readonly { text: string }[]) => items.map((item) => item.text).join('');
 
 /** The items of `deltas` before and after unit `at`. */
 const cut = (deltas: readonly RenderDelta[], at: number): [Item[], Item[]] => {
@@ -79,10 +81,11 @@ export class Pin {
 			empty: segment.text === '',
 			head: cut(frozen, from)[0],
 			tail: cut(frozen, Math.max(from, to))[1],
+			merged: [],
 			element,
 			// Until the first preview the render stays as the IME found it: a
 			// write now would collapse its DOM range before it replaces it.
-			preview: { text: '', native: true }
+			preview: null
 		};
 	};
 
@@ -92,6 +95,17 @@ export class Pin {
 		const set = marks && Object.entries(marks).filter(([, value]) => value != null);
 		if (held)
 			this.#held = { ...held, preview: { text, marks: set && Object.fromEntries(set), native } };
+	};
+
+	/**
+	 * The first write replaced a range across blocks (FX-08): the host's cell
+	 * lost the segments and atoms it covered, and the rest of its end text now
+	 * follows the preview in the host, shown after the frozen render as its
+	 * own nodes, so the IME's node is never rewritten.
+	 */
+	merge = (cell: Cell, items: Item[]) => {
+		const held = this.#held;
+		if (held) this.#held = { ...held, parts: partsOf(cell.runs), merged: items };
 	};
 
 	/** The session ended: the host renders from its cell again (the catch-up patch). */
@@ -108,18 +122,28 @@ export class Pin {
 	render = (block: BlockId, key: string): { deltas: RenderDelta[]; empty: boolean } | null => {
 		const held = this.#held;
 		if (!held || held.block !== block || held.key !== key) return null;
-		const { preview, head, tail } = held;
-		if (preview.native) return { deltas: held.frozen, empty: held.empty };
-		const items = [...head, preview, ...tail];
+		const { preview, head, tail, merged } = held;
+		if (!preview || preview.native)
+			return {
+				deltas: [...held.frozen, ...renderDeltas(merged)],
+				empty: held.empty && !textOf(merged)
+			};
+		const items = [...head, preview, ...tail, ...merged];
 		return { deltas: renderDeltas(items), empty: !textOf(items) };
 	};
 
-	/** What the IME shows in the pinned element: its text between the frozen head and tail. */
+	/**
+	 * What the IME shows in the pinned element: its text between the frozen
+	 * head and tail. None while the element still shows the start target
+	 * untouched (no preview yet, FX-02): that text is the document's, not the
+	 * IME's.
+	 */
 	imeBuffer = (): string | null => {
 		const held = this.#held;
 		if (!held?.element) return null;
 		const dom = (held.element.textContent ?? '').replace(/\u200B/g, '');
-		const [head, tail] = [textOf(held.head), textOf(held.tail)];
+		if (!held.preview && dom === textOf(held.frozen)) return null;
+		const [head, tail] = [textOf(held.head), textOf([...held.tail, ...held.merged])];
 		if (dom.length < head.length + tail.length) return null;
 		return dom.startsWith(head) && dom.endsWith(tail)
 			? dom.slice(head.length, dom.length - tail.length)

@@ -81,14 +81,19 @@ type TextRange = RangeEndpoints & { texts: Text[] };
  * view shows does; a hidden one exactly when deleting the range deletes it —
  * with the range member that hides it, any member but the head, and the head
  * too when the range starts at its start (it dies with the range). A
- * replacement (`replace`) keeps the head and its body. Copy, cut, delete,
- * marks and the toolbar share this one answer.
+ * replacement (`replace`) keeps the head and its body. The live block
+ * selection covers exactly its members (`sel.blocks.exact`, FX-07): its
+ * delete keeps a closed toggle's body. Copy, cut, delete, marks and the
+ * toolbar share this one answer.
  */
 export const rangeCovers = (
 	edytor: Edytor,
 	range: TextRange = edytor.selection.state,
 	{ replace = false } = {}
 ) => {
+	const { selection } = edytor;
+	if (range === selection.state && selection.value.kind === 'blocks')
+		return (block: Block) => selection.selectedBlocks.has(block);
 	const members = new Set(range.texts.map((text) => text.parent));
 	const head = range.startText?.parent;
 	const headDies = !replace && range.startText?.segStart === 0 && range.yStart === 0;

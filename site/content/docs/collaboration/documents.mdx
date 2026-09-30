@@ -62,7 +62,7 @@ copy.facade.toJSON(); // same JSON as the source
 | `awareness` | The one presence instance for every view and provider. See [Presence](/docs/collaboration/presence). |
 | `actor` | The local author identity. |
 | `attribution` | Per-block authorship: `block(id)` returns `createdBy`, `contributors` and `lastChangedBy`. |
-| `transact(fn)` | Run several edits as one transaction and one undo step. |
+| `transact(fn)` | Run several edits as one transaction and one undo step. A throw from `fn` does not undo the writes made before it: they are kept and synced. |
 | `encode()` | The full state as bytes, for `loadDocument`. |
 | `attachSync(sync, { value? })` | Attach a provider to the document. Returns its cleanup. |
 | `ready`, `readiness`, `onReady(fn)` | Whether the content has been decided, and how. See below. |

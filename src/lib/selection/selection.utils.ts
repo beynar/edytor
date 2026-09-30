@@ -8,9 +8,9 @@ import type { EdgeSide } from '$lib/session/editing/text.js';
 import { getTextContentOffsetAtPoint } from '$lib/events/domTextOffset.js';
 
 const TRAILING_NEWLINE_SELECTOR = '[data-edytor-trailing-newline]';
-const SYNTHETIC_TEXT_OVERLAY_SELECTOR = '[data-edytor-text-suggestion]';
+export const SYNTHETIC_TEXT_OVERLAY_SELECTOR = '[data-edytor-text-suggestion]';
 
-const getElementFromNode = (node: Node | null) => {
+export const getElementFromNode = (node: Node | null) => {
 	if (!node || typeof Element === 'undefined') {
 		return null;
 	}
@@ -86,41 +86,14 @@ const getBoundaryChild = (element: Element, offset: number, direction: 'previous
 	return null;
 };
 
-const getFirstTextElement = (node: Node | null): HTMLElement | null => {
-	if (!node) {
-		return null;
-	}
-
-	const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element | null);
-	if (!(element instanceof HTMLElement)) {
-		return null;
-	}
-
-	if (element.hasAttribute('data-edytor-text')) {
-		return element;
-	}
-
-	const nested = element.querySelector('[data-edytor-text]');
-	return nested instanceof HTMLElement ? nested : null;
-};
-
-const getLastTextElement = (node: Node | null): HTMLElement | null => {
-	if (!node) {
-		return null;
-	}
-
-	const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element | null);
-	if (!(element instanceof HTMLElement)) {
-		return null;
-	}
-
-	if (element.hasAttribute('data-edytor-text')) {
-		return element;
-	}
-
+/** The first or last text element at `node`: itself, or one nested in it. */
+const getEdgeTextElement = (edge: 'first' | 'last', node: Node | null): HTMLElement | null => {
+	const element = getElementFromNode(node);
+	if (!(element instanceof HTMLElement)) return null;
+	if (element.hasAttribute('data-edytor-text')) return element;
 	const nested = element.querySelectorAll('[data-edytor-text]');
-	const last = nested.item(nested.length - 1);
-	return last instanceof HTMLElement ? last : null;
+	const found = nested.item(edge === 'first' ? 0 : nested.length - 1);
+	return found instanceof HTMLElement ? found : null;
 };
 
 const containsInlineBlock = (node: Node | null) => {
@@ -151,8 +124,8 @@ const getElementBoundary = (node: Node, offset: number) => {
 	const next = getBoundaryChild(node, offset, 'next');
 
 	return {
-		previousText: getLastTextElement(previous),
-		nextText: getFirstTextElement(next),
+		previousText: getEdgeTextElement('last', previous),
+		nextText: getEdgeTextElement('first', next),
 		previousInline: containsInlineBlock(previous),
 		nextInline: containsInlineBlock(next),
 		previousBlock: containsBlock(previous),
@@ -218,8 +191,8 @@ const getStrayBoundaryTextElement = (node: Node, container?: HTMLElement | null)
 		const index = Array.prototype.indexOf.call(parent.childNodes, current);
 		if (index !== -1) {
 			const element =
-				getLastTextElement(siblingElement(parent, index, -1)) ??
-				getFirstTextElement(siblingElement(parent, index, 1));
+				getEdgeTextElement('last', siblingElement(parent, index, -1)) ??
+				getEdgeTextElement('first', siblingElement(parent, index, 1));
 			if (element) {
 				return element;
 			}
@@ -256,26 +229,16 @@ const getTextOffsetAtElementBoundary = (text: Text, node: Node, offset: number) 
 		return 0;
 	}
 
-	if (boundary.nextBlock && boundary.nextText === textNode) {
-		return 0;
-	}
-
-	if (boundary.previousBlock && boundary.previousText === textNode) {
-		return text.length;
-	}
-
 	return null;
 };
 
 export function getTextOfNode(this: EdytorSelection, node: Node | null, offset?: number) {
 	if (!node) return null;
+	const textOf = (element: Node | null) => (element && this.edytor.nodeToText.get(element)) || null;
 	let text: Text | null = null;
-	let currentNode = node;
 	if (node.nodeType !== Node.TEXT_NODE) {
-		text = this.edytor.nodeToText.get(node as Element) || null;
-		if (text) {
-			return text;
-		}
+		text = textOf(node);
+		if (text) return text;
 		const syntheticOverlay = findSyntheticTextOverlayElement(node);
 		if (syntheticOverlay) {
 			const blockElement = syntheticOverlay.closest('[data-edytor-block]');
@@ -284,39 +247,18 @@ export function getTextOfNode(this: EdytorSelection, node: Node | null, offset?:
 			const block = blockId ? this.edytor.idToBlock.get(blockId) : null;
 			return block?.lastText ?? null;
 		}
-		const closestTextElement = findClosestTextElement(node);
-		if (closestTextElement) {
-			text = this.edytor.nodeToText.get(closestTextElement) || null;
-			if (text) {
-				return text;
-			}
-		}
-		if (typeof offset === 'number') {
-			const boundaryTextElement = getTextElementAtBoundary(node, offset);
-			if (boundaryTextElement) {
-				text = this.edytor.nodeToText.get(boundaryTextElement) || null;
-				if (text) {
-					return text;
-				}
-			}
-		}
+		text =
+			textOf(findClosestTextElement(node)) ??
+			(typeof offset === 'number' ? textOf(getTextElementAtBoundary(node, offset)) : null);
 	} else {
-		while (currentNode.parentElement && !text) {
-			text = this.edytor.nodeToText.get(currentNode) || null;
-			currentNode = currentNode.parentElement;
-		}
+		for (let current: Node = node; current.parentElement && !text; current = current.parentElement)
+			text = textOf(current);
 	}
-	if (!text) {
-		// The endpoint lives on a stray node (whitespace/empty text between
-		// blocks, the render anchor, a non-editable gap) — resolve it to the
-		// nearest text element at that boundary so open-ended selections
-		// still map to a model text position.
-		const strayTextElement = getStrayBoundaryTextElement(node, this.edytor.node);
-		if (strayTextElement) {
-			text = this.edytor.nodeToText.get(strayTextElement) || null;
-		}
-	}
-	return text;
+	// The endpoint lives on a stray node (whitespace/empty text between
+	// blocks, the render anchor, a non-editable gap) — resolve it to the
+	// nearest text element at that boundary so open-ended selections
+	// still map to a model text position.
+	return text ?? textOf(getStrayBoundaryTextElement(node, this.edytor.node));
 }
 
 export function getInlineBlockOfNode(this: EdytorSelection, node: Node | null) {

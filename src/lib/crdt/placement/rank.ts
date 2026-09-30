@@ -158,12 +158,13 @@ export const rankBetween = (
 	let floor = false;
 	for (let i = 0; ; i++) {
 		const lSeg = L[i] as RankSeg | undefined;
-		const rSeg = rightOpen ? undefined : (R[i] as RankSeg | undefined);
+		// Locked: the right bound no longer constrains any deeper level (FX-04:
+		// descending past it grew ranks linearly under concentrated edits).
+		const rSeg = rightOpen || locked ? undefined : (R[i] as RankSeg | undefined);
 		if (lSeg === undefined) {
 			// Left bound exhausted (or absent): extending its prefix already makes
 			// the result > left. Only the right bound constrains the emitted digit.
-			// Locked: the right bound no longer constrains the result.
-			if (rSeg === undefined || locked) {
+			if (rSeg === undefined) {
 				if (floor) throw new RankSpaceExhausted();
 				// Open right (or, unreachable under valid inputs, both bounds
 				// exhausted while equal): the canonical extension digit.

@@ -921,4 +921,61 @@ test.describe('cdp IME — composition over a text range (SW14-ime-1)', () => {
 		await expect.poll(() => domTexts(page)).toEqual(['fiXst']);
 		issues.assertClean();
 	});
+
+	test('live over a range across blocks: the text after the range stays on screen (FX-08)', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await threeLines(page);
+		await setSelectionByTextIndex(page, 0, 2, 2, 2); // fi[rst … la]st
+		const ime = await openIme(page);
+		for (const step of ['に', 'にほ']) {
+			await ime.compose(step);
+			await page.waitForTimeout(KEY_PACE_MS);
+			expect(await readBlockTexts(page)).toEqual([`fi${step}st`]);
+			expect(await domTexts(page)).toEqual([`fi${step}st`]);
+		}
+		await ime.commit('日本');
+		await ime.detach();
+		await expect.poll(() => readBlockTexts(page)).toEqual(['fi日本st']);
+		await expect.poll(() => domTexts(page)).toEqual(['fi日本st']);
+		issues.assertClean();
+	});
+
+	test('live over a range across blocks: the atom and text after the range stay on screen (FX-08)', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		const doc = {
+			children: [
+				{ type: 'paragraph', content: [{ text: 'first' }] },
+				{
+					type: 'paragraph',
+					content: [{ text: 'last' }, { type: 'mention', data: {} }, { text: 'end' }]
+				}
+			]
+		};
+		await page.goto(
+			`/test/dom?${new URLSearchParams({ scenario: 'dst', dst: JSON.stringify(doc) })}`
+		);
+		await waitForEditorReady(page, { requireRuntime: true });
+		await setSelectionByTextIndex(page, 0, 2, 1, 2); // fi[rst … la]st
+		const ime = await openIme(page);
+		const line = () =>
+			page.evaluate(() =>
+				(document.querySelector('[data-edytor-block]')?.textContent ?? '').replace(/\u200B/g, '')
+			);
+		const mention = await page.evaluate(
+			() => document.querySelector('[data-edytor-inline-block]')?.textContent ?? ''
+		);
+		for (const step of ['に', 'にほ']) {
+			await ime.compose(step);
+			await page.waitForTimeout(KEY_PACE_MS);
+			expect((await line()).trim()).toBe(`fi${step}st${mention}end`);
+		}
+		await ime.commit('日本');
+		await ime.detach();
+		await expect.poll(async () => (await line()).trim()).toBe(`fi日本st${mention}end`);
+		issues.assertClean();
+	});
 });

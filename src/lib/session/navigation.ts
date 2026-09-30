@@ -27,6 +27,7 @@ import { InlineBlock } from '$lib/block/inlineBlock.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import { getNextGraphemeEnd, getPreviousGraphemeStart } from '$lib/text/text.utils.js';
 import { getNextWordEndOffset, getPreviousWordStartOffset } from '$lib/events/wordBoundary.js';
+import { getSelectedBlocksInDocumentOrder, shownText } from '$lib/selection/replaceSelection.js';
 import type { HotKey } from './keymap.js';
 import type { SelectionValue } from './selection.js';
 
@@ -35,13 +36,8 @@ type Stop = { text: Text; offset: number };
 export type Dir = 1 | -1;
 type Unit = 'char' | 'word' | 'line' | 'doc';
 
-/**
- * A block's stop at its edge in `dir` (its end going forward, its start
- * going backward); none in a block that shows no content (a divider's
- * phantom text is no stop: Home over a lone selected divider keeps it).
- */
+/** A block's stop at its edge in `dir` (its end going forward, its start going backward). */
 const edge = (block: Block, dir: Dir): Stop | null => {
-	if (!block.rendersContent) return null;
 	const texts = block.content.filter((part): part is Text => part instanceof Text);
 	const text = dir > 0 ? texts.at(-1) : texts[0];
 	return text ? { text, offset: dir > 0 ? text.length : 0 } : null;
@@ -122,15 +118,34 @@ export const move = (
 	const { value, state } = selection;
 	if (value.kind === 'none' || !state.startText || !state.endText) return false;
 	if (unit === 'char' && value.kind === 'blocks') return false;
-	const start = { text: state.startText, offset: state.yStart };
-	const end = { text: state.endText, offset: state.yEnd };
+	// A block selection spans its first shown line's start to its last one's
+	// end (FX-01: a list's items, a code block's lines, never a divider; a
+	// member's own line, never an unselected child's).
+	const blocks = value.kind === 'blocks' && getSelectedBlocksInDocumentOrder(edytor);
+	let first = blocks
+		? blocks.map((block) => shownText(block, 'first')).find(Boolean)
+		: state.startText;
+	let last = blocks
+		? blocks.map((block) => shownText(block, 'last')).findLast(Boolean)
+		: state.endText;
+	if (!first || !last) {
+		// Voids alone show no line: the blocks stay selected, except for the
+		// document keys, whose target is the document's edge (`select` moves
+		// an anchor left in a void beside it).
+		if (unit !== 'doc') return true;
+		[first, last] = [state.startText, state.endText];
+	}
+	const start = { text: first, offset: blocks ? 0 : state.yStart };
+	const end = { text: last, offset: blocks ? last.length : state.yEnd };
 	const rtl = selection.rtl(state.isReversed ? start.text : end.text);
 	const dir: Dir = typeof key === 'number' ? key : (key === 'right') !== rtl ? 1 : -1;
-	// The focus moves; an atom is the range anchored on the side it came from.
-	const reversed = value.kind === 'atom' ? value.from === 'after' : state.isReversed;
+	// The focus moves; an atom is the range anchored on the side it came from,
+	// a block selection on the side away from the key.
+	const reversed =
+		value.kind === 'atom' ? value.from === 'after' : blocks ? dir < 0 : state.isReversed;
 	const [anchor, focus] = reversed ? [end, start] : [start, end];
 	const nodeBound = unit === 'char' && value.kind === 'text' && selection.hasNativeNodeSelection();
-	if (!extend && !state.isCollapsed && unit !== 'line' && unit !== 'doc') {
+	if (!extend && (blocks || !state.isCollapsed) && unit !== 'line' && unit !== 'doc') {
 		if (unit === 'char' && value.kind === 'text' && !nodeBound) return false;
 		const to = dir > 0 ? end : start;
 		select(edytor, to, to);

@@ -11,6 +11,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Plugin } from '$lib/plugins.js';
 import type { JSONBlock } from '$lib/utils/json.js';
+import type { Text } from '$lib/text/text.svelte.js';
+import { createDocument } from '$lib/crdt/index.js';
+import { convertBlocks, kindCatalogue } from '$lib/kinds.js';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { codePlugin } from '$lib/plugins/code/CodePlugin.svelte';
@@ -178,8 +181,11 @@ describe('EW-01 — a composition over a block selection replaces it and writes 
 		await caretIn(view, 'after', 0);
 		await key('Backspace');
 		expect([...view.edytor.selection.selectedBlocks].map((b) => b.id)).toEqual(['d']);
+		const park = vi.spyOn(view.edytor.projector, 'park');
 		await dispatchComposition(view.editor, [{ type: 'compositionstart' }]);
-		// The IME is given a caret in the block that takes the divider's place.
+		// The IME is given a caret in the block that takes the divider's place,
+		// by the DOM-selection writer (FX-13).
+		expect(park).toHaveBeenCalledTimes(1);
 		const slot = domCaretBlock(view);
 		expect(slot).not.toBeNull();
 		expect(['first', 'before', 'd', 'after']).not.toContain(slot);
@@ -509,6 +515,38 @@ describe('SW14-ime-1 — the render leaves the IME’s range alone until the fir
 		await flushDomUpdates();
 		expect(lines(view)).toEqual(['paragraph:f日t', 'paragraph:z']);
 	});
+
+	it.each([
+		['a non-composing key', () => key('ArrowLeft')],
+		[
+			'a new compositionstart',
+			() =>
+				dispatchComposition(document.querySelector('[data-edytor]')!, [
+					{ type: 'compositionstart' }
+				])
+		]
+	])('abandoned by %s before its first preview, it writes nothing (FX-02)', async (_, abandon) => {
+		const view = await render([
+			{
+				id: 'm',
+				type: 'paragraph',
+				content: [{ text: 'f' }, { text: 'ir', marks: { bold: true } }, { text: 'st' }]
+			},
+			p('z')
+		]);
+		const text = get(view, 'm').firstText!;
+		await setNativeSelection(view.edytor, text, 1, text, 4);
+		const steps = view.edytor.undoManager!.undoStack.length;
+		await dispatchComposition(view.editor, [{ type: 'compositionstart' }]);
+		await abandon();
+		await flushDomUpdates();
+		expect(view.edytor.value.children?.[0]?.content).toEqual([
+			{ text: 'f' },
+			{ text: 'ir', marks: { bold: true } },
+			{ text: 'st' }
+		]);
+		expect(view.edytor.undoManager!.undoStack.length).toBe(steps);
+	});
 });
 
 describe('SW14-keys-1 — no key puts the caret in a lone selected divider’s phantom text', () => {
@@ -533,6 +571,171 @@ describe('SW14-keys-1 — no key puts the caret in a lone selected divider’s p
 			'paragraph:Z',
 			'paragraph:after'
 		]);
+	});
+
+	/**
+	 * FX-01: the word keys, with and without Shift, over a block selection
+	 * starting or ending in a block that renders no content (a divider, a
+	 * list container, a code block): the caret or range lands on a shown
+	 * line — the selection's first shown stop going back, its last going
+	 * forward — and over voids alone the blocks stay selected. A typed
+	 * character never lands in the hidden content.
+	 */
+	const list = (): JSONBlock => ({
+		id: 'L',
+		type: 'unordered-list',
+		children: [
+			{ id: 'i1', type: 'list-item', content: [{ text: 'one' }] },
+			{ id: 'i2', type: 'list-item', content: [{ text: 'two' }] }
+		]
+	});
+	const code = (): JSONBlock => ({
+		id: 'C',
+		type: 'code',
+		content: [{ text: 'cap' }],
+		children: [
+			{ id: 'l1', type: 'codeLine', content: [{ text: 'x' }] },
+			{ id: 'l2', type: 'codeLine', content: [{ text: 'y' }] }
+		]
+	});
+	/** Every block's `type:text`, depth-first (hidden content included). */
+	const all = ({ edytor }: View) => {
+		const out: string[] = [];
+		const walk = (blocks: JSONBlock[] = []) =>
+			blocks.forEach((block) => {
+				out.push(
+					`${block.type}:${(block.content ?? []).map((part) => ('text' in part ? part.text : '@')).join('')}`
+				);
+				walk(block.children);
+			});
+		walk(edytor.value.children);
+		return out;
+	};
+	const shapes = {
+		divider: {
+			seed: seed,
+			select: async (view: View) => {
+				await caretIn(view, 'after', 0);
+				await key('Backspace');
+			}
+		},
+		'paragraph, divider': {
+			seed: seed,
+			select: async (view: View) => {
+				view.edytor.selection.selectBlocks(get(view, 'before'), get(view, 'd'));
+				await flushDomUpdates();
+			}
+		},
+		list: {
+			seed: () => [p('a'), list(), p('z')],
+			select: async (view: View) => {
+				view.edytor.selection.selectBlocks(get(view, 'L'));
+				await flushDomUpdates();
+			}
+		},
+		code: {
+			seed: () => [p('a'), code(), p('z')],
+			select: async (view: View) => {
+				view.edytor.selection.selectBlocks(get(view, 'C'));
+				await flushDomUpdates();
+			}
+		}
+	};
+	// Hand-authored: what the document holds after the key, then typing "Z".
+	const typed: Record<keyof typeof shapes, Record<string, string[]>> = {
+		divider: {
+			left: ['paragraph:first', 'paragraph:before', 'paragraph:Z', 'paragraph:after'],
+			right: ['paragraph:first', 'paragraph:before', 'paragraph:Z', 'paragraph:after'],
+			'shift left': ['paragraph:first', 'paragraph:before', 'paragraph:Z', 'paragraph:after'],
+			'shift right': ['paragraph:first', 'paragraph:before', 'paragraph:Z', 'paragraph:after']
+		},
+		'paragraph, divider': {
+			left: ['paragraph:first', 'paragraph:Zbefore', 'divider:', 'paragraph:after'],
+			right: ['paragraph:first', 'paragraph:beforeZ', 'divider:', 'paragraph:after'],
+			// Shift extends from the selection's shown edge in the key's direction.
+			'shift left': ['paragraph:firstZ', 'divider:', 'paragraph:after'],
+			'shift right': ['paragraph:first', 'paragraph:Zafter']
+		},
+		list: {
+			left: ['paragraph:a', 'unordered-list:', 'list-item:Zone', 'list-item:two', 'paragraph:z'],
+			right: ['paragraph:a', 'unordered-list:', 'list-item:one', 'list-item:twoZ', 'paragraph:z'],
+			// The emptied list goes with its items (`del.range.empty-container`).
+			'shift left': ['paragraph:aZ', 'paragraph:z'],
+			'shift right': ['paragraph:a', 'unordered-list:', 'list-item:Zz']
+		},
+		code: {
+			left: ['paragraph:a', 'code:cap', 'codeLine:Zx', 'codeLine:y', 'paragraph:z'],
+			right: ['paragraph:a', 'code:cap', 'codeLine:x', 'codeLine:yZ', 'paragraph:z'],
+			// A range from a paragraph over every line of the code block deletes it
+			// whole; one from its lines out to the next paragraph stops at the island.
+			'shift left': ['paragraph:aZ', 'paragraph:z'],
+			'shift right': ['paragraph:a', 'code:cap', 'codeLine:Z', 'paragraph:z']
+		}
+	};
+	describe.each(['other', 'mac'] as const)('the word keys (%s)', (platform) => {
+		it.each(
+			Object.keys(shapes).flatMap((shape) =>
+				(['left', 'right', 'shift left', 'shift right'] as const).map(
+					(row) => [shape as keyof typeof shapes, row] as const
+				)
+			)
+		)('over %s: %s, then typing, writes only shown lines', async (shape, row) => {
+			if (platform === 'mac')
+				vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue('MacIntel');
+			const view = await render(shapes[shape].seed());
+			const hidden = all(view).filter((line) => /^(divider|unordered-list|code):/.test(line));
+			await shapes[shape].select(view);
+			await key(row.endsWith('left') ? 'ArrowLeft' : 'ArrowRight', {
+				shiftKey: row.startsWith('shift'),
+				...(platform === 'mac' ? { altKey: true } : { ctrlKey: true })
+			});
+			await type(view.editor, 'Z');
+			await flushDomUpdates();
+			expect(all(view)).toEqual(typed[shape][row]);
+			// No block that renders no content gained any.
+			expect(all(view).filter((line) => /^(divider|unordered-list|code):/.test(line))).toEqual(
+				hidden.filter((line) => typed[shape][row].includes(line))
+			);
+		});
+	});
+
+	it('the one writer: no caret or range endpoint rests in content no block shows (FX-01)', async () => {
+		const view = await render([p('a'), divider('d'), list(), p('z')]);
+		const { selection, dispatcher } = view.edytor;
+		const slot = (id: string) => get(view, id).content[0] as Text;
+		const at = () => {
+			const { startText, yStart, endText, yEnd } = selection.state;
+			return [startText?.parent.id, yStart, endText?.parent.id, yEnd];
+		};
+		// A void's slot: the next shown line; a container's: its first item.
+		selection.setAtTextOffset(slot('d'), 0);
+		expect(at()).toEqual(['i1', 0, 'i1', 0]);
+		selection.setAtTextOffset(slot('L'), 0);
+		expect(at()).toEqual(['i1', 0, 'i1', 0]);
+		selection.setAtBlockRange(get(view, 'd'));
+		expect(at()).toEqual(['i1', 0, 'i1', 0]);
+		selection.setAtRange(get(view, 'a').firstText!, 0, slot('d'), 0);
+		expect(at()).toEqual(['a', 0, 'i1', 0]);
+		dispatcher.caret(slot('d'), 0);
+		expect(at()).toEqual(['i1', 0, 'i1', 0]);
+		await flushDomUpdates();
+		await type(view.editor, 'Z');
+		expect(all(view)).toEqual([
+			'paragraph:a',
+			'divider:',
+			'unordered-list:',
+			'list-item:Zone',
+			'list-item:two',
+			'paragraph:z'
+		]);
+	});
+
+	it('the one writer: with no shown line at all, the selection stays', async () => {
+		const view = await render([divider('d')]);
+		const { selection } = view.edytor;
+		selection.selectBlocks(get(view, 'd'));
+		selection.setAtTextOffset(get(view, 'd').content[0] as Text, 0);
+		expect([...selection.selectedBlocks].map((b) => b.id)).toEqual(['d']);
 	});
 
 	it('Mod+B over selected paragraphs bolds them and keeps them selected', async () => {
@@ -596,4 +799,172 @@ describe('SW14-keys-2 — Enter over a lone divider whose new line is refused ke
 			'paragraph:after'
 		]);
 	});
+});
+
+describe('SW15-selection-1 — a peer’s change never leaves this view’s caret in content no block shows', () => {
+	it.each([
+		['divider', ['paragraph:a', 'divider:', 'paragraph:Z', 'paragraph:z']],
+		['code', ['paragraph:a', 'code:', 'codeLine:Z', 'paragraph:z']]
+	])(
+		'the empty line holding the caret turned into a %s: typing lands on its next line',
+		async (kind, expected) => {
+			const document = createDocument();
+			const value = { children: [p('a'), { id: 'e', type: 'paragraph' }, p('z')] };
+			const plugins = [richTextPlugin, codePlugin];
+			const ada = await renderDomEdytor(
+				<root>
+					<paragraph>|</paragraph>
+				</root>,
+				{ document, value, plugins }
+			);
+			const bob = await renderDomEdytor(
+				<root>
+					<paragraph>|</paragraph>
+				</root>,
+				{ document, plugins }
+			);
+			ada.edytor.selection.setAtTextOffset(get(ada, 'e').firstText, 0);
+			await flushDomUpdates();
+			const row = kindCatalogue(bob.edytor.blocks).find((row) => row.value.type === kind)!;
+			convertBlocks(bob.edytor, [get(bob, 'e')], row);
+			await flushDomUpdates();
+			await type(ada.editor, 'Z');
+			await flushDomUpdates();
+			const all: string[] = [];
+			const walk = (blocks: JSONBlock[] = []) =>
+				blocks.forEach((block) => {
+					all.push(
+						`${block.type}:${(block.content ?? []).map((part) => ('text' in part ? part.text : '@')).join('')}`
+					);
+					walk(block.children);
+				});
+			walk(ada.edytor.value.children);
+			expect(all).toEqual(expected);
+		}
+	);
+});
+
+/**
+ * DR-behavior-1 (wave 15): a block selection is exactly its members, so the
+ * navigation keys over a grip-selected parent whose nested children are not
+ * selected read the parent's own line — as Escape and Enter do — never its
+ * last child's. Typing after them leaves the children's text intact.
+ */
+describe('DR-behavior-1 — the navigation keys over a selected parent read its own line', () => {
+	const parent = () => [
+		{
+			id: 'P',
+			type: 'paragraph',
+			content: [{ text: 'parent' }],
+			children: [p('c1', 'kid one'), p('c2', 'kid two')]
+		},
+		p('z', 'zed')
+	];
+	const depthFirst = ({ edytor }: View) => {
+		const out: string[] = [];
+		const walk = (blocks: JSONBlock[] = []) =>
+			blocks.forEach((block) => {
+				out.push((block.content ?? []).map((part) => ('text' in part ? part.text : '@')).join(''));
+				walk(block.children);
+			});
+		walk(edytor.value.children);
+		return out;
+	};
+	const kept = ['kid one', 'kid two', 'zed'];
+	it.each([
+		['End', {}, 'other', ['parentZ', ...kept]],
+		['ArrowRight', { ctrlKey: true }, 'other', ['parentZ', ...kept]],
+		['ArrowRight', { altKey: true }, 'mac', ['parentZ', ...kept]],
+		['Home', {}, 'other', ['Zparent', ...kept]],
+		['ArrowLeft', { ctrlKey: true }, 'other', ['Zparent', ...kept]],
+		['Escape', {}, 'other', ['parentZ', ...kept]],
+		['End', { shiftKey: true }, 'other', ['Z', ...kept]],
+		['Home', { shiftKey: true }, 'other', ['Z', ...kept]],
+		['ArrowLeft', { shiftKey: true, ctrlKey: true }, 'other', ['Z', ...kept]],
+		['ArrowLeft', { shiftKey: true, altKey: true }, 'mac', ['Z', ...kept]]
+	] as const)('%s %o (%s), then typing', async (name, mods, platform, expected) => {
+		if (platform === 'mac')
+			vi.spyOn(window.navigator, 'platform', 'get').mockReturnValue('MacIntel');
+		const view = await render(parent());
+		view.edytor.selection.selectBlocks(get(view, 'P'));
+		await flushDomUpdates();
+		await key(name, mods);
+		await type(view.editor, 'Z');
+		await flushDomUpdates();
+		expect(depthFirst(view)).toEqual(expected);
+	});
+
+	it('Shift+Mod+→ extends from the parent’s own line end, not past its children', async () => {
+		const view = await render(parent());
+		view.edytor.selection.selectBlocks(get(view, 'P'));
+		await flushDomUpdates();
+		await key('ArrowRight', { shiftKey: true, ctrlKey: true });
+		const { startText, yStart } = view.edytor.selection.state;
+		// The anchor is the parent's own line start; the focus leaves its line end.
+		expect([startText?.parent.id, yStart]).toEqual(['P', 0]);
+		await type(view.editor, 'Z');
+		await flushDomUpdates();
+		expect(depthFirst(view).slice(-2)).toEqual(['kid two', 'zed']);
+	});
+
+	it('with its children selected too, End goes to the last child’s end', async () => {
+		const view = await render(parent());
+		view.edytor.selection.selectBlocks(get(view, 'P'), get(view, 'c2'));
+		await flushDomUpdates();
+		await key('End');
+		expect(caret(view)).toEqual(['c2', 7, true]);
+	});
+
+	it('a closed toggle’s hidden body selected first: Escape passes over it', async () => {
+		const view = await render([
+			{
+				id: 't',
+				type: 'toggle',
+				content: [{ text: 'head' }],
+				children: [p('body')]
+			},
+			p('z', 'zed')
+		]);
+		view.edytor.selection.selectBlocks(get(view, 'body'), get(view, 'z'));
+		await flushDomUpdates();
+		await key('Escape');
+		expect(caret(view)).toEqual(['z', 3, true]);
+	});
+});
+
+/**
+ * DR-behavior-2 (wave 15): the document keys (PageUp/PageDown, Mod+↑/↓) go
+ * to the document's start or end whatever the selection holds, voids alone
+ * included; with Shift, the range runs from beside the voids.
+ */
+describe('DR-behavior-2 — the document keys over a lone selected divider', () => {
+	it.each([
+		['PageDown', {}, ['after', 5, true]],
+		['ArrowDown', { ctrlKey: true }, ['after', 5, true]],
+		['PageUp', {}, ['first', 0, true]],
+		['ArrowUp', { ctrlKey: true }, ['first', 0, true]]
+	] as const)('%s %o moves the caret to the document edge', async (name, mods, expected) => {
+		const view = await render(seed());
+		await caretIn(view, 'after', 0);
+		await key('Backspace');
+		expect([...view.edytor.selection.selectedBlocks].map((b) => b.id)).toEqual(['d']);
+		await key(name, mods);
+		expect(caret(view)).toEqual(expected);
+	});
+
+	it.each([
+		['PageDown', ['paragraph:first', 'paragraph:before', 'divider:', 'paragraph:Z']],
+		['PageUp', ['paragraph:Zafter']]
+	] as const)(
+		'Shift+%s selects from beside the divider; typing replaces it',
+		async (name, expected) => {
+			const view = await render(seed());
+			await caretIn(view, 'after', 0);
+			await key('Backspace');
+			await key(name, { shiftKey: true });
+			await type(view.editor, 'Z');
+			await flushDomUpdates();
+			expect(lines(view)).toEqual(expected);
+		}
+	);
 });

@@ -758,6 +758,8 @@ describe('docs drift', () => {
 					'paste of whole blocks',
 					'over selected blocks',
 					'Several gestures',
+					'Turn into over several blocks',
+					'group of adjacent items',
 					'drag'
 				]
 			],
@@ -770,7 +772,9 @@ describe('docs drift', () => {
 					'duplicateBlock',
 					'`whole`',
 					'`replace`',
-					'several structural'
+					'several structural',
+					'Turn into over several blocks',
+					'`moveRoots`'
 				]
 			],
 			[
@@ -782,15 +786,76 @@ describe('docs drift', () => {
 					'`whole`',
 					'`replace`s blocks',
 					'several structural calls',
+					'Turn into over several blocks',
+					'per run of adjacent blocks',
 					'`nestBlock`'
 				]
 			]
 		] as const)
-			for (const name of [
-				...names,
-				...(page === 'document-api' ? [] : ['Alt+↑', 'Mod+Shift+↑', 'Move up', 'Tab'])
-			])
+			for (const name of [...names, 'Alt+↑', 'Mod+Shift+↑', 'Move up', 'Tab'])
 				expect(text, `${page} names ${name}`).toContain(name);
+	});
+
+	/**
+	 * FX-12: the handle's Alt+← is the outdent (`unNestBlocks`), which is
+	 * ranked; only Alt+↑/↓/→ are moves. FX-09, FX-10: the split residuals
+	 * name an earlier nested line's outdent, and a deletion after one's own
+	 * split point, wherever they are listed.
+	 */
+	it('the ordering residuals and moves are named exactly (FX-09, FX-10, FX-12)', () => {
+		const read = (path: string) => readFileSync(join(root, path), 'utf8');
+		const pages = {
+			site: read('site/content/docs/collaboration/concurrent-editing.mdx'),
+			contract: read('docs/editor-delete-contract.md'),
+			api: read('site/content/docs/reference/document-api.mdx'),
+			scope: read('src/tests/crdt/arch-v2/order-scope.test.ts')
+		};
+		for (const [page, text] of Object.entries(pages)) {
+			expect(text, `${page}: Alt+arrows`).not.toMatch(/Alt\+arrows/);
+			if (page !== 'scope')
+				expect(text, `${page}: Alt+←`).toMatch(/Alt\+←(?:<\/kbd>)? is the outdent/);
+		}
+		for (const page of ['site', 'contract'] as const)
+			expect(pages[page], `${page}: R3 adoption`).toMatch(/earlier nested line/);
+		expect(pages.site).not.toMatch(/text (?:Alice )?typed after/);
+		expect(pages.site).toContain('typed or deleted after her own split point');
+		expect(pages.api).toContain("typed or deleted after one's own split point");
+		// DR-rest-2: one `unNestBlocks` call keeps the order over ADJACENT siblings only.
+		for (const page of ['contract', 'api'] as const) {
+			expect(pages[page], `${page}: unNestBlocks scope`).not.toMatch(
+				/`unNestBlocks` over several is one plan/
+			);
+			expect(pages[page], `${page}: unNestBlocks scope`).toMatch(
+				/`unNestBlocks` over adjacent siblings is one plan/
+			);
+			expect(pages[page], `${page}: non-adjacent`).toMatch(/non-adjacent/);
+		}
+	});
+
+	/**
+	 * DR-rest-1, DR-rest-3: every `transact` (document, editor, facade, room)
+	 * is one transaction, not a rollback; the room's rebuild after a failed
+	 * append replaces `doc` and `facade`, and its own edit is not resent.
+	 */
+	it('every transact page says a throw keeps the writes made before it (DR-rest-1, DR-rest-3)', () => {
+		const read = (path: string) => readFileSync(join(root, `site/content/docs/${path}`), 'utf8');
+		const extending = read('server/extending.mdx');
+		const room = read('server/room.mdx');
+		expect(extending).not.toMatch(/all or nothing: if `fn` throws|rolled back/);
+		expect(extending).toContain('one transaction, not a rollback');
+		expect(extending).toContain('replaces `doc` and `facade`');
+		expect(read('reference/document-api.mdx')).toContain(
+			'a throw from `fn` does not undo the writes made before it'
+		);
+		expect(read('collaboration/documents.mdx')).toContain(
+			'A throw from `fn` does not undo the writes made before it'
+		);
+		expect(read('concepts/editor-instance.mdx')).toContain(
+			'A throw from `fn` does not undo the changes made before it'
+		);
+		expect(room).toMatch(/resends the edit\. If the append of the room's own edit fails/);
+		expect(room).toContain('nothing resends it');
+		expect(readFileSync(join(root, 'AGENTS.md'), 'utf8')).not.toMatch(/all or nothing: a throw/);
 	});
 });
 

@@ -550,16 +550,21 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   of a block that is no list, and the children a merge unnests after the
   merged block, are ranked by where they came from, as a list's
   (SW12-crdt-3). Residuals, pinned in `dr-crdt-order.test.ts`:
-  - an unseen edit _after_ one's own split point counts: Ada appends
-    " again" to "hello world" and splits after "hello wo" ‖ Bob splits
-    after "hello" → "hello", "rld again", " wo";
+  - an unseen edit _after_ one's own split point counts, typed or
+    deleted: Ada appends " again" to "hello world" and splits after
+    "hello wo" ‖ Bob splits after "hello" → "hello", "rld again", " wo";
+    Ada deletes "rld" and splits after "hello" ‖ Bob splits after
+    "hello w" → "hello", "o", " w";
   - R3, a new block stays behind: the block a split creates right after
     `s` stays beside `s` in `s`'s parent while a peer moves `s` out of it
     (an outdent or lift of `s`, a split of its list at a later item whose
     head list takes `s`, a split of `s`'s parent that takes `s` into the
-    new piece): Enter at the end of the last item ‖ Shift+Tab on it →
-    `[ul > [a, new], paragraph "b"]` — the same residual as an item a
-    peer adds among the items before an outdented one;
+    new piece, Shift+Tab on an earlier nested line of a non-list block,
+    which adopts `s`): Enter at the end of the last item ‖ Shift+Tab on
+    it → `[ul > [a, new], paragraph "b"]` — the same residual as an item a
+    peer adds among the items before an outdented one; and
+    `x > [k1, "kk2", k3]`, Enter after "k" ‖ Shift+Tab on `k1` →
+    `x > ["k2"]`, `k1 > ["k", k3]`;
   - R4, a merge into a split block: the merge claim appends to `into`'s
     claims list, and a concurrent split moved only the claims it saw, so
     the merged text follows the head: Backspace joins "world" into
@@ -588,19 +593,36 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   - several structural gestures by one peer before it syncs (text edits
     before one's split point are fine, DR-crdt-7; one after it is the
     residual above): two Enters ‖ a first-item lift,
-    a new line or Duplicate after X then a split of X ‖ a split of X;
+    a new line or Duplicate after X then a split of X ‖ a split of X.
+    That includes Turn into over several blocks (`convertBlocks`: one
+    `convertToKind`/`liftOut` plan per block): turning `a` and `b` of
+    `[p, ul > [a, b, c, d, e], q]` into headings ‖ Shift+Tab on `c` → `b`
+    can read after `c` (`unNestBlocks` over adjacent siblings is one plan
+    and keeps the order), and Shift+Tab over selected items with an
+    unselected one between them (`moveRoots`: one `unNestBlocks` plan per
+    run of adjacent siblings): `a` and `c` ‖ Shift+Tab on `d` → `d` can
+    read before `b` (SW15-crdt-1). One `unNestBlocks` call over
+    non-adjacent siblings (headless, or `edytor.moveBlocks` with
+    `direction: 'out'`) is not covered either: `unNestBlocks([a, c])` ‖ an
+    outdent of `d` → `p|a|b|c|d|e|q` on some pairs, where the serial result
+    is `p|b|a|c|d|e|q` (DR-rest-2);
   - moves (`moveBlocks`, `nestBlock`): a drag, the handle's Alt+↑/↓/→
     (Alt+← is the outdent, ranked), Mod+Shift+↑/↓ (arrowMovePlugin), the
     block menu's Move up/down and Tab (`nestBlock` at the parent's end:
     Tab on `y` ‖ Enter at the end of the last child of the block above →
     the new line can read after `y`).
-- One client never mints one source rank twice in a gap: a source rank's
-  last part segment is tied by the client's clock (DW-05), so a line a
-  peer deleted and restores by undo never ties with the line minted there
-  since (`order-scope.test.ts`). `rank-growth.test.ts` bounds the longest
-  rank and the encoded document after 300 Enters mid-document, 300 typed
-  outline items and 3,000 reorders of 20 lines (EW-02); a ranking change
-  keeps within it.
+- One client never mints one source rank twice in a gap: a segment tied
+  by the client's clock follows a source rank's first part segment
+  (DW-05), so a line a peer deleted and restores by undo never ties with
+  the line minted there since, and the lines of one gesture (a paste)
+  sort before what the client mints there later, never among them
+  (FX-06; `order-scope.test.ts`). `rankBetween` stops descending once the
+  emitted prefix is below the right bound (FX-04). `rank-growth.test.ts`
+  bounds the longest rank and the encoded document after 300 and 1,000
+  Enters mid-document, 300 typed outline items and 3,000 reorders of 20
+  lines (EW-02); a ranking change keeps within it. Enters concentrated at
+  one spot still add about one rank level per 32 (a gap halves at each
+  insert there).
 - Concurrency (DR-crdt-2): an item a peer adds to a list another peer's
   edit removes (a delete, lift, pull-up or move of its only item, or a
   delete of the list) is promoted into the list's slot as its new parent's

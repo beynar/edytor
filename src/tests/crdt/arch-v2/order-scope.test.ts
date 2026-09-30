@@ -4,18 +4,20 @@
  * and wave10 rows on `clientPairs`) prove it for one structural gesture per
  * peer between syncs — a split, a paste of lines into a line, a lift, an
  * outdent, a Turn into, a merge that unnests children — with text typed
- * before the split point (typing after one's own split point before it
- * syncs is the split residual, pinned last). They do not cover a new line
+ * before the split point (typing or deleting after one's own split point
+ * before it syncs is the split residual, pinned in `dr-crdt-order`). They do not cover a new line
  * inserted beside a block (Enter at a block's start or end, Duplicate, the +
  * button: `insertBlock` ranks it at random in the gap), a paste of whole
  * blocks or over selected blocks (`insertFlow`'s `whole` and `replace`:
- * `insertBlocks` too, DR-crdt-1), several structural gestures by one peer before it syncs, or
- * a move (a drag, the handle's Alt+arrows, Mod+Shift+↑/↓, the block menu's
+ * `insertBlocks` too, DR-crdt-1), several structural gestures by one peer before it syncs
+ * (Turn into over several blocks is one plan per block, FX-05), or
+ * a move (a drag, the handle's Alt+↑/↓/→ (Alt+← is the outdent, ranked), Mod+Shift+↑/↓, the block menu's
  * Move up/down, Tab). The rows below pin one outcome set each, so the
  * docs that list these as not covered change with the code. Expected sets
  * are hand-authored: the serial order, and the one the ids can give.
  *
- * DW-05: one client never mints the same source rank twice in one gap.
+ * DW-05: one client never mints the same source rank twice in one gap;
+ * FX-06: what one gesture minted there never interleaves a later one's.
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { describe, expect, it } from 'vitest';
@@ -236,4 +238,91 @@ describe('DW-05: one client never mints one source rank twice in a gap', () => {
 				b.destroy();
 			}
 		});
+});
+
+/**
+ * FX-06: Ada pastes ['', 'one', 'two'] at the end of X; Bob deletes the two
+ * lines; Ada presses Enter at the end of X and types; Bob undoes. The
+ * restored paste stays contiguous: Ada's later line sorts after both
+ * pasted lines (her clock grew), never between them.
+ */
+describe('FX-06: a later split never interleaves a restored multi-line paste', () => {
+	const line = (id: string, text: string) => ({ id, content: [{ kind: 'text', text }] });
+	it('paste, delete its lines, Enter at the end and type, undo', () => {
+		const out = new Set<string>();
+		for (const [ida, idb] of clientPairs(24)) {
+			const seed = seedUpdate([para('P'), { id: 'X', text: 'hello' }, para('Q')]);
+			const a = replica('ada', seed, ida);
+			const b = replica('bob', seed, idb);
+			ok(
+				a.ed.insertFlow(
+					{ block: 'X', offset: 5 },
+					{ lines: [line('L0', ''), line('L1', 'one'), line('L2', 'two')] }
+				)
+			);
+			quiesce([a, b]);
+			const pasted = a.ed.order().filter((id) => ['one', 'two'].includes(a.ed.blockText(id)));
+			expect(pasted.length).toBe(2);
+			ok(b.ed.deleteBlocks(pasted));
+			quiesce([a, b]);
+			ok(a.ed.splitBlock('X', 5, 'N'));
+			ok(a.ed.insertText('N', 0, 'new'));
+			quiesce([a, b]);
+			b.undo();
+			quiesce([a, b]);
+			const text = (r) =>
+				r.ed
+					.order()
+					.map((id) => r.ed.blockText(id))
+					.join('|');
+			expect(text(a)).toBe(text(b));
+			for (const r of [a, b]) expect(r.problems).toEqual([]);
+			out.add(text(a));
+			a.destroy();
+			b.destroy();
+		}
+		expect([...out]).toEqual(['P|hello|one|two|new|Q']);
+	});
+});
+
+/**
+ * FX-05: Turn into over several list items is one plan per item (the
+ * editor's `convertBlocks`), so it is several gestures before a sync: Ada
+ * turns `a` and `b` into headings ‖ Bob outdents `c` → `b` can read after
+ * `c`. Shift+Tab over items with an unselected one between them is one
+ * plan per group of adjacent items too (`moveRoots`, SW15-crdt-1). The
+ * same two adjacent items outdented together (`unNestBlocks`, one plan)
+ * keep the order. One `unNestBlocks` call over NON-adjacent siblings (a
+ * headless call, or `edytor.moveBlocks` with `direction: 'out'`) does not
+ * (DR-rest-2): its serial result moves the unselected item between them
+ * first (`p|b|a|c…`), and a race can keep the old order instead.
+ */
+describe('FX-05, SW15-crdt-1: a command over several groups is several gestures (pinned)', () => {
+	const heading = (id: string) => (ed) =>
+		ed.apply(ed.compose(ed.prepare.liftOut(id, 'heading'), ed.prepare.setBlockType(id, 'heading')));
+	const seed = [para('p'), list('a', 'b', 'c', 'd', 'e'), para('q')];
+	it('Turn a and b into headings ‖ Shift+Tab on c', () =>
+		expect(outcomes(seed, [heading('a'), heading('b')], [(ed) => ed.unNestBlock('c')])).toEqual(
+			['p|a|b|c|d|e|q', 'p|a|c|b|d|e|q'].sort()
+		));
+	it('Shift+Tab on a and c, b unselected (two groups, one plan each) ‖ Shift+Tab on d', () =>
+		expect(
+			outcomes(
+				seed,
+				[(ed) => ed.unNestBlocks(['a']), (ed) => ed.unNestBlocks(['c'])],
+				[(ed) => ed.unNestBlock('d')]
+			)
+		).toEqual(['p|a|b|c|d|e|q', 'p|a|d|b|c|e|q'].sort()));
+	it('Shift+Tab on a and b together ‖ Shift+Tab on c: the order holds', () =>
+		expect(
+			outcomes(seed, [(ed) => ed.unNestBlocks(['a', 'b'])], [(ed) => ed.unNestBlock('c')])
+		).toEqual(['p|a|b|c|d|e|q']));
+	it('unNestBlocks over non-adjacent a and c ‖ Shift+Tab on d: not a serial order (pinned)', () =>
+		expect(
+			outcomes(seed, [(ed) => ed.unNestBlocks(['a', 'c'])], [(ed) => ed.unNestBlock('d')])
+		).toEqual(['p|a|b|c|d|e|q', 'p|b|a|c|d|e|q']));
+	it('unNestBlocks over non-adjacent b and d ‖ Shift+Tab on c: not a serial order (pinned)', () =>
+		expect(
+			outcomes(seed, [(ed) => ed.unNestBlocks(['b', 'd'])], [(ed) => ed.unNestBlock('c')])
+		).toEqual(['p|a|b|c|d|e|q', 'p|a|c|b|d|e|q']));
 });

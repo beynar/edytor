@@ -59,14 +59,13 @@ import type { DocChange } from '$lib/crdt/index.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import type { TextAnchor } from '$lib/selection/selection.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
+import type { JSONText } from '$lib/utils/json.js';
 import { insertionMarks } from '$lib/events/beforeInputCommands.js';
 import { flushSync } from 'svelte';
-import { getDomSelection } from '$lib/selection/domSelection.js';
 import {
 	replaceSelectionForInsertion,
 	selectedBlocksExit
 } from '$lib/selection/replaceSelection.js';
-import { domPointOf } from '$lib/surface/projector.svelte.js';
 import { attemptOf, intentSnapshot, kindOf, type Attempt } from './attempt.js';
 import type { SelectionValue } from './selection.js';
 
@@ -103,6 +102,10 @@ export class Composition {
 	#own = new Set<string>();
 	/** The start target's replacement was refused: the session writes nothing. */
 	#refused = false;
+	/** The start target is a range across blocks: its first write merges the rest into the host. */
+	#across = false;
+	/** That rest, shown in the host once the IME wrote its first preview (FX-08). */
+	#merged: JSONText[] | null = null;
 	/** A model command moved the caret during the session: the ending keeps it. */
 	#interrupted = false;
 	/** The undo stack item the session's first write landed in: its capture group. */
@@ -154,6 +157,7 @@ export class Composition {
 		this.#item = null;
 		this.marks = insertionMarks(this.edytor, intentSnapshot(this.edytor, 'insertCompositionText'));
 		const shown = selection.value.kind;
+		this.#across = shown === 'text' && startText?.parent !== endText?.parent;
 		const at =
 			shown === 'blocks' || shown === 'atom'
 				? this.#rangeless()
@@ -244,6 +248,12 @@ export class Composition {
 			const shown = this.#announced ? null : this.edytor.pin.imeBuffer();
 			this.#announced = false;
 			if (shown != null && shown !== this.preview) this.update(shown);
+			// After the IME's own write, which would take nodes rendered into its
+			// range with it: the screen shows what the document holds (FX-08).
+			const [merged, host] = [this.#merged, this.host];
+			const cell = merged && host && this.edytor.cells?.get(host.parent.id);
+			if (cell) this.edytor.pin.merge(cell, merged);
+			this.#merged = null;
 			return 'live';
 		}
 		const caret = this.#caret;
@@ -309,6 +319,8 @@ export class Composition {
 		const start = target && selection.createTextAnchor(target.text, target.offset, 'left');
 		if (this.#refused || !start) return !(this.#refused = true);
 		this.#region = { start, end: start };
+		const { text, offset } = target;
+		if (this.#across) this.#merged = text.getMarksAtRange(offset, text.length);
 		return true;
 	}
 
@@ -316,8 +328,9 @@ export class Composition {
 	 * A block or atom selection shows no DOM range, so the IME has no caret
 	 * of its own and would write at the editable's start (EW-01). Its start
 	 * target is replaced now (blocks: `flow.slot`, one empty block in their
-	 * place; an atom: removed), the change rendered and the DOM caret put
-	 * where the preview goes before the IME writes. When the replacement is
+	 * place; an atom: removed), the change rendered and the DOM caret parked
+	 * where the preview goes before the IME writes (`projector.park`, the
+	 * DOM-selection writer). When the replacement is
 	 * refused, the IME writes where Escape leaves for (`selectedBlocksExit`;
 	 * an atom: before it) and the tail restores it: nothing is written.
 	 */
@@ -330,9 +343,8 @@ export class Composition {
 		const at = this.#open() ? this.#at() : exit;
 		if (!at) return null;
 		flushSync();
-		const node = at.text.node;
-		if (!node) return null;
-		getDomSelection(edytor.node)?.collapse(...domPointOf(node, at.offset));
+		if (!at.text.node) return null;
+		edytor.projector.park(at.text, at.offset);
 		return { text: at.text, from: at.offset, to: at.offset };
 	}
 
@@ -538,7 +550,7 @@ export class Composition {
 		// when its start target's replacement commits (`#rangeless`).
 		this.#where = '';
 		this.#order = [];
-		this.#region = null;
+		this.#region = this.#merged = null;
 		this.#own.clear();
 		this.edytor.pin.release();
 	}

@@ -9,8 +9,10 @@ import { describe, expect, it } from 'vitest';
 import { readEdytorClipboardFragment } from '$lib/clipboard/clipboard.js';
 import { mentionPlugin } from '$lib/plugins/mention/MentionPlugin.svelte';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { selectedTextSpans } from '$lib/selection/visibility.js';
 import {
 	canonicalTree,
+	dispatchDomBeforeInput,
 	dispatchDomKeyDown,
 	flushDomUpdates,
 	renderDomEdytor
@@ -152,5 +154,66 @@ describe('copy and cut from a collapsed toggle header (SW7-delete)', () => {
 				children: [{ type: 'paragraph', content: [{ text: 'body' }] }]
 			}
 		]);
+	});
+});
+
+describe('marks over a block selection that holds a collapsed toggle (FX-07)', () => {
+	it.each([[['toggle']], [['toggle', 'after']], [['a', 'toggle']]])(
+		'Mod+B over %j bolds exactly the members; the hidden body stays plain',
+		async (ids) => {
+			const { edytor } = await renderDomEdytor(empty, {
+				plugins: [richTextPlugin, mentionPlugin],
+				value: {
+					children: [
+						{ id: 'a', type: 'paragraph', content: [{ text: 'a' }] },
+						{
+							id: 'toggle',
+							type: 'toggle',
+							content: [{ text: 'head' }],
+							children: [{ id: 'body', type: 'paragraph', content: [{ text: 'h' }] }]
+						},
+						{ id: 'after', type: 'paragraph', content: [{ text: 'z' }] }
+					]
+				}
+			});
+			edytor.selection.selectBlocks(...ids.map((id) => edytor.idToBlock.get(id)!));
+			await flushDomUpdates();
+			// The toolbar's state reads the same spans: the body is not among them.
+			expect(selectedTextSpans(edytor).map(({ text }) => text.parent.id)).toEqual(ids);
+			await dispatchDomKeyDown(document, { key: 'b', ctrlKey: true });
+			const marked = (id: string) =>
+				edytor.idToBlock.get(id)!.firstText!.value.every((part) => part.marks?.bold === true);
+			expect(['a', 'toggle', 'body', 'after'].filter(marked)).toEqual(ids);
+		}
+	);
+});
+
+describe('the word keys over every block, a closed toggle last (SW15-keys-1)', () => {
+	it('Mod+A three times, then Mod+→ and typing: the text lands at the end of the toggle’s header', async () => {
+		const { edytor, editor } = await renderDomEdytor(empty, {
+			plugins: [richTextPlugin, mentionPlugin],
+			value: {
+				children: [
+					{ id: 'a', type: 'paragraph', content: [{ text: 'a' }] },
+					{
+						id: 'toggle',
+						type: 'toggle',
+						content: [{ text: 'head' }],
+						children: [{ id: 'body', type: 'paragraph', content: [{ text: 'h' }] }]
+					}
+				]
+			}
+		});
+		edytor.selection.setAtTextOffset(edytor.idToBlock.get('a')!.firstText, 0);
+		await flushDomUpdates();
+		for (let i = 0; i < 3; i++) await dispatchDomKeyDown(document, { key: 'a', ctrlKey: true });
+		expect(edytor.selection.selectedBlocks.size).toBe(3);
+		await dispatchDomKeyDown(document, { key: 'ArrowRight', ctrlKey: true });
+		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'Z' });
+		await flushDomUpdates();
+		expect(edytor.value.children?.[1]).toMatchObject({
+			content: [{ text: 'headZ' }],
+			children: [{ content: [{ text: 'h' }] }]
+		});
 	});
 });

@@ -68,7 +68,7 @@ Every navigation key also has a <kbd>Shift</kbd> variant that extends the select
 | <kbd>Mod</kbd> + <kbd>↑</kbd>, <kbd>Mod</kbd> + <kbd>↓</kbd> | The start or end of the document         | Text               |
 | <kbd>↑</kbd>, <kbd>↓</kbd>                             | The previous or next line (native)         | Text               |
 
-Left, right and word keys follow the visual direction of right-to-left text, and they skip the body of a closed toggle.
+Left, right and word keys follow the visual direction of right-to-left text, and they skip the body of a closed toggle. Over a block selection, the word, <kbd>Home</kbd>/<kbd>End</kbd> and document keys start from its shown edges: back to the start of its first shown line, forward to the end of its last: a selected block's own line, never a nested child that is not selected (a list's items, a code block's lines, never a divider); over selected dividers alone they keep the dividers selected, except the document keys, which still go to the document's start or end.
 
 ### macOS text bindings
 

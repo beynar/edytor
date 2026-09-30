@@ -47,7 +47,7 @@ Edytor groups edits the way a text editor does:
 - **Paste** and **drop** each start a new step.
 - **Structural edits** (inserting, duplicating, converting, removing, nesting, unnesting and moving blocks, formatting) start a new step, whether they come from a key, a menu, a toolbar or a plugin calling a block command.
 - **Markdown and slash conversions** are a step of their own. Undo gives back what you typed as text: `## ` becomes a paragraph `##`, `**b**` becomes `**b*`, and `/h2` + <kbd>Enter</kbd> becomes the `/h2` text.
-- **An IME composition** (Japanese, Chinese, Korean input, and so on) is one step with its commit.
+- **An IME composition** (Japanese, Chinese, Korean input, and so on) is one step with its commit. One left before it shows anything (a key, a click or leaving the editor right after it starts over selected text) changes nothing and adds no step.
 - **Copy** records nothing.
 
 A command that plugins refuse records nothing. One `edytor.transact` call is never split across steps.

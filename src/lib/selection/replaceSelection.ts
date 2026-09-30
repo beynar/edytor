@@ -128,36 +128,50 @@ export const replaceSelectionWithCollapsedTarget = (
 export const lineOf = (block: Block): Text[] =>
 	block.content.filter((part): part is Text => part instanceof Text && part.node != null);
 
-/**
- * The last text of the last line shown in `block`'s subtree: its own line's
- * with no child shown, else its last shown child's (a closed toggle's
- * hidden body is passed over).
- */
-export const lastShownText = (block: Block): Text | undefined => {
-	for (let i = block.children.length - 1; i >= 0; i--) {
-		const child = block.children[i]!;
-		const text = hidden(child) ? undefined : lastShownText(child);
+/** The first or last text shown in `block`'s subtree, in document order (a closed toggle's hidden body passed over). */
+const subtreeText = (block: Block, edge: 'first' | 'last'): Text | undefined => {
+	if (hidden(block)) return undefined;
+	const line = lineOf(block);
+	if (edge === 'first' && line[0]) return line[0];
+	for (const child of edge === 'first' ? block.children : block.children.toReversed()) {
+		const text = subtreeText(child, edge);
 		if (text) return text;
 	}
-	return lineOf(block).at(-1);
+	return line.at(-1);
+};
+
+/**
+ * The first or last text a selected `block` shows: its own line's (a block
+ * selection is exactly its members, never their unselected children), else,
+ * for a block with no line (a list container, a code block), its subtree's
+ * first or last shown line; none for a void (a divider) or a closed
+ * toggle's hidden body.
+ */
+export const shownText = (block: Block, edge: 'first' | 'last'): Text | undefined => {
+	if (hidden(block)) return undefined;
+	const line = lineOf(block);
+	return (edge === 'first' ? line[0] : line.at(-1)) ?? subtreeText(block, edge);
 };
 
 /**
  * The line a block selection leaves for (Escape, Enter and Shift+Enter:
  * Notion's Enter edits a selected block's text): the last text of the
  * first selected block's own line, a container's last shown line; a
- * selected block with no line (a divider) passes to the next one.
+ * selected block with no shown line (a divider, a hidden body) passes to
+ * the next one.
  */
 export const selectedBlocksLine = (edytor: Edytor): Text | undefined =>
 	getSelectedBlocksInDocumentOrder(edytor)
-		.map((block) => lineOf(block).at(-1) ?? lastShownText(block))
+		.map((block) => shownText(block, 'last'))
 		.find(Boolean);
 
 /**
  * The caret on the nearest line before (at its end) or after (at its start)
- * `block` once `removed` go: blocks with no line of their own (voids,
- * containers) and a closed toggle's hidden body are passed over. The
- * keyboard's and the block menu's block deletes and Escape share it.
+ * `block` once `removed` go: blocks that render no content of their own
+ * (voids, containers) and a closed toggle's hidden body are passed over; a
+ * line created in the same change counts (it is displayed once it mounts).
+ * The keyboard's and the block menu's block deletes, Escape and the one
+ * selection writer (`select`, FX-01) share it.
  */
 export const caretBeside = (
 	block: Block,
@@ -165,7 +179,7 @@ export const caretBeside = (
 	removed?: ReadonlySet<Block>
 ): SelectionInsertionTarget | null => {
 	for (let next = shown(block, step, { removed }); next; next = shown(next, step, { removed })) {
-		const text = step === 'blockBefore' ? lineOf(next).at(-1) : lineOf(next)[0];
+		const text = step === 'blockBefore' ? next.lastText : next.firstText;
 		if (text) return { text, offset: step === 'blockBefore' ? text.length : 0 };
 	}
 	return null;

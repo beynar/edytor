@@ -12,7 +12,8 @@
  * only when:
  * - no composition session owns a host (BI-2, `edytor.composition`, the
  *   session's facts): a pass it holds back runs again at the session's end
- *   (`composition.ended`), which catches up;
+ *   (`composition.ended`), which catches up (the one write under a session
+ *   is its start's `park`, over a selection that shows no DOM range);
  * - no pointer drag is in progress, for a pass the selection did not ask for;
  * - the focus verdict is ours (BI-14): focus inside the editor, or orphaned by
  *   our own render, or nothing focused and the pass was asked for — never a
@@ -383,6 +384,22 @@ export class Projector {
 			edge: isCollapsed ? getMarkEdgeSide(startText, start[0], yStart) : undefined
 		});
 		return true;
+	};
+
+	/**
+	 * The one display under a live composition (EW-01): a composition over a
+	 * block or atom selection starts with no DOM range, so its session parks
+	 * the DOM caret where the preview goes before the IME writes. Recorded as
+	 * the last display.
+	 */
+	park = (text: Text, offset: number) => {
+		const node = this.edytor.node;
+		const dom = node && getDomSelection(node);
+		if (!dom || !text.node) return;
+		const point = domPointOf(text.node, offset);
+		this.#write(dom, { anchor: point, focus: point }, true);
+		this.#displayed = { anchor: point, focus: point, epoch: this.edytor.selection.epoch };
+		this.#observed('composition');
 	};
 
 	/** The live DOM selection already shows these endpoints (model coordinates, direction). */

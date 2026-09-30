@@ -225,6 +225,27 @@ describe('DR-crdt-6 residuals, pinned', () => {
 			)
 		).toEqual([['', 'A', 'B', '', '', 'C']]));
 
+	it('R3: Enter in an earlier nested line’s sibling ‖ Shift+Tab on that earlier line, which adopts it (FX-09)', () =>
+		expect(
+			texts(
+				[
+					{
+						id: 'x',
+						text: 'x',
+						children: [
+							{ id: 'k1', text: 'k1' },
+							{ id: 'k2', text: 'kk2' },
+							{ id: 'k3', text: 'k3' }
+						]
+					},
+					{ id: 'y', text: 'y' }
+				],
+				(ed) => ed.splitBlock('k2', 1, 'N'),
+				(ed) => ed.unNestBlock('k1'),
+				96
+			)
+		).toEqual([['x', 'k2', 'k1', 'k', 'k3', 'y']]));
+
 	it('R4: Backspace joins “world” into “hello” ‖ Enter after “he” → “heworld”, “llo”', () =>
 		expect(
 			texts(
@@ -311,4 +332,17 @@ describe('DR-crdt-7: an edit before one’s own split point keeps the pieces in 
 				(ed) => ed.splitBlock('X', 5, 'N2')
 			)
 		).toEqual([['P', 'hello', 'rld again', ' wo', 'Q']]));
+
+	/** The same residual when the unseen edit after the split point is a deletion (FX-10). */
+	it('residual: Ada deletes “rld”, then Enter after “hello” ‖ Bob presses Enter after “hello w”', () =>
+		expect(
+			texts(
+				seed('hello world'),
+				(ed) => {
+					ed.deleteText('X', 8, 3);
+					return ed.splitBlock('X', 5, 'N1');
+				},
+				(ed) => ed.splitBlock('X', 7, 'N2')
+			)
+		).toEqual([['P', 'hello', 'o', ' w', 'Q']]));
 });

@@ -24,14 +24,27 @@ export const getSelectedBlocksInDocumentOrder = (edytor: Edytor) =>
  * The blocks the selection touches, in document order: the selected blocks;
  * for a text range, every shown block from its start block to its end block
  * (Notion: a collapsed toggle's hidden body is not touched, an open
- * toggle's children are); else the caret's block. Menus, the toolbar, kind
- * commands and Tab read it.
+ * toggle's children are) but a container it starts or ends in — a list
+ * shows no text of its own, so a range entering it touches the items, never
+ * the list (ZW-02, AW-02); a list the range runs through is touched whole,
+ * so Tab moves it with the blocks around it, in order (DR-behavior-1); else
+ * the caret's block. Menus, the toolbar, kind commands and Tab read it.
  */
 export const getSelectionBlocks = (edytor: Edytor): Block[] => {
 	const { selectedBlocks, state } = edytor.selection;
 	if (selectedBlocks.size) return getSelectedBlocksInDocumentOrder(edytor);
 	if (state.isCollapsed) return state.startBlock ? [state.startBlock] : [];
-	return state.blocks.filter((block) => !hidden(block));
+	const edges = [state.startBlock, state.endBlock];
+	const enters = (block: Block) =>
+		block.isContainer && edges.some((edge) => edge && isInside(edge, block));
+	return state.blocks.filter((block) => !hidden(block) && !enters(block));
+};
+
+/** Whether `block` is a descendant of `ancestor`. */
+const isInside = (block: Block, ancestor: Block) => {
+	for (let parent = block.parent; parent; parent = parent.parent)
+		if (parent === ancestor) return true;
+	return false;
 };
 
 /** The blocks not inside another of them: a block's descendants among them move with it. */

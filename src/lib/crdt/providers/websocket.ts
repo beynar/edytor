@@ -679,8 +679,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		/**
 		 * The dial URL: the room name as one encoded path segment (any id —
 		 * `/`, `%`, `#`, `?` included — reaches its own room; the server
-		 * decodes it). `''`, `.` and `..` are refused at construction: a URL
-		 * collapses a dot segment. `params` are read at every dial (a refreshed token
+		 * decodes it). `''`, `.`, `..`, an id over 256 characters and one with a
+		 * lone surrogate are refused at construction ({@link assertRoomId}). `params` are read at every dial (a refreshed token
 		 * reaches the next connection), with `replica` = this document's
 		 * client id unless `params` names one: the room binds the socket's
 		 * writes to it.

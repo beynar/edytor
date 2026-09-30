@@ -41,7 +41,7 @@ import { parseSeedList } from './generator.js';
  * cannot pass as "converged".
  *
  * Env knobs:
- *   COLLAB_DST_SEEDS=1,2,5-8   seeds (default: 1-6)
+ *   COLLAB_DST_SEEDS=1,2,5-8   seeds (default: 1-6,9 — seed 9 is the list shape)
  *   COLLAB_DST_STEPS=40        edit/net step budget per seed (default 30)
  *   COLLAB_DST_PEERS=2|3       room size (default 3)
  *   COLLAB_DST_ENGINE=firefox  engine for the whole run (default chromium)
@@ -104,7 +104,7 @@ const readReplaySchedule = (path: string): CollabSchedule => {
 
 const schedules = process.env.COLLAB_DST_REPLAY
 	? [readReplaySchedule(process.env.COLLAB_DST_REPLAY)]
-	: parseSeedList(process.env.COLLAB_DST_SEEDS ?? '1-6').map((seed) =>
+	: parseSeedList(process.env.COLLAB_DST_SEEDS ?? '1-6,9').map((seed) =>
 			generateCollabSchedule(seed, stepCount, peerCount, lineageDepth)
 		);
 

@@ -150,7 +150,12 @@ export type LoadedDocument = JSONDoc | Uint8Array | Pick<SavedDocument, 'update'
 /** The transaction origin of the room's own edits (`transact`, `onLoad` seeds). */
 export const ROOM_ORIGIN = Symbol('edytor-room');
 
-/** Headers carrying the identity `routeDocumentSocket` verified — never the client's. */
+/**
+ * Headers carrying the identity `routeDocumentSocket` verified — never the
+ * client's. The user id is percent-encoded (`encodeURIComponent`): a header
+ * value is trimmed and cannot carry every character, and a user id is any
+ * string.
+ */
 export const IDENTITY_HEADERS = {
 	user: 'X-Edytor-User',
 	replica: 'X-Edytor-Replica',
@@ -263,8 +268,17 @@ export const parseReplica = (raw: unknown): number | null => {
 	return typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 ? n : null;
 };
 
+/** The user id `routeDocumentSocket` encoded into its header, or `null`. */
+const readUser = (raw: string | null): string | null => {
+	try {
+		return raw === null ? null : decodeURIComponent(raw);
+	} catch {
+		return null;
+	}
+};
+
 const readIdentity = (headers: Headers): SocketIdentity | null => {
-	const user = headers.get(IDENTITY_HEADERS.user);
+	const user = readUser(headers.get(IDENTITY_HEADERS.user));
 	const rawReplica = headers.get(IDENTITY_HEADERS.replica);
 	const replica = rawReplica ? parseReplica(rawReplica) : null;
 	const access = headers.get(IDENTITY_HEADERS.access);

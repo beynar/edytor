@@ -255,7 +255,7 @@ export const CLOSE = {
 	refused: 1008,
 	/** A fault of the room (storage, engine): redialed, backed off until the room saves again. */
 	fault: 1011,
-	/** A document id the room cannot have (empty, `.`/`..`, over 256 characters). */
+	/** A document id the room cannot have (empty, `.`/`..`, over 256 characters, a lone surrogate). */
 	invalidDocument: 4400,
 	/** Expired credentials: redialed once `params` carries a fresh token. */
 	expired: 4401,

@@ -291,9 +291,12 @@ A plain line (a run, or one of the document's default kind) placed
 directly in a container that holds only its items (a list: `fits`,
 `del.merge.container`) takes the container's item kind — a pasted paragraph
 between two list items is a `list-item`, and into an empty item it leaves
-the item an item. SW9-containers-1. A line of any other kind keeps its
-kind and data, as it would outside a list: a pasted image keeps its `src`,
-a to-do its check, a heading its level (DR-crdt-1).
+the item an item. SW9-containers-1. So does a line of the list's own flat
+item kind, which the view passes in (`itemKind`: a pasted `<ol><li>` in an
+`ordered-list` gives `list-item`s, AW-08). A line of any other kind keeps
+its kind and data, as it would outside a list: a pasted image keeps its
+`src`, a to-do its check, a heading its level, a bulleted item in an
+`ordered-list` its kind (DR-crdt-1).
 
 ### `flow.void` — a block that cannot split
 
@@ -415,14 +418,19 @@ items (Notion):
 - **One container rule, one owner (`fits`, ZW-01, ZW-14).** A container
   whose default child is a kind of its own — its _item_: a list's
   `list-item`, a columns layout's `column` — holds only its items and
-  containers of them (a list directly in a list, as an HTML paste keeps
-  it); a container whose default child is the document's (a `column`)
-  holds any block. Every structural placement asks it:
+  containers of them (a list directly in a list, from JSON or the API; an
+  HTML paste gives flat items); a container whose default child is the
+  document's (a `column`) holds any block. Every structural placement asks it:
   - a move (`moveBlocks`, a drag, Alt/Mod+Shift+arrows) keeps its kind, so
-    it is refused where the blocks do not fit (`canPlace` answers `false`);
-    Tab (`nestBlock`, a drop _inside_ a block) into a container the blocks
-    are no items of nests under its last item instead, and so on down:
-    `[p, ul > [a, b], q]`, Tab on `q` → `[p, ul > [a, b > [q]]]` (Notion);
+    it is refused where the blocks do not fit (`canPlace` answers `false`)
+    — a reorder within a block's own parent changes nothing the parent
+    holds, so an image shed into a list still moves among its items
+    (AW-06); Tab (`nestBlock`, a drop _inside_ a block) into a container
+    the blocks are no items of nests under its last item instead, and so
+    on down: `[p, ul > [a, b], q]`, Tab on `q` → `[p, ul > [a, b > [q]]]`
+    (Notion); a last child that holds no children (a void, an island)
+    refuses it, as Tab right under that block does: `[ul > [a, image], q]`,
+    Tab on `q` does nothing (AW-07);
   - a plain block (the document's default kind: a paragraph) a merge, a
     delete, a range rescue, a void retype or a paste sheds into a container
     becomes its item: Delete at the end of `p` above
@@ -448,12 +456,31 @@ items (Notion):
   - a block is never retyped to a kind that renders no content — its text
     would vanish (DR-crdt-1); where a container's item renders none (a
     column), a block only a delete or a peer's concurrent edit puts there
-    keeps its kind (a deleted column's paragraphs stay paragraphs).
+    keeps its kind (a deleted column's paragraphs stay paragraphs), and an
+    island's lines shed there, or an island retyped to such a container,
+    take the document's default kind (AW-05: a code block's line shed into
+    a columns layout is a paragraph, sequentially and concurrently); any
+    other island child shed there that shows text keeps its kind, and one
+    that shows none (a table's row) takes the slot's default child, as the
+    read-time promotion shows a child a peer adds meanwhile. A retype of an
+    island to an ordinary kind retypes only an island's lines (the new
+    kind's default child, or the document's default kind where that shows
+    no text); any other island keeps its children's kinds — a table
+    retyped to a columns layout keeps its rows — as `typeOf` shows a row a
+    peer adds meanwhile (DR-crdt-2).
 
   The document's explicit kind writes place what they are told:
   `insertBlocks` and `setBlockType`/`setBlock` are not retyped or refused
-  (the view's Turn into lifts a list's item out of the list first, as
-  Shift+Tab does, ZW-02); pasted lines follow `flow.container`.
+  (the view's Turn into places the kind where it fits first — `liftOut`:
+  out of every container it does not fit, each split around the block as
+  Shift+Tab splits a list, and a divider or code block inserted after an
+  item splits the list after it; the lifts and the retype are one plan, so
+  a veto keeps all of it, ZW-02, AW-01, AW-03); pasted lines follow
+  `flow.container`. The
+  display rule still holds for them: a block stored as the document's
+  default kind directly in a list shows as its item (the index's
+  `typeOf`, AW-04), so no write, race or undo shows a bare paragraph in a
+  list.
 
 - A container either key leaves with no child goes
   (`del.range.empty-container`); one undo restores it. The keys, the
@@ -494,17 +521,30 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   removal brings the item back into the list, as an item. The other way
   round, a block promoted _into_ a list at read time (Bob splits the
   paragraph child of an item Ada deletes) shows as the list's item, as the
-  delete's own write makes the child it saw (SW9-containers-3). Residuals:
-  a peer's concurrent undo of a retype can still leave a paragraph
-  directly in a list, and a column a peer moves under an item another
-  peer deletes shows in the list as a column.
+  delete's own write makes the child it saw (SW9-containers-3). A
+  paragraph a race leaves stored directly in a list — Ada outdents a
+  middle item while Bob lifts or outdents one before it (the split's move
+  of that item into the new list races Bob's move and retype), or a peer's
+  concurrent undo of a retype — shows as the list's item on every replica
+  (AW-04), and leaves the list as any item does: Shift+Tab, Backspace at
+  the first item, Turn into Text or deleting the list gives a paragraph,
+  never a bullet outside the list (DR-crdt-3). Residuals: a column a peer moves under an item another peer
+  deletes shows in the list as a column; and an item a peer turns into
+  another kind (Turn into: a heading, a to-do) while another peer outdents
+  a later item may stay in the new list the split makes, as that kind —
+  `[p, ul > [a, b, c]]`, Ada outdents `b` ‖ Bob turns `a` into a heading
+  → on some client-id assignments `[p, ul' > [heading "a"], paragraph "b",
+ul > [c]]` (the split's move of `a` wins over the lift). It keeps its
+  kind, data and place in the text, as a heading a merge sheds into a
+  list does; the display cannot tell the two apart (pinned in
+  `rescore7-crdt.test.ts`, Turn into ‖ an outdent).
 
 Headless `mergeForward`/`mergeBackward`, `mergeBlocks`, `unNestBlocks`,
 `deleteRange`/`replaceRange` and room `transact` apply the same rules (the
 view's keys and selections call them): a text range across the same seam
 agrees with the Delete key (`del.range.nested-tail`, DR-crdt-4). Pins:
 `rescore5-crdt.test.ts`, `rescore5-crdt-view.test.tsx`, `rescore6-crdt.test.ts`,
-`d6-range-delete.test.ts`.
+`rescore7-crdt.test.ts`, `d6-range-delete.test.ts`.
 
 ### `del.caret.one-command` — each branch is one prepared command
 

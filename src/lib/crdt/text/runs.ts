@@ -589,10 +589,26 @@ export const bindRuns = (Y: EngineApi) => {
 		 * kind (RW-01), unless an outer container shows it as one of its
 		 * items (a nested list's item, SW8-roles-4). A block that renders
 		 * content never shows as a kind that does not (DR-crdt-1): a line kind
-		 * then shows the document's default kind (ZW-06). Any other
-		 * shows its stored kind (a retype shows). Read from the stored kinds
+		 * then shows the document's default kind (ZW-06). A block stored as the
+		 * document's default kind directly in a list shows as its item
+		 * (`itemOf`, AW-04). Any other shows its stored kind (a retype shows). Read from the stored kinds
 		 * at call time: a retype rebuilds no placement.
 		 */
+		/**
+		 * A plain block (the document's default kind) directly in a container
+		 * whose item is a kind of its own that renders content (a list) shows
+		 * as that item — the read-time side of the facade's `fitted`: a race
+		 * (a peer's lift of an item another peer's outdent moves, a concurrent
+		 * undo of a retype) or an explicit write never shows a bare paragraph
+		 * in a list (AW-04). Anywhere else it shows `plain`.
+		 */
+		const itemOf = (under: BlockId, plain: string): string => {
+			const parent = typeOf(under);
+			if (!roles!.container(parent)) return plain;
+			const item = roles!.defaultChild(parent);
+			return roles!.rendersContent(item) ? item : plain;
+		};
+
 		const typeOf = (id: BlockId): string => {
 			const stored = blocks.get(id)?.type ?? 'unknown';
 			const slot = slots.get(id);
@@ -602,7 +618,10 @@ export const bindRuns = (Y: EngineApi) => {
 			if (line !== undefined) return line;
 			const lined = lineKinds.has(stored);
 			const from = reset === undefined ? undefined : (blocks.get(reset)?.type ?? null);
-			if (!lined && (from === undefined || stored !== roles.defaultChild(from))) return stored;
+			if (!lined && (from === undefined || stored !== roles.defaultChild(from)))
+				return stored === roles.defaultChild(null) && under !== null
+					? itemOf(under, stored)
+					: stored;
 			// Out of a removed list, inside an outer list of its kind: still an item.
 			if (!lined && typeof from === 'string' && roles.container(from))
 				for (let u = under; u !== null; u = slots.get(u)?.under ?? null) {
@@ -1274,6 +1293,15 @@ export const bindRuns = (Y: EngineApi) => {
 				}
 				followingBefore = following;
 			}
+			// A plain block directly in a list shows as its item (`itemOf`, AW-04):
+			// a block whose shown kind changed re-reads its children's (a worklist:
+			// the map visits the entries added meanwhile).
+			for (const id of r.meta.keys())
+				for (const { id: kid } of kidsMap!.get(id) ?? []) {
+					const n = after.nodes.get(kid);
+					if (n !== undefined && !covered.has(kid) && !r.meta.has(kid) && typeOf(kid) !== n.type)
+						meta(kid, n);
+				}
 			retyped = false;
 			candidates.clear();
 			published = after;

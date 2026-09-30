@@ -34,13 +34,14 @@ block.insertBlockBefore({ block: { type: 'heading', data: { level: 'h2' } } });
 // Change its kind, data, content or children in one step.
 block.setBlock({ value: { type: 'quote' } });
 block.setData({ ...block.data, icon: '✦' }); // the same `setBlock` command, for `data`
-block.type = 'quote'; // also `setBlock`
+block.type = 'quote'; // also `setBlock`, in place: a list's item set to a paragraph still shows as an item
+// (`convertToKind` takes it out of the list, as Turn into does)
 
 // Structure.
 block.nestBlock(); // last child of the previous sibling
 block.unNestBlock(); // after its parent; the siblings after it become its children
 // (a list's item leaves the list instead, see concepts/blocks#containers)
-block.mergeBlockBackward(); // join into the previous block
+block.mergeBlockBackward(); // join into the previous block (a list's first item leaves the list instead)
 block.addChildBlock({ block: { type: 'paragraph' }, index: 0 });
 block.removeBlock(); // children take its place
 block.removeBlock({ keepChildren: false }); // the whole subtree
@@ -171,7 +172,7 @@ Or describe one relative step with `direction`:
 | --- | --- |
 | `up` | Before the previous sibling. From the first child, before the parent. |
 | `down` | After the next sibling, never inside its children. From the last child, after the parent. |
-| `in` | Last child of the previous sibling; of its last item when it is a list the blocks are no items of (a `position: 'inside'` drop too). |
+| `in` | Last child of the previous sibling; of its last item when it is a list the blocks are no items of (a `position: 'inside'` drop too). Refused when that list ends with a block that holds no children, such as an image, as under that block. |
 | `out` | After the parent. The siblings after the last moved block become its children (an outdent). An item of a list container leaves the list instead: before it, after it, or between its two halves, without the items after it ([Containers](/docs/concepts/blocks#containers)). |
 
 ```ts

@@ -2,6 +2,7 @@ import type { Block } from './block/block.svelte.js';
 import type { Edytor } from './edytor.svelte.js';
 import type { BlockDefinition, EditorCommand, KindPreset } from './plugins.js';
 import { jsonBlockToSpec, jsonEquals, type JSONBlock } from './utils/json.js';
+import type { BlockSpec } from './crdt/index.js';
 import { dispatchPlan, prepareSet } from './block/block.utils.js';
 import { id } from './utils.js';
 import { getSelectionBlocks } from './selection/replaceSelection.js';
@@ -113,16 +114,38 @@ const holdsNothing = (edytor: Edytor, block: Block) => {
 };
 
 /**
+ * Where a block of `type` put at `block`'s place lands: `block`'s parent, or
+ * the first one up that `type` fits (the document's `fits`: a list holds
+ * only its items), and the containers it leaves on the way — what
+ * `facade.prepare.liftOut` splits.
+ */
+export const landingOf = (block: Block, type: string) => {
+	const lifted: Block[] = [];
+	let parent = block.parent;
+	while (parent && !parent.isRoot && !block.edytor.facade.fits(parent.id, type)) {
+		lifted.push(parent);
+		parent = parent.parent;
+	}
+	return { parent, lifted };
+};
+
+/**
  * Convert `block` to a row's kind as one command. With `caret` (by default
  * when the conversion replaces the content) the caret lands at the start of
  * the converted block, or of its first child when the conversion creates one.
  * A replacing kind (a divider, a code block) converts in place only a block
  * that holds nothing; after text or children it is inserted after the
  * block instead, which stays intact. A kind rendering no content (a divider)
- * holds no caret: a fresh default block after it takes it. A list's item
- * (`isListItem`) leaves the list, as a bullet turned into a heading stops
- * being a bullet in Notion. Each is one plan (one refusal, one undo
- * step). Answers whether it applied.
+ * holds no caret: a fresh block of the default kind where it lands, after
+ * it, takes it. The kind lands where it fits (the document's `fits`, as
+ * every placement asks): a list holds only its items, so a list's item
+ * turned into another kind leaves the list — out of every list it sits in
+ * directly (a list nested right in a list, DR-behavior-2) — where Shift+Tab
+ * lifts it, as a bullet turned into a heading stops being a bullet in
+ * Notion, and a kind inserted after an item splits the list there
+ * (`liftOut`, AW-01); a block's own kind (only its data changes) never
+ * moves it. Each is one plan: one refusal or veto keeps everything, one
+ * undo step (AW-03). Answers whether it applied.
  */
 export const convertToKind = (
 	edytor: Edytor,
@@ -132,59 +155,56 @@ export const convertToKind = (
 ) => {
 	if (!block?.convertible) return false;
 	const value = structuredClone(row.value);
-	// The kind an item already shows as keeps it in its list (DR-behavior-3).
+	const { parent: holder } = block;
+	// The kind an item already shows as keeps it in its list (DR-behavior-3); a
+	// list's own flat kind makes a block shed into it its item (SW10-lists-1).
 	if (value.type === shownKind(block)) value.type = block.type;
-	const { parent } = block;
+	else if (holder?.isContainer && value.type === holder.definition.itemKind)
+		value.type = edytor.defaultChild(holder);
+	const { facade, dispatcher } = edytor;
 	const after = row.replaces && !holdsNothing(edytor, block);
+	// Its own kind (a data change, or none) fits where it already is (DR-behavior-3).
+	const { parent, lifted } =
+		value.type === block.type ? { parent: holder, lifted: [] } : landingOf(block, value.type);
 	const bare = !edytor.document.rendersContent(value.type) && !value.children?.length;
-	if (parent && (after || bare)) {
-		const { facade } = edytor;
-		const kind = { ...value, id: id('b') };
-		const next = bare ? [{ id: id('b'), type: edytor.defaultChild(parent) }] : [];
-		const slot = { parent: parent.isRoot ? null : parent.id, index: block.index + 1 };
-		const applied = after
-			? dispatchPlan(block, 'insertBlockAfter', { block: kind }, (payload) =>
-					facade.prepare.insertBlocks(slot, [jsonBlockToSpec(payload.block), ...next])
-				)
-			: dispatchPlan(block, 'setBlock', { value }, (payload) =>
-					facade.compose(prepareSet.call(block, payload), facade.prepare.insertBlocks(slot, next))
-				);
-		const landing = edytor.idToBlock.get(next[0]?.id ?? kind.id);
-		if (applied) edytor.dispatcher.caret((landing?.children[0] ?? landing)?.firstText, 0);
-		return Boolean(applied);
-	}
-	let applied = false;
-	if (block.isListItem && value.type !== block.type) {
-		// A list holds only items: the item leaves it where Shift+Tab lifts it,
-		// the last lift and the conversion in one plan (a veto or a refusal
-		// keeps the item). Out of a list nested right in a list, it first
-		// leaves the inner ones, as Shift+Tab does (DR-behavior-2).
-		const { facade, dispatcher } = edytor;
-		const inner = () => {
-			const outer = block.parent?.parent;
-			return Boolean(outer?.isContainer && edytor.defaultChild(outer) === block.type);
-		};
-		dispatcher.run('setBlock', () => {
-			while (block.isListItem && inner()) if (!block.unNestBlock()) return;
-			const touched = [block.parent, block.parent?.parent, block];
+	const next = bare && parent ? [{ id: id('b'), type: edytor.defaultChild(parent) }] : [];
+	const kind = { ...value, id: id('b') };
+	if (!after && !next.length && !lifted.length) block.setBlock({ value });
+	else if (facade.virtual() === block.id) {
+		// An emptied document's line: the kind and the block after it are created (DR-behavior-2).
+		const slot = { parent: null, index: 0 };
+		dispatchPlan(block, 'setBlock', { value }, (payload) =>
+			facade.prepare.insertBlocks(slot, [
+				jsonBlockToSpec({ ...kind, ...payload.value, id: kind.id }),
+				...next.map((b) => jsonBlockToSpec(b))
+			])
+		);
+	} else {
+		const out = next.map((b) => jsonBlockToSpec(b));
+		const lift = (options: { keep?: boolean; after: BlockSpec[] }) =>
+			facade.prepare.liftOut(block.id, value.type, options);
+		const touched = [...lifted, parent, block];
+		if (after)
+			dispatchPlan(
+				block,
+				'insertBlockAfter',
+				{ block: kind },
+				(payload) => lift({ keep: true, after: [jsonBlockToSpec(payload.block), ...out] }),
+				touched
+			);
+		else
 			dispatchPlan(
 				block,
 				'setBlock',
 				{ value },
-				(payload) =>
-					facade.compose(facade.prepare.unNestBlock(block.id), prepareSet.call(block, payload)),
+				(payload) => facade.compose(lift({ after: out }), prepareSet.call(block, payload)),
 				touched
 			);
-			applied = dispatcher.last?.status === 'applied';
-		});
-	} else {
-		block.setBlock({ value });
-		applied = edytor.dispatcher.last?.status === 'applied';
 	}
-	if (!applied) return false;
-	if (caret) {
-		const target = row.value.children?.length ? block.children[0] : block;
-		edytor.dispatcher.caret(target?.firstText, 0);
+	if (dispatcher.last?.status !== 'applied') return false;
+	if (caret || after || bare) {
+		const landing = edytor.idToBlock.get(next[0]?.id ?? (after ? kind.id : block.id));
+		dispatcher.caret((value.children?.length ? landing?.children[0] : landing)?.firstText, 0);
 	}
 	return true;
 };

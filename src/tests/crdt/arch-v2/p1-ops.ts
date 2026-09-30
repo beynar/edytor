@@ -117,6 +117,7 @@ export const genAction = (
 		case 'redo':
 			return { action, args: [] };
 		case 'retype':
+		case 'turnInto':
 			return { action, args: [blk, pick(kinds)] };
 		case 'inline':
 			return { action, args: [blk, off, `${r.name}i${counter.n++}`] };
@@ -177,6 +178,11 @@ export const apply = (r: Replica, action: string, a: unknown[]) => {
 			return r.redo();
 		case 'retype':
 			return ed.setBlockType(a[0], a[1]);
+		case 'turnInto':
+			// The view's Turn into (`convertToKind`): the kind lands where it fits, one plan.
+			return ed.apply(
+				ed.compose(ed.prepare.liftOut(a[0], a[1]), ed.prepare.setBlock(a[0], { type: a[1] }))
+			);
 		case 'inline':
 			return ed.insertInline(a[0], a[1], { id: a[2], type: 'mention' });
 	}

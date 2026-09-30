@@ -1051,16 +1051,28 @@ export const assertDeleteIntent = (
 	if (expected === null) return;
 	const delivered = deliveredDeleteInputType(after.events);
 	if (delivered === null) {
-		// Absent delivery is honest in exactly two cases:
+		// Absent delivery is honest in exactly three cases:
 		// - a non-text selection, where the keydown hotkey path runs and no
 		//   beforeinput is dispatched at all;
 		// - WebKit's no-op suppression — it emits no beforeinput for an
 		//   editing command that can delete nothing (caret at a deletion
 		//   boundary). The document must then be provably unchanged; the
 		//   effect oracle still fails the step if a delete was owed, so an
-		//   unsupported chord cannot hide here.
+		//   unsupported chord cannot hide here;
+		// - the same suppression at the document's first (last) text, where
+		//   the model still owes a delete (an empty first list item lifts
+		//   out): the editor's keydown fallback deletes the neighbour at the
+		//   block's edge like a character (SW10-crdt-1), and the effect
+		//   oracle holds the result to that.
 		if (before.selection?.kind !== 'text') return;
 		if (engine === 'webkit' && semanticSignature(before) === semanticSignature(after)) return;
+		const { startTextIndex, yStart, isCollapsed } = before.selection;
+		const texts = before.model.renderedTexts;
+		const documentEdge =
+			'direction' in action && action.direction === 'backward'
+				? startTextIndex === 0 && yStart === 0
+				: startTextIndex === texts.length - 1 && yStart === texts.at(-1)?.length;
+		if (engine === 'webkit' && isCollapsed && documentEdge) return;
 	} else if (expected.includes(delivered)) {
 		return;
 	}

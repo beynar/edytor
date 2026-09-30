@@ -625,7 +625,7 @@ describe('SW8-roles-3: containers keep hidden text and never split', () => {
 /**
  * SW8-roles-4 (review of this wave's container rule): an item leaving a
  * nested list for its parent item is still inside the outer list — it
- * stays a list item (an HTML paste keeps `li > ul > li`). Only an item
+ * stays a list item (`li > ul > li`, from JSON or the API). Only an item
  * that leaves every list of its kind becomes its new parent's default child.
  */
 describe('SW8-roles-4: an item outdented within an outer list stays an item', () => {
@@ -1133,7 +1133,7 @@ describe('DR-crdt-5: mergeBlocks never leaves a list with no item', () => {
 /**
  * SW8-crdt-1: a lift or an outdent that emptied a list also removed the
  * containers above it that the block lands in (a list directly in a list,
- * as an HTML paste keeps it; a list alone in a column): the landing block
+ * from JSON or the API; a list alone in a column): the landing block
  * was promoted on up to the root. A container a block lands in stays.
  */
 describe('SW8-crdt-1: a container a lifted or outdented block lands in is kept', () => {

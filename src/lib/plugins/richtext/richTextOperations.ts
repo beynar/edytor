@@ -3,6 +3,7 @@ import type { SerializableContent } from '$lib/utils/json.js';
 import type { Prepared } from '$lib/crdt/edytor-doc.js';
 import type { BlockSpec } from '$lib/crdt/index.js';
 import { dispatchPlan } from '$lib/block/block.utils.js';
+import { landingOf } from '$lib/kinds.js';
 import { id } from '$lib/utils.js';
 import { marksForInsertion } from '$lib/session/editing/text.js';
 import { selectedTextSpans, viewOf } from '$lib/selection/visibility.js';
@@ -98,15 +99,18 @@ export const richTextOperations = (edytor: Edytor) => ({
 	 * `insertHorizontalRule` semantic — as one command (`insertDivider`, one
 	 * plan). Splitting at the caret (or inserting before/after at the edges)
 	 * preserves the block's content; converting it would silently delete text
-	 * and children.
+	 * and children. In a list, which holds only its items, the divider lands
+	 * out of it as Turn into puts one (`liftOut`, SW10-lists-2): in an empty
+	 * item's place, else after the item, whose text stays whole.
 	 */
 	insertDividerAtSelection: () => {
 		const { startBlock: block, startText, yStart, isCollapsed } = edytor.selection.state;
 		if (!block?.convertible || !block.parent || !block.model || !isCollapsed) return null;
 		const { facade, dispatcher } = edytor;
 		const [self, parent] = [block.model.id, block.parent.isRoot ? null : block.parent.id];
+		const landing = landingOf(block, 'divider');
 		const divider = { id: id('b'), type: 'divider', data: {} };
-		const paragraph = { id: id('b'), type: edytor.defaultChild(block.parent) };
+		const paragraph = { id: id('b'), type: edytor.defaultChild(landing.parent ?? block.parent) };
 		const slot = (after: number, specs: BlockSpec[]) =>
 			facade.prepare.insertBlocks({ parent, index: block.index + after }, specs);
 		const offset = startText ? startText.segStart + yStart : 0;
@@ -114,9 +118,17 @@ export const richTextOperations = (edytor: Edytor) => ({
 		// The caret lands in `caret` (a block id), or stays at `yStart` in its text.
 		let caret: string | undefined = paragraph.id;
 		let prepare: () => Prepared;
-		if (block.isEmpty) {
+		const value = { type: 'divider', data: {}, content: [], children: [] };
+		// An emptied document's line: the divider and the paragraph are created (DR-behavior-2).
+		if (facade.virtual() === self) prepare = () => slot(0, [divider, paragraph]);
+		else if (landing.lifted.length) {
+			const lift = (options: { keep?: boolean; after: BlockSpec[] }) =>
+				facade.prepare.liftOut(self, 'divider', options);
+			prepare = block.isEmpty
+				? () => facade.compose(lift({ after: [paragraph] }), facade.prepare.setBlock(self, value))
+				: () => lift({ keep: true, after: [divider, paragraph] });
+		} else if (block.isEmpty) {
 			// Nothing to lose — convert in place, then a fresh paragraph after it.
-			const value = { type: 'divider', data: {}, content: [], children: [] };
 			prepare = () => facade.compose(facade.prepare.setBlock(self, value), slot(1, [paragraph]));
 		} else if (yStart === 0) {
 			caret = undefined;
@@ -130,7 +142,8 @@ export const richTextOperations = (edytor: Edytor) => ({
 			caret = next?.id ?? paragraph.id;
 			prepare = () => slot(1, next ? [divider] : [divider, paragraph]);
 		}
-		if (!dispatchPlan(block, 'insertDivider', {}, prepare)) return null;
+		const touched = [block.parent, ...landing.lifted, landing.parent];
+		if (!dispatchPlan(block, 'insertDivider', {}, prepare, touched)) return null;
 		const text = caret ? edytor.idToBlock.get(caret)?.firstText : startText;
 		dispatcher.caret(text, caret ? 0 : yStart);
 		return block;

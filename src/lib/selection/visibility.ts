@@ -50,10 +50,12 @@ export const shown = (
 };
 
 /**
- * What the view hides, for the document's range and flow ops
- * (`del.range.hidden-body`): a closed toggle's body is not in a range, and a
- * split of its header leaves it there (`flow.split`). With `removed`,
- * whether a block stays hidden once those blocks go.
+ * What the view knows that the document does not, for the document's range
+ * and flow ops: what it hides (`del.range.hidden-body`: a closed toggle's
+ * body is not in a range, and a split of its header leaves it there,
+ * `flow.split`; with `removed`, whether a block stays hidden once those
+ * blocks go), and a list's flat item kind (`itemKind`: a pasted numbered
+ * item landing in an `ordered-list` is its item, AW-08).
  */
 export const viewOf = (edytor: Edytor) => {
 	const blocks = new WeakMap<ReadonlySet<string>, Set<Block>>();
@@ -66,7 +68,8 @@ export const viewOf = (edytor: Edytor) => {
 		hidden: (id: string, removed?: ReadonlySet<string>) => {
 			const block = edytor.idToBlock.get(id);
 			return !!block && hidden(block, removed && blocksOf(removed));
-		}
+		},
+		itemKind: (parent: string) => edytor.idToBlock.get(parent)?.definition.itemKind
 	};
 };
 

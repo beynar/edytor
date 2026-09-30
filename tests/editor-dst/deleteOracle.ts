@@ -495,71 +495,175 @@ const removeSubtree = (block: OBlock) => {
 	block.parent = null;
 };
 
-/** Facade `unNestBlock` refusal rules + `M.unNestBlock` (move beside parent). */
-const unNest = (block: OBlock): boolean => {
+/**
+ * The document's block roles, read from the snapshot's semantics — the
+ * container rule (`docs/editor-delete-contract.md`, "One container rule,
+ * one owner"), re-derived here rather than imported so a production change
+ * surfaces as a mismatch.
+ */
+type Roles = {
+	/** The kind renders its own content (a list, a code block do not). */
+	shows: (type: string) => boolean;
+	/** The default child of a kind; the root's (and an unknown kind's) is `plain`. */
+	defaultChild: (type: string | null) => string;
+	/** The document's default kind (a paragraph). */
+	plain: string;
+};
+
+const childKindOf = (roles: Roles, parent: OBlock) =>
+	roles.defaultChild(parent.isRoot ? null : parent.type);
+
+/** A block that shows only its children: no content, neither void nor an island (a list). */
+const isContainer = (roles: Roles, block: OBlock) =>
+	!block.isRoot && !roles.shows(block.type) && !block.void && !block.island;
+
+/** A container that goes once it loses every child (`emptiable`: it holds no text of its own). */
+const emptiable = (roles: Roles, block: OBlock) =>
+	isContainer(roles, block) && blockAtomLength(block) === 0;
+
+/**
+ * `fits`: may a block of `kind` sit directly under `parent`? A container
+ * whose default child is a kind of its own (a list's `list-item`) holds
+ * only those and containers of them; any other parent holds anything.
+ */
+const fits = (roles: Roles, parent: OBlock, kind: string) => {
+	if (!isContainer(roles, parent)) return true;
+	const item = roles.defaultChild(parent.type);
+	if (item === roles.plain || kind === item) return true;
+	return !roles.shows(kind) && roles.defaultChild(kind) === item;
+};
+
+/** `fitted`: a plain block that does not fit `parent` becomes its item (when that shows text). */
+const fitted = (roles: Roles, parent: OBlock, kind: string) => {
+	if (fits(roles, parent, kind) || kind !== roles.plain) return kind;
+	const item = childKindOf(roles, parent);
+	return roles.shows(item) ? item : kind;
+};
+
+/**
+ * `settledKind`: the kind `kid` (a child of `from`) shows once it lands
+ * under `parent`. An island's child takes `parent`'s default child (a line
+ * the document's, where that shows no text); a container's item takes it too
+ * unless an outer container of that kind still holds it (a nested list's
+ * item landing in its parent item); then `fitted`.
+ */
+const settledKind = (roles: Roles, from: OBlock, kid: OBlock, parent: OBlock) => {
+	let kind = kid.type;
+	const to = childKindOf(roles, parent);
+	// Never a kind that hides a line's text: then the document's default kind (the
+	// corpus's one island, the code block, is an island of lines).
+	if (!from.isRoot && from.island) kind = roles.shows(to) || !roles.shows(kind) ? to : roles.plain;
+	else if (isContainer(roles, from) && kind === roles.defaultChild(from.type)) {
+		let outer = false;
+		for (let a: OBlock | null = parent; a && !a.isRoot; a = a.parent)
+			outer ||= isContainer(roles, a) && roles.defaultChild(a.type) === kind;
+		if (!outer && roles.shows(to)) kind = to;
+	}
+	return fitted(roles, parent, kind);
+};
+
+/** `emptying`: `container`, and the containers above it, go once they lose every child. */
+const removeEmptied = (roles: Roles, container: OBlock | null, keep?: OBlock) => {
+	for (let c = container; c && c !== keep && emptiable(roles, c) && c.children.length === 0; ) {
+		const up: OBlock | null = c.parent;
+		removeSubtree(c);
+		c = up;
+	}
+};
+
+/**
+ * Facade `unNestBlock` (Backspace at a last child): the block moves beside
+ * its parent, as the kind it shows there (`settledKind`: a list's item
+ * becomes a paragraph, a paragraph under an item an item of the list);
+ * refused where it would not fit. Out of a container it goes after it, or
+ * before it when it was its only child — the list then goes.
+ */
+const unNest = (block: OBlock, roles: Roles): boolean => {
 	if (insideIsland(block)) return false;
 	const parent = block.parent;
 	if (!parent || parent.isRoot) return false;
 	const grandParent = parent.parent;
 	if (!grandParent) return false;
 	if (!canAcceptMove(grandParent)) return false;
-	const parentIndex = indexOf(parent);
-	parent.children.splice(indexOf(block), 1);
-	grandParent.children.splice(parentIndex + 1, 0, block);
-	block.parent = grandParent;
+	const kind = settledKind(roles, parent, block, grandParent);
+	if (!fits(roles, grandParent, kind)) return false;
+	const alone = isContainer(roles, parent) && parent.children.length === 1;
+	moveUnder(grandParent, indexOf(parent) + (alone ? 0 : 1), block);
+	block.type = kind;
+	removeEmptied(roles, parent, grandParent);
 	return true;
 };
 
-/** The adopted default child type under `parent` (null when not captured). */
-type DefaultChildOf = (parent: OBlock) => string | null;
-
 /**
- * Facade `mergeUnnesting`: `from`'s children take over its vacated slot
- * (island sources also reset child types to the default child of that
- * slot's parent), then `from`'s content appends into `into` and `from`
- * leaves the live tree.
+ * Facade `mergeUnnesting`: `from`'s children take over its vacated slot,
+ * as the kind they show there (`settledKind`: an island's children take
+ * the slot's default child, a paragraph in a list its item), then `from`'s
+ * content appends into `into` and `from` leaves the live tree. Refused
+ * unless `into` shows its content and `from` shows its own or is an island
+ * (`canMerge`: nothing merges into a list, a list never merges as a whole).
  */
-const mergeUnnesting = (from: OBlock, into: OBlock, defaultChildOf: DefaultChildOf): boolean => {
+const mergeUnnesting = (from: OBlock, into: OBlock, roles: Roles): boolean => {
 	if (from === into || from.void || into.void) return false;
+	if (!roles.shows(into.type) || !(roles.shows(from.type) || from.island)) return false;
 	const islandFrom = islandOf(from);
 	if (islandFrom !== islandOf(into) && into !== islandFrom) return false;
 	const parent = from.parent;
 	if (!parent) return false;
 	const index = indexOf(from);
 	const kids = [...from.children];
+	const kinds = kids.map((kid) => settledKind(roles, from, kid, parent));
 	kids.forEach((kid, i) => {
 		parent.children.splice(index + i, 0, kid);
 		kid.parent = parent;
+		kid.type = kinds[i];
 	});
 	from.children = [];
-	const resetType = from.island ? defaultChildOf(parent) : null;
-	if (resetType) {
-		for (const kid of kids) kid.type = resetType;
-	}
 	into.parts.push(...from.parts);
 	removeSubtree(from);
 	return true;
 };
 
-/** Facade `mergeBackward` — merge `block` into the previous doc-order block. */
-const mergeBackward = (block: OBlock, defaultChildOf: DefaultChildOf): boolean => {
+/**
+ * Facade `mergeBackward` — merge `block` into the previous doc-order
+ * block. A container's first item (outside an island) lifts out of it
+ * instead, into its slot, as the kind it shows there, where it fits; a
+ * container left with no child goes (YW-02, Notion).
+ */
+const mergeBackward = (block: OBlock, roles: Roles): boolean => {
 	if (block.void) return false;
 	const previous = closestPreviousBlock(block);
 	if (previous === null) {
 		if (block.children.length === 0 && blockAtomLength(block) === 0) {
-			return mergeForward(block, defaultChildOf);
+			return mergeForward(block, roles);
 		}
 		return false;
 	}
-	return mergeUnnesting(block, previous, defaultChildOf);
+	if (previous === block.parent && isContainer(roles, previous) && !insideIsland(previous)) {
+		const slot = previous.parent!;
+		const kind = settledKind(roles, previous, block, slot);
+		if (!fits(roles, slot, kind)) return false;
+		moveUnder(slot, indexOf(previous), block);
+		block.type = kind;
+		removeEmptied(roles, previous, slot);
+		return true;
+	}
+	return mergeUnnesting(block, previous, roles);
 };
 
-/** Facade `mergeForward` — pull the next doc-order block into `block`. */
-const mergeForward = (block: OBlock, defaultChildOf: DefaultChildOf): boolean => {
+/**
+ * Facade `mergeForward` — pull the next doc-order block into `block`. A
+ * container passes the merge to its first item (Delete above a list pulls
+ * the item's text up; the list keeps the rest, or goes with its last item).
+ */
+const mergeForward = (block: OBlock, roles: Roles): boolean => {
 	if (block.void) return false;
-	const next = closestNextBlock(block);
+	let next = closestNextBlock(block);
+	while (next && isContainer(roles, next) && next.children[0]) next = next.children[0];
 	if (next === null) return false;
-	return mergeUnnesting(next, block, defaultChildOf);
+	const parent = next.parent;
+	if (!mergeUnnesting(next, block, roles)) return false;
+	removeEmptied(roles, parent);
+	return true;
 };
 
 /** `removeInlineBlock` — only fires when the addressed part is an inline atom. */
@@ -724,8 +828,12 @@ const describeDeleteInner = (
 	const freshIds = new Set<string>();
 	const defaultType = before.model.defaultType;
 	const rootDefaultType = before.model.rootDefaultType ?? defaultType;
-	const defaultChildOf: DefaultChildOf = (parent) =>
-		(parent.isRoot ? undefined : before.model.defaultChild?.[parent.type]) ?? defaultType;
+	const roles: Roles = {
+		shows: (type) => before.model.rendersContent?.[type] !== false,
+		defaultChild: (type) =>
+			(type === null ? undefined : before.model.defaultChild?.[type]) ?? defaultType ?? 'paragraph',
+		plain: defaultType ?? 'paragraph'
+	};
 	const tree = (description: string): DeleteExpectation => ({
 		kind: 'tree',
 		description,
@@ -1264,8 +1372,10 @@ const describeDeleteInner = (
 			}
 			const destParent = rescued.length > 0 ? home!.parent! : null;
 			const gone = (b: OBlock) => doomed.has(b) || (merges && b === E);
+			// An emptiable container (no text of its own), or an island that shows none, losing every child.
+			const dies = (b: OBlock) => emptiable(roles, b) || (b.island && !shows(b));
 			const emptied = (b: OBlock | null): void => {
-				if (!b || b.isRoot || gone(b) || shows(b) || b === destParent) return;
+				if (!b || b.isRoot || gone(b) || !dies(b) || b === destParent) return;
 				if (!b.children.every(gone)) return;
 				doomed.add(b);
 				emptied(b.parent);
@@ -1285,15 +1395,16 @@ const describeDeleteInner = (
 		const keepsIsland = island !== null && chain.includes(island) && first.doomed.has(island);
 		const { merges, tailGone, doomed, home, rescued, destParent } =
 			first.caretHome && !keepsIsland ? first : plan(false);
-		const tailKids = [...E.children];
-
 		if (!doomed.has(S)) deleteAtomRange(S, s, blockAtomLength(S));
 		if (!doomed.has(E)) deleteAtomRange(E, 0, e);
 		if (destParent) {
 			const index = indexOf(home!);
-			rescued.forEach((block, i) => moveUnder(destParent, index + i, block));
-			const resetType = tailGone && E.island ? defaultChildOf(destParent) : null;
-			if (resetType) tailKids.forEach((kid) => (kid.type = resetType));
+			// Each shows the kind of its new slot (`settle`: an island's line, a list's item leave theirs).
+			const kinds = rescued.map((block) => settledKind(roles, block.parent!, block, destParent));
+			rescued.forEach((block, i) => {
+				moveUnder(destParent, index + i, block);
+				block.type = kinds[i];
+			});
 		}
 		if (merges) {
 			S.parts.push(...E.parts);
@@ -1303,6 +1414,27 @@ const describeDeleteInner = (
 	};
 
 	const contentBackward = (): DeleteExpectation => {
+		// `del.start.kind`: Backspace at the start of a catalogue kind other
+		// than its parent's default (a callout, a heading, a to-do) turns it
+		// into that default first, keeping its content and children (Notion).
+		// Structural kinds outside the catalogue (a list item) keep the
+		// structural path below.
+		const parentDefault = startBlock.parent ? childKindOf(roles, startBlock.parent) : null;
+		if (
+			isCollapsed &&
+			isAtStartOfBlock &&
+			parentDefault !== null &&
+			startBlock.type !== parentDefault &&
+			before.model.catalogue?.includes(startBlock.type) &&
+			roles.shows(startBlock.type) &&
+			!startBlock.void &&
+			!startBlock.island &&
+			!insideIsland(startBlock)
+		) {
+			startBlock.type = parentDefault;
+			startBlock.data = {};
+			return tree('start-of-block backspace resets a catalogue kind to its default');
+		}
 		if (isCollapsed && isAtStartOfBlock && isFirstChildOfDocument && isEmptyBlock(startBlock)) {
 			return unchanged('backspace at the start of the empty first block');
 		}
@@ -1312,7 +1444,7 @@ const describeDeleteInner = (
 		}
 		if (isCollapsed && isAtStartOfBlock) {
 			if (isNested && isLastChild && !islandRoot) {
-				return unNest(startBlock)
+				return unNest(startBlock, roles)
 					? tree('start-of-block backspace un-nests the last child')
 					: unchanged('un-nest refused (island/void boundary)');
 			}
@@ -1326,7 +1458,7 @@ const describeDeleteInner = (
 			if (previous?.void) {
 				return selectOnly(previous.id, 'backspace before a void block selects it');
 			}
-			return mergeBackward(startBlock, defaultChildOf)
+			return mergeBackward(startBlock, roles)
 				? tree('start-of-block backspace merges into the previous block')
 				: unchanged('merge backward refused');
 		}
@@ -1372,7 +1504,7 @@ const describeDeleteInner = (
 			if (next?.void) {
 				return selectOnly(next.id, 'forward delete before a void block selects it');
 			}
-			return mergeForward(startBlock, defaultChildOf)
+			return mergeForward(startBlock, roles)
 				? tree('end-of-block forward delete pulls in the next block')
 				: unchanged('merge forward refused');
 		}

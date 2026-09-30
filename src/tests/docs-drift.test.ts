@@ -26,6 +26,7 @@ import type { JSONDoc } from '$lib/utils/json.js';
 import { Edytor } from '$lib/edytor.svelte.js';
 import type { Plugin } from '$lib/plugins.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
+import { validRoomId } from '$lib/crdt/providers/room.js';
 
 const root = join(import.meta.dirname, '../..');
 
@@ -244,8 +245,6 @@ describe('docs drift', () => {
 		const migration = join(root, 'site/content/docs/reference/migration.mdx');
 		const notes = upgrades.exec(pageText(migration))?.[0] ?? '';
 		expect(notes).toMatch(/### From 0\.1\.0-next\.0\n/);
-		// Decoding unifies the two forms only without these four (DR-sync-3).
-		expect(notes).toContain('an id with no `/`, `%`, `?` or `#`');
 		const named = (text: string) =>
 			[...text.matchAll(/\b\d+\.\d+\.\d+-next\.\d+\b/g)].map(([mention]) => mention);
 		expect(named(notes).filter((mention) => !servedVersions().includes(mention))).toEqual([]);
@@ -306,8 +305,89 @@ describe('docs drift', () => {
 			'editor/edytor-component.mdx'
 		])
 			expect(pageText(join(root, 'site/content/docs', page)), page).toMatch(
-				/`\.` (?:and|or) `\.\.`/
+				/`\.`(?: and | or |, )`\.\.`/
 			);
+	});
+
+	it('every statement of the room-id rule names each id validRoomId refuses (AW-11)', () => {
+		// The refused ids, pinned against the validator: a title cut mid-emoji
+		// (`title.slice(0, 40)`) leaves a lone surrogate.
+		expect(['', '.', '..', 'x'.repeat(257), 'a\uD83D'].filter(validRoomId)).toEqual([]);
+		expect(['x'.repeat(256), '...', '%2E', 'a😀', 'a/b\\c?d#e%f\tg'].every(validRoomId)).toBe(true);
+		const rule = /`\.`(?: and | or |, |\/)`\.\.`/;
+		const statements = [
+			...docs.flatMap((path) =>
+				pageText(path)
+					.split('\n')
+					.map((line, i) => [`${relative(root, path)}:${i + 1}`, line] as const)
+			),
+			// The docstrings of the code that enforces it.
+			...[
+				'src/lib/crdt/providers/room.ts',
+				'src/lib/crdt/providers/websocket.ts',
+				'src/lib/crdt/providers/index.ts',
+				'src/lib/cloudflare/routeDocumentSocket.ts',
+				'src/lib/components/Edytor.svelte'
+			].flatMap((path) =>
+				[...readFileSync(join(root, path), 'utf8').matchAll(/\/\*\*[\s\S]*?\*\//g)].map(
+					([comment]) => [path, comment] as const
+				)
+			)
+		].filter(([, text]) => rule.test(text));
+		expect(statements.length).toBeGreaterThan(10);
+		expect(
+			statements
+				.filter(([, text]) => !/lone surrogate/.test(text) || !/256/.test(text))
+				.map(([at]) => at)
+		).toEqual([]);
+	});
+
+	it('the 0.1.0-next.0 note names exactly the ids its raw dial broke (AW-10)', () => {
+		// 0.1.0-next.0 dialed `<server>/<room>?replica=…` with the id unencoded;
+		// the quick start's Worker decodes the segment its route matches. Every
+		// non-ASCII character is escaped alike by the URL and encodeURIComponent,
+		// and a lone surrogate is refused now (validRoomId), so the BMP covers it.
+		const route = /^\/rooms\/([^/]+)$/;
+		const segment = (id: string) =>
+			route.exec(new URL(`wss://rooms.test/rooms/${id}?replica=1`).pathname)?.[1] ?? null;
+		const decoded = (id: string) => {
+			try {
+				return decodeURIComponent(segment(id) ?? '');
+			} catch {
+				return null;
+			}
+		};
+		const lost: string[] = [];
+		const moved: string[] = [];
+		for (let code = 0; code < 0x10000; code++) {
+			const char = String.fromCharCode(code);
+			const id = `a${char}b`;
+			if (!validRoomId(id)) continue;
+			if (decoded(id) !== id) lost.push(char);
+			else if (segment(id) !== encodeURIComponent(id)) moved.push(char);
+		}
+		// The URL strips tab, LF and CR; the note names them in words.
+		expect(lost.filter((char) => char < ' ')).toEqual(['\t', '\n', '\r']);
+		const listed = (text: string, lead: string) => {
+			const at = text.indexOf(lead);
+			expect(at, lead).toBeGreaterThan(-1);
+			const list = /^(?:`[^`]+`(?:, | or |))+/.exec(text.slice(at + lead.length))?.[0] ?? '';
+			// A table cell escapes `|` even inside code.
+			return [...list.matchAll(/`([^`]+)`/g)].map(([, c]) => c.replace(/^\\\|$/, '|')).sort();
+		};
+		const migration = pageText(join(root, 'site/content/docs/reference/migration.mdx'));
+		const troubleshooting = pageText(join(root, 'site/content/docs/reference/troubleshooting.mdx'));
+		expect(migration.includes(', a tab or a line break'), 'the note names tab and newline').toBe(
+			true
+		);
+		expect(listed(migration, 'to the same room unless it holds ')).toEqual(
+			lost.filter((char) => char >= ' ').sort()
+		);
+		for (const [text, lead] of [
+			[migration, 'sends an id holding '],
+			[troubleshooting, 'so an id holding ']
+		])
+			expect(listed(text, lead), lead).toEqual(moved.sort());
 	});
 
 	it('the attachDocument pages list every method the document and the room expose (ZW-16)', () => {

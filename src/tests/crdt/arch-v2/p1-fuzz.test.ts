@@ -41,6 +41,10 @@ import {
 	type Replica
 } from './p1-harness.js';
 import { ACTIONS, apply, genAction, rngOf } from './p1-ops.js';
+import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
+import { bindModel } from '../../oracles/model-ops.js';
+
+const M = bindModel(Y);
 
 const SEEDS = [
 	{
@@ -57,16 +61,18 @@ const SEEDS = [
 ];
 const SEMANTICS = { roles: { callout: { island: true }, divider: { void: true } } };
 
-/** A campaign's document: its seed, its roles, the kinds a retype picks. */
-type Lane = { seed: Uint8Array; semantics: unknown; kinds?: string[] };
+/** A campaign's document: its seed, its roles, the kinds a retype picks, its actions. */
+type Lane = { seed: Uint8Array; semantics: unknown; kinds?: string[]; actions?: string[] };
 const PLAIN: Lane = { seed: seedUpdate(SEEDS, SEMANTICS), semantics: SEMANTICS };
 
 /**
  * ZW-11: the container lane — lists of items (one with a paragraph child,
  * one nested), columns of columns (a column holds any block), a table
  * island of rows of cells and a code island of lines; retypes pick list,
- * line and container kinds too. Held to `wellFormed` with its roles
- * (`island-kind`: never a line kind outside its island).
+ * line and container kinds too, and the view's Turn into (`turnInto`: the
+ * lift and the retype in one plan) races the outdents (DR-crdt-1). Held to
+ * `wellFormed` with its roles (`island-kind`: never a line kind outside its
+ * island) and to `listChildren`.
  */
 const item = (id: string, text: string, children = []) => ({
 	id,
@@ -115,7 +121,9 @@ const CONTAINERS: Lane = (() => {
 				item('U3', 'three', [
 					{ id: 'U3d', type: 'divider' },
 					{ id: 'U3c', type: 'code', children: [{ id: 'U3cl', type: 'codeLine', text: 'let y' }] }
-				])
+				]),
+				// AW-04, DR-crdt-3: stored as a paragraph, shown as the list's item (what a race leaves).
+				{ id: 'U4', type: 'paragraph', text: 'four' }
 			]
 		},
 		{
@@ -153,8 +161,10 @@ const CONTAINERS: Lane = (() => {
 	return {
 		seed: seedUpdate(seeds, semantics),
 		semantics,
+		actions: [...ACTIONS, 'turnInto', 'turnInto'],
 		kinds: [
 			'paragraph',
+			'heading',
 			'list-item',
 			'unordered-list',
 			'ordered-list',
@@ -164,6 +174,29 @@ const CONTAINERS: Lane = (() => {
 		]
 	};
 })();
+
+/**
+ * AW-04, DR-crdt-1: what a list shows directly — its item, or a block
+ * showing its own stored kind other than the document's default (a nested
+ * list; an image, a heading a merge or a race leaves there, DR-crdt-1).
+ * Never a paragraph: a plain block stored there shows as the item
+ * (`typeOf`), and nothing else shows a kind it is not stored as.
+ */
+const LISTS = new Set(['unordered-list', 'ordered-list']);
+const listChildren = (ed, doc): string[] => {
+	const out: string[] = [];
+	const visit = (b) => {
+		if (LISTS.has(b.type))
+			for (const c of b.children ?? []) {
+				const stored = M.blockNodeOf(doc, c.id)?.getAttr('type');
+				if (c.type !== 'list-item' && (c.type !== stored || stored === 'paragraph'))
+					out.push(`${c.id}:${c.type} (stored ${stored}) in ${b.id}`);
+			}
+		(b.children ?? []).forEach(visit);
+	};
+	ed.toJSON().children.forEach(visit);
+	return out;
+};
 
 type Step =
 	| { t: 'op'; r: number; action: string; args: unknown[] }
@@ -265,6 +298,9 @@ const verdict = (w: World, failures: Failure[]) => {
 	obs.destroy();
 	for (const p of wellFormed(w.reps[0].ed, w.lane === PLAIN ? {} : { semantics }))
 		failures.push({ kind: p.startsWith('duplicate atom') ? 'dup-atom' : 'tree', detail: p });
+	if (w.lane === CONTAINERS)
+		for (const p of listChildren(w.reps[0].ed, w.reps[0].doc))
+			failures.push({ kind: 'container', detail: p });
 	for (const r of w.reps) r.destroy();
 };
 
@@ -280,7 +316,7 @@ const generate = (seed: number, n: number, length: number, lane: Lane) => {
 		let step: Step | null = null;
 		if (roll < 13) {
 			const r = next(n);
-			const a = genAction(w.reps[r], next, counter, undefined, lane.kinds);
+			const a = genAction(w.reps[r], next, counter, lane.actions, lane.kinds);
 			if (a) step = { t: 'op', r, ...a };
 		} else if (roll < 17) {
 			const to = next(n);
@@ -381,24 +417,27 @@ describe('P1 fuzz — multi-replica campaign through the facade (review-probes/f
 	 * island keeps its kind (DR-crdt-1: a shed one is never refitted).
 	 */
 	it(`containers: structural ops never leave a paragraph or no item in a list, nor retype a void or island (${env('P1_FUZZ_SEEDS', 200)} seeds)`, () => {
-		const lists = new Set(['unordered-list', 'ordered-list']);
+		const lists = LISTS;
 		const sealed = new Set(['divider', 'code', 'table', 'callout']);
 		const kinds = new Map<string, string>();
-		const broken = (ed) => {
+		const broken = (ed, doc) => {
 			const out: string[] = [];
 			const visit = (b) => {
+				// The write side too (`fitted`): a structural op stores a shed paragraph as the item
+				// (the seed's U4 is stored so on purpose: what a race leaves).
+				if (lists.has(b.type))
+					for (const c of b.children ?? [])
+						if (c.id !== 'U4' && M.blockNodeOf(doc, c.id)?.getAttr('type') === 'paragraph')
+							out.push(`${c.id} stored as a paragraph in ${b.id}`);
 				if (sealed.has(kinds.get(b.id) ?? '') && b.type !== kinds.get(b.id))
 					out.push(`${b.id}:${kinds.get(b.id)} became ${b.type}`);
-				if (lists.has(b.type)) {
-					for (const c of b.children ?? [])
-						// Only a plain block is refitted: any other kind keeps its kind (DR-crdt-1).
-						if (c.type === 'paragraph') out.push(`${c.id}:${c.type} in ${b.id}`);
-					if (!b.children?.length && !b.content?.length) out.push(`${b.id} has no item`);
-				}
+				if (lists.has(b.type) && !b.children?.length && !b.content?.length)
+					out.push(`${b.id} has no item`);
 				(b.children ?? []).forEach(visit);
 			};
 			ed.toJSON().children.forEach(visit);
-			return out;
+			// Only a plain block is refitted: any other kind keeps its kind (DR-crdt-1).
+			return [...out, ...listChildren(ed, doc)];
 		};
 		const actions = ACTIONS.filter((a) => !['create', 'retype'].includes(a));
 		const TEXT = new Set(['insert', 'deleteText', 'replaceText', 'format', 'inline']);
@@ -418,9 +457,15 @@ describe('P1 fuzz — multi-replica campaign through the facade (review-probes/f
 				const a = genAction(r, next, counter, actions);
 				// Text written into a list's own (hidden) slot is an explicit write too.
 				if (!a || (TEXT.has(a.action) && CONTAINER.has(r.ed.blockTypeOf(a.args[0])))) continue;
-				apply(r, a.action, structuredClone(a.args));
+				const inList = (id) => r.ed.ancestorsOf(id).some((p) => lists.has(r.ed.blockTypeOf(p)));
+				const was = a.action === 'unnest' && inList(a.args[0]);
+				const res = apply(r, a.action, structuredClone(a.args));
 				trail.push(`${a.action}(${JSON.stringify(a.args)})`);
-				const bad = broken(r.ed);
+				const bad = broken(r.ed, r.doc);
+				// DR-crdt-3: an outdent out of every list leaves no item behind.
+				const [id] = a.args;
+				if (was && res?.status === 'applied' && !inList(id) && r.ed.blockTypeOf(id) === 'list-item')
+					bad.push(`${id} left its list as a list-item`);
 				if (bad.length) failures.push(`seed ${seed}: ${bad.join('; ')} after ${trail.join(' ')}`);
 			}
 			r.destroy();
@@ -430,7 +475,15 @@ describe('P1 fuzz — multi-replica campaign through the facade (review-probes/f
 
 	// ZW-11: pinned seeds over lists, columns of columns, a table and a code island.
 	it(`containers: 3 replicas × ${env('P1_FUZZ_SEEDS', 200)} seeds × ${LEN} steps`, () => {
+		STATS.clear();
 		const report = campaign(3, env('P1_FUZZ_SEEDS', 200), START + 9000, LEN, CONTAINERS);
+		expect(report, JSON.stringify(report, null, 1)).toEqual({});
+		// Not vacuous: a Turn into applied (DR-crdt-1).
+		expect(STATS.get('turnInto:applied') ?? 0).toBeGreaterThan(0);
+	});
+
+	it(`containers: 5 replicas × ${env('P1_FUZZ_WIDE', 40)} seeds × ${LEN + 20} steps, offline churn`, () => {
+		const report = campaign(5, env('P1_FUZZ_WIDE', 40), START + 15000, LEN + 20, CONTAINERS);
 		expect(report, JSON.stringify(report, null, 1)).toEqual({});
 	});
 });

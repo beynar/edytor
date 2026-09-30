@@ -128,17 +128,22 @@ const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void =>
 };
 
 /**
- * Move `blocks` one level, one group of siblings at a time (Notion: over
- * several nesting levels, each group that can move does), as one command.
- * A block inside another of them moves with it. Answers the moved blocks.
+ * Move `blocks` one level, one run of adjacent siblings at a time (Notion:
+ * over several nesting levels, each group that can move does), as one
+ * command. A block inside another of them moves with it; siblings with an
+ * unselected block between them move apart, so no key reorders the text
+ * (DR-behavior-1). Answers the moved blocks.
  */
 const moveRoots = (edytor: Edytor, blocks: Block[], direction: 'in' | 'out') => {
-	const roots = outermost(blocks);
-	const groups = new Map<Block | undefined, Block[]>();
-	for (const block of roots) groups.set(block.parent, [...(groups.get(block.parent) ?? []), block]);
+	const runs: Block[][] = [];
+	for (const block of outermost(blocks).toSorted(edytor.compareBlocks)) {
+		const run = runs.find((run) => run.at(-1)!.nextBlock === block);
+		if (run) run.push(block);
+		else runs.push([block]);
+	}
 	return (
 		edytor.dispatcher.run('moveBlocks', () =>
-			[...groups.values()].flatMap((group) => edytor.moveBlocks({ blocks: group, direction }))
+			runs.flatMap((run) => edytor.moveBlocks({ blocks: run, direction }))
 		) ?? []
 	);
 };

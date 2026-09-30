@@ -141,13 +141,19 @@ const getStructuralFallbackInputType = (
 	edytor: Edytor,
 	event: KeyboardEvent
 ): InputEvent['inputType'] | null => {
-	if (hasCommandModifier(event)) {
-		return null;
-	}
-
 	const key = event.key.toLowerCase();
 	const { isCollapsed, isAtStartOfBlock, isAtStartOfText, isAtEndOfBlock, isAtEndOfText } =
 		edytor.selection.projection;
+
+	if (hasCommandModifier(event)) {
+		// A word or line chord at the block's edge deletes the neighbour like a
+		// character (`deleteCollapsedUnit`); WebKit announces no `beforeinput`
+		// for it at the document's first text (SW10-crdt-1).
+		if (!isCollapsed || event.shiftKey) return null;
+		if (key === 'backspace' && isAtStartOfBlock) return 'deleteContentBackward';
+		if (key === 'delete' && isAtEndOfBlock) return 'deleteContentForward';
+		return null;
+	}
 
 	if (key === 'enter') {
 		return event.shiftKey ? 'insertLineBreak' : 'insertParagraph';

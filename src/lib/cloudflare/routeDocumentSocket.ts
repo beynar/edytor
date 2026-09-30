@@ -11,8 +11,8 @@
  * provider cannot tell from a network failure; `4403` stops it dialing.
  * An expired credential is closed `4401` (`expired`): the provider redials
  * with its `params` read again, so a refreshed token gets in. A document
- * id the room cannot have (empty, `.` or `..`, over 256 characters) is
- * closed `4400`.
+ * id the room cannot have (`validRoomId`: empty, `.` or `..`, over 256
+ * characters, with a lone surrogate) is closed `4400`.
  */
 import { CLOSE, validRoomId } from '../crdt/providers/room.js';
 import { IDENTITY_HEADERS, closedSocket, parseReplica } from './DocumentRoom.js';
@@ -81,13 +81,15 @@ export async function routeDocumentSocket(
 		typeof identity.userId !== 'string' ||
 		!identity.userId ||
 		identity.userId.length > 256 ||
+		// No header, even percent-encoded, carries a lone surrogate.
+		/\p{Cs}/u.test(identity.userId) ||
 		(replica !== null && parseReplica(replica) === null)
 	) {
 		return closedSocket(CLOSE.denied, 'document access denied');
 	}
 	const headers = new Headers({
 		Upgrade: 'websocket',
-		[IDENTITY_HEADERS.user]: identity.userId,
+		[IDENTITY_HEADERS.user]: encodeURIComponent(identity.userId),
 		[IDENTITY_HEADERS.access]: identity.readOnly ? 'read' : 'write'
 	});
 	if (replica !== null) headers.set(IDENTITY_HEADERS.replica, String(replica));

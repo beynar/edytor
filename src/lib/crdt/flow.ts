@@ -16,8 +16,10 @@
  *   slot (`flow.slot`); a void takes one run (`flow.void`);
  * - a plain line that lands directly in a container takes its item kind
  *   (the document's `fitted`: a pasted paragraph in a list is its item,
- *   ZW-01); any other kind keeps its kind and data (a pasted image stays an
- *   image, DR-crdt-1).
+ *   ZW-01), and so does a line of the list's flat item kind (the view's
+ *   `itemKind`: a pasted numbered item in an `ordered-list`, AW-08); any
+ *   other kind keeps its kind and data (a pasted image stays an image, a
+ *   bulleted item in an `ordered-list` a bulleted item, DR-crdt-1).
  */
 import type { BlockId, BlockSpec, Destination, SplitTail } from './placement/model.js';
 import type { PlanStep, Prepared } from './edytor-doc.js';
@@ -27,6 +29,11 @@ import type { DocPosition, RangeDeleteContext, RangeView } from './rangeDelete.j
 export type FlowLine = Omit<BlockSpec, 'type'> & { type?: string };
 /** An admitted flow (§2.4): lines in order, ids fresh; `whole`: a block-selection copy. */
 export type Flow = { lines: FlowLine[]; whole?: boolean };
+/**
+ * What the view tells flow placement beyond range deletion's view: a
+ * container's flat item kind (`numbered-list-item` for an `ordered-list`).
+ */
+export type FlowView = RangeView & { itemKind?: (parent: BlockId) => string | undefined };
 /** A position, or the blocks the flow replaces (`flow.slot`). */
 export type FlowTarget = DocPosition | { replace: readonly BlockId[] };
 
@@ -51,14 +58,22 @@ const lengthOf = (l: FlowLine) =>
 
 /** `insertFlow`, prepared. */
 export const flowOps = (c: FlowContext) => ({
-	insertFlow: (target: FlowTarget, flow: Flow, view: RangeView = {}): Prepared => {
+	insertFlow: (target: FlowTarget, flow: Flow, view: FlowView = {}): Prepared => {
 		// Ingress (O1): a run carries a placeholder kind through the spec sanitizer.
 		let lines: FlowLine[] = flow.lines
 			.map((l) => c.sanitize({ ...l, type: l.type ?? '' }))
 			.map((s) => ({ ...s, type: s.type || undefined }));
 		if (lines.length === 0) return c.plan([], []);
+		/** A line's kind under `parent`: the list's item for its flat item kind, then `fitted`. */
+		const fit = (parent: BlockId | null, kind: string | undefined) =>
+			c.fitted(
+				parent,
+				parent !== null && kind !== undefined && kind === view.itemKind?.(parent)
+					? c.defaultChild(parent)
+					: kind
+			);
 		const specs = (parent: BlockId | null): BlockSpec[] =>
-			lines.map((l) => ({ ...l, type: c.fitted(parent, l.type) ?? c.defaultChild(parent) }));
+			lines.map((l) => ({ ...l, type: fit(parent, l.type) ?? c.defaultChild(parent) }));
 		const last = () => lines.at(-1)!;
 		/** Whole blocks at a slot, after `pre`; the caret ends the last one's content. */
 		const atSlot = (dest: Destination, pre: PlanStep[]): Prepared => {
@@ -108,7 +123,7 @@ export const flowOps = (c: FlowContext) => ({
 				writes.push({ op: 'moveBlocks', ids: moved, parent: to, index: k, ranks: ranks.slice(k) });
 		};
 		const head = text(B, o, first);
-		const firstType = first.type && c.fitted(parent, first.type);
+		const firstType = first.type && fit(parent, first.type);
 		if (len === 0 && firstType && firstType === first.type)
 			writes.push(...c.retype(B, firstType), ...c.redata(B, first.data ?? {}));
 		kids(B, first);
@@ -116,7 +131,7 @@ export const flowOps = (c: FlowContext) => ({
 
 		const middle = specs(parent).slice(1, -1);
 		const ranks = c.ranksFor(parent, index + 1, middle.length + 1);
-		const lastType = last().type && c.fitted(parent, last().type);
+		const lastType = last().type && fit(parent, last().type);
 		const tail = lastType ? { type: lastType, data: last().data } : c.tailOf(B);
 		const rank = ranks.pop()!;
 		const moved = c.childrenIds(B).filter((id) => !view.hidden?.(id));

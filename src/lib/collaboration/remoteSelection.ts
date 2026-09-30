@@ -32,7 +32,7 @@ type DomPoint = {
 const DEFAULT_REMOTE_COLOR = '#2563eb';
 
 const normalizeColor = (value: unknown) =>
-	typeof value === 'string' && /^#[0-9a-f]{3,8}$/i.test(value.trim())
+	typeof value === 'string' && /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value.trim())
 		? value.trim()
 		: DEFAULT_REMOTE_COLOR;
 

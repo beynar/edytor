@@ -112,6 +112,8 @@ export type DstBrowserSnapshot = {
 		defaultChild?: Record<string, string>;
 		/** Kinds declaring they render no content of their own (arch-v2 D6: empty containers die). */
 		rendersContent?: Record<string, boolean>;
+		/** The kinds the menus offer (`edytor.kinds`): Backspace at the start of one resets it (`del.start.kind`). */
+		catalogue?: string[];
 		texts: string[];
 		textIds: string[];
 		renderedTexts: string[];
@@ -455,6 +457,7 @@ export const captureBrowserSnapshot = (page: Page): Promise<DstBrowserSnapshot> 
 				};
 			};
 			defaultChild?: (parent?: unknown) => string;
+			kinds?: Array<{ value: { type: string } }>;
 			idToBlock: { textById: (id: string) => BrowserPart | undefined };
 			nodeToText: Map<Node, BrowserPart>;
 			root?: { children: BrowserBlock[] };
@@ -666,6 +669,7 @@ export const captureBrowserSnapshot = (page: Page): Promise<DstBrowserSnapshot> 
 			rootDefaultType: edytor.defaultChild?.(edytor.root) ?? null,
 			defaultChild: Object.fromEntries(edytor.document?.semantics.defaultChild ?? []),
 			rendersContent: Object.fromEntries(edytor.document?.semantics.rendersContent ?? []),
+			catalogue: [...new Set((edytor.kinds ?? []).map((row) => row.value.type))],
 			texts: [] as string[],
 			textIds: [] as string[],
 			renderedTexts: [] as string[],
@@ -678,7 +682,11 @@ export const captureBrowserSnapshot = (page: Page): Promise<DstBrowserSnapshot> 
 				| { kind: 'text'; id: string; runs: Array<{ text: string; marks: unknown }> }
 				| { kind: 'inline'; id: string; type: string; data: Record<string, unknown> }
 			> = [];
-			const isRendered = !hiddenByVoid && !block.definition?.void;
+			// A kind that renders no content (a list container) shows only its children.
+			const isRendered =
+				!hiddenByVoid &&
+				!block.definition?.void &&
+				edytor.document?.semantics.rendersContent.get(block.type) !== false;
 			let renderedTextCount = 0;
 			for (const part of block.content) {
 				if ('stringContent' in part && typeof part.stringContent === 'string') {

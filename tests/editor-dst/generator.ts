@@ -369,9 +369,18 @@ const paragraph = (
 	...(children && children.length > 0 ? { children } : {})
 });
 
+const listItem = (
+	id: string,
+	content: Array<JSONText | JSONInlineBlock>,
+	children?: JSONBlock[]
+): JSONBlock => ({ ...paragraph(id, content, children), type: 'list-item' });
+
+/** The generated shapes, one per seed in turn (seed `n` → `SHAPES[(n - 1) % SHAPES]`). */
+const SHAPES = 9;
+
 export const shapeDocument = (seed: number, rng: Rng): { shape: string; document: JSONDoc } => {
 	const prefix = `dst-${seed}`;
-	switch ((seed - 1) % 8) {
+	switch ((seed - 1) % SHAPES) {
 		case 0:
 			return {
 				shape: 'empty-and-plain',
@@ -466,6 +475,48 @@ export const shapeDocument = (seed: number, rng: Rng): { shape: string; document
 							id: `${prefix}-b1`,
 							content: [textRun('quoted'), textRun(' words', { highlight: 'yellow' })]
 						}
+					]
+				}
+			};
+		case 8:
+			// ZW-11/AW-09: structural lists (the container rule, `fits`) — an
+			// item with a paragraph child, a list nested in an item, and two
+			// lists side by side, between paragraphs: the keys at an item's
+			// edges and ranges that cross a list run through the real bindings.
+			return {
+				shape: 'list-containers',
+				document: {
+					children: [
+						paragraph(`${prefix}-b0`, [textRun('before')]),
+						{
+							type: 'unordered-list',
+							id: `${prefix}-l0`,
+							children: [
+								listItem(
+									`${prefix}-l0-i0`,
+									[textRun('one')],
+									[paragraph(`${prefix}-l0-i0-c0`, [textRun('under', { italic: true })])]
+								),
+								listItem(
+									`${prefix}-l0-i1`,
+									[textRun('two', { bold: true })],
+									[
+										{
+											type: 'ordered-list',
+											id: `${prefix}-l1`,
+											children: [listItem(`${prefix}-l1-i0`, [textRun('inner')])]
+										}
+									]
+								),
+								listItem(`${prefix}-l0-i2`, [textRun('three')])
+							]
+						},
+						{
+							type: 'ordered-list',
+							id: `${prefix}-l2`,
+							children: [listItem(`${prefix}-l2-i0`, [textRun('solo')])]
+						},
+						paragraph(`${prefix}-b1`, [textRun('after')])
 					]
 				}
 			};
@@ -792,7 +843,8 @@ export const generateDstSchedule = (seed: number, stepCount: number): DstSchedul
 };
 
 export const parseSeedList = (raw: string | undefined): number[] => {
-	if (!raw) return [1, 2, 3, 4, 5, 6, 7, 8];
+	// One seed per generated shape (`SHAPES`).
+	if (!raw) return Array.from({ length: SHAPES }, (_, i) => i + 1);
 	const seeds = new Set<number>();
 	for (const segment of raw.split(',')) {
 		const match = segment.trim().match(/^(\d+)(?:-(\d+))?$/);

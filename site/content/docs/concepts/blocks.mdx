@@ -37,7 +37,7 @@ Any block can hold `children` unless its kind is void. Children render inside th
 
 In the editor:
 
-- <kbd>Tab</kbd> nests the current block under the block before it. <kbd>Shift</kbd>+<kbd>Tab</kbd> moves it out, after its parent; the blocks nested after it follow as its children, as in any outliner. Over a selection of sibling blocks, both keys move them together and keep them selected.
+- <kbd>Tab</kbd> nests the current block under the block before it. <kbd>Shift</kbd>+<kbd>Tab</kbd> moves it out, after its parent; the blocks nested after it follow as its children, as in any outliner (an item of a list container leaves the list instead, see [Containers](#containers)). Over a selection of sibling blocks, both keys move them together and keep them selected.
 - <kbd>Backspace</kbd> at the start of a nested block that is its parent's last child moves it out one level instead of merging (a heading, list item or other menu kind first turns into a paragraph; see [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role)).
 - Block handles drag blocks before, after or inside other blocks.
 - `edytor.moveBlocks` and `edytor.canMoveBlocks` do the same from code (see [Commands](/docs/editor/commands#moving-blocks)).
@@ -80,7 +80,7 @@ These roles come from the plugins of the views attached to a document. A documen
 
 A kind that declares `rendersContent: false` has no text of its own. It only renders its children, like `ordered-list`, `unordered-list` and `code`. The caret never lands in a container's own slot. A list container that a deletion empties is removed.
 
-A list holds only its items. Turn into converts the items a selection holds, never the list itself. An item turned into another kind leaves the list, where <kbd>Shift</kbd> + <kbd>Tab</kbd> lifts it: before the list, after it, or between its two halves. Out of a list nested right in a list it leaves both. Turned into the kind it already shows as (Numbered list in an ordered list), an item stays. <kbd>Enter</kbd> in an empty item outdents it the same way, one level per press, until it ends the list. The keys at an item's edges are listed in [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role).
+A list holds only its items. Turn into converts the items a selection holds, never the list itself. An item turned into another kind leaves the list, where <kbd>Shift</kbd> + <kbd>Tab</kbd> lifts it: before the list, after it, or between its two halves. Out of a list nested right in a list it leaves both. Turned into the kind it already shows as (Numbered list in an ordered list), an item stays, and so does a block a merge left in the list turned into its own kind (Heading 2 on a heading). A divider or a code block that Turn into adds after an item with text goes after the item outside the list, which splits there. A pasted list of the list's own kind (an `<ol>` into an ordered list) gives items; another kind keeps its kind. <kbd>Enter</kbd> in an empty item outdents it the same way, one level per press, until it ends the list. The keys at an item's edges are listed in [Enter and Backspace by role](/docs/customization/hotkeys#enter-and-backspace-by-role).
 
 ## Default children
 

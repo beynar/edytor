@@ -107,8 +107,8 @@
 		/**
 		 * The document's id. Alone: a local IndexedDB copy under that name. With
 		 * `server`: the room on that server, plus the local copy (1 to 256
-		 * characters, not `.` or `..`: another id is refused `4400` through
-		 * `onSyncRefused`, never dialed). Read once.
+		 * characters, not `.` or `..`, with no lone surrogate: another id is
+		 * refused `4400` through `onSyncRefused`, never dialed). Read once.
 		 */
 		room?: string;
 		/** The sync server's base URL (`wss://…/rooms`); the view dials `<server>/<room>`. Read once. */

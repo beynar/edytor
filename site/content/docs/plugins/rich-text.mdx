@@ -33,9 +33,9 @@ It takes no options. List it yourself only to place it elsewhere in the order, o
 
 The kinds are listed in catalogue order, which the menus follow. Presets feed the [slash menu](/docs/plugins/slash-menu) (all under `Basic blocks`), [markdown shortcuts](/docs/plugins/markdown-shortcuts) and block menus. Their command ids are `block.paragraph`, `block.heading1` to `block.heading3`, `block.bulleted-list-item`, `block.numbered-list-item`, `block.todo-item`, `block.toggle`, `block.callout`, `block.quote` and `block.divider`.
 
-The plugin also defines kinds without presets, for content that arrives by paste or from stored documents:
+The plugin also defines kinds without presets, for content that arrives from stored documents, the API or an Edytor fragment (an HTML paste gives flat bulleted and numbered items):
 
-- `ordered-list` and `unordered-list`: `ol` and `ul` containers that render only their children. A new child takes the `list-item` kind.
+- `ordered-list` and `unordered-list`: `ol` and `ul` containers that render only their children. A new child takes the `list-item` kind, and so does a pasted line of the list's own flat kind (a numbered item in an `ordered-list`, a bulleted one in an `unordered-list`, their `itemKind`); any other kind keeps its kind.
 - `list-item`: an `li`.
 - `details`: the same as `toggle`.
 - `horizontalRule`: the same as `divider`.
@@ -101,7 +101,7 @@ Notion's "turn into" chords convert the block holding the caret, or, as in Notio
 
 Each runs the kind's command (`block.paragraph`, `block.heading1`, …, `block.code`) and is claimed only when that command is registered.
 
-The plugin also handles the formatting input types browsers send from their own menus and from iOS: bold, italic, underline, strikethrough, superscript, subscript, remove formatting, text and background color, insert link, ordered and unordered list (converts the block), and horizontal rule (inserts a divider at the caret, splitting the block when the caret is inside it).
+The plugin also handles the formatting input types browsers send from their own menus and from iOS: bold, italic, underline, strikethrough, superscript, subscript, remove formatting, text and background color, insert link, ordered and unordered list (converts the block), and horizontal rule (inserts a divider at the caret, splitting the block when the caret is inside it; in a list's item, the divider goes out of the list as Turn into puts one: in an empty item's place, else after the item, whose text stays whole; in an emptied document it creates the divider and a paragraph after it). `insertDividerAtSelection()` below does the same.
 
 ## Formatting from code
 

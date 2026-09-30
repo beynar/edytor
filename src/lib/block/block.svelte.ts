@@ -139,15 +139,15 @@ export class Block {
 
 	/**
 	 * May text-level structural commands (convert, markdown shortcut, slash
-	 * menu) apply: the block is movable, has no role of its own and renders
-	 * its own content — a container (a list) is never converted, its items
-	 * are (ZW-02).
+	 * menu) apply: the block is movable — or the virtual paragraph of an
+	 * emptied document, which a conversion creates with its kind
+	 * (SW10-lists-3) — has no role of its own and renders its own content —
+	 * a container (a list) is never converted, its items are (ZW-02).
 	 */
 	get convertible(): boolean {
 		const { facade } = this.edytor;
-		return (
-			this.movable && this.rendersContent && !facade.isVoid(this.id) && !facade.isIsland(this.id)
-		);
+		const placeable = this.movable || facade.virtual() === this.id;
+		return placeable && this.rendersContent && !facade.isVoid(this.id) && !facade.isIsland(this.id);
 	}
 
 	get firstEditableText(): Text | undefined {

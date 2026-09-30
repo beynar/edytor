@@ -1131,7 +1131,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * sealed); the destination is live, neither void nor an island nor
 		 * inside one, and not inside any moved block's own subtree; and every
 		 * block fits it as the kind `kindOf` gives (`fits`; a move keeps its
-		 * kind). Without a `parent`: may these blocks move at all (the drag
+		 * kind) or already sits in it (a reorder changes nothing a list holds:
+		 * an image shed into a list still moves among its items, AW-06).
+		 * Without a `parent`: may these blocks move at all (the drag
 		 * affordance). The move ops refuse exactly when this answers `false`.
 		 * (`insertBlock` is looser — island interiors are built by inserting
 		 * into them.)
@@ -1146,7 +1148,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			if (ids.some((id) => !isLiveIn(v, id) || insideIsland(id, v))) return false;
 			if (parent === undefined || parent === null) return true;
 			if (!isLiveIn(v, parent) || isVoid(parent)) return false;
-			if (!ids.every((id) => fits(parent, kindOf(id)))) return false;
+			const stays = (id: BlockId) => positionOf(id)?.parent === parent;
+			if (!ids.every((id) => stays(id) || fits(parent, kindOf(id)))) return false;
 			return ![parent, ...ancestorsOf(parent, v)].some((a) => isIsland(a) || ids.includes(a));
 		};
 
@@ -1161,7 +1164,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * under `parent` (`null` = the root)? A container whose default child is
 		 * a kind of its own — its item (a list's `list-item`, a columns
 		 * layout's `column`) — holds only its items and containers of them (a
-		 * list directly in a list, as an HTML paste keeps it); one whose
+		 * list directly in a list, from JSON or the API); one whose
 		 * default child is the document's (a column) holds any block. Every
 		 * structural placement asks it: a move is refused where its blocks do
 		 * not fit (`canPlace`), Tab nests under a container's last item
@@ -1169,7 +1172,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * not fit, and a block a merge, delete or range sheds into a container
 		 * takes its item kind when it is a plain block (`fitted`). Explicit kind
 		 * writes (`insertBlocks`, a retype) place what they are told (the
-		 * view's Turn into lifts a list's item out first).
+		 * view's Turn into places the kind where it fits first, `liftOut`); a
+		 * plain block stored directly in a list still shows as its item (the
+		 * index's `typeOf`, AW-04), whatever write or race put it there.
 		 */
 		const fits = (parent: BlockId | null, kind: string | undefined): boolean => {
 			if (parent === null || !isContainer(parent)) return true;
@@ -1199,7 +1204,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/**
 		 * Where `ids` nest when nested into `parent` (Tab, a drop inside it):
 		 * `parent`, or — a container they are no items of — its last child,
-		 * and so on down. Tab after a list nests under its last item (Notion).
+		 * and so on down. Tab after a list nests under its last item (Notion);
+		 * a last child that holds no children (an image, a code block) is
+		 * answered as it is, and `canPlace` refuses it, as Tab right under
+		 * that block is refused (AW-07).
 		 */
 		const nestParent = (ids: readonly BlockId[], parent: BlockId): BlockId => {
 			let at = parent;
@@ -1636,9 +1644,17 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/** Move `ids` to `index` among `parent`'s children. */
 		const move = (ids: BlockId[], parent: BlockId | null, index: number): PlanStep[] =>
 			moveTo(ids, parent, index, ranksFor(parent, index, ids.length, ids));
-		/** A type/data step, planned only when the value differs (the one same-value guard). */
+		/**
+		 * A type/data step, planned only when the value differs (the one
+		 * same-value guard). A kind counts as the same only when the block is
+		 * stored and shown as it: a move in the same plan pins the kind a
+		 * block shows (`moveTo`), so a paragraph shown as its list's item
+		 * (`itemOf`) that an outdent settles back to a paragraph is written
+		 * back (DR-crdt-3).
+		 */
 		const attr = (id: BlockId, key: typeof TYPE | typeof DATA, value: unknown): PlanStep[] => {
-			if (jsonEquals(M.blockNodeOf(doc, id)!.getAttr(key), value)) return [];
+			const same = jsonEquals(M.blockNodeOf(doc, id)!.getAttr(key), value);
+			if (same && (key === DATA || (runsView.displayType(id) ?? value) === value)) return [];
 			return [
 				key === TYPE
 					? { op: 'setBlockType', id, type: value as string }
@@ -1649,7 +1665,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * The kind `kid` shows once it leaves `from` for a slot under `parent`
 		 * — the island and container rules, one answer:
 		 * - an island's child takes `parent`'s default child (it leaves the
-		 *   island's kinds);
+		 *   island's kinds) — unless that renders no content while the child
+		 *   does: a line then takes the document's default kind (a code line
+		 *   shed into a columns layout is a paragraph, AW-05), any other child
+		 *   keeps its kind, as `typeOf` shows one a peer adds meanwhile;
 		 * - a container's item (its default child) takes `parent`'s default
 		 *   child — an item never shows outside its list (YW-02) — unless it
 		 *   stays inside an outer container of that kind (a nested list,
@@ -1661,13 +1680,23 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 *   layout) keeps its kind: its text never vanishes; any other kind (an
 		 *   image, a code block, a heading) keeps its kind (DR-crdt-1).
 		 */
+		/**
+		 * The kind a child of `island` (now `kind`) takes where the default
+		 * child is `to`: `to` — unless `to` renders no content while the child
+		 * does (its text would vanish): a line then takes the document's
+		 * default kind, any other child keeps its kind (AW-05, as `typeOf`).
+		 */
+		const leavingIsland = (island: BlockId, kind: string | undefined, to: string) => {
+			if (rendersContentOf(to) || (kind !== undefined && !rendersContentOf(kind))) return to;
+			return is(island, (type) => roles.line(type) !== undefined) ? defaultChild(null) : kind;
+		};
 		const settledKind = (
 			from: BlockId | null,
 			kid: BlockId,
 			parent: BlockId | null
 		): string | undefined => {
 			let kind = blockTypeOf(kid);
-			if (from !== null && isIsland(from)) kind = defaultChild(parent);
+			if (from !== null && isIsland(from)) kind = leavingIsland(from, kind, defaultChild(parent));
 			else if (from !== null && isContainer(from) && kind === defaultChild(from)) {
 				const within = parent === null ? [] : [parent, ...ancestorsOf(parent)];
 				const to = defaultChild(parent);
@@ -1883,6 +1912,88 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 		/** Outdent one block (`unNestBlocks`). */
 		const unNestBlock = (id: BlockId): Prepared => unNestBlocks([id]);
+
+		/**
+		 * Place `id` where a block of `kind` fits, in one plan (AW-01, AW-03):
+		 * out of every container around it that `kind` does not fit (`fits`:
+		 * a list, and a list holding that list directly, for a heading or a
+		 * divider). Each splits around it as an outdent splits one list
+		 * (ZW-03): the blocks before it go to a new container of its kind —
+		 * which the level above holds the same way — and it keeps the ones
+		 * after it; one left with no child goes. `after` (new blocks) lands
+		 * right after it. With `keep`, `id` stays and only `after` goes out,
+		 * the split right after `id` (a divider inserted after an item). The
+		 * kinds are the caller's: it composes the retype (`setBlock`). Refused
+		 * where `id` may not move there (`canPlace`). `ids`: the placed blocks.
+		 */
+		const liftOut = (
+			id: BlockId,
+			kind: string,
+			{ keep = false, after = [] }: { keep?: boolean; after?: readonly BlockSpec[] } = {}
+		): Prepared => {
+			id = ref(id);
+			kind = ref(kind);
+			const specs = after.map(sanitizeSpec);
+			const pos = positionOf(id);
+			if (pos === null || M.collides(doc, specs)) return REFUSED;
+			const levels: BlockId[] = [];
+			let parent = pos.parent;
+			for (; parent !== null && !fits(parent, kind); parent = positionOf(parent)!.parent)
+				levels.push(parent);
+			if (!canPlace([id], parent, () => kind)) return REFUSED;
+			const moved = keep ? [] : [id];
+			const placed = [...moved, ...specs.map((s) => s.id)];
+			const insert = (at: BlockId | null, index: number, s: BlockSpec[], ranks: string[]) =>
+				s.length ? [{ op: 'insertBlocks' as const, parent: at, index, specs: s, ranks }] : [];
+			if (levels.length === 0)
+				return plan(
+					placed,
+					insert(parent, pos.index + 1, specs, ranksFor(parent, pos.index + 1, specs.length))
+				);
+			// Bottom up: what stays before the split at each level (the level
+			// itself, or a new head holding it), and whether anything follows it.
+			const heads: { spec: BlockSpec; kids: BlockId[]; inner?: BlockSpec }[] = [];
+			let before: { id: BlockId; head?: BlockSpec } | null = null;
+			let follows = false;
+			let child = id;
+			for (const level of levels) {
+				const kids = childrenIds(level);
+				const at = kids.indexOf(child);
+				// Before the split: the blocks before `child`, and `id` itself when it stays.
+				const cut = child === id && keep ? at + 1 : at;
+				const lead: BlockId[] = [
+					...kids.slice(0, cut),
+					...(before && !before.head ? [before.id] : [])
+				];
+				follows ||= at + 1 < kids.length;
+				if ((lead.length > 0 || before?.head) && follows) {
+					const spec = sanitizeSpec({
+						id: newId('b'),
+						type: kindToCopy(level),
+						data: blockDataOf(level) ?? {}
+					});
+					heads.push({ spec, kids: lead, inner: before?.head });
+					before = { id: spec.id, head: spec };
+				} else before = lead.length > 0 ? { id: level } : null;
+				child = level;
+			}
+			const top = positionOf(levels.at(-1)!)!;
+			const gap = top.index + (before && !before.head ? 1 : 0);
+			const ranks = ranksFor(parent, gap, (before?.head ? 1 : 0) + placed.length, moved);
+			const writes: PlanStep[] = before?.head
+				? insert(parent, gap, [before.head], ranks.splice(0, 1))
+				: [];
+			for (const { spec, kids, inner } of heads.reverse()) {
+				const inside = ranksFor(spec.id, 0, kids.length + (inner ? 1 : 0));
+				writes.push(
+					...moveTo(kids, spec.id, 0, inside.slice(0, kids.length)),
+					...(inner ? insert(spec.id, kids.length, [inner], inside.slice(-1)) : [])
+				);
+			}
+			const [mine, theirs] = [ranks.slice(0, moved.length), ranks.slice(moved.length)];
+			writes.push(...moveTo(moved, parent, gap, mine), ...insert(parent, gap, specs, theirs));
+			return plan(placed, emptying(levels[0]!, moved, writes, landing(parent)));
+		};
 
 		/**
 		 * Split `id` at content `offset` into a new sibling `newId` (one boundary
@@ -2117,18 +2228,29 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * rank the read-time
 		 * shedding gives it (`promotedRank`, UW-21b), so a child a peer adds
 		 * meanwhile keeps its place in the void's order among them. An island
-		 * retyped to an ordinary kind keeps its children, each retyped to the
-		 * new kind's default child: no line kind outside its island.
+		 * declared `lines` retyped to an ordinary kind keeps its lines, each
+		 * retyped to the new kind's default child (the document's where that
+		 * renders no content): no line kind outside its island. Any other
+		 * island's children keep their kinds (a table's rows stay rows), as
+		 * `typeOf` shows a child a peer adds meanwhile (DR-crdt-2).
 		 */
 		const retypeSteps = (id: BlockId, type: string): PlanStep[] => {
 			const { kids } = view();
 			const pos = positionOf(id);
 			const steps = attr(id, TYPE, type);
 			const moved = kids.get(id) ?? [];
-			// An island retyped to an ordinary kind keeps its lines as that kind's children.
-			if (isIsland(id) && !roles.island(type) && !roles.childless(type)) {
-				const child = roles.defaultChild(type);
-				return [...steps, ...moved.flatMap((k) => attr(k.id, TYPE, child))];
+			// A code block retyped to an ordinary kind keeps its lines as that kind's children
+			// (`leavingIsland`: never a kind that hides their text, AW-05).
+			const lined = is(id, (t) => roles.line(t) !== undefined);
+			if (lined && !roles.island(type) && !roles.childless(type)) {
+				const to = roles.defaultChild(type);
+				return [
+					...steps,
+					...moved.flatMap((k) => {
+						const kind = leavingIsland(id, blockTypeOf(k.id), to);
+						return kind === undefined ? [] : attr(k.id, TYPE, kind);
+					})
+				];
 			}
 			if (!roles.childless(type) || moved.length === 0 || pos === null) return steps;
 			const slotRank = kids.get(pos.parent)![pos.index]!.rank;
@@ -2401,6 +2523,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			},
 			unNestBlock,
 			unNestBlocks,
+			liftOut,
 			splitBlock,
 			mergeBlocks,
 			mergeBackward,

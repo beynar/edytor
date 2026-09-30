@@ -48,7 +48,7 @@ const p = (id: string, children?: JSONBlock[]) => block('paragraph', id, childre
 /** A toggle `id` with a text of its id; closed (its default). */
 const toggle = (id: string, children: JSONBlock[]) => block('toggle', id, children);
 const li = (id: string, children?: JSONBlock[]) => block('list-item', id, children);
-/** A structural list (a pasted `<ul>`): no content of its own, items as children. */
+/** A structural list (from JSON or the API): no content of its own, items as children. */
 const ul = (id: string, children: JSONBlock[]): JSONBlock => ({
 	id,
 	type: 'unordered-list',

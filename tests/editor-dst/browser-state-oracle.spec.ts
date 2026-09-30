@@ -545,6 +545,178 @@ test.describe('DST v3 effect oracle', () => {
 		expect(() => assertDeleteIntent('webkit', lineBackward, nodeSelected, nodeAfter)).not.toThrow();
 	});
 
+	test('delete oracle: Backspace at the start of a catalogue kind resets it (del.start.kind)', () => {
+		const callout = (catalogue: string[]) => {
+			const snap = twoBlockSnapshot({ startTextIndex: 1, endTextIndex: 1 });
+			snap.value.children[1].type = 'callout';
+			snap.model.blocks[1].type = 'callout';
+			snap.model.catalogue = catalogue;
+			return snap;
+		};
+		const events: DstEvent[] = [
+			{ type: 'beforeinput', isTrusted: true, cancelable: true, inputType: 'deleteWordBackward' }
+		];
+		// A menu kind turns into its parent's default first, keeping its text.
+		expect(
+			describeDelete(
+				callout(['paragraph', 'callout']),
+				{ kind: 'wordDelete', direction: 'backward' },
+				events
+			)
+		).toEqual({
+			kind: 'tree',
+			description: 'start-of-block backspace resets a catalogue kind to its default',
+			children: [
+				{ type: 'paragraph', id: 'b0', data: {}, content: [{ text: 'hello' }] },
+				{ type: 'paragraph', id: 'b1', data: {}, content: [{ text: 'world' }] }
+			]
+		});
+		// A kind outside the catalogue keeps the structural path: it merges.
+		expect(describeDelete(callout(['paragraph']), { kind: 'backspace' }, [])).toMatchObject({
+			kind: 'tree',
+			children: [{ type: 'paragraph', id: 'b0', data: {}, content: [{ text: 'helloworld' }] }]
+		});
+	});
+
+	test('delete oracle: the container rule at a list (AW-09)', () => {
+		// [p "before", ul[i0 "one" [p c0 "under"], i1 "two"], p "after"]:
+		// the list renders no content, its item kind is `list-item`.
+		const block = (id: string, type: string, path: number[], text: string | null) => ({
+			id,
+			type,
+			data: {},
+			contentKinds: ['text' as const],
+			parts: [{ kind: 'text' as const, id: `t-${id}`, runs: [{ text: text ?? '', marks: null }] }],
+			path,
+			void: false,
+			island: false,
+			renderedTextCount: text === null ? 0 : 1
+		});
+		const list = (selection: Partial<DstTextSelection>): DstBrowserSnapshot => {
+			const snap = twoBlockSnapshot(selection);
+			snap.value = {
+				children: [
+					{ type: 'paragraph', id: 'b0', content: [{ text: 'before' }] },
+					{
+						type: 'unordered-list',
+						id: 'ul',
+						children: [
+							{
+								type: 'list-item',
+								id: 'i0',
+								content: [{ text: 'one' }],
+								children: [{ type: 'paragraph', id: 'c0', content: [{ text: 'under' }] }]
+							},
+							{ type: 'list-item', id: 'i1', content: [{ text: 'two' }] }
+						]
+					},
+					{ type: 'paragraph', id: 'b1', content: [{ text: 'after' }] }
+				]
+			};
+			snap.model = {
+				...snap.model,
+				blocks: [
+					block('b0', 'paragraph', [0], 'before'),
+					block('ul', 'unordered-list', [1], null),
+					block('i0', 'list-item', [1, 0], 'one'),
+					block('c0', 'paragraph', [1, 0, 0], 'under'),
+					block('i1', 'list-item', [1, 1], 'two'),
+					block('b1', 'paragraph', [2], 'after')
+				],
+				defaultChild: { 'unordered-list': 'list-item' },
+				rendersContent: { 'unordered-list': false },
+				renderedTexts: ['before', 'one', 'under', 'two', 'after'],
+				renderedTextIds: ['t-b0', 't-i0', 't-c0', 't-i1', 't-b1']
+			};
+			return snap;
+		};
+		const p = (id: string, text: string, children?: unknown[]) => ({
+			type: 'paragraph',
+			id,
+			data: {},
+			content: [{ text }],
+			...(children && { children })
+		});
+		const li = (id: string, text: string) => ({ ...p(id, text), type: 'list-item' });
+		const ul = (...children: unknown[]) => ({
+			type: 'unordered-list',
+			id: 'ul',
+			data: {},
+			children
+		});
+		const tree = (description: string, ...children: unknown[]) => ({
+			kind: 'tree',
+			description,
+			children
+		});
+
+		// Backspace at the start of the first item lifts it out, as a
+		// paragraph, with its children; the list keeps the rest.
+		expect(
+			describeDelete(list({ startTextIndex: 1, endTextIndex: 1 }), { kind: 'backspace' }, [])
+		).toEqual(
+			tree(
+				'start-of-block backspace merges into the previous block',
+				p('b0', 'before'),
+				p('i0', 'one', [p('c0', 'under')]),
+				ul(li('i1', 'two')),
+				p('b1', 'after')
+			)
+		);
+		// Delete at the end of the block above pulls the first item's text
+		// up; its paragraph child stays in the list, as an item.
+		expect(
+			describeDelete(
+				list({ startTextIndex: 0, endTextIndex: 0, yStart: 6, yEnd: 6 }),
+				{ kind: 'delete' },
+				[]
+			)
+		).toEqual(
+			tree(
+				'end-of-block forward delete pulls in the next block',
+				p('b0', 'beforeone'),
+				ul(li('c0', 'under'), li('i1', 'two')),
+				p('b1', 'after')
+			)
+		);
+		// Backspace at the start of the last item outdents it after the list.
+		expect(
+			describeDelete(list({ startTextIndex: 3, endTextIndex: 3 }), { kind: 'backspace' }, [])
+		).toEqual(
+			tree(
+				'start-of-block backspace un-nests the last child',
+				p('b0', 'before'),
+				ul({ ...li('i0', 'one'), children: [p('c0', 'under')] }),
+				p('i1', 'two'),
+				p('b1', 'after')
+			)
+		);
+		// A range from "bef|ore" to "o|ne": the list stays (it keeps its
+		// later items), the rescued paragraph child lands in it as an item.
+		expect(
+			describeDelete(
+				list({ startTextIndex: 0, endTextIndex: 1, yStart: 3, yEnd: 1, isCollapsed: false }),
+				{ kind: 'backspace' },
+				[]
+			)
+		).toEqual(
+			tree(
+				'block-spanning backward delete',
+				p('b0', 'befne'),
+				ul(li('c0', 'under'), li('i1', 'two')),
+				p('b1', 'after')
+			)
+		);
+		// A range from "bef|ore" to the end of "two" empties the list: it goes.
+		expect(
+			describeDelete(
+				list({ startTextIndex: 0, endTextIndex: 3, yStart: 3, yEnd: 3, isCollapsed: false }),
+				{ kind: 'backspace' },
+				[]
+			)
+		).toEqual(tree('block-spanning backward delete', p('b0', 'bef'), p('b1', 'after')));
+	});
+
 	test('lineDelete expectation follows the delivered line-delete inputType', () => {
 		// 'hel|lo world' — the darwin ⌘⌫ chord delivers
 		// `deleteSoftLineBackward`; the oracle reads the DELIVERED type, so

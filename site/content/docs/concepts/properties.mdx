@@ -1,0 +1,142 @@
+---
+title: Properties
+description: Block, inline block and document properties (data), read and written like plain objects, synced per property, with undo, hooks and typing.
+icon: sliders-horizontal
+---
+
+Every block, every inline block and the document itself carry `data`: a JSON object of properties, such as a to-do's `checked`, an image's `src` or a document's `title`. You read and write it like a plain object. Each write is a command (undoable, visible to plugins, refused in a readonly view), and the document syncs it property by property, so two people editing different properties of the same block both keep their change.
+
+## Read and write
+
+`block.data`, `atom.data` and `edytor.data` are live proxies over the current value:
+
+```ts
+block.data.title = 'Launch plan'; // set one property
+block.data.meta.owner = 'ada'; // nested objects read as proxies too
+delete block.data.draft; // delete one
+block.data.tags.push('q3'); // array methods write the new array
+edytor.data.title = 'Notes'; // the document's own properties
+atom.data.name = 'Ada'; // an inline block (a mention)
+block.setData({ title: 'Fresh' }); // replace the whole object
+```
+
+- A read always returns the current value: a nested object reads as a proxy of its own (the same one each time), an array as an array proxy, anything else as the value itself. Copy it (`{ ...block.data }`, `$state.snapshot(block.data)`, `JSON.parse(JSON.stringify(block.data))`) to keep what it was at one moment. `JSON.stringify` and `$state.snapshot` give plain JSON.
+- A write is one `patchData` command on the block (the root block for the document, with `atom` set for an inline block): a property set, a `delete`, or a whole array for an array method (`push`, `pop`, `shift`, `unshift`, `splice`, `sort`, `reverse`, `fill`, `copyWithin`), an index or `length` assignment, or a write inside an array item. Values are JSON: a `Date` becomes a string, `undefined` removes the property (see [the document model](/docs/concepts/document-model)).
+- Reads in a template are reactive: a snippet that reads `block.data.title` re-renders when anyone changes the block, you, a plugin or a collaborator. `edytor.data` is reactive too, anywhere in your app.
+- `edytor.root.data` is `edytor.data`.
+
+## Bind to inputs
+
+Because a write is an assignment, Svelte bindings work on properties. A kind whose snippet edits its own data:
+
+```svelte title="CardPlugin.svelte" check
+<script module lang="ts">
+	import type { BlockSnippetPayload, Plugin } from 'edytor';
+
+	type Card = { title?: string; done?: boolean; tags?: string[] };
+
+	export const cardPlugin: Plugin = () => ({
+		blocks: {
+			card: {
+				snippet: card,
+				presets: [{ label: 'Card', icon: '▤', data: { title: '', done: false, tags: [] } }]
+			}
+		}
+	});
+</script>
+
+{#snippet card({ block, content }: BlockSnippetPayload<Card>)}
+	<div use:block.void>
+		<input placeholder="Title" bind:value={block.data.title} />
+		<input
+			type="checkbox"
+			bind:checked={() => block.data.done ?? false, (done) => (block.data.done = done)}
+		/>
+		<button onclick={() => block.data.tags?.push('new')}>Tag</button>
+		{block.data.tags?.join(', ')}
+	</div>
+	<div>{@render content()}</div>
+{/snippet}
+```
+
+- Give bound properties a default in the kind's presets, or bind through a getter and setter as the checkbox does: a plain `bind:checked` on a missing property writes `false` when the input mounts, which is an edit (and an undo step) in every editable view that renders it.
+- A kind's own controls own their events. Any form control in a kind's markup (an `<input>` of any type: text, date, time, number, range, color, a checkbox; a `<textarea>`, a `<select>`, a `<button>`) and any nested editable element that is not the editor's own text receives its keys, `beforeinput`, paste, copy, cut, drops and selection gestures from the browser, whatever the editor's selection: <kbd>Backspace</kbd>, <kbd>Enter</kbd> or <kbd>Tab</kbd> there never act on selected blocks, a paste never lands in the document, and the editor never moves its caret over a focused control while each change writes the block. Only a file dropped on one is swallowed (the browser would open it in place of the page), and <kbd>Backspace</kbd> or <kbd>Delete</kbd> on a focused `<select>` or `<button>` does nothing, so the browser deletes nothing around it.
+- A readonly view refuses the writes, so the field would show what was typed until the next render: disable it there (`disabled={block.handle.edytor.readonly}`).
+
+## Document properties
+
+The document's own data is `edytor.data` in a view, `facade.docData()` headless, and the optional `data` of a `JSONDoc`:
+
+```ts title="src/lib/notes.ts" check
+import { createDocument } from 'edytor';
+
+declare module 'edytor' {
+	interface EdytorDocData {
+		title?: string;
+		tags?: string[];
+	}
+}
+
+const document = createDocument({
+	value: { data: { title: 'Notes' }, children: [{ type: 'paragraph', content: [{ text: 'Hi' }] }] }
+});
+document.facade.patchData(null, [{ path: ['tags'], value: ['draft'] }]);
+document.facade.docData(); // { title: 'Notes', tags: ['draft'] }
+document.facade.toJSON().data; // the same; `data` is absent when the document has none
+```
+
+- A `value` with `data` seeds it with the content. The same seed on two replicas writes the same properties, whatever order its keys come in (a database may reorder them), like the content (see [Documents](/docs/collaboration/documents)).
+- `edytor.value` (and `onChange`'s value) carries it as the root's `data`; `JSONDoc.data` round-trips through `toJSON`, the room's `read()`, `onSave` and `onLoad`.
+- Augment `EdytorDocData` to type `edytor.data`, as above. Block data is typed per kind with `BlockSnippetPayload<T>` (`block.data` is `T` in the snippet).
+
+## Commands, hooks and undo
+
+A property write is the `patchData` operation. Its payload is `{ ops, atom? }`: `ops` is a list of `{ path, value? }` patches, applied in order, where `path` is the list of object keys from the root and a patch without `value` deletes that property. The `block` is the edited block, the root block for the document.
+
+```ts title="src/lib/locked.ts" check
+import type { Plugin } from 'edytor';
+
+// Validation lives in a hook. Only the app sets `locked`: refuse any write that
+// would change it, a whole-object replace (`setData`, `setBlock`, Turn into) included.
+export const locked: Plugin = () => ({
+	onBeforeOperation: ({ operation, payload, block, prevent }) => {
+		if (operation !== 'patchData' || payload.atom !== undefined) return;
+		const was = block.data.locked;
+		const changes = (op: (typeof payload.ops)[number]) =>
+			op.path.length === 0
+				? (op.value as { locked?: unknown } | undefined)?.locked !== was
+				: op.path[0] === 'locked';
+		if (payload.ops.some(changes)) prevent();
+	}
+});
+```
+
+A patch with an empty `path` replaces the whole object (`setData`, `setBlock` with `data`, Turn into), so a check must look inside its `value`, not only at `path[0]`: a replace that leaves `locked` out deletes it.
+
+- A readonly view (or a read-only document) refuses every write, and `edytor.dispatcher.last` records `refused`.
+- A vetoed write writes nothing. Edytor has no property schema: validate or normalize in `onBeforeOperation` (return a replacement payload to rewrite a patch).
+- A block created with its properties is not a `patchData`: a paste, Duplicate and `insertBlocks` show as `addChildBlocks` with the new blocks' JSON (`payload.blocks`, `data` included), and a split's second half takes a copy of the first half's properties. A hook that guards a property checks `addChildBlocks` too.
+- Each write is one undo step. Typing into a property joins one step: a write of the same properties whose new strings each insert or delete one run of characters in the previous ones (`'Pla'` → `'Plan'`, `'Plan'` → `'Pan'`) continues the step while it comes within the history's capture window (`history.captureTimeout`, 500 ms by default), as typing text does. Any other write is its own step however fast it comes: a checkbox's `true`/`false`, a number, a delete, an object, and a string that is another value rather than an edit of it (`'todo'` → `'done'`, `'doing'` → `'done'`, a `<select>` changed twice). So checking and unchecking a to-do, or picking two statuses in a row, is two steps. To make several writes one step, run them in `edytor.transact(() => …)`.
+- `block.setData(obj)` and `atom.setData(obj)` are `patchData` commands that replace the whole object. `block.setBlock({ value: { data } })` (and Turn into) writes data as a `patchData` step, which hooks also see.
+- Undo gives back exactly the properties the step changed; a collaborator's change to another property stays.
+
+## How concurrent edits merge
+
+Each leaf of the data (a string, number, boolean, `null`, an array or an empty object) is stored as its own entry, so:
+
+- **Different properties** edited at the same time are all kept, at any depth: `title` and `done`, or `meta.a` and `meta.b`.
+- **The same property** edited at the same time ends with one of the two values, the same on every replica (last writer wins).
+- **Arrays are one value.** Two people pushing to the same array at the same time keep one of the two arrays. Use an object keyed by id when items must merge.
+- **An object beats a value.** When one person sets `meta` to `5` while another sets `meta.b`, everyone ends with `meta` as an object: `{ b: … }`.
+- **A set beats a concurrent delete** of the same property, and a replace (`setData`, or setting an object) removes only the properties its writer saw: a property a collaborator added meanwhile stays.
+- Deleting the last property of an object keeps the object, empty.
+
+For text that several people type into at once, use the block's content, which merges character by character.
+
+## Headless
+
+The document API has one operation for data: `facade.patchData(target, ops)`, where `target` is a block id, `{ block, atom }` for an inline block, or `null` for the document. `setBlockData(id, data)` and `setInlineData(id, atomId, data)` are patches of the root. The change report carries a block's new data in `meta`, an inline block's in the block's `content` runs, and the document's in `data` (see [the document API](/docs/reference/document-api)).
+
+## Storage and upgrading
+
+Each leaf is an attribute of the block, the inline block or the document, named `d/` and its path as a JSON pointer (`~` as `~0`, `/` as `~1`). Documents written before `0.1.0-next.6` store a block's data as one attribute; Edytor reads it unchanged, writes a set property over it, and splits it into leaves at the first write it would otherwise show through (a delete, an object replacing its object, `setData`). When two people make such a first write to the same old block at the same moment, a property the other one set meanwhile can come back to its old value. A client of an older version reads only the old attribute, so upgrade every client of a document together.

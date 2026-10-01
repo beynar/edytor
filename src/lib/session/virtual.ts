@@ -17,6 +17,7 @@ import type { BlockId, BlockSpec, DocChange, ProjectedBlock } from '../crdt/inde
 import type { DocAnchor, EdytorDoc, Prepared } from '../crdt/edytor-doc.js';
 import { placedEnd, type Flow, type FlowTarget } from '../crdt/flow.js';
 import { bindNodes } from '../crdt/nodes.js';
+import { applyPatch } from '../crdt/data.js';
 import { id } from '../utils.js';
 
 /** A virtual paragraph's id (materialized blocks keep theirs): what a peer's caret names. */
@@ -102,6 +103,9 @@ export const virtualLens = (
 	);
 	over('setBlockType', (b, t) => (on(b) ? create([spec({ type: t })]) : undefined));
 	over('setBlockData', (b, data) => (on(b) ? create([spec({ data })]) : undefined));
+	over('patchData', (t, ops) =>
+		typeof t === 'string' && on(t) ? create([spec({ data: applyPatch({}, ops) })]) : undefined
+	);
 	over('setBlock', (b, value) =>
 		on(b)
 			? create([spec({ ...value, type: value.type ?? type() } as Partial<BlockSpec>)])

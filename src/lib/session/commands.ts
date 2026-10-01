@@ -111,6 +111,49 @@ const partAt = (block: Block, offset: number) => {
 	return part ? { index, offset: part.length, part } : null;
 };
 
+/** A text `patchData`: its target and paths (`key`) and the strings it sets. */
+type TextPatch = { key: string; values: string[] };
+
+/**
+ * What a text `patchData` writes, or `null`: only a patch setting strings can
+ * be typing into a bound field; a flag, a number, a delete or an object is a
+ * discrete edit, its own step.
+ */
+const textPatch = (block: Block, payload: unknown): TextPatch | null => {
+	const { ops, atom } = payload as { ops?: { path?: unknown; value?: unknown }[]; atom?: string };
+	if (!Array.isArray(ops) || ops.length === 0 || ops.some((o) => typeof o?.value !== 'string'))
+		return null;
+	return {
+		key: JSON.stringify([block.id, atom, ops.map((o) => o.path)]),
+		values: ops.map((o) => o.value as string)
+	};
+};
+
+/**
+ * `next` is `previous` with one contiguous run typed in or deleted (their
+ * common prefix and suffix cover the shorter one): what typing and Backspace
+ * produce. Another value ('todo' → 'done', 'doing' → 'done') is not.
+ */
+const typedFrom = (previous: string, next: string) => {
+	const shorter = Math.min(previous.length, next.length);
+	let prefix = 0;
+	while (prefix < shorter && previous[prefix] === next[prefix]) prefix++;
+	let suffix = 0;
+	while (
+		suffix < shorter - prefix &&
+		previous[previous.length - 1 - suffix] === next[next.length - 1 - suffix]
+	)
+		suffix++;
+	return prefix + suffix === shorter;
+};
+
+/** `patch` continues `previous`: the same paths, each string edited by typing. */
+const continuesTyping = (previous: TextPatch | null, patch: TextPatch | null) =>
+	patch !== null &&
+	previous !== null &&
+	patch.key === previous.key &&
+	patch.values.every((value, i) => typedFrom(previous.values[i]!, value));
+
 type Normalizer = (this: Block) => void;
 type Pass = [id: string, normalize: Normalizer];
 /** Passes one normalizer may take on one block per command: the first and 50 re-requests (D25). */
@@ -154,6 +197,8 @@ export class Dispatcher {
 	private draining = false;
 	/** A plan the next dispatched operation composes before its own (`lead`). */
 	private leading: Plan | null = null;
+	/** What the last `patchData` set to text: typing on the same paths continues its step (a bound field). */
+	private patched: TextPatch | null = null;
 
 	constructor(private edytor: Edytor) {}
 
@@ -270,7 +315,7 @@ export class Dispatcher {
 			const whole = own.writes.flatMap((w) =>
 				w.op === 'deleteText' && w.offset === 0 && w.length === displayLength(w.id) ? [w.id] : []
 			);
-			const writes = lead.writes.filter((w) => !('id' in w) || !whole.includes(w.id));
+			const writes = lead.writes.filter((w) => !('id' in w && w.id && whole.includes(w.id)));
 			return compose({ ...lead, writes }, own);
 		};
 		let plan = prepared(payload);
@@ -318,7 +363,13 @@ export class Dispatcher {
 			return body(payload, plan);
 		}
 		const version = this.edytor.facade.version;
-		const cut = this.policy(operation, lead);
+		// A text patch typing into the strings the previous command set on the
+		// same paths (a bound field) continues its step, within the capture
+		// window, as typing does; another value of them is its own step.
+		const patch = operation === 'patchData' ? textPatch(context.block as Block, payload) : null;
+		const again = continuesTyping(this.patched, patch) && this.last?.operation === operation;
+		this.patched = patch;
+		const cut = again ? undefined : this.policy(operation, lead);
 		if (cut) this.edytor.undoManager?.stopCapturing();
 		let result: R;
 		try {
@@ -525,8 +576,8 @@ export class Dispatcher {
 	 * operation names. A step that is the command itself (same name, same
 	 * block) is not repeated; a write into a block the plan creates is part
 	 * of that creation. (A `removeInline` step is only ever its own command,
-	 * `removeInlineBlock`, and a `setInlineData` step `setInlineData`;
-	 * `formatRange` steps belong to no dispatched plan yet: no mapping.)
+	 * `removeInlineBlock`; `formatRange` steps belong to no dispatched plan
+	 * yet: no mapping. A document data patch shows on the root.)
 	 */
 	private steps(
 		writes: readonly PlanStep[],
@@ -542,12 +593,19 @@ export class Dispatcher {
 		const show = (operation: string, block: unknown, payload: unknown, text?: Text) =>
 			out.push({ operation, block, payload, ...(text ? { text } : {}) });
 		for (const w of writes) {
-			const target = 'id' in w ? w.id : w.op === 'mergeBlocks' ? w.from : w.parent;
+			const target =
+				w.op === 'patchData'
+					? (w.id ?? null)
+					: 'id' in w
+						? w.id
+						: w.op === 'mergeBlocks'
+							? w.from
+							: w.parent;
 			const b = block(target);
 			if ((target !== null && created.has(target)) || !b) continue;
 			const at = (offset: number) => partAt(b, offset) ?? { index: 0, offset: 0, part: undefined };
 			// A text step shows on a text: a block without one shows none.
-			const t = 'offset' in w ? at(w.offset) : undefined;
+			const t = 'offset' in w && w.offset !== undefined ? at(w.offset) : undefined;
 			const text = t?.part as Text;
 			if (/^(insertText|insertInline|splitBlock)$/.test(w.op) && !text) continue;
 			if (w.op === 'insertBlocks')
@@ -566,7 +624,8 @@ export class Dispatcher {
 			else if (w.op === 'splitBlock') show('splitBlock', b, { index: t!.offset, text });
 			else if (w.op === 'mergeBlocks') show('mergeBlockBackward', b, {});
 			else if (w.op === 'setBlockType') show('setBlock', b, { value: { type: w.type } });
-			else if (w.op === 'setBlockData') show('setBlock', b, { value: { data: w.data } });
+			else if (w.op === 'patchData')
+				show('patchData', b, { ops: w.ops, ...(w.inlineId !== undefined && { atom: w.inlineId }) });
 			else if (w.op === 'insertText') {
 				const [start, end, value, marks] = [t!.offset, t!.offset, w.text, w.marks];
 				show('insertText', b, { value, start, end, marks }, text);

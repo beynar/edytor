@@ -25,7 +25,7 @@ document.history.undo(); // 'hello' again; the seed itself is never an undo step
 
 | Option | Type | Description |
 | --- | --- | --- |
-| `value` | `JSONDoc` | Initial content, seeded immediately: the document is ready at once. Without it, the document stays `pending` until a provider or `sync()` decides. To seed only when a room turns out empty, pass `value` to `attachSync` instead (see the warning below). |
+| `value` | `JSONDoc` | Initial content and document [properties](/docs/concepts/properties) (`data`), seeded immediately: the document is ready at once. Without it, the document stays `pending` until a provider or `sync()` decides. To seed only when a room turns out empty, pass `value` to `attachSync` instead (see the warning below). |
 | `actor` | `{ id, name?, color? }` | The local author. `id` is stored in attribution; `name` and `color` are published as presence. Defaults to an anonymous `anon-<uuid>`. |
 | `awareness` | `Awareness` | Use an existing awareness instance instead of creating one. The document does not destroy a borrowed instance. |
 | `history` | `{ captureTimeout?: number }` | Edits closer together than this many milliseconds merge into one undo step. Engine default: 500. `0` makes every commit its own step. |

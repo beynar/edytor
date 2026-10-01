@@ -248,7 +248,8 @@ describe('F-O3 — hooks see the prepared command and each planned step before a
 		edytor.root!.children[0]!.setBlock({ value: { type: 'heading', data: { level: 'h1' } } });
 		await flushDomUpdates();
 		expect(edytor.value.children?.[0]?.type).toBe('heading');
-		expectHooksBeforeWrites(calls, ['setBlock:abcd']);
+		// The data write is a planned step every data write shows as: `patchData`.
+		expectHooksBeforeWrites(calls, ['setBlock:abcd', 'patchData:abcd']);
 	});
 
 	row('move (a after c)', async () => {

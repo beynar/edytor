@@ -26,6 +26,7 @@
 import * as Y from '../../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../../oracles/model-ops.js';
 import { clientsOf, structAt } from '../../../../lib/crdt/structs.js';
+import { readData } from '../../../../lib/crdt/data.js';
 import { bindText, DEAD, canonKey, cmpStamp, isBoundary } from '../../../../lib/crdt/text/model.js';
 import type { Peer } from '../peer-set.js';
 import type {
@@ -223,7 +224,7 @@ const atomRows = (text: unknown): AtomRow[] => {
 				marksKey: formatsKey,
 				marksObj: formats,
 				payload: inline
-					? canonKey({ id: v.getAttr('id'), type: v.getAttr('type'), data: v.getAttr('data') })
+					? canonKey({ id: v.getAttr('id'), type: v.getAttr('type'), data: readData(v) })
 					: '',
 				...(inline ? { inlineId: v.getAttr('id') as string } : {}),
 				...(isBoundary(v) ? { boundary: { s: v.s, n: v.n } } : {})
@@ -252,7 +253,7 @@ const atomRows = (text: unknown): AtomRow[] => {
 				marksKey: '',
 				marksObj: undefined,
 				payload: inline
-					? canonKey({ id: v.getAttr('id'), type: v.getAttr('type'), data: v.getAttr('data') })
+					? canonKey({ id: v.getAttr('id'), type: v.getAttr('type'), data: readData(v) })
 					: '',
 				...(inline ? { inlineId: v.getAttr('id') as string } : {})
 			});

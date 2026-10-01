@@ -27,6 +27,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindRunsOracle } from '../../oracles/runs.js';
 import { bindRuns } from '../../../lib/crdt/text/runs.js';
+import { readData } from '../../../lib/crdt/data.js';
 import { bindModel } from '../../oracles/model-ops.js';
 import { bindText, readRange } from '../../../lib/crdt/text/model.js';
 import { createPeerPair } from '../harness/peer-set.js';
@@ -84,7 +85,7 @@ const oracleItemsOfRange = (text, i0, i1) => {
 				if (entry != null && typeof entry.getAttr === 'function') {
 					id = entry.getAttr('id');
 					type = entry.getAttr('type');
-					data = entry.getAttr('data');
+					data = readData(entry);
 				} else {
 					const attrs = entry?.attrs ?? {};
 					const attrVal = (a) =>

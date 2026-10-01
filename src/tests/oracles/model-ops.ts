@@ -16,8 +16,8 @@ import { bindModel as bindPlacement } from '../../lib/crdt/placement/model.js';
 import { isLiveIn } from '../../lib/crdt/placement/model.js';
 import { bindText } from '../../lib/crdt/text/model.js';
 import { randOf } from '../../lib/crdt/rand.js';
-import { DATA, DEL_PREFIX, TYPE } from '../../lib/crdt/schema.js';
-import { jsonEquals } from '../../lib/utils/json.js';
+import { DEL_PREFIX, TYPE } from '../../lib/crdt/schema.js';
+import { patchWrites, readData, writeLeaves } from '../../lib/crdt/data.js';
 import { collectBlocks } from './fresh-view.js';
 
 export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
@@ -86,7 +86,7 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 			const myIdx = sibs.findIndex((s) => s.id === id);
 			const [rank] = ranks(doc, sibs, myIdx + 1, 1);
 			const children = kids(doc, id);
-			const t = tail ?? { type: node.getAttr(TYPE), data: node.getAttr(DATA) };
+			const t = tail ?? { type: node.getAttr(TYPE), data: readData(node) };
 			M.writeSplit(doc, id, offset, newId, t, { p: pos.parent, r: rank });
 			const r = ranks(doc, [], 0, children.length);
 			children.forEach((k, i) => M.writePlacement(doc, blocks.get(k.id).node, newId, r[i]));
@@ -175,7 +175,7 @@ export const bindModel = (...args: Parameters<typeof bindPlacement>) => {
 				const v = ownView(doc, id);
 				const hit = v && T.findAtom(v.own, id, inlineId);
 				if (!hit) return false;
-				if (!jsonEquals(hit.node.getAttr(DATA), data)) hit.node.setAttr(DATA, data);
+				writeLeaves(hit.node, patchWrites(hit.node, [{ path: [], value: data }]));
 				return true;
 			}),
 		moveBlock,

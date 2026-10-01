@@ -60,7 +60,8 @@ const lastSaved = (sql: SqlStorage) => {
  * refused JSON shape (`hooked-badjson*`), or loads the last `onSave` back —
  * `{ update, replicas }` (`hooked-restore*`) or the bare update
  * (`hooked-restore-bare*`), or nothing at its first call and `LOADED` with
- * a registry naming client id 7777 unowned after (`hooked-late*`). Each call
+ * a registry naming client id 7777 unowned after (`hooked-late*`), or
+ * `LOADED` with document data (`hooked-data*`). Each call
  * is counted in `load_calls`. `onSave` mirrors into a `mirror` table.
  */
 export class HookedRoom extends DocumentRoom<Env> {
@@ -75,6 +76,8 @@ export class HookedRoom extends DocumentRoom<Env> {
 		if (name.startsWith('hooked-late') && calls === 1) return undefined;
 		if (name.startsWith('hooked-badbytes')) return Uint8Array.of(0xff, 0xff, 0xff, 0x01);
 		if (name.startsWith('hooked-badjson')) return { children: 'x' } as unknown as JSONDoc;
+		if (name.startsWith('hooked-data'))
+			return { ...LOADED, data: { title: 'Loaded', meta: { v: 1 } } };
 		if (name.startsWith('hooked-restore')) {
 			const saved = lastSaved(sql);
 			if (saved) return name.startsWith('hooked-restore-bare') ? saved.update : saved;

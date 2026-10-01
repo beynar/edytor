@@ -15,7 +15,7 @@
 	const embed = (value: string) => {
 		const src = safeImageSrc(value);
 		failed = !src;
-		if (src) block.setData({ ...block.data, src });
+		if (src) block.data.src = src;
 	};
 </script>
 

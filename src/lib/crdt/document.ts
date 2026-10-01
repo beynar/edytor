@@ -724,7 +724,7 @@ export class EdytorDocument {
 			// Hydrated/loaded doc — asserted above; content is left alone.
 			this._readiness = 'hydrated';
 		} else {
-			this.facade.seed(value.children);
+			this.facade.seed(value.children, value.data);
 			this._readiness = 'local';
 		}
 		this._attachHistory();

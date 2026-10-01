@@ -34,6 +34,7 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import type { Flow, FlowTarget } from '$lib/crdt/flow.js';
 import type { Plan, Prepared } from '$lib/crdt/edytor-doc.js';
+import type { DataPatch } from '$lib/crdt/data.js';
 import { id } from '$lib/utils.js';
 import {
 	cloneJson,
@@ -49,10 +50,15 @@ export type BlockOperations = {
 	removeInlineBlock: {
 		index: number;
 	};
-	/** Replace the `data` of inline atom `id` shown in the block. */
-	setInlineData: {
-		id: string;
-		data: Record<string, unknown>;
+	/**
+	 * Patch the block's `data` (with `atom`, that inline atom's; on the root,
+	 * the document's), in order: each patch sets the value at its path, or
+	 * deletes it when it has no `value`. `block.data`'s proxy, `setData` and
+	 * `atom.setData` issue it.
+	 */
+	patchData: {
+		ops: DataPatch[];
+		atom?: string;
 	};
 	addChildBlock: {
 		block: JSONBlock;
@@ -515,14 +521,15 @@ export function removeInlineBlock(
 	if (applyPlan(this, plan, [])) this.normalizeContent();
 }
 
-export function prepareSetInline(this: Block, { id, data }: BlockOperations['setInlineData']) {
-	return this.model ? this.edytor.facade.prepare.setInlineData(this.model.id, id, data) : REFUSED;
+export function preparePatch(this: Block, { ops, atom }: BlockOperations['patchData']) {
+	const target = this.isRoot ? null : atom === undefined ? this.id : { block: this.id, atom };
+	return this.edytor.facade.prepare.patchData(target, ops);
 }
 
-export function setInlineData(
+export function patchData(
 	this: Block,
-	payload: BlockOperations['setInlineData'],
-	plan = prepareSetInline.call(this, payload)
+	payload: BlockOperations['patchData'],
+	plan = preparePatch.call(this, payload)
 ): void {
 	applyPlan(this, plan, []);
 }

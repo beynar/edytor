@@ -55,7 +55,10 @@ import {
 import { project, type SelectionValue } from '../session/selection.js';
 import type { Attempt } from '../session/attempt.js';
 import { isAndroidChromeBrowser } from '../events/events.utils.js';
-import { isNestedForeignEditableTarget } from '../events/nativeInteractiveControl.js';
+import {
+	isKindControl,
+	isNestedForeignEditableTarget
+} from '../events/nativeInteractiveControl.js';
 
 /** What a `selectionchange` is (R10). Drift is displayed again; foreign writes and intent are adopted. */
 export type Observation = 'echo' | 'drift' | 'composition' | 'foreign' | 'intent';
@@ -452,7 +455,8 @@ export class Projector {
 	};
 
 	/**
-	 * The focus verdict (O53): focus inside the editor, or orphaned by our own
+	 * The focus verdict (O53): focus inside the editor (not in a form control or
+	 * a foreign editable of a kind's chrome), or orphaned by our own
 	 * render (the element noted before the flush is gone, or the DOM selection
 	 * collapsed onto an ancestor of the editor). Never a foreign focus or a
 	 * selection the user made outside the editor. With nothing focused, only a
@@ -463,7 +467,9 @@ export class Projector {
 	#ours = (requested: boolean) => {
 		const node = this.edytor.node!;
 		const active = getActiveElement(node);
-		if (active && node.contains(active)) return true;
+		// A form control or a foreign editable in a kind's chrome (a field bound to
+		// `block.data`) owns its focus and its selection: never written over.
+		if (active && node.contains(active)) return !isKindControl(node, active);
 		const document = node.ownerDocument;
 		if (active && active !== document.body && active !== document.documentElement) return false;
 		const anchor = getDomSelection(node)?.anchorNode ?? null;

@@ -87,8 +87,8 @@
 		return focused ? "Type '/' for commands" : null;
 	};
 
-	const toggleTodo = (block: Block) =>
-		block.setData({ ...block.data, checked: !block.data.checked });
+	// One key patched: a peer's concurrent edit of another key is kept.
+	const toggleTodo = (block: Block) => (block.data.checked = !block.data.checked);
 
 	/** Notion's "turn into" chords: Mod+Alt+0 text … 8 code (`block.<type>` command ids). */
 	const TURN_INTO: Record<string, string> = {

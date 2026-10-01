@@ -133,7 +133,7 @@ if (startBlock && startText) {
 
 It is an `addInlineBlock` operation, visible to plugins. An atom's id is generated when you leave `id` out.
 
-An atom's handle is an `InlineBlock`: `atom.data` reads its data, `atom.setData(data)` replaces it (a `setInlineData` operation on its block, visible to plugins and refused in a readonly view), `atom.parent` is its block and `atom.index` its position in `block.content`. Remove it with a `removeInlineBlock` operation on its block:
+An atom's handle is an `InlineBlock`: `atom.data` is its data as a live proxy (`atom.data.name = 'Ada'` writes one property), `atom.setData(data)` replaces it (both a `patchData` operation on its block with `atom` set, visible to plugins and refused in a readonly view; see [Properties](/docs/concepts/properties)), `atom.parent` is its block and `atom.index` its position in `block.content`. Remove it with a `removeInlineBlock` operation on its block:
 
 ```ts
 const atom = block.content.find((part) => part.id === atomId);

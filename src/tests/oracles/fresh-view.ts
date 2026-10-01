@@ -28,13 +28,13 @@ import {
 import {
 	CLAIMS,
 	CONTENT,
-	DATA,
 	hasDeleteMark,
 	NONCE,
 	REGISTRY_KEY,
 	TYPE
 } from '../../lib/crdt/schema.js';
 import { cloneJsonSafe } from '../../lib/utils/json.js';
+import { readData } from '../../lib/crdt/data.js';
 import type { EngineApi, EngineDoc } from '../../lib/crdt/engine-api.js';
 
 const isNodeLike = (v: unknown) =>
@@ -53,7 +53,7 @@ export const collectBlocks = (doc: EngineDoc): Map<BlockId, BlockRec> => {
 			id,
 			node: v,
 			type: typeof type === 'string' ? type : 'unknown',
-			data: v.getAttr(DATA),
+			data: readData(v),
 			n: v.getAttr(NONCE),
 			deleted: hasDeleteMark(v),
 			content: isNodeLike(content) ? content : undefined,

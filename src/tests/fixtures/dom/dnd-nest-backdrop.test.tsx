@@ -595,7 +595,7 @@ describe("below the document's last block", () => {
 		await frame();
 	};
 	const bottom = (edytor: Edytor) =>
-		edytor.idToBlock.get(edytor.value.children.at(-1)!.id!)!.node!.getBoundingClientRect().bottom;
+		edytor.idToBlock.get(edytor.value.children!.at(-1)!.id!)!.node!.getBoundingClientRect().bottom;
 
 	it.each([
 		// a1's column is 24px, a's (the root) 0px.

@@ -12,6 +12,7 @@ All four types are exported from `edytor` and `edytor/crdt/edytor`:
 
 ```ts
 type JSONDoc = {
+	data?: Record<string, SerializableContent>;
 	children: JSONBlock[];
 };
 
@@ -35,7 +36,7 @@ type JSONInlineBlock = {
 };
 ```
 
-`SerializableContent` is any JSON value: a string, number, boolean, `null`, or an object of them.
+`SerializableContent` is any JSON value: a string, number, boolean, `null`, or an array or object of them.
 
 ## Blocks: content and children
 
@@ -63,9 +64,9 @@ A block has two separate slots:
 }
 ```
 
-`type` names a block kind registered by a plugin (`paragraph`, `heading`, …). `data` holds the kind's settings: a heading's `{ level: 'h2' }`, a to-do's `{ checked: true }`. See [Blocks](/docs/concepts/blocks) for the kinds, nesting rules and default children.
+`type` names a block kind registered by a plugin (`paragraph`, `heading`, …). `data` holds the kind's settings: a heading's `{ level: 'h2' }`, a to-do's `{ checked: true }`. See [Blocks](/docs/concepts/blocks) for the kinds, nesting rules and default children, and [Properties](/docs/concepts/properties) for reading, writing and syncing `data`.
 
-The document itself (`JSONDoc`) is the root's `children`. `edytor.value` and `onChange` wrap them in a root block: `{ type: 'root', children }`.
+The document itself (`JSONDoc`) is the root's `children`, plus its own properties in `data` (absent when it has none). `edytor.value` and `onChange` wrap them in a root block: `{ type: 'root', data?, children }`.
 
 ## Text and marks
 

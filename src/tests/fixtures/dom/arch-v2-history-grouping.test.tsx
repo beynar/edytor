@@ -33,7 +33,7 @@
  * - H-G7 (UW-16) — block commands called directly (no user command around
  *   them) cut by the table, one step each; one `edytor.transact` around two
  *   of them is one step. NW-06: so do direct `markText`, `addChildBlock` and
- *   `setInlineData` (outside a user command only an insertion continues);
+ *   an atom's `patchData` (outside a user command only an insertion continues);
  *   `run('format')` around two `markText` calls is one step. RW-12: `run`
  *   with a kind the table does not list (`myConvert`) cuts like a bare
  *   operation: its `setBlock` after typing is its own step.
@@ -383,7 +383,7 @@ describe('direct block commands follow the table (UW-16)', () => {
 		expect(blocks(edytor)).toEqual([typed, { type: 'paragraph', text: 'x' }]);
 	});
 
-	it('H-G7 (NW-06): direct markText, addChildBlock and setInlineData each start a step', async () => {
+	it('H-G7 (NW-06): direct markText, addChildBlock and an atom patchData each start a step', async () => {
 		const { edytor, editor } = await renderDomEdytor(
 			<root>
 				<paragraph>
@@ -402,7 +402,7 @@ describe('direct block commands follow the table (UW-16)', () => {
 		expect(edytor.undoManager.undoStack.length).toBe(2);
 		block.addChildBlock({ block: { type: 'paragraph', content: [{ text: 'c' }] }, index: 0 });
 		expect(edytor.undoManager.undoStack.length).toBe(3);
-		block.setInlineData({ id: atom.id, data: { name: 'x' } });
+		block.patchData({ atom: atom.id, ops: [{ path: ['name'], value: 'x' }] });
 		expect(edytor.undoManager.undoStack.length).toBe(4);
 		for (let i = 0; i < 3; i++) edytor.historyUndo();
 		await flushDomUpdates();

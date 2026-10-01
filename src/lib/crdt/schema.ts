@@ -31,6 +31,11 @@ export const TEXT_DELETES_ROOT = 'textdel';
  * history's scope: a record is never removed.
  */
 export const RESTORED_ROOT = 'restored';
+/**
+ * The document's own data (`crdt/data.ts`): its leaves, as a block's. In the
+ * history's scope.
+ */
+export const DOC_DATA_ROOT = 'docdata';
 
 /** Named node roles (`SCHEMA.nodes`). */
 export const BLOCK_NODE = 'block';
@@ -42,7 +47,10 @@ export const INLINE_NODE = 'inline';
 /** Attr keys on a block node (`SCHEMA.blockAttrs`). */
 export const ID = 'id';
 export const TYPE = 'type';
+/** A block's or atom's whole data: the legacy layer, read under the leaves and exploded by the first patch. */
 export const DATA = 'data';
+/** A data leaf: `d/` and its path, RFC 6901 escaped (`crdt/data.ts`). */
+export const DATA_LEAF_PREFIX = 'd/';
 /**
  * Incarnation nonce (O23, §2.1): which creation of a (recyclable) block id a
  * node is — and which stream boundary `{s, n}` starts the block's stream.

@@ -14,7 +14,7 @@ icon: square-pen
 <Edytor
 	value={{ children: [{ type: 'paragraph', content: [{ text: 'Hello' }] }] }}
 	placeholder="Write something…"
-	onChange={(root) => save(root.children)}
+	onChange={({ data, children }) => save({ data, children })}
 />
 ```
 
@@ -26,7 +26,7 @@ Most props are read once, when the component is created. Changing them later has
 | --- | --- | --- | --- | --- |
 | `plugins` | `Plugin[]` | `[]` | | Block kinds, marks, inline blocks, hotkeys and hooks. Order matters: the first definition of a type wins. The view adds the rich text, image and arrow move plugins unless the list has them. See [Plugins](/docs/plugins#default-plugins). |
 | `defaultPlugins` | `boolean` | `true` | | `false` renders exactly `plugins`, without the default rich text, image and arrow move plugins. Block handles still follow `blockHandles`. |
-| `value` | `JSONDoc` | `{ children: [] }` | | The initial content. Used only to seed a document that has none; an empty value seeds one paragraph. See [Document model](/docs/concepts/document-model). |
+| `value` | `JSONDoc` | `{ children: [] }` | | The initial content, and the document's [properties](/docs/concepts/properties) in `data`. Used only to seed a document that has none; an empty value seeds one paragraph. See [Document model](/docs/concepts/document-model). |
 | `document` | `EdytorDocument` | | | A document created with `createDocument`, `loadDocument` or `attachDocument`. Several views can share one. The view does not destroy it on unmount. |
 | `server` | `string` | | | The sync server's base URL (`wss://…/rooms`). With `room`, the view joins `<server>/<room>` over a WebSocket and keeps a local copy. Read once. See [WebSocket](/docs/collaboration/websocket). |
 | `room` | `string` | | | The document's id, 1 to 256 characters of any kind. Alone, it names a local IndexedDB copy; with `server`, the room to join (sent percent-encoded as one path segment). A URL collapses `.` and `..` and cannot encode a lone surrogate, so those ids, an empty one and one over 256 characters are never dialed: an editable view reports them through `onSyncRefused` as `4400` `invalid document id`, and a readonly view renders its `value`. Read once. |
@@ -40,7 +40,7 @@ Most props are read once, when the component is created. Changing them later has
 | `blockHandles` | `boolean \| BlockHandlesOptions` | `true` | | Show a handle beside each block. `draggable: false` keeps the handle and its keyboard moves without pointer dragging. `onActivate({ block, anchor })` runs when the handle is clicked. `handle` is a snippet that replaces the handle's markup. See [Block handles](/docs/plugins/block-handles). |
 | `blockDnd` | `boolean` | `true` | | **Deprecated.** `false` hides the handles. `blockHandles` wins when both are set. |
 | `hotKeys` | `Partial<Record<HotKeyCombination, HotKey>>` | | | Key bindings (`'mod+s'`, `'alt+shift+arrowup'`, …) checked before the plugins' and the built-in ones. See [Hotkeys](/docs/customization/hotkeys#chord-syntax). |
-| `onChange` | `(value: JSONBlock) => void` | | | Called after every committed change, local or remote, with the document as a root block `{ type: 'root', children }`. |
+| `onChange` | `(value: JSONBlock) => void` | | | Called after every committed change, local or remote, with the document as a root block `{ type: 'root', data?, children }`. Store `{ data, children }` (a `JSONDoc`): `data` holds the document's [properties](/docs/concepts/properties). |
 | `onSelectionChange` | `(selection: EdytorSelection) => void` | | | Called when the selection value changes. See [Selection](/docs/editor/selection). |
 | `edytor` | `Edytor` | | Bindable | The editor instance. Use `bind:edytor`. See [The editor instance](/docs/concepts/editor-instance). |
 | `class` | `string` | | Yes | Class on the editable root element. |

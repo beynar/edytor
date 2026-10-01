@@ -111,7 +111,9 @@ import {
 	AT,
 	BLOCK_NODE,
 	DATA,
+	DATA_LEAF_PREFIX,
 	DEL_PREFIX,
+	DOC_DATA_ROOT,
 	ID,
 	INLINE_NODE,
 	isNodeLike,
@@ -167,6 +169,15 @@ import type { AttributionActor } from './attribution/index.js';
 import { isLegacyDoc } from './migration/legacy-schema.js';
 import { rangeDeleteOps, type DocPosition } from './rangeDelete.js';
 import { flowOps, type FlowContext } from './flow.js';
+import {
+	dataLeaves,
+	isObject,
+	patchWrites,
+	readData,
+	writeLeaves,
+	type DataPatch,
+	type LeafWrite
+} from './data.js';
 import { id as newId } from '../utils.js';
 import {
 	cloneJsonSafe,
@@ -452,6 +463,8 @@ export type DocChange = {
 	/** Parents (`null` = root) whose visible child list changed → new order
 	 *  (frozen — shared with the retained snapshot baseline, R4). */
 	order: Map<BlockId | null, readonly BlockId[]>;
+	/** The document's own data (`docData()`), when this commit changed it. */
+	data?: Record<string, unknown>;
 };
 
 export type EdytorDoc = ReturnType<EdytorDocBinding['create']>;
@@ -542,7 +555,19 @@ export type PlanStep =
 	/** `at`/`length`: where `from`'s display lands in `into`'s. */
 	| { op: 'mergeBlocks'; from: BlockId; into: BlockId; at: number; length: number }
 	| { op: 'setBlockType'; id: BlockId; type: string }
-	| { op: 'setBlockData'; id: BlockId; data: Record<string, unknown> }
+	/**
+	 * A data patch (`crdt/data.ts`): of block `id`, of its atom `inlineId`
+	 * (at display `offset`), or of the document (no `id`). `ops` as asked;
+	 * `leaves` the attr writes they plan.
+	 */
+	| {
+			op: 'patchData';
+			id?: BlockId;
+			inlineId?: string;
+			offset?: number;
+			ops: DataPatch[];
+			leaves: LeafWrite[];
+	  }
 	| {
 			op: 'insertText';
 			id: BlockId;
@@ -559,14 +584,10 @@ export type PlanStep =
 			offset: number;
 			length: number;
 			marks: Record<string, unknown>;
-	  }
-	| {
-			op: 'setInlineData';
-			id: BlockId;
-			offset: number;
-			inlineId: string;
-			data: Record<string, unknown>;
 	  };
+
+/** What a data patch edits: a block, one of its inline atoms, or the document (`null`). */
+export type DataTarget = BlockId | null | { block: BlockId; atom: string };
 
 /**
  * What applying a plan does (R6): blocks created, removed (they leave the
@@ -638,8 +659,11 @@ const effectOf = (writes: readonly PlanStep[]): PlanEffect => {
 		} else if (w.op === 'mergeBlocks') {
 			e.merges.push([w.from, w.into]);
 			text(w.into, w.at, w.length);
-		} else if (w.op === 'setBlockType' || w.op === 'setBlockData') e.meta.push(w.id);
-		else if (w.op === 'insertText') text(w.id, w.offset, w.text.length);
+		} else if (w.op === 'setBlockType') e.meta.push(w.id);
+		else if (w.op === 'patchData') {
+			if (w.inlineId !== undefined) text(w.id!, w.offset!, 1);
+			else if (w.id !== undefined) e.meta.push(w.id);
+		} else if (w.op === 'insertText') text(w.id, w.offset, w.text.length);
 		else if (w.op === 'deleteText' || w.op === 'formatRange') text(w.id, w.offset, w.length);
 		else text(w.id, w.offset, 1);
 	}
@@ -761,7 +785,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 	 * Every seeded block also gets an EMPTY `b/` record (no authorship) so
 	 * later contributor adds land on one shared node.
 	 */
-	const seedUpdate = (value: JSONBlock[], defaultType = 'paragraph'): Uint8Array => {
+	const seedUpdate = (
+		value: JSONBlock[],
+		defaultType = 'paragraph',
+		data?: JsonObj
+	): Uint8Array => {
 		// Canonical form (object keys sorted, arrays in order): the hash AND
 		// the build read it, so key order never splits one template.
 		const sorted = (_: string, v: unknown) =>
@@ -771,6 +799,13 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const blocks: JSONBlock[] = JSON.parse(
 			JSON.stringify(value.length > 0 ? value : [{ type: defaultType }], sorted)
 		);
+		// The document's data joins the hash only when it has some (seeds without it keep their
+		// writer), in the canonical form too: the build writes its leaves in that key order.
+		const own =
+			isObject(data) && Object.keys(data).length > 0
+				? (JSON.parse(JSON.stringify(sanitizeWireJson(data), sorted)) as JsonObj)
+				: undefined;
+		const hashed = own === undefined ? blocks : { data: own, blocks };
 		// The writer lives in a low band, [1, 2^26): a registry race is won by
 		// the larger client id and live replicas draw uint53 ids, so a seed
 		// sharing a block id with live content loses to it (UW-03) but for a
@@ -779,7 +814,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		// template seeded late into a document seeded by an older build
 		// mints new ids and shows twice, once.
 		const writer =
-			hash32(`yjs-v14/${SCHEMA_NAME}@${SCHEMA_VERSION}:${JSON.stringify(blocks)}`) >>> 6 || 1;
+			hash32(`yjs-v14/${SCHEMA_NAME}@${SCHEMA_VERSION}:${JSON.stringify(hashed)}`) >>> 6 || 1;
 		let n = 0;
 		const mint = (prefix: string) => `${prefix}${writer.toString(36)}.${n++}`;
 		const specs = blocks.map((block) => jsonBlockToSpec(block, false, mint));
@@ -793,13 +828,21 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			BA.ensureRecord(scratch, sanitizeWireString(spec.id));
 			spec.children?.forEach(records);
 		};
-		scratch.transact(() => specs.forEach(records));
+		scratch.transact(() => {
+			specs.forEach(records);
+			writeLeaves(scratch.get(DOC_DATA_ROOT), dataLeaves(own));
+		});
 		return Y.encodeStateAsUpdate(raw);
 	};
 
 	/** Apply the deterministic seed of `value` with the non-local {@link SEED_ORIGIN}. */
-	const seed = (doc: EngineDoc, value: JSONBlock[] = [], defaultType?: string): void =>
-		Y.applyUpdate(doc as unknown as YDoc, seedUpdate(value, defaultType), SEED_ORIGIN);
+	const seed = (
+		doc: EngineDoc,
+		value: JSONBlock[] = [],
+		defaultType?: string,
+		data?: JsonObj
+	): void =>
+		Y.applyUpdate(doc as unknown as YDoc, seedUpdate(value, defaultType, data), SEED_ORIGIN);
 
 	// ── per-doc facade ──────────────────────────────────────────────────
 
@@ -950,6 +993,14 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			BA.retarget(doc, id, from, to);
 		};
 
+		/** The node a data patch writes: block `id`, its atom `inlineId`, or the document's data root. */
+		const dataNode = (id?: BlockId, inlineId?: string): EngineNode | undefined =>
+			id === undefined
+				? doc.get(DOC_DATA_ROOT)
+				: inlineId === undefined
+					? (M.blockNodeOf(doc, id) ?? undefined)
+					: (T.findAtom(view().own, id, inlineId)?.node as EngineNode | undefined);
+
 		/** One planned step, written (the plan decided it; writers never refuse). */
 		const writeStep = (w: PlanStep, f: Frame): void => {
 			// Structural steps need no view: delete marks and placements write one node.
@@ -974,8 +1025,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					return T.claimInto(blocks, w.from, w.into);
 				case 'setBlockType':
 					return void node(w.id).setAttr(TYPE, w.type);
-				case 'setBlockData':
-					return void node(w.id).setAttr(DATA, w.data);
+				case 'patchData':
+					return writeLeaves(dataNode(w.id, w.inlineId)!, w.leaves);
 				case 'insertText':
 					return T.insertIntoText(doc, blocks, own, w.id, w.offset, w.text, w.marks);
 				case 'insertInline':
@@ -985,8 +1036,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					return T.deleteRange(doc, blocks, own, w.id, w.offset, 'length' in w ? w.length : 1);
 				case 'formatRange':
 					return T.formatRangeIn(doc, blocks, own, w.id, w.offset, w.length, w.marks);
-				case 'setInlineData':
-					return void T.findAtom(own, w.id, w.inlineId)?.node.setAttr(DATA, w.data);
 			}
 		};
 
@@ -1013,7 +1062,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 							else if (w.op === 'mergeBlocks') {
 								capture(f, w.from, true);
 								capture(f, w.into);
-							} else if ('id' in w) capture(f, w.id);
+							} else if ('id' in w && w.id !== undefined) capture(f, w.id);
 						}
 						for (const w of p.writes) writeStep(w, f);
 					} catch (error) {
@@ -1059,12 +1108,15 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 
 		const blockDataOf = (id: BlockId): Record<string, unknown> | undefined => {
-			const d = M.blockNodeOf(doc, id)?.getAttr(DATA);
+			const node = M.blockNodeOf(doc, id);
+			const d = node && readData(node);
 			// `cloneJsonSafe`: the read path stays total even when the stored
 			// attr holds a non-JSON value that bypassed boundary validation
 			// (raw write / remote payload) — never crash a read (R4).
 			return d !== undefined && d !== null ? (cloneJsonSafe(d) as JsonObj) : undefined;
 		};
+		/** The document's own data (`{}` when it has none). */
+		const docData = (): JsonObj => cloneJsonSafe(readData(doc.get(DOC_DATA_ROOT)) ?? {});
 
 		/** Ordered visible children of `parent` (`null` = root) — canonical read. */
 		const childrenIds = (parent: BlockId | null): BlockId[] =>
@@ -1396,7 +1448,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			walkIdSetStructs(Y, doc, step.deletes, (s) => {
 				const node = s.parent as EngineNode;
 				const key = s.parentSub;
-				if (key === null || !REPAIRED[node?.name]?.includes(key)) return;
+				if (key === null) return;
+				if (!key.startsWith(DATA_LEAF_PREFIX) && !REPAIRED[node?.name]?.includes(key)) return;
 				if (step.inserts.has(s.id.client, s.id.clock)) return;
 				const values = (s as unknown as { content: { getContent(): unknown[] } }).content;
 				let attrs = lost.get(node);
@@ -1424,7 +1477,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			// An undone creation withdraws the block instead of deleting it (P12).
 			const marks = D.history(doc, () => um);
 			const um: YUndoManager = new Y.UndoManager(
-				[M.registryOf(doc), D.scope(doc)] as unknown as YNode[],
+				[M.registryOf(doc), D.scope(doc), doc.get(DOC_DATA_ROOT)] as unknown as YNode[],
 				{
 					...opts,
 					...marks,
@@ -1748,22 +1801,42 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				ids.map((at) => ({ at, part: [SELF] }))
 			);
 		/**
-		 * A type/data step, planned only when the value differs (the one
-		 * same-value guard). A kind counts as the same only when the block is
-		 * stored and shown as it: a move in the same plan pins the kind a
-		 * block shows (`moveTo`), so a paragraph shown as its list's item
-		 * (`itemOf`) that an outdent settles back to a paragraph is written
-		 * back (DR-crdt-3).
+		 * A type step, planned only when the kind differs (the one same-value
+		 * guard). A kind counts as the same only when the block is stored and
+		 * shown as it: a move in the same plan pins the kind a block shows
+		 * (`moveTo`), so a paragraph shown as its list's item (`itemOf`) that
+		 * an outdent settles back to a paragraph is written back (DR-crdt-3).
 		 */
-		const attr = (id: BlockId, key: typeof TYPE | typeof DATA, value: unknown): PlanStep[] => {
-			const same = jsonEquals(M.blockNodeOf(doc, id)!.getAttr(key), value);
-			if (same && (key === DATA || (runsView.displayType(id) ?? value) === value)) return [];
+		const attr = (id: BlockId, key: typeof TYPE, value: string): PlanStep[] => {
+			const same = M.blockNodeOf(doc, id)!.getAttr(key) === value;
+			if (same && (runsView.displayType(id) ?? value) === value) return [];
+			return [{ op: 'setBlockType', id, type: value }];
+		};
+		/**
+		 * The data step of `patches` (sanitized) on a block, one of its atoms or
+		 * the document (`crdt/data.ts`): none when it changes nothing.
+		 */
+		const dataSteps = (target: DataTarget, patches: DataPatch[]): PlanStep[] => {
+			const [id, inlineId] =
+				typeof target === 'object' && target ? [target.block, target.atom] : [target ?? undefined];
+			const node = dataNode(id, inlineId);
+			const leaves = node ? patchWrites(node, patches) : [];
+			if (leaves.length === 0) return [];
+			const offset = inlineId === undefined ? undefined : atomOf(id!, inlineId)?.at;
 			return [
-				key === TYPE
-					? { op: 'setBlockType', id, type: value as string }
-					: { op: 'setBlockData', id, data: value as JsonObj }
+				{
+					op: 'patchData',
+					...(id !== undefined && { id }),
+					...(inlineId !== undefined && { inlineId, offset }),
+					ops: patches,
+					leaves
+				}
 			];
 		};
+		/** A whole-data replace: a patch of the root. */
+		const replaceData = (data: unknown): DataPatch[] => [
+			{ path: [], value: sanitizeWireJson(data) }
+		];
 		/**
 		 * The kind `kid` shows once it leaves `from` for a slot under `parent`
 		 * — the island and container rules, one answer:
@@ -2148,7 +2221,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const type = tail?.type ? ref(tail.type) : kindToCopy(id);
 			const t = tail
 				? { type, data: tail.data && sanitizeWireJson(tail.data) }
-				: { type, data: rec.node.getAttr(DATA) as JsonObj };
+				: { type, data: readData(rec.node) };
 			const [rank] = pieceRanks(id, at, 1);
 			const length = displayLength(id) - at;
 			const split: PlanStep = {
@@ -2407,10 +2480,33 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return live(id) ? plan([id], retypeSteps(id, ref(type))) : REFUSED;
 		};
 
-		/** Replace the block's `data` payload (whole-attr write). */
-		const setBlockData = (id: BlockId, data: Record<string, unknown>): Prepared => {
-			id = ref(id);
-			return live(id) ? plan([id], attr(id, DATA, sanitizeWireJson(data))) : REFUSED;
+		/**
+		 * Patch the data of a block, one of its inline atoms or the document
+		 * (`null`), in order (`crdt/data.ts`): each patch replaces the value at
+		 * its path (`value` absent deletes it); only the leaves it changes are
+		 * written, so a peer's edit of another key is kept. Refused for an
+		 * absent target, a path that is no array of strings, or a root value
+		 * that is no object.
+		 */
+		const patchData = (target: DataTarget, patches: readonly DataPatch[]): Prepared => {
+			const valid = (p: DataPatch) =>
+				Array.isArray(p?.path) &&
+				p.path.every((k) => typeof k === 'string') &&
+				(p.path.length > 0 || p.value === undefined || isObject(p.value));
+			if (!Array.isArray(patches) || !patches.every(valid)) return REFUSED;
+			const clean = patches.map((p) => ({
+				path: p.path.map(sanitizeWireString),
+				...(p.value !== undefined && { value: sanitizeWireJson(p.value) })
+			}));
+			const t: DataTarget =
+				target === null
+					? null
+					: typeof target === 'string'
+						? ref(target)
+						: { block: ref(target.block), atom: ref(target.atom) };
+			if (typeof t === 'string' ? !live(t) : t !== null && atomOf(t.block, t.atom) === undefined)
+				return REFUSED;
+			return plan(t === null ? [] : [typeof t === 'string' ? t : t.block], dataSteps(t, clean));
 		};
 
 		/**
@@ -2447,7 +2543,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					: children === undefined
 						? retypeSteps(id, type)
 						: attr(id, TYPE, type)),
-				...(value.data === undefined ? [] : attr(id, DATA, sanitizeWireJson(value.data)))
+				...(value.data === undefined ? [] : dataSteps(id, replaceData(value.data)))
 			];
 			if (content !== undefined) {
 				const length = displayLength(id);
@@ -2587,26 +2683,6 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return plan([id], [{ op: 'removeInline', id, offset: atom.at, inlineId: ref(inlineId) }]);
 		};
 
-		const setInlineData = (
-			id: BlockId,
-			inlineId: string,
-			data: Record<string, unknown>
-		): Prepared => {
-			id = ref(id);
-			const clean = sanitizeWireJson(data);
-			const atom = atomOf(id, ref(inlineId));
-			if (atom === undefined) return REFUSED;
-			if (jsonEquals((atom.item as InlineSpec).data, clean)) return plan([id], []);
-			const step = {
-				op: 'setInlineData',
-				id,
-				offset: atom.at,
-				inlineId: ref(inlineId),
-				data: clean
-			};
-			return plan([id], [step as PlanStep]);
-		};
-
 		/** What range deletion and flow placement read, and the step writers they compose. */
 		const context: FlowContext = {
 			ref,
@@ -2642,7 +2718,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			tailOf: (id) => ({ type: kindToCopy(id), data: blockDataOf(id) }),
 			ranksFor,
 			pieceRanks,
-			redata: (id, data) => attr(id, DATA, data),
+			redata: (id, data) => dataSteps(id, replaceData(data)),
 			deleteBlocks: (ids) => prepare.deleteBlocks(ids)
 		};
 
@@ -2671,7 +2747,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			deleteBlock,
 			setBlock,
 			setBlockType,
-			setBlockData,
+			patchData,
+			/** Replace a block's `data`: a patch of its root. */
+			setBlockData: (id: BlockId, data: Record<string, unknown>) =>
+				patchData(id, [{ path: [], value: data }]),
 			duplicateBlock,
 			insertText,
 			deleteText,
@@ -2683,7 +2762,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			clearMarks,
 			insertInline,
 			removeInline,
-			setInlineData,
+			/** Replace an inline atom's `data`: a patch of its root. */
+			setInlineData: (id: BlockId, inlineId: string, data: Record<string, unknown>) =>
+				patchData({ block: id, atom: inlineId }, [{ path: [], value: data }]),
 			/** Delete a block selection — one plan; only the members leave (`deleteBlocks` above). */
 			deleteBlocks: (ids: readonly BlockId[]): Prepared => deleteBlocks(ids),
 			...rangeDeleteOps(context),
@@ -2718,7 +2799,13 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * omitted when empty): the one serializer, {@link blockJSON}, over the
 		 * root's visible children.
 		 */
-		const toJSON = (): JSONDoc => ({ children: childrenIds(null).map(blockJSON) });
+		const toJSON = (): JSONDoc => {
+			const data = docData();
+			const children = childrenIds(null).map(blockJSON);
+			return Object.keys(data).length > 0
+				? { data: data as JSONDoc['data'], children }
+				: { children };
+		};
 
 		// ── facade object ─────────────────────────────────────────────────
 
@@ -2740,8 +2827,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const facade = {
 			// lifecycle
 			init: (opts?: Parameters<typeof init>[1]) => write(() => init(doc, opts)),
-			/** Apply the deterministic seed of `value` (R13) — the document's seed decision. */
-			seed: (value: JSONBlock[]) => write(() => seed(doc, value, defaultType)),
+			/** Apply the deterministic seed of `value` and the document's `data` (R13) — the document's seed decision. */
+			seed: (value: JSONBlock[], data?: JsonObj) =>
+				write(() => seed(doc, value, defaultType, data)),
 			isInitialized: () => isInitialized(doc),
 			/** Replicated `meta.v` schema version (the module-level read, bound). */
 			schemaVersion: () => schemaVersion(doc),
@@ -2771,6 +2859,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			blockText: byRef((id: BlockId) => M.blockText(doc, id)),
 			blockTypeOf: byRef(blockTypeOf),
 			blockDataOf: byRef(blockDataOf),
+			docData,
 			/**
 			 * U1 — compact per-block attribution (`{createdBy, contributors,
 			 * lastChangedBy}`), or `undefined` for unauthored/system blocks.

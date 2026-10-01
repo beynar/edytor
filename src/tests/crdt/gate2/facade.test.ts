@@ -23,6 +23,7 @@ import { describe, expect, test } from 'vitest';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindEdytorDoc, SCHEMA_VERSION } from '../../../lib/crdt/edytor-doc.js';
 import { DEFAULT_SEED_ID } from '../default-seed.js';
+import { readData } from '../../../lib/crdt/data.js';
 
 const E = bindEdytorDoc(Y);
 
@@ -175,15 +176,15 @@ describe('attack 9: aliasing — caller objects leak into replicated state', () 
 
 		// Local reads now serve the mutation.
 		const inlNode = doc.get('blocks').getAttr('b-inl').getAttr('content').get(0);
-		console.log(`[gate2] inline stored data=${JSON.stringify(inlNode.getAttr('data'))}`);
+		console.log(`[gate2] inline stored data=${JSON.stringify(readData(inlNode))}`);
 		// CONTRACT: the facade owns its inputs — mutating a caller-held spec
 		// post-insert must not corrupt replicated state.
-		expect(inlNode.getAttr('data').label).toBe('Ada'); // ← fails: live alias
+		expect(readData(inlNode).label).toBe('Ada'); // ← fails: live alias
 		const replica = new Y.Doc();
 		Y.applyUpdate(replica, Y.encodeStateAsUpdate(doc));
-		expect(
-			replica.get('blocks').getAttr('b-inl').getAttr('content').get(0).getAttr('data').label
-		).toBe('Ada'); // ← fails: the mutation REPLICATES
+		expect(readData(replica.get('blocks').getAttr('b-inl').getAttr('content').get(0)).label).toBe(
+			'Ada'
+		); // ← fails: the mutation REPLICATES
 		ed.dispose();
 	});
 

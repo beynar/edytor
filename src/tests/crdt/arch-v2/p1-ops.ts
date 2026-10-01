@@ -32,8 +32,13 @@ export const ACTIONS = [
 	'undo',
 	'redo',
 	'retype',
-	'inline'
+	'inline',
+	'data',
+	'docData'
 ];
+/** Data patches: keys, nested keys under a key another patch sets whole, deletes, a whole replace. */
+const PATHS = [['a'], ['a', 'b'], ['a', 'c'], ['n'], []];
+const VALUES = [1, 'x', [1, 2], { b: 2 }, {}, null, undefined];
 export const WORDS = ['x', 'yy', 'zzz', 'Q', 'ab', 'W'];
 
 export const rngOf = (seed: number) => {
@@ -121,6 +126,16 @@ export const genAction = (
 			return { action, args: [blk, pick(kinds)] };
 		case 'inline':
 			return { action, args: [blk, off, `${r.name}i${counter.n++}`] };
+		case 'data':
+		case 'docData': {
+			const path = pick(PATHS);
+			const value = pick(VALUES);
+			const patch = {
+				path,
+				...(value !== undefined && { value: path.length ? value : { a: value } })
+			};
+			return { action, args: [action === 'data' ? blk : null, patch] };
+		}
 	}
 	return null;
 };
@@ -185,5 +200,8 @@ export const apply = (r: Replica, action: string, a: unknown[]) => {
 			);
 		case 'inline':
 			return ed.insertInline(a[0], a[1], { id: a[2], type: 'mention' });
+		case 'data':
+		case 'docData':
+			return ed.patchData(a[0], [a[1]]);
 	}
 };

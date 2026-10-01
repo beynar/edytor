@@ -15,12 +15,13 @@
 
 Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable editor with an API to build any kind of collaborative rich text editor.
 
-> **Work in progress.** Edytor is a pre-release (`0.1.0-next.5`) and not ready for production; the API changes between releases without a compatibility layer. The `edytor@0.0.11` on npm predates the current API. Issues and PRs are welcome: when you report a bug, include the document's JSON value.
+> **Work in progress.** Edytor is a pre-release (`0.1.0-next.6`) and not ready for production; the API changes between releases without a compatibility layer. The `edytor@0.0.11` on npm predates the current API. Issues and PRs are welcome: when you report a bug, include the document's JSON value.
 
 ## Features
 
 - **Notion-style editing out of the box.** `<Edytor />` alone is a rich text editor with images: headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks, Notion's markdown shortcuts and hotkeys. Add the Notion theme, block handles with a block menu (drag one block, or every block the selection covers), a slash menu, a selection toolbar and code blocks.
 - **Your markup.** Blocks, marks and inline atoms render through your Svelte snippets; the slash menu, toolbar, block menu and handles take a snippet and keep their behavior.
+- **Synced properties.** `block.data`, `atom.data` and `edytor.data` read and write like plain objects (`bind:value={block.data.title}`); each property syncs on its own, so concurrent edits of different properties merge.
 - **Plugins that can veto anything.** Every command is prepared before it writes; plugins see the command and each planned step and can refuse or replace it.
 - **Real-time collaboration.** One `EdytorDocument` shared by any number of views, or none (headless). Presence cursors, identity-preserving moves, splits and merges, and undo that only takes back your own edits.
 - **Offline first.** A local IndexedDB copy and cross-tab sync; offline edits survive reloads and reach the server on reconnect.
@@ -32,7 +33,7 @@ Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable 
 The pre-release is not on npm yet, and the untagged `edytor` there is the incompatible `0.0.11`. The documentation site hosts the pre-release tarball; install it by URL:
 
 ```bash
-pnpm add https://edytor-docs.beynar.workers.dev/edytor-0.1.0-next.5.tgz
+pnpm add https://edytor-docs.beynar.workers.dev/edytor-0.1.0-next.6.tgz
 ```
 
 Once it is published, install it by its tag: `pnpm add edytor@next`. `svelte@^5` is a peer dependency. Do not install `yjs`: the v14 engine is vendored (`edytor/crdt`). See [installation](https://edytor-docs.beynar.workers.dev/docs/getting-started), which also explains how to build the tarball from the `arch-v2` branch.

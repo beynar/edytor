@@ -7,6 +7,7 @@
 // @ts-nocheck -- tests drive the vendored engine JS directly (excluded lane).
 import { expect } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
+import { readData } from '../../../lib/crdt/data.js';
 
 export const svEqual = (a: Uint8Array, b: Uint8Array) =>
 	a.length === b.length && a.every((x, i) => x === b[i]);
@@ -49,7 +50,7 @@ export const facts = (ed, doc) => {
 		out.set(id, {
 			live,
 			owner: v.own.ownerOf(id),
-			meta: JSON.stringify([rec.node.getAttr('type'), rec.node.getAttr('data') ?? null]),
+			meta: JSON.stringify([rec.node.getAttr('type'), readData(rec.node) ?? null]),
 			at: JSON.stringify(ed.model.candidatesOf(rec.node).map((c) => c.key)),
 			text: live ? JSON.stringify([ed.contentItems(id), atoms]) : null
 		});

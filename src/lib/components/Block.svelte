@@ -15,7 +15,7 @@
 				return edytor.cells?.get(id)?.type ?? handle.type;
 			},
 			get data() {
-				return edytor.cells?.get(id)?.data ?? {};
+				return handle.data;
 			},
 			get selected() {
 				return handle.selected;

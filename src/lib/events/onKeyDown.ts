@@ -4,8 +4,7 @@ import {
 	isNativeInteractiveEvent,
 	isNativeTextControl,
 	isNativeTextControlEvent,
-	isNestedForeignEditableTarget,
-	isNestedForeignEditableEvent
+	ownsEvent
 } from './nativeInteractiveControl.js';
 import { replaceSelectedAtom } from '$lib/session/bindings.js';
 import { admitKeyAttempt } from './onBeforeInput.js';
@@ -65,7 +64,9 @@ const isEventFromEditor = (edytor: Edytor, event: KeyboardEvent) => {
 
 const hasCommandModifier = (event: KeyboardEvent) => event.metaKey || event.ctrlKey || event.altKey;
 
+/** Backspace or Delete on a select or a button: the browser would delete around it in the host. */
 const shouldPreventNativeInteractiveDeletionKey = (event: KeyboardEvent) =>
+	isNativeInteractiveEvent(event) &&
 	!isNativeTextControlEvent(event) &&
 	(event.key.toLowerCase() === 'backspace' || event.key.toLowerCase() === 'delete');
 
@@ -185,6 +186,18 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 		return;
 	}
 
+	// A kind's own control (a field bound to `block.data`, a select, a nested
+	// editable island) keeps its keys, whatever the selection: Backspace there
+	// never deletes the selected blocks, hotkeys never act on the model.
+	// Composed path: a document-level listener sees `e.target` retargeted to
+	// the shadow host.
+	if (ownsEvent(this.node, e)) {
+		if (shouldPreventNativeInteractiveDeletionKey(e)) {
+			e.preventDefault();
+		}
+		return;
+	}
+
 	if (this.readonly) {
 		if (shouldPreventReadonlyMutationKey(e)) {
 			e.preventDefault();
@@ -196,22 +209,13 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 		return;
 	}
 
+	// Any other native control (a link, the chrome's buttons beside the host)
+	// keeps its keys unless a block selection stands: a grip hands its keys to
+	// the blocks it selected.
 	if (isNativeInteractiveEvent(e) && this.selection.selectedBlocks.size === 0) {
 		if (shouldPreventNativeInteractiveDeletionKey(e)) {
 			e.preventDefault();
 		}
-		return;
-	}
-
-	// Keys inside a nested `contenteditable` island belong to that island —
-	// hotkeys and structural fallbacks operate on the MODEL selection,
-	// which still points wherever the editor last left it.
-	// Composed-path check — the document-level listener sees `e.target`
-	// retargeted to the shadow host, which would let island keys through.
-	if (
-		isNestedForeignEditableTarget(this.node, e.target) ||
-		isNestedForeignEditableEvent(this.node, e)
-	) {
 		return;
 	}
 

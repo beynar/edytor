@@ -156,8 +156,8 @@ import type { Plugin } from 'edytor';
 
 export const statsPlugin: Plugin = () => ({
 	onChange: (value) => {
-		// value is the whole document: { type: 'root', children: [...] }
-		localStorage.setItem('draft', JSON.stringify(value.children));
+		// value is the whole document: { type: 'root', data?, children: [...] }
+		localStorage.setItem('draft', JSON.stringify({ data: value.data, children: value.children }));
 	},
 	onSelectionChange: (selection) => {
 		console.log(selection.value.kind); // 'none' | 'text' | 'atom' | 'blocks'

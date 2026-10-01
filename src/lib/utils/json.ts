@@ -57,6 +57,7 @@ export type SerializableContent =
 	| {
 			[key: string]: SerializableContent;
 	  }
+	| SerializableContent[]
 	| string
 	| boolean
 	| number
@@ -84,6 +85,8 @@ export type JSONBlock = {
 export type PartialJSONBlock = Omit<JSONBlock, 'children' | 'content'>;
 
 export type JSONDoc = {
+	/** The document's own properties (`edytor.data`, `facade.docData()`); absent when it has none. */
+	data?: Record<string, SerializableContent>;
 	children: JSONBlock[];
 } & Partial<Record<string, unknown>>;
 

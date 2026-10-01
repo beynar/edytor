@@ -95,7 +95,8 @@ type OpResult = {
 | `deleteBlocks(ids)` | the deleted roots | Deletes exactly these blocks; their unselected children take their places (in a list, paragraphs as list items; any other kind, such as an image, keeps its kind and data). A list left with no item is removed too. |
 | `setBlock(id, { type?, data?, content?, children? })` | `id` | `type` and `data` update in place; `content` and `children` replace everything (new children need unused ids, or `reason: 'id-collision'`). Refused with `children` for a void kind. |
 | `setBlockType(id, type)` | `id` | To a void kind, the block's children move out, right after it. An island (a code block) retyped to another kind keeps its lines as that kind's default child, or as the document's default kind where that child shows no text (a column); an island without lines (a table) keeps its children's kinds. A block set to the document's default kind directly in a list shows as the list's item. |
-| `setBlockData(id, data)` | `id` | Replaces the whole `data` object. |
+| `patchData(target, ops)` | the block, or none for the document | Patches the data of a block (`target` its id), of an inline block (`{ block, atom }`) or of the document (`null`). `ops` are `{ path, value? }`, applied in order: each sets the value at `path` (object keys from the root; objects are made along it), or deletes it without `value`; `path: []` replaces the whole object. Only the properties it changes are written, so a peer's concurrent edit of another property is kept (the merge rules are in [Properties](/docs/concepts/properties#how-concurrent-edits-merge)). `noop` when nothing changes; refused for a missing target, a `path` that is not an array of strings, or a root value that is not an object. |
+| `setBlockData(id, data)` | `id` | Replaces the whole `data` object: `patchData(id, [{ path: [], value: data }])`. |
 | `duplicateBlock(id, freshId)` | the copy | Copies the subtree after `id`; `freshId(oldId, kind)` names each copied block (`kind` `'block'`) and inline atom (`'inline'`). An atom it returns no id for gets a fresh one; a block it returns no id for refuses the copy. |
 
 The blocks `unNestBlock(s)`, `liftOut` and `mergeBackward` move out of a block, and the blocks `splitBlock` and a multi-line `insertFlow` into a block create after one, are ranked by where they came from, not at random in the gap: first by side (a split's pieces, then the blocks leaving the block before the gap, then those leaving the block after it), then by the item's place in its list, or by the text after the split point. Two peers outdenting, lifting or turning into another kind items of one list, or splitting or pasting lines into one block, or one splitting a paragraph while the other lifts the first item of the list below it, at the same time keep the text in its order whatever their client ids, when each makes one such call between syncs (text edits before its split point aside; one after it is a residual). Not covered, where the order can follow the client ids: `insertBlock(s)` (the editor's Enter at a block's start or end, a kind picked from the + button's menu), an `insertFlow` at a block's start whose first line stands apart (a list, a code block, a divider or an image), or at the end of a `view.header` block, `duplicateBlock`, an `insertFlow` that is `whole` (a block-selection copy) or `replace`s blocks (a paste or typing over selected blocks), several structural calls by one replica before it syncs (the editor's Turn into over several blocks is one `liftOut` plan per block, and its Shift+Tab one `unNestBlocks` plan per run of adjacent blocks; `unNestBlocks` over adjacent siblings is one plan; one call over non-adjacent ones is not covered), and moves (`moveBlock(s)`, `nestBlock`: a drag, the handle's Alt+↑/↓/→, Mod+Shift+↑/↓, the block menu's Move up/down, Tab; the handle's Alt+← is the outdent, `unNestBlocks`, which is ranked). The residuals (in the split of a list, a new line beside a block a peer moves, a merge into a block a peer splits, text typed or deleted after one's own split point) and these cases are listed in [Concurrent editing](/docs/collaboration/concurrent-editing#which-races-keep-the-text-order).
@@ -112,7 +113,7 @@ The blocks `unNestBlock(s)`, `liftOut` and `mergeBackward` move out of a block, 
 | `clearMarks(id, offset, length)` | Removes every mark present in the range. |
 | `insertInline(id, offset, atom)` | `atom` is an `InlineSpec`. |
 | `removeInline(id, inlineId)` | |
-| `setInlineData(id, inlineId, data)` | |
+| `setInlineData(id, inlineId, data)` | Replaces the atom's `data`: `patchData({ block: id, atom: inlineId }, [{ path: [], value: data }])`. |
 
 Text operations also work inside void blocks, which may hold a caption.
 
@@ -152,7 +153,8 @@ A plan is `{ ids, writes, effect, version, at? }`; a refusal is returned as its 
 
 | Read | Returns |
 | --- | --- |
-| `toJSON()` | The document as `JSONDoc` (`{ children: JSONBlock[] }`). |
+| `toJSON()` | The document as `JSONDoc` (`{ data?, children: JSONBlock[] }`; `data` only when the document has properties). |
+| `docData()` | The document's own data (`{}` when it has none), including writes made earlier in the current transaction. |
 | `project()` | The visible tree as `{ children: ProjectedBlock[] }` with `ContentItem` content. |
 | `blockJSON(id)` | One block's subtree as `JSONBlock`. |
 | `childrenIds(parent)` | Visible child ids; `null` for the root. |
@@ -184,7 +186,7 @@ Whether a block type renders its own content is a document-level question: `docu
 
 ## Changes
 
-`facade.onChange(callback)` calls back once per committed transaction that changed the visible document, local or remote, and returns an unsubscribe function. A callback that throws is logged; the other callbacks and the document carry on.
+`facade.onChange(callback)` calls back once per committed transaction that changed the visible document or its data, local or remote, and returns an unsubscribe function. A callback that throws is logged; the other callbacks and the document carry on.
 
 ```ts
 const off = facade.onChange((change) => {
@@ -197,9 +199,10 @@ const off = facade.onChange((change) => {
 | `added` | `Map<BlockId, ProjectedBlock>` | Newly visible blocks, with their subtree. |
 | `removed` | `Set<BlockId>` | Blocks no longer visible (deleted or merged away). A block under a deleted parent is not removed: it takes the parent's place. |
 | `moved` | `Set<BlockId>` | Blocks whose parent or position changed. |
-| `meta` | `Map<BlockId, { type, data? }>` | Blocks whose type or data changed. |
+| `meta` | `Map<BlockId, { type, data? }>` | Blocks whose type or data changed. An inline block's data change is a `content` change of its block. |
 | `content` | `Map<BlockId, readonly ContentRun[]>` | Blocks whose visible content changed, with the new runs. |
 | `order` | `Map<BlockId \| null, readonly BlockId[]>` | Parents whose child list changed, with the new order. |
+| `data` | `Record<string, unknown> \| undefined` | The document's data, when the transaction changed it. |
 | `origin`, `local` | `unknown`, `boolean` | The transaction's origin, and `false` for edits that came from a provider. |
 | `version` | `number` | Increases with every change event. |
 
@@ -217,7 +220,7 @@ block.split(2, 'p1-tail');
 block.delete(); // children take its place; delete({ keepChildren: false }) removes them too
 ```
 
-Members: `id`, `attribution`, `items`, `runs`, `length`, `childIds()`, `insertText`, `deleteText`, `format`, `setMark`, `unsetMark`, `clearMarks`, `insertInline`, `removeInline`, `setInlineData`, `insertChild(index, spec)`, `moveTo({ parent, index })`, `nestUnder(parent)`, `unNest()`, `split(offset, newId, tail?)`, `mergeBackward()`, `mergeForward()`, `mergeFrom(other)`, `delete(opts?)`, `setType`, `setData`, `set(value)`, `duplicate(freshId)` (the same callback as `duplicateBlock`).
+Members: `id`, `attribution`, `items`, `runs`, `length`, `childIds()`, `insertText`, `deleteText`, `format`, `setMark`, `unsetMark`, `clearMarks`, `insertInline`, `removeInline`, `setInlineData` (a replace), `insertChild(index, spec)`, `moveTo({ parent, index })`, `nestUnder(parent)`, `unNest()`, `split(offset, newId, tail?)`, `mergeBackward()`, `mergeForward()`, `mergeFrom(other)`, `delete(opts?)`, `setType`, `setData` (a replace), `set(value)`, `duplicate(freshId)` (the same callback as `duplicateBlock`).
 
 ## Attribution
 

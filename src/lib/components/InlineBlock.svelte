@@ -26,7 +26,7 @@
 			return part.type;
 		},
 		get data() {
-			return part.data ?? {};
+			return block ? block.data : (part.data ?? {});
 		},
 		get selected() {
 			return block?.selected ?? false;

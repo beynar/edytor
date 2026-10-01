@@ -134,6 +134,12 @@ export type EdytorOptions = {
 	placeholder?: Placeholder;
 };
 
+/**
+ * The document's properties (`edytor.data`). Augment it to type yours:
+ * `declare module 'edytor' { interface EdytorDocData { title?: string } }`.
+ */
+export interface EdytorDocData extends Record<string, any> {}
+
 export type RootBlock = Block & {
 	readonly type: 'root';
 	readonly id: 'root';
@@ -193,6 +199,22 @@ export class Edytor {
 	readonly surface: SurfaceObserver = new SurfaceObserver(this);
 	/** What the components render (R1, R2): one cell per visible block, patched from change reports. */
 	cells = $state.raw<Cells>();
+	/** Bumped by each commit that changed the document's data: what `docData()` readers track. */
+	private dataRevision = $state(0);
+	/** The document's data, read-your-writes and reactive (`{}` when none). */
+	docData = (): Record<string, unknown> => {
+		void this.dataRevision;
+		return this.facade.docData();
+	};
+	/**
+	 * The document's properties as a live proxy (`session/props.ts`): read
+	 * and write them like a plain object (`edytor.data.title = 'Notes'`,
+	 * `bind:value={edytor.data.title}`); each write is a `patchData` command
+	 * on the root. Type it by augmenting {@link EdytorDocData}.
+	 */
+	get data(): EdytorDocData {
+		return this.idToBlock.root.data as EdytorDocData;
+	}
 	/** The IME host pin (`surface/pin`): the composing cell's segment list and render, frozen. */
 	readonly pin = new Pin();
 	/** The chrome layer outside the host (R11): handles, menus, remote carets. */
@@ -542,12 +564,10 @@ export class Edytor {
 		if (cache && cache.version === version && cache.revision === revision && cache.root === root) {
 			return cache.json;
 		}
-		const json: JSONBlock = {
-			type: 'root',
-			// `facade.toJSON()` is the canonical document export — the one
-			// serializer (S6, L14).
-			children: root ? this.facade.toJSON().children : []
-		};
+		// `facade.toJSON()` is the canonical document export — the one
+		// serializer (S6, L14); the root carries the document's data.
+		const { data, children } = root ? this.facade.toJSON() : { children: [] };
+		const json: JSONBlock = { type: 'root', ...(data && { data }), children };
 		this._valueCache = { version, revision, root, json };
 		return json;
 	}
@@ -566,13 +586,13 @@ export class Edytor {
 	/** Releases the readiness wait of a view bound before its document decided. */
 	private _readinessRelease: (() => void) | undefined;
 
-	sync = ({ children = [] }: JSONDoc = { children: [] }) => {
+	sync = ({ children = [], data }: JSONDoc = { children: [] }) => {
 		if (this.synced) return;
 		// The document owns the content decision: `assertSchema` on an
 		// already-initialized (hydrated) doc, `init` on a still-fresh one,
 		// then history attaches — the same deferral this method enforced
 		// when the view owned it.
-		this.document.sync({ children });
+		this.document.sync({ children, data });
 
 		this.undoManager = this.document.history;
 		this.history.bind();
@@ -592,6 +612,7 @@ export class Edytor {
 	 */
 	private onCommit = (change: DocChange) => {
 		this.valueRevision++;
+		if (change.data) this.dataRevision++;
 		this.overlay.invalidate();
 		// A commit this view did not issue re-renders under the caret: the
 		// projector displays the current value after that flush (R10).

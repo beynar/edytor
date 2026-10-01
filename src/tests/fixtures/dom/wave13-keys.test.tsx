@@ -394,7 +394,8 @@ describe('Mod+Enter acts on each shown selected block (DR-behavior-2)', () => {
 	it('a caret in a to-do still checks it and claims the key', async () => {
 		const view = await render([todo('t', false), p('z')]);
 		await caretIn(view, 't');
-		const before = get(view, 't').data;
+		// `block.data` is live: copy it to keep what it was.
+		const before = { ...get(view, 't').data };
 		const { defaultPrevented } = await modEnter();
 		expect(before).toMatchObject({ checked: false });
 		expect(defaultPrevented).toBe(true);

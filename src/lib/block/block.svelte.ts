@@ -27,8 +27,8 @@ import {
 	prepareUnNest,
 	prepareNest,
 	prepareRemoveInline,
-	prepareSetInline,
-	setInlineData,
+	preparePatch,
+	patchData,
 	prepareDeleteRange,
 	addChildBlocks,
 	pushContentIntoBlock,
@@ -49,6 +49,7 @@ import type { BlockDefinition } from '$lib/plugins.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
 import type { DocBlock } from '$lib/crdt/index.js';
 import { revealed } from '$lib/selection/replaceSelection.js';
+import { propsProxy } from '$lib/session/props.js';
 
 /**
  * An id-only block handle (§2.4 "Handles", R4): every getter reads the
@@ -108,8 +109,26 @@ export class Block {
 		this.setBlock({ value: { type: value } });
 	}
 
+	#data?: { version: number; value: Record<string, unknown> };
+	#props?: Record<string, any>;
+	/**
+	 * The block's `data` as a live proxy (`session/props.ts`): reads follow the
+	 * document (reactive through the block's cell), writes are `patchData`
+	 * commands. The root's is the document's data (`edytor.data`).
+	 */
 	get data(): Record<string, any> {
-		return (!this.isRoot && this.edytor.facade.blockDataOf(this.id)) || {};
+		return (this.#props ??= propsProxy(
+			() => (this.isRoot ? this.edytor.docData() : this.#current()),
+			(ops) => this.patchData({ ops })
+		));
+	}
+	#current() {
+		const { facade, cells } = this.edytor;
+		cells?.get(this.id);
+		const version = facade.version;
+		if (this.#data?.version !== version)
+			this.#data = { version, value: facade.blockDataOf(this.id) ?? {} };
+		return this.#data.value;
 	}
 
 	get definition(): BlockDefinition {
@@ -117,12 +136,12 @@ export class Block {
 	}
 
 	/**
-	 * Replace the block's `data` — the `setBlock` command (readonly, hooks,
-	 * `dispatcher.last`); `block.model.setData` is the raw document write.
+	 * Replace the block's `data` — a `patchData` command of its root (readonly,
+	 * hooks, `dispatcher.last`); `block.model.setData` is the raw document write.
 	 */
 	setData = (data: Record<string, unknown>): void => {
-		// Non-JSON values are coerced at the document boundary (`sanitizeSpec`).
-		this.setBlock({ value: { data: data as JSONBlock['data'] } });
+		// Non-JSON values are coerced at the document boundary (`sanitizeWireJson`).
+		this.patchData({ ops: [{ path: [], value: data }] });
 	};
 
 	get selected() {
@@ -250,8 +269,8 @@ export class Block {
 	/** This block's JSON — the document's one serializer (`facade.blockJSON`, L14). */
 	get value(): JSONBlock {
 		if (!this.isRoot) return this.edytor.facade.blockJSON(this.id);
-		const children = this.edytor.facade.toJSON().children;
-		return { type: 'root', id: 'root', data: {}, ...(children.length > 0 && { children }) };
+		const { data = {}, children } = this.edytor.facade.toJSON();
+		return { type: 'root', id: 'root', data, ...(children.length > 0 && { children }) };
 	}
 
 	isChildOf(block: Block): boolean {
@@ -338,7 +357,7 @@ export class Block {
 	moveBlocks = revealed(batch('moveBlocks', moveBlocks, prepareMoves));
 	pushContentIntoBlock = batch('pushContentIntoBlock', pushContentIntoBlock);
 	removeInlineBlock = batch('removeInlineBlock', removeInlineBlock, prepareRemoveInline);
-	setInlineData = batch('setInlineData', setInlineData, prepareSetInline);
+	patchData = batch('patchData', patchData, preparePatch);
 	addInlineBlock = batch('addInlineBlock', addInlineBlock, undefined, textAfterAtom);
 	normalizeContent = batch('normalizeContent', normalizeContent);
 	normalizeChildren = batch('normalizeChildren', normalizeChildren);

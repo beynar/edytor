@@ -37,7 +37,8 @@ The instance exists as soon as the component is created, but `edytor.root` stays
 
 | Member | Type | What it is |
 | --- | --- | --- |
-| `value` | `JSONBlock` | The whole document as JSON, `{ type: 'root', children }`. Reactive. |
+| `value` | `JSONBlock` | The whole document as JSON, `{ type: 'root', data?, children }` (`data`: the document's properties, when it has some). Reactive. |
+| `data` | `EdytorDocData` | The document's [properties](/docs/concepts/properties), a live proxy: `edytor.data.title = 'Notes'` is a `patchData` command, reads are reactive. `edytor.root.data` is the same proxy. |
 | `root` | `Block \| undefined` | The handle of the root block. `root.children` are the top-level blocks. |
 | `synced` | `boolean` | The view is bound to a ready document. |
 | `document` | `EdytorDocument` | The document this view renders: shared by every view of it, and usable without a view. |
@@ -57,7 +58,7 @@ The instance exists as soon as the component is created, but `edytor.root` stays
 | `defaultChild(parent)` | `(parent: Block) => string` | The type a new child of `parent` takes. |
 | `awareness` | `Awareness` | The document's presence channel. See [Collaboration](/docs/collaboration). |
 | `cells` | `Cells` | The reactive render state, one cell per visible block (below). |
-| `clear()` | `() => boolean` | Replace the whole document with one empty block and put the caret in it, as one undo step. It is a command: a readonly view or a read-only document refuses it (it answers `false`, and `dispatcher.last` reads `refused`), so a viewer never wipes the shared document. Plugin hooks do not see it. |
+| `clear()` | `() => boolean` | Replace the whole document with one empty block and put the caret in it, as one undo step (the document's [properties](/docs/concepts/properties), `edytor.data`, stay). It is a command: a readonly view or a read-only document refuses it (it answers `false`, and `dispatcher.last` reads `refused`), so a viewer never wipes the shared document. Plugin hooks do not see it. |
 
 ### `edytor.facade` and `edytor.document`
 
@@ -82,13 +83,13 @@ if (block) {
 }
 ```
 
-Handles are not reactive. A template that reads `block.type` does not update when the type changes. Read handles in event handlers and commands, and use the reactive sources below in templates.
+Handles are not reactive, except their `data`. A template that reads `block.type` does not update when the type changes. Read handles in event handlers and commands, and use the reactive sources below in templates. `block.data`, `atom.data` and `edytor.data` are live proxies whose reads are reactive and whose assignments are commands (see [Properties](/docs/concepts/properties)).
 
 | Handle | Identity | Useful members |
 | --- | --- | --- |
-| `Block` | One per block id: the same object for as long as the block exists. | `id`, `type`, `data`, `parent`, `children`, `content`, `index`, `depth`, `firstText`, `lastText`, `value`, `isInTree`, `isEmpty` (no content and no children; an inline atom is content, so a block holding only a mention is not empty), `hasContent`, `movable`, `convertible` (false for a void block, an island and a list container; true for an emptied document's [virtual paragraph](/docs/collaboration/concurrent-editing#an-emptied-document-shows-a-virtual-paragraph), which a Turn into creates with its kind; a divider, from Turn into or `insertDividerAtSelection`, is created with a paragraph after it), `isContainer` (it renders only its children, like a list), `isListItem`, `list` (the list an item shows in, also after it was outdented out of a nested list into the item holding it), `node`, `textAtOffset(offset)`, `setData(data)` and the block commands (`insertBlockAfter`, `splitBlock`, `setBlock`, `removeBlock`, `nestBlock`, `unNestBlock`, …). `setData(data)` and assigning `type` run `setBlock`. `nestBlock`, `unNestBlock`, `moveBlock` and `moveBlocks` open a closed toggle the block lands in or that adopts blocks, as the keys do. |
+| `Block` | One per block id: the same object for as long as the block exists. | `id`, `type`, `data`, `parent`, `children`, `content`, `index`, `depth`, `firstText`, `lastText`, `value`, `isInTree`, `isEmpty` (no content and no children; an inline atom is content, so a block holding only a mention is not empty), `hasContent`, `movable`, `convertible` (false for a void block, an island and a list container; true for an emptied document's [virtual paragraph](/docs/collaboration/concurrent-editing#an-emptied-document-shows-a-virtual-paragraph), which a Turn into creates with its kind; a divider, from Turn into or `insertDividerAtSelection`, is created with a paragraph after it), `isContainer` (it renders only its children, like a list), `isListItem`, `list` (the list an item shows in, also after it was outdented out of a nested list into the item holding it), `node`, `textAtOffset(offset)`, `setData(data)` and the block commands (`insertBlockAfter`, `splitBlock`, `setBlock`, `removeBlock`, `nestBlock`, `unNestBlock`, …). `setData(data)` runs `patchData` and assigning `type` runs `setBlock`. `nestBlock`, `unNestBlock`, `moveBlock` and `moveBlocks` open a closed toggle the block lands in or that adopts blocks, as the keys do. |
 | `Text` | A text segment of a block: the `ordinal`-th segment between inline blocks. It has no identity beyond that position. | `parent`, `ordinal`, `stringContent`, `length`, `value` (runs), `isInDocument`, `node`, and the text commands (`insertText`, `deleteText`, `markText`, `removeMarksFromText`, `setText`). |
-| `InlineBlock` | One per inline block id. | `id`, `type`, `data`, `parent`, `value`, `selected`, `isInDocument`, `setData(data)` (its block's `setInlineData` command). |
+| `InlineBlock` | One per inline block id. | `id`, `type`, `data`, `parent`, `value`, `selected`, `isInDocument`, `setData(data)` (its block's `patchData` command, with `atom`). |
 
 Because a `Text` is a position, don't keep one across edits to find "the same text" later. Keep the block id and an offset, or a selection anchor.
 
@@ -121,6 +122,8 @@ Use these in templates, `$derived` and `$effect`:
   	);
   </script>
   ```
+
+- **`edytor.data`** (the document's properties) and the `data` of a block or inline block are reactive proxies: `{edytor.data.title}` updates when anyone changes it.
 
 - **`edytor.value`** is reactive and recomputes the whole JSON after each change. Fine for a word count or a save button; use `cells` for anything per block.
 

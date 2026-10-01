@@ -24,7 +24,7 @@ import { isAndroidChromeBrowser } from './events.utils.js';
 import {
 	isNativeInteractiveControl,
 	isNativeInteractiveEvent,
-	isNestedForeignEditableTarget
+	ownsEvent
 } from './nativeInteractiveControl.js';
 import { observeInternalDragSources } from './onDrop.js';
 import { runBeforeInputCommand, runBeforeInputHotkeyBridge } from './beforeInputCommands.js';
@@ -209,18 +209,25 @@ const isForeignHistoryBeforeInput = (edytor: Edytor, event: InputEvent) => {
 	return !selection?.anchorNode || !node.contains(selection.anchorNode);
 };
 
+/**
+ * An input the browser performs alone: any in a kind's own control (a field
+ * bound to `block.data`, a nested editable island: `ownsEvent`), whatever the
+ * selection, or any other native control's while no block or atom is selected.
+ * It returns before the selection sync, which would write the DOM selection
+ * from the model and collapse the control's own range.
+ */
 const isBrowserOwnedNativeInput = (edytor: Edytor, event: InputEvent) =>
-	isNativeInteractiveEvent(event) &&
-	edytor.selection.selectedBlocks.size === 0 &&
-	edytor.selection.selectedInlineBlock.size === 0;
+	ownsEvent(edytor.node, event) ||
+	(isNativeInteractiveEvent(event) &&
+		edytor.selection.selectedBlocks.size === 0 &&
+		edytor.selection.selectedInlineBlock.size === 0);
 
 const shouldIgnoreBeforeInput = (edytor: Edytor, attempt: Attempt) =>
 	edytor.readonly ||
 	attempt.isVoidEditableElement ||
 	(attempt.event &&
 		(isBrowserOwnedNativeInput(edytor, attempt.event) ||
-			isNativeInteractiveControl(attempt.event.target) ||
-			isNestedForeignEditableTarget(edytor.node, attempt.event.target)));
+			isNativeInteractiveControl(attempt.event.target)));
 
 /** One text, nothing spanning, no block selection: a change the browser can make alone. */
 const isTextLocal = (edytor: Edytor, attempt: Attempt) =>
@@ -553,13 +560,6 @@ export async function onBeforeInput(this: Edytor, event: InputEvent) {
 	// the composition preview owns the write path and the deferred observer
 	// reconciles whatever the native insertion produced after compositionend.
 	if (this.isComposing && kindOf(event.inputType) === 'payload') {
-		return;
-	}
-
-	// Island beforeinputs must return BEFORE the selection sync — the
-	// sync writes the DOM selection from the (stale) model state and
-	// would collapse the island's live range before its own delete runs.
-	if (isNestedForeignEditableTarget(this.node, event.target)) {
 		return;
 	}
 

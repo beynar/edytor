@@ -347,7 +347,7 @@ const stateVector = (doc: YDoc): Map<number, number> =>
  */
 const loadedUpdate = (
 	found: LoadedDocument,
-	seed: (children: JSONDoc['children']) => Uint8Array
+	seed: (value: JSONDoc) => Uint8Array
 ): { update: Uint8Array; replicas: ReplicaOwner[] | null } => {
 	if (found instanceof Uint8Array) return { update: found, replicas: null };
 	if (typeof found === 'object' && found !== null) {
@@ -360,7 +360,7 @@ const loadedUpdate = (
 			if (Array.isArray(replicas) && replicas.every(valid))
 				return { update: found.update, replicas };
 		} else if ('children' in found && Array.isArray(found.children)) {
-			return { update: seed(found.children), replicas: [] };
+			return { update: seed(found as JSONDoc), replicas: [] };
 		}
 	}
 	throw new TypeError('onLoad returned neither a JSONDoc, a v14 update nor { update, replicas }');
@@ -980,10 +980,10 @@ export class AttachedDocument {
 			let replicas: ReplicaOwner[] | null;
 			try {
 				// JSON is seeded deterministically: a client seeding the same value writes the same update.
-				const loaded = loadedUpdate(found, (children) => {
+				const loaded = loadedUpdate(found, ({ children, data }) => {
 					const scratch = crdt.createDoc();
 					const facade = this.facadeOf(scratch);
-					facade.seed(children);
+					facade.seed(children, data);
 					facade.dispose();
 					const update = Y.encodeStateAsUpdate(scratch);
 					scratch.destroy();

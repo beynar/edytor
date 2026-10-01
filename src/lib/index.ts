@@ -46,7 +46,7 @@ export type {
 	ChangePayload
 } from './plugins.js';
 /** The editor instance plugins, hotkeys and `bind:edytor` receive (`Edytor` names the component). */
-export type { Edytor as EdytorInstance } from './edytor.svelte.js';
+export type { Edytor as EdytorInstance, EdytorDocData } from './edytor.svelte.js';
 export type { HotKey, HotKeyCombination } from './session/keymap.js';
 export type { EdytorSelection } from './selection/selection.svelte.js';
 export { convertToKind, type KindRow } from './kinds.js';

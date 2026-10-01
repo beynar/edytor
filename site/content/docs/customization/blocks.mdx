@@ -142,7 +142,7 @@ A block snippet receives `{ block, content, children }`:
   type={{
     "block.id": { type: "string", description: "The block's id." },
     "block.type": { type: "string", description: "The kind name." },
-    "block.data": { type: "object", description: "The block's data. Reactive." },
+    "block.data": { type: "object", description: "The block's data, a live proxy: reads are reactive, and an assignment (block.data.done = true, bind:value={block.data.title}) is a patchData command. See Properties." },
     "block.selected": { type: "boolean", description: "Part of a block selection. Reactive." },
     "block.focused": { type: "boolean", description: "Holds the caret or part of a text selection, and is not block-selected. Reactive." },
     "block.handle": { type: "Block", description: "The block's handle, for commands and document reads. Not reactive." },
@@ -180,7 +180,7 @@ Anything a snippet renders besides `content()` and `children()` is chrome: icons
 {/snippet}
 ```
 
-The action sets `contenteditable="false"`, `data-edytor-void="true"` and `user-select: none` on the element. Native controls inside chrome (buttons, inputs, links) keep their own clicks. The block handle of an island aligns with a direct child marked this way.
+The action sets `contenteditable="false"`, `data-edytor-void="true"` and `user-select: none` on the element. Native controls inside chrome keep their own clicks, and every form control (an input of any type, a textarea, a select, a button) or nested editable there keeps its own keys, paste, copy, cut, drops and selection, even while blocks are selected ([Properties](/docs/concepts/properties)). The block handle of an island aligns with a direct child marked this way.
 
 ## Presets
 
@@ -279,8 +279,8 @@ A task with a checkbox that writes `data.done`, a markdown prefix, clipboard for
 	import type { Block, Plugin } from 'edytor';
 	import type { BlockSnippetPayload } from 'edytor';
 
-	const toggle = (task: Block) =>
-		task.setBlock({ value: { data: { ...task.data, done: !task.data.done } } });
+	// One property written: a collaborator's concurrent edit of another is kept.
+	const toggle = (task: Block) => (task.data.done = !task.data.done);
 
 	export const taskPlugin: Plugin = () => ({
 		blocks: {

@@ -16,12 +16,13 @@ Edytor's collaboration stack is proven by its test suites across Chromium, Firef
 ## Not finished
 
 - **Block suggestions.** Inline text suggestions (for AI completions) work; suggesting whole blocks does not exist yet.
-- **Reactive block data.** Block and inline block `data` is replaced as a whole value (`setBlockData`); there is no fine-grained reactive property model for it yet.
+- **Arrays in properties are one value.** [Properties](/docs/concepts/properties) merge per property, but an array is replaced as a whole: two people changing one array at the same time keep one of the two arrays. There is no property schema; validate in `onBeforeOperation`.
 
 ## Mixed-version peers
 
 - Clients of different document generations never exchange edits: providers and the room refuse the other's frames and report `'protocol-mismatch'` or `'schema-mismatch'`. Deploy one version to every client.
 - Older clients of the **same** generation ignore the per-person delete and undo records. They show a block whose creation was undone (empty, or with another person's text); their own undo still deletes a block outright; and a text deleted by two people and undone by both can appear twice on them. A current client may also bring back text it held back after an old client deleted it, since an old client's delete carries no record.
+- Clients older than `0.1.0-next.6` read a block's or inline block's `data` only from its pre-next.6 whole-value attribute: after a current client writes a property there, they show the value from before it, and they do not see the document's properties.
 - Clients that predate the saved and chunk messages report them through `'message-error'` and otherwise sync small documents normally.
 - A server that never sends saved acknowledgements leaves the provider's `unsaved` count growing; one that acknowledges only state vectors leaves delete-only updates unsaved.
 

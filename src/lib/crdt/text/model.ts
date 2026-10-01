@@ -28,7 +28,8 @@
  * left-affine caret at a split-born block's start binds its boundary item.
  */
 import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode } from '../engine-api.js';
-import { CONTENT, CONTENT_NODE, DATA, ID, NONCE, SCHEMA, TYPE } from '../schema.js';
+import { CONTENT, CONTENT_NODE, ID, NONCE, SCHEMA, TYPE } from '../schema.js';
+import { readData } from '../data.js';
 import { DEV } from 'esm-env';
 import { hash32, hash53 } from '../rand.js';
 import { bindDeletes, type Span } from './deletes.js';
@@ -164,7 +165,7 @@ export const protectItems = (items: RangeItem[], intern: <T>(v: T) => T): RangeI
 /** One inline-atom element → its `ContentItem` shape. */
 export const inlineItemOf = (entry: unknown): RangeItem => {
 	const node = entry as EngineNode;
-	const data = node.getAttr(DATA);
+	const data = readData(node);
 	return {
 		kind: 'inline',
 		id: node.getAttr(ID) as string,

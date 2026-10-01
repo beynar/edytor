@@ -92,6 +92,8 @@ import {
 	CLAIMS,
 	CONTENT,
 	DATA,
+	DATA_LEAF_PREFIX,
+	DOC_DATA_ROOT,
 	hasDeleteMark,
 	hasWithdrawMark,
 	ID,
@@ -102,6 +104,7 @@ import {
 } from '../schema.js';
 import { walkIdSetStructs, type IdSetLike, type StoreStruct } from '../structs.js';
 import { cloneJsonSafe, sameIds } from '../../utils/json.js';
+import { readData } from '../data.js';
 import { callEach } from '../protocols/observable.js';
 
 /**
@@ -145,7 +148,8 @@ type Facet = 'content' | 'structure' | 'at' | 'meta' | 'ignore';
 const facetOf = (attr: string): Facet => {
 	if (attr === CONTENT) return 'content';
 	if (attr === AT) return 'at';
-	if (attr === ID || attr === TYPE || attr === DATA) return 'meta';
+	if (attr === ID || attr === TYPE || attr === DATA || attr.startsWith(DATA_LEAF_PREFIX))
+		return 'meta';
 	// U1: the `l` lastChangedBy stamp is attribution bookkeeping only.
 	if (attr === LAST_CHANGED_ATTR) return 'ignore';
 	// `claims`, `n`, `#content`, delete marks and unknown attrs.
@@ -207,6 +211,8 @@ export type IndexReport = {
 	content: Map<BlockId, readonly ContentRun[]>;
 	/** Parents (`null` = root) whose visible child list changed → the new order. */
 	order: Map<BlockId | null, readonly BlockId[]>;
+	/** The document's own data, when it changed. */
+	data?: Record<string, unknown>;
 };
 
 /** What the folds since {@link RunView.track} saw: facets per block, and whether anything was written. */
@@ -353,6 +359,10 @@ export const bindRuns = (Y: EngineApi) => {
 
 	const buildView = (doc: EngineDoc): RunView => {
 		const registry = doc.get(REGISTRY_KEY);
+		/** The document's own data (`crdt/data.ts`): outside the registry, reported apart. */
+		const dataRoot = doc.get(DOC_DATA_ROOT);
+		const docData = (): Record<string, unknown> => cloneJsonSafe(readData(dataRoot) ?? {});
+		let dataChanged = false;
 
 		// ── edited spans of one fold (L7 narrowing) ───────────────────
 		//
@@ -669,7 +679,7 @@ export const bindRuns = (Y: EngineApi) => {
 				id,
 				node,
 				type: typeAttr(node),
-				data: node.getAttr(DATA),
+				data: readData(node),
 				n: node.getAttr(NONCE),
 				deleted: hasDeleteMark(node),
 				content: isNodeLike(content) ? content : undefined,
@@ -894,7 +904,7 @@ export const bindRuns = (Y: EngineApi) => {
 				if (kinds.has('meta') && rec) {
 					const was = rec.type;
 					rec.type = typeAttr(rec.node);
-					rec.data = rec.node.getAttr(DATA);
+					rec.data = readData(rec.node);
 					if (rec.type !== was) retyped = true;
 					// A retype that changes the kind's display shape re-parents
 					// (or re-kinds) its children.
@@ -1021,6 +1031,7 @@ export const bindRuns = (Y: EngineApi) => {
 		): Map<BlockId, Set<string>> => {
 			const touched = new Map<BlockId, Set<string>>();
 			const spans = new Map<BlockId, [number, number][] | null>();
+			let derived = changed.has(dataRoot);
 			for (const [type, subs] of changed) {
 				for (const sub of subs) {
 					const hit = locate(type as EngineNode, sub);
@@ -1042,7 +1053,6 @@ export const bindRuns = (Y: EngineApi) => {
 				placement: false,
 				parents: new Set()
 			};
-			let derived = false;
 			for (const [id, facets] of touched) {
 				foldBlock(id, facets, spans.get(id) ?? null, ctx);
 				derived ||= [...facets].some((f) => f === ENTRY_FACET || facetOf(f) !== 'ignore');
@@ -1196,12 +1206,12 @@ export const bindRuns = (Y: EngineApi) => {
 
 		/** The blocks whose shown kind followed their slot at the last report. */
 		let followingBefore: BlockId[] = [];
+		/** The document data's key at the last report. */
+		let dataKey = '';
 		/** Build the commit's report and advance the published index to it. */
 		const report = (): IndexReport | null => {
 			const before = published!;
 			ensurePlacements();
-			if (kidsMap === before.kids && candidates.size === 0) return null;
-			const after = kidsMap === before.kids ? before : reachable(before.nodes);
 			const r: IndexReport = {
 				added: new Map(),
 				removed: new Set(),
@@ -1210,6 +1220,15 @@ export const bindRuns = (Y: EngineApi) => {
 				content: new Map(),
 				order: new Map()
 			};
+			// The document's data is news when it differs from what was published.
+			if (dataChanged) {
+				dataChanged = false;
+				const data = docData();
+				const key = keyOf(data);
+				if (key !== dataKey) [r.data, dataKey] = [data, key];
+			}
+			if (kidsMap === before.kids && candidates.size === 0) return r.data ? r : null;
+			const after = kidsMap === before.kids ? before : reachable(before.nodes);
 			// Added subtrees carry their new descendants. A descendant that was
 			// visible before is reported like any visible block (moved, retyped,
 			// edited against its published baseline), so consumers keep it (K7).
@@ -1293,7 +1312,7 @@ export const bindRuns = (Y: EngineApi) => {
 			published = after;
 			const empty =
 				r.added.size + r.removed.size + r.moved.size + r.meta.size + r.content.size + r.order.size;
-			return empty === 0 ? null : r;
+			return empty === 0 && !r.data ? null : r;
 		};
 
 		/** Report the commit (or role change) to every subscriber, when it changed the visible document. */
@@ -1301,8 +1320,10 @@ export const bindRuns = (Y: EngineApi) => {
 			const r = report();
 			if (r !== null) callEach('[edytor-doc] change', [...reportSubs], r, origin, local);
 		};
-		const onUpdate = (_u: Uint8Array, origin: unknown, _d: EngineDoc, tr: unknown): void =>
+		const onUpdate = (_u: Uint8Array, origin: unknown, _d: EngineDoc, tr: unknown): void => {
+			if ((tr as Tx).changed?.has(dataRoot as never)) dataChanged = true;
 			publish(origin, (tr as { local?: boolean }).local === true);
+		};
 
 		// ── initial scan: index every existing block ────────────────────
 		registry.forEachAttr((v: unknown, id: string) => {
@@ -1386,6 +1407,7 @@ export const bindRuns = (Y: EngineApi) => {
 				if (reportSubs.size === 0) {
 					syncPending(openTx());
 					published = reachable();
+					dataKey = keyOf(docData());
 					candidates.clear();
 					reporting = true;
 					doc.on('update', onUpdate);

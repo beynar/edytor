@@ -8,7 +8,7 @@ import { getYIndex } from '$lib/selection/selection.utils.js';
 import { observeInternalDragSources } from './onDrop.js';
 import { runOccurrence } from './onBeforeInput.js';
 import { firstUriListEntry } from './dataTransferPayload.js';
-import { isNestedForeignEditableTarget } from './nativeInteractiveControl.js';
+import { ownsEvent } from './nativeInteractiveControl.js';
 
 /**
  * Shift-paste requests a plain-text paste (PM input.ts:620-630 —
@@ -59,11 +59,10 @@ export async function onPaste(this: Edytor, e: ClipboardEvent) {
 		return;
 	}
 
-	// A paste inside a nested `contenteditable` island belongs to the
-	// island — inserting the clipboard fragment at the stale model
-	// selection would corrupt the document AND preventDefault the
-	// island's own paste.
-	if (isNestedForeignEditableTarget(this.node, e.target)) {
+	// A paste in a kind's own control (a field bound to `block.data`, a
+	// nested editable island) is the control's (`ownsEvent`): inserting the
+	// fragment at the model selection would write the document AND cancel its paste.
+	if (ownsEvent(this.node, e)) {
 		return;
 	}
 

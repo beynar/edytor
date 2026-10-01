@@ -226,7 +226,7 @@ Text operations carry `text`. Block operations run on `block`.
 | `mergeBlockBackward`, `mergeBlockForward` | `{}`                                             |
 | `nestBlock`, `unNestBlock`     | `{}`                                                        |
 | `setBlock`                     | `{ value: Partial<JSONBlock> }`                             |
-| `setInlineData`                | `{ id, data }` (an inline atom's data: `atom.setData`)      |
+| `patchData`                    | `{ ops: { path, value? }[], atom? }`: `data` writes (`block.data.x = …`, `setData`; `atom` for an inline block; on the root block, the document's), also a step of `setBlock` and Turn into |
 | `pushContentIntoBlock`         | `{ value: (Text \| InlineBlock)[] }`                        |
 | `moveBlock`                    | `{ path: number[] }`                                        |
 | `moveBlocks`                   | `{ blocks: Block[], path: number[] }`                       |

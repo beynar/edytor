@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { converge, tree } from './p1-harness.js';
 import { createDocument } from '../../../lib/crdt/index.js';
+import { readData } from '../../../lib/crdt/data.js';
 import * as Y from '../../../lib/crdt/vendor/yjs/src/index.js';
 import { bindModel } from '../../oracles/model-ops.js';
 
@@ -288,7 +289,7 @@ describe('YW-07: a split never writes an explicit empty tail type', () => {
 		const ed = document.facade;
 		expect(ed.splitBlock('A', 5, 'B', { type: '', data: { x: 1 } }).status).toBe('applied');
 		expect(M.blockNodeOf(document.doc, 'B').getAttr('type')).toBe('paragraph');
-		expect(M.blockNodeOf(document.doc, 'B').getAttr('data')).toEqual({ x: 1 });
+		expect(readData(M.blockNodeOf(document.doc, 'B'))).toEqual({ x: 1 });
 		document.destroy();
 	});
 

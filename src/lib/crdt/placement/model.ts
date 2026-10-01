@@ -58,7 +58,6 @@ import {
 	BLOCK_NODE,
 	CONTENT,
 	CONTENT_NODE,
-	DATA,
 	DEL_PREFIX,
 	hasDeleteMark,
 	ID,
@@ -82,7 +81,8 @@ import {
 	type Ownership,
 	type TextBlockRec
 } from '../text/model.js';
-import { cloneJson, jsonEquals } from '../../utils/json.js';
+import { cloneJson } from '../../utils/json.js';
+import { dataLeaves, patchWrites, writeLeaves } from '../data.js';
 
 /** Logical block identifier — caller-assigned, immutable per block. */
 export type BlockId = string;
@@ -759,7 +759,7 @@ export const bindModel = (Y: EngineApi) => {
 		const node = newNode(INLINE_NODE);
 		node.setAttr(ID, atom.id);
 		node.setAttr(TYPE, atom.type);
-		if (atom.data !== undefined) node.setAttr(DATA, atom.data);
+		writeLeaves(node, dataLeaves(atom.data));
 		return node;
 	};
 
@@ -854,7 +854,7 @@ export const bindModel = (Y: EngineApi) => {
 		node.setAttr(ID, id);
 		node.setAttr(NONCE, n);
 		node.setAttr(TYPE, type);
-		if (data !== undefined) node.setAttr(DATA, data);
+		writeLeaves(node, dataLeaves(data));
 		if (items !== null) node.setAttr(CONTENT, textOf(items));
 		const list = newNode(CLAIMS_NODE);
 		node.setAttr(CLAIMS, list);
@@ -915,8 +915,7 @@ export const bindModel = (Y: EngineApi) => {
 						if (key.startsWith(DEL_PREFIX) || key.startsWith(WITHDRAW_PREFIX)) node.deleteAttr(key);
 					}
 					if (node.getAttr(TYPE) !== sp.type) node.setAttr(TYPE, sp.type);
-					if (sp.data === undefined) node.deleteAttr(DATA);
-					else if (!jsonEquals(node.getAttr(DATA), sp.data)) node.setAttr(DATA, sp.data);
+					writeLeaves(node, patchWrites(node, [{ path: [], value: sp.data ?? {} }]));
 					node.setAttr(CONTENT, textOf(sp.content ?? []));
 					node.setAttr(CLAIMS, newNode(CLAIMS_NODE));
 					rank = rankBetween(rank, undefined, 0, () => 0);

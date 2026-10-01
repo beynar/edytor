@@ -98,7 +98,7 @@ A Durable Object has one alarm. The document sets it `saveAfter` ms after an uns
 | --- | --- |
 | `{ update, replicas }` | What an earlier `onSave` received: the v14 state and who owns which client id. Restores both. |
 | `Uint8Array` | A bare v14 update. Restores the content but not the owners: each client id that holds content is unowned until a signed-in writer dials with it as its replica (logged as an `orphan` entry). |
-| `JSONDoc` | Seeded as the document. Seeding is deterministic, so a client that seeds the same value converges with it. |
+| `JSONDoc` | Seeded as the document, with its `data` (the document's [properties](/docs/concepts/properties)). Seeding is deterministic, so a client that seeds the same value converges with it. |
 | `undefined` / `null` | An empty room; the first client seeds it. |
 
 Nothing is stored until `onLoad` settles, and the result is stored in one transaction, so the room is never left half-loaded:
@@ -119,7 +119,7 @@ A saved copy can be older than the room's last edits (it is written `saveAfter` 
 | --- | --- |
 | `update` | The full CRDT state. Store it to load the document back. |
 | `replicas` | Who owns each client id (`{ replica, user }[]`), read with `update`. Store it beside `update` and return both from `onLoad`, so returning clients can write again after a restore. See [replicas](/docs/server/authorization#replicas). |
-| `value` | The document as JSON, for search, previews or exports. |
+| `value` | The document as JSON (`data`, when it has properties, and `children`), for search, previews or exports. |
 
 :::warning
 Load from `update`, not from `value`. JSON starts a new document without the shared history: if the room's storage were ever reset and seeded from JSON, a client still holding the old history offline would merge both and could duplicate content.

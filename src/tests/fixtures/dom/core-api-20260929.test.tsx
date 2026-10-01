@@ -7,7 +7,8 @@
  * - UW-17 — one definition lookup: a block of a kind the view does not
  *   register renders as a plain block (its text and its children), on mount
  *   and when a peer inserts it; nothing throws.
- * - UW-22 — `block.setData`, `block.type =` and `atom.setData` are commands:
+ * - UW-22 — `block.setData`, `block.type =` and `atom.setData` are commands
+ *   (`patchData`, `setBlock`, `patchData` with `atom`):
  *   a readonly view refuses them (no write) and records the refusal in
  *   `dispatcher.last`; on an editable view extensions see them.
  */
@@ -125,7 +126,8 @@ describe('UW-22 · data and type setters are commands', () => {
 		const locked: Plugin = () => ({
 			onBeforeOperation: (change) => {
 				seen.push(change.operation);
-				if (change.operation === 'setInlineData') change.prevent();
+				const atom = change.operation === 'patchData' && change.payload.atom;
+				if (atom) change.prevent();
 			}
 		});
 		const { edytor } = await renderDomEdytor(<root />, {
@@ -146,9 +148,9 @@ describe('UW-22 · data and type setters are commands', () => {
 		expect(edytor.atomAt('todo', 'm').data).toEqual({ name: 'ann' });
 
 		expect(seen.filter((op) => op !== 'normalizeContent' && op !== 'normalizeChildren')).toEqual([
+			'patchData',
 			'setBlock',
-			'setBlock',
-			'setInlineData'
+			'patchData'
 		]);
 	});
 });

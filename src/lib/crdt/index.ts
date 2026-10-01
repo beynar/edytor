@@ -116,8 +116,10 @@ export {
 	type BlockRole,
 	type OrderPolicy,
 	type DocAnchor,
-	type AnchorAffinity
+	type AnchorAffinity,
+	type DataTarget
 } from './edytor-doc.js';
+export { type DataPatch } from './data.js';
 export { type DocPosition, type RangeView } from './rangeDelete.js';
 export { type FlowView } from './flow.js';
 

@@ -101,20 +101,32 @@ export const isNestedForeignEditableTarget = (
 };
 
 /**
- * Event-level variant — walks `composedPath()` so shadow-DOM
- * retargeting can't hide the real origin. Listeners bound on
- * `node.ownerDocument` (outside the editor's shadow root) see
- * `event.target` retargeted to the host; the island element itself
- * still appears earlier in the composed path.
+ * A kind's own control: a form control (`input` of any type, `textarea`,
+ * `select`, `button`) or a nested editable island inside the host, never the
+ * root nor the editor's own text elements. It owns its focus, selection and
+ * events; the projector never writes the editor's caret over it.
  */
-export const isNestedForeignEditableEvent = (
+export const isKindControl = (
 	editorRoot: Element | null | undefined,
-	event: Event
+	target: EventTarget | null
 ) => {
-	for (const target of getEventPath(event)) {
-		if (isNestedForeignEditableTarget(editorRoot, target)) {
-			return true;
-		}
-	}
-	return false;
+	const element = getElementFromTarget(target);
+	const control =
+		findClosestElement(element, NATIVE_ACTIVE_ELEMENT_SELECTOR) ??
+		(isNestedForeignEditableTarget(editorRoot, element)
+			? findClosestElement(element, EDITABLE_TARGET_SELECTOR)
+			: null);
+	return Boolean(control && editorRoot && control !== editorRoot && editorRoot.contains(control));
 };
+
+/**
+ * The one rule for a kind's markup (DR-props-2): an event with a kind's own
+ * control on its composed path is the control's. Its keys, `beforeinput`,
+ * paste, copy, cut, drops and selection gestures pass the editor untouched,
+ * whatever the control's type and whatever the editor's selection (a block or
+ * atom selection included: Backspace there never deletes the selected
+ * blocks). `onKeyDown`, `onBeforeInput`, `onPaste`, `copySelection` and
+ * `onDrop` all ask this.
+ */
+export const ownsEvent = (editorRoot: Element | null | undefined, event: Event) =>
+	getEventPath(event).some((target) => isKindControl(editorRoot, target));

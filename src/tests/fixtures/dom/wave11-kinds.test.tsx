@@ -193,7 +193,8 @@ describe('Turn into places the kind a plugin’s replacement names (BW-03)', () 
 			[replacing('heading', { type: 'list-item', data: {} })],
 			[ul('u', [li('a'), li('b'), li('c')])]
 		);
-		expect(convertToKind(view.edytor, get(view, 'b'), row(view, 'Heading 1'))).toBe(true);
+		// The replacement is the item as it is: nothing to convert (a no-op).
+		expect(convertToKind(view.edytor, get(view, 'b'), row(view, 'Heading 1'))).toBe(false);
 		await flushDomUpdates();
 		expect(shape(view)).toEqual([[U, ['list-item "a"', 'list-item "b"', 'list-item "c"']]]);
 	});

@@ -1,8 +1,5 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
-import {
-	isNativeInteractiveControl,
-	isNestedForeignEditableTarget
-} from './nativeInteractiveControl.js';
+import { isNativeInteractiveControl, ownsEvent } from './nativeInteractiveControl.js';
 import { runOccurrence } from './onBeforeInput.js';
 
 /**
@@ -63,6 +60,15 @@ const isInternalDrag = (root: Element, dataTransfer: DataTransfer | null) => {
 	}
 	return internalDragSource !== null && root.contains(internalDragSource);
 };
+
+/**
+ * A foreign drop on a kind's own control (a field bound to `block.data`, a
+ * nested editable island) is the control's (`ownsEvent`): the editor writes
+ * nothing and the browser does what the control does with it. Not a file,
+ * which the browser would open in place of the page: that one is swallowed.
+ */
+const isControlDrop = (root: Element, event: DragEvent) =>
+	!Array.from(event.dataTransfer?.types ?? []).includes('Files') && ownsEvent(root, event);
 
 const isAcceptedForeignDrop = (root: Element, dataTransfer: DataTransfer | null) => {
 	if (!dataTransfer || isInternalDrag(root, dataTransfer)) {
@@ -140,9 +146,11 @@ const insertFromDrop = (edytor: Edytor, root: Element, event: DragEvent) => {
  * - `dragover`: prevented only when the payload is an accepted foreign drop —
  *   that is what enables the drop. Internal drags (block-handle mime or an
  *   editor-sourced dragstart) and unsupported payloads are left unprevented.
- * - `drop`: always consumed — a native drop would mutate the DOM outside the
+ * - `drop`: consumed — a native drop would mutate the DOM outside the
  *   model. Accepted foreign payloads are funneled into the beforeinput
- *   pipeline as `insertFromDrop`; everything else is swallowed.
+ *   pipeline as `insertFromDrop`; everything else is swallowed. The one
+ *   exception is a foreign drop other than a file on a kind's own control,
+ *   which is the control's (`isControlDrop`).
  */
 export const preventUnsupportedDrop = (event: DragEvent, edytor?: Edytor) => {
 	const root = event.currentTarget;
@@ -164,19 +172,17 @@ export const preventUnsupportedDrop = (event: DragEvent, edytor?: Edytor) => {
 		return;
 	}
 
+	const accepted = isAcceptedForeignDrop(root, event.dataTransfer);
+	if (accepted && isControlDrop(root, event)) return;
 	event.preventDefault();
 	event.stopPropagation();
 
-	if (!isAcceptedForeignDrop(root, event.dataTransfer)) {
+	if (!accepted) {
 		return;
 	}
-	if (
-		isNativeInteractiveControl(event.target) ||
-		isNestedForeignEditableTarget(root, event.target)
-	) {
-		// A drop onto a native control or a nested editable island inside
-		// the editor keeps the historical swallow — consumed without a
-		// model write.
+	if (ownsEvent(root, event) || isNativeInteractiveControl(event.target)) {
+		// A file dropped on a kind's control, or a drop on a link, is
+		// swallowed — consumed without a model write.
 		return;
 	}
 	// Mid-composition drops are swallowed: the preview owns the write path.

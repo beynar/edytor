@@ -6,21 +6,17 @@ import type { Edytor } from '../edytor.svelte.js';
 import { prevent } from '$lib/utils.js';
 import { observeInternalDragSources } from './onDrop.js';
 import { observeShiftPasteModifier } from './onPaste.js';
-import { isNestedForeignEditableTarget } from './nativeInteractiveControl.js';
+import { ownsEvent } from './nativeInteractiveControl.js';
 
 /**
  * Copy (and the first half of cut): the guards, the extensions' `hook`, then
  * the selection's fragment written to the clipboard. Answers whether it wrote.
  */
 export const copySelection = (edytor: Edytor, e: ClipboardEvent, hook: 'onCopy' | 'onCut') => {
-	// A copy inside a nested `contenteditable` island belongs to the
-	// island — overriding it would clobber the clipboard with the stale
-	// model selection's fragment.
-	if (
-		edytor.selection.state.isVoidEditableElement ||
-		isNestedForeignEditableTarget(edytor.node, e.target)
-	)
-		return false;
+	// A copy or cut in a kind's own control (a bound field, a nested
+	// editable island) is the control's: overriding it would put the model
+	// selection's fragment on the clipboard, and a cut would delete it (`ownsEvent`).
+	if (edytor.selection.state.isVoidEditableElement || ownsEvent(edytor.node, e)) return false;
 
 	observeInternalDragSources(edytor.node?.getRootNode());
 	observeShiftPasteModifier(edytor.node?.getRootNode());

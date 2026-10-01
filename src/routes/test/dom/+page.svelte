@@ -9,6 +9,7 @@
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
+	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
 	import {
 		IndexeddbPersistence,
 		WebsocketProvider,
@@ -159,6 +160,13 @@
 						{ text: ' delta', marks: { underline: true } }
 					]
 				}
+			]
+		},
+		// A block whose snippet edits its properties through bound inputs (0.1.0-next.6).
+		props: {
+			children: [
+				{ type: 'paragraph', content: [{ text: 'note' }] },
+				{ type: 'card', data: { title: '', done: false, tags: [] }, content: [{ text: 'card' }] }
 			]
 		},
 		links: {
@@ -349,7 +357,8 @@
 		mentionPlugin,
 		slashMenuPlugin,
 		toolbarPlugin,
-		richTextPlugin
+		richTextPlugin,
+		propsPlugin
 	]);
 	const collaborationTestRuntime = {
 		IndexeddbPersistence,

@@ -209,11 +209,14 @@ packages:
   '@astrojs/yaml2ts@0.2.4':
     resolution: {integrity: sha512-8oddpOae35pJsXPQXhTkM0ypfKPskVsh2bCxRtbf7e+/Epw2nReakFYpLKjZMEr75CsoF203PMnCocpfz0s69A==}
 
-  '@atlaskit/pragmatic-drag-and-drop-hitbox@1.1.0':
-    resolution: {integrity: sha512-JWt6eVp6Br2FPHRM8s0dUIHQk/jFInGP1f3ti5CdtM1Ji5/pt8Akm44wDC063Gv2i5RGseixtbW0z/t6RYtbdg==}
+  '@atlaskit/pragmatic-drag-and-drop-auto-scroll@3.2.1':
+    resolution: {integrity: sha512-2fhWAG48EjPoKhoHLG6RcT3/VaCzYEbRb6BtA/Vcfx4FrL0P1KrEgBJ6OAwB0X8MOV6UH22YgjFFHjv8fQD9rA==}
 
-  '@atlaskit/pragmatic-drag-and-drop@1.7.10':
-    resolution: {integrity: sha512-2oHJbThv26CVxM+N8w1X9iyvnts9f8n5+XdCHyG2DtLtqk97rsvbykUyRV2m2llpH06ZdBycycz/+H7eBgRN4A==}
+  '@atlaskit/pragmatic-drag-and-drop-hitbox@3.0.0':
+    resolution: {integrity: sha512-AGLp1ewjm07eRN2NL62awllSM19FrWVZMQYfZA/jugQlpaeoTr5ah2DE7zfiEt7yrg34htoKQVM+y6SGIQYs2A==}
+
+  '@atlaskit/pragmatic-drag-and-drop@4.0.0':
+    resolution: {integrity: sha512-pyDo2B5NiaExoKGmgeXKGNUL4aR4UzzSZm8QWWjYTEyBLVqSqKyKUwtVxMw2YEkakagOGFONUdHM32LAH2nPug==}
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -2585,8 +2588,8 @@ packages:
     engines: {node: '>= 0.4'}
 
   edytor@file:vendor/edytor.tgz:
-    resolution: {integrity: sha512-WKwC+6NvWPRGluWg9lv75ldoHTbOSFWxZC8mgWW7K3aqwh005IrFm2ZhbsqeNtbYXs4PEUmvr7Sv4BH9GGosEw==, tarball: file:vendor/edytor.tgz}
-    version: 0.1.0-next.8
+    resolution: {integrity: sha512-CUYi5xdgm0TfeLlizWV3/VkBhl3jwb6KCEY9+uQoByySAxESLZKcFOIYiRDLEU8khLC8vb1Kze7Bdh6T40pGWw==, tarball: file:vendor/edytor.tgz}
+    version: 0.1.0-next.9
     engines: {node: '>=22.0.0'}
     peerDependencies:
       svelte: ^5.0.0
@@ -4804,12 +4807,17 @@ snapshots:
     dependencies:
       yaml: 2.9.1
 
-  '@atlaskit/pragmatic-drag-and-drop-hitbox@1.1.0':
+  '@atlaskit/pragmatic-drag-and-drop-auto-scroll@3.2.1':
     dependencies:
-      '@atlaskit/pragmatic-drag-and-drop': 1.7.10
+      '@atlaskit/pragmatic-drag-and-drop': 4.0.0
       '@babel/runtime': 7.29.7
 
-  '@atlaskit/pragmatic-drag-and-drop@1.7.10':
+  '@atlaskit/pragmatic-drag-and-drop-hitbox@3.0.0':
+    dependencies:
+      '@atlaskit/pragmatic-drag-and-drop': 4.0.0
+      '@babel/runtime': 7.29.7
+
+  '@atlaskit/pragmatic-drag-and-drop@4.0.0':
     dependencies:
       '@babel/runtime': 7.29.7
       bind-event-listener: 3.0.0
@@ -7064,8 +7072,9 @@ snapshots:
 
   edytor@file:vendor/edytor.tgz(svelte@5.57.1):
     dependencies:
-      '@atlaskit/pragmatic-drag-and-drop': 1.7.10
-      '@atlaskit/pragmatic-drag-and-drop-hitbox': 1.1.0
+      '@atlaskit/pragmatic-drag-and-drop': 4.0.0
+      '@atlaskit/pragmatic-drag-and-drop-auto-scroll': 3.2.1
+      '@atlaskit/pragmatic-drag-and-drop-hitbox': 3.0.0
       '@tanstack/highlight': 0.1.0
       esm-env: 1.2.2
       lib0-v14: lib0@1.0.0-rc.32

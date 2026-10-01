@@ -200,6 +200,17 @@ describe('block.data: a live proxy whose writes are patchData commands', () => {
 		expect(edytor.facade.toJSON()).toEqual({ data: { title: 'Doc' }, children: [] });
 	});
 
+	it('a patch that fits no value refuses on the virtual paragraph too, and creates nothing (DR-arrays-5)', async () => {
+		const { edytor } = await renderDomEdytor(<root />, { value, plugins });
+		edytor.document.facade.deleteBlocks(['c', 'p']);
+		await flushDomUpdates();
+		const block = edytor.root!.children[0]!;
+		block.patchData({ ops: [{ path: ['tags'], splice: [0, 0, 'x'] }] });
+		expect(edytor.dispatcher.last).toMatchObject({ operation: 'patchData', status: 'refused' });
+		expect(edytor.facade.virtual()).toBe(block.id);
+		expect(edytor.document.facade.toJSON()).toEqual({ children: [] });
+	});
+
 	it('a readonly view refuses a write and writes nothing', async () => {
 		const { edytor } = await renderDomEdytor(<root />, { value, plugins, readonly: true });
 		const bytes = bytesOf(edytor);

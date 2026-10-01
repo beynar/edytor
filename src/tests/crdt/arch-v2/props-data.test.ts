@@ -118,8 +118,12 @@ describe('block data: per-leaf last writer wins', () => {
 
 	it('keys holding `/` and `~` round-trip', () => {
 		const document = createDocument({ value: { children: [{ id: 'A', type: 'p' }] } });
+		// A path writes a key that starts with `~` as `~0…` (0.1.0-next.7): `~c` names an item.
+		expect(document.facade.patchData('A', [{ path: ['a/b', '~c'], value: 1 }]).status).toBe(
+			'refused'
+		);
 		document.facade.patchData('A', [
-			{ path: ['a/b', '~c'], value: 1 },
+			{ path: ['a/b', '~0c'], value: 1 },
 			{ path: [''], value: 'empty' }
 		]);
 		const expected = { 'a/b': { '~c': 1 }, '': 'empty' };

@@ -14,14 +14,15 @@ Every block, every inline block and the document itself carry `data`: a JSON obj
 block.data.title = 'Launch plan'; // set one property
 block.data.meta.owner = 'ada'; // nested objects read as proxies too
 delete block.data.draft; // delete one
-block.data.tags.push('q3'); // array methods write the new array
+block.data.tags.push('q3'); // one item added
+block.data.tasks[0].done = true; // one property of one item
 edytor.data.title = 'Notes'; // the document's own properties
 atom.data.name = 'Ada'; // an inline block (a mention)
 block.setData({ title: 'Fresh' }); // replace the whole object
 ```
 
 - A read always returns the current value: a nested object reads as a proxy of its own (the same one each time), an array as an array proxy, anything else as the value itself. Copy it (`{ ...block.data }`, `$state.snapshot(block.data)`, `JSON.parse(JSON.stringify(block.data))`) to keep what it was at one moment. `JSON.stringify` and `$state.snapshot` give plain JSON.
-- A write is one `patchData` command on the block (the root block for the document, with `atom` set for an inline block): a property set, a `delete`, or a whole array for an array method (`push`, `pop`, `shift`, `unshift`, `splice`, `sort`, `reverse`, `fill`, `copyWithin`), an index or `length` assignment, or a write inside an array item. Values are JSON: a `Date` becomes a string, `undefined` removes the property (see [the document model](/docs/concepts/document-model)).
+- A write is one `patchData` command on the block (the root block for the document, with `atom` set for an inline block), and it writes only what it changes: a property set or `delete`, a write inside an array item (`tasks[0].done = true`, `tags[1] = 'b'`), an array method (`push`, `pop`, `shift`, `unshift` and `splice` add and remove items, `sort` and `reverse` move them, `fill` and `copyWithin` replace their values), or a `length` assignment (it removes items from the end, or adds `null`s). `delete tags[1]` removes the item. Values are JSON: a `Date` becomes a string, `undefined` removes the property (see [the document model](/docs/concepts/document-model)). The proxies convert a value silently; `patchData` given a value that is not JSON converts it too and logs a warning in development.
 - Reads in a template are reactive: a snippet that reads `block.data.title` re-renders when anyone changes the block, you, a plugin or a collaborator. `edytor.data` is reactive too, anywhere in your app.
 - `edytor.root.data` is `edytor.data`.
 
@@ -33,13 +34,20 @@ Because a write is an assignment, Svelte bindings work on properties. A kind who
 <script module lang="ts">
 	import type { BlockSnippetPayload, Plugin } from 'edytor';
 
-	type Card = { title?: string; done?: boolean; tags?: string[] };
+	type Card = {
+		title?: string;
+		done?: boolean;
+		tags?: string[];
+		tasks?: { title: string; done: boolean }[];
+	};
 
 	export const cardPlugin: Plugin = () => ({
 		blocks: {
 			card: {
 				snippet: card,
-				presets: [{ label: 'Card', icon: '▤', data: { title: '', done: false, tags: [] } }]
+				presets: [
+					{ label: 'Card', icon: '▤', data: { title: '', done: false, tags: [], tasks: [] } }
+				]
 			}
 		}
 	});
@@ -54,11 +62,16 @@ Because a write is an assignment, Svelte bindings work on properties. A kind who
 		/>
 		<button onclick={() => block.data.tags?.push('new')}>Tag</button>
 		{block.data.tags?.join(', ')}
+		{#each block.data.tasks ?? [] as task (task)}
+			<label><input type="checkbox" bind:checked={task.done} /><input bind:value={task.title} /></label>
+		{/each}
+		<button onclick={() => block.data.tasks?.push({ title: '', done: false })}>Add a task</button>
 	</div>
 	<div>{@render content()}</div>
 {/snippet}
 ```
 
+- Each row of an `{#each}` over an array binds into its own item: checking one task and typing in another's title are two writes of two items, which merge with a collaborator's edits of the others. Key the rows by the item (`(task)`): an object or array read from an item is that item's (the same proxy each time, wherever collaborators move it), so a focused field stays on its item when a collaborator inserts, removes or sorts items above it, and once the item is removed, or its array is deleted or replaced, its writes are refused and write nothing (an item held across an `await` never brings back the array it was in). An unkeyed `{#each}` keeps rows by position, so the field under the cursor would show, and write, the item that took its place. Items that are strings or numbers have no identity to key on: bind them by index only where nobody else reorders the array, or store objects (`{ name: 'q3' }`).
 - Give bound properties a default in the kind's presets, or bind through a getter and setter as the checkbox does: a plain `bind:checked` on a missing property writes `false` when the input mounts, which is an edit (and an undo step) in every editable view that renders it.
 - A kind's own controls own their events. Any form control in a kind's markup (an `<input>` of any type: text, date, time, number, range, color, a checkbox; a `<textarea>`, a `<select>`, a `<button>`) and any nested editable element that is not the editor's own text receives its keys, `beforeinput`, paste, copy, cut, drops and selection gestures from the browser, whatever the editor's selection: <kbd>Backspace</kbd>, <kbd>Enter</kbd> or <kbd>Tab</kbd> there never act on selected blocks, a paste never lands in the document, and the editor never moves its caret over a focused control while each change writes the block. Only a file dropped on one is swallowed (the browser would open it in place of the page), and <kbd>Backspace</kbd> or <kbd>Delete</kbd> on a focused `<select>` or `<button>` does nothing, so the browser deletes nothing around it.
 - A readonly view refuses the writes, so the field would show what was typed until the next render: disable it there (`disabled={block.handle.edytor.readonly}`).
@@ -91,7 +104,13 @@ document.facade.toJSON().data; // the same; `data` is absent when the document h
 
 ## Commands, hooks and undo
 
-A property write is the `patchData` operation. Its payload is `{ ops, atom? }`: `ops` is a list of `{ path, value? }` patches, applied in order, where `path` is the list of object keys from the root and a patch without `value` deletes that property. The `block` is the edited block, the root block for the document.
+A property write is the `patchData` operation. Its payload is `{ ops, atom? }`: `ops` is a list of patches, applied in order. `path` is the list of keys from the root, an array item's being its index as a string (`['tasks', '0', 'done']`) or its id (`['tasks', '~k3f9xq2a', 'done']`, what the proxy of an object or array in an item writes; `facade.dataItemIds(target, path)` lists an array's ids in order). An id is `~` and a lowercase letter, so a key that starts with `~` is written with that `~` as `~0`, as in a JSON pointer (`['~0abc']` for the key `~abc`); the proxies do this for you. A patch is one of:
+
+- `{ path, value }` sets the value there; without `value` it deletes the property, or removes the item.
+- `{ path, splice: [start, deleteCount, ...items] }` removes and inserts items of the array at `path`, as `Array.prototype.splice` does (`push`, `pop`, `shift`, `unshift`, `splice` and `length` write one).
+- `{ path, order }` moves the array's items: `order` lists the current indexes in their new order (`sort` and `reverse` write one).
+
+Indexes are resolved against the document when the command runs, ids wherever the item is then (a patch naming an item that is gone, removed or with its array deleted or replaced, is refused and writes nothing); the stored write names each item by its id, so it merges with what collaborators did meanwhile. The `block` is the edited block, the root block for the document.
 
 ```ts title="src/lib/locked.ts" check
 import type { Plugin } from 'edytor';
@@ -122,11 +141,14 @@ A patch with an empty `path` replaces the whole object (`setData`, `setBlock` wi
 
 ## How concurrent edits merge
 
-Each leaf of the data (a string, number, boolean, `null`, an array or an empty object) is stored as its own entry, so:
+Each leaf of the data (a string, number, boolean, `null`, an empty object or an empty array) is stored as its own entry, and each array item is its own entry with an id and a position, so:
 
 - **Different properties** edited at the same time are all kept, at any depth: `title` and `done`, or `meta.a` and `meta.b`.
 - **The same property** edited at the same time ends with one of the two values, the same on every replica (last writer wins).
-- **Arrays are one value.** Two people pushing to the same array at the same time keep one of the two arrays. Use an object keyed by id when items must merge.
+- **Arrays merge item by item**, like a `Y.Array`. Edits inside different items are all kept (`tasks[0].title` and `tasks[1].done`), and so are both items of two concurrent pushes: concurrent inserts at the same place come in the same order on every replica, and what one person inserts right after an item they inserted in the same session stays right after it, even across separate writes (two `push` calls, two clicks on Add): a collaborator's insert made at that place before seeing them never lands between them. An insert lands between the items it was made between.
+- **A removed item stays removed.** When one person removes an item while another edits inside it, the item is gone for both; the edit never brings it back.
+- **A moved item keeps its edits.** `sort` and `reverse` move items: an edit made meanwhile inside one of them follows it to its new place, and an item removed meanwhile stays removed. Two people moving the same item at once leave it at one of the two places.
+- **A whole array assignment keeps what stays.** `block.data.tasks = next` (or a `setData` holding the array) keeps every item of the longest run that `next` keeps equal and in order; between two of them, old and new items pair up by position, each keeping its item and taking the new value; the rest are removed or inserted. So the immutable-update pattern (`tasks = [...tasks, task]`, `tasks.map(…)`, `tasks.filter(…)`) appends, edits or removes only those items, and a collaborator's edit inside the others is kept. Two people reassigning the same array at once each pair their values with the same old items, so where both changed one, the last writer's value wins, and the items each inserted past them are both kept. An array assigned where there was none (or only an empty one) gets items derived from its value: two people assigning the same one at once (a default every open view writes, `options ??= ['A', 'B']`) leave one copy, and two different ones are both kept, one after the other.
 - **An object beats a value.** When one person sets `meta` to `5` while another sets `meta.b`, everyone ends with `meta` as an object: `{ b: … }`.
 - **A set beats a concurrent delete** of the same property, and a replace (`setData`, or setting an object) removes only the properties its writer saw: a property a collaborator added meanwhile stays.
 - Deleting the last property of an object keeps the object, empty.
@@ -135,8 +157,8 @@ For text that several people type into at once, use the block's content, which m
 
 ## Headless
 
-The document API has one operation for data: `facade.patchData(target, ops)`, where `target` is a block id, `{ block, atom }` for an inline block, or `null` for the document. `setBlockData(id, data)` and `setInlineData(id, atomId, data)` are patches of the root. The change report carries a block's new data in `meta`, an inline block's in the block's `content` runs, and the document's in `data` (see [the document API](/docs/reference/document-api)).
+The document API has one operation for data: `facade.patchData(target, ops)`, where `target` is a block id, `{ block, atom }` for an inline block, or `null` for the document. It takes the same patches as the operation (`facade.patchData('a', [{ path: ['tasks'], splice: [0, 1] }])` removes the first task). `setBlockData(id, data)` and `setInlineData(id, atomId, data)` are patches of the root. The change report carries a block's new data in `meta`, an inline block's in the block's `content` runs, and the document's in `data` (see [the document API](/docs/reference/document-api)).
 
 ## Storage and upgrading
 
-Each leaf is an attribute of the block, the inline block or the document, named `d/` and its path as a JSON pointer (`~` as `~0`, `/` as `~1`). Documents written before `0.1.0-next.6` store a block's data as one attribute; Edytor reads it unchanged, writes a set property over it, and splits it into leaves at the first write it would otherwise show through (a delete, an object replacing its object, `setData`). When two people make such a first write to the same old block at the same moment, a property the other one set meanwhile can come back to its old value. A client of an older version reads only the old attribute, so upgrade every client of a document together.
+Each leaf is an attribute of the block, the inline block or the document, named `d/` and its path as a JSON pointer (`~` as `~0`, `/` as `~1`). An array is an attribute holding `[]` at its path and its items: an item has a short random id (one derived from the array when the array is assigned whole where there was none), its value under `~` and its id (`d/tasks/~k3f9xq2a` for a string, `d/tasks/~k3f9xq2a/title` for a property of an object) and its position in `d/tasks/~k3f9xq2a#`, a sortable key (a move writes the new one in `d/tasks/~k3f9xq2a>`, so a concurrent removal still removes the item); a removed item has none of them. Arrays written by the previous pre-release are one attribute holding the whole array; Edytor reads them unchanged and keeps them while a write only adds, changes or moves items, splitting them into items at the first write that removes one (both peers then write the same items, so concurrent first writes merge as usual). Documents written before properties were stored per leaf store a block's data as one attribute; Edytor reads it unchanged, writes a set property over it, and splits it into leaves at the first write it would otherwise show through (a delete, an object replacing its object, `setData`). When two people make such a first write to the same old block or array at the same moment, a property the other one set, or an item the other one removed, can come back. A client of an older version reads only the old attribute, and a client of the previous pre-release reads an array a current client wrote as an object keyed by its items' ids, so upgrade every client of a document together.

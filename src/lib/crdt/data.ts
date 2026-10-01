@@ -3,32 +3,54 @@
  *
  * A node's data is a JSON object stored one attr per leaf: `d/` and the
  * leaf's path as an RFC 6901 pointer without its leading `/` (`~` → `~0`,
- * `/` → `~1`). A leaf is a primitive, `null`, an array or an empty object
- * (`{}`, so an emptied object persists). Each attr is a map entry, so two
- * writers editing different keys both keep theirs, and one key is last
- * writer wins.
+ * `/` → `~1`). A leaf is a primitive, `null` or an empty container (`{}`,
+ * `[]`), so an emptied one persists. An array is its `[]` leaf plus its
+ * items, as `Y.Array` holds them: item `id` keeps its value under the
+ * segment `~id` (a primitive at it, an object's or array's leaves under it)
+ * and its place in the rank `~id#` (`placement/rank.ts`), a move's in
+ * `~id>`; `~` and a letter is no escape, so no key reads as an item. Each
+ * attr is a map entry, so different keys and different items merge, one
+ * key is last writer wins, and an item lives while its first rank does: a
+ * delete removes its ranks and leaves, so a concurrent edit inside it or
+ * move of it leaves orphans the read skips. A path names an item by index
+ * or by id, so a held item is reached wherever peers moved it; an id that
+ * names no live item (removed, or its array gone) refuses the patch, so
+ * nothing is written under a dead item. A key starting with `~` is `~0…`
+ * in a path (`keySegment`).
  *
- * ponytail: arrays are atomic (one leaf, whole-value last writer wins); an
- * array whose items merge would be a sequence type under the leaf, as
- * syncrostate's `SyncedArray` does, read and patched by index here.
- *
- * Read rule: the legacy whole `data` attr (documents written before
- * 0.1.0-next.6) is the base; the leaves apply over it, parents before
- * deeper paths. A primitive leaf and leaves under the same path (Ada sets
- * `a = 1` while Bob sets `a.b = 2`) read as the object on every replica.
- * A set writes its leaf over the legacy attr; the first patch the attr
- * would show through explodes it into leaves and deletes it, in the same
- * write (residual: a peer's concurrent set of a key it held may then lose
- * to the exploded old value).
+ * Read rule: the leaves are read as a tree; a path with live items is an
+ * array (sorted by rank, then id), one with keys an object (it beats a
+ * primitive leaf at the same path: Ada sets `a = 1` while Bob sets
+ * `a.b = 2`), else its leaf. The legacy whole `data` attr (documents
+ * written before 0.1.0-next.6) is a base each leaf shadows at, above and
+ * under its path; an array leaf with values (next.6's atomic arrays, and
+ * every array of the attr) reads as items with ids and ranks derived from
+ * the array (as any array assigned where no item is), so two replicas
+ * exploding it write the same items. A patch
+ * writes its leaves over the attr while it still reads right, else deletes
+ * it and writes every leaf (residual: a peer's concurrent set of a key it
+ * held, or its removal of an item, may then lose to the exploded value).
  */
 import type { EngineNode } from './engine-api.js';
 import { DATA, DATA_LEAF_PREFIX } from './schema.js';
-import { cloneJsonSafe, jsonEquals } from '../utils/json.js';
+import { decodeRank, encodeRank, rankBetween } from './placement/rank.js';
+import { hash32 } from './rand.js';
+import { jsonEquals } from '../utils/json.js';
 
 type JsonObj = Record<string, unknown>;
 
-/** One data edit: the value at `path` (object keys from the data's root); no `value` deletes it. */
-export type DataPatch = { readonly path: readonly string[]; readonly value?: unknown };
+/**
+ * One data edit at `path` (object keys and array indexes from the data's
+ * root): `splice` takes `Array.prototype.splice`'s arguments and `order`
+ * the array's current indexes in their new order; else it sets `value`, or
+ * deletes the key or removes the item when there is none.
+ */
+export type DataPatch = {
+	readonly path: readonly string[];
+	readonly value?: unknown;
+	readonly splice?: readonly [start: number, deleteCount?: number, ...items: unknown[]];
+	readonly order?: readonly number[];
+};
 
 /** An attr write a patch plans: the key and its value, `undefined` to delete it. */
 export type LeafWrite = readonly [key: string, value: unknown];
@@ -36,13 +58,259 @@ export type LeafWrite = readonly [key: string, value: unknown];
 export const isObject = (v: unknown): v is JsonObj =>
 	v !== null && typeof v === 'object' && !Array.isArray(v);
 
-const leafKey = (path: readonly string[]): string =>
-	DATA_LEAF_PREFIX + path.map((k) => k.replace(/~/g, '~0').replace(/\//g, '~1')).join('/');
-const pathOf = (key: string): string[] =>
-	key
-		.slice(DATA_LEAF_PREFIX.length)
-		.split('/')
-		.map((k) => k.replace(/~1/g, '/').replace(/~0/g, '~'));
+/** A path of the data as a tree: its leaf (`v`) and its segments' subtrees. */
+type Tree = { v?: unknown; k: Map<string, Tree> };
+type Item = { id: string; rank: string };
+type Entry = { id?: string; keep?: boolean; value?: unknown };
+
+const tree = (v?: unknown): Tree => ({ v, k: new Map() });
+const kid = (t: Tree, s: string): Tree => t.k.get(s) ?? t.k.set(s, tree()).get(s)!;
+const enc = (k: string) => k.replace(/~/g, '~0').replace(/\//g, '~1');
+const dec = (s: string) => s.replace(/~1/g, '/').replace(/~0/g, '~');
+const itemish = (s: string) => /^~[a-z]/.test(s);
+/**
+ * Key `k` as a patch path segment: a leading `~` as `~0` (RFC 6901), so a
+ * key spelled like an item id (`~abc`) never names one.
+ */
+export const keySegment = (k: string) => (k.startsWith('~') ? `~0${k.slice(1)}` : k);
+/** The object key a path segment names (`keySegment`'s inverse). */
+export const segmentKey = (s: string) => (s.startsWith('~0') ? `~${s.slice(2)}` : s);
+const RANK = /^(?:[-\w]{16})+$/;
+const index = (k: string) => (/^(0|[1-9]\d*)$/.test(k) ? Number(k) : -1);
+/**
+ * The digit that opens a client's run after an item it made (`between`):
+ * below every digit a plain insert extends a rank with (`0`, a gap's), so
+ * the run sorts right after its item, and far above the digit minimum, so
+ * the inserts before it (each one digit lower) never run out of room.
+ */
+const RUN = -(2 ** 39);
+
+const rank = (v: unknown) => (typeof v === 'string' && RANK.test(v) ? v : undefined);
+/** Item `id`'s place: where a move put it (`id>`), else where it was made (`id#`). */
+const placeOf = (t: Tree, id: string) => rank(t.k.get(`${id}>`)?.v) ?? rank(t.k.get(`${id}#`)?.v);
+/** `t`'s live items (made, `id#`, and not removed: a move never revives one), in order. */
+const itemsOf = (t: Tree): Item[] => {
+	const out: Item[] = [];
+	for (const [s, c] of t.k)
+		if (s.endsWith('#') && itemish(s) && rank(c.v))
+			out.push({ id: s.slice(0, -1), rank: placeOf(t, s.slice(0, -1))! });
+	// ` ` sorts below every rank character: a rank before its extensions, then by id.
+	return out.sort((a, b) => (`${a.rank} ${a.id}` < `${b.rank} ${b.id}` ? -1 : 1));
+};
+const isArr = (t: Tree) => Array.isArray(t.v) || itemsOf(t).length > 0;
+/** The item `seg` names among `items`: by its id (`~…`) or by its index. */
+const itemAt = (items: Item[], seg: string): Item | undefined =>
+	itemish(seg) ? items.find((i) => i.id === seg) : items[index(seg)];
+
+/** The JSON `t` reads as (`undefined` for nothing). */
+const valueOf = (t: Tree): unknown => {
+	const items = itemsOf(t);
+	if (items.length) return items.map(({ id }) => valueOf(t.k.get(id) ?? tree()) ?? null);
+	const keys = [...t.k]
+		.map(([s, c]) => [dec(s), itemish(s) ? undefined : valueOf(c)] as const)
+		.filter(([, v]) => v !== undefined);
+	// Own properties only: a `__proto__` key (a peer's too) is data, never a prototype.
+	return keys.length ? Object.fromEntries(keys) : t.v;
+};
+
+const treeOf = (leaves: Map<string, unknown>): Tree => {
+	const root = tree();
+	for (const [key, v] of [...leaves].sort(([a], [b]) => (a < b ? -1 : 1)))
+		key.slice(DATA_LEAF_PREFIX.length).split('/').reduce(kid, root).v = v;
+	return root;
+};
+const leavesFrom = (t: Tree, prefix = DATA_LEAF_PREFIX, out = new Map<string, unknown>()) => {
+	for (const [s, c] of t.k) {
+		if (c.v !== undefined) out.set(prefix + s, c.v);
+		leavesFrom(c, `${prefix}${s}/`, out);
+	}
+	return out;
+};
+
+/** A longest common subsequence of `a` and `b`, as index pairs. */
+const common = (a: readonly string[], b: readonly string[]): [number, number][] => {
+	const T = [...a, 0].map(() => new Uint32Array(b.length + 1));
+	for (let i = a.length - 1; i >= 0; i--)
+		for (let j = b.length - 1; j >= 0; j--)
+			T[i]![j] = a[i] === b[j] ? T[i + 1]![j + 1]! + 1 : Math.max(T[i + 1]![j]!, T[i]![j + 1]!);
+	const out: [number, number][] = [];
+	for (let i = 0, j = 0; i < a.length && j < b.length; )
+		if (a[i] === b[j]) out.push([i++, j++]);
+		else if (T[i + 1]![j]! >= T[i]![j + 1]!) i++;
+		else j++;
+	return out;
+};
+/** `v` as JSON with sorted keys: equal values, equal strings. */
+const canon = (v: unknown) =>
+	JSON.stringify(v, (_, x) => (isObject(x) ? Object.fromEntries(Object.entries(x).sort()) : x));
+/** New items holding `values`. */
+const added = (values: unknown[]): Entry[] => values.map((value) => ({ value }));
+
+/**
+ * The tree edits. New items take ids and ranks from `rand` and `client`;
+ * without `rand` they are derived from their indexes and `client` (a new
+ * array's hash), so equal values write equal items everywhere.
+ */
+const edits = (rand?: () => number, client = 0) => {
+	const pick = rand ?? (() => 0);
+	const fresh = (t: Tree, i: number): string => {
+		for (;;) {
+			const id = rand
+				? `~${Math.floor(36 ** 7 * (10 + 26 * rand())).toString(36)}`
+				: `~l${i++}.${client.toString(36)}`;
+			if (![id, `${id}#`, `${id}>`].some((s) => t.k.has(s))) return id;
+		}
+	};
+	const remove = (t: Tree, id: string) => [id, `${id}#`, `${id}>`].forEach((s) => t.k.delete(s));
+	/**
+	 * A rank in `(left, right)`. After an item this client placed, it is in
+	 * the client's run there (`left`, the `RUN` segment, then ranks of its
+	 * own): what it inserts after its own items stays together, as `Y.Array`
+	 * keeps an insert after its origin, whatever a peer inserts in that gap
+	 * meanwhile. Elsewhere a plain rank between the two.
+	 */
+	const between = (left: string | undefined, right: string | undefined): string => {
+		const plain = () => rankBetween(left, right, client, pick);
+		if (left === undefined) return plain();
+		const segs = decodeRank(left);
+		const k = segs.findLastIndex((g) => g.v === RUN);
+		const run =
+			k >= 0 && segs[k]!.t === client
+				? encodeRank(segs.slice(0, k + 1))
+				: segs.at(-1)!.t === client
+					? left + encodeRank([{ v: RUN, t: client }])
+					: undefined;
+		if (run === undefined) return plain();
+		const tail = (r?: string) =>
+			r && r.length > run.length && r.startsWith(run) ? r.slice(run.length) : undefined;
+		const rank = run + rankBetween(tail(left), tail(right), client, pick);
+		return right === undefined || rank < right ? rank : plain();
+	};
+	/** Give `entries` (kept items, moved items, new values) their places in `t`, in order. */
+	const lay = (t: Tree, entries: Entry[]): void => {
+		let left: string | undefined;
+		let right: string | undefined;
+		let r = -1; // the next kept entry, whose place bounds the run before it
+		for (let p = 0; p < entries.length; p++) {
+			const e = entries[p]!;
+			if (e.keep) {
+				left = placeOf(t, e.id!);
+				continue;
+			}
+			if (r < p) {
+				for (r = p + 1; r < entries.length && !entries[r]!.keep; r++);
+				right = r < entries.length ? placeOf(t, entries[r]!.id!) : undefined;
+			}
+			const id = e.id ?? fresh(t, p);
+			left = kid(t, `${id}${e.id ? '>' : '#'}`).v = between(
+				left,
+				left !== undefined && right !== undefined && left >= right ? undefined : right
+			);
+			if (e.id === undefined) assign(kid(t, id), e.value);
+		}
+	};
+	/** Make `t` read as `value`, writing only what differs: objects key by key, arrays item by item. */
+	const assign = (t: Tree, value: unknown): void => {
+		if (Array.isArray(value) && itemsOf(t).length) return arrange(t, value);
+		// Anything else replaces what `t` held, but an object's equal keys.
+		const object = isObject(value) && Object.keys(value).length > 0;
+		for (const s of [...t.k.keys()])
+			if (!object || itemish(s) || !Object.hasOwn(value, dec(s))) t.k.delete(s);
+		t.v = object ? undefined : Array.isArray(value) ? [] : value;
+		if (object) for (const [k, v] of Object.entries(value)) assign(kid(t, enc(k)), v);
+		// A new array's items derive from it: two peers making the same one make one.
+		if (Array.isArray(value)) edits(undefined, hash32(canon(value))).lay(t, added(value));
+	};
+	/**
+	 * An array reassigned: the items a longest common run keeps equal stay;
+	 * between two of them, old and new items pair by position (each keeps
+	 * its id and takes the new value), the rest are removed or inserted.
+	 */
+	const arrange = (t: Tree, next: unknown[]): void => {
+		const old = itemsOf(t);
+		const was = old.map(({ id }) => canon(valueOf(t.k.get(id) ?? tree()) ?? null));
+		const entries: Entry[] = [];
+		let [i, j] = [0, 0];
+		for (const [mi, mj] of [...common(was, next.map(canon)), [old.length, next.length]]) {
+			for (let n = 0; n < Math.max(mi - i, mj - j); n++) {
+				const o = i + n < mi ? old[i + n]! : undefined;
+				if (j + n >= mj) remove(t, o!.id);
+				else if (!o) entries.push({ value: next[j + n] });
+				else {
+					entries.push({ id: o.id, keep: true });
+					assign(kid(t, o.id), next[j + n]);
+				}
+			}
+			if (mi < old.length) entries.push({ id: old[mi]!.id, keep: true });
+			[i, j] = [mi + 1, mj + 1];
+		}
+		t.v = [];
+		lay(t, entries);
+	};
+	/**
+	 * The tree at `path` (objects made along it), or `undefined` where an
+	 * index or id fits no live item (an id where no array is: removed with it).
+	 */
+	const reach = (t: Tree | undefined, path: readonly string[]): Tree | undefined => {
+		for (const k of path) {
+			if (!t) return t;
+			if (isArr(t)) {
+				const item = itemAt(itemsOf(t), k);
+				t = item && kid(t, item.id);
+			} else if (itemish(k)) return undefined;
+			else {
+				t.v = undefined; // a value on the way becomes an object
+				t = kid(t, enc(segmentKey(k)));
+			}
+		}
+		return t;
+	};
+	/** Apply `patch` to `root`; `false` when it fits no value there. */
+	const apply = (root: Tree, { path, value, splice, order }: DataPatch): boolean => {
+		const at = reach(root, splice || order ? path : path.slice(0, -1));
+		if (!at) return false;
+		const items = isArr(at) ? itemsOf(at) : undefined;
+		const list: Entry[] = items?.map(({ id }) => ({ id, keep: true })) ?? [];
+		const k = path.at(-1);
+		if (order) {
+			const ids = Array.isArray(order) ? order.map((i) => list[i]?.id) : [];
+			const permutes = new Set(ids).size === list.length && !ids.includes(undefined);
+			if (!items || ids.length !== list.length || !permutes) return false;
+			// What a longest increasing run keeps in place stays; the others move.
+			const was = list.map((e) => e.id!);
+			const kept = new Set(common(was, ids as string[]).map(([, p]) => p));
+			list.splice(0, list.length, ...ids.map((id, p) => ({ id, keep: kept.has(p) })));
+		} else if (splice) {
+			const [start, count, ...values] = Array.isArray(splice) ? splice : [];
+			if (!items || !Number.isInteger(start) || (splice.length > 1 && !Number.isInteger(count)))
+				return false;
+			const removed =
+				splice.length > 1 ? list.splice(start!, count!, ...added(values)) : list.splice(start!);
+			for (const e of removed) remove(at, e.id!);
+		} else if (k === undefined) {
+			assign(root, isObject(value) ? value : {});
+			return true;
+		} else if (!items) {
+			if (itemish(k)) return false; // an item where no array is
+			if (value !== undefined) assign(reach(at, [k])!, value);
+			// The last key of an object deleted keeps the object.
+			else if (at.k.delete(enc(segmentKey(k))) && at !== root && valueOf(at) === undefined)
+				at.v = {};
+			return true;
+		} else {
+			const i = itemish(k) ? list.findIndex((e) => e.id === k) : index(k);
+			if (i < 0) return false; // no such index, or the item is gone
+			if (value === undefined) list.splice(i, 1).forEach((e) => remove(at, e.id!));
+			else if (i < list.length) assign(kid(at, list[i]!.id!), value);
+			else list.push(...added([...Array(i - list.length).fill(null), value]));
+		}
+		at.v = [];
+		lay(at, list);
+		return true;
+	};
+	return { assign, apply, lay };
+};
+const derived = edits();
 
 const leavesOf = (node: EngineNode): Map<string, unknown> => {
 	const out = new Map<string, unknown>();
@@ -50,86 +318,103 @@ const leavesOf = (node: EngineNode): Map<string, unknown> => {
 		if (key.startsWith(DATA_LEAF_PREFIX)) out.set(key, node.getAttr(key));
 	return out;
 };
-
-/** `value`'s leaves under `path` (the root is never a leaf). */
-const flatten = (path: string[], value: unknown, out = new Map<string, unknown>()) => {
-	if (isObject(value) && (path.length === 0 || Object.keys(value).length > 0))
-		for (const [k, v] of Object.entries(value)) flatten([...path, k], v, out);
-	else if (value !== undefined) out.set(leafKey(path), value);
-	return out;
+/** The leaves of `value` under `prefix`; its arrays' items derived from them. */
+const leavesOfValue = (value: unknown, prefix = DATA_LEAF_PREFIX) => {
+	const t = tree();
+	derived.assign(t, value);
+	return leavesFrom(t, prefix);
 };
-
-/** Put `v` at `path` in `root` (objects made along it; `undefined` deletes); `merge`: a `{}` keeps an object there. */
-const put = (root: JsonObj, path: readonly string[], v: unknown, merge = false): void => {
-	// Own properties only: a `__proto__` or `constructor` key (a peer's too) is data, never a prototype.
-	const own = (o: JsonObj, k: string) => (Object.hasOwn(o, k) ? o[k] : undefined);
-	const set = (o: JsonObj, k: string, value: unknown) =>
-		Object.defineProperty(o, k, { value, enumerable: true, writable: true, configurable: true });
-	let o = root;
-	for (const k of path.slice(0, -1)) {
-		let next = own(o, k);
-		if (!isObject(next)) set(o, k, (next = {}));
-		o = next as JsonObj;
+/** A new node's data, as leaves. */
+export const dataLeaves = (data: unknown): Map<string, unknown> =>
+	leavesOfValue(isObject(data) ? data : {});
+/**
+ * `leaves` over the bases they shadow (each leaf at, above and under its
+ * path): the legacy attr, and each array leaf with values (as items).
+ */
+const effective = (base: unknown, leaves: Map<string, unknown>): Map<string, unknown> => {
+	/** `key` and the paths above it longer than `floor`. */
+	const above = (key: string, floor = 0) => {
+		const out: string[] = [];
+		for (let i = key.length; i > floor; i = key.lastIndexOf('/', i - 1)) out.push(key.slice(0, i));
+		return out;
+	};
+	const near = new Set([...leaves.keys()].flatMap((key) => above(key)));
+	const out = new Map<string, unknown>();
+	const under = (prefix: string, value: unknown) => {
+		for (const [key, v] of leavesOfValue(value, prefix))
+			if (!near.has(key) && !above(key, prefix.length - 1).some((p) => leaves.has(p)))
+				out.set(key, v);
+	};
+	if (isObject(base)) under(DATA_LEAF_PREFIX, base);
+	for (const [key, v] of leaves) {
+		out.set(key, v);
+		if (Array.isArray(v) && v.length) {
+			under(`${key}/`, v);
+			out.set(key, []);
+		}
 	}
-	const last = path[path.length - 1]!;
-	if (v === undefined) delete o[last];
-	else set(o, last, merge && isObject(v) ? (isObject(own(o, last)) ? own(o, last) : {}) : v);
-};
-
-/** The data a legacy attr and leaves read as: the attr, then the leaves, parents first (the object wins). */
-const assemble = (base: unknown, leaves: Map<string, unknown>): JsonObj | undefined => {
-	if (leaves.size === 0) return base == null ? undefined : (base as JsonObj);
-	const out = isObject(base) ? cloneJsonSafe(base) : {};
-	// By key: a parent's key prefixes its descendants' (parents first), and
-	// every replica builds the same key order.
-	for (const key of [...leaves.keys()].sort()) put(out, pathOf(key), leaves.get(key), true);
 	return out;
 };
+const read = (base: unknown, leaves: Map<string, unknown>) =>
+	valueOf(treeOf(effective(base, leaves))) as JsonObj | undefined;
 
 /** `node`'s data (`undefined` when it has none). */
 export const readData = (node: EngineNode): JsonObj | undefined =>
-	assemble(node.getAttr(DATA), leavesOf(node));
+	read(node.getAttr(DATA), leavesOf(node));
 
-/** `data` with `patches` applied in order, as a fresh value (a root patch replaces it). */
-export const applyPatch = (data: JsonObj, patches: readonly DataPatch[]): JsonObj => {
-	let out = cloneJsonSafe(data);
-	for (const { path, value } of patches) {
-		if (path.length === 0) out = isObject(value) ? cloneJsonSafe(value) : {};
-		else put(out, path, cloneJsonSafe(value));
-	}
-	return out;
+/**
+ * The ids of the items of the array at `path` (keys, item indexes or ids)
+ * in `node`'s data, in order; `[]` where no array is.
+ */
+export const itemIds = (node: EngineNode, path: readonly string[]): string[] => {
+	let t: Tree | undefined = treeOf(effective(node.getAttr(DATA), leavesOf(node)));
+	for (const k of path)
+		if (t && isArr(t)) {
+			const item: Item | undefined = itemAt(itemsOf(t), k);
+			t = item && t.k.get(item.id);
+		} else t = itemish(k) ? undefined : t?.k.get(enc(segmentKey(k)));
+	return t ? itemsOf(t).map(({ id }) => id) : [];
+};
+
+/** `data` with `patches` applied in order, as a fresh value (a root patch replaces it); `null` when one fits no value. */
+export const applyPatch = (data: JsonObj, patches: readonly DataPatch[]): JsonObj | null => {
+	const root = treeOf(dataLeaves(data));
+	if (!patches.every((p) => derived.apply(root, p))) return null;
+	return (valueOf(root) as JsonObj | undefined) ?? {};
 };
 
 /**
- * The attr writes that give `node` the data `patches` make of its own: only
- * the leaves at, under or above a patched path change, so a concurrent edit
- * of another key is kept. A legacy attr stays under the leaves while they
- * still read as the patched value (a set), so two peers' first sets of
- * different keys never write each other's old values; a patch it would show
- * through (a delete, an object over its object, a whole replace) explodes it:
- * every leaf written, the attr deleted. An unchanged value writes nothing.
+ * The attr writes that give `node` the data `patches` make of its own (new
+ * items get ids from `rand`, ranks from `client`), or `null` when a patch
+ * fits no value there: only the leaves of the keys and items a patch
+ * touches change, so a concurrent edit of another key or item is kept. A
+ * legacy base (the attr, an atomic array leaf) stays under the leaves while
+ * they still read as the patched value, else it is exploded: every leaf
+ * written, the attr deleted. An unchanged value writes nothing.
  */
-export const patchWrites = (node: EngineNode, patches: readonly DataPatch[]): LeafWrite[] => {
-	const current = readData(node) ?? {};
-	const next = applyPatch(current, patches);
-	if (jsonEquals(current, next)) return [];
-	const [base, now, want] = [node.getAttr(DATA), leavesOf(node), flatten([], next)];
-	const writes = (all: boolean): LeafWrite[] => {
-		const touched = (key: string) =>
-			all ||
-			patches.some(({ path }) => {
-				const k = leafKey(path);
-				return path.length === 0 || key === k || key.startsWith(k + '/') || k.startsWith(key + '/');
-			});
-		return [...new Set([...now.keys(), ...want.keys()])]
-			.filter((key) => touched(key) && !jsonEquals(now.get(key), want.get(key)))
+export const patchWrites = (
+	node: EngineNode,
+	patches: readonly DataPatch[],
+	client = 0,
+	rand?: () => number
+): LeafWrite[] | null => {
+	const [base, now] = [node.getAttr(DATA), leavesOf(node)];
+	const was = effective(base, now);
+	const root = treeOf(was);
+	const before = valueOf(root);
+	const { apply } = edits(rand, client);
+	if (!patches.every((p) => apply(root, p))) return null;
+	const [want, value] = [leavesFrom(root), valueOf(root)];
+	if (jsonEquals(before, value)) return [];
+	const diff = (from: Map<string, unknown>): LeafWrite[] =>
+		[...new Set([...from.keys(), ...want.keys()])]
+			.filter((key) => !jsonEquals(from.get(key), want.get(key)))
 			.map((key) => [key, want.get(key)] as const);
-	};
-	const own = writes(false);
-	if (base === undefined) return own;
+	const own = diff(was);
 	const after = new Map(now);
 	for (const [key, value] of own) value === undefined ? after.delete(key) : after.set(key, value);
-	return jsonEquals(assemble(base, after), next) ? own : [[DATA, undefined], ...writes(true)];
+	if (jsonEquals(read(base, after), value)) return own;
+	return [...(base === undefined ? [] : [[DATA, undefined] as const]), ...diff(now)];
 };
 
 /** Write `writes` on `node` (a detached one too: a block or atom being created). */
@@ -138,7 +423,3 @@ export const writeLeaves = (node: EngineNode, writes: Iterable<LeafWrite>): void
 		if (value === undefined) node.deleteAttr(key);
 		else node.setAttr(key, value);
 };
-
-/** A new node's data, as leaves. */
-export const dataLeaves = (data: unknown): Map<string, unknown> =>
-	flatten([], isObject(data) ? data : {});

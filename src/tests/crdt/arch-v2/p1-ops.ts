@@ -34,12 +34,16 @@ export const ACTIONS = [
 	'retype',
 	'inline',
 	'data',
-	'docData'
+	'docData',
+	'array',
+	'array'
 ];
 /** Data patches: keys, nested keys under a key another patch sets whole, deletes, a whole replace. */
 const PATHS = [['a'], ['a', 'b'], ['a', 'c'], ['n'], []];
 const VALUES = [1, 'x', [1, 2], { b: 2 }, {}, null, undefined];
 export const WORDS = ['x', 'yy', 'zzz', 'Q', 'ab', 'W'];
+/** Array items: primitives, objects, a nested array. */
+const ITEMS = ['x', 1, null, { t: 'a' }, { t: 'b', l: [1] }, [2, 3]];
 
 export const rngOf = (seed: number) => {
 	const f = mulberry32(seed);
@@ -136,6 +140,35 @@ export const genAction = (
 			};
 			return { action, args: [action === 'data' ? blk : null, patch] };
 		}
+		case 'array': {
+			// Fine-grained array ops on `l` (or `l.<i>.l`): splices, moves, writes inside items.
+			const doc = next(4) === 0;
+			const data = (doc ? ed.docData() : ed.blockDataOf(blk)) ?? {};
+			const nested = Array.isArray(data.l) && data.l.length && next(3) === 0;
+			const i = nested ? next(data.l.length) : 0;
+			const path = nested ? ['l', `${i}`, 'l'] : ['l'];
+			const list = nested ? data.l[i]?.l : data.l;
+			// A new array of two: their ranks derive from it (one run, as a seeded array's).
+			if (!Array.isArray(list))
+				return { action, args: [doc ? null : blk, { path, value: [pick(ITEMS), pick(ITEMS)] }] };
+			const n = list.length;
+			// An odd item is named by its id (`~…`), as the proxy's item objects name it.
+			const ids = ed.dataItemIds(doc ? null : blk, path);
+			const item = (k: number) => (k % 2 ? (ids[k] ?? `${k}`) : `${k}`);
+			const at = next(n + 1);
+			const order = list.map((_, k) => k).sort(() => next(3) - 1);
+			const patch = [
+				{ path, splice: [at, n > 3 ? next(2) : 0, ...(next(4) ? [pick(ITEMS)] : [])] },
+				{ path, order },
+				n ? { path: [...path, `${next(n)}`], value: pick(ITEMS) } : { path, value: [] },
+				n ? { path: [...path, item(next(n)), 't'], value: pick(WORDS) } : { path, value: [1] },
+				n > 3 ? { path: [...path, `${next(n)}`] } : { path, splice: [n, 0, pick(ITEMS)] },
+				{ path, value: [...list.slice(next(2)), pick(ITEMS)] },
+				// Inserts that keep landing in one gap (the front, index 1): never out of room.
+				[0, 1, 2].map(() => ({ path, splice: [Math.min(at, 1), 0, pick(ITEMS)] }))
+			][next(7)];
+			return { action, args: [doc ? null : blk, patch] };
+		}
 	}
 	return null;
 };
@@ -202,6 +235,7 @@ export const apply = (r: Replica, action: string, a: unknown[]) => {
 			return ed.insertInline(a[0], a[1], { id: a[2], type: 'mention' });
 		case 'data':
 		case 'docData':
-			return ed.patchData(a[0], [a[1]]);
+		case 'array':
+			return ed.patchData(a[0], [a[1]].flat());
 	}
 };

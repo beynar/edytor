@@ -57,7 +57,8 @@ export class InlineBlock {
 				this.edytor.cells?.get(this.blockId);
 				return this.#item?.data ?? {};
 			},
-			(ops) => this.parent.patchData({ atom: this.id, ops })
+			(ops) => this.parent.patchData({ atom: this.id, ops }),
+			(path) => this.edytor.facade.dataItemIds({ block: this.blockId, atom: this.id }, path)
 		));
 	}
 

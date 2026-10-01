@@ -915,7 +915,7 @@ export const bindModel = (Y: EngineApi) => {
 						if (key.startsWith(DEL_PREFIX) || key.startsWith(WITHDRAW_PREFIX)) node.deleteAttr(key);
 					}
 					if (node.getAttr(TYPE) !== sp.type) node.setAttr(TYPE, sp.type);
-					writeLeaves(node, patchWrites(node, [{ path: [], value: sp.data ?? {} }]));
+					writeLeaves(node, patchWrites(node, [{ path: [], value: sp.data ?? {} }]) ?? []);
 					node.setAttr(CONTENT, textOf(sp.content ?? []));
 					node.setAttr(CLAIMS, newNode(CLAIMS_NODE));
 					rank = rankBetween(rank, undefined, 0, () => 0);

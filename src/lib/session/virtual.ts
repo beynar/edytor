@@ -103,9 +103,11 @@ export const virtualLens = (
 	);
 	over('setBlockType', (b, t) => (on(b) ? create([spec({ type: t })]) : undefined));
 	over('setBlockData', (b, data) => (on(b) ? create([spec({ data })]) : undefined));
-	over('patchData', (t, ops) =>
-		typeof t === 'string' && on(t) ? create([spec({ data: applyPatch({}, ops) })]) : undefined
-	);
+	over('patchData', (t, ops) => {
+		if (typeof t !== 'string' || !on(t)) return undefined;
+		const data = applyPatch({}, ops);
+		return data ? create([spec({ data })]) : REFUSED;
+	});
 	over('setBlock', (b, value) =>
 		on(b)
 			? create([spec({ ...value, type: value.type ?? type() } as Partial<BlockSpec>)])
@@ -175,6 +177,8 @@ export const virtualLens = (
 			on(b) ? null : base.previous(b, ...(rest as [])),
 		blockTypeOf: (b: BlockId) => (on(b) ? type() : base.blockTypeOf(b)),
 		blockDataOf: (b: BlockId) => (on(b) ? {} : base.blockDataOf(b)),
+		dataItemIds: (t: Parameters<EdytorDoc['dataItemIds']>[0], path: readonly string[]) =>
+			typeof t === 'string' && on(t) ? [] : base.dataItemIds(t, path),
 		blockJSON: (b: BlockId) => (on(b) ? { id: vid, type: type(), data: {} } : base.blockJSON(b)),
 		blockText: (b: BlockId) => (on(b) ? '' : base.blockText(b)),
 		displayLength: (b: BlockId) => (on(b) ? 0 : base.displayLength(b)),

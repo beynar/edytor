@@ -119,7 +119,8 @@ export class Block {
 	get data(): Record<string, any> {
 		return (this.#props ??= propsProxy(
 			() => (this.isRoot ? this.edytor.docData() : this.#current()),
-			(ops) => this.patchData({ ops })
+			(ops) => this.patchData({ ops }),
+			(path) => this.edytor.facade.dataItemIds(this.isRoot ? null : this.id, path)
 		));
 	}
 	#current() {

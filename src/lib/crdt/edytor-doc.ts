@@ -172,6 +172,7 @@ import { flowOps, type FlowContext } from './flow.js';
 import {
 	dataLeaves,
 	isObject,
+	itemIds,
 	patchWrites,
 	readData,
 	writeLeaves,
@@ -1117,6 +1118,17 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 		/** The document's own data (`{}` when it has none). */
 		const docData = (): JsonObj => cloneJsonSafe(readData(doc.get(DOC_DATA_ROOT)) ?? {});
+		/**
+		 * The ids of the items of the array at `path` in a block's, an atom's
+		 * or the document's data (`[]` where none is): what a path names an
+		 * item by (`~…`), so it reaches that item wherever peers move it.
+		 */
+		const dataItemIds = (target: DataTarget, path: readonly string[]): string[] => {
+			const [id, atom] =
+				typeof target === 'object' && target ? [target.block, target.atom] : [target ?? undefined];
+			const node = dataNode(id && ref(id), atom && ref(atom));
+			return node && Array.isArray(path) ? itemIds(node, path) : [];
+		};
 
 		/** Ordered visible children of `parent` (`null` = root) — canonical read. */
 		const childrenIds = (parent: BlockId | null): BlockId[] =>
@@ -1814,13 +1826,15 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 		/**
 		 * The data step of `patches` (sanitized) on a block, one of its atoms or
-		 * the document (`crdt/data.ts`): none when it changes nothing.
+		 * the document (`crdt/data.ts`): none when it changes nothing, `null`
+		 * when a patch is refused.
 		 */
-		const dataSteps = (target: DataTarget, patches: DataPatch[]): PlanStep[] => {
+		const dataSteps = (target: DataTarget, patches: DataPatch[]): PlanStep[] | null => {
 			const [id, inlineId] =
 				typeof target === 'object' && target ? [target.block, target.atom] : [target ?? undefined];
 			const node = dataNode(id, inlineId);
-			const leaves = node ? patchWrites(node, patches) : [];
+			const leaves = node ? patchWrites(node, patches, doc.clientID, randOf(doc)) : [];
+			if (leaves === null) return null; // a patch fits no value there
 			if (leaves.length === 0) return [];
 			const offset = inlineId === undefined ? undefined : atomOf(id!, inlineId)?.at;
 			return [
@@ -2483,10 +2497,12 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/**
 		 * Patch the data of a block, one of its inline atoms or the document
 		 * (`null`), in order (`crdt/data.ts`): each patch replaces the value at
-		 * its path (`value` absent deletes it); only the leaves it changes are
-		 * written, so a peer's edit of another key is kept. Refused for an
-		 * absent target, a path that is no array of strings, or a root value
-		 * that is no object.
+		 * its path (`value` absent deletes it), `splice` and `order` edit the
+		 * array there; a path addresses array items by index, resolved here
+		 * to the items' ids. Only the leaves it changes are written, so a
+		 * peer's edit of another key or item is kept. Refused for an absent
+		 * target, a path that is no array of strings, a root value that is no
+		 * object, or an op that fits no value at its path.
 		 */
 		const patchData = (target: DataTarget, patches: readonly DataPatch[]): Prepared => {
 			const valid = (p: DataPatch) =>
@@ -2494,10 +2510,15 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				p.path.every((k) => typeof k === 'string') &&
 				(p.path.length > 0 || p.value === undefined || isObject(p.value));
 			if (!Array.isArray(patches) || !patches.every(valid)) return REFUSED;
-			const clean = patches.map((p) => ({
-				path: p.path.map(sanitizeWireString),
-				...(p.value !== undefined && { value: sanitizeWireJson(p.value) })
-			}));
+			// Only the fields a patch has: an absent one is no non-JSON value to report.
+			const clean = patches.map(({ path, value, splice, order }) =>
+				sanitizeWireJson({
+					path,
+					...(value !== undefined && { value }),
+					...(splice !== undefined && { splice }),
+					...(order !== undefined && { order })
+				})
+			);
 			const t: DataTarget =
 				target === null
 					? null
@@ -2506,7 +2527,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 						: { block: ref(target.block), atom: ref(target.atom) };
 			if (typeof t === 'string' ? !live(t) : t !== null && atomOf(t.block, t.atom) === undefined)
 				return REFUSED;
-			return plan(t === null ? [] : [typeof t === 'string' ? t : t.block], dataSteps(t, clean));
+			const steps = dataSteps(t, clean);
+			return steps ? plan(t === null ? [] : [typeof t === 'string' ? t : t.block], steps) : REFUSED;
 		};
 
 		/**
@@ -2543,7 +2565,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					: children === undefined
 						? retypeSteps(id, type)
 						: attr(id, TYPE, type)),
-				...(value.data === undefined ? [] : dataSteps(id, replaceData(value.data)))
+				...((value.data !== undefined && dataSteps(id, replaceData(value.data))) || [])
 			];
 			if (content !== undefined) {
 				const length = displayLength(id);
@@ -2718,7 +2740,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			tailOf: (id) => ({ type: kindToCopy(id), data: blockDataOf(id) }),
 			ranksFor,
 			pieceRanks,
-			redata: (id, data) => dataSteps(id, replaceData(data)),
+			redata: (id, data) => dataSteps(id, replaceData(data)) ?? [],
 			deleteBlocks: (ids) => prepare.deleteBlocks(ids)
 		};
 
@@ -2860,6 +2882,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			blockTypeOf: byRef(blockTypeOf),
 			blockDataOf: byRef(blockDataOf),
 			docData,
+			dataItemIds,
 			/**
 			 * U1 — compact per-block attribution (`{createdBy, contributors,
 			 * lastChangedBy}`), or `undefined` for unauthored/system blocks.

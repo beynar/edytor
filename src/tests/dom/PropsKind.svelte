@@ -8,8 +8,11 @@
 	import type { BlockSnippetPayload, Plugin } from '$lib/plugins.js';
 
 	type Card = { title?: string; done?: boolean; due?: string; status?: string; tags?: string[] };
+	type Tasks = { tasks: { title: string; done: boolean }[] };
 
-	export const propsPlugin: Plugin = () => ({ blocks: { card: { snippet: card } } });
+	export const propsPlugin: Plugin = () => ({
+		blocks: { card: { snippet: card }, tasks: { snippet: list } }
+	});
 </script>
 
 {#snippet card({ block, content }: BlockSnippetPayload<Card>)}
@@ -39,5 +42,18 @@
 		<span data-card-tags>{(block.data.tags ?? []).join(',')}</span>
 		<span data-card-doc>{block.handle.edytor.data.title ?? ''}</span>
 	</div>
+	<div>{@render content()}</div>
+{/snippet}
+
+<!-- A list of synced items (0.1.0-next.7): each row binds into its own item, keyed by it. -->
+{#snippet list({ block, content }: BlockSnippetPayload<Tasks>)}
+	<ul contenteditable="false" data-tasks>
+		{#each block.data.tasks as task, i (task)}
+			<li>
+				<input type="checkbox" data-task-done={i} bind:checked={task.done} />
+				<input data-task-title={i} bind:value={task.title} />
+			</li>
+		{/each}
+	</ul>
 	<div>{@render content()}</div>
 {/snippet}

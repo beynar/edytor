@@ -61,6 +61,48 @@ describe('properties through the room', () => {
 		b.destroy();
 	});
 
+	it("two users' concurrent array edits (0.1.0-next.7): both pushes and both item edits stored, relayed and restored", async () => {
+		const room = 'props-arrays';
+		const value = {
+			children: [
+				{
+					...para('p1', 'hello'),
+					data: { tasks: [{ title: 'a' }, { title: 'b' }], tags: ['x'] }
+				}
+			]
+		};
+		const [a, b] = ['ada', 'bob'].map((id) =>
+			E.createDocument({ value, actor: { id }, history: { captureTimeout: 0 } })
+		);
+		const ca = await RawClient.connect(room, a!.doc, { user: 'ada', replica: a!.doc.clientID });
+		const cb = await RawClient.connect(room, b!.doc, { user: 'bob', replica: b!.doc.clientID });
+		await vi.waitFor(() => expect(ca.synced && cb.synced).toBe(true));
+		// In one turn: each one's edits leave before the other's arrive, so they are concurrent.
+		applied(a!.facade.patchData('p1', [{ path: ['tasks', '0', 'done'], value: true }]));
+		applied(b!.facade.patchData('p1', [{ path: ['tasks', '1', 'title'], value: 'B' }]));
+		applied(a!.facade.patchData('p1', [{ path: ['tags'], splice: [1, 0, 'ada'] }]));
+		applied(b!.facade.patchData('p1', [{ path: ['tags'], splice: [1, 0, 'bob'] }]));
+		const tasks = [{ title: 'a', done: true }, { title: 'B' }];
+		const check = (data: Record<string, unknown> | undefined) => {
+			expect(data?.tasks).toEqual(tasks);
+			expect([
+				['x', 'ada', 'bob'],
+				['x', 'bob', 'ada']
+			]).toContainEqual(data?.tags);
+		};
+		for (const facade of [a!.facade, b!.facade])
+			await vi.waitFor(() => check(facade.blockDataOf('p1')));
+		expect(a!.facade.blockDataOf('p1')).toEqual(b!.facade.blockDataOf('p1'));
+		await vi.waitFor(async () => check((await serverJSON(room)).children[0].data));
+		expect([...ca.denied, ...cb.denied]).toEqual([]);
+		ca.close();
+		cb.close();
+		await evictDurableObject(stubOf(room));
+		expect((await serverJSON(room)).children[0].data).toEqual(a!.facade.blockDataOf('p1'));
+		a!.destroy();
+		b!.destroy();
+	});
+
 	it('a read-only socket’s data patch is denied and never stored', async () => {
 		const room = 'props-read-only';
 		const a = seeded('ada');

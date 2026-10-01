@@ -104,7 +104,7 @@ The same snippet works with `createBlockHandlesPlugin({ handle })` in `plugins`.
 
 ## Drag and drop
 
-Drag and drop uses Atlassian's [Pragmatic drag and drop](https://atlassian.design/components/pragmatic-drag-and-drop/about), and its drop zones use the [list item hitbox](https://atlassian.design/components/pragmatic-drag-and-drop/optional-packages/hitbox/about) (`@atlaskit/pragmatic-drag-and-drop-hitbox/list-item`), following its tree guidance: each level of the tree is a list, and an expanded item offers no "after" on its own row. While you drag, each block is a drop target. As in Notion, the hitbox splits the block's own row (not its children) into two halves, and the pointer's horizontal position decides nesting and the level:
+Drag and drop uses Atlassian's [Pragmatic drag and drop](https://atlassian.design/components/pragmatic-drag-and-drop/about) and its [auto-scroll](#auto-scroll), and its drop zones use the [list item hitbox](https://atlassian.design/components/pragmatic-drag-and-drop/optional-packages/hitbox/about) (`@atlaskit/pragmatic-drag-and-drop-hitbox/list-item`), following its tree guidance: each level of the tree is a list, and an expanded item offers no "after" on its own row. While you drag, each block is a drop target. As in Notion, the hitbox splits the block's own row (not its children) into two halves, and the pointer's horizontal position decides nesting and the level:
 
 | Pointer position | Drop |
 | --- | --- |
@@ -170,6 +170,16 @@ Set its color with `--edytor-drop-backdrop-color` on the editor or any ancestor 
 ```
 
 Give it one plain color. Avoid `light-dark()`: CSS minifiers such as lightningcss (Vite's default) rewrite it into variables that exist only beside a `color-scheme` declaration, and without one the backdrop paints nothing.
+
+### Auto-scroll
+
+While you drag a block, the page scrolls when the pointer nears its top or bottom edge, and so does every scrolling element around the editor (the editor too, if it scrolls), the way Atlassian's [auto-scroll package](https://atlassian.design/components/pragmatic-drag-and-drop/optional-packages/auto-scroll/about) (`@atlaskit/pragmatic-drag-and-drop-auto-scroll`) does it:
+
+- **Speed:** the closer the pointer is to the edge, and the longer it stays near it, the faster it scrolls, up to a limit, and at the same speed on 60 Hz and 120 Hz screens.
+- **Which element:** the innermost scrolling element under the pointer scrolls first, then the ones around it, one per direction.
+- **Scope:** it reacts only to this editor's block drags. It is registered when a drag starts and released when it ends, so a page with several editors, or other drag and drop, is unaffected.
+
+There is nothing to configure. The browser's own drag scrolling at the window's very edge still applies on top, as no page can turn it off.
 
 ## Keyboard moves
 

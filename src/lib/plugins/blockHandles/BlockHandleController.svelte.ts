@@ -1,3 +1,4 @@
+import { autoScrollFor } from './autoScroll.js';
 import type { ElementDropTargetEventPayloadMap } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 
 import type { Block } from '$lib/block/block.svelte.js';
@@ -213,6 +214,8 @@ export class BlockHandleController {
 	private readonly registered = new Map<HTMLElement, () => void>();
 	/** The block whose handle is the source of the drag in progress (its handle stays mounted). */
 	dragging = $state<string | null>(null);
+	/** Releases this drag's auto-scroll registrations (window and scrolling ancestors). */
+	private scrolling: (() => void) | null = null;
 	/** The blocks the drag in progress moves (`dragBlocks` when it started). */
 	private group: Block[] = [];
 	/** The selection the drag in progress replaced when it started: its undo step restores it. */
@@ -393,6 +396,8 @@ export class BlockHandleController {
 					});
 				}
 				for (const [node, target] of this.targets) this.registerDropTarget(node, target);
+				this.scrolling?.();
+				this.scrolling = root ? autoScrollFor(root, (data) => data.owner === this.owner) : null;
 				this.backdrop?.remove();
 				this.backdrop = backdrop(element.ownerDocument);
 				this.edytor.overlay.layer?.prepend(this.backdrop);
@@ -412,6 +417,8 @@ export class BlockHandleController {
 					this.clearIndicator();
 					this.backdrop?.remove();
 					this.backdrop = null;
+					this.scrolling?.();
+					this.scrolling = null;
 					for (const off of this.registered.values()) off();
 					this.registered.clear();
 					this.dragging = null;

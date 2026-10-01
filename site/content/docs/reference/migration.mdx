@@ -131,6 +131,11 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.8
+
+- **A block drag scrolls the page and its scrolling containers** as the pointer nears an edge, with Atlassian's auto-scroll package (see [Auto-scroll](/docs/plugins/block-handles#auto-scroll)). It used to rely on the browser's own drag scrolling, which only acts at the window's very edge and never scrolled a container around the editor in Firefox or Safari. Nothing to change in your code.
+- **Dependencies:** `@atlaskit/pragmatic-drag-and-drop` 4.0.0 (was 1.7.10), `@atlaskit/pragmatic-drag-and-drop-hitbox` 3.0.0 (was 1.1.0) and the new `@atlaskit/pragmatic-drag-and-drop-auto-scroll` 3.2.1. If your app uses Pragmatic drag and drop itself, upgrade it to 4.x too, so both share one adapter (drags of one are invisible to the other's monitors).
+
 ### From 0.1.0-next.7
 
 - **A to-do's checkbox shows its click in the view that clicked it.** The box toggled the document (peers saw it) but stayed unchanged where it was clicked. Nothing to change in your code. If a kind of yours renders its own `<input type="checkbox">` (or radio) bound to `block.data`, do not `preventDefault()` its click: the browser reverts a canceled click after its handlers, over the re-render your write made. Write the data, then set the box to what the document holds (`event.currentTarget.checked = Boolean(block.data.done)`), so a refused write shows unchanged.

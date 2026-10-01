@@ -12,7 +12,7 @@ Edytor ships its sync server as a Cloudflare Durable Object: `DocumentRoom` coor
 Create a TypeScript Worker (for example with `pnpm create cloudflare@latest edytor-room`, choosing the "Hello World" Worker template), then add edytor:
 
 ```package-install
-pnpm add https://edytor-docs.beynar.workers.dev/edytor-0.1.0-next.8.tgz
+pnpm add https://edytor-docs.beynar.workers.dev/edytor-0.1.0-next.9.tgz
 ```
 
 That is the pre-release tarball this site hosts; once it is on npm, install `edytor@next` instead (see [Installation](/docs/getting-started#install)). The room only imports `edytor/cloudflare`, which runs in Workers: no Svelte, no DOM.

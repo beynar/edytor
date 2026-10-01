@@ -163,7 +163,9 @@ test.describe('document demo', () => {
 	test('nests a dragged block into the closed toggle row', async ({ page }) => {
 		await page.goto('/');
 		const summary = page.locator('[data-edytor-id="page-toggle"] summary');
-		await summary.scrollIntoViewIfNeeded();
+		// Centered: a target at the window's edge puts the pointer in the drag's
+		// auto-scroll zone, which scrolls the page under it mid-drag.
+		await summary.evaluate((node) => node.scrollIntoView({ block: 'center' }));
 		const source = await handle(page, 'page-quote').boundingBox();
 		const target = await summary.boundingBox();
 		if (!source || !target) throw new Error('Missing toggle drag coordinates');

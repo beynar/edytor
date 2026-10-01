@@ -119,8 +119,14 @@ describe('shortcuts', () => {
 		const { edytor } = await render([], {
 			children: [{ type: 'todo-item', data: { checked: false }, content: [{ text: 'task' }] }]
 		});
-		await click(document.querySelector('[data-edytor-todo-checkbox]')!);
+		const box = document.querySelector<HTMLInputElement>('[data-edytor-todo-checkbox]')!;
+		await click(box);
 		expect(canonicalTree(edytor)[0]).toMatchObject({ data: { checked: true } });
+		// This view shows it too (a canceled click was reverted over the re-render).
+		expect(box.checked).toBe(true);
+		await click(box);
+		expect(canonicalTree(edytor)[0]).toMatchObject({ data: { checked: false } });
+		expect(box.checked).toBe(false);
 	});
 
 	it('Mod+Shift+Down moves the caret block (no selection needed)', async () => {

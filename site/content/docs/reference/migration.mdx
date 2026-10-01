@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.7
+
+- **A to-do's checkbox shows its click in the view that clicked it.** The box toggled the document (peers saw it) but stayed unchanged where it was clicked. Nothing to change in your code. If a kind of yours renders its own `<input type="checkbox">` (or radio) bound to `block.data`, do not `preventDefault()` its click: the browser reverts a canceled click after its handlers, over the re-render your write made. Write the data, then set the box to what the document holds (`event.currentTarget.checked = Boolean(block.data.done)`), so a refused write shows unchanged.
+
 ### From 0.1.0-next.6
 
 - **Arrays in properties merge item by item.** An array used to be one value, replaced as a whole by every write inside it. Each item is now stored on its own with an id and a position, like a `Y.Array`: two people editing different items, or pushing to the same array, both keep their change, and a removed item stays removed even if someone edited inside it meanwhile. Assigning a whole array keeps the items it keeps equal; two views assigning the same array where there was none leave one copy. What one person inserts right after their own item in the same session stays next to it, even across separate writes. Key `{#each}` rows bound into items by the item (`{#each tasks as task (task)}`): an item's object is the same proxy wherever collaborators move it. See [Properties](/docs/concepts/properties#how-concurrent-edits-merge).

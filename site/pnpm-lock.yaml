@@ -2585,8 +2585,8 @@ packages:
     engines: {node: '>= 0.4'}
 
   edytor@file:vendor/edytor.tgz:
-    resolution: {integrity: sha512-0K2M+k6Ug+I4guENC3ZGPbx9wo5rSXtPckLbBJPKFB6QFE8Kxe2pRJuHLt58U+8wFNkF6+eXGx+9yUoijn6uVg==, tarball: file:vendor/edytor.tgz}
-    version: 0.1.0-next.7
+    resolution: {integrity: sha512-WKwC+6NvWPRGluWg9lv75ldoHTbOSFWxZC8mgWW7K3aqwh005IrFm2ZhbsqeNtbYXs4PEUmvr7Sv4BH9GGosEw==, tarball: file:vendor/edytor.tgz}
+    version: 0.1.0-next.8
     engines: {node: '>=22.0.0'}
     peerDependencies:
       svelte: ^5.0.0

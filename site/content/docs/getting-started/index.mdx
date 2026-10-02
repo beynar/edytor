@@ -7,7 +7,7 @@ icon: download
 Edytor ships as one npm package, `edytor`. It contains the `<Edytor>` component, the bundled plugins, the collaborative document API and its CRDT engine, and a Cloudflare Durable Object room.
 
 :::warning[Early development]
-Edytor is a pre-release (`0.1.0-next.10`) and is not ready for production. The API can change between releases without a compatibility layer.
+Edytor is a pre-release (`0.1.0-next.11`) and is not ready for production. The API can change between releases without a compatibility layer.
 
 These docs describe that release. The `edytor@0.0.11` that npm installs without a tag predates it and uses a different API; [Migration](/docs/reference/migration) lists every change. Until the pre-release is published on npm, install the tarball this site hosts (see [Install](#install)).
 :::
@@ -23,7 +23,7 @@ These docs describe that release. The `edytor@0.0.11` that npm installs without 
 The pre-release is not on npm yet. This site hosts its tarball; install it by URL:
 
 ```package-install
-pnpm add https://edytor-docs.beynar.workers.dev/edytor-0.1.0-next.10.tgz
+pnpm add https://edytor-docs.beynar.workers.dev/edytor-0.1.0-next.11.tgz
 ```
 
 The tarball is the package exactly as it will be published (`pnpm pack` of this release). The bytes under a URL never change, and every earlier pre-release URL keeps answering: a new build ships as a new pre-release version with its own URL, so a lockfile's URL and integrity hash stay valid. Once the pre-release is on npm, install it by its tag instead: `pnpm add edytor@next`. Name the tag: a bare `edytor` resolves to the old `0.0.11`.
@@ -47,13 +47,13 @@ cd edytor           # your clone
 git switch arch-v2
 pnpm install
 pnpm package        # builds dist/
-pnpm pack           # writes edytor-0.1.0-next.10.tgz
+pnpm pack           # writes edytor-0.1.0-next.11.tgz
 ```
 
 Then, in your project, install the file:
 
 ```package-install
-pnpm add ../edytor/edytor-0.1.0-next.10.tgz
+pnpm add ../edytor/edytor-0.1.0-next.11.tgz
 ```
 
 ## Verify the install

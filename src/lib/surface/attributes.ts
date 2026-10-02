@@ -12,6 +12,7 @@
  * resolves).
  */
 import type { Edytor } from '../edytor.svelte.js';
+import { replacedMark } from '../session/suggestions.svelte.js';
 
 export type Owned = {
 	/** Attribute → required value ('' for a bare attribute, null when absent). */
@@ -96,7 +97,7 @@ export const ownedOf = (
 				'data-edytor-void': isVoid ? 'true' : null,
 				'data-edytor-selected': selectedBlocks.has(handle) ? 'true' : null,
 				'data-edytor-focused': focusedBlocks.has(handle) ? 'true' : null,
-				'data-edytor-suggestion-replaced': edytor.suggestions.at(block).replaced ? '' : null,
+				'data-edytor-suggestion-replaced': replacedMark(edytor.suggestions.at(block)),
 				contenteditable: isVoid ? 'false' : null
 			},
 			style: isVoid ? { 'user-select': 'none' } : {}

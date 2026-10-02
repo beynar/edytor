@@ -15,8 +15,10 @@ const children = [
 	{ id: 'c', type: 'paragraph', content: [{ text: 'Gamma' }] }
 ];
 
-const open = async (page: Page) => {
-	await page.goto(`/test/dom?scenario=dst&dst=${encodeURIComponent(JSON.stringify({ children }))}`);
+const open = async (page: Page, blocks: unknown[] = children) => {
+	await page.goto(
+		`/test/dom?scenario=dst&dst=${encodeURIComponent(JSON.stringify({ children: blocks }))}`
+	);
 	await waitForEditorReady(page, { requireRuntime: true });
 	await page.addStyleTag({
 		content: readFileSync(new URL('../../src/lib/themes/notion.css', import.meta.url), 'utf8')
@@ -49,6 +51,37 @@ const clickText = async (page: Page, id: string, at: 'end' | 'start' = 'end') =>
 };
 
 test.describe('suggestions', () => {
+	test('Ask AI on an empty line: the preview stands in its place; typing there unfolds it', async ({
+		page
+	}) => {
+		await open(page, [children[0], { id: 'e', type: 'paragraph', content: [] }, children[2]]);
+		const line = page.locator('[data-edytor-id="e"][data-edytor-block]');
+		const before = (await line.boundingBox())!;
+		await page.mouse.click(before.x + 4, before.y + before.height / 2);
+		await expect
+			.poll(() => inPage(page, (edytor) => edytor.selection.state.startBlock?.id))
+			.toBe('e');
+		await inPage(page, (edytor) =>
+			edytor.suggestions.add({ replace: ['e'] }, [
+				{ type: 'paragraph', content: [{ text: 'Drafted' }] }
+			])
+		);
+		const preview = page.locator('[data-edytor-suggestion]');
+		await expect(preview).toBeVisible();
+		await expect(line).toHaveAttribute('data-edytor-suggestion-replaced', 'empty');
+		expect((await line.boundingBox())?.height ?? 0).toBe(0);
+		// The preview's text sits about where the empty line was (its tint pads it).
+		const drafted = (await preview.getByText('Drafted').boundingBox())!;
+		expect(Math.abs(drafted.y - before.y)).toBeLessThan(16);
+		// The caret stayed in the folded line: typing there unfolds it, struck through.
+		await page.keyboard.type('x');
+		await expect(line).toHaveAttribute('data-edytor-suggestion-replaced', '');
+		expect((await line.boundingBox())!.height).toBeGreaterThan(10);
+		await page.keyboard.press(`${modKey}+Enter`);
+		await expect(preview).toHaveCount(0);
+		expect(await texts(page)).toEqual(['Alpha', 'Drafted', 'Gamma']);
+	});
+
 	test('the preview is visible and non-editable; a click in it places no caret there', async ({
 		page
 	}) => {

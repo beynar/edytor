@@ -137,6 +137,38 @@ describe('positions — each one previews at its place', () => {
 		expect(group(editor, s.id)!.previousElementSibling).toBe(blockEl(editor, 'b'));
 	});
 
+	it('a replace of a line that holds nothing previews in its place (Ask AI on an empty line)', async () => {
+		const value = VALUE();
+		value.children!.splice(2, 0, { id: 'e', type: 'paragraph', content: [] });
+		const { edytor, editor } = await renderDomEdytor(
+			<root>
+				<paragraph>x</paragraph>
+			</root>,
+			{ plugins: PLUGINS, value, autoSelectFixture: false }
+		);
+		const s = edytor.suggestions.add({ replace: ['e'] }, 'Fresh');
+		await flushDomUpdates();
+		// The empty line stays mounted (it holds the caret) but folds away: the
+		// preview stands where it was.
+		expect(edytor.suggestions.at('e').inPlace).toBe(true);
+		expect(blockEl(editor, 'e')!.getAttribute('data-edytor-suggestion-replaced')).toBe('empty');
+		expect(group(editor, s.id)!.previousElementSibling).toBe(blockEl(editor, 'e'));
+		// A line with text is shown struck through instead.
+		edytor.suggestions.add({ replace: ['b'] }, 'Other');
+		await flushDomUpdates();
+		expect(edytor.suggestions.at('b').inPlace).toBe(false);
+		expect(blockEl(editor, 'b')!.getAttribute('data-edytor-suggestion-replaced')).toBe('');
+		// Accepting puts the content where the empty line was.
+		s.accept();
+		await flushDomUpdates();
+		expect(shape(edytor)).toEqual([
+			'paragraph:Alpha{paragraph:Kid}',
+			'paragraph:Beta',
+			'paragraph:Fresh',
+			'bulleted-list-item:Item'
+		]);
+	});
+
 	it('a position the document cannot hold is refused at creation', async () => {
 		const { edytor } = await mount();
 		expect(() => edytor.suggestions.add({ after: 'ghost' }, 'x')).toThrow();

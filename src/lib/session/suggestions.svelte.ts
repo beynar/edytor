@@ -60,13 +60,20 @@ export type SuggestionsAt = {
 	readonly end: readonly Suggestion[];
 	/** A `replace` removes this block. */
 	readonly replaced: boolean;
+	/** It removes only blocks that hold nothing (an empty line): the preview shows in their place. */
+	readonly inPlace: boolean;
 };
+/** The block's `data-edytor-suggestion-replaced` (`empty`: folded, the preview stands in its place). */
+export const replacedMark = ({ replaced, inPlace }: SuggestionsAt) =>
+	replaced ? (inPlace ? 'empty' : '') : null;
+
 const NONE: SuggestionsAt = Object.freeze({
 	before: [],
 	after: [],
 	inside: [],
 	end: [],
-	replaced: false
+	replaced: false,
+	inPlace: false
 });
 
 export class Suggestion {
@@ -234,14 +241,23 @@ export class Suggestions {
 	/** Where suggestions show, by block (reactive; follows the document while any is listed). */
 	#places = $derived.by(() => {
 		type Place = {
-			-readonly [K in keyof SuggestionsAt]: K extends 'replaced' ? boolean : Suggestion[];
+			-readonly [K in keyof SuggestionsAt]: K extends 'replaced' | 'inPlace'
+				? boolean
+				: Suggestion[];
 		};
 		const places = new Map<BlockId, Place>();
 		if (!this.#list.length) return places;
 		void this.edytor.valueRevision;
 		const at = (id: BlockId) => {
 			if (!places.has(id))
-				places.set(id, { before: [], after: [], inside: [], end: [], replaced: false });
+				places.set(id, {
+					before: [],
+					after: [],
+					inside: [],
+					end: [],
+					replaced: false,
+					inPlace: false
+				});
 			return places.get(id)!;
 		};
 		for (const s of this.#list) {
@@ -255,7 +271,10 @@ export class Suggestions {
 				if (s.content.length > 1) at(where.end).after.push(s);
 			} else {
 				const ids = this.#blocks(where);
-				if (Array.isArray(where.replace)) for (const id of ids) at(id).replaced = true;
+				if (Array.isArray(where.replace)) {
+					const inPlace = ids.every((id) => this.edytor.idToBlock.get(id)?.isEmpty);
+					for (const id of ids) Object.assign(at(id), { replaced: true, inPlace });
+				}
 				const last = ids.toSorted(this.edytor.facade.compare).at(-1);
 				if (last) at(last).after.push(s);
 			}

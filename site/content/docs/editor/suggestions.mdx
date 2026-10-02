@@ -38,7 +38,7 @@ A suggestion is content a view proposes at a position: an AI draft, a completion
 | `{ before: id }` | As the previous siblings of block `id` | Places the blocks there |
 | `{ inside: id }` | As the last children of block `id` | Places the blocks there. A block that holds no children (a void, a code line) throws at `add` |
 | `{ end: id }` | As ghost text after block `id`'s text: the first block's content (more blocks show after the block) | Inserts that content at the end of the text, as typing would; more blocks follow |
-| `{ replace: [ids] }` | The blocks are marked as removed (`data-edytor-suggestion-replaced`) and the content shows after the last of them | Deletes the blocks and places the content in the first one's slot, in one plan. Their children that are not replaced stay, after the content |
+| `{ replace: [ids] }` | The blocks are marked as removed (`data-edytor-suggestion-replaced`) and the content shows after the last of them. Blocks that hold nothing (an empty line, as when the user asks AI on one) fold away (`data-edytor-suggestion-replaced="empty"`) and the content shows in their place; typing in the folded line unfolds it | Deletes the blocks and places the content in the first one's slot, in one plan. Their children that are not replaced stay, after the content |
 | `{ replace: 'selection' }` | Resolved when added (below) | |
 
 `replace: 'selection'` reads the selection once, at `add`:
@@ -133,7 +133,7 @@ Once accepted, the suggestion is gone from the list. Accepting while it streams 
     latest: { type: "Suggestion | undefined", description: "The newest one, which the keys act on." },
     "get(id)": { type: "Suggestion | undefined", description: "One by id." },
     "clear()": { type: "void", description: "Discard every suggestion." },
-    "at(blockId)": { type: "SuggestionsAt", description: "What shows at a block: { before, after, inside, end, replaced }. Reactive." },
+    "at(blockId)": { type: "SuggestionsAt", description: "What shows at a block: { before, after, inside, end, replaced, inPlace }. inPlace: the replace removes only blocks that hold nothing, so its content shows in their place. Reactive." },
   }}
 />
 
@@ -205,7 +205,7 @@ The kinds render their blocks as in the document, images included, with `data-ed
 | Selector | What |
 | --- | --- |
 | `[data-edytor-suggestion]`, `[data-status]` | A block suggestion's group, by id, and its status |
-| `[data-edytor-suggestion-replaced]` | A block a `replace` removes |
+| `[data-edytor-suggestion-replaced]` | A block a `replace` removes (`="empty"`: one that holds nothing, folded by the core so the content takes its place) |
 | `[data-edytor-suggestion-range]` | A rectangle over the text a range `replace` removes (overlay) |
 | `[data-edytor-text-suggestion]` | An `end` suggestion's ghost text |
 | `[data-edytor-suggestion-bar]` | The default bar (overlay) |

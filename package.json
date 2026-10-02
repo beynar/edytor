@@ -1,6 +1,6 @@
 {
 	"name": "edytor",
-	"version": "0.1.0-next.10",
+	"version": "0.1.0-next.11",
 	"scripts": {
 		"dev": "vite dev",
 		"build:app": "vite build",

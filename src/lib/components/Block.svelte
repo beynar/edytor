@@ -4,6 +4,7 @@
 	import { voidChrome, type Block as BlockHandle } from '../block/block.svelte.js';
 	import type { BlockDefinition, BlockView } from '../plugins.js';
 	import type { PreviewCell } from '../surface/cells.js';
+	import { replacedMark } from '../session/suggestions.svelte.js';
 
 	const reported = new WeakMap<Edytor, Set<string>>();
 
@@ -116,7 +117,7 @@
 				block.handle && edytor.selection.selectedBlocks.has(block.handle) ? 'true' : undefined,
 			'data-edytor-focused':
 				block.handle && edytor.selection.focusedBlocks.has(block.handle) ? 'true' : undefined,
-			'data-edytor-suggestion-replaced': shown?.replaced ? '' : undefined,
+			'data-edytor-suggestion-replaced': shown ? (replacedMark(shown) ?? undefined) : undefined,
 			contenteditable: definition?.void ? ('false' as const) : undefined
 		}
 	);
@@ -216,5 +217,19 @@
 	 */
 	:global([data-edytor-children]) {
 		padding-inline-start: var(--edytor-nest-indent, 24px);
+	}
+	/*
+	 * An empty line a suggestion replaces (Ask AI on an empty line): the
+	 * preview right after it stands in its place. It stays mounted, folded,
+	 * so the caret it holds stays valid; typing in it unfolds it.
+	 */
+	:global([data-edytor-suggestion-replaced='empty']) {
+		/* Over any theme's block spacing. */
+		height: 0 !important;
+		min-height: 0 !important;
+		margin-block: 0 !important;
+		padding-block: 0 !important;
+		border-block-width: 0 !important;
+		overflow: hidden;
 	}
 </style>

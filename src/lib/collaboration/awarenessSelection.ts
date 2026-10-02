@@ -79,9 +79,9 @@ export const publishPresence = (
 	awareness: AwarenessLike,
 	key: string,
 	payload: PresenceSelection | null
-) => {
+): boolean => {
 	const local = awareness.getLocalState();
-	if (!local) return;
+	if (!local) return false;
 	const { selections, ...state } = local;
 	const { [key]: previous, ...others } = isRecord(selections)
 		? (selections as Record<string, EdytorAwarenessViewSelection>)
@@ -91,11 +91,89 @@ export const publishPresence = (
 			? previous === undefined
 			: previous !== undefined && jsonEquals({ ...previous, t: undefined }, payload)
 	) {
-		return;
+		return false;
 	}
 	const next = payload === null ? others : { ...others, [key]: { ...payload, t: ++publishSeq } };
 	awareness.setLocalState(Object.keys(next).length > 0 ? { ...state, selections: next } : state);
+	return true;
 };
+
+/** What a view shares of its selection: the selection itself, the block holding its focus, or nothing. */
+export type PresenceShare = 'caret' | 'block' | 'none';
+
+export type PresenceOptions = {
+	/** `'caret'` (default): the selection; `'block'`: the focused block only, so moving inside it publishes nothing; `'none'`: nothing. */
+	share?: PresenceShare;
+	/** Minimum ms between two presence writes (default `0`). The first goes at once; later ones collapse into one write of the newest at the window's end. */
+	throttle?: number;
+};
+
+/**
+ * One view's presence writer (R1): the only writer of its key, under the
+ * view's `share` and `throttle`. `select()` hands it the full payload; the
+ * view's teardown calls `clear()`.
+ */
+export class PresenceWriter {
+	throttle: number;
+	#share: PresenceShare;
+	#last = Number.NEGATIVE_INFINITY;
+	#timer: ReturnType<typeof setTimeout> | undefined;
+	/** The newest payload a throttled window holds back (`undefined`: none). */
+	#held: PresenceSelection | null | undefined;
+	/** The last payload and focused block handed in, kept so a share change republishes at once. */
+	#latest: [PresenceSelection | null, string | null] = [null, null];
+
+	constructor(
+		private readonly awareness: AwarenessLike,
+		private readonly key: string,
+		{ share = 'caret', throttle = 0 }: PresenceOptions = {}
+	) {
+		this.#share = share;
+		this.throttle = throttle;
+	}
+
+	get share(): PresenceShare {
+		return this.#share;
+	}
+	set share(share: PresenceShare) {
+		if (share === this.#share) return;
+		this.#share = share;
+		this.write(...this.#latest);
+	}
+
+	/** Publish `payload` (the full selection; `focus`: the block holding its focus) as this view shares it, within the throttle. */
+	write(payload: PresenceSelection | null, focus: string | null = null) {
+		this.#latest = [payload, focus];
+		const shared = this.#shared(payload, focus);
+		const wait = this.#last + this.throttle - Date.now();
+		if (this.#timer === undefined && wait <= 0) return this.#publish(shared);
+		this.#held = shared;
+		// Named rule (presence throttle): the window's one trailing write.
+		this.#timer ??= setTimeout(() => {
+			const held = this.#held;
+			[this.#timer, this.#held] = [undefined, undefined];
+			if (held !== undefined) this.#publish(held);
+		}, wait);
+	}
+
+	/** Remove this view's entry and drop a held write (the view's teardown). */
+	clear() {
+		clearTimeout(this.#timer);
+		[this.#timer, this.#held, this.#latest] = [undefined, undefined, [null, null]];
+		publishPresence(this.awareness, this.key, null);
+	}
+
+	#publish(payload: PresenceSelection | null) {
+		if (publishPresence(this.awareness, this.key, payload)) this.#last = Date.now();
+	}
+
+	#shared(payload: PresenceSelection | null, focus: string | null): PresenceSelection | null {
+		if (this.#share === 'none' || !payload) return null;
+		if (this.#share === 'caret' || 'blocks' in payload) return payload;
+		if ('atom' in payload) return { blocks: [payload.block] };
+		return focus ? { blocks: [focus] } : null;
+	}
+}
 
 /**
  * Validate + coerce one `selections` entry as a text selection. `start`/
@@ -173,22 +251,45 @@ const resolveAnchor = (edytor: Edytor, value: unknown): PresencePoint | null => 
 	}
 };
 
+/** A published block set (`{ blocks }`: a block selection, or a view sharing blocks only). */
+const normalizeAwarenessBlocks = (value: unknown): string[] | null =>
+	isRecord(value) &&
+	Array.isArray(value.blocks) &&
+	value.blocks.length > 0 &&
+	value.blocks.every((id) => typeof id === 'string')
+		? (value.blocks as string[])
+		: null;
+
 /**
- * A peer's caret in this view: the freshest valid text entry of its
- * awareness state with both anchors resolved, or `null` — an anchor that
- * does not resolve paints nothing.
+ * A peer's presence in this view, from the freshest valid entry of its
+ * awareness state (text or block set, highest `t`): a caret with both
+ * anchors resolved, or the live blocks of a block set; `null` when nothing
+ * resolves (paints nothing).
  */
 export const resolvePeerSelection = (
 	edytor: Edytor,
 	state: unknown
-): { start: PresencePoint; end: PresencePoint; collapsed: boolean; reversed: boolean } | null => {
-	const selection =
-		isRecord(state) && isRecord(state.selections)
-			? freshestPublishedSelection(state.selections)
-			: null;
-	const start = selection && resolveAnchor(edytor, selection.start);
+):
+	| { start: PresencePoint; end: PresencePoint; collapsed: boolean; reversed: boolean }
+	| { blocks: string[] }
+	| null => {
+	let selection: EdytorAwarenessSelection | null = null;
+	let blocks: string[] | null = null;
+	let seq = Number.NEGATIVE_INFINITY;
+	const entries = isRecord(state) && isRecord(state.selections) ? state.selections : {};
+	for (const entry of Object.values(entries)) {
+		const text = normalizeAwarenessSelection(entry);
+		const set = text ? null : normalizeAwarenessBlocks(entry);
+		const t = isRecord(entry) && typeof entry.t === 'number' ? entry.t : 0;
+		if ((text || set) && t > seq) [selection, blocks, seq] = [text, set, t];
+	}
+	if (blocks) {
+		const live = blocks.filter((id) => edytor.facade.isVisibleBlock(id));
+		return live.length ? { blocks: live } : null;
+	}
+	if (!selection) return null;
+	const { collapsed, reversed } = selection;
+	const start = resolveAnchor(edytor, selection.start);
 	const end = start && resolveAnchor(edytor, selection.end);
-	return selection && start && end
-		? { start, end, collapsed: selection.collapsed, reversed: selection.reversed }
-		: null;
+	return start && end ? { start, end, collapsed, reversed } : null;
 };

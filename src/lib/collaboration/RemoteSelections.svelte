@@ -47,6 +47,7 @@
 		{/each}
 		<span
 			data-edytor-remote-cursor
+			data-edytor-remote-block={selection.block ? '' : undefined}
 			data-client-id={selection.clientId}
 			style={cursorStyle(selection.cursor, selection.color)}
 		>

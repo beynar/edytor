@@ -1,6 +1,9 @@
 export {
 	freshestPublishedSelection,
 	publishPresence,
+	PresenceWriter,
+	type PresenceOptions,
+	type PresenceShare,
 	type EdytorAwarenessSelection,
 	type EdytorAwarenessState,
 	type EdytorAwarenessUser,

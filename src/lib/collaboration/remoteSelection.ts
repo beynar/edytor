@@ -21,6 +21,8 @@ export type RenderedRemoteSelection = {
 	label: string | null;
 	cursor: RemoteSelectionRect;
 	rects: RemoteSelectionRect[];
+	/** A block presence: `cursor` is a bar beside the blocks, not a caret. */
+	block?: true;
 };
 
 type DomPoint = {
@@ -141,7 +143,26 @@ export const rangeRects = (
 	return from && to && edytor.node ? getSelectionRects(from, to, origin, edytor.node) : [];
 };
 
-/** The peers' carets and ranges, relative to the overlay's `origin` (R11, F-T8). */
+/** A bar beside `ids`' own rows (a block's children excluded), relative to `origin`. */
+const blockBar = (edytor: Edytor, ids: string[], origin: DOMRect): RemoteSelectionRect | null => {
+	let [top, bottom, left] = [Infinity, -Infinity, Infinity];
+	for (const id of ids) {
+		const node = edytor.idToBlock.get(id)?.node;
+		if (!node) continue;
+		const rect = node.getBoundingClientRect();
+		const children = node.querySelector(':scope > [data-edytor-children]');
+		const end = children ? children.getBoundingClientRect().top : rect.bottom;
+		[top, bottom, left] = [
+			Math.min(top, rect.top),
+			Math.max(bottom, end),
+			Math.min(left, rect.left)
+		];
+	}
+	if (top === Infinity) return null;
+	return toRemoteRect({ left: left - 6, top, width: 2, height: bottom - top }, origin);
+};
+
+/** The peers' carets, ranges and block bars, relative to the overlay's `origin` (R11, F-T8). */
 export const getRenderedRemoteSelections = (
 	edytor: Edytor,
 	origin: DOMRect
@@ -165,12 +186,18 @@ export const getRenderedRemoteSelections = (
 		user: EdytorAwarenessUser;
 	};
 	const candidates: ResolvedCandidate[] = [];
+	const bars: { clientId: number; ids: string[]; user: EdytorAwarenessUser }[] = [];
 
 	for (const [clientId, state] of edytor.awareness.getStates()) {
 		if (clientId === edytor.doc.clientID) {
 			continue;
 		}
-		const selection = resolvePeerSelection(edytor, state);
+		const resolved = resolvePeerSelection(edytor, state);
+		if (resolved && 'blocks' in resolved) {
+			bars.push({ clientId, ids: resolved.blocks, user: getUser(state) });
+			continue;
+		}
+		const selection = resolved;
 		const startPoint = selection && findDomPoint(selection.start);
 		const endPoint = selection && findDomPoint(selection.end);
 		if (!selection || !startPoint || !endPoint) {
@@ -180,18 +207,35 @@ export const getRenderedRemoteSelections = (
 		candidates.push({ clientId, collapsed, reversed, startPoint, endPoint, user: getUser(state) });
 	}
 
-	if (candidates.length === 0) {
+	if (candidates.length === 0 && bars.length === 0) {
 		return [];
 	}
 
-	return candidates.map(({ clientId, collapsed, reversed, startPoint, endPoint, user }) => {
-		const cursorPoint = reversed ? startPoint : endPoint;
-		return {
-			clientId,
-			color: normalizeColor(user.color),
-			label: user.name ?? null,
-			cursor: getCaretRect(cursorPoint, origin, editor),
-			rects: collapsed ? [] : getSelectionRects(startPoint, endPoint, origin, editor)
-		};
+	const blocks = bars.flatMap(({ clientId, ids, user }): RenderedRemoteSelection[] => {
+		const cursor = blockBar(edytor, ids, origin);
+		return cursor
+			? [
+					{
+						clientId,
+						color: normalizeColor(user.color),
+						label: user.name ?? null,
+						cursor,
+						rects: [],
+						block: true
+					}
+				]
+			: [];
 	});
+	return blocks.concat(
+		candidates.map(({ clientId, collapsed, reversed, startPoint, endPoint, user }) => {
+			const cursorPoint = reversed ? startPoint : endPoint;
+			return {
+				clientId,
+				color: normalizeColor(user.color),
+				label: user.name ?? null,
+				cursor: getCaretRect(cursorPoint, origin, editor),
+				rects: collapsed ? [] : getSelectionRects(startPoint, endPoint, origin, editor)
+			};
+		})
+	);
 };

@@ -76,5 +76,8 @@ export {
 	clearDocument,
 	storeState,
 	IndexeddbPersistence,
-	WebsocketProvider
+	WebsocketProvider,
+	PresenceWriter,
+	type PresenceOptions,
+	type PresenceShare
 } from './collaboration/index.js';

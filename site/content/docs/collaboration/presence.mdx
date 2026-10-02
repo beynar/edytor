@@ -39,7 +39,7 @@ Every mounted `<Edytor>` view draws the other clients' selections, with no setup
 
 Carets are bound to positions in the CRDT, not to pixel offsets, so they follow the text as anyone edits it. A caret whose anchor cannot be resolved (its text was deleted, for example) is not drawn.
 
-Only text selections are drawn. Block selections and selected inline blocks are published, so you can read them, but the view draws no caret for them. When one client has several views of the document open, peers see the caret of the view whose selection changed last.
+A client that shares blocks (a block selection, or a view with `presence={{ share: 'block' }}`, below) is drawn as a bar in its color beside the blocks' own rows, with its name label, instead of a caret. A selected inline block is published but not drawn. When one client has several views of the document open, peers see the view whose selection changed last.
 
 The carets live in the editor's overlay layer, next to the editable host, so they never enter the document or the editable DOM:
 
@@ -49,10 +49,29 @@ The carets live in the editor's overlay layer, next to the editable host, so the
   <span data-edytor-remote-cursor data-client-id="1234">
     <span data-edytor-remote-cursor-label>Ada</span>
   </span>
+  <!-- a client sharing blocks: the bar beside them -->
+  <span data-edytor-remote-cursor data-edytor-remote-block data-client-id="5678">
+    <span data-edytor-remote-cursor-label>Linus</span>
+  </span>
 </div>
 ```
 
 Target these attributes from your stylesheet to restyle them. Positions and colors are set inline.
+
+## Sharing less at scale
+
+Every caret move is a presence write, and the room relays each one to every peer: with many people in one document, that traffic grows with the square of the crowd. The `presence` prop trims it per view:
+
+```svelte
+<Edytor {room} {server} presence={{ share: 'block', throttle: 250 }} />
+```
+
+| Option | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `share` | `'caret'`, `'block'`, `'none'` | `'caret'` | `'caret'` publishes the selection. `'block'` publishes only the block holding the selection's focus (`{ blocks: [id] }`; a block selection publishes its blocks): moving or typing inside a block publishes nothing, and peers see a bar beside the block instead of a caret. `'none'` publishes nothing and removes the view's entry. |
+| `throttle` | milliseconds | `0` | The least time between two presence writes of this view. The first write goes at once; later ones within the window collapse into one write of the newest selection at its end, so peers always end on where the user is. |
+
+The prop follows changes, so an app can narrow presence as a room fills up. Outside the component, set `edytor.presence.share` and `edytor.presence.throttle`, or pass `presence` to `new Edytor({ presence })`. Destroying the view drops a write still waiting and removes its entry. The `user` and `actor` fields are not affected: who is online stays visible with `'none'`.
 
 ## Who is online
 

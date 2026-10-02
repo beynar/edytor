@@ -26,7 +26,6 @@ import { Block } from '../block/block.svelte.js';
 import { SvelteSet } from 'svelte/reactivity';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import type { EdgeSide, PendingMarks } from '$lib/session/editing/text.js';
-import { publishPresence } from '$lib/collaboration/awarenessSelection.js';
 import {
 	isNativeFormControl,
 	isNativeInteractiveEvent,
@@ -424,7 +423,8 @@ export class EdytorSelection {
 		if (!changed) return;
 		// A dead view never publishes: its entry went with its teardown.
 		if (!this.edytor.destroyed) {
-			publishPresence(this.edytor.awareness, this.edytor.presenceKey, serialize(value, projection));
+			const focus = projection.isReversed ? projection.start : projection.end;
+			this.edytor.presence.write(serialize(value, projection), focus?.block ?? null);
 		}
 		this.edytorOnSelectionChange?.(this);
 		this.edytor.plugins.forEach((plugin) => {

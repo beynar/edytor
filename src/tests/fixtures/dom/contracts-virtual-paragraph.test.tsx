@@ -196,9 +196,10 @@ describe('doc.empty.virtual — an emptied document shows a virtual paragraph', 
 		const { a, b } = await emptied();
 		const state = a.edytor.document.awareness.getLocalState();
 		const peer = resolvePeerSelection(b.edytor, state);
-		expect(peer?.collapsed).toBe(true);
-		expect(peer?.start.text.parent.id).toBe(shown(b)[0]![0]);
-		expect(peer?.start.offset).toBe(0);
+		if (!peer || 'blocks' in peer) throw new Error('expected a caret');
+		expect(peer.collapsed).toBe(true);
+		expect(peer.start.text.parent.id).toBe(shown(b)[0]![0]);
+		expect(peer.start.offset).toBe(0);
 	});
 
 	it('control: a fresh document still seeds its first paragraph (a real block)', async () => {

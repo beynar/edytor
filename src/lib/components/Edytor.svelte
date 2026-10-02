@@ -12,6 +12,7 @@
 	} from '../crdt/index.js';
 	import { CLOSE, validRoomId } from '../crdt/providers/room.js';
 	import type { EdytorSync, WebsocketSyncOptions } from '$lib/collaboration/index.js';
+	import type { PresenceOptions } from '$lib/collaboration/awarenessSelection.js';
 	import { createIndexeddbSync, createWebsocketSync } from '$lib/collaboration/providers.js';
 	export { EdytorClass as EdytorContext, useEdytor };
 	import type { Placeholder, Plugin } from '$lib/plugins.js';
@@ -90,6 +91,11 @@
 		awareness?: Awareness;
 		/** The local author (id, name, color) of the document this view owns: history lineage and presence. */
 		actor?: DocumentActor;
+		/**
+		 * What this view shares of its selection with peers (`share`: `'caret'`,
+		 * `'block'` or `'none'`) and how often (`throttle`, ms). Follows changes.
+		 */
+		presence?: PresenceOptions;
 		readonly?: boolean;
 		/** Chords (`mod+s`, `shift+alt+enter`) the view binds before plugins and built-ins. */
 		hotKeys?: Partial<Record<HotKeyCombination, HotKey>>;
@@ -163,6 +169,7 @@
 		onSyncRefused,
 		awareness,
 		actor,
+		presence,
 		onChange,
 		onSelectionChange,
 		placeholder,
@@ -264,6 +271,10 @@
 
 	$effect(() => {
 		edytor.readonly = readonly;
+	});
+	$effect(() => {
+		edytor.presence.throttle = presence?.throttle ?? 0;
+		edytor.presence.share = presence?.share ?? 'caret';
 	});
 	// A readonly change shows or hides chrome: the overlay repositions it.
 	$effect(() => {

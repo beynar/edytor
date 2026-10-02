@@ -52,7 +52,11 @@ import {
 	type YUndoManager
 } from '$lib/crdt/index.js';
 import { whenDocumentReady } from '$lib/collaboration/documentSync.js';
-import { mintPresenceKey, publishPresence } from '$lib/collaboration/awarenessSelection.js';
+import {
+	mintPresenceKey,
+	PresenceWriter,
+	type PresenceOptions
+} from '$lib/collaboration/awarenessSelection.js';
 import { batch } from './block/block.utils.js';
 import {
 	canMoveBlocks as canMoveBlocksRelative,
@@ -129,6 +133,8 @@ export type EdytorOptions = {
 	awareness?: Awareness;
 	/** The local author of a view-owned document (with `document`, set it there). */
 	actor?: DocumentActor;
+	/** What this view shares of its selection with peers, and how often (`edytor.presence`). */
+	presence?: PresenceOptions;
 	sync?: boolean;
 	value?: JSONDoc;
 	onChange?: (value: JSONBlock) => void;
@@ -380,6 +386,7 @@ export class Edytor {
 		doc,
 		awareness,
 		actor,
+		presence,
 		sync,
 		value,
 		onSelectionChange,
@@ -402,6 +409,7 @@ export class Edytor {
 		}
 		this.readonly = readonly || false;
 		this.onChange = onChange;
+		this.presence = new PresenceWriter(this.awareness, this.presenceKey, presence);
 
 		// From here on a throw must unwind what this view already claimed
 		// on the shared document: the enrolled history origin and the
@@ -982,11 +990,13 @@ export class Edytor {
 	destroyed = false;
 	/** The key of this view's presence entry — minted here, written only by this view (R1). */
 	readonly presenceKey = mintPresenceKey();
+	/** This view's presence writer: what it shares (`share`) and how often (`throttle`, ms); both settable. */
+	presence!: PresenceWriter;
 	destroy = () => {
 		if (this.destroyed) return;
 		this.destroyed = true;
 		// This view's presence entry — its own key, cleared by its own teardown (R1).
-		publishPresence(this.awareness, this.presenceKey, null);
+		this.presence.clear();
 
 		// A pending readiness binding must not resurrect a dead view.
 		this._readinessRelease?.();

@@ -427,7 +427,7 @@
 	background: var(--notion-page, #fff);
 }
 
-/* ── Suggestions (AI): a tinted preview with a left accent ───────────── */
+/* ── Suggestions (AI): a tinted preview ──────────────────────────────── */
 .edytor-notion [data-edytor-suggestion] {
 	position: relative;
 	/* Room for the suggestion bar the plugin shows under it. */
@@ -435,7 +435,6 @@
 	padding: 2px 4px 2px 10px;
 	border-radius: 6px;
 	background: var(--edytor-suggestion-background);
-	box-shadow: inset 2px 0 0 var(--edytor-suggestion-accent);
 }
 .edytor-notion [data-edytor-suggestion][data-status='streaming'] {
 	animation: edytor-suggestion-pulse 1.4s ease-in-out infinite;

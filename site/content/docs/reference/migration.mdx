@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.11
+
+- **The Notion theme's suggestion preview has no left accent** any more: a tinted background only. `--edytor-suggestion-accent` now colors only the bar's label.
+
 ### From 0.1.0-next.10
 
 - **A suggestion that replaces an empty line shows in its place.** A `replace` whose blocks all hold nothing (Ask AI on an empty line) folds them (`data-edytor-suggestion-replaced="empty"`, a core style) and the content shows where they were, instead of below an empty, struck-through row. `suggestions.at(id)` gains `inPlace`. Typing in the folded line unfolds it.

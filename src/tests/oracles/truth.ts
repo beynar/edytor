@@ -29,6 +29,8 @@ export const truthOf = (edytor: any): string[] => {
 	for (const child of Array.from(root.childNodes)) {
 		if (isAnchor(child)) continue;
 		if (child instanceof Element && child.hasAttribute('data-edytor-render-anchor')) continue;
+		// A suggestion's preview is view-only content, not a block (`session/suggestions`).
+		if (child instanceof Element && child.hasAttribute('data-edytor-suggestion')) continue;
 		if (child instanceof Element && child.getAttribute('data-edytor-block') === 'true') {
 			shown.push(child.getAttribute('data-edytor-id') ?? '?');
 			continue;
@@ -53,7 +55,7 @@ export const truthOf = (edytor: any): string[] => {
 			).filter(
 				(part) =>
 					part.closest('[data-edytor-block="true"]') === element &&
-					!part.closest('[data-edytor-text-suggestion]') &&
+					!part.closest('[data-edytor-text-suggestion], [data-edytor-suggestion]') &&
 					!part.parentElement?.closest('[data-edytor-inline-block]')
 			);
 			const want = strip(

@@ -17,6 +17,7 @@ const SCALE = 0.8;
 const VIEW_ONLY = [
 	'[data-edytor-render-anchor]',
 	'[data-edytor-text-suggestion]',
+	'[data-edytor-suggestion]',
 	'[data-edytor-remote-cursor]',
 	'[data-edytor-remote-selection]',
 	'[data-edytor-remote-presence]',
@@ -46,6 +47,7 @@ const LIVE = [
 	'data-edytor-void',
 	'data-edytor-selected',
 	'data-edytor-focused',
+	'data-edytor-suggestion-replaced',
 	'data-edytor-block-drop-position',
 	'data-edytor-composition-rest',
 	'data-edytor-trailing-newline'

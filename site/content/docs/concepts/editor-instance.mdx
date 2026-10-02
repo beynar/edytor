@@ -101,7 +101,7 @@ Inside a command, handle getters see the command's own earlier writes, so a norm
 
 Use these in templates, `$derived` and `$effect`:
 
-- **Block snippets** receive a view object, `block`, whose `type`, `data`, `selected` and `focused` are reactive. `block.handle` is the non-reactive handle for commands.
+- **Block snippets** receive a view object, `block`, whose `type`, `data`, `selected` and `focused` are reactive. `block.handle` is the non-reactive handle for commands (`undefined` in a suggestion's preview).
 
   ```svelte
   {#snippet callout({ block, content })}

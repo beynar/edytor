@@ -145,14 +145,14 @@ A block snippet receives `{ block, content, children }`:
     "block.data": { type: "object", description: "The block's data, a live proxy: reads are reactive, and an assignment (block.data.done = true, bind:value={block.data.title}) is a patchData command. See Properties." },
     "block.selected": { type: "boolean", description: "Part of a block selection. Reactive." },
     "block.focused": { type: "boolean", description: "Holds the caret or part of a text selection, and is not block-selected. Reactive." },
-    "block.handle": { type: "Block", description: "The block's handle, for commands and document reads. Not reactive." },
+    "block.handle": { type: "Block | undefined", description: "The block's handle, for commands and document reads. Not reactive. undefined in a suggestion's preview, which is no block of the document." },
     "block.void": { type: "action", description: "use:block.void marks an element as non-editable chrome." },
     content: { type: "Snippet", description: "Renders the block's inline content: text, marks and inline atoms." },
     children: { type: "Snippet | null", description: "Renders the nested blocks, or null when there are none." },
   }}
 />
 
-Read values from `block` in the template, they update on every change. Run commands through `block.handle`, for example `block.handle.setBlock(...)`; its getters read the document at call time and do not trigger re-renders.
+Read values from `block` in the template, they update on every change. Run commands through `block.handle`, for example `block.handle?.setBlock(...)`; its getters read the document at call time and do not trigger re-renders. A [suggestion](/docs/editor/suggestions)'s preview renders your snippet with no handle: guard what reads or writes through it.
 
 Render `content()` once, unless the kind declares `rendersContent: false`. Render `children()` in its own element, so nested blocks start on a new row:
 
@@ -173,7 +173,7 @@ Anything a snippet renders besides `content()` and `children()` is chrome: icons
 {#snippet section({ block, content, children }: BlockSnippetPayload)}
 	<header use:block.void>
 		<span>Section</span>
-		<button type="button" onclick={() => block.handle.removeBlock()}>Remove</button>
+		<button type="button" onclick={() => block.handle?.removeBlock()}>Remove</button>
 	</header>
 	<div>{@render content()}</div>
 	{@render children?.()}
@@ -314,7 +314,7 @@ A task with a checkbox that writes `data.done`, a markdown prefix, clipboard for
 		type="checkbox"
 		checked={Boolean(block.data.done)}
 		use:block.void
-		onchange={() => toggle(block.handle)}
+		onchange={() => block.handle && toggle(block.handle)}
 	/>
 	<div class="task-text">{@render content()}</div>
 	{#if children}

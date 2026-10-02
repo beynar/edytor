@@ -1,0 +1,297 @@
+---
+title: Suggestions (AI)
+description: Propose text, paragraphs, lists, to-dos and images at a place in the document, shown only in your view until you accept them, the way Notion AI drafts.
+icon: sparkles
+---
+
+A suggestion is content a view proposes at a position: an AI draft, a completion, a rewrite. It shows only in the view that made it, rendered with the document's own kinds inside a tinted, non-editable preview, until it is accepted or discarded. Before `accept()` nothing reaches the document: no other tab or collaborator sees it, presence does not carry it, `onChange` does not fire, and it adds no undo step. `accept()` writes it as one command and one undo step, which then syncs like any edit.
+
+```svelte title="Draft.svelte" check
+<script lang="ts">
+	import { Edytor, type EdytorInstance } from 'edytor';
+
+	let edytor = $state<EdytorInstance>();
+
+	const propose = () => {
+		const block = edytor?.selection.state.startBlock;
+		if (!edytor || !block) return;
+		edytor.suggestions.add({ after: block.id }, [
+			{ type: 'heading', data: { level: 'h2' }, content: [{ text: 'Next steps' }] },
+			{ type: 'todo-item', data: { checked: false }, content: [{ text: 'Book the review' }] }
+		]);
+	};
+</script>
+
+<button onmousedown={(event) => event.preventDefault()} onclick={propose}>Suggest</button>
+<Edytor bind:edytor />
+```
+
+`<Edytor>` shows a bar under the preview (Accept, Discard) and binds <kbd>Mod</kbd>+<kbd>Enter</kbd> and <kbd>Escape</kbd> to it: see [The default UI](#the-default-ui).
+
+## Positions
+
+`edytor.suggestions.add(at, content?, options?)` takes one of these positions:
+
+| `at` | Shown | Accepting it |
+| --- | --- | --- |
+| `{ after: id }` | As the next siblings of block `id` (after its children) | Places the blocks there |
+| `{ before: id }` | As the previous siblings of block `id` | Places the blocks there |
+| `{ inside: id }` | As the last children of block `id` | Places the blocks there. A block that holds no children (a void, a code line) throws at `add` |
+| `{ end: id }` | As ghost text after block `id`'s text: the first block's content (more blocks show after the block) | Inserts that content at the end of the text, as typing would; more blocks follow |
+| `{ replace: [ids] }` | The blocks are marked as removed (`data-edytor-suggestion-replaced`) and the content shows after the last of them | Deletes the blocks and places the content in the first one's slot, in one plan. Their children that are not replaced stay, after the content |
+| `{ replace: 'selection' }` | Resolved when added (below) | |
+
+`replace: 'selection'` reads the selection once, at `add`:
+
+- a block selection becomes `{ replace: ids }`, its members (a selected list or code block with its items or lines);
+- a text range becomes `{ replace: { anchor, focus } }`, the range's [anchors](/docs/editor/selection), marked in the overlay; the content shows after the range's last block, and accepting deletes the range and pastes the content at its caret (the first block's text joins the line, as a paste does), as one undo step;
+- a caret becomes `{ after: block }`;
+- no selection throws.
+
+`suggestion.at` is the position as resolved. A position names blocks by id (a range, by anchors), so it follows them through edits elsewhere, a collaborator's included. It also throws when it names no shown block.
+
+The content goes in like a paste of those blocks: in a list, a plain paragraph becomes the list's item; in a code block, lines become code lines; the other kinds keep their kind and data, as a [paste](/docs/editor/clipboard) of those blocks would.
+
+## Content and streaming
+
+`content` is `JSONBlock[]` (the [document's JSON](/docs/concepts/document-model)) or a string. A string becomes paragraphs split on blank lines (at an `end`, one text run, newlines kept). The paragraph kind is the default child of the position's parent, so a string inside a code block gives code lines. To read markdown, pass [`textToBlocks(text)`](#text-to-blocks).
+
+A suggestion added without content starts `streaming`; with content it starts `ready` (`options.status` overrides both). Then:
+
+- `suggestion.update(content)` replaces the content. Call it on every chunk with everything received so far;
+- `suggestion.append(text)` adds text to the last block's text (a new paragraph when there is none). Away from an `end`, a blank line in the text starts a new paragraph, even when it arrives split across two chunks;
+- `suggestion.done()` sets `status` to `ready`.
+
+The preview updates as the content does, and following blocks move down. The user can type, select and edit elsewhere meanwhile: the suggestion stays where it is.
+
+### Streaming from an AI
+
+Read the response body as text and update the suggestion with each chunk:
+
+```ts title="src/lib/draft.ts" check
+import { textToBlocks, type EdytorInstance, type Suggestion } from 'edytor';
+
+/** Stream the model's markdown into `suggestion`; Try again streams a new answer. */
+const stream = async (suggestion: Suggestion, prompt: string) => {
+	const response = await fetch('/api/draft', { method: 'POST', body: JSON.stringify({ prompt }) });
+	if (!response.body) return suggestion.discard();
+	const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+	let markdown = '';
+	for (;;) {
+		const { done, value } = await reader.read();
+		// Accepted or discarded meanwhile: stop reading.
+		if (done || !suggestion.live) break;
+		markdown += value;
+		suggestion.update(textToBlocks(markdown));
+	}
+	suggestion.done();
+};
+
+/** Ask for a draft after the caret's block. */
+export const draft = (edytor: EdytorInstance, prompt: string) => {
+	const block = edytor.selection.state.startBlock;
+	if (!block) return;
+	const suggestion = edytor.suggestions.add({ after: block.id }, undefined, {
+		label: 'AI',
+		onRetry: (again) => void stream(again, prompt)
+	});
+	void stream(suggestion, prompt);
+};
+```
+
+For plain text, call `suggestion.append(value)` on each chunk instead of `update`.
+
+## Accept and discard
+
+`suggestion.accept()` writes the content and answers an `OpResult` (`{ status, ids }`):
+
+- **One command.** It runs through the [dispatcher](/docs/editor/commands) as `acceptSuggestion`, with the payload `{ suggestion: { id, at, content } }`. `onBeforeOperation` sees the command, then each step it plans (`addChildBlocks`, `removeBlock`, `insertText`…; for a text range, the range's deletion), and can refuse it with `prevent()`. `dispatcher.last` records the result.
+- **One undo step.** The content and anything it replaces go and come back together. Typing right after it is a step of its own.
+- **Fresh ids.** The blocks and atoms get new ids; the ids in `content` are ignored.
+- **The caret** ends the content: the end of the last block's last line.
+- **Refused** (`status: 'refused'`): a readonly view, a read-only document, a veto, or a position the document no longer accepts. The suggestion stays, so the user can discard it.
+
+Once accepted, the suggestion is gone from the list. Accepting while it streams writes what it holds at that moment.
+
+`suggestion.discard()` drops it and writes nothing. A suggestion is also dropped when its block is deleted, by this view or a collaborator: a block of `replace`, or a block holding an end of its range. It survives everything else, the selection leaving its block included.
+
+`suggestion.retry()` empties it, sets it `streaming` and calls `options.onRetry(suggestion)`, where you stream another answer into it. Without `onRetry` it does nothing, and `suggestion.retryable` is `false`.
+
+## API
+
+`edytor.suggestions` is the view's list:
+
+<TypeTable
+  type={{
+    "add(at, content?, options?)": { type: "Suggestion", description: "Propose content at a position. options: { id?, status?, label?, onRetry? }. An id already listed replaces that suggestion." },
+    list: { type: "readonly Suggestion[]", description: "Every suggestion, oldest first. Reactive." },
+    latest: { type: "Suggestion | undefined", description: "The newest one, which the keys act on." },
+    "get(id)": { type: "Suggestion | undefined", description: "One by id." },
+    "clear()": { type: "void", description: "Discard every suggestion." },
+    "at(blockId)": { type: "SuggestionsAt", description: "What shows at a block: { before, after, inside, end, replaced }. Reactive." },
+  }}
+/>
+
+A `Suggestion`:
+
+<TypeTable
+  type={{
+    id: { type: "string", description: "Its id (options.id, or minted)." },
+    at: { type: "ResolvedAt", description: "The position, resolved." },
+    content: { type: "readonly JSONBlock[]", description: "The proposed blocks. Reactive." },
+    status: { type: "'streaming' | 'ready'", description: "Reactive." },
+    label: { type: "string | undefined", description: "options.label; the bar shows it." },
+    live: { type: "boolean", description: "Still listed: not accepted, discarded or dropped." },
+    retryable: { type: "boolean", description: "An onRetry was given." },
+    "update(content)": { type: "void", description: "Replace the content. Does nothing once not live." },
+    "append(text)": { type: "void", description: "Add streamed text to the last block." },
+    "done()": { type: "void", description: "status becomes 'ready'." },
+    "accept()": { type: "OpResult", description: "Write it: one command, one undo step." },
+    "discard()": { type: "void", description: "Drop it; writes nothing." },
+    "retry()": { type: "void", description: "Empty it and call onRetry." },
+  }}
+/>
+
+## The default UI
+
+`suggestionsPlugin` is on by default in `<Edytor>`, with arrow moves, images and rich text ([Default plugins](/docs/plugins#default-plugins)). It shows a bar under each block suggestion, in the [overlay](/docs/customization/styling#the-overlay): the label (`AI is writing…` while it streams), **Accept**, **Discard**, and **Try again** when the suggestion has an `onRetry`. A readonly view shows Discard only. An `end` suggestion has no bar: the keys accept it.
+
+| Keys | Action | Where |
+| --- | --- | --- |
+| <kbd>Mod</kbd> + <kbd>Enter</kbd> | Accept the latest suggestion | Focus in the editor |
+| <kbd>Escape</kbd> | Discard the latest suggestion | Focus in the editor |
+| <kbd>Tab</kbd> | Accept the `end` suggestion of the caret's block | A caret in that block, except a list-like block (bulleted, numbered, to-do, toggle, a list's item), where <kbd>Tab</kbd> keeps indenting: use <kbd>Mod</kbd> + <kbd>Enter</kbd> there |
+
+The keys claim nothing while there is no suggestion, so <kbd>Mod</kbd> + <kbd>Enter</kbd> still checks to-dos and opens toggles. Plugins listed before it in `plugins` get the keys first ([Plugin order](/docs/plugins#plugin-order)); in a code line, the [code plugin](/docs/plugins/code)'s <kbd>Tab</kbd> accepts an `end` suggestion too.
+
+Render your own bar with `createSuggestionsPlugin({ bar })`. Placement and keys stay the plugin's:
+
+```svelte title="AiBar.svelte" check
+<script lang="ts">
+	import { Edytor, createSuggestionsPlugin, type SuggestionBarPayload } from 'edytor';
+</script>
+
+{#snippet bar({ suggestion, accept, discard, retry, readonly }: SuggestionBarPayload)}
+	<div class="ai-bar">
+		<span>{suggestion.status === 'streaming' ? 'Writing…' : 'Done'}</span>
+		{#if !readonly}<button onmousedown={(e) => e.preventDefault()} onclick={accept}>Keep</button>{/if}
+		<button onmousedown={(e) => e.preventDefault()} onclick={discard}>Remove</button>
+		{#if retry}<button onmousedown={(e) => e.preventDefault()} onclick={retry}>Again</button>{/if}
+	</div>
+{/snippet}
+
+<Edytor plugins={[createSuggestionsPlugin({ bar })]} />
+```
+
+Prevent the buttons' `mousedown` so the editor keeps its focus and selection. A plugin instance in `plugins` replaces the default one; `defaultPlugins={false}` removes it, and suggestions still show, without a bar or keys.
+
+## Rendering and styling
+
+A block suggestion renders inside the editor, in the document's flow, as one group:
+
+```html
+<div data-edytor-suggestion="s_…" data-status="streaming" contenteditable="false" role="group">
+	<!-- each block, rendered by its kind: the same element, snippet and attributes -->
+</div>
+```
+
+The kinds render their blocks as in the document, images included, with `data-edytor-block` and `data-edytor-type` (no `data-edytor-id`, no text elements). A snippet receives a [`BlockView`](/docs/customization/blocks#the-snippet-payload) whose `handle` is `undefined`, `selected` and `focused` false: guard commands on `block.handle` in a kind's own controls. Nothing inside answers the pointer, and a press on the group is cancelled, so it never takes the caret. The group gives no caret stop, no selection, no copied content and no drag image; the editor's DOM check ignores it.
+
+| Selector | What |
+| --- | --- |
+| `[data-edytor-suggestion]`, `[data-status]` | A block suggestion's group, by id, and its status |
+| `[data-edytor-suggestion-replaced]` | A block a `replace` removes |
+| `[data-edytor-suggestion-range]` | A rectangle over the text a range `replace` removes (overlay) |
+| `[data-edytor-text-suggestion]` | An `end` suggestion's ghost text |
+| `[data-edytor-suggestion-bar]` | The default bar (overlay) |
+
+The [Notion theme](/docs/customization/styling#notion-theme) gives the group a tinted background and a left accent, pulses it while it streams (not with reduced motion), strikes through replaced blocks and greys the ghost text. Its custom properties: `--edytor-suggestion-accent`, `--edytor-suggestion-background`, `--edytor-suggestion-removed` (replaced blocks), `--edytor-suggestion-removed-line` (a range's underline), `--edytor-suggestion-bar-space` (the room under a group for the bar, `40px`) and `--edytor-suggestion-bar-background`.
+
+## Live example
+
+The editor on the [home page](/) has an **Ask AI** button and two slash commands. They need no API key: the answers are canned and streamed word by word. Until you accept one, the shared room never sees it; once accepted, everyone does. Its plugin, trimmed:
+
+```ts title="src/lib/ai-demo.ts" check
+import type { EdytorInstance, JSONBlock, Plugin, Suggestion } from 'edytor';
+
+const ANSWERS: JSONBlock[][] = [
+	[
+		{ type: 'heading', data: { level: 'h2' }, content: [{ text: 'Launch plan' }] },
+		{ type: 'bulleted-list-item', content: [{ text: 'Write the announcement post' }] },
+		{ type: 'todo-item', data: { checked: false }, content: [{ text: 'Book the launch review' }] }
+	],
+	[{ type: 'paragraph', content: [{ text: 'Another answer, for Try again.' }] }]
+];
+let next = 0;
+
+/** Show `blocks` one block more every 300 ms, then mark the suggestion ready. */
+const stream = (suggestion: Suggestion, blocks: JSONBlock[]) => {
+	let shown = 0;
+	const timer = setInterval(() => {
+		if (!suggestion.live) return clearInterval(timer);
+		suggestion.update(blocks.slice(0, ++shown));
+		if (shown === blocks.length) {
+			clearInterval(timer);
+			suggestion.done();
+		}
+	}, 300);
+};
+
+export const askAI = (edytor: EdytorInstance) => {
+	const block = edytor.selection.state.startBlock;
+	if (!block) return;
+	// An empty line is replaced, as in Notion; else the answer goes after the block.
+	const at = block.isEmpty && block.type === 'paragraph' ? { replace: [block.id] } : { after: block.id };
+	const suggestion = edytor.suggestions.add(at, undefined, {
+		label: 'AI',
+		onRetry: (again) => stream(again, ANSWERS[next++ % ANSWERS.length]!)
+	});
+	stream(suggestion, ANSWERS[next++ % ANSWERS.length]!);
+};
+
+/** `/ai` in the slash menu: it runs once the `/ai` text is removed. */
+export const aiPlugin: Plugin = () => ({
+	commands: [
+		{
+			id: 'ai.ask',
+			label: 'Ask AI',
+			icon: '✦',
+			group: 'AI',
+			keywords: ['ai', 'write', 'generate'],
+			run: async (edytor) => {
+				await Promise.resolve();
+				askAI(edytor);
+			}
+		}
+	]
+});
+```
+
+The full demo (`site/islands/ai-demo.ts` in the repository) streams word by word, adds an image to the answer and a **Continue writing** command (`/continue`), an `end` suggestion that <kbd>Tab</kbd> accepts.
+
+## Text to blocks
+
+`textToBlocks(text, options?)` turns a string into `JSONBlock[]`. It is pure: use it in a server or a Worker to shape a model's answer before sending it.
+
+- `markdown: false` keeps every character as text: blank lines split paragraphs; a single newline stays in the text.
+- Markdown (the default) reads one line at a time: `#` to `###` headings (deeper ones read as `###`), `-`, `*` or `+` bullets, `1.` numbers, `[ ]` and `[x]` to-dos (also after a bullet), `>` quotes, `---` dividers, fenced code blocks (an unclosed fence keeps its lines, so a stream cut mid-block reads well), and list items nested by indentation (two spaces a level). Consecutive plain lines make one paragraph, joined by a space; a blank line ends it.
+- Inline, `**bold**`, `*italic*` or `_italic_`, `` `code` `` and `[text](url)` links become marks. Marks do not nest.
+- `type` sets the paragraph kind (default `paragraph`). The other kinds and marks are the [rich text](/docs/plugins/rich-text) and [code](/docs/plugins/code) plugins'.
+
+```ts
+textToBlocks('## Plan\n- [ ] Ship it\nSee **notes**');
+// [{ type: 'heading', data: { level: 'h2' }, content: [{ text: 'Plan' }] },
+//  { type: 'todo-item', data: { checked: false }, content: [{ text: 'Ship it' }] },
+//  { type: 'paragraph', content: [{ text: 'See ' }, { text: 'notes', marks: { bold: true } }] }]
+```
+
+## The block API
+
+`block.suggestText({ value })`, `block.suggestions` and `block.acceptSuggestedText()` are deprecated wrappers over an `{ end: block.id }` suggestion. `block.suggestions` reads the content of the block's latest `end` suggestion as parts (`JSONText[]` runs and atoms) and setting it replaces the block's `end` suggestions (`null` drops them). Unlike before, such a suggestion stays when the selection leaves the block, and accepting it moves the caret to its end ([migration](/docs/reference/migration#from-010-next9)).
+
+## Limitations
+
+- **One view only.** A suggestion lives in the view that made it: another tab or a collaborator cannot review it, and a reload loses it. Keep your own copy if it must survive.
+- **A text-range `replace`** is two writes in one command and one undo step: the range's deletion, then the paste at its caret. Hooks see the deletion's steps only.
+- **The preview** applies no `transformText` (a code block's preview is not highlighted) and renders the kinds this view registers; an unknown kind shows as a plain block.
+- **Marks in `textToBlocks`** do not nest, and the rest of markdown (tables, images, HTML) stays text.

@@ -13,6 +13,7 @@ import { preventUnsupportedDrop } from './events/onDrop.js';
 import { attachFocus, selectionIsInside } from './events/onFocus.js';
 import { Attempts } from './session/attempt.js';
 import { Composition } from './session/composition.svelte.js';
+import { Suggestions } from './session/suggestions.svelte.js';
 import { type JSONBlock, type JSONDoc } from '$lib/utils/json.js';
 import { onKeyDown } from '$lib/events/onKeyDown.js';
 import { EdytorSelection } from './selection/selection.svelte.js';
@@ -31,6 +32,7 @@ import {
 import { Pin } from './surface/pin.svelte.js';
 import { Overlay } from './surface/overlay.js';
 import RemoteSelections from './collaboration/RemoteSelections.svelte';
+import SuggestionRanges from './components/SuggestionRanges.svelte';
 import type { Block } from './block/block.svelte.js';
 import type { Text } from './text/text.svelte.js';
 import { Handles } from './session/handles.js';
@@ -243,6 +245,8 @@ export class Edytor {
 	 * are maintenance, not typing, and must not move the page.
 	 */
 	suppressCaretScrollDepth = 0;
+	/** The view's suggestions (`session/suggestions`): proposed content, shown here until accepted. */
+	readonly suggestions: Suggestions = new Suggestions(this);
 	/** The view's input attempts (R8, L6): one per user occurrence. */
 	readonly attempts = new Attempts(() => this.surface.signal());
 
@@ -627,6 +631,8 @@ export class Edytor {
 			this.selection?.restoreDeadSelectionEndpoints();
 			// D-20: a live composition whose block was re-placed commits first.
 			this.composition.restructured(change);
+			// A suggestion whose block died is dropped.
+			this.suggestions.prune();
 		} finally {
 			this.suppressCaretScrollDepth--;
 		}
@@ -929,7 +935,16 @@ export class Edytor {
 			target: this.overlay.layer!,
 			props: { edytor: this }
 		});
-		this.off.push(() => unmount(presence), detachOverlay);
+		// The text a `replace` suggestion removes, marked beside the host.
+		const ranges = mount(SuggestionRanges, {
+			target: this.overlay.layer!,
+			props: { edytor: this }
+		});
+		this.off.push(
+			() => unmount(presence),
+			() => unmount(ranges),
+			detachOverlay
+		);
 		this.plugins.forEach((plugin) => {
 			const action = plugin.onEdytorAttached?.({ node });
 			if (typeof action === 'function') this.off.push(action);

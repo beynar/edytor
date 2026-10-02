@@ -50,6 +50,18 @@ export type { Edytor as EdytorInstance, EdytorDocData } from './edytor.svelte.js
 export type { HotKey, HotKeyCombination } from './session/keymap.js';
 export type { EdytorSelection } from './selection/selection.svelte.js';
 export { convertToKind, type KindRow } from './kinds.js';
+export type {
+	Suggestion,
+	Suggestions,
+	SuggestionAt,
+	SuggestionContent,
+	SuggestionOptions,
+	SuggestionRange,
+	SuggestionStatus,
+	SuggestionsAt,
+	ResolvedAt
+} from './session/suggestions.svelte.js';
+export { textToBlocks, type TextToBlocksOptions } from './clipboard/textBlocks.js';
 export * from './plugins/index.js';
 export * from './crdt/index.js';
 

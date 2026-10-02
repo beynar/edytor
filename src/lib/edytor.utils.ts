@@ -22,7 +22,7 @@ type At = { block: string; offset: number };
  * Apply a prepared op and answer the caret it reports (`null` when it planned
  * none); the caret's block and its parent are normalized in its transaction.
  */
-const applyAt = (edytor: Edytor, plan: Prepared): At | null => {
+export const applyAt = (edytor: Edytor, plan: Prepared): At | null => {
 	if (!('writes' in plan) || !plan.at) return null;
 	const { facade, dispatcher } = edytor;
 	facade.apply(plan);

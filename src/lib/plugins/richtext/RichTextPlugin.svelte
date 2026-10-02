@@ -421,7 +421,8 @@
 			// its handlers, over the re-render this write makes, so the box would show the
 			// old state here while peers show the new one. Toggle the document, then show
 			// what it holds (a refused write, readonly or vetoed, shows unchanged).
-			toggleTodo(block.handle);
+			// A suggestion's preview (no handle) writes nothing.
+			if (block.handle) toggleTodo(block.handle);
 			event.currentTarget.checked = Boolean(block.data.checked);
 		}}
 	/>

@@ -236,7 +236,6 @@ Text operations carry `text`. Block operations run on `block`.
 | `deleteContentWithinSelection` | `{ replace? }`                                              |
 | `insertFlow`                   | `{ flow, target }`                                          |
 | `insertDivider`                | `{}`                                                        |
-| `suggestText`                  | `{ value }`                                                 |
-| `acceptSuggestedText`          | `{}`                                                        |
+| `acceptSuggestion`             | `{ suggestion: { id, at, content } }`: a [suggestion](/docs/editor/suggestions) accepted, one undo step; its planned steps follow it (for a text range, its deletion's) |
 
 In `deleteContentAtRange`, `part` is an index into `block.content` and `offset` an offset inside that text.

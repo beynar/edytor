@@ -21,7 +21,8 @@ export type Owned = {
 	/** Strip every attribute and style property the table does not list. */
 	strict: boolean;
 };
-export type Kind = 'block' | 'text' | 'mark' | 'atom' | 'anchor';
+/** `preview`: a suggestion's preview group (view-only: never compared, never healed). */
+export type Kind = 'block' | 'text' | 'mark' | 'atom' | 'anchor' | 'preview';
 
 /** Chromium expands these shorthands into longhands: a longhand of an owned shorthand is owned. */
 const LONGHANDS: Record<string, readonly string[]> = {
@@ -48,7 +49,7 @@ export const ownedOf = (
 			owned: { 'data-edytor': '', contenteditable: edytor.readonly ? 'false' : 'true' },
 			style: {}
 		};
-	if (!entry) return null;
+	if (!entry || entry.kind === 'preview') return null;
 	const { block } = entry;
 	if (entry.kind === 'mark') {
 		const name = entry.name ?? null;
@@ -95,6 +96,7 @@ export const ownedOf = (
 				'data-edytor-void': isVoid ? 'true' : null,
 				'data-edytor-selected': selectedBlocks.has(handle) ? 'true' : null,
 				'data-edytor-focused': focusedBlocks.has(handle) ? 'true' : null,
+				'data-edytor-suggestion-replaced': edytor.suggestions.at(block).replaced ? '' : null,
 				contenteditable: isVoid ? 'false' : null
 			},
 			style: isVoid ? { 'user-select': 'none' } : {}

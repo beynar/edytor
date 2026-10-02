@@ -12,11 +12,13 @@
  *   the seam caret, and Delete then acts on live content.
  * - F-S8 — a blurred caret at the end of `hello world`; a peer inserts an
  *   atom at 3: the model caret sits at display offset 12 immediately.
- * - F-P18 (session half) — inline suggestions are session state keyed by
- *   block id, cleared by every selection write that leaves their block,
- *   accepted on Tab and cleared on Escape in a code line, kept through a
- *   composition at their boundary and when the caret moves elsewhere, never
- *   resurrected once dismissed.
+ * - F-P18 (session half) — inline suggestions are session state: an `end`
+ *   suggestion of the view's suggestion layer (`edytor.suggestions`), kept
+ *   by selection writes that leave their block (the 2026-10-02 suggestion
+ *   contract: a suggestion lives until accepted, discarded or its block
+ *   dies), accepted on Tab and cleared on Escape in a code line, kept
+ *   through a composition at their boundary, never resurrected once
+ *   dismissed.
  *
  * Expected values come from the plan rows, never from running the code.
  */
@@ -258,7 +260,7 @@ const codeValue = {
 const codePlugins = [richTextPlugin, mentionPlugin, codePlugin];
 
 describe('V2 — suggestions are session state (F-P18, session half)', () => {
-	row('a suggestion is stored by the session under its block id', async () => {
+	row('a suggestion is session state: an `end` suggestion of the view', async () => {
 		const { edytor } = await renderDomEdytor(
 			<root>
 				<paragraph>Hello|</paragraph>
@@ -266,13 +268,12 @@ describe('V2 — suggestions are session state (F-P18, session half)', () => {
 		);
 		const block = edytor.root!.children[0]!;
 		block.suggestions = [[{ text: 'maybe' }]];
-		const sessionSuggestions = (
-			edytor.selection as unknown as { suggestions: Map<string, unknown> }
-		).suggestions;
-		expect(sessionSuggestions.get(block.id)).toEqual([[{ text: 'maybe' }]]);
+		expect(edytor.suggestions.list.map((s) => [s.at, s.content])).toEqual([
+			[{ end: block.id }, [{ type: 'paragraph', content: [{ text: 'maybe' }] }]]
+		]);
 	});
 
-	row('a model selection write that leaves the block clears its suggestion', async () => {
+	row('a model selection write that leaves the block keeps its suggestion', async () => {
 		const { edytor } = await renderDomEdytor(
 			<root>
 				<paragraph>Hello|</paragraph>
@@ -282,10 +283,10 @@ describe('V2 — suggestions are session state (F-P18, session half)', () => {
 		const [hello, world] = edytor.root!.children;
 		hello!.suggestions = [[{ text: ' there' }]];
 		edytor.selection.setAtTextOffset(world!.firstText!, 2);
-		expect(hello!.suggestions).toBeNull();
+		expect(hello!.suggestions).toEqual([[{ text: ' there' }]]);
 	});
 
-	pin('a native caret move that leaves the block clears its suggestion', async () => {
+	pin('a native caret move that leaves the block keeps its suggestion', async () => {
 		const { edytor } = await renderDomEdytor(
 			<root>
 				<paragraph>Hello|</paragraph>
@@ -296,7 +297,7 @@ describe('V2 — suggestions are session state (F-P18, session half)', () => {
 		hello!.suggestions = [[{ text: ' there' }]];
 		await flushDomUpdates();
 		await setNativeSelection(edytor, world!.firstText!, 2);
-		expect(hello!.suggestions).toBeNull();
+		expect(hello!.suggestions).toEqual([[{ text: ' there' }]]);
 	});
 
 	pin('a suggestion on a block the caret never entered survives unrelated moves', async () => {

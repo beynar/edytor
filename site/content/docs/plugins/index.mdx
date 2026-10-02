@@ -4,7 +4,7 @@ description: What an Edytor plugin is, how to pass plugins to the editor, how pl
 icon: plug
 ---
 
-Everything the editor knows about content comes from plugins: block kinds, marks, inline atoms, key bindings, and hooks that can inspect or veto every edit. The core ships no block kinds of its own; `<Edytor>` adds the rich text, image and arrow move plugins by default, so `<Edytor />` alone is a working rich text editor.
+Everything the editor knows about content comes from plugins: block kinds, marks, inline atoms, key bindings, and hooks that can inspect or veto every edit. The core ships no block kinds of its own; `<Edytor>` adds the rich text, image, arrow move and suggestions plugins by default, so `<Edytor />` alone is a working rich text editor.
 
 ## What a plugin is
 
@@ -67,11 +67,12 @@ Plugins are read once, when the component mounts. Changing the array afterwards 
 | Plugin | Position | Replaced by |
 | --- | --- | --- |
 | [`arrowMovePlugin`](/docs/plugins/arrow-move) | after yours | `arrowMovePlugin` in your list |
+| [`suggestionsPlugin`](/docs/editor/suggestions#the-default-ui) | after yours | `suggestionsPlugin` or any `createSuggestionsPlugin(...)` in your list |
 | [`imagePlugin`](/docs/plugins/image) | after yours | `imagePlugin` or any `createImagePlugin(...)` in your list |
 | [`richTextPlugin`](/docs/plugins/rich-text) | last | `richTextPlugin` in your list |
 | [Block handles](/docs/plugins/block-handles) | first | the `blockHandles` prop, or a handles plugin in your list |
 
-The example above therefore runs block handles, your five plugins, then arrow move, image and rich text. A default you list yourself stays where you put it, so older code that passes `plugins={[richTextPlugin]}` still works.
+The example above therefore runs block handles, your five plugins, then arrow move, suggestions, image and rich text. A default you list yourself stays where you put it, so older code that passes `plugins={[richTextPlugin]}` still works.
 
 Pass `defaultPlugins={false}` to get exactly your list (block handles still follow `blockHandles`). The defaults are added by the `<Edytor>` component, per view; the editor instance underneath has none of its own.
 
@@ -82,7 +83,7 @@ The array order is the precedence order. Two rules follow from it:
 - **Definitions: first wins.** When two plugins define the same block kind, mark, inline atom or command id, the one listed first is used and the later one is ignored. To replace a definition from a bundled plugin, list your plugin before it.
 - **Prevention: first wins.** Hooks and key bindings run in list order. The first plugin that calls `prevent()` stops the operation or claims the key, and the plugins after it are not asked.
 
-Order therefore matters whenever two plugins touch the same thing: the same kind name, the same chord, or the same operation. A plugin that overrides or refuses something a bundled plugin does goes before it in the list. The three defaults are added after your plugins, so yours already come first; to let a default win over one of your plugins, list the default yourself before it.
+Order therefore matters whenever two plugins touch the same thing: the same kind name, the same chord, or the same operation. A plugin that overrides or refuses something a bundled plugin does goes before it in the list. The four defaults are added after your plugins, so yours already come first; to let a default win over one of your plugins, list the default yourself before it.
 
 One exception: two plugins that declare different `defaultChild` values for the same block kind are an error, whatever their order. The editor throws when it is created.
 

@@ -24,8 +24,8 @@ Most props are read once, when the component is created. Changing them later has
 
 | Prop | Type | Default | Live | Description |
 | --- | --- | --- | --- | --- |
-| `plugins` | `Plugin[]` | `[]` | | Block kinds, marks, inline blocks, hotkeys and hooks. Order matters: the first definition of a type wins. The view adds the rich text, image and arrow move plugins unless the list has them. See [Plugins](/docs/plugins#default-plugins). |
-| `defaultPlugins` | `boolean` | `true` | | `false` renders exactly `plugins`, without the default rich text, image and arrow move plugins. Block handles still follow `blockHandles`. |
+| `plugins` | `Plugin[]` | `[]` | | Block kinds, marks, inline blocks, hotkeys and hooks. Order matters: the first definition of a type wins. The view adds the rich text, image, arrow move and suggestions plugins unless the list has them. See [Plugins](/docs/plugins#default-plugins). |
+| `defaultPlugins` | `boolean` | `true` | | `false` renders exactly `plugins`, without the default rich text, image, arrow move and suggestions plugins. Block handles still follow `blockHandles`. |
 | `value` | `JSONDoc` | `{ children: [] }` | | The initial content, and the document's [properties](/docs/concepts/properties) in `data`. Used only to seed a document that has none; an empty value seeds one paragraph. See [Document model](/docs/concepts/document-model). |
 | `document` | `EdytorDocument` | | | A document created with `createDocument`, `loadDocument` or `attachDocument`. Several views can share one. The view does not destroy it on unmount. |
 | `server` | `string` | | | The sync server's base URL (`wss://…/rooms`). With `room`, the view joins `<server>/<room>` over a WebSocket and keeps a local copy. Read once. See [WebSocket](/docs/collaboration/websocket). |

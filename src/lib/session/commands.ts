@@ -64,6 +64,8 @@ const CUT: Record<string, 'before' | 'both'> = {
 	insertFromDrop: 'before',
 	insertBlock: 'before',
 	format: 'before',
+	// An accepted suggestion: typing after it is a step of its own.
+	acceptSuggestion: 'both',
 	// A DOM change no input occurrence owns (a foreign script): its own step.
 	foreignChange: 'both'
 };

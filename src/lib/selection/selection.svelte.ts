@@ -12,7 +12,8 @@ import {
 	getMarkEdgeSide,
 	isTextBoundSelectionPoint,
 	normalizeUtf16Boundary,
-	SYNTHETIC_TEXT_OVERLAY_SELECTOR
+	SYNTHETIC_TEXT_OVERLAY_SELECTOR,
+	SUGGESTION
 } from './selection.utils.js';
 import {
 	clearDomSelection,
@@ -22,10 +23,9 @@ import {
 } from './domSelection.js';
 import { domPointOf } from '$lib/surface/projector.svelte.js';
 import { Block } from '../block/block.svelte.js';
-import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+import { SvelteSet } from 'svelte/reactivity';
 import { InlineBlock } from '../block/inlineBlock.svelte.js';
 import type { EdgeSide, PendingMarks } from '$lib/session/editing/text.js';
-import type { JSONInlineBlock, JSONText } from '$lib/utils/json.js';
 import { publishPresence } from '$lib/collaboration/awarenessSelection.js';
 import {
 	isNativeFormControl,
@@ -90,9 +90,6 @@ type SelectionState = {
 	/** R4 admission: the mark-edge side of a DOM-derived caret (`marksForInsertion`). */
 	edge?: EdgeSide;
 };
-
-/** An inline suggestion (L12): content parts shown after a block's text until cleared. */
-export type SuggestionParts = (JSONText[] | JSONInlineBlock)[];
 
 /** The compatibility state of no (or an unresolvable) selection. */
 const EMPTY_STATE: SelectionState = Object.freeze({
@@ -277,17 +274,9 @@ export class EdytorSelection {
 	requestSerial = 0;
 	/** Why the last `select()` ran. */
 	cause: SelectCause = 'model';
-	/**
-	 * Inline text suggestions (L12), keyed by block id: set by the host or an
-	 * extension, cleared by accept, dismiss, and by `select()` when the
-	 * selection leaves their block.
-	 */
-	suggestions = new SvelteMap<string, SuggestionParts>();
 	/** DOM fields (Surface) observed with the value they describe. */
 	/** The mark-edge side a display or a DOM derive observed the value with. */
 	#surface: { value: SelectionValue; edge?: EdgeSide } | null = null;
-	/** Blocks holding the last selection's endpoints: a suggestion there is cleared when they are left. */
-	#edges: string[] = [];
 	#compat = new WeakMap<SelectionProjection, { surface: unknown; state: SelectionState }>();
 
 	constructor(
@@ -384,8 +373,7 @@ export class EdytorSelection {
 	/**
 	 * The one commit point (R9): replaces the value, advances the epoch and
 	 * applies every side effect once — the selected, atom and focused sets
-	 * (hooks and attributes), clearing suggestions whose block the selection
-	 * left, and, when the value changed, presence and `onSelectionChange`.
+	 * (hooks and attributes), and, when the value changed, presence and `onSelectionChange`.
 	 * `surface` carries the mark-edge side the value was observed with.
 	 */
 	select = (next: SelectionValue, cause: SelectCause = 'model', surface?: { edge?: EdgeSide }) => {
@@ -427,11 +415,6 @@ export class EdytorSelection {
 			if (atom) this.selectedInlineBlock.add(atom);
 			this.inlineBlockDeletionTarget = atom ?? null;
 		}
-		const edges = [projection.start?.block, projection.end?.block].filter(
-			(id): id is string => id !== undefined
-		);
-		for (const id of this.#edges) if (!edges.includes(id)) this.suggestions.delete(id);
-		this.#edges = edges;
 		const state = this.state;
 		this.edytor.history?.selected(value);
 		if (state.startText) {
@@ -694,7 +677,8 @@ export class EdytorSelection {
 		) {
 			return null;
 		}
-		if (nonEditableElement.closest('input, textarea, select, button, a[href]')) {
+		// A suggestion's preview is no block's chrome: a press there is its own (cancelled).
+		if (nonEditableElement.closest(`input, textarea, select, button, a[href], ${SUGGESTION}`)) {
 			return null;
 		}
 		const block = this.getBlockOfNode(nonEditableElement);

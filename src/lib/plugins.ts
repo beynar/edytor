@@ -50,8 +50,11 @@ export type BlockView<D = Record<string, any>> = {
 	readonly data: D;
 	readonly selected: boolean;
 	readonly focused: boolean;
-	/** The block's id-only handle (non-reactive reads, commands). */
-	readonly handle: Block;
+	/**
+	 * The block's id-only handle (non-reactive reads, commands); `undefined`
+	 * in a suggestion's preview, which is no block of the document.
+	 */
+	readonly handle: Block | undefined;
 	/** Marks inner chrome (a header, a toolbar) non-editable; the block element is the core's. */
 	void: Block['void'];
 };

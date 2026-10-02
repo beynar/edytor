@@ -72,7 +72,8 @@ const IDENTITY_ATTRIBUTES = [
 	'data-edytor-mark'
 ];
 const IDENTITY = IDENTITY_ATTRIBUTES.map((name) => `[${name}]`).join(',');
-const SUGGESTION = '[data-edytor-text-suggestion]';
+/** View-only content the core renders in the host: an `end` ghost text, a block suggestion's preview. */
+const SUGGESTION = '[data-edytor-text-suggestion], [data-edytor-suggestion]';
 /** The rest a live composition merged into its host, rendered after it (`pin.rest`, GX-04). */
 const REST = '[data-edytor-composition-rest]';
 /** A foreign writer that re-damages every heal: the heals stop for a window (Quill's bound). */
@@ -189,7 +190,7 @@ export class SurfaceObserver {
 	register = (node: Element, kind: Kind, block: string, name?: string) => {
 		this.#registry.set(node, { kind, block, name });
 		if (kind === 'block') this.#blocks.set(block, node);
-		else if (kind !== 'anchor') {
+		else if (kind !== 'anchor' && kind !== 'preview') {
 			const set = this.#contents.get(block) ?? new Set();
 			this.#contents.set(block, set.add(node));
 		}
@@ -204,6 +205,12 @@ export class SurfaceObserver {
 	/** The render anchor (`Edytor.svelte`): a registered child of the strict root. */
 	anchor = (node: HTMLElement) => {
 		const release = this.register(node, 'anchor', '');
+		return { destroy: release };
+	};
+
+	/** A suggestion's preview group (`components/Suggestion`): registered, view-only, never compared. */
+	preview = (node: HTMLElement, id: string) => {
+		const release = this.register(node, 'preview', id);
 		return { destroy: release };
 	};
 
@@ -264,7 +271,7 @@ export class SurfaceObserver {
 	#deps = () => {
 		const { edytor } = this;
 		void [this.epoch, this.records, edytor.readonly, edytor.composition.phase];
-		void [edytor.selection.value, edytor.selection.suggestions.size];
+		void [edytor.selection.value, edytor.suggestions.revision];
 	};
 
 	#take = () => {
@@ -278,7 +285,9 @@ export class SurfaceObserver {
 		for (let at: Node | null = node; at; at = at.parentNode) {
 			if (at === this.edytor.node) return null;
 			const entry = at instanceof Element ? this.#registry.get(at) : undefined;
-			if (entry) return entry.kind === 'anchor' ? null : entry.block;
+			// What happens in a preview is the view's own render: nothing to compare.
+			if (entry)
+				return entry.kind === 'preview' ? undefined : entry.kind === 'anchor' ? null : entry.block;
 		}
 		return undefined;
 	};
@@ -712,7 +721,7 @@ export class SurfaceObserver {
 			if (isAnchor(child)) continue;
 			const entry = child instanceof Element ? this.#registry.get(child) : undefined;
 			if (entry?.kind === 'block') shown.push(entry.block);
-			else if (entry?.kind !== 'anchor')
+			else if (entry?.kind !== 'anchor' && entry?.kind !== 'preview')
 				return { block: null, verdict: 'invert', why: 'root-child' };
 		}
 		const missing = cells.rootIds.some((id) => this.#blocks.get(id)?.parentNode !== node);

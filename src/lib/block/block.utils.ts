@@ -35,6 +35,7 @@ import type { Text } from '$lib/text/text.svelte.js';
 import type { Flow, FlowTarget } from '$lib/crdt/flow.js';
 import type { Plan, Prepared } from '$lib/crdt/edytor-doc.js';
 import type { DataPatch } from '$lib/crdt/data.js';
+import type { ResolvedAt } from '$lib/session/suggestions.svelte.js';
 import { id } from '$lib/utils.js';
 import {
 	cloneJson,
@@ -108,10 +109,16 @@ export type BlockOperations = {
 	};
 	normalizeContent: {};
 	normalizeChildren: {};
+	/** @deprecated `edytor.suggestions.add({ end: block.id }, …)`. */
 	suggestText: {
 		value: (JSONText | JSONInlineBlock)[] | string | null;
 	};
+	/** @deprecated `suggestion.accept()`; the command hooks see is `acceptSuggestion`. */
 	acceptSuggestedText: {};
+	/** A suggestion placed in the document (`edytor.suggestions`, `suggestion.accept()`). */
+	acceptSuggestion: {
+		suggestion: { id: string; at: ResolvedAt; content: readonly JSONBlock[] };
+	};
 	deleteContentAtRange: {
 		start: [number, number];
 		end: [number, number];
@@ -594,35 +601,17 @@ export function normalizeChildren(this: Block): void {
 	}
 }
 
+/** @deprecated A thin wrapper over an `{ end: block.id }` suggestion (`edytor.suggestions`). */
 export function suggestText(this: Block, { value }: BlockOperations['suggestText']) {
-	if (typeof value === 'string') {
-		this.suggestions = [[{ text: value }]];
-	} else if (value) {
-		// Runs of text group into one ghost text; an atom stands alone.
-		this.suggestions = value.reduce(
-			(parts, part) => {
-				const last = parts.at(-1);
-				if ('type' in part) parts.push(part);
-				else if (Array.isArray(last)) last.push(part);
-				else parts.push([part]);
-				return parts;
-			},
-			[] as (JSONText[] | JSONInlineBlock)[]
-		);
-	} else {
-		this.suggestions = null;
-	}
+	this.suggestions =
+		typeof value === 'string'
+			? [[{ text: value }]]
+			: (value?.map((part) => ('type' in part ? part : [part])) ?? null);
 }
 
+/** @deprecated Accepts this block's latest `{ end }` suggestion (`suggestion.accept()`). */
 export function acceptSuggestedText(this: Block) {
-	const suggestions = this.suggestions;
-	if (!suggestions) {
-		return;
-	}
-	this.insertParts(this.content.length, suggestions);
-
-	this.suggestions = null;
-	this.normalizeContent();
+	this.edytor.suggestions.at(this.id).end.at(-1)?.accept();
 }
 
 export function prepareDeleteRange(

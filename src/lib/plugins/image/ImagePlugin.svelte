@@ -74,7 +74,8 @@
 		</div>
 	{:else}
 		<div use:block.void data-edytor-image-empty>
-			<ImageEmpty block={block.handle} upload={options.get(block.handle)?.upload} />
+			<!-- A suggestion's preview (no handle) shows the passive placeholder. -->
+			<ImageEmpty block={block.handle} upload={block.handle && options.get(block.handle)?.upload} />
 		</div>
 	{/if}
 	<!-- The core renders the kind's <figure> around this markup. -->

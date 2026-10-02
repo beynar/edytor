@@ -20,7 +20,8 @@
  *   placed as plain lines (`flow.lines`);
  * - a `whole` flow (a block-selection copy) goes after the block, replacing
  *   it when empty (`flow.whole`); over selected blocks the lines take their
- *   slot (`flow.slot`), both at plain ranks (`insertBlocks`: their order
+ *   slot (`flow.slot`), and at a slot they are placed with nothing replaced
+ *   (`flow.place`: an accepted suggestion), all at plain ranks (`insertBlocks`: their order
  *   against a peer's split beside them is not claimed, DR-crdt-1); a void
  *   takes one run (`flow.void`);
  * - a plain line that lands directly in a container takes its item kind
@@ -54,8 +55,8 @@ export type FlowView = RangeView & {
 	 */
 	header?: (id: BlockId) => boolean | 'closed';
 };
-/** A position, or the blocks the flow replaces (`flow.slot`). */
-export type FlowTarget = DocPosition | { replace: readonly BlockId[] };
+/** A position, the blocks the flow replaces (`flow.slot`), or a slot (`flow.place`). */
+export type FlowTarget = DocPosition | { replace: readonly BlockId[] } | { slot: Destination };
 
 /** What flow placement reads beyond range deletion's context. */
 export type FlowContext = RangeDeleteContext & {
@@ -132,18 +133,24 @@ export const flowOps = (c: FlowContext) => ({
 			const at = endOf(placed.at(-1)!) ?? { block: last().id, offset: lengthOf(last()) };
 			return 'writes' in p ? { ...c.plan(p.ids, [...pre, ...p.writes]), at } : p;
 		};
-		if ('replace' in target) {
-			const del = c.deleteBlocks(target.replace);
-			if (!('writes' in del)) return del;
-			const first = [...del.ids].sort((a, b) => c.order().at.get(a)! - c.order().at.get(b)!)[0];
-			if (first === undefined) return c.refused;
-			const slot = c.positionOf(first)!;
-			// Over selected code lines, the lines are plain lines too (`flow.lines`, HX-06).
+		if ('replace' in target || 'slot' in target) {
+			let slot: Destination;
+			let pre: PlanStep[] = [];
+			if ('slot' in target) slot = target.slot;
+			else {
+				const del = c.deleteBlocks(target.replace);
+				if (!('writes' in del)) return del;
+				const first = [...del.ids].sort((a, b) => c.order().at.get(a)! - c.order().at.get(b)!)[0];
+				if (first === undefined) return c.refused;
+				slot = c.positionOf(first)!;
+				pre = [...del.writes];
+			}
+			// In a code block (selected lines, a slot), the lines are plain lines too (`flow.lines`, HX-06).
 			if (slot.parent !== null && c.isLines(slot.parent)) {
 				const shown = lines.flatMap(plain);
 				lines = shown.length ? shown : [{ id: lines[0]!.id, content: [] }];
 			}
-			return atSlot(slot, [...del.writes]);
+			return atSlot(slot, pre);
 		}
 		const B = c.ref(target.block);
 		if (!c.contentTarget(B) || !c.rendersContent(B)) return c.refused;

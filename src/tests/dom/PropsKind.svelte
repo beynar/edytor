@@ -40,7 +40,7 @@
 			<option value="done">Done</option>
 		</select>
 		<span data-card-tags>{(block.data.tags ?? []).join(',')}</span>
-		<span data-card-doc>{block.handle.edytor.data.title ?? ''}</span>
+		<span data-card-doc>{block.handle?.edytor.data.title ?? ''}</span>
 	</div>
 	<div>{@render content()}</div>
 {/snippet}

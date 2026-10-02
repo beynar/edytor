@@ -42,7 +42,8 @@ import {
 	acceptSuggestedText,
 	suggestText,
 	deleteContentAtRange,
-	normalizeChildren
+	normalizeChildren,
+	type BlockOperations
 } from './block.utils.js';
 import { jsonBlockToSpec, jsonContentToItems } from '$lib/utils/json.js';
 import type { BlockDefinition } from '$lib/plugins.js';
@@ -57,6 +58,13 @@ import { propsProxy } from '$lib/session/props.js';
  * view keeps one per id (`edytor.idToBlock`); `node` is the element the core
  * renders for it (O45).
  */
+/** Mark an element inside a block's markup as non-editable chrome (`block.void`, a preview's too). */
+export const voidChrome = (node: HTMLElement) => {
+	node.setAttribute('data-edytor-void', `true`);
+	node.style.userSelect = 'none';
+	node.setAttribute('contenteditable', 'false');
+};
+
 export class Block {
 	readonly = false;
 	readonly edytor: Edytor;
@@ -222,15 +230,26 @@ export class Block {
 		return this.isRoot || this.edytor.facade.isVisibleBlock(this.id);
 	}
 
-	/** Inline suggestions are session state (L12), keyed by this block's id: plain JSON parts. */
+	/**
+	 * @deprecated `edytor.suggestions` with `{ end: block.id }`. The content of
+	 * this block's latest `end` suggestion, as parts (a text's runs, or an
+	 * atom); setting it replaces this block's `end` suggestions, `null` drops them.
+	 */
 	get suggestions(): (JSONText[] | JSONInlineBlock)[] | null {
-		return this.edytor.selection?.suggestions.get(this.id) ?? null;
+		const content = this.edytor.suggestions?.at(this.id).end.at(-1)?.content[0]?.content;
+		if (!content?.length) return null;
+		const parts: (JSONText[] | JSONInlineBlock)[] = [];
+		for (const part of content)
+			if ('type' in part) parts.push(part);
+			else if (Array.isArray(parts.at(-1))) (parts.at(-1) as JSONText[]).push(part);
+			else parts.push([part]);
+		return parts;
 	}
 
 	set suggestions(value: (JSONText[] | JSONInlineBlock)[] | null) {
-		const suggestions = this.edytor.selection.suggestions;
-		if (value) suggestions.set(this.id, value);
-		else suggestions.delete(this.id);
+		const { suggestions } = this.edytor;
+		for (const suggestion of suggestions.at(this.id).end) suggestion.discard();
+		if (value) suggestions.add({ end: this.id }, [{ type: this.type, content: value.flat() }]);
 	}
 
 	get nextBlock(): Block | null {
@@ -362,16 +381,14 @@ export class Block {
 	addInlineBlock = batch('addInlineBlock', addInlineBlock, undefined, textAfterAtom);
 	normalizeContent = batch('normalizeContent', normalizeContent);
 	normalizeChildren = batch('normalizeChildren', normalizeChildren);
-	suggestText = batch('suggestText', suggestText);
-	acceptSuggestedText = batch('acceptSuggestedText', acceptSuggestedText);
+	/** @deprecated `edytor.suggestions.add({ end: block.id }, …)`. */
+	suggestText = (payload: BlockOperations['suggestText']) => suggestText.call(this, payload);
+	/** @deprecated `suggestion.accept()`. */
+	acceptSuggestedText = () => acceptSuggestedText.call(this);
 	deleteContentAtRange = batch('deleteContentAtRange', deleteContentAtRange, prepareDeleteRange);
 
 	/** Mark an element inside the block's markup as non-editable chrome (a header, a caption bar). */
-	void = (node: HTMLElement) => {
-		node.setAttribute('data-edytor-void', `true`);
-		node.style.userSelect = 'none';
-		node.setAttribute('contenteditable', 'false');
-	};
+	void = voidChrome;
 
 	/**
 	 * The text segment that displays block offset `offset`, and the offset in

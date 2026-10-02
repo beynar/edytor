@@ -789,7 +789,9 @@ describe('F-O11 — the flow plan changes exactly its effect', () => {
 				const target =
 					rand() < 0.2
 						? { replace: [pick(ids), pick(ids)] }
-						: { block: pick(ids), offset: Math.floor(rand() * 7) };
+						: rand() < 0.15
+							? { slot: { parent: pick([null, ...ids]), index: Math.floor(rand() * 4) } }
+							: { block: pick(ids), offset: Math.floor(rand() * 7) };
 				const n = Math.floor(rand() * 4);
 				const flow = { lines: Array.from({ length: n }, randomLine), whole: rand() < 0.2 };
 				const plan = f.prepare.insertFlow(target, flow);
@@ -809,4 +811,52 @@ describe('F-O11 — the flow plan changes exactly its effect', () => {
 			expect(seen.applied).toBeGreaterThan(0);
 		});
 	}
+});
+
+describe('flow.place — at a slot, nothing replaced (a suggestion accepted)', () => {
+	row('after a block: whole blocks at the slot, the caret ends the last one', () => {
+		const f = make([b('a', 'lead'), b('z', 'tail')]);
+		const { result, at } = place(
+			f,
+			{ slot: { parent: null, index: 1 } },
+			{ lines: [line('x', 'One'), line('y', 'Two', 'quote')] }
+		);
+		expect(result.status).toBe('applied');
+		expect(tree(f)).toEqual([P('a', 'lead'), P('x', 'One'), ['y', 'quote', 'Two'], P('z', 'tail')]);
+		expect(at).toEqual({ block: 'y', offset: 3 });
+	});
+
+	row('a run takes the slot parent default child; a plain line in a list is its item', () => {
+		const f = make([b('l', '', [b('i', 'one', undefined, 'list-item')], 'ordered-list')]);
+		place(f, { slot: { parent: 'l', index: 1 } }, { lines: [run('x', 'X'), line('y', 'Y')] });
+		expect(tree(f)).toEqual([
+			[
+				'l',
+				'ordered-list',
+				'',
+				[
+					['i', 'list-item', 'one'],
+					['x', 'list-item', 'X'],
+					['y', 'list-item', 'Y']
+				]
+			]
+		]);
+	});
+
+	row('as the last children of a block: nested under it, its text untouched', () => {
+		const f = make([b('a', 'lead', [b('k', 'kid')])]);
+		const { at } = place(f, { slot: { parent: 'a', index: 1 } }, { lines: [line('x', 'X')] });
+		expect(tree(f)).toEqual([P('a', 'lead', [P('k', 'kid'), P('x', 'X')])]);
+		expect(at).toEqual({ block: 'x', offset: 1 });
+	});
+
+	row('a void parent refuses the whole op before any write', () => {
+		const f = make([b('v', '', undefined, 'img')]);
+		const plan = f.prepare.insertFlow(
+			{ slot: { parent: 'v', index: 0 } },
+			{ lines: [run('x', 'X')] }
+		);
+		expect(plan.status).toBe('refused');
+		expect(tree(f)).toEqual([['v', 'img', '']]);
+	});
 });

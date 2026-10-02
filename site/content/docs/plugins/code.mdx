@@ -69,10 +69,10 @@ Inside a code line:
 | Keys                                   | Action                                                                             |
 | -------------------------------------- | ---------------------------------------------------------------------------------- |
 | <kbd>Enter</kbd>, <kbd>Shift</kbd> + <kbd>Enter</kbd> | Start a new line                                                      |
-| <kbd>Tab</kbd>                         | At a caret, insert a tab character, or accept an inline suggestion. Over a selection, add a tab at the start of every line it touches, as one undo step; the selection keeps its characters |
+| <kbd>Tab</kbd>                         | At a caret, insert a tab character, or accept the line's `end` [suggestion](/docs/editor/suggestions). Over a selection, add a tab at the start of every line it touches, as one undo step; the selection keeps its characters |
 | <kbd>Shift</kbd> + <kbd>Tab</kbd>      | Remove one leading tab, or up to two spaces, from the caret's line or every line the selection touches |
 | <kbd>Mod</kbd> + <kbd>A</kbd>            | Select the text of the whole code block; press again to select the code block      |
-| <kbd>Escape</kbd>                      | Dismiss an inline suggestion                                                       |
+| <kbd>Escape</kbd>                      | Discard the line's `end` suggestions                                               |
 
 - Typing `(`, `[`, `{`, `"` or `'` at a caret also inserts the closing character. A quote pairs only at a word boundary: the apostrophe in `don't` stays single.
 - Typing a closing character (`)`, `]`, `}`, `"`, `'`) right before the same character steps over it instead of inserting another: `f(a)` types as `f(a)`, not `f(a))`.

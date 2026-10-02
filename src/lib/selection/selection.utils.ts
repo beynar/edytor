@@ -9,6 +9,8 @@ import { getTextContentOffsetAtPoint } from '$lib/events/domTextOffset.js';
 
 const TRAILING_NEWLINE_SELECTOR = '[data-edytor-trailing-newline]';
 export const SYNTHETIC_TEXT_OVERLAY_SELECTOR = '[data-edytor-text-suggestion]';
+/** A block suggestion's preview group: view-only, never a selection endpoint (`session/suggestions`). */
+export const SUGGESTION = '[data-edytor-suggestion]';
 
 export const getElementFromNode = (node: Node | null) => {
 	if (!node || typeof Element === 'undefined') {
@@ -58,9 +60,12 @@ const isIgnoredBoundaryNode = (node: Node) => {
 	}
 
 	if (node instanceof Element) {
-		return !(
-			node.matches('[data-edytor-text], [data-edytor-inline-block], [data-edytor-block]') ||
-			node.querySelector('[data-edytor-text], [data-edytor-inline-block], [data-edytor-block]')
+		return (
+			node.matches(SUGGESTION) ||
+			!(
+				node.matches('[data-edytor-text], [data-edytor-inline-block], [data-edytor-block]') ||
+				node.querySelector('[data-edytor-text], [data-edytor-inline-block], [data-edytor-block]')
+			)
 		);
 	}
 
@@ -235,6 +240,9 @@ const getTextOffsetAtElementBoundary = (text: Text, node: Node, offset: number) 
 export function getTextOfNode(this: EdytorSelection, node: Node | null, offset?: number) {
 	if (!node) return null;
 	const textOf = (element: Node | null) => (element && this.edytor.nodeToText.get(element)) || null;
+	// A point in a suggestion's preview is the stray boundary the preview sits at.
+	const preview = getElementFromNode(node)?.closest(SUGGESTION);
+	if (preview) return textOf(getStrayBoundaryTextElement(preview, this.edytor.node));
 	let text: Text | null = null;
 	if (node.nodeType !== Node.TEXT_NODE) {
 		text = textOf(node);

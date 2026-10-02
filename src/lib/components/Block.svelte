@@ -1,8 +1,9 @@
 <script module lang="ts">
 	import { DEV } from 'esm-env';
 	import { UNKNOWN_KIND, type Edytor } from '../edytor.svelte.js';
-	import type { Block as BlockHandle } from '../block/block.svelte.js';
+	import { voidChrome, type Block as BlockHandle } from '../block/block.svelte.js';
 	import type { BlockDefinition, BlockView } from '../plugins.js';
+	import type { PreviewCell } from '../surface/cells.js';
 
 	const reported = new WeakMap<Edytor, Set<string>>();
 
@@ -27,6 +28,17 @@
 			void: handle.void
 		};
 	};
+
+	/** A suggestion's block (`preview`): its declared values, no handle, never selected. */
+	const previewViewOf = (cell: PreviewCell): BlockView => ({
+		id: cell.id,
+		type: cell.type,
+		data: cell.data ?? {},
+		selected: false,
+		focused: false,
+		handle: undefined,
+		void: voidChrome
+	});
 
 	/** Tags that take no content: the kind renders the element only. */
 	const VOID_TAGS = new Set(['area', 'br', 'col', 'embed', 'hr', 'img', 'input', 'wbr']);
@@ -62,36 +74,49 @@
 	import { getContext } from 'svelte';
 	import Child from './Block.svelte';
 	import Content from './Content.svelte';
+	import Suggestion from './Suggestion.svelte';
 
 	let {
-		id
+		id,
+		preview
 	}: {
 		id: string;
+		/** A suggestion's block: rendered from its preview cell, never registered (`Suggestion`). */
+		preview?: PreviewCell;
 	} = $props();
 
 	const edytor = getContext<Edytor>('edytor');
 	// The structure renders from the cell (R2); the snippet receives a view object (R4).
-	const cell = $derived(edytor.cells?.get(id));
-	const block = $derived(blockViewOf(edytor, id));
+	const cell = $derived(preview ?? edytor.cells?.get(id));
+	const block = $derived(preview ? previewViewOf(preview) : blockViewOf(edytor, id));
+	/** The suggestions shown before, after and inside this block (none in a preview). */
+	const shown = $derived(preview ? null : edytor.suggestions.at(id));
+	/** The children: a preview's own, else the cell's ids. */
+	const kids = $derived(
+		preview
+			? preview.children
+			: (edytor.cells?.get(id)?.childIds ?? []).map((child) => ({ id: child }))
+	);
 	const definition = $derived(cell && edytor.definitionOf(cell.type));
 	// The core renders the block element from the definition; the snippet renders inside it (R11).
 	const element = $derived(definition && elementOf(definition.element ?? 'div', cell?.data));
 	// The element around the block's own text (a heading's `h2`): the core's, so an override keeps it.
 	const contentElement = $derived(definition && elementOf(definition.contentElement, cell?.data));
 	/** Registers the block element (O45): one element per block, re-registered when the tag changes. */
-	const register = (node: HTMLElement) => block.handle.attach(node);
+	const register = (node: HTMLElement) => block.handle?.attach(node);
 	/** The block element's attributes: the kind's, then the core's. */
 	const attributes = $derived(
 		element && {
 			...element.attributes,
 			'data-edytor-block': 'true',
-			'data-edytor-id': id,
+			'data-edytor-id': preview ? undefined : id,
 			'data-edytor-type': cell?.type,
 			'data-edytor-void': definition?.void ? 'true' : undefined,
-			'data-edytor-selected': edytor.selection.selectedBlocks.has(block.handle)
-				? 'true'
-				: undefined,
-			'data-edytor-focused': edytor.selection.focusedBlocks.has(block.handle) ? 'true' : undefined,
+			'data-edytor-selected':
+				block.handle && edytor.selection.selectedBlocks.has(block.handle) ? 'true' : undefined,
+			'data-edytor-focused':
+				block.handle && edytor.selection.focusedBlocks.has(block.handle) ? 'true' : undefined,
+			'data-edytor-suggestion-replaced': shown?.replaced ? '' : undefined,
 			contenteditable: definition?.void ? ('false' as const) : undefined
 		}
 	);
@@ -99,7 +124,7 @@
 	// The kind `content()` last rendered under — read after each render.
 	let contentRenderedFor: string | undefined;
 	$effect(() => {
-		if (DEV) checkRendersContent(block.handle, contentRenderedFor === cell?.type);
+		if (DEV && block.handle) checkRendersContent(block.handle, contentRenderedFor === cell?.type);
 	});
 </script>
 
@@ -107,6 +132,7 @@
 -->{#snippet text()}<!--
 --><Content
 		{id}
+		preview={preview?.runs}
 		onrender={DEV ? () => (contentRenderedFor = cell?.type) : undefined}
 	/><!--
 -->{/snippet}<!--
@@ -121,12 +147,23 @@
 -->{/if}<!--
 -->{/snippet}<!--
 -->{#snippet children()}<!--
---->{#each cell?.childIds ?? [] as child (child)}<!--
+--->{#each kids as child (child.id)}<!--
 --><Child
-			id={child}
+			id={child.id}
+			preview={preview && (child as PreviewCell)}
+		/><!--
+-->{/each}<!--
+-->{#each shown?.inside ?? [] as suggestion (suggestion.id)}<!--
+--><Suggestion
+			{suggestion}
 		/><!--
 -->{/each}<!--
 -->{/snippet}<!--
+-->{#each shown?.before ?? [] as suggestion (suggestion.id)}<!--
+--><Suggestion
+		{suggestion}
+	/><!--
+-->{/each}<!--
 -->{#if cell && definition && element}<!--
 	A void tag (a divider's `hr`) takes no body: the element alone.
 -->{#if VOID_TAGS.has(element.tag)}<!--
@@ -147,11 +184,11 @@
 		-->{@render definition.snippet({
 					block,
 					content,
-					children: cell.childIds.length ? children : null
+					children: kids.length || shown?.inside.length ? children : null
 				})}<!--
 		-->{:else if definition === UNKNOWN_KIND}<!--
 			A kind this view does not register: a plain block, its text and children.
-		-->{@render content()}{#if cell.childIds.length}<div
+		-->{@render content()}{#if kids.length || shown?.inside.length}<div
 						data-edytor-children
 					>
 						{@render children()}
@@ -160,7 +197,12 @@
 	--></svelte:element
 		><!--
 -->{/if}<!--
--->{/if}
+-->{/if}<!--
+-->{#each shown?.after ?? [] as suggestion (suggestion.id)}<!--
+--><Suggestion
+		{suggestion}
+	/><!--
+-->{/each}
 
 <!--
 -->

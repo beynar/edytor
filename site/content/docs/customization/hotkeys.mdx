@@ -85,7 +85,7 @@ On macOS the Emacs-style <kbd>Ctrl</kbd> keys work as in native text fields:
 
 ### Plugin keys
 
-Rich text, arrow move and block handles are on by default in `<Edytor>`; the others apply when you list their plugin.
+Rich text, arrow move, suggestions and block handles are on by default in `<Edytor>`; the others apply when you list their plugin.
 
 | Keys                                               | Action                                           | Plugin, where                            |
 | -------------------------------------------------- | ------------------------------------------------ | ---------------------------------------- |
@@ -94,11 +94,14 @@ Rich text, arrow move and block handles are on by default in `<Edytor>`; the oth
 | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd>       | Red text color                                   | Rich text                                |
 | <kbd>Mod</kbd> + <kbd>Enter</kbd>                    | Check or uncheck the to-dos (one undo step)      | Rich text, a to-do selected or holding the caret |
 | <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>0</kbd> to <kbd>8</kbd> | Turn into text, heading 1 to 3, to-do, bulleted list, numbered list, toggle, code (a block with text or children keeps them, and the code block is inserted after it; after a list's item, outside the list) | Rich text, when that kind's command exists |
-| <kbd>Tab</kbd>                                     | Insert a tab at the caret, indent every line a selection touches, or accept a suggestion | [Code](/docs/plugins/code), in a code line |
+| <kbd>Mod</kbd> + <kbd>Enter</kbd>                    | Accept the latest [suggestion](/docs/editor/suggestions) | Suggestions, while one is shown          |
+| <kbd>Escape</kbd>                                  | Discard the latest suggestion                    | Suggestions, while one is shown          |
+| <kbd>Tab</kbd>                                     | Accept the `end` suggestion of the caret's block | Suggestions, a caret in that block, not in a list-like block |
+| <kbd>Tab</kbd>                                     | Insert a tab at the caret, indent every line a selection touches, or accept an `end` suggestion | [Code](/docs/plugins/code), in a code line |
 | <kbd>Shift</kbd> + <kbd>Tab</kbd>                    | Remove one leading tab (or up to two spaces) from every line the selection touches | Code, in a code line                     |
 | <kbd>Shift</kbd> + <kbd>Enter</kbd>                  | New code line                                    | Code, in a code line                     |
 | <kbd>Mod</kbd> + <kbd>A</kbd>                        | Select the whole code block's text               | Code, until its text is selected         |
-| <kbd>Escape</kbd>                                  | Dismiss a suggestion                             | Code, in a code line                     |
+| <kbd>Escape</kbd>                                  | Discard the line's `end` suggestions (the key goes on) | Code, in a code line                     |
 | <kbd>↑</kbd>, <kbd>↓</kbd>, <kbd>Enter</kbd>, <kbd>Escape</kbd> | Navigate, run, close                | [Slash menu](/docs/plugins/slash-menu), while open |
 | <kbd>Mod</kbd> + <kbd>↑</kbd>, <kbd>Mod</kbd> + <kbd>↓</kbd> | Move the selected blocks up or down        | [Arrow move](/docs/plugins/arrow-move), block selection |
 | <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>, <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↓</kbd> | Move the caret's block (or the selected blocks) up or down | Arrow move, text or block selection |
@@ -107,7 +110,7 @@ Rich text, arrow move and block handles are on by default in `<Edytor>`; the oth
 
 The <kbd>Mod</kbd> + <kbd>Alt</kbd> digits follow Notion's numbering and run the kind's `block.*` command, so <kbd>Mod</kbd> + <kbd>Alt</kbd> + <kbd>8</kbd> needs the code plugin. The block menu's own keys (arrows, <kbd>Enter</kbd>, <kbd>Escape</kbd>) belong to its search field, see [Block menu](/docs/plugins/block-menu#keys).
 
-A plugin key only claims the key in the situation listed. Otherwise the key falls through to the next binding, for example <kbd>Mod</kbd> + <kbd>↓</kbd> to the document end when no block is selected, or <kbd>Mod</kbd> + <kbd>Enter</kbd> to the built-in binding (a toggle opens or closes, anything else is left alone) outside a to-do. With the arrow move plugin (a default), <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves a movable block instead of extending the selection to the document edge.
+A plugin key only claims the key in the situation listed. Otherwise the key falls through to the next binding, for example <kbd>Mod</kbd> + <kbd>↓</kbd> to the document end when no block is selected, or <kbd>Mod</kbd> + <kbd>Enter</kbd> to the built-in binding (a toggle opens or closes, anything else is left alone) outside a to-do when no suggestion is shown. With the arrow move plugin (a default), <kbd>Mod</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> moves a movable block instead of extending the selection to the document edge.
 
 ## Adding hotkeys
 

@@ -98,7 +98,7 @@ It uses the snippet types from [Typing snippets](/docs/plugins/writing-plugins#t
 		class="note-icon"
 		use:block.void
 		aria-label="Switch note tone"
-		onclick={() => cycleTone(block.handle)}
+		onclick={() => block.handle && cycleTone(block.handle)}
 	>
 		{toneOf(block.data) === 'warning' ? '⚠' : 'ℹ'}
 	</button>

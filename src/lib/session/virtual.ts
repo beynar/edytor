@@ -122,6 +122,11 @@ export const virtualLens = (
 	over('insertBlock', (dest, s) => prepare.insertBlocks(dest, [s]));
 	over('insertFlow', (target: FlowTarget, flow: Flow) => {
 		if ('replace' in target) return target.replace.some(on) ? flowInto(flow, false) : undefined;
+		// At a slot beside or under it (a suggestion), the lines take its place.
+		if ('slot' in target)
+			return (target.slot.parent === null || on(target.slot.parent)) && active()
+				? flowInto(flow, false)
+				: undefined;
 		return on(target.block) ? flowInto(flow, !flow.whole) : undefined;
 	});
 	for (const name of ['deleteRange', 'replaceRange'] as const)

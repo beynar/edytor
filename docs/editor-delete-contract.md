@@ -359,6 +359,20 @@ island declared `lines` (code lines), the lines are plain lines
 that shows no line leaves one empty code line. Caret: the end of the last
 placed block's last shown line (`flow.whole`).
 
+### `flow.place` — at a slot, nothing replaced
+
+At a slot `{slot: {parent, index}}` (an accepted suggestion's `after`,
+`before` or `inside` position: `edytor.suggestions`), the lines are placed
+as `flow.slot` places them, with nothing deleted: whole blocks at the
+slot, at plain ranks, a run taking the parent's default child, a plain
+line in a container its item (`flow.container`), plain lines in a `lines`
+island (`flow.lines`). A parent that holds no children (a void, an
+island's line) or is not live refuses the op before any write. In an
+emptied document a root slot replaces the virtual paragraph
+(`doc.empty.virtual`). Caret: the end of the last placed block's last
+shown line (`flow.whole`). Pins: `d7-flow.test.ts` (`flow.place`),
+`suggestions-20261002.test.tsx`.
+
 ### `flow.container` — a line placed in a list is its item
 
 A plain line (a run, or one of the document's default kind) placed

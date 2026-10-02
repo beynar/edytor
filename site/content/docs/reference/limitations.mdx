@@ -15,7 +15,7 @@ Edytor's collaboration stack is proven by its test suites across Chromium, Firef
 
 ## Not finished
 
-- **Block suggestions.** Inline text suggestions (for AI completions) work; suggesting whole blocks does not exist yet.
+- **Suggestions stay in one view.** A [suggestion](/docs/editor/suggestions) (text, blocks or a rewrite proposed by your AI) shows only in the view that made it until it is accepted: another tab or a collaborator cannot review it, and a reload loses it.
 - **No property schema.** [Properties](/docs/concepts/properties) take any JSON; validate or normalize in `onBeforeOperation`.
 - **Array items that are strings or numbers have no key.** An object item's proxy follows its item, so a keyed `{#each}` row stays on it; a row bound to a string item by index (`bind:value={tags[i]}`) writes whatever item is at that index when a collaborator inserts or removes one above it. Store objects for rows several people edit.
 

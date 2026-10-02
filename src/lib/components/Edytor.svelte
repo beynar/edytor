@@ -24,15 +24,20 @@
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { arrowMovePlugin } from '$lib/plugins/arrowMove/arrowMove.js';
 	import { imagePlugin, isImagePlugin } from '$lib/plugins/image/ImagePlugin.svelte';
+	import {
+		isSuggestionsPlugin,
+		suggestionsPlugin
+	} from '$lib/plugins/suggestions/suggestionsPlugin.js';
 
 	/**
 	 * The plugins every view has unless it lists its own (or sets
 	 * `defaultPlugins={false}`), after the app's so its kinds and keys win:
-	 * block moves, the image kind, then rich text.
+	 * block moves, the suggestion UI, the image kind, then rich text.
 	 */
 	const withDefaults = (plugins: Plugin[] = []): Plugin[] => [
 		...plugins,
 		...(plugins.includes(arrowMovePlugin) ? [] : [arrowMovePlugin]),
+		...(plugins.some(isSuggestionsPlugin) ? [] : [suggestionsPlugin]),
 		...(plugins.some(isImagePlugin) ? [] : [imagePlugin]),
 		...(plugins.includes(richTextPlugin) ? [] : [richTextPlugin])
 	];
@@ -73,7 +78,7 @@
 		plugins?: Plugin[];
 		/** Show built-in block handles, with optional pointer dragging and activation callback. */
 		blockHandles?: boolean | BlockHandlesOptions;
-		/** Add rich text, arrow moves and images unless `plugins` lists them (default `true`). */
+		/** Add rich text, arrow moves, the suggestion UI and images unless `plugins` lists them (default `true`). */
 		defaultPlugins?: boolean;
 		/** @deprecated Use `blockHandles`; `false` also hides the built-in handles. */
 		blockDnd?: boolean;

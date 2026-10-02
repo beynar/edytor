@@ -92,20 +92,17 @@
 					if (!whole) prevent(() => edytor.selection.setAtTextsRange(first, last));
 				},
 				escape: () => {
+					// A completion (`end` suggestion) in a code line goes; the key goes on.
 					const { startBlock } = edytor.selection.state;
-					if (startBlock?.type === 'codeLine' && startBlock.suggestions) {
-						startBlock.suggestions = null;
-					}
+					if (startBlock?.type === 'codeLine')
+						for (const ghost of edytor.suggestions.at(startBlock.id).end) ghost.discard();
 				},
 				tab: ({ prevent }) => {
 					const { startText, yStart, startBlock, isCollapsed } = edytor.selection.state;
 					if (startText?.parent.type !== 'codeLine') return;
-					if (startBlock?.suggestions) {
-						return prevent(() => {
-							startBlock.acceptSuggestedText();
-							edytor.selection.setAtTextOffset(startText, startText.length);
-						});
-					}
+					// Tab accepts a completion in a code line (its caret ends it), else indents.
+					const ghost = startBlock && edytor.suggestions.at(startBlock.id).end.at(-1);
+					if (ghost) return prevent(() => ghost.accept());
 					if (isCollapsed) {
 						return prevent(() => {
 							startText.insertText({ value: '\t', start: yStart, end: yStart });
@@ -227,6 +224,8 @@
 				e.preventDefault();
 				e.stopPropagation();
 				const button = e.currentTarget;
+				// A suggestion's preview has no block to copy.
+				if (!block.handle) return;
 				await navigator.clipboard.writeText(getCodeText(block.handle));
 				button.textContent = 'Copied';
 				setTimeout(() => (button.textContent = 'Copy'), 1200);

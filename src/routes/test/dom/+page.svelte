@@ -9,6 +9,7 @@
 	import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 	import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
+	import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
 	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
 	import {
 		IndexeddbPersistence,
@@ -357,6 +358,7 @@
 		mentionPlugin,
 		slashMenuPlugin,
 		toolbarPlugin,
+		suggestionsPlugin,
 		richTextPlugin,
 		propsPlugin
 	]);

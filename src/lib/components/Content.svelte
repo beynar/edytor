@@ -1,16 +1,26 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
 	import type { Edytor } from '$lib/edytor.svelte.js';
-	import { segmentDeltas, type Part, type Segment } from '$lib/surface/cells.js';
+	import {
+		partsOf,
+		segmentDeltas,
+		type Cell,
+		type Part,
+		type Segment
+	} from '$lib/surface/cells.js';
+	import type { ContentRun } from '$lib/crdt/index.js';
+	import { jsonContentToItems } from '$lib/utils/json.js';
 	import RenderText from './Text.svelte';
 	import RenderInlineBlock from './InlineBlock.svelte';
-	import type { JSONText } from '$lib/utils/json.js';
 
 	let {
 		id,
+		preview,
 		onrender
 	}: {
 		id: string;
+		/** A suggestion's block content (`Block`'s `preview`): ghost parts only. */
+		preview?: readonly ContentRun[];
 		/** Dev check (O22): told when the kind's snippet rendered `content()`. */
 		onrender?: () => void;
 	} = $props();
@@ -19,7 +29,7 @@
 	(() => onrender?.())();
 
 	const edytor = getContext<Edytor>('edytor');
-	const cell = $derived(edytor.cells?.get(id));
+	const cell = $derived(preview ? undefined : edytor.cells?.get(id));
 	/** The cell's segments and atoms — the frozen list while the IME pin holds this cell. */
 	const parts = $derived(cell ? edytor.pin.parts(cell) : []);
 	/** Each part with its text ordinal (its text handle's position). */
@@ -29,7 +39,8 @@
 	});
 	/** Bumped only by the observer's repair of foreign damage: re-creates the text elements. */
 	const epoch = $derived(edytor.cells?.epoch(id) ?? 0);
-	const transform = $derived(cell && edytor.definitionOf(cell.type).transformText);
+	const type = $derived(cell?.type ?? edytor.cells?.get(id)?.type);
+	const transform = $derived(type ? edytor.definitionOf(type).transformText : undefined);
 	// The placeholder attribute (§2.4): withheld in the block a composition is in.
 	const placeholder = $derived(edytor.placeholderAt(id));
 
@@ -43,16 +54,54 @@
 			empty: segment.text === ''
 		};
 
-	// Suggestions are session state (L12), rendered from their JSON as declared view values (L48).
-	const suggestions = $derived(edytor.selection.suggestions.get(id) ?? null);
-	const ghost = (runs: JSONText[]) => {
-		const text = runs.map((run) => run.text).join('');
-		const segment = { kind: 'text', key: 'ghost', text, runs } as unknown as Segment;
-		return { deltas: segmentDeltas(cell!, segment, transform), empty: !text, text };
-	};
+	/** A suggestion's text after this block's (`end`): its first block's content. */
+	const ghosts = $derived(
+		preview
+			? []
+			: edytor.suggestions
+					.at(id)
+					.end.map((s) =>
+						partsOf(jsonContentToItems(s.content[0]?.content ?? [], false, () => s.id))
+					)
+	);
+	/** Session content, rendered from JSON as declared view values (L48): no handle, no caret. */
+	const ghost = (segment: Segment) => ({
+		deltas: segmentDeltas(
+			{ id, type: type ?? '', data: undefined } as Cell,
+			segment,
+			preview ? undefined : transform
+		),
+		empty: !segment.text
+	});
 </script>
 
 <!--
+-->{#snippet session(
+	parts: readonly Part[]
+)}<!--
+	-->{#each parts as part, index (index)}<!--
+		-->{#if part.kind === 'text'}<!--
+			-->{@const shown =
+				ghost(part)}<!--
+--><RenderText
+				text={undefined}
+				deltas={shown.deltas}
+				empty={shown.empty}
+				newline={part.text.endsWith('\n')}
+			/><!--
+		-->{:else}<!--
+--><RenderInlineBlock
+				block={undefined}
+				{part}
+			/><!--
+		-->{/if}<!--
+	-->{/each}<!--
+-->{/snippet}<!--
+-->{#if preview}<!--
+	-->{@render session(
+		partsOf(preview)
+	)}<!--
+-->{/if}<!--
 -->{#each items as item (keyOf(item))}<!--
 	-->{#if item.part.kind === 'text'}<!--
 		-->{@const shown =
@@ -81,30 +130,11 @@
 		/><!--
 	-->{/if}<!--
 -->{/each}<!--
--->{#if suggestions}<!--
+-->{#each ghosts as parts, index (index)}<!--
 	--><span
 		data-edytor-text-suggestion
 		contentEditable="false"
-		style="user-select: none; pointer-events: none"
-		><!--
-		-->{#each suggestions as suggestion, index (index)}<!--
-			-->{#if Array.isArray(suggestion)}<!--
-				-->{@const shown =
-					ghost(suggestion)}<!--
---><RenderText
-					text={undefined}
-					deltas={shown.deltas}
-					empty={shown.empty}
-					newline={shown.text.endsWith('\n')}
-				/><!--
-			-->{:else}<!--
---><RenderInlineBlock
-					block={undefined}
-					part={suggestion}
-				/><!--
-			-->{/if}<!--
-		-->{/each}<!--
-	--></span
+		style="user-select: none; pointer-events: none">{@render session(parts)}</span
 	><!--
--->{/if}<!--
+-->{/each}<!--
 -->

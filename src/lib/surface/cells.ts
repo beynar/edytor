@@ -22,7 +22,7 @@
  */
 import { SvelteMap, createSubscriber } from 'svelte/reactivity';
 import type { BlockId, ContentRun, DocChange, ProjectedBlock } from '../crdt/index.js';
-import { sameIds, type JSONText } from '../utils/json.js';
+import { jsonContentToItems, sameIds, type JSONBlock, type JSONText } from '../utils/json.js';
 
 type Data = Readonly<Record<string, unknown>> | undefined;
 
@@ -178,6 +178,24 @@ export type Segment = {
 	readonly text: string;
 	readonly runs: readonly TextRun[];
 };
+
+/** A suggestion's block as a cell (`components/Suggestion`): rendered like one, never registered. */
+export type PreviewCell = Omit<Cell, 'childIds'> & { readonly children: readonly PreviewCell[] };
+
+/** `blocks` as preview cells, keyed by position under `key` (stable while a stream grows). */
+export const previewCells = (blocks: readonly JSONBlock[], key: string): PreviewCell[] =>
+	blocks.map((block, index) => {
+		const id = `${key}.${index}`;
+		let atom = 0;
+		const runs = jsonContentToItems(block.content ?? [], false, () => `${id}~${atom++}`);
+		return Object.freeze({
+			id,
+			type: block.type,
+			data: block.data,
+			runs: Object.freeze(runs) as readonly ContentRun[],
+			children: Object.freeze(previewCells(block.children ?? [], id))
+		});
+	});
 
 export type AtomPart = {
 	readonly kind: 'inline';

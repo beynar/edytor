@@ -130,6 +130,17 @@ const getSelectionRects = (
 	return rects.length ? rects : [getFallbackRect(start, origin, editor)];
 };
 
+/** The rects of the text between two points, relative to the overlay's `origin` (none when not mounted). */
+export const rangeRects = (
+	edytor: Edytor,
+	start: PresencePoint,
+	end: PresencePoint,
+	origin: DOMRect
+): RemoteSelectionRect[] => {
+	const [from, to] = [findDomPoint(start), findDomPoint(end)];
+	return from && to && edytor.node ? getSelectionRects(from, to, origin, edytor.node) : [];
+};
+
 /** The peers' carets and ranges, relative to the overlay's `origin` (R11, F-T8). */
 export const getRenderedRemoteSelections = (
 	edytor: Edytor,

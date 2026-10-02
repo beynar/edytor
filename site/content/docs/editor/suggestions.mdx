@@ -48,9 +48,9 @@ A suggestion is content a view proposes at a position: an AI draft, a completion
 - a caret becomes `{ after: block }`;
 - no selection throws.
 
-`suggestion.at` is the position as resolved. A position names blocks by id (a range, by anchors), so it follows them through edits elsewhere, a collaborator's included. It also throws when it names no shown block.
+`suggestion.at` is the position as resolved. A position names blocks by id (a range, by anchors), so it follows them through edits elsewhere, a collaborator's included. `add` throws when the position names no shown block.
 
-The content goes in like a paste of those blocks: in a list, a plain paragraph becomes the list's item; in a code block, lines become code lines; the other kinds keep their kind and data, as a [paste](/docs/editor/clipboard) of those blocks would.
+The content goes in as a [paste](/docs/editor/clipboard) of those blocks would: in a list, a plain paragraph becomes the list's item; in a code block, lines become code lines; the other kinds keep their kind and data.
 
 ## Content and streaming
 
@@ -66,23 +66,21 @@ The preview updates as the content does, and following blocks move down. The use
 
 ### Streaming from an AI
 
-Read the response body as text and update the suggestion with each chunk:
+Read the response body as text and append each chunk, then mark the suggestion done:
 
 ```ts title="src/lib/draft.ts" check
-import { textToBlocks, type EdytorInstance, type Suggestion } from 'edytor';
+import type { EdytorInstance, Suggestion } from 'edytor';
 
-/** Stream the model's markdown into `suggestion`; Try again streams a new answer. */
+/** Stream the model's answer into `suggestion`; Try again streams a new one. */
 const stream = async (suggestion: Suggestion, prompt: string) => {
 	const response = await fetch('/api/draft', { method: 'POST', body: JSON.stringify({ prompt }) });
 	if (!response.body) return suggestion.discard();
 	const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-	let markdown = '';
 	for (;;) {
 		const { done, value } = await reader.read();
 		// Accepted or discarded meanwhile: stop reading.
 		if (done || !suggestion.live) break;
-		markdown += value;
-		suggestion.update(textToBlocks(markdown));
+		suggestion.append(value);
 	}
 	suggestion.done();
 };
@@ -99,7 +97,14 @@ export const draft = (edytor: EdytorInstance, prompt: string) => {
 };
 ```
 
-For plain text, call `suggestion.append(value)` on each chunk instead of `update`.
+`/api/draft` is your endpoint, which calls the model and streams its text back. For a model that answers in markdown, keep the text received so far and replace the content with its blocks on each chunk, so headings, lists and to-dos take their kinds as they arrive:
+
+```ts
+let markdown = '';
+// in the loop, instead of append:
+markdown += value;
+suggestion.update(textToBlocks(markdown));
+```
 
 ## Accept and discard
 

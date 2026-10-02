@@ -437,10 +437,6 @@
 	background: var(--edytor-suggestion-background);
 	box-shadow: inset 2px 0 0 var(--edytor-suggestion-accent);
 }
-.edytor-notion [data-edytor-suggestion] [data-edytor-text-empty='true'] {
-	display: inline-block;
-	min-width: 1px;
-}
 .edytor-notion [data-edytor-suggestion][data-status='streaming'] {
 	animation: edytor-suggestion-pulse 1.4s ease-in-out infinite;
 }
@@ -454,11 +450,24 @@
 		animation: none;
 	}
 }
-/* The blocks a replacement removes when accepted. */
+/* The blocks a replacement removes when accepted; their other children stay. */
 .edytor-notion [data-edytor-suggestion-replaced] {
 	background: var(--edytor-suggestion-removed);
+}
+.edytor-notion [data-edytor-suggestion-replaced] [data-edytor-text] {
 	text-decoration: line-through;
-	text-decoration-color: rgba(235, 87, 87, 0.6);
+	text-decoration-color: var(--edytor-suggestion-removed-line, rgba(235, 87, 87, 0.6));
+}
+.edytor-notion
+	[data-edytor-suggestion-replaced]
+	[data-edytor-block]:not([data-edytor-suggestion-replaced]) {
+	background: var(--notion-page, #fff);
+}
+.edytor-notion
+	[data-edytor-suggestion-replaced]
+	[data-edytor-block]:not([data-edytor-suggestion-replaced])
+	[data-edytor-text] {
+	text-decoration: none;
 }
 .edytor-notion [data-edytor-text-suggestion] {
 	color: var(--notion-placeholder);

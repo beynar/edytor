@@ -17,6 +17,7 @@
 	} from 'edytor';
 	import 'edytor/themes/notion.css';
 	import './live-editor.css';
+	import { aiDemoPlugin, askAI } from './ai-demo';
 
 	/** The public demo room (site/room): one shared document per UTC day. */
 	const SERVER = 'wss://edytor-room.beynar.workers.dev/rooms';
@@ -93,8 +94,15 @@
 		return () => awareness.off('change', read);
 	});
 
-	// Rich text, images and block moves are defaults.
-	const plugins = [blockMenuPlugin, codePlugin, markdownShortcutsPlugin, slashMenuPlugin, toolbarPlugin];
+	// Rich text, images, block moves and the suggestion bar are defaults.
+	const plugins = [
+		aiDemoPlugin,
+		blockMenuPlugin,
+		codePlugin,
+		markdownShortcutsPlugin,
+		slashMenuPlugin,
+		toolbarPlugin
+	];
 </script>
 
 <div class="live-editor-frame edytor-notion">
@@ -110,6 +118,13 @@
 		</span>
 		<span class="live-count"
 			>Live · {Math.max(1, people.length)} {people.length > 1 ? 'people' : 'person'} editing</span
+		>
+		<button
+			type="button"
+			class="live-ai"
+			title="A canned AI draft, shown only to you until you accept it"
+			onmousedown={(event) => event.preventDefault()}
+			onclick={() => edytor && askAI(edytor)}>✦ Ask AI</button
 		>
 	</div>
 	<div class="live-editor">
@@ -174,6 +189,22 @@
 	.live-count {
 		color: #a19e99;
 		white-space: nowrap;
+	}
+	.live-ai {
+		height: 28px;
+		padding: 0 10px;
+		border: 0;
+		border-radius: 6px;
+		background: rgba(35, 131, 226, 0.08);
+		color: #2383e2;
+		font: inherit;
+		font-size: 13px;
+		font-weight: 500;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.live-ai:hover {
+		background: rgba(35, 131, 226, 0.16);
 	}
 	.live-editor {
 		max-height: 36rem;

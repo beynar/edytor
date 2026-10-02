@@ -246,7 +246,7 @@ export const askAI = (edytor: EdytorInstance) => {
 	const block = edytor.selection.state.startBlock;
 	if (!block) return;
 	// An empty line is replaced, as in Notion; else the answer goes after the block.
-	const at = block.isEmpty && block.type === 'paragraph' ? { replace: [block.id] } : { after: block.id };
+	const at = block.isEmpty && block.convertible ? { replace: [block.id] } : { after: block.id };
 	const suggestion = edytor.suggestions.add(at, undefined, {
 		label: 'AI',
 		onRetry: (again) => stream(again, ANSWERS[next++ % ANSWERS.length]!)

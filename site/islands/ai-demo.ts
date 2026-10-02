@@ -116,12 +116,13 @@ const blockOf = (edytor: EdytorInstance) =>
 
 /**
  * Ask the "AI": its answer streams after the caret's block, or in place of
- * an empty paragraph. Try again streams another one.
+ * an empty line. Try again streams another one.
  */
 export const askAI = (edytor: EdytorInstance) => {
 	const block = blockOf(edytor);
 	if (!block) return;
-	const empty = block.isEmpty && block.type === 'paragraph';
+	// Any empty line (a paragraph, a to-do, a heading, a list item): Turn into's lines.
+	const empty = block.isEmpty && block.convertible;
 	const suggestion = edytor.suggestions.add(empty ? { replace: [block.id] } : { after: block.id }, undefined, {
 		label: 'AI',
 		onRetry: (again) => stream(again, answer())

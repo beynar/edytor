@@ -1184,6 +1184,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 		const isVoid = (id: BlockId): boolean => is(id, roles.childless);
 		const isIsland = (id: BlockId): boolean => is(id, roles.island);
+		/** An island that holds only lines (a code block: its role says `lines`). */
+		const isLines = (id: BlockId): boolean => is(id, (type) => roles.line(type) !== undefined);
 		/** Nearest island-typed display ancestor of `id`, or null. */
 		const islandOf = (id: BlockId, v: View = view()): BlockId | null =>
 			ancestorsOf(id, v).find((a) => isIsland(a)) ?? null;
@@ -1192,7 +1194,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		/** `id` is a line — directly in an island declared `lines` — and holds no children (FW-01). */
 		const isLine = (id: BlockId): boolean => {
 			const parent = positionOf(id)?.parent;
-			return parent != null && is(parent, (type) => roles.line(type) !== undefined);
+			return parent != null && isLines(parent);
 		};
 
 		// ── structural capability (R5, O8): one answer in advance and at execution ──
@@ -2719,7 +2721,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			rendersContent,
 			canMerge,
 			isIsland,
-			isLines: (id) => is(id, (type) => roles.line(type) !== undefined),
+			isLines,
 			defaultChild,
 			fitted,
 			move,
@@ -2910,6 +2912,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			rolesChanged: () => runsView.roles(roles),
 			isVoid: byRef(isVoid),
 			isIsland: byRef(isIsland),
+			isLines: byRef(isLines),
 			islandOf: byRef((id: BlockId) => islandOf(id)),
 			insideIsland: byRef((id: BlockId) => insideIsland(id)),
 			// structural capability (R5)

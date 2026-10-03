@@ -131,6 +131,12 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.14
+
+- **Leaving a code block by keyboard.** <kbd>Enter</kbd> in a code block's empty last line (not its only line) removes the line and puts the caret in a new paragraph after the block, one undo step (the role rule for an island of lines, `insertParagraph`); <kbd>ArrowDown</kbd> in the last line with nothing after the block creates a paragraph there (code plugin). An empty line in the middle is still a new line.
+- **`facade.isLines(id)`**: whether a block is an island of lines (a code block).
+- `richTextPlaceholder` shows nothing in an empty code line.
+
 ### From 0.1.0-next.13
 
 - **Published to npm.** The package names its repository (`repository` in `package.json`) and a version tag publishes it from CI with provenance: pre-releases under the `next` dist-tag (`npm install edytor@next`), `latest` stays on `0.0.11` until a stable release. No API change.

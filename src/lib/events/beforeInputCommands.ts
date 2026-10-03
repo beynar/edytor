@@ -286,6 +286,25 @@ const insertParagraph = (edytor: Edytor, snapshot: Attempt) => {
 		? { type: current.type, data: { ...(presets?.[0]?.data ?? {}) } }
 		: { type: defaultBlock };
 
+	// Enter in the empty last line of a lines island (a code block) holding
+	// other lines leaves it: the line goes, and the parent's default kind
+	// after the island takes the caret (one step). An empty line elsewhere,
+	// or the only one, is a newline.
+	const island = current.parent;
+	if (
+		island?.parent &&
+		edytor.facade.isLines(island.id) &&
+		isAtStartOfBlock &&
+		isAtEndOfBlock &&
+		current.isEmpty &&
+		current.index > 0 &&
+		current.index === island.children.length - 1
+	) {
+		current.removeBlock();
+		const after = island.insertBlockAfter({ block: { type: edytor.defaultChild(island.parent) } });
+		return caretAt(edytor, after?.firstText, 0);
+	}
+
 	// Enter in an empty list-like block ends the run (Notion): out one level
 	// when nested in another list-like block, else — at the top level or in a
 	// container such as a callout — the parent's default kind, in place. An

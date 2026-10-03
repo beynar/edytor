@@ -1,7 +1,8 @@
 # Publishes the package to npm when a version tag (`v0.1.0-next.14`) is pushed.
 # Trusted publishing (OIDC): npm trusts this workflow of beynar/edytor, no token.
 # A pre-release (`-next.N`) goes under the `next` dist-tag, any other version
-# under `latest`. The browser lanes stay local (run before every release).
+# under `latest`. The test lanes stay local (run before every release): their
+# timing budgets do not hold on shared runners.
 name: Publish
 
 on:
@@ -31,7 +32,6 @@ jobs:
       - run: pnpm lint
       - run: pnpm check
       - run: pnpm check:worker
-      - run: pnpm exec vitest --run
       - name: Publish
         run: |
           tag=$(node -p '/-/.test(require("./package.json").version) ? "next" : "latest"')

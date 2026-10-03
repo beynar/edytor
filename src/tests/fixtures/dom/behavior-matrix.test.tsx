@@ -486,7 +486,8 @@ const EXPECTED: Record<Kind, Partial<Record<State, Partial<Record<Key, string>>>
 	},
 	'code line': {
 		empty: {
-			Enter: 'p:pre code:[l:a l: l:] p:post | l:@0',
+			// The empty last line leaves the code block (Enter by role, island of lines).
+			Enter: 'p:pre code:[l:a] p: p:post | p:@0',
 			'Shift+Enter': 'p:pre code:[l:a l: l:] p:post | l:@0',
 			Backspace: 'p:pre code:[l:a] p:post | l:a@1',
 			Delete: 'p:pre code:[l:a l:] p:post | l:@0',

@@ -13,6 +13,7 @@ import {
 import {
 	deleteSelectedBlocks,
 	getSelectedBlocksInDocumentOrder,
+	liftLayouts,
 	outermost,
 	shownText
 } from '$lib/selection/replaceSelection.js';
@@ -100,7 +101,7 @@ export class BlockMenuController {
 				submenu: true,
 				isEnabled: () => convertedBlocks(this.members).length > 0
 			},
-			...(this.options.linkTo && blocks.length === 1
+			...(this.options.linkTo && this.linked
 				? [
 						{
 							id: 'link',
@@ -238,9 +239,18 @@ export class BlockMenuController {
 		this.focus();
 	}
 
+	/**
+	 * The one block "Copy link" names: the open block, or the layout its
+	 * block selection covers whole (D3, `liftLayouts`); none for several.
+	 */
+	get linked(): Block | undefined {
+		const [only, ...rest] = this.blocks.length > 1 ? liftLayouts(this.blocks) : this.blocks;
+		return rest.length ? undefined : only;
+	}
+
 	async copyLink() {
-		const { block, options } = this;
-		if (block && options.linkTo) await navigator.clipboard?.writeText(options.linkTo(block));
+		const { linked, options } = this;
+		if (linked && options.linkTo) await navigator.clipboard?.writeText(options.linkTo(linked));
 		this.close();
 	}
 

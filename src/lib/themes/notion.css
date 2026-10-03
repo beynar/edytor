@@ -427,6 +427,22 @@
 	background: var(--notion-page, #fff);
 }
 
+/* ── Columns: one highlight over a layout a block selection stands for ── */
+.edytor-notion [data-edytor-block][data-edytor-columns][data-edytor-selected] {
+	background: transparent;
+}
+.edytor-notion
+	[data-edytor-block][data-edytor-columns]
+	> [data-edytor-children][data-edytor-columns-selected] {
+	background: var(--notion-block-selection);
+}
+.edytor-notion
+	[data-edytor-block][data-edytor-columns]
+	> [data-edytor-children][data-edytor-columns-selected]
+	[data-edytor-block] {
+	background: transparent;
+}
+
 /* ── Suggestions (AI): a tinted preview ──────────────────────────────── */
 .edytor-notion [data-edytor-suggestion] {
 	position: relative;

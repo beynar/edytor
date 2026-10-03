@@ -22,6 +22,7 @@ import {
 import { HIDDEN, hidden } from '$lib/selection/visibility.js';
 import {
 	getSelectionBlocks,
+	holdsBlocks,
 	movable,
 	outermost,
 	selectMoved,
@@ -406,7 +407,7 @@ export class BlockHandleController {
 			// block selection); the drop's undo step restores the selection held before.
 			onDragStart: () => {
 				const { selectedBlocks, value } = this.edytor.selection;
-				if (this.group.every((moved) => selectedBlocks.has(moved))) return;
+				if (holdsBlocks(selectedBlocks, this.group)) return;
 				this.held = value;
 				this.select(block);
 			},
@@ -544,7 +545,8 @@ export class BlockHandleController {
 	 */
 	private moveAndSelect(request: BlockMoveRequest) {
 		const { selectedBlocks } = this.edytor.selection;
-		const holds = request.blocks.every((block) => selectedBlocks.has(block));
+		// A layout the selection covers whole counts as held (D3): its blocks stay selected.
+		const holds = holdsBlocks(selectedBlocks, request.blocks);
 		const before = holds ? [...selectedBlocks] : [];
 		const moved = this.edytor.moveBlocks(request);
 		if (moved.length) selectMoved(this.edytor, moved, before);

@@ -386,6 +386,17 @@ its kind and data, as it would outside a list: a pasted image keeps its
 `src`, a to-do its check, a heading its level, a bulleted item in an
 `ordered-list` its kind (DR-crdt-1).
 
+### `flow.layout` — no layout lands in a column (D2)
+
+A flow placed inside a layout's item (a column), at any depth — at a
+position, over selected blocks or at a slot — places each layout line it
+holds, at any depth, as its items' lines in reading order (and any other
+child the layout holds), then by the rows above: a copied layout pasted in
+a column gives its blocks, a whole flow after the block, a pasted HTML
+layout its lines (the first one joining the text, `flow.split`). Elsewhere
+a layout line is placed as a block (`flow.apart`: it shows no text). Pins:
+`columns-clipboard.test.tsx`.
+
 ### `flow.void` — a block that cannot split
 
 A void block (its caption) is never split: at a position inside one, the
@@ -1246,14 +1257,22 @@ layout at read time (`layout.only-items`, then `layout.single`).
   item's last line.
 - A text range across columns joins its two ends (`del.range.*`); an item
   it empties goes and the layout dissolves.
-- The outdent stays refused (ZW-14): Shift+Tab or Backspace-unnest at an
-  item's last or only block would place it directly in the layout.
+- The outdent stays refused (ZW-14): Shift+Tab at an item's last or only
+  block would place it directly in the layout. Backspace at the start of an
+  item's block never outdents: its first block merges as above, any other
+  into the line before it, as anywhere (`mergeBackward`).
+- Mod+Shift+↑ at an item's first block, ↓ at its last (a relative move
+  step, `up`/`down`), leaves the layout: the block goes before or after
+  it, and an item it empties goes, then dissolving (the keyboard's way out
+  of a column).
 
 ### `layout.nest` — no layout inside a column, by gesture (D2)
 
 A move (`canPlace`: drags, Alt and Mod+Shift arrows, Tab, an outdent, a
 drop) refuses to place a layout, or a block holding one, anywhere inside
-an item, and `placeBeside` refuses to put one in an item. A layout that a
+an item, and `placeBeside` refuses to put one in an item. A paste or drop
+inside an item places a layout's blocks instead (`flow.layout`), and the
+view's layout commands (`columns.N`) are disabled there. A layout that a
 race or an explicit write (`insertBlocks`, a retype) puts inside a column
 displays as it is, by the rules above: no flatten.
 

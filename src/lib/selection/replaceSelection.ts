@@ -69,9 +69,57 @@ const isInside = (block: Block, ancestor: Block) => {
 	return false;
 };
 
-/** The blocks not inside another of them: a block's descendants among them move with it. */
-export const outermost = (blocks: Iterable<Block>): Block[] => {
+/**
+ * `blocks` with every layout they cover whole standing for it (D3, as
+ * Notion): a set holding every shown block of every column of a layout (each
+ * displayed item's children) holds the layout instead of them and their
+ * descendants. A layout so lifted may
+ * in turn fill a column of an outer layout. Decided from the roles
+ * (`isLayout`/`isLayoutItem`). The move resolver (`outermost`), Copy and the
+ * layout's selection highlight read it; content actions read the members
+ * (`selectedMembers`).
+ */
+export const liftLayouts = (blocks: Iterable<Block>): Block[] => {
 	const all = new Set(blocks);
+	for (let changed = true; changed; ) {
+		changed = false;
+		const layouts = new Set<Block>();
+		for (const block of all) {
+			for (let at = block.parent; at && !at.isRoot; at = at.parent) {
+				const facade = at.edytor.facade;
+				if (facade.isLayoutItem(at.id) && at.parent) layouts.add(at.parent);
+			}
+		}
+		for (const layout of layouts) {
+			if (all.has(layout)) continue;
+			const items = layout.children;
+			const whole =
+				items.length > 0 &&
+				items.every((item) => item.children.length > 0 && item.children.every((b) => all.has(b)));
+			if (!whole) continue;
+			for (const block of [...all]) if (block.isChildOf(layout)) all.delete(block);
+			all.add(layout);
+			changed = true;
+		}
+	}
+	return [...all];
+};
+
+/** Whether a block selection holds `blocks`, a layout it covers whole counting as held (D3). */
+export const holdsBlocks = (selected: Iterable<Block>, blocks: readonly Block[]) => {
+	const as = [...selected];
+	const held = new Set([...as, ...liftLayouts(as)]);
+	return blocks.every((block) => held.has(block));
+};
+
+/**
+ * The blocks not inside another of them: a block's descendants among them
+ * move with it. A layout they cover whole stands for its blocks
+ * (`liftLayouts`, D3): every move (a grip's drag and Alt+arrows,
+ * Mod+Shift+arrows, the block menu's Move) and Duplicate act on it.
+ */
+export const outermost = (blocks: Iterable<Block>): Block[] => {
+	const all = new Set(liftLayouts(blocks));
 	const inside = (block: Block) => {
 		for (let parent = block.parent; parent; parent = parent.parent)
 			if (all.has(parent)) return true;
@@ -103,8 +151,12 @@ export const movable = (blocks: Iterable<Block>): Block[] => {
  * child stays selected, so the next step moves the same selection.
  */
 export const selectMoved = (edytor: Edytor, moved: Block[], before: Iterable<Block>) => {
-	const kept = [...before].filter((block) => moved.some((root) => isInside(block, root)));
-	edytor.selection.selectBlocks(...moved, ...kept);
+	const held = [...before];
+	const kept = held.filter((block) => moved.some((root) => isInside(block, root)));
+	// A layout moved for the blocks covering it whole stays selected as those blocks (D3).
+	const lifted = new Set(liftLayouts(kept));
+	const roots = moved.filter((block) => !lifted.has(block) || held.includes(block));
+	edytor.selection.selectBlocks(...roots, ...kept);
 };
 
 /**

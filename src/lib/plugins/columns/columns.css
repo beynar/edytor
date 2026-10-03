@@ -1,0 +1,52 @@
+/*
+ * Columns (docs/columns-plan.md §5): a layout lays its columns out side by
+ * side in its one children container, each column growing by its weight
+ * (`flex: <width> 1 0`, set on the column by the kind's element), with
+ * `--edytor-columns-gap` between them. Neither container is a nesting step:
+ * their indent is zeroed. Below a 480px wide layout the columns stack (D6).
+ */
+[data-edytor-block][data-edytor-columns] {
+	container-type: inline-size;
+}
+[data-edytor-block][data-edytor-columns] > [data-edytor-children] {
+	display: flex;
+	gap: var(--edytor-columns-gap, 46px);
+	padding-inline-start: 0;
+}
+[data-edytor-block][data-edytor-column] {
+	min-width: 0;
+}
+[data-edytor-block][data-edytor-column] > [data-edytor-children] {
+	padding-inline-start: 0;
+}
+/* A column's first and last blocks sit flush with the layout's edges. */
+[data-edytor-column] > [data-edytor-children] > [data-edytor-block]:first-child {
+	margin-top: 0;
+}
+[data-edytor-column] > [data-edytor-children] > [data-edytor-block]:last-child {
+	margin-bottom: 0;
+}
+@container (max-width: 480px) {
+	[data-edytor-block][data-edytor-columns] > [data-edytor-children] {
+		flex-direction: column;
+		gap: 0;
+	}
+	/* Over the weight the column's own style sets: stacked, each takes its height. */
+	[data-edytor-block][data-edytor-column] {
+		flex: 0 0 auto !important;
+	}
+}
+
+/*
+ * A block selection standing for the whole layout (D3): one highlight over
+ * the layout, none on its blocks.
+ */
+[data-edytor-block][data-edytor-columns] > [data-edytor-children][data-edytor-columns-selected] {
+	border-radius: 4px;
+	background: var(--edytor-block-selection, rgba(35, 131, 226, 0.14));
+}
+[data-edytor-block][data-edytor-columns]
+	> [data-edytor-children][data-edytor-columns-selected]
+	[data-edytor-block] {
+	background: transparent;
+}

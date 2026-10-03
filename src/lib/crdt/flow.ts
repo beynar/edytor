@@ -67,8 +67,18 @@ export type FlowContext = RangeDeleteContext & {
 	sanitize: (spec: BlockSpec) => BlockSpec;
 	collides: (specs: readonly BlockSpec[]) => boolean;
 	isVoid: (id: BlockId) => boolean;
-	/** A kind's display role: void, an island, whether it renders its own content. */
-	roleOf: (kind: string) => { void: boolean; island: boolean; rendersContent: boolean };
+	/**
+	 * A kind's display role: void, an island, whether it renders its own
+	 * content, and a layout's item kind (`layout.*`).
+	 */
+	roleOf: (kind: string) => {
+		void: boolean;
+		island: boolean;
+		rendersContent: boolean;
+		layout?: string;
+	};
+	/** `id` is a layout item or sits inside one (D2: no layout lands there). */
+	insideItem: (id: BlockId) => boolean;
 	tailOf: (id: BlockId) => SplitTail;
 	ranksFor: (parent: BlockId | null, index: number, count: number) => string[];
 	/** Ranks for the `count` blocks a split of `id` at `at` puts after it, by that offset. */
@@ -126,6 +136,21 @@ export const flowOps = (c: FlowContext) => ({
 			...(l.children ?? []).flatMap(plain)
 		];
 		const endOf = placedEnd(c.roleOf);
+		/**
+		 * A layout line, here or nested, as its items' lines in reading order, and
+		 * any other child it holds (`flow.layout`, D2): no layout lands in an item.
+		 */
+		const unwrap = (l: FlowLine): FlowLine[] => {
+			const item = l.type ? c.roleOf(l.type).layout : undefined;
+			if (item === undefined)
+				return [l.children ? { ...l, children: l.children.flatMap(unwrap) as BlockSpec[] } : l];
+			return (l.children ?? []).flatMap((kid) =>
+				kid.type === item ? (kid.children ?? []).flatMap(unwrap) : unwrap(kid)
+			);
+		};
+		const intoItem = (parent: BlockId | null) => {
+			if (parent !== null && c.insideItem(parent)) lines = lines.flatMap(unwrap);
+		};
 		/** Whole blocks at a slot, after `pre`; the caret ends the last one's shown content. */
 		const atSlot = (dest: Destination, pre: PlanStep[]): Prepared => {
 			const placed = specs(dest.parent);
@@ -145,6 +170,8 @@ export const flowOps = (c: FlowContext) => ({
 				slot = c.positionOf(first)!;
 				pre = [...del.writes];
 			}
+			intoItem(slot.parent);
+			if (lines.length === 0) return c.plan([], []);
 			// In a code block (selected lines, a slot), the lines are plain lines too (`flow.lines`, HX-06).
 			if (slot.parent !== null && c.isLines(slot.parent)) {
 				const shown = lines.flatMap(plain);
@@ -157,6 +184,7 @@ export const flowOps = (c: FlowContext) => ({
 		const len = c.displayLength(B);
 		const o = Math.max(0, Math.min(target.offset, len));
 		const { parent, index } = c.positionOf(B)!;
+		intoItem(B);
 		const empty = len === 0 && c.childrenIds(B).length === 0;
 		// A line of a lines island (a code line) takes plain lines: every line the flow
 		// shows, nested ones included, in order; no block lands in the island (`flow.lines`).

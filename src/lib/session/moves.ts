@@ -8,7 +8,8 @@ export type BlockMovePosition = 'before' | 'after' | 'inside';
 /**
  * One relative step (D-5): `up`/`down` pass the previous/next sibling, never
  * entering its children, and past the first/last sibling leave the parent
- * (before/after it); `in` = last child of the previous sibling; `out` =
+ * (before/after it; a layout's column: the layout, `layout.fits`); `in` =
+ * last child of the previous sibling; `out` =
  * after the parent, the siblings after the last moved block becoming its
  * children (the document's outdent, `unNestBlocks`).
  */
@@ -27,9 +28,13 @@ const placement = (edytor: Edytor, request: BlockMoveRequest) => {
 	const parent = first?.parent;
 	if (!parent || blocks.some((block) => block.parent !== parent)) return null;
 	const outer = parent.isRoot ? null : parent;
+	// Past a column's first or last block the step leaves its layout, the
+	// keyboard's way out of a column (nothing but a column sits in a layout).
+	const leaves = outer && edytor.facade.isLayoutItem(outer.id) ? outer.parent : outer;
+	const beyond = leaves?.isRoot ? null : leaves;
 	const step = {
-		up: [first.previousBlock ?? outer, 'before'],
-		down: [last.nextBlock ?? outer, 'after'],
+		up: [first.previousBlock ?? beyond, 'before'],
+		down: [last.nextBlock ?? beyond, 'after'],
 		in: [first.previousBlock, 'inside'],
 		out: [outer, 'after']
 	}[request.direction] as [Block | null | undefined, BlockMovePosition] | undefined;

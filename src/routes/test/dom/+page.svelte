@@ -10,6 +10,7 @@
 	import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 	import { suggestionsPlugin } from '$lib/plugins/suggestions/suggestionsPlugin.js';
+	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import { propsPlugin } from '../../../tests/dom/PropsKind.svelte';
 	import {
 		IndexeddbPersistence,
@@ -326,6 +327,32 @@
 				}
 			]
 		},
+		// A layout of two columns between two paragraphs (`layout.*` in the delete contract).
+		columns: {
+			children: [
+				{ id: 'P', type: 'paragraph', content: [{ text: 'before' }] },
+				{
+					id: 'C',
+					type: 'columns',
+					children: [
+						{
+							id: 'K1',
+							type: 'column',
+							children: [
+								{ id: 'A', type: 'paragraph', content: [{ text: 'left one' }] },
+								{ id: 'A2', type: 'paragraph', content: [{ text: 'left two' }] }
+							]
+						},
+						{
+							id: 'K2',
+							type: 'column',
+							children: [{ id: 'B', type: 'paragraph', content: [{ text: 'right' }] }]
+						}
+					]
+				},
+				{ id: 'Z', type: 'paragraph', content: [{ text: 'after' }] }
+			]
+		},
 		// Deterministic block ids: two clients mounting this scenario seed the
 		// identical spec set, so concurrent `init`s LWW-dedupe to one block per
 		// id instead of duplicating content.
@@ -359,6 +386,7 @@
 		slashMenuPlugin,
 		toolbarPlugin,
 		suggestionsPlugin,
+		columnsPlugin,
 		richTextPlugin,
 		propsPlugin
 	]);

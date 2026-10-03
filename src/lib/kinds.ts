@@ -205,7 +205,11 @@ export const convertToKind = (
 	const landing = edytor.idToBlock.get(next);
 	if (caret || after || landing) {
 		const at = landing ?? edytor.idToBlock.get(kind.id);
-		edytor.dispatcher.caret((kind.children?.length ? at?.children[0] : at)?.firstText, 0);
+		// Down to the first child that shows a line: a layout's first column holds none of its own.
+		let line = kind.children?.length ? at?.children[0] : at;
+		while (line && !line.rendersContent && !line.definition.void && line.children[0])
+			line = line.children[0];
+		edytor.dispatcher.caret(line?.firstText, 0);
 	}
 	return true;
 };

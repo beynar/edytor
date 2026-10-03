@@ -2966,8 +2966,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			roleOf: (kind) => ({
 				void: roles.childless(kind),
 				island: roles.island(kind),
-				rendersContent: roles.rendersContent(kind)
+				rendersContent: roles.rendersContent(kind),
+				layout: roles.layout(kind)
 			}),
+			insideItem: (id) => insideItem(id),
 			tailOf: (id) => ({ type: kindToCopy(id), data: blockDataOf(id) }),
 			ranksFor,
 			pieceRanks,

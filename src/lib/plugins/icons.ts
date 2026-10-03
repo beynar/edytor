@@ -11,6 +11,16 @@ const heading = (n: number) =>
 		`<path d="M3.5 5v10M10 5v10M3.5 10H10"/><text x="12" y="15.5" font-size="8" font-family="Arial" font-weight="700" fill="black" stroke="none">${n}</text>`
 	);
 
+/** A layout of `n` columns: `n` rounded panels side by side. */
+const columns = (n: number) => {
+	const [gap, width] = [1.5, (15 - 1.5 * (n - 1)) / n];
+	const panels = Array.from(
+		{ length: n },
+		(_, i) => `<rect x="${2.5 + i * (width + gap)}" y="4" width="${width}" height="12" rx="1.5"/>`
+	);
+	return svg(panels.join(''));
+};
+
 const ICONS: Record<string, string> = {
 	'block.paragraph': svg('<path d="M4.5 5.5h11M10 5.5v10"/>'),
 	'block.heading1': heading(1),
@@ -34,6 +44,9 @@ const ICONS: Record<string, string> = {
 	),
 	'block.divider': svg('<path d="M3 10h14"/><path d="M5 6h10M5 14h10" opacity=".35"/>'),
 	'block.code': svg('<path d="M7.5 6L3.5 10l4 4M12.5 6l4 4-4 4"/>'),
+	'columns.2': columns(2),
+	'columns.3': columns(3),
+	'columns.4': columns(4),
 	'mark.link': svg(
 		'<path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/>'
 	),

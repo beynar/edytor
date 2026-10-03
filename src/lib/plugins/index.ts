@@ -54,3 +54,9 @@ export {
 	type ImagePluginOptions
 } from './image/ImagePlugin.svelte';
 export type { BlockHandleController } from './blockHandles/BlockHandleController.svelte.js';
+export {
+	columnsPlugin,
+	createColumnsPlugin,
+	isColumnsPlugin,
+	type ColumnsPluginOptions
+} from './columns/ColumnsPlugin.svelte';

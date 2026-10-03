@@ -11,6 +11,7 @@
 	import { slashMenuPlugin } from '$lib/plugins/slashMenu/slashMenuPlugin.js';
 	import { toolbarPlugin } from '$lib/plugins/toolbar/toolbarPlugin.js';
 	import { createBlockMenuPlugin } from '$lib/plugins/blockMenu/blockMenuPlugin.js';
+	import { columnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 	import type { Plugin } from '$lib/plugins.js';
 	import { page } from '$app/state';
 	import { createIndexeddbSync } from '$lib/collaboration/providers.js';
@@ -49,6 +50,7 @@
 			linkTo: (block) => `${location.origin}${location.pathname}#block-${block.id}`
 		}),
 		demoPagePlugin,
+		columnsPlugin,
 		richTextPlugin
 	];
 	const demoValue: JSONDoc = {
@@ -117,6 +119,34 @@
 				id: 'page-quote',
 				type: 'quote',
 				content: [{ text: 'The best ideas rarely arrive in order.' }]
+			},
+			{
+				id: 'page-columns',
+				type: 'columns',
+				children: [
+					{
+						id: 'page-column-left',
+						type: 'column',
+						children: [
+							{
+								id: 'page-column-left-text',
+								type: 'paragraph',
+								content: [{ text: 'Put two thoughts side by side.' }]
+							}
+						]
+					},
+					{
+						id: 'page-column-right',
+						type: 'column',
+						children: [
+							{
+								id: 'page-column-right-text',
+								type: 'paragraph',
+								content: [{ text: 'Each column holds any block.' }]
+							}
+						]
+					}
+				]
 			},
 			{
 				id: 'page-toggle',

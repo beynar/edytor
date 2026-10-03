@@ -7,6 +7,7 @@ import type { EdytorClipboardFragment } from './types.js';
 import { sliceTextValue } from '$lib/block/contentRange.js';
 import { cloneJson, type JSONBlock } from '$lib/utils/json.js';
 import { rangeCovers, selectedMembers } from '$lib/selection/visibility.js';
+import { liftLayouts } from '$lib/selection/replaceSelection.js';
 
 const extractContentRange = (
 	block: Block,
@@ -89,13 +90,15 @@ const extractBlockRange = (edytor: Edytor) => {
 };
 
 export const createEdytorClipboardFragment = (edytor: Edytor): EdytorClipboardFragment | null => {
-	const selectedBlocks = selectedMembers(edytor);
+	// A layout the block selection covers whole is copied as the layout (D3).
+	const selectedBlocks = selectedMembers(edytor, liftLayouts(edytor.selection.selectedBlocks));
 	if (selectedBlocks.length > 0) {
 		return {
 			version: 1,
 			source: 'edytor',
 			kind: 'blocks',
-			// Exactly the members (`sel.blocks.exact`): what a cut copies is what it deletes.
+			// Exactly the members (`sel.blocks.exact`), a layout covered whole as itself, which
+			// deleting its blocks removes: what a cut copies is what it deletes.
 			blocks: nestMembers(selectedBlocks, (block) => block.value),
 			whole: true
 		};

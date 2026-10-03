@@ -228,6 +228,14 @@ export type BlockDefinition = {
 	 */
 	lines?: boolean;
 	/**
+	 * A layout (the columns plugin's `columns`): its `defaultChild` is its
+	 * item kind (a column, a container that holds any block), shown side by
+	 * side. It displays only its items, an empty item does not display, and a
+	 * layout showing one item or none shows as that item's blocks (`layout.*`
+	 * in the delete contract). Adopted by the document as a role.
+	 */
+	layout?: boolean;
+	/**
 	 * Whether the snippet renders the block's own content (`content()`).
 	 * Defaults to `true`; containers that render only their children
 	 * declare `false` so no caret or endpoint lands in the unrendered slot.

@@ -60,6 +60,16 @@
 			);
 	});
 
+	/**
+	 * A block directly in a layout's column shows only its grip (D3): the gap
+	 * between columns leaves no room for a `+` (it is the resize strip's).
+	 */
+	const addable = (id: string) => {
+		void structure;
+		const parent = blocks.get(id)?.parent;
+		return !parent || parent.isRoot || !edytor.facade.isLayoutItem(parent.id);
+	};
+
 	const firstRowCenter = (node: HTMLElement, block: Block): number => {
 		if (block.definition.island) {
 			const header = node.querySelector<HTMLElement>(':scope > [data-edytor-void="true"]');
@@ -113,7 +123,7 @@
 		use:place={id}
 		onfocusin={() => (focused = id)}
 		onfocusout={() => focused === id && (focused = null)}
-		><BlockHandle block={blocks.get(id)!} {controller} {handle} /></span
+		><BlockHandle block={blocks.get(id)!} {controller} {handle} addable={addable(id)} /></span
 	>
 {/each}
 

@@ -141,6 +141,14 @@ export const flowOfHtml = (kinds: ImportKinds, html: string | undefined): Flow |
 			}));
 			return [{ type: claim.type, data: claim.data, content: [], children }];
 		}
+		// A kind that shows no text of its own (a list, a layout, a column) takes none: its
+		// inline runs and a leading paragraph are lines of its default child, never hidden text.
+		if (claim && blocks.get(claim.type)?.rendersContent === false) {
+			const children = linesOf(element, kinds.document.defaultChild(claim.type));
+			return [
+				{ type: claim.type, data: claim.data, content: [], ...(children.length && { children }) }
+			];
+		}
 		const wraps = (element: HTMLElement) => [...element.children].some(isBlock);
 		// An element that only wraps blocks (a `div`, a `ul`) is not a line of its own.
 		if (!claim && wraps(element)) return linesOf(element, type);

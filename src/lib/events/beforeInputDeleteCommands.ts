@@ -116,7 +116,12 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 	}
 
 	if (snapshot.isAtStartOfBlock) {
-		if (snapshot.isNested && snapshot.isLastChild && !snapshot.islandRoot) {
+		const { facade } = edytor;
+		const column = startText.parent.parent;
+		// A column's block never outdents (nothing but a column sits in a layout, ZW-14):
+		// it merges, across columns in reading order (`layout.merge`, D4).
+		const inColumn = !!column && !column.isRoot && facade.isLayoutItem(column.id);
+		if (snapshot.isNested && snapshot.isLastChild && !snapshot.islandRoot && !inColumn) {
 			const newBlock = startText.parent.unNestBlock();
 			if (newBlock) {
 				edytor.selection.setAtTextOffset(newBlock.firstText, 0);
@@ -138,7 +143,17 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 		}
 
 		const block = startText.parent;
-		const previousBlock = shown(block, 'blockBefore');
+		// A column's first block joins the line before its column (and, in the first,
+		// before its layout), as the document's merge does (`layout.merge`, D4).
+		const structure = (at: Block | null) =>
+			inColumn &&
+			block.index === 0 &&
+			!!at &&
+			(facade.isLayout(at.id) || facade.isLayoutItem(at.id));
+		let previousBlock = shown(block, 'blockBefore');
+		let closest = block.closestPreviousBlock;
+		while (structure(previousBlock)) previousBlock = shown(previousBlock!, 'blockBefore');
+		while (structure(closest)) closest = closest!.closestPreviousBlock;
 		if (previousBlock?.definition.void) {
 			edytor.selection.selectBlocks(previousBlock);
 			return;
@@ -146,7 +161,7 @@ const deleteContentBackward = (edytor: Edytor, snapshot: Attempt) => {
 
 		const previousText = previousBlock?.lastText;
 		const offset = previousText?.length;
-		if (previousBlock === block.closestPreviousBlock) block.mergeBlockBackward();
+		if (previousBlock === closest) block.mergeBlockBackward();
 		else if (previousBlock) mergeIntoHeader(edytor, block, previousBlock, true);
 		if (typeof offset === 'number') caretAt(edytor, previousText, offset);
 		// A list's first item lifts out of it (YW-02): the caret stays at its start.

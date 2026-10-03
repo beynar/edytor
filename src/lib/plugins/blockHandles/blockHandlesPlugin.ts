@@ -16,6 +16,11 @@ export type BlockHandleSnippetPayload = {
 	grip: (node: HTMLElement) => { destroy(): void };
 	/** The `+`: the slash menu offers what to add below (above with `true`); nothing is added until a row is picked. */
 	add: (above?: boolean) => void;
+	/**
+	 * Whether the block takes a `+`: not a block directly in a layout's column
+	 * (the default handle shows only its grip there, D3).
+	 */
+	addable: boolean;
 	readonly: boolean;
 	draggable: boolean;
 };
@@ -77,7 +82,10 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 						},
 						{ rootMargin: NEAR_MARGIN }
 					);
-		/** The movable blocks under the pointer: the hovered block and its movable ancestors. */
+		/**
+		 * The blocks under the pointer that have a handle: the hovered block and
+		 * its handled ancestors (a layout and its columns have none).
+		 */
 		const hover = (event: PointerEvent) => {
 			const next = new Set<string>();
 			for (
@@ -110,11 +118,15 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 			},
 			onBlockAttached: ({ node, block }) => {
 				if (!block.movable) return;
+				const offDropTarget = controller.addDropTarget(node, block);
+				// A layout and its columns are drop targets but have no handle (D3, as
+				// Notion): a block selection covering a layout stands for it.
+				const { facade } = edytor;
+				if (facade.isLayout(block.id) || facade.isLayoutItem(block.id)) return offDropTarget;
 				ids.set(node, block.id);
 				blocks.set(block.id, block);
 				if (observer) observer.observe(node);
 				else near.add(block.id);
-				const offDropTarget = controller.addDropTarget(node, block);
 				return () => {
 					observer?.unobserve(node);
 					offDropTarget();

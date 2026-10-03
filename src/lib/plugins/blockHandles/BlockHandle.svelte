@@ -8,11 +8,14 @@
 	let {
 		block,
 		controller,
-		handle
+		handle,
+		addable = true
 	}: {
 		block: Block;
 		controller: BlockHandleController;
 		handle?: Snippet<[BlockHandleSnippetPayload]>;
+		/** Whether the block takes a `+` (a block in a column shows only its grip, D3). */
+		addable?: boolean;
 	} = $props();
 	const grip = $derived(controller.grip(block));
 </script>
@@ -22,37 +25,38 @@
 		block,
 		grip,
 		add: (above = false) => controller.addBlock(block, above),
+		addable,
 		readonly: controller.readonly,
 		draggable: controller.draggable
 	})}
 {:else}
-	<button
-		type="button"
-		class="edytor-block-add"
-		contenteditable="false"
-		hidden={controller.readonly}
-		data-testid="block-add"
-		aria-label="Add a block below (Alt: above)"
-		title="Click to add below
+	{#if addable}<button
+			type="button"
+			class="edytor-block-add"
+			contenteditable="false"
+			hidden={controller.readonly}
+			data-testid="block-add"
+			aria-label="Add a block below (Alt: above)"
+			title="Click to add below
 Alt-click to add a block above"
-		onmousedown={(event) => event.preventDefault()}
-		onpointerdown={(event) => event.stopPropagation()}
-		onclick={(event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			controller.addBlock(block, event.altKey, event.currentTarget);
-		}}
-	>
-		<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-			<path
-				d="M8 2.75v10.5M2.75 8h10.5"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="1.4"
-				stroke-linecap="round"
-			/>
-		</svg>
-	</button><button
+			onmousedown={(event) => event.preventDefault()}
+			onpointerdown={(event) => event.stopPropagation()}
+			onclick={(event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				controller.addBlock(block, event.altKey, event.currentTarget);
+			}}
+		>
+			<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+				<path
+					d="M8 2.75v10.5M2.75 8h10.5"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.4"
+					stroke-linecap="round"
+				/>
+			</svg>
+		</button>{/if}<button
 		type="button"
 		class="edytor-block-handle"
 		contenteditable="false"

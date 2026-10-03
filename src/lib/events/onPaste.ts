@@ -42,13 +42,17 @@ if (typeof document !== 'undefined') {
 
 /**
  * A paste over a block selection lands at a collapsed DOM caret the user put
- * outside the selected blocks, not over them.
+ * outside the selected blocks by a press in the editor since the selection
+ * was made, not over them. A caret no press put there is the browser's own
+ * (a paste with no DOM range gets one at the editable's start): the blocks
+ * are replaced (`flow.slot`).
  */
 const syncCollapsedDomCaretForPaste = (edytor: Edytor) => {
 	const { selectedBlocks } = edytor.selection;
+	if (!selectedBlocks.size || edytor.selection.pressedOver !== edytor.selection.value) return;
 	const dom = getDomSelectionSnapshot(edytor.node);
 	const node = dom?.isCollapsed && dom.anchorNode;
-	if (!selectedBlocks.size || !dom || !node || !edytor.node?.contains(node)) return;
+	if (!dom || !node || !edytor.node?.contains(node)) return;
 	const text = edytor.selection.getTextOfNode(node, dom.anchorOffset);
 	for (let block = text?.parent; block; block = block.parent) if (selectedBlocks.has(block)) return;
 	if (text) edytor.selection.setAtTextOffset(text, getYIndex(text, node, dom.anchorOffset));

@@ -856,10 +856,19 @@ export class EdytorSelection {
 		this.#held = false;
 		this.applySelectionSnapshot(getDomSelectionSnapshot(this.edytor.node));
 	};
+	/**
+	 * The block selection value a primary pointer press landed on inside the
+	 * editor: a collapsed DOM caret a paste finds over it is the user's only
+	 * then (`onPaste`), never the one a browser makes up at the editable's
+	 * start for a paste when the block selection shows no DOM range.
+	 */
+	pressedOver: SelectionValue | null = null;
+
 	collapseSelectedBlocksAtPointer = (event: PointerEvent) => {
 		if (event.button !== 0 || this.selectedBlocks.size === 0) {
 			return;
 		}
+		this.pressedOver = this.value;
 
 		const point = this.getTextPointFromClientPoint(event.clientX, event.clientY);
 		if (!point) {

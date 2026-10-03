@@ -406,8 +406,10 @@ describe('a paste over a block selection with a collapsed DOM caret (onPaste)', 
 		const { edytor, editor } = await render([p('one'), p('two')]);
 		edytor.selection.selectBlocks(block(edytor, 'one'));
 		await flushDomUpdates();
-		// The browser's caret moved before the editor saw a selectionchange.
+		// The user's press moved the browser's caret before the editor saw a
+		// selectionchange (jsdom resolves no point under the pointer).
 		const node = block(edytor, id).firstText!.node!;
+		node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
 		const leaf = document.createTreeWalker(node, NodeFilter.SHOW_TEXT).nextNode()!;
 		window.getSelection()!.collapse(leaf, 1);
 		await dispatchClipboardPaste(editor, { 'text/plain': 'X' });
@@ -420,6 +422,17 @@ describe('a paste over a block selection with a collapsed DOM caret (onPaste)', 
 
 	it('inside them, it replaces the selected blocks', async () => {
 		expect(await pasteWithDomCaretIn('one')).toEqual(['paragraph "X"', 'paragraph "two"']);
+	});
+
+	it('a caret no press put there (the browser’s own, at the editable’s start) replaces them', async () => {
+		const { edytor, editor } = await render([p('one'), p('two'), p('three')]);
+		edytor.selection.selectBlocks(block(edytor, 'two'));
+		await flushDomUpdates();
+		const node = block(edytor, 'one').firstText!.node!;
+		const leaf = document.createTreeWalker(node, NodeFilter.SHOW_TEXT).nextNode()!;
+		window.getSelection()!.collapse(leaf, 0);
+		await dispatchClipboardPaste(editor, { 'text/plain': 'X' });
+		expect(doc(edytor)).toEqual(['paragraph "one"', 'paragraph "X"', 'paragraph "three"']);
 	});
 });
 

@@ -565,3 +565,31 @@ test.describe('columns: beside zones in the gutter and the margin', () => {
 			]);
 	});
 });
+
+test.describe('a grip click with no menu answering (Notion)', () => {
+	test('the keys act on the selected block: Shift+ArrowDown extends, Backspace deletes', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		await page.locator('[data-edytor-id="P"] [data-edytor-text]').first().hover();
+		await page.locator('[data-testid="block-handle"][data-block-id="P"]').click();
+		await expect.poll(() => selected(page)).toEqual(['P']);
+		await page.keyboard.press('Shift+ArrowDown');
+		await expect.poll(() => selected(page)).toEqual(['A', 'P']);
+		await page.keyboard.press('Backspace');
+		await expect
+			.poll(() => shape(page))
+			.toEqual([
+				[
+					'C',
+					[
+						['K1', ['A2']],
+						['K2', ['B']]
+					]
+				],
+				'Z'
+			]);
+		issues.assertClean();
+	});
+});

@@ -33,7 +33,12 @@ import { stacks } from '../columns/stacking.js';
 
 const blockDragMimeType = 'application/x-edytor-block-id';
 
-/** The DOM event a handle click dispatches on the editor when no `onActivate` is set. */
+/**
+ * The DOM event a handle click dispatches on the editor when no `onActivate`
+ * is set. A menu that takes the keyboard answers it with `preventDefault()`
+ * (the block menu does); unanswered, the editor takes the focus, so the keys
+ * act on the selected block (Backspace deletes it, Shift+arrows extend it).
+ */
 export const BLOCK_ACTIVATE_EVENT = 'edytor-block-activate';
 export type BlockActivation = { block: Block; anchor: HTMLElement };
 
@@ -292,12 +297,17 @@ export class BlockHandleController {
 		const before = selection.value;
 		if (!selection.selectedBlocks.has(block)) this.select(block);
 		this.gripped = { before, after: selection.value };
-		if (this.options.onActivate) this.options.onActivate({ block, anchor });
-		// Without a callback, a block menu plugin may answer the activation.
-		else
-			this.edytor.node?.dispatchEvent(
-				new CustomEvent<BlockActivation>(BLOCK_ACTIVATE_EVENT, { detail: { block, anchor } })
-			);
+		if (this.options.onActivate) return this.options.onActivate({ block, anchor });
+		// Without a callback, a block menu plugin may answer the activation; with
+		// none answering, the keys go to the editor, over the block selection
+		// (Notion), not to the grip (its own focus: not a user gesture).
+		const event = new CustomEvent<BlockActivation>(BLOCK_ACTIVATE_EVENT, {
+			cancelable: true,
+			detail: { block, anchor }
+		});
+		if (this.edytor.node?.dispatchEvent(event) === false) return;
+		this.edytor.expectInternalFocus();
+		this.edytor.node?.focus({ preventScroll: true });
 	}
 
 	/**

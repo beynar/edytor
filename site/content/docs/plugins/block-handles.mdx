@@ -206,7 +206,7 @@ The handle claims every <kbd>Alt</kbd>+arrow while it has focus. A handle of a b
 
 ## Building a block menu
 
-The [block menu plugin](/docs/plugins/block-menu) is a complete Notion-style menu: list `blockMenuPlugin` and leave `onActivate` unset. When no `onActivate` is passed, a grip click dispatches a DOM event on the editor's root, which that plugin (or your own) listens for:
+The [block menu plugin](/docs/plugins/block-menu) is a complete Notion-style menu: list `blockMenuPlugin` and leave `onActivate` unset. When no `onActivate` is passed, a grip click dispatches a DOM event on the editor's root, which that plugin (or your own) listens for. A menu that takes the keyboard answers it with `event.preventDefault()`. Unanswered (no menu), the editor takes the focus, so the keys act on the selected block as in Notion: <kbd>Backspace</kbd> deletes it, <kbd>Shift</kbd>+arrows extend the selection, typing replaces it. (The grip keeps its <kbd>Alt</kbd>+arrow moves while it has focus, from <kbd>Tab</kbd>.)
 
 ```ts
 import { BLOCK_ACTIVATE_EVENT, type BlockActivation, type Plugin } from 'edytor';
@@ -214,6 +214,8 @@ import { BLOCK_ACTIVATE_EVENT, type BlockActivation, type Plugin } from 'edytor'
 export const myMenuPlugin: Plugin = () => ({
 	onEdytorAttached: ({ node }) => {
 		const open = (event: Event) => {
+			// The menu takes the keyboard; without this the editor takes the focus.
+			event.preventDefault();
 			const { block, anchor } = (event as CustomEvent<BlockActivation>).detail;
 			// Open a menu for block, next to anchor.
 		};

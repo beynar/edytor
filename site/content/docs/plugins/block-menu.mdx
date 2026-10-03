@@ -100,7 +100,7 @@ import { BLOCK_ACTIVATE_EVENT, type BlockActivation } from 'edytor';
 // 'edytor-block-activate', detail: { block, anchor }
 ```
 
-`block` is the clicked block and `anchor` the grip element. The block menu listens for it. A plugin of your own can listen for the same event in `onEdytorAttached` to open a different menu, or to add behavior next to this one.
+`block` is the clicked block and `anchor` the grip element. The block menu listens for it and answers it with `preventDefault()`, as it takes the keyboard (unanswered, the editor takes the focus after the click). A plugin of your own can listen for the same event in `onEdytorAttached` to open a different menu, or to add behavior next to this one.
 
 ## Placement and styling
 

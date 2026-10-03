@@ -66,6 +66,8 @@ export const createBlockMenuPlugin =
 			},
 			onEdytorAttached: ({ node }) => {
 				const activate = (event: Event) => {
+					// The menu takes the keyboard (its search field).
+					event.preventDefault();
 					const { block, anchor } = (event as CustomEvent<BlockActivation>).detail;
 					controller.open(block, anchor);
 					edytor.overlay.invalidate();

@@ -448,3 +448,120 @@ test.describe('columns: beside a block inside a toggle', () => {
 		issues.assertClean();
 	});
 });
+
+test.describe('columns: beside zones in the gutter and the margin', () => {
+	/** Drag `id` by its grip along `path` (the button kept down). */
+	const dragAlong = async (page: Page, id: string, path: { x: number; y: number }[]) => {
+		await page.locator(`[data-edytor-id="${id}"] [data-edytor-text]`).first().hover();
+		const grip = page.locator(`[data-testid="block-handle"][data-block-id="${id}"]`);
+		await expect(grip).toBeVisible();
+		const g = (await grip.boundingBox())!;
+		await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+		await page.mouse.down();
+		for (const to of path) {
+			await page.mouse.move(to.x - 1, to.y, { steps: 8 });
+			await page.mouse.move(to.x, to.y);
+		}
+	};
+
+	test('the left gutter, entered from outside the row, within its height: left of it', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		const [p, z] = [await box(page, 'P'), await box(page, 'Z')];
+		// Out to the gutter below the document, then up into P's row from outside.
+		await dragAlong(page, 'Z', [
+			{ x: p.x - 16, y: z.y + z.height + 30 },
+			{ x: p.x - 16, y: p.y + p.height / 2 }
+		]);
+		await expect(indicator(page)).toHaveAttribute('data-position', 'left');
+		// At P's row, not the layout's below it (the last move lands before the release).
+		await expect
+			.poll(async () => Math.abs(((await indicator(page).boundingBox())?.y ?? Infinity) - p.y))
+			.toBeLessThanOrEqual(4);
+		await page.mouse.up();
+		await expect
+			.poll(() => tree(page))
+			.toEqual([
+				[
+					'L',
+					[
+						['col', ['Z']],
+						['col', ['P']]
+					]
+				],
+				[
+					'L',
+					[
+						['col', ['A', 'A2']],
+						['col', ['B']]
+					]
+				]
+			]);
+		issues.assertClean();
+	});
+
+	test('the margin right of a row, past the editor’s edge, within its height: right of it', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		const z = await box(page, 'Z');
+		await dragAlong(page, 'P', [
+			{ x: z.x + z.width + 60, y: z.y + z.height + 40 },
+			{ x: z.x + z.width + 60, y: z.y + z.height / 2 }
+		]);
+		await expect(indicator(page)).toHaveAttribute('data-position', 'right');
+		await expect
+			.poll(async () => Math.abs(((await indicator(page).boundingBox())?.y ?? Infinity) - z.y))
+			.toBeLessThanOrEqual(4);
+		await page.mouse.up();
+		await expect
+			.poll(() => tree(page))
+			.toEqual([
+				[
+					'L',
+					[
+						['col', ['A', 'A2']],
+						['col', ['B']]
+					]
+				],
+				[
+					'L',
+					[
+						['col', ['Z']],
+						['col', ['P']]
+					]
+				]
+			]);
+		issues.assertClean();
+	});
+
+	test('in the gutter beside column 1’s block: a new first column', async ({ page }) => {
+		await open(page);
+		const [a, z] = [await box(page, 'A'), await box(page, 'Z')];
+		await dragAlong(page, 'Z', [
+			{ x: a.x - 16, y: z.y + z.height + 30 },
+			{ x: a.x - 16, y: a.y + a.height / 2 }
+		]);
+		await expect(indicator(page)).toHaveAttribute('data-position', 'left');
+		await expect
+			.poll(async () => Math.abs(((await indicator(page).boundingBox())?.y ?? Infinity) - a.y))
+			.toBeLessThanOrEqual(4);
+		await page.mouse.up();
+		await expect
+			.poll(() => tree(page))
+			.toEqual([
+				'P',
+				[
+					'L',
+					[
+						['col', ['Z']],
+						['col', ['A', 'A2']],
+						['col', ['B']]
+					]
+				]
+			]);
+	});
+});

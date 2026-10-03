@@ -80,6 +80,8 @@ type DropPlacement = {
 
 /** The drop target data key of the row the hitbox measured (`rowAt`). */
 const ROW = 'edytorRow';
+/** The drop target data key of a beside band beyond the editor's edges (`margin`). */
+const MARGIN = 'edytorMargin';
 
 /** How far beside a target's box it stays the drop target (`getIsSticky`), across and along. */
 const SLOP_X = 20;
@@ -87,6 +89,11 @@ const SLOP_Y = 24;
 /** The right beside band: the row's last 15% (Notion), at least this many px. */
 const RIGHT_BAND = 0.15;
 const RIGHT_BAND_MIN = 32;
+/**
+ * How far beyond the editor's left and right edges the beside bands reach
+ * (the gutter where the handles sit, the page margin), within a row's height.
+ */
+const MARGIN_X = 120;
 
 const isBeside = (position: BlockMovePosition): position is 'left' | 'right' =>
 	position === 'left' || position === 'right';
@@ -426,6 +433,7 @@ export class BlockHandleController {
 					});
 				}
 				for (const [node, target] of this.targets) this.registerDropTarget(node, target);
+				this.registerMarginTarget(element.ownerDocument.body);
 				this.scrolling?.();
 				this.scrolling = root ? autoScrollFor(root, (data) => data.owner === this.owner) : null;
 				this.backdrop?.remove();
@@ -555,6 +563,94 @@ export class BlockHandleController {
 			}
 		});
 		this.registered.set(node, cleanup);
+	}
+
+	/**
+	 * The beside bands beyond the editor's edges (Notion): during our drag, the
+	 * page (`body`) is a drop target only where `margin` gives a beside
+	 * placement — the gutter left of the editor and the margin right of it,
+	 * within a row's height — so a band is reached from outside the row too;
+	 * anywhere else the block targets (and their stickiness) stand.
+	 */
+	private registerMarginTarget(node: HTMLElement) {
+		if (this.registered.has(node)) return;
+		const cleanup = dropTargetForElements({
+			element: node,
+			canDrop: ({ source, input }) => {
+				const dragSource = this.getDragSource(source.data);
+				return Boolean(dragSource && this.margin(dragSource, input));
+			},
+			getData: () => ({ [MARGIN]: true }),
+			onDragEnter: ({ location, source }) => this.showIndicator(node, location, source.data),
+			onDrag: ({ location, source }) => this.showIndicator(node, location, source.data),
+			onDragLeave: ({ location, source }) => {
+				if (this.activeDropTarget !== node) return;
+				this.clearIndicator();
+				const [current] = location.current.dropTargets;
+				if (current) this.showIndicator(current.element as HTMLElement, location, source.data);
+			},
+			onDrop: ({ location, source }) => {
+				const [current] = location.current.dropTargets;
+				if (current?.element !== node) return;
+				const dragSource = this.getDragSource(source.data);
+				const placement =
+					this.activeDropTarget === node && this.activePlacement
+						? this.activePlacement
+						: dragSource && this.margin(dragSource, location.current.input);
+				this.clearIndicator();
+				if (
+					dragSource &&
+					placement &&
+					this.canDrop(dragSource, placement.target, placement.position)
+				) {
+					const moved = this.moveAndSelect({
+						blocks: this.moving(dragSource),
+						target: placement.target,
+						position: placement.position
+					});
+					if (moved.length && this.held) this.edytor.history.began(this.held);
+				}
+			}
+		});
+		this.registered.set(node, cleanup);
+	}
+
+	/**
+	 * A beside band beyond the editor's edges at the pointer: left of the
+	 * editor (its gutter, up to `MARGIN_X`), the band left of the row there;
+	 * right of it, the band right of the row there. The row is the one the
+	 * editor's near edge shows at the pointer's height (`rowAt`: a column's
+	 * block, a nested block's own row), and the bands are `beside`'s, as if
+	 * the pointer were at that edge. `undefined` elsewhere.
+	 */
+	private margin(source: Block, { clientX: x, clientY: y }: { clientX: number; clientY: number }) {
+		const root = this.edytor.node;
+		if (!root || this.edytor.readonly || !this.layouts) return undefined;
+		const box = root.getBoundingClientRect();
+		if (y < box.top || y > box.bottom) return undefined;
+		const left = x < box.left && x >= box.left - MARGIN_X;
+		const right = x > box.right && x <= box.right + MARGIN_X;
+		if (!left && !right) return undefined;
+		const edge = left ? box.left + 1 : box.right - 1;
+		const hits = root.ownerDocument.elementsFromPoint?.(edge, y) ?? [];
+		const hit = hits.find((at) => {
+			const block = at.closest<HTMLElement>('[data-edytor-block="true"]');
+			return block && root.contains(block) && this.targets.has(block);
+		});
+		const node = hit?.closest<HTMLElement>('[data-edytor-block="true"]');
+		const target = node && this.targets.get(node);
+		if (!node || !target) return undefined;
+		const data = { owner: this.owner, blockId: source.id };
+		const row = this.rowAt(data, target, node, { clientX: edge, clientY: y });
+		// Over a layout's edge, its first or last column's row at that height.
+		if (this.edytor.facade.isLayout(row.id)) return undefined;
+		const band = this.beside(
+			source,
+			row,
+			{ clientX: left ? -Infinity : Infinity, clientY: y },
+			left ? 'left' : 'right'
+		);
+		return band ?? undefined;
 	}
 
 	/**
@@ -763,7 +859,8 @@ export class BlockHandleController {
 	private beside(
 		source: Block,
 		row: Block,
-		{ clientX: x, clientY: y }: { clientX: number; clientY: number }
+		{ clientX: x, clientY: y }: { clientX: number; clientY: number },
+		band?: 'left' | 'right'
 	): DropPlacement | null | undefined {
 		if (!row.node || this.edytor.readonly || !this.layouts) return undefined;
 		const group = this.moving(source);
@@ -788,9 +885,12 @@ export class BlockHandleController {
 			if (width === undefined || stacks(width)) return undefined;
 			const parent = row.parent;
 			const level = !parent || parent.isRoot || facade.isLayoutItem(parent.id);
-			if (x >= rect.right - Math.max(RIGHT_BAND_MIN, rect.width * RIGHT_BAND))
+			if (
+				band === 'right' ||
+				(!band && x >= rect.right - Math.max(RIGHT_BAND_MIN, rect.width * RIGHT_BAND))
+			)
 				placement = { target: row, node: row.node, position: 'right' };
-			else if (level && x < rect.left && x >= rect.left - SLOP_X)
+			else if (level && (band === 'left' || (!band && x < rect.left && x >= rect.left - SLOP_X)))
 				placement = { target: row, node: row.node, position: 'left' };
 		}
 		if (!placement) return undefined;
@@ -877,6 +977,7 @@ export class BlockHandleController {
 		input: { clientX: number; clientY: number }
 	): DropPlacement | null | false {
 		const source = this.getDragSource(data);
+		if (record.data[MARGIN]) return (source && this.margin(source, input)) ?? false;
 		const instruction: Instruction | null = extractInstruction(record.data);
 		const row = this.edytor.idToBlock.get(record.data[ROW] as string);
 		if (!source || !instruction || !row?.node) return null;

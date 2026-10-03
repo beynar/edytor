@@ -29,6 +29,7 @@ import {
 	shownText
 } from '$lib/selection/replaceSelection.js';
 import { dragPreview } from './dragPreview.js';
+import { stacks } from '../columns/stacking.js';
 
 const blockDragMimeType = 'application/x-edytor-block-id';
 
@@ -79,6 +80,16 @@ type DropPlacement = {
 
 /** The drop target data key of the row the hitbox measured (`rowAt`). */
 const ROW = 'edytorRow';
+
+/** How far beside a target's box it stays the drop target (`getIsSticky`), across and along. */
+const SLOP_X = 20;
+const SLOP_Y = 24;
+/** The right beside band: the row's last 15% (Notion), at least this many px. */
+const RIGHT_BAND = 0.15;
+const RIGHT_BAND_MIN = 32;
+
+const isBeside = (position: BlockMovePosition): position is 'left' | 'right' =>
+	position === 'left' || position === 'right';
 
 type BlockHandleControllerOptions = {
 	draggable: boolean;
@@ -446,9 +457,13 @@ export class BlockHandleController {
 		if (this.registered.has(node)) return;
 		const cleanup = dropTargetForElements({
 			element: node,
+			// A beside band counts: a row whose halves are both refused still takes it.
 			canDrop: ({ source, input }) => {
 				const row = this.rowAt(source.data, target, node, input);
-				return Object.values(this.operations(source.data, row, input)).includes('available');
+				if (Object.values(this.operations(source.data, row, input)).includes('available'))
+					return true;
+				const dragSource = this.getDragSource(source.data);
+				return Boolean(dragSource && this.beside(dragSource, row, input));
 			},
 			// Atlassian's list-item hitbox splits the row the pointer is on into its
 			// halves (`operations`); nesting is no band of it (combine is
@@ -469,17 +484,18 @@ export class BlockHandleController {
 			// keeps an inner target only while every outer one of its chain sticks),
 			// across a small gap beside the block — below the document's last block, all
 			// the way down (Notion) — never over another block's own row (its parent's,
-			// which the drag library would otherwise let it keep).
+			// which the drag library would otherwise let it keep), nor over another column.
 			getIsSticky: ({ source, input }) => {
 				const dragSource = this.getDragSource(source.data);
 				const active = this.activeDropTarget;
 				if (!dragSource || this.edytor.readonly || !active || !node.contains(active)) return false;
 				const rect = node.getBoundingClientRect();
 				return (
-					input.clientX >= rect.left - 20 &&
-					input.clientX <= rect.right + 20 &&
-					input.clientY >= rect.top - 24 &&
-					(input.clientY <= rect.bottom + 24 || endsDocument(target)) &&
+					input.clientX >= rect.left - SLOP_X &&
+					input.clientX <= rect.right + SLOP_X &&
+					input.clientY >= rect.top - SLOP_Y &&
+					(input.clientY <= rect.bottom + SLOP_Y || endsDocument(target)) &&
+					!this.overOtherColumn(target, input.clientX) &&
 					!overOtherRow(
 						node,
 						input,
@@ -504,7 +520,7 @@ export class BlockHandleController {
 				const placement =
 					this.activeDropTarget === node && this.activePlacement
 						? this.activePlacement
-						: this.placement(current, source.data, location.current.input);
+						: this.placement(current, source.data, location.current.input) || null;
 				this.clearIndicator();
 				if (
 					dragSource &&
@@ -634,28 +650,142 @@ export class BlockHandleController {
 	 * The block whose row the pointer is on over `node`: the last shown drop
 	 * target in it whose row starts at or above the pointer (beside a nested
 	 * block, over its ancestors' indent, the pointer is on that block's
-	 * row), else `target`, over its own row (`emptied`).
+	 * row), else `target`, over its own row (`emptied`). A layout's columns
+	 * sit side by side: only the one under the pointer is measured (between
+	 * two of them, the layout is the row: its gap).
 	 */
 	private rowAt(
 		data: Record<string, unknown>,
 		target: Block,
 		node: HTMLElement,
-		{ clientY }: { clientY: number }
+		{ clientX, clientY }: { clientX: number; clientY: number }
 	) {
 		const source = this.getDragSource(data);
 		const lift = (row: Block) => (source ? this.emptied(source, row) : row);
 		if (clientY < getOwnRowBottom(node)) return lift(target);
+		const { facade } = this.edytor;
 		let row = target;
-		// In document order, rows start lower and lower: measure none below the
-		// pointer, and none a closed toggle hides (each read would force a layout).
+		let aside: HTMLElement | null = null;
+		// In document order, rows start lower and lower (within a column): measure
+		// none below the pointer, none a closed toggle hides (each read would force
+		// a layout), and nothing in a column the pointer is not over.
 		for (const inner of node.querySelectorAll<HTMLElement>('[data-edytor-block="true"]')) {
+			if (aside?.contains(inner)) continue;
 			const block = this.targets.get(inner);
 			if (!block || inner.closest(HIDDEN)) continue;
 			const rect = inner.getBoundingClientRect();
+			if (facade.isLayoutItem(block.id) && (clientX < rect.left || clientX > rect.right)) {
+				aside = inner;
+				continue;
+			}
 			if (rect.top > clientY) break;
 			if (rect.height > 0) row = block;
 		}
 		return lift(row);
+	}
+
+	/** Whether the document has a layout kind: only then are there beside placements. */
+	private get layouts() {
+		for (const definition of this.edytor.blocks.values()) if (definition.layout) return true;
+		return false;
+	}
+
+	/**
+	 * The block a beside placement over `block` stands beside: its outermost
+	 * block below the root or a layout's item (a list item's list), or the
+	 * item itself — `placeBeside`'s own resolution.
+	 */
+	private besideOf(block: Block) {
+		const { facade } = this.edytor;
+		let at = block;
+		while (
+			!facade.isLayoutItem(at.id) &&
+			at.parent &&
+			!at.parent.isRoot &&
+			!facade.isLayoutItem(at.parent.id)
+		)
+			at = at.parent;
+		return at;
+	}
+
+	/** The item (and its layout) a beside placement at `outer` (`besideOf`) adds a column beside. */
+	private layoutOf(outer: Block) {
+		const { facade } = this.edytor;
+		const item = facade.isLayoutItem(outer.id)
+			? outer
+			: outer.parent && !outer.parent.isRoot && facade.isLayoutItem(outer.parent.id)
+				? outer.parent
+				: null;
+		return item ? { item, layout: item.parent ?? null } : null;
+	}
+
+	/**
+	 * Whether `x` is over a column other than one holding `block`: a sticky
+	 * target never holds the pointer across a column boundary.
+	 */
+	private overOtherColumn(block: Block, x: number) {
+		const { facade } = this.edytor;
+		for (let at: Block | undefined = block; at && !at.isRoot; at = at.parent) {
+			if (!facade.isLayoutItem(at.id)) continue;
+			const item = at;
+			const over = item.parent?.children.some((other) => {
+				const rect = other !== item ? other.node?.getBoundingClientRect() : undefined;
+				return rect !== undefined && rect.width > 0 && x >= rect.left && x <= rect.right;
+			});
+			if (over) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Notion's beside bands over `row` (docs/columns-plan.md §5), only while the
+	 * pointer is within its own row's height, the document has a layout kind
+	 * and the layout the drop makes or grows does not stack (`stacks`):
+	 * - right: the row's last 15% (at least 32px), and the slop past it;
+	 * - left: the slop left of the row (its sticky margin, left of its text
+	 *   column), only for a row whose parent is the root or a column — a
+	 *   nested row keeps the pointer's x for its levels (`zones`);
+	 * - over a layout's gap (the row is the layout): right of the column
+	 *   before it, a new column between.
+	 * `undefined` outside the bands (the hitbox's halves stand), else the
+	 * placement, or `null` when the document refuses it: a refused band shows
+	 * nothing.
+	 */
+	private beside(
+		source: Block,
+		row: Block,
+		{ clientX: x, clientY: y }: { clientX: number; clientY: number }
+	): DropPlacement | null | undefined {
+		if (!row.node || this.edytor.readonly || !this.layouts) return undefined;
+		const group = this.moving(source);
+		if (group.some((moved) => moved === row || row.isChildOf(moved))) return undefined;
+		const { facade } = this.edytor;
+		let placement: DropPlacement | undefined;
+		if (facade.isLayout(row.id)) {
+			const rect = row.node.getBoundingClientRect();
+			if (y < rect.top || y > rect.bottom || stacks(rect.width)) return undefined;
+			const items = row.children.filter((item) => item.node && this.targets.has(item.node));
+			for (const [index, item] of items.entries()) {
+				const next = items[index + 1]?.node?.getBoundingClientRect();
+				const own = item.node!.getBoundingClientRect();
+				if (next && x >= own.right && x <= next.left)
+					placement = { target: item, node: item.node!, position: 'right' };
+			}
+		} else {
+			const rect = ownRow(row.node);
+			if (y < rect.top || y > rect.bottom) return undefined;
+			const outer = this.besideOf(row);
+			const width = (this.layoutOf(outer)?.layout ?? outer).node?.getBoundingClientRect().width;
+			if (width === undefined || stacks(width)) return undefined;
+			const parent = row.parent;
+			const level = !parent || parent.isRoot || facade.isLayoutItem(parent.id);
+			if (x >= rect.right - Math.max(RIGHT_BAND_MIN, rect.width * RIGHT_BAND))
+				placement = { target: row, node: row.node, position: 'right' };
+			else if (level && x < rect.left && x >= rect.left - SLOP_X)
+				placement = { target: row, node: row.node, position: 'left' };
+		}
+		if (!placement) return undefined;
+		return this.fits(source)(placement) ? placement : null;
 	}
 
 	/** The children a block shows: none for a closed toggle's, or a container's items. */
@@ -727,18 +857,22 @@ export class BlockHandleController {
 	}
 
 	/**
-	 * The placement a drop target record offers: the row and the half the
-	 * hitbox attached (kept while the target is sticky), the pointer's x live.
+	 * The placement a drop target record offers: a beside band of the row
+	 * first (`beside`; `false` when the document refuses it: nothing shows),
+	 * else the row and the half the hitbox attached (kept while the target is
+	 * sticky), the pointer live.
 	 */
 	private placement(
 		record: DropTargetRecord,
 		data: Record<string, unknown>,
-		input: { clientX: number }
-	): DropPlacement | null {
+		input: { clientX: number; clientY: number }
+	): DropPlacement | null | false {
 		const source = this.getDragSource(data);
 		const instruction: Instruction | null = extractInstruction(record.data);
 		const row = this.edytor.idToBlock.get(record.data[ROW] as string);
 		if (!source || !instruction || !row?.node) return null;
+		const aside = this.beside(source, row, input);
+		if (aside !== undefined) return aside ?? false;
 		const { before, after } = this.zones(source, row, input);
 		const halves = instruction.operation === 'reorder-before' ? [before, after] : [after, before];
 		const placement = halves.flat().find(this.fits(source));
@@ -754,6 +888,8 @@ export class BlockHandleController {
 		const [current] = location.current.dropTargets;
 		if (current?.element !== node) return;
 		const placement = this.placement(current, data, location.current.input);
+		// A refused beside band shows nothing.
+		if (placement === false) return this.clearIndicator();
 		if (!placement) return;
 		const shown = this.activePlacement;
 		if (
@@ -814,6 +950,8 @@ export class BlockHandleController {
 	 */
 	private nestParent({ target, position }: DropPlacement) {
 		const { edytor, group } = this;
+		// Beside: a column of a layout, never a nest.
+		if (isBeside(position)) return null;
 		const ids = group.map((block) => block.id);
 		const parent =
 			position === 'inside'
@@ -864,6 +1002,7 @@ export class BlockHandleController {
 		const placement = this.activePlacement;
 		const overlay = this.indicatorOverlay;
 		if (!placement || !overlay) return;
+		if (isBeside(placement.position)) return this.positionBeside(placement, origin);
 		const rect = placement.node.getBoundingClientRect();
 		const place = (left: number, width: number, center: number) => () => {
 			overlay.style.left = `${left - origin.left}px`;
@@ -897,6 +1036,42 @@ export class BlockHandleController {
 		}
 		const edge = placement.position === 'before' ? rect.top : rect.bottom;
 		return place(rect.left, rect.width, edge);
+	}
+
+	/**
+	 * A beside placement's bar: vertical, 4px, at the edge of the block it
+	 * stands beside (`besideOf`: the whole list beside an item), its height;
+	 * when it adds a column to a layout, the layout's height, in the middle
+	 * of the gap to the neighbouring column, else at the layout's edge.
+	 */
+	private positionBeside(placement: DropPlacement, origin: DOMRect) {
+		const overlay = this.indicatorOverlay;
+		const outer = this.besideOf(placement.target);
+		if (!overlay || !outer.node) return;
+		const right = placement.position === 'right';
+		const at = this.layoutOf(outer);
+		let edge: number;
+		let box: DOMRect;
+		if (at?.layout?.node && at.item.node) {
+			box = at.layout.node.getBoundingClientRect();
+			const own = at.item.node.getBoundingClientRect();
+			const near = (right ? at.item.nextBlock : at.item.previousBlock)?.node;
+			const next = near?.getBoundingClientRect();
+			const shown = next && next.width > 0 ? next : null;
+			if (!shown) edge = right ? box.right : box.left;
+			else edge = right ? (own.right + shown.left) / 2 : (shown.right + own.left) / 2;
+		} else {
+			box = outer.node.getBoundingClientRect();
+			edge = right ? box.right : box.left;
+		}
+		return () => {
+			Object.assign(overlay.style, {
+				left: `${edge - BAR / 2 - origin.left}px`,
+				top: `${box.top - origin.top}px`,
+				width: `${BAR}px`,
+				height: `${box.height}px`
+			});
+		};
 	}
 
 	private clearIndicator() {

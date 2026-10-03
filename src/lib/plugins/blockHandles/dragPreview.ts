@@ -6,7 +6,7 @@
  * (`setCustomNativeDragPreview`), then removed with it.
  */
 
-/** The clones' layout width cap (the editor content width is used below it). */
+/** The clones' layout width cap (the dragged blocks' own width is used below it). */
 const MAX_WIDTH = 600;
 /** The ghost's height cap, after scaling: taller content is cut, with no fade. */
 const MAX_HEIGHT = 300;
@@ -176,8 +176,8 @@ export type DragPreview = {
 
 /**
  * The ghost of `nodes` (the dragged blocks' elements, in document order),
- * grabbed at `pointer`: a copy of each block laid out at the editor's content
- * width, scaled by `SCALE` from its top left, cut at `MAX_HEIGHT`, and a
+ * grabbed at `pointer`: a copy of each block laid out at its own width (the
+ * widest of them; the editor's content width when none is laid out), scaled by `SCALE` from its top left, cut at `MAX_HEIGHT`, and a
  * count badge when more than one block moves (the one addition). No card,
  * background, shadow, opacity or fade: the blocks' own look. The pointer
  * keeps its place on the first block (a handle is left of it: a transparent
@@ -193,7 +193,9 @@ export const dragPreview = (
 	const first = nodes[0]?.getBoundingClientRect();
 	const dx = first ? pointer.clientX - first.left : 0;
 	const dy = first ? pointer.clientY - first.top : 0;
-	const width = contentWidth(root);
+	// Each block at its own width (a column's block at its column's), capped.
+	const own = Math.max(0, ...nodes.map((node) => node.getBoundingClientRect().width));
+	const width = own > 0 ? Math.min(own, MAX_WIDTH) : contentWidth(root);
 
 	const list = document.createElement('div');
 	let shown = 0;

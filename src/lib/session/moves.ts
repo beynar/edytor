@@ -1,9 +1,21 @@
 import type { Block } from '$lib/block/block.svelte.js';
-import { dispatchPlan } from '$lib/block/block.utils.js';
+import { dispatchPlan, type BlockBeside } from '$lib/block/block.utils.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { revealing } from '$lib/selection/replaceSelection.js';
+import type { Prepared } from '$lib/crdt/edytor-doc.js';
 
-export type BlockMovePosition = 'before' | 'after' | 'inside';
+/**
+ * Where a move places the blocks relative to its target: `before`, `after`,
+ * `inside` (its last child), or `left`/`right` of it, side by side
+ * (`prepare.placeBeside`, `layout.place-beside`: a new column of the layout
+ * the target is in, else a new layout wrapping the target).
+ */
+export type BlockMovePosition = 'before' | 'after' | 'inside' | 'left' | 'right';
+
+/** The positions that place the blocks beside the target, in a layout. */
+const BESIDE: readonly BlockMovePosition[] = ['left', 'right'];
+const isBeside = (position: BlockMovePosition): position is 'left' | 'right' =>
+	BESIDE.includes(position);
 
 /**
  * One relative step (D-5): `up`/`down` pass the previous/next sibling, never
@@ -41,19 +53,35 @@ const placement = (edytor: Edytor, request: BlockMoveRequest) => {
 	return step?.[0] ? { blocks, target: step[0], position: step[1] } : null;
 };
 
+const POSITIONS: readonly BlockMovePosition[] = ['before', 'after', 'inside', ...BESIDE];
+
 /**
  * The move op's payload, or `null` when refused: a well-formed request, then
  * the document's one structural answer (`canPlace`, R5 — the predicate the
  * move op applies at execution; an `out` step asks the outdent plan, which
  * places the blocks as the kind they take there: a paragraph outdented into
- * a list is its item, DR-crdt-2). Extensions may still veto the command.
+ * a list is its item, DR-crdt-2; `left`/`right` ask the beside plan,
+ * `placeBeside`). Extensions may still veto the command.
  */
 const destination = (edytor: Edytor, request: BlockMoveRequest) => {
 	const move = placement(edytor, request);
-	if (!move || edytor.readonly || !['before', 'after', 'inside'].includes(move.position))
-		return null;
+	if (!move || edytor.readonly || !POSITIONS.includes(move.position)) return null;
 	const { blocks, target, position } = move;
 	const ids = blocks.map((block) => block.id);
+	if (
+		target.edytor !== edytor ||
+		!target.isInTree ||
+		target.isRoot ||
+		blocks.some((block) => block.edytor !== edytor || block === target)
+	)
+		return null;
+	// Beside: the document resolves the target (its outermost block below the
+	// root or a column) and owns every refusal (D2, fits, its own subtree).
+	if (isBeside(position)) {
+		return 'writes' in edytor.facade.prepare.placeBeside(ids, target.id, position)
+			? { blocks, path: target.path, beside: { target, side: position } }
+			: null;
+	}
 	// Inside a container they are no items of: under its last item (Tab after a list, ZW-01).
 	const nest = () => edytor.idToBlock.get(edytor.facade.nestParent(ids, target.id));
 	const parent = position === 'inside' ? (nest() ?? target) : target.parent;
@@ -61,15 +89,7 @@ const destination = (edytor: Edytor, request: BlockMoveRequest) => {
 		'direction' in request && request.direction === 'out'
 			? 'writes' in edytor.facade.prepare.unNestBlocks(ids)
 			: edytor.facade.canPlace(ids, to.isRoot ? null : to.id);
-	if (
-		!parent ||
-		target.edytor !== edytor ||
-		!target.isInTree ||
-		target.isRoot ||
-		blocks.some((block) => block.edytor !== edytor || block === target) ||
-		!placeable(parent)
-	)
-		return null;
+	if (!parent || !placeable(parent)) return null;
 	const at =
 		position === 'inside' ? parent.children.length : target.index + (position === 'after' ? 1 : 0);
 	// The document counts the destination's children without the moved blocks.
@@ -129,6 +149,23 @@ const place = (edytor: Edytor, request: BlockMoveRequest): Block[] => {
 		return [];
 	}
 	const [first, ...rest] = move.blocks;
+	if (move.beside) {
+		const { beside } = move;
+		// The beside plan, from the payload hooks leave: a new column, or a new
+		// layout wrapping the target; the sources cleaned in the same plan.
+		const ids = move.blocks.map((block) => block.id);
+		const besides = (payload: { beside?: BlockBeside }): Prepared =>
+			payload.beside
+				? edytor.facade.prepare.placeBeside(ids, payload.beside.target.id, payload.beside.side)
+				: { status: 'refused', ids: [] };
+		const touched = [
+			...new Set([...move.blocks.map((block) => block.parent), beside.target.parent])
+		];
+		const applied = rest.length
+			? dispatchPlan(first!, 'moveBlocks', move, besides, touched)
+			: dispatchPlan(first!, 'moveBlock', { path: move.path, beside }, besides, touched);
+		return applied ? move.blocks : [];
+	}
 	if ('direction' in request && request.direction === 'out') {
 		// The outdent plan: the siblings after the last block follow it.
 		const ids = move.blocks.map((block) => block.id);

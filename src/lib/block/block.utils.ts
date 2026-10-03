@@ -47,6 +47,9 @@ import {
 } from '$lib/utils/json.js';
 import { InlineBlock } from './inlineBlock.svelte.js';
 
+/** A move beside `target`, to its `side` (`prepare.placeBeside`, `layout.place-beside`). */
+export type BlockBeside = { target: Block; side: 'left' | 'right' };
+
 export type BlockOperations = {
 	removeInlineBlock: {
 		index: number;
@@ -97,12 +100,15 @@ export type BlockOperations = {
 		block: JSONInlineBlock;
 		text: Text;
 	};
+	/** `beside`: placed beside a target (`left`/`right` moves); `path` is then the target's. */
 	moveBlock: {
 		path: number[];
+		beside?: BlockBeside;
 	};
 	moveBlocks: {
 		blocks: Block[];
 		path: number[];
+		beside?: BlockBeside;
 	};
 	pushContentIntoBlock: {
 		value: (Text | InlineBlock)[];

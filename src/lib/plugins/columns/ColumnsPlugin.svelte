@@ -6,6 +6,8 @@
 	import { layoutKinds } from '$lib/crdt/semantics.js';
 	import { convertToKind, type KindRow } from '$lib/kinds.js';
 	import { liftLayouts } from '$lib/selection/replaceSelection.js';
+	import ColumnResizeStrips from './ColumnResize.svelte';
+	import { ColumnResize, weightOf } from './resize.svelte.js';
 
 	export type ColumnsPluginOptions = {
 		/**
@@ -16,17 +18,9 @@
 	};
 
 	const columnsPlugins = new WeakSet<Plugin>();
-	/** The options of each editor's columns plugin (the resize reads `minWidth`). */
-	const optionsOf = new WeakMap<Edytor, Required<ColumnsPluginOptions>>();
 
 	/** Recognize any columns plugin instance (the component's default yields to yours). */
 	export const isColumnsPlugin = (plugin: Plugin) => columnsPlugins.has(plugin);
-
-	/** A column's weight (D5): `data.width`, a positive number, else 1. */
-	const weightOf = (data: Record<string, unknown> | undefined) => {
-		const width = data?.width;
-		return typeof width === 'number' && Number.isFinite(width) && width > 0 ? width : 1;
-	};
 
 	/** A weight read back from HTML (`data-width`), when it is one. */
 	const parsedWidth = (element: HTMLElement): Record<string, number> => {
@@ -120,9 +114,37 @@
 	 */
 	export const createColumnsPlugin = (options: ColumnsPluginOptions = {}): Plugin => {
 		const plugin: Plugin = (edytor) => {
-			optionsOf.set(edytor, { minWidth: options.minWidth ?? 0.1 });
+			const resize = new ColumnResize(edytor, options.minWidth ?? 0.1);
 			return {
 				commands: [2, 3, 4].map((n) => layoutCommand(edytor, n)),
+				// The resize strips: in the overlay, for the layout under the pointer.
+				onEdytorAttached: ({ node }) => {
+					const over = (event: PointerEvent) => resize.hover(event.target);
+					const leave = (event: PointerEvent) => resize.leave(event.relatedTarget);
+					// A block drag owns the pointer: no strip takes it meanwhile.
+					const drag = (event: Event) => (resize.dragging = event.type === 'dragstart');
+					const document = node.ownerDocument;
+					node.addEventListener('pointerover', over);
+					node.addEventListener('pointerleave', leave);
+					document.addEventListener('dragstart', drag, true);
+					document.addEventListener('dragend', drag, true);
+					document.addEventListener('drop', drag, true);
+					const unmount = edytor.overlay.mount(
+						ColumnResizeStrips,
+						{ resize },
+						'edytor-column-resizers',
+						4,
+						resize.measure
+					);
+					return () => {
+						node.removeEventListener('pointerover', over);
+						node.removeEventListener('pointerleave', leave);
+						document.removeEventListener('dragstart', drag, true);
+						document.removeEventListener('dragend', drag, true);
+						document.removeEventListener('drop', drag, true);
+						unmount();
+					};
+				},
 				blocks: {
 					columns: {
 						...layoutKinds.columns,

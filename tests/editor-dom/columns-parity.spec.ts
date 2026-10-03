@@ -249,3 +249,57 @@ test.describe('columns: the resize affordance', () => {
 		await expect(handle).toHaveCSS('opacity', '1');
 	});
 });
+
+test.describe("columns: a column block's +", () => {
+	test("Alt+click on the + of column 1's block, then a pick: a new column right of column 1", async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		await page.locator('[data-edytor-id="A2"] [data-edytor-text]').first().hover();
+		const add = page.locator(
+			'[data-edytor-block-handle-host][data-block-id="A2"] [data-testid="block-add"]'
+		);
+		await expect(add).toBeVisible();
+		// The + and the grip fit in the gap, left of column 2.
+		const [plus, k1] = [(await add.boundingBox())!, await box(page, 'K1')];
+		expect(plus.x).toBeLessThan(k1.x);
+		await add.click({ modifiers: ['Alt'] });
+		await expect(page.locator('[data-testid="slash-menu"]')).toBeVisible();
+		await page.keyboard.type('text');
+		await page.keyboard.press('Enter');
+		await expect
+			.poll(() => shape(page))
+			.toEqual([
+				'P',
+				[
+					'C',
+					[
+						['K1', ['A', 'A2']],
+						['NEW', ['NEW']],
+						['K2', ['B']]
+					]
+				],
+				'Z'
+			]);
+		await page.keyboard.type('new');
+		const fresh = page
+			.locator('[data-edytor-id="C"] > [data-edytor-children] > [data-edytor-block]')
+			.nth(1);
+		await expect(fresh.locator('[data-edytor-text]').first()).toHaveText('new');
+		await page.keyboard.press('ControlOrMeta+z');
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect.poll(() => shape(page)).toEqual(['P', LAYOUT, 'Z']);
+		issues.assertClean();
+	});
+
+	test("a column 2 block's + and grip sit in the gap, left of its column", async ({ page }) => {
+		await open(page);
+		await page.locator('[data-edytor-id="B"] [data-edytor-text]').first().hover();
+		const host = page.locator('[data-edytor-block-handle-host][data-block-id="B"]');
+		await expect(host.locator('[data-testid="block-add"]')).toBeVisible();
+		const [h, k1, k2] = [(await host.boundingBox())!, await box(page, 'K1'), await box(page, 'K2')];
+		expect(h.x).toBeGreaterThanOrEqual(k1.x + k1.width - 1);
+		expect(h.x + h.width).toBeLessThanOrEqual(k2.x + 1);
+	});
+});

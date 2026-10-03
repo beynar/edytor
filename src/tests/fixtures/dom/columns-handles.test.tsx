@@ -2,9 +2,10 @@
 /**
  * Block handles over a layout (D3, as Notion; docs/columns-plan.md §3, §5):
  *
- * - no handle for a layout or a column (decided from the roles), a block
- *   directly in a column shows only its grip (no `+`); a list nested
- *   directly in a list keeps both;
+ * - no handle for a layout or a column (decided from the roles); a block
+ *   in a column has its `+` and its grip, as Notion (the `+`'s Alt+click
+ *   adds a column right of the block's column); a list nested directly in
+ *   a list keeps both;
  * - hover lights a block's own handle and its ancestors' that have one,
  *   never a layout's or a column's;
  * - a block selection holding every shown block of every column of a
@@ -121,7 +122,7 @@ const selectAll = async (edytor: Edytor, ...ids: string[]) => {
 };
 
 describe('which blocks have a handle (D3)', () => {
-	it('none for a layout or a column; only the grip for a block in a column', async () => {
+	it('none for a layout or a column; a block in a column has its + and grip', async () => {
 		const { edytor } = await render([
 			...contractDoc(),
 			{
@@ -140,7 +141,11 @@ describe('which blocks have a handle (D3)', () => {
 		await flushDomUpdates();
 		expect(tree(edytor)).toContainEqual(['L', ['i1', ['L2', ['j1']]]]);
 		expect([parts('C'), parts('K1'), parts('K2')]).toEqual([null, null, null]);
-		expect([parts('A'), parts('A2'), parts('B')]).toEqual([['grip'], ['grip'], ['grip']]);
+		expect([parts('A'), parts('A2'), parts('B')]).toEqual([
+			['+', 'grip'],
+			['+', 'grip'],
+			['+', 'grip']
+		]);
 		expect([parts('P'), parts('Z')]).toEqual([
 			['+', 'grip'],
 			['+', 'grip']
@@ -153,10 +158,130 @@ describe('which blocks have a handle (D3)', () => {
 		]);
 	});
 
-	it('a block nested under a block in a column has both (its parent is no column)', async () => {
+	it('a block nested under a block in a column has both too', async () => {
 		await render([columns('C', column('K1', [p('A', 'a', [p('A1')])]), column('K2', [p('B')]))]);
 		await flushDomUpdates();
-		expect([parts('A'), parts('A1')]).toEqual([['grip'], ['+', 'grip']]);
+		expect([parts('A'), parts('A1')]).toEqual([
+			['+', 'grip'],
+			['+', 'grip']
+		]);
+	});
+});
+
+describe("a column block's + (as Notion)", () => {
+	const plus = async (id: string, altKey = false) => {
+		const add = host(id)!.querySelector<HTMLElement>('[data-testid="block-add"]')!;
+		add.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+		add.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, altKey }));
+		await flushDomUpdates();
+	};
+	/** The tree with minted ids as `NEW`. */
+	const KNOWN = new Set(['P', 'C', 'K1', 'K2', 'A', 'A2', 'B', 'Z']);
+	const rename = (ids: unknown[]): unknown[] =>
+		ids.map((id) =>
+			Array.isArray(id)
+				? [KNOWN.has(id[0]) ? id[0] : 'NEW', rename(id[1])]
+				: KNOWN.has(id as string)
+					? id
+					: 'NEW'
+		);
+	const named = (edytor: Edytor) => rename(tree(edytor));
+
+	it('click: an empty block below it, in its column, the caret in it', async () => {
+		const { edytor } = await render();
+		await flushDomUpdates();
+		await plus('B');
+		expect(named(edytor)).toEqual([
+			'P',
+			[
+				'C',
+				[
+					['K1', ['A', 'A2']],
+					['K2', ['B', 'NEW']]
+				]
+			],
+			'Z'
+		]);
+		expect(caret(edytor)).toEqual({
+			block: block(edytor, 'K2').children[1]!.id,
+			offset: 0,
+			isCollapsed: true
+		});
+	});
+
+	it("Alt+click: a new column right of the block's column, holding an empty block, one undo step", async () => {
+		const { edytor } = await render();
+		await flushDomUpdates();
+		const steps = edytor.undoManager!.undoStack.length;
+		await plus('A2', true);
+		expect(named(edytor)).toEqual([
+			'P',
+			[
+				'C',
+				[
+					['K1', ['A', 'A2']],
+					['NEW', ['NEW']],
+					['K2', ['B']]
+				]
+			],
+			'Z'
+		]);
+		const added = block(edytor, 'C').children[1]!.children[0]!;
+		expect(added.type).toBe('paragraph');
+		expect(caret(edytor)).toEqual({ block: added.id, offset: 0, isCollapsed: true });
+		expect(edytor.undoManager!.undoStack.length).toBe(steps + 1);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(tree(edytor)).toEqual([
+			'P',
+			[
+				'C',
+				[
+					['K1', ['A', 'A2']],
+					['K2', ['B']]
+				]
+			],
+			'Z'
+		]);
+	});
+
+	it('Alt+click on the last column’s block: a new last column', async () => {
+		const { edytor } = await render();
+		await flushDomUpdates();
+		await plus('B', true);
+		expect(named(edytor)).toEqual([
+			'P',
+			[
+				'C',
+				[
+					['K1', ['A', 'A2']],
+					['K2', ['B']],
+					['NEW', ['NEW']]
+				]
+			],
+			'Z'
+		]);
+	});
+
+	it('Alt+click on a block nested in a column, or at the root: a block above, as anywhere', async () => {
+		const { edytor } = await render([
+			p('P'),
+			columns('C', column('K1', [p('A', 'a', [p('A1')])]), column('K2', [p('B')]))
+		]);
+		await flushDomUpdates();
+		await plus('A1', true);
+		expect(named(edytor)).toEqual([
+			'P',
+			[
+				'C',
+				[
+					['K1', [['A', ['NEW', 'NEW']]]],
+					['K2', ['B']]
+				]
+			]
+		]);
+		await plus('P', true);
+		expect(named(edytor)[0]).toBe('NEW');
 	});
 
 	it('hover lights the block and its handled ancestors, never a layout or a column', async () => {

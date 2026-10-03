@@ -76,9 +76,12 @@ kind (catalogue ids `block.<type><n>`).
   block of every column of a layout, the one resolver (`dragBlocks` /
   `movable` / `outermost`) lifts it to the layout: drag, Alt+arrows,
   Mod+Shift+arrows, Duplicate, Delete, Copy then act on the layout. Blocks in
-  columns show only the ⋮⋮ grip (no `+`): it leaves room in the gap for the
-  resize strip. To verify against Notion in C2 (selection highlight of a
-  whole layout, its block menu); a layout handle stays the fallback.
+  columns show the `+` and the ⋮⋮ grip, as Notion (revisited after the
+  2026-10-04 review; first shipped grip-only): the `+`'s Alt+click adds a
+  column right of the block's column (`addBlock` → `moveBlocks` `right`).
+  The gap budget: a block's handle shows (and takes the pointer) only for
+  the hovered row; the resize strip covers the rest of the gap, under the
+  handles, with a gray hover guide. A layout handle stays the fallback.
 - **D4 — (decided: as Notion) merges cross columns in reading order.**
   Backspace at the start of a column's first block merges it into the last
   line of the previous column (its text joins that line; an empty block is

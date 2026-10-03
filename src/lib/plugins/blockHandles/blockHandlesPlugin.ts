@@ -14,12 +14,13 @@ export type BlockHandleSnippetPayload = {
 	block: Block;
 	/** An action: `use:grip` makes an element the drag grip, menu button and Alt+arrow target. */
 	grip: (node: HTMLElement) => { destroy(): void };
-	/** The `+`: the slash menu offers what to add below (above with `true`); nothing is added until a row is picked. */
-	add: (above?: boolean) => void;
 	/**
-	 * Whether the block takes a `+`: not a block directly in a layout's column
-	 * (the default handle shows only its grip there, D3).
+	 * The `+`: the slash menu offers what to add below; with `true` (Alt+click)
+	 * above, or, for a block directly in a layout's column, in a new column
+	 * right of its column. Nothing is added until a row is picked.
 	 */
+	add: (alt?: boolean) => void;
+	/** Whether the block takes a `+`: always `true` (a block in a column too, as Notion). */
 	addable: boolean;
 	readonly: boolean;
 	draggable: boolean;

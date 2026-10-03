@@ -294,15 +294,30 @@ export class BlockHandleController {
 	}
 
 	/**
+	 * Whether the `+`'s Alt+click on `block` adds a column right of its
+	 * column (a block directly in a layout's column, as Notion) rather than a
+	 * block above it.
+	 */
+	addsColumn(block: Block) {
+		const parent = block.parent;
+		return !!parent && !parent.isRoot && this.edytor.facade.isLayoutItem(parent.id);
+	}
+
+	/**
 	 * The `+`: offers the new block to a menu (`BLOCK_ADD_EVENT`), which adds
 	 * it once the user picks what to insert; with none answering, adds it now
 	 * (`BlockAddition.insert`). A user command: its own undo step, however
-	 * soon it follows typing.
+	 * soon it follows typing. `alt` (Alt+click) adds it above, or, for a block
+	 * directly in a column (`addsColumn`), in a new column right of that
+	 * column: the empty block is inserted after `block` and moved beside it
+	 * (`moveBlocks`, `right`: `layout.place-beside`), in the same transaction.
 	 */
-	addBlock(block: Block, above = false, anchor: HTMLElement | null = block.node ?? null) {
+	addBlock(block: Block, alt = false, anchor: HTMLElement | null = block.node ?? null) {
 		const { edytor } = this;
 		if (edytor.readonly || !block.parent) return;
 		this.ungrip();
+		const column = alt && this.addsColumn(block);
+		const above = alt && !column;
 		const insert = (then?: () => unknown) => {
 			const { dispatcher, facade, selection, undoManager: um } = edytor;
 			const held = selection.value;
@@ -321,12 +336,15 @@ export class BlockHandleController {
 						const type = block.parent && edytor.defaultChild(block.parent);
 						if (!type) return;
 						const spec = { block: { type } };
-						const reused = block.type === type && block.isEmpty;
+						const reused = !column && block.type === type && block.isEmpty;
 						const target = reused
 							? block
 							: above
 								? block.insertBlockBefore(spec)
 								: block.insertBlockAfter(spec);
+						// A new column right of the block's: the one move path places it.
+						if (target && column)
+							edytor.moveBlocks({ blocks: [target], target: block, position: 'right' });
 						// The caret is the model's: the projector shows it once the block mounts.
 						if (target?.firstText) dispatcher.caret(target.firstText, 0);
 						if (!target || !then) return;

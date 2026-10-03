@@ -125,7 +125,7 @@
 		use:place={id}
 		onfocusin={() => (focused = id)}
 		onfocusout={() => focused === id && (focused = null)}
-		><BlockHandle block={blocks.get(id)!} {controller} {handle} addable={!inColumn(id)} /></span
+		><BlockHandle block={blocks.get(id)!} {controller} {handle} /></span
 	>
 {/each}
 

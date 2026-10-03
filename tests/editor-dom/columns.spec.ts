@@ -5,7 +5,7 @@ import { trackPageIssues, waitForEditorReady } from './helpers';
  * Columns in real browsers (docs/columns-plan.md §5, D5–D7): a layout's
  * columns sit side by side with the gap between them, sized by their
  * weights, and stack in a layout under 480px wide; a block in a column
- * shows only its grip, in the gap, where it takes the click; Backspace and
+ * shows its + and grip, in the gap, where they take the click; Backspace and
  * Delete at the column edges are the document's merges (`layout.merge`);
  * the vertical arrows stay the browser's (D7), pinned per engine below.
  * The jsdom rows are `src/tests/fixtures/dom/columns-*.test.tsx`.
@@ -136,7 +136,7 @@ test.describe('columns', () => {
 		expect(Math.round(k2.width)).toBe(Math.round(c.width));
 	});
 
-	test('a block in column 2 shows only its grip, in the gap, and the grip takes the click', async ({
+	test('a block in column 2 shows its + and grip, in the gap, and the grip takes the click', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -144,7 +144,8 @@ test.describe('columns', () => {
 		await page.locator('[data-edytor-id="B"] [data-edytor-text]').hover();
 		const host = page.locator('[data-edytor-block-handle-host][data-block-id="B"]');
 		await expect(host).toHaveAttribute('data-visible', 'true');
-		await expect(host.getByTestId('block-add')).toHaveCount(0);
+		// Its + too, as Notion (the review of 2026-10-04 revisited D3).
+		await expect(host.getByTestId('block-add')).toBeVisible();
 		await expect(page.locator('[data-edytor-block-handle-host][data-block-id="C"]')).toHaveCount(0);
 		await expect(page.locator('[data-edytor-block-handle-host][data-block-id="K2"]')).toHaveCount(
 			0

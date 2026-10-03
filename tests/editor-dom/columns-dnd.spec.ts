@@ -358,8 +358,8 @@ test.describe('resizing columns', () => {
 		await expect(strip(page)).toHaveCount(1);
 		const s = (await strip(page).boundingBox())!;
 		const [k1, k2] = [await box(page, 'K1'), await box(page, 'K2')];
-		// 8px at the left of the gap, the layout's height.
-		expect(Math.round(s.width)).toBe(8);
+		// Over the whole gap, the layout's height.
+		expect(Math.abs(s.width - (k2.x - (k1.x + k1.width)))).toBeLessThanOrEqual(1);
 		expect(Math.abs(s.x - (k1.x + k1.width))).toBeLessThanOrEqual(1);
 		expect(await strip(page).evaluate((node) => getComputedStyle(node).cursor)).toBe('col-resize');
 		const at = { x: s.x + s.width / 2, y: s.y + s.height / 2 };
@@ -378,6 +378,18 @@ test.describe('resizing columns', () => {
 		expect(Math.abs((await box(page, 'K2')).width - (k2.width - 100))).toBeLessThanOrEqual(1);
 		await page.keyboard.press('ControlOrMeta+z');
 		await expect.poll(() => weights(page)).toEqual([null, null]);
+		// The strip is measured again once the undo's widths are laid out (under
+		// load that takes a frame or more): wait for it over the restored gap.
+		await expect
+			.poll(async () => {
+				const [one, now] = [await box(page, 'K1'), await strip(page).boundingBox()];
+				return (
+					now !== null &&
+					Math.abs(now.x - (one.x + one.width)) <= 1 &&
+					Math.abs(one.width - k1.width) <= 1
+				);
+			})
+			.toBe(true);
 		// Past column 2's minimum (it is under 400px wide): it stops at 10% of the layout.
 		const c = await box(page, 'C');
 		const again = (await strip(page).boundingBox())!;

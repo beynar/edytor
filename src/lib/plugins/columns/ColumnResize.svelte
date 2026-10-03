@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { STRIP, type ColumnResize } from './resize.svelte.js';
+	import { GUIDE, type ColumnResize } from './resize.svelte.js';
 
 	/**
 	 * The resize strips of the hovered layout and the guide of a drag
-	 * (`ColumnResize`), in the overlay: each strip at the left of its gap,
-	 * the grips at its right.
+	 * (`ColumnResize`), in the overlay: each strip over its whole gap, under
+	 * the block handles; hovered, it shows a gray guide in the gap's middle.
 	 */
 	let { resize }: { resize: ColumnResize } = $props();
 </script>
@@ -23,9 +23,11 @@
 				aria-hidden="true"
 				style:left="{strip.x}px"
 				style:top="{strip.top}px"
-				style:width="{STRIP}px"
+				style:width="{strip.width}px"
 				style:height="{strip.height}px"
 				style:cursor="col-resize"
+				style:--edytor-column-resize-guide-width="{GUIDE}px"
+				data-dragging={resize.drag ? 'true' : undefined}
 				onpointerdown={(event) => resize.start(event, strip)}
 				onmousedown={(event) => event.preventDefault()}
 			></div>
@@ -46,6 +48,24 @@
 	[data-edytor-column-resize] {
 		position: absolute;
 		touch-action: none;
+	}
+
+	/* Notion's hover guide: a thin gray rule in the gap's middle. */
+	[data-edytor-column-resize]::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: calc(50% - var(--edytor-column-resize-guide-width) / 2);
+		width: var(--edytor-column-resize-guide-width);
+		background: var(--edytor-columns-resize-color, rgba(55, 53, 47, 0.16));
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 80ms ease;
+	}
+
+	[data-edytor-column-resize]:hover:not([data-dragging='true'])::after {
+		opacity: 1;
 	}
 
 	/* Notion's resize line: a thin blue rule where the gap will be. */

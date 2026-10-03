@@ -2,10 +2,8 @@ import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { stacks } from './stacking.js';
 
-/** The strip's width, at the left of a gap (the grips sit at its right, D3). */
-export const STRIP = 8;
-/** The guide line's width. */
-const GUIDE = 2;
+/** The guide line's width (the hover guide's and the drag's). */
+export const GUIDE = 2;
 
 /** A column's weight (D5): `data.width`, a positive number, else 1. */
 export const weightOf = (data: Record<string, unknown> | undefined) => {
@@ -13,8 +11,15 @@ export const weightOf = (data: Record<string, unknown> | undefined) => {
 	return typeof width === 'number' && Number.isFinite(width) && width > 0 ? width : 1;
 };
 
-/** A strip between the columns `left` and `right`, layer-relative. */
-export type Strip = { left: string; right: string; x: number; top: number; height: number };
+/** A strip over the gap between the columns `left` and `right`, layer-relative. */
+export type Strip = {
+	left: string;
+	right: string;
+	x: number;
+	top: number;
+	width: number;
+	height: number;
+};
 
 /** A strip being dragged: the two columns as the drag found them, in client px. */
 type Drag = {
@@ -38,8 +43,11 @@ type Drag = {
 /**
  * The column resize (docs/columns-plan.md D5, §5 "Resize"), chrome in the
  * overlay: while the pointer is over a layout (not readonly, not stacked),
- * an 8px strip at the left of each gap between two shown columns; dragging
- * one shows a guide line and writes nothing; the release writes the two
+ * a strip over each gap between two shown columns, the gap's width and the
+ * layout's height, under the block handles (a shown handle takes the
+ * pointer over its part of the gap; one not shown takes none); hovering it
+ * shows a gray guide in the gap's middle (`--edytor-columns-resize-color`),
+ * as Notion; dragging one shows the blue guide and writes nothing; the release writes the two
  * columns' `data.width` weights, keeping their sum, in one `edytor.transact`
  * (two `setData` commands: one undo step). Neither column goes under
  * `minWidth` × the layout's width, in the view only (the document stores
@@ -125,13 +133,14 @@ export class ColumnResize {
 			const rect = item.node?.getBoundingClientRect();
 			return rect && rect.width > 0 ? [{ item, rect }] : [];
 		});
-		return items.slice(1).map(({ item }, index) => {
+		return items.slice(1).map(({ item, rect }, index) => {
 			const before = items[index]!;
 			return {
 				left: before.item.id,
 				right: item.id,
 				x: before.rect.right - origin.left,
 				top: box.top - origin.top,
+				width: Math.max(0, rect.left - before.rect.right),
 				height: box.height
 			};
 		});
@@ -227,5 +236,6 @@ const sameStrips = (a: Strip[], b: Strip[]) =>
 			strip.right === b[index]!.right &&
 			strip.x === b[index]!.x &&
 			strip.top === b[index]!.top &&
+			strip.width === b[index]!.width &&
 			strip.height === b[index]!.height
 	);

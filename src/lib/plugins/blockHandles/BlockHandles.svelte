@@ -61,13 +61,14 @@
 	});
 
 	/**
-	 * A block directly in a layout's column shows only its grip (D3): the gap
-	 * between columns leaves no room for a `+` (it is the resize strip's).
+	 * A block directly in a layout's column: its handle sits in the gap
+	 * between two columns, which the resize strip takes wherever no shown
+	 * handle does — its handle takes the pointer only while shown.
 	 */
-	const addable = (id: string) => {
+	const inColumn = (id: string) => {
 		void structure;
 		const parent = blocks.get(id)?.parent;
-		return !parent || parent.isRoot || !edytor.facade.isLayoutItem(parent.id);
+		return !!parent && !parent.isRoot && edytor.facade.isLayoutItem(parent.id);
 	};
 
 	const firstRowCenter = (node: HTMLElement, block: Block): number => {
@@ -119,11 +120,12 @@
 		data-edytor-block-handle-host
 		data-block-id={id}
 		data-visible={hovered.has(id) ? 'true' : undefined}
+		data-in-column={inColumn(id) && controller.dragging !== id ? 'true' : undefined}
 		data-dragging={controller.dragging && controller.dragging !== id ? 'true' : undefined}
 		use:place={id}
 		onfocusin={() => (focused = id)}
 		onfocusout={() => focused === id && (focused = null)}
-		><BlockHandle block={blocks.get(id)!} {controller} {handle} addable={addable(id)} /></span
+		><BlockHandle block={blocks.get(id)!} {controller} {handle} addable={!inColumn(id)} /></span
 	>
 {/each}
 
@@ -144,6 +146,17 @@
 	 * source stops taking the pointer as it starts.) */
 	[data-edytor-block-handle-host][data-dragging='true'] {
 		pointer-events: none;
+	}
+
+	/* In a column's gap the resize strip takes the pointer where no handle shows
+	 * (a drag's source keeps it: an engine cancels a drag whose source stops
+	 * taking the pointer). */
+	@media (hover: hover) {
+		[data-edytor-block-handle-host][data-in-column='true']:not([data-visible='true']):not(
+				:hover
+			):not(:focus-within):not(:active) {
+			pointer-events: none;
+		}
 	}
 
 	[data-edytor-block-handle-host][data-visible='true'],

@@ -2,9 +2,10 @@
 /**
  * Resizing columns (docs/columns-plan.md D5 and §5 "Resize", C4):
  *
- * - while the pointer is over a layout, the overlay shows an 8px strip at
- *   the left of each gap between two adjacent columns (`cursor: col-resize`;
- *   the grips sit at the gap's right), never inside the host;
+ * - while the pointer is over a layout, the overlay shows a strip over each
+ *   whole gap between two adjacent columns (`cursor: col-resize`), under the
+ *   block handles (a shown handle takes its part of the gap), never inside
+ *   the host;
  * - dragging a strip shows a guide line and writes nothing;
  * - the release writes the two neighbours' `data.width` weights, keeping
  *   their sum, as one undo step;
@@ -113,7 +114,7 @@ const weights = (edytor: Edytor, ...ids: string[]) =>
 	ids.map((id) => block(edytor, id).data.width as number | undefined);
 
 describe('the resize strips', () => {
-	it('one 8px col-resize strip at the left of each gap, in the overlay, while the pointer is over the layout', async () => {
+	it('one col-resize strip over each whole gap, in the overlay, while the pointer is over the layout', async () => {
 		const { edytor, editor } = await render(contractDoc());
 		await hover(edytor, 'P');
 		expect(strips()).toEqual([]);
@@ -121,7 +122,7 @@ describe('the resize strips', () => {
 		const [strip] = strips();
 		expect(strips()).toHaveLength(1);
 		// C sits at y 24, 48px tall (column 1's two rows); column 1 ends at (600 - 46) / 2 = 277.
-		expect(boxOf(strip!)).toEqual([277, 24, 8, 48]);
+		expect(boxOf(strip!)).toEqual([277, 24, GAP, 48]);
 		expect(strip!.style.cursor).toBe('col-resize');
 		expect(editor.contains(strip!)).toBe(false);
 		expect(strip!.closest('[data-edytor-overlay]')).not.toBeNull();

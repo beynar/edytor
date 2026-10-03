@@ -178,3 +178,74 @@ test.describe('columns: the block-selection arrows never select a column', () =>
 		await expect.poll(() => selected(page)).toEqual(['A2']);
 	});
 });
+
+test.describe('columns: the resize affordance', () => {
+	const strip = (page: Page) => page.locator('[data-edytor-column-resize]');
+	/** The hover guide's opacity (the strip's `::after`). */
+	const guide = (page: Page) =>
+		strip(page).evaluate((node) => Number(getComputedStyle(node, '::after').opacity));
+	/** What takes the pointer at `x, y`. */
+	const hit = (page: Page, x: number, y: number) =>
+		page.evaluate(
+			([x, y]) => {
+				const at = document.elementFromPoint(x!, y!);
+				return at?.closest('[data-edytor-column-resize]')
+					? 'strip'
+					: at?.closest('[data-edytor-block-handle-host]')
+						? 'handle'
+						: (at?.closest('[data-edytor-id]')?.getAttribute('data-edytor-id') ?? null);
+			},
+			[x, y]
+		);
+
+	test('the whole gap resizes where no handle shows; hovered, it shows a gray guide; dragging, the blue one', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		const [k1, k2, b, a2] = [
+			await box(page, 'K1'),
+			await box(page, 'K2'),
+			await box(page, 'B'),
+			await box(page, 'A2')
+		];
+		const gap = { left: k1.x + k1.width, right: k2.x };
+		// Over A2's row, below column 2's only block: the gap is the strip's.
+		await page.mouse.move(a2.x + 10, a2.y + a2.height / 2);
+		await expect(strip(page)).toHaveCount(1);
+		const s = (await strip(page).boundingBox())!;
+		expect(Math.abs(s.x - gap.left)).toBeLessThanOrEqual(1);
+		expect(Math.abs(s.x + s.width - gap.right)).toBeLessThanOrEqual(1);
+		for (const x of [gap.left + 2, (gap.left + gap.right) / 2, gap.right - 2])
+			expect(await hit(page, x, a2.y + a2.height / 2)).toBe('strip');
+		// Over B's row while B is not hovered, its handle takes nothing either.
+		expect(await hit(page, gap.left + 4, b.y + Math.min(b.height, 24) / 2)).toBe('strip');
+		expect(await guide(page)).toBe(0);
+		await page.mouse.move((gap.left + gap.right) / 2, a2.y + a2.height / 2);
+		await expect.poll(() => guide(page)).toBe(1);
+		expect(await strip(page).evaluate((node) => getComputedStyle(node).cursor)).toBe('col-resize');
+		// Dragging: the blue guide, the gray one hidden.
+		await page.mouse.down();
+		await page.mouse.move((gap.left + gap.right) / 2 + 40, a2.y + a2.height / 2, { steps: 5 });
+		await expect(page.locator('[data-edytor-column-resize-guide]')).toHaveCount(1);
+		await expect.poll(() => guide(page)).toBe(0);
+		await page.mouse.up();
+		await expect(page.locator('[data-edytor-column-resize-guide]')).toHaveCount(0);
+		issues.assertClean();
+	});
+
+	test("a hovered block's shown handle takes the pointer over its part of the gap", async ({
+		page
+	}) => {
+		await open(page);
+		await page.locator('[data-edytor-id="B"] [data-edytor-text]').first().hover();
+		const handle = page.locator('[data-edytor-block-handle-host][data-block-id="B"]');
+		await expect(handle).toHaveAttribute('data-visible', 'true');
+		const g = (await page
+			.locator('[data-testid="block-handle"][data-block-id="B"]')
+			.boundingBox())!;
+		expect(await hit(page, g.x + g.width / 2, g.y + g.height / 2)).toBe('handle');
+		await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+		await expect(handle).toHaveCSS('opacity', '1');
+	});
+});

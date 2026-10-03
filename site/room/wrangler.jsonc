@@ -11,7 +11,7 @@
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["DocumentRoom"] }],
 	"vars": {
 		// Origins allowed to open a socket, besides localhost.
-		"ALLOWED_ORIGINS": "https://edytor-docs.beynar.workers.dev"
+		"ALLOWED_ORIGINS": "https://edytor.dev,https://edytor-docs.beynar.workers.dev"
 	},
 	"observability": { "enabled": true }
 }

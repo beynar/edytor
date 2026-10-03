@@ -22,7 +22,7 @@ export default defineConfig({
       display: "group",
     },
   },
-  deployment: cloudflare({ site: "https://edytor-docs.beynar.workers.dev" }),
+  deployment: cloudflare({ site: "https://edytor.dev" }),
   agents: {
     llmsTxt: true,
     webmcp: true,

@@ -186,7 +186,7 @@ describe('docs drift', () => {
 		const pack = readFileSync(join(root, 'site/scripts/pack-edytor.sh'), 'utf8');
 		expect(pack).toMatch(/sh site\/scripts\/stage-tarballs\.sh "\$@"/);
 		expect(readFileSync(join(root, 'site/scripts/stage-tarballs.sh'), 'utf8')).toMatch(
-			/cp site\/vendor\/edytor\.tgz "site\/public\/edytor-\$VERSION\.tgz"/
+			/cp "\$\{CURRENT:-site\/vendor\/edytor\.tgz\}" "site\/public\/edytor-\$VERSION\.tgz"/
 		);
 		expect(servedVersions()).toContain(version);
 		// The deploy packs with the guard, targets the account the room uses
@@ -221,8 +221,9 @@ describe('docs drift', () => {
 		// before the build (YW-15), and the smoke check checks them again.
 		expect(deploy.split(' && ')).toEqual([
 			'sh scripts/pack-edytor.sh --deploy',
-			'pnpm install',
-			'pnpm --dir room install',
+			// Not frozen: the fresh pack's hash differs from the lockfiles' (CI too).
+			'pnpm install --no-frozen-lockfile',
+			'pnpm --dir room install --no-frozen-lockfile',
 			'sh scripts/installed-edytor.sh',
 			'blume build',
 			`CLOUDFLARE_ACCOUNT_ID=${account} wrangler deploy`,
@@ -1035,6 +1036,7 @@ describe('the hosted tarballs (site/scripts/stage-tarballs.sh)', () => {
 		live: Record<string, string | number>;
 		local?: Record<string, string>;
 		force?: boolean;
+		keepLive?: boolean;
 	}) {
 		const checkout = mkdtempSync(join(tmpdir(), 'edytor-stage-'));
 		mkdirSync(join(checkout, 'site/scripts'), { recursive: true });
@@ -1063,7 +1065,12 @@ describe('the hosted tarballs (site/scripts/stage-tarballs.sh)', () => {
 		try {
 			const result = await run('sh', ['site/scripts/stage-tarballs.sh', '--deploy'], {
 				cwd: checkout,
-				env: { ...process.env, SITE: site, FORCE: options.force ? '1' : '' }
+				env: {
+					...process.env,
+					SITE: site,
+					FORCE: options.force ? '1' : '',
+					KEEP_LIVE: options.keepLive ? '1' : ''
+				}
 			}).then(
 				() => 'staged',
 				(error: { stderr: string }) => `refused: ${error.stderr}`
@@ -1121,6 +1128,18 @@ describe('the hosted tarballs (site/scripts/stage-tarballs.sh)', () => {
 			local: { 'edytor-0.1.0-next.0.tgz': 'next.0 bytes' }
 		});
 		expect(result).toMatch(/^refused: .*already serves different bytes/);
+		expect(served).toEqual({ 'edytor-0.1.0-next.0.tgz': 'next.0 bytes' });
+	});
+
+	it('with KEEP_LIVE (the CI deploy), a served version keeps its live bytes', async () => {
+		const { result, served } = await stage({
+			version: '0.1.0-next.0',
+			served: ['0.1.0-next.0'],
+			packed: 'a rebuild on another machine',
+			live: { '/edytor-0.1.0-next.0.tgz': 'next.0 bytes' },
+			keepLive: true
+		});
+		expect(result).toBe('staged');
 		expect(served).toEqual({ 'edytor-0.1.0-next.0.tgz': 'next.0 bytes' });
 	});
 

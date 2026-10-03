@@ -7,9 +7,9 @@
 [![Svelte v5](https://img.shields.io/badge/Svelte-v5-FF3E00.svg)](https://svelte.dev)
 
 <p>
-    <a href="https://edytor-docs.beynar.workers.dev/docs">Documentation</a> •
+    <a href="https://edytor.dev/docs">Documentation</a> •
     <a href="#quick-start">Quick start</a> •
-    <a href="https://edytor-docs.beynar.workers.dev/docs/reference/migration">Migrating from 0.0.11</a>
+    <a href="https://edytor.dev/docs/reference/migration">Migrating from 0.0.11</a>
   </p>
 </div>
 
@@ -22,7 +22,7 @@ Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable 
 - **Notion-style editing out of the box.** `<Edytor />` alone is a rich text editor with images: headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks, Notion's markdown shortcuts and hotkeys. Add the Notion theme, block handles with a block menu (drag one block, or every block the selection covers), a slash menu, a selection toolbar and code blocks.
 - **Your markup.** Blocks, marks and inline atoms render through your Svelte snippets; the slash menu, toolbar, block menu and handles take a snippet and keep their behavior.
 - **Synced properties.** `block.data`, `atom.data` and `edytor.data` read and write like plain objects (`bind:value={block.data.title}`); each property and each array item syncs on its own, so concurrent edits of different properties, or of different items of one array, merge.
-- **AI suggestions.** `edytor.suggestions.add(position, content)` proposes text, paragraphs, lists, to-dos or images after, before or inside a block, at the end of its text, or in place of the selection; it streams in, shows only on your screen, and becomes one undo step when accepted ([Suggestions](https://edytor-docs.beynar.workers.dev/docs/editor/suggestions)).
+- **AI suggestions.** `edytor.suggestions.add(position, content)` proposes text, paragraphs, lists, to-dos or images after, before or inside a block, at the end of its text, or in place of the selection; it streams in, shows only on your screen, and becomes one undo step when accepted ([Suggestions](https://edytor.dev/docs/editor/suggestions)).
 - **Plugins that can veto anything.** Every command is prepared before it writes; plugins see the command and each planned step and can refuse or replace it.
 - **Real-time collaboration.** One `EdytorDocument` shared by any number of views, or none (headless). Presence cursors, identity-preserving moves, splits and merges, and undo that only takes back your own edits.
 - **Offline first.** A local IndexedDB copy and cross-tab sync; offline edits survive reloads and reach the server on reconnect.
@@ -37,7 +37,7 @@ The pre-release is on npm under the `next` tag. Name the tag: a bare `edytor` is
 pnpm add edytor@next
 ```
 
-`svelte@^5` is a peer dependency. Do not install `yjs`: the v14 engine is vendored (`edytor/crdt`). See [installation](https://edytor-docs.beynar.workers.dev/docs/getting-started).
+`svelte@^5` is a peer dependency. Do not install `yjs`: the v14 engine is vendored (`edytor/crdt`). See [installation](https://edytor.dev/docs/getting-started).
 
 ## Quick start
 
@@ -77,7 +77,7 @@ pnpm add edytor@next
 </div>
 ```
 
-`<Edytor>` adds the rich text, image, arrow-move and suggestions plugins after yours, and block handles. To collaborate, name a room and a server running the [`edytor/cloudflare` room](https://edytor-docs.beynar.workers.dev/docs/server/quick-start):
+`<Edytor>` adds the rich text, image, arrow-move and suggestions plugins after yours, and block handles. To collaborate, name a room and a server running the [`edytor/cloudflare` room](https://edytor.dev/docs/server/quick-start):
 
 ```svelte
 <Edytor
@@ -90,14 +90,14 @@ pnpm add edytor@next
 
 ## Documentation
 
-The [documentation site](https://edytor-docs.beynar.workers.dev/docs) is the single source for the API and behavior; this README only introduces the package.
+The [documentation site](https://edytor.dev/docs) is the single source for the API and behavior; this README only introduces the package.
 
-- [Getting started](https://edytor-docs.beynar.workers.dev/docs/getting-started): installation, quick start, SvelteKit, entry points and bundle size
-- [Concepts](https://edytor-docs.beynar.workers.dev/docs/concepts/document-model): the document model, blocks, void and island roles
-- [Editor](https://edytor-docs.beynar.workers.dev/docs/editor/edytor-component): the component, commands, selection, history, clipboard, readonly
-- [Plugins](https://edytor-docs.beynar.workers.dev/docs/plugins) and [customization](https://edytor-docs.beynar.workers.dev/docs/customization/blocks): bundled plugins, custom blocks and marks, [hotkeys and editing behavior](https://edytor-docs.beynar.workers.dev/docs/customization/hotkeys)
-- [Collaboration](https://edytor-docs.beynar.workers.dev/docs/collaboration) and [server](https://edytor-docs.beynar.workers.dev/docs/server/quick-start): documents, providers, presence, the Durable Object room and its protocol
-- [Reference](https://edytor-docs.beynar.workers.dev/docs/reference/document-api): the document API, [troubleshooting](https://edytor-docs.beynar.workers.dev/docs/reference/troubleshooting), [migration from 0.0.11](https://edytor-docs.beynar.workers.dev/docs/reference/migration), limitations
+- [Getting started](https://edytor.dev/docs/getting-started): installation, quick start, SvelteKit, entry points and bundle size
+- [Concepts](https://edytor.dev/docs/concepts/document-model): the document model, blocks, void and island roles
+- [Editor](https://edytor.dev/docs/editor/edytor-component): the component, commands, selection, history, clipboard, readonly
+- [Plugins](https://edytor.dev/docs/plugins) and [customization](https://edytor.dev/docs/customization/blocks): bundled plugins, custom blocks and marks, [hotkeys and editing behavior](https://edytor.dev/docs/customization/hotkeys)
+- [Collaboration](https://edytor.dev/docs/collaboration) and [server](https://edytor.dev/docs/server/quick-start): documents, providers, presence, the Durable Object room and its protocol
+- [Reference](https://edytor.dev/docs/reference/document-api): the document API, [troubleshooting](https://edytor.dev/docs/reference/troubleshooting), [migration from 0.0.11](https://edytor.dev/docs/reference/migration), limitations
 
 ## Contributing
 

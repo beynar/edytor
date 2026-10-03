@@ -1,0 +1,10 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	// The docs Worker (Blume merges this into the built dist/server/wrangler.json).
+	"name": "edytor-docs",
+	"account_id": "6886250e2aff0047919a1ed731a55c64",
+	"compatibility_date": "2026-09-26",
+	// edytor.dev is the docs' origin; the workers.dev URL keeps answering.
+	"routes": [{ "pattern": "edytor.dev", "custom_domain": true }],
+	"observability": { "enabled": true }
+}

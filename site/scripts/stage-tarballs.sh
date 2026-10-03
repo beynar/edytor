@@ -14,7 +14,10 @@
 #   - each earlier version is staged from the live site's bytes, so a fresh
 #     clone keeps serving it and a stale local copy never replaces it.
 # The deploy is refused when the live site cannot be read. FORCE=1 skips the
-# checks (an earlier version then keeps its local copy, if any).
+# checks (an earlier version then keeps its local copy, if any). KEEP_LIVE=1
+# (the CI deploy on a push to master, whose pack may differ from the one a
+# release served) keeps serving a served version's live bytes instead of
+# refusing.
 # SITE overrides the site origin from blume.config.ts.
 set -e
 cd "$(dirname "$0")/../.."
@@ -40,7 +43,11 @@ if [ "$1" = "--deploy" ] && [ "$FORCE" != 1 ]; then
 		refuse "$VERSION is not listed in $SERVED." \
 			"List it there: the next deploy keeps only listed versions, and a lockfile may pin this one."
 	STATUS=$(fetch "$VERSION" "$LIVE/current")
-	if [ "$STATUS" = 200 ]; then
+	if [ "$STATUS" = 200 ] && [ "$KEEP_LIVE" = 1 ]; then
+		cmp -s "$LIVE/current" site/vendor/edytor.tgz ||
+			echo "kept: $SITE/edytor-$VERSION.tgz serves its live bytes (this pack differs)" >&2
+		CURRENT="$LIVE/current"
+	elif [ "$STATUS" = 200 ]; then
 		cmp -s "$LIVE/current" site/vendor/edytor.tgz ||
 			refuse "$SITE/edytor-$VERSION.tgz already serves different bytes." \
 				"Bump the pre-release version in package.json and list it in $SERVED, or rerun with FORCE=1."
@@ -67,5 +74,5 @@ done
 for f in "$LIVE"/edytor-*.tgz; do
 	[ -e "$f" ] && mv -f "$f" site/public/
 done
-cp site/vendor/edytor.tgz "site/public/edytor-$VERSION.tgz"
+cp "${CURRENT:-site/vendor/edytor.tgz}" "site/public/edytor-$VERSION.tgz"
 echo "staged site/public/edytor-$VERSION.tgz beside $(versions | grep -cvxF "$VERSION") earlier version(s)"

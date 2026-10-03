@@ -487,7 +487,7 @@ packages:
     resolution: {integrity: sha512-sPAT4pztbu6586/hrhOnMKS17IJrvg12mXiSPSS3W5qDeN2RGgvZ0diZCm31dBbnevfVmujNO3IM2wrS4Y2Rhg==}
 
   edytor@file:../vendor/edytor.tgz:
-    resolution: {integrity: sha512-66kNaZn73Z5/LRImKLXWI8VwcmeT01+ocw7qrS52M2eoqA/dRwOMUVFekBjfeu8QhpIGZ9MMfYXYYME6mMfmKA==, tarball: file:../vendor/edytor.tgz}
+    resolution: {integrity: sha512-wEIQgKmIiGbBH9lxvV2ExlYG9E78/aJHolEuzV6MQnFT270ogdsMxbHzhjC29dxD4gJA/G5IQ1IECygZ0ag51g==, tarball: file:../vendor/edytor.tgz}
     version: 0.1.0-next.16
     engines: {node: '>=22.0.0'}
     peerDependencies:

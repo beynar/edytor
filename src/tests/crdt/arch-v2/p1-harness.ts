@@ -165,7 +165,13 @@ export const replica = (
 		// Invariants hold on causally closed states: an out-of-order delivery may
 		// apply a delete whose replacement is still pending.
 		if (doc.store.pendingStructs !== null || doc.store.pendingDs !== null) return;
-		for (const p of wellFormed(ed, { doc, merges, identities, reported }))
+		for (const p of wellFormed(ed, {
+			doc,
+			merges,
+			identities,
+			reported,
+			layouts: opts.semantics
+		}))
 			if (!problems.includes(`${name}: ${p}`)) problems.push(`${name}: ${p}`);
 	};
 	// Held after every facade write, delivery and history step — not from
@@ -317,6 +323,18 @@ const islandKindsOf = (semantics): Map<string, string> =>
 	);
 
 /**
+ * Layout kind → its item kind, from a semantics table (`layout-shape`): a
+ * kind whose role says `layout` and its default child. Held after every
+ * step — the read-time layout rules own the display, races included.
+ */
+const layoutKindsOf = (semantics): Map<string, string> =>
+	new Map(
+		Object.entries(semantics?.defaultChild ?? {}).filter(
+			([parent]) => semantics.roles?.[parent]?.layout === true
+		) as [string, string][]
+	);
+
+/**
  * Structural well-formedness, checked test-side on the projection: every
  * block id appears once, every visible character's identity once — plus the
  * named semantic invariants (`harness/assert/well-formed.ts`) over the
@@ -332,6 +350,8 @@ export const wellFormed = (
 		semantics?: unknown;
 		/** A report-fed view's kinds (`report-kind`). */
 		reported?: (id: string) => string | undefined;
+		/** The semantics `layout-shape` reads (every step; `semantics` implies it). */
+		layouts?: unknown;
 	} = {}
 ): string[] => {
 	const { doc } = ctx;
@@ -345,7 +365,8 @@ export const wellFormed = (
 		succeeds: doc && ((later: string, earlier: string) => succeeds(doc, later, earlier)),
 		identities: ctx.identities,
 		hiddenUnderDeleted: doc && (() => hiddenUnderDeleted(doc)),
-		reportedKind: ctx.reported
+		reportedKind: ctx.reported,
+		layouts: layoutKindsOf(ctx.layouts ?? ctx.semantics)
 	});
 	const ids = new Set<string>();
 	const atoms = new Set<string>();

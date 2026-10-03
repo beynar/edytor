@@ -40,8 +40,8 @@ const ok = (r: { status: string }): boolean => r.status !== 'refused';
  * own child kind, and a void kind. Absent: the pure-engine lane.
  */
 export type DocOpsRoles = {
-	/** Kind → role (`island` / `lines` / `void`). */
-	roles: Record<string, { island?: boolean; lines?: boolean; void?: boolean }>;
+	/** Kind → role (`island` / `lines` / `void` / `layout`). */
+	roles: Record<string, { island?: boolean; lines?: boolean; void?: boolean; layout?: boolean }>;
 	/** Parent kind → its default child kind. */
 	defaultChild: Record<string, string>;
 	/** Kinds that render no content of their own (containers, islands, voids). */
@@ -51,8 +51,9 @@ export type DocOpsRoles = {
 /**
  * The roles lane's table: `code` is an island of `codeLine`s (`lines`),
  * `divider` a void, `table` an island of rows of cells; `unordered-list`
- * a container of `list-item`s and `columns` one of `column`s (a column
- * holds any block) — the container rules are fuzzed (ZW-11).
+ * a container of `list-item`s and `columns` a layout of `column`s (a
+ * column holds any block) — the container rules are fuzzed (ZW-11), and
+ * the layout rules (`layout.*`, columns plan C1).
  */
 export const ROLES: DocOpsRoles = {
 	roles: {
@@ -60,7 +61,7 @@ export const ROLES: DocOpsRoles = {
 		divider: { void: true },
 		table: { island: true },
 		'unordered-list': {},
-		columns: {},
+		columns: { layout: true },
 		column: {}
 	},
 	defaultChild: {

@@ -30,6 +30,11 @@
  *   subtrees and `meta` kinds) shows every visible block with the kind the
  *   model shows (XW-08, YW-08: a derived kind the report missed left a
  *   mounted view on a stale kind).
+ * - `layout-shape` — a displayed layout holds two or more displayed items
+ *   of its item kind and nothing else, no displayed item is empty, and no
+ *   item displays outside a layout of its kind (`layout.*` in
+ *   `docs/editor-delete-contract.md`: the read-time rules own the display,
+ *   so this holds after every step, races and undo included).
  *
  * The runner (`random/runner.ts`) and the p1 harness (`arch-v2/p1-harness.ts`)
  * both feed {@link wellFormedProblems}; each backend supplies the inputs it
@@ -64,6 +69,8 @@ export type WellFormedInput = {
 	hiddenUnderDeleted?: () => readonly string[];
 	/** The kind a report-fed view holds for `id` (`report-kind`); absent → no such view. */
 	reportedKind?: (id: string) => string | undefined;
+	/** Layout kind → its item kind (`layout-shape`); absent → no layout kinds. */
+	layouts?: ReadonlyMap<string, string>;
 };
 
 type Check = {
@@ -173,6 +180,31 @@ export const WELL_FORMED_CHECKS: Record<string, Check> = {
 		enabled: () => process.env.DST_PROMOTION_ORACLE !== '0',
 		run: ({ hiddenUnderDeleted }) =>
 			(hiddenUnderDeleted?.() ?? []).map((id) => `${id} hidden under a deleted holder`)
+	},
+	'layout-shape': {
+		run: ({ layouts, roots }) => {
+			if (!layouts?.size) return [];
+			const items = new Set(layouts.values());
+			const out: string[] = [];
+			const visit = (b: WfBlock, parent: WfBlock | null) => {
+				const type = typeof b.type === 'string' ? b.type : '';
+				const item = layouts.get(type);
+				const kids = b.children ?? [];
+				if (item !== undefined) {
+					if (kids.length < 2) out.push(`layout ${b.id} shows ${kids.length} item(s)`);
+					for (const k of kids)
+						if (k.type !== item) out.push(`${k.id} shows ${String(k.type)} in the layout ${b.id}`);
+				}
+				if (items.has(type)) {
+					if (kids.length === 0) out.push(`item ${b.id} shows no child`);
+					const holder = typeof parent?.type === 'string' ? layouts.get(parent.type) : undefined;
+					if (holder !== type) out.push(`item ${b.id} shows outside a layout`);
+				}
+				for (const c of kids) visit(c, b);
+			};
+			for (const b of roots) visit(b, null);
+			return out;
+		}
 	},
 	'report-kind': {
 		run: ({ reportedKind }, visible) =>

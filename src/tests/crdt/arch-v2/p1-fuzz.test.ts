@@ -73,6 +73,10 @@ const PLAIN: Lane = { seed: seedUpdate(SEEDS, SEMANTICS), semantics: SEMANTICS }
  * lift and the retype in one plan) races the outdents (DR-crdt-1). Held to
  * `wellFormed` with its roles (`island-kind`: never a line kind outside its
  * island) and to `listChildren`.
+ *
+ * Columns, C0 (`docs/columns-plan.md`): `columns` is a layout (its role says
+ * `layout`), so `layout-shape` holds after every step, and `placeBeside`
+ * (the beside drop) joins the actions.
  */
 const item = (id: string, text: string, children = []) => ({
 	id,
@@ -86,7 +90,8 @@ const CONTAINERS: Lane = (() => {
 			callout: { island: true },
 			divider: { void: true },
 			code: { island: true, lines: true },
-			table: { island: true }
+			table: { island: true },
+			columns: { layout: true }
 		},
 		rendersContent: {
 			divider: false,
@@ -161,7 +166,7 @@ const CONTAINERS: Lane = (() => {
 	return {
 		seed: seedUpdate(seeds, semantics),
 		semantics,
-		actions: [...ACTIONS, 'turnInto', 'turnInto'],
+		actions: [...ACTIONS, 'turnInto', 'turnInto', 'placeBeside', 'placeBeside'],
 		kinds: [
 			'paragraph',
 			'heading',
@@ -491,8 +496,9 @@ describe('P1 fuzz — multi-replica campaign through the facade (review-probes/f
 		STATS.clear();
 		const report = campaign(3, env('P1_FUZZ_SEEDS', 200), START + 9000, LEN, CONTAINERS);
 		expect(report, JSON.stringify(report, null, 1)).toEqual({});
-		// Not vacuous: a Turn into applied (DR-crdt-1).
+		// Not vacuous: a Turn into applied (DR-crdt-1), and a beside drop.
 		expect(STATS.get('turnInto:applied') ?? 0).toBeGreaterThan(0);
+		expect(STATS.get('placeBeside:applied') ?? 0).toBeGreaterThan(0);
 	});
 
 	it(`containers: 5 replicas × ${env('P1_FUZZ_WIDE', 40)} seeds × ${LEN + 20} steps, offline churn`, () => {

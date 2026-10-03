@@ -743,10 +743,19 @@ const bobItem = (id: string, text: string) => [
  * be an item of. With nested custom containers (columns of columns), a
  * paragraph lifted or outdented out of a column was retyped `column`: its
  * text vanished on every replica.
+ *
+ * Columns, C0 (`docs/columns-plan.md`): `columns` is now a layout (its role
+ * says `layout`, `layout.*` in the delete contract). Two rows changed with
+ * the plan: Backspace at a column's first paragraph merges across columns
+ * (`layout.merge`, D4), and a deleted column's blocks leave the layout,
+ * which then dissolves (`layout.dissolving`). The one-column seed of the
+ * list row got a second column: a one-column layout no longer displays
+ * (`layout.single`).
  */
 describe('DR-crdt-1: nested custom containers never hide a lifted block’s text', () => {
 	const columns = {
 		...semantics,
+		roles: { ...semantics.roles, columns: { layout: true } },
 		rendersContent: { ...semantics.rendersContent, columns: false, column: false },
 		defaultChild: { ...semantics.defaultChild, columns: 'column' }
 	};
@@ -773,13 +782,18 @@ describe('DR-crdt-1: nested custom containers never hide a lifted block’s text
 	const before =
 		'P:paragraph C:columns[K1:column[A:paragraph,A2:paragraph],K2:column[B:paragraph]]';
 
-	it('Backspace at a column’s first paragraph (mergeBackward) → refused, as before YW-02', () => {
+	// Changed by the columns plan (D4, `layout.merge`): it merges into the line before the layout.
+	it('Backspace at a column’s first paragraph (mergeBackward) → it joins the line before (D4)', () => {
 		for (const o of one(
-			converge(seed, 1, ([a]) => expect(a.ed.mergeBackward('A').status).toBe('refused'), {
+			converge(seed, 1, ([a]) => expect(a.ed.mergeBackward('A').status).toBe('applied'), {
 				semantics: columns
 			})
-		))
-			expect(typed(o.ed)).toBe(before);
+		)) {
+			expect(typed(o.ed)).toBe(
+				'P:paragraph C:columns[K1:column[A2:paragraph],K2:column[B:paragraph]]'
+			);
+			expect(tree(o.ed)).toBe('P:"pa" C:""[K1:""[A2:"a2"],K2:""[B:"b"]]');
+		}
 	});
 
 	// Re-decided in ZW-14: nothing but a column lands directly in a columns layout.
@@ -792,6 +806,7 @@ describe('DR-crdt-1: nested custom containers never hide a lifted block’s text
 			expect(typed(o.ed)).toBe(before);
 	});
 
+	// The seed got a second column (a one-column layout no longer displays, `layout.single`).
 	it('a list inside a column still lifts its first item into the column, as a paragraph', () => {
 		const inColumn = [
 			{
@@ -804,7 +819,8 @@ describe('DR-crdt-1: nested custom containers never hide a lifted block’s text
 						type: 'column',
 						text: '',
 						children: [{ id: 'U', type: 'unordered-list', text: '', children: [item('I1', 'a')] }]
-					}
+					},
+					{ id: 'K2', type: 'column', text: '', children: [{ id: 'B', text: 'b' }] }
 				]
 			}
 		];
@@ -813,9 +829,11 @@ describe('DR-crdt-1: nested custom containers never hide a lifted block’s text
 				semantics: columns
 			})
 		))
-			expect(typed(o.ed)).toBe('C:columns[K1:column[I1:paragraph]]');
+			expect(typed(o.ed)).toBe('C:columns[K1:column[I1:paragraph],K2:column[B:paragraph]]');
 	});
 
+	// Changed by the columns plan (`layout.dissolving`): a deleted column's blocks go right after
+	// the layout, which, left with one column, dissolves; Bob's paragraph follows them.
 	it('Ada deletes a column ‖ Bob adds a paragraph to it → Bob’s paragraph shows as one', () => {
 		for (const o of one(
 			converge(
@@ -830,9 +848,7 @@ describe('DR-crdt-1: nested custom containers never hide a lifted block’s text
 				{ semantics: columns }
 			)
 		)) {
-			expect(typed(o.ed)).toBe(
-				'P:paragraph C:columns[K1:column[A:paragraph,A2:paragraph],B:paragraph,B2:paragraph]'
-			);
+			expect(typed(o.ed)).toBe('P:paragraph A:paragraph A2:paragraph B:paragraph B2:paragraph');
 			expect(tree(o.ed)).toContain('B2:"b2"');
 		}
 	});

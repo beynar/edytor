@@ -128,6 +128,16 @@ export const genAction = (
 		case 'retype':
 		case 'turnInto':
 			return { action, args: [blk, pick(kinds)] };
+		case 'placeBeside':
+			// A beside drop (`layout.place-beside`): one block or two, beside any block.
+			return {
+				action,
+				args: [
+					[...new Set([blk, ...(next(3) === 0 ? [pick(order)] : [])])],
+					pick(order),
+					pick(['left', 'right'])
+				]
+			};
 		case 'inline':
 			return { action, args: [blk, off, `${r.name}i${counter.n++}`] };
 		case 'data':
@@ -231,6 +241,8 @@ export const apply = (r: Replica, action: string, a: unknown[]) => {
 			return ed.apply(
 				ed.compose(ed.prepare.liftOut(a[0], a[1]), ed.prepare.setBlock(a[0], { type: a[1] }))
 			);
+		case 'placeBeside':
+			return ed.placeBeside(a[0], a[1], a[2]);
 		case 'inline':
 			return ed.insertInline(a[0], a[1], { id: a[2], type: 'mention' });
 		case 'data':

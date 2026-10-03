@@ -515,9 +515,10 @@ items (Notion):
   above. Inside an island nothing leaves: a row's first cell stays.
 - **One container rule, one owner (`fits`, ZW-01, ZW-14).** A container
   whose default child is a kind of its own — its _item_: a list's
-  `list-item`, a columns layout's `column` — holds only its items and
-  containers of them (a list directly in a list, from JSON or the API; an
-  HTML paste gives flat items); a container whose default child is the
+  `list-item`, a columns layout's `column` — holds only its items, and
+  containers of them when the item renders content (a list directly in a
+  list, from JSON or the API; an HTML paste gives flat items; a layout
+  holds no layout, `layout.fits`); a container whose default child is the
   document's (a `column`) holds any block. Every structural placement asks it:
   - a move (`moveBlocks`, a drag, Alt/Mod+Shift+arrows) keeps its kind, so
     it is refused where the blocks do not fit (`canPlace` answers `false`)
@@ -546,26 +547,30 @@ items (Notion):
     or a heading under an item: it would sit directly in the list; every path
     agrees — Shift+Tab over a range, the block handle's Alt+ArrowLeft and
     `canMoveBlocks({direction: 'out'})` ask the outdent plan, DR-crdt-2):
-    in a columns layout
-    (`columns > column > paragraph`), Shift+Tab or Backspace at a column's
-    last or only paragraph does nothing, as Backspace at its first
-    paragraph does (a lift into the layout is refused): nothing but a
-    column sits directly in a columns layout (Notion);
+    in a layout (`columns > column > paragraph`, `layout.*`), Shift+Tab at
+    a column's last or only paragraph does nothing (an outdent into the
+    layout is refused): nothing but a column sits directly in a layout
+    (Notion); Backspace at a column's first paragraph merges it into the
+    previous line in reading order (`layout.merge`, D4);
   - a block is never retyped to a kind that renders no content — its text
-    would vanish (DR-crdt-1); where a container's item renders none (a
-    column), a block only a delete or a peer's concurrent edit puts there
-    keeps its kind (a deleted column's paragraphs stay paragraphs), and an
-    island's lines shed there, or an island retyped to such a container,
-    take the document's default kind (AW-05: a code block's line shed into
-    a columns layout is a paragraph, sequentially and concurrently); any
-    other island child shed there that shows text keeps its kind, and one
-    that shows none (a table's row) takes the slot's default child, as the
-    read-time promotion shows a child a peer adds meanwhile. A retype of an
-    island to an ordinary kind retypes only an island's lines (the new
+    would vanish (DR-crdt-1); where a container's item renders none, a
+    block only a delete or a peer's concurrent edit puts there keeps its
+    kind, and an island's lines shed there, or an island retyped to such a
+    container, take the document's default kind; any other island child
+    shed there that shows text keeps its kind, and one that shows none (a
+    table's row) takes the slot's default child, as the read-time promotion
+    shows a child a peer adds meanwhile. A layout is not such a slot: what
+    is no column leaves it at read time (`layout.only-items`), and a layout
+    left with one column dissolves (`layout.single`), so a deleted column's
+    paragraphs, a code block's line shed out of a column (AW-05) and a
+    table's rows land beside the layout, in reading order, as the kind they
+    show there (a paragraph; a row keeps its kind, DR-crdt-2). A retype of
+    an island to an ordinary kind retypes only an island's lines (the new
     kind's default child, or the document's default kind where that shows
     no text); any other island keeps its children's kinds — a table
-    retyped to a columns layout keeps its rows — as `typeOf` shows a row a
-    peer adds meanwhile (DR-crdt-2).
+    retyped to a columns layout keeps its rows, which leave the layout and
+    show beside it as rows — as `typeOf` shows a row a peer adds meanwhile
+    (DR-crdt-2).
 
   The document's explicit kind writes place what they are told:
   `insertBlocks` and `setBlockType`/`setBlock` are not retyped or refused
@@ -737,8 +742,10 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   concurrent undo of a retype — shows as the list's item on every replica
   (AW-04), and leaves the list as any item does: Shift+Tab, Backspace at
   the first item, Turn into Text or deleting the list gives a paragraph,
-  never a bullet outside the list (DR-crdt-3). Residuals: a column a peer moves under an item another peer
-  deletes shows in the list as a column; and an item a peer turns into
+  never a bullet outside the list (DR-crdt-3). A column a peer moves under an item another peer
+  deletes lands in the list as a bare item (`layout.bare-item`): it does not
+  display, its blocks take its slot, a paragraph as the list's item.
+  Residual: an item a peer turns into
   another kind (Turn into: a heading, a to-do) while another peer outdents
   a later item may stay in the new list the split makes, as that kind —
   `[p, ul > [a, b, c]]`, Ada outdents `b` ‖ Bob turns `a` into a heading
@@ -1140,6 +1147,144 @@ peer's tracked transaction, never remote work. Verified in
 
 A deletes `bb`, B deletes `cc` while partitioned → both converge to the
 survivor intersection `["aa"]`.
+
+## Layouts (columns)
+
+A **layout** is a kind whose role says `layout: true` (the bundled
+`columns`, `layoutKinds` in `crdt/semantics.ts`). Its default child is its
+**item** (`column`): a container that renders no content and holds any
+block. The role is data, read by the index and the operations from the
+document's roles (`roles.layout`), so replicas with the same roles show
+the same thing; no core code names `columns` or `column`. The read-time
+rules own the display; every write that would leave one of their states
+writes the result the rule shows, at the rank it reads (`promotedRank`),
+so a replica that missed the write and one that applied it agree. Pins:
+`src/tests/crdt/arch-v2/layout.test.ts` (each row sequential, concurrent
+with display equality across replicas, and undone), the `layout-shape`
+well-formed check (a displayed layout holds two or more displayed items
+and nothing else, no displayed item is empty, no item displays outside a
+layout), held by the p1 fuzz's container lane and the corpus's `roles`
+lane.
+
+`C` below is `P, C:columns[K1:column[A, A2], K2:column[B]], Z`.
+
+### `layout.fits` — a layout holds only its items
+
+`fits` (`del.merge.container`): a container whose default child is a kind
+of its own holds its items, and containers of them only when the item
+renders content (a list holds a list directly; a layout holds no layout).
+A move into a layout of anything but an item is refused (`canPlace`):
+`moveBlocks([Z], {parent: C})` is refused; Tab after a layout nests in its
+last column (`nestParent`).
+
+### `layout.only-items` — a layout displays only its items (read)
+
+Any other child a layout holds — a raw `insertBlocks`, a retype of an
+item, a race — displays in the layout's parent right after the layout, at
+`promotedRank(layout, its rank)`, as the kind it shows there (`typeOf`):
+a paragraph stored directly in `C` shows right after it, a code line
+stored there as a paragraph (AW-05).
+
+### `layout.empty-item` — an item that displays no child does not display (read)
+
+`C:columns[K1[A], K2[], K3[B]]` shows `C[K1[A], K3[B]]`.
+
+### `layout.single` — a layout displaying one item or none does not display (read)
+
+That item's children display in the layout's slot, at
+`promotedRank(layout, promotedRank(item, rank))` — the rank a delete of
+both reads (`del.blocks.promote`): `C:columns[K1[A, A2]]` shows `A, A2`
+where `C` was; a layout holding nothing displays nothing. Kinds settle as
+read-time promotion settles them: a paragraph that lands directly in a
+list shows as its item.
+
+### `layout.bare-item` — an item outside a layout does not display (read)
+
+Its children take its slot, at `promotedRank(item, rank)`: a column a peer
+adds under a layout another peer deletes, or one a race leaves at the
+root, shows its blocks only.
+
+### `layout.dissolving` — the writes that leave those states (write)
+
+In the plan that causes them, one undo step:
+
+- `emptying` removes an item left with no child (`del.range.empty-container`),
+  like any container;
+- `dissolving` follows: a layout left with one item is deleted with that
+  item, the item's children moved to the layout's slot at the
+  `layout.single` rank and settled there; one left with none is deleted
+  (deleting `B`, the only block of `K2`: `P, A, A2, Z`). The keys, the
+  moves, a text range across columns, `mergeBlocks`, a block delete and
+  `placeBeside`'s sources all run it;
+- deleting an item (a block selection holding it) promotes its blocks
+  right after the layout (the `layout.only-items` rank), then dissolving:
+  deleting `K2` gives `P, A, A2, B, Z`; a block a peer adds to `K2`
+  meanwhile follows `B`;
+- deleting a layout deletes it and its items: their blocks take its slot
+  in reading order and keep their kinds (no column is retyped to a
+  paragraph holding children): deleting `C` gives `P, A, A2, B, Z`; a
+  column a peer adds to `C` meanwhile is a bare item, its blocks follow.
+
+A retype is not mirrored: a column retyped to another kind leaves the
+layout at read time (`layout.only-items`, then `layout.single`).
+
+### `layout.merge` — merges cross columns in reading order (D4, Notion)
+
+- Backspace at the start of an item's first block (`mergeBackward`)
+  merges it into the previous shown line in reading order: from the
+  second item on, the previous item's last line (`mergeBackward(B)`:
+  `A2` becomes `a2b`, `K2` is emptied and goes, the layout dissolves:
+  `P, A, A2 "a2b", Z`); from the first item, the line before the layout
+  (`mergeBackward(A)`: `P "pa"`, `C[K1[A2], K2[B]]`). An empty block is
+  removed, the caret at that line's end. Refused when there is no line
+  before, or it takes no merge (`canMerge`: a void, a code line). The
+  merged block's children stay in its item, after its slot.
+- Delete at the end of an item's last line (`mergeForward`) pulls the
+  next item's first line into it; at the end of the line before the
+  layout, the first item's first line.
+- Backspace at the start of the block after a layout joins the last
+  item's last line.
+- A text range across columns joins its two ends (`del.range.*`); an item
+  it empties goes and the layout dissolves.
+- The outdent stays refused (ZW-14): Shift+Tab or Backspace-unnest at an
+  item's last or only block would place it directly in the layout.
+
+### `layout.nest` — no layout inside a column, by gesture (D2)
+
+A move (`canPlace`: drags, Alt and Mod+Shift arrows, Tab, an outdent, a
+drop) refuses to place a layout, or a block holding one, anywhere inside
+an item, and `placeBeside` refuses to put one in an item. A layout that a
+race or an explicit write (`insertBlocks`, a retype) puts inside a column
+displays as it is, by the rules above: no flatten.
+
+### `layout.place-beside` — `placeBeside(ids, target, side, kind?)`
+
+Blocks dragged to the left or right edge of another block. One plan
+(`prepare.placeBeside`), one undo step, plain ranks (a move: not ranked by
+source, `order-scope.test.ts`).
+
+- The target resolves to its outermost block below the root or below an
+  item (a list item → its list, a code line → its code block). A target
+  that is an item stands for itself; a layout for its first (`left`) or
+  last (`right`) slot.
+- That block directly in an item: a new item holding `ids` goes beside
+  that item (`placeBeside([Z], A2, 'right')`: `C[K1[A, A2], NEW[Z], K2[B]]`).
+  Otherwise the block and a new item holding `ids` are wrapped in a new
+  layout of the document's layout kind (`kind`, else the only kind whose
+  role says `layout`) at its place (`placeBeside([Z], P, 'right')`:
+  `NEW:columns[NEW[P], NEW[Z]], C…`).
+- Refused when `ids` holds the target or an ancestor of it, holds an item,
+  a layout or a block holding one (D2), when a block does not fit an item,
+  when a block or the target's layout is inside an island, and, wrapping,
+  when the document has no layout kind (or `kind` is none).
+- The sources are cleaned in the same plan (`emptying`, `dissolving`):
+  `placeBeside([B], P, 'right')` gives `NEW[NEW[P], NEW[B]], A, A2, Z`.
+- Concurrency is the read-time rules': two peers placing beside one
+  target each wrap it; the target lands in one wrap, the other shows one
+  item and dissolves (the order of the two is not claimed). Undo
+  withdraws the new layout and items (`hist.undo.withdraw`): a block a
+  peer put in a new column meanwhile keeps it, and that column, alone,
+  dissolves into the layout's slot.
 
 ## Anchor contract
 

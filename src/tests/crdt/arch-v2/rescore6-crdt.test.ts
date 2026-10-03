@@ -12,13 +12,17 @@
 import { describe, expect, it } from 'vitest';
 import { allText, converge, tree } from './p1-harness.js';
 
-/** Lists, a table island (rows and cells), code as an island of lines, columns of columns. */
+/**
+ * Lists, a table island (rows and cells), code as an island of lines, columns of columns.
+ * Columns, C0 (`docs/columns-plan.md`): `columns` is a layout (`layout.*` in the delete contract).
+ */
 const semantics = {
 	roles: {
 		code: { island: true, lines: true },
 		table: { island: true },
 		divider: { void: true },
-		image: { void: true }
+		image: { void: true },
+		columns: { layout: true }
 	},
 	rendersContent: {
 		code: false,
@@ -210,6 +214,10 @@ describe('ZW-01: nothing but an item lands directly in a list', () => {
  * directly in a column list): the outdent, and Backspace at a one-paragraph
  * column (an outdent: its only paragraph is its last), are refused; a move
  * there is refused; Tab after the layout nests in its last column.
+ *
+ * Changed by the columns plan (D4, `layout.merge`): Backspace at a column's
+ * first paragraph (`mergeBackward`) is no longer refused — it merges into
+ * the previous line in reading order. The outdent refusals stay.
  */
 describe('ZW-14: nothing lands directly in a columns layout but a column', () => {
 	const seed = [
@@ -236,8 +244,6 @@ describe('ZW-14: nothing lands directly in a columns layout but a column', () =>
 				([a]) => {
 					expect(a.ed.unNestBlock('A2').status).toBe('refused');
 					expect(a.ed.unNestBlock('B').status).toBe('refused');
-					expect(a.ed.mergeBackward('B').status).toBe('refused');
-					expect(a.ed.mergeBackward('A').status).toBe('refused');
 					expect(a.ed.moveBlocks(['Z'], { parent: 'C', index: 1 }).status).toBe('refused');
 					// A column holds any block: a heading moves into one.
 					expect(a.ed.canPlace(['Z'], 'K1')).toBe(true);
@@ -247,6 +253,22 @@ describe('ZW-14: nothing lands directly in a columns layout but a column', () =>
 		))
 			expect(typed(o.ed)).toBe(before);
 	});
+
+	it('Backspace at the second column’s first paragraph → it joins the first column’s last (D4)', () =>
+		row(
+			seed,
+			(ed) => ed.mergeBackward('B'),
+			'P:"p" A:"a" A2:"a2b" Z:"z"',
+			'P:paragraph A:paragraph A2:paragraph Z:paragraph'
+		));
+
+	it('Backspace at the first column’s first paragraph → it joins the line before (D4)', () =>
+		row(
+			seed,
+			(ed) => ed.mergeBackward('A'),
+			'P:"pa" C:""[K1:""[A2:"a2"],K2:""[B:"b"]] Z:"z"',
+			'P:paragraph C:columns[K1:column[A2:paragraph],K2:column[B:paragraph]] Z:paragraph'
+		));
 
 	it('Tab on the paragraph after the layout → it nests in the last column', () =>
 		row(
@@ -413,6 +435,11 @@ describe('ZW-05: a range keeps a list holding hidden text, as the key does', () 
  * child — and where that renders no content (a column in a columns
  * layout), the document's default kind: never a line kind outside its
  * island (FW-01).
+ *
+ * Changed by the columns plan (`layout.only-items`, `layout.single`): a
+ * column retyped to a line kind is no column, so it leaves the layout and
+ * shows right after it — still as a paragraph, never a line kind — and the
+ * layout, left with one column, dissolves into its blocks.
  */
 describe('ZW-06: a line kind never shows outside its island', () => {
 	const seed = [
@@ -436,7 +463,7 @@ describe('ZW-06: a line kind never shows outside its island', () => {
 				{ semantics }
 			)
 		))
-			expect(typed(o.ed)).toBe('C:columns[K1:column[A:paragraph],K2:paragraph[B:paragraph]]');
+			expect(typed(o.ed)).toBe('A:paragraph K2:paragraph[B:paragraph]');
 	});
 });
 

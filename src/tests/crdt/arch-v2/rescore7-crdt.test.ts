@@ -18,13 +18,17 @@ import { allText, clientPairs, converge, tree } from './p1-harness.js';
  */
 const SWEEP = clientPairs(240);
 
-/** Lists, code as an island of lines, columns of columns (as rescore6-crdt). */
+/**
+ * Lists, code as an island of lines, columns of columns (as rescore6-crdt).
+ * Columns, C0 (`docs/columns-plan.md`): `columns` is a layout (`layout.*` in the delete contract).
+ */
 const semantics = {
 	roles: {
 		code: { island: true, lines: true },
 		table: { island: true },
 		divider: { void: true },
-		image: { void: true }
+		image: { void: true },
+		columns: { layout: true }
 	},
 	rendersContent: {
 		code: false,
@@ -235,6 +239,14 @@ describe('AW-04: a concurrent outdent never leaves a paragraph showing directly 
  * A shed line takes its slot's default child only when that kind renders
  * content, otherwise the document's default kind (as `typeOf` shows it,
  * ZW-06).
+ *
+ * Changed by the columns plan (`layout.dissolving`, `layout.only-items`,
+ * `layout.single`): deleting the column `K2` puts its code block right after
+ * the layout, which, left with one column, dissolves — so the line is shed
+ * at the root, as a paragraph (its text still shows). A code block retyped
+ * to a layout holds no column: its line leaves it and stays in the column,
+ * and the empty layout shows nothing. A table stored directly in a layout
+ * shows after it, and its rows, shed at the root, show as paragraphs.
  */
 describe('AW-05: an island’s lines shed into a columns layout keep their text visible', () => {
 	const seed = [
@@ -260,7 +272,7 @@ describe('AW-05: an island’s lines shed into a columns layout keep their text 
 			]
 		}
 	];
-	const after = 'C:columns[K1:column[A:paragraph],Xl:paragraph]';
+	const after = 'A:paragraph Xl:paragraph';
 
 	it('deleting the code block X (keeping its lines) → its line shows a paragraph', () => {
 		for (const o of one(
@@ -275,7 +287,7 @@ describe('AW-05: an island’s lines shed into a columns layout keep their text 
 			)
 		)) {
 			expect(typed(o.ed)).toBe(after);
-			expect(tree(o.ed)).toBe('C:""[K1:""[A:"a"],Xl:"let x"]');
+			expect(tree(o.ed)).toBe('A:"a" Xl:"let x"');
 		}
 	});
 
@@ -300,9 +312,7 @@ describe('AW-05: an island’s lines shed into a columns layout keep their text 
 				semantics
 			})
 		))
-			expect(typed(o.ed)).toBe(
-				'C:columns[K1:column[A:paragraph],K2:column[X:columns[Xl:paragraph]]]'
-			);
+			expect(typed(o.ed)).toBe('C:columns[K1:column[A:paragraph],K2:column[Xl:paragraph]]');
 	});
 
 	it('sequential and concurrent runs agree: Ada deletes X ‖ Bob types in its line', () => {
@@ -319,7 +329,7 @@ describe('AW-05: an island’s lines shed into a columns layout keep their text 
 			)
 		)) {
 			expect(typed(o.ed)).toBe(after);
-			expect(tree(o.ed)).toBe('C:""[K1:""[A:"a"],Xl:"let x;"]');
+			expect(tree(o.ed)).toBe('A:"a" Xl:"let x;"');
 		}
 	});
 
@@ -339,7 +349,7 @@ describe('AW-05: an island’s lines shed into a columns layout keep their text 
 				{ semantics }
 			)
 		))
-			expect(typed(o.ed)).toBe('C:columns[K1:column[A:paragraph],Xl:paragraph,Xl2:paragraph]');
+			expect(typed(o.ed)).toBe('A:paragraph Xl:paragraph Xl2:paragraph');
 	});
 
 	/**
@@ -388,9 +398,7 @@ describe('AW-05: an island’s lines shed into a columns layout keep their text 
 				{ semantics }
 			)
 		))
-			expect(typed(o.ed)).toBe(
-				'C:columns[K1:column[A:paragraph],R:column[c1:cell],R2:column[c2:cell]]'
-			);
+			expect(typed(o.ed)).toBe('A:paragraph R:paragraph[c1:cell] R2:paragraph[c2:cell]');
 	});
 });
 
@@ -482,6 +490,10 @@ describe('DR-crdt-1: Turn into ‖ an outdent — a kind keeps its kind wherever
  * adds a row showed a `column` and a `row` side by side. Only an island's
  * lines are retyped (no line kind outside its island); any other child
  * keeps its kind, sequentially and concurrently.
+ *
+ * Changed by the columns plan (`layout.only-items`, `layout.single`): a
+ * layout displays only its columns, so the rows, which keep their kind,
+ * show right after it, and the layout, holding no column, shows nothing.
  */
 describe('DR-crdt-2: an island retyped to an ordinary kind — sequential and concurrent children agree', () => {
 	const table = [
@@ -517,7 +529,7 @@ describe('DR-crdt-2: an island retyped to an ordinary kind — sequential and co
 				{ semantics }
 			)
 		))
-			expect(typed(o.ed)).toBe('T:columns[R:row[c1:cell],R2:row[c2:cell]]');
+			expect(typed(o.ed)).toBe('R:row[c1:cell] R2:row[c2:cell]');
 	});
 
 	it('Bob’s row delivered first: the sequential retype gives the same tree', () => {
@@ -533,7 +545,7 @@ describe('DR-crdt-2: an island retyped to an ordinary kind — sequential and co
 				{ semantics }
 			)
 		))
-			expect(typed(o.ed)).toBe('T:columns[R:row[c1:cell],R2:row[c2:cell]]');
+			expect(typed(o.ed)).toBe('R:row[c1:cell] R2:row[c2:cell]');
 	});
 
 	it('setBlock({type: columns}) agrees with setBlockType: the rows stay rows', () => {
@@ -545,7 +557,7 @@ describe('DR-crdt-2: an island retyped to an ordinary kind — sequential and co
 				{ semantics }
 			)
 		))
-			expect(typed(o.ed)).toBe('T:columns[R:row[c1:cell]]');
+			expect(typed(o.ed)).toBe('R:row[c1:cell]');
 	});
 
 	it('a code block retyped to a paragraph still turns its lines into paragraphs, a peer’s too', () => {

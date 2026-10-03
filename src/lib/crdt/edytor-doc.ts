@@ -379,6 +379,13 @@ export type BlockRole = {
 	 * `island` and a `defaultChild`; other islands keep their structure.
 	 */
 	lines?: boolean;
+	/**
+	 * A layout (columns): it displays only its items — its `defaultChild`
+	 * kind, a container that renders no content — side by side, and only
+	 * while it shows two or more (`layout.*` in the delete contract). Needs
+	 * a `defaultChild`.
+	 */
+	layout?: boolean;
 };
 
 /** Island-sealing policy for a walk in document order (R5; see `next`). */
@@ -863,7 +870,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		// promoted out of an island displays as its display parent's default
 		// child, as a delete of the island retypes the ones it saw. An island
 		// declared `lines` holds only lines of its `defaultChild` kind
-		// (FW-01, XW-03).
+		// (FW-01, XW-03). A layout displays only its items — its
+		// `defaultChild` kind — and only two or more (`layout.*`).
 		const roles: DisplayRoles = {
 			childless: (type) => roleOf(type)?.void === true,
 			island: (type) => roleOf(type)?.island === true,
@@ -875,7 +883,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				const role = roleOf(type);
 				return role?.island === true && role.lines === true ? defaultChildOf(type) : undefined;
 			},
-			lineKinds: () => [...(config.kinds?.() ?? [])].flatMap((type) => roles.line(type) ?? [])
+			lineKinds: () => [...(config.kinds?.() ?? [])].flatMap((type) => roles.line(type) ?? []),
+			layout: (type) => (roleOf(type)?.layout === true ? defaultChildOf(type) : undefined),
+			layoutKinds: () =>
+				[...(config.kinds?.() ?? [])].filter((type) => roles.layout(type) !== undefined)
 		};
 		if (config.roleOf) runsView.roles(roles);
 
@@ -1154,9 +1165,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const ancestorsOf = (id: BlockId, v: View = view()): BlockId[] => {
 			const out: BlockId[] = [];
 			if (!isLiveIn(v, id)) return out;
-			for (let p = displayParentOf(v.own, v.placements.get(id)!, v.placements); p !== null; ) {
+			for (let p = displayParentOf(v.own, v.placements.get(id)!, v.placements, id); p !== null; ) {
 				out.push(p as BlockId);
-				p = displayParentOf(v.own, v.placements.get(p as BlockId)!, v.placements);
+				p = displayParentOf(v.own, v.placements.get(p as BlockId)!, v.placements, p as BlockId);
 			}
 			return out;
 		};
@@ -1171,7 +1182,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const v = view();
 			const pl = v.placements.get(id);
 			if (!pl) return null;
-			const slot = displaySlotOf(v.own, v.placements, pl);
+			const slot = displaySlotOf(v.own, v.placements, pl, id);
 			return slot.parent === DEAD ? pl : (slot as { parent: BlockId | null; rank: string });
 		};
 
@@ -1196,6 +1207,23 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const parent = positionOf(id)?.parent;
 			return parent != null && isLines(parent);
 		};
+		/** The item kind of `id` when it is a layout (its role says `layout`): its default child. */
+		const itemKindOf = (id: BlockId): string | undefined => {
+			const type = blockTypeOf(id);
+			return type === undefined ? undefined : roles.layout(type);
+		};
+		/** `id` is a layout (`layout.*`). */
+		const isLayout = (id: BlockId): boolean => itemKindOf(id) !== undefined;
+		/** `id` is a layout item: of its layout's item kind, directly in it (a column). */
+		const isLayoutItem = (id: BlockId): boolean => {
+			const parent = positionOf(id)?.parent;
+			return parent != null && blockTypeOf(id) === itemKindOf(parent);
+		};
+		/** `id` is a layout or holds one in its shown subtree (D2, `layout.nest`). */
+		const holdsLayout = (id: BlockId): boolean => isLayout(id) || childrenIds(id).some(holdsLayout);
+		/** `id` is a layout item or sits inside one. */
+		const insideItem = (id: BlockId, v?: View): boolean =>
+			[id, ...ancestorsOf(id, v)].some(isLayoutItem);
 
 		// ── structural capability (R5, O8): one answer in advance and at execution ──
 
@@ -1206,7 +1234,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * inside one, and not inside any moved block's own subtree; and every
 		 * block fits it as the kind `kindOf` gives (`fits`; a move keeps its
 		 * kind) or already sits in it (a reorder changes nothing a list holds:
-		 * an image shed into a list still moves among its items, AW-06).
+		 * an image shed into a list still moves among its items, AW-06); and
+		 * no layout, nor a block holding one, lands inside a layout item
+		 * (D2, `layout.nest`).
 		 * Without a `parent`: may these blocks move at all (the drag
 		 * affordance). The move ops refuse exactly when this answers `false`.
 		 * (`insertBlock` is looser — island interiors are built by inserting
@@ -1224,6 +1254,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			if (!isLiveIn(v, parent) || isVoid(parent)) return false;
 			const stays = (id: BlockId) => positionOf(id)?.parent === parent;
 			if (!ids.every((id) => stays(id) || fits(parent, kindOf(id)))) return false;
+			if (insideItem(parent, v) && ids.some(holdsLayout)) return false;
 			return ![parent, ...ancestorsOf(parent, v)].some((a) => isIsland(a) || ids.includes(a));
 		};
 
@@ -1237,8 +1268,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * THE container rule (ZW-01, ZW-14): may a block of `kind` sit directly
 		 * under `parent` (`null` = the root)? A container whose default child is
 		 * a kind of its own — its item (a list's `list-item`, a columns
-		 * layout's `column`) — holds only its items and containers of them (a
-		 * list directly in a list, from JSON or the API); one whose
+		 * layout's `column`) — holds only its items, and containers of them
+		 * when the item renders content (a list directly in a list, from JSON
+		 * or the API; a layout holds no layout, `layout.fits`); one whose
 		 * default child is the document's (a column) holds any block. Every
 		 * structural placement asks it: a move is refused where its blocks do
 		 * not fit (`canPlace`), Tab nests under a container's last item
@@ -1250,11 +1282,19 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * plain block stored directly in a list still shows as its item (the
 		 * index's `typeOf`, AW-04), whatever write or race put it there.
 		 */
-		const fits = (parent: BlockId | null, kind: string | undefined): boolean => {
-			if (parent === null || !isContainer(parent)) return true;
-			const item = defaultChild(parent);
+		const fits = (parent: BlockId | null, kind: string | undefined): boolean =>
+			parent === null || fitsIn(blockTypeOf(parent) ?? '', kind);
+		/** `fits`, by the parent's kind (a block not written yet: `placeBeside`'s new item). */
+		const fitsIn = (parentType: string, kind: string | undefined): boolean => {
+			if (!roles.container(parentType)) return true;
+			const item = roles.defaultChild(parentType);
 			if (item === defaultChild(null) || kind === item) return true;
-			return kind !== undefined && roles.container(kind) && roles.defaultChild(kind) === item;
+			return (
+				kind !== undefined &&
+				roles.container(kind) &&
+				roles.defaultChild(kind) === item &&
+				rendersContentOf(item)
+			);
 		};
 		/**
 		 * `kind`, or — where a plain block (the document's default kind, or
@@ -1892,7 +1932,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			else if (from !== null && isContainer(from) && kind === defaultChild(from)) {
 				const within = parent === null ? [] : [parent, ...ancestorsOf(parent)];
 				const to = defaultChild(parent);
-				const outer = within.some((a) => isContainer(a) && defaultChild(a) === kind);
+				// An outer container of its kind keeps it an item (a nested list); a
+				// column's default child is the document's: it holds no items of its own.
+				const outer =
+					kind !== defaultChild(null) &&
+					within.some((a) => isContainer(a) && defaultChild(a) === kind);
 				if (!outer && rendersContentOf(to)) kind = to;
 			}
 			return fitted(parent, kind);
@@ -1917,13 +1961,16 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * `kept`, and only an `emptiable` one (a container holding text of its
 		 * own stays). The containers are found together, deepest first: a
 		 * list that loses its last item along with a list nested in it goes
-		 * too (SW9-containers-2).
+		 * too (SW9-containers-2). Then every layout the plan leaves with one
+		 * item or none dissolves (`dissolving`); `removed`: blocks the plan
+		 * deletes besides (a block delete's members), which only that counts.
 		 */
 		const emptyingAll = (
 			from: readonly (BlockId | null)[],
 			leaving: readonly BlockId[],
 			writes: readonly PlanStep[],
-			kept: ReadonlySet<BlockId | null> = new Set()
+			kept: ReadonlySet<BlockId | null> = new Set(),
+			removed: readonly BlockId[] = []
 		): PlanStep[] => {
 			const gone = new Set<BlockId>(leaving);
 			const tops: BlockId[] = [];
@@ -1943,7 +1990,65 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				if (top !== null) tops.push(top);
 			}
 			const roots = tops.filter((t) => !ancestorsOf(t).some((a) => tops.includes(a)));
-			return [...writes, ...roots.map((t) => remove(t, leaving))];
+			const steps = [...writes, ...roots.map((t) => remove(t, leaving))];
+			for (const id of removed) gone.add(id);
+			return [...steps, ...dissolving(gone, leaving, steps)];
+		};
+		/**
+		 * `layout.dissolving`: the steps that delete each layout a plan leaves
+		 * with one item or none — `gone` (blocks the plan removes) and
+		 * `leaving` (blocks it moves) no longer count, an item `writes` move or
+		 * insert into it does. With one left, the layout and that item are
+		 * deleted and the item's children moved to the layout's slot at the
+		 * rank `layout.single` reads (`promotedRank` of the layout's, then the
+		 * item's), as the kind they show there (`settle`); with none, the
+		 * layout is deleted. One plan with the write that caused it.
+		 */
+		const dissolving = (
+			gone: ReadonlySet<BlockId>,
+			leaving: readonly BlockId[],
+			writes: readonly PlanStep[]
+		): PlanStep[] => {
+			const away = new Set([...gone, ...leaving]);
+			const layouts = new Set<BlockId>();
+			for (const id of away) {
+				const parent = positionOf(id)?.parent;
+				if (parent != null && isLayout(parent)) layouts.add(parent);
+			}
+			const { kids } = view();
+			const out: PlanStep[] = [];
+			for (const layout of layouts) {
+				if ([layout, ...ancestorsOf(layout)].some((a) => gone.has(a))) continue;
+				const item = itemKindOf(layout)!;
+				const arriving = writes.reduce(
+					(n, w) =>
+						w.op === 'moveBlocks' && w.parent === layout
+							? n + w.ids.filter((id) => blockTypeOf(id) === item).length
+							: w.op === 'insertBlocks' && w.parent === layout
+								? n + w.specs.filter((spec) => spec.type === item).length
+								: n,
+					0
+				);
+				const slots = kids.get(layout) ?? [];
+				const items = slots.filter((k) => !away.has(k.id) && blockTypeOf(k.id) === item);
+				if (items.length + arriving > 1) continue;
+				const { parent, index } = positionOf(layout)!;
+				const rank = kids.get(parent)![index]!.rank;
+				const last = items[0];
+				if (last === undefined) {
+					out.push(deleting(layout, [layout]));
+					continue;
+				}
+				const moved = (kids.get(last.id) ?? []).filter((k) => !away.has(k.id));
+				const ids = moved.map((k) => k.id);
+				const ranks = moved.map((k) => promotedRank(rank, promotedRank(last.rank, k.rank)));
+				out.push(
+					...moveTo(ids, parent, index + 1, ranks),
+					...settle(last.id, ids, parent),
+					deleting(layout, [layout, last.id])
+				);
+			}
+			return out;
 		};
 		/** `writes`, then `container` removed when they leave it no child but `leaving` (`emptyingAll`). */
 		const emptying = (
@@ -2211,6 +2316,91 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return splitOut([id], levels, specs, keep);
 		};
 
+		/** The layout kind a new layout takes: `kind` when it is one, else the only one the roles declare. */
+		const layoutKind = (kind?: string): string | undefined => {
+			if (kind !== undefined) return roles.layout(kind) === undefined ? undefined : kind;
+			const kinds = [...roles.layoutKinds()];
+			return kinds.length === 1 ? kinds[0] : undefined;
+		};
+		/**
+		 * Place `ids` beside `target`, to its `side` (`layout.place-beside`: a
+		 * block dragged to another block's left or right edge). The target
+		 * resolves to its outermost block below the root or below a layout
+		 * item (a list item → its list, a code line → its code block); an item
+		 * stands for itself, a layout for its first or last slot. Beside a
+		 * block in an item, a new item holding `ids` goes beside that item;
+		 * otherwise the block and a new item holding `ids` are wrapped in a new
+		 * layout of the layout `kind` (else the only one the roles declare) at
+		 * its place. Refused when `ids` holds the target or an ancestor of it,
+		 * an item, a layout or a block holding one (D2), a block that does not
+		 * fit an item, a block or a layout inside an island, and, wrapping,
+		 * when there is no layout kind. The sources are cleaned in the same
+		 * plan (`emptying`, `dissolving`); plain ranks (a move). `ids`: the
+		 * moved blocks.
+		 */
+		const placeBeside = (
+			ids: readonly BlockId[],
+			target: BlockId,
+			side: 'left' | 'right',
+			kind?: string
+		): Prepared => {
+			const moved = ids.map(ref);
+			target = ref(target);
+			const v = view();
+			if ((side !== 'left' && side !== 'right') || !canPlace(moved) || !live(target))
+				return REFUSED;
+			if ([target, ...ancestorsOf(target, v)].some((a) => moved.includes(a))) return REFUSED;
+			if (moved.some((id) => isLayoutItem(id) || holdsLayout(id))) return REFUSED;
+			const right = side === 'right';
+			// Where the new item goes: beside an item of a layout, or a new layout wrapping `at`.
+			let at = target;
+			let layout: BlockId | null = null;
+			let index = 0;
+			if (isLayout(at)) [layout, index] = [at, right ? childrenIds(at).length : 0];
+			else {
+				while (!isLayoutItem(at)) {
+					const parent = positionOf(at)!.parent;
+					if (parent === null || isLayoutItem(parent)) break;
+					at = parent;
+				}
+				const item = isLayoutItem(at) ? at : positionOf(at)!.parent;
+				if (item !== null) {
+					const pos = positionOf(item)!;
+					[layout, index] = [pos.parent!, pos.index + (right ? 1 : 0)];
+				}
+			}
+			const wrap = layout === null ? layoutKind(kind && ref(kind)) : blockTypeOf(layout);
+			const item = wrap === undefined ? undefined : roles.layout(wrap);
+			if (wrap === undefined || item === undefined) return REFUSED;
+			if (moved.some((id) => !fitsIn(item, blockTypeOf(id)))) return REFUSED;
+			if (layout !== null && (isIsland(layout) || insideIsland(layout, v))) return REFUSED;
+			const spec = (type: string): BlockSpec => sanitizeSpec({ id: newId('b'), type, data: {} });
+			const fresh = spec(item);
+			const into = (parent: BlockId) => moveTo(moved, parent, 0, ranksFor(parent, 0, moved.length));
+			let writes: PlanStep[];
+			let kept: Set<BlockId | null>;
+			if (layout !== null) {
+				const ranks = ranksFor(layout, index, 1);
+				writes = [
+					{ op: 'insertBlocks', parent: layout, index, specs: [fresh], ranks },
+					...into(fresh.id)
+				];
+				kept = new Set([fresh.id, ...landing(layout)]);
+			} else {
+				const pos = positionOf(at)!;
+				const host = spec(item);
+				const wrapper = { ...spec(wrap), children: right ? [host, fresh] : [fresh, host] };
+				const ranks = ranksFor(pos.parent, pos.index, 1);
+				writes = [
+					{ op: 'insertBlocks', parent: pos.parent, index: pos.index, specs: [wrapper], ranks },
+					...moveTo([at], host.id, 0, ranksFor(host.id, 0, 1)),
+					...into(fresh.id)
+				];
+				kept = new Set([wrapper.id, host.id, fresh.id, ...landing(pos.parent)]);
+			}
+			return plan(moved, emptied(moved, writes, kept));
+		};
+
 		/**
 		 * Split `id` at content `offset` into a new sibling `newId` (one boundary
 		 * item and the claims that follow it, no text copied; children follow).
@@ -2312,7 +2502,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * container's slot, as its new parent's default child, with its
 		 * children (a first cell stays: nothing leaves an island; a block that
 		 * would land directly in a container it is no item of stays too,
-		 * DR-crdt-1). `ids`: the surviving block.
+		 * DR-crdt-1). The first block of a layout item merges across items
+		 * instead, in reading order (`layout.merge`, D4, Notion): into the
+		 * previous item's last line, or, in the first item, the line before
+		 * the layout; an item it empties goes and the layout dissolves.
+		 * `ids`: the surviving block.
 		 */
 		const mergeBackward = (id: BlockId): Prepared => {
 			id = ref(id);
@@ -2323,6 +2517,14 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			// A container a concurrent edit left empty shows nothing: the key removes it.
 			if (prev !== null && isContainer(prev) && childrenIds(prev).length === 0)
 				return gone(id, prev);
+			if (prev !== null && prev === positionOf(id)?.parent && isLayoutItem(prev)) {
+				const layout = positionOf(prev)!.parent!;
+				let into = previous(prev);
+				if (into === layout) into = previous(layout);
+				const merged = into === null ? REFUSED : mergeUnnesting(id, into);
+				if (!('writes' in merged) || childrenIds(id).length > 0) return merged;
+				return plan(merged.ids, emptying(prev, [id], merged.writes));
+			}
 			if (
 				prev !== null &&
 				prev === positionOf(id)?.parent &&
@@ -2389,6 +2591,9 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		const deleteBlocks = (ids: readonly BlockId[], subtree = false): Prepared => {
 			const set = new Set(ids.map(ref));
 			if ([...set].some((id) => !live(id))) return REFUSED;
+			// A layout goes with its items: their blocks take its slot (`layout.dissolving`).
+			for (const id of [...set])
+				if (isLayout(id)) for (const kid of childrenIds(id)) if (isLayoutItem(kid)) set.add(kid);
 			if (subtree) {
 				const roots = [...set].filter((id) => !ancestorsOf(id).some((a) => set.has(a)));
 				return plan(
@@ -2402,6 +2607,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const roots = [...set].filter((id) => !set.has(positionOf(id)!.parent!));
 			const { kids } = view();
 			const promoting = new Set<BlockId>();
+			const members: BlockId[] = [];
 			const writes = roots.flatMap((root) => {
 				const pos = positionOf(root)!;
 				const chunk: BlockId[] = [];
@@ -2419,23 +2625,46 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					}
 				};
 				walk(root, kids.get(pos.parent)![pos.index]!.rank);
+				members.push(...chunk);
 				if (kept.length > 0) promoting.add(root);
+				// A layout shows only its items: a deleted item's blocks land right
+				// after it, where read-time promotion shows them (`layout.only-items`).
+				const item = pos.parent === null ? undefined : itemKindOf(pos.parent);
+				const at = (k: { id: BlockId }) => item !== undefined && blockTypeOf(k.id) !== item;
+				const out = kept.filter(at);
+				const inside = kept.filter((k) => !at(k));
+				const lpos = out.length > 0 ? positionOf(pos.parent!)! : null;
+				const lrank = lpos && kids.get(lpos.parent)![lpos.index]!.rank;
 				return [
 					...moveTo(
-						kept.map((k) => k.id),
+						inside.map((k) => k.id),
 						pos.parent,
 						pos.index + 1,
-						kept.map((k) => k.rank)
+						inside.map((k) => k.rank)
 					),
-					...kept.flatMap((k) => settle(k.from, [k.id], pos.parent)),
+					...inside.flatMap((k) => settle(k.from, [k.id], pos.parent)),
+					...(lpos === null
+						? []
+						: [
+								...moveTo(
+									out.map((k) => k.id),
+									lpos.parent,
+									lpos.index + 1,
+									out.map((k) => promotedRank(lrank!, k.rank))
+								),
+								...out.flatMap((k) => settle(k.from, [k.id], lpos.parent))
+							]),
 					deleting(root, chunk)
 				];
 			});
 			return plan(
 				roots,
-				emptied(
+				emptyingAll(
+					roots.filter((r) => !promoting.has(r)).map((id) => positionOf(id)!.parent),
 					roots.filter((r) => !promoting.has(r)),
-					writes
+					writes,
+					undefined,
+					members
 				)
 			);
 		};
@@ -2743,7 +2972,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			ranksFor,
 			pieceRanks,
 			redata: (id, data) => dataSteps(id, replaceData(data)) ?? [],
-			deleteBlocks: (ids) => prepare.deleteBlocks(ids)
+			deleteBlocks: (ids) => prepare.deleteBlocks(ids),
+			dissolving: (gone, leaving, writes) => dissolving(new Set(gone), leaving, writes)
 		};
 
 		/** Every document op, prepared (R6) — `apply(prepare.op(…))` is the op. */
@@ -2764,6 +2994,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			unNestBlock,
 			unNestBlocks,
 			liftOut,
+			placeBeside,
 			splitBlock,
 			mergeBlocks,
 			mergeBackward,
@@ -2913,6 +3144,10 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			isVoid: byRef(isVoid),
 			isIsland: byRef(isIsland),
 			isLines: byRef(isLines),
+			/** `id` is a layout: its kind's role says `layout` (`layout.*`). */
+			isLayout: byRef(isLayout),
+			/** `id` is a layout item: of its layout's item kind, directly in it (a column). */
+			isLayoutItem: byRef(isLayoutItem),
 			islandOf: byRef((id: BlockId) => islandOf(id)),
 			insideIsland: byRef((id: BlockId) => insideIsland(id)),
 			// structural capability (R5)

@@ -364,7 +364,8 @@ export const wellFormed = (
 		identityOf: doc && ((id: string) => registryIdentity(doc, id)),
 		succeeds: doc && ((later: string, earlier: string) => succeeds(doc, later, earlier)),
 		identities: ctx.identities,
-		hiddenUnderDeleted: doc && (() => hiddenUnderDeleted(doc)),
+		hiddenUnderDeleted:
+			doc && (() => hiddenUnderDeleted(doc, (id: string) => ed.runsView.dissolved(id))),
 		reportedKind: ctx.reported,
 		layouts: layoutKindsOf(ctx.layouts ?? ctx.semantics)
 	});

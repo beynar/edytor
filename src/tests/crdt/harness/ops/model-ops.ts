@@ -94,16 +94,20 @@ export const expectedProjectedIds = (peer: Peer): Set<string> => {
  * The `promotion-hidden` oracle input (UW-08): live (unmarked), self-owned
  * blocks with a delete-marked holder on their display-parent chain that the
  * projection does not show — read-time promotion must put them in the
- * holder's slot.
+ * holder's slot. `dissolved`: blocks the layout rules hide (`layout.*`: an
+ * empty or bare column, a layout showing one column) — their children show.
  */
-export const hiddenUnderDeleted = (doc: Peer['doc']): string[] => {
+export const hiddenUnderDeleted = (
+	doc: Peer['doc'],
+	dissolved: (id: string) => boolean = () => false
+): string[] => {
 	const blocks = M.collectBlocks(doc);
 	const own = T.computeOwnership(doc, blocks);
 	const placements = M.resolvePlacements(blocks, own.ownerOf);
 	const shown = new Set(M.listBlockIds(doc));
 	const out: string[] = [];
 	for (const [id, rec] of blocks) {
-		if (rec.deleted || own.hidden(id) || shown.has(id)) continue;
+		if (rec.deleted || own.hidden(id) || shown.has(id) || dissolved(id)) continue;
 		const seen = new Set<string>([id]);
 		for (let cur = id; ; ) {
 			const pl = placements.get(cur);

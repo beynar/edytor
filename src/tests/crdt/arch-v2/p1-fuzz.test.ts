@@ -181,6 +181,77 @@ const CONTAINERS: Lane = (() => {
 })();
 
 /**
+ * Columns C1: the layout lane — the concurrent campaigns of the plan (§4.7):
+ * two beside drops on one target, moves racing a dissolve, a column deleted
+ * while a peer adds into it, a layout deleted while a peer adds a column,
+ * undo after a peer's edit in a new column (P12 withdraw). Two layouts and
+ * plain blocks; the actions lean on beside drops, deletes, moves, merges and
+ * history. Held to `wellFormed` with its roles (`layout-shape` after every
+ * step).
+ */
+const LAYOUTS: Lane = (() => {
+	const semantics = {
+		roles: { columns: { layout: true }, divider: { void: true } },
+		rendersContent: {
+			columns: false,
+			column: false,
+			divider: false,
+			'unordered-list': false
+		},
+		defaultChild: { columns: 'column', 'unordered-list': 'list-item' }
+	};
+	const col = (id: string, ...children) => ({ id, type: 'column', children });
+	const seeds = [
+		{ id: 'P', text: 'para' },
+		{
+			id: 'C',
+			type: 'columns',
+			children: [
+				col('C1', { id: 'C1a', text: 'left' }, { id: 'C1b', text: 'below' }),
+				col('C2', { id: 'C2a', text: 'right' })
+			]
+		},
+		{ id: 'Q', text: 'quiet' },
+		{
+			id: 'E',
+			type: 'columns',
+			children: [
+				col('E1', { id: 'E1a', text: 'one' }),
+				col('E2', { id: 'U', type: 'unordered-list', children: [item('U1', 'item')] }),
+				col('E3', { id: 'E3a', text: 'three' })
+			]
+		},
+		{ id: 'Z', text: 'zulu' }
+	];
+	return {
+		seed: seedUpdate(seeds, semantics),
+		semantics,
+		actions: [
+			'placeBeside',
+			'placeBeside',
+			'placeBeside',
+			'placeBeside',
+			'deleteBlocks',
+			'deleteKeep',
+			'move',
+			'nest',
+			'unnest',
+			'mergeBackward',
+			'mergeForward',
+			'deleteRange',
+			'split',
+			'insert',
+			'create',
+			'paste',
+			'undo',
+			'undo',
+			'redo'
+		],
+		kinds: ['paragraph', 'column', 'columns', 'divider']
+	};
+})();
+
+/**
  * AW-04, DR-crdt-1: what a list shows directly — its item, or a block
  * showing its own stored kind other than the document's default (a nested
  * list; an image, a heading a merge or a race leaves there, DR-crdt-1).
@@ -499,6 +570,20 @@ describe('P1 fuzz — multi-replica campaign through the facade (review-probes/f
 		// Not vacuous: a Turn into applied (DR-crdt-1), and a beside drop.
 		expect(STATS.get('turnInto:applied') ?? 0).toBeGreaterThan(0);
 		expect(STATS.get('placeBeside:applied') ?? 0).toBeGreaterThan(0);
+	});
+
+	it(`layouts: 3 replicas × ${env('P1_FUZZ_SEEDS', 200)} seeds × ${LEN} steps`, () => {
+		STATS.clear();
+		const report = campaign(3, env('P1_FUZZ_SEEDS', 200), START + 21000, LEN, LAYOUTS);
+		expect(report, JSON.stringify(report, null, 1)).toEqual({});
+		// Not vacuous: beside drops applied, and undos popped them.
+		expect(STATS.get('placeBeside:applied') ?? 0).toBeGreaterThan(50);
+		expect(STATS.get('undo:item') ?? 0).toBeGreaterThan(50);
+	});
+
+	it(`layouts: 5 replicas × ${env('P1_FUZZ_WIDE', 40)} seeds × ${LEN + 20} steps, offline churn`, () => {
+		const report = campaign(5, env('P1_FUZZ_WIDE', 40), START + 24000, LEN + 20, LAYOUTS);
+		expect(report, JSON.stringify(report, null, 1)).toEqual({});
 	});
 
 	it(`containers: 5 replicas × ${env('P1_FUZZ_WIDE', 40)} seeds × ${LEN + 20} steps, offline churn`, () => {

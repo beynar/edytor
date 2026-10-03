@@ -81,6 +81,8 @@ export {
 	richTextSemantics,
 	codeSemantics,
 	imageSemantics,
+	layoutKinds,
+	layoutSemantics,
 	semanticsOf,
 	type KindSemantics
 } from './semantics.js';

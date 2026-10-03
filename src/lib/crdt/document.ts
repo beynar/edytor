@@ -184,7 +184,7 @@ export type DocumentActor = {
  * part of this: they are view-side rendering policy.
  */
 export type DocumentSemanticsConfig = {
-	/** Structural role per block type (`{void?, island?, lines?}` — absent flags mean false). */
+	/** Structural role per block type (`{void?, island?, lines?, layout?}` — absent flags mean false). */
 	roles?: Record<string, BlockRole>;
 	/** Whether a kind renders its own content slot (undeclared kinds do). */
 	rendersContent?: Record<string, boolean>;
@@ -320,12 +320,14 @@ export type DocumentReadiness = 'pending' | 'local' | 'hydrated';
  */
 export const DEFAULT_READINESS_BOUND = 1000;
 
-type NormalizedRole = { void: boolean; island: boolean; lines: boolean };
+/** A role with every flag answered; `layout` only when set (the bundled kinds' rows stay as they were). */
+type NormalizedRole = { void: boolean; island: boolean; lines: boolean; layout?: true };
 
 const normalizeRole = (role: BlockRole | undefined): NormalizedRole => ({
 	void: role?.void === true,
 	island: role?.island === true,
-	lines: role?.lines === true
+	lines: role?.lines === true,
+	...(role?.layout === true && { layout: true as const })
 });
 
 const anonymousActor = (): DocumentActor => ({
@@ -655,13 +657,17 @@ export class EdytorDocument {
 		}
 		if (DEV) this._warnLines();
 		// A newly void kind sheds its children at read time (UW-21b); a block
-		// promoted out of a newly island kind displays as a default child.
-		if (Object.values(config.roles ?? {}).some((role) => role?.void || role?.island))
+		// promoted out of a newly island kind displays as a default child; a
+		// newly layout kind displays only its items (`layout.*`).
+		if (
+			Object.values(config.roles ?? {}).some((role) => role?.void || role?.island || role?.layout)
+		)
 			this.facade.rolesChanged();
 	};
 
 	/**
-	 * DEV: `lines` needs an island with a default child (its line kind), and
+	 * DEV: `layout` needs a default child (its item kind); `lines` needs an
+	 * island with a default child (its line kind), and
 	 * the line kind belongs to it — outside such an island a block of that
 	 * kind shows as its parent's default child, so a kind other blocks use
 	 * (the default type, another kind's default child) would be recast.
@@ -669,6 +675,10 @@ export class EdytorDocument {
 	private _warnLines(): void {
 		const { roles, defaultChild } = this._capability;
 		for (const [type, role] of roles) {
+			if (role.layout && !defaultChild.has(type))
+				console.warn(
+					`[edytor] "${type}" declares \`layout\` without a \`defaultChild\` (its column kind): it is no layout.`
+				);
 			if (!role.lines) continue;
 			const line = defaultChild.get(type);
 			if (!role.island || line === undefined) {

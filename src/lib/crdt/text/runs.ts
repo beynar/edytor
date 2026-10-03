@@ -285,6 +285,12 @@ export type RunView = {
 	/** The kind a live block displays as when it is not its stored one (promoted out of an island). */
 	displayType: (id: BlockId) => string | undefined;
 	/**
+	 * `id` is a live block the layout rules do not display — an empty or
+	 * bare item, a layout showing one item or none (`layout.*`): hidden
+	 * without a delete mark, its children shown in its slot.
+	 */
+	dissolved: (id: BlockId) => boolean;
+	/**
 	 * Track the folds from now on (the write funnel's frame): `end()` folds
 	 * what is pending and returns the facets every fold since `track()` saw
 	 * per block, and whether the transaction wrote anything meanwhile.
@@ -311,7 +317,8 @@ export type RunView = {
  * kind that renders no content and is neither void nor an island (a list)
  * — a block promoted out of one follows like one promoted out of an island
  * (DR-crdt-2). `rendersContent`: no block that renders content ever shows
- * as a kind that does not (its text would vanish, DR-crdt-1).
+ * as a kind that does not (its text would vanish, DR-crdt-1). `layout`: a
+ * layout kind displays only its items, and only two or more (`layout.*`).
  */
 export type DisplayRoles = {
 	childless: (type: string) => boolean;
@@ -323,6 +330,10 @@ export type DisplayRoles = {
 	line: (islandType: string) => string | undefined;
 	/** Every line kind the roles declare, present in the document or not (XW-11). */
 	lineKinds: () => Iterable<string>;
+	/** The item kind of a layout kind (its `defaultChild`), if `type` is one. */
+	layout: (type: string) => string | undefined;
+	/** Every layout kind the roles declare, present in the document or not. */
+	layoutKinds: () => Iterable<string>;
 };
 
 /**
@@ -335,12 +346,15 @@ export type DisplayRoles = {
  */
 const sameShape = (roles: DisplayRoles, a: string, b: string): boolean => {
 	const lines = new Set(roles.lineKinds());
+	const items = new Set([...roles.layoutKinds()].map((type) => roles.layout(type)));
 	return (
 		roles.childless(a) === roles.childless(b) &&
 		roles.island(a) === roles.island(b) &&
 		roles.container(a) === roles.container(b) &&
 		roles.line(a) === roles.line(b) &&
-		lines.has(a) === lines.has(b)
+		lines.has(a) === lines.has(b) &&
+		roles.layout(a) === roles.layout(b) &&
+		items.has(a) === items.has(b)
 	);
 };
 
@@ -498,13 +512,22 @@ export const bindRuns = (Y: EngineApi) => {
 		};
 		/** The line kind of `b` when it is an island declared `lines`. */
 		const lineKind = (b: BlockId): string | undefined => role(b, (r, type) => r.line(type));
+		/** The item kind of `b` when it is a layout. */
+		const itemKind = (b: BlockId): string | undefined => role(b, (r, type) => r.layout(type));
+		/** The live blocks the layout rules do not display (`layout.*`), per placement build. */
+		let dissolved = new Set<BlockId>();
 		const ownShim: DisplayOwnership = {
 			ownerOf,
-			hidden: (b) => ownerOf(b) !== b,
+			hidden: (b) => ownerOf(b) !== b || dissolved.has(b),
 			childless: (b) => role(b, (r, type) => r.childless(type)) === true,
 			island: (b) => role(b, (r, type) => r.island(type)) === true,
 			container: (b) => role(b, (r, type) => r.container(type)) === true,
 			lined: (b) => lineKind(b) !== undefined,
+			passes: (b) => dissolved.has(b),
+			sheds: (owner, child) => {
+				const item = itemKind(owner);
+				return item !== undefined && blocks.get(child)?.type !== item;
+			},
 			top: (m) => {
 				ensureOwners();
 				return tops.get(m);
@@ -545,11 +568,72 @@ export const bindRuns = (Y: EngineApi) => {
 		let orderCache: DocOrder | null = null;
 		let placementsBuiltAt = -1;
 		let placementVersion = 0;
+		/**
+		 * The layout rules over a children index (`layout.*`): the live blocks
+		 * they do not display, found in one post-order pass. A layout shows
+		 * only its items (`layout.only-items`, already in the index: the
+		 * layout sheds the others, `own.sheds`); an item that shows no child,
+		 * or shows outside a layout, does not display and hands its children
+		 * its slot (`layout.empty-item`, `layout.bare-item`); a layout showing
+		 * one item or none does not display, nor does that item
+		 * (`layout.single`). Each decision reads the children a node shows
+		 * once its own children's were made, so one pass is the fixpoint:
+		 * what a dissolve hands up is never an item (an item shows only in a
+		 * layout, and a dissolving layout hands up its item's children).
+		 */
+		const dissolve = (kids: Map<BlockId | null, ChildSlot[]>, items: Set<string>) => {
+			const out = new Set<BlockId>();
+			const isItem = (b: BlockId) => items.has(blocks.get(b)?.type ?? '');
+			// `parent`'s shown children: each slot's id and, for an item, the ids it shows.
+			type Shown = { id: BlockId; kids: BlockId[] };
+			const visit = (parent: BlockId | null, layout: boolean): Shown[] => {
+				const shown: Shown[] = [];
+				for (const { id } of kids.get(parent) ?? []) {
+					const own = itemKind(id) !== undefined;
+					const sub = visit(id, own);
+					if (own) {
+						if (sub.length > 1) shown.push({ id, kids: [] });
+						else {
+							out.add(id);
+							for (const k of sub) {
+								out.add(k.id);
+								shown.push(...k.kids.map((kid) => ({ id: kid, kids: [] })));
+							}
+						}
+					} else if (isItem(id) && (!layout || sub.length === 0)) {
+						out.add(id);
+						shown.push(...sub);
+					} else shown.push({ id, kids: sub.map((k) => k.id) });
+				}
+				return shown;
+			};
+			visit(null, false);
+			return out;
+		};
 		const ensurePlacements = (): void => {
 			if (placementsBuiltAt >= placementVersion) return;
 			ensureOwners();
 			placementsMap = resolvePlacements(blocks, ownerOf);
+			dissolved = new Set();
 			kidsMap = childrenIndex(placementsMap, ownShim);
+			// The layout rules, when the document holds a layout or an item kind.
+			const items = new Set<string>();
+			for (const type of roles?.layoutKinds() ?? []) items.add(roles!.layout(type)!);
+			let layouts = false;
+			for (const b of blocks.keys()) {
+				const item = itemKind(b);
+				if (item === undefined) continue;
+				items.add(item);
+				layouts = true;
+			}
+			if (!layouts) for (const rec of blocks.values()) if (items.has(rec.type)) layouts = true;
+			if (layouts) {
+				const out = dissolve(kidsMap, items);
+				if (out.size > 0) {
+					dissolved = out;
+					kidsMap = childrenIndex(placementsMap, ownShim);
+				}
+			}
 			slots = new Map();
 			lineKinds = new Set(roles?.lineKinds());
 			for (const b of blocks.keys()) {
@@ -615,11 +699,18 @@ export const bindRuns = (Y: EngineApi) => {
 				return stored === roles.defaultChild(null) && under !== null
 					? itemOf(under, stored)
 					: stored;
-			// Out of a removed list, inside an outer list of its kind: still an item.
+			// Out of a removed list, inside an outer list of its kind: still an item. A
+			// container whose item is the document's default kind (a column) holds no
+			// items of its own: a paragraph under one is no list's item.
 			if (!lined && typeof from === 'string' && roles.container(from))
 				for (let u = under; u !== null; u = slots.get(u)?.under ?? null) {
 					const t = typeOf(u);
-					if (roles.container(t) && roles.defaultChild(t) === stored) return stored;
+					if (
+						roles.container(t) &&
+						roles.defaultChild(t) === stored &&
+						stored !== roles.defaultChild(null)
+					)
+						return stored;
 				}
 			const kind = roles.defaultChild(under === null ? null : typeOf(under));
 			if (roles.rendersContent(kind) || !roles.rendersContent(stored)) return kind;
@@ -1375,6 +1466,11 @@ export const bindRuns = (Y: EngineApi) => {
 				ensurePlacements();
 				const shown = blocks.has(id) ? typeOf(id) : undefined;
 				return shown === blocks.get(id)?.type ? undefined : shown;
+			},
+			dissolved: (id) => {
+				syncPending(openTx());
+				ensurePlacements();
+				return dissolved.has(id);
 			},
 			project: (root?: BlockId): ProjectedBlock[] => {
 				syncPending(openTx());

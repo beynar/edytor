@@ -309,7 +309,19 @@ export interface CrdtOps {
 	 * one it leaves with no child), and, for an outdent out of a container,
 	 * the siblings that go to the new list it splits off (`split`).
 	 */
-	containerSlack?(peer: Peer, id: BlockId): { containers: BlockId[]; split: BlockId[] };
+	containerSlack?(
+		peer: Peer,
+		id: BlockId
+	): { containers: BlockId[]; split: BlockId[]; layout?: { items: BlockId[]; moves: BlockId[] } };
+	/** Layout kind → its item kind (`wellFormed` `layout-shape`). */
+	readonly layouts?: ReadonlyMap<string, string>;
+	/** `id` is a live block the layout rules hide (`layout.*`): its children show in its slot. */
+	dissolved?(peer: Peer, id: BlockId): boolean;
+	/**
+	 * Place `ids` beside `target` (`layout.place-beside`): a new column beside
+	 * the target's, or a new layout wrapping it. False when refused.
+	 */
+	placeBeside?(peer: Peer, ids: BlockId[], target: BlockId, side: 'left' | 'right'): boolean;
 }
 
 /**

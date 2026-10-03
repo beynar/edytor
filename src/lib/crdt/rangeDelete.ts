@@ -31,6 +31,8 @@
  *   they go only with a block that goes, so a surviving head keeps its
  *   hidden children, unless it is kept only to hold the caret; a dying
  *   closed tail's body takes its place, shown (`del.range.hidden-body`);
+ * - a layout the range leaves with one column dissolves, in the same plan
+ *   (`layout.dissolving`);
  * - the plan's `at` is where the caret lands (`del.range.caret`).
  */
 import type { BlockId, Destination } from './placement/model.js';
@@ -65,6 +67,15 @@ export type RangeDeleteContext = {
 	/** The kind steps for `from`'s children `kids` landing under `parent` (island and container rules). */
 	settle: (from: BlockId | null, kids: readonly BlockId[], parent: BlockId | null) => PlanStep[];
 	remove: (id: BlockId, kept: readonly BlockId[]) => PlanStep;
+	/**
+	 * The steps that dissolve each layout the plan leaves with one item or
+	 * none (`layout.dissolving`): `gone` it removes, `leaving` it moves.
+	 */
+	dissolving: (
+		gone: readonly BlockId[],
+		leaving: readonly BlockId[],
+		writes: readonly PlanStep[]
+	) => PlanStep[];
 };
 
 /**
@@ -178,6 +189,8 @@ export const rangeDeleteOps = (c: RangeDeleteContext) => {
 			}
 			const kept = [...rescued, ...(merges ? [E] : [])];
 			for (const id of doomed) if (!doomed.has(parent(id)!)) writes.push(c.remove(id, kept));
+			// A layout the range leaves with one column dissolves (`layout.dissolving`).
+			writes.push(...c.dissolving([...doomed, ...(merges ? [E] : [])], rescued, writes));
 
 			const caret = ((): DocPosition | null => {
 				if (!doomed.has(S)) return s;

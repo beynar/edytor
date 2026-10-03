@@ -23,6 +23,7 @@ describe('wellFormed checks', () => {
 			'sealed-line',
 			'seed-displacement',
 			'promotion-hidden',
+			'layout-shape',
 			'report-kind'
 		]);
 	});
@@ -124,6 +125,23 @@ describe('wellFormed checks', () => {
 		expect(
 			wellFormedProblems(input((later, earlier) => later === '2:0' && earlier === '1:0'))
 		).toEqual([]);
+	});
+
+	it('layout-shape: a layout shows two items or more and nothing else, an item shows in one', () => {
+		const layouts = new Map([['columns', 'column']]);
+		const col = (id: string, ...kids) => b(id, 'column', kids);
+		const shape = (roots) =>
+			wellFormedProblems({ roots, layouts }).filter((p) => p.startsWith('layout-shape'));
+		expect(shape([b('C', 'columns', [col('K1', b('A')), col('K2', b('B'))])])).toEqual([]);
+		expect(shape([b('C', 'columns', [col('K1', b('A'))])])).toEqual([
+			'layout-shape: layout C shows 1 item(s)'
+		]);
+		expect(shape([b('C', 'columns', [col('K1', b('A')), col('K2'), b('X')])])).toEqual([
+			'layout-shape: X shows paragraph in the layout C',
+			'layout-shape: item K2 shows no child'
+		]);
+		expect(shape([col('K', b('A'))])).toEqual(['layout-shape: item K shows outside a layout']);
+		expect(wellFormedProblems({ roots: [col('K')] })).toEqual([]);
 	});
 
 	describe('promotion-hidden (on by default)', () => {

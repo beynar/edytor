@@ -1044,8 +1044,10 @@ export const runSchedule = (
 				identityOf: (id) => registryIdentity(p.doc, id),
 				succeeds: (later, earlier) => succeeds(p.doc, later, earlier),
 				identities: seen,
-				hiddenUnderDeleted: () => hiddenUnderDeleted(p.doc),
-				reportedKind: ops.reportedKind && ((id) => ops.reportedKind!(p, id))
+				hiddenUnderDeleted: () =>
+					hiddenUnderDeleted(p.doc, ops.dissolved && ((id) => ops.dissolved!(p, id))),
+				reportedKind: ops.reportedKind && ((id) => ops.reportedKind!(p, id)),
+				layouts: ops.layouts
 			}).map((x) => `${p.name}: ${x}`);
 		});
 	let firstIllFormed: { step: number; problems: string[] } | null = null;
@@ -1099,16 +1101,33 @@ export const runSchedule = (
 	const slack = (peer: Peer, id: string, env: IntentEnvelope, outdent = false): IntentEnvelope => {
 		const extra = ops.containerSlack?.(peer, id);
 		if (!extra) return env;
+		// A layout the op leaves with one column dissolves (`layout.dissolving`):
+		// its columns go, their blocks move to its slot.
+		const layout = extra.layout ?? { items: [], moves: [] };
+		const placements = [
+			...(env.placements ?? []),
+			...layout.moves,
+			...(outdent ? extra.split : [])
+		];
 		return {
 			...env,
-			delSet: new Set([...(env.delSet ?? []), ...extra.containers]),
-			...(outdent && extra.split.length > 0
-				? {
-						placements: new Set([...(env.placements ?? []), ...extra.split]),
-						blocksMinted: 1
-					}
-				: {})
+			delSet: new Set([...(env.delSet ?? []), ...extra.containers, ...layout.items]),
+			...(placements.length > 0 && { placements: new Set(placements) }),
+			...(outdent && extra.split.length > 0 ? { blocksMinted: 1 } : {})
 		};
+	};
+	/**
+	 * A `moveBlock` step whose `destIndex` is 6 is a beside drop on adapters
+	 * that offer one (`layout.place-beside`; the generator's draws are
+	 * unchanged, so other adapters' schedules are too): beside the block at
+	 * `parentIndex`, right or left by `idIndex`'s parity.
+	 */
+	const beside = (peer: Peer, op: Extract<DocOp, { kind: 'moveBlock' }>) => {
+		if (op.destIndex !== 6 || !ops.placeBeside) return null;
+		const id = resolveId(peer, op.idIndex);
+		const target = resolveId(peer, op.parentIndex);
+		if (id === undefined || target === undefined) return null;
+		return { id, target, side: op.idIndex % 2 ? ('left' as const) : ('right' as const) };
 	};
 
 	const planIntent = (
@@ -1161,6 +1180,24 @@ export const runSchedule = (
 				};
 			}
 			case 'moveBlock': {
+				const drop = beside(peer, op);
+				if (drop !== null) {
+					// The moved block, the wrapped target (and the blocks above it it may
+					// stand for), up to three new blocks (a layout and two columns), and the
+					// source's emptied containers and dissolving layout.
+					const at = [drop.target];
+					for (let p = ops.positionOf(peer, drop.target)?.parent; p != null; ) {
+						at.push(p);
+						p = ops.positionOf(peer, p)?.parent;
+					}
+					return {
+						env: slack(peer, drop.id, {
+							placements: new Set([drop.id, ...at]),
+							blocksMinted: 3
+						}),
+						exec: () => ops.placeBeside!(peer, [drop.id], drop.target, drop.side)
+					};
+				}
 				const id = resolveId(peer, op.idIndex);
 				if (id === undefined) return null;
 				const parent = resolveParent(peer, op.parentIndex);
@@ -1474,6 +1511,11 @@ export const runSchedule = (
 				break;
 			}
 			case 'moveBlock': {
+				const drop = beside(peer, op);
+				if (drop !== null) {
+					ops.placeBeside!(peer, [drop.id], drop.target, drop.side);
+					break;
+				}
 				const id = resolveId(peer, op.idIndex);
 				const parent = resolveParent(peer, op.parentIndex);
 				if (id !== undefined) ops.moveBlock(peer, id, { parent, index: op.destIndex });

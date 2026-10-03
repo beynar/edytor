@@ -103,7 +103,10 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 				kinds.set(b.id, b.type);
 				for (const c of b.children ?? []) take(c);
 			};
-			f.toJSON().children.forEach(take);
+			// The projection, not `toJSON`: a reload drops pending structs (the harness's
+			// injected loss), which can leave a type overwrite half-delivered — the JSON
+			// serializer's DEV guard throws on that typeless transient, the index does not.
+			f.project().children.forEach(take);
 			f.onChange((c) => {
 				for (const b of c.added.values()) take(b);
 				for (const [id, { type }] of c.meta) kinds.set(id, type);
@@ -131,6 +134,12 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 		return m;
 	};
 
+	/** Layout kind → item kind (`layout-shape`), and the kinds the layout rules may hide. */
+	const layouts = new Map(
+		Object.entries(roles?.defaultChild ?? {}).filter(([parent]) => roles!.roles[parent]?.layout)
+	);
+	const layoutKinds = new Set([...layouts.keys(), ...layouts.values()]);
+
 	const islandKinds = new Map(
 		Object.entries(roles?.defaultChild ?? {})
 			.filter(([parent]) => roles!.roles[parent]?.island && roles!.roles[parent]?.lines)
@@ -151,11 +160,22 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 					return roles.rendersContent?.[type] === false && !role?.void && !role?.island;
 				};
 				const parent = f.parentOf(id);
+				// A layout among the ancestors may dissolve (`layout.dissolving`): its
+				// columns are deleted, their blocks moved to its slot.
+				const items = f
+					.ancestorsOf(id)
+					.filter((a) => f.isLayout(a))
+					.flatMap((l) => f.childrenIds(l));
 				return {
 					containers: f.ancestorsOf(id).filter(container),
-					split: parent !== null && container(parent) ? f.childrenIds(parent) : []
+					split: parent !== null && container(parent) ? f.childrenIds(parent) : [],
+					layout: { items, moves: items.flatMap((k) => f.childrenIds(k)) }
 				};
-			}
+			},
+			layouts,
+			dissolved: (peer, id) => ed(peer).runsView.dissolved(id),
+			placeBeside: (peer, ids, target, side) =>
+				peer.transact(() => ok(ed(peer).placeBeside(ids, target, side)))
 		}),
 		preservesIdentityOnMove: true,
 		preservesIdentityOnSplitMerge: true,
@@ -193,7 +213,20 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 		blockText: (peer, id) => ed(peer).blockText(id),
 		listBlockIds: (peer) => ed(peer).listBlockIds(),
 		positionOf: (peer, id) => ed(peer).positionOf(id),
-		expectedProjectedIds,
+		// The layout rules hide only layouts and their columns (`layout.*`): a
+		// block of another kind missing from the projection is still a loss.
+		expectedProjectedIds: (peer) => {
+			const expected = expectedProjectedIds(peer);
+			if (layoutKinds.size === 0) return expected;
+			const f = ed(peer);
+			for (const id of [...expected])
+				if (
+					layoutKinds.has(f.model.blockNodeOf(peer.doc, id)?.getAttr('type')) &&
+					f.runsView.dissolved(id)
+				)
+					expected.delete(id);
+			return expected;
+		},
 		// The tag oracle reads engine state straight off peer.doc (the facade
 		// shares the same doc), so the model-ops implementation applies
 		// unchanged — same for the U5 mutation-surface snapshot and the
@@ -202,7 +235,14 @@ export const createDocOps = (roles?: DocOpsRoles): CrdtOps => {
 		classifyTagAtoms,
 		tagAtomDeps,
 		captureOpState,
-		opTarget,
+		// With roles, a block's children are the ones it displays: a split or a
+		// merge moves those, a bare column's blocks included (`layout.bare-item`).
+		opTarget: (peer, id) => {
+			const target = opTarget(peer, id);
+			if (target !== null && roles)
+				for (const kid of ed(peer).childrenIds(id)) target.children.add(kid);
+			return target;
+		},
 		deadCause,
 		trackHistory: (peer) => {
 			history(peer);

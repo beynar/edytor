@@ -220,6 +220,19 @@ export type DisplayOwnership = Ownership & {
 	 * line holds no children (FW-01, XW-03, {@link displaySlotOf}).
 	 */
 	lined?: (b: BlockId) => boolean;
+	/**
+	 * The live block `b` does not display by the layout rules — an empty or
+	 * bare item, a layout showing one item or none (`layout.empty-item`,
+	 * `layout.bare-item`, `layout.single`): it is hidden, and its children
+	 * take its slot like a deleted parent's ({@link displaySlotOf}).
+	 */
+	passes?: (b: BlockId) => boolean;
+	/**
+	 * The live layout `owner` does not display `child`, which is no item of
+	 * it (`layout.only-items`): `child` takes the layout's slot, right after
+	 * it ({@link displaySlotOf}).
+	 */
+	sheds?: (owner: BlockId, child: BlockId) => boolean;
 };
 
 /** One entry of a children list: `reset` — the island it displays out of ({@link displaySlotOf}). */
@@ -415,7 +428,7 @@ export const isLiveIn = (v: Pick<ModelView, 'placements' | 'own'>, id: BlockId):
 		if (seen.has(cur) || own.hidden(cur)) return false;
 		seen.add(cur);
 		const pl = placements.get(cur);
-		const dp = pl === undefined ? DEAD : displayParentOf(own, pl, placements);
+		const dp: Owner | null = pl === undefined ? DEAD : displayParentOf(own, pl, placements, cur);
 		if (dp === DEAD) return false;
 		cur = dp;
 	}
@@ -521,13 +534,21 @@ const SOURCE_TIE = 0;
  * slot, ranked in the line's order, with the island as `reset` — a block a
  * peer nested under a code line while an undone delete had made it a
  * paragraph shows right after the code block, and stays there when the
- * line is deleted (XW-10). `DEAD` only when the placement chain never
- * reaches a live parent (an unknown block).
+ * line is deleted (XW-10). The layout rules pass the same way (`layout.*`):
+ * a layout sheds a child that is no item of it into its own slot, right
+ * after it (`own.sheds`, by the stored kind of `id`, the block placed), and
+ * a block the layout rules do not display (`own.passes`: an empty or bare
+ * item, a layout showing one item or none) hands its children its slot,
+ * as a deleted one does — so the rank a dissolve's write gives the blocks
+ * it moves (`promotedRank` of the layout's, then the item's) is the one
+ * read here. `DEAD` only when the placement chain never reaches a live
+ * parent (an unknown block).
  */
 export const displaySlotOf = (
 	own: DisplayOwnership,
 	placements: ReadonlyMap<BlockId, ResolvedPlacement>,
-	pl: ResolvedPlacement
+	pl: ResolvedPlacement,
+	id: BlockId
 ): { parent: Owner | null; rank: string; reset: BlockId | null } => {
 	let { parent, rank } = pl;
 	let reset: BlockId | null = null;
@@ -538,14 +559,18 @@ export const displaySlotOf = (
 		const owner = own.ownerOf(parent);
 		if (reset === null && owner !== parent && resets(parent)) reset = parent;
 		const out = owner === DEAD ? parent : owner;
-		const shows = owner !== DEAD && own.childless?.(owner) !== true;
+		const shows =
+			owner !== DEAD &&
+			own.childless?.(owner) !== true &&
+			own.passes?.(owner) !== true &&
+			own.sheds?.(owner, id) !== true;
 		// A line holds no children (FW-01) — a deleted or childless one
 		// neither (XW-10): they take its island's slot, never the island.
 		const line =
 			own.lined &&
 			(shows ? lineSlotOf(own, placements, owner) : storedLineSlotOf(own, placements, out));
 		if (line) {
-			const slot = displaySlotOf(own, placements, placements.get(line.parent)!);
+			const slot = displaySlotOf(own, placements, placements.get(line.parent)!, line.parent);
 			const inner = promotedRank(line.rank, rank);
 			return {
 				parent: slot.parent,
@@ -581,10 +606,17 @@ const lineSlotOf = (
 ): { parent: BlockId; rank: string } | null => {
 	const pl = placements.get(b);
 	if (pl === undefined || pl.parent === null) return null;
-	// Fast path: a live parent that shows its children and is no lined island.
+	// Fast path: a live parent that shows its children (`b` among them) and is no lined island.
 	const p = own.ownerOf(pl.parent);
-	if (p === pl.parent && own.childless?.(p) !== true && own.lined?.(p) !== true) return null;
-	const slot = displaySlotOf(own, placements, pl);
+	if (
+		p === pl.parent &&
+		own.childless?.(p) !== true &&
+		own.lined?.(p) !== true &&
+		own.passes?.(p) !== true &&
+		own.sheds?.(p, b) !== true
+	)
+		return null;
+	const slot = displaySlotOf(own, placements, pl, b);
 	if (slot.parent === null || slot.parent === DEAD || own.lined?.(slot.parent) !== true)
 		return null;
 	return { parent: slot.parent, rank: slot.rank };
@@ -605,12 +637,13 @@ const storedLineSlotOf = (
 	return own.lined?.(pl.parent) === true ? { parent: pl.parent, rank: pl.rank } : null;
 };
 
-/** The parent under which a placement DISPLAYS ({@link displaySlotOf}). */
+/** The parent under which block `id`'s placement DISPLAYS ({@link displaySlotOf}). */
 export const displayParentOf = (
 	own: DisplayOwnership,
 	pl: ResolvedPlacement,
-	placements: ReadonlyMap<BlockId, ResolvedPlacement>
-): Owner | null => displaySlotOf(own, placements, pl).parent;
+	placements: ReadonlyMap<BlockId, ResolvedPlacement>,
+	id: BlockId
+): Owner | null => displaySlotOf(own, placements, pl, id).parent;
 
 /**
  * All visible children's lists at once: `parent|null → {id, rank}[]` sorted
@@ -625,7 +658,7 @@ export const childrenIndex = (
 	const index = new Map<BlockId | null, ChildSlot[]>();
 	for (const [id, pl] of placements) {
 		if (own.hidden(id)) continue;
-		const { parent, rank, reset } = displaySlotOf(own, placements, pl);
+		const { parent, rank, reset } = displaySlotOf(own, placements, pl, id);
 		if (parent === DEAD) continue;
 		const slot: ChildSlot = reset === null ? { id, rank } : { id, rank, reset };
 		const bucket = index.get(parent);
@@ -787,7 +820,7 @@ export const bindModel = (Y: EngineApi) => {
 			seen.add(cur);
 			const pl = placements.get(cur);
 			if (pl === undefined) break;
-			const dp = displayParentOf(own, pl, placements);
+			const dp = displayParentOf(own, pl, placements, cur);
 			if (dp === DEAD) break; // unknown ancestor — hidden, not cyclic
 			cur = dp;
 		}
@@ -1032,7 +1065,7 @@ export const bindModel = (Y: EngineApi) => {
 	/** `positionOf` in a view: the display parent and the index among its visible children. */
 	const positionInView = (v: ModelView, id: BlockId): Destination | null => {
 		if (!isLiveIn(v, id)) return null;
-		const dp = displayParentOf(v.own, v.placements.get(id)!, v.placements) as BlockId | null;
+		const dp = displayParentOf(v.own, v.placements.get(id)!, v.placements, id) as BlockId | null;
 		const index = (v.kids.get(dp) ?? []).findIndex((s) => s.id === id);
 		return index < 0 ? null : { parent: dp, index };
 	};

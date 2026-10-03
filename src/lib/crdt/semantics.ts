@@ -4,7 +4,7 @@
  * Views adopt roles from their plugins' block definitions; a document no
  * view configures — a headless `createDocument`, the Durable Object room —
  * needs them as data. Each table below is the structural row of the kinds a
- * bundled plugin defines (`void`/`island`/`lines`, `rendersContent`,
+ * bundled plugin defines (`void`/`island`/`lines`/`layout`, `rendersContent`,
  * `defaultChild`): the `.svelte` plugin spreads its row into the kind's
  * definition, so the view and a document without one read the same facts.
  * Worker-safe: the room imports it.
@@ -41,6 +41,16 @@ export const codeKinds = frozen({
 export const imageKinds = frozen({ image: { void: true } } satisfies Record<string, KindSemantics>);
 
 /**
+ * The columns plugin's structural rows: `columns` is a layout of `column`s
+ * (`layout.*` in the delete contract), a column a container that holds any
+ * block. Not in {@link defaultSemantics} yet.
+ */
+export const layoutKinds = frozen({
+	columns: { layout: true, rendersContent: false, defaultChild: 'column' },
+	column: { rendersContent: false }
+} satisfies Record<string, KindSemantics>);
+
+/**
  * Kind tables (`type → row`) as one {@link DocumentSemanticsConfig}, deeply
  * frozen: `semanticsOf({ embed: { void: true, rendersContent: false } })`.
  * To add kinds to a bundled config, merge `roles`, `rendersContent` and
@@ -69,6 +79,8 @@ export const richTextSemantics = semanticsOf(richTextKinds);
 export const codeSemantics = semanticsOf(codeKinds);
 /** `imagePlugin`'s block roles. */
 export const imageSemantics = semanticsOf(imageKinds);
+/** The columns plugin's block roles (a layout of columns). */
+export const layoutSemantics = semanticsOf(layoutKinds);
 /**
  * The rich-text, code and image plugins' block roles together — what the
  * room adopts by default and what a headless document passes explicitly.

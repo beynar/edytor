@@ -630,6 +630,84 @@ describe('layout.flow-slot: a flow over selected blocks fills their slot first',
 	});
 });
 
+describe('layout.wrap: wrapInLayout(ids, kind?) — Turn into N columns', () => {
+	const flat = [para('P'), para('Q', 'q', [para('Q1')]), para('R'), ...SEED.slice(1)];
+	const AFTER = 'C:columns[K1:column[A:paragraph,A2:paragraph],K2:column[B:paragraph]] Z:paragraph';
+
+	it('two to five siblings: one layout at the first one’s place, one block per column, children kept', () => {
+		row(
+			flat,
+			(ed) => ed.wrapInLayout(['P', 'Q', 'R']),
+			`NEW:columns[NEW:column[P:paragraph],NEW:column[Q:paragraph[Q1:paragraph]],NEW:column[R:paragraph]] ${AFTER}`
+		);
+		row(
+			flat,
+			(ed) => ed.wrapInLayout(['R', 'P']),
+			`NEW:columns[NEW:column[P:paragraph],NEW:column[R:paragraph]] Q:paragraph[Q1:paragraph] ${AFTER}`
+		);
+	});
+
+	it('siblings apart: the layout takes the first one’s place', () =>
+		row(
+			SEED,
+			(ed) => ed.wrapInLayout(['P', 'Z']),
+			'NEW:columns[NEW:column[P:paragraph],NEW:column[Z:paragraph]] C:columns[K1:column[A:paragraph,A2:paragraph],K2:column[B:paragraph]]'
+		));
+
+	it('nested siblings wrap where they are (under a toggle)', () =>
+		row(
+			[{ id: 'T', type: 'toggle', text: 't', children: [para('X'), para('Y')] }],
+			(ed) => ed.wrapInLayout(['X', 'Y']),
+			'T:toggle[NEW:columns[NEW:column[X:paragraph],NEW:column[Y:paragraph]]]'
+		));
+
+	it('refusals: one block, not siblings, in a column (D2), a layout among them, list items, no layout kind', () => {
+		for (const o of one(
+			converge(
+				[
+					...flat,
+					{
+						id: 'L',
+						type: 'unordered-list',
+						text: '',
+						children: [
+							{ id: 'i1', type: 'list-item', text: 'i1' },
+							{ id: 'i2', type: 'list-item', text: 'i2' }
+						]
+					}
+				],
+				1,
+				([a]) => {
+					expect(a.ed.wrapInLayout(['P']).status).toBe('refused');
+					expect(a.ed.wrapInLayout(['P', 'Q1']).status).toBe('refused');
+					expect(a.ed.wrapInLayout(['A', 'A2']).status).toBe('refused');
+					expect(a.ed.wrapInLayout(['P', 'C']).status).toBe('refused');
+					expect(a.ed.wrapInLayout(['i1', 'i2']).status).toBe('refused');
+					expect(a.ed.wrapInLayout(['P', 'Q'], 'paragraph').status).toBe('refused');
+					expect(a.ed.wrapInLayout(['P', 'P']).status).toBe('refused');
+				},
+				{ semantics }
+			)
+		))
+			expect(typed(o.ed)).toMatch(/^P:paragraph Q:paragraph/);
+	});
+
+	it('Ada wraps P, Q ‖ Bob types in Q → Bob’s text is in Q’s column', () => {
+		for (const o of one(
+			converge(
+				flat,
+				2,
+				([a, b]) => {
+					expect(a.ed.wrapInLayout(['P', 'Q']).status).toBe('applied');
+					expect(b.ed.insertText('Q', 1, '!').status).toBe('applied');
+				},
+				{ semantics }
+			)
+		))
+			expect(shape(o.ed)).toMatch(/^NEW:""\[NEW:""\[P:"p"\],NEW:""\[Q:"q!"\[Q1:"q1"\]\]\] R:"r"/);
+	});
+});
+
 describe('layout.nest: no layout inside a column, by gesture (D2)', () => {
 	const seed = [
 		...SEED,

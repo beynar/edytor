@@ -4,8 +4,11 @@
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import { layoutKinds } from '$lib/crdt/semantics.js';
-	import { convertToKind, type KindRow } from '$lib/kinds.js';
-	import { liftLayouts } from '$lib/selection/replaceSelection.js';
+	import { convertToKind, wrapBlocks, wrappable, type KindRow } from '$lib/kinds.js';
+	import {
+		getSelectedBlocksInDocumentOrder,
+		liftLayouts
+	} from '$lib/selection/replaceSelection.js';
 	import ColumnResizeStrips from './ColumnResize.svelte';
 	import { ColumnResize, weightOf } from './resize.svelte.js';
 
@@ -66,7 +69,9 @@
 	 * `columns.<n>`: a layout of `n` columns, each holding an empty paragraph,
 	 * the caret in the first; it replaces an empty line (a slash line holding
 	 * only its query) and is inserted after any other (`convertToKind`), one
-	 * undo step. Disabled, and refused, inside a column (D2).
+	 * undo step. Disabled, and refused, inside a column (D2). Over a block
+	 * selection of `n` sibling blocks (the block menu's Turn into, `turnsInto`)
+	 * it wraps them instead, one per column (`wrapBlocks`, `layout.wrap`).
 	 */
 	const layoutCommand = (edytor: Edytor, n: number): EditorCommand => {
 		const { id, label, group, keywords } = layoutRow(edytor, n);
@@ -80,7 +85,12 @@
 				const block = view.selection.state.startBlock;
 				return Boolean(block?.convertible) && !inColumn(block);
 			},
+			// Turn into: `n` sibling blocks wrapped, one per column (`layout.wrap`, Notion).
+			turnsInto: (blocks) => blocks.length === n && wrappable(edytor, blocks, 'columns'),
 			run: () => {
+				const selected = getSelectedBlocksInDocumentOrder(edytor);
+				if (edytor.selection.value.kind === 'blocks' && selected.length === n)
+					return wrapBlocks(edytor, selected, 'columns');
 				const block = edytor.selection.state.startBlock;
 				if (inColumn(block)) {
 					edytor.dispatcher.last = { operation: 'setBlock', status: 'refused' };

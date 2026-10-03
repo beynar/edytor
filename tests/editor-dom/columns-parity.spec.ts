@@ -322,3 +322,44 @@ test.describe('columns: slash commands', () => {
 			).toHaveCount(n);
 		});
 });
+
+test.describe('columns: Turn into N columns (demo)', () => {
+	test('two selected blocks, the block menu’s 2 columns: one layout, one block per column; undo restores', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await page.goto('/');
+		await expect(page.locator('[data-edytor-id="page-section-intro"]')).toBeVisible();
+		const text = page.locator('[data-edytor-id="page-section-intro"] [data-edytor-text]').first();
+		await text.click();
+		await page.keyboard.press('End');
+		await page.keyboard.press('ControlOrMeta+a');
+		await page.keyboard.press('ControlOrMeta+a');
+		await page.keyboard.press('Shift+ArrowDown');
+		await expect(page.locator('[data-edytor-id="page-task-one"]')).toHaveAttribute(
+			'data-edytor-selected',
+			'true'
+		);
+		await text.hover();
+		await page.locator('[data-testid="block-handle"][data-block-id="page-section-intro"]').click();
+		await expect(page.getByRole('menu', { name: 'Block actions' })).toBeVisible();
+		// The menu's search lists the Turn into rows it names (the flyout's last
+		// rows sit below a desktop viewport here).
+		await page.keyboard.type('2 col');
+		await expect(
+			page.getByRole('menu', { name: 'Block actions' }).getByRole('menuitem', { name: '2 columns' })
+		).toBeVisible();
+		await page.keyboard.press('Enter');
+		const layout = page.locator('[data-edytor-columns]').filter({
+			has: page.locator('[data-edytor-id="page-section-intro"]')
+		});
+		await expect(layout).toHaveCount(1);
+		await expect(layout.locator('[data-edytor-column]')).toHaveCount(2);
+		await expect(
+			layout.locator('[data-edytor-column]').nth(1).locator('[data-edytor-id="page-task-one"]')
+		).toHaveCount(1);
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect(layout).toHaveCount(0);
+		issues.assertClean();
+	});
+});

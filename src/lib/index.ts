@@ -49,7 +49,7 @@ export type {
 export type { Edytor as EdytorInstance, EdytorDocData } from './edytor.svelte.js';
 export type { HotKey, HotKeyCombination } from './session/keymap.js';
 export type { EdytorSelection } from './selection/selection.svelte.js';
-export { convertToKind, type KindRow } from './kinds.js';
+export { convertToKind, turnCommands, wrapBlocks, wrappable, type KindRow } from './kinds.js';
 export type {
 	Suggestion,
 	Suggestions,

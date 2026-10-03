@@ -134,6 +134,8 @@ export type BlockOperations = {
 	};
 	insertFlow: { flow: Flow; target: FlowTarget };
 	deleteBlocks: { blocks: Block[] };
+	/** Wrap sibling blocks in a new layout of `kind`, one per item (`layout.wrap`). */
+	wrapBlocks: { blocks: Block[]; kind?: string };
 	/** A divider at the caret: its steps are the conversion, insertion or split it plans. */
 	insertDivider: {};
 };

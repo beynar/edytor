@@ -1291,6 +1291,24 @@ view's layout commands (`columns.N`) are disabled there. A layout that a
 race or an explicit write (`insertBlocks`, a retype) puts inside a column
 displays as it is, by the rules above: no flatten.
 
+### `layout.wrap` — `wrapInLayout(ids, kind?)`: Turn into N columns (Notion)
+
+Sibling blocks (two or more; the view offers two to five) are wrapped in a
+new layout of the layout `kind` (else the only one the roles declare), one
+block per item in document order, at the first one's place, with their
+children; one plan, one undo step, plain ranks (a move): over `P, Q[Q1],
+R`, `wrapInLayout([P, Q, R])` gives `NEW[NEW[P], NEW[Q[Q1]], NEW[R]]`; over
+`C`'s document, `wrapInLayout([P, Z])` gives `NEW[NEW[P], NEW[Z]], C`.
+Nested siblings wrap where they are (a toggle's body). Refused for one
+block, blocks of different parents, an item, a layout or a block holding
+one (D2), where the layout does not fit (`fits`: list items, a code
+block's lines) or would sit inside an item (D2) or an island, and without
+a layout kind. A peer's edit in a wrapped block lands in its column. The
+view: the block menu's Turn into lists "N columns" over a block selection
+of N sibling blocks (`EditorCommand.turnsInto`), hooks see `wrapBlocks`.
+Pins: `layout.test.ts` (`layout.wrap`), `columns-turn-into.test.tsx`,
+`columns-parity.spec.ts`.
+
 ### `layout.place-beside` — `placeBeside(ids, target, side, kind?)`
 
 Blocks dragged to the left or right edge of another block. One plan

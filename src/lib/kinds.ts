@@ -23,6 +23,8 @@ export type KindRow = KindPreset & {
 	 * block that holds nothing, and is inserted after any other block.
 	 */
 	replaces: boolean;
+	/** A command offered as a Turn into row (`EditorCommand.turnsInto`): the row runs it. */
+	command?: EditorCommand;
 };
 
 export const kindCatalogue = (blocks: Map<string, BlockDefinition>): KindRow[] =>
@@ -69,6 +71,65 @@ export const matchesQuery = (
 /** The rows a block may turn into while keeping its content and children (the menus' list). */
 export const convertibleKinds = (edytor: Edytor): KindRow[] =>
 	edytor.kinds.filter((kind) => !kind.replaces);
+
+/**
+ * The commands a Turn into over `blocks` (as clicked) offers besides the
+ * kinds (`EditorCommand.turnsInto`), as rows that run them: "3 columns" over
+ * three sibling blocks.
+ */
+export const turnCommands = (edytor: Edytor, blocks: Block[]): KindRow[] =>
+	[...edytor.commands.values()].flatMap((command) =>
+		command.turnsInto?.(blocks)
+			? [
+					{
+						id: command.id,
+						label: command.label,
+						icon: command.icon,
+						keywords: command.keywords,
+						value: { type: '' },
+						replaces: false,
+						command
+					}
+				]
+			: []
+	);
+
+/**
+ * Whether `blocks` may be wrapped in a new layout (`layout.wrap`: sibling
+ * blocks, two or more, none a layout, a column or a block holding one, at a
+ * place a layout fits and outside any column).
+ */
+export const wrappable = (edytor: Edytor, blocks: Block[], kind?: string) =>
+	'writes' in
+	edytor.facade.prepare.wrapInLayout(
+		blocks.map((block) => block.id),
+		kind
+	);
+
+/**
+ * Wrap `blocks` in a new layout, one block per item, at the first one's place
+ * (`layout.wrap`, Notion's Turn into N columns): one plan, one undo step;
+ * hooks see `wrapBlocks`. The blocks stay selected. Answers whether it applied.
+ */
+export const wrapBlocks = (edytor: Edytor, blocks: Block[], kind?: string) => {
+	const [first] = blocks;
+	if (!first) return false;
+	const applied = dispatchPlan(
+		first,
+		'wrapBlocks',
+		{ blocks, kind },
+		(p) =>
+			edytor.facade.prepare.wrapInLayout(
+				p.blocks.map((block) => block.id),
+				p.kind
+			),
+		lineage(first.parent)
+	);
+	if (!applied) return false;
+	const live = blocks.flatMap((block) => edytor.idToBlock.get(block.id) ?? []);
+	edytor.selection.selectBlocks(...live.sort(edytor.compareBlocks));
+	return true;
+};
 
 /**
  * The kind `block` shows as: its own, or an item's list's `itemKind` (a

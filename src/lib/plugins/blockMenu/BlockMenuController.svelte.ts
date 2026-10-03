@@ -8,6 +8,7 @@ import {
 	convertToKind,
 	matchesQuery,
 	rowOf,
+	turnCommands,
 	type KindRow
 } from '$lib/kinds.js';
 import {
@@ -78,8 +79,9 @@ export class BlockMenuController {
 		return selectedMembers(this.edytor, this.blocks);
 	}
 
+	/** The Turn into rows: the kinds, then the commands that turn `blocks` into something (`turnCommands`). */
 	get kinds(): KindRow[] {
-		return convertibleKinds(this.edytor);
+		return [...convertibleKinds(this.edytor), ...turnCommands(this.edytor, this.blocks)];
 	}
 
 	/** The row naming the open block. */
@@ -153,7 +155,11 @@ export class BlockMenuController {
 	 * results), matched as the slash menu matches them (`matchesQuery`).
 	 */
 	get matchingKinds(): KindRow[] {
-		if (!this.query.trim() || !convertedBlocks(this.members).length) return [];
+		if (!this.query.trim()) return [];
+		if (!convertedBlocks(this.members).length)
+			return turnCommands(this.edytor, this.blocks).filter((kind) =>
+				matchesQuery(kind, this.query)
+			);
 		return this.kinds.filter((kind) => matchesQuery(kind, this.query));
 	}
 
@@ -196,7 +202,10 @@ export class BlockMenuController {
 	turnInto(kind: KindRow) {
 		const { block, members } = this;
 		this.close(false);
-		if (members.length > 1) {
+		if (kind.command) {
+			void kind.command.run(this.edytor);
+			this.focus();
+		} else if (members.length > 1) {
 			convertBlocks(this.edytor, members, kind);
 			this.focus();
 		} else if (convertToKind(this.edytor, block, kind, true)) this.focus();

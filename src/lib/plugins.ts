@@ -397,6 +397,12 @@ export type EditorCommand = {
 	hint?: string;
 	isEnabled?: (edytor: Edytor) => boolean;
 	run: (edytor: Edytor) => unknown | Promise<unknown>;
+	/**
+	 * Whether the block menu's Turn into offers the command over `blocks` (the
+	 * block selection as clicked); the row runs it, over that selection (the
+	 * columns plugin's `columns.<n>` over `n` sibling blocks wraps them).
+	 */
+	turnsInto?: (blocks: Block[]) => boolean;
 };
 
 export type InitializedPlugin = ReturnType<Plugin>;

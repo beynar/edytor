@@ -2402,6 +2402,52 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 
 		/**
+		 * Wrap sibling blocks in a new layout, one block per item, in document
+		 * order, at the first one's place (`layout.wrap`: Turn into N columns,
+		 * as Notion). The layout is of the layout `kind` (else the only one the
+		 * roles declare). Refused for fewer than two blocks or ones of different
+		 * parents, for an item, a layout or a block holding one (D2), where the
+		 * layout does not fit (`fits`: in a list, a code block) or lands inside
+		 * an item (D2) or an island, and for a block that does not fit an item.
+		 * Plain ranks (a move). `ids`: the new layout.
+		 */
+		const wrapInLayout = (ids: readonly BlockId[], kind?: string): Prepared => {
+			const blocks = ids.map(ref);
+			const v = view();
+			if (blocks.length < 2 || !canPlace(blocks)) return REFUSED;
+			const parent = positionOf(blocks[0]!)!.parent;
+			if (blocks.some((id) => positionOf(id)!.parent !== parent)) return REFUSED;
+			if (blocks.some((id) => isLayoutItem(id) || holdsLayout(id))) return REFUSED;
+			const wrap = layoutKind(kind && ref(kind));
+			const item = wrap === undefined ? undefined : roles.layout(wrap);
+			if (wrap === undefined || item === undefined || !fits(parent, wrap)) return REFUSED;
+			if (parent !== null && (insideItem(parent, v) || isIsland(parent) || insideIsland(parent, v)))
+				return REFUSED;
+			if (blocks.some((id) => !fitsIn(item, blockTypeOf(id)))) return REFUSED;
+			const ordered = blocks.toSorted((a, b) => positionOf(a)!.index - positionOf(b)!.index);
+			const spec = (type: string): BlockSpec => sanitizeSpec({ id: newId('b'), type, data: {} });
+			const items = ordered.map(() => spec(item));
+			const wrapper = { ...spec(wrap), children: items };
+			const at = positionOf(ordered[0]!)!.index;
+			const writes: PlanStep[] = [
+				{
+					op: 'insertBlocks',
+					parent,
+					index: at,
+					specs: [wrapper],
+					ranks: ranksFor(parent, at, 1)
+				},
+				...ordered.flatMap((id, i) => moveTo([id], items[i]!.id, 0, ranksFor(items[i]!.id, 0, 1)))
+			];
+			const kept = new Set<BlockId | null>([
+				wrapper.id,
+				...items.map((it) => it.id),
+				...landing(parent)
+			]);
+			return plan([wrapper.id], emptied(ordered, writes, kept));
+		};
+
+		/**
 		 * Split `id` at content `offset` into a new sibling `newId` (one boundary
 		 * item and the claims that follow it, no text copied; children follow).
 		 * `tail` decides the sibling's type/data once (default: the source's —
@@ -3003,6 +3049,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			unNestBlocks,
 			liftOut,
 			placeBeside,
+			wrapInLayout,
 			splitBlock,
 			mergeBlocks,
 			mergeBackward,

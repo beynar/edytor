@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.15
+
+- **Install from npm.** The pre-release is published under the `next` tag: `pnpm add edytor@next` (replace the tarball URL in your `package.json`). No API change; the tarball URLs this site served keep working.
+
 ### From 0.1.0-next.14
 
 - **Leaving a code block by keyboard.** <kbd>Enter</kbd> in a code block's empty last line (not its only line) removes the line and puts the caret in a new paragraph after the block, one undo step (the role rule for an island of lines, `insertParagraph`); <kbd>ArrowDown</kbd> in the last line with nothing after the block creates a paragraph there (code plugin). An empty line in the middle is still a new line.

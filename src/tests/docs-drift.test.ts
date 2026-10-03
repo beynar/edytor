@@ -147,7 +147,7 @@ describe('docs drift', () => {
 		expect(hits).toEqual([]);
 	});
 
-	it('while the version is a pre-release, every install names the tarball the site hosts (FW-03)', () => {
+	it('while the version is a pre-release, every install names the npm tag `edytor@next` (FW-03)', () => {
 		if (!version.includes('-')) return;
 		const config = readFileSync(join(root, 'site/blume.config.ts'), 'utf8');
 		const site = /cloudflare\(\{\s*site:\s*["']([^"']+)["']/.exec(config)?.[1];
@@ -157,18 +157,19 @@ describe('docs drift', () => {
 			pageText(path)
 				.split('\n')
 				.map((line) => [`${relative(root, path)}: ${line.trim()}`, line] as const);
-		// Every install of edytor: the hosted tarball, a local build of it, or the tag.
+		// Every install of edytor: the npm tag, or a local build of the tarball.
 		const installs = docs
 			.flatMap(lines)
 			.filter(([, line]) =>
 				/\b(?:npm i|npm install|pnpm add|yarn add|bun add) \S*edytor/.test(line)
 			);
-		const allowed = [hosted, `../edytor/edytor-${version}.tgz`, 'edytor@next'];
+		const allowed = [`../edytor/edytor-${version}.tgz`, 'edytor@next'];
 		expect(installs.filter(([, line]) => !allowed.some((target) => line.includes(target)))).toEqual(
 			[]
 		);
-		// The branch is not on the remote: the README, the install page and the
-		// server quick start give the hosted tarball, which needs no clone.
+		// CI publishes each pre-release under `next` (a bare `edytor` is the old
+		// 0.0.11): the README, the install page, the server quick start and the
+		// landing page give the tag.
 		for (const page of [
 			'README.md',
 			'site/content/docs/getting-started/index.mdx',
@@ -176,7 +177,9 @@ describe('docs drift', () => {
 			// The landing page's Copy install button (XW-05).
 			'site/pages/_home/Hero.astro'
 		])
-			expect(pageText(join(root, page)), page).toContain(`pnpm add ${hosted}`);
+			expect(pageText(join(root, page)), page).toContain('pnpm add edytor@next');
+		// The site still serves every tarball it served (lockfiles pin those URLs).
+		expect(hosted).toContain('/edytor-');
 		// The site serves public/ at its root: the pack stages the tarball there
 		// under the documented name, beside every version it served before
 		// (XW-15, DR-docs-1; the behavior is pinned in 'the hosted tarballs').

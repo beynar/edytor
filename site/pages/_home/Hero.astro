@@ -1,10 +1,8 @@
 ---
 import Icon from "blume/components/Icon.astro";
-import { version } from "../../../package.json";
 
-// npm's `edytor` is the incompatible 0.0.11: install the pre-release tarball
-// this site hosts (scripts/pack-edytor.sh), as the install page does.
-const installCommand = `pnpm add https://edytor-docs.beynar.workers.dev/edytor-${version}.tgz`;
+// npm's untagged `edytor` is the incompatible 0.0.11: install the pre-release by its tag.
+const installCommand = "pnpm add edytor@next";
 const phrases = [
   "Slate's flexibility, Svelte's ergonomics",
   "Notion-style blocks, your components",

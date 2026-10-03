@@ -857,18 +857,21 @@ export class EdytorSelection {
 		this.applySelectionSnapshot(getDomSelectionSnapshot(this.edytor.node));
 	};
 	/**
-	 * The block selection value a primary pointer press landed on inside the
-	 * editor: a collapsed DOM caret a paste finds over it is the user's only
-	 * then (`onPaste`), never the one a browser makes up at the editable's
-	 * start for a paste when the block selection shows no DOM range.
+	 * The block selection value over which the DOM caret was put — a primary
+	 * pointer press in the editor, or a foreign `selectionchange` (a script's,
+	 * no gesture) showing a collapsed caret in it (the block selection itself
+	 * ignores both): a
+	 * collapsed DOM caret a paste finds over it is the user's only then
+	 * (`onPaste`), never the one a browser makes up at the editable's start
+	 * when the block selection shows no DOM range (for the paste's own keys).
 	 */
-	pressedOver: SelectionValue | null = null;
+	placedOver: SelectionValue | null = null;
 
 	collapseSelectedBlocksAtPointer = (event: PointerEvent) => {
 		if (event.button !== 0 || this.selectedBlocks.size === 0) {
 			return;
 		}
-		this.pressedOver = this.value;
+		this.placedOver = this.value;
 
 		const point = this.getTextPointFromClientPoint(event.clientX, event.clientY);
 		if (!point) {
@@ -981,6 +984,15 @@ export class EdytorSelection {
 		const observation = this.edytor.projector.classify(selection);
 		if (observation === 'echo' || observation === 'composition') return;
 		if (observation === 'drift') return this.display();
+		// A script's caret counts; one a key leaves (a browser's caret for a key
+		// over a block selection, which shows no DOM range) does not.
+		if (
+			observation === 'foreign' &&
+			this.selectedBlocks.size &&
+			selection?.rangeCount &&
+			selection.isCollapsed
+		)
+			this.placedOver = this.value;
 		this.applySelectionSnapshot(selection);
 	};
 

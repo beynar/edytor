@@ -2586,9 +2586,15 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		 * the slot parent's default child, a deleted list's items leave its
 		 * kind, a block promoted into a list is its item). A container the delete leaves with no child goes too
 		 * (`del.range.empty-container`). `subtree` is the explicit whole-subtree
-		 * delete.
+		 * delete. `filled`: a parent the same plan fills again (a flow placed in
+		 * the deleted blocks' slot, `flow.slot`), which is never emptied, so its
+		 * layout never dissolves (`layout.flow-slot`).
 		 */
-		const deleteBlocks = (ids: readonly BlockId[], subtree = false): Prepared => {
+		const deleteBlocks = (
+			ids: readonly BlockId[],
+			subtree = false,
+			filled?: BlockId | null
+		): Prepared => {
 			const set = new Set(ids.map(ref));
 			if ([...set].some((id) => !live(id))) return REFUSED;
 			// A layout goes with its items: their blocks take its slot (`layout.dissolving`).
@@ -2663,7 +2669,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					roots.filter((r) => !promoting.has(r)).map((id) => positionOf(id)!.parent),
 					roots.filter((r) => !promoting.has(r)),
 					writes,
-					undefined,
+					filled === undefined ? undefined : new Set([filled]),
 					members
 				)
 			);
@@ -2974,7 +2980,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			ranksFor,
 			pieceRanks,
 			redata: (id, data) => dataSteps(id, replaceData(data)) ?? [],
-			deleteBlocks: (ids) => prepare.deleteBlocks(ids),
+			deleteBlocks: (ids, filled) => deleteBlocks(ids, false, filled),
 			dissolving: (gone, leaving, writes) => dissolving(new Set(gone), leaving, writes)
 		};
 

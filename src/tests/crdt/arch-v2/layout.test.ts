@@ -562,6 +562,74 @@ describe('layout.merge: merges cross columns in reading order (D4)', () => {
 	});
 });
 
+describe('layout.flow-slot: a flow over selected blocks fills their slot first', () => {
+	const run = (id, text) => ({ id, content: text ? content(text) : [] });
+	it('replacing the only block of a column → the column stays, the line takes its place', () =>
+		row(
+			SEED,
+			(ed) => ed.apply(ed.prepare.insertFlow({ replace: ['B'] }, { lines: [run('X', 'x')] })),
+			'P:paragraph C:columns[K1:column[A:paragraph,A2:paragraph],K2:column[X:paragraph]] Z:paragraph',
+			{ shapeOut: 'P:"p" C:""[K1:""[A:"a",A2:"a2"],K2:""[X:"x"]] Z:"z"' }
+		));
+
+	it('replacing every block of the first column → the same', () =>
+		row(
+			SEED,
+			(ed) => ed.apply(ed.prepare.insertFlow({ replace: ['A', 'A2'] }, { lines: [run('X', '')] })),
+			'P:paragraph C:columns[K1:column[X:paragraph],K2:column[B:paragraph]] Z:paragraph'
+		));
+
+	it('a copied layout replacing a column’s only block lands as its blocks (flow.layout)', () =>
+		row(
+			SEED,
+			(ed) =>
+				ed.apply(
+					ed.prepare.insertFlow(
+						{ replace: ['B'] },
+						{
+							lines: [
+								{
+									id: 'L',
+									type: 'columns',
+									children: [
+										{
+											id: 'L1',
+											type: 'column',
+											children: [{ id: 'X', type: 'paragraph', content: content('x') }]
+										},
+										{
+											id: 'L2',
+											type: 'column',
+											children: [{ id: 'Y', type: 'paragraph', content: content('y') }]
+										}
+									]
+								}
+							]
+						}
+					)
+				),
+			'P:paragraph C:columns[K1:column[A:paragraph,A2:paragraph],K2:column[X:paragraph,Y:paragraph]] Z:paragraph'
+		));
+
+	it('replacing a column’s block ‖ a peer deletes its other column → one column left, it dissolves', () => {
+		for (const o of one(
+			converge(
+				SEED,
+				2,
+				([a, b]) => {
+					expect(
+						a.ed.apply(a.ed.prepare.insertFlow({ replace: ['B'] }, { lines: [run('X', 'x')] }))
+							.status
+					).toBe('applied');
+					expect(b.ed.deleteBlocks(['K1']).status).toBe('applied');
+				},
+				{ semantics }
+			)
+		))
+			expect(typed(o.ed)).toBe('P:paragraph A:paragraph A2:paragraph X:paragraph Z:paragraph');
+	});
+});
+
 describe('layout.nest: no layout inside a column, by gesture (D2)', () => {
 	const seed = [
 		...SEED,

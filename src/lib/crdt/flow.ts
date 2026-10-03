@@ -84,7 +84,8 @@ export type FlowContext = RangeDeleteContext & {
 	/** Ranks for the `count` blocks a split of `id` at `at` puts after it, by that offset. */
 	pieceRanks: (id: BlockId, at: number, count: number) => string[];
 	redata: (id: BlockId, data: Record<string, unknown>) => PlanStep[];
-	deleteBlocks: (ids: readonly BlockId[]) => Prepared;
+	/** `deleteBlocks`; `filled`: a parent the plan fills again, never emptied (`flow.slot`). */
+	deleteBlocks: (ids: readonly BlockId[], filled?: BlockId | null) => Prepared;
 	insertBlocks: (dest: Destination, specs: readonly BlockSpec[]) => Prepared;
 };
 
@@ -163,9 +164,17 @@ export const flowOps = (c: FlowContext) => ({
 			let pre: PlanStep[] = [];
 			if ('slot' in target) slot = target.slot;
 			else {
-				const del = c.deleteBlocks(target.replace);
+				// The lines fill the first block's slot: its parent is never emptied
+				// by the delete, so a column keeps its layout (`layout.flow-slot`).
+				const at = c.order().at;
+				const first = target.replace
+					.filter((id) => at.has(id))
+					.sort((a, b) => at.get(a)! - at.get(b)!)[0];
+				const del = c.deleteBlocks(
+					target.replace,
+					first === undefined ? undefined : c.positionOf(first)?.parent
+				);
 				if (!('writes' in del)) return del;
-				const first = [...del.ids].sort((a, b) => c.order().at.get(a)! - c.order().at.get(b)!)[0];
 				if (first === undefined) return c.refused;
 				slot = c.positionOf(first)!;
 				pre = [...del.writes];

@@ -353,7 +353,10 @@ item, `flow.apart`).
 Over a block selection the selected blocks are deleted (`deleteBlocks`,
 `del.blocks.promote`: their unselected children stay, after the placed
 lines) and the lines are placed as blocks in the first one's slot, in the
-same plan (runs take the slot's default child). Over selected lines of an
+same plan (runs take the slot's default child). The lines fill that slot
+before the delete decides what it empties: the slot's parent is never
+removed as emptied, so a list keeps its item and a column its layout
+(`layout.flow-slot`). Over selected lines of an
 island declared `lines` (code lines), the lines are plain lines
 (`flow.lines`, HX-06): no block lands in or after the island, and a flow
 that shows no line leaves one empty code line. Caret: the end of the last
@@ -1238,6 +1241,18 @@ In the plan that causes them, one undo step:
 
 A retype is not mirrored: a column retyped to another kind leaves the
 layout at read time (`layout.only-items`, then `layout.single`).
+
+### `layout.flow-slot` — a flow over a column's blocks fills their slot (Notion)
+
+Typing, a composition or a paste over a block selection in a column
+(`flow.slot`) places its lines in the first selected block's slot before
+the delete empties anything: the column is not emptied, so it stays and the
+layout with it. Typing over `B`, the only block of `K2`, gives
+`C[K1[A, A2], K2[NEW]]`, the caret in `NEW`; over `A, A2`, `C[K1[NEW],
+K2[B]]`. A layout pasted there lands as its blocks (`flow.layout`). A peer
+deleting `K1` meanwhile leaves one column: it dissolves as any (`layout.single`).
+Pins: `layout.test.ts` (`layout.flow-slot`), `columns-replace.test.tsx`,
+`columns-parity.spec.ts`.
 
 ### `layout.merge` — merges cross columns in reading order (D4, Notion)
 

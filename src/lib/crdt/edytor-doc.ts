@@ -2353,7 +2353,12 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 				!insideIsland(parent)
 			)
 				return at;
-			for (let up = parent; up !== null && !isLayoutItem(up); up = positionOf(up)!.parent) at = up;
+			for (
+				let up: BlockId | null = parent;
+				up !== null && !isLayoutItem(up);
+				up = positionOf(up)!.parent
+			)
+				at = up;
 			return at;
 		};
 		/**

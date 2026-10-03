@@ -823,6 +823,54 @@ describe('layout.place-beside: placeBeside(ids, target, side, kind?)', () => {
 		);
 	});
 
+	it('a toggle’s or a callout’s child is wrapped where it is; a nested block too', () => {
+		const toggle = (id, ...children) => ({ id, type: 'toggle', text: 't', children });
+		const callout = (id, ...children) => ({ id, type: 'callout', text: 'c', children });
+		row(
+			[toggle('T', para('T1'), para('T2')), para('Z')],
+			(ed) => ed.placeBeside(['Z'], 'T1', 'right'),
+			'T:toggle[NEW:columns[NEW:column[T1:paragraph],NEW:column[Z:paragraph]],T2:paragraph]'
+		);
+		row(
+			[callout('O', para('O1')), para('Z')],
+			(ed) => ed.placeBeside(['Z'], 'O1', 'left'),
+			'O:callout[NEW:columns[NEW:column[Z:paragraph],NEW:column[O1:paragraph]]]'
+		);
+		row(
+			[para('Q', 'q', [para('Q1')]), para('Z')],
+			(ed) => ed.placeBeside(['Z'], 'Q1', 'right'),
+			'Q:paragraph[NEW:columns[NEW:column[Q1:paragraph],NEW:column[Z:paragraph]]]'
+		);
+		// A list item in a toggle stands for its list, wrapped in the toggle.
+		row(
+			[
+				toggle('T', {
+					id: 'U',
+					type: 'unordered-list',
+					text: '',
+					children: [{ id: 'I1', type: 'list-item', text: 'i1' }]
+				}),
+				para('Z')
+			],
+			(ed) => ed.placeBeside(['Z'], 'I1', 'right'),
+			'T:toggle[NEW:columns[NEW:column[U:unordered-list[I1:list-item]],NEW:column[Z:paragraph]]]'
+		);
+	});
+
+	it('inside a column, a toggle’s child cannot be wrapped (D2): a new column beside its column', () =>
+		row(
+			[
+				cols(
+					'C',
+					col('K1', { id: 'T', type: 'toggle', text: 't', children: [para('T1')] }),
+					col('K2', para('B'))
+				),
+				para('Z')
+			],
+			(ed) => ed.placeBeside(['Z'], 'T1', 'right'),
+			'C:columns[K1:column[T:toggle[T1:paragraph]],NEW:column[Z:paragraph],K2:column[B:paragraph]]'
+		));
+
 	it('the sources are cleaned in the same plan: an emptied column goes, its layout dissolves', () => {
 		row(
 			SEED,

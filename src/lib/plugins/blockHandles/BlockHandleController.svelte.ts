@@ -709,21 +709,12 @@ export class BlockHandleController {
 	}
 
 	/**
-	 * The block a beside placement over `block` stands beside: its outermost
-	 * block below the root or a layout's item (a list item's list), or the
-	 * item itself — `placeBeside`'s own resolution.
+	 * The block a beside placement over `block` stands beside: the document's
+	 * own resolution (`facade.besideAt`, `placeBeside`'s): a list item's list,
+	 * a code line's code block, a toggle's child itself, an item itself.
 	 */
 	private besideOf(block: Block) {
-		const { facade } = this.edytor;
-		let at = block;
-		while (
-			!facade.isLayoutItem(at.id) &&
-			at.parent &&
-			!at.parent.isRoot &&
-			!facade.isLayoutItem(at.parent.id)
-		)
-			at = at.parent;
-		return at;
+		return this.edytor.idToBlock.get(this.edytor.facade.besideAt(block.id)) ?? block;
 	}
 
 	/** The item (and its layout) a beside placement at `outer` (`besideOf`) adds a column beside. */

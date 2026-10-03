@@ -1315,10 +1315,17 @@ Blocks dragged to the left or right edge of another block. One plan
 (`prepare.placeBeside`), one undo step, plain ranks (a move: not ranked by
 source, `order-scope.test.ts`).
 
-- The target resolves to its outermost block below the root or below an
-  item (a list item → its list, a code line → its code block). A target
-  that is an item stands for itself; a layout for its first (`left`) or
-  last (`right`) slot.
+- The target resolves to its container only when its parent shows only
+  its children (a list item → its list, at any depth) or is an island of
+  lines (a code line → its code block). Any other block stands for itself
+  where it is — a toggle's, a callout's or a nested block's child is
+  wrapped inside its parent (`placeBeside([Z], T1, 'right')` under a
+  toggle `T[T1, T2]`: `T[NEW[NEW[T1], NEW[Z]], T2]`) — when a layout fits
+  there (`fits`, outside any item and island, D2); else it resolves to its
+  outermost block below the root or below an item (a toggle's child in a
+  column: a new column beside that column). A target that is an item
+  stands for itself; a layout for its first (`left`) or last (`right`)
+  slot. The view's beside bands read the same resolution (`besideAt`).
 - That block directly in an item: a new item holding `ids` goes beside
   that item (`placeBeside([Z], A2, 'right')`: `C[K1[A, A2], NEW[Z], K2[B]]`).
   Otherwise the block and a new item holding `ids` are wrapped in a new

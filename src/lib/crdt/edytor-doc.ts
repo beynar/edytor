@@ -2323,6 +2323,40 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			return kinds.length === 1 ? kinds[0] : undefined;
 		};
 		/**
+		 * The block a beside placement at `target` stands beside
+		 * (`layout.place-beside`): a layout or an item for itself; a block whose
+		 * parent shows only its children (a list item → its list, at any depth)
+		 * or is an island of lines (a code line → its code block) for that
+		 * parent; then the block itself when it sits directly in an item or at
+		 * the root, or where a new layout of `kind` (else the only layout kind)
+		 * fits beside it (a toggle's, a callout's or a nested block's child,
+		 * outside any item and island, D2); else its outermost block below the
+		 * root or an item.
+		 */
+		const besideAt = (target: BlockId, kind?: string): BlockId => {
+			let at = ref(target);
+			if (isLayout(at) || isLayoutItem(at)) return at;
+			for (
+				let parent = positionOf(at)?.parent ?? null;
+				parent !== null && !isLayoutItem(parent) && (isContainer(parent) || isLines(parent));
+				parent = positionOf(parent)?.parent ?? null
+			)
+				at = parent;
+			const parent = positionOf(at)?.parent ?? null;
+			if (parent === null || isLayoutItem(parent)) return at;
+			const wrap = layoutKind(kind);
+			if (
+				wrap !== undefined &&
+				fits(parent, wrap) &&
+				!insideItem(parent) &&
+				!isIsland(parent) &&
+				!insideIsland(parent)
+			)
+				return at;
+			for (let up = parent; up !== null && !isLayoutItem(up); up = positionOf(up)!.parent) at = up;
+			return at;
+		};
+		/**
 		 * Place `ids` beside `target`, to its `side` (`layout.place-beside`: a
 		 * block dragged to another block's left or right edge). The target
 		 * resolves to its outermost block below the root or below a layout
@@ -2353,16 +2387,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			if (moved.some((id) => isLayoutItem(id) || holdsLayout(id))) return REFUSED;
 			const right = side === 'right';
 			// Where the new item goes: beside an item of a layout, or a new layout wrapping `at`.
-			let at = target;
+			const at = besideAt(target, kind && ref(kind));
 			let layout: BlockId | null = null;
 			let index = 0;
 			if (isLayout(at)) [layout, index] = [at, right ? childrenIds(at).length : 0];
 			else {
-				while (!isLayoutItem(at)) {
-					const parent = positionOf(at)!.parent;
-					if (parent === null || isLayoutItem(parent)) break;
-					at = parent;
-				}
 				const item = isLayoutItem(at) ? at : positionOf(at)!.parent;
 				if (item !== null) {
 					const pos = positionOf(item)!;
@@ -3203,6 +3232,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			isLayout: byRef(isLayout),
 			/** `id` is a layout item: of its layout's item kind, directly in it (a column). */
 			isLayoutItem: byRef(isLayoutItem),
+			/** The block a beside placement at `id` stands beside (`placeBeside`'s resolution). */
+			besideAt: (id: BlockId, kind?: string) => besideAt(id, kind),
 			islandOf: byRef((id: BlockId) => islandOf(id)),
 			insideIsland: byRef((id: BlockId) => insideIsland(id)),
 			// structural capability (R5)

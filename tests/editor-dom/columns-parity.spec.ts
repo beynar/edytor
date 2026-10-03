@@ -363,3 +363,88 @@ test.describe('columns: Turn into N columns (demo)', () => {
 		issues.assertClean();
 	});
 });
+
+/** Open the dom harness on `children` (the `dst` scenario's document). */
+const openDoc = async (page: Page, children: unknown[]) => {
+	await page.goto(
+		`/test/dom?scenario=dst&handles=true&dst=${encodeURIComponent(JSON.stringify({ children }))}`
+	);
+	await waitForEditorReady(page, { requireRuntime: true });
+	await fit(page);
+};
+const para = (id: string, text: string, children?: unknown[]) => ({
+	id,
+	type: 'paragraph',
+	content: [{ text }],
+	...(children && { children })
+});
+/** Press `id`'s grip and drag to `to`, the button kept down. */
+const dragTo = async (page: Page, id: string, to: { x: number; y: number }) => {
+	await page.locator(`[data-edytor-id="${id}"] [data-edytor-text]`).first().hover();
+	const grip = page.locator(`[data-testid="block-handle"][data-block-id="${id}"]`);
+	await expect(grip).toBeVisible();
+	const g = (await grip.boundingBox())!;
+	await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(to.x - 12, to.y, { steps: 12 });
+	await page.mouse.move(to.x - 1, to.y, { steps: 6 });
+	await page.mouse.move(to.x, to.y);
+};
+const indicator = (page: Page) => page.locator('[data-edytor-drop-indicator]');
+const tree = (page: Page) =>
+	page.evaluate(() => {
+		const edytor = (window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__;
+		type Node = { id: string; type: string; children?: Node[] };
+		const name = (b: Node) => (b.type === 'columns' ? 'L' : b.type === 'column' ? 'col' : b.id);
+		const walk = (blocks: Node[] = []): unknown[] =>
+			blocks.map((b) => (b.children?.length ? [name(b), walk(b.children)] : name(b)));
+		return walk(edytor.value.children as Node[]);
+	});
+
+test.describe('columns: beside a block inside a toggle', () => {
+	test("dropped on a toggle child's right edge: the layout is made inside the toggle", async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await openDoc(page, [
+			{
+				id: 'T',
+				type: 'toggle',
+				data: {},
+				content: [{ text: 'toggle' }],
+				children: [para('T1', 'inside one'), para('T2', 'inside two')]
+			},
+			para('Z', 'after')
+		]);
+		// The browser owns a toggle's open state (`viewState`): open it as a click would.
+		await page.evaluate(() =>
+			document.querySelectorAll('details').forEach((d) => ((d as HTMLDetailsElement).open = true))
+		);
+		await expect(page.locator('[data-edytor-id="T1"] [data-edytor-text]').first()).toBeVisible();
+		const t1 = await box(page, 'T1');
+		await dragTo(page, 'Z', { x: t1.x + t1.width - 12, y: t1.y + Math.min(t1.height, 28) / 2 });
+		await expect(indicator(page)).toHaveAttribute('data-position', 'right');
+		// The bar runs along the toggle child's own edge, not the toggle's.
+		const bar = (await indicator(page).boundingBox())!;
+		expect(Math.abs(bar.y - t1.y)).toBeLessThanOrEqual(4);
+		await page.mouse.up();
+		await expect
+			.poll(() => tree(page))
+			.toEqual([
+				[
+					'T',
+					[
+						[
+							'L',
+							[
+								['col', ['T1']],
+								['col', ['Z']]
+							]
+						],
+						'T2'
+					]
+				]
+			]);
+		issues.assertClean();
+	});
+});

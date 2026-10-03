@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.13
+
+- **Published to npm.** The package names its repository (`repository` in `package.json`) and a version tag publishes it from CI with provenance: pre-releases under the `next` dist-tag (`npm install edytor@next`), `latest` stays on `0.0.11` until a stable release. No API change.
+
 ### From 0.1.0-next.12
 
 - **Presence can be throttled and narrowed to blocks.** New `presence` prop (`{ share?: 'caret' | 'block' | 'none'; throttle?: number }`, also `new Edytor({ presence })` and the settable `edytor.presence`, a `PresenceWriter`): `throttle` spaces a view's presence writes (first at once, the newest at the window's end); `share: 'block'` publishes only the focused block, so moves inside it publish nothing; `'none'` publishes nothing. See [Sharing less at scale](/docs/collaboration/presence#sharing-less-at-scale).

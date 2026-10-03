@@ -148,3 +148,33 @@ test.describe('columns: a block selection replaced in place (layout.flow-slot)',
 		});
 	}
 });
+
+test.describe('columns: the block-selection arrows never select a column', () => {
+	test("Shift+ArrowDown from column 1's last block extends to column 2's first; Backspace deletes what shows", async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		await selectBlock(page, 'A2');
+		await page.keyboard.press('Shift+ArrowDown');
+		await expect.poll(() => selected(page)).toEqual(['A2', 'B']);
+		await page.keyboard.press('Shift+ArrowDown');
+		await expect.poll(() => selected(page)).toEqual(['A2', 'B', 'Z']);
+		await page.keyboard.press('Shift+ArrowUp');
+		await expect.poll(() => selected(page)).toEqual(['A2', 'B']);
+		await page.keyboard.press('Backspace');
+		await expect.poll(() => shape(page)).toEqual(['P', 'A', 'Z']);
+		issues.assertClean();
+	});
+
+	test("ArrowDown over a selected block steps over the column onto the next column's block", async ({
+		page
+	}) => {
+		await open(page);
+		await selectBlock(page, 'A2');
+		await page.keyboard.press('ArrowDown');
+		await expect.poll(() => selected(page)).toEqual(['B']);
+		await page.keyboard.press('ArrowUp');
+		await expect.poll(() => selected(page)).toEqual(['A2']);
+	});
+});

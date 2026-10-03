@@ -87,6 +87,20 @@ const history =
  */
 const SEALED = { sealed: true } as const;
 
+/**
+ * The next block a block-selection key steps onto: the next shown block in
+ * document order (`shown`, sealed), past a layout and its columns, which show
+ * no line and no highlight of their own (Notion): a selection holding every
+ * block of a layout stands for it (`liftLayouts`).
+ */
+const stepOnto = (block: Block, step: 'blockBefore' | 'blockAfter') => {
+	const { facade } = block.edytor;
+	let next = shown(block, step, SEALED);
+	while (next && (facade.isLayout(next.id) || facade.isLayoutItem(next.id)))
+		next = shown(next, step, SEALED);
+	return next;
+};
+
 /** Move a single block selection to its sealed neighbour in document order. */
 const moveBlockSelection =
 	(step: 'blockBefore' | 'blockAfter'): HotKey =>
@@ -94,7 +108,7 @@ const moveBlockSelection =
 		const selectedBlocks = edytor.selection.selectedBlocks;
 		if (selectedBlocks.size === 1) {
 			prevent(() => {
-				const target = shown(selectedBlocks.values().next().value as Block, step, SEALED);
+				const target = stepOnto(selectedBlocks.values().next().value as Block, step);
 				if (target) {
 					edytor.selection.selectBlocks(target);
 				}
@@ -122,8 +136,8 @@ const extendBlockSelection = (edytor: Edytor, direction: 'up' | 'down'): void =>
 	const sorted = members.toSorted(edytor.compareBlocks);
 	const next =
 		direction === 'up'
-			? shown(sorted[0]!, 'blockBefore', SEALED)
-			: shown(sorted.at(-1)!, 'blockAfter', SEALED);
+			? stepOnto(sorted[0]!, 'blockBefore')
+			: stepOnto(sorted.at(-1)!, 'blockAfter');
 	if (next) edytor.selection.addBlockToSelection(next);
 };
 

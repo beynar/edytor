@@ -6,5 +6,11 @@
 	"compatibility_date": "2026-09-26",
 	// edytor.dev is the docs' origin; the workers.dev URL keeps answering.
 	"routes": [{ "pattern": "edytor.dev", "custom_domain": true }],
+	// A Workers Builds deploy once uploaded the room under this name (2026-10-03);
+	// v2 deletes the Durable Object class it left behind (it held nothing).
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["DocumentRoom"] },
+		{ "tag": "v2", "deleted_classes": ["DocumentRoom"] }
+	],
 	"observability": { "enabled": true }
 }

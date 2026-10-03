@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev -c wrangler.jsonc",
-    "deploy": "wrangler deploy -c wrangler.jsonc"
+    "deploy": "env -u WRANGLER_CI_OVERRIDE_NAME -u WRANGLER_CI_MATCH_TAG wrangler deploy -c wrangler.jsonc"
   },
   "dependencies": {
     "edytor": "file:../vendor/edytor.tgz"

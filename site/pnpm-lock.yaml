@@ -2588,8 +2588,8 @@ packages:
     engines: {node: '>= 0.4'}
 
   edytor@file:vendor/edytor.tgz:
-    resolution: {integrity: sha512-Z4aO0zfpY/JhoX/on9u8Gkhd5wm0yJlattjh6x+uks217vTXjX5KFTmS9ZSkbc/a+bHliwaRBWctCjRypzi0sg==, tarball: file:vendor/edytor.tgz}
-    version: 0.1.0-next.14
+    resolution: {integrity: sha512-NEpWO4vwAd81+QDtKF0H5qND02ttFd8F3JiXP1PH8uAPcuPhAQawvQM6MG/e5E3fLiISCLnn6W0NNcFXDBD4OQ==, tarball: file:vendor/edytor.tgz}
+    version: 0.1.0-next.15
     engines: {node: '>=22.0.0'}
     peerDependencies:
       svelte: ^5.0.0

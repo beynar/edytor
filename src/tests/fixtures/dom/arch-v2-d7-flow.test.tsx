@@ -168,7 +168,7 @@ describe('clipboard spec assertions (dom lane)', () => {
 		edytor.selection.selectBlocks(source, ...source.children);
 		const copied = await dispatchCopy(editor);
 		// The user's click at the end of "After": a press, then the browser's caret.
-		blockText(edytor, 1).node!.dispatchEvent(
+		blockText(edytor, 1)!.node!.dispatchEvent(
 			new PointerEvent('pointerdown', { bubbles: true, button: 0 })
 		);
 		await setNativeSelection(edytor, blockText(edytor, 1), 5);

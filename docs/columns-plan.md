@@ -13,7 +13,7 @@ the Cloudflare room:
 - a **layout** shows two or more **columns** side by side; a column holds any
   blocks (text, lists, code, images, toggles…);
 - created by **dragging blocks to the left or right edge of another block**
-  (the main gesture), or from the slash / `+` menu (`2 columns` … `4 columns`);
+  (the main gesture), or from the slash / `+` menu (`2 columns` … `5 columns`; `/col3`, `/columns3` as Notion);
 - **resizable** by dragging the gap between two columns;
 - an empty column never shows; a layout showing one column shows as that
   column's blocks;
@@ -186,7 +186,7 @@ data-edytor-columns`, snippet renders its children in the one
   marker, indent zeroed). `columns.css`: gap `var(--edytor-columns-gap,
 46px)`, `min-width: 0`, margins reset at column edges, `container-type:
 inline-size`, `@container (max-width: 480px)` stacking.
-- **Commands** `columns.2` … `columns.4` ("2 columns" …, group "Layout",
+- **Commands** `columns.2` … `columns.5` ("2 columns" …, group "Layout",
   keywords `columns`, `layout`, `side by side`): a layout of N columns each
   holding an empty paragraph, caret in column 1, through `placing` (replaces
   an empty slash line, else inserts after); refused inside a column (D2).

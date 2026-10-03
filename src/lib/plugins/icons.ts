@@ -47,6 +47,7 @@ const ICONS: Record<string, string> = {
 	'columns.2': columns(2),
 	'columns.3': columns(3),
 	'columns.4': columns(4),
+	'columns.5': columns(5),
 	'mark.link': svg(
 		'<path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/>'
 	),

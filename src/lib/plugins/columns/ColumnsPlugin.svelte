@@ -46,7 +46,8 @@
 			id: `columns.${n}`,
 			label: `${n} columns`,
 			group: 'Layout',
-			keywords: ['columns', 'layout', 'side by side'],
+			// Notion's `/col3`, `/columns3` too.
+			keywords: ['columns', 'layout', 'side by side', `col${n}`, `columns${n}`],
 			value: {
 				type: 'columns',
 				data: {},
@@ -116,7 +117,7 @@
 		const plugin: Plugin = (edytor) => {
 			const resize = new ColumnResize(edytor, options.minWidth ?? 0.1);
 			return {
-				commands: [2, 3, 4].map((n) => layoutCommand(edytor, n)),
+				commands: [2, 3, 4, 5].map((n) => layoutCommand(edytor, n)),
 				// The resize strips: in the overlay, for the layout under the pointer.
 				onEdytorAttached: ({ node }) => {
 					const over = (event: PointerEvent) => resize.hover(event.target);

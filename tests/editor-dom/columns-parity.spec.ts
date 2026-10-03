@@ -303,3 +303,22 @@ test.describe("columns: a column block's +", () => {
 		expect(h.x + h.width).toBeLessThanOrEqual(k2.x + 1);
 	});
 });
+
+test.describe('columns: slash commands', () => {
+	for (const [query, n] of [
+		['/col3', 3],
+		['/columns5', 5]
+	] as const)
+		test(`${query} then Enter inserts ${n} columns (Notion)`, async ({ page }) => {
+			await open(page);
+			await clickAt(page, 'Z', 'end');
+			await page.keyboard.press('Enter');
+			await page.keyboard.type(query);
+			await expect(page.locator('[data-testid="slash-menu-item"]')).toHaveText([`${n} columns`]);
+			await page.keyboard.press('Enter');
+			await expect(page.locator('[data-edytor-columns]')).toHaveCount(2);
+			await expect(
+				page.locator('[data-edytor-columns]').nth(1).locator('[data-edytor-column]')
+			).toHaveCount(n);
+		});
+});

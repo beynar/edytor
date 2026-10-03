@@ -1,6 +1,6 @@
 /** @jsxImportSource ../../jsx */
 /**
- * The layout commands (docs/columns-plan.md §5): `columns.2` … `columns.4`
+ * The layout commands (docs/columns-plan.md §5): `columns.2` … `columns.5`
  * ("2 columns" …, group "Layout") insert a layout of N columns, each
  * holding one empty paragraph, the caret in the first column's paragraph.
  * Placed as a kind that replaces content (`placing`): an empty line (a
@@ -77,18 +77,22 @@ const rows = () =>
 	);
 
 describe('the layout commands', () => {
-	it('are three commands in the Layout group', async () => {
+	it('are four commands in the Layout group, with Notion’s col<n> and columns<n> keywords', async () => {
 		const { edytor } = await renderColumns([p('P', '')]);
-		const listed = [2, 3, 4].map((n) => {
+		const listed = [2, 3, 4, 5].map((n) => {
 			const command = edytor.commands.get(`columns.${n}`)!;
 			return [command.label, command.group, command.keywords];
 		});
 		expect(listed).toEqual(
-			[2, 3, 4].map((n) => [`${n} columns`, 'Layout', ['columns', 'layout', 'side by side']])
+			[2, 3, 4, 5].map((n) => [
+				`${n} columns`,
+				'Layout',
+				['columns', 'layout', 'side by side', `col${n}`, `columns${n}`]
+			])
 		);
 	});
 
-	for (const n of [2, 3, 4]) {
+	for (const n of [2, 3, 4, 5]) {
 		it(`columns.${n} converts an empty paragraph in place, caret in column 1, one undo step`, async () => {
 			const { edytor } = await renderColumns([p('P', '')]);
 			await caretIn(edytor, 'P', 0);
@@ -137,8 +141,21 @@ describe('the layout commands', () => {
 		const { edytor, editor } = await renderColumns([p('P', '')], [slashMenuPlugin]);
 		await caretIn(edytor, 'P', 0);
 		await type(editor, '/side by');
-		expect(rows()).toEqual(['2 columns', '3 columns', '4 columns']);
+		expect(rows()).toEqual(['2 columns', '3 columns', '4 columns', '5 columns']);
 	});
+
+	for (const [query, row] of [
+		['/col3', '3 columns'],
+		['/columns3', '3 columns'],
+		['/col5', '5 columns'],
+		['/columns2', '2 columns']
+	])
+		it(`the slash menu finds ${row} by ${query} (Notion)`, async () => {
+			const { edytor, editor } = await renderColumns([p('P', '')], [slashMenuPlugin]);
+			await caretIn(edytor, 'P', 0);
+			await type(editor, query);
+			expect(rows()).toEqual([row]);
+		});
 
 	it('inside a column: disabled, not listed, and refused when run (D2)', async () => {
 		const { edytor, editor } = await renderColumns(

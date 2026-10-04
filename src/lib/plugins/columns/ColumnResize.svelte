@@ -33,7 +33,7 @@
 				data-dragging={resize.drag ? 'true' : undefined}
 				data-selecting={resize.selecting ? 'true' : undefined}
 				onpointerdown={(event) => resize.start(event, strip)}
-				onmousedown={(event) => event.preventDefault()}
+				onmousedown={(event) => resize.mousedown(event, strip)}
 			></div>
 		{/each}
 	{/if}

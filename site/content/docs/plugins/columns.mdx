@@ -239,7 +239,7 @@ In a view, moves take two more positions: `edytor.moveBlocks({ blocks, target, p
 
 ## Limitations
 
-- Over the bare gap between two columns (not over a handle), a text selection dragged from column 1 stays in its row up to the gap's middle; past it, it extends to the end of column 1 and over column 2's rows above the pointer, up to the start of column 2's row at the pointer's height.
+- A text selection is one range in reading order, as the browser gives it. Dragged from column 1 over the bare gap between two columns (not over a handle), it keeps to the column the pointer is nearest: up to the gap's middle, it stays in its row of column 1; past it, it reaches column 2 as dragging into column 2's text does, so it covers the rest of column 1 and column 2's rows above the pointer, up to the start of column 2's row at the pointer's height (the same in Chromium, Firefox and Safari).
 - <kbd>Escape</kbd> from the block menu opened on a column's block gives back a caret, not the block selection.
 - There is no keyboard resize and no per-column colour.
 - A client of an earlier pre-release shows a stored layout as unknown kinds, one block under the other, and applies none of the rules above to it.

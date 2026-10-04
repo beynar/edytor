@@ -48,22 +48,62 @@ export const takeKeys = (edytor: Edytor) => {
 	edytor.projector.parked();
 };
 
+/*
+ * The press: one per primary button press, its `pointerdown`, or a
+ * `mousedown` no `pointerdown` came before. WebKit fires no `pointercancel`
+ * at a native `dragstart` (a block handle's drag) and, believing the button
+ * still down, no `pointerdown` for the next press, only its `mousedown`
+ * (WebKit bugs 202287, 222632, 279749): that primary `mousedown` is the
+ * press (lone). `attachFocus` classifies each `mousedown` of its view's
+ * document at the capture phase, first of the view's listeners; the lone one
+ * of each view is kept here, read by `isLonePress` and `onPress`.
+ */
+const lonePresses = new WeakMap<Edytor, MouseEvent>();
+
+/**
+ * Whether `event` is the press of a primary `mousedown` no `pointerdown`
+ * came before (WebKit's first press after a drag). Asked during the
+ * event's dispatch, after the document's capture phase saw it: by a
+ * listener the view's attach installs later (a plugin's `onEdytorAttached`)
+ * or by an element's own (bubbling, target phase), such as the chrome in the
+ * overlay, which starts from it as from a `pointerdown`.
+ */
+export const isLonePress = (edytor: Edytor, event: MouseEvent) => lonePresses.get(edytor) === event;
+
+/**
+ * Every press on `target` (`isLonePress`): its `pointerdown`, or the lone
+ * `mousedown` standing for a missing one, never both for one press. For a
+ * listener installed after the view's attach (a plugin's press outside its
+ * menu). Answers the teardown.
+ */
+export const onPress = (
+	edytor: Edytor,
+	target: EventTarget,
+	listener: (event: MouseEvent) => void,
+	options?: boolean | AddEventListenerOptions
+) => {
+	const lone = (event: Event) => {
+		if (isLonePress(edytor, event as MouseEvent)) listener(event as MouseEvent);
+	};
+	target.addEventListener('pointerdown', listener as EventListener, options);
+	target.addEventListener('mousedown', lone, options);
+	return () => {
+		target.removeEventListener('pointerdown', listener as EventListener, options);
+		target.removeEventListener('mousedown', lone, options);
+	};
+};
+
 export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] => {
 	let lastPointerDownInsideEditorAt = Number.NEGATIVE_INFINITY;
 
 	/*
-	 * The press: one per primary button press, its `pointerdown`, or a
-	 * `mousedown` no `pointerdown` came before. WebKit fires no
-	 * `pointercancel` at a native `dragstart` (a block handle's drag) and,
-	 * believing the button still down, no `pointerdown` for the next press,
-	 * only its `mousedown` (WebKit bugs 202287, 222632, 279749): that
-	 * primary `mousedown` is the press (`lone`). A primary `pointerdown` arms
-	 * `compat` until the `mousedown` it is followed by (before or after its
-	 * release, a touch's comes after), so a pair counts once. Only the
-	 * browser's own `mousedown` stands for a missing press; a script's is none.
+	 * A primary `pointerdown` arms `compat` until the `mousedown` it is
+	 * followed by (before or after its release, a touch's comes after), so a
+	 * pair counts once. Only the browser's own `mousedown` stands for a
+	 * missing press; a script's is none (`lonePresses`).
 	 */
 	let compat = false;
-	let lone: MouseEvent | null = null;
+	const lone = (event: MouseEvent) => isLonePress(edytor, event);
 
 	/** Where the press landed: the gesture serial, and whether the user went outside. */
 	const gesture = (event: MouseEvent) => {
@@ -184,7 +224,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 			'pointerdown',
 			(event: PointerEvent) => {
 				if (event.isPrimary) compat = true;
-				lone = null;
+				lonePresses.delete(edytor);
 				gesture(event);
 			},
 			{ capture: true }
@@ -193,9 +233,11 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 			node.ownerDocument,
 			'mousedown',
 			(event: MouseEvent) => {
-				lone = compat || !event.isTrusted || event.button !== 0 ? null : event;
+				const press = !compat && event.isTrusted && event.button === 0;
 				compat = false;
-				if (lone) gesture(event);
+				if (!press) return void lonePresses.delete(edytor);
+				lonePresses.set(edytor, event);
+				gesture(event);
 			},
 			{ capture: true }
 		),
@@ -207,14 +249,14 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 			node,
 			'mousedown',
 			(event: MouseEvent) => {
-				if (event === lone) edytor.selection.handleNonNativeEditableBlockChromePointerDown(event);
+				if (lone(event)) edytor.selection.handleNonNativeEditableBlockChromePointerDown(event);
 			},
 			{ capture: true }
 		),
 		// The document's capture listener already marked the gesture.
 		on(node, 'pointerdown', pressInside),
 		on(node, 'mousedown', (event: MouseEvent) => {
-			if (event === lone) pressInside(event);
+			if (lone(event)) pressInside(event);
 		}),
 		on(node, 'pointerup', (event: PointerEvent) => {
 			edytor.markUserGesture();
@@ -266,6 +308,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 			// Focus leaving abandons a live composition: the browser committed what it shows.
 			edytor.composition.abandon();
 			setTimeout(clearNativeSelectionAfterExternalFocus);
-		})
+		}),
+		() => void lonePresses.delete(edytor)
 	];
 };

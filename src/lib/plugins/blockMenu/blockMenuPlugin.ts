@@ -4,6 +4,7 @@ import {
 	BLOCK_ADD_EVENT,
 	type BlockActivation
 } from '../blockHandles/BlockHandleController.svelte.js';
+import { onPress } from '$lib/events/onFocus.js';
 import { getSelectedBlocksInDocumentOrder } from '$lib/selection/replaceSelection.js';
 import BlockMenu from './BlockMenu.svelte';
 import { BlockMenuController, type BlockMenuOptions } from './BlockMenuController.svelte.js';
@@ -99,7 +100,7 @@ export const createBlockMenuPlugin =
 					controller.open(block, anchor);
 					edytor.overlay.invalidate();
 				};
-				const outside = (event: PointerEvent) => {
+				const outside = (event: MouseEvent) => {
 					const target = event.target as Element | null;
 					if (
 						controller.isOpen &&
@@ -111,7 +112,8 @@ export const createBlockMenuPlugin =
 				const add = () => controller.close(false);
 				node.addEventListener(BLOCK_ACTIVATE_EVENT, activate);
 				node.addEventListener(BLOCK_ADD_EVENT, add);
-				node.ownerDocument.addEventListener('pointerdown', outside, true);
+				// Every press, WebKit's lone `mousedown` after a drag too (`onPress`).
+				const offPress = onPress(edytor, node.ownerDocument, outside, true);
 				const unmount = edytor.overlay.mount(
 					BlockMenu,
 					{ controller, menu: options.menu },
@@ -122,7 +124,7 @@ export const createBlockMenuPlugin =
 				return () => {
 					node.removeEventListener(BLOCK_ACTIVATE_EVENT, activate);
 					node.removeEventListener(BLOCK_ADD_EVENT, add);
-					node.ownerDocument.removeEventListener('pointerdown', outside, true);
+					offPress();
 					unmount();
 				};
 			}

@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.18
+
+- **The first press after a drag-and-drop also counts on the chrome in Safari.** Since 0.1.0-next.18 the editor takes WebKit's lone `mousedown` (the first press after a native drag, which sends no `pointerdown`) as the press inside the editor. The column resize band and the menus' press outside now take it too: after a block drop, the first press on a resize band and a drag resize the columns (it took a second press), and the first press outside an open block menu closes it (the `+` menu's press outside reads the same press). No API change.
+
 ### From 0.1.0-next.17
 
 - **The first click after a drag-and-drop counts in Safari.** WebKit fires no `pointercancel` when a native drag starts (a block handle's drag) and then no `pointerdown` for the next press, only its `mousedown` (WebKit bugs 202287, 222632, 279749). The editor now takes a primary `mousedown` that no `pointerdown` came before as the press, once (a `pointerdown` and its `mousedown` still count once; a script's `mousedown` is no press). After a drop, a click elsewhere places the caret there and replaces the dropped block's selection (typing used to replace the dropped block); after a drop then <kbd>Mod</kbd>+<kbd>Z</kbd>, the first click places a caret that types (it took a second click since 0.1.0-next.17). No API change.

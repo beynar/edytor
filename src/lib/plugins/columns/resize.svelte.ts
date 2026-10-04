@@ -1,6 +1,6 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
-import { takeKeys } from '$lib/events/onFocus.js';
+import { isLonePress, takeKeys } from '$lib/events/onFocus.js';
 import { bandOf, gapBefore } from './gaps.js';
 import { stacks } from './stacking.js';
 
@@ -185,8 +185,24 @@ export class ColumnResize {
 		return Math.min(hi, Math.max(lo, width + at - from));
 	}
 
-	/** Press on `strip`: the drag starts, nothing is written until the release. */
-	start = (event: PointerEvent, strip: Strip) => {
+	/**
+	 * A `mousedown` on `strip`: no native selection starts there; the press
+	 * itself when no `pointerdown` came before it (`isLonePress`: WebKit's
+	 * first press after a block drag), which starts the drag as one would.
+	 */
+	mousedown = (event: MouseEvent, strip: Strip) => {
+		event.preventDefault();
+		if (isLonePress(this.edytor, event)) this.start(event, strip);
+	};
+
+	/**
+	 * Press on `strip`: the drag starts, nothing is written until the release.
+	 * A `pointerdown` tracks its pointer (captured, on the document); a lone
+	 * `mousedown` (`mousedown`) tracks the mouse on the window, its
+	 * `mousemove`s and its `mouseup`, with the same preview, minimum, Escape
+	 * and release.
+	 */
+	start = (event: PointerEvent | MouseEvent, strip: Strip) => {
 		const { edytor } = this;
 		if (event.button !== 0 || edytor.readonly || this.drag) return;
 		const left = edytor.idToBlock.get(strip.left);
@@ -197,7 +213,8 @@ export class ColumnResize {
 		event.preventDefault();
 		event.stopPropagation();
 		const target = event.currentTarget as HTMLElement | null;
-		target?.setPointerCapture?.(event.pointerId);
+		const pointer = event.type === 'pointerdown';
+		if (pointer) target?.setPointerCapture?.((event as PointerEvent).pointerId);
 		this.drag = {
 			strip,
 			left,
@@ -213,7 +230,9 @@ export class ColumnResize {
 			height: box.height
 		};
 		const document = target?.ownerDocument ?? edytor.node?.ownerDocument;
-		const move = (moved: PointerEvent) => {
+		const tracked = pointer ? document : document?.defaultView;
+		const [moves, ups] = pointer ? ['pointermove', 'pointerup'] : ['mousemove', 'mouseup'];
+		const move = (moved: MouseEvent) => {
 			if (!this.drag) return;
 			if (!edytor.dispatcher.permits()) return end(moved);
 			this.drag.at = moved.clientX;
@@ -221,17 +240,17 @@ export class ColumnResize {
 			edytor.overlay.invalidate();
 		};
 		const end = (ended: Event) => {
-			document?.removeEventListener('pointermove', move);
-			document?.removeEventListener('pointerup', end);
-			document?.removeEventListener('pointercancel', end);
+			tracked?.removeEventListener(moves, move as EventListener);
+			tracked?.removeEventListener(ups, end);
+			tracked?.removeEventListener('pointercancel', end);
 			document?.removeEventListener('keydown', escape, true);
 			const drag = this.drag;
 			this.drag = null;
 			this.guide = null;
 			this.#cancel = null;
 			edytor.overlay.invalidate();
-			if (drag && ended.type === 'pointerup') {
-				drag.at = (ended as PointerEvent).clientX;
+			if (drag && ended.type === ups) {
+				drag.at = (ended as MouseEvent).clientX;
 				this.release(drag);
 				// The editor holds the keys after the release (Notion: Mod+Z right after).
 				takeKeys(edytor);
@@ -246,9 +265,9 @@ export class ColumnResize {
 			end(key);
 		};
 		this.#cancel = () => end(new Event('cancel'));
-		document?.addEventListener('pointermove', move);
-		document?.addEventListener('pointerup', end);
-		document?.addEventListener('pointercancel', end);
+		tracked?.addEventListener(moves, move as EventListener);
+		tracked?.addEventListener(ups, end);
+		if (pointer) tracked?.addEventListener('pointercancel', end);
 		document?.addEventListener('keydown', escape, true);
 		edytor.overlay.invalidate();
 	};

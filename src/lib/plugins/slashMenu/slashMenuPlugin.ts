@@ -7,6 +7,7 @@ import {
 	BLOCK_ADD_EVENT,
 	type BlockAddition
 } from '$lib/plugins/blockHandles/BlockHandleController.svelte.js';
+import { onPress } from '$lib/events/onFocus.js';
 import SlashMenu from './SlashMenu.svelte';
 import { SlashMenuController, type TextInsertionPayload } from './SlashMenuController.svelte.js';
 
@@ -106,7 +107,7 @@ export const createSlashMenuPlugin =
 					controller.offer((event as CustomEvent<BlockAddition>).detail);
 					edytor.overlay.invalidate();
 				};
-				const outside = (event: PointerEvent) => {
+				const outside = (event: MouseEvent) => {
 					const target = event.target as Element | null;
 					// The selection as it was; a press in the editor then places its caret.
 					if (controller.addition && !target?.closest?.('[data-edytor-slash-menu-host]'))
@@ -118,7 +119,8 @@ export const createSlashMenuPlugin =
 				};
 				node.addEventListener(BLOCK_ADD_EVENT, offer);
 				node.addEventListener(BLOCK_ACTIVATE_EVENT, activate);
-				node.ownerDocument.addEventListener('pointerdown', outside, true);
+				// Every press, WebKit's lone `mousedown` after a drag too (`onPress`).
+				const offPress = onPress(edytor, node.ownerDocument, outside, true);
 				const unmount = edytor.overlay.mount(
 					SlashMenu,
 					{ controller, menu: options.menu, item: options.item },
@@ -129,7 +131,7 @@ export const createSlashMenuPlugin =
 				return () => {
 					node.removeEventListener(BLOCK_ADD_EVENT, offer);
 					node.removeEventListener(BLOCK_ACTIVATE_EVENT, activate);
-					node.ownerDocument.removeEventListener('pointerdown', outside, true);
+					offPress();
 					unmount();
 				};
 			}

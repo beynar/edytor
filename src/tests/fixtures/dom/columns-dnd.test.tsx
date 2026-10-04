@@ -201,6 +201,36 @@ const startDrag = async (
 	};
 };
 
+/**
+ * The pointer over the page left or right of the editor (the page target,
+ * `margin`): jsdom has no layout nor hit test, so the root gets the blocks'
+ * box and `elementsFromPoint` answers the blocks at a point, innermost first.
+ * Answers the release.
+ */
+const overPage = async (edytor: Edytor, clientX: number, clientY: number) => {
+	const root = edytor.node!;
+	const blocks = [...root.querySelectorAll<HTMLElement>('[data-edytor-block="true"]')];
+	const bottom = Math.max(...blocks.map((node) => node.getBoundingClientRect().bottom));
+	root.getBoundingClientRect = () => new DOMRect(0, 0, 600, bottom);
+	const hits = (x: number, y: number) =>
+		blocks
+			.filter((node) => {
+				const r = node.getBoundingClientRect();
+				return x >= r.left && x <= r.right && y >= r.top && y < r.bottom;
+			})
+			.reverse();
+	Object.assign(document, { elementsFromPoint: hits });
+	fire(document.body, 'dragenter', { clientX, clientY });
+	fire(document.body, 'dragover', { clientX, clientY });
+	await frame();
+	return async () => {
+		fire(document.body, 'drop', { clientX, clientY });
+		await flushDomUpdates();
+		await frame();
+		delete (document as { elementsFromPoint?: unknown }).elementsFromPoint;
+	};
+};
+
 const indicator = () => document.querySelector<HTMLElement>('[data-edytor-drop-indicator]');
 const position = () => indicator()?.dataset.position;
 /** The block the placement is relative to (`data-edytor-block-drop-position`). */
@@ -466,14 +496,22 @@ describe('the beside bands', () => {
 		expect(position()).toBe('before');
 	});
 
-	it('the left band (20px left of a root row) puts the moved block first', async () => {
+	it('left of a root row, the handle column reorders; the page margin past it is the left band, the moved block first (R2)', async () => {
 		const { edytor } = await render(withX());
 		const drag = await startDrag(edytor, 'X');
+		// 10px left of P, in its sticky slop: the handle column, a reorder.
 		await drag.over('P', 0.5, -10);
-		expect(position()).toBe('left');
-		expect(indicated()).toBe('P');
+		expect([position(), indicated()]).toEqual(['after', 'P']);
+		// The page there (the handle column, 50px when the handle is not measured): P's halves.
+		await overPage(edytor, -10, 6);
+		expect([position(), indicated()]).toEqual(['before', 'P']);
+		await overPage(edytor, -45, 18);
+		expect([position(), indicated()]).toEqual(['after', 'P']);
+		// Past it, the page margin: left of P.
+		const drop = await overPage(edytor, -60, 12);
+		expect([position(), indicated()]).toEqual(['left', 'P']);
 		expect(bar()).toEqual({ left: -2, top: 0, width: 4, height: 24 });
-		await drag.drop('P', 0.5, -10);
+		await drop();
 		expect(shape(edytor)).toEqual([
 			[
 				'columns',
@@ -512,11 +550,15 @@ describe('the beside bands', () => {
 		await drag.over('B', 0.5, -10);
 		expect([position(), indicated()]).toEqual(['left', 'B']);
 		expect(bar()).toEqual({ left: 298, top: c.top, width: 4, height: c.height });
-		// A's left, in the first column: the layout's left edge.
+		// A's left, in the first column: the editor's handle column, a reorder (R2).
 		await drag.over('A', 0.5, -10);
+		expect([position(), indicated()]).toEqual(['after', 'A']);
+		// Past the handle column, the page margin: the layout's left edge.
+		const a = rectOf(edytor, 'A');
+		const drop = await overPage(edytor, -60, a.top + 12);
 		expect([position(), indicated()]).toEqual(['left', 'A']);
 		expect(bar()).toEqual({ left: -2, top: c.top, width: 4, height: c.height });
-		await drag.drop('A', 0.5, -10);
+		await drop();
 		expect(shape(edytor)).toEqual([
 			'P',
 			[

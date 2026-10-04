@@ -695,7 +695,7 @@ export class EdytorSelection {
 		return block;
 	};
 
-	handleNonNativeEditableBlockChromePointerDown = (event: PointerEvent) => {
+	handleNonNativeEditableBlockChromePointerDown = (event: MouseEvent) => {
 		const targetNode = event.target instanceof Node ? event.target : null;
 		const targetBlock = this.getNonNativeEditableBlockChromeBlock(targetNode);
 		const targetText = targetBlock?.firstText;
@@ -842,7 +842,7 @@ export class EdytorSelection {
 		this.setAtTextOffset(text, this.getTextOffsetFromClientPoint(text, clientX, clientY));
 	};
 
-	capturePointerDragStart = (event: PointerEvent) => {
+	capturePointerDragStart = (event: MouseEvent) => {
 		if (event.button !== 0) {
 			this.pointerDragStart = null;
 			return;
@@ -873,7 +873,7 @@ export class EdytorSelection {
 	 */
 	placedOver: SelectionValue | null = null;
 
-	collapseSelectedBlocksAtPointer = (event: PointerEvent) => {
+	collapseSelectedBlocksAtPointer = (event: MouseEvent) => {
 		if (event.button !== 0 || this.selectedBlocks.size === 0) {
 			return;
 		}

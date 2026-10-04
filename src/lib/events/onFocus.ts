@@ -51,6 +51,40 @@ export const takeKeys = (edytor: Edytor) => {
 export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] => {
 	let lastPointerDownInsideEditorAt = Number.NEGATIVE_INFINITY;
 
+	/*
+	 * The press: one per primary button press, its `pointerdown`, or a
+	 * `mousedown` no `pointerdown` came before. WebKit fires no
+	 * `pointercancel` at a native `dragstart` (a block handle's drag) and,
+	 * believing the button still down, no `pointerdown` for the next press,
+	 * only its `mousedown` (WebKit bugs 202287, 222632, 279749): that
+	 * primary `mousedown` is the press (`lone`). A primary `pointerdown` arms
+	 * `compat` until the `mousedown` it is followed by (before or after its
+	 * release, a touch's comes after), so a pair counts once. Only the
+	 * browser's own `mousedown` stands for a missing press; a script's is none.
+	 */
+	let compat = false;
+	let lone: MouseEvent | null = null;
+
+	/** Where the press landed: the gesture serial, and whether the user went outside. */
+	const gesture = (event: MouseEvent) => {
+		edytor.markUserGesture();
+		edytor.lastUserGestureOutsideEditor = Boolean(
+			event.target instanceof Node && !edytor.node?.contains(event.target)
+		);
+	};
+
+	/** A press inside the host (its bubbling phase: an element inside that took it keeps it). */
+	const pressInside = (event: MouseEvent) => {
+		// A pointer gesture abandons a live composition (D-7).
+		edytor.composition.abandon();
+		lastPointerDownInsideEditorAt = getEventTimeStamp(event);
+		edytor.projector.pressed();
+		edytor.selection.clearModelSelectionPreservation();
+		edytor.selection.capturePointerDragStart(event);
+		edytor.selection.clearInlineBlockSelection();
+		edytor.selection.collapseSelectedBlocksAtPointer(event);
+	};
+
 	const clearNativeSelectionAfterExternalFocus = () => {
 		const activeElement = getActiveElement(node);
 		if (activeElement instanceof Node && node.contains(activeElement)) {
@@ -139,33 +173,48 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 	};
 
 	return [
-		// Any pointerdown anywhere disarms pending restores — Firefox
-		// can move the DOM selection on outside clicks without
-		// blurring the editor, so node-local marking is not enough. The
-		// target also records where the gesture landed: an outside
-		// pointerdown means the current focus/selection is user-owned
-		// until an inside gesture or focusin returns it.
+		// Any press anywhere disarms pending restores — Firefox can move
+		// the DOM selection on outside clicks without blurring the editor,
+		// so node-local marking is not enough. The target also records
+		// where the gesture landed: an outside press means the current
+		// focus/selection is user-owned until an inside gesture or focusin
+		// returns it.
 		on(
 			node.ownerDocument,
 			'pointerdown',
 			(event: PointerEvent) => {
-				edytor.markUserGesture();
-				edytor.lastUserGestureOutsideEditor = Boolean(
-					event.target instanceof Node && !edytor.node?.contains(event.target)
-				);
+				if (event.isPrimary) compat = true;
+				lone = null;
+				gesture(event);
+			},
+			{ capture: true }
+		),
+		on(
+			node.ownerDocument,
+			'mousedown',
+			(event: MouseEvent) => {
+				lone = compat || !event.isTrusted || event.button !== 0 ? null : event;
+				compat = false;
+				if (lone) gesture(event);
+			},
+			{ capture: true }
+		),
+		// A press on a block's non-editable chrome places the caret in its text.
+		on(node, 'pointerdown', edytor.selection.handleNonNativeEditableBlockChromePointerDown, {
+			capture: true
+		}),
+		on(
+			node,
+			'mousedown',
+			(event: MouseEvent) => {
+				if (event === lone) edytor.selection.handleNonNativeEditableBlockChromePointerDown(event);
 			},
 			{ capture: true }
 		),
 		// The document's capture listener already marked the gesture.
-		on(node, 'pointerdown', (event: PointerEvent) => {
-			// A pointer gesture abandons a live composition (D-7).
-			edytor.composition.abandon();
-			lastPointerDownInsideEditorAt = getEventTimeStamp(event);
-			edytor.projector.pressed();
-			edytor.selection.clearModelSelectionPreservation();
-			edytor.selection.capturePointerDragStart(event);
-			edytor.selection.clearInlineBlockSelection();
-			edytor.selection.collapseSelectedBlocksAtPointer(event);
+		on(node, 'pointerdown', pressInside),
+		on(node, 'mousedown', (event: MouseEvent) => {
+			if (event === lone) pressInside(event);
 		}),
 		on(node, 'pointerup', (event: PointerEvent) => {
 			edytor.markUserGesture();

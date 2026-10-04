@@ -127,7 +127,7 @@ A block selection that holds every shown block of every column of a layout stand
 
 <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> and <kbd>↑</kbd>/<kbd>↓</kbd> over a block selection step over a layout and its columns to the next shown block, never selecting a column: from column 1's last block, the next is column 2's first. Typing, a composition or a paste over a block selection in a column replaces the blocks in place: the column and its layout stay.
 
-While a text selection is being dragged, the handles and the resize bands take no pointer, so a selection dragged from column 1 into the gap never selects column 2's text.
+While a text selection is being dragged, the handles and the resize bands take no pointer, so the selection follows the text the browser finds under the pointer (over the bare gap, see [Limitations](#limitations)).
 
 ## Keys
 
@@ -239,7 +239,7 @@ In a view, moves take two more positions: `edytor.moveBlocks({ blocks, target, p
 
 ## Limitations
 
-- Over the bare gap between two columns (not over a handle), a text selection dragged from column 1 past the gap's middle extends to the end of column 1, never into column 2.
+- Over the bare gap between two columns (not over a handle), a text selection dragged from column 1 stays in its row up to the gap's middle; past it, it extends to the end of column 1 and over column 2's rows above the pointer, up to the start of column 2's row at the pointer's height.
 - <kbd>Escape</kbd> from the block menu opened on a column's block gives back a caret, not the block selection.
 - There is no keyboard resize and no per-column colour.
 - A client of an earlier pre-release shows a stored layout as unknown kinds, one block under the other, and applies none of the rules above to it.

@@ -5,13 +5,16 @@ import {
 	TEXTS,
 	clickPlus,
 	frames,
+	gapOf,
+	hitAt,
 	lastStatus,
 	openDoc,
 	resize,
 	selectionValue,
 	textBox,
 	texts,
-	valueKind
+	valueKind,
+	walk
 } from './columnsPaths';
 
 /**
@@ -158,6 +161,46 @@ test.describe('navigation keys with no caret do nothing (round 5, issue 3)', () 
 		expect(value.ids).toEqual(expect.arrayContaining(['P', 'A', 'A2', 'A3', 'B', 'B2', 'B3', 'Z']));
 		await page.keyboard.type('q');
 		await expect.poll(() => texts(page)).toEqual(['q']);
+		issues.assertClean();
+	});
+});
+
+/** The DOM selection's text, and the hit under the pointer (chrome or block). */
+const selectedText = (page: Page) =>
+	page.evaluate(() => (getSelection()?.toString() ?? '').replace(/\s+/g, ' ').trim());
+
+test.describe('a text selection dragged into a gap stops at the column (round 5, issue 4)', () => {
+	test('from column 1’s first row right into the gap left of column 2: column 2’s block is never selected', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await openDoc(page, FULL);
+		const a = await textBox(page, 'A');
+		const g = await gapOf(page);
+		const row = a.y + a.height / 2;
+		const start = { x: a.x + 20, y: row };
+		await page.mouse.move(start.x - 8, row - 6);
+		await page.mouse.move(start.x, row);
+		await page.mouse.down();
+		const trail: string[] = [];
+		await walk(page, start, { x: g.right - 1, y: row }, 4, async ({ x }) => {
+			if (x < g.left) return;
+			trail.push(
+				`${Math.round(x - g.left)}:${await hitAt(page, x, row)}:${await selectedText(page)}`
+			);
+		});
+		await page.mouse.up();
+		await frames(page);
+		// The chrome took no pointer while the selection ran: the handles and the band.
+		expect(trail.filter((t) => /:(handle|resize)/.test(t))).toEqual([]);
+		expect(trail.filter((t) => t.includes('right'))).toEqual([]);
+		const value = await selectionValue(page);
+		expect(value.kind).toBe('text');
+		expect(await selectedText(page)).not.toContain('right');
+		// Released, the chrome takes the pointer again.
+		await page.mouse.move(g.right - 1, row - 2);
+		await frames(page);
+		expect(await hitAt(page, g.right - 1, row - 2)).toMatch(/^(handle|resize)/);
 		issues.assertClean();
 	});
 });

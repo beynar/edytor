@@ -87,6 +87,11 @@ export class ColumnResize {
 		return this.edytor.readonly;
 	}
 
+	/** A text selection is in progress (`selection.dragging`): the strips take no pointer. */
+	get selecting() {
+		return this.drag === null && this.edytor.selection.dragging;
+	}
+
 	/** Whether the strips show: over a layout of an editable view, or while one drags. */
 	get shown() {
 		return this.drag !== null || (!this.edytor.readonly && !this.dragging && !!this.hovered);

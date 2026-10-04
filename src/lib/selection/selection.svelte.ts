@@ -250,7 +250,8 @@ export class EdytorSelection {
 	 * value is selected right after.
 	 */
 	expectHistoryRestore = false;
-	private pointerDragStart: PointerTextPoint | null = null;
+	/** A primary press in the host on a text, until its release (reactive: the chrome reads `dragging`). */
+	private pointerDragStart = $state.raw<PointerTextPoint | null>(null);
 	private selectionDocument: Document | null = null;
 	private shouldKeepModelSelectionForNextTextInsertion = false;
 	private modelSelectionPreservationBlock: Block | null = null;
@@ -558,7 +559,12 @@ export class EdytorSelection {
 		this.#surface = { value: this.value, ...surface };
 	};
 
-	/** A pointer drag is in progress: the projector does not display under it (O57). */
+	/**
+	 * A pointer drag is in progress (a press in the host, until its release):
+	 * the projector does not display under it (O57), and the overlay chrome
+	 * (block handles, column resize bands) takes no pointer, so the native
+	 * selection is computed against the host. Reactive.
+	 */
 	get dragging() {
 		return this.pointerDragStart !== null;
 	}

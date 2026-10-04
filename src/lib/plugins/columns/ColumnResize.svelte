@@ -31,6 +31,7 @@
 				style:cursor="col-resize"
 				style:--edytor-column-resize-guide-width="{GUIDE}px"
 				data-dragging={resize.drag ? 'true' : undefined}
+				data-selecting={resize.selecting ? 'true' : undefined}
 				onpointerdown={(event) => resize.start(event, strip)}
 				onmousedown={(event) => event.preventDefault()}
 			></div>
@@ -51,6 +52,11 @@
 	[data-edytor-column-resize] {
 		position: absolute;
 		touch-action: none;
+	}
+
+	/* A text selection in progress: the band takes no pointer (and shows no guide). */
+	[data-edytor-column-resize][data-selecting='true'] {
+		pointer-events: none;
 	}
 
 	/* Notion's hover guide: a thin gray rule in the band's middle (the gap's). */

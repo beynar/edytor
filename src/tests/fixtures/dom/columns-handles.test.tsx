@@ -366,6 +366,31 @@ describe('a column-2 block’s handle box in the gap (round 3)', () => {
 	});
 });
 
+describe('a text selection in progress (round 5, issue 4)', () => {
+	it('the handles take no pointer from a press on a text to its release', async () => {
+		const { edytor } = await render();
+		await flushDomUpdates();
+		const leaf = document
+			.createTreeWalker(block(edytor, 'A').firstText!.node!, NodeFilter.SHOW_TEXT)
+			.nextNode()!;
+		Object.assign(document, {
+			caretPositionFromPoint: () => ({ offsetNode: leaf, offset: 2 })
+		});
+		expect(host('B')!.dataset.selecting).toBeUndefined();
+		block(edytor, 'A').firstText!.node!.dispatchEvent(
+			new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 10, clientY: 30 })
+		);
+		await flushDomUpdates();
+		expect(edytor.selection.dragging).toBe(true);
+		expect(host('B')!.dataset.selecting).toBe('true');
+		expect(host('A')!.dataset.selecting).toBe('true');
+		document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+		await flushDomUpdates();
+		expect(host('B')!.dataset.selecting).toBeUndefined();
+		delete (document as { caretPositionFromPoint?: unknown }).caretPositionFromPoint;
+	});
+});
+
 describe('a block selection covering a whole layout stands for it (D3)', () => {
 	it('the layout shows selected only when every shown block of every column is', async () => {
 		const { edytor } = await render();

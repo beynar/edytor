@@ -158,6 +158,7 @@
 		data-visible={hovered.has(id) ? 'true' : undefined}
 		data-over-gap={overGaps.has(id) ? 'true' : undefined}
 		data-dragging={controller.dragging && controller.dragging !== id ? 'true' : undefined}
+		data-selecting={edytor.selection.dragging ? 'true' : undefined}
 		use:place={id}
 		onfocusin={() => (focused = id)}
 		onfocusout={() => focused === id && (focused = null)}
@@ -184,6 +185,14 @@
 	 * drop levels. (The source keeps its own: Chrome cancels a drag whose
 	 * source stops taking the pointer as it starts.) */
 	[data-edytor-block-handle-host][data-dragging='true'] {
+		pointer-events: none;
+	}
+
+	/* While a text selection runs (a press in the host, until its release), the
+	 * handles take no pointer: the native selection is computed against the
+	 * host, never against a handle beside it (Notion stops it at the column). */
+	[data-edytor-block-handle-host][data-selecting='true'],
+	[data-edytor-block-handle-host][data-selecting='true']::before {
 		pointer-events: none;
 	}
 

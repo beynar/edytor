@@ -105,6 +105,42 @@ export const liftLayouts = (blocks: Iterable<Block>): Block[] => {
 	return [...all];
 };
 
+/**
+ * A pointer drag-selection from `anchor` (the block its press landed in) to
+ * `focus` (the block the drag reached), Notion's rule
+ * (`sel.drag.across-columns`): once the drag leaves the anchor's column for
+ * another column of the same layout, it selects blocks — every shown block
+ * from one to the other in reading order, but the layouts and columns
+ * themselves (each block a member as `selectedMembers` reads it), so a
+ * sweep over every block of every column lifts to the layout
+ * (`liftLayouts`, D3). The innermost layout holding both in different
+ * columns decides. `null` (a text range) while both lie in one column, or
+ * when no layout holding the anchor holds the focus (a drag leaving the
+ * layout, or one that starts outside it). Decided from the roles
+ * (`isLayout`/`isLayoutItem`).
+ */
+export const acrossColumns = (anchor: Block, focus: Block): Block[] | null => {
+	const { edytor } = anchor;
+	const { facade } = edytor;
+	let across = false;
+	for (let item = anchor.parent; item && !item.isRoot && !across; item = item.parent) {
+		if (!facade.isLayoutItem(item.id)) continue;
+		if (focus.isChildOf(item)) return null;
+		across = Boolean(item.parent && focus.isChildOf(item.parent));
+	}
+	if (!across) return null;
+	const [first, last] =
+		edytor.compareBlocks(anchor, focus) <= 0 ? [anchor, focus] : [focus, anchor];
+	const blocks: Block[] = [];
+	for (
+		let at: Block | null = first;
+		at && edytor.compareBlocks(at, last) <= 0;
+		at = shown(at, 'blockAfter')
+	)
+		if (!facade.isLayout(at.id) && !facade.isLayoutItem(at.id)) blocks.push(at);
+	return blocks;
+};
+
 /** Whether a block selection holds `blocks`, a layout it covers whole counting as held (D3). */
 export const holdsBlocks = (selected: Iterable<Block>, blocks: readonly Block[]) => {
 	const as = [...selected];

@@ -1291,6 +1291,29 @@ view's layout commands (`columns.N`) are disabled there. A layout that a
 race or an explicit write (`insertBlocks`, a retype) puts inside a column
 displays as it is, by the rules above: no flatten.
 
+### `sel.drag.across-columns` — a mouse selection crossing columns selects blocks (Notion, round 8)
+
+While a pointer drag-selection (`selection.dragging`) has its native
+range anchored where the press landed, in an item, and its focus in
+another item of the same layout (the innermost layout holding both in
+different items decides; `acrossColumns` in
+`selection/replaceSelection.ts`, from the roles), the value is a block
+selection: every shown block from the anchor's block to the focus's, in
+reading order, but layouts and items, each a member as `selectedMembers`
+reads it — so a sweep over every block of every item lifts to the layout
+(`liftLayouts`, D3). The adopter (`applySelectionSnapshot`) selects it
+with cause `dom`: the projector writes nothing under the drag, the
+browser keeps extending the native range from the press, and the root's
+`data-edytor-selection="blocks"` hides that range's highlight. Back in
+the anchor's item, the same drag is a text range again. The release keeps
+the block selection and asks one display, which clears the native range
+(a block selection shows none); delete, cut, copy and typing then act on
+it as on any block selection (`sel.blocks.exact`, `layout.flow-slot`). A
+drag anchored outside every layout (it enters one), a drag leaving the
+layout, a Shift+click (its range is anchored before the press) and the
+keyboard (D7) keep text ranges in document order. Pins:
+`columns-drag-select.test.tsx`, `columns-round8.spec.ts`.
+
 ### `layout.wrap` — `wrapInLayout(ids, kind?, columns?)`: Turn into N columns (Notion)
 
 Sibling blocks (one or more) are wrapped in a new layout of `columns`

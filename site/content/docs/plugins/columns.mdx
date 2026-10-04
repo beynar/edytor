@@ -127,7 +127,9 @@ A block selection that holds every shown block of every column of a layout stand
 
 <kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> and <kbd>↑</kbd>/<kbd>↓</kbd> over a block selection step over a layout and its columns to the next shown block, never selecting a column: from column 1's last block, the next is column 2's first. Typing, a composition or a paste over a block selection in a column replaces the blocks in place: the column and its layout stay.
 
-While a text selection is being dragged, the handles and the resize bands take no pointer, so the selection follows the text the browser finds under the pointer (over the bare gap, see [Limitations](#limitations)).
+A text selection dragged with the mouse from a column into another column of the same layout becomes a block selection, as in Notion: every block from the one the drag started in to the one under the pointer, in reading order (the rest of column 1, then column 2's blocks down to the pointer's row), each highlighted as a selected block, with no text highlight. Over the bare gap between two columns the drag keeps to the nearest column: up to the gap's middle it is still a text selection in its row of column 1; past it, it enters column 2. Dragged back into the column it started in, it is a text selection again. A sweep from column 1's first block to the last column's last block selects the whole layout. Released, the blocks stay selected: <kbd>Backspace</kbd> or <kbd>Delete</kbd> removes them (a column it empties goes, and the layout dissolves when one column is left), copy and cut take them, and typing replaces them in place (the column and its layout stay). A drag that starts outside the layout and enters it, a <kbd>Shift</kbd>+click and <kbd>Shift</kbd>+arrows stay text selections, in reading order.
+
+While a text selection is being dragged, the handles and the resize bands take no pointer, so the selection follows the text the browser finds under the pointer.
 
 ## Keys
 
@@ -239,7 +241,7 @@ In a view, moves take two more positions: `edytor.moveBlocks({ blocks, target, p
 
 ## Limitations
 
-- A text selection is one range in reading order, as the browser gives it. Dragged from column 1 over the bare gap between two columns (not over a handle), it keeps to the column the pointer is nearest: up to the gap's middle, it stays in its row of column 1; past it, it reaches column 2 as dragging into column 2's text does, so it covers the rest of column 1 and column 2's rows above the pointer, up to the start of column 2's row at the pointer's height (the same in Chromium, Firefox and Safari).
+- A text selection made with <kbd>Shift</kbd>+arrows or <kbd>Shift</kbd>+click across columns, or dragged into a layout from outside it, is one range in reading order, as the browser gives it: it covers the rest of a column and the next column's rows above its end. Only a drag that starts in a column becomes a block selection in another one.
 - <kbd>Escape</kbd> from the block menu opened on a column's block gives back a caret, not the block selection.
 - There is no keyboard resize and no per-column colour.
 - A client of an earlier pre-release shows a stored layout as unknown kinds, one block under the other, and applies none of the rules above to it.

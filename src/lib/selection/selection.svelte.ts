@@ -53,7 +53,12 @@ import { seam } from '$lib/crdt/anchors.js';
 import { getTextPath } from '$lib/events/events.utils.js';
 import { landed } from '$lib/session/navigation.js';
 import * as visibility from './visibility.js';
-import { caretBeside, shownText, type SelectionInsertionTarget } from './replaceSelection.js';
+import {
+	acrossColumns,
+	caretBeside,
+	shownText,
+	type SelectionInsertionTarget
+} from './replaceSelection.js';
 
 /**
  * CRDT-stable anchor for a text position — `{b}` is the home block id of
@@ -849,6 +854,7 @@ export class EdytorSelection {
 		}
 
 		this.pointerDragStart = this.getTextPointFromClientPoint(event.clientX, event.clientY);
+		this.#across = false;
 	};
 	clearPointerDragStart = () => {
 		this.pointerDragStart = null;
@@ -856,11 +862,48 @@ export class EdytorSelection {
 	};
 	/** A normalization a pointer drag held back (the gesture is the user's, O57). */
 	#held = false;
-	/** The drag ended: the DOM selection it left is derived again, now normalized. */
+	/** The pointer drag selected blocks across columns (`acrossColumns`), until its release. */
+	#across = false;
+	/**
+	 * The drag ended: the DOM selection it left is derived again, now
+	 * normalized. A drag that ends as a block selection across columns keeps
+	 * it: the native range it ignored goes (the projector shows a block
+	 * selection as no range).
+	 */
 	#dropped = () => {
+		const across = this.#across;
+		this.#across = false;
+		if (across && this.value.kind === 'blocks') {
+			this.#held = false;
+			return this.display();
+		}
 		if (!this.#held) return;
 		this.#held = false;
 		this.applySelectionSnapshot(getDomSelectionSnapshot(this.edytor.node));
+	};
+	/**
+	 * Under a pointer drag, a native range from one column into another
+	 * column of the same layout is a block selection (`acrossColumns`,
+	 * Notion): the blocks it covers are selected and the native range is
+	 * ignored — the browser keeps extending it from the press, so the drag
+	 * coming back into its own column is a text range again. Its highlight
+	 * is hidden while the value is a block selection
+	 * (`data-edytor-selection`). Only a range anchored where the press
+	 * landed is the drag's: a Shift+click extends the range it found, which
+	 * stays a text range in document order, as the keyboard's does (D7).
+	 * Answers whether it selected blocks.
+	 */
+	#dragAcross = (dom: DomSelectionSnapshot | null) => {
+		if (!dom?.anchorNode || !dom.focusNode || dom.isCollapsed) return false;
+		const anchor = this.getTextOfNode(dom.anchorNode as Node, dom.anchorOffset)?.parent;
+		const focus = this.getTextOfNode(dom.focusNode as Node, dom.focusOffset)?.parent;
+		if (!anchor || anchor.id !== this.pointerDragStart?.text.parent.id) return false;
+		const blocks = focus && !anchor.isRoot && acrossColumns(anchor, focus);
+		if (!blocks || !blocks.length) return false;
+		this.#across = true;
+		this.select(blockSelection(blocks.map((block) => block.id)), 'dom');
+		this.edytor.projector.observe();
+		return true;
 	};
 	/**
 	 * The block selection value over which the DOM caret was put — a primary
@@ -1006,7 +1049,9 @@ export class EdytorSelection {
 		selection: DomSelectionSnapshot | null,
 		options: { restoreNormalizedDomRange?: boolean } = {}
 	) => {
-		if (this.selectedBlocks.size > 0) return;
+		if (this.dragging && this.#dragAcross(selection)) return;
+		// A block selection ignores the DOM, but the one a drag across columns made while it lasts.
+		if (this.selectedBlocks.size > 0 && !(this.dragging && this.#across)) return;
 
 		const container = this.edytor.node;
 		if (

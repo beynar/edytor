@@ -176,7 +176,9 @@ const selectedText = (page: Page) =>
 	page.evaluate(() => (getSelection()?.toString() ?? '').replace(/\s+/g, ' ').trim());
 
 test.describe('a text selection dragged into a gap stops at the column (round 5, issue 4)', () => {
-	test('from column 1’s first row right into the gap left of column 2: column 2’s block is never selected', async ({
+	// Round 8 (`sel.drag.across-columns`): past the gap's middle the drag enters
+	// column 2 and selects blocks; up to it, the text range stays in column 1.
+	test('from column 1’s first row right into the gap left of column 2: no text of column 2 is selected; past the middle, blocks', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -201,8 +203,9 @@ test.describe('a text selection dragged into a gap stops at the column (round 5,
 		expect(trail.filter((t) => /:(handle|resize)/.test(t))).toEqual([]);
 		expect(trail.filter((t) => t.includes('right'))).toEqual([]);
 		const value = await selectionValue(page);
-		expect(value.kind).toBe('text');
-		expect(await selectedText(page)).not.toContain('right');
+		expect(value.kind).toBe('blocks');
+		expect(value.ids?.slice(0, 4)).toEqual(['A', 'A2', 'A3', 'B']);
+		expect(await selectedText(page)).toBe('');
 		// Released, the chrome takes the pointer again.
 		await page.mouse.move(g.right - 1, row - 2);
 		await frames(page);

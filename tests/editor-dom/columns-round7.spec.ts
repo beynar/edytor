@@ -43,7 +43,12 @@ const selectFromA2 = async (page: Page, x: (gap: Awaited<ReturnType<typeof gapOf
 	return { live, trail, value: (await selectionValue(page)) as SelectionValue };
 };
 
-type SelectionValue = { kind: string; anchor?: { b: string }; focus?: { b: string } };
+type SelectionValue = {
+	kind: string;
+	ids?: string[];
+	anchor?: { b: string };
+	focus?: { b: string };
+};
 
 test.describe('a text selection dragged over the bare gap keeps to the nearest column (round 7, issue 1)', () => {
 	test('from A2 into the gap’s left half: the selection stays in A2’s row, in column 1', async ({
@@ -63,7 +68,9 @@ test.describe('a text selection dragged over the bare gap keeps to the nearest c
 		issues.assertClean();
 	});
 
-	test('from A2 into the gap’s right half: the selection reaches column 2, up to its row at the pointer', async ({
+	// Past the gap's middle the drag enters column 2: a block selection since round 8
+	// (`sel.drag.across-columns`, columns-round8.spec.ts), no longer a text range.
+	test('from A2 into the gap’s right half: column 2 is reached, as a block selection from A2 (round 8)', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -72,27 +79,25 @@ test.describe('a text selection dragged over the bare gap keeps to the nearest c
 			page,
 			(gap) => gap.left + (gap.right - gap.left) * 0.75
 		);
-		// Document order: the rest of column 1, then column 2 down to B2's start.
+		// The native range under the drag is not the value (its highlight is hidden).
 		expect(live).toContain('left three');
-		expect(live).toContain('right one');
 		expect(live).not.toContain('right two');
-		expect(value.kind).toBe('text');
-		expect(value.anchor?.b).toBe('A2');
-		expect(['B', 'B2']).toContain(value.focus?.b);
+		expect(value.kind).toBe('blocks');
+		expect([
+			['A2', 'A3', 'B'],
+			['A2', 'A3', 'B', 'B2']
+		]).toContainEqual(value.ids);
 		issues.assertClean();
 	});
 
-	test('from A2 straight into B2’s text: a text range across the columns, as before', async ({
+	test('from A2 straight into B2’s text: a block selection from A2 to B2 (round 8)', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
 		await openDoc(page, FULL);
 		const b2 = await textBox(page, 'B2');
-		const { live, value } = await selectFromA2(page, () => b2.x + 30);
-		expect(live).toContain('left three');
-		expect(live).toContain('right one');
-		expect(live).toMatch(/right one ri/);
-		expect(value).toMatchObject({ kind: 'text', anchor: { b: 'A2' }, focus: { b: 'B2' } });
+		const { value } = await selectFromA2(page, () => b2.x + 30);
+		expect(value).toMatchObject({ kind: 'blocks', ids: ['A2', 'A3', 'B', 'B2'] });
 		issues.assertClean();
 	});
 });

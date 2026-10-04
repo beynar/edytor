@@ -341,6 +341,7 @@
 		use:editableRootBrowserAttributes={browserMutationGuardAttributes}
 		use:nonNativeEditableBlockChromeSelection
 		data-edytor
+		data-edytor-selection={edytor.selection.value.kind === 'blocks' ? 'blocks' : undefined}
 		contenteditable={!readonly}
 		role="textbox"
 		aria-multiline="true"
@@ -356,3 +357,15 @@
 		></span>
 	</div>
 {/if}
+
+<style>
+	/*
+	 * A block selection shows as its selected blocks, never as a native range:
+	 * the range a pointer drag across columns still extends under it
+	 * (`sel.drag.across-columns`) is not highlighted, over any theme.
+	 */
+	:global([data-edytor][data-edytor-selection='blocks'] ::selection),
+	:global([data-edytor][data-edytor-selection='blocks']::selection) {
+		background: transparent !important;
+	}
+</style>

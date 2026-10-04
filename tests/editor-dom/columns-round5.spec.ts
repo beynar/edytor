@@ -6,15 +6,21 @@ import {
 	clickPlus,
 	frames,
 	gapOf,
+	grip,
+	guide,
 	hitAt,
+	host,
 	lastStatus,
 	openDoc,
+	overlap,
+	plus,
 	resize,
 	selectionValue,
 	textBox,
 	texts,
 	valueKind,
-	walk
+	walk,
+	widths
 } from './columnsPaths';
 
 /**
@@ -201,6 +207,60 @@ test.describe('a text selection dragged into a gap stops at the column (round 5,
 		await page.mouse.move(g.right - 1, row - 2);
 		await frames(page);
 		expect(await hitAt(page, g.right - 1, row - 2)).toMatch(/^(handle|resize)/);
+		issues.assertClean();
+	});
+});
+
+test.describe('the + and the grip stay together, the band left of them (round 5, issue 5)', () => {
+	test('at each column-2 row: band 10 | + 18 | grip 18, the pair flush with the block; each takes its own press', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await openDoc(page, FULL);
+		const g = await gapOf(page);
+		expect(Math.round(g.right - g.left)).toBe(46);
+		for (const id of ['B', 'B2', 'B3']) {
+			const t = await textBox(page, id);
+			const row = t.y + t.height / 2;
+			await walk(page, { x: t.x + 30, y: row }, { x: t.x + 6, y: row });
+			await expect(host(page, id)).toHaveAttribute('data-visible', 'true');
+			const band = (await page.locator('[data-edytor-column-resize]').boundingBox())!;
+			const add = (await plus(page, id).boundingBox())!;
+			const move = (await grip(page, id).boundingBox())!;
+			// The band is the gap's left part, the layout's height.
+			expect(Math.abs(band.x - g.left)).toBeLessThanOrEqual(0.5);
+			expect(Math.round(band.width)).toBe(10);
+			expect(Math.abs(band.height - g.c.height)).toBeLessThanOrEqual(1);
+			// The pair together, right of the band, flush with the block (Notion's "+ ⋮⋮").
+			expect(Math.round(add.width)).toBe(18);
+			expect(Math.round(move.width)).toBe(18);
+			expect(add.x).toBeGreaterThanOrEqual(band.x + band.width - 0.5);
+			expect(Math.abs(move.x - (add.x + add.width))).toBeLessThanOrEqual(1);
+			expect(Math.abs(move.x + move.width - g.right)).toBeLessThanOrEqual(1);
+			expect(overlap(add, band) || overlap(move, band)).toBe(false);
+			expect(await hitAt(page, band.x + band.width / 2, row)).toBe('resize');
+			expect(await hitAt(page, add.x + add.width / 2, row)).toBe(`handle:${id}`);
+			expect(await hitAt(page, move.x + move.width / 2, row)).toBe(`handle:${id}`);
+		}
+		issues.assertClean();
+	});
+
+	test('from B2’s text left over the grip and the + to the band: the guide shows there, and a press resizes', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await openDoc(page, FULL);
+		const g = await gapOf(page);
+		const t = await textBox(page, 'B2');
+		const row = t.y + t.height / 2;
+		const at = await walk(page, { x: t.x + 30, y: row }, { x: g.left + 5, y: row }, 3);
+		expect(await hitAt(page, at.x, at.y)).toBe('resize');
+		expect(await guide(page)).toBe(true);
+		const before = await widths(page);
+		await page.mouse.down();
+		await walk(page, at, { x: at.x + 40, y: row + 1 }, 4);
+		await page.mouse.up();
+		await expect.poll(() => widths(page)).toEqual([before[0]! + 40, before[1]! - 40]);
 		issues.assertClean();
 	});
 });

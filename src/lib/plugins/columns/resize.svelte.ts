@@ -45,9 +45,10 @@ type Drag = {
 /**
  * The column resize (docs/columns-plan.md D5, §5 "Resize"), chrome in the
  * overlay: while the pointer is over a layout (not readonly, not stacked),
- * a band in each gap between two shown columns (`bandOf`: `BAND` px at the
- * gap's middle, the layout's height), above the block handles, whose `+` and
- * grip keep the gap's two edges beside it (`gaps.ts`, one measurement):
+ * a band in each gap between two shown columns (`bandOf`: the gap's left
+ * `BAND` px, the layout's height), above the block handles, whose `+` and
+ * grip sit together right of it, flush with the block (`gaps.ts`, one
+ * measurement):
  * wherever its gray guide shows (`--edytor-columns-resize-color`, Notion's,
  * at any height, block rows included), a press resizes. Dragging one
  * resizes both columns live (Notion) and writes nothing: the drag's weights

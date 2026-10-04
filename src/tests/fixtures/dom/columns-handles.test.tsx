@@ -362,6 +362,8 @@ describe('a column-2 block’s handle box in the gap (round 3)', () => {
 		expect(top + parseFloat(b.style.getPropertyValue('--edytor-handle-row-top'))).toBe(ROW);
 		expect(b.style.getPropertyValue('--edytor-handle-row-height')).toBe(`${ROW}px`);
 		expect(b.style.left).toBe('323px');
+		// Right of the resize band (the gap's left 10px), the + and grip together (round 5).
+		expect(b.style.getPropertyValue('--edytor-handle-gap-width')).toBe('36px');
 		expect(host('A')!.style.getPropertyValue('--edytor-handle-row-height')).toBe('');
 	});
 });

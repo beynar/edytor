@@ -3,8 +3,8 @@
 
 	/**
 	 * The resize bands of the hovered layout and the guide of a drag
-	 * (`ColumnResize`), in the overlay: each band at its gap's middle, above
-	 * the block handles (their `+` and grip keep the gap's edges, `gaps.ts`);
+	 * (`ColumnResize`), in the overlay: each band the gap's left part, above
+	 * the block handles (their `+` and grip together right of it, `gaps.ts`);
 	 * hovered, it shows a gray guide in its middle: where the guide shows, a
 	 * press resizes.
 	 */
@@ -59,7 +59,7 @@
 		pointer-events: none;
 	}
 
-	/* Notion's hover guide: a thin gray rule in the band's middle (the gap's). */
+	/* Notion's hover guide: a thin gray rule in the band's middle. */
 	[data-edytor-column-resize]::after {
 		content: '';
 		position: absolute;

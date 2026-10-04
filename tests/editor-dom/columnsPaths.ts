@@ -139,9 +139,11 @@ export const widths = async (page: Page) => [
 	Math.round((await box(page, 'K2')).width)
 ];
 
+/** The gap between K1 and K2: its edges, its middle, the resize band's middle (its left 10px, round 5). */
 export const gapOf = async (page: Page) => {
 	const [k1, k2, c] = [await box(page, 'K1'), await box(page, 'K2'), await box(page, 'C')];
-	return { left: k1.x + k1.width, right: k2.x, mid: (k1.x + k1.width + k2.x) / 2, c };
+	const left = k1.x + k1.width;
+	return { left, right: k2.x, mid: (left + k2.x) / 2, band: left + 5, c };
 };
 
 export const overlap = (a: { x: number; width: number }, b: { x: number; width: number }) =>
@@ -188,12 +190,12 @@ export const reachGrip = async (page: Page, id: string, step = 4) => {
 	return walk(page, { x: start.x, y: at.y }, at, step);
 };
 
-/** From A2's text to the gap's middle, then a press-drag of `dx`: a column resize. */
+/** From A2's text to the resize band, then a press-drag of `dx`: a column resize. */
 export const resize = async (page: Page, dx: number) => {
 	const g = await gapOf(page);
 	const a2 = await textBox(page, 'A2');
 	const row = a2.y + a2.height / 2;
-	const at = await walk(page, { x: a2.x + 30, y: row }, { x: g.mid, y: row });
+	const at = await walk(page, { x: a2.x + 30, y: row }, { x: g.band, y: row });
 	await page.mouse.down();
 	await walk(page, at, { x: at.x + dx, y: row }, 5);
 	await page.mouse.up();

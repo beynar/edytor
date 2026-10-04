@@ -112,13 +112,13 @@ const gap = async (page: Page) => {
 	return { left: k1.x + k1.width, right: k2.x, low: a2.y + a2.height / 2, k1, k2 };
 };
 
-/** From A2's text right into the gap's middle at A2's row, where the resize strip is. */
+/** From A2's text right into the resize band (the gap's left 10px, round 5) at A2's row. */
 const reachStrip = async (page: Page) => {
 	const g = await gap(page);
 	const a2 = await textBox(page, 'A2');
 	const start = { x: a2.x + 20, y: g.low };
 	await page.mouse.move(start.x, start.y);
-	const at = await walk(page, start, { x: (g.left + g.right) / 2, y: g.low });
+	const at = await walk(page, start, { x: g.left + 5, y: g.low });
 	await expect(page.locator('[data-edytor-column-resize]')).toHaveCount(1);
 	return at;
 };
@@ -233,28 +233,28 @@ test.describe('a column-2 block’s grip, reached from anywhere (round 3, gap 2)
 				issues.assertClean();
 			});
 
-	test('the handle’s box spans the gap at its row around the band; the band is the gap’s middle at every row (round 4)', async ({
+	test('the handle’s box spans the gap at its row right of the band; the band is the gap’s left part at every row (round 5)', async ({
 		page
 	}) => {
 		await open(page);
 		const g = await gap(page);
 		const b = await box(page, 'B');
 		const row = b.y + b.height / 2;
-		const mid = (g.left + g.right) / 2;
-		// From column 1's text into the gap at B's row: B's box (its +) first.
+		// From column 1's text into the gap at B's row: the band, then B's box (its +).
 		const a = await textBox(page, 'A');
-		await walk(page, { x: a.x + 30, y: row }, { x: g.left + 2, y: row });
-		expect(await hitAt(page, g.left + 2, row)).toBe('handle:B');
+		await walk(page, { x: a.x + 30, y: row }, { x: g.left + 12, y: row });
+		expect(await hitAt(page, g.left + 12, row)).toBe('handle:B');
 		const hb = (await host(page, 'B').boundingBox())!;
-		// Flush with B, from the gap's left edge, the row's height.
+		// Flush with B, from the band's right edge, the row's height.
 		expect(Math.abs(hb.x + hb.width - b.x)).toBeLessThanOrEqual(1);
-		expect(Math.abs(hb.x - g.left)).toBeLessThanOrEqual(1);
-		for (const x of [g.left + 1, g.left + 12, g.right - 12, g.right - 1])
+		expect(Math.abs(hb.x - (g.left + 10))).toBeLessThanOrEqual(1);
+		for (const x of [g.left + 11, g.left + 24, g.right - 12, g.right - 1])
 			for (const y of [b.y + 1, row, b.y + b.height - 1])
 				expect(await hitAt(page, x, y)).toBe('handle:B');
-		// The band above it, at the gap's middle, at B's row and below it.
+		// The band beside it, the gap's left part, at B's row and below it.
 		for (const y of [b.y + 1, row, b.y + b.height - 1, g.low])
-			for (const x of [mid - 4, mid, mid + 4]) expect(await hitAt(page, x, y)).toBe('resize');
+			for (const x of [g.left + 1, g.left + 5, g.left + 9])
+				expect(await hitAt(page, x, y)).toBe('resize');
 	});
 
 	test('a resize from the band at B’s row', async ({ page }) => {
@@ -264,7 +264,7 @@ test.describe('a column-2 block’s grip, reached from anywhere (round 3, gap 2)
 		const b = await box(page, 'B');
 		const row = b.y + b.height / 2;
 		const a = await textBox(page, 'A');
-		const at = await walk(page, { x: a.x + 30, y: row }, { x: (g.left + g.right) / 2, y: row });
+		const at = await walk(page, { x: a.x + 30, y: row }, { x: g.left + 5, y: row });
 		await page.mouse.down();
 		await walk(page, at, { x: at.x - 60, y: row });
 		await page.mouse.up();

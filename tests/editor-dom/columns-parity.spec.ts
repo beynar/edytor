@@ -198,7 +198,7 @@ test.describe('columns: the resize affordance', () => {
 			[x, y]
 		);
 
-	test('the band at the gap’s middle resizes at every row; hovered, it shows a gray guide; dragging, the blue one', async ({
+	test('the band, the gap’s left part, resizes at every row; hovered, it shows a gray guide; dragging, the blue one', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -210,8 +210,8 @@ test.describe('columns: the resize affordance', () => {
 			await box(page, 'A2')
 		];
 		const gap = { left: k1.x + k1.width, right: k2.x };
-		// The band: 10px at the gap's middle, the layout's height (round 4).
-		const mid = (gap.left + gap.right) / 2;
+		// The band: the gap's left 10px, the layout's height (round 5).
+		const mid = gap.left + 5;
 		await page.mouse.move(a2.x + 10, a2.y + a2.height / 2);
 		await expect(strip(page)).toHaveCount(1);
 		const s = (await strip(page).boundingBox())!;
@@ -221,12 +221,12 @@ test.describe('columns: the resize affordance', () => {
 			for (const y of [a2.y + a2.height / 2, b.y + Math.min(b.height, 24) / 2])
 				expect(await hit(page, x, y)).toBe('strip');
 		expect(await guide(page)).toBe(0);
-		await page.mouse.move((gap.left + gap.right) / 2, a2.y + a2.height / 2);
+		await page.mouse.move(mid, a2.y + a2.height / 2);
 		await expect.poll(() => guide(page)).toBe(1);
 		expect(await strip(page).evaluate((node) => getComputedStyle(node).cursor)).toBe('col-resize');
 		// Dragging: the blue guide, the gray one hidden.
 		await page.mouse.down();
-		await page.mouse.move((gap.left + gap.right) / 2 + 40, a2.y + a2.height / 2, { steps: 5 });
+		await page.mouse.move(mid + 40, a2.y + a2.height / 2, { steps: 5 });
 		await expect(page.locator('[data-edytor-column-resize-guide]')).toHaveCount(1);
 		await expect.poll(() => guide(page)).toBe(0);
 		await page.mouse.up();

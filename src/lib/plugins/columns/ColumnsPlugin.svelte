@@ -162,7 +162,7 @@
 						ColumnResizeStrips,
 						{ resize },
 						'edytor-column-resizers',
-						// Above the block handles (5): the band is the gap's middle at every height.
+						// Above the block handles (5): the band is the gap's left part at every height.
 						6,
 						resize.measure
 					);

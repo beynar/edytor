@@ -120,7 +120,8 @@ const widths = async (page: Page) => [
 
 const gapOf = async (page: Page) => {
 	const [k1, k2, c] = [await box(page, 'K1'), await box(page, 'K2'), await box(page, 'C')];
-	return { left: k1.x + k1.width, right: k2.x, mid: (k1.x + k1.width + k2.x) / 2, c };
+	// The resize band is the gap's left 10px (round 5): `band` is its middle.
+	return { left: k1.x + k1.width, right: k2.x, band: k1.x + k1.width + 5, c };
 };
 
 const overlap = (a: { x: number; width: number }, b: { x: number; width: number }) =>
@@ -128,7 +129,7 @@ const overlap = (a: { x: number; width: number }, b: { x: number; width: number 
 
 test.describe('the resize guide is where a press resizes (round 4, issue 1)', () => {
 	for (const step of [3, 8])
-		test(`straight down the gap’s middle, ${step}px steps: the guide at every height, block rows included`, async ({
+		test(`straight down the band (the gap’s left part), ${step}px steps: the guide at every height, block rows included`, async ({
 			page
 		}) => {
 			const issues = trackPageIssues(page);
@@ -138,13 +139,13 @@ test.describe('the resize guide is where a press resizes (round 4, issue 1)', ()
 			const z = await textBox(page, 'Z');
 			const start = { x: p.x + 30, y: p.y + p.height / 2 };
 			await page.mouse.move(start.x, start.y);
-			await walk(page, start, { x: g.mid, y: start.y });
+			await walk(page, start, { x: g.band, y: start.y });
 			const misses: string[] = [];
 			let inside = false;
 			await walk(
 				page,
-				{ x: g.mid, y: start.y },
-				{ x: g.mid, y: z.y + z.height / 2 },
+				{ x: g.band, y: start.y },
+				{ x: g.band, y: z.y + z.height / 2 },
 				step,
 				async ({ x, y }) => {
 					const was = inside;
@@ -162,7 +163,7 @@ test.describe('the resize guide is where a press resizes (round 4, issue 1)', ()
 		});
 
 	for (const id of ['B', 'B2', 'B3'])
-		test(`at ${id}’s row, from column 1’s text to the gap’s middle: the guide, and a press there resizes`, async ({
+		test(`at ${id}’s row, from column 1’s text to the band: the guide, and a press there resizes`, async ({
 			page
 		}) => {
 			const issues = trackPageIssues(page);
@@ -171,7 +172,7 @@ test.describe('the resize guide is where a press resizes (round 4, issue 1)', ()
 			const t = await textBox(page, id);
 			const row = t.y + t.height / 2;
 			const a = await textBox(page, id.replace('B', 'A'));
-			const at = await walk(page, { x: a.x + 30, y: row }, { x: g.mid, y: row }, 4);
+			const at = await walk(page, { x: a.x + 30, y: row }, { x: g.band, y: row }, 4);
 			expect(await hitAt(page, at.x, at.y)).toBe('resize');
 			expect(await guide(page)).toBe(true);
 			const cursor = await page.evaluate(
@@ -188,7 +189,7 @@ test.describe('the resize guide is where a press resizes (round 4, issue 1)', ()
 			issues.assertClean();
 		});
 
-	test('the band sits at the gap’s middle, above the handles; the + and the grip beside it, never under it', async ({
+	test('the band sits at the gap’s left part, above the handles; the + and the grip right of it, never under it', async ({
 		page
 	}) => {
 		await openDoc(page, FULL);
@@ -201,7 +202,7 @@ test.describe('the resize guide is where a press resizes (round 4, issue 1)', ()
 			const band = (await page.locator('[data-edytor-column-resize]').boundingBox())!;
 			expect(band.width).toBeGreaterThanOrEqual(8);
 			expect(band.width).toBeLessThanOrEqual(10);
-			expect(Math.abs(band.x + band.width / 2 - g.mid)).toBeLessThanOrEqual(1);
+			expect(Math.abs(band.x + band.width / 2 - g.band)).toBeLessThanOrEqual(1);
 			expect(Math.abs(band.y - g.c.y)).toBeLessThanOrEqual(1);
 			expect(Math.abs(band.height - g.c.height)).toBeLessThanOrEqual(1);
 			const [add, move] = [
@@ -214,15 +215,15 @@ test.describe('the resize guide is where a press resizes (round 4, issue 1)', ()
 				expect(button.x + button.width).toBeLessThanOrEqual(g.right + 0.5);
 				expect(await hitAt(page, button.x + button.width / 2, row)).toBe(`handle:${id}`);
 			}
-			// The + left of the guide, the grip right of it, flush with the block (Notion).
-			expect(add.x + add.width).toBeLessThanOrEqual(band.x + 0.5);
-			expect(move.x).toBeGreaterThanOrEqual(band.x + band.width - 0.5);
+			// The + and the grip right of the guide, together, flush with the block (round 5, Notion).
+			expect(add.x).toBeGreaterThanOrEqual(band.x + band.width - 0.5);
+			expect(move.x).toBeGreaterThanOrEqual(add.x + add.width - 0.5);
 			expect(Math.abs(move.x + move.width - g.right)).toBeLessThanOrEqual(1);
-			expect(await hitAt(page, g.mid, row)).toBe('resize');
+			expect(await hitAt(page, g.band, row)).toBe('resize');
 		}
 	});
 
-	test('from B2’s text left over the grip and the guide to the +: the + opens the insert menu', async ({
+	test('from B2’s text left over the grip to the +: the + opens the insert menu', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -321,7 +322,7 @@ test.describe('typing with no caret does nothing (round 4, issue 2)', () => {
 		const g = await gapOf(page);
 		const a2 = await textBox(page, 'A2');
 		const row = a2.y + a2.height / 2;
-		const at = await walk(page, { x: a2.x + 30, y: row }, { x: g.mid, y: row });
+		const at = await walk(page, { x: a2.x + 30, y: row }, { x: g.band, y: row });
 		await page.mouse.down();
 		await walk(page, at, { x: at.x + 40, y: row });
 		await page.mouse.up();
@@ -353,7 +354,7 @@ test.describe('typing after a resize is its own undo step (round 4, issue 3)', (
 		const g = await gapOf(page);
 		const a2 = await textBox(page, 'A2');
 		const row = a2.y + a2.height / 2;
-		const at = await walk(page, { x: a2.x + 30, y: row }, { x: g.mid, y: row });
+		const at = await walk(page, { x: a2.x + 30, y: row }, { x: g.band, y: row });
 		await page.mouse.down();
 		await walk(page, at, { x: at.x + 40, y: row });
 		await page.mouse.up();
@@ -380,7 +381,7 @@ test.describe('a resize stops when the view turns readonly (round 4, issue 4)', 
 		const g = await gapOf(page);
 		const a2 = await textBox(page, 'A2');
 		const row = a2.y + a2.height / 2;
-		const at = await walk(page, { x: a2.x + 30, y: row }, { x: g.mid, y: row });
+		const at = await walk(page, { x: a2.x + 30, y: row }, { x: g.band, y: row });
 		await page.mouse.down();
 		await walk(page, at, { x: at.x + 40, y: row });
 		await expect.poll(() => widths(page)).toEqual([before[0]! + 40, before[1]! - 40]);

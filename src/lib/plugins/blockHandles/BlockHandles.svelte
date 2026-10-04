@@ -8,7 +8,7 @@
 	import BlockHandle from './BlockHandle.svelte';
 	import type { BlockHandleSnippetPayload } from './blockHandlesPlugin.js';
 	import type { BlockHandleController } from './BlockHandleController.svelte.js';
-	import { gapBefore } from '../columns/gaps.js';
+	import { gapBefore, handleSpan } from '../columns/gaps.js';
 
 	/**
 	 * The handles, in the overlay (R11): one per registered movable block that
@@ -119,10 +119,10 @@
 			const left = `${rect.left - origin.left}px`;
 			const top = shown ? `${center - origin.top}px` : '';
 			const gap = shown ? overGap(block) : null;
-			// Over a gap, the handle spans it from its left edge to the block (`span`),
+			// Over a gap, the handle spans it from the resize band to the block (`span`),
 			// and its box takes the pointer at its block's row (`row`): relative to
 			// the host's top, which is centered on the first line.
-			const span = gap ? `${Math.max(0, rect.left - gap.left)}px` : '';
+			const span = gap ? `${handleSpan(gap, rect.left)}px` : '';
 			const row = gap
 				? `${rect.top - (center - host.offsetHeight / 2)}px ${ownRowBottom(node, rect) - rect.top}px`
 				: '';
@@ -197,17 +197,17 @@
 	}
 
 	/* Over a gap between two columns (one hit rule, the handles'): the handle
-	 * spans the gap, its `+` (compact) at the gap's left edge and its grip
-	 * flush with its block, and its box takes the pointer at its block's whole
-	 * row, shown or not — a pointer there hovers the block, so its grip is
-	 * reached from any side. The column resize band sits above, at the gap's
-	 * middle, between the two (`columns/gaps.ts`): at the default 46px gap
-	 * (18 + 10 + 18) neither button is under it, and where its guide shows a
-	 * press resizes. */
+	 * spans the gap right of the column resize band, its `+` (compact) and its
+	 * grip together flush with its block (Notion's "+ ⋮⋮"), and its box takes
+	 * the pointer at its block's whole row, shown or not — a pointer there
+	 * hovers the block, so its grip is reached from any side. The band is the
+	 * gap's left part (`columns/gaps.ts`, one measurement): at the default
+	 * 46px gap (10 + 18 + 18) neither button is under it, and where its guide
+	 * shows a press resizes. */
 	[data-edytor-block-handle-host][data-over-gap='true'] {
 		box-sizing: border-box;
 		width: var(--edytor-handle-gap-width, auto);
-		justify-content: space-between;
+		justify-content: flex-end;
 		padding-inline-end: 0;
 	}
 

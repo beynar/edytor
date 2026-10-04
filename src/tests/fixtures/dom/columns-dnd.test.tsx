@@ -205,9 +205,16 @@ const startDrag = async (
  * The pointer over the page left or right of the editor (the page target,
  * `margin`): jsdom has no layout nor hit test, so the root gets the blocks'
  * box and `elementsFromPoint` answers the blocks at a point, innermost first.
- * Answers the release.
+ * `on` is the element under the pointer (a block reaching into the handle
+ * column, which hands it to the page target), else the page. Answers the
+ * release.
  */
-const overPage = async (edytor: Edytor, clientX: number, clientY: number) => {
+const overPage = async (
+	edytor: Edytor,
+	clientX: number,
+	clientY: number,
+	on: HTMLElement = document.body
+) => {
 	const root = edytor.node!;
 	const blocks = [...root.querySelectorAll<HTMLElement>('[data-edytor-block="true"]')];
 	const bottom = Math.max(...blocks.map((node) => node.getBoundingClientRect().bottom));
@@ -220,11 +227,11 @@ const overPage = async (edytor: Edytor, clientX: number, clientY: number) => {
 			})
 			.reverse();
 	Object.assign(document, { elementsFromPoint: hits });
-	fire(document.body, 'dragenter', { clientX, clientY });
-	fire(document.body, 'dragover', { clientX, clientY });
+	fire(on, 'dragenter', { clientX, clientY });
+	fire(on, 'dragover', { clientX, clientY });
 	await frame();
 	return async () => {
-		fire(document.body, 'drop', { clientX, clientY });
+		fire(on, 'drop', { clientX, clientY });
 		await flushDomUpdates();
 		await frame();
 		delete (document as { elementsFromPoint?: unknown }).elementsFromPoint;
@@ -529,8 +536,9 @@ describe('the beside bands', () => {
 	it('left of a root row, the handle column reorders; the page margin past it is the left band, the moved block first (R2)', async () => {
 		const { edytor } = await render(withX());
 		const drag = await startDrag(edytor, 'X');
-		// 10px left of P, in its sticky slop: the handle column, a reorder.
-		await drag.over('P', 0.5, -10);
+		// 10px left of P, over P's element (in its sticky slop): the handle
+		// column, which P hands to the page target (round 3), a reorder.
+		await overPage(edytor, -10, 12, block(edytor, 'P').node!);
 		expect([position(), indicated()]).toEqual(['after', 'P']);
 		// The page there (the handle column, 50px when the handle is not measured): P's halves.
 		await overPage(edytor, -10, 6);
@@ -553,6 +561,51 @@ describe('the beside bands', () => {
 			C,
 			'Z'
 		]);
+	});
+
+	it('in the handle column a block reaching into it hands the pointer to the page: no placement held from it (round 3)', async () => {
+		const { edytor } = await render([
+			p('P1'),
+			p('L1', 'l1', [p('L1a')]),
+			...contractDoc().slice(1)
+		]);
+		const drag = await startDrag(edytor, 'P1');
+		// L1's element reaches 20px into the handle column (a list marker).
+		const l1 = block(edytor, 'L1').node!;
+		const own = l1.getBoundingClientRect();
+		l1.getBoundingClientRect = () => new DOMRect(-20, own.top, own.width + 20, own.height);
+		const l1a = rectOf(edytor, 'L1a');
+		await overPage(edytor, -12, l1a.top + 6, l1);
+		expect([position(), indicated()]).toEqual(['before', 'L1a']);
+		// Down to the layout's row, the pointer off L1: A's row, not a held "before L1a".
+		const a = rectOf(edytor, 'A');
+		const drop = await overPage(edytor, -12, a.top + 18);
+		expect([position(), indicated()]).toEqual(['after', 'A']);
+		await drop();
+		expect(shape(edytor)).toEqual([
+			['L1', ['L1a']],
+			[
+				'columns',
+				[
+					['column', ['A', 'P1', 'A2']],
+					['column', ['B']]
+				]
+			],
+			'Z'
+		]);
+	});
+
+	it("in the handle column a list's first item offers no inside: before or after only (round 3)", async () => {
+		const { edytor } = await render([p('P'), list('L', 'i1', 'i2'), p('X')]);
+		const drag = await startDrag(edytor, 'X');
+		const i1 = rectOf(edytor, 'i1');
+		for (const y of [i1.top + 6, i1.top + 18]) {
+			await overPage(edytor, -10, y, block(edytor, 'i1').node!);
+			expect(position()).not.toBe('inside');
+		}
+		// In the text, the hitbox's own placements stand (inside as a fallback there).
+		await drag.over('i1', 0.75, 10);
+		expect(position()).toBe('inside');
 	});
 
 	it('a nested row has no left band: the pointer still picks the level (reparent-by-x)', async () => {
@@ -580,8 +633,9 @@ describe('the beside bands', () => {
 		await drag.over('B', 0.5, -10);
 		expect([position(), indicated()]).toEqual(['left', 'B']);
 		expect(bar()).toEqual({ left: 298, top: c.top, width: 4, height: c.height });
-		// A's left, in the first column: the editor's handle column, a reorder (R2).
-		await drag.over('A', 0.5, -10);
+		// A's left, in the first column: the editor's handle column, a reorder (R2),
+		// the page target's even over A's element (round 3).
+		await overPage(edytor, -10, rectOf(edytor, 'A').top + 12, block(edytor, 'A').node!);
 		expect([position(), indicated()]).toEqual(['after', 'A']);
 		// Past the handle column, the page margin: the layout's left edge.
 		const a = rectOf(edytor, 'A');
@@ -708,7 +762,8 @@ describe('the beside bands', () => {
 		expect(position()).toBe('before');
 		await drag.over('B', 0.25, 170);
 		expect(position()).toBe('before');
-		await drag.over('P', 0.25, -10);
+		// The handle column, the page target's (round 3): a reorder.
+		await overPage(edytor, -10, 6, block(edytor, 'P').node!);
 		expect(position()).toBe('before');
 	});
 
@@ -725,7 +780,8 @@ describe('the beside bands', () => {
 		const drag = await startDrag(edytor, 'X');
 		await drag.over('P', 0.25, 590);
 		expect(position()).toBe('before');
-		await drag.over('P', 0.25, -10);
+		// The handle column, the page target's (round 3): a reorder.
+		await overPage(edytor, -10, 6, block(edytor, 'P').node!);
 		expect(position()).toBe('before');
 	});
 

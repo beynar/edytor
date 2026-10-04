@@ -503,7 +503,12 @@ export class BlockHandleController {
 		const cleanup = dropTargetForElements({
 			element: node,
 			// A beside band counts: a row whose halves are both refused still takes it.
+			// In the handle column a block (one reaching into it, a list item's
+			// marker) hands the pointer to the page target, whose rule is the
+			// row at the pointer's height (`margin`): never a placement held from
+			// a row passed on the way.
 			canDrop: ({ source, input }) => {
+				if (this.inHandleColumn(input.clientX)) return false;
 				const row = this.rowAt(source.data, target, node, input);
 				if (Object.values(this.operations(source.data, row, input)).includes('available'))
 					return true;
@@ -650,6 +655,14 @@ export class BlockHandleController {
 		return { start, handles: width > 0 ? width : HANDLE_COLUMN };
 	}
 
+	/** Whether `x` is in the handle column left of the editor's blocks (`gutter`): the page target's. */
+	private inHandleColumn(x: number) {
+		const root = this.edytor.node;
+		if (!root) return false;
+		const { start, handles } = this.gutter(root);
+		return x < start && x >= start - handles;
+	}
+
 	/**
 	 * A placement in the editor's margins at the pointer, for the row the
 	 * editor's near edge shows at the pointer's height (`rowAt`: a column's
@@ -668,7 +681,7 @@ export class BlockHandleController {
 		const box = root.getBoundingClientRect();
 		if (y < box.top || y > box.bottom) return undefined;
 		const { start, handles } = this.gutter(root);
-		const handle = x < start && x >= start - handles;
+		const handle = this.inHandleColumn(x);
 		const left = x < start - handles && x >= start - handles - MARGIN_X;
 		const right = x > box.right && x <= box.right + MARGIN_X;
 		if (!handle && (!this.layouts || (!left && !right))) return undefined;
@@ -709,10 +722,12 @@ export class BlockHandleController {
 	}
 
 	/**
-	 * The hitbox's halves over `row` at the pointer, as its own drop target
-	 * gives them (`placement`): its own row's top half before, the bottom
-	 * half after (`zones`, the pointer's x picking the level); `null` when
-	 * neither half fits.
+	 * The handle column's reorder over `row` at the pointer: the hitbox's
+	 * halves as its own drop target gives them (`zones`, the pointer's x
+	 * picking the level), its own row's top half before, the bottom half
+	 * after, only before or after a block — never inside one (a list's first
+	 * item whose other placements the document refuses); `null` when neither
+	 * half fits.
 	 */
 	private reorder(
 		source: Block,
@@ -720,7 +735,10 @@ export class BlockHandleController {
 		input: { clientX: number; clientY: number }
 	): DropPlacement | null {
 		const rect = ownRow(row.node!);
-		const { before, after } = this.zones(source, row, input);
+		const zones = this.zones(source, row, input);
+		const [before, after] = [zones.before, zones.after].map((half) =>
+			half.filter((placement) => placement.position !== 'inside')
+		) as [DropPlacement[], DropPlacement[]];
 		const halves = input.clientY < rect.top + rect.height / 2 ? [before, after] : [after, before];
 		const fits = this.fits(source);
 		const placement = halves.flat().find(fits);

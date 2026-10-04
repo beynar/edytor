@@ -373,3 +373,122 @@ test.describe('a live resize (round 3, gap 3)', () => {
 			.toBe(Math.round(c.width * 0.1));
 	});
 });
+
+/** A doc of `children`, the editor 160px in from the page's left (room for a page margin). */
+const openDoc = async (page: Page, children: unknown[]) => {
+	await page.goto(
+		`/test/dom?scenario=dst&handles=true&dst=${encodeURIComponent(JSON.stringify({ children }))}`
+	);
+	await waitForEditorReady(page, { requireRuntime: true });
+	await fit(page);
+	await page.getByTestId('editor-shell').evaluate((shell) => (shell.style.marginLeft = '160px'));
+	await frames(page);
+};
+const para = (id: string, text: string) => ({ id, type: 'paragraph', content: [{ text }] });
+const MIXED = [
+	para('P1', 'first paragraph'),
+	{
+		id: 'UL',
+		type: 'unordered-list',
+		children: [
+			{ id: 'I1', type: 'list-item', content: [{ text: 'container item one' }] },
+			{ id: 'I2', type: 'list-item', content: [{ text: 'container item two' }] }
+		]
+	},
+	{
+		id: 'L1',
+		type: 'bulleted-list-item',
+		content: [{ text: 'list one' }],
+		children: [{ id: 'L1a', type: 'bulleted-list-item', content: [{ text: 'nested item' }] }]
+	},
+	{
+		id: 'C',
+		type: 'columns',
+		children: [
+			{ id: 'K1', type: 'column', children: [para('A', 'col a')] },
+			{ id: 'K2', type: 'column', children: [para('B', 'col b')] }
+		]
+	},
+	para('Z', 'last paragraph')
+];
+/** The placement shown now: its position and the block it is relative to. */
+const shown = (page: Page) =>
+	page.evaluate(() => {
+		const bar = document.querySelector<HTMLElement>('[data-edytor-drop-indicator]');
+		const at = document.querySelector<HTMLElement>('[data-edytor-block-drop-position]');
+		return bar ? `${bar.dataset.position} ${at?.dataset.edytorId}` : null;
+	});
+
+test.describe('the handle column reorders at the pointer’s row (round 3, gaps 4 and 5)', () => {
+	test('P1 down the handle column past a nested list item to the layout: the layout’s row, never a held “before L1a”', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await openDoc(page, MIXED);
+		const at = await reachGrip(page, 'P1');
+		const x = (await textBox(page, 'P1')).x - 12;
+		await page.mouse.down();
+		await walk(page, at, { x, y: at.y + 12 });
+		const [l1, c] = [await box(page, 'L1'), await box(page, 'C')];
+		const seen: Array<[number, string | null]> = [];
+		for (let y = at.y + 12; y <= c.y + c.height * 0.75; y += 4) {
+			await page.mouse.move(x, y);
+			await frames(page);
+			seen.push([Math.round(y - l1.y), await shown(page)]);
+		}
+		// Over L1a's own row, its placements; over the layout's row, the row there (A's).
+		const l1a = await box(page, 'L1a');
+		const overLayout = seen.filter(([dy]) => dy + l1.y > c.y + 2).map(([, s]) => s);
+		expect(overLayout.length).toBeGreaterThan(0);
+		expect(overLayout.filter((s) => !/^(before|after) A$/.test(s ?? ''))).toEqual([]);
+		const overL1a = seen
+			.filter(([dy]) => dy + l1.y > l1a.y + 2 && dy + l1.y < l1a.y + l1a.height - 2)
+			.map(([, s]) => s);
+		expect(overL1a.filter((s) => !/ L1a$|after L1$/.test(s ?? ''))).toEqual([]);
+		await expect(indicator(page)).toHaveAttribute('data-position', 'after');
+		await page.mouse.up();
+		await expect
+			.poll(() => tree(page))
+			.toEqual([
+				['UL', ['I1', 'I2']],
+				['L1', ['L1a']],
+				[
+					'L',
+					[
+						['col', ['A', 'P1']],
+						['col', ['B']]
+					]
+				],
+				'Z'
+			]);
+		issues.assertClean();
+	});
+
+	for (const half of [0.25, 0.75])
+		test(`Z up the handle column to a list’s first item (${half === 0.25 ? 'upper' : 'lower'} half): never inside it`, async ({
+			page
+		}) => {
+			const issues = trackPageIssues(page);
+			await openDoc(page, MIXED);
+			const at = await reachGrip(page, 'Z');
+			const x = (await textBox(page, 'Z')).x - 12;
+			await page.mouse.down();
+			await walk(page, at, { x, y: at.y - 12 });
+			const i1 = await box(page, 'I1');
+			const seen: Array<string | null> = [];
+			for (let y = at.y - 12; y >= i1.y + i1.height * half; y -= 4) {
+				await page.mouse.move(x, y);
+				await frames(page);
+				seen.push(await shown(page));
+			}
+			await page.mouse.move(x, i1.y + i1.height * half);
+			await frames(page);
+			seen.push(await shown(page));
+			expect(seen.filter((s) => s?.startsWith('inside'))).toEqual([]);
+			await page.mouse.up();
+			await frames(page);
+			// Never nested under the item.
+			expect(JSON.stringify(await tree(page))).not.toContain('["I1",[');
+			issues.assertClean();
+		});
+});

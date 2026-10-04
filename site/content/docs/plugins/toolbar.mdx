@@ -61,7 +61,7 @@ The toolbar shows when all of these hold:
 - no whole block and no inline atom is selected;
 - the selection is not inside a void or an island block (such as a code block).
 
-It follows the selection as it changes, and repositions on scroll, resize and edits. Buttons keep the selection: clicking one does not move the caret, and the selection is restored after the format is applied.
+It follows the selection as it changes, and repositions on scroll, resize and edits. Buttons keep the selection: clicking one does not move the caret, and the selection is restored after the format is applied. A press anywhere on the toolbar, its background included, never takes the editor's focus: typing after it goes on in the editor, replacing the selected text. Only its fields (the link panel's URL field) take focus.
 
 A URL typed in the link panel goes through the same sanitization as every link: a `javascript:` or other unsafe scheme is ignored. Colors go through `setMarkValueAtRange` and `removeMarkAtRange` (see [Formatting from code](/docs/plugins/rich-text#formatting-from-code)).
 
@@ -109,19 +109,18 @@ The snippet receives the `ToolbarController`. Every action keeps and restores th
 	import { Edytor, createToolbarPlugin, type ToolbarController } from 'edytor';
 
 	const plugins = [createToolbarPlugin({ toolbar })];
-	const keep = (event: MouseEvent) => event.preventDefault();
 </script>
 
 {#snippet toolbar(controller: ToolbarController)}
 	<div class="bar" data-edytor-toolbar-bar>
 		{#each controller.marks as { mark, label, icon } (mark)}
-			<button title={label} onmousedown={keep} onclick={() => controller.toggleMark(mark)}>{icon}</button>
+			<button title={label} onclick={() => controller.toggleMark(mark)}>{icon}</button>
 		{/each}
-		<button onmousedown={keep} onclick={() => controller.setColor('highlight', '#fbf3db')}>Highlight</button>
+		<button onclick={() => controller.setColor('highlight', '#fbf3db')}>Highlight</button>
 	</div>
 {/snippet}
 
 <Edytor {plugins} />
 ```
 
-Call `preventDefault` on `mousedown` in every button, or the click moves the selection before the action runs. The plugin places the host by the element marked `data-edytor-toolbar-bar` (else your snippet's first element), so a panel that opens below the bar does not push the bar up. `TOOLBAR_COLORS` holds Notion's palette for your own color panel. See [Menus and handles](/docs/customization/menus) for the other menus.
+The plugin cancels the `mousedown` of every press in its host but in a field (an `input`, a `textarea`, a `select`), so your buttons keep the selection and the editor's focus without a `mousedown` handler of their own. The plugin places the host by the element marked `data-edytor-toolbar-bar` (else your snippet's first element), so a panel that opens below the bar does not push the bar up. `TOOLBAR_COLORS` holds Notion's palette for your own color panel. See [Menus and handles](/docs/customization/menus) for the other menus.

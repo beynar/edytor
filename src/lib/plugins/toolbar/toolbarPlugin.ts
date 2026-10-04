@@ -3,12 +3,18 @@ import type { Plugin } from '$lib/plugins.js';
 import Toolbar from './Toolbar.svelte';
 import { ToolbarController } from './ToolbarController.svelte.js';
 
+/** A press in a field of the chrome (an input, a select): it takes focus. */
+const isNativeFieldEvent = (event: Event) =>
+	event
+		.composedPath()
+		.some((target) => target instanceof Element && target.matches('input, textarea, select'));
+
 export type ToolbarOptions = {
 	/**
 	 * Replace the toolbar; it renders while `controller.isVisible`, placed
 	 * above the selection (mark your bar `data-edytor-toolbar-bar` if panels
-	 * hang below it). Buttons should `preventDefault` on mousedown to keep
-	 * the selection.
+	 * hang below it). A press on it never takes the editor's focus (its
+	 * fields, an input or a select, take their own).
 	 */
 	toolbar?: Snippet<[ToolbarController]>;
 };
@@ -47,14 +53,29 @@ export const createToolbarPlugin =
 				controller.updateFromSelection(selection);
 				edytor.overlay.invalidate();
 			},
-			onEdytorAttached: () =>
-				edytor.overlay.mount(
+			onEdytorAttached: () => {
+				const unmount = edytor.overlay.mount(
 					Toolbar,
 					{ controller, toolbar: options.toolbar },
 					'edytor-toolbar-host',
 					60,
 					positionToolbar
-				)
+				);
+				// No press on the chrome takes focus, its background and a custom
+				// snippet's markup included (not only its buttons): the editor keeps
+				// its focus and its selection. A field (the link panel's input) takes
+				// its own. Every press has a `mousedown`, WebKit's lone one too
+				// (`onFocus.ts`), so no `pointerdown` is cancelled.
+				const host = edytor.overlay.layer?.querySelector('[data-edytor-toolbar-host]');
+				const keep = (event: Event) => {
+					if (!isNativeFieldEvent(event)) event.preventDefault();
+				};
+				host?.addEventListener('mousedown', keep);
+				return () => {
+					host?.removeEventListener('mousedown', keep);
+					unmount();
+				};
+			}
 		};
 	};
 

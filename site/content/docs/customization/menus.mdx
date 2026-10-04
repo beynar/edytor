@@ -71,7 +71,7 @@ The row's `icon` is the built-in line icon as a CSS `mask-image` value, so a `cu
 
 Two rules apply to every snippet:
 
-- **Keep the selection.** Call `preventDefault` on `mousedown` in buttons that act on the text: slash rows, toolbar buttons, the `+`. Otherwise the click moves the caret before the action runs.
+- **Keep the selection.** Call `preventDefault` on `mousedown` in buttons that act on the text: slash rows, the `+`. Otherwise the click moves the caret before the action runs. The toolbar's host does it for every press but in a field, so a toolbar snippet's buttons need nothing.
 - **Mark the element to place.** The toolbar measures `[data-edytor-toolbar-bar]` and the block menu `[data-edytor-block-menu]` when your markup has them, else the snippet's first element.
 
 ## Slash menu

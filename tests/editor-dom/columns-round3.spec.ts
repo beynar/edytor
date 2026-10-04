@@ -492,3 +492,97 @@ test.describe('the handle column reorders at the pointer’s row (round 3, gaps 
 			issues.assertClean();
 		});
 });
+
+test.describe('small items (round 3, gap 6)', () => {
+	test('a: /column 2 finds “2 columns” (Notion), Enter makes it', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		const z = await textBox(page, 'Z');
+		await page.mouse.click(z.x + z.width - 2, z.y + z.height / 2);
+		await page.keyboard.press('End');
+		await page.keyboard.press('Enter');
+		await page.keyboard.type('/column 2');
+		const rows = page.locator('[data-testid="slash-menu-item"]');
+		await expect(rows).toHaveText(['2 columns']);
+		await page.keyboard.press('Enter');
+		await expect(page.locator('[data-edytor-columns]')).toHaveCount(2);
+		issues.assertClean();
+	});
+
+	for (const [width, height] of [
+		[1280, 720],
+		[1024, 640]
+	])
+		for (const id of ['page-column-right-text', 'page-end'])
+			test(`b: the Turn into flyout of ${id} low in a ${width}×${height} viewport ends inside it`, async ({
+				page
+			}) => {
+				await page.setViewportSize({ width, height });
+				await page.goto(`/?doc=round3-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+				await waitForEditorReady(page);
+				await page
+					.locator(`[data-edytor-id="${id}"]`)
+					.evaluate((node) => node.scrollIntoView({ block: 'end' }));
+				await frames(page);
+				await reachGrip(page, id, 6);
+				await page.mouse.down();
+				await page.mouse.up();
+				await expect(page.getByRole('menu', { name: 'Block actions' })).toBeVisible();
+				const turn = (await page.getByTestId('block-menu-turn').boundingBox())!;
+				const g = (await grip(page, id).boundingBox())!;
+				await walk(
+					page,
+					{ x: g.x + g.width / 2, y: g.y + g.height / 2 },
+					{ x: turn.x + 20, y: turn.y + turn.height / 2 },
+					6
+				);
+				const flyout = page.getByRole('menu', { name: 'Turn into' });
+				await expect(flyout).toBeVisible();
+				// Past its opening animation (a scale from 0.98): the box it settles at.
+				await page.waitForTimeout(300);
+				await frames(page);
+				const box = (await flyout.boundingBox())!;
+				expect(box.y).toBeGreaterThanOrEqual(0);
+				expect(box.y + box.height).toBeLessThanOrEqual(height);
+			});
+
+	test('c: left of a container list’s item, in the page margin: a layout with the moved block first', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await openDoc(page, MIXED);
+		const at = await reachGrip(page, 'Z');
+		await page.mouse.down();
+		const i2 = await textBox(page, 'I2');
+		const row = i2.y + i2.height / 2;
+		await walk(page, at, { x: at.x, y: row }, 6);
+		await walk(page, { x: at.x, y: row }, { x: i2.x - 60, y: row });
+		await expect(indicator(page)).toHaveAttribute('data-position', 'left');
+		// The bar spans the whole list, at its left edge.
+		const [ul, bar] = [await box(page, 'UL'), (await indicator(page).boundingBox())!];
+		expect(Math.abs(bar.y - ul.y)).toBeLessThanOrEqual(1);
+		expect(Math.abs(bar.height - ul.height)).toBeLessThanOrEqual(1);
+		await page.mouse.up();
+		await expect
+			.poll(() => tree(page))
+			.toEqual([
+				'P1',
+				[
+					'L',
+					[
+						['col', ['Z']],
+						['col', [['UL', ['I1', 'I2']]]]
+					]
+				],
+				['L1', ['L1a']],
+				[
+					'L',
+					[
+						['col', ['A']],
+						['col', ['B']]
+					]
+				]
+			]);
+		issues.assertClean();
+	});
+});

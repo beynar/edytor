@@ -49,8 +49,8 @@
 			id: `columns.${n}`,
 			label: `${n} columns`,
 			group: 'Layout',
-			// Notion's `/col3`, `/columns3` too.
-			keywords: ['columns', 'layout', 'side by side', `col${n}`, `columns${n}`],
+			// Notion's `/col3`, `/columns3` and `/column 3` too (query words match in order).
+			keywords: ['columns', 'layout', 'side by side', `col${n}`, `columns${n}`, `column ${n}`],
 			value: {
 				type: 'columns',
 				data: {},

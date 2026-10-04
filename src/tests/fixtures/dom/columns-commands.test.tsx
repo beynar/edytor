@@ -77,7 +77,7 @@ const rows = () =>
 	);
 
 describe('the layout commands', () => {
-	it('are four commands in the Layout group, with Notion’s col<n> and columns<n> keywords', async () => {
+	it('are four commands in the Layout group, with Notion’s col<n>, columns<n> and column <n> keywords', async () => {
 		const { edytor } = await renderColumns([p('P', '')]);
 		const listed = [2, 3, 4, 5].map((n) => {
 			const command = edytor.commands.get(`columns.${n}`)!;
@@ -87,7 +87,7 @@ describe('the layout commands', () => {
 			[2, 3, 4, 5].map((n) => [
 				`${n} columns`,
 				'Layout',
-				['columns', 'layout', 'side by side', `col${n}`, `columns${n}`]
+				['columns', 'layout', 'side by side', `col${n}`, `columns${n}`, `column ${n}`]
 			])
 		);
 	});
@@ -148,7 +148,12 @@ describe('the layout commands', () => {
 		['/col3', '3 columns'],
 		['/columns3', '3 columns'],
 		['/col5', '5 columns'],
-		['/columns2', '2 columns']
+		['/columns2', '2 columns'],
+		// Round 3: a word and the count, as Notion matches them.
+		['/column 2', '2 columns'],
+		['/column 4', '4 columns'],
+		['/columns 3', '3 columns'],
+		['/col 5', '5 columns']
 	])
 		it(`the slash menu finds ${row} by ${query} (Notion)`, async () => {
 			const { edytor, editor } = await renderColumns([p('P', '')], [slashMenuPlugin]);

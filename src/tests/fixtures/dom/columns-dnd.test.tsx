@@ -742,6 +742,26 @@ describe('the beside bands', () => {
 		]);
 	});
 
+	it("left of a root list's item, in the page margin: the layout wraps the list, the moved block first (round 3)", async () => {
+		const { edytor } = await render([p('P'), list('L', 'i1', 'i2'), p('X')]);
+		await startDrag(edytor, 'X');
+		const [l, i2] = [rectOf(edytor, 'L'), rectOf(edytor, 'i2')];
+		const drop = await overPage(edytor, -60, i2.top + 12);
+		expect([position(), indicated()]).toEqual(['left', 'i2']);
+		expect(bar()).toEqual({ left: -2, top: l.top, width: 4, height: l.height });
+		await drop();
+		expect(shape(edytor)).toEqual([
+			'P',
+			[
+				'columns',
+				[
+					['column', ['X']],
+					['column', [['L', ['i1', 'i2']]]]
+				]
+			]
+		]);
+	});
+
 	it('a refused band shows nothing: a whole layout dragged beside a root block (D2)', async () => {
 		const { edytor } = await render(withX());
 		edytor.selection.selectBlocks(block(edytor, 'A'), block(edytor, 'A2'), block(edytor, 'B'));

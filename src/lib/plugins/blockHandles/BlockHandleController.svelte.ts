@@ -940,8 +940,9 @@ export class BlockHandleController {
 	 * and the layout the drop makes or grows does not stack (`stacks`):
 	 * - right: the row's last 15% (at least 32px), and the slop past it;
 	 * - left: the slop left of the row (its sticky margin, left of its text
-	 *   column), only for a row whose parent is the root or a column — a
-	 *   nested row keeps the pointer's x for its levels (`zones`) — and only
+	 *   column), only for a row whose parent is the root or a column (a
+	 *   list's item: its list's) — a nested row keeps the pointer's x for its
+	 *   levels (`zones`) — and only
 	 *   inside the editor (a column's gap): left of the editor's blocks is the
 	 *   handle column, which reorders (`margin`);
 	 * - over a layout's gap (the row is the layout): right of the column
@@ -977,7 +978,17 @@ export class BlockHandleController {
 			const outer = this.besideOf(row);
 			const width = (this.layoutOf(outer)?.layout ?? outer).node?.getBoundingClientRect().width;
 			if (width === undefined || stacks(width)) return undefined;
-			const parent = row.parent;
+			// A container's item (a list's) stands at its container's level, as the
+			// document resolves it (`besideAt`): left of a root list's item is left of the list.
+			let at = row;
+			while (
+				at.parent &&
+				!at.parent.isRoot &&
+				at.parent.isContainer &&
+				!facade.isLayoutItem(at.parent.id)
+			)
+				at = at.parent;
+			const parent = at.parent;
 			const level = !parent || parent.isRoot || facade.isLayoutItem(parent.id);
 			if (
 				band === 'right' ||

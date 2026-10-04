@@ -42,7 +42,9 @@ export const createBlockMenuPlugin =
 			const [gap, edge, between] = [8, 8, 4];
 			const rect = anchor.getBoundingClientRect();
 			if (rect.bottom < 0 || rect.top > view.innerHeight) return close;
-			const { width, height } = menu.getBoundingClientRect();
+			// Layout sizes, not the box: the menus open with a scale (0.98 → 1), and a
+			// box read mid-animation would place them up to 2% short of their size.
+			const [width, height] = [menu.offsetWidth, menu.offsetHeight];
 			const right = rect.right + gap;
 			const left = rect.left - gap - width;
 			let x =
@@ -60,7 +62,7 @@ export const createBlockMenuPlugin =
 			let side = '';
 			let shift = '';
 			if (flyout && frame) {
-				const box = flyout.getBoundingClientRect();
+				const box = { width: flyout.offsetWidth, height: flyout.offsetHeight };
 				// Left of the menu when its right has no room (the menu stays where it is).
 				if (
 					x + width + between + box.width > view.innerWidth - edge &&

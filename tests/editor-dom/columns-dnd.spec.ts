@@ -8,9 +8,9 @@ import { trackPageIssues, waitForEditorReady } from './helpers';
  * a new column of the layout that block is in); the gap between two
  * columns adds a column between them; the indicator is a vertical 4px bar;
  * a refused band shows nothing; one undo restores the document and the
- * selection held before the drag. The strip at the left of a gap resizes
- * its two columns on release only, one undo step, never under the minimum
- * width; there is none when readonly or stacked. The jsdom rows are
+ * selection held before the drag. The strip over a gap resizes its two
+ * columns live, writing on release only, one undo step, never under the
+ * minimum width; there is none when readonly or stacked. The jsdom rows are
  * `src/tests/fixtures/dom/columns-dnd.test.tsx` and `columns-resize.test.tsx`.
  *
  * `P "before", C[K1[A "left one", A2 "left two"], K2[B "right"]], Z "after"`.
@@ -354,7 +354,7 @@ test.describe('resizing columns', () => {
 			return ['K1', 'K2'].map((id) => edytor.idToBlock.get(id)!.data.width ?? null);
 		});
 
-	test('dragging the strip resizes on release only, keeping the sum; one undo restores; the minimum width holds', async ({
+	test('dragging the strip resizes live, writes on release only, keeping the sum; one undo restores; the minimum width holds', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -372,9 +372,9 @@ test.describe('resizing columns', () => {
 		await page.mouse.down();
 		await page.mouse.move(at.x + 100, at.y, { steps: 10 });
 		await expect(page.locator('[data-edytor-column-resize-guide]')).toHaveCount(1);
-		// Nothing written, nothing resized, while the pointer drags.
+		// Nothing written while the pointer drags; both columns follow it (a view-only preview).
 		expect(await weights(page)).toEqual([null, null]);
-		expect(Math.abs((await box(page, 'K1')).width - k1.width)).toBeLessThanOrEqual(0.5);
+		await expect.poll(async () => Math.round((await box(page, 'K1')).width - k1.width)).toBe(100);
 		await page.mouse.up();
 		await expect(page.locator('[data-edytor-column-resize-guide]')).toHaveCount(0);
 		await expect.poll(async () => Math.round((await box(page, 'K1')).width - k1.width)).toBe(100);

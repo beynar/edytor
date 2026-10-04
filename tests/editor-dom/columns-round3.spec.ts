@@ -271,3 +271,105 @@ test.describe('a column-2 block’s grip, reached from anywhere (round 3, gap 2)
 		issues.assertClean();
 	});
 });
+
+test.describe('a live resize (round 3, gap 3)', () => {
+	/** Commits that changed the document since `count` started (`facade.onChange`). */
+	const count = (page: Page) =>
+		page.evaluate(() => {
+			const edytor = (
+				window as unknown as {
+					__EDYTOR__: Edytor & { facade: { onChange: (cb: () => void) => void } };
+				}
+			).__EDYTOR__;
+			const w = window as unknown as { __changes: number };
+			w.__changes = 0;
+			edytor.facade.onChange(() => w.__changes++);
+		});
+	const changes = (page: Page) =>
+		page.evaluate(() => (window as unknown as { __changes: number }).__changes);
+	const widths = async (page: Page) => [
+		(await box(page, 'K1')).width,
+		(await box(page, 'K2')).width
+	];
+
+	test('both columns follow the pointer; nothing is written until the release, which writes once', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		const g = await gap(page);
+		await count(page);
+		const at = await reachStrip(page);
+		await page.mouse.down();
+		let x = at.x;
+		for (const by of [20, 40, 80]) {
+			x = (await walk(page, { x, y: at.y }, { x: at.x + by, y: at.y })).x;
+			await expect
+				.poll(async () => (await widths(page)).map((w) => Math.round(w)))
+				.toEqual([Math.round(g.k1.width + by), Math.round(g.k2.width - by)]);
+			expect(await weights(page)).toEqual([null, null]);
+			expect(await changes(page)).toBe(0);
+		}
+		// Back left past the start: they follow both ways.
+		x = (await walk(page, { x, y: at.y }, { x: at.x - 30, y: at.y })).x;
+		await expect
+			.poll(async () => Math.round((await widths(page))[0]!))
+			.toBe(Math.round(g.k1.width - 30));
+		await walk(page, { x, y: at.y }, { x: at.x + 80, y: at.y });
+		await page.mouse.up();
+		await expect.poll(() => changes(page)).toBe(1);
+		const [w1, w2] = (await weights(page)) as number[];
+		expect(w1! + w2!).toBeCloseTo(2, 6);
+		// The widths stay where the drag left them (no jump on release).
+		const [k1, k2] = await widths(page);
+		expect(Math.abs(k1! - (g.k1.width + 80))).toBeLessThanOrEqual(1);
+		expect(Math.abs(k2! - (g.k2.width - 80))).toBeLessThanOrEqual(1);
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect.poll(() => weights(page)).toEqual([null, null]);
+		await expect
+			.poll(async () => Math.round((await widths(page))[0]!))
+			.toBe(Math.round(g.k1.width));
+		issues.assertClean();
+	});
+
+	test('Escape mid-drag puts the widths back and writes nothing', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		const g = await gap(page);
+		await count(page);
+		const at = await reachStrip(page);
+		await page.mouse.down();
+		await walk(page, at, { x: at.x + 60, y: at.y });
+		await expect
+			.poll(async () => Math.round((await widths(page))[0]!))
+			.toBe(Math.round(g.k1.width + 60));
+		await page.keyboard.press('Escape');
+		await expect
+			.poll(async () => (await widths(page)).map((w) => Math.round(w)))
+			.toEqual([Math.round(g.k1.width), Math.round(g.k2.width)]);
+		await walk(page, { x: at.x + 60, y: at.y }, { x: at.x + 90, y: at.y });
+		await page.mouse.up();
+		expect(await weights(page)).toEqual([null, null]);
+		expect(await changes(page)).toBe(0);
+		expect((await widths(page)).map((w) => Math.round(w))).toEqual([
+			Math.round(g.k1.width),
+			Math.round(g.k2.width)
+		]);
+		issues.assertClean();
+	});
+
+	test('the live widths stop at the minimum (10% of the layout)', async ({ page }) => {
+		await open(page);
+		const c = await box(page, 'C');
+		const at = await reachStrip(page);
+		await page.mouse.down();
+		await walk(page, at, { x: at.x + 400, y: at.y }, 8);
+		await expect
+			.poll(async () => Math.round((await box(page, 'K2')).width))
+			.toBe(Math.round(c.width * 0.1));
+		await page.mouse.up();
+		await expect
+			.poll(async () => Math.round((await box(page, 'K2')).width))
+			.toBe(Math.round(c.width * 0.1));
+	});
+});

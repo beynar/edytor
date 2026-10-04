@@ -44,12 +44,18 @@
 	/** Tags that take no content: the kind renders the element only. */
 	const VOID_TAGS = new Set(['area', 'br', 'col', 'embed', 'hr', 'img', 'input', 'wbr']);
 
-	/** The element a kind declares (O45): a tag, or tag and attributes, from the block's data. */
+	/**
+	 * The element a kind declares (O45): a tag, or tag and attributes, from the
+	 * block's data and id (a kind's own view state keyed by block, such as a
+	 * column's width while a resize drags; reactive state the function reads
+	 * re-renders the element).
+	 */
 	const elementOf = (
 		declared: BlockDefinition['element'],
-		data: Record<string, unknown> | undefined
+		data: Record<string, unknown> | undefined,
+		id: string
 	) => {
-		const spec = typeof declared === 'function' ? declared(data ?? {}) : declared;
+		const spec = typeof declared === 'function' ? declared(data ?? {}, id) : declared;
 		if (spec === undefined) return undefined;
 		return typeof spec === 'string' ? { tag: spec, attributes: {} } : { attributes: {}, ...spec };
 	};
@@ -100,9 +106,11 @@
 	);
 	const definition = $derived(cell && edytor.definitionOf(cell.type));
 	// The core renders the block element from the definition; the snippet renders inside it (R11).
-	const element = $derived(definition && elementOf(definition.element ?? 'div', cell?.data));
+	const element = $derived(definition && elementOf(definition.element ?? 'div', cell?.data, id));
 	// The element around the block's own text (a heading's `h2`): the core's, so an override keeps it.
-	const contentElement = $derived(definition && elementOf(definition.contentElement, cell?.data));
+	const contentElement = $derived(
+		definition && elementOf(definition.contentElement, cell?.data, id)
+	);
 	/** Registers the block element (O45): one element per block, re-registered when the tag changes. */
 	const register = (node: HTMLElement) => block.handle?.attach(node);
 	/** The block element's attributes: the kind's, then the core's. */

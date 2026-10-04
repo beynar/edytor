@@ -6,7 +6,8 @@
  *   whole gap between two adjacent columns (`cursor: col-resize`), under the
  *   block handles (a shown handle takes its part of the gap), never inside
  *   the host;
- * - dragging a strip shows a guide line and writes nothing;
+ * - dragging a strip shows a guide line and resizes both columns live, a
+ *   view-only preview (round 3), and writes nothing;
  * - the release writes the two neighbours' `data.width` weights, keeping
  *   their sum, as one undo step;
  * - neither neighbour goes under `minWidth` (`createColumnsPlugin`, default
@@ -110,6 +111,9 @@ const boxOf = (node: HTMLElement) => {
 	return [left, top, width, height].map(parseFloat);
 };
 const guide = () => document.querySelector<HTMLElement>('[data-edytor-column-resize-guide]');
+/** The flex grow a column's element shows (its kind's `element`). */
+const flexOf = (edytor: Edytor, id: string) =>
+	Number(/flex:\s*([\d.e-]+)/.exec(block(edytor, id).node!.getAttribute('style') ?? '')?.[1]);
 const weights = (edytor: Edytor, ...ids: string[]) =>
 	ids.map((id) => block(edytor, id).data.width as number | undefined);
 
@@ -171,10 +175,16 @@ describe('dragging a strip', () => {
 		expect(boxOf(guide()!).slice(0, 2)).toEqual([377 + GAP / 2 - 1, 24]);
 		expect(changes).toBe(0);
 		expect(weights(edytor, 'K1', 'K2')).toEqual([undefined, undefined]);
+		// Both columns resize live (round 3): the columns' elements show the
+		// drag's weights, a preview of this view only.
+		expect(flexOf(edytor, 'K1')).toBeCloseTo((2 * 377) / 554, 10);
+		expect(flexOf(edytor, 'K2')).toBeCloseTo((2 * 177) / 554, 10);
 		pointer(strip!, 'pointerup', { clientX: 381, clientY: 40 });
 		await flushDomUpdates();
 		off();
 		expect(guide()).toBeNull();
+		// The stored weights replace the preview: the same widths.
+		expect(flexOf(edytor, 'K1')).toBeCloseTo((2 * 377) / 554, 10);
 		// The pair's weights (1 + 1) split as 377 : 177.
 		const [k1, k2] = weights(edytor, 'K1', 'K2') as number[];
 		expect(k1).toBeCloseTo((2 * 377) / 554, 10);
@@ -184,6 +194,25 @@ describe('dragging a strip', () => {
 		edytor.historyUndo();
 		await flushDomUpdates();
 		expect(weights(edytor, 'K1', 'K2')).toEqual([undefined, undefined]);
+	});
+
+	it('Escape mid-drag puts the shown widths back and writes nothing (round 3)', async () => {
+		const { edytor } = await render(contractDoc());
+		await hover(edytor, 'A');
+		const [strip] = strips();
+		const before = edytor.facade.version;
+		pointer(strip!, 'pointerdown', { clientX: 281, clientY: 40 });
+		pointer(strip!, 'pointermove', { clientX: 331, clientY: 40 });
+		await flushDomUpdates();
+		expect(flexOf(edytor, 'K1')).toBeCloseTo((2 * 327) / 554, 10);
+		document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		await flushDomUpdates();
+		expect([flexOf(edytor, 'K1'), flexOf(edytor, 'K2')]).toEqual([1, 1]);
+		pointer(strip!, 'pointerup', { clientX: 331, clientY: 40 });
+		await flushDomUpdates();
+		expect(edytor.facade.version).toBe(before);
+		expect(weights(edytor, 'K1', 'K2')).toEqual([undefined, undefined]);
+		expect([flexOf(edytor, 'K1'), flexOf(edytor, 'K2')]).toEqual([1, 1]);
 	});
 
 	it('writes only the two neighbours, keeping their sum among other weights', async () => {

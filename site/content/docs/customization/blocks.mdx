@@ -43,13 +43,13 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
       description: "The markup inside the block element. Without one, the element renders empty. Never rendered for elements that take no content (hr, img, input, br).",
     },
     element: {
-      type: "string | { tag, attributes? } | ((data) => …)",
+      type: "string | { tag, attributes? } | ((data, id) => …)",
       default: "'div'",
-      description: "The element the core renders: a tag, a tag with attributes, or a function of the block's data. It wraps the block's children too: a kind that can hold children and wants a heading or text-level tag (h1, p, span) declares it as contentElement instead.",
+      description: "The element the core renders: a tag, a tag with attributes, or a function of the block's data and id. The id keys view state the kind keeps per block (the columns plugin previews a column's width while a resize drags); reactive state the function reads re-renders the element; HTML import, which reads a kind's tag for data alone, passes no id. It wraps the block's children too: a kind that can hold children and wants a heading or text-level tag (h1, p, span) declares it as contentElement instead.",
     },
     contentElement: {
-      type: "string | { tag, attributes? } | ((data) => …)",
-      description: "The element the core wraps around the block's own text, where the snippet renders content(): a tag, a tag with attributes, or a function of the block's data. Children stay outside it. The rich text heading's h1–h3 and the quote's blockquote are declared this way, so a snippet override keeps them. HTML import finds the kind by this tag when it has no html form and its element is a div.",
+      type: "string | { tag, attributes? } | ((data, id) => …)",
+      description: "The element the core wraps around the block's own text, where the snippet renders content(): a tag, a tag with attributes, or a function of the block's data and id. Children stay outside it. The rich text heading's h1–h3 and the quote's blockquote are declared this way, so a snippet override keeps them. HTML import finds the kind by this tag when it has no html form and its element is a div.",
     },
     viewState: {
       type: "string[]",

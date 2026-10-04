@@ -45,14 +45,18 @@ type Drag = {
  * The column resize (docs/columns-plan.md D5, §5 "Resize"), chrome in the
  * overlay: while the pointer is over a layout (not readonly, not stacked),
  * a strip over each gap between two shown columns, the gap's width and the
- * layout's height, under the block handles (a shown handle takes the
- * pointer over its part of the gap; one not shown takes none); hovering it
- * shows a gray guide in the gap's middle (`--edytor-columns-resize-color`),
- * as Notion; dragging one shows the blue guide and writes nothing; the release writes the two
- * columns' `data.width` weights, keeping their sum, in one `edytor.transact`
- * (two `setData` commands: one undo step). Neither column goes under
- * `minWidth` × the layout's width, in the view only (the document stores
- * weights). Positions are read in the overlay's measure, once per frame.
+ * layout's height, under the block handles (a column-2 block's handle box
+ * takes its row's part of the gap); hovering it shows a gray guide in the
+ * gap's middle (`--edytor-columns-resize-color`), as Notion. Dragging one
+ * resizes both columns live (Notion) and writes nothing: the drag's weights
+ * are a view-only preview (`preview`) the column kind's element reads
+ * (`weight`), so only this view sees them and no peer gets a frame. The
+ * release writes the two columns' `data.width` weights, keeping their sum,
+ * in one `edytor.transact` (two `setData` commands: one undo step), and
+ * drops the preview in the same flush; Escape or a cancel drops it alone.
+ * Neither column goes under `minWidth` × the layout's width, in the view
+ * only (the document stores weights). Positions are read in the overlay's
+ * measure, once per frame.
  */
 export class ColumnResize {
 	/** The layout under the pointer. */
@@ -65,6 +69,8 @@ export class ColumnResize {
 	drag = $state<Drag | null>(null);
 	/** The guide's layer-relative box while a strip drags. */
 	guide = $state<{ x: number; top: number; height: number } | null>(null);
+	/** The two dragged columns' weights at the pointer, by id, while a strip drags (view only). */
+	preview = $state.raw<Readonly<Record<string, number>> | null>(null);
 	/** The overlay host the strips live in (a pointer leaving the editor for it keeps them). */
 	host: HTMLElement | null = null;
 
@@ -77,6 +83,10 @@ export class ColumnResize {
 	get shown() {
 		return this.drag !== null || (!this.edytor.readonly && !this.dragging && !!this.hovered);
 	}
+
+	/** A column's weight as shown: the drag's preview while a strip drags it, else its stored one. */
+	weight = (id: string | undefined, data: Record<string, unknown> | undefined) =>
+		(id === undefined ? undefined : this.preview?.[id]) ?? weightOf(data);
 
 	/** The pointer is over `target`: the layout holding it (the innermost), if any. */
 	hover = (target: EventTarget | null) => {
@@ -185,6 +195,7 @@ export class ColumnResize {
 		const move = (moved: PointerEvent) => {
 			if (!this.drag) return;
 			this.drag.at = moved.clientX;
+			this.preview = this.weights(this.drag);
 			edytor.overlay.invalidate();
 		};
 		const end = (ended: Event) => {
@@ -202,6 +213,8 @@ export class ColumnResize {
 				// The editor holds the keys after the release (Notion: Mod+Z right after).
 				takeKeys(edytor);
 			}
+			// After the release's write: the stored weights replace the preview in one flush.
+			this.preview = null;
 		};
 		const escape = (key: KeyboardEvent) => {
 			if (key.key !== 'Escape') return;
@@ -216,17 +229,24 @@ export class ColumnResize {
 		edytor.overlay.invalidate();
 	};
 
-	/** The release: both weights, keeping their sum, one undo step; nothing when nothing moved. */
-	private release(drag: Drag) {
+	/** The two columns' weights at the drag's pointer, keeping their stored sum; `null` before it moved. */
+	private weights(drag: Drag): Record<string, number> | null {
 		const width = this.widthAt(drag);
 		const { left, right, sum } = drag;
-		if (Math.abs(width - drag.width) < 0.5 || sum <= 0) return;
-		if (!left.isInTree || !right.isInTree) return;
+		if (Math.abs(width - drag.width) < 0.5 || sum <= 0) return null;
 		const pair = weightOf(left.data) + weightOf(right.data);
 		const weight = (pair * width) / sum;
+		return { [left.id]: weight, [right.id]: pair - weight };
+	}
+
+	/** The release: both weights, keeping their sum, one undo step; nothing when nothing moved. */
+	private release(drag: Drag) {
+		const weights = this.weights(drag);
+		const { left, right } = drag;
+		if (!weights || !left.isInTree || !right.isInTree) return;
 		this.edytor.transact(() => {
-			left.setData({ ...left.data, width: weight });
-			right.setData({ ...right.data, width: pair - weight });
+			left.setData({ ...left.data, width: weights[left.id]! });
+			right.setData({ ...right.data, width: weights[right.id]! });
 		});
 	}
 }

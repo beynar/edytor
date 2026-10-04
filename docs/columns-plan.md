@@ -220,10 +220,13 @@ data-width="…">…`; `parse` claims those attributes; `plain` writes the
   - Indicator: a vertical 4px bar at the row's edge (or the layout's height
     for a new column in a layout); sticky never crosses a column boundary.
   - Drag preview clones at the source's width.
-- **Resize**: the overlay mounts an 8px strip at the left of each gap while
-  the pointer is over the layout (the grip sits at the gap's right); drag
-  shows a guide; release writes the two neighbours' weights in one
-  `edytor.transact` (two `setData` commands → one step). Min width in the
+- **Resize**: the overlay mounts a strip over each gap while the pointer is
+  over the layout, under the handles (a column-2 block's handle box keeps
+  its row's part of the gap, round 3); a drag resizes both columns live
+  through a view-only preview the column kind's `element(data, id)` reads
+  (round 3: no write, no peer frame), a guide in the gap; release writes the
+  two neighbours' weights in one `edytor.transact` (two `setData` commands →
+  one step) and drops the preview; Escape drops it alone. Min width in the
   view only (`minWidth`, default 10%). Readonly / stacked: none.
 - **Keys**: Backspace/Delete at column edges (D4) are the document's merges
   (no view rule); `beforeInputDeleteCommands.ts` only keeps the caret rule of

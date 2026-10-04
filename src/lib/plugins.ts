@@ -180,15 +180,18 @@ export type BlockDefinition = {
 	snippet?: Snippet<[BlockSnippetPayload<any>]>;
 	/**
 	 * The element the core renders for the block (R11, O45): a tag, or tag and
-	 * attributes, possibly from the block's data. Default `div`.
+	 * attributes, possibly from the block's data and id (the second argument:
+	 * view state the kind keeps per block, such as a column's width while a
+	 * resize drags; reactive state it reads re-renders the element; absent
+	 * when HTML import reads a kind's tag for data alone). Default `div`.
 	 */
-	element?: BlockElement | ((data: Record<string, any>) => BlockElement);
+	element?: BlockElement | ((data: Record<string, any>, id?: string) => BlockElement);
 	/**
 	 * The element the core wraps around the block's own text (`content()`),
-	 * possibly from the block's data: a heading's `h1`–`h3`, a quote's
+	 * possibly from the block's data and id: a heading's `h1`–`h3`, a quote's
 	 * `blockquote`. Children render outside it, and a snippet override keeps it.
 	 */
-	contentElement?: BlockElement | ((data: Record<string, any>) => BlockElement);
+	contentElement?: BlockElement | ((data: Record<string, any>, id?: string) => BlockElement);
 	/**
 	 * Attributes of the block element the browser or the user own (`open` on a
 	 * `details`): declared view state, never inverted (R11, O60).

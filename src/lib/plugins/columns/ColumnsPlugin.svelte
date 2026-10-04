@@ -174,9 +174,13 @@
 					column: {
 						...layoutKinds.column,
 						snippet: column,
-						element: (data) => ({
+						// Its weight as shown: a resize drag's preview (this view only), else `data.width`.
+						element: (data, id) => ({
 							tag: 'div',
-							attributes: { 'data-edytor-column': '', style: `flex: ${weightOf(data)} 1 0px` }
+							attributes: {
+								'data-edytor-column': '',
+								style: `flex: ${resize.weight(id, data)} 1 0px`
+							}
 						}),
 						html: (block, _, children) =>
 							`<div data-edytor-column data-width="${weightOf(block.data)}">${children}</div>`,

@@ -678,9 +678,10 @@ export class BlockHandleController {
 		const node = hit?.closest<HTMLElement>('[data-edytor-block="true"]');
 		const target = node && this.targets.get(node);
 		// Between two rows of the handle column (a margin, a layout's edge), the
-		// placement shown stays, as a block's sticky slop keeps it.
-		const held = handle && this.activeDropTarget === root.ownerDocument.body;
-		const stay = held && this.activePlacement ? this.activePlacement : undefined;
+		// reorder shown stays, as a block's sticky slop keeps it.
+		const shown = handle && this.activeDropTarget === root.ownerDocument.body;
+		const held = shown ? this.activePlacement : null;
+		const stay = held && !isBeside(held.position) ? held : undefined;
 		if (!node || !target) return stay;
 		const data = { owner: this.owner, blockId: source.id };
 		const { facade } = this.edytor;

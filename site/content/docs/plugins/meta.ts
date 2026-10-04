@@ -11,6 +11,7 @@ export default defineMeta({
     "rich-text",
     "code",
     "image",
+    "columns",
     "block-handles",
     "block-menu",
     "slash-menu",

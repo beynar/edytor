@@ -17,6 +17,7 @@ Edytor's collaboration stack is proven by its test suites across Chromium, Firef
 
 - **Suggestions stay in one view.** A [suggestion](/docs/editor/suggestions) (text, blocks or a rewrite proposed by your AI) shows only in the view that made it until it is accepted: another tab or a collaborator cannot review it, and a reload loses it.
 - **No property schema.** [Properties](/docs/concepts/properties) take any JSON; validate or normalize in `onBeforeOperation`.
+- **Columns: no keyboard resize.** A [columns layout](/docs/plugins/columns#resizing) is resized with the pointer only, and columns have no colours of their own.
 - **Array items that are strings or numbers have no key.** An object item's proxy follows its item, so a keyed `{#each}` row stays on it; a row bound to a string item by index (`bind:value={tags[i]}`) writes whatever item is at that index when a collaborator inserts or removes one above it. Store objects for rows several people edit.
 
 ## Mixed-version peers
@@ -24,6 +25,7 @@ Edytor's collaboration stack is proven by its test suites across Chromium, Firef
 - Clients of different document generations never exchange edits: providers and the room refuse the other's frames and report `'protocol-mismatch'` or `'schema-mismatch'`. Deploy one version to every client.
 - Older clients of the **same** generation ignore the per-person delete and undo records. They show a block whose creation was undone (empty, or with another person's text); their own undo still deletes a block outright; and a text deleted by two people and undone by both can appear twice on them. A current client may also bring back text it held back after an old client deleted it, since an old client's delete carries no record.
 - Clients from before properties were stored per leaf read a block's or inline block's `data` only from its old whole-value attribute: after a current client writes a property there, they show the value from before it, and they do not see the document's properties. Clients from before array items were stored per item read an array a current client wrote as an object keyed by its items' ids.
+- Clients of an earlier pre-release have no layout role: they show a stored [columns layout](/docs/plugins/columns) as unknown kinds, its blocks one under the other, and apply none of its rules (an empty column or a one-column layout a current client would hide shows there). A current view without `columnsPlugin` shows a layout the same way. Deploy the plugin to every view before your users make layouts.
 - Clients that predate the saved and chunk messages report them through `'message-error'` and otherwise sync small documents normally.
 - A server that never sends saved acknowledgements leaves the provider's `unsaved` count growing; one that acknowledges only state vectors leaves delete-only updates unsaved.
 
@@ -47,6 +49,9 @@ The WebSocket's bound starts when the socket opens (or first fails to), so a roo
 - **Your own `UndoManager`.** An undo manager created directly with `new Y.UndoManager` over the document does not follow edytor's undo rules. Use `document.history`.
 - **Read-only views and `sync`.** A `readonly` view ignores its `sync`, `room` and `server` props; attach the sync to the document and pass it as `document`.
 - **`saved` after a reload.** The provider counts what the document's actor wrote, recognized by the client ids the document binds to that actor. Without an `actor`, the anonymous id changes every session, so edits made before a reload no longer count in `unsaved`. A delete restored from the local copy counts only when its update wrote no other author's content, since a delete does not record who made it.
+- **Columns: a selection dragged over the bare gap.** Dragging a text selection from column 1 into the gap between two columns never selects column 2, but past the gap's middle (over the gap itself, not a block's handle) it extends to the end of column 1.
+- **Columns: <kbd>Escape</kbd> from the block menu** opened on a block in a column gives back a caret, not the block selection.
+- **Columns: native <kbd>↑</kbd>/<kbd>↓</kbd>** move visually and differ per engine (Firefox from column 1's last line goes below the layout, Chromium and WebKit into column 2); see [Columns](/docs/plugins/columns#keys).
 - **One user per browser profile.** The local copy and the cross-tab channel are shared by every tab of a profile; see [persistence](/docs/collaboration/persistence#one-user-per-browser-profile).
 
 ## Size and platform limits

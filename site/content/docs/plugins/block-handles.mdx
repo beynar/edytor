@@ -147,7 +147,7 @@ Style the ghost through `[data-edytor-drag-preview]`, for instance `[data-edytor
 
 ### Beside: columns
 
-When the document has a layout kind (the columns plugin's `columns`), a block row also has two beside bands, checked before its halves, while the pointer is within the row's height, as in Notion:
+When the document has a layout kind (the [columns plugin](/docs/plugins/columns)'s `columns`), a block row also has two beside bands, checked before its halves, while the pointer is within the row's height, as in Notion:
 
 - **Right**: the row's last 15% (at least 32px), the slop past its right edge, and the page margin right of the editor (up to 120px) at the row's height, however the pointer got there. The drop puts the blocks right of the block: in a new column after its column, or, at the root, in a new two-column layout with the block on the left.
 - **Left**: the page margin past the handle column (up to 120px further left) at the row's height, even entered from above or below, and, inside the editor, the 20px slop left of a row in a column (in the gap); only for a block at the root or directly in a column, a list's item standing for its list (a nested block keeps the pointer's horizontal position for its levels). The blocks go first. The handle column itself (as wide as the drag's handle, left of the blocks' text) is never a beside band: there the row at the pointer's height takes the drop before or after it, by its halves, row after row, gaps between rows included, so a drag straight down the handles reorders.

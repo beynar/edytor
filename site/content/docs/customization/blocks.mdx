@@ -93,6 +93,11 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
       default: "false",
       description: "An island of lines, like the code block. Every direct child shows as `defaultChild` and holds no children, even after an undo or a peer's edit. Needs `island` and `defaultChild`; a development warning fires if either is missing. Give the lines a kind of their own: outside such an island a block of that kind shows as its parent's default child. Its first line never merges into it when `rendersContent` is false.",
     },
+    layout: {
+      type: "boolean",
+      default: "false",
+      description: "A layout, like the columns plugin's `columns`: its `defaultChild` is its item kind (a column: a container with `rendersContent: false` that holds any block), shown side by side. Needs `rendersContent: false` and `defaultChild`. It holds only its items, no layout goes inside an item, and the document shows it by its role on every replica: a block stored directly in it shows right after it, an item showing no block does not show, a layout showing one item or none shows as that item's blocks, and an item outside a layout shows as its blocks. Edits write the same (an emptied item goes, a one-item layout dissolves), merges cross items in reading order, and the beside drop bands, `placeBeside` and `wrapInLayout` use the layout kind. See [Layouts](/docs/concepts/blocks#layouts) and [Columns](/docs/plugins/columns).",
+    },
     presets: {
       type: "KindPreset[]",
       description: "One entry per way to create the kind. Feeds the slash menu, markdown shortcuts and block menus.",
@@ -132,7 +137,7 @@ The core renders `<aside data-edytor-block data-edytor-type="tip" …>` and the 
   }}
 />
 
-The roles (`void`, `island`, `lines`, `rendersContent`, `defaultChild`) belong to the document once an editor adopts them. Two plugins that declare different `defaultChild` values for one kind make the editor throw at creation.
+The roles (`void`, `island`, `lines`, `layout`, `rendersContent`, `defaultChild`) belong to the document once an editor adopts them. Two plugins that declare different `defaultChild` values for one kind make the editor throw at creation.
 
 ## The snippet payload
 

@@ -1,0 +1,245 @@
+---
+title: Columns
+description: The columns plugin adds Notion's multi-column layouts. Drag a block beside another, or pick "2 columns" to "5 columns"; resize by dragging the gap. Opt-in.
+icon: columns-3
+---
+
+`columnsPlugin` adds Notion's columns: a **layout** shows two to five **columns** side by side, and each column holds any blocks (text, lists, to-dos, code, images, toggles). You make one by dragging a block to the left or right edge of another, or from the slash menu, the `+` menu or the block menu's Turn into, and you resize the columns by dragging the gap between them.
+
+The plugin is not a default plugin: list it in `plugins`.
+
+```svelte title="Editor.svelte" check
+<script lang="ts">
+	import { Edytor, codePlugin, columnsPlugin, slashMenuPlugin, blockMenuPlugin } from 'edytor';
+	import 'edytor/themes/notion.css';
+
+	const plugins = [columnsPlugin, codePlugin, slashMenuPlugin, blockMenuPlugin];
+</script>
+
+<div class="edytor-notion">
+	<Edytor {plugins} />
+</div>
+```
+
+List it in every view that may open a document holding layouts. A view without it does not know the kinds: it shows a layout's blocks one under the other, as unknown kinds, with no column rules (see [Collaboration](#collaboration)). Its stylesheet is imported with it.
+
+## Options
+
+`createColumnsPlugin(options)` takes a `ColumnsPluginOptions`; `columnsPlugin` is the plugin with the defaults.
+
+<TypeTable
+  type={{
+    minWidth: {
+      type: "number",
+      default: "0.1",
+      description: "The narrowest a column may be resized to, as a fraction of its layout's width. View-only: the document stores weights, never widths.",
+    },
+  }}
+/>
+
+```ts title="plugins.ts" check
+import { createColumnsPlugin, isColumnsPlugin, type Plugin } from 'edytor';
+
+export const columns: Plugin = createColumnsPlugin({ minWidth: 0.15 });
+isColumnsPlugin(columns); // true: any columns plugin instance
+```
+
+## The kinds
+
+| Kind      | Element                        | Data                | Role                                                                     |
+| --------- | ------------------------------ | ------------------- | ------------------------------------------------------------------------ |
+| `columns` | `div[data-edytor-columns]`     |                     | A layout (`layout: true`): renders no content, default child `column`    |
+| `column`  | `div[data-edytor-column]`      | `{ width?: number }` | A container that renders no content and holds any block                  |
+
+`columns` is a **layout**: its kind record says `layout: true`, a [block role](/docs/customization/blocks#options) like `void` or `island`, and its `defaultChild`, `column`, is its item kind. The core never names `columns` or `column`: every rule below is read from the role, so a kind of your own with `layout: true` behaves the same. The rows are exported as data: `layoutKinds` (the two kinds' structural rows) and `layoutSemantics` (the same as a document's `semantics`), and both are part of [`defaultSemantics`](/docs/reference/document-api), so a headless document and the [room](/docs/server/room) read layouts as a view does.
+
+A stored layout:
+
+```json
+{
+	"type": "columns",
+	"children": [
+		{
+			"type": "column",
+			"data": { "width": 2 },
+			"children": [{ "type": "paragraph", "content": [{ "text": "Two thirds" }] }]
+		},
+		{
+			"type": "column",
+			"children": [
+				{ "type": "paragraph", "content": [{ "text": "One third" }] },
+				{ "type": "image", "data": { "src": "https://example.com/photo.jpg" } }
+			]
+		}
+	]
+}
+```
+
+A column's `width` is a **weight**, a positive number (default `1`): a column takes `width / sum of the widths` of the row (`flex: <width> 1 0px`). A new column writes no width, so it has weight 1.
+
+## What shows
+
+The document shows a layout by four read-time rules, on every replica, whatever the stored tree holds (they are the `layout.*` rows of the delete contract):
+
+- **A layout shows only its columns.** Any other block stored directly in it (a raw `insertBlocks`, a collaborator's race) shows right after the layout.
+- **An empty column never shows.** A column with no shown block takes no width.
+- **A layout showing one column, or none, does not show.** That column's blocks show in its place.
+- **A column outside a layout does not show.** Its blocks take its place.
+
+Edits write what those rules would show, in the same undo step: removing a column's last block removes the column, and a layout left with one column is replaced by that column's blocks (it *dissolves*). Deleting a layout, or a block selection that stands for it, keeps nothing of it; deleting all of a column's blocks removes that column.
+
+## Making a layout
+
+### By dragging
+
+With the [block handles](/docs/plugins/block-handles#beside-columns), drag a block (or a block selection) by its grip:
+
+- **to the right edge of a block** (its last 15%, at least 32px, the slop past it, or the page margin right of the editor at its height): the dragged blocks go right of it;
+- **to its left edge** (the page margin left of the handle column at the block's height, or, in a column, the 20px left of the block in the gap): the dragged blocks go left of it;
+- **into the gap between two columns**: a new column between them.
+
+Beside a block at the top level, the block and the dragged blocks are wrapped in a new two-column layout. Beside a block in a column, the dragged blocks get a new column next to that one. Beside a list item, the layout wraps the whole list; beside a code line, the whole code block. Beside a toggle's or a callout's child, the layout is made inside the toggle or callout. A vertical 4px bar shows where the column goes; a band where the drop is refused (a layout dragged beside a block in a column) shows nothing, and letting go there moves nothing. Dragging a column's last block out removes the column, and the layout dissolves when one column is left. The drop is one undo step.
+
+### From the menus
+
+The plugin adds four commands, `columns.2` to `columns.5` ("2 columns" to "5 columns", group `Layout`). Each inserts a layout of N columns, each holding an empty paragraph, the caret in the first: it replaces an empty line holding only the slash query, and is inserted after any other line. The slash menu finds them by `columns`, `layout`, `side by side` and, as Notion, `/col3`, `/columns3` and `/column 3`. Inside a column the commands are disabled (no layout goes into a column), so a query that matches only them there closes the menu and stays text.
+
+The block menu's **Turn into** lists them as well (`EditorCommand.turnsInto`):
+
+- over one block, "2 columns" to "5 columns" make the block column 1 and fill the other columns with an empty paragraph;
+- over a block selection of N sibling blocks (2 to 5), "N columns" puts them one per column, in order.
+
+The blocks stay selected, one undo step. Both run `facade.prepare.wrapInLayout`, and hooks see the operation `wrapBlocks`.
+
+### A column from the `+`
+
+A block directly in a column has the `+` and the grip, in the gap, as in Notion. <kbd>Alt</kbd>+click on its `+` adds a column right of the block's column, holding the block picked from the menu (a move with `position: 'right'`, one undo step). A plain click adds the block below, in the same column.
+
+## Resizing
+
+Hover a layout: in each gap between two columns, a 10px band at the gap's left edge, the layout's height, shows a gray guide under the pointer. Press it and drag: both columns follow the pointer live, a blue line marks the gap, and nothing is written yet (the preview is this view's only; collaborators see the result at the release). The release writes the two columns' weights, keeping their sum, in one undo step; <kbd>Escape</kbd> puts them back. A column never gets narrower than `minWidth`. A drag ends at once if the view turns readonly, with nothing written. After the release the editor holds the keys, so <kbd>Mod</kbd>+<kbd>Z</kbd> undoes the resize straight away. There is no keyboard resize.
+
+The block handles of column 2 and later sit right of the band, in the same gap: the band and the handles never overlap, so wherever the guide shows, a press resizes.
+
+## Selection
+
+A block selection that holds every shown block of every column of a layout stands for the layout: one highlight covers the layout, and dragging it, <kbd>Alt</kbd>+arrows, <kbd>Mod</kbd>+<kbd>Shift</kbd>+arrows, Duplicate, Delete, cut and copy act on the layout as one block. Layouts and columns have no handle of their own, as in Notion.
+
+<kbd>Shift</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd> and <kbd>↑</kbd>/<kbd>↓</kbd> over a block selection step over a layout and its columns to the next shown block, never selecting a column: from column 1's last block, the next is column 2's first. Typing, a composition or a paste over a block selection in a column replaces the blocks in place: the column and its layout stay.
+
+While a text selection is being dragged, the handles and the resize bands take no pointer, so a selection dragged from column 1 into the gap never selects column 2's text.
+
+## Keys
+
+| Keys | In a column |
+| --- | --- |
+| <kbd>Backspace</kbd> at the start of a column's first block | Merges it into the last line of the column before (its text joins that line; an empty block is removed, the caret at that line's end). In column 1, into the line before the layout. A column it empties goes, and the layout dissolves when one column is left |
+| <kbd>Delete</kbd> at the end of a column's last line | Pulls the next column's first line into it. At the end of the line before a layout, column 1's first line |
+| <kbd>Backspace</kbd> at the start of the block after a layout | Joins the last column's last line |
+| <kbd>Backspace</kbd>, <kbd>Delete</kbd> over a text range across columns | Joins the range's two ends; a column it empties goes |
+| <kbd>Enter</kbd>, <kbd>Tab</kbd> | As anywhere, inside the column. <kbd>Tab</kbd> right after a layout nests the block into its last column |
+| <kbd>Shift</kbd>+<kbd>Tab</kbd> on a column's direct block | Nothing: a block never sits directly in a layout |
+| <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> at a column's first block, <kbd>↓</kbd> at its last | Moves the block out, before or after the layout (the keyboard's way out of a column) |
+
+Merges cross columns in reading order, as in Notion. The <kbd>←</kbd>/<kbd>→</kbd> and word keys follow document order too: from the end of column 1 to the start of column 2.
+
+<kbd>↑</kbd>/<kbd>↓</kbd> stay the browser's and differ per engine (pinned by the test suite):
+
+| From | Chromium, WebKit | Firefox |
+| --- | --- | --- |
+| Column 1's last line, <kbd>↓</kbd> | Column 2's first line | The block after the layout |
+| Column 2's last line, <kbd>↓</kbd> | The block after the layout | The block after the layout |
+| The block after the layout, <kbd>↑</kbd> | The last column's last line | Column 1's last line |
+| Column 2's first line, <kbd>↑</kbd> | Column 1's last line | The line before the layout |
+| The line before the layout, <kbd>↓</kbd> | Column 1's first line | Column 1's first line |
+
+## Nesting
+
+No layout goes inside a column, by any gesture: a drop, a move, <kbd>Tab</kbd>, an outdent, `placeBeside` and `wrapInLayout` refuse it, the layout commands are disabled there, and a layout pasted or dropped into a column lands as its blocks. A layout inside a toggle, a callout or a nested block is fine, as long as no column is around it. If a race or an explicit write (`insertBlocks`, a retype) puts a layout in a column anyway, it shows as it is: nothing flattens it.
+
+A layout never sits directly in a layout, and only a column moves or outdents directly into one.
+
+## Narrow layouts
+
+Below a layout width of 480px (a container query on the layout), the columns stack one above the other, each its own height. A stacked layout offers no beside band and no resize.
+
+## Clipboard
+
+- Copied HTML keeps the layout: `<div data-edytor-columns><div data-edytor-column data-width="1">…</div>…</div>`, and pasting that HTML (from another editor of yours) imports the layout with its weights.
+- Plain text lists the columns' blocks in reading order.
+- An Edytor fragment (a copy from one editor to another) keeps the layout as stored.
+- Pasted into a column, a layout lands as its blocks, one after the other.
+
+## Collaboration
+
+Every replica applies the read-time rules above, so two people editing a layout at once see the same thing after they sync:
+
+- Two people dragging blocks beside the same block each wrap it; the block ends in one of the layouts, and the other, left with one column, shows as its blocks.
+- A block a collaborator adds to a column another person deletes shows right after the layout; a column a collaborator adds to a deleted layout shows as its blocks.
+- Two resizes at once keep each column's latest weight: weights are per column, so the row stays filled.
+- Undoing a new layout withdraws it: a block a collaborator put in one of its columns meanwhile stays, in the layout's place.
+
+These rules come from the document's roles, so every replica must know the layout role: list the plugin in every view, and give a headless document `defaultSemantics` (the room does). A client of an earlier pre-release, which has no layout role, shows a layout as unknown kinds, one block under the other. See [concurrent editing](/docs/collaboration/concurrent-editing#layouts).
+
+## Styling
+
+`columns.css` lays the columns out; the [Notion theme](/docs/customization/styling#notion-theme) adds the selection highlight's look.
+
+| Variable | Default | Sets |
+| --- | --- | --- |
+| `--edytor-columns-gap` | `46px` | The gap between two columns (the resize band takes its left 10px, a block's handle the rest) |
+| `--edytor-columns-resize-color` | `rgba(55, 53, 47, 0.16)` | The gray guide shown over a resize band on hover |
+| `--edytor-column-resize-color` | `rgba(35, 131, 226, 0.43)` | The blue line shown while a resize drags |
+| `--edytor-block-selection` | `rgba(35, 131, 226, 0.14)` | The highlight of a block selection standing for a layout |
+
+| Selector | Matches |
+| --- | --- |
+| `[data-edytor-columns]` | The layout's block element |
+| `[data-edytor-columns] > [data-edytor-children]` | The row of columns (a flex row) |
+| `[data-edytor-columns-selected]` | That row while a block selection stands for the layout |
+| `[data-edytor-column]` | A column's block element; its `style` sets `flex` from its weight |
+| `[data-edytor-column-resize]` | A resize band, in the overlay |
+| `[data-edytor-column-resize-guide]` | The line shown while a resize drags |
+
+Neither container indents its children: both set their children container's `padding-inline-start` to 0, and a column's first and last blocks lose their outer margin.
+
+## Document API
+
+On a document whose roles hold a layout kind (a view with the plugin, or `defaultSemantics`):
+
+```ts title="layout.ts" check
+import { createDocument, defaultSemantics } from 'edytor';
+
+const { facade } = createDocument({
+	value: {
+		children: [
+			{ id: 'a', type: 'paragraph', content: [{ text: 'left' }] },
+			{ id: 'b', type: 'paragraph', content: [{ text: 'right' }] },
+			{ id: 'c', type: 'paragraph', content: [{ text: 'alone' }] }
+		]
+	},
+	semantics: defaultSemantics
+});
+
+facade.placeBeside(['b'], 'a', 'right'); // a layout: column [a], column [b]
+facade.wrapInLayout(['c'], undefined, 3); // c in column 1 of 3, two empty columns
+const layout = facade.parentOf(facade.parentOf('a')!)!;
+facade.isLayout(layout); // true
+facade.isLayoutItem(facade.parentOf('a')!); // true
+```
+
+| API | What it does |
+| --- | --- |
+| `placeBeside(ids, target, side, kind?)` | Places `ids` left or right of `target`: in a new column beside the target's column, or wraps the target and a new column holding them in a new layout of `kind` (else the only layout kind). One step, sources cleaned (an emptied column goes, a one-column layout dissolves). Refused for a target among the blocks or under them, for a column, a layout or a block holding one (no layout in a column), for blocks that do not fit a column, inside an island, and without a layout kind |
+| `wrapInLayout(ids, kind?, columns?)` | Wraps sibling blocks in a new layout of `columns` columns (default one per block, at least two), the blocks one per column, then empty paragraphs. See [Block operations](/docs/reference/document-api#block-operations) |
+| `isLayout(id)`, `isLayoutItem(id)` | Whether a block is a layout (its kind's role says `layout`), or a column of one |
+| `besideAt(id, kind?)` | The block a beside placement at `id` stands beside: a list item's list, a code line's code block, else the block itself where a layout fits, else its outermost block below the root or a column |
+
+In a view, moves take two more positions: `edytor.moveBlocks({ blocks, target, position: 'left' | 'right' })` runs `placeBeside` (see [Commands](/docs/editor/commands#moving-blocks)); hooks see `moveBlock` or `moveBlocks` with a `beside: { target, side }` payload (`BlockBeside`).
+
+## Limitations
+
+- Over the bare gap between two columns (not over a handle), a text selection dragged from column 1 past the gap's middle extends to the end of column 1, never into column 2.
+- <kbd>Escape</kbd> from the block menu opened on a column's block gives back a caret, not the block selection.
+- There is no keyboard resize and no per-column colour.
+- A client of an earlier pre-release shows a stored layout as unknown kinds, one block under the other, and applies none of the rules above to it.

@@ -74,6 +74,8 @@ Plugins are read once, when the component mounts. Changing the array afterwards 
 
 The example above therefore runs block handles, your five plugins, then arrow move, suggestions, image and rich text. A default you list yourself stays where you put it, so older code that passes `plugins={[richTextPlugin]}` still works.
 
+Some bundled plugins are not defaults: list [`columnsPlugin`](/docs/plugins/columns), [`codePlugin`](/docs/plugins/code), the menus, the toolbar and markdown shortcuts yourself when you want them.
+
 Pass `defaultPlugins={false}` to get exactly your list (block handles still follow `blockHandles`). The defaults are added by the `<Edytor>` component, per view; the editor instance underneath has none of its own.
 
 ## Plugin order
@@ -115,6 +117,7 @@ Import it like any other module: `import { highlightPlugin } from './HighlightPl
 | [Rich text](/docs/plugins/rich-text)                   | `richTextPlugin`          | Paragraphs, headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks, and Notion's shortcuts. On by default |
 | [Code](/docs/plugins/code)                             | `codePlugin`              | Code blocks with syntax highlighting and a Copy button                                     |
 | [Image](/docs/plugins/image)                           | `imagePlugin`, `createImagePlugin` | Notion's image block: embed from a link or your upload, with an editable caption. On by default |
+| [Columns](/docs/plugins/columns)                       | `columnsPlugin`, `createColumnsPlugin` | Notion's multi-column layouts: drag a block beside another, "2 columns" to "5 columns", resize by dragging the gap. Opt-in: list it in `plugins` |
 | [Block handles](/docs/plugins/block-handles)           | `blockHandlesPlugin`, `createBlockHandlesPlugin` | A `+` and a drag grip beside each block, drag and drop, keyboard moves. On by default |
 | [Block menu](/docs/plugins/block-menu)                 | `blockMenuPlugin`, `createBlockMenuPlugin` | Notion's block menu on a grip click: search, Turn into, Duplicate, Move, Delete |
 | [Slash menu](/docs/plugins/slash-menu)                 | `slashMenuPlugin`, `createSlashMenuPlugin` | A sectioned command menu opened by typing `/`                             |

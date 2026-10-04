@@ -165,14 +165,14 @@ const request = { blocks: [source], target, position: 'after' as const };
 if (edytor.canMoveBlocks(request)) edytor.moveBlocks(request);
 ```
 
-`position` is `'before'`, `'after'`, `'inside'` (as the target's last child), or `'left'`/`'right'`: beside the target, side by side. With the [columns plugin](/docs/plugins/block-handles#beside-columns) (a kind whose role says `layout`), the blocks go in a new column next to the target's column, or, when the target is in none, the target and the blocks are wrapped in a new two-column layout. A list item or a code line stands for its whole list or code block, any other block for itself where it is (a toggle's child is wrapped inside the toggle, unless that would put a layout in a column); a column stands for itself (right of it is the gap after it). It is refused without a layout kind, for a layout or a block holding one (no layout goes into a column), and beside the moved blocks themselves; the column a move empties goes, and a layout left with one column shows as its blocks. Hooks see `moveBlock`/`moveBlocks` with `beside: { target, side }`.
+`position` is `'before'`, `'after'`, `'inside'` (as the target's last child), or `'left'`/`'right'`: beside the target, side by side. With the [columns plugin](/docs/plugins/columns) (a kind whose role says `layout`), the blocks go in a new column next to the target's column, or, when the target is in none, the target and the blocks are wrapped in a new two-column layout. A list item or a code line stands for its whole list or code block, any other block for itself where it is (a toggle's child is wrapped inside the toggle, unless that would put a layout in a column); a column stands for itself (right of it is the gap after it). It is refused without a layout kind, for a layout or a block holding one (no layout goes into a column), and beside the moved blocks themselves; the column a move empties goes, and a layout left with one column shows as its blocks. Hooks see `moveBlock`/`moveBlocks` with `beside: { target, side }`.
 
 Or describe one relative step with `direction`:
 
 | Direction | Result |
 | --- | --- |
-| `up` | Before the previous sibling. From the first child, before the parent. |
-| `down` | After the next sibling, never inside its children. From the last child, after the parent. |
+| `up` | Before the previous sibling. From the first child, before the parent; from a column's first block, before the layout (an emptied column goes). |
+| `down` | After the next sibling, never inside its children. From the last child, after the parent; from a column's last block, after the layout. |
 | `in` | Last child of the previous sibling; of its last item when it is a list the blocks are no items of (a `position: 'inside'` drop too). Refused when that list ends with a block that holds no children, such as an image, as under that block. |
 | `out` | After the parent. The siblings after the last moved block become its children (an outdent). An item of a list container leaves the list instead: before it, after it, or between its two halves, without the items after it ([Containers](/docs/concepts/blocks#containers)). |
 

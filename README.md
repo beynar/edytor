@@ -15,11 +15,12 @@
 
 Edytor aims to be for Svelte what Slate.js is for React: a heavily customizable editor with an API to build any kind of collaborative rich text editor.
 
-> **Work in progress.** Edytor is a pre-release (`0.1.0-next.16`, `edytor@next` on npm) and not ready for production; the API changes between releases without a compatibility layer. The untagged `edytor@0.0.11` on npm predates the current API. Issues and PRs are welcome: when you report a bug, include the document's JSON value.
+> **Work in progress.** Edytor is a pre-release (`0.1.0-next.17`, `edytor@next` on npm) and not ready for production; the API changes between releases without a compatibility layer. The untagged `edytor@0.0.11` on npm predates the current API. Issues and PRs are welcome: when you report a bug, include the document's JSON value.
 
 ## Features
 
 - **Notion-style editing out of the box.** `<Edytor />` alone is a rich text editor with images: headings, lists, to-dos, toggles, callouts, quotes, dividers, ten marks, Notion's markdown shortcuts and hotkeys. Add the Notion theme, block handles with a block menu (drag one block, or every block the selection covers), a slash menu, a selection toolbar and code blocks.
+- **Columns, opt-in.** List `columnsPlugin` for Notion's multi-column layouts: drag a block to the edge of another to put them side by side, or pick "2 columns" to "5 columns"; drag the gap to resize. Layouts converge across collaborators and the room ([Columns](https://edytor.dev/docs/plugins/columns)).
 - **Your markup.** Blocks, marks and inline atoms render through your Svelte snippets; the slash menu, toolbar, block menu and handles take a snippet and keep their behavior.
 - **Synced properties.** `block.data`, `atom.data` and `edytor.data` read and write like plain objects (`bind:value={block.data.title}`); each property and each array item syncs on its own, so concurrent edits of different properties, or of different items of one array, merge.
 - **AI suggestions.** `edytor.suggestions.add(position, content)` proposes text, paragraphs, lists, to-dos or images after, before or inside a block, at the end of its text, or in place of the selection; it streams in, shows only on your screen, and becomes one undo step when accepted ([Suggestions](https://edytor.dev/docs/editor/suggestions)).

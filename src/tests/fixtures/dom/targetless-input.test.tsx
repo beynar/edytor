@@ -242,4 +242,52 @@ describe('an input with no target', () => {
 		]);
 		expect(texts(edytor)).toEqual(['beforeあ', 'after']);
 	});
+
+	// Round 5, issue 3: with no target, the navigation keys do nothing (Notion):
+	// claimed, so the browser invents no caret; the page keys keep scrolling.
+	// Mod+A selects every block.
+	it('navigation keys with no target are claimed and move nothing', async () => {
+		const { edytor, editor } = await render();
+		await parkCaret(edytor);
+		for (const key of [
+			{ key: 'ArrowDown' },
+			{ key: 'ArrowUp' },
+			{ key: 'ArrowLeft' },
+			{ key: 'ArrowRight' },
+			{ key: 'Home' },
+			{ key: 'End' },
+			{ key: 'ArrowDown', shiftKey: true },
+			{ key: 'ArrowRight', shiftKey: true },
+			{ key: 'ArrowDown', metaKey: true }
+		]) {
+			expect((await dispatchDomKeyDown(editor, key)).defaultPrevented, JSON.stringify(key)).toBe(
+				true
+			);
+			expect(edytor.selection.value.kind).toBe('none');
+		}
+		expect((await dispatchDomKeyDown(editor, { key: 'PageDown' })).defaultPrevented).toBe(false);
+	});
+
+	it('Mod+A with no selection selects every block', async () => {
+		const { edytor, editor } = await render();
+		await parkCaret(edytor);
+		expect((await dispatchDomKeyDown(editor, { key: 'a', metaKey: true })).defaultPrevented).toBe(
+			true
+		);
+		const value = edytor.selection.value;
+		expect(value.kind).toBe('blocks');
+		expect(value.kind === 'blocks' && value.ids).toEqual(
+			(edytor.value.children ?? []).map((block) => block.id)
+		);
+	});
+
+	it('a caret a press placed still moves with the arrows', async () => {
+		const { edytor, editor } = await render();
+		await parkCaret(edytor);
+		const text = edytor.root!.children[0]!.content[0] as never;
+		editor.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+		await setNativeSelection(edytor, text, 3);
+		expect((await dispatchDomKeyDown(editor, { key: 'End' })).defaultPrevented).toBe(true);
+		expect(edytor.selection.state.yStart).toBe(6);
+	});
 });

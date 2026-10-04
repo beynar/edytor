@@ -8,7 +8,7 @@
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { Text } from '$lib/text/text.svelte.js';
 import type { Block } from '$lib/block/block.svelte.js';
-import { extendVertically, navigationBindings, vertical } from './navigation.js';
+import { extendVertically, navigationBindings, stayWithoutTarget, vertical } from './navigation.js';
 import { insertLineBreak, runIntent } from '$lib/events/beforeInputCommands.js';
 import { attemptOf, caretAt, intentSnapshot } from './attempt.js';
 import {
@@ -267,17 +267,23 @@ export const builtInBindings: Record<string, HotKey> = {
 	// toggles among them too). It never edits text or structure, and it claims
 	// the key everywhere: a browser's own Ctrl+Enter is a paragraph break.
 	'mod+enter': ({ edytor, prevent }) => prevent(() => flipToggles(shownSelectionBlocks(edytor))),
-	// The select-all ladder: the block's text, then the block, then every block.
+	// The select-all ladder: the block's text, then the block, then every block
+	// (at once with no selection at all, as Notion).
 	'mod+a': ({ edytor, prevent }) => {
 		prevent(() => {
 			const { startText, startBlock } = edytor.selection.state;
 			const { islandRoot, isAtStartOfBlock, isAtEndOfBlock } = edytor.selection.projection;
-			if (!startText) return;
-			if (edytor.selection.selectedBlocks.size) {
-				// Every block, nested ones included: a block selection is exactly its members.
+			// Every block, nested ones included: a block selection is exactly its members.
+			const every = () =>
 				edytor.selection.selectBlocks(
 					...edytor.facade.order().flatMap((id) => edytor.idToBlock.get(id) ?? [])
 				);
+			if (!startText) {
+				if (edytor.selection.value.kind === 'none') every();
+				return;
+			}
+			if (edytor.selection.selectedBlocks.size) {
+				every();
 			} else if (isAtStartOfBlock && isAtEndOfBlock) {
 				edytor.selection.selectBlocks(edytor.idToBlock.get(islandRoot ?? '') ?? startText.parent);
 			} else {
@@ -290,11 +296,13 @@ export const builtInBindings: Record<string, HotKey> = {
 	'shift+arrowup': ({ edytor, prevent }) => {
 		if (edytor.selection.selectedBlocks.size)
 			return prevent(() => extendBlockSelection(edytor, 'up'));
+		stayWithoutTarget(edytor, prevent);
 		if (extendVertically(edytor, -1)) prevent();
 	},
 	'shift+arrowdown': ({ edytor, prevent }) => {
 		if (edytor.selection.selectedBlocks.size)
 			return prevent(() => extendBlockSelection(edytor, 'down'));
+		stayWithoutTarget(edytor, prevent);
 		if (selectNextVoidBlockFromCaret(edytor) || extendVertically(edytor, 1)) prevent();
 	},
 	arrowup: arrowUp,

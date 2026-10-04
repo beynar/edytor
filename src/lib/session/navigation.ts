@@ -30,6 +30,17 @@ import { getNextWordEndOffset, getPreviousWordStartOffset } from '$lib/events/wo
 import { getSelectedBlocksInDocumentOrder, shownText } from '$lib/selection/replaceSelection.js';
 import type { HotKey } from './keymap.js';
 import type { SelectionValue } from './selection.js';
+import { untargeted } from './attempt.js';
+
+/**
+ * With no target (`untargeted`: the value is `none`, no gesture placed the
+ * host's caret), a navigation key does nothing (Notion): it is claimed, so
+ * the browser places no caret of its own to type at. The page keys keep
+ * scrolling the page (a caret they park is never adopted, `projector.placed`).
+ */
+export const stayWithoutTarget = (edytor: Edytor, prevent: () => void) => {
+	if (untargeted(edytor)) prevent();
+};
 
 /** A caret stop: an offset inside one text segment. */
 type Stop = { text: Text; offset: number };
@@ -309,6 +320,7 @@ export const vertical =
 	(dir: Dir, binding: HotKey): HotKey =>
 	(payload) => {
 		const { edytor } = payload;
+		stayWithoutTarget(edytor, payload.prevent);
 		const { value } = edytor.selection;
 		if (value.kind === 'text') natives.set(edytor, { serial: edytor.intentSerial, dir, value });
 		binding(payload);
@@ -360,15 +372,19 @@ const rows: Record<string, Row> = {
 };
 
 const bind =
-	([unit, key, platform]: Row, extend: boolean): HotKey =>
+	([unit, key, platform]: Row, extend: boolean, page: boolean): HotKey =>
 	({ edytor, prevent }) => {
 		if (platform && edytor.hotKeys.isMac !== (platform === 'mac')) return;
+		if (!page) stayWithoutTarget(edytor, prevent);
 		if (move(edytor, unit, key, extend)) prevent();
 	};
 
 export const navigationBindings: Record<string, HotKey> = Object.fromEntries(
-	Object.entries(rows).flatMap(([chord, row]) => [
-		[chord, bind(row, false)],
-		...(chord.startsWith('ctrl+') ? [] : [[`shift+${chord}`, bind(row, true)]])
-	])
+	Object.entries(rows).flatMap(([chord, row]) => {
+		const page = chord === 'pageup' || chord === 'pagedown';
+		return [
+			[chord, bind(row, false, page)],
+			...(chord.startsWith('ctrl+') ? [] : [[`shift+${chord}`, bind(row, true, page)]])
+		];
+	})
 );

@@ -333,6 +333,39 @@ describe("a column block's + (as Notion)", () => {
 	});
 });
 
+describe('a column-2 block’s handle box in the gap (round 3)', () => {
+	it("covers its block's row, flush with the block: one hit rule, the handles'; column 1's has none", async () => {
+		const { edytor } = await render();
+		await flushDomUpdates();
+		// P, then C's columns side by side (277px, a 46px gap, 277px), then Z.
+		const rects: Record<string, DOMRect> = {
+			P: new DOMRect(0, 0, 600, ROW),
+			C: new DOMRect(0, ROW, 600, 2 * ROW),
+			K1: new DOMRect(0, ROW, 277, 2 * ROW),
+			A: new DOMRect(0, ROW, 277, ROW),
+			A2: new DOMRect(0, 2 * ROW, 277, ROW),
+			K2: new DOMRect(323, ROW, 277, ROW),
+			B: new DOMRect(323, ROW, 277, ROW),
+			Z: new DOMRect(0, 3 * ROW, 600, ROW)
+		};
+		for (const [id, rect] of Object.entries(rects))
+			block(edytor, id).node!.getBoundingClientRect = () => rect;
+		edytor.overlay.invalidate();
+		await frame();
+		await flushDomUpdates();
+		await frame();
+		const b = host('B')!;
+		expect(b.dataset.overGap).toBe('true');
+		expect(host('A')!.dataset.overGap).toBeUndefined();
+		// The box's top is B's row's top, its height B's row's, from the host's own top.
+		const top = parseFloat(b.style.top) - b.offsetHeight / 2;
+		expect(top + parseFloat(b.style.getPropertyValue('--edytor-handle-row-top'))).toBe(ROW);
+		expect(b.style.getPropertyValue('--edytor-handle-row-height')).toBe(`${ROW}px`);
+		expect(b.style.left).toBe('323px');
+		expect(host('A')!.style.getPropertyValue('--edytor-handle-row-height')).toBe('');
+	});
+});
+
 describe('a block selection covering a whole layout stands for it (D3)', () => {
 	it('the layout shows selected only when every shown block of every column is', async () => {
 		const { edytor } = await render();

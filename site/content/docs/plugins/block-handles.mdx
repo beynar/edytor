@@ -63,7 +63,7 @@ A handle sits in the editor's overlay layer, left of its block, aligned with the
 - A handle exists only for blocks that can move, and is hidden while the editor is readonly.
 - Handles mount lazily, for blocks within about one screen of the viewport and for blocks that are hovered, selected, focused or being dragged. Large documents do not pay for a handle per block.
 - A handle is transparent until you hover its block, and its block stays hovered while the pointer goes from the text to the handle and rests on it (the handle sits flush with the block). On touch devices (no hover), handles are always visible.
-- In a column's gap a handle takes the pointer only while its block is hovered; elsewhere the gap is the column resize strip (Notion). Column 1's handles sit in the editor's gutter, over no strip, and always take it, as a root block's do.
+- In a column's gap a block's handle sits flush with the block, as wide as its buttons, and its box covers the block's whole row: a pointer anywhere in it hovers the block, shown or not, so the grip is reached from any side, as in Notion. The rest of the gap is the column resize strip: its left part, and the height no block's row of that column covers. Column 1's handles sit in the editor's gutter, over no strip, as a root block's do.
 - The buttons are gray (`#ada9a3`) with a 6px-rounded hover background.
 
 ### The + button

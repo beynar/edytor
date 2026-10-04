@@ -64,19 +64,10 @@
 	/** The blocks whose handle sits over a gap between two columns (`overGap`, measured). */
 	const overGaps = new SvelteSet<string>();
 
-	/** A block directly in a layout's column (its handle may sit in a gap between two columns). */
-	const inColumn = (id: string) => {
-		void structure;
-		const parent = blocks.get(id)?.parent;
-		return !!parent && !parent.isRoot && edytor.facade.isLayoutItem(parent.id);
-	};
-
 	/**
 	 * Whether `block`'s handle sits over the gap left of its column: its
 	 * column has a column beside it on its left (the layout does not stack).
-	 * The resize strip takes that gap wherever no shown handle does, so this
-	 * handle takes the pointer only while shown (column 1's sits in the
-	 * editor's gutter, over no strip: it always does, as a root block's).
+	 * Column 1's sits in the editor's gutter, over no gap, as a root block's.
 	 */
 	const overGap = (block: Block) => {
 		const column = block.parent;
@@ -89,6 +80,16 @@
 			return rect.right <= own.left + 1 && rect.top < own.bottom && own.top < rect.bottom;
 		}
 		return false;
+	};
+
+	/** Where a block's own row ends: where its first shown child begins, else its box's bottom. */
+	const ownRowBottom = (node: HTMLElement, rect: DOMRect) => {
+		const child = node
+			.querySelector<HTMLElement>('[data-edytor-block="true"]')
+			?.getBoundingClientRect();
+		return child && child.height > 0 && child.top >= rect.top && child.top < rect.bottom
+			? child.top
+			: rect.bottom;
 	};
 
 	const firstRowCenter = (node: HTMLElement, block: Block): number => {
@@ -119,10 +120,16 @@
 			const rect = node.getBoundingClientRect();
 			const shown = rect.width > 0 || rect.height > 0;
 			if (at && shown && (rect.bottom < -margin() || rect.top > 2 * margin())) return;
+			const center = shown ? firstRowCenter(node, block) : 0;
 			const left = `${rect.left - origin.left}px`;
-			const top = shown ? `${firstRowCenter(node, block) - origin.top}px` : '';
+			const top = shown ? `${center - origin.top}px` : '';
 			const gap = shown && overGap(block);
-			const next = shown ? `${left} ${top} ${gap}` : 'none';
+			// Over a gap, the handle's box is its own width at its block's row (`row`):
+			// relative to the host's top, which is centered on the first line.
+			const row = gap
+				? `${rect.top - (center - host.offsetHeight / 2)}px ${ownRowBottom(node, rect) - rect.top}px`
+				: '';
+			const next = shown ? `${left} ${top} ${row}` : 'none';
 			if (next === at) return;
 			return () => {
 				at = next;
@@ -130,6 +137,9 @@
 				host.style.display = shown ? '' : 'none';
 				if (gap) overGaps.add(id);
 				else overGaps.delete(id);
+				const [rowTop = '', rowHeight = ''] = row.split(' ');
+				host.style.setProperty('--edytor-handle-row-top', rowTop);
+				host.style.setProperty('--edytor-handle-row-height', rowHeight);
 				if (shown) Object.assign(host.style, { left, top });
 			};
 		});
@@ -148,7 +158,6 @@
 		data-edytor-block-handle-host
 		data-block-id={id}
 		data-visible={hovered.has(id) ? 'true' : undefined}
-		data-in-column={inColumn(id) && controller.dragging !== id ? 'true' : undefined}
 		data-over-gap={overGaps.has(id) ? 'true' : undefined}
 		data-dragging={controller.dragging && controller.dragging !== id ? 'true' : undefined}
 		use:place={id}
@@ -180,16 +189,24 @@
 		pointer-events: none;
 	}
 
-	/* Over a gap between two columns the resize strip takes the pointer where
-	 * no handle shows: a handle there takes it only while its block is hovered
-	 * (the pointer over the block or this handle). A drag's source keeps it: an
-	 * engine cancels a drag whose source stops taking the pointer. */
-	@media (hover: hover) {
-		[data-edytor-block-handle-host][data-in-column='true'][data-over-gap='true']:not(
-				[data-visible='true']
-			):not(:focus-within):not(:active) {
-			pointer-events: none;
-		}
+	/* Over a gap between two columns (one hit rule, the handles'): the handle
+	 * sits flush with its block, as wide as its buttons, and its box takes the
+	 * pointer at its block's whole row, shown or not — a pointer there hovers
+	 * the block, so its grip is reached from any side. The resize strip under
+	 * the handles takes the rest of the gap: its left part, and the height no
+	 * column-2 block's row covers. */
+	[data-edytor-block-handle-host][data-over-gap='true'] {
+		padding-inline-end: 0;
+	}
+
+	[data-edytor-block-handle-host][data-over-gap='true']::before {
+		content: '';
+		position: absolute;
+		z-index: -1;
+		left: 0;
+		right: 0;
+		top: var(--edytor-handle-row-top, 0px);
+		height: var(--edytor-handle-row-height, 100%);
 	}
 
 	[data-edytor-block-handle-host][data-visible='true'],

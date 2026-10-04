@@ -194,3 +194,80 @@ test.describe('undo and redo right after a mouse-only gesture (round 3, gap 1)',
 		issues.assertClean();
 	});
 });
+
+/** What takes the pointer at a point: a block's handle, a column's resize strip, or else. */
+const hitAt = (page: Page, x: number, y: number) =>
+	page.evaluate(
+		([x, y]) => {
+			const hit = document.elementFromPoint(x, y);
+			const handle = hit?.closest<HTMLElement>('[data-edytor-block-handle-host]');
+			if (handle) return `handle:${handle.dataset.blockId}`;
+			if (hit?.closest('[data-edytor-column-resize]')) return 'resize';
+			const block = hit?.closest<HTMLElement>('[data-edytor-block="true"]');
+			return block ? `block:${block.dataset.edytorId}` : 'page';
+		},
+		[x, y]
+	);
+
+test.describe('a column-2 block’s grip, reached from anywhere (round 3, gap 2)', () => {
+	for (const from of ['A', 'A2', 'P', 'Z'])
+		for (const step of [2, 6, 12])
+			test(`from ${from}’s text straight to B’s grip in the gap, ${step}px steps`, async ({
+				page
+			}) => {
+				const issues = trackPageIssues(page);
+				await open(page);
+				const text = await textBox(page, from);
+				const start = { x: text.x + Math.min(text.width - 4, 40), y: text.y + text.height / 2 };
+				await page.mouse.move(start.x, start.y);
+				await frames(page);
+				// The grip's place (its handle is mounted, transparent, near the viewport).
+				const g = (await grip(page, 'B').boundingBox())!;
+				const at = await walk(page, start, { x: g.x + g.width / 2, y: g.y + g.height / 2 }, step);
+				expect(await hitAt(page, at.x, at.y)).toBe('handle:B');
+				await expect(host(page, 'B')).toHaveAttribute('data-visible', 'true');
+				await page.mouse.down();
+				await page.mouse.up();
+				await expect.poll(() => selected(page)).toEqual(['B']);
+				expect(await tree(page)).toEqual(['P', LAYOUT, 'Z']);
+				issues.assertClean();
+			});
+
+	test('the handle’s box is the gap’s right part at its row; the strip takes the rest of the gap', async ({
+		page
+	}) => {
+		await open(page);
+		const g = await gap(page);
+		const b = await box(page, 'B');
+		const row = b.y + b.height / 2;
+		// From column 1's text into the gap at B's row (B not hovered on the way).
+		const a = await textBox(page, 'A');
+		await walk(page, { x: a.x + 30, y: row }, { x: g.left + 2, y: row });
+		expect(await hitAt(page, g.left + 2, row)).toBe('resize');
+		const h = (await host(page, 'B').boundingBox())!;
+		// Flush with B, as wide as the measured handle, the row's height.
+		expect(Math.abs(h.x + h.width - b.x)).toBeLessThanOrEqual(1);
+		expect(h.width).toBeLessThan(g.right - g.left);
+		for (const x of [h.x + 1, (h.x + g.right) / 2, g.right - 1])
+			for (const y of [b.y + 1, row, b.y + b.height - 1])
+				expect(await hitAt(page, x, y)).toBe('handle:B');
+		// Below B's row (A2's), no column-2 block: the whole gap resizes.
+		for (const x of [g.left + 2, (g.left + g.right) / 2, g.right - 2])
+			expect(await hitAt(page, x, g.low)).toBe('resize');
+	});
+
+	test('a resize from the gap’s left part at B’s row', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		const g = await gap(page);
+		const b = await box(page, 'B');
+		const row = b.y + b.height / 2;
+		const a = await textBox(page, 'A');
+		const at = await walk(page, { x: a.x + 30, y: row }, { x: g.left + 2, y: row });
+		await page.mouse.down();
+		await walk(page, at, { x: at.x - 60, y: row });
+		await page.mouse.up();
+		await expect.poll(async () => Math.round((await box(page, 'K1')).width - g.k1.width)).toBe(-60);
+		issues.assertClean();
+	});
+});

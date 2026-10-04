@@ -198,7 +198,7 @@ test.describe('columns: the resize affordance', () => {
 			[x, y]
 		);
 
-	test('the whole gap resizes where no handle shows; hovered, it shows a gray guide; dragging, the blue one', async ({
+	test('the gap resizes where no handle box is; hovered, it shows a gray guide; dragging, the blue one', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -218,8 +218,8 @@ test.describe('columns: the resize affordance', () => {
 		expect(Math.abs(s.x + s.width - gap.right)).toBeLessThanOrEqual(1);
 		for (const x of [gap.left + 2, (gap.left + gap.right) / 2, gap.right - 2])
 			expect(await hit(page, x, a2.y + a2.height / 2)).toBe('strip');
-		// Over B's row while B is not hovered, its handle takes nothing either.
-		expect(await hit(page, gap.left + 4, b.y + Math.min(b.height, 24) / 2)).toBe('strip');
+		// Over B's row, the gap's left part, left of B's handle box (round 3).
+		expect(await hit(page, gap.left + 2, b.y + Math.min(b.height, 24) / 2)).toBe('strip');
 		expect(await guide(page)).toBe(0);
 		await page.mouse.move((gap.left + gap.right) / 2, a2.y + a2.height / 2);
 		await expect.poll(() => guide(page)).toBe(1);

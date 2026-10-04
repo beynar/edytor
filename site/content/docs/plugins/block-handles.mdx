@@ -82,6 +82,7 @@ A `handle` snippet replaces the `+` and the grip of every handle. The plugin kee
     block: { type: "Block", description: "The block's handle." },
     grip: { type: "action", description: "use:grip makes an element the grip: dragging (when draggable), a click that selects the block and opens its menu, and the Alt+arrow moves while it has focus." },
     add: { type: "(alt?: boolean) => void", description: "What + does: the slash menu offers what to add below (with true, Alt+click: above, or for a block directly in a column a new column right of its column); nothing is added until a row is picked." },
+    addable: { type: "boolean", description: "Whether the block takes a +: always true (a block in a column too, as in Notion)." },
     readonly: { type: "boolean", description: "The editor is readonly: hide your buttons." },
     draggable: { type: "boolean", description: "Pointer dragging is on." },
   }}

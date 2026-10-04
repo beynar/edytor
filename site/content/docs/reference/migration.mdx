@@ -158,7 +158,7 @@ Columns arrive, opt-in, with the changes they needed elsewhere.
 
 - **`BLOCK_ACTIVATE_EVENT` is cancelable.** A menu that answers a grip click and takes the keyboard calls `event.preventDefault()` (the bundled block menu does). Unanswered, the editor takes the focus after the click, so <kbd>Backspace</kbd> and <kbd>Shift</kbd>+arrows act on the selected block. A custom block menu that listens for the event must call `preventDefault()` to keep the keys.
 - **`element` and `contentElement` functions receive the block's id**: `(data, id) => …`, for view state a kind keeps per block (the columns plugin's resize preview); reactive state they read re-renders the element. HTML import passes no id.
-- **`BlockHandleSnippetPayload.addable` is always `true`**: a block in a column has its `+` (its <kbd>Alt</kbd>+click, `add(true)`, adds a column right of the block's column). Layouts and columns have no handle.
+- **`BlockHandleSnippetPayload.addable` (new) is always `true`**: every handled block has its `+`, a block in a column too (its <kbd>Alt</kbd>+click, `add(true)`, adds a column right of the block's column). Layouts and columns have no handle.
 - **The handle column reorders.** Dragging in the band left of the blocks' text (the drag's handle width) places the dragged blocks before or after the row at the pointer's height, never inside; over a container list where they do not fit, the list is one row. A handle's box covers its block's row, so a pointer anywhere in it hovers the block.
 - **Block menu.** The Turn into flyout lists the turning commands ("N columns") and stays in the viewport, moved up and scrolling inside when needed (`[data-edytor-block-menu-flyout]`); the menu and its flyout are placed by their layout size.
 

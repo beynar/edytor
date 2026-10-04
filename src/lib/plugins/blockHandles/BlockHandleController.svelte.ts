@@ -725,22 +725,33 @@ export class BlockHandleController {
 	 * The handle column's reorder over `row` at the pointer: the hitbox's
 	 * halves as its own drop target gives them (`zones`, the pointer's x
 	 * picking the level), its own row's top half before, the bottom half
-	 * after, only before or after a block — never inside one (a list's first
-	 * item whose other placements the document refuses); `null` when neither
-	 * half fits.
+	 * after, only before or after a block — never inside one; `null` when
+	 * neither half fits. Over an item of a container the dragged blocks do not
+	 * fit in (a paragraph over a list's item: the document refuses every
+	 * placement at the item's level), the container is the row: its whole box,
+	 * the upper half before it, the lower half after it (round 4), so a drag
+	 * down the handles meets the list as one row it can pass.
 	 */
 	private reorder(
 		source: Block,
 		row: Block,
 		input: { clientX: number; clientY: number }
 	): DropPlacement | null {
-		const rect = ownRow(row.node!);
-		const zones = this.zones(source, row, input);
-		const [before, after] = [zones.before, zones.after].map((half) =>
-			half.filter((placement) => placement.position !== 'inside')
-		) as [DropPlacement[], DropPlacement[]];
-		const halves = input.clientY < rect.top + rect.height / 2 ? [before, after] : [after, before];
 		const fits = this.fits(source);
+		const halvesOf = (row: Block, rect: DOMRect) => {
+			const zones = this.zones(source, row, input);
+			const [before, after] = [zones.before, zones.after].map((half) =>
+				half.filter((placement) => placement.position !== 'inside')
+			) as [DropPlacement[], DropPlacement[]];
+			return input.clientY < rect.top + rect.height / 2 ? [before, after] : [after, before];
+		};
+		let halves = halvesOf(row, ownRow(row.node!));
+		for (
+			let at = row.parent;
+			!halves[0]!.some(fits) && at?.node && !at.isRoot && at.isContainer;
+			at = at.parent
+		)
+			halves = halvesOf(at, at.node.getBoundingClientRect());
 		const placement = halves.flat().find(fits);
 		return placement ? { ...placement, blocked: !halves[0]!.some(fits) } : null;
 	}

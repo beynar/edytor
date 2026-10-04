@@ -403,3 +403,91 @@ test.describe('a resize stops when the view turns readonly (round 4, issue 4)', 
 		issues.assertClean();
 	});
 });
+
+const MIXED = [
+	para('P1', 'first paragraph'),
+	{
+		id: 'UL',
+		type: 'unordered-list',
+		children: [
+			{ id: 'I1', type: 'list-item', content: [{ text: 'container item one' }] },
+			{ id: 'I2', type: 'list-item', content: [{ text: 'container item two' }] }
+		]
+	},
+	para('Q', 'middle paragraph'),
+	{
+		id: 'C',
+		type: 'columns',
+		children: [
+			{ id: 'K1', type: 'column', children: [para('A', 'col a')] },
+			{ id: 'K2', type: 'column', children: [para('B', 'col b')] }
+		]
+	},
+	para('Z', 'last paragraph')
+];
+
+/** The placement shown now: its position, the block it is relative to, and whether it is blocked. */
+const placementShown = (page: Page) =>
+	page.evaluate(() => {
+		const bar = document.querySelector<HTMLElement>('[data-edytor-drop-indicator]');
+		const at = document.querySelector<HTMLElement>('[data-edytor-block-drop-position]');
+		if (!bar) return null;
+		return `${bar.dataset.position} ${at?.dataset.edytorId}${bar.dataset.blocked === 'true' ? ' blocked' : ''}`;
+	});
+
+/** The root blocks' ids, a list with its items. */
+const roots = (page: Page) =>
+	page.evaluate(() =>
+		(window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__.value.children.map((b) =>
+			b.type === 'unordered-list' ? [b.id, (b.children ?? []).map((c) => c.id)] : b.id
+		)
+	);
+
+test.describe('the handle column over a container list (round 4, issue 5)', () => {
+	for (const [source, from] of [
+		['P1', 'down'],
+		['Q', 'up']
+	] as const)
+		test(`${source} ${from} the handle column over the list: the list’s level, accepted, never blocked or inside`, async ({
+			page
+		}) => {
+			const issues = trackPageIssues(page);
+			await openDoc(page, MIXED);
+			const at = await reachGrip(page, source);
+			const x = (await textBox(page, source)).x - 12;
+			await page.mouse.down();
+			await walk(page, at, { x, y: at.y + (from === 'down' ? 6 : -6) });
+			const [ul, i1, i2] = [await box(page, 'UL'), await box(page, 'I1'), await box(page, 'I2')];
+			const seen: string[] = [];
+			const ys: number[] = [];
+			for (let y = ul.y + 2; y <= ul.y + ul.height - 2; y += 4) ys.push(y);
+			if (from === 'up') ys.reverse();
+			const start = { x, y: at.y + (from === 'down' ? 6 : -6) };
+			await walk(page, start, { x, y: ys[0]! }, 4);
+			for (const y of ys) {
+				await page.mouse.move(x, y);
+				await frames(page);
+				seen.push(`${Math.round(y - ul.y)}:${await placementShown(page)}`);
+			}
+			const bad = seen.filter((s) => !/:(before|after) UL$/.test(s));
+			expect(bad).toEqual([]);
+			// The list's upper half is before it, its lower half after it.
+			const half = (y: number) => (y < ul.y + ul.height / 2 ? 'before' : 'after');
+			for (const [y, s] of ys.map((y, k) => [y, seen[k]!] as const))
+				if (Math.abs(y - (ul.y + ul.height / 2)) > 4) expect(s).toContain(`${half(y)} UL`);
+			// Released over the first item's lower half: before the list.
+			const low = i1.y + i1.height * 0.75;
+			await walk(page, { x, y: ys.at(-1)! }, { x, y: low }, 4);
+			await expect.poll(() => placementShown(page)).toBe('before UL');
+			await page.mouse.up();
+			await expect
+				.poll(() => roots(page))
+				.toEqual(
+					source === 'P1'
+						? ['P1', ['UL', ['I1', 'I2']], 'Q', 'C', 'Z']
+						: ['P1', 'Q', ['UL', ['I1', 'I2']], 'C', 'Z']
+				);
+			void i2;
+			issues.assertClean();
+		});
+});

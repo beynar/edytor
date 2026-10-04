@@ -55,7 +55,8 @@ type Drag = {
  * (`weight`), so only this view sees them and no peer gets a frame. The
  * release writes the two columns' `data.width` weights, keeping their sum,
  * in one `edytor.transact` (two `setData` commands: one undo step), and
- * drops the preview in the same flush; Escape or a cancel drops it alone.
+ * drops the preview in the same flush; Escape, a cancel or the view turning
+ * readonly drops it alone, at once.
  * Neither column goes under `minWidth` × the layout's width, in the view
  * only (the document stores weights). Positions are read in the overlay's
  * measure, once per frame.
@@ -71,6 +72,8 @@ export class ColumnResize {
 	drag = $state<Drag | null>(null);
 	/** The guide's layer-relative box while a strip drags. */
 	guide = $state<{ x: number; top: number; height: number } | null>(null);
+	/** Ends the drag in progress without a write (Escape, a cancel, the view turning readonly). */
+	#cancel: (() => void) | null = null;
 	/** The two dragged columns' weights at the pointer, by id, while a strip drags (view only). */
 	preview = $state.raw<Readonly<Record<string, number>> | null>(null);
 
@@ -78,6 +81,11 @@ export class ColumnResize {
 		private edytor: Edytor,
 		private minWidth: number
 	) {}
+
+	/** The view is readonly (reactive). */
+	get readonly() {
+		return this.edytor.readonly;
+	}
 
 	/** Whether the strips show: over a layout of an editable view, or while one drags. */
 	get shown() {
@@ -201,6 +209,7 @@ export class ColumnResize {
 		const document = target?.ownerDocument ?? edytor.node?.ownerDocument;
 		const move = (moved: PointerEvent) => {
 			if (!this.drag) return;
+			if (!edytor.dispatcher.permits()) return end(moved);
 			this.drag.at = moved.clientX;
 			this.preview = this.weights(this.drag);
 			edytor.overlay.invalidate();
@@ -213,6 +222,7 @@ export class ColumnResize {
 			const drag = this.drag;
 			this.drag = null;
 			this.guide = null;
+			this.#cancel = null;
 			edytor.overlay.invalidate();
 			if (drag && ended.type === 'pointerup') {
 				drag.at = (ended as PointerEvent).clientX;
@@ -229,11 +239,21 @@ export class ColumnResize {
 			key.stopPropagation();
 			end(key);
 		};
+		this.#cancel = () => end(new Event('cancel'));
 		document?.addEventListener('pointermove', move);
 		document?.addEventListener('pointerup', end);
 		document?.addEventListener('pointercancel', end);
 		document?.addEventListener('keydown', escape, true);
 		edytor.overlay.invalidate();
+	};
+
+	/**
+	 * The view turned readonly (or the document read-only): a drag in progress
+	 * ends at once, its preview dropped, nothing written (its release would be
+	 * refused anyway). Called by the strips' component when `readonly` flips.
+	 */
+	lock = () => {
+		if (this.drag && !this.edytor.dispatcher.permits()) this.#cancel?.();
 	};
 
 	/** The two columns' weights at the drag's pointer, keeping their stored sum; `null` before it moved. */

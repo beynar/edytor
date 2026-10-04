@@ -369,3 +369,37 @@ test.describe('typing after a resize is its own undo step (round 4, issue 3)', (
 		issues.assertClean();
 	});
 });
+
+test.describe('a resize stops when the view turns readonly (round 4, issue 4)', () => {
+	test('mid-drag readonly: the widths go back at once and stay; nothing is written', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await openDoc(page, FULL);
+		const before = await widths(page);
+		const g = await gapOf(page);
+		const a2 = await textBox(page, 'A2');
+		const row = a2.y + a2.height / 2;
+		const at = await walk(page, { x: a2.x + 30, y: row }, { x: g.mid, y: row });
+		await page.mouse.down();
+		await walk(page, at, { x: at.x + 40, y: row });
+		await expect.poll(() => widths(page)).toEqual([before[0]! + 40, before[1]! - 40]);
+		await page.evaluate(
+			() =>
+				((window as unknown as { __EDYTOR__: { readonly: boolean } }).__EDYTOR__.readonly = true)
+		);
+		await expect.poll(() => widths(page)).toEqual(before);
+		await expect(page.locator('[data-edytor-column-resize-guide]')).toHaveCount(0);
+		await walk(page, { x: at.x + 40, y: row }, { x: at.x + 80, y: row });
+		expect(await widths(page)).toEqual(before);
+		await page.mouse.up();
+		await frames(page);
+		expect(await widths(page)).toEqual(before);
+		const stored = await page.evaluate(() => {
+			const edytor = (window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__;
+			return ['K1', 'K2'].map((id) => edytor.idToBlock.get(id)!.data.width ?? null);
+		});
+		expect(stored).toEqual([null, null]);
+		issues.assertClean();
+	});
+});

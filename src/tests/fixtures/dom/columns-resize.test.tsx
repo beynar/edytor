@@ -328,6 +328,35 @@ describe('dragging a strip', () => {
 		expect(weights(edytor, 'K1', 'K2')).toEqual([undefined, undefined]);
 	});
 
+	it('the view turning readonly mid-drag drops the preview at once; moves and the release change nothing (round 4, issue 4)', async () => {
+		const { edytor } = await render(contractDoc());
+		await hover(edytor, 'A');
+		const [strip] = strips();
+		pointer(strip!, 'pointerdown', { clientX: 281, clientY: 40 });
+		pointer(strip!, 'pointermove', { clientX: 331, clientY: 40 });
+		await frame();
+		await flushDomUpdates();
+		expect(flexOf(edytor, 'K1')).toBeCloseTo((2 * 327) / 554, 10);
+		edytor.readonly = true;
+		await flushDomUpdates();
+		expect([flexOf(edytor, 'K1'), flexOf(edytor, 'K2')]).toEqual([1, 1]);
+		expect(guide()).toBeNull();
+		pointer(strip!, 'pointermove', { clientX: 381, clientY: 40 });
+		await frame();
+		await flushDomUpdates();
+		expect([flexOf(edytor, 'K1'), flexOf(edytor, 'K2')]).toEqual([1, 1]);
+		pointer(strip!, 'pointerup', { clientX: 381, clientY: 40 });
+		await flushDomUpdates();
+		expect(weights(edytor, 'K1', 'K2')).toEqual([undefined, undefined]);
+		// Editable again: no drag survived.
+		edytor.readonly = false;
+		await flushDomUpdates();
+		pointer(document, 'pointermove', { clientX: 431, clientY: 40 });
+		await frame();
+		await flushDomUpdates();
+		expect([flexOf(edytor, 'K1'), flexOf(edytor, 'K2')]).toEqual([1, 1]);
+	});
+
 	it('a release where it started writes nothing', async () => {
 		const { edytor } = await render(contractDoc());
 		await hover(edytor, 'A');

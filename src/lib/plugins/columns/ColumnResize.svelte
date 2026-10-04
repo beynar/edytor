@@ -9,6 +9,11 @@
 	 * press resizes.
 	 */
 	let { resize }: { resize: ColumnResize } = $props();
+
+	// The view turning readonly mid-drag drops the preview at once (round 4).
+	$effect(() => {
+		if (resize.readonly) resize.lock();
+	});
 </script>
 
 <div role="presentation">

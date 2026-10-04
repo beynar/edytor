@@ -321,6 +321,45 @@ test.describe('columns: slash commands', () => {
 				page.locator('[data-edytor-columns]').nth(1).locator('[data-edytor-column]')
 			).toHaveCount(n);
 		});
+
+	test('/2 col inside a column (the layout commands disabled there): the query matches nothing, so it is prose — the menu closes, Enter starts a new line, a later / opens it again', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		await clickAt(page, 'B', 'end');
+		const menu = page.locator('[data-testid="slash-menu"]');
+		await page.keyboard.type(' /2 ');
+		// "2 columns" is disabled in a column (D2): "Heading 2" still matches.
+		await expect(page.locator('[data-testid="slash-menu-item"]')).toHaveText(['Heading 2']);
+		await page.keyboard.type('c');
+		await expect(menu).toHaveCount(0);
+		await page.keyboard.type('ol');
+		await expect(menu).toHaveCount(0);
+		await page.keyboard.press('Enter');
+		await expect.poll(() => caretBlock(page)).not.toBe('B');
+		await expect(textOf(page, 'B')).resolves.toBe('right /2 col');
+		await page.keyboard.type('x');
+		await expect
+			.poll(() => shape(page))
+			.toEqual([
+				'P',
+				[
+					'C',
+					[
+						['K1', ['A', 'A2']],
+						['K2', ['B', 'NEW']]
+					]
+				],
+				'Z'
+			]);
+		// Nothing dangles: a new / opens the menu with every enabled command.
+		await page.keyboard.type(' /');
+		await expect(menu).toHaveCount(1);
+		await expect(page.locator('[data-testid="slash-menu-item"]').first()).toHaveText('Text');
+		await page.keyboard.press('Escape');
+		issues.assertClean();
+	});
 });
 
 test.describe('columns: Turn into N columns (demo)', () => {

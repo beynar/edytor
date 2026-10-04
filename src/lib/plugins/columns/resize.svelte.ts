@@ -138,7 +138,13 @@ export class ColumnResize {
 		const strips = this.shown ? this.gaps(origin) : [];
 		const drag = this.drag;
 		const guide = drag && {
-			x: drag.start + this.widthAt(drag) + drag.gap / 2 - GUIDE / 2 - origin.left,
+			// Where the hover guide showed: the band's middle, never the gap's (it would jump onto the `+`).
+			x:
+				drag.start +
+				this.widthAt(drag) +
+				bandOf({ left: 0, right: drag.gap }).width / 2 -
+				GUIDE / 2 -
+				origin.left,
 			top: drag.top - origin.top,
 			height: drag.height
 		};

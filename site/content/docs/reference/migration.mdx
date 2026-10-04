@@ -131,6 +131,10 @@ See the [editor](/docs/editor/edytor-component) and [plugins](/docs/plugins) sec
 
 ## Upgrading between pre-releases
 
+### From 0.1.0-next.20
+
+- **The resize guide no longer jumps when a drag starts.** While a column resize drags, the blue guide is drawn where the gray hover guide showed (the band's middle after the dragged edge), not in the middle of the gap, where it fell on the next column's `+`.
+
 ### From 0.1.0-next.19
 
 - **A mouse selection that crosses into another column selects blocks, as in Notion.** A text selection dragged from a column into another column of the same layout (into its text, or past the middle of the gap between them) becomes a block selection of every block from the one the drag started in to the one under the pointer, in reading order, with no text highlight; back in its own column it is a text range again, and released, the blocks stay selected for <kbd>Backspace</kbd>, copy, cut or typing. It used to stay a text range across the columns (the rest of column 1 and column 2's rows above the pointer). A drag that starts outside the layout, a <kbd>Shift</kbd>+click and <kbd>Shift</kbd>+arrows keep text ranges. The editor's root carries `data-edytor-selection="blocks"` while the selection is a block selection, and the core hides the native highlight under it. See [Columns](/docs/plugins/columns#selection).

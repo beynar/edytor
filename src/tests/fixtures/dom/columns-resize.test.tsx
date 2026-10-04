@@ -182,9 +182,10 @@ describe('dragging a strip', () => {
 		pointer(strip!, 'pointermove', { clientX: 381, clientY: 40 });
 		await frame();
 		await flushDomUpdates();
-		// Column 1 grows by 100px (277 → 377): the guide sits in the middle of the gap after it.
+		// Column 1 grows by 100px (277 → 377): the guide sits where the hover guide
+		// showed, the band's middle after it (never the gap's, onto the `+`).
 		expect(guide()).not.toBeNull();
-		expect(boxOf(guide()!).slice(0, 2)).toEqual([377 + GAP / 2 - 1, 24]);
+		expect(boxOf(guide()!).slice(0, 2)).toEqual([377 + BAND / 2 - 1, 24]);
 		expect(changes).toBe(0);
 		expect(weights(edytor, 'K1', 'K2')).toEqual([undefined, undefined]);
 		// Both columns resize live (round 3): the columns' elements show the

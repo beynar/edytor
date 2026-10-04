@@ -229,6 +229,11 @@ test.describe('columns: the resize affordance', () => {
 		await page.mouse.move(mid + 40, a2.y + a2.height / 2, { steps: 5 });
 		await expect(page.locator('[data-edytor-column-resize-guide]')).toHaveCount(1);
 		await expect.poll(() => guide(page)).toBe(0);
+		// The blue guide stays where the gray one showed, the band's middle after the
+		// dragged edge: it never jumps onto the next column's `+`.
+		const g = (await page.locator('[data-edytor-column-resize-guide]').boundingBox())!;
+		const k1now = await box(page, 'K1');
+		expect(Math.abs(g.x + g.width / 2 - (k1now.x + k1now.width + 5))).toBeLessThanOrEqual(1.5);
 		await page.mouse.up();
 		await expect(page.locator('[data-edytor-column-resize-guide]')).toHaveCount(0);
 		issues.assertClean();

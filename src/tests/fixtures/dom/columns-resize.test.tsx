@@ -23,7 +23,13 @@ import type { Edytor } from '$lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
 import { BAND } from '$lib/plugins/columns/gaps.js';
-import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import {
+	dispatchDomBeforeInput,
+	dispatchDomKeyDown,
+	flushDomUpdates,
+	renderDomEdytor,
+	setNativeSelection
+} from '../../dom/test.utils.js';
 import { block, column, columns, contractDoc, p } from './columns.helpers.js';
 
 afterEach(() => {
@@ -115,6 +121,10 @@ const guide = () => document.querySelector<HTMLElement>('[data-edytor-column-res
 /** The flex grow a column's element shows (its kind's `element`). */
 const flexOf = (edytor: Edytor, id: string) =>
 	Number(/flex:\s*([\d.e-]+)/.exec(block(edytor, id).node!.getAttribute('style') ?? '')?.[1]);
+const textOf = (edytor: Edytor, id: string) =>
+	(block(edytor, id).content as { stringContent?: string }[])
+		.map((t) => t.stringContent ?? '')
+		.join('');
 const weights = (edytor: Edytor, ...ids: string[]) =>
 	ids.map((id) => block(edytor, id).data.width as number | undefined);
 
@@ -290,6 +300,32 @@ describe('dragging a strip', () => {
 		});
 		await flushDomUpdates();
 		expect(weights(edytor, 'K1', 'K2')).toEqual(resized);
+	});
+
+	it('typing right after a resize is a step of its own (round 4, issue 3)', async () => {
+		const { edytor, editor } = await render(contractDoc());
+		const b = block(edytor, 'B');
+		await setNativeSelection(edytor, b.content[0] as never, 1);
+		await hover(edytor, 'A');
+		const [strip] = strips();
+		pointer(strip!, 'pointerdown', { clientX: 281, clientY: 40 });
+		pointer(strip!, 'pointermove', { clientX: 331, clientY: 40 });
+		pointer(strip!, 'pointerup', { clientX: 331, clientY: 40 });
+		await flushDomUpdates();
+		const resized = weights(edytor, 'K1', 'K2');
+		expect(resized[0]).toBeCloseTo((2 * 327) / 554, 10);
+		// The caret stayed at B's end: typing there.
+		expect(edytor.selection.value.kind).toBe('text');
+		await dispatchDomBeforeInput(editor, { inputType: 'insertText', data: 'k' });
+		expect(textOf(edytor, 'B')).toBe('bk');
+		edytor.historyUndo();
+		await flushDomUpdates();
+		// One undo takes back the typing alone; the next, the resize.
+		expect(textOf(edytor, 'B')).toBe('b');
+		expect(weights(edytor, 'K1', 'K2')).toEqual(resized);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(weights(edytor, 'K1', 'K2')).toEqual([undefined, undefined]);
 	});
 
 	it('a release where it started writes nothing', async () => {

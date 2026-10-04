@@ -27,6 +27,8 @@ type StackItem = { meta: Map<string, unknown> };
 type StackEvent = { stackItem: StackItem };
 
 const KEY = 'edytor:selection';
+/** A stack item's last dispatched write was an insertion (`wrote`): typing may continue it. */
+const INSERTING = 'edytor:inserting';
 
 const entries = (item: StackItem): Map<unknown, Entry> => {
 	let map = item.meta.get(KEY) as Map<unknown, Entry> | undefined;
@@ -40,6 +42,8 @@ export class History {
 	/** The entry whose `after` follows this view's selection, and the gesture it belongs to. */
 	#open: { entry: Entry; gesture: number } | null = null;
 	#off: (() => void) | null = null;
+	/** Whether this view's dispatched writes in the current transaction were all insertions. */
+	#inserting: boolean | null = null;
 
 	constructor(private edytor: Edytor) {}
 
@@ -52,6 +56,7 @@ export class History {
 		const begin = () => {
 			this.#start = value();
 			this.#open = null;
+			this.#inserting = null;
 		};
 		const record = ({ stackItem }: StackEvent) => {
 			if (um.undoing || um.redoing) {
@@ -61,6 +66,8 @@ export class History {
 				if (entry) entries(stackItem).set(key, entry);
 				return;
 			}
+			// Its kind, from the view whose dispatcher wrote it (a raw write keeps the item's).
+			if (this.#inserting !== null) stackItem.meta.set(INSERTING, this.#inserting);
 			const map = entries(stackItem);
 			const entry = map.get(key) ?? { before: this.#start ?? value() };
 			entry.after = value();
@@ -102,15 +109,23 @@ export class History {
 		if (entry) entry.before = value;
 	};
 
+	/** The dispatcher wrote in this transaction: an insertion (`inserts`) or not. */
+	wrote = (insertion: boolean) => {
+		this.#inserting = (this.#inserting ?? true) && insertion;
+	};
+
 	/**
-	 * An insertion at `value` continues this view's last step: the top undo
-	 * item's recorded `after` projects where `value` does. Only a continuation
-	 * coalesces within `captureTimeout` (O31): after the selection moved, an
-	 * insertion starts its own step, however soon it follows.
+	 * An insertion at `value` continues this view's last step: that step is an
+	 * insertion's (`wrote`: a resize, a deletion, a data write end it) and the
+	 * top undo item's recorded `after` projects where `value` does. Only a
+	 * continuation coalesces within `captureTimeout` (O31): after the
+	 * selection moved, an insertion starts its own step, however soon it
+	 * follows.
 	 */
 	continues = (value: SelectionValue) => {
 		const { undoManager: um, transaction: key, facade } = this.edytor;
 		const item = um?.undoStack.at(-1) as StackItem | undefined;
+		if (item?.meta.get(INSERTING) !== true) return false;
 		const after = (item?.meta.get(KEY) as Map<unknown, Entry> | undefined)?.get(key)?.after;
 		if (after?.kind !== 'text' || value.kind !== 'text') return false;
 		const [a, b] = [project(after, facade), project(value, facade)];

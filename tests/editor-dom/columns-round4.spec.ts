@@ -339,3 +339,33 @@ test.describe('typing with no caret does nothing (round 4, issue 2)', () => {
 		issues.assertClean();
 	});
 });
+
+test.describe('typing after a resize is its own undo step (round 4, issue 3)', () => {
+	test('caret at B’s end, a resize, "k": Mod+Z takes back the k, the next Mod+Z the widths', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await openDoc(page, FULL);
+		const b = await textBox(page, 'B');
+		await page.mouse.click(b.x + b.width - 1, b.y + b.height / 2);
+		await page.keyboard.press('End');
+		const before = await widths(page);
+		const g = await gapOf(page);
+		const a2 = await textBox(page, 'A2');
+		const row = a2.y + a2.height / 2;
+		const at = await walk(page, { x: a2.x + 30, y: row }, { x: g.mid, y: row });
+		await page.mouse.down();
+		await walk(page, at, { x: at.x + 40, y: row });
+		await page.mouse.up();
+		await expect.poll(() => widths(page)).toEqual([before[0]! + 40, before[1]! - 40]);
+		await page.keyboard.type('k');
+		await expect.poll(() => texts(page)).toContain('right onek');
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect.poll(() => texts(page)).toEqual(TEXTS);
+		expect(await widths(page)).toEqual([before[0]! + 40, before[1]! - 40]);
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect.poll(() => widths(page)).toEqual(before);
+		expect(await texts(page)).toEqual(TEXTS);
+		issues.assertClean();
+	});
+});

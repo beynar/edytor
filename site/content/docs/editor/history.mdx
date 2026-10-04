@@ -41,7 +41,7 @@ All views of one document share its history. An edit made in one view can be und
 
 Edytor groups edits the way a text editor does:
 
-- **Typing** at the caret joins the previous step if it continues where that step left the caret, and follows it within the capture window (500 ms by default). Moving the caret and typing again starts a new step, however short the pause.
+- **Typing** at the caret joins the previous step if that step was typing or a text deletion, it continues where that step left the caret, and it follows it within the capture window (500 ms by default). Moving the caret and typing again starts a new step, however short the pause, and so does typing right after any other step (a column resize, a data change, a paste, a conversion), as in Notion.
 - **Deletions** (Backspace, Delete, cut, deleting a selection or blocks) start a new step.
 - **Enter** is a step of its own.
 - **Paste** and **drop** each start a new step.

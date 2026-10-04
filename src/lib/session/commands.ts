@@ -19,6 +19,7 @@ import type { SelectionValue } from '$lib/session/selection.js';
 import type { Text } from '$lib/text/text.svelte.js';
 import { DEV } from 'esm-env';
 import { prevent, PreventionError } from '$lib/utils.js';
+import { kindOf } from './attempt.js';
 
 export type CommandResult = {
 	operation: string;
@@ -46,8 +47,9 @@ type Change = {
  * plugin, a headless call) by its name. Deletions, paste, drop, formatting
  * and structural operations cut the capture before they write; a paragraph
  * split also cuts after; an insertion (`INSERTIONS`) coalesces within
- * `captureTimeout` when it continues the step before it (it starts where that
- * step left this view's selection, `history.continues`), else it cuts: an
+ * `captureTimeout` when it continues the step before it (that step is an
+ * insertion's, `inserts`, and it starts where that step left this view's
+ * selection, `history.continues`), else it cuts: an
  * insertion after the caret moved is its own step whatever the pause, so the
  * grouping never depends on timing alone. Every other kind or operation —
  * one the table does not list included (`run('myConvert')`) — cuts before
@@ -85,6 +87,15 @@ const INSERTIONS = new Set([
 	'insertLink'
 ]);
 type Policy = 'before' | 'both' | 'continue' | undefined;
+/**
+ * Whether a `kind` command's writes are text editing an insertion may
+ * continue (`history.continues`): the insertions, a composition and a text
+ * deletion (FP-2: Delete then typing is one step), never a led conversion.
+ * Anything else — a paste, a structural edit, a data write such as a
+ * column resize — ends the step for the typing after it.
+ */
+const inserts = (kind: string, lead: Plan | null) =>
+	!lead && (kind.includes('Composition') || INSERTIONS.has(kind) || kindOf(kind) === 'delete');
 const policyOf = (kind: string): Policy =>
 	CUT[kind] ??
 	(kind.includes('Composition') ? undefined : INSERTIONS.has(kind) ? 'continue' : 'before');
@@ -185,6 +196,8 @@ export class Dispatcher {
 	private active = false;
 	/** A user command's synchronous part is running: nested commands are its steps. */
 	private running = false;
+	/** The running user command's kind (its policy decides whether its writes are an insertion). */
+	private kind: string | null = null;
 	/** The running user command's last step that applied. */
 	private applied: CommandResult | null = null;
 	/** Open prevention scopes: a veto inside one aborts it. */
@@ -265,10 +278,12 @@ export class Dispatcher {
 		this.applied = null;
 		const out = this.scope(() => {
 			this.running = true;
+			this.kind = kind;
 			try {
 				return body();
 			} finally {
 				this.running = false;
+				this.kind = null;
 			}
 		});
 		if (this.applied && this.last?.status !== 'applied' && this.last?.status !== 'failed')
@@ -376,6 +391,9 @@ export class Dispatcher {
 		let result: R;
 		try {
 			result = this.edytor.transact(() => {
+				// What the step holds, recorded as the transaction ends: only an
+				// insertion's step may be continued (`history.continues`).
+				this.edytor.history.wrote(inserts(this.kind ?? operation, lead));
 				this.active = true;
 				try {
 					// An unplanned command runs after its lead, reading the state it leaves.

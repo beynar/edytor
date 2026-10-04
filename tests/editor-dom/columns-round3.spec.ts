@@ -233,37 +233,38 @@ test.describe('a column-2 block’s grip, reached from anywhere (round 3, gap 2)
 				issues.assertClean();
 			});
 
-	test('the handle’s box is the gap’s right part at its row; the strip takes the rest of the gap', async ({
+	test('the handle’s box spans the gap at its row around the band; the band is the gap’s middle at every row (round 4)', async ({
 		page
 	}) => {
 		await open(page);
 		const g = await gap(page);
 		const b = await box(page, 'B');
 		const row = b.y + b.height / 2;
-		// From column 1's text into the gap at B's row (B not hovered on the way).
+		const mid = (g.left + g.right) / 2;
+		// From column 1's text into the gap at B's row: B's box (its +) first.
 		const a = await textBox(page, 'A');
 		await walk(page, { x: a.x + 30, y: row }, { x: g.left + 2, y: row });
-		expect(await hitAt(page, g.left + 2, row)).toBe('resize');
-		const h = (await host(page, 'B').boundingBox())!;
-		// Flush with B, as wide as the measured handle, the row's height.
-		expect(Math.abs(h.x + h.width - b.x)).toBeLessThanOrEqual(1);
-		expect(h.width).toBeLessThan(g.right - g.left);
-		for (const x of [h.x + 1, (h.x + g.right) / 2, g.right - 1])
+		expect(await hitAt(page, g.left + 2, row)).toBe('handle:B');
+		const hb = (await host(page, 'B').boundingBox())!;
+		// Flush with B, from the gap's left edge, the row's height.
+		expect(Math.abs(hb.x + hb.width - b.x)).toBeLessThanOrEqual(1);
+		expect(Math.abs(hb.x - g.left)).toBeLessThanOrEqual(1);
+		for (const x of [g.left + 1, g.left + 12, g.right - 12, g.right - 1])
 			for (const y of [b.y + 1, row, b.y + b.height - 1])
 				expect(await hitAt(page, x, y)).toBe('handle:B');
-		// Below B's row (A2's), no column-2 block: the whole gap resizes.
-		for (const x of [g.left + 2, (g.left + g.right) / 2, g.right - 2])
-			expect(await hitAt(page, x, g.low)).toBe('resize');
+		// The band above it, at the gap's middle, at B's row and below it.
+		for (const y of [b.y + 1, row, b.y + b.height - 1, g.low])
+			for (const x of [mid - 4, mid, mid + 4]) expect(await hitAt(page, x, y)).toBe('resize');
 	});
 
-	test('a resize from the gap’s left part at B’s row', async ({ page }) => {
+	test('a resize from the band at B’s row', async ({ page }) => {
 		const issues = trackPageIssues(page);
 		await open(page);
 		const g = await gap(page);
 		const b = await box(page, 'B');
 		const row = b.y + b.height / 2;
 		const a = await textBox(page, 'A');
-		const at = await walk(page, { x: a.x + 30, y: row }, { x: g.left + 2, y: row });
+		const at = await walk(page, { x: a.x + 30, y: row }, { x: (g.left + g.right) / 2, y: row });
 		await page.mouse.down();
 		await walk(page, at, { x: at.x - 60, y: row });
 		await page.mouse.up();

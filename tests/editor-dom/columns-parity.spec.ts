@@ -198,7 +198,7 @@ test.describe('columns: the resize affordance', () => {
 			[x, y]
 		);
 
-	test('the gap resizes where no handle box is; hovered, it shows a gray guide; dragging, the blue one', async ({
+	test('the band at the gap’s middle resizes at every row; hovered, it shows a gray guide; dragging, the blue one', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -210,16 +210,16 @@ test.describe('columns: the resize affordance', () => {
 			await box(page, 'A2')
 		];
 		const gap = { left: k1.x + k1.width, right: k2.x };
-		// Over A2's row, below column 2's only block: the gap is the strip's.
+		// The band: 10px at the gap's middle, the layout's height (round 4).
+		const mid = (gap.left + gap.right) / 2;
 		await page.mouse.move(a2.x + 10, a2.y + a2.height / 2);
 		await expect(strip(page)).toHaveCount(1);
 		const s = (await strip(page).boundingBox())!;
-		expect(Math.abs(s.x - gap.left)).toBeLessThanOrEqual(1);
-		expect(Math.abs(s.x + s.width - gap.right)).toBeLessThanOrEqual(1);
-		for (const x of [gap.left + 2, (gap.left + gap.right) / 2, gap.right - 2])
-			expect(await hit(page, x, a2.y + a2.height / 2)).toBe('strip');
-		// Over B's row, the gap's left part, left of B's handle box (round 3).
-		expect(await hit(page, gap.left + 2, b.y + Math.min(b.height, 24) / 2)).toBe('strip');
+		expect(Math.abs(s.x + s.width / 2 - mid)).toBeLessThanOrEqual(1);
+		expect(Math.abs(s.width - 10)).toBeLessThanOrEqual(1);
+		for (const x of [mid - 4, mid, mid + 4])
+			for (const y of [a2.y + a2.height / 2, b.y + Math.min(b.height, 24) / 2])
+				expect(await hit(page, x, y)).toBe('strip');
 		expect(await guide(page)).toBe(0);
 		await page.mouse.move((gap.left + gap.right) / 2, a2.y + a2.height / 2);
 		await expect.poll(() => guide(page)).toBe(1);
@@ -234,7 +234,7 @@ test.describe('columns: the resize affordance', () => {
 		issues.assertClean();
 	});
 
-	test("a hovered block's shown handle takes the pointer over its part of the gap", async ({
+	test("a hovered block's shown handle takes the pointer over its part of the gap (beside the band)", async ({
 		page
 	}) => {
 		await open(page);

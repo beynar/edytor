@@ -363,9 +363,10 @@ test.describe('resizing columns', () => {
 		await expect(strip(page)).toHaveCount(1);
 		const s = (await strip(page).boundingBox())!;
 		const [k1, k2] = [await box(page, 'K1'), await box(page, 'K2')];
-		// Over the whole gap, the layout's height.
-		expect(Math.abs(s.width - (k2.x - (k1.x + k1.width)))).toBeLessThanOrEqual(1);
-		expect(Math.abs(s.x - (k1.x + k1.width))).toBeLessThanOrEqual(1);
+		// A 10px band at the gap's middle, the layout's height (round 4).
+		const gapMid = (k1.x + k1.width + k2.x) / 2;
+		expect(Math.abs(s.width - 10)).toBeLessThanOrEqual(1);
+		expect(Math.abs(s.x + s.width / 2 - gapMid)).toBeLessThanOrEqual(1);
 		expect(await strip(page).evaluate((node) => getComputedStyle(node).cursor)).toBe('col-resize');
 		const at = { x: s.x + s.width / 2, y: s.y + s.height / 2 };
 		await page.mouse.move(at.x, at.y);
@@ -390,7 +391,7 @@ test.describe('resizing columns', () => {
 				const [one, now] = [await box(page, 'K1'), await strip(page).boundingBox()];
 				return (
 					now !== null &&
-					Math.abs(now.x - (one.x + one.width)) <= 1 &&
+					Math.abs(now.x + now.width / 2 - (one.x + one.width + gapMid - k1.x - k1.width)) <= 1 &&
 					Math.abs(one.width - k1.width) <= 1
 				);
 			})
@@ -398,7 +399,7 @@ test.describe('resizing columns', () => {
 		// Past column 2's minimum (it is under 400px wide): it stops at 10% of the layout.
 		const c = await box(page, 'C');
 		const again = (await strip(page).boundingBox())!;
-		await page.mouse.move(again.x + 4, again.y + again.height / 2);
+		await page.mouse.move(again.x + again.width / 2, again.y + again.height / 2);
 		await page.mouse.down();
 		await page.mouse.move(again.x + 350, again.y + again.height / 2, { steps: 10 });
 		await page.mouse.up();

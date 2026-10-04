@@ -79,9 +79,11 @@ kind (catalogue ids `block.<type><n>`).
   columns show the `+` and the ⋮⋮ grip, as Notion (revisited after the
   2026-10-04 review; first shipped grip-only): the `+`'s Alt+click adds a
   column right of the block's column (`addBlock` → `moveBlocks` `right`).
-  The gap budget: a block's handle shows (and takes the pointer) only for
-  the hovered row; the resize strip covers the rest of the gap, under the
-  handles, with a gray hover guide. A layout handle stays the fallback.
+  The gap budget (round 4): a 10px resize band at the gap's middle, above
+  the handles, the layout's height; a column block's handle spans the rest,
+  its compact `+` left of the band and its grip right of it, flush with the
+  block (18 + 10 + 18 = the 46px gap): wherever the guide shows, a press
+  resizes. A layout handle stays the fallback.
 - **D4 — (decided: as Notion) merges cross columns in reading order.**
   Backspace at the start of a column's first block merges it into the last
   line of the previous column (its text joins that line; an empty block is
@@ -220,9 +222,10 @@ data-width="…">…`; `parse` claims those attributes; `plain` writes the
   - Indicator: a vertical 4px bar at the row's edge (or the layout's height
     for a new column in a layout); sticky never crosses a column boundary.
   - Drag preview clones at the source's width.
-- **Resize**: the overlay mounts a strip over each gap while the pointer is
-  over the layout, under the handles (a column-2 block's handle box keeps
-  its row's part of the gap, round 3); a drag resizes both columns live
+- **Resize**: the overlay mounts a band in each gap (`gaps.ts` `bandOf`:
+  10px at the gap's middle) while the pointer is over the layout, above the
+  handles (round 4; a column block's handle keeps the gap's two edges); a
+  drag resizes both columns live
   through a view-only preview the column kind's `element(data, id)` reads
   (round 3: no write, no peer frame), a guide in the gap; release writes the
   two neighbours' weights in one `edytor.transact` (two `setData` commands →

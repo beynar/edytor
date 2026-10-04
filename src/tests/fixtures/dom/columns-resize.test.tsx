@@ -2,10 +2,10 @@
 /**
  * Resizing columns (docs/columns-plan.md D5 and §5 "Resize", C4):
  *
- * - while the pointer is over a layout, the overlay shows a strip over each
- *   whole gap between two adjacent columns (`cursor: col-resize`), under the
- *   block handles (a shown handle takes its part of the gap), never inside
- *   the host;
+ * - while the pointer is over a layout, the overlay shows a band in each
+ *   gap between two adjacent columns (`cursor: col-resize`), `BAND` px at the
+ *   gap's middle, above the block handles (round 4: where its guide shows, a
+ *   press resizes), never inside the host;
  * - dragging a strip shows a guide line and resizes both columns live, a
  *   view-only preview (round 3), and writes nothing;
  * - the release writes the two neighbours' `data.width` weights, keeping
@@ -22,6 +22,7 @@ import type { JSONBlock } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
+import { BAND } from '$lib/plugins/columns/gaps.js';
 import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { block, column, columns, contractDoc, p } from './columns.helpers.js';
 
@@ -118,15 +119,16 @@ const weights = (edytor: Edytor, ...ids: string[]) =>
 	ids.map((id) => block(edytor, id).data.width as number | undefined);
 
 describe('the resize strips', () => {
-	it('one col-resize strip over each whole gap, in the overlay, while the pointer is over the layout', async () => {
+	it('one col-resize band at each gap’s middle, in the overlay, while the pointer is over the layout', async () => {
 		const { edytor, editor } = await render(contractDoc());
 		await hover(edytor, 'P');
 		expect(strips()).toEqual([]);
 		await hover(edytor, 'A');
 		const [strip] = strips();
 		expect(strips()).toHaveLength(1);
-		// C sits at y 24, 48px tall (column 1's two rows); column 1 ends at (600 - 46) / 2 = 277.
-		expect(boxOf(strip!)).toEqual([277, 24, GAP, 48]);
+		// C sits at y 24, 48px tall (column 1's two rows); column 1 ends at (600 - 46) / 2 = 277;
+		// the band is BAND px centered in the gap (round 4).
+		expect(boxOf(strip!)).toEqual([277 + (GAP - BAND) / 2, 24, BAND, 48]);
 		expect(strip!.style.cursor).toBe('col-resize');
 		expect(editor.contains(strip!)).toBe(false);
 		expect(strip!.closest('[data-edytor-overlay]')).not.toBeNull();
@@ -142,7 +144,11 @@ describe('the resize strips', () => {
 		await hover(edytor, 'B');
 		// Each column (600 - 92) / 3 wide.
 		const each = (600 - 2 * GAP) / 3;
-		expect(strips().map((strip) => boxOf(strip)[0])).toEqual([each, 2 * each + GAP]);
+		const inset = (GAP - BAND) / 2;
+		expect(strips().map((strip) => boxOf(strip)[0])).toEqual([
+			each + inset,
+			2 * each + GAP + inset
+		]);
 	});
 
 	it('none when readonly', async () => {
@@ -222,7 +228,7 @@ describe('dragging a strip', () => {
 		await hover(edytor, 'B');
 		// Room 508px: K1 254, K2 127, K3 127; the second strip is K2 | K3.
 		const strip = strips()[1]!;
-		expect(boxOf(strip)[0]).toBe(254 + GAP + 127);
+		expect(boxOf(strip)[0]).toBe(254 + GAP + 127 + (GAP - BAND) / 2);
 		pointer(strip, 'pointerdown', { clientX: 430, clientY: 10 });
 		pointer(strip, 'pointermove', { clientX: 400, clientY: 10 });
 		pointer(strip, 'pointerup', { clientX: 400, clientY: 10 });

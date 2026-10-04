@@ -2,18 +2,16 @@
 	import { GUIDE, type ColumnResize } from './resize.svelte.js';
 
 	/**
-	 * The resize strips of the hovered layout and the guide of a drag
-	 * (`ColumnResize`), in the overlay: each strip over its whole gap, under
-	 * the block handles; hovered, it shows a gray guide in the gap's middle.
+	 * The resize bands of the hovered layout and the guide of a drag
+	 * (`ColumnResize`), in the overlay: each band at its gap's middle, above
+	 * the block handles (their `+` and grip keep the gap's edges, `gaps.ts`);
+	 * hovered, it shows a gray guide in its middle: where the guide shows, a
+	 * press resizes.
 	 */
 	let { resize }: { resize: ColumnResize } = $props();
 </script>
 
-<div
-	bind:this={resize.host}
-	onpointerleave={(event) => !resize.drag && resize.leave(event.relatedTarget)}
-	role="presentation"
->
+<div role="presentation">
 	{#if resize.shown}
 		{#each resize.strips as strip (`${strip.left}|${strip.right}`)}
 			<div
@@ -50,7 +48,7 @@
 		touch-action: none;
 	}
 
-	/* Notion's hover guide: a thin gray rule in the gap's middle. */
+	/* Notion's hover guide: a thin gray rule in the band's middle (the gap's). */
 	[data-edytor-column-resize]::after {
 		content: '';
 		position: absolute;

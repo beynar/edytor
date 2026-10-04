@@ -1,6 +1,7 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { takeKeys } from '$lib/events/onFocus.js';
+import { bandOf, gapBefore } from './gaps.js';
 import { stacks } from './stacking.js';
 
 /** The guide line's width (the hover guide's and the drag's). */
@@ -12,7 +13,7 @@ export const weightOf = (data: Record<string, unknown> | undefined) => {
 	return typeof width === 'number' && Number.isFinite(width) && width > 0 ? width : 1;
 };
 
-/** A strip over the gap between the columns `left` and `right`, layer-relative. */
+/** The resize band in the gap between the columns `left` and `right` (`bandOf`), layer-relative. */
 export type Strip = {
 	left: string;
 	right: string;
@@ -44,10 +45,11 @@ type Drag = {
 /**
  * The column resize (docs/columns-plan.md D5, §5 "Resize"), chrome in the
  * overlay: while the pointer is over a layout (not readonly, not stacked),
- * a strip over each gap between two shown columns, the gap's width and the
- * layout's height, under the block handles (a column-2 block's handle box
- * takes its row's part of the gap); hovering it shows a gray guide in the
- * gap's middle (`--edytor-columns-resize-color`), as Notion. Dragging one
+ * a band in each gap between two shown columns (`bandOf`: `BAND` px at the
+ * gap's middle, the layout's height), above the block handles, whose `+` and
+ * grip keep the gap's two edges beside it (`gaps.ts`, one measurement):
+ * wherever its gray guide shows (`--edytor-columns-resize-color`, Notion's,
+ * at any height, block rows included), a press resizes. Dragging one
  * resizes both columns live (Notion) and writes nothing: the drag's weights
  * are a view-only preview (`preview`) the column kind's element reads
  * (`weight`), so only this view sees them and no peer gets a frame. The
@@ -71,8 +73,6 @@ export class ColumnResize {
 	guide = $state<{ x: number; top: number; height: number } | null>(null);
 	/** The two dragged columns' weights at the pointer, by id, while a strip drags (view only). */
 	preview = $state.raw<Readonly<Record<string, number>> | null>(null);
-	/** The overlay host the strips live in (a pointer leaving the editor for it keeps them). */
-	host: HTMLElement | null = null;
 
 	constructor(
 		private edytor: Edytor,
@@ -108,10 +108,14 @@ export class ColumnResize {
 		this.edytor.overlay.invalidate();
 	};
 
-	/** The pointer left for `to`: the strips stay while it is over them or the editor. */
+	/**
+	 * The pointer left for `to`: the bands stay while it is over the editor
+	 * or its overlay (a band, a column block's handle in the gap).
+	 */
 	leave = (to: EventTarget | null) => {
 		const node = to instanceof Node ? to : null;
-		if (node && (this.host?.contains(node) || this.edytor.node?.contains(node))) return;
+		const { edytor } = this;
+		if (node && (edytor.overlay.layer?.contains(node) || edytor.node?.contains(node))) return;
 		this.hovered = null;
 	};
 
@@ -132,7 +136,7 @@ export class ColumnResize {
 		};
 	};
 
-	/** The strips of the hovered layout: none when it stacks or shows fewer than two columns. */
+	/** The bands of the hovered layout (`bandOf` each gap): none when it stacks or shows fewer than two columns. */
 	private gaps(origin: DOMRect): Strip[] {
 		const id = this.drag?.left.parent?.id ?? this.hovered;
 		const layout = id ? this.edytor.idToBlock.get(id) : undefined;
@@ -140,20 +144,23 @@ export class ColumnResize {
 		if (!layout || !node?.isConnected) return [];
 		const box = node.getBoundingClientRect();
 		if (stacks(box.width)) return [];
-		const items = layout.children.flatMap((item) => {
-			const rect = item.node?.getBoundingClientRect();
-			return rect && rect.width > 0 ? [{ item, rect }] : [];
-		});
-		return items.slice(1).map(({ item, rect }, index) => {
-			const before = items[index]!;
-			return {
-				left: before.item.id,
-				right: item.id,
-				x: before.rect.right - origin.left,
-				top: box.top - origin.top,
-				width: Math.max(0, rect.left - before.rect.right),
-				height: box.height
-			};
+		const shown = layout.children.filter(
+			(item) => (item.node?.getBoundingClientRect().width ?? 0) > 0
+		);
+		return shown.slice(1).flatMap((item, index) => {
+			const gap = gapBefore(item);
+			if (!gap) return [];
+			const band = bandOf(gap);
+			return [
+				{
+					left: shown[index]!.id,
+					right: item.id,
+					x: band.left - origin.left,
+					top: box.top - origin.top,
+					width: band.width,
+					height: box.height
+				}
+			];
 		});
 	}
 

@@ -8,6 +8,7 @@
 	import BlockHandle from './BlockHandle.svelte';
 	import type { BlockHandleSnippetPayload } from './blockHandlesPlugin.js';
 	import type { BlockHandleController } from './BlockHandleController.svelte.js';
+	import { gapBefore } from '../columns/gaps.js';
 
 	/**
 	 * The handles, in the overlay (R11): one per registered movable block that
@@ -65,21 +66,15 @@
 	const overGaps = new SvelteSet<string>();
 
 	/**
-	 * Whether `block`'s handle sits over the gap left of its column: its
-	 * column has a column beside it on its left (the layout does not stack).
-	 * Column 1's sits in the editor's gutter, over no gap, as a root block's.
+	 * The gap left of `block`'s column when its handle sits over it: `block`
+	 * is directly in a layout's column with a column beside it on its left
+	 * (`gapBefore`, the measurement the resize band shares). Column 1's
+	 * handle sits in the editor's gutter, over no gap, as a root block's.
 	 */
 	const overGap = (block: Block) => {
 		const column = block.parent;
-		if (!column?.node || column.isRoot || !edytor.facade.isLayoutItem(column.id)) return false;
-		const own = column.node.getBoundingClientRect();
-		const index = column.parent?.children.indexOf(column) ?? -1;
-		for (const before of column.parent?.children.slice(0, Math.max(0, index)).reverse() ?? []) {
-			const rect = before.node?.getBoundingClientRect();
-			if (!rect || rect.width === 0) continue;
-			return rect.right <= own.left + 1 && rect.top < own.bottom && own.top < rect.bottom;
-		}
-		return false;
+		if (!column?.node || column.isRoot || !edytor.facade.isLayoutItem(column.id)) return null;
+		return gapBefore(column);
 	};
 
 	/** Where a block's own row ends: where its first shown child begins, else its box's bottom. */
@@ -123,13 +118,15 @@
 			const center = shown ? firstRowCenter(node, block) : 0;
 			const left = `${rect.left - origin.left}px`;
 			const top = shown ? `${center - origin.top}px` : '';
-			const gap = shown && overGap(block);
-			// Over a gap, the handle's box is its own width at its block's row (`row`):
-			// relative to the host's top, which is centered on the first line.
+			const gap = shown ? overGap(block) : null;
+			// Over a gap, the handle spans it from its left edge to the block (`span`),
+			// and its box takes the pointer at its block's row (`row`): relative to
+			// the host's top, which is centered on the first line.
+			const span = gap ? `${Math.max(0, rect.left - gap.left)}px` : '';
 			const row = gap
 				? `${rect.top - (center - host.offsetHeight / 2)}px ${ownRowBottom(node, rect) - rect.top}px`
 				: '';
-			const next = shown ? `${left} ${top} ${row}` : 'none';
+			const next = shown ? `${left} ${top} ${row} ${span}` : 'none';
 			if (next === at) return;
 			return () => {
 				at = next;
@@ -140,6 +137,7 @@
 				const [rowTop = '', rowHeight = ''] = row.split(' ');
 				host.style.setProperty('--edytor-handle-row-top', rowTop);
 				host.style.setProperty('--edytor-handle-row-height', rowHeight);
+				host.style.setProperty('--edytor-handle-gap-width', span);
 				if (shown) Object.assign(host.style, { left, top });
 			};
 		});
@@ -190,13 +188,22 @@
 	}
 
 	/* Over a gap between two columns (one hit rule, the handles'): the handle
-	 * sits flush with its block, as wide as its buttons, and its box takes the
-	 * pointer at its block's whole row, shown or not — a pointer there hovers
-	 * the block, so its grip is reached from any side. The resize strip under
-	 * the handles takes the rest of the gap: its left part, and the height no
-	 * column-2 block's row covers. */
+	 * spans the gap, its `+` (compact) at the gap's left edge and its grip
+	 * flush with its block, and its box takes the pointer at its block's whole
+	 * row, shown or not — a pointer there hovers the block, so its grip is
+	 * reached from any side. The column resize band sits above, at the gap's
+	 * middle, between the two (`columns/gaps.ts`): at the default 46px gap
+	 * (18 + 10 + 18) neither button is under it, and where its guide shows a
+	 * press resizes. */
 	[data-edytor-block-handle-host][data-over-gap='true'] {
+		box-sizing: border-box;
+		width: var(--edytor-handle-gap-width, auto);
+		justify-content: space-between;
 		padding-inline-end: 0;
+	}
+
+	[data-edytor-block-handle-host][data-over-gap='true'] :global(.edytor-block-add) {
+		width: 18px;
 	}
 
 	[data-edytor-block-handle-host][data-over-gap='true']::before {

@@ -33,7 +33,7 @@ const render = () =>
 	);
 
 const texts = (edytor: Awaited<ReturnType<typeof render>>['edytor']) =>
-	edytor.value.children.map((block) =>
+	(edytor.value.children ?? []).map((block) =>
 		(block.content ?? []).map((part) => ('text' in part ? part.text : '')).join('')
 	);
 

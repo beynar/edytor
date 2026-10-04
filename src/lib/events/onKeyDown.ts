@@ -8,6 +8,7 @@ import {
 } from './nativeInteractiveControl.js';
 import { replaceSelectedAtom } from '$lib/session/bindings.js';
 import { admitKeyAttempt } from './onBeforeInput.js';
+import { targetless } from '$lib/session/attempt.js';
 import { getDomSelection } from '$lib/selection/domSelection.js';
 
 const isEventFromEditor = (edytor: Edytor, event: KeyboardEvent) => {
@@ -86,6 +87,15 @@ const isPrintableReplacementKey = (event: KeyboardEvent) => {
 	}
 
 	return event.key.length === 1;
+};
+
+/** The editing intent of an unmodified key (a character, Backspace, Delete, Enter), if it has one. */
+const keyIntent = (event: KeyboardEvent) => {
+	if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return null;
+	if (event.key === 'Backspace') return 'deleteContentBackward';
+	if (event.key === 'Delete') return 'deleteContentForward';
+	if (event.key === 'Enter') return event.shiftKey ? 'insertLineBreak' : 'insertParagraph';
+	return isPrintableReplacementKey(event) ? 'insertText' : null;
 };
 
 const isReadonlyAllowedShortcut = (event: KeyboardEvent) => {
@@ -226,7 +236,21 @@ export function onKeyDown(this: Edytor, e: KeyboardEvent) {
 	// A real key past the swallow/island guards is a user gesture —
 	// disarm pending deferred restores (phantom composition keys never
 	// reach this line).
+	// The key is an occurrence with no target (`targetless`, read before the
+	// key counts as a gesture): refused at its keydown, in every engine (WebKit
+	// reads a Backspace no editing claims as "back"; Chromium parks a caret at
+	// the host's start for a printable key, which stays parked).
+	const keyed = keyIntent(e);
+	const refused = keyed !== null && targetless(this, keyed);
+
 	this.markUserGesture();
+
+	if (refused) {
+		e.preventDefault();
+		this.dispatcher.last = { operation: keyed, status: 'refused' };
+		this.projector.parked();
+		return;
+	}
 
 	if (shouldRefreshSelectionBeforeKeyDown(this, e)) {
 		this.selection.onSelectionChange();

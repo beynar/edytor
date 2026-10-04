@@ -20,7 +20,7 @@ type SelectionValue =
 
 | Kind | When |
 | --- | --- |
-| `none` | Nothing is selected. |
+| `none` | Nothing is selected. Typing, <kbd>Backspace</kbd>, <kbd>Delete</kbd> and <kbd>Enter</kbd> then do nothing (Notion), even where the browser parked a caret of its own (after a drop or a column resize the editor holds the keys with no caret); a click or a tap places the caret. |
 | `text` | A caret (anchor equals focus) or a text range, possibly across blocks. `anchor` is where it started, `focus` where it ends. |
 | `atom` | One inline block is selected, for example after clicking a mention. `from` is the side the selection was made from. |
 | `blocks` | Whole blocks are selected, for example after clicking a block handle or pressing <kbd>Mod</kbd>+<kbd>A</kbd> repeatedly. |

@@ -45,7 +45,7 @@ export const takeKeys = (edytor: Edytor) => {
 	if (active instanceof Node && node.contains(active)) return;
 	edytor.expectInternalFocus();
 	node.focus({ preventScroll: true });
-	edytor.projector.focused();
+	edytor.projector.parked();
 };
 
 export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] => {
@@ -161,6 +161,7 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 			// A pointer gesture abandons a live composition (D-7).
 			edytor.composition.abandon();
 			lastPointerDownInsideEditorAt = getEventTimeStamp(event);
+			edytor.projector.pressed();
 			edytor.selection.clearModelSelectionPreservation();
 			edytor.selection.capturePointerDragStart(event);
 			edytor.selection.clearInlineBlockSelection();

@@ -76,6 +76,25 @@ export const intentOf = (reported: string, data: string | null, keyIntent?: stri
 	return reported;
 };
 
+/**
+ * An occurrence with nowhere to act (Notion: typing with no caret does
+ * nothing): a text, delete or line-break intent while the selection value is
+ * `none` and the host holds no DOM caret a gesture placed
+ * (`projector.placed`): none at all (an undo gave back no selection), or the
+ * one the browser parked itself (the editor's own focus, `takeKeys`; a key
+ * refused before). Its declared range is never a target then. A block or atom
+ * selection is a target (typing replaces it), and a composition is the
+ * session's (`projector.park` over a block selection).
+ */
+export const targetless = (edytor: Edytor, intent: string) => {
+	const kind = kindOf(intent);
+	return (
+		edytor.selection.value.kind === 'none' &&
+		(kind === 'text' || kind === 'delete' || kind === 'break') &&
+		!edytor.projector.placed()
+	);
+};
+
 /** The target's facts a command reads, projected when the attempt runs. */
 const facts = (edytor: Edytor) => {
 	const { state, projection } = edytor.selection;

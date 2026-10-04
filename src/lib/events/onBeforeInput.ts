@@ -15,6 +15,7 @@ import {
 	intentOf,
 	kindOf,
 	reproject,
+	targetless,
 	type Attempt,
 	type Drift,
 	type Expect,
@@ -445,6 +446,9 @@ const occur = (
 	observeInternalDragSources(edytor.node?.getRootNode());
 	const intent = intentOf(occurrence.inputType, occurrence.data ?? null, key?.inputType);
 	if (kindOf(intent) !== 'composition') edytor.composition.occurred(intent);
+	// Admission: an intent with no target is refused before the declared range
+	// (where the browser parked its own caret) could become one.
+	if (targetless(edytor, intent)) return refuseTargetless(edytor, occurrence, key, reuse);
 	if (!reuse) syncSelectionFromDeclaredRange(edytor, occurrence, intent);
 	const attempt = reuse ? reproject(edytor, reuse) : attemptOf(edytor, occurrence, key?.inputType);
 	if (shouldIgnoreBeforeInput(edytor, attempt)) {
@@ -466,6 +470,31 @@ const occur = (
 	}
 	if (!reuse) edytor.attempts.admit(attempt, 'model');
 	return perform(edytor, attempt, offered);
+};
+
+/**
+ * Refuse an occurrence with no target (`targetless`): nothing is written. A
+ * cancelable one is prevented; a browser write that cannot be is drift the
+ * model owns until the deadline (restored from the model, as an unsafe
+ * native insertion's).
+ */
+const refuseTargetless = (
+	edytor: Edytor,
+	occurrence: Occurrence,
+	key: Attempt | null,
+	reuse?: Attempt
+) => {
+	if (reuse) edytor.attempts.close(reuse);
+	edytor.dispatcher.last = { operation: occurrence.inputType, status: 'refused' };
+	// The caret the browser placed for this key is its own, never adopted.
+	edytor.projector.parked();
+	if (occurrence.cancelable || !occurrence.event) {
+		occurrence.event?.preventDefault();
+		return;
+	}
+	const attempt = edytor.attempts.admit(attemptOf(edytor, occurrence, key?.inputType), 'model');
+	attempt.phase = 'failed';
+	edytor.attempts.drift(attempt, 'discard', NATIVE_INPUT_REPAIR_WINDOW_MS);
 };
 
 /** An occurrence with no `beforeinput` of its own (paste, drop, a line break found in the DOM). */

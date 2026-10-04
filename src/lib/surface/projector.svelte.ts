@@ -120,8 +120,10 @@ export class Projector {
 	#committed: { serial: number; at: number } | null = null;
 	/** A pass waits for the live composition session's end. */
 	#held = false;
-	/** The gesture serial at the editor's own focus of its host (`focused`). */
-	#focused = -1;
+	/** The gesture serial at which the browser parked a caret of its own (`parked`). */
+	#parked = -1;
+	/** The host's DOM range is that parked caret: no gesture placed one since (`placed`). */
+	#parking = false;
 
 	constructor(private edytor: Edytor) {}
 
@@ -218,7 +220,7 @@ export class Projector {
 	 * - drift: no gesture since the last observation, and a render since it
 	 *   (a flush the DOM selection was not observed after, or DOM records the
 	 *   observer has not reconciled), or one of the two named signatures,
-	 *   or the caret a browser parks for the editor's own focus (`focused`);
+	 *   or the caret a browser parks for the editor's own focus or a refused key (`parked`);
 	 * - intent: a gesture since the last observation, or a pointer drag;
 	 * - foreign: no gesture and no render (host code, assistive tech, O1).
 	 */
@@ -235,24 +237,48 @@ export class Projector {
 		if (edytor.composition.live) return this.#observed('composition');
 		if (selection.request !== this.#request && selection.requestSerial === edytor.intentSerial)
 			return 'echo';
-		// The caret a browser parks when the editor focuses its own host, no gesture since.
-		if (this.#focused === edytor.intentSerial) return 'drift';
+		// The caret a browser parks (the editor's own focus, a refused key), no gesture since.
+		if (this.#parked === edytor.intentSerial) return 'drift';
 		if (edytor.intentSerial === this.#serial && (this.#snapBack(dom) || this.#jump()))
 			return 'drift';
-		if (edytor.intentSerial !== this.#serial || selection.dragging) return this.#observed('intent');
+		if (edytor.intentSerial !== this.#serial || selection.dragging) {
+			this.#parking = false;
+			return this.#observed('intent');
+		}
 		return this.#seen !== this.#flushes || this.recordsPending()
 			? 'drift'
 			: this.#observed('foreign');
 	};
 
 	/**
-	 * The editor focused its own host (`takeKeys`: the keys after a gesture on
-	 * its chrome): until the next gesture, the caret a browser parks for that
-	 * focus (at the host's start) is drift, displayed over by the value — a
-	 * block selection or none shows no DOM range — never adopted.
+	 * The browser parks a caret of its own, at the host's start: the editor
+	 * focused its own host (`takeKeys`: the keys after a gesture on its
+	 * chrome), or a key the attempt refused for want of a target
+	 * (`targetless`: Chromium places a caret for it). Until the next gesture
+	 * that caret is drift, displayed over by the value — a block selection or
+	 * none shows no DOM range — never adopted.
 	 */
-	focused = () => {
-		this.#focused = this.edytor.intentSerial;
+	parked = () => {
+		this.#parked = this.edytor.intentSerial;
+		this.#parking = true;
+	};
+
+	/** A press inside the host: the caret it leaves is a gesture's (even where the parked one sat). */
+	pressed = () => {
+		this.#parking = false;
+	};
+
+	/**
+	 * Whether the host holds a DOM caret a gesture may have placed: a range
+	 * inside it that is not the browser's parked one (`parked`; a key such as
+	 * Mod+Z moves no caret, so only a press, an adopted move or our own display
+	 * ends it). A click on the spot a caret already sat at changes nothing, so
+	 * no `selectionchange` adopted it: the value can be `none` over it.
+	 */
+	placed = () => {
+		const node = this.edytor.node;
+		const anchor = node && getDomSelection(node)?.anchorNode;
+		return Boolean(anchor && node.contains(anchor)) && !this.#parking;
 	};
 
 	/** The DOM selection is observed now (adopted, or ignored by the adopter's own rules). */
@@ -458,6 +484,7 @@ export class Projector {
 	};
 
 	#write = (dom: Selection, { anchor, focus }: Points, collapsed: boolean) => {
+		this.#parking = false;
 		if (!collapsed && typeof dom.setBaseAndExtent === 'function') {
 			try {
 				dom.setBaseAndExtent(anchor[0], anchor[1], focus[0], focus[1]);

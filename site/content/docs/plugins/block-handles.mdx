@@ -132,7 +132,7 @@ The outermost of those blocks move, in document order, wherever they sit: their 
 
 Dragging the handle of a block outside the selection moves that block alone and selects it (a parent's handle while only its child is selected: the parent alone). A single drop is one undo step too.
 
-After a drop the editor holds the keys, as in Notion: its root takes the focus (without scrolling, and without placing a caret: the moved blocks stay block-selected), so <kbd>Mod</kbd>+<kbd>Z</kbd> undoes the move at once, and <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redoes it, even when the undo gave back no selection (a drag started with none). Resizing columns does the same.
+After a drop the editor holds the keys, as in Notion: its root takes the focus (without scrolling, and without placing a caret: the moved blocks stay block-selected), so <kbd>Mod</kbd>+<kbd>Z</kbd> undoes the move at once, and <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redoes it, even when the undo gave back no selection (a drag started with none); with no selection, typing does nothing until a click places a caret. Resizing columns does the same.
 
 ### The drag preview
 

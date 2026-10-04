@@ -241,3 +241,101 @@ test.describe('the resize guide is where a press resizes (round 4, issue 1)', ()
 		issues.assertClean();
 	});
 });
+
+/** The document's texts in order. */
+const texts = (page: Page) =>
+	page.evaluate(() => {
+		const out: string[] = [];
+		const walk = (blocks: { content?: { text?: string }[]; children?: unknown[] }[] = []) => {
+			for (const b of blocks) {
+				out.push((b.content ?? []).map((part) => part.text ?? '').join(''));
+				walk(b.children as never);
+			}
+		};
+		walk((window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__.value.children as never);
+		return out.filter(Boolean);
+	});
+const valueKind = (page: Page) =>
+	page.evaluate(
+		() => (window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__.selection.value.kind
+	);
+const TEXTS = [
+	'before',
+	'left one',
+	'left two',
+	'left three',
+	'right one',
+	'right two',
+	'right three',
+	'after'
+];
+
+/** From `id`'s text straight left to its grip; answers the grip's center. */
+const reachGrip = async (page: Page, id: string, step = 4) => {
+	const text = await textBox(page, id);
+	const start = { x: text.x + 20, y: text.y + Math.min(text.height, 24) / 2 };
+	await page.mouse.move(start.x, start.y);
+	await expect(host(page, id)).toHaveAttribute('data-visible', 'true');
+	const g = (await grip(page, id).boundingBox())!;
+	const at = { x: g.x + g.width / 2, y: g.y + g.height / 2 };
+	await walk(page, start, { x: start.x, y: at.y }, step);
+	return walk(page, { x: start.x, y: at.y }, at, step);
+};
+
+test.describe('typing with no caret does nothing (round 4, issue 2)', () => {
+	test('fresh page: B dragged below Z, Mod+Z, then typing: nothing is written', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await openDoc(page, FULL);
+		const at = await reachGrip(page, 'B', 5);
+		await page.mouse.down();
+		const z = await textBox(page, 'Z');
+		await walk(page, at, { x: z.x + 8, y: z.y + z.height * 0.85 }, 6);
+		await expect(page.locator('[data-edytor-drop-indicator]')).toHaveAttribute(
+			'data-position',
+			'after'
+		);
+		await page.mouse.up();
+		await expect.poll(() => texts(page)).not.toEqual(TEXTS);
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect.poll(() => texts(page)).toEqual(TEXTS);
+		await expect.poll(() => valueKind(page)).toBe('none');
+		await page.keyboard.type('k');
+		await page.keyboard.press('Enter');
+		await page.keyboard.press('Backspace');
+		await frames(page);
+		expect(await texts(page)).toEqual(TEXTS);
+		expect(await valueKind(page)).toBe('none');
+		// Mod+Z still answers: the keys stay the editor's.
+		await page.keyboard.press('ControlOrMeta+Shift+z');
+		await expect.poll(() => texts(page)).not.toEqual(TEXTS);
+		issues.assertClean();
+	});
+
+	test('fresh page: a resize, then typing: nothing is written; a click then places the caret and types', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await openDoc(page, FULL);
+		const g = await gapOf(page);
+		const a2 = await textBox(page, 'A2');
+		const row = a2.y + a2.height / 2;
+		const at = await walk(page, { x: a2.x + 30, y: row }, { x: g.mid, y: row });
+		await page.mouse.down();
+		await walk(page, at, { x: at.x + 40, y: row });
+		await page.mouse.up();
+		await expect.poll(() => valueKind(page)).toBe('none');
+		await page.keyboard.type('k');
+		await frames(page);
+		expect(await texts(page)).toEqual(TEXTS);
+		// A click places the caret: typing goes there.
+		const b = await textBox(page, 'B');
+		await page.mouse.click(b.x + b.width - 1, b.y + b.height / 2);
+		await page.keyboard.type('k');
+		await expect
+			.poll(() => texts(page))
+			.toEqual(TEXTS.map((t) => (t === 'right one' ? 'right onek' : t)));
+		issues.assertClean();
+	});
+});

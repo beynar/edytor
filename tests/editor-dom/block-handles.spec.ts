@@ -939,3 +939,107 @@ test.describe('browser block handles and DnD', () => {
 		issues.assertClean();
 	});
 });
+
+test.describe('the handle column: a drag straight down or up it reorders (R2)', () => {
+	const paragraphs = ['one paragraph', 'two paragraph', 'three paragraph', 'four', 'five'];
+	const openParagraphs = async (page: Page) => {
+		const doc = {
+			children: paragraphs.map((text, index) => ({
+				id: `P${index + 1}`,
+				type: 'paragraph',
+				content: [{ text }]
+			}))
+		};
+		await page.goto(
+			`/test/dom?scenario=dst&handles=true&dst=${encodeURIComponent(JSON.stringify(doc))}`
+		);
+		await waitForEditorReady(page, { requireRuntime: true });
+		await settleHandles(page);
+	};
+	/** The drop indicator's position, after the drag library and the overlay took the last move. */
+	const shownPosition = async (page: Page) => {
+		await page.evaluate(
+			() =>
+				new Promise<void>((resolve) =>
+					requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+				)
+		);
+		return page.evaluate(
+			() =>
+				document.querySelector<HTMLElement>('[data-edytor-drop-indicator]')?.dataset.position ??
+				null
+		);
+	};
+	/** The bar's center height. */
+	const barCenter = async (page: Page) => {
+		const bar = (await page.locator('[data-edytor-drop-indicator]').boundingBox())!;
+		return bar.y + bar.height / 2;
+	};
+	/**
+	 * From `id`'s text left to its grip (a person's path, in 4px steps), then
+	 * pressed: the drag starts in the handle column.
+	 */
+	const pressGrip = async (page: Page, id: string) => {
+		const text = (await page.locator(`[data-edytor-id="${id}"] [data-edytor-text]`).boundingBox())!;
+		const y = text.y + text.height / 2;
+		await page.mouse.move(text.x + 20, y);
+		const grip = page.locator(`[data-testid="block-handle"][data-block-id="${id}"]`);
+		await expect(grip).toBeVisible();
+		const g = (await grip.boundingBox())!;
+		const [gx, gy] = [g.x + g.width / 2, g.y + g.height / 2];
+		for (let x = text.x + 16; x > gx; x -= 4) await page.mouse.move(x, gy);
+		await page.mouse.move(gx, gy);
+		await page.mouse.down();
+		return { x: gx, y: gy };
+	};
+	const box = async (page: Page, id: string) =>
+		(await page.locator(`[data-edytor-id="${id}"]`).boundingBox())!;
+
+	test('down the grip column, row by row: before/after bars, never a beside band', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await openParagraphs(page);
+		const at = await pressGrip(page, 'P1');
+		const [p2, p3] = [await box(page, 'P2'), await box(page, 'P3')];
+		const seen: Array<[number, string | null]> = [];
+		for (let y = at.y + 4; y <= p3.y + p3.height - 3; y += 4) {
+			await page.mouse.move(at.x, y);
+			seen.push([Math.round(y), await shownPosition(page)]);
+		}
+		await page.mouse.move(at.x, p3.y + p3.height - 3);
+		// Every row on the way, gaps included, shows a reorder; nothing beside.
+		expect(seen.filter(([, position]) => position === 'left' || position === 'right')).toEqual([]);
+		expect(
+			seen.filter(([y, position]) => y >= p2.y && position !== 'before' && position !== 'after')
+		).toEqual([]);
+		expect(await shownPosition(page)).toBe('after');
+		expect(Math.abs((await barCenter(page)) - (p3.y + p3.height))).toBeLessThanOrEqual(4);
+		await page.mouse.up();
+		await expect
+			.poll(() => readRootTexts(page))
+			.toEqual(['two paragraph', 'three paragraph', 'one paragraph', 'four', 'five']);
+		issues.assertClean();
+	});
+
+	test('up the grip column to a row’s upper half: before it', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await openParagraphs(page);
+		const at = await pressGrip(page, 'P5');
+		const p2 = await box(page, 'P2');
+		const seen: Array<string | null> = [];
+		for (let y = at.y - 4; y >= p2.y + 3; y -= 4) {
+			await page.mouse.move(at.x, y);
+			seen.push(await shownPosition(page));
+		}
+		await page.mouse.move(at.x, p2.y + 3);
+		expect(seen.filter((position) => position === 'left' || position === 'right')).toEqual([]);
+		expect(await shownPosition(page)).toBe('before');
+		expect(Math.abs((await barCenter(page)) - p2.y)).toBeLessThanOrEqual(4);
+		await page.mouse.up();
+		await expect
+			.poll(() => readRootTexts(page))
+			.toEqual(['one paragraph', 'five', 'two paragraph', 'three paragraph', 'four']);
+		issues.assertClean();
+	});
+});

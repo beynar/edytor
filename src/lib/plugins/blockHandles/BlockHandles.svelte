@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import type { Edytor } from '$lib/edytor.svelte.js';
 	import type { Block } from '$lib/block/block.svelte.js';
 	import { Text } from '$lib/text/text.svelte.js';
@@ -60,15 +61,34 @@
 			);
 	});
 
-	/**
-	 * A block directly in a layout's column: its handle sits in the gap
-	 * between two columns, which the resize strip takes wherever no shown
-	 * handle does — its handle takes the pointer only while shown.
-	 */
+	/** The blocks whose handle sits over a gap between two columns (`overGap`, measured). */
+	const overGaps = new SvelteSet<string>();
+
+	/** A block directly in a layout's column (its handle may sit in a gap between two columns). */
 	const inColumn = (id: string) => {
 		void structure;
 		const parent = blocks.get(id)?.parent;
 		return !!parent && !parent.isRoot && edytor.facade.isLayoutItem(parent.id);
+	};
+
+	/**
+	 * Whether `block`'s handle sits over the gap left of its column: its
+	 * column has a column beside it on its left (the layout does not stack).
+	 * The resize strip takes that gap wherever no shown handle does, so this
+	 * handle takes the pointer only while shown (column 1's sits in the
+	 * editor's gutter, over no strip: it always does, as a root block's).
+	 */
+	const overGap = (block: Block) => {
+		const column = block.parent;
+		if (!column?.node || column.isRoot || !edytor.facade.isLayoutItem(column.id)) return false;
+		const own = column.node.getBoundingClientRect();
+		const index = column.parent?.children.indexOf(column) ?? -1;
+		for (const before of column.parent?.children.slice(0, Math.max(0, index)).reverse() ?? []) {
+			const rect = before.node?.getBoundingClientRect();
+			if (!rect || rect.width === 0) continue;
+			return rect.right <= own.left + 1 && rect.top < own.bottom && own.top < rect.bottom;
+		}
+		return false;
 	};
 
 	const firstRowCenter = (node: HTMLElement, block: Block): number => {
@@ -101,16 +121,24 @@
 			if (at && shown && (rect.bottom < -margin() || rect.top > 2 * margin())) return;
 			const left = `${rect.left - origin.left}px`;
 			const top = shown ? `${firstRowCenter(node, block) - origin.top}px` : '';
-			const next = shown ? `${left} ${top}` : 'none';
+			const gap = shown && overGap(block);
+			const next = shown ? `${left} ${top} ${gap}` : 'none';
 			if (next === at) return;
 			return () => {
 				at = next;
 				host.style.visibility = '';
 				host.style.display = shown ? '' : 'none';
+				if (gap) overGaps.add(id);
+				else overGaps.delete(id);
 				if (shown) Object.assign(host.style, { left, top });
 			};
 		});
-		return { destroy: off };
+		return {
+			destroy: () => {
+				off();
+				overGaps.delete(id);
+			}
+		};
 	};
 </script>
 
@@ -121,6 +149,7 @@
 		data-block-id={id}
 		data-visible={hovered.has(id) ? 'true' : undefined}
 		data-in-column={inColumn(id) && controller.dragging !== id ? 'true' : undefined}
+		data-over-gap={overGaps.has(id) ? 'true' : undefined}
 		data-dragging={controller.dragging && controller.dragging !== id ? 'true' : undefined}
 		use:place={id}
 		onfocusin={() => (focused = id)}
@@ -135,7 +164,10 @@
 		z-index: 5;
 		display: flex;
 		align-items: center;
-		transform: translate(calc(-100% - 4px), -50%);
+		/* Flush with its block, the 4px before it the host's own: a pointer going
+		 * from the text to the grip never crosses anything else. */
+		padding-inline-end: 4px;
+		transform: translate(-100%, -50%);
 		opacity: 0;
 		transition: opacity 150ms ease;
 	}
@@ -148,12 +180,13 @@
 		pointer-events: none;
 	}
 
-	/* In a column's gap the resize strip takes the pointer where no handle shows
-	 * (a drag's source keeps it: an engine cancels a drag whose source stops
-	 * taking the pointer). */
+	/* Over a gap between two columns the resize strip takes the pointer where
+	 * no handle shows: a handle there takes it only while its block is hovered
+	 * (the pointer over the block or this handle). A drag's source keeps it: an
+	 * engine cancels a drag whose source stops taking the pointer. */
 	@media (hover: hover) {
-		[data-edytor-block-handle-host][data-in-column='true']:not([data-visible='true']):not(
-				:hover
+		[data-edytor-block-handle-host][data-in-column='true'][data-over-gap='true']:not(
+				[data-visible='true']
 			):not(:focus-within):not(:active) {
 			pointer-events: none;
 		}
@@ -168,7 +201,7 @@
 	@media (hover: none) {
 		[data-edytor-block-handle-host] {
 			opacity: 1;
-			transform: translate(-100%, -50%);
+			padding-inline-end: 0;
 		}
 	}
 </style>

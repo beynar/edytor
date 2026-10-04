@@ -449,7 +449,11 @@ test.describe('columns: beside a block inside a toggle', () => {
 	});
 });
 
-test.describe('columns: beside zones in the gutter and the margin', () => {
+test.describe('columns: beside zones in the page margins', () => {
+	/** Room left of the editor for a page margin past its handle column (the harness has 24px). */
+	const pageMargin = (page: Page) =>
+		page.getByTestId('editor-shell').evaluate((shell) => (shell.style.marginLeft = '160px'));
+
 	/** Drag `id` by its grip along `path` (the button kept down). */
 	const dragAlong = async (page: Page, id: string, path: { x: number; y: number }[]) => {
 		await page.locator(`[data-edytor-id="${id}"] [data-edytor-text]`).first().hover();
@@ -464,16 +468,17 @@ test.describe('columns: beside zones in the gutter and the margin', () => {
 		}
 	};
 
-	test('the left gutter, entered from outside the row, within its height: left of it', async ({
+	test('the page margin past the handle column, entered from outside the row, within its height: left of it', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
 		await open(page);
+		await pageMargin(page);
 		const [p, z] = [await box(page, 'P'), await box(page, 'Z')];
-		// Out to the gutter below the document, then up into P's row from outside.
+		// Out to the margin below the document, then up into P's row from outside.
 		await dragAlong(page, 'Z', [
-			{ x: p.x - 16, y: z.y + z.height + 30 },
-			{ x: p.x - 16, y: p.y + p.height / 2 }
+			{ x: p.x - 70, y: z.y + z.height + 30 },
+			{ x: p.x - 70, y: p.y + p.height / 2 }
 		]);
 		await expect(indicator(page)).toHaveAttribute('data-position', 'left');
 		// At P's row, not the layout's below it (the last move lands before the release).
@@ -538,12 +543,13 @@ test.describe('columns: beside zones in the gutter and the margin', () => {
 		issues.assertClean();
 	});
 
-	test('in the gutter beside column 1’s block: a new first column', async ({ page }) => {
+	test('in the page margin beside column 1’s block: a new first column', async ({ page }) => {
 		await open(page);
+		await pageMargin(page);
 		const [a, z] = [await box(page, 'A'), await box(page, 'Z')];
 		await dragAlong(page, 'Z', [
-			{ x: a.x - 16, y: z.y + z.height + 30 },
-			{ x: a.x - 16, y: a.y + a.height / 2 }
+			{ x: a.x - 70, y: z.y + z.height + 30 },
+			{ x: a.x - 70, y: a.y + a.height / 2 }
 		]);
 		await expect(indicator(page)).toHaveAttribute('data-position', 'left');
 		await expect

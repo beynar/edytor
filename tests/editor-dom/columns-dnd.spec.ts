@@ -31,6 +31,10 @@ type Edytor = {
 const fit = (page: Page, width = 800) =>
 	page.getByTestId('editor-shell').evaluate((shell, px) => (shell.style.width = `${px}px`), width);
 
+/** Room left of the editor for a page margin past its handle column (the harness has 24px). */
+const pageMargin = (page: Page) =>
+	page.getByTestId('editor-shell').evaluate((shell) => (shell.style.marginLeft = '160px'));
+
 const open = async (page: Page, query = '') => {
 	await page.goto(`/test/dom?scenario=columns&handles=true${query}`);
 	await waitForEditorReady(page, { requireRuntime: true });
@@ -170,11 +174,12 @@ test.describe('columns by drag and drop', () => {
 	test('the same from the left edge: the dragged block first', async ({ page }) => {
 		const issues = trackPageIssues(page);
 		await open(page);
+		await pageMargin(page);
 		const p = await box(page, 'P');
 		const mid = p.y + Math.min(p.height, 28) / 2;
 		await dragTo(page, 'Z', { x: p.x + p.width / 2, y: mid });
-		// Out of the row to its left, into the 20px it keeps.
-		await moveTo(page, { x: p.x - 10, y: mid });
+		// Out of the row to its left, past the handle column (which reorders: R2), into the page margin.
+		await moveTo(page, { x: p.x - 70, y: mid });
 		await expect(indicator(page)).toHaveAttribute('data-position', 'left');
 		const bar = await verticalBar(page);
 		expect(Math.abs(bar.x + bar.width / 2 - p.x)).toBeLessThanOrEqual(2);

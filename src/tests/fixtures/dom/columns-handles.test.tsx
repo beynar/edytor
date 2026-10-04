@@ -301,6 +301,36 @@ describe("a column block's + (as Notion)", () => {
 			.map((at) => at.getAttribute('data-block-id'));
 		expect(visible.sort()).toEqual(['A', 'T']);
 	});
+
+	it('a block stays hovered from its text to its handle, until the pointer leaves both (R1)', async () => {
+		const { edytor } = await render();
+		await flushDomUpdates();
+		const shown = () =>
+			[...document.querySelectorAll('[data-edytor-block-handle-host]')]
+				.filter((at) => at.getAttribute('data-visible') === 'true')
+				.map((at) => at.getAttribute('data-block-id'));
+		const pointer = (target: EventTarget, type: string, relatedTarget: EventTarget | null) =>
+			target.dispatchEvent(
+				new PointerEvent(type, { bubbles: type === 'pointerover', relatedTarget })
+			);
+		const text = block(edytor, 'B').node!;
+		pointer(text, 'pointerover', null);
+		await flushDomUpdates();
+		expect(shown()).toEqual(['B']);
+		// Out of the editor onto B's handle (in the overlay): B stays hovered, its handle shows.
+		pointer(edytor.node!, 'pointerleave', grip('B'));
+		pointer(grip('B'), 'pointerover', text);
+		await flushDomUpdates();
+		expect(shown()).toEqual(['B']);
+		// Onto another block's handle: that block.
+		pointer(grip('A'), 'pointerover', grip('B'));
+		await flushDomUpdates();
+		expect(shown()).toEqual(['A']);
+		// Out of the overlay to the page: nothing.
+		pointer(edytor.overlay.layer!, 'pointerleave', document.body);
+		await flushDomUpdates();
+		expect(shown()).toEqual([]);
+	});
 });
 
 describe('a block selection covering a whole layout stands for it (D3)', () => {

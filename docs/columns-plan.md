@@ -208,7 +208,10 @@ data-width="…">…`; `parse` claims those attributes; `plain` writes the
   - Beside bands, only while the pointer is within the row's height, the
     document has a layout kind and the layout is not stacked: **right** = the
     last 15% of the row (min 32px); **left** = within the row's sticky slop
-    left of its text column (≤ 20px outside the block), only when the row's
+    left of its text column (≤ 20px outside the block) inside the editor (a
+    column's gap), and the page margin beyond the handle column (round-2
+    review R2: the handle column — the drag's handle width left of the
+    blocks — reorders, row after row), only when the row's
     parent is the root or a column (nested rows keep reparent-by-x). Checked
     before the hitbox; `canDrop` counts a beside placement so a row with both
     halves blocked still accepts it; refused bands show nothing.

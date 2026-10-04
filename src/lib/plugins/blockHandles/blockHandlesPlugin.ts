@@ -46,7 +46,8 @@ const NEAR_MARGIN = '100% 0px';
  * Block handles in the overlay (R11, L50), created lazily: a handle mounts
  * for a block near the viewport (every block without IntersectionObserver),
  * under the pointer, selected, focused or dragged; drop targets exist only
- * during our own drag. Hover is one delegated listener on the editor.
+ * during our own drag. Hover is one delegated listener on the editor and
+ * one on the overlay (a block's handle keeps it hovered).
  */
 export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plugin => {
 	const plugin: Plugin = (edytor) => {
@@ -85,12 +86,19 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 					);
 		/**
 		 * The blocks under the pointer that have a handle: the hovered block and
-		 * its handled ancestors (a layout and its columns have none).
+		 * its handled ancestors (a layout and its columns have none). Over a
+		 * block's handle (in the overlay), that block: a block stays hovered
+		 * while the pointer goes from its text to its handle and stays there.
 		 */
 		const hover = (event: PointerEvent) => {
+			const target = event.target as Element | null;
+			const handle = target?.closest?.<HTMLElement>('[data-edytor-block-handle-host]');
+			const start = handle
+				? blocks.get(handle.dataset.blockId ?? '')?.node
+				: target?.closest?.('[data-edytor-block="true"]');
 			const next = new Set<string>();
 			for (
-				let node = (event.target as Element | null)?.closest?.('[data-edytor-block="true"]');
+				let node = start;
 				node;
 				node = node.parentElement?.closest('[data-edytor-block="true"]')
 			) {
@@ -100,19 +108,34 @@ export const createBlockHandlesPlugin = (options: BlockHandlesOptions = {}): Plu
 			for (const id of hovered) if (!next.has(id)) hovered.delete(id);
 			for (const id of next) hovered.add(id);
 		};
-		const unhover = () => hovered.clear();
+		/** In the overlay, only a handle names a block; other chrome (a resize strip, a menu) keeps the hover. */
+		const hoverOverlay = (event: PointerEvent) => {
+			if ((event.target as Element | null)?.closest?.('[data-edytor-block-handle-host]'))
+				hover(event);
+		};
+		/** The pointer left the editor and its overlay (not one for the other): nothing is hovered. */
+		const unhover = (event: PointerEvent) => {
+			const to = event.relatedTarget as Node | null;
+			if (to && (edytor.node?.contains(to) || edytor.overlay.layer?.contains(to))) return;
+			hovered.clear();
+		};
 
 		return {
 			onEdytorAttached: ({ node }) => {
+				const layer = edytor.overlay.layer!;
 				node.addEventListener('pointerover', hover);
 				node.addEventListener('pointerleave', unhover);
+				layer.addEventListener('pointerover', hoverOverlay);
+				layer.addEventListener('pointerleave', unhover);
 				const component = mount(BlockHandles, {
-					target: edytor.overlay.layer!,
+					target: layer,
 					props: { edytor, controller, blocks, near, hovered, handle: options.handle }
 				});
 				return () => {
 					node.removeEventListener('pointerover', hover);
 					node.removeEventListener('pointerleave', unhover);
+					layer.removeEventListener('pointerover', hoverOverlay);
+					layer.removeEventListener('pointerleave', unhover);
 					observer?.disconnect();
 					void unmount(component);
 				};

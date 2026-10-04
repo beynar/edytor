@@ -118,11 +118,14 @@ const shows = (seed, kindsOut: string) => {
 };
 
 describe('layout semantics: the role is data (C1)', () => {
-	it('layoutKinds/layoutSemantics are the plan’s rows; defaultSemantics gains them only in C5', () => {
+	it('layoutKinds/layoutSemantics are the plan’s rows; defaultSemantics holds them (C5)', () => {
 		expect(crdt.layoutKinds).toEqual(LAYOUT);
 		expect(crdt.layoutSemantics).toEqual(semanticsOf(LAYOUT));
-		expect(defaultSemantics.roles.columns).toBeUndefined();
-		expect(defaultSemantics.defaultChild.columns).toBeUndefined();
+		expect(defaultSemantics.roles.columns).toEqual({ layout: true });
+		expect(defaultSemantics.roles.column).toEqual({});
+		expect(defaultSemantics.defaultChild.columns).toBe('column');
+		expect(defaultSemantics.rendersContent.columns).toBe(false);
+		expect(defaultSemantics.rendersContent.column).toBe(false);
 	});
 
 	it('isLayout / isLayoutItem read the roles, not names', () => {

@@ -2,7 +2,8 @@
  * UW-10 — the room knows the bundled plugins' block roles
  * (`defaultSemantics`): a server edit refuses what no view could produce —
  * a merge into a divider, a split of a void image, a code line moved out of
- * its island — so every client can still render what the room stores.
+ * its island, a paragraph moved directly into a columns layout — so every
+ * client can still render what the room stores.
  */
 import { env } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
@@ -38,6 +39,15 @@ const blocks: BlockSpec[] = [
 		id: 'list',
 		type: 'unordered-list',
 		children: [{ id: 'item', type: 'list-item', content: [{ kind: 'text', text: 'b' }] }]
+	},
+	{ id: 'q', type: 'paragraph', content: [{ kind: 'text', text: 'beside' }] },
+	{
+		id: 'cols',
+		type: 'columns',
+		children: [
+			{ id: 'k1', type: 'column', children: [{ id: 'l', type: 'paragraph' }] },
+			{ id: 'k2', type: 'column', children: [{ id: 'r', type: 'paragraph' }] }
+		]
 	}
 ];
 
@@ -54,11 +64,13 @@ const attempt = (room: Pick<AttachedDocument, 'transact'>) => {
 		edit((facade) => facade.mergeBackward('line')),
 		// DR-crdt-2: nor does a list — its first item never merges into it
 		// (Backspace there lifts the item out instead, YW-02).
-		edit((facade) => facade.mergeBlocks('item', 'list'))
+		edit((facade) => facade.mergeBlocks('item', 'list')),
+		// C5: the layout rows are in `defaultSemantics` — a layout holds only its columns.
+		edit((facade) => facade.moveBlock('q', { parent: 'cols', index: 0 }))
 	];
 };
 
-const REFUSED = ['applied', 'refused', 'refused', 'refused', 'refused', 'refused'];
+const REFUSED = ['applied', 'refused', 'refused', 'refused', 'refused', 'refused', 'refused'];
 
 describe('the room adopts defaultSemantics', () => {
 	it('DocumentRoom.transact refuses edits no view could produce', async () => {

@@ -43,7 +43,9 @@ export const imageKinds = frozen({ image: { void: true } } satisfies Record<stri
 /**
  * The columns plugin's structural rows: `columns` is a layout of `column`s
  * (`layout.*` in the delete contract), a column a container that holds any
- * block. Not in {@link defaultSemantics} yet.
+ * block. In {@link defaultSemantics}: a document holding no `columns` block
+ * is unchanged by them, and every replica of one that does (a view with the
+ * plugin, a headless document, the room) reads the same layout rules.
  */
 export const layoutKinds = frozen({
 	columns: { layout: true, rendersContent: false, defaultChild: 'column' },
@@ -82,7 +84,9 @@ export const imageSemantics = semanticsOf(imageKinds);
 /** The columns plugin's block roles (a layout of columns). */
 export const layoutSemantics = semanticsOf(layoutKinds);
 /**
- * The rich-text, code and image plugins' block roles together — what the
- * room adopts by default and what a headless document passes explicitly.
+ * The rich-text, code, image and columns plugins' block roles together —
+ * what the room adopts by default and what a headless document passes
+ * explicitly. The columns plugin is not a default plugin of `<Edytor>`, but
+ * its roles are here so a layout reads the same on every replica.
  */
-export const defaultSemantics = semanticsOf(richTextKinds, codeKinds, imageKinds);
+export const defaultSemantics = semanticsOf(richTextKinds, codeKinds, imageKinds, layoutKinds);

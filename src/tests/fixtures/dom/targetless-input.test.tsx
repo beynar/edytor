@@ -100,10 +100,11 @@ describe('an input with no target', () => {
 		expect(edytor.selection.value.kind).toBe('none');
 	});
 
-	it('a caret a gesture placed types', async () => {
+	it('a caret a press placed types', async () => {
 		const { edytor, editor } = await render();
 		await parkCaret(edytor);
 		const text = edytor.root!.children[0]!.content[0] as never;
+		editor.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
 		await setNativeSelection(edytor, text, 6);
 		expect(edytor.selection.value.kind).toBe('text');
 		const node = await textNodeOf(text);
@@ -123,5 +124,71 @@ describe('an input with no target', () => {
 		expect((await dispatchDomKeyDown(editor, { key: 'k' })).defaultPrevented).toBe(false);
 		await beforeInput(editor, 'insertText', leaf, 'k');
 		expect(texts(edytor)).toEqual(['kbefore', 'after']);
+	});
+
+	// Round 5, issue 1: a key is a gesture, but the caret Chromium parks after
+	// it is still its own. Only a press, an adopted move or our own display
+	// ends the parking; a history step or a closing menu giving back `none`
+	// arms it again.
+	for (const key of [
+		{ key: 'z', metaKey: true },
+		{ key: 'z', metaKey: true, shiftKey: true },
+		{ key: 'Escape' }
+	])
+		it(`a parked caret after ${key.shiftKey ? 'Mod+Shift+Z' : key.metaKey ? 'Mod+Z' : key.key} stays the browser's: typing writes nothing`, async () => {
+			const { edytor, editor } = await render();
+			const leaf = await parkCaret(edytor);
+			await dispatchDomKeyDown(editor, key);
+			// The browser parks its caret again after the key (Chromium).
+			window.getSelection()!.removeAllRanges();
+			window.getSelection()!.collapse(leaf, 0);
+			document.dispatchEvent(new Event('selectionchange'));
+			await flushDomUpdates();
+			expect(edytor.selection.value.kind).toBe('none');
+			expect(edytor.projector.placed()).toBe(false);
+			expect((await dispatchDomKeyDown(editor, { key: 'j' })).defaultPrevented).toBe(true);
+			expect(await beforeInput(editor, 'insertText', leaf, 'j')).toBe(true);
+			expect(texts(edytor)).toEqual(['before', 'after']);
+		});
+
+	for (const cause of ['history', 'model'] as const)
+		it(`a value that becomes none (${cause === 'history' ? 'an undo' : 'a closing menu'}) under the host's focus parks again`, async () => {
+			const { edytor, editor } = await render();
+			const text = edytor.root!.children[0]!.content[0] as never;
+			editor.focus();
+			editor.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+			await setNativeSelection(edytor, text, 3);
+			expect(edytor.selection.value.kind).toBe('text');
+			edytor.selection.select({ kind: 'none' }, cause);
+			await flushDomUpdates();
+			// The browser parks a caret at the host's start after the next key.
+			await dispatchDomKeyDown(editor, { key: 'Escape' });
+			const leaf = leafOf(await textNodeOf(text));
+			window.getSelection()!.collapse(leaf, 0);
+			document.dispatchEvent(new Event('selectionchange'));
+			await flushDomUpdates();
+			expect(edytor.selection.value.kind).toBe('none');
+			expect((await dispatchDomKeyDown(editor, { key: 'j' })).defaultPrevented).toBe(true);
+			expect(await beforeInput(editor, 'insertText', leaf, 'j')).toBe(true);
+			expect(texts(edytor)).toEqual(['before', 'after']);
+			// A press then places the caret: typing goes there.
+			leaf.parentElement!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+			await setNativeSelection(edytor, text, 6);
+			expect(edytor.selection.value.kind).toBe('text');
+			await beforeInput(editor, 'insertText', leaf, 'k', 6);
+			expect(texts(edytor)).toEqual(['beforek', 'after']);
+		});
+
+	it('a focus from outside (Tab) places the caret it brings: typing goes there', async () => {
+		const { edytor, editor } = await render();
+		const leaf = await parkCaret(edytor);
+		const outside = document.createElement('button');
+		document.body.append(outside);
+		outside.focus();
+		window.getSelection()!.collapse(leaf, 0);
+		editor.focus();
+		await flushDomUpdates();
+		expect(edytor.projector.placed()).toBe(true);
+		expect((await dispatchDomKeyDown(editor, { key: 'k' })).defaultPrevented).toBe(false);
 	});
 });

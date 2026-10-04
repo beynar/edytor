@@ -194,6 +194,8 @@ export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] =
 			if (edytor.consumeInternalFocus()) return;
 			if (!(event.relatedTarget instanceof Node && edytor.node?.contains(event.relatedTarget))) {
 				edytor.markUserGesture();
+				// A focus from outside (Tab, an app's `focus()`) places the user's caret.
+				edytor.projector.pressed();
 			}
 			restoreCachedSelectionAfterKeyboardFocus(event);
 		}),

@@ -122,7 +122,13 @@ export class Projector {
 	#held = false;
 	/** The gesture serial at which the browser parked a caret of its own (`parked`). */
 	#parked = -1;
-	/** The host's DOM range is that parked caret: no gesture placed one since (`placed`). */
+	/**
+	 * Any DOM caret in the host is the browser's own, not a target (`placed`):
+	 * armed when the browser parks one (`parked`) and when the value becomes
+	 * `none` under the host's focus (a history step, a closing menu); ended
+	 * only by a caret that becomes the value's — a press or a focus from
+	 * outside (`pressed`), an adopted move (`observe`), our own display.
+	 */
 	#parking = false;
 
 	constructor(private edytor: Edytor) {}
@@ -239,12 +245,12 @@ export class Projector {
 			return 'echo';
 		// The caret a browser parks (the editor's own focus, a refused key), no gesture since.
 		if (this.#parked === edytor.intentSerial) return 'drift';
+		// With no value, a caret no press placed stays the browser's, whatever key
+		// came since (Mod+Z, Escape: Chromium parks one at the host's start).
+		if (this.#parking && selection.value.kind === 'none') return 'drift';
 		if (edytor.intentSerial === this.#serial && (this.#snapBack(dom) || this.#jump()))
 			return 'drift';
-		if (edytor.intentSerial !== this.#serial || selection.dragging) {
-			this.#parking = false;
-			return this.#observed('intent');
-		}
+		if (edytor.intentSerial !== this.#serial || selection.dragging) return this.#observed('intent');
 		return this.#seen !== this.#flushes || this.recordsPending()
 			? 'drift'
 			: this.#observed('foreign');
@@ -263,7 +269,11 @@ export class Projector {
 		this.#parking = true;
 	};
 
-	/** A press inside the host: the caret it leaves is a gesture's (even where the parked one sat). */
+	/**
+	 * A press inside the host, or a focus arriving from outside it (Tab, an
+	 * app's `focus()`): the caret it leaves is the user's (even where the
+	 * parked one sat).
+	 */
 	pressed = () => {
 		this.#parking = false;
 	};
@@ -359,8 +369,9 @@ export class Projector {
 		);
 	};
 
-	/** The DOM selection was observed (derived into the model). */
+	/** The DOM selection was observed (derived into the model): its caret is the value's. */
 	observe = () => {
+		this.#parking = false;
 		this.#seen = this.#flushes;
 		this.#serial = this.edytor.intentSerial;
 		this.#displayed = null;
@@ -377,7 +388,11 @@ export class Projector {
 		const value = selection.value;
 		if (value.kind === 'none') {
 			// No selection shows no DOM range: asked for (a history step giving none
-			// back, a drift over it), a range inside the editor is cleared.
+			// back, a closing menu, a drift over it), a range inside the editor is
+			// cleared, and under the host's focus a caret the browser parks later
+			// is its own (`placed`), whatever key comes before it.
+			const active = getActiveElement(node);
+			if (requested && active && node.contains(active)) this.#parking = true;
 			const dom = getDomSelection(node);
 			if (requested && dom?.anchorNode && node.contains(dom.anchorNode) && this.#ours(requested)) {
 				clearDomSelection(node);

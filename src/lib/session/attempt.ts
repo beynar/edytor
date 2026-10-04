@@ -82,7 +82,8 @@ export const intentOf = (reported: string, data: string | null, keyIntent?: stri
  * `none` and the host holds no DOM caret a gesture placed
  * (`projector.placed`): none at all (an undo gave back no selection), or the
  * one the browser parked itself (the editor's own focus, `takeKeys`; a key
- * refused before). Its declared range is never a target then. A block or atom
+ * refused before; any key after a history step or a closing menu gave back
+ * `none`). Its declared range is never a target then. A block or atom
  * selection is a target (typing replaces it), and a composition is the
  * session's (`projector.park` over a block selection).
  */

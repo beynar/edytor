@@ -21,8 +21,12 @@ export const createBlockMenuPlugin =
 
 		/**
 		 * Beside the handle: 8px right of it, top-aligned; left of it when the
-		 * right has no room; flipped up when the space below is short. It
-		 * follows scrolls and resizes, and closes when the handle leaves the view.
+		 * right has no room; flipped up when the space below is short. The Turn
+		 * into flyout opens right of the menu, or left of it when the right has
+		 * no room, top-aligned with it, moved up as far as the viewport needs
+		 * (never above its top edge), and scrolls inside when taller (Notion):
+		 * every row is in the viewport, reachable by the mouse. It follows
+		 * scrolls and resizes, and closes when the handle leaves the view.
 		 * Measured in the overlay's frame; the placement (or the close) is written after.
 		 */
 		const close = () => controller.close(false);
@@ -35,13 +39,13 @@ export const createBlockMenuPlugin =
 				host.querySelector<HTMLElement>('[data-edytor-block-menu]') ??
 				(host.firstElementChild as HTMLElement | null);
 			if (!view || !menu) return;
-			const [gap, edge] = [8, 8];
+			const [gap, edge, between] = [8, 8, 4];
 			const rect = anchor.getBoundingClientRect();
 			if (rect.bottom < 0 || rect.top > view.innerHeight) return close;
 			const { width, height } = menu.getBoundingClientRect();
 			const right = rect.right + gap;
 			const left = rect.left - gap - width;
-			const x =
+			let x =
 				right + width <= view.innerWidth - edge
 					? right
 					: left >= edge
@@ -51,7 +55,28 @@ export const createBlockMenuPlugin =
 				rect.top + height <= view.innerHeight - edge
 					? rect.top
 					: Math.max(edge, Math.min(rect.bottom, view.innerHeight - edge) - height);
-			return () => Object.assign(host.style, { left: `${x}px`, top: `${y}px` });
+			const flyout = host.querySelector<HTMLElement>('[data-edytor-block-menu-flyout]');
+			const frame = flyout?.parentElement;
+			let side = '';
+			let shift = '';
+			if (flyout && frame) {
+				const box = flyout.getBoundingClientRect();
+				// Left of the menu when its right has no room (the menu stays where it is).
+				if (
+					x + width + between + box.width > view.innerWidth - edge &&
+					x - between - box.width >= edge
+				) {
+					side = 'row-reverse';
+					x -= between + box.width;
+				}
+				const top = Math.max(edge, Math.min(y, view.innerHeight - edge - box.height));
+				shift = `${top - y}px`;
+			}
+			return () => {
+				Object.assign(host.style, { left: `${x}px`, top: `${y}px` });
+				if (frame) frame.style.flexDirection = side;
+				if (flyout) flyout.style.marginTop = shift;
+			};
 		};
 
 		return {

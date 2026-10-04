@@ -417,3 +417,54 @@ test.describe('columns: every beside band along a person’s path (R2)', () => {
 		issues.assertClean();
 	});
 });
+
+test.describe('the block menu’s Turn into, by mouse, at 1280×720 (round-2 finding 4)', () => {
+	test('over a low block, every flyout row is in the viewport: 5 columns is reached and clicked', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await page.setViewportSize({ width: 1280, height: 720 });
+		await openDemo(page);
+		// A block in the lower part of the viewport (the flyout below it would run off).
+		await page
+			.locator('[data-edytor-id="page-quote"]')
+			.evaluate((node) => node.scrollIntoView({ block: 'end' }));
+		await reachGrip(page, 'page-quote', 6);
+		await page.mouse.down();
+		await page.mouse.up();
+		const menu = page.getByRole('menu', { name: 'Block actions' });
+		await expect(menu).toBeVisible();
+		// To the Turn into row, then right into its flyout, in small steps.
+		const turn = (await page.getByTestId('block-menu-turn').boundingBox())!;
+		await page.mouse.move(turn.x + 20, turn.y + turn.height / 2, { steps: 8 });
+		const flyout = page.getByRole('menu', { name: 'Turn into' });
+		await expect(flyout).toBeVisible();
+		await frames(page);
+		const box = (await flyout.boundingBox())!;
+		expect(box.y).toBeGreaterThanOrEqual(0);
+		expect(box.y + box.height).toBeLessThanOrEqual(720);
+		expect(box.x + box.width).toBeLessThanOrEqual(1280);
+		const y = turn.y + turn.height / 2;
+		for (let x = turn.x + 20; x < box.x + 40; x += 8) await page.mouse.move(x, y);
+		await page.mouse.move(box.x + 40, y);
+		await expect(flyout).toBeVisible();
+		// The last row: scrolled to with the wheel inside the flyout if it is taller.
+		const last = flyout.getByRole('menuitem', { name: '5 columns' });
+		for (let i = 0; i < 20; i++) {
+			const row = await last.boundingBox();
+			if (row && row.y >= box.y && row.y + row.height <= box.y + box.height) break;
+			await page.mouse.wheel(0, 80);
+			await frames(page);
+		}
+		const row = (await last.boundingBox())!;
+		expect(row.y).toBeGreaterThanOrEqual(0);
+		expect(row.y + row.height).toBeLessThanOrEqual(720);
+		await page.mouse.move(row.x + 30, row.y + row.height / 2, { steps: 6 });
+		await page.mouse.click(row.x + 30, row.y + row.height / 2);
+		const layout = page.locator('[data-edytor-columns]').filter({
+			has: page.locator('[data-edytor-id="page-quote"]')
+		});
+		await expect(layout.locator('[data-edytor-column]')).toHaveCount(5);
+		issues.assertClean();
+	});
+});

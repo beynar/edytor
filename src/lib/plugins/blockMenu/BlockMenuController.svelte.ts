@@ -272,9 +272,14 @@ export class BlockMenuController {
 		else row.run?.();
 	}
 
-	/** Open the "Turn into" flyout on its first kind (keyboard or mouse); an open one stays as it is. */
+	/**
+	 * Open the "Turn into" flyout on its first kind (keyboard or mouse); an
+	 * open one stays as it is. The overlay places it within the viewport.
+	 */
 	openFlyout() {
-		if (!this.flyout) [this.flyout, this.flyoutIndex] = [true, 0];
+		if (this.flyout) return;
+		[this.flyout, this.flyoutIndex] = [true, 0];
+		this.edytor.overlay.invalidate();
 	}
 
 	/** Back to the blocks the menu acted on: the block selection again, or one block's caret. */

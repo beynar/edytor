@@ -141,7 +141,12 @@
 			</div>
 		</div>
 		{#if controller.flyout}
-			<div class="block-menu block-menu-flyout" role="menu" aria-label="Turn into">
+			<div
+				class="block-menu block-menu-flyout"
+				role="menu"
+				aria-label="Turn into"
+				data-edytor-block-menu-flyout
+			>
 				<div class="block-menu-rows">
 					<div class="block-menu-heading">Turn into</div>
 					{#each controller.kinds as kind, index (kind.id)}
@@ -151,6 +156,7 @@
 							class="block-menu-row"
 							data-current={kind === controller.currentKind}
 							data-selected={controller.flyoutIndex === index}
+							use:keepInView={controller.flyoutIndex === index}
 							onmousemove={() => (controller.flyoutIndex = index)}
 							style:--block-menu-icon={iconOf(kind.id)}
 							onmousedown={(event) => event.preventDefault()}
@@ -196,8 +202,10 @@
 		transform-origin: top left;
 		animation: block-menu-in 140ms cubic-bezier(0.2, 0, 0, 1);
 	}
+	/* Never taller than the viewport: it scrolls inside, placed within it (`place`). */
 	.block-menu-flyout {
 		width: 220px;
+		max-height: min(480px, calc(100vh - 16px));
 	}
 	@keyframes block-menu-in {
 		from {

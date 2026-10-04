@@ -66,7 +66,9 @@ import {
 	replaceSelectionForInsertion,
 	selectedBlocksExit
 } from '$lib/selection/replaceSelection.js';
-import { attemptOf, intentSnapshot, kindOf, type Attempt } from './attempt.js';
+import type { DomSelectionSnapshot } from '$lib/selection/domSelection.js';
+import { getYIndex } from '$lib/selection/selection.utils.js';
+import { attemptOf, intentSnapshot, kindOf, untargeted, type Attempt } from './attempt.js';
 import type { SelectionValue } from './selection.js';
 
 export type Phase = 'live' | 'tail' | 'gone';
@@ -102,6 +104,14 @@ export class Composition {
 	#own = new Set<string>();
 	/** The start target's replacement was refused: the session writes nothing. */
 	#refused = false;
+	/**
+	 * The session started with no target (`untargeted`: no value, the IME's
+	 * caret the browser's parked one): it writes nothing, and its occurrences
+	 * are refused at admission (`targetless`) until the next start or a
+	 * non-composition occurrence after its end. Its pinned host is restored
+	 * by the tail (Notion: typing with no caret does nothing).
+	 */
+	targetless = false;
 	/**
 	 * The start target is a range across texts: across blocks, or across an inline
 	 * atom inside one block (`block`, GX-04). Its first write merges the rest into
@@ -142,10 +152,21 @@ export class Composition {
 		else fn();
 	};
 
-	/** `compositionstart`: the start target is the current selection (the caller read the DOM). */
-	start = () => {
-		if (this.live) this.abandon();
+	/**
+	 * `compositionstart`: the start target is the current selection, after the
+	 * DOM caret the IME found (`read`) is adopted — never over a block or atom
+	 * selection, which shows no DOM range (the caret is the one the browser
+	 * parked for the IME, EW-01), nor with no target at all (`untargeted`:
+	 * that caret is the browser's own; the session refuses).
+	 */
+	start = (read: () => DomSelectionSnapshot | null = () => null) => {
 		const { selection } = this.edytor;
+		const dom = read();
+		const targetless = !this.#resume && untargeted(this.edytor);
+		const { kind } = selection.value;
+		if (!targetless && kind !== 'blocks' && kind !== 'atom') selection.applySelectionSnapshot(dom);
+		if (this.live) this.abandon();
+		this.targetless = targetless;
 		const resume = this.#resume;
 		this.#resume = null;
 		if (resume && resume !== 'lost') selection.select(resume);
@@ -156,8 +177,9 @@ export class Composition {
 		this.#start = selection.value;
 		this.preview = '';
 		this.#interrupted = this.#announced = this.native = false;
-		// The IME continues a composition whose block was deleted: it writes nothing.
-		this.#refused = resume === 'lost';
+		// The IME continues a composition whose block was deleted, or found no
+		// target: it writes nothing.
+		this.#refused = resume === 'lost' || targetless;
 		this.#item = null;
 		this.marks = insertionMarks(this.edytor, intentSnapshot(this.edytor, 'insertCompositionText'));
 		const shown = selection.value.kind;
@@ -167,8 +189,9 @@ export class Composition {
 					? 'block'
 					: 'blocks'
 				: false;
-		const at =
-			shown === 'blocks' || shown === 'atom'
+		const at = targetless
+			? this.#parkedAt(dom)
+			: shown === 'blocks' || shown === 'atom'
 				? this.#rangeless()
 				: startText && {
 						text: startText,
@@ -223,6 +246,7 @@ export class Composition {
 	occurred = (inputType?: string) => {
 		if (inputType !== 'insertText') this.#resume = null;
 		if (this.phase === 'tail') this.phase = 'gone';
+		if (!this.live) this.targetless = false;
 	};
 
 	/**
@@ -303,6 +327,7 @@ export class Composition {
 	reset = () => {
 		this.#release();
 		this.phase = 'gone';
+		this.targetless = false;
 	};
 
 	/** The first write: open the capture group and replace the start target (a command). */
@@ -355,6 +380,15 @@ export class Composition {
 		if (!at.text.node) return null;
 		edytor.projector.park(at.text, at.offset);
 		return { text: at.text, from: at.offset, to: at.offset };
+	}
+
+	/** The text and offset of the caret the browser parked for a session with no target. */
+	#parkedAt(dom: DomSelectionSnapshot | null) {
+		const node = dom?.anchorNode;
+		const text = node ? this.edytor.selection.getTextOfNode(node) : null;
+		if (!node || !text?.node) return null;
+		const offset = getYIndex(text, node, dom.anchorOffset);
+		return { text, from: offset, to: offset };
 	}
 
 	/** The host's block and its ancestors (none once it is not visible). */

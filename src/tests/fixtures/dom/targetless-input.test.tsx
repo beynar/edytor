@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { takeKeys } from '$lib/events/onFocus.js';
 import {
+	dispatchComposition,
 	dispatchDomKeyDown,
 	flushDomUpdates,
 	renderDomEdytor,
@@ -190,5 +191,55 @@ describe('an input with no target', () => {
 		await flushDomUpdates();
 		expect(edytor.projector.placed()).toBe(true);
 		expect((await dispatchDomKeyDown(editor, { key: 'k' })).defaultPrevented).toBe(false);
+	});
+
+	// Round 5, issue 2: an IME with no target composes at the caret the browser
+	// parked; the session refuses at its start, writes nothing, and its write
+	// in the DOM is restored (the tail inverts its pinned host).
+	it('a composition over a parked caret writes nothing; the IME write is restored', async () => {
+		const { edytor, editor } = await render();
+		const leaf = (await parkCaret(edytor)) as globalThis.Text;
+		// The browser parks the IME's caret at the host's start again (the
+		// display of none cleared the last one); its selectionchange comes later.
+		window.getSelection()!.collapse(leaf, 0);
+		await dispatchComposition(editor, [{ type: 'compositionstart' }]);
+		expect(edytor.composition.host?.parent.id).toBe(edytor.root!.children[0]!.id);
+		expect(edytor.composition.live).toBe(true);
+		expect(edytor.composition.targetless).toBe(true);
+		expect(edytor.selection.value.kind).toBe('none');
+		// The IME writes its preview at the parked caret.
+		leaf.data = 'あbefore';
+		await dispatchComposition(editor, [
+			{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'あ' },
+			{ type: 'compositionupdate', data: 'あ' }
+		]);
+		expect(texts(edytor)).toEqual(['before', 'after']);
+		expect(edytor.selection.value.kind).toBe('none');
+		await dispatchComposition(editor, [
+			{ type: 'beforeinput', inputType: 'insertFromComposition', data: 'あ' },
+			{ type: 'compositionend', data: 'あ' }
+		]);
+		editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+		await flushDomUpdates();
+		expect(texts(edytor)).toEqual(['before', 'after']);
+		expect(edytor.selection.value.kind).toBe('none');
+		expect(leaf.parentElement!.textContent).toBe('before');
+		// A key after it is refused as well.
+		expect((await dispatchDomKeyDown(editor, { key: 'j' })).defaultPrevented).toBe(true);
+	});
+
+	it('a composition over a caret a press placed composes there', async () => {
+		const { edytor, editor } = await render();
+		await parkCaret(edytor);
+		const text = edytor.root!.children[0]!.content[0] as never;
+		editor.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+		await setNativeSelection(edytor, text, 6);
+		await dispatchComposition(editor, [{ type: 'compositionstart' }]);
+		expect(edytor.composition.targetless).toBe(false);
+		await dispatchComposition(editor, [
+			{ type: 'beforeinput', inputType: 'insertCompositionText', data: 'あ' },
+			{ type: 'compositionend', data: 'あ' }
+		]);
+		expect(texts(edytor)).toEqual(['beforeあ', 'after']);
 	});
 });

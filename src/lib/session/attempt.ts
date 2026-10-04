@@ -84,17 +84,19 @@ export const intentOf = (reported: string, data: string | null, keyIntent?: stri
  * one the browser parked itself (the editor's own focus, `takeKeys`; a key
  * refused before; any key after a history step or a closing menu gave back
  * `none`). Its declared range is never a target then. A block or atom
- * selection is a target (typing replaces it), and a composition is the
- * session's (`projector.park` over a block selection).
+ * selection is a target (typing replaces it). A composition's target is its
+ * session's, fixed at its start (`composition.targetless`: refused there by
+ * the same rule, `untargeted`; `projector.park` over a block selection).
  */
 export const targetless = (edytor: Edytor, intent: string) => {
 	const kind = kindOf(intent);
-	return (
-		edytor.selection.value.kind === 'none' &&
-		(kind === 'text' || kind === 'delete' || kind === 'break') &&
-		!edytor.projector.placed()
-	);
+	if (kind === 'composition') return edytor.composition.targetless;
+	return (kind === 'text' || kind === 'delete' || kind === 'break') && untargeted(edytor);
 };
+
+/** Nowhere to act: the selection value is `none` and no gesture placed the host's DOM caret. */
+export const untargeted = (edytor: Edytor) =>
+	edytor.selection.value.kind === 'none' && !edytor.projector.placed();
 
 /** The target's facts a command reads, projected when the attempt runs. */
 const facts = (edytor: Edytor) => {

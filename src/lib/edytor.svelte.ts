@@ -809,12 +809,7 @@ export class Edytor {
 
 	onCompositionStart = (event?: CompositionEvent) => {
 		if (!this.ownComposition(event)) return;
-		// A block or atom selection shows no DOM range: one found now is the
-		// caret the browser parked for the IME, not the user's (EW-01).
-		const { kind } = this.selection.value;
-		if (kind !== 'blocks' && kind !== 'atom')
-			this.selection.applySelectionSnapshot(getDomSelectionSnapshot(this.node));
-		this.composition.start();
+		this.composition.start(() => getDomSelectionSnapshot(this.node));
 	};
 
 	/** `compositionend`: the live session's commit, or its explicit cancel; the tail swallows a late one. */

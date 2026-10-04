@@ -553,6 +553,8 @@ export class SurfaceObserver {
 	#divergence = (id: string): Finding => {
 		const { attempts, composition } = this.edytor;
 		if (composition.tail()?.parent.id === id) return { block: id, verdict: 'invert', why: 'tail' };
+		// A composition with no target writes nothing: what its IME wrote is drift.
+		if (composition.targetless) return { block: id, verdict: 'invert', why: 'tail' };
 		// A structural key waiting for its `beforeinput` or deadline owns the drift it causes.
 		if (attempts.key) return { block: id, verdict: 'invert', why: 'key' };
 		for (const text of this.#texts(id)) {

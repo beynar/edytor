@@ -492,6 +492,8 @@ const refuseTargetless = (
 		occurrence.event?.preventDefault();
 		return;
 	}
+	// A composition's writes are its session's: the tail restores its pinned host.
+	if (kindOf(occurrence.inputType) === 'composition') return;
 	const attempt = edytor.attempts.admit(attemptOf(edytor, occurrence, key?.inputType), 'model');
 	attempt.phase = 'failed';
 	edytor.attempts.drift(attempt, 'discard', NATIVE_INPUT_REPAIR_WINDOW_MS);

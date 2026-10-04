@@ -30,7 +30,7 @@ import type { Plugin } from '$lib/plugins.js';
 import { blockHandlesPlugin } from '$lib/plugins/blockHandles/blockHandlesPlugin.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { HIDDEN } from '$lib/selection/visibility.js';
-import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import {
 	block,
 	caret,
@@ -465,6 +465,36 @@ describe('the beside bands', () => {
 		await flushDomUpdates();
 		expect(shape(edytor)).toEqual(['P', C, 'Z', 'X']);
 		expect(caret(edytor)).toEqual({ block: 'Z', offset: 1, isCollapsed: true });
+	});
+
+	it('a drop gives the keys to the editor: Mod+Z, then Mod+Shift+Z after an undo that gave back no selection (round 3)', async () => {
+		const { edytor, editor } = await render(withX());
+		expect(edytor.selection.value.kind).toBe('none');
+		const drag = await startDrag(edytor, 'X');
+		await drag.over('P', 0.5, 590);
+		await drag.drop('P', 0.5, 590);
+		const beside = [
+			[
+				'columns',
+				[
+					['column', ['P']],
+					['column', ['X']]
+				]
+			],
+			C,
+			'Z'
+		];
+		expect(shape(edytor)).toEqual(beside);
+		expect(document.activeElement).toBe(editor);
+		expect(selected(edytor)).toEqual(['X']);
+		await dispatchDomKeyDown(editor, { key: 'z', ctrlKey: true });
+		await flushDomUpdates();
+		expect(shape(edytor)).toEqual(['P', C, 'Z', 'X']);
+		expect(edytor.selection.value.kind).toBe('none');
+		expect(document.activeElement).toBe(editor);
+		await dispatchDomKeyDown(editor, { key: 'z', ctrlKey: true, shiftKey: true });
+		await flushDomUpdates();
+		expect(shape(edytor)).toEqual(beside);
 	});
 
 	it('the band starts at 85% of the row; before it the hitbox halves stand', async () => {

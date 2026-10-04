@@ -120,6 +120,8 @@ export class Projector {
 	#committed: { serial: number; at: number } | null = null;
 	/** A pass waits for the live composition session's end. */
 	#held = false;
+	/** The gesture serial at the editor's own focus of its host (`focused`). */
+	#focused = -1;
 
 	constructor(private edytor: Edytor) {}
 
@@ -215,7 +217,8 @@ export class Projector {
 	 * - composition: a session owns the host (its end catches up);
 	 * - drift: no gesture since the last observation, and a render since it
 	 *   (a flush the DOM selection was not observed after, or DOM records the
-	 *   observer has not reconciled), or one of the two named signatures;
+	 *   observer has not reconciled), or one of the two named signatures,
+	 *   or the caret a browser parks for the editor's own focus (`focused`);
 	 * - intent: a gesture since the last observation, or a pointer drag;
 	 * - foreign: no gesture and no render (host code, assistive tech, O1).
 	 */
@@ -232,12 +235,24 @@ export class Projector {
 		if (edytor.composition.live) return this.#observed('composition');
 		if (selection.request !== this.#request && selection.requestSerial === edytor.intentSerial)
 			return 'echo';
+		// The caret a browser parks when the editor focuses its own host, no gesture since.
+		if (this.#focused === edytor.intentSerial) return 'drift';
 		if (edytor.intentSerial === this.#serial && (this.#snapBack(dom) || this.#jump()))
 			return 'drift';
 		if (edytor.intentSerial !== this.#serial || selection.dragging) return this.#observed('intent');
 		return this.#seen !== this.#flushes || this.recordsPending()
 			? 'drift'
 			: this.#observed('foreign');
+	};
+
+	/**
+	 * The editor focused its own host (`takeKeys`: the keys after a gesture on
+	 * its chrome): until the next gesture, the caret a browser parks for that
+	 * focus (at the host's start) is drift, displayed over by the value — a
+	 * block selection or none shows no DOM range — never adopted.
+	 */
+	focused = () => {
+		this.#focused = this.edytor.intentSerial;
 	};
 
 	/** The DOM selection is observed now (adopted, or ignored by the adopter's own rules). */
@@ -334,7 +349,17 @@ export class Projector {
 		if (this.#composing()) return false;
 		if (!requested && (selection.dragging || edytor.isHandlingUserInput)) return false;
 		const value = selection.value;
-		if (value.kind === 'none') return true;
+		if (value.kind === 'none') {
+			// No selection shows no DOM range: asked for (a history step giving none
+			// back, a drift over it), a range inside the editor is cleared.
+			const dom = getDomSelection(node);
+			if (requested && dom?.anchorNode && node.contains(dom.anchorNode) && this.#ours(requested)) {
+				clearDomSelection(node);
+				this.#displayed = null;
+				this.#serial = edytor.intentSerial;
+			}
+			return true;
+		}
 		if (!selection.projection.start) {
 			// A value that no longer resolves: the repair lands it (a live
 			// destination may exist only once this flush mounted it).

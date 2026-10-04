@@ -21,7 +21,7 @@ import type { JSONBlock } from '$lib/utils/json.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
 import { richTextPlugin } from '$lib/plugins/richtext/RichTextPlugin.svelte';
 import { createColumnsPlugin } from '$lib/plugins/columns/ColumnsPlugin.svelte';
-import { flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
+import { dispatchDomKeyDown, flushDomUpdates, renderDomEdytor } from '../../dom/test.utils.js';
 import { block, column, columns, contractDoc, p } from './columns.helpers.js';
 
 afterEach(() => {
@@ -230,6 +230,31 @@ describe('dragging a strip', () => {
 		const [k1, k2] = weights(edytor, 'K1', 'K2') as number[];
 		expect(k1).toBeCloseTo((2 * 374) / 554, 10);
 		expect(k2).toBeCloseTo((2 * 180) / 554, 10);
+	});
+
+	it('the release gives the keys to the editor: Mod+Z and Mod+Shift+Z at once, no caret adopted (round 3)', async () => {
+		const { edytor, editor } = await render(contractDoc());
+		await hover(edytor, 'A');
+		const [strip] = strips();
+		expect(document.activeElement).not.toBe(editor);
+		pointer(strip!, 'pointerdown', { clientX: 281, clientY: 40 });
+		pointer(strip!, 'pointermove', { clientX: 331, clientY: 40 });
+		pointer(strip!, 'pointerup', { clientX: 331, clientY: 40 });
+		await flushDomUpdates();
+		const resized = weights(edytor, 'K1', 'K2');
+		expect(resized[0]).toBeCloseTo((2 * 327) / 554, 10);
+		expect(document.activeElement).toBe(editor);
+		expect(edytor.selection.value.kind).toBe('none');
+		await dispatchDomKeyDown(document.activeElement as HTMLElement, { key: 'z', ctrlKey: true });
+		await flushDomUpdates();
+		expect(weights(edytor, 'K1', 'K2')).toEqual([undefined, undefined]);
+		await dispatchDomKeyDown(document.activeElement as HTMLElement, {
+			key: 'z',
+			ctrlKey: true,
+			shiftKey: true
+		});
+		await flushDomUpdates();
+		expect(weights(edytor, 'K1', 'K2')).toEqual(resized);
 	});
 
 	it('a release where it started writes nothing', async () => {

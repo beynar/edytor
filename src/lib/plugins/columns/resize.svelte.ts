@@ -1,5 +1,6 @@
 import type { Block } from '$lib/block/block.svelte.js';
 import type { Edytor } from '$lib/edytor.svelte.js';
+import { takeKeys } from '$lib/events/onFocus.js';
 import { stacks } from './stacking.js';
 
 /** The guide line's width (the hover guide's and the drag's). */
@@ -198,6 +199,8 @@ export class ColumnResize {
 			if (drag && ended.type === 'pointerup') {
 				drag.at = (ended as PointerEvent).clientX;
 				this.release(drag);
+				// The editor holds the keys after the release (Notion: Mod+Z right after).
+				takeKeys(edytor);
 			}
 		};
 		const escape = (key: KeyboardEvent) => {

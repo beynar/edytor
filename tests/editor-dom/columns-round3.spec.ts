@@ -1,0 +1,196 @@
+import { expect, test, type Page } from './editorTest';
+import { trackPageIssues, waitForEditorReady } from './helpers';
+
+/**
+ * Columns, Notion parity, the round-3 review (2026-10-04), with a person's
+ * mouse: every path moves in 2–12px steps, never a jump (Playwright's
+ * `hover()`/`dragTo` skip the path a person takes). Desktop engines.
+ *
+ * `P "before", C[K1[A "left one", A2 "left two"], K2[B "right"]], Z "after"`.
+ */
+
+type Block = { id: string; type: string; data?: { width?: number }; children?: Block[] };
+type Edytor = {
+	value: { children: Block[] };
+	idToBlock: Map<string, { data: { width?: number } }>;
+	facade: { version: number };
+	selection: { value: { kind: string }; selectedBlocks: Set<{ id: string }> };
+};
+
+const fit = (page: Page, width = 800) =>
+	page.getByTestId('editor-shell').evaluate((shell, px) => (shell.style.width = `${px}px`), width);
+
+const open = async (page: Page) => {
+	await page.goto('/test/dom?scenario=columns&handles=true');
+	await waitForEditorReady(page, { requireRuntime: true });
+	await fit(page);
+};
+
+const box = async (page: Page, id: string) =>
+	(await page.locator(`[data-edytor-id="${id}"]`).first().boundingBox())!;
+const textBox = async (page: Page, id: string) =>
+	(await page.locator(`[data-edytor-id="${id}"] [data-edytor-text="true"]`).first().boundingBox())!;
+
+/** The displayed tree: a layout `L`, a column `col`, any other block its id. */
+const tree = (page: Page) =>
+	page.evaluate(() => {
+		const edytor = (window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__;
+		const name = (b: Block) => (b.type === 'columns' ? 'L' : b.type === 'column' ? 'col' : b.id);
+		const walk = (blocks: Block[] = []): unknown[] =>
+			blocks.map((b) => (b.children?.length ? [name(b), walk(b.children)] : name(b)));
+		return walk(edytor.value.children);
+	});
+
+const weights = (page: Page) =>
+	page.evaluate(() => {
+		const edytor = (window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__;
+		return ['K1', 'K2'].map((id) => edytor.idToBlock.get(id)!.data.width ?? null);
+	});
+
+const selected = (page: Page) =>
+	page.evaluate(() =>
+		[...(window as unknown as { __EDYTOR__: Edytor }).__EDYTOR__.selection.selectedBlocks]
+			.map((b) => b.id)
+			.sort()
+	);
+
+/** The selection value's kind, whether the editor holds the focus, and the DOM range count in it. */
+const keys = (page: Page) =>
+	page.evaluate(() => {
+		const edytor = (window as unknown as { __EDYTOR__: Edytor & { node: HTMLElement } }).__EDYTOR__;
+		const dom = getSelection();
+		return {
+			kind: edytor.selection.value.kind,
+			focused: document.activeElement === edytor.node,
+			ranges: dom?.anchorNode && edytor.node.contains(dom.anchorNode) ? dom.rangeCount : 0
+		};
+	});
+
+/** Two animation frames: the drag library applies a move on the next, the overlay draws on the one after. */
+const frames = (page: Page) =>
+	page.evaluate(
+		() =>
+			new Promise<void>((resolve) =>
+				requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+			)
+	);
+
+type Point = { x: number; y: number };
+
+/** The pointer from `from` to `to` in `step` px moves (a person's path), a frame every third. */
+const walk = async (page: Page, from: Point, to: Point, step = 4) => {
+	const n = Math.max(1, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / step));
+	for (let i = 1; i <= n; i++) {
+		await page.mouse.move(from.x + ((to.x - from.x) * i) / n, from.y + ((to.y - from.y) * i) / n);
+		if (i % 3 === 0) await frames(page);
+	}
+	await frames(page);
+	return to;
+};
+
+const host = (page: Page, id: string) =>
+	page.locator(`[data-edytor-block-handle-host][data-block-id="${id}"]`);
+const grip = (page: Page, id: string) =>
+	page.locator(`[data-testid="block-handle"][data-block-id="${id}"]`);
+const indicator = (page: Page) => page.locator('[data-edytor-drop-indicator]');
+
+/** From `id`'s text straight left to its grip (the handle shows on the way); answers the grip's center. */
+const reachGrip = async (page: Page, id: string, step = 4) => {
+	const text = await textBox(page, id);
+	const start = { x: text.x + 20, y: text.y + Math.min(text.height, 24) / 2 };
+	await page.mouse.move(start.x, start.y);
+	await expect(host(page, id)).toHaveAttribute('data-visible', 'true');
+	const g = (await grip(page, id).boundingBox())!;
+	const at = { x: g.x + g.width / 2, y: g.y + g.height / 2 };
+	await walk(page, start, { x: start.x, y: at.y }, step);
+	return walk(page, { x: start.x, y: at.y }, at, step);
+};
+
+/** The gap between the two columns, and A2's row (column 2 has no block there). */
+const gap = async (page: Page) => {
+	const [k1, k2, a2] = [await box(page, 'K1'), await box(page, 'K2'), await box(page, 'A2')];
+	return { left: k1.x + k1.width, right: k2.x, low: a2.y + a2.height / 2, k1, k2 };
+};
+
+/** From A2's text right into the gap's middle at A2's row, where the resize strip is. */
+const reachStrip = async (page: Page) => {
+	const g = await gap(page);
+	const a2 = await textBox(page, 'A2');
+	const start = { x: a2.x + 20, y: g.low };
+	await page.mouse.move(start.x, start.y);
+	const at = await walk(page, start, { x: (g.left + g.right) / 2, y: g.low });
+	await expect(page.locator('[data-edytor-column-resize]')).toHaveCount(1);
+	return at;
+};
+
+const LAYOUT = [
+	'L',
+	[
+		['col', ['A', 'A2']],
+		['col', ['B']]
+	]
+];
+
+test.describe('undo and redo right after a mouse-only gesture (round 3, gap 1)', () => {
+	test('a resize by the gap, then Mod+Z and Mod+Shift+Z', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		const at = await reachStrip(page);
+		await page.mouse.down();
+		await walk(page, at, { x: at.x + 80, y: at.y });
+		await page.mouse.up();
+		await expect.poll(() => weights(page)).not.toEqual([null, null]);
+		const resized = await weights(page);
+		// The editor holds the keys, and no caret shows (none was there).
+		await expect.poll(() => keys(page)).toEqual({ kind: 'none', focused: true, ranges: 0 });
+		// No click into the text first.
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect.poll(() => weights(page)).toEqual([null, null]);
+		await expect.poll(() => keys(page)).toEqual({ kind: 'none', focused: true, ranges: 0 });
+		await page.keyboard.press('ControlOrMeta+Shift+z');
+		await expect.poll(() => weights(page)).toEqual(resized);
+		issues.assertClean();
+	});
+
+	test('P dragged below Z by its grip, then Mod+Z and Mod+Shift+Z', async ({ page }) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		const at = await reachGrip(page, 'P');
+		await page.mouse.down();
+		const z = await textBox(page, 'Z');
+		await walk(page, at, { x: z.x + 8, y: z.y + z.height * 0.85 }, 6);
+		await expect(indicator(page)).toHaveAttribute('data-position', 'after');
+		await page.mouse.up();
+		await expect.poll(() => tree(page)).toEqual([LAYOUT, 'Z', 'P']);
+		await expect.poll(() => keys(page)).toEqual({ kind: 'blocks', focused: true, ranges: 0 });
+		expect(await selected(page)).toEqual(['P']);
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect.poll(() => tree(page)).toEqual(['P', LAYOUT, 'Z']);
+		await expect.poll(() => keys(page)).toEqual({ kind: 'none', focused: true, ranges: 0 });
+		// The undo gave back "no selection" (the drag's start): the keys stay the editor's.
+		await page.keyboard.press('ControlOrMeta+Shift+z');
+		await expect.poll(() => tree(page)).toEqual([LAYOUT, 'Z', 'P']);
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect.poll(() => tree(page)).toEqual(['P', LAYOUT, 'Z']);
+		issues.assertClean();
+	});
+
+	test('B dragged out of its column (the layout dissolves), then Mod+Z and Mod+Shift+Z', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await open(page);
+		const at = await reachGrip(page, 'B');
+		await page.mouse.down();
+		const z = await textBox(page, 'Z');
+		await walk(page, at, { x: z.x + 8, y: z.y + z.height * 0.85 }, 6);
+		await expect(indicator(page)).toHaveAttribute('data-position', 'after');
+		await page.mouse.up();
+		await expect.poll(() => tree(page)).toEqual(['P', 'A', 'A2', 'Z', 'B']);
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect.poll(() => tree(page)).toEqual(['P', LAYOUT, 'Z']);
+		await page.keyboard.press('ControlOrMeta+Shift+z');
+		await expect.poll(() => tree(page)).toEqual(['P', 'A', 'A2', 'Z', 'B']);
+		issues.assertClean();
+	});
+});

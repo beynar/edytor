@@ -132,6 +132,8 @@ The outermost of those blocks move, in document order, wherever they sit: their 
 
 Dragging the handle of a block outside the selection moves that block alone and selects it (a parent's handle while only its child is selected: the parent alone). A single drop is one undo step too.
 
+After a drop the editor holds the keys, as in Notion: its root takes the focus (without scrolling, and without placing a caret: the moved blocks stay block-selected), so <kbd>Mod</kbd>+<kbd>Z</kbd> undoes the move at once, and <kbd>Mod</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redoes it, even when the undo gave back no selection (a drag started with none). Resizing columns does the same.
+
 ### The drag preview
 
 As in Notion, every handle drag shows a copy of the dragged blocks under the pointer, rendered as they look in the editor, never the grip alone: for one block, one selected block, or every block of a several-block drag in document order with a `[data-edytor-drag-count]` badge in its corner. Each block's rendered element is cloned with its whole subtree (its children, a toggle's shown body) when the drag starts, and removed once the browser has taken its picture, as Pragmatic drag and drop's `setCustomNativeDragPreview` does.

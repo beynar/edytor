@@ -28,6 +28,7 @@ import {
 	selectMoved,
 	shownText
 } from '$lib/selection/replaceSelection.js';
+import { takeKeys } from '$lib/events/onFocus.js';
 import { dragPreview } from './dragPreview.js';
 import { stacks } from '../columns/stacking.js';
 
@@ -310,8 +311,7 @@ export class BlockHandleController {
 			detail: { block, anchor }
 		});
 		if (this.edytor.node?.dispatchEvent(event) === false) return;
-		this.edytor.expectInternalFocus();
-		this.edytor.node?.focus({ preventScroll: true });
+		takeKeys(this.edytor);
 	}
 
 	/**
@@ -465,8 +465,11 @@ export class BlockHandleController {
 			},
 			// PDD notifies the source before drop targets. Keep the shown
 			// placement and the targets until the target has committed its move.
-			onDrop: () =>
+			// A drop on one of ours gives the keys to the editor (Notion: Mod+Z
+			// right after a drag), whatever it selected.
+			onDrop: ({ location }) =>
 				queueMicrotask(() => {
+					if (location.current.dropTargets.length) takeKeys(this.edytor);
 					this.clearIndicator();
 					this.backdrop?.remove();
 					this.backdrop = null;

@@ -28,6 +28,26 @@ export const selectionIsInside = (node: HTMLElement) => {
 	);
 };
 
+/**
+ * The editor takes the keys after a pointer gesture on its chrome (a block
+ * drop, a column resize, a grip click no menu answers): its host gets the
+ * focus, without scrolling, as the editor's own focus (`focusin` restores
+ * no cached caret and counts no gesture), so Mod+Z, Mod+Shift+Z and the
+ * block-selection keys act at once, whatever the selection (a block
+ * selection, or none: an undo giving back "no selection" keeps them). The
+ * projector stays the only DOM-selection writer. Nothing when the focus is
+ * already inside the host, or the view is gone.
+ */
+export const takeKeys = (edytor: Edytor) => {
+	const node = edytor.node;
+	if (!node?.isConnected || edytor.destroyed) return;
+	const active = getActiveElement(node);
+	if (active instanceof Node && node.contains(active)) return;
+	edytor.expectInternalFocus();
+	node.focus({ preventScroll: true });
+	edytor.projector.focused();
+};
+
 export const attachFocus = (edytor: Edytor, node: HTMLElement): (() => void)[] => {
 	let lastPointerDownInsideEditorAt = Number.NEGATIVE_INFINITY;
 

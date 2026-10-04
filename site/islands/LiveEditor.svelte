@@ -8,6 +8,7 @@
 		Edytor,
 		blockMenuPlugin,
 		codePlugin,
+		columnsPlugin,
 		markdownShortcutsPlugin,
 		richTextPlaceholder,
 		slashMenuPlugin,
@@ -66,6 +67,22 @@
 			{ id: 'todo-2', type: 'todo-item', data: { checked: false }, content: [{ text: 'Works offline, syncs when you are back' }] },
 			{ id: 'quote', type: 'quote', content: [{ text: 'Your words stay yours, even as the page changes.' }] },
 			{
+				id: 'columns',
+				type: 'columns',
+				children: [
+					{
+						id: 'column-left',
+						type: 'column',
+						children: [{ id: 'column-left-text', type: 'paragraph', content: [{ text: 'Drag a block to the edge of another to put them side by side.' }] }]
+					},
+					{
+						id: 'column-right',
+						type: 'column',
+						children: [{ id: 'column-right-text', type: 'paragraph', content: [{ text: 'Drag the gap between two columns to resize them.' }] }]
+					}
+				]
+			},
+			{
 				id: 'code',
 				type: 'code',
 				content: [{ text: '' }],
@@ -94,11 +111,12 @@
 		return () => awareness.off('change', read);
 	});
 
-	// Rich text, images, block moves and the suggestion bar are defaults.
+	// Rich text, images, block moves and the suggestion bar are defaults; columns are opt-in.
 	const plugins = [
 		aiDemoPlugin,
 		blockMenuPlugin,
 		codePlugin,
+		columnsPlugin,
 		markdownShortcutsPlugin,
 		slashMenuPlugin,
 		toolbarPlugin

@@ -362,6 +362,40 @@ test.describe('columns: Turn into N columns (demo)', () => {
 		await expect(layout).toHaveCount(0);
 		issues.assertClean();
 	});
+
+	test('one block, the block menu’s 3 columns: it is column 1, two empty columns beside it; undo restores', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await page.goto('/');
+		const intro = page.locator('[data-edytor-id="page-section-intro"]');
+		await expect(intro).toBeVisible();
+		await intro.locator('[data-edytor-text]').first().hover();
+		await page.locator('[data-testid="block-handle"][data-block-id="page-section-intro"]').click();
+		await expect(page.getByRole('menu', { name: 'Block actions' })).toBeVisible();
+		await page.keyboard.type('3 col');
+		await expect(
+			page.getByRole('menu', { name: 'Block actions' }).getByRole('menuitem', { name: '3 columns' })
+		).toBeVisible();
+		await page.keyboard.press('Enter');
+		const layout = page.locator('[data-edytor-columns]').filter({ has: intro });
+		await expect(layout).toHaveCount(1);
+		const columns = layout.locator('[data-edytor-column]');
+		await expect(columns).toHaveCount(3);
+		await expect(columns.nth(0).locator('[data-edytor-id="page-section-intro"]')).toHaveCount(1);
+		for (const index of [1, 2]) {
+			const blocks = columns.nth(index).locator('[data-edytor-block="true"]');
+			await expect(blocks).toHaveCount(1);
+			await expect(blocks.first()).toHaveAttribute('data-edytor-type', 'paragraph');
+			await expect(blocks.first().locator('[data-edytor-text]').first()).toHaveText('');
+		}
+		// The block stays selected.
+		await expect(intro).toHaveAttribute('data-edytor-selected', 'true');
+		await page.keyboard.press('ControlOrMeta+z');
+		await expect(layout).toHaveCount(0);
+		await expect(page.locator('[data-edytor-columns]')).toHaveCount(1);
+		issues.assertClean();
+	});
 });
 
 /** Open the dom harness on `children` (the `dst` scenario's document). */

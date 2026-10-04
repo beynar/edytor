@@ -71,7 +71,9 @@
 	 * only its query) and is inserted after any other (`convertToKind`), one
 	 * undo step. Disabled, and refused, inside a column (D2). Over a block
 	 * selection of `n` sibling blocks (the block menu's Turn into, `turnsInto`)
-	 * it wraps them instead, one per column (`wrapBlocks`, `layout.wrap`).
+	 * it wraps them instead, one per column, and over one block it makes that
+	 * block column 1 of `n`, each other column holding an empty paragraph
+	 * (`wrapBlocks`, `layout.wrap`, Notion); the blocks stay selected.
 	 */
 	const layoutCommand = (edytor: Edytor, n: number): EditorCommand => {
 		const { id, label, group, keywords } = layoutRow(edytor, n);
@@ -85,12 +87,16 @@
 				const block = view.selection.state.startBlock;
 				return Boolean(block?.convertible) && !inColumn(block);
 			},
-			// Turn into: `n` sibling blocks wrapped, one per column (`layout.wrap`, Notion).
-			turnsInto: (blocks) => blocks.length === n && wrappable(edytor, blocks, 'columns'),
+			// Turn into: one block, or `n` sibling blocks, in `n` columns (`layout.wrap`, Notion).
+			turnsInto: (blocks) =>
+				(blocks.length === 1 || blocks.length === n) && wrappable(edytor, blocks, 'columns', n),
 			run: () => {
 				const selected = getSelectedBlocksInDocumentOrder(edytor);
-				if (edytor.selection.value.kind === 'blocks' && selected.length === n)
-					return wrapBlocks(edytor, selected, 'columns');
+				if (
+					edytor.selection.value.kind === 'blocks' &&
+					(selected.length === 1 || selected.length === n)
+				)
+					return wrapBlocks(edytor, selected, 'columns', n);
 				const block = edytor.selection.state.startBlock;
 				if (inColumn(block)) {
 					edytor.dispatcher.last = { operation: 'setBlock', status: 'refused' };

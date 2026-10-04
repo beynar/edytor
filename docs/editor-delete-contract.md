@@ -1291,21 +1291,28 @@ view's layout commands (`columns.N`) are disabled there. A layout that a
 race or an explicit write (`insertBlocks`, a retype) puts inside a column
 displays as it is, by the rules above: no flatten.
 
-### `layout.wrap` — `wrapInLayout(ids, kind?)`: Turn into N columns (Notion)
+### `layout.wrap` — `wrapInLayout(ids, kind?, columns?)`: Turn into N columns (Notion)
 
-Sibling blocks (two or more; the view offers two to five) are wrapped in a
-new layout of the layout `kind` (else the only one the roles declare), one
-block per item in document order, at the first one's place, with their
-children; one plan, one undo step, plain ranks (a move): over `P, Q[Q1],
-R`, `wrapInLayout([P, Q, R])` gives `NEW[NEW[P], NEW[Q[Q1]], NEW[R]]`; over
-`C`'s document, `wrapInLayout([P, Z])` gives `NEW[NEW[P], NEW[Z]], C`.
-Nested siblings wrap where they are (a toggle's body). Refused for one
-block, blocks of different parents, an item, a layout or a block holding
-one (D2), where the layout does not fit (`fits`: list items, a code
-block's lines) or would sit inside an item (D2) or an island, and without
-a layout kind. A peer's edit in a wrapped block lands in its column. The
+Sibling blocks (one or more) are wrapped in a new layout of `columns`
+items (default: one per block; at least two, and at least one per block;
+the view offers two to five) of the layout `kind` (else the only one the
+roles declare): the blocks one per item in document order, at the first
+one's place, with their children, then each further item holding one
+empty block of the item's default child (a paragraph); one plan, one undo
+step, plain ranks (a move): over `P, Q[Q1], R`, `wrapInLayout([P, Q, R])`
+gives `NEW[NEW[P], NEW[Q[Q1]], NEW[R]]`, and `wrapInLayout([Q], _, 3)`
+gives `P, NEW[NEW[Q[Q1]], NEW[NEW], NEW[NEW]], R` (one block turned into 3
+columns); over `C`'s document, `wrapInLayout([P, Z])` gives `NEW[NEW[P],
+NEW[Z]], C`. Nested siblings wrap where they are (a toggle's body).
+Refused for no block, fewer than two items or fewer items than blocks,
+blocks of different parents, an item, a layout or a block holding one
+(D2), where the layout does not fit (`fits`: list items, a code block's
+lines) or would sit inside an item (D2) or an island, and without a
+layout kind. A peer's edit in a wrapped block lands in its column. The
 view: the block menu's Turn into lists "N columns" over a block selection
-of N sibling blocks (`EditorCommand.turnsInto`), hooks see `wrapBlocks`.
+of N sibling blocks, and "2 columns" to "5 columns" over one block
+(`EditorCommand.turnsInto`); hooks see `wrapBlocks`; the blocks stay
+selected (one block: no caret moves into the empty columns).
 Pins: `layout.test.ts` (`layout.wrap`), `columns-turn-into.test.tsx`,
 `columns-parity.spec.ts`.
 

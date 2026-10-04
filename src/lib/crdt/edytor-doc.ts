@@ -2436,19 +2436,28 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 
 		/**
-		 * Wrap sibling blocks in a new layout, one block per item, in document
-		 * order, at the first one's place (`layout.wrap`: Turn into N columns,
-		 * as Notion). The layout is of the layout `kind` (else the only one the
-		 * roles declare). Refused for fewer than two blocks or ones of different
-		 * parents, for an item, a layout or a block holding one (D2), where the
-		 * layout does not fit (`fits`: in a list, a code block) or lands inside
-		 * an item (D2) or an island, and for a block that does not fit an item.
-		 * Plain ranks (a move). `ids`: the new layout.
+		 * Wrap sibling blocks in a new layout of `columns` items (default: one
+		 * per block), at the first one's place (`layout.wrap`: Turn into N
+		 * columns, as Notion): the blocks fill the first items, one each, in
+		 * document order; each item after them holds one empty block of the
+		 * item's default child (one block turned into 3 columns: it, then two
+		 * empty columns). The layout is of the layout `kind` (else the only one
+		 * the roles declare). Refused for no block, fewer than two items or
+		 * fewer items than blocks, blocks of different parents, an item, a
+		 * layout or a block holding one (D2), where the layout does not fit
+		 * (`fits`: in a list, a code block) or lands inside an item (D2) or an
+		 * island, and for a block that does not fit an item. Plain ranks (a
+		 * move). `ids`: the new layout.
 		 */
-		const wrapInLayout = (ids: readonly BlockId[], kind?: string): Prepared => {
+		const wrapInLayout = (
+			ids: readonly BlockId[],
+			kind?: string,
+			columns: number = ids.length
+		): Prepared => {
 			const blocks = ids.map(ref);
 			const v = view();
-			if (blocks.length < 2 || !canPlace(blocks)) return REFUSED;
+			if (!Number.isInteger(columns) || columns < 2 || blocks.length < 1) return REFUSED;
+			if (columns < blocks.length || !canPlace(blocks)) return REFUSED;
 			const parent = positionOf(blocks[0]!)!.parent;
 			if (blocks.some((id) => positionOf(id)!.parent !== parent)) return REFUSED;
 			if (blocks.some((id) => isLayoutItem(id) || holdsLayout(id))) return REFUSED;
@@ -2458,9 +2467,13 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			if (parent !== null && (insideItem(parent, v) || isIsland(parent) || insideIsland(parent, v)))
 				return REFUSED;
 			if (blocks.some((id) => !fitsIn(item, blockTypeOf(id)))) return REFUSED;
+			const fill = roles.defaultChild(item);
+			if (columns > blocks.length && !fitsIn(item, fill)) return REFUSED;
 			const ordered = blocks.toSorted((a, b) => positionOf(a)!.index - positionOf(b)!.index);
 			const spec = (type: string): BlockSpec => sanitizeSpec({ id: newId('b'), type, data: {} });
-			const items = ordered.map(() => spec(item));
+			const items = Array.from({ length: columns }, (_, i) =>
+				i < ordered.length ? spec(item) : { ...spec(item), children: [spec(fill)] }
+			);
 			const wrapper = { ...spec(wrap), children: items };
 			const at = positionOf(ordered[0]!)!.index;
 			const writes: PlanStep[] = [

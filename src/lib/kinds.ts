@@ -95,33 +95,38 @@ export const turnCommands = (edytor: Edytor, blocks: Block[]): KindRow[] =>
 	);
 
 /**
- * Whether `blocks` may be wrapped in a new layout (`layout.wrap`: sibling
- * blocks, two or more, none a layout, a column or a block holding one, at a
- * place a layout fits and outside any column).
+ * Whether `blocks` may be wrapped in a new layout of `columns` items
+ * (`layout.wrap`: sibling blocks, none a layout, a column or a block holding
+ * one, at a place a layout fits and outside any column; default one item per
+ * block, at least two).
  */
-export const wrappable = (edytor: Edytor, blocks: Block[], kind?: string) =>
+export const wrappable = (edytor: Edytor, blocks: Block[], kind?: string, columns?: number) =>
 	'writes' in
 	edytor.facade.prepare.wrapInLayout(
 		blocks.map((block) => block.id),
-		kind
+		kind,
+		columns
 	);
 
 /**
- * Wrap `blocks` in a new layout, one block per item, at the first one's place
- * (`layout.wrap`, Notion's Turn into N columns): one plan, one undo step;
- * hooks see `wrapBlocks`. The blocks stay selected. Answers whether it applied.
+ * Wrap `blocks` in a new layout of `columns` items (default one per block),
+ * at the first one's place (`layout.wrap`, Notion's Turn into N columns): the
+ * blocks one per item, then one empty block per further item; one plan, one
+ * undo step; hooks see `wrapBlocks`. The blocks stay selected. Answers
+ * whether it applied.
  */
-export const wrapBlocks = (edytor: Edytor, blocks: Block[], kind?: string) => {
+export const wrapBlocks = (edytor: Edytor, blocks: Block[], kind?: string, columns?: number) => {
 	const [first] = blocks;
 	if (!first) return false;
 	const applied = dispatchPlan(
 		first,
 		'wrapBlocks',
-		{ blocks, kind },
+		{ blocks, kind, columns },
 		(p) =>
 			edytor.facade.prepare.wrapInLayout(
 				p.blocks.map((block) => block.id),
-				p.kind
+				p.kind,
+				p.columns
 			),
 		lineage(first.parent)
 	);

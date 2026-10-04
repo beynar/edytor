@@ -4,8 +4,10 @@
  * to 5 sibling blocks, the block menu's Turn into lists "N columns" (N the
  * number of blocks), which wraps them in one layout, one block per column,
  * at the first one's place: one plan, one undo step, the blocks still
- * selected. Not offered for one block, more than five, blocks of different
- * parents, or inside a column (D2). Expected states are hand-authored.
+ * selected. Over one block it lists "2 columns" to "5 columns": the block
+ * becomes column 1, each other column holds an empty paragraph (Notion).
+ * Not offered for more than five, blocks of different parents, or inside a
+ * column (D2). Expected states are hand-authored.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Edytor } from '$lib/edytor.svelte.js';
@@ -92,12 +94,48 @@ describe('Turn into N columns over sibling blocks', () => {
 		]);
 	});
 
-	it('not offered for one block, six blocks, or blocks of different parents', async () => {
-		const six = ['X', 'Y', 'W', 'V', 'U', 'T'].map((id) => p(id, id.toLowerCase()));
-		const { edytor } = await render(six);
+	it('one block: "2 columns" to "5 columns"; "3 columns" makes it column 1 and two empty columns, one undo step', async () => {
+		const { edytor } = await render();
 		await turnMenu(edytor, 'X');
-		expect(flyoutRows().filter((row) => row?.endsWith('columns'))).toEqual([]);
-		document.body.innerHTML = '';
+		expect(flyoutRows().filter((row) => row?.endsWith('columns'))).toEqual([
+			'2 columns',
+			'3 columns',
+			'4 columns',
+			'5 columns'
+		]);
+		const steps = edytor.undoManager!.undoStack.length;
+		await click(flyoutRow('3 columns')!);
+		expect(named(edytor)).toEqual([
+			[
+				'NEW',
+				[
+					['NEW', [['X', ['X1']]]],
+					['NEW', ['NEW']],
+					['NEW', ['NEW']]
+				]
+			],
+			'Y',
+			'W',
+			'Z'
+		]);
+		const layout = edytor.value.children![0]!;
+		expect(layout.type).toBe('columns');
+		expect(layout.children!.map((item) => item.children!.map((b) => b.type))).toEqual([
+			['paragraph'],
+			['paragraph'],
+			['paragraph']
+		]);
+		expect(layout.children![1]!.children![0]!.content ?? []).toEqual([]);
+		// The block stays selected, as after a wrap of several.
+		expect(selected(edytor)).toEqual(['X']);
+		expect(edytor.undoManager!.undoStack.length).toBe(steps + 1);
+		edytor.historyUndo();
+		await flushDomUpdates();
+		expect(named(edytor)).toEqual([['X', ['X1']], 'Y', 'W', 'Z']);
+	});
+
+	it('not offered for six blocks, or blocks of different parents', async () => {
+		const six = ['X', 'Y', 'W', 'V', 'U', 'T'].map((id) => p(id, id.toLowerCase()));
 		const again = await render(six);
 		await turnMenu(again.edytor, 'X', 'Y', 'W', 'V', 'U', 'T');
 		expect(flyoutRows().filter((row) => row?.endsWith('columns'))).toEqual([]);
@@ -113,6 +151,13 @@ describe('Turn into N columns over sibling blocks', () => {
 			p('Z', 'z')
 		]);
 		await turnMenu(edytor, 'A', 'X');
+		expect(flyoutRows().filter((row) => row?.endsWith('columns'))).toEqual([]);
+		document.body.innerHTML = '';
+		const one = await render([
+			columns('C', column('K1', [p('A', 'a')]), column('K2', [p('B', 'b')])),
+			p('Z', 'z')
+		]);
+		await turnMenu(one.edytor, 'A');
 		expect(flyoutRows().filter((row) => row?.endsWith('columns'))).toEqual([]);
 	});
 });

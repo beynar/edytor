@@ -630,7 +630,7 @@ describe('layout.flow-slot: a flow over selected blocks fills their slot first',
 	});
 });
 
-describe('layout.wrap: wrapInLayout(ids, kind?) — Turn into N columns', () => {
+describe('layout.wrap: wrapInLayout(ids, kind?, columns?) — Turn into N columns', () => {
 	const flat = [para('P'), para('Q', 'q', [para('Q1')]), para('R'), ...SEED.slice(1)];
 	const AFTER = 'C:columns[K1:column[A:paragraph,A2:paragraph],K2:column[B:paragraph]] Z:paragraph';
 
@@ -644,6 +644,22 @@ describe('layout.wrap: wrapInLayout(ids, kind?) — Turn into N columns', () => 
 			flat,
 			(ed) => ed.wrapInLayout(['R', 'P']),
 			`NEW:columns[NEW:column[P:paragraph],NEW:column[R:paragraph]] Q:paragraph[Q1:paragraph] ${AFTER}`
+		);
+	});
+
+	it('one block into N columns: it fills column 1, each further column one empty paragraph (Notion)', () => {
+		row(
+			flat,
+			(ed) => ed.wrapInLayout(['Q'], undefined, 3),
+			`P:paragraph NEW:columns[NEW:column[Q:paragraph[Q1:paragraph]],NEW:column[NEW:paragraph],NEW:column[NEW:paragraph]] R:paragraph ${AFTER}`,
+			{
+				shapeOut: `P:"p" NEW:""[NEW:""[Q:"q"[Q1:"q1"]],NEW:""[NEW:""],NEW:""[NEW:""]] R:"r" C:""[K1:""[A:"a",A2:"a2"],K2:""[B:"b"]] Z:"z"`
+			}
+		);
+		row(
+			flat,
+			(ed) => ed.wrapInLayout(['P', 'R'], 'columns', 4),
+			`NEW:columns[NEW:column[P:paragraph],NEW:column[R:paragraph],NEW:column[NEW:paragraph],NEW:column[NEW:paragraph]] Q:paragraph[Q1:paragraph] ${AFTER}`
 		);
 	});
 
@@ -679,6 +695,13 @@ describe('layout.wrap: wrapInLayout(ids, kind?) — Turn into N columns', () => 
 				1,
 				([a]) => {
 					expect(a.ed.wrapInLayout(['P']).status).toBe('refused');
+					expect(a.ed.wrapInLayout([]).status).toBe('refused');
+					expect(a.ed.wrapInLayout([], undefined, 2).status).toBe('refused');
+					expect(a.ed.wrapInLayout(['P'], undefined, 1).status).toBe('refused');
+					expect(a.ed.wrapInLayout(['P'], undefined, 2.5).status).toBe('refused');
+					expect(a.ed.wrapInLayout(['P', 'Q', 'R'], undefined, 2).status).toBe('refused');
+					expect(a.ed.wrapInLayout(['A'], undefined, 2).status).toBe('refused');
+					expect(a.ed.wrapInLayout(['i1'], undefined, 2).status).toBe('refused');
 					expect(a.ed.wrapInLayout(['P', 'Q1']).status).toBe('refused');
 					expect(a.ed.wrapInLayout(['A', 'A2']).status).toBe('refused');
 					expect(a.ed.wrapInLayout(['P', 'C']).status).toBe('refused');
@@ -690,6 +713,23 @@ describe('layout.wrap: wrapInLayout(ids, kind?) — Turn into N columns', () => 
 			)
 		))
 			expect(typed(o.ed)).toMatch(/^P:paragraph Q:paragraph/);
+	});
+
+	it('Ada turns Q into 2 columns ‖ Bob types in Q → Bob’s text is in column 1, column 2 empty', () => {
+		for (const o of one(
+			converge(
+				flat,
+				2,
+				([a, b]) => {
+					expect(a.ed.wrapInLayout(['Q'], undefined, 2).status).toBe('applied');
+					expect(b.ed.insertText('Q', 1, '!').status).toBe('applied');
+				},
+				{ semantics }
+			)
+		))
+			expect(shape(o.ed)).toMatch(
+				/^P:"p" NEW:""\[NEW:""\[Q:"q!"\[Q1:"q1"\]\],NEW:""\[NEW:""\]\] R:"r"/
+			);
 	});
 
 	it('Ada wraps P, Q ‖ Bob types in Q → Bob’s text is in Q’s column', () => {

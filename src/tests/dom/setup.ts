@@ -44,3 +44,10 @@ afterAll(() => {
 if (!HTMLElement.prototype.scrollIntoView) {
 	HTMLElement.prototype.scrollIntoView = () => {};
 }
+
+// jsdom has no hit test: Pragmatic's auto-scroll loop reads `elementsFromPoint`
+// on the frame after a test's drag ends (a test stubs it on `document` only
+// while it drags). Nothing is under any point here.
+if (!Document.prototype.elementsFromPoint) {
+	Document.prototype.elementsFromPoint = () => [];
+}

@@ -391,11 +391,15 @@ test.describe('hosted room Durable Object — real browsers over real WebSockets
 		peers.push({ context, page });
 		let online = true;
 		let socket: WebSocketRoute | undefined;
-		await page.routeWebSocket(`${WS_SERVER}/${room}`, (route) => {
-			socket = route;
-			if (online) route.connectToServer();
-			else void route.close();
-		});
+		// The provider dials `<room>?replica=…`: match the path, whatever the query.
+		await page.routeWebSocket(
+			(url) => url.href.startsWith(`${WS_SERVER}/${room}?`) || url.href === `${WS_SERVER}/${room}`,
+			(route) => {
+				socket = route;
+				if (online) route.connectToServer();
+				else void route.close();
+			}
+		);
 		await gotoEditorRoute(page, `${peerPath(room)}&wssync=factory`, { requireRuntime: true });
 		expect(await expectConverged([page, b.page])).toEqual(SEED);
 
@@ -535,7 +539,7 @@ test.describe('hosted room Durable Object — real browsers over real WebSockets
 		expect(await readIds(d.page)).toEqual(IDS);
 		for (const issue of issues) issue.assertClean();
 	});
-	test('auth: a socket writing under a browser replica is refused (1008) and never reaches the pages', async ({
+	test('auth: a socket writing under a browser replica has those writes stripped; they never reach the pages', async ({
 		browser
 	}, testInfo) => {
 		const room = roomName('forged', testInfo.project.name);
@@ -564,10 +568,13 @@ test.describe('hosted room Durable Object — real browsers over real WebSockets
 				crdt.sync.writeUpdate(e, Y.mergeUpdates(forged as Uint8Array<ArrayBuffer>[]))
 			)
 		);
-		expect(await mallory.closed).toEqual({ code: 1008, reason: 'refused: replica' });
-		// Nor may Mallory dial as A's replica: refused before the upgrade.
+		// The room strips structs under another user's id; Mallory stays connected.
+		await a.page.waitForTimeout(300);
+		expect(mallory.state.closed).toBe(null);
+		mallory.ws.close();
+		// Nor may Mallory dial as A's replica: accepted, then closed 4409.
 		const impostor = await rawPeer(room, `user=mallory&replica=${idA}`);
-		expect(impostor.opened).toBe(false);
+		expect(await impostor.closed).toEqual({ code: 4409, reason: 'replica bound to another user' });
 
 		// The pages never saw the forged text and keep editing.
 		await a.page.waitForTimeout(300);

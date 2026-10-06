@@ -101,7 +101,8 @@ describe('shortcuts', () => {
 		await dispatchDomKeyDown(document, { key: '1', code: 'Digit1', ctrlKey: true, altKey: true });
 		expect(canonicalTree(edytor)).toEqual([{ type: 'heading', data: { level: 'h1' } }]);
 		await dispatchDomKeyDown(document, { key: '0', code: 'Digit0', ctrlKey: true, altKey: true });
-		expect(canonicalTree(edytor)).toEqual([{ type: 'paragraph' }]);
+		// A retype keeps the block's properties (`data.retype.keep`): text ignores the level.
+		expect(canonicalTree(edytor)).toEqual([{ type: 'paragraph', data: { level: 'h1' } }]);
 	});
 
 	it('Mod+Enter checks and unchecks a to-do', async () => {
@@ -574,7 +575,7 @@ describe('lists on Backspace', () => {
 		]);
 	});
 
-	it('a checked to-do after a to-do turns into text without its checked state', async () => {
+	it('a checked to-do after a to-do turns into text, keeping its checked state hidden', async () => {
 		const { edytor, editor } = await render([], {
 			children: [
 				{ type: 'todo-item', data: { checked: false }, content: [{ text: 'one' }] },
@@ -582,9 +583,11 @@ describe('lists on Backspace', () => {
 			]
 		});
 		await backspaceAtStartOf(edytor, editor, [1]);
+		// A retype keeps the block's properties, as Notion does (`data.retype.keep`):
+		// text shows no checkbox; turned back into a to-do, the preset unchecks it.
 		expect(canonicalTree(edytor)).toEqual([
 			{ type: 'todo-item', data: { checked: false }, content: [{ text: 'one' }] },
-			{ type: 'paragraph', content: [{ text: 'two' }] }
+			{ type: 'paragraph', data: { checked: true }, content: [{ text: 'two' }] }
 		]);
 	});
 
@@ -602,9 +605,10 @@ describe('lists on Backspace', () => {
 				]
 			});
 			await backspaceAtStartOf(edytor, editor, [1]);
+			// The kind's properties stay (`data.retype.keep`).
 			expect(canonicalTree(edytor)).toEqual([
 				{ type: 'paragraph', content: [{ text: 'para' }] },
-				{ type: 'paragraph', content: [{ text: 'kind' }] }
+				{ type: 'paragraph', ...(data && { data }), content: [{ text: 'kind' }] }
 			]);
 			expect(caret(edytor)).toEqual(['paragraph', 'kind', 0]);
 		}
@@ -615,7 +619,9 @@ describe('lists on Backspace', () => {
 			children: [{ type: 'heading', data: { level: 'h1' }, content: [{ text: 'Title' }] }]
 		});
 		await backspaceAtStartOf(edytor, editor, [0]);
-		expect(canonicalTree(edytor)).toEqual([{ type: 'paragraph', content: [{ text: 'Title' }] }]);
+		expect(canonicalTree(edytor)).toEqual([
+			{ type: 'paragraph', data: { level: 'h1' }, content: [{ text: 'Title' }] }
+		]);
 	});
 
 	it('an empty only bullet turns into text and gets the text placeholder back', async () => {

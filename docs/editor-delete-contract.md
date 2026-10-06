@@ -980,6 +980,24 @@ void, a container) and a closed toggle's hidden body are passed over. The
 block menu's Delete uses the same helper, so both land on the same caret
 (F-S13, FP-7, YW-04, DR-behavior-1).
 
+## Properties
+
+### `data.retype.keep` — a change of kind keeps the properties (H4)
+
+A retype (`setBlock` with a type and data: Turn into from any menu, a
+markdown shortcut, the slash menu, Backspace at the start of a kind,
+`del.start.kind`) sets the data leaves the new kind's preset names as
+`patchData` sets, one per leaf (`leafSets`: into an object the block holds
+there, else the value whole), and removes none; `setBlock` without a type
+does the same. A kind ignores the keys it does not read, as Notion's blocks
+keep their properties across kinds: a to-do `{checked: true, color: 'red'}`
+turned into a heading is `{checked: true, color: 'red', level: 'h1'}`, and
+turned back into a to-do `{checked: false, color: 'red', level: 'h1'}` (the
+preset's leaf is set). A peer's concurrent property write survives the
+retype (`h4-retype-keeps-data.test.ts`). Replacing the whole data stays
+`setBlockData` (`block.setData`, a root patch); a flow's join (`redata`)
+writes the pasted line's data whole, as before.
+
 ## History
 
 ### `hist.capture-group` — one undo step per gesture

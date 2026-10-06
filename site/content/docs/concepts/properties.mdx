@@ -116,7 +116,7 @@ Indexes are resolved against the document when the command runs, ids wherever th
 import type { Plugin } from 'edytor';
 
 // Validation lives in a hook. Only the app sets `locked`: refuse any write that
-// would change it, a whole-object replace (`setData`, `setBlock`, Turn into) included.
+// would change it, a whole-object replace (`setData`) included.
 export const locked: Plugin = () => ({
 	onBeforeOperation: ({ operation, payload, block, prevent }) => {
 		if (operation !== 'patchData' || payload.atom !== undefined) return;
@@ -130,13 +130,14 @@ export const locked: Plugin = () => ({
 });
 ```
 
-A patch with an empty `path` replaces the whole object (`setData`, `setBlock` with `data`, Turn into), so a check must look inside its `value`, not only at `path[0]`: a replace that leaves `locked` out deletes it.
+A patch with an empty `path` replaces the whole object (`setData`), so a check must look inside its `value`, not only at `path[0]`: a replace that leaves `locked` out deletes it.
 
 - A readonly view (or a read-only document) refuses every write, and `edytor.dispatcher.last` records `refused`.
 - A vetoed write writes nothing. Edytor has no property schema: validate or normalize in `onBeforeOperation` (return a replacement payload to rewrite a patch).
 - A block created with its properties is not a `patchData`: a paste, Duplicate and `insertBlocks` show as `addChildBlocks` with the new blocks' JSON (`payload.blocks`, `data` included), and a split's second half takes a copy of the first half's properties. A hook that guards a property checks `addChildBlocks` too.
 - Each write is one undo step. Typing into a property joins one step: a write of the same properties whose new strings each insert or delete one run of characters in the previous ones (`'Pla'` → `'Plan'`, `'Plan'` → `'Pan'`) continues the step while it comes within the history's capture window (`history.captureTimeout`, 500 ms by default), as typing text does. Any other write is its own step however fast it comes: a checkbox's `true`/`false`, a number, a delete, an object, and a string that is another value rather than an edit of it (`'todo'` → `'done'`, `'doing'` → `'done'`, a `<select>` changed twice). So checking and unchecking a to-do, or picking two statuses in a row, is two steps. To make several writes one step, run them in `edytor.transact(() => …)`.
-- `block.setData(obj)` and `atom.setData(obj)` are `patchData` commands that replace the whole object. `block.setBlock({ value: { data } })` (and Turn into) writes data as a `patchData` step, which hooks also see.
+- `block.setData(obj)` and `atom.setData(obj)` are `patchData` commands that replace the whole object. `block.setBlock({ value: { data } })` (and Turn into) writes data as a `patchData` step, which hooks also see: one patch per property it names (`{ path: ['level'], value: 'h1' }`), never a replace.
+- **A change of kind keeps the properties.** Turn into, a markdown shortcut, the slash menu, <kbd>Backspace</kbd> at the start of a heading or a to-do and `block.setBlock({ value: { type, data } })` set the properties the new kind's preset names and keep every other one, as Notion does: a checked red to-do turned into a heading keeps `checked` and `color` (a heading ignores them) and gains `level`; turned back into a to-do, the preset's `checked: false` unchecks it. A nested preset property sets its own keys inside an object the block holds there. To drop properties, write them (`delete block.data.checked`) or replace the object with `setData`.
 - Undo gives back exactly the properties the step changed; a collaborator's change to another property stays.
 
 ## How concurrent edits merge

@@ -1950,6 +1950,26 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			{ path: [], value: sanitizeWireJson(data) }
 		];
 		/**
+		 * `data`'s leaves as sets over `current` (`data.retype.keep`, H4): a
+		 * plain object's keys, recursively where `current` holds an object
+		 * there too; anything else (an array, a primitive, an empty object, an
+		 * object where `current` holds none) as one value at its path. Nothing
+		 * else under the root is touched.
+		 */
+		const leafSets = (data: unknown, current: unknown): DataPatch[] => {
+			const out: DataPatch[] = [];
+			const plainObject = (v: unknown): v is Record<string, unknown> =>
+				v !== null && typeof v === 'object' && !Array.isArray(v);
+			const walk = (v: unknown, at: unknown, path: string[]): void => {
+				if (plainObject(v) && Object.keys(v).length > 0 && (path.length === 0 || plainObject(at)))
+					for (const [k, x] of Object.entries(v))
+						walk(x, plainObject(at) ? at[k] : undefined, [...path, k]);
+				else if (path.length > 0) out.push({ path, value: v });
+			};
+			walk(sanitizeWireJson(data), current, []);
+			return out;
+		};
+		/**
 		 * The kind `kid` shows once it leaves `from` for a slot under `parent`
 		 * — the island and container rules, one answer:
 		 * - an island's child takes `parent`'s default child (it leaves the
@@ -2918,8 +2938,11 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		};
 
 		/**
-		 * Baseline `setBlock`: `type`/`data` update the block in place;
-		 * `content`/`children` REPLACE wholesale — explicit replacement is a
+		 * Baseline `setBlock`: `type` updates the block in place and `data`
+		 * sets the leaves it names, removing none (`data.retype.keep`, H4: a
+		 * retype keeps the block's properties, as Notion's Turn into does;
+		 * `setBlockData` replaces them); `content`/`children` REPLACE
+		 * wholesale — explicit replacement is a
 		 * new-identity operation; a retype to a void kind without `children`
 		 * unnests the current ones (`retypeSteps`). All-or-nothing (D-12): children
 		 * for a block that is `void` after the write, or a replacement id that
@@ -2945,13 +2968,16 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			const toVoid = type === undefined ? isVoid(id) : roles.childless(type);
 			if (children?.length && toVoid) return REFUSED;
 			if (children !== undefined && M.collides(doc, children)) return refused('id-collision');
+			const data =
+				value.data === undefined ? [] : dataSteps(id, leafSets(value.data, blockDataOf(id)));
+			if (data === null) return REFUSED;
 			const writes: PlanStep[] = [
 				...(type === undefined
 					? []
 					: children === undefined
 						? retypeSteps(id, type)
 						: attr(id, TYPE, type)),
-				...((value.data !== undefined && dataSteps(id, replaceData(value.data))) || [])
+				...data
 			];
 			if (content !== undefined) {
 				const length = displayLength(id);

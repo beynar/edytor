@@ -80,3 +80,60 @@ growth, on documents built by splits).
 - https://www.notion.com/blog/how-notion-handles-concurrent-editing-with-crdts, /data-model-behind-notion, /how-we-made-notion-available-offline, https://www.notion.so/blog/faster-page-load-navigation
 - https://jsonjoy.com/blog/list-crdt-benchmarks/, https://github.com/dmonad/crdt-benchmarks, https://github.com/josephg/editing-traces, https://josephg.com/blog/crdts-go-brrr
 - https://liveblocks.io/docs/compare/liveblocks-vs-yjs, https://liveblocks.io/docs/guides/livetext-vs-yjs
+
+## Phase 1 results (0.1.0-next.22)
+
+Measured on the same machine as the study, model only (the facade, no view
+subscribed) unless said otherwise. "Before" is `7a2ee66` (0.1.0-next.21);
+the scratch script and the new `bench:crdt` lane (`baseline.steadyState`)
+time one warmed document per size, median of 20 to 200 operations.
+
+| Item  | Measure                                                        | Before                                                   | After                                                 |
+| ----- | -------------------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------- |
+| P1    | Keystroke, Enter-built document, 500 / 1k / 2k blocks          | 838 / 3,086 / 12,540 µs                                  | 36 / 15 / 12 µs (bench p50 39 / 15 / 13 µs)           |
+| P1    | One paragraph split N times: per split, 1k / 5k                | 1.36 / 29.7 ms                                           | 0.16 / 0.69 ms                                        |
+| P1    | Keystroke in a split-born block, 1k / 5k splits                | 3,068 / 82,442 µs                                        | 33 / 53 µs (same block typed again: 21 / 21 µs)       |
+| P1    | `automerge-paper` trace (259,778 edits), no history            | 14,020 ops/s                                             | 75,216 ops/s (plain v14: 141K)                        |
+| P1+P6 | The same trace with a history (`captureTimeout: 0`)            | 5,810 ops/s, 329 MB heap, 1.68 MB encoded, 259,778 steps | 38,647 ops/s, 100 MB heap, 1.63 MB encoded, 200 steps |
+| P3    | Enter, 1k / 5k / 20k flat paragraphs                           | 1.01 / 6.19 / 35.8 ms                                    | 0.05 / 0.07 / 0.12 ms (bench p50 0.05 / 0.08 / 0.11)  |
+| P3    | Move to the end, same sizes                                    | 0.32 / 1.73 / 8.40 ms                                    | 0.02 / 0.02 / 0.04 ms                                 |
+| P3    | Block delete, same sizes                                       | 0.42 / 2.35 / 11.5 ms                                    | 0.03 / 0.03 / 0.04 ms                                 |
+| P3    | Enter / move / delete at 20k with a change subscriber (a view) | 4.4 / 5.2 / 5.0 ms (after P3's model part)               | 1.0 / 1.2 / 1.2 ms                                    |
+| H1    | Concurrent Enters at one block's end, 40 client-id pairs       | 34 interleave                                            | 0 interleave                                          |
+| P6    | `rank-growth` reorder row (3,000 moves, history kept)          | 151,975 B                                                | 70,647 B                                              |
+
+What changed:
+
+- **P1.** Each backing text keeps a maintained row (`crdt/text/rows.ts`): its
+  boundaries and the units between them in a Fenwick tree. An edit that writes
+  or removes no boundary moves its gap by its units (the gap found by walking
+  the item list to the nearest boundary, never the engine's position caches),
+  and only the display owner of that stream recomputes; a boundary change
+  rescans that text and re-places only the segments between the old and new
+  cut lists' common prefix and suffix. `placeText` is one sweep. Reads fold
+  every transaction whose body ran but whose observers have not (a write in an
+  `update` listener), which the old full invalidation used to hide.
+- **P3.** Owners, placements, both children indexes, the layout rules and the
+  change report are maintained: a change re-decides only what it reaches, and
+  any irregular state (a rejected cycle, a rehome) runs the global resolution
+  whole. Every vitest lane checks each maintained fact against its rebuild
+  after every fold (`indexChecks`).
+- **P6.** `history.limit` (200); a dropped step's deleted items are released
+  once every step that deleted part of them fell off, and collected.
+- **H1.** `rankAfter`, one rule for data arrays and inserted blocks; a run costs
+  one segment once. `rank-growth` stays inside its bounds: 300 Enters 256 chars
+  (240 before), 1,000 Enters 576 (592), outline 112 (96), reorders 16.
+- **H4, H8, P9.** Turn into sets the preset's leaves (`data.retype.keep`);
+  `atomic` data paths (`data.atomic`); presence throttled to 50 ms.
+
+Residuals:
+
+- A split into a text many blocks share (an Enter-built or pasted document)
+  still rescans that text: O(B) per split in its boundaries, about 0.7 ms at
+  5,000 boundaries, linear, not quadratic.
+- In a view, a root-level structural change reports the shifted index of every
+  later sibling (`moved`, the `DocChange` contract), O(siblings): about 1 ms at
+  20,000 blocks. `order` is rebuilt lazily, O(N), when a command reads it after
+  a structural change.
+- The first read of a freshly loaded document builds the index (the
+  `keystroke` bench lane's facade p50, about 1 ms at 1,000 blocks).

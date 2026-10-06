@@ -15,7 +15,8 @@ export default defineConfig({
 				bindings: {
 					EDYTOR_MAX_ROW_BYTES: '4096',
 					EDYTOR_MAX_FRAME_BYTES: '16384',
-					EDYTOR_COMPACT_AFTER: '40'
+					EDYTOR_COMPACT_AFTER: '40',
+					EDYTOR_LOG: 'off'
 				},
 				durableObjects: {
 					ROOM: { className: 'DocumentRoom', useSQLite: true },

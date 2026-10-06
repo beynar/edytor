@@ -93,6 +93,7 @@ Set these as `vars` in `wrangler.jsonc`. All are optional.
 | `EDYTOR_MAX_DOCUMENT_BYTES` | 67,108,864 (64 MiB) | The document [quota](#quotas). Can be raised. |
 | `EDYTOR_MAX_UPDATES_PER_SECOND` | 50 | The update rate [quota](#quotas), per socket. Can be raised. |
 | `EDYTOR_MAX_INBOUND_FRAME_BYTES` | 67,108,864 (64 MiB) | The frame [quota](#quotas). Can be raised. |
+| `EDYTOR_LOG` | | `off` silences the room's [log](#metrics-and-log). |
 
 ```jsonc wrangler.jsonc
 {
@@ -121,6 +122,32 @@ const { ranges } = await env.ROOMS.getByName(documentId).dropWaitingDeletes();
 ## Diagnostics
 
 `refusals` holds the newest 100 refusals (`MAX_REFUSALS`) of the running instance, each with its `reason` and `detail`; `refusalCounts` counts every refusal by reason. Both live in memory and restart empty; read them inside the object, or return them from an RPC method of your own. A `storage` entry is a failed append, compaction or registration, an `internal` entry an error of the engine or a send, a `waiting` entry the deletes of unheld items a frame carried past `MAX_WAITING_DELETES` (`{ user, ranges }`; the rest of the frame applied), a `quota` entry a write past a [quota](#quotas) (`{ user, quota, … }`; the socket closed `4413`), and a `mark` entry another writer's per-writer block marks a frame wrote or deleted (`{ user, writers, ranges }`, stripped). `denied` is not a refusal either: a frame [`validate`](/docs/server/extending#validate-edits) denied (`{ user, touched }`), undone by the room. Two entries are not refusals: `orphan` is an unowned id claimed by its dial (after a [restore without a registry](/docs/server/extending#load), or a relay), and `relayed` is content under an id the room held nothing of, delivered by another replica and kept unowned (see [replicas](/docs/server/authorization#replicas)).
+
+## Metrics and log
+
+`metrics()`, also over RPC, returns the room's counters since the instance started (a wake starts them again):
+
+| Field | Content |
+| --- | --- |
+| `documentBytes` | The document's size as the [document quota](#quotas) measures it: its records, uncompressed. |
+| `storedBytes`, `records`, `rows` | What the rows take in storage (a compressed snapshot at its compressed size), the logical records (the generation record included) and their rows. |
+| `updateRecords` | Update records since the last compaction (it runs at `EDYTOR_COMPACT_AFTER`). |
+| `waitingBytes` | Updates held in memory waiting for a missing dependency. |
+| `sockets` | The document's open sockets. |
+| `compaction` | Compactions run: `count`, `totalMs`, `maxMs`, `lastMs`, and `lastBytes` (the last snapshot's size). |
+| `fold` | Client sync frames folded (admitted, applied, stored, relayed, validated, acknowledged): `count`, `totalMs`, `maxMs`, `lastMs`. |
+| `fanOut` | Frames sent to other sockets (`messages`, a chunk counting as one) and their `bytes`. |
+| `quotaHits`, `validationDenials` | Writes refused by a [quota](#quotas), frames [`validate`](/docs/server/extending#validate-edits) denied. |
+| `refusals` | Every refusal by reason (as `refusalCounts`). |
+| `since` | When the instance started. |
+
+```ts
+const metrics = await env.ROOMS.getByName(documentId).metrics();
+```
+
+Times are what the runtime's clock reports. Workers advance the clock only across I/O, so synchronous work such as a compaction often reads `0` ms in production; sizes and counts are exact.
+
+The room also logs one JSON line per compaction (`{ "edytor": "compaction", "ms", "bytes", "records", "rows" }`), quota hit (`{ "edytor": "quota", "user", "quota" }`), denial (`{ "edytor": "denied", "user", "touched" }`) and fault (`{ "edytor": "fault", "reason", "detail" }`), with `console.log`, which [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/) and `wrangler tail` collect. Set `EDYTOR_LOG` to `off` to silence it, override `protected log(entry)` in a `DocumentRoom` subclass to send entries elsewhere, or pass `log` to `attachDocument` (`false` for none).
 
 ## Generation cutover
 

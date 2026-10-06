@@ -22,6 +22,7 @@ import {
 	type AuthorizeDocumentSocket,
 	type DocumentRoomEnv,
 	type FrameValidation,
+	type RoomLogEntry,
 	type ValidatedBlock,
 	type LoadedDocument,
 	type SavedDocument
@@ -124,6 +125,11 @@ export class FieldRoom extends DocumentRoom<Env> {
  * the `EDYTOR_MAX_*` vars.
  */
 export class QuotaRoom extends DocumentRoom<Env> {
+	/** Its log entries (H14), kept instead of printed. */
+	readonly logged: RoomLogEntry[] = [];
+	protected override log(entry: RoomLogEntry) {
+		this.logged.push(entry);
+	}
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, {
 			...env,
@@ -142,6 +148,11 @@ export class QuotaRoom extends DocumentRoom<Env> {
  * writes the frame's inverse.
  */
 export class LockedRoom extends DocumentRoom<Env> {
+	/** Its log entries (H14), kept instead of printed. */
+	readonly logged: RoomLogEntry[] = [];
+	protected override log(entry: RoomLogEntry) {
+		this.logged.push(entry);
+	}
 	protected override validate({ user, touched, before, after }: FrameValidation) {
 		const owner = (block: ValidatedBlock | null) => block?.data.lockedBy as string | undefined;
 		return touched.every((id) => {

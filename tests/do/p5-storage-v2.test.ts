@@ -16,6 +16,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type { DocumentRoom as Room } from '../../src/lib/cloudflare/index.js';
 import { E, RawClient, Y, dialOutcome, para, readFacade, storedUpdate } from './client';
 
+/** `vi.waitFor` under a loaded pool: the default 1 s is short for a room's round trips. */
+const SLOW = { timeout: 10_000, interval: 25 };
+
 const stubOf = (room: string) => env.ROOM.getByName(room);
 const inRoom = <T>(room: string, fn: (r: Room, state: DurableObjectState) => T) =>
 	runInDurableObject(stubOf(room), (r: Room, state) => fn(r, state));
@@ -74,12 +77,14 @@ describe('P5 · room snapshots in v2, compressed', () => {
 			actor: { id: 'ada' }
 		});
 		const client = await RawClient.connect(room, a.doc, { user: 'ada', replica: a.doc.clientID });
-		await vi.waitFor(() => expect(client.synced).toBe(true));
+		await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
 		a.transact(() => a.facade.insertText('p', 0, 'one '));
-		await vi.waitFor(async () =>
-			expect(await inRoom(room, (r) => Y.encodeStateVector(r.doc!))).toEqual(
-				Y.encodeStateVector(a.doc)
-			)
+		await vi.waitFor(
+			async () =>
+				expect(await inRoom(room, (r) => Y.encodeStateVector(r.doc!))).toEqual(
+					Y.encodeStateVector(a.doc)
+				),
+			SLOW
 		);
 		const raw = await inRoom(room, (r) => {
 			r.compact();
@@ -95,8 +100,9 @@ describe('P5 · room snapshots in v2, compressed', () => {
 		expect(snapshot.reduce((n, row) => n + row.bytes.length, 0)).toBeLessThan(raw.length / 4);
 		// Update records stay v1, beside the snapshot.
 		a.transact(() => a.facade.insertText('p', 0, 'two '));
-		await vi.waitFor(async () =>
-			expect((await rowsOf(room)).some((row) => row.kind === 'update')).toBe(true)
+		await vi.waitFor(
+			async () => expect((await rowsOf(room)).some((row) => row.kind === 'update')).toBe(true),
+			SLOW
 		);
 		const before = await textOf(room);
 		client.close();
@@ -139,9 +145,9 @@ describe('P5 · room snapshots in v2, compressed', () => {
 		);
 		// A client edits: the record is appended in v1, as every update record is.
 		const client = await RawClient.connect(room, a.doc, { user: 'ada', replica: a.doc.clientID });
-		await vi.waitFor(() => expect(client.synced).toBe(true));
+		await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
 		a.transact(() => a.facade.insertText('p', 2, 'edited '));
-		await vi.waitFor(async () => expect(await textOf(room)).toEqual(a.facade.toJSON()));
+		await vi.waitFor(async () => expect(await textOf(room)).toEqual(a.facade.toJSON()), SLOW);
 		expect(generationOf(await rowsOf(room))).toEqual(NEXT22_RECORD);
 		// The first compaction rewrites the container in this build's format.
 		await inRoom(room, (r) => r.compact());

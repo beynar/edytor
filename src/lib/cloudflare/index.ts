@@ -31,7 +31,10 @@ export {
 	type SocketIdentity,
 	type StoredRecord,
 	type FrameValidation,
-	type ValidatedBlock
+	type ValidatedBlock,
+	type RoomMetrics,
+	type RoomLogEntry,
+	type Timing
 } from './DocumentRoom.js';
 export {
 	routeDocumentSocket,

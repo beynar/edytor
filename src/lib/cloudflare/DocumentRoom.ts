@@ -212,6 +212,8 @@ export type DocumentRoomEnv = {
 	EDYTOR_MAX_DOCUMENT_BYTES?: string | number;
 	EDYTOR_MAX_INBOUND_FRAME_BYTES?: string | number;
 	EDYTOR_MAX_UPDATES_PER_SECOND?: string | number;
+	/** `off`: the room logs nothing (default: one JSON line per compaction, quota hit, denial, fault). */
+	EDYTOR_LOG?: string;
 };
 
 /** What a socket is bound to: its verified user, its replica (Yjs client id), its access. */
@@ -253,6 +255,65 @@ export type Refusal = {
 		// another replica ({ replica, user }) and stored unowned.
 		| 'relayed';
 	detail: unknown;
+};
+
+/** A duration series: how many, their total and longest (ms; see {@link RoomMetrics}). */
+export type Timing = { count: number; totalMs: number; maxMs: number; lastMs: number };
+
+/**
+ * The room's counters (H14), since this instance started (memory: a wake
+ * starts them again), read with `metrics()` (also over RPC). Times are
+ * what the runtime's clock reports: Workers advance it only across I/O, so
+ * in production synchronous work (a compaction, a fold) often reads `0`;
+ * sizes and counts are exact.
+ */
+export type RoomMetrics = {
+	/** The document's size as the document quota measures it: its records, uncompressed. */
+	documentBytes: number;
+	/** What its rows take in storage (a snapshot compressed). */
+	storedBytes: number;
+	/** Logical records stored (the generation record included), and their rows. */
+	records: number;
+	rows: number;
+	/** Update records since the last compaction (compaction runs at `compactAfter`). */
+	updateRecords: number;
+	/** Bytes of updates held waiting for a dependency (in memory, never stored). */
+	waitingBytes: number;
+	/** The document's open sockets. */
+	sockets: number;
+	/** Compactions run, with their time. */
+	compaction: Timing & { lastBytes: number };
+	/** Client sync frames folded (applied, indexed, stored and relayed), with their time. */
+	fold: Timing;
+	/** Frames sent to other sockets (relays, presence, acknowledgements to others), and their bytes. */
+	fanOut: { messages: number; bytes: number };
+	/** Writes refused by a quota (`quota` refusals) and frames `validate` denied. */
+	quotaHits: number;
+	validationDenials: number;
+	/** Every refusal, by reason (as `refusalCounts`). */
+	refusals: Partial<Record<Refusal['reason'], number>>;
+	/** When this instance started (ms since the epoch). */
+	since: number;
+};
+
+/** One line of the room's log (H14): a compaction, a quota hit, a denial, a fault. */
+export type RoomLogEntry =
+	| { edytor: 'compaction'; ms: number; bytes: number; records: number; rows: number }
+	| { edytor: 'quota'; user: string; quota: string }
+	| { edytor: 'denied'; user: string; touched: number }
+	| { edytor: 'fault'; reason: 'storage' | 'internal'; detail: string };
+
+const now = (): number =>
+	typeof performance !== 'undefined' && typeof performance.now === 'function'
+		? performance.now()
+		: Date.now();
+
+const timing = (): Timing => ({ count: 0, totalMs: 0, maxMs: 0, lastMs: 0 });
+const tally = (t: Timing, ms: number) => {
+	t.count++;
+	t.totalMs += ms;
+	t.maxMs = Math.max(t.maxMs, ms);
+	t.lastMs = ms;
 };
 
 /** `pending`: deletes of items the room does not hold yet (they wait for them). */
@@ -1039,6 +1100,12 @@ export type AttachDocumentOptions = {
 	 */
 	validate?: (frame: FrameValidation) => boolean | void;
 	/**
+	 * The room's log (H14): one entry per compaction, quota hit, denial or
+	 * fault. Default: `console.log` of the entry as JSON (Workers Logs and
+	 * `wrangler tail` collect it); `false` logs nothing.
+	 */
+	log?: ((entry: RoomLogEntry) => void) | false;
+	/**
 	 * The block roles `transact` edits obey — the document semantics your
 	 * clients' plugins declare (`defaultType` also names the block an empty
 	 * room is seeded with). Default
@@ -1088,6 +1155,13 @@ export class AttachedDocument {
 	private updates = 0;
 	/** What the records hold, uncompressed (the generation record aside): the document quota's measure. */
 	private documentBytes = 0;
+	/** The counters `metrics()` reads (H14). */
+	private readonly counters = {
+		compaction: { ...timing(), lastBytes: 0 },
+		fold: timing(),
+		fanOut: { messages: 0, bytes: 0 },
+		since: Date.now()
+	};
 	/** The index `validate` reads (built at its first frame, for the live document). */
 	private validation: Validation | null = null;
 	/** Each socket's update allowance (a token bucket; memory: a wake refills it). */
@@ -1665,6 +1739,7 @@ export class AttachedDocument {
 		return noTimers(() => {
 			this.heal();
 			const doc = this.requireDoc();
+			const started = now();
 			// Only the waiting deletes are read back: the snapshot is the live doc.
 			const pending = this.records('pending');
 			// The live state, never a merge of the records (P2): memory never
@@ -1717,10 +1792,69 @@ export class AttachedDocument {
 				doc,
 				addIds(Y.createIdSet(), all, (client) => !known.has(client))
 			);
+			const rows = this.sql
+				.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${this.rowsTable}`)
+				.one().n;
+			const ms = now() - started;
+			tally(this.counters.compaction, ms);
+			this.counters.compaction.lastBytes = snapshot.length;
+			this.log({
+				edytor: 'compaction',
+				ms,
+				bytes: snapshot.length,
+				records: still.isEmpty() ? 2 : 3,
+				rows
+			});
+			return { rows };
+		});
+	}
+
+	/** The room's counters (H14), also over RPC — see {@link RoomMetrics}. */
+	metrics(): RoomMetrics {
+		return noTimers(() => {
+			const stored = this.live === null ? null : this.storage();
 			return {
-				rows: this.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${this.rowsTable}`).one().n
+				documentBytes: this.documentBytes,
+				storedBytes: stored?.bytes ?? 0,
+				records: stored?.records ?? 0,
+				rows: stored?.rows ?? 0,
+				updateRecords: this.updates,
+				waitingBytes: this.live?.store.pendingStructs?.update.length ?? 0,
+				sockets: this.ctx.getWebSockets(SOCKET_TAG).length,
+				compaction: { ...this.counters.compaction },
+				fold: { ...this.counters.fold },
+				fanOut: { ...this.counters.fanOut },
+				quotaHits: this.refusalCounts.quota ?? 0,
+				validationDenials: this.refusalCounts.denied ?? 0,
+				refusals: { ...this.refusalCounts },
+				since: this.counters.since
 			};
 		});
+	}
+
+	/** What the rows take: bytes, logical records, rows. */
+	private storage(): { bytes: number; records: number; rows: number } {
+		return this.sql
+			.exec<{
+				bytes: number | null;
+				records: number;
+				rows: number;
+			}>(
+				`SELECT SUM(length(bytes)) AS bytes, COUNT(DISTINCT record) AS records, COUNT(*) AS rows FROM ${this.rowsTable}`
+			)
+			.one() as { bytes: number; records: number; rows: number };
+	}
+
+	/** Write one log entry (H14) — the `log` option's, `console.log` by default. */
+	private log(entry: RoomLogEntry) {
+		const log = this.options.log;
+		if (log === false) return;
+		try {
+			if (log) log(entry);
+			else console.log(JSON.stringify(entry));
+		} catch {
+			// a log never fails the room
+		}
 	}
 
 	/**
@@ -1764,6 +1898,11 @@ export class AttachedDocument {
 		const registry = !append && error instanceof StorageFault;
 		const storage = append || registry;
 		this.note({
+			reason: storage ? 'storage' : 'internal',
+			detail: String(append ? this.unstored : error)
+		});
+		this.log({
+			edytor: 'fault',
 			reason: storage ? 'storage' : 'internal',
 			detail: String(append ? this.unstored : error)
 		});
@@ -2122,6 +2261,7 @@ export class AttachedDocument {
 		detail: Record<string, number>
 	) {
 		this.note({ reason: 'quota', detail: { user, quota, ...detail } });
+		this.log({ edytor: 'quota', user, quota });
 		this.chunkReaders.delete(ws);
 		this.depart(ws);
 		this.close(ws, CLOSE.quota, `quota: ${quota}`);
@@ -2224,6 +2364,16 @@ export class AttachedDocument {
 			return this.refuse(ws, { reason: 'malformed', detail: `sync type ${syncType}` });
 		}
 		const update = decode(() => E.readVarUint8Array(decoder));
+		const started = now();
+		try {
+			this.onUpdate(ws, attachment, doc, update);
+		} finally {
+			tally(this.counters.fold, now() - started);
+		}
+	}
+
+	/** A client's Step2 or Update: admitted, applied, stored, relayed, validated, acknowledged. */
+	private onUpdate(ws: WebSocket, attachment: Attachment, doc: YDoc, update: Uint8Array) {
 		// 2 · Access: a read-only socket writes nothing (it stays, and is told).
 		if (attachment.readOnly) {
 			this.note({ reason: 'read-only', detail: attachment.user });
@@ -2469,6 +2619,7 @@ export class AttachedDocument {
 		}
 		if (!allowed) {
 			this.note({ reason: 'denied', detail: { user: attachment.user, touched } });
+			this.log({ edytor: 'denied', user: attachment.user, touched: touched.length });
 			const history = v.history;
 			if (history !== null && history.undoStack.length > 0) {
 				history.undo();
@@ -2627,6 +2778,8 @@ export class AttachedDocument {
 			if (ws === except || ws.readyState !== WebSocket.OPEN) continue;
 			try {
 				for (const piece of pieces) ws.send(piece);
+				this.counters.fanOut.messages += pieces.length;
+				this.counters.fanOut.bytes += bytes.length;
 			} catch {
 				// a socket that died mid-broadcast gets its close event
 			}
@@ -2700,7 +2853,8 @@ export class DocumentRoom<
 			},
 			onLoad: () => this.onLoad(),
 			onSave: saves ? (document) => this.onSave(document) : undefined,
-			validate: validates ? (frame) => this.validate(frame) : undefined
+			validate: validates ? (frame) => this.validate(frame) : undefined,
+			log: (entry) => this.log(entry)
 		});
 	}
 
@@ -2718,6 +2872,15 @@ export class DocumentRoom<
 	 * frame is validated, and no block index is kept.
 	 */
 	protected validate(_frame: FrameValidation): boolean | void {}
+
+	/**
+	 * One log entry (H14): `console.log` of it as JSON, unless the
+	 * `EDYTOR_LOG` var is `off`. Override it to send entries elsewhere.
+	 */
+	protected log(entry: RoomLogEntry): void {
+		if (String((this.env as DocumentRoomEnv).EDYTOR_LOG ?? '') === 'off') return;
+		console.log(JSON.stringify(entry));
+	}
 
 	/**
 	 * Block roles — see {@link AttachDocumentOptions.semantics}. Read once,
@@ -2747,6 +2910,10 @@ export class DocumentRoom<
 	/** Compaction, also over RPC. */
 	compact(): { rows: number } {
 		return this.room.compact();
+	}
+	/** The room's counters, also over RPC — see {@link RoomMetrics}. */
+	metrics(): RoomMetrics {
+		return this.room.metrics();
 	}
 	/** The snapshot compression in flight, also over RPC — see {@link AttachedDocument.compressed}. */
 	compressed(): Promise<void> {

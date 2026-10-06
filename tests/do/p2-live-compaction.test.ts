@@ -20,6 +20,9 @@ import type { DocumentRoom as Room } from '../../src/lib/cloudflare/index.js';
 import type { YDoc } from '../../src/lib/crdt/index.js';
 import { E, RawClient, Y, crdt, para, readFacade } from './client';
 
+/** `vi.waitFor` under a loaded pool: the default 1 s is short for a room's round trips. */
+const SLOW = { timeout: 10_000, interval: 25 };
+
 const stubOf = (room: string) => env.ROOM.getByName(room);
 const inRoom = <T>(room: string, fn: (r: Room, state: DurableObjectState) => T) =>
 	runInDurableObject(stubOf(room), (r: Room, state) => fn(r, state));
@@ -78,7 +81,7 @@ describe('P2 · compaction stores the live state', () => {
 		const sent: Uint8Array<ArrayBuffer>[] = [Y.encodeStateAsUpdate(a.doc)];
 		a.doc.on('update', (update: Uint8Array<ArrayBuffer>) => sent.push(update));
 		const client = await RawClient.connect(room, a.doc, { user: 'ada', replica: a.doc.clientID });
-		await vi.waitFor(() => expect(client.synced).toBe(true));
+		await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
 		// Typing, one keystroke per transaction, with a typo erased every tenth key.
 		let text = '';
 		for (let i = 0; i < 400; i++) {
@@ -90,8 +93,10 @@ describe('P2 · compaction stores the live state', () => {
 				text = text.slice(0, -1);
 			}
 		}
-		await vi.waitFor(async () =>
-			expect(await inRoom(room, (r) => readFacade(r.doc!, (f) => f.blockText('p')))).toBe(text)
+		await vi.waitFor(
+			async () =>
+				expect(await inRoom(room, (r) => readFacade(r.doc!, (f) => f.blockText('p')))).toBe(text),
+			SLOW
 		);
 		// What a merge of every record would store (the room's compaction before P2).
 		const merged = Y.mergeUpdates(sent).length;
@@ -121,8 +126,10 @@ describe('P2 · compaction stores the live state', () => {
 		client.send(syncFrame(initial));
 		// The second edit first: it waits for the first.
 		for (const update of updates.slice(first)) client.send(syncFrame(update));
-		await vi.waitFor(async () =>
-			expect(await inRoom(room, (r) => r.doc!.store.pendingStructs !== null)).toBe(true)
+		await vi.waitFor(
+			async () =>
+				expect(await inRoom(room, (r) => r.doc!.store.pendingStructs !== null)).toBe(true),
+			SLOW
 		);
 		const compacted = await inRoom(room, (r) => {
 			r.compact();
@@ -134,8 +141,10 @@ describe('P2 · compaction stores the live state', () => {
 		expect(compacted).toEqual({ text: 'x', waiting: true });
 		expect(await kinds(room)).toEqual(['generation', 'snapshot']);
 		for (const update of updates.slice(0, first)) client.send(syncFrame(update));
-		await vi.waitFor(async () =>
-			expect(await inRoom(room, (r) => readFacade(r.doc!, (f) => f.blockText('p')))).toBe('xab')
+		await vi.waitFor(
+			async () =>
+				expect(await inRoom(room, (r) => readFacade(r.doc!, (f) => f.blockText('p')))).toBe('xab'),
+			SLOW
 		);
 		const before = await live(room);
 		expect(await inRoom(room, (r) => r.doc!.store.pendingStructs)).toBe(null);
@@ -153,16 +162,18 @@ describe('P2 · compaction stores the live state', () => {
 		const room = 'p2-copies';
 		const a = author('', 'ada');
 		const client = await RawClient.connect(room, a.doc, { user: 'ada', replica: a.doc.clientID });
-		await vi.waitFor(() => expect(client.synced).toBe(true));
+		await vi.waitFor(() => expect(client.synced).toBe(true), SLOW);
 		a.transact(() => a.facade.insertText('p', 0, 'hello'));
 		a.transact(() => a.facade.deleteText('p', 0, 5));
 		a.history.undo(); // restores 'hello' by copying it (P11)
 		expect(a.facade.blockText('p')).toBe('hello');
 		a.transact(() => a.facade.deleteText('p', 0, 5)); // deletes the copy
-		await vi.waitFor(async () =>
-			expect(await inRoom(room, (r) => Y.encodeStateVector(r.doc!))).toEqual(
-				Y.encodeStateVector(a.doc)
-			)
+		await vi.waitFor(
+			async () =>
+				expect(await inRoom(room, (r) => Y.encodeStateVector(r.doc!))).toEqual(
+					Y.encodeStateVector(a.doc)
+				),
+			SLOW
 		);
 		const snapshot = await inRoom(room, (r) => {
 			r.compact();

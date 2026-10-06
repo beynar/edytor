@@ -665,13 +665,15 @@ export const childrenIndex = (
 		if (bucket) bucket.push(slot);
 		else index.set(parent, [slot]);
 	}
-	for (const bucket of index.values()) {
-		bucket.sort((a, b) =>
-			a.rank === b.rank ? a.id.localeCompare(b.id) : a.rank < b.rank ? -1 : 1
-		);
-	}
+	for (const bucket of index.values()) bucket.sort(bySlot);
 	return index;
 };
+
+/** The order of a children list: by rank, ties by id. */
+export const bySlot = (
+	a: { id: BlockId; rank: string },
+	b: { id: BlockId; rank: string }
+): number => (a.rank === b.rank ? a.id.localeCompare(b.id) : a.rank < b.rank ? -1 : 1);
 
 /**
  * Document order (O7): ONE pre-order over the visible blocks of a children
@@ -1062,11 +1064,23 @@ export const bindModel = (Y: EngineApi) => {
 	 */
 	const project = (doc: EngineDoc): ProjectedDoc => ({ children: R.attach(doc).project() });
 
-	/** `positionOf` in a view: the display parent and the index among its visible children. */
+	/**
+	 * `positionOf` in a view: the display parent and the index among its
+	 * visible children — a binary search by the block's display rank (the
+	 * list's own order), not a scan of its siblings.
+	 */
 	const positionInView = (v: ModelView, id: BlockId): Destination | null => {
 		if (!isLiveIn(v, id)) return null;
-		const dp = displayParentOf(v.own, v.placements.get(id)!, v.placements, id) as BlockId | null;
-		const index = (v.kids.get(dp) ?? []).findIndex((s) => s.id === id);
+		const slot = displaySlotOf(v.own, v.placements, v.placements.get(id)!, id);
+		const dp = slot.parent as BlockId | null;
+		const list = v.kids.get(dp) ?? [];
+		let [lo, hi] = [0, list.length];
+		while (lo < hi) {
+			const mid = (lo + hi) >> 1;
+			if (bySlot(list[mid], { id, rank: slot.rank }) < 0) lo = mid + 1;
+			else hi = mid;
+		}
+		const index = list[lo]?.id === id ? lo : list.findIndex((s) => s.id === id);
 		return index < 0 ? null : { parent: dp, index };
 	};
 

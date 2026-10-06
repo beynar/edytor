@@ -13,10 +13,16 @@
  */
 // @ts-nocheck -- tests drive the facade through untyped fixtures.
 import { writeFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Y } from '../../../lib/crdt/engine.js';
+import { indexChecks } from '../../../lib/crdt/text/runs.js';
 import { createDocument, loadDocument } from '../../../lib/crdt/index.js';
 import { REMOTE, crdt } from './p1-harness.js';
+
+// Timings: the index's per-fold self-checks (a rebuild each) would be measured too.
+const checks = indexChecks.on;
+beforeAll(() => void (indexChecks.on = false));
+afterAll(() => void (indexChecks.on = checks));
 
 const blocks = (n: number) =>
 	Array.from({ length: n }, (_, i) => ({

@@ -1739,9 +1739,21 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			count: number,
 			exclude: readonly BlockId[] = []
 		): string[] => {
-			const sibs = (view().kids.get(parent) ?? []).filter((k) => !exclude.includes(k.id));
-			const at = Math.max(0, Math.min(index, sibs.length));
-			return M.ranksAt(sibs, at, count, doc.clientID, randOf(doc));
+			const v = view();
+			const all = v.kids.get(parent) ?? [];
+			// The moving blocks' own slots left out: index → the list's index past them.
+			const gone = exclude
+				.map((id) => M.positionInView(v, id))
+				.filter((p) => p !== null && p.parent === parent)
+				.map((p) => p!.index)
+				.sort((a, b) => a - b);
+			const raw = (i: number) => {
+				for (const g of gone) if (g <= i) i++;
+				return i;
+			};
+			const at = Math.max(0, Math.min(index, all.length - gone.length));
+			const pair = [at > 0 ? all[raw(at - 1)] : undefined, all[raw(at)]];
+			return M.ranksAt(pair as readonly { rank: string }[], 1, count, doc.clientID, randOf(doc));
 		};
 		/**
 		 * Move `ids` to `ranks` under `parent` (`index`: the slot hooks see).

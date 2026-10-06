@@ -119,19 +119,23 @@ describe('shared model ctx — facet invalidation', () => {
 		expect(seen[0].meta.size + seen[0].order.size + seen[0].moved.size).toBe(0);
 	});
 
-	it('an `at` write rebuilds placements+kids but recomputes no runs', () => {
+	it('an `at` write re-places the moved block and patches its lists, recomputing no runs', () => {
 		const set = createPeerPair(SEED);
 		const doc = set.A.doc;
 		const view = R.attach(doc);
 		const ctx = view.view();
-		const placements = ctx.placements;
-		const kids = ctx.kids;
+		const rootKids = ctx.kids.get(null);
+		const cKids = ctx.kids.get('c');
 		const aRuns = view.runs('a');
 		view.debug.reset();
 		const seen = reports(view);
 		set.A.transact(() => M.moveBlock(doc, 'a', { parent: 'c', index: 1 }));
-		expect(ctx.placements).not.toBe(placements);
-		expect(ctx.kids).not.toBe(kids);
+		// P3: the placements and child lists are maintained in place; each list
+		// a move leaves or joins is replaced (a list a reader holds never changes).
+		expect(ctx.placements.get('a').parent).toBe('c');
+		expect(ctx.kids.get(null)).not.toBe(rootKids);
+		expect(ctx.kids.get('c')).not.toBe(cKids);
+		expect(cKids.map((k) => k.id)).toEqual(['c1']);
 		// The move changed display order only — a's runs are identical refs.
 		expect(view.runs('a')).toBe(aRuns);
 		expect(view.debug.recomputed.has('a')).toBe(false);
@@ -159,17 +163,16 @@ describe('shared model ctx — facet invalidation', () => {
 		expect(view.view().blocks.get('a').data).toEqual({ level: 2 });
 	});
 
-	it('a merge claim rebuilds ownership, placements and kids', () => {
+	it('a merge claim re-decides ownership and patches the lists', () => {
 		const set = createPeerPair(SEED);
 		const doc = set.A.doc;
 		const view = R.attach(doc);
 		const ctx = view.view();
-		const placements = ctx.placements;
-		const kids = ctx.kids;
+		const rootKids = ctx.kids.get(null);
 		const seen = reports(view);
 		set.A.transact(() => M.mergeBlocks(doc, 'b', 'a'));
-		expect(ctx.placements).not.toBe(placements);
-		expect(ctx.kids).not.toBe(kids);
+		expect(ctx.own.ownerOf('b')).toBe('a');
+		expect(ctx.kids.get(null)).not.toBe(rootKids);
 		expect([...seen[0].removed]).toEqual(['b']);
 		expect(ctx.own.hidden('b')).toBe(true);
 		expect(M.project(doc).children.map((k) => k.id)).toEqual(['a', 'c']);

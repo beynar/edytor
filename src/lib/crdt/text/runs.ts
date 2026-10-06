@@ -72,8 +72,10 @@ import type {
 } from '../placement/model.js';
 import {
 	candidatesOf,
+	bySlot,
 	childrenIndex,
 	displayIndex,
+	displaySlotOf,
 	documentOrder,
 	REGISTRY_KEY,
 	resolvePlacements
@@ -83,6 +85,7 @@ import {
 	byId,
 	canonKey,
 	claimGraph,
+	cmpStamp,
 	DEAD,
 	deepFreeze,
 	delimiters,
@@ -95,6 +98,7 @@ import {
 	type Claim,
 	type Owner,
 	type RangeReadStats,
+	type Stamp,
 	type Stream,
 	type TextRow
 } from './model.js';
@@ -484,17 +488,150 @@ export const bindRuns = (Y: EngineApi) => {
 		const textConsumers = new Map<BlockId, Set<BlockId>>();
 		const listConsumers = new Map<BlockId, Set<BlockId>>();
 
-		// ── the claim graph (lazy, per structure version) ─────────────────
-		let owners = new Map<BlockId, Owner>();
-		let tops = new Map<BlockId, BlockId>();
-		/** `-1` forces the first build (structureVersion starts at 0). */
-		let ownersVersion = -1;
-		let structureVersion = 0;
-		const ensureOwners = (): void => {
-			if (ownersVersion >= structureVersion) return;
-			({ owners, top: tops } = claimGraph(blocks));
-			ownersVersion = structureVersion;
+		// ── the claim graph (P3: maintained) ─────────────────────────────
+		// `top(m)` is the max-stamp claim on `m` held by a live block; each
+		// block's owner follows `top` up (`claimGraph`). A structural change
+		// of a block (its claims, its delete mark, its record) re-decides the
+		// `top` of the blocks it claims (before and after) and the owners of
+		// those blocks and of every block whose `top` chain reaches them —
+		// never the whole graph.
+		const owners = new Map<BlockId, Owner>();
+		const topOf = new Map<BlockId, { claimer: BlockId; stamp: Stamp }>();
+		/** Claimer → the blocks it tops. */
+		const topInv = new Map<BlockId, Set<BlockId>>();
+		/** Claimed block → the blocks whose claims list names it (live or not). */
+		const claimersOf = new Map<BlockId, Set<BlockId>>();
+		/** Owner → the blocks it displays (itself included while it owns itself). */
+		const displaysMap = new Map<BlockId, Set<BlockId>>();
+		/** Blocks whose claims, delete mark or record changed since the last owner pass. */
+		const ownerSeeds = new Set<BlockId>();
+		/** Blocks whose owner changed since the last placement pass. */
+		const ownerChanged = new Set<BlockId>();
+		let ownersBuilt = false;
+		const addTo = <K, V>(index: Map<K, Set<V>>, key: K, value: V): void => {
+			let set = index.get(key);
+			if (set === undefined) index.set(key, (set = new Set()));
+			set.add(value);
 		};
+		const dropFrom = <K, V>(index: Map<K, Set<V>>, key: K, value: V): void => {
+			const set = index.get(key);
+			set?.delete(value);
+			if (set?.size === 0) index.delete(key);
+		};
+		/** The max-stamp claim on `m` held by a live block. */
+		const topClaim = (m: BlockId): { claimer: BlockId; stamp: Stamp } | undefined => {
+			let best: { claimer: BlockId; stamp: Stamp } | undefined;
+			for (const holder of claimersOf.get(m) ?? []) {
+				const rec = blocks.get(holder);
+				if (rec === undefined || rec.deleted) continue;
+				for (const c of rec.claims)
+					if (c.m === m && (best === undefined || cmpStamp(c.stamp, best.stamp) > 0))
+						best = { claimer: holder, stamp: c.stamp };
+			}
+			return best;
+		};
+		const setTop = (m: BlockId, t: { claimer: BlockId; stamp: Stamp } | undefined): boolean => {
+			const old = topOf.get(m);
+			if (old?.claimer === t?.claimer && (old === undefined || cmpStamp(old.stamp, t!.stamp) === 0))
+				return false;
+			if (old !== undefined) dropFrom(topInv, old.claimer, m);
+			if (t === undefined) topOf.delete(m);
+			else {
+				topOf.set(m, t);
+				addTo(topInv, t.claimer, m);
+			}
+			return true;
+		};
+		/** `owner(b)` along `top` (`claimGraph`'s walk), memoized into `owners`. */
+		const walkOwner = (b: BlockId): void => {
+			const path: BlockId[] = [];
+			let cur = b;
+			let result: Owner;
+			for (;;) {
+				const known = owners.get(cur);
+				if (known !== undefined) {
+					result = known;
+					break;
+				}
+				const rec = blocks.get(cur);
+				if (!rec || rec.deleted) {
+					result = DEAD;
+					break;
+				}
+				const at = path.indexOf(cur);
+				if (at >= 0) {
+					let best = topOf.get(path[at])!;
+					for (const member of path.slice(at)) {
+						const t = topOf.get(member)!;
+						if (cmpStamp(t.stamp, best.stamp) > 0) best = t;
+					}
+					result = best.claimer;
+					break;
+				}
+				const t = topOf.get(cur);
+				if (t === undefined) {
+					result = cur;
+					break;
+				}
+				path.push(cur);
+				cur = t.claimer;
+			}
+			if (blocks.has(cur)) owners.set(cur, result);
+			for (const x of path) owners.set(x, result);
+		};
+		const setDisplay = (b: BlockId, from: Owner | undefined, to: Owner | undefined): void => {
+			if (typeof from === 'string') dropFrom(displaysMap, from, b);
+			if (typeof to === 'string') addTo(displaysMap, to, b);
+		};
+		const ensureOwners = (): void => {
+			if (!ownersBuilt) {
+				ownersBuilt = true;
+				ownerSeeds.clear();
+				const graph = claimGraph(blocks);
+				owners.clear();
+				for (const [b, o] of graph.owners) if (blocks.has(b)) owners.set(b, o);
+				topOf.clear();
+				topInv.clear();
+				claimersOf.clear();
+				for (const [holder, rec] of blocks)
+					for (const c of rec.claims) addTo(claimersOf, c.m, holder);
+				for (const m of claimersOf.keys()) setTop(m, topClaim(m));
+				displaysMap.clear();
+				for (const b of blocks.keys()) setDisplay(b, undefined, owners.get(b));
+				return;
+			}
+			if (ownerSeeds.size === 0) return;
+			// The tops a seed's claims (now, and those it dropped: noted in `claimersOf` changes) decide.
+			const affected = new Set<BlockId>();
+			const stack: BlockId[] = [];
+			for (const x of ownerSeeds) {
+				stack.push(x);
+				for (const m of claimTargets.get(x) ?? []) if (setTop(m, topClaim(m))) stack.push(m);
+				for (const c of blocks.get(x)?.claims ?? [])
+					if (setTop(c.m, topClaim(c.m))) stack.push(c.m);
+			}
+			ownerSeeds.clear();
+			claimTargets.clear();
+			for (let x = stack.pop(); x !== undefined; x = stack.pop()) {
+				if (affected.has(x)) continue;
+				affected.add(x);
+				for (const m of topInv.get(x) ?? []) stack.push(m);
+			}
+			const before = new Map<BlockId, Owner | undefined>();
+			for (const x of affected) {
+				before.set(x, owners.get(x));
+				owners.delete(x);
+			}
+			for (const x of affected) if (blocks.has(x)) walkOwner(x);
+			for (const [x, was] of before) {
+				const now = owners.get(x);
+				if (now === was) continue;
+				setDisplay(x, was, now);
+				ownerChanged.add(x);
+			}
+		};
+		/** The claims each seed held before its record changed (their tops are re-decided too). */
+		const claimTargets = new Map<BlockId, Set<BlockId>>();
 		const ownerOf = (b: BlockId): Owner => {
 			ensureOwners();
 			return owners.get(b) ?? DEAD;
@@ -676,7 +813,7 @@ export const bindRuns = (Y: EngineApi) => {
 			},
 			top: (m) => {
 				ensureOwners();
-				return tops.get(m);
+				return topOf.get(m)?.claimer;
 			},
 			streamOf,
 			streamsIn,
@@ -684,26 +821,39 @@ export const bindRuns = (Y: EngineApi) => {
 			display: (b) => displayOf(b, blocks, ownShim)
 		};
 
-		/** Owner → displayed blocks, rebuilt lazily with `owners` (the delete step's marks). */
-		let displaysMap = new Map<BlockId, BlockId[]>();
-		let displaysAt = -1;
+		/** The blocks `owner` displays (the delete step's marks). */
 		const displays = (owner: BlockId): readonly BlockId[] => {
 			ensureOwners();
-			if (displaysAt !== ownersVersion) {
-				displaysMap = displayIndex(blocks, ownerOf);
-				displaysAt = ownersVersion;
-			}
-			return displaysMap.get(owner) ?? [];
+			return [...(displaysMap.get(owner) ?? [])];
 		};
 
-		// ── lazily-maintained placement / children-index facets ───────────
-		// They rebuild only on `at` writes, delete marks, claim churn (the
-		// display edge is `owner(parent)`) and registry entry churn; a
-		// keystroke keeps the resolved placements and children index verbatim.
-		let placementsMap: Map<BlockId, ResolvedPlacement> | null = null;
-		let kidsMap: Map<BlockId | null, ChildSlot[]> | null = null;
-		/** Each visible block's display parent, and the island it displays out of (`reset`). */
-		let slots = new Map<BlockId, { under: BlockId | null; reset?: BlockId }>();
+		// ── placements and the children index (P3: maintained) ────────────
+		// A structural change re-decides only what it can change: the winning
+		// placement of the blocks whose candidates (or whose parent's
+		// registry entry) changed, and the display slot of every block whose
+		// slot walk (`displaySlotOf`) reads one that changed — its stored
+		// subtree, through the blocks it displays — patched into the parents'
+		// child lists. While every block shows its winning candidate (no
+		// cycle rejected, none rehomed), a block's placement is its argmax
+		// (`resolvePlacements` accepts it), so only a cycle through a changed
+		// display edge needs the global resolution, which then runs whole.
+		// The layout rules re-run only on the layouts a change reaches.
+		/** Resolved placements. */
+		const placementsMap = new Map<BlockId, ResolvedPlacement>();
+		/** Resolved parent → the blocks placed under it. */
+		const kidsOf = new Map<BlockId | null, Set<BlockId>>();
+		/** A block's argmax candidate parent → the blocks naming it (its entry decides theirs). */
+		const byArgParent = new Map<BlockId, Set<BlockId>>();
+		/** A slot in a children index: its display parent, rank and the island it displays out of. */
+		type Slot = { parent: BlockId | null; rank: string; reset?: BlockId };
+		/** The children index without the layout rules (what they read), and with them. */
+		let kids0 = new Map<BlockId | null, ChildSlot[]>();
+		let slots0 = new Map<BlockId, Slot>();
+		let kidsMap = kids0;
+		/** Each visible block's slot (display parent, rank, the island it displays out of). */
+		let slots = slots0;
+		/** The document holds a layout or an item kind: `kids0` and `kidsMap` differ. */
+		let layoutMode = false;
 		/** The line kinds the roles declare, and those of the lines islands the document holds. */
 		let lineKinds = new Set<string>();
 		/**
@@ -711,10 +861,58 @@ export const bindRuns = (Y: EngineApi) => {
 		 * an island, then in a lined island or of a line kind — which the
 		 * report re-reads after a retype.
 		 */
-		let following: BlockId[] = [];
+		const following = new Set<BlockId>();
 		let orderCache: DocOrder | null = null;
-		let placementsBuiltAt = -1;
-		let placementVersion = 0;
+		/** Bumps whenever a child list changes (the report compares it). */
+		let kidsVersion = 0;
+		/** The next pass rebuilds everything (first build, roles, an irregular state). */
+		let placementFull = true;
+		/** Some block shows no argmax candidate (a cycle rejected one, or none): passes run whole. */
+		let irregular = false;
+		/** Blocks whose candidates or record changed, whose display state changed. */
+		const placementSeeds = new Set<BlockId>();
+		const stateSeeds = new Set<BlockId>();
+		/** Per block: whether its kind is a layout, an item, a lines island (with its line kind). */
+		const kindsOf = new Map<BlockId, { layout: boolean; item: boolean; line?: string }>();
+		let layoutBlocks = 0;
+		let itemBlocks = 0;
+		const lineCounts = new Map<string, number>();
+		/** The item kinds the roles declare. */
+		const declaredItems = (): Set<string> => {
+			const items = new Set<string>();
+			for (const type of roles?.layoutKinds() ?? []) items.add(roles!.layout(type)!);
+			return items;
+		};
+		let itemKinds = new Set<string>();
+		/** Re-count `id`'s kind facts; a fact the roles never declared forces a full pass. */
+		const noteKind = (id: BlockId): void => {
+			const old = kindsOf.get(id);
+			const type = blocks.get(id)?.type;
+			const now =
+				type === undefined
+					? undefined
+					: { layout: itemKind(id) !== undefined, item: itemKinds.has(type), line: lineKind(id) };
+			if (old?.layout) layoutBlocks--;
+			if (old?.item) itemBlocks--;
+			if (old?.line !== undefined) lineCounts.set(old.line, lineCounts.get(old.line)! - 1);
+			if (now === undefined) kindsOf.delete(id);
+			else kindsOf.set(id, now);
+			if (now?.layout) layoutBlocks++;
+			if (now?.item) itemBlocks++;
+			if (now?.line !== undefined) lineCounts.set(now.line, (lineCounts.get(now.line) ?? 0) + 1);
+			const item = itemKind(id);
+			if (item !== undefined && !itemKinds.has(item)) placementFull = true;
+			if (now?.line !== undefined && !lineKinds.has(now.line)) placementFull = true;
+			if (layoutMode !== layoutBlocks + itemBlocks > 0) placementFull = true;
+		};
+		/** The argmax candidate's parent (a registry entry or the root), and its index entry. */
+		const argParent = (rec: BlockRec | undefined): BlockId | null | undefined => rec?.cands[0]?.p;
+		const noteCands = (id: BlockId, before: BlockId | null | undefined): void => {
+			const after = argParent(blocks.get(id));
+			if (before === after) return;
+			if (typeof before === 'string') dropFrom(byArgParent, before, id);
+			if (typeof after === 'string') addTo(byArgParent, after, id);
+		};
 		/**
 		 * The layout rules over a children index (`layout.*`): the live blocks
 		 * they do not display, found in one post-order pass. A layout shows
@@ -726,80 +924,330 @@ export const bindRuns = (Y: EngineApi) => {
 		 * (`layout.single`). Each decision reads the children a node shows
 		 * once its own children's were made, so one pass is the fixpoint:
 		 * what a dissolve hands up is never an item (an item shows only in a
-		 * layout, and a dissolving layout hands up its item's children).
+		 * layout, and a dissolving layout hands up its item's children). The
+		 * decisions under a node read only its subtree and whether its parent
+		 * is a layout, so a pass can start at any node (`from`).
 		 */
-		const dissolve = (kids: Map<BlockId | null, ChildSlot[]>, items: Set<string>) => {
-			const out = new Set<BlockId>();
-			const isItem = (b: BlockId) => items.has(blocks.get(b)?.type ?? '');
-			// `parent`'s shown children: each slot's id and, for an item, the ids it shows.
-			type Shown = { id: BlockId; kids: BlockId[] };
-			const visit = (parent: BlockId | null, layout: boolean): Shown[] => {
-				const shown: Shown[] = [];
-				for (const { id } of kids.get(parent) ?? []) {
-					const own = itemKind(id) !== undefined;
-					const sub = visit(id, own);
-					if (own) {
-						if (sub.length > 1) shown.push({ id, kids: [] });
-						else {
-							out.add(id);
-							for (const k of sub) {
-								out.add(k.id);
-								shown.push(...k.kids.map((kid) => ({ id: kid, kids: [] })));
-							}
-						}
-					} else if (isItem(id) && (!layout || sub.length === 0)) {
+		type Shown = { id: BlockId; kids: BlockId[] };
+		const dissolveVisit = (
+			kids: Map<BlockId | null, ChildSlot[]>,
+			out: Set<BlockId>,
+			ids: readonly BlockId[],
+			layout: boolean
+		): Shown[] => {
+			const isItem = (b: BlockId) => itemKinds.has(blocks.get(b)?.type ?? '');
+			const shown: Shown[] = [];
+			for (const id of ids) {
+				const own = itemKind(id) !== undefined;
+				const sub = dissolveVisit(
+					kids,
+					out,
+					(kids.get(id) ?? []).map((k) => k.id),
+					own
+				);
+				if (own) {
+					if (sub.length > 1) shown.push({ id, kids: [] });
+					else {
 						out.add(id);
-						shown.push(...sub);
-					} else shown.push({ id, kids: sub.map((k) => k.id) });
-				}
-				return shown;
-			};
-			visit(null, false);
+						for (const k of sub) {
+							out.add(k.id);
+							shown.push(...k.kids.map((kid) => ({ id: kid, kids: [] })));
+						}
+					}
+				} else if (isItem(id) && (!layout || sub.length === 0)) {
+					out.add(id);
+					shown.push(...sub);
+				} else shown.push({ id, kids: sub.map((k) => k.id) });
+			}
+			return shown;
+		};
+		const dissolve = (kids: Map<BlockId | null, ChildSlot[]>): Set<BlockId> => {
+			const out = new Set<BlockId>();
+			dissolveVisit(
+				kids,
+				out,
+				(kids.get(null) ?? []).map((k) => k.id),
+				false
+			);
 			return out;
 		};
-		const ensurePlacements = (): void => {
-			if (placementsBuiltAt >= placementVersion) return;
-			ensureOwners();
-			placementsMap = resolvePlacements(blocks, ownerOf);
-			dissolved = new Set();
-			kidsMap = childrenIndex(placementsMap, ownShim);
-			// The layout rules, when the document holds a layout or an item kind.
-			const items = new Set<string>();
-			for (const type of roles?.layoutKinds() ?? []) items.add(roles!.layout(type)!);
-			let layouts = false;
+		/** The ownership the layout rules read: none of their decisions applied. */
+		const own0: DisplayOwnership = {
+			...ownShim,
+			hidden: (b) => ownerOf(b) !== b,
+			passes: () => false
+		};
+		/** `id`'s slot in the index `own` reads (none: hidden, or under no live parent). */
+		const slotIn = (own: DisplayOwnership, id: BlockId): Slot | undefined => {
+			const pl = placementsMap.get(id);
+			if (pl === undefined || !blocks.has(id) || own.hidden(id)) return undefined;
+			const { parent, rank, reset } = displaySlotOf(own, placementsMap, pl, id);
+			if (parent === DEAD) return undefined;
+			return reset === null ? { parent, rank } : { parent, rank, reset };
+		};
+		/** The index of the first slot of `list` not before `x`. */
+		const seek = (list: readonly ChildSlot[], x: { id: BlockId; rank: string }): number => {
+			let lo = 0;
+			let hi = list.length;
+			while (lo < hi) {
+				const mid = (lo + hi) >> 1;
+				if (bySlot(list[mid], x) < 0) lo = mid + 1;
+				else hi = mid;
+			}
+			return lo;
+		};
+		/**
+		 * Re-decide the slots of `affected` in `kids`/`slotMap` (read through
+		 * `own`), patching the child lists they leave or join (each list
+		 * copied once: a list a reader holds never changes under it). Returns
+		 * the blocks whose slot changed, with their parents before and after.
+		 */
+		const patch = (
+			kids: Map<BlockId | null, ChildSlot[]>,
+			slotMap: Map<BlockId, Slot>,
+			own: DisplayOwnership,
+			affected: Iterable<BlockId>
+		): Map<BlockId, [BlockId | null | undefined, BlockId | null | undefined]> => {
+			const changed = new Map<BlockId, [BlockId | null | undefined, BlockId | null | undefined]>();
+			const copies = new Map<BlockId | null, ChildSlot[]>();
+			const list = (p: BlockId | null): ChildSlot[] => {
+				let l = copies.get(p);
+				if (l === undefined) copies.set(p, (l = [...(kids.get(p) ?? [])]));
+				return l;
+			};
+			for (const id of affected) {
+				const old = slotMap.get(id);
+				const next = slotIn(own, id);
+				if (
+					old?.parent === next?.parent &&
+					old?.rank === next?.rank &&
+					old?.reset === next?.reset &&
+					(old === undefined) === (next === undefined)
+				)
+					continue;
+				if (old !== undefined) {
+					const l = list(old.parent);
+					const at = seek(l, { id, rank: old.rank });
+					if (l[at]?.id === id) l.splice(at, 1);
+				}
+				if (next !== undefined) {
+					const l = list(next.parent);
+					const slot: ChildSlot =
+						next.reset === undefined
+							? { id, rank: next.rank }
+							: { id, rank: next.rank, reset: next.reset };
+					l.splice(seek(l, slot), 0, slot);
+					slotMap.set(id, next);
+				} else slotMap.delete(id);
+				changed.set(id, [old?.parent, next?.parent]);
+			}
+			for (const [p, l] of copies) {
+				if (l.length === 0) kids.delete(p);
+				else kids.set(p, l);
+			}
+			return changed;
+		};
+		/** `seeds` and every block whose slot walk reads one of them: stored subtrees, through what each displays. */
+		const reach = (seeds: Iterable<BlockId>): Set<BlockId> => {
+			const out = new Set<BlockId>();
+			const stack = [...seeds];
+			for (let x = stack.pop(); x !== undefined; x = stack.pop()) {
+				if (out.has(x)) continue;
+				out.add(x);
+				for (const c of kidsOf.get(x) ?? []) stack.push(c);
+				for (const d of displaysMap.get(x) ?? [])
+					if (d !== x) for (const c of kidsOf.get(d) ?? []) stack.push(c);
+			}
+			return out;
+		};
+		/** Whether `id` shows as its slot's kind (`following`): read from its slot and kinds. */
+		const noteFollowing = (id: BlockId): void => {
+			const slot = slots.get(id);
+			const follows =
+				slot !== undefined &&
+				(slot.reset !== undefined ||
+					(slot.parent !== null && lineKind(slot.parent) !== undefined) ||
+					lineKinds.has(blocks.get(id)?.type ?? ''));
+			if (follows) following.add(id);
+			else following.delete(id);
+		};
+		/** The placement `resolvePlacements` gives `id` while every block shows its argmax. */
+		const argmaxOf = (id: BlockId): ResolvedPlacement | null | undefined => {
+			const rec = blocks.get(id);
+			if (rec === undefined) return undefined;
+			const c = rec.cands[0];
+			if (c === undefined) return null;
+			const p = c.p !== null && !blocks.has(c.p) ? null : c.p;
+			return { parent: p, rank: c.r };
+		};
+		/** A display edge walk from `id`'s parent reaches `id` (or loops): the argmax graph has a cycle. */
+		const cyclic = (id: BlockId): boolean => {
+			let steps = 0;
+			for (let cur = placementsMap.get(id)?.parent ?? null; cur !== null; ) {
+				const o = ownerOf(cur);
+				const at = o === DEAD ? cur : o;
+				if (at === id || ++steps > blocks.size) return true;
+				const cp = placementsMap.get(at);
+				if (cp === undefined) return false;
+				cur = cp.parent;
+			}
+			return false;
+		};
+		const setPlacement = (id: BlockId, pl: ResolvedPlacement | undefined): void => {
+			const old = placementsMap.get(id);
+			if (old !== undefined) dropFrom(kidsOf, old.parent, id);
+			if (pl === undefined) placementsMap.delete(id);
+			else {
+				placementsMap.set(id, pl);
+				addTo(kidsOf, pl.parent, id);
+			}
+		};
+		/** Everything rebuilt from the records (the first build, roles, an irregular state). */
+		const rebuildPlacements = (): void => {
+			placementFull = false;
+			placementSeeds.clear();
+			stateSeeds.clear();
+			ownerChanged.clear();
+			itemKinds = declaredItems();
 			for (const b of blocks.keys()) {
 				const item = itemKind(b);
-				if (item === undefined) continue;
-				items.add(item);
-				layouts = true;
+				if (item !== undefined) itemKinds.add(item);
 			}
-			if (!layouts) for (const rec of blocks.values()) if (items.has(rec.type)) layouts = true;
-			if (layouts) {
-				const out = dissolve(kidsMap, items);
-				if (out.size > 0) {
-					dissolved = out;
-					kidsMap = childrenIndex(placementsMap, ownShim);
-				}
-			}
-			slots = new Map();
 			lineKinds = new Set(roles?.lineKinds());
-			for (const b of blocks.keys()) {
-				const line = lineKind(b);
-				if (line !== undefined) lineKinds.add(line);
+			kindsOf.clear();
+			[layoutBlocks, itemBlocks] = [0, 0];
+			lineCounts.clear();
+			for (const b of blocks.keys()) noteKind(b);
+			for (const line of lineCounts.keys()) lineKinds.add(line);
+			placementFull = false;
+			const resolved = resolvePlacements(blocks, ownerOf);
+			placementsMap.clear();
+			kidsOf.clear();
+			irregular = false;
+			for (const [id, pl] of resolved) {
+				setPlacement(id, pl);
+				const arg = argmaxOf(id);
+				if (!arg || arg.parent !== pl.parent || arg.rank !== pl.rank) irregular = true;
 			}
-			const out: BlockId[] = [];
-			const lines: BlockId[] = [];
-			for (const [under, kids] of kidsMap) {
-				const lined = under !== null && lineKind(under) !== undefined;
-				for (const { id, reset } of kids) {
-					slots.set(id, { under, reset });
-					if (reset !== undefined) out.push(id);
-					if (lined || lineKinds.has(blocks.get(id)?.type ?? '')) lines.push(id);
+			layoutMode = layoutBlocks + itemBlocks > 0;
+			dissolved = new Set();
+			const index = (own: DisplayOwnership, map: Map<BlockId | null, ChildSlot[]>) => {
+				const at = new Map<BlockId, Slot>();
+				for (const [parent, list] of map)
+					for (const { id, rank, reset } of list)
+						at.set(id, reset === undefined ? { parent, rank } : { parent, rank, reset });
+				void own;
+				return at;
+			};
+			kids0 = childrenIndex(placementsMap, own0);
+			slots0 = index(own0, kids0);
+			if (layoutMode) {
+				dissolved = dissolve(kids0);
+				kidsMap = childrenIndex(placementsMap, ownShim);
+				slots = index(ownShim, kidsMap);
+			} else [kidsMap, slots] = [kids0, slots0];
+			following.clear();
+			for (const id of slots.keys()) noteFollowing(id);
+			orderCache = null;
+			kidsVersion++;
+		};
+		/**
+		 * Re-run the layout rules on the layouts `changed` (blocks whose slot
+		 * in `kids0` changed, with their parents) and `kinds` reach: from each
+		 * one up through layouts and items, the topmost such ancestor's
+		 * subtree. Returns the blocks whose dissolved state flipped.
+		 */
+		const redissolve = (
+			changed: Map<BlockId, [BlockId | null | undefined, BlockId | null | undefined]>,
+			kinds: Iterable<BlockId>
+		): Set<BlockId> => {
+			const flips = new Set<BlockId>();
+			const isLayoutish = (b: BlockId) => {
+				const k = kindsOf.get(b);
+				return k !== undefined && (k.layout || k.item);
+			};
+			const roots = new Set<BlockId>();
+			const climb = (b: BlockId | null | undefined): void => {
+				let top: BlockId | undefined;
+				for (let x = b; typeof x === 'string' && isLayoutish(x); x = slots0.get(x)?.parent) top = x;
+				if (top !== undefined) roots.add(top);
+			};
+			for (const [id, [from, to]] of changed) {
+				climb(id);
+				climb(from);
+				climb(to);
+			}
+			for (const id of kinds) {
+				// Its kind decides its own rule, its parent's count and its children's (`layout`).
+				climb(id);
+				climb(slots0.get(id)?.parent);
+				for (const k of kids0.get(id) ?? []) climb(k.id);
+				// Only a layout or an item dissolves: a block that left those kinds shows again.
+				if (!isLayoutish(id) && dissolved.delete(id)) flips.add(id);
+			}
+			for (const root of roots) {
+				if (!slots0.has(root)) continue;
+				const parent = slots0.get(root)!.parent;
+				const nodes: BlockId[] = [];
+				const stack = [root];
+				for (let x = stack.pop(); x !== undefined; x = stack.pop()) {
+					nodes.push(x);
+					for (const k of kids0.get(x) ?? []) stack.push(k.id);
+				}
+				const out = new Set<BlockId>();
+				dissolveVisit(kids0, out, [root], parent !== null && itemKind(parent) !== undefined);
+				for (const x of nodes) {
+					if (out.has(x) === dissolved.has(x)) continue;
+					if (out.has(x)) dissolved.add(x);
+					else dissolved.delete(x);
+					flips.add(x);
 				}
 			}
-			following = [...out, ...lines];
-			orderCache = null;
-			placementsBuiltAt = placementVersion;
+			// A block that left the index (hidden, removed) dissolves no more.
+			for (const id of changed.keys()) if (!slots0.has(id) && dissolved.delete(id)) flips.add(id);
+			return flips;
+		};
+		const ensurePlacements = (): void => {
+			ensureOwners();
+			if (placementFull || irregular) {
+				if (placementFull || placementSeeds.size + stateSeeds.size + ownerChanged.size > 0)
+					rebuildPlacements();
+				return;
+			}
+			if (placementSeeds.size + stateSeeds.size + ownerChanged.size === 0) return;
+			const moved = new Set<BlockId>();
+			for (const id of placementSeeds) {
+				const next = argmaxOf(id);
+				if (next === null) return rebuildPlacements();
+				const old = placementsMap.get(id);
+				if (old?.parent === next?.parent && old?.rank === next?.rank) continue;
+				setPlacement(id, next);
+				moved.add(id);
+			}
+			// A changed display edge closing a cycle needs the global resolution.
+			for (const id of moved) if (cyclic(id)) return rebuildPlacements();
+			for (const o of ownerChanged)
+				for (const c of kidsOf.get(o) ?? []) if (cyclic(c)) return rebuildPlacements();
+			const seeds = new Set<BlockId>([...moved, ...stateSeeds, ...ownerChanged]);
+			const kinds = [...stateSeeds];
+			placementSeeds.clear();
+			stateSeeds.clear();
+			ownerChanged.clear();
+			const affected = reach(seeds);
+			let touched: Iterable<BlockId> = affected;
+			const changed = patch(kids0, slots0, own0, affected);
+			let any = changed.size > 0;
+			if (layoutMode) {
+				const flips = redissolve(changed, kinds);
+				const again = flips.size > 0 ? reach([...affected, ...flips]) : affected;
+				any = patch(kidsMap, slots, ownShim, again).size > 0 || any;
+				touched = again;
+			}
+			for (const id of touched) noteFollowing(id);
+			if (any) {
+				orderCache = null;
+				kidsVersion++;
+			}
 		};
 
 		/**
@@ -837,7 +1285,7 @@ export const bindRuns = (Y: EngineApi) => {
 			const stored = blocks.get(id)?.type ?? 'unknown';
 			const slot = slots.get(id);
 			if (roles === null || slot === undefined) return stored;
-			const { under, reset } = slot;
+			const { parent: under, reset } = slot;
 			const line = under === null || lineKinds.size === 0 ? undefined : lineKind(under);
 			if (line !== undefined) return line;
 			const lined = lineKinds.has(stored);
@@ -850,7 +1298,7 @@ export const bindRuns = (Y: EngineApi) => {
 			// container whose item is the document's default kind (a column) holds no
 			// items of its own: a paragraph under one is no list's item.
 			if (!lined && typeof from === 'string' && roles.container(from))
-				for (let u = under; u !== null; u = slots.get(u)?.under ?? null) {
+				for (let u = under; u !== null; u = slots.get(u)?.parent ?? null) {
 					const t = typeOf(u);
 					if (
 						roles.container(t) &&
@@ -933,13 +1381,45 @@ export const bindRuns = (Y: EngineApi) => {
 			for (const c of rec?.claims ?? []) fx.add(c.m);
 		};
 
-		/** Rebuild (or create, or drop) block `id`'s record. */
+		/**
+		 * Rebuild (or create, or drop) block `id`'s record, and note what the
+		 * maintained facts must re-decide: its owner and the tops of the
+		 * blocks it claims (P3), its placement — and, when its entry came or
+		 * went, the placements of the blocks whose candidate names it.
+		 */
 		const updateBlockRec = (id: BlockId): void => {
+			const old = blocks.get(id);
 			const node = registry.getAttr(id);
 			if (!isNodeLike(node)) blocks.delete(id);
 			else blocks.set(id, buildRec(id, node));
-			noteEffects(id, blocks.get(id));
+			const rec = blocks.get(id);
+			noteEffects(id, rec);
 			noteShell(id);
+			const was = new Set(old?.claims.map((c) => c.m));
+			const now = new Set(rec?.claims.map((c) => c.m));
+			for (const m of was)
+				if (!now.has(m)) {
+					dropFrom(claimersOf, m, id);
+					addTo(claimTargets, id, m);
+				}
+			for (const m of now) if (!was.has(m)) addTo(claimersOf, m, id);
+			ownerSeeds.add(id);
+			noteCands(id, argParent(old));
+			placementSeeds.add(id);
+			if ((old === undefined) !== (rec === undefined)) {
+				stateSeeds.add(id);
+				for (const c of byArgParent.get(id) ?? []) placementSeeds.add(c);
+			}
+			if (old?.type !== rec?.type) {
+				noteKind(id);
+				if (
+					old === undefined ||
+					rec === undefined ||
+					roles === null ||
+					!sameShape(roles, old.type, rec.type)
+				)
+					stateSeeds.add(id);
+			}
 		};
 		/** A withdrawn block without a delete mark: its `deleted` is settled after each fold. */
 		const noteShell = (id: BlockId): void => {
@@ -956,15 +1436,15 @@ export const bindRuns = (Y: EngineApi) => {
 			own: ownShim,
 			get placements() {
 				ensurePlacements();
-				return placementsMap!;
+				return placementsMap;
 			},
 			get kids() {
 				ensurePlacements();
-				return kidsMap!;
+				return kidsMap;
 			},
 			get order() {
 				ensurePlacements();
-				return (orderCache ??= documentOrder(kidsMap!));
+				return (orderCache ??= documentOrder(kidsMap));
 			},
 			// R4: the publication boundary shares THIS interner, so a payload
 			// emitted by `project()`/`contentItems()` is `===` the runs' one.
@@ -1099,15 +1579,12 @@ export const bindRuns = (Y: EngineApi) => {
 			/** The blocks whose entry or nonce changed: their delimiters are re-decided. */
 			named: Set<BlockId>;
 			table: boolean;
-			structure: boolean;
-			placement: boolean;
 			/** The winning parents, before and after, of the blocks the fold touched. */
 			parents: Set<BlockId>;
 		};
 		const parentOf = (id: BlockId): BlockId | null | undefined => blocks.get(id)?.cands[0]?.p;
 		/** A structural change of `id`: its readers, and the blocks it claims, re-read. */
 		const invalidateBlock = (id: BlockId, ctx: FoldCtx, claimsBefore: Claim[] = []): void => {
-			ctx.structure = ctx.placement = true;
 			ctx.invalidated.add(id);
 			for (const c of listConsumers.get(id) ?? []) ctx.invalidated.add(c);
 			for (const m of new Set([...(effects.get(id) ?? []), ...claimsBefore.map((c) => c.m)])) {
@@ -1158,18 +1635,23 @@ export const bindRuns = (Y: EngineApi) => {
 			} else {
 				ensureRec(id);
 				const rec = blocks.get(id);
-				if (kinds.has('at')) {
-					if (rec) rec.cands = candidatesOf(rec.node);
-					ctx.placement = true;
+				if (kinds.has('at') && rec) {
+					const before = argParent(rec);
+					rec.cands = candidatesOf(rec.node);
+					noteCands(id, before);
+					placementSeeds.add(id);
 				}
 				if (kinds.has('meta') && rec) {
 					const was = rec.type;
 					rec.type = typeAttr(rec.node);
 					rec.data = readData(rec.node);
-					if (rec.type !== was) retyped = true;
+					if (rec.type !== was) {
+						retyped = true;
+						noteKind(id);
+					}
 					// A retype that changes the kind's display shape re-parents
 					// (or re-kinds) its children.
-					if (roles !== null && !sameShape(roles, was, rec.type)) ctx.placement = true;
+					if (roles !== null && !sameShape(roles, was, rec.type)) stateSeeds.add(id);
 				}
 			}
 			const parentAfter = parentOf(id);
@@ -1288,8 +1770,8 @@ export const bindRuns = (Y: EngineApi) => {
 				const rec = blocks.get(id)!;
 				if (rec.deleted === !alive.has(id)) continue;
 				rec.deleted = !alive.has(id);
+				ownerSeeds.add(id);
 				if (ctx === null) continue;
-				structureVersion++;
 				invalidateBlock(id, ctx);
 			}
 		};
@@ -1354,22 +1836,18 @@ export const bindRuns = (Y: EngineApi) => {
 				texts: new Map(),
 				named: new Set(),
 				table: false,
-				structure: false,
-				placement: false,
 				parents: new Set()
 			};
 			for (const [id, facets] of touched) {
 				foldBlock(id, facets, edits.get(id) ?? [], ctx);
 				derived ||= [...facets].some((f) => f === ENTRY_FACET || facetOf(f) !== 'ignore');
 			}
-			if (ctx.structure) structureVersion++;
 			foldTexts(ctx);
 			if (shells.size > 0)
 				settle(
 					ctx.table ? shells : [...touched.keys(), ...ctx.parents, ...editedStreams(ctx)],
 					ctx
 				);
-			if (ctx.placement) placementVersion++;
 			for (const b of ctx.invalidated) dirty.add(b);
 			if (indexChecks.on) check();
 			if (derived) version++;
@@ -1418,6 +1896,44 @@ export const bindRuns = (Y: EngineApi) => {
 				const fresh = computeFresh(b).fresh;
 				if (keyOf(fresh) !== keyOf(c.runs)) fail(`runs of ${b}`);
 			}
+			// P3: the claim graph, placements, children index and layout rules.
+			ensurePlacements();
+			const graph = claimGraph(blocks);
+			for (const b of blocks.keys()) {
+				if (ownerOf(b) !== (graph.owners.get(b) ?? DEAD)) fail(`owner of ${b}`);
+				if (ownShim.top(b) !== graph.top.get(b)) fail(`top of ${b}`);
+			}
+			const shown = displayIndex(blocks, ownerOf);
+			for (const [o, list] of shown)
+				if (
+					list.length !== (displaysMap.get(o)?.size ?? 0) ||
+					list.some((b) => !displaysMap.get(o)!.has(b))
+				)
+					fail(`displays of ${o}`);
+			for (const o of displaysMap.keys()) if (!shown.has(o)) fail(`displays of ${o}`);
+			const resolved = resolvePlacements(blocks, ownerOf);
+			if (resolved.size !== placementsMap.size) fail('placements');
+			for (const [b, pl] of resolved) {
+				const mine = placementsMap.get(b);
+				if (mine?.parent !== pl.parent || mine.rank !== pl.rank) fail(`placement of ${b}`);
+			}
+			const same = (x: Map<BlockId | null, ChildSlot[]>, y: Map<BlockId | null, ChildSlot[]>) =>
+				x.size === y.size && [...x].every(([p, l]) => keyOf(l) === keyOf(y.get(p) ?? null));
+			const k0 = childrenIndex(placementsMap, own0);
+			if (!same(k0, kids0)) fail('children index (before the layout rules)');
+			const out = dissolve(k0);
+			if (out.size !== dissolved.size || [...out].some((b) => !dissolved.has(b))) fail('dissolved');
+			if (!same(childrenIndex(placementsMap, ownShim), kidsMap)) fail('children index');
+			for (const [p, l] of kidsMap)
+				for (const { id, rank, reset } of l) {
+					const slot = slots.get(id);
+					if (slot?.parent !== p || slot.rank !== rank || slot.reset !== reset)
+						fail(`slot of ${id}`);
+				}
+			const follow = new Set(following);
+			for (const id of slots.keys()) noteFollowing(id);
+			if (follow.size !== following.size || [...follow].some((b) => !following.has(b)))
+				fail('following');
 		};
 
 		type Tx = {
@@ -1512,7 +2028,7 @@ export const bindRuns = (Y: EngineApi) => {
 				content: itemsOf(id),
 				children: []
 			};
-			for (const k of kidsMap!.get(id) ?? []) projected.children.push(projectBlock(k.id));
+			for (const k of kidsMap.get(id) ?? []) projected.children.push(projectBlock(k.id));
 			return projected;
 		};
 
@@ -1531,7 +2047,8 @@ export const bindRuns = (Y: EngineApi) => {
 				}
 			>;
 			order: Map<BlockId | null, readonly BlockId[]>;
-			kids: ModelView['kids'] | null;
+			/** The children index version it was taken at. */
+			kids: number;
 		};
 		let published: Published | null = null;
 		const reportSubs = new Set<(r: IndexReport, origin: unknown, local: boolean) => void>();
@@ -1543,7 +2060,7 @@ export const bindRuns = (Y: EngineApi) => {
 			const order: Published['order'] = new Map();
 			const stack: (BlockId | null)[] = [null];
 			for (let parent = stack.pop(); parent !== undefined; parent = stack.pop()) {
-				const ks = kidsMap!.get(parent) ?? [];
+				const ks = kidsMap.get(parent) ?? [];
 				if (ks.length === 0) continue;
 				order.set(parent, Object.freeze(ks.map((k) => k.id)));
 				for (let index = ks.length - 1; index >= 0; index--) stack.push(ks[index].id);
@@ -1558,7 +2075,7 @@ export const bindRuns = (Y: EngineApi) => {
 					);
 				});
 			}
-			return { nodes, order, kids: kidsMap };
+			return { nodes, order, kids: kidsVersion };
 		};
 
 		const keyOf = (v: unknown): string => {
@@ -1592,8 +2109,8 @@ export const bindRuns = (Y: EngineApi) => {
 				const key = keyOf(data);
 				if (key !== dataKey) [r.data, dataKey] = [data, key];
 			}
-			if (kidsMap === before.kids && candidates.size === 0) return r.data ? r : null;
-			const after = kidsMap === before.kids ? before : reachable(before.nodes);
+			if (kidsVersion === before.kids && candidates.size === 0) return r.data ? r : null;
+			const after = kidsVersion === before.kids ? before : reachable(before.nodes);
 			// Added subtrees carry their new descendants. A descendant that was
 			// visible before is reported like any visible block (moved, retyped,
 			// edited against its published baseline), so consumers keep it (K7).
@@ -1656,18 +2173,19 @@ export const bindRuns = (Y: EngineApi) => {
 			// kinds derived from it: a promoted or stray line shows its display
 			// parent's default child (XW-08).
 			if (after !== before || retyped) {
-				for (const id of [...r.moved, ...following, ...followingBefore]) {
+				const now = [...following];
+				for (const id of [...r.moved, ...now, ...followingBefore]) {
 					const n = after.nodes.get(id);
 					if (n !== undefined && !candidates.has(id) && !covered.has(id) && typeOf(id) !== n.type)
 						meta(id, n);
 				}
-				followingBefore = following;
+				followingBefore = now;
 			}
 			// A plain block directly in a list shows as its item (`itemOf`, AW-04):
 			// a block whose shown kind changed re-reads its children's (a worklist:
 			// the map visits the entries added meanwhile).
 			for (const id of r.meta.keys())
-				for (const { id: kid } of kidsMap!.get(id) ?? []) {
+				for (const { id: kid } of kidsMap.get(id) ?? []) {
 					const n = after.nodes.get(kid);
 					if (n !== undefined && !covered.has(kid) && !r.meta.has(kid) && typeOf(kid) !== n.type)
 						meta(kid, n);
@@ -1752,12 +2270,12 @@ export const bindRuns = (Y: EngineApi) => {
 				syncAll();
 				ensurePlacements();
 				return root === undefined
-					? (kidsMap!.get(null) ?? []).map((k) => projectBlock(k.id))
+					? (kidsMap.get(null) ?? []).map((k) => projectBlock(k.id))
 					: [projectBlock(root)];
 			},
 			roles: (next) => {
 				roles = next;
-				placementVersion++;
+				placementFull = true;
 				version++;
 				// No commit carries a role change: report it now (not inside a
 				// transaction, whose commit reports it), so every view follows.

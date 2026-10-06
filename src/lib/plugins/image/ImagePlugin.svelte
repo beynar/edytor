@@ -3,9 +3,14 @@
 	import type { Block } from '$lib/block/block.svelte.js';
 	import ImageEmpty from './ImageEmpty.svelte';
 	import { imageKinds } from '$lib/crdt/semantics.js';
-	import { safeImageSrc } from './image.js';
+	import {
+		MAX_INLINE_IMAGE_BYTES,
+		oversizedInlineImage,
+		safeImageSrc,
+		storableImageSrc
+	} from './image.js';
 
-	export { safeImageSrc };
+	export { MAX_INLINE_IMAGE_BYTES, oversizedInlineImage, safeImageSrc, storableImageSrc };
 
 	export type ImagePluginOptions = {
 		/** Upload a picked file and answer its URL; without it only links are embedded. */
@@ -48,10 +53,11 @@
 						const src = safeImageSrc(block.data?.src);
 						return `<figure>${src ? `<img src="${escape(src)}" alt="">` : ''}<figcaption>${caption}</figcaption></figure>`;
 					},
+					// A pasted inline image over the cap is not imported (H6).
 					parse: (el) => {
 						const src =
 							el.localName === 'figure' &&
-							safeImageSrc(el.querySelector('img')?.getAttribute('src'));
+							storableImageSrc(el.querySelector('img')?.getAttribute('src'));
 						return src ? { src } : undefined;
 					}
 				}

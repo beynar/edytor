@@ -107,6 +107,8 @@ export type WebsocketSyncOptions = WebsocketTarget & {
 	onExpired?: (state: Parameters<WebsocketProviderEvents['expired']>[0]) => void;
 	/** Opt out of cross-tab sync over the BroadcastChannel (on by default). */
 	disableBc?: boolean;
+	/** Largest frame sent whole (default 32 MiB); larger ones are chunked (H6). */
+	maxFrameBytes?: number;
 	/**
 	 * Keep a local copy in IndexedDB (default `true`; skipped where there is
 	 * no `indexedDB`). Edits survive offline reloads and reach the server on
@@ -168,8 +170,15 @@ export const bindProviders = (Y: EngineApi) => {
 			options.persist === false ? undefined : (options.persistName ?? `edytor:${room}`);
 		const sync = (payload: EdytorSyncPayload) => {
 			const { doc, awareness, synced, failed, attach, armBound, holdBound } = payload;
-			const { params, WebSocketPolyfill, maxBackoffTime, connectTimeout, disableBc, onExpired } =
-				options;
+			const {
+				params,
+				WebSocketPolyfill,
+				maxBackoffTime,
+				connectTimeout,
+				disableBc,
+				onExpired,
+				maxFrameBytes
+			} = options;
 			const local =
 				persistName !== undefined && typeof indexedDB !== 'undefined'
 					? localSync(persistName, { disableBc })
@@ -180,7 +189,8 @@ export const bindProviders = (Y: EngineApi) => {
 				WebSocketPolyfill,
 				maxBackoffTime,
 				connectTimeout,
-				disableBc: disableBc || local !== undefined
+				disableBc: disableBc || local !== undefined,
+				maxFrameBytes
 			});
 			if (onExpired) provider.on('expired', (state) => onExpired(state));
 			provider.on('synced', (isSynced) => {

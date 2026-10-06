@@ -45,7 +45,7 @@ A server sends `messageSaved` after it has durably stored what a sync message br
 
 ### Chunks
 
-A chunk sequence is a `start` frame (`0`, then the total length), any number of `part` frames (`1`, then a `varUint8Array`), and an `end` frame (`2`). `chunkFrame(bytes, maxFrameBytes?)` splits one complete frame (it returns the frame itself when it fits); `createChunkReader()` returns a per-connection reader that you feed each chunk body and that returns the whole frame on `end`, `null` before. The default limit is `MAX_FRAME_BYTES` (32 MiB).
+A chunk sequence is a `start` frame (`0`, then the total length), any number of `part` frames (`1`, then a `varUint8Array`), and an `end` frame (`2`). `chunkFrame(bytes, maxFrameBytes?)` splits one complete frame (it returns the frame itself when it fits); `createChunkReader(maxBytes?)` returns a per-connection reader that you feed each chunk body and that returns the whole frame on `end`, `null` before; a sequence announcing more than `maxBytes` throws `ChunkLimitError` at its `start`. The default limit is `MAX_FRAME_BYTES` (32 MiB). Both directions chunk: the provider sends a frame larger than its `maxFrameBytes` as a sequence (an offline backlog at reconnect), and a server must reassemble it per connection; the edytor room does, and closes a socket with `1011` when a `part` or `end` arrives with no sequence started.
 
 ## Exported helpers
 

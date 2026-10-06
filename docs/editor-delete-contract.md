@@ -1747,6 +1747,22 @@ its document): its denial deletes the blocks it added
 (`prepare.deleteBlocks`, one room transaction); its bootstrap (the schema
 stamp) stays.
 
+### `net.chunk.outbound` — a backlog of any size reaches the room (H6)
+
+The provider sends a frame larger than its `maxFrameBytes` (32 MiB,
+Cloudflare's message limit) as a chunk sequence (`chunkFrame`, every
+binary frame it sends on the socket: the hello, replies, updates), the
+room reassembles it per socket (`createChunkReader(maxInboundFrameBytes)`,
+the frame quota checked at the sequence's start) and admits the whole
+frame as any other; a part or end with no sequence started (a wake lost
+the buffer) closes the socket `1011` (`chunk sequence lost`) and the
+provider resends at its redial. A 40 MB offline backlog is delivered at
+reconnect and served to a fresh client (`h6-chunking.test.ts`). The image
+plugin stores no inline image over `MAX_INLINE_IMAGE_BYTES` (1 MiB of its
+`data:` URL): the link field refuses it and names `upload` (or a hosted
+link), an HTML paste does not import it (`storableImageSrc`); rendering
+still shows a larger one a document holds (`image-inline-cap.test.tsx`).
+
 ## Transport / evidence
 
 ### `net.delete-only-leak`

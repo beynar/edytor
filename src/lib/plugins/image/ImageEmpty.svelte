@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Block } from '$lib/block/block.svelte.js';
-	import { safeImageSrc } from './image.js';
+	import { MAX_INLINE_IMAGE_BYTES, oversizedInlineImage, safeImageSrc } from './image.js';
 
 	/**
 	 * Notion's empty image: "Add an image", then a link field (and Upload with
@@ -12,12 +12,15 @@
 		$props();
 	let draft = $state('');
 	let open = $state(false);
-	let failed = $state(false);
+	/** Why the last link or upload was not embedded (`null`: it was). */
+	let failed = $state<'invalid' | 'inline' | null>(null);
+	const inlineLimit = `${MAX_INLINE_IMAGE_BYTES / (1024 * 1024)} MB`;
 
 	const embed = (value: string) => {
 		const src = safeImageSrc(value);
-		failed = !src;
-		if (src && block) block.data.src = src;
+		// An inline image over the cap is never stored (H6): it would weigh on every sync.
+		failed = !src ? 'invalid' : oversizedInlineImage(src) ? 'inline' : null;
+		if (src && failed === null && block) block.data.src = src;
 	};
 </script>
 
@@ -57,13 +60,23 @@
 							try {
 								embed(await upload(file));
 							} catch {
-								failed = true;
+								failed = 'invalid';
 							}
 						}}
 					/>
 				</label>
 			{/if}
-			{#if failed}<small>That doesn't look like an image link or upload.</small>{/if}
+			{#if failed === 'inline'}
+				<small data-edytor-image-error="inline"
+					>Inline images are limited to {inlineLimit}: {upload
+						? 'upload the file instead'
+						: 'host the image and paste its link'}.</small
+				>
+			{:else if failed}
+				<small data-edytor-image-error="invalid"
+					>That doesn't look like an image link or upload.</small
+				>
+			{/if}
 		</div>
 	{/if}
 {/if}

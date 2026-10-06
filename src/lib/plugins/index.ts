@@ -51,6 +51,9 @@ export {
 	createImagePlugin,
 	isImagePlugin,
 	safeImageSrc,
+	storableImageSrc,
+	oversizedInlineImage,
+	MAX_INLINE_IMAGE_BYTES,
 	type ImagePluginOptions
 } from './image/ImagePlugin.svelte';
 export type { BlockHandleController } from './blockHandles/BlockHandleController.svelte.js';

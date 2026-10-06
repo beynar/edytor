@@ -6,7 +6,8 @@
  * Retained surface (D-24 G-e): `status`/`synced`/`connection-*` events,
  * `connect()`/`disconnect()`, awareness injection, auth `params` (read at
  * every dial, so a refreshed token reaches the next connection),
- * `WebSocketPolyfill`, exponential-backoff reconnect (`maxBackoffTime`,
+ * `WebSocketPolyfill`, outbound chunking of frames over `maxFrameBytes` (H6),
+ * exponential-backoff reconnect (`maxBackoffTime`,
  * growing to 30 s for a room that stays unreachable), liveness (a text
  * `ping` after 15 s of silence; a text `pong` counts as heard),
  * `resyncInterval`, and the BroadcastChannel leg (cross-tab sync, on by
@@ -63,6 +64,7 @@ import {
 	assertRoomId,
 	beginDestroy,
 	bindRoomProtocol,
+	chunkFrame,
 	CLOSE,
 	createChunkReader,
 	emitFailed,
@@ -74,6 +76,7 @@ import {
 	messageChunk,
 	messageSaved,
 	messageSync,
+	MAX_FRAME_BYTES,
 	SyncRefusedError,
 	type LifecycleHost,
 	type ProtocolMismatch,
@@ -175,6 +178,12 @@ export type WebsocketProviderOptions = {
 	connectTimeout?: number;
 	/** Opt out of cross-tab sync over the BroadcastChannel (on by default). */
 	disableBc?: boolean;
+	/**
+	 * Largest frame sent whole (default 32 MiB, Cloudflare's WebSocket
+	 * message limit): a larger one — a reconnect's backlog, a big paste —
+	 * goes out as a chunk sequence the room reassembles (H6).
+	 */
+	maxFrameBytes?: number;
 };
 
 export type WebsocketProviderApi = InstanceType<
@@ -189,10 +198,19 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 
 	type Provider = WebsocketProvider;
 
+	/**
+	 * One frame on `ws`: whole, or as a chunk sequence when it is larger
+	 * than `maxFrameBytes` (H6). A text frame (the keepalive) goes as it is.
+	 */
+	const sendOn = (provider: Provider, ws: WebSocket, buf: Uint8Array | string) => {
+		if (typeof buf === 'string') return ws.send(buf);
+		for (const piece of chunkFrame(buf, provider.maxFrameBytes)) ws.send(piece);
+	};
+
 	/** Traffic for the server goes out on the socket while it is open. */
 	const send = (provider: Provider, buf: Uint8Array | string) => {
 		const ws = provider.ws;
-		if (provider.wsconnected && ws && ws.readyState === ws.OPEN) ws.send(buf);
+		if (provider.wsconnected && ws && ws.readyState === ws.OPEN) sendOn(provider, ws, buf);
 	};
 
 	/** Traffic for the other tabs goes out on the channel. */
@@ -517,7 +535,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				if (event.data === 'pong') return;
 				try {
 					room.readMessage(provider, new Uint8Array(event.data as ArrayBuffer), true, (buf) =>
-						websocket.send(buf)
+						sendOn(provider, websocket, buf)
 					);
 				} catch (error) {
 					provider.emit('message-error', [error, provider]);
@@ -535,7 +553,7 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				provider.wsconnected = true;
 				provider.emit('status', [{ status: 'connected' }]);
 				// The join rule: say hello; the members answer what we lack.
-				for (const buf of room.hello(provider)) websocket.send(buf);
+				for (const buf of room.hello(provider)) sendOn(provider, websocket, buf);
 			};
 			provider.emit('status', [{ status: 'connecting' }]);
 		}
@@ -550,6 +568,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 		maxBackoffTime: number;
 		/** ms a dial may take to open (`Infinity`: no limit). */
 		connectTimeout: number;
+		/** Largest frame sent whole; larger ones are chunked. */
+		maxFrameBytes: number;
 		_WS: WebsocketPolyfill;
 		shouldConnect: boolean;
 		ws: WebSocket | null = null;
@@ -605,7 +625,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 				resyncInterval = 0,
 				maxBackoffTime = 2500,
 				connectTimeout = defaultConnectTimeout,
-				disableBc = false
+				disableBc = false,
+				maxFrameBytes = MAX_FRAME_BYTES
 			}: WebsocketProviderOptions = {}
 		) {
 			assertRoomId(roomname);
@@ -619,6 +640,8 @@ export const bindWebsocketProvider = (Y: EngineApi) => {
 			this.params = params;
 			this.maxBackoffTime = maxBackoffTime;
 			this.connectTimeout = connectTimeout;
+			this.maxFrameBytes =
+				Number.isInteger(maxFrameBytes) && maxFrameBytes > 64 ? maxFrameBytes : MAX_FRAME_BYTES;
 			this._WS = WebSocketPolyfill;
 			this.shouldConnect = connect;
 			initLifecycle(

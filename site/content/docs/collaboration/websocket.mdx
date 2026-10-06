@@ -72,6 +72,11 @@ The props build a `createWebsocketSync` for you. Use the factory directly for th
       type: "typeof WebSocket",
       description: "A WebSocket implementation for environments without a global one.",
     },
+    maxFrameBytes: {
+      type: "number",
+      default: "33554432",
+      description: "Largest frame sent whole (32 MiB, Cloudflare's message limit). A larger one, such as an offline backlog sent at reconnect, goes out as a sequence of chunks that the room reassembles.",
+    },
   }}
 />
 

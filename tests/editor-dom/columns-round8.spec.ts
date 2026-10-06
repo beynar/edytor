@@ -16,10 +16,11 @@ import {
 /**
  * Columns, Notion parity, the round-8 review (2026-10-04), with a person's
  * mouse: every path moves in 2–12px steps, never a jump. A mouse text
- * selection that starts in a column and crosses into another column of the
- * same layout becomes a block selection of the blocks it covers, in reading
- * order (`sel.drag.across-columns`); back in its own column it is a text
- * range again. Desktop engines.
+ * selection (a drag, a Shift+click) with one end in a column and the other
+ * outside that column (another column, or outside the layout) becomes a
+ * block selection of the blocks it covers, in reading order
+ * (`sel.drag.across-columns`, widened 2026-10-07); back within one column
+ * it is a text range again. Desktop engines.
  */
 
 type Value = { kind: string; ids?: string[]; anchor?: { b: string }; focus?: { b: string } };
@@ -181,21 +182,42 @@ test.describe('a mouse selection crossing into another column becomes a block se
 		issues.assertClean();
 	});
 
-	test('a drag starting above the layout into it stays a text range', async ({ page }) => {
+	test('a drag starting above the layout into a column selects blocks; out below it, a text range again', async ({
+		page
+	}) => {
 		const issues = trackPageIssues(page);
 		await openDoc(page, FULL);
 		const from = await press(page, await at(page, 'P', 10));
 		const a2 = await walk(page, from, await at(page, 'A2', 30), 4);
+		expect(await value(page)).toMatchObject({ kind: 'blocks', ids: ['P', 'A', 'A2'] });
+		expect(await rootMark(page)).toBe('blocks');
+		const z = await walk(page, a2, await at(page, 'Z', 20), 4);
 		expect((await value(page)).kind).toBe('text');
-		await walk(page, a2, await at(page, 'B2', 30), 4);
-		expect((await value(page)).kind).toBe('text');
+		expect(await rootMark(page)).toBe(null);
+		await walk(page, z, await at(page, 'B2', 30), 4);
 		await release(page);
-		expect(await value(page)).toMatchObject({ kind: 'text', anchor: { b: 'P' } });
-		expect(await selectedText(page)).toContain('left three');
+		expect(await value(page)).toMatchObject({
+			kind: 'blocks',
+			ids: ['P', 'A', 'A2', 'A3', 'B', 'B2']
+		});
+		expect(await selectedText(page)).toBe('');
 		issues.assertClean();
 	});
 
-	test('a Shift+click in another column extends the text range, in document order (D7)', async ({
+	test('a drag starting in a column and leaving the layout below selects blocks', async ({
+		page
+	}) => {
+		const issues = trackPageIssues(page);
+		await openDoc(page, FULL);
+		const from = await press(page, await at(page, 'B2', 10));
+		await walk(page, from, await at(page, 'Z', 20), 4);
+		await release(page);
+		expect(await value(page)).toMatchObject({ kind: 'blocks', ids: ['B2', 'B3', 'Z'] });
+		expect(await selectedText(page)).toBe('');
+		issues.assertClean();
+	});
+
+	test('a Shift+click in another column selects the blocks from the caret to it', async ({
 		page
 	}) => {
 		const issues = trackPageIssues(page);
@@ -208,12 +230,8 @@ test.describe('a mouse selection crossing into another column becomes a block se
 		await page.mouse.up();
 		await page.keyboard.up('Shift');
 		await frames(page);
-		expect(await value(page)).toMatchObject({
-			kind: 'text',
-			anchor: { b: 'A2' },
-			focus: { b: 'B2' }
-		});
-		expect(await selectedText(page)).toMatch(/^ft two left three right one ri/);
+		expect(await value(page)).toMatchObject({ kind: 'blocks', ids: ['A2', 'A3', 'B', 'B2'] });
+		expect(await selectedText(page)).toBe('');
 		issues.assertClean();
 	});
 

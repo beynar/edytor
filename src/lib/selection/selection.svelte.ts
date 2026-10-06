@@ -855,6 +855,7 @@ export class EdytorSelection {
 
 		this.pointerDragStart = this.getTextPointFromClientPoint(event.clientX, event.clientY);
 		this.#across = false;
+		this.#extending = event.shiftKey;
 	};
 	clearPointerDragStart = () => {
 		this.pointerDragStart = null;
@@ -864,6 +865,8 @@ export class EdytorSelection {
 	#held = false;
 	/** The pointer drag selected blocks across columns (`acrossColumns`), until its release. */
 	#across = false;
+	/** The press held Shift: it extends the range it found (a Shift+click). */
+	#extending = false;
 	/**
 	 * The drag ended: the DOM selection it left is derived again, now
 	 * normalized. A drag that ends as a block selection across columns keeps
@@ -871,6 +874,11 @@ export class EdytorSelection {
 	 * selection as no range).
 	 */
 	#dropped = () => {
+		// A Shift+press's range can reach the adopter only after its release
+		// (Chromium queues its `selectionchange`): read here, as the press's.
+		if (this.#extending && !this.#across)
+			this.#dragAcross(getDomSelectionSnapshot(this.edytor.node));
+		this.#extending = false;
 		const across = this.#across;
 		this.#across = false;
 		if (across && this.value.kind === 'blocks') {
@@ -882,23 +890,22 @@ export class EdytorSelection {
 		this.applySelectionSnapshot(getDomSelectionSnapshot(this.edytor.node));
 	};
 	/**
-	 * Under a pointer drag, a native range from one column into another
-	 * column of the same layout is a block selection (`acrossColumns`,
-	 * Notion): the blocks it covers are selected and the native range is
-	 * ignored — the browser keeps extending it from the press, so the drag
-	 * coming back into its own column is a text range again. Its highlight
-	 * is hidden while the value is a block selection
-	 * (`data-edytor-selection`). Only a range anchored where the press
-	 * landed is the drag's: a Shift+click extends the range it found, which
-	 * stays a text range in document order, as the keyboard's does (D7).
-	 * Answers whether it selected blocks.
+	 * Under a pointer press (a drag, or a Shift+click extending the range it
+	 * found), a native range with one end in a column and the other outside
+	 * that column (another column, or outside the layout) is a block
+	 * selection (`acrossColumns`, Notion): the blocks it covers are selected
+	 * and the native range is ignored — the browser keeps extending it, so
+	 * the drag coming back into the anchor's columns is a text range again.
+	 * Its highlight is hidden while the value is a block selection
+	 * (`data-edytor-selection`). The keyboard's ranges stay text ranges in
+	 * document order (D7). Answers whether it selected blocks.
 	 */
 	#dragAcross = (dom: DomSelectionSnapshot | null) => {
 		if (!dom?.anchorNode || !dom.focusNode || dom.isCollapsed) return false;
 		const anchor = this.getTextOfNode(dom.anchorNode as Node, dom.anchorOffset)?.parent;
 		const focus = this.getTextOfNode(dom.focusNode as Node, dom.focusOffset)?.parent;
-		if (!anchor || anchor.id !== this.pointerDragStart?.text.parent.id) return false;
-		const blocks = focus && !anchor.isRoot && acrossColumns(anchor, focus);
+		if (!anchor) return false;
+		const blocks = focus && !anchor.isRoot && !focus.isRoot && acrossColumns(anchor, focus);
 		if (!blocks || !blocks.length) return false;
 		this.#across = true;
 		this.select(blockSelection(blocks.map((block) => block.id)), 'dom');

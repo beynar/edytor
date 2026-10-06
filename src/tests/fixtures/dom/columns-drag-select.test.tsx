@@ -1,15 +1,16 @@
 /** @jsxImportSource ../../jsx */
 /**
- * A mouse text selection crossing into another column becomes a block
- * selection (Notion, `sel.drag.across-columns`, round 8): while a pointer
- * drag-selection has its anchor in one column and its focus in another
- * column of the same layout, the value is a block selection of every shown
- * block from the anchor's block to the focus's, in reading order (never the
- * layout or a column); back in the anchor's column it is a text range
- * again; a drag that starts outside the layout, and a range no drag made
- * (a script's, the keyboard's), stay text ranges. The browser lanes
- * (`columns-round8.spec.ts`) drive the real drag; here the press is
- * dispatched and the native range set as the browser would extend it.
+ * A mouse text selection crossing a column's edge becomes a block
+ * selection (Notion, `sel.drag.across-columns`, round 8, widened
+ * 2026-10-07): while a pointer selection (a drag, or a Shift+click) has
+ * one end in a column and the other outside that column (another column,
+ * or outside the layout), the value is a block selection of every shown
+ * block from one end's block to the other's, in reading order (never the
+ * layout or a column); back in one column it is a text range again; a
+ * range no pointer made (a script's, the keyboard's, D7) stays a text
+ * range. The browser lanes (`columns-round8.spec.ts`) drive the real
+ * drag; here the press is dispatched and the native range set as the
+ * browser would extend it.
  *
  * `P "p", C[K1[A "a", A2 "a2"], K2[B "b"]], Z "z"`. Expected states are
  * hand-authored.
@@ -27,7 +28,7 @@ afterEach(() => {
 
 const ids = (blocks: { id: string }[] | null) => blocks?.map((b) => b.id) ?? null;
 
-describe('acrossColumns: the blocks a drag from one column into another covers', () => {
+describe("acrossColumns: the blocks a drag across a column's edge covers", () => {
 	it('forward and backward: every shown block between, in reading order, no layout or column', async () => {
 		const { edytor } = await renderColumns(contractDoc());
 		const at = (id: string) => block(edytor, id);
@@ -36,12 +37,19 @@ describe('acrossColumns: the blocks a drag from one column into another covers',
 		expect(ids(acrossColumns(at('B'), at('A')))).toEqual(['A', 'A2', 'B']);
 	});
 
-	it('one column, or a focus outside the layout, or an anchor outside it: none (a text range)', async () => {
+	it('one end outside the layout, the other in a column: every shown block between', async () => {
+		const { edytor } = await renderColumns(contractDoc());
+		const at = (id: string) => block(edytor, id);
+		expect(ids(acrossColumns(at('P'), at('B')))).toEqual(['P', 'A', 'A2', 'B']);
+		expect(ids(acrossColumns(at('A2'), at('Z')))).toEqual(['A2', 'B', 'Z']);
+		expect(ids(acrossColumns(at('Z'), at('A2')))).toEqual(['A2', 'B', 'Z']);
+	});
+
+	it('both ends in one column, or both outside every column: none (a text range)', async () => {
 		const { edytor } = await renderColumns(contractDoc());
 		const at = (id: string) => block(edytor, id);
 		expect(acrossColumns(at('A'), at('A2'))).toBeNull();
-		expect(acrossColumns(at('A'), at('Z'))).toBeNull();
-		expect(acrossColumns(at('P'), at('B'))).toBeNull();
+		expect(acrossColumns(at('A'), at('A'))).toBeNull();
 		expect(acrossColumns(at('P'), at('Z'))).toBeNull();
 	});
 
@@ -117,19 +125,34 @@ describe('a pointer drag-selection crossing into another column', () => {
 		expect(dom.rangeCount === 0 || !edytor.node!.contains(dom.anchorNode)).toBe(true);
 	});
 
-	it('a drag that starts outside the layout stays a text range in it', async () => {
+	it('a drag that starts outside the layout selects blocks once it enters a column', async () => {
 		const { edytor } = await renderColumns(contractDoc());
 		const from = await press(edytor, 'P', 0);
 		await extend(from, edytor, 'B', 1);
+		expect(edytor.selection.value).toMatchObject({ kind: 'blocks', ids: ['P', 'A', 'A2', 'B'] });
+		expect(mark(edytor)).toBe('blocks');
+		// Out past the layout: both ends outside every column, a text range again.
+		await extend(from, edytor, 'Z', 1);
 		expect(edytor.selection.value.kind).toBe('text');
-		expect(edytor.selection.state).toMatchObject({
-			startBlock: block(edytor, 'P'),
-			endBlock: block(edytor, 'B')
-		});
-		document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+		expect(mark(edytor)).toBeNull();
+		await extend(from, edytor, 'A2', 1);
+		expect(edytor.selection.value).toMatchObject({ kind: 'blocks', ids: ['P', 'A', 'A2'] });
+		edytor.node!.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }));
+		await flushDomUpdates();
+		expect(edytor.selection.value).toMatchObject({ kind: 'blocks', ids: ['P', 'A', 'A2'] });
 	});
 
-	it('a Shift+click in another column (the range anchored before the press) stays a text range', async () => {
+	it('a drag that starts in a column and leaves the layout selects blocks', async () => {
+		const { edytor } = await renderColumns(contractDoc());
+		const from = await press(edytor, 'A2', 1);
+		await extend(from, edytor, 'Z', 1);
+		expect(edytor.selection.value).toMatchObject({ kind: 'blocks', ids: ['A2', 'B', 'Z'] });
+		edytor.node!.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }));
+		await flushDomUpdates();
+		expect(edytor.selection.value).toMatchObject({ kind: 'blocks', ids: ['A2', 'B', 'Z'] });
+	});
+
+	it('a Shift+click in another column (the range anchored before the press) selects blocks', async () => {
 		const { edytor } = await renderColumns(contractDoc());
 		const caret = await press(edytor, 'A', 1);
 		edytor.node!.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }));
@@ -137,12 +160,10 @@ describe('a pointer drag-selection crossing into another column', () => {
 		// The press lands in B; the browser extends the range from A's caret.
 		await press(edytor, 'B', 1);
 		await extend(caret, edytor, 'B', 1);
-		expect(edytor.selection.value.kind).toBe('text');
-		expect(edytor.selection.state).toMatchObject({
-			startBlock: block(edytor, 'A'),
-			endBlock: block(edytor, 'B')
-		});
-		document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+		expect(edytor.selection.value).toMatchObject({ kind: 'blocks', ids: ['A', 'A2', 'B'] });
+		edytor.node!.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0 }));
+		await flushDomUpdates();
+		expect(edytor.selection.value).toMatchObject({ kind: 'blocks', ids: ['A', 'A2', 'B'] });
 	});
 
 	it('a range across columns no drag made (a script’s) stays a text range in document order', async () => {

@@ -106,29 +106,28 @@ export const liftLayouts = (blocks: Iterable<Block>): Block[] => {
 };
 
 /**
- * A pointer drag-selection from `anchor` (the block its press landed in) to
- * `focus` (the block the drag reached), Notion's rule
- * (`sel.drag.across-columns`): once the drag leaves the anchor's column for
- * another column of the same layout, it selects blocks — every shown block
- * from one to the other in reading order, but the layouts and columns
- * themselves (each block a member as `selectedMembers` reads it), so a
- * sweep over every block of every column lifts to the layout
- * (`liftLayouts`, D3). The innermost layout holding both in different
- * columns decides. `null` (a text range) while both lie in one column, or
- * when no layout holding the anchor holds the focus (a drag leaving the
- * layout, or one that starts outside it). Decided from the roles
- * (`isLayout`/`isLayoutItem`).
+ * A pointer selection (a drag, a Shift+click) from `anchor` to `focus`,
+ * Notion's rule (`sel.drag.across-columns`): once one end is in a column
+ * and the other is not in that column (another column of its layout, or
+ * outside the layout), it selects blocks — every shown block from one to
+ * the other in reading order, but the layouts and columns themselves (each
+ * block a member as `selectedMembers` reads it), so a sweep over every
+ * block of every column lifts to the layout (`liftLayouts`, D3). `null` (a
+ * text range) while both ends lie in the same columns (one column, or none:
+ * a range that runs over a whole layout from above it to below it stays
+ * text). Decided from the roles (`isLayoutItem`).
  */
 export const acrossColumns = (anchor: Block, focus: Block): Block[] | null => {
 	const { edytor } = anchor;
 	const { facade } = edytor;
-	let across = false;
-	for (let item = anchor.parent; item && !item.isRoot && !across; item = item.parent) {
-		if (!facade.isLayoutItem(item.id)) continue;
-		if (focus.isChildOf(item)) return null;
-		across = Boolean(item.parent && focus.isChildOf(item.parent));
-	}
-	if (!across) return null;
+	const columns = (block: Block) => {
+		const items = new Set<string>();
+		for (let at = block.parent; at && !at.isRoot; at = at.parent)
+			if (facade.isLayoutItem(at.id)) items.add(at.id);
+		return items;
+	};
+	const [from, to] = [columns(anchor), columns(focus)];
+	if (from.size === to.size && [...from].every((id) => to.has(id))) return null;
 	const [first, last] =
 		edytor.compareBlocks(anchor, focus) <= 0 ? [anchor, focus] : [focus, anchor];
 	const blocks: Block[] = [];

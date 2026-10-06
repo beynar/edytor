@@ -1897,12 +1897,14 @@ keep documents fresh before a device goes offline
 
 ### `room.alarm.tasks` — one alarm, the earliest due task (Phase 3)
 
-The room has one Durable Object alarm and three tasks on it: `save`
+The room has one Durable Object alarm and four tasks on it: `save`
 (`onSave`, `saveAfter` after the first unsaved change; while the rows
 cannot be read, again later, up to 5 minutes), `history` (the open
-half-day slot's end, `room.history.slots`) and `purge` (the daily tick,
-`room.purge.timing`). Each task's due time is stored in the meta table
-(`due.save`, `due.history`, `due.purge`), so a wake knows what is due;
+half-day slot's end, `room.history.slots`), `purge` (the daily tick,
+`room.purge.timing`) and `retention` (the next version's expiry, for a
+store without a TTL of its own, `room.history.retention`). Each task's
+due time is stored in the meta table (`due.save`, `due.history`,
+`due.purge`, `due.retention`), so a wake knows what is due;
 arming a task keeps an earlier due time (a wake or an edit never pushes a
 pending save back). The alarm runs every task due at its time, each
 re-arms itself or clears its row, then sets the alarm to the earliest due
@@ -1914,8 +1916,8 @@ alarm (`schedule`, `alarm` in `cloudflare/DocumentRoom.ts`).
 
 ### `room.history.slots` — two snapshots a day, only when changed (H11)
 
-With `history` (`{ store, retentionDays = 30, timeZone = 'UTC' }`, a KV
-namespace or any `KVLike`), a date has two slots in `timeZone` (IANA, read
+With `history` (`{ store, retentionDays = 30, timeZone = 'UTC' }`, any
+`HistoryStore`, `room.history.store`), a date has two slots in `timeZone` (IANA, read
 with `Intl`): `am` covers what the room stores before 12:00, `pm` until
 24:00. A slot opens at the first change the room stores in it (a client
 frame, a `transact`, a restore, a purge), recording each writer's verified
@@ -1923,27 +1925,68 @@ user (`editors`); it closes at its end, by whichever comes first: the
 alarm at the boundary, the first write after the boundary (its snapshot
 is read before that write applies, so it holds the slot's state exactly),
 or a start that finds it past its end (a room that slept through the
-boundary writes it at wake). Closing writes one KV value; a slot nobody
+boundary writes it at wake). Closing writes one value; a slot nobody
 changed writes nothing. Key: `history/<room>/<YYYY-MM-DD>-am|pm`, the room
 id percent-encoded (`encodeURIComponent`, so a `/` in an id never shares
-another room's prefix; a key past KV's 512 bytes is refused, logged
-`history`).
+another room's prefix; a key past 512 bytes, KV's limit, is refused,
+logged `history`, whatever the store).
 
 ### `room.history.value` — what a slot stores (H11)
 
 The value is the room's live state, `liveState` (v2, pending set aside),
-gzip-compressed (`packed`), the bytes a compaction stores. Its KV
+gzip-compressed (`packed`), the bytes a compaction stores. Its
 metadata is `{ bytes, blocks, editors, at }` (stored bytes, visible
 blocks, the slot's users, when it was written), kept under KV's 1,024
-bytes by dropping the last editors and counting them (`more`).
-`expirationTtl` = `retentionDays` days. A value over KV's 25 MiB is not
-written: the slot is skipped, logged `history` (`{ key, bytes, limit }`),
-and the next slot tries again. It is never split: KV writes parts one by
-one, so a failure between two would list a version that cannot be read,
-and a compressed state past 25 MiB is beyond the document quota's 64 MiB
-of uncompressed records unless it holds incompressible data, which
-belongs in an upload store. A failed write is logged `history` and the
-slot stays open (retried at the next alarm).
+bytes (for every store) by dropping the last editors and counting them
+(`more`). `expiresAt` = `at` + `retentionDays` days. A value over the
+store's `maxValueBytes` (the option can only lower it: KV 25 MiB, R2
+128 MiB, `roomHistory` 32 MiB) is not written: the slot is skipped,
+logged `history` (`{ key, bytes, limit }`), and the next slot tries
+again. It is never split across store values: a store writes them one by
+one, so a failure between two would list a version that cannot be read
+(`roomHistory` splits it into rows inside one `transactionSync`, which is
+atomic). A failed write is logged `history` and the slot skipped.
+
+### `room.history.store` — where versions live (Part A of Phase 5)
+
+A store is any `HistoryStore` (`cloudflare/history.ts`): `maxValueBytes`,
+optional `nativeTtl`, `put(key, bytes, { expiresAt, metadata })`,
+`get(key)` → `{ value, expiresAt | null } | null`, `list(prefix,
+cursor?)` → `{ entries: [{ key, expiresAt | null, metadata }], cursor? }`,
+`delete(key)`. `history.store` also takes a factory over the room's own
+storage (`{ sql, transactionSync, tablePrefix }`, built once, at first
+use) and — deprecated — a bare `KVLike`, wrapped by `kvHistory`
+(`resolveHistoryStore`; a `HistoryStore` is told apart by its numeric
+`maxValueBytes`). The shipped adapters:
+
+- `kvHistory(namespace)`: `nativeTtl`; `expirationTtl` = `(expiresAt −
+metadata.at) / 1000` (at least 60 s), the room's metadata as KV
+  metadata, `list`'s `expiration` (s) as `expiresAt`: byte for byte what
+  0.1.0-next.24/25 wrote, so their versions list, read and restore.
+- `r2History(bucket)`: one object per version, custom metadata `edytor`
+  (the metadata JSON) and `edytor-expires`; listed with
+  `include: ['customMetadata']`.
+- `roomHistory({ maxBytes = 256 MiB, maxValueBytes = 32 MiB })`: the
+  table `<prefix>history` (`key, part, parts, at, expires_at, metadata,
+value`), 1 MiB rows written in one `transactionSync`; counted apart
+  from the document quota, against `maxBytes`: a put that passes it
+  deletes the oldest other versions (by `at`) in the same transaction.
+  `reset()` keeps the table.
+
+`DocumentRoom.history()` reads `EDYTOR_HISTORY`: the string `room` →
+`roomHistory()`, an R2 bucket binding (it has `createMultipartUpload`) →
+`r2History`, any other binding → `kvHistory`; unset → no history.
+
+### `room.history.retention` — the room owns expiry
+
+No version past its `expiresAt` is listed, read or restored (`listHistory`
+skips it, `readHistory` returns `null`, `restoreHistory` is `refused`),
+whether or not its store deleted it. A store without `nativeTtl` is swept
+by the room: each version written arms the `retention` task at its
+`expiresAt` (`earlier`); the task lists the room's prefix, deletes every
+version past its expiry and re-arms at the next one (none left: cleared).
+A sweep that throws is noted `history` (`{ retention: true, error }`) and
+re-armed an hour later.
 
 ### `room.history.restore` — restore is a forward edit (H11)
 

@@ -43,9 +43,21 @@ export {
 export {
 	DEFAULT_RETENTION_DAYS,
 	HISTORY_MAX_VALUE_BYTES,
+	R2_HISTORY_MAX_VALUE_BYTES,
+	ROOM_HISTORY_MAX_BYTES,
+	ROOM_HISTORY_MAX_VALUE_BYTES,
+	kvHistory,
+	r2History,
+	roomHistory,
 	type HistoryEntry,
+	type HistoryMetadata,
 	type HistoryOptions,
-	type KVLike
+	type HistoryRoomStorage,
+	type HistoryStore,
+	type HistoryStoreFactory,
+	type HistoryStoreRecord,
+	type KVLike,
+	type R2BucketLike
 } from './history.js';
 export { type PurgeReport } from '../crdt/purge.js';
 export {

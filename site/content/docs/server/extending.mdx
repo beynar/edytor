@@ -92,11 +92,11 @@ A Durable Object has one alarm, which the document shares among its tasks: `onSa
 | `semantics` | `defaultSemantics` | The block roles server edits obey. See [Block roles on the server](#block-roles-on-the-server). |
 | `validate` | | Asked after each client frame that changed blocks; `false` makes the room undo it. See [Validate edits](#validate-edits). |
 | `log` | `console.log` of JSON | Receives the room's [log entries](/docs/server/room#metrics-and-log); `false` logs nothing. |
-| `history` | | `{ store, retentionDays, timeZone }`: keep two versions a day in a KV namespace. See [History and purge](/docs/server/history). |
+| `history` | | `{ store, retentionDays, timeZone, maxValueBytes }`: keep two versions a day in a store (`roomHistory()`, `kvHistory(namespace)`, `r2History(bucket)` or your own `HistoryStore`). See [History and purge](/docs/server/history). |
 | `purgeAfterDays` | the retention, else `30` | Days after which deleted content is [purged](/docs/server/history#the-purge); `false` never purges. |
 | `now` | `Date.now` | The room's clock (its slots, epochs and alarm read it), for tests. |
 
-`DocumentRoom` reads the same settings from `vars` (`EDYTOR_SAVE_AFTER`, `EDYTOR_COMPACT_AFTER`, …; see [the room](/docs/server/room#settings)) and uses the unprefixed tables `rows`, `replicas` and `meta`. It takes `semantics` from its `semantics()` method and `history` from its `history()` method (the `EDYTOR_HISTORY` KV binding by default), each read at first use, so they may return a field of your subclass; `now()` is its clock.
+`DocumentRoom` reads the same settings from `vars` (`EDYTOR_SAVE_AFTER`, `EDYTOR_COMPACT_AFTER`, …; see [the room](/docs/server/room#settings)) and uses the unprefixed tables `rows`, `replicas` and `meta`. It takes `semantics` from its `semantics()` method and `history` from its `history()` method (the `EDYTOR_HISTORY` binding or variable by default), each read at first use, so they may return a field of your subclass; `now()` is its clock.
 
 ## Load
 

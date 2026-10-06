@@ -457,7 +457,9 @@ describe('H11 · list, read, restore, undo', () => {
 				blocks: 3,
 				editors: ['ada'],
 				more: 0,
-				at: at('2026-10-06T12:00:00Z')
+				at: at('2026-10-06T12:00:00Z'),
+				// KV lists its expiry: the retention after the write (`room.history.store`).
+				expiresAt: at('2026-11-05T12:00:00Z')
 			}
 		]);
 		await clockTo(room, '2026-10-06T14:00:00Z');

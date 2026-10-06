@@ -20,6 +20,7 @@
 import {
 	DocumentRoom as Room,
 	closedSocket,
+	kvHistory,
 	requestedReplica,
 	routeDocumentSocket,
 	type DocumentNamespace,
@@ -37,7 +38,7 @@ type Env = {
 /** The demo's room: the shipped one, with its history in `HISTORY` (the class keeps its name). */
 export class DocumentRoom extends Room<Env> {
 	protected override history(): HistoryOptions {
-		return { store: this.env.HISTORY, retentionDays: 30, timeZone: 'UTC' };
+		return { store: kvHistory(this.env.HISTORY), retentionDays: 30, timeZone: 'UTC' };
 	}
 }
 

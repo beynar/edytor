@@ -30,7 +30,8 @@ export default defineConfig({
 					// The site's demo room class (site/room), its history in a real (Miniflare) KV.
 					DEMO: { className: 'DemoRoom', useSQLite: true }
 				},
-				kvNamespaces: ['HISTORY']
+				kvNamespaces: ['HISTORY'],
+				r2Buckets: ['HISTORY_R2']
 			}
 		})
 	],

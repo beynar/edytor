@@ -1,20 +1,24 @@
 ---
 title: History and purge
-description: Keep two versions of each document a day in Cloudflare KV, list, preview and restore them, and how the room purges deleted content after the same retention.
+description: Keep two versions of each document a day in KV, R2, the room's own storage or a store of your own, list, preview and restore them, and how the room purges deleted content after the same retention.
 icon: history
 ---
 
-The room can keep a version history of its document in a [Workers KV](https://developers.cloudflare.com/kv/) namespace you bind: two versions a day, kept 30 days. Any version can be previewed as JSON and restored as an ordinary edit, which every client receives and which can be undone. Together with the per-block attribution edytor already keeps (`lastChangedBy`, see [attribution](/docs/reference/document-api#attribution)), this is the history story: who changed a block last, and what the document looked like this morning or yesterday evening.
+The room can keep a version history of its document: two versions a day, kept 30 days, in a store you choose — a [Workers KV](https://developers.cloudflare.com/kv/) namespace, an [R2](https://developers.cloudflare.com/r2/) bucket, the room's own Durable Object storage (no binding at all), or any store of your own. Any version can be previewed as JSON and restored as an ordinary edit, which every client receives and which can be undone. Together with the per-block attribution edytor already keeps (`lastChangedBy`, see [attribution](/docs/reference/document-api#attribution)), this is the history story: who changed a block last, and what the document looked like this morning or yesterday evening.
 
 The room also purges deleted content. Content deleted more than 30 days ago (the history's retention by default) is removed from the room's storage and from every client, so a deleted paragraph does not stay in the document's storage forever. Within those 30 days, a version or an undo still brings it back.
 
-## Bind a KV namespace
+## Choose a store
 
-Create the namespace, then bind it to the Worker that hosts the room:
+History is off until you give the room a store. A store is any object with five members (`HistoryStore`); `edytor/cloudflare` ships three:
 
-```bash
-npx wrangler kv namespace create edytor-history
-```
+| Store | What it needs | Expiry | Largest version |
+| --- | --- | --- | --- |
+| `roomHistory()` | Nothing: a `history` table in the room's own SQLite storage. | The room's alarm deletes each version when it expires. | 32 MiB (`maxValueBytes`); the table keeps under 256 MiB (`maxBytes`), oldest versions first. |
+| `kvHistory(namespace)` | A KV namespace binding. | KV's own TTL. | KV's 25 MiB. |
+| `r2History(bucket)` | An R2 bucket binding. | The room's alarm deletes each version when it expires. | 128 MiB. |
+
+With the ready-made `DocumentRoom`, set `EDYTOR_HISTORY` and nothing else: a KV namespace binding, an R2 bucket binding, or the variable `"room"` for the room's own storage.
 
 ```jsonc wrangler.jsonc
 {
@@ -22,24 +26,90 @@ npx wrangler kv namespace create edytor-history
     "bindings": [{ "name": "ROOMS", "class_name": "DocumentRoom" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DocumentRoom"] }],
-  "kv_namespaces": [{ "binding": "EDYTOR_HISTORY", "id": "<the namespace id>" }],
-  "vars": { "EDYTOR_HISTORY_TIME_ZONE": "Europe/Paris" }
+  // Any one of these three:
+  "vars": { "EDYTOR_HISTORY": "room", "EDYTOR_HISTORY_TIME_ZONE": "Europe/Paris" }
+  // "kv_namespaces": [{ "binding": "EDYTOR_HISTORY", "id": "<the namespace id>" }]
+  // "r2_buckets": [{ "binding": "EDYTOR_HISTORY", "bucket_name": "<the bucket>" }]
 }
 ```
 
-The ready-made `DocumentRoom` keeps its history in the `EDYTOR_HISTORY` binding when there is one, and none without it. `EDYTOR_HISTORY_RETENTION_DAYS` (30) and `EDYTOR_HISTORY_TIME_ZONE` (`UTC`) tune it. To use another binding, or to decide per room, override `history()`:
+Create a namespace with `npx wrangler kv namespace create edytor-history`, a bucket with `npx wrangler r2 bucket create edytor-history`. `EDYTOR_HISTORY_RETENTION_DAYS` (30) and `EDYTOR_HISTORY_TIME_ZONE` (`UTC`) tune the history. To use another binding, or to decide per room, override `history()`:
 
 ```ts src/room.ts check
-import { DocumentRoom, type HistoryOptions } from 'edytor/cloudflare';
+import { DocumentRoom, r2History, type HistoryOptions } from 'edytor/cloudflare';
 
 export class Room extends DocumentRoom<Env> {
   protected override history(): HistoryOptions | undefined {
-    return { store: this.env.HISTORY, retentionDays: 30, timeZone: 'Europe/Paris' };
+    return { store: r2History(this.env.VERSIONS), retentionDays: 90, timeZone: 'Europe/Paris' };
   }
 }
 ```
 
-With `attachDocument`, pass the same object as the `history` option: `attachDocument(this, { history: { store: this.env.HISTORY } })`. `store` is anything with KV's `put`, `get(key, 'arrayBuffer')` and `list({ prefix })` (`KVLike`), so tests can pass an in-memory fake.
+With `attachDocument`, pass the same object as the `history` option: `attachDocument(this, { history: { store: roomHistory() } })`.
+
+### The room's own storage
+
+`roomHistory({ maxBytes, maxValueBytes })` keeps the versions in the Durable Object beside the document, in a `history` table (`edytor_history` with `attachDocument`). It needs no binding and no other service, and a version is written atomically: one transaction, split into rows of 1 MiB under the platform's 2 MB row limit. Its space is counted apart from the [document quota](/docs/server/room#quotas): the quota measures what clients send and refuses their edits past it, while the history is the room's own, so it has its own cap, `maxBytes` (256 MiB by default; a Durable Object holds up to 10 GB). A version that would pass `maxBytes` deletes the oldest versions first, so the newest ones are always kept; a version larger than `maxValueBytes` (32 MiB) is skipped. A [generation cutover](/docs/server/room#generation-cutover) (`reset()`) keeps the table.
+
+### A store of your own
+
+Any object with these members is a store: D1, a bucket in another cloud, an HTTP service, an in-memory map in tests.
+
+```ts src/store.ts check
+import type { HistoryStore } from 'edytor/cloudflare';
+
+/** Versions in a D1 table: `CREATE TABLE versions (key TEXT PRIMARY KEY, value BLOB, expires_at INTEGER, metadata TEXT)`. */
+export const d1History = (db: D1Database): HistoryStore => ({
+  maxValueBytes: 1_000_000, // D1's largest row is 2 MB
+  async put(key, value, { expiresAt, metadata }) {
+    await db
+      .prepare('INSERT OR REPLACE INTO versions VALUES (?, ?, ?, ?)')
+      .bind(key, value, expiresAt, JSON.stringify(metadata))
+      .run();
+  },
+  async get(key) {
+    const row = await db
+      .prepare('SELECT value, expires_at FROM versions WHERE key = ?')
+      .bind(key)
+      .first<{ value: ArrayBuffer; expires_at: number }>();
+    return row && { value: new Uint8Array(row.value), expiresAt: row.expires_at };
+  },
+  async list(prefix, cursor = '') {
+    const { results } = await db
+      .prepare('SELECT key, expires_at, metadata FROM versions WHERE key > ? AND key LIKE ? ORDER BY key LIMIT 100')
+      .bind(cursor, `${prefix}%`)
+      .all<{ key: string; expires_at: number; metadata: string }>();
+    const entries = results.map((row) => ({
+      key: row.key,
+      expiresAt: row.expires_at,
+      metadata: JSON.parse(row.metadata)
+    }));
+    return { entries, cursor: entries.length === 100 ? entries[99].key : undefined };
+  },
+  async delete(key) {
+    await db.prepare('DELETE FROM versions WHERE key = ?').bind(key).run();
+  }
+});
+```
+
+| Member | |
+| --- | --- |
+| `maxValueBytes` | The largest value the store takes. A larger version is skipped and logged, never split. The `history` option's `maxValueBytes` can only lower it. |
+| `nativeTtl` | Optional. `true` when the store deletes a value at its `expiresAt` itself (KV's TTL): the room then never deletes. |
+| `put(key, value, { expiresAt, metadata })` | Store the bytes at `key`, replacing a value there. `expiresAt` is in ms since the epoch; `metadata` is a small JSON object (`{ bytes, blocks, editors, more?, at }`, under 1,024 bytes) to return from `list`. |
+| `get(key)` | `{ value, expiresAt }` (`expiresAt` `null` when the store does not know), or `null`. |
+| `list(prefix, cursor?)` | One page of the keys starting with `prefix`: `{ entries: [{ key, expiresAt, metadata }], cursor }`, `cursor` absent on the last page. |
+| `delete(key)` | Delete it; a missing key is no error. |
+
+The room owns the rest: the keys (one prefix per room, `history/<room id>/`), the values, the metadata and the retention.
+
+### Retention
+
+Every version gets an `expiresAt`: when it was written plus `retentionDays`. The room never lists, previews or restores a version past it, whatever the store still holds. A store with a TTL of its own (`nativeTtl`, KV) deletes it then. For every other store, the room deletes it: after writing a version, it arms a `retention` task on its alarm for that version's expiry; when it runs, it deletes every version of the room past its expiry and re-arms for the next one. A sweep that fails (the store is down) is logged as a `history` refusal (`{ retention: true, error }`) and runs again an hour later. A version written while the room's clock and the store's disagree still expires by the room's clock.
+
+### KV, before `kvHistory`
+
+Earlier releases took the KV namespace itself as the store (`history: { store: env.HISTORY }`). That still works, wrapped in `kvHistory` for you, but is deprecated: write `kvHistory(env.HISTORY)`. `kvHistory` writes exactly what earlier releases wrote (the same keys, values, metadata and `expirationTtl`), so versions they stored list, preview and restore as before.
 
 ## Two versions a day
 
@@ -51,16 +121,16 @@ The day has two slots in the configured time zone (an IANA name such as `Europe/
 
 A slot nobody changed writes nothing, so a document left alone for a week keeps its last versions and writes no new ones. The editors of a slot are the verified users whose edits the room stored in it (a server [`transact`](/docs/server/extending#edit-on-the-server) has none; a restore counts its restorer). A day with a daylight-saving change has a 13 or 11 hour morning; the slots follow the local clock.
 
-Each version is one KV value:
+Each version is one value in the store:
 
 | | |
 | --- | --- |
 | Key | `history/<room id>/<YYYY-MM-DD>-am` or `-pm`, the room id percent-encoded, the date local. |
 | Value | The document's state, as the room's compaction stores it (the compact v2 encoding, gzip-compressed). |
-| Metadata | `{ bytes, blocks, editors, at }`: its size, its visible blocks, the slot's editors, when it was written. Kept under KV's 1,024 bytes: past it, the last editors are left out and counted in `more`. |
-| Expiry | `expirationTtl` of the retention (30 days). |
+| Metadata | `{ bytes, blocks, editors, at }`: its size, its visible blocks, the slot's editors, when it was written. Kept under 1,024 bytes (KV's metadata limit, for every store): past it, the last editors are left out and counted in `more`. |
+| Expiry | `expiresAt`, the retention (30 days) after it was written: KV's `expirationTtl`, R2's custom metadata, a column of the room's table. |
 
-A version larger than KV's 25 MiB value limit is not written: the room skips that slot, logs a `history` refusal (`{ key, bytes, limit }`) and writes the next one if it fits. Versions are never split into parts, because KV writes parts one by one and a failure between two would list a version nobody can read; a compressed state that large holds incompressible data (inline images, say), which belongs in an upload store. A KV write that fails is logged the same way, and that slot is skipped.
+A version larger than the store's `maxValueBytes` (KV's 25 MiB, R2's 128 MiB, the room's 32 MiB) is not written: the room skips that slot, logs a `history` refusal (`{ key, bytes, limit }`) and writes the next one if it fits. Versions are never split across several values, because a store writes them one by one and a failure between two would list a version nobody can read; a compressed state that large holds incompressible data (inline images, say), which belongs in an upload store. (`roomHistory` splits a version into rows inside one transaction, which is atomic.) A write that fails is logged the same way, and that slot is skipped.
 
 ## List, preview, restore
 
@@ -75,7 +145,7 @@ const result = await room.restoreHistory(versions[0].key, { user: 'ada' });
 await room.undoRestore(); // the last restore, once
 ```
 
-- `listHistory()` reads the keys of this room only (its prefix), with their metadata.
+- `listHistory()` reads the keys of this room only (its prefix), with their metadata and `expiresAt`; a version past it is not listed.
 - `readHistory(key)` returns the version as a [`JSONDoc`](/docs/reference/document-api), for a preview; `null` when this room holds no such version (expired, or another room's key).
 - `restoreHistory(key, { user })` restores it (below) and returns `{ status, key, revived, moved, rewritten, created, deleted }`: `applied`, `noop` (the document already equals it) or `refused` (no such version).
 - `undoRestore({ user })` undoes the last restore: `applied`, or `noop` when there is none to undo.
@@ -177,7 +247,7 @@ Only the room writes the horizon: a client update that writes it is stripped (lo
 
 ## The room's alarm
 
-A Durable Object has one alarm. The room runs three tasks on it: [`onSave`](/docs/server/extending#save), the history's slots and the purge's daily tick. Each task's due time is stored with the room, the alarm is set to the earliest one, and when it fires every task due at its time runs, then the alarm is set to the next. A task already due keeps its time, so frequent edits or wakes never push a save back. In your own Durable Object, define `alarm()` only to add work of your own, and call `await this.document.alarm()` from it.
+A Durable Object has one alarm. The room runs four tasks on it: [`onSave`](/docs/server/extending#save), the history's slots, the purge's daily tick and the history's [retention](#retention) (for a store without a TTL of its own). Each task's due time is stored with the room, the alarm is set to the earliest one, and when it fires every task due at its time runs, then the alarm is set to the next. A task already due keeps its time, so frequent edits or wakes never push a save back. In your own Durable Object, define `alarm()` only to add work of your own, and call `await this.document.alarm()` from it.
 
 ## Metrics and log
 
@@ -185,4 +255,4 @@ A Durable Object has one alarm. The room runs three tasks on it: [`onSave`](/doc
 
 ## Storage
 
-The room keeps three more tables beside its rows: `epochs` (the purge's daily state vectors), `editors` (the open slot's editors) and `restore` (the last restore's step); with `attachDocument`, `edytor_epochs`, `edytor_editors` and `edytor_restore`. The due times live in `meta`.
+The room keeps three more tables beside its rows: `epochs` (the purge's daily state vectors), `editors` (the open slot's editors) and `restore` (the last restore's step); with `attachDocument`, `edytor_epochs`, `edytor_editors` and `edytor_restore`. With `roomHistory()`, a fourth, `history` (`edytor_history`), holds the versions. The due times live in `meta`.

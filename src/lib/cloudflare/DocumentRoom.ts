@@ -114,13 +114,20 @@ import {
 	historyEntry,
 	historyKey,
 	historyPrefix,
+	isR2Bucket,
+	kvHistory,
 	parseHistoryKey,
+	r2History,
+	resolveHistoryStore,
+	roomHistory,
 	slotAt,
 	slotEnd,
 	validTimeZone,
 	type HistoryEntry,
 	type HistoryOptions,
-	type KVLike
+	type HistoryStore,
+	type KVLike,
+	type R2BucketLike
 } from './history.js';
 import { ChunkLimitError, ChunkSequenceError, CLOSE } from '../crdt/providers/room.js';
 import type {
@@ -229,8 +236,10 @@ export const HISTORY_KEY_HEADER = 'X-Edytor-History-Key';
 /** A day, in ms: the purge task's period (H7). */
 const DAY = 86_400_000;
 /** The room's alarm tasks (`room.alarm.tasks`), in the order an alarm runs them. */
-type Task = 'history' | 'save' | 'purge';
-const TASKS: readonly Task[] = ['history', 'save', 'purge'];
+type Task = 'history' | 'save' | 'purge' | 'retention';
+const TASKS: readonly Task[] = ['history', 'save', 'purge', 'retention'];
+/** A retention sweep that failed runs again this much later (`room.history.retention`). */
+const RETENTION_RETRY = 3600_000;
 /** The last restore (H11): its step, kept for `undoRestore`. */
 type RestoreStep = {
 	key: string;
@@ -271,8 +280,12 @@ export type DocumentRoomEnv = {
 	 * retention, else 30); `off` never purges.
 	 */
 	EDYTOR_PURGE_AFTER_DAYS?: string | number;
-	/** A KV namespace binding: the room keeps its version history there (H11, `history()`). */
-	EDYTOR_HISTORY?: KVLike;
+	/**
+	 * Where the room keeps its version history (H11, `history()`): a KV
+	 * namespace or an R2 bucket binding, or the string `room` (the room's own
+	 * storage, {@link roomHistory}). Unset: no history.
+	 */
+	EDYTOR_HISTORY?: KVLike | R2BucketLike | 'room';
 	/** Days a version is kept (default 30). */
 	EDYTOR_HISTORY_RETENTION_DAYS?: string | number;
 	/** The IANA time zone of the history's half-day slots (default `UTC`). */
@@ -318,7 +331,8 @@ export type Refusal = {
 		// another replica ({ replica, user }) and stored unowned.
 		| 'relayed'
 		// A version the history could not write ({ key, bytes, limit } past the
-		// size limit, { key, error } when KV failed, { room } past KV's key limit): skipped.
+		// size limit, { key, error } when the store failed, { room } past the key
+		// limit): skipped; or a retention sweep that failed ({ retention, error }).
 		| 'history';
 	detail: unknown;
 };
@@ -1347,8 +1361,9 @@ export class AttachedDocument {
 	private readonly editorsTable: string;
 	private readonly restoreTable: string;
 	private _lookups: ReturnType<typeof lookups> | null = null;
+	private readonly tablePrefix: string;
 	private _history:
-		| (Required<Omit<HistoryOptions, 'store'>> & { store: KVLike })
+		| (Required<Omit<HistoryOptions, 'store'>> & { store: HistoryStore })
 		| null
 		| undefined;
 
@@ -1377,6 +1392,7 @@ export class AttachedDocument {
 		);
 		const prefix = options.tablePrefix ?? 'edytor_';
 		if (!/^\w*$/.test(prefix)) throw new Error(`invalid table prefix ${prefix}`);
+		this.tablePrefix = prefix;
 		this.rowsTable = `${prefix}rows`;
 		this.replicasTable = `${prefix}replicas`;
 		this.metaTable = `${prefix}meta`;
@@ -1583,6 +1599,7 @@ export class AttachedDocument {
 			try {
 				if (task === 'history') await this.closeSlot();
 				else if (task === 'save') await this.save();
+				else if (task === 'retention') await this.expireVersions();
 				else this.tick();
 			} catch (error) {
 				failure ??= { error };
@@ -2201,11 +2218,23 @@ export class AttachedDocument {
 			this.note({ reason: 'history', detail: { timeZone } });
 			return (this._history = null);
 		}
+		let store: HistoryStore;
+		try {
+			store = resolveHistoryStore(h.store, {
+				sql: this.sql,
+				transactionSync: (closure) => this.ctx.storage.transactionSync(closure),
+				tablePrefix: this.tablePrefix
+			});
+		} catch (error) {
+			this.note({ reason: 'history', detail: { store: String(error) } });
+			return (this._history = null);
+		}
+		const own = knob(store.maxValueBytes, HISTORY_MAX_VALUE_BYTES, Number.MAX_SAFE_INTEGER);
 		return (this._history = {
-			store: h.store,
+			store,
 			retentionDays: knob(h.retentionDays, DEFAULT_RETENTION_DAYS, 36_500),
 			timeZone,
-			maxValueBytes: knob(h.maxValueBytes, HISTORY_MAX_VALUE_BYTES)
+			maxValueBytes: knob(h.maxValueBytes, own, own)
 		});
 	}
 
@@ -2330,10 +2359,10 @@ export class AttachedDocument {
 				editors: version.editors,
 				at: version.at
 			});
-			await config.store.put(version.key, bytes, {
-				expirationTtl: config.retentionDays * 86_400,
-				metadata
-			});
+			const expiresAt = version.at + config.retentionDays * DAY;
+			await config.store.put(version.key, bytes, { expiresAt, metadata });
+			// A store that expires nothing itself: the alarm deletes it then (`room.history.retention`).
+			if (!config.store.nativeTtl) this.schedule('retention', expiresAt, 'earlier');
 			this.counters.history.written++;
 			this.counters.history.lastKey = version.key;
 			this.log({
@@ -2374,27 +2403,63 @@ export class AttachedDocument {
 	 */
 	async listHistory(): Promise<HistoryEntry[]> {
 		const config = this.requireHistory();
-		const prefix = historyPrefix(this.roomId);
+		const now = this.clock();
 		const out: HistoryEntry[] = [];
+		for await (const { key, expiresAt, metadata } of this.storedVersions(config.store)) {
+			// Past its expiry it is gone, whether or not the store deleted it yet.
+			if (expiresAt !== null && expiresAt <= now) continue;
+			const entry = historyEntry(this.roomId, key, metadata, expiresAt);
+			if (entry !== null) out.push(entry);
+		}
+		return out.sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
+	}
+
+	/** Every version key the store holds under this room's prefix, page by page. */
+	private async *storedVersions(store: HistoryStore) {
+		const prefix = historyPrefix(this.roomId);
 		let cursor: string | undefined;
 		do {
-			const page = await config.store.list({ prefix, cursor });
-			for (const { name, metadata } of page.keys) {
-				const entry = historyEntry(this.roomId, name, metadata);
-				if (entry !== null) out.push(entry);
-			}
-			cursor = page.list_complete ? undefined : page.cursor;
+			const page = await store.list(prefix, cursor);
+			yield* page.entries;
+			cursor = page.cursor;
 		} while (cursor !== undefined);
-		return out.sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
+	}
+
+	/**
+	 * The `retention` task (`room.history.retention`), for a store that
+	 * expires nothing itself: delete every version past its expiry, then
+	 * re-arm at the next one's. A failure is noted `history` and retried
+	 * an hour later.
+	 */
+	private async expireVersions(): Promise<void> {
+		const config = this.historyConfig;
+		if (config === null || config.store.nativeTtl) return this.unschedule('retention');
+		const now = this.clock();
+		let next = Infinity;
+		try {
+			const expired: string[] = [];
+			for await (const { key, expiresAt } of this.storedVersions(config.store)) {
+				if (expiresAt === null || parseHistoryKey(this.roomId, key) === null) continue;
+				if (expiresAt <= now) expired.push(key);
+				else next = Math.min(next, expiresAt);
+			}
+			for (const key of expired) await config.store.delete(key);
+		} catch (error) {
+			this.note({ reason: 'history', detail: { retention: true, error: String(error) } });
+			return this.schedule('retention', now + RETENTION_RETRY, 'replace');
+		}
+		if (next === Infinity) this.unschedule('retention');
+		else this.schedule('retention', next, 'replace');
 	}
 
 	/** Version `key` as JSON (a preview), or `null` when this room holds no such version. */
 	async readHistory(key: string): Promise<JSONDoc | null> {
 		const config = this.requireHistory();
 		if (parseHistoryKey(this.roomId, key) === null) return null;
-		const value = await config.store.get(key, 'arrayBuffer');
-		if (value === null) return null;
-		const bytes = await gunzip(new Uint8Array(value));
+		const found = await config.store.get(key);
+		if (found === null || (found.expiresAt !== null && found.expiresAt <= this.clock()))
+			return null;
+		const bytes = await gunzip(found.value);
 		return noTimers(() => {
 			let doc: YDoc;
 			try {
@@ -3844,14 +3909,26 @@ export class DocumentRoom<
 
 	/**
 	 * Version history — see {@link AttachDocumentOptions.history}. Default:
-	 * the `EDYTOR_HISTORY` KV binding, with `EDYTOR_HISTORY_RETENTION_DAYS`
+	 * `EDYTOR_HISTORY` — a KV namespace binding ({@link kvHistory}), an R2
+	 * bucket binding ({@link r2History}) or the string `room` (the room's
+	 * own storage, {@link roomHistory}) — with `EDYTOR_HISTORY_RETENTION_DAYS`
 	 * and `EDYTOR_HISTORY_TIME_ZONE`; none without it. Read once, at first use.
 	 */
 	protected history(): HistoryOptions | undefined {
 		const env = this.env as DocumentRoomEnv;
-		if (!env.EDYTOR_HISTORY) return undefined;
+		const binding = env.EDYTOR_HISTORY;
+		if (!binding) return undefined;
 		return {
-			store: env.EDYTOR_HISTORY,
+			store:
+				binding === 'room'
+					? roomHistory()
+					: isR2Bucket(binding)
+						? r2History(binding)
+						: typeof binding === 'string'
+							? () => {
+									throw new Error(`EDYTOR_HISTORY: unknown store ${JSON.stringify(binding)}`);
+								}
+							: kvHistory(binding),
 			retentionDays: Number(env.EDYTOR_HISTORY_RETENTION_DAYS) || undefined,
 			timeZone: env.EDYTOR_HISTORY_TIME_ZONE || undefined
 		};

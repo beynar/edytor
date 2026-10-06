@@ -20,8 +20,12 @@ import {
 	requestedReplica,
 	routeDocumentHistory,
 	routeDocumentSocket,
+	kvHistory,
+	r2History,
+	roomHistory,
 	type HistoryOptions,
 	type KVLike,
+	type R2BucketLike,
 	type AuthorizeDocumentSocket,
 	type DocumentRoomEnv,
 	type FrameValidation,
@@ -246,11 +250,106 @@ export class FakeKV implements KVLike {
 		return {
 			keys: page.map((r) => ({
 				name: r.key,
+				// KV lists a key's expiry in seconds since the epoch.
+				...(r.expires === null ? {} : { expiration: Math.floor(r.expires / 1000) }),
 				metadata: r.metadata === null ? undefined : JSON.parse(r.metadata)
 			})),
 			list_complete: complete,
 			cursor: complete ? undefined : String(from + limit)
 		};
+	}
+
+	async delete(key: string) {
+		this.sql.exec('DELETE FROM fake_kv WHERE key = ?', key);
+	}
+}
+
+/**
+ * An in-memory R2 bucket (the {@link R2BucketLike} subset) over the
+ * object's own SQLite storage: custom metadata (at most R2's 2,048 bytes),
+ * prefix listings two objects a page, and no expiry of its own (the room
+ * deletes). A row in `fake_r2_fail` makes the next puts throw.
+ */
+export class FakeR2 implements R2BucketLike {
+	constructor(private readonly sql: SqlStorage) {
+		sql.exec(
+			'CREATE TABLE IF NOT EXISTS fake_r2 (key TEXT PRIMARY KEY, value BLOB, custom TEXT NOT NULL)'
+		);
+		sql.exec('CREATE TABLE IF NOT EXISTS fake_r2_fail (n INTEGER)');
+	}
+
+	async put(
+		key: string,
+		value: ArrayBuffer | ArrayBufferView,
+		options: { customMetadata?: Record<string, string> } = {}
+	) {
+		const failing = this.sql.exec<{ n: number }>('SELECT n FROM fake_r2_fail').toArray()[0];
+		if (failing && failing.n > 0) {
+			this.sql.exec('UPDATE fake_r2_fail SET n = n - 1');
+			throw new Error('R2 put failed (injected)');
+		}
+		const custom = JSON.stringify(options.customMetadata ?? {});
+		const size = Object.entries(options.customMetadata ?? {}).reduce(
+			(n, [k, v]) => n + new TextEncoder().encode(k + v).length,
+			0
+		);
+		if (size > 2048) throw new Error('R2 custom metadata too large');
+		const bytes =
+			value instanceof ArrayBuffer
+				? new Uint8Array(value)
+				: new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+		this.sql.exec(
+			'INSERT OR REPLACE INTO fake_r2 (key, value, custom) VALUES (?, ?, ?)',
+			key,
+			bytes,
+			custom
+		);
+	}
+
+	async get(key: string) {
+		const row = this.sql
+			.exec<{
+				value: ArrayBuffer;
+				custom: string;
+			}>('SELECT value, custom FROM fake_r2 WHERE key = ?', key)
+			.toArray()[0];
+		if (!row) return null;
+		return {
+			arrayBuffer: async () => row.value.slice(0),
+			customMetadata: JSON.parse(row.custom) as Record<string, string>
+		};
+	}
+
+	async list(
+		options: {
+			prefix?: string;
+			cursor?: string;
+			include?: Array<'httpMetadata' | 'customMetadata'>;
+		} = {}
+	) {
+		const all = this.sql
+			.exec<{ key: string; custom: string }>('SELECT key, custom FROM fake_r2 ORDER BY key')
+			.toArray()
+			.filter((r) => r.key.startsWith(options.prefix ?? ''));
+		const from = options.cursor ? Number(options.cursor) : 0;
+		const page = all.slice(from, from + 2);
+		const truncated = from + 2 < all.length;
+		return {
+			objects: page.map((r) => ({
+				key: r.key,
+				// Without `include`, R2 lists no custom metadata.
+				...(options.include?.includes('customMetadata')
+					? { customMetadata: JSON.parse(r.custom) as Record<string, string> }
+					: {})
+			})),
+			truncated,
+			cursor: truncated ? String(from + 2) : undefined
+		};
+	}
+
+	async delete(keys: string | string[]) {
+		for (const key of Array.isArray(keys) ? keys : [keys])
+			this.sql.exec('DELETE FROM fake_r2 WHERE key = ?', key);
 	}
 }
 
@@ -280,13 +379,50 @@ const zoneOf = (name: string): string =>
 					: 'UTC';
 
 /**
- * Rooms with a fake clock (`timed-*`, Phase 3): history in a {@link FakeKV}
- * (none for `timed-nohistory-*`), its time zone by name (`-paris-`, `-ny-`,
- * `-kolkata-`, else UTC), a 600-byte value cap for `timed-cap-*`, purge
- * after 30 days (the retention). Log entries are kept.
+ * The history store a `timed-*` room's name asks for (`room.history.store`):
+ * `-r2-` an R2 bucket ({@link FakeR2} through `r2History`), `-sqlite-` the
+ * room's own storage (`roomHistory`; `-sqlite-small-` caps its table at
+ * 4,000 bytes), `-kvstore-` `kvHistory` over a {@link FakeKV}; else a bare
+ * {@link FakeKV} (the deprecated `KVLike` store, wrapped by the room).
+ */
+const storeOf = (name: string, sql: SqlStorage, now: () => number): HistoryOptions['store'] =>
+	name.includes('-r2-')
+		? r2History(new FakeR2(sql))
+		: name.includes('-sqlite-small-')
+			? roomHistory({ maxBytes: 4000 })
+			: name.includes('-sqlite-')
+				? roomHistory()
+				: name.includes('-kvstore-')
+					? kvHistory(new FakeKV(sql, now))
+					: new FakeKV(sql, now);
+
+/**
+ * Rooms with a fake clock (`timed-*`, Phase 3): history in the store their
+ * name asks for ({@link storeOf}; none for `timed-nohistory-*`; the
+ * `EDYTOR_HISTORY` var's for `timed-env-*`: `-env-r2-` the `HISTORY_R2`
+ * bucket, `-env-room-` the string `room`, `-env-kv-` the `HISTORY`
+ * namespace), its time zone by name (`-paris-`, `-ny-`, `-kolkata-`, else
+ * UTC), a 600-byte value cap for `timed-cap-*`, purge after 30 days (the
+ * retention). Log entries are kept.
  */
 export class TimedRoom extends DocumentRoom<Env> {
 	readonly logged: RoomLogEntry[] = [];
+	constructor(ctx: DurableObjectState, env: Env) {
+		const name = ctx.id.name ?? '';
+		super(
+			ctx,
+			name.startsWith('timed-env-')
+				? {
+						...env,
+						EDYTOR_HISTORY: name.includes('-env-r2-')
+							? env.HISTORY_R2
+							: name.includes('-env-room-')
+								? 'room'
+								: env.HISTORY
+					}
+				: env
+		);
+	}
 	protected override log(entry: RoomLogEntry) {
 		this.logged.push(entry);
 	}
@@ -296,8 +432,9 @@ export class TimedRoom extends DocumentRoom<Env> {
 	protected override history(): HistoryOptions | undefined {
 		const name = this.ctx.id.name ?? '';
 		if (name.startsWith('timed-nohistory')) return undefined;
+		if (name.startsWith('timed-env-')) return super.history();
 		return {
-			store: new FakeKV(this.ctx.storage.sql, () => this.now()),
+			store: storeOf(name, this.ctx.storage.sql, () => this.now()),
 			timeZone: zoneOf(name),
 			maxValueBytes: name.startsWith('timed-cap') ? 600 : undefined
 		};
@@ -347,6 +484,7 @@ export type Env = DocumentRoomEnv & {
 	TIMED: DurableObjectNamespace<TimedRoom>;
 	DEMO: DurableObjectNamespace<DocumentRoom>;
 	HISTORY: KVNamespace;
+	HISTORY_R2: R2Bucket;
 };
 
 export const ROOM_ROUTE = /^\/rooms\/([^/]+)(\/compact)?\/?$/;

@@ -80,7 +80,8 @@ import {
 	displaySlotOf,
 	documentOrder,
 	REGISTRY_KEY,
-	resolvePlacements
+	resolvePlacements,
+	textRanker
 } from '../placement/model.js';
 import {
 	bindText,
@@ -745,6 +746,13 @@ export const bindRuns = (Y: EngineApi) => {
 			}
 			if (row === undefined) placed.delete(home);
 			else placed.set(home, now);
+			// D-18: a change of the text's segments re-decides its pieces' order.
+			if (
+				before.head !== now.head ||
+				before.blocks.length !== now.blocks.length ||
+				before.blocks.some((b, i) => now.blocks[i] !== b)
+			)
+				regroup.add(home);
 			const [a, b] = [before.keys, now.keys];
 			let p = 0;
 			while (p < a.length && p < b.length && a[p] === b[p]) p++;
@@ -820,7 +828,8 @@ export const bindRuns = (Y: EngineApi) => {
 			streamOf,
 			streamsIn,
 			streamAt,
-			display: (b) => displayOf(b, blocks, ownShim)
+			display: (b) => displayOf(b, blocks, ownShim),
+			textRank: (id, parent, rank) => ranker.rank(id, parent, rank)
 		};
 
 		/** The blocks `owner` displays (the delete step's marks). */
@@ -842,6 +851,15 @@ export const bindRuns = (Y: EngineApi) => {
 		// The layout rules re-run only on the layouts a change reaches.
 		/** Resolved placements. */
 		const placementsMap = new Map<BlockId, ResolvedPlacement>();
+		/** D-18: the texts whose pieces' order is re-decided at the next pass (`order.split.text`). */
+		const regroup = new Set<BlockId>();
+		/** The blocks of `home`'s text, in text order (segment 0's first). */
+		const rowBlocks = (home: BlockId): BlockId[] => {
+			const at = placed.get(home);
+			if (at === undefined) return [];
+			return at.head === null ? at.blocks : [at.head, ...at.blocks];
+		};
+		const ranker = textRanker(blocks, placementsMap, (b) => streamIx.get(b)?.home, rowBlocks);
 		/** Resolved parent → the blocks placed under it. */
 		const kidsOf = new Map<BlockId | null, Set<BlockId>>();
 		/** A block's argmax candidate parent → the blocks naming it (its entry decides theirs). */
@@ -1116,6 +1134,8 @@ export const bindRuns = (Y: EngineApi) => {
 		/** Everything rebuilt from the records (the first build, roles, an irregular state). */
 		const rebuildPlacements = (): void => {
 			placementFull = false;
+			ranker.forget();
+			regroup.clear();
 			placementSeeds.clear();
 			stateSeeds.clear();
 			ownerChanged.clear();
@@ -1226,9 +1246,12 @@ export const bindRuns = (Y: EngineApi) => {
 					rebuildPlacements();
 				return;
 			}
-			if (placementSeeds.size + stateSeeds.size + ownerChanged.size === 0) return;
+			if (placementSeeds.size + stateSeeds.size + ownerChanged.size + regroup.size === 0) return;
 			const moved = new Set<BlockId>();
 			for (const id of placementSeeds) {
+				// D-18: a candidate change (a move, even to the same slot) re-decides its text's order.
+				const home = streamIx.get(id)?.home;
+				if (home !== undefined) regroup.add(home);
 				const next = argmaxOf(id);
 				if (next === null) return rebuildPlacements();
 				const old = placementsMap.get(id);
@@ -1241,6 +1264,10 @@ export const bindRuns = (Y: EngineApi) => {
 			for (const o of ownerChanged)
 				for (const c of kidsOf.get(o) ?? []) if (cyclic(c)) return rebuildPlacements();
 			const seeds = new Set<BlockId>([...moved, ...stateSeeds, ...ownerChanged]);
+			// D-18: every block of a text whose pieces' order may have changed re-reads its slot.
+			for (const home of regroup)
+				for (const b of ranker.regroup(home)) if (placementsMap.has(b)) seeds.add(b);
+			regroup.clear();
 			const kinds = [...stateSeeds];
 			placementSeeds.clear();
 			stateSeeds.clear();
@@ -1935,6 +1962,8 @@ export const bindRuns = (Y: EngineApi) => {
 			}
 			const same = (x: Map<BlockId | null, ChildSlot[]>, y: Map<BlockId | null, ChildSlot[]>) =>
 				x.size === y.size && [...x].every(([p, l]) => keyOf(l) === keyOf(y.get(p) ?? null));
+			// The text orders (D-18) decided afresh: a stale one shows as a slot mismatch.
+			ranker.forget();
 			const k0 = childrenIndex(placementsMap, own0);
 			if (!same(k0, kids0)) fail('children index (before the layout rules)');
 			const out = dissolve(k0);

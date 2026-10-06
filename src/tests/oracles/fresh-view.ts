@@ -13,6 +13,7 @@ import {
 	displayIndex,
 	documentOrder,
 	resolvePlacements,
+	textRanker,
 	type BlockId,
 	type BlockRec,
 	type ModelView
@@ -101,8 +102,16 @@ const settleWithdrawn = (blocks: Map<BlockId, BlockRec>): void => {
 /** The whole view rebuilt from scratch (records, ownership, placements, children, order). */
 export const freshView = (Y: EngineApi, doc: EngineDoc): ModelView => {
 	const blocks = collectBlocks(doc);
-	const own = bindText(Y).computeOwnership(doc, blocks);
-	const placements = resolvePlacements(blocks, own.ownerOf);
+	const base = bindText(Y).computeOwnership(doc, blocks);
+	const placements = resolvePlacements(blocks, base.ownerOf);
+	// D-18 (`order.split.text`): pieces of one text read in its order.
+	const ranker = textRanker(
+		blocks,
+		placements,
+		(b) => base.streamOf(b)?.home,
+		(home) => base.streamsIn(home).map((st) => st.block)
+	);
+	const own = { ...base, textRank: ranker.rank };
 	const kids = childrenIndex(placements, own);
 	const by = displayIndex(blocks, own.ownerOf);
 	return {

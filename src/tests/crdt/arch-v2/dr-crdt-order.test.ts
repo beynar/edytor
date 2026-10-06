@@ -316,12 +316,14 @@ describe('DR-crdt-7: an edit before one’s own split point keeps the pieces in 
 		).toEqual(['P|<|> wo|rld|Q']));
 
 	/**
-	 * Residual (pinned, documented in the delete contract): a peer's edit
-	 * AFTER its own split point that the other peer has not seen (typing at
-	 * the end, then Enter further up) counts as text after that point, so
-	 * its piece sorts before a piece the other peer split off above it.
+	 * Resolved by D-18 (H9, `order.split.text`; a residual until
+	 * 0.1.0-next.25): a peer's edit AFTER its own split point that the other
+	 * peer has not seen (typing at the end, then Enter further up) made its
+	 * piece's rank sort before a piece the other peer split off above it.
+	 * Pieces of one text that stand where they were made now show in the
+	 * text's order: the serial order.
 	 */
-	it('residual: Ada types at the end, then Enter after “hello wo” ‖ Bob presses Enter after “hello”', () =>
+	it('D-18: Ada types at the end, then Enter after “hello wo” ‖ Bob presses Enter after “hello”', () =>
 		expect(
 			texts(
 				seed('hello world'),
@@ -331,10 +333,10 @@ describe('DR-crdt-7: an edit before one’s own split point keeps the pieces in 
 				},
 				(ed) => ed.splitBlock('X', 5, 'N2')
 			)
-		).toEqual([['P', 'hello', 'rld again', ' wo', 'Q']]));
+		).toEqual([['P', 'hello', ' wo', 'rld again', 'Q']]));
 
-	/** The same residual when the unseen edit after the split point is a deletion (FX-10). */
-	it('residual: Ada deletes “rld”, then Enter after “hello” ‖ Bob presses Enter after “hello w”', () =>
+	/** The same case when the unseen edit after the split point is a deletion (FX-10). */
+	it('D-18: Ada deletes “rld”, then Enter after “hello” ‖ Bob presses Enter after “hello w”', () =>
 		expect(
 			texts(
 				seed('hello world'),
@@ -344,5 +346,5 @@ describe('DR-crdt-7: an edit before one’s own split point keeps the pieces in 
 				},
 				(ed) => ed.splitBlock('X', 7, 'N2')
 			)
-		).toEqual([['P', 'hello', 'o', ' w', 'Q']]));
+		).toEqual([['P', 'hello', ' w', 'o', 'Q']]));
 });

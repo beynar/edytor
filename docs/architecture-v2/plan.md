@@ -483,7 +483,7 @@ platform flag, remote-apply origin).
 
 | # | Fact | Status |
 |---|---|---|
-| O82 | Reading order of concurrently split siblings (16/40 client pairs misorder today) | R2 makes it decidable (boundary order is replicated); a placement rule that uses it is a separate task (D-18) |
+| O82 | Reading order of concurrently split siblings (16/40 client pairs misorder today) | R2 makes it decidable (boundary order is replicated); D-18 decided it in 0.1.0-next.25 (`order.split.text`) |
 | O83 | Concurrent `delete(p)` ‖ `move(child of p → root)` | product decision (rescue vs delete-wins-subtree), unchanged (D-19) |
 
 ## 4. Module / layer map of the new `src/lib`
@@ -1428,7 +1428,7 @@ except through the declared attribute table.
 | D-15 | API retirement (L62, ≈352) and the migration options that lose meaning | **Retire** `decorateRuns`, subscriber variants, "advanced internals", raw sync readers, IDB `get/set/del`, the server-side awareness helper; `leaseMs`/`owner`/`pollMs` become documented no-ops; `status()` keeps reporting `pending` through the lock manager; `wait: false` returns `busy` | No production consumer; 0.0.x; changelog entry | Keep them (+352; target −39.8 %) |
 | D-16 | Legacy presence fields (`startTextId`/`yStart`, `selection` mirror) | **Remove** | No v14 peer has shipped; v13 peers are excluded by the envelope | Keep (+≈60) |
 | D-17 | Concurrent undo vs a split at 0 of still-live text (F-U4d) | **YATA order (client-id dependent), pinned for both orders** | Any other answer needs a repair write (F6) | — |
-| D-18 | Reading order of concurrently split siblings | **Tracked, not decided** | Boundary order makes it decidable (≈30 xloc) | — |
+| D-18 | Reading order of concurrently split siblings | **Decided (0.1.0-next.25, H9)**: pieces of one text that stand where they were made show in the text's order between clients, each client's own in its rank order (`order.split.text`) | Boundary order makes it decidable (≈30 xloc) | `h9-split-order.test.ts` |
 | D-19 | Concurrent `delete(p)` ‖ `move(child → root)` | **Undecided** | The move ADR does not cover it | — |
 | D-20 | A peer's structural change to the block holding a live composition (delete, retype, re-parent, merge) | **Commit first**: the session commits what the IME shows before the change renders (parity with today's class of behavior). **Retain** (freeze the host cell until the session ends, ≈+60) is the upgrade once the cdp rows exist | R11 makes the remount unavoidable otherwise (BI-6) | Retain now (+≈60) |
 | D-21 | Split re-inserts the claims that follow the split point | **Pin the consequence**: a concurrent undo of that merge re-merges into the new block (parity with today's copy of slice records) | No move primitive (F10) | Keep claims on `b` and let the display walk decide (a larger change) |

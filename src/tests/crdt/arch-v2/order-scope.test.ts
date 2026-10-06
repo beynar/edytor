@@ -107,9 +107,10 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 				[(ed) => ed.duplicateBlock('X', (id) => `${id}2`), split('X', 5, 'N1')],
 				[split('X', 2, 'N2')]
 			)
-			// The serial order reads he|llo| world|hello world: " world" always
-			// comes too early, and the copy lands at random beside "llo".
-		).toEqual(['P|he| world|hello world|llo|Q', 'P|he| world|llo|hello world|Q']));
+			// The serial order reads he|llo| world|hello world. Since D-18 the
+			// pieces of X's text keep its order (" world" came too early before);
+			// the copy, a block of its own, still lands at random beside " world".
+		).toEqual(['P|he|llo| world|hello world|Q', 'P|he|llo|hello world| world|Q']));
 
 	/**
 	 * Enter inside the header of a container that shows nested lines (an open
@@ -134,7 +135,8 @@ describe('not covered: the text order can follow the client ids (pinned)', () =>
 				[headerEnter(5, 'N1')],
 				[headerEnter(2, 'N2')]
 			)
-		).toEqual(['he|llo| world|k', 'he| world|llo|k'].sort()));
+			// D-18: the pieces keep the text's order on every pair (two outcomes before).
+		).toEqual(['he|llo| world|k']));
 
 	/**
 	 * DR-crdt-1: a paste of whole blocks (a block-selection copy) lands after

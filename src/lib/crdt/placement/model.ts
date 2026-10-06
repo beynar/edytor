@@ -234,6 +234,135 @@ export type DisplayOwnership = Ownership & {
 	 * it ({@link displaySlotOf}).
 	 */
 	sheds?: (owner: BlockId, child: BlockId) => boolean;
+	/**
+	 * The rank `id` displays at directly under `parent` (its placement's own
+	 * parent) — `rank` unless it is a piece of a text (`order.split.text`,
+	 * D-18, {@link textRanker}).
+	 */
+	textRank?: (id: BlockId, parent: BlockId | null, rank: string) => string;
+};
+
+/**
+ * D-18 (H9, `order.split.text`): the blocks whose streams lie in one
+ * backing text and that still stand where they were made (their winning
+ * placement is their first candidate, `1.<client>`: no move, outdent or
+ * lift since) under one parent show in their streams' order in that text —
+ * the order of the boundaries that delimit them, the same on every
+ * replica — at the ranks they hold between them: the i-th of them in the
+ * text takes the i-th smallest of their ranks. Ranks written at a split
+ * (`sourceRank`) are a guess made on one replica's text; the boundaries are
+ * the replicated fact, so two peers splitting one block at once keep the
+ * text's order whatever each saw (an unseen edit after one's own split
+ * point included). A block moved since stands where it was moved.
+ *
+ * `inText(home)`: the blocks of `home`'s text, in text order (segment 0's
+ * first). Memoized per (text, parent) until `forget(home)`.
+ */
+export const textRanker = (
+	blocks: ReadonlyMap<BlockId, BlockRec>,
+	placements: ReadonlyMap<BlockId, ResolvedPlacement>,
+	homeOf: (b: BlockId) => BlockId | undefined,
+	inText: (home: BlockId) => readonly BlockId[]
+) => {
+	const memo = new Map<string, Map<BlockId, string>>();
+	const keysOf = new Map<BlockId, Set<string>>();
+	/** `b` stands where it was made: its placement is its first candidate's. */
+	const unmoved = (b: BlockId): boolean => {
+		const c = blocks.get(b)?.cands[0];
+		const pl = placements.get(b);
+		if (c === undefined || pl === undefined || c.seq !== 1 || c.r !== pl.rank) return false;
+		return pl.parent === (c.p !== null && !blocks.has(c.p) ? null : c.p);
+	};
+	const group = (home: BlockId, parent: BlockId | null): Map<BlockId, string> => {
+		const members: BlockId[] = [];
+		for (const b of inText(home))
+			if (placements.get(b)?.parent === parent && unmoved(b)) members.push(b);
+		const out = new Map<BlockId, string>();
+		if (members.length < 2) return out;
+		const rankOf = (b: BlockId) => placements.get(b)!.rank;
+		// One client's blocks keep its own order (it ranked them knowing each
+		// other); the text decides between different clients' (concurrent
+		// splits). Each client's members, sorted by rank, fill that client's
+		// places in the text order.
+		const byClient = new Map<number, BlockId[]>();
+		for (const b of members) {
+			const c = blocks.get(b)!.cands[0]!.client;
+			const list = byClient.get(c);
+			if (list === undefined) byClient.set(c, [b]);
+			else list.push(b);
+		}
+		if (byClient.size < 2) return out;
+		for (const list of byClient.values())
+			list.sort((x, y) => bySlot({ id: x, rank: rankOf(x) }, { id: y, rank: rankOf(y) }));
+		const next = new Map<number, number>();
+		const order = members.map((b) => {
+			const c = blocks.get(b)!.cands[0]!.client;
+			const i = next.get(c) ?? 0;
+			next.set(c, i + 1);
+			return byClient.get(c)![i]!;
+		});
+		const ranks = members.map(rankOf).sort();
+		order.forEach((b, i) => out.set(b, ranks[i]));
+		return out;
+	};
+	return {
+		rank: (id: BlockId, parent: BlockId | null, rank: string): string => {
+			const home = homeOf(id);
+			// A text no other block shares (most blocks' own): nothing to order.
+			if (home === undefined || inText(home).length < 2) return rank;
+			const key = `${home}\u0000${parent}`;
+			let ranks = memo.get(key);
+			if (ranks === undefined) {
+				memo.set(key, (ranks = group(home, parent)));
+				let keys = keysOf.get(home);
+				if (keys === undefined) keysOf.set(home, (keys = new Set()));
+				keys.add(key);
+			}
+			return ranks.get(id) ?? rank;
+		},
+		/**
+		 * Decide `home`'s text again (its segments or a member's placement
+		 * changed); the blocks whose text-order rank changed.
+		 */
+		regroup: (home: BlockId): Set<BlockId> => {
+			const before = new Map<BlockId, string>();
+			for (const key of keysOf.get(home) ?? [])
+				for (const [b, r] of memo.get(key) ?? []) before.set(b, r);
+			for (const key of keysOf.get(home) ?? []) memo.delete(key);
+			const keys = new Set<string>();
+			keysOf.set(home, keys);
+			const changed = new Set<BlockId>();
+			const parents = new Set<BlockId | null>();
+			const row = inText(home);
+			if (row.length >= 2)
+				for (const b of row) {
+					const pl = placements.get(b);
+					if (pl !== undefined) parents.add(pl.parent);
+				}
+			for (const parent of parents) {
+				const key = `${home}\u0000${parent}`;
+				const ranks = group(home, parent);
+				memo.set(key, ranks);
+				keys.add(key);
+				for (const [b, r] of ranks) if (before.get(b) !== r) changed.add(b);
+			}
+			for (const [b, r] of before) {
+				const now = memo.get(`${home}\u0000${placements.get(b)?.parent}`)?.get(b);
+				if (now !== r) changed.add(b);
+			}
+			return changed;
+		},
+		/** Drop what was decided for `home`'s text (every one, without it). */
+		forget: (home?: BlockId): void => {
+			if (home === undefined) {
+				memo.clear();
+				keysOf.clear();
+				return;
+			}
+			for (const key of keysOf.get(home) ?? []) memo.delete(key);
+			keysOf.delete(home);
+		}
+	};
 };
 
 /** One entry of a children list: `reset` — the island it displays out of ({@link displaySlotOf}). */
@@ -552,6 +681,9 @@ export const displaySlotOf = (
 	id: BlockId
 ): { parent: Owner | null; rank: string; reset: BlockId | null } => {
 	let { parent, rank } = pl;
+	// D-18: a piece of a text shown under its own placement's parent takes its text-order rank.
+	const direct = (owner: BlockId | null): string =>
+		own.textRank === undefined || owner !== pl.parent ? rank : own.textRank(id, owner, rank);
 	let reset: BlockId | null = null;
 	/** The first parent it is promoted out of (a deleted or childless one). */
 	let promoted: BlockId | null = null;
@@ -582,7 +714,7 @@ export const displaySlotOf = (
 		// Promoted into a container: it shows as one of its items (SW9-containers-3).
 		if (shows && reset === null && promoted !== null && own.container?.(owner) === true)
 			reset = promoted;
-		if (shows) return { parent: owner, rank, reset };
+		if (shows) return { parent: owner, rank: hops === 0 ? direct(owner) : rank, reset };
 		promoted ??= out;
 		const up = placements.get(out);
 		if (up === undefined || hops > placements.size) return { parent: DEAD, rank, reset };
@@ -590,7 +722,7 @@ export const displaySlotOf = (
 		rank = promotedRank(up.rank, rank);
 		parent = up.parent;
 	}
-	return { parent: null, rank, reset };
+	return { parent: null, rank: pl.parent === null ? direct(null) : rank, reset };
 };
 
 /**

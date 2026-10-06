@@ -666,12 +666,11 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   selection) does not move it (DR-crdt-7). The blocks Shift+Tab moves out
   of a block that is no list, and the children a merge unnests after the
   merged block, are ranked by where they came from, as a list's
-  (SW12-crdt-3). Residuals, pinned in `dr-crdt-order.test.ts`:
-  - an unseen edit _after_ one's own split point counts, typed or
-    deleted: Ada appends " again" to "hello world" and splits after
-    "hello wo" ‖ Bob splits after "hello" → "hello", "rld again", " wo";
-    Ada deletes "rld" and splits after "hello" ‖ Bob splits after
-    "hello w" → "hello", "o", " w";
+  (SW12-crdt-3). Since 0.1.0-next.25 the text decides between pieces
+  (`order.split.text`, below): an unseen edit _after_ one's own split
+  point no longer counts (Ada appends " again" to "hello world" and splits
+  after "hello wo" ‖ Bob splits after "hello" → "hello", " wo",
+  "rld again", the serial order; it read "rld again" before " wo"). Residuals, pinned in `dr-crdt-order.test.ts`:
   - R3, a new block stays behind: the block a split creates right after
     `s` stays beside `s` in `s`'s parent while a peer moves `s` out of it
     (an outdent or lift of `s`, a split of its list at a later item whose
@@ -685,7 +684,25 @@ paragraph "c"]`. One undo restores the list. Residual: an item a peer
   - R4, a merge into a split block: the merge claim appends to `into`'s
     claims list, and a concurrent split moved only the claims it saw, so
     the merged text follows the head: Backspace joins "world" into
-    "hello" ‖ Enter after "he" → "heworld", "llo".
+    "hello" ‖ Enter after "he" → "heworld", "llo". (Anchoring the claim to
+    the head stream's last item, H9's second half, is not done: the claim
+    graph would read text positions, which the incremental index does not
+    track yet.)
+- `order.split.text` (D-18, H9, 0.1.0-next.25): blocks whose streams lie
+  in one backing text and that stand where they were made (their winning
+  placement is their first candidate: no move, outdent or lift since)
+  show, under one parent, in their streams' order in that text — the
+  order of the boundaries that delimit them, replicated — at the ranks
+  they hold between them (`textRanker` in `placement/model.ts`, read by
+  `displaySlotOf`; the index re-reads a text's pieces when its segments
+  or one of their placements change). One client's pieces keep the order
+  it ranked them in (it knew each other's places, `FX-06`); the text
+  decides between different clients' pieces, which concurrent splits make.
+  A moved piece stands where it was moved. Two peers pressing Enter in one
+  block at once read the text's order on every client-id pair, whatever
+  each typed after its split point (`h9-split-order.test.ts`,
+  `dr-crdt-order.test.ts`); a container header's Enter ‖ another's keeps
+  the text order too (two outcomes before).
 - `order.insert.run` (H1, CRDT study 2026-10): a block inserted right
   after a block this client ranked — Enter at the end of a block, a
   container header's new first child, Duplicate, the + button, a paste of

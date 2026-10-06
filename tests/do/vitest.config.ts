@@ -23,7 +23,8 @@ export default defineConfig({
 					PLAIN: { className: 'PlainObject', useSQLite: true },
 					HOST: { className: 'HostObject', useSQLite: true },
 					FIELDS: { className: 'FieldRoom', useSQLite: true },
-					QUOTA: { className: 'QuotaRoom', useSQLite: true }
+					QUOTA: { className: 'QuotaRoom', useSQLite: true },
+					LOCKED: { className: 'LockedRoom', useSQLite: true }
 				}
 			}
 		})

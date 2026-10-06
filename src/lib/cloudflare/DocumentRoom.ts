@@ -105,13 +105,17 @@ import {
 	type StorageFormat
 } from '../crdt/protocols/envelope.js';
 import { gunzip, isGzip, packed } from '../crdt/storage.js';
+import { DEL_PREFIX, REGISTRY_KEY, WITHDRAW_PREFIX } from '../crdt/schema.js';
 import { ChunkLimitError, ChunkSequenceError, CLOSE } from '../crdt/providers/room.js';
 import type {
 	AwarenessEntry,
+	DocChange,
 	DocumentSemanticsConfig,
 	EdytorDoc,
+	JSONBlock,
 	JSONDoc,
-	YDoc
+	YDoc,
+	YUndoManager
 } from '../crdt/index.js';
 
 const crdt = E.bindCrdt(Y);
@@ -238,6 +242,11 @@ export type Refusal = {
 		| 'internal'
 		// A room quota refused the frame ({ user, quota, … }): the socket is closed 4413.
 		| 'quota'
+		// Per-writer block marks (`del.<n>`, `wd.<n>`) the sender may not write
+		// or delete, stripped ({ user, writers, ranges }); the rest of the frame applies.
+		| 'mark'
+		// Not a refusal: a frame `validate` denied, compensated by the room ({ user, touched }).
+		| 'denied'
 		// Not a refusal: an id a registry-less restore left unowned, claimed ({ replica, user }).
 		| 'orphan'
 		// Not a refusal: structs under an id the room held nothing of, delivered by
@@ -776,6 +785,214 @@ const admit = (updates: Uint8Array | Array<Uint8Array | { v2: Uint8Array }>, nam
 		prepare: (doc) => crdt.doc.keepCopies(doc as never)
 	});
 
+// ── Per-writer marks (H2) ──────────────────────────────────────────
+
+/** The writer `n` of a per-writer block mark key (`del.<n>`, `wd.<n>`), or `null`. */
+const markWriter = (key: string | null | undefined): number | null => {
+	if (typeof key !== 'string') return null;
+	const prefix = key.startsWith(DEL_PREFIX)
+		? DEL_PREFIX
+		: key.startsWith(WITHDRAW_PREFIX)
+			? WITHDRAW_PREFIX
+			: null;
+	const digits = prefix === null ? '' : key.slice(prefix.length);
+	return /^\d{1,16}$/.test(digits) ? Number(digits) : null;
+};
+
+/** A frame's structs by client, each run in clock order. */
+const runsOf = (structs: Struct[]): Map<number, Struct[]> => {
+	const runs = new Map<number, Struct[]>();
+	for (const struct of structs) {
+		const run = runs.get(struct.id.client) ?? [];
+		run.push(struct);
+		runs.set(struct.id.client, run);
+	}
+	return runs;
+};
+
+type Id = { client: number; clock: number };
+/** Where an item sits: its map key (`null` in a sequence) and its parent (a room type, a root name, or a parent id). */
+type Place = { key: string | null; parent: unknown };
+
+const isId = (value: unknown): value is Id =>
+	typeof value === 'object' &&
+	value !== null &&
+	typeof (value as Id).client === 'number' &&
+	typeof (value as Id).clock === 'number' &&
+	!('_item' in value);
+
+/**
+ * Where the item at `id` sits, held by the room or carried by the frame
+ * (`frame`): an encoded map entry with a left origin names neither key nor
+ * parent, so it is followed origin to origin to the one that does.
+ */
+const placeOf = (doc: YDoc, frame: Map<number, Struct[]>, id: Id): Place | null => {
+	const seen = new Set<Struct>();
+	for (let at: Id | null = id; at !== null; ) {
+		const held = storedStruct(doc, at.client, at.clock);
+		if (held) return held instanceof Y.Item ? { key: held.parentSub, parent: held.parent } : null;
+		const struct = structAt(frame.get(at.client) ?? [], at.clock);
+		if (!(struct instanceof Y.Item) || seen.has(struct)) return null;
+		seen.add(struct);
+		if (struct.parent !== null || struct.parentSub !== null) {
+			return { key: struct.parentSub, parent: struct.parent };
+		}
+		if (struct.rightOrigin !== null || struct.origin === null) return null;
+		at = struct.origin;
+	}
+	return null;
+};
+
+/** Is `parent` (a {@link Place}'s) a block node: an entry of the block registry? */
+const isBlockNode = (doc: YDoc, frame: Map<number, Struct[]>, parent: unknown): boolean => {
+	const registry = doc.share.get(REGISTRY_KEY);
+	if (isId(parent)) {
+		const node = placeOf(doc, frame, parent);
+		return (
+			node !== null &&
+			node.key !== null &&
+			(node.parent === registry || node.parent === REGISTRY_KEY)
+		);
+	}
+	const item = (parent as { _item?: { parent?: unknown } | null } | null)?._item;
+	return item?.parent === registry && registry !== undefined;
+};
+
+/**
+ * The clients of a frame (but `skip`) that write a per-writer block mark
+ * of another writer: a struct whose key is `del.<n>` or `wd.<n>` on a
+ * block node, from a client other than `n` (H2). Only `n` writes its mark.
+ */
+const forgedWriters = (doc: YDoc, structs: Struct[], skip: Set<number>): Set<number> => {
+	const frame = runsOf(structs);
+	const forged = new Set<number>();
+	for (const struct of structs) {
+		const { client, clock } = struct.id;
+		if (!(struct instanceof Y.Item) || skip.has(client) || forged.has(client)) continue;
+		if (storedStruct(doc, client, clock) !== null) continue;
+		const place = placeOf(doc, frame, struct.id);
+		const writer = markWriter(place?.key);
+		if (writer !== null && writer !== client && isBlockNode(doc, frame, place!.parent)) {
+			forged.add(client);
+		}
+	}
+	return forged;
+};
+
+/**
+ * Of a frame's deletes, those of live per-writer block marks whose writer
+ * the sender may not delete for (`mayDelete`): only `n`'s replicas delete
+ * `del.<n>`/`wd.<n>` (H2). A mark deleted with its block node (deleted, or
+ * deleted by the same frame) is not one.
+ */
+const forgedDeletes = (
+	doc: YDoc,
+	ds: Decoded['ds'],
+	mayDelete: (writer: number) => boolean
+): Decoded['ds'] => {
+	const forged = Y.createIdSet();
+	const registry = doc.share.get(REGISTRY_KEY);
+	if (registry === undefined) return forged;
+	for (const [client, ranges] of ds.clients) {
+		const structs = doc.store.clients.get(client) ?? [];
+		const held = heldClock(doc, client);
+		for (const { clock, len } of ranges.getIds()) {
+			if (clock >= held) continue;
+			for (let i = Y.findIndexSS(structs, clock); i < structs.length; i++) {
+				const struct = structs[i];
+				if (struct.id.clock >= clock + len) break;
+				if (!(struct instanceof Y.Item) || struct.deleted) continue;
+				const writer = markWriter(struct.parentSub);
+				if (writer === null || mayDelete(writer)) continue;
+				const node = (struct.parent as { _item?: Item | null } | null)?._item;
+				if (!node || node.parent !== registry) continue;
+				if (node.deleted || ds.has(node.id.client, node.id.clock)) continue;
+				const from = Math.max(clock, struct.id.clock);
+				forged.add(client, from, Math.min(clock + len, struct.id.clock + struct.length) - from);
+			}
+		}
+	}
+	return forged;
+};
+
+// ── Validation (H2) ────────────────────────────────────────────────
+
+/** A block as `validate` reads it, before or after a frame. */
+export type ValidatedBlock = {
+	id: string;
+	type: string;
+	data: Record<string, unknown>;
+	content: NonNullable<JSONBlock['content']>;
+	/** Its display parent (`null`: the document's root). */
+	parent: string | null;
+};
+
+/** One client frame the room applied, as `validate` reads it. */
+export type FrameValidation = {
+	/** The sender's verified user. */
+	user: string;
+	/** The sender's replica (client id), when bound. */
+	replica: number | null;
+	/**
+	 * The blocks the frame changed, from the facade's change report: shown
+	 * or hidden (with their subtrees), given another parent or moved among
+	 * their siblings (not shifted by a sibling's move), retyped, given
+	 * other data, or other content.
+	 */
+	touched: string[];
+	/** The frame changed the document's own data. */
+	dataChanged: boolean;
+	/** A block as it was before the frame (`null`: it did not show). */
+	before: (id: string) => ValidatedBlock | null;
+	/** A block as it is now (`null`: it does not show). */
+	after: (id: string) => ValidatedBlock | null;
+	/** The live document. Read it; never write from `validate` (defer a `transact` instead). */
+	facade: EdytorDoc;
+};
+
+/** The index of `validate`: every shown block's state and each parent's children, kept from the change reports. */
+type Validation = {
+	doc: YDoc;
+	states: Map<string, ValidatedBlock>;
+	children: Map<string | null, readonly string[]>;
+	/** Records the frame's transaction, for its compensation (once the document is initialized). */
+	history: YUndoManager | null;
+	/** The frame being applied: its origin, what it touched and the states before. */
+	frame: {
+		origin: unknown;
+		before: Map<string, ValidatedBlock | null>;
+		touched: Set<string>;
+		data: boolean;
+	} | null;
+	off: () => void;
+};
+
+/** The ids of `next` that left their order relative to the others both lists hold (a longest increasing run kept). */
+const reordered = (previous: readonly string[], next: readonly string[]): string[] => {
+	const at = new Map(previous.map((id, i) => [id, i]));
+	const common = next.filter((id) => at.has(id));
+	// Longest increasing run of previous positions (patience sorting).
+	const tails: number[] = [];
+	const links: number[] = new Array(common.length).fill(-1);
+	const tailAt: number[] = [];
+	common.forEach((id, i) => {
+		const position = at.get(id)!;
+		let lo = 0;
+		let hi = tails.length;
+		while (lo < hi) {
+			const mid = (lo + hi) >> 1;
+			if (tails[mid] < position) lo = mid + 1;
+			else hi = mid;
+		}
+		tails[lo] = position;
+		tailAt[lo] = i;
+		links[i] = lo > 0 ? tailAt[lo - 1] : -1;
+	});
+	const kept = new Set<number>();
+	for (let i = tails.length ? tailAt[tails.length - 1] : -1; i !== -1; i = links[i]) kept.add(i);
+	return common.filter((_, i) => !kept.has(i));
+};
+
 /** What {@link attachDocument} (and `DocumentRoom`) takes. */
 export type AttachDocumentOptions = {
 	/**
@@ -810,6 +1027,17 @@ export type AttachDocumentOptions = {
 	maxInboundFrameBytes?: number;
 	/** Sync messages per second a socket may send (default {@link DEFAULT_MAX_UPDATES_PER_SECOND}). */
 	maxUpdatesPerSecond?: number;
+	/**
+	 * Accept, then compensate (H2): after the room applied and stored a
+	 * client frame that changed blocks, it is asked whether to keep it.
+	 * `false` (or a throw) denies it: the room writes the frame's inverse as
+	 * its own transaction — the history undo of exactly that frame
+	 * (`room.validate.inverse`) — stores it and sends it to every socket,
+	 * the sender's included, so every replica converges. The frame stays
+	 * stored and acknowledged and the socket open. Synchronous; runs only
+	 * when set (the room then keeps an index of every block's state).
+	 */
+	validate?: (frame: FrameValidation) => boolean | void;
 	/**
 	 * The block roles `transact` edits obey — the document semantics your
 	 * clients' plugins declare (`defaultType` also names the block an empty
@@ -860,6 +1088,8 @@ export class AttachedDocument {
 	private updates = 0;
 	/** What the records hold, uncompressed (the generation record aside): the document quota's measure. */
 	private documentBytes = 0;
+	/** The index `validate` reads (built at its first frame, for the live document). */
+	private validation: Validation | null = null;
 	/** Each socket's update allowance (a token bucket; memory: a wake refills it). */
 	private readonly allowances = new WeakMap<WebSocket, { tokens: number; at: number }>();
 	/** Each socket's chunked frame in flight (memory: a wake loses it, and the socket is faulted). */
@@ -1611,6 +1841,8 @@ export class AttachedDocument {
 	}
 
 	private adopt(doc: YDoc) {
+		this.validation?.off();
+		this.validation = null;
 		this._facade?.dispose();
 		this._facade = null;
 		this.live = doc;
@@ -2013,30 +2245,63 @@ export class AttachedDocument {
 		}
 		const sv = stateVector(doc);
 		const stripped = this.attribute(attachment, newWriters(decoded, sv), sv);
+		// Per-writer block marks (H2): only `n` writes or deletes `del.<n>` /
+		// `wd.<n>`. A client writing another's is stripped whole, as a client
+		// under another user's id is; a delete of another's mark is dropped.
+		const forgers = forgedWriters(doc, decoded.structs, stripped);
+		const owners = new Map<number, boolean>();
+		const mayDelete = (writer: number) => {
+			if (writer === attachment.replica) return true;
+			if (!owners.has(writer)) owners.set(writer, this.ownerOf(writer) === attachment.user);
+			return owners.get(writer)!;
+		};
+		const forgedMarks = decoded.ds.isEmpty()
+			? Y.createIdSet()
+			: forgedDeletes(doc, decoded.ds, mayDelete);
+		if (forgers.size > 0 || !forgedMarks.isEmpty()) {
+			for (const client of forgers) stripped.add(client);
+			this.note({
+				reason: 'mark',
+				detail: { user: attachment.user, writers: [...forgers], ranges: rangeCount(forgedMarks) }
+			});
+		}
 		// Waiting deletes are capped: a frame that would pass the cap has them dropped.
 		const waiting = pendingDeletes(doc);
 		const unheld = decoded.ds.isEmpty() ? null : unheldDeletes(decoded, stripped, doc);
-		const dropped =
+		const overflow =
 			unheld && rangeCount(waiting) + rangeCount(unheld) > MAX_WAITING_DELETES ? unheld : null;
-		if (dropped !== null) {
+		if (overflow !== null) {
 			this.note({
 				reason: 'waiting',
-				detail: { user: attachment.user, ranges: rangeCount(dropped) }
+				detail: { user: attachment.user, ranges: rangeCount(overflow) }
 			});
 		}
+		const dropped =
+			overflow === null && forgedMarks.isEmpty()
+				? null
+				: addIds(addIds(Y.createIdSet(), overflow ?? Y.createIdSet()), forgedMarks);
 		const admitted =
 			stripped.size === 0 && dropped === null
 				? update
 				: withoutClients(decoded, stripped, doc, dropped ?? undefined);
+		// Validation (H2) reads the document as it was, and records the frame.
+		const validation = this.options.validate ? this.validating(doc, ws) : null;
 		// 4 · Schema: the inbound refusal of a foreign stamp (the update's,
 		// or a pending one it would release — discarded, the sender kept).
 		// Integrating persists (the doc's update handler) before the ack.
 		let failure: unknown = null;
-		const { applied, problem, discarded } = this.handle(() =>
-			sync.applyRemote(doc, admitted, ws, (error) => {
-				failure = error;
-			})
-		);
+		validation?.history?.trackedOrigins.add(ws);
+		let outcome: ReturnType<typeof sync.applyRemote>;
+		try {
+			outcome = this.handle(() =>
+				sync.applyRemote(doc, admitted, ws, (error) => {
+					failure = error;
+				})
+			);
+		} finally {
+			validation?.history?.trackedOrigins.delete(ws);
+		}
+		const { applied, problem, discarded } = outcome;
 		if (this.unstored !== null) return this.fault(ws, this.unstored);
 		if (problem !== null) return this.refuse(ws, { reason: 'schema', detail: problem });
 		// The bytes decoded: an update the engine could not apply is its fault.
@@ -2055,6 +2320,10 @@ export class AttachedDocument {
 		);
 		if (this.unstored !== null) return this.fault(ws, this.unstored);
 		if (discarded) this.note({ reason: 'schema', detail: { discarded } });
+		if (validation !== null) {
+			this.validateFrame(validation, attachment);
+			if (this.unstored !== null) return this.fault(ws, this.unstored);
+		}
 		// A dropped delete is not acknowledged: its sender stays unsaved.
 		this.send(ws, savedFrame(doc, addIds(this.storedDeletes(doc, decoded.ds), released)));
 		// Waiting writes the frame released are other sockets' (a relayer's
@@ -2064,6 +2333,154 @@ export class AttachedDocument {
 			this.broadcast(savedFrame(doc, released), ws);
 		}
 		this.compactIfDue();
+	}
+
+	// ── Validation (H2) ──────────────────────────────────────────────
+
+	/** A shown block's state, read from the facade (`null`: it does not show). */
+	private blockState(id: string): ValidatedBlock | null {
+		const facade = this.facade;
+		if (!facade.isVisibleBlock(id)) return null;
+		return {
+			id,
+			type: facade.blockTypeOf(id) ?? '',
+			data: (facade.blockDataOf(id) ?? {}) as Record<string, unknown>,
+			content: facade.contentJSON(id) as ValidatedBlock['content'],
+			parent: facade.parentOf(id)
+		};
+	}
+
+	/**
+	 * The index `validate` reads, for `doc`, set to record the frame of
+	 * `origin`: every shown block's state and each parent's children, built
+	 * once and kept from every change report. Its history (once the
+	 * document is initialized: a history first initializes its document)
+	 * records the frame for its compensation.
+	 */
+	private validating(doc: YDoc, origin: unknown): Validation {
+		let v = this.validation;
+		if (v === null || v.doc !== doc) {
+			v?.off();
+			const facade = this.facade;
+			const states = new Map<string, ValidatedBlock>();
+			const children = new Map<string | null, readonly string[]>();
+			const walk = (parent: string | null) => {
+				const ids = facade.childrenIds(parent);
+				children.set(parent, ids);
+				for (const id of ids) {
+					const state = this.blockState(id);
+					if (state !== null) states.set(id, state);
+					walk(id);
+				}
+			};
+			walk(null);
+			const created: Validation = {
+				doc,
+				states,
+				children,
+				history: null,
+				frame: null,
+				off: () => {}
+			};
+			created.off = facade.onChange((change) => this.indexChange(created, change));
+			v = this.validation = created;
+		}
+		if (v.history === null && crdt.doc.isInitialized(doc as never)) {
+			v.history = this.facade.createUndoManager({ captureTimeout: 0, trackedOrigins: new Set() });
+		}
+		v.frame = { origin, before: new Map(), touched: new Set(), data: false };
+		return v;
+	}
+
+	/** Keep the index from one change report, recording what the frame being validated touched. */
+	private indexChange(v: Validation, change: DocChange) {
+		const frame = v.frame?.origin === change.origin ? v.frame : null;
+		const touch = (id: string) => {
+			if (frame === null) return;
+			if (!frame.before.has(id)) frame.before.set(id, v.states.get(id) ?? null);
+			frame.touched.add(id);
+		};
+		const drop = (id: string) => {
+			touch(id);
+			for (const child of v.children.get(id) ?? []) drop(child);
+			v.children.delete(id);
+			v.states.delete(id);
+		};
+		const read = (id: string, moved: boolean) => {
+			const was = v.states.get(id);
+			const state = this.blockState(id);
+			if (state === null) return drop(id);
+			if (!moved || was === undefined || was.parent !== state.parent) touch(id);
+			v.states.set(id, state);
+		};
+		for (const id of change.removed) drop(id);
+		const add = (block: {
+			id: string;
+			children: ReadonlyArray<{ id: string; children: never[] }>;
+		}) => {
+			touch(block.id);
+			read(block.id, false);
+			v.children.set(block.id, this.facade.childrenIds(block.id));
+			block.children.forEach(add);
+		};
+		for (const block of change.added.values()) add(block as never);
+		for (const id of change.moved) read(id, true);
+		for (const id of change.meta.keys()) read(id, false);
+		for (const id of change.content.keys()) read(id, false);
+		// A block moved among its siblings, not shifted by another's move.
+		for (const [parent, ids] of change.order) {
+			for (const id of reordered(v.children.get(parent) ?? [], ids)) touch(id);
+			v.children.set(parent, ids);
+		}
+		if (frame !== null && change.data !== undefined) frame.data = true;
+	}
+
+	/**
+	 * Ask `validate` about the frame just applied (H2); a denial is
+	 * compensated by the room's own transaction: the history undo of that
+	 * frame (`room.validate.inverse`), or, for the frame that initialized
+	 * the document (no history recorded it), a delete of the blocks it
+	 * added. Stored and sent to every socket, the sender's included.
+	 */
+	private validateFrame(v: Validation, attachment: Attachment) {
+		const frame = v.frame;
+		v.frame = null;
+		if (frame === null || (frame.touched.size === 0 && !frame.data)) {
+			v.history?.clear();
+			return;
+		}
+		const touched = [...frame.touched];
+		let allowed: boolean;
+		try {
+			allowed =
+				this.options.validate!({
+					user: attachment.user,
+					replica: attachment.replica,
+					touched,
+					dataChanged: frame.data,
+					before: (id) =>
+						frame.before.has(id) ? frame.before.get(id)! : (v.states.get(id) ?? null),
+					after: (id) => v.states.get(id) ?? null,
+					facade: this.facade
+				}) !== false;
+		} catch (error) {
+			this.note({ reason: 'internal', detail: `validate: ${String(error)}` });
+			allowed = false;
+		}
+		if (!allowed) {
+			this.note({ reason: 'denied', detail: { user: attachment.user, touched } });
+			const history = v.history;
+			if (history !== null && history.undoStack.length > 0) {
+				history.undo();
+			} else {
+				const added = touched.filter((id) => frame.before.get(id) === null && v.states.has(id));
+				const facade = this.facade;
+				if (added.length > 0) {
+					facade.transact(() => facade.apply(facade.prepare.deleteBlocks(added)), ROOM_ORIGIN);
+				}
+			}
+		}
+		v.history?.clear();
 	}
 
 	/**
@@ -2266,6 +2683,7 @@ export class DocumentRoom<
 		super(ctx, env);
 		const knobs = env as DocumentRoomEnv;
 		const saves = this.onSave !== DocumentRoom.prototype.onSave;
+		const validates = this.validate !== DocumentRoom.prototype.validate;
 		const semantics = () => this.semantics();
 		this.room = new AttachedDocument(ctx, {
 			maxRowBytes: Number(knobs.EDYTOR_MAX_ROW_BYTES),
@@ -2281,7 +2699,8 @@ export class DocumentRoom<
 				return semantics();
 			},
 			onLoad: () => this.onLoad(),
-			onSave: saves ? (document) => this.onSave(document) : undefined
+			onSave: saves ? (document) => this.onSave(document) : undefined,
+			validate: validates ? (frame) => this.validate(frame) : undefined
 		});
 	}
 
@@ -2292,6 +2711,13 @@ export class DocumentRoom<
 
 	/** Save — see {@link AttachDocumentOptions.onSave}. Not overridden: no alarm is ever set. */
 	protected async onSave(_document: SavedDocument): Promise<void> {}
+
+	/**
+	 * Validate a client frame — see {@link AttachDocumentOptions.validate}:
+	 * `false` denies it, and the room writes its inverse. Not overridden: no
+	 * frame is validated, and no block index is kept.
+	 */
+	protected validate(_frame: FrameValidation): boolean | void {}
 
 	/**
 	 * Block roles — see {@link AttachDocumentOptions.semantics}. Read once,

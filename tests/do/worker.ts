@@ -21,6 +21,8 @@ import {
 	routeDocumentSocket,
 	type AuthorizeDocumentSocket,
 	type DocumentRoomEnv,
+	type FrameValidation,
+	type ValidatedBlock,
 	type LoadedDocument,
 	type SavedDocument
 } from '../../src/lib/cloudflare/index.js';
@@ -132,6 +134,24 @@ export class QuotaRoom extends DocumentRoom<Env> {
 	}
 }
 
+/**
+ * Per-block locks through `validate` (rooms `locked-*`): a block whose
+ * `data.lockedBy` names a user is that user's alone. A frame touching it
+ * from anyone else — its text, data, type, place or its deletion — is
+ * denied, and so is one locking a block for someone else; the room then
+ * writes the frame's inverse.
+ */
+export class LockedRoom extends DocumentRoom<Env> {
+	protected override validate({ user, touched, before, after }: FrameValidation) {
+		const owner = (block: ValidatedBlock | null) => block?.data.lockedBy as string | undefined;
+		return touched.every((id) => {
+			const was = owner(before(id));
+			const now = owner(after(id));
+			return (was === undefined || was === user) && (now === undefined || now === user);
+		});
+	}
+}
+
 /** Any Durable Object: `attachDocument` installs every handler (rooms `plain-*`). */
 export class PlainObject extends DurableObject<Env> {
 	document = attachDocument(this, { onLoad: () => LOADED });
@@ -171,6 +191,7 @@ export type Env = DocumentRoomEnv & {
 	HOST: DurableObjectNamespace<HostObject>;
 	FIELDS: DurableObjectNamespace<FieldRoom>;
 	QUOTA: DurableObjectNamespace<QuotaRoom>;
+	LOCKED: DurableObjectNamespace<LockedRoom>;
 };
 
 export const ROOM_ROUTE = /^\/rooms\/([^/]+)(\/compact)?\/?$/;
@@ -212,6 +233,9 @@ export const routeRoom = async (request: Request, env: Env): Promise<Response> =
 	}
 	if (name.startsWith('hooked-')) {
 		return routeDocumentSocket(request, env.HOOKED, name, authorizeFromQuery);
+	}
+	if (name.startsWith('locked-')) {
+		return routeDocumentSocket(request, env.LOCKED, name, authorizeFromQuery);
 	}
 	if (name.startsWith('quota-')) {
 		return routeDocumentSocket(request, env.QUOTA, name, authorizeFromQuery);

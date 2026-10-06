@@ -29,7 +29,9 @@ export {
 	type ReplicaOwner,
 	type SavedDocument,
 	type SocketIdentity,
-	type StoredRecord
+	type StoredRecord,
+	type FrameValidation,
+	type ValidatedBlock
 } from './DocumentRoom.js';
 export {
 	routeDocumentSocket,

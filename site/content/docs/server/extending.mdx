@@ -90,6 +90,7 @@ A Durable Object has one alarm. The document sets it `saveAfter` ms after an uns
 | `maxInboundFrameBytes` | 64 MiB | Largest frame a socket may send, reassembled ([quota](/docs/server/room#quotas)). |
 | `tablePrefix` | `'edytor_'` | Prefix of the document's two tables. |
 | `semantics` | `defaultSemantics` | The block roles server edits obey. See [Block roles on the server](#block-roles-on-the-server). |
+| `validate` | | Asked after each client frame that changed blocks; `false` makes the room undo it. See [Validate edits](#validate-edits). |
 
 `DocumentRoom` reads the same settings from `vars` (`EDYTOR_SAVE_AFTER`, `EDYTOR_COMPACT_AFTER`, …; see [the room](/docs/server/room#settings)) and uses the unprefixed tables `rows` and `replicas`. It takes `semantics` from its `semantics()` method, read at first use, so it may return a field of your subclass.
 
@@ -245,6 +246,45 @@ document = attachDocument(this, {
 
 In a `DocumentRoom` subclass, override `protected semantics()` and return the config. `semantics: {}` checks no roles.
 
+## Validate edits
+
+The room applies a client's frame, stores it and relays it, then asks `validate` whether to keep it: accept, then compensate. Return `false` (or throw) to deny it, and the room writes the frame's inverse as its own edit, stores it and sends it to every socket, the sender's included, so every replica converges. The sender stays connected, its frame stays acknowledged, and the denial is logged as a `denied` entry (`{ user, touched }`) in [`refusals`](/docs/server/room#diagnostics).
+
+`validate` receives one frame:
+
+| Field | Content |
+| --- | --- |
+| `user`, `replica` | The sender's verified user and client id. |
+| `touched` | The ids of the blocks the frame changed: shown or hidden (with their subtrees), given another parent or moved among their siblings (a block a sibling's move shifts is not touched), retyped, given other data or other text. |
+| `dataChanged` | The frame changed the document's own data. |
+| `before(id)` | A block as it was before the frame (`{ id, type, data, content, parent }`), `null` if it did not show. |
+| `after(id)` | The block as it is now, `null` if it does not show. |
+| `facade` | The live document, to read (write from a deferred [`transact`](#edit-on-the-server), never from `validate`). |
+
+The inverse is the undo of exactly that frame, with the history's rules: text it typed is deleted, text it deleted comes back (except where another writer's delete still holds it), blocks it deleted show again, a block it created is withdrawn (it stays only if it holds someone else's content), a move returns the block where it was, and data and types return to the values it replaced. Edits other clients made in between are kept. The frame that created the document (its first seed, which no history records) has its blocks deleted instead.
+
+`validate` is synchronous and runs only when set; the room then keeps an index of every block's state, updated at each commit. Per-block locks, for example (a `DocumentRoom` subclass overrides `validate`):
+
+```ts src/locked-room.ts check
+import { DocumentRoom, type FrameValidation, type ValidatedBlock } from 'edytor/cloudflare';
+
+/** A block whose `data.lockedBy` names a user is that user's alone. */
+export class LockedRoom extends DocumentRoom<Env> {
+  protected override validate({ user, touched, before, after }: FrameValidation) {
+    const owner = (block: ValidatedBlock | null) => block?.data.lockedBy as string | undefined;
+    return touched.every((id) => {
+      const was = owner(before(id));
+      const now = owner(after(id));
+      return (was === undefined || was === user) && (now === undefined || now === user);
+    });
+  }
+}
+```
+
+Another user typing into, retyping, moving, unlocking or deleting a locked block sees the edit undone; a block inserted before it is not a change of it. Your own server edits (`transact`) are never validated.
+
+The room also enforces one rule itself: a block's per-writer marks (`del.<n>` for a delete, `wd.<n>` for an undone creation) are written and deleted only by client `n`. A frame writing another client's mark has that client's new content stripped, as content under [another user's client id](/docs/server/authorization#replicas) is, and a delete of another user's mark is dropped (unless its block goes with it), both logged as a `mark` entry; the rest of the frame applies.
+
 ## Subclassing `DocumentRoom`
 
 The ready-made room exposes the same hooks as methods:
@@ -271,4 +311,4 @@ export class Room extends DocumentRoom<Env> {
 }
 ```
 
-Bind and migrate the subclass by its own class name (`"class_name": "Room"`, `"new_sqlite_classes": ["Room"]`). If it defines `alarm()`, call `await super.alarm()` from it. `transact`, `read`, `compact`, `dropWaitingDeletes` and `reset` are methods of the room itself, so RPC reaches them without forwarding.
+Bind and migrate the subclass by its own class name (`"class_name": "Room"`, `"new_sqlite_classes": ["Room"]`). If it defines `alarm()`, call `await super.alarm()` from it. Override `protected validate(frame)` to [validate edits](#validate-edits). `transact`, `read`, `compact`, `dropWaitingDeletes` and `reset` are methods of the room itself, so RPC reaches them without forwarding.

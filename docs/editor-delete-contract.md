@@ -1700,6 +1700,53 @@ live socket (the sender's later frames would wait on the dropped one in
 the room's memory, unacknowledged, for good), not a redial (it resends
 the same frame into the same quota). Pins: `h3-quotas.test.ts`.
 
+### `room.marks.writer` — only `n` writes or deletes `del.<n>` / `wd.<n>` (H2)
+
+A per-writer block mark (`del.<n>`, `wd.<n>` on a block node, R3 and
+`hist.undo.withdraw`) is written only by structs of client `n`, and
+deleted only by a frame whose sender owns `n` (its replica, or an id its
+user registered). A frame struct whose key (resolved through its left
+origins, in the frame or the room) is another client's mark on a block
+node strips that client's new structs from the frame, as structs under
+another user's id are (`forgedWriters`, with the deletes of the entries
+they replace); a delete of a live mark the sender may not delete is
+dropped from the frame's deletes (`forgedDeletes`), unless the mark's
+block node is deleted too. Both are logged `mark`
+(`{ user, writers, ranges }`); the rest of the frame applies and the
+socket stays (`h2-validation.test.ts`). The room's own writes
+(`transact`, a compensation) are not checked.
+
+### `room.validate.inverse` — a denied frame is undone by the room (H2)
+
+With `validate` set, after a client frame that changed blocks is applied
+and stored (relayed, its waiting deletes settled), the room asks it with
+`{ user, replica, touched, dataChanged, before, after, facade }`:
+`touched` from the facade's change report (added and removed blocks with
+their subtrees, a new display parent, a move among siblings that leaves
+the longest kept run — not a shift caused by a sibling —, a type or data
+change, a content change); `before`/`after` read `{ id, type, data,
+content, parent }` from an index the room keeps from every change report.
+`false` or a throw denies (logged `denied`, `{ user, touched }`): the room
+writes the inverse as its own transaction — the history undo of exactly
+that frame's transaction (a history on the room's facade whose tracked
+origin is the frame's socket, cleared after each frame): its inserts
+deleted (its creations withdrawn, `hist.undo.withdraw`), its deletes
+restored (text by copy where no other writer's delete mark holds it,
+P11; its block delete marks removed), its moves and attr writes reverted
+(`repairAttrs`). Nothing else is between the frame and its inverse, so
+it reverts exactly that frame. The inverse is stored and sent to every
+socket, the sender's included: every replica converges. The frame stays
+stored and acknowledged; the socket stays open (`h2-validation.test.ts`,
+per-block locks as `LockedRoom`).
+
+### `room.validate.bootstrap` — a denied first seed is deleted (H2)
+
+A frame applied while the room's document was not initialized (the
+first seed) has no history recording it (a history first initializes
+its document): its denial deletes the blocks it added
+(`prepare.deleteBlocks`, one room transaction); its bootstrap (the schema
+stamp) stays.
+
 ## Transport / evidence
 
 ### `net.delete-only-leak`

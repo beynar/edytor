@@ -642,7 +642,7 @@ describe('docs drift', () => {
 		// surrogate, and an invalid replica. A new clause must reach the docs.
 		const source = readFileSync(join(root, 'src/lib/cloudflare/routeDocumentSocket.ts'), 'utf8');
 		const refusal =
-			/if \(\n\t\t!identity \|\|([\s\S]*?)\) \{\n\t\treturn closedSocket\(CLOSE\.denied/.exec(
+			/if \(\n\t\t!identity \|\|([\s\S]*?)\) \{\n\t\treturn refuse\(CLOSE\.denied/.exec(
 				source
 			)?.[1];
 		expect(refusal?.split('||').map((clause) => clause.replace(/\/\/.*|\s+/g, ' ').trim())).toEqual(

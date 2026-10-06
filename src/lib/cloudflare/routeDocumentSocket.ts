@@ -59,6 +59,13 @@ export type AuthorizeDocumentSocket = (
 	| null
 	| Promise<DocumentIdentity | ExpiredCredential | null>;
 
+/** The HTTP status a `lastUpdated` probe gets for each refusal a dial is closed with. */
+const PROBE_STATUS: Record<number, number> = {
+	[CLOSE.invalidDocument]: 400,
+	[CLOSE.expired]: 401,
+	[CLOSE.denied]: 403
+};
+
 /** The replica a client asked for in `?replica=<doc.clientID>` (or `param`), or `null`. */
 export const requestedReplica = (request: Request, param = 'replica'): number | null =>
 	parseReplica(new URL(request.url).searchParams.get(param));
@@ -81,16 +88,17 @@ export async function routeDocumentSocket(
 	) {
 		return new Response('WebSocket upgrade required', { status: 426 });
 	}
+	// One refusal path: a dial gets the close the provider reads, a probe its HTTP status.
+	const refuse = (code: number, reason: string): Response =>
+		probe
+			? new Response(reason, { status: PROBE_STATUS[code] ?? 403 })
+			: closedSocket(code, reason);
 	if (!validRoomId(documentId)) {
-		return probe
-			? new Response('invalid document id', { status: 400 })
-			: closedSocket(CLOSE.invalidDocument, 'invalid document id');
+		return refuse(CLOSE.invalidDocument, 'invalid document id');
 	}
 	const decision = await authorize(request, documentId);
 	if (decision && 'expired' in decision && decision.expired === true) {
-		return probe
-			? new Response('expired', { status: 401 })
-			: closedSocket(CLOSE.expired, 'expired');
+		return refuse(CLOSE.expired, 'expired');
 	}
 	const identity = decision && 'userId' in decision ? decision : null;
 	const replica = identity?.replica ?? null;
@@ -103,9 +111,7 @@ export async function routeDocumentSocket(
 		/\p{Cs}/u.test(identity.userId) ||
 		(replica !== null && parseReplica(replica) === null)
 	) {
-		return probe
-			? new Response('document access denied', { status: 403 })
-			: closedSocket(CLOSE.denied, 'document access denied');
+		return refuse(CLOSE.denied, 'document access denied');
 	}
 	const headers = new Headers({
 		[IDENTITY_HEADERS.user]: encodeURIComponent(identity.userId),

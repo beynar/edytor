@@ -6,6 +6,7 @@ import {
 	type PresencePoint
 } from './awarenessSelection.js';
 import { domPointOf } from '$lib/surface/projector.svelte.js';
+import { renderSkipped, rendered } from '$lib/surface/overlay.js';
 import { isRecord } from '$lib/utils/json.js';
 
 export type RemoteSelectionRect = {
@@ -66,7 +67,8 @@ const toRemoteRect = (
 });
 
 const getFallbackRect = (point: DomPoint, origin: DOMRect, editor: HTMLElement) => {
-	const textRect = point.text.node?.getBoundingClientRect();
+	// A text the browser skips rendering (content-visibility, P8): its nearest rendered ancestor.
+	const textRect = point.text.node && rendered(point.text.node).getBoundingClientRect();
 	const editorRect = editor.getBoundingClientRect();
 	return toRemoteRect(
 		textRect && (textRect.width || textRect.height)
@@ -77,6 +79,8 @@ const getFallbackRect = (point: DomPoint, origin: DOMRect, editor: HTMLElement) 
 };
 
 const getCaretRect = (point: DomPoint, origin: DOMRect, editor: HTMLElement) => {
+	if (point.text.node && renderSkipped(point.text.node))
+		return getFallbackRect(point, origin, editor);
 	const range = (point.node.ownerDocument ?? editor.ownerDocument).createRange();
 	range.setStart(point.node, point.offset);
 	range.collapse(true);
@@ -112,6 +116,13 @@ const getSelectionRects = (
 	const range = createRange(start, end, editor);
 	if (range.collapsed) {
 		return [];
+	}
+	// Skipped by the browser (content-visibility, P8): its nearest rendered ancestor stands for it.
+	if (
+		(start.text.node && renderSkipped(start.text.node)) ||
+		(end.text.node && renderSkipped(end.text.node))
+	) {
+		return [getFallbackRect(start, origin, editor)];
 	}
 
 	const clientRects =

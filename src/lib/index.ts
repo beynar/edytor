@@ -79,6 +79,7 @@ export {
 	WebsocketProvider,
 	prefetch,
 	lastUpdated,
+	documentSnapshot,
 	PresenceWriter,
 	DEFAULT_PRESENCE_THROTTLE,
 	type PresenceOptions,

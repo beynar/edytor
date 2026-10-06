@@ -350,3 +350,116 @@ Residuals:
   43.5): it carries its step's whole record, up to 8 spans.
 - The cutover does not carry undo history, attribution or what a client of
   generation 4 never sent; a room-backed browser store starts from the room.
+
+## Phase 5 results (0.1.0-next.26)
+
+Measured on the same machine as Phases 1 to 4. The page rows load
+`/test/large` (a client-rendered SvelteKit route: N top-level blocks of
+mixed kinds under the Notion theme, the shipped plugins and block handles)
+in Playwright's Chromium at 1280×900, median of three loads; "wheel" is
+120 frames of an 80px `scrollBy` from the middle of the page, "jump" 60
+frames of one 1/60 of the page each. The index rows run headless (Node,
+`loadDocument` of the state of N paragraphs, median of five).
+
+| Item | Measure                                                                            | Before (no `content-visibility`) | After (`--edytor-block-visibility: auto`) |
+| ---- | ---------------------------------------------------------------------------------- | -------------------------------- | ----------------------------------------- |
+| P8a  | 5,000 blocks: first paint (after mount, two frames)                                | 776 ms                           | 744 ms                                    |
+| P8a  | 5,000 blocks: layout / style recalculation through the load                        | 36 / 30 ms                       | 16 / 25 ms                                |
+| P8a  | 5,000 blocks: wheel frame, median / p95                                            | 8.8 / 11 ms                      | 23.4 / 26.5 ms                            |
+| P8a  | 5,000 blocks: jump frame, median                                                   | 9.7 ms                           | 26.7 ms                                   |
+| P8a  | 20,000 blocks: first paint                                                         | 2,928 ms                         | 2,771 ms                                  |
+| P8a  | 20,000 blocks: layout / style recalculation through the load                       | 131 / 122 ms                     | 47 / 107 ms                               |
+| P8a  | 20,000 blocks: wheel frame, median / p95                                           | 46 / 54 ms                       | 112 / 126 ms                              |
+| P8a  | 20,000 blocks: jump frame, median                                                  | 37 ms                            | 114 ms                                    |
+| P8c  | Load split, 5,000 / 20,000 blocks: document + index, then view                     | 242 + 477 ms / 888 + 1,775 ms    | —                                         |
+| P8c  | Headless: apply the state / `loadDocument` (apply + index) / first `toJSON`, 5,000 | 38 / 66 / 24 ms                  | —                                         |
+| P8c  | The same, 20,000 (6.2 MB of state)                                                 | 176 / 274 / 124 ms               | —                                         |
+| R4   | Split / merge in a 5,000-block text (index checks off)                             | 3.55 / 2.37 ms                   | 3.78 / 2.56 ms                            |
+| R4   | Split after 200 anchored merges, 1,000 / 5,000 blocks                              | 0.59 / 4.22 ms                   | 0.89 / 3.84 ms                            |
+| R4   | Keystroke, 1,000 / 5,000 blocks                                                    | 0.014 / 0.022 ms                 | 0.016 / 0.023 ms                          |
+| R4   | Merge racing a split ("hello" + "world", Enter after "he")                         | "heworld", "llo"                 | "he", "lloworld" (48 client-id pairs)     |
+
+What changed:
+
+- **Part A, history stores.** `history.store` is a `HistoryStore` (`put`,
+  `get`, `list`, `delete`, with `expiresAt` and metadata, and the store's
+  `maxValueBytes`); `kvHistory` (KV's own TTL, the format of
+  0.1.0-next.24/25 unchanged, so stored versions keep reading),
+  `r2History` (custom metadata, 128 MiB values) and `roomHistory` (a table
+  in the room's SQLite, 1 MiB rows written in one transaction, its own
+  256 MiB cap apart from the document quota, oldest evicted first). The
+  room owns retention: nothing past `expiresAt` lists or reads, and a
+  `retention` alarm task deletes expired versions from stores without a TTL.
+  A bare KV namespace is still accepted (wrapped, deprecated).
+- **H13.** Fork patch P14 (`Doc.keepReplaced`): a registry value a
+  concurrent creation of the same key replaced keeps its subtree. The index
+  shows each losing incarnation of a live writer as a block under a derived
+  id, claimed implicitly by the winner after its own text; it lives and
+  dies with the winner, and the purge treats them as one family
+  (`id.same.concurrent`).
+- **R4 (H9's second half).** A merge claim stores the end of the block it
+  joins and the item after it; the claim belongs to the block holding the
+  segment just before that item, so a concurrent split hands the merged text
+  to the split's last piece, as both serial orders do
+  (`merge.claim.anchor`). The index keeps the stored claims and the
+  effective ones, re-deciding targets only for holders whose claims or
+  anchored rows changed; its self-check rebuilds them from scratch. Cost:
+  within noise for keystrokes, up to +7% per split or merge on a
+  5,000-block text, +50% for a split in a 1,000-block text holding 200
+  anchored merges (still under 1 ms).
+- **H10.** `lockedBlocks` is a ready-made `validate` hook (`locks`,
+  `EDYTOR_LOCKS`). `moveBlocks` moves subtrees between rooms: export (no
+  write), import at the destination (idempotent by move id), then delete at
+  the source only on the destination's receipt; edits that reach the source
+  late are merged three ways into the destination by the source's
+  `forward` alarm task (or the host's `forwardLateEdits`) for the purge
+  horizon; structural late edits are reported (`room.move`,
+  `room.move.late`). "A page is a document" is documented in `server/moves`.
+- **P8a, `content-visibility`: shipped opt-in, not by default.** It
+  shortens the load's layout (36 → 16 ms at 5,000 blocks, 131 → 47 ms at
+  20,000) but first paint only by 4–5%, because mounting the components
+  (the view, two thirds of the load) dominates; and every block that
+  scrolls into view is then styled and laid out on that frame, so scrolling
+  frames cost 2.5–3× more (a 5,000-block page drops from 60 fps to about
+  40 while scrolling). The Notion theme reads
+  `--edytor-block-visibility` (default `visible`). Under `auto`, every
+  behaviour the plan listed holds in Chromium, Firefox and WebKit
+  (`large-page.spec.ts`, IME in the cdp lane): the native caret to the last
+  block and typing there in view, a selection across 4,000 skipped blocks
+  deleted, find-in-page, a far block's handle (IntersectionObserver)
+  aligned and dragging, remote carets. Two fixes made it so: the handles
+  and remote carets measured a skipped block's text with
+  `getClientRects`, which forces its layout (3.7 s of a 5,000-block scroll
+  profile); they now measure its nearest rendered ancestor
+  (`renderSkipped`, `rendered` in `surface/overlay.ts`).
+- **P8b, first paint from JSON.** `<Edytor snapshot={json}>` renders the
+  JSON read-only with the view's plugins while the document is pending,
+  and the live view in the same update once it is ready;
+  `documentSnapshot({ server, room, params })` fetches it from the room
+  (`GET <room>?snapshot`, authorized like a dial). It removes the wait for
+  the socket, the sync and the hydration, not the render: the snapshot
+  costs the same mount as the live view (477 ms at 5,000 blocks), and the
+  live view mounts again when it replaces it. Server-rendered from a
+  `load`, the first HTML holds the document.
+- **P8c, lazy per-viewport index: not done.** The index is about 30 ms of
+  a 5,000-block load and 100 ms of a 20,000-block one (the `loadDocument`
+  minus the raw apply), against 477 / 1,775 ms of view mount: at most 4%
+  of first paint, and the view reads every block's cell at mount anyway
+  (every block is rendered), as do navigation, selection and the change
+  report. A lazy index pays only together with render virtualization,
+  which the plan excluded (it breaks native selection, find-in-page and
+  IME).
+
+Residuals:
+
+- The snapshot view and the live view each mount the whole document; a
+  hand-over that adopts the snapshot's DOM would halve that.
+- `content-visibility` stays opt-in until mounting is cheaper than
+  scrolling's per-frame cost; its scroll cost is the browser's.
+- Merge claims written before this release carry no anchor and stay with
+  their holder (the old reading). A client of 0.1.0-next.25 deletes a
+  losing incarnation's text when it sees the race; H13 needs every client
+  on this release.
+- H10's structural late edits (a late split, move or new child of a moved
+  block) are reported and stay at the source; only content and data
+  follow.

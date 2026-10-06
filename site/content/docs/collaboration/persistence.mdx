@@ -86,6 +86,27 @@ if (changed !== null && changed > fetchedAt) {
 - `prefetch(options)` takes the `createWebsocketSync` options (`server`, `room`, `params`, `persistName`, `WebSocketPolyfill`, `connectTimeout`, `maxBackoffTime`, `maxFrameBytes`) and a `timeout` (30 s). It opens the local copy (`edytor:<server>/<room>` unless `persistName` names another, the name a view with an `actor` uses: `edytor:<actor.id>@<server>/<room>`), dials the room once, takes what the room has that the copy lacks and hands the room what the copy has that it lacks (edits made offline), waits until the room stored them, then closes both. It publishes no presence. It resolves with `{ updated }` (whether the room sent anything new) and rejects with the room's refusal (`SyncRefusedError`), after `timeout`, or where there is no IndexedDB.
 - `lastUpdated(options)` (`server`, `room`, `params`, and an optional `fetch`) asks the room when it last stored a change, in milliseconds since the epoch (`null` for a room that has stored no change since it began recording them, with this release), with one HTTP request that opens no document: a `GET <server>/<room>?lastUpdated` (the `ws` scheme turned into `http`) that [`routeDocumentSocket`](/docs/server/authorization#authorize) authorizes like a dial. It throws on an HTTP error (`403` refused, `401` expired). Compare it with when you last fetched the document to decide whether to prefetch it.
 
+## First paint from a snapshot
+
+A first visit to a room's document (nothing in the local copy yet) shows nothing until the room answered. Pass the document as JSON in `snapshot` and the view shows it at once, read-only, then replaces it with the live, editable view as soon as its own document is ready:
+
+```svelte title="+page.svelte"
+<script lang="ts">
+	import { Edytor, documentSnapshot } from 'edytor';
+
+	let { data } = $props();
+	const target = { server: 'wss://rooms.example.com/rooms', room: 'doc-42', params: { token: data.token } };
+</script>
+
+{#await documentSnapshot(target) then snapshot}
+	<Edytor {...target} snapshot={snapshot ?? undefined} />
+{/await}
+```
+
+- `documentSnapshot(options)` (`server`, `room`, `params`, and an optional `fetch`) reads the room's document as JSON with one HTTP request, a `GET <server>/<room>?snapshot` that [`routeDocumentSocket`](/docs/server/authorization#authorize) authorizes like a dial. It resolves with `null` for a room that stores nothing yet and throws on an HTTP error (`403` refused, `401` expired). Call it in a server `load` (any `fetch` works there) and the first HTML holds the document; a room's own code can pass `read()` instead.
+- `snapshot` is read once. The snapshot view renders the same plugins and block handles as the live one, read-only, inside `[data-edytor-snapshot]`; nothing in it is written to the document. A view whose document is ready at mount (a local copy that holds the document, a `value` without a room) never shows it.
+- The live view replaces it in one update with what the room holds, which is newer than the snapshot when someone edited in between.
+
 ## Cross-tab sync
 
 Tabs of the same document sync with each other over a `BroadcastChannel`, with or without a server:

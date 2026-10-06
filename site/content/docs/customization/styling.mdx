@@ -54,6 +54,10 @@ Adapt it by overriding its custom properties on `.edytor-notion`:
 
 The theme also sets `--edytor-drop-indicator-color` to Notion's `rgba(35, 131, 226, 0.43)`, `--edytor-drop-backdrop-color` to its light nest tint, `rgba(35, 131, 226, 0.14)`, and `--edytor-nest-indent` to `24px` (see [Nested blocks](#nested-blocks)). Its rules are scoped under `.edytor-notion`: to override one, use a more specific selector, or the same selector in a stylesheet loaded after it.
 
+### Long pages
+
+`--edytor-block-visibility: auto` on `.edytor-notion` (or any element around the editor) gives each top-level block `content-visibility: auto`: a block off screen skips its style, layout and paint until it nears the viewport, and counts as a 32px row until it was rendered once. Selection, typing, find-in-page, block handles, drag and drop and remote carets keep working over skipped blocks. It is off by default because it trades scrolling for loading: on a 5,000-block page in Chromium the first layout drops from 36 ms to 16 ms, but each block that scrolls into view is styled and laid out on that frame, so a scroll frame takes about 23 ms instead of 9 ms (20,000 blocks: 131 to 47 ms, and 46 to 112 ms). Turn it on for pages that are mostly read top to bottom, or whose blocks are expensive to lay out (large images, embeds, code).
+
 ## The rendered DOM
 
 For a paragraph with bold text and a mention, followed by the overlay:

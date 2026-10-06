@@ -20,6 +20,7 @@ export {
 	WebsocketProvider,
 	prefetch,
 	lastUpdated,
+	documentSnapshot,
 	type EdytorSync,
 	type EdytorSyncCleanup,
 	type EdytorSyncPayload,

@@ -12,6 +12,26 @@
  */
 import { mount, unmount, type Component } from 'svelte';
 
+/**
+ * Whether the browser does not render `node`: an ancestor's
+ * `content-visibility: auto` skips it off screen (P8), or it is not
+ * displayed. Its geometry is not computed — reading it would force a layout
+ * of that subtree, every frame a measure asks — so measures read its nearest
+ * rendered ancestor instead (`checkVisibility`; where it is missing, every
+ * node counts as rendered).
+ */
+export const renderSkipped = (node: Element): boolean =>
+	(
+		node as Element & { checkVisibility?: (options: { contentVisibilityAuto: boolean }) => boolean }
+	).checkVisibility?.({ contentVisibilityAuto: true }) === false;
+
+/** `node`, or its nearest ancestor whose rendering the browser does not skip. */
+export const rendered = (node: Element): Element => {
+	let at: Element = node;
+	while (at.parentElement !== null && renderSkipped(at)) at = at.parentElement;
+	return at;
+};
+
 /** Reads layout with the layer's origin; returns the writes to apply after every read. */
 export type Measure = (origin: DOMRect) => (() => void) | void;
 

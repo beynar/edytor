@@ -17,7 +17,9 @@
  * A plain `GET <room>?lastUpdated` (no upgrade) is the room's probe (H12):
  * authorized the same way, it answers `{ lastUpdated }` as JSON (the room's
  * last stored change, ms since the epoch, or `null`), or `400`, `401` or
- * `403` as an HTTP status.
+ * `403` as an HTTP status. `GET <room>?snapshot` (P8) answers
+ * `{ lastUpdated, document }`, the document as JSON, the same way: a view
+ * shows it while its own copy hydrates (`<Edytor snapshot>`).
  */
 import { CLOSE, validRoomId } from '../crdt/providers/room.js';
 import {
@@ -66,7 +68,7 @@ export type AuthorizeDocumentSocket = (
 	| null
 	| Promise<DocumentIdentity | ExpiredCredential | null>;
 
-/** The HTTP status a `lastUpdated` probe gets for each refusal a dial is closed with. */
+/** The HTTP status a probe (`lastUpdated`, `snapshot`) gets for each refusal a dial is closed with. */
 const PROBE_STATUS: Record<number, number> = {
 	[CLOSE.invalidDocument]: 400,
 	[CLOSE.expired]: 401,
@@ -183,25 +185,30 @@ export async function routeDocumentSocket(
 	documentId: string,
 	authorize: AuthorizeDocumentSocket
 ): Promise<Response> {
-	// The `lastUpdated` probe (H12): a plain GET, authorized like a dial,
-	// answered with JSON (`{ lastUpdated }`) or an HTTP status.
+	// The probes: a plain GET, authorized like a dial, answered with JSON or
+	// an HTTP status — `lastUpdated` (H12) and `snapshot` (P8, the document).
+	const query = new URL(request.url).searchParams;
 	const probe =
-		request.method === 'GET' &&
-		request.headers.get('Upgrade') === null &&
-		new URL(request.url).searchParams.has('lastUpdated');
+		request.method === 'GET' && request.headers.get('Upgrade') === null
+			? query.has('snapshot')
+				? 'snapshot'
+				: query.has('lastUpdated')
+					? 'lastUpdated'
+					: null
+			: null;
 	if (
-		!probe &&
+		probe === null &&
 		(request.method !== 'GET' || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket')
 	) {
 		return new Response('WebSocket upgrade required', { status: 426 });
 	}
 	// One refusal path: a dial gets the close the provider reads, a probe its HTTP status.
 	const refuse = (code: number, reason: string): Response =>
-		probe ? statusOf(code, reason) : closedSocket(code, reason);
+		probe !== null ? statusOf(code, reason) : closedSocket(code, reason);
 	const identity = await authorized(request, documentId, authorize, refuse);
 	if (identity instanceof Response) return identity;
 	const headers = identityHeaders(identity);
-	if (probe) headers.set(PROBE_HEADER, 'lastUpdated');
+	if (probe !== null) headers.set(PROBE_HEADER, probe);
 	else headers.set('Upgrade', 'websocket');
 	return rooms.getByName(documentId).fetch(new Request(request.url, { method: 'GET', headers }));
 }

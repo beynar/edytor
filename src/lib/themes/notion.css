@@ -47,6 +47,24 @@
 	background: var(--notion-text-selection);
 }
 
+/*
+ * Large pages (P8), opt-in: `--edytor-block-visibility: auto` on the editor
+ * or an ancestor lets a top-level block off screen skip its rendering
+ * (style, layout, paint) until it nears the viewport; the browser keeps its
+ * DOM, selection, find-in-page and accessibility. Until it was rendered
+ * once, it counts as one 32px row (`auto` remembers its real height after).
+ * Only top-level blocks: a nested one is skipped with its ancestor. Off by
+ * default: it shortens the first layout of a long page, but each block that
+ * scrolls into view is then styled and laid out on that frame, so scrolling
+ * costs more (measured in the research doc's "Phase 5 results"). The
+ * containment it brings (layout, paint) clips what a block paints outside
+ * its own box: this theme's kinds paint none.
+ */
+[data-edytor]:is(.edytor-notion, .edytor-notion *) > [data-edytor-block] {
+	content-visibility: var(--edytor-block-visibility, visible);
+	contain-intrinsic-block-size: auto 32px;
+}
+
 /* ── Rhythm: every block is a 2px-gutter row, 1px apart ─────────────── */
 .edytor-notion [data-edytor-block] {
 	position: relative;

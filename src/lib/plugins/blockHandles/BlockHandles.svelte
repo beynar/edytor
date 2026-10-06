@@ -9,6 +9,7 @@
 	import type { BlockHandleSnippetPayload } from './blockHandlesPlugin.js';
 	import type { BlockHandleController } from './BlockHandleController.svelte.js';
 	import { gapBefore, handleSpan } from '../columns/gaps.js';
+	import { renderSkipped, rendered } from '$lib/surface/overlay.js';
 
 	/**
 	 * The handles, in the overlay (R11): one per registered movable block that
@@ -95,7 +96,8 @@
 		}
 		if (!block.definition.void && !block.definition.island) {
 			const text = block.content.find((part): part is Text => part instanceof Text);
-			const line = text?.node?.getClientRects()[0];
+			// A text the browser skips rendering (content-visibility, P8) is not read: the box is.
+			const line = text?.node && !renderSkipped(text.node) ? text.node.getClientRects()[0] : null;
 			if (line && line.height > 0) return line.top + line.height / 2;
 		}
 		const rect = node.getBoundingClientRect();
@@ -112,9 +114,14 @@
 			const block = blocks.get(id);
 			const node = block?.node;
 			if (!block || !node?.isConnected) return;
-			const rect = node.getBoundingClientRect();
+			// What the browser skips rendering (content-visibility, P8) is not read: placed once,
+			// it keeps its place; else its nearest rendered ancestor's box places it.
+			const skipped = renderSkipped(node);
+			if (at && skipped) return;
+			const rect = (skipped ? rendered(node) : node).getBoundingClientRect();
 			const shown = rect.width > 0 || rect.height > 0;
 			if (at && shown && (rect.bottom < -margin() || rect.top > 2 * margin())) return;
+			if (at && shown && renderSkipped(node.firstElementChild ?? node)) return;
 			const center = shown ? firstRowCenter(node, block) : 0;
 			const left = `${rect.left - origin.left}px`;
 			const top = shown ? `${center - origin.top}px` : '';

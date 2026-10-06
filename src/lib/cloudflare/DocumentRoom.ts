@@ -239,7 +239,7 @@ export type SavedDocument = {
 /** What `onLoad` may return: JSON, a bare v14 update, or `{ update, replicas }` (a `SavedDocument`). */
 export type LoadedDocument = JSONDoc | Uint8Array | Pick<SavedDocument, 'update' | 'replicas'>;
 
-/** The header `routeDocumentSocket` sets on an authorized `lastUpdated` probe (H12). */
+/** The header `routeDocumentSocket` sets on an authorized probe: `lastUpdated` (H12) or `snapshot` (P8). */
 export const PROBE_HEADER = 'X-Edytor-Probe';
 
 /** The transaction origin of the room's own edits (`transact`, `onLoad` seeds). */
@@ -3670,13 +3670,17 @@ export class AttachedDocument {
 			if (identity === null) return new Response('verified identity required', { status: 401 });
 			return this.historyRequest(op, identity, request.headers.get(HISTORY_KEY_HEADER));
 		}
-		// The `lastUpdated` probe (H12), forwarded by `routeDocumentSocket` once authorized.
-		if (request.headers.get(PROBE_HEADER) === 'lastUpdated') {
+		// The probes, forwarded by `routeDocumentSocket` once authorized:
+		// `lastUpdated` (H12) and `snapshot` (P8: the document as JSON).
+		const probe = request.headers.get(PROBE_HEADER);
+		if (probe === 'lastUpdated' || probe === 'snapshot') {
 			if (readIdentity(request.headers) === null) {
 				return new Response('verified identity required', { status: 401 });
 			}
 			await this.retryStart();
-			return Response.json({ lastUpdated: this.lastUpdated() });
+			if (probe === 'lastUpdated') return Response.json({ lastUpdated: this.lastUpdated() });
+			if (this.live === null) return new Response('room unavailable', { status: 503 });
+			return Response.json({ lastUpdated: this.lastUpdated(), document: this.read() });
 		}
 		if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
 			return new Response('expected a websocket upgrade', { status: 426 });

@@ -8,6 +8,7 @@
  * vendored engine (U1 consolidation; the contract itself is unchanged).
  */
 import type { EngineApi, YDoc } from '../engine-api.js';
+import type { JSONDoc } from '../../utils/json.js';
 import type { Awareness } from '../protocols/awareness.js';
 import { bindIndexeddbProvider, type IndexeddbProvider } from './indexeddb.js';
 import { assertRoomId, SyncRefusedError } from './room.js';
@@ -357,9 +358,34 @@ export const bindProviders = (Y: EngineApi) => {
 		return typeof at === 'number' ? at : null;
 	};
 
+	/**
+	 * The room's document as JSON, or `null` when it stores nothing yet
+	 * (P8): one authorized HTTP `GET <server>/<room>?snapshot`, which
+	 * `routeDocumentSocket` answers from the room's live document. Show it
+	 * while a view's own copy hydrates: `<Edytor snapshot>`. Throws on an
+	 * HTTP error (`403` refused, `401` expired).
+	 */
+	const documentSnapshot = async (options: LastUpdatedOptions): Promise<JSONDoc | null> => {
+		const [serverUrl, room] = targetOf(options);
+		const url = new URL(`${serverUrl.replace(/^ws/, 'http')}/${encodeURIComponent(room)}`);
+		for (const [key, value] of Object.entries(options.params ?? {}))
+			url.searchParams.set(key, value);
+		url.searchParams.set('snapshot', '1');
+		const response = await (options.fetch ?? fetch)(url.toString());
+		if (!response.ok) {
+			throw new Error(`snapshot of ${room}: ${response.status} ${await response.text()}`);
+		}
+		const { lastUpdated: at, document } = (await response.json()) as {
+			lastUpdated: number | null;
+			document: JSONDoc;
+		};
+		return typeof at === 'number' ? document : null;
+	};
+
 	return {
 		prefetch,
 		lastUpdated,
+		documentSnapshot,
 		IndexeddbPersistence: idb.IndexeddbPersistence,
 		WebsocketProvider: ws.WebsocketProvider,
 		storeState: idb.storeState,

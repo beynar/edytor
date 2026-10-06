@@ -148,6 +148,15 @@
 		 * document this view owns (with `document`, set it there). Read once.
 		 */
 		requireHydration?: boolean;
+		/**
+		 * The document as JSON, shown read-only until this view's document is
+		 * ready (P8): a first visit to a room-backed document paints at once
+		 * — server-side too — instead of waiting for the room. Its own view of
+		 * the same plugins, replaced by the live one in the same update. Fetch
+		 * it with `documentSnapshot({ server, room, params })` (or the room's
+		 * `read()` in your server load). Read once.
+		 */
+		snapshot?: JSONDoc;
 	};
 </script>
 
@@ -157,6 +166,7 @@
 	import type { HotKey, HotKeyCombination } from '$lib/session/keymap.js';
 	import type { EdytorSelection } from '$lib/selection/selection.svelte.js';
 	import Block from './Block.svelte';
+	import Snapshot from './Edytor.svelte';
 
 	let {
 		plugins: userPlugins,
@@ -178,6 +188,7 @@
 		onSyncExpired,
 		onSyncRefused,
 		requireHydration,
+		snapshot,
 		awareness,
 		actor,
 		presence,
@@ -367,6 +378,21 @@
 			style="display: none"
 			use:edytor.surface.anchor
 		></span>
+	</div>
+{:else if snapshot}
+	<!-- P8: the room's JSON, read-only, while this view's document hydrates. -->
+	<div data-edytor-snapshot style="display: contents">
+		<Snapshot
+			value={snapshot}
+			readonly
+			plugins={userPlugins}
+			{defaultPlugins}
+			{blockHandles}
+			{blockDnd}
+			class={className}
+			{placeholder}
+			{...snippets}
+		/>
 	</div>
 {/if}
 

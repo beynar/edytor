@@ -50,3 +50,5 @@ export const WebsocketProvider: ProviderStack['WebsocketProvider'] = providers.W
 export const prefetch: ProviderStack['prefetch'] = providers.prefetch;
 /** When a room last stored a change: one authorized HTTP request, no document opened. */
 export const lastUpdated: ProviderStack['lastUpdated'] = providers.lastUpdated;
+/** A room's document as JSON (one authorized HTTP request), for `<Edytor snapshot>`. */
+export const documentSnapshot: ProviderStack['documentSnapshot'] = providers.documentSnapshot;

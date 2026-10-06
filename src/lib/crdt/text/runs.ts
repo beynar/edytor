@@ -49,7 +49,9 @@
  * The change report `{added, removed, moved, meta, content, order}` is the
  * fold against the last published index: the blocks the commit's folds
  * touched or invalidated are compared with what was published for them;
- * when the children index was rebuilt, the reachable tree is compared too.
+ * the child lists the commit patched are compared with the published ones,
+ * advancing the published tree in place (after a whole rebuild, the
+ * reachable tree is compared).
  */
 import type {
 	EngineApi,
@@ -865,6 +867,11 @@ export const bindRuns = (Y: EngineApi) => {
 		let orderCache: DocOrder | null = null;
 		/** Bumps whenever a child list changes (the report compares it). */
 		let kidsVersion = 0;
+		/** The child lists patched since the last report (`all`: every list was rebuilt). */
+		const dirtyLists = new Set<BlockId | null>();
+		/** The blocks that left every list since the last report. */
+		const leftLists = new Set<BlockId>();
+		let allListsDirty = true;
 		/** The next pass rebuilds everything (first build, roles, an irregular state). */
 		let placementFull = true;
 		/** Some block shows no argmax candidate (a cycle rejected one, or none): passes run whole. */
@@ -1038,12 +1045,16 @@ export const bindRuns = (Y: EngineApi) => {
 							: { id, rank: next.rank, reset: next.reset };
 					l.splice(seek(l, slot), 0, slot);
 					slotMap.set(id, next);
-				} else slotMap.delete(id);
+				} else {
+					slotMap.delete(id);
+					if (kids === kidsMap) leftLists.add(id);
+				}
 				changed.set(id, [old?.parent, next?.parent]);
 			}
 			for (const [p, l] of copies) {
 				if (l.length === 0) kids.delete(p);
 				else kids.set(p, l);
+				if (kids === kidsMap) dirtyLists.add(p);
 			}
 			return changed;
 		};
@@ -1150,6 +1161,7 @@ export const bindRuns = (Y: EngineApi) => {
 			for (const id of slots.keys()) noteFollowing(id);
 			orderCache = null;
 			kidsVersion++;
+			allListsDirty = true;
 		};
 		/**
 		 * Re-run the layout rules on the layouts `changed` (blocks whose slot
@@ -2086,6 +2098,123 @@ export const bindRuns = (Y: EngineApi) => {
 			}
 		};
 
+		/**
+		 * The report's structural part from the child lists patched since the
+		 * last report (P3), advancing the published tree in place — what
+		 * `reachable` would give, without walking the lists nothing changed:
+		 * a published block no longer shown leaves (a root when its parent
+		 * stays), its still-shown descendants staying; each patched list's
+		 * new order is news, a block in it at a new parent or index moved, one
+		 * not published before is added with its subtree.
+		 */
+		const advance = (
+			pub: Published,
+			r: IndexReport,
+			covered: Set<BlockId>,
+			reparented: Set<BlockId>
+		): void => {
+			const { nodes, order } = pub;
+			const shown = (x: BlockId): boolean => {
+				for (let c: BlockId | null = x; c !== null; ) {
+					const slot = slots.get(c);
+					if (slot === undefined) return false;
+					c = slot.parent;
+				}
+				return true;
+			};
+			const lists = [...dirtyLists];
+			// Leaving: a published block of a patched list that no longer shows.
+			const drop = (id: BlockId): void => {
+				const ks = order.get(id);
+				if (ks !== undefined) {
+					order.delete(id);
+					r.order.set(id, EMPTY_IDS);
+					for (const k of ks) if (!shown(k)) drop(k);
+				}
+				nodes.delete(id);
+			};
+			for (const id of leftLists) {
+				const o = nodes.get(id);
+				if (o === undefined || shown(id)) continue;
+				if (o.parent === null || shown(o.parent)) r.removed.add(id);
+				drop(id);
+			}
+			// Each patched list that shows: its order, its moved and new blocks.
+			const fresh = new Map<BlockId, { parent: BlockId | null; index: number }>();
+			for (const p of lists) {
+				if (p !== null && !shown(p)) continue;
+				const ks = kidsMap.get(p) ?? [];
+				const prev = order.get(p);
+				if (ks.length === 0) {
+					if (prev !== undefined) {
+						order.delete(p);
+						r.order.set(p, EMPTY_IDS);
+					}
+					continue;
+				}
+				const ids = ks.map((k) => k.id);
+				if (prev === undefined || !sameIds(prev, ids)) {
+					const frozen = Object.freeze(ids);
+					order.set(p, frozen);
+					r.order.set(p, frozen);
+				}
+				ks.forEach(({ id }, index) => {
+					const n = nodes.get(id);
+					if (n === undefined) fresh.set(id, { parent: p, index });
+					else if (n.parent !== p || n.index !== index) {
+						r.moved.add(id);
+						if (n.parent !== p) reparented.add(id);
+						n.parent = p;
+						n.index = index;
+					}
+				});
+			}
+			// New roots (no new ancestor) bring their subtree.
+			const add = (b: ProjectedBlock, parent: BlockId | null, index: number): void => {
+				if (!nodes.has(b.id)) {
+					covered.add(b.id);
+					const rec = blocks.get(b.id)!;
+					nodes.set(b.id, { parent, index, type: typeOf(b.id), data: rec.data, runs: runs(b.id) });
+				}
+				if (b.children.length > 0 && !order.has(b.id)) {
+					const ids = Object.freeze(b.children.map((c) => c.id));
+					order.set(b.id, ids);
+					r.order.set(b.id, ids);
+				}
+				b.children.forEach((c, i) => add(c, b.id, i));
+			};
+			for (const [id, at] of fresh) {
+				let under = false;
+				for (
+					let c = slots.get(id)?.parent ?? null;
+					c !== null && !under;
+					c = slots.get(c)?.parent ?? null
+				)
+					under = fresh.has(c);
+				if (under || covered.has(id)) continue;
+				const b = projectBlock(id);
+				r.added.set(id, b);
+				add(b, at.parent, at.index);
+			}
+		};
+		/** {@link indexChecks}: the published tree the report advanced equals a fresh walk. */
+		const checkPublished = (): void => {
+			const pub = published!;
+			// Payloads from the published nodes: the check reads no runs.
+			const want = reachable(pub.nodes);
+			const fail = (what: string): never => {
+				throw new Error(`[edytor index] published ${what} differs from its rebuild`);
+			};
+			if (want.order.size !== pub.order.size) fail('lists');
+			for (const [p, ids] of want.order)
+				if (!sameIds(ids, pub.order.get(p) ?? [])) fail(`list of ${p}`);
+			if (want.nodes.size !== pub.nodes.size) fail('blocks');
+			for (const [id, n] of want.nodes) {
+				const m = pub.nodes.get(id);
+				if (m?.parent !== n.parent || m.index !== n.index) fail(`slot of ${id}`);
+			}
+		};
+
 		/** The blocks whose shown kind followed their slot at the last report. */
 		let followingBefore: BlockId[] = [];
 		/** The document data's key at the last report. */
@@ -2110,12 +2239,16 @@ export const bindRuns = (Y: EngineApi) => {
 				if (key !== dataKey) [r.data, dataKey] = [data, key];
 			}
 			if (kidsVersion === before.kids && candidates.size === 0) return r.data ? r : null;
-			const after = kidsVersion === before.kids ? before : reachable(before.nodes);
 			// Added subtrees carry their new descendants. A descendant that was
 			// visible before is reported like any visible block (moved, retyped,
 			// edited against its published baseline), so consumers keep it (K7).
 			const covered = new Set<BlockId>();
-			if (after !== before) {
+			/** Moved to another display parent: only those can show another kind (an index never does). */
+			const reparented = new Set<BlockId>();
+			const lists = kidsVersion !== before.kids && !allListsDirty;
+			const after = kidsVersion === before.kids || lists ? before : reachable(before.nodes);
+			if (lists) advance(before, r, covered, reparented);
+			else if (after !== before) {
 				for (const [parent, ids] of after.order) {
 					const prev = before.order.get(parent);
 					if (prev === undefined || !sameIds(prev, ids)) r.order.set(parent, ids);
@@ -2136,6 +2269,7 @@ export const bindRuns = (Y: EngineApi) => {
 					} else {
 						const o = before.nodes.get(id)!;
 						if (o.parent !== n.parent || o.index !== n.index) r.moved.add(id);
+						if (o.parent !== n.parent) reparented.add(id);
 					}
 				}
 				// Removed subtree ROOTS: a removed id whose before-parent stays
@@ -2172,9 +2306,9 @@ export const bindRuns = (Y: EngineApi) => {
 			// changes a shown kind — the retyped block's (a candidate) and the
 			// kinds derived from it: a promoted or stray line shows its display
 			// parent's default child (XW-08).
-			if (after !== before || retyped) {
+			if (after !== before || lists || retyped) {
 				const now = [...following];
-				for (const id of [...r.moved, ...now, ...followingBefore]) {
+				for (const id of [...reparented, ...now, ...followingBefore]) {
 					const n = after.nodes.get(id);
 					if (n !== undefined && !candidates.has(id) && !covered.has(id) && typeOf(id) !== n.type)
 						meta(id, n);
@@ -2193,6 +2327,11 @@ export const bindRuns = (Y: EngineApi) => {
 			retyped = false;
 			candidates.clear();
 			published = after;
+			after.kids = kidsVersion;
+			dirtyLists.clear();
+			leftLists.clear();
+			allListsDirty = false;
+			if (indexChecks.on) checkPublished();
 			const empty =
 				r.added.size + r.removed.size + r.moved.size + r.meta.size + r.content.size + r.order.size;
 			return empty === 0 && !r.data ? null : r;

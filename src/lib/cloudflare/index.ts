@@ -21,6 +21,7 @@ export {
 	MAX_WAITING_DELETES,
 	ROOM_ORIGIN,
 	IDENTITY_HEADERS,
+	PROBE_HEADER,
 	noTimers,
 	type Attachment,
 	type DocumentRoomEnv,

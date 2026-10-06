@@ -141,6 +141,13 @@
 		onSyncRefused?: (refusal: SyncRefusedError) => void;
 		/** Advanced: a custom sync factory. Overrides `room`/`server`. */
 		sync?: EdytorSync;
+		/**
+		 * Keep the view read-only, and seed nothing, until its document was
+		 * fetched once (a provider synced): a first visit offline shows no
+		 * `value` that the room's content would later duplicate. For the
+		 * document this view owns (with `document`, set it there). Read once.
+		 */
+		requireHydration?: boolean;
 	};
 </script>
 
@@ -170,6 +177,7 @@
 		params,
 		onSyncExpired,
 		onSyncRefused,
+		requireHydration,
 		awareness,
 		actor,
 		presence,
@@ -197,6 +205,7 @@
 		doc,
 		awareness,
 		actor,
+		requireHydration,
 		hotKeys,
 		onSelectionChange,
 		onChange,

@@ -159,7 +159,10 @@ export {
 	type IndexeddbSyncOptions,
 	type WebsocketSync,
 	type WebsocketSyncOptions,
-	type ProviderStack
+	type ProviderStack,
+	type PrefetchOptions,
+	type PrefetchResult,
+	type LastUpdatedOptions
 } from './providers/index.js';
 
 export {

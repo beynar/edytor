@@ -4,7 +4,7 @@ description: What the DocumentRoom Durable Object enforces, how it stores and ac
 icon: server
 ---
 
-`DocumentRoom` is a Durable Object that coordinates one document: deploy one object per document, reached through [`routeDocumentSocket`](/docs/server/authorization). Everything on this page also holds for a document attached to your own Durable Object with [`attachDocument`](/docs/server/extending); only its table names differ (`edytor_rows`, `edytor_replicas`). This page describes what the room checks on every message, how it stores the document, and the settings and limits you can tune.
+`DocumentRoom` is a Durable Object that coordinates one document: deploy one object per document, reached through [`routeDocumentSocket`](/docs/server/authorization). Everything on this page also holds for a document attached to your own Durable Object with [`attachDocument`](/docs/server/extending); only its table names differ (`edytor_rows`, `edytor_replicas`, `edytor_meta`). This page describes what the room checks on every message, how it stores the document, and the settings and limits you can tune.
 
 ## One room per document
 
@@ -144,6 +144,8 @@ const { ranges } = await env.ROOMS.getByName(documentId).dropWaitingDeletes();
 ```ts
 const metrics = await env.ROOMS.getByName(documentId).metrics();
 ```
+
+`lastUpdated()`, also over RPC, returns when the room last stored a change (ms since the epoch; `null` for a room with none stored since 0.1.0-next.23), from one row of its `meta` table (`edytor_meta` with `attachDocument`). Clients reach it without opening the document through [`lastUpdated`](/docs/collaboration/persistence#prefetch-and-last-updated), which `routeDocumentSocket` answers.
 
 Times are what the runtime's clock reports. Workers advance the clock only across I/O, so synchronous work such as a compaction often reads `0` ms in production; sizes and counts are exact.
 

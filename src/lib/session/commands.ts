@@ -223,7 +223,11 @@ export class Dispatcher {
 	}
 
 	/** Admission: a readonly view or a read-only document refuses every mutating command. */
-	permits = () => !this.edytor.readonly && this.edytor.document.writable;
+	/** Admission: not readonly, a writable document, and one decided when it requires hydration (H12). */
+	permits = () =>
+		!this.edytor.readonly &&
+		this.edytor.document.writable &&
+		(this.edytor.document.ready || !this.edytor.document.requireHydration);
 
 	/** Apply the undo policy's cut before a `kind` command writes. */
 	cut = (kind: string, phase: 'before' | 'after' = 'before') => {

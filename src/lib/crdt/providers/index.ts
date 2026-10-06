@@ -10,7 +10,7 @@
 import type { EngineApi, YDoc } from '../engine-api.js';
 import type { Awareness } from '../protocols/awareness.js';
 import { bindIndexeddbProvider, type IndexeddbProvider } from './indexeddb.js';
-import { assertRoomId } from './room.js';
+import { assertRoomId, SyncRefusedError } from './room.js';
 import { bindWebsocketProvider, type WebsocketProviderEvents } from './websocket.js';
 
 /**
@@ -121,6 +121,26 @@ export type WebsocketSyncOptions = WebsocketTarget & {
 
 /** A websocket sync; `persistName` names its local store (for `clearDocument`), unset without one. */
 export type WebsocketSync = EdytorSync & { persistName?: string };
+
+/** What {@link bindProviders}' `prefetch` takes: a websocket sync's target and options. */
+export type PrefetchOptions = (WebsocketSyncOptions extends infer O
+	? O extends unknown
+		? Omit<O, 'onExpired' | 'persist' | 'disableBc'>
+		: never
+	: never) & {
+	/** ms before it gives up (default 30 000). */
+	timeout?: number;
+};
+
+/** What `prefetch` found: whether the room sent the store anything it lacked. */
+export type PrefetchResult = { updated: boolean };
+
+/** What `lastUpdated` takes: the room it asks, and the `params` (a token) its dial would carry. */
+export type LastUpdatedOptions = WebsocketTarget & {
+	params?: Record<string, string>;
+	/** The fetch to use (default the global one). */
+	fetch?: typeof fetch;
+};
 
 export type ProviderStack = ReturnType<typeof bindProviders>;
 
@@ -242,7 +262,98 @@ export const bindProviders = (Y: EngineApi) => {
 		return Object.assign(sync, { bound: Infinity, target: `websocket:${room}`, persistName });
 	};
 
+	/** `[serverUrl (no trailing slash), room]` of a target, the room id checked. */
+	const targetOf = (options: WebsocketTarget): [string, string] => {
+		const [server, room] =
+			'server' in options ? [options.server, options.room] : [options.serverUrl, options.roomName];
+		assertRoomId(room);
+		return [server.replace(/\/+$/, ''), room];
+	};
+
+	/**
+	 * Keep a document fresh without opening it (H12): load its local store
+	 * (the one `createWebsocketSync` keeps, `edytor:<server>/<room>` unless
+	 * `persistName` names another), dial the room once, take what it lacks
+	 * and hand it what the store holds that the room lacks, wait until the
+	 * room stored it, then close. Resolves with whether the room sent
+	 * anything new; rejects with the room's refusal (`SyncRefusedError`),
+	 * after `timeout`, or where there is no IndexedDB.
+	 */
+	const prefetch = (options: PrefetchOptions): Promise<PrefetchResult> => {
+		const [serverUrl, room] = targetOf(options);
+		if (typeof indexedDB === 'undefined') {
+			return Promise.reject(new TypeError('prefetch needs IndexedDB to keep the document'));
+		}
+		const doc = new Y.Doc();
+		const local = new idb.IndexeddbPersistence(
+			options.persistName ?? `edytor:${serverUrl}/${room}`,
+			doc,
+			{ disableBc: true }
+		);
+		let socket: InstanceType<typeof ws.WebsocketProvider> | null = null;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const close = async () => {
+			clearTimeout(timer);
+			socket?.destroy();
+			await local.destroy();
+			doc.destroy();
+		};
+		return new Promise<PrefetchResult>((resolve, reject) => {
+			const fail = (error: unknown) => void close().then(() => reject(error));
+			timer = setTimeout(
+				() => fail(new Error(`prefetch of ${room} timed out`)),
+				options.timeout ?? 30_000
+			);
+			local.whenSynced.then(() => {
+				const before = Y.encodeStateVector(doc);
+				const provider = (socket = new ws.WebsocketProvider(serverUrl, room, doc, {
+					params: options.params,
+					WebSocketPolyfill: options.WebSocketPolyfill,
+					maxBackoffTime: options.maxBackoffTime,
+					connectTimeout: options.connectTimeout,
+					maxFrameBytes: options.maxFrameBytes,
+					disableBc: true
+				}));
+				// A prefetch is nobody's presence.
+				provider.awareness.setLocalState(null);
+				const done = () => {
+					if (!provider.synced || !provider.saved) return;
+					const after = Y.encodeStateVector(doc);
+					const updated = after.length !== before.length || after.some((b, i) => b !== before[i]);
+					void close().then(() => resolve({ updated }));
+				};
+				provider.on('synced', done);
+				provider.on('saved', done);
+				provider.on('refused', (refusal: SyncRefusedError) => fail(refusal));
+				done();
+			}, fail);
+		});
+	};
+
+	/**
+	 * When the room last stored a change (ms since the epoch), or `null`
+	 * (H12): one authorized HTTP `GET <server>/<room>?lastUpdated`, which
+	 * `routeDocumentSocket` answers without opening the document. Compare
+	 * it with when a document was last fetched to decide whether to
+	 * `prefetch` it. Throws on an HTTP error (`403` refused, `401` expired).
+	 */
+	const lastUpdated = async (options: LastUpdatedOptions): Promise<number | null> => {
+		const [serverUrl, room] = targetOf(options);
+		const url = new URL(`${serverUrl.replace(/^ws/, 'http')}/${encodeURIComponent(room)}`);
+		for (const [key, value] of Object.entries(options.params ?? {}))
+			url.searchParams.set(key, value);
+		url.searchParams.set('lastUpdated', '1');
+		const response = await (options.fetch ?? fetch)(url.toString());
+		if (!response.ok) {
+			throw new Error(`lastUpdated of ${room}: ${response.status} ${await response.text()}`);
+		}
+		const { lastUpdated: at } = (await response.json()) as { lastUpdated: number | null };
+		return typeof at === 'number' ? at : null;
+	};
+
 	return {
+		prefetch,
+		lastUpdated,
 		IndexeddbPersistence: idb.IndexeddbPersistence,
 		WebsocketProvider: ws.WebsocketProvider,
 		storeState: idb.storeState,

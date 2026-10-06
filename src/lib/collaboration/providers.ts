@@ -46,3 +46,7 @@ export const storeState: ProviderStack['storeState'] = providers.storeState;
 export const IndexeddbPersistence: ProviderStack['IndexeddbPersistence'] =
 	providers.IndexeddbPersistence;
 export const WebsocketProvider: ProviderStack['WebsocketProvider'] = providers.WebsocketProvider;
+/** Keep a document's local copy fresh without opening it (sync once, then close). */
+export const prefetch: ProviderStack['prefetch'] = providers.prefetch;
+/** When a room last stored a change: one authorized HTTP request, no document opened. */
+export const lastUpdated: ProviderStack['lastUpdated'] = providers.lastUpdated;

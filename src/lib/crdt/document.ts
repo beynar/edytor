@@ -231,6 +231,17 @@ export type DocumentOptions = {
 	 * `RangeError` at creation (an unbounded ring is worse than no ring).
 	 */
 	lineage?: { depth?: number };
+	/**
+	 * Decide an EMPTY document only from a provider that synced (H12): the
+	 * room answered, or a local store hydrated. A provider's bound or
+	 * failure never seeds it, so a first visit offline writes nothing — no
+	 * seed of `value` that a different seed in the room would later meet as
+	 * duplicate blocks — and stays `pending` (a view keeps it read-only)
+	 * until the document is fetched once. A document holding content is
+	 * decided as before; an explicit {@link EdytorDocument.sync} still
+	 * decides.
+	 */
+	requireHydration?: boolean;
 };
 
 export type CreateDocumentOptions = DocumentOptions & {
@@ -378,6 +389,7 @@ export type EdytorDocumentInit = {
 	semantics?: DocumentSemanticsConfig;
 	history?: { captureTimeout?: number; limit?: number };
 	lineage?: { depth?: number };
+	requireHydration?: boolean;
 };
 
 /**
@@ -481,6 +493,8 @@ export class EdytorDocument {
 	private _defaultType: string;
 	private readonly _historyOptions: { captureTimeout?: number; limit?: number } | undefined;
 	private readonly _lineageDepth: number | undefined;
+	/** {@link DocumentOptions.requireHydration}: an empty document waits for a provider's `synced`. */
+	readonly requireHydration: boolean;
 	/** Attached providers keyed by transport target (O75): one per target. */
 	private _providers = new Map<unknown, EdytorSyncCleanup | undefined>();
 	private _pendingSyncs = 0;
@@ -511,6 +525,7 @@ export class EdytorDocument {
 		this._ownsAwareness = init.awareness === undefined;
 		this._historyOptions = init.history;
 		this._lineageDepth = init.lineage?.depth;
+		this.requireHydration = init.requireHydration === true;
 		this.actor = init.actor ?? anonymousActor();
 		// Durable actor identity is separate from the presence profile: the
 		// `actor` field carries the stable id (U5/U6 stub seam), `user`
@@ -955,8 +970,11 @@ export class EdytorDocument {
 	 * decides again when it turns writable (the refusal propagates to the
 	 * reporting provider only).
 	 */
-	private _decide = (value: JSONDoc | undefined, report = false): void => {
+	private _decide = (value: JSONDoc | undefined, report = false, synced = false): void => {
 		if (this._destroyed || this.ready) return;
+		// H12: an empty document waits for a provider that synced.
+		if (this.requireHydration && !synced && !isInitialized(this.doc as unknown as EngineDoc))
+			return;
 		const waiting = this._pendingSyncs > 0 || this._refusals.size > 0;
 		if (waiting && !isInitialized(this.doc as unknown as EngineDoc)) return;
 		try {
@@ -1031,7 +1049,7 @@ export class EdytorDocument {
 				synced: () => {
 					settle();
 					this._refusals.delete(target);
-					this._decide(opts.value, true);
+					this._decide(opts.value, true, true);
 				},
 				failed,
 				armBound: () => {
@@ -1261,6 +1279,16 @@ export const bindDocument = (Y: EngineApi) => {
 				options.lineage.depth
 			);
 		}
+		if (
+			options.requireHydration !== undefined &&
+			options.requireHydration !== existing.requireHydration
+		) {
+			throw new SemanticConflictError(
+				'requireHydration',
+				existing.requireHydration,
+				options.requireHydration
+			);
+		}
 		if (options.semantics !== undefined) {
 			existing.adoptSemantics(options.semantics);
 		}
@@ -1287,7 +1315,8 @@ export const bindDocument = (Y: EngineApi) => {
 				awareness: options.awareness,
 				semantics: options.semantics,
 				history: options.history,
-				lineage: options.lineage
+				lineage: options.lineage,
+				requireHydration: options.requireHydration
 			});
 			attached.set(document.doc, document);
 			if (options.value !== undefined) {
@@ -1324,7 +1353,8 @@ export const bindDocument = (Y: EngineApi) => {
 				awareness: options.awareness,
 				semantics: options.semantics,
 				history: options.history,
-				lineage: options.lineage
+				lineage: options.lineage,
+				requireHydration: options.requireHydration
 			});
 			attached.set(doc, document);
 			try {
@@ -1386,7 +1416,8 @@ export const bindDocument = (Y: EngineApi) => {
 				awareness: options.awareness,
 				semantics: options.semantics,
 				history: options.history,
-				lineage: options.lineage
+				lineage: options.lineage,
+				requireHydration: options.requireHydration
 			});
 			attached.set(doc, document);
 			return document;

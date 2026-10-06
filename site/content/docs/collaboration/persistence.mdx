@@ -64,8 +64,26 @@ Where there is no `indexedDB` (Node, Workers, SSR), the store is skipped and the
 - **Knowing it is saved.** The WebSocket provider reports when the room has stored your edits; see [saved state](/docs/collaboration/websocket#saved-state).
 
 :::warning
-A first visit made offline seeds `value` locally and keeps that seed. When the device reconnects, the seed merges into the room's content. Seeds are deterministic, so if every client seeds the same `value`, the copies merge into one; a different `value` adds its blocks next to the room's.
+A first visit made offline seeds `value` locally and keeps that seed. When the device reconnects, the seed merges into the room's content. Seeds are deterministic, so if every client seeds the same `value`, the copies merge into one; a different `value` adds its blocks next to the room's. Set [`requireHydration`](/docs/collaboration/documents#require-hydration) to seed nothing until the document was fetched once.
 :::
+
+## Prefetch and last updated
+
+A document opened offline shows what its local copy holds. To keep documents the user has not opened fresh (a list of recent pages, before a flight), `prefetch` syncs one document's local copy with its room once and closes:
+
+```ts
+import { lastUpdated, prefetch } from 'edytor';
+
+const target = { server: 'wss://rooms.example.com/rooms', room: 'doc-42', params: { token } };
+const changed = await lastUpdated(target); // ms since the epoch, or null
+if (changed !== null && changed > fetchedAt) {
+  const { updated } = await prefetch(target);
+  fetchedAt = Date.now();
+}
+```
+
+- `prefetch(options)` takes the `createWebsocketSync` options (`server`, `room`, `params`, `persistName`, `WebSocketPolyfill`, `connectTimeout`, `maxBackoffTime`, `maxFrameBytes`) and a `timeout` (30 s). It opens the local copy (`edytor:<server>/<room>` unless `persistName` names another, the name a view with an `actor` uses: `edytor:<actor.id>@<server>/<room>`), dials the room once, takes what the room has that the copy lacks and hands the room what the copy has that it lacks (edits made offline), waits until the room stored them, then closes both. It publishes no presence. It resolves with `{ updated }` (whether the room sent anything new) and rejects with the room's refusal (`SyncRefusedError`), after `timeout`, or where there is no IndexedDB.
+- `lastUpdated(options)` (`server`, `room`, `params`, and an optional `fetch`) asks the room when it last stored a change, in milliseconds since the epoch (`null` for a room with no change stored since 0.1.0-next.23), with one HTTP request that opens no document: a `GET <server>/<room>?lastUpdated` (the `ws` scheme turned into `http`) that [`routeDocumentSocket`](/docs/server/authorization#authorize) authorizes like a dial. It throws on an HTTP error (`403` refused, `401` expired). Compare it with when you last fetched the document to decide whether to prefetch it.
 
 ## Cross-tab sync
 

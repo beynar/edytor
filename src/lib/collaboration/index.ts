@@ -18,6 +18,8 @@ export {
 	IndexeddbPersistence,
 	storeState,
 	WebsocketProvider,
+	prefetch,
+	lastUpdated,
 	type EdytorSync,
 	type EdytorSyncCleanup,
 	type EdytorSyncPayload,

@@ -31,7 +31,7 @@ Edytor's collaboration stack is proven by its test suites across Chromium, Firef
 
 ## Offline first visit
 
-A device whose first visit to a document happens offline seeds the `value` you passed (after the readiness bound) and keeps that seed. When it reconnects, the seed merges into the room's content. Seeds are deterministic, so pass the same `value` everywhere (or none) and equal seeds merge into one; a different `value` adds its blocks next to the room's.
+A device whose first visit to a document happens offline seeds the `value` you passed (after the readiness bound) and keeps that seed. When it reconnects, the seed merges into the room's content. Seeds are deterministic, so pass the same `value` everywhere (or none) and equal seeds merge into one; a different `value` adds its blocks next to the room's. To avoid it, set [`requireHydration`](/docs/collaboration/documents#require-hydration): the view stays read-only and seeds nothing until the document was fetched once. To have documents ready before a device goes offline, [`prefetch`](/docs/collaboration/persistence#prefetch-and-last-updated) them.
 
 The WebSocket's bound starts when the socket opens (or first fails to), so a room that is slow to accept the connection is waited for, up to the connect timeout. Two cases remain:
 

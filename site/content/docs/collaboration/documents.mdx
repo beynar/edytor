@@ -98,6 +98,10 @@ if (!document.ready) {
 
 `onReady` fires once, at the transition; it is never called for a document that is already ready.
 
+### Require hydration
+
+`createDocument({ requireHydration: true })` (also `attachDocument`, and the `<Edytor requireHydration>` prop for the document a view owns) decides an empty document only when a provider *synced*: the room answered, or a local copy loaded. A provider's bound or failure never seeds it, so a first visit made offline writes nothing, instead of a `value` that a different seed in the room would later meet as duplicate blocks. The document stays `pending` until it is fetched once, and a view keeps it read-only meanwhile (its commands are refused). A document that holds content is decided as before, and an explicit `sync()` still decides. An empty room that answers is seeded with `value` as usual. A reattach naming another `requireHydration` is a `SemanticConflictError`.
+
 ## Attach a provider
 
 `attachSync` takes the same factories as the `<Edytor sync>` prop. The document keeps one provider per target (one IndexedDB name, one server and room), so attaching the same target twice does nothing.

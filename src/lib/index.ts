@@ -77,6 +77,8 @@ export {
 	storeState,
 	IndexeddbPersistence,
 	WebsocketProvider,
+	prefetch,
+	lastUpdated,
 	PresenceWriter,
 	DEFAULT_PRESENCE_THROTTLE,
 	type PresenceOptions,

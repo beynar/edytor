@@ -1763,6 +1763,20 @@ plugin stores no inline image over `MAX_INLINE_IMAGE_BYTES` (1 MiB of its
 link), an HTML paste does not import it (`storableImageSrc`); rendering
 still shows a larger one a document holds (`image-inline-cap.test.tsx`).
 
+### `doc.hydrate.first` — seed nothing until fetched once (H12, opt-in)
+
+With `requireHydration` (`DocumentOptions`, `<Edytor requireHydration>`),
+the readiness decision (`_decide`) leaves an EMPTY document `pending`
+unless a provider's `synced` triggered it: a bound or a failure never
+seeds `value`, so a first visit offline writes no seed (which a
+different seed in the room would later meet as duplicate blocks); a view
+refuses every command while the document is pending (`dispatcher.permits`).
+A document holding content decides as before; an explicit `sync()`
+decides. `prefetch` (sync a local store once, both ways, then close) and
+`lastUpdated` (the room's last stored change, one authorized HTTP probe)
+keep documents fresh before a device goes offline
+(`require-hydration.test.ts`, `h12-offline.test.ts`).
+
 ## Transport / evidence
 
 ### `net.delete-only-leak`

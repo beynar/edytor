@@ -13,9 +13,14 @@
  * with its `params` read again, so a refreshed token gets in. A document
  * id the room cannot have (`validRoomId`: empty, `.` or `..`, over 256
  * characters, with a lone surrogate) is closed `4400`.
+ *
+ * A plain `GET <room>?lastUpdated` (no upgrade) is the room's probe (H12):
+ * authorized the same way, it answers `{ lastUpdated }` as JSON (the room's
+ * last stored change, ms since the epoch, or `null`), or `400`, `401` or
+ * `403` as an HTTP status.
  */
 import { CLOSE, validRoomId } from '../crdt/providers/room.js';
-import { IDENTITY_HEADERS, closedSocket, parseReplica } from './DocumentRoom.js';
+import { IDENTITY_HEADERS, PROBE_HEADER, closedSocket, parseReplica } from './DocumentRoom.js';
 
 /** A namespace whose objects host a document (`DocumentRoom`, or any object with `attachDocument`). */
 export type DocumentNamespace = {
@@ -64,15 +69,28 @@ export async function routeDocumentSocket(
 	documentId: string,
 	authorize: AuthorizeDocumentSocket
 ): Promise<Response> {
-	if (request.method !== 'GET' || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+	// The `lastUpdated` probe (H12): a plain GET, authorized like a dial,
+	// answered with JSON (`{ lastUpdated }`) or an HTTP status.
+	const probe =
+		request.method === 'GET' &&
+		request.headers.get('Upgrade') === null &&
+		new URL(request.url).searchParams.has('lastUpdated');
+	if (
+		!probe &&
+		(request.method !== 'GET' || request.headers.get('Upgrade')?.toLowerCase() !== 'websocket')
+	) {
 		return new Response('WebSocket upgrade required', { status: 426 });
 	}
 	if (!validRoomId(documentId)) {
-		return closedSocket(CLOSE.invalidDocument, 'invalid document id');
+		return probe
+			? new Response('invalid document id', { status: 400 })
+			: closedSocket(CLOSE.invalidDocument, 'invalid document id');
 	}
 	const decision = await authorize(request, documentId);
 	if (decision && 'expired' in decision && decision.expired === true) {
-		return closedSocket(CLOSE.expired, 'expired');
+		return probe
+			? new Response('expired', { status: 401 })
+			: closedSocket(CLOSE.expired, 'expired');
 	}
 	const identity = decision && 'userId' in decision ? decision : null;
 	const replica = identity?.replica ?? null;
@@ -85,13 +103,16 @@ export async function routeDocumentSocket(
 		/\p{Cs}/u.test(identity.userId) ||
 		(replica !== null && parseReplica(replica) === null)
 	) {
-		return closedSocket(CLOSE.denied, 'document access denied');
+		return probe
+			? new Response('document access denied', { status: 403 })
+			: closedSocket(CLOSE.denied, 'document access denied');
 	}
 	const headers = new Headers({
-		Upgrade: 'websocket',
 		[IDENTITY_HEADERS.user]: encodeURIComponent(identity.userId),
 		[IDENTITY_HEADERS.access]: identity.readOnly ? 'read' : 'write'
 	});
+	if (probe) headers.set(PROBE_HEADER, 'lastUpdated');
+	else headers.set('Upgrade', 'websocket');
 	if (replica !== null) headers.set(IDENTITY_HEADERS.replica, String(replica));
 	return rooms.getByName(documentId).fetch(new Request(request.url, { method: 'GET', headers }));
 }

@@ -133,6 +133,8 @@ export type EdytorOptions = {
 	awareness?: Awareness;
 	/** The local author of a view-owned document (with `document`, set it there). */
 	actor?: DocumentActor;
+	/** A view-owned document's `requireHydration` (with `document`, set it there). */
+	requireHydration?: boolean;
 	/** What this view shares of its selection with peers, and how often (`edytor.presence`). */
 	presence?: PresenceOptions;
 	sync?: boolean;
@@ -386,6 +388,7 @@ export class Edytor {
 		doc,
 		awareness,
 		actor,
+		requireHydration,
 		presence,
 		sync,
 		value,
@@ -394,9 +397,14 @@ export class Edytor {
 		onChange
 	}: EdytorOptions) {
 		if (document !== undefined) {
-			if (doc !== undefined || awareness !== undefined || actor !== undefined) {
+			if (
+				doc !== undefined ||
+				awareness !== undefined ||
+				actor !== undefined ||
+				requireHydration !== undefined
+			) {
 				throw new Error(
-					'EdytorOptions: `document` cannot be combined with `doc`/`awareness`/`actor` — ' +
+					'EdytorOptions: `document` cannot be combined with `doc`/`awareness`/`actor`/`requireHydration` — ' +
 						'the document owns them (compose them via attachDocument first).'
 				);
 			}
@@ -404,7 +412,7 @@ export class Edytor {
 		} else {
 			// Legacy path — the view internally owns a document composed
 			// around the injected (or a fresh) doc/awareness.
-			this.document = attachDocument(doc ?? new Y.Doc(), { awareness, actor });
+			this.document = attachDocument(doc ?? new Y.Doc(), { awareness, actor, requireHydration });
 			this.ownsDocument = true;
 		}
 		this.readonly = readonly || false;

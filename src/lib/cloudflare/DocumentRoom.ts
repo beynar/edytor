@@ -185,6 +185,9 @@ export type SavedDocument = {
 /** What `onLoad` may return: JSON, a bare v14 update, or `{ update, replicas }` (a `SavedDocument`). */
 export type LoadedDocument = JSONDoc | Uint8Array | Pick<SavedDocument, 'update' | 'replicas'>;
 
+/** The header `routeDocumentSocket` sets on an authorized `lastUpdated` probe (H12). */
+export const PROBE_HEADER = 'X-Edytor-Probe';
+
 /** The transaction origin of the room's own edits (`transact`, `onLoad` seeds). */
 export const ROOM_ORIGIN = Symbol('edytor-room');
 
@@ -1194,6 +1197,7 @@ export class AttachedDocument {
 	private readonly options: AttachDocumentOptions;
 	private readonly rowsTable: string;
 	private readonly replicasTable: string;
+	private readonly metaTable: string;
 	private _lookups: ReturnType<typeof lookups> | null = null;
 
 	constructor(ctx: DurableObjectState, options: AttachDocumentOptions = {}) {
@@ -1223,6 +1227,7 @@ export class AttachedDocument {
 		if (!/^\w*$/.test(prefix)) throw new Error(`invalid table prefix ${prefix}`);
 		this.rowsTable = `${prefix}rows`;
 		this.replicasTable = `${prefix}replicas`;
+		this.metaTable = `${prefix}meta`;
 		// The provider pings a silent socket: answer without waking the object.
 		if (ctx.setWebSocketAutoResponse && !ctx.getWebSocketAutoResponse?.()) {
 			ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING, PONG));
@@ -1446,6 +1451,7 @@ export class AttachedDocument {
 			this.ctx.storage.transactionSync(() => {
 				this.sql.exec(`DELETE FROM ${this.rowsTable}`);
 				this.sql.exec(`DELETE FROM ${this.replicasTable}`);
+				this.sql.exec(`DELETE FROM ${this.metaTable}`);
 			});
 			this.presence.clear();
 			await this.start();
@@ -1495,6 +1501,7 @@ export class AttachedDocument {
 			try {
 				this.ctx.storage.transactionSync(() => {
 					record = this.insert('snapshot', snapshot);
+					this.touch();
 					if (!waiting.isEmpty()) this.insert('pending', deletesUpdate(waiting));
 					// Without a registry, every id with content is left claimable (user
 					// ''). As in `register`, an unowned row never replaces an owner a
@@ -1546,6 +1553,9 @@ export class AttachedDocument {
 			);
 			this.sql.exec(
 				`CREATE TABLE IF NOT EXISTS ${this.replicasTable} (replica INTEGER PRIMARY KEY, user TEXT NOT NULL)`
+			);
+			this.sql.exec(
+				`CREATE TABLE IF NOT EXISTS ${this.metaTable} (key TEXT PRIMARY KEY, value INTEGER NOT NULL)`
 			);
 			this.nextRecord = 0;
 			records = this.records();
@@ -1809,6 +1819,34 @@ export class AttachedDocument {
 		});
 	}
 
+	/** Record now as the last stored change (callers run it in the change's transaction). */
+	private touch() {
+		this.sql.exec(
+			`INSERT OR REPLACE INTO ${this.metaTable} (key, value) VALUES ('updated', ?)`,
+			Date.now()
+		);
+	}
+
+	/**
+	 * When the room last stored a change (ms since the epoch), or `null`
+	 * for a room that stored none since 0.1.0-next.23 (H12). Cheap: one
+	 * row, no document. `routeDocumentSocket` answers it over HTTP
+	 * (`GET <room>?lastUpdated`), also over RPC.
+	 */
+	lastUpdated(): number | null {
+		try {
+			return (
+				this.sql
+					.exec<{
+						value: number;
+					}>(`SELECT value FROM ${this.metaTable} WHERE key = 'updated'`)
+					.toArray()[0]?.value ?? null
+			);
+		} catch {
+			return null; // no table yet
+		}
+	}
+
 	/** The room's counters (H14), also over RPC — see {@link RoomMetrics}. */
 	metrics(): RoomMetrics {
 		return noTimers(() => {
@@ -1993,7 +2031,10 @@ export class AttachedDocument {
 		doc.on('update', (update: Uint8Array, origin: unknown) => {
 			if (this.unstored !== null) return;
 			try {
-				this.ctx.storage.transactionSync(() => this.insert('update', update));
+				this.ctx.storage.transactionSync(() => {
+					this.insert('update', update);
+					this.touch();
+				});
 				this.updates++;
 				this.broadcast(updateFrame(update), origin);
 				this.scheduleSave();
@@ -2111,6 +2152,14 @@ export class AttachedDocument {
 	// ── Hibernation WebSocket API ────────────────────────────────────────
 
 	async fetch(request: Request): Promise<Response> {
+		// The `lastUpdated` probe (H12), forwarded by `routeDocumentSocket` once authorized.
+		if (request.headers.get(PROBE_HEADER) === 'lastUpdated') {
+			if (readIdentity(request.headers) === null) {
+				return new Response('verified identity required', { status: 401 });
+			}
+			await this.retryStart();
+			return Response.json({ lastUpdated: this.lastUpdated() });
+		}
 		if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
 			return new Response('expected a websocket upgrade', { status: 426 });
 		}
@@ -2676,6 +2725,7 @@ export class AttachedDocument {
 				this.ctx.storage.transactionSync(() => {
 					if (discarded) this.sql.exec(`DELETE FROM ${this.rowsTable} WHERE kind = 'pending'`);
 					if (!added.isEmpty()) this.insert('pending', deletesUpdate(added));
+					this.touch();
 				});
 				this.documentBytes -= pending;
 				this.updates++;
@@ -2914,6 +2964,10 @@ export class DocumentRoom<
 	/** The room's counters, also over RPC — see {@link RoomMetrics}. */
 	metrics(): RoomMetrics {
 		return this.room.metrics();
+	}
+	/** When the room last stored a change, also over RPC — see {@link AttachedDocument.lastUpdated}. */
+	lastUpdated(): number | null {
+		return this.room.lastUpdated();
 	}
 	/** The snapshot compression in flight, also over RPC — see {@link AttachedDocument.compressed}. */
 	compressed(): Promise<void> {

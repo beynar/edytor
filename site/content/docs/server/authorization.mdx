@@ -39,7 +39,9 @@ Return `{ expired: true }` when the credential was valid but has expired. The di
 
 The document id is the room id the client dials: any string of 1 to 256 characters except `.`, `..` and one with a lone surrogate (a URL collapses those segments, and cannot encode a lone surrogate, so the provider refuses them), which the provider percent-encodes into one path segment. Decode it with `decodeURIComponent` before you pass it, and close a segment that does not decode with `4400`, as the [quick start](/docs/server/quick-start) does: no provider sends one.
 
-`routeDocumentSocket` answers without calling the room when the request is not a WebSocket upgrade (426), when the document id is empty, `.`, `..`, longer than 256 characters or holds a lone surrogate (closed `4400`), when `authorize` returns `{ expired: true }` (closed `4401`), or when it returns `null` or an invalid identity (closed `4403`).
+A plain `GET <room>?lastUpdated` (no upgrade) is the room's [`lastUpdated`](/docs/collaboration/persistence#prefetch-and-last-updated) probe: `routeDocumentSocket` runs `authorize` on it as on a dial and answers `{ "lastUpdated": … }` as JSON (the room's last stored change, ms since the epoch, or `null`), opening no document; a denial is a plain `403`, an expired credential `401` and an invalid id `400`.
+
+`routeDocumentSocket` answers without calling the room when the request is not a WebSocket upgrade (426, the probe aside), when the document id is empty, `.`, `..`, longer than 256 characters or holds a lone surrogate (closed `4400`), when `authorize` returns `{ expired: true }` (closed `4401`), or when it returns `null` or an invalid identity (closed `4403`).
 
 | Close | Sent when | The provider |
 | --- | --- | --- |

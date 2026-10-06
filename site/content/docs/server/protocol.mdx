@@ -62,6 +62,7 @@ A chunk sequence is a `start` frame (`0`, then the total length), any number of 
 | `chunkFrame`, `createChunkReader`, `MAX_FRAME_BYTES` | Chunked frames. |
 | `createDecoder`, `readVarUint`, `readVarUint8Array`, `writeVarUint8Array` | The lib0 helpers for frame bodies. |
 | `GENERATION_RECORD`, `GenerationMismatchError` | Tag and check stored containers of this generation. |
+| `bindCrdt(Y).doc.purge`, `.horizonOf`, `.restoreTo` | The shipped room's [purge](/docs/server/history#the-purge) (`purge(doc, facade, { at, sv })`, one transaction of yours, `sv` a state vector the room stored before `at`) and [restore](/docs/server/history#what-a-restore-does) (`restoreTo(doc, facade, json)`), for a room of your own; `facade` is `bindCrdt(Y).doc.create(doc)`, which publishes no author. |
 
 `applyRemote` applies an update unless it writes a foreign schema stamp. It returns `{ applied, problem, discarded? }`: refuse the frame when `problem` is set.
 
@@ -116,7 +117,7 @@ export function onMessage(ws: WebSocket, bytes: Uint8Array) {
 }
 ```
 
-Send large frames through `chunkFrame` if your platform limits message size, and remember the latest presence entry per client to greet newcomers, as the shipped room does. Close with `1008` or a `4xxx` code (other than `4401`) only for a refusal the client should not retry: the provider stops dialing. Close with `1011` for a fault of your server, and refuse an upgrade you turn away by accepting it and closing it, not with an HTTP error, which a browser reports as `1006` (unreachable, redialed).
+Send large frames through `chunkFrame` if your platform limits message size, and remember the latest presence entry per client to greet newcomers, as the shipped room does. If your room purges, only it may write the document's `horizon` root: strip a client update that writes it, as the shipped room does. Close with `1008` or a `4xxx` code (other than `4401`) only for a refusal the client should not retry: the provider stops dialing. Close with `1011` for a fault of your server, and refuse an upgrade you turn away by accepting it and closing it, not with an HTTP error, which a browser reports as `1006` (unreachable, redialed).
 
 ## Never attach a document on the server
 

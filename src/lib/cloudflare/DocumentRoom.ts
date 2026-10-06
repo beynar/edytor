@@ -828,11 +828,11 @@ const storedPending = (
 		: Y.decodeUpdate(Y.mergeUpdates(pending.map((record) => record.bytes))).ds;
 };
 
-/** A V1 update carrying only `deletes`. */
 /** Whether two byte strings are equal. */
 const sameBytes = (a: Uint8Array, b: Uint8Array): boolean =>
 	a.length === b.length && a.every((byte, i) => byte === b[i]);
 
+/** A V1 update carrying only `deletes`. */
 const deletesUpdate = (deletes: Decoded['ds']): Uint8Array => {
 	const encoder = new Y.UpdateEncoderV1();
 	encoding.writeVarUint(encoder.restEncoder, 0); // no structs
@@ -1593,6 +1593,11 @@ export class AttachedDocument {
 				failure ??= { error };
 			}
 		}
+		// A task that could not run stays due: it runs again a minute later, never in a loop.
+		for (const task of TASKS) {
+			const due = this.dues[task];
+			if (due !== undefined && due <= at) this.schedule(task, this.clock() + 60_000, 'replace');
+		}
 		this.arm();
 		if (failure !== null) throw failure.error;
 	}
@@ -1633,9 +1638,8 @@ export class AttachedDocument {
 	/**
 	 * Arm `task` at `at` (`room.alarm.tasks`): a task already due keeps its
 	 * time (a wake or an edit never moves a pending save), unless `earlier`
-	 * (an earlier time wins: the purge tick) or `replace`.
-	 * The due time is stored (meta `due.<task>`) and the alarm set when it
-	 * is earlier than the one set.
+	 * (an earlier time wins: the purge tick) or `replace`. The due time is
+	 * stored (meta `due.<task>`) and the alarm set to the earliest one.
 	 */
 	private schedule(task: Task, at: number, mode: 'keep' | 'earlier' | 'replace' = 'keep') {
 		const due = this.dues[task];
@@ -2215,7 +2219,15 @@ export class AttachedDocument {
 			this.unschedule('history');
 			return null;
 		}
-		if (this.live === null) return null;
+		if (this.live === null) {
+			// No document to read (its rows unreadable, or refused): that slot is skipped.
+			this.unschedule('history');
+			this.skipVersion({
+				key: historyKey(this.roomId, slotAt(end - 1, config.timeZone)),
+				error: 'room unavailable'
+			});
+			return null;
+		}
 		return noTimers(() => {
 			const doc = this.live!;
 			const key = historyKey(this.roomId, slotAt(end - 1, config.timeZone));

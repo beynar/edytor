@@ -343,6 +343,38 @@ describe('H11 · two versions a day, only when changed', () => {
 		ada.document.destroy();
 	});
 
+	it('a slot that ends while the room cannot read its rows is skipped (noted), never retried in a loop', async () => {
+		const room = 'timed-utc-unreadable';
+		await clockTo(room, '2026-10-06T08:00:00Z');
+		const ada = await writer(room, 'ada');
+		await vi.waitFor(async () => expect((await roomJSON(room)).children).toHaveLength(3), SLOW);
+		ada.client.close();
+		await clockTo(room, '2026-10-06T12:00:00Z');
+		// The rows cannot be read: the room restarts without its document, and the
+		// alarm's own retry fails too.
+		await inRoom(room, async (r) => {
+			const doc = r.room as unknown as { records: () => unknown; start: () => Promise<void> };
+			const records = doc.records.bind(doc);
+			let failures = 2;
+			doc.records = () => {
+				if (failures-- > 0) throw new Error('injected read failure');
+				return records();
+			};
+			await doc.start();
+			expect(r.doc).toBeNull();
+		});
+		await runDurableObjectAlarm(stub(room));
+		expect(await stored(room)).toEqual([]);
+		expect(
+			await inRoom(room, (r) => r.refusals.find((x) => x.reason === 'history')?.detail)
+		).toEqual({ key: `history/${room}/2026-10-06-am`, error: 'room unavailable' });
+		expect((await dues(room))['due.history']).toBeUndefined();
+		// Every task left due is in the future: no alarm loop.
+		const alarm = await inRoom(room, (_r, state) => state.storage.getAlarm());
+		expect(alarm === null || alarm > at('2026-10-06T12:00:00Z')).toBe(true);
+		ada.document.destroy();
+	});
+
 	it('an unknown time zone keeps no history (noted), and the room works', async () => {
 		const room = 'timed-badzone-a';
 		await clockTo(room, '2026-10-06T08:00:00Z');

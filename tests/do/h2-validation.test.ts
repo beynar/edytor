@@ -183,6 +183,32 @@ describe('H2 · validate: accept, then compensate (per-block locks)', () => {
 		for (const peer of [ada, bob]) peer.document.destroy();
 	});
 
+	it("the validation history keeps nothing: deleted text is collected, a denied frame's text too", async () => {
+		const room = 'locked-collect';
+		const ada = await join(room, 'ada', { children: [para('p', 'mine'), para('q', 'free')] });
+		ada.document.transact(() => ada.document.facade.setBlockData('p', { lockedBy: 'ada' }));
+		const bob = await join(room, 'bob');
+		ada.document.transact(() => ada.document.facade.insertText('q', 0, 'SECRET'));
+		ada.document.transact(() => ada.document.facade.deleteText('q', 0, 6));
+		bob.document.transact(() => bob.document.facade.insertText('p', 0, 'DENIED'));
+		await vi.waitFor(async () => expect(await reasons(room, 'denied')).toHaveLength(1), SLOW);
+		await converged(room, ada.document, bob.document);
+		/** Every text the room's live document still holds, deleted or not. */
+		const held = await inRoom(room, (r) => {
+			const out: string[] = [];
+			for (const structs of r.doc!.store.clients.values())
+				for (const struct of structs) {
+					const str = (struct as { content?: { str?: unknown } }).content?.str;
+					if (typeof str === 'string') out.push(str);
+				}
+			return out.join('');
+		});
+		expect(held).not.toContain('SECRET');
+		expect(held).not.toContain('DENIED');
+		for (const peer of [ada, bob]) peer.client.close();
+		for (const peer of [ada, bob]) peer.document.destroy();
+	});
+
 	it('a denied frame that initialized the document has the blocks it added deleted', async () => {
 		const room = 'locked-bootstrap';
 		// Ada seeds a block locked for Bob: denied (she may not lock it for him).

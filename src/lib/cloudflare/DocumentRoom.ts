@@ -2645,7 +2645,7 @@ export class AttachedDocument {
 		const frame = v.frame;
 		v.frame = null;
 		if (frame === null || (frame.touched.size === 0 && !frame.data)) {
-			v.history?.clear();
+			if (v.history) this.facade.releaseHistory(v.history);
 			return;
 		}
 		const touched = [...frame.touched];
@@ -2680,7 +2680,7 @@ export class AttachedDocument {
 				}
 			}
 		}
-		v.history?.clear();
+		if (v.history) this.facade.releaseHistory(v.history);
 	}
 
 	/**

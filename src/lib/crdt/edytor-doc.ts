@@ -731,6 +731,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 	const M = bindModel(Y);
 	const T = bindText(Y);
 	const D = bindDeletes(Y);
+	/** Each history's release of all its steps (`releaseHistory`). */
+	const releasers = new WeakMap<YUndoManager, () => void>();
 	// U1 — compact per-block attribution writes (`attribution/block.ts`).
 	// One bound instance per engine binding; its suppression memory is
 	// per-doc (WeakMap-keyed), so facades on the same doc share it.
@@ -1590,10 +1592,8 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 					(r) => r.clock <= st.id.clock && end <= r.clock + r.len
 				);
 			};
-			const trim = ({ type }: { type: string }): void => {
-				const over = um.undoStack.length - limit;
-				if (type !== 'undo' || !(over > 0)) return;
-				const dropped = um.undoStack.splice(0, over) as unknown as UndoStep[];
+			const release = (dropped: UndoStep[]): void => {
+				if (dropped.length === 0) return;
 				for (const step of dropped) Y.insertIntoIdSet(released as never, step.deletes as never);
 				const gc = (doc as unknown as { gc: boolean }).gc;
 				const keepIt = (doc as unknown as { gcFilter: (it: unknown) => boolean }).gcFilter;
@@ -1608,7 +1608,16 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 						});
 				}, HISTORY_TRIM);
 			};
+			const trim = ({ type }: { type: string }): void => {
+				const over = um.undoStack.length - limit;
+				if (type !== 'undo' || !(over > 0)) return;
+				release(um.undoStack.splice(0, over) as unknown as UndoStep[]);
+			};
 			um.on('stack-item-added', trim as never);
+			// `releaseHistory(um)`: every step dropped and released by the same rule.
+			releasers.set(um, () =>
+				release([...um.undoStack.splice(0), ...um.redoStack.splice(0)] as unknown as UndoStep[])
+			);
 			// Lineage for undo/redo (O19, F4): the replay displaces the state
 			// every block the popped stack item touches, so each one's subtree
 			// is captured (`force`: lost whoever owns `l`) from the history
@@ -3320,6 +3329,14 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 			assertSchema: () => assertSchema(doc),
 			dispose,
 			createUndoManager,
+			/**
+			 * Drop every step of a history `createUndoManager` made (undo and
+			 * redo) and release what they kept for their undo, as the history
+			 * limit does (P6): the engine collects that content now, the doc's
+			 * `gcFilter` still deciding. The room's validation history (H2) runs
+			 * it after each frame.
+			 */
+			releaseHistory: (um: YUndoManager): void => releasers.get(um)?.(),
 			// reads — every id argument normalizes at ingress (O1)
 			project: () => M.project(doc),
 			toJSON,

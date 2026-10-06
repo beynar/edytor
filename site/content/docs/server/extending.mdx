@@ -264,7 +264,7 @@ The room applies a client's frame, stores it and relays it, then asks `validate`
 
 The inverse is the undo of exactly that frame, with the history's rules: text it typed is deleted, text it deleted comes back (except where another writer's delete still holds it), blocks it deleted show again, a block it created is withdrawn (it stays only if it holds someone else's content), a move returns the block where it was, and data and types return to the values it replaced. Edits other clients made in between are kept. The frame that created the document (its first seed, which no history records) has its blocks deleted instead.
 
-`validate` is synchronous and runs only when set; the room then keeps an index of every block's state, updated at each commit. Per-block locks, for example (a `DocumentRoom` subclass overrides `validate`):
+`validate` is synchronous and runs only when set; the room then keeps an index of every block's state, updated at each commit, and a history of the frame being validated, released after each frame so it keeps no deleted content alive. Per-block locks, for example (a `DocumentRoom` subclass overrides `validate`):
 
 ```ts src/locked-room.ts check
 import { DocumentRoom, type FrameValidation, type ValidatedBlock } from 'edytor/cloudflare';

@@ -1729,7 +1729,8 @@ content, parent }` from an index the room keeps from every change report.
 `false` or a throw denies (logged `denied`, `{ user, touched }`): the room
 writes the inverse as its own transaction — the history undo of exactly
 that frame's transaction (a history on the room's facade whose tracked
-origin is the frame's socket, cleared after each frame): its inserts
+origin is the frame's socket, released after each frame by P6's rule,
+`facade.releaseHistory`, so it keeps no deleted content alive): its inserts
 deleted (its creations withdrawn, `hist.undo.withdraw`), its deletes
 restored (text by copy where no other writer's delete mark holds it,
 P11; its block delete marks removed), its moves and attr writes reverted

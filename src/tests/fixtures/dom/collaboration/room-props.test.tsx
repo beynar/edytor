@@ -45,7 +45,7 @@ describe('room props', () => {
 		await waitFor(() => expect(dials.length).toBe(1));
 		expect(dials[0]).toMatch(/^ws:\/\/rooms\.test\/rooms\/doc-1\?replica=\d+&token=t1$/);
 		await waitFor(async () =>
-			expect(await databases()).toContain('edytor-v14:edytor:u1@ws://rooms.test/rooms/doc-1')
+			expect(await databases()).toContain('edytor-v14-g5:edytor:u1@ws://rooms.test/rooms/doc-1')
 		);
 		view.unmount();
 	});
@@ -63,16 +63,18 @@ describe('room props', () => {
 		await waitFor(() => expect(dials.length).toBe(1));
 		expect(dials[0]).toMatch(/^ws:\/\/rooms\.test\/rooms\/doc-2\?/);
 		await waitFor(async () =>
-			expect(await databases()).toContain('edytor-v14:edytor:u2@ws://rooms.test/rooms/doc-2')
+			expect(await databases()).toContain('edytor-v14-g5:edytor:u2@ws://rooms.test/rooms/doc-2')
 		);
-		expect(await databases()).not.toContain('edytor-v14:edytor:u2@ws://rooms.test/rooms///doc-2');
+		expect(await databases()).not.toContain(
+			'edytor-v14-g5:edytor:u2@ws://rooms.test/rooms///doc-2'
+		);
 		view.unmount();
 	});
 
 	it('room alone: a local copy under that name, no socket', async () => {
 		globalThis.WebSocket = StubSocket as unknown as typeof WebSocket;
 		const view = render(Edytor, { props: { plugins: [richTextPlugin], room: 'notes/today' } });
-		await waitFor(async () => expect(await databases()).toContain('edytor-v14:notes/today'));
+		await waitFor(async () => expect(await databases()).toContain('edytor-v14-g5:notes/today'));
 		expect(dials).toEqual([]);
 		view.unmount();
 	});

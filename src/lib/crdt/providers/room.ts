@@ -437,11 +437,25 @@ export const bindRoomProtocol = <P extends RoomProvider<P>>(
 				// valid envelope surfaces through 'message-error'.
 				// A pending forged stamp this update would release is discarded
 				// (`discarded`) and reported the same way.
+				// A SyncStep2 is v2 on the wire (P5): converted, then the one inbound path.
+				const payload = decoding.readVarUint8Array(decoder);
+				const origin = emitSynced ? provider : (behavior.tabOrigin?.(provider) ?? provider);
+				const onError = (error: Error) => provider.emit?.('message-error', [error, provider]);
+				let update: Uint8Array;
+				try {
+					update =
+						syncMessageType === syncProtocol.messageYjsSyncStep2
+							? syncProtocol.step2Update(payload)
+							: payload;
+				} catch (error) {
+					onError(error as Error);
+					return;
+				}
 				const { applied, problem, discarded } = syncProtocol.applyRemote(
 					provider.doc,
-					decoding.readVarUint8Array(decoder),
-					emitSynced ? provider : (behavior.tabOrigin?.(provider) ?? provider),
-					(error) => provider.emit?.('message-error', [error, provider])
+					update,
+					origin,
+					onError
 				);
 				const refused = problem ?? discarded;
 				if (refused) {

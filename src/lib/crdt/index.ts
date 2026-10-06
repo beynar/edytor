@@ -84,6 +84,7 @@ export {
 	layoutKinds,
 	layoutSemantics,
 	richTextMarks,
+	facadeConfigOf,
 	semanticsOf,
 	type KindSemantics
 } from './semantics.js';
@@ -275,6 +276,7 @@ export {
 // ordinary document work. `EngineApi`/`EngineDoc`/`YDoc` and friends are
 // the typings that injection contract speaks.
 
+import { bindGenerations } from './migration/generation.js';
 import type { EngineApi, YDoc } from './engine-api.js';
 import { Awareness as _Awareness } from './protocols/awareness.js';
 import { bindAdmission } from './admission.js';
@@ -294,6 +296,8 @@ export const bindCrdt = (Y: EngineApi) => {
 		doc,
 		providers: bindProviders(Y),
 		migration: bindMigration(Y),
+		/** The generation cutover (4 → 5): a generation-4 state read as JSON. */
+		generations: bindGenerations(Y),
 		sync: bindSync(Y),
 		/** U8 — the document-admission boundary (`admitUpdate` staged restore + the shared gate vocabulary). */
 		admission: bindAdmission(Y),
@@ -347,6 +351,7 @@ export {
 	type GenerationRecord,
 	type StorageFormat
 } from './protocols/envelope.js';
+export { PREVIOUS_SCHEMA, isPreviousGenerationRecord } from './migration/generation.js';
 
 export {
 	messageSync,

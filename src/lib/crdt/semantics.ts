@@ -107,3 +107,26 @@ export const defaultSemantics = withMarks(
 	semanticsOf(richTextKinds, codeKinds, imageKinds, layoutKinds),
 	richTextMarks
 );
+
+/**
+ * The facade configuration (`EdytorDocConfig`) a document with no view
+ * reads `semantics` with — the room's, and a generation cutover's
+ * (`migration/generation.ts`): roles, default children, content-less kinds
+ * and mark edges, each answered only for a kind the tables name.
+ */
+export const facadeConfigOf = (semantics: DocumentSemanticsConfig) => {
+	const own =
+		<T>(table: Record<string, T> = {}) =>
+		(type: string): T | undefined =>
+			Object.hasOwn(table, type) ? table[type] : undefined;
+	const rendersContent = own(semantics.rendersContent);
+	const marks = own(semantics.marks);
+	return {
+		roleOf: own(semantics.roles),
+		kinds: () => Object.keys(semantics.roles ?? {}),
+		defaultChildOf: own(semantics.defaultChild),
+		rendersContent: (type: string) => rendersContent(type) ?? true,
+		markEdge: (mark: string) => marks(mark)?.edge,
+		defaultType: semantics.defaultType
+	};
+};

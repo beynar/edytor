@@ -161,7 +161,9 @@ The room also logs one JSON line per compaction (`{ "edytor": "compaction", "ms"
 
 ## Generation cutover
 
-A room refuses storage written by another edytor generation (see [migration](/docs/reference/migration)); bytes are never converted in place. To move a document across:
+A container written by the previous schema generation (generation 4, 0.1.0-next.24 and the releases before it back to its bump) converts when the room loads it: its visible document is read as JSON and seeded as this generation's document, which replaces the container in one storage transaction (the room logs `{ "edytor": "convert", "from": 4, "to": 5, "blocks", "bytes" }`, and `origin` is `{ kind: 'converted' }`). Blocks keep their ids, kinds, data, content and marks; undo history, attribution and CRDT identity do not cross, nor what a client of the old generation never sent. Versions in the history written before the cutover read through the same conversion, so `readHistory` and `restoreHistory` still work on them. See [migration](/docs/reference/migration#from-010-next24) for the deploy order.
+
+A container of any other generation is refused; bytes are never converted in place. To move such a document across:
 
 1. Before deploying the new version, make sure `onSave` has mirrored the document as JSON (`value`).
 2. Deploy. Rooms of the old generation refuse every socket (`1008`, `refused: container`); `failure` is a `GenerationMismatchError`.

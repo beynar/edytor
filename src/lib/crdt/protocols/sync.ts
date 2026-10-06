@@ -7,18 +7,24 @@
  * (`applyRemote`) and are stamped with a non-null `remoteApplyOrigin` so
  * echo suppression + undo exclusion keep working.
  *
- * Wire format (unchanged from y-protocols):
+ * Wire format (y-protocols' layout; SyncStep2 in the v2 encoding since
+ * schema generation 5, P5):
  *
  * ```
  *   varuint messageType | payload
  *   messageType 0 (SyncStep1):   varuint8array stateVector
- *   messageType 1 (SyncStep2):   varuint8array update
- *   messageType 2 (Update):      varuint8array update
+ *   messageType 1 (SyncStep2):   varuint8array update (v2, columnar)
+ *   messageType 2 (Update):      varuint8array update (v1)
  * ```
  *
- * The v14 engine emits V1 updates on `doc.on('update')` and decodes V1 via
- * `applyUpdate`, so this is byte-identical to the v13 sync protocol on the
- * wire. That does NOT mean v13 and v14 peers are interchangeable — the
+ * A SyncStep2 carries a state — a document's or what a peer lacks — and
+ * the v2 encoding is smaller on any such batch (a 1,000-block document:
+ * 280,557 → 220,444 bytes, gzip 55,016 → 28,476). An Update carries one
+ * transaction, and v1 is smaller for most of those (a one-character
+ * delete 13 vs 24 bytes, a block move 62 vs 84, a block delete 43 vs 65),
+ * so updates stay v1: what the engine emits on `doc.on('update')` is
+ * relayed as it is. A receiver converts a SyncStep2 to v1
+ * ({@link step2Update}) and applies it through the one inbound path. That does NOT mean v13 and v14 peers are interchangeable — the
  * provider layer (`providers/*`) wraps every message in the protocol-version
  * envelope (`protocols/envelope.ts`) so engines that do not speak v14 never
  * reach `readSyncMessage`.
@@ -98,8 +104,11 @@ export const bindSync = (Y: EngineApi) => {
 		encodedStateVector?: Uint8Array
 	): void => {
 		encoding.writeVarUint(encoder, messageYjsSyncStep2);
-		encoding.writeVarUint8Array(encoder, Y.encodeStateAsUpdate(doc, encodedStateVector));
+		encoding.writeVarUint8Array(encoder, Y.encodeStateAsUpdateV2(doc, encodedStateVector));
 	};
+
+	/** A SyncStep2 payload (v2, P5) as the v1 update every inbound path applies. */
+	const step2Update = (payload: Uint8Array): Uint8Array => Y.convertUpdateFormatV2ToV1(payload);
 
 	/** Read SyncStep1 message and reply with SyncStep2. */
 	const readSyncStep1 = (decoder: decoding.Decoder, encoder: encoding.Encoder, doc: YDoc): void =>
@@ -116,7 +125,15 @@ export const bindSync = (Y: EngineApi) => {
 		transactionOrigin: unknown,
 		errorHandler?: (error: Error) => unknown
 	): void => {
-		applyRemote(doc, decoding.readVarUint8Array(decoder), transactionOrigin, errorHandler);
+		let update: Uint8Array;
+		try {
+			update = step2Update(decoding.readVarUint8Array(decoder));
+		} catch (error) {
+			if (errorHandler != null) errorHandler(error as Error);
+			console.error('Caught error while handling a Yjs update', error);
+			return;
+		}
+		applyRemote(doc, update, transactionOrigin, errorHandler);
 	};
 
 	/**
@@ -136,7 +153,15 @@ export const bindSync = (Y: EngineApi) => {
 		encoding.writeVarUint8Array(encoder, update);
 	};
 
-	const readUpdate = readSyncStep2;
+	/** Read and apply an Update (v1) through the inbound refusal. */
+	const readUpdate = (
+		decoder: decoding.Decoder,
+		doc: YDoc,
+		transactionOrigin: unknown,
+		errorHandler?: (error: Error) => unknown
+	): void => {
+		applyRemote(doc, decoding.readVarUint8Array(decoder), transactionOrigin, errorHandler);
+	};
 
 	/**
 	 * Inbound refusal (R13, F8): the schema problem `parts` (decoded updates,
@@ -326,6 +351,7 @@ export const bindSync = (Y: EngineApi) => {
 		remoteApplyOrigin,
 		writeSyncStep1,
 		writeSyncStep2,
+		step2Update,
 		readSyncStep1,
 		readSyncStep2,
 		writeUpdate,

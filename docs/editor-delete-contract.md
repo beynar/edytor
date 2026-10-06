@@ -1752,6 +1752,36 @@ records, and is rewritten in v2 by its next compaction (`p5-storage-v2`,
 object row `{ v2 }`, which a build before 0.1.0-next.23 refuses to read
 (its row codec throws) instead of misreading. The wire stays v1.
 
+### `room.generation.convert` — a generation-4 container converts through its JSON (Phase 4)
+
+Schema generation 5 (wire word `14005`) changes what a document stores
+(paired marks, shorter ranks): bytes of generation 4 are never integrated
+beside generation 5's. A room loading a container whose generation record
+is generation 4's reads its records into a scratch document (no admission,
+no write), takes its visible document as JSON
+(`crdt.generations.previousJSON`) and seeds it as generation 5's (the
+deterministic seed `onLoad`'s JSON gets), replacing the container in one
+storage transaction (rows, replicas, purge epochs, slot editors and the
+stored restore go; meta stays). A history version of generation 4 reads
+through the same JSON. A frame of generation 4 is refused before decode
+(`1008`, `refused: generation`); a container of any other generation is
+refused until `reset()`. A browser store of generation 4
+(`edytor-v14:<name>`) is left as it was beside the new one
+(`edytor-v14-g5:<name>`): a document stored only there converts into it
+(`convertPrevious`), one a room keeps takes the room's state
+(`gen5-cutover.test.ts`, `tests/do/gen5-cutover.test.ts`).
+
+### `net.step2.v2` — a SyncStep2 is v2, an Update v1 (P5 wire)
+
+A SyncStep2 carries a state and is written in the v2 encoding
+(`writeSyncStep2`), converted to v1 on receipt (`step2Update`) before the
+one inbound path; an Update carries one transaction and stays v1, which is
+smaller for most single edits. Measured (1,000-block document, 53-bit
+client id): a full Step 2 280,557 → 220,444 bytes (gzip 55,016 → 28,476);
+a keystroke 60 / 60, a one-character delete 13 / 24, a block move 62 / 84,
+a block delete 43 / 65, an Enter 355 / 293, five keystrokes merged
+114 / 53 (v1 / v2).
+
 ### `room.quota` — a write past a quota is refused, the socket closed `4413` (H3)
 
 Three quotas, each a `vars` setting and an `attachDocument` option:

@@ -244,7 +244,9 @@ export class RawClient {
 				this.send(E.frame(E.messageSync, (e) => crdt.sync.writeSyncStep2(e, this.doc, payload)));
 				return;
 			}
-			const { applied, problem } = crdt.sync.applyRemote(this.doc, payload, REMOTE);
+			// A SyncStep2 is v2 on the wire (P5).
+			const update = syncType === E.messageYjsSyncStep2 ? crdt.sync.step2Update(payload) : payload;
+			const { applied, problem } = crdt.sync.applyRemote(this.doc, update, REMOTE);
 			if (!applied || problem !== null) throw new Error('client refused a server update');
 			if (syncType === E.messageYjsSyncStep2) this.synced = true;
 			return;

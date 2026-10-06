@@ -7,7 +7,7 @@
  *
  * ```
  *   varuint GENERATION | varuint messageType | payload
- *   GENERATION = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION   (14004 at schema 4)
+ *   GENERATION = PROTOCOL_VERSION * 1000 + SCHEMA_VERSION   (14005 at schema 5)
  * ```
  *
  * The word names the whole generation — engine and wire (the protocol,
@@ -38,8 +38,15 @@ export const generationWord = (schema: number): number => PROTOCOL_VERSION * 100
 /** This build's generation word. */
 export const GENERATION = generationWord(SCHEMA_VERSION);
 
-/** Storage-generation prefix for the v14 IndexedDB databases. */
-export const GENERATION_PREFIX = 'edytor-v14:';
+/**
+ * Storage-generation prefix for the v14 IndexedDB databases: one database
+ * per schema generation since generation 5, so a generation-4 store is
+ * left as it was (rollback) beside its successor.
+ */
+export const GENERATION_PREFIX = 'edytor-v14-g5:';
+
+/** The prefix of the IndexedDB databases of schema generations 1 to 4. */
+export const PREVIOUS_GENERATION_PREFIX = 'edytor-v14:';
 
 /** The IndexedDB name a v14 provider uses for logical document `name`. */
 export const generationDbName = (name: string): string => GENERATION_PREFIX + name;

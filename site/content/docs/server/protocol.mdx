@@ -14,7 +14,7 @@ Every frame is three parts, written with lib0 variable-length integers:
 varuint GENERATION | varuint messageType | payload
 ```
 
-`GENERATION` names the engine, the wire protocol and the document schema together: `PROTOCOL_VERSION * 1000 + SCHEMA_VERSION`, which is `14004` in this release (`generationWord(SCHEMA_VERSION)`). Check it before decoding anything else and drop frames of any other generation: a v13 `yjs` peer's first word is its message type (0 to 3), and another edytor schema writes `14000 + schema`. `readProtocolVersion(decoder)` reads and checks it.
+`GENERATION` names the engine, the wire protocol and the document schema together: `PROTOCOL_VERSION * 1000 + SCHEMA_VERSION`, which is `14005` in this release (`generationWord(SCHEMA_VERSION)`; `14004` up to 0.1.0-next.24). Check it before decoding anything else and drop frames of any other generation: a v13 `yjs` peer's first word is its message type (0 to 3), and another edytor schema writes `14000 + schema`. `readProtocolVersion(decoder)` reads and checks it.
 
 | Type | Constant | Direction | Payload |
 | --- | --- | --- | --- |
@@ -30,10 +30,10 @@ varuint GENERATION | varuint messageType | payload
 | Subtype | Constant | Payload | Meaning |
 | --- | --- | --- | --- |
 | `0` | `messageYjsSyncStep1` | state vector | "This is what I have." |
-| `1` | `messageYjsSyncStep2` | update | "Here is what you lack." |
-| `2` | `messageYjsUpdate` | update | A live edit. |
+| `1` | `messageYjsSyncStep2` | update, v2 encoding | "Here is what you lack." |
+| `2` | `messageYjsUpdate` | update, v1 encoding | A live edit. |
 
-The handshake is symmetric. On connect, each side sends Step 1. A side that receives Step 1 answers with Step 2 and, if the other side holds something it lacks, with its own Step 1. After one exchange each way both hold the same state, so no periodic resync is needed. Updates are Yjs v14 V1 updates.
+The handshake is symmetric. On connect, each side sends Step 1. A side that receives Step 1 answers with Step 2 and, if the other side holds something it lacks, with its own Step 1. After one exchange each way both hold the same state, so no periodic resync is needed. A Step 2 carries a state, in the v2 (columnar) encoding since schema generation 5, which is smaller for any batch of edits (a 1,000-block document: 220 KB instead of 281 KB, 28 KB instead of 55 KB gzipped); `sync.writeSyncStep2` writes it and `sync.step2Update(payload)` converts it to the v1 update every reader applies. An Update carries one transaction and stays v1, which is smaller for most single edits (a one-character delete: 13 bytes instead of 24).
 
 ### Awareness
 
@@ -51,7 +51,7 @@ A chunk sequence is a `start` frame (`0`, then the total length), any number of 
 
 | Export | Use |
 | --- | --- |
-| `bindCrdt(Y).sync` | `writeSyncStep1`, `writeSyncStep2`, `readSyncStep1`, `readSyncStep2`, `writeUpdate`, `readUpdate`, `readSyncMessage`, `lacks(doc, stateVector)`, `applyRemote(doc, update, origin)`, `writeSaved`, `readSaved`. |
+| `bindCrdt(Y).sync` | `writeSyncStep1`, `writeSyncStep2`, `step2Update(payload)`, `readSyncStep1`, `readSyncStep2`, `writeUpdate`, `readUpdate`, `readSyncMessage`, `lacks(doc, stateVector)`, `applyRemote(doc, update, origin)`, `writeSaved`, `readSaved`. |
 | `frame(type, write)` | Build a frame: the generation word, the type, then whatever `write(encoder)` writes. |
 | `GENERATION`, `generationWord`, `PROTOCOL_VERSION`, `SCHEMA_VERSION`, `readProtocolVersion` | The generation gate. |
 | `messageSync`, `messageAwareness`, `messageAuth`, `messageQueryAwareness`, `messageSaved`, `messageChunk` | Message types. |
@@ -75,7 +75,7 @@ import * as Y from 'edytor/crdt';
 import {
   bindCrdt, frame, readProtocolVersion, createDecoder, readVarUint, readVarUint8Array,
   writeVarUint8Array, readAwarenessEntries, writeAwarenessEntries,
-  messageSync, messageAwareness, messageSaved, messageYjsSyncStep1
+  messageSync, messageAwareness, messageSaved, messageYjsSyncStep1, messageYjsSyncStep2
 } from 'edytor/crdt/edytor';
 
 const { sync, createDoc } = bindCrdt(Y);
@@ -105,10 +105,12 @@ export function onMessage(ws: WebSocket, bytes: Uint8Array) {
       if (sync.lacks(doc, payload)) ws.send(frame(messageSync, (e) => sync.writeSyncStep1(e, doc)));
       return ws.send(frame(messageSaved, (e) => sync.writeSaved(e, doc)));
     }
-    const { applied, problem } = sync.applyRemote(doc, payload, ws);
+    // A Step 2 is v2 on the wire: convert it before applying.
+    const update = subtype === messageYjsSyncStep2 ? sync.step2Update(payload) : payload;
+    const { applied, problem } = sync.applyRemote(doc, update, ws);
     if (problem) return ws.close(1008, 'refused: schema'); // final: the provider stops
     if (!applied) return ws.close(1011, 'internal error'); // a fault: the provider redials
-    ws.send(frame(messageSaved, (e) => sync.writeSaved(e, doc, Y.decodeUpdate(payload).ds)));
+    ws.send(frame(messageSaved, (e) => sync.writeSaved(e, doc, Y.decodeUpdate(update).ds)));
   } else if (type === messageAwareness) {
     const entries = readAwarenessEntries(readVarUint8Array(decoder));
     const out = frame(messageAwareness, (e) => writeVarUint8Array(e, writeAwarenessEntries(entries)));

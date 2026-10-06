@@ -374,7 +374,8 @@ export type RoomLogEntry =
 	| ({ edytor: 'purge'; horizon: number; bytes: number } & PurgeReport)
 	| { edytor: 'quota'; user: string; quota: string }
 	| { edytor: 'denied'; user: string; touched: number }
-	| { edytor: 'fault'; reason: 'storage' | 'internal'; detail: string };
+	| { edytor: 'fault'; reason: 'storage' | 'internal'; detail: string }
+	| { edytor: 'convert'; from: number; to: number; blocks: number; bytes: number };
 
 const now = (): number =>
 	typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -490,20 +491,7 @@ const knob = (value: unknown, fallback: number, max = fallback) => {
 };
 
 /** A semantics config as the facade's lookups — own keys only: block types come off the wire. */
-const lookups = (semantics: DocumentSemanticsConfig) => {
-	const own =
-		<T>(table: Record<string, T> = {}) =>
-		(type: string): T | undefined =>
-			Object.hasOwn(table, type) ? table[type] : undefined;
-	const rendersContent = own(semantics.rendersContent);
-	return {
-		roleOf: own(semantics.roles),
-		kinds: () => Object.keys(semantics.roles ?? {}),
-		defaultChildOf: own(semantics.defaultChild),
-		rendersContent: (type: string) => rendersContent(type) ?? true,
-		defaultType: semantics.defaultType
-	};
-};
+const lookups = (semantics: DocumentSemanticsConfig) => E.facadeConfigOf(semantics);
 
 const encodeJSON = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 
@@ -931,6 +919,10 @@ const roomDoc = (keep: () => Decoded['ds'] | null): YDoc => {
 };
 
 /** Admit stored or loaded updates into a room document (`prepareRoomDoc`'s collection rules). */
+/** How many blocks `children` holds, nested ones included. */
+const countBlocks = (children: readonly JSONBlock[]): number =>
+	children.reduce((n, block) => n + 1 + countBlocks(block.children ?? []), 0);
+
 const admit = (
 	updates: Uint8Array | Array<Uint8Array | { v2: Uint8Array }>,
 	name: string,
@@ -1277,7 +1269,10 @@ export class AttachedDocument {
 	/** Every refusal since this instance started, by reason. */
 	refusalCounts: Partial<Record<Refusal['reason'], number>> = {};
 	/** How this instance came to be: a fresh container, or a restore of N stored records. */
-	origin: { kind: 'fresh' } | { kind: 'restored'; records: number } = { kind: 'fresh' };
+	origin:
+		| { kind: 'fresh' }
+		| { kind: 'restored'; records: number }
+		| { kind: 'converted'; from: number; records: number } = { kind: 'fresh' };
 	private nextRecord = 0;
 	private updates = 0;
 	/** What the records hold, uncompressed (the generation record aside): the document quota's measure. */
@@ -1852,6 +1847,10 @@ export class AttachedDocument {
 			}
 			const [generation, ...rest] = records;
 			const found = JSON.parse(new TextDecoder().decode(generation.bytes));
+			// A container of generation 4 converts through its JSON (`room.generation.convert`).
+			if (generation.kind === 'generation' && E.isPreviousGenerationRecord(found)) {
+				return this.convert(rest);
+			}
 			if (generation.kind !== 'generation' || !isGenerationRecord(found)) {
 				throw new E.GenerationMismatchError(`room ${this.ctx.id}`, found);
 			}
@@ -1872,6 +1871,64 @@ export class AttachedDocument {
 		} catch (error) {
 			this.fail(error, false);
 		}
+	}
+
+	/**
+	 * The generation cutover at load (`room.generation.convert`): the
+	 * records of a generation-4 container are read as JSON
+	 * (`crdt.generations.previousJSON`), which this generation seeds as
+	 * `onLoad`'s JSON is (deterministic: every replica converting the same
+	 * state writes the same update), and the container is replaced by it in
+	 * one storage transaction: rows, replicas, purge epochs, slot editors
+	 * and the stored restore go; the document data, the alarm's due tasks
+	 * and `lastUpdated` stay. What a generation-4 client never sent is not
+	 * in it; history, attribution and CRDT identity do not cross.
+	 */
+	private convert(records: StoredRecord[]) {
+		const json = crdt.generations.previousJSON(
+			records.map((record) => (record.v2 ? { v2: record.bytes } : record.bytes)),
+			(doc) => this.facadeOf(doc)
+		);
+		const scratch = crdt.createDoc();
+		const facade = this.facadeOf(scratch);
+		facade.seed(json.children, json.data);
+		facade.dispose();
+		const update = Y.encodeStateAsUpdate(scratch);
+		scratch.destroy();
+		const doc = admit(update, `room ${this.ctx.id} conversion`, () => this.restoreKeep);
+		const snapshot = liveState(doc);
+		this.ctx.storage.transactionSync(() => {
+			for (const table of [
+				this.rowsTable,
+				this.replicasTable,
+				this.epochsTable,
+				this.editorsTable,
+				this.restoreTable
+			])
+				this.sql.exec(`DELETE FROM ${table}`);
+			this.nextRecord = 0;
+			this.insert('snapshot', snapshot);
+			this.touch();
+			for (const replica of stateVector(doc).keys())
+				this.sql.exec(
+					`INSERT OR IGNORE INTO ${this.replicasTable} (replica, user) VALUES (?, '')`,
+					replica
+				);
+		});
+		this.restoreStep = null;
+		this.format = STORED_GENERATION_RECORD.storage!;
+		this.documentBytes = snapshot.length;
+		this.updates = 0;
+		this.storedWaiting = Y.createIdSet();
+		this.adopt(doc);
+		this.origin = { kind: 'converted', from: E.PREVIOUS_SCHEMA, records: records.length };
+		this.log({
+			edytor: 'convert',
+			from: E.PREVIOUS_SCHEMA,
+			to: E.SCHEMA_VERSION,
+			blocks: countBlocks(json.children),
+			bytes: snapshot.length
+		});
 	}
 
 	/** The bytes of the stored `pending` records (uncompressed, as every record but a snapshot). */
@@ -1904,7 +1961,8 @@ export class AttachedDocument {
 		if (records[0]?.kind === 'generation') {
 			try {
 				const found = JSON.parse(new TextDecoder().decode(records[0].bytes));
-				if (isGenerationRecord(found)) format = storageOf(found);
+				if (isGenerationRecord(found) || E.isPreviousGenerationRecord(found))
+					format = storageOf(found);
 			} catch {
 				// `load` refuses it
 			}
@@ -2338,7 +2396,15 @@ export class AttachedDocument {
 		if (value === null) return null;
 		const bytes = await gunzip(new Uint8Array(value));
 		return noTimers(() => {
-			const doc = admit([{ v2: bytes }], `room ${this.ctx.id} version ${key}`, () => null);
+			let doc: YDoc;
+			try {
+				doc = admit([{ v2: bytes }], `room ${this.ctx.id} version ${key}`, () => null);
+			} catch (error) {
+				// A version written by generation 4 reads through its JSON (`room.generation.convert`).
+				const problem = (error as { problem?: { kind?: string; version?: number } }).problem;
+				if (problem?.kind !== 'unsupported' || problem.version !== E.PREVIOUS_SCHEMA) throw error;
+				return crdt.generations.previousJSON([{ v2: bytes }], (d) => this.facadeOf(d));
+			}
 			const facade = this.facadeOf(doc);
 			try {
 				return facade.toJSON();
@@ -3234,7 +3300,11 @@ export class AttachedDocument {
 		if (syncType !== E.messageYjsSyncStep2 && syncType !== E.messageYjsUpdate) {
 			return this.refuse(ws, { reason: 'malformed', detail: `sync type ${syncType}` });
 		}
-		const update = decode(() => E.readVarUint8Array(decoder));
+		// A SyncStep2 is v2 on the wire (P5): every path below reads v1.
+		const update = decode(() => {
+			const payload = E.readVarUint8Array(decoder);
+			return syncType === E.messageYjsSyncStep2 ? sync.step2Update(payload) : payload;
+		});
 		const started = now();
 		try {
 			this.onUpdate(ws, attachment, doc, update);

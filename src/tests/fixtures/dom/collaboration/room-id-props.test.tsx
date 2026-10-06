@@ -74,7 +74,7 @@ describe('<Edytor server room> with an id no dial can carry (DR-sync-2)', () => 
 			]);
 			expect(refusals[0]).toBeInstanceOf(SyncRefusedError);
 			await waitFor(async () =>
-				expect(await databases()).toContain(`edytor-v14:edytor:${server}/${room}`)
+				expect(await databases()).toContain(`edytor-v14-g5:edytor:${server}/${room}`)
 			);
 			// The refused, empty document is not seeded.
 			expect(view.container.querySelector('[data-edytor]')).toBeNull();

@@ -4,7 +4,7 @@
  * - READS every row of the legacy `<name>` database's `updates` store (the
  *   v13 y-indexeddb layout) in one readonly transaction, and materializes the
  *   logical JSON a v13 editor produced (`legacy-schema.ts`).
- * - WRITES the import into the generation `edytor-v14:<name>`: the row is
+ * - WRITES the import into the generation `edytor-v14-g5:<name>`: the row is
  *   APPENDED and the `active` record written in ONE transaction, so a
  *   completed import is visible iff both committed. The store is append-only
  *   for this writer as for the provider; the legacy database is never

@@ -1,0 +1,178 @@
+{
+	"data": {
+		"title": "Fixture"
+	},
+	"children": [
+		{
+			"type": "heading",
+			"id": "h",
+			"data": {
+				"level": "h1"
+			},
+			"content": [
+				{
+					"text": "Generation"
+				}
+			]
+		},
+		{
+			"type": "paragraph",
+			"id": "z",
+			"data": {
+				"tags": ["a", "b"]
+			},
+			"content": [
+				{
+					"text": "ulu",
+					"marks": {
+						"underline": true
+					}
+				},
+				{
+					"text": " four"
+				}
+			]
+		},
+		{
+			"type": "paragraph",
+			"id": "n",
+			"data": {},
+			"content": [
+				{
+					"text": "new line"
+				}
+			]
+		},
+		{
+			"type": "paragraph",
+			"id": "p",
+			"data": {},
+			"content": [
+				{
+					"text": "Hello. Plain, "
+				},
+				{
+					"text": "bold",
+					"marks": {
+						"bold": true
+					}
+				},
+				{
+					"text": " and "
+				},
+				{
+					"text": "a link",
+					"marks": {
+						"italic": true,
+						"link": {
+							"href": "https://edytor.dev"
+						}
+					}
+				},
+				{
+					"text": "."
+				}
+			]
+		},
+		{
+			"type": "unordered-list",
+			"id": "u",
+			"data": {},
+			"children": [
+				{
+					"type": "list-item",
+					"id": "u1",
+					"data": {},
+					"content": [
+						{
+							"text": "one"
+						}
+					],
+					"children": [
+						{
+							"type": "paragraph",
+							"id": "u1a",
+							"data": {},
+							"content": [
+								{
+									"text": "nested"
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "list-item",
+					"id": "u2",
+					"data": {},
+					"content": [
+						{
+							"text": "two"
+						}
+					]
+				}
+			]
+		},
+		{
+			"type": "code",
+			"id": "k",
+			"data": {},
+			"children": [
+				{
+					"type": "codeLine",
+					"id": "k1",
+					"data": {},
+					"content": [
+						{
+							"text": "let x = 1"
+						}
+					]
+				}
+			]
+		},
+		{
+			"type": "columns",
+			"id": "c",
+			"data": {},
+			"children": [
+				{
+					"type": "column",
+					"id": "c1",
+					"data": {},
+					"children": [
+						{
+							"type": "paragraph",
+							"id": "c1a",
+							"data": {},
+							"content": [
+								{
+									"text": "left"
+								}
+							]
+						}
+					]
+				},
+				{
+					"type": "column",
+					"id": "c2",
+					"data": {},
+					"children": [
+						{
+							"type": "paragraph",
+							"id": "c2a",
+							"data": {},
+							"content": [
+								{
+									"text": "right",
+									"marks": {
+										"color": "red"
+									}
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	]
+}

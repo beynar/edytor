@@ -200,6 +200,7 @@ const atomRows = (text: unknown): AtomRow[] => {
 	let pos = 0;
 	let formats: Record<string, unknown> | undefined;
 	let formatsKey = '';
+	let open: Record<string, unknown[][]> = {};
 	for (let it = (text as { _start?: never })._start; it !== null; it = it.right) {
 		if (it.deleted) continue;
 		const countable = it.content.isCountable ? it.content.isCountable() : true;
@@ -208,7 +209,27 @@ const atomRows = (text: unknown): AtomRow[] => {
 			const key = it.content.key;
 			if (typeof key === 'string') {
 				formats = { ...formats };
-				if (it.content.value == null) delete formats[key];
+				const role = key.charCodeAt(0);
+				if (role === 1 || role === 2) {
+					// H5 paired marks (P13): a start `\u0001mark` opens `[v, l, c, k]`,
+					// an end `\u0002mark` closes its own start `[c, k]`; the mark
+					// shows the open operation with the greatest `(l, c, k)`.
+					const mark = key.slice(1);
+					const v = it.content.value as unknown[];
+					const ops = (open[mark] ?? []).filter(
+						(o) => role === 1 || o[2] !== v[0] || o[3] !== v[1]
+					);
+					if (role === 1) ops.push(v);
+					open = { ...open, [mark]: ops };
+					const win = [...ops].sort(
+						(a, b) =>
+							(b[1] as number) - (a[1] as number) ||
+							(b[2] as number) - (a[2] as number) ||
+							(b[3] as number) - (a[3] as number)
+					)[0];
+					if (win === undefined || win[0] == null) delete formats[mark];
+					else formats[mark] = win[0];
+				} else if (it.content.value == null) delete formats[key];
 				else formats[key] = it.content.value;
 				formatsKey = canonKey(formats);
 			}

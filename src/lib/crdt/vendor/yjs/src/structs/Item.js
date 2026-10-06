@@ -7,6 +7,7 @@ import { AbstractStruct, addStructToIdSet } from '../structs/AbstractStruct.js'
 
 import { ID, createID, compareIDs, findRootTypeKey } from '../utils/ID.js'
 import { GC } from '../structs/GC.js'
+import { sortsBefore, pairedRole } from '../utils/marks.js' // P13
 
 import {
   replaceStruct,
@@ -214,7 +215,7 @@ export class Item extends AbstractStruct {
           conflictingItems.add(o)
           if (compareIDs(this.origin, o.origin)) {
             // case 1
-            if (o.id.client < this.id.client) {
+            if (sortsBefore(o, this)) { // P13: paired marks sort by side, then by client id
               left = o
               conflictingItems.clear()
             } else if (compareIDs(this.rightOrigin, o.rightOrigin)) {
@@ -400,7 +401,9 @@ export class Item extends AbstractStruct {
     this.content.gc(tr)
     if (parentGCd) {
       replaceStruct(tr, this, new GC(this.id, this.length))
-    } else {
+    } else if (!(this.content.constructor === ContentFormat && pairedRole(/** @type {ContentFormat} */ (this.content)) >= 0)) {
+      // P13: a paired mark item keeps its content: its side orders
+      // concurrent inserts (`markClass`) on every replica, collected or not.
       this.content = new ContentDeleted(this.length)
     }
   }
@@ -1174,6 +1177,13 @@ export class ContentFormat {
     // an untracked integration.
     const p = /** @type {import('../ynode.js').YNode<any>} */ (item.parent)
     p._hasFormatting = true
+    // P13: a paired mark's start carries its Lamport timestamp; the document
+    // keeps the greatest it saw, so the next mark it writes wins over it.
+    if (pairedRole(this) === 0) {
+      const doc = /** @type {any} */ (_transaction.doc)
+      const l = /** @type {Array<any>} */ (this.value)[1]
+      if (l > doc._markClock) doc._markClock = l
+    }
   }
 
   /**

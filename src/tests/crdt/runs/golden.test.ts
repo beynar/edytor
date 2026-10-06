@@ -441,44 +441,42 @@ describe('AN06 — concurrent same-key conflicts resolve by format-item order', 
 		);
 	});
 
-	it("same-key overlapping ranges: overlap → winner; end-marker clears the loser's tail", () => {
+	it('same-key overlapping ranges: the overlap takes one winner; nothing is cleared (H5)', () => {
 		bothOrders(
 			(set) => {
 				set.A.transact(() => M.setMark(set.A.doc, 'a', 0, 8, 'color', 'red')); // [0,8)
 				set.B.transact(() => M.setMark(set.B.doc, 'a', 3, 8, 'color', 'blue')); // [3,11)
 			},
 			(rs) => {
-				// Format-item scan: A-start red@0, B-start blue@3, A-end null@8,
-				// B-end null@11. Atoms: [0,3) red; [3,8) blue (B's start is
-				// later in item order); [8,11) null — A's end marker restores
-				// null over B's exclusive suffix. Pinned, documented behavior.
+				// Paired marks (H5): A's end closes only A's start. [0,3) red,
+				// [8,11) blue; the overlap takes the greater (Lamport, client):
+				// equal timestamps, B's client (2) over A's (1) — blue.
 				expect(rs).toEqual([
 					{ kind: 'text', text: 'hel', marks: { color: 'red' } },
-					{ kind: 'text', text: 'lo wo', marks: { color: 'blue' } },
-					{ kind: 'text', text: 'rld' }
+					{ kind: 'text', text: 'lo world', marks: { color: 'blue' } }
 				]);
 			}
 		);
 	});
 
-	it('same-key contained ranges: the inner write wins; the outer tail is cleared', () => {
+	it('same-key contained ranges: the inner write wins its range; the outer keeps both sides (H5)', () => {
 		bothOrders(
 			(set) => {
 				set.A.transact(() => M.setMark(set.A.doc, 'a', 0, 11, 'color', 'red'));
 				set.B.transact(() => M.setMark(set.B.doc, 'a', 3, 4, 'color', 'blue')); // [3,7)
 			},
 			(rs) => {
-				// A-start@0, B-start@3, B-end(null)@7 clears red, A-end(null)@11.
+				// B's end closes only B's start: red resumes after it.
 				expect(rs).toEqual([
 					{ kind: 'text', text: 'hel', marks: { color: 'red' } },
 					{ kind: 'text', text: 'lo w', marks: { color: 'blue' } },
-					{ kind: 'text', text: 'orld' }
+					{ kind: 'text', text: 'orld', marks: { color: 'red' } }
 				]);
 			}
 		);
 	});
 
-	it('concurrent set vs unset of the same key: the null write wins the overlap', () => {
+	it('concurrent set vs unset of the same key: the greater (Lamport, client) wins (H5)', () => {
 		const SEED2 = seed([
 			{
 				id: 'a',
@@ -500,11 +498,9 @@ describe('AN06 — concurrent same-key conflicts resolve by format-item order', 
 			set.syncAll();
 			const rs = view(set.A).runs('a');
 			expect(rs, order).toEqual(view(set.B).runs('a'));
-			// Deterministic outcome (item order): the unmark wins [0,5).
-			expect(rs).toEqual([
-				{ kind: 'text', text: 'hello' },
-				{ kind: 'text', text: ' world', marks: { bold: true } }
-			]);
+			// Both written over the seed's bold (timestamp 1) at timestamp 2:
+			// B's client (2) wins over A's (1) — the set.
+			expect(rs).toEqual([{ kind: 'text', text: 'hello world', marks: { bold: true } }]);
 		}
 	});
 });

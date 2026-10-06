@@ -35,6 +35,7 @@ import { getItemCleanStart, cleanupFormattingGap } from './utils/transaction-hel
 import { transact } from './utils/Transaction.js'
 import { YEvent } from './utils/YEvent.js'
 import { $doc } from './utils/schemas.js'
+import { foldPaired, formatValue, pairedRole, markClass, MARK_START, MARK_END, SIDE_LEFT } from './utils/marks.js' // P13
 
 /**
  * @typedef {Object<string,any>|Array<any>|number|null|string|Uint8Array|BigInt|YNode<any>} YValue
@@ -158,7 +159,10 @@ export class ItemTextListPosition {
     ) {
       switch (this.right.content.constructor) {
         case ContentFormat: {
-          if (!this.right.deleted) {
+          if (!this.right.deleted && pairedRole(/** @type {ContentFormat} */ (this.right.content)) >= 0) {
+            // P13: a paired mark is folded, never rewritten by a plain format
+            updateCurrentFormats(this.currentFormats, /** @type {ContentFormat} */ (this.right.content))
+          } else if (!this.right.deleted) {
             const { key, value } = /** @type {ContentFormat} */ (this.right.content)
             const attr = formats[key]
             if (attr !== undefined) {
@@ -267,6 +271,7 @@ const insertNegatedFormats = (transaction, parent, currPos, negatedFormats) => {
  * @function
  */
 const updateCurrentFormats = (currentFormats, format) => {
+  if (foldPaired(currentFormats, format)) return // P13
   const { key, value } = format
   if (value === null) {
     currentFormats.delete(key)
@@ -326,6 +331,168 @@ const insertFormats = (transaction, parent, currPos, formats) => {
   }
   return negatedFormats
 }
+
+// P13 begin (edytor fork: paired marks — see UPSTREAM.md P13)
+/**
+ * The contents an array insert writes (as `insertContentHelper` splits it).
+ *
+ * @param {Array<any>} insert
+ * @return {Array<import('./structs/Item.js').AbstractContent>}
+ */
+const contentsOf = insert => {
+  insert = insert.map(ins => delta.$deltaAny.check(ins) ? YNode.from(ins) : ins)
+  /** @type {Array<import('./structs/Item.js').AbstractContent>} */
+  const out = []
+  for (let i = 0; i < insert.length;) {
+    const first = insert[i]
+    if (first instanceof YNode) {
+      out.push(new ContentType(first))
+      i++
+    } else if ($doc.check(first)) {
+      out.push(createContentDocFromDoc(first))
+      i++
+    } else {
+      let j = i + 1
+      for (; j < insert.length && !(insert[j] instanceof YNode || $doc.check(insert[j])); j++) { /* nop */ }
+      out.push(new ContentAny((i === 0 && j === insert.length) ? insert : insert.slice(i, j)))
+      i = j
+    }
+  }
+  return out
+}
+
+/**
+ * The gap at live index `index`: `right` is the first live countable item
+ * at or after it (split there; `null` at the end), `left` the last live
+ * countable item before it (`null` at the start); between them only
+ * deleted items and format items.
+ *
+ * @param {Transaction} transaction
+ * @param {YNode} parent
+ * @param {number} index
+ * @return {{ left: Item|null, right: Item|null, last: Item|null }}
+ */
+const gapAt = (transaction, parent, index) => {
+  /** @type {Item|null} */
+  let p = parent._start
+  let pindex = 0
+  const marker = findMarker(parent, index)
+  if (marker !== null) {
+    p = marker.p
+    pindex = marker.index
+  }
+  /** @type {Item|null} */
+  let last = p === null ? null : p.left
+  while (p !== null) {
+    if (!p.deleted && p.countable) {
+      if (index < pindex + p.length) {
+        if (index > pindex) p = getItemCleanStart(transaction, createID(p.id.client, p.id.clock + index - pindex))
+        break
+      }
+      pindex += p.length
+    }
+    last = p
+    p = p.right
+  }
+  if (p === null && pindex < index) throw new Error('Exceeded content range')
+  // `last`: the item right before the gap's end (`p`), whatever it is
+  if (p !== null) last = p.left
+  let left = last
+  while (left !== null && (left.deleted || !left.countable)) left = left.left
+  return { left, right: p, last }
+}
+
+/**
+ * Whether `item` is a right-side paired mark item (attached to what follows it).
+ *
+ * @param {Item} item
+ */
+const rightSided = item => item.content.constructor === ContentFormat && markClass(item) === 2
+
+/**
+ * @param {YNode} parent
+ */
+const dropMarkerFormats = parent => {
+  const ms = parent._searchMarker
+  if (ms !== null) for (let i = 0; i < ms.length; i++) ms[i].formats = null
+}
+
+/**
+ * Integrate `content` between `left` and `right` (adjacent: YATA's origins).
+ *
+ * @param {Transaction} transaction
+ * @param {YNode} parent
+ * @param {Item|null} left
+ * @param {Item|null} right
+ * @param {import('./structs/Item.js').AbstractContent} content
+ */
+const integrateBetween = (transaction, parent, left, right, content) => {
+  const doc = transaction.doc
+  new Item(createID(doc.clientID, doc.store.getClock(doc.clientID)), left, left && left.lastId, right, right && right.id, parent, null, content).integrate(transaction, 0)
+}
+
+/**
+ * Content goes at the end of its gap, before the gap's trailing right-side
+ * mark items (those attached to the content after it): after every
+ * left-side mark item and every deleted item of the gap.
+ *
+ * @param {Transaction} transaction
+ * @param {YNode} parent
+ * @param {number} index
+ * @param {import('./structs/Item.js').AbstractContent} content
+ */
+const insertInGapHelper = (transaction, parent, index, content) => {
+  const gap = gapAt(transaction, parent, index)
+  let right = gap.right
+  let left = gap.last
+  while (left !== null && left !== gap.left && rightSided(left)) {
+    right = left
+    left = left.left
+  }
+  if (parent._searchMarker) updateMarkerChanges(parent._searchMarker, index, content.getLength())
+  integrateBetween(transaction, parent, left, right, content)
+}
+
+/**
+ * A mark operation's item in the gap at `index`: a left-side item right
+ * after the gap's left content, a right-side one right before its right
+ * content.
+ *
+ * @param {Transaction} transaction
+ * @param {YNode} parent
+ * @param {number} index
+ * @param {number} side
+ * @param {ContentFormat} content
+ */
+const insertMarkItem = (transaction, parent, index, side, content) => {
+  const gap = gapAt(transaction, parent, index)
+  if (side === SIDE_LEFT) {
+    integrateBetween(transaction, parent, gap.left, gap.left === null ? parent._start : gap.left.right, content)
+  } else {
+    integrateBetween(transaction, parent, gap.last, gap.right, content)
+  }
+}
+
+/**
+ * @param {Transaction} transaction
+ * @param {YNode} parent
+ * @param {number} index
+ * @param {number} length
+ * @param {string} mark
+ * @param {any} value
+ * @param {number} startSide
+ * @param {number} endSide
+ */
+const markHelper = (transaction, parent, index, length, mark, value, startSide, endSide) => {
+  const doc = transaction.doc
+  const client = doc.clientID
+  const l = /** @type {any} */ (doc)._markClock + 1
+  const k = doc.store.getClock(client)
+  insertMarkItem(transaction, parent, index, startSide, new ContentFormat(MARK_START + mark, [value, l, client, k, startSide]))
+  insertMarkItem(transaction, parent, index + length, endSide, new ContentFormat(MARK_END + mark, [client, k, endSide]))
+  dropMarkerFormats(parent)
+}
+// P13 end
 
 /**
  * @param {Transaction} transaction
@@ -1285,6 +1452,11 @@ export class YNode extends ObservableV2 {
        * @type {delta.Formats}
        */
       let currentFormats = {} // saves all current formats for insert
+      /**
+       * P13: the open paired mark operations, by mark.
+       * @type {Map<string,any>}
+       */
+      const pairedFormats = new Map()
       let usingCurrentFormats = false
       /**
        * @type {delta.Formats}
@@ -1446,7 +1618,14 @@ export class YNode extends ObservableV2 {
             }
             break
           case ContentFormat: {
-            const { key, value } = /** @type {ContentFormat} */ (c.content)
+            let { key, value } = /** @type {ContentFormat} */ (c.content)
+            // P13: a live paired mark item renders as its mark's winning value there
+            if (pairedRole(/** @type {ContentFormat} */ (c.content)) >= 0) {
+              if (c.deleted) break
+              foldPaired(pairedFormats, /** @type {ContentFormat} */ (c.content))
+              key = key.slice(1)
+              value = formatValue(pairedFormats.get(key) ?? null)
+            }
             const currFormatVal = currentFormats[key] ?? null
             if (attribution != null && (c.deleted || !object.hasProperty(previousUnattributedFormats, key))) {
               previousUnattributedFormats[key] = c.deleted ? value : currFormatVal
@@ -2156,6 +2335,51 @@ export class YNode extends ObservableV2 {
     })
   }
   // P7 end
+
+  // P13 begin (edytor fork: paired marks — see UPSTREAM.md P13, utils/marks.js)
+  /**
+   * Insert `content` (a string, or an array of JSON values and nodes) at
+   * live index `index` with no format item: its origin is the gap's last
+   * content item, its right origin the gap's next live content item, and
+   * the integration places it after the gap's left-side mark items and
+   * before its right-side ones.
+   *
+   * @param {number} index
+   * @param {string|Array<any>} content
+   */
+  insertInGap (index, content) {
+    if (this.doc == null) throw new Error('insertInGap: node is not integrated')
+    transact(this.doc, transaction => {
+      const parts = typeof content === 'string' ? [new ContentString(content)] : contentsOf(content)
+      let at = index
+      for (const part of parts) {
+        insertInGapHelper(transaction, this, at, part)
+        at += part.getLength()
+      }
+    })
+  }
+
+  /**
+   * Write one paired mark operation over live `[index, index + length)`:
+   * `mark` takes `value` there (`null`: removed) with a Lamport timestamp
+   * above every mark this document saw. `startSide`/`endSide` (`0` left,
+   * `1` right) decide whether a concurrent insert at each edge lands inside.
+   *
+   * @param {number} index
+   * @param {number} length
+   * @param {string} mark
+   * @param {any} value
+   * @param {number} startSide
+   * @param {number} endSide
+   */
+  mark (index, length, mark, value, startSide, endSide) {
+    if (this.doc == null) throw new Error('mark: node is not integrated')
+    if (length <= 0) return
+    transact(this.doc, transaction => {
+      markHelper(transaction, this, index, length, mark, value, startSide, endSide)
+    })
+  }
+  // P13 end
 
   /**
    * Inserts new content at an index.

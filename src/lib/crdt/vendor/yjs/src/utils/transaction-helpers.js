@@ -2,6 +2,7 @@ import * as math from 'lib0-v14/math'
 import * as error from 'lib0-v14/error'
 import * as map from 'lib0-v14/map'
 import * as set from 'lib0-v14/set'
+import { foldPaired, pairedRole } from './marks.js' // P13
 
 
 /**
@@ -298,7 +299,7 @@ export const cleanupContextlessFormattingGap = (transaction, item) => {
   const attrs = new Set()
   // iterate back until a content item is found
   while (item && (item.deleted || !item.countable)) {
-    if (!item.deleted && item.content.getRef() === 6) { // is a ContentFormat
+    if (!item.deleted && item.content.getRef() === 6 && pairedRole(/** @type {ContentFormat} */ (item.content)) < 0) { // is a ContentFormat (P13: never a paired mark)
       const key = /** @type {ContentFormat} */ (item.content).key
       if (attrs.has(key)) {
         item.delete(transaction)
@@ -318,7 +319,9 @@ export const cleanupContextlessFormattingGap = (transaction, item) => {
  * @private
  * @function
  */
-export const updateCurrentFormats = (currentFormats, { key, value }) => {
+export const updateCurrentFormats = (currentFormats, format) => {
+  if (foldPaired(currentFormats, format)) return // P13
+  const { key, value } = format
   if (value === null) {
     currentFormats.delete(key)
   } else {
@@ -350,7 +353,7 @@ export const cleanupFormattingGap = (transaction, start, curr, startFormats, cur
    */
   const endFormats = map.create()
   while (end && (!end.countable || end.deleted)) {
-    if (!end.deleted && end.content.getRef() === 6) {
+    if (!end.deleted && end.content.getRef() === 6 && pairedRole(/** @type {ContentFormat} */ (end.content)) < 0) {
       const cf = /** @type {ContentFormat} */ (end.content)
       endFormats.set(cf.key, cf)
     }
@@ -364,7 +367,10 @@ export const cleanupFormattingGap = (transaction, start, curr, startFormats, cur
     }
     if (!start.deleted) {
       const content = start.content
-      if (content.getRef() === 6) { // is ContentFormat
+      if (content.getRef() === 6 && pairedRole(/** @type {ContentFormat} */ (content)) >= 0) {
+        // P13: a paired mark is never redundant — an end closes only its own start
+        if (!reachedCurr) updateCurrentFormats(currFormats, /** @type {ContentFormat} */ (content))
+      } else if (content.getRef() === 6) { // is ContentFormat
         const { key, value } = /** @type {ContentFormat} */ (content)
         const startFormatValue = startFormats.get(key) ?? null
         if (endFormats.get(key) !== content || startFormatValue === value) {

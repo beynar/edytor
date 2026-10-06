@@ -18,8 +18,13 @@ import { jsonEquals as same, type JSONText, type SerializableContent } from '$li
  * interpreter; `undefined` (no DOM point, no mark before) reads as inside.
  */
 export type EdgeSide = 'inside' | 'outside';
-/** O69: whether a mark grows at its edges — always, never, or by the admitted side (trailing edge). */
-export type MarkEdge = 'inclusive' | 'exclusive' | 'side-dependent';
+/**
+ * O69: whether a mark grows at its edges — always, never, or by the admitted
+ * side (trailing edge). The document reads the same value (H5) for where a
+ * concurrent insert at a mark's ends lands.
+ */
+export type { MarkEdge } from '$lib/crdt/text/marks.js';
+import type { MarkEdge } from '$lib/crdt/text/marks.js';
 export type Marks = Record<string, SerializableContent>;
 /** Marks staged at a caret for the next insertion: the full set, values kept (`null` = off). */
 export type PendingMarks = Record<string, SerializableContent | null>;

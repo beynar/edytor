@@ -444,6 +444,31 @@ export class YNode<DConf extends delta.DeltaConf = any> extends ObservableV2<{
      */
     insertAtGapEnd(index: number, content: Array<any>): void;
     /**
+     * Insert `content` (a string, or an array of JSON values and nodes) at
+     * live index `index` with no format item: its origin is the gap's last
+     * content item, its right origin the gap's next live content item, and
+     * the integration places it after the gap's left-side mark items and
+     * before its right-side ones.
+     *
+     * @param {number} index
+     * @param {string|Array<any>} content
+     */
+    insertInGap(index: number, content: string | Array<any>): void;
+    /**
+     * Write one paired mark operation over live `[index, index + length)`:
+     * `mark` takes `value` there (`null`: removed) with a Lamport timestamp
+     * above every mark this document saw. `startSide`/`endSide` (`0` left,
+     * `1` right) decide whether a concurrent insert at each edge lands inside.
+     *
+     * @param {number} index
+     * @param {number} length
+     * @param {string} mark
+     * @param {any} value
+     * @param {number} startSide
+     * @param {number} endSide
+     */
+    mark(index: number, length: number, mark: string, value: any, startSide: number, endSide: number): void;
+    /**
      * Inserts new content at an index.
      *
      * Important: This function expects an array of content. Not just a content

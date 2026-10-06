@@ -11,5 +11,5 @@ export function tryToMergeWithLefts(structs: Array<GC | Item | Skip>, pos: numbe
 export function tryGcDeleteSet(tr: Transaction, ds: IdSet, gcFilter: (arg0: Item) => boolean): void;
 export function tryMerge(ds: IdSet, store: StructStore): void;
 export function cleanupContextlessFormattingGap(transaction: Transaction, item: Item | null): 0 | undefined;
-export function updateCurrentFormats(currentFormats: Map<string, any>, { key, value }: ContentFormat): void;
+export function updateCurrentFormats(currentFormats: Map<string, any>, format: ContentFormat): void;
 export function cleanupFormattingGap(transaction: Transaction, start: Item, curr: Item | null, startFormats: Map<string, any>, currFormats: Map<string, any>): number;

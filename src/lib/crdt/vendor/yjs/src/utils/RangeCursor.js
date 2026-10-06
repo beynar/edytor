@@ -34,6 +34,7 @@ import { plantSearchMarker } from '../ynode.js'
 import { createID } from './ID.js'
 import { rendererContentLength, readItemPieces } from './renderer-helpers.js'
 import { updateCurrentFormats } from './transaction-helpers.js'
+import { formatValue } from './marks.js' // P13
 
 /**
  * Checkpoint cadence for cold walks: a read that steps this many items
@@ -231,6 +232,7 @@ export class RangeCursor {
     if (f === null) {
       f = undefined
       this.currentFormats.forEach((v, k) => {
+        v = formatValue(v) // P13: a paired mark renders its winning value
         if (v != null) (f ??= {})[k] = v
       })
       this._formatsObj = f

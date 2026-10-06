@@ -11,6 +11,7 @@
  */
 import type { DocumentSemanticsConfig } from './document.js';
 import type { BlockRole } from './edytor-doc.js';
+import type { MarkEdge } from './text/marks.js';
 
 /** One kind's structural row — the fields of its `BlockDefinition` a document adopts. */
 export type KindSemantics = BlockRole & { rendersContent?: boolean; defaultChild?: string };
@@ -31,6 +32,15 @@ export const richTextKinds = frozen({
 	'ordered-list': { rendersContent: false, defaultChild: 'list-item' },
 	'unordered-list': { rendersContent: false, defaultChild: 'list-item' }
 } satisfies Record<string, KindSemantics>);
+
+/**
+ * `richTextPlugin`'s mark edges (H5): where a concurrent insert at each end
+ * of a mark lands. A link grows at its start only (FP-8: typing after it
+ * stays out of it unless from inside the anchor); the others are inclusive.
+ */
+export const richTextMarks = frozen({
+	link: { edge: 'side-dependent' }
+} satisfies Record<string, { edge: MarkEdge }>);
 
 /** `codePlugin`'s structural rows: the code block is an island of `codeLine`s (`lines`). */
 export const codeKinds = frozen({
@@ -75,8 +85,12 @@ export const semanticsOf = (...tables: Record<string, KindSemantics>[]) => {
 	return frozen(semantics);
 };
 
-/** `richTextPlugin`'s block roles, for `createDocument({ semantics })` and the room. */
-export const richTextSemantics = semanticsOf(richTextKinds);
+/** `config` with a mark-edge table (H5), frozen. */
+const withMarks = <C extends object>(config: C, marks: Record<string, { edge: MarkEdge }>) =>
+	frozen(Object.assign({}, config, { marks }));
+
+/** `richTextPlugin`'s block roles and mark edges, for `createDocument({ semantics })` and the room. */
+export const richTextSemantics = withMarks(semanticsOf(richTextKinds), richTextMarks);
 /** `codePlugin`'s block roles. */
 export const codeSemantics = semanticsOf(codeKinds);
 /** `imagePlugin`'s block roles. */
@@ -89,4 +103,7 @@ export const layoutSemantics = semanticsOf(layoutKinds);
  * explicitly. The columns plugin is not a default plugin of `<Edytor>`, but
  * its roles are here so a layout reads the same on every replica.
  */
-export const defaultSemantics = semanticsOf(richTextKinds, codeKinds, imageKinds, layoutKinds);
+export const defaultSemantics = withMarks(
+	semanticsOf(richTextKinds, codeKinds, imageKinds, layoutKinds),
+	richTextMarks
+);

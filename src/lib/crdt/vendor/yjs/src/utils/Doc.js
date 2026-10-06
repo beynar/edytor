@@ -61,6 +61,12 @@ export class Doc extends ObservableV2 {
     this.isSuggestionDoc = isSuggestionDoc
     this.cleanupFormatting = !isSuggestionDoc
     /**
+     * P13: the greatest Lamport timestamp of a paired mark this document
+     * integrated (see `utils/marks.js`).
+     * @type {number}
+     */
+    this._markClock = 0
+    /**
      * @type {Map<string, YNode>}
      */
     this.share = new Map()

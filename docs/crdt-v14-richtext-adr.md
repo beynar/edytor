@@ -141,34 +141,30 @@ which recompute eagerly at event time so listeners are synchronous.
 
 ## 4. Mark semantics — the AN06 contract (specified, not inherited)
 
-Marks are replicated as **v14 format items**: `setMark(k,v)` over a range
-writes a format-START item `{k:v}` and a format-END item `{k:null}` into
-the sequence. The active value of key `k` at any atom is the value of the
-last-start item preceding it in sequence order; an end item restores null.
-Concurrent items order by `(client,clock)` — deterministic and convergent
-on every replica, in either delivery order.
+**Superseded by H5 (schema generation 5, 0.1.0-next.25; contract rows
+`mark.pair`, `mark.edge`, `mark.key`).** Up to generation 4 a mark was a
+plain v14 format-START item `{k:v}` and a format-END item `{k:null}`; any
+end restored null whatever was open, so overlapping concurrent same-key
+writes cleared each other's tails ("tail clearing") and a concurrent insert
+next to a format item landed inside or outside it by client id.
 
-Consequences pinned as the model contract (`golden.test.ts`):
+Since generation 5 a mark write is one paired operation (fork patch P13):
+its start names its value, a Lamport timestamp and its id; its end names
+the start it closes. Per key, a character shows the open operation with
+the greatest `(timestamp, client, clock)`:
 
-- **Independent keys never interact** — concurrent different-key marks on
-  the same range union in the marks object (`{color:'red', bold:true}`).
-- **Same-key disjoint ranges both survive.**
-- **Same-key overlapping ranges** — the overlap resolves to the
-  later-ordered writer (item order — not value-based, not
-  last-delivery-wins). Example, A=`red`[0,8), B=`blue`[3,11): `hel` red,
-  `lo wo` blue, `rld` **unmarked** — the loser's end marker restores null
-  where it lands inside the winner's exclusive suffix. This tail-clearing
-  is the documented engine semantic we adopt, not an accident.
-- **Contained ranges** — the inner write wins its range; the outer write
-  keeps only its exclusive prefix (its end marker clears the rest).
-- **Concurrent set vs unset** — the null write wins the contested range
-  (verified `hello` unmarked + ` world` bold in both orders).
-- **Insert inside a marked range** — a _local_ unmarked insert is wrapped
-  by the engine in negation items and stays unmarked (splits the run);
-  a _concurrent_ insert written on a replica that lacked the mark lands
-  between the format brackets and **adopts the mark** (`lXo` all bold).
-- **Boundary typing** — an insert at a mark edge lands outside unless it
-  carries the mark; a marked insert at the right edge extends the run.
+- **Independent keys never interact** (unchanged).
+- **Same-key disjoint ranges both survive** (unchanged).
+- **Same-key overlapping ranges** — the overlap takes the winner; each
+  write keeps its exclusive part (no tail clearing). Same value: union.
+- **Contained ranges** — the inner write wins its range when it is the
+  winner; the outer write keeps both sides.
+- **Concurrent set vs unset** — the greater `(timestamp, client)` wins;
+  a write made after seeing another always wins where it covers.
+- **Insert inside a marked range** — a local insert's marks are exactly
+  `marksForInsertion`'s; a concurrent insert inside a range adopts it.
+- **Boundary typing** — the mark record's `edge` decides, at integration,
+  for local and concurrent inserts alike (`mark.edge`).
 
 Object-valued marks (annotation payloads like `{comment:{id:'c1'}}`)
 split runs by value — each distinct value is its own run boundary.

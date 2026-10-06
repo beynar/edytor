@@ -38,6 +38,7 @@ import type { Text } from './text/text.svelte.js';
 import { Handles } from './session/handles.js';
 import { id } from './utils.js';
 import { Y } from '$lib/crdt/engine.js';
+import { markName } from '$lib/crdt/text/marks.js';
 import {
 	attachDocument,
 	bindCrdt,
@@ -179,9 +180,22 @@ const define = <T extends object>(into: Map<string, T>, definitions: object = {}
 			into.set(key, typeof value === 'object' ? value : ({ snippet: value } as T));
 };
 
+/**
+ * The mark records (H5): a key `name:<id>` — a comment's, one mark per
+ * comment so two never clip each other — reads the `name` record.
+ */
+class MarkRecords extends Map<string, MarkDefinition> {
+	override get(key: string): MarkDefinition | undefined {
+		return super.get(key) ?? (key.includes(':') ? super.get(markName(key)) : undefined);
+	}
+	override has(key: string): boolean {
+		return super.has(key) || (key.includes(':') && super.has(markName(key)));
+	}
+}
+
 export class Edytor {
 	node?: HTMLElement;
-	marks = new Map<string, MarkDefinition>();
+	marks: Map<string, MarkDefinition> = new MarkRecords();
 	blocks = new Map<string, BlockDefinition>();
 	inlineBlocks = new Map<string, InlineBlockDefinition>();
 	commands = new Map<string, EditorCommand>();
@@ -489,7 +503,13 @@ export class Edytor {
 				rendersContent: Object.fromEntries(
 					blocks.map(([type, definition]) => [type, definition.rendersContent !== false])
 				),
-				defaultChild
+				defaultChild,
+				// H5: a mark's edge decides where a concurrent insert at its ends lands.
+				marks: Object.fromEntries(
+					Array.from(this.marks)
+						.filter(([, definition]) => definition.edge !== undefined)
+						.map(([mark, { edge }]) => [mark, { edge }])
+				)
 			});
 
 			// Enroll this view's local-edit origin in the document's history —

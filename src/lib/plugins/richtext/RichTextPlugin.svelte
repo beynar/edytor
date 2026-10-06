@@ -11,7 +11,7 @@
 	} from './richTextOperations.js';
 	import { firstUriListEntry } from '$lib/events/dataTransferPayload.js';
 	import { flipToggles, shownSelectionBlocks } from '$lib/selection/replaceSelection.js';
-	import { richTextKinds } from '$lib/crdt/semantics.js';
+	import { richTextKinds, richTextMarks } from '$lib/crdt/semantics.js';
 
 	export { richTextOperations };
 
@@ -194,7 +194,7 @@
 				link: {
 					tag: 'a',
 					attributes: linkAttributes,
-					edge: 'side-dependent',
+					...richTextMarks.link,
 					parse: (el) => {
 						const href = el.localName === 'a' && sanitizeLinkHref(el.getAttribute('href'));
 						const target = el.getAttribute('target');

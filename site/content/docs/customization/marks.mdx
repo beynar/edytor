@@ -120,6 +120,22 @@ The core renders `<span data-edytor-mark="spoiler"><span class="spoiler">…</sp
 - `exclusive`: it does not.
 - `side-dependent`: at the start of the run it does; at the end, only when the caret is inside the run. The rich text `link` mark uses this, so text typed right after a link is not linked unless the caret was placed inside it.
 
+The edge also decides what happens to text a collaborator types at the edge of a mark you set at the same time, before either of you saw the other's change: `inclusive` takes it in at both ends, `exclusive` at neither, `side-dependent` at the start only. Every replica reaches the same result, whatever order the changes arrive in. A view tells its document the edges its mark records declare; a document with no view (the room, a headless `createDocument`) learns them from `semantics.marks` (`defaultSemantics` holds the link's, as `richTextMarks`).
+
+## How concurrent marks merge
+
+Each mark you set is one operation over its range, with a timestamp later than every mark its writer had seen. Where operations of one mark overlap, the latest wins; elsewhere each keeps its own range:
+
+- two collaborators who bold overlapping text get the union in bold;
+- red over "The quick" and blue over "quick fox", set at the same time, keep "The" red and "fox" blue, and "quick" takes one of the two on every replica;
+- removing bold from a word you see bold always wins over that bold.
+
+A comment-like mark (one per thread) uses a key of its own per thread: `comment:<id>`. Each is a separate mark, so two overlapping comments never cut each other short, and the key reads the `comment` mark record (its tag, snippet and edge):
+
+```ts
+edytor.document.facade.setMark(blockId, 4, 9, 'comment:c1', { id: 'c1' });
+```
+
 ## Toggling marks from code
 
 The rich text plugin exports its helpers. They act on the current selection and handle every text segment the selection spans:

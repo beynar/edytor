@@ -72,6 +72,7 @@ import {
 } from '../schema.js';
 import { nonceOf, randOf } from '../rand.js';
 import { bindRuns } from '../text/runs.js';
+import { writeRunMarks } from '../text/marks.js';
 import {
 	bindText,
 	computeOwners,
@@ -895,7 +896,8 @@ export const bindModel = (Y: EngineApi) => {
 		node.setAttr(NONCE, n);
 		node.setAttr(TYPE, type);
 		writeLeaves(node, dataLeaves(data));
-		if (items !== null) node.setAttr(CONTENT, textOf(items));
+		const content = items === null ? null : textOf(items);
+		if (content !== null) node.setAttr(CONTENT, content);
 		const list = newNode(CLAIMS_NODE);
 		node.setAttr(CLAIMS, list);
 		if (claims.length > 0) list.insert(0, claims);
@@ -903,15 +905,16 @@ export const bindModel = (Y: EngineApi) => {
 		node.setAttr(AT, at);
 		at.setAttr(`1.${doc.clientID}`, place);
 		registryOf(doc).setAttr(id, node);
+		if (content !== null) markText(doc, content, items!);
 	};
 
-	/** A detached backing text holding `items`. */
+	/** A detached backing text holding `items`, unmarked ({@link markText} marks it once integrated). */
 	const textOf = (items: readonly ContentItem[]): EngineNode => {
 		const content = newNode(CONTENT_NODE);
 		let clen = 0;
 		for (const item of items) {
 			if (item.kind === 'text') {
-				content.insert(clen, item.text, item.marks);
+				content.insert(clen, item.text);
 				clen += item.text.length;
 			} else {
 				content.insert(clen++, [buildInline(item)]);
@@ -919,6 +922,19 @@ export const bindModel = (Y: EngineApi) => {
 		}
 		return content;
 	};
+
+	/** H5: the marks of `items`, written as paired operations on their integrated text. */
+	const markText = (doc: EngineDoc, content: EngineNode, items: readonly ContentItem[]): void =>
+		writeRunMarks(
+			doc,
+			content,
+			0,
+			items.map((item) =>
+				item.kind === 'text'
+					? { length: item.text.length, marks: item.marks as Record<string, unknown> | undefined }
+					: { length: 1 }
+			)
+		);
 
 	/**
 	 * Restore definition (O24, D-22 — migration only; a first import
@@ -956,7 +972,9 @@ export const bindModel = (Y: EngineApi) => {
 					}
 					if (node.getAttr(TYPE) !== sp.type) node.setAttr(TYPE, sp.type);
 					writeLeaves(node, patchWrites(node, [{ path: [], value: sp.data ?? {} }]) ?? []);
-					node.setAttr(CONTENT, textOf(sp.content ?? []));
+					const text = textOf(sp.content ?? []);
+					node.setAttr(CONTENT, text);
+					markText(doc, text, sp.content ?? []);
 					node.setAttr(CLAIMS, newNode(CLAIMS_NODE));
 					rank = rankBetween(rank, undefined, 0, () => 0);
 					writePlacement(doc, node, parent, rank);

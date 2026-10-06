@@ -290,8 +290,9 @@ export const richtextScenarios: Scenario[] = [
 				},
 				MARK_SEED
 			);
-			// Case 2: overlapping ranges — overlap resolves to the later-ordered
-			// writer; the loser's end marker clears the winner's tail (documented).
+			// Case 2: overlapping ranges — the overlap takes the greater
+			// (Lamport, client) operation; an end closes only its own start, so
+			// nothing is cleared (H5: paired marks).
 			bothOrders(
 				(set) => {
 					ops.setMark(set.A, 'a', 0, 8, 'color', 'red');
@@ -300,14 +301,14 @@ export const richtextScenarios: Scenario[] = [
 				(set) => {
 					expect(runs(set.A, 'a')).toEqual([
 						{ kind: 'text', text: 'hel', marks: { color: 'red' } },
-						{ kind: 'text', text: 'lo wo', marks: { color: 'blue' } },
-						{ kind: 'text', text: 'rld' }
+						{ kind: 'text', text: 'lo world', marks: { color: 'blue' } }
 					]);
 					assertRunsConverged(set, ['a'], 'AN06-overlap');
 				},
 				MARK_SEED
 			);
-			// Case 3: concurrent set vs unset — the null write wins the overlap.
+			// Case 3: concurrent set vs unset — one operation each, equal
+			// timestamps: B's client wins (the set).
 			bothOrders(
 				(set) => {
 					ops.unsetMark(set.A, 'a', 0, 5, 'bold');
@@ -315,8 +316,7 @@ export const richtextScenarios: Scenario[] = [
 				},
 				(set) => {
 					expect(runs(set.A, 'a')).toEqual([
-						{ kind: 'text', text: 'hello' },
-						{ kind: 'text', text: ' world', marks: { bold: true } }
+						{ kind: 'text', text: 'hello world', marks: { bold: true } }
 					]);
 					assertRunsConverged(set, ['a'], 'AN06-set-unset');
 				},

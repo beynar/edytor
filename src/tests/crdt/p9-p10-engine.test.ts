@@ -196,9 +196,10 @@ describe('P10 — the formatting cleanup after a remote change is not an undo st
 	] as const) {
 		it(`peer ${variant} over A’s bold run: A’s stack is unchanged and one undo removes A’s last edit`, () => {
 			const { a, b, steps, authoredOnReceive } = run(variant);
-			// The cleanup is still a write A makes and broadcasts …
-			expect(authoredOnReceive).toBe(1);
-			// … but it is not A's gesture.
+			// Paired marks (H5, P13) are never cleaned up: receiving writes
+			// nothing (before H5 the cleanup was a write A made and broadcast) …
+			expect(authoredOnReceive).toBe(0);
+			// … and nothing lands on A's stack.
 			expect(a.document.history.undoStack.length).toBe(steps);
 			a.undo();
 			expect(a.tree()).toBe(`D:${JSON.stringify(d)} E:"echo"`);

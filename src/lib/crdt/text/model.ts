@@ -33,6 +33,7 @@ import { readData } from '../data.js';
 import { DEV } from 'esm-env';
 import { hash32, hash53 } from '../rand.js';
 import { bindDeletes, type Span } from './deletes.js';
+import { fitMarks, writeMarks } from './marks.js';
 
 export type BlockId = string;
 
@@ -600,7 +601,10 @@ export const bindText = (Y: EngineApi) => {
 	/**
 	 * Insert at a display offset, beside the boundary the engine walk and the
 	 * left side choose. The display must be non-empty: a streamless block gets
-	 * its own text first ({@link ownText}).
+	 * its own text first ({@link ownText}). The content goes in its gap
+	 * (`insertInGap`, P13: after the marks attached to the text before it,
+	 * before those attached to the text after it); text then shows exactly
+	 * `marks` (H5: an operation for each mark its gap gave it otherwise).
 	 */
 	const insertIntoText = (
 		doc: EngineDoc,
@@ -611,16 +615,19 @@ export const bindText = (Y: EngineApi) => {
 		payload: string | EngineNode,
 		marks?: Record<string, unknown>
 	): void => {
-		void doc;
 		const segs = flatten(b, blocks, own);
 		const hit = locate(segs, Math.max(0, Math.min(offset, ownedLength(segs))));
 		if (hit === null) throw new Error(`insertIntoText: "${b}" has no stream`);
-		const { text } = hit.seg;
-		plain(text, () =>
-			typeof payload === 'string'
-				? text.insert(hit.idx, payload, marks)
-				: text.insert(hit.idx, [payload])
-		);
+		const text = hit.seg.text as EngineNode & {
+			insertInGap(index: number, content: string | unknown[]): void;
+		};
+		plain(text, () => {
+			if (typeof payload !== 'string') return text.insertInGap(hit.idx, [payload]);
+			text.insertInGap(hit.idx, payload);
+			const at = openRangeCursor(text).read(hit.idx, hit.idx + payload.length);
+			const have = at.find((p) => !p.deleted && p.len > 0)?.formats;
+			fitMarks(doc, text, hit.idx, payload.length, have, marks);
+		});
 	};
 
 	/** The per-stream delete: each range lies inside one stream's pieces, so no boundary is ever removed (A-1). */
@@ -651,9 +658,8 @@ export const bindText = (Y: EngineApi) => {
 		length: number,
 		formats: Record<string, unknown>
 	): void => {
-		void doc;
 		for (const r of rangesOf(flatten(b, blocks, own), offset, offset + length))
-			plain(r.text, () => r.text.format(r.a, r.b - r.a, formats));
+			plain(r.text, () => writeMarks(doc, r.text, r.a, r.b - r.a, formats));
 	};
 
 	/**

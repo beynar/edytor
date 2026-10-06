@@ -50,7 +50,10 @@ const ALLOW = new Set([
 	'structs/Item.js:YXmlElementRefID',
 	'structs/Item.js:YXmlFragmentRefID',
 	'structs/Item.js:YXmlHookRefID',
-	'structs/Item.js:YXmlTextRefID'
+	'structs/Item.js:YXmlTextRefID',
+	// P13: constants the bundle inlines.
+	'utils/marks.js:MARK_START',
+	'utils/marks.js:MARK_END'
 ]);
 
 const require = createRequire(join(ROOT, 'package.json'));

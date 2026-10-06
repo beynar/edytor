@@ -591,6 +591,46 @@ byte-identical `encodeStateAsUpdate` for both peers after every operation.
 
 Vendor delta: +6 xloc in `src/`.
 
+### P13 — paired marks: an end closes only its own start (`src/utils/marks.js`, `src/structs/Item.js`, `src/ynode.js`, `src/utils/transaction-helpers.js`, `src/utils/RangeCursor.js`, `src/utils/Doc.js`)
+
+Reason: upstream formatting writes `{key: value}` where a range starts and
+`{key: null}` (or the value it replaced) where it ends, so any end closes
+whatever is open: two concurrent overlapping bolds lose bold where one's end
+lands inside the other, and a concurrent insert beside a format item lands
+before or after it by client id (CRDT study 2026-10, H5, Peritext §2). The
+fork adds paired marks (Peritext / Loro anchor pairing), schema generation 5:
+
+- `utils/marks.js` (new): a mark operation is a start `ContentFormat` keyed
+  `\u0001` + mark, value `[v, lamport, client, clock, side]`, and an end keyed
+  `\u0002` + mark, value `[client, clock, side]` naming its start. A
+  position's value of a mark is the value of the open operation with the
+  greatest `(lamport, client, clock)` (`MarkState`, immutable so marker
+  snapshots can share it); `foldPaired` is the fold.
+- `updateCurrentFormats` (both copies) folds paired items through
+  `foldPaired`; `RangeCursor#_emitFormats` renders a `MarkState`'s winning
+  value; `toDelta` skips paired items (edytor reads marks through
+  `RangeCursor`); the formatting cleanups never delete a paired item.
+- `Item#integrate`, case 1 of the conflict loop: `sortsBefore(o, this)` —
+  items of one origin order left-side mark items, then content and plain
+  formats, then right-side mark items, by client id within a class (plain
+  items keep upstream's `o.id.client < this.id.client`).
+- `Item#gc` keeps a paired mark item's content (its side orders concurrent
+  inserts on every replica, collected or not).
+- `ContentFormat#integrate` records a paired start's Lamport timestamp in
+  `doc._markClock` (new `Doc` field); `YNode#mark(index, length, mark,
+  value, startSide, endSide)` writes one operation at `_markClock + 1`;
+  `YNode#insertInGap(index, content)` inserts with no format item. Every
+  write in a gap takes the gap's last content item as origin and its next
+  live content item as right origin, and integrates through the conflict
+  loop, so a local write lands where a remote replica integrates it.
+
+Plain formats (every upstream test) are untouched: the class of a plain
+item is content's, so the comparator reduces to upstream's.
+
+Oracle: `src/tests/crdt/arch-v2/h5-marks.test.ts` (the Peritext cases on
+every swept client-id pair and delivery order; 7 of its 17 rows fail on
+the tree without P13), the upstream suite unchanged.
+
 ## Generated declarations (`dts/`)
 
 `svelte-package` copies JS verbatim but emits no `.d.ts` for JS inputs, so

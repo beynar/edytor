@@ -104,6 +104,7 @@
  * the document. Updates that produce no semantic diff (e.g. a losing
  * placement candidate or a meta-only write) are suppressed.
  */
+import { setMarkEdges, type MarkEdge } from './text/marks.js';
 import { DEV } from 'esm-env';
 import type { EngineApi, EngineDoc, EngineNode, YDoc, YNode, YUndoManager } from './engine-api.js';
 import { hash32, randOf, setDocRand } from './rand.js';
@@ -435,6 +436,12 @@ export type EdytorDocConfig = {
 	defaultChildOf?: (parentType: string) => string | undefined;
 	/** The adopted `rendersContent` per kind (R5, O22); undeclared kinds render theirs. */
 	rendersContent?: (type: string) => boolean;
+	/**
+	 * H5: the adopted edge of a mark (its record's `edge`): where a concurrent
+	 * insert at each end of a mark operation lands. Undeclared marks are
+	 * `inclusive`; a key `name:<id>` falls back to `name`'s.
+	 */
+	markEdge?: (mark: string) => MarkEdge | undefined;
 	/**
 	 * The kinds `roleOf` answers for — the display reads the line kinds of
 	 * the `lines` islands from them, present in the document or not
@@ -884,6 +891,7 @@ export const bindEdytorDoc = (Y: EngineApi) => {
 		// Document-boundary check — foreign (v13-engine) and legacy-schema docs
 		// fail fast here rather than inside the runs view (see assertUsableDoc).
 		assertUsableDoc(doc);
+		setMarkEdges(doc, config.markEdge ?? (() => undefined));
 		const roleOf = config.roleOf ?? (() => undefined);
 		const defaultType = config.defaultType ?? 'paragraph';
 		const defaultChildOf = config.defaultChildOf ?? (() => undefined);

@@ -140,6 +140,7 @@
  * explicitly via {@link clearHistory} / `history.clear()`, and tune the
  * merge window via `history.captureTimeout`.
  */
+import type { MarkEdge } from './text/marks.js';
 import { DEV } from 'esm-env';
 import { Y } from './engine.js';
 import type { EngineApi, EngineDoc, YDoc, YUndoManager } from './engine-api.js';
@@ -193,6 +194,11 @@ export type DocumentSemanticsConfig = {
 	defaultChild?: Record<string, string>;
 	/** Default block type — the root's default child and the bootstrap block. */
 	defaultType?: string;
+	/**
+	 * H5: per mark, its edge (its record's `edge`) — where a concurrent insert
+	 * at each end of a mark lands. Undeclared marks are `inclusive`.
+	 */
+	marks?: Record<string, { edge?: MarkEdge }>;
 };
 
 export type DocumentOptions = {
@@ -488,7 +494,8 @@ export class EdytorDocument {
 	private readonly _capability = {
 		roles: new Map<string, NormalizedRole>(),
 		rendersContent: new Map<string, boolean>(),
-		defaultChild: new Map<string, string>()
+		defaultChild: new Map<string, string>(),
+		marks: new Map<string, MarkEdge>()
 	};
 	private _defaultType: string;
 	private readonly _historyOptions: { captureTimeout?: number; limit?: number } | undefined;
@@ -513,6 +520,7 @@ export class EdytorDocument {
 			defaultType: this._defaultType,
 			defaultChildOf: (type) => this._capability.defaultChild.get(type),
 			rendersContent: (type) => this.rendersContent(type),
+			markEdge: (mark) => this._capability.marks.get(mark),
 			// U1: the facade's block-attribution ops read the actor lazily —
 			// `this.actor` is assigned below, after facade construction.
 			actor: () => this.actor,
@@ -641,12 +649,13 @@ export class EdytorDocument {
 	 * copies — mutation is not supported; contribute via {@link adoptSemantics}.
 	 */
 	get semantics() {
-		const { roles, rendersContent, defaultChild } = this._capability;
+		const { roles, rendersContent, defaultChild, marks } = this._capability;
 		return {
 			defaultType: this._defaultType,
 			roles: new Map<string, BlockRole>(roles),
 			rendersContent: new Map(rendersContent),
-			defaultChild: new Map(defaultChild)
+			defaultChild: new Map(defaultChild),
+			marks: new Map(marks)
 		};
 	}
 
@@ -688,7 +697,13 @@ export class EdytorDocument {
 		const incoming = [
 			['roles', Object.entries(config.roles ?? {}).map(([t, r]) => [t, normalizeRole(r)] as const)],
 			['rendersContent', Object.entries(config.rendersContent ?? {})],
-			['defaultChild', Object.entries(config.defaultChild ?? {})]
+			['defaultChild', Object.entries(config.defaultChild ?? {})],
+			[
+				'marks',
+				Object.entries(config.marks ?? {}).map(
+					([mark, m]) => [mark, m?.edge ?? 'inclusive'] as const
+				)
+			]
 		] as const;
 		// Pass 1 — validate EVERYTHING before mutating: a conflicting entry
 		// late in a table must not leave earlier entries half-adopted.

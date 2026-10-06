@@ -225,17 +225,29 @@ describe('gateF2/U3 — tombstone + checkpoint pinning', () => {
 		// snapshot no longer describes that exact edge — skipped.)
 		for (const m of markers) {
 			if (m.p.deleted) continue;
-			const expectFormats = {};
+			// Paired marks (H5, P13): a start `\u0001mark` opens `[v, l, c, k]`,
+			// an end `\u0002mark` closes its own start `[c, k]`; a mark shows the
+			// open operation with the greatest `(l, c, k)`.
+			const open = {};
 			for (let it = text._start; it !== null && it !== m.p; it = it.right) {
 				if (it.deleted) continue;
 				const c = it.content;
 				const countable = c.isCountable ? c.isCountable() : true;
-				if (!countable && typeof c.key === 'string') {
-					if (c.value == null) delete expectFormats[c.key];
-					else expectFormats[c.key] = c.value;
-				}
+				if (countable || typeof c.key !== 'string') continue;
+				const mark = c.key.slice(1);
+				const ops = (open[mark] ??= []);
+				if (c.key[0] === '\u0001') ops.push(c.value);
+				else open[mark] = ops.filter((o) => o[2] !== c.value[0] || o[3] !== c.value[1]);
 			}
-			expect(Object.fromEntries(m.formats)).toEqual(expectFormats);
+			const expectFormats = {};
+			for (const [mark, ops] of Object.entries(open)) {
+				const win = [...ops].sort((a, b) => b[1] - a[1] || b[2] - a[2] || b[3] - a[3])[0];
+				if (win !== undefined && win[0] != null) expectFormats[mark] = win[0];
+			}
+			const snapshot = Object.fromEntries(
+				[...m.formats].map(([k, v]) => [k, v?.value ?? v]).filter(([, v]) => v != null)
+			);
+			expect(snapshot).toEqual(expectFormats);
 		}
 	});
 });

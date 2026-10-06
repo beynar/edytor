@@ -83,9 +83,12 @@ export {
 	imageSemantics,
 	layoutKinds,
 	layoutSemantics,
+	richTextMarks,
 	semanticsOf,
 	type KindSemantics
 } from './semantics.js';
+// H5: paired marks — a mark's edge as document semantics, the record a key names.
+export { markName, type MarkEdge } from './text/marks.js';
 
 // The canonical document JSON — `createDocument({value})`,
 // `<Edytor {value}>`, `facade.toJSON()` and `facade.init({content})` all

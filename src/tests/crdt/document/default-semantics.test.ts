@@ -124,7 +124,9 @@ describe('defaultSemantics on a headless document', () => {
 				...richTextSemantics.defaultChild,
 				...codeSemantics.defaultChild,
 				...layoutSemantics.defaultChild
-			}
+			},
+			// H5: the rich-text plugin's mark edges (the link's).
+			marks: richTextSemantics.marks
 		});
 	});
 

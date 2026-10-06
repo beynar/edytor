@@ -1017,6 +1017,49 @@ same; such a client's concurrent leaf under the path still merges with the
 whole value (the residual of mixed versions). Arrays inside the path are
 read as the value's items and written back whole.
 
+## Marks (H5, schema generation 5)
+
+### `mark.pair` — an end closes only its own start
+
+A mark write (`formatRange`, `setMark`, `unsetMark`, the marks of an
+insertion or a seed) is one operation per mark: a start and an end format
+item paired by the operation's id (fork patch P13, `vendor/yjs/src/utils/marks.js`),
+its value (`null`: the mark off over the range) and a Lamport timestamp
+above every mark the writer's document integrated. A character shows, per
+mark, the value of the open operation with the greatest `(timestamp,
+client, clock)`. So two overlapping writes of one value union (bold "The
+quick" ‖ bold "quick fox" → "The quick fox" bold), two values overlap
+with one winner where both cover and each keeps its own part elsewhere
+(no end clears another write's tail), and a write made after seeing
+another wins where it covers (`h5-marks.test.ts`, the Peritext cases on
+every swept client-id pair). Nothing cleans up mark items: an undo
+deletes its operation's two items, a redo writes copies paired as before.
+
+### `mark.edge` — where a concurrent insert at a mark's end lands
+
+A mark record's `edge` (adopted by the document as semantics, `marks:
+{ name: { edge } }`; `richTextMarks` holds the bundled link's) decides,
+at integration, where an insert made concurrently at an operation's ends
+lands: `inclusive` takes it in at both ends, `exclusive` at neither,
+`side-dependent` at its start only. The start and end items carry their
+side (attached to the text before them, or after), and the integration
+orders the items of one origin: items attached to the text before them,
+then content, then items attached to the text after them, by client id
+within one class. A peer typing after a link set concurrently stays out
+of it on every pair (exp4b); typing after a bold joins it. A local
+insertion's marks stay `marksForInsertion`'s: the text goes at the end of
+its gap (after the marks attached to the text before it), then an
+operation over the inserted text alone writes each mark its placement
+shows that the rule did not ask for; those operations never grow
+(`exclusive`), so what a peer inserts beside it concurrently keeps the
+marks of where it lands.
+
+### `mark.key` — one mark per comment
+
+A mark key `name:<id>` is a mark of its own that reads the `name`
+record (`edytor.marks.get('comment:c1')` is the `comment` record, its
+edge too): two comments are two marks and never clip each other.
+
 ## History
 
 ### `hist.capture-group` — one undo step per gesture
